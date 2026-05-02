@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Driver - version: 1.7.1 -->
+<!-- X Pizza Driver - version: 1.7.2 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1104,7 +1104,7 @@ import * as XPD from './xpizza-delivery.js?v=13';
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '1.7.1';
+const SYSTEM_VERSION = '1.7.2';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -1511,12 +1511,6 @@ function renderHistoryModal() {
       </div>
     `;
   }).join('');
-}
-
-function escapeHtml(s) {
-  return String(s || '').replace(/[&<>"']/g, c => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-  }[c]));
 }
 
 // ============================================================
