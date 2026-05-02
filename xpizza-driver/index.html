@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Driver - version: 1.7.2 -->
+<!-- X Pizza Driver - version: 1.7.3 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1104,7 +1104,7 @@ import * as XPD from './xpizza-delivery.js?v=13';
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '1.7.2';
+const SYSTEM_VERSION = '1.7.3';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -2017,6 +2017,13 @@ function escapeHtml(s) {
 // VAPID public key — REPLACE WITH YOUR OWN before going live.
 // Generate a fresh keypair with:  cd xpizza-functions && npm run vapid
 // Then paste the publicKey here (NOT the privateKey — that goes in .env).
+// VAPID PUBLIC key for Web Push. NOT A SECRET — safe to commit and serve
+// to every client. Browsers need this value to register for push. The
+// matching PRIVATE key lives in xpizza-functions/.env and never leaves the
+// server. Generated once via: cd xpizza-functions && npm run vapid
+//
+// If you ever rotate keys, update both this constant AND the VAPID_*
+// values in xpizza-functions/.env, then redeploy both.
 const VAPID_PUBLIC_KEY = 'BE5fD1EXpWBalKvLopadT1n7ffCE0o0vBDB-JCRIB9Lrn7AyrA953IWLyIqy1-_24wSZ_TKas1gWC-08NecHxWQ';
 
 let swRegistration = null;
@@ -2070,7 +2077,7 @@ async function getNotificationState() {
 
 async function enableNotifications() {
   try {
-    if (VAPID_PUBLIC_KEY === 'REPLACE_WITH_VAPID_PUBLIC_KEY' || !VAPID_PUBLIC_KEY) {
+    if (!VAPID_PUBLIC_KEY) {
       toast('Push no configurado en este build', 'error');
       return;
     }
