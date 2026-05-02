@@ -1,0 +1,2235 @@
+<!DOCTYPE html>
+<!-- X Pizza Dispatch - version: 1.4.1 -->
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<title>X Pizza · Dispatch</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #1a212c;
+    --surface: #232b39;
+    --surface-2: #2d3645;
+    --surface-3: #3d475a;
+    --border: #3a4458;
+    --border-soft: #2a3142;
+    --text: #f1f5f9;
+    --text-soft: #94a3b8;
+    --text-dim: #64748b;
+    --accent: #dc2626;
+    --accent-soft: rgba(220,38,38,0.18);
+    --success: #16a34a;
+    --success-soft: rgba(22,163,74,0.18);
+    --warn: #f59e0b;
+    --warn-soft: rgba(245,158,11,0.18);
+    --info: #3b82f6;
+    --info-soft: rgba(59,130,246,0.18);
+    --teal: #0d9488;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  .anton { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; letter-spacing: 0.02em; }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  button { cursor: pointer; font-family: inherit; }
+
+  /* ==================== HEADER ==================== */
+  header.topbar {
+    height: 52px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    gap: 16px;
+    position: relative;
+    z-index: 10;
+  }
+  .brand {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 22px;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+  }
+  .brand-sub {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 14px;
+    letter-spacing: 0.18em;
+    color: var(--text-soft);
+    margin-left: -8px;
+  }
+  .topbar-spacer { flex: 1; }
+  .topbar-stat {
+    font-size: 12px;
+    color: var(--text-soft);
+    padding: 0 14px;
+    border-left: 1px solid var(--border-soft);
+    height: 30px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .topbar-stat .num {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 18px;
+    color: var(--text);
+  }
+  .topbar-user {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-soft);
+  }
+  .version-tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    padding: 0 8px;
+    opacity: 0.7;
+  }
+  .topbar-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-soft);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .topbar-btn:hover { background: var(--surface-3); color: var(--text); }
+
+  /* ==================== LAYOUT ==================== */
+  .layout {
+    display: flex;
+    height: calc(100vh - 52px);
+  }
+  .sidebar {
+    width: 380px;
+    background: var(--surface);
+    border-left: 1px solid var(--border-soft);
+    overflow-y: auto;
+    flex-shrink: 0;
+    padding-bottom: 32px;
+    order: 2;
+    position: relative;
+  }
+  .sidebar.collapsed { display: none; }
+  #map-container {
+    flex: 1;
+    position: relative;
+    background: #131826;
+    order: 1;
+    min-width: 0;
+  }
+  #map { width: 100%; height: 100%; }
+
+  /* Drag-resize handle on sidebar's inner (left) edge */
+  .sidebar-resize-handle {
+    position: absolute;
+    left: -3px;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    background: transparent;
+    z-index: 5;
+    transition: background 0.15s;
+  }
+  .sidebar-resize-handle:hover,
+  .sidebar-resize-handle.dragging {
+    background: var(--info);
+  }
+  body.resizing-sidebar { cursor: col-resize !important; user-select: none; }
+  body.resizing-sidebar * { cursor: col-resize !important; }
+
+  /* Small circular icon button for map controls (Onfleet-style) */
+  .map-icon-btn {
+    position: absolute;
+    z-index: 5;
+    width: 36px;
+    height: 36px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 50%;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+    transition: background 0.15s, transform 0.15s;
+  }
+  .map-icon-btn:hover { background: var(--surface-2); transform: translateY(-1px); }
+  .map-icon-btn:active { transform: translateY(0); }
+  .map-icon-btn.fit { top: 14px; left: 14px; }
+  .map-icon-btn svg { width: 18px; height: 18px; display: block; }
+
+  .sidebar-collapse-btn {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    background: var(--surface);
+    border: none;
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--text-soft);
+    width: 100%;
+    text-align: left;
+    padding: 10px 16px;
+    font-size: 11px;
+    font-family: inherit;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+  }
+  .sidebar-collapse-btn:hover { color: var(--text); }
+
+  .sidebar-show-btn {
+    position: fixed;
+    right: 0;
+    top: 80px;
+    z-index: 6;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-right: none;
+    color: var(--text);
+    border-radius: 6px 0 0 6px;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    box-shadow: -4px 4px 14px rgba(0,0,0,0.4);
+  }
+  .sidebar-show-btn.hidden { display: none; }
+
+  /* ==================== SIDEBAR SECTIONS ==================== */
+  .panel-section {
+    padding: 16px 16px 0;
+  }
+  .panel-section + .panel-section {
+    margin-top: 8px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-soft);
+  }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding: 0 4px;
+  }
+  .panel-title {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+  }
+  .panel-count {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    background: var(--surface-3);
+    color: var(--text-soft);
+    padding: 2px 8px;
+    border-radius: 99px;
+  }
+  .panel-count.hot {
+    background: var(--accent);
+    color: white;
+    animation: pulse-warn 1.5s infinite;
+  }
+  @keyframes pulse-warn {
+    0%, 100% { box-shadow: 0 0 0 rgba(220,38,38,0.6); }
+    50% { box-shadow: 0 0 12px rgba(220,38,38,0.6); }
+  }
+
+  .panel-empty {
+    color: var(--text-dim);
+    font-size: 12px;
+    padding: 12px 4px;
+    text-align: center;
+    font-style: italic;
+  }
+
+  /* ==================== DRIVER CARDS ==================== */
+  .driver-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .driver-card:hover {
+    background: var(--surface-3);
+    border-color: var(--border);
+  }
+  .driver-card.stale { opacity: 0.55; }
+  .driver-card .top-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--text-dim);
+  }
+  .status-dot.green { background: var(--success); box-shadow: 0 0 6px rgba(22,163,74,0.5); }
+  .status-dot.amber { background: var(--warn); box-shadow: 0 0 6px rgba(245,158,11,0.5); }
+  .status-dot.blue  { background: var(--info); box-shadow: 0 0 6px rgba(59,130,246,0.5); }
+  .status-dot.red   { background: var(--accent); }
+  .driver-card .name {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 16px;
+    letter-spacing: 0.04em;
+    flex: 1;
+  }
+  .driver-card .ping {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .driver-card .ping.fresh { color: var(--success); }
+  .driver-card .ping.stale-warn { color: var(--warn); }
+  .driver-card .meta-row {
+    font-size: 11px;
+    color: var(--text-soft);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-pill {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 99px;
+    background: var(--surface-3);
+    color: var(--text-soft);
+  }
+  .status-pill.available, .status-pill.at_restaurant { background: var(--success-soft); color: var(--success); }
+  .status-pill.assigned { background: var(--warn-soft); color: var(--warn); }
+  .status-pill.en_route_delivery { background: var(--info-soft); color: var(--info); }
+  .status-pill.returning { background: var(--warn-soft); color: var(--warn); }
+  .status-pill.off_shift { background: var(--surface-3); color: var(--text-dim); }
+
+  /* ==================== ORDER CARDS ==================== */
+  .order-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .order-card:hover {
+    background: var(--surface-3);
+    border-color: var(--border);
+  }
+  .order-card.flashing {
+    animation: flash-new 1.2s ease-out 3;
+  }
+  @keyframes flash-new {
+    0%, 100% { border-color: var(--border-soft); background: var(--surface-2); }
+    50% { border-color: var(--accent); background: var(--accent-soft); }
+  }
+  .order-card .order-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .order-card .order-id {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .order-card .order-total {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 18px;
+    color: var(--text);
+  }
+  .order-card .order-customer {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 16px;
+    letter-spacing: 0.03em;
+    margin-bottom: 4px;
+  }
+  .order-card .order-addr {
+    font-size: 12px;
+    color: var(--text-soft);
+    line-height: 1.35;
+    margin-bottom: 8px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .order-card .order-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--text-soft);
+  }
+  .order-meta-pill {
+    background: var(--surface-3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .order-card .assign-btn {
+    width: 100%;
+    margin-top: 10px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 8px;
+    border-radius: 6px;
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .order-card .assign-btn:hover { background: #b91c1c; }
+
+  .order-card.active {
+    border-left: 3px solid var(--info);
+  }
+  .order-card.active .driver-line {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-soft);
+  }
+  .order-card.active .driver-line .name {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 13px;
+    color: var(--text);
+    letter-spacing: 0.03em;
+  }
+
+  /* ==================== TREE GROUPS (Onfleet style) ==================== */
+  .tree-group {
+    padding: 14px 16px 0;
+  }
+  .tree-group + .tree-group {
+    margin-top: 4px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-soft);
+  }
+  .tree-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px 10px;
+  }
+  .tree-group-title {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+  }
+  .tree-group-meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .tree-group-meta.hot {
+    background: var(--accent);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 99px;
+    animation: pulse-warn 1.5s infinite;
+  }
+  .tree-empty {
+    color: var(--text-dim);
+    font-size: 11px;
+    padding: 6px 4px 12px;
+    font-style: italic;
+  }
+
+  .driver-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .driver-row:hover { background: var(--surface-2); }
+  .driver-row.stale { opacity: 0.55; }
+  .driver-row .name {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .driver-row .row-status {
+    font-size: 10px;
+    color: var(--text-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+  }
+  .driver-row.has-tasks .name {
+    color: var(--text);
+  }
+  .driver-row .chevron {
+    color: var(--text-dim);
+    font-size: 10px;
+    transition: transform 0.15s;
+    flex-shrink: 0;
+  }
+  .driver-row.expanded .chevron { transform: rotate(90deg); }
+
+  .driver-tasks {
+    padding: 0 0 8px 28px;
+    border-left: 1px solid var(--border-soft);
+    margin-left: 12px;
+  }
+  .driver-tasks.collapsed { display: none; }
+  .driver-tasks-empty {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-style: italic;
+    padding: 4px 0 4px 12px;
+  }
+
+  .task-row {
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    margin-left: 12px;
+  }
+  .task-row:hover {
+    background: var(--surface-3);
+    border-color: var(--border);
+  }
+  .task-row .task-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .task-row .task-id {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .task-row .task-customer {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .task-row .task-addr {
+    font-size: 11px;
+    color: var(--text-soft);
+    margin-bottom: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .task-row .task-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .phase-pill {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 99px;
+  }
+  .phase-pill.pickup { background: var(--warn-soft); color: var(--warn); }
+  .phase-pill.delivery { background: var(--info-soft); color: var(--info); }
+  .phase-pill.awaiting { background: var(--accent-soft); color: var(--accent); }
+
+  .unassigned-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .unassigned-card:hover { background: var(--surface-3); }
+  .unassigned-card.flashing { animation: flash-new 1.2s ease-out 3; }
+  .unassigned-card .top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .unassigned-card .uid { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-dim); }
+  .unassigned-card .total { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 16px; color: var(--text); }
+  .unassigned-card .customer { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 14px; margin-bottom: 2px; }
+  .unassigned-card .addr { font-size: 11px; color: var(--text-soft); margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .unassigned-card .actions { display: flex; gap: 6px; }
+  .unassigned-card .assign-btn {
+    flex: 1;
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 7px;
+    border-radius: 5px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .unassigned-card .assign-btn:hover { background: #b91c1c; }
+  .unassigned-card .assign-self-btn {
+    background: var(--success);
+    color: white;
+    border: none;
+    padding: 7px 12px;
+    border-radius: 5px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .unassigned-card .assign-self-btn:hover { background: #15803d; }
+
+  /* ==================== EXPANDED TASK DETAILS ==================== */
+  .task-expanded {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 11px;
+    color: var(--text-soft);
+  }
+  .task-expanded .row {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    margin-bottom: 4px;
+  }
+  .task-expanded .row .label {
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 9px;
+    flex-shrink: 0;
+    width: 60px;
+  }
+  .task-expanded .row .value { flex: 1; color: var(--text); }
+  .task-expanded .row .value a { color: var(--info); text-decoration: none; }
+  .task-expanded .row .value a:hover { text-decoration: underline; }
+  .task-expanded .items {
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .task-expanded .items div {
+    padding: 1px 0;
+  }
+  .task-expanded .items div:before {
+    content: "→ ";
+    color: var(--text-dim);
+  }
+  .task-expanded .note {
+    background: var(--surface-3);
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-style: italic;
+    color: var(--text);
+    margin-top: 6px;
+  }
+
+  /* ==================== ACTION BUTTON (⋯) ==================== */
+  .more-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .more-btn:hover { background: var(--surface-3); color: var(--text); }
+
+  /* ==================== ACTION MENU (popover) ==================== */
+  #action-menu {
+    position: fixed;
+    z-index: 150;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px;
+    min-width: 180px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+  }
+  #action-menu.hidden { display: none; }
+  .action-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    padding: 8px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .action-menu-item:hover { background: var(--surface-2); }
+  .action-menu-item.danger { color: var(--accent); }
+  .action-menu-item.danger:hover { background: var(--accent-soft); }
+  .action-menu-item.disabled { color: var(--text-dim); cursor: not-allowed; }
+  .action-menu-item.disabled:hover { background: transparent; }
+  .action-menu-divider {
+    height: 1px;
+    background: var(--border-soft);
+    margin: 4px 0;
+  }
+  .action-menu-item .icon {
+    font-size: 14px;
+    width: 16px;
+    display: inline-flex;
+    justify-content: center;
+  }
+
+  /* ==================== TODAY'S DELIVERED ==================== */
+  .delivered-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-left: 3px solid var(--success);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 11px;
+  }
+  .delivered-card:hover { background: var(--surface-3); }
+  .delivered-card .top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .delivered-card .top .name {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+  .delivered-card .top .total {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--text-soft);
+    flex-shrink: 0;
+  }
+  .delivered-card .meta {
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-dim);
+    font-size: 10px;
+    margin-top: 2px;
+  }
+  .delivered-card .meta .driver {
+    color: var(--text-soft);
+  }
+  .tree-group.collapsed .group-body { display: none; }
+  .tree-group-header.toggleable { cursor: pointer; }
+  .tree-group-header.toggleable:hover .tree-group-title { color: var(--text); }
+  .tree-group-toggle {
+    color: var(--text-dim);
+    font-size: 9px;
+    transition: transform 0.15s;
+    margin-right: 6px;
+    display: inline-block;
+  }
+  .tree-group.collapsed .tree-group-toggle { transform: rotate(-90deg); }
+
+  /* ==================== ASSIGN OVERLAY ==================== */
+  .overlay-bg {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .overlay-bg.hidden { display: none; }
+  .picker-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    width: 460px;
+    max-width: calc(100vw - 32px);
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+  }
+  .picker-header {
+    padding: 18px 20px 12px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .picker-title {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 18px;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+  }
+  .picker-sub {
+    font-size: 12px;
+    color: var(--text-soft);
+  }
+  .picker-list { padding: 12px 16px; }
+  .picker-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    margin-bottom: 4px;
+  }
+  .picker-row:hover { background: var(--surface-2); }
+  .picker-row.disabled { opacity: 0.4; cursor: not-allowed; }
+  .picker-row.disabled:hover { background: transparent; }
+  .picker-row .name {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 16px;
+    flex: 1;
+  }
+  .picker-row .distances {
+    text-align: right;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-soft);
+    line-height: 1.4;
+  }
+  .picker-row .distances strong { color: var(--text); }
+  .picker-cancel {
+    padding: 12px 20px 18px;
+    text-align: center;
+  }
+  .picker-cancel button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-soft);
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+
+  /* ==================== TOAST ==================== */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 13px;
+    z-index: 200;
+    transition: transform 0.3s cubic-bezier(0.18, 1.18, 0.32, 1);
+    pointer-events: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    max-width: 80vw;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.error { border-color: var(--accent); background: var(--accent-soft); }
+  .toast.success { border-color: var(--success); background: var(--success-soft); }
+
+  /* ==================== CONFIG / LOGIN SCREENS ==================== */
+  .full-screen {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 32px;
+  }
+  .full-screen.hidden { display: none; }
+  .full-screen .brand-large {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 42px;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+  .full-screen .brand-large-sub {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 18px;
+    letter-spacing: 0.2em;
+    color: var(--text-soft);
+    margin-bottom: 32px;
+  }
+  .config-form, .login-form {
+    width: 100%;
+    max-width: 420px;
+  }
+  .config-form h2, .login-form h2 {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 18px;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+  }
+  .config-form p, .login-form p {
+    color: var(--text-soft);
+    font-size: 12px;
+    margin-bottom: 14px;
+  }
+  .config-form textarea, .config-form input, .login-form input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    margin-bottom: 10px;
+  }
+  .config-form textarea {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    min-height: 200px;
+    resize: vertical;
+  }
+  .full-screen button.primary {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    width: 100%;
+    margin-top: 8px;
+  }
+  .full-screen button.primary:hover { background: #b91c1c; }
+
+  /* ==================== MAP MARKER LABELS ==================== */
+  .map-label {
+    background: var(--surface);
+    color: var(--text);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    white-space: nowrap;
+  }
+
+  .info-window {
+    color: #0a0a0a;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    min-width: 180px;
+  }
+  .info-window .iw-name {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 16px;
+    margin-bottom: 4px;
+  }
+  .info-window .iw-meta {
+    font-size: 12px;
+    color: #555;
+  }
+</style>
+</head>
+
+<body>
+
+<!-- ================================ -->
+<!-- CONFIG SCREEN -->
+<!-- ================================ -->
+<div id="screen-config" class="full-screen hidden">
+  <div class="brand-large">X PIZZA</div>
+  <div class="brand-large-sub">DISPATCH</div>
+  <div class="config-form">
+    <h2>Configuración inicial</h2>
+    <p>Pega la configuración de Firebase y la API key de Google Maps. Solo una vez por dispositivo.</p>
+    <textarea id="firebase-config-input" placeholder='{ "apiKey": "...", "databaseURL": "...", ... }'></textarea>
+    <input type="text" id="maps-key-input" placeholder="Google Maps API key (AIza...)">
+    <button class="primary" id="config-save-btn">Guardar y entrar</button>
+  </div>
+  <div class="version-tag" data-version-display style="margin-top: 32px; text-align: center;"></div>
+</div>
+
+<!-- ================================ -->
+<!-- LOGIN SCREEN -->
+<!-- ================================ -->
+<div id="screen-login" class="full-screen hidden">
+  <div class="brand-large">X PIZZA</div>
+  <div class="brand-large-sub">DISPATCH</div>
+  <div class="login-form">
+    <h2>Iniciar sesión</h2>
+    <p>Acceso solo para dispatchers</p>
+    <input type="email" id="login-email" placeholder="email" autocomplete="email">
+    <input type="password" id="login-password" placeholder="contraseña" autocomplete="current-password">
+    <button class="primary" id="login-btn">Entrar</button>
+  </div>
+  <div class="version-tag" data-version-display style="margin-top: 32px; text-align: center;"></div>
+</div>
+
+<!-- ================================ -->
+<!-- MAIN DISPATCHER UI -->
+<!-- ================================ -->
+<div id="screen-main" class="hidden" style="display:flex; flex-direction:column; height:100vh;">
+  <header class="topbar">
+    <span class="brand">X PIZZA</span>
+    <span class="brand-sub">DISPATCH</span>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-stat">DRIVERS <span class="num" id="stat-drivers">0</span></div>
+    <div class="topbar-stat">PENDIENTES <span class="num" id="stat-pending">0</span></div>
+    <div class="topbar-stat">ACTIVOS <span class="num" id="stat-active">0</span></div>
+    <div class="topbar-stat">HOY <span class="num" id="stat-delivered">0</span></div>
+    <div class="topbar-user" id="topbar-user">—</div>
+    <span class="version-tag" data-version-display></span>
+    <button class="topbar-btn" id="signout-btn">Salir</button>
+  </header>
+
+  <div class="layout">
+    <div id="map-container">
+      <button class="map-icon-btn fit" id="map-fit-btn" title="Centrar mapa" aria-label="Centrar mapa">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <circle cx="12" cy="12" r="3"/>
+          <line x1="12" y1="2" x2="12" y2="5"/>
+          <line x1="12" y1="19" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="5" y2="12"/>
+          <line x1="19" y1="12" x2="22" y2="12"/>
+        </svg>
+      </button>
+      <div id="map"></div>
+    </div>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-resize-handle" id="sidebar-resize-handle" title="Arrastrar para cambiar el ancho"></div>
+      <button class="sidebar-collapse-btn" id="sidebar-collapse-btn">▶ OCULTAR PANEL</button>
+
+      <div class="tree-group" id="unassigned-group">
+        <div class="tree-group-header">
+          <div class="tree-group-title">Sin Asignar</div>
+          <div class="tree-group-meta" id="unassigned-meta">0 pedidos</div>
+        </div>
+        <div id="unassigned-list"><div class="tree-empty">Sin pedidos pendientes</div></div>
+      </div>
+
+      <div class="tree-group" id="drivers-group">
+        <div class="tree-group-header">
+          <div class="tree-group-title">Repartidores</div>
+          <div class="tree-group-meta" id="drivers-meta">0 de 0 activos</div>
+        </div>
+        <div id="drivers-tree"><div class="tree-empty">Sin repartidores</div></div>
+      </div>
+
+      <div class="tree-group collapsed" id="delivered-group">
+        <div class="tree-group-header toggleable" id="delivered-toggle">
+          <div class="tree-group-title"><span class="tree-group-toggle">▼</span>Entregados Hoy</div>
+          <div class="tree-group-meta" id="delivered-meta">0</div>
+        </div>
+        <div class="group-body">
+          <div id="delivered-list"><div class="tree-empty">Aún no hay entregas hoy</div></div>
+        </div>
+      </div>
+    </aside>
+
+    <button class="sidebar-show-btn hidden" id="sidebar-show-btn">◀ Panel</button>
+  </div>
+</div>
+
+<!-- Driver picker overlay -->
+<div class="overlay-bg hidden" id="picker-overlay">
+  <div class="picker-panel">
+    <div class="picker-header">
+      <div class="picker-title" id="picker-title">Asignar pedido</div>
+      <div class="picker-sub" id="picker-sub">Selecciona un driver</div>
+    </div>
+    <div class="picker-list" id="picker-list"></div>
+    <div class="picker-cancel">
+      <button id="picker-cancel-btn">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Action menu (popover for task actions) -->
+<div id="action-menu" class="hidden"></div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Chime audio -->
+<audio id="chime" preload="auto" src="data:audio/wav;base64,UklGRpgEAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YXQEAAAAAB6BPL5UfHO+Z3iuvVFwjLzsZcG62FaXuJREprWCMc6yGRr2r9ELY6w+/bypbrsap6e4QqL2tQqcYrJalfWtQ41QqDqEFKLleZmaSWzjkVtdyYcvTfV7yzs1bvEpumDvFAdSLP9lQs7olDNq06H8t3GgdSlnnP5ejZl3VnSWAUvxkwk/zZHCMsKO1iSEi2sVmYl4B5SnhBuQ7Y8Yi5KaYIYLpQOC+a4kfqK4Q3rLwJp17chV8fHQ0+0u2I/qgeIc5e/d+e9c2p36id3Z+RvhAAVk4rkO0+EhF7Pi6h2J5CMjL+enKw7p8zE+7QEzy/Ba/PQqOjbz3bmrpe+4U64I7Bu2/+1tt+rkCMLR3YbR+9wB0arQv9aQwpHcrdkbsuTpHt63+fmvDQqFsKgaXLm0KuLA9Tj9zXBExt1iSFXxw5BV0MqTU/PXiE3p4gZECfFgPb74sjXTyz0r/MJoH1q1ulfsq16YIqlWR5ldqr1+gquumGHXrPpOa6+YtZpzlsiBGZysZkJZuhJB1cRmKkjOrwQYV8z3+6TbQQTjs0zaq9G/y0T0ELGR/Wxe7iKArr+QjTW0vIUR9LKCrmcwxFCTBrSnaqltogyZJaTuhmihKHt2qZP3ZtmVSnXNoTuGLpv9NTKkahMbpDEmEqV7CijdpacrfKf7rIyssLGFqvyxdpyjtKaZD7zJpbmKzHGeP9MhmgDX8I1q3KOVw9+0nqLflIXDKcpoo7vR9XW3fOUmoxnzKICYAagvjF65KZv+xXSVSdYWifGhJVJ8q2x+L8DohHK8XKuy/24GpxTN0t+/BquKt9zrDqe9wCPtl6VG0Ynk56P82DPhQqIO5InisaOI6qLfhKsK8dXVGbNI94i6t7qy/kPDb6PDw1XJG6lk0lTUW7DG7P3mBLwoBdHSbsinINnCQNAh4qvJiNiV+PHV4d8I5/7eNeS97kfaLtw2/E/UNMyCBdHQXr+vDdHQTLapEkPPoaLrFmHHYJSJJD3FvY+1NA7BIIPAavVk26GD16FtCOBu44tpu9eUCbE65Md+pmGzKLxEnJa3uTmMc8sIfWWG43hhU/njWvdnQHcl1lWOiECYU9Mvr9NhDMS1RrVuxXKtFrLrwHGoP710qGm/rrh1xL3OQ8wB14TQzeNz1qLoBdyN6/HekPSf4yX42Oub+0X1VgFJ/aQHX/gKDZ4DiQuaCUYRZBJyExoYxBR6GwUYAB7xGyAffx80HrEhdR4uIoMfsh/mIQ8c+yKsFXcg3w6hHU8GoBMt/0sJ8/qEAfn5fPosAdj+3wYHBL4LgQjxC74JFwkjCIcD3wU3/Zr/BfhT+fX1V/gE+Bj7T/oP/VL8gv7H+kj91vap+kf2qPmt+Pf6evxh/ID/AwHyAIIDswEvBL8AcQNoAB8DsgEfBKQEkgaPBugHWAU3BqQB8gKZ/r//9/0V/0kAvAFPATEC/wGWAlAB7QGvAMcAGgGOATgB0AHFASIB1AHIANUACgEnAYQBkAHzAOwAvf6V/i37jvqB+W74p/lA+ML4f/ec+AT4LfqL+ZD8O/sB/L/6CfsW+UH7Ovqq/Iz8H/2N/Ej9b/0z//z/xQDmAW0BRAH+ANgAbgFGAvwBkgIcAgUC0AGtAYIBpgEGAaIB1ACtAZQB+gKdA8YDZQOJAvkC2QGiAlsB6AHAAVwCmAJzAhsCegHaACgAmwDUACEBowAdAVgADwGCAB0BPAFKAdEBnQF/AHL/JP4w/h//+f7K/2j+ev6n/Az8U/qz+vL5o/oS+5L7H/zT+xv8E/x4/Lr8H/49/g==" type="audio/wav"></audio>
+
+<script type="module">
+import * as XPD from './xpizza-delivery.js?v=11';
+
+// ============================================================
+// System version (bumped each release)
+// ============================================================
+const SYSTEM_VERSION = '1.4.1';
+document.querySelectorAll('[data-version-display]').forEach(el => {
+  el.textContent = `v${SYSTEM_VERSION} · dispatch`;
+});
+
+// ============================================================
+// State
+// ============================================================
+let firebaseConfig = null;
+let mapsApiKey = null;
+let currentUser = null;
+let allDrivers = {};
+let allTasks = {};
+let allOrders = {};
+let knownPendingOrderIds = new Set();
+let map = null;
+let restaurantMarker = null;
+let geofenceCircle = null;
+let driverMarkers = {};   // uid → google.maps.Marker
+let customerMarkers = {}; // orderId → google.maps.Marker
+let infoWindow = null;
+let pickerOpen = false;
+let pickerOrderId = null;
+let pickerIsReassign = false;
+let renderTickInterval = null;
+let toastTimer = null;
+
+const $ = (id) => document.getElementById(id);
+
+// ============================================================
+// Toast
+// ============================================================
+function toast(msg, kind = '') {
+  const el = $('toast');
+  el.className = `toast show ${kind}`;
+  el.textContent = msg;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = 'toast', 3500);
+}
+
+function showScreen(name) {
+  ['config', 'login', 'main'].forEach(s => {
+    $(`screen-${s}`).classList.toggle('hidden', s !== name);
+  });
+}
+
+// ============================================================
+// Config
+// ============================================================
+function loadConfig() {
+  const fb = localStorage.getItem('xpd_dispatch_firebase');
+  const mk = localStorage.getItem('xpd_dispatch_mapskey');
+  if (fb && mk) {
+    try {
+      firebaseConfig = JSON.parse(fb);
+      mapsApiKey = mk;
+      return true;
+    } catch {}
+  }
+  return false;
+}
+
+$('config-save-btn').addEventListener('click', () => {
+  try {
+    const fb = JSON.parse($('firebase-config-input').value);
+    const mk = $('maps-key-input').value.trim();
+    if (!fb.databaseURL) throw new Error('Falta databaseURL en config');
+    if (!mk.startsWith('AIza')) throw new Error('Maps API key inválida');
+    firebaseConfig = fb;
+    mapsApiKey = mk;
+    localStorage.setItem('xpd_dispatch_firebase', JSON.stringify(fb));
+    localStorage.setItem('xpd_dispatch_mapskey', mk);
+    boot();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+});
+
+// ============================================================
+// Boot
+// ============================================================
+async function boot() {
+  if (!firebaseConfig || !mapsApiKey) {
+    showScreen('config');
+    return;
+  }
+
+  XPD.initDelivery(firebaseConfig);
+
+  XPD.onAuth(async (user) => {
+    currentUser = user;
+    if (!user) {
+      showScreen('login');
+      return;
+    }
+
+    const isDisp = await XPD.isDispatcher(user.uid);
+    if (!isDisp) {
+      toast('Esta cuenta no tiene permisos de dispatcher', 'error');
+      await XPD.signOutUser();
+      return;
+    }
+
+    $('topbar-user').textContent = user.email;
+    showScreen('main');
+    await loadGoogleMaps();
+    initMap();
+    subscribeAll();
+    startRenderTick();
+  });
+}
+
+// ============================================================
+// Auth handlers
+// ============================================================
+$('login-btn').addEventListener('click', async () => {
+  const email = $('login-email').value.trim();
+  const password = $('login-password').value;
+  if (!email || !password) return toast('Email y contraseña requeridos', 'error');
+  try {
+    $('login-btn').disabled = true;
+    await XPD.signIn(email, password);
+  } catch (e) {
+    const code = e.code || '';
+    let msg = code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')
+      ? 'Email o contraseña incorrectos'
+      : `Error: ${code || e.message}`;
+    toast(msg, 'error');
+  } finally {
+    $('login-btn').disabled = false;
+  }
+});
+
+$('signout-btn').addEventListener('click', async () => {
+  await XPD.signOutUser();
+  location.reload();
+});
+
+// ============================================================
+// Google Maps loader (uses official async bootstrap pattern)
+// ============================================================
+function loadGoogleMaps() {
+  return new Promise((resolve, reject) => {
+    if (window.google && window.google.maps && window.google.maps.Map) return resolve();
+
+    // Inline the official Google Maps bootstrap loader.
+    // This sets up google.maps.importLibrary() so we can await it below.
+    (g => { var h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary", q = "__ib__", m = document, b = window; b = b[c] || (b[c] = {}); var d = b.maps || (b.maps = {}), r = new Set, e = new URLSearchParams, u = () => h || (h = new Promise(async (f, n) => { await (a = m.createElement("script")); e.set("libraries", [...r] + ""); for (k in g) e.set(k.replace(/[A-Z]/g, t => "_" + t[0].toLowerCase()), g[k]); e.set("callback", c + ".maps." + q); a.src = `https://maps.${c}apis.com/maps/api/js?` + e; d[q] = f; a.onerror = () => h = n(Error(p + " could not load.")); a.nonce = m.querySelector("script[nonce]")?.nonce || ""; m.head.append(a); })); d[l] ? console.warn(p + " only loads once. Ignoring:", g) : d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)); })({ key: mapsApiKey, v: "weekly" });
+
+    // Wait until the maps library is actually loaded (Map constructor exists)
+    google.maps.importLibrary("maps").then(() => resolve()).catch(reject);
+  });
+}
+
+// ============================================================
+// Map setup
+// ============================================================
+const DARK_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#131826' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#0a0d18' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#9ca3af' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d4d4d8' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0d1f1a' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#3a4459' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#131826' }] },
+  { featureType: 'road.local', elementType: 'geometry', stylers: [{ color: '#3a4459' }] },
+  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#4a5670' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#5a6685' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#131826' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0a1929' }] }
+];
+
+function initMap() {
+  map = new google.maps.Map($('map'), {
+    center: { lat: XPD.RESTAURANT.lat, lng: XPD.RESTAURANT.lng },
+    zoom: 15,
+    styles: DARK_MAP_STYLE,
+    disableDefaultUI: true,
+    zoomControl: true,
+    zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: true,
+    fullscreenControlOptions: { position: google.maps.ControlPosition.TOP_RIGHT },
+    gestureHandling: 'greedy',
+    backgroundColor: '#131826'
+  });
+  infoWindow = new google.maps.InfoWindow();
+  drawRestaurant();
+}
+
+function drawRestaurant() {
+  restaurantMarker = new google.maps.Marker({
+    position: { lat: XPD.RESTAURANT.lat, lng: XPD.RESTAURANT.lng },
+    map,
+    title: 'X Pizza',
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 12,
+      fillColor: '#dc2626',
+      fillOpacity: 1,
+      strokeColor: '#fff',
+      strokeWeight: 3
+    },
+    label: { text: 'XP', color: '#fff', fontFamily: 'Plus Jakarta Sans', fontSize: '12px', fontWeight: '700' },
+    zIndex: 999
+  });
+  geofenceCircle = new google.maps.Circle({
+    map,
+    center: { lat: XPD.RESTAURANT.lat, lng: XPD.RESTAURANT.lng },
+    radius: XPD.RESTAURANT.geofence_radius_m,
+    strokeColor: '#dc2626',
+    strokeOpacity: 0.5,
+    strokeWeight: 1,
+    fillColor: '#dc2626',
+    fillOpacity: 0.05,
+    clickable: false
+  });
+}
+
+// ============================================================
+// Subscriptions
+// ============================================================
+function subscribeAll() {
+  XPD.subscribeToDrivers((drivers) => {
+    allDrivers = drivers || {};
+    renderSidebar();
+    updateDriverMarkers();
+    updateStats();
+  });
+  XPD.subscribeToTasks((tasks) => {
+    detectNewPending(tasks);
+    allTasks = tasks || {};
+    renderSidebar();
+    updateCustomerMarkers();
+    updateStats();
+  });
+  XPD.subscribeToOrders((orders) => {
+    allOrders = orders || {};
+    renderSidebar();
+    updateCustomerMarkers();
+    updateStats();
+  });
+}
+
+// Render every 5s to refresh ping freshness even without data changes
+function startRenderTick() {
+  if (renderTickInterval) clearInterval(renderTickInterval);
+  renderTickInterval = setInterval(() => {
+    renderSidebar();
+  }, 5000);
+}
+
+// ============================================================
+// New-order detection
+// ============================================================
+function detectNewPending(tasks) {
+  const currentPending = new Set();
+  for (const [id, t] of Object.entries(tasks || {})) {
+    if (t.type === 'pickup' && t.status === 'pending' && !t.assigned_driver_id) {
+      currentPending.add(t.order_id);
+    }
+  }
+  // Find newly-arrived
+  const fresh = [...currentPending].filter(oid => !knownPendingOrderIds.has(oid));
+  if (fresh.length > 0 && knownPendingOrderIds.size > 0) {
+    try { $('chime').play().catch(() => {}); } catch {}
+    fresh.forEach(oid => flashOrderCard(oid));
+    toast(`Nuevo pedido: ${fresh.length === 1 ? '#' + fresh[0] : fresh.length + ' pedidos'}`, 'success');
+  }
+  knownPendingOrderIds = currentPending;
+}
+
+function flashOrderCard(orderId) {
+  setTimeout(() => {
+    const el = document.querySelector(`.unassigned-card[data-order-id="${orderId}"]`);
+    if (el) {
+      el.classList.remove('flashing');
+      void el.offsetWidth; // restart animation
+      el.classList.add('flashing');
+    }
+  }, 100);
+}
+
+// ============================================================
+// Filters
+// ============================================================
+function getPendingOrders() {
+  // Order is pending if its delivery task exists and has no assigned driver yet
+  return Object.values(allOrders).filter(o => {
+    const dt = allTasks[`${o.order_id}_delivery`];
+    return dt && !dt.assigned_driver_id && dt.status !== 'cancelled';
+  }).sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+}
+
+function getActiveOrders() {
+  return Object.values(allOrders).filter(o => {
+    const dt = allTasks[`${o.order_id}_delivery`];
+    return dt && dt.assigned_driver_id && dt.status !== 'completed' && dt.status !== 'cancelled';
+  }).sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+}
+
+function getDeliveredTodayCount() {
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  return Object.values(allOrders).filter(o =>
+    o.status === 'delivered' && o.created_at >= dayStart.getTime()
+  ).length;
+}
+
+function getActiveDrivers() {
+  return Object.entries(allDrivers).filter(([_, d]) => d.active);
+}
+
+// ============================================================
+// ============================================================
+// Sidebar render — Onfleet-style tree (Unassigned + Drivers grouped)
+// ============================================================
+
+// Track which driver groups are expanded (default: all expanded)
+const expandedDrivers = new Set();
+let expandedDriversInitialized = false;
+
+// Track which order cards are inline-expanded for details
+const expandedOrderIds = new Set();
+
+function renderSidebar() {
+  // Initialize: expand all known drivers on first render
+  if (!expandedDriversInitialized) {
+    Object.keys(allDrivers).forEach(uid => expandedDrivers.add(uid));
+    expandedDriversInitialized = true;
+  }
+  renderUnassignedSection();
+  renderDriversSection();
+  renderDeliveredSection();
+}
+
+// ============================================================
+// Action menu (popover for task/order actions)
+// ============================================================
+function showActionMenu(triggerEl, items) {
+  closeActionMenu();
+  const menu = $('action-menu');
+  menu.innerHTML = items.map((item, idx) => {
+    if (item.divider) return '<div class="action-menu-divider"></div>';
+    return `
+      <button class="action-menu-item ${item.danger ? 'danger' : ''} ${item.disabled ? 'disabled' : ''}" data-action-idx="${idx}" ${item.disabled ? 'disabled' : ''}>
+        ${item.icon ? `<span class="icon">${item.icon}</span>` : ''}
+        <span>${escapeHtml(item.label)}</span>
+      </button>
+    `;
+  }).join('');
+
+  // Position near trigger
+  const rect = triggerEl.getBoundingClientRect();
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.style.left = `${Math.max(8, rect.right - 200)}px`;
+  menu.classList.remove('hidden');
+
+  menu.querySelectorAll('[data-action-idx]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const item = items[parseInt(btn.dataset.actionIdx)];
+      if (item && !item.disabled && item.action) item.action();
+      closeActionMenu();
+    });
+  });
+
+  // Close on outside click (next event loop tick)
+  setTimeout(() => {
+    document.addEventListener('click', closeActionMenu, { once: true });
+  }, 0);
+}
+
+function closeActionMenu() {
+  $('action-menu').classList.add('hidden');
+}
+
+function isCurrentUserAlsoDriver() {
+  if (!currentUser) return false;
+  const d = allDrivers[currentUser.uid];
+  return d && d.active;
+}
+
+// ============================================================
+// Unassigned section
+// ============================================================
+function renderUnassignedSection() {
+  const orders = getPendingOrders();
+  const list = $('unassigned-list');
+  const meta = $('unassigned-meta');
+
+  meta.textContent = orders.length === 1 ? '1 pedido' : `${orders.length} pedidos`;
+  meta.classList.toggle('hot', orders.length > 0);
+
+  if (orders.length === 0) {
+    list.innerHTML = '<div class="tree-empty">Sin pedidos pendientes</div>';
+    return;
+  }
+
+  const showSelfBtn = isCurrentUserAlsoDriver();
+
+  list.innerHTML = orders.map(o => {
+    const expanded = expandedOrderIds.has(o.order_id);
+    return `
+    <div class="unassigned-card" data-order-id="${o.order_id}">
+      <div class="top">
+        <div class="uid">#${o.order_id}</div>
+        <div class="total">L${o.total ?? '—'}</div>
+      </div>
+      <div class="customer">${escapeHtml(o.customer_name || '—')}</div>
+      <div class="addr">${escapeHtml(o.address_detected || '—')}</div>
+      ${expanded ? renderOrderExpanded(o) : ''}
+      <div class="actions">
+        ${showSelfBtn ? `<button class="assign-self-btn" data-assign-self="${o.order_id}" title="Asignar a mí">A mí</button>` : ''}
+        <button class="assign-btn" data-assign-order="${o.order_id}">Asignar</button>
+        <button class="more-btn" data-more-unassigned="${o.order_id}" title="Más opciones">⋯</button>
+      </div>
+    </div>
+  `}).join('');
+
+  // Card click → toggle expand + fit map
+  list.querySelectorAll('.unassigned-card').forEach(card => {
+    card.addEventListener('click', (e) => {
+      // ignore clicks on action buttons
+      if (e.target.closest('button')) return;
+      const oid = card.dataset.orderId;
+      // Toggle expand
+      if (expandedOrderIds.has(oid)) expandedOrderIds.delete(oid);
+      else expandedOrderIds.add(oid);
+      // Fit map
+      const o = allOrders[oid];
+      if (o?.lat && o?.lng) {
+        const bounds = new google.maps.LatLngBounds();
+        bounds.extend({ lat: XPD.RESTAURANT.lat, lng: XPD.RESTAURANT.lng });
+        bounds.extend({ lat: o.lat, lng: o.lng });
+        map.fitBounds(bounds, 80);
+      }
+      renderUnassignedSection();
+    });
+  });
+
+  list.querySelectorAll('[data-assign-order]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openPicker(btn.dataset.assignOrder);
+    });
+  });
+
+  list.querySelectorAll('[data-assign-self]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const oid = btn.dataset.assignSelf;
+      try {
+        await XPD.assignOrderToDriver(oid, currentUser.uid);
+        toast('Asignado a ti', 'success');
+      } catch (err) {
+        toast('Error: ' + err.message, 'error');
+      }
+    });
+  });
+
+  list.querySelectorAll('[data-more-unassigned]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const oid = btn.dataset.moreUnassigned;
+      const order = allOrders[oid];
+      const items = [
+        order?.customer_phone ? {
+          label: `Llamar a ${order.customer_name || 'cliente'}`,
+          icon: '📞',
+          action: () => window.location.href = `tel:${order.customer_phone}`
+        } : null,
+        order?.customer_phone ? { divider: true } : null,
+        {
+          label: 'Cancelar pedido',
+          icon: '✕',
+          danger: true,
+          action: () => confirmCancelOrder(oid)
+        }
+      ].filter(Boolean);
+      showActionMenu(btn, items);
+    });
+  });
+}
+
+function renderOrderExpanded(order) {
+  const lines = [];
+  if (order.customer_phone) {
+    lines.push(`<div class="row"><span class="label">Tel</span><span class="value"><a href="tel:${order.customer_phone}">${escapeHtml(order.customer_phone)}</a></span></div>`);
+  }
+  if (order.payment_method) {
+    lines.push(`<div class="row"><span class="label">Pago</span><span class="value">${escapeHtml(order.payment_method)}</span></div>`);
+  }
+  if (order.items_text) {
+    lines.push(`<div class="row"><span class="label">Pedido</span><span class="value items">${order.items_text.split(',').map(s => `<div>${escapeHtml(s.trim())}</div>`).join('')}</span></div>`);
+  }
+  if (order.address_details) {
+    lines.push(`<div class="note">"${escapeHtml(order.address_details)}"</div>`);
+  }
+  return `<div class="task-expanded">${lines.join('')}</div>`;
+}
+
+async function confirmCancelOrder(orderId) {
+  if (!confirm(`¿Cancelar el pedido #${orderId}?\n\nEsto marcará el pedido como cancelado y liberará al driver si está asignado.`)) return;
+  try {
+    await XPD.cancelOrder(orderId, 'Cancelado por dispatcher');
+    toast(`Pedido #${orderId} cancelado`, 'success');
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+function renderDriversSection() {
+  const allEntries = Object.entries(allDrivers);
+  const tree = $('drivers-tree');
+  const meta = $('drivers-meta');
+
+  const onDuty = allEntries.filter(([_, d]) => d.active).length;
+  meta.textContent = `${onDuty} de ${allEntries.length} activos`;
+
+  if (allEntries.length === 0) {
+    tree.innerHTML = '<div class="tree-empty">Sin repartidores</div>';
+    return;
+  }
+
+  // Sort: active first, then alphabetical
+  allEntries.sort((a, b) => {
+    if (a[1].active !== b[1].active) return a[1].active ? -1 : 1;
+    return (a[1].name || '').localeCompare(b[1].name || '');
+  });
+
+  tree.innerHTML = allEntries.map(([uid, d]) => renderDriverNode(uid, d)).join('');
+
+  // Click handlers — toggle expand on row click, pan map on chevron click
+  tree.querySelectorAll('.driver-row').forEach(row => {
+    row.addEventListener('click', (e) => {
+      const uid = row.dataset.driverUid;
+      // If clicking the row itself, both pan map (if has GPS) AND toggle
+      const d = allDrivers[uid];
+      if (d?.active && d?.lat && d?.lng) {
+        map.panTo({ lat: d.lat, lng: d.lng });
+        map.setZoom(Math.max(map.getZoom(), 16));
+      }
+      // Toggle expansion
+      if (expandedDrivers.has(uid)) expandedDrivers.delete(uid);
+      else expandedDrivers.add(uid);
+      renderDriversSection();
+    });
+  });
+
+  // Task click → toggle expand + fit map to driver + customer + restaurant
+  tree.querySelectorAll('.task-row').forEach(row => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      e.stopPropagation();
+      const oid = row.dataset.orderId;
+      const uid = row.dataset.driverUid;
+      // Toggle expand
+      if (expandedOrderIds.has(oid)) expandedOrderIds.delete(oid);
+      else expandedOrderIds.add(oid);
+      // Fit map
+      const o = allOrders[oid];
+      const driver = allDrivers[uid];
+      const bounds = new google.maps.LatLngBounds();
+      bounds.extend({ lat: XPD.RESTAURANT.lat, lng: XPD.RESTAURANT.lng });
+      if (o?.lat && o?.lng) bounds.extend({ lat: o.lat, lng: o.lng });
+      if (driver?.lat && driver?.lng) bounds.extend({ lat: driver.lat, lng: driver.lng });
+      map.fitBounds(bounds, 80);
+      renderDriversSection();
+    });
+  });
+
+  // More button on tasks
+  tree.querySelectorAll('[data-more-task]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const oid = btn.dataset.moreTask;
+      const order = allOrders[oid];
+      const items = [
+        order?.customer_phone ? {
+          label: `Llamar a ${order.customer_name || 'cliente'}`,
+          icon: '📞',
+          action: () => window.location.href = `tel:${order.customer_phone}`
+        } : null,
+        order?.customer_phone ? { divider: true } : null,
+        {
+          label: 'Reasignar a otro driver',
+          icon: '↻',
+          action: () => openPicker(oid, true)
+        },
+        {
+          label: 'Cancelar pedido',
+          icon: '✕',
+          danger: true,
+          action: () => confirmCancelOrder(oid)
+        }
+      ].filter(Boolean);
+      showActionMenu(btn, items);
+    });
+  });
+}
+
+function renderDriverNode(uid, d) {
+  const stale = XPD.isStalePing(d.last_ping);
+  const dotClass = !d.active ? '' :
+    stale ? '' :
+    d.status === 'available' || d.status === 'at_restaurant' ? 'green' :
+    d.status === 'en_route_delivery' ? 'blue' :
+    d.status === 'returning' || d.status === 'assigned' ? 'amber' : '';
+
+  const ordersForDriver = getOrdersForDriver(uid);
+  const expanded = expandedDrivers.has(uid);
+  const hasOrders = ordersForDriver.length > 0;
+
+  // Status text shown inline
+  const statusText = !d.active ? 'Off-duty' :
+    `${XPD.formatStatus(d.status)} · ${stale ? `hace ${XPD.formatStaleness(d.last_ping)}` : 'live'}`;
+
+  return `
+    <div class="driver-row ${stale ? 'stale' : ''} ${hasOrders ? 'has-tasks' : ''} ${expanded ? 'expanded' : ''}" data-driver-uid="${uid}">
+      <div class="status-dot ${dotClass}"></div>
+      <div class="name">${escapeHtml(d.name || 'Sin nombre')}</div>
+      <div class="row-status">${escapeHtml(statusText)}</div>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="driver-tasks ${expanded ? '' : 'collapsed'}">
+      ${hasOrders
+        ? ordersForDriver.map(o => renderTaskRow(uid, o)).join('')
+        : '<div class="driver-tasks-empty">Sin pedidos asignados</div>'
+      }
+    </div>
+  `;
+}
+
+function renderTaskRow(driverUid, order) {
+  const pt = allTasks[`${order.order_id}_pickup`];
+  const dt = allTasks[`${order.order_id}_delivery`];
+
+  let phase, phaseLabel;
+  if (pt?.status === 'completed') { phase = 'delivery'; phaseLabel = 'Delivery'; }
+  else if (pt?.status === 'accepted' || pt?.status === 'in_progress') { phase = 'pickup'; phaseLabel = 'Pickup'; }
+  else { phase = 'awaiting'; phaseLabel = 'Esperando'; }
+
+  const expanded = expandedOrderIds.has(order.order_id);
+
+  return `
+    <div class="task-row" data-order-id="${order.order_id}" data-driver-uid="${driverUid}">
+      <div class="task-top">
+        <div class="task-id">#${order.order_id}</div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <div class="task-id mono" style="color: var(--text-soft);">L${order.total ?? '—'}</div>
+          <button class="more-btn" data-more-task="${order.order_id}" data-driver-uid="${driverUid}" title="Más opciones">⋯</button>
+        </div>
+      </div>
+      <div class="task-customer">${escapeHtml(order.customer_name || '—')}</div>
+      <div class="task-addr">${escapeHtml(order.address_detected || '—')}</div>
+      <div class="task-meta">
+        <span class="phase-pill ${phase}">${phaseLabel}</span>
+      </div>
+      ${expanded ? renderOrderExpanded(order) : ''}
+    </div>
+  `;
+}
+
+function getOrdersForDriver(driverId) {
+  return Object.values(allOrders).filter(o => {
+    const dt = allTasks[`${o.order_id}_delivery`];
+    return dt && dt.assigned_driver_id === driverId &&
+           dt.status !== 'completed' && dt.status !== 'cancelled';
+  }).sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+}
+
+// ============================================================
+// Today's Delivered section
+// ============================================================
+function renderDeliveredSection() {
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  const dayStartMs = dayStart.getTime();
+
+  const delivered = Object.values(allOrders)
+    .filter(o => o.status === 'delivered' && (o.delivered_at || o.created_at || 0) >= dayStartMs)
+    .sort((a, b) => (b.delivered_at || 0) - (a.delivered_at || 0));
+
+  $('delivered-meta').textContent = delivered.length;
+  const list = $('delivered-list');
+
+  if (delivered.length === 0) {
+    list.innerHTML = '<div class="tree-empty">Aún no hay entregas hoy</div>';
+    return;
+  }
+
+  list.innerHTML = delivered.map(o => {
+    const dt = allTasks[`${o.order_id}_delivery`];
+    const driver = allDrivers[dt?.assigned_driver_id];
+    const time = o.delivered_at ? formatTime(o.delivered_at) : '';
+    return `
+      <div class="delivered-card" data-order-id="${o.order_id}">
+        <div class="top">
+          <div class="name">${escapeHtml(o.customer_name || '—')}</div>
+          <div class="total">L${o.total ?? '—'}</div>
+        </div>
+        <div class="meta">
+          <span class="driver">${escapeHtml(driver?.name || '—')}</span>
+          <span>${time}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.delivered-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const oid = card.dataset.orderId;
+      const o = allOrders[oid];
+      if (o?.lat && o?.lng) {
+        const bounds = new google.maps.LatLngBounds();
+        bounds.extend({ lat: XPD.RESTAURANT.lat, lng: XPD.RESTAURANT.lng });
+        bounds.extend({ lat: o.lat, lng: o.lng });
+        map.fitBounds(bounds, 80);
+      }
+    });
+  });
+}
+
+function formatTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const hh = d.getHours();
+  const mm = d.getMinutes().toString().padStart(2, '0');
+  const ampm = hh >= 12 ? 'pm' : 'am';
+  const h12 = hh % 12 || 12;
+  return `${h12}:${mm} ${ampm}`;
+}
+
+// ============================================================
+// Map markers — drivers
+// ============================================================
+function updateDriverMarkers() {
+  const seen = new Set();
+  for (const [uid, d] of Object.entries(allDrivers)) {
+    if (!d.active || !d.lat || !d.lng) continue;
+    seen.add(uid);
+
+    const initial = (d.name || '?').charAt(0).toUpperCase();
+    const stale = XPD.isStalePing(d.last_ping);
+    const color = stale ? '#666' :
+      d.status === 'available' || d.status === 'at_restaurant' ? '#16a34a' :
+      d.status === 'en_route_delivery' ? '#3b82f6' :
+      d.status === 'returning' || d.status === 'assigned' ? '#f59e0b' : '#666';
+
+    const icon = {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 14,
+      fillColor: color,
+      fillOpacity: 1,
+      strokeColor: '#131826',
+      strokeWeight: 3
+    };
+
+    if (driverMarkers[uid]) {
+      driverMarkers[uid].setPosition({ lat: d.lat, lng: d.lng });
+      driverMarkers[uid].setIcon(icon);
+      driverMarkers[uid].setLabel({ text: initial, color: '#fff', fontFamily: 'Plus Jakarta Sans', fontSize: '11px', fontWeight: '700' });
+    } else {
+      const marker = new google.maps.Marker({
+        position: { lat: d.lat, lng: d.lng },
+        map,
+        icon,
+        label: { text: initial, color: '#fff', fontFamily: 'Plus Jakarta Sans', fontSize: '11px', fontWeight: '700' },
+        title: d.name || uid,
+        zIndex: 1000
+      });
+      marker.addListener('click', () => {
+        const driver = allDrivers[uid];
+        if (!driver) return;
+        const ago = XPD.formatStaleness(driver.last_ping);
+        infoWindow.setContent(`
+          <div class="info-window">
+            <div class="iw-name">${escapeHtml(driver.name || '—')}</div>
+            <div class="iw-meta">${XPD.formatStatus(driver.status)} · ${ago}</div>
+          </div>
+        `);
+        infoWindow.open(map, marker);
+      });
+      driverMarkers[uid] = marker;
+    }
+  }
+  // Remove markers for drivers no longer active
+  for (const uid of Object.keys(driverMarkers)) {
+    if (!seen.has(uid)) {
+      driverMarkers[uid].setMap(null);
+      delete driverMarkers[uid];
+    }
+  }
+}
+
+// ============================================================
+// Map markers — customers (active orders only)
+// ============================================================
+function updateCustomerMarkers() {
+  const activeOrders = getActiveOrders();
+  const seen = new Set();
+  for (const o of activeOrders) {
+    if (!o.lat || !o.lng) continue;
+    seen.add(o.order_id);
+    const dt = allTasks[`${o.order_id}_delivery`];
+    const pt = allTasks[`${o.order_id}_pickup`];
+    const isEnRoute = pt?.status === 'completed';
+    const color = isEnRoute ? '#3b82f6' : '#f59e0b';
+
+    const icon = {
+      path: 'M 0,-12 C -6,-12 -10,-7 -10,-2 C -10,5 0,12 0,12 C 0,12 10,5 10,-2 C 10,-7 6,-12 0,-12 Z',
+      fillColor: color,
+      fillOpacity: 0.95,
+      strokeColor: '#fff',
+      strokeWeight: 2,
+      scale: 1.1,
+      anchor: new google.maps.Point(0, 12)
+    };
+
+    if (customerMarkers[o.order_id]) {
+      customerMarkers[o.order_id].setPosition({ lat: o.lat, lng: o.lng });
+      customerMarkers[o.order_id].setIcon(icon);
+    } else {
+      const marker = new google.maps.Marker({
+        position: { lat: o.lat, lng: o.lng },
+        map,
+        icon,
+        title: o.customer_name,
+        zIndex: 400
+      });
+      marker.addListener('click', () => {
+        const order = allOrders[o.order_id];
+        if (!order) return;
+        infoWindow.setContent(`
+          <div class="info-window">
+            <div class="iw-name">${escapeHtml(order.customer_name || '—')}</div>
+            <div class="iw-meta">L${order.total} · ${escapeHtml(order.address_detected || '—')}</div>
+          </div>
+        `);
+        infoWindow.open(map, marker);
+      });
+      customerMarkers[o.order_id] = marker;
+    }
+  }
+  for (const oid of Object.keys(customerMarkers)) {
+    if (!seen.has(oid)) {
+      customerMarkers[oid].setMap(null);
+      delete customerMarkers[oid];
+    }
+  }
+}
+
+// ============================================================
+// Driver picker (assignment overlay)
+// ============================================================
+function openPicker(orderId, isReassign = false) {
+  pickerOpen = true;
+  pickerOrderId = orderId;
+  pickerIsReassign = isReassign;
+  const order = allOrders[orderId];
+  if (!order) return;
+
+  $('picker-title').textContent = isReassign ? `Reasignar #${orderId}` : `Asignar #${orderId}`;
+  $('picker-sub').textContent = `${order.customer_name || '—'} · L${order.total}`;
+
+  // Build sorted driver list. Priority: ready-to-pickup first.
+  const drivers = getActiveDrivers().map(([uid, d]) => {
+    const distBase = d.lat ? XPD.haversineDistance(d.lat, d.lng, XPD.RESTAURANT.lat, XPD.RESTAURANT.lng) : Infinity;
+    const distCust = (d.lat && order.lat) ? XPD.haversineDistance(d.lat, d.lng, order.lat, order.lng) : Infinity;
+    const stale = XPD.isStalePing(d.last_ping);
+
+    // Priority score (lower = higher priority)
+    let priority;
+    if (d.status === 'at_restaurant') priority = 0;
+    else if (d.status === 'available') priority = 100 + distBase;
+    else if (d.status === 'returning') priority = 1000 + distBase;
+    else if (d.status === 'assigned' || d.status === 'en_route_delivery') priority = 100000 + distBase;
+    else priority = 999999;
+
+    return { uid, driver: d, distBase, distCust, priority, stale };
+  }).sort((a, b) => a.priority - b.priority);
+
+  if (drivers.length === 0) {
+    $('picker-list').innerHTML = '<div class="panel-empty">No hay drivers en turno</div>';
+  } else {
+    $('picker-list').innerHTML = drivers.map(({ uid, driver, distBase, distCust, stale }) => {
+      const busy = driver.status === 'en_route_delivery' || driver.status === 'assigned';
+      return `
+        <div class="picker-row ${busy ? 'disabled' : ''} ${stale ? 'disabled' : ''}" data-driver-uid="${uid}" ${busy || stale ? 'data-busy="1"' : ''}>
+          <div class="status-dot ${getDotClass(driver)}"></div>
+          <div class="name">${escapeHtml(driver.name || '—')}</div>
+          <div>
+            <span class="status-pill ${driver.status}">${XPD.formatStatus(driver.status)}</span>
+          </div>
+          <div class="distances">
+            <div><strong>${formatDistance(distBase)}</strong> a base</div>
+            <div>${formatDistance(distCust)} a cliente</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    $('picker-list').querySelectorAll('[data-driver-uid]').forEach(row => {
+      row.addEventListener('click', async () => {
+        if (row.dataset.busy === '1') {
+          if (!confirm('Este driver está ocupado o sin GPS reciente. ¿Asignar de todas formas?')) return;
+        }
+        await assignOrder(orderId, row.dataset.driverUid);
+      });
+    });
+  }
+
+  $('picker-overlay').classList.remove('hidden');
+}
+
+function closePicker() {
+  pickerOpen = false;
+  pickerOrderId = null;
+  pickerIsReassign = false;
+  $('picker-overlay').classList.add('hidden');
+}
+
+$('picker-cancel-btn').addEventListener('click', closePicker);
+$('picker-overlay').addEventListener('click', (e) => {
+  if (e.target === $('picker-overlay')) closePicker();
+});
+
+async function assignOrder(orderId, driverId) {
+  try {
+    if (pickerIsReassign) {
+      await XPD.reassignOrder(orderId, driverId);
+    } else {
+      await XPD.assignOrderToDriver(orderId, driverId);
+    }
+    const driver = allDrivers[driverId];
+    toast(`${pickerIsReassign ? 'Reasignado' : 'Asignado'} a ${driver?.name || driverId.slice(0, 8)}`, 'success');
+    closePicker();
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+// ============================================================
+// Stats + UI helpers
+// ============================================================
+function updateStats() {
+  $('stat-drivers').textContent = getActiveDrivers().length;
+  $('stat-pending').textContent = getPendingOrders().length;
+  $('stat-active').textContent = getActiveOrders().length;
+  $('stat-delivered').textContent = getDeliveredTodayCount();
+}
+
+function getDotClass(d) {
+  if (XPD.isStalePing(d.last_ping)) return '';
+  if (d.status === 'available' || d.status === 'at_restaurant') return 'green';
+  if (d.status === 'en_route_delivery') return 'blue';
+  if (d.status === 'returning' || d.status === 'assigned') return 'amber';
+  return '';
+}
+
+function formatDistance(m) {
+  if (m === Infinity || m == null) return '—';
+  if (m < 1000) return `${Math.round(m)}m`;
+  return `${(m / 1000).toFixed(1)}km`;
+}
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[c]);
+}
+
+// ============================================================
+// Sidebar toggle + map fit
+// ============================================================
+$('sidebar-collapse-btn').addEventListener('click', () => {
+  $('sidebar').classList.add('collapsed');
+  $('sidebar-show-btn').classList.remove('hidden');
+  if (map) google.maps.event.trigger(map, 'resize');
+});
+
+$('sidebar-show-btn').addEventListener('click', () => {
+  $('sidebar').classList.remove('collapsed');
+  $('sidebar-show-btn').classList.add('hidden');
+  if (map) google.maps.event.trigger(map, 'resize');
+});
+
+$('delivered-toggle').addEventListener('click', () => {
+  $('delivered-group').classList.toggle('collapsed');
+});
+
+// ============================================================
+// Sidebar resize (drag handle on inner edge)
+// ============================================================
+(function setupSidebarResize() {
+  const handle = $('sidebar-resize-handle');
+  const sidebar = $('sidebar');
+  const SIDEBAR_WIDTH_KEY = 'xpd_sidebar_width';
+  const MIN_WIDTH = 280;
+  const MAX_WIDTH = 700;
+
+  // Restore persisted width
+  try {
+    const saved = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY), 10);
+    if (saved && saved >= MIN_WIDTH && saved <= MAX_WIDTH) {
+      sidebar.style.width = `${saved}px`;
+    }
+  } catch {}
+
+  let dragging = false;
+  let startX = 0;
+  let startWidth = 0;
+
+  const onMove = (e) => {
+    if (!dragging) return;
+    const clientX = e.clientX ?? e.touches?.[0]?.clientX;
+    if (clientX == null) return;
+    const delta = startX - clientX; // moving cursor LEFT widens sidebar (handle is on its left edge)
+    const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth + delta));
+    sidebar.style.width = `${newWidth}px`;
+  };
+
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.classList.remove('resizing-sidebar');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onUp);
+    // Persist
+    try {
+      const px = parseInt(sidebar.style.width, 10);
+      if (px) localStorage.setItem(SIDEBAR_WIDTH_KEY, String(px));
+    } catch {}
+    // Map needs to recalc its viewport
+    if (map) google.maps.event.trigger(map, 'resize');
+  };
+
+  const onDown = (e) => {
+    dragging = true;
+    startX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+    startWidth = sidebar.getBoundingClientRect().width;
+    handle.classList.add('dragging');
+    document.body.classList.add('resizing-sidebar');
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onUp);
+    e.preventDefault();
+  };
+
+  handle.addEventListener('mousedown', onDown);
+  handle.addEventListener('touchstart', onDown, { passive: false });
+
+  // Double-click handle resets to default 380px
+  handle.addEventListener('dblclick', () => {
+    sidebar.style.width = '380px';
+    try { localStorage.setItem(SIDEBAR_WIDTH_KEY, '380'); } catch {}
+    if (map) google.maps.event.trigger(map, 'resize');
+  });
+})();
+
+$('map-fit-btn').addEventListener('click', () => {
+  if (!map) return;
+  const bounds = new google.maps.LatLngBounds();
+  bounds.extend({ lat: XPD.RESTAURANT.lat, lng: XPD.RESTAURANT.lng });
+  for (const d of Object.values(allDrivers)) {
+    if (d.active && d.lat && d.lng) bounds.extend({ lat: d.lat, lng: d.lng });
+  }
+  for (const o of getActiveOrders()) {
+    if (o.lat && o.lng) bounds.extend({ lat: o.lat, lng: o.lng });
+  }
+  if (!bounds.isEmpty()) {
+    map.fitBounds(bounds, 80);
+    if (map.getZoom() > 17) map.setZoom(17);
+  }
+});
+
+// ============================================================
+// Service worker
+// ============================================================
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+// ============================================================
+// Start
+// ============================================================
+if (!loadConfig()) {
+  showScreen('config');
+} else {
+  boot();
+}
+</script>
+</body>
+</html>

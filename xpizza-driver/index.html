@@ -1,0 +1,1706 @@
+<!DOCTYPE html>
+<!-- X Pizza Driver - version: 1.5.1 -->
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#dc2626">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="X Pizza Driver">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<title>X Pizza · Driver</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    /* Backgrounds */
+    --bg: #ffffff;
+    --surface: #fafafa;
+    --surface-2: #f4f4f5;
+    --surface-3: #e4e4e7;
+    --border: #d4d4d8;
+    --border-soft: #e4e4e7;
+
+    /* Text */
+    --text: #18181b;
+    --text-soft: #52525b;
+    --text-dim: #a1a1aa;
+
+    /* Accent (X Pizza brand) */
+    --accent: #dc2626;
+    --accent-hover: #b91c1c;
+    --success: #16a34a;
+    --success-hover: #15803d;
+    --warn: #f59e0b;
+    --info: #3b82f6;
+
+    /* Shadows tuned for light mode */
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-elevated: 0 4px 14px rgba(0,0,0,0.08);
+    --shadow-toast: 0 8px 24px rgba(0,0,0,0.12);
+
+    --safe-top: env(safe-area-inset-top, 0);
+    --safe-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.4;
+    overscroll-behavior: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+  }
+
+  .anton { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; letter-spacing: 0.02em; }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  /* ==================== STATUS BAR ==================== */
+  .status-bar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-soft);
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .status-dot.green { background: var(--success); box-shadow: 0 0 12px rgba(22,163,74,0.6); }
+  .status-dot.amber { background: var(--warn); box-shadow: 0 0 12px rgba(245,158,11,0.6); }
+  .status-dot.blue  { background: var(--info); box-shadow: 0 0 12px rgba(59,130,246,0.6); }
+  .status-dot.red   { background: var(--accent); }
+
+  @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 12px rgba(22,163,74,0.6); } 50% { box-shadow: 0 0 22px rgba(22,163,74,0.9); } }
+  @keyframes pulse-blue { 0%, 100% { box-shadow: 0 0 12px rgba(59,130,246,0.6); } 50% { box-shadow: 0 0 22px rgba(59,130,246,0.9); } }
+  .status-dot.green.live { animation: pulse-green 2s infinite; }
+  .status-dot.blue.live { animation: pulse-blue 2s infinite; }
+
+  .status-label {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 18px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    flex-grow: 1;
+  }
+  .gps-meta {
+    font-size: 12px;
+    color: var(--text-soft);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .gps-meta.stale { color: var(--warn); }
+  .icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-soft);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .icon-btn:active { background: var(--surface-3); }
+
+  /* ==================== SCROLLABLE MAIN ==================== */
+  main {
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ==================== LOGIN / OFF-SHIFT ==================== */
+  .center-screen {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+    text-align: center;
+  }
+  .brand-mark {
+    margin-bottom: 32px;
+    display: flex;
+    justify-content: center;
+  }
+  .brand-mark img {
+    height: 72px;
+    width: auto;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .greeting {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 28px;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+  }
+  .greeting-sub {
+    color: var(--text-soft);
+    font-size: 14px;
+    margin-bottom: 48px;
+  }
+  .signin-form {
+    width: 100%;
+    max-width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .signin-form input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 16px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    width: 100%;
+  }
+  .signin-form input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .big-btn {
+    width: 100%;
+    max-width: 320px;
+    padding: 22px;
+    border: none;
+    border-radius: 14px;
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 24px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: transform 0.05s, background 0.15s;
+  }
+  .big-btn:active { transform: scale(0.97); }
+  .big-btn.primary { background: var(--accent); color: white; box-shadow: 0 2px 10px rgba(220,38,38,0.25); }
+  .big-btn.primary:active { background: var(--accent-hover); }
+  .big-btn.success { background: var(--success); color: white; box-shadow: 0 2px 10px rgba(22,163,74,0.25); }
+  .big-btn.success:active { background: var(--success-hover); }
+  .big-btn.ghost { background: transparent; color: var(--text-soft); border: 1px solid var(--border); font-size: 16px; padding: 14px; }
+  .big-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .text-link {
+    color: var(--text-soft);
+    background: none;
+    border: none;
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    margin-top: 24px;
+    padding: 8px 16px;
+  }
+
+  /* ==================== IDLE STATE ==================== */
+  .idle-icon {
+    font-size: 80px;
+    margin-bottom: 24px;
+    opacity: 0.7;
+  }
+  .idle-msg {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 24px;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+  }
+  .idle-sub {
+    color: var(--text-soft);
+    font-size: 14px;
+    margin-bottom: 48px;
+  }
+
+  /* ==================== ACTIVE ORDER CARD ==================== */
+  .active-card {
+    background: var(--surface);
+    margin: 14px;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-card);
+  }
+
+  .active-card .header {
+    padding: 14px 18px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .order-id {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-soft);
+    letter-spacing: 0.05em;
+  }
+  .phase-pill {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-radius: 99px;
+    background: var(--surface-3);
+    color: var(--text-soft);
+  }
+  .phase-pill.pickup { background: #fef3c7; color: #92400e; }
+  .phase-pill.delivery { background: #dbeafe; color: #1e40af; }
+  .phase-pill.awaiting { background: #fee2e2; color: #991b1b; }
+
+  .active-card .body { padding: 18px; }
+
+  .recipient-name {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 28px;
+    letter-spacing: 0.03em;
+    margin-bottom: 4px;
+  }
+  .recipient-phone {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    color: var(--info);
+    text-decoration: none;
+    display: inline-block;
+    padding: 4px 0;
+    margin-bottom: 14px;
+  }
+
+  .address-block {
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+  }
+  .address-line {
+    font-size: 16px;
+    line-height: 1.35;
+  }
+  .address-detail {
+    font-size: 14px;
+    color: var(--text-soft);
+    font-style: italic;
+    margin-top: 4px;
+  }
+
+  .items-list {
+    margin-bottom: 14px;
+    padding: 12px 0;
+    border-top: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .items-list .item {
+    font-size: 15px;
+    padding: 3px 0;
+  }
+  .items-list .item:before { content: "→  "; color: var(--text-dim); }
+
+  .payment-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .payment-amount {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 32px;
+    color: var(--text);
+  }
+  .payment-method {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 14px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+    padding: 6px 12px;
+    background: var(--surface-3);
+    border-radius: 99px;
+  }
+  .payment-method.cash { color: #15803d; background: #dcfce7; }
+  .payment-method.card { color: #1e40af; background: #dbeafe; }
+
+  /* ==================== STEP HIERARCHY ==================== */
+  .step-block {
+    margin-bottom: 18px;
+  }
+  .step-block:last-of-type { margin-bottom: 0; }
+  .step-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .step-num {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--text);
+    color: white;
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .step-num.done {
+    background: var(--success);
+    font-size: 14px;
+  }
+  .step-label {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 16px;
+    letter-spacing: 0.04em;
+    color: var(--text);
+  }
+  .step-label-sub {
+    font-size: 13px;
+    color: var(--text-soft);
+    line-height: 1.3;
+  }
+  .step-label-arrived {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 16px;
+    letter-spacing: 0.04em;
+    color: var(--success);
+  }
+  .nav-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .nav-btn {
+    padding: 14px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-decoration: none;
+  }
+  .nav-btn:active { background: var(--surface-3); }
+  .nav-btn .nav-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 12px;
+    color: white;
+  }
+  .nav-btn .nav-icon.waze { background: #00D5F2; color: #000; }
+  .nav-btn .nav-icon.gmaps { background: #4285F4; }
+
+  /* ==================== ACTION BUTTON ==================== */
+  .action-btn {
+    width: 100%;
+    padding: 22px;
+    border: none;
+    border-radius: 12px;
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 24px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: transform 0.05s, background 0.15s;
+    color: white;
+  }
+  .action-btn:active { transform: scale(0.98); }
+  .action-btn.accept { background: var(--accent); box-shadow: 0 2px 10px rgba(220,38,38,0.25); }
+  .action-btn.accept:active { background: var(--accent-hover); }
+  .action-btn.pickup { background: var(--warn); color: #1a1a1a; box-shadow: 0 2px 10px rgba(245,158,11,0.3); }
+  .action-btn.delivered { background: var(--success); box-shadow: 0 2px 10px rgba(22,163,74,0.25); }
+  .action-btn.delivered:active { background: var(--success-hover); }
+
+  /* ==================== SLIDE-TO-CONFIRM ==================== */
+  .slide-confirm {
+    position: relative;
+    width: 100%;
+    height: 68px;
+    border-radius: 14px;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    margin-top: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  }
+  .slide-confirm.accept    { background: rgba(220,38,38,0.12); }
+  .slide-confirm.pickup    { background: rgba(245,158,11,0.18); }
+  .slide-confirm.delivered { background: rgba(22,163,74,0.14); }
+
+  .slide-fill {
+    position: absolute;
+    top: 0; bottom: 0; left: 0;
+    width: 0;
+    transition: width 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+    z-index: 1;
+  }
+  .slide-confirm.accept    .slide-fill { background: var(--accent); }
+  .slide-confirm.pickup    .slide-fill { background: var(--warn); }
+  .slide-confirm.delivered .slide-fill { background: var(--success); }
+
+  .slide-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 800;
+    font-size: 17px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 2;
+    padding-left: 56px; /* don't overlap the thumb at rest */
+    padding-right: 16px;
+    color: var(--text-soft);
+    transition: color 0.2s;
+  }
+  .slide-confirm.accept    .slide-text { color: var(--accent); }
+  .slide-confirm.pickup    .slide-text { color: #92400e; }
+  .slide-confirm.delivered .slide-text { color: var(--success); }
+  .slide-confirm.completed .slide-text { color: white; }
+
+  .slide-thumb {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 4px;
+    width: 60px;
+    background: white;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    transition: left 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+    cursor: grab;
+  }
+  .slide-thumb:active { cursor: grabbing; }
+  .slide-thumb svg { width: 26px; height: 26px; }
+  .slide-confirm.accept    .slide-thumb svg { color: var(--accent); }
+  .slide-confirm.pickup    .slide-thumb svg { color: var(--warn); }
+  .slide-confirm.delivered .slide-thumb svg { color: var(--success); }
+
+  /* During drag, no transitions — thumb tracks finger directly */
+  .slide-confirm.dragging .slide-thumb,
+  .slide-confirm.dragging .slide-fill { transition: none; }
+
+  .slide-confirm.completed .slide-thumb {
+    background: rgba(255,255,255,0.95);
+  }
+
+  /* Idle hint: subtle pulse on the thumb suggesting "drag me" */
+  @keyframes slide-thumb-pulse {
+    0%, 100% { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+    50%      { box-shadow: 0 2px 16px rgba(0,0,0,0.25), 0 0 0 4px rgba(255,255,255,0.6); }
+  }
+  .slide-confirm:not(.dragging):not(.completed) .slide-thumb {
+    animation: slide-thumb-pulse 2s ease-in-out infinite;
+  }
+
+  /* ==================== QUEUE ==================== */
+  .queue-section {
+    margin: 24px 14px 14px;
+  }
+  .section-label {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 14px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+    padding: 0 4px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label .count-badge {
+    background: var(--accent);
+    color: white;
+    font-size: 11px;
+    padding: 1px 8px;
+    border-radius: 99px;
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 0;
+  }
+
+  .queue-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: var(--shadow-card);
+  }
+  .queue-card .qc-name {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 18px;
+    letter-spacing: 0.03em;
+  }
+  .queue-card .qc-addr {
+    font-size: 13px;
+    color: var(--text-soft);
+    margin-top: 2px;
+  }
+  .queue-card .qc-info { flex-grow: 1; min-width: 0; overflow: hidden; }
+  .queue-card .qc-info > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .queue-card .qc-total {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 18px;
+    color: var(--text-soft);
+    flex-shrink: 0;
+  }
+
+  /* ==================== NOTIFICATION BANNER ==================== */
+  .notif-banner {
+    margin: 0 14px 12px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .notif-banner.hidden { display: none; }
+  .notif-banner.enabled {
+    background: rgba(22,163,74,0.1);
+    color: var(--success);
+    border: 1px solid rgba(22,163,74,0.2);
+    font-size: 12px;
+    padding: 10px 14px;
+  }
+  .notif-banner.action {
+    background: rgba(245,158,11,0.12);
+    color: #92400e;
+    border: 1px solid rgba(245,158,11,0.3);
+  }
+  .notif-banner.warn {
+    background: rgba(220,38,38,0.1);
+    color: var(--accent);
+    border: 1px solid rgba(220,38,38,0.25);
+  }
+  .notif-banner .icon { flex-shrink: 0; font-size: 18px; }
+  .notif-banner .text { flex: 1; }
+  .notif-banner .text strong { display: block; margin-bottom: 2px; font-weight: 700; }
+  .notif-banner .enable-btn {
+    background: var(--warn);
+    color: #1a1a1a;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .notif-banner .enable-btn:active { transform: scale(0.96); }
+
+  /* ==================== END SHIFT ==================== */
+  .end-shift-wrap {
+    padding: 32px 14px 24px;
+    text-align: center;
+  }
+
+  /* ==================== TOAST ==================== */
+  .toast {
+    position: fixed;
+    top: calc(var(--safe-top) + 70px);
+    left: 14px;
+    right: 14px;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 14px;
+    color: var(--text);
+    z-index: 100;
+    transform: translateY(-200px);
+    transition: transform 0.3s cubic-bezier(0.18, 1.18, 0.32, 1);
+    pointer-events: none;
+    box-shadow: var(--shadow-toast);
+  }
+  .toast.show { transform: translateY(0); }
+  .toast.error { border-color: var(--accent); background: #fef2f2; color: #991b1b; }
+  .toast.success { border-color: var(--success); background: #f0fdf4; color: #15803d; }
+
+  /* ==================== FIRST-RUN CONFIG ==================== */
+  .config-screen {
+    padding: 24px;
+  }
+  .config-screen h1 {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-size: 22px;
+    margin-bottom: 12px;
+    letter-spacing: 0.05em;
+  }
+  .config-screen p { color: var(--text-soft); font-size: 14px; margin-bottom: 16px; }
+  .config-screen textarea {
+    width: 100%;
+    min-height: 240px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    padding: 12px;
+    border-radius: 10px;
+    margin-bottom: 14px;
+  }
+
+  /* ==================== VERSION TAG ==================== */
+  .version-tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    text-align: center;
+    padding: 12px 0 4px;
+    opacity: 0.6;
+  }
+
+  /* ==================== UTILITIES ==================== */
+  .hidden { display: none !important; }
+</style>
+</head>
+
+<body>
+
+<!-- ======================================================== -->
+<!-- FIRST-RUN CONFIG (paste Firebase config) -->
+<!-- ======================================================== -->
+<div id="screen-config" class="config-screen hidden">
+  <h1>Configuración inicial</h1>
+  <p>Pega la configuración de Firebase para activar la app.</p>
+  <textarea id="config-input" placeholder='{ "apiKey": "...", "databaseURL": "...", ... }'></textarea>
+  <button class="big-btn primary" id="config-save-btn">Guardar</button>
+</div>
+
+<!-- ======================================================== -->
+<!-- LOGIN -->
+<!-- ======================================================== -->
+<div id="screen-login" class="center-screen hidden">
+  <div class="brand-mark"><img src="icon-transparent.svg" alt="X Pizza"></div>
+  <div class="greeting">DRIVER</div>
+  <div class="greeting-sub">Inicia sesión para empezar</div>
+  <div class="signin-form">
+    <input type="email" id="login-email" placeholder="email" autocomplete="email" inputmode="email">
+    <input type="password" id="login-password" placeholder="contraseña" autocomplete="current-password">
+  </div>
+  <button class="big-btn primary" id="login-btn">Entrar</button>
+  <div class="version-tag" data-version-display></div>
+</div>
+
+<!-- ======================================================== -->
+<!-- OFF-SHIFT (signed in but shift not started) -->
+<!-- ======================================================== -->
+<div id="screen-offshift" class="center-screen hidden">
+  <div class="brand-mark"><img src="icon-transparent.svg" alt="X Pizza"></div>
+  <div class="greeting">HOLA, <span id="off-driver-name">—</span></div>
+  <div class="greeting-sub">Listo cuando tú lo estés</div>
+  <div id="notif-banner-offshift" class="notif-banner hidden" style="margin: 16px 0;"></div>
+  <button class="big-btn primary" id="start-shift-btn">Iniciar turno</button>
+  <button class="text-link" id="signout-btn">Cerrar sesión</button>
+  <div class="version-tag" data-version-display></div>
+</div>
+
+<!-- ======================================================== -->
+<!-- ON-SHIFT (status bar + content area) -->
+<!-- ======================================================== -->
+<div id="screen-onshift" class="hidden" style="display:flex; flex-direction:column; height:100%;">
+
+  <div class="status-bar">
+    <div class="status-dot" id="status-dot"></div>
+    <div class="status-label" id="status-label">DISPONIBLE</div>
+    <div class="gps-meta" id="gps-meta">—</div>
+    <button class="icon-btn" id="sound-toggle" title="Sonido">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+        <path d="M15.54 8.46a5 5 0 010 7.07" id="sound-wave-1"/>
+        <path d="M19.07 4.93a10 10 0 010 14.14" id="sound-wave-2"/>
+      </svg>
+    </button>
+  </div>
+
+  <main id="onshift-content">
+    <div id="notif-banner-onshift" class="notif-banner hidden"></div>
+
+    <!-- Idle / returning state -->
+    <div id="idle-state" class="center-screen hidden">
+      <div class="idle-icon" id="idle-icon">🛵</div>
+      <div class="idle-msg" id="idle-msg">Esperando pedidos</div>
+      <div class="idle-sub" id="idle-sub">Te notificaremos cuando llegue uno</div>
+      <button class="big-btn primary hidden" id="arrive-btn" style="margin-top: 16px;">Estoy en el restaurante</button>
+    </div>
+
+    <!-- Active order card slot -->
+    <div id="active-order-slot"></div>
+
+    <!-- Queue list slot -->
+    <div id="queue-slot"></div>
+
+    <!-- End shift always at bottom -->
+    <div class="end-shift-wrap">
+      <button class="big-btn ghost" id="end-shift-btn">Terminar turno</button>
+      <div class="version-tag" data-version-display></div>
+    </div>
+  </main>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Hidden audio for new-task chime -->
+<audio id="chime" preload="auto" src="data:audio/wav;base64,UklGRpgEAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YXQEAAAAAB6BPL5UfHO+Z3iuvVFwjLzsZcG62FaXuJREprWCMc6yGRr2r9ELY6w+/bypbrsap6e4QqL2tQqcYrJalfWtQ41QqDqEFKLleZmaSWzjkVtdyYcvTfV7yzs1bvEpumDvFAdSLP9lQs7olDNq06H8t3GgdSlnnP5ejZl3VnSWAUvxkwk/zZHCMsKO1iSEi2sVmYl4B5SnhBuQ7Y8Yi5KaYIYLpQOC+a4kfqK4Q3rLwJp17chV8fHQ0+0u2I/qgeIc5e/d+e9c2p36id3Z+RvhAAVk4rkO0+EhF7Pi6h2J5CMjL+enKw7p8zE+7QEzy/Ba/PQqOjbz3bmrpe+4U64I7Bu2/+1tt+rkCMLR3YbR+9wB0arQv9aQwpHcrdkbsuTpHt63+fmvDQqFsKgaXLm0KuLA9Tj9zXBExt1iSFXxw5BV0MqTU/PXiE3p4gZECfFgPb74sjXTyz0r/MJoH1q1ulfsq16YIqlWR5ldqr1+gquumGHXrPpOa6+YtZpzlsiBGZysZkJZuhJB1cRmKkjOrwQYV8z3+6TbQQTjs0zaq9G/y0T0ELGR/Wxe7iKArr+QjTW0vIUR9LKCrmcwxFCTBrSnaqltogyZJaTuhmihKHt2qZP3ZtmVSnXNoTuGLpv9NTKkahMbpDEmEqV7CijdpacrfKf7rIyssLGFqvyxdpyjtKaZD7zJpbmKzHGeP9MhmgDX8I1q3KOVw9+0nqLflIXDKcpoo7vR9XW3fOUmoxnzKICYAagvjF65KZv+xXSVSdYWifGhJVJ8q2x+L8DohHK8XKuy/24GpxTN0t+/BquKt9zrDqe9wCPtl6VG0Ynk56P82DPhQqIO5InisaOI6qLfhKsK8dXVGbNI94i6t7qy/kPDb6PDw1XJG6lk0lTUW7DG7P3mBLwoBdHSbsinINnCQNAh4qvJiNiV+PHV4d8I5/7eNeS97kfaLtw2/E/UNMyCBdHQXr+vDdHQTLapEkPPoaLrFmHHYJSJJD3FvY+1NA7BIIPAavVk26GD16FtCOBu44tpu9eUCbE65Md+pmGzKLxEnJa3uTmMc8sIfWWG43hhU/njWvdnQHcl1lWOiECYU9Mvr9NhDMS1RrVuxXKtFrLrwHGoP710qGm/rrh1xL3OQ8wB14TQzeNz1qLoBdyN6/HekPSf4yX42Oub+0X1VgFJ/aQHX/gKDZ4DiQuaCUYRZBJyExoYxBR6GwUYAB7xGyAffx80HrEhdR4uIoMfsh/mIQ8c+yKsFXcg3w6hHU8GoBMt/0sJ8/qEAfn5fPosAdj+3wYHBL4LgQjxC74JFwkjCIcD3wU3/Zr/BfhT+fX1V/gE+Bj7T/oP/VL8gv7H+kj91vap+kf2qPmt+Pf6evxh/ID/AwHyAIIDswEvBL8AcQNoAB8DsgEfBKQEkgaPBugHWAU3BqQB8gKZ/r//9/0V/0kAvAFPATEC/wGWAlAB7QGvAMcAGgGOATgB0AHFASIB1AHIANUACgEnAYQBkAHzAOwAvf6V/i37jvqB+W74p/lA+ML4f/ec+AT4LfqL+ZD8O/sB/L/6CfsW+UH7Ovqq/Iz8H/2N/Ej9b/0z//z/xQDmAW0BRAH+ANgAbgFGAvwBkgIcAgUC0AGtAYIBpgEGAaIB1ACtAZQB+gKdA8YDZQOJAvkC2QGiAlsB6AHAAVwCmAJzAhsCegHaACgAmwDUACEBowAdAVgADwGCAB0BPAFKAdEBnQF/AHL/JP4w/h//+f7K/2j+ev6n/Av8U/qz+vL5o/oS+5L7H/zT+xv8E/x4/Lr8H/49/g==" type="audio/wav"></audio>
+
+<script type="module">
+import * as XPD from './xpizza-delivery.js?v=11';
+
+// ============================================================
+// System version (bumped each release)
+// ============================================================
+const SYSTEM_VERSION = '1.5.1';
+document.querySelectorAll('[data-version-display]').forEach(el => {
+  el.textContent = `v${SYSTEM_VERSION} · driver`;
+});
+
+// ============================================================
+// State
+// ============================================================
+let firebaseConfig = null;
+let currentUser = null;
+let driverState = null;
+let allTasks = {};
+let allOrders = {};
+let wakeLock = null;
+let watchId = null;
+let lastUpdateAt = 0;
+const UPDATE_THROTTLE_MS = 10000;
+let knownTaskIds = new Set();
+let soundOn = true;
+let toastTimer = null;
+
+const $ = (id) => document.getElementById(id);
+
+// ============================================================
+// Toast
+// ============================================================
+function toast(msg, kind = '') {
+  const el = $('toast');
+  el.className = `toast show ${kind}`;
+  el.textContent = msg;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = 'toast', 3000);
+}
+
+// ============================================================
+// Screen routing
+// ============================================================
+function showScreen(name) {
+  ['config', 'login', 'offshift', 'onshift'].forEach(s => {
+    $(`screen-${s}`).classList.toggle('hidden', s !== name);
+  });
+  // Refresh notification banner state on screen change
+  if (name === 'offshift' || name === 'onshift') {
+    updateNotifBanners();
+  }
+}
+
+// ============================================================
+// Config (first run)
+// ============================================================
+function loadConfig() {
+  const saved = localStorage.getItem('xpd_driver_config');
+  if (saved) {
+    try {
+      firebaseConfig = JSON.parse(saved);
+      return true;
+    } catch {}
+  }
+  return false;
+}
+
+$('config-save-btn').addEventListener('click', () => {
+  try {
+    const cfg = JSON.parse($('config-input').value);
+    if (!cfg.databaseURL) throw new Error('Falta databaseURL en la configuración');
+    firebaseConfig = cfg;
+    localStorage.setItem('xpd_driver_config', JSON.stringify(cfg));
+    boot();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+});
+
+// ============================================================
+// Boot
+// ============================================================
+async function boot() {
+  if (!firebaseConfig) {
+    showScreen('config');
+    return;
+  }
+
+  XPD.initDelivery(firebaseConfig);
+
+  XPD.onAuth(async (user) => {
+    currentUser = user;
+    if (!user) {
+      cleanupShift();
+      showScreen('login');
+      return;
+    }
+
+    // Ensure driver profile exists (creates one with email-based name if missing)
+    const guessName = user.email.split('@')[0].replace(/[^a-zA-Z]/g, '') || 'Driver';
+    await XPD.ensureDriverProfile(user.uid, guessName);
+
+    // Subscribe to live state
+    subscribeToFirebase();
+  });
+}
+
+function subscribeToFirebase() {
+  XPD.subscribeToDrivers((drivers) => {
+    if (!currentUser) return;
+    driverState = drivers[currentUser.uid] || null;
+    render();
+  });
+  XPD.subscribeToTasks((tasks) => {
+    detectNewAssignments(tasks);
+    allTasks = tasks || {};
+    render();
+  });
+  XPD.subscribeToOrders((orders) => {
+    allOrders = orders || {};
+    render();
+  });
+}
+
+function detectNewAssignments(tasks) {
+  if (!currentUser) return;
+  const newIds = new Set();
+  for (const [id, t] of Object.entries(tasks || {})) {
+    if (t.assigned_driver_id === currentUser.uid && t.type === 'pickup' && t.status === 'assigned') {
+      newIds.add(id);
+    }
+  }
+  // Find newly-added IDs since last poll
+  const fresh = [...newIds].filter(id => !knownTaskIds.has(id));
+  if (fresh.length > 0 && knownTaskIds.size > 0) {
+    if (soundOn) $('chime').play().catch(() => {});
+    toast('¡Nuevo pedido asignado!', 'success');
+    try {
+      if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+    } catch {}
+  }
+  knownTaskIds = newIds;
+}
+
+// ============================================================
+// Login
+// ============================================================
+$('login-btn').addEventListener('click', async () => {
+  const email = $('login-email').value.trim();
+  const password = $('login-password').value;
+  if (!email || !password) return toast('Email y contraseña requeridos', 'error');
+  try {
+    $('login-btn').disabled = true;
+    await XPD.signIn(email, password);
+  } catch (e) {
+    const code = e.code || '';
+    let msg;
+    if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) {
+      msg = 'Email o contraseña incorrectos';
+    } else if (code.includes('invalid-email')) {
+      msg = 'Email inválido';
+    } else if (code.includes('too-many-requests')) {
+      msg = 'Demasiados intentos, espera unos minutos';
+    } else if (code.includes('network')) {
+      msg = 'Sin conexión';
+    } else {
+      msg = `Error: ${code || e.message}`;
+    }
+    console.error('Sign-in failed:', e);
+    toast(msg, 'error');
+  } finally {
+    $('login-btn').disabled = false;
+  }
+});
+
+$('signout-btn').addEventListener('click', async () => {
+  await XPD.signOutUser();
+});
+
+// ============================================================
+// Shift control
+// ============================================================
+$('start-shift-btn').addEventListener('click', async () => {
+  if (!currentUser) return;
+  try {
+    // Unlock iOS audio: must play in response to a direct user tap.
+    // After this, $('chime').play() works for the rest of the session.
+    try {
+      const chime = $('chime');
+      chime.muted = true;
+      await chime.play();
+      chime.pause();
+      chime.currentTime = 0;
+      chime.muted = false;
+    } catch {}
+
+    await XPD.startShift(currentUser.uid);
+    await acquireWakeLock();
+    startGpsStream();
+    toast('Turno iniciado', 'success');
+  } catch (e) {
+    toast('Error al iniciar turno', 'error');
+  }
+});
+
+$('end-shift-btn').addEventListener('click', async () => {
+  if (!currentUser) return;
+  if (!confirm('¿Terminar el turno?')) return;
+  await cleanupShift();
+  await XPD.endShift(currentUser.uid);
+  toast('Turno terminado');
+});
+
+async function cleanupShift() {
+  if (watchId) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+  if (wakeLock) {
+    try { await wakeLock.release(); } catch {}
+    wakeLock = null;
+  }
+}
+
+// ============================================================
+// Wake lock + visibility
+// ============================================================
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (e) {
+    console.warn('wake lock failed:', e);
+  }
+}
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && driverState?.active) {
+    // Reacquire wake lock (lost when page went to background)
+    if (!wakeLock) await acquireWakeLock();
+    // Restart GPS stream — iOS Safari pauses watchPosition during background,
+    // and sometimes doesn't resume cleanly. Tear down and re-create the watch.
+    if (watchId) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      lastUpdateAt = 0; // allow immediate first update
+    }
+    startGpsStream();
+  }
+});
+
+// ============================================================
+// GPS streaming (throttled)
+// ============================================================
+function startGpsStream() {
+  if (!('geolocation' in navigator)) {
+    toast('GPS no disponible en este dispositivo', 'error');
+    return;
+  }
+  if (watchId) return;
+
+  watchId = navigator.geolocation.watchPosition(
+    async (pos) => {
+      const now = Date.now();
+      if (now - lastUpdateAt < UPDATE_THROTTLE_MS) return;
+      lastUpdateAt = now;
+      if (!currentUser) return;
+      try {
+        await XPD.updateDriverLocation(currentUser.uid, {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          heading: pos.coords.heading,
+          speed: pos.coords.speed
+        });
+      } catch (e) {
+        console.warn('location update failed:', e);
+      }
+    },
+    (err) => {
+      console.warn('GPS error:', err);
+      if (err.code === err.PERMISSION_DENIED) toast('Permiso de GPS denegado', 'error');
+    },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 }
+  );
+}
+
+// ============================================================
+// Sound toggle
+// ============================================================
+$('sound-toggle').addEventListener('click', () => {
+  soundOn = !soundOn;
+  $('sound-toggle').style.opacity = soundOn ? '1' : '0.4';
+  toast(soundOn ? 'Sonido activado' : 'Sonido desactivado');
+});
+
+// ============================================================
+// Manual "I've arrived at the restaurant" override
+// ============================================================
+$('arrive-btn').addEventListener('click', async () => {
+  if (!currentUser) return;
+  try {
+    await XPD.arriveAtRestaurant(currentUser.uid);
+    toast('¡En el restaurante!', 'success');
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+});
+
+// ============================================================
+// Render
+// ============================================================
+function render() {
+  if (!currentUser) return;
+
+  const name = driverState?.name || currentUser.email.split('@')[0];
+
+  if (!driverState || !driverState.active) {
+    $('off-driver-name').textContent = (name || '—').toUpperCase();
+    showScreen('offshift');
+    return;
+  }
+
+  showScreen('onshift');
+  renderStatusBar();
+  renderActiveAndQueue();
+}
+
+function renderStatusBar() {
+  const status = driverState.status;
+  const dot = $('status-dot');
+  const lbl = $('status-label');
+  const meta = $('gps-meta');
+
+  // Dot color + pulse
+  dot.className = 'status-dot';
+  const colorMap = {
+    available: 'green',
+    at_restaurant: 'green',
+    assigned: 'amber',
+    en_route_delivery: 'blue',
+    returning: 'amber',
+    on_break: 'red',
+    off_shift: ''
+  };
+  const c = colorMap[status] || '';
+  if (c) {
+    dot.classList.add(c);
+    if (c === 'green' || c === 'blue') dot.classList.add('live');
+  }
+
+  // Label in Spanish
+  const labelMap = {
+    available: 'DISPONIBLE',
+    at_restaurant: 'EN RESTAURANTE',
+    assigned: 'ASIGNADO',
+    en_route_delivery: 'EN CAMINO',
+    returning: 'REGRESANDO',
+    on_break: 'EN PAUSA',
+    off_shift: 'FUERA'
+  };
+  lbl.textContent = labelMap[status] || status?.toUpperCase() || '—';
+
+  // GPS freshness
+  const stale = XPD.isStalePing(driverState.last_ping);
+  meta.textContent = `GPS ${stale ? 'inactivo' : 'vivo'}`;
+  meta.classList.toggle('stale', stale);
+}
+
+function renderActiveAndQueue() {
+  const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);
+  const idleSlot = $('idle-state');
+  const activeSlot = $('active-order-slot');
+  const queueSlot = $('queue-slot');
+
+  if (orders.length === 0) {
+    idleSlot.classList.remove('hidden');
+    activeSlot.innerHTML = '';
+    queueSlot.innerHTML = '';
+    renderIdleState();
+    return;
+  }
+  idleSlot.classList.add('hidden');
+
+  const [active, ...rest] = orders;
+  activeSlot.innerHTML = renderActiveCard(active);
+  queueSlot.innerHTML = renderQueue(rest);
+
+  attachActiveCardHandlers(active);
+}
+
+function renderIdleState() {
+  const status = driverState?.status;
+  const icon = $('idle-icon');
+  const msg = $('idle-msg');
+  const sub = $('idle-sub');
+  const arriveBtn = $('arrive-btn');
+
+  if (status === 'returning') {
+    icon.textContent = '🏁';
+    msg.textContent = 'Regresando al restaurante';
+    sub.textContent = 'Pulsa abajo cuando hayas llegado';
+    arriveBtn.classList.remove('hidden');
+  } else if (status === 'at_restaurant') {
+    icon.textContent = '🍕';
+    msg.textContent = 'En el restaurante';
+    sub.textContent = 'Listo para el siguiente pedido';
+    arriveBtn.classList.add('hidden');
+  } else {
+    icon.textContent = '🛵';
+    msg.textContent = 'Esperando pedidos';
+    sub.textContent = 'Te notificaremos cuando llegue uno';
+    arriveBtn.classList.add('hidden');
+  }
+}
+
+function renderActiveCard(o) {
+  const order = o.order || {};
+  const isPickup = o.phase === 'pickup' || o.phase === 'awaiting_acceptance';
+  const targetLat = isPickup ? XPD.RESTAURANT.lat : (order.lat || o.deliveryTask.destination_lat);
+  const targetLng = isPickup ? XPD.RESTAURANT.lng : (order.lng || o.deliveryTask.destination_lng);
+
+  // Destination label changes per phase
+  const customerName = order.customer_name || o.deliveryTask.recipient_name || 'el cliente';
+  const destLabel = isPickup ? 'al restaurante' : `donde ${customerName}`;
+
+  // Driver position vs target — are they already there?
+  const driverHasPos = driverState && driverState.lat != null && driverState.lng != null;
+  const distToTarget = driverHasPos
+    ? XPD.haversineDistance(driverState.lat, driverState.lng, targetLat, targetLng)
+    : null;
+  // Consider "arrived" if within 50m (matches geofence radius)
+  const arrived = distToTarget != null && distToTarget < 50;
+
+  // Action button (per phase)
+  let actionLabel, actionClass, actionId, actionHint;
+  if (o.phase === 'awaiting_acceptance') {
+    actionLabel = 'Aceptar pedido';
+    actionClass = 'accept';
+    actionId = 'btn-accept';
+    actionHint = 'Confirma que recibiste este pedido';
+  } else if (o.phase === 'pickup') {
+    actionLabel = 'Recogí el pedido';
+    actionClass = 'pickup';
+    actionId = 'btn-pickup';
+    actionHint = arrived ? 'Pulsa cuando tengas el pedido en mano' : 'Cuando llegues y tengas el pedido';
+  } else if (o.phase === 'delivery') {
+    actionLabel = 'Entregado';
+    actionClass = 'delivered';
+    actionId = 'btn-delivered';
+    actionHint = arrived ? 'Pulsa cuando hayas entregado' : 'Cuando entregues al cliente';
+  }
+
+  const phasePillMap = {
+    awaiting_acceptance: { cls: 'awaiting', label: 'Nuevo' },
+    pickup: { cls: 'pickup', label: 'Pickup' },
+    delivery: { cls: 'delivery', label: 'Delivery' }
+  };
+  const pill = phasePillMap[o.phase] || { cls: '', label: o.phase };
+
+  const total = order.total != null ? `L${order.total}` : '—';
+  const payment = (order.payment_method || '').toLowerCase();
+  const paymentClass = payment.includes('efectivo') ? 'cash' :
+                       payment.includes('tarjeta') || payment.includes('pixel') ? 'card' : '';
+  const paymentLabel = order.payment_method ? order.payment_method.toUpperCase() : '—';
+
+  // Build the navigation block — different in pickup vs delivery, and special when arrived
+  let navBlock;
+  if (o.phase === 'awaiting_acceptance') {
+    // No nav block before they've accepted
+    navBlock = '';
+  } else if (arrived) {
+    // Driver is at the destination — show arrival confirmation, no nav buttons
+    navBlock = `
+      <div class="step-block">
+        <div class="step-row">
+          <div class="step-num done">✓</div>
+          <div class="step-label-arrived">Has llegado ${destLabel === 'al restaurante' ? 'al restaurante' : 'donde el cliente'}</div>
+        </div>
+      </div>
+    `;
+  } else {
+    // Driver needs to navigate
+    navBlock = `
+      <div class="step-block">
+        <div class="step-row">
+          <div class="step-num">1</div>
+          <div class="step-label">Ir ${destLabel}</div>
+        </div>
+        <div class="nav-row">
+          <a class="nav-btn" href="https://waze.com/ul?ll=${targetLat},${targetLng}&navigate=yes" target="_blank" rel="noopener">
+            <span class="nav-icon waze">W</span>Waze
+          </a>
+          <a class="nav-btn" href="https://www.google.com/maps/dir/?api=1&destination=${targetLat},${targetLng}&travelmode=driving" target="_blank" rel="noopener">
+            <span class="nav-icon gmaps">G</span>Maps
+          </a>
+        </div>
+      </div>
+    `;
+  }
+
+  // Build the action block — step 2 if there's a step 1 above, otherwise standalone
+  const showStepNum = (o.phase === 'pickup' || o.phase === 'delivery') && !arrived;
+  const actionBlock = `
+    <div class="step-block">
+      <div class="step-row">
+        ${showStepNum ? '<div class="step-num">2</div>' : ''}
+        <div class="step-label-sub">${actionHint}</div>
+      </div>
+      <div class="slide-confirm ${actionClass}" id="${actionId}">
+        <div class="slide-fill"></div>
+        <div class="slide-text">${actionLabel}</div>
+        <div class="slide-thumb">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14M13 5l7 7-7 7"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return `
+    <div class="active-card">
+      <div class="header">
+        <span class="order-id mono">#${o.orderId}</span>
+        <span class="phase-pill ${pill.cls}">${pill.label}</span>
+      </div>
+      <div class="body">
+        <div class="recipient-name">${escapeHtml(order.customer_name || o.deliveryTask.recipient_name || '—')}</div>
+        ${order.customer_phone ? `<a class="recipient-phone mono" href="tel:${order.customer_phone}">${order.customer_phone}</a>` : ''}
+
+        <div class="address-block">
+          <div class="address-line">${escapeHtml(order.address_detected || o.deliveryTask.destination_address || '—')}</div>
+          ${order.address_details ? `<div class="address-detail">"${escapeHtml(order.address_details)}"</div>` : ''}
+        </div>
+
+        ${order.items_text ? `<div class="items-list">${
+          order.items_text.split(',').map(s => `<div class="item">${escapeHtml(s.trim())}</div>`).join('')
+        }</div>` : ''}
+
+        <div class="payment-row">
+          <div class="payment-amount mono">${total}</div>
+          <div class="payment-method ${paymentClass}">${paymentLabel}</div>
+        </div>
+
+        ${navBlock}
+        ${actionBlock}
+      </div>
+    </div>
+  `;
+}
+
+function attachActiveCardHandlers(o) {
+  if ($('btn-accept')) {
+    attachSlideConfirm('btn-accept', async () => {
+      await XPD.acceptTask(currentUser.uid, o.pickupTask.id);
+      toast('Aceptado', 'success');
+    });
+  }
+  if ($('btn-pickup')) {
+    attachSlideConfirm('btn-pickup', async () => {
+      await XPD.pickupComplete(currentUser.uid, o.pickupTask.id);
+      toast('En camino al cliente', 'success');
+    });
+  }
+  if ($('btn-delivered')) {
+    attachSlideConfirm('btn-delivered', async () => {
+      await XPD.completeTask(currentUser.uid, o.deliveryTask.id);
+      toast('¡Entregado!', 'success');
+    });
+  }
+}
+
+// ============================================================
+// Slide-to-confirm component
+// Drag the thumb across the track to fire the action.
+// Releasing before ~85% travel springs back. Crossing threshold
+// snaps to end and fires onConfirm. If onConfirm throws, slider
+// resets so driver can retry.
+// ============================================================
+function attachSlideConfirm(elementId, onConfirm) {
+  const el = $(elementId);
+  if (!el) return;
+  const thumb = el.querySelector('.slide-thumb');
+  const fill  = el.querySelector('.slide-fill');
+  if (!thumb || !fill) return;
+
+  const THUMB_OFFSET = 4; // matches CSS top/left padding
+  const COMPLETE_THRESHOLD = 0.85;
+
+  let dragging = false;
+  let confirmed = false;
+  let startX = 0;
+  let startLeft = THUMB_OFFSET;
+  let trackWidth = 0;
+  let thumbWidth = 0;
+  let maxLeft = 0;
+
+  function getX(e) {
+    return e.touches?.[0]?.clientX ?? e.clientX ?? 0;
+  }
+
+  function paint(left) {
+    const clamped = Math.max(THUMB_OFFSET, Math.min(maxLeft, left));
+    thumb.style.left = `${clamped}px`;
+    fill.style.width = `${clamped + thumbWidth}px`;
+    return clamped;
+  }
+
+  function reset() {
+    el.classList.remove('dragging');
+    thumb.style.left = '';
+    fill.style.width = '';
+  }
+
+  function onMove(e) {
+    if (!dragging) return;
+    if (e.cancelable) e.preventDefault();
+    const x = getX(e);
+    paint(startLeft + (x - startX));
+  }
+
+  async function onUp() {
+    if (!dragging) return;
+    dragging = false;
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onUp);
+    document.removeEventListener('touchcancel', onUp);
+
+    const currentLeft = parseFloat(thumb.style.left) || THUMB_OFFSET;
+    const completion = (currentLeft - THUMB_OFFSET) / (maxLeft - THUMB_OFFSET);
+
+    if (completion >= COMPLETE_THRESHOLD && !confirmed) {
+      confirmed = true;
+      el.classList.remove('dragging');
+      el.classList.add('completed');
+      thumb.style.left = `${maxLeft}px`;
+      fill.style.width = '100%';
+
+      try {
+        await onConfirm();
+        // Success: parent re-render replaces this slider with the next phase's slider
+      } catch (err) {
+        // Reset so driver can retry
+        confirmed = false;
+        el.classList.remove('completed');
+        thumb.style.left = '';
+        fill.style.width = '';
+        toast('Error: ' + (err?.message || err), 'error');
+      }
+    } else {
+      reset();
+    }
+  }
+
+  function onDown(e) {
+    if (confirmed) return;
+    // Recompute dimensions every drag (handles rotation, resize, etc.)
+    trackWidth = el.getBoundingClientRect().width;
+    thumbWidth = thumb.getBoundingClientRect().width;
+    maxLeft = trackWidth - thumbWidth - THUMB_OFFSET;
+
+    dragging = true;
+    el.classList.add('dragging');
+    startX = getX(e);
+    startLeft = parseFloat(thumb.style.left) || THUMB_OFFSET;
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onUp);
+    document.addEventListener('touchcancel', onUp);
+
+    if (e.cancelable) e.preventDefault();
+  }
+
+  thumb.addEventListener('mousedown', onDown);
+  thumb.addEventListener('touchstart', onDown, { passive: false });
+}
+
+function renderQueue(orders) {
+  if (orders.length === 0) return '';
+  return `
+    <div class="queue-section">
+      <div class="section-label">En cola <span class="count-badge">${orders.length}</span></div>
+      ${orders.map(o => {
+        const order = o.order || {};
+        const total = order.total != null ? `L${order.total}` : '—';
+        const addr = order.address_detected || o.deliveryTask.destination_address || '—';
+        return `
+          <div class="queue-card">
+            <div class="qc-info">
+              <div class="qc-name">${escapeHtml(order.customer_name || o.deliveryTask.recipient_name || '—')}</div>
+              <div class="qc-addr">${escapeHtml(addr)}</div>
+            </div>
+            <div class="qc-total mono">${total}</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+// ============================================================
+// Utilities
+// ============================================================
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// ============================================================
+// Service worker registration + Web Push
+// ============================================================
+//
+// VAPID public key — REPLACE WITH YOUR OWN before going live.
+// Generate a fresh keypair with:  cd xpizza-functions && npm run vapid
+// Then paste the publicKey here (NOT the privateKey — that goes in .env).
+const VAPID_PUBLIC_KEY = 'BE5fD1EXpWBalKvLopadT1n7ffCE0o0vBDB-JCRIB9Lrn7AyrA953IWLyIqy1-_24wSZ_TKas1gWC-08NecHxWQ';
+
+let swRegistration = null;
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    swRegistration = reg;
+  }).catch((err) => {
+    console.warn('SW registration failed:', err);
+  });
+}
+
+// Convert URL-safe base64 (VAPID format) to Uint8Array (what pushManager wants)
+function urlB64ToUint8Array(b64) {
+  const padding = '='.repeat((4 - b64.length % 4) % 4);
+  const base64 = (b64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+// Detect what state the notification system is in for this user/device.
+// Returns one of:
+//   'unsupported'    — browser doesn't support Notification API or Push
+//   'needs_install'  — iOS Safari, must install PWA to home screen first
+//   'denied'         — user explicitly denied permission
+//   'not_enabled'    — permission not yet asked OR no active subscription
+//   'enabled'        — permission granted AND has active subscription
+async function getNotificationState() {
+  if (!('Notification' in window)) return 'unsupported';
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported';
+
+  // iOS Safari: window.navigator.standalone is undefined on Android,
+  // false in Safari tab, true when added to home screen.
+  // Only check this on iOS — on Android, regular Chrome can subscribe fine.
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (isIOS && window.navigator.standalone === false) return 'needs_install';
+
+  if (Notification.permission === 'denied') return 'denied';
+
+  // Permission may be 'default' (not asked) or 'granted'
+  if (!swRegistration) {
+    // SW not ready yet — best-effort, treat as not enabled
+    return 'not_enabled';
+  }
+  const sub = await swRegistration.pushManager.getSubscription();
+  if (Notification.permission === 'granted' && sub) return 'enabled';
+  return 'not_enabled';
+}
+
+async function enableNotifications() {
+  try {
+    if (VAPID_PUBLIC_KEY === 'REPLACE_WITH_VAPID_PUBLIC_KEY' || !VAPID_PUBLIC_KEY) {
+      toast('Push no configurado en este build', 'error');
+      return;
+    }
+
+    if (!swRegistration) {
+      // Wait briefly for SW
+      swRegistration = await navigator.serviceWorker.ready;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      toast('Permiso denegado', 'error');
+      await updateNotifBanners();
+      return;
+    }
+
+    let sub = await swRegistration.pushManager.getSubscription();
+    if (!sub) {
+      sub = await swRegistration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+    }
+
+    if (currentUser?.uid) {
+      await XPD.savePushSubscription(currentUser.uid, sub.toJSON());
+    }
+
+    toast('Notificaciones activadas', 'success');
+    await updateNotifBanners();
+  } catch (err) {
+    console.error('enableNotifications failed:', err);
+    toast('Error: ' + (err?.message || err), 'error');
+  }
+}
+
+function renderNotifBanner(targetEl, state) {
+  if (!targetEl) return;
+  targetEl.className = 'notif-banner';
+  targetEl.style.display = '';
+
+  switch (state) {
+    case 'enabled':
+      targetEl.classList.add('enabled');
+      targetEl.innerHTML = `<span class="icon">✓</span><div class="text">Notificaciones activadas</div>`;
+      break;
+
+    case 'not_enabled':
+      targetEl.classList.add('action');
+      targetEl.innerHTML = `
+        <span class="icon">🔔</span>
+        <div class="text">
+          <strong>Habilita notificaciones</strong>
+          Para recibir alertas cuando llegue un pedido nuevo.
+        </div>
+        <button class="enable-btn" id="enable-notif-btn-${Math.random().toString(36).slice(2,8)}">Habilitar</button>
+      `;
+      const btn = targetEl.querySelector('.enable-btn');
+      if (btn) btn.addEventListener('click', enableNotifications);
+      break;
+
+    case 'denied':
+      targetEl.classList.add('warn');
+      targetEl.innerHTML = `
+        <span class="icon">⚠</span>
+        <div class="text">
+          <strong>Notificaciones bloqueadas</strong>
+          Habilítalas en los ajustes del navegador para recibir alertas.
+        </div>
+      `;
+      break;
+
+    case 'needs_install':
+      targetEl.classList.add('action');
+      targetEl.innerHTML = `
+        <span class="icon">📲</span>
+        <div class="text">
+          <strong>Instala la app</strong>
+          Toca el botón Compartir en Safari → Añadir a pantalla de inicio. Luego abre desde el ícono.
+        </div>
+      `;
+      break;
+
+    case 'unsupported':
+      // Hide banner — nothing actionable to show
+      targetEl.classList.add('hidden');
+      break;
+
+    default:
+      targetEl.classList.add('hidden');
+  }
+}
+
+async function updateNotifBanners() {
+  const state = await getNotificationState();
+  renderNotifBanner($('notif-banner-offshift'), state);
+  renderNotifBanner($('notif-banner-onshift'), state);
+}
+
+// Refresh banner when screens change or focus comes back
+window.addEventListener('focus', () => { updateNotifBanners(); });
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) updateNotifBanners();
+});
+
+// ============================================================
+// Start
+// ============================================================
+if (!loadConfig()) {
+  showScreen('config');
+} else {
+  boot();
+}
+
+// Cleanup on page hide (best effort)
+window.addEventListener('beforeunload', () => {
+  if (watchId) navigator.geolocation.clearWatch(watchId);
+});
+</script>
+</body>
+</html>

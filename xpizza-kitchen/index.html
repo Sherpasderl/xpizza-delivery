@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>X Pizza — Cocina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap"/>
+<style>
+  /* ═══════════════════════════════════════════════
+     CONFIGURATION — edit before deploying
+     ═══════════════════════════════════════════════
+     SHEET_ID  → your Google Sheets spreadsheet ID
+     API_KEY   → your Google Sheets API key
+     (Get API key from console.cloud.google.com →
+      Enable Sheets API → Create credentials → API key)
+  */
+
+  :root {
+    --black:   #1A1917;
+    --char:    #FFFFFF;
+    --surface: #F5F5F3;
+    --border:  #DDDBD6;
+    --cream:   #2A2825;
+    --muted:   #6B6860;
+    --nuevo:   #B02A14;
+    --nuevo-bg:#FDECEA;
+    --prep:    #8B6220;
+    --prep-bg: #FEF7E8;
+    --listo:   #1E6B3A;
+    --listo-bg:#E8F5EE;
+    --stamp:   'Special Elite', 'Courier New', monospace;
+    --body:    'Courier Prime', 'Courier New', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: var(--body);
+    background: #EBEBEA;
+    color: var(--cream);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: #FFFFFF;
+    flex-shrink: 0;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .brand {
+    font-family: var(--stamp);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #FFFFFF;
+  }
+
+  .brand-sep {
+    color: #555555;
+    font-size: 18px;
+  }
+
+  .brand-sub {
+    font-family: var(--stamp);
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #888888;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .clock {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: #FFFFFF;
+  }
+
+  .refresh-info {
+    font-size: 11px;
+    color: #888888;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .refresh-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--listo);
+    margin-right: 6px;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* ── Columns layout ── */
+  .board {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0;
+    flex: 1;
+    overflow: hidden;
+    background: #CCCCCC;
+  }
+
+  .col {
+    display: flex;
+    flex-direction: column;
+    border-right: 2px solid #CCCCCC;
+    overflow: hidden;
+    background: #EEEEEE;
+  }
+
+  .col:last-child { border-right: none; }
+
+  .col-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 2px solid var(--border);
+    flex-shrink: 0;
+    background: #FFFFFF;
+  }
+
+  .col-header.nuevo  { border-top: 4px solid var(--nuevo); }
+  .col-header.prep   { border-top: 4px solid var(--prep); }
+  .col-header.listo  { border-top: 4px solid var(--listo); }
+
+  .col-title {
+    font-family: var(--stamp);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .col-title.nuevo { color: var(--nuevo); }
+  .col-title.prep  { color: var(--prep); }
+  .col-title.listo { color: var(--listo); }
+
+  .col-count {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--black);
+  }
+
+  .col-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .col-body { background: #EEEEEE; }
+  .col-body::-webkit-scrollbar { width: 4px; }
+  .col-body::-webkit-scrollbar-track { background: transparent; }
+  .col-body::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 2px; }
+
+  /* ── Order cards ── */
+  .card.pickup-order {
+    border-left: 4px solid #F59E0B;
+  }
+
+  .card {
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px;
+    transition: transform 0.15s, border-color 0.15s;
+    user-select: none;
+  }
+
+  .card:active { transform: scale(0.98); }
+  .card[draggable=true] { cursor: grab; }
+  .card[draggable=true]:active { cursor: grabbing; }
+  .card.dragging { opacity: 0.4; transform: scale(0.97); }
+  .col-body.drag-over { background: rgba(0,0,0,0.06); outline: 2px dashed var(--muted); outline-offset: -6px; border-radius: 6px; }
+
+  .card.nuevo { border-left: 3px solid var(--nuevo); }
+  .card.prep  { border-left: 3px solid var(--prep); }
+  .card.listo { border-left: 3px solid var(--listo); opacity: 0.7; }
+
+  /* ── Cancelled state ── */
+  .card.cancelled {
+    background: #FFF1F0;
+    border: 1px solid var(--nuevo);
+    border-left: 6px solid var(--nuevo);
+    position: relative;
+  }
+  /* Cancelled cards keep all order details readable.
+     A small red badge in the top-right corner marks the status. */
+  .card.cancelled .card-id,
+  .card.cancelled .card-customer {
+    color: #5F2020;
+  }
+  .card.cancelled .card-items {
+    color: #4A1818;
+    opacity: 0.85;
+  }
+  .card.cancelled .cancelled-badge {
+    display: inline-block;
+    background: var(--nuevo);
+    color: white;
+    font-family: var(--stamp);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .card.cancelled .card-footer { display: flex; }
+  .card.cancelled .btn-action.btn-archive-cancel {
+    flex: 1;
+    background: transparent;
+    color: var(--nuevo);
+    border: 1px solid var(--nuevo);
+  }
+  .card.cancelled .btn-action.btn-archive-cancel:hover {
+    background: var(--nuevo);
+    color: white;
+  }
+
+  /* ── Cancellation banner ── */
+  .cancel-banner {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-200px);
+    background: var(--nuevo);
+    color: white;
+    padding: 18px 28px;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: transform 0.35s cubic-bezier(0.18, 1.18, 0.32, 1);
+    font-family: var(--stamp);
+    letter-spacing: 1px;
+    min-width: 320px;
+    max-width: 80vw;
+  }
+  .cancel-banner.shown {
+    transform: translateX(-50%) translateY(0);
+  }
+  .cancel-banner .icon {
+    font-size: 32px;
+    line-height: 1;
+  }
+  .cancel-banner .text {
+    flex: 1;
+    line-height: 1.3;
+  }
+  .cancel-banner .text strong {
+    display: block;
+    font-size: 18px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+  .cancel-banner .text .order-id {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    opacity: 0.85;
+    letter-spacing: 0;
+  }
+  .cancel-banner .dismiss {
+    background: rgba(255,255,255,0.2);
+    border: none;
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .cancel-banner .dismiss:hover {
+    background: rgba(255,255,255,0.32);
+  }
+
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 10px;
+  }
+
+  .card-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: 'IBM Plex Sans Condensed', sans-serif;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+  }
+  .card-type-badge.delivery {
+    background: #EEF2FF;
+    color: #3730A3;
+  }
+  .card-type-badge.pickup {
+    background: #FEF3C7;
+    color: #92400E;
+  }
+
+  .card-id {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 1px;
+    color: var(--muted);
+  }
+
+  .card-elapsed {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 3px;
+    letter-spacing: 0;
+  }
+
+  .card-elapsed.ok   { background: var(--listo-bg); color: var(--listo); }
+  .card-elapsed.warn { background: var(--prep-bg);  color: var(--prep); }
+  .card-elapsed.late { background: var(--nuevo-bg); color: var(--nuevo); }
+
+  .card-customer {
+    font-family: var(--stamp);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0;
+    color: var(--black);
+    margin-bottom: 10px;
+  }
+
+  .card-items {
+    font-size: 16px;
+    color: #111111;
+    font-family: 'IBM Plex Sans Condensed', sans-serif;
+    line-height: 1;
+    letter-spacing: 0;
+    margin-bottom: 12px;
+    border-top: 2px solid var(--border);
+    padding-top: 10px;
+  }
+
+  .card-item-extra {
+    font-size: 14px;
+    color: #D97706;
+    font-family: 'IBM Plex Sans Condensed', sans-serif;
+    font-weight: 600;
+    padding: 2px 0 2px 24px;
+    line-height: 1.5;
+  }
+
+  .card-item {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 2px 0;
+  }
+
+  .card-item-qty {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: #111111;
+    min-width: 36px;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .card-notes {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--prep);
+    font-style: italic;
+    margin-bottom: 10px;
+    background: var(--prep-bg);
+    padding: 5px 8px;
+    border-radius: 3px;
+    letter-spacing: 0;
+  }
+
+  .card-footer {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn-action {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 3px;
+    font-family: var(--stamp);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+
+  .btn-action:active { transform: scale(0.97); opacity: 0.8; }
+
+  .btn-prep  { background: var(--prep-bg);  color: var(--prep);  border: 1px solid var(--prep); }
+  .btn-listo { background: var(--listo-bg); color: var(--listo); border: 1px solid var(--listo); }
+  .btn-back  { background: #F5F5F3;          color: var(--muted); border: 1px solid var(--border); flex: 0 0 40px; }
+  .btn-done  { background: #E8E6E2;          color: var(--muted); border: 1px solid var(--border); }
+
+  .card-time {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+    margin-top: 6px;
+    text-align: right;
+    font-family: var(--stamp);
+  }
+
+  /* ── Empty state ── */
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--muted);
+    font-family: var(--stamp);
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    gap: 8px;
+  }
+
+  .empty-icon { font-size: 32px; opacity: 0.3; }
+
+  /* ── Sound & wake lock ── */
+  .btn-sound {
+    font-family: var(--stamp);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 7px 12px;
+    border-radius: 4px;
+    border: 1px solid #444444;
+    background: transparent;
+    color: #AAAAAA;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .btn-sound:hover { background: #333333; color: #FFFFFF; }
+  .btn-sound.muted { border-color: #CC4444; color: #CC4444; }
+  .wake-indicator {
+    font-size: 10px;
+    font-family: var(--stamp);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #3A8A52;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .wake-indicator.inactive { color: #CC4444; }
+
+  /* ── Archive toggle button ── */
+  .btn-archive-toggle {
+    font-family: var(--stamp);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 7px 14px;
+    border-radius: 4px;
+    border: 1px solid #444444;
+    background: transparent;
+    color: #AAAAAA;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .btn-archive-toggle:hover { background: #333333; color: #FFFFFF; }
+  .btn-archive-toggle.active { background: #FFFFFF; color: var(--black); border-color: #FFFFFF; }
+
+  /* ── Archive drawer ── */
+  .archive-drawer {
+    display: none;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 42vh;
+    background: #fff;
+    border-top: 2px solid var(--black);
+    z-index: 1000;
+    flex-direction: column;
+  }
+  .archive-drawer.open { display: flex; }
+  .archive-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    background: #F4F4F4;
+    flex-shrink: 0;
+  }
+  .archive-title {
+    font-family: var(--stamp);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--black);
+  }
+  .archive-body {
+    display: flex;
+    gap: 10px;
+    padding: 12px;
+    overflow-x: auto;
+    flex: 1;
+    align-items: flex-start;
+  }
+  .archive-body::-webkit-scrollbar { height: 4px; }
+  .archive-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .archive-card {
+    min-width: 220px;
+    max-width: 220px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: 8px;
+    padding: 12px;
+    flex-shrink: 0;
+  }
+  .archive-card-id {
+    font-family: var(--stamp);
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .archive-card-name {
+    font-family: var(--stamp);
+    font-size: 15px;
+    color: var(--black);
+    margin-bottom: 6px;
+  }
+  .archive-card-items {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+    margin-bottom: 10px;
+  }
+  .archive-log {
+    margin: 8px 0;
+    padding: 8px;
+    background: var(--surface);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+  .archive-log-title {
+    font-family: var(--stamp);
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .archive-log .log-row {
+    padding: 4px 0;
+    font-size: 11px;
+  }
+  .archive-log .log-status { font-family: var(--stamp); color: var(--black); letter-spacing: 0.5px; }
+  .archive-log .log-time   { color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size:11px; white-space:nowrap; }
+  .btn-restore {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--nuevo);
+    background: var(--nuevo-bg);
+    color: var(--nuevo);
+    border-radius: 6px;
+    font-family: var(--stamp);
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .archive-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    font-family: var(--stamp);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ── Log button ── */
+  .btn-log {
+    display: block;
+    margin-top: 8px;
+    width: 100%;
+    padding: 5px;
+    background: transparent;
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    font-family: var(--stamp);
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-log:hover { background: var(--surface); }
+
+  /* ── Shorten status for log display ── */
+function shortStatus(s) {
+  if (s === 'En preparación') return 'En prep.';
+  return s;
+}
+
+/* ── Log modal ── */
+  .log-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+  }
+  .log-overlay.open { display: flex; }
+  .log-modal {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    min-width: 320px;
+    max-width: 420px;
+    width: 90%;
+  }
+  .log-modal-title {
+    font-family: var(--stamp);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--black);
+    margin-bottom: 16px;
+    border-bottom: 2px solid var(--black);
+    padding-bottom: 10px;
+  }
+  .log-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--surface);
+    font-size: 13px;
+    gap: 12px;
+  }
+  .log-row:last-child { border-bottom: none; }
+  .log-status { font-family: var(--stamp); color: var(--black); letter-spacing: 1px; }
+  .log-time { color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size:12px; white-space:nowrap; }
+  .btn-close-log {
+    margin-top: 16px;
+    width: 100%;
+    padding: 10px;
+    background: var(--black);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-family: var(--stamp);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  /* ── Loading ── */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    font-family: var(--stamp);
+    font-size: 14px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--black);
+  }
+</style>
+</head>
+<body>
+
+<div class="cancel-banner" id="cancel-banner">
+  <div class="icon">⚠</div>
+  <div class="text">
+    <strong>PEDIDO CANCELADO</strong>
+    <span class="order-id" id="cancel-banner-id"></span>
+  </div>
+  <button class="dismiss" id="cancel-banner-dismiss">✕</button>
+</div>
+
+<div class="header">
+  <div class="header-left">
+    <div class="brand">X Pizza</div>
+    <div class="brand-sep">·</div>
+    <div class="brand-sub">Pantalla de Cocina</div>
+  </div>
+  <div class="header-right">
+    <div class="refresh-info">
+      <span class="refresh-dot"></span>
+      Auto-actualiza cada 30s
+    </div>
+    <button class="btn-sound" id="btn-sound" onclick="toggleSound()" title="Activar/desactivar sonido">
+      🔔 Sonido ON
+    </button>
+    <div class="wake-indicator" id="wake-indicator" title="Pantalla activa">⬤ Pantalla activa</div>
+    <button class="btn-archive-toggle" id="btn-archive-toggle" onclick="toggleArchive()">
+      Ver archivados (<span id="archive-count">0</span>)
+    </button>
+    <button class="btn-archive-toggle" id="btn-history-toggle" onclick="toggleHistory()">
+      Historial completo (<span id="history-count">0</span>)
+    </button>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+</div>
+
+<div class="board">
+  <div class="col">
+    <div class="col-header nuevo">
+      <span class="col-title nuevo">Nuevo</span>
+      <span class="col-count" id="count-nuevo">0</span>
+    </div>
+    <div class="col-body" id="col-nuevo" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="drop(event, 'Nuevo')">
+      <div class="loading">Cargando…</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="col-header prep">
+      <span class="col-title prep">En preparación</span>
+      <span class="col-count" id="count-prep">0</span>
+    </div>
+    <div class="col-body" id="col-prep" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="drop(event, 'En preparación')"></div>
+  </div>
+
+  <div class="col">
+    <div class="col-header listo">
+      <span class="col-title listo">Listo</span>
+      <span class="col-count" id="count-listo">0</span>
+    </div>
+    <div class="col-body" id="col-listo" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="drop(event, 'Listo')"></div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════
+   CONFIGURATION
+   ═══════════════════════════════════════════════ */
+const SHEET_ID  = '1jyUbXPVrKIY8Ha7qxHdkM_GQ-SCW5KPdTRwMb32qfdA';
+const API_KEY   = 'AIzaSyAuzSLAELV_MaK2xeXrNjS6_lhNXmD_Y0A';
+const SHEET_NAME = 'Sheet1';
+const REFRESH_MS = 30000; // 30 seconds
+/* ─────────────────────────────────────────────── */
+
+// In-memory state: tracks status changes made on this tablet
+// Key: order_id, Value: 'Nuevo' | 'En preparación' | 'Listo' | 'Archivado'
+const localState = JSON.parse(localStorage.getItem('xpizza_orders') || '{}');
+// Track when each order was moved to each status (for elapsed time logging)
+const stateLog   = JSON.parse(localStorage.getItem('xpizza_log')    || '{}');
+
+function saveState() {
+  localStorage.setItem('xpizza_orders', JSON.stringify(localState));
+  localStorage.setItem('xpizza_log',    JSON.stringify(stateLog));
+}
+
+/* ── Clock ── */
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+/* ── Elapsed time ── */
+function elapsed(isoTimestamp) {
+  const diff = Math.floor((Date.now() - new Date(isoTimestamp)) / 1000);
+  const m = Math.floor(diff / 60);
+  const s = diff % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+function elapsedClass(isoTimestamp) {
+  const mins = (Date.now() - new Date(isoTimestamp)) / 60000;
+  if (mins < 15) return 'ok';
+  if (mins < 25) return 'warn';
+  return 'late';
+}
+
+function formatTime(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' });
+}
+
+/* ── Parse items from items_text ── */
+function parseItems(itemsText) {
+  if (!itemsText || itemsText === '—') return [];
+  // Split by | separator between pizza items
+  return itemsText.split(' | ').map(s => s.trim()).filter(Boolean);
+}
+
+function renderItems(itemsText) {
+  if (!itemsText || itemsText === '—') return '';
+  // Split pizza items by ' | ' but NOT when inside brackets []
+  const pizzas = [];
+  let depth = 0, cur = '';
+  for (let i = 0; i < itemsText.length; i++) {
+    const c = itemsText[i];
+    if (c === '[') depth++;
+    else if (c === ']') depth--;
+    if (depth === 0 && itemsText.slice(i, i+3) === ' | ') {
+      pizzas.push(cur.trim());
+      cur = '';
+      i += 2;
+    } else {
+      cur += c;
+    }
+  }
+  if (cur.trim()) pizzas.push(cur.trim());
+
+  return pizzas.map(pizza => {
+    // Match: Qty, Name, optional (Lprice), optional [extras]
+    const m = pizza.match(/^(\d+)x\s+(.+?)(?:\s+\(L[\d.]+\))?(?:\s+\[(.+)\])?$/);
+    if (!m) return `<div class="card-item"><span>${pizza}</span></div>`;
+
+    const qty = m[1];
+    const name = m[2];
+    const extrasRaw = m[3];
+
+    let extrasHtml = '';
+    if (extrasRaw) {
+      if (extrasRaw.includes('Pizza ')) {
+        const perPizza = extrasRaw.split(/\s*\|\s*(?=Pizza \d)/);
+        if (perPizza.length === 1) {
+          // Only one instance — strip "Pizza 1: " prefix
+          const stripped = perPizza[0].replace(/^Pizza \d+:\s*/, '');
+          extrasHtml = `<div class="card-item-extra">↳ ${stripped.trim()}</div>`;
+        } else {
+          extrasHtml = perPizza.map(p =>
+            `<div class="card-item-extra">↳ ${p.trim()}</div>`
+          ).join('');
+        }
+      } else {
+        extrasHtml = `<div class="card-item-extra">↳ ${extrasRaw}</div>`;
+      }
+    }
+
+    return `<div class="card-item"><span class="card-item-qty">${qty}×</span><span>${name}</span></div>${extrasHtml}`;
+  }).join('');
+}
+
+/* ── Render a single card ── */
+function renderCard(order) {
+  const status  = localState[order.id] || order.estado || 'Nuevo';
+  const created = order.hora;
+  const items   = parseItems(order.pedido);
+  const notes   = order.notas && order.notas !== '—' ? order.notas : null;
+
+  // Cancelled state: render struck-through with a CANCELADO stamp.
+  // Cancellation is a SHEET-driven status (set by the backend when
+  // dispatcher cancels), so localState shouldn't override it. We only
+  // honour localState if it's NOT 'Cancelado' — sheet wins for cancels.
+  const isCancelled = order.estado === 'Cancelado';
+
+  const statusClass = isCancelled ? 'cancelled'
+                    : status === 'Nuevo' ? 'nuevo'
+                    : status === 'En preparación' ? 'prep'
+                    : 'listo';
+
+  // Log timestamps for each status transition
+  const log = stateLog[order.id] || {};
+  const logStr = Object.entries(log)
+    .map(([s, t]) => `${s}: ${formatTime(t)}`)
+    .join(' · ');
+
+  let buttons = '';
+  if (isCancelled) {
+    // Cancelled cards get an Archive button so the cook can clear them
+    // once they've acknowledged. Archiving uses the same localState
+    // mechanism as Listo → Archivado, so it persists in localStorage.
+    buttons = `<button class="btn-action btn-archive-cancel" onclick="moveOrder('${order.id}', 'Archivado')">Archivar</button>`;
+  } else if (status === 'Nuevo') {
+    buttons = `<button class="btn-action btn-prep" onclick="moveOrder('${order.id}', 'En preparación')">En preparación →</button>`;
+  } else if (status === 'En preparación') {
+    buttons = `
+      <button class="btn-action btn-back" onclick="moveOrder('${order.id}', 'Nuevo')">←</button>
+      <button class="btn-action btn-listo" onclick="moveOrder('${order.id}', 'Listo')">Listo ✓</button>`;
+  } else if (status === 'Listo') {
+    buttons = `
+      <button class="btn-action btn-back" onclick="moveOrder('${order.id}', 'En preparación')">←</button>
+      <button class="btn-action btn-done" onclick="moveOrder('${order.id}', 'Archivado')">Archivar</button>`;
+  }
+
+  return `
+    <div class="card ${statusClass}${order.order_type === 'pickup' ? ' pickup-order' : ''}" id="card-${order.id}"
+      ${isCancelled ? '' : 'draggable="true"'}
+      ${isCancelled ? '' : `ondragstart="dragStart(event, '${order.id}')" ondragend="dragEnd(event)"`}>
+      <div class="card-top">
+        <div class="card-id">${isCancelled ? '<span class="cancelled-badge">Cancelado</span>' : ''}${order.orden || order.id}</div>
+        <div class="card-elapsed ${elapsedClass(created)}" id="elapsed-${order.id}">${elapsed(created)}</div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="card-customer">${order.cliente}</div>
+        <div class="card-type-badge ${order.order_type === "pickup" ? "pickup" : "delivery"}">${order.order_type === "pickup" ? "🏪 Pickup" : "🛵 Delivery"}</div>
+      </div>
+
+      <div class="card-items">
+        ${renderItems(order.pedido)}
+      </div>
+      ${notes ? `<div class="card-notes">⚠ ${notes}</div>` : ''}
+      <div class="card-footer">${buttons}</div>
+      ${logStr && !isCancelled ? `<button class="btn-log" onclick="showLog(event, '${order.id}')">· · ·</button>` : ''}
+    </div>`;
+}
+
+/* ── Move order to new status ── */
+function moveOrder(id, newStatus) {
+  localState[id] = newStatus;
+  if (!stateLog[id]) stateLog[id] = {};
+  stateLog[id][newStatus] = new Date().toISOString();
+  saveState();
+  const activeOrders = allOrders.filter(o => (localState[o.id] || o.estado) !== 'Archivado');
+  render(activeOrders);
+}
+
+/* ── Render all columns ── */
+let lastOrders = [];
+let allOrders = [];
+
+function render(orders) {
+  lastOrders = orders;
+  // Sync allOrders with any new orders not yet in it
+  orders.forEach(o => {
+    if (!allOrders.find(a => a.id === o.id)) allOrders.push(o);
+  });
+
+  // Cancelled orders stay visible in whichever column they were in
+  // (kitchen needs to see them to STOP cooking). The "effective status"
+  // for column placement is localState IF the order isn't cancelled,
+  // otherwise the localState that was set before cancellation, otherwise Nuevo.
+  function effectiveStatus(o) {
+    if (o.estado === 'Cancelado') {
+      // Use whatever local status the kitchen had set, or Nuevo if none
+      return localState[o.id] || 'Nuevo';
+    }
+    return localState[o.id] || o.estado || 'Nuevo';
+  }
+
+  const nuevo = orders.filter(o => effectiveStatus(o) === 'Nuevo');
+  const prep  = orders.filter(o => effectiveStatus(o) === 'En preparación');
+  const listo = orders.filter(o => effectiveStatus(o) === 'Listo');
+
+  document.getElementById('count-nuevo').textContent = nuevo.length;
+  document.getElementById('count-prep').textContent  = prep.length;
+  document.getElementById('count-listo').textContent = listo.length;
+
+  const colNuevo = document.getElementById('col-nuevo');
+  const colPrep  = document.getElementById('col-prep');
+  const colListo = document.getElementById('col-listo');
+
+  colNuevo.innerHTML = nuevo.length ? nuevo.map(renderCard).join('') : '<div class="empty"><div class="empty-icon">✓</div>Sin pedidos nuevos</div>';
+  colPrep.innerHTML  = prep.length  ? prep.map(renderCard).join('')  : '<div class="empty"><div class="empty-icon">·</div>Nada en preparación</div>';
+  colListo.innerHTML = listo.length ? listo.map(renderCard).join('') : '<div class="empty"><div class="empty-icon">·</div>Nada listo aún</div>';
+
+  // Render archived
+  const archived = allOrders.filter(o => (localState[o.id] || o.estado) === 'Archivado');
+  document.getElementById('archive-count').textContent = archived.length;
+  document.getElementById('history-count').textContent = allOrders.length;
+  const archiveBody = document.getElementById('archive-body');
+  if (archiveBody) {
+    archiveBody.innerHTML = archived.length
+      ? archived.map(o => {
+          const log = stateLog[o.id] || {};
+          const logEntries = Object.entries(log);
+          const logHtml = logEntries.length
+            ? logEntries.map(([status, time]) => `
+                <div class="log-row">
+                  <span class="log-status">${shortStatus(status)}</span>
+                  <span class="log-time">${new Date(time).toLocaleTimeString('es-HN', {hour:'2-digit', minute:'2-digit', second:'2-digit'})}</span>
+                </div>`).join('')
+            : '<div style="color:var(--muted);font-size:11px;padding:4px 0">Sin historial.</div>';
+          return `
+          <div class="archive-card">
+            <div class="archive-card-id">${o.orden || o.id}</div>
+            <div class="archive-card-name">${o.cliente}</div>
+            <div class="archive-card-items">${o.pedido}</div>
+            <div class="archive-log">
+              <div class="archive-log-title">Historial</div>
+              ${logHtml}
+            </div>
+            <button class="btn-restore" onclick="restoreOrder('${o.id}')">↩ Restaurar</button>
+          </div>`;
+        }).join('')
+      : '<div class="archive-empty">Sin pedidos archivados</div>';
+  }
+}
+
+/* ── Update elapsed timers every second without full re-render ── */
+function tickElapsed() {
+  lastOrders.forEach(o => {
+    const el = document.getElementById('elapsed-' + o.id);
+    if (el) {
+      el.textContent  = elapsed(o.hora);
+      el.className    = 'card-elapsed ' + elapsedClass(o.hora);
+    }
+  });
+}
+setInterval(tickElapsed, 1000);
+
+/* ── Fetch from Google Sheets ── */
+async function fetchOrders() {
+  if (SHEET_ID === 'YOUR_GOOGLE_SHEET_ID_HERE') {
+    // Demo mode — show fake orders for testing
+    const demo = [
+      { id:'PZX-001', orden:'PZX-001', cliente:'Carlos Reyes',  pedido:'2x Carnivora (L340), 1x Margherita (L299)', notas:'Sin cebolla', hora: new Date(Date.now()-8*60000).toISOString(), estado:'Nuevo' },
+      { id:'PZX-002', orden:'PZX-002', cliente:'María García',  pedido:'1x Shrimp Scampi (L412)', notas:'—', hora: new Date(Date.now()-22*60000).toISOString(), estado:'Nuevo' },
+      { id:'PZX-003', orden:'PZX-003', cliente:'Luis Mendoza',  pedido:'1x Carnivora NY (L685)', notas:'Extra salsa', hora: new Date(Date.now()-35*60000).toISOString(), estado:'Nuevo' },
+    ];
+    allOrders = demo;
+    render(demo);
+    checkForNewOrders(demo);
+    return;
+  }
+
+  try {
+    const range  = encodeURIComponent(`${SHEET_NAME}!A2:J1000`);
+    const url    = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${API_KEY}`;
+    const res    = await fetch(url);
+    const data   = await res.json();
+    const rows   = data.values || [];
+
+    const seenIds = new Set();
+    const orders = rows
+      .map(r => ({
+        id:         r[1] || r[0],   // Orden column as ID
+        hora:       r[0],            // Hora
+        orden:      r[1],            // Orden
+        cliente:    r[2] || '—',    // Cliente
+        telefono:   r[3] || '',     // Teléfono
+        pedido:     r[4] || '',     // Pedido
+        total:      r[5] || '',     // Total
+        maps:       r[6] || '',     // Maps
+        notas:      r[7] || '—',   // Notas
+        estado:     r[8] || 'Nuevo',// Estado
+        order_type: r[9] || 'delivery' // Order type (delivery/pickup)
+      }))
+      .reverse() // newest first
+      .filter(o => {
+        if (seenIds.has(o.id)) return false;
+        seenIds.add(o.id);
+        return true;
+      });
+
+    allOrders = orders; // keep full history including archived
+    const activeOrders = orders.filter(o => (localState[o.id] || o.estado) !== 'Archivado');
+    render(activeOrders);
+    checkForNewOrders(activeOrders);
+  } catch(e) {
+    console.error('Error fetching orders:', e);
+  }
+}
+
+/* ── Shorten status for log display ── */
+function shortStatus(s) {
+  if (s === 'En preparación') return 'En prep.';
+  return s;
+}
+
+/* ── Log modal ── */
+function showLog(event, id) {
+  event.stopPropagation();
+  const log = stateLog[id] || {};
+  const order = allOrders.find(o => o.id === id) || lastOrders.find(o => o.id === id);
+  const title = order ? `${order.orden} · ${order.cliente}` : id;
+  document.getElementById('log-modal-title').textContent = title;
+  const entries = Object.entries(log);
+  document.getElementById('log-modal-body').innerHTML = entries.length
+    ? entries.map(([status, time]) => `
+        <div class="log-row">
+          <span class="log-status">${shortStatus(status)}</span>
+          <span class="log-time">${new Date(time).toLocaleTimeString('es-HN', {hour:'2-digit', minute:'2-digit', second:'2-digit'})}</span>
+        </div>`).join('')
+    : '<div style="color:var(--muted);font-size:13px;padding:8px 0">Sin historial disponible.</div>';
+  document.getElementById('log-overlay').classList.add('open');
+}
+
+function closeLog(event) {
+  if (event && event.target !== document.getElementById('log-overlay')) return;
+  document.getElementById('log-overlay').classList.remove('open');
+}
+
+/* ── Archive ── */
+let archiveOpen = false;
+
+function toggleArchive() {
+  archiveOpen = !archiveOpen;
+  document.getElementById('archive-drawer').classList.toggle('open', archiveOpen);
+  document.getElementById('btn-archive-toggle').classList.toggle('active', archiveOpen);
+  // Close history if open
+  historyOpen = false;
+  document.getElementById('history-drawer').classList.remove('open');
+  document.getElementById('btn-history-toggle').classList.remove('active');
+}
+
+let historyOpen = false;
+
+function toggleHistory() {
+  historyOpen = !historyOpen;
+  document.getElementById('history-drawer').classList.toggle('open', historyOpen);
+  document.getElementById('btn-history-toggle').classList.toggle('active', historyOpen);
+  // Close archive if open
+  archiveOpen = false;
+  document.getElementById('archive-drawer').classList.remove('open');
+  document.getElementById('btn-archive-toggle').classList.remove('active');
+  if (historyOpen) renderHistory();
+}
+
+function renderHistory() {
+  const body = document.getElementById('history-body');
+  if (!body) return;
+  const sorted = [...allOrders].reverse();
+  body.innerHTML = sorted.length ? sorted.map(o => {
+    const status = localState[o.id] || o.estado || 'Nuevo';
+    const log = stateLog[o.id] || {};
+    const logEntries = Object.entries(log);
+    const statusColor = status === 'Nuevo' ? 'var(--nuevo)'
+                      : status === 'En preparación' ? 'var(--prep)'
+                      : status === 'Listo' ? 'var(--listo)'
+                      : 'var(--muted)';
+    const logHtml = logEntries.length
+      ? logEntries.map(([s, t]) => `
+          <div class="log-row">
+            <span class="log-status">${shortStatus(s)}</span>
+            <span class="log-time">${new Date(t).toLocaleTimeString('es-HN', {hour:'2-digit', minute:'2-digit', second:'2-digit'})}</span>
+          </div>`).join('')
+      : '<div style="color:var(--muted);font-size:11px;padding:4px 0">Sin movimientos.</div>';
+    return `
+      <div class="archive-card" style="border-left-color:${statusColor}">
+        <div class="archive-card-id">${o.orden || o.id}</div>
+        <div class="archive-card-name">${o.cliente}</div>
+        <div style="font-size:10px;font-family:var(--stamp);letter-spacing:1px;color:${statusColor};margin-bottom:6px;text-transform:uppercase">${status}</div>
+        <div class="archive-card-items">${o.pedido}</div>
+        <div class="archive-log">
+          <div class="archive-log-title">Historial</div>
+          ${logHtml}
+        </div>
+        ${status === 'Archivado'
+          ? `<button class="btn-restore" onclick="restoreOrder('${o.id}')">↩ Restaurar</button>`
+          : ''}
+      </div>`;
+  }).join('') : '<div class="archive-empty">Sin pedidos registrados aún.</div>';
+}
+
+function restoreOrder(id) {
+  localState[id] = 'Nuevo';
+  if (stateLog[id]) {
+    stateLog[id]['Restaurado'] = new Date().toISOString();
+  }
+  saveState();
+  const activeOrders = allOrders.filter(o => (localState[o.id] || o.estado) !== 'Archivado');
+  render(activeOrders);
+}
+
+/* ── Drag and Drop ── */
+let draggedId = null;
+
+function dragStart(event, id) {
+  draggedId = id;
+  setTimeout(() => {
+    const el = document.getElementById('card-' + id);
+    if (el) el.classList.add('dragging');
+  }, 0);
+  event.dataTransfer.effectAllowed = 'move';
+}
+
+function dragEnd(event) {
+  if (draggedId) {
+    const el = document.getElementById('card-' + draggedId);
+    if (el) el.classList.remove('dragging');
+  }
+  document.querySelectorAll('.col-body').forEach(col => col.classList.remove('drag-over'));
+}
+
+function dragOver(event) {
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  event.currentTarget.classList.add('drag-over');
+}
+
+function dragLeave(event) {
+  event.currentTarget.classList.remove('drag-over');
+}
+
+function drop(event, newStatus) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('drag-over');
+  if (draggedId) {
+    moveOrder(draggedId, newStatus);
+    draggedId = null;
+  }
+}
+
+/* ── Touch drag support for tablets ── */
+let touchDragId = null;
+let touchClone  = null;
+
+document.addEventListener('touchstart', e => {
+  const card = e.target.closest('.card');
+  if (!card) return;
+  touchDragId = card.id.replace('card-', '');
+  // Create visual clone
+  touchClone = card.cloneNode(true);
+  touchClone.style.cssText = `position:fixed;width:${card.offsetWidth}px;opacity:0.85;pointer-events:none;z-index:9999;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.2);`;
+  document.body.appendChild(touchClone);
+  card.classList.add('dragging');
+}, { passive: true });
+
+document.addEventListener('touchmove', e => {
+  if (!touchDragId || !touchClone) return;
+  const t = e.touches[0];
+  touchClone.style.left = (t.clientX - touchClone.offsetWidth / 2) + 'px';
+  touchClone.style.top  = (t.clientY - 40) + 'px';
+  // Highlight column under finger
+  document.querySelectorAll('.col-body').forEach(col => col.classList.remove('drag-over'));
+  const el = document.elementFromPoint(t.clientX, t.clientY);
+  const col = el && el.closest('.col-body');
+  if (col) col.classList.add('drag-over');
+}, { passive: true });
+
+document.addEventListener('touchend', e => {
+  if (!touchDragId) return;
+  const t = e.changedTouches[0];
+  const el = document.elementFromPoint(t.clientX, t.clientY);
+  const col = el && el.closest('.col-body');
+  document.querySelectorAll('.col-body').forEach(c => c.classList.remove('drag-over'));
+  if (touchClone) { touchClone.remove(); touchClone = null; }
+  const card = document.getElementById('card-' + touchDragId);
+  if (card) card.classList.remove('dragging');
+  if (col) {
+    const status = col.id === 'col-nuevo' ? 'Nuevo'
+                 : col.id === 'col-prep'  ? 'En preparación'
+                 : 'Listo';
+    moveOrder(touchDragId, status);
+  }
+  touchDragId = null;
+});
+
+/* ── Sound alert ── */
+let soundEnabled = true;
+let audioCtx = null;
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playChime() {
+  if (!soundEnabled) return;
+  try {
+    const ctx = getAudioCtx();
+    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5 E5 G5 C6
+    notes.forEach((freq, i) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.15);
+      gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.15);
+      gain.gain.linearRampToValueAtTime(0.4, ctx.currentTime + i * 0.15 + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.15 + 0.4);
+      osc.start(ctx.currentTime + i * 0.15);
+      osc.stop(ctx.currentTime + i * 0.15 + 0.4);
+    });
+  } catch(e) { console.warn('Sound error:', e); }
+}
+
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  const btn = document.getElementById('btn-sound');
+  btn.textContent = soundEnabled ? '🔔 Sonido ON' : '🔕 Sonido OFF';
+  btn.classList.toggle('muted', !soundEnabled);
+  if (soundEnabled) {
+    // Unlock audio context on user interaction
+    try { getAudioCtx().resume(); } catch(e) {}
+    playChime();
+  }
+}
+
+// Track known order IDs to detect new arrivals
+let knownOrderIds = new Set();
+let firstLoad = true;
+
+// Track which order IDs we've already alerted about as cancelled
+// (so re-renders don't keep firing the chime + banner)
+let alertedCancellations = new Set();
+
+
+
+function checkForNewOrders(orders) {
+  if (firstLoad) {
+    // On first load, just populate known IDs without alerting
+    orders.forEach(o => {
+      knownOrderIds.add(o.id);
+      // Suppress "this is a new cancellation!" chime for orders that
+      // were already cancelled before the KDS opened
+      if (o.estado === 'Cancelado') alertedCancellations.add(o.id);
+    });
+    firstLoad = false;
+    return;
+  }
+  const newOnes = orders.filter(o => !knownOrderIds.has(o.id));
+  newOnes.forEach(o => knownOrderIds.add(o.id));
+  if (newOnes.length > 0) playChime();
+
+  // Detect cancellations: orders where estado is 'Cancelado' and we
+  // haven't alerted on them yet. Fires once per cancelled order.
+  const newCancellations = orders.filter(o =>
+    o.estado === 'Cancelado' && !alertedCancellations.has(o.id)
+  );
+  newCancellations.forEach(o => {
+    alertedCancellations.add(o.id);
+    showCancelBanner(o);
+    playCancelAlert();
+  });
+}
+
+/* ── Cancellation alert ── */
+// Distinct sound from the new-order chime — descending minor pattern,
+// played twice, instead of the ascending major chime. Sounds urgent
+// rather than welcoming.
+function playCancelAlert() {
+  if (!soundEnabled) return;
+  try {
+    const ctx = getAudioCtx();
+    // Two passes of a descending minor pattern (G5 → Eb5 → C5)
+    const passes = [0, 0.85];
+    const notes  = [783.99, 622.25, 523.25];
+    passes.forEach(passOffset => {
+      notes.forEach((freq, i) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'square';  // harsher than sine — gets attention
+        const t0 = ctx.currentTime + passOffset + i * 0.18;
+        osc.frequency.setValueAtTime(freq, t0);
+        gain.gain.setValueAtTime(0, t0);
+        gain.gain.linearRampToValueAtTime(0.35, t0 + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.5);
+        osc.start(t0);
+        osc.stop(t0 + 0.5);
+      });
+    });
+  } catch(e) { console.warn('Cancel alert error:', e); }
+}
+
+/* ── Cancellation banner ── */
+let cancelBannerTimer = null;
+function showCancelBanner(order) {
+  const banner = document.getElementById('cancel-banner');
+  const idEl   = document.getElementById('cancel-banner-id');
+  if (!banner || !idEl) return;
+
+  idEl.textContent = `${order.orden || order.id} · ${order.cliente || ''}`;
+  banner.classList.add('shown');
+
+  // Auto-dismiss after 12 seconds (kitchen has time to read it)
+  if (cancelBannerTimer) clearTimeout(cancelBannerTimer);
+  cancelBannerTimer = setTimeout(() => {
+    banner.classList.remove('shown');
+  }, 12000);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const dismiss = document.getElementById('cancel-banner-dismiss');
+  if (dismiss) {
+    dismiss.addEventListener('click', () => {
+      document.getElementById('cancel-banner').classList.remove('shown');
+      if (cancelBannerTimer) clearTimeout(cancelBannerTimer);
+    });
+  }
+});
+
+/* ── Screen wake lock ── */
+let wakeLock = null;
+
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      document.getElementById('wake-indicator').textContent = '⬤ Pantalla activa';
+      document.getElementById('wake-indicator').classList.remove('inactive');
+      wakeLock.addEventListener('release', () => {
+        document.getElementById('wake-indicator').textContent = '⬤ Pantalla inactiva';
+        document.getElementById('wake-indicator').classList.add('inactive');
+      });
+    }
+  } catch(e) {
+    console.warn('Wake lock error:', e);
+    document.getElementById('wake-indicator').textContent = '⬤ No soportado';
+    document.getElementById('wake-indicator').classList.add('inactive');
+  }
+}
+
+// Re-request wake lock when tab becomes visible again
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && (!wakeLock || wakeLock.released)) {
+    await requestWakeLock();
+  }
+});
+
+/* ── Auto-refresh ── */
+requestWakeLock();
+fetchOrders();
+setInterval(fetchOrders, REFRESH_MS);
+
+</script>
+
+<div class="archive-drawer" id="history-drawer">
+  <div class="archive-header">
+    <span class="archive-title">Historial completo de pedidos</span>
+    <button class="btn-archive-toggle" onclick="toggleHistory()" style="padding:5px 12px">Cerrar ✕</button>
+  </div>
+  <div class="archive-body" id="history-body"></div>
+</div>
+
+<div class="log-overlay" id="log-overlay" onclick="closeLog(event)">
+  <div class="log-modal" id="log-modal">
+    <div class="log-modal-title" id="log-modal-title">Historial del pedido</div>
+    <div id="log-modal-body"></div>
+    <button class="btn-close-log" onclick="closeLog()">Cerrar</button>
+  </div>
+</div>
+
+<div class="archive-drawer" id="archive-drawer">
+  <div class="archive-header">
+    <span class="archive-title">Pedidos archivados</span>
+    <button class="btn-archive-toggle" onclick="toggleArchive()" style="padding:5px 12px">Cerrar ✕</button>
+  </div>
+  <div class="archive-body" id="archive-body"></div>
+</div>
+
+</body>
+</html>

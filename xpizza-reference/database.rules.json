@@ -1,0 +1,61 @@
+{
+  "rules": {
+    "dispatchers": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
+      }
+    },
+
+    "drivers": {
+      ".read": "auth != null",
+      "$driver_id": {
+        ".write": "auth != null && (auth.uid === $driver_id || root.child('dispatchers').child(auth.uid).exists())",
+        ".validate": "newData.hasChildren(['name'])",
+        "status": {
+          ".validate": "newData.val() === 'off_shift' || newData.val() === 'available' || newData.val() === 'assigned' || newData.val() === 'at_restaurant' || newData.val() === 'en_route_delivery' || newData.val() === 'returning' || newData.val() === 'on_break'"
+        },
+        "lat": { ".validate": "newData.isNumber() || newData.val() === null" },
+        "lng": { ".validate": "newData.isNumber() || newData.val() === null" }
+      }
+    },
+
+    "tasks": {
+      ".read": "auth != null",
+      ".indexOn": ["assigned_driver_id", "order_id", "status", "type"],
+      "$task_id": {
+        ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || (data.exists() && data.child('assigned_driver_id').val() === auth.uid) || (newData.exists() && newData.child('assigned_driver_id').val() === auth.uid))",
+        ".validate": "newData.hasChildren(['order_id', 'type', 'status'])",
+        "type": {
+          ".validate": "newData.val() === 'pickup' || newData.val() === 'delivery'"
+        },
+        "status": {
+          ".validate": "newData.val() === 'pending' || newData.val() === 'assigned' || newData.val() === 'accepted' || newData.val() === 'in_progress' || newData.val() === 'completed' || newData.val() === 'cancelled'"
+        }
+      }
+    },
+
+    "orders": {
+      ".read": "auth != null",
+      ".indexOn": ["status", "created_at", "order_type"],
+      "$order_id": {
+        ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
+
+        "status": {
+          ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid)"
+        },
+        "picked_up_at": {
+          ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid)"
+        },
+        "delivered_at": {
+          ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid)"
+        }
+      }
+    },
+
+    "config": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
+    }
+  }
+}

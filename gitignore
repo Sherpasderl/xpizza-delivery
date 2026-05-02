@@ -1,0 +1,59 @@
+# =============================================================================
+# X Pizza Delivery — .gitignore
+# =============================================================================
+# Things git should NEVER track. Anything containing secrets, build artifacts,
+# editor cruft, or environment-specific settings goes here.
+
+# ----- Secrets -----
+# .env contains MAKE_SECRET, VAPID keys, KDS_SHEET_ID — never commit
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ----- Node.js -----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+.yarn/
+
+# ----- Firebase -----
+.firebase/
+firebase-debug.log*
+firebase-debug.*.log
+.runtimeconfig.json
+
+# ----- macOS -----
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ----- Editor / IDE -----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+
+# ----- Logs -----
+*.log
+logs/
+
+# ----- Build artifacts (none yet, but reserve) -----
+dist/
+build/
+out/
+
+# ----- Old backups in working folders -----
+*.bak
+*.backup
+*~
+
+# ----- Temporary files used during testing -----
+/tmp/
+*.tmp
