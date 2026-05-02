@@ -1,11 +1,12 @@
 /**
  * X Pizza Delivery — Cloud Functions
- * version: 1.2.1
+ * version: 1.3.0
  *
  * Endpoints:
  *   - createOrder              (HTTPS)   — Make.com → Firebase write proxy
  *   - notifyDriverOnAssignment (DB trig) — Web Push to driver on assignment
  *   - onOrderCancelled         (DB trig) — Sync cancellations to KDS Sheet
+ *   - autoAssignOnOrderCreate  (DB trig) — Auto-pick driver after grace period
  *
  * Why this exists:
  *   Make.com needs a way to create orders in the dispatcher. The naive approach
@@ -436,6 +437,217 @@ exports.onOrderCancelled = onValueWritten(
       console.error(`onOrderCancelled: failed for order ${orderId}`, err.message);
       // Don't throw — we don't want to retry on auth/permissions errors
       // forever. Log and let the dispatcher's UI feedback handle the user.
+    }
+  }
+);
+
+// ============================================================
+// Auto-assignment configuration
+// ============================================================
+//
+// Tunables for auto-assign behavior. Defaults match the design discussion:
+//
+// - GRACE_PERIOD_MS: how long to wait before auto-assign fires, giving the
+//   dispatcher a chance to manually intervene first. Set to 30s.
+//
+// - STALE_PING_MS: drivers whose last_ping is older than this are considered
+//   off the radar and skipped, even if their status says "available". Matches
+//   the SDK's STALE_PING_THRESHOLD_S (90 sec) — keep them in sync.
+//
+// - RESTAURANT_LAT/LNG: hardcoded for now. Could read from /config later if
+//   we ever support multiple stores.
+//
+// - STACKING_RULES:
+//     * Driver with 0 active tasks: cap of 2 (can take this + 1 more later)
+//     * Driver with 1 active task AND state in [available, at_restaurant]: cap 2
+//     * Driver with 1 active task AND state == en_route_delivery: cap 1 (full)
+//     * Driver with 2+ active tasks: skip (full)
+
+const GRACE_PERIOD_MS = 30 * 1000;
+const STALE_PING_MS = 90 * 1000;
+const RESTAURANT_LAT = 15.507489753573818;
+const RESTAURANT_LNG = -88.0398486953722;
+
+// Haversine distance in km between two lat/lng coords
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2
+          + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
+          * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ============================================================
+// autoAssignOnOrderCreate — auto-assign delivery orders to closest driver
+// ============================================================
+//
+// Fires when /orders/{orderId} is written. Waits 30 seconds (grace period
+// for manual dispatcher intervention), then re-checks. If still unassigned
+// AND auto-assign is globally enabled, picks the best eligible driver and
+// assigns both pickup + delivery tasks atomically.
+//
+// Eligibility (from design discussion):
+//   - Driver is on shift (last_ping within 90 sec)
+//   - Driver has < their stacking cap of active tasks
+//
+// Sort priority:
+//   - Drivers with 0 active tasks first (preserves single-stop drivers)
+//   - Within each group, sorted by distance to restaurant (closest wins)
+//
+// If no eligible drivers exist, writes a /dispatcher_alerts/{id} record so
+// the dispatcher's UI shows a banner + plays an alert sound.
+
+exports.autoAssignOnOrderCreate = onValueWritten(
+  {
+    ref: '/orders/{orderId}',
+    region: 'us-central1',
+    timeoutSeconds: 90  // 30s sleep + ample headroom for the assignment query
+  },
+  async (event) => {
+    const before = event.data.before.val();
+    const after = event.data.after.val();
+
+    // Only fire on CREATE (before == null), not on subsequent updates
+    if (before !== null) return;
+    if (!after) return;
+
+    const orderId = event.params.orderId;
+
+    // Skip non-delivery orders (pickup orders don't need a driver assigned)
+    if (after.order_type && after.order_type !== 'delivery') {
+      console.log(`autoAssign: skipping ${orderId} (order_type=${after.order_type})`);
+      return;
+    }
+
+    console.log(`autoAssign: scheduling for order ${orderId}, waiting ${GRACE_PERIOD_MS}ms`);
+
+    const db = getDatabase();
+
+    // Wait the grace period
+    await sleep(GRACE_PERIOD_MS);
+
+    // Check if auto-assign is globally enabled (dispatcher can toggle off)
+    const enabledSnap = await db.ref('config/auto_assign_enabled').once('value');
+    const enabledVal = enabledSnap.val();
+    // Default to enabled if unset — explicit `false` disables
+    if (enabledVal === false) {
+      console.log(`autoAssign: skipping ${orderId} (globally disabled)`);
+      return;
+    }
+
+    // Re-fetch the pickup task — if a dispatcher manually assigned in the
+    // grace window, it'll have an assigned_driver_id by now
+    const pickupSnap = await db.ref(`tasks/${orderId}_pickup`).once('value');
+    const pickup = pickupSnap.val();
+    if (!pickup) {
+      console.log(`autoAssign: pickup task not found for ${orderId}, skipping`);
+      return;
+    }
+    if (pickup.assigned_driver_id) {
+      console.log(`autoAssign: ${orderId} already assigned to ${pickup.assigned_driver_id} during grace`);
+      return;
+    }
+
+    // Load drivers + tasks state
+    const [driversSnap, tasksSnap] = await Promise.all([
+      db.ref('drivers').once('value'),
+      db.ref('tasks').once('value')
+    ]);
+    const drivers = driversSnap.val() || {};
+    const tasks = tasksSnap.val() || {};
+    const now = Date.now();
+
+    // Count active tasks per driver
+    // "active" = assigned/accepted/in_progress (NOT completed/cancelled/pending-unassigned)
+    const activeTasksByDriver = {};
+    for (const taskId of Object.keys(tasks)) {
+      const t = tasks[taskId];
+      if (!t.assigned_driver_id) continue;
+      if (t.status === 'completed' || t.status === 'cancelled') continue;
+      activeTasksByDriver[t.assigned_driver_id] = (activeTasksByDriver[t.assigned_driver_id] || 0) + 1;
+    }
+    // Order has both pickup + delivery tasks, so a driver "with 1 active order" has 2 tasks.
+    // We work in ORDER count internally for the cap math:
+    //   1 active order = 2 active tasks
+    //   cap of 2 orders = cap of 4 tasks
+
+    // Filter eligible drivers
+    const eligible = [];
+    for (const driverId of Object.keys(drivers)) {
+      const d = drivers[driverId];
+      if (!d) continue;
+      if (d.status === 'off_shift') continue;
+
+      // Must have a recent ping
+      if (!d.last_ping || (now - d.last_ping) > STALE_PING_MS) {
+        continue;
+      }
+
+      // Must have a known location
+      if (typeof d.lat !== 'number' || typeof d.lng !== 'number') {
+        continue;
+      }
+
+      const taskCount = activeTasksByDriver[driverId] || 0;
+      const orderCount = Math.floor(taskCount / 2);  // 2 tasks per order
+
+      // Stacking cap based on driver state
+      // - 0 orders: always eligible
+      // - 1 order: eligible only if NOT en_route_delivery
+      // - 2+ orders: never eligible
+      let cap;
+      if (orderCount === 0) cap = 2;
+      else if (orderCount === 1 && d.status !== 'en_route_delivery') cap = 2;
+      else cap = orderCount;  // already at cap, skip below
+
+      if (orderCount >= cap) continue;
+
+      const distanceKm = haversineKm(d.lat, d.lng, RESTAURANT_LAT, RESTAURANT_LNG);
+      eligible.push({ driverId, orderCount, distanceKm, name: d.name || driverId });
+    }
+
+    if (eligible.length === 0) {
+      console.warn(`autoAssign: no eligible drivers for ${orderId}, writing dispatcher alert`);
+      await db.ref('dispatcher_alerts').push({
+        type: 'no_drivers_available',
+        order_id: orderId,
+        customer_name: after.recipient_name || 'Cliente',
+        total: after.total || null,
+        created_at: ServerValue.TIMESTAMP
+      });
+      return;
+    }
+
+    // Sort: 0-task drivers first, then by distance ascending
+    eligible.sort((a, b) => {
+      if (a.orderCount !== b.orderCount) return a.orderCount - b.orderCount;
+      return a.distanceKm - b.distanceKm;
+    });
+
+    const chosen = eligible[0];
+    console.log(`autoAssign: assigning ${orderId} to ${chosen.name} (${chosen.driverId}) — ${chosen.distanceKm.toFixed(2)}km from restaurant, ${chosen.orderCount} active orders`);
+
+    // Atomic assignment of both pickup + delivery tasks
+    const updates = {};
+    updates[`tasks/${orderId}_pickup/assigned_driver_id`] = chosen.driverId;
+    updates[`tasks/${orderId}_pickup/status`] = 'assigned';
+    updates[`tasks/${orderId}_pickup/assigned_at`] = ServerValue.TIMESTAMP;
+    updates[`tasks/${orderId}_pickup/auto_assigned`] = true;
+    updates[`tasks/${orderId}_delivery/assigned_driver_id`] = chosen.driverId;
+    updates[`tasks/${orderId}_delivery/status`] = 'assigned';
+    updates[`tasks/${orderId}_delivery/assigned_at`] = ServerValue.TIMESTAMP;
+    updates[`tasks/${orderId}_delivery/auto_assigned`] = true;
+
+    try {
+      await db.ref().update(updates);
+      console.log(`autoAssign: success for ${orderId} → ${chosen.driverId}`);
+      // notifyDriverOnAssignment trigger will fire automatically and push to driver
+    } catch (e) {
+      console.error(`autoAssign: write failed for ${orderId}`, e);
     }
   }
 );
