@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Dispatch - version: 1.5.1 -->
+<!-- X Pizza Dispatch - version: 1.5.2 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1561,12 +1561,6 @@ function renderDispatcherAlerts(alerts) {
       try { await XPD.dismissDispatcherAlert(id); } catch {}
     });
   });
-}
-
-function escapeHtml(s) {
-  return String(s || '').replace(/[&<>"']/g, c => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[c]));
 }
 
 // Render every 5s to refresh ping freshness even without data changes
