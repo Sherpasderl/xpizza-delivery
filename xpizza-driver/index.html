@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Driver - version: 1.7.0 -->
+<!-- X Pizza Driver - version: 1.7.1 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -370,9 +370,41 @@
     background: var(--surface-3);
     color: var(--text-soft);
   }
+  .phase-pill { /* keep separate for clarity, same base styles */ }
   .phase-pill.pickup { background: #fef3c7; color: #92400e; }
   .phase-pill.delivery { background: #dbeafe; color: #1e40af; }
   .phase-pill.awaiting { background: #fee2e2; color: #991b1b; }
+
+  /* Acceptance countdown chip — appears next to phase pill while task is
+     in 'assigned' state. Matches pill aesthetic, doesn't shout. Switches
+     to amber in the last 10 seconds for urgency without being abnormally
+     attention-grabbing. */
+  .accept-countdown {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 99px;
+    background: var(--surface-3);
+    color: var(--text-soft);
+    letter-spacing: 0.04em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .accept-countdown::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-dim);
+  }
+  .accept-countdown.urgent {
+    background: #fef3c7;
+    color: #92400e;
+  }
+  .accept-countdown.urgent::before { background: var(--warn); }
 
   .active-card .body { padding: 18px; }
 
@@ -1067,12 +1099,12 @@
 <audio id="chime" preload="auto" src="data:audio/wav;base64,UklGRpgEAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YXQEAAAAAB6BPL5UfHO+Z3iuvVFwjLzsZcG62FaXuJREprWCMc6yGRr2r9ELY6w+/bypbrsap6e4QqL2tQqcYrJalfWtQ41QqDqEFKLleZmaSWzjkVtdyYcvTfV7yzs1bvEpumDvFAdSLP9lQs7olDNq06H8t3GgdSlnnP5ejZl3VnSWAUvxkwk/zZHCMsKO1iSEi2sVmYl4B5SnhBuQ7Y8Yi5KaYIYLpQOC+a4kfqK4Q3rLwJp17chV8fHQ0+0u2I/qgeIc5e/d+e9c2p36id3Z+RvhAAVk4rkO0+EhF7Pi6h2J5CMjL+enKw7p8zE+7QEzy/Ba/PQqOjbz3bmrpe+4U64I7Bu2/+1tt+rkCMLR3YbR+9wB0arQv9aQwpHcrdkbsuTpHt63+fmvDQqFsKgaXLm0KuLA9Tj9zXBExt1iSFXxw5BV0MqTU/PXiE3p4gZECfFgPb74sjXTyz0r/MJoH1q1ulfsq16YIqlWR5ldqr1+gquumGHXrPpOa6+YtZpzlsiBGZysZkJZuhJB1cRmKkjOrwQYV8z3+6TbQQTjs0zaq9G/y0T0ELGR/Wxe7iKArr+QjTW0vIUR9LKCrmcwxFCTBrSnaqltogyZJaTuhmihKHt2qZP3ZtmVSnXNoTuGLpv9NTKkahMbpDEmEqV7CijdpacrfKf7rIyssLGFqvyxdpyjtKaZD7zJpbmKzHGeP9MhmgDX8I1q3KOVw9+0nqLflIXDKcpoo7vR9XW3fOUmoxnzKICYAagvjF65KZv+xXSVSdYWifGhJVJ8q2x+L8DohHK8XKuy/24GpxTN0t+/BquKt9zrDqe9wCPtl6VG0Ynk56P82DPhQqIO5InisaOI6qLfhKsK8dXVGbNI94i6t7qy/kPDb6PDw1XJG6lk0lTUW7DG7P3mBLwoBdHSbsinINnCQNAh4qvJiNiV+PHV4d8I5/7eNeS97kfaLtw2/E/UNMyCBdHQXr+vDdHQTLapEkPPoaLrFmHHYJSJJD3FvY+1NA7BIIPAavVk26GD16FtCOBu44tpu9eUCbE65Md+pmGzKLxEnJa3uTmMc8sIfWWG43hhU/njWvdnQHcl1lWOiECYU9Mvr9NhDMS1RrVuxXKtFrLrwHGoP710qGm/rrh1xL3OQ8wB14TQzeNz1qLoBdyN6/HekPSf4yX42Oub+0X1VgFJ/aQHX/gKDZ4DiQuaCUYRZBJyExoYxBR6GwUYAB7xGyAffx80HrEhdR4uIoMfsh/mIQ8c+yKsFXcg3w6hHU8GoBMt/0sJ8/qEAfn5fPosAdj+3wYHBL4LgQjxC74JFwkjCIcD3wU3/Zr/BfhT+fX1V/gE+Bj7T/oP/VL8gv7H+kj91vap+kf2qPmt+Pf6evxh/ID/AwHyAIIDswEvBL8AcQNoAB8DsgEfBKQEkgaPBugHWAU3BqQB8gKZ/r//9/0V/0kAvAFPATEC/wGWAlAB7QGvAMcAGgGOATgB0AHFASIB1AHIANUACgEnAYQBkAHzAOwAvf6V/i37jvqB+W74p/lA+ML4f/ec+AT4LfqL+ZD8O/sB/L/6CfsW+UH7Ovqq/Iz8H/2N/Ej9b/0z//z/xQDmAW0BRAH+ANgAbgFGAvwBkgIcAgUC0AGtAYIBpgEGAaIB1ACtAZQB+gKdA8YDZQOJAvkC2QGiAlsB6AHAAVwCmAJzAhsCegHaACgAmwDUACEBowAdAVgADwGCAB0BPAFKAdEBnQF/AHL/JP4w/h//+f7K/2j+ev6n/Av8U/qz+vL5o/oS+5L7H/zT+xv8E/x4/Lr8H/49/g==" type="audio/wav"></audio>
 
 <script type="module">
-import * as XPD from './xpizza-delivery.js?v=12';
+import * as XPD from './xpizza-delivery.js?v=13';
 
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '1.7.0';
+const SYSTEM_VERSION = '1.7.1';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -1194,6 +1226,7 @@ function subscribeToFirebase() {
     allOrders = orders || {};
     render();
   });
+  startCountdownTick();
 }
 
 function detectNewAssignments(tasks) {
@@ -1747,10 +1780,20 @@ function renderActiveCard(o) {
     </div>
   `;
 
+  // Acceptance countdown — only shown while awaiting acceptance.
+  // The actual seconds-remaining is rendered live by the renderCountdown
+  // tick function (so we don't have to re-render the whole card every
+  // second). The data-deadline attribute lets the tick find it.
+  let countdownChip = '';
+  if (o.phase === 'awaiting_acceptance' && o.pickupTask.assignment_deadline) {
+    countdownChip = `<span class="accept-countdown" data-deadline="${o.pickupTask.assignment_deadline}">--s</span>`;
+  }
+
   return `
     <div class="active-card">
       <div class="header">
         <span class="order-id mono">#${o.orderId}</span>
+        ${countdownChip}
         <span class="phase-pill ${pill.cls}">${pill.label}</span>
       </div>
       <div class="body">
@@ -1797,6 +1840,35 @@ function attachActiveCardHandlers(o) {
       toast('¡Entregado!', 'success');
     });
   }
+}
+
+// ============================================================
+// Acceptance countdown tick
+// Updates the visible "--s" chip every second by reading data-deadline.
+// Only one element typically exists at a time (the active assigned task),
+// but the loop handles all of them in case there are multiple in the queue.
+// When a task is accepted or expires, the chip element is removed by the
+// next render and the tick becomes a no-op for it.
+// ============================================================
+let countdownTickInterval = null;
+
+function startCountdownTick() {
+  if (countdownTickInterval) return;
+  countdownTickInterval = setInterval(() => {
+    const chips = document.querySelectorAll('.accept-countdown[data-deadline]');
+    if (chips.length === 0) return;
+    const now = Date.now();
+    chips.forEach(chip => {
+      const deadline = parseInt(chip.dataset.deadline, 10);
+      if (!deadline) return;
+      const secondsLeft = Math.max(0, Math.ceil((deadline - now) / 1000));
+      chip.textContent = `${secondsLeft}s`;
+      // Subtle urgency in the last 10 seconds — amber chip but not flashy
+      chip.classList.toggle('urgent', secondsLeft <= 10 && secondsLeft > 0);
+      // At 0, the Cloud Function will reassign or unassign within ~1s.
+      // No need for client-side action — Firebase listener will refresh.
+    });
+  }, 1000);
 }
 
 // ============================================================

@@ -1,12 +1,13 @@
 /**
  * X Pizza Delivery — Cloud Functions
- * version: 1.3.0
+ * version: 1.4.0
  *
  * Endpoints:
  *   - createOrder              (HTTPS)   — Make.com → Firebase write proxy
  *   - notifyDriverOnAssignment (DB trig) — Web Push to driver on assignment
  *   - onOrderCancelled         (DB trig) — Sync cancellations to KDS Sheet
  *   - autoAssignOnOrderCreate  (DB trig) — Auto-pick driver after grace period
+ *   - monitorAssignmentTimeout (DB trig) — Reassign on 60s no-accept timeout
  *
  * Why this exists:
  *   Make.com needs a way to create orders in the dispatcher. The naive approach
@@ -468,6 +469,20 @@ const STALE_PING_MS = 90 * 1000;
 const RESTAURANT_LAT = 15.507489753573818;
 const RESTAURANT_LNG = -88.0398486953722;
 
+// Acceptance timeout: how long a driver has to swipe-to-accept after assignment
+// before the system reassigns to someone else. Same value used by driver UI
+// for the visible countdown. Keep them in sync.
+const ACCEPT_TIMEOUT_MS = 60 * 1000;
+
+// Cooldown after a driver times out: they're filtered from auto-assign
+// for this duration. Manual dispatcher assignment still works.
+const TIMEOUT_COOLDOWN_MS = 3 * 60 * 1000;
+
+// Max attempts to auto-reassign after timeouts. After this many strikes,
+// dispatcher takes over. attempts=1 means initial assignment, attempts=2
+// is the second-chance reassignment. Both timing out triggers the alert.
+const MAX_ATTEMPTS_BEFORE_TAKEOVER = 2;
+
 // Haversine distance in km between two lat/lng coords
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371; // Earth radius in km
@@ -481,6 +496,96 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+/**
+ * Pick the best eligible driver based on:
+ *   - On shift (last_ping within STALE_PING_MS, has lat/lng)
+ *   - Not currently in timeout cooldown
+ *   - Not in `excludeDriverIds` (used to skip the just-timed-out driver)
+ *   - Has capacity per stacking rules
+ *
+ * Sort: 0-task drivers first, then by distance to restaurant ascending.
+ * Returns { driverId, name, distanceKm, orderCount } or null if none eligible.
+ *
+ * Shared by autoAssignOnOrderCreate and monitorAssignmentTimeout to avoid
+ * drift between initial-assign and reassign behavior.
+ */
+async function pickEligibleDriver(db, excludeDriverIds = []) {
+  const [driversSnap, tasksSnap] = await Promise.all([
+    db.ref('drivers').once('value'),
+    db.ref('tasks').once('value')
+  ]);
+  const drivers = driversSnap.val() || {};
+  const tasks = tasksSnap.val() || {};
+  const now = Date.now();
+  const excluded = new Set(excludeDriverIds);
+
+  // Count active tasks per driver
+  const activeTasksByDriver = {};
+  for (const taskId of Object.keys(tasks)) {
+    const t = tasks[taskId];
+    if (!t.assigned_driver_id) continue;
+    if (t.status === 'completed' || t.status === 'cancelled') continue;
+    activeTasksByDriver[t.assigned_driver_id] = (activeTasksByDriver[t.assigned_driver_id] || 0) + 1;
+  }
+  // Note: order = pickup task + delivery task, so 1 active order = 2 active tasks.
+
+  const eligible = [];
+  for (const driverId of Object.keys(drivers)) {
+    if (excluded.has(driverId)) continue;
+    const d = drivers[driverId];
+    if (!d) continue;
+    if (d.status === 'off_shift') continue;
+    if (!d.last_ping || (now - d.last_ping) > STALE_PING_MS) continue;
+    if (typeof d.lat !== 'number' || typeof d.lng !== 'number') continue;
+    // Respect cooldown from prior timeout
+    if (d.timeout_until && d.timeout_until > now) continue;
+
+    const taskCount = activeTasksByDriver[driverId] || 0;
+    const orderCount = Math.floor(taskCount / 2);
+
+    // Stacking cap: 0 orders → up to 2; 1 order if NOT delivering → up to 2;
+    // 1 order while delivering OR 2+ orders → at cap.
+    let cap;
+    if (orderCount === 0) cap = 2;
+    else if (orderCount === 1 && d.status !== 'en_route_delivery') cap = 2;
+    else cap = orderCount;
+    if (orderCount >= cap) continue;
+
+    const distanceKm = haversineKm(d.lat, d.lng, RESTAURANT_LAT, RESTAURANT_LNG);
+    eligible.push({ driverId, orderCount, distanceKm, name: d.name || driverId });
+  }
+
+  if (eligible.length === 0) return null;
+  eligible.sort((a, b) => {
+    if (a.orderCount !== b.orderCount) return a.orderCount - b.orderCount;
+    return a.distanceKm - b.distanceKm;
+  });
+  return eligible[0];
+}
+
+/**
+ * Build the atomic update for assigning an order's pickup+delivery tasks
+ * to a driver. Sets assignment_deadline (used by timeout monitor + driver UI
+ * countdown) and bumps assignment_attempts.
+ */
+function buildAssignmentUpdates(orderId, driverId, attempts, isAutoAssigned) {
+  const now = Date.now();
+  const deadline = now + ACCEPT_TIMEOUT_MS;
+  const updates = {};
+  for (const taskType of ['pickup', 'delivery']) {
+    const taskId = `${orderId}_${taskType}`;
+    updates[`tasks/${taskId}/assigned_driver_id`] = driverId;
+    updates[`tasks/${taskId}/status`] = 'assigned';
+    updates[`tasks/${taskId}/assigned_at`] = ServerValue.TIMESTAMP;
+    updates[`tasks/${taskId}/assignment_deadline`] = deadline;
+    updates[`tasks/${taskId}/assignment_attempts`] = attempts;
+    if (isAutoAssigned) {
+      updates[`tasks/${taskId}/auto_assigned`] = true;
+    }
+  }
+  return updates;
+}
+
 // ============================================================
 // autoAssignOnOrderCreate — auto-assign delivery orders to closest driver
 // ============================================================
@@ -489,14 +594,6 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // for manual dispatcher intervention), then re-checks. If still unassigned
 // AND auto-assign is globally enabled, picks the best eligible driver and
 // assigns both pickup + delivery tasks atomically.
-//
-// Eligibility (from design discussion):
-//   - Driver is on shift (last_ping within 90 sec)
-//   - Driver has < their stacking cap of active tasks
-//
-// Sort priority:
-//   - Drivers with 0 active tasks first (preserves single-stop drivers)
-//   - Within each group, sorted by distance to restaurant (closest wins)
 //
 // If no eligible drivers exist, writes a /dispatcher_alerts/{id} record so
 // the dispatcher's UI shows a banner + plays an alert sound.
@@ -517,7 +614,7 @@ exports.autoAssignOnOrderCreate = onValueWritten(
 
     const orderId = event.params.orderId;
 
-    // Skip non-delivery orders (pickup orders don't need a driver assigned)
+    // Skip non-delivery orders
     if (after.order_type && after.order_type !== 'delivery') {
       console.log(`autoAssign: skipping ${orderId} (order_type=${after.order_type})`);
       return;
@@ -526,21 +623,16 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     console.log(`autoAssign: scheduling for order ${orderId}, waiting ${GRACE_PERIOD_MS}ms`);
 
     const db = getDatabase();
-
-    // Wait the grace period
     await sleep(GRACE_PERIOD_MS);
 
-    // Check if auto-assign is globally enabled (dispatcher can toggle off)
+    // Check global toggle
     const enabledSnap = await db.ref('config/auto_assign_enabled').once('value');
-    const enabledVal = enabledSnap.val();
-    // Default to enabled if unset — explicit `false` disables
-    if (enabledVal === false) {
+    if (enabledSnap.val() === false) {
       console.log(`autoAssign: skipping ${orderId} (globally disabled)`);
       return;
     }
 
-    // Re-fetch the pickup task — if a dispatcher manually assigned in the
-    // grace window, it'll have an assigned_driver_id by now
+    // Re-fetch the pickup task — manual assignment during grace?
     const pickupSnap = await db.ref(`tasks/${orderId}_pickup`).once('value');
     const pickup = pickupSnap.val();
     if (!pickup) {
@@ -552,66 +644,9 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       return;
     }
 
-    // Load drivers + tasks state
-    const [driversSnap, tasksSnap] = await Promise.all([
-      db.ref('drivers').once('value'),
-      db.ref('tasks').once('value')
-    ]);
-    const drivers = driversSnap.val() || {};
-    const tasks = tasksSnap.val() || {};
-    const now = Date.now();
-
-    // Count active tasks per driver
-    // "active" = assigned/accepted/in_progress (NOT completed/cancelled/pending-unassigned)
-    const activeTasksByDriver = {};
-    for (const taskId of Object.keys(tasks)) {
-      const t = tasks[taskId];
-      if (!t.assigned_driver_id) continue;
-      if (t.status === 'completed' || t.status === 'cancelled') continue;
-      activeTasksByDriver[t.assigned_driver_id] = (activeTasksByDriver[t.assigned_driver_id] || 0) + 1;
-    }
-    // Order has both pickup + delivery tasks, so a driver "with 1 active order" has 2 tasks.
-    // We work in ORDER count internally for the cap math:
-    //   1 active order = 2 active tasks
-    //   cap of 2 orders = cap of 4 tasks
-
-    // Filter eligible drivers
-    const eligible = [];
-    for (const driverId of Object.keys(drivers)) {
-      const d = drivers[driverId];
-      if (!d) continue;
-      if (d.status === 'off_shift') continue;
-
-      // Must have a recent ping
-      if (!d.last_ping || (now - d.last_ping) > STALE_PING_MS) {
-        continue;
-      }
-
-      // Must have a known location
-      if (typeof d.lat !== 'number' || typeof d.lng !== 'number') {
-        continue;
-      }
-
-      const taskCount = activeTasksByDriver[driverId] || 0;
-      const orderCount = Math.floor(taskCount / 2);  // 2 tasks per order
-
-      // Stacking cap based on driver state
-      // - 0 orders: always eligible
-      // - 1 order: eligible only if NOT en_route_delivery
-      // - 2+ orders: never eligible
-      let cap;
-      if (orderCount === 0) cap = 2;
-      else if (orderCount === 1 && d.status !== 'en_route_delivery') cap = 2;
-      else cap = orderCount;  // already at cap, skip below
-
-      if (orderCount >= cap) continue;
-
-      const distanceKm = haversineKm(d.lat, d.lng, RESTAURANT_LAT, RESTAURANT_LNG);
-      eligible.push({ driverId, orderCount, distanceKm, name: d.name || driverId });
-    }
-
-    if (eligible.length === 0) {
-      console.warn(`autoAssign: no eligible drivers for ${orderId}, writing dispatcher alert`);
+    const chosen = await pickEligibleDriver(db);
+    if (!chosen) {
+      console.warn(`autoAssign: no eligible drivers for ${orderId}, alerting dispatcher`);
       await db.ref('dispatcher_alerts').push({
         type: 'no_drivers_available',
         order_id: orderId,
@@ -622,32 +657,154 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       return;
     }
 
-    // Sort: 0-task drivers first, then by distance ascending
-    eligible.sort((a, b) => {
-      if (a.orderCount !== b.orderCount) return a.orderCount - b.orderCount;
-      return a.distanceKm - b.distanceKm;
-    });
+    console.log(`autoAssign: assigning ${orderId} → ${chosen.name} (${chosen.distanceKm.toFixed(2)}km, ${chosen.orderCount} active)`);
 
-    const chosen = eligible[0];
-    console.log(`autoAssign: assigning ${orderId} to ${chosen.name} (${chosen.driverId}) — ${chosen.distanceKm.toFixed(2)}km from restaurant, ${chosen.orderCount} active orders`);
-
-    // Atomic assignment of both pickup + delivery tasks
-    const updates = {};
-    updates[`tasks/${orderId}_pickup/assigned_driver_id`] = chosen.driverId;
-    updates[`tasks/${orderId}_pickup/status`] = 'assigned';
-    updates[`tasks/${orderId}_pickup/assigned_at`] = ServerValue.TIMESTAMP;
-    updates[`tasks/${orderId}_pickup/auto_assigned`] = true;
-    updates[`tasks/${orderId}_delivery/assigned_driver_id`] = chosen.driverId;
-    updates[`tasks/${orderId}_delivery/status`] = 'assigned';
-    updates[`tasks/${orderId}_delivery/assigned_at`] = ServerValue.TIMESTAMP;
-    updates[`tasks/${orderId}_delivery/auto_assigned`] = true;
-
+    // attempts=1 = initial assignment. monitorAssignmentTimeout uses this
+    // for its 2-strikes rule.
+    const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true);
     try {
       await db.ref().update(updates);
       console.log(`autoAssign: success for ${orderId} → ${chosen.driverId}`);
-      // notifyDriverOnAssignment trigger will fire automatically and push to driver
     } catch (e) {
       console.error(`autoAssign: write failed for ${orderId}`, e);
+    }
+  }
+);
+
+// ============================================================
+// monitorAssignmentTimeout — 60s acceptance timer + reassignment
+// ============================================================
+//
+// Fires whenever a pickup task's assigned_driver_id changes (manual or auto).
+// Sleeps for ACCEPT_TIMEOUT_MS, then checks if the driver accepted. If still
+// in 'assigned' state, treats as a no-response timeout:
+//   1. Marks the driver with a 3-min cooldown (timeout_until field)
+//   2. If task already had MAX_ATTEMPTS_BEFORE_TAKEOVER strikes:
+//      → unassign + alert dispatcher (human takeover needed)
+//   3. Otherwise, picks a new driver (excluding the timed-out one) and
+//      reassigns. attempts counter increments. Another timeout monitor
+//      fires for that new assignment automatically.
+//
+// Designed to be safe on duplicate fires: if the task is already accepted/
+// completed/cancelled when the timer wakes, it's a no-op.
+
+exports.monitorAssignmentTimeout = onValueWritten(
+  {
+    // Only watches the assigned_driver_id of pickup tasks. Delivery tasks
+    // get their assignment as part of the same atomic update, so we don't
+    // need a separate timer for them — the driver acts on pickup first.
+    ref: '/tasks/{taskId}/assigned_driver_id',
+    region: 'us-central1',
+    timeoutSeconds: 90
+  },
+  async (event) => {
+    const taskId = event.params.taskId;
+    if (!taskId.endsWith('_pickup')) return;  // only pickup tasks
+
+    const before = event.data.before.val();
+    const after = event.data.after.val();
+
+    // Only act when assignment is SET (or CHANGED to a new driver).
+    // Clearing (after == null) means dispatcher unassigned — no timer needed.
+    if (!after) return;
+
+    // If unchanged, ignore (defensive against duplicate writes)
+    if (before === after) return;
+
+    const driverId = after;
+    const orderId = taskId.replace(/_pickup$/, '');
+
+    console.log(`timeout-monitor: starting ${ACCEPT_TIMEOUT_MS}ms timer for ${taskId} → ${driverId}`);
+
+    const db = getDatabase();
+    await sleep(ACCEPT_TIMEOUT_MS);
+
+    // Re-fetch the task — has anything changed during the wait?
+    const taskSnap = await db.ref(`tasks/${taskId}`).once('value');
+    const task = taskSnap.val();
+    if (!task) {
+      console.log(`timeout-monitor: task ${taskId} disappeared, no-op`);
+      return;
+    }
+
+    // If still assigned to the same driver AND status is still 'assigned',
+    // they didn't accept in time. Otherwise (driver changed, status changed),
+    // either accepted, manually reassigned, or cancelled — no-op.
+    if (task.assigned_driver_id !== driverId) {
+      console.log(`timeout-monitor: ${taskId} reassigned during wait (was ${driverId}, now ${task.assigned_driver_id}), no-op`);
+      return;
+    }
+    if (task.status !== 'assigned') {
+      console.log(`timeout-monitor: ${taskId} no longer 'assigned' (now ${task.status}), no-op`);
+      return;
+    }
+
+    console.warn(`timeout-monitor: ${driverId} did not accept ${taskId} within ${ACCEPT_TIMEOUT_MS}ms, reassigning`);
+
+    // Apply the cooldown to this driver. 3-minute global penalty box.
+    const cooldownUntil = Date.now() + TIMEOUT_COOLDOWN_MS;
+    await db.ref(`drivers/${driverId}/timeout_until`).set(cooldownUntil);
+
+    // Decide: try one more driver, or escalate to dispatcher?
+    const attempts = task.assignment_attempts || 1;
+
+    if (attempts >= MAX_ATTEMPTS_BEFORE_TAKEOVER) {
+      // Two strikes — human takeover. Unassign and alert.
+      console.warn(`timeout-monitor: ${taskId} has ${attempts} attempts, escalating to dispatcher`);
+      const orderSnap = await db.ref(`orders/${orderId}`).once('value');
+      const order = orderSnap.val() || {};
+      const updates = {};
+      // Unassign both pickup and delivery so it shows up in SIN ASIGNAR
+      for (const taskType of ['pickup', 'delivery']) {
+        const tid = `${orderId}_${taskType}`;
+        updates[`tasks/${tid}/assigned_driver_id`] = null;
+        updates[`tasks/${tid}/status`] = 'pending';
+        updates[`tasks/${tid}/assignment_deadline`] = null;
+      }
+      await db.ref().update(updates);
+      await db.ref('dispatcher_alerts').push({
+        type: 'no_response_takeover',
+        order_id: orderId,
+        customer_name: order.recipient_name || 'Cliente',
+        total: order.total || null,
+        attempts,
+        created_at: ServerValue.TIMESTAMP
+      });
+      return;
+    }
+
+    // First-strike timeout → try one more driver, excluding the timed-out one
+    const nextDriver = await pickEligibleDriver(db, [driverId]);
+    if (!nextDriver) {
+      console.warn(`timeout-monitor: no eligible drivers after ${driverId} timeout on ${orderId}, escalating`);
+      const orderSnap = await db.ref(`orders/${orderId}`).once('value');
+      const order = orderSnap.val() || {};
+      const updates = {};
+      for (const taskType of ['pickup', 'delivery']) {
+        const tid = `${orderId}_${taskType}`;
+        updates[`tasks/${tid}/assigned_driver_id`] = null;
+        updates[`tasks/${tid}/status`] = 'pending';
+        updates[`tasks/${tid}/assignment_deadline`] = null;
+      }
+      await db.ref().update(updates);
+      await db.ref('dispatcher_alerts').push({
+        type: 'no_drivers_available',
+        order_id: orderId,
+        customer_name: order.recipient_name || 'Cliente',
+        total: order.total || null,
+        created_at: ServerValue.TIMESTAMP
+      });
+      return;
+    }
+
+    console.log(`timeout-monitor: reassigning ${orderId} from ${driverId} → ${nextDriver.name} (attempt ${attempts + 1})`);
+    const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);
+    try {
+      await db.ref().update(reassignUpdates);
+      // The new assigned_driver_id write will trigger another monitorAssignmentTimeout
+      // for the new driver. The notifyDriverOnAssignment trigger will push to them.
+    } catch (e) {
+      console.error(`timeout-monitor: reassignment write failed for ${orderId}`, e);
     }
   }
 );

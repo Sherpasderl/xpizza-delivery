@@ -1,7 +1,7 @@
 {
   "name": "xpizza-functions",
-  "version": "1.3.0",
-  "description": "X Pizza Delivery Cloud Functions — Make.com → Firebase + Web Push + KDS sync + Auto-assign",
+  "version": "1.4.0",
+  "description": "X Pizza Delivery Cloud Functions — Make.com → Firebase + Web Push + KDS sync + Auto-assign + Acceptance timeout",
   "main": "index.js",
   "scripts": {
     "serve": "firebase emulators:start --only functions",

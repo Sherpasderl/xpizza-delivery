@@ -1,6 +1,6 @@
 /**
  * X Pizza Delivery — Shared SDK
- * version: 1.6.0
+ * version: 1.7.0
  *
  * Used by both the driver PWA and the dispatcher view.
  * Wraps Firebase Realtime Database with the operations needed
@@ -78,6 +78,14 @@ export const ORDER_STATUS = {
 };
 
 const STALE_PING_THRESHOLD_S = 90;
+
+/**
+ * Acceptance timeout: how long a driver has to swipe-to-accept after the
+ * task is assigned before the system reassigns. Exported because the driver
+ * UI needs the same value for its visible countdown. Must match the value
+ * in the Cloud Function's monitorAssignmentTimeout (ACCEPT_TIMEOUT_MS).
+ */
+export const ACCEPT_TIMEOUT_MS = 60 * 1000;
 
 // ============================================================
 // MODULE STATE
@@ -389,30 +397,41 @@ export async function assignTask(taskId, driverId) {
   updates[`tasks/${taskId}/assigned_driver_id`] = driverId;
   updates[`tasks/${taskId}/status`] = TASK_STATUS.ASSIGNED;
   updates[`tasks/${taskId}/assigned_at`] = serverTimestamp();
+  updates[`tasks/${taskId}/assignment_deadline`] = Date.now() + ACCEPT_TIMEOUT_MS;
+  updates[`tasks/${taskId}/assignment_attempts`] = 1;
   await update(ref(db), updates);
 }
 
 /**
  * Assign both pickup + delivery tasks of an order to a driver in one atomic write.
- * This is what the dispatcher actually calls in normal flow.
+ * Sets assignment_deadline (used by driver-side countdown UI and Cloud Function
+ * monitorAssignmentTimeout). Manual assignments via dispatcher follow the same
+ * 60s timeout rule as auto-assignments — if the driver doesn't accept, system
+ * reassigns or escalates.
  */
 export async function assignOrderToDriver(orderId, driverId) {
   const pickupTaskId = `${orderId}_pickup`;
   const deliveryTaskId = `${orderId}_delivery`;
+  const deadline = Date.now() + ACCEPT_TIMEOUT_MS;
   const updates = {};
   updates[`tasks/${pickupTaskId}/assigned_driver_id`] = driverId;
   updates[`tasks/${pickupTaskId}/status`] = TASK_STATUS.ASSIGNED;
   updates[`tasks/${pickupTaskId}/assigned_at`] = serverTimestamp();
+  updates[`tasks/${pickupTaskId}/assignment_deadline`] = deadline;
+  updates[`tasks/${pickupTaskId}/assignment_attempts`] = 1;
   updates[`tasks/${deliveryTaskId}/assigned_driver_id`] = driverId;
   updates[`tasks/${deliveryTaskId}/status`] = TASK_STATUS.ASSIGNED;
   updates[`tasks/${deliveryTaskId}/assigned_at`] = serverTimestamp();
+  updates[`tasks/${deliveryTaskId}/assignment_deadline`] = deadline;
+  updates[`tasks/${deliveryTaskId}/assignment_attempts`] = 1;
   await update(ref(db), updates);
 }
 
 /**
  * Reassign an order to a different driver. Cleans up the old driver's
  * current_task_id if it pointed to this order, and resets task statuses
- * so the new driver has to accept fresh.
+ * so the new driver has to accept fresh. Resets the timeout deadline + attempts
+ * counter — manual reassign by dispatcher is treated as a fresh attempt.
  */
 export async function reassignOrder(orderId, newDriverId) {
   const pickupTaskId = `${orderId}_pickup`;
@@ -422,6 +441,7 @@ export async function reassignOrder(orderId, newDriverId) {
   if (!pickup) throw new Error(`Order ${orderId} not found`);
 
   const oldDriverId = pickup.assigned_driver_id;
+  const deadline = Date.now() + ACCEPT_TIMEOUT_MS;
 
   const updates = {};
   // Reset both tasks to assigned, clear acceptance timestamps
@@ -429,10 +449,14 @@ export async function reassignOrder(orderId, newDriverId) {
   updates[`tasks/${pickupTaskId}/status`] = TASK_STATUS.ASSIGNED;
   updates[`tasks/${pickupTaskId}/assigned_at`] = serverTimestamp();
   updates[`tasks/${pickupTaskId}/accepted_at`] = null;
+  updates[`tasks/${pickupTaskId}/assignment_deadline`] = deadline;
+  updates[`tasks/${pickupTaskId}/assignment_attempts`] = 1;
   updates[`tasks/${deliveryTaskId}/assigned_driver_id`] = newDriverId;
   updates[`tasks/${deliveryTaskId}/status`] = TASK_STATUS.ASSIGNED;
   updates[`tasks/${deliveryTaskId}/assigned_at`] = serverTimestamp();
   updates[`tasks/${deliveryTaskId}/accepted_at`] = null;
+  updates[`tasks/${deliveryTaskId}/assignment_deadline`] = deadline;
+  updates[`tasks/${deliveryTaskId}/assignment_attempts`] = 1;
 
   // If old driver was working this order, clear their current_task_id
   if (oldDriverId && oldDriverId !== newDriverId) {
