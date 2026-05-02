@@ -9,7 +9,262 @@ Each file changed in a release carries a `// version: X.Y.Z` comment at the top.
 
 ---
 
-## v1.4.1 — 2026-05-01
+## v1.6.1 — 2026-05-02
+
+### Patch — KDS cancellation visual refinement + Archivar button
+
+**Why:** v1.6.0's cancellation visual was a giant rotated CANCELADO stamp that covered the entire card — the cook couldn't actually see what they had been cooking. Per Xavier's feedback, the goal of cancellation alerts is "stop, and acknowledge what was canceled," not "obscure the order info."
+
+**Changes (KDS frontend only):**
+
+- Removed the diagonal CANCELADO overlay stamp
+- Removed the strikethrough on order details
+- Card now keeps full readability: order ID, customer name, items, notes — all clearly visible
+- Background tints to a subtle light red (`#FFF1F0`) with a thicker red left border
+- A small **CANCELADO** badge sits inline next to the order ID, just enough to mark the status
+- Item text muted to ~85% opacity for "this is off the line" cue without hiding it
+- Added an **Archivar** button (red outlined, fills red on hover) — single click clears the card
+
+**Behavior preserved from v1.6.0:**
+- Banner slide-down on cancellation arrival (unchanged)
+- Distinctive descending alert sound (unchanged)
+- Cancellations stay in their original column, visible until archived
+
+**Files changed:**
+- `xpizza-kitchen/index.html`
+
+**Action required:** redeploy `xpizza-kitchen/` to Netlify. No backend changes.
+
+---
+
+## v1.6.0 — 2026-05-02
+
+### Minor — KDS cancellation sync
+
+**Why:** When a dispatcher cancelled an order, the kitchen display had no way to know — the KDS reads from Google Sheets (legacy pipeline), and cancellations only happened in Firebase. Cooks would keep preparing orders that had already been killed.
+
+**New: `onOrderCancelled` Cloud Function (database trigger)**
+
+- Watches `/orders/{orderId}/status` in Firebase RTDB
+- When status transitions to `cancelled`, finds the matching row in the KDS Google Sheet by `order_id` (column B)
+- Updates the row's `Estado` column (column I) from `Nuevo` to `Cancelado`
+- Idempotent: skips rows already marked `Cancelado`
+- Auth: uses the Cloud Function's service account, which must be granted Editor access to the spreadsheet
+
+**KDS frontend updates:**
+- Detects `Estado: Cancelado` rows and renders them with a red highlight + CANCELADO badge (refined further in v1.6.1)
+- Shows a slide-down banner with the cancelled order ID, auto-dismisses after 12 seconds
+- Plays a distinctive descending square-wave alert sound (intentionally different from the new-order chime)
+- Cancelled orders stay visible in their column-of-origin until archived
+
+**Setup added:**
+- `KDS_SHEET_ID` and `KDS_SHEET_NAME` env vars in `xpizza-functions/.env`
+- Google Sheets API enabled in the project
+- Spreadsheet shared with the function's service account email
+
+**Files changed:**
+- `xpizza-functions/index.js` (1.2.0 → 1.2.1) — added `onOrderCancelled`
+- `xpizza-functions/package.json` — added `googleapis` dep
+- `xpizza-functions/.env.example` — documented KDS_SHEET_ID, KDS_SHEET_NAME
+- `xpizza-kitchen/index.html` — added cancellation rendering + banner + alert + archive
+
+**Lesson learned during testing:** Firebase Console's UI for editing Realtime Database values doesn't reliably fire database triggers. Test edits looked saved in the UI but produced no write events, leading to a long debug loop chasing nonexistent function failures. CLI writes (`firebase database:set ... --force`) and SDK calls (which the dispatcher uses) work correctly. Going forward: never trust Firebase Console for testing triggers. Use the dispatcher's actual Cancelar button or CLI writes.
+
+**Action required:**
+1. Enable Google Sheets API in Cloud Console
+2. Add `KDS_SHEET_ID` and `KDS_SHEET_NAME` to `xpizza-functions/.env`
+3. Share the KDS spreadsheet (Editor access) with the Cloud Function's service account
+4. `npm run deploy` from `xpizza-functions/`
+5. Replace `xpizza-kitchen/index.html` and redeploy to Netlify
+
+---
+
+## v1.5.3 — 2026-05-01
+
+### Patch — Driver app: X. Pizza logo branding
+
+**Why:** The driver PWA was showing a generic "X PIZZA" wordmark in red text as the brand mark, and a placeholder icon on the home screen. Replaced with Xavier's actual X. Pizza logo (textured/distressed serif).
+
+**Changes (driver app only):**
+
+- Replaced text wordmark on login + off-shift screens with the actual logo SVG
+- New PWA icon set generated from the source PDF logo:
+  - `icon-192.png`, `icon-512.png` (standard PWA sizes)
+  - `apple-touch-icon.png` (180×180 for iOS home screen)
+  - `favicon-32.png` (browser tab)
+  - `icon.svg` (vector, white background, used as PWA fallback + push notification badge)
+  - `icon-transparent.svg` (transparent background, used inline as the in-app brand mark)
+- Manifest updated to reference the new icon set
+- Manifest `background_color` changed from `#0a0a0a` (black) to `#ffffff` (white) — matches the driver app's light theme
+- Updated `<link rel="icon">` and `<link rel="apple-touch-icon">` tags
+
+**Notes on iOS icon caching:** to pick up the new icon, drivers must remove the existing PWA from their home screen and re-install via "Add to Home Screen." Just refreshing won't update the cached icon.
+
+**Files changed:**
+- `xpizza-driver/index.html` (1.5.0 → 1.5.1)
+- `xpizza-driver/manifest.json` — full rewrite with new icon list
+- `xpizza-driver/icon.svg` — replaced
+- `xpizza-driver/icon-transparent.svg` — new
+- `xpizza-driver/icon-192.png` — new
+- `xpizza-driver/icon-512.png` — new
+- `xpizza-driver/apple-touch-icon.png` — new
+- `xpizza-driver/favicon-32.png` — new
+
+**Action required:** redeploy `xpizza-driver/` to Netlify. Drivers should reinstall the PWA on their phones to pick up the new icon.
+
+---
+
+## v1.5.2 — 2026-05-01
+
+### Minor — Push notifications for driver app
+
+**Why:** When a driver had the PWA backgrounded or the phone locked, they had no way to know a new task was assigned to them. They had to keep checking the app actively. For Xavier's drivers — who he describes as "not paying attention, ever" — this was a real operational gap.
+
+**Driver app changes:**
+
+- Service worker (`sw.js`) v2: added `push` event handler (shows OS notification with title, body, vibration pattern) and `notificationclick` handler (focuses the app or opens it)
+- New permission UI: smart banner that detects state (enabled / not_enabled / denied / iOS-needs-install / unsupported) and shows the appropriate prompt
+- `enableNotifications()` flow: requests permission → subscribes via PushManager → stores subscription in Firebase under `/drivers/{uid}/push_subscription`
+- Banner appears on both off-shift and on-shift idle screens, refreshes on focus
+
+**Cloud Function changes (`xpizza-functions/`):**
+
+- New `notifyDriverOnAssignment` database trigger watches `/tasks/{taskId}`
+- On pickup-task assignment (transition from null → driver UID), looks up the driver's push subscription and sends a Web Push payload via the `web-push` library
+- Auto-clears dead subscriptions on 404/410 responses (driver uninstalled the PWA, browser revoked, etc.)
+- One push per order, fired specifically on the pickup task to avoid duplicates
+
+**SDK additions:**
+
+- `savePushSubscription(driverId, subscriptionJSON)`
+- `clearPushSubscription(driverId)`
+
+**iOS specifics (worth knowing):**
+
+- iOS 16.4+ required (March 2023)
+- PWA must be installed via "Add to Home Screen" — Safari tab won't work
+- Permission request must follow user gesture (handled by the Habilitar button)
+- Delivery may delay 5–30 seconds in low-power mode
+
+**Setup added:**
+- VAPID keypair generated via `web-push generate-vapid-keys`
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` env vars in `.env`
+- Public key pasted into `xpizza-driver/index.html` constant
+
+**Files changed:**
+- `xpizza-driver/index.html` (1.4.0 → 1.5.0)
+- `xpizza-driver/sw.js` — added push handlers
+- `xpizza-driver/xpizza-delivery.js` (SDK 1.4.1 → 1.5.0)
+- `xpizza-dispatch/index.html` — SDK cache buster bumped (no behavior change)
+- `xpizza-dispatch/xpizza-delivery.js` — SDK kept in sync
+- `xpizza-functions/index.js` (1.0.1 → 1.1.0) — added `notifyDriverOnAssignment`
+- `xpizza-functions/package.json` — added `web-push` dep
+- `xpizza-functions/.env.example` — documented VAPID keys
+- `xpizza-functions/PUSH_SETUP.md` — full deployment guide
+
+**Action required:** see `xpizza-functions/PUSH_SETUP.md`.
+
+---
+
+## v1.5.1 — 2026-05-01
+
+### Minor — Slide-to-confirm action buttons (driver app)
+
+**Why:** The driver app's three transactional buttons (Aceptar pedido, Recogí el pedido, Entregado) were tap-to-fire — easy to misclick when the phone was on the handlebar mount or jostled in transit. Real drivers in real motion would occasionally fire actions accidentally. Slide-to-confirm requires deliberate gesture motion that's effectively impossible to trigger accidentally.
+
+**Changes (driver app only):**
+
+- Replaced all three action buttons with a slide-to-confirm component
+- 60px-wide draggable thumb on a colored track matching the action's color (red for accept, amber for pickup, green for delivered)
+- Subtle pulsing shadow on the thumb when idle, hinting that it's draggable
+- ~85% travel threshold to fire — release before that → spring back, no action
+- Color fills behind the thumb as it moves, providing real-time visual feedback
+- On successful action: parent re-renders, slider replaced with the next phase's slider
+- On failed action: slider resets to start so the driver can retry; toast shows the error
+- Removed the `confirm()` dialog on Entregado — sliding IS the confirmation now
+
+**Misclick protection in numbers:** requires deliberate touchdown ON the 60px thumb + continuous drag motion of 250+ pixels + release at the right end. Three accidental motions in sequence is essentially impossible.
+
+**Files changed:**
+- `xpizza-driver/index.html` (1.3.2 → 1.4.0)
+
+**Action required:** redeploy `xpizza-driver/` to Netlify.
+
+---
+
+## v1.5.0 — 2026-05-01
+
+### Major — Make.com migration: Onfleet replaced by Cloud Function → Firebase
+
+The dispatcher has been functional for weeks but disconnected from real customer orders — every test order had to be created manually. This release wires up the actual production pipeline: orders submitted through `xpizzaorders.netlify.app` now flow through Make.com → a new Cloud Function → Firebase RTDB → the dispatcher, in seconds, end to end.
+
+#### What changed in the order pipeline
+
+**Before (broken since Onfleet trial expired):**
+```
+Order form → Make.com → [Google Sheets] + [UltraMsg WhatsApp] + [Onfleet Create Task ×2 → DEAD]
+```
+
+**After:**
+```
+Order form → Make.com → [Google Sheets] + [UltraMsg WhatsApp] + [Cloud Function → Firebase]
+                                                                       ↓
+                                                                  [Dispatcher]
+```
+
+The Google Sheets log and UltraMsg confirmation WhatsApp are unchanged. Only the Onfleet portion is replaced.
+
+#### New: Cloud Function (`xpizza-functions/`)
+
+A single endpoint (`createOrder`) with a few important properties:
+
+- **Shared-secret auth**: Make.com holds only a 64-char secret in its bearer token; never gets Firebase admin credentials. If the secret leaks, blast radius is "an attacker can create fake orders" — they cannot read the database, cannot touch drivers, cannot impersonate dispatchers. Compare to giving Make a Firebase service account, where leak = total database compromise.
+- **Idempotent**: Make.com retries on network failure are safe; a duplicate `order_id` returns 200 with `idempotent: true` rather than overwriting.
+- **Server-side validation**: malformed orders are rejected at the function with a clear error rather than polluting the dispatcher.
+- **Atomic writes**: order + pickup task + delivery task all created in one multi-path RTDB update. Either all three exist or none do.
+- **Cheap**: ~50 invocations/day vs. 2M/month free tier = effectively free.
+
+#### Why a Cloud Function instead of direct Firebase REST writes from Make
+
+Three options were on the table for "how does Make write to Firebase":
+
+1. **Database secret** (legacy, deprecated, single-token-grants-everything)
+2. **Service account JWT** (proper, but holding Firebase admin credentials inside Make is a bigger blast radius than necessary, plus JWT signing in Make is fiddly)
+3. **Cloud Function with shared secret** (chosen) — Make's credential only authorizes one specific operation, server-side validation lives in code rather than Make's UI, easier to extend later (e.g. when we eventually want to send delivery-completion WhatsApp, that logic has a clean home)
+
+#### What's NOT included in this release
+
+- **Delivery confirmation WhatsApp**: Verified with Xavier that this never existed (he assumed Onfleet was sending it; Onfleet was not). Zero regression. Can be added in a future release if customer feedback requests it.
+- **Kitchen alerts**: The KDS reads from the Google Sheets log, which is unchanged. No work needed.
+- **App version bumps**: Driver and dispatcher app versions remain at v1.3.1 and v1.4.1 respectively. The migration is purely backend infrastructure — no client code changed.
+
+#### Deployment artifact
+
+New folder `xpizza-functions/` contains:
+- `index.js` — the function source
+- `package.json` — Node 20, firebase-admin v12, firebase-functions v6
+- `.env.example` — template for the shared secret
+- `.gitignore` — keeps `.env` and `node_modules/` out of source control
+- `README.md` — full setup + deployment guide + Make.com wiring instructions
+
+#### Action required
+
+Follow the deployment guide at `xpizza-functions/README.md`. Roughly:
+
+1. `npm install -g firebase-tools && firebase login`
+2. `cd xpizza-functions && firebase use xpizza-delivery && npm install`
+3. Generate secret: `openssl rand -hex 32`
+4. `cp .env.example .env`, paste secret
+5. `npm run deploy` → copy the Function URL printed at the end
+6. In Make.com, disable the two Onfleet HTTP modules in the Delivery route
+7. Add a new HTTP module pointing to the Function URL with the bearer token + JSON body (exact config in README)
+8. Test with one real order, watch it appear in the dispatcher
+
+Once verified, the entire system is production-ready: real customers can place delivery orders and you'll see them in the dispatcher within seconds.
+
+---
+
+
 
 ### Patch — Resizable sidebar + decluttered map controls
 
