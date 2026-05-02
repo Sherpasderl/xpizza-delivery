@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Dispatch - version: 1.5.2 -->
+<!-- X Pizza Dispatch - version: 1.5.3 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1483,15 +1483,18 @@ function subscribeAll() {
   // Dispatcher alerts: floating banner + sound when auto-assign couldn't
   // find a driver, or other situations the dispatcher needs to see.
   let lastAlertIds = new Set();
+  let alertsInitialized = false;  // distinguishes "first subscription fire" from real updates
   XPD.subscribeToDispatcherAlerts((alerts) => {
     const currentIds = new Set(Object.keys(alerts));
     // Detect freshly-arrived alerts (in current but not in last)
     const freshIds = [...currentIds].filter(id => !lastAlertIds.has(id));
-    if (freshIds.length > 0 && lastAlertIds.size > 0) {
-      // Play the existing chime — same sound as new orders is fine since
-      // these are urgent dispatcher attention events
+    // Play chime on any genuinely new alert AFTER initial load.
+    // (size-based check would miss the case where initial load was empty
+    // and the very first alert arrives — that's still a "fresh" event.)
+    if (freshIds.length > 0 && alertsInitialized) {
       try { $('chime').play().catch(() => {}); } catch {}
     }
+    alertsInitialized = true;
     lastAlertIds = currentIds;
     renderDispatcherAlerts(alerts);
   });
@@ -1539,6 +1542,20 @@ function renderDispatcherAlerts(alerts) {
           <div class="alert-text">
             <strong>No hay repartidores disponibles</strong>
             Pedido #${a.order_id} · ${a.customer_name || 'Cliente'}${total} — asigna manualmente
+          </div>
+          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">✕</button>
+        </div>
+      `;
+    }
+    if (a.type === 'no_response_takeover') {
+      const total = a.total != null ? ` · L${a.total}` : '';
+      const attempts = a.attempts || 2;
+      return `
+        <div class="dispatcher-alert" data-alert-id="${alertId}">
+          <span class="alert-icon">⚠</span>
+          <div class="alert-text">
+            <strong>Sin respuesta de repartidores</strong>
+            Pedido #${a.order_id} · ${a.customer_name || 'Cliente'}${total} — ${attempts} intentos sin aceptación, asigna manualmente
           </div>
           <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">✕</button>
         </div>
