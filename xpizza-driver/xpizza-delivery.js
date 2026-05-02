@@ -1,6 +1,6 @@
 /**
  * X Pizza Delivery — Shared SDK
- * version: 1.5.0
+ * version: 1.6.0
  *
  * Used by both the driver PWA and the dispatcher view.
  * Wraps Firebase Realtime Database with the operations needed
@@ -27,6 +27,7 @@ import {
   set,
   update,
   get,
+  remove,
   serverTimestamp,
   off
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
@@ -343,6 +344,44 @@ export function subscribeToTasks(callback) {
 export function subscribeToOrders(callback) {
   const ordersRef = ref(db, 'orders');
   return onValue(ordersRef, (snap) => callback(snap.val() || {}));
+}
+
+/**
+ * Dispatcher alerts: things the dispatcher needs to be notified about
+ * (e.g., auto-assign couldn't find a driver). Each alert is a record
+ * under /dispatcher_alerts/{alertId} that the dispatcher renders as a
+ * banner + sound. Dispatcher calls dismissDispatcherAlert(alertId) to
+ * clear it.
+ */
+export function subscribeToDispatcherAlerts(callback) {
+  const alertsRef = ref(db, 'dispatcher_alerts');
+  return onValue(alertsRef, (snap) => callback(snap.val() || {}));
+}
+
+export async function dismissDispatcherAlert(alertId) {
+  await remove(ref(db, `dispatcher_alerts/${alertId}`));
+}
+
+/**
+ * Auto-assignment global toggle. When false, the autoAssignOnOrderCreate
+ * Cloud Function still fires but bails immediately, leaving orders in
+ * SIN ASIGNAR for manual handling. Defaults to TRUE if unset.
+ */
+export async function getAutoAssignEnabled() {
+  const snap = await get(ref(db, 'config/auto_assign_enabled'));
+  const val = snap.val();
+  return val !== false;  // default ON
+}
+
+export async function setAutoAssignEnabled(enabled) {
+  await set(ref(db, 'config/auto_assign_enabled'), !!enabled);
+}
+
+export function subscribeToAutoAssignEnabled(callback) {
+  return onValue(ref(db, 'config/auto_assign_enabled'), (snap) => {
+    const val = snap.val();
+    callback(val !== false);  // default ON
+  });
 }
 
 export async function assignTask(taskId, driverId) {

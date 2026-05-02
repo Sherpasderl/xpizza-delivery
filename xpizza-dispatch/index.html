@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Dispatch - version: 1.4.1 -->
+<!-- X Pizza Dispatch - version: 1.5.0 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -115,6 +115,101 @@
     font-size: 12px;
   }
   .topbar-btn:hover { background: var(--surface-3); color: var(--text); }
+
+  /* ==================== AUTO-ASSIGN TOGGLE ==================== */
+  .auto-assign-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-soft);
+    font-size: 11px;
+    font-family: inherit;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: background 0.15s;
+  }
+  .auto-assign-toggle:hover { background: var(--surface-3); }
+  .auto-assign-toggle .aa-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    transition: background 0.2s;
+  }
+  .auto-assign-toggle.on { color: var(--success); border-color: var(--success); }
+  .auto-assign-toggle.on .aa-dot {
+    background: var(--success);
+    box-shadow: 0 0 6px rgba(22,163,74,0.6);
+  }
+
+  /* ==================== DISPATCHER ALERT BANNER ==================== */
+  .dispatcher-alerts {
+    position: fixed;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+  .dispatcher-alert {
+    background: var(--accent);
+    color: white;
+    padding: 14px 20px;
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 13px;
+    pointer-events: auto;
+    min-width: 360px;
+    max-width: 540px;
+    animation: alert-slide-in 0.35s cubic-bezier(0.18, 1.18, 0.32, 1);
+  }
+  .dispatcher-alert .alert-icon {
+    font-size: 24px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .dispatcher-alert .alert-text {
+    flex: 1;
+    line-height: 1.35;
+  }
+  .dispatcher-alert .alert-text strong {
+    display: block;
+    font-weight: 700;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 12px;
+  }
+  .dispatcher-alert .alert-dismiss {
+    background: rgba(255,255,255,0.15);
+    border: none;
+    color: white;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .dispatcher-alert .alert-dismiss:hover { background: rgba(255,255,255,0.28); }
+  @keyframes alert-slide-in {
+    from { opacity: 0; transform: translateY(-20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
 
   /* ==================== LAYOUT ==================== */
   .layout {
@@ -1044,6 +1139,10 @@
     <span class="brand">X PIZZA</span>
     <span class="brand-sub">DISPATCH</span>
     <div class="topbar-spacer"></div>
+    <button class="auto-assign-toggle" id="auto-assign-toggle" title="Asignación automática de pedidos">
+      <span class="aa-dot"></span>
+      <span class="aa-label">Auto-asignar</span>
+    </button>
     <div class="topbar-stat">DRIVERS <span class="num" id="stat-drivers">0</span></div>
     <div class="topbar-stat">PENDIENTES <span class="num" id="stat-pending">0</span></div>
     <div class="topbar-stat">ACTIVOS <span class="num" id="stat-active">0</span></div>
@@ -1052,6 +1151,9 @@
     <span class="version-tag" data-version-display></span>
     <button class="topbar-btn" id="signout-btn">Salir</button>
   </header>
+
+  <!-- Floating dispatcher alerts (e.g., "no drivers available") -->
+  <div class="dispatcher-alerts" id="dispatcher-alerts"></div>
 
   <div class="layout">
     <div id="map-container">
@@ -1127,7 +1229,7 @@
 <audio id="chime" preload="auto" src="data:audio/wav;base64,UklGRpgEAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YXQEAAAAAB6BPL5UfHO+Z3iuvVFwjLzsZcG62FaXuJREprWCMc6yGRr2r9ELY6w+/bypbrsap6e4QqL2tQqcYrJalfWtQ41QqDqEFKLleZmaSWzjkVtdyYcvTfV7yzs1bvEpumDvFAdSLP9lQs7olDNq06H8t3GgdSlnnP5ejZl3VnSWAUvxkwk/zZHCMsKO1iSEi2sVmYl4B5SnhBuQ7Y8Yi5KaYIYLpQOC+a4kfqK4Q3rLwJp17chV8fHQ0+0u2I/qgeIc5e/d+e9c2p36id3Z+RvhAAVk4rkO0+EhF7Pi6h2J5CMjL+enKw7p8zE+7QEzy/Ba/PQqOjbz3bmrpe+4U64I7Bu2/+1tt+rkCMLR3YbR+9wB0arQv9aQwpHcrdkbsuTpHt63+fmvDQqFsKgaXLm0KuLA9Tj9zXBExt1iSFXxw5BV0MqTU/PXiE3p4gZECfFgPb74sjXTyz0r/MJoH1q1ulfsq16YIqlWR5ldqr1+gquumGHXrPpOa6+YtZpzlsiBGZysZkJZuhJB1cRmKkjOrwQYV8z3+6TbQQTjs0zaq9G/y0T0ELGR/Wxe7iKArr+QjTW0vIUR9LKCrmcwxFCTBrSnaqltogyZJaTuhmihKHt2qZP3ZtmVSnXNoTuGLpv9NTKkahMbpDEmEqV7CijdpacrfKf7rIyssLGFqvyxdpyjtKaZD7zJpbmKzHGeP9MhmgDX8I1q3KOVw9+0nqLflIXDKcpoo7vR9XW3fOUmoxnzKICYAagvjF65KZv+xXSVSdYWifGhJVJ8q2x+L8DohHK8XKuy/24GpxTN0t+/BquKt9zrDqe9wCPtl6VG0Ynk56P82DPhQqIO5InisaOI6qLfhKsK8dXVGbNI94i6t7qy/kPDb6PDw1XJG6lk0lTUW7DG7P3mBLwoBdHSbsinINnCQNAh4qvJiNiV+PHV4d8I5/7eNeS97kfaLtw2/E/UNMyCBdHQXr+vDdHQTLapEkPPoaLrFmHHYJSJJD3FvY+1NA7BIIPAavVk26GD16FtCOBu44tpu9eUCbE65Md+pmGzKLxEnJa3uTmMc8sIfWWG43hhU/njWvdnQHcl1lWOiECYU9Mvr9NhDMS1RrVuxXKtFrLrwHGoP710qGm/rrh1xL3OQ8wB14TQzeNz1qLoBdyN6/HekPSf4yX42Oub+0X1VgFJ/aQHX/gKDZ4DiQuaCUYRZBJyExoYxBR6GwUYAB7xGyAffx80HrEhdR4uIoMfsh/mIQ8c+yKsFXcg3w6hHU8GoBMt/0sJ8/qEAfn5fPosAdj+3wYHBL4LgQjxC74JFwkjCIcD3wU3/Zr/BfhT+fX1V/gE+Bj7T/oP/VL8gv7H+kj91vap+kf2qPmt+Pf6evxh/ID/AwHyAIIDswEvBL8AcQNoAB8DsgEfBKQEkgaPBugHWAU3BqQB8gKZ/r//9/0V/0kAvAFPATEC/wGWAlAB7QGvAMcAGgGOATgB0AHFASIB1AHIANUACgEnAYQBkAHzAOwAvf6V/i37jvqB+W74p/lA+ML4f/ec+AT4LfqL+ZD8O/sB/L/6CfsW+UH7Ovqq/Iz8H/2N/Ej9b/0z//z/xQDmAW0BRAH+ANgAbgFGAvwBkgIcAgUC0AGtAYIBpgEGAaIB1ACtAZQB+gKdA8YDZQOJAvkC2QGiAlsB6AHAAVwCmAJzAhsCegHaACgAmwDUACEBowAdAVgADwGCAB0BPAFKAdEBnQF/AHL/JP4w/h//+f7K/2j+ev6n/Az8U/qz+vL5o/oS+5L7H/zT+xv8E/x4/Lr8H/49/g==" type="audio/wav"></audio>
 
 <script type="module">
-import * as XPD from './xpizza-delivery.js?v=11';
+import * as XPD from './xpizza-delivery.js?v=12';
 
 // ============================================================
 // System version (bumped each release)
@@ -1377,6 +1479,94 @@ function subscribeAll() {
     updateCustomerMarkers();
     updateStats();
   });
+
+  // Dispatcher alerts: floating banner + sound when auto-assign couldn't
+  // find a driver, or other situations the dispatcher needs to see.
+  let lastAlertIds = new Set();
+  XPD.subscribeToDispatcherAlerts((alerts) => {
+    const currentIds = new Set(Object.keys(alerts));
+    // Detect freshly-arrived alerts (in current but not in last)
+    const freshIds = [...currentIds].filter(id => !lastAlertIds.has(id));
+    if (freshIds.length > 0 && lastAlertIds.size > 0) {
+      // Play the existing chime — same sound as new orders is fine since
+      // these are urgent dispatcher attention events
+      try { $('chime').play().catch(() => {}); } catch {}
+    }
+    lastAlertIds = currentIds;
+    renderDispatcherAlerts(alerts);
+  });
+
+  // Auto-assign toggle: reflect state from Firebase, sync changes back
+  XPD.subscribeToAutoAssignEnabled((enabled) => {
+    const btn = $('auto-assign-toggle');
+    if (btn) btn.classList.toggle('on', enabled);
+    const label = btn?.querySelector('.aa-label');
+    if (label) label.textContent = enabled ? 'Auto-asignar ON' : 'Auto-asignar OFF';
+  });
+
+  $('auto-assign-toggle').addEventListener('click', async () => {
+    const isOn = $('auto-assign-toggle').classList.contains('on');
+    try {
+      await XPD.setAutoAssignEnabled(!isOn);
+      toast(isOn ? 'Auto-asignación desactivada' : 'Auto-asignación activada',
+            isOn ? 'error' : 'success');
+    } catch (e) {
+      toast('Error al cambiar configuración', 'error');
+    }
+  });
+}
+
+// ============================================================
+// Dispatcher alert banner rendering
+// ============================================================
+function renderDispatcherAlerts(alerts) {
+  const container = $('dispatcher-alerts');
+  if (!container) return;
+
+  const ids = Object.keys(alerts);
+  if (ids.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = ids.map(alertId => {
+    const a = alerts[alertId];
+    if (a.type === 'no_drivers_available') {
+      const total = a.total != null ? ` · L${a.total}` : '';
+      return `
+        <div class="dispatcher-alert" data-alert-id="${alertId}">
+          <span class="alert-icon">⚠</span>
+          <div class="alert-text">
+            <strong>No hay repartidores disponibles</strong>
+            Pedido #${a.order_id} · ${a.customer_name || 'Cliente'}${total} — asigna manualmente
+          </div>
+          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">✕</button>
+        </div>
+      `;
+    }
+    // Generic fallback for unknown alert types
+    return `
+      <div class="dispatcher-alert" data-alert-id="${alertId}">
+        <span class="alert-icon">⚠</span>
+        <div class="alert-text">${escapeHtml(a.type || 'Alerta')}</div>
+        <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">✕</button>
+      </div>
+    `;
+  }).join('');
+
+  // Wire up dismiss buttons
+  container.querySelectorAll('.alert-dismiss').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.dismissId;
+      try { await XPD.dismissDispatcherAlert(id); } catch {}
+    });
+  });
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
 }
 
 // Render every 5s to refresh ping freshness even without data changes

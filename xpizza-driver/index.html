@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Driver - version: 1.6.1 -->
+<!-- X Pizza Driver - version: 1.7.0 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -738,6 +738,130 @@
   }
   .notif-banner .enable-btn:active { transform: scale(0.96); }
 
+  /* ==================== HISTORY MODAL ==================== */
+  .history-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 200;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .history-modal.shown {
+    display: flex;
+    animation: fade-in 0.2s ease;
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  .history-sheet {
+    background: var(--bg);
+    width: 100%;
+    max-width: 480px;
+    max-height: 85vh;
+    border-radius: 18px 18px 0 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slide-up 0.28s cubic-bezier(0.18, 1.18, 0.32, 1);
+  }
+  @keyframes slide-up {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+  .history-header {
+    padding: 16px 18px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .history-title {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    letter-spacing: 0.04em;
+    flex: 1;
+  }
+  .history-close {
+    background: var(--surface);
+    border: none;
+    color: var(--text);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .history-summary {
+    padding: 18px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    gap: 18px;
+  }
+  .history-stat {
+    flex: 1;
+    text-align: center;
+  }
+  .history-stat .stat-num {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 800;
+    font-size: 28px;
+    color: var(--success);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .history-stat .stat-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-soft);
+  }
+  .history-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+  .history-item {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .history-item:last-child { border-bottom: none; }
+  .history-item-time {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-soft);
+    flex-shrink: 0;
+    width: 56px;
+  }
+  .history-item-name {
+    flex: 1;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .history-item-total {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--text);
+    flex-shrink: 0;
+  }
+  .history-empty {
+    padding: 48px 18px;
+    text-align: center;
+    color: var(--text-soft);
+    font-size: 14px;
+  }
+
   /* ==================== END SHIFT ==================== */
   .end-shift-wrap {
     padding: 32px 14px 24px;
@@ -868,6 +992,13 @@
     <div class="status-dot" id="status-dot"></div>
     <div class="status-label" id="status-label">DISPONIBLE</div>
     <div class="gps-meta" id="gps-meta">—</div>
+    <button class="icon-btn" id="history-btn" title="Hoy">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12a9 9 0 1 0 3-6.7L3 8"/>
+        <path d="M3 3v5h5"/>
+        <path d="M12 7v5l3 3"/>
+      </svg>
+    </button>
     <button class="icon-btn" id="sound-toggle" title="Sonido">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M11 5L6 9H2v6h4l5 4V5z"/>
@@ -910,15 +1041,38 @@
 <div class="toast" id="toast"></div>
 
 <!-- Hidden audio for new-task chime -->
+<!-- ======================================================== -->
+<!-- HISTORY MODAL — driver's deliveries today -->
+<!-- ======================================================== -->
+<div class="history-modal" id="history-modal">
+  <div class="history-sheet">
+    <div class="history-header">
+      <div class="history-title">HOY</div>
+      <button class="history-close" id="history-close" title="Cerrar">✕</button>
+    </div>
+    <div class="history-summary">
+      <div class="history-stat">
+        <div class="stat-num" id="history-count">0</div>
+        <div class="stat-label">Entregados</div>
+      </div>
+      <div class="history-stat">
+        <div class="stat-num" id="history-total">L0</div>
+        <div class="stat-label">Total</div>
+      </div>
+    </div>
+    <div class="history-list" id="history-list"></div>
+  </div>
+</div>
+
 <audio id="chime" preload="auto" src="data:audio/wav;base64,UklGRpgEAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YXQEAAAAAB6BPL5UfHO+Z3iuvVFwjLzsZcG62FaXuJREprWCMc6yGRr2r9ELY6w+/bypbrsap6e4QqL2tQqcYrJalfWtQ41QqDqEFKLleZmaSWzjkVtdyYcvTfV7yzs1bvEpumDvFAdSLP9lQs7olDNq06H8t3GgdSlnnP5ejZl3VnSWAUvxkwk/zZHCMsKO1iSEi2sVmYl4B5SnhBuQ7Y8Yi5KaYIYLpQOC+a4kfqK4Q3rLwJp17chV8fHQ0+0u2I/qgeIc5e/d+e9c2p36id3Z+RvhAAVk4rkO0+EhF7Pi6h2J5CMjL+enKw7p8zE+7QEzy/Ba/PQqOjbz3bmrpe+4U64I7Bu2/+1tt+rkCMLR3YbR+9wB0arQv9aQwpHcrdkbsuTpHt63+fmvDQqFsKgaXLm0KuLA9Tj9zXBExt1iSFXxw5BV0MqTU/PXiE3p4gZECfFgPb74sjXTyz0r/MJoH1q1ulfsq16YIqlWR5ldqr1+gquumGHXrPpOa6+YtZpzlsiBGZysZkJZuhJB1cRmKkjOrwQYV8z3+6TbQQTjs0zaq9G/y0T0ELGR/Wxe7iKArr+QjTW0vIUR9LKCrmcwxFCTBrSnaqltogyZJaTuhmihKHt2qZP3ZtmVSnXNoTuGLpv9NTKkahMbpDEmEqV7CijdpacrfKf7rIyssLGFqvyxdpyjtKaZD7zJpbmKzHGeP9MhmgDX8I1q3KOVw9+0nqLflIXDKcpoo7vR9XW3fOUmoxnzKICYAagvjF65KZv+xXSVSdYWifGhJVJ8q2x+L8DohHK8XKuy/24GpxTN0t+/BquKt9zrDqe9wCPtl6VG0Ynk56P82DPhQqIO5InisaOI6qLfhKsK8dXVGbNI94i6t7qy/kPDb6PDw1XJG6lk0lTUW7DG7P3mBLwoBdHSbsinINnCQNAh4qvJiNiV+PHV4d8I5/7eNeS97kfaLtw2/E/UNMyCBdHQXr+vDdHQTLapEkPPoaLrFmHHYJSJJD3FvY+1NA7BIIPAavVk26GD16FtCOBu44tpu9eUCbE65Md+pmGzKLxEnJa3uTmMc8sIfWWG43hhU/njWvdnQHcl1lWOiECYU9Mvr9NhDMS1RrVuxXKtFrLrwHGoP710qGm/rrh1xL3OQ8wB14TQzeNz1qLoBdyN6/HekPSf4yX42Oub+0X1VgFJ/aQHX/gKDZ4DiQuaCUYRZBJyExoYxBR6GwUYAB7xGyAffx80HrEhdR4uIoMfsh/mIQ8c+yKsFXcg3w6hHU8GoBMt/0sJ8/qEAfn5fPosAdj+3wYHBL4LgQjxC74JFwkjCIcD3wU3/Zr/BfhT+fX1V/gE+Bj7T/oP/VL8gv7H+kj91vap+kf2qPmt+Pf6evxh/ID/AwHyAIIDswEvBL8AcQNoAB8DsgEfBKQEkgaPBugHWAU3BqQB8gKZ/r//9/0V/0kAvAFPATEC/wGWAlAB7QGvAMcAGgGOATgB0AHFASIB1AHIANUACgEnAYQBkAHzAOwAvf6V/i37jvqB+W74p/lA+ML4f/ec+AT4LfqL+ZD8O/sB/L/6CfsW+UH7Ovqq/Iz8H/2N/Ej9b/0z//z/xQDmAW0BRAH+ANgAbgFGAvwBkgIcAgUC0AGtAYIBpgEGAaIB1ACtAZQB+gKdA8YDZQOJAvkC2QGiAlsB6AHAAVwCmAJzAhsCegHaACgAmwDUACEBowAdAVgADwGCAB0BPAFKAdEBnQF/AHL/JP4w/h//+f7K/2j+ev6n/Av8U/qz+vL5o/oS+5L7H/zT+xv8E/x4/Lr8H/49/g==" type="audio/wav"></audio>
 
 <script type="module">
-import * as XPD from './xpizza-delivery.js?v=11';
+import * as XPD from './xpizza-delivery.js?v=12';
 
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '1.6.1';
+const SYSTEM_VERSION = '1.7.0';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -1242,6 +1396,97 @@ $('sound-toggle').addEventListener('click', () => {
 });
 
 // ============================================================
+// Daily history modal — driver's deliveries today
+// ============================================================
+//
+// Opens a bottom sheet with a count + earnings total + list of today's
+// completed deliveries for the current driver. Pulls from /orders, filters
+// by assigned_driver_id and delivered_at >= today midnight.
+
+$('history-btn').addEventListener('click', () => openHistoryModal());
+$('history-close').addEventListener('click', () => closeHistoryModal());
+
+// Tap outside the sheet to dismiss
+$('history-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'history-modal') closeHistoryModal();
+});
+
+function openHistoryModal() {
+  if (!currentUser) return;
+  renderHistoryModal();
+  $('history-modal').classList.add('shown');
+}
+
+function closeHistoryModal() {
+  $('history-modal').classList.remove('shown');
+}
+
+function renderHistoryModal() {
+  // "Today" boundary: local midnight in the driver's timezone
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayMs = todayStart.getTime();
+
+  // Find delivery tasks completed by this driver today.
+  // The data flow: a delivery task gets `completed_at` when the driver
+  // marks it delivered (set in SDK completeTask). We match against the
+  // driver's tasks rather than orders because the order has
+  // delivered_at but the driver might not be the one who triggered that
+  // (e.g. dispatcher cancellation flow). Tasks are the source of truth.
+  const myDeliveries = [];
+  for (const taskId of Object.keys(allTasks)) {
+    const t = allTasks[taskId];
+    if (!t) continue;
+    if (t.type !== 'delivery') continue;
+    if (t.assigned_driver_id !== currentUser.uid) continue;
+    if (t.status !== 'completed') continue;
+    if (!t.completed_at || t.completed_at < todayMs) continue;
+    myDeliveries.push({ task: t, taskId });
+  }
+
+  // Sort newest first
+  myDeliveries.sort((a, b) => b.task.completed_at - a.task.completed_at);
+
+  // Compute totals from the linked order (task doesn't have $ amount)
+  let totalLempiras = 0;
+  myDeliveries.forEach(({ task }) => {
+    const order = allOrders[task.order_id];
+    if (order && typeof order.total === 'number') totalLempiras += order.total;
+  });
+
+  $('history-count').textContent = myDeliveries.length;
+  $('history-total').textContent = `L${totalLempiras.toFixed(0)}`;
+
+  const list = $('history-list');
+  if (myDeliveries.length === 0) {
+    list.innerHTML = '<div class="history-empty">Aún no has completado entregas hoy.</div>';
+    return;
+  }
+
+  list.innerHTML = myDeliveries.map(({ task }) => {
+    const order = allOrders[task.order_id] || {};
+    const time = new Date(task.completed_at);
+    const hh = String(time.getHours()).padStart(2, '0');
+    const mm = String(time.getMinutes()).padStart(2, '0');
+    const name = order.recipient_name || task.recipient_name || 'Cliente';
+    const total = typeof order.total === 'number' ? `L${order.total.toFixed(0)}` : '—';
+    return `
+      <div class="history-item">
+        <div class="history-item-time">${hh}:${mm}</div>
+        <div class="history-item-name">${escapeHtml(name)}</div>
+        <div class="history-item-total">${total}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+// ============================================================
 // Manual "I've arrived at the restaurant" override
 // ============================================================
 $('arrive-btn').addEventListener('click', async () => {
@@ -1308,10 +1553,46 @@ function renderStatusBar() {
   };
   lbl.textContent = labelMap[status] || status?.toUpperCase() || '—';
 
-  // GPS freshness
+  // Status meta: GPS freshness in most states, but when returning to the
+  // restaurant (en_route_delivery or returning), show estimated time back.
+  // This gives the driver situational awareness without opening a map.
   const stale = XPD.isStalePing(driverState.last_ping);
+  if (!stale && (status === 'en_route_delivery' || status === 'returning')
+      && typeof driverState.lat === 'number' && typeof driverState.lng === 'number') {
+    const eta = computeReturnEta(driverState.lat, driverState.lng);
+    if (eta != null) {
+      meta.textContent = `↩ ${eta} min`;
+      meta.classList.remove('stale');
+      return;
+    }
+  }
   meta.textContent = `GPS ${stale ? 'inactivo' : 'vivo'}`;
   meta.classList.toggle('stale', stale);
+}
+
+/**
+ * Estimate return-to-restaurant time in minutes based on straight-line
+ * distance from a current location.
+ *
+ * We use 25 km/h as an average San Pedro Sula city speed — slow enough to
+ * account for traffic, lights, and the fact that straight-line < road
+ * distance, fast enough to not depress the driver. Padded by 2 min for
+ * arriving + parking.
+ *
+ * Returns null if input is invalid.
+ */
+function computeReturnEta(lat, lng) {
+  const RESTAURANT_LAT = 15.507489753573818;
+  const RESTAURANT_LNG = -88.0398486953722;
+  const distanceKm = XPD.haversineDistance(lat, lng, RESTAURANT_LAT, RESTAURANT_LNG);
+  if (!isFinite(distanceKm)) return null;
+  // Within 100m of restaurant — practically there
+  if (distanceKm < 0.1) return 0;
+  const ROAD_FACTOR = 1.3;          // straight-line → road distance estimate
+  const SPEED_KMH = 25;
+  const PARKING_MIN = 2;
+  const minutes = (distanceKm * ROAD_FACTOR / SPEED_KMH) * 60 + PARKING_MIN;
+  return Math.max(1, Math.round(minutes));
 }
 
 function renderActiveAndQueue() {
