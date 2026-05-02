@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Driver - version: 1.6.0 -->
+<!-- X Pizza Driver - version: 1.6.1 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -89,13 +89,14 @@
 
   /* ==================== DUTY TOGGLE ==================== */
   /* Always-visible on/off-duty switch in the header.
-     Tapping it starts or ends the driver's shift. */
+     Tapping it starts or ends the driver's shift.
+     Color convention: GREEN = working, RED = not working. */
   .duty-toggle {
     position: relative;
-    width: 88px;
-    height: 36px;
-    border-radius: 18px;
-    background: #e2e8f0;
+    width: 56px;
+    height: 30px;
+    border-radius: 15px;
+    background: var(--accent);    /* off-duty default: red */
     border: none;
     padding: 0;
     cursor: pointer;
@@ -105,33 +106,21 @@
     align-items: center;
     -webkit-tap-highlight-color: transparent;
   }
-  .duty-toggle.on { background: var(--accent); }
+  .duty-toggle.on { background: var(--success); }   /* on-duty: green */
   .duty-toggle .duty-thumb {
     position: absolute;
     top: 3px;
     left: 3px;
-    width: 30px;
-    height: 30px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
     background: #ffffff;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
     transition: transform 0.25s cubic-bezier(0.32, 1.4, 0.5, 1);
   }
-  .duty-toggle.on .duty-thumb { transform: translateX(52px); }
-  .duty-toggle .duty-arrow {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 14px;
-    color: var(--text-dim);
-    transition: opacity 0.2s, color 0.2s;
-    pointer-events: none;
-  }
-  .duty-toggle .duty-arrow.left  { left: 12px; }
-  .duty-toggle .duty-arrow.right { right: 12px; }
-  .duty-toggle.on .duty-arrow.left { opacity: 0; }
-  .duty-toggle:not(.on) .duty-arrow.right { opacity: 0; }
-  .duty-toggle.on .duty-arrow.right { color: white; }
+  .duty-toggle.on .duty-thumb { transform: translateX(26px); }
+  /* Arrows hidden: color alone communicates state on this smaller size */
+  .duty-toggle .duty-arrow { display: none; }
 
   /* Off-shift header (mirrors status-bar layout) */
   .offshift-header {
@@ -929,7 +918,7 @@ import * as XPD from './xpizza-delivery.js?v=11';
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '1.6.0';
+const SYSTEM_VERSION = '1.6.1';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
