@@ -1,0 +1,8 @@
+# Netlify config for the kitchen display site
+# This file overrides the dashboard settings.
+# See: https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  publish = "."
+
+# No build command needed — site is static HTML/CSS/JS, served as-is.
