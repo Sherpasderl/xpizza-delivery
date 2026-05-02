@@ -56,6 +56,14 @@
     "config": {
       ".read": "auth != null",
       ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
+    },
+
+    "dispatcher_alerts": {
+      ".read": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
+      ".indexOn": ["created_at"],
+      "$alert_id": {
+        ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
+      }
     }
   }
 }
