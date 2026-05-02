@@ -1,6 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Driver - version: 1.5.1 -->
-
+<!-- X Pizza Driver - version: 1.6.0 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -87,6 +86,81 @@
     gap: 12px;
     flex-shrink: 0;
   }
+
+  /* ==================== DUTY TOGGLE ==================== */
+  /* Always-visible on/off-duty switch in the header.
+     Tapping it starts or ends the driver's shift. */
+  .duty-toggle {
+    position: relative;
+    width: 88px;
+    height: 36px;
+    border-radius: 18px;
+    background: #e2e8f0;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: background 0.25s ease;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .duty-toggle.on { background: var(--accent); }
+  .duty-toggle .duty-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+    transition: transform 0.25s cubic-bezier(0.32, 1.4, 0.5, 1);
+  }
+  .duty-toggle.on .duty-thumb { transform: translateX(52px); }
+  .duty-toggle .duty-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+    color: var(--text-dim);
+    transition: opacity 0.2s, color 0.2s;
+    pointer-events: none;
+  }
+  .duty-toggle .duty-arrow.left  { left: 12px; }
+  .duty-toggle .duty-arrow.right { right: 12px; }
+  .duty-toggle.on .duty-arrow.left { opacity: 0; }
+  .duty-toggle:not(.on) .duty-arrow.right { opacity: 0; }
+  .duty-toggle.on .duty-arrow.right { color: white; }
+
+  /* Off-shift header (mirrors status-bar layout) */
+  .offshift-header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-soft);
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* Off-shift screen needs to be a column when we add the header */
+  #screen-offshift.with-header {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    text-align: center;
+    padding: 0;
+  }
+  #screen-offshift.with-header .offshift-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0 22px;
+  }
+
   .status-dot {
     width: 10px;
     height: 10px;
@@ -233,6 +307,19 @@
     margin-bottom: 24px;
     opacity: 0.7;
   }
+  /* New: outlined checkmark style (Onfleet-style) */
+  .idle-check {
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    border: 2.5px solid var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 28px;
+    color: var(--text);
+  }
+  .idle-check svg { width: 44px; height: 44px; }
   .idle-msg {
     font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
     font-size: 24px;
@@ -242,8 +329,22 @@
   .idle-sub {
     color: var(--text-soft);
     font-size: 14px;
-    margin-bottom: 48px;
+    margin-bottom: 16px;
+    max-width: 320px;
+    line-height: 1.5;
   }
+  .idle-help-link {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 8px 12px;
+    margin-bottom: 32px;
+    text-decoration: none;
+  }
+  .idle-help-link:hover { text-decoration: underline; }
 
   /* ==================== ACTIVE ORDER CARD ==================== */
   .active-card {
@@ -746,14 +847,22 @@
 <!-- ======================================================== -->
 <!-- OFF-SHIFT (signed in but shift not started) -->
 <!-- ======================================================== -->
-<div id="screen-offshift" class="center-screen hidden">
-  <div class="brand-mark"><img src="icon-transparent.svg" alt="X Pizza"></div>
-  <div class="greeting">HOLA, <span id="off-driver-name">—</span></div>
-  <div class="greeting-sub">Listo cuando tú lo estés</div>
-  <div id="notif-banner-offshift" class="notif-banner hidden" style="margin: 16px 0;"></div>
-  <button class="big-btn primary" id="start-shift-btn">Iniciar turno</button>
-  <button class="text-link" id="signout-btn">Cerrar sesión</button>
-  <div class="version-tag" data-version-display></div>
+<div id="screen-offshift" class="with-header hidden">
+  <header class="offshift-header">
+    <button class="duty-toggle" id="duty-toggle-off" title="Iniciar turno">
+      <span class="duty-arrow left">▶</span>
+      <span class="duty-arrow right">■</span>
+      <span class="duty-thumb"></span>
+    </button>
+  </header>
+  <div class="offshift-content">
+    <div class="brand-mark"><img src="icon-transparent.svg" alt="X Pizza"></div>
+    <div class="greeting">HOLA, <span id="off-driver-name">—</span></div>
+    <div class="greeting-sub">Toca el switch arriba para iniciar tu turno</div>
+    <div id="notif-banner-offshift" class="notif-banner hidden" style="margin: 16px 0;"></div>
+    <button class="text-link" id="signout-btn">Cerrar sesión</button>
+    <div class="version-tag" data-version-display></div>
+  </div>
 </div>
 
 <!-- ======================================================== -->
@@ -762,6 +871,11 @@
 <div id="screen-onshift" class="hidden" style="display:flex; flex-direction:column; height:100%;">
 
   <div class="status-bar">
+    <button class="duty-toggle on" id="duty-toggle-on" title="Terminar turno">
+      <span class="duty-arrow left">▶</span>
+      <span class="duty-arrow right">■</span>
+      <span class="duty-thumb"></span>
+    </button>
     <div class="status-dot" id="status-dot"></div>
     <div class="status-label" id="status-label">DISPONIBLE</div>
     <div class="gps-meta" id="gps-meta">—</div>
@@ -779,9 +893,14 @@
 
     <!-- Idle / returning state -->
     <div id="idle-state" class="center-screen hidden">
-      <div class="idle-icon" id="idle-icon">🛵</div>
-      <div class="idle-msg" id="idle-msg">Esperando pedidos</div>
-      <div class="idle-sub" id="idle-sub">Te notificaremos cuando llegue uno</div>
+      <div class="idle-check" id="idle-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </div>
+      <div class="idle-msg" id="idle-msg">Estás disponible</div>
+      <div class="idle-sub" id="idle-sub">Te avisaremos cuando llegue un pedido nuevo.</div>
+      <button class="idle-help-link" id="idle-help-link">¿Por qué no veo pedidos?</button>
       <button class="big-btn primary hidden" id="arrive-btn" style="margin-top: 16px;">Estoy en el restaurante</button>
     </div>
 
@@ -791,9 +910,8 @@
     <!-- Queue list slot -->
     <div id="queue-slot"></div>
 
-    <!-- End shift always at bottom -->
+    <!-- Version tag at bottom (end-shift moved to header toggle) -->
     <div class="end-shift-wrap">
-      <button class="big-btn ghost" id="end-shift-btn">Terminar turno</button>
       <div class="version-tag" data-version-display></div>
     </div>
   </main>
@@ -811,7 +929,7 @@ import * as XPD from './xpizza-delivery.js?v=11';
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '1.5.1';
+const SYSTEM_VERSION = '1.6.0';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -855,6 +973,12 @@ function showScreen(name) {
   // Refresh notification banner state on screen change
   if (name === 'offshift' || name === 'onshift') {
     updateNotifBanners();
+  }
+  // Reset off-shift duty toggle to OFF whenever we land back on it
+  // (e.g., after a shift ends). The on-shift toggle is always ON visually.
+  if (name === 'offshift') {
+    const offToggle = $('duty-toggle-off');
+    if (offToggle) offToggle.classList.remove('on');
   }
 }
 
@@ -987,7 +1111,7 @@ $('signout-btn').addEventListener('click', async () => {
 // ============================================================
 // Shift control
 // ============================================================
-$('start-shift-btn').addEventListener('click', async () => {
+async function handleStartShift() {
   if (!currentUser) return;
   try {
     // Unlock iOS audio: must play in response to a direct user tap.
@@ -1006,16 +1130,43 @@ $('start-shift-btn').addEventListener('click', async () => {
     startGpsStream();
     toast('Turno iniciado', 'success');
   } catch (e) {
+    // Failed to start — reset toggle so it doesn't look enabled
+    $('duty-toggle-off').classList.remove('on');
     toast('Error al iniciar turno', 'error');
   }
-});
+}
 
-$('end-shift-btn').addEventListener('click', async () => {
+async function handleEndShift() {
   if (!currentUser) return;
   if (!confirm('¿Terminar el turno?')) return;
   await cleanupShift();
   await XPD.endShift(currentUser.uid);
   toast('Turno terminado');
+}
+
+// Wire up the duty toggles. The off-screen toggle starts the shift; the
+// on-screen toggle ends it. Tapping flips the visual state immediately for
+// snappy feedback, then runs the async shift logic.
+$('duty-toggle-off').addEventListener('click', () => {
+  $('duty-toggle-off').classList.add('on');     // immediate UI feedback
+  handleStartShift();
+});
+
+$('duty-toggle-on').addEventListener('click', () => {
+  // Don't flip visual state immediately — confirm() may cancel the action.
+  // The shift transition (onshift → offshift screen) handles visual reset.
+  handleEndShift();
+});
+
+// "Why don't I see tasks?" help link on the idle state
+$('idle-help-link').addEventListener('click', () => {
+  alert(
+    'Posibles razones:\n\n' +
+    '• Aún no se ha asignado un pedido a ti\n' +
+    '• Tu GPS está inactivo (revisa el indicador arriba)\n' +
+    '• Las notificaciones están desactivadas\n\n' +
+    'Si crees que algo está mal, contacta al despachador.'
+  );
 });
 
 async function cleanupShift() {
@@ -1530,7 +1681,7 @@ function escapeHtml(s) {
 // VAPID public key — REPLACE WITH YOUR OWN before going live.
 // Generate a fresh keypair with:  cd xpizza-functions && npm run vapid
 // Then paste the publicKey here (NOT the privateKey — that goes in .env).
-const VAPID_PUBLIC_KEY = 'BE5fD1EXpWBalKvLopadT1n7ffCE0o0vBDB-JCRIB9Lrn7AyrA953IWLyIqy1-_24wSZ_TKas1gWC-08NecHxWQ';
+const VAPID_PUBLIC_KEY = 'REPLACE_WITH_VAPID_PUBLIC_KEY';
 
 let swRegistration = null;
 
