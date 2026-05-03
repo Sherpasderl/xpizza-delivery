@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<!-- X Pizza Tracking - version: 1.0.0 -->
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#BA7517" />
+  <title>X. Pizza · Sigue tu pedido</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --brand: #BA7517;
+      --brand-dark: #854F0B;
+      --brand-light: #FAEEDA;
+      --success: #1D9E75;
+      --success-dark: #0F6E56;
+      --success-light: #E1F5EE;
+      --danger: #A32D2D;
+      --danger-dark: #501313;
+      --danger-light: #FCEBEB;
+      --bg: #FAF8F3;
+      --surface: #FFFFFF;
+      --border: #E8E5DD;
+      --border-strong: #D3D1C7;
+      --text: #2C2C2A;
+      --text-soft: #5F5E5A;
+      --text-mute: #888780;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .mono { font-family: 'IBM Plex Mono', monospace; }
+
+    .container {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 16px 14px 60px;
+      min-height: 100vh;
+    }
+
+    /* Loading state */
+    .loading-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 60vh;
+      gap: 16px;
+    }
+    .loading-spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--brand);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .loading-text {
+      font-size: 14px;
+      color: var(--text-soft);
+    }
+
+    /* Error state */
+    .error-screen {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px 20px;
+      text-align: center;
+      margin-top: 20vh;
+    }
+    .error-icon {
+      font-size: 36px;
+      margin-bottom: 12px;
+    }
+    .error-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .error-msg {
+      font-size: 14px;
+      color: var(--text-soft);
+      line-height: 1.5;
+    }
+
+    /* Main card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 22px 18px 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    .brand-header {
+      text-align: center;
+      margin-bottom: 4px;
+    }
+    .brand-name {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 800;
+      font-size: 22px;
+      letter-spacing: -0.01em;
+    }
+    .brand-name .dot {
+      color: var(--brand);
+    }
+
+    .order-id {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      color: var(--text-mute);
+      letter-spacing: 0.05em;
+      text-align: center;
+      margin-bottom: 22px;
+    }
+
+    /* Timeline */
+    .timeline {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 0 4px;
+      margin-bottom: 22px;
+      position: relative;
+    }
+    .timeline-bar {
+      position: absolute;
+      top: 16px;
+      left: 18px;
+      right: 18px;
+      height: 2px;
+      background: var(--border-strong);
+      z-index: 0;
+    }
+    .timeline-fill {
+      position: absolute;
+      top: 16px;
+      left: 18px;
+      height: 2px;
+      background: var(--brand);
+      z-index: 0;
+      transition: width 0.4s ease;
+    }
+    .timeline-fill.success {
+      background: var(--success);
+    }
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+      position: relative;
+      z-index: 1;
+    }
+    .step-circle {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 2px solid var(--border-strong);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-mute);
+      transition: all 0.2s ease;
+    }
+    .step.done .step-circle {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: white;
+    }
+    .step.current .step-circle {
+      background: var(--surface);
+      border-color: var(--brand);
+      color: var(--brand);
+    }
+    .step.complete .step-circle {
+      background: var(--success);
+      border-color: var(--success);
+      color: white;
+    }
+    .step-label {
+      font-size: 10px;
+      color: var(--text-mute);
+      margin-top: 6px;
+      font-weight: 500;
+      text-align: center;
+    }
+    .step.done .step-label,
+    .step.current .step-label {
+      color: var(--brand-dark);
+      font-weight: 700;
+    }
+    .step.complete .step-label {
+      color: var(--success-dark);
+      font-weight: 700;
+    }
+
+    /* Status banner */
+    .status-banner {
+      background: var(--brand-light);
+      border-radius: 10px;
+      padding: 14px 14px;
+      margin-bottom: 14px;
+      text-align: center;
+    }
+    .status-banner.success {
+      background: var(--success-light);
+    }
+    .status-banner.danger {
+      background: var(--danger-light);
+    }
+    .status-banner-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--brand-dark);
+      margin-bottom: 2px;
+    }
+    .status-banner.success .status-banner-title {
+      color: var(--success-dark);
+    }
+    .status-banner.danger .status-banner-title {
+      color: var(--danger-dark);
+    }
+    .status-banner-sub {
+      font-size: 12px;
+      color: var(--brand-dark);
+      opacity: 0.85;
+    }
+    .status-banner.success .status-banner-sub {
+      color: var(--success-dark);
+    }
+    .status-banner.danger .status-banner-sub {
+      color: var(--danger-dark);
+    }
+
+    /* Driver card */
+    .driver-card {
+      background: var(--brand-light);
+      border-radius: 10px;
+      padding: 14px 14px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .driver-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--brand);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .driver-info { flex: 1; }
+    .driver-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--brand-dark);
+      margin-bottom: 2px;
+    }
+    .driver-eta {
+      font-size: 12px;
+      color: var(--brand-dark);
+      opacity: 0.85;
+    }
+
+    /* Order summary */
+    .order-summary {
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+    }
+    .summary-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      color: var(--text-mute);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .summary-customer {
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    .summary-line {
+      font-size: 13px;
+      color: var(--text-soft);
+      margin-bottom: 4px;
+      line-height: 1.4;
+    }
+    .summary-total {
+      font-size: 16px;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 11px;
+      color: var(--text-mute);
+      line-height: 1.6;
+    }
+    .footer a {
+      color: var(--brand);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    /* Updated indicator */
+    .updated-indicator {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--success);
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .updated-text {
+      font-size: 10px;
+      color: var(--text-mute);
+      text-align: center;
+      margin-top: 12px;
+    }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Loading state (default) -->
+    <div id="loading" class="loading-screen">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Cargando tu pedido...</div>
+    </div>
+
+    <!-- Error state (hidden until needed) -->
+    <div id="error" class="error-screen hidden">
+      <div class="error-icon">🍕</div>
+      <div class="error-title">No encontramos tu pedido</div>
+      <div class="error-msg" id="error-msg">El enlace puede estar incorrecto o el pedido fue eliminado.</div>
+    </div>
+
+    <!-- Main tracking card (hidden until data loads) -->
+    <div id="tracking" class="hidden">
+      <div class="card">
+        <div class="brand-header">
+          <div class="brand-name">X<span class="dot">.</span> Pizza</div>
+        </div>
+        <div class="order-id mono" id="order-id-display">—</div>
+
+        <!-- Timeline -->
+        <div class="timeline" id="timeline">
+          <div class="timeline-bar"></div>
+          <div class="timeline-fill" id="timeline-fill" style="width: 0%;"></div>
+          <div class="step" data-step="received">
+            <div class="step-circle">1</div>
+            <div class="step-label">Recibido</div>
+          </div>
+          <div class="step" data-step="preparing">
+            <div class="step-circle">2</div>
+            <div class="step-label">Preparando</div>
+          </div>
+          <div class="step" data-step="out_for_delivery">
+            <div class="step-circle">3</div>
+            <div class="step-label">En camino</div>
+          </div>
+          <div class="step" data-step="delivered">
+            <div class="step-circle">4</div>
+            <div class="step-label">Entregado</div>
+          </div>
+        </div>
+
+        <!-- Status banner (state-dependent) -->
+        <div id="status-banner" class="status-banner">
+          <div class="status-banner-title" id="banner-title">Cargando...</div>
+          <div class="status-banner-sub" id="banner-sub"></div>
+        </div>
+
+        <!-- Driver card (only shown for out_for_delivery) -->
+        <div id="driver-card" class="driver-card hidden">
+          <div class="driver-avatar" id="driver-avatar">—</div>
+          <div class="driver-info">
+            <div class="driver-name" id="driver-name">—</div>
+            <div class="driver-eta" id="driver-eta">—</div>
+          </div>
+        </div>
+
+        <!-- Order summary -->
+        <div class="order-summary">
+          <div class="summary-label">Tu pedido</div>
+          <div class="summary-customer" id="summary-customer">—</div>
+          <div class="summary-line" id="summary-items">—</div>
+          <div class="summary-line" id="summary-address">—</div>
+          <div class="summary-total" id="summary-total">—</div>
+        </div>
+
+        <div class="updated-text" id="updated-text">
+          <span class="updated-indicator"></span>Actualizando en tiempo real
+        </div>
+      </div>
+
+      <div class="footer">
+        ¿Tienes una pregunta?<br />
+        Escríbenos por WhatsApp al
+        <a href="https://wa.me/50497952893">+504 9795-2893</a>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    // X Pizza tracking — version: 1.0.0
+    //
+    // Public tracking page. Reads /order_tracking/{token} from Firebase
+    // (anonymous read; rules allow it). Token comes from URL path.
+    //
+    // Order lifecycle states the customer can see:
+    //   new, preparing, ready          → "Preparando" (banner: kitchen prepping)
+    //   out_for_delivery               → "En camino" (banner: driver on the way)
+    //   delivered                      → "Entregado" (banner: enjoy)
+    //   cancelled                      → "Cancelado" (special state, red)
+
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
+    import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+
+    // Same Firebase config as driver/dispatch (public app config — safe to embed)
+    const firebaseConfig = {
+      apiKey: "AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU",
+      authDomain: "xpizza-delivery.firebaseapp.com",
+      databaseURL: "https://xpizza-delivery-default-rtdb.firebaseio.com",
+      projectId: "xpizza-delivery",
+      messagingSenderId: "185867271616",
+      appId: "1:185867271616:web:84bb37552b40c1d517dc25"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // Token = path segment. URL is /<token>, possibly with trailing slash.
+    function extractToken() {
+      const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
+      // First segment only (in case of nested paths)
+      return path.split('/')[0] || null;
+    }
+
+    function showError(msg) {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('tracking').classList.add('hidden');
+      const err = document.getElementById('error');
+      err.classList.remove('hidden');
+      if (msg) {
+        document.getElementById('error-msg').textContent = msg;
+      }
+    }
+
+    function showTracking() {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('error').classList.add('hidden');
+      document.getElementById('tracking').classList.remove('hidden');
+    }
+
+    // Format Lempiras with thousand separators
+    function formatLps(n) {
+      if (n == null || isNaN(n)) return 'L—';
+      return 'L' + Math.round(n).toLocaleString('en-US');
+    }
+
+    // Compute simple ETA when driver is en route. We don't have GPS in
+    // /order_tracking (privacy), so we use the picked_up_at timestamp + a
+    // 12-min default for typical SPS distances. Refines if delivery_eta_min
+    // ever gets written by the cloud function.
+    function computeEta(data) {
+      if (data.delivery_eta_min) return data.delivery_eta_min;
+      if (data.picked_up_at) {
+        const elapsedMin = (Date.now() - data.picked_up_at) / 60000;
+        const remaining = Math.max(1, Math.round(12 - elapsedMin));
+        return remaining;
+      }
+      return null;
+    }
+
+    // Render the page based on data from /order_tracking/{token}
+    function render(data) {
+      if (!data) {
+        showError();
+        return;
+      }
+      showTracking();
+
+      // Order ID
+      document.getElementById('order-id-display').textContent =
+        'Pedido ' + (data.order_id || '—');
+
+      // Customer + items + address
+      document.getElementById('summary-customer').textContent = data.customer_name || '—';
+      document.getElementById('summary-items').textContent = data.items_text || '—';
+      document.getElementById('summary-address').textContent = data.address_short || '—';
+      document.getElementById('summary-total').textContent = 'Total: ' + formatLps(data.total);
+
+      // Reset all step classes
+      const steps = document.querySelectorAll('.step');
+      steps.forEach(s => s.classList.remove('done', 'current', 'complete'));
+      const fill = document.getElementById('timeline-fill');
+      fill.classList.remove('success');
+
+      // State-driven rendering
+      const status = data.status || 'new';
+      const banner = document.getElementById('status-banner');
+      const bannerTitle = document.getElementById('banner-title');
+      const bannerSub = document.getElementById('banner-sub');
+      const driverCard = document.getElementById('driver-card');
+
+      banner.classList.remove('success', 'danger');
+      driverCard.classList.add('hidden');
+
+      if (status === 'cancelled') {
+        // Cancelled — special state, no timeline progression shown
+        document.getElementById('timeline').style.opacity = '0.4';
+        banner.classList.add('danger');
+        bannerTitle.textContent = 'Pedido cancelado';
+        bannerSub.textContent = 'Si pagaste por adelantado, te contactaremos sobre el reembolso';
+        document.getElementById('updated-text').classList.add('hidden');
+        return;
+      }
+
+      document.getElementById('timeline').style.opacity = '1';
+      document.getElementById('updated-text').classList.remove('hidden');
+
+      // Map status → progress (steps 1-4)
+      let progressStep;  // 1, 2, 3, or 4
+      if (status === 'new') progressStep = 1;
+      else if (status === 'preparing' || status === 'ready') progressStep = 2;
+      else if (status === 'out_for_delivery') progressStep = 3;
+      else if (status === 'delivered') progressStep = 4;
+      else progressStep = 1;  // unknown status — assume just received
+
+      // Mark steps as done/current
+      const stepNames = ['received', 'preparing', 'out_for_delivery', 'delivered'];
+      stepNames.forEach((name, idx) => {
+        const stepNum = idx + 1;
+        const stepEl = document.querySelector(`.step[data-step="${name}"]`);
+        if (stepNum < progressStep) {
+          stepEl.classList.add('done');
+        } else if (stepNum === progressStep) {
+          if (status === 'delivered') {
+            stepEl.classList.add('complete');
+          } else {
+            stepEl.classList.add('current');
+          }
+        }
+      });
+
+      // Compute fill bar width
+      // Steps are at positions 0%, 33%, 66%, 100% along the bar
+      // Bar fills to the CURRENT step's position
+      const fillWidths = { 1: '0%', 2: '33%', 3: '67%', 4: '100%' };
+      fill.style.width = fillWidths[progressStep] || '0%';
+
+      // Banner content per status
+      if (status === 'new') {
+        bannerTitle.textContent = 'Recibimos tu pedido';
+        bannerSub.textContent = 'Estamos por empezar a preparar tu pizza';
+      } else if (status === 'preparing' || status === 'ready') {
+        bannerTitle.textContent = 'Tu pedido se está preparando';
+        bannerSub.textContent = 'Te avisaremos cuando vaya en camino';
+      } else if (status === 'out_for_delivery') {
+        // Banner is just complementary — main info is in the driver card below
+        if (data.driver_name) {
+          // Hide banner, show driver card
+          banner.classList.add('hidden');
+          driverCard.classList.remove('hidden');
+          const driverName = data.driver_name;
+          document.getElementById('driver-avatar').textContent =
+            driverName.charAt(0).toUpperCase();
+          document.getElementById('driver-name').textContent =
+            driverName + ' está en camino';
+          const eta = computeEta(data);
+          document.getElementById('driver-eta').textContent = eta
+            ? `Llega en ~${eta} min`
+            : 'En ruta a tu dirección';
+        } else {
+          banner.classList.remove('hidden');
+          bannerTitle.textContent = 'Tu pedido va en camino';
+          bannerSub.textContent = 'Pronto llegará a tu dirección';
+        }
+      } else if (status === 'delivered') {
+        banner.classList.remove('hidden');
+        banner.classList.add('success');
+        fill.classList.add('success');
+        bannerTitle.textContent = '¡Disfruta tu pizza!';
+        if (data.delivered_at) {
+          const t = new Date(data.delivered_at);
+          const hh = t.getHours();
+          const mm = String(t.getMinutes()).padStart(2, '0');
+          const ampm = hh >= 12 ? 'PM' : 'AM';
+          const displayHr = ((hh % 12) || 12);
+          bannerSub.textContent = `Entregado a las ${displayHr}:${mm} ${ampm}`;
+        } else {
+          bannerSub.textContent = 'Entregado';
+        }
+        // Hide live updates indicator (terminal state)
+        document.getElementById('updated-text').classList.add('hidden');
+      }
+
+      // Show banner if we didn't hide it (out_for_delivery with driver hides it)
+      if (status !== 'out_for_delivery' || !data.driver_name) {
+        banner.classList.remove('hidden');
+      }
+    }
+
+    // Main entry
+    const token = extractToken();
+    if (!token) {
+      showError('Falta el código de seguimiento en el enlace.');
+    } else {
+      // Subscribe to real-time updates
+      const trackingRef = ref(db, `order_tracking/${token}`);
+      onValue(trackingRef, (snap) => {
+        const data = snap.val();
+        render(data);
+      }, (err) => {
+        console.error('Tracking subscription error:', err);
+        showError('No pudimos cargar tu pedido. Intenta más tarde.');
+      });
+    }
+  </script>
+</body>
+</html>

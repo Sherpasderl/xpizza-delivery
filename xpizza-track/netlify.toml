@@ -1,0 +1,11 @@
+# Netlify config for xpizza-track
+# Serves index.html for all routes so /<token> works as a tracking URL.
+# The page-side JS extracts the token from window.location.pathname.
+
+[build]
+  publish = "."
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
