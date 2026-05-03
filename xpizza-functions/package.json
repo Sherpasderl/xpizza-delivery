@@ -1,7 +1,7 @@
 {
   "name": "xpizza-functions",
-  "version": "1.5.1",
-  "description": "X Pizza Delivery Cloud Functions — Make.com → Firebase + Web Push + KDS sync + Auto-assign + Acceptance timeout + Stacking",
+  "version": "1.7.0",
+  "description": "X Pizza Delivery Cloud Functions — Make.com → Firebase + Web Push + KDS sync + Auto-assign + Acceptance timeout + Stacking + WhatsApp inbound/outbound",
   "main": "index.js",
   "scripts": {
     "serve": "firebase emulators:start --only functions",
@@ -11,12 +11,13 @@
     "vapid": "npx web-push generate-vapid-keys"
   },
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
     "firebase-functions": "^6.0.0",
     "googleapis": "^144.0.0",
+    "node-fetch": "^2.7.0",
     "web-push": "^3.6.7"
   },
   "private": true

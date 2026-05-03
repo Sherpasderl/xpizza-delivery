@@ -1,26 +1,46 @@
 #!/usr/bin/env bash
-# X Pizza — inject a test order via Firebase CLI
+# X Pizza — inject a test order via the createOrder HTTPS endpoint
 #
-# Bypasses Make.com and the order form's closed-hours guard. Writes directly
-# to Firebase using the same shape the createOrder Cloud Function would.
-# This triggers all downstream behavior: auto-assign, push notifications,
-# timeout monitoring, etc.
+# This mirrors what Make.com does in production: POSTs to the createOrder
+# Cloud Function URL with bearer auth. The Cloud Function then writes the
+# order, sends the WhatsApp "received" message, and the rest of the pipeline
+# runs normally (auto-assign, push to driver, etc).
+#
+# Replaces the older direct-database-write test script — that bypassed
+# createOrder entirely and meant the WhatsApp #1 was never tested.
 #
 # Usage:
 #   ./test-order.sh                          # default test order
 #   ./test-order.sh "Maria Lopez" 350        # custom name + total
 #   ./test-order.sh "Maria Lopez" 350 1km    # location preset (1km / 3km / far)
 #
-# Requires: firebase CLI logged in to xpizza-delivery project.
+# Reads MAKE_SECRET from xpizza-functions/.env automatically.
+# Phone number for testing is hardcoded below — edit if you want to test
+# WhatsApp delivery to a different phone.
 
 set -e
 
-PROJECT="xpizza-delivery"
+CREATE_ORDER_URL="https://createorder-m7syoovdsa-uc.a.run.app"
+ENV_FILE="$HOME/Downloads/xpizza-delivery/xpizza-functions/.env"
+
+# Pull MAKE_SECRET from .env. The file format is plain `KEY=value` per line.
+if [ ! -f "$ENV_FILE" ]; then
+  echo "Cannot find .env file at $ENV_FILE"
+  exit 1
+fi
+MAKE_SECRET=$(grep '^MAKE_SECRET=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+if [ -z "$MAKE_SECRET" ]; then
+  echo "MAKE_SECRET not found in $ENV_FILE"
+  exit 1
+fi
 
 # Defaults
 CUSTOMER_NAME="${1:-TEST Cliente $(date +%H%M)}"
 TOTAL="${2:-250}"
 LOCATION_PRESET="${3:-1km}"
+
+# Phone number for WhatsApp delivery -- edit this to YOUR test phone.
+CUSTOMER_PHONE="+50494738243"
 
 # Coordinate presets (relative to restaurant at 15.5075, -88.0398)
 case "$LOCATION_PRESET" in
@@ -38,112 +58,62 @@ case "$LOCATION_PRESET" in
     ;;
 esac
 
-# Generate unique order ID — TEST prefix + timestamp + random
+# Order ID. createOrder is idempotent on order_id so repeated runs with the
+# same id are safe -- but we generate fresh ones to avoid conflicts during
+# rapid-fire testing.
 ORDER_ID="TEST-$(date +%Y%m%d-%H%M%S)-$RANDOM"
-NOW_MS=$(date +%s)000
 
-PICKUP_TASK_ID="${ORDER_ID}_pickup"
-DELIVERY_TASK_ID="${ORDER_ID}_delivery"
-
-# Restaurant coords (must match Cloud Function constants)
-REST_LAT="15.507489753573818"
-REST_LNG="-88.0398486953722"
-REST_NAME="X. Pizza"
-REST_PHONE="+50499999999"
-
-echo "Injecting test order: $ORDER_ID"
+echo "Posting test order to createOrder Cloud Function:"
+echo "  Order ID: $ORDER_ID"
 echo "  Customer: $CUSTOMER_NAME"
+echo "  Phone:    $CUSTOMER_PHONE"
 echo "  Total:    L$TOTAL"
 echo "  Location: $LOCATION_PRESET ($LAT, $LNG)"
 echo ""
 
-# Build the atomic write payload matching createOrder Cloud Function exactly
 PAYLOAD=$(cat <<EOF
 {
-  "orders/${ORDER_ID}": {
-    "order_id": "${ORDER_ID}",
-    "customer_name": "${CUSTOMER_NAME}",
-    "customer_phone": "+50488888888",
-    "items_text": "Pizza pepperoni mediana (test)",
-    "items_count": 1,
-    "subtotal": ${TOTAL},
-    "delivery_fee": 0,
-    "total": ${TOTAL},
-    "lat": ${LAT},
-    "lng": ${LNG},
-    "address_detected": "${ADDRESS}",
-    "address_details": "Casa azul (test)",
-    "notes": "Test order via CLI",
-    "maps_link": "https://maps.google.com/?q=${LAT},${LNG}",
-    "payment_method": "Efectivo",
-    "order_type": "delivery",
-    "status": "new",
-    "pickup_task_id": "${PICKUP_TASK_ID}",
-    "delivery_task_id": "${DELIVERY_TASK_ID}",
-    "created_at": ${NOW_MS}
-  },
-  "tasks/${PICKUP_TASK_ID}": {
-    "order_id": "${ORDER_ID}",
-    "type": "pickup",
-    "status": "pending",
-    "assigned_driver_id": null,
-    "linked_task_id": "${DELIVERY_TASK_ID}",
-    "depends_on_task_id": null,
-    "destination_lat": ${REST_LAT},
-    "destination_lng": ${REST_LNG},
-    "destination_address": "${REST_NAME}",
-    "recipient_name": "${REST_NAME}",
-    "recipient_phone": "${REST_PHONE}",
-    "notes": "Pizza pepperoni mediana (test)",
-    "created_at": ${NOW_MS}
-  },
-  "tasks/${DELIVERY_TASK_ID}": {
-    "order_id": "${ORDER_ID}",
-    "type": "delivery",
-    "status": "pending",
-    "assigned_driver_id": null,
-    "linked_task_id": "${PICKUP_TASK_ID}",
-    "depends_on_task_id": "${PICKUP_TASK_ID}",
-    "destination_lat": ${LAT},
-    "destination_lng": ${LNG},
-    "destination_address": "${ADDRESS}",
-    "address_details": "Casa azul (test)",
-    "recipient_name": "${CUSTOMER_NAME}",
-    "recipient_phone": "+50488888888",
-    "payment_method": "Efectivo",
-    "total": ${TOTAL},
-    "notes": "Pizza pepperoni mediana (test)",
-    "created_at": ${NOW_MS}
-  }
+  "order_id": "${ORDER_ID}",
+  "customer_name": "${CUSTOMER_NAME}",
+  "customer_phone": "${CUSTOMER_PHONE}",
+  "items_text": "Pizza pepperoni mediana (test)",
+  "total": ${TOTAL},
+  "lat": ${LAT},
+  "lng": ${LNG},
+  "address_detected": "${ADDRESS}",
+  "address_details": "Casa azul (test)",
+  "notes": "Test order via CLI",
+  "maps_link": "https://maps.google.com/?q=${LAT},${LNG}",
+  "payment_method": "Efectivo",
+  "order_type": "delivery"
 }
 EOF
 )
 
-# Write atomically to root with a multi-path update
-# firebase database:update merges all paths in one atomic write, which is
-# what the autoAssign trigger needs to fire correctly (all three records
-# present when /orders/{orderId} create event fires).
-# Write the payload to a temp file. firebase database:update with stdin (`-`)
-# is broken in some firebase-tools versions (socket hangup); a real file works.
-TMPFILE=$(mktemp /tmp/xpizza-test-order.XXXXXX.json)
-echo "$PAYLOAD" > "$TMPFILE"
+RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+  -X POST "$CREATE_ORDER_URL" \
+  -H "Authorization: Bearer $MAKE_SECRET" \
+  -H "Content-Type: application/json" \
+  -d "$PAYLOAD")
 
-# Multi-path atomic update — all three records (order + pickup task +
-# delivery task) write together in one operation so the autoAssign trigger
-# fires with everything present.
-firebase database:update / "$TMPFILE" --project $PROJECT --force
+BODY=$(echo "$RESPONSE" | sed '/HTTP_STATUS:/d')
+STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
 
-rm -f "$TMPFILE"
+echo "Response (HTTP $STATUS):"
+echo "$BODY"
+echo ""
 
-echo ""
-echo "✅ Test order injected: $ORDER_ID"
-echo ""
-echo "Watch for behavior:"
-echo "  - Dispatcher: order appears in SIN ASIGNAR"
-echo "  - 30s grace, then auto-assign fires (if enabled)"
-echo "  - Driver gets push, 60s acceptance countdown begins"
-echo ""
-echo "Cleanup later:"
-echo "  firebase database:remove /orders/${ORDER_ID} --project $PROJECT --force"
-echo "  firebase database:remove /tasks/${PICKUP_TASK_ID} --project $PROJECT --force"
-echo "  firebase database:remove /tasks/${DELIVERY_TASK_ID} --project $PROJECT --force"
+if [ "$STATUS" = "200" ]; then
+  echo "Order accepted by createOrder. Watch for:"
+  echo "  - WhatsApp #1 'Recibimos tu pedido' arriving on $CUSTOMER_PHONE"
+  echo "  - Order in dispatcher console (SIN ASIGNAR for 30s, then auto-assign)"
+  echo "  - Driver push notification"
+  echo ""
+  echo "Cleanup later:"
+  echo "  firebase database:remove /orders/${ORDER_ID} --project xpizza-delivery --force"
+  echo "  firebase database:remove /tasks/${ORDER_ID}_pickup --project xpizza-delivery --force"
+  echo "  firebase database:remove /tasks/${ORDER_ID}_delivery --project xpizza-delivery --force"
+else
+  echo "createOrder rejected the request (HTTP $STATUS)"
+  echo "Check logs: firebase functions:log --only createOrder --project xpizza-delivery -n 5"
+fi

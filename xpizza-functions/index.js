@@ -1,13 +1,15 @@
 /**
  * X Pizza Delivery — Cloud Functions
- * version: 1.5.1
+ * version: 1.7.0
  *
  * Endpoints:
- *   - createOrder              (HTTPS)   — Make.com → Firebase write proxy
- *   - notifyDriverOnAssignment (DB trig) — Web Push to driver on assignment
- *   - onOrderCancelled         (DB trig) — Sync cancellations to KDS Sheet
- *   - autoAssignOnOrderCreate  (DB trig) — Auto-pick driver after grace period (with continuous-at-restaurant stacking)
- *   - monitorAssignmentTimeout (DB trig) — Reassign on 60s no-accept timeout
+ *   - createOrder                   (HTTPS)   — Make.com → Firebase write proxy + WhatsApp "received"
+ *   - notifyDriverOnAssignment      (DB trig) — Web Push to driver on assignment
+ *   - onOrderCancelled              (DB trig) — Sync cancellations to KDS Sheet
+ *   - sendOrderStatusNotifications  (DB trig) — Customer WhatsApp on status transitions
+ *   - onIncomingWhatsApp            (HTTPS)   — UltraMsg webhook for inbound customer messages + auto-reply
+ *   - autoAssignOnOrderCreate       (DB trig) — Auto-pick driver after grace period (with continuous-at-restaurant stacking)
+ *   - monitorAssignmentTimeout      (DB trig) — Reassign on 60s no-accept timeout
  *
  * Why this exists:
  *   Make.com needs a way to create orders in the dispatcher. The naive approach
@@ -39,6 +41,7 @@ const { initializeApp } = require('firebase-admin/app');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
 const webpush = require('web-push');
 const { google } = require('googleapis');
+const whatsapp = require('./whatsapp');
 
 initializeApp({
   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
@@ -67,6 +70,21 @@ const RESTAURANT = {
   name: 'X Pizza',
   phone: '+50497952893'
 };
+
+// Generate a random URL-safe tracking token. 12 chars from a 64-char alphabet
+// gives 64^12 = ~4.7e21 possible tokens — guessing one is impossible. The
+// token is part of the public tracking URL, so don't include chars that
+// require URL-encoding.
+const TOKEN_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';  // no 0/O/1/l/I to avoid confusion if printed
+function generateTrackingToken(length = 12) {
+  const crypto = require('crypto');
+  const bytes = crypto.randomBytes(length);
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    out += TOKEN_ALPHABET[bytes[i] % TOKEN_ALPHABET.length];
+  }
+  return out;
+}
 
 // ---- Helpers ----
 
@@ -184,6 +202,7 @@ exports.createOrder = onRequest(
 
     const pickupTaskId = `${orderId}_pickup`;
     const deliveryTaskId = `${orderId}_delivery`;
+    const trackingToken = generateTrackingToken();
 
     updates[`orders/${orderId}`] = {
       order_id: orderId,
@@ -202,6 +221,7 @@ exports.createOrder = onRequest(
       status: 'new',
       pickup_task_id: pickupTaskId,
       delivery_task_id: deliveryTaskId,
+      tracking_token: trackingToken,
       created_at: now
     };
 
@@ -240,14 +260,58 @@ exports.createOrder = onRequest(
       created_at: now
     };
 
+    // Tracking index: maps tracking_token → order data. Stores ONLY the
+    // fields that are safe to expose publicly. The tracking site reads
+    // /order_tracking/{token} (public read rule). Customer name + first
+    // initial of address are shown but full address, phone, payment details
+    // stay in /orders (auth-only).
+    //
+    // Status field is kept in sync with /orders/{orderId}/status by
+    // sendOrderStatusNotifications. driver_name is filled in when
+    // out_for_delivery.
+    const addressShort = String(body.address_detected || '').split(',')[0].trim();
+    updates[`order_tracking/${trackingToken}`] = {
+      order_id: orderId,
+      customer_name: String(body.customer_name),
+      items_text: String(body.items_text || ''),
+      total: total,
+      address_short: addressShort,
+      status: 'new',
+      created_at: now
+    };
+
     try {
       await db.ref().update(updates);
       console.log(`createOrder: wrote order ${orderId}`);
-      return res.status(200).json({ ok: true, order_id: orderId });
     } catch (e) {
       console.error('createOrder: write failed', e);
       return res.status(500).json({ error: 'Database write failed', detail: e.message });
     }
+
+    // Send WhatsApp "order received". We AWAIT this — Cloud Functions
+    // doesn't guarantee execution of non-awaited promises (the runtime can
+    // freeze the instance once the response is sent). Adds ~500-1000ms to
+    // createOrder response time, but the order is already in the database
+    // by this point so customer-facing timing is unaffected.
+    //
+    // Wrapped in try/catch so a WhatsApp failure NEVER causes the order
+    // creation to fail — order is already written above.
+    if (await whatsapp.isEnabled(db)) {
+      try {
+        const body = whatsapp.tplOrderReceived({
+          customerName: String(updates[`orders/${orderId}`].customer_name || ''),
+          orderId,
+          itemsText: String(updates[`orders/${orderId}`].items_text || ''),
+          total,
+          trackingToken
+        });
+        await whatsapp.sendMessage(updates[`orders/${orderId}`].customer_phone, body);
+      } catch (e) {
+        console.error('createOrder: whatsapp send failed (order still created)', e.message);
+      }
+    }
+
+    return res.status(200).json({ ok: true, order_id: orderId, tracking_token: trackingToken });
   }
 );
 
@@ -439,6 +503,348 @@ exports.onOrderCancelled = onValueWritten(
       // Don't throw — we don't want to retry on auth/permissions errors
       // forever. Log and let the dispatcher's UI feedback handle the user.
     }
+  }
+);
+
+// ============================================================
+// sendOrderStatusNotifications — Customer WhatsApp on status changes
+// ============================================================
+//
+// Watches /orders/{orderId}/status and sends a WhatsApp to the customer for
+// each meaningful status transition. Three messages handled here:
+//   - out_for_delivery → "driver is on the way"
+//   - delivered        → "enjoy your pizza, reply if any issue"
+//   - cancelled        → "your order was cancelled"
+//
+// The fourth message ("order received") is sent directly by createOrder
+// because it needs the tracking_token immediately at order creation.
+//
+// Idempotency:
+//   - Each transition only sends once (we check before vs after).
+//   - If WhatsApp send fails, we don't retry — the customer just doesn't
+//     get the message. Better than risking duplicates.
+//
+// Fail-safe:
+//   - Wrapped in try/catch; any failure is logged but never throws.
+//   - Reads /config/whatsapp_enabled kill switch first.
+
+exports.sendOrderStatusNotifications = onValueWritten(
+  {
+    ref: '/orders/{orderId}/status',
+    region: 'us-central1'
+  },
+  async (event) => {
+    const before = event.data.before.val();
+    const after = event.data.after.val();
+    const orderId = event.params.orderId;
+
+    // No-op cases
+    if (!after) return;                    // status cleared
+    if (before === after) return;          // no actual change
+    if (!['out_for_delivery', 'delivered', 'cancelled'].includes(after)) return;
+
+    const db = getDatabase();
+
+    // Always mirror the new status into the tracking record (regardless of
+    // whatsapp_enabled flag — the tracking site needs the live status).
+    // We need the tracking_token to find the right tracking record.
+    let order = null;
+    let trackingToken = null;
+    try {
+      const orderSnap = await db.ref(`orders/${orderId}`).once('value');
+      order = orderSnap.val();
+      if (order) {
+        trackingToken = order.tracking_token;
+      }
+    } catch (e) {
+      console.warn(`sendOrderStatusNotifications: couldn't read order ${orderId}`, e.message);
+    }
+
+    if (trackingToken) {
+      const trackingUpdates = { [`order_tracking/${trackingToken}/status`]: after };
+      if (after === 'out_for_delivery') {
+        trackingUpdates[`order_tracking/${trackingToken}/picked_up_at`] = ServerValue.TIMESTAMP;
+      } else if (after === 'delivered') {
+        trackingUpdates[`order_tracking/${trackingToken}/delivered_at`] = ServerValue.TIMESTAMP;
+      } else if (after === 'cancelled') {
+        trackingUpdates[`order_tracking/${trackingToken}/cancelled_at`] = ServerValue.TIMESTAMP;
+      }
+      try {
+        await db.ref().update(trackingUpdates);
+      } catch (e) {
+        console.warn(`sendOrderStatusNotifications: tracking mirror update failed`, e.message);
+      }
+    }
+
+    if (!(await whatsapp.isEnabled(db))) {
+      console.log(`sendOrderStatusNotifications: ${orderId} → ${after}, but whatsapp_enabled=false, skipping send`);
+      return;
+    }
+
+    try {
+      // (order is already loaded above)
+      if (!order) {
+        console.warn(`sendOrderStatusNotifications: order ${orderId} not found`);
+        return;
+      }
+      if (!order.customer_phone) {
+        console.warn(`sendOrderStatusNotifications: order ${orderId} has no customer_phone`);
+        return;
+      }
+      if (!trackingToken) {
+        console.warn(`sendOrderStatusNotifications: order ${orderId} has no tracking_token (legacy order?)`);
+        // Continue anyway — only delivered/cancelled don't need the token.
+      }
+
+      let body = null;
+
+      if (after === 'out_for_delivery') {
+        // Look up driver name for the message. Read the delivery task to get
+        // assigned_driver_id, then read the driver's display_name (preferred)
+        // or fall back to a hardcoded mapping for known drivers.
+        //
+        // Why a hardcoded map: the `name` field in /drivers is a username
+        // like "hermeztalavera" (no clean way to split first/last). For
+        // customer-facing messages we want a friendly first name. The map
+        // below is the source of truth; new drivers should be added here.
+        const DRIVER_DISPLAY_NAMES = {
+          'HUQ4nOdvNvQcbxoqyYinp8wAC7f2': 'Xavier',
+          'xaHcwaRND1V63w8tpXi5VZ7n9P72': 'Hermez'
+        };
+
+        let driverName = null;
+        try {
+          const deliveryTaskId = order.delivery_task_id || `${orderId}_delivery`;
+          const deliverySnap = await db.ref(`tasks/${deliveryTaskId}`).once('value');
+          const delivery = deliverySnap.val();
+          const driverId = delivery && delivery.assigned_driver_id;
+          if (driverId) {
+            // Priority 1: hardcoded map (canonical first names)
+            if (DRIVER_DISPLAY_NAMES[driverId]) {
+              driverName = DRIVER_DISPLAY_NAMES[driverId];
+            } else {
+              // Priority 2: display_name field on driver record (if dispatcher set it)
+              const dnSnap = await db.ref(`drivers/${driverId}/display_name`).once('value');
+              const dn = dnSnap.val();
+              if (dn && typeof dn === 'string') {
+                driverName = dn;
+              } else {
+                // Fallback: use the raw name field, capitalized
+                const nameSnap = await db.ref(`drivers/${driverId}/name`).once('value');
+                const raw = nameSnap.val();
+                if (raw && typeof raw === 'string') {
+                  driverName = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`sendOrderStatusNotifications: couldn't read driver name`, e.message);
+        }
+        // Mirror driver_name into the tracking record (for the public site)
+        if (driverName && trackingToken) {
+          try {
+            await db.ref(`order_tracking/${trackingToken}/driver_name`).set(driverName);
+          } catch (e) {
+            console.warn(`sendOrderStatusNotifications: driver_name mirror failed`, e.message);
+          }
+        }
+        body = whatsapp.tplOutForDelivery({
+          driverName,
+          etaMinutes: null,  // ETA computed by tracking site, not in message
+          trackingToken
+        });
+
+      } else if (after === 'delivered') {
+        body = whatsapp.tplDelivered({
+          customerName: order.customer_name
+        });
+
+      } else if (after === 'cancelled') {
+        body = whatsapp.tplCancelled({
+          orderId
+        });
+      }
+
+      if (!body) return;
+
+      console.log(`sendOrderStatusNotifications: ${orderId} → ${after}, sending WhatsApp to ${order.customer_phone}`);
+      await whatsapp.sendMessage(order.customer_phone, body);
+
+    } catch (e) {
+      console.error(`sendOrderStatusNotifications: failed for ${orderId} → ${after}`, e.message);
+      // Swallow — never throw out of the trigger
+    }
+  }
+);
+
+// ============================================================
+// onIncomingWhatsApp — UltraMsg webhook for inbound customer messages
+// ============================================================
+//
+// Receives webhook POSTs from UltraMsg whenever someone messages the X. Pizza
+// WhatsApp number. Classifies the message intent and sends an auto-reply.
+//
+// UltraMsg webhook payload:
+//   {
+//     event_type: "message_received",
+//     instanceId: "170156",
+//     data: {
+//       from: "[email protected]",  ← sender, "@c.us" suffix
+//       body: "hola quiero ordenar",
+//       fromMe: false,            ← if true, this is OUR own outgoing — skip
+//       type: "chat",             ← only handle text chats; skip media for now
+//       time: 1644957719
+//     }
+//   }
+//
+// Auth: We don't authenticate this endpoint. UltraMsg doesn't sign webhook
+// requests. The webhook URL itself is the secret — keep it out of git history
+// and don't share it. Worst case: someone POSTs garbage and we send a polite
+// auto-reply to whatever they put in `from` (rate-limited by UltraMsg's
+// receive-side limits).
+//
+// Idempotency: UltraMsg may retry on non-2xx responses. We always return 200
+// even on internal errors so we don't get retry storms — log instead.
+//
+// Side effects:
+//   - Sends WhatsApp auto-reply via UltraMsg
+//   - Logs unhandled messages to /incoming_messages for dispatcher visibility
+
+const inbound = require('./whatsapp_inbound');
+
+exports.onIncomingWhatsApp = onRequest(
+  {
+    region: 'us-central1',
+    cors: false,
+    timeoutSeconds: 30,
+    memory: '256MiB'
+  },
+  async (req, res) => {
+    if (req.method !== 'POST') {
+      res.set('Allow', 'POST');
+      return res.status(405).send('Method Not Allowed');
+    }
+
+    const event = req.body || {};
+    const data = event.data || {};
+
+    // Filter out non-customer events
+    if (event.event_type !== 'message_received') {
+      return res.status(200).send('ignored: event_type');
+    }
+    if (data.fromMe === true) {
+      return res.status(200).send('ignored: fromMe');
+    }
+    if (data.type && data.type !== 'chat') {
+      // Skip media (images, audio, etc.) — we'd need different handling.
+      // Still log it so dispatcher can see something arrived.
+      console.log(`onIncomingWhatsApp: ignored non-chat type=${data.type} from=${data.from}`);
+      try {
+        const db = getDatabase();
+        await db.ref('incoming_messages').push({
+          from: data.from || 'unknown',
+          type: data.type,
+          body: data.body || null,
+          time: data.time || Math.floor(Date.now() / 1000),
+          handled: false,
+          reason: 'non-chat type'
+        });
+      } catch (e) { /* best-effort */ }
+      return res.status(200).send('ignored: non-chat');
+    }
+
+    // Strip "@c.us" suffix from sender. UltraMsg uses [phone]@c.us format.
+    const fromPhoneRaw = String(data.from || '').replace(/@c\.us$/, '');
+    const body = String(data.body || '');
+
+    if (!fromPhoneRaw) {
+      console.warn('onIncomingWhatsApp: missing `from` field, skipping');
+      return res.status(200).send('ignored: no from');
+    }
+
+    if (!(await whatsapp.isEnabled(getDatabase()))) {
+      console.log('onIncomingWhatsApp: whatsapp_enabled=false, no auto-reply');
+      return res.status(200).send('ignored: disabled');
+    }
+
+    const intent = inbound.classify(body);
+    const hours = inbound.getHoursStatus();
+    console.log(`onIncomingWhatsApp: from=${fromPhoneRaw} intent=${intent} body="${body.substring(0, 80)}"`);
+
+    let replyBody = null;
+
+    try {
+      if (intent === 'STATUS_CHECK') {
+        // Look up active orders for this phone number. We match by suffix
+        // because order.customer_phone may be stored with or without the "+"
+        // and country code, while UltraMsg gives us the raw digits.
+        const db = getDatabase();
+        const ordersSnap = await db.ref('orders').once('value');
+        const orders = ordersSnap.val() || {};
+        const activeOrders = Object.values(orders).filter(o => {
+          if (!o || !o.customer_phone) return false;
+          const orderPhoneDigits = String(o.customer_phone).replace(/[^\d]/g, '');
+          // Match by suffix (handles +504, 504, or just 8-digit local)
+          if (!orderPhoneDigits.endsWith(fromPhoneRaw.slice(-8))
+              && !fromPhoneRaw.endsWith(orderPhoneDigits.slice(-8))) {
+            return false;
+          }
+          // Active = not delivered, not cancelled
+          return o.status !== 'delivered' && o.status !== 'cancelled';
+        });
+
+        if (activeOrders.length > 0) {
+          // Most recent active order
+          activeOrders.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+          const order = activeOrders[0];
+          if (order.tracking_token) {
+            replyBody = inbound.tplStatusCheckFound({
+              trackingToken: order.tracking_token,
+              customerName: (order.customer_name || '').split(' ')[0]
+            });
+          } else {
+            // No tracking token (legacy order) — fall back to generic reply
+            replyBody = inbound.tplStatusCheckNotFound();
+          }
+        } else {
+          replyBody = inbound.tplStatusCheckNotFound();
+        }
+
+      } else if (intent === 'GENERAL_INQUIRY') {
+        replyBody = inbound.tplGeneralInquiry(hours);
+
+      } else if (intent === 'SHORT_ACK') {
+        replyBody = inbound.tplShortAck();
+
+      } else {
+        // UNHANDLED — log to /incoming_messages for dispatcher review
+        replyBody = inbound.tplUnhandled(hours);
+        try {
+          const db = getDatabase();
+          await db.ref('incoming_messages').push({
+            from: fromPhoneRaw,
+            body: body,
+            time: data.time || Math.floor(Date.now() / 1000),
+            handled: false,
+            intent: 'UNHANDLED',
+            received_at: ServerValue.TIMESTAMP
+          });
+        } catch (e) {
+          console.warn('onIncomingWhatsApp: failed to log unhandled msg', e.message);
+        }
+      }
+
+      if (replyBody) {
+        await whatsapp.sendMessage(fromPhoneRaw, replyBody);
+      }
+
+    } catch (e) {
+      console.error(`onIncomingWhatsApp: failed for from=${fromPhoneRaw}`, e.message);
+      // Always 200 — UltraMsg retries on non-2xx
+    }
+
+    return res.status(200).send('ok');
   }
 );
 
