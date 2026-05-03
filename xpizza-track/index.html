@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Tracking - version: 1.0.0 -->
+<!-- X Pizza Tracking - version: 1.0.1 -->
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
@@ -564,14 +564,13 @@
       stepNames.forEach((name, idx) => {
         const stepNum = idx + 1;
         const stepEl = document.querySelector(`.step[data-step="${name}"]`);
-        if (stepNum < progressStep) {
+        if (status === 'delivered') {
+          // All steps green when delivered
+          stepEl.classList.add('complete');
+        } else if (stepNum < progressStep) {
           stepEl.classList.add('done');
         } else if (stepNum === progressStep) {
-          if (status === 'delivered') {
-            stepEl.classList.add('complete');
-          } else {
-            stepEl.classList.add('current');
-          }
+          stepEl.classList.add('current');
         }
       });
 
