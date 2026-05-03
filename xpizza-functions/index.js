@@ -1,12 +1,12 @@
 /**
  * X Pizza Delivery — Cloud Functions
- * version: 1.4.0
+ * version: 1.5.1
  *
  * Endpoints:
  *   - createOrder              (HTTPS)   — Make.com → Firebase write proxy
  *   - notifyDriverOnAssignment (DB trig) — Web Push to driver on assignment
  *   - onOrderCancelled         (DB trig) — Sync cancellations to KDS Sheet
- *   - autoAssignOnOrderCreate  (DB trig) — Auto-pick driver after grace period
+ *   - autoAssignOnOrderCreate  (DB trig) — Auto-pick driver after grace period (with continuous-at-restaurant stacking)
  *   - monitorAssignmentTimeout (DB trig) — Reassign on 60s no-accept timeout
  *
  * Why this exists:
@@ -543,12 +543,26 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
     const taskCount = activeTasksByDriver[driverId] || 0;
     const orderCount = Math.floor(taskCount / 2);
 
-    // Stacking cap: 0 orders → up to 2; 1 order if NOT delivering → up to 2;
-    // 1 order while delivering OR 2+ orders → at cap.
+    // Stacking eligibility:
+    //   - 0 orders: always eligible (cap 2, won't stack but reserves capacity)
+    //   - 1 order: only stack if driver is PHYSICALLY AT the restaurant
+    //              (state in [at_restaurant, available]). This means the
+    //              second pizza can ride along with the first one — they
+    //              haven't left yet. If the driver has already left
+    //              (en_route_delivery, returning) or hasn't arrived yet
+    //              (assigned), don't stack — the second pizza would either
+    //              wait at the restaurant alone (bad) or force the driver
+    //              to come back (worse).
+    //   - 2+ orders: never stack
     let cap;
-    if (orderCount === 0) cap = 2;
-    else if (orderCount === 1 && d.status !== 'en_route_delivery') cap = 2;
-    else cap = orderCount;
+    if (orderCount === 0) {
+      cap = 2;
+    } else if (orderCount === 1
+               && (d.status === 'at_restaurant' || d.status === 'available')) {
+      cap = 2;
+    } else {
+      cap = orderCount;  // already at cap, will be filtered out below
+    }
     if (orderCount >= cap) continue;
 
     const distanceKm = haversineKm(d.lat, d.lng, RESTAURANT_LAT, RESTAURANT_LNG);
@@ -567,18 +581,34 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
  * Build the atomic update for assigning an order's pickup+delivery tasks
  * to a driver. Sets assignment_deadline (used by timeout monitor + driver UI
  * countdown) and bumps assignment_attempts.
+ *
+ * @param isStacked  true when this driver already has an accepted/in-progress
+ *                   order. Stacked orders skip the swipe-to-accept flow:
+ *                   tasks start in 'accepted' status (not 'assigned'), so the
+ *                   timeout monitor treats them as already-handled and the
+ *                   driver UI renders them as queue cards (no countdown chip).
+ *                   The driver implicitly accepted them by accepting the
+ *                   active order; we don't want to demand a separate swipe
+ *                   while they're delivering / driving.
  */
-function buildAssignmentUpdates(orderId, driverId, attempts, isAutoAssigned) {
+function buildAssignmentUpdates(orderId, driverId, attempts, isAutoAssigned, isStacked = false) {
   const now = Date.now();
   const deadline = now + ACCEPT_TIMEOUT_MS;
+  const status = isStacked ? 'accepted' : 'assigned';
   const updates = {};
   for (const taskType of ['pickup', 'delivery']) {
     const taskId = `${orderId}_${taskType}`;
     updates[`tasks/${taskId}/assigned_driver_id`] = driverId;
-    updates[`tasks/${taskId}/status`] = 'assigned';
+    updates[`tasks/${taskId}/status`] = status;
     updates[`tasks/${taskId}/assigned_at`] = ServerValue.TIMESTAMP;
-    updates[`tasks/${taskId}/assignment_deadline`] = deadline;
-    updates[`tasks/${taskId}/assignment_attempts`] = attempts;
+    if (isStacked) {
+      // Skip deadline/attempts since acceptance is implicit and timeout
+      // monitor doesn't fire (it only acts when status is 'assigned').
+      updates[`tasks/${taskId}/accepted_at`] = ServerValue.TIMESTAMP;
+    } else {
+      updates[`tasks/${taskId}/assignment_deadline`] = deadline;
+      updates[`tasks/${taskId}/assignment_attempts`] = attempts;
+    }
     if (isAutoAssigned) {
       updates[`tasks/${taskId}/auto_assigned`] = true;
     }
@@ -659,9 +689,18 @@ exports.autoAssignOnOrderCreate = onValueWritten(
 
     console.log(`autoAssign: assigning ${orderId} → ${chosen.name} (${chosen.distanceKm.toFixed(2)}km, ${chosen.orderCount} active)`);
 
+    // If chosen driver already has an active order, this is a STACK.
+    // Stacked orders skip the swipe-to-accept flow (driver implicitly
+    // accepted by accepting the active order). Tasks start in 'accepted'
+    // state, no countdown chip on driver UI, no timeout monitor concerns.
+    const isStacked = chosen.orderCount > 0;
+    if (isStacked) {
+      console.log(`autoAssign: ${orderId} is STACKED on ${chosen.name} (already has ${chosen.orderCount} active)`);
+    }
+
     // attempts=1 = initial assignment. monitorAssignmentTimeout uses this
-    // for its 2-strikes rule.
-    const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true);
+    // for its 2-strikes rule (only relevant for non-stacked).
+    const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);
     try {
       await db.ref().update(updates);
       console.log(`autoAssign: success for ${orderId} → ${chosen.driverId}`);
@@ -713,6 +752,17 @@ exports.monitorAssignmentTimeout = onValueWritten(
 
     const driverId = after;
     const orderId = taskId.replace(/_pickup$/, '');
+
+    // For stacked orders, the task is created with status 'accepted' directly
+    // (not 'assigned'), so the timeout monitor isn't needed. Quick check up
+    // front saves a 60-second sleep for nothing.
+    const db0 = getDatabase();
+    const initialTaskSnap = await db0.ref(`tasks/${taskId}`).once('value');
+    const initialTask = initialTaskSnap.val();
+    if (initialTask && initialTask.status === 'accepted') {
+      console.log(`timeout-monitor: ${taskId} is stacked/already-accepted, skipping`);
+      return;
+    }
 
     console.log(`timeout-monitor: starting ${ACCEPT_TIMEOUT_MS}ms timer for ${taskId} → ${driverId}`);
 
