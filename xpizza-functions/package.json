@@ -1,6 +1,6 @@
 {
   "name": "xpizza-functions",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "X Pizza Delivery Cloud Functions — Make.com → Firebase + Web Push + KDS sync + Auto-assign + Acceptance timeout + Stacking + WhatsApp inbound/outbound",
   "main": "index.js",
   "scripts": {

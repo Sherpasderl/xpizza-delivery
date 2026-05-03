@@ -1,6 +1,6 @@
 /**
  * X Pizza Delivery — Cloud Functions
- * version: 1.7.0
+ * version: 1.7.1
  *
  * Endpoints:
  *   - createOrder                   (HTTPS)   — Make.com → Firebase write proxy + WhatsApp "received"
@@ -940,10 +940,27 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
     if (excluded.has(driverId)) continue;
     const d = drivers[driverId];
     if (!d) continue;
+
+    // Eligibility: driver must be ON DUTY and REACHABLE via push.
+    //
+    // We don't filter on last_ping freshness anymore. Drivers in real
+    // operation have their phone idle in pocket/on table — the PWA stops
+    // pinging when the screen is off, but the push notification still wakes
+    // them up. Filtering on stale GPS ping was excluding genuinely-on-duty
+    // drivers. The acceptance-timeout system (60s + cascade) catches the
+    // edge case where a driver's phone is actually dead.
+    //
+    // Required:
+    //   - status not 'off_shift' (driver explicitly clocked in)
+    //   - push_subscription on file (we can actually deliver them the order)
+    //   - cooldown not active (last assignment didn't time out)
+    //
+    // Lat/lng absence is OK — used only for distance sort. If GPS is missing
+    // we fall back to the restaurant location for sort distance, treating
+    // the driver as if they're at the restaurant. They probably are if their
+    // phone hasn't pinged.
     if (d.status === 'off_shift') continue;
-    if (!d.last_ping || (now - d.last_ping) > STALE_PING_MS) continue;
-    if (typeof d.lat !== 'number' || typeof d.lng !== 'number') continue;
-    // Respect cooldown from prior timeout
+    if (!d.push_subscription) continue;
     if (d.timeout_until && d.timeout_until > now) continue;
 
     const taskCount = activeTasksByDriver[driverId] || 0;
@@ -971,7 +988,15 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
     }
     if (orderCount >= cap) continue;
 
-    const distanceKm = haversineKm(d.lat, d.lng, RESTAURANT_LAT, RESTAURANT_LNG);
+    // If GPS data missing/stale, treat driver as if at the restaurant
+    // (distance = 0). Better than excluding them outright when their phone
+    // just hasn't pinged in a while.
+    let distanceKm;
+    if (typeof d.lat === 'number' && typeof d.lng === 'number') {
+      distanceKm = haversineKm(d.lat, d.lng, RESTAURANT_LAT, RESTAURANT_LNG);
+    } else {
+      distanceKm = 0;
+    }
     eligible.push({ driverId, orderCount, distanceKm, name: d.name || driverId });
   }
 

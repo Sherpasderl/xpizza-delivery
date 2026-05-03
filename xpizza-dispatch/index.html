@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Dispatch - version: 1.5.5 -->
+<!-- X Pizza Dispatch - version: 1.5.6 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1940,22 +1940,56 @@ function renderDriversSection() {
 
 function renderDriverNode(uid, d) {
   const stale = XPD.isStalePing(d.last_ping);
-  const dotClass = !d.active ? '' :
-    stale ? '' :
-    d.status === 'available' || d.status === 'at_restaurant' ? 'green' :
-    d.status === 'en_route_delivery' ? 'blue' :
-    d.status === 'returning' || d.status === 'assigned' ? 'amber' : '';
+  // Reachable = on duty AND we have a push subscription (we can wake their phone).
+  // GPS staleness DOESN'T mean unreachable — just means phone idle. Push still works.
+  const onDuty = d.active && d.status !== 'off_shift';
+  const reachable = onDuty && !!d.push_subscription;
+
+  // Status dot:
+  //   green  = on duty + GPS fresh + available/at_restaurant
+  //   blue   = on duty + actively delivering
+  //   amber  = on duty + (returning/assigned/idle GPS) — reachable but not actively moving
+  //   gray   = off duty or unreachable (no push subscription)
+  let dotClass;
+  if (!reachable) {
+    dotClass = '';  // gray
+  } else if (stale) {
+    // Stale GPS but still on duty: amber. Driver is in the system but not
+    // actively pinging; push notification will reach them when an order comes in.
+    dotClass = 'amber';
+  } else if (d.status === 'available' || d.status === 'at_restaurant') {
+    dotClass = 'green';
+  } else if (d.status === 'en_route_delivery') {
+    dotClass = 'blue';
+  } else if (d.status === 'returning' || d.status === 'assigned') {
+    dotClass = 'amber';
+  } else {
+    dotClass = '';
+  }
 
   const ordersForDriver = getOrdersForDriver(uid);
   const expanded = expandedDrivers.has(uid);
   const hasOrders = ordersForDriver.length > 0;
 
-  // Status text shown inline
-  const statusText = !d.active ? 'Off-duty' :
-    `${XPD.formatStatus(d.status)} · ${stale ? `hace ${XPD.formatStaleness(d.last_ping)}` : 'live'}`;
+  // Status text shown inline. "Inactivo" replaces "live" when GPS stale,
+  // but we don't gray out the row — only fully off-duty drivers get that.
+  let statusText;
+  if (!d.active) {
+    statusText = 'Off-duty';
+  } else if (!d.push_subscription) {
+    statusText = `${XPD.formatStatus(d.status)} · sin notificaciones`;
+  } else if (stale) {
+    statusText = `${XPD.formatStatus(d.status)} · inactivo ${XPD.formatStaleness(d.last_ping)}`;
+  } else {
+    statusText = `${XPD.formatStatus(d.status)} · live`;
+  }
+
+  // Only fully-unreachable drivers get the dimmed "stale" row treatment.
+  // Stale GPS while on duty = render normally (full opacity).
+  const dimRow = !reachable;
 
   return `
-    <div class="driver-row ${stale ? 'stale' : ''} ${hasOrders ? 'has-tasks' : ''} ${expanded ? 'expanded' : ''}" data-driver-uid="${uid}">
+    <div class="driver-row ${dimRow ? 'stale' : ''} ${hasOrders ? 'has-tasks' : ''} ${expanded ? 'expanded' : ''}" data-driver-uid="${uid}">
       <div class="status-dot ${dotClass}"></div>
       <div class="name">${escapeHtml(d.name || 'Sin nombre')}</div>
       <div class="row-status">${escapeHtml(statusText)}</div>
@@ -2081,10 +2115,23 @@ function updateDriverMarkers() {
 
     const initial = (d.name || '?').charAt(0).toUpperCase();
     const stale = XPD.isStalePing(d.last_ping);
-    const color = stale ? '#666' :
-      d.status === 'available' || d.status === 'at_restaurant' ? '#16a34a' :
-      d.status === 'en_route_delivery' ? '#3b82f6' :
-      d.status === 'returning' || d.status === 'assigned' ? '#f59e0b' : '#666';
+    const reachable = d.active && d.status !== 'off_shift' && !!d.push_subscription;
+    // Map marker color: stale GPS = amber (still reachable),
+    // unreachable = gray. Don't gray out idle drivers; their phone just hasn't pinged.
+    let color;
+    if (!reachable) {
+      color = '#666';  // gray
+    } else if (stale) {
+      color = '#f59e0b';  // amber — reachable, just idle
+    } else if (d.status === 'available' || d.status === 'at_restaurant') {
+      color = '#16a34a';  // green
+    } else if (d.status === 'en_route_delivery') {
+      color = '#3b82f6';  // blue
+    } else if (d.status === 'returning' || d.status === 'assigned') {
+      color = '#f59e0b';  // amber
+    } else {
+      color = '#666';
+    }
 
     const icon = {
       path: google.maps.SymbolPath.CIRCLE,
@@ -2224,12 +2271,19 @@ function openPicker(orderId, isReassign = false) {
   } else {
     $('picker-list').innerHTML = drivers.map(({ uid, driver, distBase, distCust, stale }) => {
       const busy = driver.status === 'en_route_delivery' || driver.status === 'assigned';
+      // Reachable means we can deliver them a push notification.
+      // Stale GPS doesn't make them unreachable — only no push subscription does.
+      const unreachable = !driver.push_subscription;
+      // "Disabled" in the picker means: dispatcher will be asked to confirm.
+      // Busy or unreachable = require confirmation. Stale GPS alone does not.
+      const requireConfirm = busy || unreachable;
+      const staleNote = (stale && !unreachable) ? ' · GPS inactivo' : '';
       return `
-        <div class="picker-row ${busy ? 'disabled' : ''} ${stale ? 'disabled' : ''}" data-driver-uid="${uid}" ${busy || stale ? 'data-busy="1"' : ''}>
+        <div class="picker-row ${requireConfirm ? 'disabled' : ''}" data-driver-uid="${uid}" ${requireConfirm ? 'data-busy="1"' : ''} ${unreachable ? 'data-unreachable="1"' : ''}>
           <div class="status-dot ${getDotClass(driver)}"></div>
           <div class="name">${escapeHtml(driver.name || '—')}</div>
           <div>
-            <span class="status-pill ${driver.status}">${XPD.formatStatus(driver.status)}</span>
+            <span class="status-pill ${driver.status}">${XPD.formatStatus(driver.status)}${staleNote}</span>
           </div>
           <div class="distances">
             <div><strong>${formatDistance(distBase)}</strong> a base</div>
@@ -2241,8 +2295,10 @@ function openPicker(orderId, isReassign = false) {
 
     $('picker-list').querySelectorAll('[data-driver-uid]').forEach(row => {
       row.addEventListener('click', async () => {
-        if (row.dataset.busy === '1') {
-          if (!confirm('Este driver está ocupado o sin GPS reciente. ¿Asignar de todas formas?')) return;
+        if (row.dataset.unreachable === '1') {
+          if (!confirm('Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?')) return;
+        } else if (row.dataset.busy === '1') {
+          if (!confirm('Este repartidor está ocupado. ¿Asignar de todas formas?')) return;
         }
         await assignOrder(orderId, row.dataset.driverUid);
       });
@@ -2290,7 +2346,11 @@ function updateStats() {
 }
 
 function getDotClass(d) {
-  if (XPD.isStalePing(d.last_ping)) return '';
+  // Match the logic in renderDriverNode: stale GPS doesn't dim a reachable
+  // driver, but a driver with no push_subscription is treated as gray.
+  const reachable = d.active && d.status !== 'off_shift' && !!d.push_subscription;
+  if (!reachable) return '';
+  if (XPD.isStalePing(d.last_ping)) return 'amber';  // idle but reachable
   if (d.status === 'available' || d.status === 'at_restaurant') return 'green';
   if (d.status === 'en_route_delivery') return 'blue';
   if (d.status === 'returning' || d.status === 'assigned') return 'amber';
