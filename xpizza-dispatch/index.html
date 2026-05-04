@@ -71,9 +71,10 @@
     color: var(--accent);
   }
   .brand-sub {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
-    font-size: 14px;
-    letter-spacing: 0.18em;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 500;
+    font-size: 13px;
+    letter-spacing: -0.01em;
     color: var(--text-soft);
     margin-left: -8px;
   }
@@ -89,13 +90,15 @@
     gap: 6px;
   }
   .topbar-stat .num {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
-    font-size: 18px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
+    font-size: 16px;
     color: var(--text);
   }
   .topbar-user {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 500;
+    font-size: 12px;
     color: var(--text-soft);
   }
   .version-tag {
@@ -121,17 +124,17 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 4px 12px;
+    padding: 5px 14px;
     border: 1px solid var(--border);
-    border-radius: 16px;
+    border-radius: 99px;
     cursor: pointer;
     background: transparent;
     color: var(--text-soft);
-    font-size: 11px;
+    font-size: 12px;
+    font-weight: 500;
     font-family: inherit;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    transition: background 0.15s;
+    letter-spacing: -0.01em;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
   }
   .auto-assign-toggle:hover { background: var(--surface-3); }
   .auto-assign-toggle .aa-dot {
@@ -175,21 +178,24 @@
     animation: alert-slide-in 0.35s cubic-bezier(0.18, 1.18, 0.32, 1);
   }
   .dispatcher-alert .alert-icon {
-    font-size: 24px;
-    line-height: 1;
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
   }
+  .dispatcher-alert .alert-icon svg { width: 100%; height: 100%; }
   .dispatcher-alert .alert-text {
     flex: 1;
     line-height: 1.35;
   }
   .dispatcher-alert .alert-text strong {
     display: block;
-    font-weight: 700;
+    font-weight: 600;
     margin-bottom: 2px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-size: 12px;
+    letter-spacing: -0.01em;
+    font-size: 13px;
   }
   .dispatcher-alert .alert-dismiss {
     background: rgba(255,255,255,0.15);
@@ -199,12 +205,12 @@
     height: 28px;
     border-radius: 50%;
     cursor: pointer;
-    font-size: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
   }
+  .dispatcher-alert .alert-dismiss svg { width: 14px; height: 14px; }
   .dispatcher-alert .alert-dismiss:hover { background: rgba(255,255,255,0.28); }
   @keyframes alert-slide-in {
     from { opacity: 0; transform: translateY(-20px); }
@@ -288,13 +294,25 @@
     color: var(--text-soft);
     width: 100%;
     text-align: left;
-    padding: 10px 16px;
-    font-size: 11px;
+    padding: 12px 16px;
+    font-size: 12px;
+    font-weight: 500;
     font-family: inherit;
-    letter-spacing: 0.06em;
+    letter-spacing: -0.01em;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
   .sidebar-collapse-btn:hover { color: var(--text); }
+  .sidebar-collapse-btn .sb-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+  }
+  .sidebar-collapse-btn .sb-icon svg { width: 100%; height: 100%; }
 
   .sidebar-show-btn {
     position: fixed;
@@ -308,10 +326,22 @@
     border-radius: 6px 0 0 6px;
     padding: 10px 14px;
     font-size: 12px;
+    font-weight: 500;
     font-family: inherit;
     cursor: pointer;
     box-shadow: -4px 4px 14px rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
+  .sidebar-show-btn .sb-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+  }
+  .sidebar-show-btn .sb-icon svg { width: 100%; height: 100%; }
   .sidebar-show-btn.hidden { display: none; }
 
   /* ==================== SIDEBAR SECTIONS ==================== */
@@ -331,10 +361,10 @@
     padding: 0 4px;
   }
   .panel-title {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
     font-size: 13px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
+    letter-spacing: -0.01em;
     color: var(--text-soft);
   }
   .panel-count {
@@ -396,8 +426,9 @@
   .status-dot.blue  { background: var(--info); box-shadow: 0 0 6px rgba(59,130,246,0.5); }
   .status-dot.red   { background: var(--accent); }
   .driver-card .name {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
-    font-size: 16px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
     letter-spacing: 0.04em;
     flex: 1;
   }
@@ -416,11 +447,11 @@
     gap: 8px;
   }
   .status-pill {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding: 2px 8px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: -0.01em;
+    padding: 2px 10px;
     border-radius: 99px;
     background: var(--surface-3);
     color: var(--text-soft);
@@ -464,13 +495,15 @@
     color: var(--text-dim);
   }
   .order-card .order-total {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
-    font-size: 18px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
+    font-size: 17px;
     color: var(--text);
   }
   .order-card .order-customer {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
-    font-size: 16px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
     letter-spacing: 0.03em;
     margin-bottom: 4px;
   }
@@ -493,10 +526,10 @@
   }
   .order-meta-pill {
     background: var(--surface-3);
-    padding: 2px 6px;
+    padding: 2px 7px;
     border-radius: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    font-size: 11px;
+    letter-spacing: -0.01em;
   }
   .order-card .assign-btn {
     width: 100%;
@@ -504,12 +537,12 @@
     background: var(--accent);
     color: white;
     border: none;
-    padding: 8px;
+    padding: 9px;
     border-radius: 6px;
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
     font-size: 13px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    letter-spacing: -0.01em;
   }
   .order-card .assign-btn:hover { background: #b91c1c; }
 
@@ -527,7 +560,8 @@
     color: var(--text-soft);
   }
   .order-card.active .driver-line .name {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
     font-size: 13px;
     color: var(--text);
     letter-spacing: 0.03em;
@@ -549,15 +583,16 @@
     padding: 0 4px 10px;
   }
   .tree-group-title {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
-    font-size: 12px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: -0.01em;
     color: var(--text-soft);
   }
   .tree-group-meta {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 10px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 500;
+    font-size: 11px;
     color: var(--text-dim);
   }
   .tree-group-meta.hot {
@@ -586,9 +621,10 @@
   .driver-row:hover { background: var(--surface-2); }
   .driver-row.stale { opacity: 0.55; }
   .driver-row .name {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
-    font-size: 15px;
-    letter-spacing: 0.04em;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: -0.01em;
     flex: 1;
     min-width: 0;
     overflow: hidden;
@@ -596,10 +632,9 @@
     white-space: nowrap;
   }
   .driver-row .row-status {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-soft);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: -0.01em;
     flex-shrink: 0;
   }
   .driver-row.has-tasks .name {
@@ -607,10 +642,15 @@
   }
   .driver-row .chevron {
     color: var(--text-dim);
-    font-size: 10px;
     transition: transform 0.15s;
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
   }
+  .driver-row .chevron svg { width: 100%; height: 100%; }
   .driver-row.expanded .chevron { transform: rotate(90deg); }
 
   .driver-tasks {
@@ -652,7 +692,8 @@
     color: var(--text-dim);
   }
   .task-row .task-customer {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
     font-size: 13px;
     letter-spacing: 0.02em;
     color: var(--text);
@@ -672,11 +713,11 @@
     gap: 6px;
   }
   .phase-pill {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
-    font-size: 9px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding: 2px 7px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: -0.01em;
+    padding: 2px 9px;
     border-radius: 99px;
   }
   .phase-pill.pickup { background: var(--warn-soft); color: var(--warn); }
@@ -702,8 +743,8 @@
     margin-bottom: 4px;
   }
   .unassigned-card .uid { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-dim); }
-  .unassigned-card .total { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 16px; color: var(--text); }
-  .unassigned-card .customer { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 14px; margin-bottom: 2px; }
+  .unassigned-card .total { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 16px; color: var(--text); }
+  .unassigned-card .customer { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 14px; margin-bottom: 2px; }
   .unassigned-card .addr { font-size: 11px; color: var(--text-soft); margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .unassigned-card .actions { display: flex; gap: 6px; }
   .unassigned-card .assign-btn {
@@ -711,13 +752,12 @@
     background: var(--accent);
     color: white;
     border: none;
-    padding: 7px;
+    padding: 8px;
     border-radius: 5px;
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 12px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    letter-spacing: -0.01em;
     cursor: pointer;
   }
   .unassigned-card .assign-btn:hover { background: #b91c1c; }
@@ -725,13 +765,12 @@
     background: var(--success);
     color: white;
     border: none;
-    padding: 7px 12px;
+    padding: 8px 12px;
     border-radius: 5px;
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 12px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    letter-spacing: -0.01em;
     cursor: pointer;
     flex-shrink: 0;
   }
@@ -753,9 +792,9 @@
   }
   .task-expanded .row .label {
     color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-size: 9px;
+    letter-spacing: -0.01em;
+    font-size: 11px;
+    font-weight: 500;
     flex-shrink: 0;
     width: 60px;
   }
@@ -836,11 +875,14 @@
     margin: 4px 0;
   }
   .action-menu-item .icon {
-    font-size: 14px;
     width: 16px;
+    height: 16px;
     display: inline-flex;
+    align-items: center;
     justify-content: center;
+    flex-shrink: 0;
   }
+  .action-menu-item .icon svg { width: 100%; height: 100%; }
 
   /* ==================== TODAY'S DELIVERED ==================== */
   .delivered-card {
@@ -891,11 +933,16 @@
   .tree-group-header.toggleable:hover .tree-group-title { color: var(--text); }
   .tree-group-toggle {
     color: var(--text-dim);
-    font-size: 9px;
     transition: transform 0.15s;
-    margin-right: 6px;
-    display: inline-block;
+    margin-right: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    height: 12px;
+    vertical-align: middle;
   }
+  .tree-group-toggle svg { width: 100%; height: 100%; }
   .tree-group.collapsed .tree-group-toggle { transform: rotate(-90deg); }
 
   /* ==================== ASSIGN OVERLAY ==================== */
@@ -925,7 +972,8 @@
     border-bottom: 1px solid var(--border-soft);
   }
   .picker-title {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
     font-size: 18px;
     letter-spacing: 0.05em;
     margin-bottom: 4px;
@@ -1057,10 +1105,10 @@
     border: none;
     padding: 12px 24px;
     border-radius: 8px;
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
     font-size: 15px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    letter-spacing: -0.01em;
     width: 100%;
     margin-top: 8px;
   }
@@ -1137,16 +1185,16 @@
 <div id="screen-main" class="hidden" style="display:flex; flex-direction:column; height:100vh;">
   <header class="topbar">
     <span class="brand">X PIZZA</span>
-    <span class="brand-sub">DISPATCH</span>
+    <span class="brand-sub">Dispatch</span>
     <div class="topbar-spacer"></div>
     <button class="auto-assign-toggle" id="auto-assign-toggle" title="Asignación automática de pedidos">
       <span class="aa-dot"></span>
       <span class="aa-label">Auto-asignar</span>
     </button>
-    <div class="topbar-stat">DRIVERS <span class="num" id="stat-drivers">0</span></div>
-    <div class="topbar-stat">PENDIENTES <span class="num" id="stat-pending">0</span></div>
-    <div class="topbar-stat">ACTIVOS <span class="num" id="stat-active">0</span></div>
-    <div class="topbar-stat">HOY <span class="num" id="stat-delivered">0</span></div>
+    <div class="topbar-stat">Drivers <span class="num" id="stat-drivers">0</span></div>
+    <div class="topbar-stat">Pendientes <span class="num" id="stat-pending">0</span></div>
+    <div class="topbar-stat">Activos <span class="num" id="stat-active">0</span></div>
+    <div class="topbar-stat">Hoy <span class="num" id="stat-delivered">0</span></div>
     <div class="topbar-user" id="topbar-user">—</div>
     <span class="version-tag" data-version-display></span>
     <button class="topbar-btn" id="signout-btn">Salir</button>
@@ -1172,11 +1220,11 @@
 
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-resize-handle" id="sidebar-resize-handle" title="Arrastrar para cambiar el ancho"></div>
-      <button class="sidebar-collapse-btn" id="sidebar-collapse-btn">▶ OCULTAR PANEL</button>
+      <button class="sidebar-collapse-btn" id="sidebar-collapse-btn"><span class="sb-icon"></span><span class="sb-label">Ocultar panel</span></button>
 
       <div class="tree-group" id="unassigned-group">
         <div class="tree-group-header">
-          <div class="tree-group-title">Sin Asignar</div>
+          <div class="tree-group-title">Sin asignar</div>
           <div class="tree-group-meta" id="unassigned-meta">0 pedidos</div>
         </div>
         <div id="unassigned-list"><div class="tree-empty">Sin pedidos pendientes</div></div>
@@ -1192,7 +1240,7 @@
 
       <div class="tree-group collapsed" id="delivered-group">
         <div class="tree-group-header toggleable" id="delivered-toggle">
-          <div class="tree-group-title"><span class="tree-group-toggle">▼</span>Entregados Hoy</div>
+          <div class="tree-group-title"><span class="tree-group-toggle"></span>Entregados hoy</div>
           <div class="tree-group-meta" id="delivered-meta">0</div>
         </div>
         <div class="group-body">
@@ -1201,7 +1249,7 @@
       </div>
     </aside>
 
-    <button class="sidebar-show-btn hidden" id="sidebar-show-btn">◀ Panel</button>
+    <button class="sidebar-show-btn hidden" id="sidebar-show-btn"><span class="sb-icon"></span><span class="sb-label">Panel</span></button>
   </div>
 </div>
 
@@ -1234,10 +1282,26 @@ import * as XPD from './xpizza-delivery.js?v=14';
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '1.4.1';
+const SYSTEM_VERSION = '1.5.7';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · dispatch`;
 });
+
+// ============================================================
+// Icon set (Lucide)
+// ============================================================
+// SVG paths from lucide.dev. stroke="currentColor" so each icon inherits
+// the parent's text color via CSS. Replaces ✕ ⚠ 📞 ▶ ▼ ◀ ↻ that were
+// used previously. Same icon system used in driver app for consistency.
+const ICONS = {
+  close:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+  warn:        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  phone:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`,
+  refresh:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
+  chevronRight:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`,
+  chevronLeft: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+  chevronDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`
+};
 
 // ============================================================
 // State
@@ -1499,12 +1563,14 @@ function subscribeAll() {
     renderDispatcherAlerts(alerts);
   });
 
-  // Auto-assign toggle: reflect state from Firebase, sync changes back
+  // Auto-assign toggle: reflect state from Firebase, sync changes back.
+  // Label switches between two states; the dot color carries the state too,
+  // so the text is brief.
   XPD.subscribeToAutoAssignEnabled((enabled) => {
     const btn = $('auto-assign-toggle');
     if (btn) btn.classList.toggle('on', enabled);
     const label = btn?.querySelector('.aa-label');
-    if (label) label.textContent = enabled ? 'Auto-asignar ON' : 'Auto-asignar OFF';
+    if (label) label.textContent = enabled ? 'Auto-asignar activo' : 'Auto-asignar pausado';
   });
 
   $('auto-assign-toggle').addEventListener('click', async () => {
@@ -1538,12 +1604,12 @@ function renderDispatcherAlerts(alerts) {
       const total = a.total != null ? ` · L${a.total}` : '';
       return `
         <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">⚠</span>
+          <span class="alert-icon">${ICONS.warn}</span>
           <div class="alert-text">
             <strong>No hay repartidores disponibles</strong>
             Pedido #${a.order_id} · ${a.customer_name || 'Cliente'}${total} — asigna manualmente
           </div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">✕</button>
+          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
         </div>
       `;
     }
@@ -1552,21 +1618,21 @@ function renderDispatcherAlerts(alerts) {
       const attempts = a.attempts || 2;
       return `
         <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">⚠</span>
+          <span class="alert-icon">${ICONS.warn}</span>
           <div class="alert-text">
             <strong>Sin respuesta de repartidores</strong>
             Pedido #${a.order_id} · ${a.customer_name || 'Cliente'}${total} — ${attempts} intentos sin aceptación, asigna manualmente
           </div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">✕</button>
+          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
         </div>
       `;
     }
     // Generic fallback for unknown alert types
     return `
       <div class="dispatcher-alert" data-alert-id="${alertId}">
-        <span class="alert-icon">⚠</span>
+        <span class="alert-icon">${ICONS.warn}</span>
         <div class="alert-text">${escapeHtml(a.type || 'Alerta')}</div>
-        <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">✕</button>
+        <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
       </div>
     `;
   }).join('');
@@ -1805,13 +1871,13 @@ function renderUnassignedSection() {
       const items = [
         order?.customer_phone ? {
           label: `Llamar a ${order.customer_name || 'cliente'}`,
-          icon: '📞',
+          icon: ICONS.phone,
           action: () => window.location.href = `tel:${order.customer_phone}`
         } : null,
         order?.customer_phone ? { divider: true } : null,
         {
           label: 'Cancelar pedido',
-          icon: '✕',
+          icon: ICONS.close,
           danger: true,
           action: () => confirmCancelOrder(oid)
         }
@@ -1917,18 +1983,18 @@ function renderDriversSection() {
       const items = [
         order?.customer_phone ? {
           label: `Llamar a ${order.customer_name || 'cliente'}`,
-          icon: '📞',
+          icon: ICONS.phone,
           action: () => window.location.href = `tel:${order.customer_phone}`
         } : null,
         order?.customer_phone ? { divider: true } : null,
         {
           label: 'Reasignar a otro driver',
-          icon: '↻',
+          icon: ICONS.refresh,
           action: () => openPicker(oid, true)
         },
         {
           label: 'Cancelar pedido',
-          icon: '✕',
+          icon: ICONS.close,
           danger: true,
           action: () => confirmCancelOrder(oid)
         }
@@ -1973,15 +2039,41 @@ function renderDriverNode(uid, d) {
 
   // Status text shown inline. "Inactivo" replaces "live" when GPS stale,
   // but we don't gray out the row — only fully off-duty drivers get that.
+  // Localized status descriptions for the dispatcher driver list.
+  // We don't use XPD.formatStatus here because it returns English ("Available",
+  // "En route") — for the dispatcher UI we want consistent Spanish copy.
+  const statusEs = {
+    off_shift: 'Fuera de turno',
+    available: 'Disponible',
+    assigned: 'Asignado',
+    at_restaurant: 'En restaurante',
+    en_route_delivery: 'En camino',
+    returning: 'Regresando',
+    on_break: 'En pausa'
+  };
+  const statusLabel = statusEs[d.status] || d.status;
+
+  // Format staleness in Spanish too. SDK's formatStaleness returns English
+  // ("8m ago", "live") which we Spanish-ize here.
+  function staleEs(ms) {
+    if (!ms) return 'nunca';
+    const sec = Math.floor((Date.now() - ms) / 1000);
+    if (sec < 5) return 'ahora';
+    if (sec < 60) return `hace ${sec} s`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `hace ${min} min`;
+    return `hace ${Math.floor(min / 60)} h`;
+  }
+
   let statusText;
   if (!d.active) {
-    statusText = 'Off-duty';
+    statusText = 'Fuera de turno';
   } else if (!d.push_subscription) {
-    statusText = `${XPD.formatStatus(d.status)} · sin notificaciones`;
+    statusText = `${statusLabel} · sin notificaciones`;
   } else if (stale) {
-    statusText = `${XPD.formatStatus(d.status)} · inactivo ${XPD.formatStaleness(d.last_ping)}`;
+    statusText = `${statusLabel} · inactivo ${staleEs(d.last_ping)}`;
   } else {
-    statusText = `${XPD.formatStatus(d.status)} · live`;
+    statusText = `${statusLabel} · en vivo`;
   }
 
   // Only fully-unreachable drivers get the dimmed "stale" row treatment.
@@ -1993,7 +2085,7 @@ function renderDriverNode(uid, d) {
       <div class="status-dot ${dotClass}"></div>
       <div class="name">${escapeHtml(d.name || 'Sin nombre')}</div>
       <div class="row-status">${escapeHtml(statusText)}</div>
-      <span class="chevron">▶</span>
+      <span class="chevron">${ICONS.chevronRight}</span>
     </div>
     <div class="driver-tasks ${expanded ? '' : 'collapsed'}">
       ${hasOrders
@@ -2009,8 +2101,8 @@ function renderTaskRow(driverUid, order) {
   const dt = allTasks[`${order.order_id}_delivery`];
 
   let phase, phaseLabel;
-  if (pt?.status === 'completed') { phase = 'delivery'; phaseLabel = 'Delivery'; }
-  else if (pt?.status === 'accepted' || pt?.status === 'in_progress') { phase = 'pickup'; phaseLabel = 'Pickup'; }
+  if (pt?.status === 'completed') { phase = 'delivery'; phaseLabel = 'Entrega'; }
+  else if (pt?.status === 'accepted' || pt?.status === 'in_progress') { phase = 'pickup'; phaseLabel = 'Recogida'; }
   else { phase = 'awaiting'; phaseLabel = 'Esperando'; }
 
   const expanded = expandedOrderIds.has(order.order_id);
@@ -2278,12 +2370,21 @@ function openPicker(orderId, isReassign = false) {
       // Busy or unreachable = require confirmation. Stale GPS alone does not.
       const requireConfirm = busy || unreachable;
       const staleNote = (stale && !unreachable) ? ' · GPS inactivo' : '';
+      const statusEs = {
+        off_shift: 'Fuera de turno',
+        available: 'Disponible',
+        assigned: 'Asignado',
+        at_restaurant: 'En restaurante',
+        en_route_delivery: 'En camino',
+        returning: 'Regresando',
+        on_break: 'En pausa'
+      };
       return `
         <div class="picker-row ${requireConfirm ? 'disabled' : ''}" data-driver-uid="${uid}" ${requireConfirm ? 'data-busy="1"' : ''} ${unreachable ? 'data-unreachable="1"' : ''}>
           <div class="status-dot ${getDotClass(driver)}"></div>
           <div class="name">${escapeHtml(driver.name || '—')}</div>
           <div>
-            <span class="status-pill ${driver.status}">${XPD.formatStatus(driver.status)}${staleNote}</span>
+            <span class="status-pill ${driver.status}">${statusEs[driver.status] || driver.status}${staleNote}</span>
           </div>
           <div class="distances">
             <div><strong>${formatDistance(distBase)}</strong> a base</div>
@@ -2371,6 +2472,14 @@ function escapeHtml(s) {
 // ============================================================
 // Sidebar toggle + map fit
 // ============================================================
+// Populate the icon spans for the sidebar collapse/show buttons and the
+// "Entregados hoy" group toggle. We do this in JS rather than inline HTML
+// because the ICONS object is defined in this script — having the SVG in
+// HTML would require duplicating the markup.
+$('sidebar-collapse-btn').querySelector('.sb-icon').innerHTML = ICONS.chevronRight;
+$('sidebar-show-btn').querySelector('.sb-icon').innerHTML = ICONS.chevronLeft;
+$('delivered-toggle').querySelector('.tree-group-toggle').innerHTML = ICONS.chevronDown;
+
 $('sidebar-collapse-btn').addEventListener('click', () => {
   $('sidebar').classList.add('collapsed');
   $('sidebar-show-btn').classList.remove('hidden');
