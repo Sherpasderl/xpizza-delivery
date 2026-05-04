@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Kitchen - version: 2.1.0 -->
+<!-- X Pizza Kitchen - version: 2.1.2 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8"/>
@@ -906,7 +906,7 @@ function shortStatus(s) {
 
 <script type="module">
 // X Pizza Kitchen Display
-// version: 2.1.0
+// version: 2.1.2
 //
 // Major rewrite from the original Sheets-polling design:
 //   - Reads orders directly from Firebase Realtime Database (live subscription)
@@ -1295,19 +1295,23 @@ function startOrdersSubscription() {
      'preparing'        → 'En preparación'
      'ready'            → 'Listo'
      'out_for_delivery' → kitchen's job is done, treat as 'Listo' for display
-     'delivered'        → exclude from kitchen view (filter handles below)
-     'cancelled'        → leave visible flagged for kitchen acknowledgment
+     'delivered'        → 'Archivado' (auto-archived; visible only in archive/history views)
+     'cancelled'        → 'Nuevo' with cancel banner so kitchen sees it
 */
 function mapFirebaseOrderToCard(o) {
   if (!o) return null;
-  // Hide finished orders entirely (delivered) — kitchen doesn't need them.
-  // Cancelled orders stay visible until kitchen archives them locally
-  // so kitchen sees "this order was cancelled — pull it from the line".
-  if (o.status === 'delivered') return null;
 
   let estado;
   if (o.status === 'cancelled') {
     estado = 'Nuevo';  // surface in Nuevo column with cancel banner so kitchen sees it
+  } else if (o.status === 'delivered') {
+    // Delivered orders flow into the archive automatically. They don't appear
+    // in active columns (filter elsewhere drops Archivado from active view)
+    // but they DO show up in "Ver archivados" and "Historial completo" so
+    // the cook can verify what was delivered today / look back at the day's
+    // record. Previously these orders were null-filtered and disappeared
+    // entirely once the driver marked them delivered, which felt like data loss.
+    estado = 'Archivado';
   } else if (o.status === 'preparing') {
     estado = 'En preparación';
   } else if (o.status === 'ready' || o.status === 'out_for_delivery') {
@@ -1699,6 +1703,8 @@ window.moveOrder = moveOrder;
 window.restoreOrder = restoreOrder;
 window.showLog = showLog;
 window.closeLog = closeLog;
+window.dragStart = dragStart;
+window.dragEnd = dragEnd;
 window.dragOver = dragOver;
 window.dragLeave = dragLeave;
 window.drop = drop;
