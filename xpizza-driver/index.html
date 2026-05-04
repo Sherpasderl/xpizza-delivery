@@ -292,9 +292,18 @@
 
   /* ==================== IDLE STATE ==================== */
   .idle-icon {
-    font-size: 80px;
+    width: 80px;
+    height: 80px;
     margin-bottom: 24px;
     opacity: 0.7;
+    color: var(--text-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .idle-icon svg {
+    width: 100%;
+    height: 100%;
   }
   /* New: outlined checkmark style (Onfleet-style) */
   .idle-check {
@@ -504,6 +513,11 @@
   .step-num.done {
     background: var(--success);
     font-size: 14px;
+  }
+  .step-num.done svg {
+    width: 16px;
+    height: 16px;
+    color: white;
   }
   .step-label {
     font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
@@ -770,7 +784,18 @@
     color: var(--accent);
     border: 1px solid rgba(220,38,38,0.25);
   }
-  .notif-banner .icon { flex-shrink: 0; font-size: 18px; }
+  .notif-banner .icon {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .notif-banner .icon svg {
+    width: 100%;
+    height: 100%;
+  }
   .notif-banner .text { flex: 1; }
   .notif-banner .text strong { display: block; margin-bottom: 2px; font-weight: 700; }
   .notif-banner .enable-btn {
@@ -846,6 +871,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+  .history-close svg {
+    width: 18px;
+    height: 18px;
   }
   .history-summary {
     padding: 18px;
@@ -1097,7 +1126,7 @@
   <div class="history-sheet">
     <div class="history-header">
       <div class="history-title">HOY</div>
-      <button class="history-close" id="history-close" title="Cerrar">✕</button>
+      <button class="history-close" id="history-close" title="Cerrar"></button>
     </div>
     <div class="history-summary">
       <div class="history-stat">
@@ -1121,10 +1150,41 @@ import * as XPD from './xpizza-delivery.js?v=14';
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '1.8.0';
+const SYSTEM_VERSION = '1.9.0';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
+
+// ============================================================
+// Icon set (Lucide)
+// ============================================================
+// SVG paths from lucide.dev. Each icon uses stroke="currentColor" so it
+// inherits the parent's text color via CSS — no per-icon color management
+// needed at the call site. Icons size to fit their container (which we
+// control via the parent element's CSS width/height).
+//
+// Why icons (vs the previous emoji set): consistent visual weight across
+// platforms, no platform-specific emoji rendering quirks (Apple's emoji
+// look very different from Android's), professional last-mile-platform
+// aesthetic. Replaces 🛵 🍕 🏁 🔔 ⚠ 📲 ✓ ✕ that were used previously.
+const ICONS = {
+  // Driver state: delivery bike (waiting for orders)
+  bike:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 0 0-1-1h-3l-2 4 5 1"/><path d="M19 17H5l3-9h7l4 9z"/></svg>`,
+  // Driver state: storefront (at restaurant)
+  store:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><line x1="22" y1="7" x2="2" y2="7"/><path d="M22 7v3a2 2 0 0 1-2 2v0a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12v0a2 2 0 0 1-2-2V7"/><path d="M5 22V12"/><path d="M19 22V12"/><line x1="9" y1="22" x2="9" y2="18"/><line x1="15" y1="22" x2="15" y2="18"/><path d="M9 18h6"/></svg>`,
+  // Driver state: u-turn (returning to restaurant)
+  uturn:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>`,
+  // Notification banner: bell (notifications enabled / available)
+  bell:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>`,
+  // Notification banner: warning triangle (notifications blocked)
+  warn:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  // Notification banner: phone (install app to home screen)
+  phone:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>`,
+  // Step indicator: check (step completed)
+  check:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  // History modal: close (X)
+  close:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
+};
 
 // ============================================================
 // State
@@ -1455,6 +1515,9 @@ $('sound-toggle').addEventListener('click', () => {
 
 $('history-btn').addEventListener('click', () => openHistoryModal());
 $('history-close').addEventListener('click', () => closeHistoryModal());
+// Inject the close icon (button text was previously "✕"; now SVG so we
+// populate after ICONS is defined)
+$('history-close').innerHTML = ICONS.close;
 
 // Tap outside the sheet to dismiss
 $('history-modal').addEventListener('click', (e) => {
@@ -1669,17 +1732,17 @@ function renderIdleState() {
   const arriveBtn = $('arrive-btn');
 
   if (status === 'returning') {
-    icon.textContent = '🏁';
+    icon.innerHTML = ICONS.uturn;
     msg.textContent = 'Regresando al restaurante';
     sub.textContent = 'Pulsa abajo cuando hayas llegado';
     arriveBtn.classList.remove('hidden');
   } else if (status === 'at_restaurant') {
-    icon.textContent = '🍕';
+    icon.innerHTML = ICONS.store;
     msg.textContent = 'En el restaurante';
     sub.textContent = 'Listo para el siguiente pedido';
     arriveBtn.classList.add('hidden');
   } else {
-    icon.textContent = '🛵';
+    icon.innerHTML = ICONS.bike;
     msg.textContent = 'Esperando pedidos';
     sub.textContent = 'Te notificaremos cuando llegue uno';
     arriveBtn.classList.add('hidden');
@@ -1746,7 +1809,7 @@ function renderActiveCard(o) {
     navBlock = `
       <div class="step-block">
         <div class="step-row">
-          <div class="step-num done">✓</div>
+          <div class="step-num done">${ICONS.check}</div>
           <div class="step-label-arrived">Has llegado ${destLabel === 'al restaurante' ? 'al restaurante' : 'donde el cliente'}</div>
         </div>
       </div>
@@ -2149,13 +2212,13 @@ function renderNotifBanner(targetEl, state) {
   switch (state) {
     case 'enabled':
       targetEl.classList.add('enabled');
-      targetEl.innerHTML = `<span class="icon">✓</span><div class="text">Notificaciones activadas</div>`;
+      targetEl.innerHTML = `<span class="icon">${ICONS.check}</span><div class="text">Notificaciones activadas</div>`;
       break;
 
     case 'not_enabled':
       targetEl.classList.add('action');
       targetEl.innerHTML = `
-        <span class="icon">🔔</span>
+        <span class="icon">${ICONS.bell}</span>
         <div class="text">
           <strong>Habilita notificaciones</strong>
           Para recibir alertas cuando llegue un pedido nuevo.
@@ -2169,7 +2232,7 @@ function renderNotifBanner(targetEl, state) {
     case 'denied':
       targetEl.classList.add('warn');
       targetEl.innerHTML = `
-        <span class="icon">⚠</span>
+        <span class="icon">${ICONS.warn}</span>
         <div class="text">
           <strong>Notificaciones bloqueadas</strong>
           Habilítalas en los ajustes del navegador para recibir alertas.
@@ -2180,7 +2243,7 @@ function renderNotifBanner(targetEl, state) {
     case 'needs_install':
       targetEl.classList.add('action');
       targetEl.innerHTML = `
-        <span class="icon">📲</span>
+        <span class="icon">${ICONS.phone}</span>
         <div class="text">
           <strong>Instala la app</strong>
           Toca el botón Compartir en Safari → Añadir a pantalla de inicio. Luego abre desde el ícono.
