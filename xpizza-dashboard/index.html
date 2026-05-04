@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Dashboard - version: 0.3.1 -->
+<!-- X Pizza Dashboard - version: 0.3.2 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -7,7 +7,7 @@
 <title>X Pizza · Estadísticas</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" type="image/svg+xml" href="./icon.svg">
-<meta name="theme-color" content="#13121a">
+<meta name="theme-color" content="#1a212c">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,25 +15,29 @@
 
 <style>
 :root {
-  /* Lifted from pure black — gives the eye breathing room without
-     losing the dark-mode aesthetic. Slight warmth via the .12 blue value. */
-  --bg: #13121a;
-  --surface: #1d1c25;
-  --surface-2: #25242e;
-  --surface-3: #302f3a;
-  --border: #2e2d38;
-  --border-soft: #25242e;
-  --divider: #28272f;
-  --text: #f5f5f7;
-  --text-soft: #b8b8c2;
-  --text-dim: #82828c;
-  --text-faint: #56565e;
+  /* Matched to xpizza-dispatch — same product family, same tokens.
+     Slate-blue dark with significant lift from pure black, easy on the
+     eyes for long viewing sessions. */
+  --bg: #1a212c;
+  --surface: #232b39;
+  --surface-2: #2d3645;
+  --surface-3: #3d475a;
+  --border: #3a4458;
+  --border-soft: #2a3142;
+  --divider: #2a3142;
+  --text: #f1f5f9;
+  --text-soft: #94a3b8;
+  --text-dim: #64748b;
+  --text-faint: #475569;
 
   --accent: #dc2626;
-  --accent-glow: rgba(220, 38, 38, 0.55);
-  --success: #10b981;
+  --accent-soft: rgba(220, 38, 38, 0.18);
+  --success: #16a34a;
+  --success-soft: rgba(22, 163, 74, 0.18);
   --warn: #f59e0b;
+  --warn-soft: rgba(245, 158, 11, 0.18);
   --info: #3b82f6;
+  --info-soft: rgba(59, 130, 246, 0.18);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -193,7 +197,7 @@ a { color: inherit; }
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--text-faint); flex-shrink: 0;
 }
-.driver-dot.green { background: var(--success); box-shadow: 0 0 6px rgba(16, 185, 129, 0.5); }
+.driver-dot.green { background: var(--success); box-shadow: 0 0 6px rgba(22, 163, 74, 0.5); }
 .driver-dot.amber { background: var(--warn); box-shadow: 0 0 6px rgba(245, 158, 11, 0.5); }
 .driver-dot.blue  { background: var(--info); box-shadow: 0 0 6px rgba(59, 130, 246, 0.5); }
 .driver-dot.gray  { background: var(--text-faint); }
@@ -531,7 +535,7 @@ const firebaseConfig = {
 };
 XPD.initDelivery(firebaseConfig);
 
-const SYSTEM_VERSION = '0.3.1';
+const SYSTEM_VERSION = '0.3.2';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION}`;
 });
@@ -1124,10 +1128,10 @@ function renderHeatmap(periodOrders) {
 
 function heatColor(intensity) {
   if (intensity === 0) return 'var(--surface-2)';
-  // Interpolate from #25242e (surface-2) to #dc2626 (accent)
-  const r = Math.round(0x25 + (0xdc - 0x25) * intensity);
-  const g = Math.round(0x24 + (0x26 - 0x24) * intensity);
-  const b = Math.round(0x2e + (0x26 - 0x2e) * intensity);
+  // Interpolate from #2d3645 (surface-2) to #dc2626 (accent)
+  const r = Math.round(0x2d + (0xdc - 0x2d) * intensity);
+  const g = Math.round(0x36 + (0x26 - 0x36) * intensity);
+  const b = Math.round(0x45 + (0x26 - 0x45) * intensity);
   return `rgb(${r}, ${g}, ${b})`;
 }
 
