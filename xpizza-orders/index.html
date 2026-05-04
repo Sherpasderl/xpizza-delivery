@@ -275,122 +275,170 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 /* ── +1 flash animation ── */
 
 
-/* ── Extras overlay & sheet ── */
-.extras-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:300;display:none}
-.extras-overlay.open{display:block}
-.extras-sheet{
-  position:fixed;bottom:0;left:0;right:0;
-  background:#fff;border-radius:16px 16px 0 0;
-  z-index:301;
-  transform:translateY(100%);transition:transform .3s ease;
-  max-height:80vh;display:flex;flex-direction:column;
+/* ── Detail modal — opens when tapping a pizza photo.
+   Replaces the old extras bottom-sheet. Integrates: hero photo,
+   description, qty stepper, per-pizza extras with sticky 'Pizza N'
+   headers, and a sticky bottom CTA that doubles as the close button. ── */
+.detail-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:300;display:none}
+.detail-overlay.open{display:block}
+.detail-modal{
+  position:fixed;left:0;right:0;bottom:0;top:0;
+  background:var(--cream);z-index:301;
+  transform:translateY(100%);transition:transform .25s ease-out;
+  display:flex;flex-direction:column;
+  overflow:hidden;
 }
-.extras-sheet.open{transform:translateY(0)}
-.extras-header{
-  display:flex;align-items:flex-start;justify-content:space-between;
-  padding:16px 16px 12px;border-bottom:1px solid var(--border);flex-shrink:0;
+.detail-modal.open{transform:translateY(0)}
+
+.detail-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 16px;border-bottom:1px solid var(--border);
+  background:var(--cream);flex-shrink:0;z-index:5;
 }
-.extras-pizza-name{font-family:var(--display);font-size:20px;font-weight:700;color:var(--charcoal)}
-.extras-subtitle{font-size:14px;color:#5A4F47;margin-top:4px;letter-spacing:0;font-weight:500}
-.extras-close{
-  width:40px;height:40px;border-radius:50%;border:1px solid var(--border);
-  background:var(--surface);color:var(--charcoal);font-size:18px;font-weight:500;
-  display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;
-}
-.extras-body{flex:1;overflow-y:auto;padding:12px 16px;position:relative}
-.extras-cat-label{
-  font-family:var(--sans);font-size:14px;font-weight:700;letter-spacing:.3px;
-  text-transform:uppercase;color:var(--charcoal);
-  margin:20px 0 10px;
-  padding-bottom:6px;
-  border-bottom:2px solid var(--charcoal);
-  background:#fff;
-}
-.extras-cat-label:first-child{margin-top:0}
-.extras-toggle{
-  width:32px;height:32px;border-radius:50%;
-  border:2px solid var(--border2);
-  background:#fff;
+.detail-close{
+  width:40px;height:40px;border-radius:50%;
+  border:1px solid var(--border);background:var(--surface);
+  color:var(--charcoal);font-size:18px;font-weight:500;
   display:flex;align-items:center;justify-content:center;
   cursor:pointer;flex-shrink:0;
-  transition:all .15s;
+  -webkit-tap-highlight-color:transparent;
+}
+.detail-header-title{
+  font-family:var(--sans);font-size:16px;font-weight:700;
+  color:var(--charcoal);
+  flex:1;text-align:center;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  padding:0 12px;
+}
+.detail-header-spacer{width:40px;flex-shrink:0}
+
+.detail-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+.detail-photo{
+  aspect-ratio:16/10;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;overflow:hidden;
+}
+.detail-photo::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(to bottom, transparent 50%, rgba(0,0,0,0.25) 100%);
+}
+.detail-photo-label{font-size:64px;z-index:1;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.3))}
+
+.detail-body{padding:16px;border-bottom:1px solid var(--border)}
+.detail-name{
+  font-family:var(--display);font-size:24px;font-weight:700;
+  line-height:1.15;color:var(--charcoal);margin-bottom:8px;
+  letter-spacing:-.5px;
+}
+.detail-desc{
+  font-size:15px;color:#5A4F47;line-height:1.5;
+  margin-bottom:14px;font-weight:400;
+}
+.detail-price{
+  font-family:var(--sans);font-size:20px;font-weight:700;
+  color:var(--gold-dk);font-variant-numeric:tabular-nums;
+}
+
+.detail-qty-section{
+  padding:16px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.detail-qty-label{font-size:15px;font-weight:600;color:var(--charcoal)}
+.detail-qty-controls{display:flex;align-items:center;gap:14px}
+.detail-qty-btn{
+  width:44px;height:44px;border-radius:50%;
+  border:1.5px solid var(--border2);background:#fff;
+  color:var(--charcoal);font-size:22px;font-weight:500;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;line-height:1;
   -webkit-tap-highlight-color:transparent;
   touch-action:manipulation;
-  color:transparent;
-  font-size:16px;font-weight:700;
 }
-.extras-toggle.selected{
-  background:var(--charcoal);
-  border-color:var(--charcoal);
-  color:#fff;
+.detail-qty-btn:active{background:var(--surface)}
+.detail-qty-btn.active{
+  border-color:var(--charcoal);background:var(--charcoal);color:#fff;
 }
-.extras-toggle:active{opacity:.7}
+.detail-qty-btn:disabled{opacity:0.35;cursor:default}
+.detail-qty-num{
+  font-family:var(--sans);font-size:22px;font-weight:700;
+  color:var(--charcoal);min-width:28px;text-align:center;
+}
 
-.extras-instance-header{
-  font-family:var(--sans);font-size:15px;font-weight:700;
+/* Per-pizza section — uses sticky 'Pizza N' headers when qty>1 */
+.detail-pizza-header{
+  font-family:var(--sans);font-size:16px;font-weight:700;
   color:var(--charcoal);background:var(--surface);
-  padding:10px 16px;margin:0 -16px 8px;
-  border-top:1px solid var(--border);
-  border-bottom:1px solid var(--border);
-  position:sticky;top:-12px;z-index:10;
-  box-shadow:0 4px 8px rgba(251,247,242,0.98);
-}
-.extras-instance-divider{
-  height:1px;background:var(--border);
-  margin:12px 0;
+  padding:14px 16px;
+  border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:4;
 }
 
-.extras-row{
+.detail-cat-label{
+  font-family:var(--sans);font-size:13px;font-weight:700;
+  letter-spacing:.3px;text-transform:uppercase;color:var(--charcoal);
+  margin:18px 16px 0;padding-bottom:8px;
+  border-bottom:2px solid var(--charcoal);
+}
+.detail-extras-list{padding:0 16px}
+.detail-extras-row{
   display:flex;align-items:center;justify-content:space-between;
   padding:14px 0;border-bottom:1px solid var(--border);
-  min-height:54px;
-}
-.extras-row:last-child{border-bottom:none}
-.extras-row-info{flex:1}
-.extras-row-name{font-size:16px;font-weight:500;color:var(--charcoal);display:block;font-family:var(--sans)}
-.extras-row-price{font-family:var(--sans);font-size:14px;color:#5A4F47;font-weight:500;margin-top:2px;display:block}
-.extras-footer{padding:14px 16px;border-top:1px solid var(--border);flex-shrink:0;background:#fff}
-.extras-total-row{display:flex;justify-content:space-between;align-items:center}
-.extras-total-label{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--charcoal)}
-.extras-total-val{font-family:var(--sans);font-size:20px;font-weight:700;color:var(--charcoal)}
-.extras-pills-wrap{margin-top:10px;display:flex;flex-direction:column;gap:6px}
-.extras-pill-btn{
-  display:block;width:100%;padding:8px 10px;
-  background:var(--cream);
-  border:1.5px solid var(--gold);
-  border-radius:8px;
-  font-family:var(--sans);font-size:13px;font-weight:600;
-  color:var(--gold-dk);cursor:pointer;
-  text-align:center;
-  transition:all .15s;
+  cursor:pointer;min-height:54px;
   -webkit-tap-highlight-color:transparent;
-  min-height:36px;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
 }
-.extras-pill-btn:active{background:var(--gold-lt);transform:scale(0.98)}
-.extras-pill-btn.has-extras{
-  border-color:var(--gold);
-  color:var(--gold-dk);
-  background:var(--gold-lt);
+.detail-extras-row:last-child{border-bottom:none}
+.detail-extras-name{font-size:16px;font-weight:500;color:var(--charcoal);display:block}
+.detail-extras-price{font-size:14px;color:#5A4F47;font-weight:500;margin-top:2px;display:block}
+.detail-extras-toggle{
+  width:32px;height:32px;border-radius:50%;
+  border:2px solid var(--border2);background:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;font-weight:700;color:transparent;
+  flex-shrink:0;transition:all .15s;
+  -webkit-tap-highlight-color:transparent;
+}
+.detail-extras-toggle.selected{
+  background:var(--charcoal);border-color:var(--charcoal);color:#fff;
 }
 
-.extras-btn{
-  display:block;width:100%;margin-top:10px;
-  padding:8px;
-  background:var(--cream);
-  border:1.5px solid var(--gold);
-  border-radius:8px;
-  font-family:var(--sans);font-size:13px;font-weight:600;letter-spacing:0;
-  color:var(--gold-dk);
-  cursor:pointer;transition:all .15s;
-  min-height:36px;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+.detail-cta-bar{
+  padding:16px;background:var(--cream);
+  border-top:1px solid var(--border);flex-shrink:0;
+  box-shadow:0 -2px 12px rgba(0,0,0,0.04);
 }
-.extras-btn:active{background:var(--gold-lt);transform:scale(0.98)}
+.detail-cta{
+  width:100%;padding:16px;
+  background:var(--charcoal);color:#fff;border:none;
+  border-radius:12px;
+  font-family:var(--sans);font-size:16px;font-weight:600;
+  cursor:pointer;min-height:56px;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.detail-cta:active{opacity:.92}
+.detail-cta-divider{opacity:.5}
+
+/* Card extras indicator — replaces the old extras-pills button.
+   Plain '✓ Extras' text next to the price; only renders when any
+   instance of the pizza has extras selected. */
+.card-extras-indicator{
+  font-size:12px;font-weight:600;color:var(--gold-dk);
+  margin-left:8px;letter-spacing:0;
+  white-space:nowrap;
+}
+
+/* Whole card is tappable (opens detail modal); the qty-overlay
+   inside has stop-propagation so qty taps don't open the modal.
+   The .pizza-card already has cursor:pointer from its base rule. */
+.pizza-photo{-webkit-tap-highlight-color:transparent}
+
+/* Extend qty-overlay's hit area beyond the visible button (safe zone).
+   Visible position stays at bottom-right corner; invisible padding
+   creates a buffer up and to the left so near-misses on + still
+   register as + taps, not photo taps that open the modal. */
+.qty-overlay{padding:8px;margin:-8px}
 
 
 /* ── Sticky cart bar ── */
@@ -702,13 +750,16 @@ textarea{resize:none;height:80px;line-height:1.4}
 }
 
 /* ── Spinner ── */
-/* ── Cart review sheet ── */
-.cart-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:300;display:none}
+/* ── Cart review sheet ──
+   z-index 320/321 so it stacks above the detail modal (z-index 300/301).
+   Tapping the overlay closes only the cart sheet, leaving the detail
+   modal underneath (if it was open before). */
+.cart-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:320;display:none}
 .cart-overlay.open{display:block}
 .cart-review-sheet{
   position:fixed;bottom:0;left:0;right:0;
   background:#fff;border-radius:16px 16px 0 0;
-  z-index:301;max-height:75vh;
+  z-index:321;max-height:75vh;
   display:flex;flex-direction:column;
   transform:translateY(100%);transition:transform .3s ease;
 }
@@ -730,6 +781,18 @@ textarea{resize:none;height:80px;line-height:1.4}
   padding:10px 0;border-bottom:1px solid var(--border);
 }
 .cart-review-item:last-child{border-bottom:none}
+/* Left half of a cart item is tappable — opens the detail modal
+   for that pizza. Cursor + active feedback so it reads as a button. */
+.cart-review-item-left{
+  flex:1;min-width:0;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  padding:4px 8px 4px 0;
+  margin:-4px -8px -4px 0;
+  border-radius:6px;
+  transition:background .12s;
+}
+.cart-review-item-left:active{background:var(--surface)}
 .cart-review-item-name{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--charcoal)}
 .cart-review-item-extras{font-size:13px;color:#5A4F47;margin-top:3px;line-height:1.5}
 .cart-review-item-price{font-family:var(--sans);font-size:14px;font-weight:700;color:var(--gold-dk);white-space:nowrap;width:60px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0}
@@ -1049,22 +1112,17 @@ textarea{resize:none;height:80px;line-height:1.4}
 </div>
 
 <!-- ── Extras bottom sheet ── -->
-<div class="extras-overlay" id="extras-overlay" onclick="closeExtras()"></div>
-<div class="extras-sheet" id="extras-sheet">
-  <div class="extras-header">
-    <div>
-      <div class="extras-pizza-name" id="extras-pizza-name">Extras</div>
-      <div class="extras-subtitle">Seleccioná lo que querés agregar</div>
-    </div>
-    <button class="extras-close" onclick="closeExtras()">✕</button>
+<!-- ── Detail modal — opened by tapping a pizza photo ── -->
+<div class="detail-overlay" id="detail-overlay" onclick="closeDetailModal()"></div>
+<div class="detail-modal" id="detail-modal" aria-hidden="true">
+  <div class="detail-header">
+    <button class="detail-close" onclick="closeDetailModal()" aria-label="Cerrar">×</button>
+    <div class="detail-header-title" id="detail-header-title"></div>
+    <div class="detail-header-spacer"></div>
   </div>
-  <div class="extras-body" id="extras-body"></div>
-  <div class="extras-footer">
-    <div class="extras-total-row">
-      <span class="extras-total-label">Extras seleccionados</span>
-      <span class="extras-total-val" id="extras-total-val">L 0</span>
-    </div>
-    <button class="btn-primary" style="margin-top:10px" onclick="closeExtras()">Listo ✓</button>
+  <div class="detail-scroll" id="detail-scroll"></div>
+  <div class="detail-cta-bar">
+    <button class="detail-cta" id="detail-cta" onclick="detailCtaTap()"></button>
   </div>
 </div>
 
@@ -1218,7 +1276,7 @@ function renderMenu(){
   const indiv = MENU.filter(p=>p.cat==='individual');
   const ny    = MENU.filter(p=>p.cat==='ny');
   const card = p => `
-    <div class="pizza-card" id="card-${p.id}">
+    <div class="pizza-card" id="card-${p.id}" onclick="openDetailModal(${p.id})">
       <div class="pizza-photo" style="background:${p.color||'#C8321A'}">
         <div class="pizza-photo-label">${p.emoji||'🍕'}</div>
         <div class="qty-overlay" onclick="event.stopPropagation()">
@@ -1238,8 +1296,8 @@ function renderMenu(){
         <div class="pizza-card-desc">${p.desc||''}</div>
         <div class="pizza-card-footer">
           <span class="pizza-card-price">${p.price}</span>
+          <span class="card-extras-indicator" id="extras-indicator-${p.id}" style="display:none">✓ Extras</span>
         </div>
-        ${p.name !== 'Nutella' ? '<div class=\"extras-pills-wrap\" id=\"extras-pills-'+p.id+'\" style=\"display:none\"></div>' : ''}
       </div>
     </div>`;
   document.getElementById('menu-individual').innerHTML = indiv.map(card).join('');
@@ -1280,34 +1338,17 @@ function chg(id,d){
     }
   }
 
-  // Show/hide single extras button (not for Nutella)
-  const extrasPillsWrap=document.getElementById('extras-pills-'+id);
-  if(extrasPillsWrap && id !== 17){
-    if(qty[id]>0){
-      extrasPillsWrap.style.display='block';
-      const hasAnyExtras=pizzaExtras[id]&&Object.values(pizzaExtras[id]).some(inst=>
-        typeof inst==='object'&&Object.values(inst).some(v=>v>0));
-      let extrasTotal=0;
-      if(hasAnyExtras){
-        Object.values(pizzaExtras[id]).forEach(inst=>{
-          if(typeof inst!=='object') return;
-          Object.entries(inst).forEach(([eid,q])=>{
-            const ex=EXTRAS.find(e=>e.id===eid);
-            if(ex&&q>0) extrasTotal+=ex.price;
-          });
-        });
-      }
-      extrasPillsWrap.innerHTML='<button class="extras-pill-btn'+(hasAnyExtras?' has-extras':'')+'" onclick="event.stopPropagation();openExtrasSheet('+id+')">'
-        +(hasAnyExtras?'✓ +L '+extrasTotal:'+ Extras')
-        +'</button>';
-    } else {
-      extrasPillsWrap.style.display='none';
-      extrasPillsWrap.innerHTML='';
-    }
-  }
+  // Update card extras indicator (only shows when extras exist).
+  // Replaces the old extras-pills-wrap button entirely; the card no
+  // longer offers a way to open extras — that's now in the detail modal.
+  refreshCardExtrasIndicator(id);
 
   // Clear extras if pizza removed
   if(qty[id]===0&&pizzaExtras[id]){delete pizzaExtras[id];}
+
+  // If detail modal is open for this pizza, sync its qty UI + re-render
+  // so the modal reflects card changes (and vice versa).
+  if (currentDetailPizzaId === id) updateDetailModal();
 
   // Highlight card border
   const card=document.getElementById('card-'+id);
@@ -1316,6 +1357,31 @@ function chg(id,d){
 
   updateTotal();
   updateCart();
+}
+
+function refreshCardExtrasIndicator(id){
+  const ind = document.getElementById('extras-indicator-'+id);
+  if(!ind) return;
+  const hasAny = pizzaExtrasTotal(id) > 0;
+  ind.style.display = hasAny ? 'inline' : 'none';
+}
+
+// Sum of all extras prices across all instances of this pizza.
+// Returns 0 if no extras anywhere.
+function pizzaExtrasTotal(pizzaId){
+  const data = pizzaExtras[pizzaId];
+  if(!data) return 0;
+  let total = 0;
+  Object.values(data).forEach(inst=>{
+    if(typeof inst!=='object') return;
+    Object.entries(inst).forEach(([eid,q])=>{
+      if(q>0){
+        const ex = EXTRAS.find(e=>e.id===eid);
+        if(ex) total += ex.price;
+      }
+    });
+  });
+  return total;
 }
 
 function updateTotal(){ const el=document.getElementById('total-display'); if(el) el.textContent='L '+calcTotal().toFixed(2); updateCart(); }
@@ -1439,7 +1505,15 @@ function chgFromCart(id, d){
 function closeCartReview(){
   document.getElementById('cart-overlay').classList.remove('open');
   document.getElementById('cart-review-sheet').classList.remove('open');
-  document.body.style.overflow = '';
+  // Only unlock body scroll if no other modal is still open underneath.
+  // The detail modal stacks below the cart sheet (z-index 301 vs 321),
+  // so closing the cart sheet must not unlock scroll while detail
+  // modal is still visible.
+  const detailModal = document.getElementById('detail-modal');
+  const detailOpen = detailModal && detailModal.classList.contains('open');
+  if (!detailOpen) {
+    document.body.style.overflow = '';
+  }
 }
 
 function updateCartReviewBody(){
@@ -1480,7 +1554,7 @@ function updateCartReviewBody(){
       ?'<svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 3h12M5 3V2h4v1M2 3l1 9h6l1-9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
       :'−';
     return '<div class="cart-review-item">'
-      +'<div class="cart-review-item-left">'
+      +'<div class="cart-review-item-left" onclick="openDetailModal('+p.id+');closeCartReview()">'
       +'<div class="cart-review-item-name">'+p.name+'</div>'
       +(perPizzaLines.length?perPizzaLines.map(l=>'<div class="cart-review-item-extras">+ '+l+'</div>').join(''):'')
       +'</div>'
@@ -1988,157 +2062,209 @@ function showSuccess(){
     </div>`;
 }
 
-/* ── Extras sheet ── */
-let currentExtrasPizzaId = null;
+/* ═══════════════════════════════════════════════════
+   DETAIL MODAL
+   Replaces the older extras bottom-sheet entirely.
+   Opens when the user taps a pizza card. Provides:
+   - Hero photo, full description, price
+   - Quantity stepper (syncs back to card)
+   - Extras flow with sticky 'Pizza N' headers when qty>1
+   - Bottom CTA: 'Agregar al carrito' (qty=0) or 'Carrito · L X' (qty>0)
+   When 'Carrito' is tapped, the existing cart-review-sheet
+   slides up over the modal (higher z-index). The detail modal
+   stays open underneath; tapping outside the cart sheet just
+   closes it and reveals the detail modal as it was.
+   ═══════════════════════════════════════════════════ */
+let currentDetailPizzaId = null;
 
-let currentExtrasInstance = 0;
+function openDetailModal(pizzaId) {
+  if (pizzaId === undefined || pizzaId === null) return;
+  currentDetailPizzaId = pizzaId;
+  renderDetailModal();
 
-function openExtrasSheet(pizzaId) {
-  currentExtrasPizzaId = pizzaId;
-  const pizza = MENU.find(p => p.id === pizzaId);
-  const pizzaQty = qty[pizzaId];
-  document.getElementById('extras-pizza-name').textContent = pizza ? pizza.name : 'Extras';
-
-  // Render all instances in one sheet
-  const cats = [...new Set(EXTRAS.map(e => e.cat))];
-  const instances = Array.from({length: pizzaQty}, (_, i) => i);
-
-  document.getElementById('extras-body').innerHTML = instances.map(instance => {
-    const instanceHeader = pizzaQty > 1
-      ? `<div class="extras-instance-header">Pizza ${instance + 1}</div>`
-      : '';
-    const extrasHtml = cats.map(cat => {
-      const items = EXTRAS.filter(e => e.cat === cat);
-      return `<div class="extras-cat-label">${cat}</div>`
-        + items.map(e => {
-          const instExtras = (pizzaExtras[pizzaId] && pizzaExtras[pizzaId][instance]) || {};
-          const q = instExtras[e.id] || 0;
-          return `<div class="extras-row" onclick="toggleExtra('${e.id}',${pizzaId},${instance})" style="cursor:pointer">
-            <div class="extras-row-info">
-              <span class="extras-row-name">${e.name}</span>
-              <span class="extras-row-price">+L ${e.price}</span>
-            </div>
-            <div class="extras-toggle ${q > 0 ? 'selected' : ''}" id="eqty-${pizzaId}-${instance}-${e.id}">✓</div>
-          </div>`;
-        }).join('');
-    }).join('');
-    return instanceHeader + extrasHtml;
-  }).join('<div class="extras-instance-divider"></div>');
-
-  updateExtrasSheetTotal();
-  document.getElementById('extras-overlay').classList.add('open');
-  document.getElementById('extras-sheet').classList.add('open');
+  document.getElementById('detail-overlay').classList.add('open');
+  const modal = document.getElementById('detail-modal');
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
 }
 
-function openExtras(pizzaId, instance) {
-  currentExtrasPizzaId = pizzaId;
-  currentExtrasInstance = instance || 0;
-  const pizza = MENU.find(p => p.id === pizzaId);
-  const instanceLabel = qty[pizzaId] > 1 ? ' — Pizza ' + (currentExtrasInstance + 1) : '';
-  document.getElementById('extras-pizza-name').textContent = (pizza ? pizza.name : 'Extras') + instanceLabel;
-
-  // Group extras by category
-  const cats = [...new Set(EXTRAS.map(e => e.cat))];
-  document.getElementById('extras-body').innerHTML = cats.map(cat => {
-    const items = EXTRAS.filter(e => e.cat === cat);
-    return `<div class="extras-cat-label">${cat}</div>` +
-      items.map(e => {
-        const inst = pizzaExtras[pizzaId] && pizzaExtras[pizzaId][instance] ? pizzaExtras[pizzaId][instance] : {};
-        const q = inst[e.id] || 0;
-        return `<div class="extras-row" onclick="toggleExtra('${e.id}',${pizzaId},${instance})" style="cursor:pointer">
-          <div class="extras-row-info">
-            <span class="extras-row-name">${e.name}</span>
-            <span class="extras-row-price">+L ${e.price}</span>
-          </div>
-          <div class="extras-toggle ${q>0?'selected':''}" id="eqty-${pizzaId}-${instance}-${e.id}">✓</div>
-        </div>`;
-      }).join('');
-  }).join('');
-
-  updateExtrasSheetTotal();
-  document.getElementById('extras-overlay').classList.add('open');
-  document.getElementById('extras-sheet').classList.add('open');
-  document.body.style.overflow = 'hidden';
-}
-
-function closeExtras() {
-  document.getElementById('extras-overlay').classList.remove('open');
-  document.getElementById('extras-sheet').classList.remove('open');
+function closeDetailModal() {
+  document.getElementById('detail-overlay').classList.remove('open');
+  const modal = document.getElementById('detail-modal');
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
   document.body.style.overflow = '';
-  if (currentExtrasPizzaId !== null) {
-    refreshExtrasPills(currentExtrasPizzaId);
-  }
-  updateTotal();
-  updateCart();
-  currentExtrasPizzaId = null;
+  currentDetailPizzaId = null;
 }
 
-function chgExtra(extraId, pizzaId, d) { toggleExtra(extraId, pizzaId); }
+// Re-render modal contents (qty + extras + CTA) without
+// reopening. Called when state changes while modal is open.
+function updateDetailModal() {
+  if (currentDetailPizzaId === null) return;
+  renderDetailModal();
+}
 
-function toggleExtra(extraId, pizzaId, instance) {
+function renderDetailModal() {
+  const pizzaId = currentDetailPizzaId;
+  const pizza = MENU.find(p => p.id === pizzaId);
+  if (!pizza) return;
+
+  document.getElementById('detail-header-title').textContent = pizza.name;
+
+  const pizzaQty = qty[pizzaId] || 0;
+  const photoColor = pizza.color || '#C8321A';
+  const emoji = pizza.emoji || '🍕';
+  const desc = pizza.desc || '';
+  const isNutella = pizza.name === 'Nutella';
+
+  let html = '';
+
+  // Hero photo
+  html += `<div class="detail-photo" style="background:${photoColor}">
+    <span class="detail-photo-label">${emoji}</span>
+  </div>`;
+
+  // Body — name, description, price
+  html += `<div class="detail-body">
+    <div class="detail-name">${escapeHtml(pizza.name)}</div>
+    ${desc ? `<div class="detail-desc">${escapeHtml(desc)}</div>` : ''}
+    <div class="detail-price">${escapeHtml(pizza.price)}</div>
+  </div>`;
+
+  // Quantity stepper
+  html += `<div class="detail-qty-section">
+    <div class="detail-qty-label">Cantidad</div>
+    <div class="detail-qty-controls">
+      <button class="detail-qty-btn ${pizzaQty > 0 ? 'active' : ''}"
+              onclick="detailQtyChange(-1)"
+              ${pizzaQty === 0 ? 'disabled' : ''}>−</button>
+      <span class="detail-qty-num">${pizzaQty}</span>
+      <button class="detail-qty-btn active" onclick="detailQtyChange(1)">+</button>
+    </div>
+  </div>`;
+
+  // Extras section — only if qty>0 AND not Nutella
+  if (pizzaQty > 0 && !isNutella) {
+    const cats = [...new Set(EXTRAS.map(e => e.cat))];
+    for (let inst = 0; inst < pizzaQty; inst++) {
+      if (pizzaQty > 1) {
+        html += `<div class="detail-pizza-header">Pizza ${inst + 1}</div>`;
+      }
+      cats.forEach(cat => {
+        html += `<div class="detail-cat-label">${escapeHtml(cat)}</div>`;
+        html += `<div class="detail-extras-list">`;
+        EXTRAS.filter(e => e.cat === cat).forEach(e => {
+          const instExtras = (pizzaExtras[pizzaId] && pizzaExtras[pizzaId][inst]) || {};
+          const selected = (instExtras[e.id] || 0) > 0;
+          html += `<div class="detail-extras-row" onclick="toggleDetailExtra('${e.id}',${pizzaId},${inst})">
+            <div>
+              <span class="detail-extras-name">${escapeHtml(e.name)}</span>
+              <span class="detail-extras-price">+L ${e.price}</span>
+            </div>
+            <div class="detail-extras-toggle ${selected ? 'selected' : ''}"
+                 id="detail-tog-${pizzaId}-${inst}-${e.id}">✓</div>
+          </div>`;
+        });
+        html += `</div>`;
+      });
+    }
+  }
+
+  html += `<div style="height:24px"></div>`;
+
+  document.getElementById('detail-scroll').innerHTML = html;
+  document.getElementById('detail-scroll').scrollTop = 0;
+  updateDetailCta();
+}
+
+function updateDetailCta() {
+  const cta = document.getElementById('detail-cta');
+  if (!cta) return;
+  const pizzaId = currentDetailPizzaId;
+  if (pizzaId === null) return;
+  const pizza = MENU.find(p => p.id === pizzaId);
+  if (!pizza) return;
+  const pizzaQty = qty[pizzaId] || 0;
+  cta.style.opacity = '1';
+  cta.style.pointerEvents = 'auto';
+
+  let priceLabel;
+  if (pizzaQty === 0) {
+    priceLabel = pizza.price;
+  } else {
+    const basePerPizza = parseFloat(String(pizza.price).replace(/[^0-9.]/g, '')) || 0;
+    const extrasForThisPizza = pizzaExtrasTotal(pizzaId);
+    const lineTotal = (basePerPizza * pizzaQty) + extrasForThisPizza;
+    priceLabel = 'L ' + Math.round(lineTotal);
+  }
+
+  if (pizzaQty === 0) {
+    cta.innerHTML = `<span>Agregar al carrito</span>
+      <span class="detail-cta-divider">·</span>
+      <span>${escapeHtml(priceLabel)}</span>`;
+  } else {
+    cta.innerHTML = `<span>Carrito</span>
+      <span class="detail-cta-divider">·</span>
+      <span>${escapeHtml(priceLabel)}</span>`;
+  }
+}
+
+// CTA tap behavior:
+// - qty=0: 'Agregar al carrito' → commit qty=1 + close modal (back to menu)
+// - qty>0: 'Carrito' → open the existing cart-review-sheet on TOP of
+//   the modal. Customer can adjust qtys there. Tapping outside the
+//   cart sheet (the overlay) closes only the cart sheet, returning
+//   them to the detail modal as it was.
+function detailCtaTap() {
+  const pizzaId = currentDetailPizzaId;
+  if (pizzaId === null) return;
+  const wasZero = (qty[pizzaId] || 0) === 0;
+  if (wasZero) {
+    chg(pizzaId, 1);
+    closeDetailModal();
+  } else {
+    if (typeof openCartReview === 'function') openCartReview();
+  }
+}
+
+// Qty stepper — delegates to chg() so card and cart stay in sync.
+function detailQtyChange(d) {
+  const pizzaId = currentDetailPizzaId;
+  if (pizzaId === null) return;
+  chg(pizzaId, d);
+}
+
+// Toggle a specific extra. Updates state, then re-renders the
+// affected toggle, card indicator, and CTA price.
+function toggleDetailExtra(extraId, pizzaId, instance) {
   if (!pizzaExtras[pizzaId]) pizzaExtras[pizzaId] = {};
   if (!pizzaExtras[pizzaId][instance]) pizzaExtras[pizzaId][instance] = {};
   const current = pizzaExtras[pizzaId][instance][extraId] || 0;
   pizzaExtras[pizzaId][instance][extraId] = current > 0 ? 0 : 1;
   const q = pizzaExtras[pizzaId][instance][extraId];
-  const el = document.getElementById('eqty-' + pizzaId + '-' + instance + '-' + extraId);
+  const el = document.getElementById('detail-tog-' + pizzaId + '-' + instance + '-' + extraId);
   if (el) el.classList.toggle('selected', q > 0);
-  updateExtrasSheetTotal();
-  // Update pill button to show checkmark if has extras
-  refreshExtrasPills(pizzaId);
+  updateDetailCta();
+  refreshCardExtrasIndicator(pizzaId);
+  updateTotal();
+  updateCart();
 }
 
-function refreshExtrasPills(pizzaId) {
-  const wrap = document.getElementById('extras-pills-' + pizzaId);
-  if (!wrap) return;
-  const hasAnyExtras = pizzaExtras[pizzaId] && Object.values(pizzaExtras[pizzaId]).some(inst =>
-    typeof inst === 'object' && Object.values(inst).some(v => v > 0));
-  let extrasTotal = 0;
-  if (hasAnyExtras) {
-    Object.values(pizzaExtras[pizzaId]).forEach(inst => {
-      if (typeof inst !== 'object') return;
-      Object.entries(inst).forEach(([eid, q]) => {
-        const ex = EXTRAS.find(e => e.id === eid);
-        if (ex && q > 0) extrasTotal += ex.price;
-      });
-    });
-  }
-  wrap.innerHTML = '<button class="extras-pill-btn' + (hasAnyExtras ? ' has-extras' : '') + '" onclick="event.stopPropagation();openExtrasSheet(' + pizzaId + ')">'
-    + (hasAnyExtras ? '✓ +L ' + extrasTotal : '+ Extras')
-    + '</button>';
-}
+// Backwards-compat shims for legacy call sites
+function openExtrasSheet(pizzaId) { openDetailModal(pizzaId); }
+function openExtras(pizzaId) { openDetailModal(pizzaId); }
+function closeExtras() { closeDetailModal(); }
+function toggleExtra(extraId, pizzaId, instance) { toggleDetailExtra(extraId, pizzaId, instance); }
+function refreshExtrasPills(pizzaId) { refreshCardExtrasIndicator(pizzaId); }
+function updateExtrasSheetTotal() { /* removed */ }
+function updateExtrasIndicator(pizzaId) { refreshCardExtrasIndicator(pizzaId); }
 
-function updateExtrasSheetTotal() {
-  if (currentExtrasPizzaId === null) return;
-  const instances = pizzaExtras[currentExtrasPizzaId] || {};
-  const total = Object.entries(instances).reduce((s, [, inst]) => {
-    if (typeof inst !== 'object') return s;
-    return s + Object.entries(inst).reduce((ss, [eid, q]) => {
-      const ex = EXTRAS.find(e => e.id === eid);
-      return ss + (ex && q > 0 ? ex.price : 0);
-    }, 0);
-  }, 0);
-  document.getElementById('extras-total-val').textContent = total > 0 ? 'L ' + total : 'L 0';
-}
-
-function updateExtrasIndicator(pizzaId) {
-  const ind = document.getElementById('extras-ind-' + pizzaId);
-  if (!ind) return;
-  const instances = pizzaExtras[pizzaId] || {};
-  let allNames = [];
-  Object.entries(instances).forEach(([inst, extras]) => {
-    if(typeof extras !== 'object') return;
-    const names = Object.entries(extras).filter(([,q])=>q>0)
-      .map(([eid]) => { const ex=EXTRAS.find(e=>e.id===eid); return ex?ex.name:''; }).filter(Boolean);
-    if(names.length) allNames.push(...names);
-  });
-  if(allNames.length){
-    ind.textContent = '+ ' + [...new Set(allNames)].join(', ');
-    ind.style.display = 'block';
-  } else {
-    ind.style.display = 'none';
-  }
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
 // calcTotal defined earlier in script
@@ -2530,7 +2656,7 @@ initCardFormatting();
       <span style="font-family:var(--sans);font-size:13px;color:var(--muted)">Total</span>
       <span class="cart-review-total" id="cart-review-total">L 0.00</span>
     </div>
-    <button class="btn-primary" style="margin-top:10px" id="cart-review-checkout" onclick="closeCartReview();scrollToDetails()">Ir al checkout →</button>
+    <button class="btn-primary" style="margin-top:10px" id="cart-review-checkout" onclick="closeCartReview();closeDetailModal();scrollToDetails()">Ir al checkout →</button>
   </div>
 </div>
 
