@@ -1,0 +1,5 @@
+# Netlify config for xpizza-dashboard
+# Static site, no dynamic routes. PWA-installable.
+
+[build]
+  publish = "."

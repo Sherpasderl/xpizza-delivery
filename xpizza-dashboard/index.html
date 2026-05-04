@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<!-- X Pizza Dashboard - version: 0.1.0 -->
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>X Pizza · Estadísticas</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" type="image/svg+xml" href="./icon.svg">
+<meta name="theme-color" content="#0a0a0a">
+
+<!-- Plus Jakarta Sans (UI) + IBM Plex Mono (numbers/IDs) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+/* =========================================================
+   DESIGN TOKENS
+   Mirrors the dispatcher's dark palette so the dashboard
+   feels like part of the same system.
+   ========================================================= */
+:root {
+  --bg: #0a0a0a;
+  --surface: #131313;
+  --surface-2: #1a1a1a;
+  --surface-3: #232323;
+  --border: #2a2a2a;
+  --border-soft: #1f1f1f;
+  --text: #f4f4f4;
+  --text-soft: #b8b8b8;
+  --text-dim: #6a6a6a;
+
+  --accent: #dc2626;          /* primary brand red */
+  --accent-soft: #2a1010;
+  --success: #059669;
+  --success-soft: #042a1f;
+  --warn: #f59e0b;
+  --warn-soft: #2a1f08;
+  --info: #3b82f6;
+  --info-soft: #0a1a2a;
+
+  --radius: 8px;
+  --radius-lg: 12px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Plus Jakarta Sans', -apple-system, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+button { font-family: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: 0.5; }
+a { color: inherit; }
+
+.hidden { display: none !important; }
+
+/* =========================================================
+   FULL-SCREEN STATES (login, loading)
+   ========================================================= */
+.full-screen {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+}
+.brand-large {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  font-size: 38px;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.brand-large-sub {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 500;
+  font-size: 16px;
+  color: var(--accent);
+  letter-spacing: 0.01em;
+  margin-top: 2px;
+  margin-bottom: 32px;
+}
+
+.login-form {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  width: 100%;
+  max-width: 360px;
+}
+.login-form h2 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 6px;
+}
+.login-form p {
+  font-size: 13px;
+  color: var(--text-soft);
+  margin-bottom: 20px;
+}
+.login-form input {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.login-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.login-form button.primary {
+  width: 100%;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 8px;
+}
+.login-form button.primary:hover { background: #b91c1c; }
+.login-error {
+  color: var(--accent);
+  font-size: 12px;
+  margin-top: 8px;
+  min-height: 16px;
+}
+
+.loading-text {
+  color: var(--text-soft);
+  font-size: 14px;
+  margin-top: 12px;
+}
+
+/* =========================================================
+   TOPBAR
+   ========================================================= */
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.topbar-brand {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.topbar-brand .sub {
+  color: var(--accent);
+  font-weight: 500;
+  margin-left: 6px;
+}
+.topbar-spacer { flex: 1; }
+.topbar-user {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.topbar-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-soft);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.topbar-btn:hover { background: var(--surface-3); color: var(--text); }
+.live-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-soft);
+  font-weight: 500;
+}
+.live-dot::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.version-tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
+/* =========================================================
+   MAIN LAYOUT
+   ========================================================= */
+.main {
+  flex: 1;
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.zone {
+  margin-bottom: 40px;
+}
+
+.zone-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.zone-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+.zone-subtitle {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* =========================================================
+   KPI CARDS
+   ========================================================= */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+@media (max-width: 768px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+}
+
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+}
+.kpi-card.accent { border-color: rgba(220, 38, 38, 0.4); }
+.kpi-card.success { border-color: rgba(5, 150, 105, 0.3); }
+.kpi-card.warn { border-color: rgba(245, 158, 11, 0.3); }
+.kpi-card.info { border-color: rgba(59, 130, 246, 0.3); }
+
+.kpi-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.kpi-value {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 600;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  line-height: 1.1;
+}
+.kpi-value.mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
+.kpi-suffix {
+  font-size: 13px;
+  color: var(--text-soft);
+  font-weight: 500;
+  margin-left: 4px;
+}
+.kpi-detail {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+
+/* =========================================================
+   PANEL CARDS (larger panels with charts/lists)
+   ========================================================= */
+.panel-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+@media (max-width: 900px) {
+  .panel-row { grid-template-columns: 1fr; }
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+}
+.panel-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.panel-subtitle {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* =========================================================
+   PIPELINE PANEL
+   ========================================================= */
+.pipeline-stages {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.pipeline-stage {
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 14px 12px;
+  text-align: center;
+}
+.pipeline-stage-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.pipeline-stage-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1;
+}
+.pipeline-stage.active-nuevo { border-color: rgba(220, 38, 38, 0.4); }
+.pipeline-stage.active-prep { border-color: rgba(245, 158, 11, 0.4); }
+.pipeline-stage.active-listo { border-color: rgba(5, 150, 105, 0.4); }
+.pipeline-stage.active-route { border-color: rgba(59, 130, 246, 0.4); }
+
+/* =========================================================
+   DRIVER STATUS LIST
+   ========================================================= */
+.driver-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.driver-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+}
+.driver-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+.driver-dot.available { background: var(--success); }
+.driver-dot.assigned, .driver-dot.at_restaurant { background: var(--warn); }
+.driver-dot.en_route_delivery, .driver-dot.returning { background: var(--info); }
+.driver-dot.off_shift { background: var(--text-dim); opacity: 0.4; }
+.driver-name {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.driver-status-text {
+  font-size: 11px;
+  color: var(--text-soft);
+}
+.driver-list-empty {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 18px 0;
+}
+
+/* =========================================================
+   HOURLY VOLUME CHART (SVG)
+   ========================================================= */
+.chart-container {
+  position: relative;
+  width: 100%;
+  height: 140px;
+}
+.chart-container svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.chart-bar {
+  fill: var(--accent);
+  transition: opacity 0.2s;
+}
+.chart-bar.dim { opacity: 0.3; }
+.chart-bar.now {
+  fill: var(--warn);
+}
+.chart-axis {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.chart-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  fill: var(--text-dim);
+}
+.chart-empty-text {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  fill: var(--text-dim);
+}
+
+/* =========================================================
+   TIMES PANEL
+   ========================================================= */
+.times-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.time-stat {
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: 14px;
+  text-align: center;
+}
+.time-stat-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.time-stat-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.1;
+}
+.time-stat-suffix {
+  font-size: 14px;
+  color: var(--text-soft);
+}
+.time-stat-detail {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+.footer {
+  text-align: center;
+  padding: 16px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* =========================================================
+   PHASE 2 PLACEHOLDER
+   ========================================================= */
+.coming-soon {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+</style>
+</head>
+
+<body>
+
+<!-- ========================================
+     LOGIN SCREEN
+     ======================================== -->
+<div id="screen-login" class="full-screen hidden">
+  <div class="brand-large">X PIZZA</div>
+  <div class="brand-large-sub">ESTADÍSTICAS</div>
+  <div class="login-form">
+    <h2>Iniciar sesión</h2>
+    <p>Acceso solo para dispatchers</p>
+    <input type="email" id="login-email" placeholder="email" autocomplete="email">
+    <input type="password" id="login-password" placeholder="contraseña" autocomplete="current-password">
+    <button class="primary" id="login-btn">Entrar</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+  <div class="version-tag" data-version-display style="margin-top: 32px;"></div>
+</div>
+
+<!-- ========================================
+     LOADING SCREEN
+     ======================================== -->
+<div id="screen-loading" class="full-screen">
+  <div class="brand-large">X PIZZA</div>
+  <div class="brand-large-sub">ESTADÍSTICAS</div>
+  <div class="loading-text">Cargando datos…</div>
+</div>
+
+<!-- ========================================
+     MAIN APP
+     ======================================== -->
+<div id="screen-main" class="hidden" style="display: contents;">
+
+<header class="topbar">
+  <div class="topbar-brand">X Pizza<span class="sub">Estadísticas</span></div>
+  <span class="live-dot">En vivo</span>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-user" id="topbar-user">—</div>
+  <span class="version-tag" data-version-display></span>
+  <button class="topbar-btn" id="signout-btn">Salir</button>
+</header>
+
+<main class="main">
+
+  <!-- ========================================
+       ZONA HOY
+       ======================================== -->
+  <section class="zone">
+    <div class="zone-header">
+      <div class="zone-title">Hoy</div>
+      <div class="zone-subtitle" id="zone-hoy-date"></div>
+    </div>
+
+    <!-- KPI cards -->
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-label">Pedidos hoy</div>
+        <div class="kpi-value mono" id="kpi-total">—</div>
+        <div class="kpi-detail" id="kpi-total-detail">&nbsp;</div>
+      </div>
+      <div class="kpi-card success">
+        <div class="kpi-label">Completados</div>
+        <div class="kpi-value mono" id="kpi-completed">—</div>
+        <div class="kpi-detail" id="kpi-completed-detail">&nbsp;</div>
+      </div>
+      <div class="kpi-card warn">
+        <div class="kpi-label">En curso</div>
+        <div class="kpi-value mono" id="kpi-inprogress">—</div>
+        <div class="kpi-detail" id="kpi-inprogress-detail">&nbsp;</div>
+      </div>
+      <div class="kpi-card accent">
+        <div class="kpi-label">Cancelados</div>
+        <div class="kpi-value mono" id="kpi-cancelled">—</div>
+        <div class="kpi-detail" id="kpi-cancelled-detail">&nbsp;</div>
+      </div>
+    </div>
+
+    <!-- Pipeline + Times row -->
+    <div class="panel-row">
+      <div class="panel">
+        <div class="panel-title">Pipeline en curso</div>
+        <div class="pipeline-stages">
+          <div class="pipeline-stage active-nuevo">
+            <div class="pipeline-stage-label">Nuevo</div>
+            <div class="pipeline-stage-value" id="pipe-nuevo">0</div>
+          </div>
+          <div class="pipeline-stage active-prep">
+            <div class="pipeline-stage-label">Preparando</div>
+            <div class="pipeline-stage-value" id="pipe-prep">0</div>
+          </div>
+          <div class="pipeline-stage active-listo">
+            <div class="pipeline-stage-label">Listo</div>
+            <div class="pipeline-stage-value" id="pipe-listo">0</div>
+          </div>
+          <div class="pipeline-stage active-route">
+            <div class="pipeline-stage-label">En ruta</div>
+            <div class="pipeline-stage-value" id="pipe-route">0</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Tiempos promedio (hoy)</div>
+        <div class="times-grid">
+          <div class="time-stat">
+            <div class="time-stat-label">Preparación</div>
+            <div class="time-stat-value"><span id="time-prep">—</span><span class="time-stat-suffix"> min</span></div>
+            <div class="time-stat-detail" id="time-prep-detail">&nbsp;</div>
+          </div>
+          <div class="time-stat">
+            <div class="time-stat-label">Entrega</div>
+            <div class="time-stat-value"><span id="time-delivery">—</span><span class="time-stat-suffix"> min</span></div>
+            <div class="time-stat-detail" id="time-delivery-detail">&nbsp;</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drivers + Hourly volume -->
+    <div class="panel-row">
+      <div class="panel">
+        <div class="panel-title">Estado de repartidores</div>
+        <div class="driver-list" id="driver-list">
+          <div class="driver-list-empty">Cargando…</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          Volumen por hora
+          <span class="panel-subtitle">(hoy)</span>
+        </div>
+        <div class="chart-container" id="chart-hourly"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================
+       ZONA REVISIÓN (placeholder for Phase 2)
+       ======================================== -->
+  <section class="zone">
+    <div class="zone-header">
+      <div class="zone-title">Revisión</div>
+      <div class="zone-subtitle">Análisis por rango de fechas</div>
+    </div>
+    <div class="coming-soon">
+      Esta zona se construirá en una próxima iteración.<br>
+      Incluirá: KPIs por rango con comparación al período anterior, mapa de calor por hora/día, ranking de repartidores.
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  X Pizza Estadísticas · <span data-version-display></span>
+</footer>
+
+</div>
+
+<script type="module">
+import * as XPD from './xpizza-delivery.js?v=1';
+
+// ============================================================
+// FIREBASE CONFIG
+// Same config used by track/orders/etc. Public app credentials
+// — security comes from Firebase rules, not config secrecy.
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU",
+  authDomain: "xpizza-delivery.firebaseapp.com",
+  databaseURL: "https://xpizza-delivery-default-rtdb.firebaseio.com",
+  projectId: "xpizza-delivery",
+  messagingSenderId: "185867271616",
+  appId: "1:185867271616:web:84bb37552b40c1d517dc25"
+};
+XPD.initDelivery(firebaseConfig);
+
+// ============================================================
+// VERSION
+// ============================================================
+const SYSTEM_VERSION = '0.1.0';
+document.querySelectorAll('[data-version-display]').forEach(el => {
+  el.textContent = `v${SYSTEM_VERSION}`;
+});
+
+// ============================================================
+// HONDURAS TIME HELPERS
+// Honduras is UTC-6, no DST. We compute "today" boundaries
+// by working in Honduras-local time consistently.
+// ============================================================
+const HONDURAS_OFFSET_MS = -6 * 60 * 60 * 1000;  // UTC-6
+
+function nowHonduras() {
+  // Returns a Date object whose UTC fields represent Honduras-local fields.
+  // Useful for getHours()/getDate() comparisons.
+  return new Date(Date.now() + HONDURAS_OFFSET_MS);
+}
+
+function hondurasMidnightMs(date = new Date()) {
+  // Returns UTC ms epoch of Honduras-local midnight on the day containing `date`.
+  // Approach: shift to Honduras, zero out time-of-day, shift back.
+  const hLocal = new Date(date.getTime() + HONDURAS_OFFSET_MS);
+  hLocal.setUTCHours(0, 0, 0, 0);
+  return hLocal.getTime() - HONDURAS_OFFSET_MS;
+}
+
+function formatHondurasDate(date = new Date()) {
+  // "lunes 4 de mayo, 2026"
+  return new Date(date.getTime() + HONDURAS_OFFSET_MS).toLocaleDateString('es-HN', {
+    timeZone: 'UTC',  // we already shifted, so use UTC fields
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+}
+
+function hondurasHour(msEpoch) {
+  // Returns the hour-of-day (0-23) in Honduras for a UTC ms epoch.
+  return new Date(msEpoch + HONDURAS_OFFSET_MS).getUTCHours();
+}
+
+function formatMinutes(ms) {
+  if (!ms || ms < 0) return null;
+  return Math.round(ms / 60000);
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+const $ = (id) => document.getElementById(id);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+const screens = {
+  login: $('screen-login'),
+  loading: $('screen-loading'),
+  main: $('screen-main')
+};
+
+function showScreen(name) {
+  Object.entries(screens).forEach(([key, el]) => {
+    if (key === name) {
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
+  });
+}
+
+let currentUser = null;
+
+XPD.onAuth(async (user) => {
+  if (!user) {
+    showScreen('login');
+    return;
+  }
+  // Verify dispatcher role before showing data
+  try {
+    const isDispatcher = await XPD.isDispatcher(user.uid);
+    if (!isDispatcher) {
+      $('login-error').textContent = 'Tu cuenta no tiene permisos de dispatcher';
+      await XPD.signOutUser();
+      showScreen('login');
+      return;
+    }
+  } catch (e) {
+    console.warn('Failed to check dispatcher role:', e);
+    // Fall through — they'll get permission errors on read otherwise
+  }
+  currentUser = user;
+  $('topbar-user').textContent = user.email;
+  showScreen('main');
+  startSubscriptions();
+});
+
+$('login-btn').addEventListener('click', async () => {
+  const email = $('login-email').value.trim();
+  const password = $('login-password').value;
+  if (!email || !password) return;
+  $('login-error').textContent = '';
+  try {
+    await XPD.signIn(email, password);
+  } catch (e) {
+    $('login-error').textContent = 'Email o contraseña incorrectos';
+  }
+});
+
+$('login-password').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('login-btn').click();
+});
+
+$('signout-btn').addEventListener('click', async () => {
+  await XPD.signOutUser();
+});
+
+// ============================================================
+// DATA SUBSCRIPTIONS
+// ============================================================
+let allOrders = {};
+let allDrivers = {};
+
+function startSubscriptions() {
+  // Set the date subtitle once at boot — it'll naturally re-render
+  // when the page is re-opened on a new day
+  const date = formatHondurasDate(new Date());
+  $('zone-hoy-date').textContent = date.charAt(0).toUpperCase() + date.slice(1);
+
+  XPD.subscribeToOrders((orders) => {
+    allOrders = orders || {};
+    renderHoy();
+  });
+
+  XPD.subscribeToDrivers((drivers) => {
+    allDrivers = drivers || {};
+    renderDrivers();
+  });
+
+  // Recompute every minute so "in-progress" times etc. stay fresh
+  // even without new Firebase events
+  setInterval(renderHoy, 60_000);
+}
+
+// ============================================================
+// HOY ZONE
+// ============================================================
+function renderHoy() {
+  const todayStartMs = hondurasMidnightMs(new Date());
+  const todayOrders = Object.values(allOrders).filter(o =>
+    (o.created_at || 0) >= todayStartMs
+  );
+
+  // Counts
+  const total = todayOrders.length;
+  const completed = todayOrders.filter(o => o.status === 'delivered').length;
+  const cancelled = todayOrders.filter(o => o.status === 'cancelled').length;
+  const inProgress = todayOrders.filter(o =>
+    !['delivered', 'cancelled'].includes(o.status)
+  ).length;
+
+  $('kpi-total').textContent = total;
+  $('kpi-completed').textContent = completed;
+  $('kpi-cancelled').textContent = cancelled;
+  $('kpi-inprogress').textContent = inProgress;
+
+  // Detail lines under each KPI
+  $('kpi-total-detail').innerHTML = total > 0 && completed > 0
+    ? `${Math.round(completed / total * 100)}% completados`
+    : '&nbsp;';
+  $('kpi-completed-detail').innerHTML = completed > 0
+    ? `de ${total} pedidos`
+    : '&nbsp;';
+  $('kpi-inprogress-detail').innerHTML = inProgress > 0
+    ? renderInProgressBreakdown(todayOrders)
+    : '&nbsp;';
+  $('kpi-cancelled-detail').innerHTML = cancelled > 0 && total > 0
+    ? `${Math.round(cancelled / total * 100)}% del total`
+    : '&nbsp;';
+
+  // Pipeline counts (active orders only — exclude delivered/cancelled)
+  const active = todayOrders.filter(o =>
+    !['delivered', 'cancelled'].includes(o.status)
+  );
+  $('pipe-nuevo').textContent  = active.filter(o => o.status === 'new' || !o.status).length;
+  $('pipe-prep').textContent   = active.filter(o => o.status === 'preparing').length;
+  $('pipe-listo').textContent  = active.filter(o => o.status === 'ready').length;
+  $('pipe-route').textContent  = active.filter(o => o.status === 'out_for_delivery').length;
+
+  // Average times
+  const completedOrders = todayOrders.filter(o => o.status === 'delivered');
+  renderTimes(completedOrders);
+
+  // Hourly volume chart
+  renderHourlyChart(todayOrders);
+}
+
+function renderInProgressBreakdown(todayOrders) {
+  // Show a tiny breakdown of in-progress orders by status
+  // e.g., "2 nuevos · 1 prep · 0 ruta"
+  const newCount = todayOrders.filter(o => o.status === 'new' || !o.status).length;
+  const prepCount = todayOrders.filter(o => o.status === 'preparing').length;
+  const routeCount = todayOrders.filter(o => o.status === 'out_for_delivery').length;
+  const parts = [];
+  if (newCount > 0) parts.push(`${newCount} nuevos`);
+  if (prepCount > 0) parts.push(`${prepCount} prep`);
+  if (routeCount > 0) parts.push(`${routeCount} ruta`);
+  return parts.join(' · ') || '&nbsp;';
+}
+
+function renderTimes(completedOrders) {
+  // Prep time = picked_up_at - created_at  (kitchen-to-pickup window)
+  // Delivery time = delivered_at - picked_up_at  (pickup-to-doorstep)
+  const prepDurations = completedOrders
+    .filter(o => o.picked_up_at && o.created_at)
+    .map(o => o.picked_up_at - o.created_at);
+
+  const deliveryDurations = completedOrders
+    .filter(o => o.delivered_at && o.picked_up_at)
+    .map(o => o.delivered_at - o.picked_up_at);
+
+  const prepAvg = avg(prepDurations);
+  const deliveryAvg = avg(deliveryDurations);
+
+  $('time-prep').textContent = prepAvg != null ? formatMinutes(prepAvg) : '—';
+  $('time-delivery').textContent = deliveryAvg != null ? formatMinutes(deliveryAvg) : '—';
+
+  $('time-prep-detail').textContent = prepDurations.length > 0
+    ? `${prepDurations.length} ${prepDurations.length === 1 ? 'pedido' : 'pedidos'}`
+    : 'sin datos';
+  $('time-delivery-detail').textContent = deliveryDurations.length > 0
+    ? `${deliveryDurations.length} ${deliveryDurations.length === 1 ? 'pedido' : 'pedidos'}`
+    : 'sin datos';
+}
+
+function avg(arr) {
+  if (!arr.length) return null;
+  return arr.reduce((s, x) => s + x, 0) / arr.length;
+}
+
+// ============================================================
+// HOURLY VOLUME CHART (hand-rolled SVG)
+// ============================================================
+function renderHourlyChart(todayOrders) {
+  // X. Pizza operates roughly 12:00-20:45. Show 12-22 to give bookends.
+  const startHour = 11;
+  const endHour = 22;
+  const hours = [];
+  for (let h = startHour; h <= endHour; h++) hours.push(h);
+
+  // Bucket today's orders by Honduras hour
+  const buckets = {};
+  hours.forEach(h => buckets[h] = 0);
+  todayOrders.forEach(o => {
+    if (!o.created_at) return;
+    const h = hondurasHour(o.created_at);
+    if (h >= startHour && h <= endHour) buckets[h]++;
+  });
+
+  const maxCount = Math.max(1, ...Object.values(buckets));
+  const currentHour = nowHonduras().getUTCHours();
+
+  // SVG dimensions — viewBox-based, scales with container
+  const W = 100, H = 100;        // viewBox units
+  const padBot = 14;             // space for hour labels
+  const padTop = 4;
+  const chartH = H - padBot - padTop;
+  const barW = W / hours.length * 0.7;
+  const barGap = W / hours.length * 0.3;
+
+  let svgInner = '';
+
+  if (todayOrders.length === 0) {
+    svgInner = `<text x="${W/2}" y="${H/2}" class="chart-empty-text" text-anchor="middle" dominant-baseline="middle">Sin pedidos hoy aún</text>`;
+  } else {
+    // Bars
+    hours.forEach((h, i) => {
+      const count = buckets[h];
+      const barH = (count / maxCount) * chartH;
+      const x = i * (barW + barGap) + barGap / 2;
+      const y = H - padBot - barH;
+      const isFuture = h > currentHour;
+      const isNow = h === currentHour;
+      const cls = isFuture ? 'chart-bar dim' : (isNow ? 'chart-bar now' : 'chart-bar');
+      svgInner += `<rect class="${cls}" x="${x}" y="${y}" width="${barW}" height="${Math.max(0.5, barH)}" rx="0.6"/>`;
+
+      // Count label above bar (only if there's a non-zero count)
+      if (count > 0) {
+        svgInner += `<text x="${x + barW/2}" y="${y - 1.5}" class="chart-label" text-anchor="middle" dominant-baseline="alphabetic">${count}</text>`;
+      }
+    });
+
+    // Hour labels (every other to avoid crowding)
+    hours.forEach((h, i) => {
+      if (i % 2 !== 0) return;
+      const x = i * (barW + barGap) + barGap / 2 + barW / 2;
+      svgInner += `<text x="${x}" y="${H - 3}" class="chart-label" text-anchor="middle">${h}h</text>`;
+    });
+  }
+
+  $('chart-hourly').innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${svgInner}</svg>`;
+}
+
+// ============================================================
+// DRIVER STATUS LIST
+// ============================================================
+const STATUS_LABELS_ES = {
+  available: 'Disponible',
+  assigned: 'Asignado',
+  at_restaurant: 'En restaurante',
+  en_route_delivery: 'En entrega',
+  returning: 'Regresando',
+  off_shift: 'Fuera de turno',
+  on_break: 'En pausa'
+};
+
+function renderDrivers() {
+  const drivers = Object.entries(allDrivers).map(([uid, d]) => ({ uid, ...d }));
+  const list = $('driver-list');
+
+  if (drivers.length === 0) {
+    list.innerHTML = '<div class="driver-list-empty">No hay repartidores registrados</div>';
+    return;
+  }
+
+  // Sort: on-shift first (anything other than off_shift), then by name
+  drivers.sort((a, b) => {
+    const aOff = a.status === 'off_shift';
+    const bOff = b.status === 'off_shift';
+    if (aOff !== bOff) return aOff ? 1 : -1;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+
+  list.innerHTML = drivers.map(d => {
+    const status = d.status || 'off_shift';
+    const label = STATUS_LABELS_ES[status] || status;
+    return `
+      <div class="driver-item">
+        <span class="driver-dot ${status}"></span>
+        <span class="driver-name">${escapeHtml(d.name || '—')}</span>
+        <span class="driver-status-text">${label}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// ============================================================
+// UTILITIES
+// ============================================================
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// Service worker registration (PWA install)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
+</script>
+
+</body>
+</html>

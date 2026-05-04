@@ -1,0 +1,19 @@
+{
+  "name": "X Pizza Estadísticas",
+  "short_name": "XP Stats",
+  "description": "Panel de estadísticas operativas de X Pizza",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

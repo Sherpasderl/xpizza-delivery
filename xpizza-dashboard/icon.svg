@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#1e293b"/>
+  <rect x="100" y="280" width="60" height="140" rx="6" fill="#f59e0b"/>
+  <rect x="186" y="220" width="60" height="200" rx="6" fill="#0d9488"/>
+  <rect x="272" y="160" width="60" height="260" rx="6" fill="#dc2626"/>
+  <rect x="358" y="240" width="60" height="180" rx="6" fill="#3b82f6"/>
+  <line x1="80" y1="430" x2="432" y2="430" stroke="#ffffff" stroke-width="6" stroke-opacity="0.4" stroke-linecap="round"/>
+  <circle cx="130" cy="120" r="14" fill="#ffffff"/>
+  <circle cx="216" cy="100" r="14" fill="#ffffff"/>
+  <circle cx="302" cy="80" r="14" fill="#ffffff"/>
+  <circle cx="388" cy="120" r="14" fill="#ffffff"/>
+  <line x1="130" y1="120" x2="216" y2="100" stroke="#ffffff" stroke-width="6" stroke-opacity="0.6" stroke-linecap="round"/>
+  <line x1="216" y1="100" x2="302" y2="80" stroke="#ffffff" stroke-width="6" stroke-opacity="0.6" stroke-linecap="round"/>
+  <line x1="302" y1="80" x2="388" y2="120" stroke="#ffffff" stroke-width="6" stroke-opacity="0.6" stroke-linecap="round"/>
+</svg>
