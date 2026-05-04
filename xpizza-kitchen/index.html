@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- X Pizza Kitchen - version: 2.0.0 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8"/>
@@ -7,13 +8,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap"/>
 <style>
-  /* ═══════════════════════════════════════════════
-     CONFIGURATION — edit before deploying
-     ═══════════════════════════════════════════════
-     SHEET_ID  → your Google Sheets spreadsheet ID
-     API_KEY   → your Google Sheets API key
-     (Get API key from console.cloud.google.com →
-      Enable Sheets API → Create credentials → API key)
+  /* X Pizza — Kitchen Display
+     Reads live order data from Firebase Realtime Database.
+     Requires Firebase Auth + kitchen role membership at /kitchen/{uid}.
   */
 
   :root {
@@ -729,9 +726,109 @@ function shortStatus(s) {
     text-transform: uppercase;
     color: var(--black);
   }
+  /* ── Login screen ── */
+  .login-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    z-index: 9999;
+  }
+  .login-screen.hidden { display: none; }
+  .login-brand {
+    font-family: var(--stamp);
+    font-size: 32px;
+    letter-spacing: 4px;
+  }
+  .login-brand-sub {
+    font-family: var(--body);
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: -16px;
+  }
+  .login-form {
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    padding: 28px 24px;
+    width: 320px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .login-form h2 {
+    font-family: var(--stamp);
+    font-size: 18px;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+  .login-form p {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .login-form input {
+    font-family: var(--body);
+    font-size: 14px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--cream);
+  }
+  .login-form input:focus { outline: 2px solid var(--cream); border-color: var(--cream); }
+  .login-form button {
+    font-family: var(--stamp);
+    font-size: 14px;
+    letter-spacing: 2px;
+    padding: 10px;
+    background: var(--cream);
+    color: white;
+    border: none;
+    cursor: pointer;
+  }
+  .login-form button:disabled { opacity: 0.5; cursor: wait; }
+  .login-error {
+    color: var(--nuevo);
+    font-size: 12px;
+    text-align: center;
+    min-height: 16px;
+  }
+  .signout-btn {
+    font-family: var(--body);
+    font-size: 11px;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    margin-left: 8px;
+    cursor: pointer;
+  }
+  .signout-btn:hover { color: var(--cream); border-color: var(--cream); }
 </style>
 </head>
 <body>
+
+<!-- Login screen — shown until auth completes + kitchen role verified.
+     Hidden when the kitchen UI takes over. Always present in DOM so we
+     can show it again on signout without reload. -->
+<div id="login-screen" class="login-screen">
+  <div class="login-brand">X PIZZA</div>
+  <div class="login-brand-sub">Cocina</div>
+  <div class="login-form">
+    <h2>Iniciar sesión</h2>
+    <p>Acceso solo para personal de cocina</p>
+    <input type="email" id="login-email" placeholder="email" autocomplete="email">
+    <input type="password" id="login-password" placeholder="contraseña" autocomplete="current-password">
+    <button id="login-btn">Entrar</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
 
 <div class="cancel-banner" id="cancel-banner">
   <div class="icon">⚠</div>
@@ -751,7 +848,7 @@ function shortStatus(s) {
   <div class="header-right">
     <div class="refresh-info">
       <span class="refresh-dot"></span>
-      Auto-actualiza cada 30s
+      Live · tiempo real
     </div>
     <button class="btn-sound" id="btn-sound" onclick="toggleSound()" title="Activar/desactivar sonido">
       🔔 Sonido ON
@@ -764,6 +861,7 @@ function shortStatus(s) {
       Historial completo (<span id="history-count">0</span>)
     </button>
     <div class="clock" id="clock">--:--:--</div>
+    <button class="signout-btn" id="signout-btn" title="Cerrar sesión">Salir</button>
   </div>
 </div>
 
@@ -795,14 +893,46 @@ function shortStatus(s) {
   </div>
 </div>
 
-<script>
+<script type="module">
+// X Pizza Kitchen Display
+// version: 2.0.0
+//
+// Major rewrite from the original Sheets-polling design:
+//   - Reads orders directly from Firebase Realtime Database (live subscription)
+//   - Requires Firebase Auth + kitchen role membership at /kitchen/{uid}
+//   - Status changes here propagate to /orders/{id}/status (visible to dispatcher,
+//     customer tracking page, etc.)
+//   - No API keys hardcoded in the page
+
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
+import * as XPD from './xpizza-delivery.js?v=15';
+
+// Same Firebase project config as driver/dispatch.
+// apiKey is NOT a secret — it identifies the project. Real access is gated
+// by Firebase Auth + Firebase Realtime Database rules.
+const firebaseConfig = {
+  apiKey: "AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU",
+  authDomain: "xpizza-delivery.firebaseapp.com",
+  databaseURL: "https://xpizza-delivery-default-rtdb.firebaseio.com",
+  projectId: "xpizza-delivery",
+  messagingSenderId: "185867271616",
+  appId: "1:185867271616:web:84bb37552b40c1d517dc25"
+};
+
+XPD.initDelivery(firebaseConfig);
+
+// Make these available to the inline onclick handlers in the existing markup
+// (the original kitchen used <script> not module, so handlers reference globals).
+window.XPD = XPD;
+
 /* ═══════════════════════════════════════════════
    CONFIGURATION
-   ═══════════════════════════════════════════════ */
-const SHEET_ID  = '1jyUbXPVrKIY8Ha7qxHdkM_GQ-SCW5KPdTRwMb32qfdA';
-const API_KEY   = 'AIzaSyAuzSLAELV_MaK2xeXrNjS6_lhNXmD_Y0A';
-const SHEET_NAME = 'Sheet1';
-const REFRESH_MS = 30000; // 30 seconds
+   ═══════════════════════════════════════════════
+   Kitchen display reads orders directly from Firebase
+   (subscribes to /orders for real-time updates).
+   No API keys are embedded in the page — access is gated
+   by Firebase Auth + the kitchen role at /kitchen/{uid}.
+*/
 /* ─────────────────────────────────────────────── */
 
 // In-memory state: tracks status changes made on this tablet
@@ -966,12 +1096,33 @@ function renderCard(order) {
     </div>`;
 }
 
-/* ── Move order to new status ── */
+/* ── Move order to new status ──
+   Updates local state immediately for snappy UI, then propagates
+   the change to Firebase so dispatcher + customer (via tracking page)
+   see it. The local-only "Archivado" status stays out of Firebase —
+   it's a kitchen-display convention for hiding things from view, not
+   a real order state. */
+const KDS_TO_ORDER_STATUS = {
+  'Nuevo': 'new',
+  'En preparación': 'preparing',
+  'Listo': 'ready'
+  // 'Archivado' — local only, no Firebase write
+};
+
 function moveOrder(id, newStatus) {
   localState[id] = newStatus;
   if (!stateLog[id]) stateLog[id] = {};
   stateLog[id][newStatus] = new Date().toISOString();
   saveState();
+
+  // Propagate to Firebase if it's a real order status (not "Archivado")
+  const fbStatus = KDS_TO_ORDER_STATUS[newStatus];
+  if (fbStatus) {
+    XPD.setOrderStatus(id, fbStatus).catch(e => {
+      console.warn('Failed to propagate status to Firebase:', e.message);
+    });
+  }
+
   const activeOrders = allOrders.filter(o => (localState[o.id] || o.estado) !== 'Archivado');
   render(activeOrders);
 }
@@ -1060,57 +1211,90 @@ function tickElapsed() {
 }
 setInterval(tickElapsed, 1000);
 
-/* ── Fetch from Google Sheets ── */
-async function fetchOrders() {
-  if (SHEET_ID === 'YOUR_GOOGLE_SHEET_ID_HERE') {
-    // Demo mode — show fake orders for testing
-    const demo = [
-      { id:'PZX-001', orden:'PZX-001', cliente:'Carlos Reyes',  pedido:'2x Carnivora (L340), 1x Margherita (L299)', notas:'Sin cebolla', hora: new Date(Date.now()-8*60000).toISOString(), estado:'Nuevo' },
-      { id:'PZX-002', orden:'PZX-002', cliente:'María García',  pedido:'1x Shrimp Scampi (L412)', notas:'—', hora: new Date(Date.now()-22*60000).toISOString(), estado:'Nuevo' },
-      { id:'PZX-003', orden:'PZX-003', cliente:'Luis Mendoza',  pedido:'1x Carnivora NY (L685)', notas:'Extra salsa', hora: new Date(Date.now()-35*60000).toISOString(), estado:'Nuevo' },
-    ];
-    allOrders = demo;
-    render(demo);
-    checkForNewOrders(demo);
-    return;
-  }
+/* ── Subscribe to orders from Firebase ─────────────
+   Replaces the old Google Sheets polling. Subscribes once,
+   the callback fires whenever any order changes (real-time).
+   Filters to active orders that haven't been delivered/cancelled.
+   Maps Firebase order shape to the kitchen card shape. */
+let firebaseUnsubscribe = null;
 
-  try {
-    const range  = encodeURIComponent(`${SHEET_NAME}!A2:J1000`);
-    const url    = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${API_KEY}`;
-    const res    = await fetch(url);
-    const data   = await res.json();
-    const rows   = data.values || [];
-
-    const seenIds = new Set();
-    const orders = rows
-      .map(r => ({
-        id:         r[1] || r[0],   // Orden column as ID
-        hora:       r[0],            // Hora
-        orden:      r[1],            // Orden
-        cliente:    r[2] || '—',    // Cliente
-        telefono:   r[3] || '',     // Teléfono
-        pedido:     r[4] || '',     // Pedido
-        total:      r[5] || '',     // Total
-        maps:       r[6] || '',     // Maps
-        notas:      r[7] || '—',   // Notas
-        estado:     r[8] || 'Nuevo',// Estado
-        order_type: r[9] || 'delivery' // Order type (delivery/pickup)
-      }))
-      .reverse() // newest first
-      .filter(o => {
-        if (seenIds.has(o.id)) return false;
-        seenIds.add(o.id);
-        return true;
+function startOrdersSubscription() {
+  if (firebaseUnsubscribe) firebaseUnsubscribe();
+  firebaseUnsubscribe = XPD.subscribeToOrders((ordersById) => {
+    // ordersById: { orderId1: {...}, orderId2: {...}, ... }
+    const orders = Object.values(ordersById || {})
+      // Map Firebase order shape -> kitchen card shape (returns null for
+      // delivered orders, which we filter out — they don't belong in the
+      // kitchen view).
+      .map(o => mapFirebaseOrderToCard(o))
+      .filter(o => o !== null)
+      // Most recent first
+      .sort((a, b) => {
+        const ta = a.hora ? new Date(a.hora).getTime() : 0;
+        const tb = b.hora ? new Date(b.hora).getTime() : 0;
+        return tb - ta;
       });
 
-    allOrders = orders; // keep full history including archived
-    const activeOrders = orders.filter(o => (localState[o.id] || o.estado) !== 'Archivado');
+    allOrders = orders;
+    // Hide orders the kitchen has archived locally OR that the system has
+    // marked delivered/cancelled (those don't belong in the kitchen view).
+    const activeOrders = orders.filter(o => {
+      const localStatus = localState[o.id] || o.estado;
+      if (localStatus === 'Archivado') return false;
+      // System-side terminal states are already excluded from the kitchen view
+      return true;
+    });
     render(activeOrders);
     checkForNewOrders(activeOrders);
-  } catch(e) {
-    console.error('Error fetching orders:', e);
+  });
+}
+
+/* Map a Firebase /orders/{id} record to the shape the kitchen UI expects.
+   The kitchen was originally built around a Google Sheets row layout, so we
+   keep that shape (id, hora, orden, cliente, ...) and translate Firebase
+   field names. The order.status from /orders maps to KDS estado:
+     'new'              → 'Nuevo'
+     'preparing'        → 'En preparación'
+     'ready'            → 'Listo'
+     'out_for_delivery' → kitchen's job is done, treat as 'Listo' for display
+     'delivered'        → exclude from kitchen view (filter handles below)
+     'cancelled'        → leave visible flagged for kitchen acknowledgment
+*/
+function mapFirebaseOrderToCard(o) {
+  if (!o) return null;
+  // Hide finished orders entirely (delivered) — kitchen doesn't need them.
+  // Cancelled orders stay visible until kitchen archives them locally
+  // so kitchen sees "this order was cancelled — pull it from the line".
+  if (o.status === 'delivered') return null;
+
+  let estado;
+  if (o.status === 'cancelled') {
+    estado = 'Nuevo';  // surface in Nuevo column with cancel banner so kitchen sees it
+  } else if (o.status === 'preparing') {
+    estado = 'En preparación';
+  } else if (o.status === 'ready' || o.status === 'out_for_delivery') {
+    estado = 'Listo';
+  } else {
+    estado = 'Nuevo';
   }
+
+  // Format created_at (ms epoch) as ISO so the existing elapsed() helper works
+  const horaIso = o.created_at ? new Date(o.created_at).toISOString() : null;
+
+  return {
+    id: o.order_id,
+    hora: horaIso,
+    orden: o.order_id,
+    cliente: o.customer_name || '—',
+    telefono: o.customer_phone || '',
+    pedido: o.items_text || '',
+    total: o.total != null ? `L${o.total}` : '',
+    maps: o.maps_link || '',
+    notas: o.notes || '—',
+    estado: estado,
+    order_type: o.order_type || 'delivery',
+    cancelled: o.status === 'cancelled'
+  };
 }
 
 /* ── Shorten status for log display ── */
@@ -1465,8 +1649,102 @@ document.addEventListener('visibilitychange', async () => {
 
 /* ── Auto-refresh ── */
 requestWakeLock();
-fetchOrders();
-setInterval(fetchOrders, REFRESH_MS);
+
+/* ── Expose inline-handler functions to window ──
+   Original kitchen used <script> (global scope); converting to <script type=module>
+   loses that auto-globalization, so we attach the functions onclick attributes
+   reference back to window explicitly. */
+window.toggleSound = toggleSound;
+window.toggleArchive = toggleArchive;
+window.toggleHistory = toggleHistory;
+window.moveOrder = moveOrder;
+window.restoreOrder = restoreOrder;
+window.showLog = showLog;
+window.closeLog = closeLog;
+window.dragOver = dragOver;
+window.dragLeave = dragLeave;
+window.drop = drop;
+
+/* ── Auth boot ──
+   Wait for Firebase Auth state. If signed in + has kitchen role, start the
+   subscription. Otherwise show the login screen.
+*/
+const $login = document.getElementById('login-screen');
+const $loginBtn = document.getElementById('login-btn');
+const $loginEmail = document.getElementById('login-email');
+const $loginPassword = document.getElementById('login-password');
+const $loginError = document.getElementById('login-error');
+const $signoutBtn = document.getElementById('signout-btn');
+
+function showLogin() {
+  $login.classList.remove('hidden');
+}
+function hideLogin() {
+  $login.classList.add('hidden');
+}
+function setLoginError(msg) {
+  $loginError.textContent = msg || '';
+}
+
+$loginBtn.addEventListener('click', async () => {
+  const email = $loginEmail.value.trim();
+  const password = $loginPassword.value;
+  if (!email || !password) {
+    setLoginError('Email y contraseña requeridos');
+    return;
+  }
+  $loginBtn.disabled = true;
+  setLoginError('');
+  try {
+    await XPD.signIn(email, password);
+    // onAuth handler will take over from here
+  } catch (e) {
+    const code = e.code || '';
+    if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) {
+      setLoginError('Email o contraseña incorrectos');
+    } else {
+      setLoginError(`Error: ${code || e.message}`);
+    }
+  } finally {
+    $loginBtn.disabled = false;
+  }
+});
+
+// Allow pressing Enter in either field to submit
+[$loginEmail, $loginPassword].forEach(el => {
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter') $loginBtn.click(); });
+});
+
+$signoutBtn.addEventListener('click', async () => {
+  if (firebaseUnsubscribe) {
+    firebaseUnsubscribe();
+    firebaseUnsubscribe = null;
+  }
+  await XPD.signOutUser();
+  // onAuth handler will trigger the login screen
+});
+
+XPD.onAuth(async (user) => {
+  if (!user) {
+    if (firebaseUnsubscribe) {
+      firebaseUnsubscribe();
+      firebaseUnsubscribe = null;
+    }
+    showLogin();
+    return;
+  }
+
+  // Verify kitchen role
+  const isKitchenStaff = await XPD.isKitchen(user.uid);
+  if (!isKitchenStaff) {
+    setLoginError('Esta cuenta no tiene permisos de cocina');
+    await XPD.signOutUser();
+    return;
+  }
+
+  hideLogin();
+  startOrdersSubscription();
+});
 
 </script>
 

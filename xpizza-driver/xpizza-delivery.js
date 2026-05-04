@@ -1,8 +1,8 @@
 /**
  * X Pizza Delivery — Shared SDK
- * version: 1.8.0
+ * version: 1.9.0
  *
- * Used by both the driver PWA and the dispatcher view.
+ * Used by the driver PWA, dispatcher view, and kitchen display.
  * Wraps Firebase Realtime Database with the operations needed
  * to run an in-house last-mile delivery operation.
  *
@@ -129,6 +129,16 @@ export async function isDispatcher(uid) {
   return v !== false && v !== null && v !== 0 && v !== '';
 }
 
+export async function isKitchen(uid) {
+  // Same shape as isDispatcher — kitchen staff role membership lives at
+  // /kitchen/{uid}, gated by Firebase rules. Used by the KDS to check
+  // whether the signed-in user has permission to view + update orders.
+  const snapshot = await get(ref(db, `kitchen/${uid}`));
+  if (!snapshot.exists()) return false;
+  const v = snapshot.val();
+  return v !== false && v !== null && v !== 0 && v !== '';
+}
+
 // ============================================================
 // DRIVER OPERATIONS
 // ============================================================
@@ -238,6 +248,20 @@ async function checkGeofenceTransition(driverId, lat, lng) {
 
 export async function setDriverStatus(driverId, status) {
   await update(ref(db, `drivers/${driverId}`), { status });
+}
+
+/**
+ * Set the lifecycle status on an order. Used by:
+ *   - Kitchen display: 'preparing' / 'ready' / (rarely) 'new'
+ *   - Dispatcher: any value when manually overriding
+ *   - SDK internals: 'out_for_delivery' / 'delivered' / 'cancelled'
+ *
+ * Firebase rules gate which roles can write which transitions. Kitchen
+ * staff are allowed to write status, dispatchers are allowed any write,
+ * drivers can write status only via their assigned tasks.
+ */
+export async function setOrderStatus(orderId, status) {
+  await update(ref(db, `orders/${orderId}`), { status });
 }
 
 /**
