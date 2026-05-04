@@ -1162,6 +1162,26 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       console.log(`autoAssign: ${orderId} already assigned to ${pickup.assigned_driver_id} during grace`);
       return;
     }
+    // Re-check the order itself — was it cancelled or otherwise progressed
+    // during the 30s grace window? Without this, a dispatcher who cancels
+    // a freshly-placed order in the first 30s would have it auto-assigned
+    // anyway (cancelOrder updates status but doesn't touch
+    // assigned_driver_id, so the check above passes). The task-status
+    // check covers the same scenario from the task side.
+    const orderSnap = await db.ref(`orders/${orderId}`).once('value');
+    const orderNow = orderSnap.val();
+    if (!orderNow) {
+      console.log(`autoAssign: order ${orderId} disappeared during grace, skipping`);
+      return;
+    }
+    if (orderNow.status !== 'new') {
+      console.log(`autoAssign: ${orderId} status is now '${orderNow.status}' (not 'new'), skipping`);
+      return;
+    }
+    if (pickup.status === 'cancelled') {
+      console.log(`autoAssign: ${orderId} pickup task is cancelled, skipping`);
+      return;
+    }
 
     const chosen = await pickEligibleDriver(db);
     if (!chosen) {
@@ -1273,6 +1293,20 @@ exports.monitorAssignmentTimeout = onValueWritten(
       console.log(`timeout-monitor: ${taskId} reassigned during wait (was ${driverId}, now ${task.assigned_driver_id}), no-op`);
       return;
     }
+    // Check the parent ORDER status too. cancelOrder() sets task.status to
+    // 'cancelled' so the next check usually catches it, but if the task
+    // status is somehow stale (race, partial write), the order check is a
+    // hard backstop — never reassign a cancelled order to a new driver.
+    const orderForTimeoutSnap = await db.ref(`orders/${orderId}`).once('value');
+    const orderForTimeout = orderForTimeoutSnap.val();
+    if (!orderForTimeout) {
+      console.log(`timeout-monitor: order ${orderId} disappeared, no-op`);
+      return;
+    }
+    if (orderForTimeout.status === 'cancelled') {
+      console.log(`timeout-monitor: order ${orderId} is cancelled, no-op`);
+      return;
+    }
     if (task.status !== 'assigned') {
       console.log(`timeout-monitor: ${taskId} no longer 'assigned' (now ${task.status}), no-op`);
       return;
@@ -1347,5 +1381,3 @@ exports.monitorAssignmentTimeout = onValueWritten(
     }
   }
 );
-
-// build: 1777862021
