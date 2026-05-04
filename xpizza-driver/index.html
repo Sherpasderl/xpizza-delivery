@@ -343,7 +343,7 @@
   .idle-help-link {
     background: none;
     border: none;
-    color: var(--accent);
+    color: var(--text-soft);
     font-size: 13px;
     font-family: inherit;
     cursor: pointer;
@@ -351,7 +351,7 @@
     margin-bottom: 32px;
     text-decoration: none;
   }
-  .idle-help-link:hover { text-decoration: underline; }
+  .idle-help-link:hover { color: var(--text); text-decoration: underline; }
 
   /* ==================== ACTIVE ORDER CARD ==================== */
   .active-card {
@@ -2220,8 +2220,11 @@ function renderNotifBanner(targetEl, state) {
 
   switch (state) {
     case 'enabled':
-      targetEl.classList.add('enabled');
-      targetEl.innerHTML = `<span class="icon">${ICONS.check}</span><div class="text">Notificaciones activadas</div>`;
+      // Notifications working correctly — no banner needed (toast at moment
+      // of enabling already provided feedback). A persistent "everything is
+      // fine" banner is just noise. We only surface notification status when
+      // something needs attention (denied, needs install, not yet enabled).
+      targetEl.classList.add('hidden');
       break;
 
     case 'not_enabled':
