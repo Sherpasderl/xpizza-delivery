@@ -89,27 +89,8 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .progress-bar{display:flex;background:var(--border2);height:2px}
 .progress-fill{background:var(--gold);height:3px;transition:width .4s ease;border-radius:2px}
 
-/* ── Stages ──
-   Stages cross-fade with a subtle vertical slide on transition.
-   .stage-leaving fades out + slides up; .stage-entering starts faded
-   out + below position, then transitions in. JS sequences the timing
-   (fade out → swap → fade in) for ~400ms total. */
-.stage{
-  display:none;
-  opacity:1;
-  transform:translateY(0);
-  transition: opacity .2s ease-out, transform .2s ease-out;
-}
-.stage.active{display:block}
-.stage.stage-leaving{
-  opacity:0;
-  transform:translateY(-8px);
-  pointer-events:none;
-}
-.stage.stage-entering{
-  opacity:0;
-  transform:translateY(8px);
-}
+/* ── Stages ── */
+.stage{display:none}.stage.active{display:block}
 .container{max-width:480px;margin:0 auto;padding:0 0 24px}
 .step-label{font-family:var(--sans);font-size:13px;font-weight:600;color:var(--gold-dk);padding:16px 16px 8px}
 
@@ -1659,42 +1640,13 @@ function updateCartReviewBody(){
 
 /* ── Stage navigation ── */
 function showStage(id,pct){
-  const next = document.getElementById(id);
-  if (!next) return;
-
-  // Update progress bar immediately — its own CSS transition (.4s)
-  // animates the width independently of the stage swap.
+  document.querySelectorAll('.stage').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
   document.getElementById('progress').style.width=pct+'%';
-
-  // Cart bar visibility (only visible on s1) — toggle immediately
+  window.scrollTo(0,0);
+  // Show cart bar only on step 1
   const cartBar=document.getElementById('cart-bar');
   if(cartBar) cartBar.style.display=id==='s1'?'flex':'none';
-
-  const current = document.querySelector('.stage.active');
-  if (current === next) return;
-
-  if (!current) {
-    // First render — no transition needed
-    next.classList.add('active');
-    window.scrollTo(0,0);
-    return;
-  }
-
-  // Phase 1: fade out current (200ms)
-  current.classList.add('stage-leaving');
-  setTimeout(() => {
-    current.classList.remove('active', 'stage-leaving');
-
-    // Phase 2: swap + start next stage in faded-out state, then animate in
-    next.classList.add('active', 'stage-entering');
-    window.scrollTo(0,0);
-    // Force reflow so the .stage-entering state takes effect before we
-    // remove it — without this, the transition might not trigger.
-    void next.offsetWidth;
-    requestAnimationFrame(() => {
-      next.classList.remove('stage-entering');
-    });
-  }, 200);
 }
 
 function goBack(id,pct){ showStage(id,pct); }
