@@ -1,8 +1,8 @@
 /**
  * X Pizza Delivery — Shared SDK
- * version: 1.5.0
+ * version: 1.10.0
  *
- * Used by both the driver PWA and the dispatcher view.
+ * Used by the driver PWA, dispatcher view, and kitchen display.
  * Wraps Firebase Realtime Database with the operations needed
  * to run an in-house last-mile delivery operation.
  *
@@ -27,6 +27,7 @@ import {
   set,
   update,
   get,
+  remove,
   serverTimestamp,
   off
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
@@ -78,6 +79,14 @@ export const ORDER_STATUS = {
 
 const STALE_PING_THRESHOLD_S = 90;
 
+/**
+ * Acceptance timeout: how long a driver has to swipe-to-accept after the
+ * task is assigned before the system reassigns. Exported because the driver
+ * UI needs the same value for its visible countdown. Must match the value
+ * in the Cloud Function's monitorAssignmentTimeout (ACCEPT_TIMEOUT_MS).
+ */
+export const ACCEPT_TIMEOUT_MS = 60 * 1000;
+
 // ============================================================
 // MODULE STATE
 // ============================================================
@@ -115,6 +124,16 @@ export async function isDispatcher(uid) {
   // Match the rules' .exists() check — be permissive about value type
   // (Firebase console may store as string "true" or boolean true depending on input)
   const snapshot = await get(ref(db, `dispatchers/${uid}`));
+  if (!snapshot.exists()) return false;
+  const v = snapshot.val();
+  return v !== false && v !== null && v !== 0 && v !== '';
+}
+
+export async function isKitchen(uid) {
+  // Same shape as isDispatcher — kitchen staff role membership lives at
+  // /kitchen/{uid}, gated by Firebase rules. Used by the KDS to check
+  // whether the signed-in user has permission to view + update orders.
+  const snapshot = await get(ref(db, `kitchen/${uid}`));
   if (!snapshot.exists()) return false;
   const v = snapshot.val();
   return v !== false && v !== null && v !== 0 && v !== '';
@@ -232,6 +251,20 @@ export async function setDriverStatus(driverId, status) {
 }
 
 /**
+ * Set the lifecycle status on an order. Used by:
+ *   - Kitchen display: 'preparing' / 'ready' / (rarely) 'new'
+ *   - Dispatcher: any value when manually overriding
+ *   - SDK internals: 'out_for_delivery' / 'delivered' / 'cancelled'
+ *
+ * Firebase rules gate which roles can write which transitions. Kitchen
+ * staff are allowed to write status, dispatchers are allowed any write,
+ * drivers can write status only via their assigned tasks.
+ */
+export async function setOrderStatus(orderId, status) {
+  await update(ref(db, `orders/${orderId}`), { status });
+}
+
+/**
  * Save a Web Push subscription against a driver record. Called from the driver
  * app after successfully subscribing via the service worker. The Cloud Function
  * `notifyDriverOnAssignment` reads this when a task gets assigned to send a push.
@@ -302,6 +335,14 @@ export async function markTaskInProgress(driverId, taskId) {
   await update(ref(db), updates);
 }
 
+/**
+ * Complete a task. For DELIVERY tasks: marks order delivered, transitions
+ * driver state. With stacking support: if the driver has another delivery
+ * task in 'accepted' state queued behind this one, they keep delivering
+ * (current_task_id stays pointing at the next delivery, status stays
+ * en_route_delivery). Only when ALL deliveries are done does the driver
+ * transition to 'returning'.
+ */
 export async function completeTask(driverId, taskId) {
   const taskSnap = await get(ref(db, `tasks/${taskId}`));
   const task = taskSnap.val();
@@ -311,12 +352,37 @@ export async function completeTask(driverId, taskId) {
   updates[`tasks/${taskId}/completed_at`] = serverTimestamp();
 
   if (task && task.type === TASK_TYPE.DELIVERY) {
-    // Delivery completed — driver heads back, order is delivered
-    updates[`drivers/${driverId}/current_task_id`] = null;
-    updates[`drivers/${driverId}/status`] = DRIVER_STATUS.RETURNING;
     if (task.order_id) {
       updates[`orders/${task.order_id}/status`] = ORDER_STATUS.DELIVERED;
       updates[`orders/${task.order_id}/delivered_at`] = serverTimestamp();
+    }
+
+    // Look for the next queued delivery for this driver — a delivery task
+    // that's already 'accepted' (stacked) but not completed/cancelled.
+    const allTasksSnap = await get(ref(db, 'tasks'));
+    const allTasks = allTasksSnap.val() || {};
+    let nextDeliveryId = null;
+    let earliestCreated = Infinity;
+    for (const [tid, t] of Object.entries(allTasks)) {
+      if (tid === taskId) continue;
+      if (!t || t.assigned_driver_id !== driverId) continue;
+      if (t.type !== TASK_TYPE.DELIVERY) continue;
+      if (t.status !== TASK_STATUS.ACCEPTED && t.status !== TASK_STATUS.IN_PROGRESS) continue;
+      const created = t.created_at || 0;
+      if (created < earliestCreated) {
+        earliestCreated = created;
+        nextDeliveryId = tid;
+      }
+    }
+
+    if (nextDeliveryId) {
+      // Stacked: promote next delivery to current, keep en_route_delivery state
+      updates[`drivers/${driverId}/current_task_id`] = nextDeliveryId;
+      // status stays en_route_delivery — driver still has pizza to deliver
+    } else {
+      // No stacked deliveries — driver returns to restaurant
+      updates[`drivers/${driverId}/current_task_id`] = null;
+      updates[`drivers/${driverId}/status`] = DRIVER_STATUS.RETURNING;
     }
   }
   // Note: pickup completion is normally handled by pickupComplete() which
@@ -345,35 +411,154 @@ export function subscribeToOrders(callback) {
   return onValue(ordersRef, (snap) => callback(snap.val() || {}));
 }
 
+/**
+ * Dispatcher alerts: things the dispatcher needs to be notified about
+ * (e.g., auto-assign couldn't find a driver). Each alert is a record
+ * under /dispatcher_alerts/{alertId} that the dispatcher renders as a
+ * banner + sound. Dispatcher calls dismissDispatcherAlert(alertId) to
+ * clear it.
+ */
+export function subscribeToDispatcherAlerts(callback) {
+  const alertsRef = ref(db, 'dispatcher_alerts');
+  return onValue(alertsRef, (snap) => callback(snap.val() || {}));
+}
+
+export async function dismissDispatcherAlert(alertId) {
+  await remove(ref(db, `dispatcher_alerts/${alertId}`));
+}
+
+/**
+ * Customer WhatsApp messages received but not auto-handled by the classifier.
+ * Logged by the onIncomingWhatsApp Cloud Function under /incoming_messages.
+ * The dispatcher subscribes here to surface unhandled customer messages
+ * (e.g., free-form questions, complaints) and can mark them handled once
+ * they've replied (typically via WhatsApp Web).
+ *
+ * Each record looks like:
+ *   {
+ *     from: '50494738243',          // phone, no @c.us suffix
+ *     body: 'do you have calzones?',// raw message body
+ *     time: 1777914372,             // unix epoch seconds (from UltraMsg)
+ *     received_at: 1777914372263,   // ms epoch (server timestamp)
+ *     handled: false,               // flipped to true when dispatcher acknowledges
+ *     intent: 'UNHANDLED' | 'non-chat',
+ *     handled_at: ...,              // ms epoch, set when marked handled
+ *     handled_by: 'uid'             // dispatcher UID who handled it
+ *   }
+ */
+export function subscribeToIncomingMessages(callback) {
+  const msgsRef = ref(db, 'incoming_messages');
+  return onValue(msgsRef, (snap) => callback(snap.val() || {}));
+}
+
+export async function markMessageHandled(msgId, dispatcherUid) {
+  await update(ref(db, `incoming_messages/${msgId}`), {
+    handled: true,
+    handled_at: Date.now(),
+    handled_by: dispatcherUid || 'unknown'
+  });
+}
+
+export async function markMessageUnhandled(msgId) {
+  await update(ref(db, `incoming_messages/${msgId}`), {
+    handled: false,
+    handled_at: null,
+    handled_by: null
+  });
+}
+
+/**
+ * Auto-assignment global toggle. When false, the autoAssignOnOrderCreate
+ * Cloud Function still fires but bails immediately, leaving orders in
+ * SIN ASIGNAR for manual handling. Defaults to TRUE if unset.
+ */
+export async function getAutoAssignEnabled() {
+  const snap = await get(ref(db, 'config/auto_assign_enabled'));
+  const val = snap.val();
+  return val !== false;  // default ON
+}
+
+export async function setAutoAssignEnabled(enabled) {
+  await set(ref(db, 'config/auto_assign_enabled'), !!enabled);
+}
+
+export function subscribeToAutoAssignEnabled(callback) {
+  return onValue(ref(db, 'config/auto_assign_enabled'), (snap) => {
+    const val = snap.val();
+    callback(val !== false);  // default ON
+  });
+}
+
 export async function assignTask(taskId, driverId) {
   const updates = {};
   updates[`tasks/${taskId}/assigned_driver_id`] = driverId;
   updates[`tasks/${taskId}/status`] = TASK_STATUS.ASSIGNED;
   updates[`tasks/${taskId}/assigned_at`] = serverTimestamp();
+  updates[`tasks/${taskId}/assignment_deadline`] = Date.now() + ACCEPT_TIMEOUT_MS;
+  updates[`tasks/${taskId}/assignment_attempts`] = 1;
   await update(ref(db), updates);
 }
 
 /**
  * Assign both pickup + delivery tasks of an order to a driver in one atomic write.
- * This is what the dispatcher actually calls in normal flow.
+ *
+ * If the driver already has an active accepted/in-progress order, this is a STACK:
+ * the new task is marked 'accepted' immediately (skipping the swipe-to-accept
+ * step), since the driver implicitly accepted by accepting the prior order.
+ * Otherwise it's a normal assignment with the 60s acceptance window.
+ *
+ * Manual assignments via dispatcher follow the same rules as auto-assignments.
+ *
+ * @param allTasks Optional snapshot of all tasks. If provided, used to detect
+ *                 stacking. If omitted, this function does a fresh read to check.
  */
-export async function assignOrderToDriver(orderId, driverId) {
+export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+  // Detect stacking: does this driver already have an accepted/in-progress
+  // task that's not completed/cancelled?
+  let isStacked = false;
+  if (!allTasks) {
+    const tasksSnap = await get(ref(db, 'tasks'));
+    allTasks = tasksSnap.val() || {};
+  }
+  for (const t of Object.values(allTasks)) {
+    if (!t || t.assigned_driver_id !== driverId) continue;
+    if (t.status === TASK_STATUS.ACCEPTED || t.status === TASK_STATUS.IN_PROGRESS) {
+      isStacked = true;
+      break;
+    }
+  }
+
   const pickupTaskId = `${orderId}_pickup`;
   const deliveryTaskId = `${orderId}_delivery`;
   const updates = {};
-  updates[`tasks/${pickupTaskId}/assigned_driver_id`] = driverId;
-  updates[`tasks/${pickupTaskId}/status`] = TASK_STATUS.ASSIGNED;
-  updates[`tasks/${pickupTaskId}/assigned_at`] = serverTimestamp();
-  updates[`tasks/${deliveryTaskId}/assigned_driver_id`] = driverId;
-  updates[`tasks/${deliveryTaskId}/status`] = TASK_STATUS.ASSIGNED;
-  updates[`tasks/${deliveryTaskId}/assigned_at`] = serverTimestamp();
+
+  if (isStacked) {
+    // Stacked: mark accepted directly, no countdown / timeout
+    for (const tid of [pickupTaskId, deliveryTaskId]) {
+      updates[`tasks/${tid}/assigned_driver_id`] = driverId;
+      updates[`tasks/${tid}/status`] = TASK_STATUS.ACCEPTED;
+      updates[`tasks/${tid}/assigned_at`] = serverTimestamp();
+      updates[`tasks/${tid}/accepted_at`] = serverTimestamp();
+    }
+  } else {
+    // Normal: assigned status, deadline, attempts counter
+    const deadline = Date.now() + ACCEPT_TIMEOUT_MS;
+    for (const tid of [pickupTaskId, deliveryTaskId]) {
+      updates[`tasks/${tid}/assigned_driver_id`] = driverId;
+      updates[`tasks/${tid}/status`] = TASK_STATUS.ASSIGNED;
+      updates[`tasks/${tid}/assigned_at`] = serverTimestamp();
+      updates[`tasks/${tid}/assignment_deadline`] = deadline;
+      updates[`tasks/${tid}/assignment_attempts`] = 1;
+    }
+  }
   await update(ref(db), updates);
 }
 
 /**
  * Reassign an order to a different driver. Cleans up the old driver's
  * current_task_id if it pointed to this order, and resets task statuses
- * so the new driver has to accept fresh.
+ * so the new driver has to accept fresh. Resets the timeout deadline + attempts
+ * counter — manual reassign by dispatcher is treated as a fresh attempt.
  */
 export async function reassignOrder(orderId, newDriverId) {
   const pickupTaskId = `${orderId}_pickup`;
@@ -383,6 +568,7 @@ export async function reassignOrder(orderId, newDriverId) {
   if (!pickup) throw new Error(`Order ${orderId} not found`);
 
   const oldDriverId = pickup.assigned_driver_id;
+  const deadline = Date.now() + ACCEPT_TIMEOUT_MS;
 
   const updates = {};
   // Reset both tasks to assigned, clear acceptance timestamps
@@ -390,10 +576,14 @@ export async function reassignOrder(orderId, newDriverId) {
   updates[`tasks/${pickupTaskId}/status`] = TASK_STATUS.ASSIGNED;
   updates[`tasks/${pickupTaskId}/assigned_at`] = serverTimestamp();
   updates[`tasks/${pickupTaskId}/accepted_at`] = null;
+  updates[`tasks/${pickupTaskId}/assignment_deadline`] = deadline;
+  updates[`tasks/${pickupTaskId}/assignment_attempts`] = 1;
   updates[`tasks/${deliveryTaskId}/assigned_driver_id`] = newDriverId;
   updates[`tasks/${deliveryTaskId}/status`] = TASK_STATUS.ASSIGNED;
   updates[`tasks/${deliveryTaskId}/assigned_at`] = serverTimestamp();
   updates[`tasks/${deliveryTaskId}/accepted_at`] = null;
+  updates[`tasks/${deliveryTaskId}/assignment_deadline`] = deadline;
+  updates[`tasks/${deliveryTaskId}/assignment_attempts`] = 1;
 
   // If old driver was working this order, clear their current_task_id
   if (oldDriverId && oldDriverId !== newDriverId) {
@@ -460,6 +650,20 @@ export async function cancelOrder(orderId, reason = '') {
  * Atomically: completes the pickup task, accepts the delivery task,
  * sets driver's current_task to the delivery task, marks order out_for_delivery.
  */
+/**
+ * Complete a pickup task. The driver swiped "I have the pizza" at the
+ * restaurant. This:
+ *   - Marks the pickup task COMPLETED
+ *   - Promotes the linked delivery task to ACCEPTED (driver heads to customer)
+ *   - Updates the order to OUT_FOR_DELIVERY, sets picked_up_at
+ *   - Sets driver's current_task_id to the delivery
+ *
+ * If the driver has STACKED orders (additional accepted orders for them),
+ * those pickups are ALSO completed in the same atomic write — driver
+ * physically picked up all pizzas in one trip to the kitchen, so all stacked
+ * pickups should transition together. The system tracks delivery-by-delivery
+ * separately; the driver's getDriverOrders sort handles "what to deliver next."
+ */
 export async function pickupComplete(driverId, pickupTaskId) {
   const pickupSnap = await get(ref(db, `tasks/${pickupTaskId}`));
   const pickupTask = pickupSnap.val();
@@ -468,8 +672,25 @@ export async function pickupComplete(driverId, pickupTaskId) {
     throw new Error(`Task ${pickupTaskId} is not a pickup task`);
   }
 
+  // Look for stacked pickups: other pending pickup tasks assigned to this
+  // same driver. They get auto-completed in the same atomic write.
+  const allTasksSnap = await get(ref(db, 'tasks'));
+  const allTasks = allTasksSnap.val() || {};
+  const stackedPickupIds = [];
+  for (const [tid, t] of Object.entries(allTasks)) {
+    if (tid === pickupTaskId) continue;
+    if (!t || t.assigned_driver_id !== driverId) continue;
+    if (t.type !== TASK_TYPE.PICKUP) continue;
+    // Only auto-complete pickups that are accepted but not yet completed
+    if (t.status === TASK_STATUS.ACCEPTED || t.status === TASK_STATUS.IN_PROGRESS) {
+      stackedPickupIds.push(tid);
+    }
+  }
+
   const deliveryTaskId = pickupTask.linked_task_id;
   const updates = {};
+
+  // Complete the active pickup
   updates[`tasks/${pickupTaskId}/status`] = TASK_STATUS.COMPLETED;
   updates[`tasks/${pickupTaskId}/completed_at`] = serverTimestamp();
   updates[`tasks/${deliveryTaskId}/status`] = TASK_STATUS.ACCEPTED;
@@ -479,6 +700,22 @@ export async function pickupComplete(driverId, pickupTaskId) {
   if (pickupTask.order_id) {
     updates[`orders/${pickupTask.order_id}/status`] = ORDER_STATUS.OUT_FOR_DELIVERY;
     updates[`orders/${pickupTask.order_id}/picked_up_at`] = serverTimestamp();
+  }
+
+  // Auto-complete stacked pickups + promote their delivery tasks
+  for (const stackedPickupId of stackedPickupIds) {
+    const stackedPickup = allTasks[stackedPickupId];
+    const stackedDeliveryId = stackedPickup.linked_task_id;
+    updates[`tasks/${stackedPickupId}/status`] = TASK_STATUS.COMPLETED;
+    updates[`tasks/${stackedPickupId}/completed_at`] = serverTimestamp();
+    if (stackedDeliveryId) {
+      updates[`tasks/${stackedDeliveryId}/status`] = TASK_STATUS.ACCEPTED;
+      // Don't overwrite accepted_at if already set (it was set when stacked)
+    }
+    if (stackedPickup.order_id) {
+      updates[`orders/${stackedPickup.order_id}/status`] = ORDER_STATUS.OUT_FOR_DELIVERY;
+      updates[`orders/${stackedPickup.order_id}/picked_up_at`] = serverTimestamp();
+    }
   }
 
   await update(ref(db), updates);

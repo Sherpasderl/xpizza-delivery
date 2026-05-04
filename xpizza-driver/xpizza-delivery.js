@@ -1,6 +1,6 @@
 /**
  * X Pizza Delivery — Shared SDK
- * version: 1.9.0
+ * version: 1.10.0
  *
  * Used by the driver PWA, dispatcher view, and kitchen display.
  * Wraps Firebase Realtime Database with the operations needed
@@ -425,6 +425,46 @@ export function subscribeToDispatcherAlerts(callback) {
 
 export async function dismissDispatcherAlert(alertId) {
   await remove(ref(db, `dispatcher_alerts/${alertId}`));
+}
+
+/**
+ * Customer WhatsApp messages received but not auto-handled by the classifier.
+ * Logged by the onIncomingWhatsApp Cloud Function under /incoming_messages.
+ * The dispatcher subscribes here to surface unhandled customer messages
+ * (e.g., free-form questions, complaints) and can mark them handled once
+ * they've replied (typically via WhatsApp Web).
+ *
+ * Each record looks like:
+ *   {
+ *     from: '50494738243',          // phone, no @c.us suffix
+ *     body: 'do you have calzones?',// raw message body
+ *     time: 1777914372,             // unix epoch seconds (from UltraMsg)
+ *     received_at: 1777914372263,   // ms epoch (server timestamp)
+ *     handled: false,               // flipped to true when dispatcher acknowledges
+ *     intent: 'UNHANDLED' | 'non-chat',
+ *     handled_at: ...,              // ms epoch, set when marked handled
+ *     handled_by: 'uid'             // dispatcher UID who handled it
+ *   }
+ */
+export function subscribeToIncomingMessages(callback) {
+  const msgsRef = ref(db, 'incoming_messages');
+  return onValue(msgsRef, (snap) => callback(snap.val() || {}));
+}
+
+export async function markMessageHandled(msgId, dispatcherUid) {
+  await update(ref(db, `incoming_messages/${msgId}`), {
+    handled: true,
+    handled_at: Date.now(),
+    handled_by: dispatcherUid || 'unknown'
+  });
+}
+
+export async function markMessageUnhandled(msgId) {
+  await update(ref(db, `incoming_messages/${msgId}`), {
+    handled: false,
+    handled_at: null,
+    handled_by: null
+  });
 }
 
 /**
