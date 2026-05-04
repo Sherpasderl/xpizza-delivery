@@ -420,6 +420,20 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .detail-cta:active{opacity:.92}
 .detail-cta-divider{opacity:.5}
 
+/* When qty>0, the CTA morphs to look like the main menu cart pill —
+   compact centered pill with cart icon + 'Tu pedido · L X' showing the
+   WHOLE cart total (not just this pizza). Tap opens the cart sheet. */
+.detail-cta.detail-cta-pill{
+  width:auto;min-width:180px;max-width:320px;
+  margin:0 auto;
+  padding:14px 22px;
+  border-radius:30px;
+  gap:8px;
+  box-shadow:0 4px 24px rgba(0,0,0,0.22);
+  font-size:15px;font-weight:700;letter-spacing:-.2px;
+  min-height:0;
+}
+
 /* Card extras indicator — replaces the old extras-pills button.
    Plain '✓ Extras' text next to the price; only renders when any
    instance of the pizza has extras selected. */
@@ -1348,7 +1362,16 @@ function chg(id,d){
 
   // If detail modal is open for this pizza, sync its qty UI + re-render
   // so the modal reflects card changes (and vice versa).
-  if (currentDetailPizzaId === id) updateDetailModal();
+  // If detail modal is open, sync its UI:
+  // - Same pizza changed: re-render the whole modal body (qty + extras section)
+  // - Different pizza changed: just refresh the CTA, since it shows whole-cart total
+  if (currentDetailPizzaId !== null) {
+    if (currentDetailPizzaId === id) {
+      updateDetailModal();
+    } else {
+      updateDetailCta();
+    }
+  }
 
   // Highlight card border
   const card=document.getElementById('card-'+id);
@@ -1821,6 +1844,14 @@ function selectPay(type){
       : '✓ Confirmar pedido (pago con tarjeta al entregar)';
   btn.className='btn-primary'+(type==='online'?' btn-green':'');
   document.getElementById('err3').style.display='none';
+  // When online payment is selected, scroll the card form into view so
+  // the customer doesn't have to manually scroll to find it.
+  if (type === 'online') {
+    setTimeout(() => {
+      const panel = document.getElementById('pixelpay-panel');
+      if (panel) panel.scrollIntoView({behavior:'smooth', block:'center'});
+    }, 50); // small delay so display:block applies first
+  }
 }
 
 /* ── Process payment ── */
@@ -2189,40 +2220,40 @@ function updateDetailCta() {
   cta.style.opacity = '1';
   cta.style.pointerEvents = 'auto';
 
-  let priceLabel;
   if (pizzaQty === 0) {
-    priceLabel = pizza.price;
-  } else {
-    const basePerPizza = parseFloat(String(pizza.price).replace(/[^0-9.]/g, '')) || 0;
-    const extrasForThisPizza = pizzaExtrasTotal(pizzaId);
-    const lineTotal = (basePerPizza * pizzaQty) + extrasForThisPizza;
-    priceLabel = 'L ' + Math.round(lineTotal);
-  }
-
-  if (pizzaQty === 0) {
+    // qty=0: action button. Tap commits qty=1, modal stays open.
+    cta.className = 'detail-cta';
     cta.innerHTML = `<span>Agregar al carrito</span>
       <span class="detail-cta-divider">·</span>
-      <span>${escapeHtml(priceLabel)}</span>`;
+      <span>${escapeHtml(pizza.price)}</span>`;
   } else {
-    cta.innerHTML = `<span>Carrito</span>
-      <span class="detail-cta-divider">·</span>
-      <span>${escapeHtml(priceLabel)}</span>`;
+    // qty>0: morph to look like the main cart pill (whole cart total,
+    // not just this pizza). Same visual language as the bottom pill
+    // on the menu — customer instantly recognizes 'this is my cart'.
+    cta.className = 'detail-cta detail-cta-pill';
+    const wholeCartTotal = (typeof calcTotal === 'function') ? calcTotal() : 0;
+    cta.innerHTML = `
+      <span class="cart-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1h3l2 11h11l2-7H6" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="20" r="1.5" fill="white"/><circle cx="17" cy="20" r="1.5" fill="white"/></svg></span>
+      <span class="cart-pill-text">Tu pedido</span>
+      <span class="cart-pill-dot">·</span>
+      <span class="cart-pill-text">L ${wholeCartTotal.toFixed(0)}</span>`;
   }
 }
 
 // CTA tap behavior:
-// - qty=0: 'Agregar al carrito' → commit qty=1 + close modal (back to menu)
-// - qty>0: 'Carrito' → open the existing cart-review-sheet on TOP of
-//   the modal. Customer can adjust qtys there. Tapping outside the
-//   cart sheet (the overlay) closes only the cart sheet, returning
-//   them to the detail modal as it was.
+// - qty=0: 'Agregar al carrito' → commit qty=1, KEEP modal open. The
+//   button auto-morphs to cart-pill style (via updateDetailCta in chg).
+//   Customer can keep customizing extras or tap the cart pill to review.
+// - qty>0: cart pill → opens the cart sheet on top of the modal.
 function detailCtaTap() {
   const pizzaId = currentDetailPizzaId;
   if (pizzaId === null) return;
   const wasZero = (qty[pizzaId] || 0) === 0;
   if (wasZero) {
     chg(pizzaId, 1);
-    closeDetailModal();
+    // Modal stays open. chg() triggered updateDetailModal which
+    // re-renders the body (including the now-visible extras section)
+    // and refreshes the CTA into pill form.
   } else {
     if (typeof openCartReview === 'function') openCartReview();
   }
