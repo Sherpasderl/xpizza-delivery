@@ -89,8 +89,27 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .progress-bar{display:flex;background:var(--border2);height:2px}
 .progress-fill{background:var(--gold);height:3px;transition:width .4s ease;border-radius:2px}
 
-/* ── Stages ── */
-.stage{display:none}.stage.active{display:block}
+/* ── Stages ──
+   Stages cross-fade with a subtle vertical slide on transition.
+   .stage-leaving fades out + slides up; .stage-entering starts faded
+   out + below position, then transitions in. JS sequences the timing
+   (fade out → swap → fade in) for ~400ms total. */
+.stage{
+  display:none;
+  opacity:1;
+  transform:translateY(0);
+  transition: opacity .2s ease-out, transform .2s ease-out;
+}
+.stage.active{display:block}
+.stage.stage-leaving{
+  opacity:0;
+  transform:translateY(-8px);
+  pointer-events:none;
+}
+.stage.stage-entering{
+  opacity:0;
+  transform:translateY(8px);
+}
 .container{max-width:480px;margin:0 auto;padding:0 0 24px}
 .step-label{font-family:var(--sans);font-size:13px;font-weight:600;color:var(--gold-dk);padding:16px 16px 8px}
 
@@ -1640,13 +1659,42 @@ function updateCartReviewBody(){
 
 /* ── Stage navigation ── */
 function showStage(id,pct){
-  document.querySelectorAll('.stage').forEach(s=>s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+  const next = document.getElementById(id);
+  if (!next) return;
+
+  // Update progress bar immediately — its own CSS transition (.4s)
+  // animates the width independently of the stage swap.
   document.getElementById('progress').style.width=pct+'%';
-  window.scrollTo(0,0);
-  // Show cart bar only on step 1
+
+  // Cart bar visibility (only visible on s1) — toggle immediately
   const cartBar=document.getElementById('cart-bar');
   if(cartBar) cartBar.style.display=id==='s1'?'flex':'none';
+
+  const current = document.querySelector('.stage.active');
+  if (current === next) return;
+
+  if (!current) {
+    // First render — no transition needed
+    next.classList.add('active');
+    window.scrollTo(0,0);
+    return;
+  }
+
+  // Phase 1: fade out current (200ms)
+  current.classList.add('stage-leaving');
+  setTimeout(() => {
+    current.classList.remove('active', 'stage-leaving');
+
+    // Phase 2: swap + start next stage in faded-out state, then animate in
+    next.classList.add('active', 'stage-entering');
+    window.scrollTo(0,0);
+    // Force reflow so the .stage-entering state takes effect before we
+    // remove it — without this, the transition might not trigger.
+    void next.offsetWidth;
+    requestAnimationFrame(() => {
+      next.classList.remove('stage-entering');
+    });
+  }, 200);
 }
 
 function goBack(id,pct){ showStage(id,pct); }
@@ -2190,51 +2238,42 @@ function closeDetailModal() {
 }
 
 /* ── Swipe-down to dismiss ──
-   iOS-style gesture: drag the modal down; release past threshold to
-   close; release before threshold to snap back open.
-   Eligible regions for starting a drag:
-   - The drag handle / header area (always)
-   - The body, ONLY when scroll is at top (otherwise pull-down = scroll)
-   This matches iOS Mail/Photos sheet behavior — won't interfere with
-   reading scrollable extras content. Quick flicks also trigger close
-   even if distance is short (velocity check). */
+   Restricted to the drag handle and header bar ONLY. Body swipes do
+   NOTHING dismiss-related so customers can scroll the extras list
+   freely without risk of accidentally closing the modal mid-scroll.
+   The visible drag handle at the top is the explicit affordance for
+   "I want to dismiss this." Quick flicks on the handle/header also
+   trigger close even if drag distance is short. */
 function initDetailModalSwipe() {
   const modal = document.getElementById('detail-modal');
   const overlay = document.getElementById('detail-overlay');
-  const scroll = document.getElementById('detail-scroll');
-  if (!modal || !overlay || !scroll) return;
+  if (!modal || !overlay) return;
 
   let dragging = false;
   let startY = 0;
-  let startTime = 0;
   let lastY = 0;
   let lastTime = 0;
   let velocity = 0;
   let modalHeight = 0;
-  let touchStartedOnHeader = false;
 
-  // Threshold — drag down past this many pixels = close
   const DISTANCE_THRESHOLD = 100;
-  // Quick flick — at least this many px/ms downward = close even if short
   const VELOCITY_THRESHOLD = 0.5;
 
   modal.addEventListener('touchstart', (e) => {
     if (e.touches.length !== 1) return;
-    const t = e.touches[0];
-    // Identify whether the touch began on the header / drag handle area
-    // vs the scrollable body. Body drags only count when scroll is at top.
     const target = e.target;
-    touchStartedOnHeader = !!target.closest('.detail-header, .detail-drag-handle');
-    const eligibleFromBody = !touchStartedOnHeader && scroll.scrollTop <= 0
-                              && !!target.closest('.detail-scroll');
-    if (!touchStartedOnHeader && !eligibleFromBody) return;
-    // Don't capture taps on interactive elements (buttons, toggles, etc.)
-    if (target.closest('button, .detail-extras-row, .detail-qty-btn, .detail-close')) return;
+    // Only the handle and header initiate a drag. The body is
+    // off-limits — swiping there is always a scroll, never a dismiss.
+    const eligible = !!target.closest('.detail-drag-handle, .detail-header');
+    if (!eligible) return;
+    // Even on header, don't capture taps on the close button itself
+    if (target.closest('.detail-close')) return;
 
+    const t = e.touches[0];
     dragging = true;
     startY = t.clientY;
     lastY = t.clientY;
-    startTime = lastTime = Date.now();
+    lastTime = Date.now();
     velocity = 0;
     modalHeight = modal.offsetHeight;
     modal.classList.add('dragging');
@@ -2246,23 +2285,19 @@ function initDetailModalSwipe() {
     const t = e.touches[0];
     const deltaY = t.clientY - startY;
     if (deltaY < 0) {
-      // User dragging upward — modal stays put, no negative transform.
-      // (We also reset velocity tracking so a downward flick after
-      // an upward drag still counts.)
+      // Upward drag — modal stays put
       modal.style.transform = '';
       overlay.style.opacity = '';
       lastY = t.clientY;
       lastTime = Date.now();
       return;
     }
-    // Track velocity for flick detection (px per ms, last move only)
     const now = Date.now();
     const dt = now - lastTime;
     if (dt > 0) velocity = (t.clientY - lastY) / dt;
     lastY = t.clientY;
     lastTime = now;
 
-    // Apply transform; dim the overlay proportionally
     modal.style.transform = `translateY(${deltaY}px)`;
     const dimRatio = Math.max(0, 1 - (deltaY / modalHeight));
     overlay.style.opacity = String(dimRatio);
@@ -2279,14 +2314,10 @@ function initDetailModalSwipe() {
                         || (deltaY > 20 && velocity > VELOCITY_THRESHOLD);
 
     if (shouldClose) {
-      // Animate the rest of the way out, then close.
-      // Setting transform to 100% triggers the .25s transition since
-      // we removed .dragging.
       modal.style.transform = `translateY(${modalHeight}px)`;
       overlay.style.opacity = '0';
       setTimeout(() => closeDetailModal(), 240);
     } else {
-      // Snap back — clear inline transform so .open's translateY(0) takes over
       modal.style.transform = '';
       overlay.style.opacity = '';
     }
