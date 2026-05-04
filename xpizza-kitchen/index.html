@@ -1316,7 +1316,12 @@ function mapFirebaseOrderToCard(o) {
 
   let estado;
   if (o.status === 'cancelled') {
-    estado = 'Nuevo';  // surface in Nuevo column with cancel banner so kitchen sees it
+    // Mark as Cancelado so downstream code fires:
+    // - Banner + cancel sound (checkForNewOrders)
+    // - Column placement preservation (effectiveStatus uses localState when
+    //   estado is Cancelado, so a card mid-prep stays in its column)
+    // - Cancelled card styling (renderCard isCancelled check)
+    estado = 'Cancelado';
   } else if (o.status === 'delivered') {
     // Delivered orders flow into the archive automatically. They don't appear
     // in active columns (filter elsewhere drops Archivado from active view)
