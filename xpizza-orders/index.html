@@ -279,20 +279,47 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
    Replaces the old extras bottom-sheet. Integrates: hero photo,
    description, qty stepper, per-pizza extras with sticky 'Pizza N'
    headers, and a sticky bottom CTA that doubles as the close button. ── */
-.detail-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:300;display:none}
+.detail-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,0.45);
+  z-index:300;display:none;
+  opacity:1;transition:opacity .25s ease-out;
+}
 .detail-overlay.open{display:block}
+.detail-overlay.dragging{transition:none}
 .detail-modal{
   position:fixed;left:0;right:0;bottom:0;top:0;
   background:var(--cream);z-index:301;
   transform:translateY(100%);transition:transform .25s ease-out;
   display:flex;flex-direction:column;
   overflow:hidden;
+  border-radius:14px 14px 0 0;
 }
 .detail-modal.open{transform:translateY(0)}
+/* Disable transition while user is actively dragging the modal — JS
+   sets translateY directly on each touchmove, so transitions would
+   make the modal lag behind the finger. */
+.detail-modal.dragging{transition:none}
+
+/* Drag handle — small horizontal pill at the very top of the modal,
+   visual hint that the modal can be swiped down. iOS standard pattern.
+   The ::before extends the tappable area significantly so the gesture
+   initiates even on a slightly-off touch — the visible bar stays small. */
+.detail-drag-handle{
+  width:38px;height:5px;
+  background:#D9D2C5;
+  border-radius:3px;
+  margin:8px auto 0;
+  flex-shrink:0;
+  position:relative;
+}
+.detail-drag-handle::before{
+  content:'';position:absolute;
+  top:-12px;bottom:-8px;left:-30px;right:-30px;
+}
 
 .detail-header{
   display:flex;align-items:center;justify-content:space-between;
-  padding:12px 16px;border-bottom:1px solid var(--border);
+  padding:8px 16px 12px;border-bottom:1px solid var(--border);
   background:var(--cream);flex-shrink:0;z-index:5;
 }
 .detail-close{
@@ -406,9 +433,20 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
   padding:16px;background:var(--cream);
   border-top:1px solid var(--border);flex-shrink:0;
   box-shadow:0 -2px 12px rgba(0,0,0,0.04);
+  transition:border-color .35s ease, box-shadow .35s ease;
+}
+/* When the CTA inside is in pill mode, the surrounding bar fades out
+   its border + shadow so the pill appears to float, matching the main
+   menu cart pill aesthetic. */
+.detail-cta-bar:has(.detail-cta-pill){
+  border-top-color:transparent;
+  box-shadow:none;
 }
 .detail-cta{
-  width:100%;padding:16px;
+  width:100%;
+  max-width:100%;
+  margin:0 auto;
+  padding:16px;
   background:var(--charcoal);color:#fff;border:none;
   border-radius:12px;
   font-family:var(--sans);font-size:16px;font-weight:600;
@@ -416,22 +454,30 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
   display:flex;align-items:center;justify-content:center;gap:10px;
   -webkit-tap-highlight-color:transparent;
   touch-action:manipulation;
+  /* Smooth morph between full-width 'Agregar al carrito' button and
+     centered 'Tu pedido' pill when qty changes 0 ↔ >0. */
+  transition: max-width .35s cubic-bezier(.4,0,.2,1),
+              padding .35s cubic-bezier(.4,0,.2,1),
+              border-radius .35s cubic-bezier(.4,0,.2,1),
+              min-height .35s cubic-bezier(.4,0,.2,1),
+              box-shadow .35s cubic-bezier(.4,0,.2,1),
+              font-size .25s ease,
+              opacity .15s ease;
+  box-shadow: 0 0 0 rgba(0,0,0,0);
 }
 .detail-cta:active{opacity:.92}
 .detail-cta-divider{opacity:.5}
 
-/* When qty>0, the CTA morphs to look like the main menu cart pill —
-   compact centered pill with cart icon + 'Tu pedido · L X' showing the
-   WHOLE cart total (not just this pizza). Tap opens the cart sheet. */
+/* Pill state: morphs from the full-width button into a centered cart
+   pill (matching main menu .cart-bar). Shows whole cart total. */
 .detail-cta.detail-cta-pill{
-  width:auto;min-width:180px;max-width:320px;
-  margin:0 auto;
+  max-width:320px;
   padding:14px 22px;
   border-radius:30px;
   gap:8px;
   box-shadow:0 4px 24px rgba(0,0,0,0.22);
   font-size:15px;font-weight:700;letter-spacing:-.2px;
-  min-height:0;
+  min-height:50px;
 }
 
 /* Card extras indicator — replaces the old extras-pills button.
@@ -1129,6 +1175,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 <!-- ── Detail modal — opened by tapping a pizza photo ── -->
 <div class="detail-overlay" id="detail-overlay" onclick="closeDetailModal()"></div>
 <div class="detail-modal" id="detail-modal" aria-hidden="true">
+  <div class="detail-drag-handle" aria-hidden="true"></div>
   <div class="detail-header">
     <button class="detail-close" onclick="closeDetailModal()" aria-label="Cerrar">×</button>
     <div class="detail-header-title" id="detail-header-title"></div>
@@ -1360,8 +1407,6 @@ function chg(id,d){
   // Clear extras if pizza removed
   if(qty[id]===0&&pizzaExtras[id]){delete pizzaExtras[id];}
 
-  // If detail modal is open for this pizza, sync its qty UI + re-render
-  // so the modal reflects card changes (and vice versa).
   // If detail modal is open, sync its UI:
   // - Same pizza changed: re-render the whole modal body (qty + extras section)
   // - Different pizza changed: just refresh the CTA, since it shows whole-cart total
@@ -2118,6 +2163,16 @@ function openDetailModal(pizzaId) {
   modal.classList.add('open');
   modal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
+
+  // Reset any leftover drag transform from a previous close-by-swipe
+  modal.style.transform = '';
+  document.getElementById('detail-overlay').style.opacity = '';
+
+  // Lazy-install swipe-down handlers on first open
+  if (!window._detailSwipeInit) {
+    initDetailModalSwipe();
+    window._detailSwipeInit = true;
+  }
 }
 
 function closeDetailModal() {
@@ -2127,6 +2182,124 @@ function closeDetailModal() {
   modal.setAttribute('aria-hidden', 'true');
   document.body.style.overflow = '';
   currentDetailPizzaId = null;
+  // Clean up any drag-state inline styles so next open starts fresh
+  modal.style.transform = '';
+  modal.classList.remove('dragging');
+  document.getElementById('detail-overlay').style.opacity = '';
+  document.getElementById('detail-overlay').classList.remove('dragging');
+}
+
+/* ── Swipe-down to dismiss ──
+   iOS-style gesture: drag the modal down; release past threshold to
+   close; release before threshold to snap back open.
+   Eligible regions for starting a drag:
+   - The drag handle / header area (always)
+   - The body, ONLY when scroll is at top (otherwise pull-down = scroll)
+   This matches iOS Mail/Photos sheet behavior — won't interfere with
+   reading scrollable extras content. Quick flicks also trigger close
+   even if distance is short (velocity check). */
+function initDetailModalSwipe() {
+  const modal = document.getElementById('detail-modal');
+  const overlay = document.getElementById('detail-overlay');
+  const scroll = document.getElementById('detail-scroll');
+  if (!modal || !overlay || !scroll) return;
+
+  let dragging = false;
+  let startY = 0;
+  let startTime = 0;
+  let lastY = 0;
+  let lastTime = 0;
+  let velocity = 0;
+  let modalHeight = 0;
+  let touchStartedOnHeader = false;
+
+  // Threshold — drag down past this many pixels = close
+  const DISTANCE_THRESHOLD = 100;
+  // Quick flick — at least this many px/ms downward = close even if short
+  const VELOCITY_THRESHOLD = 0.5;
+
+  modal.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    // Identify whether the touch began on the header / drag handle area
+    // vs the scrollable body. Body drags only count when scroll is at top.
+    const target = e.target;
+    touchStartedOnHeader = !!target.closest('.detail-header, .detail-drag-handle');
+    const eligibleFromBody = !touchStartedOnHeader && scroll.scrollTop <= 0
+                              && !!target.closest('.detail-scroll');
+    if (!touchStartedOnHeader && !eligibleFromBody) return;
+    // Don't capture taps on interactive elements (buttons, toggles, etc.)
+    if (target.closest('button, .detail-extras-row, .detail-qty-btn, .detail-close')) return;
+
+    dragging = true;
+    startY = t.clientY;
+    lastY = t.clientY;
+    startTime = lastTime = Date.now();
+    velocity = 0;
+    modalHeight = modal.offsetHeight;
+    modal.classList.add('dragging');
+    overlay.classList.add('dragging');
+  }, { passive: true });
+
+  modal.addEventListener('touchmove', (e) => {
+    if (!dragging || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const deltaY = t.clientY - startY;
+    if (deltaY < 0) {
+      // User dragging upward — modal stays put, no negative transform.
+      // (We also reset velocity tracking so a downward flick after
+      // an upward drag still counts.)
+      modal.style.transform = '';
+      overlay.style.opacity = '';
+      lastY = t.clientY;
+      lastTime = Date.now();
+      return;
+    }
+    // Track velocity for flick detection (px per ms, last move only)
+    const now = Date.now();
+    const dt = now - lastTime;
+    if (dt > 0) velocity = (t.clientY - lastY) / dt;
+    lastY = t.clientY;
+    lastTime = now;
+
+    // Apply transform; dim the overlay proportionally
+    modal.style.transform = `translateY(${deltaY}px)`;
+    const dimRatio = Math.max(0, 1 - (deltaY / modalHeight));
+    overlay.style.opacity = String(dimRatio);
+  }, { passive: true });
+
+  modal.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false;
+    modal.classList.remove('dragging');
+    overlay.classList.remove('dragging');
+
+    const deltaY = lastY - startY;
+    const shouldClose = deltaY > DISTANCE_THRESHOLD
+                        || (deltaY > 20 && velocity > VELOCITY_THRESHOLD);
+
+    if (shouldClose) {
+      // Animate the rest of the way out, then close.
+      // Setting transform to 100% triggers the .25s transition since
+      // we removed .dragging.
+      modal.style.transform = `translateY(${modalHeight}px)`;
+      overlay.style.opacity = '0';
+      setTimeout(() => closeDetailModal(), 240);
+    } else {
+      // Snap back — clear inline transform so .open's translateY(0) takes over
+      modal.style.transform = '';
+      overlay.style.opacity = '';
+    }
+  }, { passive: true });
+
+  modal.addEventListener('touchcancel', () => {
+    if (!dragging) return;
+    dragging = false;
+    modal.classList.remove('dragging');
+    overlay.classList.remove('dragging');
+    modal.style.transform = '';
+    overlay.style.opacity = '';
+  }, { passive: true });
 }
 
 // Re-render modal contents (qty + extras + CTA) without
