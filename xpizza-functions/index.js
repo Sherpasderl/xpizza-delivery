@@ -1,6 +1,6 @@
 /**
  * X Pizza Delivery — Cloud Functions
- * version: 1.7.1
+ * version: 1.7.3
  *
  * Endpoints:
  *   - createOrder                   (HTTPS)   — Make.com → Firebase write proxy + WhatsApp "received"
@@ -541,13 +541,14 @@ exports.sendOrderStatusNotifications = onValueWritten(
     // No-op cases
     if (!after) return;                    // status cleared
     if (before === after) return;          // no actual change
-    if (!['out_for_delivery', 'delivered', 'cancelled'].includes(after)) return;
 
     const db = getDatabase();
 
     // Always mirror the new status into the tracking record (regardless of
-    // whatsapp_enabled flag — the tracking site needs the live status).
-    // We need the tracking_token to find the right tracking record.
+    // whatsapp_enabled flag — the tracking site needs the live status, and
+    // this includes status transitions the kitchen makes like 'preparing'/'ready'
+    // that don't trigger any WhatsApp send but still update the customer's
+    // tracking page in real time).
     let order = null;
     let trackingToken = null;
     try {
@@ -575,6 +576,11 @@ exports.sendOrderStatusNotifications = onValueWritten(
         console.warn(`sendOrderStatusNotifications: tracking mirror update failed`, e.message);
       }
     }
+
+    // WhatsApp send only fires for these specific transitions. preparing/ready
+    // and other intermediate states update the tracking page but don't
+    // notify the customer (would be too noisy).
+    if (!['out_for_delivery', 'delivered', 'cancelled'].includes(after)) return;
 
     if (!(await whatsapp.isEnabled(db))) {
       console.log(`sendOrderStatusNotifications: ${orderId} → ${after}, but whatsapp_enabled=false, skipping send`);
@@ -724,6 +730,42 @@ exports.onIncomingWhatsApp = onRequest(
     if (req.method !== 'POST') {
       res.set('Allow', 'POST');
       return res.status(405).send('Method Not Allowed');
+    }
+
+    // Shared-secret check.
+    //
+    // The endpoint URL is effectively public (it's in deploy logs, etc), so
+    // we can't rely on URL secrecy. We require a shared secret that's also
+    // configured on the UltraMsg side.
+    //
+    // UltraMsg's webhook UI doesn't support custom headers, so the secret
+    // travels as a query-string parameter: ?secret=<...>. Same security
+    // properties as a header in HTTPS — the entire URL (including query
+    // string) is encrypted in transit.
+    //
+    // If WHATSAPP_WEBHOOK_SECRET is not set in the env, we refuse all requests
+    // (fail-closed). This forces operator awareness — the Cloud Function won't
+    // silently accept all traffic.
+    //
+    // Constant-time comparison prevents timing attacks where an attacker
+    // could probe for partial matches by measuring response time.
+    const expectedSecret = process.env.WHATSAPP_WEBHOOK_SECRET;
+    if (!expectedSecret) {
+      console.error('onIncomingWhatsApp: WHATSAPP_WEBHOOK_SECRET env var not set, refusing all requests');
+      return res.status(500).send('Server not configured');
+    }
+    // Accept the secret in any of these locations, in priority order:
+    //   1. ?secret=... query param (UltraMsg-friendly path)
+    //   2. X-Webhook-Secret header (manual testing)
+    //   3. Authorization: Bearer ... (manual testing)
+    const presentedSecret =
+      (req.query && req.query.secret) ||
+      req.get('x-webhook-secret') ||
+      req.get('authorization')?.replace(/^Bearer\s+/i, '').trim() ||
+      '';
+    if (!constantTimeEqual(String(presentedSecret), expectedSecret)) {
+      console.warn('onIncomingWhatsApp: rejected request with bad/missing secret');
+      return res.status(401).send('Unauthorized');
     }
 
     const event = req.body || {};
@@ -901,6 +943,22 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Compare two strings in constant time to prevent timing attacks against
+// secret comparisons. Uses Node's crypto.timingSafeEqual after equalizing
+// lengths. If lengths differ, returns false but still scans `b` to keep
+// timing predictable.
+function constantTimeEqual(a, b) {
+  const crypto = require('crypto');
+  const aBuf = Buffer.from(String(a), 'utf8');
+  const bBuf = Buffer.from(String(b), 'utf8');
+  if (aBuf.length !== bBuf.length) {
+    // Still do a comparison against ourselves so timing is consistent
+    crypto.timingSafeEqual(bBuf, bBuf);
+    return false;
+  }
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
 
 /**
  * Pick the best eligible driver based on:
@@ -1289,3 +1347,5 @@ exports.monitorAssignmentTimeout = onValueWritten(
     }
   }
 );
+
+// build: 1777862021
