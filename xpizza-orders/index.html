@@ -1,0 +1,2523 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>X Pizza — Pedido en línea</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap"/>
+
+<style>
+:root {
+  --black:    #111009;
+  --charcoal: #1E1B18;
+  --surface:  #F5EFE6;
+  --border:   #E8E0D5;
+  --border2:  #D4C8BA;
+  --cream:    #FBF7F2;
+  --muted:    #8C7B6E;
+  --gold:     #B8860B;
+  --gold-lt:  #F5E6C0;
+  --gold-dk:  #7A5A08;
+  --red:      #C8321A;
+  --green:    #2A6A42;
+  --green-bg: #EAF4EF;
+  --radius:   14px;
+  --display:  'Playfair Display', Georgia, serif;
+  --sans:     'DM Sans', system-ui, sans-serif;
+  --stamp:    'Playfair Display', Georgia, serif;
+  --body:     'DM Sans', system-ui, sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--cream)}
+body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-height:100vh;padding-bottom:80px;-webkit-font-smoothing:antialiased}
+
+/* ── Header ── */
+.closed-overlay{
+  position:fixed;inset:0;
+  background:var(--cream);
+  z-index:999;
+  display:flex;align-items:center;justify-content:center;
+  padding:24px;
+}
+.closed-card{
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:32px 24px;
+  text-align:center;
+  max-width:320px;
+  width:100%;
+  box-shadow:0 4px 24px rgba(0,0,0,0.08);
+}
+.closed-icon{font-size:48px;margin-bottom:16px}
+.closed-title{
+  font-family:var(--sans);font-size:22px;font-weight:700;
+  color:var(--charcoal);margin-bottom:8px;
+}
+.closed-msg{
+  font-family:var(--sans);font-size:14px;color:var(--muted);
+  margin-bottom:8px;line-height:1.5;
+}
+.closed-thanks{
+  font-family:var(--sans);font-size:13px;font-weight:600;color:var(--gold-dk);
+  margin-bottom:20px;
+}
+.closed-hours{
+  background:var(--surface);border-radius:10px;
+  padding:12px 16px;margin-bottom:20px;
+}
+.closed-hours-row{
+  display:flex;justify-content:space-between;
+  font-family:var(--sans);font-size:12px;color:var(--charcoal);
+  padding:4px 0;
+}
+.closed-wa{
+  display:block;
+  background:var(--charcoal);color:#fff;
+  font-family:var(--sans);font-size:13px;font-weight:600;
+  padding:12px 20px;border-radius:12px;
+  text-decoration:none;
+}
+
+.header{background:var(--cream);padding:16px 20px 14px;text-align:center;border-bottom:1px solid var(--border)}
+.brand-lockup{display:flex;align-items:flex-end;justify-content:center;gap:2px;margin-bottom:4px}
+.brand-pizza-only{font-family:'Special Elite','Courier New',monospace;font-size:22px;letter-spacing:3px;text-transform:uppercase;color:var(--charcoal);line-height:1}
+.logo-img{width:72px;height:auto;display:block}
+
+.brand-sub{font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:12px;font-weight:400}
+.progress-bar{display:flex;background:var(--border2);height:2px}
+.progress-fill{background:var(--gold);height:3px;transition:width .4s ease;border-radius:2px}
+
+/* ── Stages ── */
+.stage{display:none}.stage.active{display:block}
+.container{max-width:480px;margin:0 auto;padding:0 0 24px}
+.step-label{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--gold-dk);padding:16px 16px 8px}
+
+/* ── Category tabs ── */
+.cat-tabs{
+  display:flex;
+  position:sticky;top:0;z-index:100;
+  background:var(--cream);
+  border-bottom:2px solid var(--border);
+  padding:0 16px;
+}
+.cat-tab{
+  font-family:var(--sans);font-size:13px;font-weight:600;
+  letter-spacing:.3px;
+  padding:13px 0;margin-right:24px;
+  border-bottom:2px solid transparent;
+  cursor:pointer;color:var(--muted);
+  transition:color .2s,border-color .2s;
+  margin-bottom:-2px;
+  background:none;border-top:none;border-left:none;border-right:none;
+}
+.cat-tab.active{color:var(--charcoal);border-bottom-color:var(--gold)}
+
+/* ── Category section ── */
+.menu-section{display:none;padding:12px 16px 0}.menu-section.active{display:block}
+.menu-section-title{
+  font-family:var(--stamp);font-size:11px;
+  letter-spacing:2px;text-transform:uppercase;
+  color:var(--muted);margin-bottom:12px;
+  padding-bottom:8px;border-bottom:1px solid var(--border);
+}
+
+/* ── Pizza cards grid ── */
+.pizza-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-bottom:16px;
+}
+
+/* ── Pizza card ── */
+.pizza-card{
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  overflow:hidden;
+  cursor:pointer;
+  transition:border-color .2s,box-shadow .2s,transform .1s;
+  position:relative;
+  -webkit-tap-highlight-color:transparent;
+  display:flex;flex-direction:column;
+}
+.pizza-card:active{transform:scale(0.98)}
+.pizza-card.has-items{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}
+
+/* Photo placeholder — will become <img> when real photos exist */
+.pizza-photo{
+  width:100%;
+  aspect-ratio:4/3;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;overflow:hidden;
+}
+.pizza-photo::after{
+  content:'';
+  position:absolute;inset:0;
+  background:linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.35) 100%);
+}
+.pizza-photo-label{
+  font-size:36px;
+  z-index:1;
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+
+/* UberEats-style quantity overlay */
+.qty-overlay{
+  position:absolute;bottom:8px;right:8px;
+  z-index:10;
+  display:flex;align-items:center;
+}
+.qty-add-btn{
+  width:32px;height:32px;
+  border-radius:50%;
+  background:#fff;
+  border:none;
+  font-size:20px;line-height:1;
+  color:var(--charcoal);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;
+  box-shadow:0 2px 8px rgba(0,0,0,0.25);
+  transition:transform .1s;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.qty-add-btn:active{transform:scale(0.92)}
+.qty-controls{
+  display:none;
+  align-items:center;
+  background:#fff;
+  border-radius:24px;
+  padding:4px 8px;
+  gap:4px;
+  box-shadow:0 2px 10px rgba(0,0,0,0.2);
+}
+.qty-controls.visible{display:flex}
+.qty-badge{
+  width:32px;height:32px;
+  border-radius:50%;
+  background:#fff;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 8px rgba(0,0,0,0.25);
+  cursor:pointer;
+  font-family:var(--sans);font-size:15px;font-weight:700;
+  color:var(--charcoal);
+  -webkit-tap-highlight-color:transparent;
+}
+.qty-ctrl-btn{
+  width:30px;height:30px;
+  border-radius:50%;border:none;
+  background:transparent;
+  color:var(--charcoal);
+  font-size:18px;font-weight:500;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+  flex-shrink:0;
+  line-height:1;
+}
+.qty-ctrl-btn:active{background:rgba(0,0,0,0.06)}
+.qty-ctrl-num{
+  font-family:var(--sans);font-size:15px;font-weight:700;
+  color:var(--charcoal);min-width:18px;text-align:center;
+}
+.pizza-photo-img{
+  width:100%;height:100%;object-fit:cover;display:none;
+}
+/* When photo is available: .pizza-photo-img.loaded { display:block } */
+/* and hide .pizza-photo-label */
+
+.pizza-card-body{padding:10px 10px 12px;display:flex;flex-direction:column;flex:1}
+.pizza-card-name{
+  font-family:var(--sans);font-size:13px;font-weight:700;
+  letter-spacing:-.1px;
+  color:var(--charcoal);
+  margin-bottom:4px;line-height:1.3;
+}
+.pizza-card-desc{
+  font-size:11px;color:var(--muted);font-weight:300;
+  line-height:1.5;margin-bottom:8px;
+  letter-spacing:0;
+}
+.pizza-card-footer{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-top:auto;
+}
+.pizza-card-price{
+  font-family:var(--sans);font-size:14px;
+  font-weight:700;color:var(--gold-dk);
+  font-variant-numeric:tabular-nums;
+  letter-spacing:-.3px;
+}
+
+/* ── Qty controls — larger for touch ── */
+.qty-wrap{display:flex;align-items:center;gap:6px}
+.qty-btn{
+  width:32px;height:32px;border-radius:6px;
+  border:1.5px solid var(--border2);
+  background:var(--cream);color:var(--muted);
+  font-size:18px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:all .15s;font-family:var(--body);
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.qty-btn:active{background:var(--border)}
+.qty-btn.on{border-color:var(--charcoal);color:var(--charcoal)}
+.qty-num{font-size:14px;font-weight:700;min-width:16px;text-align:center;color:var(--charcoal);font-family:var(--stamp)}
+
+/* ── +1 flash animation ── */
+
+
+/* ── Extras overlay & sheet ── */
+.extras-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:300;display:none}
+.extras-overlay.open{display:block}
+.extras-sheet{
+  position:fixed;bottom:0;left:0;right:0;
+  background:#fff;border-radius:16px 16px 0 0;
+  z-index:301;
+  transform:translateY(100%);transition:transform .3s ease;
+  max-height:80vh;display:flex;flex-direction:column;
+}
+.extras-sheet.open{transform:translateY(0)}
+.extras-header{
+  display:flex;align-items:flex-start;justify-content:space-between;
+  padding:16px 16px 12px;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.extras-pizza-name{font-family:var(--display);font-size:18px;font-weight:700;color:var(--charcoal)}
+.extras-subtitle{font-size:11px;color:var(--muted);margin-top:2px;letter-spacing:.3px}
+.extras-close{
+  width:30px;height:30px;border-radius:50%;border:1px solid var(--border);
+  background:var(--surface);color:var(--muted);font-size:14px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;
+}
+.extras-body{flex:1;overflow-y:auto;padding:12px 16px;position:relative}
+.extras-cat-label{
+  font-family:var(--sans);font-size:14px;font-weight:700;letter-spacing:.3px;
+  text-transform:uppercase;color:var(--charcoal);
+  margin:20px 0 10px;
+  padding-bottom:6px;
+  border-bottom:2px solid var(--charcoal);
+  background:#fff;
+}
+.extras-cat-label:first-child{margin-top:0}
+.extras-toggle{
+  width:24px;height:24px;border-radius:50%;
+  border:2px solid var(--border2);
+  background:#fff;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;flex-shrink:0;
+  transition:all .15s;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+  color:transparent;
+  font-size:13px;
+}
+.extras-toggle.selected{
+  background:var(--charcoal);
+  border-color:var(--charcoal);
+  color:#fff;
+}
+.extras-toggle:active{opacity:.7}
+
+.extras-instance-header{
+  font-family:var(--sans);font-size:13px;font-weight:700;
+  color:var(--charcoal);background:var(--surface);
+  padding:8px 16px;margin:0 -16px 8px;
+  border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
+  position:sticky;top:-12px;z-index:10;
+  box-shadow:0 4px 8px rgba(251,247,242,0.98);
+}
+.extras-instance-divider{
+  height:1px;background:var(--border);
+  margin:12px 0;
+}
+
+.extras-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 0;border-bottom:1px solid var(--border);
+}
+.extras-row:last-child{border-bottom:none}
+.extras-row-info{flex:1}
+.extras-row-name{font-size:14px;font-weight:500;color:var(--charcoal);display:block;font-family:var(--sans)}
+.extras-row-price{font-family:var(--stamp);font-size:12px;color:var(--muted)}
+.extras-footer{padding:12px 16px;border-top:1px solid var(--border);flex-shrink:0;background:#fff}
+.extras-total-row{display:flex;justify-content:space-between;align-items:center}
+.extras-total-label{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+.extras-total-val{font-family:var(--sans);font-size:18px;font-weight:700;color:var(--charcoal)}
+.extras-pills-wrap{margin-top:8px;display:flex;flex-direction:column;gap:4px}
+.extras-pill-btn{
+  display:block;width:100%;padding:6px 8px;
+  background:transparent;
+  border:1px dashed var(--border2);
+  border-radius:6px;
+  font-family:var(--sans);font-size:11px;font-weight:500;
+  color:var(--muted);cursor:pointer;
+  text-align:left;
+  transition:all .15s;
+  -webkit-tap-highlight-color:transparent;
+}
+.extras-pill-btn:active{background:var(--surface)}
+.extras-pill-btn.has-extras{
+  border-color:var(--gold);
+  color:var(--gold-dk);
+  background:var(--gold-lt);
+}
+
+.extras-btn{
+  display:block;width:100%;margin-top:8px;
+  padding:7px;
+  background:transparent;
+  border:1px dashed var(--border2);
+  border-radius:6px;
+  font-family:var(--sans);font-size:11px;font-weight:500;letter-spacing:.5px;
+  color:var(--muted);
+  cursor:pointer;transition:all .15s;
+}
+.extras-btn:active{background:var(--surface)}
+
+
+/* ── Sticky cart bar ── */
+.cart-bar{
+  position:fixed;bottom:20px;left:50%;
+  transform:translateX(-50%);
+  width:auto;
+  min-width:180px;
+  max-width:320px;
+  background:var(--charcoal);
+  border-radius:30px;
+  padding:14px 22px;
+  display:flex;align-items:center;justify-content:center;
+  gap:8px;
+  z-index:200;
+  box-shadow:0 4px 24px rgba(0,0,0,0.22);
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.cart-bar:active{opacity:.9}
+.cart-icon{font-size:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center;line-height:1}
+.cart-pill-text{
+  font-family:var(--sans);font-size:15px;font-weight:700;
+  color:#fff;white-space:nowrap;letter-spacing:-.2px;
+}
+.cart-pill-dot{color:rgba(255,255,255,0.5);margin:0 2px}
+.cart-badge{
+  background:var(--red);color:#fff;
+  font-size:11px;font-weight:700;font-family:var(--sans);
+  width:20px;height:20px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.cart-count{display:none}
+.cart-total{display:none}
+.cart-btn{display:none}
+.cart-info{display:none}
+
+/* ── Customer details section ── */
+.order-review{
+  margin:8px 16px;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  overflow:hidden;
+}
+.review-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 16px;cursor:pointer;
+  font-family:var(--sans);font-size:13px;font-weight:600;
+  color:var(--charcoal);
+}
+.review-header:hover{background:var(--surface)}
+.review-arrow{font-size:14px;color:var(--muted);transition:transform .2s}
+.review-arrow.open{transform:rotate(180deg)}
+.review-body{padding:0 16px 12px;border-top:1px solid var(--border)}
+.review-item{
+  display:flex;justify-content:space-between;
+  padding:8px 0;border-bottom:1px solid var(--border);
+  font-size:13px;
+}
+.review-item:last-child{border-bottom:none}
+.review-item-left{flex:1}
+.review-item-name{font-weight:600;color:var(--charcoal);font-family:var(--sans)}
+.review-item-extras{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5}
+.review-item-price{font-family:var(--sans);font-weight:700;color:var(--gold-dk);white-space:nowrap;margin-left:12px}
+.review-total{
+  display:flex;justify-content:space-between;
+  padding:10px 0 0;font-weight:700;font-size:15px;
+  border-top:2px solid var(--border);margin-top:4px;
+  font-family:var(--sans);color:var(--charcoal);
+}
+
+.details-section{padding:0 16px}
+.section{background:#fff;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
+.section-head{padding:10px 16px;border-bottom:1px solid var(--border);font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted);background:var(--surface)}
+.field-group{padding:14px 16px}
+.field-divider{border-bottom:1px solid var(--border)}
+.field-label{display:block;font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+input[type=text],input[type=tel],textarea{width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:8px;background:var(--cream);color:var(--charcoal);font-size:15px;font-family:var(--body);outline:none;transition:border-color .2s;-webkit-appearance:none}
+input:focus,textarea:focus{border-color:var(--gold);outline:none}
+input::placeholder,textarea::placeholder{color:var(--border2)}
+textarea{resize:none;height:68px}
+
+/* ── Order summary strip (above customer details) ── */
+.order-summary-strip{
+  background:var(--charcoal);color:#fff;
+  padding:12px 16px;margin-bottom:0;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.oss-label{font-family:var(--stamp);font-size:10px;letter-spacing:2px;text-transform:uppercase;opacity:.6}
+.oss-items{font-size:12px;opacity:.8;margin-top:2px;line-height:1.5}
+.oss-total{font-family:var(--stamp);font-size:18px;text-align:right}
+.oss-edit{font-family:var(--stamp);font-size:10px;letter-spacing:1px;text-transform:uppercase;opacity:.6;cursor:pointer;text-decoration:underline;margin-top:3px;display:block}
+
+/* ── Buttons ── */
+.btn-primary{width:100%;padding:15px;background:var(--charcoal);color:#fff;border:none;border-radius:var(--radius);font-family:var(--sans);font-size:14px;font-weight:600;letter-spacing:.5px;cursor:pointer;margin-top:10px;transition:background .2s,opacity .3s,filter .3s;-webkit-appearance:none;touch-action:manipulation}
+.btn-primary.below-min{opacity:0.4;pointer-events:none;cursor:default}
+.btn-primary:hover{background:var(--gold)}
+.btn-primary:disabled{background:var(--border);color:var(--muted);cursor:default}
+.btn-secondary{width:100%;padding:12px;background:transparent;color:var(--muted);border:1px solid var(--border2);border-radius:var(--radius);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;margin-top:8px;transition:border-color .2s}
+.btn-secondary:hover{border-color:var(--muted)}
+
+/* ── Error box ── */
+.error-box{background:#FFF0EE;border:1px solid #F5C1B8;border-radius:8px;padding:10px 14px;font-size:12px;color:#9E2412;margin:8px 16px 0;display:none;letter-spacing:.3px}
+
+/* ── Map ── */
+#map{height:260px;overflow:hidden}
+.map-type-toggle{
+  position:absolute;top:10px;right:10px;
+  display:flex;border-radius:6px;overflow:hidden;
+  box-shadow:0 2px 6px rgba(0,0,0,0.3);
+  z-index:10;
+}
+.map-type-btn{
+  padding:6px 12px;font-family:var(--sans);font-size:11px;font-weight:600;
+  border:none;cursor:pointer;background:#fff;color:var(--muted);
+  transition:background .15s,color .15s;
+}
+.map-type-btn.active{background:var(--charcoal);color:#fff}
+.map-type-btn:first-child{border-right:1px solid var(--border)}
+
+.delivery-toggle{
+  display:flex;
+  background:var(--surface);
+  border-radius:30px;
+  padding:4px;
+  margin:16px 16px 0;
+  gap:0;
+}
+.delivery-toggle-btn{
+  flex:1;padding:10px;
+  border:none;border-radius:26px;
+  font-family:var(--sans);font-size:14px;font-weight:600;
+  cursor:pointer;transition:all .2s;
+  background:transparent;color:var(--muted);
+  -webkit-tap-highlight-color:transparent;
+}
+.delivery-toggle-btn.active{
+  background:#fff;color:var(--charcoal);
+  box-shadow:0 1px 4px rgba(0,0,0,0.12);
+}
+.pickup-info{display:none}
+.pickup-store-row{
+  display:flex;align-items:flex-start;gap:12px;
+  padding:14px 16px;border-bottom:1px solid var(--border);
+}
+.pickup-store-icon{font-size:24px;flex-shrink:0}
+.pickup-store-name{font-family:var(--sans);font-size:15px;font-weight:700;color:var(--charcoal);margin-bottom:2px}
+.pickup-store-addr{font-family:var(--sans);font-size:12px;color:var(--muted);line-height:1.5}
+.pickup-time-section{padding:14px 16px;border-bottom:1px solid var(--border)}
+.pickup-time-label{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.pickup-time-options{display:flex;gap:10px}
+.pickup-time-btn{
+  flex:1;border:1.5px solid var(--border2);border-radius:var(--radius);
+  padding:12px;cursor:pointer;text-align:center;transition:all .2s;
+  background:#fff;
+}
+.pickup-time-btn.active{border-color:var(--charcoal);background:var(--surface)}
+.pickup-time-title{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--charcoal)}
+.pickup-time-sub{font-family:var(--sans);font-size:12px;color:var(--muted);margin-top:2px}
+.pickup-whatsapp-note{
+  font-family:var(--sans);font-size:12px;color:var(--muted);
+  padding:12px 16px;text-align:center;
+}
+
+.pickup-info-old{
+  background:var(--green-bg);
+  border:1px solid #A8D8BA;
+  border-radius:var(--radius);
+  padding:12px 16px;
+  margin:12px 16px 0;
+  font-family:var(--sans);font-size:13px;
+  color:var(--charcoal);
+  line-height:1.6;
+  display:none;
+}
+.pickup-info .pickup-label{
+  font-weight:700;color:var(--green);
+  font-size:12px;letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:4px;
+}
+
+.pickup-info{display:none}
+.pickup-store-row{
+  display:flex;align-items:flex-start;gap:12px;
+  padding:14px 16px;border-bottom:1px solid var(--border);
+}
+.pickup-store-icon{font-size:24px;flex-shrink:0}
+.pickup-store-name{font-family:var(--sans);font-size:15px;font-weight:700;color:var(--charcoal);margin-bottom:2px}
+.pickup-store-addr{font-family:var(--sans);font-size:12px;color:var(--muted);line-height:1.5}
+.pickup-time-section{padding:14px 16px;border-bottom:1px solid var(--border)}
+.pickup-time-label{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.pickup-time-options{display:flex;gap:10px}
+.pickup-time-btn{
+  flex:1;border:1.5px solid var(--border2);border-radius:var(--radius);
+  padding:12px;cursor:pointer;text-align:center;transition:all .2s;
+  background:#fff;
+}
+.pickup-time-btn.active{border-color:var(--charcoal);background:var(--surface)}
+.pickup-time-title{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--charcoal)}
+.pickup-time-sub{font-family:var(--sans);font-size:12px;color:var(--muted);margin-top:2px}
+.pickup-whatsapp-note{
+  font-family:var(--sans);font-size:12px;color:var(--muted);
+  padding:12px 16px;text-align:center;
+}
+
+.pickup-info-old{
+  background:var(--green-bg);
+  border:1px solid #A8D8BA;
+  border-radius:var(--radius);
+  padding:14px 16px;
+  margin:12px 16px 0;
+  display:none;
+}
+.pickup-info-title{
+  font-family:var(--sans);font-size:13px;font-weight:700;
+  color:var(--green);margin-bottom:4px;
+}
+.pickup-info-address{
+  font-family:var(--sans);font-size:13px;color:var(--charcoal);
+  line-height:1.5;
+}
+.pickup-info-note{
+  font-size:11px;color:var(--muted);margin-top:6px;
+}
+
+.zone-notice{
+  background:var(--gold-lt);
+  border-left:3px solid var(--gold);
+  padding:10px 14px;
+  margin:12px 16px 8px;
+  font-size:12px;
+  font-family:var(--sans);
+  color:var(--gold-dk);
+  border-radius:6px;
+  line-height:1.5;
+}
+.loc-card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin:12px 16px;font-size:12px;color:var(--muted);line-height:1.7}
+.loc-card b{color:var(--charcoal);font-weight:700}
+.loc-card.confirmed{border-color:#A8D8BA;background:var(--green-bg)}
+.loc-card.confirmed b{color:var(--green)}
+.map-btns{padding:0 16px}
+
+/* ── Payment ── */
+.pay-container{padding:0 16px}
+.pay-options{display:flex;flex-direction:column;gap:10px;margin-bottom:4px}
+.pay-card{border:1.5px solid var(--border2);border-radius:var(--radius);padding:14px 16px;cursor:pointer;transition:border-color .2s,background .2s;display:flex;align-items:flex-start;gap:14px;background:#fff}
+.pay-card.selected{border-color:var(--charcoal);background:var(--surface)}
+.pay-icon{font-size:22px;flex-shrink:0;margin-top:2px}
+.pay-title{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--charcoal);margin-bottom:3px}
+.pay-desc{font-size:11px;color:var(--muted);line-height:1.5;letter-spacing:.3px}
+.pay-badge{display:inline-block;padding:2px 7px;border-radius:3px;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-left:6px;vertical-align:middle;font-family:var(--body)}
+.badge-green{background:#D4EDDE;color:#1A5C35}
+.badge-gray{background:var(--surface);color:var(--muted)}
+.pixelpay-box{background:#fff;border:1px solid var(--border2);border-radius:var(--radius);padding:16px;margin-bottom:4px}
+.pixelpay-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.pixelpay-logo{font-family:var(--stamp);font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
+.pixelpay-total{font-family:var(--stamp);font-size:18px;color:var(--gold)}
+.card-field-group{margin-bottom:12px}
+.card-row{display:flex;gap:10px}
+.card-row .card-field-group{flex:1}
+.card-error{font-size:11px;color:#9E2412;margin-top:4px;display:none;letter-spacing:.3px}
+.security-row{display:flex;align-items:center;justify-content:center;gap:6px;font-size:10px;color:var(--muted);margin-top:14px;letter-spacing:1px;text-transform:uppercase;font-family:var(--stamp)}
+
+/* ── Fullscreen map overlay ── */
+.map-fullscreen-overlay{
+  position:fixed;inset:0;
+  background:#fff;
+  z-index:400;
+  display:flex;
+  flex-direction:column;
+  transform:translateY(100%);
+  transition:transform .35s cubic-bezier(0.32, 0.72, 0, 1);
+  pointer-events:none;
+}
+.map-fullscreen-overlay.open{
+  transform:translateY(0);
+  pointer-events:all;
+}
+#map-fullscreen{flex:1;width:100%}
+.map-fullscreen-bar{
+  background:#fff;
+  padding:14px 16px;
+  display:flex;align-items:center;justify-content:space-between;
+  border-top:1px solid var(--border);
+  flex-shrink:0;
+}
+.map-fullscreen-address{
+  font-family:var(--sans);font-size:13px;color:var(--muted);
+  flex:1;margin-right:12px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.map-fullscreen-address b{color:var(--charcoal);font-weight:600;display:block;font-size:14px}
+.map-fullscreen-done{
+  background:var(--charcoal);color:#fff;
+  border:none;border-radius:24px;
+  font-family:var(--sans);font-size:14px;font-weight:700;
+  padding:12px 24px;cursor:pointer;flex-shrink:0;
+  -webkit-tap-highlight-color:transparent;
+}
+.map-fullscreen-type{
+  position:absolute;top:12px;right:12px;
+  display:flex;border-radius:6px;overflow:hidden;
+  box-shadow:0 2px 6px rgba(0,0,0,0.3);
+  z-index:10;
+}
+
+/* ── Spinner ── */
+/* ── Cart review sheet ── */
+.cart-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:300;display:none}
+.cart-overlay.open{display:block}
+.cart-review-sheet{
+  position:fixed;bottom:0;left:0;right:0;
+  background:#fff;border-radius:16px 16px 0 0;
+  z-index:301;max-height:75vh;
+  display:flex;flex-direction:column;
+  transform:translateY(100%);transition:transform .3s ease;
+}
+.cart-review-sheet.open{transform:translateY(0)}
+.cart-review-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px 12px;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.cart-review-title{font-family:var(--sans);font-size:18px;font-weight:700;color:var(--charcoal)}
+.cart-review-close{
+  width:30px;height:30px;border-radius:50%;
+  border:1px solid var(--border);background:var(--surface);
+  color:var(--muted);font-size:14px;display:flex;
+  align-items:center;justify-content:center;cursor:pointer;
+}
+.cart-review-body{flex:1;overflow-y:auto;padding:12px 20px}
+.cart-review-item{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:10px 0;border-bottom:1px solid var(--border);
+}
+.cart-review-item:last-child{border-bottom:none}
+.cart-review-item-name{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--charcoal)}
+.cart-review-item-extras{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5}
+.cart-review-item-price{font-family:var(--sans);font-size:14px;font-weight:700;color:var(--gold-dk);white-space:nowrap;width:60px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0}
+.cart-item-right{display:flex;align-items:center;gap:10px;flex-shrink:0;min-width:130px;justify-content:flex-end}
+.cart-qty-controls{display:flex;align-items:center;background:var(--surface);border-radius:20px;padding:4px 8px;gap:0;width:90px;justify-content:space-between;flex-shrink:0}
+.cart-qty-btn{width:26px;height:26px;border-radius:50%;border:none;background:#fff;color:var(--charcoal);font-size:16px;font-weight:500;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.12);-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.cart-qty-btn:active{opacity:.7}
+.cart-qty-num{font-family:var(--sans);font-size:14px;font-weight:700;color:var(--charcoal);width:24px;text-align:center;font-variant-numeric:tabular-nums}
+.cart-review-footer{padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0;background:#fff}
+.cart-review-total-row{display:flex;justify-content:space-between;align-items:center}
+.cart-review-total{font-family:var(--sans);font-size:20px;font-weight:700;color:var(--charcoal)}
+
+/* ── Schedule pickup sheet ── */
+.schedule-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:400;display:none}
+.schedule-overlay.open{display:block}
+.schedule-sheet{
+  position:fixed;bottom:0;left:0;right:0;
+  background:#fff;border-radius:16px 16px 0 0;
+  z-index:401;max-height:85vh;
+  display:flex;flex-direction:column;
+  transform:translateY(100%);
+  transition:transform .35s cubic-bezier(0.32,0.72,0,1);
+}
+.schedule-sheet.open{transform:translateY(0)}
+.schedule-header{
+  display:flex;align-items:center;
+  padding:16px 20px 12px;
+  border-bottom:1px solid var(--border);flex-shrink:0;
+  position:relative;
+}
+.schedule-close{
+  width:30px;height:30px;border-radius:50%;
+  border:1px solid var(--border);background:var(--surface);
+  color:var(--muted);font-size:14px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  position:absolute;left:16px;
+}
+.schedule-title{font-family:var(--sans);font-size:17px;font-weight:700;color:var(--charcoal);flex:1;text-align:center}
+.schedule-body{flex:1;overflow-y:auto}
+
+.schedule-slots{padding:8px 0 16px}
+.schedule-slot{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 20px;border-bottom:1px solid var(--border);
+  cursor:pointer;
+}
+.schedule-slot:last-child{border-bottom:none}
+.schedule-slot-time{font-family:var(--sans);font-size:15px;color:var(--charcoal)}
+.schedule-slot-radio{
+  width:22px;height:22px;border-radius:50%;
+  border:2px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:all .15s;
+}
+.schedule-slot-radio.selected{
+  border-color:var(--charcoal);background:var(--charcoal);
+}
+.schedule-slot-radio.selected::after{
+  content:'';width:8px;height:8px;border-radius:50%;background:#fff;
+}
+.schedule-footer{padding:12px 16px 24px;border-top:1px solid var(--border);flex-shrink:0}
+
+.contact-line{
+  text-align:center;font-size:11px;color:var(--muted);
+  margin-top:14px;font-family:var(--sans);line-height:1.5;
+}
+
+.spinner{width:36px;height:36px;border:2px solid var(--border2);border-top-color:var(--charcoal);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Success ── */
+.success-wrap{text-align:center;padding:32px 16px 40px}
+.success-stamp{font-size:48px;margin-bottom:12px}
+.success-title{font-family:var(--display);font-size:24px;font-weight:900;color:var(--charcoal);margin-bottom:6px}
+.success-sub{font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:24px;letter-spacing:.5px}
+.order-id{font-size:10px;color:var(--border2);margin-bottom:10px;font-family:var(--stamp);letter-spacing:2px}
+.receipt{background:#fff;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;text-align:left;margin-bottom:12px}
+.receipt-head{background:var(--surface);padding:10px 16px;font-family:var(--sans);font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--gold-dk);border-bottom:1px solid var(--border)}
+.receipt-row{display:flex;justify-content:space-between;align-items:flex-start;padding:9px 16px;font-size:12px;border-bottom:1px solid var(--border);color:var(--charcoal);letter-spacing:.3px}
+.receipt-row:last-child{border-bottom:none}
+.receipt-label{color:var(--muted)}
+.pay-confirmed{color:var(--green);font-weight:700;font-size:12px}
+.pay-pending{color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+
+<!-- ── Closed overlay ── -->
+<div class="closed-overlay" id="closed-overlay" style="display:none">
+  <div class="closed-card">
+    <div class="closed-icon">🍕</div>
+    <div class="closed-title">Estamos cerrados</div>
+    <div class="closed-msg" id="closed-msg">Abrimos mañana a las 12:00 pm</div>
+    <div class="closed-thanks">¡Gracias por preferirnos!</div>
+    <div class="closed-hours">
+      <div class="closed-hours-row"><span>Dom – Mié</span><span>12:00 pm – 7:45 pm</span></div>
+      <div class="closed-hours-row"><span>Jue – Sáb</span><span>12:00 pm – 8:45 pm</span></div>
+    </div>
+    <a href="https://wa.me/50497952893" class="closed-wa">💬 Escríbenos por WhatsApp</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="brand-lockup">
+    <img class="logo-img" src="data:image/webp;base64,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" alt="X Pizza logo"/>
+  </div>
+  <div class="brand-sub">Pedido en línea · San Pedro Sula</div>
+</div>
+<div class="progress-bar">
+  <div class="progress-fill" id="progress" style="width:25%"></div>
+</div>
+
+<!-- ── STAGE 1: Menu + Details ── -->
+<div class="stage active" id="s1">
+  <div class="step-label">Paso 1 de 3 — Tu pedido</div>
+
+  <!-- Category tabs -->
+  <div class="cat-tabs">
+    <button class="cat-tab active" onclick="switchCat('individual',this)">12 Inch Pies</button>
+    <button class="cat-tab" onclick="switchCat('ny',this)">NY Slice · 18"</button>
+  </div>
+
+  <!-- Individual pizzas -->
+  <div class="menu-section active" id="cat-individual">
+    <div style="padding:12px 16px 0">
+      <div class="pizza-grid" id="menu-individual"></div>
+    </div>
+  </div>
+
+  <!-- NY Slice -->
+  <div class="menu-section" id="cat-ny">
+    <div style="padding:12px 16px 0">
+      <div class="pizza-grid" id="menu-ny"></div>
+    </div>
+  </div>
+
+  <!-- Order summary + customer details -->
+  <div class="details-section">
+    <div class="section">
+      <div class="section-head">Tus datos</div>
+      <div class="field-group field-divider">
+        <label class="field-label">Nombre completo</label>
+        <input type="text" id="cname" placeholder="Ej: María García" autocomplete="name"/>
+      </div>
+      <div class="field-group field-divider">
+        <label class="field-label">WhatsApp</label>
+        <input type="tel" id="cphone" placeholder="+504 9999-9999" maxlength="14" autocomplete="tel"/>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Instrucciones especiales</label>
+        <textarea id="notes" placeholder="Sin cebolla, extra salsa... (opcional)"></textarea>
+      </div>
+    </div>
+    <div style="padding:0">
+      <button class="btn-primary" id="btn-continuar" onclick="goToLocation()">Continuar → Confirmar ubicación</button>
+    </div>
+    <div class="error-box" id="err1" style="margin:8px 0 0"></div>
+  </div>
+</div>
+
+<!-- ── STAGE 2: Location + Payment ── -->
+<div class="stage" id="s2">
+  <div style="position:relative;cursor:pointer" onclick="openFullscreenMap()">
+    <div id="map" style="height:220px;pointer-events:none"></div>
+    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
+      <div style="background:rgba(0,0,0,0.55);color:#fff;font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 16px;border-radius:20px;backdrop-filter:blur(2px)" id="map-tap-hint">Toca para ajustar tu ubicación</div>
+    </div>
+  </div>
+  <div class="container" style="padding:0 0 24px">
+    <div class="step-label">Paso 2 de 3 — Entrega & Pago</div>
+    <div class="delivery-toggle">
+      <button class="delivery-toggle-btn active" id="btn-delivery" onclick="setOrderType('delivery')">Delivery</button>
+      <button class="delivery-toggle-btn" id="btn-pickup" onclick="setOrderType('pickup')">Pickup</button>
+    </div>
+    <div class="pickup-info" id="pickup-info" style="display:none">
+      <!-- Pickup map -->
+      <div id="pickup-map" style="height:160px;border-radius:var(--radius);overflow:hidden;margin:12px 16px 0"></div>
+      <!-- Store info -->
+      <div class="pickup-store-row">
+        <div class="pickup-store-icon">🏪</div>
+        <div>
+          <div class="pickup-store-name">X Pizza</div>
+          <div class="pickup-store-addr">Blvd. Los Próceres 1ra Calle, 20 Ave. N.O., San Pedro Sula</div>
+        </div>
+      </div>
+      <!-- Pickup time -->
+      <div class="pickup-time-section">
+        <div class="pickup-time-label">Hora de recogida</div>
+        <div class="pickup-time-options">
+          <div class="pickup-time-btn active" id="pickup-std" onclick="selectPickupTime('standard')">
+            <div class="pickup-time-title">Estándar</div>
+            <div class="pickup-time-sub" id="pickup-std-time">~20 min</div>
+          </div>
+          <div class="pickup-time-btn" id="pickup-sched" onclick="selectPickupTime('schedule')">
+            <div class="pickup-time-title">Programar</div>
+            <div class="pickup-time-sub">Elegir hora</div>
+          </div>
+        </div>
+
+      </div>
+      <div class="pickup-whatsapp-note">📱 Te avisamos por WhatsApp cuando esté listo</div>
+    </div>
+    <div class="pickup-info" id="pickup-info-old" style="display:none">
+    </div>
+    <div class="zone-notice">
+      📍 Entregamos dentro de San Pedro Sula. Mové el pin a tu ubicación exacta.
+    </div>
+    <div class="loc-card" id="locinfo">
+      <b>Detectando tu ubicación GPS…</b><br/>
+      Permití el acceso cuando el navegador lo solicite. Podés mover el pin para mayor precisión.
+    </div>
+    <div style="padding:0 16px 0">
+      <div class="section" style="margin-bottom:12px">
+        <div class="section-head">Dirección de entrega</div>
+        <div class="field-group field-divider">
+          <label class="field-label">Dirección detectada</label>
+          <input type="text" id="address-detected" placeholder="Detectando..." readonly style="background:var(--surface);color:var(--muted)"/>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Detalles adicionales</label>
+          <input type="text" id="address-details" placeholder="Ej: Colonia Las Palmas, portón negro, 2do piso..."/>
+        </div>
+      </div>
+    </div>
+
+    <!-- Payment section -->
+    <div class="step-label" style="margin-top:8px">Forma de pago</div>
+    <div class="pay-container">
+      <div class="pay-options">
+        <div class="pay-card" id="pay-cash" onclick="selectPay('cash')">
+          <div class="pay-icon">💵</div>
+          <div>
+            <div class="pay-title">Efectivo al entregar <span class="pay-badge badge-gray">Más común</span></div>
+            <div class="pay-desc">Pagás en efectivo cuando el repartidor llegue a tu puerta.</div>
+          </div>
+        </div>
+        <div class="pay-card" id="pay-card_delivery" onclick="selectPay('card_delivery')">
+          <div class="pay-icon">💳</div>
+          <div>
+            <div class="pay-title">Tarjeta al entregar</div>
+            <div class="pay-desc">El repartidor lleva una terminal POS. Visa y Mastercard aceptadas.</div>
+          </div>
+        </div>
+        <div class="pay-card" id="pay-online" onclick="selectPay('online')">
+          <div class="pay-icon">🔒</div>
+          <div>
+            <div class="pay-title">Pagar en línea ahora <span class="pay-badge badge-green">Recomendado</span></div>
+            <div class="pay-desc">Pago seguro con tarjeta directamente en este formulario. Tu pedido se confirma inmediatamente.</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="pixelpay-panel" style="display:none">
+        <div class="pixelpay-box">
+          <div class="pixelpay-header">
+            <span class="pixelpay-logo">🔒 PixelPay · Pago Seguro</span>
+            <span class="pixelpay-total" id="pixelpay-amount">L 0.00</span>
+          </div>
+          <div class="card-field-group">
+            <label class="field-label">Número de tarjeta</label>
+            <input type="tel" id="card-number" placeholder="0000 0000 0000 0000" maxlength="19" autocomplete="cc-number"/>
+            <div class="card-error" id="err-card-number">Número de tarjeta inválido.</div>
+          </div>
+          <div class="card-field-group">
+            <label class="field-label">Nombre en la tarjeta</label>
+            <input type="text" id="card-name" placeholder="NOMBRE APELLIDO" autocomplete="cc-name" style="text-transform:uppercase"/>
+            <div class="card-error" id="err-card-name">Ingresá el nombre tal como aparece en la tarjeta.</div>
+          </div>
+          <div class="card-row">
+            <div class="card-field-group">
+              <label class="field-label">Vencimiento</label>
+              <input type="tel" id="card-expiry" placeholder="MM/AA" maxlength="5" autocomplete="cc-exp"/>
+              <div class="card-error" id="err-card-expiry">Fecha inválida.</div>
+            </div>
+            <div class="card-field-group">
+              <label class="field-label">CVV</label>
+              <input type="tel" id="card-cvv" placeholder="000" maxlength="4" autocomplete="cc-csc"/>
+              <div class="card-error" id="err-card-cvv">CVV inválido.</div>
+            </div>
+          </div>
+          <div class="security-row">🔒 Encriptado SSL · PCI DSS · 3D Secure 2.0</div>
+        </div>
+      </div>
+
+      <button class="btn-primary" id="btn-pay" onclick="processPayment()" disabled>Seleccioná una opción de pago</button>
+      <button class="btn-secondary" onclick="goBack('s1',25)">← Volver</button>
+      <div class="error-box" id="err3" style="margin:8px 0 0">Seleccioná una forma de pago para continuar.</div>
+      <div class="contact-line">¿Problemas con tu pedido? Escríbenos al <a href="https://wa.me/50497952893" style="color:var(--green);font-weight:600;text-decoration:none">+504 9795-2893</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── STAGE 4: Sending ── -->
+<div class="stage" id="s4">
+  <div style="padding:60px 16px;text-align:center">
+    <div class="spinner"></div>
+    <p id="sending-msg" style="color:var(--muted);font-size:12px;letter-spacing:2px;text-transform:uppercase;font-family:var(--stamp)">Enviando tu pedido…</p>
+  </div>
+</div>
+
+<!-- ── STAGE 5: Success ── -->
+<div class="stage" id="s5">
+  <div style="padding:32px 16px 40px;text-align:center">
+    <div class="success-stamp">✓</div>
+    <div class="success-title">Pedido recibido</div>
+    <p class="success-sub" id="success-sub">Llegamos en aproximadamente <strong style="color:var(--charcoal)">30 minutos</strong>.</p>
+    <div class="order-id" id="order-id-display"></div>
+    <div class="receipt">
+      <div class="receipt-head">Resumen del pedido</div>
+      <div id="receipt-items"></div>
+    </div>
+    <div class="receipt">
+      <div class="receipt-head">Pago y entrega</div>
+      <div id="receipt-payment"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Extras bottom sheet ── -->
+<div class="extras-overlay" id="extras-overlay" onclick="closeExtras()"></div>
+<div class="extras-sheet" id="extras-sheet">
+  <div class="extras-header">
+    <div>
+      <div class="extras-pizza-name" id="extras-pizza-name">Extras</div>
+      <div class="extras-subtitle">Seleccioná lo que querés agregar</div>
+    </div>
+    <button class="extras-close" onclick="closeExtras()">✕</button>
+  </div>
+  <div class="extras-body" id="extras-body"></div>
+  <div class="extras-footer">
+    <div class="extras-total-row">
+      <span class="extras-total-label">Extras seleccionados</span>
+      <span class="extras-total-val" id="extras-total-val">L 0</span>
+    </div>
+    <button class="btn-primary" style="margin-top:10px" onclick="closeExtras()">Listo ✓</button>
+  </div>
+</div>
+
+<!-- ── Sticky cart bar ── -->
+<div class="cart-bar" id="cart-bar" onclick="toggleCartReview()">
+  <span class="cart-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1h3l2 11h11l2-7H6" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="20" r="1.5" fill="white"/><circle cx="17" cy="20" r="1.5" fill="white"/></svg></span>
+  <span class="cart-pill-text" id="cart-pill-text">Tu pedido</span>
+  <span class="cart-pill-dot">·</span>
+  <span class="cart-pill-text" id="cart-total">L 0.00</span>
+</div>
+
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAuzSLAELV_MaK2xeXrNjS6_lhNXmD_Y0A&libraries=places&callback=googleMapsReady" async defer></script>
+<script>
+/* ── Category tab switching ── */
+function switchCat(cat, btn) {
+  document.querySelectorAll('.cat-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.menu-section').forEach(s => s.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('cat-' + cat).classList.add('active');
+}
+
+
+
+/* ═══════════════════════════════════════════════════
+   CONFIGURATION — edit these before deploying
+   ═══════════════════════════════════════════════════ */
+const WEBHOOK_URL     = 'https://hook.us2.make.com/y6jcvu4kwtjfkeydyvccdadkrmk7cl0q';
+const PIXELPAY_KEY      = 'YOUR_PIXELPAY_API_KEY_HERE';
+const PIXELPAY_ENDPOINT = 'YOUR_PIXELPAY_ENDPOINT_HERE';
+const PIXELPAY_ENV      = 'sandbox'; // change to 'production' when ready
+/* ─────────────────────────────────────────────────── */
+
+const SPS_LAT_CONST = 15.5003;
+const SPS_LNG_CONST = -88.025;
+
+const MENU = [
+  // ── Individual — left column first, then right column ──
+  { id:1,  cat:'individual', name:'Sopressatta Chili Honey',      price:385, emoji:'🍕', color:'#8B3A1A', desc:'Sopressatta, chili, honey drizzle' },
+  { id:2,  cat:'individual', name:'Carnivora',                    price:340, emoji:'🥩', color:'#7A2515', desc:'Mixed meats, rich tomato sauce' },
+  { id:3,  cat:'individual', name:'Crispy Bacon',                 price:337, emoji:'🥓', color:'#6B3020', desc:'Crispy bacon, mozzarella' },
+  { id:4,  cat:'individual', name:'Sweet Corn & Calabrian Chili', price:371, emoji:'🌽', color:'#B8860B', desc:'Sweet corn, spicy calabrian chili' },
+  { id:5,  cat:'individual', name:'Mushroom',                     price:323, emoji:'🍄', color:'#5A4A3A', desc:'Wild mushrooms, garlic, herbs' },
+  { id:6,  cat:'individual', name:'Spinach',                      price:307, emoji:'🌿', color:'#2D5A27', desc:'Fresh spinach, ricotta, garlic' },
+  { id:7,  cat:'individual', name:'Pancetta Vodka Sauce',         price:328, emoji:'🍅', color:'#A0321A', desc:'Pancetta, creamy vodka tomato sauce' },
+  { id:8,  cat:'individual', name:'Margherita',                   price:299, emoji:'🍅', color:'#C8321A', desc:'San Marzano tomato, fresh mozzarella' },
+  { id:9,  cat:'individual', name:'Pepperoni',                    price:307, emoji:'🔴', color:'#9E2412', desc:'Classic pepperoni, mozzarella' },
+  { id:10, cat:'individual', name:'Anchovies',                    price:418, emoji:'🐟', color:'#3A5A7A', desc:'Salted anchovies, capers, olives' },
+  { id:11, cat:'individual', name:'Shrimp Scampi',                price:412, emoji:'🍤', color:'#C87A3A', desc:'Garlic shrimp, lemon, white wine' },
+  { id:12, cat:'individual', name:'Pistaccio Mortadella',         price:409, emoji:'💚', color:'#3A6A2A', desc:'Pistachio cream, mortadella, stracciatella' },
+  { id:13, cat:'individual', name:'Prosciutto',                   price:402, emoji:'🥩', color:'#8A3A2A', desc:'Prosciutto crudo, arugula, parmesan' },
+  { id:14, cat:'individual', name:'Potato & Dill Sausage',        price:299, emoji:'🥔', color:'#7A6A3A', desc:'Roasted potato, dill, house sausage' },
+  { id:15, cat:'individual', name:'Cacio e Pepe',                 price:297, emoji:'🧀', color:'#8A7A5A', desc:'Pecorino, black pepper, olive oil' },
+  { id:16, cat:'individual', name:'Ham',                          price:282, emoji:'🐷', color:'#C87A8A', desc:'Classic ham, mozzarella' },
+  { id:17, cat:'individual', name:'Nutella',                      price:251, emoji:'🍫', color:'#5A3A20', desc:'Nutella, powdered sugar, banana option' },
+  // ── NY Slice (6 slices) — left column first, then right column ──
+  { id:18, cat:'ny', name:'Carnivora NY',        price:685, emoji:'🥩', color:'#7A2515', desc:'6 massive slices, mixed meats' },
+  { id:19, cat:'ny', name:'Margherita NY',        price:624, emoji:'🍅', color:'#C8321A', desc:'6 slices, classic tomato & mozzarella' },
+  { id:20, cat:'ny', name:'Cacio e Pepe NY',      price:641, emoji:'🧀', color:'#8A7A5A', desc:'6 slices, pecorino & black pepper' },
+  { id:21, cat:'ny', name:'Mushroom NY',          price:702, emoji:'🍄', color:'#5A4A3A', desc:'6 slices, wild mushrooms & herbs' },
+  { id:22, cat:'ny', name:'Jamon o Pepperoni NY', price:641, emoji:'🔴', color:'#9E2412', desc:'6 slices, ham or pepperoni' },
+  { id:23, cat:'ny', name:'Crispy Bacon NY',      price:662, emoji:'🥓', color:'#6B3020', desc:'6 slices, crispy bacon' },
+];
+
+const MIN_ORDER = 250;
+
+// Delivery hours (Honduras time — UTC-6)
+const HOURS = {
+  0: { open: 12*60,    close: 19*60+45 }, // Sunday
+  1: { open: 12*60,    close: 19*60+45 }, // Monday
+  2: { open: 12*60,    close: 19*60+45 }, // Tuesday
+  3: { open: 12*60,    close: 19*60+45 }, // Wednesday
+  4: { open: 12*60,    close: 20*60+45 }, // Thursday
+  5: { open: 12*60,    close: 20*60+45 }, // Friday
+  6: { open: 12*60,    close: 20*60+45 }, // Saturday
+};
+
+function isOpen() {
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const hn  = new Date(utc - 6 * 3600000);
+  const day  = hn.getDay();
+  const mins = hn.getHours() * 60 + hn.getMinutes();
+  const h = HOURS[day];
+  return mins >= h.open && mins < h.close;
+}
+
+function getNextOpenText() {
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const hn  = new Date(utc - 6 * 3600000);
+  const day  = hn.getDay();
+  const mins = hn.getHours() * 60 + hn.getMinutes();
+  const h    = HOURS[day];
+  const days = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  if (mins < h.open) return 'Abrimos hoy a las 12:00 pm';
+  // Check next days
+  for (let i = 1; i <= 7; i++) {
+    const nextDay = (day + i) % 7;
+    const label = i === 1 ? 'mañana' : 'el ' + days[nextDay];
+    return label === 'mañana' ? 'Con gusto los atendemos mañana a partir de las 12:00 pm' : 'Con gusto los atendemos ' + label + ' a partir de las 12:00 pm';
+  }
+  return 'Con gusto los atendemos mañana a partir de las 12:00 pm';
+}
+
+const EXTRAS = [
+  { id:'e1',  cat:'Salsas & Queso',    name:'Salsa Roja',          price:39  },
+  { id:'e2',  cat:'Salsas & Queso',    name:'Salsa Blanca',        price:39  },
+  { id:'e3',  cat:'Salsas & Queso',    name:'Salsa Calabrian Chili', price:49 },
+  { id:'e4',  cat:'Salsas & Queso',    name:'Mozzarella',          price:50  },
+  { id:'e5',  cat:'Salsas & Queso',    name:'Whipped Ricotta',     price:65  },
+  { id:'e6',  cat:'Carnes',            name:'Salchicha Italiana',  price:50  },
+  { id:'e7',  cat:'Carnes',            name:'Pepperoni',           price:50  },
+  { id:'e8',  cat:'Carnes',            name:'Jamón',               price:39  },
+  { id:'e9',  cat:'Carnes',            name:'Prosciutto',          price:94  },
+  { id:'e10', cat:'Carnes',            name:'Mortadella',          price:85  },
+  { id:'e11', cat:'Vegetales & Hierbas', name:'Espinaca',          price:33  },
+  { id:'e12', cat:'Vegetales & Hierbas', name:'Maíz',              price:45  },
+  { id:'e13', cat:'Vegetales & Hierbas', name:'Hongos',            price:61  },
+  { id:'e14', cat:'Vegetales & Hierbas', name:'Basil Pesto',       price:33  },
+];
+
+// Track extras per pizza: { pizzaId: { extraId: qty } }
+const pizzaExtras = {};
+let orderType = 'delivery';
+let pickupTimeType = 'standard';
+let pickupScheduledTime = null;
+let pickupMap = null;
+let pickupMarker = null;
+
+
+
+
+const qty = {};
+MENU.forEach(p => qty[p.id] = 0);
+
+let lat=null, lng=null, gmap=null, gmarker=null, mapReady=false;
+let selectedPayment=null, currentOrder=null;
+
+function genOrderId(){
+  const d=new Date();
+  return 'PZX-'+d.getFullYear().toString().slice(-2)+
+    String(d.getMonth()+1).padStart(2,'0')+
+    String(d.getDate()).padStart(2,'0')+'-'+
+    String(d.getHours()).padStart(2,'0')+
+    String(d.getMinutes()).padStart(2,'0')+
+    String(d.getSeconds()).padStart(2,'0');
+}
+
+/* ── Menu rendering ── */
+function renderMenu(){
+  const indiv = MENU.filter(p=>p.cat==='individual');
+  const ny    = MENU.filter(p=>p.cat==='ny');
+  const card = p => `
+    <div class="pizza-card" id="card-${p.id}">
+      <div class="pizza-photo" style="background:${p.color||'#C8321A'}">
+        <div class="pizza-photo-label">${p.emoji||'🍕'}</div>
+        <div class="qty-overlay" onclick="event.stopPropagation()">
+          <div class="qty-controls" id="qty-controls-${p.id}">
+            <button class="qty-ctrl-btn" onclick="chg(${p.id},-1)" id="minus-${p.id}">−</button>
+            <span class="qty-ctrl-num" id="qty-${p.id}">0</span>
+            <button class="qty-ctrl-btn" onclick="chg(${p.id},1)">+</button>
+          </div>
+          <div class="qty-badge" id="qty-badge-${p.id}" style="display:none" onclick="toggleControls(${p.id})">
+            <span id="qty-badge-num-${p.id}">1</span>
+          </div>
+          <button class="qty-add-btn" id="qty-add-${p.id}" onclick="chg(${p.id},1)">+</button>
+        </div>
+      </div>
+      <div class="pizza-card-body">
+        <div class="pizza-card-name">${p.name}</div>
+        <div class="pizza-card-desc">${p.desc||''}</div>
+        <div class="pizza-card-footer">
+          <span class="pizza-card-price">${p.price}</span>
+        </div>
+        ${p.name !== 'Nutella' ? '<div class=\"extras-pills-wrap\" id=\"extras-pills-'+p.id+'\" style=\"display:none\"></div>' : ''}
+      </div>
+    </div>`;
+  document.getElementById('menu-individual').innerHTML = indiv.map(card).join('');
+  document.getElementById('menu-ny').innerHTML = ny.map(card).join('');
+}
+
+function chg(id,d){
+  qty[id]=Math.max(0,qty[id]+d);
+
+  // Update qty number
+  const qtyNum=document.getElementById('qty-'+id);
+  if(qtyNum) qtyNum.textContent=qty[id];
+
+  // Show + button, badge, or controls
+  const addBtn=document.getElementById('qty-add-'+id);
+  const controls=document.getElementById('qty-controls-'+id);
+  const badge=document.getElementById('qty-badge-'+id);
+  const badgeNum=document.getElementById('qty-badge-num-'+id);
+  const minusBtn=document.getElementById('minus-'+id);
+  if(qty[id]===0){
+    // Back to zero — show + button
+    if(addBtn) addBtn.style.display='flex';
+    if(controls) controls.classList.remove('visible');
+    if(badge) badge.style.display='none';
+  } else {
+    // Has items — show controls open, hide + and badge
+    if(addBtn) addBtn.style.display='none';
+    if(badge) { badge.style.display='none'; if(badgeNum) badgeNum.textContent=qty[id]; }
+    if(controls) controls.classList.add('visible');
+    // Register outside-click to collapse to badge (only once per open)
+    if(d>0 && qty[id]===1) registerOutsideClick(id);
+  }
+  if(minusBtn){
+    if(qty[id]<=1){
+      minusBtn.innerHTML='<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 3h12M5 3V2h4v1M2 3l1 9h6l1-9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    } else {
+      minusBtn.innerHTML='−';
+    }
+  }
+
+  // Show/hide single extras button (not for Nutella)
+  const extrasPillsWrap=document.getElementById('extras-pills-'+id);
+  if(extrasPillsWrap && id !== 17){
+    if(qty[id]>0){
+      extrasPillsWrap.style.display='block';
+      const hasAnyExtras=pizzaExtras[id]&&Object.values(pizzaExtras[id]).some(inst=>
+        typeof inst==='object'&&Object.values(inst).some(v=>v>0));
+      let extrasTotal=0;
+      if(hasAnyExtras){
+        Object.values(pizzaExtras[id]).forEach(inst=>{
+          if(typeof inst!=='object') return;
+          Object.entries(inst).forEach(([eid,q])=>{
+            const ex=EXTRAS.find(e=>e.id===eid);
+            if(ex&&q>0) extrasTotal+=ex.price;
+          });
+        });
+      }
+      extrasPillsWrap.innerHTML='<button class="extras-pill-btn'+(hasAnyExtras?' has-extras':'')+'" onclick="event.stopPropagation();openExtrasSheet('+id+')">'
+        +(hasAnyExtras?'✓ Extras · +L '+extrasTotal:'+ Personalizar extras')
+        +'</button>';
+    } else {
+      extrasPillsWrap.style.display='none';
+      extrasPillsWrap.innerHTML='';
+    }
+  }
+
+  // Clear extras if pizza removed
+  if(qty[id]===0&&pizzaExtras[id]){delete pizzaExtras[id];}
+
+  // Highlight card border
+  const card=document.getElementById('card-'+id);
+  if(card) card.classList.toggle('has-items',qty[id]>0);
+
+
+  updateTotal();
+  updateCart();
+}
+
+function updateTotal(){ const el=document.getElementById('total-display'); if(el) el.textContent='L '+calcTotal().toFixed(2); updateCart(); }
+
+function calcTotal(){
+  let total=MENU.reduce((s,p)=>s+p.price*qty[p.id],0);
+  Object.entries(pizzaExtras).forEach(([pid,instances])=>{
+    if(qty[pid]<1)return;
+    Object.entries(instances).forEach(([inst,extras])=>{
+      if(typeof extras !== 'object') return;
+      Object.entries(extras).forEach(([eid,q])=>{
+        const ex=EXTRAS.find(e=>e.id===eid);
+        if(ex)total+=ex.price*q;
+      });
+    });
+  });
+  return total;
+}
+
+function updateCart(){
+  const count=MENU.reduce((s,p)=>s+qty[p.id],0);
+  const total=calcTotal();
+
+  // Cart total and count
+  const cartTotal=document.getElementById('cart-total');
+  const cartCount=document.getElementById('cart-count');
+  if(cartTotal) cartTotal.textContent='L '+total.toFixed(0);
+  const pillText=document.getElementById('cart-pill-text');
+  if(pillText) pillText.textContent=count>0?count+(count===1?' pizza':' pizzas'):'Tu pedido';
+
+  // Item count badge
+  const badge=document.getElementById('cart-badge');
+  if(badge){ badge.textContent=count; badge.style.display=count>0?'flex':'none'; }
+
+  // Blur checkout/continuar when below minimum
+  const belowMin = total < MIN_ORDER;
+  function applyBlur(el, apply) {
+    if(!el) return;
+    el.style.opacity = apply ? '0.4' : '1';
+    el.style.filter = 'none';
+    el.style.pointerEvents = apply ? 'none' : 'auto';
+    el.style.transition = 'opacity .3s, filter .3s';
+  }
+  applyBlur(document.getElementById('btn-continuar'), belowMin);
+  applyBlur(document.querySelector('.cart-btn'), belowMin);
+  // Never grey out map step button
+  const btnC=document.getElementById('btnConfirm');
+  if(btnC && lat!==null) { btnC.disabled=false; btnC.style.opacity='1'; btnC.style.pointerEvents='auto'; }
+
+  // Update cart sheet if open
+  if(document.getElementById('cart-review-sheet')&&document.getElementById('cart-review-sheet').classList.contains('open')){
+    updateCartReviewBody();
+  }
+}
+
+function updateReview(){
+  const body=document.getElementById('review-body');
+  if(!body) return;
+  const items=MENU.filter(p=>qty[p.id]>0);
+  if(!items.length){ body.innerHTML=''; return; }
+  body.innerHTML=items.map(p=>{
+    const extras=pizzaExtras[p.id]||{};
+    const extrasArr=Object.entries(extras).filter(([,q])=>q>0)
+      .map(([eid,q])=>{ const ex=EXTRAS.find(e=>e.id===eid); return ex?(q>1?q+'x ':'')+ex.name:null; }).filter(Boolean);
+    const extrasTotal=Object.entries(extras).reduce((s,[eid,q])=>{ const ex=EXTRAS.find(e=>e.id===eid); return s+(ex?ex.price*q:0); },0);
+    const subtotal=p.price*qty[p.id]+extrasTotal;
+    return '<div class="review-item">'
+      +'<div class="review-item-left">'
+      +'<div class="review-item-name">'+qty[p.id]+'x '+p.name+'</div>'
+      +(extrasArr.length?'<div class="review-item-extras">+ '+extrasArr.join(', ')+'</div>':'')
+      +'</div>'
+      +'<div class="review-item-price">L '+subtotal.toFixed(0)+'</div>'
+      +'</div>';
+  }).join('')+'<div class="review-total"><span>Total</span><span>L '+calcTotal().toFixed(0)+'</span></div>';
+  // Also update cart sheet if open
+  if(document.getElementById('cart-review-sheet')&&document.getElementById('cart-review-sheet').classList.contains('open')){
+    updateCartReviewBody();
+  }
+}
+
+function toggleReview(){
+  const body=document.getElementById('review-body');
+  const arrow=document.getElementById('review-arrow');
+  if(!body) return;
+  const open=body.style.display==='block';
+  body.style.display=open?'none':'block';
+  if(arrow) arrow.classList.toggle('open',!open);
+}
+
+function toggleCartReview(){
+  const count=MENU.reduce((s,p)=>s+qty[p.id],0);
+  if(count===0) return;
+  openCartReview();
+}
+
+function openCartReview(){
+  updateCartReviewBody();
+  document.getElementById('cart-overlay').classList.add('open');
+  document.getElementById('cart-review-sheet').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function chgFromCart(id, d){
+  chg(id, d);
+  // If item removed completely, refresh the whole body
+  updateCartReviewBody();
+  // Update the total display
+  const totalEl=document.getElementById('cart-review-total');
+  if(totalEl) totalEl.textContent='L '+calcTotal().toFixed(0);
+  // Update checkout button state
+  const checkoutBtn=document.getElementById('cart-review-checkout');
+  const total=calcTotal();
+  const belowMin=total<MIN_ORDER;
+  if(checkoutBtn){
+    checkoutBtn.style.opacity=belowMin?'0.4':'1';
+    checkoutBtn.style.pointerEvents=belowMin?'none':'auto';
+    checkoutBtn.textContent=belowMin?'Agrega L '+(MIN_ORDER-total).toFixed(0)+' más →':'Ir al checkout →';
+  }
+}
+
+function closeCartReview(){
+  document.getElementById('cart-overlay').classList.remove('open');
+  document.getElementById('cart-review-sheet').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function updateCartReviewBody(){
+  const body=document.getElementById('cart-review-body');
+  const totalEl=document.getElementById('cart-review-total');
+  const checkoutBtn=document.getElementById('cart-review-checkout');
+  if(!body) return;
+  const items=MENU.filter(p=>qty[p.id]>0);
+  const total=calcTotal();
+  const belowMin=total<MIN_ORDER;
+  if(totalEl) totalEl.textContent='L '+total.toFixed(0);
+  if(checkoutBtn){
+    checkoutBtn.style.opacity=belowMin?'0.4':'1';
+    checkoutBtn.style.pointerEvents=belowMin?'none':'auto';
+    checkoutBtn.textContent=belowMin?'Agrega L '+(MIN_ORDER-total).toFixed(0)+' más para continuar →':'Ir al checkout →';
+  }
+  if(!items.length){
+    body.innerHTML='<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Agrega pizzas para ver tu pedido aquí.</div>';
+    return;
+  }
+  body.innerHTML=items.map(p=>{
+    const instances=pizzaExtras[p.id]||{};
+    // Build per-pizza extras summary
+    const perPizzaLines=Array.from({length:qty[p.id]},(_,i)=>{
+      const inst=instances[i]||{};
+      const names=Object.entries(inst).filter(([,q])=>q>0)
+        .map(([eid])=>{ const ex=EXTRAS.find(e=>e.id===eid); return ex?ex.name:null; }).filter(Boolean);
+      return names.length?(qty[p.id]>1?'Pizza '+(i+1)+': ':'')+names.join(', '):null;
+    }).filter(Boolean);
+    const extrasTotal=Object.entries(instances).reduce((s,[,inst])=>{
+      if(typeof inst!=='object') return s;
+      return s+Object.entries(inst).reduce((ss,[eid,q])=>{
+        const ex=EXTRAS.find(e=>e.id===eid); return ss+(ex&&q>0?ex.price:0);
+      },0);
+    },0);
+    const subtotal=p.price*qty[p.id]+extrasTotal;
+    const minIcon=qty[p.id]<=1
+      ?'<svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 3h12M5 3V2h4v1M2 3l1 9h6l1-9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      :'−';
+    return '<div class="cart-review-item">'
+      +'<div class="cart-review-item-left">'
+      +'<div class="cart-review-item-name">'+p.name+'</div>'
+      +(perPizzaLines.length?perPizzaLines.map(l=>'<div class="cart-review-item-extras">+ '+l+'</div>').join(''):'')
+      +'</div>'
+      +'<div class="cart-item-right">'
+      +'<div class="cart-qty-controls">'
+      +'<button class="cart-qty-btn" onclick="chgFromCart('+p.id+',-1)">'+minIcon+'</button>'
+      +'<span class="cart-qty-num">'+qty[p.id]+'</span>'
+      +'<button class="cart-qty-btn" onclick="chgFromCart('+p.id+',1)">+</button>'
+      +'</div>'
+      +'<div class="cart-review-item-price">L '+subtotal.toFixed(0)+'</div>'
+      +'</div>'
+      +'</div>';
+  }).join('');
+}
+
+/* ── Stage navigation ── */
+function showStage(id,pct){
+  document.querySelectorAll('.stage').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.getElementById('progress').style.width=pct+'%';
+  window.scrollTo(0,0);
+  // Show cart bar only on step 1
+  const cartBar=document.getElementById('cart-bar');
+  if(cartBar) cartBar.style.display=id==='s1'?'flex':'none';
+}
+
+function goBack(id,pct){ showStage(id,pct); }
+
+/* ── Stage 1 → 2 ── */
+function goToLocation(){
+  const name=document.getElementById('cname').value.trim();
+  const phone=document.getElementById('cphone').value.trim();
+  const has=MENU.some(p=>qty[p.id]>0);
+  const err=document.getElementById('err1');
+  if(!isOpen()){ err.style.display='block'; err.textContent='Lo sentimos, estamos cerrados. '+getNextOpenText(); return; }
+  if(!has){ err.style.display='block'; err.textContent='Seleccioná al menos una pizza.'; return; }
+  if(calcTotal()<MIN_ORDER){ err.style.display='block'; err.textContent='Agrega L '+(MIN_ORDER-calcTotal()).toFixed(0)+' más para alcanzar el mínimo de L '+MIN_ORDER+'.'; return; }
+  const phoneDigits=phone.replace(/[^\d]/g,'');
+  if(!name||phoneDigits.length!==11){ 
+    err.style.display='block'; 
+    err.textContent=!name?'Por favor ingresá tu nombre.':'Número de WhatsApp inválido. Debe ser +504 seguido de 8 dígitos.'; 
+    return; 
+  }
+  err.style.display='none';
+  showStage('s2',50);
+  setTimeout(initMap, 100);
+}
+
+function googleMapsReady(){
+  window._googleMapsLoaded = true;
+}
+
+function initMap(){
+  if(gmap) return;
+  if(!window.google || !window.google.maps){
+    setTimeout(initMap, 300); return;
+  }
+  const center={lat:15.5003,lng:-88.025};
+  gmap=new google.maps.Map(document.getElementById('map'),{
+    center:center,
+    zoom:16,
+    mapTypeId:'roadmap',
+    disableDefaultUI:false,
+    zoomControl:true,
+    mapTypeControl:false,
+    streetViewControl:false,
+    fullscreenControl:false,
+  });
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(
+      pos=>placePin(pos.coords.latitude,pos.coords.longitude,false),
+      ()=>placePin(15.5003,-88.025,true),
+      {timeout:10000,enableHighAccuracy:true,maximumAge:0}
+    );
+  } else { placePin(15.5003,-88.025,true); }
+}
+
+function placePin(la,ln,fallback){
+  lat=la; lng=ln;
+  const pos={lat:la,lng:ln};
+  gmap.setCenter(pos);
+  gmap.setZoom(17);
+  if(gmarker) gmarker.setMap(null);
+  gmarker=new google.maps.Marker({
+    position:pos,
+    map:gmap,
+    draggable:true,
+    animation:google.maps.Animation.DROP,
+    title:'Moveme para ajustar tu ubicación',
+    icon:{
+      url:'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="48" viewBox="0 0 32 48"><circle cx="16" cy="12" r="11" fill="#1E1B18" stroke="#fff" stroke-width="2"/><line x1="16" y1="23" x2="16" y2="46" stroke="#1E1B18" stroke-width="2.5" stroke-linecap="round"/></svg>'),
+      scaledSize: new google.maps.Size(32, 48),
+      anchor: new google.maps.Point(16, 46),
+    }
+  });
+  gmarker.addListener('dragend',e=>{
+    lat=e.latLng.lat();
+    lng=e.latLng.lng();
+    updateLocInfo(lat,lng,false);
+    reverseGeocode(lat,lng);
+  });
+  updateLocInfo(la,ln,fallback);
+  reverseGeocode(la,ln);
+  document.getElementById('btnConfirm').disabled=false;
+  // Also show payment section hint
+  const payEl = document.getElementById('btn-pay');
+  if(payEl) payEl.disabled = !selectedPayment;
+}
+
+function setMapType(type){
+  if(gmap) gmap.setMapTypeId(type);
+  document.getElementById('btn-road').style.background=type==='roadmap'?'#1E1B18':'#fff';
+  document.getElementById('btn-road').style.color=type==='roadmap'?'#fff':'#333';
+  document.getElementById('btn-sat').style.background=type==='satellite'?'#1E1B18':'#fff';
+  document.getElementById('btn-sat').style.color=type==='satellite'?'#fff':'#333';
+}
+
+let fsMap = null;
+let fsMarker = null;
+
+function openFullscreenMap() {
+  const overlay = document.getElementById('map-fullscreen-overlay');
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  // Init fullscreen map if not done yet
+  if (!fsMap) {
+    const center = (lat && lng) ? {lat, lng} : {lat: 15.5003, lng: -88.025};
+    fsMap = new google.maps.Map(document.getElementById('map-fullscreen'), {
+      center, zoom: 17,
+      mapTypeId: 'roadmap',
+      disableDefaultUI: true,
+      zoomControl: true,
+      gestureHandling: 'greedy',
+    });
+    // Center-pin style — update on drag
+    fsMap.addListener('center_changed', () => {
+      const c = fsMap.getCenter();
+      reverseGeocodeFS(c.lat(), c.lng());
+    });
+    fsMap.addListener('dragend', () => {
+      const c = fsMap.getCenter();
+      lat = c.lat(); lng = c.lng();
+      reverseGeocodeFS(lat, lng);
+    });
+  } else {
+    if (lat && lng) fsMap.setCenter({lat, lng});
+  }
+
+  // Show current address
+  if (lat && lng) reverseGeocodeFS(lat, lng);
+}
+
+function closeFullscreenMap() {
+  document.getElementById('map-fullscreen-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+
+  // Update main map and address
+  const c = fsMap.getCenter();
+  lat = c.lat(); lng = c.lng();
+  if (gmap) gmap.setCenter({lat, lng});
+  if (gmarker) gmarker.setPosition({lat, lng});
+  reverseGeocode(lat, lng);
+  updateLocInfo(lat, lng, false);
+  document.getElementById('btnConfirm') && (document.getElementById('btnConfirm').disabled = false);
+
+  // Hide tap hint after first use
+  const hint = document.getElementById('map-tap-hint');
+  if (hint) hint.style.display = 'none';
+
+  // Show confirmed location on small map
+  const locCard = document.getElementById('locinfo');
+  if (locCard) {
+    locCard.className = 'loc-card confirmed';
+    locCard.innerHTML = '<b>📍 Ubicación confirmada</b><br/>Podés tocar el mapa para ajustar.';
+  }
+
+  // Enable payment button
+  const payBtn = document.getElementById('btn-pay');
+  if (payBtn && selectedPayment) payBtn.disabled = false;
+
+  // Slow smooth scroll to payment section after map closes
+  setTimeout(() => {
+    const paySection = document.querySelector('.pay-options');
+    if (!paySection) return;
+    const targetY = paySection.getBoundingClientRect().top + window.scrollY - 16;
+    const startY = window.scrollY;
+    const distance = targetY - startY;
+    const duration = 900;
+    let startTime = null;
+    function easeInOutQuad(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
+    function step(timestamp) {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      window.scrollTo(0, startY + distance * easeInOutQuad(progress));
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }, 900);
+}
+
+function setFullscreenMapType(type) {
+  if (fsMap) fsMap.setMapTypeId(type);
+  document.getElementById('fs-btn-road').style.background = type === 'roadmap' ? 'var(--charcoal)' : '#fff';
+  document.getElementById('fs-btn-road').style.color = type === 'roadmap' ? '#fff' : '#333';
+  document.getElementById('fs-btn-sat').style.background = type === 'satellite' ? 'var(--charcoal)' : '#fff';
+  document.getElementById('fs-btn-sat').style.color = type === 'satellite' ? '#fff' : '#333';
+}
+
+function reverseGeocodeFS(la, ln) {
+  if (!window.google || !window.google.maps) return;
+  const geocoder = new google.maps.Geocoder();
+  geocoder.geocode({location: {lat: la, lng: ln}}, function(results, status) {
+    const line = document.getElementById('fs-address-line');
+    const sub = document.getElementById('fs-address-sub');
+    if (status === 'OK' && results[0]) {
+      if (line) line.textContent = results[0].formatted_address;
+      if (sub) sub.textContent = 'Arrastrá para ajustar';
+    }
+  });
+}
+
+function reverseGeocode(la,ln){
+  if(!window.google||!window.google.maps) return;
+  const geocoder=new google.maps.Geocoder();
+  geocoder.geocode({location:{lat:la,lng:ln}},function(results,status){
+    const field=document.getElementById('address-detected');
+    if(!field) return;
+    if(status==='OK'&&results[0]){
+      field.value=results[0].formatted_address;
+      field.style.color='var(--charcoal)';
+    } else {
+      field.value='Lat: '+la.toFixed(5)+', Lng: '+ln.toFixed(5);
+    }
+  });
+}
+
+function updateLocInfo(la,ln,fallback){
+  const el=document.getElementById('locinfo');
+  el.className='loc-card'+(fallback?'':' confirmed');
+  el.innerHTML=fallback
+    ?'<b>Ubicación aproximada</b><br/>No pudimos detectar tu GPS. Mové el pin al lugar exacto.'
+    :`<b>📍 Ubicación capturada con GPS</b><br/>Lat: ${la.toFixed(5)}, Lng: ${ln.toFixed(5)}<br/><small style="color:var(--muted)">Mové el pin si necesitás ajustar el punto exacto.</small>`;
+}
+
+/* ── Stage 2 → 3 ── */
+function goToPayment(){
+  showStage('s2',50);
+  document.getElementById('pixelpay-amount').textContent='L '+calcTotal().toFixed(2);
+}
+
+/* ── Payment selection ── */
+function selectPay(type){
+  selectedPayment=type;
+  document.querySelectorAll('.pay-card').forEach(c=>c.classList.remove('selected'));
+  document.getElementById('pay-'+type).classList.add('selected');
+  document.getElementById('pixelpay-panel').style.display=(type==='online')?'block':'none';
+  const btn=document.getElementById('btn-pay');
+  btn.disabled=false;
+  btn.textContent=type==='online'
+    ? '🔒 Pagar con PixelPay →'
+    : type==='cash'
+      ? '✓ Confirmar y enviar pedido'
+      : '✓ Confirmar pedido (pago con tarjeta al entregar)';
+  btn.className='btn-primary'+(type==='online'?' btn-green':'');
+  document.getElementById('err3').style.display='none';
+}
+
+/* ── Process payment ── */
+async function processPayment(){
+  if(!selectedPayment){
+    document.getElementById('err3').style.display='block'; return;
+  }
+  if(orderType==='delivery' && (!lat || !lng)){
+    document.getElementById('err3').style.display='block';
+    document.getElementById('err3').textContent='Por favor confirmá tu ubicación en el mapa.';
+    return;
+  }
+  buildOrder();
+  if(selectedPayment==='online'){
+    processPixelPay(); return;
+  } else {
+    await submitOrder('confirmed');
+  }
+}
+
+function buildOrder(){
+  const items=MENU.filter(p=>qty[p.id]>0);
+  const total=calcTotal();
+  const orderId=genOrderId();
+  const mapsLink=`https://www.google.com/maps?q=${lat},${lng}`;
+  const wazeLink=`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`;
+  currentOrder={
+    order_id: orderId,
+    customer_name: document.getElementById('cname').value.trim(),
+    customer_phone: document.getElementById('cphone').value.trim(),
+    items: items.map(p=>{
+      const instances = pizzaExtras[p.id] || {};
+      const extrasArr = [];
+      Object.entries(instances).forEach(([inst,extras])=>{
+        if(typeof extras !== 'object') return;
+        Object.entries(extras).filter(([,q])=>q>0).forEach(([eid])=>{
+          const ex=EXTRAS.find(e=>e.id===eid);
+          if(ex) extrasArr.push({instance:parseInt(inst),name:ex.name,price:ex.price});
+        });
+      });
+      const extrasTotal = extrasArr.reduce((s,e)=>s+e.price,0);
+      return {name:p.name,qty:qty[p.id],price:p.price,subtotal:p.price*qty[p.id],extras:extrasArr,extrasTotal};
+    }),
+    items_text: items.map(p=>{
+      const extrasForPizza = pizzaExtras[p.id] || {};
+      const instances2 = pizzaExtras[p.id] || {};
+      const perPizzaStrs = Array.from({length:qty[p.id]},(_,i)=>{
+        const inst = instances2[i] || {};
+        const names = Object.entries(inst).filter(([,q])=>q>0)
+          .map(([eid])=>{ const ex=EXTRAS.find(e=>e.id===eid); return ex?ex.name:null; }).filter(Boolean);
+        return names.length ? (qty[p.id]>1?'Pizza '+(i+1)+': ':'')+names.join(', ') : null;
+      }).filter(Boolean);
+      const extrasStr2 = perPizzaStrs.length ? ' ['+perPizzaStrs.join(' | ')+']' : '';
+      return `${qty[p.id]}x ${p.name} (L${p.price})${extrasStr2}`;
+    }).join(' | '),
+    total: total,
+    notes: document.getElementById('notes').value.trim()||'—',
+    lat, lng,
+    maps_link: mapsLink,
+    address_detected: document.getElementById('address-detected')?.value||'',
+    address_details: document.getElementById('address-details')?.value||'',
+    waze_link: wazeLink,
+    payment_method: selectedPayment,
+    order_type: orderType,
+    pickup_time: orderType==='pickup' ? (pickupTimeType==='schedule' && pickupScheduledTime ? pickupScheduledTime : 'standard') : null,
+    payment_status: 'pending',
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/* ── PixelPay inline card processing ──
+   In production: card data is sent to your backend endpoint which
+   calls the PixelPay SDK to process the SaleTransaction.
+   The backend returns success/fail to the form.
+
+   Flow:
+   1. Customer fills card form on YOUR page (no redirect)
+   2. Form sends card data + order to your backend (e.g. Netlify Function)
+   3. Backend calls PixelPay SDK: SaleTransaction
+   4. PixelPay returns success → backend confirms to form
+   5. Form sends confirmed order to Make.com webhook
+   6. Make.com creates Onfleet task → kitchen notified
+
+   Contact PixelPay (info@pixel.hn · San Pedro Sula) to get your
+   API key and endpoint URL, then update the config variables above.
+*/
+function validateCardForm(){
+  let valid=true;
+  const num=document.getElementById('card-number').value.replace(/\s/g,'');
+  const name=document.getElementById('card-name').value.trim();
+  const expiry=document.getElementById('card-expiry').value;
+  const cvv=document.getElementById('card-cvv').value;
+
+  const showErr=(id,show)=>{ document.getElementById(id).style.display=show?'block':'none'; };
+
+  const validNum = num.length>=15 && num.length<=16 && /^[0-9]+$/.test(num);
+  showErr('err-card-number', !validNum); if(!validNum) valid=false;
+
+  const validName = name.length>=3;
+  showErr('err-card-name', !validName); if(!validName) valid=false;
+
+  const expiryMatch = expiry.match(/^(0[1-9]|1[0-2])\/([0-9]{2})$/);
+  showErr('err-card-expiry', !expiryMatch); if(!expiryMatch) valid=false;
+
+  const validCvv = cvv.length>=3 && /^[0-9]+$/.test(cvv);
+  showErr('err-card-cvv', !validCvv); if(!validCvv) valid=false;
+
+  return valid;
+}
+
+async function processPixelPay(){
+  if(!validateCardForm()) return;
+  showStage('s4',90);
+  document.getElementById('sending-msg').textContent='Procesando tu pago con PixelPay…';
+
+  if(PIXELPAY_KEY==='YOUR_PIXELPAY_API_KEY_HERE'){
+    // Demo mode: simulate successful payment after 2s
+    await new Promise(r=>setTimeout(r,2000));
+    currentOrder.payment_status='confirmed';
+    currentOrder.payment_provider='PixelPay';
+    await submitOrder('confirmed');
+    return;
+  }
+
+  // Production: send to your backend which calls PixelPay SDK
+  try {
+    const num=document.getElementById('card-number').value.replace(/\s/g,'');
+    const [expMM,expYY]=document.getElementById('card-expiry').value.split('/');
+    const payload={
+      order: currentOrder,
+      card: {
+        number: num,
+        holder: document.getElementById('card-name').value.trim().toUpperCase(),
+        expiry_month: expMM,
+        expiry_year: '20'+expYY,
+        cvv: document.getElementById('card-cvv').value,
+      },
+      pixelpay_key: PIXELPAY_KEY,
+      pixelpay_endpoint: PIXELPAY_ENDPOINT,
+    };
+    const res=await fetch('/api/pixelpay-charge', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload),
+    });
+    const data=await res.json();
+    if(data.success){
+      currentOrder.payment_status='confirmed';
+      currentOrder.payment_provider='PixelPay';
+      currentOrder.payment_reference=data.reference||'';
+      await submitOrder('confirmed');
+    } else {
+      showStage('s2',50);
+      alert('Pago rechazado: '+(data.message||'Por favor revisá los datos de tu tarjeta.'));
+    }
+  } catch(e){
+    showStage('s2',50);
+    alert('Error al procesar el pago. Por favor intentá de nuevo.');
+  }
+}
+
+/* ── Submit to Make.com ── */
+let orderSubmitting = false;
+
+async function submitOrder(paymentStatus){
+  if(orderSubmitting) return;
+  orderSubmitting = true;
+  showStage('s4',90);
+  document.getElementById('sending-msg').textContent=
+    paymentStatus==='confirmed'&&selectedPayment==='online'
+      ? '✅ Pago PixelPay confirmado. Enviando a cocina…'
+      : 'Enviando tu pedido…';
+
+  currentOrder.payment_status=paymentStatus;
+
+  try {
+    if(WEBHOOK_URL!=='YOUR_MAKE_COM_WEBHOOK_URL_HERE'){
+      await fetch(WEBHOOK_URL,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(currentOrder),
+        mode:'no-cors',
+      });
+    } else {
+      await new Promise(r=>setTimeout(r,1500));
+    }
+  } catch(e){ /* no-cors, expected */ }
+
+  orderSubmitting = false;
+  showSuccess();
+}
+
+function showSuccess(){
+  showStage('s5',100);
+  const o=currentOrder;
+  const paymentLabels={
+    cash:'💵 Efectivo al entregar',
+    card_delivery:'💳 Tarjeta al entregar (terminal POS)',
+    online:'🔒 Pagado en línea · PixelPay',
+  };
+
+  document.getElementById('order-id-display').textContent='Orden # '+o.order_id;
+  document.getElementById('success-sub').innerHTML=
+    o.payment_method==='online'&&o.payment_status==='confirmed'
+      ? '✅ Pago PixelPay confirmado. Tu pedido ya está en cocina. Llegamos en ~30 min.'
+      : 'Te llegará una confirmación por WhatsApp. Llegamos en aproximadamente <strong>30 minutos</strong>.';
+
+  document.getElementById('receipt-items').innerHTML=
+    o.items.map(i=>`
+      <div class="receipt-row">
+        <span class="receipt-label">${i.qty}× ${i.name}</span>
+        <span>L ${i.subtotal.toFixed(2)}</span>
+      </div>`).join('')+
+    (o.notes!=='—'?`<div class="receipt-row"><span class="receipt-label">Nota</span><span style="text-align:right;max-width:55%">${o.notes}</span></div>`:'')+
+    `<div class="receipt-row" style="font-weight:700"><span>Total</span><span>L ${o.total.toFixed(2)}</span></div>`;
+
+  document.getElementById('receipt-payment').innerHTML=`
+    <div class="receipt-row">
+      <span class="receipt-label">Pago</span>
+      <span>${paymentLabels[o.payment_method]}</span>
+    </div>
+    <div class="receipt-row">
+      <span class="receipt-label">Estado</span>
+      <span>${o.payment_method==='online'&&o.payment_status==='confirmed'
+        ?'<span class="pay-confirmed">✓ Confirmado</span>'
+        :'<span class="pay-pending">Se cobra al entregar</span>'}</span>
+    </div>
+    <div class="receipt-row">
+      <span class="receipt-label">Ubicación</span>
+      <span>
+        <a href="${o.maps_link}" target="_blank" style="color:var(--red);font-weight:600;text-decoration:none">Maps</a>
+        &nbsp;·&nbsp;
+        <a href="${o.waze_link}" target="_blank" style="color:var(--red);font-weight:600;text-decoration:none">Waze</a>
+      </span>
+    </div>
+    <div class="receipt-row">
+      <span class="receipt-label">WhatsApp</span>
+      <span>${o.customer_phone}</span>
+    </div>`;
+}
+
+/* ── Extras sheet ── */
+let currentExtrasPizzaId = null;
+
+let currentExtrasInstance = 0;
+
+function openExtrasSheet(pizzaId) {
+  currentExtrasPizzaId = pizzaId;
+  const pizza = MENU.find(p => p.id === pizzaId);
+  const pizzaQty = qty[pizzaId];
+  document.getElementById('extras-pizza-name').textContent = pizza ? pizza.name : 'Extras';
+
+  // Render all instances in one sheet
+  const cats = [...new Set(EXTRAS.map(e => e.cat))];
+  const instances = Array.from({length: pizzaQty}, (_, i) => i);
+
+  document.getElementById('extras-body').innerHTML = instances.map(instance => {
+    const instanceHeader = pizzaQty > 1
+      ? `<div class="extras-instance-header">Pizza ${instance + 1}</div>`
+      : '';
+    const extrasHtml = cats.map(cat => {
+      const items = EXTRAS.filter(e => e.cat === cat);
+      return `<div class="extras-cat-label">${cat}</div>`
+        + items.map(e => {
+          const instExtras = (pizzaExtras[pizzaId] && pizzaExtras[pizzaId][instance]) || {};
+          const q = instExtras[e.id] || 0;
+          return `<div class="extras-row" onclick="toggleExtra('${e.id}',${pizzaId},${instance})" style="cursor:pointer">
+            <div class="extras-row-info">
+              <span class="extras-row-name">${e.name}</span>
+              <span class="extras-row-price">+L ${e.price}</span>
+            </div>
+            <div class="extras-toggle ${q > 0 ? 'selected' : ''}" id="eqty-${pizzaId}-${instance}-${e.id}">✓</div>
+          </div>`;
+        }).join('');
+    }).join('');
+    return instanceHeader + extrasHtml;
+  }).join('<div class="extras-instance-divider"></div>');
+
+  updateExtrasSheetTotal();
+  document.getElementById('extras-overlay').classList.add('open');
+  document.getElementById('extras-sheet').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function openExtras(pizzaId, instance) {
+  currentExtrasPizzaId = pizzaId;
+  currentExtrasInstance = instance || 0;
+  const pizza = MENU.find(p => p.id === pizzaId);
+  const instanceLabel = qty[pizzaId] > 1 ? ' — Pizza ' + (currentExtrasInstance + 1) : '';
+  document.getElementById('extras-pizza-name').textContent = (pizza ? pizza.name : 'Extras') + instanceLabel;
+
+  // Group extras by category
+  const cats = [...new Set(EXTRAS.map(e => e.cat))];
+  document.getElementById('extras-body').innerHTML = cats.map(cat => {
+    const items = EXTRAS.filter(e => e.cat === cat);
+    return `<div class="extras-cat-label">${cat}</div>` +
+      items.map(e => {
+        const inst = pizzaExtras[pizzaId] && pizzaExtras[pizzaId][instance] ? pizzaExtras[pizzaId][instance] : {};
+        const q = inst[e.id] || 0;
+        return `<div class="extras-row" onclick="toggleExtra('${e.id}',${pizzaId},${instance})" style="cursor:pointer">
+          <div class="extras-row-info">
+            <span class="extras-row-name">${e.name}</span>
+            <span class="extras-row-price">+L ${e.price}</span>
+          </div>
+          <div class="extras-toggle ${q>0?'selected':''}" id="eqty-${pizzaId}-${instance}-${e.id}">✓</div>
+        </div>`;
+      }).join('');
+  }).join('');
+
+  updateExtrasSheetTotal();
+  document.getElementById('extras-overlay').classList.add('open');
+  document.getElementById('extras-sheet').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeExtras() {
+  document.getElementById('extras-overlay').classList.remove('open');
+  document.getElementById('extras-sheet').classList.remove('open');
+  document.body.style.overflow = '';
+  if (currentExtrasPizzaId !== null) {
+    refreshExtrasPills(currentExtrasPizzaId);
+  }
+  updateTotal();
+  updateCart();
+  currentExtrasPizzaId = null;
+}
+
+function chgExtra(extraId, pizzaId, d) { toggleExtra(extraId, pizzaId); }
+
+function toggleExtra(extraId, pizzaId, instance) {
+  if (!pizzaExtras[pizzaId]) pizzaExtras[pizzaId] = {};
+  if (!pizzaExtras[pizzaId][instance]) pizzaExtras[pizzaId][instance] = {};
+  const current = pizzaExtras[pizzaId][instance][extraId] || 0;
+  pizzaExtras[pizzaId][instance][extraId] = current > 0 ? 0 : 1;
+  const q = pizzaExtras[pizzaId][instance][extraId];
+  const el = document.getElementById('eqty-' + pizzaId + '-' + instance + '-' + extraId);
+  if (el) el.classList.toggle('selected', q > 0);
+  updateExtrasSheetTotal();
+  // Update pill button to show checkmark if has extras
+  refreshExtrasPills(pizzaId);
+}
+
+function refreshExtrasPills(pizzaId) {
+  const wrap = document.getElementById('extras-pills-' + pizzaId);
+  if (!wrap) return;
+  const hasAnyExtras = pizzaExtras[pizzaId] && Object.values(pizzaExtras[pizzaId]).some(inst =>
+    typeof inst === 'object' && Object.values(inst).some(v => v > 0));
+  let extrasTotal = 0;
+  if (hasAnyExtras) {
+    Object.values(pizzaExtras[pizzaId]).forEach(inst => {
+      if (typeof inst !== 'object') return;
+      Object.entries(inst).forEach(([eid, q]) => {
+        const ex = EXTRAS.find(e => e.id === eid);
+        if (ex && q > 0) extrasTotal += ex.price;
+      });
+    });
+  }
+  wrap.innerHTML = '<button class="extras-pill-btn' + (hasAnyExtras ? ' has-extras' : '') + '" onclick="event.stopPropagation();openExtrasSheet(' + pizzaId + ')">'
+    + (hasAnyExtras ? '✓ Extras · +L ' + extrasTotal : '+ Personalizar extras')
+    + '</button>';
+}
+
+function updateExtrasSheetTotal() {
+  if (currentExtrasPizzaId === null) return;
+  const instances = pizzaExtras[currentExtrasPizzaId] || {};
+  const total = Object.entries(instances).reduce((s, [, inst]) => {
+    if (typeof inst !== 'object') return s;
+    return s + Object.entries(inst).reduce((ss, [eid, q]) => {
+      const ex = EXTRAS.find(e => e.id === eid);
+      return ss + (ex && q > 0 ? ex.price : 0);
+    }, 0);
+  }, 0);
+  document.getElementById('extras-total-val').textContent = total > 0 ? 'L ' + total : 'L 0';
+}
+
+function updateExtrasIndicator(pizzaId) {
+  const ind = document.getElementById('extras-ind-' + pizzaId);
+  if (!ind) return;
+  const instances = pizzaExtras[pizzaId] || {};
+  let allNames = [];
+  Object.entries(instances).forEach(([inst, extras]) => {
+    if(typeof extras !== 'object') return;
+    const names = Object.entries(extras).filter(([,q])=>q>0)
+      .map(([eid]) => { const ex=EXTRAS.find(e=>e.id===eid); return ex?ex.name:''; }).filter(Boolean);
+    if(names.length) allNames.push(...names);
+  });
+  if(allNames.length){
+    ind.textContent = '+ ' + [...new Set(allNames)].join(', ');
+    ind.style.display = 'block';
+  } else {
+    ind.style.display = 'none';
+  }
+}
+
+// calcTotal defined earlier in script
+
+// Override buildOrder to include extras in items_text
+const _origBuildOrder = typeof buildOrder === 'function' ? buildOrder : null;
+
+/* ── Toggle qty controls on badge tap ── */
+function toggleControls(id){
+  const controls=document.getElementById('qty-controls-'+id);
+  const badge=document.getElementById('qty-badge-'+id);
+  if(controls) controls.classList.add('visible');
+  if(badge) badge.style.display='none';
+  registerOutsideClick(id);
+}
+
+function registerOutsideClick(id){
+  // Remove any existing listener first
+  const key='_oc_'+id;
+  if(window[key]) document.removeEventListener('click',window[key]);
+  // Wait a tick so the current click doesn't immediately trigger it
+  setTimeout(()=>{
+    window[key]=function(){
+      const controls=document.getElementById('qty-controls-'+id);
+      const badge=document.getElementById('qty-badge-'+id);
+      const badgeNum=document.getElementById('qty-badge-num-'+id);
+      if(controls) controls.classList.remove('visible');
+      if(qty[id]>0){
+        if(badge){ badge.style.display='flex'; if(badgeNum) badgeNum.textContent=qty[id]; }
+      }
+      document.removeEventListener('click',window[key]);
+      window[key]=null;
+    };
+    document.addEventListener('click',window[key]);
+  },150);
+}
+
+/* ── Order type: delivery vs pickup ── */
+function setOrderType(type) {
+  orderType = type;
+  const isPickup = type === 'pickup';
+
+  // Toggle buttons
+  document.getElementById('btn-delivery').classList.toggle('active', !isPickup);
+  document.getElementById('btn-pickup').classList.toggle('active', isPickup);
+
+  // Show/hide map and address sections
+  const mapSection = document.querySelector('#s2 [style*="position:relative"]');
+  const zoneNotice = document.querySelector('.zone-notice');
+  const locCard = document.getElementById('locinfo');
+  const addressSection = document.querySelector('#s2 .section');
+  const pickupInfo = document.getElementById('pickup-info');
+
+  if (isPickup) {
+    if (mapSection) mapSection.style.display = 'none';
+    if (zoneNotice) zoneNotice.style.display = 'none';
+    if (locCard) locCard.style.display = 'none';
+    if (addressSection) addressSection.closest('div').style.display = 'none';
+    if (pickupInfo) pickupInfo.style.display = 'block';
+    // Init pickup map centered on restaurant
+    setTimeout(() => {
+      if (!pickupMap && window.google) {
+        const pos = {lat: 15.5044, lng: -88.0251};
+        pickupMap = new google.maps.Map(document.getElementById('pickup-map'), {
+          center: pos, zoom: 16,
+          disableDefaultUI: true,
+          gestureHandling: 'none',
+          zoomControl: false,
+        });
+        pickupMarker = new google.maps.Marker({
+          position: pos, map: pickupMap,
+          animation: google.maps.Animation.DROP,
+          icon:{
+            url:'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="48" viewBox="0 0 32 48"><circle cx="16" cy="12" r="11" fill="#1E1B18" stroke="#fff" stroke-width="2"/><line x1="16" y1="23" x2="16" y2="46" stroke="#1E1B18" stroke-width="2.5" stroke-linecap="round"/></svg>'),
+            scaledSize: new google.maps.Size(32, 48),
+            anchor: new google.maps.Point(16, 46),
+          }
+        });
+      }
+      // Update standard time
+      const now = new Date();
+      now.setMinutes(now.getMinutes() + 20);
+      const h = now.getHours().toString().padStart(2,'0');
+      const m = now.getMinutes().toString().padStart(2,'0');
+      document.getElementById('pickup-std-time').textContent = 'Listo ~' + h + ':' + m;
+    }, 300);
+    // Set coordinates to pickup location
+    lat = 15.515;
+    lng = -88.025;
+    // Enable pay button if payment selected
+    if (selectedPayment) document.getElementById('btn-pay').disabled = false;
+    // Scroll to payment
+    setTimeout(() => {
+      const paySection = document.querySelector('.pay-options');
+      if (paySection) paySection.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }, 300);
+  } else {
+    if (mapSection) mapSection.style.display = '';
+    if (zoneNotice) zoneNotice.style.display = '';
+    if (locCard) locCard.style.display = '';
+    if (addressSection) addressSection.closest('div').style.display = '';
+    if (pickupInfo) pickupInfo.style.display = 'none';
+    // Reset btn-pay if no pin placed
+    if (!lat || lat === 15.515) {
+      document.getElementById('btn-pay').disabled = true;
+    }
+  }
+}
+
+/* ── Delivery / Pickup toggle ── */
+function setOrderType(type) {
+  orderType = type;
+  const btnDelivery = document.getElementById('btn-delivery');
+  const btnPickup = document.getElementById('btn-pickup');
+  const mapSection = document.querySelector('[onclick="openFullscreenMap()"]');
+  const zoneNotice = document.querySelector('.zone-notice');
+  const locCard = document.getElementById('locinfo');
+  const addrSection = document.querySelector('#address-detected')?.closest('.section');
+  const pickupInfo = document.getElementById('pickup-info');
+
+  if (type === 'delivery') {
+    btnDelivery.classList.add('active');
+    btnPickup.classList.remove('active');
+    if (mapSection) mapSection.style.display = '';
+    if (zoneNotice) zoneNotice.style.display = '';
+    if (locCard) locCard.style.display = '';
+    if (addrSection) addrSection.style.display = '';
+    if (pickupInfo) pickupInfo.style.display = 'none';
+  } else {
+    btnPickup.classList.add('active');
+    btnDelivery.classList.remove('active');
+    if (mapSection) mapSection.style.display = 'none';
+    if (zoneNotice) zoneNotice.style.display = 'none';
+    if (locCard) locCard.style.display = 'none';
+    if (addrSection) addrSection.style.display = 'none';
+    if (pickupInfo) pickupInfo.style.display = 'block';
+    // Init pickup map centered on restaurant
+    setTimeout(() => {
+      if (!pickupMap && window.google) {
+        const pos = {lat: 15.5044, lng: -88.0251};
+        pickupMap = new google.maps.Map(document.getElementById('pickup-map'), {
+          center: pos, zoom: 16,
+          disableDefaultUI: true,
+          gestureHandling: 'none',
+          zoomControl: false,
+        });
+        pickupMarker = new google.maps.Marker({
+          position: pos, map: pickupMap,
+          animation: google.maps.Animation.DROP,
+          icon:{
+            url:'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="48" viewBox="0 0 32 48"><circle cx="16" cy="12" r="11" fill="#1E1B18" stroke="#fff" stroke-width="2"/><line x1="16" y1="23" x2="16" y2="46" stroke="#1E1B18" stroke-width="2.5" stroke-linecap="round"/></svg>'),
+            scaledSize: new google.maps.Size(32, 48),
+            anchor: new google.maps.Point(16, 46),
+          }
+        });
+      }
+      // Update standard time
+      const now = new Date();
+      now.setMinutes(now.getMinutes() + 20);
+      const h = now.getHours().toString().padStart(2,'0');
+      const m = now.getMinutes().toString().padStart(2,'0');
+      document.getElementById('pickup-std-time').textContent = 'Listo ~' + h + ':' + m;
+    }, 300);
+
+  }
+}
+
+/* ── Pickup time selection ── */
+let selectedScheduleDate = 0;
+let selectedScheduleSlot = null;
+
+function selectPickupTime(type) {
+  pickupTimeType = type;
+  document.getElementById('pickup-std').classList.toggle('active', type === 'standard');
+  document.getElementById('pickup-sched').classList.toggle('active', type === 'schedule');
+  if (type === 'schedule') openScheduleSheet();
+}
+
+function openScheduleSheet() {
+  buildTimeSlots(0);
+  document.getElementById('schedule-overlay').classList.add('open');
+  document.getElementById('schedule-sheet').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function buildTimeSlots(dayIdx) {
+  const now = new Date();
+  const isToday = dayIdx === 0;
+  // Generate 15-min slots from 12:00 to closing
+  const d = new Date(now); d.setDate(d.getDate() + dayIdx);
+  const dayOfWeek = d.getDay();
+  const closeMin = (dayOfWeek >= 4) ? 20*60+45 : 19*60+45; // Thu-Sat close later
+  const slots = [];
+  let start = 12 * 60; // 12:00 PM
+  while (start + 20 <= closeMin) {
+    if (!isToday || (start > (now.getHours()*60 + now.getMinutes() + 20))) {
+      const h1 = Math.floor(start/60), m1 = start%60;
+      const end = start + 20;
+      const h2 = Math.floor(end/60), m2 = end%60;
+      const fmt = (h,m) => `${h>12?h-12:h}:${m.toString().padStart(2,'0')} ${h>=12?'PM':'AM'}`;
+      slots.push({label: `${fmt(h1,m1)}–${fmt(h2,m2)}`, value: `${h1.toString().padStart(2,'0')}:${m1.toString().padStart(2,'0')}`});
+    }
+    start += 15;
+  }
+  document.getElementById('schedule-slots').innerHTML = slots.map(s =>
+    `<div class="schedule-slot" onclick="selectSlot('${s.value}','${s.label}')">
+      <span class="schedule-slot-time">${s.label}</span>
+      <div class="schedule-slot-radio${selectedScheduleSlot===s.value?' selected':''}" id="slot-${s.value.replace(':','-')}"></div>
+    </div>`
+  ).join('') || '<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">No hay horarios disponibles para este día.</div>';
+}
+
+function selectSlot(val, label) {
+  selectedScheduleSlot = val;
+  document.querySelectorAll('.schedule-slot-radio').forEach(r => r.classList.remove('selected'));
+  const el = document.getElementById('slot-'+val.replace(':','-'));
+  if (el) el.classList.add('selected');
+  pickupScheduledTime = label;
+}
+
+function confirmSchedule() {
+  if (!selectedScheduleSlot) {
+    alert('Por favor seleccioná un horario.');
+    return;
+  }
+  closeScheduleSheet();
+  // Update the schedule button to show selected time
+  document.querySelector('#pickup-sched .pickup-time-sub').textContent = pickupScheduledTime || 'Seleccionado';
+}
+
+function closeScheduleSheet() {
+  document.getElementById('schedule-overlay').classList.remove('open');
+  document.getElementById('schedule-sheet').classList.remove('open');
+  document.body.style.overflow = '';
+  // If no slot selected, revert to standard
+  if (!selectedScheduleSlot) {
+    pickupTimeType = 'standard';
+    document.getElementById('pickup-std').classList.add('active');
+    document.getElementById('pickup-sched').classList.remove('active');
+  }
+}
+
+function updateScheduledTime(val) {
+  pickupScheduledTime = val;
+}
+
+/* ── Scroll to details ── */
+function scrollToDetails(){
+  const has=MENU.some(p=>qty[p.id]>0);
+  if(!has){ return; }
+  const detailsSection=document.querySelector('.details-section');
+  if(!detailsSection) return;
+  detailsSection.scrollIntoView({behavior:'smooth',block:'start'});
+  // Highlight the name field
+  setTimeout(()=>{
+    const nameField=document.getElementById('cname');
+    if(nameField){
+      nameField.style.transition='border-color .3s';
+      nameField.style.borderColor='var(--charcoal)';
+      nameField.focus();
+      setTimeout(()=>{ nameField.style.borderColor=''; },2000);
+    }
+  },500);
+}
+
+/* ── Card number input formatting ── */
+function initCardFormatting(){
+  // ── Phone number: +504 XXXX-XXXX (max 14 chars incl. formatting) ──
+  const phoneInput=document.getElementById('cphone');
+  if(phoneInput){
+    phoneInput.addEventListener('input',function(e){
+      // Strip everything except digits and leading +
+      let raw=this.value.replace(/[^\d]/g,'');
+      // Always prefix with 504 if user hasn't typed it
+      if(!raw.startsWith('504')) raw='504'+raw.replace(/^504/,'');
+      // Limit to 504 + 8 digits = 11 digits total
+      raw=raw.substring(0,11);
+      // Format: +504 XXXX-XXXX
+      let formatted='+'+raw;
+      if(raw.length>3) formatted='+'+raw.substring(0,3)+' '+raw.substring(3);
+      if(raw.length>7) formatted='+'+raw.substring(0,3)+' '+raw.substring(3,7)+'-'+raw.substring(7);
+      this.value=formatted;
+    });
+    // On focus, pre-fill +504 if empty
+    phoneInput.addEventListener('focus',function(){
+      if(!this.value) this.value='+504 ';
+    });
+  }
+
+  // ── Card number ──
+  const numInput=document.getElementById('card-number');
+  if(numInput){
+    numInput.addEventListener('input',function(){
+      let v=this.value.replace(/\D/g,'').substring(0,16);
+      this.value=v.replace(/(\d{4})(?=\d)/g,'$1 ');
+    });
+  }
+
+  // ── Card expiry ──
+  const expInput=document.getElementById('card-expiry');
+  if(expInput){
+    expInput.addEventListener('input',function(){
+      let v=this.value.replace(/\D/g,'').substring(0,4);
+      if(v.length>=3) v=v.substring(0,2)+'/'+v.substring(2);
+      this.value=v;
+    });
+  }
+}
+
+// Check delivery hours
+if (!isOpen()) {
+  document.getElementById('closed-msg').textContent = getNextOpenText();
+  document.getElementById('closed-overlay').style.display = 'flex';
+}
+
+// Secret tap: tap the pizza icon 5 times to bypass closed overlay (for testing)
+let tapCount = 0;
+let tapTimer = null;
+document.getElementById('closed-overlay').addEventListener('click', function(e){
+  tapCount++;
+  clearTimeout(tapTimer);
+  if(tapCount >= 5){
+    document.getElementById('closed-overlay').style.display = 'none';
+    tapCount = 0;
+  }
+  tapTimer = setTimeout(()=>{ tapCount = 0; }, 2000);
+});
+
+renderMenu();
+updateTotal();
+updateCart();
+initCardFormatting();
+
+
+</script>
+<!-- Fullscreen map overlay -->
+<div class="map-fullscreen-overlay" id="map-fullscreen-overlay">
+  <div style="position:relative;flex:1;display:flex;flex-direction:column">
+    <div id="map-fullscreen" style="flex:1"></div>
+    <div style="position:absolute;top:12px;right:12px;z-index:10;display:flex;gap:6px">
+      <button onclick="setFullscreenMapType('roadmap')" id="fs-btn-road" style="padding:6px 10px;font-size:11px;font-family:var(--sans);font-weight:600;border:none;border-radius:6px;background:var(--charcoal);color:#fff;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.2)">Mapa</button>
+      <button onclick="setFullscreenMapType('satellite')" id="fs-btn-sat" style="padding:6px 10px;font-size:11px;font-family:var(--sans);font-weight:600;border:none;border-radius:6px;background:#fff;color:#333;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.2)">Satélite</button>
+    </div>
+    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);pointer-events:none;z-index:5">
+      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="54" viewBox="0 0 32 48" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))">
+        <circle cx="16" cy="12" r="11" fill="#1E1B18" stroke="#fff" stroke-width="2"/>
+        <line x1="16" y1="23" x2="16" y2="46" stroke="#1E1B18" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+  </div>
+  <div class="map-fullscreen-bar">
+    <div class="map-fullscreen-address">
+      <b id="fs-address-line">Moviendo el pin…</b>
+      <span id="fs-address-sub">Arrastrá el mapa para ajustar</span>
+    </div>
+    <button class="map-fullscreen-done" onclick="closeFullscreenMap()">Listo ✓</button>
+  </div>
+</div>
+
+<!-- Schedule pickup sheet -->
+<div class="schedule-overlay" id="schedule-overlay" onclick="closeScheduleSheet()"></div>
+<div class="schedule-sheet" id="schedule-sheet">
+  <div class="schedule-header">
+    <button class="schedule-close" onclick="closeScheduleSheet()">✕</button>
+    <div class="schedule-title">Programar recogida</div>
+  </div>
+  <div class="schedule-body">
+    <!-- Time slots -->
+    <div class="schedule-slots" id="schedule-slots"></div>
+  </div>
+  <div class="schedule-footer">
+    <button class="btn-primary" onclick="confirmSchedule()">Programar</button>
+    <button class="btn-secondary" style="margin-top:8px" onclick="closeScheduleSheet()">Cancelar</button>
+  </div>
+</div>
+
+<!-- Cart review sheet -->
+<div class="cart-overlay" id="cart-overlay" onclick="closeCartReview()"></div>
+<div class="cart-review-sheet" id="cart-review-sheet">
+  <div class="cart-review-header">
+    <span class="cart-review-title">Tu pedido</span>
+    <button class="cart-review-close" onclick="closeCartReview()">✕</button>
+  </div>
+  <div class="cart-review-body" id="cart-review-body">
+    <div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Agrega pizzas para ver tu pedido aquí.</div>
+  </div>
+  <div class="cart-review-footer">
+    <div class="cart-review-total-row">
+      <span style="font-family:var(--sans);font-size:13px;color:var(--muted)">Total</span>
+      <span class="cart-review-total" id="cart-review-total">L 0.00</span>
+    </div>
+    <button class="btn-primary" style="margin-top:10px" id="cart-review-checkout" onclick="closeCartReview();scrollToDetails()">Ir al checkout →</button>
+  </div>
+</div>
+
+</body>
+</html>
