@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Kitchen - version: 2.0.0 -->
+<!-- X Pizza Kitchen - version: 2.1.0 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8"/>
@@ -389,6 +389,17 @@
     font-weight: 600;
     padding: 2px 0 2px 24px;
     line-height: 1.5;
+  }
+  .card-item-extra-tag {
+    font-size: 11px;
+    color: #92400E;
+    background: rgba(251, 191, 36, 0.18);
+    padding: 1px 7px;
+    border-radius: 4px;
+    margin-left: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    vertical-align: middle;
   }
 
   .card-item {
@@ -895,7 +906,7 @@ function shortStatus(s) {
 
 <script type="module">
 // X Pizza Kitchen Display
-// version: 2.0.0
+// version: 2.1.0
 //
 // Major rewrite from the original Sheets-polling design:
 //   - Reads orders directly from Firebase Realtime Database (live subscription)
@@ -1006,24 +1017,51 @@ function renderItems(itemsText) {
     const m = pizza.match(/^(\d+)x\s+(.+?)(?:\s+\(L[\d.]+\))?(?:\s+\[(.+)\])?$/);
     if (!m) return `<div class="card-item"><span>${pizza}</span></div>`;
 
-    const qty = m[1];
+    const qty = parseInt(m[1], 10);
     const name = m[2];
     const extrasRaw = m[3];
 
     let extrasHtml = '';
     if (extrasRaw) {
+      // CASE A: extras have "Pizza N:" prefix (means qty was >1 in the form
+      // OR this is per-instance data). Need careful handling so cook can tell
+      // which specific pizza gets which extras.
       if (extrasRaw.includes('Pizza ')) {
         const perPizza = extrasRaw.split(/\s*\|\s*(?=Pizza \d)/);
-        if (perPizza.length === 1) {
-          // Only one instance — strip "Pizza 1: " prefix
+
+        // Only safe to strip "Pizza N:" prefix when there's a single pizza
+        // total (qty===1). When qty>1, the prefix carries critical info
+        // about WHICH instance gets the extras — even if only one entry
+        // exists in the bracket. Stripping it would let the cook think
+        // ALL pizzas of this type get the extra, when really only one does.
+        if (qty === 1) {
+          // Single pizza, single extras line — strip the redundant prefix
           const stripped = perPizza[0].replace(/^Pizza \d+:\s*/, '');
           extrasHtml = `<div class="card-item-extra">↳ ${stripped.trim()}</div>`;
         } else {
-          extrasHtml = perPizza.map(p =>
-            `<div class="card-item-extra">↳ ${p.trim()}</div>`
-          ).join('');
+          // Multiple pizzas. Detect if every pizza has the same extras —
+          // in that case we collapse to a single "all" line instead of
+          // showing identical lines per pizza, which is noisy and hides
+          // the fact that they're all the same.
+          const allHaveExtras = perPizza.length === qty;
+          const allSame = allHaveExtras && perPizza.every((p, i, arr) => {
+            const stripA = p.replace(/^Pizza \d+:\s*/, '').trim();
+            const stripB = arr[0].replace(/^Pizza \d+:\s*/, '').trim();
+            return stripA === stripB;
+          });
+
+          if (allSame) {
+            const sharedExtras = perPizza[0].replace(/^Pizza \d+:\s*/, '').trim();
+            extrasHtml = `<div class="card-item-extra">↳ ${sharedExtras} <span class="card-item-extra-tag">(todas)</span></div>`;
+          } else {
+            extrasHtml = perPizza.map(p =>
+              `<div class="card-item-extra">↳ ${p.trim()}</div>`
+            ).join('');
+          }
         }
       } else {
+        // CASE B: no "Pizza N:" prefix at all — this is the qty=1 case where
+        // the order form didn't bother adding the prefix. Just show the extras.
         extrasHtml = `<div class="card-item-extra">↳ ${extrasRaw}</div>`;
       }
     }
