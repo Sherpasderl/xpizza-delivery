@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Dashboard - version: 0.3.0 -->
+<!-- X Pizza Dashboard - version: 0.3.1 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -7,7 +7,7 @@
 <title>X Pizza · Estadísticas</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" type="image/svg+xml" href="./icon.svg">
-<meta name="theme-color" content="#0d0d10">
+<meta name="theme-color" content="#13121a">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,19 +15,19 @@
 
 <style>
 :root {
-  /* Slightly warmer than pure black — less aggressive,
-     gives charts a surface to breathe against */
-  --bg: #0d0d10;
-  --surface: #16161a;
-  --surface-2: #1c1c22;
-  --surface-3: #252530;
-  --border: #26262d;
-  --border-soft: #1d1d23;
-  --divider: #1f1f25;
+  /* Lifted from pure black — gives the eye breathing room without
+     losing the dark-mode aesthetic. Slight warmth via the .12 blue value. */
+  --bg: #13121a;
+  --surface: #1d1c25;
+  --surface-2: #25242e;
+  --surface-3: #302f3a;
+  --border: #2e2d38;
+  --border-soft: #25242e;
+  --divider: #28272f;
   --text: #f5f5f7;
-  --text-soft: #b4b4bc;
-  --text-dim: #6e6e78;
-  --text-faint: #4a4a52;
+  --text-soft: #b8b8c2;
+  --text-dim: #82828c;
+  --text-faint: #56565e;
 
   --accent: #dc2626;
   --accent-glow: rgba(220, 38, 38, 0.55);
@@ -110,6 +110,9 @@ a { color: inherit; }
 .zone {
   background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
   padding: 28px 32px; margin-bottom: 24px;
+  /* Subtle top-edge highlight gives the zone a lifted feel against the bg
+     without needing a full gradient — same trick used by Linear, Stripe, Vercel */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 .zone-header {
   display: flex; align-items: baseline; gap: 12px;
@@ -187,12 +190,13 @@ a { color: inherit; }
 .driver-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
 .driver-row + .driver-row { border-top: 1px solid var(--divider); }
 .driver-dot {
-  width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-faint); flex-shrink: 0;
 }
-.driver-dot.available { background: var(--success); }
-.driver-dot.assigned, .driver-dot.at_restaurant { background: var(--warn); }
-.driver-dot.en_route_delivery, .driver-dot.returning { background: var(--info); }
-.driver-dot.off_shift { background: var(--text-faint); }
+.driver-dot.green { background: var(--success); box-shadow: 0 0 6px rgba(16, 185, 129, 0.5); }
+.driver-dot.amber { background: var(--warn); box-shadow: 0 0 6px rgba(245, 158, 11, 0.5); }
+.driver-dot.blue  { background: var(--info); box-shadow: 0 0 6px rgba(59, 130, 246, 0.5); }
+.driver-dot.gray  { background: var(--text-faint); }
 .driver-name {
   font-weight: 500; font-size: 13px; flex: 1;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -527,7 +531,7 @@ const firebaseConfig = {
 };
 XPD.initDelivery(firebaseConfig);
 
-const SYSTEM_VERSION = '0.3.0';
+const SYSTEM_VERSION = '0.3.1';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION}`;
 });
@@ -890,6 +894,13 @@ function renderHourlyAreaChart(todayOrders) {
 
 // ============================================================
 // DRIVERS
+// Status dot logic matches the dispatcher exactly:
+//   green  = on duty + GPS fresh + available/at_restaurant
+//   blue   = on duty + actively delivering (en_route_delivery)
+//   amber  = on duty + (returning/assigned) OR (on duty + GPS stale)
+//   gray   = off duty or unreachable (no push subscription)
+// This is more accurate than just keying off d.status — a driver who
+// hasn't pinged in 30 minutes is "stale", not really "available".
 // ============================================================
 const STATUS_ES = {
   available: 'Disponible',
@@ -901,6 +912,28 @@ const STATUS_ES = {
   on_break: 'En pausa'
 };
 
+function driverDotClass(d) {
+  if (!d) return 'gray';
+  const stale = XPD.isStalePing(d.last_ping);
+  const onDuty = d.active && d.status !== 'off_shift';
+  const reachable = onDuty && !!d.push_subscription;
+  if (!reachable) return 'gray';
+  if (stale) return 'amber';
+  if (d.status === 'available' || d.status === 'at_restaurant') return 'green';
+  if (d.status === 'en_route_delivery') return 'blue';
+  if (d.status === 'returning' || d.status === 'assigned') return 'amber';
+  return 'gray';
+}
+
+function driverStatusText(d) {
+  if (!d) return '—';
+  const stale = XPD.isStalePing(d.last_ping);
+  const baseLabel = STATUS_ES[d.status] || d.status || '—';
+  if (!d.active) return 'Fuera de turno';
+  if (stale) return `${baseLabel} · inactivo`;
+  return baseLabel;
+}
+
 function renderDrivers() {
   const drivers = Object.entries(allDrivers).map(([uid, d]) => ({ uid, ...d }));
   const list = $('driver-list');
@@ -909,19 +942,19 @@ function renderDrivers() {
     return;
   }
   drivers.sort((a, b) => {
-    const aOff = a.status === 'off_shift';
-    const bOff = b.status === 'off_shift';
+    const aOff = a.status === 'off_shift' || !a.active;
+    const bOff = b.status === 'off_shift' || !b.active;
     if (aOff !== bOff) return aOff ? 1 : -1;
     return (a.name || '').localeCompare(b.name || '');
   });
   list.innerHTML = drivers.map(d => {
-    const status = d.status || 'off_shift';
-    const label = STATUS_ES[status] || status;
+    const dotClass = driverDotClass(d);
+    const statusText = driverStatusText(d);
     return `
       <div class="driver-row">
-        <span class="driver-dot ${status}"></span>
+        <span class="driver-dot ${dotClass}"></span>
         <span class="driver-name">${escapeHtml(d.name || '—')}</span>
-        <span class="driver-status">${label}</span>
+        <span class="driver-status">${escapeHtml(statusText)}</span>
       </div>`;
   }).join('');
 }
@@ -1091,10 +1124,10 @@ function renderHeatmap(periodOrders) {
 
 function heatColor(intensity) {
   if (intensity === 0) return 'var(--surface-2)';
-  // Interpolate from #1c1c22 (surface-2) to #dc2626 (accent)
-  const r = Math.round(0x1c + (0xdc - 0x1c) * intensity);
-  const g = Math.round(0x1c + (0x26 - 0x1c) * intensity);
-  const b = Math.round(0x22 + (0x26 - 0x22) * intensity);
+  // Interpolate from #25242e (surface-2) to #dc2626 (accent)
+  const r = Math.round(0x25 + (0xdc - 0x25) * intensity);
+  const g = Math.round(0x24 + (0x26 - 0x24) * intensity);
+  const b = Math.round(0x2e + (0x26 - 0x2e) * intensity);
   return `rgb(${r}, ${g}, ${b})`;
 }
 
@@ -1124,7 +1157,7 @@ function renderLeaderboard(periodOrders) {
   const rows = Object.values(byDriver).map(d => ({
     driverId: d.driverId,
     name: allDrivers[d.driverId]?.name || (d.driverId === 'unknown' ? 'Sin asignar' : d.driverId.slice(0, 8)),
-    status: allDrivers[d.driverId]?.status || 'off_shift',
+    dotClass: allDrivers[d.driverId] ? driverDotClass(allDrivers[d.driverId]) : 'gray',
     count: d.count,
     sharePct: Math.round((d.count / totalCount) * 100),
     avgMin: d.deliveryDurations.length > 0 ? formatMinutes(avg(d.deliveryDurations)) : null
@@ -1136,7 +1169,7 @@ function renderLeaderboard(periodOrders) {
     <tr>
       <td>
         <div class="driver-cell">
-          <span class="driver-dot ${r.status}"></span>
+          <span class="driver-dot ${r.dotClass}"></span>
           <span>${escapeHtml(r.name)}</span>
         </div>
       </td>
