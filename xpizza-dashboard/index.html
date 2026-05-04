@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Dashboard - version: 0.1.0 -->
+<!-- X Pizza Dashboard - version: 0.3.0 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -7,527 +7,299 @@
 <title>X Pizza · Estadísticas</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" type="image/svg+xml" href="./icon.svg">
-<meta name="theme-color" content="#0a0a0a">
+<meta name="theme-color" content="#0d0d10">
 
-<!-- Plus Jakarta Sans (UI) + IBM Plex Mono (numbers/IDs) -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 
 <style>
-/* =========================================================
-   DESIGN TOKENS
-   Mirrors the dispatcher's dark palette so the dashboard
-   feels like part of the same system.
-   ========================================================= */
 :root {
-  --bg: #0a0a0a;
-  --surface: #131313;
-  --surface-2: #1a1a1a;
-  --surface-3: #232323;
-  --border: #2a2a2a;
-  --border-soft: #1f1f1f;
-  --text: #f4f4f4;
-  --text-soft: #b8b8b8;
-  --text-dim: #6a6a6a;
+  /* Slightly warmer than pure black — less aggressive,
+     gives charts a surface to breathe against */
+  --bg: #0d0d10;
+  --surface: #16161a;
+  --surface-2: #1c1c22;
+  --surface-3: #252530;
+  --border: #26262d;
+  --border-soft: #1d1d23;
+  --divider: #1f1f25;
+  --text: #f5f5f7;
+  --text-soft: #b4b4bc;
+  --text-dim: #6e6e78;
+  --text-faint: #4a4a52;
 
-  --accent: #dc2626;          /* primary brand red */
-  --accent-soft: #2a1010;
-  --success: #059669;
-  --success-soft: #042a1f;
+  --accent: #dc2626;
+  --accent-glow: rgba(220, 38, 38, 0.55);
+  --success: #10b981;
   --warn: #f59e0b;
-  --warn-soft: #2a1f08;
   --info: #3b82f6;
-  --info-soft: #0a1a2a;
-
-  --radius: 8px;
-  --radius-lg: 12px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--bg); color: var(--text);
   font-family: 'Plus Jakarta Sans', -apple-system, system-ui, sans-serif;
-  font-size: 14px;
-  line-height: 1.45;
-  -webkit-font-smoothing: antialiased;
+  font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
 }
-
-body {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
+body { min-height: 100vh; display: flex; flex-direction: column; }
 button { font-family: inherit; cursor: pointer; }
-button:disabled { cursor: not-allowed; opacity: 0.5; }
+button:disabled { cursor: not-allowed; opacity: 0.4; }
 a { color: inherit; }
-
 .hidden { display: none !important; }
 
-/* =========================================================
-   FULL-SCREEN STATES (login, loading)
-   ========================================================= */
+/* Full-screen states */
 .full-screen {
-  position: fixed;
-  inset: 0;
-  background: var(--bg);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  padding: 24px;
+  position: fixed; inset: 0; background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 100; padding: 24px;
 }
-.brand-large {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-weight: 700;
-  font-size: 38px;
-  letter-spacing: -0.02em;
-  color: var(--text);
-}
-.brand-large-sub {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-weight: 500;
-  font-size: 16px;
-  color: var(--accent);
-  letter-spacing: 0.01em;
-  margin-top: 2px;
-  margin-bottom: 32px;
-}
+.brand-large { font-weight: 700; font-size: 36px; letter-spacing: -0.02em; }
+.brand-large-sub { font-weight: 500; font-size: 15px; color: var(--accent); margin-top: 2px; margin-bottom: 32px; }
 
 .login-form {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 28px;
-  width: 100%;
-  max-width: 360px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 24px; width: 100%; max-width: 340px;
 }
-.login-form h2 {
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin-bottom: 6px;
-}
-.login-form p {
-  font-size: 13px;
-  color: var(--text-soft);
-  margin-bottom: 20px;
-}
+.login-form h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 4px; }
+.login-form p { font-size: 12px; color: var(--text-soft); margin-bottom: 18px; }
 .login-form input {
-  width: 100%;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 14px;
-  padding: 10px 12px;
-  margin-bottom: 12px;
+  width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-family: inherit; font-size: 14px; padding: 10px 12px; margin-bottom: 10px;
 }
-.login-form input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
+.login-form input:focus { outline: none; border-color: var(--accent); }
 .login-form button.primary {
-  width: 100%;
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: var(--radius);
-  padding: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  margin-top: 8px;
+  width: 100%; background: var(--accent); color: white; border: none; border-radius: 6px;
+  padding: 11px; font-size: 14px; font-weight: 600; margin-top: 6px;
 }
 .login-form button.primary:hover { background: #b91c1c; }
-.login-error {
-  color: var(--accent);
-  font-size: 12px;
-  margin-top: 8px;
-  min-height: 16px;
-}
+.login-error { color: var(--accent); font-size: 12px; margin-top: 8px; min-height: 16px; }
+.loading-text { color: var(--text-soft); font-size: 13px; margin-top: 12px; }
 
-.loading-text {
-  color: var(--text-soft);
-  font-size: 14px;
-  margin-top: 12px;
-}
-
-/* =========================================================
-   TOPBAR
-   ========================================================= */
+/* Topbar */
 .topbar {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 12px 24px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 12px 24px; display: flex; align-items: center; gap: 14px;
 }
-.topbar-brand {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-weight: 700;
-  font-size: 16px;
-  letter-spacing: -0.01em;
-  color: var(--text);
-}
-.topbar-brand .sub {
-  color: var(--accent);
-  font-weight: 500;
-  margin-left: 6px;
-}
+.topbar-brand { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+.topbar-brand .sub { color: var(--accent); font-weight: 500; margin-left: 4px; }
 .topbar-spacer { flex: 1; }
-.topbar-user {
-  font-size: 12px;
-  color: var(--text-soft);
-}
+.topbar-user { font-size: 12px; color: var(--text-soft); }
 .topbar-btn {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-soft);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 12px;
+  background: transparent; border: 1px solid var(--border); color: var(--text-soft);
+  border-radius: 6px; padding: 6px 10px; font-size: 12px;
 }
 .topbar-btn:hover { background: var(--surface-3); color: var(--text); }
 .live-dot {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-soft);
-  font-weight: 500;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text-soft); font-weight: 500;
 }
 .live-dot::before {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--success);
-  box-shadow: 0 0 8px var(--success);
+  content: ''; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--success); box-shadow: 0 0 8px var(--success);
   animation: pulse 2s infinite;
 }
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-.version-tag {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  color: var(--text-dim);
-  letter-spacing: 0.02em;
-}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.version-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-faint); }
 
-/* =========================================================
-   MAIN LAYOUT
-   ========================================================= */
-.main {
-  flex: 1;
-  padding: 24px;
-  max-width: 1400px;
-  margin: 0 auto;
-  width: 100%;
-}
+/* Layout */
+.main { flex: 1; padding: 32px 24px; max-width: 1280px; margin: 0 auto; width: 100%; }
 
+/* Zone */
 .zone {
-  margin-bottom: 40px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 28px 32px; margin-bottom: 24px;
 }
-
 .zone-header {
-  display: flex;
-  align-items: baseline;
-  gap: 16px;
-  margin-bottom: 16px;
+  display: flex; align-items: baseline; gap: 12px;
+  margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--divider);
 }
-.zone-title {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-weight: 600;
-  font-size: 14px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-soft);
-}
-.zone-subtitle {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 12px;
-  color: var(--text-dim);
+.zone-title { font-weight: 600; font-size: 18px; letter-spacing: -0.01em; }
+.zone-subtitle { font-size: 12px; color: var(--text-dim); }
+
+/* Section */
+.section { padding: 22px 0; border-bottom: 1px solid var(--divider); }
+.section:last-child { border-bottom: none; padding-bottom: 4px; }
+.section:first-child { padding-top: 4px; }
+.section-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-dim); margin-bottom: 14px;
 }
 
-/* =========================================================
-   KPI CARDS
-   ========================================================= */
-.kpi-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 16px;
+/* Headline KPIs with sparklines */
+.headline-row { display: flex; gap: 56px; flex-wrap: wrap; align-items: flex-start; }
+.headline-stat { min-width: 0; }
+.headline-value {
+  font-weight: 600; font-size: 48px; letter-spacing: -0.03em; line-height: 1; color: var(--text);
 }
-@media (max-width: 768px) {
-  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+.headline-value.muted { color: var(--text-soft); }
+.headline-value.attention { color: var(--accent); }
+.headline-label {
+  font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-dim); margin-top: 8px;
 }
+.headline-spark {
+  margin-top: 6px; height: 22px; width: 100px;
+}
+.headline-spark svg { width: 100%; height: 100%; display: block; }
 
-.kpi-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 16px 18px;
+.delta {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500;
+  margin-left: 10px; vertical-align: middle; color: var(--text-dim);
 }
-.kpi-card.accent { border-color: rgba(220, 38, 38, 0.4); }
-.kpi-card.success { border-color: rgba(5, 150, 105, 0.3); }
-.kpi-card.warn { border-color: rgba(245, 158, 11, 0.3); }
-.kpi-card.info { border-color: rgba(59, 130, 246, 0.3); }
+.delta.up { color: var(--success); }
+.delta.down { color: var(--accent); }
+.delta.flat { color: var(--text-dim); }
 
-.kpi-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-dim);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  margin-bottom: 4px;
+/* Pipeline strip */
+.pipeline-strip { display: flex; gap: 36px; flex-wrap: wrap; align-items: baseline; }
+.pipe-item { display: flex; align-items: baseline; gap: 10px; }
+.pipe-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  flex-shrink: 0; position: relative; top: -1px;
 }
-.kpi-value {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-weight: 600;
-  font-size: 28px;
-  letter-spacing: -0.02em;
-  color: var(--text);
-  line-height: 1.1;
+.pipe-dot.nuevo { background: var(--accent); }
+.pipe-dot.prep  { background: var(--warn); }
+.pipe-dot.listo { background: var(--success); }
+.pipe-dot.route { background: var(--info); }
+.pipe-name { font-size: 13px; font-weight: 500; color: var(--text-soft); }
+.pipe-count {
+  font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 500;
+  color: var(--text); letter-spacing: -0.02em;
 }
-.kpi-value.mono {
-  font-family: 'IBM Plex Mono', monospace;
-}
-.kpi-suffix {
-  font-size: 13px;
-  color: var(--text-soft);
-  font-weight: 500;
-  margin-left: 4px;
-}
-.kpi-detail {
-  font-size: 11px;
-  color: var(--text-dim);
-  margin-top: 6px;
-}
+.pipe-count.zero { color: var(--text-faint); }
 
-/* =========================================================
-   PANEL CARDS (larger panels with charts/lists)
-   ========================================================= */
-.panel-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 16px;
+/* Times row */
+.times-row { display: flex; gap: 56px; flex-wrap: wrap; align-items: flex-start; }
+.time-stat { min-width: 0; }
+.time-value { font-weight: 600; font-size: 32px; letter-spacing: -0.02em; line-height: 1; }
+.time-suffix { font-size: 14px; color: var(--text-soft); font-weight: 500; margin-left: 4px; }
+.time-label {
+  font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-dim); margin-top: 6px;
 }
-@media (max-width: 900px) {
-  .panel-row { grid-template-columns: 1fr; }
-}
+.time-detail { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
 
-.panel {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 18px 20px;
-}
-.panel-title {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--text);
-  margin-bottom: 14px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.panel-subtitle {
-  font-size: 11px;
-  color: var(--text-dim);
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-/* =========================================================
-   PIPELINE PANEL
-   ========================================================= */
-.pipeline-stages {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-}
-.pipeline-stage {
-  background: var(--surface-2);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius);
-  padding: 14px 12px;
-  text-align: center;
-}
-.pipeline-stage-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  margin-bottom: 6px;
-}
-.pipeline-stage-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 22px;
-  font-weight: 500;
-  color: var(--text);
-  line-height: 1;
-}
-.pipeline-stage.active-nuevo { border-color: rgba(220, 38, 38, 0.4); }
-.pipeline-stage.active-prep { border-color: rgba(245, 158, 11, 0.4); }
-.pipeline-stage.active-listo { border-color: rgba(5, 150, 105, 0.4); }
-.pipeline-stage.active-route { border-color: rgba(59, 130, 246, 0.4); }
-
-/* =========================================================
-   DRIVER STATUS LIST
-   ========================================================= */
-.driver-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.driver-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  background: var(--surface-2);
-  border-radius: var(--radius);
-}
+/* Driver list */
+.driver-list { display: flex; flex-direction: column; }
+.driver-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.driver-row + .driver-row { border-top: 1px solid var(--divider); }
 .driver-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-dim);
-  flex-shrink: 0;
+  width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0;
 }
 .driver-dot.available { background: var(--success); }
 .driver-dot.assigned, .driver-dot.at_restaurant { background: var(--warn); }
 .driver-dot.en_route_delivery, .driver-dot.returning { background: var(--info); }
-.driver-dot.off_shift { background: var(--text-dim); opacity: 0.4; }
+.driver-dot.off_shift { background: var(--text-faint); }
 .driver-name {
-  font-weight: 500;
-  font-size: 13px;
-  color: var(--text);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 500; font-size: 13px; flex: 1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.driver-status-text {
-  font-size: 11px;
-  color: var(--text-soft);
-}
-.driver-list-empty {
-  text-align: center;
-  color: var(--text-dim);
-  font-size: 12px;
-  padding: 18px 0;
-}
+.driver-status { font-size: 12px; color: var(--text-soft); }
+.driver-empty { text-align: center; color: var(--text-dim); font-size: 12px; padding: 16px 0; }
 
-/* =========================================================
-   HOURLY VOLUME CHART (SVG)
-   ========================================================= */
-.chart-container {
-  position: relative;
-  width: 100%;
-  height: 140px;
+/* Hero area chart (hourly volume) */
+.chart-wrap { width: 100%; }
+.chart-wrap svg { width: 100%; height: auto; display: block; }
+.chart-grid-line { stroke: var(--divider); stroke-width: 1; stroke-dasharray: 2 4; }
+.chart-area-line { stroke: var(--accent); stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.chart-area-line.dim { stroke: var(--text-faint); stroke-dasharray: 3 4; }
+.chart-area-fill { fill: url(#accent-fade); }
+.chart-marker {
+  fill: var(--bg); stroke: var(--accent); stroke-width: 2;
 }
-.chart-container svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-.chart-bar {
-  fill: var(--accent);
-  transition: opacity 0.2s;
-}
-.chart-bar.dim { opacity: 0.3; }
-.chart-bar.now {
-  fill: var(--warn);
-}
-.chart-axis {
-  stroke: var(--border);
-  stroke-width: 1;
+.chart-marker.now {
+  fill: var(--accent); stroke: var(--bg); stroke-width: 3;
 }
 .chart-label {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 10px;
-  fill: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; fill: var(--text-dim);
 }
-.chart-empty-text {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 12px;
-  fill: var(--text-dim);
+.chart-y-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; fill: var(--text-faint); }
+.chart-empty { font-size: 13px; fill: var(--text-dim); }
+.chart-now-line { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.5; }
+
+/* Date range chips */
+.range-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  background: transparent; border: 1px solid var(--border); color: var(--text-soft);
+  border-radius: 99px; padding: 6px 14px;
+  font-size: 12px; font-weight: 500; font-family: inherit; letter-spacing: -0.01em;
+  transition: all 0.12s;
+}
+.chip:hover { color: var(--text); border-color: var(--border-soft); background: var(--surface-2); }
+.chip.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+.range-custom { display: none; gap: 8px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--text-soft); }
+.range-custom.active { display: flex; }
+.range-custom input[type="date"] {
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 5px 8px; font-family: inherit; font-size: 12px; color-scheme: dark;
 }
 
-/* =========================================================
-   TIMES PANEL
-   ========================================================= */
-.times-grid {
+/* Heatmap with daily totals strip */
+.heat-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: 36px repeat(12, 1fr) 50px;
+  gap: 3px;
+  align-items: center;
 }
-.time-stat {
-  background: var(--surface-2);
-  border-radius: var(--radius);
-  padding: 14px;
-  text-align: center;
+.heat-row + .heat-row { margin-top: 3px; }
+.heat-cell { height: 22px; background: var(--surface-2); border-radius: 3px; transition: background 0.15s; }
+.heat-cell:hover { outline: 1px solid var(--text-soft); outline-offset: 1px; }
+.heat-row-label, .heat-col-label {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-dim);
+  display: flex; align-items: center; height: 22px;
 }
-.time-stat-label {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  margin-bottom: 4px;
+.heat-row-label { justify-content: flex-start; padding-left: 2px; }
+.heat-col-label { justify-content: center; }
+.heat-empty { background: transparent; border: none; height: 22px; }
+.heat-day-total {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500;
+  color: var(--text-soft); text-align: right; padding-right: 4px;
 }
-.time-stat-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 26px;
-  font-weight: 500;
-  color: var(--text);
-  line-height: 1.1;
+.heat-day-total.zero { color: var(--text-faint); }
+.heat-legend {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text-dim); margin-top: 14px; font-family: 'IBM Plex Mono', monospace;
 }
-.time-stat-suffix {
-  font-size: 14px;
-  color: var(--text-soft);
-}
-.time-stat-detail {
-  font-size: 11px;
-  color: var(--text-dim);
-  margin-top: 4px;
-}
+.heat-scale { display: inline-flex; gap: 2px; }
+.heat-scale .heat-cell { width: 14px; height: 14px; }
 
-/* =========================================================
-   FOOTER
-   ========================================================= */
+/* Leaderboard with inline share bars */
+.leaderboard { width: 100%; border-collapse: collapse; font-size: 13px; }
+.leaderboard thead th {
+  text-align: left; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-dim); padding: 8px 12px; border-bottom: 1px solid var(--divider);
+}
+.leaderboard thead th.num { text-align: right; }
+.leaderboard tbody td { padding: 12px; border-bottom: 1px solid var(--divider); vertical-align: middle; }
+.leaderboard tbody tr:last-child td { border-bottom: none; }
+.leaderboard td.num { font-family: 'IBM Plex Mono', monospace; text-align: right; }
+.leaderboard .driver-cell { display: flex; align-items: center; gap: 10px; }
+.leaderboard .share-bar-cell { width: 35%; padding-left: 0; }
+.share-bar-track {
+  width: 100%; height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden;
+}
+.share-bar-fill {
+  height: 100%; background: var(--accent); border-radius: 3px;
+  transition: width 0.4s ease-out;
+}
+.leaderboard-empty { text-align: center; color: var(--text-dim); font-size: 12px; padding: 20px 0; }
+
+/* Footer */
 .footer {
-  text-align: center;
-  padding: 16px;
-  color: var(--text-dim);
-  font-size: 11px;
-  font-family: 'IBM Plex Mono', monospace;
+  text-align: center; padding: 16px; color: var(--text-faint);
+  font-size: 11px; font-family: 'IBM Plex Mono', monospace;
 }
 
-/* =========================================================
-   PHASE 2 PLACEHOLDER
-   ========================================================= */
-.coming-soon {
-  background: var(--surface);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-lg);
-  padding: 32px;
-  text-align: center;
-  color: var(--text-dim);
-  font-size: 13px;
+/* Responsive */
+@media (max-width: 768px) {
+  .main { padding: 20px 16px; }
+  .zone { padding: 20px; border-radius: 8px; }
+  .headline-value { font-size: 38px; }
+  .headline-row, .times-row { gap: 32px; }
+  .heat-row { grid-template-columns: 26px repeat(12, 1fr) 36px; gap: 2px; }
 }
 
 </style>
@@ -535,12 +307,9 @@ a { color: inherit; }
 
 <body>
 
-<!-- ========================================
-     LOGIN SCREEN
-     ======================================== -->
 <div id="screen-login" class="full-screen hidden">
   <div class="brand-large">X PIZZA</div>
-  <div class="brand-large-sub">ESTADÍSTICAS</div>
+  <div class="brand-large-sub">Estadísticas</div>
   <div class="login-form">
     <h2>Iniciar sesión</h2>
     <p>Acceso solo para dispatchers</p>
@@ -552,18 +321,12 @@ a { color: inherit; }
   <div class="version-tag" data-version-display style="margin-top: 32px;"></div>
 </div>
 
-<!-- ========================================
-     LOADING SCREEN
-     ======================================== -->
 <div id="screen-loading" class="full-screen">
   <div class="brand-large">X PIZZA</div>
-  <div class="brand-large-sub">ESTADÍSTICAS</div>
+  <div class="brand-large-sub">Estadísticas</div>
   <div class="loading-text">Cargando datos…</div>
 </div>
 
-<!-- ========================================
-     MAIN APP
-     ======================================== -->
 <div id="screen-main" class="hidden" style="display: contents;">
 
 <header class="topbar">
@@ -577,110 +340,169 @@ a { color: inherit; }
 
 <main class="main">
 
-  <!-- ========================================
-       ZONA HOY
-       ======================================== -->
+  <!-- ZONA HOY -->
   <section class="zone">
     <div class="zone-header">
       <div class="zone-title">Hoy</div>
       <div class="zone-subtitle" id="zone-hoy-date"></div>
     </div>
 
-    <!-- KPI cards -->
-    <div class="kpi-row">
-      <div class="kpi-card">
-        <div class="kpi-label">Pedidos hoy</div>
-        <div class="kpi-value mono" id="kpi-total">—</div>
-        <div class="kpi-detail" id="kpi-total-detail">&nbsp;</div>
-      </div>
-      <div class="kpi-card success">
-        <div class="kpi-label">Completados</div>
-        <div class="kpi-value mono" id="kpi-completed">—</div>
-        <div class="kpi-detail" id="kpi-completed-detail">&nbsp;</div>
-      </div>
-      <div class="kpi-card warn">
-        <div class="kpi-label">En curso</div>
-        <div class="kpi-value mono" id="kpi-inprogress">—</div>
-        <div class="kpi-detail" id="kpi-inprogress-detail">&nbsp;</div>
-      </div>
-      <div class="kpi-card accent">
-        <div class="kpi-label">Cancelados</div>
-        <div class="kpi-value mono" id="kpi-cancelled">—</div>
-        <div class="kpi-detail" id="kpi-cancelled-detail">&nbsp;</div>
-      </div>
-    </div>
-
-    <!-- Pipeline + Times row -->
-    <div class="panel-row">
-      <div class="panel">
-        <div class="panel-title">Pipeline en curso</div>
-        <div class="pipeline-stages">
-          <div class="pipeline-stage active-nuevo">
-            <div class="pipeline-stage-label">Nuevo</div>
-            <div class="pipeline-stage-value" id="pipe-nuevo">0</div>
-          </div>
-          <div class="pipeline-stage active-prep">
-            <div class="pipeline-stage-label">Preparando</div>
-            <div class="pipeline-stage-value" id="pipe-prep">0</div>
-          </div>
-          <div class="pipeline-stage active-listo">
-            <div class="pipeline-stage-label">Listo</div>
-            <div class="pipeline-stage-value" id="pipe-listo">0</div>
-          </div>
-          <div class="pipeline-stage active-route">
-            <div class="pipeline-stage-label">En ruta</div>
-            <div class="pipeline-stage-value" id="pipe-route">0</div>
-          </div>
+    <div class="section">
+      <div class="headline-row">
+        <div class="headline-stat">
+          <div class="headline-value" id="hl-total">—</div>
+          <div class="headline-label">Pedidos hoy</div>
+          <div class="headline-spark" id="spark-total"></div>
         </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-title">Tiempos promedio (hoy)</div>
-        <div class="times-grid">
-          <div class="time-stat">
-            <div class="time-stat-label">Preparación</div>
-            <div class="time-stat-value"><span id="time-prep">—</span><span class="time-stat-suffix"> min</span></div>
-            <div class="time-stat-detail" id="time-prep-detail">&nbsp;</div>
-          </div>
-          <div class="time-stat">
-            <div class="time-stat-label">Entrega</div>
-            <div class="time-stat-value"><span id="time-delivery">—</span><span class="time-stat-suffix"> min</span></div>
-            <div class="time-stat-detail" id="time-delivery-detail">&nbsp;</div>
-          </div>
+        <div class="headline-stat">
+          <div class="headline-value muted" id="hl-completed">—</div>
+          <div class="headline-label">Completados</div>
+          <div class="headline-spark" id="spark-completed"></div>
+        </div>
+        <div class="headline-stat">
+          <div class="headline-value muted" id="hl-inprogress">—</div>
+          <div class="headline-label">En curso</div>
+          <div class="headline-spark" id="spark-inprogress" style="visibility:hidden"></div>
+        </div>
+        <div class="headline-stat">
+          <div class="headline-value muted" id="hl-cancelled">—</div>
+          <div class="headline-label">Cancelados</div>
+          <div class="headline-spark" id="spark-cancelled"></div>
         </div>
       </div>
     </div>
 
-    <!-- Drivers + Hourly volume -->
-    <div class="panel-row">
-      <div class="panel">
-        <div class="panel-title">Estado de repartidores</div>
-        <div class="driver-list" id="driver-list">
-          <div class="driver-list-empty">Cargando…</div>
+    <div class="section">
+      <div class="section-label">Pipeline en curso</div>
+      <div class="pipeline-strip">
+        <div class="pipe-item">
+          <span class="pipe-dot nuevo"></span>
+          <span class="pipe-name">Nuevo</span>
+          <span class="pipe-count zero" id="pipe-nuevo">0</span>
+        </div>
+        <div class="pipe-item">
+          <span class="pipe-dot prep"></span>
+          <span class="pipe-name">Preparando</span>
+          <span class="pipe-count zero" id="pipe-prep">0</span>
+        </div>
+        <div class="pipe-item">
+          <span class="pipe-dot listo"></span>
+          <span class="pipe-name">Listo</span>
+          <span class="pipe-count zero" id="pipe-listo">0</span>
+        </div>
+        <div class="pipe-item">
+          <span class="pipe-dot route"></span>
+          <span class="pipe-name">En ruta</span>
+          <span class="pipe-count zero" id="pipe-route">0</span>
         </div>
       </div>
+    </div>
 
-      <div class="panel">
-        <div class="panel-title">
-          Volumen por hora
-          <span class="panel-subtitle">(hoy)</span>
+    <div class="section">
+      <div class="section-label">Tiempos promedio</div>
+      <div class="times-row">
+        <div class="time-stat">
+          <div class="time-value">
+            <span id="time-prep">—</span><span class="time-suffix">min</span>
+          </div>
+          <div class="time-label">Preparación</div>
+          <div class="time-detail" id="time-prep-detail">&nbsp;</div>
         </div>
-        <div class="chart-container" id="chart-hourly"></div>
+        <div class="time-stat">
+          <div class="time-value">
+            <span id="time-delivery">—</span><span class="time-suffix">min</span>
+          </div>
+          <div class="time-label">Entrega</div>
+          <div class="time-detail" id="time-delivery-detail">&nbsp;</div>
+        </div>
       </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Repartidores</div>
+      <div class="driver-list" id="driver-list">
+        <div class="driver-empty">Cargando…</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Volumen por hora (hoy)</div>
+      <div class="chart-wrap" id="chart-hourly"></div>
     </div>
   </section>
 
-  <!-- ========================================
-       ZONA REVISIÓN (placeholder for Phase 2)
-       ======================================== -->
+  <!-- ZONA REVISIÓN -->
   <section class="zone">
     <div class="zone-header">
       <div class="zone-title">Revisión</div>
-      <div class="zone-subtitle">Análisis por rango de fechas</div>
+      <div class="zone-subtitle" id="zone-revision-range">—</div>
     </div>
-    <div class="coming-soon">
-      Esta zona se construirá en una próxima iteración.<br>
-      Incluirá: KPIs por rango con comparación al período anterior, mapa de calor por hora/día, ranking de repartidores.
+
+    <div class="section">
+      <div class="section-label">Período</div>
+      <div class="range-chips" id="range-chips">
+        <button class="chip active" data-range="today">Hoy</button>
+        <button class="chip" data-range="yesterday">Ayer</button>
+        <button class="chip" data-range="7days">7 días</button>
+        <button class="chip" data-range="30days">30 días</button>
+        <button class="chip" data-range="custom">Personalizado</button>
+      </div>
+      <div class="range-custom" id="range-custom">
+        <span>Del</span>
+        <input type="date" id="range-from">
+        <span>al</span>
+        <input type="date" id="range-to">
+        <button class="chip" id="range-apply">Aplicar</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Resumen del período</div>
+      <div class="headline-row">
+        <div class="headline-stat">
+          <div class="headline-value" id="rv-orders">—<span class="delta" id="rv-orders-delta"></span></div>
+          <div class="headline-label">Pedidos</div>
+        </div>
+        <div class="headline-stat">
+          <div class="headline-value muted" id="rv-delivered">—<span class="delta" id="rv-delivered-delta"></span></div>
+          <div class="headline-label">Entregados</div>
+        </div>
+        <div class="headline-stat">
+          <div class="headline-value muted" id="rv-prep">—<span class="time-suffix">min</span><span class="delta" id="rv-prep-delta"></span></div>
+          <div class="headline-label">T. preparación</div>
+        </div>
+        <div class="headline-stat">
+          <div class="headline-value muted" id="rv-delivery">—<span class="time-suffix">min</span><span class="delta" id="rv-delivery-delta"></span></div>
+          <div class="headline-label">T. entrega</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Volumen por día y hora</div>
+      <div id="heatmap"></div>
+      <div class="heat-legend">
+        <span>Menos</span>
+        <span class="heat-scale" id="heat-scale"></span>
+        <span>Más</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Repartidores en el período</div>
+      <table class="leaderboard">
+        <thead>
+          <tr>
+            <th>Repartidor</th>
+            <th class="num">Pedidos</th>
+            <th>Participación</th>
+            <th class="num">T. promedio</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboard-body">
+          <tr><td colspan="4" class="leaderboard-empty">—</td></tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
@@ -693,13 +515,8 @@ a { color: inherit; }
 </div>
 
 <script type="module">
-import * as XPD from './xpizza-delivery.js?v=1';
+import * as XPD from './xpizza-delivery.js?v=3';
 
-// ============================================================
-// FIREBASE CONFIG
-// Same config used by track/orders/etc. Public app credentials
-// — security comes from Firebase rules, not config secrecy.
-// ============================================================
 const firebaseConfig = {
   apiKey: "AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU",
   authDomain: "xpizza-delivery.firebaseapp.com",
@@ -710,98 +527,64 @@ const firebaseConfig = {
 };
 XPD.initDelivery(firebaseConfig);
 
-// ============================================================
-// VERSION
-// ============================================================
-const SYSTEM_VERSION = '0.1.0';
+const SYSTEM_VERSION = '0.3.0';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION}`;
 });
 
 // ============================================================
-// HONDURAS TIME HELPERS
-// Honduras is UTC-6, no DST. We compute "today" boundaries
-// by working in Honduras-local time consistently.
+// HONDURAS TIME
 // ============================================================
-const HONDURAS_OFFSET_MS = -6 * 60 * 60 * 1000;  // UTC-6
-
-function nowHonduras() {
-  // Returns a Date object whose UTC fields represent Honduras-local fields.
-  // Useful for getHours()/getDate() comparisons.
-  return new Date(Date.now() + HONDURAS_OFFSET_MS);
-}
-
-function hondurasMidnightMs(date = new Date()) {
-  // Returns UTC ms epoch of Honduras-local midnight on the day containing `date`.
-  // Approach: shift to Honduras, zero out time-of-day, shift back.
-  const hLocal = new Date(date.getTime() + HONDURAS_OFFSET_MS);
+const HN_OFFSET_MS = -6 * 60 * 60 * 1000;
+function nowHN() { return new Date(Date.now() + HN_OFFSET_MS); }
+function hnMidnightMs(date = new Date()) {
+  const hLocal = new Date(date.getTime() + HN_OFFSET_MS);
   hLocal.setUTCHours(0, 0, 0, 0);
-  return hLocal.getTime() - HONDURAS_OFFSET_MS;
+  return hLocal.getTime() - HN_OFFSET_MS;
 }
-
-function formatHondurasDate(date = new Date()) {
-  // "lunes 4 de mayo, 2026"
-  return new Date(date.getTime() + HONDURAS_OFFSET_MS).toLocaleDateString('es-HN', {
-    timeZone: 'UTC',  // we already shifted, so use UTC fields
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
-  });
+function hnHour(msEpoch) { return new Date(msEpoch + HN_OFFSET_MS).getUTCHours(); }
+function hnDayOfWeek(msEpoch) {
+  const d = new Date(msEpoch + HN_OFFSET_MS).getUTCDay();
+  return (d + 6) % 7;
 }
-
-function hondurasHour(msEpoch) {
-  // Returns the hour-of-day (0-23) in Honduras for a UTC ms epoch.
-  return new Date(msEpoch + HONDURAS_OFFSET_MS).getUTCHours();
+function formatHNDate(date = new Date(), opts = {}) {
+  return new Date(date.getTime() + HN_OFFSET_MS).toLocaleDateString('es-HN', { timeZone: 'UTC', ...opts });
 }
-
+function formatRangeText(fromMs, toMs) {
+  const f = formatHNDate(new Date(fromMs), { day: 'numeric', month: 'short' });
+  const t = formatHNDate(new Date(toMs - 1), { day: 'numeric', month: 'short', year: 'numeric' });
+  return `${f} – ${t}`;
+}
 function formatMinutes(ms) {
-  if (!ms || ms < 0) return null;
+  if (ms == null || ms < 0 || isNaN(ms)) return null;
   return Math.round(ms / 60000);
+}
+function avg(arr) {
+  if (!arr.length) return null;
+  return arr.reduce((s, x) => s + x, 0) / arr.length;
 }
 
 // ============================================================
 // AUTH
 // ============================================================
 const $ = (id) => document.getElementById(id);
-const $$ = (sel) => document.querySelectorAll(sel);
-
-const screens = {
-  login: $('screen-login'),
-  loading: $('screen-loading'),
-  main: $('screen-main')
-};
-
+const screens = { login: $('screen-login'), loading: $('screen-loading'), main: $('screen-main') };
 function showScreen(name) {
-  Object.entries(screens).forEach(([key, el]) => {
-    if (key === name) {
-      el.classList.remove('hidden');
-    } else {
-      el.classList.add('hidden');
-    }
-  });
+  Object.entries(screens).forEach(([k, el]) => el.classList.toggle('hidden', k !== name));
 }
-
 let currentUser = null;
 
 XPD.onAuth(async (user) => {
-  if (!user) {
-    showScreen('login');
-    return;
-  }
-  // Verify dispatcher role before showing data
+  if (!user) { showScreen('login'); return; }
   try {
-    const isDispatcher = await XPD.isDispatcher(user.uid);
-    if (!isDispatcher) {
+    const ok = await XPD.isDispatcher(user.uid);
+    if (!ok) {
       $('login-error').textContent = 'Tu cuenta no tiene permisos de dispatcher';
       await XPD.signOutUser();
       showScreen('login');
       return;
     }
-  } catch (e) {
-    console.warn('Failed to check dispatcher role:', e);
-    // Fall through — they'll get permission errors on read otherwise
-  }
+  } catch (e) { console.warn('Failed dispatcher check:', e); }
   currentUser = user;
   $('topbar-user').textContent = user.email;
   showScreen('main');
@@ -813,211 +596,302 @@ $('login-btn').addEventListener('click', async () => {
   const password = $('login-password').value;
   if (!email || !password) return;
   $('login-error').textContent = '';
-  try {
-    await XPD.signIn(email, password);
-  } catch (e) {
-    $('login-error').textContent = 'Email o contraseña incorrectos';
-  }
+  try { await XPD.signIn(email, password); }
+  catch { $('login-error').textContent = 'Email o contraseña incorrectos'; }
 });
-
-$('login-password').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') $('login-btn').click();
-});
-
-$('signout-btn').addEventListener('click', async () => {
-  await XPD.signOutUser();
-});
+$('login-password').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('login-btn').click(); });
+$('signout-btn').addEventListener('click', async () => { await XPD.signOutUser(); });
 
 // ============================================================
-// DATA SUBSCRIPTIONS
+// DATA
 // ============================================================
 let allOrders = {};
 let allDrivers = {};
 
 function startSubscriptions() {
-  // Set the date subtitle once at boot — it'll naturally re-render
-  // when the page is re-opened on a new day
-  const date = formatHondurasDate(new Date());
+  const date = formatHNDate(new Date(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   $('zone-hoy-date').textContent = date.charAt(0).toUpperCase() + date.slice(1);
 
   XPD.subscribeToOrders((orders) => {
     allOrders = orders || {};
     renderHoy();
+    renderRevision();
   });
-
   XPD.subscribeToDrivers((drivers) => {
     allDrivers = drivers || {};
     renderDrivers();
+    renderRevision();
   });
 
-  // Recompute every minute so "in-progress" times etc. stay fresh
-  // even without new Firebase events
-  setInterval(renderHoy, 60_000);
+  initRangePicker();
+  setInterval(() => { renderHoy(); renderRevision(); }, 60_000);
+}
+
+// ============================================================
+// SVG HELPERS
+// ============================================================
+
+// Catmull-Rom spline → cubic bezier path through points.
+// Tension is built into the /6 divisor; works well for smoothing.
+function smoothPath(points) {
+  if (points.length < 2) return '';
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  }
+  let path = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] || points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] || p2;
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    path += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+  return path;
+}
+
+// Build the closed area-fill path: line path + drop to baseline + close.
+function areaFillPath(points, baselineY) {
+  if (points.length < 2) return '';
+  const linePath = smoothPath(points);
+  const lastX = points[points.length - 1].x;
+  const firstX = points[0].x;
+  return `${linePath} L ${lastX} ${baselineY} L ${firstX} ${baselineY} Z`;
 }
 
 // ============================================================
 // HOY ZONE
 // ============================================================
 function renderHoy() {
-  const todayStartMs = hondurasMidnightMs(new Date());
-  const todayOrders = Object.values(allOrders).filter(o =>
-    (o.created_at || 0) >= todayStartMs
-  );
+  const startMs = hnMidnightMs(new Date());
+  const todayOrders = Object.values(allOrders).filter(o => (o.created_at || 0) >= startMs);
 
-  // Counts
   const total = todayOrders.length;
   const completed = todayOrders.filter(o => o.status === 'delivered').length;
   const cancelled = todayOrders.filter(o => o.status === 'cancelled').length;
-  const inProgress = todayOrders.filter(o =>
-    !['delivered', 'cancelled'].includes(o.status)
-  ).length;
+  const inProgress = total - completed - cancelled;
 
-  $('kpi-total').textContent = total;
-  $('kpi-completed').textContent = completed;
-  $('kpi-cancelled').textContent = cancelled;
-  $('kpi-inprogress').textContent = inProgress;
+  $('hl-total').textContent = total;
+  $('hl-completed').textContent = completed;
+  $('hl-inprogress').textContent = inProgress;
+  $('hl-cancelled').textContent = cancelled;
+  $('hl-inprogress').classList.toggle('attention', inProgress > 0);
 
-  // Detail lines under each KPI
-  $('kpi-total-detail').innerHTML = total > 0 && completed > 0
-    ? `${Math.round(completed / total * 100)}% completados`
-    : '&nbsp;';
-  $('kpi-completed-detail').innerHTML = completed > 0
-    ? `de ${total} pedidos`
-    : '&nbsp;';
-  $('kpi-inprogress-detail').innerHTML = inProgress > 0
-    ? renderInProgressBreakdown(todayOrders)
-    : '&nbsp;';
-  $('kpi-cancelled-detail').innerHTML = cancelled > 0 && total > 0
-    ? `${Math.round(cancelled / total * 100)}% del total`
-    : '&nbsp;';
+  // Sparklines: last 7 days (today included as rightmost point)
+  renderSparklines();
 
-  // Pipeline counts (active orders only — exclude delivered/cancelled)
-  const active = todayOrders.filter(o =>
-    !['delivered', 'cancelled'].includes(o.status)
-  );
-  $('pipe-nuevo').textContent  = active.filter(o => o.status === 'new' || !o.status).length;
-  $('pipe-prep').textContent   = active.filter(o => o.status === 'preparing').length;
-  $('pipe-listo').textContent  = active.filter(o => o.status === 'ready').length;
-  $('pipe-route').textContent  = active.filter(o => o.status === 'out_for_delivery').length;
+  // Pipeline
+  const active = todayOrders.filter(o => !['delivered', 'cancelled'].includes(o.status));
+  setPipe('pipe-nuevo', active.filter(o => o.status === 'new' || !o.status).length);
+  setPipe('pipe-prep',  active.filter(o => o.status === 'preparing').length);
+  setPipe('pipe-listo', active.filter(o => o.status === 'ready').length);
+  setPipe('pipe-route', active.filter(o => o.status === 'out_for_delivery').length);
 
-  // Average times
+  // Times
   const completedOrders = todayOrders.filter(o => o.status === 'delivered');
-  renderTimes(completedOrders);
-
-  // Hourly volume chart
-  renderHourlyChart(todayOrders);
-}
-
-function renderInProgressBreakdown(todayOrders) {
-  // Show a tiny breakdown of in-progress orders by status
-  // e.g., "2 nuevos · 1 prep · 0 ruta"
-  const newCount = todayOrders.filter(o => o.status === 'new' || !o.status).length;
-  const prepCount = todayOrders.filter(o => o.status === 'preparing').length;
-  const routeCount = todayOrders.filter(o => o.status === 'out_for_delivery').length;
-  const parts = [];
-  if (newCount > 0) parts.push(`${newCount} nuevos`);
-  if (prepCount > 0) parts.push(`${prepCount} prep`);
-  if (routeCount > 0) parts.push(`${routeCount} ruta`);
-  return parts.join(' · ') || '&nbsp;';
-}
-
-function renderTimes(completedOrders) {
-  // Prep time = picked_up_at - created_at  (kitchen-to-pickup window)
-  // Delivery time = delivered_at - picked_up_at  (pickup-to-doorstep)
-  const prepDurations = completedOrders
-    .filter(o => o.picked_up_at && o.created_at)
-    .map(o => o.picked_up_at - o.created_at);
-
-  const deliveryDurations = completedOrders
-    .filter(o => o.delivered_at && o.picked_up_at)
-    .map(o => o.delivered_at - o.picked_up_at);
-
-  const prepAvg = avg(prepDurations);
-  const deliveryAvg = avg(deliveryDurations);
-
+  const prepDur = completedOrders.filter(o => o.picked_up_at && o.created_at).map(o => o.picked_up_at - o.created_at);
+  const delvDur = completedOrders.filter(o => o.delivered_at && o.picked_up_at).map(o => o.delivered_at - o.picked_up_at);
+  const prepAvg = avg(prepDur);
+  const delvAvg = avg(delvDur);
   $('time-prep').textContent = prepAvg != null ? formatMinutes(prepAvg) : '—';
-  $('time-delivery').textContent = deliveryAvg != null ? formatMinutes(deliveryAvg) : '—';
+  $('time-delivery').textContent = delvAvg != null ? formatMinutes(delvAvg) : '—';
+  $('time-prep-detail').textContent = prepDur.length > 0
+    ? `de ${prepDur.length} ${prepDur.length === 1 ? 'pedido' : 'pedidos'}` : 'sin datos';
+  $('time-delivery-detail').textContent = delvDur.length > 0
+    ? `de ${delvDur.length} ${delvDur.length === 1 ? 'pedido' : 'pedidos'}` : 'sin datos';
 
-  $('time-prep-detail').textContent = prepDurations.length > 0
-    ? `${prepDurations.length} ${prepDurations.length === 1 ? 'pedido' : 'pedidos'}`
-    : 'sin datos';
-  $('time-delivery-detail').textContent = deliveryDurations.length > 0
-    ? `${deliveryDurations.length} ${deliveryDurations.length === 1 ? 'pedido' : 'pedidos'}`
-    : 'sin datos';
+  // Hero area chart
+  renderHourlyAreaChart(todayOrders);
 }
 
-function avg(arr) {
-  if (!arr.length) return null;
-  return arr.reduce((s, x) => s + x, 0) / arr.length;
+function setPipe(id, count) {
+  const el = $(id);
+  el.textContent = count;
+  el.classList.toggle('zero', count === 0);
 }
 
 // ============================================================
-// HOURLY VOLUME CHART (hand-rolled SVG)
+// SPARKLINES (last 7 days, smooth line)
 // ============================================================
-function renderHourlyChart(todayOrders) {
-  // X. Pizza operates roughly 12:00-20:45. Show 12-22 to give bookends.
-  const startHour = 11;
-  const endHour = 22;
+function renderSparklines() {
+  // Compute daily counts for the last 7 days (oldest -> newest)
+  const dayMs = 86400000;
+  const todayStart = hnMidnightMs(new Date());
+
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    days.push({ start: todayStart - i * dayMs, end: todayStart - (i - 1) * dayMs });
+  }
+
+  const allArr = Object.values(allOrders);
+  const totalSeries     = days.map(d => allArr.filter(o => o.created_at >= d.start && o.created_at < d.end).length);
+  const completedSeries = days.map(d => allArr.filter(o => o.created_at >= d.start && o.created_at < d.end && o.status === 'delivered').length);
+  const cancelledSeries = days.map(d => allArr.filter(o => o.created_at >= d.start && o.created_at < d.end && o.status === 'cancelled').length);
+
+  drawSparkline('spark-total', totalSeries);
+  drawSparkline('spark-completed', completedSeries);
+  drawSparkline('spark-cancelled', cancelledSeries);
+}
+
+function drawSparkline(elId, values) {
+  const el = $(elId);
+  if (!el) return;
+  const W = 100, H = 22;
+  const padX = 2, padY = 4;
+
+  // If all zeros, show a flat baseline
+  const max = Math.max(1, ...values);
+  const min = 0;
+
+  if (values.length < 2 || max === 0) {
+    // Flat dotted line at the bottom
+    el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+      <line x1="${padX}" y1="${H - padY}" x2="${W - padX}" y2="${H - padY}"
+            stroke="var(--text-faint)" stroke-width="1" stroke-dasharray="2 3"/>
+    </svg>`;
+    return;
+  }
+
+  const points = values.map((v, i) => ({
+    x: padX + (i / (values.length - 1)) * (W - padX * 2),
+    y: padY + (1 - (v - min) / (max - min)) * (H - padY * 2)
+  }));
+
+  const sparkId = elId + '-grad';
+  const linePath = smoothPath(points);
+  const fillPath = areaFillPath(points, H - padY);
+  const last = points[points.length - 1];
+
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="${sparkId}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#dc2626" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="#dc2626" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <path d="${fillPath}" fill="url(#${sparkId})"/>
+    <path d="${linePath}" stroke="#dc2626" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${last.x.toFixed(2)}" cy="${last.y.toFixed(2)}" r="1.8" fill="#dc2626"/>
+  </svg>`;
+}
+
+// ============================================================
+// HERO AREA CHART (hourly volume — smooth area with gradient fill)
+// ============================================================
+function renderHourlyAreaChart(todayOrders) {
+  const startHour = 11, endHour = 22;
   const hours = [];
   for (let h = startHour; h <= endHour; h++) hours.push(h);
 
-  // Bucket today's orders by Honduras hour
   const buckets = {};
   hours.forEach(h => buckets[h] = 0);
   todayOrders.forEach(o => {
     if (!o.created_at) return;
-    const h = hondurasHour(o.created_at);
+    const h = hnHour(o.created_at);
     if (h >= startHour && h <= endHour) buckets[h]++;
   });
+  const counts = hours.map(h => buckets[h]);
+  const maxCount = Math.max(...counts);
+  const currentHour = nowHN().getUTCHours();
 
-  const maxCount = Math.max(1, ...Object.values(buckets));
-  const currentHour = nowHonduras().getUTCHours();
+  const W = 700, H = 200;
+  const padTop = 24, padBot = 32, padLeft = 36, padRight = 16;
+  const chartH = H - padTop - padBot;
+  const chartW = W - padLeft - padRight;
 
-  // SVG dimensions — viewBox-based, scales with container
-  const W = 100, H = 100;        // viewBox units
-  const padBot = 14;             // space for hour labels
-  const padTop = 4;
-  const chartH = H - padBot - padTop;
-  const barW = W / hours.length * 0.7;
-  const barGap = W / hours.length * 0.3;
+  let inner = '';
 
-  let svgInner = '';
+  // Definitions: gradient fill
+  inner += `<defs>
+    <linearGradient id="accent-fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#dc2626" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#dc2626" stop-opacity="0"/>
+    </linearGradient>
+  </defs>`;
 
   if (todayOrders.length === 0) {
-    svgInner = `<text x="${W/2}" y="${H/2}" class="chart-empty-text" text-anchor="middle" dominant-baseline="middle">Sin pedidos hoy aún</text>`;
+    inner += `<text x="${W/2}" y="${H/2}" class="chart-empty" text-anchor="middle" dominant-baseline="middle">Sin pedidos hoy aún</text>`;
   } else {
-    // Bars
-    hours.forEach((h, i) => {
-      const count = buckets[h];
-      const barH = (count / maxCount) * chartH;
-      const x = i * (barW + barGap) + barGap / 2;
-      const y = H - padBot - barH;
-      const isFuture = h > currentHour;
-      const isNow = h === currentHour;
-      const cls = isFuture ? 'chart-bar dim' : (isNow ? 'chart-bar now' : 'chart-bar');
-      svgInner += `<rect class="${cls}" x="${x}" y="${y}" width="${barW}" height="${Math.max(0.5, barH)}" rx="0.6"/>`;
-
-      // Count label above bar (only if there's a non-zero count)
-      if (count > 0) {
-        svgInner += `<text x="${x + barW/2}" y="${y - 1.5}" class="chart-label" text-anchor="middle" dominant-baseline="alphabetic">${count}</text>`;
-      }
+    // Y-axis scale: round up to a clean number
+    const yMax = Math.max(4, Math.ceil(maxCount * 1.2 / 2) * 2);
+    // Gridlines at 0, yMax/2, yMax
+    const yLevels = [0, yMax / 2, yMax];
+    yLevels.forEach(level => {
+      const y = padTop + (1 - level / yMax) * chartH;
+      inner += `<line class="chart-grid-line" x1="${padLeft}" y1="${y}" x2="${W - padRight}" y2="${y}"/>`;
+      inner += `<text class="chart-y-label" x="${padLeft - 6}" y="${y + 3}" text-anchor="end">${level}</text>`;
     });
 
-    // Hour labels (every other to avoid crowding)
+    // Compute points; future hours are visually distinct (line dims)
+    const points = hours.map((h, i) => ({
+      x: padLeft + (i / (hours.length - 1)) * chartW,
+      y: padTop + (1 - counts[i] / yMax) * chartH,
+      hour: h,
+      count: counts[i]
+    }));
+
+    // Area fill (full smooth curve, fill always to baseline)
+    const fillPath = areaFillPath(points, padTop + chartH);
+    inner += `<path d="${fillPath}" class="chart-area-fill"/>`;
+
+    // Line: solid for past+now, dashed for future. We render two passes:
+    //   - solid line through points up to and including currentHour
+    //   - dashed line from currentHour through to end
+    const nowIdx = Math.max(0, Math.min(points.length - 1, hours.indexOf(currentHour)));
+    if (currentHour < startHour) {
+      // Whole day is future
+      inner += `<path d="${smoothPath(points)}" class="chart-area-line dim"/>`;
+    } else if (currentHour > endHour) {
+      // Whole day is past
+      inner += `<path d="${smoothPath(points)}" class="chart-area-line"/>`;
+    } else {
+      // Split at nowIdx (inclusive in solid pass)
+      const solidPoints = points.slice(0, nowIdx + 1);
+      const dimPoints   = points.slice(nowIdx);
+      if (solidPoints.length >= 2) {
+        inner += `<path d="${smoothPath(solidPoints)}" class="chart-area-line"/>`;
+      }
+      if (dimPoints.length >= 2) {
+        inner += `<path d="${smoothPath(dimPoints)}" class="chart-area-line dim"/>`;
+      }
+
+      // "You are here" vertical line at currentHour
+      const nowX = points[nowIdx].x;
+      inner += `<line class="chart-now-line" x1="${nowX}" y1="${padTop}" x2="${nowX}" y2="${padTop + chartH}"/>`;
+    }
+
+    // Hour labels along bottom — every other hour
     hours.forEach((h, i) => {
-      if (i % 2 !== 0) return;
-      const x = i * (barW + barGap) + barGap / 2 + barW / 2;
-      svgInner += `<text x="${x}" y="${H - 3}" class="chart-label" text-anchor="middle">${h}h</text>`;
+      const showLabel = i === 0 || i === hours.length - 1 || i % 2 === 1;
+      if (!showLabel) return;
+      const x = padLeft + (i / (hours.length - 1)) * chartW;
+      inner += `<text class="chart-label" x="${x}" y="${H - 10}" text-anchor="middle">${h}h</text>`;
+    });
+
+    // Markers on data points where there's a non-zero count, but only past/current
+    points.forEach((p, i) => {
+      if (p.count === 0) return;
+      const isFuture = p.hour > currentHour;
+      if (isFuture) return;
+      const isNow = p.hour === currentHour;
+      const cls = isNow ? 'chart-marker now' : 'chart-marker';
+      const r = isNow ? 4 : 3;
+      inner += `<circle class="${cls}" cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="${r}"/>`;
+      // Count label above marker
+      inner += `<text class="chart-label" x="${p.x.toFixed(2)}" y="${(p.y - 8).toFixed(2)}" text-anchor="middle" style="fill: var(--text-soft); font-weight: 500;">${p.count}</text>`;
     });
   }
 
-  $('chart-hourly').innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${svgInner}</svg>`;
+  $('chart-hourly').innerHTML = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
 }
 
 // ============================================================
-// DRIVER STATUS LIST
+// DRIVERS
 // ============================================================
-const STATUS_LABELS_ES = {
+const STATUS_ES = {
   available: 'Disponible',
   assigned: 'Asignado',
   at_restaurant: 'En restaurante',
@@ -1030,31 +904,251 @@ const STATUS_LABELS_ES = {
 function renderDrivers() {
   const drivers = Object.entries(allDrivers).map(([uid, d]) => ({ uid, ...d }));
   const list = $('driver-list');
-
   if (drivers.length === 0) {
-    list.innerHTML = '<div class="driver-list-empty">No hay repartidores registrados</div>';
+    list.innerHTML = '<div class="driver-empty">No hay repartidores registrados</div>';
     return;
   }
-
-  // Sort: on-shift first (anything other than off_shift), then by name
   drivers.sort((a, b) => {
     const aOff = a.status === 'off_shift';
     const bOff = b.status === 'off_shift';
     if (aOff !== bOff) return aOff ? 1 : -1;
     return (a.name || '').localeCompare(b.name || '');
   });
-
   list.innerHTML = drivers.map(d => {
     const status = d.status || 'off_shift';
-    const label = STATUS_LABELS_ES[status] || status;
+    const label = STATUS_ES[status] || status;
     return `
-      <div class="driver-item">
+      <div class="driver-row">
         <span class="driver-dot ${status}"></span>
         <span class="driver-name">${escapeHtml(d.name || '—')}</span>
-        <span class="driver-status-text">${label}</span>
-      </div>
-    `;
+        <span class="driver-status">${label}</span>
+      </div>`;
   }).join('');
+}
+
+// ============================================================
+// REVISIÓN ZONE
+// ============================================================
+let activeRange = 'today';
+let customRange = null;
+
+function initRangePicker() {
+  document.querySelectorAll('#range-chips .chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const range = btn.dataset.range;
+      document.querySelectorAll('#range-chips .chip').forEach(b => b.classList.toggle('active', b === btn));
+      activeRange = range;
+      const customDiv = $('range-custom');
+      if (range === 'custom') {
+        customDiv.classList.add('active');
+        const now = new Date();
+        $('range-from').valueAsDate = new Date(now.getTime() - 6 * 86400000);
+        $('range-to').valueAsDate = now;
+      } else {
+        customDiv.classList.remove('active');
+        renderRevision();
+      }
+    });
+  });
+  $('range-apply').addEventListener('click', () => {
+    const fromInput = $('range-from').valueAsDate;
+    const toInput = $('range-to').valueAsDate;
+    if (!fromInput || !toInput) return;
+    const fromMs = hnMidnightMs(fromInput);
+    const toMs = hnMidnightMs(new Date(toInput.getTime() + 86400000));
+    customRange = { fromMs, toMs };
+    renderRevision();
+  });
+}
+
+function getRangeBounds() {
+  const now = new Date();
+  const todayStart = hnMidnightMs(now);
+  const dayMs = 86400000;
+  switch (activeRange) {
+    case 'today':     return { fromMs: todayStart,            toMs: todayStart + dayMs,      label: 'Hoy' };
+    case 'yesterday': return { fromMs: todayStart - dayMs,    toMs: todayStart,              label: 'Ayer' };
+    case '7days':     return { fromMs: todayStart - 6*dayMs,  toMs: todayStart + dayMs,      label: 'Últimos 7 días' };
+    case '30days':    return { fromMs: todayStart - 29*dayMs, toMs: todayStart + dayMs,      label: 'Últimos 30 días' };
+    case 'custom':
+      if (customRange) return { ...customRange, label: 'Personalizado' };
+      return { fromMs: todayStart, toMs: todayStart + dayMs, label: 'Hoy' };
+  }
+}
+
+function renderRevision() {
+  const { fromMs, toMs, label } = getRangeBounds();
+  $('zone-revision-range').textContent = `${label} · ${formatRangeText(fromMs, toMs)}`;
+
+  const periodLen = toMs - fromMs;
+  const prevFromMs = fromMs - periodLen;
+  const prevToMs = fromMs;
+
+  const allArr = Object.values(allOrders);
+  const periodOrders = allArr.filter(o => o.created_at != null && o.created_at >= fromMs && o.created_at < toMs);
+  const prevOrders   = allArr.filter(o => o.created_at != null && o.created_at >= prevFromMs && o.created_at < prevToMs);
+
+  const orders = periodOrders.length;
+  const delivered = periodOrders.filter(o => o.status === 'delivered').length;
+  const prevOrdersCount = prevOrders.length;
+  const prevDelivered = prevOrders.filter(o => o.status === 'delivered').length;
+
+  const periodPrep = avg(periodOrders.filter(o => o.status === 'delivered' && o.picked_up_at && o.created_at).map(o => o.picked_up_at - o.created_at));
+  const periodDelv = avg(periodOrders.filter(o => o.status === 'delivered' && o.delivered_at && o.picked_up_at).map(o => o.delivered_at - o.picked_up_at));
+  const prevPrep   = avg(prevOrders.filter(o => o.status === 'delivered' && o.picked_up_at && o.created_at).map(o => o.picked_up_at - o.created_at));
+  const prevDelv   = avg(prevOrders.filter(o => o.status === 'delivered' && o.delivered_at && o.picked_up_at).map(o => o.delivered_at - o.picked_up_at));
+
+  setStatWithDelta('rv-orders',    orders,                                 prevOrdersCount, false);
+  setStatWithDelta('rv-delivered', delivered,                              prevDelivered,   false);
+  setStatWithDelta('rv-prep',      periodPrep != null ? formatMinutes(periodPrep) : null, prevPrep != null ? formatMinutes(prevPrep) : null, true);
+  setStatWithDelta('rv-delivery',  periodDelv != null ? formatMinutes(periodDelv) : null, prevDelv != null ? formatMinutes(prevDelv) : null, true);
+
+  renderHeatmap(periodOrders);
+  renderLeaderboard(periodOrders);
+}
+
+function setStatWithDelta(id, current, previous, lowerIsBetter) {
+  const el = $(id);
+  if (current == null) {
+    el.firstChild.nodeValue = '—';
+  } else {
+    el.firstChild.nodeValue = String(current);
+  }
+  const deltaEl = $(id + '-delta');
+  if (!deltaEl) return;
+  deltaEl.className = 'delta';
+  if (current == null || previous == null || previous === 0) {
+    deltaEl.textContent = '';
+    return;
+  }
+  if (current === previous) {
+    deltaEl.textContent = '— 0%';
+    deltaEl.classList.add('flat');
+    return;
+  }
+  const diff = current - previous;
+  const pct = Math.round(Math.abs(diff / previous) * 100);
+  const isUp = diff > 0;
+  const arrow = isUp ? '↑' : '↓';
+  const isGood = lowerIsBetter ? !isUp : isUp;
+  deltaEl.classList.add(isGood ? 'up' : 'down');
+  deltaEl.textContent = `${arrow} ${pct}%`;
+}
+
+// ============================================================
+// HEATMAP — 7×12 grid + daily totals strip on the right
+// ============================================================
+const DOW_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const HEAT_HOURS = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
+
+function renderHeatmap(periodOrders) {
+  const grid = Array.from({ length: 7 }, () => Array(12).fill(0));
+  periodOrders.forEach(o => {
+    if (!o.created_at) return;
+    const dow = hnDayOfWeek(o.created_at);
+    const hour = hnHour(o.created_at);
+    const colIdx = HEAT_HOURS.indexOf(hour);
+    if (colIdx < 0) return;
+    grid[dow][colIdx]++;
+  });
+  const maxCount = Math.max(1, ...grid.flat());
+  const rowTotals = grid.map(row => row.reduce((s, x) => s + x, 0));
+
+  let html = '';
+
+  // Header row: empty + 12 hour labels + empty
+  html += `<div class="heat-row">`;
+  html += `<div class="heat-empty"></div>`;
+  HEAT_HOURS.forEach(h => { html += `<div class="heat-col-label">${h}h</div>`; });
+  html += `<div class="heat-empty"></div>`;
+  html += `</div>`;
+
+  // Day rows
+  DOW_LABELS.forEach((label, row) => {
+    html += `<div class="heat-row">`;
+    html += `<div class="heat-row-label">${label}</div>`;
+    HEAT_HOURS.forEach((_, col) => {
+      const count = grid[row][col];
+      const intensity = count / maxCount;
+      const bg = heatColor(intensity);
+      const title = count > 0 ? `${label} ${HEAT_HOURS[col]}h: ${count} ${count === 1 ? 'pedido' : 'pedidos'}` : '';
+      html += `<div class="heat-cell" style="background: ${bg}" title="${title}"></div>`;
+    });
+    const total = rowTotals[row];
+    html += `<div class="heat-day-total ${total === 0 ? 'zero' : ''}">${total || '—'}</div>`;
+    html += `</div>`;
+  });
+
+  $('heatmap').innerHTML = html;
+
+  // Legend scale
+  let legendHtml = '';
+  [0, 0.25, 0.5, 0.75, 1].forEach(intensity => {
+    legendHtml += `<span class="heat-cell" style="background: ${heatColor(intensity)}"></span>`;
+  });
+  $('heat-scale').innerHTML = legendHtml;
+}
+
+function heatColor(intensity) {
+  if (intensity === 0) return 'var(--surface-2)';
+  // Interpolate from #1c1c22 (surface-2) to #dc2626 (accent)
+  const r = Math.round(0x1c + (0xdc - 0x1c) * intensity);
+  const g = Math.round(0x1c + (0x26 - 0x1c) * intensity);
+  const b = Math.round(0x22 + (0x26 - 0x22) * intensity);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+// ============================================================
+// LEADERBOARD — with inline share-of-total bars
+// ============================================================
+function renderLeaderboard(periodOrders) {
+  const tbody = $('leaderboard-body');
+  const delivered = periodOrders.filter(o => o.status === 'delivered');
+
+  if (delivered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="leaderboard-empty">Sin entregas en este período</td></tr>`;
+    return;
+  }
+
+  const byDriver = {};
+  delivered.forEach(o => {
+    const driverId = o.driver_id || o.assigned_driver_id || 'unknown';
+    if (!byDriver[driverId]) byDriver[driverId] = { driverId, count: 0, deliveryDurations: [] };
+    byDriver[driverId].count++;
+    if (o.delivered_at && o.picked_up_at) {
+      byDriver[driverId].deliveryDurations.push(o.delivered_at - o.picked_up_at);
+    }
+  });
+
+  const totalCount = delivered.length;
+  const rows = Object.values(byDriver).map(d => ({
+    driverId: d.driverId,
+    name: allDrivers[d.driverId]?.name || (d.driverId === 'unknown' ? 'Sin asignar' : d.driverId.slice(0, 8)),
+    status: allDrivers[d.driverId]?.status || 'off_shift',
+    count: d.count,
+    sharePct: Math.round((d.count / totalCount) * 100),
+    avgMin: d.deliveryDurations.length > 0 ? formatMinutes(avg(d.deliveryDurations)) : null
+  })).sort((a, b) => b.count - a.count);
+
+  const maxShare = Math.max(...rows.map(r => r.sharePct));
+
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>
+        <div class="driver-cell">
+          <span class="driver-dot ${r.status}"></span>
+          <span>${escapeHtml(r.name)}</span>
+        </div>
+      </td>
+      <td class="num">${r.count}</td>
+      <td class="share-bar-cell">
+        <div class="share-bar-track" title="${r.sharePct}% del total">
+          <div class="share-bar-fill" style="width: ${(r.sharePct / Math.max(1, maxShare) * 100).toFixed(1)}%"></div>
+        </div>
+      </td>
+      <td class="num">${r.avgMin != null ? r.avgMin + ' min' : '—'}</td>
+    </tr>
+  `).join('');
 }
 
 // ============================================================
@@ -1063,14 +1157,10 @@ function renderDrivers() {
 function escapeHtml(s) {
   if (s == null) return '';
   return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
-// Service worker registration (PWA install)
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
