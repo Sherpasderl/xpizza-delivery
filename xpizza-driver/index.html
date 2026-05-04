@@ -168,16 +168,19 @@
   .status-dot.blue.live { animation: pulse-blue 2s infinite; }
 
   .status-label {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
-    font-size: 18px;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
+    font-size: 16px;
+    letter-spacing: -0.01em;
+    color: var(--text);
     flex-grow: 1;
   }
   .gps-meta {
     font-size: 12px;
     color: var(--text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 500;
+    letter-spacing: 0;
   }
   .gps-meta.stale { color: var(--warn); }
   .icon-btn {
@@ -305,24 +308,30 @@
     width: 100%;
     height: 100%;
   }
-  /* New: outlined checkmark style (Onfleet-style) */
+  /* Outlined icon-in-circle, sized for icon prominence (~65% fill ratio). */
   .idle-check {
-    width: 88px;
-    height: 88px;
+    width: 96px;
+    height: 96px;
     border-radius: 50%;
-    border: 2.5px solid var(--text-dim);
+    border: 1.5px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 28px;
+    margin-bottom: 24px;
     color: var(--text);
   }
-  .idle-check svg { width: 44px; height: 44px; }
+  .idle-check svg {
+    width: 60px;
+    height: 60px;
+    stroke-width: 2;
+  }
   .idle-msg {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
-    font-size: 24px;
-    letter-spacing: 0.04em;
-    margin-bottom: 8px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    margin-bottom: 6px;
   }
   .idle-sub {
     color: var(--text-soft);
@@ -1068,7 +1077,7 @@
       <span class="duty-thumb"></span>
     </button>
     <div class="status-dot" id="status-dot"></div>
-    <div class="status-label" id="status-label">DISPONIBLE</div>
+    <div class="status-label" id="status-label">Disponible</div>
     <div class="gps-meta" id="gps-meta">—</div>
     <button class="icon-btn" id="history-btn" title="Hoy">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1648,17 +1657,17 @@ function renderStatusBar() {
     if (c === 'green' || c === 'blue') dot.classList.add('live');
   }
 
-  // Label in Spanish
+  // Label in Spanish — sentence case for a cleaner, more system-like feel.
   const labelMap = {
-    available: 'DISPONIBLE',
-    at_restaurant: 'EN RESTAURANTE',
-    assigned: 'ASIGNADO',
-    en_route_delivery: 'EN CAMINO',
-    returning: 'REGRESANDO',
-    on_break: 'EN PAUSA',
-    off_shift: 'FUERA'
+    available: 'Disponible',
+    at_restaurant: 'En restaurante',
+    assigned: 'Asignado',
+    en_route_delivery: 'En camino',
+    returning: 'Regresando',
+    on_break: 'En pausa',
+    off_shift: 'Fuera de turno'
   };
-  lbl.textContent = labelMap[status] || status?.toUpperCase() || '—';
+  lbl.textContent = labelMap[status] || status || '—';
 
   // Status meta: GPS freshness in most states, but when returning to the
   // restaurant (en_route_delivery or returning), show estimated time back.
