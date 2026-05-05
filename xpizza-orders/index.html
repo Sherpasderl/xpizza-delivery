@@ -1067,6 +1067,11 @@ textarea{resize:none;height:80px;line-height:1.4}
     <div style="padding:0 16px 0">
       <div class="section" style="margin-bottom:12px">
         <div class="section-head">Dirección de entrega</div>
+        <!-- Out-of-zone warning. Hidden by default; checkDeliveryRadius()
+             toggles its visibility based on pin position vs DELIVERY_RADIUS_KM. -->
+        <div id="out-of-zone-warning" class="error-box" style="display:none;margin-bottom:10px">
+          Tu ubicación está fuera de nuestra zona de delivery
+        </div>
         <div class="field-group field-divider">
           <label class="field-label">Dirección detectada</label>
           <input type="text" id="address-detected" placeholder="Detectando..." readonly style="background:var(--surface);color:var(--muted)"/>
@@ -1316,6 +1321,59 @@ let pickupTimeType = 'standard';
 let pickupScheduledTime = null;
 let pickupMap = null;
 let pickupMarker = null;
+
+// Restaurant location + delivery radius. Mirrors RESTAURANT in
+// xpizza-functions/index.js and DELIVERY_RADIUS_KM there. Server enforces
+// the same radius — this client-side check exists for UX only (immediate
+// feedback when the customer drops a pin out of zone). A bypassed client
+// gets rejected by createOrder server-side.
+const RESTAURANT_LAT = 15.507489753573818;
+const RESTAURANT_LNG = -88.0398486953722;
+const DELIVERY_RADIUS_KM = 7;
+
+// Haversine distance in km between two lat/lng coords.
+function haversineKm(lat1, lng1, lat2, lng2){
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2
+          + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
+          * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Track whether the current pin is within delivery zone. Used by
+// processPayment to gate submission, and by updateLocInfo / pin-drop
+// handlers to update the warning UI.
+let isWithinDeliveryZone = true;
+
+// Called after any pin position change for delivery orders. Updates
+// the warning UI and the isWithinDeliveryZone flag. Pickup orders skip
+// this (no delivery distance to check).
+function checkDeliveryRadius(la, ln){
+  if (orderType !== 'delivery'){
+    isWithinDeliveryZone = true;
+    return;
+  }
+  const distance = haversineKm(la, ln, RESTAURANT_LAT, RESTAURANT_LNG);
+  isWithinDeliveryZone = (distance <= DELIVERY_RADIUS_KM);
+
+  const warnEl = document.getElementById('out-of-zone-warning');
+  if (warnEl){
+    warnEl.style.display = isWithinDeliveryZone ? 'none' : 'block';
+  }
+
+  // Disable payment button when out of zone (prevents submission). When
+  // back in zone, only re-enable if a payment method is also selected.
+  const payBtn = document.getElementById('btn-pay');
+  if (payBtn){
+    if (!isWithinDeliveryZone){
+      payBtn.disabled = true;
+    } else if (selectedPayment){
+      payBtn.disabled = false;
+    }
+  }
+}
 
 
 
@@ -1874,6 +1932,8 @@ function updateLocInfo(la,ln,fallback){
   el.innerHTML=fallback
     ?'<b>Ubicación aproximada</b><br/>No pudimos detectar tu GPS. Mové el pin al lugar exacto.'
     :`<b>📍 Ubicación capturada con GPS</b><br/>Lat: ${la.toFixed(5)}, Lng: ${ln.toFixed(5)}<br/><small style="color:var(--muted)">Mové el pin si necesitás ajustar el punto exacto.</small>`;
+  // Update delivery zone status — fires on every pin position change.
+  checkDeliveryRadius(la, ln);
 }
 
 /* ── Stage 2 → 3 ── */
@@ -1921,6 +1981,13 @@ async function processPayment(){
   if(orderType==='delivery' && (!lat || !lng)){
     document.getElementById('err3').style.display='block';
     document.getElementById('err3').textContent='Por favor confirmá tu ubicación en el mapa.';
+    return;
+  }
+  // Final delivery-zone gate. UI keeps payBtn disabled when out of zone,
+  // but defense-in-depth in case button state got out of sync.
+  if(orderType==='delivery' && !isWithinDeliveryZone){
+    document.getElementById('err3').style.display='block';
+    document.getElementById('err3').textContent='Tu ubicación está fuera de nuestra zona de delivery';
     return;
   }
   // address_details is required for delivery orders. Honduras has poor
@@ -2144,10 +2211,13 @@ function startAnotherOrder(){
 
   // Reset address + map state
   lat = null; lng = null;
+  isWithinDeliveryZone = true;
   const addrDetected = document.getElementById('address-detected');
   if (addrDetected) addrDetected.value = '';
   const addrDetails = document.getElementById('address-details');
   if (addrDetails) addrDetails.value = '';
+  const outOfZone = document.getElementById('out-of-zone-warning');
+  if (outOfZone) outOfZone.style.display = 'none';
 
   // Reset payment selection
   selectedPayment = null;

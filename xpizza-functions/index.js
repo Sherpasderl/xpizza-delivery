@@ -73,6 +73,14 @@ const RESTAURANT = {
   phone: '+50497952893'
 };
 
+// Maximum distance (kilometers) the restaurant will deliver to. Orders with
+// a delivery lat/lng farther than this are rejected by validateOrderPayload.
+// The order form has the same check client-side for UX, but we enforce here
+// because clients can be bypassed (browser dev tools, direct API calls).
+// Tune this with operational reality — too tight rejects real customers,
+// too loose stretches drivers.
+const DELIVERY_RADIUS_KM = 7;
+
 // Generate a random URL-safe tracking token. 12 chars from a 64-char alphabet
 // gives 64^12 = ~4.7e21 possible tokens — guessing one is impossible. The
 // token is part of the public tracking URL, so don't include chars that
@@ -185,6 +193,20 @@ createOrderApp.all('*', async (req, res) => {
 
   const orderId = String(body.order_id);
   const orderType = body.order_type;
+
+  // Delivery zone check — reject orders whose lat/lng is farther than
+  // DELIVERY_RADIUS_KM from the restaurant. The order form does this
+  // client-side too, but we enforce here because clients can be bypassed
+  // (browser dev tools, direct API calls, third-party integrations like
+  // Make.com). Pickup orders skip this check (they're picked up at the
+  // restaurant by definition).
+  if (orderType === 'delivery') {
+    const distanceKm = haversineKm(lat, lng, RESTAURANT.lat, RESTAURANT.lng);
+    if (distanceKm > DELIVERY_RADIUS_KM) {
+      console.warn(`createOrder: order ${orderId} rejected — ${distanceKm.toFixed(2)}km > ${DELIVERY_RADIUS_KM}km radius`);
+      return badRequest(res, `Outside delivery zone (${distanceKm.toFixed(1)}km from restaurant, max ${DELIVERY_RADIUS_KM}km)`);
+    }
+  }
 
   // Pickup orders: not handled by dispatcher (they're walk-in / counter)
   if (orderType !== 'delivery') {
