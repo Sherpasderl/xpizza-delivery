@@ -5,6 +5,7 @@
  * Endpoints:
  *   - createOrder                   (HTTPS)   — Make.com → Firebase write proxy + WhatsApp "received"
  *   - notifyDriverOnAssignment      (DB trig) — Web Push to driver on assignment
+ *   - notifyDriverOnCancellation    (DB trig) — Web Push to assigned driver when order is cancelled
  *   - onOrderCancelled              (DB trig) — Sync cancellations to KDS Sheet
  *   - sendOrderStatusNotifications  (DB trig) — Customer WhatsApp on status transitions
  *   - onIncomingWhatsApp            (HTTPS)   — UltraMsg webhook for inbound customer messages + auto-reply
@@ -502,6 +503,118 @@ exports.onOrderCancelled = onValueWritten(
       console.error(`onOrderCancelled: failed for order ${orderId}`, err.message);
       // Don't throw — we don't want to retry on auth/permissions errors
       // forever. Log and let the dispatcher's UI feedback handle the user.
+    }
+  }
+);
+
+// ============================================================
+// notifyDriverOnCancellation — Web Push to the assigned driver when an order is cancelled
+// ============================================================
+//
+// When an order is cancelled, the previously-assigned driver may have already
+// received a "new order" push (or be working it). Without an active alert
+// they'd open the app to a missing card with no explanation. This function
+// sends a follow-up push so the driver is informed immediately.
+//
+// Uses the SAME push `tag` as the original assignment notification
+// (`order-${orderId}`). On Android this REPLACES the original banner —
+// effectively a clean retraction. On iOS, banners stack (the platform
+// doesn't dedupe by tag), but both lead to the same correct in-app state
+// via the existing cancellation guards in acceptTask/pickupComplete/
+// completeTask, so a stale tap is safe.
+//
+// No-op cases (silent skips):
+//   - Cancellation happened before assignment (assigned_driver_id is null)
+//   - Driver has no push_subscription on file
+//   - Dead subscription (404/410): clears the stale subscription record
+//
+// Trigger model: watches /orders/{orderId}/status (single fire per order),
+// then reads the pickup task to find the assigned driver. Mirrors
+// onOrderCancelled's trigger pattern. We don't trigger on /tasks/{id}/status
+// because that would fire twice per order (pickup + delivery both flip).
+
+exports.notifyDriverOnCancellation = onValueWritten(
+  {
+    ref: '/orders/{orderId}/status',
+    region: 'us-central1'
+  },
+  async (event) => {
+    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+      console.error('notifyDriverOnCancellation: VAPID keys not configured, skipping');
+      return;
+    }
+
+    const before = event.data.before.val();
+    const after = event.data.after.val();
+
+    // Only fire on transitions INTO cancelled
+    if (after !== 'cancelled') return;
+    if (before === 'cancelled') return;
+
+    const orderId = event.params.orderId;
+    const db = getDatabase();
+
+    // Find the assigned driver via the pickup task. cancelOrder() flips the
+    // task status to 'cancelled' but does NOT clear assigned_driver_id, so
+    // it survives intact for us to read.
+    const pickupTaskId = `${orderId}_pickup`;
+    const pickupSnap = await db.ref(`tasks/${pickupTaskId}`).once('value');
+    const pickup = pickupSnap.val();
+    const driverId = pickup?.assigned_driver_id || null;
+
+    if (!driverId) {
+      console.log(`notifyDriverOnCancellation: order ${orderId} cancelled before assignment, no push needed`);
+      return;
+    }
+
+    // Look up the driver's push subscription
+    const driverSnap = await db.ref(`drivers/${driverId}`).once('value');
+    const driver = driverSnap.val();
+    if (!driver?.push_subscription) {
+      console.log(`notifyDriverOnCancellation: driver ${driverId} has no push subscription, skipping`);
+      return;
+    }
+
+    // Look up the cancel reason (optional — included in body if present, truncated)
+    let reason = null;
+    try {
+      const reasonSnap = await db.ref(`orders/${orderId}/cancel_reason`).once('value');
+      reason = reasonSnap.val();
+    } catch (e) {
+      // Non-fatal — proceed without reason
+    }
+
+    const title = '❌ Pedido cancelado';
+    let body = `Pedido #${orderId}`;
+    if (reason && typeof reason === 'string' && reason.trim().length > 0) {
+      // Truncate at 50 chars to fit lock-screen banner without breaking layout
+      const trimmed = reason.length > 50 ? reason.slice(0, 47) + '...' : reason;
+      body = `${body}: ${trimmed}`;
+    }
+
+    const payload = JSON.stringify({
+      title,
+      body,
+      tag: `order-${orderId}`,  // same tag as assignment push → replaces banner on Android
+      data: { order_id: orderId, cancelled: true }
+    });
+
+    try {
+      await webpush.sendNotification(driver.push_subscription, payload, {
+        urgency: 'high',
+        TTL: 600
+      });
+      console.log(`notifyDriverOnCancellation: push sent to ${driverId} for cancelled order ${orderId}`);
+    } catch (err) {
+      const status = err.statusCode;
+      console.error(`notifyDriverOnCancellation: push failed for ${driverId}, status=${status}`, err.body);
+
+      // 404/410 → dead subscription, clear it so we stop retrying.
+      if (status === 404 || status === 410) {
+        await db.ref(`drivers/${driverId}/push_subscription`).remove();
+        await db.ref(`drivers/${driverId}/push_subscription_updated_at`).remove();
+        console.log(`notifyDriverOnCancellation: cleared dead subscription for ${driverId}`);
+      }
     }
   }
 );
