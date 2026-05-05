@@ -320,6 +320,23 @@ export async function arriveAtRestaurant(driverId) {
 }
 
 export async function acceptTask(driverId, taskId) {
+  // Defensive check: refuse to accept a task that's been cancelled (or
+  // moved past 'assigned' to anything else like another driver accepting
+  // it via reassignment). The driver UI's task list filter usually hides
+  // cancelled cards before the driver can tap, but there's a race window
+  // (mid-swipe at moment of cancellation, offline-then-reconnect with
+  // stale UI, etc.) where a tap could re-resurrect a cancelled task.
+  const snap = await get(ref(db, `tasks/${taskId}`));
+  const task = snap.val();
+  if (!task) throw new Error('Este pedido ya no existe');
+  if (task.status === TASK_STATUS.CANCELLED) {
+    throw new Error('Este pedido fue cancelado');
+  }
+  if (task.status !== TASK_STATUS.ASSIGNED) {
+    // Already accepted, completed, or in some other state — no-op
+    throw new Error('Este pedido ya no está disponible');
+  }
+
   const updates = {};
   updates[`tasks/${taskId}/status`] = TASK_STATUS.ACCEPTED;
   updates[`tasks/${taskId}/accepted_at`] = serverTimestamp();
@@ -346,6 +363,13 @@ export async function markTaskInProgress(driverId, taskId) {
 export async function completeTask(driverId, taskId) {
   const taskSnap = await get(ref(db, `tasks/${taskId}`));
   const task = taskSnap.val();
+  if (!task) throw new Error('Esta tarea ya no existe');
+  // Refuse if cancelled — without this guard, swiping "¡Entregado!" on a
+  // cancelled delivery would resurrect the cancellation by setting the
+  // order to DELIVERED. Same bug class as acceptTask + pickupComplete.
+  if (task.status === TASK_STATUS.CANCELLED) {
+    throw new Error('Este pedido fue cancelado');
+  }
 
   const updates = {};
   updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;
@@ -670,6 +694,12 @@ export async function pickupComplete(driverId, pickupTaskId) {
   if (!pickupTask) throw new Error(`Pickup task ${pickupTaskId} not found`);
   if (pickupTask.type !== TASK_TYPE.PICKUP) {
     throw new Error(`Task ${pickupTaskId} is not a pickup task`);
+  }
+  // Refuse if cancelled — driver should never mark a cancelled order as
+  // picked up. Without this guard, swiping "Recogí pedido" on a cancelled
+  // order would set the order to OUT_FOR_DELIVERY, undoing the cancellation.
+  if (pickupTask.status === TASK_STATUS.CANCELLED) {
+    throw new Error('Este pedido fue cancelado');
   }
 
   // Look for stacked pickups: other pending pickup tasks assigned to this
