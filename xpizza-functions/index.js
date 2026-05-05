@@ -961,14 +961,37 @@ function constantTimeEqual(a, b) {
 }
 
 /**
+ * Status priority for picking. Lower number = preferred.
+ * Used as a sort key BETWEEN orderCount and distanceKm:
+ *   - at_restaurant: definitely at base, ready to grab pickup
+ *   - available: idle, no current task (typically also at base, but
+ *     could be remote if shift was started off-site before geofence trip)
+ *   - returning: heading back, will arrive soon — should win over
+ *     anyone still en route to a customer
+ *   - assigned: has task, hasn't accepted yet (rare in pick context;
+ *     mostly relevant when stacking onto same driver)
+ *   - en_route_delivery: out delivering — last resort for stacking
+ *   - on_break / unknown: deprioritize via the ?? 99 fallback
+ */
+const STATUS_PRIORITY = {
+  at_restaurant: 0,
+  available: 1,
+  returning: 2,
+  assigned: 3,
+  en_route_delivery: 4
+};
+
+/**
  * Pick the best eligible driver based on:
  *   - On shift (last_ping within STALE_PING_MS, has lat/lng)
  *   - Not currently in timeout cooldown
  *   - Not in `excludeDriverIds` (used to skip the just-timed-out driver)
  *   - Has capacity per stacking rules
  *
- * Sort: 0-task drivers first, then by distance to restaurant ascending.
- * Returns { driverId, name, distanceKm, orderCount } or null if none eligible.
+ * Sort: fewest orders first, then status priority (at_restaurant beats
+ * returning beats en_route_delivery), then distance to restaurant ascending.
+ * Returns { driverId, name, distanceKm, orderCount, statusPriority } or null
+ * if none eligible.
  *
  * Shared by autoAssignOnOrderCreate and monitorAssignmentTimeout to avoid
  * drift between initial-assign and reassign behavior.
@@ -1055,12 +1078,14 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
     } else {
       distanceKm = 0;
     }
-    eligible.push({ driverId, orderCount, distanceKm, name: d.name || driverId });
+    const statusPriority = STATUS_PRIORITY[d.status] ?? 99;
+    eligible.push({ driverId, orderCount, statusPriority, distanceKm, name: d.name || driverId });
   }
 
   if (eligible.length === 0) return null;
   eligible.sort((a, b) => {
     if (a.orderCount !== b.orderCount) return a.orderCount - b.orderCount;
+    if (a.statusPriority !== b.statusPriority) return a.statusPriority - b.statusPriority;
     return a.distanceKm - b.distanceKm;
   });
   return eligible[0];
