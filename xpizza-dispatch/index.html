@@ -2427,6 +2427,7 @@ function startRenderTick() {
   if (renderTickInterval) clearInterval(renderTickInterval);
   renderTickInterval = setInterval(() => {
     renderSidebar();
+    updateDriverMarkers();
   }, 5000);
 }
 
