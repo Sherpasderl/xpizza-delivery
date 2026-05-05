@@ -3215,17 +3215,108 @@ function renderOrderDetailModal(order) {
   }
   $('order-detail-actions').innerHTML = actions.join('');
 
-  // Wire up the center-map button
+  // Wire up the center-map button — drops a distinctive temporary pin at
+  // the delivery location so the dispatcher can SEE where the order went,
+  // not just look at the area. The pin replaces any previous lookup pin
+  // and clears when the dispatcher opens a different order or clicks the
+  // map elsewhere.
   const centerBtn = $('od-center-map');
   if (centerBtn) {
     centerBtn.addEventListener('click', () => {
       if (typeof google === 'undefined' || !map) return;
+      showLookupPin(order);
       const bounds = new google.maps.LatLngBounds();
       bounds.extend({ lat: XPD.RESTAURANT.lat, lng: XPD.RESTAURANT.lng });
       bounds.extend({ lat: order.lat, lng: order.lng });
       map.fitBounds(bounds, 80);
       closeOrderDetailModal();
     });
+  }
+}
+
+// =====================================================================
+// Lookup pin — temporary marker for past orders
+// =====================================================================
+// When the dispatcher taps "Centrar mapa" in the order detail modal, we
+// drop a distinct pin at the delivery location. Past orders don't have
+// permanent markers (only active ones do), so without this pin the map
+// view is just an empty area. The pin uses a different color + style
+// from active-order pins (purple, slightly larger) so it's instantly
+// distinguishable. Only one lookup pin exists at a time — opening a
+// different order replaces it.
+// =====================================================================
+
+let lookupPinMarker = null;
+let lookupPinInfoWindow = null;
+let lookupPinMapClickListener = null;
+
+function showLookupPin(order) {
+  if (!order || !order.lat || !order.lng) return;
+  clearLookupPin();
+
+  const isCancelled = order.status === 'cancelled';
+  // Distinct visual: purple/violet teardrop, slightly larger than active-order
+  // pins, so the dispatcher can tell at a glance "this is a lookup, not a live order."
+  // Cancelled orders use a muted gray to match the cancelled visual language.
+  const color = isCancelled ? '#9aa0a6' : '#8b5cf6';
+  const icon = {
+    path: 'M 0,-14 C -7,-14 -12,-8 -12,-2 C -12,6 0,14 0,14 C 0,14 12,6 12,-2 C 12,-8 7,-14 0,-14 Z',
+    fillColor: color,
+    fillOpacity: 0.95,
+    strokeColor: '#fff',
+    strokeWeight: 3,
+    scale: 1.2,
+    anchor: new google.maps.Point(0, 14)
+  };
+
+  lookupPinMarker = new google.maps.Marker({
+    position: { lat: order.lat, lng: order.lng },
+    map,
+    icon,
+    title: order.customer_name || 'Pedido pasado',
+    zIndex: 500,           // above driver/customer markers
+    animation: google.maps.Animation.DROP
+  });
+
+  // Info window auto-opens with order summary so the dispatcher
+  // immediately confirms "yes, this is the right pin."
+  const statusLabel = isCancelled ? 'Cancelado' : 'Entregado';
+  const time = formatDateTime(order.delivered_at || order.cancelled_at || order.created_at);
+  lookupPinInfoWindow = new google.maps.InfoWindow({
+    content: `
+      <div class="info-window">
+        <div class="iw-name">${escapeHtml(order.customer_name || '—')}</div>
+        <div class="iw-meta">${statusLabel} · ${time}</div>
+        <div class="iw-meta">${escapeHtml(order.address_detected || order.destination_address || '—')}</div>
+      </div>
+    `
+  });
+  lookupPinInfoWindow.open(map, lookupPinMarker);
+
+  // Tapping the marker re-opens the info window if dispatcher closed it
+  lookupPinMarker.addListener('click', () => {
+    if (lookupPinInfoWindow) lookupPinInfoWindow.open(map, lookupPinMarker);
+  });
+
+  // Clicking anywhere else on the map clears the pin — natural way to
+  // dismiss without an explicit button.
+  lookupPinMapClickListener = map.addListener('click', () => {
+    clearLookupPin();
+  });
+}
+
+function clearLookupPin() {
+  if (lookupPinMarker) {
+    lookupPinMarker.setMap(null);
+    lookupPinMarker = null;
+  }
+  if (lookupPinInfoWindow) {
+    lookupPinInfoWindow.close();
+    lookupPinInfoWindow = null;
+  }
+  if (lookupPinMapClickListener) {
+    google.maps.event.removeListener(lookupPinMapClickListener);
+    lookupPinMapClickListener = null;
   }
 }
 
