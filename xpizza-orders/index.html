@@ -1072,8 +1072,8 @@ textarea{resize:none;height:80px;line-height:1.4}
           <input type="text" id="address-detected" placeholder="Detectando..." readonly style="background:var(--surface);color:var(--muted)"/>
         </div>
         <div class="field-group">
-          <label class="field-label">Detalles adicionales</label>
-          <input type="text" id="address-details" placeholder="Ej: Colonia Las Palmas, portón negro, 2do piso..."/>
+          <label class="field-label">Detalles adicionales <span style="color:var(--brand-red)">*</span></label>
+          <input type="text" id="address-details" placeholder="Ej: Colonia Las Palmas, portón negro, 2do piso..." required/>
         </div>
       </div>
     </div>
@@ -1096,13 +1096,8 @@ textarea{resize:none;height:80px;line-height:1.4}
             <div class="pay-desc">Pagás en efectivo cuando el repartidor llegue a tu puerta.</div>
           </div>
         </div>
-        <div class="pay-card" id="pay-card_delivery" onclick="selectPay('card_delivery')">
-          <div class="pay-icon">💳</div>
-          <div>
-            <div class="pay-title">Tarjeta al entregar</div>
-            <div class="pay-desc">El repartidor lleva una terminal POS. Visa y Mastercard aceptadas.</div>
-          </div>
-        </div>
+        <!-- "Tarjeta al entregar" payment card removed pending acquisition of
+             a handheld POS terminal. Re-add when terminal is in operation. -->
       </div>
 
       <div id="pixelpay-panel" style="display:none">
@@ -1884,9 +1879,7 @@ function selectPay(type){
   btn.disabled=false;
   btn.textContent=type==='online'
     ? '🔒 Pagar con PixelPay →'
-    : type==='cash'
-      ? '✓ Confirmar y enviar pedido'
-      : '✓ Confirmar pedido (pago con tarjeta al entregar)';
+    : '✓ Confirmar y enviar pedido';
   btn.className='btn-primary'+(type==='online'?' btn-green':'');
   document.getElementById('err3').style.display='none';
   // When online payment is selected, scroll the card form into view so
@@ -1908,6 +1901,22 @@ async function processPayment(){
     document.getElementById('err3').style.display='block';
     document.getElementById('err3').textContent='Por favor confirmá tu ubicación en el mapa.';
     return;
+  }
+  // address_details is required for delivery orders. Honduras has poor
+  // street-address coverage, so a customer-provided landmark / reference
+  // is essential for the driver to find the specific house once they
+  // arrive at the lat/lng. Minimum 3 chars to filter out placeholder
+  // single-character entries.
+  if(orderType==='delivery'){
+    const detailsVal = (document.getElementById('address-details')?.value || '').trim();
+    if(detailsVal.length < 3){
+      document.getElementById('err3').style.display='block';
+      document.getElementById('err3').textContent='Por favor agregá una referencia para el repartidor (color de casa, portón, piso, etc.)';
+      // Scroll the field into view so the customer sees what's missing.
+      document.getElementById('address-details')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      document.getElementById('address-details')?.focus();
+      return;
+    }
   }
   buildOrder();
   if(selectedPayment==='online'){
