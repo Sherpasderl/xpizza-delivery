@@ -3211,7 +3211,7 @@ function renderOrderDetailModal(order) {
     actions.push(`<a class="od-action-btn primary" href="tel:${escapeHtml(order.customer_phone)}" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;">Llamar al cliente</a>`);
   }
   if (order.lat && order.lng) {
-    actions.push(`<button class="od-action-btn" id="od-center-map">Centrar mapa</button>`);
+    actions.push(`<button class="od-action-btn" id="od-center-map">Ver en mapa</button>`);
   }
   $('order-detail-actions').innerHTML = actions.join('');
 
