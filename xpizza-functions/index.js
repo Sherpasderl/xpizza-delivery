@@ -42,6 +42,7 @@ const { initializeApp } = require('firebase-admin/app');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
 const webpush = require('web-push');
 const { google } = require('googleapis');
+const express = require('express');
 const whatsapp = require('./whatsapp');
 
 initializeApp({
@@ -137,6 +138,208 @@ function validateOrderPayload(body) {
 }
 
 // ---- The endpoint ----
+//
+// createOrder is wrapped in an Express app (rather than being a bare
+// (req, res) handler) so that an error-handling middleware can catch
+// body-parser failures. Without this, Firebase Functions v2's auto-applied
+// JSON body parser, when it encounters malformed JSON, lets the SyntaxError
+// fall through to the default error handler which returns HTTP 500. That's
+// wrong: malformed JSON is a CLIENT error (the caller sent garbage), so it
+// should return 400.
+//
+// The error middleware below intercepts that specific case and returns a
+// proper 400. Other unexpected errors fall through unchanged.
+//
+// The handler logic itself is identical to what existed before — it's just
+// now mounted on `createOrderApp.all('*', ...)` instead of being passed
+// directly to onRequest.
+
+const createOrderApp = express();
+
+createOrderApp.all('*', async (req, res) => {
+  // Method check
+  if (req.method !== 'POST') {
+    res.set('Allow', 'POST');
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  // Auth check — shared secret from Authorization: Bearer <secret>
+  const SECRET = process.env.MAKE_SECRET;
+  if (!SECRET) {
+    console.error('MAKE_SECRET env var is not set — refusing all requests');
+    return unauthorized(res, 'server misconfigured');
+  }
+  const authHeader = req.get('authorization') || '';
+  const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!presented || presented !== SECRET) {
+    console.warn('createOrder: bad/missing bearer token');
+    return unauthorized(res, 'invalid bearer token');
+  }
+
+  // Parse + validate
+  const body = req.body || {};
+  const { errors, total, lat, lng } = validateOrderPayload(body);
+  if (errors.length > 0) {
+    return badRequest(res, errors.join('; '));
+  }
+
+  const orderId = String(body.order_id);
+  const orderType = body.order_type;
+
+  // Pickup orders: not handled by dispatcher (they're walk-in / counter)
+  if (orderType !== 'delivery') {
+    return res.status(200).json({ ok: true, skipped: true, reason: 'order_type is not delivery', order_id: orderId });
+  }
+
+  const db = getDatabase();
+
+  // Idempotency check
+  try {
+    const existing = await db.ref(`orders/${orderId}`).once('value');
+    if (existing.exists()) {
+      console.log(`createOrder: order ${orderId} already exists, returning idempotent`);
+      return res.status(200).json({ ok: true, idempotent: true, order_id: orderId });
+    }
+  } catch (e) {
+    console.error('createOrder: existence check failed', e);
+    return res.status(500).json({ error: 'Database read failed', detail: e.message });
+  }
+
+  // Multi-path atomic write — one round-trip creates order + both tasks.
+  // Schema mirrors createOrderTasks() in xpizza-delivery.js — these field
+  // names are load-bearing (driver app reads recipient_name, destination_lat,
+  // and the SDK's pickupComplete() reads pickupTask.linked_task_id).
+  const now = ServerValue.TIMESTAMP;
+  const updates = {};
+
+  const pickupTaskId = `${orderId}_pickup`;
+  const deliveryTaskId = `${orderId}_delivery`;
+  const trackingToken = generateTrackingToken();
+
+  updates[`orders/${orderId}`] = {
+    order_id: orderId,
+    customer_name: String(body.customer_name),
+    customer_phone: String(body.customer_phone),
+    items_text: String(body.items_text || ''),
+    total: total,
+    lat: lat,
+    lng: lng,
+    address_detected: String(body.address_detected || ''),
+    address_details: String(body.address_details || ''),
+    notes: String(body.notes || ''),
+    maps_link: String(body.maps_link || ''),
+    payment_method: String(body.payment_method || ''),
+    order_type: orderType,
+    status: 'new',
+    pickup_task_id: pickupTaskId,
+    delivery_task_id: deliveryTaskId,
+    tracking_token: trackingToken,
+    created_at: now
+  };
+
+  updates[`tasks/${pickupTaskId}`] = {
+    order_id: orderId,
+    type: 'pickup',
+    status: 'pending',
+    assigned_driver_id: null,
+    linked_task_id: deliveryTaskId,
+    depends_on_task_id: null,
+    destination_lat: RESTAURANT.lat,
+    destination_lng: RESTAURANT.lng,
+    destination_address: RESTAURANT.name,
+    recipient_name: RESTAURANT.name,
+    recipient_phone: RESTAURANT.phone,
+    notes: String(body.items_text || ''),
+    created_at: now
+  };
+
+  updates[`tasks/${deliveryTaskId}`] = {
+    order_id: orderId,
+    type: 'delivery',
+    status: 'pending',
+    assigned_driver_id: null,
+    linked_task_id: pickupTaskId,
+    depends_on_task_id: pickupTaskId,
+    destination_lat: lat,
+    destination_lng: lng,
+    destination_address: String(body.address_detected || ''),
+    address_details: String(body.address_details || ''),
+    recipient_name: String(body.customer_name),
+    recipient_phone: String(body.customer_phone),
+    payment_method: String(body.payment_method || ''),
+    total: total,
+    notes: String(body.items_text || ''),
+    created_at: now
+  };
+
+  // Tracking index: maps tracking_token → order data. Stores ONLY the
+  // fields that are safe to expose publicly. The tracking site reads
+  // /order_tracking/{token} (public read rule). Customer name + first
+  // initial of address are shown but full address, phone, payment details
+  // stay in /orders (auth-only).
+  //
+  // Status field is kept in sync with /orders/{orderId}/status by
+  // sendOrderStatusNotifications. driver_name is filled in when
+  // out_for_delivery.
+  const addressShort = String(body.address_detected || '').split(',')[0].trim();
+  updates[`order_tracking/${trackingToken}`] = {
+    order_id: orderId,
+    customer_name: String(body.customer_name),
+    items_text: String(body.items_text || ''),
+    total: total,
+    address_short: addressShort,
+    status: 'new',
+    created_at: now
+  };
+
+  try {
+    await db.ref().update(updates);
+    console.log(`createOrder: wrote order ${orderId}`);
+  } catch (e) {
+    console.error('createOrder: write failed', e);
+    return res.status(500).json({ error: 'Database write failed', detail: e.message });
+  }
+
+  // Send WhatsApp "order received". We AWAIT this — Cloud Functions
+  // doesn't guarantee execution of non-awaited promises (the runtime can
+  // freeze the instance once the response is sent). Adds ~500-1000ms to
+  // createOrder response time, but the order is already in the database
+  // by this point so customer-facing timing is unaffected.
+  //
+  // Wrapped in try/catch so a WhatsApp failure NEVER causes the order
+  // creation to fail — order is already written above.
+  if (await whatsapp.isEnabled(db)) {
+    try {
+      const body = whatsapp.tplOrderReceived({
+        customerName: String(updates[`orders/${orderId}`].customer_name || ''),
+        orderId,
+        itemsText: String(updates[`orders/${orderId}`].items_text || ''),
+        total,
+        trackingToken
+      });
+      await whatsapp.sendMessage(updates[`orders/${orderId}`].customer_phone, body);
+    } catch (e) {
+      console.error('createOrder: whatsapp send failed (order still created)', e.message);
+    }
+  }
+
+  return res.status(200).json({ ok: true, order_id: orderId, tracking_token: trackingToken });
+});
+
+// Error middleware: catches SyntaxError / 'entity.parse.failed' from the
+// auto-applied JSON body parser and returns 400 instead of letting it fall
+// through to the default 500. Express invokes error middleware (4-arg
+// signature) when ANY upstream middleware calls next(err).
+//
+// If the error isn't a parse failure, fall through to the default handler.
+createOrderApp.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
+    console.warn(`createOrder: malformed JSON in request body — ${err.message}`);
+    return res.status(400).json({ error: 'Bad Request', detail: 'Malformed JSON in request body' });
+  }
+  // eslint-disable-next-line no-unused-vars
+  next(err);
+});
 
 exports.createOrder = onRequest(
   {
@@ -145,175 +348,7 @@ exports.createOrder = onRequest(
     timeoutSeconds: 30,
     memory: '256MiB'
   },
-  async (req, res) => {
-    // Method check
-    if (req.method !== 'POST') {
-      res.set('Allow', 'POST');
-      return res.status(405).json({ error: 'Method Not Allowed' });
-    }
-
-    // Auth check — shared secret from Authorization: Bearer <secret>
-    const SECRET = process.env.MAKE_SECRET;
-    if (!SECRET) {
-      console.error('MAKE_SECRET env var is not set — refusing all requests');
-      return unauthorized(res, 'server misconfigured');
-    }
-    const authHeader = req.get('authorization') || '';
-    const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-    if (!presented || presented !== SECRET) {
-      console.warn('createOrder: bad/missing bearer token');
-      return unauthorized(res, 'invalid bearer token');
-    }
-
-    // Parse + validate
-    const body = req.body || {};
-    const { errors, total, lat, lng } = validateOrderPayload(body);
-    if (errors.length > 0) {
-      return badRequest(res, errors.join('; '));
-    }
-
-    const orderId = String(body.order_id);
-    const orderType = body.order_type;
-
-    // Pickup orders: not handled by dispatcher (they're walk-in / counter)
-    if (orderType !== 'delivery') {
-      return res.status(200).json({ ok: true, skipped: true, reason: 'order_type is not delivery', order_id: orderId });
-    }
-
-    const db = getDatabase();
-
-    // Idempotency check
-    try {
-      const existing = await db.ref(`orders/${orderId}`).once('value');
-      if (existing.exists()) {
-        console.log(`createOrder: order ${orderId} already exists, returning idempotent`);
-        return res.status(200).json({ ok: true, idempotent: true, order_id: orderId });
-      }
-    } catch (e) {
-      console.error('createOrder: existence check failed', e);
-      return res.status(500).json({ error: 'Database read failed', detail: e.message });
-    }
-
-    // Multi-path atomic write — one round-trip creates order + both tasks.
-    // Schema mirrors createOrderTasks() in xpizza-delivery.js — these field
-    // names are load-bearing (driver app reads recipient_name, destination_lat,
-    // and the SDK's pickupComplete() reads pickupTask.linked_task_id).
-    const now = ServerValue.TIMESTAMP;
-    const updates = {};
-
-    const pickupTaskId = `${orderId}_pickup`;
-    const deliveryTaskId = `${orderId}_delivery`;
-    const trackingToken = generateTrackingToken();
-
-    updates[`orders/${orderId}`] = {
-      order_id: orderId,
-      customer_name: String(body.customer_name),
-      customer_phone: String(body.customer_phone),
-      items_text: String(body.items_text || ''),
-      total: total,
-      lat: lat,
-      lng: lng,
-      address_detected: String(body.address_detected || ''),
-      address_details: String(body.address_details || ''),
-      notes: String(body.notes || ''),
-      maps_link: String(body.maps_link || ''),
-      payment_method: String(body.payment_method || ''),
-      order_type: orderType,
-      status: 'new',
-      pickup_task_id: pickupTaskId,
-      delivery_task_id: deliveryTaskId,
-      tracking_token: trackingToken,
-      created_at: now
-    };
-
-    updates[`tasks/${pickupTaskId}`] = {
-      order_id: orderId,
-      type: 'pickup',
-      status: 'pending',
-      assigned_driver_id: null,
-      linked_task_id: deliveryTaskId,
-      depends_on_task_id: null,
-      destination_lat: RESTAURANT.lat,
-      destination_lng: RESTAURANT.lng,
-      destination_address: RESTAURANT.name,
-      recipient_name: RESTAURANT.name,
-      recipient_phone: RESTAURANT.phone,
-      notes: String(body.items_text || ''),
-      created_at: now
-    };
-
-    updates[`tasks/${deliveryTaskId}`] = {
-      order_id: orderId,
-      type: 'delivery',
-      status: 'pending',
-      assigned_driver_id: null,
-      linked_task_id: pickupTaskId,
-      depends_on_task_id: pickupTaskId,
-      destination_lat: lat,
-      destination_lng: lng,
-      destination_address: String(body.address_detected || ''),
-      address_details: String(body.address_details || ''),
-      recipient_name: String(body.customer_name),
-      recipient_phone: String(body.customer_phone),
-      payment_method: String(body.payment_method || ''),
-      total: total,
-      notes: String(body.items_text || ''),
-      created_at: now
-    };
-
-    // Tracking index: maps tracking_token → order data. Stores ONLY the
-    // fields that are safe to expose publicly. The tracking site reads
-    // /order_tracking/{token} (public read rule). Customer name + first
-    // initial of address are shown but full address, phone, payment details
-    // stay in /orders (auth-only).
-    //
-    // Status field is kept in sync with /orders/{orderId}/status by
-    // sendOrderStatusNotifications. driver_name is filled in when
-    // out_for_delivery.
-    const addressShort = String(body.address_detected || '').split(',')[0].trim();
-    updates[`order_tracking/${trackingToken}`] = {
-      order_id: orderId,
-      customer_name: String(body.customer_name),
-      items_text: String(body.items_text || ''),
-      total: total,
-      address_short: addressShort,
-      status: 'new',
-      created_at: now
-    };
-
-    try {
-      await db.ref().update(updates);
-      console.log(`createOrder: wrote order ${orderId}`);
-    } catch (e) {
-      console.error('createOrder: write failed', e);
-      return res.status(500).json({ error: 'Database write failed', detail: e.message });
-    }
-
-    // Send WhatsApp "order received". We AWAIT this — Cloud Functions
-    // doesn't guarantee execution of non-awaited promises (the runtime can
-    // freeze the instance once the response is sent). Adds ~500-1000ms to
-    // createOrder response time, but the order is already in the database
-    // by this point so customer-facing timing is unaffected.
-    //
-    // Wrapped in try/catch so a WhatsApp failure NEVER causes the order
-    // creation to fail — order is already written above.
-    if (await whatsapp.isEnabled(db)) {
-      try {
-        const body = whatsapp.tplOrderReceived({
-          customerName: String(updates[`orders/${orderId}`].customer_name || ''),
-          orderId,
-          itemsText: String(updates[`orders/${orderId}`].items_text || ''),
-          total,
-          trackingToken
-        });
-        await whatsapp.sendMessage(updates[`orders/${orderId}`].customer_phone, body);
-      } catch (e) {
-        console.error('createOrder: whatsapp send failed (order still created)', e.message);
-      }
-    }
-
-    return res.status(200).json({ ok: true, order_id: orderId, tracking_token: trackingToken });
-  }
+  createOrderApp
 );
 
 // ============================================================
