@@ -614,7 +614,48 @@ $('signout-btn').addEventListener('click', async () => { await XPD.signOutUser()
 // DATA
 // ============================================================
 let allOrders = {};
+let allTasks = {};
 let allDrivers = {};
+
+// Filters/derivations — single source of truth for what counts.
+//
+// Test orders (order_id starts with TEST-) are excluded from every metric,
+// every chart, every leaderboard. They were used during build/QA and would
+// otherwise pollute revenue, counts, and driver stats.
+//
+// Pre-existing test data on real-looking PZX-prefixed IDs (artifact of an
+// earlier testing phase before the TEST- convention was adopted) gets caught
+// by the duration sanity floor: any "delivered" order whose picked_up_at →
+// delivered_at gap is under 30s is filtered out of duration averages. Order
+// counts still include these (they exist as real records) but their
+// implausibly fast timestamps don't poison the average-time stats.
+
+const TEST_ORDER_PREFIX = 'TEST-';
+const MIN_DELIVERY_MS = 30000;
+
+function isTestOrder(o) {
+  return o && typeof o.order_id === 'string' && o.order_id.startsWith(TEST_ORDER_PREFIX);
+}
+
+function isPlausibleDelivery(o) {
+  if (!o || o.status !== 'delivered') return false;
+  if (!o.picked_up_at || !o.delivered_at) return false;
+  return (o.delivered_at - o.picked_up_at) >= MIN_DELIVERY_MS;
+}
+
+function getCleanOrders() {
+  return Object.values(allOrders).filter(o => o && !isTestOrder(o));
+}
+
+// Look up the driver who delivered an order. Driver assignment lives on the
+// delivery TASK (assigned_driver_id), not on the order itself — so we
+// dereference via order.delivery_task_id. Returns null if the task is missing
+// or has no driver (e.g. cancelled before assignment).
+function getDriverIdForOrder(o) {
+  if (!o || !o.delivery_task_id) return null;
+  const t = allTasks[o.delivery_task_id];
+  return t?.assigned_driver_id || null;
+}
 
 function startSubscriptions() {
   const date = formatHNDate(new Date(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -622,6 +663,14 @@ function startSubscriptions() {
 
   XPD.subscribeToOrders((orders) => {
     allOrders = orders || {};
+    renderHoy();
+    renderRevision();
+  });
+  XPD.subscribeToTasks((tasks) => {
+    allTasks = tasks || {};
+    // Re-render anything that depends on task data (driver assignment lookups
+    // in the leaderboard). renderHoy doesn't currently use tasks but we
+    // include it so future task-dependent stats slot in cleanly.
     renderHoy();
     renderRevision();
   });
@@ -675,7 +724,7 @@ function areaFillPath(points, baselineY) {
 // ============================================================
 function renderHoy() {
   const startMs = hnMidnightMs(new Date());
-  const todayOrders = Object.values(allOrders).filter(o => (o.created_at || 0) >= startMs);
+  const todayOrders = getCleanOrders().filter(o => (o.created_at || 0) >= startMs);
 
   const total = todayOrders.length;
   const completed = todayOrders.filter(o => o.status === 'delivered').length;
@@ -698,10 +747,12 @@ function renderHoy() {
   setPipe('pipe-listo', active.filter(o => o.status === 'ready').length);
   setPipe('pipe-route', active.filter(o => o.status === 'out_for_delivery').length);
 
-  // Times
+  // Times. Prep duration uses any delivered order with timestamps. Delivery
+  // duration applies the plausibility floor (drops sub-30s deliveries that
+  // are testing artifacts) so a 4-second outlier doesn't poison the average.
   const completedOrders = todayOrders.filter(o => o.status === 'delivered');
   const prepDur = completedOrders.filter(o => o.picked_up_at && o.created_at).map(o => o.picked_up_at - o.created_at);
-  const delvDur = completedOrders.filter(o => o.delivered_at && o.picked_up_at).map(o => o.delivered_at - o.picked_up_at);
+  const delvDur = completedOrders.filter(isPlausibleDelivery).map(o => o.delivered_at - o.picked_up_at);
   const prepAvg = avg(prepDur);
   const delvAvg = avg(delvDur);
   $('time-prep').textContent = prepAvg != null ? formatMinutes(prepAvg) : '—';
@@ -734,7 +785,7 @@ function renderSparklines() {
     days.push({ start: todayStart - i * dayMs, end: todayStart - (i - 1) * dayMs });
   }
 
-  const allArr = Object.values(allOrders);
+  const allArr = getCleanOrders();
   const totalSeries     = days.map(d => allArr.filter(o => o.created_at >= d.start && o.created_at < d.end).length);
   const completedSeries = days.map(d => allArr.filter(o => o.created_at >= d.start && o.created_at < d.end && o.status === 'delivered').length);
   const cancelledSeries = days.map(d => allArr.filter(o => o.created_at >= d.start && o.created_at < d.end && o.status === 'cancelled').length);
@@ -1021,7 +1072,7 @@ function renderRevision() {
   const prevFromMs = fromMs - periodLen;
   const prevToMs = fromMs;
 
-  const allArr = Object.values(allOrders);
+  const allArr = getCleanOrders();
   const periodOrders = allArr.filter(o => o.created_at != null && o.created_at >= fromMs && o.created_at < toMs);
   const prevOrders   = allArr.filter(o => o.created_at != null && o.created_at >= prevFromMs && o.created_at < prevToMs);
 
@@ -1030,10 +1081,13 @@ function renderRevision() {
   const prevOrdersCount = prevOrders.length;
   const prevDelivered = prevOrders.filter(o => o.status === 'delivered').length;
 
+  // Prep time uses any delivered order with timestamps. Delivery time uses
+  // the plausibility floor (drops sub-30s deliveries) so testing artifacts
+  // on legacy PZX-prefixed orders don't poison the average.
   const periodPrep = avg(periodOrders.filter(o => o.status === 'delivered' && o.picked_up_at && o.created_at).map(o => o.picked_up_at - o.created_at));
-  const periodDelv = avg(periodOrders.filter(o => o.status === 'delivered' && o.delivered_at && o.picked_up_at).map(o => o.delivered_at - o.picked_up_at));
+  const periodDelv = avg(periodOrders.filter(isPlausibleDelivery).map(o => o.delivered_at - o.picked_up_at));
   const prevPrep   = avg(prevOrders.filter(o => o.status === 'delivered' && o.picked_up_at && o.created_at).map(o => o.picked_up_at - o.created_at));
-  const prevDelv   = avg(prevOrders.filter(o => o.status === 'delivered' && o.delivered_at && o.picked_up_at).map(o => o.delivered_at - o.picked_up_at));
+  const prevDelv   = avg(prevOrders.filter(isPlausibleDelivery).map(o => o.delivered_at - o.picked_up_at));
 
   setStatWithDelta('rv-orders',    orders,                                 prevOrdersCount, false);
   setStatWithDelta('rv-delivered', delivered,                              prevDelivered,   false);
@@ -1149,10 +1203,16 @@ function renderLeaderboard(periodOrders) {
 
   const byDriver = {};
   delivered.forEach(o => {
-    const driverId = o.driver_id || o.assigned_driver_id || 'unknown';
+    // Driver assignment lives on the delivery TASK, not the order itself.
+    // The previous implementation read o.driver_id || o.assigned_driver_id
+    // which always fell through to 'unknown' (orders never have those fields).
+    // getDriverIdForOrder() looks up tasks/{order.delivery_task_id}.assigned_driver_id.
+    const driverId = getDriverIdForOrder(o) || 'unknown';
     if (!byDriver[driverId]) byDriver[driverId] = { driverId, count: 0, deliveryDurations: [] };
     byDriver[driverId].count++;
-    if (o.delivered_at && o.picked_up_at) {
+    // Apply the plausibility floor here too — a 4-second delivery would
+    // pull a driver's avg way down.
+    if (isPlausibleDelivery(o)) {
       byDriver[driverId].deliveryDurations.push(o.delivered_at - o.picked_up_at);
     }
   });
