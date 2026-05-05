@@ -1073,7 +1073,8 @@ textarea{resize:none;height:80px;line-height:1.4}
         </div>
         <div class="field-group">
           <label class="field-label">Detalles adicionales <span style="color:var(--brand-red)">*</span></label>
-          <input type="text" id="address-details" placeholder="Ej: Colonia Las Palmas, portón negro, 2do piso..." required/>
+          <input type="text" id="address-details" placeholder="Ej: Colonia Las Palmas, portón negro, 2do piso..." required oninput="clearAddressDetailsError()"/>
+          <div class="error-box" id="err-address-details" style="display:none;margin-top:6px"></div>
         </div>
       </div>
     </div>
@@ -1799,11 +1800,15 @@ function closeFullscreenMap() {
   const payBtn = document.getElementById('btn-pay');
   if (payBtn && selectedPayment) payBtn.disabled = false;
 
-  // Slow smooth scroll to payment section after map closes
+  // Slow smooth scroll to the address-details field after the map closes.
+  // address-details is required for delivery orders, so it's the customer's
+  // immediate next step — scrolling there places the cursor where they need
+  // to type next. Originally scrolled to payment, but with the new required
+  // field that would skip past it.
   setTimeout(() => {
-    const paySection = document.querySelector('.pay-options');
-    if (!paySection) return;
-    const targetY = paySection.getBoundingClientRect().top + window.scrollY - 16;
+    const detailsField = document.getElementById('address-details');
+    if (!detailsField) return;
+    const targetY = detailsField.getBoundingClientRect().top + window.scrollY - 80;
     const startY = window.scrollY;
     const distance = targetY - startY;
     const duration = 900;
@@ -1869,6 +1874,14 @@ function goToPayment(){
   document.getElementById('pixelpay-amount').textContent='L '+calcTotal().toFixed(2);
 }
 
+// Clear the address-details inline error as soon as the customer starts
+// typing. Avoids the awkward state where they see "agregá una referencia..."
+// while typing one in.
+function clearAddressDetailsError(){
+  const inlineErr = document.getElementById('err-address-details');
+  if(inlineErr) inlineErr.style.display='none';
+}
+
 /* ── Payment selection ── */
 function selectPay(type){
   selectedPayment=type;
@@ -1907,11 +1920,19 @@ async function processPayment(){
   // is essential for the driver to find the specific house once they
   // arrive at the lat/lng. Minimum 3 chars to filter out placeholder
   // single-character entries.
+  //
+  // Error is shown INLINE next to the field (err-address-details), not
+  // at the bottom near payment (err3). This way the customer sees the
+  // error message at the same spot they're being scrolled to, instead
+  // of having to scroll back down to find out what went wrong.
   if(orderType==='delivery'){
     const detailsVal = (document.getElementById('address-details')?.value || '').trim();
     if(detailsVal.length < 3){
-      document.getElementById('err3').style.display='block';
-      document.getElementById('err3').textContent='Por favor agregá una referencia para el repartidor (color de casa, portón, piso, etc.)';
+      const inlineErr = document.getElementById('err-address-details');
+      if(inlineErr){
+        inlineErr.style.display='block';
+        inlineErr.textContent='Por favor agregá una referencia para el repartidor (color de casa, portón, piso, etc.)';
+      }
       // Scroll the field into view so the customer sees what's missing.
       document.getElementById('address-details')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       document.getElementById('address-details')?.focus();
