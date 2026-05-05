@@ -1164,6 +1164,14 @@ textarea{resize:none;height:80px;line-height:1.4}
       <div class="receipt-head">Pago y entrega</div>
       <div id="receipt-payment"></div>
     </div>
+    <!-- Secondary CTA: customer can place another order without reloading
+         the page. Resets cart/address/payment but preserves name+phone
+         since they're the same person. -->
+    <div style="margin-top:28px;text-align:center">
+      <button onclick="startAnotherOrder()" style="background:none;border:none;color:var(--red);font-size:14px;font-weight:600;text-decoration:underline;cursor:pointer;padding:8px 16px;font-family:inherit">
+        Hacer otro pedido
+      </button>
+    </div>
   </div>
 </div>
 
@@ -2117,6 +2125,58 @@ async function submitOrder(paymentStatus){
 
   orderSubmitting = false;
   showSuccess();
+}
+
+// Customer wants to place another order from the success screen. Reset
+// cart, address, payment, and any per-pizza extras/notes — preserve only
+// name + phone since they're the same customer. Then send them back to
+// stage 1 (menu).
+//
+// Defensive: any state added later that should survive a "next order"
+// belongs here. Anything order-specific (cart contents, location pin,
+// payment selection) gets cleared.
+function startAnotherOrder(){
+  // Reset cart quantities
+  Object.keys(qty).forEach(k => { qty[k] = 0; });
+
+  // Reset extras (per-pizza customizations)
+  Object.keys(pizzaExtras).forEach(k => { delete pizzaExtras[k]; });
+
+  // Reset address + map state
+  lat = null; lng = null;
+  const addrDetected = document.getElementById('address-detected');
+  if (addrDetected) addrDetected.value = '';
+  const addrDetails = document.getElementById('address-details');
+  if (addrDetails) addrDetails.value = '';
+
+  // Reset payment selection
+  selectedPayment = null;
+  document.querySelectorAll('.pay-card').forEach(c => c.classList.remove('selected'));
+  const payBtn = document.getElementById('btn-pay');
+  if (payBtn) {
+    payBtn.disabled = true;
+    payBtn.textContent = 'Seleccioná una opción de pago';
+    payBtn.className = 'btn-primary';
+  }
+  const pixelpayPanel = document.getElementById('pixelpay-panel');
+  if (pixelpayPanel) pixelpayPanel.style.display = 'none';
+
+  // Reset hidden errors so they don't reappear stale
+  ['err1','err2','err3','err-address-details'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+
+  // Reset order-state flags
+  currentOrder = null;
+  orderSubmitting = false;
+
+  // Re-render the menu so quantity badges/buttons reflect the cleared cart
+  renderMenu();
+  updateCart();
+
+  // Back to stage 1. showStage handles scroll-to-top and cart-bar visibility.
+  showStage('s1', 25);
 }
 
 function showSuccess(){
