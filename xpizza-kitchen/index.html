@@ -340,6 +340,16 @@
     background: #FEF3C7;
     color: #92400E;
   }
+  .card-pickup-time {
+    background: #FEF3C7;
+    color: #92400E;
+    font-weight: 600;
+    font-size: 13px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    display: inline-block;
+  }
 
   .card-id {
     font-family: 'IBM Plex Mono', monospace;
@@ -1124,6 +1134,7 @@ function renderCard(order) {
         <div class="card-customer">${order.cliente}</div>
         <div class="card-type-badge ${order.order_type === "pickup" ? "pickup" : "delivery"}">${order.order_type === "pickup" ? "🏪 Pickup" : "🛵 Delivery"}</div>
       </div>
+      ${order.order_type === 'pickup' && order.pickup_time && order.pickup_time !== 'standard' ? `<div class="card-pickup-time">⏰ ${order.pickup_time}</div>` : ''}
 
       <div class="card-items">
         ${renderItems(order.pedido)}
@@ -1353,6 +1364,7 @@ function mapFirebaseOrderToCard(o) {
     notas: o.notes || '—',
     estado: estado,
     order_type: o.order_type || 'delivery',
+    pickup_time: o.pickup_time || null,
     cancelled: o.status === 'cancelled'
   };
 }
