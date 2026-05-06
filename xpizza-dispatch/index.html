@@ -1850,8 +1850,20 @@ const ICONS = {
 // ============================================================
 // State
 // ============================================================
-let firebaseConfig = null;
-let mapsApiKey = null;
+// Firebase config + Maps API key.
+// apiKey is NOT a secret — it identifies the project. Real access is gated
+// by Firebase Auth + Firebase Realtime Database rules. Maps key is also
+// public (visible in HTML source); should be locked to xpizzadispatch.netlify.app
+// referrer in Google Cloud Console for billing protection.
+const firebaseConfig = {
+  apiKey: "AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU",
+  authDomain: "xpizza-delivery.firebaseapp.com",
+  databaseURL: "https://xpizza-delivery-default-rtdb.firebaseio.com",
+  projectId: "xpizza-delivery",
+  messagingSenderId: "185867271616",
+  appId: "1:185867271616:web:84bb37552b40c1d517dc25"
+};
+const mapsApiKey = "AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU";
 let currentUser = null;
 let allDrivers = {};
 let allTasks = {};
@@ -1888,47 +1900,12 @@ function showScreen(name) {
   });
 }
 
-// ============================================================
-// Config
-// ============================================================
-function loadConfig() {
-  const fb = localStorage.getItem('xpd_dispatch_firebase');
-  const mk = localStorage.getItem('xpd_dispatch_mapskey');
-  if (fb && mk) {
-    try {
-      firebaseConfig = JSON.parse(fb);
-      mapsApiKey = mk;
-      return true;
-    } catch {}
-  }
-  return false;
-}
-
-$('config-save-btn').addEventListener('click', () => {
-  try {
-    const fb = JSON.parse($('firebase-config-input').value);
-    const mk = $('maps-key-input').value.trim();
-    if (!fb.databaseURL) throw new Error('Falta databaseURL en config');
-    if (!mk.startsWith('AIza')) throw new Error('Maps API key inválida');
-    firebaseConfig = fb;
-    mapsApiKey = mk;
-    localStorage.setItem('xpd_dispatch_firebase', JSON.stringify(fb));
-    localStorage.setItem('xpd_dispatch_mapskey', mk);
-    boot();
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-});
 
 // ============================================================
 // Boot
 // ============================================================
-async function boot() {
-  if (!firebaseConfig || !mapsApiKey) {
-    showScreen('config');
-    return;
-  }
 
+async function boot() {
   XPD.initDelivery(firebaseConfig);
 
   XPD.onAuth(async (user) => {
@@ -3769,11 +3746,8 @@ if ('serviceWorker' in navigator) {
 // ============================================================
 // Start
 // ============================================================
-if (!loadConfig()) {
-  showScreen('config');
-} else {
   boot();
-}
+
 </script>
 </body>
 </html>

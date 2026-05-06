@@ -1196,9 +1196,23 @@ const ICONS = {
 };
 
 // ============================================================
+// Firebase config
+// ============================================================
+// apiKey is NOT a secret — it identifies the project. Real access is gated
+// by Firebase Auth + Firebase Realtime Database rules. Hardcoded here so
+// new drivers don't have to paste config JSON on first launch.
+const firebaseConfig = {
+  apiKey: "AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU",
+  authDomain: "xpizza-delivery.firebaseapp.com",
+  databaseURL: "https://xpizza-delivery-default-rtdb.firebaseio.com",
+  projectId: "xpizza-delivery",
+  messagingSenderId: "185867271616",
+  appId: "1:185867271616:web:84bb37552b40c1d517dc25"
+};
+
+// ============================================================
 // State
 // ============================================================
-let firebaseConfig = null;
 let currentUser = null;
 let driverState = null;
 let allTasks = {};
@@ -1243,41 +1257,11 @@ function showScreen(name) {
   }
 }
 
-// ============================================================
-// Config (first run)
-// ============================================================
-function loadConfig() {
-  const saved = localStorage.getItem('xpd_driver_config');
-  if (saved) {
-    try {
-      firebaseConfig = JSON.parse(saved);
-      return true;
-    } catch {}
-  }
-  return false;
-}
-
-$('config-save-btn').addEventListener('click', () => {
-  try {
-    const cfg = JSON.parse($('config-input').value);
-    if (!cfg.databaseURL) throw new Error('Falta databaseURL en la configuración');
-    firebaseConfig = cfg;
-    localStorage.setItem('xpd_driver_config', JSON.stringify(cfg));
-    boot();
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-});
 
 // ============================================================
 // Boot
 // ============================================================
 async function boot() {
-  if (!firebaseConfig) {
-    showScreen('config');
-    return;
-  }
-
   XPD.initDelivery(firebaseConfig);
 
   XPD.onAuth(async (user) => {
@@ -2288,11 +2272,8 @@ document.addEventListener('visibilitychange', () => {
 // ============================================================
 // Start
 // ============================================================
-if (!loadConfig()) {
-  showScreen('config');
-} else {
   boot();
-}
+
 
 // Cleanup on page hide (best effort)
 window.addEventListener('beforeunload', () => {
