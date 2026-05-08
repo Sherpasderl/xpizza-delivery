@@ -156,6 +156,34 @@ function tplOrderReceived({ customerName, orderId, itemsText, total, trackingTok
   ].join('\n');
 }
 
+// Pickup confirmation. Used by createOrder when order_type === 'pickup'.
+// pickupTime is either the literal string 'standard' (= ASAP, ~20 min) or
+// a human-readable label like '6:00 PM–6:20 PM' selected by the customer
+// from the schedule sheet on the order form.
+function tplPickupReceived({ customerName, orderId, itemsText, total, pickupTime, trackingToken }) {
+  const timeLine = pickupTime === 'standard'
+    ? 'Estará listo en aproximadamente 20 minutos.'
+    : `Hora de recogida: ${pickupTime}`;
+  return [
+    `¡Hola ${customerName || ''}! 👋`,
+    ``,
+    `Recibimos tu pedido en X. Pizza ✅`,
+    ``,
+    `🍕 ${itemsText || ''}`,
+    `💰 Total: L${total}`,
+    ``,
+    `🏪 Recogida en restaurante`,
+    timeLine,
+    ``,
+    `Te avisamos por WhatsApp cuando esté listo para recoger.`,
+    ``,
+    `Sigue tu pedido:`,
+    trackingUrl(trackingToken),
+    ``,
+    `¡Gracias por preferirnos!`
+  ].join('\n');
+}
+
 function tplDriverAssigned({ customerName, driverName, trackingToken }) {
   return [
     `¡Tu pizza está lista! 🍕`,
@@ -201,6 +229,7 @@ module.exports = {
   isEnabled,
   normalizePhone,
   tplOrderReceived,
+  tplPickupReceived,
   tplDriverAssigned,
   tplOutForDelivery,
   tplDelivered,

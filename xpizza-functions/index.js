@@ -208,11 +208,6 @@ createOrderApp.all('*', async (req, res) => {
     }
   }
 
-  // Pickup orders: not handled by dispatcher (they're walk-in / counter)
-  if (orderType !== 'delivery') {
-    return res.status(200).json({ ok: true, skipped: true, reason: 'order_type is not delivery', order_id: orderId });
-  }
-
   const db = getDatabase();
 
   // Idempotency check
@@ -238,61 +233,79 @@ createOrderApp.all('*', async (req, res) => {
   const deliveryTaskId = `${orderId}_delivery`;
   const trackingToken = generateTrackingToken();
 
-  updates[`orders/${orderId}`] = {
+  // Build the order record. Common fields apply to both delivery and pickup;
+  // delivery-specific fields (lat/lng/address, task IDs) only get included
+  // for delivery orders. Pickup orders get pickup_time instead.
+  const orderRecord = {
     order_id: orderId,
     customer_name: String(body.customer_name),
     customer_phone: String(body.customer_phone),
     items_text: String(body.items_text || ''),
     total: total,
-    lat: lat,
-    lng: lng,
-    address_detected: String(body.address_detected || ''),
-    address_details: String(body.address_details || ''),
     notes: String(body.notes || ''),
-    maps_link: String(body.maps_link || ''),
     payment_method: String(body.payment_method || ''),
     order_type: orderType,
     status: 'new',
-    pickup_task_id: pickupTaskId,
-    delivery_task_id: deliveryTaskId,
     tracking_token: trackingToken,
     created_at: now
   };
 
-  updates[`tasks/${pickupTaskId}`] = {
-    order_id: orderId,
-    type: 'pickup',
-    status: 'pending',
-    assigned_driver_id: null,
-    linked_task_id: deliveryTaskId,
-    depends_on_task_id: null,
-    destination_lat: RESTAURANT.lat,
-    destination_lng: RESTAURANT.lng,
-    destination_address: RESTAURANT.name,
-    recipient_name: RESTAURANT.name,
-    recipient_phone: RESTAURANT.phone,
-    notes: String(body.items_text || ''),
-    created_at: now
-  };
+  if (orderType === 'delivery') {
+    orderRecord.lat = lat;
+    orderRecord.lng = lng;
+    orderRecord.address_detected = String(body.address_detected || '');
+    orderRecord.address_details = String(body.address_details || '');
+    orderRecord.maps_link = String(body.maps_link || '');
+    orderRecord.pickup_task_id = pickupTaskId;
+    orderRecord.delivery_task_id = deliveryTaskId;
+  } else {
+    // pickup
+    // pickup_time is either the literal string 'standard' (= ASAP, ~20 min)
+    // or a human-readable label like '6:00 PM–6:20 PM' selected by the
+    // customer. Stored as opaque string; KDS displays it as-is.
+    orderRecord.pickup_time = String(body.pickup_time || 'standard');
+  }
 
-  updates[`tasks/${deliveryTaskId}`] = {
-    order_id: orderId,
-    type: 'delivery',
-    status: 'pending',
-    assigned_driver_id: null,
-    linked_task_id: pickupTaskId,
-    depends_on_task_id: pickupTaskId,
-    destination_lat: lat,
-    destination_lng: lng,
-    destination_address: String(body.address_detected || ''),
-    address_details: String(body.address_details || ''),
-    recipient_name: String(body.customer_name),
-    recipient_phone: String(body.customer_phone),
-    payment_method: String(body.payment_method || ''),
-    total: total,
-    notes: String(body.items_text || ''),
-    created_at: now
-  };
+  updates[`orders/${orderId}`] = orderRecord;
+
+  // Driver tasks ONLY for delivery orders. Pickup orders are picked up by
+  // the customer at the restaurant — no driver involved, no dispatch.
+  if (orderType === 'delivery') {
+    updates[`tasks/${pickupTaskId}`] = {
+      order_id: orderId,
+      type: 'pickup',
+      status: 'pending',
+      assigned_driver_id: null,
+      linked_task_id: deliveryTaskId,
+      depends_on_task_id: null,
+      destination_lat: RESTAURANT.lat,
+      destination_lng: RESTAURANT.lng,
+      destination_address: RESTAURANT.name,
+      recipient_name: RESTAURANT.name,
+      recipient_phone: RESTAURANT.phone,
+      notes: String(body.items_text || ''),
+      created_at: now
+    };
+
+    updates[`tasks/${deliveryTaskId}`] = {
+      order_id: orderId,
+      type: 'delivery',
+      status: 'pending',
+      assigned_driver_id: null,
+      linked_task_id: pickupTaskId,
+      depends_on_task_id: pickupTaskId,
+      destination_lat: lat,
+      destination_lng: lng,
+      destination_address: String(body.address_detected || ''),
+      address_details: String(body.address_details || ''),
+      recipient_name: String(body.customer_name),
+      recipient_phone: String(body.customer_phone),
+      payment_method: String(body.payment_method || ''),
+      total: total,
+      notes: String(body.items_text || ''),
+      created_at: now
+    };
+  }
 
   // Tracking index: maps tracking_token → order data. Stores ONLY the
   // fields that are safe to expose publicly. The tracking site reads
@@ -302,10 +315,13 @@ createOrderApp.all('*', async (req, res) => {
   //
   // Status field is kept in sync with /orders/{orderId}/status by
   // sendOrderStatusNotifications. driver_name is filled in when
-  // out_for_delivery.
-  const addressShort = String(body.address_detected || '').split(',')[0].trim();
+  // out_for_delivery (delivery orders only).
+  const addressShort = orderType === 'delivery'
+    ? String(body.address_detected || '').split(',')[0].trim()
+    : 'Recoger en X. Pizza';
   updates[`order_tracking/${trackingToken}`] = {
     order_id: orderId,
+    order_type: orderType,
     customer_name: String(body.customer_name),
     items_text: String(body.items_text || ''),
     total: total,
@@ -316,7 +332,7 @@ createOrderApp.all('*', async (req, res) => {
 
   try {
     await db.ref().update(updates);
-    console.log(`createOrder: wrote order ${orderId}`);
+    console.log(`createOrder: wrote ${orderType} order ${orderId}`);
   } catch (e) {
     console.error('createOrder: write failed', e);
     return res.status(500).json({ error: 'Database write failed', detail: e.message });
@@ -332,14 +348,29 @@ createOrderApp.all('*', async (req, res) => {
   // creation to fail — order is already written above.
   if (await whatsapp.isEnabled(db)) {
     try {
-      const body = whatsapp.tplOrderReceived({
-        customerName: String(updates[`orders/${orderId}`].customer_name || ''),
-        orderId,
-        itemsText: String(updates[`orders/${orderId}`].items_text || ''),
-        total,
-        trackingToken
-      });
-      await whatsapp.sendMessage(updates[`orders/${orderId}`].customer_phone, body);
+      // Pickup vs delivery have different copy. Pickup says "te avisamos
+      // cuando esté listo para recoger" instead of "en camino". Delivery
+      // template is unchanged.
+      let waBody;
+      if (orderType === 'pickup') {
+        waBody = whatsapp.tplPickupReceived({
+          customerName: String(updates[`orders/${orderId}`].customer_name || ''),
+          orderId,
+          itemsText: String(updates[`orders/${orderId}`].items_text || ''),
+          total,
+          pickupTime: String(updates[`orders/${orderId}`].pickup_time || 'standard'),
+          trackingToken
+        });
+      } else {
+        waBody = whatsapp.tplOrderReceived({
+          customerName: String(updates[`orders/${orderId}`].customer_name || ''),
+          orderId,
+          itemsText: String(updates[`orders/${orderId}`].items_text || ''),
+          total,
+          trackingToken
+        });
+      }
+      await whatsapp.sendMessage(updates[`orders/${orderId}`].customer_phone, waBody);
     } catch (e) {
       console.error('createOrder: whatsapp send failed (order still created)', e.message);
     }
@@ -371,6 +402,66 @@ exports.createOrder = onRequest(
     memory: '256MiB'
   },
   createOrderApp
+);
+
+// ============================================================
+// healthz — Liveness + dependency check for uptime monitoring
+// ============================================================
+//
+// Pinged every 5 minutes by an external uptime monitor (UptimeRobot etc).
+// Returns 200 + JSON when the function is alive AND can reach Firebase.
+// Returns 503 when Firebase is unreachable. Anything other than 200 means
+// "platform is degraded" — alert.
+//
+// Public endpoint, no auth. Firebase connection check is cheap (a single
+// read of the special /.info/connected path that Firebase maintains for
+// exactly this purpose).
+//
+// Worth noting what this does NOT check: WhatsApp/UltraMsg, individual
+// function correctness, slow-but-not-failing responses. The Sentry-style
+// error alerts catch the function-error case; this just catches the
+// "everything is on fire" case.
+exports.healthz = onRequest(
+  {
+    region: 'us-central1',
+    cors: true,            // safe for browsers to hit (e.g., status page)
+    timeoutSeconds: 10,    // fail fast — slow check is a fail
+    memory: '128MiB'
+  },
+  async (req, res) => {
+    const startedAt = Date.now();
+    try {
+      const db = getDatabase();
+      // .info/connected is a Firebase-maintained boolean. Reading it
+      // exercises the database connection without depending on any
+      // application data shape.
+      const snap = await db.ref('.info/connected').once('value');
+      const dbReachable = snap.val() === true;
+      const elapsedMs = Date.now() - startedAt;
+
+      if (!dbReachable) {
+        return res.status(503).json({
+          ok: false,
+          checks: { firebase: 'unreachable' },
+          elapsed_ms: elapsedMs
+        });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        checks: { firebase: 'ok' },
+        elapsed_ms: elapsedMs,
+        timestamp: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error('healthz: check failed', e.message);
+      return res.status(503).json({
+        ok: false,
+        error: e.message,
+        elapsed_ms: Date.now() - startedAt
+      });
+    }
+  }
 );
 
 // ============================================================
