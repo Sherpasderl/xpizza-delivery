@@ -426,7 +426,7 @@ exports.healthz = onRequest(
     region: 'us-central1',
     cors: true,            // safe for browsers to hit (e.g., status page)
     timeoutSeconds: 10,    // fail fast — slow check is a fail
-    memory: '128MiB'
+    memory: '256MiB'       // 128MiB OOMs at boot — firebase-admin needs more
   },
   async (req, res) => {
     const startedAt = Date.now();
