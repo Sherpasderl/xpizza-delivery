@@ -1418,7 +1418,7 @@ function renderMenu(){
         <div class="pizza-card-name">${p.name}</div>
         <div class="pizza-card-desc">${p.desc||''}</div>
         <div class="pizza-card-footer">
-          <span class="pizza-card-price">${p.price}</span>
+          <span class="pizza-card-price">L ${p.price}</span>
           <span class="card-extras-indicator" id="extras-indicator-${p.id}" style="display:none">✓ Extras</span>
         </div>
       </div>
@@ -2476,7 +2476,7 @@ function renderDetailModal() {
   html += `<div class="detail-body">
     <div class="detail-name">${escapeHtml(pizza.name)}</div>
     ${desc ? `<div class="detail-desc">${escapeHtml(desc)}</div>` : ''}
-    <div class="detail-price">${escapeHtml(pizza.price)}</div>
+    <div class="detail-price">L ${escapeHtml(pizza.price)}</div>
   </div>`;
 
   // Quantity stepper
