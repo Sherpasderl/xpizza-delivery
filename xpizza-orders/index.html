@@ -1285,16 +1285,42 @@ function getNextOpenText() {
   const hn  = new Date(utc - 6 * 3600000);
   const day  = hn.getDay();
   const mins = hn.getHours() * 60 + hn.getMinutes();
-  const h    = HOURS[day];
   const days = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
-  if (mins < h.open) return 'Abrimos hoy a las 12:00 pm';
-  // Check next days
+
+  // Format minutes-since-midnight as "12:00 pm"
+  const formatTime = (m) => {
+    const h24 = Math.floor(m / 60);
+    const mm  = m % 60;
+    const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+    const ampm = h24 < 12 ? 'am' : 'pm';
+    return h12 + ':' + String(mm).padStart(2, '0') + ' ' + ampm;
+  };
+
+  // If today is open and we're before opening time, the answer is "today"
+  const today = HOURS[day];
+  if (today && mins < today.open) {
+    return 'Abrimos hoy a las ' + formatTime(today.open);
+  }
+
+  // Otherwise look forward 1-7 days for the next open day.
+  // The if (next) check is the actual bug fix: the previous version
+  // returned on the first iteration regardless of whether that day
+  // was open. Latent bug since X. Pizza is open every day, but would
+  // surface immediately if we ever close for a holiday.
   for (let i = 1; i <= 7; i++) {
     const nextDay = (day + i) % 7;
-    const label = i === 1 ? 'mañana' : 'el ' + days[nextDay];
-    return label === 'mañana' ? 'Con gusto los atendemos mañana a partir de las 12:00 pm' : 'Con gusto los atendemos ' + label + ' a partir de las 12:00 pm';
+    const next = HOURS[nextDay];
+    if (next) {
+      const label = i === 1 ? 'mañana' : 'el ' + days[nextDay];
+      const timeStr = formatTime(next.open);
+      return i === 1
+        ? 'Con gusto los atendemos mañana a partir de las ' + timeStr
+        : 'Con gusto los atendemos ' + label + ' a partir de las ' + timeStr;
+    }
   }
-  return 'Con gusto los atendemos mañana a partir de las 12:00 pm';
+
+  // Fallback: every day is closed (shouldn't happen for X. Pizza)
+  return 'Con gusto los atendemos pronto';
 }
 
 const EXTRAS = [
