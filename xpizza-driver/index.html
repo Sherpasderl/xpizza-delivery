@@ -441,6 +441,18 @@
     padding: 4px 0;
     margin-bottom: 14px;
   }
+  .recipient-whatsapp {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: #25D366;
+    text-decoration: none;
+    display: inline-block;
+    padding: 4px 0 4px 8px;
+    margin-bottom: 14px;
+    margin-left: 6px;
+    border-left: 1px solid var(--text-soft);
+  }
 
   .address-block {
     background: var(--surface-2);
@@ -1865,7 +1877,7 @@ function renderActiveCard(o) {
       </div>
       <div class="body">
         <div class="recipient-name">${escapeHtml(order.customer_name || o.deliveryTask.recipient_name || '—')}</div>
-        ${order.customer_phone ? `<a class="recipient-phone mono" href="tel:${order.customer_phone}">${order.customer_phone}</a>` : ''}
+        ${order.customer_phone ? `<a class="recipient-phone mono" href="tel:${order.customer_phone}">${order.customer_phone}</a><a class="recipient-whatsapp" href="https://wa.me/${String(order.customer_phone).replace(/\D/g,'')}?text=${encodeURIComponent('Hola, soy del repartidor de X. Pizza.')}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
 
         <div class="address-block">
           <div class="address-line">${escapeHtml(order.address_detected || o.deliveryTask.destination_address || '—')}</div>
