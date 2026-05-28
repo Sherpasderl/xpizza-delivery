@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>X. Pizza — Cotiza tu evento</title>
+<meta name="description" content="Cotiza tu evento privado, catering o reserva con X. Pizza. Pizzas artesanales en San Pedro Sula, Honduras.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Special+Elite&display=swap" rel="stylesheet">
+<style>
+  /* Fonts loaded via Google Fonts CDN link above */
+
+  /* ============ TOKENS ============ */
+  :root {
+    --bg: #F7F5F2;
+    --card: #FFFFFF;
+    --ink: #1a1a1a;
+    --ink-2: #5a5450;
+    --ink-3: #8a847e;
+    --hair: rgba(26, 26, 26, 0.10);
+    --hair-strong: rgba(26, 26, 26, 0.22);
+    --accent: #C4921A;
+    --accent-soft: #D4A84B;
+    --required: #B5471F;
+    --wa: #25D366;
+    --wa-dark: #1FAA52;
+    --panel: #1c1a17;
+    --panel-ink: #F5F0E0;
+    --panel-ink-2: #c8b89a;
+    --ok-bg: #ecf3e8;
+    --ok-border: #4a7a4a;
+    --ok-ink: #1a4a1a;
+    --warn-bg: #fbeae0;
+    --warn-border: #b85f3e;
+    --warn-ink: #6a2a15;
+    --shadow: 0 1px 2px rgba(26,26,26,0.04), 0 2px 8px rgba(26,26,26,0.04);
+    --radius: 6px;
+    --display: 'Special Elite', 'Courier Prime', monospace;
+    --body: 'DM Sans', system-ui, -apple-system, sans-serif;
+    --numeric: 'Courier Prime', 'SF Mono', Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { min-height: 100%; }
+  body {
+    font-family: var(--body);
+    color: var(--ink);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    line-height: 1.55;
+    padding: 24px 16px 48px;
+    touch-action: manipulation;
+  }
+
+  .container {
+    max-width: 580px;
+    margin: 0 auto;
+  }
+
+  /* ============ HEADER ============ */
+  .header {
+    text-align: center;
+    margin-bottom: 36px;
+    padding-top: 8px;
+  }
+
+  .header .logo {
+    width: 96px;
+    height: auto;
+    margin-bottom: 18px;
+    opacity: 0.95;
+  }
+
+  .header h1 {
+    font-family: var(--display);
+    font-size: 30px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    line-height: 1.05;
+    margin-bottom: 10px;
+    font-weight: 400;
+  }
+
+  .header .subtitle {
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+
+  .header .desc {
+    font-size: 14px;
+    color: var(--ink-2);
+    margin-top: 18px;
+    line-height: 1.6;
+    max-width: 440px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* ============ STEP CARDS ============ */
+  .step {
+    background: var(--card);
+    border: 1px solid var(--hair);
+    border-radius: var(--radius);
+    padding: 24px 22px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow);
+  }
+
+  .step-header {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 20px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--hair);
+  }
+
+  .step-number {
+    font-family: var(--display);
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    font-weight: 400;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .step-title {
+    font-family: var(--display);
+    font-size: 19px;
+    letter-spacing: 0.03em;
+    line-height: 1;
+    color: var(--ink);
+    font-weight: 400;
+  }
+
+  /* ============ FIELDS ============ */
+  .field { margin-bottom: 16px; }
+  .field:last-child { margin-bottom: 0; }
+
+  .field label {
+    display: block;
+    font-family: var(--body);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    margin-bottom: 7px;
+  }
+
+  .field label .req {
+    color: var(--required);
+    margin-left: 3px;
+    font-weight: 700;
+  }
+
+  .field input,
+  .field textarea,
+  .field select {
+    width: 100%;
+    padding: 12px 14px;
+    font-family: var(--body);
+    font-size: 16px;
+    background: var(--card);
+    border: 1px solid var(--hair-strong);
+    border-radius: 4px;
+    color: var(--ink);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .field select {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%231a1a1a' stroke-width='1.5' d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 11px 7px;
+    padding-right: 36px;
+  }
+  .field input:focus,
+  .field textarea:focus,
+  .field select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(196, 146, 26, 0.15);
+  }
+  .field input[type="date"],
+  .field input[type="time"] {
+    min-height: 46px;
+  }
+  .field textarea {
+    resize: vertical;
+    min-height: 80px;
+    line-height: 1.5;
+  }
+  .field input::placeholder,
+  .field textarea::placeholder {
+    color: var(--ink-3);
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+  .grid-2:last-child { margin-bottom: 0; }
+  .grid-2 .field { margin-bottom: 0; }
+
+  /* ============ FULL-WIDTH STEPPER (guests) ============ */
+  .stepper-field {
+    display: flex;
+    align-items: stretch;
+    background: var(--card);
+    border: 1px solid var(--hair-strong);
+    border-radius: 4px;
+    overflow: hidden;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .stepper-field:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(196, 146, 26, 0.15);
+  }
+  .stepper-field input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    border-left: 1px solid var(--hair);
+    border-right: 1px solid var(--hair);
+    text-align: center;
+    font-family: var(--numeric);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--ink);
+    background: transparent;
+    min-height: 46px;
+    padding: 0 8px;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .stepper-field input:focus { outline: none; }
+  .stepper-field input::-webkit-outer-spin-button,
+  .stepper-field input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .stepper-field input[type=number] { -moz-appearance: textfield; }
+  .stepper-field input::placeholder { color: var(--ink-3); font-weight: 400; }
+  .stepper-field .stepper-btn {
+    width: 48px;
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    font-family: var(--body);
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--ink);
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background 0.12s;
+  }
+  .stepper-field .stepper-btn:hover { background: rgba(196, 146, 26, 0.1); }
+  .stepper-field .stepper-btn:active { background: rgba(196, 146, 26, 0.18); }
+
+  /* ============ PHONE FIELD (fixed +504 prefix) ============ */
+  .phone-field {
+    display: flex;
+    align-items: stretch;
+    background: var(--card);
+    border: 1px solid var(--hair-strong);
+    border-radius: 4px;
+    overflow: hidden;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .phone-field:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(196, 146, 26, 0.15);
+  }
+  .phone-prefix {
+    display: flex;
+    align-items: center;
+    padding: 0 13px;
+    font-family: var(--numeric);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--ink-2);
+    background: rgba(26, 26, 26, 0.045);
+    border-right: 1px solid var(--hair);
+    white-space: nowrap;
+  }
+  .phone-field input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    font-family: var(--numeric);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+    background: transparent;
+    min-height: 46px;
+    padding: 0 14px;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .phone-field input:focus { outline: none; }
+  .phone-field input::placeholder { color: var(--ink-3); font-weight: 400; letter-spacing: 0; }
+
+  /* ============ AVAILABILITY MESSAGE ============ */
+  .availability {
+    display: none;
+    padding: 12px 14px;
+    margin-top: 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .availability.show { display: block; }
+  .availability.ok {
+    background: var(--ok-bg);
+    border: 1px solid var(--ok-border);
+    color: var(--ok-ink);
+  }
+  .availability.blocked {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    color: var(--warn-ink);
+  }
+  .availability strong {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11px;
+    display: block;
+    margin-bottom: 3px;
+  }
+
+  /* ============ PIZZAS ============ */
+  .pizza-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--hair);
+  }
+  .pizza-meta .min-note {
+    font-size: 11px;
+    color: var(--ink-3);
+    letter-spacing: 0.04em;
+  }
+  .pizza-meta .pizza-counter {
+    font-family: var(--body);
+    font-weight: 600;
+    font-size: 11.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  .pizza-meta .pizza-counter strong {
+    font-family: var(--numeric);
+    color: var(--accent);
+    font-size: 13.5px;
+    margin-right: 4px;
+  }
+  .pizza-meta .pizza-counter.under strong {
+    color: var(--required);
+  }
+
+  .pizza-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .pizza-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 14px;
+    align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--hair);
+  }
+  .pizza-row:last-child {
+    border-bottom: none;
+    padding-bottom: 4px;
+  }
+  .pizza-row.active .pizza-name {
+    color: var(--ink);
+  }
+
+  .pizza-info .pizza-name {
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+    line-height: 1.2;
+  }
+  .pizza-info .pizza-desc {
+    font-size: 12.5px;
+    color: var(--ink-2);
+    line-height: 1.45;
+    margin-bottom: 4px;
+  }
+  .pizza-info .pizza-price {
+    font-family: var(--numeric);
+    font-size: 11.5px;
+    color: var(--ink-3);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  /* Quantity stepper */
+  .qty-stepper {
+    display: flex;
+    align-items: center;
+    background: var(--card);
+    border: 1px solid var(--hair-strong);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .qty-stepper button {
+    width: 38px;
+    height: 38px;
+    background: transparent;
+    border: none;
+    font-family: var(--body);
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    color: var(--ink);
+    transition: background 0.12s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .qty-stepper button:hover:not(:disabled) {
+    background: rgba(196, 146, 26, 0.1);
+  }
+  .qty-stepper button:disabled {
+    color: var(--ink-3);
+    cursor: not-allowed;
+  }
+  .qty-stepper input {
+    width: 44px;
+    height: 38px;
+    text-align: center;
+    background: transparent;
+    border: none;
+    border-left: 1px solid var(--hair);
+    border-right: 1px solid var(--hair);
+    font-family: var(--numeric);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--ink);
+    padding: 0;
+  }
+  .qty-stepper input:focus { outline: none; background: rgba(196, 146, 26, 0.05); }
+  .qty-stepper input::-webkit-outer-spin-button,
+  .qty-stepper input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .qty-stepper input[type=number] { -moz-appearance: textfield; }
+
+  .min-warning {
+    display: none;
+    margin-top: 14px;
+    padding: 11px 14px;
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    border-radius: 4px;
+    font-size: 12.5px;
+    color: var(--warn-ink);
+    line-height: 1.5;
+  }
+  .min-warning.show { display: block; }
+
+  /* ============ ESTIMATE PANEL ============ */
+  .estimate {
+    background: var(--panel);
+    color: var(--panel-ink);
+    border-radius: var(--radius);
+    padding: 22px 22px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow);
+  }
+  .estimate .est-label {
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent-soft);
+    margin-bottom: 16px;
+  }
+  .est-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 5px 0;
+    font-size: 13.5px;
+  }
+  .est-line span:first-child { color: var(--panel-ink-2); }
+  .est-line:not(.total) span:last-child {
+    font-family: var(--numeric);
+    font-weight: 700;
+    color: var(--panel-ink);
+  }
+  .est-line.total {
+    border-top: 1px solid rgba(212, 168, 75, 0.4);
+    padding-top: 14px;
+    margin-top: 8px;
+    font-family: var(--display);
+    font-size: 22px;
+    letter-spacing: 0.03em;
+  }
+  .est-line.total span:first-child { color: var(--panel-ink); }
+  .est-line.total span:last-child { color: var(--accent-soft); }
+  .est-disclaimer {
+    margin-top: 16px;
+    font-size: 11px;
+    color: var(--panel-ink-2);
+    line-height: 1.55;
+  }
+
+  /* ============ SUBMIT ============ */
+  .submit-btn {
+    width: 100%;
+    padding: 17px 20px;
+    background: var(--ink);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 13.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+    margin-bottom: 12px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .submit-btn:hover:not(:disabled) { background: #2a2a2a; }
+  .submit-btn:active:not(:disabled) { transform: translateY(1px); }
+  .submit-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .submit-divider {
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 14px 0;
+    position: relative;
+  }
+  .submit-divider::before,
+  .submit-divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 38%;
+    height: 1px;
+    background: var(--hair);
+  }
+  .submit-divider::before { left: 0; }
+  .submit-divider::after { right: 0; }
+
+  .whatsapp-btn {
+    width: 100%;
+    padding: 15px 20px;
+    background: var(--wa);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 13.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-decoration: none;
+    transition: background 0.15s, transform 0.05s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .whatsapp-btn:hover:not(:disabled) { background: var(--wa-dark); }
+  .whatsapp-btn:active:not(:disabled) { transform: translateY(1px); }
+  .whatsapp-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .whatsapp-btn svg { width: 18px; height: 18px; }
+
+  /* ============ SUCCESS SCREEN ============ */
+  .success {
+    display: none;
+    text-align: center;
+    padding: 40px 28px;
+    background: var(--card);
+    border: 1px solid var(--hair);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .success.show { display: block; }
+  .success .check {
+    font-family: var(--display);
+    font-size: 56px;
+    color: var(--accent);
+    margin-bottom: 18px;
+    line-height: 1;
+  }
+  .success h2 {
+    font-family: var(--display);
+    font-size: 26px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    font-weight: 400;
+  }
+  .success p {
+    font-size: 14px;
+    line-height: 1.65;
+    margin-bottom: 14px;
+    color: var(--ink-2);
+  }
+  .success p strong { color: var(--ink); }
+  .success .wa-after {
+    margin-top: 28px;
+    padding-top: 22px;
+    border-top: 1px solid var(--hair);
+  }
+  .success .wa-after p {
+    font-size: 12.5px;
+    margin-bottom: 14px;
+  }
+
+  /* ============ FOOTER ============ */
+  .footer {
+    text-align: center;
+    margin-top: 28px;
+    padding-top: 22px;
+    border-top: 1px solid var(--hair);
+    font-family: var(--body);
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  /* Honeypot */
+  .honeypot {
+    position: absolute;
+    left: -9999px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* ============ MOBILE ============ */
+  @media (max-width: 480px) {
+    body { padding: 16px 12px 40px; }
+    .step { padding: 20px 18px; }
+    .header h1 { font-size: 26px; }
+    .header .desc { font-size: 13px; }
+    .grid-2 { grid-template-columns: 1fr; }
+    .step-header { gap: 10px; }
+    .step-title { font-size: 17px; }
+    .pizza-info .pizza-name { font-size: 12.5px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- ============ HEADER ============ -->
+  <div class="header">
+    <img class="logo" src="logo.png" alt="X. Pizza">
+    <h1>Cotiza tu evento</h1>
+    <div class="subtitle">Catering · Reservas · Eventos privados</div>
+    <p class="desc">
+      Completa el formulario y obtén una estimación al instante. Nuestro equipo te contactará para confirmar disponibilidad y enviarte la cotización final.
+    </p>
+  </div>
+
+  <!-- ============ FORM ============ -->
+  <form id="quote-form" name="event-quote" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" netlify>
+
+    <!-- Hidden Netlify form name input + honeypot -->
+    <input type="hidden" name="form-name" value="event-quote">
+    <div class="honeypot">
+      <label>No llenar este campo: <input name="bot-field"></label>
+    </div>
+
+    <!-- STEP 1 — EVENT -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-number">01</div>
+        <div class="step-title">Tu Evento</div>
+      </div>
+
+      <div class="field">
+        <label for="eventDate">Fecha del evento <span class="req">*</span></label>
+        <input type="date" id="eventDate" name="event_date" required>
+        <div id="availability" class="availability"></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="eventTime">Hora</label>
+          <input type="time" id="eventTime" name="event_time">
+        </div>
+        <div class="field">
+          <label for="eventGuests">Invitados <span class="req">*</span></label>
+          <div class="stepper-field">
+            <button type="button" class="stepper-btn" id="guests-dec" aria-label="Restar invitado">−</button>
+            <input type="number" id="eventGuests" name="event_guests" min="1" inputmode="numeric" pattern="[0-9]*" placeholder="N°" required>
+            <button type="button" class="stepper-btn" id="guests-inc" aria-label="Sumar invitado">+</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="eventLocation">Lugar / Dirección <span class="req">*</span></label>
+        <input type="text" id="eventLocation" name="event_location" placeholder="Colonia, ciudad o lugar del evento" required>
+      </div>
+
+      <div class="field">
+        <label for="eventType">Tipo de evento</label>
+        <select id="eventType" name="event_type">
+          <option value="">— Selecciona —</option>
+          <option>Cumpleaños</option>
+          <option>Reunión corporativa</option>
+          <option>Boda</option>
+          <option>Aniversario</option>
+          <option>Evento privado</option>
+          <option>Otro</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- STEP 2 — PIZZAS -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-number">02</div>
+        <div class="step-title">Selecciona tus Pizzas</div>
+      </div>
+
+      <div class="pizza-meta">
+        <div class="min-note">Mínimo 10 pizzas</div>
+        <div class="pizza-counter" id="pizza-counter"><strong>0</strong> seleccionadas</div>
+      </div>
+
+      <div id="pizza-list" class="pizza-list"></div>
+      <div id="min-warning" class="min-warning">
+        Mínimo de 10 pizzas por orden. Ajusta las cantidades para continuar.
+      </div>
+
+      <!-- Hidden field to capture pizza selections in the Netlify submission -->
+      <input type="hidden" id="pizza-summary" name="pizza_summary">
+    </div>
+
+    <!-- STEP 3 — ESTIMATE (live) -->
+    <div class="estimate" id="estimate">
+      <div class="est-label">— Estimación preliminar —</div>
+      <div class="est-line"><span>Subtotal (sin ISV):</span><span id="est-subtotal">L. 0.00</span></div>
+      <div class="est-line"><span>ISV 15%:</span><span id="est-isv">L. 0.00</span></div>
+      <div class="est-line total"><span>Total:</span><span id="est-total">L. 0.00</span></div>
+      <div class="est-disclaimer">
+        Esta es una estimación basada en precios de menú. La cotización final se confirma según disponibilidad y puede variar con cargos por servicio, entrega o ajustes especiales.
+      </div>
+      <!-- Hidden field with the total for Netlify -->
+      <input type="hidden" id="estimate-total" name="estimate_total">
+    </div>
+
+    <!-- STEP 4 — CONTACT -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-number">03</div>
+        <div class="step-title">Tu Información</div>
+      </div>
+
+      <div class="field">
+        <label for="customerName">Nombre completo <span class="req">*</span></label>
+        <input type="text" id="customerName" name="customer_name" required>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="customerPhone">WhatsApp <span class="req">*</span></label>
+          <div class="phone-field">
+            <span class="phone-prefix">+504</span>
+            <input type="tel" id="customerPhone" name="customer_phone" inputmode="numeric" pattern="[0-9]{4}-[0-9]{4}" maxlength="9" placeholder="9999-9999" required>
+          </div>
+          <input type="hidden" name="customer_phone_full" id="customerPhoneFull">
+        </div>
+        <div class="field">
+          <label for="customerEmail">Email</label>
+          <input type="email" id="customerEmail" name="customer_email">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="notes">Notas adicionales</label>
+        <textarea id="notes" name="notes" rows="3" placeholder="Restricciones alimentarias, preferencias, detalles especiales..."></textarea>
+      </div>
+    </div>
+
+    <!-- SUBMIT -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-number">04</div>
+        <div class="step-title">Envía tu Solicitud</div>
+      </div>
+
+      <button type="submit" class="submit-btn" id="submit-btn">Enviar solicitud</button>
+
+      <div class="submit-divider">o</div>
+
+      <button type="button" class="whatsapp-btn" id="whatsapp-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+        </svg>
+        Enviar por WhatsApp
+      </button>
+    </div>
+
+  </form>
+
+  <!-- ============ SUCCESS SCREEN ============ -->
+  <div class="success" id="success">
+    <div class="check">✓</div>
+    <h2>¡Solicitud Recibida!</h2>
+    <p>Gracias por elegir X. Pizza para tu evento.</p>
+    <p>Nuestro equipo revisará tu solicitud y te contactará vía WhatsApp en las próximas <strong>24 horas</strong> con la cotización final y confirmación de disponibilidad.</p>
+
+    <div class="wa-after">
+      <p>¿Necesitas respuesta más rápida?</p>
+      <a href="#" class="whatsapp-btn" id="whatsapp-after">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+        </svg>
+        Escríbenos por WhatsApp
+      </a>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    X. Pizza · San Pedro Sula · Honduras
+  </div>
+
+</div>
+
+<script>
+  // ============ DATA ============
+  const PIZZAS = [
+    { id: 'cacio',      name: 'Cacio e Pepe',         desc: 'parmesano / mozzarella / pimienta',                          price: 297 },
+    { id: 'carnivora',  name: 'Carnívora',            desc: 'pepperoni / salchicha italiana / jamón',                    price: 340 },
+    { id: 'crispy',     name: 'Crispy Bacon',         desc: 'salsa blanca / cebolla caramelizada / crispy bacon',        price: 337 },
+    { id: 'ham',        name: 'Ham',                  desc: 'salsa roja / jamón / mozzarella',                            price: 282 },
+    { id: 'margherita', name: 'Margherita',           desc: 'salsa roja / albahaca / parmesano',                          price: 299 },
+    { id: 'mushroom',   name: 'Mushroom',             desc: 'hongos salteados / mantequilla de tomillo / ajo rostizado',  price: 323 },
+    { id: 'pancetta',   name: 'Pancetta Vodka Sauce', desc: 'pancetta / salsa vodka / mozzarella',                        price: 328 },
+    { id: 'pepperoni',  name: 'Pepperoni',            desc: 'salsa roja / pepperoni / mozzarella',                        price: 307 },
+  ];
+
+  // ============ BLOCKLIST (manually maintained) ============
+  // Dates already booked / unavailable. Format: 'YYYY-MM-DD'.
+  // EDIT THIS LIST when you book new events.
+  const UNAVAILABLE_DATES = [
+    // Example entries — replace with real bookings:
+    // '2026-06-15',
+    // '2026-07-04',
+  ];
+
+  // Minimum lead time in days (you said 48 hours minimum for catering prep)
+  const MIN_LEAD_DAYS = 2;
+
+  // WhatsApp business number (no spaces, country code)
+  const WHATSAPP_NUMBER = '50497952893';
+
+  // Minimum order size (matches your catering menu)
+  const MIN_PIZZAS = 10;
+
+  // ============ STATE ============
+  const quantities = {}; // pizza_id -> qty
+  PIZZAS.forEach(p => quantities[p.id] = 0);
+
+  // ============ INIT ============
+  document.addEventListener('DOMContentLoaded', () => {
+    // Set min date on the input
+    const dateInput = document.getElementById('eventDate');
+    const minDate = new Date();
+    minDate.setDate(minDate.getDate() + MIN_LEAD_DAYS);
+    dateInput.min = minDate.toISOString().split('T')[0];
+
+    renderPizzaList();
+    bindEvents();
+    updateEstimate();
+  });
+
+  function bindEvents() {
+    document.getElementById('eventDate').addEventListener('change', checkAvailability);
+    document.getElementById('quote-form').addEventListener('submit', handleSubmit);
+    document.getElementById('whatsapp-btn').addEventListener('click', sendViaWhatsapp);
+
+    bindGuestStepper();
+    bindPhoneFormat();
+
+    // All inputs trigger estimate update (in case we add more dependencies later)
+    document.querySelectorAll('#quote-form input, #quote-form select, #quote-form textarea').forEach(el => {
+      el.addEventListener('input', () => {
+        updatePizzaSummary();
+      });
+    });
+  }
+
+  // ============ GUEST STEPPER ============
+  function bindGuestStepper() {
+    const inp = document.getElementById('eventGuests');
+    document.getElementById('guests-inc').addEventListener('click', () => {
+      inp.value = (parseInt(inp.value) || 0) + 1;
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.getElementById('guests-dec').addEventListener('click', () => {
+      inp.value = Math.max(1, (parseInt(inp.value) || 1) - 1);
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
+  // ============ PHONE FORMAT (Honduras: 8 digits, 9999-9999) ============
+  function bindPhoneFormat() {
+    const inp = document.getElementById('customerPhone');
+    const full = document.getElementById('customerPhoneFull');
+    inp.addEventListener('input', () => {
+      let digits = inp.value.replace(/\D/g, '');
+      // Strip a pasted leading country code
+      if (digits.startsWith('504') && digits.length > 8) digits = digits.slice(3);
+      digits = digits.slice(0, 8);
+      inp.value = digits.length > 4 ? digits.slice(0, 4) + '-' + digits.slice(4) : digits;
+      full.value = digits.length ? '+504 ' + inp.value : '';
+    });
+  }
+
+  // ============ AVAILABILITY ============
+  function checkAvailability() {
+    const dateVal = document.getElementById('eventDate').value;
+    const msg = document.getElementById('availability');
+
+    if (!dateVal) {
+      msg.classList.remove('show', 'ok', 'blocked');
+      return;
+    }
+
+    const isBlocked = UNAVAILABLE_DATES.includes(dateVal);
+    msg.classList.remove('ok', 'blocked');
+    msg.classList.add('show');
+
+    if (isBlocked) {
+      msg.classList.add('blocked');
+      msg.innerHTML = '<strong>Fecha no disponible</strong>Esta fecha ya está reservada. Por favor selecciona otra fecha o contáctanos por WhatsApp para opciones.';
+    } else {
+      msg.classList.add('ok');
+      msg.innerHTML = '<strong>Fecha disponible</strong>Confirmaremos disponibilidad final al recibir tu solicitud.';
+    }
+  }
+
+  // ============ PIZZAS ============
+  function renderPizzaList() {
+    const container = document.getElementById('pizza-list');
+    container.innerHTML = PIZZAS.map(p => `
+      <div class="pizza-row" data-id="${p.id}">
+        <div class="pizza-info">
+          <div class="pizza-name">${p.name}</div>
+          <div class="pizza-desc">${p.desc}</div>
+          <div class="pizza-price">L. ${p.price.toFixed(2)}</div>
+        </div>
+        <div class="qty-stepper" role="group">
+          <button type="button" data-action="dec" data-id="${p.id}" aria-label="Restar">−</button>
+          <input type="number" min="0" value="0" data-id="${p.id}" inputmode="numeric" pattern="[0-9]*">
+          <button type="button" data-action="inc" data-id="${p.id}" aria-label="Sumar">+</button>
+        </div>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('button[data-action]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const id = btn.dataset.id;
+        const action = btn.dataset.action;
+        if (action === 'inc') quantities[id]++;
+        else if (action === 'dec' && quantities[id] > 0) quantities[id]--;
+        document.querySelector(`input[data-id="${id}"]`).value = quantities[id];
+        updateEstimate();
+      });
+    });
+
+    container.querySelectorAll('input[data-id]').forEach(inp => {
+      inp.addEventListener('input', e => {
+        const id = inp.dataset.id;
+        const val = parseInt(inp.value) || 0;
+        quantities[id] = Math.max(0, val);
+        updateEstimate();
+      });
+    });
+  }
+
+  function updatePizzaSummary() {
+    const items = PIZZAS
+      .filter(p => quantities[p.id] > 0)
+      .map(p => `${quantities[p.id]}× ${p.name} (L. ${(quantities[p.id] * p.price).toFixed(2)})`);
+    document.getElementById('pizza-summary').value = items.join(' | ');
+  }
+
+  function totalPizzas() {
+    return PIZZAS.reduce((s, p) => s + quantities[p.id], 0);
+  }
+
+  function updateEstimate() {
+    const total = PIZZAS.reduce((s, p) => s + quantities[p.id] * p.price, 0);
+    const subtotal = total / 1.15;
+    const isv = total - subtotal;
+
+    document.getElementById('est-subtotal').textContent = fmtMoney(subtotal);
+    document.getElementById('est-isv').textContent = fmtMoney(isv);
+    document.getElementById('est-total').textContent = fmtMoney(total);
+    document.getElementById('estimate-total').value = total.toFixed(2);
+
+    // Show/hide min warning + enable/disable submit
+    const totalQty = totalPizzas();
+    const minWarning = document.getElementById('min-warning');
+    const submitBtn = document.getElementById('submit-btn');
+    const waBtn = document.getElementById('whatsapp-btn');
+
+    if (totalQty > 0 && totalQty < MIN_PIZZAS) {
+      minWarning.classList.add('show');
+      submitBtn.disabled = true;
+      waBtn.disabled = true;
+    } else {
+      minWarning.classList.remove('show');
+      submitBtn.disabled = false;
+      waBtn.disabled = false;
+    }
+
+    // Update the live pizza counter
+    const counter = document.getElementById('pizza-counter');
+    if (counter) {
+      counter.innerHTML = `<strong>${totalQty}</strong> seleccionada${totalQty === 1 ? '' : 's'}`;
+      counter.classList.toggle('under', totalQty > 0 && totalQty < MIN_PIZZAS);
+    }
+
+    updatePizzaSummary();
+  }
+
+  // ============ FORMAT ============
+  function fmtMoney(n) {
+    return 'L. ' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+  }
+
+  // ============ SUBMIT (Netlify) ============
+  async function handleSubmit(e) {
+    e.preventDefault();
+
+    if (!validateForm()) return;
+
+    const form = e.target;
+    const submitBtn = document.getElementById('submit-btn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Enviando...';
+
+    const formData = new FormData(form);
+    const urlEncoded = new URLSearchParams(formData).toString();
+
+    try {
+      const response = await fetch('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: urlEncoded,
+      });
+      if (response.ok) {
+        showSuccess();
+      } else {
+        throw new Error('Server responded ' + response.status);
+      }
+    } catch (err) {
+      console.error('Submit error:', err);
+      alert('No pudimos enviar tu solicitud automáticamente. Por favor envía por WhatsApp.');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Enviar solicitud';
+    }
+  }
+
+  function validateForm() {
+    // Native HTML5 validation
+    const form = document.getElementById('quote-form');
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return false;
+    }
+    if (totalPizzas() < MIN_PIZZAS) {
+      alert(`Mínimo ${MIN_PIZZAS} pizzas por orden.`);
+      return false;
+    }
+    const dateVal = document.getElementById('eventDate').value;
+    if (UNAVAILABLE_DATES.includes(dateVal)) {
+      alert('Esta fecha ya está reservada. Por favor selecciona otra.');
+      return false;
+    }
+    return true;
+  }
+
+  function showSuccess() {
+    document.getElementById('quote-form').style.display = 'none';
+    document.getElementById('estimate').style.display = 'none';
+    document.getElementById('success').classList.add('show');
+
+    // Set the post-submit WhatsApp link with the request summary
+    document.getElementById('whatsapp-after').href = buildWhatsappUrl();
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ============ WHATSAPP ============
+  function buildMessage() {
+    const name = document.getElementById('customerName').value || '[nombre]';
+    const phone = document.getElementById('customerPhone').value || '';
+    const email = document.getElementById('customerEmail').value || '';
+    const date = document.getElementById('eventDate').value;
+    const time = document.getElementById('eventTime').value;
+    const guests = document.getElementById('eventGuests').value;
+    const location = document.getElementById('eventLocation').value;
+    const type = document.getElementById('eventType').value;
+    const notes = document.getElementById('notes').value;
+
+    const lines = [];
+    lines.push('Hola X. Pizza, quiero cotizar un evento:');
+    lines.push('');
+    lines.push(`Nombre: ${name}`);
+    if (phone) lines.push(`Tel: +504 ${phone}`);
+    if (email) lines.push(`Email: ${email}`);
+    lines.push('');
+    lines.push('EVENTO:');
+    if (date) lines.push(`Fecha: ${fmtDate(date)}`);
+    if (time) lines.push(`Hora: ${time}`);
+    if (guests) lines.push(`Invitados: ${guests}`);
+    if (location) lines.push(`Lugar: ${location}`);
+    if (type) lines.push(`Tipo: ${type}`);
+    lines.push('');
+
+    const items = PIZZAS.filter(p => quantities[p.id] > 0);
+    if (items.length) {
+      lines.push('PIZZAS:');
+      items.forEach(p => {
+        const subtotal = quantities[p.id] * p.price;
+        lines.push(`• ${quantities[p.id]}× ${p.name} — L. ${subtotal.toFixed(2)}`);
+      });
+      lines.push('');
+
+      const total = items.reduce((s, p) => s + quantities[p.id] * p.price, 0);
+      const subtotalPre = total / 1.15;
+      const isv = total - subtotalPre;
+      lines.push(`Subtotal (sin ISV): L. ${subtotalPre.toFixed(2)}`);
+      lines.push(`ISV 15%: L. ${isv.toFixed(2)}`);
+      lines.push(`TOTAL ESTIMADO: L. ${total.toFixed(2)}`);
+      lines.push('');
+    }
+
+    if (notes) {
+      lines.push('NOTAS:');
+      lines.push(notes);
+      lines.push('');
+    }
+
+    lines.push('Gracias.');
+    return lines.join('\n');
+  }
+
+  function buildWhatsappUrl() {
+    return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(buildMessage())}`;
+  }
+
+  function sendViaWhatsapp() {
+    if (!validateForm()) return;
+    // Open WhatsApp with the pre-filled message
+    window.open(buildWhatsappUrl(), '_blank');
+  }
+</script>
+
+</body>
+</html>
