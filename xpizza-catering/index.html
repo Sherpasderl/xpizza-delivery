@@ -483,6 +483,94 @@
   }
   .min-warning.show { display: block; }
 
+  /* ============ WIZARD (progressive reveal) ============ */
+  .step[hidden], #estimate[hidden] { display: none !important; }
+
+  .wz-progress { margin: 0 0 18px; }
+  .wz-progress-label {
+    font-family: var(--display);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    color: var(--ink-2);
+    margin-bottom: 8px;
+  }
+  .wz-progress-track {
+    height: 4px;
+    background: var(--hair);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .wz-progress-fill {
+    height: 100%;
+    width: 25%;
+    background: var(--accent);
+    border-radius: 999px;
+    transition: width 0.25s ease;
+  }
+
+  .wz-nav {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+  }
+  .wz-nav button {
+    flex: 1;
+    min-height: 52px;
+    border-radius: var(--radius);
+    font-family: var(--display);
+    font-size: 16px;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    border: 1px solid var(--hair);
+  }
+  .wz-back {
+    background: var(--card);
+    color: var(--ink-2);
+  }
+  .wz-back:disabled { opacity: 0.4; cursor: default; }
+  .wz-next {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .wz-next[hidden] { display: none !important; }
+
+  /* ============ REVIEW SUMMARY (step 4) ============ */
+  .review {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    margin-bottom: 22px;
+  }
+  .review .rev-h {
+    font-family: var(--display);
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--hair);
+  }
+  .review .rev-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 14px;
+    font-size: 15px;
+    line-height: 1.4;
+    padding: 3px 0;
+    color: var(--ink);
+  }
+  .review .rev-row .rl { color: var(--ink-2); }
+  .review .rev-row.note { display: block; color: var(--ink); }
+  .review .rev-row.total {
+    font-weight: 700;
+    border-top: 1px solid var(--hair);
+    margin-top: 6px;
+    padding-top: 8px;
+  }
+  .review .rev-empty { color: var(--ink-3); font-size: 14px; }
+
   /* ============ ESTIMATE PANEL ============ */
   .estimate {
     background: var(--panel);
@@ -702,6 +790,11 @@
     </div>
 
     <!-- STEP 1 — EVENT -->
+    <div class="wz-progress">
+      <div class="wz-progress-label" id="wz-label">Paso 1 de 4</div>
+      <div class="wz-progress-track"><div class="wz-progress-fill" id="wz-fill"></div></div>
+    </div>
+
     <div class="step">
       <div class="step-header">
         <div class="step-number">01</div>
@@ -822,6 +915,8 @@
         <div class="step-title">Envía tu Solicitud</div>
       </div>
 
+      <div class="review" id="review"></div>
+
       <button type="submit" class="submit-btn" id="submit-btn">Enviar solicitud</button>
 
       <div class="submit-divider">o</div>
@@ -832,6 +927,11 @@
         </svg>
         Enviar por WhatsApp
       </button>
+    </div>
+
+    <div class="wz-nav">
+      <button type="button" class="wz-back" id="wz-back">Atrás</button>
+      <button type="button" class="wz-next" id="wz-next">Siguiente</button>
     </div>
 
   </form>
@@ -907,7 +1007,96 @@
     renderPizzaList();
     bindEvents();
     updateEstimate();
+    initWizard();
   });
+
+  // ============ WIZARD (progressive reveal) ============
+  let wzCurrent = 0;
+  let wzSteps = [];
+
+  function initWizard() {
+    wzSteps = Array.from(document.querySelectorAll('#quote-form .step'));
+    if (!wzSteps.length) return;
+    document.getElementById('wz-back').addEventListener('click', () => wzGo(wzCurrent - 1));
+    document.getElementById('wz-next').addEventListener('click', () => {
+      if (wzValidate(wzCurrent)) wzGo(wzCurrent + 1);
+    });
+    const phoneEl = document.getElementById('customerPhone');
+    if (phoneEl) phoneEl.addEventListener('input', () => phoneEl.setCustomValidity(''));
+    wzShow(0);
+  }
+
+  function wzGo(i) {
+    if (i < 0 || i >= wzSteps.length) return;
+    wzShow(i);
+    const top = document.getElementById('quote-form').getBoundingClientRect().top + window.scrollY - 16;
+    window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  }
+
+  function wzShow(i) {
+    wzCurrent = i;
+    const last = wzSteps.length - 1;
+    wzSteps.forEach((s, idx) => { s.hidden = idx !== i; });
+
+    // Live estimate shows only while picking pizzas (step index 1)
+    const est = document.getElementById('estimate');
+    if (est) est.hidden = (i !== 1);
+
+    // Build the review summary when entering the final step
+    if (i === last) renderReview();
+
+    const fill = document.getElementById('wz-fill');
+    const label = document.getElementById('wz-label');
+    if (fill) fill.style.width = ((i + 1) / wzSteps.length * 100) + '%';
+    if (label) label.textContent = `Paso ${i + 1} de ${wzSteps.length}`;
+
+    document.getElementById('wz-back').disabled = i === 0;
+    document.getElementById('wz-next').hidden = i === last;
+  }
+
+  function wzValidate(i) {
+    if (i === 0) {
+      if (!wzRequire(['eventDate', 'eventGuests', 'eventLocation'])) return false;
+      const date = document.getElementById('eventDate').value;
+      if (UNAVAILABLE_DATES.includes(date)) {
+        checkAvailability(); // ensure the "Fecha no disponible" message is showing
+        document.getElementById('eventDate').focus();
+        return false;
+      }
+      return true;
+    }
+    if (i === 1) {
+      if (totalPizzas() < MIN_PIZZAS) {
+        const w = document.getElementById('min-warning');
+        if (w) w.classList.add('show');
+        document.getElementById('pizza-list').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return false;
+      }
+      return true;
+    }
+    if (i === 2) {
+      if (!wzRequire(['customerName'])) return false;
+      const phoneEl = document.getElementById('customerPhone');
+      const digits = phoneEl.value.replace(/\D/g, '');
+      phoneEl.setCustomValidity(digits.length === 8 ? '' : 'Ingresa un número de WhatsApp de 8 dígitos.');
+      if (digits.length !== 8) { phoneEl.reportValidity(); return false; }
+      return true;
+    }
+    return true;
+  }
+
+  function wzRequire(ids) {
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const emptyOrInvalid = !el.value || !el.value.trim() || (el.checkValidity && !el.checkValidity());
+      if (emptyOrInvalid) {
+        if (el.reportValidity) el.reportValidity(); else el.focus();
+        return false;
+      }
+    }
+    return true;
+  }
 
   function bindEvents() {
     document.getElementById('eventDate').addEventListener('change', checkAvailability);
@@ -1034,6 +1223,7 @@
     document.getElementById('est-isv').textContent = fmtMoney(isv);
     document.getElementById('est-total').textContent = fmtMoney(total);
     document.getElementById('estimate-total').value = total.toFixed(2);
+    updatePizzaSummary(); // keep the Netlify hidden field in sync (steppers don't fire input events)
 
     // Show/hide min warning + enable/disable submit
     const totalQty = totalPizzas();
@@ -1133,6 +1323,61 @@
     document.getElementById('whatsapp-after').href = buildWhatsappUrl();
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ============ REVIEW SUMMARY ============
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+  }
+
+  function renderReview() {
+    const el = document.getElementById('review');
+    if (!el) return;
+    const g = id => (document.getElementById(id).value || '').trim();
+    const date = g('eventDate'), time = g('eventTime'), guests = g('eventGuests'),
+          location = g('eventLocation'), type = g('eventType'),
+          name = g('customerName'), phone = g('customerPhone'),
+          email = g('customerEmail'), notes = g('notes');
+
+    const items = PIZZAS.filter(p => quantities[p.id] > 0);
+    const total = items.reduce((s, p) => s + quantities[p.id] * p.price, 0);
+    const subtotal = total / 1.15;
+    const isv = total - subtotal;
+
+    const row = (l, v) => `<div class="rev-row"><span class="rl">${l}</span><span>${v}</span></div>`;
+    let h = '';
+
+    h += '<div><div class="rev-h">Evento</div>';
+    h += row('Fecha', date ? esc(fmtDate(date)) : '—');
+    if (time) h += row('Hora', esc(time));
+    h += row('Invitados', guests ? esc(guests) : '—');
+    h += row('Lugar', location ? esc(location) : '—');
+    if (type) h += row('Tipo', esc(type));
+    h += '</div>';
+
+    h += '<div><div class="rev-h">Pizzas</div>';
+    if (items.length) {
+      items.forEach(p => { h += row(`${quantities[p.id]}× ${esc(p.name)}`, fmtMoney(quantities[p.id] * p.price)); });
+      h += row('Subtotal (sin ISV)', fmtMoney(subtotal));
+      h += row('ISV 15%', fmtMoney(isv));
+      h += `<div class="rev-row total"><span>Total estimado</span><span>${fmtMoney(total)}</span></div>`;
+    } else {
+      h += '<div class="rev-empty">Sin pizzas seleccionadas.</div>';
+    }
+    h += '</div>';
+
+    h += '<div><div class="rev-h">Contacto</div>';
+    h += row('Nombre', name ? esc(name) : '—');
+    h += row('WhatsApp', phone ? '+504 ' + esc(phone) : '—');
+    if (email) h += row('Email', esc(email));
+    h += '</div>';
+
+    if (notes) {
+      h += '<div><div class="rev-h">Notas</div>';
+      h += `<div class="rev-row note">${esc(notes)}</div></div>`;
+    }
+
+    el.innerHTML = h;
   }
 
   // ============ WHATSAPP ============
