@@ -1222,7 +1222,8 @@ function switchCat(cat, btn) {
 /* ═══════════════════════════════════════════════════
    CONFIGURATION — edit these before deploying
    ═══════════════════════════════════════════════════ */
-const WEBHOOK_URL     = 'https://hook.us2.make.com/y6jcvu4kwtjfkeydyvccdadkrmk7cl0q';
+const CREATEORDER_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/createOrder';
+const ORDER_SECRET    = '3f9fb4bdc08248ce45d0754883f79b8a293019e6823052416488ee80b7ca08b3';
 const PIXELPAY_KEY      = 'YOUR_PIXELPAY_API_KEY_HERE';
 const PIXELPAY_ENDPOINT = 'YOUR_PIXELPAY_ENDPOINT_HERE';
 const PIXELPAY_ENV      = 'sandbox'; // change to 'production' when ready
@@ -2211,17 +2212,31 @@ async function submitOrder(paymentStatus){
   currentOrder.payment_status=paymentStatus;
 
   try {
-    if(WEBHOOK_URL!=='YOUR_MAKE_COM_WEBHOOK_URL_HERE'){
-      await fetch(WEBHOOK_URL,{
+    if(CREATEORDER_URL!=='YOUR_CREATEORDER_URL_HERE'){
+      const res = await fetch(CREATEORDER_URL,{
         method:'POST',
-        headers:{'Content-Type':'application/json'},
+        headers:{
+          'Content-Type':'application/json',
+          'Authorization':'Bearer '+ORDER_SECRET,
+        },
         body:JSON.stringify(currentOrder),
-        mode:'no-cors',
       });
+      if(!res.ok){
+        const err = await res.json().catch(()=>({}));
+        console.error('createOrder failed',res.status,err);
+        orderSubmitting=false;
+        document.getElementById('sending-msg').textContent='❌ Error al enviar el pedido. Intentá de nuevo.';
+        return;
+      }
     } else {
       await new Promise(r=>setTimeout(r,1500));
     }
-  } catch(e){ /* no-cors, expected */ }
+  } catch(e){
+    console.error('createOrder network error',e);
+    orderSubmitting=false;
+    document.getElementById('sending-msg').textContent='❌ Error de conexión. Intentá de nuevo.';
+    return;
+  }
 
   orderSubmitting = false;
   showSuccess();
