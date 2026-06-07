@@ -14,6 +14,10 @@
 # Local helper script — contains real secrets (MAKE_SECRET etc), never commit
 run_patches.sh
 
+# Generated at deploy time by `npm run sync:rules` — canonical copy lives in
+# xpizza-reference/database.rules.json. This is just the deploy artifact.
+xpizza-functions/database.rules.json
+
 # ----- Node.js -----
 node_modules/
 npm-debug.log*

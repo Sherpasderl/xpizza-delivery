@@ -1,6 +1,6 @@
 {
   "database": {
-    "rules": "../xpizza-reference/database.rules.json"
+    "rules": "database.rules.json"
   },
   "functions": [
     {
