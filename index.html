@@ -1485,7 +1485,7 @@ function renderActiveCard(o) {
       </div>
       <div class="body">
         <div class="recipient-name">${escapeHtml(order.customer_name || o.deliveryTask.recipient_name || '—')}</div>
-        ${order.customer_phone ? `<a class="recipient-phone mono" href="tel:${order.customer_phone}">${order.customer_phone}</a>` : ''}
+        ${order.customer_phone ? `<a class="recipient-phone mono" href="tel:${String(order.customer_phone).replace(/[^\d+]/g,'')}">${escapeHtml(order.customer_phone)}</a>` : ''}
 
         <div class="address-block">
           <div class="address-line">${escapeHtml(order.address_detected || o.deliveryTask.destination_address || '—')}</div>

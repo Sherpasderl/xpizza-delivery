@@ -2211,8 +2211,24 @@ async function submitOrder(paymentStatus){
 
   currentOrder.payment_status=paymentStatus;
 
-  try {
-    if(CREATEORDER_URL!=='YOUR_CREATEORDER_URL_HERE'){
+  // Demo / unconfigured endpoint: simulate a send.
+  if(CREATEORDER_URL==='YOUR_CREATEORDER_URL_HERE'){
+    await new Promise(r=>setTimeout(r,1500));
+    orderSubmitting = false;
+    showSuccess();
+    return;
+  }
+
+  // Submit with retry. createOrder is IDEMPOTENT on order_id — re-POSTing the
+  // same order returns {idempotent:true}, never a duplicate — so retrying after
+  // a transient network blip (or a 5xx) is safe and prevents the customer from
+  // seeing a scary error (and re-ordering) when the order actually committed.
+  // We do NOT retry 4xx: those are real client errors (bad data / auth / rate
+  // limit) that a retry can't fix.
+  const MAX_TRIES = 3;
+  let lastErr = null;
+  for(let attempt=1; attempt<=MAX_TRIES; attempt++){
+    try {
       const res = await fetch(CREATEORDER_URL,{
         method:'POST',
         headers:{
@@ -2221,25 +2237,35 @@ async function submitOrder(paymentStatus){
         },
         body:JSON.stringify(currentOrder),
       });
-      if(!res.ok){
-        const err = await res.json().catch(()=>({}));
-        console.error('createOrder failed',res.status,err);
-        orderSubmitting=false;
-        document.getElementById('sending-msg').textContent='❌ Error al enviar el pedido. Intentá de nuevo.';
+      if(res.ok){                       // 200, including {idempotent:true}
+        orderSubmitting = false;
+        showSuccess();
         return;
       }
-    } else {
-      await new Promise(r=>setTimeout(r,1500));
+      if(res.status >= 400 && res.status < 500){
+        const err = await res.json().catch(()=>({}));
+        console.error('createOrder rejected', res.status, err);
+        orderSubmitting=false;
+        document.getElementById('sending-msg').textContent =
+          res.status===429
+            ? '❌ Demasiados pedidos seguidos. Esperá un momento e intentá de nuevo.'
+            : '❌ No pudimos enviar el pedido. Revisá los datos e intentá de nuevo.';
+        return;
+      }
+      lastErr = new Error('HTTP '+res.status);   // 5xx → retry
+    } catch(e){
+      lastErr = e;                                // network/throw → retry
+      console.warn(`createOrder attempt ${attempt} failed:`, e.message);
     }
-  } catch(e){
-    console.error('createOrder network error',e);
-    orderSubmitting=false;
-    document.getElementById('sending-msg').textContent='❌ Error de conexión. Intentá de nuevo.';
-    return;
+    if(attempt < MAX_TRIES){
+      document.getElementById('sending-msg').textContent='Reintentando…';
+      await new Promise(r=>setTimeout(r, attempt*1500));   // 1.5s, then 3s
+    }
   }
 
-  orderSubmitting = false;
-  showSuccess();
+  console.error('createOrder failed after retries', lastErr);
+  orderSubmitting=false;
+  document.getElementById('sending-msg').textContent='❌ Error de conexión. Intentá de nuevo.';
 }
 
 // Customer wants to place another order from the success screen. Reset

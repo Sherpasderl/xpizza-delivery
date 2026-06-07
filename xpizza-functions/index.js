@@ -1,6 +1,6 @@
 /**
  * X Pizza Delivery — Cloud Functions
- * version: 1.7.3
+ * version: 1.8.0
  *
  * Endpoints:
  *   - createOrder                   (HTTPS)   — Make.com → Firebase write proxy + WhatsApp "received"
@@ -38,6 +38,7 @@
 
 const { onRequest } = require('firebase-functions/v2/https');
 const { onValueWritten } = require('firebase-functions/v2/database');
+const { beforeUserCreated, HttpsError } = require('firebase-functions/v2/identity');
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
 const webpush = require('web-push');
@@ -119,6 +120,85 @@ function asNumber(v) {
   return NaN;
 }
 
+// Allowed payment methods — mirror the order form's options.
+const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
+
+// ---------------------------------------------------------------------------
+// Server-side price tables — the SOURCE OF TRUTH for an order's total.
+//
+// The order TOTAL is recomputed here from these tables, NOT trusted from the
+// client. A tampered client (the order-intake secret is, by necessity, public
+// in the browser) could otherwise POST total:1 for any order. MUST be kept in
+// sync with MENU / EXTRAS in xpizza-orders/index.html (same contract as the
+// RESTAURANT coords). Keyed by the exact item/extra `name` the form sends.
+// ---------------------------------------------------------------------------
+const MENU_PRICES = {
+  'Sopressatta Chili Honey': 385, 'Carnivora': 340, 'Crispy Bacon': 337,
+  'Sweet Corn & Calabrian Chili': 314, 'Mushroom': 323, 'Spinach': 307,
+  'Pancetta Vodka Sauce': 328, 'Margherita': 299, 'Pepperoni': 307,
+  'Anchovies': 418, 'Shrimp Scampi': 412, 'Pistaccio Mortadella': 409,
+  'Prosciutto': 402, 'Potato & Dill Sausage': 299, 'Cacio e Pepe': 297,
+  'Ham': 282, 'Nutella': 251,
+  'Carnivora NY': 685, 'Margherita NY': 624, 'Cacio e Pepe NY': 641,
+  'Mushroom NY': 702, 'Jamon o Pepperoni NY': 641, 'Crispy Bacon NY': 662
+};
+const EXTRA_PRICES = {
+  'Salsa Roja': 39, 'Salsa Blanca': 39, 'Salsa Calabrian Chili': 49,
+  'Mozzarella': 50, 'Whipped Ricotta': 65, 'Salchicha Italiana': 50,
+  'Pepperoni': 50, 'Jamón': 39, 'Prosciutto': 94, 'Mortadella': 85,
+  'Espinaca': 33, 'Maíz': 45, 'Hongos': 61, 'Basil Pesto': 33
+};
+
+// Strip HTML-significant + control chars and cap length. Defense-in-depth vs
+// stored XSS: even if a downstream HTML sink forgets to escape, no tag can be
+// injected because '<'/'>' never reach storage. We STRIP (not HTML-entity-
+// encode) so plain-text consumers (WhatsApp) stay readable.
+function sanitizeText(v, maxLen = 500) {
+  let s = (v == null ? '' : String(v));
+  s = s.replace(/[<>]/g, '').replace(/[\x00-\x1f\x7f]/g, ' ').trim();
+  return s.length > maxLen ? s.slice(0, maxLen) : s;
+}
+
+// Normalize a phone to digits (optional leading +). Returns '' if it doesn't
+// look like a phone (8–15 digits) so the caller can reject it.
+function sanitizePhone(v) {
+  const raw = String(v == null ? '' : v).trim();
+  const plus = raw.startsWith('+') ? '+' : '';
+  const digits = raw.replace(/[^\d]/g, '');
+  if (digits.length < 8 || digits.length > 15) return '';
+  return plus + digits;
+}
+
+// Recompute the order total from the server price tables. Returns
+// { total, error }. Rejects unknown item/extra names (= tampering) and absurd
+// quantities. Extras are a 0/1 toggle in the form, so each entry counts once.
+function computeServerTotal(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { total: NaN, error: 'items must be a non-empty array' };
+  }
+  let total = 0;
+  for (const it of items) {
+    const name = it && it.name;
+    const qty = Number(it && it.qty);
+    if (!name || !Object.prototype.hasOwnProperty.call(MENU_PRICES, name)) {
+      return { total: NaN, error: `unknown menu item: ${String(name).slice(0, 40)}` };
+    }
+    if (!Number.isInteger(qty) || qty < 1 || qty > 50) {
+      return { total: NaN, error: `invalid quantity for ${name}` };
+    }
+    total += MENU_PRICES[name] * qty;
+    const extras = Array.isArray(it.extras) ? it.extras : [];
+    for (const ex of extras) {
+      const ename = ex && ex.name;
+      if (!ename || !Object.prototype.hasOwnProperty.call(EXTRA_PRICES, ename)) {
+        return { total: NaN, error: `unknown extra: ${String(ename).slice(0, 40)}` };
+      }
+      total += EXTRA_PRICES[ename];
+    }
+  }
+  return { total, error: null };
+}
+
 function validateOrderPayload(body) {
   const errors = [];
   const required = ['order_id', 'customer_name', 'customer_phone', 'items_text', 'order_type'];
@@ -126,12 +206,17 @@ function validateOrderPayload(body) {
     if (body[f] == null || body[f] === '') errors.push(`Missing required field: ${f}`);
   }
 
-  // Numeric coercion (Make.com sometimes sends numbers as strings)
-  const total = asNumber(body.total);
+  // order_id is used directly in RTDB paths — restrict to a safe charset/length.
+  if (body.order_id != null && !/^[A-Za-z0-9_-]{1,64}$/.test(String(body.order_id))) {
+    errors.push('order_id has invalid format');
+  }
+
   const lat = asNumber(body.lat);
   const lng = asNumber(body.lng);
 
-  if (!isFiniteNumber(total) || total <= 0) errors.push('total must be a positive number');
+  // Recompute total server-side — NEVER trust body.total.
+  const { total, error: totalError } = computeServerTotal(body.items);
+  if (totalError) errors.push(totalError);
 
   if (body.order_type === 'delivery') {
     if (!isFiniteNumber(lat) || lat < -90 || lat > 90) errors.push('lat must be a valid latitude');
@@ -142,7 +227,83 @@ function validateOrderPayload(body) {
     errors.push('order_type must be "delivery" or "pickup"');
   }
 
-  return { errors, total, lat, lng };
+  // Sanitize every free-text field (defense-in-depth vs stored XSS + length caps).
+  const phone = sanitizePhone(body.customer_phone);
+  if (body.customer_phone && !phone) errors.push('customer_phone must be 8–15 digits');
+
+  let payment = sanitizeText(body.payment_method, 30);
+  if (payment && !ALLOWED_PAYMENT_METHODS.includes(payment)) payment = '';
+
+  const fields = {
+    customer_name: sanitizeText(body.customer_name, 80),
+    customer_phone: phone,
+    items_text: sanitizeText(body.items_text, 1500),
+    notes: sanitizeText(body.notes, 500),
+    payment_method: payment,
+    address_detected: sanitizeText(body.address_detected, 300),
+    address_details: sanitizeText(body.address_details, 300),
+    pickup_time: sanitizeText(body.pickup_time, 40) || 'standard'
+  };
+
+  return { errors, total, lat, lng, fields };
+}
+
+// ---------------------------------------------------------------------------
+// Rate limiting for the public createOrder endpoint.
+//
+// The order-intake bearer secret is, by design, public in the browser, so
+// createOrder must defend itself as a public endpoint. These fixed-window
+// counters live in RTDB so they're shared across all function instances — an
+// in-memory limiter would be useless because Cloud Functions scale out to many
+// instances, each with its own memory. The /rate_limits subtree is written
+// only by this function (Admin SDK) and is default-denied to all clients (no
+// rule grants access), so no security-rule change is needed.
+//
+// Calibrated to a single low-volume restaurant: generous for real customers,
+// throttling for spam. NOTE: many Honduran mobile users share a carrier-grade
+// NAT IP, so the IP bucket is a coarse flood-guard only — the per-PHONE bucket
+// is the primary control. Tune to operational reality.
+// ---------------------------------------------------------------------------
+const RATE_LIMIT_BUCKETS = {
+  ip:    { windowMs: 10 * 60 * 1000, max: 20 },  // coarse flood guard (CGNAT-aware)
+  phone: { windowMs: 10 * 60 * 1000, max: 4 }    // primary: new orders per phone / 10 min
+};
+
+// Hash a rate-limit key (IP / phone) into an RTDB-safe, non-PII key. Avoids
+// storing raw IPs/phones under /rate_limits and dodges forbidden key chars
+// ('.', ':', '+', etc).
+function rateLimitKey(raw) {
+  return require('crypto').createHash('sha256').update(String(raw)).digest('hex').slice(0, 32);
+}
+
+// Fixed-window rate limit backed by an atomic RTDB transaction (correct across
+// concurrent instances). Returns { allowed, retryAfterSec }. FAILS OPEN on any
+// DB error — for a small shop a transient RTDB hiccup must never block a real
+// customer's order; abuse during such a window is the lesser harm.
+async function checkRateLimit(db, bucket, rawKey, cfg) {
+  if (!rawKey) return { allowed: true, retryAfterSec: 0 };
+  const ref = db.ref(`rate_limits/${bucket}/${rateLimitKey(rawKey)}`);
+  const now = Date.now();
+  try {
+    const res = await ref.transaction((cur) => {
+      if (!cur || now - cur.window_start >= cfg.windowMs) {
+        return { count: 1, window_start: now };   // new window
+      }
+      if (cur.count >= cfg.max) {
+        return;                                    // over limit → abort (no write)
+      }
+      return { count: cur.count + 1, window_start: cur.window_start };
+    });
+    if (res.committed) return { allowed: true, retryAfterSec: 0 };
+    const v = res.snapshot.val();
+    const retryAfterSec = v
+      ? Math.max(1, Math.ceil((v.window_start + cfg.windowMs - now) / 1000))
+      : 1;
+    return { allowed: false, retryAfterSec };
+  } catch (e) {
+    console.error(`checkRateLimit: ${bucket} transaction failed (failing open)`, e.message);
+    return { allowed: true, retryAfterSec: 0 };
+  }
 }
 
 // ---- The endpoint ----
@@ -184,9 +345,15 @@ createOrderApp.all('*', async (req, res) => {
     return unauthorized(res, 'invalid bearer token');
   }
 
+  // Best-effort client IP for rate limiting. X-Forwarded-For's left-most entry
+  // is client-supplied (spoofable), so IP limiting is a soft control only — the
+  // per-phone limit below is the stronger signal. Good enough as a flood guard.
+  const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+    || req.ip || 'unknown';
+
   // Parse + validate
   const body = req.body || {};
-  const { errors, total, lat, lng } = validateOrderPayload(body);
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body);
   if (errors.length > 0) {
     return badRequest(res, errors.join('; '));
   }
@@ -222,6 +389,24 @@ createOrderApp.all('*', async (req, res) => {
     return res.status(500).json({ error: 'Database read failed', detail: e.message });
   }
 
+  // Rate limiting. Only genuinely-NEW orders reach here — idempotent retries of
+  // an existing order_id already returned above, so legit retries don't burn
+  // budget. Reject before the expensive multi-path write + WhatsApp send.
+  for (const [bucket, key, cfg] of [
+    ['ip', clientIp, RATE_LIMIT_BUCKETS.ip],
+    ['phone', fields.customer_phone, RATE_LIMIT_BUCKETS.phone]
+  ]) {
+    const { allowed, retryAfterSec } = await checkRateLimit(db, bucket, key, cfg);
+    if (!allowed) {
+      console.warn(`createOrder: rate limit (${bucket}) hit for order ${orderId}, retry ${retryAfterSec}s`);
+      res.set('Retry-After', String(retryAfterSec));
+      return res.status(429).json({
+        error: 'Too Many Requests',
+        detail: `Rate limit exceeded; retry in ${retryAfterSec}s`
+      });
+    }
+  }
+
   // Multi-path atomic write — one round-trip creates order + both tasks.
   // Schema mirrors createOrderTasks() in xpizza-delivery.js — these field
   // names are load-bearing (driver app reads recipient_name, destination_lat,
@@ -238,12 +423,12 @@ createOrderApp.all('*', async (req, res) => {
   // for delivery orders. Pickup orders get pickup_time instead.
   const orderRecord = {
     order_id: orderId,
-    customer_name: String(body.customer_name),
-    customer_phone: String(body.customer_phone),
-    items_text: String(body.items_text || ''),
+    customer_name: fields.customer_name,
+    customer_phone: fields.customer_phone,
+    items_text: fields.items_text,
     total: total,
-    notes: String(body.notes || ''),
-    payment_method: String(body.payment_method || ''),
+    notes: fields.notes,
+    payment_method: fields.payment_method,
     order_type: orderType,
     status: 'new',
     tracking_token: trackingToken,
@@ -253,9 +438,9 @@ createOrderApp.all('*', async (req, res) => {
   if (orderType === 'delivery') {
     orderRecord.lat = lat;
     orderRecord.lng = lng;
-    orderRecord.address_detected = String(body.address_detected || '');
-    orderRecord.address_details = String(body.address_details || '');
-    orderRecord.maps_link = String(body.maps_link || '');
+    orderRecord.address_detected = fields.address_detected;
+    orderRecord.address_details = fields.address_details;
+    orderRecord.maps_link = `https://www.google.com/maps?q=${lat},${lng}`;
     orderRecord.pickup_task_id = pickupTaskId;
     orderRecord.delivery_task_id = deliveryTaskId;
   } else {
@@ -263,7 +448,7 @@ createOrderApp.all('*', async (req, res) => {
     // pickup_time is either the literal string 'standard' (= ASAP, ~20 min)
     // or a human-readable label like '6:00 PM–6:20 PM' selected by the
     // customer. Stored as opaque string; KDS displays it as-is.
-    orderRecord.pickup_time = String(body.pickup_time || 'standard');
+    orderRecord.pickup_time = fields.pickup_time;
   }
 
   updates[`orders/${orderId}`] = orderRecord;
@@ -283,7 +468,7 @@ createOrderApp.all('*', async (req, res) => {
       destination_address: RESTAURANT.name,
       recipient_name: RESTAURANT.name,
       recipient_phone: RESTAURANT.phone,
-      notes: String(body.items_text || ''),
+      notes: fields.items_text,
       created_at: now
     };
 
@@ -296,13 +481,13 @@ createOrderApp.all('*', async (req, res) => {
       depends_on_task_id: pickupTaskId,
       destination_lat: lat,
       destination_lng: lng,
-      destination_address: String(body.address_detected || ''),
-      address_details: String(body.address_details || ''),
-      recipient_name: String(body.customer_name),
-      recipient_phone: String(body.customer_phone),
-      payment_method: String(body.payment_method || ''),
+      destination_address: fields.address_detected,
+      address_details: fields.address_details,
+      recipient_name: fields.customer_name,
+      recipient_phone: fields.customer_phone,
+      payment_method: fields.payment_method,
       total: total,
-      notes: String(body.items_text || ''),
+      notes: fields.items_text,
       created_at: now
     };
   }
@@ -317,13 +502,13 @@ createOrderApp.all('*', async (req, res) => {
   // sendOrderStatusNotifications. driver_name is filled in when
   // out_for_delivery (delivery orders only).
   const addressShort = orderType === 'delivery'
-    ? String(body.address_detected || '').split(',')[0].trim()
+    ? fields.address_detected.split(',')[0].trim()
     : 'Recoger en X. Pizza';
   updates[`order_tracking/${trackingToken}`] = {
     order_id: orderId,
     order_type: orderType,
-    customer_name: String(body.customer_name),
-    items_text: String(body.items_text || ''),
+    customer_name: fields.customer_name,
+    items_text: fields.items_text,
     total: total,
     address_short: addressShort,
     status: 'new',
@@ -397,12 +582,59 @@ createOrderApp.use((err, req, res, next) => {
 exports.createOrder = onRequest(
   {
     region: 'us-central1',
-    cors: false,           // server-to-server, no browser
+    cors: true,            // browser-callable — order form posts directly (no Make.com relay)
     timeoutSeconds: 30,
-    memory: '256MiB'
+    memory: '256MiB',
+    maxInstances: 10       // blast-radius cap: the intake secret is public, so bound
+                           // how much concurrent order-spam can fan out. Tune up if
+                           // real peak traffic ever approaches this.
   },
   createOrderApp
 );
+
+// ============================================================
+// blockPublicSignup — reject self-registration (allowlist staff only)
+// ============================================================
+//
+// Firebase's email/password provider allows public self-registration: anyone
+// with the (public) web API key can call accounts:signUp and create an account.
+// Under the `auth != null` RTDB read rules, that account could then read all
+// customer PII + driver locations. This blocking function closes the door —
+// only the known staff emails below may have an account created; every other
+// signup is rejected with permission-denied.
+//
+// PREREQUISITES (one-time):
+//   1. Enable Identity Platform on the project (Firebase Console -> Authentication;
+//      free tier). Blocking functions require it — without it, deploy will error.
+//   2. Deploy via `npm run deploy`. A v2 beforeUserCreated handler auto-registers
+//      itself as the Auth beforeCreate trigger on deploy (no manual wiring).
+//
+// Existing accounts are NOT affected (this runs only on NEW account creation),
+// and sign-in of current staff is unaffected. To add a staff member: add their
+// lowercased email to STAFF_EMAILS, redeploy, THEN create the account. The list
+// is an in-memory Set (no DB/network I/O) so the check can't fail at runtime and
+// can't be tampered with via the database.
+
+const STAFF_EMAILS = new Set([
+  'xavierlacayo@gmail.com',
+  'xlacayo@me.com',
+  'sherpasderl@gmail.com',
+  'staffsherpa@gmail.com',
+  'hermeztalavera@gmail.com',
+  'garayg067@gmail.com',
+  'elmeredsantos04@gmail.com',
+  'norisf56@gmail.com'
+]);
+
+exports.blockPublicSignup = beforeUserCreated({ region: 'us-central1' }, (event) => {
+  const email = ((event.data && event.data.email) || '').trim().toLowerCase();
+  if (!email || !STAFF_EMAILS.has(email)) {
+    console.warn(`blockPublicSignup: rejected account creation for "${email || '(no email)'}"`);
+    throw new HttpsError('permission-denied', 'Account creation is restricted to X Pizza staff.');
+  }
+  console.log(`blockPublicSignup: allowed staff account creation for ${email}`);
+  // returning nothing → creation proceeds
+});
 
 // ============================================================
 // healthz — Liveness + dependency check for uptime monitoring
@@ -1167,11 +1399,17 @@ exports.onIncomingWhatsApp = onRequest(
 // - RESTAURANT_LAT/LNG: hardcoded for now. Could read from /config later if
 //   we ever support multiple stores.
 //
-// - STACKING_RULES:
-//     * Driver with 0 active tasks: cap of 2 (can take this + 1 more later)
-//     * Driver with 1 active task AND state in [available, at_restaurant]: cap 2
-//     * Driver with 1 active task AND state == en_route_delivery: cap 1 (full)
-//     * Driver with 2+ active tasks: skip (full)
+// - STACKING_RULES (max 2 orders/driver; a 2nd order may be stacked only while
+//   the driver is still in the PRE-DEPARTURE window for their 1st order — i.e.
+//   before they leave the restaurant with the food):
+//     * 0 active orders:                                          eligible (cap 2)
+//     * 1 active order AND status in STACKABLE_STATUSES
+//       (available | assigned ["en recogida"] | at_restaurant):   stack 2nd (cap 2)
+//     * 1 active order AND status en_route_delivery/returning/…:   full (cap 1)
+//     * 2+ active orders:                                          full
+//   orderCount counts DISTINCT active order_ids, NOT task pairs — once a driver
+//   picks up, the pickup task is 'completed' and only the delivery task remains
+//   active, so a task-halving count would wrongly read a mid-delivery driver as 0.
 
 const GRACE_PERIOD_MS = 30 * 1000;
 const STALE_PING_MS = 90 * 1000;
@@ -1191,6 +1429,12 @@ const TIMEOUT_COOLDOWN_MS = 3 * 60 * 1000;
 // dispatcher takes over. attempts=1 means initial assignment, attempts=2
 // is the second-chance reassignment. Both timing out triggers the alert.
 const MAX_ATTEMPTS_BEFORE_TAKEOVER = 2;
+
+// Driver statuses in which a 2nd order may be STACKED onto a driver who already
+// has 1 active order — the pre-departure window (heading to / waiting at the
+// restaurant). Once en_route_delivery the driver has left with the food and is
+// full. Kept identical to the dispatch console's manual-assign guard.
+const STACKABLE_STATUSES = new Set(['available', 'assigned', 'at_restaurant']);
 
 // Haversine distance in km between two lat/lng coords
 function haversineKm(lat1, lng1, lat2, lng2) {
@@ -1267,15 +1511,19 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
   const now = Date.now();
   const excluded = new Set(excludeDriverIds);
 
-  // Count active tasks per driver
-  const activeTasksByDriver = {};
+  // Count DISTINCT active orders per driver. An order is a pickup task + a
+  // delivery task, but the pickup task flips to 'completed' the moment the driver
+  // picks up — so counting tasks (and halving) under-counts a mid-delivery driver
+  // as 0 orders and would let en_route drivers slip past the stacking gate.
+  // Counting distinct active order_ids is correct.
+  const activeOrdersByDriver = {};
   for (const taskId of Object.keys(tasks)) {
     const t = tasks[taskId];
-    if (!t.assigned_driver_id) continue;
+    if (!t || !t.assigned_driver_id) continue;
     if (t.status === 'completed' || t.status === 'cancelled') continue;
-    activeTasksByDriver[t.assigned_driver_id] = (activeTasksByDriver[t.assigned_driver_id] || 0) + 1;
+    if (!activeOrdersByDriver[t.assigned_driver_id]) activeOrdersByDriver[t.assigned_driver_id] = new Set();
+    if (t.order_id) activeOrdersByDriver[t.assigned_driver_id].add(t.order_id);
   }
-  // Note: order = pickup task + delivery task, so 1 active order = 2 active tasks.
 
   const eligible = [];
   for (const driverId of Object.keys(drivers)) {
@@ -1305,28 +1553,24 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
     if (!d.push_subscription) continue;
     if (d.timeout_until && d.timeout_until > now) continue;
 
-    const taskCount = activeTasksByDriver[driverId] || 0;
-    const orderCount = Math.floor(taskCount / 2);
+    const orderCount = activeOrdersByDriver[driverId] ? activeOrdersByDriver[driverId].size : 0;
 
-    // Stacking eligibility:
-    //   - 0 orders: always eligible (cap 2, won't stack but reserves capacity)
-    //   - 1 order: only stack if driver is PHYSICALLY AT the restaurant
-    //              (state in [at_restaurant, available]). This means the
-    //              second pizza can ride along with the first one — they
-    //              haven't left yet. If the driver has already left
-    //              (en_route_delivery, returning) or hasn't arrived yet
-    //              (assigned), don't stack — the second pizza would either
-    //              wait at the restaurant alone (bad) or force the driver
-    //              to come back (worse).
-    //   - 2+ orders: never stack
+    // Stacking eligibility (see STACKING_RULES above):
+    //   - 0 orders: eligible (takes the 1st)
+    //   - 1 order AND status in STACKABLE_STATUSES (available | assigned |
+    //     at_restaurant): stack the 2nd — driver is still in the pre-departure
+    //     window (heading to / waiting at the restaurant), so the 2nd pizza
+    //     rides along.
+    //   - 1 order, any other status (en_route_delivery, returning, on_break):
+    //     full — the driver already left with the food.
+    //   - 2+ orders: full.
     let cap;
     if (orderCount === 0) {
       cap = 2;
-    } else if (orderCount === 1
-               && (d.status === 'at_restaurant' || d.status === 'available')) {
+    } else if (orderCount === 1 && STACKABLE_STATUSES.has(d.status)) {
       cap = 2;
     } else {
-      cap = orderCount;  // already at cap, will be filtered out below
+      cap = orderCount;  // at cap → filtered out below
     }
     if (orderCount >= cap) continue;
 

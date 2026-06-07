@@ -24,7 +24,7 @@
       ".read": "auth != null",
       ".indexOn": ["assigned_driver_id", "order_id", "status", "type"],
       "$task_id": {
-        ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || (data.exists() && data.child('assigned_driver_id').val() === auth.uid) || (newData.exists() && newData.child('assigned_driver_id').val() === auth.uid))",
+        ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || (data.exists() && data.child('assigned_driver_id').val() === auth.uid))",
         ".validate": "newData.hasChildren(['order_id', 'type', 'status'])",
         "type": {
           ".validate": "newData.val() === 'pickup' || newData.val() === 'delivery'"
@@ -42,7 +42,7 @@
         ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
 
         "status": {
-          ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid)"
+          ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || root.child('kitchen').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid)"
         },
         "picked_up_at": {
           ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid)"
@@ -62,6 +62,28 @@
       ".read": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
       ".indexOn": ["created_at"],
       "$alert_id": {
+        ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
+      }
+    },
+
+    "order_tracking": {
+      "$token": {
+        ".read": true,
+        ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
+      }
+    },
+
+    "incoming_messages": {
+      ".read": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
+      ".indexOn": ["received_at", "handled"],
+      "$msg_id": {
+        ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
+      }
+    },
+
+    "kitchen": {
+      ".read": "auth != null",
+      "$uid": {
         ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
       }
     }

@@ -2133,7 +2133,7 @@ function renderDispatcherAlerts(alerts) {
           <span class="alert-icon">${ICONS.warn}</span>
           <div class="alert-text">
             <strong>No hay repartidores disponibles</strong>
-            Pedido #${a.order_id} · ${a.customer_name || 'Cliente'}${total} — asigna manualmente
+            Pedido #${escapeHtml(a.order_id)} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — asigna manualmente
           </div>
           <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
         </div>
@@ -2147,7 +2147,7 @@ function renderDispatcherAlerts(alerts) {
           <span class="alert-icon">${ICONS.warn}</span>
           <div class="alert-text">
             <strong>Sin respuesta de repartidores</strong>
-            Pedido #${a.order_id} · ${a.customer_name || 'Cliente'}${total} — ${attempts} intentos sin aceptación, asigna manualmente
+            Pedido #${escapeHtml(a.order_id)} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — ${attempts} intentos sin aceptación, asigna manualmente
           </div>
           <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
         </div>
@@ -3463,14 +3463,29 @@ function openPicker(orderId, isReassign = false) {
   if (drivers.length === 0) {
     $('picker-list').innerHTML = '<div class="panel-empty">No hay drivers en turno</div>';
   } else {
+    // Active orders per driver (distinct order_ids from non-terminal tasks) —
+    // mirrors the auto-assign policy. 1 order = pickup+delivery, but the pickup
+    // task completes mid-flow, so count distinct order_ids, not tasks.
+    const ordersByDriver = {};
+    Object.values(allTasks).forEach(t => {
+      if (!t || !t.assigned_driver_id) return;
+      if (t.status === 'completed' || t.status === 'cancelled') return;
+      if (!ordersByDriver[t.assigned_driver_id]) ordersByDriver[t.assigned_driver_id] = new Set();
+      if (t.order_id) ordersByDriver[t.assigned_driver_id].add(t.order_id);
+    });
+
     $('picker-list').innerHTML = drivers.map(({ uid, driver, distBase, distCust, stale }) => {
-      const busy = driver.status === 'en_route_delivery' || driver.status === 'assigned';
+      const orderCount = ordersByDriver[uid] ? ordersByDriver[uid].size : 0;
+      const full = orderCount >= 2;
+      const enRoute = driver.status === 'en_route_delivery';
       // Reachable means we can deliver them a push notification.
       // Stale GPS doesn't make them unreachable — only no push subscription does.
       const unreachable = !driver.push_subscription;
-      // "Disabled" in the picker means: dispatcher will be asked to confirm.
-      // Busy or unreachable = require confirmation. Stale GPS alone does not.
-      const requireConfirm = busy || unreachable;
+      // Policy: a 2nd order stacks freely while the driver is in a stackable state
+      // (available | assigned | at_restaurant) with < 2 orders. Ask the dispatcher
+      // to confirm-to-override ONLY when the driver is FULL (2 orders), already
+      // EN_ROUTE with the food, or unreachable by push.
+      const requireConfirm = full || enRoute || unreachable;
       const staleNote = (stale && !unreachable) ? ' · GPS inactivo' : '';
       const statusEs = {
         off_shift: 'Fuera de turno',
@@ -3481,12 +3496,17 @@ function openPicker(orderId, isReassign = false) {
         returning: 'Regresando',
         on_break: 'En pausa'
       };
+      const loadPill = orderCount > 0
+        ? `<span class="status-pill">${orderCount} pedido${orderCount === 1 ? '' : 's'}${full ? ' · lleno' : ''}</span>`
+        : '';
       return `
-        <div class="picker-row ${requireConfirm ? 'disabled' : ''}" data-driver-uid="${uid}" ${requireConfirm ? 'data-busy="1"' : ''} ${unreachable ? 'data-unreachable="1"' : ''}>
+        <div class="picker-row ${requireConfirm ? 'disabled' : ''}" data-driver-uid="${uid}"
+             ${full ? 'data-full="1"' : ''} ${enRoute ? 'data-enroute="1"' : ''} ${unreachable ? 'data-unreachable="1"' : ''}>
           <div class="status-dot ${getDotClass(driver)}"></div>
           <div class="name">${escapeHtml(driver.name || '—')}</div>
           <div>
             <span class="status-pill ${driver.status}">${statusEs[driver.status] || driver.status}${staleNote}</span>
+            ${loadPill}
           </div>
           <div class="distances">
             <div><strong>${formatDistance(distBase)}</strong> a base</div>
@@ -3498,10 +3518,12 @@ function openPicker(orderId, isReassign = false) {
 
     $('picker-list').querySelectorAll('[data-driver-uid]').forEach(row => {
       row.addEventListener('click', async () => {
-        if (row.dataset.unreachable === '1') {
+        if (row.dataset.full === '1') {
+          if (!confirm('Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?')) return;
+        } else if (row.dataset.enroute === '1') {
+          if (!confirm('Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?')) return;
+        } else if (row.dataset.unreachable === '1') {
           if (!confirm('Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?')) return;
-        } else if (row.dataset.busy === '1') {
-          if (!confirm('Este repartidor está ocupado. ¿Asignar de todas formas?')) return;
         }
         await assignOrder(orderId, row.dataset.driverUid);
       });
