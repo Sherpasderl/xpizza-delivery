@@ -27,6 +27,7 @@ Each file changed in a release carries a `// version: X.Y.Z` comment at the top.
 - `xpizza-kitchen` — added an `escapeHtml` helper (had none); escapes name/items/notes/pickup-time across card, archive, and list views.
 - `xpizza-dispatch` — escaped the two dispatcher-alert lines.
 - `xpizza-driver` + `index.html` — digit-strip the `tel:` href, escape the phone display.
+- **Order form — resilient submit.** Retries `createOrder` on a transient network throw / 5xx (idempotency on `order_id` makes retries duplicate-safe), so a mobile blip no longer shows a false "connection error" that pushes a customer to re-order. 4xx (bad data / rate limit) aren't retried and get specific messages.
 
 **RTDB security rules (`xpizza-reference/database.rules.json`) — DEPLOYED 2026-06-07:**
 - Removed the driver task-theft branch (`newData` self-assign) — a driver can no longer steal or self-assign tasks.
@@ -44,7 +45,7 @@ Each file changed in a release carries a `// version: X.Y.Z` comment at the top.
 
 **Files changed:**
 - `xpizza-functions/index.js`, `xpizza-functions/firebase.json`, `xpizza-functions/package.json`
-- `xpizza-kitchen/index.html`, `xpizza-dispatch/index.html`, `xpizza-driver/index.html`, `index.html`
+- `xpizza-kitchen/index.html`, `xpizza-dispatch/index.html`, `xpizza-driver/index.html`, `index.html`, `xpizza-orders/index.html`
 - `xpizza-reference/database.rules.json`, `.gitignore`
 - Docs: `AUDIT-FINDINGS.md`, `PLAN.md`, `PLAN-REVIEW-LOG.md`
 
