@@ -38,6 +38,7 @@
 
 const { onRequest } = require('firebase-functions/v2/https');
 const { onValueWritten } = require('firebase-functions/v2/database');
+const { beforeUserCreated, HttpsError } = require('firebase-functions/v2/identity');
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
 const webpush = require('web-push');
@@ -590,6 +591,50 @@ exports.createOrder = onRequest(
   },
   createOrderApp
 );
+
+// ============================================================
+// blockPublicSignup — reject self-registration (allowlist staff only)
+// ============================================================
+//
+// Firebase's email/password provider allows public self-registration: anyone
+// with the (public) web API key can call accounts:signUp and create an account.
+// Under the `auth != null` RTDB read rules, that account could then read all
+// customer PII + driver locations. This blocking function closes the door —
+// only the known staff emails below may have an account created; every other
+// signup is rejected with permission-denied.
+//
+// PREREQUISITES (one-time):
+//   1. Enable Identity Platform on the project (Firebase Console -> Authentication;
+//      free tier). Blocking functions require it — without it, deploy will error.
+//   2. Deploy via `npm run deploy`. A v2 beforeUserCreated handler auto-registers
+//      itself as the Auth beforeCreate trigger on deploy (no manual wiring).
+//
+// Existing accounts are NOT affected (this runs only on NEW account creation),
+// and sign-in of current staff is unaffected. To add a staff member: add their
+// lowercased email to STAFF_EMAILS, redeploy, THEN create the account. The list
+// is an in-memory Set (no DB/network I/O) so the check can't fail at runtime and
+// can't be tampered with via the database.
+
+const STAFF_EMAILS = new Set([
+  'xavierlacayo@gmail.com',
+  'xlacayo@me.com',
+  'sherpasderl@gmail.com',
+  'staffsherpa@gmail.com',
+  'hermeztalavera@gmail.com',
+  'garayg067@gmail.com',
+  'elmeredsantos04@gmail.com',
+  'norisf56@gmail.com'
+]);
+
+exports.blockPublicSignup = beforeUserCreated({ region: 'us-central1' }, (event) => {
+  const email = ((event.data && event.data.email) || '').trim().toLowerCase();
+  if (!email || !STAFF_EMAILS.has(email)) {
+    console.warn(`blockPublicSignup: rejected account creation for "${email || '(no email)'}"`);
+    throw new HttpsError('permission-denied', 'Account creation is restricted to X Pizza staff.');
+  }
+  console.log(`blockPublicSignup: allowed staff account creation for ${email}`);
+  // returning nothing → creation proceeds
+});
 
 // ============================================================
 // healthz — Liveness + dependency check for uptime monitoring

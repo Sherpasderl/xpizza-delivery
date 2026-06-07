@@ -19,6 +19,7 @@ Each file changed in a release carries a `// version: X.Y.Z` comment at the top.
 - `createOrder` now **recomputes the order total server-side** from a menu price table (`MENU_PRICES`/`EXTRA_PRICES`) — the client `total` is never trusted (closes price manipulation). Unknown items / bad quantities are rejected.
 - All free-text fields sanitized (strip `<>`/control chars + length caps); `customer_phone` and `order_id` validated; `maps_link` rebuilt server-side; `maxInstances: 10` caps order-spam blast radius.
 - **Rate limiting** on `createOrder` — RTDB-backed fixed-window counters (shared across function instances), per-phone (4 / 10 min, primary) and per-IP (20 / 10 min, coarse/CGNAT-aware). Idempotent retries don't consume budget; fails open on DB error; returns `429` + `Retry-After`. Written to `/rate_limits` (Admin-only by default-deny — no rules change).
+- **`blockPublicSignup`** — new `beforeUserCreated` Auth blocking function. Email/password self-registration was OPEN (verified: a stranger with the public web key could register and then read all customer PII + driver GPS under the `auth != null` rules). This rejects every signup except an allowlist of staff emails — closing the real root cause of finding P1-5 **without touching any app read paths**. Existing accounts and staff sign-in are unaffected. Requires Identity Platform enabled (free tier).
 
 **Frontend output-escaping (defense-in-depth vs stored XSS):**
 - `xpizza-kitchen` — added an `escapeHtml` helper (had none); escapes name/items/notes/pickup-time across card, archive, and list views.
@@ -34,7 +35,8 @@ Each file changed in a release carries a `// version: X.Y.Z` comment at the top.
 
 **Action required:**
 - Rules: already deployed and verified (live == repo).
-- Cloud Functions: redeploy with `npm run deploy` from `xpizza-functions/`. `createOrder` now requires a valid `items` array, and the **server menu prices must stay in sync with the order form** (noted in code).
+- **Enable Identity Platform** (Console → Authentication; free tier) so the `blockPublicSignup` blocking function can deploy — without it the functions deploy will error.
+- Cloud Functions: redeploy with `npm run deploy` from `xpizza-functions/`. `createOrder` now requires a valid `items` array, and the **server menu prices must stay in sync with the order form** (noted in code). Deploying auto-registers `blockPublicSignup` as the Auth `beforeCreate` trigger.
 - Static apps: redeploy `xpizza-kitchen/`, `xpizza-dispatch/`, `xpizza-driver/` (+ root) to Netlify.
 - **Rotate `MAKE_SECRET`/`ORDER_SECRET` + the WhatsApp webhook secret; restrict the Maps API key** in Google Cloud console.
 

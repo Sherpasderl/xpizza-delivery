@@ -23,7 +23,8 @@ Progress on branch `security/pre-launch-hardening` (PR #1):
 - **P1-8 missing/stale rules** — ✅ **Resolved by reconcile**: deployed rules already had `kitchen`/`order_tracking`/`incoming_messages` + kitchen status-write, so **findings F3/F4/F5 below were false positives from the stale repo file**. Repo and production are now identical (deployed 2026-06-07). A CLI deploy path was added (`npm run deploy:rules`).
 - **P0-1 public order secret** — ⚠️ **Mostly fixed (in PR)**: `maxInstances` cap + **RTDB-backed rate limiter** (per-phone 4/10min, per-IP 20/10min, fails open). Remaining: **rotate the secret** + optional bot-protection (App Check / Turnstile).
 - **P0-2 fake online payment / PCI** — ⬜ Pending: handle tokenized in the in-progress PixelPay integration.
-- **P1-5 broad PII reads** (needs coordinated client change), **P1-7 webhook secret in query**, **P1-9 Maps key**, and all 🟡 items — ⬜ Pending.
+- **P1-5 PII exposure to strangers** — ✅ **Root cause fixed (in PR)**: public email/password sign-up was OPEN (verified — a stranger could self-register with the public web key and read all PII under `auth != null`). Added `blockPublicSignup` (`beforeUserCreated` allowlist) — closes it with **zero app read-path changes**. Read-scoping among trusted staff deferred as **optional defense-in-depth** (not needed once signup is closed; would touch the shared `subscribe*` SDK). *Requires enabling Identity Platform, then deploy.*
+- **P1-7 webhook secret in query**, **P1-9 Maps key**, and all 🟡 items — ⬜ Pending.
 
 Deploy state: **rules deployed**; **functions + static apps not yet redeployed** (PR open).
 
