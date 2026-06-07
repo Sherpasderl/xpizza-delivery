@@ -1,4 +1,7 @@
 {
+  "database": {
+    "rules": "../xpizza-reference/database.rules.json"
+  },
   "functions": [
     {
       "source": ".",
