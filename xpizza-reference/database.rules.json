@@ -75,7 +75,7 @@
 
     "incoming_messages": {
       ".read": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
-      ".indexOn": ["received_at"],
+      ".indexOn": ["received_at", "handled"],
       "$msg_id": {
         ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
       }
