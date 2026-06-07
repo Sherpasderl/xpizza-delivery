@@ -11,6 +11,8 @@
 .env.*.local
 *.pem
 *.key
+# Local helper script — contains real secrets (MAKE_SECRET etc), never commit
+run_patches.sh
 
 # ----- Node.js -----
 node_modules/

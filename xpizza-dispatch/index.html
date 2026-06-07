@@ -2133,7 +2133,7 @@ function renderDispatcherAlerts(alerts) {
           <span class="alert-icon">${ICONS.warn}</span>
           <div class="alert-text">
             <strong>No hay repartidores disponibles</strong>
-            Pedido #${a.order_id} · ${a.customer_name || 'Cliente'}${total} — asigna manualmente
+            Pedido #${escapeHtml(a.order_id)} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — asigna manualmente
           </div>
           <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
         </div>
@@ -2147,7 +2147,7 @@ function renderDispatcherAlerts(alerts) {
           <span class="alert-icon">${ICONS.warn}</span>
           <div class="alert-text">
             <strong>Sin respuesta de repartidores</strong>
-            Pedido #${a.order_id} · ${a.customer_name || 'Cliente'}${total} — ${attempts} intentos sin aceptación, asigna manualmente
+            Pedido #${escapeHtml(a.order_id)} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — ${attempts} intentos sin aceptación, asigna manualmente
           </div>
           <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
         </div>

@@ -962,6 +962,15 @@ const localState = JSON.parse(localStorage.getItem('xpizza_orders') || '{}');
 // Track when each order was moved to each status (for elapsed time logging)
 const stateLog   = JSON.parse(localStorage.getItem('xpizza_log')    || '{}');
 
+// Escape HTML-significant chars before interpolating untrusted order data
+// (customer name, items, notes — originate from the public order form) into
+// innerHTML. Defense-in-depth against stored XSS into the kitchen display.
+function escapeHtml(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function saveState() {
   localStorage.setItem('xpizza_orders', JSON.stringify(localState));
   localStorage.setItem('xpizza_log',    JSON.stringify(stateLog));
@@ -1025,11 +1034,11 @@ function renderItems(itemsText) {
   return pizzas.map(pizza => {
     // Match: Qty, Name, optional (Lprice), optional [extras]
     const m = pizza.match(/^(\d+)x\s+(.+?)(?:\s+\(L[\d.]+\))?(?:\s+\[(.+)\])?$/);
-    if (!m) return `<div class="card-item"><span>${pizza}</span></div>`;
+    if (!m) return `<div class="card-item"><span>${escapeHtml(pizza)}</span></div>`;
 
     const qty = parseInt(m[1], 10);
-    const name = m[2];
-    const extrasRaw = m[3];
+    const name = escapeHtml(m[2]);
+    const extrasRaw = m[3] ? escapeHtml(m[3]) : m[3];
 
     let extrasHtml = '';
     if (extrasRaw) {
@@ -1131,15 +1140,15 @@ function renderCard(order) {
         <div class="card-elapsed ${elapsedClass(created)}" id="elapsed-${order.id}">${elapsed(created)}</div>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <div class="card-customer">${order.cliente}</div>
+        <div class="card-customer">${escapeHtml(order.cliente)}</div>
         <div class="card-type-badge ${order.order_type === "pickup" ? "pickup" : "delivery"}">${order.order_type === "pickup" ? "🏪 Pickup" : "🛵 Delivery"}</div>
       </div>
-      ${order.order_type === 'pickup' && order.pickup_time && order.pickup_time !== 'standard' ? `<div class="card-pickup-time">⏰ ${order.pickup_time}</div>` : ''}
+      ${order.order_type === 'pickup' && order.pickup_time && order.pickup_time !== 'standard' ? `<div class="card-pickup-time">⏰ ${escapeHtml(order.pickup_time)}</div>` : ''}
 
       <div class="card-items">
         ${renderItems(order.pedido)}
       </div>
-      ${notes ? `<div class="card-notes">⚠ ${notes}</div>` : ''}
+      ${notes ? `<div class="card-notes">⚠ ${escapeHtml(notes)}</div>` : ''}
       <div class="card-footer">${buttons}</div>
       ${logStr && !isCancelled ? `<button class="btn-log" onclick="showLog(event, '${order.id}')">· · ·</button>` : ''}
     </div>`;
@@ -1235,8 +1244,8 @@ function render(orders) {
           return `
           <div class="archive-card">
             <div class="archive-card-id">${o.orden || o.id}</div>
-            <div class="archive-card-name">${o.cliente}</div>
-            <div class="archive-card-items">${o.pedido}</div>
+            <div class="archive-card-name">${escapeHtml(o.cliente)}</div>
+            <div class="archive-card-items">${escapeHtml(o.pedido)}</div>
             <div class="archive-log">
               <div class="archive-log-title">Historial</div>
               ${logHtml}
@@ -1446,9 +1455,9 @@ function renderHistory() {
     return `
       <div class="archive-card" style="border-left-color:${statusColor}">
         <div class="archive-card-id">${o.orden || o.id}</div>
-        <div class="archive-card-name">${o.cliente}</div>
+        <div class="archive-card-name">${escapeHtml(o.cliente)}</div>
         <div style="font-size:10px;font-family:var(--stamp);letter-spacing:1px;color:${statusColor};margin-bottom:6px;text-transform:uppercase">${status}</div>
-        <div class="archive-card-items">${o.pedido}</div>
+        <div class="archive-card-items">${escapeHtml(o.pedido)}</div>
         <div class="archive-log">
           <div class="archive-log-title">Historial</div>
           ${logHtml}
