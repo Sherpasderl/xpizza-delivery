@@ -129,9 +129,11 @@ cap. · *Confidence: high (exposure) · Agents C-F5, D-F4*
 - **Assignment races** `[DESIGN-RISK]` — auto-assign + timeout-reassign are read-then-write, no
   transaction; concurrent accept/assign can double-assign or yank an accepted order
   (`index.js:1472-1500,1636-1662`). *Fix: `transaction()` on the task slot.* (B#1/#3)
-- **Stacking cap miscount** — `orderCount = floor(taskCount/2)` undercounts a driver mid-delivery
-  (1 active task), letting a 3rd order stack (`index.js:1308`). High-confidence math bug. *Fix:
-  count distinct active `order_id`s.* (B#4)
+- ✅ **Stacking cap miscount — FIXED (in PR).** `orderCount = floor(taskCount/2)` read a
+  mid-delivery driver (pickup completed → 1 active task) as 0 orders, letting `en_route`
+  drivers be over-stacked. Now counts **distinct active `order_id`s**, and the stacking policy
+  is explicit + identical in auto-assign and the dispatch picker: max 2 orders; 2nd stackable
+  only while `available`/`assigned`/`at_restaurant` (never `en_route_delivery`). (B#4)
 - **Unbounded reads (degrade over time):** full `/orders` scan on every inbound WhatsApp
   (`index.js:1086`) and full `/tasks` scan on every assignment (`index.js:1261`). *Fix: indexed
   queries; archive terminal records.* (B#7/#8)

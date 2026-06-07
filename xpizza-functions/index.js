@@ -1399,11 +1399,17 @@ exports.onIncomingWhatsApp = onRequest(
 // - RESTAURANT_LAT/LNG: hardcoded for now. Could read from /config later if
 //   we ever support multiple stores.
 //
-// - STACKING_RULES:
-//     * Driver with 0 active tasks: cap of 2 (can take this + 1 more later)
-//     * Driver with 1 active task AND state in [available, at_restaurant]: cap 2
-//     * Driver with 1 active task AND state == en_route_delivery: cap 1 (full)
-//     * Driver with 2+ active tasks: skip (full)
+// - STACKING_RULES (max 2 orders/driver; a 2nd order may be stacked only while
+//   the driver is still in the PRE-DEPARTURE window for their 1st order — i.e.
+//   before they leave the restaurant with the food):
+//     * 0 active orders:                                          eligible (cap 2)
+//     * 1 active order AND status in STACKABLE_STATUSES
+//       (available | assigned ["en recogida"] | at_restaurant):   stack 2nd (cap 2)
+//     * 1 active order AND status en_route_delivery/returning/…:   full (cap 1)
+//     * 2+ active orders:                                          full
+//   orderCount counts DISTINCT active order_ids, NOT task pairs — once a driver
+//   picks up, the pickup task is 'completed' and only the delivery task remains
+//   active, so a task-halving count would wrongly read a mid-delivery driver as 0.
 
 const GRACE_PERIOD_MS = 30 * 1000;
 const STALE_PING_MS = 90 * 1000;
@@ -1423,6 +1429,12 @@ const TIMEOUT_COOLDOWN_MS = 3 * 60 * 1000;
 // dispatcher takes over. attempts=1 means initial assignment, attempts=2
 // is the second-chance reassignment. Both timing out triggers the alert.
 const MAX_ATTEMPTS_BEFORE_TAKEOVER = 2;
+
+// Driver statuses in which a 2nd order may be STACKED onto a driver who already
+// has 1 active order — the pre-departure window (heading to / waiting at the
+// restaurant). Once en_route_delivery the driver has left with the food and is
+// full. Kept identical to the dispatch console's manual-assign guard.
+const STACKABLE_STATUSES = new Set(['available', 'assigned', 'at_restaurant']);
 
 // Haversine distance in km between two lat/lng coords
 function haversineKm(lat1, lng1, lat2, lng2) {
@@ -1499,15 +1511,19 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
   const now = Date.now();
   const excluded = new Set(excludeDriverIds);
 
-  // Count active tasks per driver
-  const activeTasksByDriver = {};
+  // Count DISTINCT active orders per driver. An order is a pickup task + a
+  // delivery task, but the pickup task flips to 'completed' the moment the driver
+  // picks up — so counting tasks (and halving) under-counts a mid-delivery driver
+  // as 0 orders and would let en_route drivers slip past the stacking gate.
+  // Counting distinct active order_ids is correct.
+  const activeOrdersByDriver = {};
   for (const taskId of Object.keys(tasks)) {
     const t = tasks[taskId];
-    if (!t.assigned_driver_id) continue;
+    if (!t || !t.assigned_driver_id) continue;
     if (t.status === 'completed' || t.status === 'cancelled') continue;
-    activeTasksByDriver[t.assigned_driver_id] = (activeTasksByDriver[t.assigned_driver_id] || 0) + 1;
+    if (!activeOrdersByDriver[t.assigned_driver_id]) activeOrdersByDriver[t.assigned_driver_id] = new Set();
+    if (t.order_id) activeOrdersByDriver[t.assigned_driver_id].add(t.order_id);
   }
-  // Note: order = pickup task + delivery task, so 1 active order = 2 active tasks.
 
   const eligible = [];
   for (const driverId of Object.keys(drivers)) {
@@ -1537,28 +1553,24 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
     if (!d.push_subscription) continue;
     if (d.timeout_until && d.timeout_until > now) continue;
 
-    const taskCount = activeTasksByDriver[driverId] || 0;
-    const orderCount = Math.floor(taskCount / 2);
+    const orderCount = activeOrdersByDriver[driverId] ? activeOrdersByDriver[driverId].size : 0;
 
-    // Stacking eligibility:
-    //   - 0 orders: always eligible (cap 2, won't stack but reserves capacity)
-    //   - 1 order: only stack if driver is PHYSICALLY AT the restaurant
-    //              (state in [at_restaurant, available]). This means the
-    //              second pizza can ride along with the first one — they
-    //              haven't left yet. If the driver has already left
-    //              (en_route_delivery, returning) or hasn't arrived yet
-    //              (assigned), don't stack — the second pizza would either
-    //              wait at the restaurant alone (bad) or force the driver
-    //              to come back (worse).
-    //   - 2+ orders: never stack
+    // Stacking eligibility (see STACKING_RULES above):
+    //   - 0 orders: eligible (takes the 1st)
+    //   - 1 order AND status in STACKABLE_STATUSES (available | assigned |
+    //     at_restaurant): stack the 2nd — driver is still in the pre-departure
+    //     window (heading to / waiting at the restaurant), so the 2nd pizza
+    //     rides along.
+    //   - 1 order, any other status (en_route_delivery, returning, on_break):
+    //     full — the driver already left with the food.
+    //   - 2+ orders: full.
     let cap;
     if (orderCount === 0) {
       cap = 2;
-    } else if (orderCount === 1
-               && (d.status === 'at_restaurant' || d.status === 'available')) {
+    } else if (orderCount === 1 && STACKABLE_STATUSES.has(d.status)) {
       cap = 2;
     } else {
-      cap = orderCount;  // already at cap, will be filtered out below
+      cap = orderCount;  // at cap → filtered out below
     }
     if (orderCount >= cap) continue;
 
