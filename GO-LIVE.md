@@ -34,17 +34,18 @@ _Pre-launch hardening (v1.8.0). Created 2026-06-07. Tracks PR #1 (`security/pre-
 
 ## 5. Rotate secrets (do pre-launch — zero customer impact)
 The order secret lives in **two** places that must match (function env + client HTML), so change both together:
-- [ ] Pick a new value: `openssl rand -hex 32`
-- [ ] Set it in **both**:
+- [x] Pick a new value: `openssl rand -hex 32`
+- [x] Set it in **both**:
   - `xpizza-functions/.env` → `MAKE_SECRET=<new>`
   - `xpizza-orders/index.html:1226` → `ORDER_SECRET = '<new>'`
-- [ ] Deploy both:
+- [x] Deploy both:
   ```bash
   cd xpizza-functions && npm run deploy     # function picks up new MAKE_SECRET
   git add -A && git commit && git push      # Netlify rebuilds the form
   ```
   *(brief mismatch window between the two deploys — fine while pre-launch)*
-- [ ] Rotate `WHATSAPP_WEBHOOK_SECRET` in `.env` + update the UltraMsg webhook config.
+  **✅ Order secret rotated 2026-06-07 — verified: new value → 200, old/burned value → 401, live form updated.**
+- [ ] Rotate `WHATSAPP_WEBHOOK_SECRET` in `.env` + update the UltraMsg webhook config (do this with the UltraMsg renewal, §4).
 
 ## 6. Restrict the Maps API key
 - [ ] Google Cloud console → the Maps key (`xpizza-orders/index.html:1210`) → HTTP-referrer allowlist (your domains) + restrict to Maps JS/Places + set a **billing cap**.
