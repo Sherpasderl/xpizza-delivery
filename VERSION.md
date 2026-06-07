@@ -18,6 +18,7 @@ Each file changed in a release carries a `// version: X.Y.Z` comment at the top.
 **Cloud Functions (`xpizza-functions/index.js`):**
 - `createOrder` now **recomputes the order total server-side** from a menu price table (`MENU_PRICES`/`EXTRA_PRICES`) — the client `total` is never trusted (closes price manipulation). Unknown items / bad quantities are rejected.
 - All free-text fields sanitized (strip `<>`/control chars + length caps); `customer_phone` and `order_id` validated; `maps_link` rebuilt server-side; `maxInstances: 10` caps order-spam blast radius.
+- **Rate limiting** on `createOrder` — RTDB-backed fixed-window counters (shared across function instances), per-phone (4 / 10 min, primary) and per-IP (20 / 10 min, coarse/CGNAT-aware). Idempotent retries don't consume budget; fails open on DB error; returns `429` + `Retry-After`. Written to `/rate_limits` (Admin-only by default-deny — no rules change).
 
 **Frontend output-escaping (defense-in-depth vs stored XSS):**
 - `xpizza-kitchen` — added an `escapeHtml` helper (had none); escapes name/items/notes/pickup-time across card, archive, and list views.

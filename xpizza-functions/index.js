@@ -247,6 +247,64 @@ function validateOrderPayload(body) {
   return { errors, total, lat, lng, fields };
 }
 
+// ---------------------------------------------------------------------------
+// Rate limiting for the public createOrder endpoint.
+//
+// The order-intake bearer secret is, by design, public in the browser, so
+// createOrder must defend itself as a public endpoint. These fixed-window
+// counters live in RTDB so they're shared across all function instances — an
+// in-memory limiter would be useless because Cloud Functions scale out to many
+// instances, each with its own memory. The /rate_limits subtree is written
+// only by this function (Admin SDK) and is default-denied to all clients (no
+// rule grants access), so no security-rule change is needed.
+//
+// Calibrated to a single low-volume restaurant: generous for real customers,
+// throttling for spam. NOTE: many Honduran mobile users share a carrier-grade
+// NAT IP, so the IP bucket is a coarse flood-guard only — the per-PHONE bucket
+// is the primary control. Tune to operational reality.
+// ---------------------------------------------------------------------------
+const RATE_LIMIT_BUCKETS = {
+  ip:    { windowMs: 10 * 60 * 1000, max: 20 },  // coarse flood guard (CGNAT-aware)
+  phone: { windowMs: 10 * 60 * 1000, max: 4 }    // primary: new orders per phone / 10 min
+};
+
+// Hash a rate-limit key (IP / phone) into an RTDB-safe, non-PII key. Avoids
+// storing raw IPs/phones under /rate_limits and dodges forbidden key chars
+// ('.', ':', '+', etc).
+function rateLimitKey(raw) {
+  return require('crypto').createHash('sha256').update(String(raw)).digest('hex').slice(0, 32);
+}
+
+// Fixed-window rate limit backed by an atomic RTDB transaction (correct across
+// concurrent instances). Returns { allowed, retryAfterSec }. FAILS OPEN on any
+// DB error — for a small shop a transient RTDB hiccup must never block a real
+// customer's order; abuse during such a window is the lesser harm.
+async function checkRateLimit(db, bucket, rawKey, cfg) {
+  if (!rawKey) return { allowed: true, retryAfterSec: 0 };
+  const ref = db.ref(`rate_limits/${bucket}/${rateLimitKey(rawKey)}`);
+  const now = Date.now();
+  try {
+    const res = await ref.transaction((cur) => {
+      if (!cur || now - cur.window_start >= cfg.windowMs) {
+        return { count: 1, window_start: now };   // new window
+      }
+      if (cur.count >= cfg.max) {
+        return;                                    // over limit → abort (no write)
+      }
+      return { count: cur.count + 1, window_start: cur.window_start };
+    });
+    if (res.committed) return { allowed: true, retryAfterSec: 0 };
+    const v = res.snapshot.val();
+    const retryAfterSec = v
+      ? Math.max(1, Math.ceil((v.window_start + cfg.windowMs - now) / 1000))
+      : 1;
+    return { allowed: false, retryAfterSec };
+  } catch (e) {
+    console.error(`checkRateLimit: ${bucket} transaction failed (failing open)`, e.message);
+    return { allowed: true, retryAfterSec: 0 };
+  }
+}
+
 // ---- The endpoint ----
 //
 // createOrder is wrapped in an Express app (rather than being a bare
@@ -286,6 +344,12 @@ createOrderApp.all('*', async (req, res) => {
     return unauthorized(res, 'invalid bearer token');
   }
 
+  // Best-effort client IP for rate limiting. X-Forwarded-For's left-most entry
+  // is client-supplied (spoofable), so IP limiting is a soft control only — the
+  // per-phone limit below is the stronger signal. Good enough as a flood guard.
+  const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+    || req.ip || 'unknown';
+
   // Parse + validate
   const body = req.body || {};
   const { errors, total, lat, lng, fields } = validateOrderPayload(body);
@@ -322,6 +386,24 @@ createOrderApp.all('*', async (req, res) => {
   } catch (e) {
     console.error('createOrder: existence check failed', e);
     return res.status(500).json({ error: 'Database read failed', detail: e.message });
+  }
+
+  // Rate limiting. Only genuinely-NEW orders reach here — idempotent retries of
+  // an existing order_id already returned above, so legit retries don't burn
+  // budget. Reject before the expensive multi-path write + WhatsApp send.
+  for (const [bucket, key, cfg] of [
+    ['ip', clientIp, RATE_LIMIT_BUCKETS.ip],
+    ['phone', fields.customer_phone, RATE_LIMIT_BUCKETS.phone]
+  ]) {
+    const { allowed, retryAfterSec } = await checkRateLimit(db, bucket, key, cfg);
+    if (!allowed) {
+      console.warn(`createOrder: rate limit (${bucket}) hit for order ${orderId}, retry ${retryAfterSec}s`);
+      res.set('Retry-After', String(retryAfterSec));
+      return res.status(429).json({
+        error: 'Too Many Requests',
+        detail: `Rate limit exceeded; retry in ${retryAfterSec}s`
+      });
+    }
   }
 
   // Multi-path atomic write — one round-trip creates order + both tasks.
