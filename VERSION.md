@@ -9,6 +9,44 @@ Each file changed in a release carries a `// version: X.Y.Z` comment at the top.
 
 ---
 
+## v1.8.0 — 2026-06-07
+
+### Security — pre-launch hardening (order intake, XSS, RTDB rules)
+
+**Why:** A pre-launch security audit (static review + cross-model adversarial review) found that order intake trusted the client, customer-controlled fields could inject HTML into staff screens, and the deployed RTDB rules let a driver steal/forge tasks. Platform is pre-launch (test orders only), so these are go-live blockers, not incident fixes.
+
+**Cloud Functions (`xpizza-functions/index.js`):**
+- `createOrder` now **recomputes the order total server-side** from a menu price table (`MENU_PRICES`/`EXTRA_PRICES`) — the client `total` is never trusted (closes price manipulation). Unknown items / bad quantities are rejected.
+- All free-text fields sanitized (strip `<>`/control chars + length caps); `customer_phone` and `order_id` validated; `maps_link` rebuilt server-side; `maxInstances: 10` caps order-spam blast radius.
+
+**Frontend output-escaping (defense-in-depth vs stored XSS):**
+- `xpizza-kitchen` — added an `escapeHtml` helper (had none); escapes name/items/notes/pickup-time across card, archive, and list views.
+- `xpizza-dispatch` — escaped the two dispatcher-alert lines.
+- `xpizza-driver` + `index.html` — digit-strip the `tel:` href, escape the phone display.
+
+**RTDB security rules (`xpizza-reference/database.rules.json`) — DEPLOYED 2026-06-07:**
+- Removed the driver task-theft branch (`newData` self-assign) — a driver can no longer steal or self-assign tasks.
+- Reconciled the repo file with the live deployed rules (the repo copy was stale; production already had `kitchen`/`order_tracking`/`incoming_messages` + kitchen status-write). Repo and production are now identical.
+- Restored the `incoming_messages` `handled` index a prior edit had dropped.
+
+**CLI rules deploy added:** `npm run deploy:rules` (from `xpizza-functions/`) syncs the canonical rules file into the project dir and runs `firebase deploy --only database`.
+
+**Action required:**
+- Rules: already deployed and verified (live == repo).
+- Cloud Functions: redeploy with `npm run deploy` from `xpizza-functions/`. `createOrder` now requires a valid `items` array, and the **server menu prices must stay in sync with the order form** (noted in code).
+- Static apps: redeploy `xpizza-kitchen/`, `xpizza-dispatch/`, `xpizza-driver/` (+ root) to Netlify.
+- **Rotate `MAKE_SECRET`/`ORDER_SECRET` + the WhatsApp webhook secret; restrict the Maps API key** in Google Cloud console.
+
+**Files changed:**
+- `xpizza-functions/index.js`, `xpizza-functions/firebase.json`, `xpizza-functions/package.json`
+- `xpizza-kitchen/index.html`, `xpizza-dispatch/index.html`, `xpizza-driver/index.html`, `index.html`
+- `xpizza-reference/database.rules.json`, `.gitignore`
+- Docs: `AUDIT-FINDINGS.md`, `PLAN.md`, `PLAN-REVIEW-LOG.md`
+
+**Not yet done (tracked in `AUDIT-FINDINGS.md`):** PixelPay tokenized integration (P0-2), `createOrder` rate-limiting / bot-protection (P0-1), scoping the broad `auth != null` PII reads (P1-5).
+
+---
+
 ## v1.6.1 — 2026-05-02
 
 ### Patch — KDS cancellation visual refinement + Archivar button

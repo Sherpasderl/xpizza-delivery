@@ -1,6 +1,6 @@
 /**
  * X Pizza Delivery — Cloud Functions
- * version: 1.7.3
+ * version: 1.8.0
  *
  * Endpoints:
  *   - createOrder                   (HTTPS)   — Make.com → Firebase write proxy + WhatsApp "received"

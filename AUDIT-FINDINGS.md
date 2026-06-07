@@ -14,6 +14,21 @@ _Static, read-only audit · 2026-06-07 · pre-launch (go-live ~2–3 days, test 
 
 ---
 
+## ✅ Remediation status — updated 2026-06-07
+Progress on branch `security/pre-launch-hardening` (PR #1):
+
+- **P0-3 price tampering** — ✅ **Fixed** (`createOrder` recomputes total server-side). *In PR; redeploy functions to go live.*
+- **P0-4 stored XSS into staff screens** — ✅ **Fixed** (server-side field sanitization + output-escaping in kitchen/dispatch/driver). *In PR; redeploy functions + Netlify apps.*
+- **P1-6 driver task theft** — ✅ **Fixed AND DEPLOYED 2026-06-07** (`newData` self-grant removed from live RTDB rules; verified live == repo).
+- **P1-8 missing/stale rules** — ✅ **Resolved by reconcile**: deployed rules already had `kitchen`/`order_tracking`/`incoming_messages` + kitchen status-write, so **findings F3/F4/F5 below were false positives from the stale repo file**. Repo and production are now identical (deployed 2026-06-07). A CLI deploy path was added (`npm run deploy:rules`).
+- **P0-1 public order secret** — ⚠️ **Partial**: `maxInstances` cap added; full fix (rotate secret + rate-limit/bot-protection) still pending (infra).
+- **P0-2 fake online payment / PCI** — ⬜ Pending: handle tokenized in the in-progress PixelPay integration.
+- **P1-5 broad PII reads** (needs coordinated client change), **P1-7 webhook secret in query**, **P1-9 Maps key**, and all 🟡 items — ⬜ Pending.
+
+Deploy state: **rules deployed**; **functions + static apps not yet redeployed** (PR open).
+
+---
+
 ## 🔴 Must fix before go-live
 
 ### P0-1 · `createOrder` order-intake secret is public; endpoint is effectively open + unthrottled
