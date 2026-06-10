@@ -110,9 +110,19 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
   }
 
   if (cap.httpStatus === 412) {
-    // Settled already but we hold no verified result → cannot reverify → manual reconcile.
-    await routeManualReconciliation(deps, { orderId, attemptId, uuid, now });
-    return { outcome: 'manual_reconciliation' };
+    // 412 "Error al encontrar el cobro" is AMBIGUOUS: it means either (a) the charge
+    // settled already and we lost the capture response, OR (b) the payment_uuid was
+    // never a capturable auth (a DECLINED auth still returns a uuid; capturing it 412s).
+    // Disambiguate via getStatus: manual_reconciliation ONLY if PixelPay shows it paid;
+    // otherwise it's a plain failure (no money moved).
+    const recheck = deps.client.interpretStatus(await deps.client.getStatus({ payment_uuid: uuid }));
+    if (recheck.paid) {
+      await routeManualReconciliation(deps, { orderId, attemptId, uuid, now });
+      return { outcome: 'manual_reconciliation' };
+    }
+    await attemptRef.update({ status: 'declined', failed_at: now, decline_message: cap.message || 'capture_not_found' });
+    await orderRef.update({ payment_status: 'failed' });
+    return { outcome: 'capture_failed', message: cap.message || 'capture not found' };
   }
   if (!cap.ok) {
     // Declined / amount>auth / etc. — no money moved. Open for COD fallback.

@@ -120,8 +120,9 @@ async function runTest(){
     const tx=new Services.Transaction(settings);
     const ar=await tx.doAuth(auth);
     const uuid=ar&&ar.data&&ar.data.payment_uuid;
-    log('   auth: '+(ar&&ar.constructor&&ar.constructor.name)+' success='+(ar&&ar.success)+' msg='+(ar&&ar.message));
-    if(!uuid){ log('✗ AUTH rechazada / no payment_uuid.','err'); return; }
+    const approved=ar&&ar.success===true&&ar.data&&ar.data.response_approved===true;
+    log('   auth: '+(ar&&ar.constructor&&ar.constructor.name)+' success='+(ar&&ar.success)+' approved='+(ar&&ar.data&&ar.data.response_approved)+' msg='+(ar&&ar.message));
+    if(!approved || !uuid){ log('✗ AUTH RECHAZADA — '+((ar&&ar.message)||'tarjeta declinada')+' (no se llama a confirm).','err'); return; }
     log('   payment_uuid='+uuid,'ok');
 
     // 3. confirmOnlinePayment (poll)

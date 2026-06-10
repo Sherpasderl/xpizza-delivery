@@ -80,13 +80,17 @@ function pendingOrder({ type = 'delivery' } = {}) {
 const goodHash = paymentHash('PZX-1-A', SBOX_KEY, SBOX_SECRET);
 
 // scenario client: stub capture/getStatus/void; real verify/interpret.
-function mkClient({ statusValue = 'authorized', capture, voidOk = true, voidThrows = false, captureThrows = false } = {}) {
+function mkClient({ statusValue = 'authorized', statusSeq, capture, voidOk = true, voidThrows = false, captureThrows = false } = {}) {
   const calls = { capture: 0, void: 0, status: 0 };
   return {
     calls,
     interpretStatus: realClient.interpretStatus,
     verifyCaptureResult: realClient.verifyCaptureResult,
-    async getStatus() { calls.status++; return { data: { status: statusValue } }; },
+    async getStatus() {
+      const v = statusSeq ? statusSeq[Math.min(calls.status, statusSeq.length - 1)] : statusValue;
+      calls.status++;
+      return { data: { status: v } };
+    },
     async capture() {
       calls.capture++;
       if (captureThrows) throw new Error('ETIMEDOUT');
@@ -226,14 +230,26 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     ok('pickup order → confirmed, no tasks, pickup tracking copy');
   }
 
-  // 10. Capture returns 412 (settled, no verified result) → manual_reconciliation.
+  // 10. Capture 412 + getStatus NOT paid (declined auth's uuid) → capture_failed.
   {
     const db = makeDb(pendingOrder());
-    const client = mkClient({ capture: { ok: false, httpStatus: 412, message: 'Error al encontrar el cobro' } });
-    const r = await confirmOnlinePayment(baseDeps(db, client), { orderId: 'PZX-1', paymentUuid: 'S-uuid', now: 9000 });
+    const client = mkClient({ statusValue: 'authorized', capture: { ok: false, httpStatus: 412, message: 'Error al encontrar el cobro' } });
+    const r = await confirmOnlinePayment(baseDeps(db, client), { orderId: 'PZX-1', paymentUuid: 'S-decl', now: 9000 });
+    assert.strictEqual(r.outcome, 'capture_failed');
+    assert.strictEqual(db.getAt('payment_attempts/A').status, 'declined');
+    assert.strictEqual(db.getAt('orders/PZX-1').payment_status, 'failed');
+    ok('capture 412 + not paid (declined auth) → capture_failed (NOT manual_reconciliation)');
+  }
+
+  // 10b. Capture 412 but getStatus shows paid at re-check (settled, lost response) → manual_reconciliation.
+  {
+    const db = makeDb(pendingOrder());
+    // pre-check sees 'authorized' (proceed to capture), re-check after 412 sees 'paid'.
+    const client = mkClient({ statusSeq: ['authorized', 'paid'], capture: { ok: false, httpStatus: 412, message: 'Error al encontrar el cobro' } });
+    const r = await confirmOnlinePayment(baseDeps(db, client), { orderId: 'PZX-1', paymentUuid: 'S-lost', now: 9500 });
     assert.strictEqual(r.outcome, 'manual_reconciliation');
     assert.strictEqual(db.getAt('payment_attempts/A').status, 'capture_unverified');
-    ok('capture 412 (settled, unverifiable) → manual_reconciliation');
+    ok('capture 412 + getStatus paid at re-check (lost response) → manual_reconciliation');
   }
 
   // 11. No active attempt.

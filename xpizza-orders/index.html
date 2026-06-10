@@ -2247,8 +2247,12 @@ async function runPixelPayAuth(pp){
     tx.doAuth(auth),
     new Promise((_, rej) => setTimeout(() => rej(new Error('El pago tardó demasiado. Intentá de nuevo.')), 5 * 60 * 1000))
   ]);
+  // A DECLINED auth still returns a payment_uuid — so we must require the auth actually
+  // SUCCEEDED (success + response_approved), not just that a uuid came back. Otherwise we'd
+  // send a declined card's uuid to confirm and mislabel it.
+  const approved = result && result.success === true && result.data && result.data.response_approved === true;
   const uuid = result && result.data && result.data.payment_uuid;
-  if(!uuid){ throw new Error((result && result.message) || 'Tu tarjeta no pudo ser autorizada.'); }
+  if(!approved || !uuid){ throw new Error((result && result.message) || 'Tu tarjeta fue rechazada.'); }
   return uuid;
 }
 
