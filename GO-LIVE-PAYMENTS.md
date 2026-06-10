@@ -76,7 +76,7 @@ With a **real card** and a **small/cheap menu item**:
 - **Functions:** `PIXELPAY_MODE` back to `sandbox` (no real charges) + redeploy. In-flight authorized-but-uncaptured holds simply expire (no money moved).
 
 ## Known follow-ups (NOT blockers)
-- [ ] **Orders / order-history view** — no unified all-orders view exists (dashboard is analytics-only). See `orders-view-followup` memory. Lets you look up paid/refunded/cancelled orders + would give the dispatcher UI the cancel/refund actions.
+- [x] **Orders / order-history view** — BUILT (2026-06-10) as the dashboard "Pedidos" zone: searchable/filterable all-orders view (type/status/payment/date) + detail modal. See `orders-view-followup` memory.
+- [x] **Dispatcher UI** for `cancelPaidOrder` / `resolveManualReconciliation` — BUILT (2026-06-10) into the Pedidos detail modal. Both functions now dual-auth (server `RECON_SECRET` OR a verified dispatcher Firebase ID token via `authorizeDispatcherAction`); the browser sends `getIdToken()`, never the secret. Deployed in sandbox mode; server auth gate verified (401 without a dispatcher token). NOTE: the dispatcher-token browser path still needs one real in-browser smoke test (mint a real ID token) — fold into the step-7 production smoke test.
 - [ ] **`MAKE_SECRET` rename** — it's the generic public bearer now (not Make.com); rename to e.g. `ORDER_API_SECRET` (touches `.env` + order form + 4 functions) as a deliberate change.
 - [ ] **`convertFailedOnlineToCOD`** — not built; the order form regenerates `order_id` on retry and the sweep abandons stale failed online orders, so it's covered for now.
-- [ ] **Dispatcher UI** for `cancelPaidOrder` / `resolveManualReconciliation` (currently API-only; fold into the Orders view).
