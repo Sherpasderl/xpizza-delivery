@@ -6,6 +6,11 @@
  *   - createOrder                   (HTTPS)   — Make.com → Firebase write proxy + WhatsApp "received"
  *   - chargeOnlineOrder             (HTTPS)   — PixelPay online card: pending-first order + signed sale config (Stage 3b)
  *   - confirmOnlinePayment          (HTTPS)   — PixelPay capture + materialize (auth→capture confirm, Stage 4)
+ *   - pixelPayWebhook               (HTTPS)   — PixelPay order_callback nudge → confirm (Stage 4)
+ *   - sweepStalePending             (sched)   — confirm/abandon backstop for missed nudges (Stage 4)
+ *   - reconcilePayments             (sched)   — daily money-safety invariant audit (Stage 4)
+ *   - resolveManualReconciliation   (HTTPS)   — audited dispatcher resolver for manual_reconciliation (Stage 4)
+ *   - materializeOnConfirm          (DB trig) — re-materialize a confirmed-but-unmaterialized order (Stage 4)
  *   - notifyDriverOnAssignment      (DB trig) — Web Push to driver on assignment
  *   - notifyDriverOnCancellation    (DB trig) — Web Push to assigned driver when order is cancelled
  *   - onOrderCancelled              (DB trig) — Sync cancellations to KDS Sheet
@@ -40,6 +45,7 @@
 
 const { onRequest } = require('firebase-functions/v2/https');
 const { onValueWritten } = require('firebase-functions/v2/database');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { beforeUserCreated, HttpsError } = require('firebase-functions/v2/identity');
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
@@ -50,8 +56,9 @@ const whatsapp = require('./whatsapp');
 const pixelpayCrypto = require('./pixelpay');
 const { resolvePixelPayConfig, pixelPayAppUrl, pixelPayCallbackUrl } = require('./pixelpay-config');
 const pixelpayClient = require('./pixelpay-client');
-const { confirmOnlinePayment } = require('./pixelpay-confirm');
+const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
 const { buildMaterializeUpdates } = require('./materialize');
+const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
 
 initializeApp({
   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
@@ -964,6 +971,273 @@ exports.confirmOnlinePayment = onRequest(
     maxInstances: 10
   },
   confirmOnlineApp
+);
+
+// Shared deps + entrypoint for the confirm machine (used by webhook + sweep).
+function confirmDeps(db) {
+  return { db, client: pixelpayClient, restaurant: RESTAURANT, buildMaterializeUpdates, alert: (kind, detail) => paymentAlert(db, kind, detail) };
+}
+function runConfirm(db, orderId, paymentUuid) {
+  return confirmOnlinePayment(confirmDeps(db), { orderId, paymentUuid, now: Date.now(), trackingToken: generateTrackingToken() });
+}
+
+// ============================================================
+// pixelPayWebhook — Stage 4 sub-stage 3: durable confirm nudge
+// ============================================================
+//
+// PixelPay's order_callback posts here when a transaction settles. The webhook is
+// a NUDGE ONLY: we extract the order + (claimed) payment_uuid and run the SERVER-
+// authoritative confirm (which re-verifies via doCapture), so a malformed/forged
+// payload can never cause a bad confirm. We dedupe by event id in /webhook_events
+// and ALWAYS return 200 (never trigger a PixelPay retry storm — the confirm is
+// idempotent and the sweep is the backstop). A shared-secret query param is
+// checked as defense-in-depth when configured.
+exports.pixelPayWebhook = onRequest(
+  { region: 'us-central1', cors: false, timeoutSeconds: 60, memory: '256MiB', maxInstances: 10 },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).send('Method Not Allowed'); }
+
+    // Defense-in-depth: if PIXELPAY_WEBHOOK_SECRET is set, require it (?secret= or header).
+    // Mismatch → 200 + ignore (don't 401, to avoid retry storms; the sweep still recovers).
+    const expected = process.env.PIXELPAY_WEBHOOK_SECRET;
+    if (expected) {
+      const presented = (req.query && req.query.secret) || req.get('x-webhook-secret') || '';
+      if (!presented || !constantTimeEqual(String(presented), expected)) {
+        console.warn('pixelPayWebhook: bad/missing shared secret, ignoring nudge');
+        return res.status(200).json({ ok: true, ignored: 'auth' });
+      }
+    }
+
+    const nudge = extractWebhookNudge(req.body || {});
+    if (!nudge.orderId) {
+      console.warn('pixelPayWebhook: could not extract order id from payload', JSON.stringify(req.body || {}).slice(0, 500));
+      return res.status(200).json({ ok: true, ignored: 'no_order' });
+    }
+
+    const db = getDatabase();
+
+    // Idempotency: claim /webhook_events/{eventId} (processing→done|failed). A
+    // recently-done/processing event is skipped (PixelPay retry). Fails OPEN — if
+    // the claim errors we still run the (idempotent) confirm.
+    const eventId = rateLimitKey(nudge.eventId || `${nudge.orderId}:${nudge.paymentUuid || ''}`);
+    try {
+      const claim = await db.ref(`webhook_events/${eventId}`).transaction((cur) => {
+        if (cur && cur.state === 'done') return;                                   // already handled
+        if (cur && cur.state === 'processing' && Date.now() - (cur.at || 0) < 120000) return; // in flight
+        return { state: 'processing', at: Date.now(), order_id: nudge.orderId };
+      });
+      if (!claim.committed) {
+        return res.status(200).json({ ok: true, deduped: true });
+      }
+    } catch (e) {
+      console.error('pixelPayWebhook: event claim failed (proceeding)', e.message);
+    }
+
+    let outcome = 'error';
+    try {
+      const r = await runConfirm(db, nudge.orderId, nudge.paymentUuid);
+      outcome = r.outcome;
+    } catch (e) {
+      console.error(`pixelPayWebhook: confirm error for ${nudge.orderId}`, e.message);
+    }
+    const finalState = outcome === 'error' ? 'failed' : 'done';
+    try { await db.ref(`webhook_events/${eventId}`).update({ state: finalState, outcome, done_at: Date.now() }); } catch (_) {}
+
+    console.log(`pixelPayWebhook: ${nudge.orderId} → ${outcome}`);
+    return res.status(200).json({ ok: true, outcome }); // always 200
+  }
+);
+
+// ============================================================
+// sweepStalePending — Stage 4 sub-stage 3: capture/abandon backstop (~5 min)
+// ============================================================
+//
+// Recovers orders the live nudge missed: confirms ones with a recorded payment_uuid
+// (or a stuck capturing claim) past the confirm TTL; abandons ones with no usable
+// payment_uuid past the abandon TTL (the PixelPay auth has expired — no money moved,
+// a *missed order* not a *lost charge*). See PAYMENT-PLAN §G + classifySweepCandidate.
+exports.sweepStalePending = onSchedule(
+  { schedule: 'every 5 minutes', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    const db = getDatabase();
+    const now = Date.now();
+    const snap = await db.ref('orders').orderByChild('status').equalTo('pending_payment').once('value');
+    const orders = snap.val() || {};
+    let confirmed = 0, abandoned = 0, left = 0;
+
+    for (const orderId of Object.keys(orders)) {
+      const order = orders[orderId];
+      if (order.payment_method !== 'online') continue;
+      let attempt = null;
+      if (order.active_attempt_id) {
+        attempt = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();
+      }
+      const action = classifySweepCandidate(order, attempt, now);
+      if (action === 'confirm') {
+        try {
+          const r = await runConfirm(db, orderId, attempt && attempt.payment_uuid);
+          console.log(`sweep: ${orderId} → ${r.outcome}`);
+          confirmed++;
+        } catch (e) { console.error(`sweep: confirm failed ${orderId}`, e.message); }
+      } else if (action === 'abandon') {
+        try {
+          await db.ref(`orders/${orderId}`).update({ payment_status: 'failed' });
+          if (order.active_attempt_id) await db.ref(`payment_attempts/${order.active_attempt_id}`).update({ status: 'abandoned', abandoned_at: now });
+          await paymentAlert(db, 'auth_expired_missed_order', { orderId, total: order.total || null });
+          abandoned++;
+        } catch (e) { console.error(`sweep: abandon failed ${orderId}`, e.message); }
+      } else { left++; }
+    }
+    console.log(`sweepStalePending: confirmed=${confirmed} abandoned=${abandoned} left=${left}`);
+  }
+);
+
+// ============================================================
+// reconcilePayments — Stage 4 sub-stage 3: daily invariant audit (backstop)
+// ============================================================
+//
+// RTDB-internal money-safety audit → dispatcher alerts. (A full PixelPay-ledger
+// cross-check needs a list/ledger API the SDK doesn't expose; this catches the
+// states we CAN see: aged manual_reconciliation / refund_pending / capturing,
+// confirmed-online-without-a-captured-attempt.) The inline guards in §B are the
+// primary controls; this is the safety net.
+exports.reconcilePayments = onSchedule(
+  { schedule: 'every 24 hours', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    const db = getDatabase();
+    const now = Date.now();
+    const [ordersSnap, attemptsSnap] = await Promise.all([
+      db.ref('orders').once('value'),
+      db.ref('payment_attempts').once('value')
+    ]);
+    const orders = ordersSnap.val() || {};
+    const attempts = attemptsSnap.val() || {};
+    const breaches = [];
+
+    for (const orderId of Object.keys(orders)) {
+      const o = orders[orderId];
+      if (o.payment_method !== 'online') continue;
+      const a = o.active_attempt_id ? attempts[o.active_attempt_id] : null;
+      // I2: a confirmed online order must have a captured attempt.
+      if (o.payment_status === 'confirmed' && !(a && (a.status === 'captured' || a.capture_verified))) {
+        breaches.push({ orderId, kind: 'confirmed_without_captured_attempt' });
+      }
+      // Aged operator-queue states.
+      const age = now - (Number(o.charged_at || o.created_at) || now);
+      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' });
+      if (o.payment_status === 'refund_pending' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_refund_pending' });
+    }
+    // Stuck capturing claims (crash mid-capture, never recovered).
+    for (const id of Object.keys(attempts)) {
+      const a = attempts[id];
+      if (a.status === 'capturing' && now - (Number(a.capturing_started_at) || now) > 3600 * 1000) {
+        breaches.push({ attemptId: id, orderId: a.order_id, kind: 'stuck_capturing' });
+      }
+    }
+
+    if (breaches.length) {
+      console.warn('reconcilePayments: breaches', JSON.stringify(breaches));
+      await paymentAlert(db, 'reconcile_breaches', { count: breaches.length, breaches: breaches.slice(0, 50) });
+    } else {
+      console.log('reconcilePayments: no breaches');
+    }
+  }
+);
+
+// ============================================================
+// resolveManualReconciliation — Stage 4 sub-stage 3: audited manual resolver
+// ============================================================
+//
+// Dispatcher-triggered resolution of a `manual_reconciliation` order (paid-but-
+// lost-capture-response). NEVER raw DB editing — actions are audited.
+//   action 'materialize' → ledger-verified paid: confirm + materialize the order.
+//   action 'refund'      → void/refund the payment, close the order failed.
+//   action 'keep'        → leave queued (no-op; for re-checking later).
+// Auth: bearer MAKE_SECRET (the dispatch app calls it). Records an audit entry.
+exports.resolveManualReconciliation = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 60, memory: '256MiB', maxInstances: 5 },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).json({ error: 'Method Not Allowed' }); }
+    const SECRET = process.env.MAKE_SECRET;
+    const authHeader = req.get('authorization') || '';
+    const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!SECRET || !presented || !constantTimeEqual(presented, SECRET)) return unauthorized(res, 'invalid bearer token');
+
+    const body = req.body || {};
+    const orderId = String(body.order_id || '');
+    const action = String(body.action || '');
+    const actor = sanitizeText(body.actor || 'dispatcher', 80);
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return badRequest(res, 'order_id invalid');
+    if (!['materialize', 'refund', 'keep'].includes(action)) return badRequest(res, 'action must be materialize|refund|keep');
+
+    const db = getDatabase();
+    const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.payment_status !== 'manual_reconciliation') {
+      return res.status(409).json({ error: 'Order is not in manual_reconciliation', payment_status: order.payment_status });
+    }
+    const attemptId = order.active_attempt_id;
+
+    const audit = async (outcome, extra = {}) => {
+      await db.ref('payment_audit').push({ order_id: orderId, action, actor, outcome, at: ServerValue.TIMESTAMP, ...extra });
+    };
+
+    try {
+      if (action === 'keep') {
+        await audit('kept_queued');
+        return res.status(200).json({ ok: true, outcome: 'kept_queued' });
+      }
+      if (action === 'materialize') {
+        // Dispatcher verified the ledger shows our paid capture → confirm + materialize.
+        if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ status: 'captured', capture_verified: true, manual_verified: true, amount_cents: order.total_cents });
+        await db.ref(`orders/${orderId}`).update({ payment_status: 'pending' }); // let confirmAndMaterialize claim it
+        const r = await confirmAndMaterialize(confirmDeps(db), { orderId, attemptId, now: Date.now(), trackingToken: generateTrackingToken() });
+        await audit('materialized', { confirm_outcome: r.outcome });
+        return res.status(200).json({ ok: true, outcome: r.outcome });
+      }
+      // action === 'refund'
+      const uuid = attemptId ? (await db.ref(`payment_attempts/${attemptId}/payment_uuid`).once('value')).val() : null;
+      let voided = false;
+      if (uuid) {
+        try { const vd = await pixelpayClient.voidTransaction({ payment_uuid: uuid, pixelpayOrderId: `${orderId}-${attemptId}`, voidReason: 'xpizza_manual_refund' }); voided = !!vd.ok; } catch (_) {}
+      }
+      if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ status: voided ? 'refunded' : 'refund_pending', refunded_at: Date.now() });
+      await db.ref(`orders/${orderId}`).update({ payment_status: voided ? 'refunded' : 'refund_pending', status: 'cancelled' });
+      await audit(voided ? 'refunded' : 'refund_pending', { voided });
+      return res.status(200).json({ ok: true, outcome: voided ? 'refunded' : 'refund_pending' });
+    } catch (e) {
+      console.error(`resolveManualReconciliation: ${orderId} ${action} failed`, e.message);
+      return res.status(500).json({ error: 'resolve failed', detail: e.message });
+    }
+  }
+);
+
+// ============================================================
+// materializeOnConfirm — recovery trigger (crash between confirm-claim + materialize)
+// ============================================================
+//
+// If a write leaves an order `payment_status:'confirmed'` but with no
+// `materialized_at` (the confirm claim landed but materialize didn't), re-run
+// materialization idempotently. confirmAndMaterialize is a no-op once materialized,
+// so this can't loop. (PAYMENT-PLAN §C.4.)
+exports.materializeOnConfirm = onValueWritten(
+  { ref: '/orders/{orderId}', region: 'us-central1' },
+  async (event) => {
+    const after = event.data.after.val();
+    if (!after) return;
+    if (after.payment_status !== 'confirmed') return;
+    if (after.materialized_at) return;               // already materialized → nothing to do
+    if (after.status === 'cancelled') return;
+    const orderId = event.params.orderId;
+    console.warn(`materializeOnConfirm: recovering unmaterialized confirmed order ${orderId}`);
+    const db = getDatabase();
+    try {
+      const r = await confirmAndMaterialize(confirmDeps(db), { orderId, attemptId: after.active_attempt_id, now: Date.now(), trackingToken: generateTrackingToken() });
+      console.log(`materializeOnConfirm: ${orderId} → ${r.outcome}`);
+    } catch (e) {
+      console.error(`materializeOnConfirm: ${orderId} failed`, e.message);
+    }
+  }
 );
 
 // ============================================================
@@ -2031,9 +2305,13 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     const before = event.data.before.val();
     const after = event.data.after.val();
 
-    // Only fire on CREATE (before == null), not on subsequent updates
-    if (before !== null) return;
+    // Fire when the order BECOMES live (status → 'new'): cash orders at create
+    // (before == null), and online orders when a verified payment materializes them
+    // (before.status was 'pending_payment'). Ignore the pending_payment write itself
+    // and all later updates. Unifies the cash + online dispatch entry point (§D).
     if (!after) return;
+    const becameNew = after.status === 'new' && (before === null || before.status !== 'new');
+    if (!becameNew) return;
 
     const orderId = event.params.orderId;
 
