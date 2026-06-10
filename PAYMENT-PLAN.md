@@ -13,11 +13,13 @@ separate factura/SAR system.
 - **`order.status`** (operational): `pending_payment` → `new` → `preparing` → `ready` →
   `out_for_delivery` → `delivered`; or `cancelled`. Cash/COD start at `new`. *(KDS/dispatch/driver
   show only `new`+.)*
-- **`payment_status`**: `pending` → `confirmed` | `failed` | `refunded` | `refund_pending`. (Cash/COD:
+- **`payment_status`**: `pending` → `confirmed` | `failed` | `refunded` | `refund_pending` |
+  `manual_reconciliation` (paid-but-lost-capture-response → dispatcher verifies vs ledger). (Cash/COD:
   not set / `n/a`.)
-- **`payment_attempts/{attempt_id}.status`**: `active` → `approved` | `declined` | `abandoned` |
-  `converted` (to COD) | `voided` | `refunded`. **The attempt record is the charge source of truth.**
-`charging` is an attempt/lock concept, **not** an `order.status`.
+- **`payment_attempts/{attempt_id}.status`**: `active` (auth pending) → `capturing` (claim held) →
+  `captured` (confirmed) | `declined` | `abandoned` | `converted` (to COD) | `voided` | `refunded`.
+  **The attempt record is the charge source of truth.** `active`/`capturing` are attempt/lock concepts,
+  **not** `order.status`.
 
 ## Money-safety invariants
 - **I1** order record exists before any charge.
@@ -29,11 +31,12 @@ separate factura/SAR system.
   markers/outbox.
 - **I5** Confirmation converges (sync / webhook / sweep → one materialized state; re-runs no-op).
 - **I6** No money on a dead order — void/refund or tracked `refund_pending`; nothing silently lost.
-- **I7** Confirm **only** on a PixelPay-authoritative `getStatus(payment_uuid)` (`response_approved` +
-  `transaction_approved_amount`==`amount_cents` + `currency(HNL)`) bound to the **active attempt's
-  `pixelpay_order_id`** (via `payment_hash`, and the raw status order field if present).
-- **I8** A non-active attempt (abandoned/converted/cancelled) that PixelPay later approves is
-  **voided/refunded, never materialized**.
+- **I7** Confirm **only** on a **server `doCapture` response** (`response_approved` +
+  `transaction_approved_amount`==`amount_cents` (lempiras) + `currency(HNL)`) bound to the **active attempt's
+  `pixelpay_order_id`** via the capture-response `payment_hash == MD5(pixelpay_order_id|auth_key|secret)`.
+  The server sets the captured amount; `getStatus` is liveness-only, never the confirm authority.
+- **I8** A non-active attempt (abandoned/converted/cancelled) whose `payment_uuid` PixelPay later reports
+  captured/paid is **voided/refunded, never materialized**. An uncaptured auth simply expires (no money).
 
 ## Canonical money type
 `total_cents` (integer **HNL centavos**) is the single source of truth for charge + all comparisons.
@@ -49,10 +52,10 @@ never trusted. PixelPay calls use the unit PixelPay expects (pin centavos-vs-dec
 - **`pixelpay_order_id`** = **`${order_id}-${attempt_id}`** — the per-attempt identifier sent to PixelPay
   as `order.id` (binds a sale to ONE attempt — finding 1). Each attempt is a DISTINCT PixelPay order, so a
   late approval from an old/converted attempt or a second sale is distinguishable; a retry of the SAME
-  attempt reuses it (natural dedup). The browser sale uses it as `order.id`, and CONFIRM binds the queried
-  `payment_uuid` to the **active attempt's** `pixelpay_order_id` via the **`getStatus`-returned** `payment_hash`
-  (never a client-supplied one — see §B). *(Whether PixelPay enforces unique `order.id` is TBD — the reconciler
-  voids any duplicate approved `payment_uuid` per `pixelpay_order_id`.)*
+  attempt reuses it (natural dedup). The browser **auth** uses it as `order.id`, and CONFIRM binds the captured
+  `payment_uuid` to the **active attempt's** `pixelpay_order_id` via the **`doCapture`-response** `payment_hash`
+  (server-obtained, never client-supplied — see §B). *(Whether PixelPay enforces unique `order.id` is TBD — the
+  reconciler voids any duplicate captured `payment_uuid` per `pixelpay_order_id`.)*
 - **Fingerprint** = stable hash over **canonical priced cart (item ids+qty+extras), customer, delivery
   lat/lng + address, order_type, total_cents** — **excludes** token/card/3DS/transient fields. A
   later call with the same `order_id` but a different fingerprint is **rejected (409)**.
@@ -74,15 +77,19 @@ chargeOnlineOrder:  (attempt_id minted UP FRONT)
   upsert /payment_attempts/A {active, pixelpay_order_id = order_id + "-" + A}
   RETURN {mode, endpoint, app_key (x-auth-key), auth_hash (x-auth-hash),
           order(id=pixelpay_order_id, amount=lempiras, tax=ISV, currency=HNL, callback)}   ← NO signature
-          ← chargeOnlineOrder NEVER calls PixelPay; the browser SDK runs the sale with PUBLIC key+hash (3DS client-only)
+          ← chargeOnlineOrder NEVER calls PixelPay; the browser runs the AUTH with PUBLIC key+hash (3DS client-only)
 
-browser SDK: setupSandbox()/setupCredentials → doSale(order.id=pixelpay_order_id) + withAuthenticationRequest() → in-page 3DS
-             → TransactionResult{payment_uuid, payment_hash, response_approved, transaction_approved_amount}
-             (best-effort report to server; webhook is durable)
+browser SDK: setupSandbox()/setupCredentials → doAUTH(order.id=pixelpay_order_id) + withAuthenticationRequest() → in-page 3DS
+             → TransactionResult{payment_uuid}  (an AUTH HOLD, not a capture; best-effort report to server; webhook is durable)
 
-pixelPayWebhook / poll (authoritative): getStatus(payment_uuid) [key+hash] → response_approved && approved_amount==total;
-             bind via the STATUS-RETURNED payment_hash == MD5(active.pixelpay_order_id|auth_key|secret)  (ignore client hash;
-             sandbox-pin that status returns payment_hash or an order ref) → CONFIRM ; approved-but-mismatched → VOID/REFUND
+CONFIRM (authoritative = SERVER doCapture, NOT getStatus — sandbox-proven 2026-06-10):
+  trigger: client-POST payment_uuid | webhook nudge | sweep. Resolve the ACTIVE attempt.
+  server doCapture(payment_uuid, transaction_approved_amount = our total in lempiras)  [key+hash, server-to-server]
+    → capture RESPONSE is authoritative + server-obtained:
+         response_approved===true  &&  transaction_approved_amount===our total  &&
+         payment_hash===MD5(active.pixelpay_order_id|auth_key|secret)   ← binding from OUR capture call, never the client
+    → ALL hold → CONFIRM ; else (declined / amount>auth / hash-mismatch) → VOID + fail, never materialize  [I7/I8]
+  (getStatus(payment_uuid)=liveness only: paid/voided/refunded — used by sweep/reconcile, NOT to confirm.)
 sweepStalePending: lookup by captured payment_uuid (status takes payment_uuid only) → approved→CONFIRM | terminal→fail | active→leave
 CONFIRM: persist verified pay-data into attempt FIRST → claim payment_status=confirmed → atomic materialize
 ```
@@ -101,43 +108,61 @@ second charge), `=='declined'` ⇒ set a fresh `active_attempt_id`; **`payment_s
 state, no charge; **fingerprint-mismatch** → 409. Then upsert `/payment_attempts/{attempt_id}` (active, with
 `pixelpay_order_id = ${order_id}-${attempt_id}` — recreate from the pointer if missing) and **return the
 config to the browser (mode/endpoint/key/hash + order id/amounts — NO signature). `chargeOnlineOrder` NEVER
-calls PixelPay** — the browser SDK runs the sale with the public key+hash (3DS is client-only). The browser
-may best-effort POST its result back, but it is not trusted.
+calls PixelPay** — the browser SDK runs the **3DS auth** with the public key+hash (3DS is client-only). The
+browser may best-effort POST its `payment_uuid` back, but it is not trusted (the server captures + verifies).
 
-### B. `pixelPayWebhook` / confirm path — authoritative confirmer
+### B. Confirm path — **server `doCapture` is the authority** (sandbox-proven 2026-06-10)
+> The browser does a 3DS **AUTH** (hold), not a sale. `getStatus(payment_uuid)` was probed and returns
+> only `{status, attemps, history}` — **no amount, no order id, no payment_hash** — so it canNOT verify the
+> charge. The **server's own `doCapture` call** is the authoritative confirmer: the server sets the captured
+> amount, and the capture **response** (server-obtained) returns `response_approved`, `transaction_approved_
+> amount`, and `payment_hash == MD5(pixelpay_order_id|auth_key|secret)`. See `payments-probe/FINDINGS.md`.
 - **`/webhook_events/{event_id}` state machine** = `processing → done | failed`; mark `done` **only after**
-  confirm/refund handling succeeds; unfinished events stay **retryable** (don't suppress a retry of an
-  event we haven't finished) (#7).
-- The webhook/client-POST is just a **nudge** carrying a *claimed* `payment_uuid` (+ claimed
-  `pixelpay_order_id`); **neither the payload's `payment_hash` nor its order id is trusted.** Everything used
-  to confirm comes from **`getStatus(payment_uuid)`** (`POST api/v2/transaction/status`, headers key+hash):
-  - **approval + amount** — `response_approved` === true && `transaction_approved_amount` === our total &&
-    `currency:HNL`. (Authoritative; this is the whole point of getStatus.)
-  - **`payment_uuid`↔`pixelpay_order_id` binding** — verify the **`payment_hash` RETURNED BY `getStatus`**
-    equals `MD5(active_attempt.pixelpay_order_id | auth_key | secret)`. The hash is secret-keyed and comes
-    from PixelPay's own status response for *that* `payment_uuid`, so it cannot be paired by the client.
-  - **BINDING-REPLAY ATTACK this defeats (Codex):** pay A → get real `payment_hash(A)`; pay unrelated B for
-    the right amount → get `payment_uuid(B)`; submit `payment_uuid(B)+payment_hash(A)` for A. If we trusted the
-    *client* hash this confirms A on B's money. Using the **status-returned** hash, `getStatus(B)` returns
-    `payment_hash(B)≠payment_hash(A)` → binding fails → no confirm.
-  - **SANDBOX-PIN (hard gate for Stage 4):** confirm `getStatus(payment_uuid)` actually populates
-    `payment_hash` (the `TransactionResult` entity has the field) **or** an order/reference field. If it
-    returns **neither**, this architecture is **not confirm-safe** and needs a different PixelPay
-    reference/lookup mechanism before launch.
-  CONFIRM only when attempt is **active** + status-returned binding holds + approved + amount matches.
-- **Any approved-but-mismatched charge** (wrong/non-active `pixelpay_order_id`, or amount/tax/currency/status
-  mismatch) → **auto void/refund** (`refund_pending` if the void fails), **alert**, never `new` (I7/I8,
-  re-check #1/#3). Rejecting confirmation is NOT enough — the customer may have been charged.
-- **Inline duplicate-charge guard (primary control, re-check #3):** confirm/webhook/sweep all bind the
-  winning `payment_uuid` to the attempt via a **transaction** on the attempt; if a *second* approved
-  `payment_uuid` arrives for the same `pixelpay_order_id`, the loser is **voided/refunded immediately in
-  that same path** (not left for the daily job). The daily `reconcilePayments` is only the **backstop** for
-  duplicates that no live path saw (e.g. both results lost). This is where I3 is actually enforced.
+  confirm/void handling succeeds; unfinished events stay **retryable** (#7).
+- The webhook/client-POST is just a **nudge** carrying a *claimed* `payment_uuid`; nothing in the payload is
+  trusted (no signature needed — still add a shared-secret query param, like `onIncomingWhatsApp`).
+- **Confirm = capture, then verify the capture response (all server-side):**
+  1. Resolve the **active** attempt; if `payment_status==='confirmed'` already → no-op (idempotent). Read the
+     attempt's `captured` guard — **never capture twice** (see idempotency below).
+  2. `getStatus(payment_uuid)` first as a cheap pre-check: if already `paid` (captured by a prior run that
+     crashed before we recorded it) skip to verify/recover; if `voided/declined` → fail; if auth-pending →
+     capture.
+  3. `doCapture(payment_uuid, transaction_approved_amount = total_cents→lempiras)` `[POST api/v2/transaction/
+     capture, {payment_uuid, transaction_approved_amount}, headers key+hash]`.
+  4. **Verify the capture response** (server-obtained — the client never supplies these): `response_approved
+     === true` && `transaction_approved_amount === our total` (HNL) && **`payment_hash ===
+     MD5(active.pixelpay_order_id | auth_key | secret)`**.
+- **Why this is binding-safe (defeats Codex's replay):** the `payment_hash` comes from **our** capture call's
+  response for the `payment_uuid` we captured — not paired by the client. A mismatched `payment_uuid` (an auth
+  for some *other* order B) either **can't be captured for our amount** (capture > B's auth → declined → no
+  money moves) or, if B's auth ≥ our amount, the capture returns `payment_hash(B) ≠ payment_hash(A)` → binding
+  fails → we **immediately VOID that capture** (refund_pending on failure) and never materialize (I7/I8).
+- **Amount-safe:** the **server** sets the captured amount, so a tampered browser auth can't make us capture
+  the wrong amount; an under-auth just makes capture fail (no loss). *(Sandbox-pin that capture > auth is
+  rejected — standard processor invariant.)*
+- **Idempotency + lost-capture recovery (Codex gate, sandbox-resolved 2026-06-10):** before capturing, a
+  **transaction on `/payment_attempts/{id}`** sets a `capturing` claim with **`capturing_started_at` + the
+  `payment_uuid` being captured**; only the claim-winner calls `doCapture`; the verified result is then
+  persisted (`status:'captured'`). **A 2nd `doCapture` on an already-captured uuid returns `412 "Error al
+  encontrar el cobro"` with NO data (probed)** — so re-capture CANNOT recover the result, and `getStatus` is
+  too thin to verify amount/binding. Therefore recovery is split by the claim:
+  - attempt **not** `capturing` (no `doCapture` was sent) → safe to capture now.
+  - attempt `capturing`, result missing → look up `getStatus(payment_uuid)`: still an **uncaptured auth** →
+    (re)capture (no money moved yet); **`paid`** → a capture succeeded but we lost the verifiable response →
+    route to **`payment_status:'manual_reconciliation'`** (dispatcher verifies against the PixelPay ledger;
+    materialize-by-hand or refund) — **NEVER auto-materialize to `new`** (can't reverify amount/binding);
+    **voided/declined** → `failed`.
+  Because the server set the capture amount = our total, a stray `paid` is almost certainly our amount, but we
+  refuse to *assume* it — manual reconciliation is the safe sink for this sub-second crash window.
+- **Inline duplicate guard (I3):** the attempt-lock already caps one active attempt per order; if a *second*
+  captured `payment_uuid` ever appears for the same `pixelpay_order_id` (e.g. two auths both captured), the
+  loser is **voided/refunded in-path** + alerted; daily `reconcilePayments` is the backstop.
 
 ### C. CONFIRM / materialize — durable-ordered, atomic, recoverable, exactly-once
-1. **Persist verified pay-data first** into `/payment_attempts/{attempt_id}` (`status:'approved'`,
-   `payment_uuid`, `payment_reference`, `amount_cents`, `captured_at`) — **before** touching the order
-   (#1). The recovery trigger reads from here.
+1. **Persist the verified capture result first** into `/payment_attempts/{attempt_id}` (`status:'captured'`,
+   `payment_uuid`, `payment_reference` (`transaction_reference`), `amount_cents`, `captured_at`) — **before**
+   touching the order (#1). This is written only after the §B capture-response verification passes. The
+   recovery trigger reads from here.
 2. **Claim** via a `transaction` on the **whole `orders/{id}` node** (so order-node siblings are checked
    together): proceed only if `payment_status==='pending'` && `active_attempt_id===this attempt` &&
    `order.status !== 'cancelled'`; then set `payment_status:'confirmed'`. The **attempt's** status (the
@@ -168,10 +193,13 @@ may best-effort POST its result back, but it is not trusted.
   `payment_status==='confirmed'`+reference only — I2).
 
 ### E. Client (order form)
-PixelPay SDK tokenizes (card → PixelPay → `T-*`); **delete** the raw-card `/api/pixelpay-charge` path +
-demo shortcut. Call `chargeOnlineOrder` (payload+token+order_id); pay button disabled in flight; in-page
-3DS; **poll the pre-charge token** (never blind-retry the charge). Failure → "Pago no completado" →
-**retry card / cash / card-on-delivery**.
+Call `chargeOnlineOrder` → use the returned config to set up the PixelPay SDK (`setupSandbox()` /
+`setupCredentials`) and run **`doAuth(order(id=pixelpay_order_id)) + withAuthenticationRequest()`** (in-page
+3DS) with the customer's card (SDK-encrypted; **no raw card on our servers**). On auth success → **POST the
+`payment_uuid` to a `confirmOnlinePayment` endpoint** (best-effort; webhook is the durable trigger) and
+**poll the order's payment_status** (never re-run the auth). Pay button disabled in flight. **Delete** the
+old raw-card `/api/pixelpay-charge` path + demo shortcut. Failure/abandon → "Pago no completado" → **retry
+card / cash / card-on-delivery** (§F).
 
 ### F. Cash/COD fallback (#4) — attempt-aware
 The fallback marks the failed online **attempt `converted`** and creates the live cash order via an
@@ -179,13 +207,15 @@ explicit **`convertFailedOnlineToCOD`** path with a **fresh `order_id`** (no `cr
 collision). A **late PixelPay approval for a `converted`/`abandoned` attempt → void/refund, never
 materialize** (I8) — handled by the webhook/sweep attempt-status check.
 
-### G. `sweepStalePending` (sched ~5 min) — PixelPay-driven backstop
-Past TTL, look the attempt up with PixelPay — **by the durably-captured `payment_uuid`** if we have one
-(client-POST or webhook), **else by the active attempt's `pixelpay_order_id`** *(requires PixelPay status-
-lookup-by-order-id; gap #4 — if unsupported, an attempt with no captured `payment_uuid` is undiscoverable
-here and falls to daily ledger reconciliation — call this out at build)*: **approved** → CONFIRM; **approved
-but non-active attempt / amount-mismatch** → **void/refund**; **terminal** → `failed`; **still active**
-(pending/requires_action) → **leave** (never expire a live 3DS).
+### G. `sweepStalePending` (sched ~5 min) — capture/void backstop
+For attempts with a **recorded `payment_uuid`** (client-POST or webhook) that are past a short TTL and still
+not confirmed: `getStatus(payment_uuid)` → if an **uncaptured auth** still live → run the §B **capture-confirm**
+(the lost-nudge recovery); if **already `paid`** but no verified capture result was persisted → **`manual_
+reconciliation`** (NOT auto-materialize — getStatus can't reverify amount/binding, and re-capture returns 412;
+see §B); if **`voided/declined/expired`** → mark attempt `failed`. An attempt with **no recorded `payment_uuid`** can't be
+looked up (the SDK has no by-`pixelpay_order_id` lookup; gap #4) — its **auth simply expires server-side at
+PixelPay (no capture = no money moved)**, so it's a *missed order*, not a *lost charge*; surface it to the
+daily reconcile + dispatcher alert. **Never** expire a live in-page 3DS mid-flow.
 
 ### H. Cancel + refund — race-guarded, reconciled (#10, #12, #13)
 - **All paid/online cancellations go through `cancelPaidOrder` (Cloud Function).** RTDB rules **remove the
@@ -207,7 +237,8 @@ keep the one matching the confirmed order, **void/refund every other** + alert. 
 guard; this is the safety net, not the control.)
 
 ### J. New/changed components
-Functions: `chargeOnlineOrder`, `pixelPayWebhook`, `cancelPaidOrder`, `convertFailedOnlineToCOD` (HTTPS);
+Functions: `chargeOnlineOrder`, `confirmOnlinePayment` (client-POST nudge → capture), `pixelPayWebhook`,
+`cancelPaidOrder`, `convertFailedOnlineToCOD` (HTTPS);
 `sweepStalePending`, `reconcilePayments`, `refundReconciler`, `outboxWorker` (sched/trigger);
 `materializeOnConfirm` + retriggered auto-assign (DB triggers). Refactor `createOrder`'s order+tasks+tracking
 into shared `materializeLiveOrder()`. New RTDB subtrees (default-deny): `/payment_attempts`,
@@ -215,68 +246,62 @@ into shared `materializeLiveOrder()`. New RTDB subtrees (default-deny): `/paymen
 (#13). Readers: live-status filter (#6). Client: payment UX. Move WhatsApp-received into the outbox.
 
 ## Key decisions & tradeoffs
-Tokenization (no raw card); pending-first (I1); webhook-authoritative + replay/amount/attempt verify (I7)
-+ sweep backstop; 3DS in-page; **attempt-record idempotency** (I3,I8); auto-void/refund + reconciler;
-fail→cash via convert path; immediate sale/capture; atomic materialize + recovery trigger + outbox (I4,I5);
-canonical centavos; charge server total only; narrowed RTDB write rules (#13).
+Encrypted card (no raw card on our servers); pending-first (I1); **browser 3DS AUTH + server `doCapture` as
+the authoritative confirm** (server sets the amount; binding via the capture-response `payment_hash`) + sweep
+backstop; 3DS in-page; **attempt-record idempotency / capturing-claim** (I3,I8); auto-void/refund + reconciler;
+fail→cash via convert path; atomic materialize + recovery trigger + outbox (I4,I5); canonical centavos; charge
+server total only; narrowed RTDB write rules (#13).
 
 ## PixelPay integration contract (read from `@pixelpay/sdk-core` v2.5.2 source, 2026-06-09)
 - **SDK:** `@pixelpay/sdk-core` (browser JS). Settings/Card/Billing/Item/Order models;
   SaleTransaction/StatusTransaction/VoidTransaction/CardTokenization requests; Transaction/Tokenization
   services; TransactionResult/CardResult entities.
-- **CORRECTION (supersedes the earlier "server signs" design):** the SDK has **NO `x-client-signature`,
-  no HMAC, no SHA3** anywhere (only MD5 for `auth_hash`/`payment_hash` and SHA-512 for `void_signature`).
-  `x-client-signature` is a **raw-API/Postman-only** auth path; the **SDK** path (what our browser uses)
-  authenticates with just **`x-auth-key` + `x-auth-hash`** (`base/ServiceBehaviour.js`). So **the server
-  does NOT sign the sale.** The browser runs the sale with the **public** key+hash; the server's only roles
-  are (a) the pending-first state machine + (b) independent confirmation via `getStatus`. The raw secret is
-  needed **only** for `void_signature` and the optional `payment_hash` check — *not* for the sale or status.
-- **Architecture = browser SDK runs the sale with public credentials; server confirms independently:**
+- **No server signing:** the SDK has **NO `x-client-signature`/HMAC/SHA3** (only MD5 for `auth_hash`/
+  `payment_hash`, SHA-512 for `void_signature`). SDK auth = **`x-auth-key` + `x-auth-hash`** only
+  (`base/ServiceBehaviour.js`). The browser runs its part with the **public** key+hash; the raw secret is
+  needed only server-side for `payment_hash` verification + `void_signature`.
+- **Architecture = browser 3DS AUTH (hold) + SERVER `doCapture` (authoritative). Sandbox-proven 2026-06-10
+  (`payments-probe/`).** Why not "browser sale → getStatus confirm": `getStatus(payment_uuid)` returns only
+  `{status, attemps, history}` — **no amount, no order id, no payment_hash** — so it can't verify a charge.
+  `doCapture` runs **server-side** with a **server-set amount** and its **response** carries everything we need.
   1. `chargeOnlineOrder` (server): validate → write `pending_payment` order + **active attempt** (mint
      `pixelpay_order_id = ${order_id}-${attempt_id}`) → return
      `{mode, endpoint, app_key (x-auth-key), auth_hash (x-auth-hash), order(id=pixelpay_order_id, amount,
-     tax, currency:HNL), order_callback}` to the client. **No signature.** It does NOT call PixelPay. (Every
-     PixelPay-facing `order.id` is the **`pixelpay_order_id`**, never the bare internal `order_id`.)
-     The browser configures the SDK via `setupSandbox()` (sandbox) or `setupCredentials(key, public_key)` +
-     `setupEndpoint` (prod). **`auth_hash` is the portal-provided hash used VERBATIM** — sandbox `MD5(secret)`
-     vs prod "Public key" `SHA-512(secret)`; never re-derived. *(Note: Stage 3b currently still returns a
-     vestigial `client_signature` — to be removed when this is implemented.)*
-  2. Client SDK: tokenize card (SDK fetches the merchant RSA key `api/v2/merchant/public_key` and ships
-     encrypted card via `x-auth-secure`) → `SaleTransaction(order(id=pixelpay_order_id))` +
-     `withAuthenticationRequest()` (in-page 3DS) → `TransactionResult{payment_uuid, payment_hash,
-     response_approved, transaction_approved_amount, …}`. Card data → PixelPay only.
-  3. Server CONFIRM — **never trusts the client**: `getStatus(payment_uuid)` (`POST api/v2/transaction/status`,
-     body `{payment_uuid}`, headers key+hash) **is the authority for approval + amount** (`response_approved`
-     === true && `transaction_approved_amount` === our total). **Binding uses the `getStatus`-RETURNED
-     `payment_hash`** (the `TransactionResult` entity has the field): require it == `MD5(active_attempt.
-     pixelpay_order_id | auth_key | secret)`. The **client/webhook `payment_hash` is ignored for binding** —
-     trusting it enables a replay (pay A→hash(A); pay B→uuid(B); submit uuid(B)+hash(A)). **HARD SANDBOX-PIN:**
-     getStatus must populate `payment_hash` (or an order/reference field); if it returns neither, the design is
-     not confirm-safe and needs another reference mechanism. Confirm predicate: resolve attempt from claimed
-     `pixelpay_order_id` → attempt **active** → status-returned `payment_hash` binds → `getStatus` approved +
-     amount match → else **void/refund**. The `order_callback` **webhook is just a nudge** (safe even
-     unauthenticated — getStatus re-verifies).
-- **Amounts = decimal LEMPIRAS, not centavos.** `order_amount` = inclusive grand total (charged);
-  `order_tax_amount` = ISV portion (informational). Convert internal `total_cents` → lempiras at the
-  boundary. *(Sandbox-verify PixelPay charges `order_amount` and does NOT add `order_tax_amount`.)*
-- **`getStatus` & `void` keyed by `payment_uuid`** (from the Sale response). **The `payment_uuid` must be
-  durably captured** — the browser best-effort POSTs its `TransactionResult` to the server immediately, and
-  the `order_callback` webhook carries it too. **OPEN (gap #4):** confirm PixelPay supports a status/list
-  lookup **by `pixelpay_order_id`** (the SDK `status` request only takes `payment_uuid`). If it does NOT, a
-  lost client-result *and* lost webhook leaves a paid order with **no `payment_uuid`** → sweep can't discover
-  it until daily ledger reconciliation. Mitigation: persist `payment_uuid` on the attempt the instant any
-  channel reports it; treat webhook + client-POST as two independent durable captures.
+     tax, currency:HNL), order_callback}` — **no signature**, does NOT call PixelPay. `auth_hash` is the
+     portal hash used VERBATIM (sandbox `MD5(secret)` / prod "Public key" `SHA-512(secret)`; never re-derived).
+     *(Stage 3b currently returns a vestigial `client_signature` — remove it when reconciling 3b.)*
+  2. Client SDK: encrypts card (SDK fetches merchant RSA key `api/v2/merchant/public_key`, ships via
+     `x-auth-secure`) → **`AuthTransaction(order(id=pixelpay_order_id))` + `withAuthenticationRequest()`**
+     (in-page 3DS) → `TransactionResult{payment_uuid}` = an **AUTH HOLD** (no capture). Card data → PixelPay
+     only. Browser best-effort POSTs `payment_uuid` to the server; the webhook is the durable channel.
+  3. Server CONFIRM (authoritative): `doCapture(payment_uuid, transaction_approved_amount = total→lempiras)`
+     (`POST api/v2/transaction/capture`, body `{payment_uuid, transaction_approved_amount}`, headers key+hash).
+     The capture **response** (server-obtained `TransactionResult`) must satisfy: `response_approved===true`
+     && `transaction_approved_amount===our total` && **`payment_hash === MD5(active.pixelpay_order_id |
+     auth_key | secret)`** (binding from OUR call, not the client). Else → **VOID** + fail (never materialize).
+     `getStatus` is **liveness only** (sweep/reconcile: paid/voided/refunded), never the confirm authority.
+- **Amount-safe + binding-safe (sandbox-verified):** server sets the captured amount (tamper → capture fails,
+  no loss); the binding `payment_hash` is from the server's own capture response (defeats the client-supplied-
+  hash replay Codex flagged). Capture-`>`-auth must be rejected — **sandbox-pin** (standard processor invariant).
+- **Amounts = decimal LEMPIRAS.** `order_amount`/capture amount = inclusive grand total; `order_tax_amount` =
+  ISV portion (informational). Convert `total_cents`→lempiras at the boundary. *(Sandbox-verify the unit + that
+  `order_amount` isn't increased by `order_tax_amount`.)*
+- **`capture`/`getStatus`/`void` keyed by `payment_uuid`.** Durably capture `payment_uuid` from the
+  client-POST and/or webhook nudge (two independent channels). **OPEN (gap #4):** the SDK has no lookup by
+  `pixelpay_order_id` — if BOTH channels are lost, an auth with no recorded `payment_uuid` is invisible to the
+  sweep until ledger reconciliation; an uncaptured auth simply **expires** (no money moved), so this is a
+  *missed order*, not a *lost charge*.
 - **Void (same-day):** `setupPlatformUser(SHA-512(merchant_email))` → `x-auth-user`;
   `void_signature = SHA-512(auth_user|pixelpay_order_id|secret)`; `POST api/v2/transaction/void` body
   `{payment_uuid, void_reason, void_signature}` headers key+hash+user; server-only. Settled-refund
   availability TBD. *(Confirm whether void's signature expects `pixelpay_order_id` or the bare order id —
   sandbox-verify.)*
-- **No explicit idempotency key** — dedup rests on `pixelpay_order_id` (unique per attempt) + our
-  charging-lock / one-active-attempt; duplicate approved `payment_uuid`s are voided (see §B/§G/§I).
-- **Crypto (Node `crypto`):** `payment_hash` = MD5(`pixelpay_order_id|auth_key|secret`); `void_signature`
-  = SHA-512(`auth_user|pixelpay_order_id|secret`); `auth_user` = SHA-512(merchant_email) — server-side with
-  the raw secret. **No HMAC-SHA3 / x-client-signature** (the SDK doesn't use it). *(`pixelpay.js` keeps its
-  HMAC-SHA3 helper for now but it's unused on the SDK path — safe to drop later.)*
+- **No explicit idempotency key** — dedup rests on `pixelpay_order_id` (unique per attempt) + the attempt
+  lock + a **`capturing` claim** (one capture per attempt); duplicate captured `payment_uuid`s are voided (§B/§G/§I).
+- **Crypto (Node `crypto`):** `payment_hash` = MD5(`pixelpay_order_id|auth_key|secret`) — **verified against
+  the live sandbox capture response 2026-06-10**; `void_signature` = SHA-512(`auth_user|pixelpay_order_id|
+  secret`); `auth_user` = SHA-512(merchant_email) — server-side with the raw secret. **No HMAC-SHA3 /
+  x-client-signature** (the SDK doesn't use it). *(`pixelpay.js`'s HMAC-SHA3 helper is unused — drop later.)*
 - **`auth_hash` (x-auth-hash) handling (re-check #5):** the portal-provided credential hash (prod "Public
   key" = `SHA-512(secret)`; sandbox = `MD5(secret)`) ships to the browser via `setupCredentials` — it is the
   SDK's primary auth credential (with `auth_key`), so by PixelPay's design it is **public SDK material**: a
@@ -300,21 +325,24 @@ canonical centavos; charge server total only; narrowed RTDB write rules (#13).
 - **Token TTL:** sandbox card tokens auto-delete 5h after creation (don't cache across a test session).
 
 ## Risks / open questions (pin from PixelPay docs / sandbox at build)
-- **RESOLVED from SDK v2.5.2 source (2026-06-09):** status endpoint = `POST api/v2/transaction/status
-  {payment_uuid}`; void = `POST api/v2/transaction/void {payment_uuid, void_reason, void_signature}`; auth =
-  `x-auth-key`+`x-auth-hash` (+`x-auth-user` for void); **no x-client-signature** (SDK doesn't sign — server
-  doesn't either); `payment_hash = MD5(pixelpay_order_id|auth_key|secret)` — bind using the **status-returned**
-  hash, never the client's (Codex replay defense). **Webhook signature scheme is now MOOT** —
-  the webhook is nudge-only and we re-verify via `getStatus`, so an unauthenticated/loosely-verified webhook
-  is safe (still add a shared-secret query param as defense-in-depth, like `onIncomingWhatsApp`).
-- **STILL OPEN — sandbox-pin before Stage 4 confirm is final:** (1) does the raw `getStatus` payload echo the
-  order id / a reference, or is `payment_hash` the only `payment_uuid`→`pixelpay_order_id` binding? (2) does
-  PixelPay accept a status/void lookup by `pixelpay_order_id` (gap #4 — the SDK request only takes
-  `payment_uuid`)? (3) does void's `void_signature` use `pixelpay_order_id` or the bare order id? (4) amount
-  unit (decimal lempiras assumed) + that `order_amount` is charged without adding `order_tax_amount`. (5) the
-  signature `app_url`/origin expectation (carried over from Stage 3b).
-- Concurrency: that claim→persist-attempt→confirm ordering and the recovery trigger can't double-materialize
-  (recovery trigger is marker-guarded).
+- **RESOLVED by live sandbox probe (2026-06-10, `payments-probe/`):** endpoints `auth`/`capture`/`status`/
+  `void` under `api/v2/transaction/`; auth = `x-auth-key`+`x-auth-hash` (+`x-auth-user` for void); requests
+  need **`env:"sandbox"`** in the body. `getStatus(payment_uuid)` → only `{status, attemps, history}` (NO
+  amount/order/hash) ⇒ **not a confirm authority**. **Server `doCapture` IS authoritative** — response gives
+  `response_approved` + `transaction_approved_amount` + `payment_hash == MD5(pixelpay_order_id|auth_key|
+  secret)` (binding verified equal in sandbox). Webhook signature scheme MOOT (nudge-only; add shared-secret
+  query param as defense-in-depth). No x-client-signature.
+- **RESOLVED (probe 3):** a 2nd `doCapture` on an already-captured uuid → **412 "Error al encontrar el cobro",
+  no data**. So re-capture is NOT a recovery path; **lost-capture-response → `manual_reconciliation`, never
+  `new`** (hard rule). The `capturing` claim (+`capturing_started_at`+`payment_uuid`) distinguishes crash-
+  before-capture (safe to capture) from crash-after (manual reconcile).
+- **STILL OPEN — sandbox-pin during Stage 4 build:** (1) **capture > auth is rejected** (the amount-safety
+  invariant — must verify, not just assume); (2) `getStatus` `status` enum values (paid/declined/voided/
+  refunded/…) for the liveness/sweep logic; (3) void's `void_signature` keying (`pixelpay_order_id` vs bare
+  id) + `x-auth-user` format; (4) amount unit (decimal lempiras) confirmed by an approved capture; (5) does an
+  uncaptured auth expire on its own (assumed — confirms the "missed order not lost charge" claim).
+- Concurrency: that capturing-claim → persist-capture → confirm-claim → materialize ordering and the recovery
+  trigger can't double-capture or double-materialize (capturing-claim + materialized marker guarded).
 
 ## Implementation notes (Codex R4 — not blockers, do at build)
 - Cancellation is a claim on the **attempt** (`/payment_attempts/{id}`), never `order.status ===

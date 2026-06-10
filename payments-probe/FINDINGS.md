@@ -31,3 +31,13 @@ confirm)**; getStatus = liveness; webhook = nudge. Needs plan update + Codex re-
 ## Still to sandbox-pin
 - Capture > auth is rejected (standard processor invariant — verify).
 - Amount unit (decimal lempiras assumed); void signature keying; refund/settled-void.
+
+## Probe 3 — lost-capture-response recovery  (`probe-recapture-recovery.js`)
+- auth → capture #1 (success, returns payment_hash + amount) → capture #2 on the SAME uuid:
+  **412 PreconditionalResponse "Error al encontrar el cobro", data=null.**
+- ⇒ Re-capture is NOT idempotent and does NOT re-return the verifiable result. With getStatus
+  also thin, a capture that succeeds at PixelPay but whose response we lose CANNOT be reverified.
+- **Hard rule:** "paid but lost capture response" → `payment_status: manual_reconciliation`
+  (dispatcher checks the PixelPay ledger), NEVER auto-materialize to `new`. A `capturing` claim
+  (+ capturing_started_at + payment_uuid) set BEFORE doCapture distinguishes crash-before-capture
+  (safe to capture) from crash-after-capture (manual reconcile).

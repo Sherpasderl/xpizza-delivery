@@ -204,3 +204,12 @@ Codex: simplified architecture "close, but one material binding issue." **Bindin
 
 ### Convergence (SDK-accuracy revision)
 Simplified (server-doesn't-sign) architecture passed Act 2 after 2 rounds (REVISE binding-replay → APPROVED). The change was a net simplification grounded in the real SDK source; the one real hole Codex found (client-supplied binding hash) is closed by binding on the status-returned hash. Plan is Codex-approved for Stage 4. **No code written during this revision.** Stage 4 may proceed, gated by the named sandbox pins (getStatus payment_hash/order-ref; void signature keying).
+
+---
+
+## AUTH+CAPTURE pivot (after sandbox probe) — re-plan
+Live sandbox probe (`payments-probe/`) found `getStatus(payment_uuid)` returns only `{status, attemps, history}` — no amount, no order id, no payment_hash — so the approved "browser doSale → getStatus confirm" design is NOT amount/binding-safe. Probe 2 proved the fix: **browser 3DS AUTH (hold) + SERVER `doCapture` (server-set amount)**. The capture RESPONSE is server-obtained and returns `response_approved`, `transaction_approved_amount`, and `payment_hash == MD5(pixelpay_order_id|auth_key|secret)` (verified equal in sandbox).
+
+Why this is safe: (a) the server sets the captured amount → a tampered browser auth can't make us capture the wrong amount (under-auth just fails the capture; no loss); (b) the binding `payment_hash` comes from our OWN capture call, not the client → defeats Codex's client-hash replay; (c) the webhook becomes a pure nudge (no signature dependency).
+
+Plan edits: rewrote contract architecture (browser doAuth + server doCapture; getStatus = liveness only); lifecycle pseudocode; §B confirm (capture-then-verify, capturing-claim idempotency, void-on-mismatch); §C (persist captured result); §E (client does doAuth + POST payment_uuid + poll); §G sweep (capture lost-nudge recovery; uncaptured auth expires = missed order not lost charge); attempt enum (+capturing/captured); I7/I8; Risks (resolved-by-probe vs still-sandbox-pin); §J (+confirmOnlinePayment). Re-submitting to Codex.
