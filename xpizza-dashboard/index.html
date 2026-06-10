@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Dashboard - version: 0.4.0 -->
+<!-- X Pizza Dashboard - version: 0.4.1 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -380,6 +380,21 @@ a { color: inherit; }
 .detail-block { font-size: 13px; color: var(--text); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
 .detail-block a { color: #60a5fa; }
 
+/* Order-detail money actions (cancel/refund, manual-reconciliation resolve) */
+.detail-actions { padding-top: 18px; }
+.pd-btn { font-size: 13px; font-weight: 600; padding: 9px 14px; border-radius: 7px; border: 1px solid transparent; margin: 0 8px 8px 0; }
+.pd-btn-ok { background: var(--success); color: #fff; }
+.pd-btn-ok:hover { background: #15803d; }
+.pd-btn-danger { background: var(--accent); color: #fff; }
+.pd-btn-danger:hover { background: #b91c1c; }
+.pd-btn-soft { background: transparent; color: var(--text-soft); border-color: var(--border); }
+.pd-btn-soft:hover { background: var(--surface-3); color: var(--text); }
+.pd-confirm { font-size: 13px; color: #fbbf24; background: var(--warn-soft); border-radius: 7px; padding: 10px 12px; margin-bottom: 10px; line-height: 1.5; }
+.pd-confirm-row { display: flex; gap: 8px; }
+.pd-action-busy { font-size: 13px; color: var(--text-soft); }
+.pd-action-done { font-size: 13px; color: #4ade80; line-height: 1.5; }
+.pd-action-error { font-size: 13px; color: #f87171; line-height: 1.5; margin-bottom: 10px; }
+
 @media (max-width: 640px) {
   .orders-table th:nth-child(2), .orders-table td:nth-child(2) { display: none; } /* hide Tipo col on narrow */
   .pedidos-toolbar select { flex: 1; }
@@ -668,7 +683,7 @@ const firebaseConfig = {
 };
 XPD.initDelivery(firebaseConfig);
 
-const SYSTEM_VERSION = '0.4.0';
+const SYSTEM_VERSION = '0.4.1';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION}`;
 });
@@ -1616,11 +1631,120 @@ function openOrderDetail(orderId) {
     groups.push(g + `</div>`);
   }
 
+  // — Acciones — (cancel/refund, manual-reconciliation resolve). Wired AFTER innerHTML.
+  const actions = actionConfig(o);
+  if (actions.length) {
+    groups.push(`<div class="detail-group detail-actions"><div class="detail-group-label">Acciones</div><div id="pd-action-area"></div></div>`);
+  }
+
   $('pd-body').innerHTML = `<div class="detail-badges">${statusBadge(o)} ${typeBadge(o)} ${paymentBadge(o)}</div>` + groups.join('');
   $('pedido-modal').classList.remove('hidden');
+  if (actions.length) wireActions(actions);
 }
 
 function closeOrderDetail() { $('pedido-modal').classList.add('hidden'); }
+
+// ---- Dispatcher money actions (v2) ----
+// These call the dual-auth Cloud Functions with the dispatcher's Firebase ID token
+// (NOT the server-only RECON_SECRET — that never reaches the browser). The function
+// verifies the token + /dispatchers/{uid} membership server-side before moving money.
+const FUNCTIONS_BASE = 'https://us-central1-xpizza-delivery.cloudfunctions.net';
+
+async function callAction(name, payload) {
+  const user = XPD.getAuthInstance().currentUser;
+  if (!user) throw new Error('Sesión expirada — vuelve a iniciar sesión');
+  const token = await user.getIdToken();
+  const res = await fetch(`${FUNCTIONS_BASE}/${name}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  let data = {};
+  try { data = await res.json(); } catch (_) {}
+  if (!res.ok) throw new Error(data.detail || data.error || `Error ${res.status}`);
+  return data;
+}
+
+// Which actions an order offers, given its payment state.
+function actionConfig(o) {
+  const list = [];
+  const id = o.order_id;
+  if (o.payment_status === 'manual_reconciliation') {
+    list.push({ act: 'materialize', label: 'Confirmar pago', kind: 'ok',
+      confirm: 'Confirma que el pago SÍ se cobró (verificado en el portal PixelPay). El pedido entrará a cocina. ¿Continuar?',
+      fn: () => callAction('resolveManualReconciliation', { order_id: id, action: 'materialize' }) });
+    list.push({ act: 'refund', label: 'Reembolsar y cerrar', kind: 'danger',
+      confirm: 'Esto reembolsa el pago y cierra el pedido como fallido. ¿Continuar?',
+      fn: () => callAction('resolveManualReconciliation', { order_id: id, action: 'refund' }) });
+    list.push({ act: 'keep', label: 'Mantener en cola', kind: 'soft', confirm: null,
+      fn: () => callAction('resolveManualReconciliation', { order_id: id, action: 'keep' }) });
+  }
+  if (o.payment_method === 'online' && o.payment_status === 'confirmed' && o.status !== 'cancelled') {
+    list.push({ act: 'cancel', label: 'Cancelar y reembolsar', kind: 'danger',
+      confirm: `Esto cancela el pedido y reembolsa L${o.total ?? '—'} al cliente. ¿Continuar?`,
+      fn: () => callAction('cancelPaidOrder', { order_id: id, reason: 'cancelado por despacho' }) });
+  }
+  return list;
+}
+
+function actionResultText(a, r) {
+  const out = r && r.outcome;
+  if (a.act === 'cancel') {
+    if (out === 'already_cancelled') return 'El pedido ya estaba cancelado.';
+    if (out === 'cancel_pending_capture') return 'Cancelación en proceso: la captura estaba en vuelo, el pago se anulará automáticamente.';
+    if (r.refund === 'refund_pending') return 'Pedido cancelado. Reembolso PENDIENTE — emítelo manualmente en el portal PixelPay.';
+    return 'Pedido cancelado y pago reembolsado.';
+  }
+  if (a.act === 'materialize') return 'Pago confirmado; el pedido entró a cocina.';
+  if (a.act === 'refund') return out === 'refunded'
+    ? 'Pago reembolsado y pedido cerrado.'
+    : 'Pedido cerrado. Reembolso PENDIENTE — emítelo en el portal PixelPay.';
+  if (a.act === 'keep') return 'Pedido mantenido en la cola.';
+  return 'Acción completada.';
+}
+
+// Render + wire the action buttons inside #pd-action-area, with an inline
+// confirm step for money-moving actions and a busy/done/error lifecycle.
+function wireActions(actions) {
+  const area = $('pd-action-area');
+  if (!area) return;
+
+  const renderButtons = () => {
+    area.innerHTML = actions.map(a =>
+      `<button class="pd-btn pd-btn-${a.kind}" data-act="${a.act}">${escapeHtml(a.label)}</button>`).join('');
+    area.querySelectorAll('button[data-act]').forEach(btn => {
+      const a = actions.find(x => x.act === btn.dataset.act);
+      btn.addEventListener('click', () => a.confirm ? showConfirm(a) : runAction(a));
+    });
+  };
+
+  const showConfirm = (a) => {
+    area.innerHTML = `<div class="pd-confirm">${escapeHtml(a.confirm)}</div>
+      <div class="pd-confirm-row">
+        <button class="pd-btn pd-btn-${a.kind}" id="pd-yes">Sí, continuar</button>
+        <button class="pd-btn pd-btn-soft" id="pd-no">Volver</button>
+      </div>`;
+    $('pd-yes').addEventListener('click', () => runAction(a));
+    $('pd-no').addEventListener('click', renderButtons);
+  };
+
+  const runAction = async (a) => {
+    area.innerHTML = `<div class="pd-action-busy">Procesando…</div>`;
+    try {
+      const r = await a.fn();
+      area.innerHTML = `<div class="pd-action-done">✓ ${escapeHtml(actionResultText(a, r))}</div>`;
+    } catch (e) {
+      area.innerHTML = `<div class="pd-action-error">✗ ${escapeHtml(e.message || 'Error')}</div>`;
+      const retry = document.createElement('button');
+      retry.className = 'pd-btn pd-btn-soft';
+      retry.textContent = 'Reintentar';
+      retry.addEventListener('click', renderButtons);
+      area.appendChild(retry);
+    }
+  };
+
+  renderButtons();
+}
 
 function initPedidos() {
   const q = $('pedidos-q');

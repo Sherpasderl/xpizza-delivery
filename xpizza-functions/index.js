@@ -51,6 +51,7 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { beforeUserCreated, HttpsError } = require('firebase-functions/v2/identity');
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
+const { getAuth } = require('firebase-admin/auth');
 const webpush = require('web-push');
 const { google } = require('googleapis');
 const express = require('express');
@@ -121,6 +122,38 @@ function unauthorized(res, msg) {
 
 function badRequest(res, msg) {
   return res.status(400).json({ error: 'Bad Request', detail: msg });
+}
+
+// Authorize a dispatcher money-action (cancelPaidOrder / resolveManualReconciliation).
+// Accepts EITHER:
+//   (a) the server-only RECON_SECRET as the bearer token — CLI / server-to-server, OR
+//   (b) a Firebase ID token belonging to a registered dispatcher — the dashboard
+//       browser path: verify the token, then check /dispatchers/{uid}.
+// RECON_SECRET is NEVER shipped to the browser; the browser uses path (b) so no
+// money-moving secret ever leaves the server. The dispatcher path is independent of
+// RECON_SECRET, so these actions still work from the dashboard even if the secret is
+// unset. Returns { ok:true, actor } (actor = verified email, or 'recon_secret') or
+// { ok:false, code, msg }. constantTimeEqual is length-safe, so a long JWT presented
+// as the token simply fails path (a) and falls through to verification.
+async function authorizeDispatcherAction(req) {
+  const authHeader = req.get('authorization') || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!token) return { ok: false, code: 401, msg: 'missing bearer token' };
+
+  const SECRET = process.env.RECON_SECRET;
+  if (SECRET && constantTimeEqual(token, SECRET)) {
+    return { ok: true, actor: 'recon_secret' };
+  }
+
+  let decoded;
+  try {
+    decoded = await getAuth().verifyIdToken(token);
+  } catch (_) {
+    return { ok: false, code: 401, msg: 'invalid credentials' };
+  }
+  const snap = await getDatabase().ref(`dispatchers/${decoded.uid}`).once('value');
+  if (!snap.exists()) return { ok: false, code: 403, msg: 'not authorized (dispatcher only)' };
+  return { ok: true, actor: decoded.email || decoded.uid };
 }
 
 function isFiniteNumber(n) {
@@ -1180,24 +1213,24 @@ exports.reconcilePayments = onSchedule(
 //   action 'materialize' → ledger-verified paid: confirm + materialize the order.
 //   action 'refund'      → void/refund the payment, close the order failed.
 //   action 'keep'        → leave queued (no-op; for re-checking later).
-// Auth: bearer MAKE_SECRET (the dispatch app calls it). Records an audit entry.
+// Auth: RECON_SECRET (server) OR a dispatcher Firebase ID token (the dashboard
+// Pedidos view). Records an audit entry keyed by the verified actor.
 exports.resolveManualReconciliation = onRequest(
   { region: 'us-central1', cors: true, timeoutSeconds: 60, memory: '256MiB', maxInstances: 5 },
   async (req, res) => {
     if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).json({ error: 'Method Not Allowed' }); }
     // DISPATCHER-ONLY money action (can materialize an order or trigger a void/refund).
-    // It is gated by a DEDICATED server-only secret — NOT the public order-intake secret
-    // (MAKE_SECRET) which is embedded in the browser order form. Fail-closed if unset.
-    const SECRET = process.env.RECON_SECRET;
-    if (!SECRET) { console.error('resolveManualReconciliation: RECON_SECRET not set — refusing'); return unauthorized(res, 'server misconfigured'); }
-    const authHeader = req.get('authorization') || '';
-    const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-    if (!presented || !constantTimeEqual(presented, SECRET)) return unauthorized(res, 'invalid bearer token');
+    // Gated by authorizeDispatcherAction: the server-only RECON_SECRET, or a verified
+    // dispatcher's Firebase ID token — NEVER the public order-intake secret (MAKE_SECRET).
+    const auth = await authorizeDispatcherAction(req);
+    if (!auth.ok) return res.status(auth.code).json({ error: 'Unauthorized', detail: auth.msg });
 
     const body = req.body || {};
     const orderId = String(body.order_id || '');
     const action = String(body.action || '');
-    const actor = sanitizeText(body.actor || 'dispatcher', 80);
+    // Audit actor: a verified dispatcher's email can't be spoofed; only the server
+    // RECON_SECRET path may pass a free-text actor label.
+    const actor = auth.actor === 'recon_secret' ? sanitizeText(body.actor || 'server', 80) : auth.actor;
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return badRequest(res, 'order_id invalid');
     if (!['materialize', 'refund', 'keep'].includes(action)) return badRequest(res, 'action must be materialize|refund|keep');
 
@@ -1275,8 +1308,9 @@ exports.materializeOnConfirm = onValueWritten(
 // cancelPaidOrder — Stage 6: dispatcher cancel + void/refund of a paid online order
 // ============================================================
 //
-// DISPATCHER-ONLY (RECON_SECRET — same server-only secret as resolveManualReconciliation,
-// NEVER the public order secret). Voids/refunds the payment and cancels the order + tasks.
+// DISPATCHER-ONLY — RECON_SECRET (server) or a verified dispatcher Firebase ID token
+// (the dashboard Pedidos view), NEVER the public order secret. Voids/refunds the payment
+// and cancels the order + tasks.
 // Race-guarded against confirmOnlinePayment: it sets `cancelling` on the attempt and
 // `status:'cancelled'` on the order — a capture mid-flight converges by VOIDING (I8, see
 // pixelpay-confirm.js step 5b), never materializing. Online-only; cash orders use the
@@ -1285,11 +1319,9 @@ exports.cancelPaidOrder = onRequest(
   { region: 'us-central1', cors: true, timeoutSeconds: 60, memory: '256MiB', maxInstances: 5 },
   async (req, res) => {
     if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).json({ error: 'Method Not Allowed' }); }
-    const SECRET = process.env.RECON_SECRET;
-    if (!SECRET) { console.error('cancelPaidOrder: RECON_SECRET not set — refusing'); return unauthorized(res, 'server misconfigured'); }
-    const authHeader = req.get('authorization') || '';
-    const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-    if (!presented || !constantTimeEqual(presented, SECRET)) return unauthorized(res, 'invalid bearer token');
+    const auth = await authorizeDispatcherAction(req);
+    if (!auth.ok) return res.status(auth.code).json({ error: 'Unauthorized', detail: auth.msg });
+    const actor = auth.actor;
 
     const body = req.body || {};
     const orderId = String(body.order_id || '');
@@ -1322,8 +1354,8 @@ exports.cancelPaidOrder = onRequest(
     // If a capture is mid-flight, the confirm path will void on convergence (step 5b).
     if (attempt && attempt.status === 'capturing') {
       // Mark the order cancelled so confirm voids instead of materializing.
-      await db.ref(`orders/${orderId}`).update({ status: 'cancelled', cancelled_at: now, cancel_reason: reason, payment_status: 'refund_pending' });
-      await paymentAlert(db, 'cancel_during_capture', { orderId, attemptId });
+      await db.ref(`orders/${orderId}`).update({ status: 'cancelled', cancelled_at: now, cancel_reason: reason, cancelled_by: actor, payment_status: 'refund_pending' });
+      await paymentAlert(db, 'cancel_during_capture', { orderId, attemptId, actor });
       return res.status(202).json({ ok: true, outcome: 'cancel_pending_capture', detail: 'capture in flight; payment will be voided', order_id: orderId });
     }
 
@@ -1341,6 +1373,7 @@ exports.cancelPaidOrder = onRequest(
     updates[`orders/${orderId}/status`] = 'cancelled';
     updates[`orders/${orderId}/cancelled_at`] = now;
     updates[`orders/${orderId}/cancel_reason`] = reason;
+    updates[`orders/${orderId}/cancelled_by`] = actor;
     updates[`orders/${orderId}/payment_status`] = refund.voided ? 'refunded' : 'refund_pending';
     if (order.order_type === 'delivery') {
       const pickupTaskId = `${orderId}_pickup`;
@@ -1363,7 +1396,7 @@ exports.cancelPaidOrder = onRequest(
     }
     await db.ref().update(updates);
 
-    console.log(`cancelPaidOrder: ${orderId} cancelled (refund=${refund.outcome})`);
+    console.log(`cancelPaidOrder: ${orderId} cancelled by ${actor} (refund=${refund.outcome})`);
     return res.status(200).json({ ok: true, outcome: 'cancelled', refund: refund.outcome, order_id: orderId });
   }
 );
