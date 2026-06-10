@@ -212,9 +212,15 @@ canonical centavos; charge server total only; narrowed RTDB write rules (#13).
   1. `chargeOnlineOrder` (server): validate → write `pending_payment` order + **active attempt** (mint
      `pixelpay_order_id = ${order_id}-${attempt_id}`) → compute
      **`x-client-signature = HMAC-SHA3-512(secret, app_key|pixelpay_order_id|app_url)`** → return
-     `{endpoint, app_key, sha512(secret), x-client-signature, order(id=pixelpay_order_id …), order_callback}`
-     to the client. **It does NOT call PixelPay.** (Every PixelPay-facing `order.id` below is the
-     **`pixelpay_order_id`**, never the bare internal `order_id`.)
+     `{endpoint, app_key (x-auth-key), auth_hash (x-auth-hash), x-client-signature,
+     order(id=pixelpay_order_id …), order_callback}` to the client. **It does NOT call PixelPay.** (Every
+     PixelPay-facing `order.id` below is the **`pixelpay_order_id`**, never the bare internal `order_id`.)
+     **Auth headers (verified vs sandbox 2026-06-09):** `x-auth-key` = key id, `x-auth-hash` = the portal-
+     provided credential hash (**configured, NEVER re-derived** — sandbox = `MD5(secret)`, prod "Public key"
+     = `SHA-512(secret)`; the derivation differs, so always use the value the portal shows), `x-client-
+     signature` = HMAC-SHA3-512. The browser SDK sets `x-auth-key`/`x-auth-hash` via `setupSandbox()` (sandbox)
+     or `setupCredentials(key, public_key)` (prod); the **server replicates all three for its own getStatus/
+     void calls**.
   2. Client SDK: tokenize card → token; `SaleTransaction(token, order(id=pixelpay_order_id))` +
      `withAuthenticationRequest()` (in-page 3DS) → `TransactionResult{payment_uuid, payment_hash}`. Card
      data → PixelPay only.
@@ -241,11 +247,26 @@ canonical centavos; charge server total only; narrowed RTDB write rules (#13).
   charging-lock / one-active-attempt; duplicate approved `payment_uuid`s are voided (see §B/§G/§I).
 - **Crypto (Node `crypto`):** `x-client-signature` = HMAC-SHA3-512; `payment_hash` = MD5; `void_signature`
   = SHA-512 — all server-side with the raw secret.
-- **`sha512(secret)` handling (re-check #5):** it ships to the browser via `setupCredentials` and is
-  credential-like (reusable with any valid per-order signature the customer holds). Treat as public-but-
+- **`auth_hash` (x-auth-hash) handling (re-check #5):** the portal-provided credential hash (prod "Public
+  key" = `SHA-512(secret)`; sandbox = `MD5(secret)`) ships to the browser via `setupCredentials` and is
+  credential-like (reusable with any valid per-order signature the customer holds). **Use the portal value
+  verbatim — do NOT re-derive it in code** (the sandbox/prod derivations differ). Treat as public-but-
   sensitive SDK material: **never log it, never persist it client-side**, restrict by **app URL / origin**
-  if PixelPay supports it, and **confirm with PixelPay** that `sha512(secret)` enables nothing beyond a
-  signed browser sale (and whether PixelPay enforces unique `order.id` / origin pinning).
+  if PixelPay supports it, and **confirm with PixelPay** it enables nothing beyond a signed browser sale
+  (and whether PixelPay enforces unique `order.id` / origin pinning).
+
+### Sandbox (verified 2026-06-09 — full test environment, no real money)
+- **Endpoint** `https://pixelpay.dev` (`/api/v2/transaction/{sale,auth,capture,void}`,
+  `/api/v2/tokenization/card[...]`). SDK: `settings.setupSandbox()`.
+- **Public test creds:** `x-auth-key=1234567890`, `x-auth-hash=36cdf8271723276cb6f94904f8bde4b6`
+  (= `MD5("@s4ndb0x-abcd-1234-n1l4-p1x3l")`), **sign with sandbox secret** `@s4ndb0x-abcd-1234-n1l4-p1x3l`.
+  Carried in code as built-in constants behind `PIXELPAY_MODE=sandbox`; prod uses the `.env` creds.
+- **Test cards:** VISA `4111111111111111` cvv 300, MC `5555555555554444` cvv 999, both exp `2512`.
+- **Outcome is driven by `order_amount`:** `1`→success, `2`→declined, `6`→attempt-limit-exceeded,
+  `8`→timeout, `9/10/11`→amount/limit exceeded, etc. (1–14) — lets us drive every failure branch.
+- **3DS test cases:** only with sandbox case #1 (amount=1), swapping the card for the 3DS PANs
+  (`4000000000001000` success, `…1018` failed, `…1075` lookup-timeout, `…1109` failed step-up, …).
+- **Token TTL:** sandbox card tokens auto-delete 5h after creation (don't cache across a test session).
 
 ## Risks / open questions (pin from PixelPay docs at build)
 - SDK tokenization + in-page 3DS API; idempotency-key support (else the one-active-attempt+status-lookup
