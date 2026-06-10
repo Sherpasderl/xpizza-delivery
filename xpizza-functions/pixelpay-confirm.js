@@ -156,6 +156,20 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
     captured_at: now
   });
 
+  // ---- 5b. CANCEL-vs-CONFIRM race (I8): if a cancel landed on this attempt/order while
+  // we were capturing, VOID the capture instead of materializing — money must never
+  // materialize onto a cancelled order. (cancelPaidOrder sets attempt.cancelling +
+  // order.status='cancelled'; this is the converge point.) ----
+  if (deps.voidOrRefund) {
+    const freshAttempt = (await attemptRef.once('value')).val();
+    const freshOrder = (await orderRef.once('value')).val();
+    if ((freshAttempt && freshAttempt.cancelling) || (freshOrder && freshOrder.status === 'cancelled')) {
+      const vr = await deps.voidOrRefund(deps, { orderId, attemptId, pixelpayOrderId, paymentUuid: uuid, reason: 'cancelled_during_capture', now });
+      await orderRef.update({ status: 'cancelled', payment_status: vr.voided ? 'refunded' : 'refund_pending' });
+      return { outcome: 'cancelled_voided', voided: vr.voided };
+    }
+  }
+
   // ---- 6. Confirm + materialize ----
   return confirmAndMaterialize(deps, {
     orderId, attemptId, now, trackingToken,

@@ -10,6 +10,7 @@ process.env.PIXELPAY_MODE = 'sandbox';
 const assert = require('assert');
 const { confirmOnlinePayment } = require('./pixelpay-confirm');
 const { buildMaterializeUpdates } = require('./materialize');
+const { voidOrRefund } = require('./pixelpay-cancel');
 const realClient = require('./pixelpay-client');
 const { paymentHash } = require('./pixelpay');
 
@@ -100,7 +101,7 @@ function mkClient({ statusValue = 'authorized', statusSeq, capture, voidOk = tru
   };
 }
 
-const baseDeps = (db, client) => ({ db, client, restaurant: RESTAURANT, buildMaterializeUpdates, staleMs: 90000, alert: () => {} });
+const baseDeps = (db, client) => ({ db, client, restaurant: RESTAURANT, buildMaterializeUpdates, voidOrRefund, staleMs: 90000, alert: () => {} });
 
 let pass = 0;
 const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
@@ -284,6 +285,23 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     assert.strictEqual(u['tasks/PZX-1_delivery'].total, 385);
     assert.strictEqual(u['order_tracking/T'].address_short, 'Calle 1');
     ok('buildMaterializeUpdates: delivery shape matches createOrder schema');
+  }
+
+  // 14. Cancel-vs-confirm race (I8): a capture lands while the attempt is `cancelling`
+  //     → VOID the capture, cancel the order, NEVER materialize.
+  {
+    const init = pendingOrder();
+    init.payment_attempts['A'].cancelling = true; // a cancel landed during capture
+    const db = makeDb(init);
+    const client = mkClient(); // capture succeeds (good hash/amount); voidTransaction ok
+    const r = await confirmOnlinePayment(baseDeps(db, client), { orderId: 'PZX-1', paymentUuid: 'S-uuid', now: 11000 });
+    assert.strictEqual(r.outcome, 'cancelled_voided');
+    assert.strictEqual(client.calls.void, 1, 'the captured payment is voided');
+    assert.strictEqual(db.getAt('orders/PZX-1').status, 'cancelled');
+    assert.strictEqual(db.getAt('orders/PZX-1').payment_status, 'refunded');
+    assert.notStrictEqual(db.getAt('orders/PZX-1').status, 'new');
+    assert.ok(!db.getAt('tasks/PZX-1_delivery'), 'never materialized → no tasks');
+    ok('cancel-vs-confirm race → capture VOIDed, order cancelled, never materialized (I8)');
   }
 
   console.log(`\nAll ${pass} confirm/materialize tests passed.`);

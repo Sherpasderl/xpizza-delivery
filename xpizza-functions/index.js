@@ -11,6 +11,8 @@
  *   - reconcilePayments             (sched)   — daily money-safety invariant audit (Stage 4)
  *   - resolveManualReconciliation   (HTTPS)   — audited dispatcher resolver for manual_reconciliation (Stage 4)
  *   - materializeOnConfirm          (DB trig) — re-materialize a confirmed-but-unmaterialized order (Stage 4)
+ *   - cancelPaidOrder               (HTTPS)   — dispatcher void/refund + cancel of a paid online order (Stage 6)
+ *   - refundReconciler              (sched)   — retry aged refund_pending voids (Stage 6)
  *   - notifyDriverOnAssignment      (DB trig) — Web Push to driver on assignment
  *   - notifyDriverOnCancellation    (DB trig) — Web Push to assigned driver when order is cancelled
  *   - onOrderCancelled              (DB trig) — Sync cancellations to KDS Sheet
@@ -58,6 +60,7 @@ const pixelpayClient = require('./pixelpay-client');
 const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
 const { buildMaterializeUpdates } = require('./materialize');
 const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
+const { voidOrRefund } = require('./pixelpay-cancel');
 
 initializeApp({
   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
@@ -988,6 +991,7 @@ function confirmDeps(db) {
       try { return pixelPayChargeAmountLempiras(resolvePixelPayConfig(), totalCents); }
       catch (_) { return Number((Number(totalCents) / 100).toFixed(2)); }
     },
+    voidOrRefund,   // cancel-vs-confirm race guard (I8)
     alert: (kind, detail) => paymentAlert(db, kind, detail)
   };
 }
@@ -1261,6 +1265,134 @@ exports.materializeOnConfirm = onValueWritten(
     } catch (e) {
       console.error(`materializeOnConfirm: ${orderId} failed`, e.message);
     }
+  }
+);
+
+// ============================================================
+// cancelPaidOrder — Stage 6: dispatcher cancel + void/refund of a paid online order
+// ============================================================
+//
+// DISPATCHER-ONLY (RECON_SECRET — same server-only secret as resolveManualReconciliation,
+// NEVER the public order secret). Voids/refunds the payment and cancels the order + tasks.
+// Race-guarded against confirmOnlinePayment: it sets `cancelling` on the attempt and
+// `status:'cancelled'` on the order — a capture mid-flight converges by VOIDING (I8, see
+// pixelpay-confirm.js step 5b), never materializing. Online-only; cash orders use the
+// dispatch app's client cancelOrder (the RTDB rules block client cancel of paid online).
+exports.cancelPaidOrder = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 60, memory: '256MiB', maxInstances: 5 },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).json({ error: 'Method Not Allowed' }); }
+    const SECRET = process.env.RECON_SECRET;
+    if (!SECRET) { console.error('cancelPaidOrder: RECON_SECRET not set — refusing'); return unauthorized(res, 'server misconfigured'); }
+    const authHeader = req.get('authorization') || '';
+    const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!presented || !constantTimeEqual(presented, SECRET)) return unauthorized(res, 'invalid bearer token');
+
+    const body = req.body || {};
+    const orderId = String(body.order_id || '');
+    const reason = sanitizeText(body.reason || 'cancelado por despacho', 200);
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return badRequest(res, 'order_id invalid');
+
+    const db = getDatabase();
+    const now = Date.now();
+    const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.payment_method !== 'online') return res.status(409).json({ error: 'Not an online order', detail: 'use the dispatch cancel for cash orders' });
+    if (order.status === 'cancelled') return res.status(200).json({ ok: true, outcome: 'already_cancelled', order_id: orderId });
+
+    const attemptId = order.active_attempt_id || null;
+    const attemptRef = attemptId ? db.ref(`payment_attempts/${attemptId}`) : null;
+    const pixelpayOrderId = attemptId ? `${orderId}-${attemptId}` : null;
+
+    // Claim `cancelling` on the attempt (race converge point with confirm). Pre-read +
+    // cur||preAttempt to avoid the Admin-SDK first-call-null abort.
+    let attempt = attemptId ? (await attemptRef.once('value')).val() : null;
+    if (attemptRef && attempt) {
+      const tx = await attemptRef.transaction((cur) => {
+        const a = cur || attempt;
+        if (!a) return a;
+        return { ...a, cancelling: true, cancel_reason: reason, cancel_claimed_at: now };
+      });
+      attempt = tx.snapshot.val() || attempt;
+    }
+
+    // If a capture is mid-flight, the confirm path will void on convergence (step 5b).
+    if (attempt && attempt.status === 'capturing') {
+      // Mark the order cancelled so confirm voids instead of materializing.
+      await db.ref(`orders/${orderId}`).update({ status: 'cancelled', cancelled_at: now, cancel_reason: reason, payment_status: 'refund_pending' });
+      await paymentAlert(db, 'cancel_during_capture', { orderId, attemptId });
+      return res.status(202).json({ ok: true, outcome: 'cancel_pending_capture', detail: 'capture in flight; payment will be voided', order_id: orderId });
+    }
+
+    // Reverse the payment if there is one to reverse (captured, or an active auth hold).
+    const deps = confirmDeps(db);
+    let refund = { outcome: 'no_payment', voided: true };
+    const uuid = attempt && attempt.payment_uuid;
+    const hasMoney = attempt && (attempt.status === 'captured' || attempt.status === 'active' || order.payment_status === 'confirmed');
+    if (uuid && hasMoney) {
+      refund = await voidOrRefund(deps, { orderId, attemptId, pixelpayOrderId, paymentUuid: uuid, reason, now });
+    }
+
+    // Build the cancellation: order + tasks + driver release (mirrors the dispatch cancelOrder).
+    const updates = {};
+    updates[`orders/${orderId}/status`] = 'cancelled';
+    updates[`orders/${orderId}/cancelled_at`] = now;
+    updates[`orders/${orderId}/cancel_reason`] = reason;
+    updates[`orders/${orderId}/payment_status`] = refund.voided ? 'refunded' : 'refund_pending';
+    if (order.order_type === 'delivery') {
+      const pickupTaskId = `${orderId}_pickup`;
+      const deliveryTaskId = `${orderId}_delivery`;
+      const pickup = (await db.ref(`tasks/${pickupTaskId}`).once('value')).val();
+      if (pickup) updates[`tasks/${pickupTaskId}/status`] = 'cancelled';
+      const delivery = (await db.ref(`tasks/${deliveryTaskId}`).once('value')).val();
+      if (delivery) updates[`tasks/${deliveryTaskId}/status`] = 'cancelled';
+      // Release the assigned driver if they were working this order.
+      const driverId = pickup && pickup.assigned_driver_id;
+      if (driverId) {
+        const driver = (await db.ref(`drivers/${driverId}`).once('value')).val();
+        if (driver && (driver.current_task_id === pickupTaskId || driver.current_task_id === deliveryTaskId)) {
+          updates[`drivers/${driverId}/current_task_id`] = null;
+          if (['assigned', 'at_restaurant', 'en_route_delivery'].includes(driver.status)) {
+            updates[`drivers/${driverId}/status`] = 'available';
+          }
+        }
+      }
+    }
+    await db.ref().update(updates);
+
+    console.log(`cancelPaidOrder: ${orderId} cancelled (refund=${refund.outcome})`);
+    return res.status(200).json({ ok: true, outcome: 'cancelled', refund: refund.outcome, order_id: orderId });
+  }
+);
+
+// ============================================================
+// refundReconciler — Stage 6: retry aged refund_pending (scheduled, hourly)
+// ============================================================
+//
+// A void that failed (network, or the unverified production void signature) leaves the
+// attempt `refund_pending`. Retry it; alert on aged ones so a dispatcher can act. The
+// daily reconcilePayments also surfaces aged refund_pending as a backstop.
+exports.refundReconciler = onSchedule(
+  { schedule: 'every 60 minutes', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    const db = getDatabase();
+    const now = Date.now();
+    const attempts = (await db.ref('payment_attempts').once('value')).val() || {};
+    const deps = confirmDeps(db);
+    let retried = 0, stillPending = 0;
+    for (const attemptId of Object.keys(attempts)) {
+      const a = attempts[attemptId];
+      if (!a || a.status !== 'refund_pending') continue;
+      const pixelpayOrderId = `${a.order_id}-${attemptId}`;
+      const r = await voidOrRefund(deps, { orderId: a.order_id, attemptId, pixelpayOrderId, paymentUuid: a.payment_uuid, reason: 'xpizza_refund_retry', now });
+      retried++;
+      if (!r.voided) {
+        stillPending++;
+        const age = now - (Number(a.refunded_at || a.cancel_claimed_at || a.captured_at) || now);
+        if (age > 24 * 3600 * 1000) await paymentAlert(db, 'aged_refund_pending', { orderId: a.order_id, attemptId });
+      }
+    }
+    console.log(`refundReconciler: retried=${retried} stillPending=${stillPending}`);
   }
 );
 
