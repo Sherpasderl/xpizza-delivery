@@ -27,13 +27,27 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   assert.strictEqual(n.pixelpayOrderId, PXO);
   assert.strictEqual(n.orderId, ORDER);
   assert.strictEqual(n.paymentUuid, 'S-2');
-  assert.strictEqual(n.eventId, 'S-2', 'falls back to payment_uuid for event id');
+  assert.strictEqual(n.eventId, PXO, 'event id falls back to the order id when no transaction_id/uuid/id');
   ok('extract: nested data.order.id + data.payment_uuid');
 
   // bare order id (no attempt suffix) passes through
   n = extractWebhookNudge({ order_id: ORDER });
   assert.strictEqual(n.orderId, ORDER);
   ok('extract: bare order id (no suffix) passes through');
+
+  // PixelPay's REAL order_callback shape (captured live): order id in `ref`, payment in `uuid`
+  // (P-scope), event id from transaction_id.
+  n = extractWebhookNudge({ ref: PXO, uuid: 'P-a1fd', status: 'paid', payment_hash: 'h', transaction_id: 'TX-7' });
+  assert.strictEqual(n.pixelpayOrderId, PXO, 'reads order id from `ref`');
+  assert.strictEqual(n.orderId, ORDER, 'strips attempt suffix off ref');
+  assert.strictEqual(n.paymentUuid, 'P-a1fd', 'reads payment uuid');
+  assert.strictEqual(n.eventId, 'TX-7', 'event id from transaction_id (unique per event, not ref)');
+  ok('extract: REAL order_callback shape (ref + uuid + transaction_id)');
+
+  // Subscription webhook fallback: order id in `order`.
+  n = extractWebhookNudge({ uuid: 'P-x', order: PXO, status: 'paid' });
+  assert.strictEqual(n.orderId, ORDER, 'still reads `order` (subscription webhook)');
+  ok('extract: subscription webhook shape (order) still works');
 
   // garbage → all null
   n = extractWebhookNudge(null);

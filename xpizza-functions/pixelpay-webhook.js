@@ -30,9 +30,15 @@ function extractWebhookNudge(body) {
   const t = (b.transaction && typeof b.transaction === 'object') ? b.transaction : {};
   const o = (b.order && typeof b.order === 'object') ? b.order : (d.order && typeof d.order === 'object' ? d.order : {});
 
-  const paymentUuid = firstString(b.payment_uuid, d.payment_uuid, t.payment_uuid, b.uuid, d.uuid);
-  const pixelpayOrderId = firstString(b.order_id, d.order_id, t.order_id, o.id, b.pixelpay_order_id, d.pixelpay_order_id);
-  const eventId = firstString(b.id, b.event_id, d.id, d.event_id, b.notification_id) || paymentUuid || pixelpayOrderId;
+  // PixelPay's REAL order_callback (captured from the live sandbox 2026-06-10) puts the order
+  // id (= the pixelpay_order_id we sent as order.id) in **`ref`**, and the payment id in `uuid`
+  // (a `P-…` scope that DIFFERS from our auth/capture `S-…` uuid). We therefore key off the
+  // ORDER ID and let confirm use OUR attempt's stored uuid — never the callback's. `order`/
+  // `order_id` are kept as fallbacks (the subscription webhook uses `order`). Nudge-only: this
+  // is never trusted for the money decision (confirm re-verifies via doCapture).
+  const pixelpayOrderId = firstString(b.ref, b.order, b.order_id, d.ref, d.order, d.order_id, t.order_id, o.id, b.pixelpay_order_id, d.pixelpay_order_id);
+  const paymentUuid = firstString(b.uuid, b.payment_uuid, d.uuid, d.payment_uuid, t.payment_uuid);
+  const eventId = firstString(b.transaction_id, b.uuid, b.id, b.event_id, d.transaction_id, d.id) || pixelpayOrderId;
 
   let orderId = null;
   if (pixelpayOrderId) {

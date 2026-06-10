@@ -82,3 +82,19 @@ PixelPay docs (SDK Use Cases → Cancelling Payments) give the exact formula:
 - BUG FOUND + FIXED: our code was signing `SHA-512(SHA-512(email)|order_id|secret)` (hashed email).
 - Verified: corrected `voidTransaction` against the live sandbox → `200 "Transacción anulada
   exitosamente"`. Production runs the same path with the real merchant email + secret.
+
+## Refund API & webhook payload — PINNED from docs + live capture (2026-06-10)
+**No refund API.** SDK Requests doc lists only Sale/Auth/Capture/Void/Status/Tokenization — there is
+NO RefundTransaction. Void reverses SAME-DAY only (auth holds last up to 15 days). So: same-day cancel →
+void (works); a settled/next-day refund has no API → manual PixelPay-portal refund. Our refund_pending →
+dispatcher flow is correct.
+
+**Real order_callback payload** (captured live by pointing callback_url at the deployed pixelPayWebhook):
+```
+{"ref":"<pixelpay_order_id>", "uuid":"P-…", "status":"paid", "payment_hash":"…", "amount":1,
+ "currency":"HNL", "items":[…], "customer_name":…, "customer_email":…, "transaction_id":…, …}
+```
+KEY: the order id is in **`ref`** (NOT `order`/`order_id` — the subscription-doc webhook used `order`),
+and `uuid` is a **`P-…` scope DIFFERENT from our auth/capture `S-…` uuid**. So we key off `ref` (→ find our
+attempt, use ITS stored uuid), never the callback's uuid. Our extractor was reading `order_id` and SILENTLY
+failed on the real payload ("could not extract order id" in the logs) — now fixed to read `ref` first.
