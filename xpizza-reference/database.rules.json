@@ -42,7 +42,7 @@
         ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
 
         "status": {
-          ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || root.child('kitchen').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid)"
+          ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || root.child('kitchen').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid) && !(newData.val() === 'cancelled' && root.child('orders').child($order_id).child('payment_method').val() === 'online' && (root.child('orders').child($order_id).child('payment_status').val() === 'confirmed' || root.child('orders').child($order_id).child('payment_status').val() === 'pending'))"
         },
         "picked_up_at": {
           ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid)"
@@ -86,6 +86,11 @@
       "$uid": {
         ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
       }
-    }
+    },
+
+    "payment_attempts": { ".read": false, ".write": false },
+    "webhook_events":   { ".read": false, ".write": false },
+    "outbox":           { ".read": false, ".write": false },
+    "refund_attempts":  { ".read": false, ".write": false }
   }
 }
