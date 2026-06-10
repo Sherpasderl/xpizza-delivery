@@ -113,7 +113,7 @@ async function runTest(){
     const [mm,yy]=$('exp').value.split('/'); card.expire_month=parseInt(mm,10); card.expire_year=parseInt('20'+yy.trim(),10);
     card.cardholder=$('name').value.trim();
     const o=new Models.Order();
-    o.id=pp.order.id; o.currency=pp.order.currency; o.amount=Number(pp.order.amount); o.tax_amount=Number(pp.order.tax_amount);
+    o.id=pp.order.id; o.currency=pp.order.currency; o.amount=Number(pp.order.amount); // no tax_amount (see chargeOnlineOrder)
     o.callback_url=pp.order.callback_url; o.customer_name=card.cardholder; o.customer_email='cliente.prueba@gmail.com';
     const bill=new Models.Billing(); bill.address='Col Test'; bill.country='HN'; bill.state='HN-CR'; bill.city='San Pedro Sula'; bill.zip='21101'; bill.phone='50497952893';
     const auth=new Requests.AuthTransaction(); auth.setCard(card); auth.setBilling(bill); auth.setOrder(o); auth.withAuthenticationRequest();

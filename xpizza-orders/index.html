@@ -2219,8 +2219,7 @@ async function runPixelPayAuth(pp){
   const order = new Models.Order();
   order.id = pp.order.id;
   order.currency = pp.order.currency;
-  order.amount = Number(pp.order.amount);
-  order.tax_amount = Number(pp.order.tax_amount);
+  order.amount = Number(pp.order.amount);   // full tax-inclusive total; we do NOT send tax_amount (see chargeOnlineOrder)
   order.callback_url = pp.order.callback_url;
   order.customer_name = card.cardholder;                 // PixelPay needs first + last (the cardholder)
   order.customer_email = (currentOrder && currentOrder.customer_email) || 'pedidos@xpizza.hn';

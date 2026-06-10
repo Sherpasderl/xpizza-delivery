@@ -817,8 +817,11 @@ chargeOnlineApp.all('*', async (req, res) => {
       auth_hash: pp.auth_hash,        // x-auth-hash, used verbatim (sandbox MD5 / prod SHA-512)
       order: {
         id: pixelpayOrderId,                                      // PixelPay order.id = pixelpay_order_id (binds the auth to this attempt)
-        amount: String(pixelPayChargeAmountLempiras(pp, total_cents)), // order_amount captured server-side (sandbox → 1-14 test amount)
-        tax_amount: pp.mode === 'sandbox' ? '0.00' : centsToLempiras(tax_cents), // ISV (informational); zeroed in sandbox to stay ≤ test amount
+        amount: String(pixelPayChargeAmountLempiras(pp, total_cents)), // order_amount = the FULL tax-inclusive total charged (server-set)
+        // NOTE: we deliberately do NOT send order_tax_amount. Our prices are ISV-INCLUSIVE so
+        // `amount` already is the grand total; PixelPay's `amount` is "Total amount of the order"
+        // (the collection). Sending a separate tax_amount risks it being added on top — and we
+        // keep our own subtotal/tax breakdown on the order record for the factura anyway.
         currency: 'HNL',
         callback_url: pixelPayCallbackUrl()                       // order_callback → pixelPayWebhook nudge
       }
