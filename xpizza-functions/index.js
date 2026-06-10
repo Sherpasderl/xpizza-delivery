@@ -53,8 +53,7 @@ const webpush = require('web-push');
 const { google } = require('googleapis');
 const express = require('express');
 const whatsapp = require('./whatsapp');
-const pixelpayCrypto = require('./pixelpay');
-const { resolvePixelPayConfig, pixelPayAppUrl, pixelPayCallbackUrl } = require('./pixelpay-config');
+const { resolvePixelPayConfig, pixelPayCallbackUrl } = require('./pixelpay-config');
 const pixelpayClient = require('./pixelpay-client');
 const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
 const { buildMaterializeUpdates } = require('./materialize');
@@ -789,15 +788,10 @@ chargeOnlineApp.all('*', async (req, res) => {
     }
   }
 
-  // Sign the sale for THIS pixelpay_order_id. The browser SDK runs the sale with
-  // this signature; we never call PixelPay here.
-  const appUrl = pixelPayAppUrl();
-  const clientSignature = pixelpayCrypto.saleSignature(pp.secret, {
-    app_key: pp.app_key,
-    order_id: pixelpayOrderId,
-    app_url: appUrl
-  });
-
+  // Return the config the browser SDK needs to run the 3DS AUTH. There is NO
+  // signature: the SDK authenticates with the public app_key + auth_hash, and the
+  // server confirms authoritatively later via doCapture (see PAYMENT-PLAN, the
+  // auth+capture architecture). chargeOnlineOrder never calls PixelPay.
   console.log(`chargeOnlineOrder: ${acq.outcome} ${pixelpayOrderId} (mode=${pp.mode}, ${centsToLempiras(total_cents)} HNL)`);
 
   return res.status(200).json({
@@ -807,18 +801,16 @@ chargeOnlineApp.all('*', async (req, res) => {
     pixelpay_order_id: pixelpayOrderId,
     payment_status: 'pending',
     pixelpay: {
-      mode: pp.mode,
+      mode: pp.mode,                  // 'sandbox' → browser SDK setupSandbox(); else setupCredentials+setupEndpoint
       endpoint: pp.endpoint,
-      app_key: pp.app_key,
+      app_key: pp.app_key,            // x-auth-key
       auth_hash: pp.auth_hash,        // x-auth-hash, used verbatim (sandbox MD5 / prod SHA-512)
-      app_url: appUrl,                // folded into the signature; sandbox-verify the exact value
-      client_signature: clientSignature,
       order: {
-        id: pixelpayOrderId,
-        amount: centsToLempiras(total_cents),     // order_amount — inclusive grand total (charged)
-        tax_amount: centsToLempiras(tax_cents),   // order_tax_amount — ISV portion (informational)
+        id: pixelpayOrderId,                       // PixelPay order.id = pixelpay_order_id (binds the auth to this attempt)
+        amount: centsToLempiras(total_cents),      // order_amount — inclusive grand total (captured server-side)
+        tax_amount: centsToLempiras(tax_cents),    // order_tax_amount — ISV portion (informational)
         currency: 'HNL',
-        callback_url: pixelPayCallbackUrl()        // order_callback (webhook receiver = Stage 4)
+        callback_url: pixelPayCallbackUrl()        // order_callback → pixelPayWebhook nudge
       }
     }
   });
