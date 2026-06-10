@@ -41,3 +41,26 @@ confirm)**; getStatus = liveness; webhook = nudge. Needs plan update + Codex re-
   (dispatcher checks the PixelPay ledger), NEVER auto-materialize to `new`. A `capturing` claim
   (+ capturing_started_at + payment_uuid) set BEFORE doCapture distinguishes crash-before-capture
   (safe to capture) from crash-after-capture (manual reconcile).
+
+## Stage-4 sub-stage 1 — pixelpay-client.js live pins  (`verify-pins.js`)
+Drives the real server client against the live sandbox. PIXELPAY_MODE=sandbox. All PASS:
+- **PIN 1 — capture authoritative + bound:** `capture()` → 200; `verifyCaptureResult` ok
+  (response_approved + transaction_approved_amount==total + payment_hash==MD5(order|key|secret)).
+- **PIN 2 — status enum:** auth → `authorized`; after capture → `paid`. (Liveness states.)
+- **PIN 3 — capture > auth REJECTED:** auth=1, capture=2 → `402 "El monto enviado es mayor
+  al monto autorizado"`. The amount-safety invariant holds. ✅
+- **PIN 4 — void:** sandbox accepts void with **just key+hash + {payment_uuid, void_reason}**;
+  `void_reason` must be **≥ 8 chars** (else 422). Providing a `void_signature`/`x-auth-user` is
+  **REJECTED (401)** by the shared sandbox account (see `probe-void-authmodel.js`: variant F
+  no-sig → 200; all signed variants → 401). After voiding an uncaptured auth, `getStatus` → null.
+
+### Void implication (Stage 6 gate)
+`voidTransaction()` is mode-aware: **sandbox** sends no signature; **production** sends
+`void_signature` + `x-auth-user` — but that production formula is **UNVERIFIED** (the sandbox
+can't validate it). Pin the production void signature against PixelPay docs / the live account
+before relying on production void/refund.
+
+### Still only amount=1 testable for success
+Sandbox maps integer order_amount 1–14 to outcomes, so full-amount (e.g. 385.00) success isn't
+sandbox-testable; the amount comparison IS numeric (PIN 3). Decimal-lempira unit assumed
+(`parseAmount` → String(number)); confirm on the first real production capture.

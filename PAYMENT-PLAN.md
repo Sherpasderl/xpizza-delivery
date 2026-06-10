@@ -350,11 +350,16 @@ server total only; narrowed RTDB write rules (#13).
   no data**. So re-capture is NOT a recovery path; **lost-capture-response → `manual_reconciliation`, never
   `new`** (hard rule). The `capturing` claim (+`capturing_started_at`+`payment_uuid`) distinguishes crash-
   before-capture (safe to capture) from crash-after (manual reconcile).
-- **STILL OPEN — sandbox-pin during Stage 4 build:** (1) **capture > auth is rejected** (the amount-safety
-  invariant — must verify, not just assume); (2) `getStatus` `status` enum values (paid/declined/voided/
-  refunded/…) for the liveness/sweep logic; (3) void's `void_signature` keying (`pixelpay_order_id` vs bare
-  id) + `x-auth-user` format; (4) amount unit (decimal lempiras) confirmed by an approved capture; (5) does an
-  uncaptured auth expire on its own (assumed — confirms the "missed order not lost charge" claim).
+- **PINNED via live client (sub-stage 1, `payments-probe/verify-pins.js`):** ✅ **capture > auth REJECTED**
+  (`402 "monto … mayor al monto autorizado"`) — amount-safety holds; ✅ `getStatus` enum so far: `authorized`
+  (hold) → `paid` (captured), null after void; ✅ sandbox **void = key+hash + {payment_uuid, void_reason≥8}**,
+  NO signature (a provided signature → 401). `capture()` response binding verified (`payment_hash` ==
+  `MD5(pixelpay_order_id|auth_key|secret)`).
+- **STILL OPEN — pin before/at production (not sandbox-testable):** (1) **production `void_signature` +
+  `x-auth-user` formula** — the shared sandbox rejects any provided signature, so prod void/refund is
+  UNVERIFIED (Stage 6 gate; needs PixelPay docs / live account); (2) decimal-lempira unit on a *real* capture
+  (sandbox success is amount=1 only; the amount comparison is numeric); (3) full `getStatus` enum for
+  declined/refunded; (4) uncaptured-auth auto-expiry window (assumed — "missed order not lost charge").
 - Concurrency: that capturing-claim → persist-capture → confirm-claim → materialize ordering and the recovery
   trigger can't double-capture or double-materialize (capturing-claim + materialized marker guarded).
 
