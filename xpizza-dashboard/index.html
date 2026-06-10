@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Dashboard - version: 0.3.2 -->
+<!-- X Pizza Dashboard - version: 0.4.0 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -310,6 +310,81 @@ a { color: inherit; }
   .heat-row { grid-template-columns: 26px repeat(12, 1fr) 36px; gap: 2px; }
 }
 
+/* ============================================================
+   PEDIDOS (orders lookup view)
+   ============================================================ */
+.pedidos-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 14px 0 18px; }
+.pedidos-search { flex: 1; min-width: 220px; }
+.pedidos-search input {
+  width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-family: inherit; font-size: 14px; padding: 10px 12px;
+}
+.pedidos-search input:focus { outline: none; border-color: var(--accent); }
+.pedidos-toolbar select {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-family: inherit; font-size: 13px; padding: 9px 10px;
+}
+.pedidos-toolbar select:focus { outline: none; border-color: var(--accent); }
+.pedidos-tests { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-soft); cursor: pointer; user-select: none; }
+.pedidos-tests input { accent-color: var(--accent); }
+
+.orders-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.orders-table th {
+  text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--text-dim); padding: 0 12px 10px; border-bottom: 1px solid var(--divider);
+}
+.orders-table th.num, .orders-table td.num { text-align: right; }
+.orders-table td { padding: 12px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+.orders-table tbody tr { cursor: pointer; transition: background 0.08s; }
+.orders-table tbody tr:hover { background: var(--surface-2); }
+.ot-name { font-weight: 600; color: var(--text); }
+.ot-id { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-faint); margin-top: 2px; }
+.ot-time { color: var(--text-soft); white-space: nowrap; }
+.orders-empty { padding: 36px; text-align: center; color: var(--text-dim); font-size: 13px; }
+
+.badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 5px; white-space: nowrap; }
+.badge-success { background: var(--success-soft); color: #4ade80; }
+.badge-info { background: var(--info-soft); color: #60a5fa; }
+.badge-warn { background: var(--warn-soft); color: #fbbf24; }
+.badge-danger { background: var(--accent-soft); color: #f87171; }
+.badge-dim { background: var(--surface-3); color: var(--text-soft); }
+.badge-type-delivery { background: var(--info-soft); color: #60a5fa; }
+.badge-type-pickup { background: rgba(168, 85, 247, 0.18); color: #c084fc; }
+.muted-method { color: var(--text-dim); font-size: 12px; }
+
+/* Order detail modal */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(2px);
+  z-index: 200; display: flex; align-items: flex-start; justify-content: center;
+  padding: 40px 16px; overflow-y: auto;
+}
+.modal-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  width: 100%; max-width: 560px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+.modal-head { display: flex; align-items: flex-start; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--divider); }
+.mh-main { flex: 1; min-width: 0; }
+.mh-name { font-size: 17px; font-weight: 600; }
+.mh-id { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-faint); margin-top: 3px; word-break: break-all; }
+.modal-close { background: transparent; border: 1px solid var(--border); color: var(--text-soft); border-radius: 6px; padding: 6px 11px; font-size: 13px; line-height: 1; }
+.modal-close:hover { background: var(--surface-3); color: var(--text); }
+.modal-body { padding: 4px 24px 24px; }
+.detail-badges { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0 4px; }
+.detail-group { padding: 16px 0; border-bottom: 1px solid var(--border-soft); }
+.detail-group:last-child { border-bottom: none; padding-bottom: 0; }
+.detail-group-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px; }
+.detail-row { display: flex; justify-content: space-between; gap: 16px; padding: 4px 0; font-size: 13px; }
+.detail-row .dk { color: var(--text-soft); flex-shrink: 0; }
+.detail-row .dv { color: var(--text); text-align: right; font-weight: 500; word-break: break-word; }
+.detail-row .dv.mono { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.detail-block { font-size: 13px; color: var(--text); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+.detail-block a { color: #60a5fa; }
+
+@media (max-width: 640px) {
+  .orders-table th:nth-child(2), .orders-table td:nth-child(2) { display: none; } /* hide Tipo col on narrow */
+  .pedidos-toolbar select { flex: 1; }
+}
+
 </style>
 </head>
 
@@ -440,6 +515,50 @@ a { color: inherit; }
   </section>
 
   <!-- ZONA REVISIÓN -->
+  <!-- ZONA PEDIDOS -->
+  <section class="zone">
+    <div class="zone-header">
+      <div class="zone-title">Pedidos</div>
+      <div class="zone-subtitle" id="zone-pedidos-count">—</div>
+    </div>
+
+    <div class="section">
+      <div class="range-chips" id="pedidos-range">
+        <button class="chip active" data-prange="today">Hoy</button>
+        <button class="chip" data-prange="7days">7 días</button>
+        <button class="chip" data-prange="30days">30 días</button>
+        <button class="chip" data-prange="all">Todo</button>
+      </div>
+      <div class="pedidos-toolbar">
+        <div class="pedidos-search">
+          <input type="search" id="pedidos-q" placeholder="Buscar por ID, nombre o teléfono…" autocomplete="off">
+        </div>
+        <select id="pedidos-type">
+          <option value="all">Todos los tipos</option>
+          <option value="delivery">Entrega</option>
+          <option value="pickup">Recoger</option>
+        </select>
+        <select id="pedidos-status">
+          <option value="all">Todos los estados</option>
+          <option value="active">Activos</option>
+          <option value="delivered">Entregados</option>
+          <option value="cancelled">Cancelados</option>
+          <option value="pending_payment">Pago pendiente</option>
+        </select>
+        <select id="pedidos-payment">
+          <option value="all">Todo pago</option>
+          <option value="paid">Pagado (en línea)</option>
+          <option value="refunded">Reembolsado</option>
+          <option value="refund_pending">Reembolso pend.</option>
+          <option value="unpaid">Sin pagar</option>
+        </select>
+        <label class="pedidos-tests"><input type="checkbox" id="pedidos-tests"> Pruebas</label>
+      </div>
+      <div id="pedidos-table-wrap"></div>
+    </div>
+  </section>
+
+  <!-- ZONA REVISIÓN -->
   <section class="zone">
     <div class="zone-header">
       <div class="zone-title">Revisión</div>
@@ -516,6 +635,20 @@ a { color: inherit; }
 
 </main>
 
+<!-- Order detail modal -->
+<div class="modal-overlay hidden" id="pedido-modal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="mh-main">
+        <div class="mh-name" id="pd-name">—</div>
+        <div class="mh-id" id="pd-id">—</div>
+      </div>
+      <button class="modal-close" id="pd-close" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body" id="pd-body"></div>
+  </div>
+</div>
+
 <footer class="footer">
   X Pizza Estadísticas · <span data-version-display></span>
 </footer>
@@ -535,7 +668,7 @@ const firebaseConfig = {
 };
 XPD.initDelivery(firebaseConfig);
 
-const SYSTEM_VERSION = '0.3.2';
+const SYSTEM_VERSION = '0.4.0';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION}`;
 });
@@ -665,6 +798,7 @@ function startSubscriptions() {
     allOrders = orders || {};
     renderHoy();
     renderRevision();
+    renderPedidos();
   });
   XPD.subscribeToTasks((tasks) => {
     allTasks = tasks || {};
@@ -673,11 +807,13 @@ function startSubscriptions() {
     // include it so future task-dependent stats slot in cleanly.
     renderHoy();
     renderRevision();
+    renderPedidos(); // driver-name lookups in the order detail depend on tasks
   });
   XPD.subscribeToDrivers((drivers) => {
     allDrivers = drivers || {};
     renderDrivers();
     renderRevision();
+    renderPedidos();
   });
 
   initRangePicker();
@@ -1251,6 +1387,264 @@ function renderLeaderboard(periodOrders) {
 // ============================================================
 // UTILITIES
 // ============================================================
+// ============================================================
+// PEDIDOS (orders lookup view)
+// ============================================================
+// Read-only browse/search across ALL orders (delivery + pickup + cancelled +
+// pending-payment), with type / status / payment / date filters. Reuses the
+// dashboard's existing allOrders/allTasks/allDrivers subscriptions. The cancel/
+// refund ACTIONS (cancelPaidOrder, resolveManualReconciliation) are intentionally
+// NOT here — they need a server-only RECON_SECRET and a dispatcher-token call, so
+// they're a separate v2. See orders-view-followup memory.
+
+const pedidosFilter = { q: '', type: 'all', status: 'all', payment: 'all', range: 'today', includeTests: false };
+
+// Order time: server `created_at` (ms epoch) is authoritative; fall back to the
+// order form's ISO `timestamp` for any legacy record missing created_at.
+function orderTime(o) {
+  return Number(o && o.created_at) || (o && o.timestamp ? Date.parse(o.timestamp) : 0) || 0;
+}
+// order_type wasn't always present; historically every order was a delivery, so
+// a missing type reads as 'delivery'.
+function orderTypeOf(o) { return (o && o.order_type === 'pickup') ? 'pickup' : 'delivery'; }
+
+function statusBucket(o) {
+  const s = o && o.status;
+  if (s === 'pending_payment') return 'pending_payment';
+  if (s === 'cancelled') return 'cancelled';
+  if (s === 'delivered') return 'delivered';
+  return 'active'; // new / preparing / ready / out_for_delivery
+}
+function paymentBucket(o) {
+  const ps = o && o.payment_status;
+  if (ps === 'confirmed') return 'paid';
+  if (ps === 'refunded') return 'refunded';
+  if (ps === 'refund_pending') return 'refund_pending';
+  if (o && o.status === 'pending_payment') return 'unpaid';
+  return 'other';
+}
+
+function pedidosRangeMs() {
+  if (pedidosFilter.range === 'all') return [0, Infinity];
+  const todayStart = hnMidnightMs(new Date());
+  if (pedidosFilter.range === 'today') return [todayStart, Infinity];
+  const days = pedidosFilter.range === '7days' ? 7 : 30;
+  return [todayStart - (days - 1) * 86400000, Infinity];
+}
+
+function fmtDateTime(ms) {
+  if (!ms) return '—';
+  return new Date(Number(ms) + HN_OFFSET_MS).toLocaleString('es-HN', {
+    timeZone: 'UTC', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+const PAYMENT_STATUS_ES = {
+  pending: 'Pendiente', confirmed: 'Confirmado', failed: 'Falló',
+  refunded: 'Reembolsado', refund_pending: 'Reembolso pendiente'
+};
+function methodLabel(o) {
+  const m = o && o.payment_method;
+  if (m === 'online') return 'Tarjeta en línea';
+  if (m === 'cash') return 'Efectivo';
+  if (m === 'card') return 'Tarjeta (entrega)';
+  return m || '—';
+}
+function statusBadge(o) {
+  const map = {
+    pending_payment: ['Pago pendiente', 'badge-warn'],
+    new: ['Nuevo', 'badge-info'],
+    preparing: ['Preparando', 'badge-info'],
+    ready: ['Listo', 'badge-info'],
+    out_for_delivery: ['En camino', 'badge-info'],
+    delivered: ['Entregado', 'badge-success'],
+    cancelled: ['Cancelado', 'badge-danger'],
+  };
+  const [label, cls] = map[o && o.status] || [(o && o.status) || '—', 'badge-dim'];
+  return `<span class="badge ${cls}">${escapeHtml(label)}</span>`;
+}
+// Online-payment badge; empty string for cash/card-on-delivery (no online state).
+function paymentBadge(o) {
+  const ps = o && o.payment_status;
+  if (ps === 'confirmed') return '<span class="badge badge-success">Pagado</span>';
+  if (ps === 'refunded') return '<span class="badge badge-dim">Reembolsado</span>';
+  if (ps === 'refund_pending') return '<span class="badge badge-warn">Reembolso pend.</span>';
+  if (ps === 'failed') return '<span class="badge badge-danger">Pago falló</span>';
+  if (o && o.status === 'pending_payment') return '<span class="badge badge-warn">Sin pagar</span>';
+  return '';
+}
+function typeBadge(o) {
+  return orderTypeOf(o) === 'pickup'
+    ? '<span class="badge badge-type-pickup">Recoger</span>'
+    : '<span class="badge badge-type-delivery">Entrega</span>';
+}
+
+function getPedidos() {
+  let list = Object.values(allOrders).filter(Boolean);
+  if (!pedidosFilter.includeTests) list = list.filter(o => !isTestOrder(o));
+
+  const q = pedidosFilter.q.trim().toLowerCase();
+  if (q) {
+    // A text search looks across ALL time (ignores the date range) — same UX as
+    // dispatch's closed-orders search.
+    list = list.filter(o =>
+      (o.order_id || '').toLowerCase().includes(q) ||
+      (o.customer_name || '').toLowerCase().includes(q) ||
+      (o.customer_phone || '').toLowerCase().includes(q));
+  } else {
+    const [from, to] = pedidosRangeMs();
+    list = list.filter(o => { const t = orderTime(o); return t >= from && t < to; });
+  }
+  if (pedidosFilter.type !== 'all') list = list.filter(o => orderTypeOf(o) === pedidosFilter.type);
+  if (pedidosFilter.status !== 'all') list = list.filter(o => statusBucket(o) === pedidosFilter.status);
+  if (pedidosFilter.payment !== 'all') list = list.filter(o => paymentBucket(o) === pedidosFilter.payment);
+
+  list.sort((a, b) => orderTime(b) - orderTime(a));
+  return list;
+}
+
+function renderPedidos() {
+  const wrap = $('pedidos-table-wrap');
+  if (!wrap) return;
+  const list = getPedidos();
+  $('zone-pedidos-count').textContent = list.length === 1 ? '1 pedido' : `${list.length} pedidos`;
+
+  if (!list.length) {
+    wrap.innerHTML = `<div class="orders-empty">${pedidosFilter.q.trim()
+      ? 'Sin resultados — verifica el ID, teléfono o nombre'
+      : 'No hay pedidos en este rango'}</div>`;
+    return;
+  }
+
+  const rows = list.map(o => {
+    const id = o.order_id || '';
+    const pay = paymentBadge(o) || `<span class="muted-method">${escapeHtml(methodLabel(o))}</span>`;
+    return `<tr data-order-id="${escapeHtml(id)}">
+      <td><div class="ot-name">${escapeHtml(o.customer_name || '—')}</div><div class="ot-id">${escapeHtml(id)}</div></td>
+      <td>${typeBadge(o)}</td>
+      <td>${statusBadge(o)}</td>
+      <td>${pay}</td>
+      <td class="num">L${o.total ?? '—'}</td>
+      <td class="ot-time">${fmtDateTime(orderTime(o))}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `<table class="orders-table">
+    <thead><tr>
+      <th>Cliente</th><th>Tipo</th><th>Estado</th><th>Pago</th><th class="num">Total</th><th>Fecha</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  wrap.querySelectorAll('tr[data-order-id]').forEach(tr => {
+    tr.addEventListener('click', () => openOrderDetail(tr.dataset.orderId));
+  });
+}
+
+function detailRow(k, v, mono = false) {
+  return `<div class="detail-row"><span class="dk">${escapeHtml(k)}</span><span class="dv${mono ? ' mono' : ''}">${v}</span></div>`;
+}
+
+function openOrderDetail(orderId) {
+  const o = allOrders[orderId] || Object.values(allOrders).find(x => x && x.order_id === orderId);
+  if (!o) return;
+
+  $('pd-name').textContent = o.customer_name || '—';
+  $('pd-id').textContent = o.order_id || orderId;
+
+  const isDelivery = orderTypeOf(o) === 'delivery';
+  const closeMs = o.delivered_at || o.cancelled_at || 0;
+  const closeLabel = o.status === 'cancelled' ? 'Cancelado' : (o.status === 'delivered' ? 'Entregado' : null);
+
+  // Driver (delivery only) lives on the _delivery task.
+  const dtask = allTasks[`${o.order_id}_delivery`];
+  const driverName = (dtask && dtask.assigned_driver_id)
+    ? (allDrivers[dtask.assigned_driver_id]?.name || dtask.assigned_driver_id) : null;
+
+  const groups = [];
+
+  // — Pedido —
+  let g = `<div class="detail-group"><div class="detail-group-label">Pedido</div>`;
+  g += detailRow('Tipo', typeBadge(o));
+  g += detailRow('Estado', statusBadge(o));
+  g += detailRow('Total', `L${o.total ?? '—'}`);
+  g += detailRow('Creado', escapeHtml(fmtDateTime(orderTime(o))));
+  if (orderTypeOf(o) === 'pickup' && o.pickup_time) {
+    g += detailRow('Recoger', o.pickup_time === 'standard' ? 'Lo antes posible' : escapeHtml(o.pickup_time));
+  }
+  if (closeMs && closeLabel) g += detailRow(closeLabel, escapeHtml(fmtDateTime(closeMs)));
+  if (o.cancel_reason) g += detailRow('Motivo', escapeHtml(o.cancel_reason));
+  g += `</div>`;
+  groups.push(g);
+
+  // — Cliente —
+  g = `<div class="detail-group"><div class="detail-group-label">Cliente</div>`;
+  g += detailRow('Nombre', escapeHtml(o.customer_name || '—'));
+  g += detailRow('Teléfono', escapeHtml(o.customer_phone || '—'));
+  if (isDelivery) {
+    const addr = [o.address_detected, o.address_details].filter(Boolean).map(escapeHtml).join('<br>');
+    if (addr) {
+      const link = o.maps_link ? ` · <a href="${escapeHtml(o.maps_link)}" target="_blank" rel="noopener">mapa</a>` : '';
+      g += `<div class="detail-row"><span class="dk">Dirección</span><span class="dv"><span class="detail-block">${addr}</span>${link}</span></div>`;
+    }
+  }
+  g += `</div>`;
+  groups.push(g);
+
+  // — Artículos —
+  if (o.items_text || o.notes) {
+    g = `<div class="detail-group"><div class="detail-group-label">Artículos</div>`;
+    if (o.items_text) g += `<div class="detail-block">${escapeHtml(o.items_text)}</div>`;
+    if (o.notes && o.notes !== '—') g += `<div class="detail-row" style="margin-top:8px"><span class="dk">Notas</span><span class="dv">${escapeHtml(o.notes)}</span></div>`;
+    g += `</div>`;
+    groups.push(g);
+  }
+
+  // — Pago —
+  g = `<div class="detail-group"><div class="detail-group-label">Pago</div>`;
+  g += detailRow('Método', escapeHtml(methodLabel(o)));
+  if (o.payment_status) g += detailRow('Estado de pago', escapeHtml(PAYMENT_STATUS_ES[o.payment_status] || o.payment_status));
+  if (o.payment_reference) g += detailRow('Referencia', escapeHtml(o.payment_reference), true);
+  if (o.active_attempt_id) g += detailRow('Intento', escapeHtml(o.active_attempt_id), true);
+  g += `</div>`;
+  groups.push(g);
+
+  // — Repartidor — (delivery only)
+  if (isDelivery) {
+    g = `<div class="detail-group"><div class="detail-group-label">Repartidor</div>`;
+    g += detailRow('Asignado', driverName ? escapeHtml(driverName) : '<span class="muted-method">Sin asignar</span>');
+    groups.push(g + `</div>`);
+  }
+
+  $('pd-body').innerHTML = `<div class="detail-badges">${statusBadge(o)} ${typeBadge(o)} ${paymentBadge(o)}</div>` + groups.join('');
+  $('pedido-modal').classList.remove('hidden');
+}
+
+function closeOrderDetail() { $('pedido-modal').classList.add('hidden'); }
+
+function initPedidos() {
+  const q = $('pedidos-q');
+  if (q) q.addEventListener('input', () => { pedidosFilter.q = q.value; renderPedidos(); });
+  $('pedidos-type')?.addEventListener('change', (e) => { pedidosFilter.type = e.target.value; renderPedidos(); });
+  $('pedidos-status')?.addEventListener('change', (e) => { pedidosFilter.status = e.target.value; renderPedidos(); });
+  $('pedidos-payment')?.addEventListener('change', (e) => { pedidosFilter.payment = e.target.value; renderPedidos(); });
+  $('pedidos-tests')?.addEventListener('change', (e) => { pedidosFilter.includeTests = e.target.checked; renderPedidos(); });
+
+  $('pedidos-range')?.querySelectorAll('.chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $('pedidos-range').querySelectorAll('.chip').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      pedidosFilter.range = btn.dataset.prange;
+      renderPedidos();
+    });
+  });
+
+  $('pd-close')?.addEventListener('click', closeOrderDetail);
+  $('pedido-modal')?.addEventListener('click', (e) => { if (e.target.id === 'pedido-modal') closeOrderDetail(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeOrderDetail(); });
+}
+initPedidos();
+
 function escapeHtml(s) {
   if (s == null) return '';
   return String(s)
