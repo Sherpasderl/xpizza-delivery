@@ -17,9 +17,11 @@ separate factura/SAR system.
   `manual_reconciliation` (paid-but-lost-capture-response → dispatcher verifies vs ledger). (Cash/COD:
   not set / `n/a`.)
 - **`payment_attempts/{attempt_id}.status`**: `active` (auth pending) → `capturing` (claim held) →
-  `captured` (confirmed) | `declined` | `abandoned` | `converted` (to COD) | `voided` | `refunded`.
-  **The attempt record is the charge source of truth.** `active`/`capturing` are attempt/lock concepts,
-  **not** `order.status`.
+  `captured` (confirmed) | `capture_unverified` (paid-but-lost-response, terminal-pending → manual reconcile)
+  | `declined` | `abandoned` | `converted` (to COD) | `voided` | `refunded`. **The attempt record is the
+  charge source of truth.** `active`/`capturing` are attempt/lock concepts, **not** `order.status`.
+  `capture_unverified` is set together with `order.payment_status:'manual_reconciliation'` so sweeps stop
+  retrying it.
 
 ## Money-safety invariants
 - **I1** order record exists before any charge.
@@ -90,7 +92,7 @@ CONFIRM (authoritative = SERVER doCapture, NOT getStatus — sandbox-proven 2026
          payment_hash===MD5(active.pixelpay_order_id|auth_key|secret)   ← binding from OUR capture call, never the client
     → ALL hold → CONFIRM ; else (declined / amount>auth / hash-mismatch) → VOID + fail, never materialize  [I7/I8]
   (getStatus(payment_uuid)=liveness only: paid/voided/refunded — used by sweep/reconcile, NOT to confirm.)
-sweepStalePending: lookup by captured payment_uuid (status takes payment_uuid only) → approved→CONFIRM | terminal→fail | active→leave
+sweepStalePending: getStatus(captured payment_uuid) → uncaptured-auth→(re)capture after stale-claim timeout | paid+no-verified-result→manual_reconciliation (NEVER confirm) | voided/declined→fail | live-3DS→leave
 CONFIRM: persist verified pay-data into attempt FIRST → claim payment_status=confirmed → atomic materialize
 ```
 
@@ -124,9 +126,11 @@ browser may best-effort POST its `payment_uuid` back, but it is not trusted (the
 - **Confirm = capture, then verify the capture response (all server-side):**
   1. Resolve the **active** attempt; if `payment_status==='confirmed'` already → no-op (idempotent). Read the
      attempt's `captured` guard — **never capture twice** (see idempotency below).
-  2. `getStatus(payment_uuid)` first as a cheap pre-check: if already `paid` (captured by a prior run that
-     crashed before we recorded it) skip to verify/recover; if `voided/declined` → fail; if auth-pending →
-     capture.
+  2. `getStatus(payment_uuid)` first as a cheap pre-check: **`paid` recovers to `new` ONLY if a verified
+     capture result is already persisted** on the attempt (the post-capture write landed but the confirm
+     claim didn't); **`paid` with NO persisted verified result → `manual_reconciliation`** (we can't reverify
+     — §B idempotency); `voided/declined` → fail; `uncaptured auth` → capture (after the stale-claim timeout
+     if a `capturing` claim is already set — see below).
   3. `doCapture(payment_uuid, transaction_approved_amount = total_cents→lempiras)` `[POST api/v2/transaction/
      capture, {payment_uuid, transaction_approved_amount}, headers key+hash]`.
   4. **Verify the capture response** (server-obtained — the client never supplies these): `response_approved
@@ -153,7 +157,13 @@ browser may best-effort POST its `payment_uuid` back, but it is not trusted (the
     materialize-by-hand or refund) — **NEVER auto-materialize to `new`** (can't reverify amount/binding);
     **voided/declined** → `failed`.
   Because the server set the capture amount = our total, a stray `paid` is almost certainly our amount, but we
-  refuse to *assume* it — manual reconciliation is the safe sink for this sub-second crash window.
+  refuse to *assume* it — manual reconciliation (`attempt.status:'capture_unverified'` +
+  `payment_status:'manual_reconciliation'`) is the safe sink for this sub-second crash window.
+- **Capture-retry backoff (no double-capture race):** a `capturing` claim is only re-attemptable after a
+  **conservative stale-claim timeout** (≫ the capture HTTP timeout) — a timed-out first `doCapture` may still
+  land at PixelPay, so an immediate retry could race it. After the timeout, `getStatus` decides: still
+  `uncaptured auth` → retry capture; `paid` → manual_reconciliation (per above). *(Sandbox-pin near-concurrent
+  duplicate-capture behavior; the observed 412 on a settled capture is the backstop.)*
 - **Inline duplicate guard (I3):** the attempt-lock already caps one active attempt per order; if a *second*
   captured `payment_uuid` ever appears for the same `pixelpay_order_id` (e.g. two auths both captured), the
   loser is **voided/refunded in-path** + alerted; daily `reconcilePayments` is the backstop.
@@ -181,7 +191,9 @@ browser may best-effort POST its `payment_uuid` back, but it is not trusted (the
    where available; states `pending/sent/failed`; factura consumer idempotent on `order_id` (#2). Factura
    signal = the `order.status→new` materialize (carries subtotal/tax/total/payment_method/payment_reference).
 6. **Poll record:** EVERY terminal path updates `order_tracking/{token}.phase` —
-   `confirmed`/`declined`/`converted`/`cancelled`/`refund_pending` — so the client poll never hangs (finding 4).
+   `confirmed`/`declined`/`converted`/`cancelled`/`refund_pending`/**`manual_reconciliation`** — so the client
+   poll never hangs (finding 4). `manual_reconciliation` shows a **"estamos verificando tu pago"** UX (not a
+   hard failure and not a success), so a charged customer isn't told to retry into a double-charge.
 
 ### D. Auto-assign retrigger (B) + readers filter (E/#6)
 - Change auto-assign to fire on the **`order.status → new` transition with tasks present**
@@ -238,6 +250,8 @@ guard; this is the safety net, not the control.)
 
 ### J. New/changed components
 Functions: `chargeOnlineOrder`, `confirmOnlinePayment` (client-POST nudge → capture), `pixelPayWebhook`,
+`resolveManualReconciliation` (audited: dispatcher-triggered, ledger-verified → materialize | refund/void →
+close | else keep queued+alert — **never raw DB editing of a `manual_reconciliation` order**),
 `cancelPaidOrder`, `convertFailedOnlineToCOD` (HTTPS);
 `sweepStalePending`, `reconcilePayments`, `refundReconciler`, `outboxWorker` (sched/trigger);
 `materializeOnConfirm` + retriggered auto-assign (DB triggers). Refactor `createOrder`'s order+tasks+tracking

@@ -213,3 +213,36 @@ Live sandbox probe (`payments-probe/`) found `getStatus(payment_uuid)` returns o
 Why this is safe: (a) the server sets the captured amount → a tampered browser auth can't make us capture the wrong amount (under-auth just fails the capture; no loss); (b) the binding `payment_hash` comes from our OWN capture call, not the client → defeats Codex's client-hash replay; (c) the webhook becomes a pure nudge (no signature dependency).
 
 Plan edits: rewrote contract architecture (browser doAuth + server doCapture; getStatus = liveness only); lifecycle pseudocode; §B confirm (capture-then-verify, capturing-claim idempotency, void-on-mismatch); §C (persist captured result); §E (client does doAuth + POST payment_uuid + poll); §G sweep (capture lost-nudge recovery; uncaptured auth expires = missed order not lost charge); attempt enum (+capturing/captured); I7/I8; Risks (resolved-by-probe vs still-sandbox-pin); §J (+confirmOnlinePayment). Re-submitting to Codex.
+
+---
+
+## AUTH+CAPTURE pivot — Codex round 1 (resumed)
+Codex: pivot is "directionally right and fixes the prior confirm-safety problem." One material gap: **lost-capture-response recovery** — if doCapture succeeds at PixelPay but we crash before persisting, the next run sees getStatus=paid but (probed) getStatus has no amount/order/hash, so it can't verify the paid txn is for our order/amount. Plan's "getStatus=paid → verify+materialize" was unsafe. Fix: prove a 2nd doCapture re-returns the verifiable result, OR add a detail/ledger lookup, OR route paid-but-lost-response to refund_pending/manual_reconciliation (never new). Plus: §B distinguish crash-before vs crash-after via capturing_started_at; §G not materialize on bare getStatus=paid; Risks hard gate.
+**VERDICT: REVISE**
+
+### Claude's response
+**Accepted — and resolved it empirically (probe 3).** A 2nd doCapture on an already-captured uuid returns **412 "Error al encontrar el cobro", no data** — so re-capture is NOT a recovery path. Per Codex's option (c): **paid-but-lost-capture-response → payment_status:manual_reconciliation, NEVER auto-materialize.** §B idempotency rewritten: a `capturing` claim with `capturing_started_at` + `payment_uuid` is set BEFORE doCapture, splitting crash-before-capture (safe to capture) from crash-after (getStatus=paid → manual_reconciliation; uncaptured auth → recapture; voided/declined → failed). §G fixed (no materialize on bare getStatus=paid). Added `manual_reconciliation` to the payment_status enum. Risks updated (412 resolved → manual-reconcile rule). Probe committed (probe-recapture-recovery.js). Re-submitting.
+
+---
+
+## AUTH+CAPTURE pivot — Codex round 2 (resumed)
+Codex: recovery rule "now money-safe in principle." 6 consistency gaps from the pivot:
+1. lifecycle pseudocode still said `sweep ... approved→CONFIRM` (contradicts §G) → fix to `paid+no-verified-result→manual_reconciliation`.
+2. §B "getStatus=paid → skip to verify/recover" ambiguous → say explicitly: paid recovers ONLY if a verified capture result is already persisted, else manual_reconciliation.
+3. attempt.status had no terminal for this case (stuck `capturing` → repeated sweeps) → add `capture_unverified`.
+4. poll/tracking terminal phases lacked `manual_reconciliation` → charged customer polls forever → add phase + "verifying your payment" UX.
+5. capture-retry after capturing+uncaptured-auth needs delay/backoff (timed-out 1st capture may race) → stale-claim timeout + sandbox-pin near-concurrent dup-capture.
+6. manual reconciliation must not be raw dispatcher DB editing → add audited `resolveManualReconciliation`.
+**VERDICT: REVISE**
+
+### Claude's response
+**Accepted all 6.** (1) lifecycle pseudocode sweep line → `paid+no-verified→manual_reconciliation, NEVER confirm`. (2) §B step 2 made explicit (paid recovers only with a persisted verified result). (3) added `capture_unverified` attempt status, set with `payment_status:manual_reconciliation` so sweeps stop. (4) added `manual_reconciliation` to `order_tracking.phase` terminal set + "estamos verificando tu pago" UX. (5) added capture-retry backoff (stale-claim timeout ≫ HTTP timeout; getStatus decides post-timeout) + sandbox-pin note. (6) added audited `resolveManualReconciliation` to §J (never raw DB editing). Re-submitting.
+
+---
+
+## AUTH+CAPTURE pivot — Codex round 3 (resumed) — APPROVED
+"The AUTH+CAPTURE recovery path is now money-safe." Bare getStatus=paid without a persisted verified capture result → manual_reconciliation + capture_unverified (not new); poll phase terminal; sweeps stop; manual resolution via audited function. "No new material money-safety issue found." Remaining items are explicitly **build gates, not architecture blockers**: sandbox-pin capture>auth rejection, getStatus status enum, void signature keying, decimal-lempira unit on approved capture, uncaptured-auth expiry.
+**VERDICT: APPROVED**
+
+### Convergence (AUTH+CAPTURE pivot)
+Probe-driven pivot passed Act 2 after 3 rounds (REVISE lost-capture → REVISE 6 consistency gaps → APPROVED). Two sharp money-safety holes were caught and closed empirically via live sandbox probes: (1) getStatus too thin to confirm → server doCapture is authoritative; (2) re-capture returns 412 → lost-capture-response → manual_reconciliation, never auto-materialize. Plan is Codex-approved for Stage 4 build. **No code written during the pivot.** Stage 4 build proceeds gated by 5 named sandbox pins (all verifiable during build, none architecture-blocking).
