@@ -11,9 +11,10 @@
  *   - void_signature = SHA-512(merchant_email | order_id | secret)
  *                      ⚠ the signature uses the RAW EMAIL (NOT the hashed auth_user), per
  *                      PixelPay's "Cancelling Payments" doc; order_id = pixelpay_order_id.
- *
- * (The SDK authenticates the sale/capture/status with x-auth-key + x-auth-hash only —
- * there is NO request signature — so the former HMAC-SHA3 helpers were removed.)
+ *   - client_signature = HMAC-SHA3-512(secret, app_key|…fields…)  — the x-client-signature
+ *                      header PixelPay's "Firma de Seguridad" doc REQUIRES on auth/sale/
+ *                      capture/status in PRODUCTION (the sandbox does not enforce it, which is
+ *                      why this was missing). Fields differ per call (see clientSignature).
  */
 const crypto = require('crypto');
 
@@ -46,4 +47,18 @@ function voidSignature(email, order_id, secret) {
     .digest('hex');
 }
 
-module.exports = { paymentHash, verifyPaymentHash, platformUser, voidSignature };
+// x-client-signature = HMAC-SHA3-512(secret, fields joined by '|'). REQUIRED by PixelPay
+// PRODUCTION on auth/sale/capture/status (the sandbox does not enforce it). Per the
+// "Firma de Seguridad" doc the fields are, per service:
+//   auth / sale : [app_key, order_id, app_url]                                  (order_id = pixelpay_order_id)
+//   capture     : [app_key, transaction_approved_amount, payment_uuid, app_url]
+//   status      : [app_key, payment_uuid, app_url]
+// Verified against the doc's known-answer: HMAC-SHA3-512('@s4ndb0x-…',
+//   '1234567890|ORDER-8888|https://pixelpay.dev') === '688084a6…e852ee2a'.
+function clientSignature(secret, fields) {
+  return crypto.createHmac('sha3-512', String(secret))
+    .update(fields.map(String).join('|'))
+    .digest('hex');
+}
+
+module.exports = { paymentHash, verifyPaymentHash, platformUser, voidSignature, clientSignature };

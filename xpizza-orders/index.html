@@ -2207,6 +2207,10 @@ async function runPixelPayAuth(pp){
   const settings = new Models.Settings();
   if(pp.mode==='sandbox'){ settings.setupSandbox(); }
   else { settings.setupCredentials(pp.app_key, pp.auth_hash); settings.setupEndpoint(pp.endpoint); }
+  // x-client-signature (PixelPay "Firma de Seguridad"): REQUIRED in production. The SERVER
+  // computed it (it has the secret); we only attach the header. Without this, production
+  // rejects every auth with "Firma de Seguridad incorrecta".
+  if(pp.client_signature){ settings.setupHeaders({ 'x-client-signature': pp.client_signature }); }
 
   const card = new Models.Card();
   card.number = document.getElementById('card-number').value.replace(/\s/g,'');

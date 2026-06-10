@@ -71,13 +71,19 @@ async function ppPost(action, body, extraHeaders = {}) {
 
 // CAPTURE — the authoritative confirm. `amountLempiras` is the decimal-lempira number the
 // server sets (must equal the order total; capture > auth is rejected by PixelPay).
+// x-client-signature fields (per the "Firma de Seguridad" doc): app_key | amount | uuid | app_url.
 function capture({ payment_uuid, amountLempiras }) {
-  return ppPost('capture', { payment_uuid, transaction_approved_amount: amountLempiras });
+  const cfg = resolvePixelPayConfig();
+  const sig = ppCrypto.clientSignature(cfg.secret, [cfg.app_key, amountLempiras, payment_uuid, cfg.app_url]);
+  return ppPost('capture', { payment_uuid, transaction_approved_amount: amountLempiras }, { 'x-client-signature': sig });
 }
 
 // STATUS — liveness only. data = { status, attemps, history } | null.
+// x-client-signature fields: app_key | payment_uuid | app_url.
 function getStatus({ payment_uuid }) {
-  return ppPost('status', { payment_uuid });
+  const cfg = resolvePixelPayConfig();
+  const sig = ppCrypto.clientSignature(cfg.secret, [cfg.app_key, payment_uuid, cfg.app_url]);
+  return ppPost('status', { payment_uuid }, { 'x-client-signature': sig });
 }
 
 // VOID — server-only. Per PixelPay's "Cancelling Payments" doc + verified vs the live

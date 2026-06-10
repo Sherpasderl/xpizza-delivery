@@ -58,6 +58,7 @@ const express = require('express');
 const whatsapp = require('./whatsapp');
 const { resolvePixelPayConfig, pixelPayCallbackUrl, pixelPayChargeAmountLempiras } = require('./pixelpay-config');
 const pixelpayClient = require('./pixelpay-client');
+const ppCrypto = require('./pixelpay');
 const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
 const { buildMaterializeUpdates } = require('./materialize');
 const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
@@ -848,6 +849,11 @@ chargeOnlineApp.all('*', async (req, res) => {
       endpoint: pp.endpoint,
       app_key: pp.app_key,            // x-auth-key
       auth_hash: pp.auth_hash,        // x-auth-hash, used verbatim (sandbox MD5 / prod SHA-512)
+      // x-client-signature for the browser doAuth — PixelPay PRODUCTION requires it (the
+      // "Firma de Seguridad" doc). Computed HERE on the server so the SECRET never ships to
+      // the browser; the auth signature covers only app_key|pixelpay_order_id|app_url (no
+      // card, no amount), so it's safe to hand to the client. Browser: setupHeaders({...}).
+      client_signature: ppCrypto.clientSignature(pp.secret, [pp.app_key, pixelpayOrderId, pp.app_url]),
       order: {
         id: pixelpayOrderId,                                      // PixelPay order.id = pixelpay_order_id (binds the auth to this attempt)
         amount: String(pixelPayChargeAmountLempiras(pp, total_cents)), // order_amount = the FULL tax-inclusive total charged (server-set)

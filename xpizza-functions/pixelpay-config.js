@@ -24,6 +24,7 @@ const SANDBOX = Object.freeze({
   mode: 'sandbox',
   endpoint: 'https://pixelpay.dev',
   app_key: '1234567890',
+  app_url: 'https://pixelpay.dev',               // x-client-signature app_url (doc's sandbox example value)
   auth_hash: '36cdf8271723276cb6f94904f8bde4b6', // = MD5('@s4ndb0x-abcd-1234-n1l4-p1x3l')
   secret: '@s4ndb0x-abcd-1234-n1l4-p1x3l',       // published sandbox signing secret
   merchant_email: 'sandbox@pixel.hn',            // documented sandbox void-authorized user (x-auth-user/void_signature)
@@ -52,6 +53,7 @@ function resolvePixelPayConfig() {
       mode: 'production',
       endpoint: process.env.PIXELPAY_ENDPOINT,
       app_key: process.env.PIXELPAY_KEY_ID,
+      app_url: process.env.PIXELPAY_APP_URL,      // x-client-signature app_url = registered commerce platform URL
       auth_hash: process.env.PIXELPAY_PUBLIC_KEY, // portal "Public key" = SHA-512(secret), used verbatim
       secret: process.env.PIXELPAY_SECRET,        // RAW secret (NOT the public key)
       merchant_email: process.env.PIXELPAY_MERCHANT_EMAIL,
