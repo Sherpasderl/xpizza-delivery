@@ -67,11 +67,16 @@ function genOrderId(){
   let s=''; for(const x of b) s+=A[x%32];
   return `PZX-${ymd}-${hms}-${s}`;
 }
+// Randomize the phone per run so the per-phone rate limiter (4/10min) doesn't throttle
+// repeated tests. (The IP bucket, 20/10min, still applies — plenty for testing.)
+function testPhone(){
+  let d=''; const b=new Uint8Array(8); crypto.getRandomValues(b); for(const x of b) d+=(x%10); return '504'+d;
+}
 function testOrder(){
   return {
     order_id: genOrderId(),
     customer_name: 'Prueba Sandbox',
-    customer_phone: '50497952893',
+    customer_phone: testPhone(),
     items: [{ name:'Margherita', qty:1, extras:[] }],
     items_text: '1× Margherita (PRUEBA SANDBOX)',
     notes: 'PRUEBA — pago sandbox',
