@@ -30,7 +30,13 @@ const SANDBOX = Object.freeze({
   // The SDK puts `env` in the request BODY from settings.environment. setupSandbox() sets
   // it to "sandbox"; WITHOUT it the gateway treats the sandbox key as a prod key (400
   // "El valor KEY es inválido" — verified). Production (setupCredentials) leaves it unset.
-  env: 'sandbox'
+  env: 'sandbox',
+  // The PixelPay sandbox ONLY recognizes order_amount 1-14 (each maps to a test outcome:
+  // 1=success, 2=declined, …). Real menu totals (L251+) return "test case N doesn't exist".
+  // So in SANDBOX we charge a fixed small TEST amount through PixelPay (default 1=success;
+  // override via PIXELPAY_SANDBOX_AMOUNT to test 2=declined etc.). The ORDER's real total
+  // is untouched — only the PixelPay auth/capture amount is mapped. Production never does this.
+  sandbox_amount: Math.min(14, Math.max(1, parseInt(process.env.PIXELPAY_SANDBOX_AMOUNT, 10) || 1))
 });
 
 /**
@@ -93,4 +99,14 @@ function pixelPayCallbackUrl() {
   ).trim();
 }
 
-module.exports = { resolvePixelPayConfig, pixelPayAppUrl, pixelPayCallbackUrl };
+/**
+ * The lempira amount to charge through PixelPay for an order. PRODUCTION uses the
+ * real total (centavos → lempiras). SANDBOX maps it to a fixed 1-14 test amount
+ * (the sandbox rejects any other amount) — the order's real total is untouched.
+ */
+function pixelPayChargeAmountLempiras(cfg, totalCents) {
+  if (cfg && cfg.mode === 'sandbox') return cfg.sandbox_amount;
+  return Number((Number(totalCents) / 100).toFixed(2));
+}
+
+module.exports = { resolvePixelPayConfig, pixelPayAppUrl, pixelPayCallbackUrl, pixelPayChargeAmountLempiras };

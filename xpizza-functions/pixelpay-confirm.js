@@ -42,7 +42,11 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
   if (!attemptId) return { outcome: 'no_active_attempt' };
   const attemptRef = db.ref(`payment_attempts/${attemptId}`);
   const pixelpayOrderId = `${orderId}-${attemptId}`;
-  const amountLempiras = Number((Number(order.total_cents) / 100).toFixed(2));
+  // Amount we CAPTURE through PixelPay. deps.chargeAmountLempiras lets the prod path map
+  // sandbox orders to a 1-14 test amount (the sandbox rejects real totals); default = real total.
+  const amountLempiras = deps.chargeAmountLempiras
+    ? deps.chargeAmountLempiras(order.total_cents)
+    : Number((Number(order.total_cents) / 100).toFixed(2));
 
   // ---- 1. Capturing claim (CAS on the attempt) ----
   const claim = await attemptRef.transaction((cur) => {

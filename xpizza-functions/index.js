@@ -53,7 +53,7 @@ const webpush = require('web-push');
 const { google } = require('googleapis');
 const express = require('express');
 const whatsapp = require('./whatsapp');
-const { resolvePixelPayConfig, pixelPayCallbackUrl } = require('./pixelpay-config');
+const { resolvePixelPayConfig, pixelPayCallbackUrl, pixelPayChargeAmountLempiras } = require('./pixelpay-config');
 const pixelpayClient = require('./pixelpay-client');
 const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
 const { buildMaterializeUpdates } = require('./materialize');
@@ -806,11 +806,11 @@ chargeOnlineApp.all('*', async (req, res) => {
       app_key: pp.app_key,            // x-auth-key
       auth_hash: pp.auth_hash,        // x-auth-hash, used verbatim (sandbox MD5 / prod SHA-512)
       order: {
-        id: pixelpayOrderId,                       // PixelPay order.id = pixelpay_order_id (binds the auth to this attempt)
-        amount: centsToLempiras(total_cents),      // order_amount — inclusive grand total (captured server-side)
-        tax_amount: centsToLempiras(tax_cents),    // order_tax_amount — ISV portion (informational)
+        id: pixelpayOrderId,                                      // PixelPay order.id = pixelpay_order_id (binds the auth to this attempt)
+        amount: String(pixelPayChargeAmountLempiras(pp, total_cents)), // order_amount captured server-side (sandbox → 1-14 test amount)
+        tax_amount: pp.mode === 'sandbox' ? '0.00' : centsToLempiras(tax_cents), // ISV (informational); zeroed in sandbox to stay ≤ test amount
         currency: 'HNL',
-        callback_url: pixelPayCallbackUrl()        // order_callback → pixelPayWebhook nudge
+        callback_url: pixelPayCallbackUrl()                       // order_callback → pixelPayWebhook nudge
       }
     }
   });
@@ -967,7 +967,18 @@ exports.confirmOnlinePayment = onRequest(
 
 // Shared deps + entrypoint for the confirm machine (used by webhook + sweep).
 function confirmDeps(db) {
-  return { db, client: pixelpayClient, restaurant: RESTAURANT, buildMaterializeUpdates, alert: (kind, detail) => paymentAlert(db, kind, detail) };
+  return {
+    db,
+    client: pixelpayClient,
+    restaurant: RESTAURANT,
+    buildMaterializeUpdates,
+    // Config-aware capture amount: sandbox → 1-14 test amount; production → real total.
+    chargeAmountLempiras: (totalCents) => {
+      try { return pixelPayChargeAmountLempiras(resolvePixelPayConfig(), totalCents); }
+      catch (_) { return Number((Number(totalCents) / 100).toFixed(2)); }
+    },
+    alert: (kind, detail) => paymentAlert(db, kind, detail)
+  };
 }
 function runConfirm(db, orderId, paymentUuid) {
   return confirmOnlinePayment(confirmDeps(db), { orderId, paymentUuid, now: Date.now(), trackingToken: generateTrackingToken() });
