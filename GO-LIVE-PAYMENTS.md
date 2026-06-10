@@ -25,29 +25,36 @@ The Stage-2 rule blocks a **client** from cancelling a paid online order (forcin
 - [ ] In the Firebase Console → Realtime Database → Rules **Playground**, simulate `orders/{id}/status = 'cancelled'` as a dispatcher on an order with `payment_method:'online'` + `payment_status:'confirmed'` → expect **DENIED**. Confirm a normal cash-order cancel is still **ALLOWED**.
 - [ ] `cd xpizza-functions && npm run deploy:rules` (syncs `xpizza-reference/database.rules.json` → deploys). Reconcile live == repo.
 
-## 3. Merge PR #2 → `main`
-- [ ] Review the diff on GitHub, then **merge** `feature/pixelpay-online-payment` → `main`.
-  - Makes `main` the source of truth **and** triggers Netlify to rebuild every static app (carries the readers `filterLiveOrders` fix + the new order-form payment UX).
+> ⚠ **ORDERING (important):** Production functions must go live **BEFORE** the merge. Merging (step 6)
+> deploys the new order form — with the online-pay button — to the **live** site; if the functions are still
+> in `sandbox` mode, real customers picking "online" would hit the test flow (L1 charges). So the sequence is:
+> prod creds → flip production → webhook → **then** merge → smoke test.
 
-## 4. 🔴 Set production credentials
+## 3. 🔴 Set production credentials
 In `xpizza-functions/.env` (gitignored — never committed):
 - [ ] `PIXELPAY_SECRET=` → the **masked "Secret Key"** from the portal (NOT the public key).
 - [ ] `PIXELPAY_MERCHANT_EMAIL=` → the authorized merchant-user email (for void `x-auth-user`).
 - [ ] Already set: `PIXELPAY_ENDPOINT=https://hn.ficoposonline.com`, `PIXELPAY_KEY_ID=FH3005019504`, `PIXELPAY_PUBLIC_KEY=7e70…` (the SHA-512), `RECON_SECRET`.
 - [ ] **Sanity check the secret:** `node -e "console.log(require('crypto').createHash('sha512').update(process.env.PIXELPAY_SECRET).digest('hex'))"` must equal `PIXELPAY_PUBLIC_KEY`. If not, the secret is wrong.
 
-## 5. 🔴 Flip to production + deploy functions
+## 4. 🔴 Flip to production + deploy functions
 - [ ] In `.env`: `PIXELPAY_MODE=production` (and ensure `PIXELPAY_SANDBOX_AMOUNT` is irrelevant — production always charges the real total).
 - [ ] `cd xpizza-functions && npm run deploy`.
 - [ ] Confirm `chargeOnlineOrder` now returns `mode:"production"` + the **real** amount (not L1).
 
-## 6. Configure the PixelPay webhook
+## 5. Configure the PixelPay webhook
 Payload format **pinned** from a live capture: order id is in `ref` (= our `pixelpay_order_id`), `status:"paid"`. The webhook is nudge-only (confirm re-verifies via capture), so it's safe + idempotent.
 - [ ] In the PixelPay portal: **Activar Webhook** → set the URL to
   `https://us-central1-xpizza-delivery.cloudfunctions.net/pixelPayWebhook`.
+- [ ] *(Optional, defense-in-depth)* set `PIXELPAY_WEBHOOK_SECRET` in `.env` + append `?secret=<value>` to the webhook URL (the webhook is nudge-only and re-verifies via capture, so this is hardening, not required).
 
 > **Refunds:** PixelPay has **no refund API** — `Void` reverses **same-day** only (auth holds last ≤15 days). `cancelPaidOrder` voids a same-day charge; a **settled (next-day) refund must be done manually in the PixelPay portal** → our `refund_pending` state + the dispatcher queue surface these.
-- [ ] *(Optional, defense-in-depth)* set `PIXELPAY_WEBHOOK_SECRET` in `.env` + append `?secret=<value>` to the webhook URL (the webhook is nudge-only and re-verifies via capture, so this is hardening, not required).
+
+## 6. 🔴 Merge PR #2 → `main`  (LAST deploy step — this is what goes live to customers)
+Production functions must already be live (steps 3–5) — see the ordering warning above.
+- [ ] Review the diff on GitHub, then **merge** `feature/pixelpay-online-payment` → `main`.
+  - Triggers Netlify to rebuild every static app: the **order form** (online-pay UX, now hitting production) + the readers' `filterLiveOrders` fix.
+- [ ] Confirm Netlify rebuilt the order form + the 4 reader apps.
 
 ## 7. 🔴 Production smoke test (one small real charge)
 With a **real card** and a **small/cheap menu item**:
