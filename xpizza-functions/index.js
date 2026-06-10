@@ -4,6 +4,7 @@
  *
  * Endpoints:
  *   - createOrder                   (HTTPS)   — Make.com → Firebase write proxy + WhatsApp "received"
+ *   - chargeOnlineOrder             (HTTPS)   — PixelPay online card: pending-first order + signed sale config (Stage 3b)
  *   - notifyDriverOnAssignment      (DB trig) — Web Push to driver on assignment
  *   - notifyDriverOnCancellation    (DB trig) — Web Push to assigned driver when order is cancelled
  *   - onOrderCancelled              (DB trig) — Sync cancellations to KDS Sheet
@@ -45,6 +46,8 @@ const webpush = require('web-push');
 const { google } = require('googleapis');
 const express = require('express');
 const whatsapp = require('./whatsapp');
+const pixelpayCrypto = require('./pixelpay');
+const { resolvePixelPayConfig, pixelPayAppUrl, pixelPayCallbackUrl } = require('./pixelpay-config');
 
 initializeApp({
   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
@@ -605,6 +608,229 @@ exports.createOrder = onRequest(
                            // real peak traffic ever approaches this.
   },
   createOrderApp
+);
+
+// ============================================================
+// chargeOnlineOrder — Stage 3b: sign an online-payment attempt
+// ============================================================
+//
+// The pending-first, browser-sale entry point for PIXELPAY online card orders.
+// It is the ONLY writer that creates an online order, and it writes it as a
+// HIDDEN `pending_payment` order with NO tasks/tracking — those are materialized
+// only after the payment is server-confirmed (Stage 4). This function NEVER
+// calls PixelPay: PixelPay's 3DS runs client-side, so the browser SDK runs the
+// actual sale using the signed config we return here.
+//
+// Money-safety (see PAYMENT-PLAN.md invariants I1-I8):
+//   - A single CAS transaction on orders/{id} installs `active_attempt_id` — the
+//     atomic charge lock — so two concurrent submits can't open two attempts.
+//   - Each attempt is bound to PixelPay by `pixelpay_order_id = ${order_id}-${attempt_id}`;
+//     the x-client-signature signs THAT, so a late/old/second sale is
+//     distinguishable at confirm time and can't be mistaken for the active one.
+//   - An economic `payment_fingerprint` (order_id + total_cents + items) is
+//     pinned on first write; a later call with the same order_id but a different
+//     cart/total is rejected 409 (can't mutate the charged amount).
+//   - Recovery: if `active_attempt_id` is set but the attempt record is missing
+//     (crash between the order write and the attempt write), we recreate THAT
+//     attempt id — never mint a second one (Codex R4 caution #3).
+//
+// Auth + abuse posture mirrors createOrder: same public bearer secret, same
+// IP+phone rate-limit buckets. The pure helpers (attempt acquisition, fingerprint,
+// money conversion) live in ./pixelpay-charge so they're unit-testable in isolation.
+const { orderFingerprint, centsToLempiras, acquireOnlineAttempt } = require('./pixelpay-charge');
+
+const chargeOnlineApp = express();
+
+chargeOnlineApp.all('*', async (req, res) => {
+  if (req.method !== 'POST') {
+    res.set('Allow', 'POST');
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  // Same public bearer secret as createOrder (it's by-design public in the
+  // browser; the rate limiter + server-recomputed total are the real defense).
+  const SECRET = process.env.MAKE_SECRET;
+  if (!SECRET) {
+    console.error('chargeOnlineOrder: MAKE_SECRET not set — refusing all requests');
+    return unauthorized(res, 'server misconfigured');
+  }
+  const authHeader = req.get('authorization') || '';
+  const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!presented || !constantTimeEqual(presented, SECRET)) {
+    console.warn('chargeOnlineOrder: bad/missing bearer token');
+    return unauthorized(res, 'invalid bearer token');
+  }
+
+  const body = req.body || {};
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body);
+  if (errors.length > 0) return badRequest(res, errors.join('; '));
+
+  // This endpoint is ONLY for online card payments. cash/card_delivery use createOrder.
+  if (fields.payment_method !== 'online') {
+    return badRequest(res, 'chargeOnlineOrder is for payment_method "online" only');
+  }
+
+  const orderId = String(body.order_id);
+  const orderType = body.order_type;
+
+  // Delivery-zone enforcement (same as createOrder — clients are bypassable).
+  if (orderType === 'delivery') {
+    const distanceKm = haversineKm(lat, lng, RESTAURANT.lat, RESTAURANT.lng);
+    if (distanceKm > DELIVERY_RADIUS_KM) {
+      return badRequest(res, `Outside delivery zone (${distanceKm.toFixed(1)}km from restaurant, max ${DELIVERY_RADIUS_KM}km)`);
+    }
+  }
+
+  // Resolve PixelPay config up front — fail fast (500) before any DB write if
+  // production creds are missing, so we never open an attempt we can't sign.
+  let pp;
+  try {
+    pp = resolvePixelPayConfig();
+  } catch (e) {
+    console.error('chargeOnlineOrder: PixelPay config error', e.message);
+    return res.status(500).json({ error: 'Payment not configured', detail: e.message });
+  }
+
+  const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+  const db = getDatabase();
+
+  // Rate limit (same buckets as createOrder). A genuine retry of an in-flight
+  // attempt re-enters acquireOnlineAttempt and reuses it, so this throttles
+  // distinct submit bursts, not 3DS polling.
+  for (const [bucket, key, cfg] of [
+    ['ip', clientIp, RATE_LIMIT_BUCKETS.ip],
+    ['phone', fields.customer_phone, RATE_LIMIT_BUCKETS.phone]
+  ]) {
+    const { allowed, retryAfterSec } = await checkRateLimit(db, bucket, key, cfg);
+    if (!allowed) {
+      res.set('Retry-After', String(retryAfterSec));
+      return res.status(429).json({ error: 'Too Many Requests', detail: `Rate limit exceeded; retry in ${retryAfterSec}s` });
+    }
+  }
+
+  const { total_cents, subtotal_cents, tax_cents } = priceBreakdownCents(total);
+  const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text);
+
+  // The HIDDEN pending order. Mirrors createOrder's orderRecord (so Stage-4
+  // confirm can materialize tasks/tracking from it) but status=pending_payment,
+  // payment_status=pending, and NO tasks/tracking/WhatsApp yet.
+  const now = ServerValue.TIMESTAMP;
+  const pendingOrderRecord = {
+    order_id: orderId,
+    customer_name: fields.customer_name,
+    customer_phone: fields.customer_phone,
+    items_text: fields.items_text,
+    total: total,
+    total_cents, subtotal_cents, tax_cents,   // ISV 15% inclusive breakdown
+    notes: fields.notes,
+    payment_method: 'online',
+    payment_status: 'pending',
+    order_type: orderType,
+    status: 'pending_payment',
+    created_at: now
+  };
+  if (orderType === 'delivery') {
+    pendingOrderRecord.lat = lat;
+    pendingOrderRecord.lng = lng;
+    pendingOrderRecord.address_detected = fields.address_detected;
+    pendingOrderRecord.address_details = fields.address_details;
+    pendingOrderRecord.maps_link = `https://www.google.com/maps?q=${lat},${lng}`;
+  } else {
+    pendingOrderRecord.pickup_time = fields.pickup_time;
+  }
+
+  // Acquire the atomic charge lock + attempt.
+  let acq;
+  try {
+    acq = await acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint);
+  } catch (e) {
+    console.error(`chargeOnlineOrder: acquire failed for ${orderId}`, e.message);
+    return res.status(500).json({ error: 'Database error', detail: e.message });
+  }
+
+  if (acq.outcome === 'already_paid') {
+    return res.status(409).json({ error: 'Already paid', detail: 'This order is already confirmed paid', order_id: orderId });
+  }
+  if (acq.outcome === 'conflict') {
+    return res.status(409).json({ error: 'Order conflict', detail: 'order_id already used for a different cart/total', order_id: orderId });
+  }
+  if (acq.outcome !== 'acquired' && acq.outcome !== 'reuse') {
+    return res.status(503).json({ error: 'Could not start payment', detail: 'please retry', order_id: orderId });
+  }
+
+  const attemptId = acq.attempt_id;
+  const pixelpayOrderId = `${orderId}-${attemptId}`;
+
+  // Write the attempt record when we own a fresh one (or are recovering a
+  // pointer whose record went missing). 'reuse' already has a live record.
+  if (acq.outcome === 'acquired') {
+    try {
+      await db.ref(`payment_attempts/${attemptId}`).update({
+        order_id: orderId,
+        status: 'active',
+        total_cents,
+        pixelpay_order_id: pixelpayOrderId,
+        created_at: now
+      });
+    } catch (e) {
+      console.error(`chargeOnlineOrder: attempt write failed for ${pixelpayOrderId}`, e.message);
+      return res.status(500).json({ error: 'Database error', detail: e.message });
+    }
+  }
+
+  // Sign the sale for THIS pixelpay_order_id. The browser SDK runs the sale with
+  // this signature; we never call PixelPay here.
+  const appUrl = pixelPayAppUrl();
+  const clientSignature = pixelpayCrypto.saleSignature(pp.secret, {
+    app_key: pp.app_key,
+    order_id: pixelpayOrderId,
+    app_url: appUrl
+  });
+
+  console.log(`chargeOnlineOrder: ${acq.outcome} ${pixelpayOrderId} (mode=${pp.mode}, ${centsToLempiras(total_cents)} HNL)`);
+
+  return res.status(200).json({
+    ok: true,
+    order_id: orderId,
+    attempt_id: attemptId,
+    pixelpay_order_id: pixelpayOrderId,
+    payment_status: 'pending',
+    pixelpay: {
+      mode: pp.mode,
+      endpoint: pp.endpoint,
+      app_key: pp.app_key,
+      auth_hash: pp.auth_hash,        // x-auth-hash, used verbatim (sandbox MD5 / prod SHA-512)
+      app_url: appUrl,                // folded into the signature; sandbox-verify the exact value
+      client_signature: clientSignature,
+      order: {
+        id: pixelpayOrderId,
+        amount: centsToLempiras(total_cents),     // order_amount — inclusive grand total (charged)
+        tax_amount: centsToLempiras(tax_cents),   // order_tax_amount — ISV portion (informational)
+        currency: 'HNL',
+        callback_url: pixelPayCallbackUrl()        // order_callback (webhook receiver = Stage 4)
+      }
+    }
+  });
+});
+
+chargeOnlineApp.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
+    console.warn(`chargeOnlineOrder: malformed JSON — ${err.message}`);
+    return res.status(400).json({ error: 'Bad Request', detail: 'Malformed JSON in request body' });
+  }
+  // eslint-disable-next-line no-unused-vars
+  next(err);
+});
+
+exports.chargeOnlineOrder = onRequest(
+  {
+    region: 'us-central1',
+    cors: true,
+    timeoutSeconds: 30,
+    memory: '256MiB',
+    maxInstances: 10
+  },
+  chargeOnlineApp
 );
 
 // ============================================================
