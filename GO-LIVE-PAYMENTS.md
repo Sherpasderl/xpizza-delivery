@@ -42,8 +42,11 @@ In `xpizza-functions/.env` (gitignored — never committed):
 - [ ] Confirm `chargeOnlineOrder` now returns `mode:"production"` + the **real** amount (not L1).
 
 ## 6. Configure the PixelPay webhook
+Payload format **pinned** from a live capture: order id is in `ref` (= our `pixelpay_order_id`), `status:"paid"`. The webhook is nudge-only (confirm re-verifies via capture), so it's safe + idempotent.
 - [ ] In the PixelPay portal: **Activar Webhook** → set the URL to
   `https://us-central1-xpizza-delivery.cloudfunctions.net/pixelPayWebhook`.
+
+> **Refunds:** PixelPay has **no refund API** — `Void` reverses **same-day** only (auth holds last ≤15 days). `cancelPaidOrder` voids a same-day charge; a **settled (next-day) refund must be done manually in the PixelPay portal** → our `refund_pending` state + the dispatcher queue surface these.
 - [ ] *(Optional, defense-in-depth)* set `PIXELPAY_WEBHOOK_SECRET` in `.env` + append `?secret=<value>` to the webhook URL (the webhook is nudge-only and re-verifies via capture, so this is hardening, not required).
 
 ## 7. 🔴 Production smoke test (one small real charge)
