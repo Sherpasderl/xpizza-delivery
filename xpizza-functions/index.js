@@ -199,6 +199,20 @@ function computeServerTotal(items) {
   return { total, error: null };
 }
 
+// ---------------------------------------------------------------------------
+// Canonical money. `total_cents` (integer HNL centavos) is the source of truth
+// for charges + comparisons. ISV 15% is tax-INCLUSIVE: the menu price IS what
+// the customer pays, so we break the tax OUT of the total with a fixed rounding
+// rule that guarantees subtotal_cents + tax_cents === total_cents exactly.
+// (Stored on EVERY order — cash too — so the factura/SAR system has the breakdown.)
+// ---------------------------------------------------------------------------
+function priceBreakdownCents(totalLempiras) {
+  const total_cents = Math.round(Number(totalLempiras) * 100);
+  const tax_cents = Math.round(total_cents - total_cents / 1.15);
+  const subtotal_cents = total_cents - tax_cents;
+  return { total_cents, subtotal_cents, tax_cents };
+}
+
 function validateOrderPayload(body) {
   const errors = [];
   const required = ['order_id', 'customer_name', 'customer_phone', 'items_text', 'order_type'];
@@ -427,6 +441,7 @@ createOrderApp.all('*', async (req, res) => {
     customer_phone: fields.customer_phone,
     items_text: fields.items_text,
     total: total,
+    ...priceBreakdownCents(total),   // total_cents / subtotal_cents / tax_cents (ISV 15% incl.)
     notes: fields.notes,
     payment_method: fields.payment_method,
     order_type: orderType,

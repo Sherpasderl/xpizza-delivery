@@ -1417,12 +1417,19 @@ let selectedPayment=null, currentOrder=null;
 
 function genOrderId(){
   const d=new Date();
-  return 'PZX-'+d.getFullYear().toString().slice(-2)+
+  const ts='PZX-'+d.getFullYear().toString().slice(-2)+
     String(d.getMonth()+1).padStart(2,'0')+
     String(d.getDate()).padStart(2,'0')+'-'+
     String(d.getHours()).padStart(2,'0')+
     String(d.getMinutes()).padStart(2,'0')+
     String(d.getSeconds()).padStart(2,'0');
+  // High-entropy suffix (CSPRNG) — two orders in the same second can't collide,
+  // which matters once order_id is the payment idempotency anchor. Charset is
+  // [0-9A-Z] (Crockford-ish, no I/L/O/U), within the server's order_id allowlist.
+  const A='0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  const b=new Uint8Array(8); crypto.getRandomValues(b);
+  let r=''; for(const x of b) r+=A[x % 32];
+  return ts+'-'+r;
 }
 
 /* ── Menu rendering ── */
