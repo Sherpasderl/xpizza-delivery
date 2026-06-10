@@ -112,6 +112,21 @@ function ok(name) { console.log(`  ✓ ${name}`); pass++; }
     ok('declined attempt → rotate to a fresh attempt');
   }
 
+  // 5b. Attempt mid/post-capture (capturing/captured/capture_unverified) → in_progress,
+  //     NEVER rotate (a 2nd attempt would risk a double charge).
+  for (const st of ['capturing', 'captured', 'capture_unverified']) {
+    const db = makeDb({
+      [`orders/${ORDER_ID}`]: { ...PENDING, active_attempt_id: 'AAA', payment_fingerprint: FP },
+      ['payment_attempts/AAA']: { order_id: ORDER_ID, status: st }
+    });
+    const r = await acquireOnlineAttempt(db, ORDER_ID, PENDING, FP, () => 'NEW');
+    assert.strictEqual(r.outcome, 'in_progress', `${st} → in_progress`);
+    // No SECOND attempt is installed: the lock still points at AAA, and 'NEW' was never written.
+    assert.strictEqual(db.store[`orders/${ORDER_ID}`].active_attempt_id, 'AAA', `${st} keeps the same attempt`);
+    assert.strictEqual(db.store['payment_attempts/NEW'], undefined, `${st} must not create a 2nd attempt record`);
+  }
+  ok('capturing/captured/capture_unverified → in_progress (no 2nd attempt → no double charge)');
+
   // 6. Pointer set but attempt record MISSING (crash recovery) → recover SAME id, no 2nd mint.
   {
     const db = makeDb({ [`orders/${ORDER_ID}`]: { ...PENDING, active_attempt_id: 'AAA', payment_fingerprint: FP } });

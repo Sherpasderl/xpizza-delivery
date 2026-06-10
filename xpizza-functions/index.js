@@ -293,7 +293,10 @@ function validateOrderPayload(body) {
 // ---------------------------------------------------------------------------
 const RATE_LIMIT_BUCKETS = {
   ip:    { windowMs: 10 * 60 * 1000, max: 20 },  // coarse flood guard (CGNAT-aware)
-  phone: { windowMs: 10 * 60 * 1000, max: 4 }    // primary: new orders per phone / 10 min
+  phone: { windowMs: 10 * 60 * 1000, max: 4 },   // primary: new orders per phone / 10 min
+  confirm_ip: { windowMs: 10 * 60 * 1000, max: 80 } // confirm/poll guard: each payment does
+                                                    // ~1 confirm (+ a few polls on 202), so this
+                                                    // caps capture-hammering without blocking legit polling
 };
 
 // Hash a rate-limit key (IP / phone) into an RTDB-safe, non-PII key. Avoids
@@ -621,22 +624,22 @@ exports.createOrder = onRequest(
 );
 
 // ============================================================
-// chargeOnlineOrder — Stage 3b: sign an online-payment attempt
+// chargeOnlineOrder — open an online-payment attempt (AUTH+CAPTURE)
 // ============================================================
 //
-// The pending-first, browser-sale entry point for PIXELPAY online card orders.
-// It is the ONLY writer that creates an online order, and it writes it as a
-// HIDDEN `pending_payment` order with NO tasks/tracking — those are materialized
-// only after the payment is server-confirmed (Stage 4). This function NEVER
-// calls PixelPay: PixelPay's 3DS runs client-side, so the browser SDK runs the
-// actual sale using the signed config we return here.
+// The pending-first entry point for PIXELPAY online card orders. It is the ONLY
+// writer that creates an online order, and it writes it as a HIDDEN `pending_payment`
+// order with NO tasks/tracking — those are materialized only after the payment is
+// server-CAPTURED + confirmed (confirmOnlinePayment). This function NEVER calls
+// PixelPay and returns NO signature: the browser SDK runs a 3DS AUTH with the public
+// app_key + auth_hash, and the server confirms authoritatively later via doCapture.
 //
 // Money-safety (see PAYMENT-PLAN.md invariants I1-I8):
 //   - A single CAS transaction on orders/{id} installs `active_attempt_id` — the
 //     atomic charge lock — so two concurrent submits can't open two attempts.
-//   - Each attempt is bound to PixelPay by `pixelpay_order_id = ${order_id}-${attempt_id}`;
-//     the x-client-signature signs THAT, so a late/old/second sale is
-//     distinguishable at confirm time and can't be mistaken for the active one.
+//   - Each attempt is bound to PixelPay by `pixelpay_order_id = ${order_id}-${attempt_id}`,
+//     which the browser auths and the server captures, so a late/old/second auth is
+//     distinguishable at capture time and can't be mistaken for the active one.
 //   - An economic `payment_fingerprint` (order_id + total_cents + items) is
 //     pinned on first write; a later call with the same order_id but a different
 //     cart/total is rejected 409 (can't mutate the charged amount).
@@ -763,6 +766,10 @@ chargeOnlineApp.all('*', async (req, res) => {
   }
   if (acq.outcome === 'conflict') {
     return res.status(409).json({ error: 'Order conflict', detail: 'order_id already used for a different cart/total', order_id: orderId });
+  }
+  if (acq.outcome === 'in_progress') {
+    // A capture is already in-flight/done for this order — never open a 2nd attempt (double-charge).
+    return res.status(409).json({ error: 'Payment in progress', detail: 'this order already has a payment being processed; poll its status', order_id: orderId });
   }
   if (acq.outcome !== 'acquired' && acq.outcome !== 'reuse') {
     return res.status(503).json({ error: 'Could not start payment', detail: 'please retry', order_id: orderId });
@@ -897,6 +904,16 @@ confirmOnlineApp.all('*', async (req, res) => {
   }
 
   const db = getDatabase();
+
+  // Rate-limit (IP bucket) so the capture path can't be hammered to exhaust the PixelPay
+  // API / rack up cost. Sized to allow normal confirm + 202-polling (see RATE_LIMIT_BUCKETS).
+  const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+  const { allowed, retryAfterSec } = await checkRateLimit(db, 'confirm_ip', clientIp, RATE_LIMIT_BUCKETS.confirm_ip);
+  if (!allowed) {
+    res.set('Retry-After', String(retryAfterSec));
+    return res.status(429).json({ error: 'Too Many Requests', detail: `Rate limit exceeded; retry in ${retryAfterSec}s` });
+  }
+
   const deps = confirmDeps(db);   // shared deps (incl. config-aware chargeAmountLempiras)
 
   let result;
@@ -1006,9 +1023,15 @@ exports.pixelPayWebhook = onRequest(
     }
 
     const nudge = extractWebhookNudge(req.body || {});
-    if (!nudge.orderId) {
-      console.warn('pixelPayWebhook: could not extract order id from payload', JSON.stringify(req.body || {}).slice(0, 500));
+    // The webhook body is attacker-influenceable; orderId is used in an RTDB ref path.
+    // Require the safe charset before touching the DB (defense-in-depth; the confirm is
+    // already nudge-only + re-verified, but never let an unvalidated value reach a ref).
+    if (!nudge.orderId || !/^[A-Za-z0-9_-]{1,64}$/.test(nudge.orderId)) {
+      console.warn('pixelPayWebhook: missing/invalid order id in payload', JSON.stringify(req.body || {}).slice(0, 500));
       return res.status(200).json({ ok: true, ignored: 'no_order' });
+    }
+    if (nudge.paymentUuid && !/^[A-Za-z0-9_:-]{1,80}$/.test(nudge.paymentUuid)) {
+      return res.status(200).json({ ok: true, ignored: 'bad_uuid' });
     }
 
     const db = getDatabase();
@@ -1155,10 +1178,14 @@ exports.resolveManualReconciliation = onRequest(
   { region: 'us-central1', cors: true, timeoutSeconds: 60, memory: '256MiB', maxInstances: 5 },
   async (req, res) => {
     if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).json({ error: 'Method Not Allowed' }); }
-    const SECRET = process.env.MAKE_SECRET;
+    // DISPATCHER-ONLY money action (can materialize an order or trigger a void/refund).
+    // It is gated by a DEDICATED server-only secret — NOT the public order-intake secret
+    // (MAKE_SECRET) which is embedded in the browser order form. Fail-closed if unset.
+    const SECRET = process.env.RECON_SECRET;
+    if (!SECRET) { console.error('resolveManualReconciliation: RECON_SECRET not set — refusing'); return unauthorized(res, 'server misconfigured'); }
     const authHeader = req.get('authorization') || '';
     const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-    if (!SECRET || !presented || !constantTimeEqual(presented, SECRET)) return unauthorized(res, 'invalid bearer token');
+    if (!presented || !constantTimeEqual(presented, SECRET)) return unauthorized(res, 'invalid bearer token');
 
     const body = req.body || {};
     const orderId = String(body.order_id || '');

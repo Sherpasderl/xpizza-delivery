@@ -36,6 +36,11 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
   if (orderType === 'delivery') {
     const pickupTaskId = `${orderId}_pickup`;
     const deliveryTaskId = `${orderId}_delivery`;
+    // Mirror createOrder: write the task-id pointers onto the order node. The dashboard
+    // dereferences order.delivery_task_id with no fallback, so paid online delivery orders
+    // would otherwise show no driver in analytics.
+    updates[`orders/${orderId}/pickup_task_id`] = pickupTaskId;
+    updates[`orders/${orderId}/delivery_task_id`] = deliveryTaskId;
     updates[`tasks/${pickupTaskId}`] = {
       order_id: orderId,
       type: 'pickup',

@@ -68,8 +68,14 @@ async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint
         decided = { kind: 'recover', reuseAaid: order.active_attempt_id };
       } else if (att.status === 'active') {
         decided = { kind: 'reuse', reuseAaid: order.active_attempt_id };
+      } else if (att.status === 'capturing' || att.status === 'captured' || att.status === 'capture_unverified') {
+        // A capture is in-flight or already done for this attempt. Opening a SECOND
+        // attempt (a fresh auth) here risks a double charge if both get captured. Do NOT
+        // rotate — tell the caller it's in progress so it polls confirm instead of re-charging.
+        return { outcome: 'in_progress', attempt_id: order.active_attempt_id };
       } else {
-        // declined / terminal → rotate to a fresh attempt
+        // genuinely TERMINAL failure (declined / voided / abandoned / converted / refunded)
+        // → safe to open a fresh attempt.
         decided = { kind: 'rotate', newAaid: candidate, fromAaid: order.active_attempt_id };
       }
     }

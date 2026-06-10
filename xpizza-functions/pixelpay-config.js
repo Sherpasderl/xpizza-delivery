@@ -73,21 +73,6 @@ function resolvePixelPayConfig() {
 }
 
 /**
- * The `app_url` field folded into the x-client-signature
- * (HMAC-SHA3-512(secret, app_key | pixelpay_order_id | app_url)). It must equal
- * the value PixelPay validates the signed sale against.
- *
- * VERIFY-IN-SANDBOX: this is the one signature input whose exact value PixelPay
- * expects is integration-specific — pin it against a sandbox sale before relying
- * on it. Configurable via PIXELPAY_APP_URL; defaults to the order-form origin.
- */
-function pixelPayAppUrl() {
-  return String(process.env.PIXELPAY_APP_URL || 'https://xpizzaorders.netlify.app')
-    .trim()
-    .replace(/\/+$/, '');
-}
-
-/**
  * The order_callback (webhook) URL the browser SDK attaches to the sale so
  * PixelPay nudges us out-of-band. The receiver (pixelPayWebhook) is Stage 4;
  * including the URL now is harmless. Configurable via PIXELPAY_CALLBACK_URL.
@@ -109,4 +94,4 @@ function pixelPayChargeAmountLempiras(cfg, totalCents) {
   return Number((Number(totalCents) / 100).toFixed(2));
 }
 
-module.exports = { resolvePixelPayConfig, pixelPayAppUrl, pixelPayCallbackUrl, pixelPayChargeAmountLempiras };
+module.exports = { resolvePixelPayConfig, pixelPayCallbackUrl, pixelPayChargeAmountLempiras };
