@@ -175,3 +175,32 @@ No rejections. Re-submitting.
 
 ### Convergence (architecture re-check)
 The browser-sale refinement passed Act 2 after 2 re-check rounds (REVISE 6 → REVISE 4 → APPROVED), both within the same thread. The R4-APPROVED money-safety core held; the re-check only hardened the browser-sale binding (`pixelpay_order_id` per attempt, getStatus-sole-authority, inline duplicate void, durable payment_uuid capture). Plan is Codex-approved for the current architecture. **No code written during the re-check.** Stage 3a crypto helpers (architecture-independent) shipped earlier stay valid. Next: Stage 3b `chargeOnlineOrder`.
+
+---
+
+## SDK-accuracy revision (before Stage 4) — read @pixelpay/sdk-core v2.5.2 source
+Pulled the real SDK (npm) and read it rather than trusting the API doc. Material finding: **the SDK has no x-client-signature / HMAC / SHA3** — its auth is just `x-auth-key` + `x-auth-hash` (+`x-auth-user` for void, `x-auth-secure` for encrypted card). `x-client-signature` is a raw-API/Postman-only path. Since our browser uses the SDK, **the server does NOT sign the sale**; the browser charges with the public key+hash; the server's roles are the pending-first state machine + independent `getStatus` confirmation. Raw secret needed only for `void_signature` + optional `payment_hash`.
+
+Exact specs now known (were TBD): status = `POST api/v2/transaction/status {payment_uuid}`; void = `POST api/v2/transaction/void {payment_uuid, void_reason, void_signature}`; `payment_hash = MD5(order_id|auth_key|secret)` (matches pixelpay.js); confirm fields from `TransactionResult` = `response_approved`, `transaction_approved_amount`, `payment_uuid`, `payment_hash`.
+
+Plan edits: rewrote the integration-contract architecture (server no longer signs; browser uses public key+hash); pseudocode + §A return `{mode,endpoint,key,hash,order,callback}` with NO signature; §B/I7 confirm = `getStatus` authoritative for approval+amount, `payment_hash` supplies the `payment_uuid`↔`pixelpay_order_id` binding the status entity omits (reconciles re-check #4 without making MD5 the approval decision); webhook signature scheme now MOOT (nudge-only + re-verify); Risks updated (resolved vs still-sandbox-pin). Stage 3b's returned `client_signature` flagged vestigial (remove at implementation).
+
+Net: a **simplification** — removes the server-signing component; no money-safety invariant weakened (getStatus was always the authority; void path unchanged). Re-submitting to Codex for re-approval of the simplified architecture before Stage 4 code.
+
+---
+
+## SDK-accuracy revision — Codex round 1 (resumed)
+Codex: simplified architecture "close, but one material binding issue." **Binding-replay attack:** if the `payment_hash` used for binding comes from the browser/webhook (client-supplied), an attacker can pay order A (→ real `payment_hash(A)`), pay an unrelated transaction B for the correct amount (→ `payment_uuid(B)`), then submit `payment_uuid(B)+payment_hash(A)` to confirm A — `getStatus(B)` proves amount/approval, the replayed hash "proves" A, nothing proves B belongs to A. Fix: the binding `payment_hash` MUST come from the signed `getStatus(payment_uuid)` response; server ignores client/webhook hash; sandbox-pin that getStatus returns `payment_hash` or an order/reference field (else not confirm-safe). Plus: remove the stale "x-client-signature signs it" sentence; `payment_hash` uses `pixelpay_order_id` everywhere PixelPay-facing.
+**VERDICT: REVISE**
+
+### Claude's response
+**Accepted — sharp catch, real hole.** The SDK supports the fix: `TransactionResult` (what `status` returns) HAS a `payment_hash` field, so we bind using the **status-returned** hash, not the client's. Revisions: §B confirm rewritten — neither the webhook/client `payment_hash` nor its order id is trusted; approval+amount AND the binding (`getStatus`-returned `payment_hash` == `MD5(active.pixelpay_order_id|auth_key|secret)`) both come from getStatus; documented the exact replay it defeats; added the HARD sandbox-pin (getStatus must return payment_hash or an order/ref field, else not confirm-safe). Contract §3 + identifiers + lifecycle pseudocode + I7 + Risks all updated to "status-returned hash" and `pixelpay_order_id`. Removed the stale signature sentence. No rejections. Re-submitting.
+
+---
+
+## SDK-accuracy revision — Codex round 2 (resumed) — APPROVED
+"The confirm path is now structurally sound" — binding uses the `getStatus`-returned `payment_hash` (not client payloads); replay/mix-and-match attack documented + defeated; I7 correct; stale `x-client-signature` removed; Risks use `MD5(pixelpay_order_id|auth_key|secret)`. "No new material issue." Remaining launch gates already called out: sandbox must prove `getStatus` returns `payment_hash` or an order/reference field; void signature/order-id expectation pinned before production.
+**VERDICT: APPROVED**
+
+### Convergence (SDK-accuracy revision)
+Simplified (server-doesn't-sign) architecture passed Act 2 after 2 rounds (REVISE binding-replay → APPROVED). The change was a net simplification grounded in the real SDK source; the one real hole Codex found (client-supplied binding hash) is closed by binding on the status-returned hash. Plan is Codex-approved for Stage 4. **No code written during this revision.** Stage 4 may proceed, gated by the named sandbox pins (getStatus payment_hash/order-ref; void signature keying).
