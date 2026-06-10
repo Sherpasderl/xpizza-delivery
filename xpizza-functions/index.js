@@ -897,13 +897,7 @@ confirmOnlineApp.all('*', async (req, res) => {
   }
 
   const db = getDatabase();
-  const deps = {
-    db,
-    client: pixelpayClient,
-    restaurant: RESTAURANT,
-    buildMaterializeUpdates,
-    alert: (kind, detail) => paymentAlert(db, kind, detail)
-  };
+  const deps = confirmDeps(db);   // shared deps (incl. config-aware chargeAmountLempiras)
 
   let result;
   try {

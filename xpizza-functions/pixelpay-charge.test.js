@@ -26,10 +26,16 @@ function makeDb(initial = {}) {
           return { val: () => (v == null ? null : JSON.parse(JSON.stringify(v))) };
         },
         async transaction(fn) {
-          const cur = Object.prototype.hasOwnProperty.call(store, path) ? JSON.parse(JSON.stringify(store[path])) : null;
-          const next = fn(cur);
-          if (next === undefined) {
-            return { committed: false, snapshot: { val: () => cur } };
+          // Faithfully model the Admin SDK: the update fn is called with `null` on its
+          // first (uncached) invocation. Returning undefined there ABORTS permanently
+          // (no retry) — the real gotcha. Returning a value triggers an optimistic write
+          // that, on conflict with existing data, re-runs the fn with the real value.
+          const real = Object.prototype.hasOwnProperty.call(store, path) ? JSON.parse(JSON.stringify(store[path])) : null;
+          let next = fn(null);
+          if (next === undefined) return { committed: false, snapshot: { val: () => real } };
+          if (real !== null) {
+            next = fn(JSON.parse(JSON.stringify(real)));
+            if (next === undefined) return { committed: false, snapshot: { val: () => real } };
           }
           store[path] = JSON.parse(JSON.stringify(next));
           return { committed: true, snapshot: { val: () => store[path] } };

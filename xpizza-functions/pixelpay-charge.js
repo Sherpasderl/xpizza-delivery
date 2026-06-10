@@ -74,31 +74,32 @@ async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint
       }
     }
 
-    // Enact via CAS transaction on orders/{id}.
+    // Enact via CAS transaction on orders/{id}. NOTE: the Admin SDK calls the update
+    // fn with `null` on its first (uncached) invocation; for non-create paths we fall
+    // back to the pre-read `order` so we don't spuriously abort (returning a value
+    // triggers the SDK's conflict re-check against the real server value).
     const tx = await orderRef.transaction((cur) => {
       if (decided.kind === 'create') {
-        if (cur !== null) return;                       // lost the create race → abort, re-read
+        if (cur !== null) return;                       // exists on server → abort, re-decide
         return { ...pendingOrderRecord, active_attempt_id: decided.newAaid, payment_fingerprint: fingerprint };
       }
-      if (cur === null) return;                         // order vanished → abort
-      if (cur.payment_status === 'confirmed') return cur;
-      if (cur.payment_fingerprint && cur.payment_fingerprint !== fingerprint) return cur;
+      const c = cur || order;                           // non-create: avoid first-call-null abort
+      if (!c) return;                                   // genuinely absent
+      if (c.payment_status === 'confirmed') return c;
+      if (c.payment_fingerprint && c.payment_fingerprint !== fingerprint) return c;
       if (decided.kind === 'install') {
-        if (cur.active_attempt_id) return cur;          // someone installed first → re-evaluate post-tx
-        cur.active_attempt_id = decided.newAaid;
-        if (!cur.payment_fingerprint) cur.payment_fingerprint = fingerprint;
-        return cur;
+        if (c.active_attempt_id) return c;              // someone installed first → re-evaluate post-tx
+        return { ...c, active_attempt_id: decided.newAaid, payment_fingerprint: c.payment_fingerprint || fingerprint };
       }
       if (decided.kind === 'reuse' || decided.kind === 'recover') {
-        if (cur.active_attempt_id !== decided.reuseAaid) return cur; // pointer moved → re-evaluate
-        return cur;                                     // keep the same pointer (no change)
+        if (c.active_attempt_id !== decided.reuseAaid) return c; // pointer moved → re-evaluate
+        return c;                                       // keep the same pointer (no change)
       }
       if (decided.kind === 'rotate') {
-        if (cur.active_attempt_id !== decided.fromAaid) return cur;  // already rotated → re-evaluate
-        cur.active_attempt_id = decided.newAaid;
-        return cur;
+        if (c.active_attempt_id !== decided.fromAaid) return c;  // already rotated → re-evaluate
+        return { ...c, active_attempt_id: decided.newAaid };
       }
-      return cur;
+      return c;
     });
 
     if (!tx.committed) continue;                        // create lost / transient → re-read & retry

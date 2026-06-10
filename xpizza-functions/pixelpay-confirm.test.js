@@ -40,9 +40,16 @@ function makeDb(initial = {}) {
   const ref = (path = '') => ({
     async once() { const v = getAt(path); return { val: () => clone(v) }; },
     async transaction(fn) {
-      const cur = clone(getAt(path));
-      const next = fn(cur);
-      if (next === undefined) return { committed: false, snapshot: { val: () => cur } };
+      // Model the Admin SDK: first call gets `null` (uncached); returning undefined there
+      // ABORTS permanently. A value triggers an optimistic write that re-runs the fn with
+      // the real value on conflict. (Reproduces the first-call-null gotcha.)
+      const real = clone(getAt(path));
+      let next = fn(null);
+      if (next === undefined) return { committed: false, snapshot: { val: () => real } };
+      if (real !== null) {
+        next = fn(clone(real));
+        if (next === undefined) return { committed: false, snapshot: { val: () => real } };
+      }
       setAt(path, clone(next));
       return { committed: true, snapshot: { val: () => clone(getAt(path)) } };
     },

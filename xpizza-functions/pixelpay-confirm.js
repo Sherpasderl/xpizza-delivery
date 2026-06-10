@@ -49,26 +49,27 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
     : Number((Number(order.total_cents) / 100).toFixed(2));
 
   // ---- 1. Capturing claim (CAS on the attempt) ----
+  // Pre-read so the transaction never spuriously aborts on the Admin SDK's first
+  // (uncached → null) invocation: fall back to the pre-read value, and the SDK
+  // re-runs against the real value on any genuine write conflict. Returning a value
+  // (not undefined) on the null call is what triggers that conflict re-check.
+  const preAttempt = (await attemptRef.once('value')).val();
+  if (!preAttempt) return { outcome: 'no_attempt_record' };
+
   const claim = await attemptRef.transaction((cur) => {
-    if (!cur) return; // no attempt record → abort
-    if (cur.status === 'active') {
-      cur.status = 'capturing';
-      cur.capturing_started_at = now;
-      cur.payment_uuid = cur.payment_uuid || paymentUuid || null;
-      return cur;
+    const a = cur || preAttempt;
+    if (a.status === 'active') {
+      return { ...a, status: 'capturing', capturing_started_at: now, payment_uuid: a.payment_uuid || paymentUuid || null };
     }
-    if (cur.status === 'capturing') {
-      const started = typeof cur.capturing_started_at === 'number' ? cur.capturing_started_at : 0;
-      if (now - started < staleMs) return; // another worker is actively capturing → abort
-      cur.capturing_started_at = now;       // stale → take over
-      cur.payment_uuid = cur.payment_uuid || paymentUuid || null;
-      return cur;
+    if (a.status === 'capturing') {
+      const started = typeof a.capturing_started_at === 'number' ? a.capturing_started_at : 0;
+      if (now - started < staleMs) return;  // another worker is actively capturing → abort
+      return { ...a, capturing_started_at: now, payment_uuid: a.payment_uuid || paymentUuid || null }; // stale → take over
     }
-    return cur; // captured / capture_unverified / terminal → no change; handled below
+    return a; // captured / capture_unverified / terminal → unchanged; handled below
   });
 
-  const attempt = (await attemptRef.once('value')).val();
-  if (!attempt) return { outcome: 'no_attempt_record' };
+  const attempt = claim.snapshot.val() || preAttempt;
 
   // Non-capturing terminal/recovery states (claim made no change).
   if (attempt.status === 'captured') {
@@ -158,19 +159,20 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
   const { db, restaurant, buildMaterializeUpdates } = deps;
   const orderRef = db.ref(`orders/${orderId}`);
 
+  // Pre-read to avoid the Admin SDK first-call-null transaction abort (see §1).
+  const preOrder = (await orderRef.once('value')).val();
+  if (!preOrder) return { outcome: 'no_order' };
+
   const claim = await orderRef.transaction((cur) => {
-    if (!cur) return;
-    if (cur.status === 'cancelled') return cur;
-    if (attemptId && cur.active_attempt_id !== attemptId) return cur; // attempt no longer active
-    if (cur.payment_status === 'confirmed') return cur;               // already (idempotent)
-    if (cur.payment_status !== 'pending') return cur;
-    cur.payment_status = 'confirmed';
-    cur.charged_at = now;
-    if (paymentReference != null) cur.payment_reference = paymentReference;
-    return cur;
+    const o = cur || preOrder;
+    if (o.status === 'cancelled') return o;
+    if (attemptId && o.active_attempt_id !== attemptId) return o; // attempt no longer active
+    if (o.payment_status === 'confirmed') return o;               // already (idempotent)
+    if (o.payment_status !== 'pending') return o;
+    return { ...o, payment_status: 'confirmed', charged_at: now, ...(paymentReference != null ? { payment_reference: paymentReference } : {}) };
   });
 
-  const order = claim.snapshot.val();
+  const order = claim.snapshot.val() || preOrder;
   if (!order || order.status === 'cancelled') return { outcome: 'cancelled_during_confirm' };
   if (attemptId && order.active_attempt_id !== attemptId) return { outcome: 'attempt_superseded' };
   if (order.payment_status !== 'confirmed') return { outcome: 'confirm_claim_failed' };
