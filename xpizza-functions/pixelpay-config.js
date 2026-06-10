@@ -26,7 +26,7 @@ const SANDBOX = Object.freeze({
   app_key: '1234567890',
   auth_hash: '36cdf8271723276cb6f94904f8bde4b6', // = MD5('@s4ndb0x-abcd-1234-n1l4-p1x3l')
   secret: '@s4ndb0x-abcd-1234-n1l4-p1x3l',       // published sandbox signing secret
-  merchant_email: 'sandbox@pixelpay.dev',
+  merchant_email: 'sandbox@pixel.hn',            // documented sandbox void-authorized user (x-auth-user/void_signature)
   // The SDK puts `env` in the request BODY from settings.environment. setupSandbox() sets
   // it to "sandbox"; WITHOUT it the gateway treats the sandbox key as a prod key (400
   // "El valor KEY es inválido" — verified). Production (setupCredentials) leaves it unset.

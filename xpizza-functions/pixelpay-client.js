@@ -80,26 +80,22 @@ function getStatus({ payment_uuid }) {
   return ppPost('status', { payment_uuid });
 }
 
-// VOID — server-only. Verified vs live sandbox 2026-06-10:
+// VOID — server-only. Per PixelPay's "Cancelling Payments" doc + verified vs the live
+// sandbox (2026-06-10):
 //   - `void_reason` must be >= 8 chars (else 422).
-//   - SANDBOX accepts void with just key+hash + {payment_uuid, void_reason}; providing a
-//     void_signature/x-auth-user is REJECTED (401) by the shared sandbox account.
-//   - PRODUCTION requires void_signature + x-auth-user, but the exact production signature
-//     formula is UNVERIFIED here (the sandbox can't validate it) — PIN against PixelPay
-//     docs / the live account before relying on production void/refund (Stage 6 gate).
+//   - header `x-auth-user` = SHA-512(merchant_email).
+//   - body  `void_signature` = SHA-512(merchant_email | pixelpay_order_id | secret)  ['|'-joined,
+//            RAW email — NOT the hashed auth_user].
+// Sent in BOTH sandbox and production (the sandbox validates it with the documented sandbox
+// merchant email + secret), so the production path is exercised before go-live.
 function voidTransaction({ payment_uuid, pixelpayOrderId, voidReason = 'xpizza_auto_void' }) {
   const cfg = resolvePixelPayConfig();
   let reason = String(voidReason || '');
   if (reason.length < 8) reason = (reason + '_xpizza_void').slice(0, 32);
 
-  const body = { payment_uuid, void_reason: reason };
-  const headers = {};
-  if (cfg.mode === 'production') {
-    const auth_user = ppCrypto.platformUser(cfg.merchant_email);
-    body.void_signature = ppCrypto.voidSignature(auth_user, pixelpayOrderId, cfg.secret);
-    headers['x-auth-user'] = auth_user;
-  }
-  return ppPost('void', body, headers);
+  const auth_user = ppCrypto.platformUser(cfg.merchant_email);                  // x-auth-user = SHA-512(email)
+  const void_signature = ppCrypto.voidSignature(cfg.merchant_email, pixelpayOrderId, cfg.secret);
+  return ppPost('void', { payment_uuid, void_reason: reason, void_signature }, { 'x-auth-user': auth_user });
 }
 
 // ---- Interpretation helpers ----

@@ -12,11 +12,13 @@ _Online card payments (browser 3DS AUTH + server CAPTURE). Created 2026-06-10. T
 
 ---
 
-## 1. 🔴 Pin the production void/refund signature  *(the one unverified piece)*
-The sandbox accepts void with `x-auth-key` + `x-auth-hash` only, so the **production** void signature is UNVERIFIED. Without it, **refunds/voids will fail in production** (→ `refund_pending`, retried by `refundReconciler`, surfaced to the dispatcher — money is tracked, not lost, but not auto-refunded).
-- [ ] Confirm with PixelPay the exact production void contract: `void_signature = SHA-512(auth_user | pixelpay_order_id | secret)` and `x-auth-user = SHA-512(merchant_email)` — or get the correct formula. (Code: `pixelpay.js` `voidSignature`/`platformUser`, `pixelpay-client.js` `voidTransaction`.)
-- [ ] Verify a **void + a settled refund** against the production/live account (small real charge, then reverse) once creds are in (step 4).
-- [ ] If PixelPay's void differs, update `pixelpay-client.js` / `pixelpay.js` and re-test.
+## 1. ✅ Production void/refund signature — PINNED & sandbox-verified
+Resolved (2026-06-10) from PixelPay's "Cancelling Payments" doc + a live sandbox test:
+- `x-auth-user` header = `SHA-512(merchant_email)`.
+- `void_signature` = `SHA-512(merchant_email | pixelpay_order_id | secret)` — **'|'-joined, RAW email** (not the hashed auth_user). (Code: `pixelpay.js` `voidSignature`, `pixelpay-client.js` `voidTransaction`.)
+- A captured payment was voided via the real client → `200 "Transacción anulada exitosamente"`.
+- Production runs the SAME path with the real `PIXELPAY_MERCHANT_EMAIL` + `PIXELPAY_SECRET`, so it just needs correct prod creds (step 4). Still good practice:
+  - [ ] Confirm one **real void/refund** during the step-7 smoke test (the only thing the sandbox can't prove is that *your* prod merchant email is the authorized void user).
 
 ## 2. Test the narrowed cancel RTDB rule (Firebase Rules Playground)
 The Stage-2 rule blocks a **client** from cancelling a paid online order (forcing it through `cancelPaidOrder`). Never validated in the simulator (no Java emulator locally).

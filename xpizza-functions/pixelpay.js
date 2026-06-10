@@ -7,8 +7,10 @@
  *
  *   - payment_hash   = MD5(order_id | key_id | secret)   — verify a capture is genuine
  *                      (order_id here is the pixelpay_order_id; key_id is the app/auth key)
- *   - auth_user      = SHA-512(merchant_email)            — x-auth-user for void
- *   - void_signature = SHA-512(auth_user | order_id | secret)
+ *   - auth_user      = SHA-512(merchant_email)            — the x-auth-user HEADER for void
+ *   - void_signature = SHA-512(merchant_email | order_id | secret)
+ *                      ⚠ the signature uses the RAW EMAIL (NOT the hashed auth_user), per
+ *                      PixelPay's "Cancelling Payments" doc; order_id = pixelpay_order_id.
  *
  * (The SDK authenticates the sale/capture/status with x-auth-key + x-auth-hash only —
  * there is NO request signature — so the former HMAC-SHA3 helpers were removed.)
@@ -35,10 +37,12 @@ function verifyPaymentHash(received, order_id, key_id, secret) {
 const platformUser = (email) =>
   crypto.createHash('sha512').update(String(email).trim().toLowerCase()).digest('hex');
 
-// void_signature = SHA-512(auth_user | order_id | secret).
-function voidSignature(auth_user, order_id, secret) {
+// void_signature = SHA-512(merchant_email | order_id | secret), '|'-joined.
+// NOTE: the first element is the RAW merchant email — NOT SHA-512(email). (SHA-512(email)
+// is only the x-auth-user header.) order_id = the PixelPay-facing id (pixelpay_order_id).
+function voidSignature(email, order_id, secret) {
   return crypto.createHash('sha512')
-    .update([auth_user, order_id, secret].map(String).join('|'))
+    .update([email, order_id, secret].map(String).join('|'))
     .digest('hex');
 }
 

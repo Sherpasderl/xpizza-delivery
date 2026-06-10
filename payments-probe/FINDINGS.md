@@ -72,3 +72,13 @@ materialize) over an in-memory RTDB. PASS:
   set, `payment_reference` from the capture; attempt → `captured`; delivery task + tracking created.
 - 2nd confirm → `already_confirmed` (idempotent — no re-capture, which would 412).
 - (Sandbox quirk: `customer_name` needs first + last name; amount=1 success path.)
+
+## Void signature — PINNED (2026-06-10, from PixelPay "Cancelling Payments" doc + sandbox)
+PixelPay docs (SDK Use Cases → Cancelling Payments) give the exact formula:
+- `x-auth-user` header = `SHA-512(merchant_email)` (setupPlatformUser).
+- `void_signature` = `SHA-512(merchant_email | order_id | secret)` — '|'-joined, **RAW email**
+  (NOT the hashed auth_user); `order_id` = the PixelPay-facing id (our `pixelpay_order_id`).
+- Sandbox void-authorized user = `sandbox@pixel.hn` (decoded from the doc), secret `@s4ndb0x-…`.
+- BUG FOUND + FIXED: our code was signing `SHA-512(SHA-512(email)|order_id|secret)` (hashed email).
+- Verified: corrected `voidTransaction` against the live sandbox → `200 "Transacción anulada
+  exitosamente"`. Production runs the same path with the real merchant email + secret.
