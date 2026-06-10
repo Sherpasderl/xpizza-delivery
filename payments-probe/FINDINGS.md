@@ -64,3 +64,11 @@ before relying on production void/refund.
 Sandbox maps integer order_amount 1–14 to outcomes, so full-amount (e.g. 385.00) success isn't
 sandbox-testable; the amount comparison IS numeric (PIN 3). Decimal-lempira unit assumed
 (`parseAmount` → String(number)); confirm on the first real production capture.
+
+## Stage-4 sub-stage 2 — live end-to-end confirm  (`verify-confirm-e2e.js`)
+SDK 3DS-less AUTH → real `confirmOnlinePayment` (real pixelpay-client capture + verify +
+materialize) over an in-memory RTDB. PASS:
+- confirm outcome `confirmed`; order → `status:new`, `payment_status:confirmed`, `materialized_at`
+  set, `payment_reference` from the capture; attempt → `captured`; delivery task + tracking created.
+- 2nd confirm → `already_confirmed` (idempotent — no re-capture, which would 412).
+- (Sandbox quirk: `customer_name` needs first + last name; amount=1 success path.)

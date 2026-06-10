@@ -5,6 +5,7 @@
  * Endpoints:
  *   - createOrder                   (HTTPS)   — Make.com → Firebase write proxy + WhatsApp "received"
  *   - chargeOnlineOrder             (HTTPS)   — PixelPay online card: pending-first order + signed sale config (Stage 3b)
+ *   - confirmOnlinePayment          (HTTPS)   — PixelPay capture + materialize (auth→capture confirm, Stage 4)
  *   - notifyDriverOnAssignment      (DB trig) — Web Push to driver on assignment
  *   - notifyDriverOnCancellation    (DB trig) — Web Push to assigned driver when order is cancelled
  *   - onOrderCancelled              (DB trig) — Sync cancellations to KDS Sheet
@@ -48,6 +49,9 @@ const express = require('express');
 const whatsapp = require('./whatsapp');
 const pixelpayCrypto = require('./pixelpay');
 const { resolvePixelPayConfig, pixelPayAppUrl, pixelPayCallbackUrl } = require('./pixelpay-config');
+const pixelpayClient = require('./pixelpay-client');
+const { confirmOnlinePayment } = require('./pixelpay-confirm');
+const { buildMaterializeUpdates } = require('./materialize');
 
 initializeApp({
   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
@@ -831,6 +835,135 @@ exports.chargeOnlineOrder = onRequest(
     maxInstances: 10
   },
   chargeOnlineApp
+);
+
+// ============================================================
+// confirmOnlinePayment — Stage 4 sub-stage 2: capture + materialize
+// ============================================================
+//
+// The browser POSTs its 3DS-auth `payment_uuid` here (best-effort; the webhook is
+// the durable trigger). This drives the SERVER-authoritative confirm: capture the
+// auth hold for our server-set amount, verify the capture response, then materialize
+// the pending_payment order into a live `new` order. Idempotent + recovery-aware
+// (see pixelpay-confirm.js / PAYMENT-PLAN §B/§C). Safe to call repeatedly — the
+// capturing-claim prevents double-capture and confirmed orders short-circuit.
+//
+// `now` is Date.now() (a real number) because the capturing-claim staleness math
+// needs arithmetic; stored timestamps are function-clock ms (NTP-synced).
+
+// Write a dispatcher alert (best-effort) for money-safety events that need a human.
+async function paymentAlert(db, kind, detail) {
+  console.warn(`paymentAlert[${kind}]`, JSON.stringify(detail));
+  try {
+    await db.ref('dispatcher_alerts').push({
+      type: `payment_${kind}`,
+      detail: detail || null,
+      created_at: ServerValue.TIMESTAMP
+    });
+  } catch (e) {
+    console.error('paymentAlert: failed to write alert', e.message);
+  }
+}
+
+const confirmOnlineApp = express();
+
+confirmOnlineApp.all('*', async (req, res) => {
+  if (req.method !== 'POST') {
+    res.set('Allow', 'POST');
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+  const SECRET = process.env.MAKE_SECRET;
+  if (!SECRET) {
+    console.error('confirmOnlinePayment: MAKE_SECRET not set');
+    return unauthorized(res, 'server misconfigured');
+  }
+  const authHeader = req.get('authorization') || '';
+  const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!presented || !constantTimeEqual(presented, SECRET)) {
+    return unauthorized(res, 'invalid bearer token');
+  }
+
+  const body = req.body || {};
+  const orderId = String(body.order_id || '');
+  const paymentUuid = body.payment_uuid == null ? null : String(body.payment_uuid);
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return badRequest(res, 'order_id has invalid format');
+  if (paymentUuid && !/^[A-Za-z0-9_:-]{1,80}$/.test(paymentUuid)) return badRequest(res, 'payment_uuid has invalid format');
+
+  // Resolve PixelPay config up front (fail fast on misconfig before any capture).
+  try {
+    resolvePixelPayConfig();
+  } catch (e) {
+    console.error('confirmOnlinePayment: PixelPay config error', e.message);
+    return res.status(500).json({ error: 'Payment not configured', detail: e.message });
+  }
+
+  const db = getDatabase();
+  const deps = {
+    db,
+    client: pixelpayClient,
+    restaurant: RESTAURANT,
+    buildMaterializeUpdates,
+    alert: (kind, detail) => paymentAlert(db, kind, detail)
+  };
+
+  let result;
+  try {
+    result = await confirmOnlinePayment(deps, {
+      orderId,
+      paymentUuid,
+      now: Date.now(),
+      trackingToken: generateTrackingToken()
+    });
+  } catch (e) {
+    console.error(`confirmOnlinePayment: error for ${orderId}`, e);
+    return res.status(500).json({ error: 'Confirm failed', detail: e.message });
+  }
+
+  console.log(`confirmOnlinePayment: ${orderId} → ${result.outcome}`);
+
+  // Map the state-machine outcome to an HTTP response. The order form ALSO polls
+  // /orders/{id}/payment_status; this response just speeds up the common cases.
+  const o = result.outcome;
+  if (o === 'confirmed' || o === 'already_confirmed') {
+    return res.status(200).json({ ok: true, payment_status: 'confirmed', order_id: orderId, tracking_token: result.tracking_token || null });
+  }
+  if (o === 'manual_reconciliation') {
+    return res.status(200).json({ ok: true, payment_status: 'manual_reconciliation', order_id: orderId });
+  }
+  if (o === 'capture_failed' || o === 'failed' || o === 'mismatch_voided') {
+    return res.status(200).json({ ok: false, payment_status: o === 'mismatch_voided' ? 'failed' : 'failed', order_id: orderId, detail: result.message || result.reason || 'payment not completed' });
+  }
+  if (o === 'cancelled' || o === 'cancelled_during_confirm') {
+    return res.status(200).json({ ok: false, payment_status: 'cancelled', order_id: orderId });
+  }
+  if (o === 'in_progress' || o === 'capture_error_retryable' || o === 'no_payment_uuid') {
+    return res.status(202).json({ ok: false, pending: true, order_id: orderId, detail: 'payment processing; keep polling' });
+  }
+  if (o === 'no_order') return res.status(404).json({ error: 'Order not found', order_id: orderId });
+  if (o === 'not_online' || o === 'no_active_attempt' || o === 'no_attempt_record') {
+    return res.status(409).json({ error: 'Order not in a payable state', detail: o, order_id: orderId });
+  }
+  // Unknown/unexpected → 202 so the client keeps polling RTDB rather than failing hard.
+  return res.status(202).json({ ok: false, pending: true, order_id: orderId, detail: o });
+});
+
+confirmOnlineApp.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
+    return res.status(400).json({ error: 'Bad Request', detail: 'Malformed JSON in request body' });
+  }
+  // eslint-disable-next-line no-unused-vars
+  next(err);
+});
+
+exports.confirmOnlinePayment = onRequest(
+  {
+    region: 'us-central1',
+    cors: true,
+    timeoutSeconds: 60,   // capture is a network round-trip to PixelPay; give it room
+    memory: '256MiB',
+    maxInstances: 10
+  },
+  confirmOnlineApp
 );
 
 // ============================================================
