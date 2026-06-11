@@ -13,7 +13,8 @@ const {
   isHubResolvable,
   selectIngestPoints,
   hashToken,
-  validateIngestToken
+  validateIngestToken,
+  coerceTs
 } = require('./driver-ingest');
 
 let pass = 0;
@@ -175,6 +176,30 @@ const FAR = { lat: HUB.lat + 0.01, lng: HUB.lng };
     validateIngestToken(good, { now: NOW, currentShiftId: 's2' }),
     { ok: false, reason: 'shift_mismatch' }, 'shift changed (re-clocked-in)');
   ok('token: shift_id != current_shift_id → rejected');
+}
+
+// ---- coerceTs ----
+// Transistorsoft posts location `timestamp` as an ISO-8601 string; clients/
+// curl may send epoch-ms numbers. Normalize both to epoch ms (or null if junk).
+{
+  assert.strictEqual(coerceTs(1781200000000), 1781200000000, 'epoch ms passes through');
+  assert.strictEqual(coerceTs('2026-06-11T17:50:26.000Z'), Date.parse('2026-06-11T17:50:26.000Z'),
+    'ISO string → epoch ms');
+  assert.strictEqual(coerceTs('not-a-date'), null, 'garbage string → null');
+  assert.strictEqual(coerceTs(null), null, 'null → null');
+  assert.strictEqual(coerceTs(undefined), null, 'undefined → null');
+  assert.strictEqual(coerceTs(NaN), null, 'NaN → null');
+  ok('coerceTs: epoch passthrough, ISO→ms, junk→null');
+}
+
+// selectIngestPoints must reject non-finite ts (NaN/Infinity), not just non-numbers.
+{
+  const out = selectIngestPoints(
+    [{ ts: NaN, lat: 15.5, lng: -88 }, { ts: Infinity, lat: 15.5, lng: -88 }, { ts: 1000, lat: 15.5, lng: -88 }],
+    { lastLocationTs: 0, now: 2000, maxAgeMs: 10000, maxFutureSkewMs: 5000 }
+  );
+  assert.deepStrictEqual(out.map((p) => p.ts), [1000], 'NaN/Infinity ts dropped');
+  ok('batch: rejects non-finite ts');
 }
 
 console.log(`\n${pass} passed`);

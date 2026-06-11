@@ -73,11 +73,25 @@ function isHubResolvable(restaurantId) {
  * `ts` is the plugin-recorded DEVICE time, tracked as `last_location_ts`,
  * separate from the server-received `last_ping`.
  */
+/**
+ * Normalize a timestamp to epoch milliseconds. Accepts an epoch-ms number
+ * (Transistorsoft can be configured to send it) or an ISO-8601 string (its
+ * default `timestamp`), returns null for anything unparseable.
+ */
+function coerceTs(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'string') {
+    const ms = Date.parse(v);
+    return Number.isNaN(ms) ? null : ms;
+  }
+  return null;
+}
+
 function selectIngestPoints(points, { lastLocationTs = 0, now, maxAgeMs, maxFutureSkewMs } = {}) {
   if (!Array.isArray(points)) return [];
   return points
     .filter((p) => {
-      if (!p || typeof p.ts !== 'number') return false;
+      if (!p || !Number.isFinite(p.ts)) return false;
       if (typeof p.lat !== 'number' || p.lat < -90 || p.lat > 90) return false;
       if (typeof p.lng !== 'number' || p.lng < -180 || p.lng > 180) return false;
       if (p.ts <= lastLocationTs) return false;        // stale / already seen / out-of-order
@@ -119,5 +133,6 @@ module.exports = {
   isHubResolvable,
   selectIngestPoints,
   hashToken,
-  validateIngestToken
+  validateIngestToken,
+  coerceTs
 };

@@ -78,7 +78,8 @@ const {
   isHubResolvable,
   selectIngestPoints,
   hashToken,
-  validateIngestToken
+  validateIngestToken,
+  coerceTs
 } = require('./driver-ingest');
 
 initializeApp({
@@ -2059,7 +2060,10 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, 
     return res.status(403).json({ error: 'off_shift' });
   }
 
-  const points = Array.isArray(req.body && req.body.locations) ? req.body.locations : [];
+  // Normalize each point's ts to epoch ms (Transistorsoft sends ISO; curl sends
+  // numbers). selectIngestPoints then drops any with a non-finite ts.
+  const rawPoints = Array.isArray(req.body && req.body.locations) ? req.body.locations : [];
+  const points = rawPoints.map((p) => (p && typeof p === 'object') ? { ...p, ts: coerceTs(p.ts) } : p);
   const accepted = selectIngestPoints(points, {
     lastLocationTs: driver.last_location_ts || 0,
     now: nowMs,

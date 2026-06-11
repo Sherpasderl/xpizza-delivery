@@ -1168,6 +1168,7 @@
 <script type="module">
 import * as XPD from './xpizza-delivery.js?v=16';
 import { isNative, initNativePush, unregisterNativePush } from './native-push.js';
+import { startNativeTracking, stopNativeTracking } from './native-location.js';
 
 // ============================================================
 // System version (bumped each release)
@@ -1408,9 +1409,17 @@ async function handleStartShift() {
       chime.muted = false;
     } catch {}
 
-    await XPD.startShift(currentUser.uid);
-    await acquireWakeLock();
-    startGpsStream();
+    if (isNative()) {
+      // Native (Step 2c): Transistorsoft is the SOLE location source.
+      // startNativeTracking mints the ingest token via startDriverShift (which
+      // also clocks the driver on server-side) and starts background GPS. No
+      // watchPosition, no wake-lock — the native foreground service handles it.
+      await startNativeTracking(XPD.getAuthInstance().app, currentUser.uid);
+    } else {
+      await XPD.startShift(currentUser.uid);
+      await acquireWakeLock();
+      startGpsStream();
+    }
     toast('Turno iniciado', 'success');
   } catch (e) {
     // Failed to start — reset toggle so it doesn't look enabled
@@ -1423,7 +1432,13 @@ async function handleEndShift() {
   if (!currentUser) return;
   if (!confirm('¿Terminar el turno?')) return;
   await cleanupShift();
-  await XPD.endShift(currentUser.uid);
+  if (isNative()) {
+    // Native: stop background GPS + revoke the ingest token (endDriverShift
+    // also clocks the driver off server-side).
+    await stopNativeTracking(XPD.getAuthInstance().app);
+  } else {
+    await XPD.endShift(currentUser.uid);
+  }
   toast('Turno terminado');
 }
 
@@ -1494,6 +1509,9 @@ document.addEventListener('visibilitychange', async () => {
 // GPS streaming (throttled)
 // ============================================================
 function startGpsStream() {
+  // Native build uses Transistorsoft as the sole location source — never run
+  // the WebView watchPosition (it would double-write and stall when backgrounded).
+  if (isNative()) return;
   if (!('geolocation' in navigator)) {
     toast('GPS no disponible en este dispositivo', 'error');
     return;
