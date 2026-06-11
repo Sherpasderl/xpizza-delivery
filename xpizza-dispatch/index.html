@@ -2758,12 +2758,23 @@ function renderDriversSection() {
   });
 }
 
+// Push-reachability: can we wake this driver's phone? Authoritative on the
+// server-materialized push_reachable flag (covers native FCM tokens, which are
+// server-only and not on the driver record). Falls back to a REAL web
+// subscription for any record not yet backfilled (the default push_subscription
+// is `{}`, which must NOT count).
+function hasPushReachability(d) {
+  if (!d) return false;
+  if (typeof d.push_reachable === 'boolean') return d.push_reachable;
+  return !!(d.push_subscription && d.push_subscription.endpoint);
+}
+
 function renderDriverNode(uid, d) {
   const stale = XPD.isStalePing(d.last_ping);
-  // Reachable = on duty AND we have a push subscription (we can wake their phone).
+  // Reachable = on duty AND we can wake their phone (FCM or web push).
   // GPS staleness DOESN'T mean unreachable — just means phone idle. Push still works.
   const onDuty = d.active && d.status !== 'off_shift';
-  const reachable = onDuty && !!d.push_subscription;
+  const reachable = onDuty && hasPushReachability(d);
 
   // Status dot:
   //   green  = on duty + GPS fresh + available/at_restaurant
@@ -2822,7 +2833,7 @@ function renderDriverNode(uid, d) {
   let statusText;
   if (!d.active) {
     statusText = 'Fuera de turno';
-  } else if (!d.push_subscription) {
+  } else if (!hasPushReachability(d)) {
     statusText = `${statusLabel} · sin notificaciones`;
   } else if (stale) {
     statusText = `${statusLabel} · inactivo ${staleEs(d.last_ping)}`;
@@ -3309,7 +3320,7 @@ function updateDriverMarkers() {
 
     const initial = (d.name || '?').charAt(0).toUpperCase();
     const stale = XPD.isStalePing(d.last_ping);
-    const reachable = d.active && d.status !== 'off_shift' && !!d.push_subscription;
+    const reachable = d.active && d.status !== 'off_shift' && hasPushReachability(d);
     // Map marker color: stale GPS = amber (still reachable),
     // unreachable = gray. Don't gray out idle drivers; their phone just hasn't pinged.
     let color;
@@ -3480,7 +3491,7 @@ function openPicker(orderId, isReassign = false) {
       const enRoute = driver.status === 'en_route_delivery';
       // Reachable means we can deliver them a push notification.
       // Stale GPS doesn't make them unreachable — only no push subscription does.
-      const unreachable = !driver.push_subscription;
+      const unreachable = !hasPushReachability(driver);
       // Policy: a 2nd order stacks freely while the driver is in a stackable state
       // (available | assigned | at_restaurant) with < 2 orders. Ask the dispatcher
       // to confirm-to-override ONLY when the driver is FULL (2 orders), already
@@ -3572,8 +3583,8 @@ function updateStats() {
 
 function getDotClass(d) {
   // Match the logic in renderDriverNode: stale GPS doesn't dim a reachable
-  // driver, but a driver with no push_subscription is treated as gray.
-  const reachable = d.active && d.status !== 'off_shift' && !!d.push_subscription;
+  // driver, but a driver we can't push (no FCM token, no web sub) is gray.
+  const reachable = d.active && d.status !== 'off_shift' && hasPushReachability(d);
   if (!reachable) return '';
   if (XPD.isStalePing(d.last_ping)) return 'amber';  // idle but reachable
   if (d.status === 'available' || d.status === 'at_restaurant') return 'green';

@@ -1167,6 +1167,7 @@
 
 <script type="module">
 import * as XPD from './xpizza-delivery.js?v=16';
+import { isNative, initNativePush, unregisterNativePush } from './native-push.js';
 
 // ============================================================
 // System version (bumped each release)
@@ -1288,6 +1289,13 @@ async function boot() {
     const guessName = user.email.split('@')[0].replace(/[^a-zA-Z]/g, '') || 'Driver';
     await XPD.ensureDriverProfile(user.uid, guessName);
 
+    // Native (Capacitor) build: auto-register for FCM. The web PWA uses the
+    // "enable notifications" button (web-push) instead — see enableNotifications.
+    if (isNative()) {
+      try { await initNativePush(XPD.getAuthInstance().app, user.uid); }
+      catch (e) { console.error('initNativePush failed', e); }
+    }
+
     // Subscribe to live state
     subscribeToFirebase();
   });
@@ -1363,6 +1371,11 @@ $('login-btn').addEventListener('click', async () => {
 });
 
 $('signout-btn').addEventListener('click', async () => {
+  // Native: drop the FCM token before signing out so this device stops
+  // receiving this driver's orders (shared-phone safety).
+  if (isNative() && currentUser) {
+    try { await unregisterNativePush(XPD.getAuthInstance().app); } catch (e) { /* non-fatal */ }
+  }
   await XPD.signOutUser();
 });
 
@@ -2171,6 +2184,18 @@ async function getNotificationState() {
 }
 
 async function enableNotifications() {
+  // Native build: push is FCM, auto-registered at login. Route the button
+  // there instead of attempting web-push (dead inside the Capacitor WebView).
+  if (isNative()) {
+    try {
+      await initNativePush(XPD.getAuthInstance().app, currentUser && currentUser.uid);
+      toast('Notificaciones activadas', 'success');
+    } catch (e) {
+      console.error('enableNotifications (native) failed:', e);
+      toast('No se pudo activar', 'error');
+    }
+    return;
+  }
   try {
     if (!VAPID_PUBLIC_KEY) {
       toast('Push no configurado en este build', 'error');

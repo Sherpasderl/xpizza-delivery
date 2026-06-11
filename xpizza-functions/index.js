@@ -45,7 +45,7 @@
  *     been picked up by a driver.
  */
 
-const { onRequest } = require('firebase-functions/v2/https');
+const { onRequest, onCall } = require('firebase-functions/v2/https');
 const { onValueWritten } = require('firebase-functions/v2/database');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { beforeUserCreated, HttpsError } = require('firebase-functions/v2/identity');
@@ -63,6 +63,16 @@ const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-conf
 const { buildMaterializeUpdates } = require('./materialize');
 const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
 const { voidOrRefund } = require('./pixelpay-cancel');
+const { getMessaging } = require('firebase-admin/messaging');
+const {
+  computePushReachable,
+  selectTransports,
+  isTerminalFcmError,
+  isTerminalWebPushError,
+  buildFcmMessage,
+  validateTokenOwner,
+  PUSH_TTL_SECONDS
+} = require('./driver-push');
 
 initializeApp({
   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
@@ -1560,17 +1570,91 @@ exports.healthz = onRequest(
 // If the push send fails with 404/410, we proactively clear the dead
 // subscription so we don't keep retrying it.
 
+// ------------------------------------------------------------
+// Dual-transport driver push (FCM native + web-push fallback)
+// ------------------------------------------------------------
+//
+// Pure decision logic (transport order, reachability, error classification,
+// message shape) lives in ./driver-push and is unit-tested. These two thin
+// wrappers do the db + admin.messaging() side effects.
+
+// Recompute and persist the materialized /drivers/{uid}/push_reachable flag,
+// which dispatch reads (raw FCM tokens are server-only and not world-readable).
+async function refreshPushReachable(db, uid) {
+  const [driverSnap, tokSnap] = await Promise.all([
+    db.ref(`drivers/${uid}`).once('value'),
+    db.ref(`driver_push_tokens/${uid}`).once('value')
+  ]);
+  const driver = driverSnap.val() || {};
+  const tok = tokSnap.val();
+  const fcmToken = validateTokenOwner(uid, tok) ? tok.token : null;
+  const reachable = computePushReachable({ push_subscription: driver.push_subscription, fcm_token: fcmToken });
+  await db.ref(`drivers/${uid}/push_reachable`).set(reachable);
+  return reachable;
+}
+
+// Send one notification to a driver. Tries FCM first (if a valid owned token
+// exists), falls back to web-push on ANY FCM failure; clears a transport only
+// on a TERMINAL error (dead FCM token / web 404|410) and then refreshes
+// push_reachable. NOT gated on VAPID — FCM works even with VAPID unset.
+async function sendDriverPush(db, uid, payload) {
+  const [driverSnap, tokSnap] = await Promise.all([
+    db.ref(`drivers/${uid}`).once('value'),
+    db.ref(`driver_push_tokens/${uid}`).once('value')
+  ]);
+  const driver = driverSnap.val();
+  if (!driver) return { sent: false, reason: 'no_driver' };
+
+  const tokRec = tokSnap.val();
+  const fcmToken = validateTokenOwner(uid, tokRec) ? tokRec.token : null;
+  const transports = selectTransports({ push_subscription: driver.push_subscription, fcm_token: fcmToken });
+  if (transports.length === 0) {
+    console.log(`sendDriverPush: ${uid} has no push transport, skipping (${payload.tag})`);
+    return { sent: false, reason: 'unreachable' };
+  }
+
+  for (const transport of transports) {
+    try {
+      if (transport === 'fcm') {
+        await getMessaging().send(buildFcmMessage(fcmToken, payload));
+      } else {
+        await webpush.sendNotification(
+          driver.push_subscription,
+          JSON.stringify({ title: payload.title, body: payload.body, tag: payload.tag, data: payload.data || {} }),
+          { urgency: 'high', TTL: PUSH_TTL_SECONDS }
+        );
+      }
+      console.log(`sendDriverPush: ${transport} ok ${uid} (${payload.tag})`);
+      return { sent: true, transport };
+    } catch (err) {
+      if (transport === 'fcm') {
+        const terminal = isTerminalFcmError(err);
+        console.error(`sendDriverPush: fcm failed ${uid} code=${err.code} terminal=${terminal} (${payload.tag})`);
+        if (terminal) {
+          await db.ref(`driver_push_tokens/${uid}`).remove();
+          await refreshPushReachable(db, uid);
+        }
+        // fall through to web-push on ANY fcm failure
+      } else {
+        const terminal = isTerminalWebPushError(err);
+        console.error(`sendDriverPush: web failed ${uid} status=${err.statusCode} terminal=${terminal} (${payload.tag})`);
+        if (terminal) {
+          await db.ref(`drivers/${uid}/push_subscription`).remove();
+          await db.ref(`drivers/${uid}/push_subscription_updated_at`).remove();
+          await refreshPushReachable(db, uid);
+        }
+      }
+    }
+  }
+  return { sent: false, reason: 'all_failed' };
+}
+
 exports.notifyDriverOnAssignment = onValueWritten(
   {
     ref: '/tasks/{taskId}',
     region: 'us-central1'
   },
   async (event) => {
-    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-      console.error('notifyDriver: VAPID keys not configured, skipping');
-      return;
-    }
-
     const before = event.data.before.val();
     const after = event.data.after.val();
 
@@ -1588,14 +1672,6 @@ exports.notifyDriverOnAssignment = onValueWritten(
 
     const db = getDatabase();
 
-    // Look up the driver's push subscription
-    const driverSnap = await db.ref(`drivers/${newDriverId}`).once('value');
-    const driver = driverSnap.val();
-    if (!driver?.push_subscription) {
-      console.log(`notifyDriver: driver ${newDriverId} has no push subscription, skipping`);
-      return;
-    }
-
     // Look up the order for the notification body
     const orderSnap = await db.ref(`orders/${after.order_id}`).once('value');
     const order = orderSnap.val();
@@ -1605,31 +1681,14 @@ exports.notifyDriverOnAssignment = onValueWritten(
       ? `${order.customer_name || 'Cliente'} · L${order.total ?? '—'}`
       : `Pedido #${after.order_id}`;
 
-    const payload = JSON.stringify({
+    // Dual-transport (FCM native first, web-push fallback). No-op if the driver
+    // has no push transport — they'll see the in-app card when they look.
+    await sendDriverPush(db, newDriverId, {
       title,
       body,
       tag: `order-${after.order_id}`,
       data: { order_id: after.order_id }
     });
-
-    try {
-      await webpush.sendNotification(driver.push_subscription, payload, {
-        urgency: 'high',          // tell the push service this is time-critical
-        TTL: 600                  // expire after 10 min if undelivered
-      });
-      console.log(`notifyDriver: push sent to ${newDriverId} for order ${after.order_id}`);
-    } catch (err) {
-      const status = err.statusCode;
-      console.error(`notifyDriver: push failed for ${newDriverId}, status=${status}`, err.body);
-
-      // 404 Not Found / 410 Gone → the subscription is dead; remove it so we
-      // stop retrying. Driver will need to re-enable notifications.
-      if (status === 404 || status === 410) {
-        await db.ref(`drivers/${newDriverId}/push_subscription`).remove();
-        await db.ref(`drivers/${newDriverId}/push_subscription_updated_at`).remove();
-        console.log(`notifyDriver: cleared dead subscription for ${newDriverId}`);
-      }
-    }
   }
 );
 
@@ -1765,11 +1824,6 @@ exports.notifyDriverOnCancellation = onValueWritten(
     region: 'us-central1'
   },
   async (event) => {
-    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-      console.error('notifyDriverOnCancellation: VAPID keys not configured, skipping');
-      return;
-    }
-
     const before = event.data.before.val();
     const after = event.data.after.val();
 
@@ -1793,14 +1847,6 @@ exports.notifyDriverOnCancellation = onValueWritten(
       return;
     }
 
-    // Look up the driver's push subscription
-    const driverSnap = await db.ref(`drivers/${driverId}`).once('value');
-    const driver = driverSnap.val();
-    if (!driver?.push_subscription) {
-      console.log(`notifyDriverOnCancellation: driver ${driverId} has no push subscription, skipping`);
-      return;
-    }
-
     // Look up the cancel reason (optional — included in body if present, truncated)
     let reason = null;
     try {
@@ -1818,30 +1864,63 @@ exports.notifyDriverOnCancellation = onValueWritten(
       body = `${body}: ${trimmed}`;
     }
 
-    const payload = JSON.stringify({
+    // Same dual-transport path as assignment; tag matches so the cancel banner
+    // replaces the new-order banner on the device.
+    await sendDriverPush(db, driverId, {
       title,
       body,
-      tag: `order-${orderId}`,  // same tag as assignment push → replaces banner on Android
+      tag: `order-${orderId}`,
       data: { order_id: orderId, cancelled: true }
     });
+  }
+);
 
-    try {
-      await webpush.sendNotification(driver.push_subscription, payload, {
-        urgency: 'high',
-        TTL: 600
-      });
-      console.log(`notifyDriverOnCancellation: push sent to ${driverId} for cancelled order ${orderId}`);
-    } catch (err) {
-      const status = err.statusCode;
-      console.error(`notifyDriverOnCancellation: push failed for ${driverId}, status=${status}`, err.body);
+// ============================================================
+// Driver push-token registration (native FCM) + reachability upkeep
+// ============================================================
 
-      // 404/410 → dead subscription, clear it so we stop retrying.
-      if (status === 404 || status === 410) {
-        await db.ref(`drivers/${driverId}/push_subscription`).remove();
-        await db.ref(`drivers/${driverId}/push_subscription_updated_at`).remove();
-        console.log(`notifyDriverOnCancellation: cleared dead subscription for ${driverId}`);
-      }
-    }
+// registerDriverPushToken — the native app calls this (authenticated) to
+// register its FCM token. The token lives on the SERVER-ONLY
+// /driver_push_tokens path (never world-readable /drivers); we materialize
+// /drivers/{uid}/push_reachable so dispatch sees reachability without seeing
+// tokens. Idempotent — safe to call on every refresh / app start.
+exports.registerDriverPushToken = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  const token = String(request.data?.token || '').trim();
+  if (!token) throw new HttpsError('invalid-argument', 'token required');
+
+  const db = getDatabase();
+  await db.ref(`driver_push_tokens/${uid}`).set({
+    token,
+    owner_uid: uid,
+    platform: request.data?.platform || 'android',
+    app_build: request.data?.app_build || null,
+    last_seen: ServerValue.TIMESTAMP
+  });
+  const reachable = await refreshPushReachable(db, uid);
+  console.log(`registerDriverPushToken: ${uid} registered (reachable=${reachable})`);
+  return { ok: true, push_reachable: reachable };
+});
+
+// unregisterDriverPushToken — called on logout / notifications-off to drop the
+// FCM token and recompute reachability.
+exports.unregisterDriverPushToken = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  const db = getDatabase();
+  await db.ref(`driver_push_tokens/${uid}`).remove();
+  const reachable = await refreshPushReachable(db, uid);
+  return { ok: true, push_reachable: reachable };
+});
+
+// onDriverSubscriptionChange — keeps push_reachable in sync for the PWA
+// web-push path, which still writes /drivers/{uid}/push_subscription directly
+// from the client. (FCM updates push_reachable via the callables above.)
+exports.onDriverSubscriptionChange = onValueWritten(
+  { ref: '/drivers/{uid}/push_subscription', region: 'us-central1' },
+  async (event) => {
+    await refreshPushReachable(getDatabase(), event.params.uid);
   }
 );
 
@@ -2388,7 +2467,11 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
     //
     // Required:
     //   - status not 'off_shift' (driver explicitly clocked in)
-    //   - push_subscription on file (we can actually deliver them the order)
+    //   - reachable: we can deliver the order via FCM native OR web-push.
+    //     Authoritative on the materialized push_reachable flag (covers native
+    //     FCM-only drivers). Falls back to a REAL web subscription when the flag
+    //     isn't set yet, so a driver stays assignable even if the backfill
+    //     hasn't run — no deploy-ordering footgun.
     //   - cooldown not active (last assignment didn't time out)
     //
     // Lat/lng absence is OK — used only for distance sort. If GPS is missing
@@ -2396,7 +2479,10 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
     // the driver as if they're at the restaurant. They probably are if their
     // phone hasn't pinged.
     if (d.status === 'off_shift') continue;
-    if (!d.push_subscription) continue;
+    // computePushReachable on the driver record only sees web push_subscription
+    // (FCM tokens are server-only), which is exactly the legacy fallback we want.
+    const reachable = (typeof d.push_reachable === 'boolean') ? d.push_reachable : computePushReachable(d);
+    if (!reachable) continue;
     if (d.timeout_until && d.timeout_until > now) continue;
 
     const orderCount = activeOrdersByDriver[driverId] ? activeOrdersByDriver[driverId].size : 0;
