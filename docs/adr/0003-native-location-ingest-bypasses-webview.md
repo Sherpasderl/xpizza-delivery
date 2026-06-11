@@ -87,3 +87,9 @@ problem.
 - The Transistorsoft license ($399 STARTER, registered to `hn.sherpa.driver`) is on the
   critical path *last* — FCM and the ingest endpoint are built and proven (via `curl`)
   before the license is spent.
+- **The ingest token rides in a custom header `X-Driver-Token`, NOT `Authorization: Bearer`**
+  (caught by the curl gate, 2026-06-11): Cloud Functions gen2 reserves `Authorization` for
+  Google IAM and rejects an opaque bearer at the infra layer (HTML 400) before it reaches the
+  function. Transistorsoft's uploader sends custom headers, so this works for the native path.
+  Also: hit the function's `run.app` URL, not the `cloudfunctions.net` alias (the alias 400s
+  for gen2 after an update).

@@ -73,6 +73,13 @@ const {
   validateTokenOwner,
   PUSH_TTL_SECONDS
 } = require('./driver-push');
+const {
+  geofenceTransition,
+  isHubResolvable,
+  selectIngestPoints,
+  hashToken,
+  validateIngestToken
+} = require('./driver-ingest');
 
 initializeApp({
   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
@@ -1925,6 +1932,178 @@ exports.onDriverSubscriptionChange = onValueWritten(
 );
 
 // ============================================================
+// Native location ingest — server-mediated shift + ingestDriverLocation
+// ============================================================
+//
+// The native app's background-location uploader (Step 2c) POSTs to
+// ingestDriverLocation with a per-shift opaque bearer token. Pure decision
+// logic (geofence, batch ordering, token validation) lives in ./driver-ingest
+// and is unit-tested; these wrappers do the db side effects. See ADR 0003.
+
+const INGEST_TOKEN_TTL_MS = 16 * 60 * 60 * 1000;  // 16h — covers a long shift (Candidate B: no refresh)
+const INGEST_MAX_AGE_MS = 5 * 60 * 1000;          // drop points older than 5 min
+const INGEST_MAX_FUTURE_SKEW_MS = 2 * 60 * 1000;  // drop absurd-future points (clock skew)
+const INGEST_GEOFENCE_RADIUS_M = 50;              // matches the client RESTAURANT.geofence_radius_m
+const INGEST_RATE_MAX = 120;                      // per driver per window
+const INGEST_RATE_WINDOW_MS = 60 * 1000;
+const ingestRate = new Map();                     // uid -> { count, windowStart } (per-instance soft guard)
+
+// startDriverShift — server-mediated clock-in. Atomically sets active/status/
+// shift id/location_source and, for native clients, mints a hashed per-shift
+// ingest token (returns the RAW token once, stores only its hash). PWA clients
+// pass platform!=='native' and just get the clock-in (no token).
+exports.startDriverShift = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  const crypto = require('crypto');
+  const db = getDatabase();
+  const isNativeClient = request.data?.platform === 'native';
+  const deviceId = request.data?.device_id || null;
+  const now = Date.now();
+  const shiftId = crypto.randomUUID();
+
+  const updates = {
+    [`drivers/${uid}/active`]: true,
+    [`drivers/${uid}/status`]: 'available',
+    [`drivers/${uid}/shift_started_at`]: ServerValue.TIMESTAMP,
+    [`drivers/${uid}/last_ping`]: ServerValue.TIMESTAMP,
+    [`drivers/${uid}/current_task_id`]: null,
+    [`drivers/${uid}/current_shift_id`]: shiftId,
+    [`drivers/${uid}/location_source`]: isNativeClient ? 'native' : 'pwa'
+  };
+
+  let ingestToken = null;
+  if (isNativeClient) {
+    const priorHash = (await db.ref(`drivers/${uid}/ingest_token_hash`).once('value')).val();
+    if (priorHash) updates[`driver_tokens/${priorHash}`] = null;  // revoke prior token
+    ingestToken = crypto.randomBytes(32).toString('hex');
+    const hash = hashToken(ingestToken);
+    updates[`driver_tokens/${hash}`] = {
+      uid, shift_id: shiftId, device_id: deviceId,
+      issued_at: now, expires_at: now + INGEST_TOKEN_TTL_MS, revoked_at: null
+    };
+    updates[`drivers/${uid}/ingest_token_hash`] = hash;
+  }
+
+  await db.ref().update(updates);
+  console.log(`startDriverShift: ${uid} on shift ${shiftId} (source=${isNativeClient ? 'native' : 'pwa'})`);
+  return { ok: true, shift_id: shiftId, location_source: isNativeClient ? 'native' : 'pwa', ingest_token: ingestToken };
+});
+
+// endDriverShift — server-mediated clock-out. Revokes (deletes) the ingest
+// token, clears shift id + hub snapshot, and clocks the driver off.
+exports.endDriverShift = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  const db = getDatabase();
+  const hash = (await db.ref(`drivers/${uid}/ingest_token_hash`).once('value')).val();
+  const updates = {
+    [`drivers/${uid}/active`]: false,
+    [`drivers/${uid}/status`]: 'off_shift',
+    [`drivers/${uid}/shift_ended_at`]: ServerValue.TIMESTAMP,
+    [`drivers/${uid}/current_shift_id`]: null,
+    [`drivers/${uid}/current_task_id`]: null,
+    [`drivers/${uid}/current_hub_lat`]: null,
+    [`drivers/${uid}/current_hub_lng`]: null,
+    [`drivers/${uid}/current_restaurant_id`]: null,
+    [`drivers/${uid}/ingest_token_hash`]: null
+  };
+  if (hash) updates[`driver_tokens/${hash}`] = null;
+  await db.ref().update(updates);
+  console.log(`endDriverShift: ${uid} off shift`);
+  return { ok: true };
+});
+
+// ingestDriverLocation — native uploader POSTs { locations: [{ ts, lat, lng,
+// accuracy?, heading?, speed? }] } with Authorization: Bearer <opaque token>.
+// Token -> uid (hash lookup), freshness + shift-binding checks, batch ordering
+// (offline-replay safe), server geofence (native only, fail-closed on non-
+// x_pizza), persist the final point + any status transition.
+exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, res) => {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+
+  // The token rides in a CUSTOM header, not Authorization: Bearer — Cloud
+  // Functions gen2 reserves Authorization for Google IAM auth and rejects an
+  // opaque bearer at the infra layer before it reaches us. Transistorsoft's
+  // uploader sends custom headers, so this works for the native path too.
+  const raw = (req.get('x-driver-token') || '').trim();
+  if (!raw) return res.status(401).json({ error: 'missing token' });
+
+  const db = getDatabase();
+  const tokenRec = (await db.ref(`driver_tokens/${hashToken(raw)}`).once('value')).val();
+  if (!tokenRec) return res.status(401).json({ error: 'invalid token' });
+  const uid = tokenRec.uid;
+
+  // Per-uid rate limit (per-instance soft guard; harden with a shared store before scale).
+  const nowMs = Date.now();
+  const rl = ingestRate.get(uid);
+  if (!rl || nowMs - rl.windowStart > INGEST_RATE_WINDOW_MS) {
+    ingestRate.set(uid, { count: 1, windowStart: nowMs });
+  } else if (rl.count >= INGEST_RATE_MAX) {
+    console.warn(`ingestDriverLocation: rate limit hit for ${uid}`);
+    return res.status(429).json({ error: 'rate_limited' });
+  } else {
+    rl.count++;
+  }
+
+  const driver = (await db.ref(`drivers/${uid}`).once('value')).val();
+  if (!driver) return res.status(401).json({ error: 'no driver' });
+
+  const v = validateIngestToken(tokenRec, { now: nowMs, currentShiftId: driver.current_shift_id });
+  if (!v.ok) {
+    console.warn(`ingestDriverLocation: token rejected for ${uid} (${v.reason})`);
+    return res.status(401).json({ error: v.reason });
+  }
+  // Freshness: must be actively on shift (defense-in-depth beyond token revoke).
+  if (driver.active !== true || driver.status === 'off_shift') {
+    return res.status(403).json({ error: 'off_shift' });
+  }
+
+  const points = Array.isArray(req.body && req.body.locations) ? req.body.locations : [];
+  const accepted = selectIngestPoints(points, {
+    lastLocationTs: driver.last_location_ts || 0,
+    now: nowMs,
+    maxAgeMs: INGEST_MAX_AGE_MS,
+    maxFutureSkewMs: INGEST_MAX_FUTURE_SKEW_MS
+  });
+  if (accepted.length === 0) {
+    return res.status(200).json({ ok: true, accepted: 0, dropped: points.length });
+  }
+
+  // Server geofence — native drivers only, fail-closed on a non-x_pizza hub.
+  let status = driver.status;
+  const hasTask = !!driver.current_task_id;
+  const hubLat = driver.current_hub_lat ?? RESTAURANT_LAT;
+  const hubLng = driver.current_hub_lng ?? RESTAURANT_LNG;
+  const hubOk = isHubResolvable(driver.current_restaurant_id);
+  let arrived = false;
+  if (driver.location_source === 'native' && hubOk) {
+    for (const p of accepted) {
+      const t = geofenceTransition({ status, hasTask, hubLat, hubLng, lat: p.lat, lng: p.lng, radiusM: INGEST_GEOFENCE_RADIUS_M });
+      if (t) { status = t.status; if (t.arrivedAtRestaurant) arrived = true; }
+    }
+  } else if (!hubOk) {
+    console.warn(`ingestDriverLocation: hub not resolvable for ${uid} (restaurant_id=${driver.current_restaurant_id}) — geofence skipped`);
+  }
+
+  const final = accepted[accepted.length - 1];
+  const updates = {
+    [`drivers/${uid}/lat`]: final.lat,
+    [`drivers/${uid}/lng`]: final.lng,
+    [`drivers/${uid}/accuracy`]: typeof final.accuracy === 'number' ? final.accuracy : null,
+    [`drivers/${uid}/heading`]: typeof final.heading === 'number' ? final.heading : null,
+    [`drivers/${uid}/speed`]: typeof final.speed === 'number' ? final.speed : null,
+    [`drivers/${uid}/last_location_ts`]: final.ts,
+    [`drivers/${uid}/last_ping`]: ServerValue.TIMESTAMP
+  };
+  if (status !== driver.status) updates[`drivers/${uid}/status`] = status;
+  if (arrived) updates[`drivers/${uid}/arrived_at_restaurant_at`] = ServerValue.TIMESTAMP;
+  await db.ref().update(updates);
+
+  return res.status(200).json({ ok: true, accepted: accepted.length, dropped: points.length - accepted.length, status });
+});
+
+// ============================================================
 // sendOrderStatusNotifications — Customer WhatsApp on status changes
 // ============================================================
 //
@@ -2567,6 +2746,42 @@ function buildAssignmentUpdates(orderId, driverId, attempts, isAutoAssigned, isS
   return updates;
 }
 
+// Re-derive whether a driver is still assignable, re-reading current state.
+// Closes the TOCTOU race between pickEligibleDriver's snapshot and the
+// assignment write (driver may have gone en_route via the pickup swipe, clocked
+// off, or been stacked by a concurrent trigger). Mirrors the eligibility + cap
+// logic in pickEligibleDriver. Pilot-tier guard; a per-driver capacity lease is
+// the harden-before-scale form (see SHERPA_DRIVER_PLAN.md).
+async function reassertAssignable(db, driverId) {
+  const [dSnap, tSnap] = await Promise.all([
+    db.ref(`drivers/${driverId}`).once('value'),
+    db.ref('tasks').once('value')
+  ]);
+  const d = dSnap.val();
+  if (!d) return { ok: false, reason: 'no_driver' };
+  if (d.status === 'off_shift') return { ok: false, reason: 'off_shift' };
+  const reachable = (typeof d.push_reachable === 'boolean')
+    ? d.push_reachable : !!(d.push_subscription && d.push_subscription.endpoint);
+  if (!reachable) return { ok: false, reason: 'unreachable' };
+  if (d.timeout_until && d.timeout_until > Date.now()) return { ok: false, reason: 'cooldown' };
+
+  const tasks = tSnap.val() || {};
+  const orderIds = new Set();
+  for (const id of Object.keys(tasks)) {
+    const t = tasks[id];
+    if (!t || t.assigned_driver_id !== driverId) continue;
+    if (t.status === 'completed' || t.status === 'cancelled') continue;
+    if (t.order_id) orderIds.add(t.order_id);
+  }
+  const orderCount = orderIds.size;
+  let cap;
+  if (orderCount === 0) cap = 1;
+  else if (orderCount === 1 && STACKABLE_STATUSES.has(d.status)) cap = 2;
+  else cap = orderCount;
+  if (orderCount >= cap) return { ok: false, reason: `at_cap(${orderCount})` };
+  return { ok: true, orderCount };
+}
+
 // ============================================================
 // autoAssignOnOrderCreate — auto-assign delivery orders to closest driver
 // ============================================================
@@ -2671,6 +2886,22 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     const isStacked = chosen.orderCount > 0;
     if (isStacked) {
       console.log(`autoAssign: ${orderId} is STACKED on ${chosen.name} (already has ${chosen.orderCount} active)`);
+    }
+
+    // Close the TOCTOU race: re-read the chosen driver right before the write.
+    // If they're no longer assignable (clocked off / went en_route / stacked by
+    // a concurrent trigger), abort and alert rather than over-stack them.
+    const recheck = await reassertAssignable(db, chosen.driverId);
+    if (!recheck.ok) {
+      console.warn(`autoAssign: ${orderId} — ${chosen.driverId} no longer assignable (${recheck.reason}); alerting`);
+      await db.ref('dispatcher_alerts').push({
+        type: 'no_drivers_available',
+        order_id: orderId,
+        customer_name: after.recipient_name || 'Cliente',
+        total: after.total || null,
+        created_at: ServerValue.TIMESTAMP
+      });
+      return;
     }
 
     // attempts=1 = initial assignment. monitorAssignmentTimeout uses this
