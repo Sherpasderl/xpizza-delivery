@@ -69,13 +69,17 @@ async function ppPost(action, body, extraHeaders = {}) {
 
 // ---- High-level operations ----
 
-// CAPTURE — the authoritative confirm. `amountLempiras` is the decimal-lempira number the
+// CAPTURE — the authoritative confirm. `amountLempiras` is the decimal-lempira amount the
 // server sets (must equal the order total; capture > auth is rejected by PixelPay).
-// x-client-signature fields (per the "Firma de Seguridad" doc): app_key | amount | uuid | app_url.
+// PixelPay's "Payment Capture" doc sends `transaction_approved_amount` as a STRING (e.g. '1000').
+// We derive ONE string and use it for BOTH the request body and the x-client-signature, so the
+// value PixelPay recomputes the signature over is byte-identical to what we send (no
+// number-vs-string serialization mismatch). Signature fields: app_key | amount | uuid | app_url.
 function capture({ payment_uuid, amountLempiras }) {
   const cfg = resolvePixelPayConfig();
-  const sig = ppCrypto.clientSignature(cfg.secret, [cfg.app_key, amountLempiras, payment_uuid, cfg.app_url]);
-  return ppPost('capture', { payment_uuid, transaction_approved_amount: amountLempiras }, { 'x-client-signature': sig });
+  const amountStr = String(amountLempiras);
+  const sig = ppCrypto.clientSignature(cfg.secret, [cfg.app_key, amountStr, payment_uuid, cfg.app_url]);
+  return ppPost('capture', { payment_uuid, transaction_approved_amount: amountStr }, { 'x-client-signature': sig });
 }
 
 // STATUS — liveness only. data = { status, attemps, history } | null.
