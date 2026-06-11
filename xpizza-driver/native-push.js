@@ -94,6 +94,22 @@ export async function initNativePush(app, uid) {
         window.dispatchEvent(new CustomEvent('native-order-tap', { detail: { orderId } }));
       }
     });
+
+    // App is FOREGROUNDED when the push arrives — Android delivers it to the app
+    // instead of drawing a system banner. Re-emit so the app can show an in-app
+    // alert. (The order list also updates live via RTDB; this just draws the
+    // driver's eye to it.)
+    PushNotifications.addListener('pushNotificationReceived', (notification) => {
+      const n = notification || {};
+      window.dispatchEvent(new CustomEvent('native-push-received', {
+        detail: {
+          title: n.title || null,
+          body: n.body || null,
+          cancelled: !!(n.data && (n.data.cancelled === 'true' || n.data.cancelled === true)),
+          orderId: (n.data && n.data.order_id) || null
+        }
+      }));
+    });
   }
 
   const perm = await PushNotifications.requestPermissions();

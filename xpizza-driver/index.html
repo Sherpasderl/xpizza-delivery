@@ -1379,6 +1379,18 @@ $('signout-btn').addEventListener('click', async () => {
   await XPD.signOutUser();
 });
 
+// Native foreground push: when the app is open, Android delivers the push to us
+// instead of drawing a system banner (native-push.js re-emits it here). Show an
+// in-app toast + a buzz for new orders so the driver notices even with the app
+// on screen. The order list itself already updates live via RTDB.
+window.addEventListener('native-push-received', (e) => {
+  const { title, body, cancelled } = e.detail || {};
+  toast([title, body].filter(Boolean).join(' · ') || 'Nueva notificación', cancelled ? 'error' : 'success');
+  if (!cancelled && navigator.vibrate) {
+    try { navigator.vibrate([200, 100, 200]); } catch (_) { /* non-fatal */ }
+  }
+});
+
 // ============================================================
 // Shift control
 // ============================================================
