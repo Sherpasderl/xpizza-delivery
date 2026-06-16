@@ -1167,34 +1167,36 @@ exports.sweepStalePending = onSchedule(
   async () => {
     const db = getDatabase();
     const now = Date.now();
+    const GRACE_MS = 15 * 60 * 1000;   // PixelPay retries the callback 3x/15min after expiry
     const snap = await db.ref('orders').orderByChild('status').equalTo('pending_payment').once('value');
     const orders = snap.val() || {};
-    let confirmed = 0, abandoned = 0, left = 0;
+    let flagged = 0, left = 0;
 
     for (const orderId of Object.keys(orders)) {
       const order = orders[orderId];
       if (order.payment_method !== 'online') continue;
-      let attempt = null;
-      if (order.active_attempt_id) {
-        attempt = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();
-      }
-      const action = classifySweepCandidate(order, attempt, now);
-      if (action === 'confirm') {
-        try {
-          const r = await runConfirm(db, orderId, attempt && attempt.payment_uuid);
-          console.log(`sweep: ${orderId} → ${r.outcome}`);
-          confirmed++;
-        } catch (e) { console.error(`sweep: confirm failed ${orderId}`, e.message); }
-      } else if (action === 'abandon') {
-        try {
-          await db.ref(`orders/${orderId}`).update({ payment_status: 'failed' });
-          if (order.active_attempt_id) await db.ref(`payment_attempts/${order.active_attempt_id}`).update({ status: 'abandoned', abandoned_at: now });
-          await paymentAlert(db, 'auth_expired_missed_order', { orderId, total: order.total || null });
-          abandoned++;
-        } catch (e) { console.error(`sweep: abandon failed ${orderId}`, e.message); }
+      if (['confirmed', 'manual_reconciliation', 'refunded', 'refund_pending', 'failed'].includes(order.payment_status)) continue;
+      const attempt = order.active_attempt_id
+        ? (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val()
+        : null;
+      if (!attempt || attempt.hosted_state === 'paid') { left++; continue; }
+
+      // Hosted: a checkout is payable until hosted_expires_at. Past expiry + the callback-retry
+      // grace with no paid callback is AMBIGUOUS (paid-but-lost is possible; no uuid to query) →
+      // manual_reconciliation, NEVER failed (I6). Within the window → leave (live flow may finish).
+      if (attempt.hosted_state === 'creating' || attempt.hosted_state === 'created') {
+        const expires = Number(attempt.hosted_expires_at) || 0;
+        if (expires && now > expires + GRACE_MS) {
+          try {
+            await db.ref(`payment_attempts/${order.active_attempt_id}`).update({ hosted_state: 'manual_reconciliation', manual_reason: 'stale_no_callback', flagged_at: now });
+            await db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });
+            await paymentAlert(db, 'hosted_stale_no_callback', { orderId, total: order.total || null });
+            flagged++;
+          } catch (e) { console.error(`sweep: flag failed ${orderId}`, e.message); }
+        } else { left++; }
       } else { left++; }
     }
-    console.log(`sweepStalePending: confirmed=${confirmed} abandoned=${abandoned} left=${left}`);
+    console.log(`sweepStalePending: manual_flagged=${flagged} left=${left}`);
   }
 );
 
@@ -1224,20 +1226,25 @@ exports.reconcilePayments = onSchedule(
       const o = orders[orderId];
       if (o.payment_method !== 'online') continue;
       const a = o.active_attempt_id ? attempts[o.active_attempt_id] : null;
-      // I2: a confirmed online order must have a captured attempt.
-      if (o.payment_status === 'confirmed' && !(a && (a.status === 'captured' || a.capture_verified))) {
-        breaches.push({ orderId, kind: 'confirmed_without_captured_attempt' });
+      // I2: a confirmed online order must have a VERIFIED payment — a verified hosted callback
+      // (hosted_callback_verified) or, for legacy auth+capture orders, a captured attempt.
+      if (o.payment_status === 'confirmed' && !(a && (a.hosted_callback_verified || a.status === 'captured' || a.capture_verified))) {
+        breaches.push({ orderId, kind: 'confirmed_without_verified_payment' });
       }
       // Aged operator-queue states.
       const age = now - (Number(o.charged_at || o.created_at) || now);
       if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' });
       if (o.payment_status === 'refund_pending' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_refund_pending' });
     }
-    // Stuck capturing claims (crash mid-capture, never recovered).
+    // Stuck claims never recovered: legacy capturing (crash mid-capture) or hosted creating
+    // (crashed after the create-claim but the checkout/callback never resolved).
     for (const id of Object.keys(attempts)) {
       const a = attempts[id];
       if (a.status === 'capturing' && now - (Number(a.capturing_started_at) || now) > 3600 * 1000) {
         breaches.push({ attemptId: id, orderId: a.order_id, kind: 'stuck_capturing' });
+      }
+      if (a.hosted_state === 'creating' && now - (Number(a.hosted_created_at) || now) > 3600 * 1000) {
+        breaches.push({ attemptId: id, orderId: a.order_id, kind: 'stuck_creating' });
       }
     }
 
