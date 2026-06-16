@@ -63,6 +63,7 @@ const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-conf
 const { buildMaterializeUpdates } = require('./materialize');
 const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
 const { voidOrRefund } = require('./pixelpay-cancel');
+const { handleHostedCallback } = require('./pixelpay-hosted-webhook');
 
 initializeApp({
   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
@@ -1080,49 +1081,37 @@ exports.pixelPayWebhook = onRequest(
       }
     }
 
-    const nudge = extractWebhookNudge(req.body || {});
-    // The webhook body is attacker-influenceable; orderId is used in an RTDB ref path.
-    // Require the safe charset before touching the DB (defense-in-depth; the confirm is
-    // already nudge-only + re-verified, but never let an unvalidated value reach a ref).
-    if (!nudge.orderId || !/^[A-Za-z0-9_-]{1,64}$/.test(nudge.orderId)) {
-      console.warn('pixelPayWebhook: missing/invalid order id in payload', JSON.stringify(req.body || {}).slice(0, 500));
-      return res.status(200).json({ ok: true, ignored: 'no_order' });
-    }
-    if (nudge.paymentUuid && !/^[A-Za-z0-9_:-]{1,80}$/.test(nudge.paymentUuid)) {
-      return res.status(200).json({ ok: true, ignored: 'bad_uuid' });
-    }
-
+    // Parse + handle the hosted callback (the authoritative paid signal). Dedup by a unique
+    // event id (transaction_id) so PixelPay's 3x/15min retries don't double-process; the
+    // handler is also idempotent (materialized_at) as a backstop.
     const db = getDatabase();
-
-    // Idempotency: claim /webhook_events/{eventId} (processing→done|failed). A
-    // recently-done/processing event is skipped (PixelPay retry). Fails OPEN — if
-    // the claim errors we still run the (idempotent) confirm.
-    const eventId = rateLimitKey(nudge.eventId || `${nudge.orderId}:${nudge.paymentUuid || ''}`);
+    const b = req.body || {};
+    const eventId = rateLimitKey(String(b.transaction_id || b.uuid || b.order || b.ref || 'unknown'));
     try {
       const claim = await db.ref(`webhook_events/${eventId}`).transaction((cur) => {
-        if (cur && cur.state === 'done') return;                                   // already handled
+        if (cur && cur.state === 'done') return;                                    // already handled
         if (cur && cur.state === 'processing' && Date.now() - (cur.at || 0) < 120000) return; // in flight
-        return { state: 'processing', at: Date.now(), order_id: nudge.orderId };
+        return { state: 'processing', at: Date.now(), order: String(b.order || b.ref || '') };
       });
-      if (!claim.committed) {
-        return res.status(200).json({ ok: true, deduped: true });
-      }
+      if (!claim.committed) return res.status(200).json({ ok: true, deduped: true });
     } catch (e) {
       console.error('pixelPayWebhook: event claim failed (proceeding)', e.message);
     }
 
-    let outcome = 'error';
+    let result = { code: 500, outcome: 'error' };
     try {
-      const r = await runConfirm(db, nudge.orderId, nudge.paymentUuid);
-      outcome = r.outcome;
+      const deps = { ...confirmDeps(db), genToken: generateTrackingToken };
+      result = await handleHostedCallback(deps, b, Date.now());
     } catch (e) {
-      console.error(`pixelPayWebhook: confirm error for ${nudge.orderId}`, e.message);
+      console.error('pixelPayWebhook: handler threw', e.message);
+      result = { code: 500, outcome: 'handler_error' };
     }
-    const finalState = outcome === 'error' ? 'failed' : 'done';
-    try { await db.ref(`webhook_events/${eventId}`).update({ state: finalState, outcome, done_at: Date.now() }); } catch (_) {}
+    // 2xx → durable decision (done); 5xx → transient (failed) so a PixelPay retry re-runs (I5/R2-3).
+    const finalState = (result.code >= 200 && result.code < 300) ? 'done' : 'failed';
+    try { await db.ref(`webhook_events/${eventId}`).update({ state: finalState, outcome: result.outcome, done_at: Date.now() }); } catch (_) {}
 
-    console.log(`pixelPayWebhook: ${nudge.orderId} → ${outcome}`);
-    return res.status(200).json({ ok: true, outcome }); // always 200
+    console.log(`pixelPayWebhook: ${String(b.order || b.ref || '?')} -> ${result.outcome} (${result.code})`);
+    return res.status(result.code).json({ ok: result.code < 300, outcome: result.outcome });
   }
 );
 
@@ -1357,32 +1346,27 @@ exports.cancelPaidOrder = onRequest(
     const attemptRef = attemptId ? db.ref(`payment_attempts/${attemptId}`) : null;
     const pixelpayOrderId = attemptId ? `${orderId}-${attemptId}` : null;
 
-    // Claim `cancelling` on the attempt (race converge point with confirm). Pre-read +
-    // cur||preAttempt to avoid the Admin-SDK first-call-null abort.
+    // Claim `cancel_pending` on the attempt (race converge point with the hosted webhook): if a
+    // paid callback for this attempt lands LATER, the webhook auto-voids instead of materializing
+    // (I9). Pre-read + cur||preAttempt to avoid the Admin-SDK first-call-null abort.
     let attempt = attemptId ? (await attemptRef.once('value')).val() : null;
     if (attemptRef && attempt) {
       const tx = await attemptRef.transaction((cur) => {
         const a = cur || attempt;
         if (!a) return a;
-        return { ...a, cancelling: true, cancel_reason: reason, cancel_claimed_at: now };
+        return { ...a, cancel_pending: true, cancel_reason: reason, cancel_claimed_at: now };
       });
       attempt = tx.snapshot.val() || attempt;
     }
 
-    // If a capture is mid-flight, the confirm path will void on convergence (step 5b).
-    if (attempt && attempt.status === 'capturing') {
-      // Mark the order cancelled so confirm voids instead of materializing.
-      await db.ref(`orders/${orderId}`).update({ status: 'cancelled', cancelled_at: now, cancel_reason: reason, cancelled_by: actor, payment_status: 'refund_pending' });
-      await paymentAlert(db, 'cancel_during_capture', { orderId, attemptId, actor });
-      return res.status(202).json({ ok: true, outcome: 'cancel_pending_capture', detail: 'capture in flight; payment will be voided', order_id: orderId });
-    }
-
-    // Reverse the payment if there is one to reverse (captured, or an active auth hold).
+    // Reverse the payment ONLY if it is actually paid (a P- uuid exists). A hosted attempt not yet
+    // paid (creating/created, no uuid) has NO money to void — cancel_pending alone is correct; a
+    // later paid callback is auto-voided by the webhook (I9). NEVER mark refunded without a uuid.
     const deps = confirmDeps(db);
     let refund = { outcome: 'no_payment', voided: true };
     const uuid = attempt && attempt.payment_uuid;
-    const hasMoney = attempt && (attempt.status === 'captured' || attempt.status === 'active' || order.payment_status === 'confirmed');
-    if (uuid && hasMoney) {
+    const isPaid = !!(uuid && (attempt.hosted_state === 'paid' || order.payment_status === 'confirmed'));
+    if (isPaid) {
       refund = await voidOrRefund(deps, { orderId, attemptId, pixelpayOrderId, paymentUuid: uuid, reason, now });
     }
 
@@ -1392,7 +1376,12 @@ exports.cancelPaidOrder = onRequest(
     updates[`orders/${orderId}/cancelled_at`] = now;
     updates[`orders/${orderId}/cancel_reason`] = reason;
     updates[`orders/${orderId}/cancelled_by`] = actor;
-    updates[`orders/${orderId}/payment_status`] = refund.voided ? 'refunded' : 'refund_pending';
+    if (isPaid) {
+      // Only touch payment_status when there was money: refunded (voided) or refund_pending (void
+      // failed). If not yet paid, leave payment_status as-is (order.status=cancelled + the
+      // attempt's cancel_pending cover it; a late paid callback will set refunded/refund_pending).
+      updates[`orders/${orderId}/payment_status`] = refund.voided ? 'refunded' : 'refund_pending';
+    }
     if (order.order_type === 'delivery') {
       const pickupTaskId = `${orderId}_pickup`;
       const deliveryTaskId = `${orderId}_delivery`;
@@ -1414,8 +1403,8 @@ exports.cancelPaidOrder = onRequest(
     }
     await db.ref().update(updates);
 
-    console.log(`cancelPaidOrder: ${orderId} cancelled by ${actor} (refund=${refund.outcome})`);
-    return res.status(200).json({ ok: true, outcome: 'cancelled', refund: refund.outcome, order_id: orderId });
+    console.log(`cancelPaidOrder: ${orderId} cancelled by ${actor} (${isPaid ? 'refund=' + refund.outcome : 'no payment yet; cancel_pending set'})`);
+    return res.status(200).json({ ok: true, outcome: 'cancelled', refund: isPaid ? refund.outcome : 'no_payment', order_id: orderId });
   }
 );
 
