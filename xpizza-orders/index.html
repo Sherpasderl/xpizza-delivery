@@ -1097,7 +1097,7 @@ textarea{resize:none;height:80px;line-height:1.4}
           <div class="pay-icon">🔒</div>
           <div>
             <div class="pay-title">Pagar en línea ahora <span class="pay-badge badge-green">Recomendado</span></div>
-            <div class="pay-desc">Pago seguro con tarjeta directamente en este formulario. Tu pedido se confirma inmediatamente.</div>
+            <div class="pay-desc">Pago seguro con tarjeta en la página de PixelPay (3D Secure). Tu pedido se confirma al completar el pago.</div>
           </div>
         </div>
         <div class="pay-card" id="pay-cash" onclick="selectPay('cash')">
@@ -1117,27 +1117,10 @@ textarea{resize:none;height:80px;line-height:1.4}
             <span class="pixelpay-logo">🔒 PixelPay · Pago Seguro</span>
             <span class="pixelpay-total" id="pixelpay-amount">L 0.00</span>
           </div>
-          <div class="card-field-group">
-            <label class="field-label">Número de tarjeta</label>
-            <input type="tel" id="card-number" inputmode="numeric" placeholder="0000 0000 0000 0000" maxlength="19" autocomplete="cc-number"/>
-            <div class="card-error" id="err-card-number">Número de tarjeta inválido.</div>
-          </div>
-          <div class="card-field-group">
-            <label class="field-label">Nombre en la tarjeta</label>
-            <input type="text" id="card-name" placeholder="NOMBRE APELLIDO" autocomplete="cc-name" style="text-transform:uppercase"/>
-            <div class="card-error" id="err-card-name">Ingresá nombre y apellido tal como aparecen en la tarjeta.</div>
-          </div>
-          <div class="card-row">
-            <div class="card-field-group">
-              <label class="field-label">Vencimiento</label>
-              <input type="tel" id="card-expiry" inputmode="numeric" placeholder="MM/AA" maxlength="5" autocomplete="cc-exp"/>
-              <div class="card-error" id="err-card-expiry">Fecha inválida.</div>
-            </div>
-            <div class="card-field-group">
-              <label class="field-label">CVV</label>
-              <input type="tel" id="card-cvv" inputmode="numeric" placeholder="000" maxlength="4" autocomplete="cc-csc"/>
-              <div class="card-error" id="err-card-cvv">CVV inválido.</div>
-            </div>
+          <div style="padding:14px 4px;font-size:14px;color:#555;line-height:1.55;">
+            Al confirmar te llevaremos a la <strong>página segura de PixelPay</strong> para ingresar
+            tu tarjeta, con la verificación <strong>3D Secure</strong> de tu banco. Volvés aquí
+            automáticamente al terminar. <em>(Tu tarjeta nunca pasa por este sitio.)</em>
           </div>
           <div class="security-row">🔒 Encriptado SSL · PCI DSS · 3D Secure 2.0</div>
         </div>
