@@ -1116,6 +1116,45 @@ exports.pixelPayWebhook = onRequest(
 );
 
 // ============================================================
+// paymentStatus — public hosted-payment status poll (for the _complete return page)
+// ============================================================
+//
+// After paying on the hosted checkout the customer returns to ?pay=complete&order&t; the page
+// polls this to learn the outcome (the webhook remains the money authority). Gated by the
+// per-attempt poll_token (only the customer who started THIS payment can read it). Returns a
+// COARSE state + the tracking_token once paid — never order PII.
+exports.paymentStatus = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 10, memory: '256MiB', maxInstances: 10 },
+  async (req, res) => {
+    const orderId = String((req.query && req.query.order_id) || (req.body && req.body.order_id) || '').trim();
+    const token = String((req.query && (req.query.t || req.query.token)) || (req.body && req.body.token) || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId) || !token || token.length > 128) {
+      return res.status(400).json({ error: 'bad request' });
+    }
+    const db = getDatabase();
+    const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+    if (!order) return res.status(404).json({ error: 'not found' });
+
+    // Gate on the active attempt's poll_token (constant-time). No match → no info.
+    const attemptId = order.active_attempt_id;
+    const attempt = attemptId ? (await db.ref(`payment_attempts/${attemptId}`).once('value')).val() : null;
+    if (!attempt || !attempt.poll_token || !constantTimeEqual(String(attempt.poll_token), token)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
+    // Coarse, public-safe state.
+    let state = 'pending';
+    const ps = order.payment_status, st = order.status;
+    if (ps === 'confirmed' || ['new', 'preparing', 'ready', 'out_for_delivery', 'delivered'].includes(st)) state = 'paid';
+    else if (st === 'cancelled' || ps === 'refunded' || ps === 'refund_pending') state = 'cancelled';
+    else if (ps === 'failed') state = 'failed';
+    else if (ps === 'manual_reconciliation') state = 'verifying';
+
+    return res.status(200).json({ ok: true, state, tracking_token: state === 'paid' ? (order.tracking_token || null) : null });
+  }
+);
+
+// ============================================================
 // sweepStalePending — Stage 4 sub-stage 3: capture/abandon backstop (~5 min)
 // ============================================================
 //
