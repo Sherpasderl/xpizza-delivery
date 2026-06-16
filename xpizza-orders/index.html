@@ -6,8 +6,8 @@
 <title>X Pizza — Pedido en línea</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap"/>
-<!-- PixelPay SDK (browser): runs the 3DS AUTH; exposes window.Models/Requests/Services -->
-<script src="https://cdn.pixelpay.app/sdk/sdk-core.js"></script>
+<!-- PixelPay Hosted Payment: card entry + 3DS happen on PixelPay's hosted checkout (redirect),
+     so the in-page SDK is no longer loaded. The order form only creates the charge + redirects. -->
 
 <style>
 :root {
@@ -2155,13 +2155,13 @@ function validateCardForm(){
 function setSending(msg){ const el=document.getElementById('sending-msg'); if(el) el.textContent=msg; }
 
 async function processPixelPay(){
-  if(!validateCardForm()) return;
   if(orderSubmitting) return;
   orderSubmitting=true;
   showStage('s4',90);
   setSending('Iniciando pago seguro…');
 
-  // 1. chargeOnlineOrder: create the hidden pending order + attempt, get SDK config.
+  // chargeOnlineOrder: create the hidden pending order + a HOSTED checkout, get its URL.
+  // (Card entry + 3DS happen on PixelPay's hosted page — never on our site.)
   let cfg;
   try {
     const res = await fetch(CHARGEORDER_URL, {
@@ -2171,32 +2171,25 @@ async function processPixelPay(){
     });
     cfg = await res.json().catch(()=>({}));
     if(res.status===409 && cfg && cfg.error==='Already paid'){ orderSubmitting=false; currentOrder.payment_status='confirmed'; showSuccess(); return; }
-    if(!res.ok || !cfg || !cfg.pixelpay){
+    if(res.status===202 && cfg && cfg.status==='in_progress'){
+      // A checkout is already being created for this order (one-live-checkout) — brief wait + one retry.
+      orderSubmitting=false; setSending('Preparando tu pago…');
+      setTimeout(processPixelPay, 1500); return;
+    }
+    if(!res.ok || !cfg || !cfg.checkout_url){
       return paymentFallback(res.status===429
         ? 'Demasiados intentos seguidos. Esperá un momento.'
-        : 'No pudimos iniciar el pago. Revisá tus datos e intentá de nuevo.');
+        : (cfg && cfg.detail) || 'No pudimos iniciar el pago. Revisá tus datos e intentá de nuevo.');
     }
   } catch(e){
     return paymentFallback('Error de conexión al iniciar el pago.');
   }
 
-  // 2. PixelPay SDK 3DS AUTH (card encrypted by the SDK — never sent to our servers).
-  setSending('Verificando tu tarjeta… tu banco puede pedir una confirmación.');
-  let paymentUuid;
-  try {
-    paymentUuid = await runPixelPayAuth(cfg.pixelpay);
-  } catch(e){
-    return paymentFallback(e.message || 'Tu tarjeta fue rechazada.');
-  }
-  if(!paymentUuid) return paymentFallback('Pago no completado.');
-
-  // 3. confirmOnlinePayment: server captures + verifies + materializes. Poll for terminal state.
-  setSending('✅ Autorizado. Confirmando tu pago…');
-  const status = await pollConfirm(cfg.order_id, paymentUuid);
-  orderSubmitting=false;
-  if(status==='confirmed'){ currentOrder.payment_status='confirmed'; currentOrder.payment_provider='PixelPay'; showSuccess(); return; }
-  if(status==='manual_reconciliation'){ showVerifying(); return; }
-  return paymentFallback('Pago no completado. Probá con otra tarjeta o pagá en efectivo.');
+  // Stash the order + poll token so the return page (?pay=complete) can resume, then redirect
+  // to the hosted checkout. The webhook is the money authority; the return page only polls.
+  try { sessionStorage.setItem('xpizza_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token })); } catch(_){}
+  setSending('Redirigiendo a pago seguro…');
+  window.location.href = cfg.checkout_url;
 }
 
 // Build + run the PixelPay 3DS AUTH from the server-provided config → payment_uuid.
