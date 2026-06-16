@@ -39,7 +39,8 @@ _Branch `feature/pixelpay-hosted-payment`. Drafted 2026-06-16, while awaiting th
 - `PIXELPAY_MODE=sandbox` + redeploy → no real charges.
 - The AUTH build stays restorable (`backup-auth-capture-2026-06-15`) if the bank later enables AUTH.
 
-## Known follow-ups (non-blocking)
-- Optional customer **email field** on the order form (currently falls back to `pedidos@xpizza.hn`).
-- Remove now-dead `runPixelPayAuth` / `pollConfirm` / `validateCardForm` from the order form.
-- A dashboard **Pedidos** "dismiss/abandon" action for genuinely-abandoned `manual_reconciliation` orders (so stale hosted carts don't accumulate in the queue).
+## Known follow-ups
+- ~~Optional customer **email field** on the order form.~~ ✅ done (`9408a48`).
+- ~~Remove now-dead `runPixelPayAuth` / `pollConfirm` / `validateCardForm`.~~ ✅ done (`9408a48`).
+- ~~Dashboard **"abandon"** action for genuinely-abandoned `manual_reconciliation` orders.~~ ✅ done (`05d94db`).
+- _(none open — build is feature-complete; only the gated sandbox e2e + go-live remain.)_
