@@ -687,7 +687,9 @@ exports.createOrder = onRequest(
 // Auth + abuse posture mirrors createOrder: same public bearer secret, same
 // IP+phone rate-limit buckets. The pure helpers (attempt acquisition, fingerprint,
 // money conversion) live in ./pixelpay-charge so they're unit-testable in isolation.
-const { orderFingerprint, centsToLempiras, acquireOnlineAttempt } = require('./pixelpay-charge');
+const { orderFingerprint, centsToLempiras } = require('./pixelpay-charge');
+const { acquireHostedAttempt } = require('./pixelpay-hosted-charge');
+const { createHostedCharge, formatPixelPayExpiry } = require('./pixelpay-hosted');
 
 const chargeOnlineApp = express();
 
@@ -745,7 +747,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   const db = getDatabase();
 
   // Rate limit (same buckets as createOrder). A genuine retry of an in-flight
-  // attempt re-enters acquireOnlineAttempt and reuses it, so this throttles
+  // submit re-enters acquireHostedAttempt and reuses the live checkout, so this throttles
   // distinct submit bursts, not 3DS polling.
   for (const [bucket, key, cfg] of [
     ['ip', clientIp, RATE_LIMIT_BUCKETS.ip],
@@ -789,12 +791,12 @@ chargeOnlineApp.all('*', async (req, res) => {
     pendingOrderRecord.pickup_time = fields.pickup_time;
   }
 
-  // Acquire the atomic charge lock + attempt.
+  // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
   let acq;
   try {
-    acq = await acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint);
+    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, Date.now());
   } catch (e) {
-    console.error(`chargeOnlineOrder: acquire failed for ${orderId}`, e.message);
+    console.error(`chargeOnlineOrder: hosted acquire failed for ${orderId}`, e.message);
     return res.status(500).json({ error: 'Database error', detail: e.message });
   }
 
@@ -804,67 +806,77 @@ chargeOnlineApp.all('*', async (req, res) => {
   if (acq.outcome === 'conflict') {
     return res.status(409).json({ error: 'Order conflict', detail: 'order_id already used for a different cart/total', order_id: orderId });
   }
-  if (acq.outcome === 'in_progress') {
-    // A capture is already in-flight/done for this order — never open a 2nd attempt (double-charge).
-    return res.status(409).json({ error: 'Payment in progress', detail: 'this order already has a payment being processed; poll its status', order_id: orderId });
+  if (acq.outcome === 'closed') {
+    return res.status(409).json({ error: 'Order closed', detail: `order is ${acq.reason}; please start a new order`, order_id: orderId });
   }
-  if (acq.outcome !== 'acquired' && acq.outcome !== 'reuse') {
+  if (acq.outcome === 'in_progress') {
+    // A checkout is being created for this order — don't start a 2nd (one-live-checkout, I10).
+    return res.status(202).json({ ok: true, status: 'in_progress', detail: 'a checkout is being created; retry shortly', order_id: orderId });
+  }
+  // Double-submit while a checkout is still live → return the SAME url (I10).
+  if (acq.outcome === 'reuse') {
+    console.log(`chargeOnlineOrder: reuse live hosted checkout ${orderId}-${acq.attempt_id}`);
+    return res.status(200).json({ ok: true, order_id: orderId, attempt_id: acq.attempt_id, poll_token: acq.poll_token, checkout_url: acq.checkout_url, payment_status: 'pending' });
+  }
+  if (acq.outcome !== 'claimed') {
     return res.status(503).json({ error: 'Could not start payment', detail: 'please retry', order_id: orderId });
   }
 
+  // We own a FRESH attempt in hosted_state:'creating' (hosted_order_id already persisted by the
+  // claim, so a racing paid callback can still bind/recover — I7). Create the hosted checkout with
+  // the SERVER-SET amount, then mark the attempt 'created'.
   const attemptId = acq.attempt_id;
-  const pixelpayOrderId = `${orderId}-${attemptId}`;
+  const pixelpayOrderId = acq.hosted_order_id;            // `${orderId}-${attemptId}`
+  const pollToken = acq.poll_token;
+  const amountStr = centsToLempiras(total_cents);          // real server total (NOT the sandbox 1-14 map) so the callback amount-check holds
 
-  // Write the attempt record when we own a fresh one (or are recovering a
-  // pointer whose record went missing). 'reuse' already has a live record.
-  if (acq.outcome === 'acquired') {
-    try {
-      await db.ref(`payment_attempts/${attemptId}`).update({
-        order_id: orderId,
-        status: 'active',
-        total_cents,
-        pixelpay_order_id: pixelpayOrderId,
-        created_at: now
-      });
-    } catch (e) {
-      console.error(`chargeOnlineOrder: attempt write failed for ${pixelpayOrderId}`, e.message);
-      return res.status(500).json({ error: 'Database error', detail: e.message });
-    }
+  // PixelPay requires first+last name and a valid email.
+  const nameParts = String(fields.customer_name).trim().split(/\s+/);
+  const firstName = nameParts[0] || 'Cliente';
+  const lastName = nameParts.slice(1).join(' ') || firstName;
+  const rawEmail = body.customer_email;
+  const email = (typeof rawEmail === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rawEmail.trim())) ? rawEmail.trim() : 'pedidos@xpizza.hn';
+
+  // Customer-facing return URLs + the AUTHENTICATED server callback (?secret=…).
+  const appBase = String(pp.app_url || '').replace(/\/+$/, '');
+  const completeUrl = `${appBase}/?pay=complete&order=${encodeURIComponent(orderId)}&t=${encodeURIComponent(pollToken)}`;
+  const cancelUrl = `${appBase}/?pay=cancel&order=${encodeURIComponent(orderId)}`;
+  const wsecret = process.env.PIXELPAY_WEBHOOK_SECRET || '';
+  if (!wsecret) console.warn('chargeOnlineOrder: PIXELPAY_WEBHOOK_SECRET not set — hosted callback will be unauthenticated');
+  const callbackUrl = pixelPayCallbackUrl() + (wsecret ? `?secret=${encodeURIComponent(wsecret)}` : '');
+
+  let hosted;
+  try {
+    hosted = await createHostedCharge({
+      pixelpayOrderId, amountLempiras: amountStr,
+      firstName, lastName, email,
+      completeUrl, cancelUrl, callbackUrl,
+      expiresAt: formatPixelPayExpiry(acq.expires_at)
+    });
+  } catch (e) {
+    console.error(`chargeOnlineOrder: hosted create threw for ${pixelpayOrderId}`, e.message);
+    await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'failed_create', failed_create_reason: 'network', updated_at: now }).catch(() => {});
+    return res.status(502).json({ error: 'Payment gateway error', detail: 'could not create checkout; please retry', order_id: orderId });
   }
 
-  // Return the config the browser SDK needs to run the 3DS AUTH. There is NO
-  // signature: the SDK authenticates with the public app_key + auth_hash, and the
-  // server confirms authoritatively later via doCapture (see PAYMENT-PLAN, the
-  // auth+capture architecture). chargeOnlineOrder never calls PixelPay.
-  console.log(`chargeOnlineOrder: ${acq.outcome} ${pixelpayOrderId} (mode=${pp.mode}, ${centsToLempiras(total_cents)} HNL)`);
+  if (!hosted.ok || !hosted.url) {
+    console.error(`chargeOnlineOrder: hosted create rejected for ${pixelpayOrderId}`, JSON.stringify(hosted.errors || hosted.raw || {}).slice(0, 400));
+    await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'failed_create', failed_create_reason: JSON.stringify(hosted.errors || {}).slice(0, 300), updated_at: now }).catch(() => {});
+    return res.status(502).json({ error: 'Payment gateway error', detail: 'checkout not created; please retry', order_id: orderId });
+  }
 
+  // Persist the live checkout URL + mark 'created' (payable until expires_at).
+  await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'created', hosted_checkout_url: hosted.url, updated_at: now });
+
+  console.log(`chargeOnlineOrder: created hosted checkout ${pixelpayOrderId} (mode=${pp.mode}, ${amountStr} HNL)`);
   return res.status(200).json({
     ok: true,
     order_id: orderId,
     attempt_id: attemptId,
     pixelpay_order_id: pixelpayOrderId,
-    payment_status: 'pending',
-    pixelpay: {
-      mode: pp.mode,                  // 'sandbox' → browser SDK setupSandbox(); else setupCredentials+setupEndpoint
-      endpoint: pp.endpoint,
-      app_key: pp.app_key,            // x-auth-key
-      auth_hash: pp.auth_hash,        // x-auth-hash, used verbatim (sandbox MD5 / prod SHA-512)
-      // x-client-signature for the browser doAuth — PixelPay PRODUCTION requires it (the
-      // "Firma de Seguridad" doc). Computed HERE on the server so the SECRET never ships to
-      // the browser; the auth signature covers only app_key|pixelpay_order_id|app_url (no
-      // card, no amount), so it's safe to hand to the client. Browser: setupHeaders({...}).
-      client_signature: ppCrypto.clientSignature(pp.secret, [pp.app_key, pixelpayOrderId, pp.app_url]),
-      order: {
-        id: pixelpayOrderId,                                      // PixelPay order.id = pixelpay_order_id (binds the auth to this attempt)
-        amount: String(pixelPayChargeAmountLempiras(pp, total_cents)), // order_amount = the FULL tax-inclusive total charged (server-set)
-        // NOTE: we deliberately do NOT send order_tax_amount. Our prices are ISV-INCLUSIVE so
-        // `amount` already is the grand total; PixelPay's `amount` is "Total amount of the order"
-        // (the collection). Sending a separate tax_amount risks it being added on top — and we
-        // keep our own subtotal/tax breakdown on the order record for the factura anyway.
-        currency: 'HNL',
-        callback_url: pixelPayCallbackUrl()                       // order_callback → pixelPayWebhook nudge
-      }
-    }
+    poll_token: pollToken,
+    checkout_url: hosted.url,
+    payment_status: 'pending'
   });
 });
 
