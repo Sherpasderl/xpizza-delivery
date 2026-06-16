@@ -1456,7 +1456,8 @@ function fmtDateTime(ms) {
 
 const PAYMENT_STATUS_ES = {
   pending: 'Pendiente', confirmed: 'Confirmado', failed: 'Falló',
-  refunded: 'Reembolsado', refund_pending: 'Reembolso pendiente'
+  refunded: 'Reembolsado', refund_pending: 'Reembolso pendiente',
+  manual_reconciliation: 'En revisión manual', abandoned: 'Descartado (sin cobro)'
 };
 function methodLabel(o) {
   const m = o && o.payment_method;
@@ -1485,6 +1486,8 @@ function paymentBadge(o) {
   if (ps === 'refunded') return '<span class="badge badge-dim">Reembolsado</span>';
   if (ps === 'refund_pending') return '<span class="badge badge-warn">Reembolso pend.</span>';
   if (ps === 'failed') return '<span class="badge badge-danger">Pago falló</span>';
+  if (ps === 'abandoned') return '<span class="badge badge-dim">Descartado</span>';
+  if (ps === 'manual_reconciliation') return '<span class="badge badge-warn">Revisión manual</span>';
   if (o && o.status === 'pending_payment') return '<span class="badge badge-warn">Sin pagar</span>';
   return '';
 }
@@ -1676,6 +1679,9 @@ function actionConfig(o) {
     list.push({ act: 'refund', label: 'Reembolsar y cerrar', kind: 'danger',
       confirm: 'Esto reembolsa el pago y cierra el pedido como fallido. ¿Continuar?',
       fn: () => callAction('resolveManualReconciliation', { order_id: id, action: 'refund' }) });
+    list.push({ act: 'abandon', label: 'Descartar (sin cobro)', kind: 'soft',
+      confirm: 'Usá esto SOLO si verificaste en el portal PixelPay que NO existe ningún cobro para este pedido (el cliente abandonó el pago). Cierra el pedido sin reembolso y lo saca de la cola. Si hubo cobro, usá "Reembolsar". ¿Continuar?',
+      fn: () => callAction('resolveManualReconciliation', { order_id: id, action: 'abandon' }) });
     list.push({ act: 'keep', label: 'Mantener en cola', kind: 'soft', confirm: null,
       fn: () => callAction('resolveManualReconciliation', { order_id: id, action: 'keep' }) });
   }
@@ -1699,6 +1705,7 @@ function actionResultText(a, r) {
   if (a.act === 'refund') return out === 'refunded'
     ? 'Pago reembolsado y pedido cerrado.'
     : 'Pedido cerrado. Reembolso PENDIENTE — emítelo en el portal PixelPay.';
+  if (a.act === 'abandon') return 'Pedido descartado (sin cobro) y retirado de la cola.';
   if (a.act === 'keep') return 'Pedido mantenido en la cola.';
   return 'Acción completada.';
 }

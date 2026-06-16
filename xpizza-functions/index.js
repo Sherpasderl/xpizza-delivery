@@ -1175,7 +1175,7 @@ exports.sweepStalePending = onSchedule(
     for (const orderId of Object.keys(orders)) {
       const order = orders[orderId];
       if (order.payment_method !== 'online') continue;
-      if (['confirmed', 'manual_reconciliation', 'refunded', 'refund_pending', 'failed'].includes(order.payment_status)) continue;
+      if (['confirmed', 'manual_reconciliation', 'refunded', 'refund_pending', 'failed', 'abandoned'].includes(order.payment_status)) continue;
       const attempt = order.active_attempt_id
         ? (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val()
         : null;
@@ -1266,6 +1266,9 @@ exports.reconcilePayments = onSchedule(
 //   action 'materialize' → ledger-verified paid: confirm + materialize the order.
 //   action 'refund'      → void/refund the payment, close the order failed.
 //   action 'keep'        → leave queued (no-op; for re-checking later).
+//   action 'abandon'     → dispatcher verified NO charge on the PixelPay portal: a
+//                          missed order, not a lost charge. Terminal — clears the queue.
+//                          Refused if a payment_uuid is recorded (real charge → refund).
 // Auth: RECON_SECRET (server) OR a dispatcher Firebase ID token (the dashboard
 // Pedidos view). Records an audit entry keyed by the verified actor.
 exports.resolveManualReconciliation = onRequest(
@@ -1285,7 +1288,7 @@ exports.resolveManualReconciliation = onRequest(
     // RECON_SECRET path may pass a free-text actor label.
     const actor = auth.actor === 'recon_secret' ? sanitizeText(body.actor || 'server', 80) : auth.actor;
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return badRequest(res, 'order_id invalid');
-    if (!['materialize', 'refund', 'keep'].includes(action)) return badRequest(res, 'action must be materialize|refund|keep');
+    if (!['materialize', 'refund', 'keep', 'abandon'].includes(action)) return badRequest(res, 'action must be materialize|refund|keep|abandon');
 
     const db = getDatabase();
     const order = (await db.ref(`orders/${orderId}`).once('value')).val();
@@ -1303,6 +1306,18 @@ exports.resolveManualReconciliation = onRequest(
       if (action === 'keep') {
         await audit('kept_queued');
         return res.status(200).json({ ok: true, outcome: 'kept_queued' });
+      }
+      if (action === 'abandon') {
+        // Dispatcher verified on the PixelPay portal that NO charge exists → a missed
+        // order, not a lost charge. Terminal (clears the manual_reconciliation queue).
+        // Money-safety rail: REFUSE if a payment_uuid is recorded — a uuid means a real
+        // charge exists, which must be voided via 'refund', never silently abandoned.
+        const uuid = attemptId ? (await db.ref(`payment_attempts/${attemptId}/payment_uuid`).once('value')).val() : null;
+        if (uuid) return res.status(409).json({ error: 'Este pedido tiene un pago registrado (uuid) — usá "Reembolsar", no "Descartar".', payment_uuid_present: true });
+        if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'abandoned', status: 'abandoned', abandoned_at: Date.now() });
+        await db.ref(`orders/${orderId}`).update({ payment_status: 'abandoned', status: 'cancelled' });
+        await audit('abandoned', { note: sanitizeText(body.note || '', 200) });
+        return res.status(200).json({ ok: true, outcome: 'abandoned' });
       }
       if (action === 'materialize') {
         // Dispatcher verified the ledger shows our paid capture → confirm + materialize.
