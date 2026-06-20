@@ -55,8 +55,18 @@ function getBgGeo() {
 // what ingestDriverLocation expects (ts is ISO; the endpoint coerces it).
 function buildConfig(token) {
   return {
+    // CRITICAL: Transistorsoft persists its config across launches and IGNORES
+    // the config passed to ready() on subsequent calls UNLESS reset:true. Our
+    // ingest token changes every shift, so we MUST re-apply the full config each
+    // time → reset:true. (Without it, ready() silently keeps stale/empty config:
+    // url:"", headers:{} → no uploads. Confirmed via getState() 2026-06-20.)
+    reset: true,
+    // debug:true → device beeps on each recorded location + emits debug
+    // notifications. Invaluable for testing on this Honor device (logcat is
+    // OEM-suppressed). REMOVE (or set false) before the production release build.
+    debug: true,
     // motion
-    desiredAccuracy: -1,        // DESIRED_ACCURACY_NAVIGATION (highest); tune down for battery
+    desiredAccuracy: -1,        // DESIRED_ACCURACY_HIGH; tune down for battery
     distanceFilter: 15,         // metres between samples while moving
     stationaryRadius: 25,
     // lifecycle — survive backgrounding / app kill
@@ -103,7 +113,11 @@ export async function startNativeTracking(app, uid) {
   if (!ingest_token) throw new Error('startDriverShift returned no ingest_token');
 
   const BgGeo = getBgGeo();
-  await BgGeo.ready(buildConfig(ingest_token));
+  // The native ready() expects { options: <config> } — that's how the plugin's
+  // JS wrapper calls it (NativeModule.ready({ options: config })). Passing the
+  // raw config to the bridge proxy silently applies nothing. start()/stop() take
+  // no args. Verified against dist/index.js (2026-06-20).
+  await BgGeo.ready({ options: buildConfig(ingest_token) });
   await BgGeo.start();
   console.log(`native-location: tracking started (shift ${shift_id})`);
   return { shift_id };
