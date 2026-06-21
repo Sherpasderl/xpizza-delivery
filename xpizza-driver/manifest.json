@@ -1,7 +1,7 @@
 {
-  "name": "X Pizza Driver",
-  "short_name": "XP Driver",
-  "description": "App de repartidores de X Pizza",
+  "name": "Sherpa Driver",
+  "short_name": "Sherpa",
+  "description": "App de repartidores Sherpa",
   "start_url": "./",
   "display": "standalone",
   "orientation": "portrait",

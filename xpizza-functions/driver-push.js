@@ -56,7 +56,9 @@ function isTerminalWebPushError(err) {
 
 // The high-importance Android notification channel the native app must create
 // for new-order alerts to wake a locked phone. Kept in sync with the app.
-const FCM_CHANNEL_ID = 'orders';
+// Must match the native createChannel id in native-push.js. Bumped to
+// 'orders_v2' to attach the custom bell sound (channels are immutable).
+const FCM_CHANNEL_ID = 'orders_v2';
 const PUSH_TTL_SECONDS = 600; // 10 min, matches the web-push TTL
 
 /**
@@ -80,7 +82,7 @@ function buildFcmMessage(token, { title, body, tag, data } = {}) {
       priority: 'high',
       ttl: PUSH_TTL_SECONDS * 1000, // android.ttl is milliseconds
       collapseKey: tag,
-      notification: { tag, channelId: FCM_CHANNEL_ID }
+      notification: { tag, channelId: FCM_CHANNEL_ID, sound: 'order_bell.wav' }
     }
   };
 }

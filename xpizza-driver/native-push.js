@@ -24,7 +24,11 @@
  */
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js';
 
-const CHANNEL_ID = 'orders'; // MUST match FCM_CHANNEL_ID in xpizza-functions/driver-push.js
+// MUST match FCM_CHANNEL_ID in xpizza-functions/driver-push.js. Bumped from
+// 'orders' → 'orders_v2' because Android notification channels are IMMUTABLE:
+// the original 'orders' channel was created without a custom sound, so adding
+// the bell requires a brand-new channel id.
+const CHANNEL_ID = 'orders_v2';
 const REGION = 'us-central1';
 
 export function isNative() {
@@ -59,6 +63,7 @@ export async function initNativePush(app, uid) {
       description: 'Nuevos pedidos asignados',
       importance: 5,   // IMPORTANCE_HIGH — heads-up banner + sound
       visibility: 1,   // VISIBILITY_PUBLIC — show on lock screen
+      sound: 'order_bell.wav',  // res/raw/order_bell.wav (plugin strips the extension)
       vibration: true
     });
   } catch (e) {

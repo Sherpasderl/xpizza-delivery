@@ -74,7 +74,7 @@ function buildConfig(token) {
     startOnBoot: true,
     foregroundService: true,
     notification: {
-      title: 'X Pizza Driver',
+      title: 'Sherpa Driver',
       text: 'Compartiendo ubicación durante el turno'
     },
     backgroundPermissionRationale: {
