@@ -61,10 +61,11 @@ function buildConfig(token) {
     // time → reset:true. (Without it, ready() silently keeps stale/empty config:
     // url:"", headers:{} → no uploads. Confirmed via getState() 2026-06-20.)
     reset: true,
-    // debug:true → device beeps on each recorded location + emits debug
-    // notifications. Invaluable for testing on this Honor device (logcat is
-    // OEM-suppressed). REMOVE (or set false) before the production release build.
-    debug: true,
+    // debug → device beeps on each recorded location + emits debug
+    // notifications. Invaluable for on-device testing (Honor logcat is
+    // OEM-suppressed). MUST be false for the production / Play Store release
+    // build (flip back to true to re-debug on a device).
+    debug: false,
     // motion
     desiredAccuracy: -1,        // DESIRED_ACCURACY_HIGH; tune down for battery
     distanceFilter: 15,         // metres between samples while moving
