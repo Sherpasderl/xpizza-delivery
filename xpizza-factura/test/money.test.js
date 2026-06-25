@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { priceBreakdown, reconcileLineBases } = require('../src/money');
+const { priceBreakdown, reconcileLineBases, formatLempiras } = require('../src/money');
 
 // ISV is 15% tax-INCLUSIVE: the menu price IS what the customer pays. We break tax OUT
 // with the SAME fixed rounding rule the platform uses in priceBreakdownCents(), so the
@@ -64,4 +64,22 @@ test('reconcileLineBases: column always sums to subtotal (random-ish sweep)', ()
     assert.equal(bases.reduce((a, b) => a + b, 0), subtotal, `cart ${gross} did not reconcile`);
     assert.equal(bases.length, gross.length);
   }
+});
+
+// formatLempiras(cents) -> "1,455.00" style (comma thousands, 2 decimals), matching receipts.
+
+test('formatLempiras: thousands separator and two decimals', () => {
+  assert.equal(formatLempiras(145500), '1,455.00');
+  assert.equal(formatLempiras(124817), '1,248.17');
+  assert.equal(formatLempiras(333200), '3,332.00');
+});
+
+test('formatLempiras: small amounts and zero', () => {
+  assert.equal(formatLempiras(0), '0.00');
+  assert.equal(formatLempiras(700), '7.00');
+  assert.equal(formatLempiras(4500), '45.00');
+});
+
+test('formatLempiras: millions', () => {
+  assert.equal(formatLempiras(100000000), '1,000,000.00');
 });

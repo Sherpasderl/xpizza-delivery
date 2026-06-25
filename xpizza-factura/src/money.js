@@ -30,4 +30,15 @@ function reconcileLineBases(lineGrossCents, subtotalCents) {
   return bases;
 }
 
-module.exports = { priceBreakdown, reconcileLineBases };
+// Integer centavos -> "1,455.00" (comma thousands, 2 decimals). Matches the receipts'
+// money formatting; callers prefix the "L" where the layout needs it.
+function formatLempiras(cents) {
+  const neg = cents < 0;
+  const abs = Math.abs(Math.round(cents));
+  const lempiras = Math.floor(abs / 100);
+  const centavos = String(abs % 100).padStart(2, '0');
+  const withSep = String(lempiras).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${neg ? '-' : ''}${withSep}.${centavos}`;
+}
+
+module.exports = { priceBreakdown, reconcileLineBases, formatLempiras };
