@@ -5,6 +5,16 @@
   "description": "X. Pizza SAR factura subsystem: renderer, amount-in-words, allocation helpers, print agent (Surface Pro). Isolated from xpizza-functions until merge.",
   "type": "commonjs",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test test/*.test.js",
+    "preview": "node preview.js",
+    "seed": "node seed_factura_config.js",
+    "agent": "node print_agent.js",
+    "print-sample": "node tools/print-sample.js",
+    "test-order": "node tools/test-order.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "firebase-admin": "^12.7.0",
+    "usb": "^2.14.0"
   }
 }
