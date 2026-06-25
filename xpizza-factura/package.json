@@ -1,0 +1,10 @@
+{
+  "name": "xpizza-factura",
+  "version": "1.0.0",
+  "private": true,
+  "description": "X. Pizza SAR factura subsystem: renderer, amount-in-words, allocation helpers, print agent (Surface Pro). Isolated from xpizza-functions until merge.",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test"
+  }
+}
