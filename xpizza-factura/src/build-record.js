@@ -18,6 +18,12 @@ function isoToDMY(iso) {
   return `${d}/${m}/${y}`;
 }
 
+// epoch ms -> 'YYYY-MM-DD' Honduras-local date (for ISO date comparisons in decideReserve).
+function hnDateISO(epochMs) {
+  const t = new Date(epochMs - HN_OFFSET_MS);
+  return `${t.getUTCFullYear()}-${pad2(t.getUTCMonth() + 1)}-${pad2(t.getUTCDate())}`;
+}
+
 // epoch ms -> { fecha: 'DD/MM/YYYY', hora: 'hh:mm:ss AM/PM' } in Honduras local time.
 function formatHN(epochMs) {
   const t = new Date(epochMs - HN_OFFSET_MS); // shift, then read UTC fields
@@ -104,4 +110,4 @@ function buildFacturaRecord({ order, config, reserved, now }) {
   };
 }
 
-module.exports = { buildFacturaRecord, formatHN, isoToDMY, formaDePago };
+module.exports = { buildFacturaRecord, formatHN, hnDateISO, isoToDMY, formaDePago };

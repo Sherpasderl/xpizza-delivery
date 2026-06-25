@@ -121,3 +121,11 @@ test('snapshots emisor identity + range strings + is_temp + DMY fecha_limite', (
   assert.equal(r.rango_hasta, '000-001-01-00008000');
   assert.equal(r.pedido, 'ORD-7788');
 });
+
+test('hnDateISO returns the Honduras-local date as YYYY-MM-DD', () => {
+  const { hnDateISO } = require('../src/build-record');
+  // 2026-06-26 01:24:16 UTC == 2026-06-25 in Honduras (UTC-6)
+  assert.equal(hnDateISO(Date.UTC(2026, 5, 26, 1, 24, 16)), '2026-06-25');
+  // 2026-06-26 05:59:00 UTC == 2026-06-25 23:59 HN (still the 25th)
+  assert.equal(hnDateISO(Date.UTC(2026, 5, 26, 5, 59, 0)), '2026-06-25');
+});
