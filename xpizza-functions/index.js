@@ -857,9 +857,13 @@ chargeOnlineApp.all('*', async (req, res) => {
   const email = (typeof rawEmail === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rawEmail.trim())) ? rawEmail.trim() : 'pedidos@xpizza.hn';
 
   // Customer-facing return URLs + the AUTHENTICATED server callback (?secret=…).
-  const appBase = String(pp.app_url || '').replace(/\/+$/, '');
-  const completeUrl = `${appBase}/?pay=complete&order=${encodeURIComponent(orderId)}&t=${encodeURIComponent(pollToken)}`;
-  const cancelUrl = `${appBase}/?pay=cancel&order=${encodeURIComponent(orderId)}`;
+  // IMPORTANT: the return URLs use the ORDER-SITE origin (where the return/poll page lives),
+  // NOT pp.app_url — that's the PixelPay ENDPOINT (it's the x-client-signature app_url, a
+  // different thing; reusing it would redirect the paid customer to the bank's domain).
+  // Configurable via PIXELPAY_RETURN_URL; defaults to the orders site.
+  const siteBase = String(process.env.PIXELPAY_RETURN_URL || 'https://xpizzaorders.netlify.app').replace(/\/+$/, '');
+  const completeUrl = `${siteBase}/?pay=complete&order=${encodeURIComponent(orderId)}&t=${encodeURIComponent(pollToken)}`;
+  const cancelUrl = `${siteBase}/?pay=cancel&order=${encodeURIComponent(orderId)}`;
   const wsecret = process.env.PIXELPAY_WEBHOOK_SECRET || '';
   if (!wsecret) console.warn('chargeOnlineOrder: PIXELPAY_WEBHOOK_SECRET not set — hosted callback will be unauthenticated');
   const callbackUrl = pixelPayCallbackUrl() + (wsecret ? `?secret=${encodeURIComponent(wsecret)}` : '');
