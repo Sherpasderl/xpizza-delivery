@@ -1750,7 +1750,7 @@ function goToLocation(){
   const phone=document.getElementById('cphone').value.trim();
   const has=MENU.some(p=>qty[p.id]>0);
   const err=document.getElementById('err1');
-  if(!isOpen()){ err.style.display='block'; err.textContent='Lo sentimos, estamos cerrados. '+getNextOpenText(); return; }
+  if(!isOpen() && !window.__bypassClosed){ err.style.display='block'; err.textContent='Lo sentimos, estamos cerrados. '+getNextOpenText(); return; }
   if(!has){ err.style.display='block'; err.textContent='Seleccioná al menos una pizza.'; return; }
   if(calcTotal()<MIN_ORDER){ err.style.display='block'; err.textContent='Agrega L '+(MIN_ORDER-calcTotal()).toFixed(0)+' más para alcanzar el mínimo de L '+MIN_ORDER+'.'; return; }
   const phoneDigits=phone.replace(/[^\d]/g,'');
@@ -2938,6 +2938,7 @@ document.getElementById('closed-overlay').addEventListener('click', function(e){
   clearTimeout(tapTimer);
   if(tapCount >= 5){
     document.getElementById('closed-overlay').style.display = 'none';
+    window.__bypassClosed = true;   // also lift the goToLocation hours gate (for testing)
     tapCount = 0;
   }
   tapTimer = setTimeout(()=>{ tapCount = 0; }, 2000);
