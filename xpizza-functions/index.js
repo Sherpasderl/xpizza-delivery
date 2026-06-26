@@ -1583,6 +1583,46 @@ exports.blockPublicSignup = beforeUserCreated({ region: 'us-central1' }, (event)
 // function correctness, slow-but-not-failing responses. The Sentry-style
 // error alerts catch the function-error case; this just catches the
 // "everything is on fire" case.
+// whatsMyIp — TEMPORARY diagnostic: returns this function's OUTBOUND (egress) IP, so we can
+// give PixelPay/Ficohsa the source IP of our server-to-server requests for Cloudflare allowlisting.
+// Gen2 functions use a dynamic Google egress pool unless a static egress IP is configured, so call
+// this a few times to sample the pool. Remove once a static egress IP is in place.
+exports.whatsMyIp = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 10, memory: '256MiB' },
+  async (req, res) => {
+    try {
+      const r = await fetch('https://api.ipify.org?format=json');
+      const j = await r.json();
+      res.json({ egress_ip: j.ip, region: 'us-central1', ts: Date.now() });
+    } catch (e) {
+      res.status(500).json({ error: String((e && e.message) || e) });
+    }
+  }
+);
+
+// edgeCheck — TEMPORARY diagnostic: from THIS function's IP (the one we asked the bank to
+// allowlist), POST to PixelPay/Ficohsa and report the HTTP status + cf-mitigated header. This is
+// the only valid test of the allowlist (a local curl comes from the wrong IP). Remove at go-live.
+exports.edgeCheck = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 25, memory: '256MiB' },
+  async (req, res) => {
+    const out = {};
+    for (const [name, url] of [
+      ['prod', 'https://hn.ficoposonline.com/api/v2/transaction/hosted/other'],
+      ['sandbox', 'https://pixelpay.dev/api/v2/transaction/hosted/sandbox']
+    ]) {
+      try {
+        const hd = { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' };
+        if (process.env.PIXELPAY_GW_ACCESS_TOKEN) hd['x-gw-access-token'] = process.env.PIXELPAY_GW_ACCESS_TOKEN;
+        const r = await fetch(url, { method: 'POST', headers: hd, body: 'json=true' });
+        out[name] = { status: r.status, cf_mitigated: r.headers.get('cf-mitigated'), content_type: r.headers.get('content-type') };
+      } catch (e) { out[name] = { error: String((e && e.message) || e) }; }
+    }
+    try { out.egress_ip = (await (await fetch('https://api.ipify.org')).text()).trim(); } catch (_) {}
+    res.json(out);
+  }
+);
+
 exports.healthz = onRequest(
   {
     region: 'us-central1',

@@ -38,6 +38,8 @@ async function ppPost(action, body, extraHeaders = {}) {
     'x-auth-hash': cfg.auth_hash,
     ...extraHeaders
   };
+  // FicoPos Cloudflare gateway allowlist header (value from env, never hardcoded).
+  if (process.env.PIXELPAY_GW_ACCESS_TOKEN) headers['x-gw-access-token'] = process.env.PIXELPAY_GW_ACCESS_TOKEN;
   const payload = { ...body };
   if (cfg.env) payload.env = cfg.env; // sandbox needs env in the body; prod omits
 

@@ -64,13 +64,18 @@ async function createHostedCharge({
   const action = cfg.mode === 'sandbox' ? 'hosted/sandbox' : 'hosted/other';
   const url = `${String(cfg.endpoint).replace(/\/+$/, '')}/api/v2/transaction/${action}`;
 
+  // FicoPos enabled a Cloudflare gateway that challenges server-to-server requests; this
+  // header (name fixed + lowercase by them; value from env, never hardcoded) allowlists us.
+  const headers = { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' };
+  if (process.env.PIXELPAY_GW_ACCESS_TOKEN) headers['x-gw-access-token'] = process.env.PIXELPAY_GW_ACCESS_TOKEN;
+
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
   let res;
   try {
     res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      headers,
       body: params.toString(),
       signal: ctrl.signal
     });
