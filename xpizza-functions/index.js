@@ -65,6 +65,15 @@ const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webh
 const { voidOrRefund } = require('./pixelpay-cancel');
 const { handleHostedCallback } = require('./pixelpay-hosted-webhook');
 const { getMessaging } = require('firebase-admin/messaging');
+// Factura (SAR fiscal document) — logic source of truth is xpizza-factura/src; the four
+// logic modules under ./factura are byte-identical deploy copies (see factura/README.md +
+// factura/sync.test.js). Allocation/void fire from DB triggers (allocateFacturaOnSale /
+// voidFacturaOnCancel) defined below. FACTURA_PLAN.md + ADR-0003/0004.
+const { pricedLineItems } = require('./factura/pricing');
+const { facturaSaleEligible, facturaVoidEligible } = require('./factura/eligibility');
+const { allocateFacturaNumber, voidFactura } = require('./factura/factura-helpers');
+const FACTURA_RESTAURANT_ID = 'x_pizza'; // single restaurant until the config-plane migration
+const FACTURA_LAUNCH_CUTOFF_MS = Date.parse('2026-06-26T00:00:00Z'); // never retro-issue pre-launch orders
 const {
   computePushReachable,
   selectTransports,
@@ -325,7 +334,11 @@ function validateOrderPayload(body) {
     payment_method: payment,
     address_detected: sanitizeText(body.address_detected, 300),
     address_details: sanitizeText(body.address_details, 300),
-    pickup_time: sanitizeText(body.pickup_time, 40) || 'standard'
+    pickup_time: sanitizeText(body.pickup_time, 40) || 'standard',
+    // Factura-with-RTN (D3). razon_social replaces CLIENTE; rtn_cliente validated server-side
+    // as 14 digits (never trust the client) — blank if absent/invalid (= consumidor final).
+    razon_social: sanitizeText(body.razon_social, 120),
+    rtn_cliente: /^\d{14}$/.test(String(body.rtn_cliente || '')) ? String(body.rtn_cliente) : ''
   };
 
   return { errors, total, lat, lng, fields };
@@ -504,6 +517,18 @@ createOrderApp.all('*', async (req, res) => {
   const deliveryTaskId = `${orderId}_delivery`;
   const trackingToken = generateTrackingToken();
 
+  // Factura inputs (FACTURA_PLAN §2): a server-priced structured item list so the factura
+  // DB trigger — which sees only the stored order — can itemize; plus cash tendered for the
+  // CAMBIO line. Money stays in centavos; cash is validated >= total (never trust client) and
+  // defaults to exact (no change) when absent/invalid so a bad value never blocks the order.
+  const facturaBreakdown = priceBreakdownCents(total);
+  const facturaPriced = pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES);
+  let cashTenderedCents = 0;
+  if (fields.payment_method === 'cash') {
+    const ct = Math.round(Number(body.cash_tendered) * 100);
+    cashTenderedCents = (Number.isFinite(ct) && ct >= facturaBreakdown.total_cents) ? ct : facturaBreakdown.total_cents;
+  }
+
   // Build the order record. Common fields apply to both delivery and pickup;
   // delivery-specific fields (lat/lng/address, task IDs) only get included
   // for delivery orders. Pickup orders get pickup_time instead.
@@ -519,7 +544,14 @@ createOrderApp.all('*', async (req, res) => {
     order_type: orderType,
     status: 'new',
     tracking_token: trackingToken,
-    created_at: now
+    created_at: now,
+    // --- factura (SAR) fields; the allocateFacturaOnSale trigger consumes these ---
+    restaurant_id: FACTURA_RESTAURANT_ID,
+    factura_status: 'not_due',                 // trigger advances to issued/failed
+    cash_tendered_cents: cashTenderedCents,
+    ...(facturaPriced.items ? { items: facturaPriced.items } : {}),
+    ...(fields.razon_social ? { razon_social: fields.razon_social } : {}),
+    ...(fields.rtn_cliente ? { rtn_cliente: fields.rtn_cliente } : {})
   };
 
   if (orderType === 'delivery') {
@@ -782,6 +814,11 @@ chargeOnlineApp.all('*', async (req, res) => {
   const { total_cents, subtotal_cents, tax_cents } = priceBreakdownCents(total);
   const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text);
 
+  // Factura inputs (FACTURA_PLAN §2) — structured priced items for the factura trigger.
+  // factura_status starts 'not_due': a pending_payment order is NOT yet a Sale, so it's
+  // never reconciled; the trigger only acts once it materializes (status:new + confirmed).
+  const facturaPriced = pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES);
+
   // The HIDDEN pending order. Mirrors createOrder's orderRecord (so Stage-4
   // confirm can materialize tasks/tracking from it) but status=pending_payment,
   // payment_status=pending, and NO tasks/tracking/WhatsApp yet.
@@ -798,7 +835,14 @@ chargeOnlineApp.all('*', async (req, res) => {
     payment_status: 'pending',
     order_type: orderType,
     status: 'pending_payment',
-    created_at: now
+    created_at: now,
+    // --- factura (SAR) fields ---
+    restaurant_id: FACTURA_RESTAURANT_ID,
+    factura_status: 'not_due',
+    cash_tendered_cents: 0,                     // online: no cash, CAMBIO 0
+    ...(facturaPriced.items ? { items: facturaPriced.items } : {}),
+    ...(fields.razon_social ? { razon_social: fields.razon_social } : {}),
+    ...(fields.rtn_cliente ? { rtn_cliente: fields.rtn_cliente } : {})
   };
   if (orderType === 'delivery') {
     pendingOrderRecord.lat = lat;
@@ -1392,6 +1436,87 @@ exports.materializeOnConfirm = onValueWritten(
       console.log(`materializeOnConfirm: ${orderId} → ${r.outcome}`);
     } catch (e) {
       console.error(`materializeOnConfirm: ${orderId} failed`, e.message);
+    }
+  }
+);
+
+// ============================================================
+// allocateFacturaOnSale — issue a SAR factura when an order becomes a Sale (ADR-0003)
+// ============================================================
+//
+// Fires on every /orders write but acts only when the order is a fresh Sale still owing a
+// factura (facturaSaleEligible: status:new + online-confirmed + factura_status:'not_due' +
+// past the launch cutoff). Covers cash/card_delivery (Sale at creation) AND every online
+// materialize route (confirm, hosted webhook, recovery, manual reconciliation) uniformly,
+// because they all land the same order state. Idempotent + race-safe in allocateFacturaNumber
+// (the sequence reservation), so concurrent re-fires never double-burn a number. Non-blocking:
+// a failure marks factura_status and alerts; it never affects the customer order.
+exports.allocateFacturaOnSale = onValueWritten(
+  { ref: '/orders/{orderId}', region: 'us-central1' },
+  async (event) => {
+    const after = event.data.after.val();
+    if (!facturaSaleEligible(after, FACTURA_LAUNCH_CUTOFF_MS)) return;
+    const orderId = event.params.orderId;
+    const db = getDatabase();
+    const restaurantId = after.restaurant_id || FACTURA_RESTAURANT_ID;
+
+    // Field-presence is checked HERE (not in the predicate) so a Sale missing priced data is
+    // surfaced as failed+alert, never silently skipped (Codex R2-#4).
+    if (!Array.isArray(after.items) || after.items.length === 0 ||
+        after.total_cents == null || after.subtotal_cents == null || after.tax_cents == null) {
+      console.error(`[factura] order ${orderId} reached Sale state without priced fields — marking failed`);
+      await db.ref(`orders/${orderId}/factura_status`).set('failed').catch(() => {});
+      await db.ref(`dispatcher_alerts/factura_${orderId}`).set({
+        kind: 'factura_missing_fields', order_id: orderId, at: Date.now()
+      }).catch(() => {});
+      return;
+    }
+
+    try {
+      const r = await allocateFacturaNumber(db, {
+        restaurantId,
+        orderId,
+        order: { ...after, orderId, razon_social: after.razon_social || '', rtn_cliente: after.rtn_cliente || '' },
+        now: Date.now(),
+      });
+      if (r.ok) {
+        console.log(`[factura] ${orderId} → ${r.factura ? r.factura.factura_number : 'issued'}${r.voided ? ' (voided: cancel race)' : ''}`);
+      } else {
+        console.error(`[factura] ${orderId} not issued: ${r.reason || r.skipped}`);
+        if (r.reason === 'range_exhausted' || r.reason === 'expired' || r.reason === 'config_missing') {
+          await db.ref(`dispatcher_alerts/factura_${orderId}`).set({
+            kind: `factura_${r.reason}`, order_id: orderId, at: Date.now()
+          }).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.error(`[factura] allocate ${orderId} threw:`, e.message);
+    }
+  }
+);
+
+// ============================================================
+// voidFacturaOnCancel — void an issued factura when its order is cancelled (ADR-0003)
+// ============================================================
+//
+// Fires on the order's transition into 'cancelled' from ANY path (dispatcher cancelPaidOrder,
+// manual reconciliation, client-side cash cancel). If a number was issued → void it (the SAR
+// number is retained, never recycled). If none was issued yet → mark factura_status:'cancelled'
+// (no factura owed — a pre-issuance cancellation isn't a Sale; confirmed with fiscal counsel).
+exports.voidFacturaOnCancel = onValueWritten(
+  { ref: '/orders/{orderId}', region: 'us-central1' },
+  async (event) => {
+    const before = event.data.before.val();
+    const after = event.data.after.val();
+    if (!facturaVoidEligible(before, after)) return;
+    const orderId = event.params.orderId;
+    const db = getDatabase();
+    const restaurantId = after.restaurant_id || FACTURA_RESTAURANT_ID;
+    try {
+      const r = await voidFactura(db, { restaurantId, orderId, reason: after.cancel_reason || 'cancelado', now: Date.now() });
+      console.log(`[factura] void ${orderId} → ${r.voided ? 'voided' : (r.no_factura ? 'no factura owed' : 'noop')}`);
+    } catch (e) {
+      console.error(`[factura] void ${orderId} threw:`, e.message);
     }
   }
 );

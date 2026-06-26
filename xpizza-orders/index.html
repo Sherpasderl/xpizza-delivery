@@ -1010,6 +1010,17 @@ textarea{resize:none;height:80px;line-height:1.4}
         <label class="field-label">Correo <span style="font-weight:400;color:#999">(opcional · para tu recibo)</span></label>
         <input type="email" id="cemail" placeholder="tu@correo.com" autocomplete="email" inputmode="email"/>
       </div>
+      <div class="field-group field-divider">
+        <label class="field-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400">
+          <input type="checkbox" id="rtn-toggle" onchange="toggleRtn()" style="width:auto;margin:0"/>
+          Necesito factura con RTN
+        </label>
+        <div id="rtn-fields" style="display:none;margin-top:10px">
+          <input type="text" id="razon-social" placeholder="Razón social (nombre en la factura)" style="margin-bottom:8px" maxlength="120"/>
+          <input type="text" id="rtn-cliente" inputmode="numeric" maxlength="14" placeholder="RTN (14 dígitos)"/>
+          <div id="rtn-error" style="display:none;color:var(--brand-red);font-size:.8rem;margin-top:4px">El RTN debe tener exactamente 14 dígitos.</div>
+        </div>
+      </div>
       <div class="field-group">
         <label class="field-label">Instrucciones especiales</label>
         <textarea id="notes" placeholder="Sin cebolla, extra salsa... (opcional)"></textarea>
@@ -1113,6 +1124,15 @@ textarea{resize:none;height:80px;line-height:1.4}
         </div>
         <!-- "Tarjeta al entregar" payment card removed pending acquisition of
              a handheld POS terminal. Re-add when terminal is in operation. -->
+      </div>
+
+      <!-- Cash-change capture: only shown for EFECTIVO. Lets X. Pizza send the driver with
+           exact change (single cash source, no end-of-shift reconciliation). -->
+      <div id="cash-change-panel" style="display:none;margin-top:14px">
+        <label class="field-label">¿Con cuánto vas a pagar? <span style="font-weight:400;color:#999">(para llevarte el cambio exacto)</span></label>
+        <div id="change-chips" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0"></div>
+        <input type="number" id="cash-tendered" inputmode="numeric" min="0" step="1" placeholder="Otro monto (L)" oninput="onCashTenderedInput()"/>
+        <div id="change-hint" style="font-size:.82rem;color:#666;margin-top:6px"></div>
       </div>
 
       <div id="pixelpay-panel" style="display:none">
@@ -1988,6 +2008,9 @@ function selectPay(type){
   document.getElementById('pay-'+type).classList.add('selected');
   document.getElementById('pixelpay-panel').style.display=(type==='online')?'block':'none';
   if(type==='online'){ document.getElementById('pixelpay-amount').textContent='L '+calcTotal().toFixed(2); }
+  // Cash-change picker only for EFECTIVO.
+  const cashPanel=document.getElementById('cash-change-panel');
+  if(cashPanel){ cashPanel.style.display=(type==='cash')?'block':'none'; if(type==='cash') renderChangeChips(); }
   const btn=document.getElementById('btn-pay');
   btn.disabled=false;
   btn.textContent=type==='online'
@@ -2005,10 +2028,45 @@ function selectPay(type){
   }
 }
 
+/* ── Factura: RTN + cash-change helpers ── */
+function toggleRtn(){
+  const on=document.getElementById('rtn-toggle').checked;
+  document.getElementById('rtn-fields').style.display=on?'block':'none';
+  if(!on){ document.getElementById('razon-social').value=''; document.getElementById('rtn-cliente').value=''; document.getElementById('rtn-error').style.display='none'; }
+}
+function rtnIsValid(){
+  if(!document.getElementById('rtn-toggle')?.checked) return true; // not requested
+  return /^\d{14}$/.test(document.getElementById('rtn-cliente').value.trim());
+}
+function renderChangeChips(){
+  const total=calcTotal();
+  const box=document.getElementById('change-chips'); if(!box) return;
+  const bills=[100,200,500,1000].filter(b=>b>=total);
+  const chips=[{label:'Pago exacto',val:total}, ...bills.map(b=>({label:'L'+b,val:b}))];
+  box.innerHTML=chips.map(c=>`<button type="button" onclick="setCashTendered(${c.val})" style="padding:8px 14px;border:1.5px solid var(--brand-red,#c8102e);background:#fff;color:var(--brand-red,#c8102e);border-radius:999px;font-size:.85rem;font-weight:600;cursor:pointer">${c.label}</button>`).join('');
+}
+function setCashTendered(v){
+  document.getElementById('cash-tendered').value=v;
+  onCashTenderedInput();
+}
+function onCashTenderedInput(){
+  const total=calcTotal();
+  const v=parseFloat(document.getElementById('cash-tendered').value);
+  const hint=document.getElementById('change-hint');
+  if(!isFinite(v)||v<=0){ hint.textContent=''; return; }
+  if(v<total){ hint.style.color='var(--brand-red)'; hint.textContent='El monto debe ser mayor o igual al total (L'+total.toFixed(2)+').'; }
+  else { hint.style.color='#666'; hint.textContent='Tu cambio: L'+(v-total).toFixed(2); }
+}
+
 /* ── Process payment ── */
 async function processPayment(){
   if(!selectedPayment){
     document.getElementById('err3').style.display='block'; return;
+  }
+  if(!rtnIsValid()){
+    document.getElementById('rtn-error').style.display='block';
+    document.getElementById('rtn-cliente').focus();
+    return;
   }
   if(orderType==='delivery' && (!lat || !lng)){
     document.getElementById('err3').style.display='block';
@@ -2103,6 +2161,14 @@ function buildOrder(){
     payment_status: 'pending',
     timestamp: new Date().toISOString(),
   };
+  // Factura extras (server re-validates: RTN must be 14 digits, cash_tendered >= total).
+  const rtnOn=document.getElementById('rtn-toggle')?.checked;
+  currentOrder.razon_social = rtnOn ? document.getElementById('razon-social').value.trim() : '';
+  currentOrder.rtn_cliente  = rtnOn ? document.getElementById('rtn-cliente').value.trim() : '';
+  if(selectedPayment==='cash'){
+    const ct=parseFloat(document.getElementById('cash-tendered')?.value);
+    if(isFinite(ct) && ct>=total) currentOrder.cash_tendered = ct; // else server defaults to exact (no change)
+  }
 }
 
 /* ── PixelPay online card payment (HOSTED redirect) ──

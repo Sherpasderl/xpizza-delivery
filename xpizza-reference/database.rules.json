@@ -105,6 +105,13 @@
     "webhook_events":   { ".read": false, ".write": false },
     "outbox":           { ".read": false, ".write": false },
     "refund_attempts":  { ".read": false, ".write": false },
-    "payment_audit":    { ".read": false, ".write": false }
+    "payment_audit":    { ".read": false, ".write": false },
+
+    "facturas": { ".read": false, ".write": false },
+    "restaurants": {
+      "$restaurant_id": {
+        "factura_config": { ".read": false, ".write": false }
+      }
+    }
   }
 }
