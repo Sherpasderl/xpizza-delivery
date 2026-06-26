@@ -4,7 +4,7 @@
   "description": "X Pizza Delivery Cloud Functions — Make.com → Firebase + Web Push + KDS sync + Auto-assign + Acceptance timeout + Stacking + WhatsApp inbound/outbound",
   "main": "index.js",
   "scripts": {
-    "test": "node pixelpay-charge.test.js && node pixelpay-confirm.test.js && node pixelpay-webhook.test.js && node pixelpay-cancel.test.js",
+    "test": "node pixelpay-charge.test.js && node pixelpay-confirm.test.js && node pixelpay-webhook.test.js && node pixelpay-cancel.test.js && node driver-push.test.js && node driver-ingest.test.js",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "deploy": "firebase deploy --only functions",

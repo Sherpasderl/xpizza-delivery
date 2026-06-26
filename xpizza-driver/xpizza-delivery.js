@@ -764,6 +764,11 @@ export async function pickupComplete(driverId, pickupTaskId) {
   updates[`tasks/${deliveryTaskId}/status`] = TASK_STATUS.ACCEPTED;
   updates[`tasks/${deliveryTaskId}/accepted_at`] = serverTimestamp();
   updates[`drivers/${driverId}/current_task_id`] = deliveryTaskId;
+  // The pickup swipe is what moves the driver to en_route — closes the order-
+  // stacking window at the moment they leave with the pizza, independent of the
+  // (background-fragile) geofence. See ADR 0004. The geofence exit transition
+  // remains a redundant backstop for PWA/foreground.
+  updates[`drivers/${driverId}/status`] = DRIVER_STATUS.EN_ROUTE_DELIVERY;
 
   if (pickupTask.order_id) {
     updates[`orders/${pickupTask.order_id}/status`] = ORDER_STATUS.OUT_FOR_DELIVERY;

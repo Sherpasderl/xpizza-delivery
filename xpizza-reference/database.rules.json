@@ -16,7 +16,17 @@
           ".validate": "newData.val() === 'off_shift' || newData.val() === 'available' || newData.val() === 'assigned' || newData.val() === 'at_restaurant' || newData.val() === 'en_route_delivery' || newData.val() === 'returning' || newData.val() === 'on_break'"
         },
         "lat": { ".validate": "newData.isNumber() || newData.val() === null" },
-        "lng": { ".validate": "newData.isNumber() || newData.val() === null" }
+        "lng": { ".validate": "newData.isNumber() || newData.val() === null" },
+        "push_reachable": {
+          ".validate": "newData.isBoolean() && root.child('dispatchers').child(auth.uid).exists()"
+        },
+        "location_source":      { ".validate": "root.child('dispatchers').child(auth.uid).exists()" },
+        "current_shift_id":     { ".validate": "root.child('dispatchers').child(auth.uid).exists()" },
+        "current_hub_lat":      { ".validate": "root.child('dispatchers').child(auth.uid).exists()" },
+        "current_hub_lng":      { ".validate": "root.child('dispatchers').child(auth.uid).exists()" },
+        "current_restaurant_id":{ ".validate": "root.child('dispatchers').child(auth.uid).exists()" },
+        "ingest_token_hash":    { ".validate": "root.child('dispatchers').child(auth.uid).exists()" },
+        "last_location_ts":     { ".validate": "root.child('dispatchers').child(auth.uid).exists()" }
       }
     },
 
@@ -87,6 +97,9 @@
         ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
       }
     },
+
+    "driver_push_tokens": { ".read": false, ".write": false },
+    "driver_tokens":      { ".read": false, ".write": false },
 
     "payment_attempts": { ".read": false, ".write": false },
     "webhook_events":   { ".read": false, ".write": false },
