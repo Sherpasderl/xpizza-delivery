@@ -849,10 +849,12 @@ chargeOnlineApp.all('*', async (req, res) => {
   const pollToken = acq.poll_token;
   const amountStr = centsToLempiras(total_cents);          // real server total (NOT the sandbox 1-14 map) so the callback amount-check holds
 
-  // PixelPay requires first+last name and a valid email.
-  const nameParts = String(fields.customer_name).trim().split(/\s+/);
-  const firstName = nameParts[0] || 'Cliente';
-  const lastName = nameParts.slice(1).join(' ') || firstName;
+  // PixelPay requires first+last name (each ≥3 chars) and a valid email. Pad short parts with
+  // dots so a short / single-word name never blocks checkout (the real name is on the order record).
+  const pad3 = (s) => { s = String(s || '').trim(); while (s.length < 3) s += '.'; return s; };
+  const nameParts = String(fields.customer_name || '').trim().split(/\s+/).filter(Boolean);
+  const firstName = pad3(nameParts[0] || 'Cliente');
+  const lastName = pad3(nameParts.slice(1).join(' ') || nameParts[0] || 'Cliente');
   const rawEmail = body.customer_email;
   const email = (typeof rawEmail === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rawEmail.trim())) ? rawEmail.trim() : 'pedidos@xpizza.hn';
 

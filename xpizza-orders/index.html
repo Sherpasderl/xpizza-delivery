@@ -1987,6 +1987,7 @@ function selectPay(type){
   document.querySelectorAll('.pay-card').forEach(c=>c.classList.remove('selected'));
   document.getElementById('pay-'+type).classList.add('selected');
   document.getElementById('pixelpay-panel').style.display=(type==='online')?'block':'none';
+  if(type==='online'){ document.getElementById('pixelpay-amount').textContent='L '+calcTotal().toFixed(2); }
   const btn=document.getElementById('btn-pay');
   btn.disabled=false;
   btn.textContent=type==='online'
