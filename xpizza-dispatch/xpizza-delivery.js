@@ -69,6 +69,7 @@ export const TASK_TYPE = {
 };
 
 export const ORDER_STATUS = {
+  PENDING_PAYMENT: 'pending_payment',   // online order awaiting payment — NOT operationally live
   NEW: 'new',
   PREPARING: 'preparing',
   READY: 'ready',
@@ -76,6 +77,41 @@ export const ORDER_STATUS = {
   DELIVERED: 'delivered',
   CANCELLED: 'cancelled'
 };
+
+// Payment axis (online orders) — orthogonal to order.status; never cross-tested.
+export const PAYMENT_STATUS = {
+  PENDING: 'pending',
+  CONFIRMED: 'confirmed',
+  FAILED: 'failed',
+  REFUNDED: 'refunded',
+  REFUND_PENDING: 'refund_pending'
+};
+
+// Charge-attempt axis (/payment_attempts/{id}).
+export const PAYMENT_ATTEMPT_STATUS = {
+  ACTIVE: 'active',
+  APPROVED: 'approved',
+  DECLINED: 'declined',
+  ABANDONED: 'abandoned',
+  CONVERTED: 'converted',
+  VOIDED: 'voided',
+  REFUNDED: 'refunded'
+};
+
+// Order statuses that are NOT operationally live (hidden from every /orders
+// reader — KDS, dispatch, driver, dashboard — so an unpaid online order never
+// appears as a real order). Live = anything not in this set.
+export const NON_LIVE_ORDER_STATUSES = new Set([ORDER_STATUS.PENDING_PAYMENT]);
+
+export function filterLiveOrders(orders) {
+  const out = {};
+  for (const id of Object.keys(orders || {})) {
+    const o = orders[id];
+    if (o && NON_LIVE_ORDER_STATUSES.has(o.status)) continue;
+    out[id] = o;
+  }
+  return out;
+}
 
 const STALE_PING_THRESHOLD_S = 90;
 
@@ -432,7 +468,9 @@ export function subscribeToTasks(callback) {
 
 export function subscribeToOrders(callback) {
   const ordersRef = ref(db, 'orders');
-  return onValue(ordersRef, (snap) => callback(snap.val() || {}));
+  // Filter out non-live (e.g. unpaid pending_payment) orders centrally so no
+  // reader ever shows an unpaid online order as a real order.
+  return onValue(ordersRef, (snap) => callback(filterLiveOrders(snap.val() || {})));
 }
 
 /**
@@ -726,6 +764,11 @@ export async function pickupComplete(driverId, pickupTaskId) {
   updates[`tasks/${deliveryTaskId}/status`] = TASK_STATUS.ACCEPTED;
   updates[`tasks/${deliveryTaskId}/accepted_at`] = serverTimestamp();
   updates[`drivers/${driverId}/current_task_id`] = deliveryTaskId;
+  // The pickup swipe is what moves the driver to en_route — closes the order-
+  // stacking window at the moment they leave with the pizza, independent of the
+  // (background-fragile) geofence. See ADR 0004. The geofence exit transition
+  // remains a redundant backstop for PWA/foreground.
+  updates[`drivers/${driverId}/status`] = DRIVER_STATUS.EN_ROUTE_DELIVERY;
 
   if (pickupTask.order_id) {
     updates[`orders/${pickupTask.order_id}/status`] = ORDER_STATUS.OUT_FOR_DELIVERY;

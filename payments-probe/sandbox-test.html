@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>X Pizza — PixelPay Sandbox Test Harness</title>
+<!-- Real PixelPay browser SDK (same one the order form loads) -->
+<script src="https://cdn.pixelpay.app/sdk/sdk-core.js"></script>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:560px;margin:24px auto;padding:0 16px;color:#111;line-height:1.4}
+  h1{font-size:20px} h2{font-size:15px;margin-top:24px}
+  label{display:block;margin:10px 0 4px;font-size:13px;font-weight:600}
+  input,select{width:100%;padding:8px;font-size:14px;box-sizing:border-box;border:1px solid #ccc;border-radius:6px}
+  .row{display:flex;gap:10px}.row>div{flex:1}
+  button{margin-top:16px;width:100%;padding:12px;font-size:15px;font-weight:700;background:#1a7f37;color:#fff;border:0;border-radius:8px;cursor:pointer}
+  button:disabled{opacity:.5;cursor:wait}
+  #log{margin-top:16px;background:#0d1117;color:#c9d1d9;padding:12px;border-radius:8px;font:12px/1.5 ui-monospace,monospace;white-space:pre-wrap;max-height:420px;overflow:auto}
+  .ok{color:#3fb950}.err{color:#f85149}.warn{color:#d29922}.dim{color:#8b949e}
+  .note{font-size:12px;color:#666;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:8px;margin-top:8px}
+</style>
+</head>
+<body>
+<h1>🍕 PixelPay Sandbox Test Harness</h1>
+<p class="dim">Runs the REAL backend flow: <code>chargeOnlineOrder</code> → SDK 3DS auth → <code>confirmOnlinePayment</code>.
+No real money (sandbox). Orders write to the live RTDB (pre-launch) — clean up test orders after.</p>
+
+<h2>Config</h2>
+<label>Functions base URL</label>
+<input id="base" value="https://us-central1-xpizza-delivery.cloudfunctions.net"/>
+<div class="note">Deployed: keep the default. Local emulator: <code>http://localhost:5001/xpizza-delivery/us-central1</code></div>
+<label>ORDER_SECRET (bearer — paste it; not stored)</label>
+<input id="secret" type="password" placeholder="the ORDER_SECRET from the order form / functions .env"/>
+
+<h2>Test card</h2>
+<label>Preset (sandbox)</label>
+<select id="cardpick" onchange="applyPreset()">
+  <option value="4111111111111111|300">VISA — success (no 3DS challenge)</option>
+  <option value="4000000000001000|300">VISA — 3DS success (challenge shown)</option>
+  <option value="4000000000001018|300">VISA — 3DS FAILED auth</option>
+  <option value="4000000000001091|300">VISA — 3DS step-up success</option>
+  <option value="4000000000001075|300">VISA — 3DS lookup timeout</option>
+  <option value="5555555555554444|999">Mastercard — 3DS success</option>
+</select>
+<div class="row">
+  <div><label>Número</label><input id="num" value="4111111111111111"/></div>
+  <div><label>CVV</label><input id="cvv" value="300"/></div>
+</div>
+<div class="row">
+  <div><label>Nombre (nombre + apellido)</label><input id="name" value="Ana Lopez"/></div>
+  <div><label>Venc. (MM/AA)</label><input id="exp" value="12/27"/></div>
+</div>
+
+<button id="paybtn" onclick="runTest()">Pagar (sandbox · L1)</button>
+<div id="log">Listo. Llená el secret, elegí una tarjeta y pagá.\n</div>
+
+<script>
+function $(id){return document.getElementById(id);}
+function log(msg,cls){ const l=$('log'); l.innerHTML += (cls?`<span class="${cls}">${msg}</span>`:msg)+'\n'; l.scrollTop=l.scrollHeight; }
+function applyPreset(){ const [n,c]=$('cardpick').value.split('|'); $('num').value=n; $('cvv').value=c; }
+
+// Mirror the order form's order-id format: PZX-YYMMDD-HHMMSS-<8 CSPRNG chars>.
+function genOrderId(){
+  const d=new Date(), p=n=>String(n).padStart(2,'0');
+  const ymd=String(d.getFullYear()).slice(2)+p(d.getMonth()+1)+p(d.getDate());
+  const hms=p(d.getHours())+p(d.getMinutes())+p(d.getSeconds());
+  const A='0123456789ABCDEFGHJKMNPQRSTVWXYZ', b=new Uint8Array(8); crypto.getRandomValues(b);
+  let s=''; for(const x of b) s+=A[x%32];
+  return `PZX-${ymd}-${hms}-${s}`;
+}
+// Randomize the phone per run so the per-phone rate limiter (4/10min) doesn't throttle
+// repeated tests. (The IP bucket, 20/10min, still applies — plenty for testing.)
+function testPhone(){
+  let d=''; const b=new Uint8Array(8); crypto.getRandomValues(b); for(const x of b) d+=(x%10); return '504'+d;
+}
+function testOrder(){
+  return {
+    order_id: genOrderId(),
+    customer_name: 'Prueba Sandbox',
+    customer_phone: testPhone(),
+    items: [{ name:'Margherita', qty:1, extras:[] }],
+    items_text: '1× Margherita (PRUEBA SANDBOX)',
+    notes: 'PRUEBA — pago sandbox',
+    payment_method: 'online',
+    order_type: 'pickup',
+    pickup_time: 'standard'
+  };
+}
+
+async function runTest(){
+  const base=$('base').value.replace(/\/+$/,''); const secret=$('secret').value.trim();
+  if(!secret){ log('✗ Pegá el ORDER_SECRET primero.','err'); return; }
+  if(typeof Models==='undefined'){ log('✗ SDK no cargó (revisá la conexión).','err'); return; }
+  $('paybtn').disabled=true;
+  try {
+    const order=testOrder();
+    log('\n──────── '+order.order_id+' ────────','dim');
+
+    // 1. chargeOnlineOrder
+    log('1) chargeOnlineOrder …');
+    const chRes=await fetch(base+'/chargeOnlineOrder',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+secret},body:JSON.stringify(order)});
+    const cfg=await chRes.json().catch(()=>({}));
+    log('   http '+chRes.status+' '+JSON.stringify(cfg).slice(0,300));
+    if(!chRes.ok || !cfg.pixelpay){ log('✗ chargeOnlineOrder falló.','err'); return; }
+    log('   pixelpay_order_id='+cfg.pixelpay.order.id+' amount=L'+cfg.pixelpay.order.amount+' mode='+cfg.pixelpay.mode,'ok');
+
+    // 2. SDK 3DS AUTH
+    log('2) SDK doAuth + 3DS … (puede aparecer un reto del banco)');
+    const pp=cfg.pixelpay;
+    const settings=new Models.Settings();
+    if(pp.mode==='sandbox') settings.setupSandbox(); else { settings.setupCredentials(pp.app_key,pp.auth_hash); settings.setupEndpoint(pp.endpoint); }
+    const card=new Models.Card();
+    card.number=$('num').value.replace(/\s/g,''); card.cvv2=$('cvv').value.trim();
+    const [mm,yy]=$('exp').value.split('/'); card.expire_month=parseInt(mm,10); card.expire_year=parseInt('20'+yy.trim(),10);
+    card.cardholder=$('name').value.trim();
+    const o=new Models.Order();
+    o.id=pp.order.id; o.currency=pp.order.currency; o.amount=Number(pp.order.amount); // no tax_amount (see chargeOnlineOrder)
+    o.callback_url=pp.order.callback_url; o.customer_name=card.cardholder; o.customer_email='cliente.prueba@gmail.com';
+    const bill=new Models.Billing(); bill.address='Col Test'; bill.country='HN'; bill.state='HN-CR'; bill.city='San Pedro Sula'; bill.zip='21101'; bill.phone='50497952893';
+    const auth=new Requests.AuthTransaction(); auth.setCard(card); auth.setBilling(bill); auth.setOrder(o); auth.withAuthenticationRequest();
+    const tx=new Services.Transaction(settings);
+    const ar=await tx.doAuth(auth);
+    const uuid=ar&&ar.data&&ar.data.payment_uuid;
+    const approved=ar&&ar.success===true&&ar.data&&ar.data.response_approved===true;
+    log('   auth: '+(ar&&ar.constructor&&ar.constructor.name)+' success='+(ar&&ar.success)+' approved='+(ar&&ar.data&&ar.data.response_approved)+' msg='+(ar&&ar.message));
+    if(!approved || !uuid){ log('✗ AUTH RECHAZADA — '+((ar&&ar.message)||'tarjeta declinada')+' (no se llama a confirm).','err'); return; }
+    log('   payment_uuid='+uuid,'ok');
+
+    // 3. confirmOnlinePayment (poll)
+    log('3) confirmOnlinePayment …');
+    let status='?';
+    for(let i=1;i<=6;i++){
+      const cr=await fetch(base+'/confirmOnlinePayment',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+secret},body:JSON.stringify({order_id:cfg.order_id,payment_uuid:uuid})});
+      const cd=await cr.json().catch(()=>({}));
+      log('   try'+i+' http '+cr.status+' '+JSON.stringify(cd).slice(0,200));
+      if(cr.status===200 && cd.payment_status){ status=cd.payment_status; break; }
+      await new Promise(r=>setTimeout(r,i*1200));
+    }
+    if(status==='confirmed') log('\n✅ CONFIRMED — order materialized. Check dispatch/KDS for '+cfg.order_id+'.','ok');
+    else if(status==='manual_reconciliation') log('\n⚠ MANUAL_RECONCILIATION (paid-but-unverified path).','warn');
+    else log('\n✗ Final status: '+status,'err');
+  } catch(e){ log('✗ Error: '+(e&&e.message||e),'err'); }
+  finally{ $('paybtn').disabled=false; }
+}
+</script>
+</body>
+</html>

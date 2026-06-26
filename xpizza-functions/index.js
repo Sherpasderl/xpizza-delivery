@@ -4,6 +4,15 @@
  *
  * Endpoints:
  *   - createOrder                   (HTTPS)   — Make.com → Firebase write proxy + WhatsApp "received"
+ *   - chargeOnlineOrder             (HTTPS)   — PixelPay online card: pending-first order + signed sale config (Stage 3b)
+ *   - confirmOnlinePayment          (HTTPS)   — PixelPay capture + materialize (auth→capture confirm, Stage 4)
+ *   - pixelPayWebhook               (HTTPS)   — PixelPay order_callback nudge → confirm (Stage 4)
+ *   - sweepStalePending             (sched)   — confirm/abandon backstop for missed nudges (Stage 4)
+ *   - reconcilePayments             (sched)   — daily money-safety invariant audit (Stage 4)
+ *   - resolveManualReconciliation   (HTTPS)   — audited dispatcher resolver for manual_reconciliation (Stage 4)
+ *   - materializeOnConfirm          (DB trig) — re-materialize a confirmed-but-unmaterialized order (Stage 4)
+ *   - cancelPaidOrder               (HTTPS)   — dispatcher void/refund + cancel of a paid online order (Stage 6)
+ *   - refundReconciler              (sched)   — retry aged refund_pending voids (Stage 6)
  *   - notifyDriverOnAssignment      (DB trig) — Web Push to driver on assignment
  *   - notifyDriverOnCancellation    (DB trig) — Web Push to assigned driver when order is cancelled
  *   - onOrderCancelled              (DB trig) — Sync cancellations to KDS Sheet
@@ -36,15 +45,43 @@
  *     been picked up by a driver.
  */
 
-const { onRequest } = require('firebase-functions/v2/https');
+const { onRequest, onCall } = require('firebase-functions/v2/https');
 const { onValueWritten } = require('firebase-functions/v2/database');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { beforeUserCreated, HttpsError } = require('firebase-functions/v2/identity');
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
+const { getAuth } = require('firebase-admin/auth');
 const webpush = require('web-push');
 const { google } = require('googleapis');
 const express = require('express');
 const whatsapp = require('./whatsapp');
+const { resolvePixelPayConfig, pixelPayCallbackUrl, pixelPayChargeAmountLempiras } = require('./pixelpay-config');
+const pixelpayClient = require('./pixelpay-client');
+const ppCrypto = require('./pixelpay');
+const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
+const { buildMaterializeUpdates } = require('./materialize');
+const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
+const { voidOrRefund } = require('./pixelpay-cancel');
+const { handleHostedCallback } = require('./pixelpay-hosted-webhook');
+const { getMessaging } = require('firebase-admin/messaging');
+const {
+  computePushReachable,
+  selectTransports,
+  isTerminalFcmError,
+  isTerminalWebPushError,
+  buildFcmMessage,
+  validateTokenOwner,
+  PUSH_TTL_SECONDS
+} = require('./driver-push');
+const {
+  geofenceTransition,
+  isHubResolvable,
+  selectIngestPoints,
+  hashToken,
+  validateIngestToken,
+  coerceTs
+} = require('./driver-ingest');
 
 initializeApp({
   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
@@ -105,6 +142,38 @@ function unauthorized(res, msg) {
 
 function badRequest(res, msg) {
   return res.status(400).json({ error: 'Bad Request', detail: msg });
+}
+
+// Authorize a dispatcher money-action (cancelPaidOrder / resolveManualReconciliation).
+// Accepts EITHER:
+//   (a) the server-only RECON_SECRET as the bearer token — CLI / server-to-server, OR
+//   (b) a Firebase ID token belonging to a registered dispatcher — the dashboard
+//       browser path: verify the token, then check /dispatchers/{uid}.
+// RECON_SECRET is NEVER shipped to the browser; the browser uses path (b) so no
+// money-moving secret ever leaves the server. The dispatcher path is independent of
+// RECON_SECRET, so these actions still work from the dashboard even if the secret is
+// unset. Returns { ok:true, actor } (actor = verified email, or 'recon_secret') or
+// { ok:false, code, msg }. constantTimeEqual is length-safe, so a long JWT presented
+// as the token simply fails path (a) and falls through to verification.
+async function authorizeDispatcherAction(req) {
+  const authHeader = req.get('authorization') || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!token) return { ok: false, code: 401, msg: 'missing bearer token' };
+
+  const SECRET = process.env.RECON_SECRET;
+  if (SECRET && constantTimeEqual(token, SECRET)) {
+    return { ok: true, actor: 'recon_secret' };
+  }
+
+  let decoded;
+  try {
+    decoded = await getAuth().verifyIdToken(token);
+  } catch (_) {
+    return { ok: false, code: 401, msg: 'invalid credentials' };
+  }
+  const snap = await getDatabase().ref(`dispatchers/${decoded.uid}`).once('value');
+  if (!snap.exists()) return { ok: false, code: 403, msg: 'not authorized (dispatcher only)' };
+  return { ok: true, actor: decoded.email || decoded.uid };
 }
 
 function isFiniteNumber(n) {
@@ -199,6 +268,20 @@ function computeServerTotal(items) {
   return { total, error: null };
 }
 
+// ---------------------------------------------------------------------------
+// Canonical money. `total_cents` (integer HNL centavos) is the source of truth
+// for charges + comparisons. ISV 15% is tax-INCLUSIVE: the menu price IS what
+// the customer pays, so we break the tax OUT of the total with a fixed rounding
+// rule that guarantees subtotal_cents + tax_cents === total_cents exactly.
+// (Stored on EVERY order — cash too — so the factura/SAR system has the breakdown.)
+// ---------------------------------------------------------------------------
+function priceBreakdownCents(totalLempiras) {
+  const total_cents = Math.round(Number(totalLempiras) * 100);
+  const tax_cents = Math.round(total_cents - total_cents / 1.15);
+  const subtotal_cents = total_cents - tax_cents;
+  return { total_cents, subtotal_cents, tax_cents };
+}
+
 function validateOrderPayload(body) {
   const errors = [];
   const required = ['order_id', 'customer_name', 'customer_phone', 'items_text', 'order_type'];
@@ -266,7 +349,10 @@ function validateOrderPayload(body) {
 // ---------------------------------------------------------------------------
 const RATE_LIMIT_BUCKETS = {
   ip:    { windowMs: 10 * 60 * 1000, max: 20 },  // coarse flood guard (CGNAT-aware)
-  phone: { windowMs: 10 * 60 * 1000, max: 4 }    // primary: new orders per phone / 10 min
+  phone: { windowMs: 10 * 60 * 1000, max: 4 },   // primary: new orders per phone / 10 min
+  confirm_ip: { windowMs: 10 * 60 * 1000, max: 80 } // confirm/poll guard: each payment does
+                                                    // ~1 confirm (+ a few polls on 202), so this
+                                                    // caps capture-hammering without blocking legit polling
 };
 
 // Hash a rate-limit key (IP / phone) into an RTDB-safe, non-PII key. Avoids
@@ -427,6 +513,7 @@ createOrderApp.all('*', async (req, res) => {
     customer_phone: fields.customer_phone,
     items_text: fields.items_text,
     total: total,
+    ...priceBreakdownCents(total),   // total_cents / subtotal_cents / tax_cents (ISV 15% incl.)
     notes: fields.notes,
     payment_method: fields.payment_method,
     order_type: orderType,
@@ -593,6 +680,851 @@ exports.createOrder = onRequest(
 );
 
 // ============================================================
+// chargeOnlineOrder — open an online-payment attempt (AUTH+CAPTURE)
+// ============================================================
+//
+// The pending-first entry point for PIXELPAY online card orders. It is the ONLY
+// writer that creates an online order, and it writes it as a HIDDEN `pending_payment`
+// order with NO tasks/tracking — those are materialized only after the payment is
+// server-CAPTURED + confirmed (confirmOnlinePayment). This function NEVER calls
+// PixelPay and returns NO signature: the browser SDK runs a 3DS AUTH with the public
+// app_key + auth_hash, and the server confirms authoritatively later via doCapture.
+//
+// Money-safety (see PAYMENT-PLAN.md invariants I1-I8):
+//   - A single CAS transaction on orders/{id} installs `active_attempt_id` — the
+//     atomic charge lock — so two concurrent submits can't open two attempts.
+//   - Each attempt is bound to PixelPay by `pixelpay_order_id = ${order_id}-${attempt_id}`,
+//     which the browser auths and the server captures, so a late/old/second auth is
+//     distinguishable at capture time and can't be mistaken for the active one.
+//   - An economic `payment_fingerprint` (order_id + total_cents + items) is
+//     pinned on first write; a later call with the same order_id but a different
+//     cart/total is rejected 409 (can't mutate the charged amount).
+//   - Recovery: if `active_attempt_id` is set but the attempt record is missing
+//     (crash between the order write and the attempt write), we recreate THAT
+//     attempt id — never mint a second one (Codex R4 caution #3).
+//
+// Auth + abuse posture mirrors createOrder: same public bearer secret, same
+// IP+phone rate-limit buckets. The pure helpers (attempt acquisition, fingerprint,
+// money conversion) live in ./pixelpay-charge so they're unit-testable in isolation.
+const { orderFingerprint, centsToLempiras } = require('./pixelpay-charge');
+const { acquireHostedAttempt } = require('./pixelpay-hosted-charge');
+const { createHostedCharge, formatPixelPayExpiry } = require('./pixelpay-hosted');
+
+const chargeOnlineApp = express();
+
+chargeOnlineApp.all('*', async (req, res) => {
+  if (req.method !== 'POST') {
+    res.set('Allow', 'POST');
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  // Same public bearer secret as createOrder (it's by-design public in the
+  // browser; the rate limiter + server-recomputed total are the real defense).
+  const SECRET = process.env.MAKE_SECRET;
+  if (!SECRET) {
+    console.error('chargeOnlineOrder: MAKE_SECRET not set — refusing all requests');
+    return unauthorized(res, 'server misconfigured');
+  }
+  const authHeader = req.get('authorization') || '';
+  const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!presented || !constantTimeEqual(presented, SECRET)) {
+    console.warn('chargeOnlineOrder: bad/missing bearer token');
+    return unauthorized(res, 'invalid bearer token');
+  }
+
+  const body = req.body || {};
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body);
+  if (errors.length > 0) return badRequest(res, errors.join('; '));
+
+  // This endpoint is ONLY for online card payments. cash/card_delivery use createOrder.
+  if (fields.payment_method !== 'online') {
+    return badRequest(res, 'chargeOnlineOrder is for payment_method "online" only');
+  }
+
+  const orderId = String(body.order_id);
+  const orderType = body.order_type;
+
+  // Delivery-zone enforcement (same as createOrder — clients are bypassable).
+  if (orderType === 'delivery') {
+    const distanceKm = haversineKm(lat, lng, RESTAURANT.lat, RESTAURANT.lng);
+    if (distanceKm > DELIVERY_RADIUS_KM) {
+      return badRequest(res, `Outside delivery zone (${distanceKm.toFixed(1)}km from restaurant, max ${DELIVERY_RADIUS_KM}km)`);
+    }
+  }
+
+  // Resolve PixelPay config up front — fail fast (500) before any DB write if
+  // production creds are missing, so we never open an attempt we can't sign.
+  let pp;
+  try {
+    pp = resolvePixelPayConfig();
+  } catch (e) {
+    console.error('chargeOnlineOrder: PixelPay config error', e.message);
+    return res.status(500).json({ error: 'Payment not configured', detail: e.message });
+  }
+
+  const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+  const db = getDatabase();
+
+  // Rate limit (same buckets as createOrder). A genuine retry of an in-flight
+  // submit re-enters acquireHostedAttempt and reuses the live checkout, so this throttles
+  // distinct submit bursts, not 3DS polling.
+  for (const [bucket, key, cfg] of [
+    ['ip', clientIp, RATE_LIMIT_BUCKETS.ip],
+    ['phone', fields.customer_phone, RATE_LIMIT_BUCKETS.phone]
+  ]) {
+    const { allowed, retryAfterSec } = await checkRateLimit(db, bucket, key, cfg);
+    if (!allowed) {
+      res.set('Retry-After', String(retryAfterSec));
+      return res.status(429).json({ error: 'Too Many Requests', detail: `Rate limit exceeded; retry in ${retryAfterSec}s` });
+    }
+  }
+
+  const { total_cents, subtotal_cents, tax_cents } = priceBreakdownCents(total);
+  const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text);
+
+  // The HIDDEN pending order. Mirrors createOrder's orderRecord (so Stage-4
+  // confirm can materialize tasks/tracking from it) but status=pending_payment,
+  // payment_status=pending, and NO tasks/tracking/WhatsApp yet.
+  const now = ServerValue.TIMESTAMP;
+  const pendingOrderRecord = {
+    order_id: orderId,
+    customer_name: fields.customer_name,
+    customer_phone: fields.customer_phone,
+    items_text: fields.items_text,
+    total: total,
+    total_cents, subtotal_cents, tax_cents,   // ISV 15% inclusive breakdown
+    notes: fields.notes,
+    payment_method: 'online',
+    payment_status: 'pending',
+    order_type: orderType,
+    status: 'pending_payment',
+    created_at: now
+  };
+  if (orderType === 'delivery') {
+    pendingOrderRecord.lat = lat;
+    pendingOrderRecord.lng = lng;
+    pendingOrderRecord.address_detected = fields.address_detected;
+    pendingOrderRecord.address_details = fields.address_details;
+    pendingOrderRecord.maps_link = `https://www.google.com/maps?q=${lat},${lng}`;
+  } else {
+    pendingOrderRecord.pickup_time = fields.pickup_time;
+  }
+
+  // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
+  let acq;
+  try {
+    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, Date.now());
+  } catch (e) {
+    console.error(`chargeOnlineOrder: hosted acquire failed for ${orderId}`, e.message);
+    return res.status(500).json({ error: 'Database error', detail: e.message });
+  }
+
+  if (acq.outcome === 'already_paid') {
+    return res.status(409).json({ error: 'Already paid', detail: 'This order is already confirmed paid', order_id: orderId });
+  }
+  if (acq.outcome === 'conflict') {
+    return res.status(409).json({ error: 'Order conflict', detail: 'order_id already used for a different cart/total', order_id: orderId });
+  }
+  if (acq.outcome === 'closed') {
+    return res.status(409).json({ error: 'Order closed', detail: `order is ${acq.reason}; please start a new order`, order_id: orderId });
+  }
+  if (acq.outcome === 'in_progress') {
+    // A checkout is being created for this order — don't start a 2nd (one-live-checkout, I10).
+    return res.status(202).json({ ok: true, status: 'in_progress', detail: 'a checkout is being created; retry shortly', order_id: orderId });
+  }
+  // Double-submit while a checkout is still live → return the SAME url (I10).
+  if (acq.outcome === 'reuse') {
+    console.log(`chargeOnlineOrder: reuse live hosted checkout ${orderId}-${acq.attempt_id}`);
+    return res.status(200).json({ ok: true, order_id: orderId, attempt_id: acq.attempt_id, poll_token: acq.poll_token, checkout_url: acq.checkout_url, payment_status: 'pending' });
+  }
+  if (acq.outcome !== 'claimed') {
+    return res.status(503).json({ error: 'Could not start payment', detail: 'please retry', order_id: orderId });
+  }
+
+  // We own a FRESH attempt in hosted_state:'creating' (hosted_order_id already persisted by the
+  // claim, so a racing paid callback can still bind/recover — I7). Create the hosted checkout with
+  // the SERVER-SET amount, then mark the attempt 'created'.
+  const attemptId = acq.attempt_id;
+  const pixelpayOrderId = acq.hosted_order_id;            // `${orderId}-${attemptId}`
+  const pollToken = acq.poll_token;
+  const amountStr = centsToLempiras(total_cents);          // real server total (NOT the sandbox 1-14 map) so the callback amount-check holds
+
+  // PixelPay requires first+last name (each ≥3 chars) and a valid email. Pad short parts with
+  // dots so a short / single-word name never blocks checkout (the real name is on the order record).
+  const pad3 = (s) => { s = String(s || '').trim(); while (s.length < 3) s += '.'; return s; };
+  const nameParts = String(fields.customer_name || '').trim().split(/\s+/).filter(Boolean);
+  const firstName = pad3(nameParts[0] || 'Cliente');
+  const lastName = pad3(nameParts.slice(1).join(' ') || nameParts[0] || 'Cliente');
+  const rawEmail = body.customer_email;
+  const email = (typeof rawEmail === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rawEmail.trim())) ? rawEmail.trim() : 'pedidos@xpizza.hn';
+
+  // Customer-facing return URLs + the AUTHENTICATED server callback (?secret=…).
+  // IMPORTANT: the return URLs use the ORDER-SITE origin (where the return/poll page lives),
+  // NOT pp.app_url — that's the PixelPay ENDPOINT (it's the x-client-signature app_url, a
+  // different thing; reusing it would redirect the paid customer to the bank's domain).
+  // Configurable via PIXELPAY_RETURN_URL; defaults to the orders site.
+  const siteBase = String(process.env.PIXELPAY_RETURN_URL || 'https://xpizzaorders.netlify.app').replace(/\/+$/, '');
+  const completeUrl = `${siteBase}/?pay=complete&order=${encodeURIComponent(orderId)}&t=${encodeURIComponent(pollToken)}`;
+  const cancelUrl = `${siteBase}/?pay=cancel&order=${encodeURIComponent(orderId)}`;
+  const wsecret = process.env.PIXELPAY_WEBHOOK_SECRET || '';
+  if (!wsecret) console.warn('chargeOnlineOrder: PIXELPAY_WEBHOOK_SECRET not set — hosted callback will be unauthenticated');
+  const callbackUrl = pixelPayCallbackUrl() + (wsecret ? `?secret=${encodeURIComponent(wsecret)}` : '');
+
+  let hosted;
+  try {
+    hosted = await createHostedCharge({
+      pixelpayOrderId, amountLempiras: amountStr,
+      firstName, lastName, email,
+      completeUrl, cancelUrl, callbackUrl,
+      expiresAt: formatPixelPayExpiry(acq.expires_at)
+    });
+  } catch (e) {
+    console.error(`chargeOnlineOrder: hosted create threw for ${pixelpayOrderId}`, e.message);
+    await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'failed_create', failed_create_reason: 'network', updated_at: now }).catch(() => {});
+    return res.status(502).json({ error: 'Payment gateway error', detail: 'could not create checkout; please retry', order_id: orderId });
+  }
+
+  if (!hosted.ok || !hosted.url) {
+    console.error(`chargeOnlineOrder: hosted create rejected for ${pixelpayOrderId}`, JSON.stringify(hosted.errors || hosted.raw || {}).slice(0, 400));
+    await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'failed_create', failed_create_reason: JSON.stringify(hosted.errors || {}).slice(0, 300), updated_at: now }).catch(() => {});
+    return res.status(502).json({ error: 'Payment gateway error', detail: 'checkout not created; please retry', order_id: orderId });
+  }
+
+  // Persist the live checkout URL + mark 'created' (payable until expires_at).
+  await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'created', hosted_checkout_url: hosted.url, updated_at: now });
+
+  console.log(`chargeOnlineOrder: created hosted checkout ${pixelpayOrderId} (mode=${pp.mode}, ${amountStr} HNL)`);
+  return res.status(200).json({
+    ok: true,
+    order_id: orderId,
+    attempt_id: attemptId,
+    pixelpay_order_id: pixelpayOrderId,
+    poll_token: pollToken,
+    checkout_url: hosted.url,
+    payment_status: 'pending'
+  });
+});
+
+chargeOnlineApp.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
+    console.warn(`chargeOnlineOrder: malformed JSON — ${err.message}`);
+    return res.status(400).json({ error: 'Bad Request', detail: 'Malformed JSON in request body' });
+  }
+  // eslint-disable-next-line no-unused-vars
+  next(err);
+});
+
+exports.chargeOnlineOrder = onRequest(
+  {
+    region: 'us-central1',
+    cors: true,
+    timeoutSeconds: 30,
+    memory: '256MiB',
+    maxInstances: 10
+  },
+  chargeOnlineApp
+);
+
+// ============================================================
+// confirmOnlinePayment — Stage 4 sub-stage 2: capture + materialize
+// ============================================================
+//
+// The browser POSTs its 3DS-auth `payment_uuid` here (best-effort; the webhook is
+// the durable trigger). This drives the SERVER-authoritative confirm: capture the
+// auth hold for our server-set amount, verify the capture response, then materialize
+// the pending_payment order into a live `new` order. Idempotent + recovery-aware
+// (see pixelpay-confirm.js / PAYMENT-PLAN §B/§C). Safe to call repeatedly — the
+// capturing-claim prevents double-capture and confirmed orders short-circuit.
+//
+// `now` is Date.now() (a real number) because the capturing-claim staleness math
+// needs arithmetic; stored timestamps are function-clock ms (NTP-synced).
+
+// Write a dispatcher alert (best-effort) for money-safety events that need a human.
+async function paymentAlert(db, kind, detail) {
+  console.warn(`paymentAlert[${kind}]`, JSON.stringify(detail));
+  try {
+    await db.ref('dispatcher_alerts').push({
+      type: `payment_${kind}`,
+      detail: detail || null,
+      created_at: ServerValue.TIMESTAMP
+    });
+  } catch (e) {
+    console.error('paymentAlert: failed to write alert', e.message);
+  }
+}
+
+const confirmOnlineApp = express();
+
+confirmOnlineApp.all('*', async (req, res) => {
+  if (req.method !== 'POST') {
+    res.set('Allow', 'POST');
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+  const SECRET = process.env.MAKE_SECRET;
+  if (!SECRET) {
+    console.error('confirmOnlinePayment: MAKE_SECRET not set');
+    return unauthorized(res, 'server misconfigured');
+  }
+  const authHeader = req.get('authorization') || '';
+  const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!presented || !constantTimeEqual(presented, SECRET)) {
+    return unauthorized(res, 'invalid bearer token');
+  }
+
+  const body = req.body || {};
+  const orderId = String(body.order_id || '');
+  const paymentUuid = body.payment_uuid == null ? null : String(body.payment_uuid);
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return badRequest(res, 'order_id has invalid format');
+  if (paymentUuid && !/^[A-Za-z0-9_:-]{1,80}$/.test(paymentUuid)) return badRequest(res, 'payment_uuid has invalid format');
+
+  // Resolve PixelPay config up front (fail fast on misconfig before any capture).
+  try {
+    resolvePixelPayConfig();
+  } catch (e) {
+    console.error('confirmOnlinePayment: PixelPay config error', e.message);
+    return res.status(500).json({ error: 'Payment not configured', detail: e.message });
+  }
+
+  const db = getDatabase();
+
+  // Rate-limit (IP bucket) so the capture path can't be hammered to exhaust the PixelPay
+  // API / rack up cost. Sized to allow normal confirm + 202-polling (see RATE_LIMIT_BUCKETS).
+  const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+  const { allowed, retryAfterSec } = await checkRateLimit(db, 'confirm_ip', clientIp, RATE_LIMIT_BUCKETS.confirm_ip);
+  if (!allowed) {
+    res.set('Retry-After', String(retryAfterSec));
+    return res.status(429).json({ error: 'Too Many Requests', detail: `Rate limit exceeded; retry in ${retryAfterSec}s` });
+  }
+
+  const deps = confirmDeps(db);   // shared deps (incl. config-aware chargeAmountLempiras)
+
+  let result;
+  try {
+    result = await confirmOnlinePayment(deps, {
+      orderId,
+      paymentUuid,
+      now: Date.now(),
+      trackingToken: generateTrackingToken()
+    });
+  } catch (e) {
+    console.error(`confirmOnlinePayment: error for ${orderId}`, e);
+    return res.status(500).json({ error: 'Confirm failed', detail: e.message });
+  }
+
+  console.log(`confirmOnlinePayment: ${orderId} → ${result.outcome}`);
+
+  // Map the state-machine outcome to an HTTP response. The order form ALSO polls
+  // /orders/{id}/payment_status; this response just speeds up the common cases.
+  const o = result.outcome;
+  if (o === 'confirmed' || o === 'already_confirmed') {
+    return res.status(200).json({ ok: true, payment_status: 'confirmed', order_id: orderId, tracking_token: result.tracking_token || null });
+  }
+  if (o === 'manual_reconciliation') {
+    return res.status(200).json({ ok: true, payment_status: 'manual_reconciliation', order_id: orderId });
+  }
+  if (o === 'capture_failed' || o === 'failed' || o === 'mismatch_voided') {
+    return res.status(200).json({ ok: false, payment_status: o === 'mismatch_voided' ? 'failed' : 'failed', order_id: orderId, detail: result.message || result.reason || 'payment not completed' });
+  }
+  if (o === 'cancelled' || o === 'cancelled_during_confirm') {
+    return res.status(200).json({ ok: false, payment_status: 'cancelled', order_id: orderId });
+  }
+  if (o === 'in_progress' || o === 'capture_error_retryable' || o === 'no_payment_uuid') {
+    return res.status(202).json({ ok: false, pending: true, order_id: orderId, detail: 'payment processing; keep polling' });
+  }
+  if (o === 'no_order') return res.status(404).json({ error: 'Order not found', order_id: orderId });
+  if (o === 'not_online' || o === 'no_active_attempt' || o === 'no_attempt_record') {
+    return res.status(409).json({ error: 'Order not in a payable state', detail: o, order_id: orderId });
+  }
+  // Unknown/unexpected → 202 so the client keeps polling RTDB rather than failing hard.
+  return res.status(202).json({ ok: false, pending: true, order_id: orderId, detail: o });
+});
+
+confirmOnlineApp.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
+    return res.status(400).json({ error: 'Bad Request', detail: 'Malformed JSON in request body' });
+  }
+  // eslint-disable-next-line no-unused-vars
+  next(err);
+});
+
+exports.confirmOnlinePayment = onRequest(
+  {
+    region: 'us-central1',
+    cors: true,
+    timeoutSeconds: 60,   // capture is a network round-trip to PixelPay; give it room
+    memory: '256MiB',
+    maxInstances: 10
+  },
+  confirmOnlineApp
+);
+
+// Shared deps + entrypoint for the confirm machine (used by webhook + sweep).
+function confirmDeps(db) {
+  return {
+    db,
+    client: pixelpayClient,
+    restaurant: RESTAURANT,
+    buildMaterializeUpdates,
+    // Config-aware capture amount: sandbox → 1-14 test amount; production → real total.
+    chargeAmountLempiras: (totalCents) => {
+      try { return pixelPayChargeAmountLempiras(resolvePixelPayConfig(), totalCents); }
+      catch (_) { return Number((Number(totalCents) / 100).toFixed(2)); }
+    },
+    voidOrRefund,   // cancel-vs-confirm race guard (I8)
+    alert: (kind, detail) => paymentAlert(db, kind, detail)
+  };
+}
+function runConfirm(db, orderId, paymentUuid) {
+  return confirmOnlinePayment(confirmDeps(db), { orderId, paymentUuid, now: Date.now(), trackingToken: generateTrackingToken() });
+}
+
+// ============================================================
+// pixelPayWebhook — Stage 4 sub-stage 3: durable confirm nudge
+// ============================================================
+//
+// PixelPay's order_callback posts here when a transaction settles. The webhook is
+// a NUDGE ONLY: we extract the order + (claimed) payment_uuid and run the SERVER-
+// authoritative confirm (which re-verifies via doCapture), so a malformed/forged
+// payload can never cause a bad confirm. We dedupe by event id in /webhook_events
+// and ALWAYS return 200 (never trigger a PixelPay retry storm — the confirm is
+// idempotent and the sweep is the backstop). A shared-secret query param is
+// checked as defense-in-depth when configured.
+exports.pixelPayWebhook = onRequest(
+  { region: 'us-central1', cors: false, timeoutSeconds: 60, memory: '256MiB', maxInstances: 10 },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).send('Method Not Allowed'); }
+
+    // Defense-in-depth: if PIXELPAY_WEBHOOK_SECRET is set, require it (?secret= or header).
+    // Mismatch → 200 + ignore (don't 401, to avoid retry storms; the sweep still recovers).
+    const expected = process.env.PIXELPAY_WEBHOOK_SECRET;
+    if (expected) {
+      const presented = (req.query && req.query.secret) || req.get('x-webhook-secret') || '';
+      if (!presented || !constantTimeEqual(String(presented), expected)) {
+        console.warn('pixelPayWebhook: bad/missing shared secret, ignoring nudge');
+        return res.status(200).json({ ok: true, ignored: 'auth' });
+      }
+    }
+
+    // Parse + handle the hosted callback (the authoritative paid signal). Dedup by a unique
+    // event id (transaction_id) so PixelPay's 3x/15min retries don't double-process; the
+    // handler is also idempotent (materialized_at) as a backstop.
+    const db = getDatabase();
+    const b = req.body || {};
+    const eventId = rateLimitKey(String(b.transaction_id || b.uuid || b.order || b.ref || 'unknown'));
+    try {
+      const claim = await db.ref(`webhook_events/${eventId}`).transaction((cur) => {
+        if (cur && cur.state === 'done') return;                                    // already handled
+        if (cur && cur.state === 'processing' && Date.now() - (cur.at || 0) < 120000) return; // in flight
+        return { state: 'processing', at: Date.now(), order: String(b.order || b.ref || '') };
+      });
+      if (!claim.committed) return res.status(200).json({ ok: true, deduped: true });
+    } catch (e) {
+      console.error('pixelPayWebhook: event claim failed (proceeding)', e.message);
+    }
+
+    let result = { code: 500, outcome: 'error' };
+    try {
+      const deps = { ...confirmDeps(db), genToken: generateTrackingToken };
+      result = await handleHostedCallback(deps, b, Date.now());
+    } catch (e) {
+      console.error('pixelPayWebhook: handler threw', e.message);
+      result = { code: 500, outcome: 'handler_error' };
+    }
+    // 2xx → durable decision (done); 5xx → transient (failed) so a PixelPay retry re-runs (I5/R2-3).
+    const finalState = (result.code >= 200 && result.code < 300) ? 'done' : 'failed';
+    try { await db.ref(`webhook_events/${eventId}`).update({ state: finalState, outcome: result.outcome, done_at: Date.now() }); } catch (_) {}
+
+    console.log(`pixelPayWebhook: ${String(b.order || b.ref || '?')} -> ${result.outcome} (${result.code})`);
+    return res.status(result.code).json({ ok: result.code < 300, outcome: result.outcome });
+  }
+);
+
+// ============================================================
+// paymentStatus — public hosted-payment status poll (for the _complete return page)
+// ============================================================
+//
+// After paying on the hosted checkout the customer returns to ?pay=complete&order&t; the page
+// polls this to learn the outcome (the webhook remains the money authority). Gated by the
+// per-attempt poll_token (only the customer who started THIS payment can read it). Returns a
+// COARSE state + the tracking_token once paid — never order PII.
+exports.paymentStatus = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 10, memory: '256MiB', maxInstances: 10 },
+  async (req, res) => {
+    const orderId = String((req.query && req.query.order_id) || (req.body && req.body.order_id) || '').trim();
+    const token = String((req.query && (req.query.t || req.query.token)) || (req.body && req.body.token) || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId) || !token || token.length > 128) {
+      return res.status(400).json({ error: 'bad request' });
+    }
+    const db = getDatabase();
+    const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+    if (!order) return res.status(404).json({ error: 'not found' });
+
+    // Gate on the active attempt's poll_token (constant-time). No match → no info.
+    const attemptId = order.active_attempt_id;
+    const attempt = attemptId ? (await db.ref(`payment_attempts/${attemptId}`).once('value')).val() : null;
+    if (!attempt || !attempt.poll_token || !constantTimeEqual(String(attempt.poll_token), token)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
+    // Coarse, public-safe state.
+    let state = 'pending';
+    const ps = order.payment_status, st = order.status;
+    if (ps === 'confirmed' || ['new', 'preparing', 'ready', 'out_for_delivery', 'delivered'].includes(st)) state = 'paid';
+    else if (st === 'cancelled' || ps === 'refunded' || ps === 'refund_pending') state = 'cancelled';
+    else if (ps === 'failed') state = 'failed';
+    else if (ps === 'manual_reconciliation') state = 'verifying';
+
+    return res.status(200).json({ ok: true, state, tracking_token: state === 'paid' ? (order.tracking_token || null) : null });
+  }
+);
+
+// ============================================================
+// sweepStalePending — Stage 4 sub-stage 3: capture/abandon backstop (~5 min)
+// ============================================================
+//
+// Recovers orders the live nudge missed: confirms ones with a recorded payment_uuid
+// (or a stuck capturing claim) past the confirm TTL; abandons ones with no usable
+// payment_uuid past the abandon TTL (the PixelPay auth has expired — no money moved,
+// a *missed order* not a *lost charge*). See PAYMENT-PLAN §G + classifySweepCandidate.
+exports.sweepStalePending = onSchedule(
+  { schedule: 'every 5 minutes', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    const db = getDatabase();
+    const now = Date.now();
+    const GRACE_MS = 15 * 60 * 1000;   // PixelPay retries the callback 3x/15min after expiry
+    const snap = await db.ref('orders').orderByChild('status').equalTo('pending_payment').once('value');
+    const orders = snap.val() || {};
+    let flagged = 0, left = 0;
+
+    for (const orderId of Object.keys(orders)) {
+      const order = orders[orderId];
+      if (order.payment_method !== 'online') continue;
+      if (['confirmed', 'manual_reconciliation', 'refunded', 'refund_pending', 'failed', 'abandoned'].includes(order.payment_status)) continue;
+      const attempt = order.active_attempt_id
+        ? (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val()
+        : null;
+      if (!attempt || attempt.hosted_state === 'paid') { left++; continue; }
+
+      // Hosted: a checkout is payable until hosted_expires_at. Past expiry + the callback-retry
+      // grace with no paid callback is AMBIGUOUS (paid-but-lost is possible; no uuid to query) →
+      // manual_reconciliation, NEVER failed (I6). Within the window → leave (live flow may finish).
+      if (attempt.hosted_state === 'creating' || attempt.hosted_state === 'created') {
+        const expires = Number(attempt.hosted_expires_at) || 0;
+        if (expires && now > expires + GRACE_MS) {
+          try {
+            await db.ref(`payment_attempts/${order.active_attempt_id}`).update({ hosted_state: 'manual_reconciliation', manual_reason: 'stale_no_callback', flagged_at: now });
+            await db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });
+            await paymentAlert(db, 'hosted_stale_no_callback', { orderId, total: order.total || null });
+            flagged++;
+          } catch (e) { console.error(`sweep: flag failed ${orderId}`, e.message); }
+        } else { left++; }
+      } else { left++; }
+    }
+    console.log(`sweepStalePending: manual_flagged=${flagged} left=${left}`);
+  }
+);
+
+// ============================================================
+// reconcilePayments — Stage 4 sub-stage 3: daily invariant audit (backstop)
+// ============================================================
+//
+// RTDB-internal money-safety audit → dispatcher alerts. (A full PixelPay-ledger
+// cross-check needs a list/ledger API the SDK doesn't expose; this catches the
+// states we CAN see: aged manual_reconciliation / refund_pending / capturing,
+// confirmed-online-without-a-captured-attempt.) The inline guards in §B are the
+// primary controls; this is the safety net.
+exports.reconcilePayments = onSchedule(
+  { schedule: 'every 24 hours', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    const db = getDatabase();
+    const now = Date.now();
+    const [ordersSnap, attemptsSnap] = await Promise.all([
+      db.ref('orders').once('value'),
+      db.ref('payment_attempts').once('value')
+    ]);
+    const orders = ordersSnap.val() || {};
+    const attempts = attemptsSnap.val() || {};
+    const breaches = [];
+
+    for (const orderId of Object.keys(orders)) {
+      const o = orders[orderId];
+      if (o.payment_method !== 'online') continue;
+      const a = o.active_attempt_id ? attempts[o.active_attempt_id] : null;
+      // I2: a confirmed online order must have a VERIFIED payment — a verified hosted callback
+      // (hosted_callback_verified) or, for legacy auth+capture orders, a captured attempt.
+      if (o.payment_status === 'confirmed' && !(a && (a.hosted_callback_verified || a.status === 'captured' || a.capture_verified))) {
+        breaches.push({ orderId, kind: 'confirmed_without_verified_payment' });
+      }
+      // Aged operator-queue states.
+      const age = now - (Number(o.charged_at || o.created_at) || now);
+      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' });
+      if (o.payment_status === 'refund_pending' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_refund_pending' });
+    }
+    // Stuck claims never recovered: legacy capturing (crash mid-capture) or hosted creating
+    // (crashed after the create-claim but the checkout/callback never resolved).
+    for (const id of Object.keys(attempts)) {
+      const a = attempts[id];
+      if (a.status === 'capturing' && now - (Number(a.capturing_started_at) || now) > 3600 * 1000) {
+        breaches.push({ attemptId: id, orderId: a.order_id, kind: 'stuck_capturing' });
+      }
+      if (a.hosted_state === 'creating' && now - (Number(a.hosted_created_at) || now) > 3600 * 1000) {
+        breaches.push({ attemptId: id, orderId: a.order_id, kind: 'stuck_creating' });
+      }
+    }
+
+    if (breaches.length) {
+      console.warn('reconcilePayments: breaches', JSON.stringify(breaches));
+      await paymentAlert(db, 'reconcile_breaches', { count: breaches.length, breaches: breaches.slice(0, 50) });
+    } else {
+      console.log('reconcilePayments: no breaches');
+    }
+  }
+);
+
+// ============================================================
+// resolveManualReconciliation — Stage 4 sub-stage 3: audited manual resolver
+// ============================================================
+//
+// Dispatcher-triggered resolution of a `manual_reconciliation` order (paid-but-
+// lost-capture-response). NEVER raw DB editing — actions are audited.
+//   action 'materialize' → ledger-verified paid: confirm + materialize the order.
+//   action 'refund'      → void/refund the payment, close the order failed.
+//   action 'keep'        → leave queued (no-op; for re-checking later).
+//   action 'abandon'     → dispatcher verified NO charge on the PixelPay portal: a
+//                          missed order, not a lost charge. Terminal — clears the queue.
+//                          Refused if a payment_uuid is recorded (real charge → refund).
+// Auth: RECON_SECRET (server) OR a dispatcher Firebase ID token (the dashboard
+// Pedidos view). Records an audit entry keyed by the verified actor.
+exports.resolveManualReconciliation = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 60, memory: '256MiB', maxInstances: 5 },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).json({ error: 'Method Not Allowed' }); }
+    // DISPATCHER-ONLY money action (can materialize an order or trigger a void/refund).
+    // Gated by authorizeDispatcherAction: the server-only RECON_SECRET, or a verified
+    // dispatcher's Firebase ID token — NEVER the public order-intake secret (MAKE_SECRET).
+    const auth = await authorizeDispatcherAction(req);
+    if (!auth.ok) return res.status(auth.code).json({ error: 'Unauthorized', detail: auth.msg });
+
+    const body = req.body || {};
+    const orderId = String(body.order_id || '');
+    const action = String(body.action || '');
+    // Audit actor: a verified dispatcher's email can't be spoofed; only the server
+    // RECON_SECRET path may pass a free-text actor label.
+    const actor = auth.actor === 'recon_secret' ? sanitizeText(body.actor || 'server', 80) : auth.actor;
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return badRequest(res, 'order_id invalid');
+    if (!['materialize', 'refund', 'keep', 'abandon'].includes(action)) return badRequest(res, 'action must be materialize|refund|keep|abandon');
+
+    const db = getDatabase();
+    const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.payment_status !== 'manual_reconciliation') {
+      return res.status(409).json({ error: 'Order is not in manual_reconciliation', payment_status: order.payment_status });
+    }
+    const attemptId = order.active_attempt_id;
+
+    const audit = async (outcome, extra = {}) => {
+      await db.ref('payment_audit').push({ order_id: orderId, action, actor, outcome, at: ServerValue.TIMESTAMP, ...extra });
+    };
+
+    try {
+      if (action === 'keep') {
+        await audit('kept_queued');
+        return res.status(200).json({ ok: true, outcome: 'kept_queued' });
+      }
+      if (action === 'abandon') {
+        // Dispatcher verified on the PixelPay portal that NO charge exists → a missed
+        // order, not a lost charge. Terminal (clears the manual_reconciliation queue).
+        // Money-safety rail: REFUSE if a payment_uuid is recorded — a uuid means a real
+        // charge exists, which must be voided via 'refund', never silently abandoned.
+        const uuid = attemptId ? (await db.ref(`payment_attempts/${attemptId}/payment_uuid`).once('value')).val() : null;
+        if (uuid) return res.status(409).json({ error: 'Este pedido tiene un pago registrado (uuid) — usá "Reembolsar", no "Descartar".', payment_uuid_present: true });
+        if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'abandoned', status: 'abandoned', abandoned_at: Date.now() });
+        await db.ref(`orders/${orderId}`).update({ payment_status: 'abandoned', status: 'cancelled' });
+        await audit('abandoned', { note: sanitizeText(body.note || '', 200) });
+        return res.status(200).json({ ok: true, outcome: 'abandoned' });
+      }
+      if (action === 'materialize') {
+        // Dispatcher verified the ledger shows our paid capture → confirm + materialize.
+        if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ status: 'captured', capture_verified: true, manual_verified: true, amount_cents: order.total_cents });
+        await db.ref(`orders/${orderId}`).update({ payment_status: 'pending' }); // let confirmAndMaterialize claim it
+        const r = await confirmAndMaterialize(confirmDeps(db), { orderId, attemptId, now: Date.now(), trackingToken: generateTrackingToken() });
+        await audit('materialized', { confirm_outcome: r.outcome });
+        return res.status(200).json({ ok: true, outcome: r.outcome });
+      }
+      // action === 'refund'
+      const uuid = attemptId ? (await db.ref(`payment_attempts/${attemptId}/payment_uuid`).once('value')).val() : null;
+      let voided = false;
+      if (uuid) {
+        try { const vd = await pixelpayClient.voidTransaction({ payment_uuid: uuid, pixelpayOrderId: `${orderId}-${attemptId}`, voidReason: 'xpizza_manual_refund' }); voided = !!vd.ok; } catch (_) {}
+      }
+      if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ status: voided ? 'refunded' : 'refund_pending', refunded_at: Date.now() });
+      await db.ref(`orders/${orderId}`).update({ payment_status: voided ? 'refunded' : 'refund_pending', status: 'cancelled' });
+      await audit(voided ? 'refunded' : 'refund_pending', { voided });
+      return res.status(200).json({ ok: true, outcome: voided ? 'refunded' : 'refund_pending' });
+    } catch (e) {
+      console.error(`resolveManualReconciliation: ${orderId} ${action} failed`, e.message);
+      return res.status(500).json({ error: 'resolve failed', detail: e.message });
+    }
+  }
+);
+
+// ============================================================
+// materializeOnConfirm — recovery trigger (crash between confirm-claim + materialize)
+// ============================================================
+//
+// If a write leaves an order `payment_status:'confirmed'` but with no
+// `materialized_at` (the confirm claim landed but materialize didn't), re-run
+// materialization idempotently. confirmAndMaterialize is a no-op once materialized,
+// so this can't loop. (PAYMENT-PLAN §C.4.)
+exports.materializeOnConfirm = onValueWritten(
+  { ref: '/orders/{orderId}', region: 'us-central1' },
+  async (event) => {
+    const after = event.data.after.val();
+    if (!after) return;
+    if (after.payment_status !== 'confirmed') return;
+    if (after.materialized_at) return;               // already materialized → nothing to do
+    if (after.status === 'cancelled') return;
+    const orderId = event.params.orderId;
+    console.warn(`materializeOnConfirm: recovering unmaterialized confirmed order ${orderId}`);
+    const db = getDatabase();
+    try {
+      const r = await confirmAndMaterialize(confirmDeps(db), { orderId, attemptId: after.active_attempt_id, now: Date.now(), trackingToken: generateTrackingToken() });
+      console.log(`materializeOnConfirm: ${orderId} → ${r.outcome}`);
+    } catch (e) {
+      console.error(`materializeOnConfirm: ${orderId} failed`, e.message);
+    }
+  }
+);
+
+// ============================================================
+// cancelPaidOrder — Stage 6: dispatcher cancel + void/refund of a paid online order
+// ============================================================
+//
+// DISPATCHER-ONLY — RECON_SECRET (server) or a verified dispatcher Firebase ID token
+// (the dashboard Pedidos view), NEVER the public order secret. Voids/refunds the payment
+// and cancels the order + tasks.
+// Race-guarded against confirmOnlinePayment: it sets `cancelling` on the attempt and
+// `status:'cancelled'` on the order — a capture mid-flight converges by VOIDING (I8, see
+// pixelpay-confirm.js step 5b), never materializing. Online-only; cash orders use the
+// dispatch app's client cancelOrder (the RTDB rules block client cancel of paid online).
+exports.cancelPaidOrder = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 60, memory: '256MiB', maxInstances: 5 },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).json({ error: 'Method Not Allowed' }); }
+    const auth = await authorizeDispatcherAction(req);
+    if (!auth.ok) return res.status(auth.code).json({ error: 'Unauthorized', detail: auth.msg });
+    const actor = auth.actor;
+
+    const body = req.body || {};
+    const orderId = String(body.order_id || '');
+    const reason = sanitizeText(body.reason || 'cancelado por despacho', 200);
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return badRequest(res, 'order_id invalid');
+
+    const db = getDatabase();
+    const now = Date.now();
+    const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.payment_method !== 'online') return res.status(409).json({ error: 'Not an online order', detail: 'use the dispatch cancel for cash orders' });
+    if (order.status === 'cancelled') return res.status(200).json({ ok: true, outcome: 'already_cancelled', order_id: orderId });
+
+    const attemptId = order.active_attempt_id || null;
+    const attemptRef = attemptId ? db.ref(`payment_attempts/${attemptId}`) : null;
+    const pixelpayOrderId = attemptId ? `${orderId}-${attemptId}` : null;
+
+    // Claim `cancel_pending` on the attempt (race converge point with the hosted webhook): if a
+    // paid callback for this attempt lands LATER, the webhook auto-voids instead of materializing
+    // (I9). Pre-read + cur||preAttempt to avoid the Admin-SDK first-call-null abort.
+    let attempt = attemptId ? (await attemptRef.once('value')).val() : null;
+    if (attemptRef && attempt) {
+      const tx = await attemptRef.transaction((cur) => {
+        const a = cur || attempt;
+        if (!a) return a;
+        return { ...a, cancel_pending: true, cancel_reason: reason, cancel_claimed_at: now };
+      });
+      attempt = tx.snapshot.val() || attempt;
+    }
+
+    // Reverse the payment ONLY if it is actually paid (a P- uuid exists). A hosted attempt not yet
+    // paid (creating/created, no uuid) has NO money to void — cancel_pending alone is correct; a
+    // later paid callback is auto-voided by the webhook (I9). NEVER mark refunded without a uuid.
+    const deps = confirmDeps(db);
+    let refund = { outcome: 'no_payment', voided: true };
+    const uuid = attempt && attempt.payment_uuid;
+    const isPaid = !!(uuid && (attempt.hosted_state === 'paid' || order.payment_status === 'confirmed'));
+    if (isPaid) {
+      refund = await voidOrRefund(deps, { orderId, attemptId, pixelpayOrderId, paymentUuid: uuid, reason, now });
+    }
+
+    // Build the cancellation: order + tasks + driver release (mirrors the dispatch cancelOrder).
+    const updates = {};
+    updates[`orders/${orderId}/status`] = 'cancelled';
+    updates[`orders/${orderId}/cancelled_at`] = now;
+    updates[`orders/${orderId}/cancel_reason`] = reason;
+    updates[`orders/${orderId}/cancelled_by`] = actor;
+    if (isPaid) {
+      // Only touch payment_status when there was money: refunded (voided) or refund_pending (void
+      // failed). If not yet paid, leave payment_status as-is (order.status=cancelled + the
+      // attempt's cancel_pending cover it; a late paid callback will set refunded/refund_pending).
+      updates[`orders/${orderId}/payment_status`] = refund.voided ? 'refunded' : 'refund_pending';
+    }
+    if (order.order_type === 'delivery') {
+      const pickupTaskId = `${orderId}_pickup`;
+      const deliveryTaskId = `${orderId}_delivery`;
+      const pickup = (await db.ref(`tasks/${pickupTaskId}`).once('value')).val();
+      if (pickup) updates[`tasks/${pickupTaskId}/status`] = 'cancelled';
+      const delivery = (await db.ref(`tasks/${deliveryTaskId}`).once('value')).val();
+      if (delivery) updates[`tasks/${deliveryTaskId}/status`] = 'cancelled';
+      // Release the assigned driver if they were working this order.
+      const driverId = pickup && pickup.assigned_driver_id;
+      if (driverId) {
+        const driver = (await db.ref(`drivers/${driverId}`).once('value')).val();
+        if (driver && (driver.current_task_id === pickupTaskId || driver.current_task_id === deliveryTaskId)) {
+          updates[`drivers/${driverId}/current_task_id`] = null;
+          if (['assigned', 'at_restaurant', 'en_route_delivery'].includes(driver.status)) {
+            updates[`drivers/${driverId}/status`] = 'available';
+          }
+        }
+      }
+    }
+    await db.ref().update(updates);
+
+    console.log(`cancelPaidOrder: ${orderId} cancelled by ${actor} (${isPaid ? 'refund=' + refund.outcome : 'no payment yet; cancel_pending set'})`);
+    return res.status(200).json({ ok: true, outcome: 'cancelled', refund: isPaid ? refund.outcome : 'no_payment', order_id: orderId });
+  }
+);
+
+// ============================================================
+// refundReconciler — Stage 6: retry aged refund_pending (scheduled, hourly)
+// ============================================================
+//
+// A void that failed (network, or the unverified production void signature) leaves the
+// attempt `refund_pending`. Retry it; alert on aged ones so a dispatcher can act. The
+// daily reconcilePayments also surfaces aged refund_pending as a backstop.
+exports.refundReconciler = onSchedule(
+  { schedule: 'every 60 minutes', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    const db = getDatabase();
+    const now = Date.now();
+    const attempts = (await db.ref('payment_attempts').once('value')).val() || {};
+    const deps = confirmDeps(db);
+    let retried = 0, stillPending = 0;
+    for (const attemptId of Object.keys(attempts)) {
+      const a = attempts[attemptId];
+      if (!a || a.status !== 'refund_pending') continue;
+      const pixelpayOrderId = `${a.order_id}-${attemptId}`;
+      const r = await voidOrRefund(deps, { orderId: a.order_id, attemptId, pixelpayOrderId, paymentUuid: a.payment_uuid, reason: 'xpizza_refund_retry', now });
+      retried++;
+      if (!r.voided) {
+        stillPending++;
+        const age = now - (Number(a.refunded_at || a.cancel_claimed_at || a.captured_at) || now);
+        if (age > 24 * 3600 * 1000) await paymentAlert(db, 'aged_refund_pending', { orderId: a.order_id, attemptId });
+      }
+    }
+    console.log(`refundReconciler: retried=${retried} stillPending=${stillPending}`);
+  }
+);
+
+// ============================================================
 // blockPublicSignup — reject self-registration (allowlist staff only)
 // ============================================================
 //
@@ -714,17 +1646,91 @@ exports.healthz = onRequest(
 // If the push send fails with 404/410, we proactively clear the dead
 // subscription so we don't keep retrying it.
 
+// ------------------------------------------------------------
+// Dual-transport driver push (FCM native + web-push fallback)
+// ------------------------------------------------------------
+//
+// Pure decision logic (transport order, reachability, error classification,
+// message shape) lives in ./driver-push and is unit-tested. These two thin
+// wrappers do the db + admin.messaging() side effects.
+
+// Recompute and persist the materialized /drivers/{uid}/push_reachable flag,
+// which dispatch reads (raw FCM tokens are server-only and not world-readable).
+async function refreshPushReachable(db, uid) {
+  const [driverSnap, tokSnap] = await Promise.all([
+    db.ref(`drivers/${uid}`).once('value'),
+    db.ref(`driver_push_tokens/${uid}`).once('value')
+  ]);
+  const driver = driverSnap.val() || {};
+  const tok = tokSnap.val();
+  const fcmToken = validateTokenOwner(uid, tok) ? tok.token : null;
+  const reachable = computePushReachable({ push_subscription: driver.push_subscription, fcm_token: fcmToken });
+  await db.ref(`drivers/${uid}/push_reachable`).set(reachable);
+  return reachable;
+}
+
+// Send one notification to a driver. Tries FCM first (if a valid owned token
+// exists), falls back to web-push on ANY FCM failure; clears a transport only
+// on a TERMINAL error (dead FCM token / web 404|410) and then refreshes
+// push_reachable. NOT gated on VAPID — FCM works even with VAPID unset.
+async function sendDriverPush(db, uid, payload) {
+  const [driverSnap, tokSnap] = await Promise.all([
+    db.ref(`drivers/${uid}`).once('value'),
+    db.ref(`driver_push_tokens/${uid}`).once('value')
+  ]);
+  const driver = driverSnap.val();
+  if (!driver) return { sent: false, reason: 'no_driver' };
+
+  const tokRec = tokSnap.val();
+  const fcmToken = validateTokenOwner(uid, tokRec) ? tokRec.token : null;
+  const transports = selectTransports({ push_subscription: driver.push_subscription, fcm_token: fcmToken });
+  if (transports.length === 0) {
+    console.log(`sendDriverPush: ${uid} has no push transport, skipping (${payload.tag})`);
+    return { sent: false, reason: 'unreachable' };
+  }
+
+  for (const transport of transports) {
+    try {
+      if (transport === 'fcm') {
+        await getMessaging().send(buildFcmMessage(fcmToken, payload));
+      } else {
+        await webpush.sendNotification(
+          driver.push_subscription,
+          JSON.stringify({ title: payload.title, body: payload.body, tag: payload.tag, data: payload.data || {} }),
+          { urgency: 'high', TTL: PUSH_TTL_SECONDS }
+        );
+      }
+      console.log(`sendDriverPush: ${transport} ok ${uid} (${payload.tag})`);
+      return { sent: true, transport };
+    } catch (err) {
+      if (transport === 'fcm') {
+        const terminal = isTerminalFcmError(err);
+        console.error(`sendDriverPush: fcm failed ${uid} code=${err.code} terminal=${terminal} (${payload.tag})`);
+        if (terminal) {
+          await db.ref(`driver_push_tokens/${uid}`).remove();
+          await refreshPushReachable(db, uid);
+        }
+        // fall through to web-push on ANY fcm failure
+      } else {
+        const terminal = isTerminalWebPushError(err);
+        console.error(`sendDriverPush: web failed ${uid} status=${err.statusCode} terminal=${terminal} (${payload.tag})`);
+        if (terminal) {
+          await db.ref(`drivers/${uid}/push_subscription`).remove();
+          await db.ref(`drivers/${uid}/push_subscription_updated_at`).remove();
+          await refreshPushReachable(db, uid);
+        }
+      }
+    }
+  }
+  return { sent: false, reason: 'all_failed' };
+}
+
 exports.notifyDriverOnAssignment = onValueWritten(
   {
     ref: '/tasks/{taskId}',
     region: 'us-central1'
   },
   async (event) => {
-    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-      console.error('notifyDriver: VAPID keys not configured, skipping');
-      return;
-    }
-
     const before = event.data.before.val();
     const after = event.data.after.val();
 
@@ -742,14 +1748,6 @@ exports.notifyDriverOnAssignment = onValueWritten(
 
     const db = getDatabase();
 
-    // Look up the driver's push subscription
-    const driverSnap = await db.ref(`drivers/${newDriverId}`).once('value');
-    const driver = driverSnap.val();
-    if (!driver?.push_subscription) {
-      console.log(`notifyDriver: driver ${newDriverId} has no push subscription, skipping`);
-      return;
-    }
-
     // Look up the order for the notification body
     const orderSnap = await db.ref(`orders/${after.order_id}`).once('value');
     const order = orderSnap.val();
@@ -759,31 +1757,14 @@ exports.notifyDriverOnAssignment = onValueWritten(
       ? `${order.customer_name || 'Cliente'} · L${order.total ?? '—'}`
       : `Pedido #${after.order_id}`;
 
-    const payload = JSON.stringify({
+    // Dual-transport (FCM native first, web-push fallback). No-op if the driver
+    // has no push transport — they'll see the in-app card when they look.
+    await sendDriverPush(db, newDriverId, {
       title,
       body,
       tag: `order-${after.order_id}`,
       data: { order_id: after.order_id }
     });
-
-    try {
-      await webpush.sendNotification(driver.push_subscription, payload, {
-        urgency: 'high',          // tell the push service this is time-critical
-        TTL: 600                  // expire after 10 min if undelivered
-      });
-      console.log(`notifyDriver: push sent to ${newDriverId} for order ${after.order_id}`);
-    } catch (err) {
-      const status = err.statusCode;
-      console.error(`notifyDriver: push failed for ${newDriverId}, status=${status}`, err.body);
-
-      // 404 Not Found / 410 Gone → the subscription is dead; remove it so we
-      // stop retrying. Driver will need to re-enable notifications.
-      if (status === 404 || status === 410) {
-        await db.ref(`drivers/${newDriverId}/push_subscription`).remove();
-        await db.ref(`drivers/${newDriverId}/push_subscription_updated_at`).remove();
-        console.log(`notifyDriver: cleared dead subscription for ${newDriverId}`);
-      }
-    }
   }
 );
 
@@ -919,11 +1900,6 @@ exports.notifyDriverOnCancellation = onValueWritten(
     region: 'us-central1'
   },
   async (event) => {
-    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-      console.error('notifyDriverOnCancellation: VAPID keys not configured, skipping');
-      return;
-    }
-
     const before = event.data.before.val();
     const after = event.data.after.val();
 
@@ -947,14 +1923,6 @@ exports.notifyDriverOnCancellation = onValueWritten(
       return;
     }
 
-    // Look up the driver's push subscription
-    const driverSnap = await db.ref(`drivers/${driverId}`).once('value');
-    const driver = driverSnap.val();
-    if (!driver?.push_subscription) {
-      console.log(`notifyDriverOnCancellation: driver ${driverId} has no push subscription, skipping`);
-      return;
-    }
-
     // Look up the cancel reason (optional — included in body if present, truncated)
     let reason = null;
     try {
@@ -972,32 +1940,240 @@ exports.notifyDriverOnCancellation = onValueWritten(
       body = `${body}: ${trimmed}`;
     }
 
-    const payload = JSON.stringify({
+    // Same dual-transport path as assignment; tag matches so the cancel banner
+    // replaces the new-order banner on the device.
+    await sendDriverPush(db, driverId, {
       title,
       body,
-      tag: `order-${orderId}`,  // same tag as assignment push → replaces banner on Android
+      tag: `order-${orderId}`,
       data: { order_id: orderId, cancelled: true }
     });
-
-    try {
-      await webpush.sendNotification(driver.push_subscription, payload, {
-        urgency: 'high',
-        TTL: 600
-      });
-      console.log(`notifyDriverOnCancellation: push sent to ${driverId} for cancelled order ${orderId}`);
-    } catch (err) {
-      const status = err.statusCode;
-      console.error(`notifyDriverOnCancellation: push failed for ${driverId}, status=${status}`, err.body);
-
-      // 404/410 → dead subscription, clear it so we stop retrying.
-      if (status === 404 || status === 410) {
-        await db.ref(`drivers/${driverId}/push_subscription`).remove();
-        await db.ref(`drivers/${driverId}/push_subscription_updated_at`).remove();
-        console.log(`notifyDriverOnCancellation: cleared dead subscription for ${driverId}`);
-      }
-    }
   }
 );
+
+// ============================================================
+// Driver push-token registration (native FCM) + reachability upkeep
+// ============================================================
+
+// registerDriverPushToken — the native app calls this (authenticated) to
+// register its FCM token. The token lives on the SERVER-ONLY
+// /driver_push_tokens path (never world-readable /drivers); we materialize
+// /drivers/{uid}/push_reachable so dispatch sees reachability without seeing
+// tokens. Idempotent — safe to call on every refresh / app start.
+exports.registerDriverPushToken = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  const token = String(request.data?.token || '').trim();
+  if (!token) throw new HttpsError('invalid-argument', 'token required');
+
+  const db = getDatabase();
+  await db.ref(`driver_push_tokens/${uid}`).set({
+    token,
+    owner_uid: uid,
+    platform: request.data?.platform || 'android',
+    app_build: request.data?.app_build || null,
+    last_seen: ServerValue.TIMESTAMP
+  });
+  const reachable = await refreshPushReachable(db, uid);
+  console.log(`registerDriverPushToken: ${uid} registered (reachable=${reachable})`);
+  return { ok: true, push_reachable: reachable };
+});
+
+// unregisterDriverPushToken — called on logout / notifications-off to drop the
+// FCM token and recompute reachability.
+exports.unregisterDriverPushToken = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  const db = getDatabase();
+  await db.ref(`driver_push_tokens/${uid}`).remove();
+  const reachable = await refreshPushReachable(db, uid);
+  return { ok: true, push_reachable: reachable };
+});
+
+// onDriverSubscriptionChange — keeps push_reachable in sync for the PWA
+// web-push path, which still writes /drivers/{uid}/push_subscription directly
+// from the client. (FCM updates push_reachable via the callables above.)
+exports.onDriverSubscriptionChange = onValueWritten(
+  { ref: '/drivers/{uid}/push_subscription', region: 'us-central1' },
+  async (event) => {
+    await refreshPushReachable(getDatabase(), event.params.uid);
+  }
+);
+
+// ============================================================
+// Native location ingest — server-mediated shift + ingestDriverLocation
+// ============================================================
+//
+// The native app's background-location uploader (Step 2c) POSTs to
+// ingestDriverLocation with a per-shift opaque bearer token. Pure decision
+// logic (geofence, batch ordering, token validation) lives in ./driver-ingest
+// and is unit-tested; these wrappers do the db side effects. See ADR 0003.
+
+const INGEST_TOKEN_TTL_MS = 16 * 60 * 60 * 1000;  // 16h — covers a long shift (Candidate B: no refresh)
+const INGEST_MAX_AGE_MS = 5 * 60 * 1000;          // drop points older than 5 min
+const INGEST_MAX_FUTURE_SKEW_MS = 2 * 60 * 1000;  // drop absurd-future points (clock skew)
+const INGEST_GEOFENCE_RADIUS_M = 50;              // matches the client RESTAURANT.geofence_radius_m
+const INGEST_RATE_MAX = 120;                      // per driver per window
+const INGEST_RATE_WINDOW_MS = 60 * 1000;
+const ingestRate = new Map();                     // uid -> { count, windowStart } (per-instance soft guard)
+
+// startDriverShift — server-mediated clock-in. Atomically sets active/status/
+// shift id/location_source and, for native clients, mints a hashed per-shift
+// ingest token (returns the RAW token once, stores only its hash). PWA clients
+// pass platform!=='native' and just get the clock-in (no token).
+exports.startDriverShift = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  const crypto = require('crypto');
+  const db = getDatabase();
+  const isNativeClient = request.data?.platform === 'native';
+  const deviceId = request.data?.device_id || null;
+  const now = Date.now();
+  const shiftId = crypto.randomUUID();
+
+  const updates = {
+    [`drivers/${uid}/active`]: true,
+    [`drivers/${uid}/status`]: 'available',
+    [`drivers/${uid}/shift_started_at`]: ServerValue.TIMESTAMP,
+    [`drivers/${uid}/last_ping`]: ServerValue.TIMESTAMP,
+    [`drivers/${uid}/current_task_id`]: null,
+    [`drivers/${uid}/current_shift_id`]: shiftId,
+    [`drivers/${uid}/location_source`]: isNativeClient ? 'native' : 'pwa'
+  };
+
+  let ingestToken = null;
+  if (isNativeClient) {
+    const priorHash = (await db.ref(`drivers/${uid}/ingest_token_hash`).once('value')).val();
+    if (priorHash) updates[`driver_tokens/${priorHash}`] = null;  // revoke prior token
+    ingestToken = crypto.randomBytes(32).toString('hex');
+    const hash = hashToken(ingestToken);
+    updates[`driver_tokens/${hash}`] = {
+      uid, shift_id: shiftId, device_id: deviceId,
+      issued_at: now, expires_at: now + INGEST_TOKEN_TTL_MS, revoked_at: null
+    };
+    updates[`drivers/${uid}/ingest_token_hash`] = hash;
+  }
+
+  await db.ref().update(updates);
+  console.log(`startDriverShift: ${uid} on shift ${shiftId} (source=${isNativeClient ? 'native' : 'pwa'})`);
+  return { ok: true, shift_id: shiftId, location_source: isNativeClient ? 'native' : 'pwa', ingest_token: ingestToken };
+});
+
+// endDriverShift — server-mediated clock-out. Revokes (deletes) the ingest
+// token, clears shift id + hub snapshot, and clocks the driver off.
+exports.endDriverShift = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  const db = getDatabase();
+  const hash = (await db.ref(`drivers/${uid}/ingest_token_hash`).once('value')).val();
+  const updates = {
+    [`drivers/${uid}/active`]: false,
+    [`drivers/${uid}/status`]: 'off_shift',
+    [`drivers/${uid}/shift_ended_at`]: ServerValue.TIMESTAMP,
+    [`drivers/${uid}/current_shift_id`]: null,
+    [`drivers/${uid}/current_task_id`]: null,
+    [`drivers/${uid}/current_hub_lat`]: null,
+    [`drivers/${uid}/current_hub_lng`]: null,
+    [`drivers/${uid}/current_restaurant_id`]: null,
+    [`drivers/${uid}/ingest_token_hash`]: null
+  };
+  if (hash) updates[`driver_tokens/${hash}`] = null;
+  await db.ref().update(updates);
+  console.log(`endDriverShift: ${uid} off shift`);
+  return { ok: true };
+});
+
+// ingestDriverLocation — native uploader POSTs { locations: [{ ts, lat, lng,
+// accuracy?, heading?, speed? }] } with Authorization: Bearer <opaque token>.
+// Token -> uid (hash lookup), freshness + shift-binding checks, batch ordering
+// (offline-replay safe), server geofence (native only, fail-closed on non-
+// x_pizza), persist the final point + any status transition.
+exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, res) => {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+
+  // The token rides in a CUSTOM header, not Authorization: Bearer — Cloud
+  // Functions gen2 reserves Authorization for Google IAM auth and rejects an
+  // opaque bearer at the infra layer before it reaches us. Transistorsoft's
+  // uploader sends custom headers, so this works for the native path too.
+  const raw = (req.get('x-driver-token') || '').trim();
+  if (!raw) return res.status(401).json({ error: 'missing token' });
+
+  const db = getDatabase();
+  const tokenRec = (await db.ref(`driver_tokens/${hashToken(raw)}`).once('value')).val();
+  if (!tokenRec) return res.status(401).json({ error: 'invalid token' });
+  const uid = tokenRec.uid;
+
+  // Per-uid rate limit (per-instance soft guard; harden with a shared store before scale).
+  const nowMs = Date.now();
+  const rl = ingestRate.get(uid);
+  if (!rl || nowMs - rl.windowStart > INGEST_RATE_WINDOW_MS) {
+    ingestRate.set(uid, { count: 1, windowStart: nowMs });
+  } else if (rl.count >= INGEST_RATE_MAX) {
+    console.warn(`ingestDriverLocation: rate limit hit for ${uid}`);
+    return res.status(429).json({ error: 'rate_limited' });
+  } else {
+    rl.count++;
+  }
+
+  const driver = (await db.ref(`drivers/${uid}`).once('value')).val();
+  if (!driver) return res.status(401).json({ error: 'no driver' });
+
+  const v = validateIngestToken(tokenRec, { now: nowMs, currentShiftId: driver.current_shift_id });
+  if (!v.ok) {
+    console.warn(`ingestDriverLocation: token rejected for ${uid} (${v.reason})`);
+    return res.status(401).json({ error: v.reason });
+  }
+  // Freshness: must be actively on shift (defense-in-depth beyond token revoke).
+  if (driver.active !== true || driver.status === 'off_shift') {
+    return res.status(403).json({ error: 'off_shift' });
+  }
+
+  // Normalize each point's ts to epoch ms (Transistorsoft sends ISO; curl sends
+  // numbers). selectIngestPoints then drops any with a non-finite ts.
+  const rawPoints = Array.isArray(req.body && req.body.locations) ? req.body.locations : [];
+  const points = rawPoints.map((p) => (p && typeof p === 'object') ? { ...p, ts: coerceTs(p.ts) } : p);
+  const accepted = selectIngestPoints(points, {
+    lastLocationTs: driver.last_location_ts || 0,
+    now: nowMs,
+    maxAgeMs: INGEST_MAX_AGE_MS,
+    maxFutureSkewMs: INGEST_MAX_FUTURE_SKEW_MS
+  });
+  if (accepted.length === 0) {
+    return res.status(200).json({ ok: true, accepted: 0, dropped: points.length });
+  }
+
+  // Server geofence — native drivers only, fail-closed on a non-x_pizza hub.
+  let status = driver.status;
+  const hasTask = !!driver.current_task_id;
+  const hubLat = driver.current_hub_lat ?? RESTAURANT_LAT;
+  const hubLng = driver.current_hub_lng ?? RESTAURANT_LNG;
+  const hubOk = isHubResolvable(driver.current_restaurant_id);
+  let arrived = false;
+  if (driver.location_source === 'native' && hubOk) {
+    for (const p of accepted) {
+      const t = geofenceTransition({ status, hasTask, hubLat, hubLng, lat: p.lat, lng: p.lng, radiusM: INGEST_GEOFENCE_RADIUS_M });
+      if (t) { status = t.status; if (t.arrivedAtRestaurant) arrived = true; }
+    }
+  } else if (!hubOk) {
+    console.warn(`ingestDriverLocation: hub not resolvable for ${uid} (restaurant_id=${driver.current_restaurant_id}) — geofence skipped`);
+  }
+
+  const final = accepted[accepted.length - 1];
+  const updates = {
+    [`drivers/${uid}/lat`]: final.lat,
+    [`drivers/${uid}/lng`]: final.lng,
+    [`drivers/${uid}/accuracy`]: typeof final.accuracy === 'number' ? final.accuracy : null,
+    [`drivers/${uid}/heading`]: typeof final.heading === 'number' ? final.heading : null,
+    [`drivers/${uid}/speed`]: typeof final.speed === 'number' ? final.speed : null,
+    [`drivers/${uid}/last_location_ts`]: final.ts,
+    [`drivers/${uid}/last_ping`]: ServerValue.TIMESTAMP
+  };
+  if (status !== driver.status) updates[`drivers/${uid}/status`] = status;
+  if (arrived) updates[`drivers/${uid}/arrived_at_restaurant_at`] = ServerValue.TIMESTAMP;
+  await db.ref().update(updates);
+
+  return res.status(200).json({ ok: true, accepted: accepted.length, dropped: points.length - accepted.length, status });
+});
 
 // ============================================================
 // sendOrderStatusNotifications — Customer WhatsApp on status changes
@@ -1542,7 +2718,11 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
     //
     // Required:
     //   - status not 'off_shift' (driver explicitly clocked in)
-    //   - push_subscription on file (we can actually deliver them the order)
+    //   - reachable: we can deliver the order via FCM native OR web-push.
+    //     Authoritative on the materialized push_reachable flag (covers native
+    //     FCM-only drivers). Falls back to a REAL web subscription when the flag
+    //     isn't set yet, so a driver stays assignable even if the backfill
+    //     hasn't run — no deploy-ordering footgun.
     //   - cooldown not active (last assignment didn't time out)
     //
     // Lat/lng absence is OK — used only for distance sort. If GPS is missing
@@ -1550,7 +2730,10 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
     // the driver as if they're at the restaurant. They probably are if their
     // phone hasn't pinged.
     if (d.status === 'off_shift') continue;
-    if (!d.push_subscription) continue;
+    // computePushReachable on the driver record only sees web push_subscription
+    // (FCM tokens are server-only), which is exactly the legacy fallback we want.
+    const reachable = (typeof d.push_reachable === 'boolean') ? d.push_reachable : computePushReachable(d);
+    if (!reachable) continue;
     if (d.timeout_until && d.timeout_until > now) continue;
 
     const orderCount = activeOrdersByDriver[driverId] ? activeOrdersByDriver[driverId].size : 0;
@@ -1635,6 +2818,42 @@ function buildAssignmentUpdates(orderId, driverId, attempts, isAutoAssigned, isS
   return updates;
 }
 
+// Re-derive whether a driver is still assignable, re-reading current state.
+// Closes the TOCTOU race between pickEligibleDriver's snapshot and the
+// assignment write (driver may have gone en_route via the pickup swipe, clocked
+// off, or been stacked by a concurrent trigger). Mirrors the eligibility + cap
+// logic in pickEligibleDriver. Pilot-tier guard; a per-driver capacity lease is
+// the harden-before-scale form (see SHERPA_DRIVER_PLAN.md).
+async function reassertAssignable(db, driverId) {
+  const [dSnap, tSnap] = await Promise.all([
+    db.ref(`drivers/${driverId}`).once('value'),
+    db.ref('tasks').once('value')
+  ]);
+  const d = dSnap.val();
+  if (!d) return { ok: false, reason: 'no_driver' };
+  if (d.status === 'off_shift') return { ok: false, reason: 'off_shift' };
+  const reachable = (typeof d.push_reachable === 'boolean')
+    ? d.push_reachable : !!(d.push_subscription && d.push_subscription.endpoint);
+  if (!reachable) return { ok: false, reason: 'unreachable' };
+  if (d.timeout_until && d.timeout_until > Date.now()) return { ok: false, reason: 'cooldown' };
+
+  const tasks = tSnap.val() || {};
+  const orderIds = new Set();
+  for (const id of Object.keys(tasks)) {
+    const t = tasks[id];
+    if (!t || t.assigned_driver_id !== driverId) continue;
+    if (t.status === 'completed' || t.status === 'cancelled') continue;
+    if (t.order_id) orderIds.add(t.order_id);
+  }
+  const orderCount = orderIds.size;
+  let cap;
+  if (orderCount === 0) cap = 1;
+  else if (orderCount === 1 && STACKABLE_STATUSES.has(d.status)) cap = 2;
+  else cap = orderCount;
+  if (orderCount >= cap) return { ok: false, reason: `at_cap(${orderCount})` };
+  return { ok: true, orderCount };
+}
+
 // ============================================================
 // autoAssignOnOrderCreate — auto-assign delivery orders to closest driver
 // ============================================================
@@ -1657,9 +2876,13 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     const before = event.data.before.val();
     const after = event.data.after.val();
 
-    // Only fire on CREATE (before == null), not on subsequent updates
-    if (before !== null) return;
+    // Fire when the order BECOMES live (status → 'new'): cash orders at create
+    // (before == null), and online orders when a verified payment materializes them
+    // (before.status was 'pending_payment'). Ignore the pending_payment write itself
+    // and all later updates. Unifies the cash + online dispatch entry point (§D).
     if (!after) return;
+    const becameNew = after.status === 'new' && (before === null || before.status !== 'new');
+    if (!becameNew) return;
 
     const orderId = event.params.orderId;
 
@@ -1735,6 +2958,22 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     const isStacked = chosen.orderCount > 0;
     if (isStacked) {
       console.log(`autoAssign: ${orderId} is STACKED on ${chosen.name} (already has ${chosen.orderCount} active)`);
+    }
+
+    // Close the TOCTOU race: re-read the chosen driver right before the write.
+    // If they're no longer assignable (clocked off / went en_route / stacked by
+    // a concurrent trigger), abort and alert rather than over-stack them.
+    const recheck = await reassertAssignable(db, chosen.driverId);
+    if (!recheck.ok) {
+      console.warn(`autoAssign: ${orderId} — ${chosen.driverId} no longer assignable (${recheck.reason}); alerting`);
+      await db.ref('dispatcher_alerts').push({
+        type: 'no_drivers_available',
+        order_id: orderId,
+        customer_name: after.recipient_name || 'Cliente',
+        total: after.total || null,
+        created_at: ServerValue.TIMESTAMP
+      });
+      return;
     }
 
     // attempts=1 = initial assignment. monitorAssignmentTimeout uses this

@@ -926,7 +926,7 @@ function shortStatus(s) {
 //   - No API keys hardcoded in the page
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
-import * as XPD from './xpizza-delivery.js?v=15';
+import * as XPD from './xpizza-delivery.js?v=16';
 
 // Same Firebase project config as driver/dispatch.
 // apiKey is NOT a secret — it identifies the project. Real access is gated
@@ -1333,6 +1333,14 @@ function startOrdersSubscription() {
 */
 function mapFirebaseOrderToCard(o) {
   if (!o) return null;
+
+  // HARD GUARD: a payment-pending / unpaid order must NEVER become a kitchen ticket.
+  // Online orders are written as status:'pending_payment' and only flip to 'new' after
+  // the payment is captured + confirmed; a declined/abandoned one STAYS 'pending_payment'.
+  // subscribeToOrders already filters these, but we guard here too (defense-in-depth in
+  // case a stale cached SDK without the filter is ever served). The catch-all below maps
+  // unknown statuses to 'Nuevo', so without this an unpaid order shows as NUEVO.
+  if (o.status === 'pending_payment') return null;
 
   let estado;
   if (o.status === 'cancelled') {

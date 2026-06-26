@@ -6,6 +6,8 @@
 <title>X Pizza — Pedido en línea</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap"/>
+<!-- PixelPay Hosted Payment: card entry + 3DS happen on PixelPay's hosted checkout (redirect),
+     so the in-page SDK is no longer loaded. The order form only creates the charge + redirects. -->
 
 <style>
 :root {
@@ -1004,6 +1006,10 @@ textarea{resize:none;height:80px;line-height:1.4}
         <label class="field-label">WhatsApp</label>
         <input type="tel" id="cphone" inputmode="numeric" placeholder="+504 9999-9999" maxlength="14" autocomplete="tel"/>
       </div>
+      <div class="field-group field-divider">
+        <label class="field-label">Correo <span style="font-weight:400;color:#999">(opcional · para tu recibo)</span></label>
+        <input type="email" id="cemail" placeholder="tu@correo.com" autocomplete="email" inputmode="email"/>
+      </div>
       <div class="field-group">
         <label class="field-label">Instrucciones especiales</label>
         <textarea id="notes" placeholder="Sin cebolla, extra salsa... (opcional)"></textarea>
@@ -1095,7 +1101,7 @@ textarea{resize:none;height:80px;line-height:1.4}
           <div class="pay-icon">🔒</div>
           <div>
             <div class="pay-title">Pagar en línea ahora <span class="pay-badge badge-green">Recomendado</span></div>
-            <div class="pay-desc">Pago seguro con tarjeta directamente en este formulario. Tu pedido se confirma inmediatamente.</div>
+            <div class="pay-desc">Pago seguro con tarjeta en la página de PixelPay (3D Secure). Tu pedido se confirma al completar el pago.</div>
           </div>
         </div>
         <div class="pay-card" id="pay-cash" onclick="selectPay('cash')">
@@ -1115,27 +1121,10 @@ textarea{resize:none;height:80px;line-height:1.4}
             <span class="pixelpay-logo">🔒 PixelPay · Pago Seguro</span>
             <span class="pixelpay-total" id="pixelpay-amount">L 0.00</span>
           </div>
-          <div class="card-field-group">
-            <label class="field-label">Número de tarjeta</label>
-            <input type="tel" id="card-number" inputmode="numeric" placeholder="0000 0000 0000 0000" maxlength="19" autocomplete="cc-number"/>
-            <div class="card-error" id="err-card-number">Número de tarjeta inválido.</div>
-          </div>
-          <div class="card-field-group">
-            <label class="field-label">Nombre en la tarjeta</label>
-            <input type="text" id="card-name" placeholder="NOMBRE APELLIDO" autocomplete="cc-name" style="text-transform:uppercase"/>
-            <div class="card-error" id="err-card-name">Ingresá el nombre tal como aparece en la tarjeta.</div>
-          </div>
-          <div class="card-row">
-            <div class="card-field-group">
-              <label class="field-label">Vencimiento</label>
-              <input type="tel" id="card-expiry" inputmode="numeric" placeholder="MM/AA" maxlength="5" autocomplete="cc-exp"/>
-              <div class="card-error" id="err-card-expiry">Fecha inválida.</div>
-            </div>
-            <div class="card-field-group">
-              <label class="field-label">CVV</label>
-              <input type="tel" id="card-cvv" inputmode="numeric" placeholder="000" maxlength="4" autocomplete="cc-csc"/>
-              <div class="card-error" id="err-card-cvv">CVV inválido.</div>
-            </div>
+          <div style="padding:14px 4px;font-size:14px;color:#555;line-height:1.55;">
+            Al confirmar te llevaremos a la <strong>página segura de PixelPay</strong> para ingresar
+            tu tarjeta, con la verificación <strong>3D Secure</strong> de tu banco. Volvés aquí
+            automáticamente al terminar. <em>(Tu tarjeta nunca pasa por este sitio.)</em>
           </div>
           <div class="security-row">🔒 Encriptado SSL · PCI DSS · 3D Secure 2.0</div>
         </div>
@@ -1222,11 +1211,12 @@ function switchCat(cat, btn) {
 /* ═══════════════════════════════════════════════════
    CONFIGURATION — edit these before deploying
    ═══════════════════════════════════════════════════ */
-const CREATEORDER_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/createOrder';
-const ORDER_SECRET    = '8bf741d5f90a8d5156845d4b92eeca65130eb5459bcfa725b150b5c3ab083846';
-const PIXELPAY_KEY      = 'YOUR_PIXELPAY_API_KEY_HERE';
-const PIXELPAY_ENDPOINT = 'YOUR_PIXELPAY_ENDPOINT_HERE';
-const PIXELPAY_ENV      = 'sandbox'; // change to 'production' when ready
+const CREATEORDER_URL  = 'https://us-central1-xpizza-delivery.cloudfunctions.net/createOrder';
+const CHARGEORDER_URL  = 'https://us-central1-xpizza-delivery.cloudfunctions.net/chargeOnlineOrder';
+const PAYMENTSTATUS_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/paymentStatus';
+const ORDER_SECRET     = '8bf741d5f90a8d5156845d4b92eeca65130eb5459bcfa725b150b5c3ab083846';
+// PixelPay creds are NOT hardcoded here — chargeOnlineOrder returns the SDK config
+// (mode/endpoint/app_key/auth_hash) per order. The server is the source of truth.
 /* ─────────────────────────────────────────────────── */
 
 const SPS_LAT_CONST = 15.5003;
@@ -1417,12 +1407,19 @@ let selectedPayment=null, currentOrder=null;
 
 function genOrderId(){
   const d=new Date();
-  return 'PZX-'+d.getFullYear().toString().slice(-2)+
+  const ts='PZX-'+d.getFullYear().toString().slice(-2)+
     String(d.getMonth()+1).padStart(2,'0')+
     String(d.getDate()).padStart(2,'0')+'-'+
     String(d.getHours()).padStart(2,'0')+
     String(d.getMinutes()).padStart(2,'0')+
     String(d.getSeconds()).padStart(2,'0');
+  // High-entropy suffix (CSPRNG) — two orders in the same second can't collide,
+  // which matters once order_id is the payment idempotency anchor. Charset is
+  // [0-9A-Z] (Crockford-ish, no I/L/O/U), within the server's order_id allowlist.
+  const A='0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  const b=new Uint8Array(8); crypto.getRandomValues(b);
+  let r=''; for(const x of b) r+=A[x % 32];
+  return ts+'-'+r;
 }
 
 /* ── Menu rendering ── */
@@ -1753,7 +1750,7 @@ function goToLocation(){
   const phone=document.getElementById('cphone').value.trim();
   const has=MENU.some(p=>qty[p.id]>0);
   const err=document.getElementById('err1');
-  if(!isOpen()){ err.style.display='block'; err.textContent='Lo sentimos, estamos cerrados. '+getNextOpenText(); return; }
+  if(!isOpen() && !window.__bypassClosed){ err.style.display='block'; err.textContent='Lo sentimos, estamos cerrados. '+getNextOpenText(); return; }
   if(!has){ err.style.display='block'; err.textContent='Seleccioná al menos una pizza.'; return; }
   if(calcTotal()<MIN_ORDER){ err.style.display='block'; err.textContent='Agrega L '+(MIN_ORDER-calcTotal()).toFixed(0)+' más para alcanzar el mínimo de L '+MIN_ORDER+'.'; return; }
   const phoneDigits=phone.replace(/[^\d]/g,'');
@@ -1990,6 +1987,7 @@ function selectPay(type){
   document.querySelectorAll('.pay-card').forEach(c=>c.classList.remove('selected'));
   document.getElementById('pay-'+type).classList.add('selected');
   document.getElementById('pixelpay-panel').style.display=(type==='online')?'block':'none';
+  if(type==='online'){ document.getElementById('pixelpay-amount').textContent='L '+calcTotal().toFixed(2); }
   const btn=document.getElementById('btn-pay');
   btn.disabled=false;
   btn.textContent=type==='online'
@@ -2066,6 +2064,7 @@ function buildOrder(){
     order_id: orderId,
     customer_name: document.getElementById('cname').value.trim(),
     customer_phone: document.getElementById('cphone').value.trim(),
+    customer_email: document.getElementById('cemail').value.trim(),
     items: items.map(p=>{
       const instances = pizzaExtras[p.id] || {};
       const extrasArr = [];
@@ -2106,98 +2105,145 @@ function buildOrder(){
   };
 }
 
-/* ── PixelPay inline card processing ──
-   In production: card data is sent to your backend endpoint which
-   calls the PixelPay SDK to process the SaleTransaction.
-   The backend returns success/fail to the form.
-
-   Flow:
-   1. Customer fills card form on YOUR page (no redirect)
-   2. Form sends card data + order to your backend (e.g. Netlify Function)
-   3. Backend calls PixelPay SDK: SaleTransaction
-   4. PixelPay returns success → backend confirms to form
-   5. Form sends confirmed order to Make.com webhook
-   6. Make.com creates Onfleet task → kitchen notified
-
-   Contact PixelPay (info@pixel.hn · San Pedro Sula) to get your
-   API key and endpoint URL, then update the config variables above.
-*/
-function validateCardForm(){
-  let valid=true;
-  const num=document.getElementById('card-number').value.replace(/\s/g,'');
-  const name=document.getElementById('card-name').value.trim();
-  const expiry=document.getElementById('card-expiry').value;
-  const cvv=document.getElementById('card-cvv').value;
-
-  const showErr=(id,show)=>{ document.getElementById(id).style.display=show?'block':'none'; };
-
-  const validNum = num.length>=15 && num.length<=16 && /^[0-9]+$/.test(num);
-  showErr('err-card-number', !validNum); if(!validNum) valid=false;
-
-  const validName = name.length>=3;
-  showErr('err-card-name', !validName); if(!validName) valid=false;
-
-  const expiryMatch = expiry.match(/^(0[1-9]|1[0-2])\/([0-9]{2})$/);
-  showErr('err-card-expiry', !expiryMatch); if(!expiryMatch) valid=false;
-
-  const validCvv = cvv.length>=3 && /^[0-9]+$/.test(cvv);
-  showErr('err-card-cvv', !validCvv); if(!validCvv) valid=false;
-
-  return valid;
-}
+/* ── PixelPay online card payment (HOSTED redirect) ──
+   No card data ever touches OUR servers or this page — the customer enters the
+   card + 3DS on PixelPay's hosted checkout. Flow:
+   1. chargeOnlineOrder (server) creates a HIDDEN pending order + a hosted checkout,
+      with the server setting the amount, and returns { checkout_url, order_id, poll_token }.
+   2. We redirect the customer to checkout_url (card + 3DS off-site on PixelPay).
+   3. PixelPay's authenticated _callback → pixelPayWebhook (server) verifies + materializes.
+   4. The customer returns to ?pay=complete; this page POLLS paymentStatus and shows the result.
+   The WEBHOOK is the money authority — the return page never confirms money on its own.
+   Architecture + safety: HOSTED-PAYMENT-PLAN.md. */
+function setSending(msg){ const el=document.getElementById('sending-msg'); if(el) el.textContent=msg; }
 
 async function processPixelPay(){
-  if(!validateCardForm()) return;
+  if(orderSubmitting) return;
+  orderSubmitting=true;
   showStage('s4',90);
-  document.getElementById('sending-msg').textContent='Procesando tu pago con PixelPay…';
+  setSending('Iniciando pago seguro…');
 
-  if(PIXELPAY_KEY==='YOUR_PIXELPAY_API_KEY_HERE'){
-    // Demo mode: simulate successful payment after 2s
-    await new Promise(r=>setTimeout(r,2000));
-    currentOrder.payment_status='confirmed';
-    currentOrder.payment_provider='PixelPay';
-    await submitOrder('confirmed');
-    return;
-  }
-
-  // Production: send to your backend which calls PixelPay SDK
+  // chargeOnlineOrder: create the hidden pending order + a HOSTED checkout, get its URL.
+  // (Card entry + 3DS happen on PixelPay's hosted page — never on our site.)
+  let cfg;
   try {
-    const num=document.getElementById('card-number').value.replace(/\s/g,'');
-    const [expMM,expYY]=document.getElementById('card-expiry').value.split('/');
-    const payload={
-      order: currentOrder,
-      card: {
-        number: num,
-        holder: document.getElementById('card-name').value.trim().toUpperCase(),
-        expiry_month: expMM,
-        expiry_year: '20'+expYY,
-        cvv: document.getElementById('card-cvv').value,
-      },
-      pixelpay_key: PIXELPAY_KEY,
-      pixelpay_endpoint: PIXELPAY_ENDPOINT,
-    };
-    const res=await fetch('/api/pixelpay-charge', {
+    const res = await fetch(CHARGEORDER_URL, {
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(payload),
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+ORDER_SECRET},
+      body: JSON.stringify(currentOrder),
     });
-    const data=await res.json();
-    if(data.success){
-      currentOrder.payment_status='confirmed';
-      currentOrder.payment_provider='PixelPay';
-      currentOrder.payment_reference=data.reference||'';
-      await submitOrder('confirmed');
-    } else {
-      showStage('s2',50);
-      alert('Pago rechazado: '+(data.message||'Por favor revisá los datos de tu tarjeta.'));
+    cfg = await res.json().catch(()=>({}));
+    if(res.status===409 && cfg && cfg.error==='Already paid'){ orderSubmitting=false; currentOrder.payment_status='confirmed'; showSuccess(); return; }
+    if(res.status===202 && cfg && cfg.status==='in_progress'){
+      // A checkout is already being created for this order (one-live-checkout) — brief wait + one retry.
+      orderSubmitting=false; setSending('Preparando tu pago…');
+      setTimeout(processPixelPay, 1500); return;
+    }
+    if(!res.ok || !cfg || !cfg.checkout_url){
+      return paymentFallback(res.status===429
+        ? 'Demasiados intentos seguidos. Esperá un momento.'
+        : (cfg && cfg.detail) || 'No pudimos iniciar el pago. Revisá tus datos e intentá de nuevo.');
     }
   } catch(e){
-    showStage('s2',50);
-    alert('Error al procesar el pago. Por favor intentá de nuevo.');
+    return paymentFallback('Error de conexión al iniciar el pago.');
   }
+
+  // Stash the order + poll token so the return page (?pay=complete) can resume, then redirect
+  // to the hosted checkout. The webhook is the money authority; the return page only polls.
+  // localStorage (NOT sessionStorage): the cross-origin redirect to PixelPay and back can drop
+  // sessionStorage on mobile Safari, losing the order details for the confirmation page.
+  try { localStorage.setItem('xpizza_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder })); } catch(_){}
+  setSending('Redirigiendo a pago seguro…');
+  window.location.href = cfg.checkout_url;
 }
 
-/* ── Submit to Make.com ── */
+// ── Return from the hosted checkout (?pay=complete|cancel&order=&t=) ──
+// The page reloaded after the redirect, so the in-memory cart is gone — this view is
+// self-contained. The webhook is the money authority; we only POLL the order's coarse
+// status (gated by the poll token) and show the outcome. Returns true if it handled a return.
+async function handlePaymentReturn(){
+  const q = new URLSearchParams(location.search);
+  const pay = q.get('pay');
+  if(!pay) return false;
+  let orderId = q.get('order'), token = q.get('t'), stashedOrder = null;
+  // Always read the stash: it carries the poll token fallback AND the full order so a paid
+  // return can rebuild the original confirmation page (the redirect wiped the in-memory cart).
+  try { const s = JSON.parse(localStorage.getItem('xpizza_pending_pay')||'null'); if(s){ orderId = orderId||s.order_id; token = token||s.t; stashedOrder = s.order || null; } } catch(_){}
+  if(pay==='cancel'){ showPayReturn('cancel'); return true; }
+  if(pay!=='complete' || !orderId || !token){ showPayReturn('pending_timeout'); return true; }
+
+  showPayReturn('checking');
+  const deadline = Date.now() + 90000;            // the webhook may land a moment after the redirect
+  while(Date.now() < deadline){
+    try {
+      const r = await fetch(`${PAYMENTSTATUS_URL}?order_id=${encodeURIComponent(orderId)}&t=${encodeURIComponent(token)}`);
+      const j = await r.json().catch(()=>({}));
+      const st = (r.ok && j.state) || 'pending';
+      if(st==='paid'){
+        try{localStorage.removeItem('xpizza_pending_pay');}catch(_){}
+        // Rebuild the ORIGINAL confirmation page (order details + "Hacer otro pedido") from the
+        // stashed order. CRITICAL: remove the full-screen "verificando" overlay afterwards, or it
+        // stays on top (z-index 99999) and hides the confirmation. Only use the stash if it matches
+        // THIS order (localStorage can hold a stale one). Fall back to the simple overlay otherwise.
+        if(stashedOrder && stashedOrder.items && stashedOrder.order_id === orderId){
+          currentOrder = stashedOrder; currentOrder.payment_status = 'confirmed';
+          try {
+            showSuccess();
+            const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove();
+            return true;
+          } catch(_){ /* fall through to the simple overlay */ }
+        }
+        showPayReturn('paid'); return true;
+      }
+      if(st==='failed'){ showPayReturn('failed'); return true; }
+      if(st==='cancelled'){ showPayReturn('cancel'); return true; }
+      if(st==='verifying'){ showPayReturn('verifying'); return true; }
+    } catch(_){}
+    await new Promise(res=>setTimeout(res, 2500));
+  }
+  showPayReturn('pending_timeout');               // still pending → the webhook will confirm; WhatsApp follows
+  return true;
+}
+
+function showPayReturn(kind){
+  const V = {
+    checking:        {wait:true,  t:'Verificando tu pago',  m:'Un momento, estamos confirmando con el banco…'},
+    verifying:       {wait:true,  t:'Verificando tu pago',  m:'Estamos confirmando tu pago. Te avisaremos por WhatsApp en breve — no vuelvas a pagar.'},
+    pending_timeout: {wait:true,  t:'Pago en proceso',      m:'Tu pago se está procesando. Te confirmaremos por WhatsApp en breve — no vuelvas a pagar.'},
+    paid:            {mark:'ok',  t:'¡Pago confirmado!',    m:'Tu pedido fue recibido y está en preparación. Te enviaremos novedades por WhatsApp. ¡Gracias!'},
+    failed:          {mark:'err', t:'Pago no completado',   m:'No se pudo procesar tu pago. Podés intentar de nuevo o pagar en efectivo.', retry:true},
+    cancel:          {mark:'err', t:'Pago cancelado',       m:'Cancelaste el pago. Podés intentar de nuevo cuando quieras.', retry:true}
+  };
+  const v = V[kind] || V.checking;
+  let el = document.getElementById('pay-return-overlay');
+  if(!el){ el = document.createElement('div'); el.id = 'pay-return-overlay'; document.body.appendChild(el); }
+  el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:var(--cream,#FBF7F2);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;';
+  // Reuse the X Pizza logo already in the header (no need to re-embed the base64).
+  const logoSrc = (document.querySelector('.logo-img')||{}).src || '';
+  const logo = logoSrc ? `<img src="${logoSrc}" alt="X Pizza" style="width:84px;height:auto;margin-bottom:30px;"/>` : '';
+  let visual;
+  if(v.wait){
+    visual = `<div class="spinner" style="width:48px;height:48px;border-width:3px;margin:0 auto 24px"></div>`;
+  } else if(v.mark==='ok'){
+    visual = `<svg width="60" height="60" viewBox="0 0 24 24" style="margin:0 auto 20px;display:block"><circle cx="12" cy="12" r="11" fill="#2E9E5B"/><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  } else {
+    visual = `<svg width="60" height="60" viewBox="0 0 24 24" style="margin:0 auto 20px;display:block"><circle cx="12" cy="12" r="11" fill="var(--red,#C8321A)"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>`;
+  }
+  const retry = v.retry ? `<a href="/" style="display:inline-block;margin-top:26px;padding:13px 26px;background:var(--red,#C8321A);color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px;letter-spacing:.3px;">Volver a intentar</a>` : '';
+  el.innerHTML = logo + visual
+    + `<div style="font-family:var(--display,'Playfair Display',Georgia,serif);font-size:25px;font-weight:800;margin-bottom:10px;color:var(--charcoal,#1E1B18);">${v.t}</div>`
+    + `<div style="font-size:15px;color:var(--muted,#8C7B6E);max-width:360px;line-height:1.6;">${v.m}</div>${retry}`;
+}
+
+// Payment failed/abandoned → back to the payment step with alternatives.
+function paymentFallback(msg){
+  orderSubmitting=false;
+  showStage('s2',50);
+  const err=document.getElementById('err3');
+  if(err){ err.style.display='block'; err.textContent='❌ '+msg+' Podés intentar con otra tarjeta o elegir efectivo.'; }
+}
+
+/* ── Submit cash/pickup orders directly to createOrder ── */
 let orderSubmitting = false;
 
 async function submitOrder(paymentStatus){
@@ -2904,25 +2950,7 @@ function initCardFormatting(){
       if(!this.value) this.value='+504 ';
     });
   }
-
-  // ── Card number ──
-  const numInput=document.getElementById('card-number');
-  if(numInput){
-    numInput.addEventListener('input',function(){
-      let v=this.value.replace(/\D/g,'').substring(0,16);
-      this.value=v.replace(/(\d{4})(?=\d)/g,'$1 ');
-    });
-  }
-
-  // ── Card expiry ──
-  const expInput=document.getElementById('card-expiry');
-  if(expInput){
-    expInput.addEventListener('input',function(){
-      let v=this.value.replace(/\D/g,'').substring(0,4);
-      if(v.length>=3) v=v.substring(0,2)+'/'+v.substring(2);
-      this.value=v;
-    });
-  }
+  // (Card number/expiry formatting removed — card entry is on PixelPay's hosted page.)
 }
 
 // Check delivery hours
@@ -2939,6 +2967,7 @@ document.getElementById('closed-overlay').addEventListener('click', function(e){
   clearTimeout(tapTimer);
   if(tapCount >= 5){
     document.getElementById('closed-overlay').style.display = 'none';
+    window.__bypassClosed = true;   // also lift the goToLocation hours gate (for testing)
     tapCount = 0;
   }
   tapTimer = setTimeout(()=>{ tapCount = 0; }, 2000);
@@ -2948,6 +2977,7 @@ renderMenu();
 updateTotal();
 updateCart();
 initCardFormatting();
+handlePaymentReturn();   // if we arrived back from the hosted checkout (?pay=…), show the outcome
 
 
 </script>
