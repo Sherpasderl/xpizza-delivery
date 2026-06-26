@@ -2149,7 +2149,7 @@ async function processPixelPay(){
 
   // Stash the order + poll token so the return page (?pay=complete) can resume, then redirect
   // to the hosted checkout. The webhook is the money authority; the return page only polls.
-  try { sessionStorage.setItem('xpizza_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token })); } catch(_){}
+  try { sessionStorage.setItem('xpizza_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder })); } catch(_){}
   setSending('Redirigiendo a pago seguro…');
   window.location.href = cfg.checkout_url;
 }
@@ -2162,10 +2162,10 @@ async function handlePaymentReturn(){
   const q = new URLSearchParams(location.search);
   const pay = q.get('pay');
   if(!pay) return false;
-  let orderId = q.get('order'), token = q.get('t');
-  if(!orderId || !token){
-    try { const s = JSON.parse(sessionStorage.getItem('xpizza_pending_pay')||'null'); if(s){ orderId = orderId||s.order_id; token = token||s.t; } } catch(_){}
-  }
+  let orderId = q.get('order'), token = q.get('t'), stashedOrder = null;
+  // Always read the stash: it carries the poll token fallback AND the full order so a paid
+  // return can rebuild the original confirmation page (the redirect wiped the in-memory cart).
+  try { const s = JSON.parse(sessionStorage.getItem('xpizza_pending_pay')||'null'); if(s){ orderId = orderId||s.order_id; token = token||s.t; stashedOrder = s.order || null; } } catch(_){}
   if(pay==='cancel'){ showPayReturn('cancel'); return true; }
   if(pay!=='complete' || !orderId || !token){ showPayReturn('pending_timeout'); return true; }
 
@@ -2176,7 +2176,16 @@ async function handlePaymentReturn(){
       const r = await fetch(`${PAYMENTSTATUS_URL}?order_id=${encodeURIComponent(orderId)}&t=${encodeURIComponent(token)}`);
       const j = await r.json().catch(()=>({}));
       const st = (r.ok && j.state) || 'pending';
-      if(st==='paid'){ try{sessionStorage.removeItem('xpizza_pending_pay');}catch(_){}; showPayReturn('paid'); return true; }
+      if(st==='paid'){
+        try{sessionStorage.removeItem('xpizza_pending_pay');}catch(_){}
+        // Rebuild the ORIGINAL confirmation page (order details + "Hacer otro pedido") from the
+        // stashed order. Fall back to the simple overlay if the stash is gone (e.g., other device).
+        if(stashedOrder && stashedOrder.items){
+          currentOrder = stashedOrder; currentOrder.payment_status = 'confirmed';
+          try { showSuccess(); } catch(_){ showPayReturn('paid'); }
+        } else { showPayReturn('paid'); }
+        return true;
+      }
       if(st==='failed'){ showPayReturn('failed'); return true; }
       if(st==='cancelled'){ showPayReturn('cancel'); return true; }
       if(st==='verifying'){ showPayReturn('verifying'); return true; }
