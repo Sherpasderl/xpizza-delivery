@@ -414,6 +414,7 @@ a { color: inherit; }
     <input type="email" id="login-email" placeholder="email" autocomplete="email">
     <input type="password" id="login-password" placeholder="contraseña" autocomplete="current-password">
     <button class="primary" id="login-btn">Entrar</button>
+    <a href="#" id="forgot-link" style="display:inline-block;margin-top:14px;font-size:13px;color:#9a9a9a;text-decoration:none;cursor:pointer">¿Olvidaste tu contraseña?</a>
     <div class="login-error" id="login-error"></div>
   </div>
   <div class="version-tag" data-version-display style="margin-top: 32px;"></div>
@@ -671,7 +672,7 @@ a { color: inherit; }
 </div>
 
 <script type="module">
-import * as XPD from './xpizza-delivery.js?v=4';
+import * as XPD from './xpizza-delivery.js?v=5';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU",
@@ -756,6 +757,21 @@ $('login-btn').addEventListener('click', async () => {
   catch { $('login-error').textContent = 'Email o contraseña incorrectos'; }
 });
 $('login-password').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('login-btn').click(); });
+$('forgot-link').addEventListener('click', async (e) => {
+  e.preventDefault();
+  const email = $('login-email').value.trim();
+  const el = $('login-error');
+  if (!email) { el.style.color = ''; el.textContent = 'Escribí tu email arriba y volvé a tocar "¿Olvidaste tu contraseña?"'; return; }
+  el.style.color = ''; el.textContent = 'Enviando…';
+  try {
+    await XPD.resetPassword(email);
+    el.style.color = '#2E9E5B';
+    el.textContent = 'Listo: te enviamos un enlace para restablecer tu contraseña. Revisá tu correo (y spam).';
+  } catch (err) {
+    el.style.color = '';
+    el.textContent = 'No se pudo enviar. Verificá que el email sea correcto.';
+  }
+});
 $('signout-btn').addEventListener('click', async () => { await XPD.signOutUser(); });
 
 // ============================================================

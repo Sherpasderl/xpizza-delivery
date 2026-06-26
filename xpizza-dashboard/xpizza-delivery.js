@@ -18,7 +18,8 @@ import {
   getAuth,
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged
+  onAuthStateChanged,
+  sendPasswordResetEmail
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
 import {
   getDatabase,
@@ -150,6 +151,12 @@ export async function signIn(email, password) {
 
 export async function signOutUser() {
   return signOut(auth);
+}
+
+// Send a password-reset email. Works from the deployed dashboard origin (an allowed referer
+// for the web API key); server-side calls are blocked, which is why this lives client-side.
+export async function resetPassword(email) {
+  return sendPasswordResetEmail(auth, email);
 }
 
 export function onAuth(callback) {
