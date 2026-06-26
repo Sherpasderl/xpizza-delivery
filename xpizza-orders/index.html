@@ -2207,21 +2207,32 @@ async function handlePaymentReturn(){
 
 function showPayReturn(kind){
   const V = {
-    checking:        {i:'⏳', t:'Verificando tu pago…',  m:'Un momento, estamos confirmando con el banco.'},
-    paid:            {i:'✅', t:'¡Pago confirmado!',      m:'Tu pedido fue recibido y está en preparación. Te enviaremos novedades por WhatsApp. ¡Gracias!'},
-    verifying:       {i:'🔎', t:'Verificando tu pago',    m:'Estamos confirmando tu pago. Te avisaremos por WhatsApp en breve — no vuelvas a pagar.'},
-    failed:          {i:'❌', t:'Pago no completado',     m:'No se pudo procesar tu pago. Podés intentar de nuevo o pagar en efectivo.', retry:true},
-    cancel:          {i:'↩️', t:'Pago cancelado',         m:'Cancelaste el pago. Podés intentar de nuevo cuando quieras.', retry:true},
-    pending_timeout: {i:'⏳', t:'Pago en proceso',        m:'Tu pago se está procesando. Te confirmaremos por WhatsApp en breve — no vuelvas a pagar.'}
+    checking:        {wait:true,  t:'Verificando tu pago',  m:'Un momento, estamos confirmando con el banco…'},
+    verifying:       {wait:true,  t:'Verificando tu pago',  m:'Estamos confirmando tu pago. Te avisaremos por WhatsApp en breve — no vuelvas a pagar.'},
+    pending_timeout: {wait:true,  t:'Pago en proceso',      m:'Tu pago se está procesando. Te confirmaremos por WhatsApp en breve — no vuelvas a pagar.'},
+    paid:            {mark:'ok',  t:'¡Pago confirmado!',    m:'Tu pedido fue recibido y está en preparación. Te enviaremos novedades por WhatsApp. ¡Gracias!'},
+    failed:          {mark:'err', t:'Pago no completado',   m:'No se pudo procesar tu pago. Podés intentar de nuevo o pagar en efectivo.', retry:true},
+    cancel:          {mark:'err', t:'Pago cancelado',       m:'Cancelaste el pago. Podés intentar de nuevo cuando quieras.', retry:true}
   };
   const v = V[kind] || V.checking;
   let el = document.getElementById('pay-return-overlay');
   if(!el){ el = document.createElement('div'); el.id = 'pay-return-overlay'; document.body.appendChild(el); }
-  el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;';
-  const retry = v.retry ? '<a href="/" style="display:inline-block;margin-top:18px;padding:12px 22px;background:#dc2626;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">Volver a intentar</a>' : '';
-  el.innerHTML = `<div style="font-size:56px;margin-bottom:12px;">${v.i}</div>`
-    + `<div style="font-size:22px;font-weight:700;margin-bottom:8px;color:#1b1f2a;">${v.t}</div>`
-    + `<div style="font-size:15px;color:#555;max-width:380px;line-height:1.55;">${v.m}</div>${retry}`;
+  el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:var(--cream,#FBF7F2);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;';
+  // Reuse the X Pizza logo already in the header (no need to re-embed the base64).
+  const logoSrc = (document.querySelector('.logo-img')||{}).src || '';
+  const logo = logoSrc ? `<img src="${logoSrc}" alt="X Pizza" style="width:84px;height:auto;margin-bottom:30px;"/>` : '';
+  let visual;
+  if(v.wait){
+    visual = `<div class="spinner" style="width:48px;height:48px;border-width:3px;margin:0 auto 24px"></div>`;
+  } else if(v.mark==='ok'){
+    visual = `<svg width="60" height="60" viewBox="0 0 24 24" style="margin:0 auto 20px;display:block"><circle cx="12" cy="12" r="11" fill="#2E9E5B"/><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  } else {
+    visual = `<svg width="60" height="60" viewBox="0 0 24 24" style="margin:0 auto 20px;display:block"><circle cx="12" cy="12" r="11" fill="var(--red,#C8321A)"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>`;
+  }
+  const retry = v.retry ? `<a href="/" style="display:inline-block;margin-top:26px;padding:13px 26px;background:var(--red,#C8321A);color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px;letter-spacing:.3px;">Volver a intentar</a>` : '';
+  el.innerHTML = logo + visual
+    + `<div style="font-family:var(--display,'Playfair Display',Georgia,serif);font-size:25px;font-weight:800;margin-bottom:10px;color:var(--charcoal,#1E1B18);">${v.t}</div>`
+    + `<div style="font-size:15px;color:var(--muted,#8C7B6E);max-width:360px;line-height:1.6;">${v.m}</div>${retry}`;
 }
 
 // Payment failed/abandoned → back to the payment step with alternatives.
