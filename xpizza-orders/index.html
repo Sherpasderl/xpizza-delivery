@@ -2150,7 +2150,9 @@ async function processPixelPay(){
 
   // Stash the order + poll token so the return page (?pay=complete) can resume, then redirect
   // to the hosted checkout. The webhook is the money authority; the return page only polls.
-  try { sessionStorage.setItem('xpizza_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder })); } catch(_){}
+  // localStorage (NOT sessionStorage): the cross-origin redirect to PixelPay and back can drop
+  // sessionStorage on mobile Safari, losing the order details for the confirmation page.
+  try { localStorage.setItem('xpizza_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder })); } catch(_){}
   setSending('Redirigiendo a pago seguro…');
   window.location.href = cfg.checkout_url;
 }
@@ -2166,7 +2168,7 @@ async function handlePaymentReturn(){
   let orderId = q.get('order'), token = q.get('t'), stashedOrder = null;
   // Always read the stash: it carries the poll token fallback AND the full order so a paid
   // return can rebuild the original confirmation page (the redirect wiped the in-memory cart).
-  try { const s = JSON.parse(sessionStorage.getItem('xpizza_pending_pay')||'null'); if(s){ orderId = orderId||s.order_id; token = token||s.t; stashedOrder = s.order || null; } } catch(_){}
+  try { const s = JSON.parse(localStorage.getItem('xpizza_pending_pay')||'null'); if(s){ orderId = orderId||s.order_id; token = token||s.t; stashedOrder = s.order || null; } } catch(_){}
   if(pay==='cancel'){ showPayReturn('cancel'); return true; }
   if(pay!=='complete' || !orderId || !token){ showPayReturn('pending_timeout'); return true; }
 
@@ -2178,11 +2180,12 @@ async function handlePaymentReturn(){
       const j = await r.json().catch(()=>({}));
       const st = (r.ok && j.state) || 'pending';
       if(st==='paid'){
-        try{sessionStorage.removeItem('xpizza_pending_pay');}catch(_){}
+        try{localStorage.removeItem('xpizza_pending_pay');}catch(_){}
         // Rebuild the ORIGINAL confirmation page (order details + "Hacer otro pedido") from the
         // stashed order. CRITICAL: remove the full-screen "verificando" overlay afterwards, or it
-        // stays on top (z-index 99999) and hides the confirmation. Fall back to the overlay if no stash.
-        if(stashedOrder && stashedOrder.items){
+        // stays on top (z-index 99999) and hides the confirmation. Only use the stash if it matches
+        // THIS order (localStorage can hold a stale one). Fall back to the simple overlay otherwise.
+        if(stashedOrder && stashedOrder.items && stashedOrder.order_id === orderId){
           currentOrder = stashedOrder; currentOrder.payment_status = 'confirmed';
           try {
             showSuccess();
