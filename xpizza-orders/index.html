@@ -2180,12 +2180,17 @@ async function handlePaymentReturn(){
       if(st==='paid'){
         try{sessionStorage.removeItem('xpizza_pending_pay');}catch(_){}
         // Rebuild the ORIGINAL confirmation page (order details + "Hacer otro pedido") from the
-        // stashed order. Fall back to the simple overlay if the stash is gone (e.g., other device).
+        // stashed order. CRITICAL: remove the full-screen "verificando" overlay afterwards, or it
+        // stays on top (z-index 99999) and hides the confirmation. Fall back to the overlay if no stash.
         if(stashedOrder && stashedOrder.items){
           currentOrder = stashedOrder; currentOrder.payment_status = 'confirmed';
-          try { showSuccess(); } catch(_){ showPayReturn('paid'); }
-        } else { showPayReturn('paid'); }
-        return true;
+          try {
+            showSuccess();
+            const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove();
+            return true;
+          } catch(_){ /* fall through to the simple overlay */ }
+        }
+        showPayReturn('paid'); return true;
       }
       if(st==='failed'){ showPayReturn('failed'); return true; }
       if(st==='cancelled'){ showPayReturn('cancel'); return true; }
