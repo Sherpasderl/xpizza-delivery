@@ -588,6 +588,9 @@ input[type=text],input[type=tel],textarea{width:100%;padding:14px 14px;border:1.
 input:focus,textarea:focus{border-color:var(--gold);outline:none}
 input::placeholder,textarea::placeholder{color:var(--muted)}
 textarea{resize:none;height:80px;line-height:1.4}
+.change-chip{display:inline-flex;align-items:center;justify-content:center;padding:11px 18px;min-height:44px;border:1.5px solid var(--red,#C8321A);background:#fff;color:var(--red,#C8321A);border-radius:999px;font-size:15px;font-weight:600;font-family:var(--body);cursor:pointer;transition:background .15s,color .15s,box-shadow .15s}
+.change-chip:hover{box-shadow:0 1px 6px rgba(0,0,0,.08)}
+.change-chip.active{background:var(--red,#C8321A);color:#fff}
 
 /* ── Order summary strip (above customer details) ── */
 .order-summary-strip{
@@ -1018,7 +1021,7 @@ textarea{resize:none;height:80px;line-height:1.4}
         <div id="rtn-fields" style="display:none;margin-top:10px">
           <input type="text" id="razon-social" placeholder="Razón social (nombre en la factura)" style="margin-bottom:8px" maxlength="120"/>
           <input type="text" id="rtn-cliente" inputmode="numeric" maxlength="14" placeholder="RTN (14 dígitos)"/>
-          <div id="rtn-error" style="display:none;color:var(--brand-red);font-size:.8rem;margin-top:4px">El RTN debe tener exactamente 14 dígitos.</div>
+          <div id="rtn-error" style="display:none;color:var(--red,#C8321A);font-size:.8rem;margin-top:4px">El RTN debe tener exactamente 14 dígitos.</div>
         </div>
       </div>
       <div class="field-group">
@@ -1131,7 +1134,7 @@ textarea{resize:none;height:80px;line-height:1.4}
       <div id="cash-change-panel" style="display:none;margin-top:14px">
         <label class="field-label">¿Con cuánto vas a pagar? <span style="font-weight:400;color:#999">(para llevarte el cambio exacto)</span></label>
         <div id="change-chips" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0"></div>
-        <input type="number" id="cash-tendered" inputmode="numeric" min="0" step="1" placeholder="Otro monto (L)" oninput="onCashTenderedInput()"/>
+        <input type="text" id="cash-tendered" inputmode="numeric" placeholder="Otro monto (L)" oninput="onCashTenderedInput()"/>
         <div id="change-hint" style="font-size:.82rem;color:#666;margin-top:6px"></div>
       </div>
 
@@ -2058,9 +2061,15 @@ function rtnIsValid(){
 function renderChangeChips(){
   const total=calcTotal();
   const box=document.getElementById('change-chips'); if(!box) return;
-  const bills=[100,200,500,1000].filter(b=>b>=total);
-  const chips=[{label:'Pago exacto',val:total}, ...bills.map(b=>({label:'L'+b,val:b}))];
-  box.innerHTML=chips.map(c=>`<button type="button" onclick="setCashTendered(${c.val})" style="padding:8px 14px;border:1.5px solid var(--brand-red,#c8102e);background:#fff;color:var(--brand-red,#c8102e);border-radius:999px;font-size:.85rem;font-weight:600;cursor:pointer">${c.label}</button>`).join('');
+  // Sensible "pay with" amounts ABOVE the total: common bills that exceed it, plus the next
+  // few round-500 steps (so large orders like L1995 still get 2000/2500/3000, not just exacto).
+  const ups=new Set();
+  [100,200,500,1000].forEach(b=>{ if(b>total) ups.add(b); });
+  let base=Math.ceil(total/500)*500; if(base<=total) base+=500;
+  ups.add(base); ups.add(base+500); ups.add(base+1000);
+  const amounts=[...ups].filter(v=>v>total).sort((a,b)=>a-b).slice(0,3);
+  const chips=[{label:'Pago exacto',val:total}, ...amounts.map(a=>({label:'L'+a.toLocaleString('en-US'),val:a}))];
+  box.innerHTML=chips.map(c=>`<button type="button" class="change-chip" data-amt="${c.val}" onclick="setCashTendered(${c.val})">${c.label}</button>`).join('');
 }
 function setCashTendered(v){
   document.getElementById('cash-tendered').value=v;
@@ -2070,8 +2079,10 @@ function onCashTenderedInput(){
   const total=calcTotal();
   const v=parseFloat(document.getElementById('cash-tendered').value);
   const hint=document.getElementById('change-hint');
+  // keep the chip highlight in sync with the current amount (chip click or manual typing)
+  document.querySelectorAll('#change-chips .change-chip').forEach(b=>b.classList.toggle('active', Number(b.dataset.amt)===v));
   if(!isFinite(v)||v<=0){ hint.textContent=''; return; }
-  if(v<total){ hint.style.color='var(--brand-red)'; hint.textContent='El monto debe ser mayor o igual al total (L'+total.toFixed(2)+').'; }
+  if(v<total){ hint.style.color='var(--red,#C8321A)'; hint.textContent='El monto debe ser mayor o igual al total (L'+total.toFixed(2)+').'; }
   else { hint.style.color='#666'; hint.textContent='Tu cambio: L'+(v-total).toFixed(2); }
 }
 
