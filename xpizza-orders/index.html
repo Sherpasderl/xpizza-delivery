@@ -1784,6 +1784,7 @@ function initMap(){
     streetViewControl:false,
     fullscreenControl:false,
   });
+  if(__restorePos){ placePin(__restorePos.lat, __restorePos.lng, false); __restorePos=null; return; }  // restore the saved pin after a cancelled-payment retry
   if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(
       pos=>placePin(pos.coords.latitude,pos.coords.longitude,false),
@@ -2152,7 +2153,8 @@ async function processPixelPay(){
   // to the hosted checkout. The webhook is the money authority; the return page only polls.
   // localStorage (NOT sessionStorage): the cross-origin redirect to PixelPay and back can drop
   // sessionStorage on mobile Safari, losing the order details for the confirmation page.
-  try { localStorage.setItem('xpizza_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder })); } catch(_){}
+  // `form` is a full snapshot so a cancelled/failed payment can restore the order at the pay step.
+  try { localStorage.setItem('xpizza_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder, form: snapshotForm() })); } catch(_){}
   setSending('Redirigiendo a pago seguro…');
   window.location.href = cfg.checkout_url;
 }
@@ -2205,6 +2207,48 @@ async function handlePaymentReturn(){
   return true;
 }
 
+// ── Restore a cancelled/failed order so "Volver a intentar" lands the customer back on the
+//    Entrega & Pago step with everything filled — never a blank form. Everything is try/catch-
+//    bounded: any failure falls back to a fresh form (the old behavior). snapshotForm() is stashed
+//    before the PixelPay redirect and can never affect the payment itself.
+let __restorePos = null;
+function snapshotForm(){
+  const v = id => { const el=document.getElementById(id); return el?el.value:''; };
+  return {
+    qty, extras: pizzaExtras, orderType, pickupTimeType, pickupScheduledTime,
+    lat, lng, payment: selectedPayment,
+    fields: { cname:v('cname'), cphone:v('cphone'), cemail:v('cemail'), notes:v('notes'),
+              addressDetected:v('address-detected'), addressDetails:v('address-details') }
+  };
+}
+function restoreOrderForm(){
+  let snap = null;
+  try { const s = JSON.parse(localStorage.getItem('xpizza_pending_pay')||'null'); snap = s && s.form; } catch(_){}
+  if(!snap){ location.href='/'; return; }
+  try {
+    const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove();
+    // qty/pizzaExtras are const objects — mutate in place (can't reassign).
+    Object.keys(qty).forEach(k=>delete qty[k]); Object.assign(qty, snap.qty||{});
+    Object.keys(pizzaExtras).forEach(k=>delete pizzaExtras[k]); Object.assign(pizzaExtras, snap.extras||{});
+    const setV = (id,val)=>{ const el=document.getElementById(id); if(el) el.value = val||''; };
+    setV('cname',snap.fields.cname); setV('cphone',snap.fields.cphone); setV('cemail',snap.fields.cemail);
+    setV('notes',snap.fields.notes); setV('address-detected',snap.fields.addressDetected); setV('address-details',snap.fields.addressDetails);
+    renderMenu(); updateCart(); updateTotal();
+    showStage('s2', 50);
+    setOrderType(snap.orderType || 'delivery');
+    if(snap.orderType === 'pickup'){
+      selectPickupTime(snap.pickupTimeType || 'standard');
+    } else {
+      lat = snap.lat; lng = snap.lng;
+      if(snap.lat && snap.lng) __restorePos = { lat: snap.lat, lng: snap.lng }; // initMap places this instead of geolocating
+      setTimeout(initMap, 100);
+    }
+    if(snap.payment) selectPay(snap.payment);
+    const amt=document.getElementById('pixelpay-amount'); if(amt) amt.textContent='L '+calcTotal().toFixed(2);
+    setTimeout(()=>{ const p=document.querySelector('.pay-container'); if(p) p.scrollIntoView({behavior:'smooth',block:'start'}); }, 350);
+  } catch(e){ location.href='/'; }
+}
+
 function showPayReturn(kind){
   const V = {
     checking:        {wait:true,  t:'Verificando tu pago',  m:'Un momento, estamos confirmando con el banco…'},
@@ -2229,7 +2273,7 @@ function showPayReturn(kind){
   } else {
     visual = `<svg width="60" height="60" viewBox="0 0 24 24" style="margin:0 auto 20px;display:block"><circle cx="12" cy="12" r="11" fill="var(--red,#C8321A)"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>`;
   }
-  const retry = v.retry ? `<a href="/" style="display:inline-block;margin-top:26px;padding:13px 26px;background:var(--red,#C8321A);color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px;letter-spacing:.3px;">Volver a intentar</a>` : '';
+  const retry = v.retry ? `<a href="#" onclick="restoreOrderForm();return false;" style="display:inline-block;margin-top:26px;padding:13px 26px;background:var(--red,#C8321A);color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px;letter-spacing:.3px;">Volver a intentar</a>` : '';
   el.innerHTML = logo + visual
     + `<div style="font-family:var(--display,'Playfair Display',Georgia,serif);font-size:25px;font-weight:800;margin-bottom:10px;color:var(--charcoal,#1E1B18);">${v.t}</div>`
     + `<div style="font-size:15px;color:var(--muted,#8C7B6E);max-width:360px;line-height:1.6;">${v.m}</div>${retry}`;
