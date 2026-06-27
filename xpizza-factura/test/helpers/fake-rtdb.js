@@ -57,10 +57,18 @@ function makeFakeDb(initial = {}) {
         setAt(path, null);
       },
       async transaction(updateFn) {
-        const current = clone(getAt(path));
-        const next = updateFn(current);
+        // Model firebase-admin faithfully: the updater is called with `null` FIRST on a cold
+        // local cache (every node is cold in a fresh fake). If it returns undefined on that
+        // null call, firebase ABORTS without fetching server data (the classic gotcha). If it
+        // returns a value, firebase then re-runs with the real server data for the CAS.
+        const real = clone(getAt(path));
+        const first = updateFn(null);
+        if (first === undefined) {
+          return { committed: false, snapshot: { val: () => real } };
+        }
+        const next = updateFn(real);
         if (next === undefined) {
-          return { committed: false, snapshot: { val: () => clone(getAt(path)) } };
+          return { committed: false, snapshot: { val: () => real } };
         }
         setAt(path, next);
         return { committed: true, snapshot: { val: () => clone(next) } };

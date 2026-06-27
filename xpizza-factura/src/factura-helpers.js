@@ -42,8 +42,14 @@ async function allocateFacturaNumber(db, { restaurantId, orderId, order, now }) 
   }
 
   // Reserve a number atomically (concurrency-safe + fail-closed).
+  // firebase-admin invokes the transaction updater with `null` FIRST on a cold local cache,
+  // before fetching server data; if we abort (return undefined) on that null it never reads
+  // the real value. So on the null-first call fall back to the `seq` we already read in
+  // `config` (mirrors pixelpay-charge.js "avoid first-call-null abort"). Genuinely-unseeded
+  // configs surface as config.seq == null -> decideReserve -> config_missing.
   let decision;
-  await db.ref(seqPath(restaurantId)).transaction((seq) => {
+  await db.ref(seqPath(restaurantId)).transaction((cur) => {
+    const seq = cur === null ? (config.seq || null) : cur;
     decision = decideReserve(seq, {
       orderId,
       rangeStart: config.range_start,
@@ -65,11 +71,9 @@ async function allocateFacturaNumber(db, { restaurantId, orderId, order, now }) 
   const record = buildFacturaRecord({ order, config, reserved, now });
   await db.ref(facturaPath(restaurantId, orderId)).set(record);
 
-  // Clear the pending reservation (its audit home is now the issued record).
-  await db.ref(seqPath(restaurantId)).transaction((seq) => {
-    if (seq && seq.pending) delete seq.pending[orderId];
-    return seq;
-  });
+  // Clear the pending reservation (its audit home is now the issued record). A leaf remove()
+  // avoids the transaction null-first hazard entirely.
+  await db.ref(`${seqPath(restaurantId)}/pending/${orderId}`).remove();
 
   await db.ref(statusPath(orderId)).set('issued');
 
