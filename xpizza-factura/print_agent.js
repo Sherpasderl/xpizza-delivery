@@ -40,9 +40,11 @@ function sendToPrinter(buf) {
       return reject(new Error(`device.open failed (Zadig/WinUSB driver?): ${e.message}`));
     }
     const iface = device.interfaces[0];
-    if (iface.isKernelDriverActive && iface.isKernelDriverActive()) {
-      try { iface.detachKernelDriver(); } catch (_) { /* not on Windows */ }
-    }
+    // Kernel-driver detach is Linux-only; on Windows/WinUSB isKernelDriverActive() THROWS
+    // LIBUSB_ERROR_NOT_SUPPORTED. Guard the whole block so Windows just skips it.
+    try {
+      if (iface.isKernelDriverActive()) iface.detachKernelDriver();
+    } catch (_) { /* not supported on Windows/WinUSB — expected, ignore */ }
     iface.claim();
     const out = iface.endpoints.find((e) => e.direction === 'out');
     if (!out) { iface.release(() => device.close()); return reject(new Error('no OUT endpoint')); }
@@ -57,26 +59,37 @@ function sendToPrinter(buf) {
 // `known` is the snapshot value from the child_added/child_changed event — used as the
 // fallback when firebase-admin invokes the transaction updater with `null` first on a cold
 // local cache (otherwise decidePrintClaim(null) skips as 'absent' and the record never prints).
-async function handle(orderId, known) {
-  const ref = db.ref(`facturas/${RID}/${orderId}`);
-  let decision;
-  const now = Date.now();
-  const tx = await ref.transaction((rec) => {
-    const r = rec == null ? known : rec;
-    decision = decidePrintClaim(r, { owner: OWNER, now, ttlMs: TTL });
-    if (decision.action !== 'claim') return undefined; // abort cleanly (no write/delete)
-    return { ...r, print_claim: decision.nextClaim };
-  });
-  if (!decision || decision.action !== 'claim') return; // skipped
+// In-process guard: the agent's OWN writes (print_claim, printed) fire child_changed, which
+// re-enters handle() for the same record. Skip if we're already processing this orderId, so
+// transactions/updates on one node never overlap (avoids firebase repoAbortTransactions).
+const inFlight = new Set();
 
-  const record = tx.snapshot.val();
+async function handle(orderId, known) {
+  if (inFlight.has(orderId)) return;
+  inFlight.add(orderId);
   try {
-    await sendToPrinter(renderFactura(record, 2)); // two copies (D4)
-    await ref.update({ printed: true, printed_at: now, print_error: null, print_claim: null });
-    console.log(`[print] ${record.factura_number} (${orderId}) OK`);
-  } catch (e) {
-    await ref.update({ print_error: String(e.message).slice(0, 300), print_claim: null });
-    console.error(`[print] ${orderId} FAILED: ${e.message}`);
+    const ref = db.ref(`facturas/${RID}/${orderId}`);
+    let decision;
+    const now = Date.now();
+    const tx = await ref.transaction((rec) => {
+      const r = rec == null ? known : rec;
+      decision = decidePrintClaim(r, { owner: OWNER, now, ttlMs: TTL });
+      if (decision.action !== 'claim') return undefined; // abort cleanly (no write/delete)
+      return { ...r, print_claim: decision.nextClaim };
+    });
+    if (!decision || decision.action !== 'claim') return; // skipped
+
+    const record = tx.snapshot.val();
+    try {
+      await sendToPrinter(renderFactura(record, 2)); // two copies (D4)
+      await ref.update({ printed: true, printed_at: now, print_error: null, print_claim: null });
+      console.log(`[print] ${record.factura_number} (${orderId}) OK`);
+    } catch (e) {
+      await ref.update({ print_error: String(e.message).slice(0, 300), print_claim: null });
+      console.error(`[print] ${orderId} FAILED: ${e.message}`);
+    }
+  } finally {
+    inFlight.delete(orderId);
   }
 }
 
