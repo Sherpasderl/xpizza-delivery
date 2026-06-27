@@ -136,17 +136,17 @@ if(selectedPayment==='cash'){
 Server stores `cash_tendered_cents` (integer centavos), validates `>= total_cents`.
 
 **Reset on re-order (don't skip this):** when the form resets for a new order ("Hacer otro
-pedido" / `startAnotherOrder`), you MUST also clear the cash-change + RTN state, or the
-previous order's values carry over (a new L651 cart showed the old L1,433 / L1,500). Add to
-the reset routine:
+pedido" / `startAnotherOrder`), clear the **cash-change** state — the amount changes per order,
+so the previous order's value/chips must not carry over (a new L651 cart showed the old
+L1,433 / L1,500). **Preserve the RTN block** (treat it like name + phone): it's stable customer
+data and retyping a 14-digit RTN is worse than just clearing it if this order doesn't need a
+factura. Add to the reset routine:
 ```js
 document.getElementById('cash-change-panel').style.display='none';
 document.getElementById('cash-tendered').value='';
 document.getElementById('change-chips').innerHTML='';
 document.getElementById('change-hint').textContent='';
-document.getElementById('rtn-toggle').checked=false;
-['razon-social','rtn-cliente'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-['rtn-fields','rtn-error'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
+// RTN block (rtn-toggle / razon-social / rtn-cliente) intentionally NOT cleared
 ```
 
 ---

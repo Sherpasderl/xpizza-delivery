@@ -2505,11 +2505,9 @@ function startAnotherOrder(){
   const changeHint = document.getElementById('change-hint');
   if (changeHint) changeHint.textContent = '';
 
-  // Reset the RTN-factura block (checkbox + fields) so it doesn't carry over either
-  const rtnToggle = document.getElementById('rtn-toggle');
-  if (rtnToggle) rtnToggle.checked = false;
-  ['razon-social','rtn-cliente'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  ['rtn-fields','rtn-error'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  // NOTE: the RTN block (checkbox + razón social + RTN) is intentionally PRESERVED across
+  // re-orders — like name + phone, it's stable customer data, and retyping a 14-digit RTN is
+  // more hassle than just clearing it if this order doesn't need a factura.
 
   // Reset hidden errors so they don't reappear stale
   ['err1','err2','err3','err-address-details'].forEach(id => {
