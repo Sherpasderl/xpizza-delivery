@@ -1041,7 +1041,7 @@ textarea{resize:none;height:80px;line-height:1.4}
       <div style="background:rgba(0,0,0,0.55);color:#fff;font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 16px;border-radius:20px;backdrop-filter:blur(2px)" id="map-tap-hint">Toca para ajustar tu ubicación</div>
     </div>
   </div>
-  <div class="container" style="padding:0 0 24px">
+  <div class="container" style="padding:0 0 100px">
     <div class="step-label">Paso 2 de 3 — Entrega & Pago</div>
     <div class="delivery-toggle">
       <button class="delivery-toggle-btn active" id="btn-delivery" onclick="setOrderType('delivery')">Delivery</button>
@@ -1697,6 +1697,20 @@ function closeCartReview(){
   }
 }
 
+// Free-delivery promo: show "Envío Gratis" with the L70 struck-through, for delivery orders.
+// Display-only — the total stays items-only (delivery is genuinely free for now). To start
+// charging, flip FREE_DELIVERY=false and add the fee to calcTotal AND the server-side total.
+const DELIVERY_FEE = 70;
+const FREE_DELIVERY = true;
+const DELIVERY_BAG_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M6 8.5h12l-1 10.5H7z"/><path d="M9 8.5V6.5a3 3 0 0 1 6 0v2"/><path d="M9.5 12.5h5"/></svg>';
+function freeDeliveryRowHTML(type){
+  if((type || orderType) !== 'delivery' || !FREE_DELIVERY) return '';
+  return '<div class="cart-review-item">'
+    + '<div class="cart-review-item-left"><div class="cart-review-item-name" style="color:var(--green);font-weight:600;letter-spacing:.2px;display:flex;align-items:center;gap:8px">'+DELIVERY_BAG_SVG+'Envío Gratis</div></div>'
+    + '<div class="cart-review-item-price" style="text-decoration:line-through;color:var(--muted);font-weight:400">L '+DELIVERY_FEE.toFixed(2)+'</div>'
+    + '</div>';
+}
+
 function updateCartReviewBody(){
   const body=document.getElementById('cart-review-body');
   const totalEl=document.getElementById('cart-review-total');
@@ -1748,7 +1762,7 @@ function updateCartReviewBody(){
       +'<div class="cart-review-item-price">L '+subtotal.toFixed(0)+'</div>'
       +'</div>'
       +'</div>';
-  }).join('');
+  }).join('') + freeDeliveryRowHTML();
 }
 
 /* ── Stage navigation ── */
@@ -1757,9 +1771,11 @@ function showStage(id,pct){
   document.getElementById(id).classList.add('active');
   document.getElementById('progress').style.width=pct+'%';
   window.scrollTo(0,0);
-  // Show cart bar only on step 1
+  // Show the cart pill on step 1 AND the Entrega & Pago step (s2) so customers can review/edit
+  // their order before paying without cancelling. s2 has extra bottom padding so the floating
+  // pill never covers the pay buttons.
   const cartBar=document.getElementById('cart-bar');
-  if(cartBar) cartBar.style.display=id==='s1'?'flex':'none';
+  if(cartBar) cartBar.style.display=(id==='s1'||id==='s2')?'flex':'none';
 }
 
 function goBack(id,pct){ showStage(id,pct); }
@@ -1804,6 +1820,7 @@ function initMap(){
     streetViewControl:false,
     fullscreenControl:false,
   });
+  if(__restorePos){ placePin(__restorePos.lat, __restorePos.lng, false); __restorePos=null; return; }  // restore the saved pin after a cancelled-payment retry
   if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(
       pos=>placePin(pos.coords.latitude,pos.coords.longitude,false),
@@ -2218,7 +2235,8 @@ async function processPixelPay(){
   // to the hosted checkout. The webhook is the money authority; the return page only polls.
   // localStorage (NOT sessionStorage): the cross-origin redirect to PixelPay and back can drop
   // sessionStorage on mobile Safari, losing the order details for the confirmation page.
-  try { localStorage.setItem('xpizza_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder })); } catch(_){}
+  // `form` is a full snapshot so a cancelled/failed payment can restore the order at the pay step.
+  try { localStorage.setItem('xpizza_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder, form: snapshotForm() })); } catch(_){}
   setSending('Redirigiendo a pago seguro…');
   window.location.href = cfg.checkout_url;
 }
@@ -2271,6 +2289,56 @@ async function handlePaymentReturn(){
   return true;
 }
 
+// ── Restore a cancelled/failed order so "Volver a intentar" lands the customer back on the
+//    Entrega & Pago step with everything filled — never a blank form. Everything is try/catch-
+//    bounded: any failure falls back to a fresh form (the old behavior). snapshotForm() is stashed
+//    before the PixelPay redirect and can never affect the payment itself.
+let __restorePos = null;
+function snapshotForm(){
+  const v = id => { const el=document.getElementById(id); return el?el.value:''; };
+  return {
+    qty, extras: pizzaExtras, orderType, pickupTimeType, pickupScheduledTime,
+    lat, lng, payment: selectedPayment,
+    // Factura RTN fields — present once the factura integration is merged; captured safely (no-op before).
+    rtn: { on: !!document.getElementById('rtn-toggle')?.checked, razon: v('razon-social'), num: v('rtn-cliente') },
+    fields: { cname:v('cname'), cphone:v('cphone'), cemail:v('cemail'), notes:v('notes'),
+              addressDetected:v('address-detected'), addressDetails:v('address-details') }
+  };
+}
+function restoreOrderForm(){
+  let snap = null;
+  try { const s = JSON.parse(localStorage.getItem('xpizza_pending_pay')||'null'); snap = s && s.form; } catch(_){}
+  if(!snap){ location.href='/'; return; }
+  try {
+    const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove();
+    // qty/pizzaExtras are const objects — mutate in place (can't reassign).
+    Object.keys(qty).forEach(k=>delete qty[k]); Object.assign(qty, snap.qty||{});
+    Object.keys(pizzaExtras).forEach(k=>delete pizzaExtras[k]); Object.assign(pizzaExtras, snap.extras||{});
+    const setV = (id,val)=>{ const el=document.getElementById(id); if(el) el.value = val||''; };
+    setV('cname',snap.fields.cname); setV('cphone',snap.fields.cphone); setV('cemail',snap.fields.cemail);
+    setV('notes',snap.fields.notes); setV('address-detected',snap.fields.addressDetected); setV('address-details',snap.fields.addressDetails);
+    // Restore RTN/factura fields if the customer requested an invoice (safe no-op before factura merges).
+    if(snap.rtn){
+      const t=document.getElementById('rtn-toggle'); if(t) t.checked = !!snap.rtn.on;
+      if(typeof toggleRtn==='function'){ try{ toggleRtn(); }catch(_){} }
+      if(snap.rtn.on){ setV('razon-social',snap.rtn.razon); setV('rtn-cliente',snap.rtn.num); }
+    }
+    renderMenu(); updateCart(); updateTotal();
+    showStage('s2', 50);
+    setOrderType(snap.orderType || 'delivery');
+    if(snap.orderType === 'pickup'){
+      selectPickupTime(snap.pickupTimeType || 'standard');
+    } else {
+      lat = snap.lat; lng = snap.lng;
+      if(snap.lat && snap.lng) __restorePos = { lat: snap.lat, lng: snap.lng }; // initMap places this instead of geolocating
+      setTimeout(initMap, 100);
+    }
+    if(snap.payment) selectPay(snap.payment);
+    const amt=document.getElementById('pixelpay-amount'); if(amt) amt.textContent='L '+calcTotal().toFixed(2);
+    setTimeout(()=>{ const p=document.querySelector('.pay-container'); if(p) p.scrollIntoView({behavior:'smooth',block:'start'}); }, 350);
+  } catch(e){ location.href='/'; }
+}
+
 function showPayReturn(kind){
   const V = {
     checking:        {wait:true,  t:'Verificando tu pago',  m:'Un momento, estamos confirmando con el banco…'},
@@ -2295,7 +2363,7 @@ function showPayReturn(kind){
   } else {
     visual = `<svg width="60" height="60" viewBox="0 0 24 24" style="margin:0 auto 20px;display:block"><circle cx="12" cy="12" r="11" fill="var(--red,#C8321A)"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>`;
   }
-  const retry = v.retry ? `<a href="/" style="display:inline-block;margin-top:26px;padding:13px 26px;background:var(--red,#C8321A);color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px;letter-spacing:.3px;">Volver a intentar</a>` : '';
+  const retry = v.retry ? `<a href="#" onclick="restoreOrderForm();return false;" style="display:inline-block;margin-top:26px;padding:13px 26px;background:var(--red,#C8321A);color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px;letter-spacing:.3px;">Volver a intentar</a>` : '';
   el.innerHTML = logo + visual
     + `<div style="font-family:var(--display,'Playfair Display',Georgia,serif);font-size:25px;font-weight:800;margin-bottom:10px;color:var(--charcoal,#1E1B18);">${v.t}</div>`
     + `<div style="font-size:15px;color:var(--muted,#8C7B6E);max-width:360px;line-height:1.6;">${v.m}</div>${retry}`;
@@ -2457,6 +2525,7 @@ function showSuccess(){
         <span>L ${i.subtotal.toFixed(2)}</span>
       </div>`).join('')+
     (o.notes!=='—'?`<div class="receipt-row"><span class="receipt-label">Nota</span><span style="text-align:right;max-width:55%">${o.notes}</span></div>`:'')+
+    (o.order_type==='delivery'?`<div class="receipt-row"><span class="receipt-label" style="color:var(--green);font-weight:600;letter-spacing:.2px;display:inline-flex;align-items:center;gap:7px">${DELIVERY_BAG_SVG}Envío Gratis</span><span style="text-decoration:line-through;color:#bbb">L 70.00</span></div>`:'')+
     `<div class="receipt-row" style="font-weight:700"><span>Total</span><span>L ${o.total.toFixed(2)}</span></div>`;
 
   document.getElementById('receipt-payment').innerHTML=`
