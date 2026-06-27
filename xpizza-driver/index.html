@@ -105,6 +105,15 @@
     display: flex;
     align-items: center;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;   /* kill the double-tap-zoom tap delay */
+  }
+  /* Expand the tap target well beyond the 56x30 visual. The small pill in the
+     top-right corner was easy to miss, so drivers had to tap twice. This
+     invisible ring makes the surrounding area tappable without changing the look. */
+  .duty-toggle::before {
+    content: '';
+    position: absolute;
+    inset: -14px;
   }
   .duty-toggle.on { background: var(--success); }   /* on-duty: green */
   .duty-toggle .duty-thumb {
@@ -1167,7 +1176,7 @@
 
 <script type="module">
 import * as XPD from './xpizza-delivery.js?v=16';
-import { isNative, initNativePush, unregisterNativePush } from './native-push.js';
+import { isNative, initNativePush, unregisterNativePush, clearDeliveredNotifications } from './native-push.js';
 import { startNativeTracking, stopNativeTracking } from './native-location.js';
 
 // ============================================================
@@ -1296,6 +1305,8 @@ async function boot() {
     if (isNative()) {
       try { await initNativePush(XPD.getAuthInstance().app, user.uid); }
       catch (e) { console.error('initNativePush failed', e); }
+      // App is open → clear any order alerts piled up in the shade + the badge.
+      clearDeliveredNotifications();
     }
 
     // Subscribe to live state
@@ -1451,15 +1462,22 @@ async function handleEndShift() {
 // Wire up the duty toggles. The off-screen toggle starts the shift; the
 // on-screen toggle ends it. Tapping flips the visual state immediately for
 // snappy feedback, then runs the async shift logic.
-$('duty-toggle-off').addEventListener('click', () => {
+// Re-entrancy guard: the shift transition is async (native start + RTDB echo),
+// so block a second tap from double-firing the shift logic while one is in flight.
+let shiftBusy = false;
+$('duty-toggle-off').addEventListener('click', async () => {
+  if (shiftBusy) return;
+  shiftBusy = true;
   $('duty-toggle-off').classList.add('on');     // immediate UI feedback
-  handleStartShift();
+  try { await handleStartShift(); } finally { shiftBusy = false; }
 });
 
-$('duty-toggle-on').addEventListener('click', () => {
+$('duty-toggle-on').addEventListener('click', async () => {
+  if (shiftBusy) return;
+  shiftBusy = true;
   // Don't flip visual state immediately — confirm() may cancel the action.
   // The shift transition (onshift → offshift screen) handles visual reset.
-  handleEndShift();
+  try { await handleEndShift(); } finally { shiftBusy = false; }
 });
 
 // "Why don't I see tasks?" help link on the idle state
@@ -2339,7 +2357,10 @@ async function updateNotifBanners() {
 // Refresh banner when screens change or focus comes back
 window.addEventListener('focus', () => { updateNotifBanners(); });
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) updateNotifBanners();
+  if (!document.hidden) {
+    updateNotifBanners();
+    clearDeliveredNotifications();   // native: clear the shade + badge on foreground
+  }
 });
 
 // ============================================================
