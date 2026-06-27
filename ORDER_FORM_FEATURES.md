@@ -4,9 +4,12 @@ New features added to the **X. Pizza order form** (`xpizza-orders/index.html`) d
 factura integration. This is the front-end port guide for replicating them in the **La Musa
 order form**. Snippets are copied verbatim from the live X. Pizza form (commit `e4e2581`).
 
-> ⚠️ These are the **front-end** pieces. The factura *generation* is backend (shared Cloud
-> Functions) and needs per-restaurant setup — see **§5 Backend dependencies** before assuming
-> the fields alone produce La Musa facturas.
+> ⚠️ **La Musa does NOT use the platform's factura pipeline.** La Musa issues its SAR facturas
+> through its own **Soft Restaurant POS** — staff manually enter each received order into that
+> system, which prints the factura. So none of the factura *backend* wiring (triggers,
+> `factura_config`, CAI/range, 15/18% ISV) applies to La Musa — see **§5**. The features below
+> are front-end only: **cambio** is a delivery/cash feature (keep it), and **RTN capture** is
+> optional (keep it only as order data relayed to staff for manual entry, or drop it).
 
 ---
 
@@ -14,6 +17,11 @@ order form**. Snippets are copied verbatim from the live X. Pizza form (commit `
 
 Checkbox that reveals two fields; on a factura, `razón social` replaces `CLIENTE` and the RTN
 prints. Place it in the "Tus datos" section (after the email field is a good spot).
+
+> **La Musa note:** La Musa facturas are issued manually in Soft Restaurant POS, so this field
+> does **not** drive any factura on the platform. Keep it only if you want the customer's RTN /
+> razón social to ride along in the order so staff can type it into Soft Restaurant; otherwise
+> omit it. (The markup/JS is identical either way — just don't wire it to a platform factura.)
 
 **Markup:**
 ```html
@@ -127,6 +135,20 @@ if(selectedPayment==='cash'){
 ```
 Server stores `cash_tendered_cents` (integer centavos), validates `>= total_cents`.
 
+**Reset on re-order (don't skip this):** when the form resets for a new order ("Hacer otro
+pedido" / `startAnotherOrder`), you MUST also clear the cash-change + RTN state, or the
+previous order's values carry over (a new L651 cart showed the old L1,433 / L1,500). Add to
+the reset routine:
+```js
+document.getElementById('cash-change-panel').style.display='none';
+document.getElementById('cash-tendered').value='';
+document.getElementById('change-chips').innerHTML='';
+document.getElementById('change-hint').textContent='';
+document.getElementById('rtn-toggle').checked=false;
+['razon-social','rtn-cliente'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+['rtn-fields','rtn-error'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
+```
+
 ---
 
 ## 3. Styling gotchas (these bit us on X. Pizza — fix in La Musa too)
@@ -158,21 +180,28 @@ Pre-existing field; behavior worth knowing before relying on its "para tu recibo
 
 ---
 
-## 5. Backend dependencies (IMPORTANT — fields alone ≠ working facturas)
+## 5. Facturas: La Musa opts OUT of the platform pipeline (read before wiring anything)
 
-The factura pipeline is **shared backend** (`xpizza-functions`), keyed by `restaurant_id`:
-- Every order must be stamped with the correct **`restaurant_id`** (`la_musa`) and the order
-  record must carry the server-priced **`items[]`**, `total_cents/subtotal_cents/tax_cents`,
-  `cash_tendered_cents`, `factura_status:'not_due'` — see how `createOrder` builds these.
-- A **`/restaurants/la_musa/factura_config`** must be seeded (own CAI / range / counter /
-  emisor identity) — La Musa needs its **own** SAR CAI + range, separate from X. Pizza's.
-- The `allocateFacturaOnSale` trigger fires per order state and reads that restaurant's config.
-- **La Musa is multi-rate (food 15% / alcohol 18%).** The current pricing computes a **flat
-  15%** breakdown; the renderer *prints* the 18% lines but the numbers aren't split yet.
-  Per-item tax for La Musa is **out of scope of the X. Pizza work** — it must be built for
-  La Musa's facturas to be fiscally correct. See `FACTURA_PLAN.md` (Out of scope) +
-  `CONTEXT.md` (ISV) + the La Musa integration plan.
+**La Musa's SAR facturas are issued by its own Soft Restaurant POS, not by this platform.**
+The flow: the order comes in through the platform (ordering + dispatch/delivery), and **staff
+manually re-enter it into Soft Restaurant POS**, which prints the factura. So for the La Musa
+order form, do **NOT**:
 
-See `FACTURA_PLAN.md`, `docs/adr/0003`–`0004`, and `xpizza-factura/SETUP.md` for the full
-factura system. The print agent (Surface + Epson) is per-Hub; La Musa runs its own POS today,
-so coordinate whether La Musa facturas go through this platform or stay on Soft Restaurant V11.
+- wire `allocateFacturaOnSale` / `voidFacturaOnCancel`,
+- seed a `/restaurants/la_musa/factura_config`, or set up a CAI / range / sequence counter,
+- build the 15% / 18% multi-rate ISV split.
+
+None of that is needed for La Musa — it's Soft Restaurant POS's job. (La Musa's food-15% /
+alcohol-18% tax is therefore **not** a work item on our side.)
+
+What still applies to the La Musa order form:
+- **`cambio` capture** — keep it; it's a cash/delivery feature (driver change), independent of
+  facturas.
+- **`restaurant_id: 'la_musa'`** — still stamp it for routing/reporting, but it is **not** used
+  to allocate any factura.
+- **RTN capture** — optional, as noted in §1: keep only as order data for staff to enter into
+  Soft Restaurant, or drop it.
+
+The X. Pizza factura backend (`factura_config`, the `allocateFacturaOnSale`/`voidFacturaOnCancel`
+triggers, the Surface print agent in `xpizza-factura/`) is **X.-Pizza-specific** — see
+`FACTURA_PLAN.md` / `docs/adr/0003`–`0004`. Do not replicate it for La Musa.

@@ -115,9 +115,10 @@ exhaustion/expiry fails closed and alerts rather than issuing an invalid number.
 
 **ISV**:
 Honduras "Impuesto Sobre Ventas" (sales tax), tax-**inclusive** — already embedded in the
-displayed menu price. The platform breaks it out of the total (`tax_cents`, currently a
-single 15% rate for X. Pizza). Per-Restaurant multi-rate (La Musa food 15% / alcohol 18%)
-is out of scope for the X. Pizza launch.
+displayed menu price. The platform breaks it out of the total (`tax_cents`, a single 15%
+rate). Multi-rate (food 15% / alcohol 18%) is **not** a platform concern: the only multi-rate
+Restaurant, La Musa, issues its facturas through its own Soft Restaurant POS (staff-entered)
+and does NOT use the platform [[Factura]] pipeline — see ORDER_FORM_FEATURES.md §5.
 
 **Void (factura)**:
 Marking an issued [[Factura]] `void: true` when its [[Sale]] is cancelled. The SAR sequence
