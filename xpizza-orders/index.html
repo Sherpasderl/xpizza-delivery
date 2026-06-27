@@ -584,7 +584,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .field-group{padding:14px 16px}
 .field-divider{border-bottom:1px solid var(--border)}
 .field-label{display:block;font-family:var(--sans);font-size:14px;font-weight:600;color:var(--charcoal);margin-bottom:8px}
-input[type=text],input[type=tel],textarea{width:100%;padding:14px 14px;border:1.5px solid var(--border2);border-radius:8px;background:var(--cream);color:var(--charcoal);font-size:17px;font-family:var(--body);outline:none;transition:border-color .2s;-webkit-appearance:none;min-height:48px}
+input[type=text],input[type=tel],input[type=email],textarea{width:100%;padding:14px 14px;border:1.5px solid var(--border2);border-radius:8px;background:var(--cream);color:var(--charcoal);font-size:17px;font-family:var(--body);outline:none;transition:border-color .2s;-webkit-appearance:none;min-height:48px}
 input:focus,textarea:focus{border-color:var(--gold);outline:none}
 input::placeholder,textarea::placeholder{color:var(--muted)}
 textarea{resize:none;height:80px;line-height:1.4}
@@ -2061,13 +2061,10 @@ function rtnIsValid(){
 function renderChangeChips(){
   const total=calcTotal();
   const box=document.getElementById('change-chips'); if(!box) return;
-  // Sensible "pay with" amounts ABOVE the total: common bills that exceed it, plus the next
-  // few round-500 steps (so large orders like L1995 still get 2000/2500/3000, not just exacto).
-  const ups=new Set();
-  [100,200,500,1000].forEach(b=>{ if(b>total) ups.add(b); });
+  // Realistic "pay with" amounts: Honduras' largest banknote is L500 (no L1,000 note), so
+  // people hand over sums of 500s above the total. Offer the next two round-500 amounts.
   let base=Math.ceil(total/500)*500; if(base<=total) base+=500;
-  ups.add(base); ups.add(base+500); ups.add(base+1000);
-  const amounts=[...ups].filter(v=>v>total).sort((a,b)=>a-b).slice(0,3);
+  const amounts=[base, base+500];
   const chips=[{label:'Pago exacto',val:total}, ...amounts.map(a=>({label:'L'+a.toLocaleString('en-US'),val:a}))];
   box.innerHTML=chips.map(c=>`<button type="button" class="change-chip" data-amt="${c.val}" onclick="setCashTendered(${c.val})">${c.label}</button>`).join('');
 }
