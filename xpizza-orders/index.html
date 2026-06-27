@@ -2061,10 +2061,11 @@ function rtnIsValid(){
 function renderChangeChips(){
   const total=calcTotal();
   const box=document.getElementById('change-chips'); if(!box) return;
-  // Realistic "pay with" amounts: Honduras' largest banknote is L500 (no L1,000 note), so
-  // people hand over sums of 500s above the total. Offer the next two round-500 amounts.
+  // Realistic "pay with": Honduras' largest banknote is L500 (no L1,000 note), and a customer
+  // hands over the FEWEST 500-bills that exceed the total — never more (a <L1,000 order needs
+  // at most two 500s = L1,000). So offer exactly that one round-up amount.
   let base=Math.ceil(total/500)*500; if(base<=total) base+=500;
-  const amounts=[base, base+500];
+  const amounts=[base];
   const chips=[{label:'Pago exacto',val:total}, ...amounts.map(a=>({label:'L'+a.toLocaleString('en-US'),val:a}))];
   box.innerHTML=chips.map(c=>`<button type="button" class="change-chip" data-amt="${c.val}" onclick="setCashTendered(${c.val})">${c.label}</button>`).join('');
 }
