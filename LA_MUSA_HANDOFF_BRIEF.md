@@ -12,12 +12,12 @@ production (via factura); the **config-plane + per-restaurant pricing/tax are th
 
 ## 1. Read these first
 
-### The locked plan (the design) — NOT in git
-- `~/Downloads/xpizza-delivery/LA_MUSA_PLAN.md` — 8-phase plan, Codex-approved (5 rounds, 2026-06-10).
-- `~/Downloads/xpizza-delivery/LA_MUSA_PLAN-REVIEW-LOG.md` — full review transcript.
-- These are **untracked local files** in the main worktree — not on any branch. (Ask the owner to
-  commit them to `main` if you want them in-repo; the order-form session offered to.)
-- Backstop: Claude memory `lamusa-integration-plan` has the locked decisions distilled.
+### The locked plan (the design) — now on `main`
+- `LA_MUSA_PLAN.md` — 8-phase plan, Codex-approved (5 rounds, 2026-06-10).
+- `LA_MUSA_PLAN-REVIEW-LOG.md` — full review transcript.
+- **Committed to `main` (9f8b37c), byte-identical to the original locked copies.**
+- Backstop: Claude memory `lamusa-integration-plan` has the locked decisions distilled (now including
+  the factura→Soft-Restaurant carve-out, RTN-optional, and form-parity decisions below).
 
 ### Multi-restaurant foundation — on `main`, current
 - `CONTEXT.md` — glossary / architecture vocabulary.
@@ -46,13 +46,20 @@ All live in production on `main` as of 2026-06-27:
 - **Pricing is still X-Pizza-only.** `MENU_PRICES` is a flat object, `computeServerTotal()` is single-menu,
   and tax is hardcoded `/1.15` (ISV 15% inclusive). → **The plan's #1 item — restaurant-keyed menu + tax —
   is still open.** (The review flagged this as the biggest miss; it's unchanged.)
-- **factura is LIVE + restaurant-keyed** → La Musa orders need their own factura config (`restaurant_id`,
-  its own CAI/config). Allocation/void are decoupled DB triggers keyed off order state — they'll cover
-  La Musa automatically once its orders carry the right `restaurant_id` + config.
+- **factura is LIVE + restaurant-keyed — but La Musa does NOT use it (scope decision 2026-06-27).**
+  La Musa's facturas are issued by **La Musa's own Soft Restaurant POS**, not this platform. **Do NOT
+  build a La Musa factura config / CAI / allocation** — our factura stays X.-Pizza-specific (plus any
+  *future* restaurant that opts in). What La Musa needs instead: **every sale gets a factura via
+  MANUAL entry into Soft Restaurant** (no platform↔POS integration for now — revisit on volume), so the
+  **`la_musa` KDS ticket must surface the full itemized order + total + RTN / Razón social** for staff
+  to re-key and print.
 - **driver-native (FCM + GPS) is LIVE** — hubs are ~400m apart, so `last_hub` driver bias was dropped from scope.
 - **Order form** (`xpizza-orders/index.html`) now carries: RTN-invoice block + cash-change picker (factura),
   plus retry-restore / cart-pill-on-Paso-2 / "Envío Gratis" promo (payment UX). A per-restaurant La Musa
-  form inherits all of this.
+  form inherits all of this. **Standing directive (2026-06-27): keep the La Musa form at feature-parity
+  with the X. Pizza form** — apply every new X. Pizza form feature to La Musa, esp. **RTN capture**.
+  **RTN stays optional** (same as X. Pizza — no RTN → *consumidor final*); on La Musa the captured RTN
+  feeds **manual Soft Restaurant entry**, not our factura engine.
 
 ---
 
@@ -64,7 +71,9 @@ All live in production on `main` as of 2026-06-27:
   - `MENU_PRICES` / `computeServerTotal()` → restaurant-keyed (else La Musa carts reject).
   - Tax (`/1.15`) → restaurant-keyed.
   - `restaurant_id` handling in all 3 server write paths + `createOrderWithTasks`.
-  - Replace the `FACTURA_RESTAURANT_ID = 'x_pizza'` constant with per-order `restaurant_id` from the config plane.
+  - _Factura: **not a La Musa-launch item** — carved out to Soft Restaurant POS (see §2). The
+    `FACTURA_RESTAURANT_ID = 'x_pizza'` constant only needs replacing if a *future* restaurant opts
+    into our own factura._
 - One merchant / one PixelPay account / one RTN+bank — both restaurants bill through it; per-restaurant
   P&L is **reporting-only `restaurant_id` tagging**, NOT a payment-rail change (locked decision).
 - La Musa **never launched** → first-time launch, no parallel-run/cutover; treat blast radius as live.
