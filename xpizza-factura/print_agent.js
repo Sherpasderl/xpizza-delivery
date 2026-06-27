@@ -54,14 +54,18 @@ function sendToPrinter(buf) {
 }
 
 // ---- handle one factura record ----
-async function handle(orderId) {
+// `known` is the snapshot value from the child_added/child_changed event — used as the
+// fallback when firebase-admin invokes the transaction updater with `null` first on a cold
+// local cache (otherwise decidePrintClaim(null) skips as 'absent' and the record never prints).
+async function handle(orderId, known) {
   const ref = db.ref(`facturas/${RID}/${orderId}`);
   let decision;
   const now = Date.now();
   const tx = await ref.transaction((rec) => {
-    decision = decidePrintClaim(rec, { owner: OWNER, now, ttlMs: TTL });
-    if (decision.action !== 'claim') return rec; // no change
-    return { ...rec, print_claim: decision.nextClaim };
+    const r = rec == null ? known : rec;
+    decision = decidePrintClaim(r, { owner: OWNER, now, ttlMs: TTL });
+    if (decision.action !== 'claim') return undefined; // abort cleanly (no write/delete)
+    return { ...r, print_claim: decision.nextClaim };
   });
   if (!decision || decision.action !== 'claim') return; // skipped
 
@@ -79,8 +83,8 @@ async function handle(orderId) {
 function start() {
   console.log(`[agent] watching /facturas/${RID} as ${OWNER}`);
   const root = db.ref(`facturas/${RID}`);
-  root.on('child_added', (snap) => handle(snap.key).catch((e) => console.error('[agent] child_added', e)));
-  root.on('child_changed', (snap) => handle(snap.key).catch((e) => console.error('[agent] child_changed', e)));
+  root.on('child_added', (snap) => handle(snap.key, snap.val()).catch((e) => console.error('[agent] child_added', e)));
+  root.on('child_changed', (snap) => handle(snap.key, snap.val()).catch((e) => console.error('[agent] child_changed', e)));
 }
 
 start();
