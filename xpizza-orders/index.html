@@ -2233,6 +2233,8 @@ function snapshotForm(){
   return {
     qty, extras: pizzaExtras, orderType, pickupTimeType, pickupScheduledTime,
     lat, lng, payment: selectedPayment,
+    // Factura RTN fields — present once the factura integration is merged; captured safely (no-op before).
+    rtn: { on: !!document.getElementById('rtn-toggle')?.checked, razon: v('razon-social'), num: v('rtn-cliente') },
     fields: { cname:v('cname'), cphone:v('cphone'), cemail:v('cemail'), notes:v('notes'),
               addressDetected:v('address-detected'), addressDetails:v('address-details') }
   };
@@ -2249,6 +2251,12 @@ function restoreOrderForm(){
     const setV = (id,val)=>{ const el=document.getElementById(id); if(el) el.value = val||''; };
     setV('cname',snap.fields.cname); setV('cphone',snap.fields.cphone); setV('cemail',snap.fields.cemail);
     setV('notes',snap.fields.notes); setV('address-detected',snap.fields.addressDetected); setV('address-details',snap.fields.addressDetails);
+    // Restore RTN/factura fields if the customer requested an invoice (safe no-op before factura merges).
+    if(snap.rtn){
+      const t=document.getElementById('rtn-toggle'); if(t) t.checked = !!snap.rtn.on;
+      if(typeof toggleRtn==='function'){ try{ toggleRtn(); }catch(_){} }
+      if(snap.rtn.on){ setV('razon-social',snap.rtn.razon); setV('rtn-cliente',snap.rtn.num); }
+    }
     renderMenu(); updateCart(); updateTotal();
     showStage('s2', 50);
     setOrderType(snap.orderType || 'delivery');
