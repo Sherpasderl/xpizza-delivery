@@ -62,6 +62,7 @@ const ppCrypto = require('./pixelpay');
 const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
 const { buildMaterializeUpdates } = require('./materialize');
 const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
+const { buildCreateOrderUpdates } = require('./create-order-build');
 const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
 const { voidOrRefund } = require('./pixelpay-cancel');
 const { handleHostedCallback } = require('./pixelpay-hosted-webhook');
@@ -522,131 +523,25 @@ createOrderApp.all('*', async (req, res) => {
   const now = ServerValue.TIMESTAMP;
   const updates = {};
 
-  const pickupTaskId = `${orderId}_pickup`;
-  const deliveryTaskId = `${orderId}_delivery`;
   const trackingToken = generateTrackingToken();
-
-  // Factura inputs (FACTURA_PLAN §2): a server-priced structured item list so the factura
-  // DB trigger — which sees only the stored order — can itemize; plus cash tendered for the
-  // CAMBIO line. Money stays in centavos; cash is validated >= total (never trust client) and
-  // defaults to exact (no change) when absent/invalid so a bad value never blocks the order.
-  const facturaBreakdown = priceBreakdownCents(total);
+  const priceBreakdown = priceBreakdownCents(total);  // total_cents / subtotal_cents / tax_cents (ISV 15% incl.)
   const facturaPriced = pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES);
+
+  // Cash tendered (FACTURA_PLAN §2): validated >= total (never trust client), defaults to exact
+  // (no change) when absent/invalid so a bad value never blocks the order. Money in centavos.
   let cashTenderedCents = 0;
   if (fields.payment_method === 'cash') {
     const ct = Math.round(Number(body.cash_tendered) * 100);
-    cashTenderedCents = (Number.isFinite(ct) && ct >= facturaBreakdown.total_cents) ? ct : facturaBreakdown.total_cents;
+    cashTenderedCents = (Number.isFinite(ct) && ct >= priceBreakdown.total_cents) ? ct : priceBreakdown.total_cents;
   }
 
-  // Build the order record. Common fields apply to both delivery and pickup;
-  // delivery-specific fields (lat/lng/address, task IDs) only get included
-  // for delivery orders. Pickup orders get pickup_time instead.
-  const orderRecord = {
-    order_id: orderId,
-    customer_name: fields.customer_name,
-    customer_phone: fields.customer_phone,
-    items_text: fields.items_text,
-    total: total,
-    ...priceBreakdownCents(total),   // total_cents / subtotal_cents / tax_cents (ISV 15% incl.)
-    notes: fields.notes,
-    payment_method: fields.payment_method,
-    order_type: orderType,
-    status: 'new',
-    tracking_token: trackingToken,
-    created_at: now,
-    // --- factura (SAR) fields; the allocateFacturaOnSale trigger consumes these ---
-    restaurant_id: FACTURA_RESTAURANT_ID,
-    // Immutable hub snapshot (ADR-0002) — allowlisted fields only.
-    hub_lat: hubSnap.hub_lat,
-    hub_lng: hubSnap.hub_lng,
-    restaurant_name: hubSnap.restaurant_name,
-    restaurant_phone: hubSnap.restaurant_phone,
-    factura_status: 'not_due',                 // trigger advances to issued/failed
-    cash_tendered_cents: cashTenderedCents,
-    ...(facturaPriced.items ? { items: facturaPriced.items } : {}),
-    ...(fields.razon_social ? { razon_social: fields.razon_social } : {}),
-    ...(fields.rtn_cliente ? { rtn_cliente: fields.rtn_cliente } : {})
-  };
-
-  if (orderType === 'delivery') {
-    orderRecord.lat = lat;
-    orderRecord.lng = lng;
-    orderRecord.address_detected = fields.address_detected;
-    orderRecord.address_details = fields.address_details;
-    orderRecord.maps_link = `https://www.google.com/maps?q=${lat},${lng}`;
-    orderRecord.pickup_task_id = pickupTaskId;
-    orderRecord.delivery_task_id = deliveryTaskId;
-  } else {
-    // pickup
-    // pickup_time is either the literal string 'standard' (= ASAP, ~20 min)
-    // or a human-readable label like '6:00 PM–6:20 PM' selected by the
-    // customer. Stored as opaque string; KDS displays it as-is.
-    orderRecord.pickup_time = fields.pickup_time;
-  }
-
-  updates[`orders/${orderId}`] = orderRecord;
-
-  // Driver tasks ONLY for delivery orders. Pickup orders are picked up by
-  // the customer at the restaurant — no driver involved, no dispatch.
-  if (orderType === 'delivery') {
-    updates[`tasks/${pickupTaskId}`] = {
-      order_id: orderId,
-      type: 'pickup',
-      status: 'pending',
-      assigned_driver_id: null,
-      linked_task_id: deliveryTaskId,
-      depends_on_task_id: null,
-      destination_lat: hubSnap.hub_lat,
-      destination_lng: hubSnap.hub_lng,
-      destination_address: hubSnap.restaurant_name,
-      recipient_name: hubSnap.restaurant_name,
-      recipient_phone: hubSnap.restaurant_phone,
-      notes: fields.items_text,
-      created_at: now
-    };
-
-    updates[`tasks/${deliveryTaskId}`] = {
-      order_id: orderId,
-      type: 'delivery',
-      status: 'pending',
-      assigned_driver_id: null,
-      linked_task_id: pickupTaskId,
-      depends_on_task_id: pickupTaskId,
-      destination_lat: lat,
-      destination_lng: lng,
-      destination_address: fields.address_detected,
-      address_details: fields.address_details,
-      recipient_name: fields.customer_name,
-      recipient_phone: fields.customer_phone,
-      payment_method: fields.payment_method,
-      total: total,
-      notes: fields.items_text,
-      created_at: now
-    };
-  }
-
-  // Tracking index: maps tracking_token → order data. Stores ONLY the
-  // fields that are safe to expose publicly. The tracking site reads
-  // /order_tracking/{token} (public read rule). Customer name + first
-  // initial of address are shown but full address, phone, payment details
-  // stay in /orders (auth-only).
-  //
-  // Status field is kept in sync with /orders/{orderId}/status by
-  // sendOrderStatusNotifications. driver_name is filled in when
-  // out_for_delivery (delivery orders only).
-  const addressShort = orderType === 'delivery'
-    ? fields.address_detected.split(',')[0].trim()
-    : 'Recoger en X. Pizza';
-  updates[`order_tracking/${trackingToken}`] = {
-    order_id: orderId,
-    order_type: orderType,
-    customer_name: fields.customer_name,
-    items_text: fields.items_text,
-    total: total,
-    address_short: addressShort,
-    status: 'new',
-    created_at: now
-  };
+  // Order record + driver tasks + public tracking — extracted to a pure builder
+  // (create-order-build.js) so the cash path is golden-tested for byte-identical output. The
+  // field names are load-bearing (driver app, KDS, tracking site, factura trigger).
+  Object.assign(updates, buildCreateOrderUpdates({
+    orderId, orderType, now, trackingToken, total, lat, lng, fields, hubSnap,
+    restaurantId: FACTURA_RESTAURANT_ID, priceBreakdown, facturaPriced, cashTenderedCents,
+  }));
 
   try {
     await db.ref().update(updates);
