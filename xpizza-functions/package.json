@@ -4,12 +4,14 @@
   "description": "X Pizza Delivery Cloud Functions — Make.com → Firebase + Web Push + KDS sync + Auto-assign + Acceptance timeout + Stacking + WhatsApp inbound/outbound",
   "main": "index.js",
   "scripts": {
-    "test": "node pixelpay-charge.test.js && node pixelpay-confirm.test.js && node pixelpay-webhook.test.js && node pixelpay-cancel.test.js && node driver-push.test.js && node driver-ingest.test.js && node factura/pricing.test.js && node factura/eligibility.test.js && node factura/sync.test.js",
+    "test": "node pixelpay-charge.test.js && node pixelpay-confirm.test.js && node pixelpay-webhook.test.js && node pixelpay-cancel.test.js && node driver-push.test.js && node driver-ingest.test.js && node factura/pricing.test.js && node factura/eligibility.test.js && node factura/sync.test.js && node restaurants-rules.guard.test.js",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "deploy": "firebase deploy --only functions",
     "sync:rules": "node -e \"require('fs').copyFileSync('../xpizza-reference/database.rules.json','database.rules.json')\"",
-    "deploy:rules": "npm run sync:rules && firebase deploy --only database",
+    "check:rules": "npm run sync:rules && node scripts/assert-rules-synced.js && node restaurants-rules.guard.test.js",
+    "test:rules": "firebase emulators:exec --only database \"node test/restaurants-rules.emulator.test.js\"",
+    "deploy:rules": "npm run check:rules && firebase deploy --only database",
     "logs": "firebase functions:log",
     "vapid": "npx web-push generate-vapid-keys"
   },
@@ -22,6 +24,9 @@
     "googleapis": "^144.0.0",
     "node-fetch": "^2.7.0",
     "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.0"
   },
   "private": true
 }

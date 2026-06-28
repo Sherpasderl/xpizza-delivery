@@ -110,7 +110,11 @@
     "facturas": { ".read": false, ".write": false },
     "restaurants": {
       "$restaurant_id": {
-        "factura_config": { ".read": false, ".write": false }
+        "factura_config": { ".read": false, ".write": false },
+        "identity": {
+          ".read": "auth != null",
+          ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
+        }
       }
     }
   }
