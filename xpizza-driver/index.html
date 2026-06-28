@@ -1085,6 +1085,12 @@
     opacity: 0.6;
   }
 
+  /* ==================== ICON HELPER ==================== */
+  .ico{ width:17px; height:17px; display:inline-flex; vertical-align:-3px; } .ico svg{ width:100%; height:100%; }
+
+  /* ==================== VUELTO ==================== */
+  .vuelto{ display:flex; align-items:center; justify-content:center; gap:7px; font-size:12.5px; font-weight:700; color:var(--accent); margin:14px 2px 0; cursor:pointer; }
+
   /* ==================== UTILITIES ==================== */
   .hidden { display: none !important; }
 
@@ -2057,7 +2063,7 @@ function renderActiveCard(o) {
       </div>
       <div class="body">
         <div class="recipient-name">${escapeHtml(order.customer_name || o.deliveryTask.recipient_name || '—')}</div>
-        ${order.customer_phone ? `<a class="recipient-phone mono" href="tel:${String(order.customer_phone).replace(/[^\d+]/g,'')}">${escapeHtml(order.customer_phone)}</a><a class="recipient-whatsapp" href="https://wa.me/${String(order.customer_phone).replace(/\D/g,'')}?text=${encodeURIComponent('Hola, soy del repartidor de X. Pizza.')}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
+        ${order.customer_phone ? `<a class="recipient-phone" href="tel:${String(order.customer_phone).replace(/[^\d+]/g,'')}" ><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${String(order.customer_phone).replace(/\D/g,'')}?text=${encodeURIComponent('Hola, soy del repartidor de X. Pizza.')}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a>` : ''}
 
         <div class="address-block">
           <div class="address-line">${escapeHtml(order.address_detected || o.deliveryTask.destination_address || '—')}</div>
@@ -2070,8 +2076,9 @@ function renderActiveCard(o) {
 
         <div class="payment-row">
           <div class="payment-amount mono">${total}</div>
-          <div class="payment-method ${paymentClass}">${paymentLabel}</div>
+          <div class="payment-method ${paymentClass}">${escapeHtml(paymentLabel)}</div>
         </div>
+        ${paymentClass === 'cash' ? `<div class="vuelto" data-vuelto="${Number(order.total)||0}"><span class="ico">${ICONS.cash}</span>Calcular vuelto</div>` : ''}
 
         ${navBlock}
         ${actionBlock}
