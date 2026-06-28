@@ -377,6 +377,13 @@
   }
   .idle-help-link:hover { color: var(--text-soft); text-decoration: underline; }
 
+  /* ==================== IDLE STAT CARD ==================== */
+  .statbar{ display:flex; background:var(--surface); margin:18px 0 0; border-radius:16px; box-shadow:var(--shadow-card); overflow:hidden; width:100%; max-width:320px; }
+  .statbar > div{ flex:1; text-align:center; padding:15px 8px; }
+  .statbar > div + div{ border-left:1px solid var(--line); }
+  .statbar .num{ font-size:20px; font-weight:800; color:var(--text); letter-spacing:-.01em; line-height:1; }
+  .statbar .cap{ font-size:9px; font-weight:700; color:var(--text-dim); letter-spacing:.06em; margin-top:6px; }
+
   /* ==================== ACTIVE ORDER CARD ==================== */
   .active-card {
     background: var(--surface);
@@ -1187,6 +1194,10 @@
       <div class="idle-msg" id="idle-msg">Estás disponible</div>
       <div class="idle-sub" id="idle-sub">Te avisaremos cuando llegue un pedido nuevo.</div>
       <button class="idle-help-link" id="idle-help-link">¿Por qué no veo pedidos?</button>
+      <div class="statbar" id="idle-statbar">
+        <div><div class="num" id="stat-deliveries">0</div><div class="cap">ENTREGAS HOY</div></div>
+        <div><div class="num" id="stat-cash">L 0</div><div class="cap">EFECTIVO HOY</div></div>
+      </div>
       <button class="big-btn primary hidden" id="arrive-btn" style="margin-top: 16px;">Estoy en el restaurante</button>
     </div>
 
@@ -1868,6 +1879,23 @@ function renderActiveAndQueue() {
   attachActiveCardHandlers(active);
 }
 
+function todayMidnightMs(){ const d=new Date(); d.setHours(0,0,0,0); return d.getTime(); }
+function syncIdleStats(){
+  if (!currentUser) return;
+  const today = todayMidnightMs(); let count=0, cash=0;
+  for (const id of Object.keys(allTasks||{})) {
+    const t = allTasks[id];
+    if (!t || t.type!=='delivery' || t.assigned_driver_id!==currentUser.uid) continue;
+    if (t.status!=='completed' || !t.completed_at || t.completed_at < today) continue;
+    count++;
+    const o = (allOrders||{})[t.order_id];
+    if (o && typeof o.total==='number' && String(o.payment_method||'').toLowerCase().includes('efectivo')) cash += o.total;
+  }
+  const elD = $('stat-deliveries'), elC = $('stat-cash');
+  if (elD) elD.textContent = String(count);
+  if (elC) elC.textContent = `L ${cash.toLocaleString('es-HN')}`;
+}
+
 function renderIdleState() {
   const status = driverState?.status;
   const icon = $('idle-icon');
@@ -1891,6 +1919,7 @@ function renderIdleState() {
     sub.textContent = 'Te notificaremos cuando llegue uno';
     arriveBtn.classList.add('hidden');
   }
+  syncIdleStats();
 }
 
 function renderActiveCard(o) {
