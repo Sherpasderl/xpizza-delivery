@@ -50,9 +50,11 @@ The act of turning a paid-but-hidden `pending_payment` Order into a live Order v
 KDS/dispatcher/driver, creating its delivery tasks and public tracking token.
 
 **Config plane**:
-The proposed `/restaurants/{id}` RTDB node holding each Restaurant's identity (name, hub
-coords, phone, WhatsApp instance, hours, active flag). Apps read Restaurant identity from
-here rather than from in-code constants.
+The `/restaurants/{id}/identity` subtree — each Restaurant's non-secret identity (name, hub
+coords, phone, WhatsApp instance, hours, active, version), client-readable by authenticated apps
+and dispatcher-writable. It lives under the `/restaurants/{id}` node, whose sibling
+`/restaurants/{id}/factura_config` (fiscal: CAI/sequence) is **not** part of the config plane and
+stays Admin-SDK-only. Apps read identity from here, not from in-code constants.
 
 **Factura**:
 The SAR-authorized fiscal sales document Honduras law requires for **every** Sale (one per
