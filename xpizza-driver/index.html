@@ -1081,6 +1081,15 @@
 
   /* ==================== UTILITIES ==================== */
   .hidden { display: none !important; }
+
+  /* ==================== OVERFLOW MENU ==================== */
+  #duty-toggle-on { display: none; }
+  #screen-onshift { position: relative; }
+  .menu { position: absolute; top: 52px; right: 12px; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-elevated); padding: 6px; display: none; z-index: 50; }
+  .menu.open { display: block; }
+  .menu button { display: block; width: 100%; text-align: left; background: none; border: none; padding: 11px 16px; font-size: 14px; font-weight: 600; color: var(--text); border-radius: 9px; cursor: pointer; }
+  .menu button.danger { color: #C2410C; }
+  .menu button:active { background: var(--canvas); }
 </style>
 </head>
 
@@ -1161,7 +1170,9 @@
         <path d="M19.07 4.93a10 10 0 010 14.14" id="sound-wave-2"/>
       </svg>
     </button>
+    <button class="icon-btn" id="kebab" title="Menú"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
   </div>
+  <div class="menu" id="appmenu"><button class="danger" id="menu-end-shift">Terminar turno</button></div>
 
   <main id="onshift-content">
     <div id="notif-banner-onshift" class="notif-banner hidden"></div>
@@ -1529,6 +1540,15 @@ $('duty-toggle-on').addEventListener('click', async () => {
   shiftBusy = true;
   // Don't flip visual state immediately — confirm() may cancel the action.
   // The shift transition (onshift → offshift screen) handles visual reset.
+  try { await handleEndShift(); } finally { shiftBusy = false; }
+});
+
+// Overflow menu (kebab) — end-shift action
+$('kebab').addEventListener('click', (e) => { e.stopPropagation(); $('appmenu').classList.toggle('open'); });
+document.addEventListener('click', () => $('appmenu').classList.remove('open'));
+$('menu-end-shift').addEventListener('click', async () => {
+  $('appmenu').classList.remove('open');
+  if (shiftBusy) return; shiftBusy = true;
   try { await handleEndShift(); } finally { shiftBusy = false; }
 });
 
