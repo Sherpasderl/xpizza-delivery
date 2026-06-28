@@ -146,7 +146,7 @@
     background: var(--surface);
     border-bottom: 1px solid var(--border-soft);
     padding: 14px 18px;
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
@@ -1125,7 +1125,8 @@
   <div class="offshift-content">
     <div class="brand-mark"><img src="icon-transparent.svg" alt="X Pizza"></div>
     <div class="greeting">HOLA, <span id="off-driver-name">—</span></div>
-    <div class="greeting-sub">Toca el switch arriba para iniciar tu turno</div>
+    <div class="greeting-sub">¿Listo para arrancar tu turno?</div>
+    <button class="big-btn primary" id="start-shift-btn" style="margin: 24px 0 8px;">Iniciar turno</button>
     <div id="notif-banner-offshift" class="notif-banner hidden" style="margin: 16px 0;"></div>
     <button class="text-link" id="signout-btn">Cerrar sesión</button>
     <div class="version-tag" data-version-display></div>
@@ -1515,6 +1516,11 @@ $('duty-toggle-off').addEventListener('click', async () => {
   if (shiftBusy) return;
   shiftBusy = true;
   $('duty-toggle-off').classList.add('on');     // immediate UI feedback
+  try { await handleStartShift(); } finally { shiftBusy = false; }
+});
+
+$('start-shift-btn').addEventListener('click', async () => {
+  if (shiftBusy) return; shiftBusy = true;
   try { await handleStartShift(); } finally { shiftBusy = false; }
 });
 
