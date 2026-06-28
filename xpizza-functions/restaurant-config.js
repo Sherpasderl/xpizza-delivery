@@ -19,8 +19,11 @@ const cache = new Map(); // rid -> { identity, fetched_at, version }
 // guards writes, but a reader on a fail-closed hot path must never trust/cache malformed data.
 function isRoutingValid(id) {
   return id && typeof id === 'object' &&
-    typeof id.hub_lat === 'number' && typeof id.hub_lng === 'number' &&
-    typeof id.active === 'boolean' && typeof id.version === 'number';
+    Number.isFinite(id.hub_lat) && Number.isFinite(id.hub_lng) &&
+    Number.isFinite(id.delivery_radius_km) && Number.isFinite(id.version) &&
+    typeof id.active === 'boolean' &&
+    typeof id.name === 'string' && id.name.length > 0 &&
+    typeof id.phone === 'string';
 }
 
 /**
@@ -65,4 +68,11 @@ async function getIdentity(db, rid, now = Date.now()) {
   throw err;
 }
 
-module.exports = { getIdentity, TTL_MS, _cache: cache };
+// Map a config-plane identity to the immutable per-order hub snapshot (ADR-0002). Explicit
+// allowlist — NEVER spread the reader result, so _source/_fetched_at/active/version/hours/
+// whatsapp_* can never leak into order/task data.
+function hubSnapshot(id) {
+  return { hub_lat: id.hub_lat, hub_lng: id.hub_lng, restaurant_name: id.name, restaurant_phone: id.phone };
+}
+
+module.exports = { getIdentity, hubSnapshot, TTL_MS, _cache: cache };

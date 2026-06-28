@@ -61,6 +61,7 @@ const pixelpayClient = require('./pixelpay-client');
 const ppCrypto = require('./pixelpay');
 const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
 const { buildMaterializeUpdates } = require('./materialize');
+const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
 const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
 const { voidOrRefund } = require('./pixelpay-cancel');
 const { handleHostedCallback } = require('./pixelpay-hosted-webhook');
@@ -119,14 +120,12 @@ const RESTAURANT = {
   name: 'X Pizza',
   phone: '+50497952893'
 };
+// RESTAURANT is retained ONLY as the materialize snapshot-fallback for in-flight pre-3b
+// pending orders (see confirmDeps -> buildMaterializeUpdates). Live intake reads the config
+// plane (restaurant-config); the delivery radius now comes from identity.delivery_radius_km.
 
-// Maximum distance (kilometers) the restaurant will deliver to. Orders with
-// a delivery lat/lng farther than this are rejected by validateOrderPayload.
-// The order form has the same check client-side for UX, but we enforce here
-// because clients can be bypassed (browser dev tools, direct API calls).
-// Tune this with operational reality — too tight rejects real customers,
-// too loose stretches drivers.
-const DELIVERY_RADIUS_KM = 7;
+// hubSnapshot (the ADR-0002 allowlist mapping identity -> immutable per-order snapshot) is
+// defined in and imported from restaurant-config.js, above.
 
 // Generate a random URL-safe tracking token. 12 chars from a 64-char alphabet
 // gives 64^12 = ~4.7e21 possible tokens — guessing one is impossible. The
@@ -460,20 +459,6 @@ createOrderApp.all('*', async (req, res) => {
   const orderId = String(body.order_id);
   const orderType = body.order_type;
 
-  // Delivery zone check — reject orders whose lat/lng is farther than
-  // DELIVERY_RADIUS_KM from the restaurant. The order form does this
-  // client-side too, but we enforce here because clients can be bypassed
-  // (browser dev tools, direct API calls, third-party integrations like
-  // Make.com). Pickup orders skip this check (they're picked up at the
-  // restaurant by definition).
-  if (orderType === 'delivery') {
-    const distanceKm = haversineKm(lat, lng, RESTAURANT.lat, RESTAURANT.lng);
-    if (distanceKm > DELIVERY_RADIUS_KM) {
-      console.warn(`createOrder: order ${orderId} rejected — ${distanceKm.toFixed(2)}km > ${DELIVERY_RADIUS_KM}km radius`);
-      return badRequest(res, `Outside delivery zone (${distanceKm.toFixed(1)}km from restaurant, max ${DELIVERY_RADIUS_KM}km)`);
-    }
-  }
-
   const db = getDatabase();
 
   // Idempotency check
@@ -487,6 +472,30 @@ createOrderApp.all('*', async (req, res) => {
     console.error('createOrder: existence check failed', e);
     return res.status(500).json({ error: 'Database read failed', detail: e.message });
   }
+
+  // Config-plane identity (ADR-0002): fail-closed read, gate intake on active, zone-check from
+  // config. After the idempotency check so idempotent retries don't re-read config; the delivery
+  // zone enforcement (clients are bypassable) now uses identity.hub + identity.delivery_radius_km.
+  let restIdentity;
+  try {
+    restIdentity = await getRestaurantIdentity(db, FACTURA_RESTAURANT_ID);
+  } catch (e) {
+    console.error(`createOrder: config unavailable for ${orderId}: ${e.message}`);
+    res.set('Retry-After', '2');
+    return res.status(e.statusCode || 503).json({ error: 'Service temporarily unavailable', detail: 'restaurant config unavailable', retryable: true });
+  }
+  if (!restIdentity.active) {
+    console.warn(`createOrder: ${FACTURA_RESTAURANT_ID} inactive — rejecting ${orderId}`);
+    return res.status(400).json({ error: 'Restaurant closed', detail: 'Not accepting orders right now' });
+  }
+  if (orderType === 'delivery') {
+    const distanceKm = haversineKm(lat, lng, restIdentity.hub_lat, restIdentity.hub_lng);
+    if (distanceKm > restIdentity.delivery_radius_km) {
+      console.warn(`createOrder: order ${orderId} rejected — ${distanceKm.toFixed(2)}km > ${restIdentity.delivery_radius_km}km radius`);
+      return badRequest(res, `Outside delivery zone (${distanceKm.toFixed(1)}km from restaurant, max ${restIdentity.delivery_radius_km}km)`);
+    }
+  }
+  const hubSnap = hubSnapshot(restIdentity);
 
   // Rate limiting. Only genuinely-NEW orders reach here — idempotent retries of
   // an existing order_id already returned above, so legit retries don't burn
@@ -547,6 +556,11 @@ createOrderApp.all('*', async (req, res) => {
     created_at: now,
     // --- factura (SAR) fields; the allocateFacturaOnSale trigger consumes these ---
     restaurant_id: FACTURA_RESTAURANT_ID,
+    // Immutable hub snapshot (ADR-0002) — allowlisted fields only.
+    hub_lat: hubSnap.hub_lat,
+    hub_lng: hubSnap.hub_lng,
+    restaurant_name: hubSnap.restaurant_name,
+    restaurant_phone: hubSnap.restaurant_phone,
     factura_status: 'not_due',                 // trigger advances to issued/failed
     cash_tendered_cents: cashTenderedCents,
     ...(facturaPriced.items ? { items: facturaPriced.items } : {}),
@@ -582,11 +596,11 @@ createOrderApp.all('*', async (req, res) => {
       assigned_driver_id: null,
       linked_task_id: deliveryTaskId,
       depends_on_task_id: null,
-      destination_lat: RESTAURANT.lat,
-      destination_lng: RESTAURANT.lng,
-      destination_address: RESTAURANT.name,
-      recipient_name: RESTAURANT.name,
-      recipient_phone: RESTAURANT.phone,
+      destination_lat: hubSnap.hub_lat,
+      destination_lng: hubSnap.hub_lng,
+      destination_address: hubSnap.restaurant_name,
+      recipient_name: hubSnap.restaurant_name,
+      recipient_phone: hubSnap.restaurant_phone,
       notes: fields.items_text,
       created_at: now
     };
@@ -776,13 +790,6 @@ chargeOnlineApp.all('*', async (req, res) => {
   const orderId = String(body.order_id);
   const orderType = body.order_type;
 
-  // Delivery-zone enforcement (same as createOrder — clients are bypassable).
-  if (orderType === 'delivery') {
-    const distanceKm = haversineKm(lat, lng, RESTAURANT.lat, RESTAURANT.lng);
-    if (distanceKm > DELIVERY_RADIUS_KM) {
-      return badRequest(res, `Outside delivery zone (${distanceKm.toFixed(1)}km from restaurant, max ${DELIVERY_RADIUS_KM}km)`);
-    }
-  }
 
   // Resolve PixelPay config up front — fail fast (500) before any DB write if
   // production creds are missing, so we never open an attempt we can't sign.
@@ -852,6 +859,40 @@ chargeOnlineApp.all('*', async (req, res) => {
     pendingOrderRecord.maps_link = `https://www.google.com/maps?q=${lat},${lng}`;
   } else {
     pendingOrderRecord.pickup_time = fields.pickup_time;
+  }
+
+  // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a
+  // customer reusing a live hosted checkout during a config outage is NOT failed closed. The CAS
+  // in acquireHostedAttempt stays authoritative; on a probe-fresh/CAS-reuse race the only cost is
+  // one wasted config read.
+  let probeOrder;
+  try {
+    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();
+  } catch (e) {
+    console.error(`chargeOnlineOrder: order probe failed for ${orderId}`, e.message);
+    return res.status(500).json({ error: 'Database error', detail: e.message });
+  }
+  if (!probeOrder) {
+    // Fresh pending-order creation → gate + zone + immutable charge-time snapshot BEFORE persistence.
+    let id;
+    try {
+      id = await getRestaurantIdentity(db, FACTURA_RESTAURANT_ID);
+    } catch (e) {
+      console.error(`chargeOnlineOrder: config unavailable for ${orderId}: ${e.message}`);
+      res.set('Retry-After', '2');
+      return res.status(e.statusCode || 503).json({ error: 'Service temporarily unavailable', detail: 'restaurant config unavailable', retryable: true });
+    }
+    if (!id.active) {
+      console.warn(`chargeOnlineOrder: ${FACTURA_RESTAURANT_ID} inactive — rejecting ${orderId}`);
+      return res.status(400).json({ error: 'Restaurant closed', detail: 'Not accepting orders right now' });
+    }
+    if (orderType === 'delivery') {
+      const distanceKm = haversineKm(lat, lng, id.hub_lat, id.hub_lng);
+      if (distanceKm > id.delivery_radius_km) {
+        return badRequest(res, `Outside delivery zone (${distanceKm.toFixed(1)}km from restaurant, max ${id.delivery_radius_km}km)`);
+      }
+    }
+    Object.assign(pendingOrderRecord, hubSnapshot(id)); // immutable snapshot on the fresh pending order
   }
 
   // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).

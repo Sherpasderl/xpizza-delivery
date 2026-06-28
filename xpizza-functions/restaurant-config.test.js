@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
-const { getIdentity, TTL_MS, _cache } = require('./restaurant-config');
+const { getIdentity, hubSnapshot, TTL_MS, _cache } = require('./restaurant-config');
 
 const VALID = {
   name: 'X Pizza', hub_lat: 15.5, hub_lng: -88.0, phone: '+50497952893',
@@ -119,15 +119,31 @@ const t = (label) => { pass++; console.log(`  ✓ ${pass} ${label}`); };
   await failsClosed(getIdentity(db, RID, 1000 + TTL_MS + 1)); // age == TTL+1
   t('exact TTL_MS boundary');
 
-  // 13) inertness guard (#7): no deployed module imports restaurant-config yet
-  const files = fs.readdirSync(__dirname)
-    .filter((f) => f.endsWith('.js') && !f.startsWith('restaurant-config') && !f.endsWith('.test.js'));
-  for (const f of files) {
-    const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
-    assert(!/require\(\s*['"]\.\/restaurant-config['"]\s*\)/.test(src),
-      `${f} must NOT import restaurant-config yet (3a is inert)`);
+  // 13) reader-extension (#1): the fields 3b relies on are validated; malformed fresh is NOT cached.
+  for (const bad of [
+    { ...VALID, delivery_radius_km: undefined },
+    { ...VALID, delivery_radius_km: NaN },
+    { ...VALID, name: '' },
+    { ...VALID, phone: 123 },
+    { ...VALID, hub_lat: 'x' },
+  ]) {
+    reset(); db.setNext({ val: bad });
+    await failsClosed(getIdentity(db, RID, 1000)); // malformed + cold cache -> 503 (not cached)
   }
-  t(`inertness guard (${files.length} deployed files clean)`);
+  t('reader extension: malformed delivery_radius_km/name/phone/hub not cached (-> 503)');
+
+  // 14) hubSnapshot allowlist (#2): exactly the 4 snapshot fields, no reader-metadata leak.
+  const snap = hubSnapshot({ ...VALID, _source: 'fresh', _fetched_at: 1, active: true, version: 9, hours: {} });
+  assert.deepEqual(Object.keys(snap).sort(), ['hub_lat', 'hub_lng', 'restaurant_name', 'restaurant_phone']);
+  assert.equal(snap.restaurant_name, VALID.name);
+  assert.equal(snap.restaurant_phone, VALID.phone);
+  t('hubSnapshot allowlist: 4 fields only, no metadata leak');
+
+  // 15) wiring check (3b): the reader is now imported by index.js (the order-creation paths).
+  const idx = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+  assert(/require\(\s*['"]\.\/restaurant-config['"]\s*\)/.test(idx),
+    'index.js must import restaurant-config (3b wires the reader into the order-creation paths)');
+  t('wiring check: index.js imports the reader');
 
   console.log(`restaurant-config: OK (${pass} cases)`);
 })().catch((e) => { console.error('restaurant-config: FAIL\n', e); process.exit(1); });

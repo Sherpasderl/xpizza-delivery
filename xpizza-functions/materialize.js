@@ -21,6 +21,17 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
   const method = paymentMethod || order.payment_method || null;
   const updates = {};
 
+  // Snapshot-or-fallback (single chokepoint → every materialize entrypoint: confirmOnlinePayment,
+  // hosted webhook, recovery trigger, manual reconciliation). Use the order's immutable charge-time
+  // hub snapshot when present (3b+ orders); fall back to the passed-in RESTAURANT constant only for
+  // in-flight pre-3b pending orders that predate the snapshot.
+  const rest = {
+    lat: Number.isFinite(order.hub_lat) ? order.hub_lat : restaurant.lat,
+    lng: Number.isFinite(order.hub_lng) ? order.hub_lng : restaurant.lng,
+    name: order.restaurant_name || restaurant.name,
+    phone: order.restaurant_phone || restaurant.phone,
+  };
+
   // Patch the order node into the live state (field-level paths — the rest of the
   // record was written at pending time and stays intact).
   updates[`orders/${orderId}/status`] = 'new';
@@ -48,11 +59,11 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
       assigned_driver_id: null,
       linked_task_id: deliveryTaskId,
       depends_on_task_id: null,
-      destination_lat: restaurant.lat,
-      destination_lng: restaurant.lng,
-      destination_address: restaurant.name,
-      recipient_name: restaurant.name,
-      recipient_phone: restaurant.phone,
+      destination_lat: rest.lat,
+      destination_lng: rest.lng,
+      destination_address: rest.name,
+      recipient_name: rest.name,
+      recipient_phone: rest.phone,
       notes: order.items_text,
       created_at: now
     };
