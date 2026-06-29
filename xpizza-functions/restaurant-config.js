@@ -75,4 +75,6 @@ function hubSnapshot(id) {
   return { hub_lat: id.hub_lat, hub_lng: id.hub_lng, restaurant_name: id.name, restaurant_phone: id.phone };
 }
 
-module.exports = { getIdentity, hubSnapshot, TTL_MS, _cache: cache };
+// isRoutingValid is exported so the deploy seed-readiness check reuses the EXACT hot-path
+// contract (no re-implementation/drift) — see deploy/check-seed-readiness.js.
+module.exports = { getIdentity, hubSnapshot, isRoutingValid, TTL_MS, _cache: cache };
