@@ -110,7 +110,18 @@
     "facturas": { ".read": false, ".write": false },
     "restaurants": {
       "$restaurant_id": {
-        "factura_config": { ".read": false, ".write": false }
+        "factura_config": { ".read": false, ".write": false },
+        "identity": {
+          ".read": "auth != null",
+          ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
+          ".validate": "newData.hasChildren(['name','hub_lat','hub_lng','phone','whatsapp_instance','whatsapp_enabled','delivery_radius_km','hours','active','version'])",
+          "hub_lat":  { ".validate": "newData.isNumber()" },
+          "hub_lng":  { ".validate": "newData.isNumber()" },
+          "active":   { ".validate": "newData.isBoolean()" },
+          "version":  { ".validate": "newData.isNumber() && (!data.exists() || newData.val() > data.val())" },
+          "whatsapp_enabled":   { ".validate": "newData.isBoolean()" },
+          "delivery_radius_km": { ".validate": "newData.isNumber()" }
+        }
       }
     }
   }

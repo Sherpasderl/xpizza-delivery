@@ -47,3 +47,38 @@ extended into a fallback map.
   rewrite live Orders.
 - Secrets (WhatsApp token, PixelPay keys) do NOT go in the config plane — it holds
   non-secret identity only (name, hub, phone, whatsapp instance id, hours, active).
+
+## Amendment — 2026-06-28: config-plane identity nests at `/restaurants/{id}/identity`
+
+Phase 0 Step 1 established that `/restaurants/{id}` is a **mixed-sensitivity node**: the factura
+system (ADR-0004) stores sensitive fiscal config at `/restaurants/{id}/factura_config` (CAI,
+range, sequence), which must stay Admin-SDK-only, while config-plane identity must be
+client-readable by authenticated internal apps. RTDB rules **cascade and cannot be revoked at a
+child** — a `.read`/`.write` grant at `/restaurants` or `$restaurant_id` would expose
+`factura_config`. Therefore identity is nested under its own readable wrapper:
+
+- `/restaurants/{id}/identity/*` — `name`, `hub_lat`, `hub_lng`, `phone`, `whatsapp_instance`,
+  `whatsapp_enabled`, `hours`, `delivery_radius_km`, `active`, `version`. Rules: `.read` = any
+  authenticated user, `.write` = dispatcher-only (mirrors `/config`). Canonical path for Steps 2
+  (seed) and 3 (reads). **Step 2 must add `.validate` under `/restaurants/{id}/identity` for the
+  routing-critical identity constraints — monotonic `version`, numeric hub fields, boolean
+  `active` — which is where this ADR's original "`version` monotonic and required" enforcement now
+  lives.**
+- `/restaurants/{id}/factura_config` — unchanged, no ancestor grant (Admin-SDK-only).
+
+**Invariant:** no `.read`/`.write` grant at the `/restaurants` or `$restaurant_id` level —
+enforced by an offline guard test (Step 1).
+
+### Rejected alternatives
+
+- **Flat identity at `/restaurants/{id}/*`** (siblings of `factura_config`): cascade forces
+  per-field `.read` *and* `.write` on every field; a missed field silently breaks or exposes fiscal
+  data. Brittle.
+- **Separate top-level `/restaurant_public/{id}`**: fragments restaurant config across two trees;
+  nesting keeps one cohesive node per Restaurant.
+
+### Reconciliation
+
+The config **plane** (non-secret identity) is the `/restaurants/{id}/identity` subtree; the
+`/restaurants/{id}` **node** also hosts the sensitive `factura_config` subtree owned by the factura
+system. The original "non-secret identity only" describes the identity subtree, not the whole node.

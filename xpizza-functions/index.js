@@ -61,6 +61,8 @@ const pixelpayClient = require('./pixelpay-client');
 const ppCrypto = require('./pixelpay');
 const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
 const { buildMaterializeUpdates } = require('./materialize');
+const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
+const { buildCreateOrderUpdates } = require('./create-order-build');
 const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
 const { voidOrRefund } = require('./pixelpay-cancel');
 const { handleHostedCallback } = require('./pixelpay-hosted-webhook');
@@ -119,14 +121,12 @@ const RESTAURANT = {
   name: 'X Pizza',
   phone: '+50497952893'
 };
+// RESTAURANT is retained ONLY as the materialize snapshot-fallback for in-flight pre-3b
+// pending orders (see confirmDeps -> buildMaterializeUpdates). Live intake reads the config
+// plane (restaurant-config); the delivery radius now comes from identity.delivery_radius_km.
 
-// Maximum distance (kilometers) the restaurant will deliver to. Orders with
-// a delivery lat/lng farther than this are rejected by validateOrderPayload.
-// The order form has the same check client-side for UX, but we enforce here
-// because clients can be bypassed (browser dev tools, direct API calls).
-// Tune this with operational reality — too tight rejects real customers,
-// too loose stretches drivers.
-const DELIVERY_RADIUS_KM = 7;
+// hubSnapshot (the ADR-0002 allowlist mapping identity -> immutable per-order snapshot) is
+// defined in and imported from restaurant-config.js, above.
 
 // Generate a random URL-safe tracking token. 12 chars from a 64-char alphabet
 // gives 64^12 = ~4.7e21 possible tokens — guessing one is impossible. The
@@ -460,20 +460,6 @@ createOrderApp.all('*', async (req, res) => {
   const orderId = String(body.order_id);
   const orderType = body.order_type;
 
-  // Delivery zone check — reject orders whose lat/lng is farther than
-  // DELIVERY_RADIUS_KM from the restaurant. The order form does this
-  // client-side too, but we enforce here because clients can be bypassed
-  // (browser dev tools, direct API calls, third-party integrations like
-  // Make.com). Pickup orders skip this check (they're picked up at the
-  // restaurant by definition).
-  if (orderType === 'delivery') {
-    const distanceKm = haversineKm(lat, lng, RESTAURANT.lat, RESTAURANT.lng);
-    if (distanceKm > DELIVERY_RADIUS_KM) {
-      console.warn(`createOrder: order ${orderId} rejected — ${distanceKm.toFixed(2)}km > ${DELIVERY_RADIUS_KM}km radius`);
-      return badRequest(res, `Outside delivery zone (${distanceKm.toFixed(1)}km from restaurant, max ${DELIVERY_RADIUS_KM}km)`);
-    }
-  }
-
   const db = getDatabase();
 
   // Idempotency check
@@ -487,6 +473,30 @@ createOrderApp.all('*', async (req, res) => {
     console.error('createOrder: existence check failed', e);
     return res.status(500).json({ error: 'Database read failed', detail: e.message });
   }
+
+  // Config-plane identity (ADR-0002): fail-closed read, gate intake on active, zone-check from
+  // config. After the idempotency check so idempotent retries don't re-read config; the delivery
+  // zone enforcement (clients are bypassable) now uses identity.hub + identity.delivery_radius_km.
+  let restIdentity;
+  try {
+    restIdentity = await getRestaurantIdentity(db, FACTURA_RESTAURANT_ID);
+  } catch (e) {
+    console.error(`createOrder: config unavailable for ${orderId}: ${e.message}`);
+    res.set('Retry-After', '2');
+    return res.status(e.statusCode || 503).json({ error: 'Service temporarily unavailable', detail: 'restaurant config unavailable', retryable: true });
+  }
+  if (!restIdentity.active) {
+    console.warn(`createOrder: ${FACTURA_RESTAURANT_ID} inactive — rejecting ${orderId}`);
+    return res.status(400).json({ error: 'Restaurant closed', detail: 'Not accepting orders right now' });
+  }
+  if (orderType === 'delivery') {
+    const distanceKm = haversineKm(lat, lng, restIdentity.hub_lat, restIdentity.hub_lng);
+    if (distanceKm > restIdentity.delivery_radius_km) {
+      console.warn(`createOrder: order ${orderId} rejected — ${distanceKm.toFixed(2)}km > ${restIdentity.delivery_radius_km}km radius`);
+      return badRequest(res, `Outside delivery zone (${distanceKm.toFixed(1)}km from restaurant, max ${restIdentity.delivery_radius_km}km)`);
+    }
+  }
+  const hubSnap = hubSnapshot(restIdentity);
 
   // Rate limiting. Only genuinely-NEW orders reach here — idempotent retries of
   // an existing order_id already returned above, so legit retries don't burn
@@ -513,126 +523,25 @@ createOrderApp.all('*', async (req, res) => {
   const now = ServerValue.TIMESTAMP;
   const updates = {};
 
-  const pickupTaskId = `${orderId}_pickup`;
-  const deliveryTaskId = `${orderId}_delivery`;
   const trackingToken = generateTrackingToken();
-
-  // Factura inputs (FACTURA_PLAN §2): a server-priced structured item list so the factura
-  // DB trigger — which sees only the stored order — can itemize; plus cash tendered for the
-  // CAMBIO line. Money stays in centavos; cash is validated >= total (never trust client) and
-  // defaults to exact (no change) when absent/invalid so a bad value never blocks the order.
-  const facturaBreakdown = priceBreakdownCents(total);
+  const priceBreakdown = priceBreakdownCents(total);  // total_cents / subtotal_cents / tax_cents (ISV 15% incl.)
   const facturaPriced = pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES);
+
+  // Cash tendered (FACTURA_PLAN §2): validated >= total (never trust client), defaults to exact
+  // (no change) when absent/invalid so a bad value never blocks the order. Money in centavos.
   let cashTenderedCents = 0;
   if (fields.payment_method === 'cash') {
     const ct = Math.round(Number(body.cash_tendered) * 100);
-    cashTenderedCents = (Number.isFinite(ct) && ct >= facturaBreakdown.total_cents) ? ct : facturaBreakdown.total_cents;
+    cashTenderedCents = (Number.isFinite(ct) && ct >= priceBreakdown.total_cents) ? ct : priceBreakdown.total_cents;
   }
 
-  // Build the order record. Common fields apply to both delivery and pickup;
-  // delivery-specific fields (lat/lng/address, task IDs) only get included
-  // for delivery orders. Pickup orders get pickup_time instead.
-  const orderRecord = {
-    order_id: orderId,
-    customer_name: fields.customer_name,
-    customer_phone: fields.customer_phone,
-    items_text: fields.items_text,
-    total: total,
-    ...priceBreakdownCents(total),   // total_cents / subtotal_cents / tax_cents (ISV 15% incl.)
-    notes: fields.notes,
-    payment_method: fields.payment_method,
-    order_type: orderType,
-    status: 'new',
-    tracking_token: trackingToken,
-    created_at: now,
-    // --- factura (SAR) fields; the allocateFacturaOnSale trigger consumes these ---
-    restaurant_id: FACTURA_RESTAURANT_ID,
-    factura_status: 'not_due',                 // trigger advances to issued/failed
-    cash_tendered_cents: cashTenderedCents,
-    ...(facturaPriced.items ? { items: facturaPriced.items } : {}),
-    ...(fields.razon_social ? { razon_social: fields.razon_social } : {}),
-    ...(fields.rtn_cliente ? { rtn_cliente: fields.rtn_cliente } : {})
-  };
-
-  if (orderType === 'delivery') {
-    orderRecord.lat = lat;
-    orderRecord.lng = lng;
-    orderRecord.address_detected = fields.address_detected;
-    orderRecord.address_details = fields.address_details;
-    orderRecord.maps_link = `https://www.google.com/maps?q=${lat},${lng}`;
-    orderRecord.pickup_task_id = pickupTaskId;
-    orderRecord.delivery_task_id = deliveryTaskId;
-  } else {
-    // pickup
-    // pickup_time is either the literal string 'standard' (= ASAP, ~20 min)
-    // or a human-readable label like '6:00 PM–6:20 PM' selected by the
-    // customer. Stored as opaque string; KDS displays it as-is.
-    orderRecord.pickup_time = fields.pickup_time;
-  }
-
-  updates[`orders/${orderId}`] = orderRecord;
-
-  // Driver tasks ONLY for delivery orders. Pickup orders are picked up by
-  // the customer at the restaurant — no driver involved, no dispatch.
-  if (orderType === 'delivery') {
-    updates[`tasks/${pickupTaskId}`] = {
-      order_id: orderId,
-      type: 'pickup',
-      status: 'pending',
-      assigned_driver_id: null,
-      linked_task_id: deliveryTaskId,
-      depends_on_task_id: null,
-      destination_lat: RESTAURANT.lat,
-      destination_lng: RESTAURANT.lng,
-      destination_address: RESTAURANT.name,
-      recipient_name: RESTAURANT.name,
-      recipient_phone: RESTAURANT.phone,
-      notes: fields.items_text,
-      created_at: now
-    };
-
-    updates[`tasks/${deliveryTaskId}`] = {
-      order_id: orderId,
-      type: 'delivery',
-      status: 'pending',
-      assigned_driver_id: null,
-      linked_task_id: pickupTaskId,
-      depends_on_task_id: pickupTaskId,
-      destination_lat: lat,
-      destination_lng: lng,
-      destination_address: fields.address_detected,
-      address_details: fields.address_details,
-      recipient_name: fields.customer_name,
-      recipient_phone: fields.customer_phone,
-      payment_method: fields.payment_method,
-      total: total,
-      notes: fields.items_text,
-      created_at: now
-    };
-  }
-
-  // Tracking index: maps tracking_token → order data. Stores ONLY the
-  // fields that are safe to expose publicly. The tracking site reads
-  // /order_tracking/{token} (public read rule). Customer name + first
-  // initial of address are shown but full address, phone, payment details
-  // stay in /orders (auth-only).
-  //
-  // Status field is kept in sync with /orders/{orderId}/status by
-  // sendOrderStatusNotifications. driver_name is filled in when
-  // out_for_delivery (delivery orders only).
-  const addressShort = orderType === 'delivery'
-    ? fields.address_detected.split(',')[0].trim()
-    : 'Recoger en X. Pizza';
-  updates[`order_tracking/${trackingToken}`] = {
-    order_id: orderId,
-    order_type: orderType,
-    customer_name: fields.customer_name,
-    items_text: fields.items_text,
-    total: total,
-    address_short: addressShort,
-    status: 'new',
-    created_at: now
-  };
+  // Order record + driver tasks + public tracking — extracted to a pure builder
+  // (create-order-build.js) so the cash path is golden-tested for byte-identical output. The
+  // field names are load-bearing (driver app, KDS, tracking site, factura trigger).
+  Object.assign(updates, buildCreateOrderUpdates({
+    orderId, orderType, now, trackingToken, total, lat, lng, fields, hubSnap,
+    restaurantId: FACTURA_RESTAURANT_ID, priceBreakdown, facturaPriced, cashTenderedCents,
+  }));
 
   try {
     await db.ref().update(updates);
@@ -776,13 +685,6 @@ chargeOnlineApp.all('*', async (req, res) => {
   const orderId = String(body.order_id);
   const orderType = body.order_type;
 
-  // Delivery-zone enforcement (same as createOrder — clients are bypassable).
-  if (orderType === 'delivery') {
-    const distanceKm = haversineKm(lat, lng, RESTAURANT.lat, RESTAURANT.lng);
-    if (distanceKm > DELIVERY_RADIUS_KM) {
-      return badRequest(res, `Outside delivery zone (${distanceKm.toFixed(1)}km from restaurant, max ${DELIVERY_RADIUS_KM}km)`);
-    }
-  }
 
   // Resolve PixelPay config up front — fail fast (500) before any DB write if
   // production creds are missing, so we never open an attempt we can't sign.
@@ -852,6 +754,40 @@ chargeOnlineApp.all('*', async (req, res) => {
     pendingOrderRecord.maps_link = `https://www.google.com/maps?q=${lat},${lng}`;
   } else {
     pendingOrderRecord.pickup_time = fields.pickup_time;
+  }
+
+  // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a
+  // customer reusing a live hosted checkout during a config outage is NOT failed closed. The CAS
+  // in acquireHostedAttempt stays authoritative; on a probe-fresh/CAS-reuse race the only cost is
+  // one wasted config read.
+  let probeOrder;
+  try {
+    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();
+  } catch (e) {
+    console.error(`chargeOnlineOrder: order probe failed for ${orderId}`, e.message);
+    return res.status(500).json({ error: 'Database error', detail: e.message });
+  }
+  if (!probeOrder) {
+    // Fresh pending-order creation → gate + zone + immutable charge-time snapshot BEFORE persistence.
+    let id;
+    try {
+      id = await getRestaurantIdentity(db, FACTURA_RESTAURANT_ID);
+    } catch (e) {
+      console.error(`chargeOnlineOrder: config unavailable for ${orderId}: ${e.message}`);
+      res.set('Retry-After', '2');
+      return res.status(e.statusCode || 503).json({ error: 'Service temporarily unavailable', detail: 'restaurant config unavailable', retryable: true });
+    }
+    if (!id.active) {
+      console.warn(`chargeOnlineOrder: ${FACTURA_RESTAURANT_ID} inactive — rejecting ${orderId}`);
+      return res.status(400).json({ error: 'Restaurant closed', detail: 'Not accepting orders right now' });
+    }
+    if (orderType === 'delivery') {
+      const distanceKm = haversineKm(lat, lng, id.hub_lat, id.hub_lng);
+      if (distanceKm > id.delivery_radius_km) {
+        return badRequest(res, `Outside delivery zone (${distanceKm.toFixed(1)}km from restaurant, max ${id.delivery_radius_km}km)`);
+      }
+    }
+    Object.assign(pendingOrderRecord, hubSnapshot(id)); // immutable snapshot on the fresh pending order
   }
 
   // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
@@ -1072,8 +1008,12 @@ confirmOnlineApp.all('*', async (req, res) => {
   if (o === 'cancelled' || o === 'cancelled_during_confirm') {
     return res.status(200).json({ ok: false, payment_status: 'cancelled', order_id: orderId });
   }
-  if (o === 'in_progress' || o === 'capture_error_retryable' || o === 'no_payment_uuid') {
-    return res.status(202).json({ ok: false, pending: true, order_id: orderId, detail: 'payment processing; keep polling' });
+  if (o === 'voided_inactive') {
+    // 3c: auth voided because the Restaurant was deactivated — terminal failure, client must NOT retry.
+    return res.status(200).json({ ok: false, payment_status: 'failed', order_id: orderId, detail: 'restaurant not accepting orders; payment authorization voided' });
+  }
+  if (o === 'in_progress' || o === 'capture_error_retryable' || o === 'no_payment_uuid' || o === 'config_unavailable_retryable') {
+    return res.status(202).json({ ok: false, pending: true, order_id: orderId, detail: o === 'config_unavailable_retryable' ? 'restaurant config temporarily unavailable; keep polling' : 'payment processing; keep polling' });
   }
   if (o === 'no_order') return res.status(404).json({ error: 'Order not found', order_id: orderId });
   if (o === 'not_online' || o === 'no_active_attempt' || o === 'no_attempt_record') {
@@ -1109,6 +1049,7 @@ function confirmDeps(db) {
     client: pixelpayClient,
     restaurant: RESTAURANT,
     buildMaterializeUpdates,
+    getIdentity: getRestaurantIdentity,   // 3c: confirm-time active-recheck (plan 10b)
     // Config-aware capture amount: sandbox → 1-14 test amount; production → real total.
     chargeAmountLempiras: (totalCents) => {
       try { return pixelPayChargeAmountLempiras(resolvePixelPayConfig(), totalCents); }

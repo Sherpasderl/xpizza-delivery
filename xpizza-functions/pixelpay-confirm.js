@@ -20,7 +20,7 @@
  * injected so the whole machine is unit-tested against an in-memory mock.
  */
 
-const TERMINAL_ATTEMPT = ['declined', 'voided', 'abandoned', 'converted', 'refunded'];
+const TERMINAL_ATTEMPT = ['declined', 'voided', 'abandoned', 'converted', 'refunded', 'voided_inactive'];
 
 async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingToken }) {
   const { db, staleMs = 90000 } = deps;
@@ -55,6 +55,30 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
   // (not undefined) on the null call is what triggers that conflict re-check.
   const preAttempt = (await attemptRef.once('value')).val();
   if (!preAttempt) return { outcome: 'no_attempt_record' };
+
+  // 3c (plan 10b): pre-capture active-recheck. An auth opened before an active=false flip must not
+  // be captured into a deactivated Restaurant. Runs BEFORE the capturing CAS so no claim is planted
+  // on the void path. Only `active` is rechecked (hub stays the immutable snapshot). X. Pizza is
+  // always active -> no-op. Optional-by-presence so legacy callers/tests without getIdentity skip.
+  if (deps.getIdentity) {
+    const rid = order.restaurant_id || 'x_pizza';
+    let activeNow;
+    try {
+      activeNow = (await deps.getIdentity(db, rid)).active;
+    } catch (e) {
+      return { outcome: 'config_unavailable_retryable', error: e && e.message }; // never capture when activeness unprovable
+    }
+    if (activeNow === false) {
+      const uuid0 = paymentUuid || preAttempt.payment_uuid;
+      try {
+        if (uuid0) await deps.client.voidTransaction({ payment_uuid: uuid0, pixelpayOrderId, voidReason: 'xpizza_inactive_void' });
+      } catch (_) { /* best-effort auth void; terminalize + alert regardless */ }
+      await attemptRef.update({ status: 'voided_inactive', voided_at: now, void_reason: 'restaurant_inactive' });
+      await orderRef.update({ payment_status: 'failed' });
+      deps.alert && deps.alert('confirm_voided_inactive', { orderId, attemptId, restaurant_id: rid });
+      return { outcome: 'voided_inactive' };
+    }
+  }
 
   const claim = await attemptRef.transaction((cur) => {
     const a = cur || preAttempt;
@@ -202,6 +226,20 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
   if (order.payment_status !== 'confirmed') return { outcome: 'confirm_claim_failed' };
   if (order.materialized_at) return { outcome: 'already_confirmed', tracking_token: order.tracking_token };
 
+  // 3c (plan 10b): post-capture active-recheck. Money is captured — NEVER strand a paid order;
+  // always materialize. If the Restaurant was deactivated mid-flight, alert dispatcher (we owe
+  // fulfillment). Idempotent: already-materialized returned above, and the marker is written in the
+  // same atomic update, so re-entry can't re-alert. X. Pizza always active -> no alert.
+  let inactiveRid = null;
+  if (deps.getIdentity) {
+    const rid = order.restaurant_id || 'x_pizza';
+    try {
+      if ((await deps.getIdentity(db, rid)).active === false) inactiveRid = rid;
+    } catch (_) {
+      inactiveRid = rid; // config unavailable post-capture: still materialize, flag for review
+    }
+  }
+
   const token = order.tracking_token || trackingToken;
   const updates = buildMaterializeUpdates({
     orderId,
@@ -212,7 +250,19 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
     paymentReference: paymentReference || order.payment_reference || null,
     paymentMethod: 'online'
   });
+  if (inactiveRid) updates[`orders/${orderId}/inactive_materialize_alerted_at`] = now;
   await db.ref().update(updates);
+  // AWAIT the alert (it's an async DB write): a fire-and-forget alert can be dropped if the
+  // instance freezes after the update, and the committed marker would then suppress it on
+  // re-entry — losing it permanently. On alert failure, LOG only: the order is already
+  // materialized (never stranded); we don't undo a paid, fulfilled order over a failed alert.
+  if (inactiveRid && deps.alert) {
+    try {
+      await deps.alert('materialized_into_inactive_restaurant', { orderId, restaurant_id: inactiveRid });
+    } catch (e) {
+      console.error(`confirmAndMaterialize: inactive-materialize alert failed for ${orderId} (order materialized, not stranded): ${e && e.message}`);
+    }
+  }
   return { outcome: 'confirmed', tracking_token: token };
 }
 

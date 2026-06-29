@@ -1,0 +1,59 @@
+'use strict';
+
+/**
+ * Golden tests for buildMaterializeUpdates snapshot-or-fallback (#4) + no-metadata-leak (#2).
+ * Pure builder, dep-free. Proves: snapshot used when present; RESTAURANT fallback for pre-3b
+ * orders; x_pizza snapshot == constant -> byte-identical; reader metadata never reaches tasks.
+ */
+const assert = require('assert');
+const { buildMaterializeUpdates } = require('./materialize');
+
+const FALLBACK = { lat: 15.507489753573818, lng: -88.0398486953722, name: 'X Pizza', phone: '+50497952893' };
+const baseOrder = (extra) => ({
+  order_type: 'delivery', payment_method: 'online', customer_name: 'A', customer_phone: '1',
+  items_text: 'x', total: 100, lat: 15.6, lng: -88.1, address_detected: 'Somewhere, City', ...extra,
+});
+let n = 0;
+const ok = (label) => console.log(`  ✓ ${++n} ${label}`);
+
+// 1) Order WITH snapshot -> pickup task uses the snapshot, not the fallback.
+{
+  const order = baseOrder({ hub_lat: 15.50414, hub_lng: -88.03848, restaurant_name: 'La Musa', restaurant_phone: '+50493736607' });
+  const pickup = buildMaterializeUpdates({ orderId: 'o1', order, trackingToken: 't', now: 1, restaurant: FALLBACK })['tasks/o1_pickup'];
+  assert.equal(pickup.destination_lat, 15.50414);
+  assert.equal(pickup.destination_lng, -88.03848);
+  assert.equal(pickup.destination_address, 'La Musa');
+  assert.equal(pickup.recipient_name, 'La Musa');
+  assert.equal(pickup.recipient_phone, '+50493736607');
+  ok('snapshot present -> pickup uses snapshot');
+}
+
+// 2) Order WITHOUT snapshot (pre-3b) -> pickup task falls back to RESTAURANT.
+{
+  const pickup = buildMaterializeUpdates({ orderId: 'o2', order: baseOrder({}), trackingToken: 't', now: 1, restaurant: FALLBACK })['tasks/o2_pickup'];
+  assert.equal(pickup.destination_lat, FALLBACK.lat);
+  assert.equal(pickup.destination_address, FALLBACK.name);
+  assert.equal(pickup.recipient_phone, FALLBACK.phone);
+  ok('snapshot absent -> pickup falls back to RESTAURANT');
+}
+
+// 3) Byte-identical: x_pizza snapshot == fallback constant -> identical pickup task either way.
+{
+  const withSnap = baseOrder({ hub_lat: FALLBACK.lat, hub_lng: FALLBACK.lng, restaurant_name: FALLBACK.name, restaurant_phone: FALLBACK.phone });
+  const a = buildMaterializeUpdates({ orderId: 'o3', order: withSnap, trackingToken: 't', now: 1, restaurant: FALLBACK })['tasks/o3_pickup'];
+  const b = buildMaterializeUpdates({ orderId: 'o3', order: baseOrder({}), trackingToken: 't', now: 1, restaurant: FALLBACK })['tasks/o3_pickup'];
+  assert.deepEqual(a, b);
+  ok('x_pizza snapshot == constant -> byte-identical pickup task');
+}
+
+// 4) No metadata leak: reader metadata on the order never reaches tasks/tracking.
+{
+  const order = baseOrder({ hub_lat: 15.5, hub_lng: -88.0, restaurant_name: 'X Pizza', restaurant_phone: '+504',
+    _source: 'fresh', _fetched_at: 123 });
+  const u = buildMaterializeUpdates({ orderId: 'o4', order, trackingToken: 't', now: 1, restaurant: FALLBACK });
+  const blob = JSON.stringify({ pickup: u['tasks/o4_pickup'], delivery: u['tasks/o4_delivery'], tracking: u['order_tracking/t'] });
+  for (const leak of ['_source', '_fetched_at']) assert(!blob.includes(leak), `metadata ${leak} leaked into materialize output`);
+  ok('no reader-metadata leak into tasks/tracking');
+}
+
+console.log(`materialize-snapshot: OK (${n} cases)`);
