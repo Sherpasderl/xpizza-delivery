@@ -15,7 +15,13 @@ const { isRoutingValid } = require('../restaurant-config');
 const RID = process.env.READINESS_RID || 'x_pizza';
 
 (async () => {
-  admin.initializeApp({ credential: admin.credential.applicationDefault(), databaseURL: process.env.FB_DATABASE_URL });
+  // Emulator dry-run (FIREBASE_DATABASE_EMULATOR_HOST set) needs no real creds; prod uses the SA.
+  const EMU = process.env.FIREBASE_DATABASE_EMULATOR_HOST;
+  admin.initializeApp(
+    EMU
+      ? { projectId: process.env.GCLOUD_PROJECT || 'demo-xpizza' }
+      : { credential: admin.credential.applicationDefault(), databaseURL: process.env.FB_DATABASE_URL }
+  );
   const id = (await admin.database().ref(`restaurants/${RID}/identity`).once('value')).val();
 
   if (!id) throw new Error(`/restaurants/${RID}/identity is MISSING — seed before deploying the reader`);
