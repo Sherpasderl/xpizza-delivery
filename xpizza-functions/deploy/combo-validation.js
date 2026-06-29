@@ -64,9 +64,34 @@ function assertComboOutput(updates, combo) {
   assert.deepStrictEqual(Object.keys(updates).sort(), Object.keys(combo.pre3b).sort(), 'unexpected or missing update paths');
 }
 
+// Independent structural anchor for LIVE writes (B emulator e2e): assert the write has the AUDITED
+// COMBOS key-structure (paths + per-record field-key-sets) + the constant snapshot + no metadata
+// leak — substituting only the dynamic order_id/tracking_token. Proves deployed == AUDITED SHAPE
+// WITHOUT routing through buildCreateOrderUpdates (so it can't drift-together with the builder).
+// Scenario values (pricing/coords/names) are inputs, not anchored here — pricing correctness is
+// covered by computeServerTotal + unit tests.
+function assertComboShape(updates, combo, { orderId, trackingToken }) {
+  const subPath = (p) => p.replace(combo.input.orderId, orderId).replace(combo.input.trackingToken, trackingToken);
+  assert.deepStrictEqual(Object.keys(updates).sort(), Object.keys(combo.pre3b).map(subPath).sort(),
+    'live write: unexpected/missing paths vs audited COMBOS');
+  for (const [comboKey, comboRec] of Object.entries(combo.pre3b)) {
+    const live = updates[subPath(comboKey)];
+    assert.ok(live, `missing ${subPath(comboKey)}`);
+    const isOrder = comboKey.startsWith('orders/');
+    const expectKeys = (isOrder ? [...Object.keys(comboRec), ...SNAP_KEYS] : Object.keys(comboRec)).sort();
+    assert.deepStrictEqual(Object.keys(live).sort(), expectKeys, `${subPath(comboKey)}: field-key-set drift vs audited shape`);
+    if (isOrder) {
+      const snap = {};
+      for (const k of SNAP_KEYS) snap[k] = live[k];
+      assert.deepStrictEqual(snap, combo.snapshot, `${subPath(comboKey)}: snapshot != HUB constant`);
+    }
+  }
+  assert.ok(!/_source|_fetched_at/.test(JSON.stringify(updates)), 'reader metadata leaked into live write');
+}
+
 // Canonical hash of the EXPECTED-OUTPUT truth (inputs + pre3b + snapshot), guarded by the test.
 function combosHash() {
   return require('crypto').createHash('sha256').update(JSON.stringify(COMBOS)).digest('hex');
 }
 
-module.exports = { HUB, COMBOS, SNAP_KEYS, assertComboOutput, combosHash };
+module.exports = { HUB, COMBOS, SNAP_KEYS, assertComboOutput, assertComboShape, combosHash };

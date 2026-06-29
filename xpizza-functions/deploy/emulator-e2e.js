@@ -24,7 +24,7 @@ const assert = require('assert');
 const admin = require('firebase-admin');
 const { emuDatabaseURL } = require('./emu-ns');
 const { buildCreateOrderUpdates } = require('../create-order-build');
-const { HUB } = require('./combo-validation');
+const { HUB, COMBOS, assertComboShape } = require('./combo-validation');
 const { acquireHostedAttempt } = require('../pixelpay-hosted-charge');
 const { orderFingerprint } = require('../pixelpay-charge');
 
@@ -50,7 +50,8 @@ const post = (input) => fetch(process.env.CREATEORDER_URL, {
   body: JSON.stringify(input),
 });
 
-async function driveByteIdentical(db, input, label) {
+async function driveByteIdentical(db, input, comboKey) {
+  const label = comboKey;
   const res = await post(input);
   const body = await res.json().catch(() => ({}));
   assert.equal(res.status, 200, `${label}: createOrder ${res.status}: ${JSON.stringify(body)}`);
@@ -74,8 +75,13 @@ async function driveByteIdentical(db, input, label) {
     facturaPriced: { items: order.items }, cashTenderedCents: order.cash_tendered_cents, hubSnap: HUB,
   }));
 
+  // (a) value-level integration vs the builder (pricing is PASS-THROUGH here — pricing correctness
+  //     is covered by computeServerTotal + unit tests; this proves structure/snapshot/layout).
   assert.deepStrictEqual(actual, expected);
-  console.log(`  ✓ ${label}: deployed createOrder == builder (byte-identical, null-normalized)`);
+  // (b) INDEPENDENT anchor: the live write matches the AUDITED COMBOS shape (key-structure +
+  //     snapshot + no-leak), so deployed and builder cannot drift together undetected (#5).
+  assertComboShape(actual, COMBOS[comboKey], { orderId: input.order_id, trackingToken: token });
+  console.log(`  ✓ ${label}: deployed createOrder == builder (value) AND == audited COMBOS shape; pricing pass-through`);
 }
 
 async function main() {
@@ -90,10 +96,17 @@ async function main() {
     await driveByteIdentical(db, CASH_PICKUP, 'cash_pickup');
   } else if (mode === 'reject') {
     const expected = Number(process.argv[3]);
+    const before = (await db.ref('rate_limits').once('value')).val();
     const res = await post({ ...CASH_DELIVERY, order_id: 'E2E_REJECT' });
     assert.equal(res.status, expected, `reject: expected ${expected}, got ${res.status}`);
-    assert.ok(!(await db.ref('orders/E2E_REJECT').once('value')).exists(), `reject: order written despite ${expected}`);
-    console.log(`  ✓ reject: ${expected} + no write (short-circuit before any write/egress)`);
+    for (const p of ['orders/E2E_REJECT', 'tasks/E2E_REJECT_pickup', 'tasks/E2E_REJECT_delivery']) {
+      assert.ok(!(await db.ref(p).once('value')).exists(), `reject: ${p} written despite ${expected}`);
+    }
+    const after = (await db.ref('rate_limits').once('value')).val();
+    assert.deepStrictEqual(after, before, 'reject: rate_limits changed (rejection must precede rate limiting)');
+    // order_tracking is token-keyed and only written inside the post-rejection updates block, so its
+    // absence follows from orders/E2E_REJECT being absent (the handler returns before that block).
+    console.log(`  ✓ reject: ${expected}; no order/task write; rate_limits unchanged (short-circuit before write & rate-limit)`);
   } else if (mode === 'pending') {
     const id = 'E2E_PENDING';
     const pending = { order_id: id, customer_name: 'X', customer_phone: '+504', items_text: 'Margherita x1', total: 299, total_cents: 29900, subtotal_cents: 26000, tax_cents: 3900, notes: '', payment_method: 'online', payment_status: 'pending', order_type: 'delivery', status: 'pending_payment', created_at: Date.now(), restaurant_id: 'x_pizza', factura_status: 'not_due', cash_tendered_cents: 0, items: [{ name: 'Margherita', qty: 1, c: 29900 }], lat: 15.508, lng: -88.04 };
@@ -104,7 +117,7 @@ async function main() {
     assert.ok(!order.tracking_token, 'pending: order has a tracking_token');
     assert.ok(!(await db.ref(`tasks/${id}_pickup`).once('value')).exists(), 'pending: created a pickup task');
     assert.ok(!(await db.ref(`tasks/${id}_delivery`).once('value')).exists(), 'pending: created a delivery task');
-    console.log('  ✓ pending-absence: pending order written, NO tasks / NO tracking');
+    console.log('  ✓ pending-absence (HELPER-LEVEL CAS invariant — acquireHostedAttempt, NOT the chargeOnlineOrder HTTP route): pending order, NO tasks / NO tracking');
   } else {
     throw new Error(`unknown mode "${mode}" — use: cash | reject <status> | pending`);
   }
