@@ -1045,6 +1045,7 @@ function confirmDeps(db) {
     client: pixelpayClient,
     restaurant: RESTAURANT,
     buildMaterializeUpdates,
+    getIdentity: getRestaurantIdentity,   // 3c: confirm-time active-recheck (plan 10b)
     // Config-aware capture amount: sandbox → 1-14 test amount; production → real total.
     chargeAmountLempiras: (totalCents) => {
       try { return pixelPayChargeAmountLempiras(resolvePixelPayConfig(), totalCents); }
