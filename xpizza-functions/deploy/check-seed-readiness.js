@@ -20,7 +20,7 @@ const RID = process.env.READINESS_RID || 'x_pizza';
   const PID = process.env.GCLOUD_PROJECT || 'demo-xpizza';
   admin.initializeApp(
     EMU
-      ? { projectId: PID, databaseURL: `http://${EMU}?ns=${PID}-default-rtdb` } // same ns as emu-seed.js
+      ? { projectId: PID, databaseURL: require('./emu-ns').emuDatabaseURL() } // function's ns (emu-seed agrees)
       : { credential: admin.credential.applicationDefault(), databaseURL: process.env.FB_DATABASE_URL }
   );
   const id = (await admin.database().ref(`restaurants/${RID}/identity`).once('value')).val();

@@ -13,10 +13,10 @@ if (!process.env.FIREBASE_DATABASE_EMULATOR_HOST) {
   console.error('emu-seed: refusing to run without FIREBASE_DATABASE_EMULATOR_HOST (emulator only)');
   process.exit(1);
 }
-// Admin SDK can't resolve the RTDB namespace from projectId alone — derive the emulator
-// databaseURL with an explicit ns (MUST match check-seed-readiness.js so both hit the same data).
-const PID = process.env.GCLOUD_PROJECT || 'demo-xpizza';
-admin.initializeApp({ projectId: PID, databaseURL: `http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}?ns=${PID}-default-rtdb` });
+// Seed the SAME namespace the deployed function reads (the function's hardcoded prod ns — see
+// deploy/emu-ns.js), so createOrder/getIdentity inside the functions emulator find this identity.
+const { emuDatabaseURL } = require('./emu-ns');
+admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-xpizza', databaseURL: emuDatabaseURL() });
 
 const VALID = {
   name: 'X Pizza', hub_lat: 15.507489753573818, hub_lng: -88.0398486953722, phone: '+50497952893',
