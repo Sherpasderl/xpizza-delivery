@@ -2779,12 +2779,20 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
   // as 0 orders and would let en_route drivers slip past the stacking gate.
   // Counting distinct active order_ids is correct.
   const activeOrdersByDriver = {};
+  const acceptedOrdersByDriver = {};
   for (const taskId of Object.keys(tasks)) {
     const t = tasks[taskId];
     if (!t || !t.assigned_driver_id) continue;
     if (t.status === 'completed' || t.status === 'cancelled') continue;
     if (!activeOrdersByDriver[t.assigned_driver_id]) activeOrdersByDriver[t.assigned_driver_id] = new Set();
     if (t.order_id) activeOrdersByDriver[t.assigned_driver_id].add(t.order_id);
+    // A stack auto-accepts the NEXT order only once the driver has already
+    // ACCEPTED one (matches buildAssignmentUpdates' documented isStacked intent).
+    // Tracked separately from orderCount, which stays the basis for the cap.
+    if (t.status === 'accepted' || t.status === 'in_progress') {
+      if (!acceptedOrdersByDriver[t.assigned_driver_id]) acceptedOrdersByDriver[t.assigned_driver_id] = new Set();
+      if (t.order_id) acceptedOrdersByDriver[t.assigned_driver_id].add(t.order_id);
+    }
   }
 
   const eligible = [];
@@ -2853,7 +2861,8 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
       distanceKm = 0;
     }
     const statusPriority = STATUS_PRIORITY[d.status] ?? 99;
-    eligible.push({ driverId, orderCount, statusPriority, distanceKm, name: d.name || driverId });
+    const hasAcceptedOrder = (acceptedOrdersByDriver[driverId]?.size || 0) > 0;
+    eligible.push({ driverId, orderCount, hasAcceptedOrder, statusPriority, distanceKm, name: d.name || driverId });
   }
 
   if (eligible.length === 0) return null;
@@ -3037,11 +3046,12 @@ exports.autoAssignOnOrderCreate = onValueWritten(
 
     console.log(`autoAssign: assigning ${orderId} → ${chosen.name} (${chosen.distanceKm.toFixed(2)}km, ${chosen.orderCount} active)`);
 
-    // If chosen driver already has an active order, this is a STACK.
-    // Stacked orders skip the swipe-to-accept flow (driver implicitly
-    // accepted by accepting the active order). Tasks start in 'accepted'
-    // state, no countdown chip on driver UI, no timeout monitor concerns.
-    const isStacked = chosen.orderCount > 0;
+    // STACK only when the driver has already ACCEPTED an order (not merely been
+    // assigned one) — so the 2nd order auto-accepts on the driver's first-accept,
+    // never before it. Realigned to buildAssignmentUpdates' documented isStacked
+    // intent; the driver-app acceptTask cascade then accepts the rest of the stack.
+    // (orderCount stays the basis for the 2-order cap, unchanged.)
+    const isStacked = chosen.hasAcceptedOrder;
     if (isStacked) {
       console.log(`autoAssign: ${orderId} is STACKED on ${chosen.name} (already has ${chosen.orderCount} active)`);
     }
