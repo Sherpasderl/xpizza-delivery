@@ -222,6 +222,8 @@
   /* ==================== SCROLLABLE MAIN ==================== */
   main {
     flex: 1;
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
@@ -316,7 +318,8 @@
 
   /* ==================== IDLE STATE ==================== */
   #idle-state {
-    min-height: 100%;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     padding: 24px;
@@ -434,7 +437,7 @@
   .action-zone { margin:11px 13px 0; }
   /* Single-order ("solo") layout: distribute vertical space so the card sits a
      touch below the bar and the nav+slide are evenly spaced, slack pooled below. */
-  #active-order-slot.solo { min-height:100%; display:flex; flex-direction:column; }
+  #active-order-slot.solo { flex:1; min-height:0; display:flex; flex-direction:column; }
   .ao-spacer-top { flex:1; }
   .ao-spacer-bot { flex:2.4; }
   #active-order-slot.solo .active-card { margin-top:0; margin-bottom:0; }
