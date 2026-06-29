@@ -65,7 +65,13 @@ function probePayload(stamp) {
   // C#2 — empirical zero-state proof: nothing was written for the probe id. (order_tracking is
   // token-keyed and rate-limit is bucket-keyed; both are written strictly AFTER the zone-check 400,
   // so their absence follows from orders/{id} being absent — the deterministic keys below are the proof.)
-  admin.initializeApp({ credential: admin.credential.applicationDefault(), databaseURL: process.env.FB_DATABASE_URL });
+  const EMU = process.env.FIREBASE_DATABASE_EMULATOR_HOST;
+  const PID = process.env.GCLOUD_PROJECT || 'demo-xpizza';
+  admin.initializeApp(
+    EMU
+      ? { projectId: PID, databaseURL: `http://${EMU}?ns=${PID}-default-rtdb` } // dry-run: same ns as emu-seed.js
+      : { credential: admin.credential.applicationDefault(), databaseURL: process.env.FB_DATABASE_URL }
+  );
   const db = admin.database();
   const id = payload.order_id;
   for (const p of [`orders/${id}`, `tasks/${id}_pickup`, `tasks/${id}_delivery`]) {
