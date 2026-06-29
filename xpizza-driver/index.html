@@ -2207,6 +2207,8 @@ function renderQueueDetail(o, seq) {
     ${phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(phone).replace(/[^\d+]/g,'')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${String(phone).replace(/\D/g,'')}?text=${encodeURIComponent('Hola, soy del repartidor de X. Pizza.')}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
     <div class="ac-hr"></div>
     <div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${escapeHtml(order.address_detected || o.deliveryTask.destination_address || '—')}</div>${order.address_details ? `<div class="address-detail">"${escapeHtml(order.address_details)}"</div>` : ''}</div></div>
+    ${order.items_text ? `<div class="items-list">${order.items_text.split(',').map(s => `<div class="item">${escapeHtml(s.trim())}</div>`).join('')}</div>` : ''}
+    <div class="ac-hr"></div>
     <div class="payment-row"><div><div class="pay-label">A COBRAR</div><div class="payment-amount"><span class="pay-cur">L</span>${totalFmt}</div></div><div class="payment-method ${paymentClass}">${escapeHtml(paymentChipLabel)}</div></div>
     <div class="nav-row" style="margin-top:14px">
       <a class="nav-btn waze-btn" href="https://waze.com/ul?ll=${targetLat},${targetLng}&navigate=yes" target="_blank" rel="noopener"><span class="nav-icon">${ICONS.nav}</span>Waze</a>
