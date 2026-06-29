@@ -2691,6 +2691,13 @@ const MAX_ATTEMPTS_BEFORE_TAKEOVER = 2;
 // full. Kept identical to the dispatch console's manual-assign guard.
 const STACKABLE_STATUSES = new Set(['available', 'assigned', 'at_restaurant']);
 
+// Unassigned delivery order still needs a driver in these states. Excludes
+// out_for_delivery (already has a driver) + delivered/cancelled (terminal).
+// Replaces the over-broad `status !== 'new'` skip that dropped kitchen-accepted
+// ('preparing') orders during the grace. Vocab confirmed: new·preparing·ready·
+// out_for_delivery·delivered·cancelled.
+const AUTO_ASSIGNABLE_STATUSES = new Set(['new', 'preparing', 'ready']);
+
 // Haversine distance in km between two lat/lng coords
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371; // Earth radius in km
@@ -3006,8 +3013,8 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       console.log(`autoAssign: order ${orderId} disappeared during grace, skipping`);
       return;
     }
-    if (orderNow.status !== 'new') {
-      console.log(`autoAssign: ${orderId} status is now '${orderNow.status}' (not 'new'), skipping`);
+    if (!AUTO_ASSIGNABLE_STATUSES.has(orderNow.status)) {
+      console.log(`autoAssign: ${orderId} status is '${orderNow.status}' (not auto-assignable), skipping`);
       return;
     }
     if (pickup.status === 'cancelled') {
