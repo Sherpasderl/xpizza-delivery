@@ -210,6 +210,7 @@ const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 // ---------------------------------------------------------------------------
 const { MENU_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal } = require('./menu-pricing');
 const MENU_PRICES = MENU_BY_RESTAURANT.x_pizza; // x_pizza table — used by pricedLineItems (factura)
+const { resolveRestaurantId, sameRestaurant } = require('./restaurant-id');
 
 // Strip HTML-significant + control chars and cap length. Defense-in-depth vs
 // stored XSS: even if a downstream HTML sink forgets to escape, no tag can be
@@ -240,7 +241,7 @@ function sanitizePhone(v) {
 // ---------------------------------------------------------------------------
 const { orderBreakdownCents } = require('./order-money');
 
-function validateOrderPayload(body) {
+function validateOrderPayload(body, restaurantId) {
   const errors = [];
   const required = ['order_id', 'customer_name', 'customer_phone', 'items_text', 'order_type'];
   for (const f of required) {
@@ -255,8 +256,8 @@ function validateOrderPayload(body) {
   const lat = asNumber(body.lat);
   const lng = asNumber(body.lng);
 
-  // Recompute total server-side — NEVER trust body.total.
-  const { total, error: totalError } = computeServerTotal(body.items);
+  // Recompute total server-side — NEVER trust body.total. Priced against the order's restaurant menu.
+  const { total, error: totalError } = computeServerTotal(body.items, restaurantId);
   if (totalError) errors.push(totalError);
 
   if (body.order_type === 'delivery') {
@@ -399,9 +400,13 @@ createOrderApp.all('*', async (req, res) => {
   const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
     || req.ip || 'unknown';
 
-  // Parse + validate
+  // Parse + validate. Resolve restaurant_id FIRST — it selects the menu the total is priced
+  // against and gates idempotency + identity below. Missing → x_pizza; unknown → 400.
   const body = req.body || {};
-  const { errors, total, lat, lng, fields } = validateOrderPayload(body);
+  const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id);
+  if (ridError) return badRequest(res, ridError);
+  if (!ridDefaulted) console.log(`createOrder: restaurant_id=${restaurantId}`);
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId);
   if (errors.length > 0) {
     return badRequest(res, errors.join('; '));
   }
@@ -415,6 +420,11 @@ createOrderApp.all('*', async (req, res) => {
   try {
     const existing = await db.ref(`orders/${orderId}`).once('value');
     if (existing.exists()) {
+      // Legacy-normalized compare: a stored order with no restaurant_id is a pre-Phase-0 x_pizza order.
+      if (!sameRestaurant(existing.val().restaurant_id, restaurantId)) {
+        console.warn(`createOrder: ${orderId} exists for a different restaurant — conflict`);
+        return res.status(409).json({ error: 'Order conflict', detail: 'order_id already used for a different restaurant', order_id: orderId });
+      }
       console.log(`createOrder: order ${orderId} already exists, returning idempotent`);
       return res.status(200).json({ ok: true, idempotent: true, order_id: orderId });
     }
@@ -428,14 +438,14 @@ createOrderApp.all('*', async (req, res) => {
   // zone enforcement (clients are bypassable) now uses identity.hub + identity.delivery_radius_km.
   let restIdentity;
   try {
-    restIdentity = await getRestaurantIdentity(db, FACTURA_RESTAURANT_ID);
+    restIdentity = await getRestaurantIdentity(db, restaurantId);
   } catch (e) {
     console.error(`createOrder: config unavailable for ${orderId}: ${e.message}`);
     res.set('Retry-After', '2');
     return res.status(e.statusCode || 503).json({ error: 'Service temporarily unavailable', detail: 'restaurant config unavailable', retryable: true });
   }
   if (!restIdentity.active) {
-    console.warn(`createOrder: ${FACTURA_RESTAURANT_ID} inactive — rejecting ${orderId}`);
+    console.warn(`createOrder: ${restaurantId} inactive — rejecting ${orderId}`);
     return res.status(400).json({ error: 'Restaurant closed', detail: 'Not accepting orders right now' });
   }
   if (orderType === 'delivery') {
@@ -473,8 +483,12 @@ createOrderApp.all('*', async (req, res) => {
   const updates = {};
 
   const trackingToken = generateTrackingToken();
-  const priceBreakdown = orderBreakdownCents(total, FACTURA_RESTAURANT_ID);  // platform → ISV 15% incl.; non-platform → no split
-  const facturaPriced = pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES);
+  const priceBreakdown = orderBreakdownCents(total, restaurantId);  // platform → ISV 15% incl.; non-platform → no split
+  // pricedLineItems feeds order.items, consumed ONLY by the platform factura trigger. Non-platform
+  // restaurants (la_musa — Soft Restaurant POS) opt out → skip it; order.items is then omitted.
+  const facturaPriced = usesPlatformFactura(restaurantId)
+    ? pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES)
+    : { items: null, error: null };
 
   // Cash tendered (FACTURA_PLAN §2): validated >= total (never trust client), defaults to exact
   // (no change) when absent/invalid so a bad value never blocks the order. Money in centavos.
@@ -489,7 +503,7 @@ createOrderApp.all('*', async (req, res) => {
   // field names are load-bearing (driver app, KDS, tracking site, factura trigger).
   Object.assign(updates, buildCreateOrderUpdates({
     orderId, orderType, now, trackingToken, total, lat, lng, fields, hubSnap,
-    restaurantId: FACTURA_RESTAURANT_ID, priceBreakdown, facturaPriced, cashTenderedCents,
+    restaurantId, priceBreakdown, facturaPriced, cashTenderedCents,
   }));
 
   try {
@@ -623,7 +637,10 @@ chargeOnlineApp.all('*', async (req, res) => {
   }
 
   const body = req.body || {};
-  const { errors, total, lat, lng, fields } = validateOrderPayload(body);
+  const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id);
+  if (ridError) return badRequest(res, ridError);
+  if (!ridDefaulted) console.log(`chargeOnlineOrder: restaurant_id=${restaurantId}`);
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId);
   if (errors.length > 0) return badRequest(res, errors.join('; '));
 
   // This endpoint is ONLY for online card payments. cash/card_delivery use createOrder.
@@ -662,13 +679,15 @@ chargeOnlineApp.all('*', async (req, res) => {
     }
   }
 
-  const { total_cents, subtotal_cents, tax_cents } = orderBreakdownCents(total, FACTURA_RESTAURANT_ID);
+  const { total_cents, subtotal_cents, tax_cents } = orderBreakdownCents(total, restaurantId);
   const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text);
 
   // Factura inputs (FACTURA_PLAN §2) — structured priced items for the factura trigger.
   // factura_status starts 'not_due': a pending_payment order is NOT yet a Sale, so it's
   // never reconciled; the trigger only acts once it materializes (status:new + confirmed).
-  const facturaPriced = pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES);
+  const facturaPriced = usesPlatformFactura(restaurantId)
+    ? pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES)
+    : { items: null, error: null };  // non-platform (la_musa) → no factura line items
 
   // The HIDDEN pending order. Mirrors createOrder's orderRecord (so Stage-4
   // confirm can materialize tasks/tracking from it) but status=pending_payment,
@@ -680,7 +699,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     customer_phone: fields.customer_phone,
     items_text: fields.items_text,
     total: total,
-    total_cents, subtotal_cents, tax_cents,   // ISV 15% inclusive breakdown
+    total_cents, subtotal_cents, tax_cents,   // breakdown per restaurant (x_pizza ISV 15% incl.; la_musa no split)
     notes: fields.notes,
     payment_method: 'online',
     payment_status: 'pending',
@@ -688,7 +707,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     status: 'pending_payment',
     created_at: now,
     // --- factura (SAR) fields ---
-    restaurant_id: FACTURA_RESTAURANT_ID,
+    restaurant_id: restaurantId,
     factura_status: 'not_due',
     cash_tendered_cents: 0,                     // online: no cash, CAMBIO 0
     ...(facturaPriced.items ? { items: facturaPriced.items } : {}),
@@ -716,18 +735,24 @@ chargeOnlineApp.all('*', async (req, res) => {
     console.error(`chargeOnlineOrder: order probe failed for ${orderId}`, e.message);
     return res.status(500).json({ error: 'Database error', detail: e.message });
   }
+  // Cross-restaurant reuse guard (legacy-normalized): a charge must not attach to an existing
+  // order_id owned by a different restaurant. Runs before the CAS/fingerprint in acquireHostedAttempt.
+  if (probeOrder && !sameRestaurant(probeOrder.restaurant_id, restaurantId)) {
+    console.warn(`chargeOnlineOrder: ${orderId} exists for a different restaurant — conflict`);
+    return res.status(409).json({ error: 'Order conflict', detail: 'order_id already used for a different restaurant', order_id: orderId });
+  }
   if (!probeOrder) {
     // Fresh pending-order creation → gate + zone + immutable charge-time snapshot BEFORE persistence.
     let id;
     try {
-      id = await getRestaurantIdentity(db, FACTURA_RESTAURANT_ID);
+      id = await getRestaurantIdentity(db, restaurantId);
     } catch (e) {
       console.error(`chargeOnlineOrder: config unavailable for ${orderId}: ${e.message}`);
       res.set('Retry-After', '2');
       return res.status(e.statusCode || 503).json({ error: 'Service temporarily unavailable', detail: 'restaurant config unavailable', retryable: true });
     }
     if (!id.active) {
-      console.warn(`chargeOnlineOrder: ${FACTURA_RESTAURANT_ID} inactive — rejecting ${orderId}`);
+      console.warn(`chargeOnlineOrder: ${restaurantId} inactive — rejecting ${orderId}`);
       return res.status(400).json({ error: 'Restaurant closed', detail: 'Not accepting orders right now' });
     }
     if (orderType === 'delivery') {
