@@ -31,6 +31,7 @@ import {
   serverTimestamp,
   off
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+import { stackedTasksToAccept } from './stacking-helpers.js';
 
 // ============================================================
 // CONSTANTS
@@ -392,6 +393,19 @@ export async function acceptTask(driverId, taskId) {
   updates[`tasks/${taskId}/accepted_at`] = serverTimestamp();
   updates[`drivers/${driverId}/current_task_id`] = taskId;
   updates[`drivers/${driverId}/status`] = DRIVER_STATUS.ASSIGNED;
+
+  // Stacking: accepting the FIRST order auto-accepts the rest of the driver's
+  // assigned stack — the driver takes them all together (the 2nd order auto-
+  // accepts ON this accept, never before it). Scoped to OTHER orders' still-
+  // 'assigned' tasks only, so it's a NO-OP for a lone order AND for today's
+  // auto-assign (where the stacked 2nd is already 'accepted'). The current
+  // order's delivery is untouched here — it's accepted at pickup as before.
+  const allTasksSnap = await get(ref(db, 'tasks'));
+  const allTasks = allTasksSnap.val() || {};
+  for (const tid of stackedTasksToAccept(allTasks, driverId, task.order_id)) {
+    updates[`tasks/${tid}/status`] = TASK_STATUS.ACCEPTED;
+    updates[`tasks/${tid}/accepted_at`] = serverTimestamp();
+  }
   await update(ref(db), updates);
 }
 
