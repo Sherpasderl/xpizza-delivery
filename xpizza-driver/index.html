@@ -453,7 +453,7 @@
   .nav-btn .nav-icon { width:15px; height:15px; display:inline-flex; } .nav-btn .nav-icon svg { width:100%; height:100%; display:block; }
   /* premium slide-to-confirm — white track on canvas, gradient thumb, per-phase color */
   /* premium slide-to-confirm — tall glossy track, recessed groove, breathing thumb, shimmer label */
-  .slide-confirm { position:relative; height:64px; border-radius:19px; background:linear-gradient(180deg,#FFFFFF,#F6F8FB); border:1px solid rgba(20,30,50,.06); box-shadow:0 2px 5px rgba(20,30,50,.05), 0 14px 26px rgba(20,30,50,.10), inset 0 1px 0 #fff; user-select:none; }
+  .slide-confirm { position:relative; height:64px; margin:0 18px; border-radius:19px; background:linear-gradient(180deg,#FFFFFF,#F6F8FB); border:1px solid rgba(20,30,50,.06); box-shadow:0 2px 5px rgba(20,30,50,.05), 0 14px 26px rgba(20,30,50,.10), inset 0 1px 0 #fff; user-select:none; }
   .slide-confirm::before { content:''; position:absolute; inset:6px; border-radius:14px; box-shadow:inset 0 1px 3px rgba(20,30,50,.06); pointer-events:none; z-index:0; }
   .slide-fill { position:absolute; left:0; top:0; bottom:0; width:64px; border-radius:19px; transition:width .2s ease; opacity:0; z-index:1; }
   .slide-confirm.completed .slide-fill { opacity:1; }
@@ -570,9 +570,10 @@
   .qcard .qchev{ color:#C2C9D4; flex-shrink:0; width:16px; height:16px; display:inline-flex; }
   .qcard .qchev svg{ width:100%; height:100%; }
   /* ==================== BOTTOM SHEET (P2 detail) ==================== */
-  .sheet-backdrop{ position:fixed; inset:0; background:rgba(15,20,35,.42); display:none; align-items:flex-end; z-index:200; }
-  .sheet-backdrop.open{ display:flex; }
-  .sheet{ width:100%; background:var(--surface); border-radius:22px 22px 0 0; padding:8px 16px calc(20px + var(--safe-bottom)); box-shadow:0 -10px 30px rgba(0,0,0,.18); max-height:88vh; overflow-y:auto; }
+  .sheet-backdrop{ position:fixed; inset:0; background:rgba(15,20,35,.42); display:flex; align-items:flex-end; z-index:200; opacity:0; pointer-events:none; transition:opacity .22s ease; }
+  .sheet-backdrop.open{ opacity:1; pointer-events:auto; }
+  .sheet{ width:100%; background:var(--surface); border-radius:22px 22px 0 0; padding:8px 16px calc(20px + var(--safe-bottom)); box-shadow:0 -10px 30px rgba(0,0,0,.18); max-height:88vh; overflow-y:auto; transform:translateY(100%); transition:transform .3s cubic-bezier(.22,1,.36,1); }
+  .sheet-backdrop.open .sheet{ transform:translateY(0); }
   .sheet .grab{ width:38px; height:4px; border-radius:3px; background:var(--border); margin:6px auto 12px; }
   .sh-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:13px; }
   .sh-name{ font-size:21px; font-weight:800; letter-spacing:-.02em; color:var(--text); }
@@ -1087,7 +1088,7 @@ import { computeVuelto, vueltoSuggestions, computeShiftCash } from './cash-helpe
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '2.1.0';
+const SYSTEM_VERSION = '2.1.1';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
