@@ -217,6 +217,20 @@ export async function endShift(driverId) {
 }
 
 /**
+ * Record the clock-out cash cuadre (the driver↔office handoff artifact).
+ * cash_owed = Σ order.total for efectivo deliveries this shift (server-truth, no
+ * driver-entered figure). Path: /driver_cash/{uid}/{shift_id}/cuadre.
+ */
+export async function recordCuadre(driverId, shiftId, { cash_owed, cash_order_count }) {
+  if (!driverId || !shiftId) return;
+  await update(ref(db, `driver_cash/${driverId}/${shiftId}/cuadre`), {
+    cash_owed,
+    cash_order_count,
+    closed_at: serverTimestamp()
+  });
+}
+
+/**
  * Update driver location and run geofence transition logic.
  * Call this from `navigator.geolocation.watchPosition` callback.
  */

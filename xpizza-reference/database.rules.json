@@ -98,6 +98,20 @@
       }
     },
 
+    "driver_cash": {
+      "$driver_id": {
+        ".read": "auth != null && (auth.uid === $driver_id || root.child('dispatchers').child(auth.uid).exists())",
+        ".write": "auth != null && auth.uid === $driver_id",
+        "$shift_id": {
+          "cuadre": {
+            ".validate": "newData.hasChildren(['cash_owed','cash_order_count','closed_at'])",
+            "cash_owed": { ".validate": "newData.isNumber()" },
+            "cash_order_count": { ".validate": "newData.isNumber()" },
+            "closed_at": { ".validate": "newData.isNumber()" }
+          }
+        }
+      }
+    },
     "driver_push_tokens": { ".read": false, ".write": false },
     "driver_tokens":      { ".read": false, ".write": false },
 

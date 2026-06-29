@@ -556,6 +556,70 @@
     flex-shrink: 0;
   }
 
+  /* ==================== STACKED-ORDER QUEUE (P2) ==================== */
+  .qsection{ margin:22px 13px 14px; }
+  .qsection .qlabel{ font-size:10.5px; letter-spacing:.1em; font-weight:800; color:var(--text-soft); text-transform:uppercase; margin:0 2px 10px; }
+  .qcard{ display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid rgba(20,30,50,.05); border-radius:15px; padding:13px 14px; box-shadow:0 1px 2px rgba(20,30,50,.04),0 6px 16px rgba(20,30,50,.05); margin-bottom:10px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .qcard:active{ background:#FBFCFD; }
+  .qcard .seq{ width:30px; height:30px; border-radius:10px; background:var(--surface-2); color:var(--text-dim); font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .qcard .qmid{ flex:1; min-width:0; }
+  .qcard .qname{ font-size:15px; font-weight:800; color:var(--text); letter-spacing:-.01em; }
+  .qcard .qaddr{ font-size:12px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+  .qcard .qpay{ font-size:11.5px; font-weight:800; color:var(--green); background:var(--green-bg); padding:5px 9px; border-radius:8px; flex-shrink:0; }
+  .qcard .qpay.card{ color:var(--maps); background:var(--maps-bg); }
+  .qcard .qchev{ color:#C2C9D4; flex-shrink:0; width:16px; height:16px; display:inline-flex; }
+  .qcard .qchev svg{ width:100%; height:100%; }
+  /* ==================== BOTTOM SHEET (P2 detail) ==================== */
+  .sheet-backdrop{ position:fixed; inset:0; background:rgba(15,20,35,.42); display:none; align-items:flex-end; z-index:200; }
+  .sheet-backdrop.open{ display:flex; }
+  .sheet{ width:100%; background:var(--surface); border-radius:22px 22px 0 0; padding:8px 16px calc(20px + var(--safe-bottom)); box-shadow:0 -10px 30px rgba(0,0,0,.18); max-height:88vh; overflow-y:auto; }
+  .sheet .grab{ width:38px; height:4px; border-radius:3px; background:var(--border); margin:6px auto 12px; }
+  .sh-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:13px; }
+  .sh-name{ font-size:21px; font-weight:800; letter-spacing:-.02em; color:var(--text); }
+  .sh-pill{ font-size:9.5px; letter-spacing:.08em; font-weight:800; color:var(--text-dim); background:var(--surface-2); padding:5px 10px; border-radius:8px; }
+  .locked{ display:flex; align-items:center; gap:9px; background:#F7F9FB; border:1px solid var(--line); border-radius:12px; padding:11px 13px; margin:13px 0; font-size:12px; font-weight:600; color:var(--text-dim); }
+  .locked .ico{ width:15px; height:15px; color:var(--text-dim); flex-shrink:0; }
+  .sheet-close{ width:100%; padding:14px; border-radius:14px; background:var(--surface-2); color:var(--text); font-weight:800; font-size:14px; border:none; font-family:inherit; cursor:pointer; }
+
+  /* ---- active-card exact-change line (P3) ---- */
+  .paywith{ display:flex; align-items:center; gap:9px; margin-top:13px; background:var(--green-bg); border-radius:12px; padding:11px 13px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .paywith .ico{ width:16px; height:16px; color:var(--green); flex-shrink:0; }
+  .paywith .pw-t{ flex:1; font-size:13px; font-weight:700; color:#2A7C53; } .paywith .pw-t b{ color:var(--green); font-weight:800; }
+  .paywith .pw-chev{ color:#9AD3B4; width:15px; height:15px; flex-shrink:0; display:inline-flex; } .paywith .pw-chev svg{ width:100%; height:100%; }
+  /* ---- vuelto sheet (P3) ---- */
+  .vt-title{ font-size:18px; font-weight:800; color:var(--text); text-align:center; margin-bottom:4px; }
+  .vt-sub{ font-size:12px; color:var(--text-dim); text-align:center; margin-bottom:18px; line-height:1.4; }
+  .vt-total{ display:flex; align-items:center; justify-content:space-between; background:#F7F9FB; border-radius:13px; padding:13px 15px; margin-bottom:14px; }
+  .vt-total .l{ font-size:12.5px; font-weight:700; color:var(--text-dim); } .vt-total .v{ font-size:17px; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }
+  .vt-inlbl{ font-size:11px; letter-spacing:.06em; font-weight:800; color:var(--text-dim); text-transform:uppercase; margin:0 2px 7px; }
+  .vt-input{ display:flex; align-items:center; background:var(--surface); border:1.5px solid var(--border); border-radius:13px; padding:6px 15px; margin-bottom:12px; }
+  .vt-input > span{ font-size:20px; font-weight:800; color:var(--text-dim); margin-right:6px; }
+  .vt-input input{ flex:1; border:none; outline:none; background:transparent; font-family:inherit; font-size:20px; font-weight:800; color:var(--text); padding:7px 0; width:100%; }
+  .vt-chips{ display:flex; gap:8px; margin-bottom:18px; }
+  .vt-chip{ flex:1; text-align:center; padding:10px 0; border-radius:11px; background:var(--surface-2); font-size:13px; font-weight:800; color:var(--text); cursor:pointer; border:none; font-family:inherit; }
+  .vt-chip.on{ background:#FFEDE4; color:var(--accent); }
+  .vt-result{ display:flex; align-items:center; justify-content:space-between; background:var(--green-bg); border-radius:14px; padding:15px 17px; margin-bottom:16px; }
+  .vt-result.hidden{ display:none; }
+  .vt-result .l{ font-size:13px; font-weight:800; color:var(--green); } .vt-result .v{ font-size:28px; font-weight:800; color:var(--green); letter-spacing:-.02em; font-variant-numeric:tabular-nums; } .vt-result .v span{ font-size:17px; }
+  .vt-done{ width:100%; padding:14px; border-radius:14px; background:var(--surface-2); color:var(--text); font-weight:800; font-size:14px; border:none; font-family:inherit; cursor:pointer; }
+
+  /* ==================== CLOCK-OUT CUADRE (P3) ==================== */
+  #cuadre-screen{ position:fixed; inset:0; background:var(--canvas); z-index:250; display:none; flex-direction:column; justify-content:center; overflow-y:auto; padding:calc(28px + var(--safe-top)) 18px calc(20px + var(--safe-bottom)); }
+  #cuadre-screen.open{ display:flex; }
+  .receipt{ background:var(--surface); border-radius:18px; box-shadow:0 1px 2px rgba(20,30,50,.04),0 10px 26px rgba(20,30,50,.08); padding:20px 18px; border:1px solid rgba(20,30,50,.05); max-width:360px; width:100%; margin:auto; }
+  .rc-title{ text-align:center; font-size:13px; letter-spacing:.16em; font-weight:800; color:var(--text); text-transform:uppercase; margin-bottom:3px; }
+  .rc-date{ text-align:center; font-size:11.5px; color:var(--text-dim); margin-bottom:16px; }
+  .dash{ border:none; border-top:1.5px dashed #DDE2E9; margin:14px 0; }
+  .rc-row{ display:flex; align-items:center; justify-content:space-between; padding:6px 0; }
+  .rc-row .l{ font-size:13px; color:var(--text-soft); font-weight:600; } .rc-row .v{ font-size:14px; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }
+  .rc-big{ background:var(--green-bg); border-radius:14px; padding:16px; text-align:center; margin:6px 0 4px; }
+  .rc-big .l{ font-size:10.5px; letter-spacing:.12em; font-weight:800; color:var(--green); text-transform:uppercase; margin-bottom:5px; }
+  .rc-big .v{ font-size:34px; font-weight:800; color:var(--green); letter-spacing:-.025em; font-variant-numeric:tabular-nums; } .rc-big .v span{ font-size:20px; }
+  .rc-note{ text-align:center; font-size:12px; color:var(--text-dim); margin:13px 6px 0; line-height:1.4; }
+  .rc-confirm{ width:100%; padding:15px; border-radius:15px; background:linear-gradient(180deg,#FB5616,#F23E00); color:#fff; font-weight:800; font-size:14.5px; border:none; font-family:inherit; box-shadow:0 6px 16px rgba(242,62,0,.32); margin-top:16px; cursor:pointer; }
+  .rc-confirm:disabled{ opacity:.6; }
+  .rc-back{ width:100%; padding:12px; background:none; border:none; color:var(--text-dim); font-weight:700; font-size:13px; font-family:inherit; margin-top:6px; cursor:pointer; }
+
   /* ==================== NOTIFICATION BANNER ==================== */
   .notif-banner {
     margin: 0 14px 12px;
@@ -980,6 +1044,14 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
+<!-- Queue detail sheet (view-only) -->
+<div class="sheet-backdrop" id="queue-sheet"><div class="sheet" id="queue-sheet-body"></div></div>
+
+<!-- Vuelto sheet (ephemeral) -->
+<div class="sheet-backdrop" id="vuelto-sheet"><div class="sheet" id="vuelto-sheet-body"></div></div>
+<!-- Clock-out cuadre (cash handoff) -->
+<div id="cuadre-screen"><div class="receipt" id="cuadre-receipt"></div></div>
+
 <!-- Hidden audio for new-task chime -->
 <!-- ======================================================== -->
 <!-- HISTORY MODAL — driver's deliveries today -->
@@ -1010,11 +1082,12 @@
 import * as XPD from './xpizza-delivery.js?v=16';
 import { isNative, initNativePush, unregisterNativePush, clearDeliveredNotifications } from './native-push.js';
 import { startNativeTracking, stopNativeTracking, pingNativeLocation } from './native-location.js';
+import { computeVuelto, vueltoSuggestions, computeShiftCash } from './cash-helpers.js';
 
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '2.0.3';
+const SYSTEM_VERSION = '2.1.0';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -1290,13 +1363,39 @@ async function handleStartShift() {
   }
 }
 
+// Clock-out now goes through the cuadre (cash handoff) screen instead of a
+// confirm() dialog. handleEndShift just shows it; the buttons drive the rest.
 async function handleEndShift() {
   if (!currentUser) return;
-  if (!confirm('¿Terminar el turno?')) return;
+  showCuadre();
+}
+
+function showCuadre() {
+  const shiftStart = (driverState && typeof driverState.shift_started_at === 'number')
+    ? driverState.shift_started_at : todayMidnightMs();
+  const cash = computeShiftCash(allTasks, allOrders, currentUser.uid, shiftStart);
+  const now = new Date();
+  const dateStr = `Hoy · ${now.toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit' })}`;
+  $('cuadre-receipt').innerHTML = `
+    <div class="rc-title">Cierre de turno</div>
+    <div class="rc-date">${dateStr}</div>
+    <hr class="dash">
+    <div class="rc-row"><span class="l">Entregas</span><span class="v">${cash.deliveries}</span></div>
+    <div class="rc-row"><span class="l">Total cobrado</span><span class="v">L ${cash.totalCollected.toLocaleString('es-HN')}</span></div>
+    <div class="rc-row"><span class="l">Pedidos en efectivo</span><span class="v">${cash.cashOrderCount}</span></div>
+    <hr class="dash">
+    <div class="rc-big"><div class="l">Efectivo a entregar</div><div class="v"><span>L</span> ${cash.cashOwed.toLocaleString('es-HN')}</div></div>
+    <div class="rc-note">Mostrá esta pantalla a quien recibe el efectivo.</div>
+    <button class="rc-confirm" id="cuadre-confirm">Confirmar entrega de efectivo</button>
+    <button class="rc-back" id="cuadre-back">Volver</button>`;
+  $('cuadre-screen')._cash = cash;
+  $('cuadre-screen').classList.add('open');
+}
+
+async function finalizeEndShift() {
   await cleanupShift();
   if (isNative()) {
-    // Native: stop background GPS + revoke the ingest token (endDriverShift
-    // also clocks the driver off server-side).
+    // Native: stop background GPS + revoke the ingest token.
     await stopNativeTracking(XPD.getAuthInstance().app);
   } else {
     await XPD.endShift(currentUser.uid);
@@ -1335,6 +1434,54 @@ $('idle-help-link').addEventListener('click', () => {
     '• Las notificaciones están desactivadas\n\n' +
     'Si crees que algo está mal, contacta al despachador.'
   );
+});
+
+// Stacked-order queue → view-only detail sheet
+$('queue-slot').addEventListener('click', (e) => {
+  const card = e.target.closest('.qcard');
+  if (!card) return;
+  const i = Number(card.getAttribute('data-q'));
+  const o = queuedOrders[i];
+  if (!o) return;
+  $('queue-sheet-body').innerHTML = renderQueueDetail(o, i + 2);
+  $('queue-sheet').classList.add('open');
+});
+$('queue-sheet').addEventListener('click', (e) => {
+  if (e.target.id === 'queue-sheet' || e.target.id === 'queue-sheet-close') {
+    $('queue-sheet').classList.remove('open');
+  }
+});
+
+// Vuelto: open from the active card's paywith line / Calcular-vuelto link
+$('active-order-slot').addEventListener('click', (e) => {
+  const trigger = e.target.closest('[data-vuelto-open]');
+  if (!trigger) return;
+  openVuelto(Number(trigger.getAttribute('data-total')) || 0, trigger.getAttribute('data-tendered'));
+});
+$('vuelto-sheet').addEventListener('click', (e) => {
+  if (e.target.id === 'vuelto-sheet' || e.target.id === 'vuelto-done') $('vuelto-sheet').classList.remove('open');
+});
+
+// Cuadre screen: Volver cancels, Confirmar writes the record then ends the shift
+$('cuadre-screen').addEventListener('click', async (e) => {
+  if (e.target.id === 'cuadre-back') { $('cuadre-screen').classList.remove('open'); return; }
+  if (e.target.id === 'cuadre-confirm') {
+    const btn = e.target;
+    btn.disabled = true;
+    const cash = $('cuadre-screen')._cash || {};
+    try {
+      if (driverState && driverState.current_shift_id) {
+        await XPD.recordCuadre(currentUser.uid, driverState.current_shift_id, {
+          cash_owed: cash.cashOwed || 0,
+          cash_order_count: cash.cashOrderCount || 0
+        });
+      }
+    } catch (err) {
+      console.warn('cuadre write failed (continuing clock-out):', err);
+    }
+    $('cuadre-screen').classList.remove('open');
+    await finalizeEndShift();
+  }
 });
 
 async function cleanupShift() {
@@ -1650,6 +1797,7 @@ function computeReturnEta(lat, lng) {
   return Math.max(1, Math.round(minutes));
 }
 
+let queuedOrders = [];
 function renderActiveAndQueue() {
   const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);
   const idleSlot = $('idle-state');
@@ -1661,6 +1809,7 @@ function renderActiveAndQueue() {
     activeSlot.classList.remove('solo');   // drop the full-height solo layout, else the empty slot leaves a blank screen
     activeSlot.innerHTML = '';
     queueSlot.innerHTML = '';
+    queuedOrders = [];
     renderIdleState();
     return;
   }
@@ -1670,6 +1819,7 @@ function renderActiveAndQueue() {
   const solo = rest.length === 0;
   activeSlot.classList.toggle('solo', solo);
   activeSlot.innerHTML = renderActiveCard(active, solo);
+  queuedOrders = rest;
   queueSlot.innerHTML = renderQueue(rest);
 
   attachActiveCardHandlers(active);
@@ -1716,6 +1866,35 @@ function renderIdleState() {
     arriveBtn.classList.add('hidden');
   }
   syncIdleStats();
+}
+
+function openVuelto(total, tenderedPrefill) {
+  const t = Number(total) || 0;
+  const sugg = vueltoSuggestions(t);
+  const body = $('vuelto-sheet-body');
+  body.innerHTML = `
+    <div class="grab"></div>
+    <div class="vt-title">Vuelto</div>
+    <div class="vt-sub">El cliente indicó este monto al ordenar — editá solo si paga con otra cosa</div>
+    <div class="vt-total"><span class="l">Total del pedido</span><span class="v">L ${t.toLocaleString('es-HN')}</span></div>
+    <div class="vt-inlbl">Cliente paga con</div>
+    <div class="vt-input"><span>L</span><input id="vt-tendered" inputmode="numeric" type="text" value="${tenderedPrefill != null && tenderedPrefill !== '' ? tenderedPrefill : ''}" placeholder="0"></div>
+    <div class="vt-chips">${sugg.map(s => `<button class="vt-chip" data-amt="${s}">L ${s.toLocaleString('es-HN')}</button>`).join('')}</div>
+    <div class="vt-result hidden" id="vt-result"><span class="l">VUELTO</span><span class="v"><span>L</span> <span id="vt-amount">0</span></span></div>
+    <button class="vt-done" id="vuelto-done">Listo</button>`;
+  const input = $('vt-tendered');
+  const resultEl = $('vt-result');
+  const amountEl = $('vt-amount');
+  function recompute() {
+    const v = computeVuelto(t, input.value);
+    if (v == null) { resultEl.classList.add('hidden'); }
+    else { amountEl.textContent = v.toLocaleString('es-HN'); resultEl.classList.remove('hidden'); }
+    body.querySelectorAll('.vt-chip').forEach(c => c.classList.toggle('on', Number(c.getAttribute('data-amt')) === Number(input.value)));
+  }
+  input.addEventListener('input', recompute);
+  body.querySelectorAll('.vt-chip').forEach(c => c.addEventListener('click', () => { input.value = c.getAttribute('data-amt'); recompute(); }));
+  recompute();
+  $('vuelto-sheet').classList.add('open');
 }
 
 function renderActiveCard(o, solo) {
@@ -1807,7 +1986,15 @@ function renderActiveCard(o, solo) {
       ${order.items_text ? `<div class="items-list">${order.items_text.split(',').map(s => `<div class="item">${escapeHtml(s.trim())}</div>`).join('')}</div>` : ''}
       <div class="ac-hr"></div>
       <div class="payment-row"><div><div class="pay-label">A COBRAR</div><div class="payment-amount"><span class="pay-cur">L</span>${totalFmt}</div></div><div class="payment-method ${paymentClass}">${escapeHtml(paymentChipLabel)}</div></div>
-      ${isCash ? `<div class="vuelto" data-vuelto="${Number(order.total)||0}"><span class="ico">${ICONS.cash}</span>Calcular vuelto</div>` : ''}
+      ${(() => {
+        if (!isCash) return '';
+        const tendered = (Number(order.cash_tendered_cents) || 0) / 100;
+        const change = computeVuelto(order.total, tendered);
+        if (change != null) {
+          return `<div class="paywith" data-vuelto-open data-total="${Number(order.total)||0}" data-tendered="${tendered}"><span class="ico">${ICONS.cash}</span><div class="pw-t">Paga con <b>L ${tendered.toLocaleString('es-HN')}</b> · Vuelto <b>L ${change.toLocaleString('es-HN')}</b></div><span class="ico pw-chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span></div>`;
+        }
+        return `<div class="vuelto" data-vuelto-open data-total="${Number(order.total)||0}"><span class="ico">${ICONS.cash}</span>Calcular vuelto</div>`;
+      })()}
     </div>
     <div class="action-zone">
       ${navBlock}
@@ -1976,35 +2163,56 @@ function attachSlideConfirm(elementId, onConfirm) {
 
 function renderQueue(orders) {
   if (orders.length === 0) return '';
+  const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
   return `
-    <div class="queue-section">
-      <div class="section-label">En cola <span class="count-badge">${orders.length}</span></div>
-      ${orders.map(o => {
+    <div class="qsection">
+      <div class="qlabel">Orden de despacho</div>
+      ${orders.map((o, i) => {
         const order = o.order || {};
-        const total = order.total != null ? `L${order.total}` : '—';
+        const isCash = /efectivo|cash/i.test(order.payment_method || '');
+        const isCard = /tarjeta|pixel|card/i.test(order.payment_method || '');
+        const payClass = isCash ? '' : isCard ? 'card' : '';
+        const payLabel = isCash ? `L ${Number(order.total || 0).toLocaleString('es-HN')}` : isCard ? 'Tarjeta' : (order.payment_method || '—');
+        const name = order.customer_name || o.deliveryTask.recipient_name || '—';
         const addr = order.address_detected || o.deliveryTask.destination_address || '—';
-        // Stacked orders are already accepted (no countdown chip needed) —
-        // show the green PRÓXIMO badge so driver knows it's next in line
-        // but doesn't need to do anything until they finish the active one.
-        const isAccepted = o.pickupTask.status === 'accepted'
-                        || o.pickupTask.status === 'completed'
-                        || o.deliveryTask.status === 'accepted';
-        const badge = isAccepted ? '<span class="qc-proximo-badge">PRÓXIMO</span>' : '';
         return `
-          <div class="queue-card">
-            <div class="qc-info">
-              <div class="qc-name-row">
-                <div class="qc-name">${escapeHtml(order.customer_name || o.deliveryTask.recipient_name || '—')}</div>
-                ${badge}
-              </div>
-              <div class="qc-addr">${escapeHtml(addr)}</div>
+          <div class="qcard" data-q="${i}">
+            <div class="seq">${i + 2}º</div>
+            <div class="qmid">
+              <div class="qname">${escapeHtml(name)}</div>
+              <div class="qaddr">${escapeHtml(addr)}</div>
             </div>
-            <div class="qc-total mono">${total}</div>
-          </div>
-        `;
+            <span class="qpay ${payClass}">${escapeHtml(payLabel)}</span>
+            <span class="qchev">${CHEV}</span>
+          </div>`;
       }).join('')}
+    </div>`;
+}
+
+function renderQueueDetail(o, seq) {
+  const order = o.order || {};
+  const name = order.customer_name || o.deliveryTask.recipient_name || '—';
+  const targetLat = order.lat || o.deliveryTask.destination_lat;
+  const targetLng = order.lng || o.deliveryTask.destination_lng;
+  const isCash = /efectivo|cash/i.test(order.payment_method || '');
+  const isCard = /tarjeta|pixel|card/i.test(order.payment_method || '');
+  const paymentClass = isCash ? 'cash' : isCard ? 'card' : '';
+  const paymentChipLabel = isCash ? 'Efectivo' : isCard ? 'Tarjeta' : (order.payment_method || '—');
+  const totalFmt = order.total != null ? Number(order.total).toLocaleString('es-HN') : '—';
+  const phone = order.customer_phone;
+  return `
+    <div class="grab"></div>
+    <div class="sh-head"><div class="sh-name">${escapeHtml(name)}</div><span class="sh-pill">${seq}º · EN COLA</span></div>
+    ${phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(phone).replace(/[^\d+]/g,'')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${String(phone).replace(/\D/g,'')}?text=${encodeURIComponent('Hola, soy del repartidor de X. Pizza.')}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
+    <div class="ac-hr"></div>
+    <div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${escapeHtml(order.address_detected || o.deliveryTask.destination_address || '—')}</div>${order.address_details ? `<div class="address-detail">"${escapeHtml(order.address_details)}"</div>` : ''}</div></div>
+    <div class="payment-row"><div><div class="pay-label">A COBRAR</div><div class="payment-amount"><span class="pay-cur">L</span>${totalFmt}</div></div><div class="payment-method ${paymentClass}">${escapeHtml(paymentChipLabel)}</div></div>
+    <div class="nav-row" style="margin-top:14px">
+      <a class="nav-btn waze-btn" href="https://waze.com/ul?ll=${targetLat},${targetLng}&navigate=yes" target="_blank" rel="noopener"><span class="nav-icon">${ICONS.nav}</span>Waze</a>
+      <a class="nav-btn maps-btn" href="https://www.google.com/maps/dir/?api=1&destination=${targetLat},${targetLng}&travelmode=driving" target="_blank" rel="noopener"><span class="nav-icon">${ICONS.nav}</span>Maps</a>
     </div>
-  `;
+    <div class="locked"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>Orden de entrega asignada por despacho.</div>
+    <button class="sheet-close" id="queue-sheet-close">Cerrar</button>`;
 }
 
 // ============================================================
