@@ -232,18 +232,13 @@ function sanitizePhone(v) {
 }
 
 // ---------------------------------------------------------------------------
-// Canonical money. `total_cents` (integer HNL centavos) is the source of truth
-// for charges + comparisons. ISV 15% is tax-INCLUSIVE: the menu price IS what
-// the customer pays, so we break the tax OUT of the total with a fixed rounding
-// rule that guarantees subtotal_cents + tax_cents === total_cents exactly.
-// (Stored on EVERY order — cash too — so the factura/SAR system has the breakdown.)
+// Canonical money — priceBreakdownCents (ISV 15% tax-inclusive split, the
+// platform-factura breakdown) + the restaurant-aware orderBreakdownCents now live
+// in ./order-money (pure, unit-tested). Platform-factura restaurants (x_pizza) get
+// the 15% split; non-platform (la_musa — Soft Restaurant POS factura) get NO split
+// (subtotal == total, tax_cents:0). subtotal_cents + tax_cents === total_cents always.
 // ---------------------------------------------------------------------------
-function priceBreakdownCents(totalLempiras) {
-  const total_cents = Math.round(Number(totalLempiras) * 100);
-  const tax_cents = Math.round(total_cents - total_cents / 1.15);
-  const subtotal_cents = total_cents - tax_cents;
-  return { total_cents, subtotal_cents, tax_cents };
-}
+const { orderBreakdownCents } = require('./order-money');
 
 function validateOrderPayload(body) {
   const errors = [];
@@ -478,7 +473,7 @@ createOrderApp.all('*', async (req, res) => {
   const updates = {};
 
   const trackingToken = generateTrackingToken();
-  const priceBreakdown = priceBreakdownCents(total);  // total_cents / subtotal_cents / tax_cents (ISV 15% incl.)
+  const priceBreakdown = orderBreakdownCents(total, FACTURA_RESTAURANT_ID);  // platform → ISV 15% incl.; non-platform → no split
   const facturaPriced = pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES);
 
   // Cash tendered (FACTURA_PLAN §2): validated >= total (never trust client), defaults to exact
@@ -667,7 +662,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     }
   }
 
-  const { total_cents, subtotal_cents, tax_cents } = priceBreakdownCents(total);
+  const { total_cents, subtotal_cents, tax_cents } = orderBreakdownCents(total, FACTURA_RESTAURANT_ID);
   const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text);
 
   // Factura inputs (FACTURA_PLAN §2) — structured priced items for the factura trigger.
