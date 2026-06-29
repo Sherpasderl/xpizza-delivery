@@ -45,12 +45,19 @@ const noLeak = (u) => assert(!/_source|_fetched_at/.test(JSON.stringify(u)), 're
     destination_lat: HUB.hub_lat, destination_lng: HUB.hub_lng, destination_address: 'X Pizza',
     recipient_name: 'X Pizza', recipient_phone: '+50497952893', notes: 'Pizza x1', created_at: 111,
   });
-  assert.equal(u['tasks/ORD1_delivery'].destination_lat, 15.6);
-  assert.equal(u['tasks/ORD1_delivery'].recipient_name, 'Ana');
-  assert.equal(u['order_tracking/TOK'].address_short, 'Calle 1');
-  assert.equal(u['order_tracking/TOK'].status, 'new');
+  assert.deepEqual(u['tasks/ORD1_delivery'], {
+    order_id: 'ORD1', type: 'delivery', status: 'pending', assigned_driver_id: null,
+    linked_task_id: 'ORD1_pickup', depends_on_task_id: 'ORD1_pickup',
+    destination_lat: 15.6, destination_lng: -88.1, destination_address: 'Calle 1, Col Centro, SPS',
+    address_details: 'casa azul', recipient_name: 'Ana', recipient_phone: '+50499999999',
+    payment_method: 'cash', total: 350, notes: 'Pizza x1', created_at: 111,
+  });
+  assert.deepEqual(u['order_tracking/TOK'], {
+    order_id: 'ORD1', order_type: 'delivery', customer_name: 'Ana', items_text: 'Pizza x1',
+    total: 350, address_short: 'Calle 1', status: 'new', created_at: 111,
+  });
   noLeak(u);
-  ok('cash delivery: order byte-identical + snapshot-only addition; tasks + tracking correct');
+  ok('cash delivery: order + pickup + delivery + tracking ALL byte-identical (full deep-equal)');
 }
 
 // ── Combo 2: CASH PICKUP ──────────────────────────────────────────────────
@@ -76,9 +83,12 @@ const noLeak = (u) => assert(!/_source|_fetched_at/.test(JSON.stringify(u)), 're
   assert.deepEqual(snap, HUB);
   assert.equal(u['tasks/ORD2_pickup'], undefined);   // pickup orders create no driver tasks
   assert.equal(u['tasks/ORD2_delivery'], undefined);
-  assert.equal(u['order_tracking/TOK2'].address_short, 'Recoger en X. Pizza');
+  assert.deepEqual(u['order_tracking/TOK2'], {
+    order_id: 'ORD2', order_type: 'pickup', customer_name: 'Ben', items_text: 'Calzone x2',
+    total: 200, address_short: 'Recoger en X. Pizza', status: 'new', created_at: 222,
+  });
   noLeak(u);
-  ok('cash pickup: order byte-identical + snapshot-only; no tasks; pickup tracking copy');
+  ok('cash pickup: order + tracking ALL byte-identical (full deep-equal); no tasks');
 }
 
 console.log(`create-order-build: OK (${n} cases)`);
