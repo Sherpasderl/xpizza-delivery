@@ -32,6 +32,12 @@ import {
   off
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
 
+// Order-status vocab + the live/restaurant order filter + the KDS host classifier live in a
+// dependency-free module so they're node-testable. import-then-export gives LOCAL bindings (the
+// SDK's internal ORDER_STATUS uses resolve) AND keeps XPD.* consumers unchanged.
+import { ORDER_STATUS, NON_LIVE_ORDER_STATUSES, filterLiveOrders, kdsRestaurantFromHost } from './order-filter.js';
+export { ORDER_STATUS, NON_LIVE_ORDER_STATUSES, filterLiveOrders };
+
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -43,6 +49,10 @@ export const RESTAURANT = {
   name: 'X Pizza',
   phone: '+50497952893'
 };
+
+// This KDS instance is pinned to one restaurant by hostname (the La Musa KDS is a separate Netlify
+// site). Pure classifier lives in order-filter.js (node-testable); the location read stays here.
+export const KDS_RESTAURANT_ID = kdsRestaurantFromHost(globalThis.location?.hostname || '');
 
 export const DRIVER_STATUS = {
   OFF_SHIFT: 'off_shift',
@@ -68,15 +78,6 @@ export const TASK_TYPE = {
   DELIVERY: 'delivery'
 };
 
-export const ORDER_STATUS = {
-  PENDING_PAYMENT: 'pending_payment',   // online order awaiting payment — NOT operationally live
-  NEW: 'new',
-  PREPARING: 'preparing',
-  READY: 'ready',
-  OUT_FOR_DELIVERY: 'out_for_delivery',
-  DELIVERED: 'delivered',
-  CANCELLED: 'cancelled'
-};
 
 // Payment axis (online orders) — orthogonal to order.status; never cross-tested.
 export const PAYMENT_STATUS = {
@@ -98,20 +99,6 @@ export const PAYMENT_ATTEMPT_STATUS = {
   REFUNDED: 'refunded'
 };
 
-// Order statuses that are NOT operationally live (hidden from every /orders
-// reader — KDS, dispatch, driver, dashboard — so an unpaid online order never
-// appears as a real order). Live = anything not in this set.
-export const NON_LIVE_ORDER_STATUSES = new Set([ORDER_STATUS.PENDING_PAYMENT]);
-
-export function filterLiveOrders(orders) {
-  const out = {};
-  for (const id of Object.keys(orders || {})) {
-    const o = orders[id];
-    if (o && NON_LIVE_ORDER_STATUSES.has(o.status)) continue;
-    out[id] = o;
-  }
-  return out;
-}
 
 const STALE_PING_THRESHOLD_S = 90;
 
@@ -297,6 +284,17 @@ export async function setDriverStatus(driverId, status) {
  * drivers can write status only via their assigned tasks.
  */
 export async function setOrderStatus(orderId, status) {
+  // KDS write guard (defense-in-depth, plan step 14): the La Musa KDS mutates ONLY its own orders
+  // (a stale tab could hold a since-reassigned order). The X. Pizza KDS is the everything-else
+  // bucket and its display filter already excludes la_musa → no guard-read (true no-op). Fail-closed:
+  // absent restaurant_id / read failure on the La Musa KDS → no write.
+  if (KDS_RESTAURANT_ID === 'la_musa') {
+    const rid = (await get(ref(db, `orders/${orderId}/restaurant_id`))).val();
+    if (rid !== 'la_musa') {
+      console.warn(`setOrderStatus: ${orderId} (restaurant_id=${rid}) not owned by La Musa KDS, skipping`);
+      return;
+    }
+  }
   await update(ref(db, `orders/${orderId}`), { status });
 }
 
@@ -470,7 +468,7 @@ export function subscribeToOrders(callback) {
   const ordersRef = ref(db, 'orders');
   // Filter out non-live (e.g. unpaid pending_payment) orders centrally so no
   // reader ever shows an unpaid online order as a real order.
-  return onValue(ordersRef, (snap) => callback(filterLiveOrders(snap.val() || {})));
+  return onValue(ordersRef, (snap) => callback(filterLiveOrders(snap.val() || {}, KDS_RESTAURANT_ID)));
 }
 
 /**
