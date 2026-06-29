@@ -252,7 +252,17 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
   });
   if (inactiveRid) updates[`orders/${orderId}/inactive_materialize_alerted_at`] = now;
   await db.ref().update(updates);
-  if (inactiveRid) deps.alert && deps.alert('materialized_into_inactive_restaurant', { orderId, restaurant_id: inactiveRid });
+  // AWAIT the alert (it's an async DB write): a fire-and-forget alert can be dropped if the
+  // instance freezes after the update, and the committed marker would then suppress it on
+  // re-entry — losing it permanently. On alert failure, LOG only: the order is already
+  // materialized (never stranded); we don't undo a paid, fulfilled order over a failed alert.
+  if (inactiveRid && deps.alert) {
+    try {
+      await deps.alert('materialized_into_inactive_restaurant', { orderId, restaurant_id: inactiveRid });
+    } catch (e) {
+      console.error(`confirmAndMaterialize: inactive-materialize alert failed for ${orderId} (order materialized, not stranded): ${e && e.message}`);
+    }
+  }
   return { outcome: 'confirmed', tracking_token: token };
 }
 

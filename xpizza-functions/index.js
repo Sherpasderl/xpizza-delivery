@@ -1008,8 +1008,12 @@ confirmOnlineApp.all('*', async (req, res) => {
   if (o === 'cancelled' || o === 'cancelled_during_confirm') {
     return res.status(200).json({ ok: false, payment_status: 'cancelled', order_id: orderId });
   }
-  if (o === 'in_progress' || o === 'capture_error_retryable' || o === 'no_payment_uuid') {
-    return res.status(202).json({ ok: false, pending: true, order_id: orderId, detail: 'payment processing; keep polling' });
+  if (o === 'voided_inactive') {
+    // 3c: auth voided because the Restaurant was deactivated — terminal failure, client must NOT retry.
+    return res.status(200).json({ ok: false, payment_status: 'failed', order_id: orderId, detail: 'restaurant not accepting orders; payment authorization voided' });
+  }
+  if (o === 'in_progress' || o === 'capture_error_retryable' || o === 'no_payment_uuid' || o === 'config_unavailable_retryable') {
+    return res.status(202).json({ ok: false, pending: true, order_id: orderId, detail: o === 'config_unavailable_retryable' ? 'restaurant config temporarily unavailable; keep polling' : 'payment processing; keep polling' });
   }
   if (o === 'no_order') return res.status(404).json({ error: 'Order not found', order_id: orderId });
   if (o === 'not_online' || o === 'no_active_attempt' || o === 'no_attempt_record') {
