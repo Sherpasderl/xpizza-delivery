@@ -2,7 +2,7 @@
  * Unit tests for the factura trigger predicates. Run: `node factura/eligibility.test.js`.
  */
 const assert = require('assert');
-const { facturaSaleEligible, facturaVoidEligible } = require('./eligibility');
+const { facturaSaleEligible, facturaVoidEligible, usesPlatformFactura } = require('./eligibility');
 
 const CUTOFF = 1000;
 let pass = 0;
@@ -33,6 +33,11 @@ function onlineSale(over = {}) {
   assert.equal(facturaVoidEligible({ status: 'cancelled' }, { status: 'cancelled' }), false); ok('already-cancelled does not re-fire');
   assert.equal(facturaVoidEligible({ status: 'new' }, { status: 'new' }), false);        ok('non-cancel write is not void-eligible');
   assert.equal(facturaVoidEligible({ status: 'new' }, null), false);                     ok('deleted record is not void-eligible');
+
+  // --- usesPlatformFactura (F3 — La Musa external-POS opt-out) ---
+  assert.equal(usesPlatformFactura('x_pizza'), true);   ok('x_pizza is on the platform factura pipeline');
+  assert.equal(usesPlatformFactura('la_musa'), false);  ok('la_musa is NOT on the platform pipeline (Soft Restaurant POS)');
+  assert.equal(usesPlatformFactura('unknown'), false);  ok('unknown restaurant defaults to off-platform');
 
   console.log(`\nAll ${pass} eligibility tests passed.`);
 })().catch((e) => { console.error('TEST FAILED:', (e && e.stack) || e); process.exit(1); });

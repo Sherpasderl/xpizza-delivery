@@ -111,7 +111,9 @@ issuance in progress/queued), `issued` (number reserved + full record written �
 state treated as idempotent success), `failed` (allocation errored; reconciler retries),
 `cancelled` (Order cancelled before a number was issued — **no Factura owed**, handled as a
 plain cancellation), `void` (issued then cancelled — the reserved number is voided, see
-[[Void (factura)]]). Makes "which Sales lack a Factura" a queryable state, not a log line.
+[[Void (factura)]]), `external_pos` (a Sale whose Factura is issued by an **external POS** — La
+Musa's Soft Restaurant — not by the platform pipeline; the allocate/void triggers skip it and it
+is never reconciled here). Makes "which Sales lack a Factura" a queryable state, not a log line.
 A reconciler advances `pending`/`failed` (filtered to Sale state, never `not_due`/`cancelled`);
 exhaustion/expiry fails closed and alerts rather than issuing an invalid number.
 

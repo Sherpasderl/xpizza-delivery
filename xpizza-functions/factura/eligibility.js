@@ -27,4 +27,11 @@ function facturaVoidEligible(before, after) {
   return true;
 }
 
-module.exports = { facturaSaleEligible, facturaVoidEligible };
+// Restaurants on the PLATFORM factura pipeline (SAR factura issued by THIS system). La Musa is
+// deliberately excluded — it issues facturas via its own Soft Restaurant POS, so the allocate/void
+// triggers skip it (it has no factura_config and owes no platform number). Future opt-in = add the
+// id here. NOT every restaurant owes a platform factura.
+const FACTURA_PLATFORM_RESTAURANTS = new Set(['x_pizza']);
+function usesPlatformFactura(restaurantId) { return FACTURA_PLATFORM_RESTAURANTS.has(restaurantId); }
+
+module.exports = { facturaSaleEligible, facturaVoidEligible, usesPlatformFactura, FACTURA_PLATFORM_RESTAURANTS };

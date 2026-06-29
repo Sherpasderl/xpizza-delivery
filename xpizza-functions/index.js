@@ -72,7 +72,7 @@ const { getMessaging } = require('firebase-admin/messaging');
 // factura/sync.test.js). Allocation/void fire from DB triggers (allocateFacturaOnSale /
 // voidFacturaOnCancel) defined below. FACTURA_PLAN.md + ADR-0003/0004.
 const { pricedLineItems } = require('./factura/pricing');
-const { facturaSaleEligible, facturaVoidEligible } = require('./factura/eligibility');
+const { facturaSaleEligible, facturaVoidEligible, usesPlatformFactura } = require('./factura/eligibility');
 const { allocateFacturaNumber, voidFactura } = require('./factura/factura-helpers');
 const FACTURA_RESTAURANT_ID = 'x_pizza'; // single restaurant until the config-plane migration
 const FACTURA_LAUNCH_CUTOFF_MS = Date.parse('2026-06-26T00:00:00Z'); // never retro-issue pre-launch orders
@@ -1401,6 +1401,16 @@ exports.allocateFacturaOnSale = onValueWritten(
     const db = getDatabase();
     const restaurantId = after.restaurant_id || FACTURA_RESTAURANT_ID;
 
+    // External-POS restaurants (e.g. La Musa → Soft Restaurant) are NOT on the platform factura
+    // pipeline: skip allocation entirely and mark the Sale `external_pos` — no config_missing alert,
+    // never reconciled here. Skips BEFORE both alert paths. x_pizza is in-set → no-op.
+    if (!usesPlatformFactura(restaurantId)) {
+      if (after.factura_status !== 'external_pos') {
+        await db.ref(`orders/${orderId}/factura_status`).set('external_pos').catch(() => {});
+      }
+      return;
+    }
+
     // Field-presence is checked HERE (not in the predicate) so a Sale missing priced data is
     // surfaced as failed+alert, never silently skipped (Codex R2-#4).
     if (!Array.isArray(after.items) || after.items.length === 0 ||
@@ -1453,6 +1463,9 @@ exports.voidFacturaOnCancel = onValueWritten(
     const orderId = event.params.orderId;
     const db = getDatabase();
     const restaurantId = after.restaurant_id || FACTURA_RESTAURANT_ID;
+    // External-POS restaurants have no platform factura to void (and must not be marked
+    // factura_status:'cancelled' on an external_pos order). See allocateFacturaOnSale. x_pizza → no-op.
+    if (!usesPlatformFactura(restaurantId)) return;
     try {
       const r = await voidFactura(db, { restaurantId, orderId, reason: after.cancel_reason || 'cancelado', now: Date.now() });
       console.log(`[factura] void ${orderId} → ${r.voided ? 'voided' : (r.no_factura ? 'no factura owed' : 'noop')}`);
