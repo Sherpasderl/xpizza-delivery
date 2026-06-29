@@ -27,12 +27,14 @@
 - [ ] Add a hidden `#queue-sheet` container; `renderQueueDetail(o)` builds the sheet markup (mock-exact): name + `Nº · EN COLA` pill, Llamar/WhatsApp (reuse the active-card contact builder), address, A COBRAR + payment chip, Waze/Maps (reuse nav builder), `.locked` note "Orden de entrega asignada por despacho.", `Cerrar`.
 - [ ] Handlers (event-delegated): tap `.qcard` → open sheet for `queuedOrders[data-q]`; `Cerrar` / backdrop tap → close. VIEW-ONLY (no state writes). Completion stays sequential (unchanged).
 
-## Task 3 — P3 vuelto sheet (ephemeral)
+## Task 3 — P3 vuelto: exact change FROM THE ORDER (display-first) + override sheet
 **Files:** Modify `xpizza-driver/index.html`
+**Key data:** the order already carries the customer's stated cash amount as **`order.cash_tendered_cents`** (integer cents; set by the order form's "¿Con cuánto vas a pagar?" only when ≥ total — else absent/exact). `order.total` is in **Lempiras**. So `tendered_L = cash_tendered_cents/100`, `change = computeVuelto(order.total, tendered_L)`.
 
-- [ ] Port mock CSS: `.vt-title/.vt-sub/.vt-total/.vt-inlbl/.vt-input/.chips/.chip/.vt-result/.vt-done`.
-- [ ] Add hidden `#vuelto-sheet`; wire the existing `.vuelto` link (it already carries `data-vuelto=<total>`) → open the sheet with total pre-filled + `vueltoSuggestions(total)` chips.
-- [ ] Numeric input "Cliente paga con" (inputmode numeric); on input/chip → `computeVuelto(total,tendered)` → live `Vuelto: L X` (green) or hide result if null. `Listo`/backdrop closes. Nothing persisted.
+- [ ] Port mock CSS: `.ac-card/.ac-payrow/.paywith` + `.vt-title/.vt-sub/.vt-total/.vt-inlbl/.vt-input/.chips/.chip/.vt-result/.vt-done`.
+- [ ] **Active card (cash order):** compute `change = computeVuelto(order.total, (order.cash_tendered_cents||0)/100)`. If `change != null` → render the green **`.paywith`** line "Paga con **L{tendered}** · Vuelto **L{change}**" (tappable → sheet, prefilled). If `change == null` (no stated amount / exact) → keep the plain **`Calcular vuelto`** link (manual fallback).
+- [ ] Add hidden `#vuelto-sheet`; opening it prefills "Cliente paga con" with `tendered_L` when known (else empty), total shown, chips = `vueltoSuggestions(order.total)`.
+- [ ] Numeric input (inputmode numeric); on input/chip → `computeVuelto(total,tendered)` → live `Vuelto: L X` (green) or hide if null. Sub-copy: "El cliente indicó este monto al ordenar — editá solo si paga con otra cosa." `Listo`/backdrop closes. **Nothing persisted** (override is in-memory only; `cash_owed` stays = Σ total, untouched by change).
 
 ## Task 4 — P3 clock-out cuadre + record + rules
 **Files:** Modify `xpizza-driver/index.html`, `xpizza-driver/xpizza-delivery.js`, `xpizza-reference/database.rules.json`
