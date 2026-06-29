@@ -158,3 +158,22 @@ export async function stopNativeTracking(app) {
   }
   console.log('native-location: tracking stopped');
 }
+
+/**
+ * Foreground keep-alive ping. Forces a fresh persisted fix; autoSync uploads it to
+ * ingestDriverLocation, refreshing last_ping. Transistorsoft stops emitting once the
+ * driver is stationary, so without this the pin goes stale (>90s) while parked.
+ *
+ * This runs in the WebView, so it only covers the FOREGROUND case (Android suspends
+ * WebView JS in the background/Doze — the same throttle the native uploader bypasses
+ * for motion updates). Background-stationary liveness is a separate, native concern.
+ * No-op off-native.
+ */
+export async function pingNativeLocation() {
+  if (!isNative()) return;
+  try {
+    await getBgGeo().getCurrentPosition({ options: { samples: 1, persist: true, timeout: 30 } });
+  } catch (e) {
+    console.warn('native-location: foreground ping failed', e);
+  }
+}

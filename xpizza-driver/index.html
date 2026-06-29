@@ -1009,7 +1009,7 @@
 <script type="module">
 import * as XPD from './xpizza-delivery.js?v=16';
 import { isNative, initNativePush, unregisterNativePush, clearDeliveredNotifications } from './native-push.js';
-import { startNativeTracking, stopNativeTracking } from './native-location.js';
+import { startNativeTracking, stopNativeTracking, pingNativeLocation } from './native-location.js';
 
 // ============================================================
 // System version (bumped each release)
@@ -1372,6 +1372,9 @@ document.addEventListener('visibilitychange', async () => {
       lastUpdateAt = 0; // allow immediate first update
     }
     startGpsStream();
+    // Native: force an immediate fresh ping on foreground + refresh the GPS label.
+    if (isNative()) pingNativeLocation();
+    renderStatusBar();
   }
 });
 
@@ -1525,6 +1528,31 @@ $('arrive-btn').addEventListener('click', async () => {
 });
 
 // ============================================================
+// Foreground keep-alive: while the app is open and on shift, force a location
+// ping every 60s so a parked (stationary) driver's pin stays fresh on dispatch,
+// and re-render the status bar every 30s so the GPS-freshness label never lies
+// (it's computed from last_ping vs now, so it must be re-evaluated on a timer).
+// Foreground-only by nature — Android suspends WebView JS in the background.
+// ============================================================
+let fgPingInterval = null;
+let statusRefreshInterval = null;
+function startKeepAlive() {
+  if (!statusRefreshInterval) {
+    statusRefreshInterval = setInterval(() => { if (driverState?.active) renderStatusBar(); }, 30000);
+  }
+  if (isNative() && !fgPingInterval) {
+    pingNativeLocation();   // fire one now, don't wait for the first interval
+    fgPingInterval = setInterval(() => {
+      if (document.visibilityState === 'visible' && driverState?.active) pingNativeLocation();
+    }, 60000);
+  }
+}
+function stopKeepAlive() {
+  if (fgPingInterval) { clearInterval(fgPingInterval); fgPingInterval = null; }
+  if (statusRefreshInterval) { clearInterval(statusRefreshInterval); statusRefreshInterval = null; }
+}
+
+// ============================================================
 // Render
 // ============================================================
 function render() {
@@ -1533,6 +1561,7 @@ function render() {
   const name = driverState?.name || currentUser.email.split('@')[0];
 
   if (!driverState || !driverState.active) {
+    stopKeepAlive();
     $('off-driver-name').textContent = (name || '—').toUpperCase();
     showScreen('offshift');
     return;
@@ -1541,6 +1570,7 @@ function render() {
   showScreen('onshift');
   renderStatusBar();
   renderActiveAndQueue();
+  startKeepAlive();
 }
 
 function renderStatusBar() {
