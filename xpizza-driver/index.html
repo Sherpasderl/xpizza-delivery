@@ -452,29 +452,37 @@
   .nav-btn.maps-btn { background:var(--maps-bg); color:var(--maps); }
   .nav-btn .nav-icon { width:15px; height:15px; display:inline-flex; } .nav-btn .nav-icon svg { width:100%; height:100%; display:block; }
   /* premium slide-to-confirm — white track on canvas, gradient thumb, per-phase color */
-  .slide-confirm { position:relative; height:56px; border-radius:15px; background:#fff; border:1px solid rgba(20,30,50,.05); box-shadow:0 2px 9px rgba(20,30,50,.06); overflow:hidden; user-select:none; }
-  .slide-fill { position:absolute; left:0; top:0; bottom:0; width:56px; border-radius:15px; transition:width .2s ease; opacity:0; }
+  /* premium slide-to-confirm — tall glossy track, recessed groove, breathing thumb, shimmer label */
+  .slide-confirm { position:relative; height:64px; border-radius:19px; background:linear-gradient(180deg,#FFFFFF,#F6F8FB); border:1px solid rgba(20,30,50,.06); box-shadow:0 2px 5px rgba(20,30,50,.05), 0 14px 26px rgba(20,30,50,.10), inset 0 1px 0 #fff; user-select:none; }
+  .slide-confirm::before { content:''; position:absolute; inset:6px; border-radius:14px; box-shadow:inset 0 1px 3px rgba(20,30,50,.06); pointer-events:none; z-index:0; }
+  .slide-fill { position:absolute; left:0; top:0; bottom:0; width:64px; border-radius:19px; transition:width .2s ease; opacity:0; z-index:1; }
   .slide-confirm.completed .slide-fill { opacity:1; }
   .slide-confirm.accept .slide-fill, .slide-confirm.pickup .slide-fill { background:var(--accent); }
   .slide-confirm.delivered .slide-fill { background:var(--success); }
-  .slide-text { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding-left:48px; font-family:inherit; font-weight:800; font-size:13.5px; letter-spacing:.07em; text-transform:uppercase; }
-  .slide-confirm.accept .slide-text, .slide-confirm.pickup .slide-text { color:var(--accent); }
-  .slide-confirm.delivered .slide-text { color:var(--success); }
-  .slide-confirm.completed .slide-text { color:#fff; }
-  .slide-thumb { position:absolute; left:5px; top:5px; width:46px; height:46px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:grab; z-index:2; box-shadow:inset 0 1px 0 rgba(255,255,255,.25); }
-  .slide-confirm.accept .slide-thumb, .slide-confirm.pickup .slide-thumb { background:linear-gradient(180deg,#FB5616,#F23E00); box-shadow:0 4px 11px rgba(242,62,0,.36), inset 0 1px 0 rgba(255,255,255,.25); }
-  .slide-confirm.delivered .slide-thumb { background:linear-gradient(180deg,#34B377,#1F9C5E); box-shadow:0 4px 11px rgba(31,156,94,.36), inset 0 1px 0 rgba(255,255,255,.25); }
-  .slide-thumb svg { width:21px; height:21px; color:#fff; }
-  /* faint trailing chevrons — give the thumb a "glide this way" cue (no growing fill) */
-  .slide-chevrons { position:absolute; left:60px; top:0; bottom:0; display:flex; align-items:center; gap:3px; z-index:1; pointer-events:none; }
-  .slide-chevrons svg { width:13px; height:13px; }
-  .slide-confirm.accept .slide-chevrons, .slide-confirm.pickup .slide-chevrons { color:var(--accent); }
-  .slide-confirm.delivered .slide-chevrons { color:var(--success); }
-  .slide-chevrons svg:nth-child(1){opacity:.4} .slide-chevrons svg:nth-child(2){opacity:.24} .slide-chevrons svg:nth-child(3){opacity:.12}
+  /* label shimmers (clipped to text); same 3.8s period as the breath */
+  .slide-text { position:absolute; inset:0; z-index:2; display:flex; align-items:center; justify-content:center; padding-left:56px; font-family:inherit; font-weight:800; font-size:14px; letter-spacing:.09em; text-transform:uppercase;
+                -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; background-repeat:repeat; background-size:200% 100%; animation:slide-sheen 3.8s linear infinite; }
+  .slide-confirm.accept .slide-text, .slide-confirm.pickup .slide-text { background-image:linear-gradient(100deg,#C2410C 0%,#C2410C 42%,#FFB089 50%,#C2410C 58%,#C2410C 100%); }
+  .slide-confirm.delivered .slide-text { background-image:linear-gradient(100deg,#157A48 0%,#157A48 42%,#86EBBA 50%,#157A48 58%,#157A48 100%); }
+  .slide-confirm.completed .slide-text { background-image:none; color:#fff; -webkit-text-fill-color:#fff; animation:none; }
+  @keyframes slide-sheen { 0%{background-position:100% 0} 100%{background-position:-100% 0} }
+  .slide-thumb { position:absolute; left:6px; top:6px; width:52px; height:52px; border-radius:15px; display:flex; align-items:center; justify-content:center; cursor:grab; z-index:3; }
+  .slide-thumb svg { width:23px; height:23px; color:#fff; filter:drop-shadow(0 1px 1px rgba(0,0,0,.22)); }
   .slide-thumb:active { cursor:grabbing; }
-  .slide-confirm.dragging .slide-thumb, .slide-confirm.dragging .slide-fill { transition:none; }
-  @keyframes slide-thumb-pulse { 0%,100%{transform:translateX(0)} 50%{transform:translateX(4px)} }
-  .slide-confirm:not(.dragging):not(.completed) .slide-thumb { animation:slide-thumb-pulse 2s ease-in-out infinite; }
+  .slide-confirm.accept .slide-thumb, .slide-confirm.pickup .slide-thumb { background:linear-gradient(155deg,#FF7438,#F23E00); box-shadow:0 5px 13px rgba(242,62,0,.44), 0 0 9px rgba(242,62,0,.22), inset 0 1.5px 0 rgba(255,255,255,.5), inset 0 -3px 6px rgba(170,38,0,.32); }
+  .slide-confirm.delivered .slide-thumb { background:linear-gradient(155deg,#43C98A,#1F9C5E); box-shadow:0 5px 13px rgba(31,156,94,.40), 0 0 9px rgba(31,156,94,.20), inset 0 1.5px 0 rgba(255,255,255,.5), inset 0 -3px 6px rgba(15,110,66,.32); }
+  /* breathing glow — only while idle (not while dragging or completed) */
+  .slide-confirm.accept:not(.dragging):not(.completed) .slide-thumb, .slide-confirm.pickup:not(.dragging):not(.completed) .slide-thumb { animation:slide-breathe-accent 3.8s ease-in-out infinite; }
+  .slide-confirm.delivered:not(.dragging):not(.completed) .slide-thumb { animation:slide-breathe-success 3.8s ease-in-out infinite; }
+  @keyframes slide-breathe-accent {
+    0%,100%{ box-shadow:0 5px 13px rgba(242,62,0,.44), 0 0 9px rgba(242,62,0,.22), inset 0 1.5px 0 rgba(255,255,255,.5), inset 0 -3px 6px rgba(170,38,0,.32); }
+    50%    { box-shadow:0 7px 19px rgba(242,62,0,.74), 0 0 19px rgba(242,62,0,.46), inset 0 1.5px 0 rgba(255,255,255,.5), inset 0 -3px 6px rgba(170,38,0,.32); }
+  }
+  @keyframes slide-breathe-success {
+    0%,100%{ box-shadow:0 5px 13px rgba(31,156,94,.40), 0 0 9px rgba(31,156,94,.20), inset 0 1.5px 0 rgba(255,255,255,.5), inset 0 -3px 6px rgba(15,110,66,.32); }
+    50%    { box-shadow:0 7px 19px rgba(31,156,94,.68), 0 0 19px rgba(31,156,94,.44), inset 0 1.5px 0 rgba(255,255,255,.5), inset 0 -3px 6px rgba(15,110,66,.32); }
+  }
+  .slide-confirm.dragging .slide-fill { transition:none; }
 
   /* ==================== QUEUE ==================== */
   .queue-section {
@@ -1006,7 +1014,7 @@ import { startNativeTracking, stopNativeTracking } from './native-location.js';
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '2.0.2';
+const SYSTEM_VERSION = '2.0.3';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -1751,7 +1759,6 @@ function renderActiveCard(o, solo) {
   // Build the action block — no step-block wrapper, no hint, just the slide
   const actionBlock = `<div class="slide-confirm ${actionClass}" id="${actionId}">
       <div class="slide-fill"></div>
-      <div class="slide-chevrons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
       <div class="slide-text">${actionLabel}</div>
       <div class="slide-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
     </div>`;
@@ -1842,7 +1849,7 @@ function attachSlideConfirm(elementId, onConfirm) {
   const fill  = el.querySelector('.slide-fill');
   if (!thumb || !fill) return;
 
-  const THUMB_OFFSET = 5; // matches CSS left:5px resting position
+  const THUMB_OFFSET = 6; // matches CSS left:6px resting position
   const COMPLETE_THRESHOLD = 0.85;
 
   let dragging = false;
