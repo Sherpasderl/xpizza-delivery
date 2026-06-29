@@ -10,23 +10,15 @@
  * golden-anchored oracle) fed the SAME server-generated now/tracking_token. Because the builder is
  * hash-guarded against the audited COMBOS, function == builder == anchored truth.
  *
- * Cash needs no PixelPay; WhatsApp is disabled (config flag) so the FUNCTION'S process makes no
- * external call. The zero-egress guard below governs THIS process (allow emulator localhost only).
- * (Next increments: online-charge-pending ABSENCE, La Musa routing, fail-closed; online-materialized
- * byte-identical is already covered by materialize-snapshot.test.js + confirm-active-recheck.test.js.)
+ * NO-EGRESS for cash is BY CONSTRUCTION, not a guard: WhatsApp is config-gated off (createOrder's
+ * `if (await whatsapp.isEnabled(db))` is false), and cash has no PixelPay. (An in-process socket
+ * guard was removed — it ran in the e2e process, so it could never govern the function's egress
+ * anyway, and it broke the e2e's own admin->emulator connection.) The HTTP-driven scope stays to
+ * paths that make no external call: cash (writes, WhatsApp off) + the 400/503 short-circuits. The
+ * PixelPay paths are NOT HTTP-driven here — online-materialized byte-identical is covered by
+ * materialize-snapshot.test.js + confirm-active-recheck.test.js, and pending-absence is structural
+ * (chargeOnlineOrder/acquireHostedAttempt write only the order; tasks/tracking come only at materialize).
  */
-
-// ── Zero-egress guard for THIS process (allow the local emulator transport only) ─────────────────
-const ALLOW = /(^|\b)(127\.0\.0\.1|localhost|::1|0\.0\.0\.0)\b/;
-(function denyEgress() {
-  const net = require('net');
-  const orig = net.Socket.prototype.connect;
-  net.Socket.prototype.connect = function (opts, ...rest) {
-    const host = typeof opts === 'object' ? (opts.host || opts.path) : rest[0];
-    if (!ALLOW.test(String(host))) throw new Error(`ZERO-EGRESS: blocked external connect to ${host}`);
-    return orig.call(this, opts, ...rest);
-  };
-})();
 
 const assert = require('assert');
 const admin = require('firebase-admin');
