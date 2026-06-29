@@ -93,9 +93,11 @@
     padding: 14px 18px;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     flex-shrink: 0;
   }
+  .status-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .status-id-row { display: flex; align-items: center; gap: 8px; }
 
   /* ==================== DUTY TOGGLE ==================== */
   /* Always-visible on/off-duty switch in the header.
@@ -146,9 +148,10 @@
     background: var(--surface);
     border-bottom: 1px solid var(--border-soft);
     padding: 14px 18px;
-    display: none;
+    display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
+    gap: 10px;
     flex-shrink: 0;
   }
 
@@ -188,17 +191,16 @@
 
   .status-label {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-weight: 600;
-    font-size: 16px;
+    font-weight: 700;
+    font-size: 15px;
     letter-spacing: -0.01em;
     color: var(--text);
-    flex-grow: 1;
   }
   .gps-meta {
-    font-size: 12px;
-    color: var(--text-soft);
+    font-size: 11px;
+    color: var(--text-dim);
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-weight: 500;
+    font-weight: 600;
     letter-spacing: 0;
   }
   .gps-meta.stale { color: var(--warn); }
@@ -314,7 +316,18 @@
 
   /* ==================== IDLE STATE ==================== */
   #idle-state {
-    gap: 0;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 24px;
+  }
+  .idle-top {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
   }
   .idle-icon {
     width: 80px;
@@ -378,7 +391,7 @@
   .idle-help-link:hover { color: var(--text-soft); text-decoration: underline; }
 
   /* ==================== IDLE STAT CARD ==================== */
-  .statbar{ display:flex; background:var(--surface); margin:18px 0 0; border-radius:16px; box-shadow:var(--shadow-card); overflow:hidden; width:100%; max-width:320px; }
+  .statbar{ display:flex; background:var(--surface); margin:8px auto 0; border-radius:16px; box-shadow:var(--shadow-card); overflow:hidden; width:100%; max-width:320px; }
   .statbar > div{ flex:1; text-align:center; padding:15px 8px; }
   .statbar > div + div{ border-left:1px solid var(--line); }
   .statbar .num{ font-size:20px; font-weight:800; color:var(--text); letter-spacing:-.01em; line-height:1; }
@@ -419,6 +432,15 @@
   .vuelto .ico { width:15px; height:15px; }
   /* actions on the grey canvas */
   .action-zone { margin:11px 13px 0; }
+  /* Single-order ("solo") layout: distribute vertical space so the card sits a
+     touch below the bar and the nav+slide are evenly spaced, slack pooled below. */
+  #active-order-slot.solo { min-height:100%; display:flex; flex-direction:column; }
+  .ao-spacer-top { flex:1; }
+  .ao-spacer-bot { flex:2.4; }
+  #active-order-slot.solo .active-card { margin-top:0; margin-bottom:0; }
+  #active-order-slot.solo .action-zone { margin-top:20px; }
+  #active-order-slot.solo .nav-row { margin-bottom:20px; }
+  #active-order-slot.solo .arrived-note { margin-bottom:20px; }
   .arrived-note { display:flex; align-items:center; gap:9px; font-size:13.5px; font-weight:800; color:var(--success); background:var(--green-bg); padding:13px 14px; border-radius:14px; margin-bottom:11px; }
   .arrived-note svg { width:18px; height:18px; flex-shrink:0; }
   .nav-row { display:flex; gap:8px; margin-bottom:11px; }
@@ -428,7 +450,8 @@
   .nav-btn .nav-icon { width:15px; height:15px; display:inline-flex; } .nav-btn .nav-icon svg { width:100%; height:100%; display:block; }
   /* premium slide-to-confirm — white track on canvas, gradient thumb, per-phase color */
   .slide-confirm { position:relative; height:56px; border-radius:15px; background:#fff; border:1px solid rgba(20,30,50,.05); box-shadow:0 2px 9px rgba(20,30,50,.06); overflow:hidden; user-select:none; }
-  .slide-fill { position:absolute; left:0; top:0; bottom:0; width:56px; border-radius:15px 0 0 15px; transition:width .2s ease; opacity:.14; }
+  .slide-fill { position:absolute; left:0; top:0; bottom:0; width:56px; border-radius:15px; transition:width .2s ease; opacity:0; }
+  .slide-confirm.completed .slide-fill { opacity:1; }
   .slide-confirm.accept .slide-fill, .slide-confirm.pickup .slide-fill { background:var(--accent); }
   .slide-confirm.delivered .slide-fill { background:var(--success); }
   .slide-text { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding-left:48px; font-family:inherit; font-weight:800; font-size:13.5px; letter-spacing:.07em; text-transform:uppercase; }
@@ -439,6 +462,12 @@
   .slide-confirm.accept .slide-thumb, .slide-confirm.pickup .slide-thumb { background:linear-gradient(180deg,#FB5616,#F23E00); box-shadow:0 4px 11px rgba(242,62,0,.36), inset 0 1px 0 rgba(255,255,255,.25); }
   .slide-confirm.delivered .slide-thumb { background:linear-gradient(180deg,#34B377,#1F9C5E); box-shadow:0 4px 11px rgba(31,156,94,.36), inset 0 1px 0 rgba(255,255,255,.25); }
   .slide-thumb svg { width:21px; height:21px; color:#fff; }
+  /* faint trailing chevrons — give the thumb a "glide this way" cue (no growing fill) */
+  .slide-chevrons { position:absolute; left:60px; top:0; bottom:0; display:flex; align-items:center; gap:3px; z-index:1; pointer-events:none; }
+  .slide-chevrons svg { width:13px; height:13px; }
+  .slide-confirm.accept .slide-chevrons, .slide-confirm.pickup .slide-chevrons { color:var(--accent); }
+  .slide-confirm.delivered .slide-chevrons { color:var(--success); }
+  .slide-chevrons svg:nth-child(1){opacity:.4} .slide-chevrons svg:nth-child(2){opacity:.24} .slide-chevrons svg:nth-child(3){opacity:.12}
   .slide-thumb:active { cursor:grabbing; }
   .slide-confirm.dragging .slide-thumb, .slide-confirm.dragging .slide-fill { transition:none; }
   @keyframes slide-thumb-pulse { 0%,100%{transform:translateX(0)} 50%{transform:translateX(4px)} }
@@ -727,19 +756,37 @@
     right: 14px;
     background: #ffffff;
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 14px 16px;
+    border-radius: 14px;
+    padding: 13px 16px;
     font-size: 14px;
+    font-weight: 600;
     color: var(--text);
     z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 10px;
     transform: translateY(-200px);
     transition: transform 0.3s cubic-bezier(0.18, 1.18, 0.32, 1);
     pointer-events: none;
     box-shadow: var(--shadow-toast);
   }
   .toast.show { transform: translateY(0); }
-  .toast.error { border-color: #E5484D; background: #fef2f2; color: #991b1b; }
-  .toast.success { border-color: var(--success); background: #f0fdf4; color: #15803d; }
+  .toast.error { border-color: #FBC4C4; background: #FEF2F2; color: #B42318; }
+  .toast.success { border-color: transparent; background: #EAF8F0; color: #1F9C5E; font-weight: 700; }
+  .toast.success::before {
+    content: '✓';
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px; height: 20px;
+    flex: none;
+    border-radius: 50%;
+    background: #1F9C5E;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1;
+  }
 
   /* ==================== FIRST-RUN CONFIG ==================== */
   .config-screen {
@@ -785,8 +832,7 @@
   /* ==================== UTILITIES ==================== */
   .hidden { display: none !important; }
 
-  /* ==================== OVERFLOW MENU ==================== */
-  #duty-toggle-on { display: none; }
+  /* ==================== SHIFT TOGGLE (header) ==================== */
   #screen-onshift { position: relative; }
   .menu { position: absolute; top: 52px; right: 12px; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-elevated); padding: 6px; display: none; z-index: 50; }
   .menu.open { display: block; }
@@ -828,6 +874,13 @@
 <!-- ======================================================== -->
 <div id="screen-offshift" class="with-header hidden">
   <header class="offshift-header">
+    <div class="status-id">
+      <div class="status-id-row">
+        <div class="status-dot red"></div>
+        <div class="status-label">Fuera de turno</div>
+      </div>
+      <div class="gps-meta">Activa el interruptor para empezar</div>
+    </div>
     <button class="duty-toggle" id="duty-toggle-off" title="Iniciar turno">
       <span class="duty-arrow left">▶</span>
       <span class="duty-arrow right">■</span>
@@ -837,8 +890,7 @@
   <div class="offshift-content">
     <div class="brand-mark"><img src="icon-transparent.svg" alt="X Pizza"></div>
     <div class="greeting">HOLA, <span id="off-driver-name">—</span></div>
-    <div class="greeting-sub">¿Listo para arrancar tu turno?</div>
-    <button class="big-btn primary" id="start-shift-btn" style="margin: 24px 0 8px;">Iniciar turno</button>
+    <div class="greeting-sub">Activa el interruptor de arriba para empezar tu turno.</div>
     <div id="notif-banner-offshift" class="notif-banner hidden" style="margin: 16px 0;"></div>
     <button class="text-link" id="signout-btn">Cerrar sesión</button>
     <div class="version-tag" data-version-display></div>
@@ -851,14 +903,13 @@
 <div id="screen-onshift" class="hidden" style="display:flex; flex-direction:column; height:100%;">
 
   <div class="status-bar">
-    <button class="duty-toggle on" id="duty-toggle-on" title="Terminar turno">
-      <span class="duty-arrow left">▶</span>
-      <span class="duty-arrow right">■</span>
-      <span class="duty-thumb"></span>
-    </button>
-    <div class="status-dot" id="status-dot"></div>
-    <div class="status-label" id="status-label">Disponible</div>
-    <div class="gps-meta" id="gps-meta">—</div>
+    <div class="status-id">
+      <div class="status-id-row">
+        <div class="status-dot" id="status-dot"></div>
+        <div class="status-label" id="status-label">Disponible</div>
+      </div>
+      <div class="gps-meta" id="gps-meta">—</div>
+    </div>
     <button class="icon-btn" id="history-btn" title="Hoy">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 12a9 9 0 1 0 3-6.7L3 8"/>
@@ -873,28 +924,33 @@
         <path d="M19.07 4.93a10 10 0 010 14.14" id="sound-wave-2"/>
       </svg>
     </button>
-    <button class="icon-btn" id="kebab" title="Menú"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
+    <button class="duty-toggle on" id="duty-toggle-on" title="Terminar turno">
+      <span class="duty-arrow left">▶</span>
+      <span class="duty-arrow right">■</span>
+      <span class="duty-thumb"></span>
+    </button>
   </div>
-  <div class="menu" id="appmenu"><button class="danger" id="menu-end-shift">Terminar turno</button></div>
 
   <main id="onshift-content">
     <div id="notif-banner-onshift" class="notif-banner hidden"></div>
 
     <!-- Idle / returning state -->
-    <div id="idle-state" class="center-screen hidden">
-      <div class="idle-check" id="idle-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
+    <div id="idle-state" class="hidden">
+      <div class="idle-top">
+        <div class="idle-check" id="idle-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        </div>
+        <div class="idle-msg" id="idle-msg">Estás disponible</div>
+        <div class="idle-sub" id="idle-sub">Te avisaremos cuando llegue un pedido nuevo.</div>
+        <button class="idle-help-link" id="idle-help-link">¿Por qué no veo pedidos?</button>
+        <button class="big-btn primary hidden" id="arrive-btn" style="margin-top: 16px;">Estoy en el restaurante</button>
       </div>
-      <div class="idle-msg" id="idle-msg">Estás disponible</div>
-      <div class="idle-sub" id="idle-sub">Te avisaremos cuando llegue un pedido nuevo.</div>
-      <button class="idle-help-link" id="idle-help-link">¿Por qué no veo pedidos?</button>
       <div class="statbar" id="idle-statbar">
         <div><div class="num" id="stat-deliveries">0</div><div class="cap">ENTREGAS HOY</div></div>
         <div><div class="num" id="stat-cash">L 0</div><div class="cap">EFECTIVO HOY</div></div>
       </div>
-      <button class="big-btn primary hidden" id="arrive-btn" style="margin-top: 16px;">Estoy en el restaurante</button>
     </div>
 
     <!-- Active order card slot -->
@@ -947,7 +1003,7 @@ import { startNativeTracking, stopNativeTracking } from './native-location.js';
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '1.9.0';
+const SYSTEM_VERSION = '2.0.0';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -1250,25 +1306,12 @@ $('duty-toggle-off').addEventListener('click', async () => {
   try { await handleStartShift(); } finally { shiftBusy = false; }
 });
 
-$('start-shift-btn').addEventListener('click', async () => {
-  if (shiftBusy) return; shiftBusy = true;
-  try { await handleStartShift(); } finally { shiftBusy = false; }
-});
-
+// On-shift toggle ends the shift (the off-shift toggle above starts it).
 $('duty-toggle-on').addEventListener('click', async () => {
   if (shiftBusy) return;
   shiftBusy = true;
   // Don't flip visual state immediately — confirm() may cancel the action.
   // The shift transition (onshift → offshift screen) handles visual reset.
-  try { await handleEndShift(); } finally { shiftBusy = false; }
-});
-
-// Overflow menu (kebab) — end-shift action
-$('kebab').addEventListener('click', (e) => { e.stopPropagation(); $('appmenu').classList.toggle('open'); });
-document.addEventListener('click', () => $('appmenu').classList.remove('open'));
-$('menu-end-shift').addEventListener('click', async () => {
-  $('appmenu').classList.remove('open');
-  if (shiftBusy) return; shiftBusy = true;
   try { await handleEndShift(); } finally { shiftBusy = false; }
 });
 
@@ -1582,7 +1625,9 @@ function renderActiveAndQueue() {
   idleSlot.classList.add('hidden');
 
   const [active, ...rest] = orders;
-  activeSlot.innerHTML = renderActiveCard(active);
+  const solo = rest.length === 0;
+  activeSlot.classList.toggle('solo', solo);
+  activeSlot.innerHTML = renderActiveCard(active, solo);
   queueSlot.innerHTML = renderQueue(rest);
 
   attachActiveCardHandlers(active);
@@ -1631,7 +1676,7 @@ function renderIdleState() {
   syncIdleStats();
 }
 
-function renderActiveCard(o) {
+function renderActiveCard(o, solo) {
   const order = o.order || {};
   const isPickup = o.phase === 'pickup' || o.phase === 'awaiting_acceptance';
   const targetLat = isPickup ? XPD.RESTAURANT.lat : (order.lat || o.deliveryTask.destination_lat);
@@ -1702,11 +1747,14 @@ function renderActiveCard(o) {
   // Build the action block — no step-block wrapper, no hint, just the slide
   const actionBlock = `<div class="slide-confirm ${actionClass}" id="${actionId}">
       <div class="slide-fill"></div>
+      <div class="slide-chevrons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
       <div class="slide-text">${actionLabel}</div>
       <div class="slide-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
     </div>`;
 
-  return `
+  const flowTop = solo ? '<div class="ao-spacer ao-spacer-top"></div>' : '';
+  const flowBot = solo ? '<div class="ao-spacer ao-spacer-bot"></div>' : '';
+  return `${flowTop}
     <div class="active-card">
       <div class="ac-head">
         <div class="recipient-name">${escapeHtml(order.customer_name || o.deliveryTask.recipient_name || '—')}</div>
@@ -1723,7 +1771,7 @@ function renderActiveCard(o) {
     <div class="action-zone">
       ${navBlock}
       ${actionBlock}
-    </div>`;
+    </div>${flowBot}`;
 }
 
 function attachActiveCardHandlers(o) {
