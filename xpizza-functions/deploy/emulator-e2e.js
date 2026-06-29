@@ -1,78 +1,97 @@
 'use strict';
 
 /**
- * (B) Emulator end-to-end harness — the byte-identical proof. RUNS IN A JAVA/EMULATOR ENV ONLY:
- *     firebase emulators:exec --only database "node deploy/emulator-e2e.js"
- * (Not runnable in a worktree without Java; verified there as part of the deploy gate.)
+ * (B) Emulator end-to-end — the byte-identical proof. RUNS IN A JAVA/EMULATOR ENV ONLY:
+ *   firebase emulators:exec --only functions,database --project demo-xpizza "node deploy/emulator-e2e.js"
+ *   env: GCLOUD_PROJECT, MAKE_SECRET, CREATEORDER_URL
  *
- * Proves, with ZERO network egress, against the seeded x_pizza identity:
- *   - cash delivery/pickup + online-materialized delivery/pickup → assertComboOutput (shared M).
- *   - online-charge-pending → ABSENCE: no tasks/*, no order_tracking/*, status stays pending_payment.
- *   - La Musa routing (active:false → rejected) + fail-closed (missing/invalid config → 503).
+ * INCREMENT 1 — cash_delivery end-to-end: POST createOrder (in-zone) to the running function, read
+ * back the actual writes, and assert they are byte-identical to buildCreateOrderUpdates (the
+ * golden-anchored oracle) fed the SAME server-generated now/tracking_token. Because the builder is
+ * hash-guarded against the audited COMBOS, function == builder == anchored truth.
  *
- * Every PixelPay + external call is stubbed; a process-wide socket/fetch deny guard proves the
- * emulator can reach NOTHING external (Codex B#3: global.fetch alone misses Admin Auth/googleapis/
- * webpush/net egress).
+ * Cash needs no PixelPay; WhatsApp is disabled (config flag) so the FUNCTION'S process makes no
+ * external call. The zero-egress guard below governs THIS process (allow emulator localhost only).
+ * (Next increments: online-charge-pending ABSENCE, La Musa routing, fail-closed; online-materialized
+ * byte-identical is already covered by materialize-snapshot.test.js + confirm-active-recheck.test.js.)
  */
 
-// ── Zero-egress guard (install BEFORE requiring any function code) ───────────────────────────────
+// ── Zero-egress guard for THIS process (allow the local emulator transport only) ─────────────────
 const ALLOW = /(^|\b)(127\.0\.0\.1|localhost|::1|0\.0\.0\.0)\b/;
-function isLocal(h) { return ALLOW.test(String(h || '')); }
 (function denyEgress() {
   const net = require('net');
-  const origConnect = net.Socket.prototype.connect;
+  const orig = net.Socket.prototype.connect;
   net.Socket.prototype.connect = function (opts, ...rest) {
-    const host = (opts && (opts.host || opts.path)) || (typeof opts === 'object' ? '' : rest[0]);
-    if (!isLocal(typeof opts === 'object' ? opts.host : host)) {
-      throw new Error(`ZERO-EGRESS: blocked external socket connect to ${typeof opts === 'object' ? opts.host : host}`);
-    }
-    return origConnect.call(this, opts, ...rest);
+    const host = typeof opts === 'object' ? (opts.host || opts.path) : rest[0];
+    if (!ALLOW.test(String(host))) throw new Error(`ZERO-EGRESS: blocked external connect to ${host}`);
+    return orig.call(this, opts, ...rest);
   };
-  for (const mod of ['http', 'https']) {
-    const m = require(mod);
-    const orig = m.request;
-    m.request = function (opts, ...rest) {
-      const host = typeof opts === 'string' ? new URL(opts).hostname : (opts && opts.hostname);
-      if (!isLocal(host)) throw new Error(`ZERO-EGRESS: blocked ${mod} request to ${host}`);
-      return orig.call(this, opts, ...rest);
-    };
-  }
-  global.fetch = () => { throw new Error('ZERO-EGRESS: fetch() is stubbed in the emulator harness'); };
 })();
 
-// ── PixelPay + external stubs (require-cache override BEFORE the handlers load) ───────────────────
-// Inject deterministic, no-network stubs for: createHostedCharge, client.getStatus/capture,
-// verifyCaptureResult, void/refund, WhatsApp send, push, Admin Auth — so the real order/charge/
-// confirm paths run end-to-end with no external dependency. (Filled in against the live module
-// shapes at run time in the emulator env.)
-function installStubs() {
-  // require.cache override for './pixelpay-hosted' (createHostedCharge -> deterministic checkout),
-  // './pixelpay-client' (getStatus/capture/voidTransaction), './whatsapp' (sendMessage -> noop),
-  // and webpush/admin-auth as needed. See HOSTED-PAYMENT-PLAN for the exact return shapes.
-  // NB: confirmDeps already supports an injected client; createOrder/chargeOnlineOrder use module
-  // imports, so the override must happen before require('../index') / the handler under test.
-}
+const assert = require('assert');
+const admin = require('firebase-admin');
+const { emuDatabaseURL } = require('./emu-ns');
+const { buildCreateOrderUpdates } = require('../create-order-build');
+const { HUB } = require('./combo-validation');
 
-async function main() {
-  const { COMBOS, assertComboOutput } = require('./combo-validation');
-  installStubs();
+// In-zone cash delivery (coords ~0.1km from the hub so it passes the zone-check and WRITES).
+const INPUT = {
+  order_id: 'E2E_CASH_DELIVERY',
+  order_type: 'delivery',
+  customer_name: 'Ana', customer_phone: '+50499999999',
+  items_text: 'Margherita x1', items: [{ name: 'Margherita', qty: 1 }],
+  notes: 'ring bell', payment_method: 'cash',
+  lat: 15.5080, lng: -88.0400,
+  address_detected: 'Calle 1, Col Centro, SPS', address_details: 'casa azul',
+  cash_tendered: 500,
+};
 
-  // 1) Seed x_pizza identity (== the constant) + a dispatcher, with rules disabled.
-  // 2) Cash delivery/pickup: POST createOrder → read back the written paths → assertComboOutput.
-  // 3) Online-charge-pending: POST chargeOnlineOrder → assert NO tasks/{id}_*, NO order_tracking/*,
-  //    order.status === 'pending_payment' (absence proof, Codex #4/#9).
-  // 4) Online-materialized: drive confirmAndMaterialize via the webhook/confirm path (stubbed
-  //    capture) → assertComboOutput for the materialized combos.
-  // 5) La Musa: seed la_musa active:false → createOrder rejects (400 closed); never routes to x_pizza hub.
-  // 6) Fail-closed: missing/invalid x_pizza identity → 503 retryable.
-  // 7) Assert the egress counters are zero (no guard ever fired in allow-mode = nothing external).
+(async () => {
+  const PID = process.env.GCLOUD_PROJECT || 'demo-xpizza';
+  admin.initializeApp({ projectId: PID, databaseURL: emuDatabaseURL() });
+  const db = admin.database();
 
-  void COMBOS; void assertComboOutput; // (used by steps 2/4 once the harness drives the handlers)
-  console.log('emulator-e2e: scaffold loaded. Complete the handler-invocation wiring + run under firebase emulators:exec.');
-}
+  // Disable WhatsApp so createOrder's post-write send makes no external call.
+  await db.ref('config/whatsapp_enabled').set(false);
 
-if (require.main === module) {
-  main().then(() => process.exit(0)).catch((e) => { console.error('emulator-e2e: FAIL —', e.message); process.exit(1); });
-}
+  // Drive the real deployed handler.
+  const res = await fetch(process.env.CREATEORDER_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.MAKE_SECRET}` },
+    body: JSON.stringify(INPUT),
+  });
+  const body = await res.json().catch(() => ({}));
+  assert.equal(res.status, 200, `createOrder returned ${res.status}: ${JSON.stringify(body)}`);
+  const trackingToken = body.tracking_token;
+  assert.ok(trackingToken, 'no tracking_token in createOrder response');
 
-module.exports = { isLocal };
+  // Read back the actual writes.
+  const id = INPUT.order_id;
+  const order = (await db.ref(`orders/${id}`).once('value')).val();
+  assert.ok(order, 'order not written');
+  const actual = {
+    [`orders/${id}`]: order,
+    [`tasks/${id}_pickup`]: (await db.ref(`tasks/${id}_pickup`).once('value')).val(),
+    [`tasks/${id}_delivery`]: (await db.ref(`tasks/${id}_delivery`).once('value')).val(),
+    [`order_tracking/${trackingToken}`]: (await db.ref(`order_tracking/${trackingToken}`).once('value')).val(),
+  };
+
+  // Oracle: the golden-anchored builder, fed the SAME server-generated now/token + read-back pricing
+  // (3b changed structure/snapshot, not pricing — pricing flows through; structure is what we prove).
+  const expected = buildCreateOrderUpdates({
+    orderId: id, orderType: 'delivery', now: order.created_at, trackingToken, total: order.total,
+    lat: INPUT.lat, lng: INPUT.lng,
+    fields: {
+      customer_name: INPUT.customer_name, customer_phone: INPUT.customer_phone, items_text: INPUT.items_text,
+      notes: INPUT.notes, payment_method: 'cash', address_detected: INPUT.address_detected, address_details: INPUT.address_details,
+    },
+    restaurantId: 'x_pizza',
+    priceBreakdown: { total_cents: order.total_cents, subtotal_cents: order.subtotal_cents, tax_cents: order.tax_cents },
+    facturaPriced: { items: order.items }, cashTenderedCents: order.cash_tendered_cents,
+    hubSnap: HUB,
+  });
+
+  assert.deepStrictEqual(actual, expected);
+  console.log(`emulator-e2e [cash_delivery]: deployed createOrder == builder (byte-identical), snapshot ${order.restaurant_name}/${order.hub_lat} ✓`);
+  process.exit(0);
+})().catch((e) => { console.error('emulator-e2e: FAIL —', e.message); process.exit(1); });
