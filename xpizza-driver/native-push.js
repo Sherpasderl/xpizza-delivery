@@ -98,6 +98,8 @@ export async function initNativePush(app, uid) {
       if (orderId) {
         window.dispatchEvent(new CustomEvent('native-order-tap', { detail: { orderId } }));
       }
+      // Driver engaged with the alert → clear the shade + reset the launcher badge.
+      PushNotifications.removeAllDeliveredNotifications().catch(() => {});
     });
 
     // App is FOREGROUNDED when the push arrives — Android delivers it to the app
@@ -123,6 +125,19 @@ export async function initNativePush(app, uid) {
   } else {
     console.warn('native-push: notification permission not granted');
   }
+}
+
+/**
+ * Clear all delivered notifications from the shade + reset the launcher badge
+ * count (the red "N"). The in-app order list is the source of truth, so once the
+ * driver opens the app, stale order alerts shouldn't keep accumulating. Safe to
+ * call anytime; no-ops off-native.
+ */
+export async function clearDeliveredNotifications() {
+  if (!isNative()) return;
+  try {
+    await plugin().removeAllDeliveredNotifications();
+  } catch (e) { /* non-fatal */ }
 }
 
 /** Drop the FCM token + listeners (logout / notifications-off). */
