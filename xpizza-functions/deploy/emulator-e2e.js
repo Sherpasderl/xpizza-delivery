@@ -24,21 +24,9 @@ const assert = require('assert');
 const admin = require('firebase-admin');
 const { emuDatabaseURL } = require('./emu-ns');
 const { buildCreateOrderUpdates } = require('../create-order-build');
-const { HUB, COMBOS, assertComboShape } = require('./combo-validation');
+const { HUB, COMBOS, assertComboShape, stripNulls } = require('./combo-validation');
 const { acquireHostedAttempt } = require('../pixelpay-hosted-charge');
 const { orderFingerprint } = require('../pixelpay-charge');
-
-// RTDB drops null-valued keys on write, so a read-back lacks them while the pure builder keeps them.
-// Normalize the builder's expected to RTDB write semantics (null === absent). Legitimate, not hiding.
-function stripNulls(v) {
-  if (Array.isArray(v)) return v.map(stripNulls);
-  if (v && typeof v === 'object') {
-    const out = {};
-    for (const [k, val] of Object.entries(v)) { if (val !== null) out[k] = stripNulls(val); }
-    return out;
-  }
-  return v;
-}
 
 const COMMON = { customer_name: 'Ana', customer_phone: '+50499999999', items_text: 'Margherita x1', items: [{ name: 'Margherita', qty: 1 }], notes: 'ring bell', payment_method: 'cash', cash_tendered: 500 };
 const CASH_DELIVERY = { ...COMMON, order_id: 'E2E_CASH_DELIVERY', order_type: 'delivery', lat: 15.5080, lng: -88.0400, address_detected: 'Calle 1, Col Centro, SPS', address_details: 'casa azul' };

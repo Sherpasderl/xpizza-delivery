@@ -45,6 +45,19 @@ const COMBOS = {
   },
 };
 
+// RTDB drops null-valued keys on write, so a read-back lacks them while a pure builder/fixture keeps
+// them. Normalize to RTDB write semantics (null === absent). Shared by the e2e value compare and the
+// shape anchor so both agree on null handling.
+function stripNulls(v) {
+  if (Array.isArray(v)) return v.map(stripNulls);
+  if (v && typeof v === 'object') {
+    const out = {};
+    for (const [k, val] of Object.entries(v)) { if (val !== null) out[k] = stripNulls(val); }
+    return out;
+  }
+  return v;
+}
+
 // The one assertion set: existing fields byte-identical (strip the additive snapshot), snapshot
 // correct, tasks/tracking exact, no reader-metadata leak, and no unexpected update paths.
 function assertComboOutput(updates, combo) {
@@ -78,7 +91,10 @@ function assertComboShape(updates, combo, { orderId, trackingToken }) {
     const live = updates[subPath(comboKey)];
     assert.ok(live, `missing ${subPath(comboKey)}`);
     const isOrder = comboKey.startsWith('orders/');
-    const expectKeys = (isOrder ? [...Object.keys(comboRec), ...SNAP_KEYS] : Object.keys(comboRec)).sort();
+    // RTDB drops null-valued keys on write, so the live read-back lacks them — mirror that in the
+    // expected key-set (the audited shape keeps e.g. assigned_driver_id:null) before comparing.
+    const normKeys = Object.keys(stripNulls(comboRec));
+    const expectKeys = (isOrder ? [...normKeys, ...SNAP_KEYS] : normKeys).sort();
     assert.deepStrictEqual(Object.keys(live).sort(), expectKeys, `${subPath(comboKey)}: field-key-set drift vs audited shape`);
     if (isOrder) {
       const snap = {};
@@ -94,4 +110,4 @@ function combosHash() {
   return require('crypto').createHash('sha256').update(JSON.stringify(COMBOS)).digest('hex');
 }
 
-module.exports = { HUB, COMBOS, SNAP_KEYS, assertComboOutput, assertComboShape, combosHash };
+module.exports = { HUB, COMBOS, SNAP_KEYS, stripNulls, assertComboOutput, assertComboShape, combosHash };
