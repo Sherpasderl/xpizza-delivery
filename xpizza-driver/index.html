@@ -1617,6 +1617,7 @@ function renderActiveAndQueue() {
 
   if (orders.length === 0) {
     idleSlot.classList.remove('hidden');
+    activeSlot.classList.remove('solo');   // drop the full-height solo layout, else the empty slot leaves a blank screen
     activeSlot.innerHTML = '';
     queueSlot.innerHTML = '';
     renderIdleState();
