@@ -50,6 +50,9 @@ function getBgGeo() {
   return bg;
 }
 
+// Handle for the heartbeat keep-alive listener, so clock-out can detach it.
+let heartbeatSub = null;
+
 // The uploader config. locationTemplate + httpRootProperty shape each POST as
 // { locations: [ { ts, lat, lng, accuracy, heading, speed }, ... ] } — exactly
 // what ingestDriverLocation expects (ts is ISO; the endpoint coerces it).
@@ -70,6 +73,13 @@ function buildConfig(token) {
     desiredAccuracy: -1,        // DESIRED_ACCURACY_HIGH; tune down for battery
     distanceFilter: 15,         // metres between samples while moving
     stationaryRadius: 25,
+    // Keep the pin + "GPS vivo" label live while parked. The motion-based tracker
+    // stops emitting once stationary, so without a heartbeat last_ping ages past
+    // the client's 90s stale threshold even though the driver is on shift. The beat
+    // fires every 60s while stationary; the listener in startNativeTracking forces
+    // a fresh fix each time → autoSync → ingestDriverLocation refreshes last_ping.
+    heartbeatInterval: 60,
+    preventSuspend: true,
     // lifecycle — survive backgrounding / app kill
     stopOnTerminate: false,
     startOnBoot: true,
@@ -119,6 +129,18 @@ export async function startNativeTracking(app, uid) {
   // raw config to the bridge proxy silently applies nothing. start()/stop() take
   // no args. Verified against dist/index.js (2026-06-20).
   await BgGeo.ready({ options: buildConfig(ingest_token) });
+
+  // Heartbeat keep-alive (see heartbeatInterval in buildConfig): each beat, force
+  // a fresh persisted fix so autoSync POSTs it to ingestDriverLocation and
+  // last_ping stays < 90s old while the driver is parked/stationary. addListener
+  // on the bridge global is the same channel the wrapper uses internally
+  // (NativeModule.addListener) — verified against dist/index.js.
+  try { if (heartbeatSub) { await heartbeatSub.remove(); heartbeatSub = null; } } catch (e) {}
+  heartbeatSub = await BgGeo.addListener('heartbeat', () => {
+    BgGeo.getCurrentPosition({ options: { samples: 1, persist: true, timeout: 30 } })
+      .catch((e) => console.warn('native-location: heartbeat fix failed', e));
+  });
+
   await BgGeo.start();
   console.log(`native-location: tracking started (shift ${shift_id})`);
   return { shift_id };
@@ -127,6 +149,7 @@ export async function startNativeTracking(app, uid) {
 /** End a native shift: stop tracking, revoke the token server-side. No-op off-native. */
 export async function stopNativeTracking(app) {
   if (!isNative()) return;
+  try { if (heartbeatSub) { await heartbeatSub.remove(); heartbeatSub = null; } } catch (e) {}
   try { await getBgGeo().stop(); } catch (e) { console.error('native-location: stop failed', e); }
   try {
     await httpsCallable(getFunctions(app, REGION), 'endDriverShift')({});
