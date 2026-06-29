@@ -25,8 +25,12 @@ function probePayload(stamp) {
     order_type: 'delivery',
     customer_name: 'DEPLOY PROBE',
     customer_phone: '+50400000000',
-    items_text: 'probe',
-    items: [],
+    items_text: 'Margherita x1',
+    // A valid MENU_PRICES item so validateOrderPayload's server re-pricing (computeServerTotal,
+    // index.js:310) passes — it runs BEFORE the zone-check and rejects empty/unknown items. Pricing
+    // is pure (no writes), so this preserves the zero-write property; the out-of-zone coords still
+    // trigger the 400 before any write/rate-limit/WhatsApp/factura/task/PixelPay.
+    items: [{ name: 'Margherita', qty: 1 }],
     payment_method: 'cash',
     lat: 14.0, lng: -87.0, // ~180km from the hub — far outside the 7km zone (guarded below)
     address_detected: 'PROBE — out of zone',
