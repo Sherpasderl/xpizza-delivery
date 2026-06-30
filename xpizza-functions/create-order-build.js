@@ -103,6 +103,7 @@ function buildCreateOrderUpdates({
   updates[`order_tracking/${trackingToken}`] = {
     order_id: orderId,
     order_type: orderType,
+    restaurant_id: restaurantId,   // D2: only order_tracking is public-readable — lets the tracker brand per restaurant
     customer_name: fields.customer_name,
     items_text: fields.items_text,
     total: total,

@@ -94,6 +94,7 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
   updates[`order_tracking/${trackingToken}`] = {
     order_id: orderId,
     order_type: orderType,
+    restaurant_id: order.restaurant_id || 'x_pizza',   // D2: per-restaurant tracker branding (legacy-normalized)
     customer_name: order.customer_name,
     items_text: order.items_text,
     total: order.total,

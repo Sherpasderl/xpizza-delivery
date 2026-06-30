@@ -56,4 +56,13 @@ const ok = (label) => console.log(`  ✓ ${++n} ${label}`);
   ok('no reader-metadata leak into tasks/tracking');
 }
 
+// 5) D2: order_tracking carries restaurant_id from the order (legacy-normalized).
+{
+  const lm = buildMaterializeUpdates({ orderId: 'o5', order: baseOrder({ restaurant_id: 'la_musa' }), trackingToken: 't5', now: 1, restaurant: FALLBACK })['order_tracking/t5'];
+  assert.equal(lm.restaurant_id, 'la_musa');
+  const legacy = buildMaterializeUpdates({ orderId: 'o6', order: baseOrder({}), trackingToken: 't6', now: 1, restaurant: FALLBACK })['order_tracking/t6'];
+  assert.equal(legacy.restaurant_id, 'x_pizza');
+  ok('order_tracking restaurant_id stamped from order (la_musa / legacy→x_pizza)');
+}
+
 console.log(`materialize-snapshot: OK (${n} cases)`);

@@ -6,7 +6,7 @@
 const assert = require('assert');
 const { combosHash } = require('./combo-validation');
 
-const EXPECTED_HASH = '80da64d2abb124bf20416b4b968da0c75c9d01b1229de5e3b066ea83f58eef91';
+const EXPECTED_HASH = 'e284f2d7167d082a04c7d0f66e906eb42939fa7e24b3b661382ef73f3e34d7c0';
 
 assert.equal(
   combosHash(),

@@ -28,7 +28,7 @@ const COMBOS = {
       'orders/ORD1': { order_id: 'ORD1', customer_name: 'Ana', customer_phone: '+50499999999', items_text: 'Pizza x1', total: 350, total_cents: 35000, subtotal_cents: 30435, tax_cents: 4565, notes: 'ring bell', payment_method: 'cash', order_type: 'delivery', status: 'new', tracking_token: 'TOK', created_at: 111, restaurant_id: 'x_pizza', factura_status: 'not_due', cash_tendered_cents: 50000, items: [{ n: 'Pizza', q: 1, c: 35000 }], lat: 15.6, lng: -88.1, address_detected: 'Calle 1, Col Centro, SPS', address_details: 'casa azul', maps_link: 'https://www.google.com/maps?q=15.6,-88.1', pickup_task_id: 'ORD1_pickup', delivery_task_id: 'ORD1_delivery' },
       'tasks/ORD1_pickup': { order_id: 'ORD1', type: 'pickup', status: 'pending', assigned_driver_id: null, linked_task_id: 'ORD1_delivery', depends_on_task_id: null, destination_lat: 15.507489753573818, destination_lng: -88.0398486953722, destination_address: 'X Pizza', recipient_name: 'X Pizza', recipient_phone: '+50497952893', notes: 'Pizza x1', created_at: 111 },
       'tasks/ORD1_delivery': { order_id: 'ORD1', type: 'delivery', status: 'pending', assigned_driver_id: null, linked_task_id: 'ORD1_pickup', depends_on_task_id: 'ORD1_pickup', destination_lat: 15.6, destination_lng: -88.1, destination_address: 'Calle 1, Col Centro, SPS', address_details: 'casa azul', recipient_name: 'Ana', recipient_phone: '+50499999999', payment_method: 'cash', total: 350, notes: 'Pizza x1', created_at: 111 },
-      'order_tracking/TOK': { order_id: 'ORD1', order_type: 'delivery', customer_name: 'Ana', items_text: 'Pizza x1', total: 350, address_short: 'Calle 1', status: 'new', created_at: 111 },
+      'order_tracking/TOK': { order_id: 'ORD1', order_type: 'delivery', restaurant_id: 'x_pizza', customer_name: 'Ana', items_text: 'Pizza x1', total: 350, address_short: 'Calle 1', status: 'new', created_at: 111 },
     },
   },
   cash_pickup: {
@@ -40,7 +40,7 @@ const COMBOS = {
     snapshot: HUB,
     pre3b: {
       'orders/ORD2': { order_id: 'ORD2', customer_name: 'Ben', customer_phone: '+50488888888', items_text: 'Calzone x2', total: 200, total_cents: 20000, subtotal_cents: 17391, tax_cents: 2609, notes: '', payment_method: 'cash', order_type: 'pickup', status: 'new', tracking_token: 'TOK2', created_at: 222, restaurant_id: 'x_pizza', factura_status: 'not_due', cash_tendered_cents: 20000, items: [{ n: 'Calzone', q: 2, c: 20000 }], pickup_time: 'standard' },
-      'order_tracking/TOK2': { order_id: 'ORD2', order_type: 'pickup', customer_name: 'Ben', items_text: 'Calzone x2', total: 200, address_short: 'Recoger en X. Pizza', status: 'new', created_at: 222 },
+      'order_tracking/TOK2': { order_id: 'ORD2', order_type: 'pickup', restaurant_id: 'x_pizza', customer_name: 'Ben', items_text: 'Calzone x2', total: 200, address_short: 'Recoger en X. Pizza', status: 'new', created_at: 222 },
     },
   },
 };
