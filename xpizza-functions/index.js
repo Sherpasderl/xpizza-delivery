@@ -212,6 +212,7 @@ const { MENU_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal } = require('./menu
 const MENU_PRICES = MENU_BY_RESTAURANT.x_pizza; // x_pizza table — used by pricedLineItems (factura)
 const { resolveRestaurantId, sameRestaurant } = require('./restaurant-id');
 const { resolveReturnBase } = require('./pixelpay-return-url');
+const { resolveAssignHub, X_PIZZA_HUB } = require('./assign-hub');
 
 // Strip HTML-significant + control chars and cap length. Defense-in-depth vs
 // stored XSS: even if a downstream HTML sink forgets to escape, no tag can be
@@ -2653,8 +2654,8 @@ exports.onIncomingWhatsApp = onRequest(
 
 const GRACE_PERIOD_MS = 30 * 1000;
 const STALE_PING_MS = 90 * 1000;
-const RESTAURANT_LAT = 15.507489753573818;
-const RESTAURANT_LNG = -88.0398486953722;
+const RESTAURANT_LAT = X_PIZZA_HUB.lat;   // x_pizza hub (single source: assign-hub.js) — geofence + auto-assign fallback
+const RESTAURANT_LNG = X_PIZZA_HUB.lng;
 
 // Acceptance timeout: how long a driver has to swipe-to-accept after assignment
 // before the system reassigns to someone else. Same value used by driver UI
@@ -2748,7 +2749,7 @@ const STATUS_PRIORITY = {
  * Shared by autoAssignOnOrderCreate and monitorAssignmentTimeout to avoid
  * drift between initial-assign and reassign behavior.
  */
-async function pickEligibleDriver(db, excludeDriverIds = []) {
+async function pickEligibleDriver(db, excludeDriverIds = [], hubLat = RESTAURANT_LAT, hubLng = RESTAURANT_LNG) {
   const [driversSnap, tasksSnap] = await Promise.all([
     db.ref('drivers').once('value'),
     db.ref('tasks').once('value')
@@ -2841,7 +2842,7 @@ async function pickEligibleDriver(db, excludeDriverIds = []) {
     // just hasn't pinged in a while.
     let distanceKm;
     if (typeof d.lat === 'number' && typeof d.lng === 'number') {
-      distanceKm = haversineKm(d.lat, d.lng, RESTAURANT_LAT, RESTAURANT_LNG);
+      distanceKm = haversineKm(d.lat, d.lng, hubLat, hubLng);
     } else {
       distanceKm = 0;
     }
@@ -3016,7 +3017,8 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       return;
     }
 
-    const chosen = await pickEligibleDriver(db);
+    const { hubLat, hubLng } = resolveAssignHub(orderNow);   // C1: assign against the order's restaurant hub
+    const chosen = await pickEligibleDriver(db, [], hubLat, hubLng);
     if (!chosen) {
       console.warn(`autoAssign: no eligible drivers for ${orderId}, alerting dispatcher`);
       await db.ref('dispatcher_alerts').push({
@@ -3197,7 +3199,8 @@ exports.monitorAssignmentTimeout = onValueWritten(
     }
 
     // First-strike timeout → try one more driver, excluding the timed-out one
-    const nextDriver = await pickEligibleDriver(db, [driverId]);
+    const { hubLat, hubLng } = resolveAssignHub(orderForTimeout);   // C1: reassign against the order's restaurant hub
+    const nextDriver = await pickEligibleDriver(db, [driverId], hubLat, hubLng);
     if (!nextDriver) {
       console.warn(`timeout-monitor: no eligible drivers after ${driverId} timeout on ${orderId}, escalating`);
       const orderSnap = await db.ref(`orders/${orderId}`).once('value');
