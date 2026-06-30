@@ -211,6 +211,7 @@ const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 const { MENU_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal } = require('./menu-pricing');
 const MENU_PRICES = MENU_BY_RESTAURANT.x_pizza; // x_pizza table — used by pricedLineItems (factura)
 const { resolveRestaurantId, sameRestaurant } = require('./restaurant-id');
+const { resolveReturnBase } = require('./pixelpay-return-url');
 
 // Strip HTML-significant + control chars and cap length. Defense-in-depth vs
 // stored XSS: even if a downstream HTML sink forgets to escape, no tag can be
@@ -662,6 +663,15 @@ chargeOnlineApp.all('*', async (req, res) => {
     return res.status(500).json({ error: 'Payment not configured', detail: e.message });
   }
 
+  // Restaurant-aware hosted-checkout return base (B2-server). Resolved up front — before any DB write
+  // — and FAIL-CLOSED for la_musa if unconfigured (never fall back to the x_pizza origin). x_pizza is
+  // unaffected (its default is intrinsic, not env-dependent), so this is byte-identical for x_pizza.
+  const returnBase = resolveReturnBase(restaurantId, process.env);
+  if (returnBase.error) {
+    console.error(`chargeOnlineOrder: ${returnBase.error} for ${orderId} (${restaurantId})`);
+    return res.status(500).json({ error: 'Payment not configured', detail: 'return URL not configured for restaurant' });
+  }
+
   const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
   const db = getDatabase();
 
@@ -816,8 +826,9 @@ chargeOnlineApp.all('*', async (req, res) => {
   // IMPORTANT: the return URLs use the ORDER-SITE origin (where the return/poll page lives),
   // NOT pp.app_url — that's the PixelPay ENDPOINT (it's the x-client-signature app_url, a
   // different thing; reusing it would redirect the paid customer to the bank's domain).
-  // Configurable via PIXELPAY_RETURN_URL; defaults to the orders site.
-  const siteBase = String(process.env.PIXELPAY_RETURN_URL || 'https://xpizzaorders.netlify.app').replace(/\/+$/, '');
+  // Restaurant-aware base, resolved + fail-closed up front (see resolveReturnBase above).
+  // x_pizza → PIXELPAY_RETURN_URL || the orders site (unchanged); la_musa → its own origin.
+  const siteBase = returnBase.base;
   const completeUrl = `${siteBase}/?pay=complete&order=${encodeURIComponent(orderId)}&t=${encodeURIComponent(pollToken)}`;
   const cancelUrl = `${siteBase}/?pay=cancel&order=${encodeURIComponent(orderId)}`;
   const wsecret = process.env.PIXELPAY_WEBHOOK_SECRET || '';
