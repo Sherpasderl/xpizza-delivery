@@ -108,9 +108,36 @@ function resolveHubFromTask(afterTaskId, allTasks, existingHub) {
     const eh = existingHub || {};
     const correct = eh.current_restaurant_id === expected.current_restaurant_id
       && coordsMatchHub({ lat: expected.current_hub_lat, lng: expected.current_hub_lng }, eh.current_hub_lat, eh.current_hub_lng);
-    return correct ? { action: 'noop' } : { action: 'backfill', hub: expected };
+    // Coords already correct → only the version must advance to the live (delivery) task so the
+    // geofence's version-guard stays open through pickup→delivery (preserving the exit-backstop);
+    // coords stale → backfill them too. Either way the version ends up === the live current_task_id.
+    return correct ? { action: 'restamp' } : { action: 'backfill', hub: expected };
   }
   return { action: 'noop' };
+}
+
+/**
+ * Decision core of the `syncDriverHub` trigger (S1 E3). `eventAfterTaskId` is the current_task_id
+ * the write event carried; `freshCurrentTaskId` is a re-read of the LIVE value taken right before
+ * deciding. Idempotent recheck (watch-point #1): if they differ, a newer out-of-order event has
+ * already advanced current_task_id, so this stale event must NOT write — return null. Otherwise map
+ * the resolveHubFromTask action to the driver-record update (or null for a no-op). Pure: the trigger
+ * supplies the fresh read + the minimal task map + the existing hub, then applies the returned update.
+ */
+function syncDriverHubUpdate(eventAfterTaskId, freshCurrentTaskId, allTasks, existingHub) {
+  if (freshCurrentTaskId !== eventAfterTaskId) return null;   // diverged → a newer event handles it
+  const r = resolveHubFromTask(eventAfterTaskId, allTasks, existingHub);
+  if (r.action === 'noop') return null;
+  if (r.action === 'clear') {
+    return { current_hub_lat: null, current_hub_lng: null, current_restaurant_id: null, current_hub_task_id: null };
+  }
+  // 'restamp' — coords already correct (delivery phase), advance ONLY the version to the live task so
+  // the geofence version-guard stays open through pickup→delivery.
+  if (r.action === 'restamp') return { current_hub_task_id: eventAfterTaskId };
+  // 'set' | 'backfill' — stamp current_hub_task_id = the active task this hub is valid for. The
+  // geofence trusts the hub only while current_hub_task_id === the live current_task_id, so a
+  // versioned-but-stale snapshot (the residual recheck window) self-detects and fail-closes.
+  return { ...r.hub, current_hub_task_id: eventAfterTaskId };
 }
 
 /**
@@ -184,6 +211,7 @@ module.exports = {
   geofenceTransition,
   isHubResolvable,
   resolveHubFromTask,
+  syncDriverHubUpdate,
   selectIngestPoints,
   hashToken,
   validateIngestToken,

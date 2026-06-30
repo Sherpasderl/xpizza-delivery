@@ -25,6 +25,7 @@
         "current_hub_lat":      { ".validate": "root.child('dispatchers').child(auth.uid).exists()" },
         "current_hub_lng":      { ".validate": "root.child('dispatchers').child(auth.uid).exists()" },
         "current_restaurant_id":{ ".validate": "root.child('dispatchers').child(auth.uid).exists()" },
+        "current_hub_task_id":  { ".validate": "root.child('dispatchers').child(auth.uid).exists()" },
         "ingest_token_hash":    { ".validate": "root.child('dispatchers').child(auth.uid).exists()" },
         "last_location_ts":     { ".validate": "root.child('dispatchers').child(auth.uid).exists()" }
       }

@@ -54,6 +54,7 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
     updates[`orders/${orderId}/delivery_task_id`] = deliveryTaskId;
     updates[`tasks/${pickupTaskId}`] = {
       order_id: orderId,
+      restaurant_id: order.restaurant_id || 'x_pizza',   // S1 E2: syncDriverHub snapshot source (legacy-normalized, mirrors order_tracking)
       type: 'pickup',
       status: 'pending',
       assigned_driver_id: null,

@@ -64,6 +64,7 @@ function buildCreateOrderUpdates({
   if (orderType === 'delivery') {
     updates[`tasks/${pickupTaskId}`] = {
       order_id: orderId,
+      restaurant_id: restaurantId,   // S1 E2: lets syncDriverHub snapshot the per-restaurant pickup hub
       type: 'pickup',
       status: 'pending',
       assigned_driver_id: null,

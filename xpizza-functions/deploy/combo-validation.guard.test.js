@@ -6,7 +6,10 @@
 const assert = require('assert');
 const { combosHash } = require('./combo-validation');
 
-const EXPECTED_HASH = 'e284f2d7167d082a04c7d0f66e906eb42939fa7e24b3b661382ef73f3e34d7c0';
+// Rebumped for S1 E2: additive `restaurant_id: 'x_pizza'` on tasks/ORD1_pickup (the only driver
+// pickup task in COMBOS — cash_pickup/ORD2 has no tasks). Re-audited: additive-only, no other field
+// moved on any record; cash_delivery + cash_pickup goldens still pass byte-identical on prior fields.
+const EXPECTED_HASH = 'e3e1fb8a1edb53c722563ff58b932403335db7bb499d49f9a98cd1ec907564a8';
 
 assert.equal(
   combosHash(),

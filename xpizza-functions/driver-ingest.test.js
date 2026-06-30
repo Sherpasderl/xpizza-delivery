@@ -12,6 +12,7 @@ const {
   geofenceTransition,
   isHubResolvable,
   resolveHubFromTask,
+  syncDriverHubUpdate,
   selectIngestPoints,
   hashToken,
   validateIngestToken,
@@ -128,9 +129,10 @@ const FAR = { lat: HUB.lat + 0.01, lng: HUB.lng };
     { action: 'set', hub: { current_hub_lat: X_PIZZA_HUB.lat, current_hub_lng: X_PIZZA_HUB.lng, current_restaurant_id: 'x_pizza' } },
     'x_pizza pickup → set X. Pizza hub');
 
-  // delivery, snapshot already correct → no-op (preserves the exit-backstop, behaviour-identical)
-  assert.deepStrictEqual(resolveHubFromTask('dl', TASKS, lmSnap), { action: 'noop' }, 'la_musa delivery + correct hub → no-op');
-  assert.deepStrictEqual(resolveHubFromTask('dx', TASKS, xpSnap), { action: 'noop' }, 'x_pizza delivery + correct hub → no-op');
+  // delivery, snapshot coords already correct → 'restamp' (advance version to the live delivery task,
+  // coords unchanged) so the geofence version-guard stays open through pickup→delivery (exit-backstop)
+  assert.deepStrictEqual(resolveHubFromTask('dl', TASKS, lmSnap), { action: 'restamp' }, 'la_musa delivery + correct hub → restamp version');
+  assert.deepStrictEqual(resolveHubFromTask('dx', TASKS, xpSnap), { action: 'restamp' }, 'x_pizza delivery + correct hub → restamp version');
 
   // ★ delivery, snapshot ABSENT/STALE (pickup write lagged or failed) → BACKFILL from the linked pickup
   assert.deepStrictEqual(resolveHubFromTask('dl', TASKS, nullSnap),
@@ -140,6 +142,88 @@ const FAR = { lat: HUB.lat + 0.01, lng: HUB.lng };
     { action: 'backfill', hub: { current_hub_lat: LA_MUSA_HUB.lat, current_hub_lng: LA_MUSA_HUB.lng, current_restaurant_id: 'la_musa' } },
     'la_musa delivery + STALE x_pizza hub → backfill La Musa');
   ok('resolveHubFromTask: set / no-op / backfill / clear');
+}
+
+// ---- syncDriverHubUpdate(eventAfterTaskId, freshCurrentTaskId, allTasks, existingHub) ----
+// The syncDriverHub trigger's pure decision path (S1 E3). Wraps resolveHubFromTask with the
+// idempotent recheck: if the live current_task_id no longer equals the event's after-value (a newer
+// out-of-order event already advanced it), DO NOT WRITE — return null. Otherwise map the action to
+// the driver-record update (or null for no-op). The trigger's only remaining work is the I/O.
+{
+  const PL = { type: 'pickup', destination_lat: LA_MUSA_HUB.lat, destination_lng: LA_MUSA_HUB.lng, restaurant_id: 'la_musa', linked_task_id: 'dl' };
+  const DL = { type: 'delivery', linked_task_id: 'pl' };
+  const TASKS = { pl: PL, dl: DL };
+  const nullSnap = { current_restaurant_id: null, current_hub_lat: null, current_hub_lng: null };
+  const lmSnap = { current_restaurant_id: 'la_musa', current_hub_lat: LA_MUSA_HUB.lat, current_hub_lng: LA_MUSA_HUB.lng };
+
+  // ★ OUT-OF-ORDER: a slow pickup event fires AFTER current_task_id already advanced to the delivery
+  // (or to null) → the recheck sees the divergence → NO write (returns null). The #1 race hazard.
+  assert.strictEqual(syncDriverHubUpdate('pl', 'dl', TASKS, nullSnap), null,
+    'out-of-order: stale pickup event after current_task_id moved on → no write');
+  assert.strictEqual(syncDriverHubUpdate('pl', null, TASKS, nullSnap), null,
+    'out-of-order: stale pickup event after current_task_id cleared → no write');
+
+  // in-order: pickup event still current → set hub + version-stamp to the pickup task
+  assert.deepStrictEqual(syncDriverHubUpdate('pl', 'pl', TASKS, nullSnap),
+    { current_hub_lat: LA_MUSA_HUB.lat, current_hub_lng: LA_MUSA_HUB.lng, current_restaurant_id: 'la_musa', current_hub_task_id: 'pl' },
+    'in-order pickup → set hub + version=pl');
+  // in-order: delivery still current + correct coords → RESTAMP the version to the delivery task
+  // (4th-rev fix: keeps current_hub_task_id === current_task_id through delivery, not a no-op)
+  assert.deepStrictEqual(syncDriverHubUpdate('dl', 'dl', TASKS, lmSnap), { current_hub_task_id: 'dl' },
+    'in-order delivery + correct hub → restamp version to dl (exit-backstop stays open)');
+  // in-order: delivery still current + absent hub → backfill + version-stamp to the delivery task
+  assert.deepStrictEqual(syncDriverHubUpdate('dl', 'dl', TASKS, nullSnap),
+    { current_hub_lat: LA_MUSA_HUB.lat, current_hub_lng: LA_MUSA_HUB.lng, current_restaurant_id: 'la_musa', current_hub_task_id: 'dl' },
+    'in-order delivery + absent hub → backfill + version=dl');
+  // in-order: cleared → clear all four (incl. the version)
+  assert.deepStrictEqual(syncDriverHubUpdate(null, null, TASKS, lmSnap),
+    { current_hub_lat: null, current_hub_lng: null, current_restaurant_id: null, current_hub_task_id: null }, 'in-order null → clear (incl version)');
+
+  // ★ exit-backstop guard (4th-rev): simulate pickupComplete advancing current_task_id pickup→delivery.
+  // The version must follow to the delivery task so the geofence guard (current_hub_task_id ===
+  // current_task_id) stays OPEN through the delivery phase rather than fail-closing the backstop.
+  const afterAccept = syncDriverHubUpdate('pl', 'pl', TASKS, nullSnap);                 // accept → version=pl
+  assert.strictEqual(afterAccept.current_hub_task_id, 'pl', 'after accept: version tracks the pickup task');
+  const hubAfterAccept = { current_restaurant_id: afterAccept.current_restaurant_id, current_hub_lat: afterAccept.current_hub_lat, current_hub_lng: afterAccept.current_hub_lng };
+  const afterPickup = syncDriverHubUpdate('dl', 'dl', TASKS, hubAfterAccept);           // pickupComplete → current_task_id=delivery
+  assert.strictEqual(afterPickup.current_hub_task_id, 'dl', 'after pickupComplete: version restamped to delivery → === current_task_id → version-guard stays open');
+
+  ok('syncDriverHubUpdate: out-of-order no-write + versioned set/backfill/clear/restamp + exit-backstop tracking');
+}
+
+// ---- real-builder fidelity (finding #3) ----  feed ACTUAL builder pickup output into the resolver,
+// not a hand-injected shape — this is the test that would have caught B's missing-restaurant_id gap.
+{
+  const { buildCreateOrderUpdates } = require('./create-order-build');
+  const { buildMaterializeUpdates } = require('./materialize');
+  const { COMBOS } = require('./deploy/combo-validation');
+
+  // (a) cash builder — x_pizza, via the audited COMBOS input (guaranteed-valid real shape)
+  const cu = buildCreateOrderUpdates({ ...COMBOS.cash_delivery.input, hubSnap: COMBOS.cash_delivery.snapshot });
+  const cpk = cu['tasks/ORD1_pickup'];
+  assert.strictEqual(cpk.restaurant_id, 'x_pizza', 'real cash builder stamps restaurant_id on the pickup task');
+  assert.deepStrictEqual(resolveHubFromTask('ORD1_pickup', { ORD1_pickup: cpk }, {}),
+    { action: 'set', hub: { current_hub_lat: cpk.destination_lat, current_hub_lng: cpk.destination_lng, current_restaurant_id: 'x_pizza' } },
+    'real cash pickup task → resolver sets the builder hub + x_pizza');
+
+  // (b) online builder — la_musa, via buildMaterializeUpdates (the path that was broken pre-C)
+  const order = {
+    order_type: 'delivery', payment_method: 'online', customer_name: 'A', customer_phone: '1',
+    items_text: 'x', total: 100, lat: 15.6, lng: -88.1, address_detected: 'Somewhere, City',
+    restaurant_id: 'la_musa', hub_lat: LA_MUSA_HUB.lat, hub_lng: LA_MUSA_HUB.lng, restaurant_name: 'La Musa', restaurant_phone: 'p',
+  };
+  const ou = buildMaterializeUpdates({ orderId: 'RB2', order, trackingToken: 'T2', now: 1,
+    restaurant: { lat: X_PIZZA_HUB.lat, lng: X_PIZZA_HUB.lng, name: 'X Pizza', phone: 'p' } });
+  const opk = ou['tasks/RB2_pickup'];
+  assert.strictEqual(opk.restaurant_id, 'la_musa', 'real materialize builder stamps restaurant_id on the pickup task');
+  const ores = resolveHubFromTask('RB2_pickup', { RB2_pickup: opk }, {});
+  assert.deepStrictEqual(ores,
+    { action: 'set', hub: { current_hub_lat: opk.destination_lat, current_hub_lng: opk.destination_lng, current_restaurant_id: 'la_musa' } },
+    'real online la_musa pickup task → resolver sets the builder hub + la_musa');
+  // and through the trigger core (versioned) — this is what was fail-closing pre-C
+  assert.strictEqual(syncDriverHubUpdate('RB2_pickup', 'RB2_pickup', { RB2_pickup: opk }, {}).current_restaurant_id, 'la_musa',
+    'real online la_musa pickup → syncDriverHubUpdate snapshots la_musa (resolves, no longer fail-closed)');
+  ok('real-builder fidelity: cash + online pickup tasks flow restaurant_id through the resolver/trigger');
 }
 
 // ---- selectIngestPoints ----
