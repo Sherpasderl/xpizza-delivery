@@ -504,12 +504,12 @@
       return null;
     }
 
-    // Per-restaurant branding (D2). x_pizza / legacy / absent restaurant_id → NO override (the static
-    // X. Pizza branding stays byte-identical, zero risk). la_musa → its name + palette.
-    // NOTE: the la_musa colors are PLACEHOLDER — replace with the real La Musa brand assets (tracked
-    // launch item, alongside the WhatsApp food-noun/assets slice).
+    // Per-restaurant branding (D2 mechanism, E2 real palette). x_pizza / legacy / absent restaurant_id
+    // → NO override (the static X. Pizza branding stays byte-identical, zero risk). la_musa → its name +
+    // the real musa-red palette, sourced from the La Musa order form (la-musa-orders/index.html) so the
+    // order→track experience is visually consistent. Text wordmark "La Musa" (no asset-hosting dependency).
     const RESTAURANT_BRAND = {
-      la_musa: { nameHtml: 'La Musa', title: 'La Musa · Sigue tu pedido', brand: '#B61218', dark: '#7d0c10', light: '#f7e7e7' },
+      la_musa: { nameHtml: 'La Musa', title: 'La Musa · Sigue tu pedido', brand: '#B61218', dark: '#7A0A10', light: '#F4DDDD' },
     };
     function applyRestaurantBrand(restaurantId) {
       const b = RESTAURANT_BRAND[restaurantId];
