@@ -37,6 +37,19 @@ assert.ok(ord('la_musa').includes('Recibimos tu pedido en La Musa ✅')); ok('tp
 assert.ok(w.tplDelivered({ customerName: 'Ana', restaurantId: 'x_pizza' }).includes('disfrutes tu X. Pizza, Ana.')); ok('tplDelivered x_pizza body byte-identical');
 assert.ok(w.tplDelivered({ customerName: 'Ana', restaurantId: 'la_musa' }).includes('disfrutes tu La Musa, Ana.')); ok('tplDelivered la_musa body branded');
 
+// ── E1: food-noun copy — x_pizza BYTE-IDENTICAL, la_musa branded ──
+assert.equal(w.itemsEmojiFor('x_pizza'), '🍕'); ok('itemsEmojiFor x_pizza = 🍕');
+assert.equal(w.itemsEmojiFor('la_musa'), '🍜'); ok('itemsEmojiFor la_musa = 🍜');
+assert.equal(w.itemsEmojiFor(undefined), '🍕'); ok('itemsEmojiFor default = 🍕 (legacy/unknown)');
+assert.equal(w.readyLineFor('x_pizza'), '¡Tu pizza está lista! 🍕'); ok('readyLineFor x_pizza = exact prior literal');
+assert.equal(w.readyLineFor('la_musa'), '¡Tu pedido está listo! 🍜'); ok('readyLineFor la_musa = pedido/listo/🍜');
+assert.equal(w.readyLineFor(undefined), '¡Tu pizza está lista! 🍕'); ok('readyLineFor default = x_pizza literal');
+assert.ok(ord('x_pizza').includes('🍕 X')); ok('tplOrderReceived x_pizza item prefix 🍕 (byte-identical)');
+assert.ok(ord('la_musa').includes('🍜 X')); ok('tplOrderReceived la_musa item prefix 🍜');
+const drv = (rid) => w.tplDriverAssigned({ customerName: 'Ana', driverName: 'D', trackingToken: 'T', restaurantId: rid });
+assert.ok(drv('x_pizza').includes('¡Tu pizza está lista! 🍕')); ok('tplDriverAssigned x_pizza ready line byte-identical');
+assert.ok(drv('la_musa').includes('¡Tu pedido está listo! 🍜')); ok('tplDriverAssigned la_musa ready line (pedido/🍜)');
+
 // ── isEnabledForRestaurant (model B) ──
 const stubDb = ({ globalEnabled = true, laEnabled, throwOn }) => ({
   ref(path) {

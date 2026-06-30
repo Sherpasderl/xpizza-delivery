@@ -45,6 +45,17 @@ function brandFor(restaurantId) {
   return BRAND_BY_RESTAURANT[restaurantId] || 'X. Pizza';
 }
 
+// Per-restaurant customer-facing food copy (E1). x_pizza values are the EXACT current literals →
+// byte-identical; only the la_musa branch differs (and it's dark). "pizza" is feminine (está listA),
+// "pedido" is masculine (está listO) — a bare noun-swap is wrong, so map the WHOLE ready line.
+const ITEMS_EMOJI_BY_RESTAURANT = { x_pizza: '🍕', la_musa: '🍜' };
+const READY_LINE_BY_RESTAURANT = {
+  x_pizza: '¡Tu pizza está lista! 🍕',   // unchanged literal
+  la_musa: '¡Tu pedido está listo! 🍜',
+};
+function itemsEmojiFor(restaurantId) { return ITEMS_EMOJI_BY_RESTAURANT[restaurantId] || '🍕'; }
+function readyLineFor(restaurantId) { return READY_LINE_BY_RESTAURANT[restaurantId] || READY_LINE_BY_RESTAURANT.x_pizza; }
+
 // Per-restaurant UltraMsg config (C2). x_pizza (and any non-la_musa) → the module globals + the
 // HARDCODED TRACKING_BASE constant, byte-for-byte (NOT process.env.TRACKING_BASE — that's undefined
 // and would break x_pizza links). la_musa → its own (instance, token, tracking base) via _LA_MUSA
@@ -204,7 +215,7 @@ function tplOrderReceived({ customerName, orderId, itemsText, total, trackingTok
     ``,
     `Recibimos tu pedido en ${brandFor(restaurantId)} ✅`,
     ``,
-    `🍕 ${itemsText || ''}`,
+    `${itemsEmojiFor(restaurantId)} ${itemsText || ''}`,
     `💰 Total: L${total}`,
     ``,
     `Tu pedido está siendo preparado. Te avisamos cuando esté en camino 🛵`,
@@ -229,7 +240,7 @@ function tplPickupReceived({ customerName, orderId, itemsText, total, pickupTime
     ``,
     `Recibimos tu pedido en ${brandFor(restaurantId)} ✅`,
     ``,
-    `🍕 ${itemsText || ''}`,
+    `${itemsEmojiFor(restaurantId)} ${itemsText || ''}`,
     `💰 Total: L${total}`,
     ``,
     `🏪 Recogida en restaurante`,
@@ -246,7 +257,7 @@ function tplPickupReceived({ customerName, orderId, itemsText, total, pickupTime
 
 function tplDriverAssigned({ customerName, driverName, trackingToken, restaurantId }) {
   return [
-    `¡Tu pizza está lista! 🍕`,
+    readyLineFor(restaurantId),
     ``,
     `${driverName || 'Nuestro repartidor'} sale ahora del restaurante con tu pedido${customerName ? ', ' + customerName : ''}.`,
     ``,
@@ -290,6 +301,8 @@ module.exports = {
   isEnabledForRestaurant,
   resolveWhatsappConfig,
   brandFor,
+  itemsEmojiFor,
+  readyLineFor,
   trackingUrl,
   normalizePhone,
   tplOrderReceived,
