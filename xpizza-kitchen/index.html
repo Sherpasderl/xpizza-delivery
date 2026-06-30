@@ -946,6 +946,23 @@ XPD.initDelivery(firebaseConfig);
 // (the original kitchen used <script> not module, so handlers reference globals).
 window.XPD = XPD;
 
+// Per-restaurant KDS branding (E3). Mirrors the tracker's applyRestaurantBrand: a la_musa-only
+// override keyed on the host-derived XPD.KDS_RESTAURANT_ID (xpizza-delivery.js:55). x_pizza / legacy /
+// unknown → early return → the static X. Pizza literals (title / .login-brand / .brand) stay
+// byte-identical. try/catch-bounded — branding never breaks the KDS. (The "Cocina" subs are
+// restaurant-neutral and left unchanged.)
+function applyKdsBrand() {
+  try {
+    if (XPD.KDS_RESTAURANT_ID !== 'la_musa') return;   // x_pizza / legacy / unknown → static branding untouched
+    document.title = 'La Musa — Cocina';
+    const login = document.querySelector('.login-brand');
+    if (login) login.textContent = 'LA MUSA';   // .login-brand has NO text-transform → literal caps to match "X PIZZA"
+    const brand = document.querySelector('.brand');
+    if (brand) brand.textContent = 'La Musa';    // .brand is text-transform:uppercase → renders "LA MUSA" (mirrors x_pizza "X Pizza")
+  } catch (_) { /* branding is best-effort; never break the KDS */ }
+}
+applyKdsBrand();
+
 /* ═══════════════════════════════════════════════
    CONFIGURATION
    ═══════════════════════════════════════════════
