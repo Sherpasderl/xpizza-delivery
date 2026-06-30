@@ -2404,7 +2404,8 @@ exports.sendOrderStatusNotifications = onValueWritten(
 
       } else if (after === 'delivered') {
         body = whatsapp.tplDelivered({
-          customerName: order.customer_name
+          customerName: order.customer_name,
+          restaurantId
         });
 
       } else if (after === 'cancelled') {

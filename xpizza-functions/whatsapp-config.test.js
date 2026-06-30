@@ -27,6 +27,16 @@ assert.equal(w.resolveWhatsappConfig('la_musa', { ULTRAMSG_INSTANCE_ID_LA_MUSA: 
 // ── trackingUrl (x_pizza) ──
 assert.equal(w.trackingUrl('TOK', 'x_pizza'), `${X_TRACK}/TOK`); ok('trackingUrl x_pizza → constant base');
 
+// ── brandFor + template bodies (D1): x_pizza BYTE-IDENTICAL, la_musa branded ──
+assert.equal(w.brandFor('x_pizza'), 'X. Pizza'); ok('brandFor x_pizza = "X. Pizza"');
+assert.equal(w.brandFor('la_musa'), 'La Musa'); ok('brandFor la_musa = "La Musa"');
+assert.equal(w.brandFor(undefined), 'X. Pizza'); ok('brandFor default = "X. Pizza" (legacy/unknown)');
+const ord = (rid) => w.tplOrderReceived({ customerName: 'Ana', total: 299, itemsText: 'X', trackingToken: 'T', restaurantId: rid });
+assert.ok(ord('x_pizza').includes('Recibimos tu pedido en X. Pizza ✅')); ok('tplOrderReceived x_pizza body byte-identical ("X. Pizza")');
+assert.ok(ord('la_musa').includes('Recibimos tu pedido en La Musa ✅')); ok('tplOrderReceived la_musa body branded ("La Musa")');
+assert.ok(w.tplDelivered({ customerName: 'Ana', restaurantId: 'x_pizza' }).includes('disfrutes tu X. Pizza, Ana.')); ok('tplDelivered x_pizza body byte-identical');
+assert.ok(w.tplDelivered({ customerName: 'Ana', restaurantId: 'la_musa' }).includes('disfrutes tu La Musa, Ana.')); ok('tplDelivered la_musa body branded');
+
 // ── isEnabledForRestaurant (model B) ──
 const stubDb = ({ globalEnabled = true, laEnabled, throwOn }) => ({
   ref(path) {

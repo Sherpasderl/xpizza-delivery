@@ -36,6 +36,15 @@ const DEFAULT_COUNTRY_CODE = '504';
 // `${TRACKING_BASE}/${token}`. Update once xpizzatrack.netlify.app is live.
 const TRACKING_BASE = 'https://xpizzatrack.netlify.app';
 
+// Customer-facing brand/display name per restaurant (D1). NOT identity.name ('X Pizza' ≠ the brand
+// 'X. Pizza' — seed_identity.js:25 tracks the brand separately). Pure presentation copy, so a code
+// map (no config-plane machinery). brandFor defaults to 'X. Pizza' → x_pizza/legacy/unknown render
+// the existing literal byte-for-byte.
+const BRAND_BY_RESTAURANT = { x_pizza: 'X. Pizza', la_musa: 'La Musa' };
+function brandFor(restaurantId) {
+  return BRAND_BY_RESTAURANT[restaurantId] || 'X. Pizza';
+}
+
 // Per-restaurant UltraMsg config (C2). x_pizza (and any non-la_musa) → the module globals + the
 // HARDCODED TRACKING_BASE constant, byte-for-byte (NOT process.env.TRACKING_BASE — that's undefined
 // and would break x_pizza links). la_musa → its own (instance, token, tracking base) via _LA_MUSA
@@ -193,7 +202,7 @@ function tplOrderReceived({ customerName, orderId, itemsText, total, trackingTok
   return [
     `¡Hola ${customerName || ''}! 👋`,
     ``,
-    `Recibimos tu pedido en X. Pizza ✅`,
+    `Recibimos tu pedido en ${brandFor(restaurantId)} ✅`,
     ``,
     `🍕 ${itemsText || ''}`,
     `💰 Total: L${total}`,
@@ -218,7 +227,7 @@ function tplPickupReceived({ customerName, orderId, itemsText, total, pickupTime
   return [
     `¡Hola ${customerName || ''}! 👋`,
     ``,
-    `Recibimos tu pedido en X. Pizza ✅`,
+    `Recibimos tu pedido en ${brandFor(restaurantId)} ✅`,
     ``,
     `🍕 ${itemsText || ''}`,
     `💰 Total: L${total}`,
@@ -255,11 +264,11 @@ function tplOutForDelivery({ driverName, etaMinutes, trackingToken, restaurantId
   ].join('\n');
 }
 
-function tplDelivered({ customerName }) {
+function tplDelivered({ customerName, restaurantId }) {
   return [
     `✅ ¡Entregado!`,
     ``,
-    `Esperamos que disfrutes tu X. Pizza${customerName ? ', ' + customerName : ''}.`,
+    `Esperamos que disfrutes tu ${brandFor(restaurantId)}${customerName ? ', ' + customerName : ''}.`,
     ``,
     `¿Algún problema con tu pedido? Responde a este mensaje y te ayudamos.`
   ].join('\n');
@@ -280,6 +289,7 @@ module.exports = {
   isEnabled,
   isEnabledForRestaurant,
   resolveWhatsappConfig,
+  brandFor,
   trackingUrl,
   normalizePhone,
   tplOrderReceived,
