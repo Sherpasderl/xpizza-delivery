@@ -58,18 +58,32 @@ const LA_MUSA_MENU = {
 
 const MENU_BY_RESTAURANT = { x_pizza: X_PIZZA_MENU, la_musa: LA_MUSA_MENU };
 
-// Extras are X. Pizza-only (the La Musa form ships EXTRAS = []). Keyed by name.
+// X. Pizza extras — keyed by NAME (0/1 toggle in the form, each counts once).
 const EXTRA_PRICES = {
   'Salsa Roja': 39, 'Salsa Blanca': 39, 'Salsa Calabrian Chili': 49,
   'Mozzarella': 50, 'Whipped Ricotta': 65, 'Salchicha Italiana': 50,
   'Pepperoni': 50, 'Jamón': 39, 'Prosciutto': 94, 'Mortadella': 85,
   'Espinaca': 33, 'Maíz': 45, 'Hongos': 61, 'Basil Pesto': 33
 };
-const EXTRAS_BY_RESTAURANT = { x_pizza: EXTRA_PRICES, la_musa: {} };
+
+// La Musa extras — keyed by stable `id` slug, in sync with the EXTRAS array in the La Musa order
+// form (la-musa-orders/index.html), 14 add-ons. Standalone + qty-aware (summed by their own qty,
+// independent of the parent dish qty — see buildOrder's extrasTotal). Whole-lempira prices.
+const LA_MUSA_EXTRAS = {
+  // Acompañamientos
+  rice_white: 50, rice_chinese: 85, papas_fritas: 75,
+  // Salsas
+  sauce_chili_oil: 30, sauce_aioli: 30, sauce_chipotle: 30, sauce_dumpling: 30,
+  sauce_wonton: 30, sauce_pad_thai: 30, sauce_spicy_mayo: 30, sauce_tuna_tartar: 30,
+  // Proteínas
+  protein_chicken: 65, protein_beef: 155, protein_shrimp: 135
+};
+const EXTRAS_BY_RESTAURANT = { x_pizza: EXTRA_PRICES, la_musa: LA_MUSA_EXTRAS };
 
 // Recompute the order total from the server price tables for `restaurantId`.
-// Returns { total, error }. Rejects unknown item/extra keys (= tampering) and absurd
-// quantities. Extras are a 0/1 toggle in the form, so each entry counts once.
+// Returns { total, error }. Rejects unknown item/extra keys (= tampering) and absurd quantities.
+// Extras model is per-restaurant: x_pizza is name-keyed and counts each once (0/1 toggle);
+// la_musa is id-keyed and qty-aware/standalone with anti-tamper guards (non-array/unknown/qty/dup).
 // restaurantId defaults to 'x_pizza' so existing x_pizza callers are byte-identical.
 function computeServerTotal(items, restaurantId = 'x_pizza') {
   const menu = MENU_BY_RESTAURANT[restaurantId];
@@ -92,13 +106,35 @@ function computeServerTotal(items, restaurantId = 'x_pizza') {
       return { total: NaN, error: `invalid quantity for ${key}` };
     }
     total += menu[key] * qty;
+    // la_musa: a non-array `extras` is malformed = tampered (the form always emits an array).
+    // x_pizza stays on the silent-coerce path below — the SHARED line is untouched (byte-identical).
+    if (byId && it.extras != null && !Array.isArray(it.extras)) {
+      return { total: NaN, error: `invalid extras for ${key}` };
+    }
     const extras = Array.isArray(it.extras) ? it.extras : [];
+    const seenExtraIds = byId ? new Set() : null;
     for (const ex of extras) {
-      const ename = ex && ex.name;
-      if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices, ename)) {
-        return { total: NaN, error: `unknown extra: ${String(ename).slice(0, 40)}` };
+      if (byId) {  // la_musa — id-keyed, qty-aware, standalone (independent of dish qty)
+        const eid = ex && ex.id;
+        if (!eid || !Object.prototype.hasOwnProperty.call(extraPrices, eid)) {
+          return { total: NaN, error: `unknown extra: ${String(eid).slice(0, 40)}` };
+        }
+        if (seenExtraIds.has(eid)) {
+          return { total: NaN, error: `duplicate extra ${eid}` };
+        }
+        seenExtraIds.add(eid);
+        const eqty = Number(ex && ex.qty);
+        if (!Number.isInteger(eqty) || eqty < 1 || eqty > 50) {
+          return { total: NaN, error: `invalid quantity for extra ${eid}` };
+        }
+        total += extraPrices[eid] * eqty;  // server table only — client ex.price ignored
+      } else {  // x_pizza — original name-keyed / count-once logic, verbatim
+        const ename = ex && ex.name;
+        if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices, ename)) {
+          return { total: NaN, error: `unknown extra: ${String(ename).slice(0, 40)}` };
+        }
+        total += extraPrices[ename];
       }
-      total += extraPrices[ename];
     }
   }
   return { total, error: null };
