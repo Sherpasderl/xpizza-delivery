@@ -36,6 +36,25 @@ const DEFAULT_COUNTRY_CODE = '504';
 // `${TRACKING_BASE}/${token}`. Update once xpizzatrack.netlify.app is live.
 const TRACKING_BASE = 'https://xpizzatrack.netlify.app';
 
+// Per-restaurant UltraMsg config (C2). x_pizza (and any non-la_musa) → the module globals + the
+// HARDCODED TRACKING_BASE constant, byte-for-byte (NOT process.env.TRACKING_BASE — that's undefined
+// and would break x_pizza links). la_musa → its own (instance, token, tracking base) via _LA_MUSA
+// env; returns null when its creds are unset → sendMessage skips (fail-safe: never sends a la_musa
+// order from X. Pizza's number). env is injected for unit testing.
+function resolveWhatsappConfig(restaurantId, env = process.env) {
+  if (restaurantId === 'la_musa') {
+    const instanceId = env.ULTRAMSG_INSTANCE_ID_LA_MUSA;
+    const token = env.ULTRAMSG_TOKEN_LA_MUSA;
+    const trackingBase = env.TRACKING_BASE_LA_MUSA;   // set post-C4
+    // TRACKING_BASE_LA_MUSA is folded into la_musa's can-send creds: if it's unset we return null
+    // (skip the send) rather than fall back to the X. Pizza link — otherwise a la_musa order could
+    // send via la_musa's number but with an X. Pizza tracking link (partial leak).
+    if (!instanceId || !token || !trackingBase) return null;
+    return { apiBase: `https://api.ultramsg.com/${instanceId}`, token, trackingBase };
+  }
+  return { apiBase: API_BASE, token: TOKEN, trackingBase: TRACKING_BASE };
+}
+
 /**
  * Normalize a phone number for UltraMsg. UltraMsg wants country-code-prefixed
  * digits with no '+', no spaces, no dashes.
@@ -65,9 +84,10 @@ function normalizePhone(raw) {
 /**
  * Send a WhatsApp message via UltraMsg. Returns null on failure (never throws).
  */
-async function sendMessage(toPhone, body) {
-  if (!INSTANCE_ID || !TOKEN) {
-    console.warn('whatsapp: ULTRAMSG_INSTANCE_ID or ULTRAMSG_TOKEN not configured, skipping send');
+async function sendMessage(toPhone, body, restaurantId = 'x_pizza') {
+  const cfg = resolveWhatsappConfig(restaurantId);
+  if (!cfg || !cfg.apiBase || !cfg.token) {
+    console.warn(`whatsapp: no UltraMsg config for restaurant '${restaurantId}', skipping send`);
     return null;
   }
   const normalized = normalizePhone(toPhone);
@@ -81,14 +101,14 @@ async function sendMessage(toPhone, body) {
 
   try {
     const params = new URLSearchParams({
-      token: TOKEN,
+      token: cfg.token,
       to: normalized,
       body: body,
       // Disable WhatsApp link previews — they're noisy and the tracking link
       // is the main content; a thumbnail preview adds nothing.
       // 'priority': '10',  // default; optional
     });
-    const url = `${API_BASE}/messages/chat`;
+    const url = `${cfg.apiBase}/messages/chat`;
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -122,6 +142,35 @@ async function isEnabled(db) {
   }
 }
 
+// Per-restaurant enablement (C2, model B). x_pizza → EXACTLY isEnabled(db) (the global flag),
+// byte-identical, no new config-plane read. A non-x_pizza restaurant ADDITIONALLY requires its
+// identity.whatsapp_enabled === true (fail-safe: a failed/absent read → false → skip), giving it an
+// independent per-restaurant kill switch.
+async function isEnabledForRestaurant(db, restaurantId = 'x_pizza') {
+  // x_pizza: EXACTLY isEnabled(db) — preserves its fail-OPEN default (read error → enabled),
+  // byte-identical to the pre-C2 behavior. No identity read.
+  if (restaurantId === 'x_pizza') return await isEnabled(db);
+
+  // Non-x_pizza: BOTH reads fail-CLOSED (read error / absent → skip). The global flag is read here
+  // directly (NOT via isEnabled, which fail-opens) so an unreadable global flag never lets a la_musa
+  // send slip through.
+  let globalOn;
+  try {
+    globalOn = (await db.ref('config/whatsapp_enabled').once('value')).val() !== false;
+  } catch (e) {
+    console.warn(`whatsapp: global flag read failed for ${restaurantId}, skipping send`, e.message);
+    return false;
+  }
+  if (!globalOn) return false;
+  try {
+    const v = (await db.ref(`restaurants/${restaurantId}/identity/whatsapp_enabled`).once('value')).val();
+    return v === true;
+  } catch (e) {
+    console.warn(`whatsapp: failed to read ${restaurantId} whatsapp_enabled, skipping send`, e.message);
+    return false;
+  }
+}
+
 // ============================================================
 // MESSAGE TEMPLATES
 // ============================================================
@@ -134,11 +183,13 @@ async function isEnabled(db) {
 // transactional. Tracking link included where useful (first message and
 // in-progress messages; not in delivered/cancelled which are terminal).
 
-function trackingUrl(token) {
-  return `${TRACKING_BASE}/${token}`;
+function trackingUrl(token, restaurantId = 'x_pizza') {
+  const cfg = resolveWhatsappConfig(restaurantId);
+  const base = (cfg && cfg.trackingBase) || TRACKING_BASE;
+  return `${base}/${token}`;
 }
 
-function tplOrderReceived({ customerName, orderId, itemsText, total, trackingToken }) {
+function tplOrderReceived({ customerName, orderId, itemsText, total, trackingToken, restaurantId }) {
   return [
     `¡Hola ${customerName || ''}! 👋`,
     ``,
@@ -150,7 +201,7 @@ function tplOrderReceived({ customerName, orderId, itemsText, total, trackingTok
     `Tu pedido está siendo preparado. Te avisamos cuando esté en camino 🛵`,
     ``,
     `Sigue tu pedido en tiempo real:`,
-    trackingUrl(trackingToken),
+    trackingUrl(trackingToken, restaurantId),
     ``,
     `¡Gracias por preferirnos!`
   ].join('\n');
@@ -160,7 +211,7 @@ function tplOrderReceived({ customerName, orderId, itemsText, total, trackingTok
 // pickupTime is either the literal string 'standard' (= ASAP, ~20 min) or
 // a human-readable label like '6:00 PM–6:20 PM' selected by the customer
 // from the schedule sheet on the order form.
-function tplPickupReceived({ customerName, orderId, itemsText, total, pickupTime, trackingToken }) {
+function tplPickupReceived({ customerName, orderId, itemsText, total, pickupTime, trackingToken, restaurantId }) {
   const timeLine = pickupTime === 'standard'
     ? 'Estará listo en aproximadamente 20 minutos.'
     : `Hora de recogida: ${pickupTime}`;
@@ -178,29 +229,29 @@ function tplPickupReceived({ customerName, orderId, itemsText, total, pickupTime
     `Te avisamos por WhatsApp cuando esté listo para recoger.`,
     ``,
     `Sigue tu pedido:`,
-    trackingUrl(trackingToken),
+    trackingUrl(trackingToken, restaurantId),
     ``,
     `¡Gracias por preferirnos!`
   ].join('\n');
 }
 
-function tplDriverAssigned({ customerName, driverName, trackingToken }) {
+function tplDriverAssigned({ customerName, driverName, trackingToken, restaurantId }) {
   return [
     `¡Tu pizza está lista! 🍕`,
     ``,
     `${driverName || 'Nuestro repartidor'} sale ahora del restaurante con tu pedido${customerName ? ', ' + customerName : ''}.`,
     ``,
     `Sigue su ubicación:`,
-    trackingUrl(trackingToken)
+    trackingUrl(trackingToken, restaurantId)
   ].join('\n');
 }
 
-function tplOutForDelivery({ driverName, etaMinutes, trackingToken }) {
+function tplOutForDelivery({ driverName, etaMinutes, trackingToken, restaurantId }) {
   const eta = etaMinutes ? `\nLlegada estimada: ~${etaMinutes} min` : '';
   return [
     `🛵 ${driverName || 'Tu repartidor'} ya viene en camino${eta}`,
     ``,
-    trackingUrl(trackingToken)
+    trackingUrl(trackingToken, restaurantId)
   ].join('\n');
 }
 
@@ -227,6 +278,9 @@ function tplCancelled({ orderId }) {
 module.exports = {
   sendMessage,
   isEnabled,
+  isEnabledForRestaurant,
+  resolveWhatsappConfig,
+  trackingUrl,
   normalizePhone,
   tplOrderReceived,
   tplPickupReceived,

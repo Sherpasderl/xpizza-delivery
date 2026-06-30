@@ -524,7 +524,7 @@ createOrderApp.all('*', async (req, res) => {
   //
   // Wrapped in try/catch so a WhatsApp failure NEVER causes the order
   // creation to fail — order is already written above.
-  if (await whatsapp.isEnabled(db)) {
+  if (await whatsapp.isEnabledForRestaurant(db, restaurantId)) {
     try {
       // Pickup vs delivery have different copy. Pickup says "te avisamos
       // cuando esté listo para recoger" instead of "en camino". Delivery
@@ -537,7 +537,8 @@ createOrderApp.all('*', async (req, res) => {
           itemsText: String(updates[`orders/${orderId}`].items_text || ''),
           total,
           pickupTime: String(updates[`orders/${orderId}`].pickup_time || 'standard'),
-          trackingToken
+          trackingToken,
+          restaurantId
         });
       } else {
         waBody = whatsapp.tplOrderReceived({
@@ -545,10 +546,11 @@ createOrderApp.all('*', async (req, res) => {
           orderId,
           itemsText: String(updates[`orders/${orderId}`].items_text || ''),
           total,
-          trackingToken
+          trackingToken,
+          restaurantId
         });
       }
-      await whatsapp.sendMessage(updates[`orders/${orderId}`].customer_phone, waBody);
+      await whatsapp.sendMessage(updates[`orders/${orderId}`].customer_phone, waBody, restaurantId);
     } catch (e) {
       console.error('createOrder: whatsapp send failed (order still created)', e.message);
     }
@@ -2295,6 +2297,10 @@ exports.sendOrderStatusNotifications = onValueWritten(
       console.warn(`sendOrderStatusNotifications: couldn't read order ${orderId}`, e.message);
     }
 
+    // C2: route notifications to the ORDER's restaurant. Source is the loaded `order` (NOT `after`,
+    // which is the status string — this trigger watches /orders/{orderId}/status). Legacy-normalized.
+    const restaurantId = order?.restaurant_id || 'x_pizza';
+
     if (trackingToken) {
       const trackingUpdates = { [`order_tracking/${trackingToken}/status`]: after };
       if (after === 'out_for_delivery') {
@@ -2316,8 +2322,8 @@ exports.sendOrderStatusNotifications = onValueWritten(
     // notify the customer (would be too noisy).
     if (!['out_for_delivery', 'delivered', 'cancelled'].includes(after)) return;
 
-    if (!(await whatsapp.isEnabled(db))) {
-      console.log(`sendOrderStatusNotifications: ${orderId} → ${after}, but whatsapp_enabled=false, skipping send`);
+    if (!(await whatsapp.isEnabledForRestaurant(db, restaurantId))) {
+      console.log(`sendOrderStatusNotifications: ${orderId} → ${after}, but whatsapp disabled for ${restaurantId}, skipping send`);
       return;
     }
 
@@ -2392,7 +2398,8 @@ exports.sendOrderStatusNotifications = onValueWritten(
         body = whatsapp.tplOutForDelivery({
           driverName,
           etaMinutes: null,  // ETA computed by tracking site, not in message
-          trackingToken
+          trackingToken,
+          restaurantId
         });
 
       } else if (after === 'delivered') {
@@ -2409,7 +2416,7 @@ exports.sendOrderStatusNotifications = onValueWritten(
       if (!body) return;
 
       console.log(`sendOrderStatusNotifications: ${orderId} → ${after}, sending WhatsApp to ${order.customer_phone}`);
-      await whatsapp.sendMessage(order.customer_phone, body);
+      await whatsapp.sendMessage(order.customer_phone, body, restaurantId);
 
     } catch (e) {
       console.error(`sendOrderStatusNotifications: failed for ${orderId} → ${after}`, e.message);
@@ -2560,6 +2567,10 @@ exports.onIncomingWhatsApp = onRequest(
         const orders = ordersSnap.val() || {};
         const activeOrders = Object.values(orders).filter(o => {
           if (!o || !o.customer_phone) return false;
+          // C2: this inbound webhook is X. Pizza's number — only surface x_pizza orders
+          // (legacy-normalized). A la_musa customer texting here falls through to
+          // tplStatusCheckNotFound (no cross-restaurant leak). Byte-identical today (all orders x_pizza).
+          if ((o.restaurant_id || 'x_pizza') !== 'x_pizza') return false;
           const orderPhoneDigits = String(o.customer_phone).replace(/[^\d]/g, '');
           // Match by suffix (handles +504, 504, or just 8-digit local)
           if (!orderPhoneDigits.endsWith(fromPhoneRaw.slice(-8))
@@ -2612,7 +2623,7 @@ exports.onIncomingWhatsApp = onRequest(
       }
 
       if (replyBody) {
-        await whatsapp.sendMessage(fromPhoneRaw, replyBody);
+        await whatsapp.sendMessage(fromPhoneRaw, replyBody, 'x_pizza');   // inbound = X. Pizza's number/instance
       }
 
     } catch (e) {
