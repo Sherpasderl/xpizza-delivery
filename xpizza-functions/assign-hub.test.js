@@ -6,7 +6,7 @@
 // (c) la_musa order → La Musa hub. Plus the byte-identity HINGE: the fallback hub equals the seeded
 // x_pizza hub to full float precision. Run: node assign-hub.test.js
 const assert = require('assert');
-const { resolveAssignHub, X_PIZZA_HUB } = require('./assign-hub');
+const { resolveAssignHub, X_PIZZA_HUB, LA_MUSA_HUB, ALLOWED_HUBS } = require('./assign-hub');
 const { IDENTITIES } = require('./seed_identity');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -14,6 +14,15 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 // ── Byte-identity HINGE: fallback hub === the SEEDED x_pizza hub (full float precision) ──
 assert.strictEqual(X_PIZZA_HUB.lat, IDENTITIES.x_pizza.hub_lat); ok('fallback hub lat === seed x_pizza hub_lat (hinge)');
 assert.strictEqual(X_PIZZA_HUB.lng, IDENTITIES.x_pizza.hub_lng); ok('fallback hub lng === seed x_pizza hub_lng (hinge)');
+
+// ── S1 E1: ALLOWED_HUBS (driver-geofence resolvable-hub allowlist) pinned to the seeded identities ──
+assert.strictEqual(LA_MUSA_HUB.lat, IDENTITIES.la_musa.hub_lat); ok('LA_MUSA_HUB lat === seed la_musa hub_lat (drift pin)');
+assert.strictEqual(LA_MUSA_HUB.lng, IDENTITIES.la_musa.hub_lng); ok('LA_MUSA_HUB lng === seed la_musa hub_lng (drift pin)');
+assert.strictEqual(ALLOWED_HUBS.x_pizza.lat, IDENTITIES.x_pizza.hub_lat); ok('ALLOWED_HUBS.x_pizza.lat === seed (drift pin)');
+assert.strictEqual(ALLOWED_HUBS.x_pizza.lng, IDENTITIES.x_pizza.hub_lng); ok('ALLOWED_HUBS.x_pizza.lng === seed (drift pin)');
+assert.strictEqual(ALLOWED_HUBS.la_musa.lat, IDENTITIES.la_musa.hub_lat); ok('ALLOWED_HUBS.la_musa.lat === seed (drift pin)');
+assert.strictEqual(ALLOWED_HUBS.la_musa.lng, IDENTITIES.la_musa.hub_lng); ok('ALLOWED_HUBS.la_musa.lng === seed (drift pin)');
+assert.deepStrictEqual(Object.keys(ALLOWED_HUBS).sort(), Object.keys(IDENTITIES).sort()); ok('ALLOWED_HUBS keys === seeded identity keys (no orphan/missing hub)');
 
 // ── (a) x_pizza order WITH stamped hub → its hub (== fallback) → identical distance ──
 assert.deepStrictEqual(

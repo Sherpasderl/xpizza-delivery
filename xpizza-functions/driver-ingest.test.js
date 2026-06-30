@@ -11,11 +11,13 @@ const {
   haversineMeters,
   geofenceTransition,
   isHubResolvable,
+  resolveHubFromTask,
   selectIngestPoints,
   hashToken,
   validateIngestToken,
   coerceTs
 } = require('./driver-ingest');
+const { X_PIZZA_HUB, LA_MUSA_HUB } = require('./assign-hub');
 
 let pass = 0;
 const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
@@ -80,16 +82,64 @@ const FAR = { lat: HUB.lat + 0.01, lng: HUB.lng };
   ok('geofence: non-matching states → null');
 }
 
-// ---- isHubResolvable ----
-// Fail-closed: the single hardcoded hub is only valid while single-Restaurant.
-// Absent restaurant_id (today's orders) or explicit x_pizza is OK; anything
-// else means the hub snapshot must exist first → refuse + log.
+// ---- isHubResolvable(restaurantId, hubLat, hubLng) ----  S1 E4: allowlist + coords-match, fail-closed
+// A per-restaurant current_hub snapshot is trusted ONLY when its restaurant_id is in ALLOWED_HUBS
+// AND its coords match that hub. Legacy/today (no restaurant_id) resolves as x_pizza only when coords
+// are absent (pre-snapshot) or exactly the x_pizza hub. Any present-but-mismatched hub → fail-closed.
 {
-  assert.strictEqual(isHubResolvable(null), true, 'no restaurant_id (today) → ok');
-  assert.strictEqual(isHubResolvable(undefined), true, 'undefined → ok');
-  assert.strictEqual(isHubResolvable('x_pizza'), true, 'x_pizza → ok');
-  assert.strictEqual(isHubResolvable('la_musa'), false, 'la_musa → refuse (no hub snapshot yet)');
-  ok('hub guard: only absent/x_pizza resolvable; other restaurant_id refused');
+  // legacy single-hub
+  assert.strictEqual(isHubResolvable(null), true, 'no restaurant_id + no coords (today) → ok');
+  assert.strictEqual(isHubResolvable(undefined), true, 'undefined + no coords → ok');
+  assert.strictEqual(isHubResolvable(null, X_PIZZA_HUB.lat, X_PIZZA_HUB.lng), true, 'legacy null + x_pizza coords → ok');
+  assert.strictEqual(isHubResolvable(null, 15.6, -88.1), false, 'legacy null + non-x_pizza coords → fail-closed');
+  // known restaurants WITH matching coords
+  assert.strictEqual(isHubResolvable('x_pizza', X_PIZZA_HUB.lat, X_PIZZA_HUB.lng), true, 'x_pizza + matching coords → ok');
+  assert.strictEqual(isHubResolvable('la_musa', LA_MUSA_HUB.lat, LA_MUSA_HUB.lng), true, 'la_musa + matching coords → ok (now resolvable)');
+  // fail-closed cases
+  assert.strictEqual(isHubResolvable('la_musa', X_PIZZA_HUB.lat, X_PIZZA_HUB.lng), false, 'la_musa + mismatched (x_pizza) coords → fail-closed');
+  assert.strictEqual(isHubResolvable('x_pizza'), false, 'known rid + absent coords → fail-closed (coords required)');
+  assert.strictEqual(isHubResolvable('unknown_rid', 15.5, -88.0), false, 'unknown restaurant_id → fail-closed');
+  ok('hub guard: allowlist + coords-match; mismatched/unknown → fail-closed');
+}
+
+// ---- resolveHubFromTask(afterTaskId, allTasks, existingHub) ----  S1 E3: the syncDriverHub pure core
+// Decides the driver's current_hub snapshot from the (new) current_task_id. pickup → set its hub;
+// delivery → keep the linked-pickup hub (no-op if already correct, else BACKFILL a lagged/absent one);
+// null/missing → clear. (The trigger wraps this with an idempotent current_task_id recheck.)
+{
+  const PX = { type: 'pickup', destination_lat: X_PIZZA_HUB.lat, destination_lng: X_PIZZA_HUB.lng, restaurant_id: 'x_pizza', linked_task_id: 'dx' };
+  const DX = { type: 'delivery', linked_task_id: 'px' };
+  const PL = { type: 'pickup', destination_lat: LA_MUSA_HUB.lat, destination_lng: LA_MUSA_HUB.lng, restaurant_id: 'la_musa', linked_task_id: 'dl' };
+  const DL = { type: 'delivery', linked_task_id: 'pl' };
+  const TASKS = { px: PX, dx: DX, pl: PL, dl: DL };
+  const lmSnap = { current_restaurant_id: 'la_musa', current_hub_lat: LA_MUSA_HUB.lat, current_hub_lng: LA_MUSA_HUB.lng };
+  const xpSnap = { current_restaurant_id: 'x_pizza', current_hub_lat: X_PIZZA_HUB.lat, current_hub_lng: X_PIZZA_HUB.lng };
+  const nullSnap = { current_restaurant_id: null, current_hub_lat: null, current_hub_lng: null };
+
+  // null / missing → clear
+  assert.deepStrictEqual(resolveHubFromTask(null, TASKS, lmSnap), { action: 'clear' }, 'null task → clear');
+  assert.deepStrictEqual(resolveHubFromTask('ghost', TASKS, lmSnap), { action: 'clear' }, 'missing task → clear (defensive)');
+
+  // pickup → set its hub
+  assert.deepStrictEqual(resolveHubFromTask('pl', TASKS, nullSnap),
+    { action: 'set', hub: { current_hub_lat: LA_MUSA_HUB.lat, current_hub_lng: LA_MUSA_HUB.lng, current_restaurant_id: 'la_musa' } },
+    'la_musa pickup → set La Musa hub');
+  assert.deepStrictEqual(resolveHubFromTask('px', TASKS, nullSnap),
+    { action: 'set', hub: { current_hub_lat: X_PIZZA_HUB.lat, current_hub_lng: X_PIZZA_HUB.lng, current_restaurant_id: 'x_pizza' } },
+    'x_pizza pickup → set X. Pizza hub');
+
+  // delivery, snapshot already correct → no-op (preserves the exit-backstop, behaviour-identical)
+  assert.deepStrictEqual(resolveHubFromTask('dl', TASKS, lmSnap), { action: 'noop' }, 'la_musa delivery + correct hub → no-op');
+  assert.deepStrictEqual(resolveHubFromTask('dx', TASKS, xpSnap), { action: 'noop' }, 'x_pizza delivery + correct hub → no-op');
+
+  // ★ delivery, snapshot ABSENT/STALE (pickup write lagged or failed) → BACKFILL from the linked pickup
+  assert.deepStrictEqual(resolveHubFromTask('dl', TASKS, nullSnap),
+    { action: 'backfill', hub: { current_hub_lat: LA_MUSA_HUB.lat, current_hub_lng: LA_MUSA_HUB.lng, current_restaurant_id: 'la_musa' } },
+    'la_musa delivery + absent hub → backfill La Musa (fixes the lagged-pickup la_musa bug)');
+  assert.deepStrictEqual(resolveHubFromTask('dl', TASKS, xpSnap),
+    { action: 'backfill', hub: { current_hub_lat: LA_MUSA_HUB.lat, current_hub_lng: LA_MUSA_HUB.lng, current_restaurant_id: 'la_musa' } },
+    'la_musa delivery + STALE x_pizza hub → backfill La Musa');
+  ok('resolveHubFromTask: set / no-op / backfill / clear');
 }
 
 // ---- selectIngestPoints ----

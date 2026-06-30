@@ -7,8 +7,13 @@
  */
 
 const crypto = require('crypto');
+const { ALLOWED_HUBS, X_PIZZA_HUB } = require('./assign-hub');
 
 const EARTH_RADIUS_M = 6371000;
+// Coords are copied verbatim from the seeded identity hub into the order/task and then the driver
+// snapshot, so an exact match is expected; a tiny epsilon (~0.11m) tolerates any float-representation
+// noise while staying far below the ~400m gap between the X. Pizza and La Musa hubs.
+const HUB_MATCH_EPS = 1e-6;
 
 /** Great-circle distance between two lat/lng points, in metres. */
 function haversineMeters(lat1, lng1, lat2, lng2) {
@@ -50,15 +55,62 @@ function geofenceTransition({ status, hasTask, hubLat, hubLng, lat, lng, radiusM
   return null;
 }
 
+/** True iff (lat,lng) are finite numbers within HUB_MATCH_EPS of `hub`. */
+function coordsMatchHub(hub, lat, lng) {
+  return typeof lat === 'number' && typeof lng === 'number'
+    && Math.abs(lat - hub.lat) < HUB_MATCH_EPS && Math.abs(lng - hub.lng) < HUB_MATCH_EPS;
+}
+
 /**
- * Fail-closed hub guard. The server geofence uses the single hardcoded X. Pizza
- * hub, which is only correct while the platform is single-Restaurant. Today's
- * Orders carry no restaurant_id; an explicit `x_pizza` is also fine. Any OTHER
- * restaurant_id means the per-Order hub snapshot (ADR 0002) must exist first —
- * so refuse the geofence (and log) rather than stamp a wrong hub.
+ * Fail-closed hub guard (S1 E4). A driver's persisted current_hub snapshot is trusted ONLY when its
+ * restaurant_id is in ALLOWED_HUBS AND its coords match that hub. Multi-restaurant safe: la_musa is
+ * resolvable once its hub is written, but a snapshot that is mismatched (coords ≠ the pinned hub),
+ * unknown (rid not in the allowlist), or — for a known rid — missing coords is REFUSED (the caller
+ * skips the geofence + logs), defending against a stale/corrupt hub rather than stamping a wrong one.
+ * Legacy single-Restaurant path preserved: restaurant_id == null resolves as X. Pizza only when coords
+ * are absent (pre-snapshot, today's orders) or exactly the X. Pizza hub.
  */
-function isHubResolvable(restaurantId) {
-  return restaurantId == null || restaurantId === 'x_pizza';
+function isHubResolvable(restaurantId, hubLat, hubLng) {
+  if (restaurantId == null) {
+    if (hubLat == null && hubLng == null) return true;          // legacy/today: no snapshot → x_pizza
+    return coordsMatchHub(X_PIZZA_HUB, hubLat, hubLng);         // present coords must BE x_pizza
+  }
+  const hub = ALLOWED_HUBS[restaurantId];
+  if (!hub) return false;                                       // unknown restaurant_id → fail-closed
+  return coordsMatchHub(hub, hubLat, hubLng);                   // mismatched/absent coords → fail-closed
+}
+
+/** The current_hub snapshot fields for a pickup task's stamped hub. */
+function hubFromPickupTask(t) {
+  return { current_hub_lat: t.destination_lat, current_hub_lng: t.destination_lng, current_restaurant_id: t.restaurant_id || null };
+}
+
+/**
+ * Pure core of the `syncDriverHub` trigger (S1 E3). Given the driver's NEW current_task_id, the task
+ * map, and the driver's existing hub snapshot, decide the hub action:
+ *   - null / unknown task          → 'clear'   (returning to base → X. Pizza fallback)
+ *   - pickup task                  → 'set'     (the pickup-approach hub)
+ *   - delivery task, hub correct   → 'noop'    (preserve → keeps the at_restaurant→en_route exit-backstop)
+ *   - delivery task, hub stale/absent → 'backfill' from the linked pickup (self-heals a lagged/failed
+ *     pickup write so a la_musa delivery never inherits the X. Pizza fallback)
+ * The trigger wraps this with an idempotent re-read of current_task_id before writing (the residual
+ * out-of-order guard); this function makes no I/O and is unit-tested in isolation.
+ */
+function resolveHubFromTask(afterTaskId, allTasks, existingHub) {
+  if (afterTaskId == null) return { action: 'clear' };
+  const task = allTasks && allTasks[afterTaskId];
+  if (!task) return { action: 'clear' };                        // defensive: unknown task
+  if (task.type === 'pickup') return { action: 'set', hub: hubFromPickupTask(task) };
+  if (task.type === 'delivery') {
+    const pickup = allTasks[task.linked_task_id];
+    if (!pickup || pickup.type !== 'pickup') return { action: 'noop' };  // can't determine → leave as-is
+    const expected = hubFromPickupTask(pickup);
+    const eh = existingHub || {};
+    const correct = eh.current_restaurant_id === expected.current_restaurant_id
+      && coordsMatchHub({ lat: expected.current_hub_lat, lng: expected.current_hub_lng }, eh.current_hub_lat, eh.current_hub_lng);
+    return correct ? { action: 'noop' } : { action: 'backfill', hub: expected };
+  }
+  return { action: 'noop' };
 }
 
 /**
@@ -131,6 +183,7 @@ module.exports = {
   haversineMeters,
   geofenceTransition,
   isHubResolvable,
+  resolveHubFromTask,
   selectIngestPoints,
   hashToken,
   validateIngestToken,
