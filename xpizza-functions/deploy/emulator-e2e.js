@@ -5,7 +5,7 @@
  * per `emulators:exec` so each scenario gets a COLD getIdentity cache (the 30s warm cache would
  * otherwise mask a seed-state change within a session):
  *   firebase emulators:exec --only functions,database --project demo-xpizza "node deploy/emulator-e2e.js <mode>"
- *   modes: cash | reject <expectedStatus> | pending     env: GCLOUD_PROJECT, MAKE_SECRET, CREATEORDER_URL
+ *   modes: cash | reject <expectedStatus> | pending | la_musa   env: GCLOUD_PROJECT, MAKE_SECRET, CREATEORDER_URL
  *
  * - cash    (seed active): drive createOrder for cash_delivery + cash_pickup, assert byte-identical to
  *           buildCreateOrderUpdates (golden-anchored oracle), null-normalized for RTDB write semantics.
@@ -14,6 +14,10 @@
  * - pending (seed active): in-process — acquireHostedAttempt writes the pending order but NO tasks /
  *           NO tracking (those come only at materialize). No PixelPay (createHostedCharge is called
  *           AFTER, in chargeOnlineOrder) → no egress.
+ * - la_musa (seed la_musa active): drive createOrder for a la_musa cash order (items by id + qty-aware
+ *           extras → 608) for delivery + pickup; assert deep-equal to buildCreateOrderUpdates AND the
+ *           la_musa contract (restaurant_id:'la_musa', tax_cents:0, subtotal==total, order.items
+ *           omitted, La Musa hub). Plus a helper-level la_musa pending (no tasks/tracking). No egress.
  *
  * NO-EGRESS is by construction: cash has WhatsApp config-gated off + no PixelPay; reject paths
  * short-circuit before any write/send; pending uses only the CAS write. (The earlier in-process
@@ -27,10 +31,26 @@ const { buildCreateOrderUpdates } = require('../create-order-build');
 const { HUB, COMBOS, assertComboShape, stripNulls } = require('./combo-validation');
 const { acquireHostedAttempt } = require('../pixelpay-hosted-charge');
 const { orderFingerprint } = require('../pixelpay-charge');
+const { IDENTITIES } = require('../seed_identity');   // single source for la_musa config (no drift)
 
 const COMMON = { customer_name: 'Ana', customer_phone: '+50499999999', items_text: 'Margherita x1', items: [{ name: 'Margherita', qty: 1 }], notes: 'ring bell', payment_method: 'cash', cash_tendered: 500 };
 const CASH_DELIVERY = { ...COMMON, order_id: 'E2E_CASH_DELIVERY', order_type: 'delivery', lat: 15.5080, lng: -88.0400, address_detected: 'Calle 1, Col Centro, SPS', address_details: 'casa azul' };
 const CASH_PICKUP = { ...COMMON, notes: '', order_id: 'E2E_CASH_PICKUP', order_type: 'pickup', pickup_time: 'standard' };
+
+// La Musa (Finding J): derive from the SINGLE source (seed_identity.js IDENTITIES.la_musa), only
+// flipping active for the test — so the proof routes against La Musa's REAL config and fails loudly
+// if seed values change (no hand-copied drift). whatsapp off in the canonical identity (no egress).
+const LA_MUSA_VALID = { ...IDENTITIES.la_musa, active: true };
+// The hub SNAPSHOT shape the server's hubSnapshot() produces: identity name/phone → restaurant_*.
+const LA_MUSA_HUB = {
+  hub_lat: LA_MUSA_VALID.hub_lat, hub_lng: LA_MUSA_VALID.hub_lng,
+  restaurant_name: LA_MUSA_VALID.name, restaurant_phone: LA_MUSA_VALID.phone,
+};
+// La Musa order: items by ID + qty-aware extras (B1). rice_03 448 + protein_chicken×2 130 + sauce_aioli 30 = 608.
+const LM_ITEM = { items_text: '1x Chicken Fried Rice (L448) [+ Extra Pollo x2, Salsa Aioli]', items: [{ id: 'rice_03', qty: 1, extras: [{ id: 'protein_chicken', qty: 2 }, { id: 'sauce_aioli', qty: 1 }] }] };
+const LM_COMMON = { customer_name: 'Lucia', customer_phone: '+50499998888', notes: 'toca el timbre', payment_method: 'cash', cash_tendered: 1000, restaurant_id: 'la_musa', ...LM_ITEM };
+const LM_DELIVERY = { ...LM_COMMON, order_id: 'E2E_LM_DELIVERY', order_type: 'delivery', lat: 15.5045, lng: -88.0385, address_detected: 'Col Trejo, SPS', address_details: 'casa verde' };
+const LM_PICKUP = { ...LM_COMMON, notes: '', order_id: 'E2E_LM_PICKUP', order_type: 'pickup', pickup_time: 'standard' };
 
 const post = (input) => fetch(process.env.CREATEORDER_URL, {
   method: 'POST',
@@ -72,6 +92,45 @@ async function driveByteIdentical(db, input, comboKey) {
   console.log(`  ✓ ${label}: deployed createOrder == builder (value) AND == audited COMBOS shape; pricing pass-through`);
 }
 
+// La Musa byte-identical (Finding J): drives a real createOrder for la_musa and proves the WHOLE
+// chain — id+extras priced to 608 (A1/B1), restaurant_id stamped, tax_cents:0 / subtotal==total
+// (A2/A3), order.items OMITTED (#5b non-platform skip), routed against La Musa's hub — by deep-equal
+// vs the pure builder (restaurantId:'la_musa', facturaPriced:{items:null}, hubSnap: LA_MUSA_HUB).
+async function driveLaMusa(db, input, label) {
+  const res = await post(input);
+  const body = await res.json().catch(() => ({}));
+  assert.equal(res.status, 200, `${label}: createOrder ${res.status}: ${JSON.stringify(body)}`);
+  const token = body.tracking_token;
+  const id = input.order_id;
+  const order = (await db.ref(`orders/${id}`).once('value')).val();
+  assert.ok(order, `${label}: order not written`);
+
+  // la_musa server-contract invariants (the value this mode adds over the x_pizza modes):
+  assert.equal(order.restaurant_id, 'la_musa', `${label}: restaurant_id must be la_musa`);
+  assert.equal(order.total_cents, 60800, `${label}: la_musa id+extras must price to 608 (got ${order.total_cents})`);
+  assert.equal(order.tax_cents, 0, `${label}: tax_cents must be 0 (no platform ISV for la_musa)`);
+  assert.equal(order.subtotal_cents, order.total_cents, `${label}: subtotal must equal total (no split)`);
+  assert.ok(!('items' in order), `${label}: order.items must be OMITTED (pricedLineItems skipped for non-platform)`);
+
+  const actual = { [`orders/${id}`]: order, [`order_tracking/${token}`]: (await db.ref(`order_tracking/${token}`).once('value')).val() };
+  if (input.order_type === 'delivery') {
+    actual[`tasks/${id}_pickup`] = (await db.ref(`tasks/${id}_pickup`).once('value')).val();
+    actual[`tasks/${id}_delivery`] = (await db.ref(`tasks/${id}_delivery`).once('value')).val();
+  }
+
+  const expected = stripNulls(buildCreateOrderUpdates({
+    orderId: id, orderType: input.order_type, now: order.created_at, trackingToken: token, total: order.total,
+    lat: input.lat, lng: input.lng,
+    fields: { customer_name: input.customer_name, customer_phone: input.customer_phone, items_text: input.items_text, notes: input.notes, payment_method: 'cash', address_detected: input.address_detected, address_details: input.address_details, pickup_time: input.pickup_time },
+    restaurantId: 'la_musa',
+    priceBreakdown: { total_cents: order.total_cents, subtotal_cents: order.subtotal_cents, tax_cents: order.tax_cents },
+    facturaPriced: { items: null }, cashTenderedCents: order.cash_tendered_cents, hubSnap: LA_MUSA_HUB,
+  }));
+
+  assert.deepStrictEqual(actual, expected);
+  console.log(`  ✓ ${label}: la_musa createOrder == builder; restaurant_id=la_musa, total=608, tax_cents=0, no items, hub=La Musa`);
+}
+
 async function main() {
   const PID = process.env.GCLOUD_PROJECT || 'demo-xpizza';
   admin.initializeApp({ projectId: PID, databaseURL: emuDatabaseURL() });
@@ -106,8 +165,27 @@ async function main() {
     assert.ok(!(await db.ref(`tasks/${id}_pickup`).once('value')).exists(), 'pending: created a pickup task');
     assert.ok(!(await db.ref(`tasks/${id}_delivery`).once('value')).exists(), 'pending: created a delivery task');
     console.log('  ✓ pending-absence (HELPER-LEVEL CAS invariant — acquireHostedAttempt, NOT the chargeOnlineOrder HTTP route): pending order, NO tasks / NO tracking');
+  } else if (mode === 'la_musa') {
+    // Seed la_musa identity ACTIVE (it ships dark in prod) so the active-gate lets the order through.
+    await db.ref('config/whatsapp_enabled').set(false);   // no egress
+    await db.ref('restaurants/la_musa/identity').set(LA_MUSA_VALID);
+    await driveLaMusa(db, LM_DELIVERY, 'la_musa_cash_delivery');
+    await driveLaMusa(db, LM_PICKUP, 'la_musa_cash_pickup');
+    // Helper-level online (no HTTP): a la_musa pending via acquireHostedAttempt — pending, no tasks/tracking.
+    const pid = 'E2E_LM_PENDING';
+    const lmPending = { order_id: pid, customer_name: 'X', customer_phone: '+504', items_text: LM_ITEM.items_text, total: 608, total_cents: 60800, subtotal_cents: 60800, tax_cents: 0, notes: '', payment_method: 'online', payment_status: 'pending', order_type: 'delivery', status: 'pending_payment', created_at: Date.now(), restaurant_id: 'la_musa', factura_status: 'not_due', cash_tendered_cents: 0, lat: 15.5045, lng: -88.0385 };
+    const acq = await acquireHostedAttempt(db, pid, lmPending, orderFingerprint(pid, 60800, LM_ITEM.items_text), Date.now());
+    assert.equal(acq.outcome, 'claimed', `la_musa pending: acquireHostedAttempt outcome ${acq.outcome}`);
+    const po = (await db.ref(`orders/${pid}`).once('value')).val();
+    assert.equal(po.status, 'pending_payment', 'la_musa pending: not pending_payment');
+    assert.equal(po.restaurant_id, 'la_musa', 'la_musa pending: restaurant_id not la_musa');
+    assert.equal(po.tax_cents, 0, 'la_musa pending: tax_cents must be 0');
+    assert.ok(!po.tracking_token, 'la_musa pending: must not have a tracking_token');
+    assert.ok(!(await db.ref(`tasks/${pid}_pickup`).once('value')).exists(), 'la_musa pending: created a pickup task');
+    assert.ok(!(await db.ref(`tasks/${pid}_delivery`).once('value')).exists(), 'la_musa pending: created a delivery task');
+    console.log('  ✓ la_musa pending (helper-level): pending_payment, restaurant_id=la_musa, tax_cents=0, NO tasks/tracking');
   } else {
-    throw new Error(`unknown mode "${mode}" — use: cash | reject <status> | pending`);
+    throw new Error(`unknown mode "${mode}" — use: cash | reject <status> | pending | la_musa`);
   }
   process.exit(0);
 }
