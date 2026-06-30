@@ -608,7 +608,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .field-group{padding:14px 16px}
 .field-divider{border-bottom:1px solid var(--border)}
 .field-label{display:block;font-family:var(--sans);font-size:14px;font-weight:600;color:var(--charcoal);margin-bottom:8px}
-input[type=text],input[type=tel],textarea{width:100%;padding:14px 14px;border:1.5px solid var(--border2);border-radius:8px;background:var(--cream);color:var(--charcoal);font-size:17px;font-family:var(--body);outline:none;transition:border-color .2s;-webkit-appearance:none;min-height:48px}
+input[type=text],input[type=tel],input[type=email],textarea{width:100%;padding:14px 14px;border:1.5px solid var(--border2);border-radius:8px;background:var(--cream);color:var(--charcoal);font-size:17px;font-family:var(--body);outline:none;transition:border-color .2s;-webkit-appearance:none;min-height:48px}
 input:focus,textarea:focus{border-color:var(--gold);outline:none}
 input::placeholder,textarea::placeholder{color:var(--muted)}
 textarea{resize:none;height:80px;line-height:1.4}
@@ -1190,6 +1190,21 @@ textarea{resize:none;height:80px;line-height:1.4}
         <label class="field-label">WhatsApp</label>
         <input type="tel" id="cphone" placeholder="+504 9999-9999" maxlength="14" autocomplete="tel"/>
       </div>
+      <div class="field-group field-divider">
+        <label class="field-label">Correo <span style="font-weight:400;color:#999">(opcional · para tu recibo)</span></label>
+        <input type="email" id="cemail" placeholder="tu@correo.com" autocomplete="email" inputmode="email"/>
+      </div>
+      <div class="field-group field-divider">
+        <label class="field-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400">
+          <input type="checkbox" id="rtn-toggle" onchange="toggleRtn()" style="width:auto;margin:0"/>
+          Necesito factura con RTN
+        </label>
+        <div id="rtn-fields" style="display:none;margin-top:10px">
+          <input type="text" id="razon-social" placeholder="Razón social (nombre en la factura)" style="margin-bottom:8px" maxlength="120"/>
+          <input type="text" id="rtn-cliente" inputmode="numeric" maxlength="14" placeholder="RTN (14 dígitos)"/>
+          <div id="rtn-error" style="display:none;color:var(--red,#C8321A);font-size:.8rem;margin-top:4px">El RTN debe tener exactamente 14 dígitos.</div>
+        </div>
+      </div>
       <div class="field-group">
         <label class="field-label">Instrucciones especiales</label>
         <textarea id="notes" placeholder="Sin cebolla, picante extra... (opcional)"></textarea>
@@ -1266,7 +1281,7 @@ textarea{resize:none;height:80px;line-height:1.4}
           <input type="text" id="address-detected" placeholder="Detectando..." readonly style="background:var(--surface);color:var(--muted)"/>
         </div>
         <div class="field-group">
-          <label class="field-label">Detalles adicionales <span style="color:var(--brand-red)">*</span></label>
+          <label class="field-label">Detalles adicionales <span style="color:var(--red,#C8321A)">*</span></label>
           <input type="text" id="address-details" placeholder="Ej: Colonia Las Palmas, portón negro, 2do piso..." required oninput="clearAddressDetailsError()"/>
           <div class="error-box" id="err-address-details" style="display:none;margin-top:6px"></div>
         </div>
@@ -1464,6 +1479,9 @@ const CREATEORDER_URL   = 'https://us-central1-xpizza-delivery.cloudfunctions.ne
 const CHARGEORDER_URL   = 'https://us-central1-xpizza-delivery.cloudfunctions.net/chargeOnlineOrder';
 const PAYMENTSTATUS_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/paymentStatus';
 const ORDER_SECRET      = '8bf741d5f90a8d5156845d4b92eeca65130eb5459bcfa725b150b5c3ab083846';
+// PixelPay payer-email fallback when the customer leaves Correo blank/invalid — a LA MUSA address so
+// online receipts never fall back to X. Pizza's server default (pedidos@xpizza.hn). Confirm before launch.
+const LA_MUSA_FALLBACK_EMAIL = 'pedidos@lamusa.hn';
 
 // LA_MUSA_HUB_ID — identifies this hub to the dispatch backend.
 // Server-side createOrder uses this to route to the right kitchen,
@@ -2494,10 +2512,28 @@ function selectPay(type){
   }
 }
 
+/* ── Factura: RTN helpers ── */
+function toggleRtn(){
+  const on=document.getElementById('rtn-toggle').checked;
+  document.getElementById('rtn-fields').style.display=on?'block':'none';
+  if(!on){ document.getElementById('razon-social').value=''; document.getElementById('rtn-cliente').value=''; document.getElementById('rtn-error').style.display='none'; }
+}
+function rtnIsValid(){
+  if(!document.getElementById('rtn-toggle')?.checked) return true; // not requested = ok
+  return /^\d{14}$/.test(document.getElementById('rtn-cliente').value.trim());
+}
+
 /* ── Process payment ── */
 async function processPayment(){
   if(!selectedPayment){
     document.getElementById('err3').style.display='block'; return;
+  }
+  // RTN, when requested, must be exactly 14 digits (the server silently drops an invalid RTN, so the
+  // client is the real guard). Mirrors X. Pizza rtnIsValid().
+  if(!rtnIsValid()){
+    document.getElementById('rtn-error').style.display='block';
+    document.getElementById('rtn-cliente').focus();
+    return;
   }
   if(orderType==='delivery' && (!lat || !lng)){
     document.getElementById('err3').style.display='block';
@@ -2596,6 +2632,14 @@ function buildOrder(){
     payment_status: 'pending',
     timestamp: new Date().toISOString(),
   };
+  // Email (PixelPay payer email for online): send the customer's if valid, else a La Musa fallback so
+  // the server never substitutes X. Pizza's default. Mirrors the server's email regex (index.js:813).
+  const em=(document.getElementById('cemail')?.value||'').trim();
+  currentOrder.customer_email = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em) ? em : LA_MUSA_FALLBACK_EMAIL;
+  // RTN (relayed as order data for Soft Restaurant POS; server re-validates 14 digits). Blank = consumidor final.
+  const rtnOn=document.getElementById('rtn-toggle')?.checked;
+  currentOrder.razon_social = rtnOn ? document.getElementById('razon-social').value.trim() : '';
+  currentOrder.rtn_cliente  = rtnOn ? document.getElementById('rtn-cliente').value.trim() : '';
   // Cash-change (cambio): emit cash_tendered only when >= total; the server stores
   // cash_tendered_cents and defaults to exact (no change) if it's missing.
   if(selectedPayment==='cash'){
