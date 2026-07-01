@@ -4,7 +4,7 @@
 // A too-loose predicate is the main way the pending-order sweeper misbehaves, so this is the core gate:
 // it must sweep ONLY a genuinely-stuck, unparked, past-grace, unassigned, auto-assignable order.
 const assert = require('assert');
-const { sweepDecision, activeOrderCount, assignmentStrandState } = require('./sweep-pending');
+const { sweepDecision, activeOrderCount, assignmentStrandState, HEAL_TERMINAL_STATUSES } = require('./sweep-pending');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
@@ -89,5 +89,11 @@ const pick = (extra = {}) => ({ order_id: 'o1', type: 'pickup', status: 'pending
 // defensive: missing task → none
 { assert.strictEqual(assignmentStrandState(null, del(), NOW, HC), 'none'); ok('missing pickup → none'); }
 { assert.strictEqual(assignmentStrandState(pick(), null, NOW, HC), 'none'); ok('missing delivery → none'); }
+
+// ── #4: the HEAL non-healable (terminal) status set — pinned so a future edit can't silently drop one,
+//    re-exposing the bug where the heal could unassign a delivered/completed order's final tasks. ──
+for (const s of ['cancelled', 'delivered', 'completed']) assert.ok(HEAL_TERMINAL_STATUSES.has(s), `heal must skip terminal '${s}'`);
+for (const s of ['new', 'preparing', 'ready', 'out_for_delivery']) assert.ok(!HEAL_TERMINAL_STATUSES.has(s), `heal must NOT skip live '${s}'`);
+ok('#4 HEAL_TERMINAL_STATUSES = {cancelled,delivered,completed}; live/claimable statuses stay heal-eligible');
 
 console.log(`sweep-pending: OK (${n} cases)`);

@@ -20,6 +20,12 @@
 // pure predicate has no index.js dependency.
 const AUTO_ASSIGNABLE_STATUSES = new Set(['new', 'preparing', 'ready']);
 
+// Order statuses the HEAL must NEVER touch (terminal / non-live). The heal unassigns a stranded
+// pickup≠delivery half-claim back to SIN ASIGNAR — but a terminal order's tasks are legitimately
+// FINAL, so a historical mismatch on a delivered/cancelled order must not be "healed" (fix #4: the
+// heal previously fresh-skipped only 'cancelled'). 'completed' is a task status, included defensively.
+const HEAL_TERMINAL_STATUSES = new Set(['cancelled', 'delivered', 'completed']);
+
 function sweepDecision(order, tasks, now, opts = {}) {
   const { graceMs = 30_000, sweepIntervalMs = 60_000, retryMax = 2 } = opts;
   const all = tasks || {};
@@ -94,4 +100,4 @@ function assignmentStrandState(pickup, delivery, now, opts = {}) {
   return 'heal';
 }
 
-module.exports = { sweepDecision, AUTO_ASSIGNABLE_STATUSES, activeOrderCount, assignmentStrandState };
+module.exports = { sweepDecision, AUTO_ASSIGNABLE_STATUSES, HEAL_TERMINAL_STATUSES, activeOrderCount, assignmentStrandState };

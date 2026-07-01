@@ -110,6 +110,16 @@ const withField = (k, v) => ({ ...VALID, [k]: v });
   // re-evaluates the merged node (Firebase docs say it does), hasChildren fails -> deny.
   await no('B: child write on incomplete node (parent recheck -> deny)', set(dispDb, 'restaurants/inode/identity/active', true));
 
+  // ── D: driver-write regression (#6) — the new current_hub_task_id .validate (S1) is dispatcher-only.
+  //    Confirm it does NOT break the driver client's own per-field writes (GPS/status), that a driver
+  //    CANNOT write current_hub_task_id (the client only READS it — server/dispatcher owns it), and that
+  //    the intended dispatcher writer is allowed. Node seeded with 'name' (the parent .validate). ──
+  await env.withSecurityRulesDisabled((ctx) => ctx.database().ref(`drivers/${DRV}`).set({ name: 'Hermez' }));
+  await ok('D: driver writes own lat/lng (GPS) — unaffected by the new .validate', upd(drvDb, `drivers/${DRV}`, { lat: 15.5, lng: -88.0 }));
+  await ok('D: driver writes own status', set(drvDb, `drivers/${DRV}/status`, 'available'));
+  await no('D: driver writes current_hub_task_id (dispatcher-only -> deny)', set(drvDb, `drivers/${DRV}/current_hub_task_id`, `${DRV}_pickup`));
+  await ok('D: dispatcher writes current_hub_task_id (intended writer)', set(dispDb, `drivers/${DRV}/current_hub_task_id`, `${DRV}_pickup`));
+
   await env.cleanup();
   console.log(`restaurants-rules.emulator: OK (${n} assertions)`);
 })().catch((e) => {

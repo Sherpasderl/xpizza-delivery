@@ -95,7 +95,7 @@ const {
   validateIngestToken,
   coerceTs
 } = require('./driver-ingest');
-const { sweepDecision, activeOrderCount, assignmentStrandState } = require('./sweep-pending');
+const { sweepDecision, activeOrderCount, assignmentStrandState, HEAL_TERMINAL_STATUSES } = require('./sweep-pending');
 const { claimDelivery, healStrandedOrder, releaseDeliveryFromDriver } = require('./claim-delivery');
 
 initializeApp({
@@ -3486,6 +3486,11 @@ exports.sweepPendingOrders = onSchedule(
     // assignmentStrandState two-passes via a half_claim_since marker so a live in-flight window (ms) is
     // never healed (staleMs=120s > every writer's 90s claim→finalize bound).
     for (const orderId of Object.keys(orders)) {
+      // #4: never TOUCH a terminal (done) order — skip BEFORE strand-eval so a delivered/cancelled
+      // order with a historical mismatch gets zero sweeper writes (no mark/wait/heal marker churn).
+      // The fresh-status re-read at the heal step below stays, for a cancel/delivery that lands AFTER
+      // this batch snapshot but before the (much later) heal write.
+      if (HEAL_TERMINAL_STATUSES.has(orders[orderId]?.status)) continue;
       const delTask = tasks[`${orderId}_delivery`];
       const pickTask = tasks[`${orderId}_pickup`];
       const st = assignmentStrandState(pickTask, delTask, now, { staleMs: HALF_CLAIM_STALE_MS });
@@ -3498,10 +3503,11 @@ exports.sweepPendingOrders = onSchedule(
       if (st === 'mark') { await db.ref(`tasks/${orderId}_delivery/half_claim_since`).set(now); continue; }
       if (st === 'wait') continue;
       // st === 'heal'. Two server-gate guards on this destructive write:
-      //   #2 cancel — re-read the order status FRESH (a cancel may have landed after the batch snapshot);
-      //      never heal a cancelled order (leave its terminal tasks alone), just clear any stale marker.
+      //   #2 terminal — re-read the order status FRESH (a cancel/delivery may have landed after the batch
+      //      snapshot); never heal a TERMINAL order (cancelled/delivered/completed) — its tasks are
+      //      legitimately final (fix #4) — just clear any stale marker.
       const freshStatus = (await db.ref(`orders/${orderId}/status`).once('value')).val();
-      if (freshStatus === 'cancelled') {
+      if (HEAL_TERMINAL_STATUSES.has(freshStatus)) {
         if (delTask && typeof delTask.half_claim_since === 'number') {
           await db.ref(`tasks/${orderId}_delivery/half_claim_since`).set(null);
         }
