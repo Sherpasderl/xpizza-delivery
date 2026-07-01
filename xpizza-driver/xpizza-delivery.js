@@ -249,12 +249,29 @@ export async function updateDriverLocation(driverId, location) {
 }
 
 async function checkGeofenceTransition(driverId, lat, lng) {
-  const distance = haversineDistance(lat, lng, RESTAURANT.lat, RESTAURANT.lng);
-  const inGeofence = distance < RESTAURANT.geofence_radius_m;
-
   const snapshot = await get(ref(db, `drivers/${driverId}`));
   const driver = snapshot.val();
   if (!driver) return;
+
+  // Per-restaurant hub (S1): resolve the geofence target from the driver's server-written snapshot,
+  // FAIL-CLOSED on an unresolvable or stale-versioned hub — mirrors ingestDriverLocation so the client
+  // never fights the syncDriverHub trigger. x_pizza is unchanged (its hub == RESTAURANT to full precision).
+  const ALLOWED_HUBS = { x_pizza: { lat: RESTAURANT.lat, lng: RESTAURANT.lng }, la_musa: { lat: 15.50414, lng: -88.03848 } };
+  const HUB_EPS = 1e-6;
+  const hubLat = driver.current_hub_lat ?? RESTAURANT.lat;
+  const hubLng = driver.current_hub_lng ?? RESTAURANT.lng;
+  const rid = driver.current_restaurant_id;
+  const hubMatch = (h) => h && typeof hubLat === 'number' && typeof hubLng === 'number'
+    && Math.abs(hubLat - h.lat) < HUB_EPS && Math.abs(hubLng - h.lng) < HUB_EPS;
+  const hubResolvable = rid == null
+    ? ((driver.current_hub_lat == null && driver.current_hub_lng == null) || hubMatch(ALLOWED_HUBS.x_pizza))
+    : hubMatch(ALLOWED_HUBS[rid]);
+  const versionCurrent = driver.current_hub_task_id == null
+    || driver.current_hub_task_id === driver.current_task_id;
+  if (!hubResolvable || !versionCurrent) return;   // fail-closed: skip rather than geofence a wrong/stale hub
+
+  const distance = haversineDistance(lat, lng, hubLat, hubLng);
+  const inGeofence = distance < RESTAURANT.geofence_radius_m;
 
   // Returning -> arrived at restaurant
   if (inGeofence && driver.status === DRIVER_STATUS.RETURNING) {
@@ -899,6 +916,7 @@ export async function createOrderWithTasks(order) {
 
   updates[`tasks/${pickupTaskId}`] = {
     order_id: orderId,
+    restaurant_id: 'x_pizza',   // S1: dead/inert writer (x_pizza-hardcoded) — stamp for consistency (Codex-flagged surface)
     type: TASK_TYPE.PICKUP,
     status: TASK_STATUS.PENDING,
     assigned_driver_id: null,

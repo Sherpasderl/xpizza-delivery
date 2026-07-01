@@ -1901,8 +1901,12 @@ function openVuelto(total, tenderedPrefill) {
 function renderActiveCard(o, solo) {
   const order = o.order || {};
   const isPickup = o.phase === 'pickup' || o.phase === 'awaiting_acceptance';
-  const targetLat = isPickup ? XPD.RESTAURANT.lat : (order.lat || o.deliveryTask.destination_lat);
-  const targetLng = isPickup ? XPD.RESTAURANT.lng : (order.lng || o.deliveryTask.destination_lng);
+  // S1 E6: pickup nav targets the order's immutable per-restaurant hub (the pickup task's stamped
+  // destination), NOT the static X. Pizza RESTAURANT constant — so a la_musa pickup routes to La Musa.
+  // x_pizza unchanged: its pickup-task destination == RESTAURANT to full precision. Falls back to
+  // RESTAURANT for any pre-snapshot/legacy task with no stamped hub.
+  const targetLat = isPickup ? (o.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat) : (order.lat || o.deliveryTask.destination_lat);
+  const targetLng = isPickup ? (o.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng) : (order.lng || o.deliveryTask.destination_lng);
 
   // Destination label changes per phase
   const customerName = order.customer_name || o.deliveryTask.recipient_name || 'el cliente';
