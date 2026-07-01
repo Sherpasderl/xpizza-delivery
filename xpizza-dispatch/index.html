@@ -1878,6 +1878,7 @@ let infoWindow = null;
 let pickerOpen = false;
 let pickerOrderId = null;
 let pickerIsReassign = false;
+let pickerFromDriver = null;   // the delivery driver shown when the reassign picker OPENED (stale-view guard)
 let renderTickInterval = null;
 let toastTimer = null;
 
@@ -2148,6 +2149,20 @@ function renderDispatcherAlerts(alerts) {
           <div class="alert-text">
             <strong>Sin respuesta de repartidores</strong>
             Pedido #${escapeHtml(a.order_id)} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — ${attempts} intentos sin aceptación, asigna manualmente
+          </div>
+          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
+        </div>
+      `;
+    }
+    if (a.type === 'assignment_strand') {
+      // S3d: emitted only on a double RTDB fault (finalize write AND rollback both failed) — the order may
+      // be delivery-claimed but pickup-unassigned (hidden from SIN ASIGNAR). Surface it so a human recovers.
+      return `
+        <div class="dispatcher-alert" data-alert-id="${alertId}">
+          <span class="alert-icon">${ICONS.warn}</span>
+          <div class="alert-text">
+            <strong>Pedido atascado</strong>
+            Pedido #${escapeHtml(a.order_id)} — la asignación falló a medias, revisá y reasigná manualmente
           </div>
           <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
         </div>
@@ -2609,7 +2624,8 @@ function renderUnassignedSection() {
       e.stopPropagation();
       const oid = btn.dataset.assignSelf;
       try {
-        await XPD.assignOrderToDriver(oid, currentUser.uid);
+        const res = await XPD.assignOrderToDriver(oid, currentUser.uid);
+        if (res && res.ok === false) { toast(assignFailMsg(res.reason), 'error'); return; }
         toast('Asignado a ti', 'success');
       } catch (err) {
         toast('Error: ' + err.message, 'error');
@@ -3448,6 +3464,11 @@ function openPicker(orderId, isReassign = false) {
   pickerOpen = true;
   pickerOrderId = orderId;
   pickerIsReassign = isReassign;
+  // Freeze the delivery driver AS SHOWN when the picker opens. reassignOrder CASes against this, so if the
+  // order moves (sweeper / timeout / another dispatcher) between open and click, the reassign aborts instead
+  // of clobbering the driver it moved to — closes the stale-picker-view window (the CAS alone only covered
+  // the read→transaction window).
+  pickerFromDriver = allTasks[`${orderId}_delivery`]?.assigned_driver_id ?? null;
   const order = allOrders[orderId];
   if (!order) return;
 
@@ -3548,6 +3569,7 @@ function closePicker() {
   pickerOpen = false;
   pickerOrderId = null;
   pickerIsReassign = false;
+  pickerFromDriver = null;
   $('picker-overlay').classList.add('hidden');
 }
 
@@ -3556,12 +3578,29 @@ $('picker-overlay').addEventListener('click', (e) => {
   if (e.target === $('picker-overlay')) closePicker();
 });
 
+// S3d: map assignOrderToDriver's {ok:false,reason} (the S3b CAS lost a race to the sweeper or another
+// dispatcher) to a Spanish error toast, instead of the previous unconditional "Asignado" toast. The list
+// is RTDB-subscription-driven so it already reflects reality — this just stops the misleading success cue.
+function assignFailMsg(reason) {
+  switch (reason) {
+    case 'already_assigned':
+    case 'pickup_taken':
+      return 'Ya fue asignada a otro repartidor';
+    case 'write_failed':
+      return 'No se pudo asignar (error de red) — reintentá';
+    default:
+      return 'No se pudo asignar';
+  }
+}
+
 async function assignOrder(orderId, driverId) {
   try {
     if (pickerIsReassign) {
-      await XPD.reassignOrder(orderId, driverId);
+      const res = await XPD.reassignOrder(orderId, driverId, pickerFromDriver);
+      if (res && res.ok === false) { toast(assignFailMsg(res.reason), 'error'); closePicker(); return; }
     } else {
-      await XPD.assignOrderToDriver(orderId, driverId);
+      const res = await XPD.assignOrderToDriver(orderId, driverId);
+      if (res && res.ok === false) { toast(assignFailMsg(res.reason), 'error'); closePicker(); return; }
     }
     const driver = allDrivers[driverId];
     toast(`${pickerIsReassign ? 'Reasignado' : 'Asignado'} a ${driver?.name || driverId.slice(0, 8)}`, 'success');

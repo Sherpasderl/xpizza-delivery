@@ -28,6 +28,7 @@ import {
   update,
   get,
   remove,
+  runTransaction,
   serverTimestamp,
   off
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
@@ -566,6 +567,11 @@ export function subscribeToAutoAssignEnabled(callback) {
   });
 }
 
+// ⚠️ DEV / TEST-HARNESS ONLY — NOT part of the production dispatch flow. Assigns a SINGLE task directly,
+// bypassing the delivery-CAS mutual-exclusion discipline (claimDelivery / assignOrderToDriver / reassignOrder).
+// The only caller is xpizza-reference/test-harness.html; production order assignment goes through
+// assignOrderToDriver + reassignOrder. Same disposition as the dead createOrderWithTasks — do NOT wire this
+// into any live app without giving it the same CAS-claim guard the other writers have.
 export async function assignTask(taskId, driverId) {
   const updates = {};
   updates[`tasks/${taskId}/assigned_driver_id`] = driverId;
@@ -589,6 +595,21 @@ export async function assignTask(taskId, driverId) {
  * @param allTasks Optional snapshot of all tasks. If provided, used to detect
  *                 stacking. If omitted, this function does a fresh read to check.
  */
+// null-first-safe compare-and-set for a leaf (mirrors the server xpizza-functions/claim-delivery.js
+// casAssign). RTDB — including the browser modular SDK — calls the transaction fn with a SPECULATIVE null
+// FIRST when the leaf isn't locally cached; returning `undefined` there aborts the transaction before the
+// server round-trip, so `cur === nonNull ? x : undefined` silently no-ops. Never abort on a null cur (return
+// null → RTDB rejects + retries with the real value), abort ONLY on a real non-null mismatch. The dispatch's
+// persistent onValue('/tasks') currently keeps these leaves cached (so null-first rarely fires), but relying
+// on that is a latent coupling — this makes reassign/rollback correct regardless.
+function casAssign(expected, target) {
+  return (cur) => {
+    if (cur === expected) return target;
+    if (cur === null) return null;   // speculative-or-genuine null → no-op / retry, NOT an abort
+    return undefined;                // real, non-null mismatch → abort
+  };
+}
+
 export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
   // S2 same-hub stacking: force-accept (direct 'accepted', no swipe/timeout) ONLY when the driver
   // already has an accepted/in-progress order at the SAME restaurant hub as this new order. A cross-hub
@@ -621,28 +642,73 @@ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
 
   const pickupTaskId = `${orderId}_pickup`;
   const deliveryTaskId = `${orderId}_delivery`;
-  const updates = {};
 
-  if (isStacked) {
-    // Stacked: mark accepted directly, no countdown / timeout
-    for (const tid of [pickupTaskId, deliveryTaskId]) {
-      updates[`tasks/${tid}/assigned_driver_id`] = driverId;
-      updates[`tasks/${tid}/status`] = TASK_STATUS.ACCEPTED;
-      updates[`tasks/${tid}/assigned_at`] = serverTimestamp();
-      updates[`tasks/${tid}/accepted_at`] = serverTimestamp();
-    }
-  } else {
-    // Normal: assigned status, deadline, attempts counter
-    const deadline = Date.now() + ACCEPT_TIMEOUT_MS;
-    for (const tid of [pickupTaskId, deliveryTaskId]) {
-      updates[`tasks/${tid}/assigned_driver_id`] = driverId;
-      updates[`tasks/${tid}/status`] = TASK_STATUS.ASSIGNED;
-      updates[`tasks/${tid}/assigned_at`] = serverTimestamp();
-      updates[`tasks/${tid}/assignment_deadline`] = deadline;
-      updates[`tasks/${tid}/assignment_attempts`] = 1;
-    }
+  // S3b race guard: atomically CAS-claim the DELIVERY task's assigned_driver_id — the same field the
+  // S3 sweeper and SIN ASIGNAR use — so a manual assign cannot race the sweeper or another dispatcher.
+  // Fail GRACEFULLY (no throw) if the order was already taken; the dispatch UI (S3c) surfaces "ya asignada".
+  const claim = await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur == null ? driverId : undefined));
+  if (!claim.committed || claim.snapshot.val() !== driverId) {
+    return { ok: false, reason: 'already_assigned' };
   }
-  await update(ref(db), updates);
+  const claimTime = Date.now();
+  // S3e (gate finding 1): guard the ENTIRE post-CAS section — the pickup read, the pickup-taken rollback,
+  // the build, and the final write. A throw ANYWHERE here (e.g. the get() rejects) would otherwise strand
+  // the delivery claim (hidden from SIN ASIGNAR, no armed timer). On any failure we best-effort roll the
+  // claim back; if the rollback ITSELF throws we still return {ok:false} rather than silently stranding
+  // (the server sweeper's self-heal is the last-resort net for a truly stuck claim).
+  const rollbackClaim = async () => {
+    // Clear the self-heal marker BEFORE nulling our claim (non-atomic; order is load-bearing, same as the
+    // server heal): a null delivery must never carry a stale marker for a future re-claim to inherit. If we
+    // die between, the claim stays (non-null → not re-claimable, its null-claims abort) and the sweeper
+    // re-marks/re-heals it next cycle.
+    await update(ref(db), { [`tasks/${deliveryTaskId}/half_claim_since`]: null });
+    return runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), casAssign(driverId, null));
+  };
+  try {
+    // Defensive both-unassigned guard: if the pickup is already held by another driver, roll back + bail.
+    const pk = (await get(ref(db, `tasks/${pickupTaskId}/assigned_driver_id`))).val();
+    if (pk != null && pk !== driverId) {
+      await rollbackClaim();
+      return { ok: false, reason: 'pickup_taken' };
+    }
+
+    const updates = {};
+    if (isStacked) {
+      // Stacked: mark accepted directly, no countdown / timeout
+      for (const tid of [pickupTaskId, deliveryTaskId]) {
+        updates[`tasks/${tid}/assigned_driver_id`] = driverId;
+        updates[`tasks/${tid}/status`] = TASK_STATUS.ACCEPTED;
+        updates[`tasks/${tid}/assigned_at`] = serverTimestamp();
+        updates[`tasks/${tid}/accepted_at`] = serverTimestamp();
+      }
+    } else {
+      // Normal: assigned status, deadline, attempts counter
+      const deadline = Date.now() + ACCEPT_TIMEOUT_MS;
+      for (const tid of [pickupTaskId, deliveryTaskId]) {
+        updates[`tasks/${tid}/assigned_driver_id`] = driverId;
+        updates[`tasks/${tid}/status`] = TASK_STATUS.ASSIGNED;
+        updates[`tasks/${tid}/assigned_at`] = serverTimestamp();
+        updates[`tasks/${tid}/assignment_deadline`] = deadline;
+        updates[`tasks/${tid}/assignment_attempts`] = 1;
+      }
+    }
+    // S3f (gate finding B): clear the self-heal marker on finalize (mirrors the server buildAssignmentUpdates).
+    updates[`tasks/${deliveryTaskId}/half_claim_since`] = null;
+    // Stalled-tab guard (S3g): if this client froze/stalled past the server's self-heal window (the sweeper's
+    // HALF_CLAIM_STALE_MS = 120s) since claiming, the heal may have rolled our claim back and the order been
+    // reassigned. A resumed frozen tab runs this check BEFORE its write, so it aborts instead of clobbering the
+    // new assignment. 90s < 120s leaves margin; rollbackClaim is CAS-guarded (only nulls if still ours).
+    if (Date.now() - claimTime >= 90 * 1000) {
+      await rollbackClaim();
+      return { ok: false, reason: 'claim_stale' };
+    }
+    await update(ref(db), updates);
+    return { ok: true, stacked: isStacked };
+  } catch (e) {
+    // Any throw after the claim (pickup read, rollback, or the write) — best-effort un-strand, surface fail.
+    try { await rollbackClaim(); } catch (_) { /* sweeper self-heal is the last resort */ }
+    return { ok: false, reason: 'write_failed' };
+  }
 }
 
 /**
@@ -651,51 +717,88 @@ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
  * so the new driver has to accept fresh. Resets the timeout deadline + attempts
  * counter — manual reassign by dispatcher is treated as a fresh attempt.
  */
-export async function reassignOrder(orderId, newDriverId) {
+export async function reassignOrder(orderId, newDriverId, expectedFromDriver) {
   const pickupTaskId = `${orderId}_pickup`;
   const deliveryTaskId = `${orderId}_delivery`;
   const pickupSnap = await get(ref(db, `tasks/${pickupTaskId}`));
   const pickup = pickupSnap.val();
   if (!pickup) throw new Error(`Order ${orderId} not found`);
 
-  const oldDriverId = pickup.assigned_driver_id;
-  const deadline = Date.now() + ACCEPT_TIMEOUT_MS;
+  // S3n: CAS the delivery field against the driver the PICKER CAPTURED AT OPEN-TIME (expectedFromDriver),
+  // NOT a fresh click-time read. This closes the stale-picker-view window: if the order moved (sweeper /
+  // timeout monitor / another dispatcher) between the picker opening and this click, cur !== expectedFrom-
+  // Driver → the claim aborts → {ok:false} instead of clobbering the driver it moved to. (The CAS alone
+  // only covered the read→transaction window; the picker-open→click window needed the captured value.) The
+  // fresh-pickup fallback preserves the old behavior for any caller that doesn't capture. oldDriverId — the
+  // driver we CAS-confirmed we moved away FROM — is also whose current_task_id/status we clean up below.
+  const oldDriverId = expectedFromDriver !== undefined ? (expectedFromDriver ?? null) : (pickup.assigned_driver_id ?? null);
+  const claim = await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), casAssign(oldDriverId, newDriverId));
+  if (!claim.committed || claim.snapshot.val() !== newDriverId) {
+    return { ok: false, reason: 'already_assigned' };
+  }
+  const claimTime = Date.now();
+  const rollbackClaim = async () => {
+    // Clear the self-heal marker BEFORE restoring the old driver (invariant: clear before every
+    // null-transition — for the degenerate oldDriver=null reassign this restore IS a null-transition; ruling
+    // 2). CAS so we only touch our own claim.
+    await update(ref(db), { [`tasks/${deliveryTaskId}/half_claim_since`]: null });
+    return runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), casAssign(newDriverId, oldDriverId));
+  };
 
-  const updates = {};
-  // Reset both tasks to assigned, clear acceptance timestamps
-  updates[`tasks/${pickupTaskId}/assigned_driver_id`] = newDriverId;
-  updates[`tasks/${pickupTaskId}/status`] = TASK_STATUS.ASSIGNED;
-  updates[`tasks/${pickupTaskId}/assigned_at`] = serverTimestamp();
-  updates[`tasks/${pickupTaskId}/accepted_at`] = null;
-  updates[`tasks/${pickupTaskId}/assignment_deadline`] = deadline;
-  updates[`tasks/${pickupTaskId}/assignment_attempts`] = 1;
-  updates[`tasks/${deliveryTaskId}/assigned_driver_id`] = newDriverId;
-  updates[`tasks/${deliveryTaskId}/status`] = TASK_STATUS.ASSIGNED;
-  updates[`tasks/${deliveryTaskId}/assigned_at`] = serverTimestamp();
-  updates[`tasks/${deliveryTaskId}/accepted_at`] = null;
-  updates[`tasks/${deliveryTaskId}/assignment_deadline`] = deadline;
-  updates[`tasks/${deliveryTaskId}/assignment_attempts`] = 1;
+  // S3f (gate finding C): guard the ENTIRE post-CAS section — the build (serverTimestamp) AND the I/O
+  // (old-driver read + write). A throw anywhere here would otherwise strand the delivery claim.
+  try {
+    const deadline = Date.now() + ACCEPT_TIMEOUT_MS;
 
-  // If old driver was working this order, clear their current_task_id
-  if (oldDriverId && oldDriverId !== newDriverId) {
-    const oldDriverSnap = await get(ref(db, `drivers/${oldDriverId}`));
-    const oldDriver = oldDriverSnap.val();
-    if (oldDriver) {
-      const wasWorkingThis = oldDriver.current_task_id === pickupTaskId ||
-                             oldDriver.current_task_id === deliveryTaskId;
-      if (wasWorkingThis) {
-        updates[`drivers/${oldDriverId}/current_task_id`] = null;
-        // Demote status if they were assigned/at_restaurant for this order
-        if (oldDriver.status === DRIVER_STATUS.ASSIGNED ||
-            oldDriver.status === DRIVER_STATUS.AT_RESTAURANT ||
-            oldDriver.status === DRIVER_STATUS.EN_ROUTE_DELIVERY) {
-          updates[`drivers/${oldDriverId}/status`] = DRIVER_STATUS.AVAILABLE;
+    const updates = {};
+    // Reset both tasks to assigned, clear acceptance timestamps
+    updates[`tasks/${pickupTaskId}/assigned_driver_id`] = newDriverId;
+    updates[`tasks/${pickupTaskId}/status`] = TASK_STATUS.ASSIGNED;
+    updates[`tasks/${pickupTaskId}/assigned_at`] = serverTimestamp();
+    updates[`tasks/${pickupTaskId}/accepted_at`] = null;
+    updates[`tasks/${pickupTaskId}/assignment_deadline`] = deadline;
+    updates[`tasks/${pickupTaskId}/assignment_attempts`] = 1;
+    updates[`tasks/${deliveryTaskId}/assigned_driver_id`] = newDriverId;
+    updates[`tasks/${deliveryTaskId}/status`] = TASK_STATUS.ASSIGNED;
+    updates[`tasks/${deliveryTaskId}/assigned_at`] = serverTimestamp();
+    updates[`tasks/${deliveryTaskId}/accepted_at`] = null;
+    updates[`tasks/${deliveryTaskId}/assignment_deadline`] = deadline;
+    updates[`tasks/${deliveryTaskId}/assignment_attempts`] = 1;
+    // S3f (gate finding B): clear the self-heal marker on finalize (mirrors the server buildAssignmentUpdates).
+    updates[`tasks/${deliveryTaskId}/half_claim_since`] = null;
+
+    // If old driver was working this order, clear their current_task_id
+    if (oldDriverId && oldDriverId !== newDriverId) {
+      const oldDriverSnap = await get(ref(db, `drivers/${oldDriverId}`));
+      const oldDriver = oldDriverSnap.val();
+      if (oldDriver) {
+        const wasWorkingThis = oldDriver.current_task_id === pickupTaskId ||
+                               oldDriver.current_task_id === deliveryTaskId;
+        if (wasWorkingThis) {
+          updates[`drivers/${oldDriverId}/current_task_id`] = null;
+          // Demote status if they were assigned/at_restaurant for this order
+          if (oldDriver.status === DRIVER_STATUS.ASSIGNED ||
+              oldDriver.status === DRIVER_STATUS.AT_RESTAURANT ||
+              oldDriver.status === DRIVER_STATUS.EN_ROUTE_DELIVERY) {
+            updates[`drivers/${oldDriverId}/status`] = DRIVER_STATUS.AVAILABLE;
+          }
         }
       }
     }
-  }
 
-  await update(ref(db), updates);
+    // Stalled-tab guard (S3g): abort if this client stalled past the server self-heal window (120s) since
+    // claiming, so a resumed frozen tab can't clobber a heal-then-reassign. CAS rollback only if still ours.
+    if (Date.now() - claimTime >= 90 * 1000) {
+      try { await rollbackClaim(); } catch (_) {}
+      return { ok: false, reason: 'claim_stale' };
+    }
+    await update(ref(db), updates);
+    return { ok: true };
+  } catch (e) {
+    // Best-effort roll the delivery claim back to the old holder; if that throws too, still surface fail.
+    try { await rollbackClaim(); } catch (_) { /* sweeper self-heal */ }
+    return { ok: false, reason: 'write_failed' };
+  }
 }
 
 /**

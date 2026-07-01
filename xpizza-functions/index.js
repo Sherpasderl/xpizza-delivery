@@ -95,6 +95,8 @@ const {
   validateIngestToken,
   coerceTs
 } = require('./driver-ingest');
+const { sweepDecision, activeOrderCount, assignmentStrandState } = require('./sweep-pending');
+const { claimDelivery, healStrandedOrder, releaseDeliveryFromDriver } = require('./claim-delivery');
 
 initializeApp({
   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
@@ -1821,6 +1823,23 @@ exports.notifyDriverOnAssignment = onValueWritten(
     const orderSnap = await db.ref(`orders/${after.order_id}`).once('value');
     const order = orderSnap.val();
 
+    // S3f (gate finding A): if the order is cancelled but this pickup just got assigned, a race revived it
+    // — e.g. the sweeper's finalize landing in cancelOrder's read→update gap. This trigger fires on exactly
+    // that pickup null→driver transition, so it's the enforcement point: UNDO the revived assignment (back
+    // to cancelled) and never push a driver for a cancelled order. Closes the cancel-revival residual.
+    if (order && order.status === 'cancelled') {
+      const undo = {};
+      for (const tt of ['pickup', 'delivery']) {
+        undo[`tasks/${after.order_id}_${tt}/assigned_driver_id`] = null;
+        undo[`tasks/${after.order_id}_${tt}/status`] = 'cancelled';
+        undo[`tasks/${after.order_id}_${tt}/assignment_deadline`] = null;
+      }
+      undo[`tasks/${after.order_id}_delivery/half_claim_since`] = null;
+      await db.ref().update(undo);
+      console.warn(`notifyDriverOnAssignment: ${after.order_id} is cancelled — undid revived assignment, no push`);
+      return;
+    }
+
     const title = '¡Nuevo pedido!';
     const body = order
       ? `${order.customer_name || 'Cliente'} · L${order.total ?? '—'}`
@@ -2990,6 +3009,10 @@ function buildAssignmentUpdates(orderId, driverId, attempts, isAutoAssigned, isS
       updates[`tasks/${taskId}/auto_assigned`] = true;
     }
   }
+  // S3f (gate finding B): every finalize clears the delivery's self-heal marker, so a marker set by the
+  // sweeper while observing this claim can never survive a successful finalize and later mislead the heal
+  // pass into nulling a FUTURE live claim. (Shared by autoAssign / timeout-reassign / sweeper finalizes.)
+  updates[`tasks/${orderId}_delivery/half_claim_since`] = null;
   return updates;
 }
 
@@ -3013,14 +3036,10 @@ async function reassertAssignable(db, driverId, newOrderId = null) {
   if (d.timeout_until && d.timeout_until > Date.now()) return { ok: false, reason: 'cooldown' };
 
   const tasks = tSnap.val() || {};
-  const orderIds = new Set();
-  for (const id of Object.keys(tasks)) {
-    const t = tasks[id];
-    if (!t || t.assigned_driver_id !== driverId) continue;
-    if (t.status === 'completed' || t.status === 'cancelled') continue;
-    if (t.order_id) orderIds.add(t.order_id);
-  }
-  const orderCount = orderIds.size;
+  // S3a: exclude the order being placed (newOrderId) from the cap count — the sweeper CAS-claims the
+  // delivery task BEFORE this recheck, so counting it would wrongly reject a valid stackable driver.
+  // No-op for the S2 auto-assign caller (the order isn't claimed there yet).
+  const orderCount = activeOrderCount(tasks, driverId, newOrderId);
   let cap;
   if (orderCount === 0) cap = 1;
   else if (orderCount === 1 && STACKABLE_STATUSES.has(d.status)) cap = 2;
@@ -3030,6 +3049,73 @@ async function reassertAssignable(db, driverId, newOrderId = null) {
   // as of right-before-write, not the stale pick-time value.
   const hasAcceptedSameHubOrder = driverHasSameHubAccepted(tasks, driverId, newOrderId);
   return { ok: true, orderCount, hasAcceptedSameHubOrder };
+}
+
+// S3d: roll a delivery claim back after a finalize-write failure, and make a DOUBLE fault loud. If the
+// finalize update() threw AND the rollback transaction also throws, the order is left delivery-claimed +
+// pickup-unassigned = hidden from SIN ASIGNAR (getPendingOrders keys off delivery) with no armed timer —
+// a silent strand. We retry the rollback once, then push a dispatcher_alert so a human recovers it rather
+// than the order vanishing. Shared by all three server writers' catch blocks.
+async function rollbackOrAlert(db, claim, orderId, ctx) {
+  try {
+    await claim.rollback();
+    return;
+  } catch (e1) {
+    console.error(`${ctx}: rollback failed for ${orderId}, retrying once`, e1);
+  }
+  try {
+    await claim.rollback();
+  } catch (e2) {
+    console.error(`${ctx}: rollback failed twice for ${orderId} — order may be stranded`, e2);
+    try {
+      await db.ref('dispatcher_alerts').push({
+        type: 'assignment_strand',
+        order_id: orderId,
+        context: ctx,
+        created_at: ServerValue.TIMESTAMP
+      });
+    } catch (e3) {
+      console.error(`${ctx}: strand alert also failed for ${orderId}`, e3);
+    }
+  }
+}
+
+// S3e (gate finding 3): unassign an order back to SIN ASIGNAR (null BOTH tasks), CAS-GUARDED so it can't
+// clobber a concurrent reassign. The timeout-monitor's escalation branches run after awaits
+// (pickEligibleDriver / order reads) during which a reassign could move the order A→B; a plain null-write
+// would then clobber B's fresh assignment. We CAS the delivery to null only if it's STILL on `driverId`
+// (claimDelivery to null with expectCurrent=driverId); if that aborts, another writer owns the order now —
+// leave it untouched. Returns true iff we actually unassigned. On a post-CAS write failure, restores the
+// timed-out driver (consistent, no strand). Extends the universal-CAS discipline to the UNASSIGN paths.
+async function releaseToSinAsignar(db, orderId, driverId) {
+  // Clear the self-heal marker FIRST (invariant: clear the marker before every null-transition of
+  // assigned_driver_id — a null delivery must never carry a stale marker a re-claim could inherit).
+  // Defensive — a consistent timed-out order normally carries no marker.
+  await db.ref(`tasks/${orderId}_delivery/half_claim_since`).set(null);
+  // CAS the delivery FROM the timed-out driver → null, and only proceed if we ACTUALLY transitioned it (not
+  // if it was already null, and not if another driver now owns it). Uses the dedicated release primitive —
+  // NOT claimDelivery(target=null), whose null-target ownership test false-positives on an already-null
+  // delivery and whose rollback would RESURRECT the timed-out driver onto an already-released order.
+  const { released } = await releaseDeliveryFromDriver(db, orderId, driverId);
+  if (!released) return false;   // wasn't ours to release (already null, or re-owned) — leave it
+  const updates = {};
+  for (const taskType of ['pickup', 'delivery']) {
+    const tid = `${orderId}_${taskType}`;
+    updates[`tasks/${tid}/assigned_driver_id`] = null;
+    updates[`tasks/${tid}/status`] = 'pending';
+    updates[`tasks/${tid}/assignment_deadline`] = null;
+  }
+  updates[`tasks/${orderId}_delivery/half_claim_since`] = null;
+  try {
+    await db.ref().update(updates);
+    return true;
+  } catch (e) {
+    // The delivery is ALREADY released (null). Do NOT restore the driver — a failed release must never
+    // resurrect. The pickup is left on the old driver = a reverse-mismatch that the sweeper heal reconciles
+    // to SIN ASIGNAR within a cycle. Report not-fully-released so the caller skips the premature alert.
+    console.error(`releaseToSinAsignar: pickup-unassign failed for ${orderId} (delivery released; heal will reconcile the pickup)`, e);
+    return false;
+  }
 }
 
 // ============================================================
@@ -3155,6 +3241,17 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       console.log(`autoAssign: ${orderId} is SAME-HUB STACKED on ${chosen.name} (already has ${chosen.orderCount} active)`);
     }
 
+    // S3d: CAS-claim the delivery task before the finalize write, so a manual assign / sweep landing in
+    // the window between reassert and this write can't be overwritten (and vice-versa). NULL-claim: a
+    // brand-new order's delivery is null → the claim commits uncontended and the finalize update() below
+    // rewrites the same value — identical end state to the pre-S3d plain write (no-op on the happy path).
+    // Only a genuine race (another writer already claimed) makes it back off instead of double-assigning.
+    const claim = await claimDelivery(db, orderId, chosen.driverId);
+    if (!claim.claimed) {
+      console.warn(`autoAssign: ${orderId} — delivery already claimed by ${claim.current} during finalize; backing off`);
+      return;
+    }
+
     // attempts=1 = initial assignment. monitorAssignmentTimeout uses this
     // for its 2-strikes rule (only relevant for non-stacked).
     const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);
@@ -3163,6 +3260,7 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       console.log(`autoAssign: success for ${orderId} → ${chosen.driverId}`);
     } catch (e) {
       console.error(`autoAssign: write failed for ${orderId}`, e);
+      await rollbackOrAlert(db, claim, orderId, 'autoAssign');  // return delivery to SIN ASIGNAR (alert on double-fault)
     }
   }
 );
@@ -3274,23 +3372,20 @@ exports.monitorAssignmentTimeout = onValueWritten(
       console.warn(`timeout-monitor: ${taskId} has ${attempts} attempts, escalating to dispatcher`);
       const orderSnap = await db.ref(`orders/${orderId}`).once('value');
       const order = orderSnap.val() || {};
-      const updates = {};
-      // Unassign both pickup and delivery so it shows up in SIN ASIGNAR
-      for (const taskType of ['pickup', 'delivery']) {
-        const tid = `${orderId}_${taskType}`;
-        updates[`tasks/${tid}/assigned_driver_id`] = null;
-        updates[`tasks/${tid}/status`] = 'pending';
-        updates[`tasks/${tid}/assignment_deadline`] = null;
+      // CAS-guarded unassign (finding 3): only null if the delivery is still on the timed-out driver — a
+      // reassign during the awaits above must not be clobbered. Alert only if we actually unassigned.
+      if (await releaseToSinAsignar(db, orderId, driverId)) {
+        await db.ref('dispatcher_alerts').push({
+          type: 'no_response_takeover',
+          order_id: orderId,
+          customer_name: order.recipient_name || 'Cliente',
+          total: order.total || null,
+          attempts,
+          created_at: ServerValue.TIMESTAMP
+        });
+      } else {
+        console.log(`timeout-monitor: ${orderId} moved off ${driverId} before takeover-unassign; leaving it`);
       }
-      await db.ref().update(updates);
-      await db.ref('dispatcher_alerts').push({
-        type: 'no_response_takeover',
-        order_id: orderId,
-        customer_name: order.recipient_name || 'Cliente',
-        total: order.total || null,
-        attempts,
-        created_at: ServerValue.TIMESTAMP
-      });
       return;
     }
 
@@ -3301,25 +3396,34 @@ exports.monitorAssignmentTimeout = onValueWritten(
       console.warn(`timeout-monitor: no eligible drivers after ${driverId} timeout on ${orderId}, escalating`);
       const orderSnap = await db.ref(`orders/${orderId}`).once('value');
       const order = orderSnap.val() || {};
-      const updates = {};
-      for (const taskType of ['pickup', 'delivery']) {
-        const tid = `${orderId}_${taskType}`;
-        updates[`tasks/${tid}/assigned_driver_id`] = null;
-        updates[`tasks/${tid}/status`] = 'pending';
-        updates[`tasks/${tid}/assignment_deadline`] = null;
+      // CAS-guarded unassign (finding 3), same as the 2-strike branch.
+      if (await releaseToSinAsignar(db, orderId, driverId)) {
+        await db.ref('dispatcher_alerts').push({
+          type: 'no_drivers_available',
+          order_id: orderId,
+          customer_name: order.recipient_name || 'Cliente',
+          total: order.total || null,
+          created_at: ServerValue.TIMESTAMP
+        });
+      } else {
+        console.log(`timeout-monitor: ${orderId} moved off ${driverId} before no-eligible-unassign; leaving it`);
       }
-      await db.ref().update(updates);
-      await db.ref('dispatcher_alerts').push({
-        type: 'no_drivers_available',
-        order_id: orderId,
-        customer_name: order.recipient_name || 'Cliente',
-        total: order.total || null,
-        created_at: ServerValue.TIMESTAMP
-      });
       return;
     }
 
     console.log(`timeout-monitor: reassigning ${orderId} from ${driverId} → ${nextDriver.name} (attempt ${attempts + 1})`);
+
+    // S3d: CAS-claim the delivery task, REPLACING the timed-out driver — expectCurrent = driverId, NOT
+    // null. The delivery is already assigned to the timed-out driver here (pickup+delivery were assigned
+    // together), so a null-claim would abort every reassign. The claim only commits if the field is STILL
+    // the timed-out driver; if a concurrent writer moved it during our 60s wait, we back off (the field
+    // already reflects that writer's decision). Uncontended (field still == driverId), it's a no-op: the
+    // finalize update() rewrites the same delivery/assigned_driver_id = nextDriver.
+    const claim = await claimDelivery(db, orderId, nextDriver.driverId, { expectCurrent: driverId });
+    if (!claim.claimed) {
+      console.log(`timeout-monitor: ${orderId} delivery no longer on ${driverId} (now ${claim.current}); backing off reassign`);
+      return;
+    }
     const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);
     try {
       await db.ref().update(reassignUpdates);
@@ -3327,6 +3431,167 @@ exports.monitorAssignmentTimeout = onValueWritten(
       // for the new driver. The notifyDriverOnAssignment trigger will push to them.
     } catch (e) {
       console.error(`timeout-monitor: reassignment write failed for ${orderId}`, e);
+      await rollbackOrAlert(db, claim, orderId, 'timeout-reassign');  // restore timed-out driver (alert on double-fault)
     }
+  }
+);
+
+// ============================================================
+// sweepPendingOrders — S3: re-offer stuck pending orders to newly-eligible drivers
+// ============================================================
+//
+// A pending order that ran out of drivers (autoAssign / timeout no-eligible) sits in SIN ASIGNAR
+// (dispatcher-visible) — today, manual-only. This scheduled sweep re-offers such orders to any
+// newly-eligible driver via the NORMAL placement path (a normal 'assigned' swipe that re-arms
+// monitorAssignmentTimeout), so a freed-up driver picks them up without a human. Dispatcher-parked
+// orders are exempt (the explicit "behaves like today" opt-out). It is NEVER removed from SIN ASIGNAR
+// (always human-grabbable) → no black hole by construction.
+//
+// PURELY ADDITIVE: the entire timeout/assign path is unchanged. The one new behaviour (auto-retry of
+// pending orders) is the conscious change (pinned via sweepDecision in sweep-pending.test.js).
+//
+// retry_count (on the delivery task) counts actual OFFERS that then bounced (drivers declining), NOT
+// no-driver cycles — so a no-taker order keeps waiting for a driver to free, and the throttle only
+// gives up on an order drivers repeatedly decline (dispatcher then looks / parks it).
+const SWEEP_INTERVAL_MS = 60 * 1000;
+const SWEEP_RETRY_MAX = 2;
+// Finding 4: a half-claim must persist THIS long (≥ a full sweep cycle) before the sweeper heals it, so a
+// live in-flight claim (claim→finalize is milliseconds) is never mistaken for a strand.
+const HALF_CLAIM_STALE_MS = 2 * SWEEP_INTERVAL_MS;
+
+exports.sweepPendingOrders = onSchedule(
+  { schedule: 'every 1 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const db = getDatabase();
+    const now = Date.now();
+    // Read config + all data up front. The HEAL pass runs EVERY tick regardless of the flags (H1) — the
+    // delivery CAS-claim is on the LIVE autoAssign/timeout paths, so a strand there must self-heal even
+    // while the pending-re-offer behaviour is OFF. Only the OFFER pass is gated.
+    const [sweepEnabledSnap, autoEnabledSnap, ordersSnap, tasksSnap] = await Promise.all([
+      db.ref('config/sweep_pending_enabled').once('value'),
+      db.ref('config/auto_assign_enabled').once('value'),
+      db.ref('orders').once('value'),
+      db.ref('tasks').once('value')
+    ]);
+    const orders = ordersSnap.val() || {};
+    const tasks = tasksSnap.val() || {};
+    let offered = 0, waiting = 0, healed = 0;
+
+    // ---- HEAL PASS (ALWAYS on, H1) — self-heal stranded/inconsistent assignments ----
+    // A process death between a delivery CAS-claim and its finalize leaves pickup and delivery on DIFFERENT
+    // drivers — a "half-claim" (delivery claimed, pickup null: autoAssign/sweeper/manual) or a "split"
+    // (delivery→new, pickup still old: timeout-reassign/reassignOrder). Both are hidden from SIN ASIGNAR and
+    // never self-recover; the split even leaves two drivers each holding half an order. This is the safety
+    // net for the universal CAS on the LIVE paths, so it runs regardless of the offer flag.
+    // assignmentStrandState two-passes via a half_claim_since marker so a live in-flight window (ms) is
+    // never healed (staleMs=120s > every writer's 90s claim→finalize bound).
+    for (const orderId of Object.keys(orders)) {
+      const delTask = tasks[`${orderId}_delivery`];
+      const pickTask = tasks[`${orderId}_pickup`];
+      const st = assignmentStrandState(pickTask, delTask, now, { staleMs: HALF_CLAIM_STALE_MS });
+      if (st === 'none') {
+        if (delTask && typeof delTask.half_claim_since === 'number') {
+          await db.ref(`tasks/${orderId}_delivery/half_claim_since`).set(null);  // clear a stale marker on a since-consistent order
+        }
+        continue;
+      }
+      if (st === 'mark') { await db.ref(`tasks/${orderId}_delivery/half_claim_since`).set(now); continue; }
+      if (st === 'wait') continue;
+      // st === 'heal'. Two server-gate guards on this destructive write:
+      //   #2 cancel — re-read the order status FRESH (a cancel may have landed after the batch snapshot);
+      //      never heal a cancelled order (leave its terminal tasks alone), just clear any stale marker.
+      const freshStatus = (await db.ref(`orders/${orderId}/status`).once('value')).val();
+      if (freshStatus === 'cancelled') {
+        if (delTask && typeof delTask.half_claim_since === 'number') {
+          await db.ref(`tasks/${orderId}_delivery/half_claim_since`).set(null);
+        }
+        continue;
+      }
+      //   #1 overlapping healers — CAS each task's assigned_driver_id on the STRANDED snapshot value, so a
+      //      re-claim since the snapshot (changed assigned_driver_id) aborts the txn and is never clobbered.
+      //      Restores the CAS-guard the S3i atomic-update dropped. Clears the marker FIRST (clear-first).
+      const strandedDel = delTask.assigned_driver_id == null ? null : delTask.assigned_driver_id;
+      const strandedPick = pickTask && pickTask.assigned_driver_id != null ? pickTask.assigned_driver_id : null;
+      const { healed: didHeal } = await healStrandedOrder(db, orderId, strandedDel, strandedPick);
+      if (didHeal) {
+        healed++;
+        console.warn(`sweepPending: self-healed strand ${orderId} (delivery ${strandedDel}, pickup ${strandedPick})`);
+      }
+    }
+
+    // ---- OFFER PASS (gated, S3a kill-switch) ----
+    // Stays OFF until config/sweep_pending_enabled === true (flip only after every writer's CAS is live, so a
+    // dispatcher grab landing mid-sweep can't be overwritten). Also honor the global auto-assign pause.
+    if (sweepEnabledSnap.val() !== true) { if (healed) console.log(`sweepPending: healed ${healed} (offer pass off)`); return; }
+    if (autoEnabledSnap.val() === false) { console.log(`sweepPending: offer pass skipped (auto-assign paused)${healed ? `, healed ${healed}` : ''}`); return; }
+    const opts = { graceMs: GRACE_PERIOD_MS, sweepIntervalMs: SWEEP_INTERVAL_MS, retryMax: SWEEP_RETRY_MAX };
+
+    for (const orderId of Object.keys(orders)) {
+      const order = orders[orderId];
+      if (!sweepDecision(order, tasks, now, opts).sweep) continue;
+
+      // Best currently-eligible driver — normal ranking (fewest orders → priority → nearest), no dibs.
+      const { hubLat, hubLng } = resolveAssignHub(order);
+      const chosen = await pickEligibleDriver(db, [], hubLat, hubLng);
+      if (!chosen) { waiting++; continue; }   // no taker this cycle — leave pending, keep waiting (no throttle bump)
+
+      // S3d: CAS-claim the DELIVERY task's assigned_driver_id (null → chosen) via the shared helper. This
+      // is the field getPendingOrders reads, so the claim atomically leaves SIN ASIGNAR + blocks a
+      // concurrent sweep/grab, and it's invisible to monitorAssignmentTimeout (watches PICKUP) and
+      // notifyDriverOnAssignment (fires on pickup only). NULL-claim: a pending order's delivery is null.
+      const claim = await claimDelivery(db, orderId, chosen.driverId);
+      if (!claim.claimed) continue;   // lost the race — skip
+
+      // S3a exception-safety: EVERYTHING after the claim is inside try/catch so any throw (recheck read,
+      // finalize write, etc.) rolls the claim back — the order can never be stranded delivery-claimed +
+      // hidden from SIN ASIGNAR. claim.rollback() only nulls the field if it's still OURS (no clobber).
+      try {
+        // TOCTOU recheck (excludes THIS order from the cap) + fresh finalize revalidation: re-read the
+        // order + delivery task immediately before the write. sweepDecision ran against the batch snapshot,
+        // so a dispatcher park, a cancel, a status change, or a driver-state change landing mid-sweep must
+        // abort the placement. (delNow is also the FRESH source for retry_count below.)
+        const recheck = await reassertAssignable(db, chosen.driverId, orderId);
+        const [parkedSnap, orderNowSnap, delNowSnap, pickupNowSnap] = await Promise.all([
+          db.ref(`orders/${orderId}/dispatch_parked`).once('value'),
+          db.ref(`orders/${orderId}`).once('value'),
+          db.ref(`tasks/${orderId}_delivery`).once('value'),
+          db.ref(`tasks/${orderId}_pickup`).once('value')
+        ]);
+        const parkedNow = parkedSnap.val();
+        const orderNow = orderNowSnap.val();
+        const delNow = delNowSnap.val();
+        const pickupNow = pickupNowSnap.val();
+        const stillOurs = !!delNow && delNow.assigned_driver_id === chosen.driverId && delNow.status !== 'cancelled';
+        const stillSweepable = !!orderNow && AUTO_ASSIGNABLE_STATUSES.has(orderNow.status);
+        // Finding 2 (cancel-revival): also require a FRESH pickup that is still unassigned and not cancelled.
+        // cancelOrder() flips both task statuses to 'cancelled' but does NOT touch delivery/assigned_driver_id,
+        // so our claim survives a cancel — without this guard the unconditional finalize would REVIVE both
+        // tasks to 'assigned' + fire a spurious driver push for an order that stays cancelled. This closes the
+        // window down to the irreducible read→update gap (a few ms), documented as an accepted residual.
+        const pickupClean = !!pickupNow && !pickupNow.assigned_driver_id && pickupNow.status !== 'cancelled';
+        if (!recheck.ok || parkedNow || !stillOurs || !stillSweepable || !pickupClean) {
+          await claim.rollback();   // back to SIN ASIGNAR, no throttle bump
+          continue;
+        }
+
+        // Finalize as a NORMAL new offer: attempts=1 → fresh 60s deadline + slide-to-accept, re-arms the
+        // timer. Same-hub force-accept (S3a): mirror autoAssign — if the chosen driver already ACCEPTED a
+        // SAME-HUB order, force-accept (no swipe); a cross-hub 2nd order stays 'assigned'.
+        // Atomic retry_count: read FRESH from delNow (taken under our exclusive claim — no other writer can
+        // touch this delivery while we hold it), NOT the stale batch snapshot, so the bump can't double- or
+        // under-count. retry_count is written SEPARATELY (buildAssignmentUpdates never touches it).
+        const retryCount = (delNow.retry_count) || 0;
+        const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, recheck.hasAcceptedSameHubOrder);
+        updates[`tasks/${orderId}_delivery/retry_count`] = retryCount + 1;
+        updates[`tasks/${orderId}_delivery/last_swept`] = now;
+        await db.ref().update(updates);
+        offered++;
+        console.log(`sweepPending: re-offered ${orderId} → ${chosen.name} (offer ${retryCount + 1})`);
+      } catch (e) {
+        console.error(`sweepPending: failed after claim for ${orderId}`, e);
+        await rollbackOrAlert(db, claim, orderId, 'sweepPending');
+      }
+    }
+    if (offered || waiting || healed) console.log(`sweepPending: offered ${offered}, waiting ${waiting}, healed ${healed}`);
   }
 );
