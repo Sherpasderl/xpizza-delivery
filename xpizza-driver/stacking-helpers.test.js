@@ -54,4 +54,41 @@ t('null/empty tasks → empty', () => {
   assert.deepEqual(stackedTasksToAccept({}, 'me', 'A'), []);
 });
 
+// NOTE: `base` above has NO stamped hubs → both A and B resolve to the X. Pizza fallback → same-hub →
+// still cascade. That IS the legacy-x_pizza regression pin (S2 fold-in #2/#3): legacy no-hub stacks
+// keep cascading exactly as before.
+
+const XP = { lat: 15.507489753573818, lng: -88.0398486953722 };
+const LM = { lat: 15.50414, lng: -88.03848 };
+
+t('S2: cross-hub other order (la_musa) → NOT cascaded (stays assigned for explicit swipe)', () => {
+  const crossHub = {
+    A_pickup:   { assigned_driver_id: 'me', order_id: 'A', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' },
+    A_delivery: { assigned_driver_id: 'me', order_id: 'A', type: 'delivery', status: 'assigned' },
+    B_pickup:   { assigned_driver_id: 'me', order_id: 'B', type: 'pickup',   status: 'assigned', destination_lat: LM.lat, destination_lng: LM.lng, restaurant_id: 'la_musa' },
+    B_delivery: { assigned_driver_id: 'me', order_id: 'B', type: 'delivery', status: 'assigned' },
+  };
+  assert.deepEqual(stackedTasksToAccept(crossHub, 'me', 'A'), []);
+});
+
+t('S2: mismatched-coord other order (la_musa rid + x_pizza coords) → NOT cascaded (fail-closed)', () => {
+  const corrupt = {
+    A_pickup:   { assigned_driver_id: 'me', order_id: 'A', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' },
+    A_delivery: { assigned_driver_id: 'me', order_id: 'A', type: 'delivery', status: 'assigned' },
+    B_pickup:   { assigned_driver_id: 'me', order_id: 'B', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'la_musa' },
+    B_delivery: { assigned_driver_id: 'me', order_id: 'B', type: 'delivery', status: 'assigned' },
+  };
+  assert.deepEqual(stackedTasksToAccept(corrupt, 'me', 'A'), []);
+});
+
+t('S2: same-hub stamped other order (both x_pizza) → cascaded', () => {
+  const sameHub = {
+    A_pickup:   { assigned_driver_id: 'me', order_id: 'A', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' },
+    A_delivery: { assigned_driver_id: 'me', order_id: 'A', type: 'delivery', status: 'assigned' },
+    B_pickup:   { assigned_driver_id: 'me', order_id: 'B', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' },
+    B_delivery: { assigned_driver_id: 'me', order_id: 'B', type: 'delivery', status: 'assigned' },
+  };
+  assert.deepEqual(stackedTasksToAccept(sameHub, 'me', 'A').sort(), ['B_delivery', 'B_pickup']);
+});
+
 console.log(`✓ stacking-helpers: ${passed} tests passed`);

@@ -89,6 +89,7 @@ const {
   geofenceTransition,
   isHubResolvable,
   syncDriverHubUpdate,
+  driverHasSameHubAccepted,
   selectIngestPoints,
   hashToken,
   validateIngestToken,
@@ -2938,6 +2939,9 @@ async function pickEligibleDriver(db, excludeDriverIds = [], hubLat = RESTAURANT
     }
     const statusPriority = STATUS_PRIORITY[d.status] ?? 99;
     const hasAcceptedOrder = (acceptedOrdersByDriver[driverId]?.size || 0) > 0;
+    // S2 note: the same-hub force-accept gate is NOT computed here — it is resolved fail-closed (against
+    // the new order's own pickup hub) in reassertAssignable right before the write (TOCTOU-safe). This
+    // loop only ranks eligibility; hubLat/hubLng here are for the distance sort (resolveAssignHub).
     eligible.push({ driverId, orderCount, hasAcceptedOrder, statusPriority, distanceKm, name: d.name || driverId });
   }
 
@@ -2995,7 +2999,7 @@ function buildAssignmentUpdates(orderId, driverId, attempts, isAutoAssigned, isS
 // off, or been stacked by a concurrent trigger). Mirrors the eligibility + cap
 // logic in pickEligibleDriver. Pilot-tier guard; a per-driver capacity lease is
 // the harden-before-scale form (see SHERPA_DRIVER_PLAN.md).
-async function reassertAssignable(db, driverId) {
+async function reassertAssignable(db, driverId, newOrderId = null) {
   const [dSnap, tSnap] = await Promise.all([
     db.ref(`drivers/${driverId}`).once('value'),
     db.ref('tasks').once('value')
@@ -3022,7 +3026,10 @@ async function reassertAssignable(db, driverId) {
   else if (orderCount === 1 && STACKABLE_STATUSES.has(d.status)) cap = 2;
   else cap = orderCount;
   if (orderCount >= cap) return { ok: false, reason: `at_cap(${orderCount})` };
-  return { ok: true, orderCount };
+  // S2 (TOCTOU-safe): recompute same-hub from THIS fresh read so the force-accept gate uses the state
+  // as of right-before-write, not the stale pick-time value.
+  const hasAcceptedSameHubOrder = driverHasSameHubAccepted(tasks, driverId, newOrderId);
+  return { ok: true, orderCount, hasAcceptedSameHubOrder };
 }
 
 // ============================================================
@@ -3123,20 +3130,10 @@ exports.autoAssignOnOrderCreate = onValueWritten(
 
     console.log(`autoAssign: assigning ${orderId} → ${chosen.name} (${chosen.distanceKm.toFixed(2)}km, ${chosen.orderCount} active)`);
 
-    // STACK only when the driver has already ACCEPTED an order (not merely been
-    // assigned one) — so the 2nd order auto-accepts on the driver's first-accept,
-    // never before it. Realigned to buildAssignmentUpdates' documented isStacked
-    // intent; the driver-app acceptTask cascade then accepts the rest of the stack.
-    // (orderCount stays the basis for the 2-order cap, unchanged.)
-    const isStacked = chosen.hasAcceptedOrder;
-    if (isStacked) {
-      console.log(`autoAssign: ${orderId} is STACKED on ${chosen.name} (already has ${chosen.orderCount} active)`);
-    }
-
     // Close the TOCTOU race: re-read the chosen driver right before the write.
     // If they're no longer assignable (clocked off / went en_route / stacked by
     // a concurrent trigger), abort and alert rather than over-stack them.
-    const recheck = await reassertAssignable(db, chosen.driverId);
+    const recheck = await reassertAssignable(db, chosen.driverId, orderId);
     if (!recheck.ok) {
       console.warn(`autoAssign: ${orderId} — ${chosen.driverId} no longer assignable (${recheck.reason}); alerting`);
       await db.ref('dispatcher_alerts').push({
@@ -3147,6 +3144,15 @@ exports.autoAssignOnOrderCreate = onValueWritten(
         created_at: ServerValue.TIMESTAMP
       });
       return;
+    }
+
+    // STACK (force-accept the new order, no swipe) ONLY when the driver has already ACCEPTED an order
+    // at the SAME hub as this one — computed from the FRESH recheck read (TOCTOU-safe), so a driver who
+    // accepted a cross-hub order between pick and recheck is not force-accepted. A cross-hub 2nd order
+    // stays 'assigned' (swipe-to-accept). orderCount stays the basis for the 2-order cap (unchanged).
+    const isStacked = recheck.hasAcceptedSameHubOrder;
+    if (isStacked) {
+      console.log(`autoAssign: ${orderId} is SAME-HUB STACKED on ${chosen.name} (already has ${chosen.orderCount} active)`);
     }
 
     // attempts=1 = initial assignment. monitorAssignmentTimeout uses this

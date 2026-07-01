@@ -141,6 +141,58 @@ function syncDriverHubUpdate(eventAfterTaskId, freshCurrentTaskId, allTasks, exi
 }
 
 /**
+ * Resolve a pickup task's hub for the same-hub stacking decision (S2). Mirrors resolveAssignHub's
+ * X. Pizza fallback so a LEGACY x_pizza order with no stamped hub still resolves to X. Pizza (and thus
+ * stays same-hub / force-accepted, unchanged) — but adds a fail-closed branch: a KNOWN non-x_pizza order
+ * with a bad/missing hub returns null (excluded) rather than being mis-treated as X. Pizza.
+ */
+function resolvePickupHub(pk) {
+  if (!pk) return null;
+  const rid = pk.restaurant_id;
+  const lat = pk.destination_lat;
+  const lng = pk.destination_lng;
+  const numeric = typeof lat === 'number' && typeof lng === 'number';
+  if (rid == null || rid === 'x_pizza') {
+    // legacy / x_pizza: numeric coords must actually BE X. Pizza (reject a corrupted stamp); a legacy
+    // order with no stamped coords falls back to X. Pizza (unchanged force-accept for legacy x_pizza).
+    if (numeric) return coordsMatchHub(X_PIZZA_HUB, lat, lng) ? { lat, lng } : null;
+    return { lat: X_PIZZA_HUB.lat, lng: X_PIZZA_HUB.lng };
+  }
+  // known non-x_pizza: coords must be present AND match the restaurant's canonical hub (same policy as
+  // S1 isHubResolvable) — a la_musa pickup stamped with x_pizza coords fails closed rather than being
+  // mis-treated as x_pizza. Unknown restaurant_id → null.
+  const canon = ALLOWED_HUBS[rid];
+  return (canon && numeric && coordsMatchHub(canon, lat, lng)) ? { lat, lng } : null;
+}
+
+/**
+ * Does the driver have an ACCEPTED (or in_progress) order whose hub matches (hubLat,hubLng)? — the
+ * same-hub gate for stacking force-accept (S2). Reads each accepted order's hub from its pickup task
+ * (`${order_id}_pickup`, which persists with the stamped hub even after the pickup flips to completed).
+ * Uses the same coordsMatchHub/EPS as S1's isHubResolvable so the geofence and stacking gates agree.
+ * Pure: the caller (pickEligibleDriver / reassertAssignable) passes a FRESH task map, so it reflects
+ * the state at read time (closes the TOCTOU force-accept hole when re-run in the recheck).
+ */
+function driverHasSameHubAccepted(tasks, driverId, newOrderId) {
+  const all = tasks || {};
+  // Resolve the NEW order's hub FAIL-CLOSED (via resolvePickupHub, NOT resolveAssignHub — which would
+  // x_pizza-fallback a malformed la_musa order and force-accept it onto an x_pizza driver). Unresolvable
+  // new hub → no force-accept.
+  const newHub = resolvePickupHub(all[`${newOrderId}_pickup`]);
+  if (!newHub) return false;
+  const acceptedOrderIds = new Set();
+  for (const t of Object.values(all)) {
+    if (!t || t.assigned_driver_id !== driverId) continue;
+    if ((t.status === 'accepted' || t.status === 'in_progress') && t.order_id) acceptedOrderIds.add(t.order_id);
+  }
+  for (const oid of acceptedOrderIds) {
+    const hub = resolvePickupHub(all[`${oid}_pickup`]);
+    if (hub && coordsMatchHub(hub, newHub.lat, newHub.lng)) return true;
+  }
+  return false;
+}
+
+/**
  * Filter + order a batch of location points from the native uploader's offline
  * queue. Accepts only points that are: well-formed (numeric ts + in-range coords),
  * strictly NEWER than the last device timestamp we persisted (so a delayed replay
@@ -212,6 +264,8 @@ module.exports = {
   isHubResolvable,
   resolveHubFromTask,
   syncDriverHubUpdate,
+  resolvePickupHub,
+  driverHasSameHubAccepted,
   selectIngestPoints,
   hashToken,
   validateIngestToken,

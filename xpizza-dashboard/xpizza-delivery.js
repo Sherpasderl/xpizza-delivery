@@ -599,19 +599,33 @@ export async function assignTask(taskId, driverId) {
  *                 stacking. If omitted, this function does a fresh read to check.
  */
 export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
-  // Detect stacking: does this driver already have an accepted/in-progress
-  // task that's not completed/cancelled?
-  let isStacked = false;
+  // S2 same-hub stacking: force-accept (direct 'accepted', no swipe/timeout) ONLY when the driver
+  // already has an accepted/in-progress order at the SAME restaurant hub as this new order. A cross-hub
+  // manual assign stays 'assigned' (swipe-to-accept) — never force-accepted. Hub resolver mirrors
+  // driver-ingest/stacking-helpers (X_PIZZA_HUB == seed to full precision; 1e-6 epsilon): legacy no-hub
+  // x_pizza → X. Pizza fallback (unchanged); known non-x_pizza with a bad hub → null (fail-closed).
   if (!allTasks) {
     const tasksSnap = await get(ref(db, 'tasks'));
     allTasks = tasksSnap.val() || {};
   }
+  const HUB_EPS = 1e-6;
+  const ALLOWED_HUBS = { x_pizza: { lat: 15.507489753573818, lng: -88.0398486953722 }, la_musa: { lat: 15.50414, lng: -88.03848 } };
+  const coordsMatch = (h, lat, lng) => typeof lat === 'number' && typeof lng === 'number' && Math.abs(lat - h.lat) < HUB_EPS && Math.abs(lng - h.lng) < HUB_EPS;
+  const resolvePickupHub = (pk) => {
+    if (!pk) return null;
+    const rid = pk.restaurant_id, lat = pk.destination_lat, lng = pk.destination_lng;
+    const numeric = typeof lat === 'number' && typeof lng === 'number';
+    if (rid == null || rid === 'x_pizza') return numeric ? (coordsMatch(ALLOWED_HUBS.x_pizza, lat, lng) ? { lat, lng } : null) : { lat: ALLOWED_HUBS.x_pizza.lat, lng: ALLOWED_HUBS.x_pizza.lng };
+    const canon = ALLOWED_HUBS[rid];
+    return (canon && numeric && coordsMatch(canon, lat, lng)) ? { lat, lng } : null;
+  };
+  const newHub = resolvePickupHub(allTasks[`${orderId}_pickup`]);
+  let isStacked = false;
   for (const t of Object.values(allTasks)) {
     if (!t || t.assigned_driver_id !== driverId) continue;
-    if (t.status === TASK_STATUS.ACCEPTED || t.status === TASK_STATUS.IN_PROGRESS) {
-      isStacked = true;
-      break;
-    }
+    if (t.status !== TASK_STATUS.ACCEPTED && t.status !== TASK_STATUS.IN_PROGRESS) continue;
+    const h = resolvePickupHub(allTasks[`${t.order_id}_pickup`]);
+    if (newHub && h && Math.abs(newHub.lat - h.lat) < HUB_EPS && Math.abs(newHub.lng - h.lng) < HUB_EPS) { isStacked = true; break; }
   }
 
   const pickupTaskId = `${orderId}_pickup`;

@@ -13,6 +13,8 @@ const {
   isHubResolvable,
   resolveHubFromTask,
   syncDriverHubUpdate,
+  resolvePickupHub,
+  driverHasSameHubAccepted,
   selectIngestPoints,
   hashToken,
   validateIngestToken,
@@ -224,6 +226,52 @@ const FAR = { lat: HUB.lat + 0.01, lng: HUB.lng };
   assert.strictEqual(syncDriverHubUpdate('RB2_pickup', 'RB2_pickup', { RB2_pickup: opk }, {}).current_restaurant_id, 'la_musa',
     'real online la_musa pickup → syncDriverHubUpdate snapshots la_musa (resolves, no longer fail-closed)');
   ok('real-builder fidelity: cash + online pickup tasks flow restaurant_id through the resolver/trigger');
+}
+
+// ---- resolvePickupHub + driverHasSameHubAccepted (S2 same-hub stacking) ----
+// resolvePickupHub: legacy no-hub x_pizza → X. Pizza fallback (force-accept unchanged); a KNOWN
+// restaurant's coords are VALIDATED against its canonical hub (same policy as S1 isHubResolvable), so a
+// la_musa pickup stamped with x_pizza coords fails closed. driverHasSameHubAccepted resolves the NEW
+// order's hub the SAME fail-closed way (not resolveAssignHub) so a malformed la_musa order can't be
+// force-accepted onto an x_pizza driver.
+{
+  const XP = { lat: X_PIZZA_HUB.lat, lng: X_PIZZA_HUB.lng };
+  const LM = { lat: LA_MUSA_HUB.lat, lng: LA_MUSA_HUB.lng };
+
+  // resolvePickupHub — coord-validated against restaurant_id
+  assert.deepStrictEqual(resolvePickupHub({ destination_lat: LM.lat, destination_lng: LM.lng, restaurant_id: 'la_musa' }), LM, 'la_musa + matching coords → use');
+  assert.deepStrictEqual(resolvePickupHub({ destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' }), XP, 'x_pizza + matching coords → use');
+  assert.deepStrictEqual(resolvePickupHub({ restaurant_id: 'x_pizza' }), XP, 'x_pizza + no coords → X. Pizza fallback (legacy)');
+  assert.deepStrictEqual(resolvePickupHub({}), XP, 'null restaurant_id + no coords → X. Pizza fallback (legacy)');
+  assert.strictEqual(resolvePickupHub({ restaurant_id: 'la_musa' }), null, 'la_musa + no coords → fail-closed');
+  assert.strictEqual(resolvePickupHub({ destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'la_musa' }), null, 'la_musa stamped w/ x_pizza coords → fail-closed (coord/rid mismatch, Medium fix)');
+  assert.strictEqual(resolvePickupHub({ destination_lat: LM.lat, destination_lng: LM.lng, restaurant_id: 'x_pizza' }), null, 'x_pizza stamped w/ la_musa coords → fail-closed');
+  assert.strictEqual(resolvePickupHub({ destination_lat: '15.5', destination_lng: '-88', restaurant_id: 'la_musa' }), null, 'numeric-string coords → fail-closed');
+  assert.strictEqual(resolvePickupHub({ destination_lat: 99, destination_lng: 99, restaurant_id: 'zzz' }), null, 'unknown restaurant_id → fail-closed');
+  assert.strictEqual(resolvePickupHub(null), null, 'no task → null');
+
+  // driverHasSameHubAccepted(tasks, driverId, newOrderId) — resolves the NEW order's hub fail-closed.
+  // d1 holds accepted order o1 (pickup completed → survives, #7); o2 is the NEW order being assigned.
+  const mk = (o1Hub, o1Rid, o2Hub, o2Rid) => ({
+    o1_pickup:   { order_id: 'o1', type: 'pickup', status: 'completed', assigned_driver_id: 'd1', ...(o1Hub ? { destination_lat: o1Hub.lat, destination_lng: o1Hub.lng } : {}), ...(o1Rid ? { restaurant_id: o1Rid } : {}) },
+    o1_delivery: { order_id: 'o1', type: 'delivery', status: 'accepted', assigned_driver_id: 'd1' },
+    o2_pickup:   { order_id: 'o2', type: 'pickup', status: 'pending', assigned_driver_id: null, ...(o2Hub ? { destination_lat: o2Hub.lat, destination_lng: o2Hub.lng } : {}), ...(o2Rid ? { restaurant_id: o2Rid } : {}) },
+  });
+  assert.strictEqual(driverHasSameHubAccepted(mk(XP,'x_pizza',XP,'x_pizza'), 'd1', 'o2'), true, 'accepted x_pizza (pickup completed) + new x_pizza → same-hub (#7)');
+  assert.strictEqual(driverHasSameHubAccepted(mk(LM,'la_musa',LM,'la_musa'), 'd1', 'o2'), true, 'accepted la_musa + new la_musa → same-hub');
+  assert.strictEqual(driverHasSameHubAccepted(mk(XP,'x_pizza',LM,'la_musa'), 'd1', 'o2'), false, 'accepted x_pizza + new la_musa → cross-hub');
+  assert.strictEqual(driverHasSameHubAccepted(mk(LM,'la_musa',XP,'x_pizza'), 'd1', 'o2'), false, 'accepted la_musa + new x_pizza → cross-hub');
+  assert.strictEqual(driverHasSameHubAccepted(mk(null,null,XP,'x_pizza'), 'd1', 'o2'), true, 'legacy x_pizza accepted (no hub) + new x_pizza → still same-hub (#2)');
+  // ★ High fix — malformed la_musa NEW order (no hub coords) + accepted x_pizza → NOT force-accepted
+  assert.strictEqual(driverHasSameHubAccepted(mk(XP,'x_pizza',null,'la_musa'), 'd1', 'o2'), false, 'malformed la_musa new order (no hub) + accepted x_pizza → NOT force-accepted (fail-closed, the High finding)');
+  // ★ Medium fix — la_musa new order stamped with x_pizza coords → fail-closed
+  assert.strictEqual(driverHasSameHubAccepted(mk(XP,'x_pizza',XP,'la_musa'), 'd1', 'o2'), false, 'la_musa new order w/ x_pizza coords + accepted x_pizza → NOT force-accepted (coord/rid mismatch)');
+  // no accepted order → false
+  assert.strictEqual(driverHasSameHubAccepted({ o2_pickup: { order_id: 'o2', type: 'pickup', status: 'assigned', assigned_driver_id: 'd1', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' } }, 'd1', 'o2'), false, 'no accepted order → false');
+  // #4 TOCTOU: same helper, fresh snapshot flips the result
+  assert.strictEqual(driverHasSameHubAccepted(mk(XP,'x_pizza',XP,'x_pizza'), 'd1', 'o2'), true, 'TOCTOU pick-time: same-hub true');
+  assert.strictEqual(driverHasSameHubAccepted(mk(LM,'la_musa',XP,'x_pizza'), 'd1', 'o2'), false, 'TOCTOU recheck: accepted flipped to la_musa → fresh value false');
+  ok('resolvePickupHub (coord-validated) + driverHasSameHubAccepted (new-hub fail-closed): fallback / mismatch / cross-hub / legacy / malformed / TOCTOU');
 }
 
 // ---- selectIngestPoints ----
