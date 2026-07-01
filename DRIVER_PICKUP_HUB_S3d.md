@@ -350,3 +350,23 @@ and passes it as the expected-current, so a stale-view reassign aborts.
 - `dispatch_parked` rule + park toggle UI (S3c) — separate increment.
 - The OFFER pass stays gated OFF (`config/sweep_pending_enabled !== true`) until the full batch is live; the
   HEAL pass runs always (it is the safety net for the live-path CAS).
+
+## Known residual — heal terminal-transition window (ACCEPTED, arbiter-logged 2026-07-01)
+The gate-#4 fix skips terminal orders in two places: **before** `assignmentStrandState` (batch-snapshot
+status → zero writes on already-done orders) and at the **fresh-status re-read** just before the heal CAS
+(catches a cancel/delivery that landed after the batch snapshot). One narrow residual remains:
+
+- **Window:** if the order transitions to terminal (`delivered`/`cancelled`) in the **sub-second window
+  between the fresh-status read and the per-task-leaf heal CAS**, the heal still nulls the task
+  `assigned_driver_id` of an order that just became done.
+- **Impact:** **cosmetic only** — a terminal order's task drivers no longer drive any live behavior
+  (no dispatch, no offer, no notification keys off them). No customer/driver-visible effect.
+- **Why not fixed:** the CAS is a per-task-leaf transaction on `assigned_driver_id`; RTDB gives no clean
+  way to *atomically* condition that leaf write on the sibling **order-status** node. A cross-node guard
+  would need a multi-location transaction the codebase deliberately avoids here.
+- **Likelihood:** rare² — requires a terminal transition to coincide with an already-stranded
+  pickup≠delivery mismatch inside that window. The pre-deploy prod dry-run (Runbook Gate 3.6, 133 orders)
+  found **0/0** (zero active mismatches, zero stray markers).
+- **Decision:** ACCEPTED. Xavier's call; auditor overrode the Codex REVISE with this logged reasoning
+  (grill-with-docs: arbiter is final on REVISE). Code behavior unchanged — documented, not altered.
+  Cross-ref: the `healStrandedOrder` call site in `xpizza-functions/index.js` carries a matching comment.

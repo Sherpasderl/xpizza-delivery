@@ -3516,6 +3516,12 @@ exports.sweepPendingOrders = onSchedule(
       //   #1 overlapping healers — CAS each task's assigned_driver_id on the STRANDED snapshot value, so a
       //      re-claim since the snapshot (changed assigned_driver_id) aborts the txn and is never clobbered.
       //      Restores the CAS-guard the S3i atomic-update dropped. Clears the marker FIRST (clear-first).
+      // KNOWN RESIDUAL (accepted, arbiter-logged — see DRIVER_PICKUP_HUB_S3d.md): if the order transitions
+      // to terminal (delivered/cancelled) in the sub-second window BETWEEN the fresh-status read above and
+      // this task-CAS, the heal still nulls its task assigned_driver_id. Cosmetic only — the order is
+      // already done, so its task drivers no longer drive any live behavior; and the CAS is per-task-leaf,
+      // so there's no clean way to atomically condition it on the order-status node. Rare² (terminal
+      // transition × already-stranded mismatch); prod dry-run (Gate 3.6) found zero live instances.
       const strandedDel = delTask.assigned_driver_id == null ? null : delTask.assigned_driver_id;
       const strandedPick = pickTask && pickTask.assigned_driver_id != null ? pickTask.assigned_driver_id : null;
       const { healed: didHeal } = await healStrandedOrder(db, orderId, strandedDel, strandedPick);
