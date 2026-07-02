@@ -128,19 +128,23 @@ node -e '
   const ids = new Set(Object.keys(t).map(k => k.replace(/_(pickup|delivery)$/, "")));
   let active = 0, stray = 0;
   for (const id of ids) {
-    const p = t[id+"_pickup"], d = t[id+"_delivery"]; if (!p || !d) continue;
+    const p = t[id+"_pickup"], d = t[id+"_delivery"];
     const status = (o[id]||{}).status;
+    // stray marker lives on the DELIVERY task — check independently of pickup existence so an
+    // orphan-delivery task (no paired pickup) with a stray marker still blocks (Codex #2 fix).
+    if (d && d.half_claim_since != null) { console.log("STRAY MARKER", id, status, d.half_claim_since); stray++; }
+    if (!p || !d) continue;   // mismatch check needs BOTH tasks
     const mismatch = (p.assigned_driver_id||null) !== (d.assigned_driver_id||null);
     if (mismatch && !TERM.has(status)) { console.log("ACTIVE MISMATCH", id, status, p.assigned_driver_id, "vs", d.assigned_driver_id); active++; }
-    if (d.half_claim_since != null) { console.log("STRAY MARKER", id, status, d.half_claim_since); stray++; }
   }
   console.log(active ? `\n✗ ${active} ACTIVE-order mismatch(es) — RESOLVE before deploy (heal would unassign them on the first sweep)` : "\n✓ no ACTIVE pickup≠delivery mismatch");
   console.log(stray ? `✗ ${stray} stray half_claim_since marker(s) — inspect/clear before deploy` : "✓ no stray half_claim_since marker");
   console.log(`\nGATE: ${active === 0 && stray === 0 ? "PASS" : "FAIL"} (active=${active}, stray=${stray})`);
 '
 ```
-**PASS only if `active === 0 && stray === 0`.** (Verified run 2026-07-01: **133 orders, 0/0** — clean;
-keep that output.) Paste the output to the auditor to verify clean before
+**PASS only if `active === 0 && stray === 0`.** (Prior run 2026-07-01 with the earlier scan: **133 orders,
+0/0** — but that scan skipped orphan-delivery stray markers; **re-run the corrected scan above at deploy**
+and confirm 0/0 fresh.) Paste the output to the auditor to verify clean before
 deploying. (If any ACTIVE mismatch exists, resolve it — reassign both tasks to one driver, or clear —
 before deploy.)
 
@@ -171,7 +175,7 @@ gcloud run services list --project xpizza-delivery --region us-central1 \
 1. **FF main** (re-check Gate 1 behind-test if time passed): `git checkout main && git merge --ff-only feature/lamusa-integration && git push origin main` (ref-push to **`8e0d8a1`** or the branch tip, matching the 2026-06-30 pattern). **Confirm `git diff 8e0d8a1 origin/main -- xpizza-functions/` is empty** (main's functions tree == the verified target).
 2. **Deploy functions** (from `xpizza-functions/`): `firebase deploy --only functions --project xpizza-delivery`. **Assert:** all "Successful update", **ZERO** prune/delete lines, and **re-run the Gate-1 name-set diff** (not just the count — #5):
    ```
-   grep -oE "^exports\.[a-zA-Z0-9_]+" xpizza-functions/index.js | sed 's/exports\.//' | sort -u > /tmp/src2.txt   # REGENERATE post-FF (don't reuse Gate-1 /tmp/src.txt)
+   grep -oE "^exports\.[a-zA-Z0-9_]+" index.js | sed 's/exports\.//' | sort -u > /tmp/src2.txt   # cwd=xpizza-functions/ (where firebase.json lives) → read index.js, NOT xpizza-functions/index.js. Same file as Gate-1, REGENERATED post-FF (don't reuse /tmp/src.txt)
    firebase functions:list --project xpizza-delivery | awk 'NR>1{print $1}' | grep -vE '^$|^─' | sort -u > /tmp/live2.txt
    comm -23 /tmp/src2.txt /tmp/live2.txt   # source-not-deployed — MUST be empty (nothing failed to deploy)
    comm -13 /tmp/src2.txt /tmp/live2.txt   # deployed-not-source — MUST be empty (nothing stale left behind)
