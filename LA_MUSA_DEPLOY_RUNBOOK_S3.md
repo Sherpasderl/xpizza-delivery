@@ -73,16 +73,27 @@ npm run test:rules    # emulator: restaurants .read/.write invariants
 **emu-seed CHAINING** (from the 2026-06-30 gate-3b fix — each `emulators:exec` is a fresh emulator;
 cash/reject/pending need `emu-seed.js` chained; la_musa self-seeds):
 ```
+# REQUIRED env (emulator-e2e.js POSTs to createOrder; omit → "Failed to parse URL from undefined").
+# createOrder reads process.env.MAKE_SECRET (index.js:391) — the SAME shell var is sent as the bearer,
+# so any matching value works. Functions emulator default port 5001, region us-central1.
+export JAVA_HOME=/opt/homebrew/opt/openjdk PATH=$JAVA_HOME/bin:$PATH
+export GCLOUD_PROJECT=demo-xpizza MAKE_SECRET=emu-test-secret
+export CREATEORDER_URL=http://127.0.0.1:5001/demo-xpizza/us-central1/createOrder
 firebase emulators:exec --only functions,database --project demo-xpizza "node deploy/emu-seed.js active   && node deploy/emulator-e2e.js cash"
 firebase emulators:exec --only functions,database --project demo-xpizza "node deploy/emu-seed.js inactive && node deploy/emulator-e2e.js reject 400"
 firebase emulators:exec --only functions,database --project demo-xpizza "node deploy/emu-seed.js missing  && node deploy/emulator-e2e.js reject 503"
 firebase emulators:exec --only functions,database --project demo-xpizza "node deploy/emu-seed.js active   && node deploy/emulator-e2e.js pending"
 firebase emulators:exec --only functions,database --project demo-xpizza "node deploy/emulator-e2e.js la_musa"
 ```
-**S3-specific** — the `casAssign` (6/6) + `release` (3/3) emulator passes already ran; **ADD a
-sweeper e2e**: with `config/sweep_pending_enabled` **unset**, the OFFER pass makes **no re-offers**;
-the **heal** nulls a seeded stranded half-claim **but leaves a seeded terminal (delivered) mismatch
-untouched** (gate-#4); `autoAssign`/`timeout` with the universal CAS are **behavior-equivalent
+**S3-specific** — the `casAssign` (6/6) + `release` (3/3) emulator passes already ran; the sweeper
+e2e is now `deploy/sweeper-scenario-emu.js` (9/9, run 2026-07-02):
+```
+export GCLOUD_PROJECT=demo-xpizza JAVA_HOME=/opt/homebrew/opt/openjdk PATH=$JAVA_HOME/bin:$PATH
+firebase emulators:exec --only functions,database --project demo-xpizza "node deploy/sweeper-scenario-emu.js"
+```
+with `config/sweep_pending_enabled=false`, the OFFER pass makes **no re-offers** (but the seeded
+order IS offer-eligible — proven, so the skip is the gate not ineligibility); the **heal** nulls a
+seeded stranded half-claim **but leaves a seeded terminal (delivered) mismatch untouched** (gate-#4); `autoAssign`/`timeout` with the universal CAS are **behavior-equivalent
 uncontended (same observable outcome)** as today.
 
 ## GATE 3.5 — Live-DARK safety (must all be true — state, then verify in Gate 6)
