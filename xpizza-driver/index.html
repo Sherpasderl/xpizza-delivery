@@ -37,6 +37,7 @@
     /* Accent (X Pizza brand — Clean Light Pro orange) */
     --accent: #FA4400;
     --accent-hover: #E03E00;
+    --lamusa: #B61218;   /* La Musa brand red (from track config) — restaurant identity chip */
     --success: #2F9E66;
     --success-hover: #258052;
     --warn: #f59e0b;
@@ -401,6 +402,15 @@
   .statbar .cap{ font-size:9px; font-weight:700; color:var(--text-dim); letter-spacing:.06em; margin-top:6px; }
 
   /* ===== Active order — layered (white info card + actions on grey canvas) ===== */
+  /* restaurant identity chip — brand-colored, glanceable (La Musa red / X. Pizza orange) */
+  .rchip { display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; padding:5px 11px; border-radius:20px; color:#fff; line-height:1; vertical-align:middle; }
+  .rchip .rdot { width:6px; height:6px; border-radius:50%; background:#fff; opacity:.85; flex-shrink:0; }
+  .rchip.lm { background:var(--lamusa); }
+  .rchip.xp { background:var(--accent); }
+  .rchip.sm { font-size:10px; padding:3px 9px; letter-spacing:.04em; }
+  .ac-chiprow { margin-bottom:11px; }
+  .qchip-row { margin-bottom:4px; }
+
   .active-card { background:var(--surface); margin:13px 13px 0; border-radius:17px; border:1px solid rgba(20,30,50,.05); box-shadow:0 1px 2px rgba(20,30,50,.04), 0 8px 20px rgba(20,30,50,.07); padding:16px; }
   .ac-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:11px; }
   .recipient-name { font-size:21px; font-weight:800; letter-spacing:-.025em; color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -1105,7 +1115,7 @@ import { computeVuelto, vueltoSuggestions, computeShiftCash } from './cash-helpe
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '2.3.2';
+const SYSTEM_VERSION = '2.3.3';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -1876,14 +1886,13 @@ function renderIncomingBanners(pending) {
   return pending.map(o => {
     const order = o.order || {};
     const collapsed = collapsedBanners.has(o.orderId);
-    const rest = order.restaurant_id === 'la_musa' ? 'La Musa' : 'X. Pizza';
     const total = order.total != null ? `L ${Number(order.total).toLocaleString('es-HN')}` : '';
     const addr = escapeHtml(order.address_detected || o.deliveryTask?.destination_address || order.customer_name || '');
     const cd = o.pickupTask.assignment_deadline
       ? `<span class="accept-countdown" data-deadline="${o.pickupTask.assignment_deadline}">--s</span>` : '';
     return `<div class="incoming-banner${collapsed ? ' collapsed' : ''}" data-order-id="${escapeHtml(o.orderId)}">
       <div class="ib-head" data-ib-toggle="${escapeHtml(o.orderId)}">
-        <div class="ib-title">🔔 Nuevo pedido · ${rest}</div>
+        <div class="ib-title">🔔 Nuevo pedido ${restaurantChip(order, 'sm')}</div>
         <div class="ib-right">${cd}<span class="ib-chev">${CHEV}</span></div>
       </div>
       <div class="ib-body">
@@ -2073,6 +2082,7 @@ function renderActiveCard(o, solo) {
   const flowBot = solo ? '<div class="ao-spacer ao-spacer-bot"></div>' : '';
   return `${flowTop}
     <div class="active-card">
+      <div class="ac-chiprow">${restaurantChip(order)}</div>
       <div class="ac-head">
         <div class="recipient-name">${escapeHtml(order.customer_name || o.deliveryTask.recipient_name || '—')}</div>
         <div class="ac-meta"><span class="phase-pill ${pill.cls}">${pill.label}</span>${countdownChip}</div>
@@ -2285,6 +2295,7 @@ function renderQueue(orders) {
           <div class="qcard" data-q="${i}">
             <div class="seq">${i + 2}º</div>
             <div class="qmid">
+              <div class="qchip-row">${restaurantChip(order, 'sm')}</div>
               <div class="qname">${escapeHtml(name)}</div>
               <div class="qaddr">${escapeHtml(addr)}</div>
             </div>
@@ -2308,6 +2319,7 @@ function renderQueueDetail(o, seq) {
   const phone = order.customer_phone;
   return `
     <div class="grab"></div>
+    <div class="ac-chiprow" style="margin-top:2px">${restaurantChip(order)}</div>
     <div class="sh-head"><div class="sh-name">${escapeHtml(name)}</div><span class="sh-pill">${seq}º · EN COLA</span></div>
     ${phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(phone).replace(/[^\d+]/g,'')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${String(phone).replace(/\D/g,'')}?text=${encodeURIComponent('Hola, soy del repartidor de X. Pizza.')}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
     <div class="ac-hr"></div>
@@ -2326,6 +2338,18 @@ function renderQueueDetail(o, seq) {
 // ============================================================
 // Utilities
 // ============================================================
+// Restaurant identity for an order card — brand label + chip class (reuses the la_musa mapping).
+function restaurantMeta(order) {
+  return (order && order.restaurant_id === 'la_musa')
+    ? { label: 'La Musa', cls: 'lm' }
+    : { label: 'X. Pizza', cls: 'xp' };
+}
+// Brand-colored restaurant chip markup; pass size 'sm' for compact (queue) contexts.
+function restaurantChip(order, size) {
+  const m = restaurantMeta(order);
+  return `<span class="rchip ${m.cls}${size === 'sm' ? ' sm' : ''}"><span class="rdot"></span>${m.label}</span>`;
+}
+
 function escapeHtml(s) {
   if (s == null) return '';
   return String(s)
