@@ -1,0 +1,280 @@
+diff --git a/xpizza-functions/index.js b/xpizza-functions/index.js
+index c2d7932..09913f5 100644
+--- a/xpizza-functions/index.js
++++ b/xpizza-functions/index.js
+@@ -95,6 +95,7 @@ const {
+   validateIngestToken,
+   coerceTs
+ } = require('./driver-ingest');
++const { sweepDecision, activeOrderCount } = require('./sweep-pending');
+ 
+ initializeApp({
+   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
+@@ -3013,14 +3014,10 @@ async function reassertAssignable(db, driverId, newOrderId = null) {
+   if (d.timeout_until && d.timeout_until > Date.now()) return { ok: false, reason: 'cooldown' };
+ 
+   const tasks = tSnap.val() || {};
+-  const orderIds = new Set();
+-  for (const id of Object.keys(tasks)) {
+-    const t = tasks[id];
+-    if (!t || t.assigned_driver_id !== driverId) continue;
+-    if (t.status === 'completed' || t.status === 'cancelled') continue;
+-    if (t.order_id) orderIds.add(t.order_id);
+-  }
+-  const orderCount = orderIds.size;
++  // S3a: exclude the order being placed (newOrderId) from the cap count — the sweeper CAS-claims the
++  // delivery task BEFORE this recheck, so counting it would wrongly reject a valid stackable driver.
++  // No-op for the S2 auto-assign caller (the order isn't claimed there yet).
++  const orderCount = activeOrderCount(tasks, driverId, newOrderId);
+   let cap;
+   if (orderCount === 0) cap = 1;
+   else if (orderCount === 1 && STACKABLE_STATUSES.has(d.status)) cap = 2;
+@@ -3330,3 +3327,93 @@ exports.monitorAssignmentTimeout = onValueWritten(
+     }
+   }
+ );
++
++// ============================================================
++// sweepPendingOrders — S3: re-offer stuck pending orders to newly-eligible drivers
++// ============================================================
++//
++// A pending order that ran out of drivers (autoAssign / timeout no-eligible) sits in SIN ASIGNAR
++// (dispatcher-visible) — today, manual-only. This scheduled sweep re-offers such orders to any
++// newly-eligible driver via the NORMAL placement path (a normal 'assigned' swipe that re-arms
++// monitorAssignmentTimeout), so a freed-up driver picks them up without a human. Dispatcher-parked
++// orders are exempt (the explicit "behaves like today" opt-out). It is NEVER removed from SIN ASIGNAR
++// (always human-grabbable) → no black hole by construction.
++//
++// PURELY ADDITIVE: the entire timeout/assign path is unchanged. The one new behaviour (auto-retry of
++// pending orders) is the conscious change (pinned via sweepDecision in sweep-pending.test.js).
++//
++// retry_count (on the delivery task) counts actual OFFERS that then bounced (drivers declining), NOT
++// no-driver cycles — so a no-taker order keeps waiting for a driver to free, and the throttle only
++// gives up on an order drivers repeatedly decline (dispatcher then looks / parks it).
++const SWEEP_INTERVAL_MS = 60 * 1000;
++const SWEEP_RETRY_MAX = 2;
++
++exports.sweepPendingOrders = onSchedule(
++  { schedule: 'every 1 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
++  async () => {
++    const db = getDatabase();
++    const now = Date.now();
++    // Deploy-safety + kill-switch (Codex S3a High): the sweeper stays OFF until
++    // config/sweep_pending_enabled === true — flip it ONLY after assignOrderToDriver's CAS (S3b) is
++    // live, so a dispatcher grab landing mid-sweep cannot be overwritten. Also honor the global
++    // auto-assign pause (config/auto_assign_enabled === false), same as autoAssignOnOrderCreate.
++    const [sweepEnabledSnap, autoEnabledSnap] = await Promise.all([
++      db.ref('config/sweep_pending_enabled').once('value'),
++      db.ref('config/auto_assign_enabled').once('value')
++    ]);
++    if (sweepEnabledSnap.val() !== true) return;
++    if (autoEnabledSnap.val() === false) { console.log('sweepPending: skipped (auto-assign globally paused)'); return; }
++    const [ordersSnap, tasksSnap] = await Promise.all([
++      db.ref('orders').once('value'),
++      db.ref('tasks').once('value')
++    ]);
++    const orders = ordersSnap.val() || {};
++    const tasks = tasksSnap.val() || {};
++    const opts = { graceMs: GRACE_PERIOD_MS, sweepIntervalMs: SWEEP_INTERVAL_MS, retryMax: SWEEP_RETRY_MAX };
++    let offered = 0, waiting = 0;
++
++    for (const orderId of Object.keys(orders)) {
++      const order = orders[orderId];
++      if (!sweepDecision(order, tasks, now, opts).sweep) continue;
++
++      // Best currently-eligible driver — normal ranking (fewest orders → priority → nearest), no dibs.
++      const { hubLat, hubLng } = resolveAssignHub(order);
++      const chosen = await pickEligibleDriver(db, [], hubLat, hubLng);
++      if (!chosen) { waiting++; continue; }   // no taker this cycle — leave pending, keep waiting (no throttle bump)
++
++      // CAS-claim the DELIVERY task's assigned_driver_id (null → chosen). This is the field
++      // getPendingOrders reads, so the claim atomically leaves SIN ASIGNAR + blocks a concurrent
++      // sweep/grab, and it's invisible to monitorAssignmentTimeout (which watches the PICKUP field).
++      const deliveryRef = db.ref(`tasks/${orderId}_delivery`);
++      const claim = await deliveryRef.child('assigned_driver_id').transaction(cur => (cur == null ? chosen.driverId : undefined));
++      if (!claim.committed || claim.snapshot.val() !== chosen.driverId) continue;   // lost the race — skip
++
++      // TOCTOU recheck (excludes THIS order from the cap) + a final park re-read immediately before the
++      // write — a dispatcher parking / a driver-state change mid-sweep must abort the placement.
++      const recheck = await reassertAssignable(db, chosen.driverId, orderId);
++      const parkedNow = (await db.ref(`orders/${orderId}/dispatch_parked`).once('value')).val();
++      if (!recheck.ok || parkedNow) {
++        // Roll back the claim so the order returns to SIN ASIGNAR (never left hidden). No throttle bump.
++        await deliveryRef.child('assigned_driver_id').transaction(cur => (cur === chosen.driverId ? null : undefined));
++        continue;
++      }
++
++      // Finalize as a NORMAL new offer: attempts=1 → fresh 60s deadline + slide-to-accept, re-arms the
++      // timer. retry_count is written SEPARATELY (buildAssignmentUpdates never touches it) and bumps
++      // only here, on a real offer.
++      const retryCount = (tasks[`${orderId}_delivery`] && tasks[`${orderId}_delivery`].retry_count) || 0;
++      const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true);
++      updates[`tasks/${orderId}_delivery/retry_count`] = retryCount + 1;
++      updates[`tasks/${orderId}_delivery/last_swept`] = now;
++      try {
++        await db.ref().update(updates);
++        offered++;
++        console.log(`sweepPending: re-offered ${orderId} → ${chosen.name} (offer ${retryCount + 1})`);
++      } catch (e) {
++        console.error(`sweepPending: write failed for ${orderId}`, e);
++        await deliveryRef.child('assigned_driver_id').transaction(cur => (cur === chosen.driverId ? null : undefined));
++      }
++    }
++    if (offered || waiting) console.log(`sweepPending: offered ${offered}, waiting ${waiting}`);
++  }
++);
+diff --git a/xpizza-functions/package.json b/xpizza-functions/package.json
+index 5bbccf7..f3959ad 100644
+--- a/xpizza-functions/package.json
++++ b/xpizza-functions/package.json
+@@ -4,7 +4,7 @@
+   "description": "X Pizza Delivery Cloud Functions — Make.com → Firebase + Web Push + KDS sync + Auto-assign + Acceptance timeout + Stacking + WhatsApp inbound/outbound",
+   "main": "index.js",
+   "scripts": {
+-    "test": "node pixelpay-charge.test.js && node pixelpay-confirm.test.js && node pixelpay-webhook.test.js && node pixelpay-cancel.test.js && node driver-push.test.js && node driver-ingest.test.js && node menu-pricing.test.js && node menu-parity.test.js && node order-money.test.js && node restaurant-id.test.js && node pixelpay-return-url.test.js && node assign-hub.test.js && node whatsapp-config.test.js && node factura/pricing.test.js && node factura/eligibility.test.js && node factura/sync.test.js && node seed-identity.test.js && node restaurant-config.test.js && node materialize-snapshot.test.js && node create-order-build.test.js && node confirm-active-recheck.test.js && node deploy/probe-guard.test.js && node deploy/combo-validation.guard.test.js && node restaurants-rules.guard.test.js",
++    "test": "node pixelpay-charge.test.js && node pixelpay-confirm.test.js && node pixelpay-webhook.test.js && node pixelpay-cancel.test.js && node driver-push.test.js && node driver-ingest.test.js && node menu-pricing.test.js && node menu-parity.test.js && node order-money.test.js && node restaurant-id.test.js && node pixelpay-return-url.test.js && node assign-hub.test.js && node whatsapp-config.test.js && node factura/pricing.test.js && node factura/eligibility.test.js && node factura/sync.test.js && node seed-identity.test.js && node restaurant-config.test.js && node materialize-snapshot.test.js && node create-order-build.test.js && node confirm-active-recheck.test.js && node deploy/probe-guard.test.js && node deploy/combo-validation.guard.test.js && node restaurants-rules.guard.test.js && node sweep-pending.test.js",
+     "serve": "firebase emulators:start --only functions",
+     "shell": "firebase functions:shell",
+     "deploy": "firebase deploy --only functions",
+diff --git a/xpizza-functions/sweep-pending.js b/xpizza-functions/sweep-pending.js
+new file mode 100644
+index 0000000..1e3de50
+--- /dev/null
++++ b/xpizza-functions/sweep-pending.js
+@@ -0,0 +1,64 @@
++'use strict';
++
++/**
++ * Pure predicate for the S3 pending-order re-offer sweeper. No db / I/O — unit-tested with
++ * `node sweep-pending.test.js` (repo idiom). The `sweepPendingOrders` scheduled function composes this
++ * to decide which orders to re-offer; keeping the decision pure makes the "too-loose predicate"
++ * failure mode (the main way this sweeper misbehaves) directly testable.
++ *
++ * An order is sweepable iff it is genuinely stuck and safe to auto-retry:
++ *   - order status is auto-assignable (new/preparing/ready) — excludes cancelled/completed/pending_payment
++ *   - NOT dispatcher-parked (the explicit opt-out / "behaves like today" escape hatch)
++ *   - both pickup AND delivery tasks exist, are unassigned, and not cancelled
++ *   - neither task has a live assignment_deadline (i.e. it is not mid-assignment)
++ *   - retry_count (on the delivery task) is below the throttle
++ *   - old enough that it can't collide with autoAssignOnOrderCreate, which still reads/picks/writes
++ *     AFTER its 30s grace sleep: created_at <= now - (graceMs + sweepIntervalMs)
++ */
++
++// Mirrors index.js AUTO_ASSIGNABLE_STATUSES (new/preparing/ready). Small + stable; kept local so the
++// pure predicate has no index.js dependency.
++const AUTO_ASSIGNABLE_STATUSES = new Set(['new', 'preparing', 'ready']);
++
++function sweepDecision(order, tasks, now, opts = {}) {
++  const { graceMs = 30_000, sweepIntervalMs = 60_000, retryMax = 2 } = opts;
++  const all = tasks || {};
++  if (!order) return { sweep: false, reason: 'no_order' };
++  if (order.dispatch_parked) return { sweep: false, reason: 'parked' };
++  if (!AUTO_ASSIGNABLE_STATUSES.has(order.status)) return { sweep: false, reason: `status_${order.status}` };
++
++  const pickup = all[`${order.order_id}_pickup`];
++  const delivery = all[`${order.order_id}_delivery`];
++  if (!pickup || !delivery) return { sweep: false, reason: 'no_tasks' };
++  for (const t of [pickup, delivery]) {
++    if (t.status === 'cancelled') return { sweep: false, reason: 'cancelled' };
++    if (t.assigned_driver_id) return { sweep: false, reason: 'assigned' };
++    if (t.assignment_deadline) return { sweep: false, reason: 'live_deadline' };   // mid-assignment
++  }
++
++  if ((delivery.retry_count || 0) >= retryMax) return { sweep: false, reason: 'retry_exhausted' };
++  if (typeof order.created_at !== 'number' || order.created_at > now - (graceMs + sweepIntervalMs)) {
++    return { sweep: false, reason: 'too_young' };
++  }
++  return { sweep: true };
++}
++
++/**
++ * Count a driver's DISTINCT active (not completed/cancelled) order_ids, optionally EXCLUDING one order.
++ * `reassertAssignable` uses this with the order being placed excluded — because the sweeper CAS-claims
++ * the delivery task before the recheck, so the just-claimed order would otherwise inflate the count and
++ * wrongly reject a valid stackable driver. (In the S2 auto-assign call the order isn't claimed yet, so
++ * excluding it is a harmless no-op there.)
++ */
++function activeOrderCount(tasks, driverId, excludeOrderId = null) {
++  const orderIds = new Set();
++  for (const t of Object.values(tasks || {})) {
++    if (!t || t.assigned_driver_id !== driverId) continue;
++    if (t.status === 'completed' || t.status === 'cancelled') continue;
++    if (!t.order_id || t.order_id === excludeOrderId) continue;
++    orderIds.add(t.order_id);
++  }
++  return orderIds.size;
++}
++
++module.exports = { sweepDecision, AUTO_ASSIGNABLE_STATUSES, activeOrderCount };
+diff --git a/xpizza-functions/sweep-pending.test.js b/xpizza-functions/sweep-pending.test.js
+new file mode 100644
+index 0000000..1ce7b79
+--- /dev/null
++++ b/xpizza-functions/sweep-pending.test.js
+@@ -0,0 +1,66 @@
++'use strict';
++
++// Unit tests for the pure sweep-pending predicate (S3). Run: node sweep-pending.test.js
++// A too-loose predicate is the main way the pending-order sweeper misbehaves, so this is the core gate:
++// it must sweep ONLY a genuinely-stuck, unparked, past-grace, unassigned, auto-assignable order.
++const assert = require('assert');
++const { sweepDecision, activeOrderCount } = require('./sweep-pending');
++
++let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
++
++const NOW = 1_800_000_000_000;
++const OLD = NOW - (30_000 + 60_000) - 1;   // just past grace(30s)+interval(60s)
++const OPTS = { graceMs: 30_000, sweepIntervalMs: 60_000, retryMax: 2 };
++
++// A clean sweepable order: auto-assignable, old enough, both tasks unassigned/pending, not parked.
++const mk = (orderExtra = {}, pkExtra = {}, dlExtra = {}) => {
++  const order = { order_id: 'o1', status: 'new', created_at: OLD, ...orderExtra };
++  const tasks = {
++    o1_pickup:   { order_id: 'o1', type: 'pickup',   status: 'pending', assigned_driver_id: null, ...pkExtra },
++    o1_delivery: { order_id: 'o1', type: 'delivery', status: 'pending', assigned_driver_id: null, ...dlExtra },
++  };
++  return { order, tasks };
++};
++const swept = (m) => sweepDecision(m.order, m.tasks, NOW, OPTS);
++
++// ✅ the one thing it MUST do
++{ const r = swept(mk()); assert.deepStrictEqual(r, { sweep: true }, 'clean pending order → sweep'); ok('clean unparked past-grace unassigned auto-assignable order → sweep'); }
++{ const r = swept(mk({ status: 'preparing' })); assert.strictEqual(r.sweep, true); ok('preparing status → sweep'); }
++{ const r = swept(mk({ status: 'ready' })); assert.strictEqual(r.sweep, true); ok('ready status → sweep'); }
++
++// 🚫 every way it must NOT sweep
++{ const r = swept(mk({ dispatch_parked: true })); assert.deepStrictEqual(r, { sweep: false, reason: 'parked' }, 'parked'); ok('dispatch_parked → skip (the escape hatch)'); }
++{ const r = swept(mk({ status: 'delivered' })); assert.strictEqual(r.sweep, false); ok('non-auto-assignable status (delivered) → skip'); }
++{ const r = swept(mk({ status: 'cancelled' })); assert.strictEqual(r.sweep, false); ok('cancelled order status → skip'); }
++{ const r = sweepDecision({ order_id: 'o1', status: 'new', created_at: OLD }, {}, NOW, OPTS); assert.strictEqual(r.sweep, false); ok('no tasks → skip'); }
++{ const r = swept(mk({}, { status: 'cancelled' })); assert.strictEqual(r.sweep, false); ok('a cancelled task → skip'); }
++{ const r = swept(mk({}, { assigned_driver_id: 'd1' })); assert.strictEqual(r.sweep, false); ok('pickup already assigned → skip'); }
++{ const r = swept(mk({}, {}, { assigned_driver_id: 'd2' })); assert.strictEqual(r.sweep, false); ok('delivery already assigned → skip'); }
++{ const r = swept(mk({}, { assignment_deadline: NOW + 10_000 })); assert.strictEqual(r.sweep, false); ok('live assignment_deadline (mid-assignment) → skip'); }
++{ const r = swept(mk({}, {}, { retry_count: 2 })); assert.strictEqual(r.sweep, false); ok('retry_count >= RETRY_MAX → skip (throttle, still visible in SIN ASIGNAR)'); }
++{ const r = swept(mk({}, {}, { retry_count: 1 })); assert.strictEqual(r.sweep, true); ok('retry_count < RETRY_MAX → still sweep'); }
++{ const r = swept(mk({ created_at: NOW - 1000 })); assert.strictEqual(r.sweep, false); ok('within grace+interval (too young) → skip (no collision with autoAssign)'); }
++{ const r = swept(mk({ created_at: undefined })); assert.strictEqual(r.sweep, false); ok('no created_at → skip (defensive)'); }
++{ const r = sweepDecision(null, {}, NOW, OPTS); assert.strictEqual(r.sweep, false); ok('no order → skip'); }
++
++// ---- activeOrderCount(tasks, driverId, excludeOrderId) ----  distinct active order_ids for a driver,
++// excluding one order (the one being placed). Used by reassertAssignable in the sweeper: the delivery
++// task is CAS-claimed BEFORE the recheck, so without the exclusion the just-claimed order inflates the
++// driver to orderCount=2 and a valid stackable candidate is wrongly rejected.
++{
++  const tasks = {
++    a_pickup:   { order_id: 'a', assigned_driver_id: 'd1', status: 'accepted' },
++    a_delivery: { order_id: 'a', assigned_driver_id: 'd1', status: 'accepted' },
++    b_delivery: { order_id: 'b', assigned_driver_id: 'd1', status: 'assigned' },   // the just-claimed new order
++    c_pickup:   { order_id: 'c', assigned_driver_id: 'd2', status: 'accepted' },   // other driver
++    done_pickup:{ order_id: 'z', assigned_driver_id: 'd1', status: 'completed' },  // completed → not counted
++  };
++  assert.strictEqual(activeOrderCount(tasks, 'd1', null), 2, 'd1 has 2 active orders (a, b)');
++  assert.strictEqual(activeOrderCount(tasks, 'd1', 'b'), 1, 'excluding the just-claimed order b → 1 (a) → still stackable');
++  assert.strictEqual(activeOrderCount(tasks, 'd2', null), 1, 'd2 has 1 (c)');
++  assert.strictEqual(activeOrderCount(tasks, 'd1', 'a'), 1, 'excluding a → 1 (b)');
++  assert.strictEqual(activeOrderCount({}, 'd1', null), 0, 'no tasks → 0');
++  ok('activeOrderCount: distinct active orders, excludes completed/cancelled + the excluded order');
++}
++
++console.log(`sweep-pending: OK (${n} cases)`);

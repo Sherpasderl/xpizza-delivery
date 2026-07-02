@@ -86,10 +86,11 @@ firebase emulators:exec --only functions,database --project demo-xpizza "node de
 firebase emulators:exec --only functions,database --project demo-xpizza "node deploy/emulator-e2e.js la_musa"
 ```
 **S3-specific** — the `casAssign` (6/6) + `release` (3/3) emulator passes already ran; the sweeper
-e2e is now `deploy/sweeper-scenario-emu.js` (9/9, run 2026-07-02):
+e2e is an AUDITOR-RUN artifact (`/tmp/sweeper-scenario-emu.js`, 9/9 on 2026-07-02) — kept OUT of the
+functions tree so the deploy target `8e0d8a1` stays byte-identical (like the other authority tests):
 ```
-export GCLOUD_PROJECT=demo-xpizza JAVA_HOME=/opt/homebrew/opt/openjdk PATH=$JAVA_HOME/bin:$PATH
-firebase emulators:exec --only functions,database --project demo-xpizza "node deploy/sweeper-scenario-emu.js"
+cd xpizza-functions && export GCLOUD_PROJECT=demo-xpizza JAVA_HOME=/opt/homebrew/opt/openjdk PATH=$JAVA_HOME/bin:$PATH
+firebase emulators:exec --only functions,database --project demo-xpizza "node /tmp/sweeper-scenario-emu.js"
 ```
 with `config/sweep_pending_enabled=false`, the OFFER pass makes **no re-offers** (but the seeded
 order IS offer-eligible — proven, so the skip is the gate not ineligibility); the **heal** nulls a

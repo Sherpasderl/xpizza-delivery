@@ -1,0 +1,265 @@
+diff --git a/xpizza-dashboard/xpizza-delivery.js b/xpizza-dashboard/xpizza-delivery.js
+index f149b23..36e9b7a 100644
+--- a/xpizza-dashboard/xpizza-delivery.js
++++ b/xpizza-dashboard/xpizza-delivery.js
+@@ -29,6 +29,7 @@ import {
+   update,
+   get,
+   remove,
++  runTransaction,
+   serverTimestamp,
+   off
+ } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+@@ -630,8 +631,22 @@ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+ 
+   const pickupTaskId = `${orderId}_pickup`;
+   const deliveryTaskId = `${orderId}_delivery`;
+-  const updates = {};
+ 
++  // S3b race guard: atomically CAS-claim the DELIVERY task's assigned_driver_id — the same field the
++  // S3 sweeper and SIN ASIGNAR use — so a manual assign cannot race the sweeper or another dispatcher.
++  // Fail GRACEFULLY (no throw) if the order was already taken; the dispatch UI (S3c) surfaces "ya asignada".
++  const claim = await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur == null ? driverId : undefined));
++  if (!claim.committed || claim.snapshot.val() !== driverId) {
++    return { ok: false, reason: 'already_assigned' };
++  }
++  // Defensive both-unassigned guard: if the pickup is already held by another driver, roll back + bail.
++  const pk = (await get(ref(db, `tasks/${pickupTaskId}/assigned_driver_id`))).val();
++  if (pk != null && pk !== driverId) {
++    await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur === driverId ? null : undefined));
++    return { ok: false, reason: 'pickup_taken' };
++  }
++
++  const updates = {};
+   if (isStacked) {
+     // Stacked: mark accepted directly, no countdown / timeout
+     for (const tid of [pickupTaskId, deliveryTaskId]) {
+@@ -651,7 +666,15 @@ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+       updates[`tasks/${tid}/assignment_attempts`] = 1;
+     }
+   }
+-  await update(ref(db), updates);
++  try {
++    await update(ref(db), updates);
++  } catch (e) {
++    // Write failed AFTER the CAS claim — roll back the delivery claim so the order isn't stranded
++    // (hidden from SIN ASIGNAR + no armed timer). Mirrors the sweeper's rollback in the same window.
++    await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur === driverId ? null : undefined));
++    return { ok: false, reason: 'write_failed' };
++  }
++  return { ok: true, stacked: isStacked };
+ }
+ 
+ /**
+diff --git a/xpizza-dispatch/xpizza-delivery.js b/xpizza-dispatch/xpizza-delivery.js
+index 22f730d..c3d2062 100644
+--- a/xpizza-dispatch/xpizza-delivery.js
++++ b/xpizza-dispatch/xpizza-delivery.js
+@@ -28,6 +28,7 @@ import {
+   update,
+   get,
+   remove,
++  runTransaction,
+   serverTimestamp,
+   off
+ } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+@@ -623,8 +624,22 @@ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+ 
+   const pickupTaskId = `${orderId}_pickup`;
+   const deliveryTaskId = `${orderId}_delivery`;
+-  const updates = {};
+ 
++  // S3b race guard: atomically CAS-claim the DELIVERY task's assigned_driver_id — the same field the
++  // S3 sweeper and SIN ASIGNAR use — so a manual assign cannot race the sweeper or another dispatcher.
++  // Fail GRACEFULLY (no throw) if the order was already taken; the dispatch UI (S3c) surfaces "ya asignada".
++  const claim = await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur == null ? driverId : undefined));
++  if (!claim.committed || claim.snapshot.val() !== driverId) {
++    return { ok: false, reason: 'already_assigned' };
++  }
++  // Defensive both-unassigned guard: if the pickup is already held by another driver, roll back + bail.
++  const pk = (await get(ref(db, `tasks/${pickupTaskId}/assigned_driver_id`))).val();
++  if (pk != null && pk !== driverId) {
++    await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur === driverId ? null : undefined));
++    return { ok: false, reason: 'pickup_taken' };
++  }
++
++  const updates = {};
+   if (isStacked) {
+     // Stacked: mark accepted directly, no countdown / timeout
+     for (const tid of [pickupTaskId, deliveryTaskId]) {
+@@ -644,7 +659,15 @@ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+       updates[`tasks/${tid}/assignment_attempts`] = 1;
+     }
+   }
+-  await update(ref(db), updates);
++  try {
++    await update(ref(db), updates);
++  } catch (e) {
++    // Write failed AFTER the CAS claim — roll back the delivery claim so the order isn't stranded
++    // (hidden from SIN ASIGNAR + no armed timer). Mirrors the sweeper's rollback in the same window.
++    await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur === driverId ? null : undefined));
++    return { ok: false, reason: 'write_failed' };
++  }
++  return { ok: true, stacked: isStacked };
+ }
+ 
+ /**
+diff --git a/xpizza-driver/xpizza-delivery.js b/xpizza-driver/xpizza-delivery.js
+index e999b73..d0ed460 100644
+--- a/xpizza-driver/xpizza-delivery.js
++++ b/xpizza-driver/xpizza-delivery.js
+@@ -28,6 +28,7 @@ import {
+   update,
+   get,
+   remove,
++  runTransaction,
+   serverTimestamp,
+   off
+ } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+@@ -651,8 +652,22 @@ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+ 
+   const pickupTaskId = `${orderId}_pickup`;
+   const deliveryTaskId = `${orderId}_delivery`;
+-  const updates = {};
+ 
++  // S3b race guard: atomically CAS-claim the DELIVERY task's assigned_driver_id — the same field the
++  // S3 sweeper and SIN ASIGNAR use — so a manual assign cannot race the sweeper or another dispatcher.
++  // Fail GRACEFULLY (no throw) if the order was already taken; the dispatch UI (S3c) surfaces "ya asignada".
++  const claim = await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur == null ? driverId : undefined));
++  if (!claim.committed || claim.snapshot.val() !== driverId) {
++    return { ok: false, reason: 'already_assigned' };
++  }
++  // Defensive both-unassigned guard: if the pickup is already held by another driver, roll back + bail.
++  const pk = (await get(ref(db, `tasks/${pickupTaskId}/assigned_driver_id`))).val();
++  if (pk != null && pk !== driverId) {
++    await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur === driverId ? null : undefined));
++    return { ok: false, reason: 'pickup_taken' };
++  }
++
++  const updates = {};
+   if (isStacked) {
+     // Stacked: mark accepted directly, no countdown / timeout
+     for (const tid of [pickupTaskId, deliveryTaskId]) {
+@@ -672,7 +687,15 @@ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+       updates[`tasks/${tid}/assignment_attempts`] = 1;
+     }
+   }
+-  await update(ref(db), updates);
++  try {
++    await update(ref(db), updates);
++  } catch (e) {
++    // Write failed AFTER the CAS claim — roll back the delivery claim so the order isn't stranded
++    // (hidden from SIN ASIGNAR + no armed timer). Mirrors the sweeper's rollback in the same window.
++    await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur === driverId ? null : undefined));
++    return { ok: false, reason: 'write_failed' };
++  }
++  return { ok: true, stacked: isStacked };
+ }
+ 
+ /**
+diff --git a/xpizza-kitchen/xpizza-delivery.js b/xpizza-kitchen/xpizza-delivery.js
+index ebd3970..9035fd4 100644
+--- a/xpizza-kitchen/xpizza-delivery.js
++++ b/xpizza-kitchen/xpizza-delivery.js
+@@ -28,6 +28,7 @@ import {
+   update,
+   get,
+   remove,
++  runTransaction,
+   serverTimestamp,
+   off
+ } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+@@ -621,8 +622,22 @@ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+ 
+   const pickupTaskId = `${orderId}_pickup`;
+   const deliveryTaskId = `${orderId}_delivery`;
+-  const updates = {};
+ 
++  // S3b race guard: atomically CAS-claim the DELIVERY task's assigned_driver_id — the same field the
++  // S3 sweeper and SIN ASIGNAR use — so a manual assign cannot race the sweeper or another dispatcher.
++  // Fail GRACEFULLY (no throw) if the order was already taken; the dispatch UI (S3c) surfaces "ya asignada".
++  const claim = await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur == null ? driverId : undefined));
++  if (!claim.committed || claim.snapshot.val() !== driverId) {
++    return { ok: false, reason: 'already_assigned' };
++  }
++  // Defensive both-unassigned guard: if the pickup is already held by another driver, roll back + bail.
++  const pk = (await get(ref(db, `tasks/${pickupTaskId}/assigned_driver_id`))).val();
++  if (pk != null && pk !== driverId) {
++    await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur === driverId ? null : undefined));
++    return { ok: false, reason: 'pickup_taken' };
++  }
++
++  const updates = {};
+   if (isStacked) {
+     // Stacked: mark accepted directly, no countdown / timeout
+     for (const tid of [pickupTaskId, deliveryTaskId]) {
+@@ -642,7 +657,15 @@ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+       updates[`tasks/${tid}/assignment_attempts`] = 1;
+     }
+   }
+-  await update(ref(db), updates);
++  try {
++    await update(ref(db), updates);
++  } catch (e) {
++    // Write failed AFTER the CAS claim — roll back the delivery claim so the order isn't stranded
++    // (hidden from SIN ASIGNAR + no armed timer). Mirrors the sweeper's rollback in the same window.
++    await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur === driverId ? null : undefined));
++    return { ok: false, reason: 'write_failed' };
++  }
++  return { ok: true, stacked: isStacked };
+ }
+ 
+ /**
+diff --git a/xpizza-reference/xpizza-delivery.js b/xpizza-reference/xpizza-delivery.js
+index 22f730d..c3d2062 100644
+--- a/xpizza-reference/xpizza-delivery.js
++++ b/xpizza-reference/xpizza-delivery.js
+@@ -28,6 +28,7 @@ import {
+   update,
+   get,
+   remove,
++  runTransaction,
+   serverTimestamp,
+   off
+ } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+@@ -623,8 +624,22 @@ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+ 
+   const pickupTaskId = `${orderId}_pickup`;
+   const deliveryTaskId = `${orderId}_delivery`;
+-  const updates = {};
+ 
++  // S3b race guard: atomically CAS-claim the DELIVERY task's assigned_driver_id — the same field the
++  // S3 sweeper and SIN ASIGNAR use — so a manual assign cannot race the sweeper or another dispatcher.
++  // Fail GRACEFULLY (no throw) if the order was already taken; the dispatch UI (S3c) surfaces "ya asignada".
++  const claim = await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur == null ? driverId : undefined));
++  if (!claim.committed || claim.snapshot.val() !== driverId) {
++    return { ok: false, reason: 'already_assigned' };
++  }
++  // Defensive both-unassigned guard: if the pickup is already held by another driver, roll back + bail.
++  const pk = (await get(ref(db, `tasks/${pickupTaskId}/assigned_driver_id`))).val();
++  if (pk != null && pk !== driverId) {
++    await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur === driverId ? null : undefined));
++    return { ok: false, reason: 'pickup_taken' };
++  }
++
++  const updates = {};
+   if (isStacked) {
+     // Stacked: mark accepted directly, no countdown / timeout
+     for (const tid of [pickupTaskId, deliveryTaskId]) {
+@@ -644,7 +659,15 @@ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+       updates[`tasks/${tid}/assignment_attempts`] = 1;
+     }
+   }
+-  await update(ref(db), updates);
++  try {
++    await update(ref(db), updates);
++  } catch (e) {
++    // Write failed AFTER the CAS claim — roll back the delivery claim so the order isn't stranded
++    // (hidden from SIN ASIGNAR + no armed timer). Mirrors the sweeper's rollback in the same window.
++    await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur === driverId ? null : undefined));
++    return { ok: false, reason: 'write_failed' };
++  }
++  return { ok: true, stacked: isStacked };
+ }
+ 
+ /**

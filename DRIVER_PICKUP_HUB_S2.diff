@@ -1,0 +1,554 @@
+diff --git a/xpizza-dashboard/xpizza-delivery.js b/xpizza-dashboard/xpizza-delivery.js
+index e6971e2..f149b23 100644
+--- a/xpizza-dashboard/xpizza-delivery.js
++++ b/xpizza-dashboard/xpizza-delivery.js
+@@ -599,19 +599,33 @@ export async function assignTask(taskId, driverId) {
+  *                 stacking. If omitted, this function does a fresh read to check.
+  */
+ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+-  // Detect stacking: does this driver already have an accepted/in-progress
+-  // task that's not completed/cancelled?
+-  let isStacked = false;
++  // S2 same-hub stacking: force-accept (direct 'accepted', no swipe/timeout) ONLY when the driver
++  // already has an accepted/in-progress order at the SAME restaurant hub as this new order. A cross-hub
++  // manual assign stays 'assigned' (swipe-to-accept) — never force-accepted. Hub resolver mirrors
++  // driver-ingest/stacking-helpers (X_PIZZA_HUB == seed to full precision; 1e-6 epsilon): legacy no-hub
++  // x_pizza → X. Pizza fallback (unchanged); known non-x_pizza with a bad hub → null (fail-closed).
+   if (!allTasks) {
+     const tasksSnap = await get(ref(db, 'tasks'));
+     allTasks = tasksSnap.val() || {};
+   }
++  const HUB_EPS = 1e-6;
++  const ALLOWED_HUBS = { x_pizza: { lat: 15.507489753573818, lng: -88.0398486953722 }, la_musa: { lat: 15.50414, lng: -88.03848 } };
++  const coordsMatch = (h, lat, lng) => typeof lat === 'number' && typeof lng === 'number' && Math.abs(lat - h.lat) < HUB_EPS && Math.abs(lng - h.lng) < HUB_EPS;
++  const resolvePickupHub = (pk) => {
++    if (!pk) return null;
++    const rid = pk.restaurant_id, lat = pk.destination_lat, lng = pk.destination_lng;
++    const numeric = typeof lat === 'number' && typeof lng === 'number';
++    if (rid == null || rid === 'x_pizza') return numeric ? (coordsMatch(ALLOWED_HUBS.x_pizza, lat, lng) ? { lat, lng } : null) : { lat: ALLOWED_HUBS.x_pizza.lat, lng: ALLOWED_HUBS.x_pizza.lng };
++    const canon = ALLOWED_HUBS[rid];
++    return (canon && numeric && coordsMatch(canon, lat, lng)) ? { lat, lng } : null;
++  };
++  const newHub = resolvePickupHub(allTasks[`${orderId}_pickup`]);
++  let isStacked = false;
+   for (const t of Object.values(allTasks)) {
+     if (!t || t.assigned_driver_id !== driverId) continue;
+-    if (t.status === TASK_STATUS.ACCEPTED || t.status === TASK_STATUS.IN_PROGRESS) {
+-      isStacked = true;
+-      break;
+-    }
++    if (t.status !== TASK_STATUS.ACCEPTED && t.status !== TASK_STATUS.IN_PROGRESS) continue;
++    const h = resolvePickupHub(allTasks[`${t.order_id}_pickup`]);
++    if (newHub && h && Math.abs(newHub.lat - h.lat) < HUB_EPS && Math.abs(newHub.lng - h.lng) < HUB_EPS) { isStacked = true; break; }
+   }
+ 
+   const pickupTaskId = `${orderId}_pickup`;
+diff --git a/xpizza-dispatch/xpizza-delivery.js b/xpizza-dispatch/xpizza-delivery.js
+index e8a5ca3..22f730d 100644
+--- a/xpizza-dispatch/xpizza-delivery.js
++++ b/xpizza-dispatch/xpizza-delivery.js
+@@ -592,19 +592,33 @@ export async function assignTask(taskId, driverId) {
+  *                 stacking. If omitted, this function does a fresh read to check.
+  */
+ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+-  // Detect stacking: does this driver already have an accepted/in-progress
+-  // task that's not completed/cancelled?
+-  let isStacked = false;
++  // S2 same-hub stacking: force-accept (direct 'accepted', no swipe/timeout) ONLY when the driver
++  // already has an accepted/in-progress order at the SAME restaurant hub as this new order. A cross-hub
++  // manual assign stays 'assigned' (swipe-to-accept) — never force-accepted. Hub resolver mirrors
++  // driver-ingest/stacking-helpers (X_PIZZA_HUB == seed to full precision; 1e-6 epsilon): legacy no-hub
++  // x_pizza → X. Pizza fallback (unchanged); known non-x_pizza with a bad hub → null (fail-closed).
+   if (!allTasks) {
+     const tasksSnap = await get(ref(db, 'tasks'));
+     allTasks = tasksSnap.val() || {};
+   }
++  const HUB_EPS = 1e-6;
++  const ALLOWED_HUBS = { x_pizza: { lat: 15.507489753573818, lng: -88.0398486953722 }, la_musa: { lat: 15.50414, lng: -88.03848 } };
++  const coordsMatch = (h, lat, lng) => typeof lat === 'number' && typeof lng === 'number' && Math.abs(lat - h.lat) < HUB_EPS && Math.abs(lng - h.lng) < HUB_EPS;
++  const resolvePickupHub = (pk) => {
++    if (!pk) return null;
++    const rid = pk.restaurant_id, lat = pk.destination_lat, lng = pk.destination_lng;
++    const numeric = typeof lat === 'number' && typeof lng === 'number';
++    if (rid == null || rid === 'x_pizza') return numeric ? (coordsMatch(ALLOWED_HUBS.x_pizza, lat, lng) ? { lat, lng } : null) : { lat: ALLOWED_HUBS.x_pizza.lat, lng: ALLOWED_HUBS.x_pizza.lng };
++    const canon = ALLOWED_HUBS[rid];
++    return (canon && numeric && coordsMatch(canon, lat, lng)) ? { lat, lng } : null;
++  };
++  const newHub = resolvePickupHub(allTasks[`${orderId}_pickup`]);
++  let isStacked = false;
+   for (const t of Object.values(allTasks)) {
+     if (!t || t.assigned_driver_id !== driverId) continue;
+-    if (t.status === TASK_STATUS.ACCEPTED || t.status === TASK_STATUS.IN_PROGRESS) {
+-      isStacked = true;
+-      break;
+-    }
++    if (t.status !== TASK_STATUS.ACCEPTED && t.status !== TASK_STATUS.IN_PROGRESS) continue;
++    const h = resolvePickupHub(allTasks[`${t.order_id}_pickup`]);
++    if (newHub && h && Math.abs(newHub.lat - h.lat) < HUB_EPS && Math.abs(newHub.lng - h.lng) < HUB_EPS) { isStacked = true; break; }
+   }
+ 
+   const pickupTaskId = `${orderId}_pickup`;
+diff --git a/xpizza-driver/stacking-helpers.js b/xpizza-driver/stacking-helpers.js
+index 60c2358..150017c 100644
+--- a/xpizza-driver/stacking-helpers.js
++++ b/xpizza-driver/stacking-helpers.js
+@@ -2,20 +2,51 @@
+  * Pure stacking helper for the driver app. No DOM, no Firebase — unit-tested with
+  * `node stacking-helpers.test.js` + assert (repo idiom).
+  *
+- * When a driver accepts their FIRST order, the rest of their assigned stack is
+- * auto-accepted (the driver takes them all together). This returns the task ids
++ * When a driver accepts their FIRST order, the rest of their assigned SAME-HUB stack is
++ * auto-accepted (the driver takes same-restaurant orders together). This returns the task ids
+  * to flip to 'accepted': the driver's OWN tasks, still 'assigned', belonging to a
+- * DIFFERENT order than the one being accepted (the current order keeps its normal
+- * flow — its delivery is accepted at pickup, not here). Lone order → []. An order
+- * already 'accepted' (e.g. server-stacked) is left alone — so this is a NO-OP
+- * against today's auto-assign and only activates for assigned-but-unaccepted stacks.
++ * DIFFERENT order at the SAME restaurant hub as the one being accepted (the current order keeps
++ * its normal flow). A CROSS-HUB order is NOT cascaded — it stays 'assigned' for an explicit swipe
++ * (S2: cross-hub is a real detour decision, never force-accepted). Lone order → []. An order already
++ * 'accepted' is left alone — so this is a NO-OP against today's same-hub auto-assign.
+  */
++
++// Mirrors driver-ingest.js resolvePickupHub (incl. coord-vs-restaurant_id validation) + the S1 client
++// geofence. ALLOWED_HUBS == seed_identity / assign-hub to full precision; same 1e-6 epsilon so the
++// client and server gates can't diverge.
++const ALLOWED_HUBS = { x_pizza: { lat: 15.507489753573818, lng: -88.0398486953722 }, la_musa: { lat: 15.50414, lng: -88.03848 } };
++const HUB_EPS = 1e-6;
++const coordsMatch = (h, lat, lng) => typeof lat === 'number' && typeof lng === 'number' && Math.abs(lat - h.lat) < HUB_EPS && Math.abs(lng - h.lng) < HUB_EPS;
++
++function resolvePickupHub(pk) {
++  if (!pk) return null;
++  const rid = pk.restaurant_id;
++  const lat = pk.destination_lat, lng = pk.destination_lng;
++  const numeric = typeof lat === 'number' && typeof lng === 'number';
++  if (rid == null || rid === 'x_pizza') {
++    // legacy/x_pizza: numeric coords must BE X. Pizza; no coords → X. Pizza fallback (legacy unchanged)
++    if (numeric) return coordsMatch(ALLOWED_HUBS.x_pizza, lat, lng) ? { lat, lng } : null;
++    return { lat: ALLOWED_HUBS.x_pizza.lat, lng: ALLOWED_HUBS.x_pizza.lng };
++  }
++  // known non-x_pizza: coords must be present AND match the canonical hub → else fail-closed
++  const canon = ALLOWED_HUBS[rid];
++  return (canon && numeric && coordsMatch(canon, lat, lng)) ? { lat, lng } : null;
++}
++
++function sameHub(a, b) {
++  return !!a && !!b && Math.abs(a.lat - b.lat) < HUB_EPS && Math.abs(a.lng - b.lng) < HUB_EPS;
++}
++
+ export function stackedTasksToAccept(allTasks, driverId, currentOrderId) {
++  const all = allTasks || {};
++  const currentHub = resolvePickupHub(all[`${currentOrderId}_pickup`]);
+   const ids = [];
+-  for (const [tid, t] of Object.entries(allTasks || {})) {
++  for (const [tid, t] of Object.entries(all)) {
+     if (!t || t.assigned_driver_id !== driverId) continue;
+     if (t.order_id === currentOrderId) continue;   // current order: untouched
+-    if (t.status === 'assigned') ids.push(tid);
++    if (t.status !== 'assigned') continue;
++    // same-hub only (S2): the other order's pickup hub must match the current order's hub
++    if (sameHub(currentHub, resolvePickupHub(all[`${t.order_id}_pickup`]))) ids.push(tid);
+   }
+   return ids;
+ }
+diff --git a/xpizza-driver/stacking-helpers.test.js b/xpizza-driver/stacking-helpers.test.js
+index 18df32a..4a69db5 100644
+--- a/xpizza-driver/stacking-helpers.test.js
++++ b/xpizza-driver/stacking-helpers.test.js
+@@ -54,4 +54,41 @@ t('null/empty tasks → empty', () => {
+   assert.deepEqual(stackedTasksToAccept({}, 'me', 'A'), []);
+ });
+ 
++// NOTE: `base` above has NO stamped hubs → both A and B resolve to the X. Pizza fallback → same-hub →
++// still cascade. That IS the legacy-x_pizza regression pin (S2 fold-in #2/#3): legacy no-hub stacks
++// keep cascading exactly as before.
++
++const XP = { lat: 15.507489753573818, lng: -88.0398486953722 };
++const LM = { lat: 15.50414, lng: -88.03848 };
++
++t('S2: cross-hub other order (la_musa) → NOT cascaded (stays assigned for explicit swipe)', () => {
++  const crossHub = {
++    A_pickup:   { assigned_driver_id: 'me', order_id: 'A', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' },
++    A_delivery: { assigned_driver_id: 'me', order_id: 'A', type: 'delivery', status: 'assigned' },
++    B_pickup:   { assigned_driver_id: 'me', order_id: 'B', type: 'pickup',   status: 'assigned', destination_lat: LM.lat, destination_lng: LM.lng, restaurant_id: 'la_musa' },
++    B_delivery: { assigned_driver_id: 'me', order_id: 'B', type: 'delivery', status: 'assigned' },
++  };
++  assert.deepEqual(stackedTasksToAccept(crossHub, 'me', 'A'), []);
++});
++
++t('S2: mismatched-coord other order (la_musa rid + x_pizza coords) → NOT cascaded (fail-closed)', () => {
++  const corrupt = {
++    A_pickup:   { assigned_driver_id: 'me', order_id: 'A', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' },
++    A_delivery: { assigned_driver_id: 'me', order_id: 'A', type: 'delivery', status: 'assigned' },
++    B_pickup:   { assigned_driver_id: 'me', order_id: 'B', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'la_musa' },
++    B_delivery: { assigned_driver_id: 'me', order_id: 'B', type: 'delivery', status: 'assigned' },
++  };
++  assert.deepEqual(stackedTasksToAccept(corrupt, 'me', 'A'), []);
++});
++
++t('S2: same-hub stamped other order (both x_pizza) → cascaded', () => {
++  const sameHub = {
++    A_pickup:   { assigned_driver_id: 'me', order_id: 'A', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' },
++    A_delivery: { assigned_driver_id: 'me', order_id: 'A', type: 'delivery', status: 'assigned' },
++    B_pickup:   { assigned_driver_id: 'me', order_id: 'B', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' },
++    B_delivery: { assigned_driver_id: 'me', order_id: 'B', type: 'delivery', status: 'assigned' },
++  };
++  assert.deepEqual(stackedTasksToAccept(sameHub, 'me', 'A').sort(), ['B_delivery', 'B_pickup']);
++});
++
+ console.log(`✓ stacking-helpers: ${passed} tests passed`);
+diff --git a/xpizza-driver/xpizza-delivery.js b/xpizza-driver/xpizza-delivery.js
+index f1e545c..e999b73 100644
+--- a/xpizza-driver/xpizza-delivery.js
++++ b/xpizza-driver/xpizza-delivery.js
+@@ -620,19 +620,33 @@ export async function assignTask(taskId, driverId) {
+  *                 stacking. If omitted, this function does a fresh read to check.
+  */
+ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+-  // Detect stacking: does this driver already have an accepted/in-progress
+-  // task that's not completed/cancelled?
+-  let isStacked = false;
++  // S2 same-hub stacking: force-accept (direct 'accepted', no swipe/timeout) ONLY when the driver
++  // already has an accepted/in-progress order at the SAME restaurant hub as this new order. A cross-hub
++  // manual assign stays 'assigned' (swipe-to-accept) — never force-accepted. Hub resolver mirrors
++  // driver-ingest/stacking-helpers (X_PIZZA_HUB == seed to full precision; 1e-6 epsilon): legacy no-hub
++  // x_pizza → X. Pizza fallback (unchanged); known non-x_pizza with a bad hub → null (fail-closed).
+   if (!allTasks) {
+     const tasksSnap = await get(ref(db, 'tasks'));
+     allTasks = tasksSnap.val() || {};
+   }
++  const HUB_EPS = 1e-6;
++  const ALLOWED_HUBS = { x_pizza: { lat: 15.507489753573818, lng: -88.0398486953722 }, la_musa: { lat: 15.50414, lng: -88.03848 } };
++  const coordsMatch = (h, lat, lng) => typeof lat === 'number' && typeof lng === 'number' && Math.abs(lat - h.lat) < HUB_EPS && Math.abs(lng - h.lng) < HUB_EPS;
++  const resolvePickupHub = (pk) => {
++    if (!pk) return null;
++    const rid = pk.restaurant_id, lat = pk.destination_lat, lng = pk.destination_lng;
++    const numeric = typeof lat === 'number' && typeof lng === 'number';
++    if (rid == null || rid === 'x_pizza') return numeric ? (coordsMatch(ALLOWED_HUBS.x_pizza, lat, lng) ? { lat, lng } : null) : { lat: ALLOWED_HUBS.x_pizza.lat, lng: ALLOWED_HUBS.x_pizza.lng };
++    const canon = ALLOWED_HUBS[rid];
++    return (canon && numeric && coordsMatch(canon, lat, lng)) ? { lat, lng } : null;
++  };
++  const newHub = resolvePickupHub(allTasks[`${orderId}_pickup`]);
++  let isStacked = false;
+   for (const t of Object.values(allTasks)) {
+     if (!t || t.assigned_driver_id !== driverId) continue;
+-    if (t.status === TASK_STATUS.ACCEPTED || t.status === TASK_STATUS.IN_PROGRESS) {
+-      isStacked = true;
+-      break;
+-    }
++    if (t.status !== TASK_STATUS.ACCEPTED && t.status !== TASK_STATUS.IN_PROGRESS) continue;
++    const h = resolvePickupHub(allTasks[`${t.order_id}_pickup`]);
++    if (newHub && h && Math.abs(newHub.lat - h.lat) < HUB_EPS && Math.abs(newHub.lng - h.lng) < HUB_EPS) { isStacked = true; break; }
+   }
+ 
+   const pickupTaskId = `${orderId}_pickup`;
+diff --git a/xpizza-functions/driver-ingest.js b/xpizza-functions/driver-ingest.js
+index a16e7c1..1995f37 100644
+--- a/xpizza-functions/driver-ingest.js
++++ b/xpizza-functions/driver-ingest.js
+@@ -140,6 +140,58 @@ function syncDriverHubUpdate(eventAfterTaskId, freshCurrentTaskId, allTasks, exi
+   return { ...r.hub, current_hub_task_id: eventAfterTaskId };
+ }
+ 
++/**
++ * Resolve a pickup task's hub for the same-hub stacking decision (S2). Mirrors resolveAssignHub's
++ * X. Pizza fallback so a LEGACY x_pizza order with no stamped hub still resolves to X. Pizza (and thus
++ * stays same-hub / force-accepted, unchanged) — but adds a fail-closed branch: a KNOWN non-x_pizza order
++ * with a bad/missing hub returns null (excluded) rather than being mis-treated as X. Pizza.
++ */
++function resolvePickupHub(pk) {
++  if (!pk) return null;
++  const rid = pk.restaurant_id;
++  const lat = pk.destination_lat;
++  const lng = pk.destination_lng;
++  const numeric = typeof lat === 'number' && typeof lng === 'number';
++  if (rid == null || rid === 'x_pizza') {
++    // legacy / x_pizza: numeric coords must actually BE X. Pizza (reject a corrupted stamp); a legacy
++    // order with no stamped coords falls back to X. Pizza (unchanged force-accept for legacy x_pizza).
++    if (numeric) return coordsMatchHub(X_PIZZA_HUB, lat, lng) ? { lat, lng } : null;
++    return { lat: X_PIZZA_HUB.lat, lng: X_PIZZA_HUB.lng };
++  }
++  // known non-x_pizza: coords must be present AND match the restaurant's canonical hub (same policy as
++  // S1 isHubResolvable) — a la_musa pickup stamped with x_pizza coords fails closed rather than being
++  // mis-treated as x_pizza. Unknown restaurant_id → null.
++  const canon = ALLOWED_HUBS[rid];
++  return (canon && numeric && coordsMatchHub(canon, lat, lng)) ? { lat, lng } : null;
++}
++
++/**
++ * Does the driver have an ACCEPTED (or in_progress) order whose hub matches (hubLat,hubLng)? — the
++ * same-hub gate for stacking force-accept (S2). Reads each accepted order's hub from its pickup task
++ * (`${order_id}_pickup`, which persists with the stamped hub even after the pickup flips to completed).
++ * Uses the same coordsMatchHub/EPS as S1's isHubResolvable so the geofence and stacking gates agree.
++ * Pure: the caller (pickEligibleDriver / reassertAssignable) passes a FRESH task map, so it reflects
++ * the state at read time (closes the TOCTOU force-accept hole when re-run in the recheck).
++ */
++function driverHasSameHubAccepted(tasks, driverId, newOrderId) {
++  const all = tasks || {};
++  // Resolve the NEW order's hub FAIL-CLOSED (via resolvePickupHub, NOT resolveAssignHub — which would
++  // x_pizza-fallback a malformed la_musa order and force-accept it onto an x_pizza driver). Unresolvable
++  // new hub → no force-accept.
++  const newHub = resolvePickupHub(all[`${newOrderId}_pickup`]);
++  if (!newHub) return false;
++  const acceptedOrderIds = new Set();
++  for (const t of Object.values(all)) {
++    if (!t || t.assigned_driver_id !== driverId) continue;
++    if ((t.status === 'accepted' || t.status === 'in_progress') && t.order_id) acceptedOrderIds.add(t.order_id);
++  }
++  for (const oid of acceptedOrderIds) {
++    const hub = resolvePickupHub(all[`${oid}_pickup`]);
++    if (hub && coordsMatchHub(hub, newHub.lat, newHub.lng)) return true;
++  }
++  return false;
++}
++
+ /**
+  * Filter + order a batch of location points from the native uploader's offline
+  * queue. Accepts only points that are: well-formed (numeric ts + in-range coords),
+@@ -212,6 +264,8 @@ module.exports = {
+   isHubResolvable,
+   resolveHubFromTask,
+   syncDriverHubUpdate,
++  resolvePickupHub,
++  driverHasSameHubAccepted,
+   selectIngestPoints,
+   hashToken,
+   validateIngestToken,
+diff --git a/xpizza-functions/driver-ingest.test.js b/xpizza-functions/driver-ingest.test.js
+index 8787f91..62bd9bb 100644
+--- a/xpizza-functions/driver-ingest.test.js
++++ b/xpizza-functions/driver-ingest.test.js
+@@ -13,6 +13,8 @@ const {
+   isHubResolvable,
+   resolveHubFromTask,
+   syncDriverHubUpdate,
++  resolvePickupHub,
++  driverHasSameHubAccepted,
+   selectIngestPoints,
+   hashToken,
+   validateIngestToken,
+@@ -226,6 +228,52 @@ const FAR = { lat: HUB.lat + 0.01, lng: HUB.lng };
+   ok('real-builder fidelity: cash + online pickup tasks flow restaurant_id through the resolver/trigger');
+ }
+ 
++// ---- resolvePickupHub + driverHasSameHubAccepted (S2 same-hub stacking) ----
++// resolvePickupHub: legacy no-hub x_pizza → X. Pizza fallback (force-accept unchanged); a KNOWN
++// restaurant's coords are VALIDATED against its canonical hub (same policy as S1 isHubResolvable), so a
++// la_musa pickup stamped with x_pizza coords fails closed. driverHasSameHubAccepted resolves the NEW
++// order's hub the SAME fail-closed way (not resolveAssignHub) so a malformed la_musa order can't be
++// force-accepted onto an x_pizza driver.
++{
++  const XP = { lat: X_PIZZA_HUB.lat, lng: X_PIZZA_HUB.lng };
++  const LM = { lat: LA_MUSA_HUB.lat, lng: LA_MUSA_HUB.lng };
++
++  // resolvePickupHub — coord-validated against restaurant_id
++  assert.deepStrictEqual(resolvePickupHub({ destination_lat: LM.lat, destination_lng: LM.lng, restaurant_id: 'la_musa' }), LM, 'la_musa + matching coords → use');
++  assert.deepStrictEqual(resolvePickupHub({ destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' }), XP, 'x_pizza + matching coords → use');
++  assert.deepStrictEqual(resolvePickupHub({ restaurant_id: 'x_pizza' }), XP, 'x_pizza + no coords → X. Pizza fallback (legacy)');
++  assert.deepStrictEqual(resolvePickupHub({}), XP, 'null restaurant_id + no coords → X. Pizza fallback (legacy)');
++  assert.strictEqual(resolvePickupHub({ restaurant_id: 'la_musa' }), null, 'la_musa + no coords → fail-closed');
++  assert.strictEqual(resolvePickupHub({ destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'la_musa' }), null, 'la_musa stamped w/ x_pizza coords → fail-closed (coord/rid mismatch, Medium fix)');
++  assert.strictEqual(resolvePickupHub({ destination_lat: LM.lat, destination_lng: LM.lng, restaurant_id: 'x_pizza' }), null, 'x_pizza stamped w/ la_musa coords → fail-closed');
++  assert.strictEqual(resolvePickupHub({ destination_lat: '15.5', destination_lng: '-88', restaurant_id: 'la_musa' }), null, 'numeric-string coords → fail-closed');
++  assert.strictEqual(resolvePickupHub({ destination_lat: 99, destination_lng: 99, restaurant_id: 'zzz' }), null, 'unknown restaurant_id → fail-closed');
++  assert.strictEqual(resolvePickupHub(null), null, 'no task → null');
++
++  // driverHasSameHubAccepted(tasks, driverId, newOrderId) — resolves the NEW order's hub fail-closed.
++  // d1 holds accepted order o1 (pickup completed → survives, #7); o2 is the NEW order being assigned.
++  const mk = (o1Hub, o1Rid, o2Hub, o2Rid) => ({
++    o1_pickup:   { order_id: 'o1', type: 'pickup', status: 'completed', assigned_driver_id: 'd1', ...(o1Hub ? { destination_lat: o1Hub.lat, destination_lng: o1Hub.lng } : {}), ...(o1Rid ? { restaurant_id: o1Rid } : {}) },
++    o1_delivery: { order_id: 'o1', type: 'delivery', status: 'accepted', assigned_driver_id: 'd1' },
++    o2_pickup:   { order_id: 'o2', type: 'pickup', status: 'pending', assigned_driver_id: null, ...(o2Hub ? { destination_lat: o2Hub.lat, destination_lng: o2Hub.lng } : {}), ...(o2Rid ? { restaurant_id: o2Rid } : {}) },
++  });
++  assert.strictEqual(driverHasSameHubAccepted(mk(XP,'x_pizza',XP,'x_pizza'), 'd1', 'o2'), true, 'accepted x_pizza (pickup completed) + new x_pizza → same-hub (#7)');
++  assert.strictEqual(driverHasSameHubAccepted(mk(LM,'la_musa',LM,'la_musa'), 'd1', 'o2'), true, 'accepted la_musa + new la_musa → same-hub');
++  assert.strictEqual(driverHasSameHubAccepted(mk(XP,'x_pizza',LM,'la_musa'), 'd1', 'o2'), false, 'accepted x_pizza + new la_musa → cross-hub');
++  assert.strictEqual(driverHasSameHubAccepted(mk(LM,'la_musa',XP,'x_pizza'), 'd1', 'o2'), false, 'accepted la_musa + new x_pizza → cross-hub');
++  assert.strictEqual(driverHasSameHubAccepted(mk(null,null,XP,'x_pizza'), 'd1', 'o2'), true, 'legacy x_pizza accepted (no hub) + new x_pizza → still same-hub (#2)');
++  // ★ High fix — malformed la_musa NEW order (no hub coords) + accepted x_pizza → NOT force-accepted
++  assert.strictEqual(driverHasSameHubAccepted(mk(XP,'x_pizza',null,'la_musa'), 'd1', 'o2'), false, 'malformed la_musa new order (no hub) + accepted x_pizza → NOT force-accepted (fail-closed, the High finding)');
++  // ★ Medium fix — la_musa new order stamped with x_pizza coords → fail-closed
++  assert.strictEqual(driverHasSameHubAccepted(mk(XP,'x_pizza',XP,'la_musa'), 'd1', 'o2'), false, 'la_musa new order w/ x_pizza coords + accepted x_pizza → NOT force-accepted (coord/rid mismatch)');
++  // no accepted order → false
++  assert.strictEqual(driverHasSameHubAccepted({ o2_pickup: { order_id: 'o2', type: 'pickup', status: 'assigned', assigned_driver_id: 'd1', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' } }, 'd1', 'o2'), false, 'no accepted order → false');
++  // #4 TOCTOU: same helper, fresh snapshot flips the result
++  assert.strictEqual(driverHasSameHubAccepted(mk(XP,'x_pizza',XP,'x_pizza'), 'd1', 'o2'), true, 'TOCTOU pick-time: same-hub true');
++  assert.strictEqual(driverHasSameHubAccepted(mk(LM,'la_musa',XP,'x_pizza'), 'd1', 'o2'), false, 'TOCTOU recheck: accepted flipped to la_musa → fresh value false');
++  ok('resolvePickupHub (coord-validated) + driverHasSameHubAccepted (new-hub fail-closed): fallback / mismatch / cross-hub / legacy / malformed / TOCTOU');
++}
++
+ // ---- selectIngestPoints ----
+ // Offline-queue replay safety: accept only points strictly newer than the last
+ // seen device timestamp, within a bounded age, not absurdly in the future, with
+diff --git a/xpizza-functions/index.js b/xpizza-functions/index.js
+index b1e4709..c2d7932 100644
+--- a/xpizza-functions/index.js
++++ b/xpizza-functions/index.js
+@@ -89,6 +89,7 @@ const {
+   geofenceTransition,
+   isHubResolvable,
+   syncDriverHubUpdate,
++  driverHasSameHubAccepted,
+   selectIngestPoints,
+   hashToken,
+   validateIngestToken,
+@@ -2938,6 +2939,9 @@ async function pickEligibleDriver(db, excludeDriverIds = [], hubLat = RESTAURANT
+     }
+     const statusPriority = STATUS_PRIORITY[d.status] ?? 99;
+     const hasAcceptedOrder = (acceptedOrdersByDriver[driverId]?.size || 0) > 0;
++    // S2 note: the same-hub force-accept gate is NOT computed here — it is resolved fail-closed (against
++    // the new order's own pickup hub) in reassertAssignable right before the write (TOCTOU-safe). This
++    // loop only ranks eligibility; hubLat/hubLng here are for the distance sort (resolveAssignHub).
+     eligible.push({ driverId, orderCount, hasAcceptedOrder, statusPriority, distanceKm, name: d.name || driverId });
+   }
+ 
+@@ -2995,7 +2999,7 @@ function buildAssignmentUpdates(orderId, driverId, attempts, isAutoAssigned, isS
+ // off, or been stacked by a concurrent trigger). Mirrors the eligibility + cap
+ // logic in pickEligibleDriver. Pilot-tier guard; a per-driver capacity lease is
+ // the harden-before-scale form (see SHERPA_DRIVER_PLAN.md).
+-async function reassertAssignable(db, driverId) {
++async function reassertAssignable(db, driverId, newOrderId = null) {
+   const [dSnap, tSnap] = await Promise.all([
+     db.ref(`drivers/${driverId}`).once('value'),
+     db.ref('tasks').once('value')
+@@ -3022,7 +3026,10 @@ async function reassertAssignable(db, driverId) {
+   else if (orderCount === 1 && STACKABLE_STATUSES.has(d.status)) cap = 2;
+   else cap = orderCount;
+   if (orderCount >= cap) return { ok: false, reason: `at_cap(${orderCount})` };
+-  return { ok: true, orderCount };
++  // S2 (TOCTOU-safe): recompute same-hub from THIS fresh read so the force-accept gate uses the state
++  // as of right-before-write, not the stale pick-time value.
++  const hasAcceptedSameHubOrder = driverHasSameHubAccepted(tasks, driverId, newOrderId);
++  return { ok: true, orderCount, hasAcceptedSameHubOrder };
+ }
+ 
+ // ============================================================
+@@ -3123,20 +3130,10 @@ exports.autoAssignOnOrderCreate = onValueWritten(
+ 
+     console.log(`autoAssign: assigning ${orderId} → ${chosen.name} (${chosen.distanceKm.toFixed(2)}km, ${chosen.orderCount} active)`);
+ 
+-    // STACK only when the driver has already ACCEPTED an order (not merely been
+-    // assigned one) — so the 2nd order auto-accepts on the driver's first-accept,
+-    // never before it. Realigned to buildAssignmentUpdates' documented isStacked
+-    // intent; the driver-app acceptTask cascade then accepts the rest of the stack.
+-    // (orderCount stays the basis for the 2-order cap, unchanged.)
+-    const isStacked = chosen.hasAcceptedOrder;
+-    if (isStacked) {
+-      console.log(`autoAssign: ${orderId} is STACKED on ${chosen.name} (already has ${chosen.orderCount} active)`);
+-    }
+-
+     // Close the TOCTOU race: re-read the chosen driver right before the write.
+     // If they're no longer assignable (clocked off / went en_route / stacked by
+     // a concurrent trigger), abort and alert rather than over-stack them.
+-    const recheck = await reassertAssignable(db, chosen.driverId);
++    const recheck = await reassertAssignable(db, chosen.driverId, orderId);
+     if (!recheck.ok) {
+       console.warn(`autoAssign: ${orderId} — ${chosen.driverId} no longer assignable (${recheck.reason}); alerting`);
+       await db.ref('dispatcher_alerts').push({
+@@ -3149,6 +3146,15 @@ exports.autoAssignOnOrderCreate = onValueWritten(
+       return;
+     }
+ 
++    // STACK (force-accept the new order, no swipe) ONLY when the driver has already ACCEPTED an order
++    // at the SAME hub as this one — computed from the FRESH recheck read (TOCTOU-safe), so a driver who
++    // accepted a cross-hub order between pick and recheck is not force-accepted. A cross-hub 2nd order
++    // stays 'assigned' (swipe-to-accept). orderCount stays the basis for the 2-order cap (unchanged).
++    const isStacked = recheck.hasAcceptedSameHubOrder;
++    if (isStacked) {
++      console.log(`autoAssign: ${orderId} is SAME-HUB STACKED on ${chosen.name} (already has ${chosen.orderCount} active)`);
++    }
++
+     // attempts=1 = initial assignment. monitorAssignmentTimeout uses this
+     // for its 2-strikes rule (only relevant for non-stacked).
+     const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);
+diff --git a/xpizza-kitchen/xpizza-delivery.js b/xpizza-kitchen/xpizza-delivery.js
+index 03a8727..ebd3970 100644
+--- a/xpizza-kitchen/xpizza-delivery.js
++++ b/xpizza-kitchen/xpizza-delivery.js
+@@ -590,19 +590,33 @@ export async function assignTask(taskId, driverId) {
+  *                 stacking. If omitted, this function does a fresh read to check.
+  */
+ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+-  // Detect stacking: does this driver already have an accepted/in-progress
+-  // task that's not completed/cancelled?
+-  let isStacked = false;
++  // S2 same-hub stacking: force-accept (direct 'accepted', no swipe/timeout) ONLY when the driver
++  // already has an accepted/in-progress order at the SAME restaurant hub as this new order. A cross-hub
++  // manual assign stays 'assigned' (swipe-to-accept) — never force-accepted. Hub resolver mirrors
++  // driver-ingest/stacking-helpers (X_PIZZA_HUB == seed to full precision; 1e-6 epsilon): legacy no-hub
++  // x_pizza → X. Pizza fallback (unchanged); known non-x_pizza with a bad hub → null (fail-closed).
+   if (!allTasks) {
+     const tasksSnap = await get(ref(db, 'tasks'));
+     allTasks = tasksSnap.val() || {};
+   }
++  const HUB_EPS = 1e-6;
++  const ALLOWED_HUBS = { x_pizza: { lat: 15.507489753573818, lng: -88.0398486953722 }, la_musa: { lat: 15.50414, lng: -88.03848 } };
++  const coordsMatch = (h, lat, lng) => typeof lat === 'number' && typeof lng === 'number' && Math.abs(lat - h.lat) < HUB_EPS && Math.abs(lng - h.lng) < HUB_EPS;
++  const resolvePickupHub = (pk) => {
++    if (!pk) return null;
++    const rid = pk.restaurant_id, lat = pk.destination_lat, lng = pk.destination_lng;
++    const numeric = typeof lat === 'number' && typeof lng === 'number';
++    if (rid == null || rid === 'x_pizza') return numeric ? (coordsMatch(ALLOWED_HUBS.x_pizza, lat, lng) ? { lat, lng } : null) : { lat: ALLOWED_HUBS.x_pizza.lat, lng: ALLOWED_HUBS.x_pizza.lng };
++    const canon = ALLOWED_HUBS[rid];
++    return (canon && numeric && coordsMatch(canon, lat, lng)) ? { lat, lng } : null;
++  };
++  const newHub = resolvePickupHub(allTasks[`${orderId}_pickup`]);
++  let isStacked = false;
+   for (const t of Object.values(allTasks)) {
+     if (!t || t.assigned_driver_id !== driverId) continue;
+-    if (t.status === TASK_STATUS.ACCEPTED || t.status === TASK_STATUS.IN_PROGRESS) {
+-      isStacked = true;
+-      break;
+-    }
++    if (t.status !== TASK_STATUS.ACCEPTED && t.status !== TASK_STATUS.IN_PROGRESS) continue;
++    const h = resolvePickupHub(allTasks[`${t.order_id}_pickup`]);
++    if (newHub && h && Math.abs(newHub.lat - h.lat) < HUB_EPS && Math.abs(newHub.lng - h.lng) < HUB_EPS) { isStacked = true; break; }
+   }
+ 
+   const pickupTaskId = `${orderId}_pickup`;
+diff --git a/xpizza-reference/xpizza-delivery.js b/xpizza-reference/xpizza-delivery.js
+index e8a5ca3..22f730d 100644
+--- a/xpizza-reference/xpizza-delivery.js
++++ b/xpizza-reference/xpizza-delivery.js
+@@ -592,19 +592,33 @@ export async function assignTask(taskId, driverId) {
+  *                 stacking. If omitted, this function does a fresh read to check.
+  */
+ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
+-  // Detect stacking: does this driver already have an accepted/in-progress
+-  // task that's not completed/cancelled?
+-  let isStacked = false;
++  // S2 same-hub stacking: force-accept (direct 'accepted', no swipe/timeout) ONLY when the driver
++  // already has an accepted/in-progress order at the SAME restaurant hub as this new order. A cross-hub
++  // manual assign stays 'assigned' (swipe-to-accept) — never force-accepted. Hub resolver mirrors
++  // driver-ingest/stacking-helpers (X_PIZZA_HUB == seed to full precision; 1e-6 epsilon): legacy no-hub
++  // x_pizza → X. Pizza fallback (unchanged); known non-x_pizza with a bad hub → null (fail-closed).
+   if (!allTasks) {
+     const tasksSnap = await get(ref(db, 'tasks'));
+     allTasks = tasksSnap.val() || {};
+   }
++  const HUB_EPS = 1e-6;
++  const ALLOWED_HUBS = { x_pizza: { lat: 15.507489753573818, lng: -88.0398486953722 }, la_musa: { lat: 15.50414, lng: -88.03848 } };
++  const coordsMatch = (h, lat, lng) => typeof lat === 'number' && typeof lng === 'number' && Math.abs(lat - h.lat) < HUB_EPS && Math.abs(lng - h.lng) < HUB_EPS;
++  const resolvePickupHub = (pk) => {
++    if (!pk) return null;
++    const rid = pk.restaurant_id, lat = pk.destination_lat, lng = pk.destination_lng;
++    const numeric = typeof lat === 'number' && typeof lng === 'number';
++    if (rid == null || rid === 'x_pizza') return numeric ? (coordsMatch(ALLOWED_HUBS.x_pizza, lat, lng) ? { lat, lng } : null) : { lat: ALLOWED_HUBS.x_pizza.lat, lng: ALLOWED_HUBS.x_pizza.lng };
++    const canon = ALLOWED_HUBS[rid];
++    return (canon && numeric && coordsMatch(canon, lat, lng)) ? { lat, lng } : null;
++  };
++  const newHub = resolvePickupHub(allTasks[`${orderId}_pickup`]);
++  let isStacked = false;
+   for (const t of Object.values(allTasks)) {
+     if (!t || t.assigned_driver_id !== driverId) continue;
+-    if (t.status === TASK_STATUS.ACCEPTED || t.status === TASK_STATUS.IN_PROGRESS) {
+-      isStacked = true;
+-      break;
+-    }
++    if (t.status !== TASK_STATUS.ACCEPTED && t.status !== TASK_STATUS.IN_PROGRESS) continue;
++    const h = resolvePickupHub(allTasks[`${t.order_id}_pickup`]);
++    if (newHub && h && Math.abs(newHub.lat - h.lat) < HUB_EPS && Math.abs(newHub.lng - h.lng) < HUB_EPS) { isStacked = true; break; }
+   }
+ 
+   const pickupTaskId = `${orderId}_pickup`;

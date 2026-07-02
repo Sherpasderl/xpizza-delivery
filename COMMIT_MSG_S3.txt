@@ -1,0 +1,49 @@
+dispatch: universal delivery-CAS + sweeper self-heal (S3a–S3n)
+
+Make the compare-and-set "claim" on tasks/{orderId}_delivery/assigned_driver_id
+universal across every assignment writer, so no writer can overwrite another's
+claim, and add an always-on sweeper heal that self-recovers any stranded
+assignment. The S3 pending-order auto-retry (OFFER pass) ships gated OFF; the
+HEAL pass runs every scheduled tick as the safety net for the live-path CAS.
+
+Server (xpizza-functions):
+- claim-delivery.js (new): shared claimDelivery(db,orderId,driverId,{expectCurrent})
+  CAS helper; healStrandedOrder (CAS-guarded, marker-first, touches only
+  assigned_driver_id — never reverts a cancelled order); releaseDeliveryFromDriver
+  (dedicated escalation-unassign that succeeds only on a real transition FROM the
+  driver — no false-positive/resurrect that a null-target claim would cause). All
+  transactions use a null-first-safe casAssign that survives the RTDB Admin-SDK
+  speculative first-call-null (the a679797 / index.js:1510 gotcha).
+- index.js: autoAssignOnOrderCreate + monitorAssignmentTimeout-reassign now
+  CAS-claim the delivery (expectCurrent=null / =timedOutDriver — reassign is a
+  replace, not a null-claim); sweepPendingOrders gains the always-on HEAL pass
+  (assignmentStrandState detects any pickup!=delivery driver mismatch: half-claim
+  AND timeout-split) plus the flag-gated OFFER pass; releaseToSinAsignar CAS-guards
+  the 2-strike/no-eligible unassign; notifyDriverOnAssignment undoes a cancel
+  revival + suppresses its push; the self-heal marker is cleared before every
+  null-transition of the claim.
+- Invariant #1 preserved: the autoAssign uncontended path is byte-behavior-identical
+  to the prior plain write — the claim writes only the delivery field, invisible to
+  monitorAssignmentTimeout (_pickup) and notifyDriverOnAssignment (type==='pickup').
+- TDD: sweep-pending.test.js 28 (incl. the split shape), claim-delivery.test.js 22
+  (null-first modelled, overlapping-healer, release-no-resurrect). Full suite green.
+
+Client (xpizza-delivery.js ×5 — shared function bodies byte-identical):
+- assignOrderToDriver + reassignOrder CAS-claim the delivery and return {ok,reason};
+  whole post-CAS section is exception-safe (rollback can't strand); a 90s stalled-tab
+  guard aborts a finalize that froze past the 120s heal threshold; module-level
+  casAssign makes the non-null CAS idioms null-first-safe.
+- xpizza-dispatch/index.html: both assign callers surface {ok:false} as an error
+  toast (no false "Asignado"); a "Pedido atascado" strand alert; assignTask flagged
+  dev/test-harness-only.
+- reassignOrder CASes against the driver the picker CAPTURED at open-time
+  (expectedFromDriver), closing a pre-existing stale-picker-view clobber (open on A,
+  order moves to C, click B → aborts instead of clobbering C).
+
+Behavior-preserving for X. Pizza (proven by tests), correct for La Musa's shared
+driver pool. Verified across 12 adversarial review rounds (dual-model gate: local
+Codex + a parallel La Musa auditor session, each running independent gates) plus
+two real-SDK emulator passes (casAssign 6/6, release 3/3). The OFFER pass stays OFF
+behind config/sweep_pending_enabled until the whole batch is deployed live.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

@@ -1,0 +1,200 @@
+diff --git a/xpizza-functions/driver-ingest.js b/xpizza-functions/driver-ingest.js
+index e4a6c2a..6782f12 100644
+--- a/xpizza-functions/driver-ingest.js
++++ b/xpizza-functions/driver-ingest.js
+@@ -113,6 +113,24 @@ function resolveHubFromTask(afterTaskId, allTasks, existingHub) {
+   return { action: 'noop' };
+ }
+ 
++/**
++ * Decision core of the `syncDriverHub` trigger (S1 E3). `eventAfterTaskId` is the current_task_id
++ * the write event carried; `freshCurrentTaskId` is a re-read of the LIVE value taken right before
++ * deciding. Idempotent recheck (watch-point #1): if they differ, a newer out-of-order event has
++ * already advanced current_task_id, so this stale event must NOT write — return null. Otherwise map
++ * the resolveHubFromTask action to the driver-record update (or null for a no-op). Pure: the trigger
++ * supplies the fresh read + the minimal task map + the existing hub, then applies the returned update.
++ */
++function syncDriverHubUpdate(eventAfterTaskId, freshCurrentTaskId, allTasks, existingHub) {
++  if (freshCurrentTaskId !== eventAfterTaskId) return null;   // diverged → a newer event handles it
++  const r = resolveHubFromTask(eventAfterTaskId, allTasks, existingHub);
++  if (r.action === 'noop') return null;
++  if (r.action === 'clear') {
++    return { current_hub_lat: null, current_hub_lng: null, current_restaurant_id: null };
++  }
++  return r.hub;   // 'set' | 'backfill'
++}
++
+ /**
+  * Filter + order a batch of location points from the native uploader's offline
+  * queue. Accepts only points that are: well-formed (numeric ts + in-range coords),
+@@ -184,6 +202,7 @@ module.exports = {
+   geofenceTransition,
+   isHubResolvable,
+   resolveHubFromTask,
++  syncDriverHubUpdate,
+   selectIngestPoints,
+   hashToken,
+   validateIngestToken,
+diff --git a/xpizza-functions/driver-ingest.test.js b/xpizza-functions/driver-ingest.test.js
+index 21bbeb6..efe5eab 100644
+--- a/xpizza-functions/driver-ingest.test.js
++++ b/xpizza-functions/driver-ingest.test.js
+@@ -12,6 +12,7 @@ const {
+   geofenceTransition,
+   isHubResolvable,
+   resolveHubFromTask,
++  syncDriverHubUpdate,
+   selectIngestPoints,
+   hashToken,
+   validateIngestToken,
+@@ -142,6 +143,41 @@ const FAR = { lat: HUB.lat + 0.01, lng: HUB.lng };
+   ok('resolveHubFromTask: set / no-op / backfill / clear');
+ }
+ 
++// ---- syncDriverHubUpdate(eventAfterTaskId, freshCurrentTaskId, allTasks, existingHub) ----
++// The syncDriverHub trigger's pure decision path (S1 E3). Wraps resolveHubFromTask with the
++// idempotent recheck: if the live current_task_id no longer equals the event's after-value (a newer
++// out-of-order event already advanced it), DO NOT WRITE — return null. Otherwise map the action to
++// the driver-record update (or null for no-op). The trigger's only remaining work is the I/O.
++{
++  const PL = { type: 'pickup', destination_lat: LA_MUSA_HUB.lat, destination_lng: LA_MUSA_HUB.lng, restaurant_id: 'la_musa', linked_task_id: 'dl' };
++  const DL = { type: 'delivery', linked_task_id: 'pl' };
++  const TASKS = { pl: PL, dl: DL };
++  const nullSnap = { current_restaurant_id: null, current_hub_lat: null, current_hub_lng: null };
++  const lmSnap = { current_restaurant_id: 'la_musa', current_hub_lat: LA_MUSA_HUB.lat, current_hub_lng: LA_MUSA_HUB.lng };
++
++  // ★ OUT-OF-ORDER: a slow pickup event fires AFTER current_task_id already advanced to the delivery
++  // (or to null) → the recheck sees the divergence → NO write (returns null). The #1 race hazard.
++  assert.strictEqual(syncDriverHubUpdate('pl', 'dl', TASKS, nullSnap), null,
++    'out-of-order: stale pickup event after current_task_id moved on → no write');
++  assert.strictEqual(syncDriverHubUpdate('pl', null, TASKS, nullSnap), null,
++    'out-of-order: stale pickup event after current_task_id cleared → no write');
++
++  // in-order: pickup event still current → set hub
++  assert.deepStrictEqual(syncDriverHubUpdate('pl', 'pl', TASKS, nullSnap),
++    { current_hub_lat: LA_MUSA_HUB.lat, current_hub_lng: LA_MUSA_HUB.lng, current_restaurant_id: 'la_musa' },
++    'in-order pickup → set hub');
++  // in-order: delivery still current + correct hub → no-op (null = no write)
++  assert.strictEqual(syncDriverHubUpdate('dl', 'dl', TASKS, lmSnap), null, 'in-order delivery + correct hub → no write');
++  // in-order: delivery still current + absent hub → backfill
++  assert.deepStrictEqual(syncDriverHubUpdate('dl', 'dl', TASKS, nullSnap),
++    { current_hub_lat: LA_MUSA_HUB.lat, current_hub_lng: LA_MUSA_HUB.lng, current_restaurant_id: 'la_musa' },
++    'in-order delivery + absent hub → backfill');
++  // in-order: cleared → clear all three
++  assert.deepStrictEqual(syncDriverHubUpdate(null, null, TASKS, lmSnap),
++    { current_hub_lat: null, current_hub_lng: null, current_restaurant_id: null }, 'in-order null → clear');
++  ok('syncDriverHubUpdate: out-of-order no-write + set/backfill/clear/no-op');
++}
++
+ // ---- selectIngestPoints ----
+ // Offline-queue replay safety: accept only points strictly newer than the last
+ // seen device timestamp, within a bounded age, not absurdly in the future, with
+diff --git a/xpizza-functions/index.js b/xpizza-functions/index.js
+index 3add15f..e3b3015 100644
+--- a/xpizza-functions/index.js
++++ b/xpizza-functions/index.js
+@@ -88,6 +88,7 @@ const {
+ const {
+   geofenceTransition,
+   isHubResolvable,
++  syncDriverHubUpdate,
+   selectIngestPoints,
+   hashToken,
+   validateIngestToken,
+@@ -2104,6 +2105,12 @@ exports.startDriverShift = onCall({ region: 'us-central1' }, async (request) =>
+     [`drivers/${uid}/shift_started_at`]: ServerValue.TIMESTAMP,
+     [`drivers/${uid}/last_ping`]: ServerValue.TIMESTAMP,
+     [`drivers/${uid}/current_task_id`]: null,
++    // S1 #4: explicitly clear the hub snapshot on clock-in. The syncDriverHub trigger fires only on
++    // current_task_id CHANGES, so an already-null→null write here would not fire it — clear directly
++    // (mirrors endDriverShift) so a stale hub from an abnormal prior shift end can't survive.
++    [`drivers/${uid}/current_hub_lat`]: null,
++    [`drivers/${uid}/current_hub_lng`]: null,
++    [`drivers/${uid}/current_restaurant_id`]: null,
+     [`drivers/${uid}/current_shift_id`]: shiftId,
+     [`drivers/${uid}/location_source`]: isNativeClient ? 'native' : 'pwa'
+   };
+@@ -2209,12 +2216,16 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req,
+     return res.status(200).json({ ok: true, accepted: 0, dropped: points.length });
+   }
+ 
+-  // Server geofence — native drivers only, fail-closed on a non-x_pizza hub.
++  // Server geofence — native drivers only, fail-closed on an unresolvable/mismatched hub.
+   let status = driver.status;
+   const hasTask = !!driver.current_task_id;
+   const hubLat = driver.current_hub_lat ?? RESTAURANT_LAT;
+   const hubLng = driver.current_hub_lng ?? RESTAURANT_LNG;
+-  const hubOk = isHubResolvable(driver.current_restaurant_id);
++  // S1 E4: resolvable iff the restaurant_id is allow-listed AND the coords match its pinned hub
++  // (a legacy null restaurant_id resolves as X. Pizza when the coords are the fallback). This is the
++  // atomic partner of the syncDriverHub trigger writing current_hub_*; passing the coords defends
++  // against a stale/corrupt snapshot.
++  const hubOk = isHubResolvable(driver.current_restaurant_id, hubLat, hubLng);
+   let arrived = false;
+   if (driver.location_source === 'native' && hubOk) {
+     for (const p of accepted) {
+@@ -2242,6 +2253,64 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req,
+   return res.status(200).json({ ok: true, accepted: accepted.length, dropped: points.length - accepted.length, status });
+ });
+ 
++// ============================================================
++// syncDriverHub — server-writes the driver's per-restaurant hub snapshot (S1 E3)
++// ============================================================
++//
++// current_hub_lat/lng + current_restaurant_id are dispatcher-only/server-managed (database.rules.json),
++// so the driver app can't write them. This trigger derives them from the driver's current_task_id
++// whenever it changes:
++//   pickup task   → set the pickup-approach hub (destination_lat/lng + restaurant_id)
++//   delivery task → keep the linked-pickup hub (no-op, or BACKFILL a lagged/absent one)
++//   null/unknown  → clear (→ returning to the X. Pizza base via the geofence fallback)
++// The geofence (ingestDriverLocation + the client checkGeofenceTransition) reads this snapshot, so a
++// la_musa order geofences/navigates to La Musa while X. Pizza stays on its hub.
++//
++// Idempotent recheck (watch-point #1): a slow/out-of-order event can fire after current_task_id has
++// already advanced. We re-read the LIVE value (the driver record, as late as possible before writing)
++// and act only if it still equals the event's after-value (syncDriverHubUpdate). The residual sub-ms
++// window between that read and the write is deliberately tolerated rather than locked behind a
++// transaction on the driver node — that node takes high-frequency GPS writes, so a transaction would
++// contend badly. A residual stale write is benign: x_pizza-harmless (hub == x_pizza either way), the
++// next current_task_id change re-resolves it, and the geofence fail-closes on a mismatched hub (plus
++// the 90s-ping staleness backstop). The trigger writes only current_hub_* (never current_task_id), so
++// it cannot recurse.
++exports.syncDriverHub = onValueWritten(
++  { ref: '/drivers/{uid}/current_task_id', region: 'us-central1' },
++  async (event) => {
++    const uid = event.params.uid;
++    const afterTaskId = event.data.after.val();   // new current_task_id (null on clear)
++    const db = getDatabase();
++
++    // Minimal task map: the after-task + (for a delivery) its linked pickup — never read all of /tasks.
++    const tasks = {};
++    if (afterTaskId != null) {
++      const t = (await db.ref(`tasks/${afterTaskId}`).once('value')).val();
++      if (t) {
++        tasks[afterTaskId] = t;
++        if (t.type === 'delivery' && t.linked_task_id) {
++          const pk = (await db.ref(`tasks/${t.linked_task_id}`).once('value')).val();
++          if (pk) tasks[t.linked_task_id] = pk;
++        }
++      }
++    }
++
++    // Recheck read AS LATE AS POSSIBLE: the live driver gives both the fresh current_task_id and the
++    // existing hub snapshot in one read.
++    const driver = (await db.ref(`drivers/${uid}`).once('value')).val() || {};
++    const freshTaskId = driver.current_task_id ?? null;
++    const existingHub = {
++      current_restaurant_id: driver.current_restaurant_id ?? null,
++      current_hub_lat: driver.current_hub_lat ?? null,
++      current_hub_lng: driver.current_hub_lng ?? null,
++    };
++
++    const update = syncDriverHubUpdate(afterTaskId, freshTaskId, tasks, existingHub);
++    if (!update) return;   // diverged (out-of-order) or no-op → nothing to write
++    await db.ref(`drivers/${uid}`).update(update);
++  }
++);
++
+ // ============================================================
+ // sendOrderStatusNotifications — Customer WhatsApp on status changes
+ // ============================================================

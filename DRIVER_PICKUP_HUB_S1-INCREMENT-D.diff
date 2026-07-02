@@ -1,0 +1,249 @@
+diff --git a/xpizza-dashboard/xpizza-delivery.js b/xpizza-dashboard/xpizza-delivery.js
+index c824482..e6971e2 100644
+--- a/xpizza-dashboard/xpizza-delivery.js
++++ b/xpizza-dashboard/xpizza-delivery.js
+@@ -241,13 +241,30 @@ export async function updateDriverLocation(driverId, location) {
+ }
+ 
+ async function checkGeofenceTransition(driverId, lat, lng) {
+-  const distance = haversineDistance(lat, lng, RESTAURANT.lat, RESTAURANT.lng);
+-  const inGeofence = distance < RESTAURANT.geofence_radius_m;
+-
+   const snapshot = await get(ref(db, `drivers/${driverId}`));
+   const driver = snapshot.val();
+   if (!driver) return;
+ 
++  // Per-restaurant hub (S1): resolve the geofence target from the driver's server-written snapshot,
++  // FAIL-CLOSED on an unresolvable or stale-versioned hub — mirrors ingestDriverLocation so the client
++  // never fights the syncDriverHub trigger. x_pizza is unchanged (its hub == RESTAURANT to full precision).
++  const ALLOWED_HUBS = { x_pizza: { lat: RESTAURANT.lat, lng: RESTAURANT.lng }, la_musa: { lat: 15.50414, lng: -88.03848 } };
++  const HUB_EPS = 1e-6;
++  const hubLat = driver.current_hub_lat ?? RESTAURANT.lat;
++  const hubLng = driver.current_hub_lng ?? RESTAURANT.lng;
++  const rid = driver.current_restaurant_id;
++  const hubMatch = (h) => h && typeof hubLat === 'number' && typeof hubLng === 'number'
++    && Math.abs(hubLat - h.lat) < HUB_EPS && Math.abs(hubLng - h.lng) < HUB_EPS;
++  const hubResolvable = rid == null
++    ? ((driver.current_hub_lat == null && driver.current_hub_lng == null) || hubMatch(ALLOWED_HUBS.x_pizza))
++    : hubMatch(ALLOWED_HUBS[rid]);
++  const versionCurrent = driver.current_hub_task_id == null
++    || driver.current_hub_task_id === driver.current_task_id;
++  if (!hubResolvable || !versionCurrent) return;   // fail-closed: skip rather than geofence a wrong/stale hub
++
++  const distance = haversineDistance(lat, lng, hubLat, hubLng);
++  const inGeofence = distance < RESTAURANT.geofence_radius_m;
++
+   // Returning -> arrived at restaurant
+   if (inGeofence && driver.status === DRIVER_STATUS.RETURNING) {
+     await update(ref(db, `drivers/${driverId}`), {
+@@ -878,6 +895,7 @@ export async function createOrderWithTasks(order) {
+ 
+   updates[`tasks/${pickupTaskId}`] = {
+     order_id: orderId,
++    restaurant_id: 'x_pizza',   // S1: dead/inert writer (x_pizza-hardcoded) — stamp for consistency (Codex-flagged surface)
+     type: TASK_TYPE.PICKUP,
+     status: TASK_STATUS.PENDING,
+     assigned_driver_id: null,
+diff --git a/xpizza-dispatch/xpizza-delivery.js b/xpizza-dispatch/xpizza-delivery.js
+index c5736a2..e8a5ca3 100644
+--- a/xpizza-dispatch/xpizza-delivery.js
++++ b/xpizza-dispatch/xpizza-delivery.js
+@@ -234,13 +234,30 @@ export async function updateDriverLocation(driverId, location) {
+ }
+ 
+ async function checkGeofenceTransition(driverId, lat, lng) {
+-  const distance = haversineDistance(lat, lng, RESTAURANT.lat, RESTAURANT.lng);
+-  const inGeofence = distance < RESTAURANT.geofence_radius_m;
+-
+   const snapshot = await get(ref(db, `drivers/${driverId}`));
+   const driver = snapshot.val();
+   if (!driver) return;
+ 
++  // Per-restaurant hub (S1): resolve the geofence target from the driver's server-written snapshot,
++  // FAIL-CLOSED on an unresolvable or stale-versioned hub — mirrors ingestDriverLocation so the client
++  // never fights the syncDriverHub trigger. x_pizza is unchanged (its hub == RESTAURANT to full precision).
++  const ALLOWED_HUBS = { x_pizza: { lat: RESTAURANT.lat, lng: RESTAURANT.lng }, la_musa: { lat: 15.50414, lng: -88.03848 } };
++  const HUB_EPS = 1e-6;
++  const hubLat = driver.current_hub_lat ?? RESTAURANT.lat;
++  const hubLng = driver.current_hub_lng ?? RESTAURANT.lng;
++  const rid = driver.current_restaurant_id;
++  const hubMatch = (h) => h && typeof hubLat === 'number' && typeof hubLng === 'number'
++    && Math.abs(hubLat - h.lat) < HUB_EPS && Math.abs(hubLng - h.lng) < HUB_EPS;
++  const hubResolvable = rid == null
++    ? ((driver.current_hub_lat == null && driver.current_hub_lng == null) || hubMatch(ALLOWED_HUBS.x_pizza))
++    : hubMatch(ALLOWED_HUBS[rid]);
++  const versionCurrent = driver.current_hub_task_id == null
++    || driver.current_hub_task_id === driver.current_task_id;
++  if (!hubResolvable || !versionCurrent) return;   // fail-closed: skip rather than geofence a wrong/stale hub
++
++  const distance = haversineDistance(lat, lng, hubLat, hubLng);
++  const inGeofence = distance < RESTAURANT.geofence_radius_m;
++
+   // Returning -> arrived at restaurant
+   if (inGeofence && driver.status === DRIVER_STATUS.RETURNING) {
+     await update(ref(db, `drivers/${driverId}`), {
+@@ -871,6 +888,7 @@ export async function createOrderWithTasks(order) {
+ 
+   updates[`tasks/${pickupTaskId}`] = {
+     order_id: orderId,
++    restaurant_id: 'x_pizza',   // S1: dead/inert writer (x_pizza-hardcoded) — stamp for consistency (Codex-flagged surface)
+     type: TASK_TYPE.PICKUP,
+     status: TASK_STATUS.PENDING,
+     assigned_driver_id: null,
+diff --git a/xpizza-driver/index.html b/xpizza-driver/index.html
+index b1f9255..2c0f27b 100644
+--- a/xpizza-driver/index.html
++++ b/xpizza-driver/index.html
+@@ -1901,8 +1901,12 @@ function openVuelto(total, tenderedPrefill) {
+ function renderActiveCard(o, solo) {
+   const order = o.order || {};
+   const isPickup = o.phase === 'pickup' || o.phase === 'awaiting_acceptance';
+-  const targetLat = isPickup ? XPD.RESTAURANT.lat : (order.lat || o.deliveryTask.destination_lat);
+-  const targetLng = isPickup ? XPD.RESTAURANT.lng : (order.lng || o.deliveryTask.destination_lng);
++  // S1 E6: pickup nav targets the order's immutable per-restaurant hub (the pickup task's stamped
++  // destination), NOT the static X. Pizza RESTAURANT constant — so a la_musa pickup routes to La Musa.
++  // x_pizza unchanged: its pickup-task destination == RESTAURANT to full precision. Falls back to
++  // RESTAURANT for any pre-snapshot/legacy task with no stamped hub.
++  const targetLat = isPickup ? (o.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat) : (order.lat || o.deliveryTask.destination_lat);
++  const targetLng = isPickup ? (o.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng) : (order.lng || o.deliveryTask.destination_lng);
+ 
+   // Destination label changes per phase
+   const customerName = order.customer_name || o.deliveryTask.recipient_name || 'el cliente';
+diff --git a/xpizza-driver/xpizza-delivery.js b/xpizza-driver/xpizza-delivery.js
+index 658ae48..f1e545c 100644
+--- a/xpizza-driver/xpizza-delivery.js
++++ b/xpizza-driver/xpizza-delivery.js
+@@ -249,13 +249,30 @@ export async function updateDriverLocation(driverId, location) {
+ }
+ 
+ async function checkGeofenceTransition(driverId, lat, lng) {
+-  const distance = haversineDistance(lat, lng, RESTAURANT.lat, RESTAURANT.lng);
+-  const inGeofence = distance < RESTAURANT.geofence_radius_m;
+-
+   const snapshot = await get(ref(db, `drivers/${driverId}`));
+   const driver = snapshot.val();
+   if (!driver) return;
+ 
++  // Per-restaurant hub (S1): resolve the geofence target from the driver's server-written snapshot,
++  // FAIL-CLOSED on an unresolvable or stale-versioned hub — mirrors ingestDriverLocation so the client
++  // never fights the syncDriverHub trigger. x_pizza is unchanged (its hub == RESTAURANT to full precision).
++  const ALLOWED_HUBS = { x_pizza: { lat: RESTAURANT.lat, lng: RESTAURANT.lng }, la_musa: { lat: 15.50414, lng: -88.03848 } };
++  const HUB_EPS = 1e-6;
++  const hubLat = driver.current_hub_lat ?? RESTAURANT.lat;
++  const hubLng = driver.current_hub_lng ?? RESTAURANT.lng;
++  const rid = driver.current_restaurant_id;
++  const hubMatch = (h) => h && typeof hubLat === 'number' && typeof hubLng === 'number'
++    && Math.abs(hubLat - h.lat) < HUB_EPS && Math.abs(hubLng - h.lng) < HUB_EPS;
++  const hubResolvable = rid == null
++    ? ((driver.current_hub_lat == null && driver.current_hub_lng == null) || hubMatch(ALLOWED_HUBS.x_pizza))
++    : hubMatch(ALLOWED_HUBS[rid]);
++  const versionCurrent = driver.current_hub_task_id == null
++    || driver.current_hub_task_id === driver.current_task_id;
++  if (!hubResolvable || !versionCurrent) return;   // fail-closed: skip rather than geofence a wrong/stale hub
++
++  const distance = haversineDistance(lat, lng, hubLat, hubLng);
++  const inGeofence = distance < RESTAURANT.geofence_radius_m;
++
+   // Returning -> arrived at restaurant
+   if (inGeofence && driver.status === DRIVER_STATUS.RETURNING) {
+     await update(ref(db, `drivers/${driverId}`), {
+@@ -899,6 +916,7 @@ export async function createOrderWithTasks(order) {
+ 
+   updates[`tasks/${pickupTaskId}`] = {
+     order_id: orderId,
++    restaurant_id: 'x_pizza',   // S1: dead/inert writer (x_pizza-hardcoded) — stamp for consistency (Codex-flagged surface)
+     type: TASK_TYPE.PICKUP,
+     status: TASK_STATUS.PENDING,
+     assigned_driver_id: null,
+diff --git a/xpizza-kitchen/xpizza-delivery.js b/xpizza-kitchen/xpizza-delivery.js
+index e65c5a1..03a8727 100644
+--- a/xpizza-kitchen/xpizza-delivery.js
++++ b/xpizza-kitchen/xpizza-delivery.js
+@@ -221,13 +221,30 @@ export async function updateDriverLocation(driverId, location) {
+ }
+ 
+ async function checkGeofenceTransition(driverId, lat, lng) {
+-  const distance = haversineDistance(lat, lng, RESTAURANT.lat, RESTAURANT.lng);
+-  const inGeofence = distance < RESTAURANT.geofence_radius_m;
+-
+   const snapshot = await get(ref(db, `drivers/${driverId}`));
+   const driver = snapshot.val();
+   if (!driver) return;
+ 
++  // Per-restaurant hub (S1): resolve the geofence target from the driver's server-written snapshot,
++  // FAIL-CLOSED on an unresolvable or stale-versioned hub — mirrors ingestDriverLocation so the client
++  // never fights the syncDriverHub trigger. x_pizza is unchanged (its hub == RESTAURANT to full precision).
++  const ALLOWED_HUBS = { x_pizza: { lat: RESTAURANT.lat, lng: RESTAURANT.lng }, la_musa: { lat: 15.50414, lng: -88.03848 } };
++  const HUB_EPS = 1e-6;
++  const hubLat = driver.current_hub_lat ?? RESTAURANT.lat;
++  const hubLng = driver.current_hub_lng ?? RESTAURANT.lng;
++  const rid = driver.current_restaurant_id;
++  const hubMatch = (h) => h && typeof hubLat === 'number' && typeof hubLng === 'number'
++    && Math.abs(hubLat - h.lat) < HUB_EPS && Math.abs(hubLng - h.lng) < HUB_EPS;
++  const hubResolvable = rid == null
++    ? ((driver.current_hub_lat == null && driver.current_hub_lng == null) || hubMatch(ALLOWED_HUBS.x_pizza))
++    : hubMatch(ALLOWED_HUBS[rid]);
++  const versionCurrent = driver.current_hub_task_id == null
++    || driver.current_hub_task_id === driver.current_task_id;
++  if (!hubResolvable || !versionCurrent) return;   // fail-closed: skip rather than geofence a wrong/stale hub
++
++  const distance = haversineDistance(lat, lng, hubLat, hubLng);
++  const inGeofence = distance < RESTAURANT.geofence_radius_m;
++
+   // Returning -> arrived at restaurant
+   if (inGeofence && driver.status === DRIVER_STATUS.RETURNING) {
+     await update(ref(db, `drivers/${driverId}`), {
+@@ -869,6 +886,7 @@ export async function createOrderWithTasks(order) {
+ 
+   updates[`tasks/${pickupTaskId}`] = {
+     order_id: orderId,
++    restaurant_id: 'x_pizza',   // S1: dead/inert writer (x_pizza-hardcoded) — stamp for consistency (Codex-flagged surface)
+     type: TASK_TYPE.PICKUP,
+     status: TASK_STATUS.PENDING,
+     assigned_driver_id: null,
+diff --git a/xpizza-reference/xpizza-delivery.js b/xpizza-reference/xpizza-delivery.js
+index c5736a2..e8a5ca3 100644
+--- a/xpizza-reference/xpizza-delivery.js
++++ b/xpizza-reference/xpizza-delivery.js
+@@ -234,13 +234,30 @@ export async function updateDriverLocation(driverId, location) {
+ }
+ 
+ async function checkGeofenceTransition(driverId, lat, lng) {
+-  const distance = haversineDistance(lat, lng, RESTAURANT.lat, RESTAURANT.lng);
+-  const inGeofence = distance < RESTAURANT.geofence_radius_m;
+-
+   const snapshot = await get(ref(db, `drivers/${driverId}`));
+   const driver = snapshot.val();
+   if (!driver) return;
+ 
++  // Per-restaurant hub (S1): resolve the geofence target from the driver's server-written snapshot,
++  // FAIL-CLOSED on an unresolvable or stale-versioned hub — mirrors ingestDriverLocation so the client
++  // never fights the syncDriverHub trigger. x_pizza is unchanged (its hub == RESTAURANT to full precision).
++  const ALLOWED_HUBS = { x_pizza: { lat: RESTAURANT.lat, lng: RESTAURANT.lng }, la_musa: { lat: 15.50414, lng: -88.03848 } };
++  const HUB_EPS = 1e-6;
++  const hubLat = driver.current_hub_lat ?? RESTAURANT.lat;
++  const hubLng = driver.current_hub_lng ?? RESTAURANT.lng;
++  const rid = driver.current_restaurant_id;
++  const hubMatch = (h) => h && typeof hubLat === 'number' && typeof hubLng === 'number'
++    && Math.abs(hubLat - h.lat) < HUB_EPS && Math.abs(hubLng - h.lng) < HUB_EPS;
++  const hubResolvable = rid == null
++    ? ((driver.current_hub_lat == null && driver.current_hub_lng == null) || hubMatch(ALLOWED_HUBS.x_pizza))
++    : hubMatch(ALLOWED_HUBS[rid]);
++  const versionCurrent = driver.current_hub_task_id == null
++    || driver.current_hub_task_id === driver.current_task_id;
++  if (!hubResolvable || !versionCurrent) return;   // fail-closed: skip rather than geofence a wrong/stale hub
++
++  const distance = haversineDistance(lat, lng, hubLat, hubLng);
++  const inGeofence = distance < RESTAURANT.geofence_radius_m;
++
+   // Returning -> arrived at restaurant
+   if (inGeofence && driver.status === DRIVER_STATUS.RETURNING) {
+     await update(ref(db, `drivers/${driverId}`), {
+@@ -871,6 +888,7 @@ export async function createOrderWithTasks(order) {
+ 
+   updates[`tasks/${pickupTaskId}`] = {
+     order_id: orderId,
++    restaurant_id: 'x_pizza',   // S1: dead/inert writer (x_pizza-hardcoded) — stamp for consistency (Codex-flagged surface)
+     type: TASK_TYPE.PICKUP,
+     status: TASK_STATUS.PENDING,
+     assigned_driver_id: null,
