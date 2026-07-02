@@ -1,6 +1,6 @@
 # Ready-Time Phase 0 — lifecycle-event instrumentation (propose-first)
 
-_Status: DRAFT rev-2 — Codex Act-2 round 1 = REVISE (8 findings, all accepted); this rev addresses them, re-gate pending._
+_Status: DESIGN Codex-APPROVED (Act-2, 3 rounds), committed df565bd. IMPLEMENTATION built + layered-gated 2026-07-02 (emulator 12/12 + Codex-on-diff APPROVED); pending the `drivers_online`→`drivers_available`/`drivers_on_shift` enrichment + the 30→31 prune-safe deploy. See READY_TIME_PHASE0-REVIEW-LOG.md._
 _Auditor-drafted proposal; the EXECUTOR session builds it after sign-off + a green re-gate._
 _Prime directive: additive + observer-only. MUST NOT change any current X. Pizza / La Musa behavior. Proven by tests._
 
@@ -38,7 +38,8 @@ order_events/{orderId}/{pushId} = {
   at:                   ServerValue.TIMESTAMP,     // server-authoritative
   restaurant_id:        <string>,
   kitchen_load_ahead:   <int>,   // EPHEMERAL: OTHER {new,preparing} orders for this restaurant, excluding self
-  drivers_online:       <int>    // EPHEMERAL: coarse supply proxy — see decision 6
+  drivers_available:    <int>    // EPHEMERAL: idle supply (status==='available') — see decision 6
+  drivers_on_shift:     <int>    // EPHEMERAL: total working fleet (status!=='off_shift') — disambiguates available=0
 }
 ```
 
@@ -60,13 +61,13 @@ Written to a **separate top-level tree**, so it fires **no** existing `orders/{o
 3. **Timeline is first-entry-only + transactional; events skip `before===after`** — protects the training label from duplicate/out-of-order/no-op transitions while the audit log stays complete.
 4. **`kitchen_load_ahead` = count of OTHER `{new,preparing}` orders for the same restaurant, EXCLUDING the order being logged** (queue-ahead-at-arrival — the prep-time predictor). Explicitly exclusive; computed as two status queries minus self.
 5. **Load counts = TWO indexed `orderByChild('status').equalTo()` reads** (`new`, then `preparing`), restaurant-filtered in memory — RTDB can't `IN`-query (Codex #5). Requires `.indexOn:["status"]` on `orders` (present) **and `drivers`** (ADD — currently absent, `database.rules.json:10`).
-6. **`drivers_online` is a coarse, honestly-named supply proxy — NOT eligibility.** Real assignability (`pickEligibleDriver` :2862) weighs push reachability, cooldown, stacking capacity, task-derived active count (Codex #6). Phase 0 captures only the cheap `status ∈ {online,available}` count and labels it as such. Eligibility-accurate supply is a Phase-0.1 enhancement that reuses `pickEligibleDriver` — deferred to avoid coupling instrumentation to live assignment logic.
+6. **Two honest supply counts — NOT eligibility (design-owner ruling 2026-07-02).** `drivers_available` (`status==='available'`, idle supply) + `drivers_on_shift` (`status!=='off_shift'`, total working fleet), from a **single `/drivers` read filtered in memory** (small collection; graduate to counters at volume). Both are captured because `available=0` is ambiguous — *no fleet* vs *all-busy fleet* are different supply states, and that's uncapturable later. ('online' is not a real status; the enum is off_shift|available|assigned|at_restaurant|en_route_delivery|returning|on_break.) Real assignability (`pickEligibleDriver` :2862 — push reachability, cooldown, stacking capacity, active-order count) is the **eligibility-accurate** Phase-0.1 enhancement, deferred to avoid coupling instrumentation to live assignment logic.
 7. **Separate follow-up deploy**, not bundled into the frozen S3 deploy. +1 function → prune denominator **30 → 31**. Ships after S3 on its own gate.
 
 ## Behavior-preservation proof plan (the prime directive)
 
 - **Static:** the function only READS existing data (`orders/{id}`, indexed `orders`/`drivers` status queries) and WRITES to two NEW top-level trees (`order_events/*`, `order_timelines/*`). No write under `/orders` → no existing order-trigger fires. `setOrderStatus`, materialize, autoAssign, sweeper, factura, KDS/dispatch filters all untouched.
-- **Emulator (this machine's authority):** seed both restaurants; drive `new→preparing→ready→out_for_delivery→delivered` + a `cancelled` path + a `ready→preparing→ready` bounce + a `before===after` no-op; assert (a) one event per REAL transition, correct `from/to`, monotonic `at`; (b) `order_timelines.{status}_at` set once (bounce does NOT overwrite); (c) no-op write produces neither event nor timeline; (d) `kitchen_load_ahead` == hand-counted concurrent `{new,preparing}` minus self; (e) `drivers_online` matches seeded supply; (f) **no existing `orders/{id}` trigger fires from the timeline/event writes** (assert factura/autoAssign/cancel side-effects absent); (g) `npm test`, `check:rules`, `test:rules` still green.
+- **Emulator (this machine's authority):** seed both restaurants; drive `new→preparing→ready→out_for_delivery→delivered` + a `cancelled` path + a `ready→preparing→ready` bounce + a `before===after` no-op; assert (a) one event per REAL transition, correct `from/to`, monotonic `at`; (b) `order_timelines.{status}_at` set once (bounce does NOT overwrite); (c) no-op write produces neither event nor timeline; (d) `kitchen_load_ahead` == hand-counted concurrent `{new,preparing}` minus self; (e) `drivers_available` + `drivers_on_shift` match seeded supply; (f) **no existing `orders/{id}` trigger fires from the timeline/event writes** (assert factura/autoAssign/cancel side-effects absent); (g) `npm test`, `check:rules`, `test:rules` still green.
 - **Rules (Codex #8):** add explicit `order_events` and `order_timelines` as `{".read": false, ".write": false}` for Phase 0 (the admin trigger bypasses rules; no client access, no dispatcher read until a UI needs it). Add `".indexOn":["status"]` under `drivers`. Equality gate: `diff xpizza-functions/database.rules.json xpizza-reference/database.rules.json` empty.
 
 ## Cost / perf
@@ -76,7 +77,7 @@ Trigger fires ~5–7×/order (real transitions only, after the no-op guard). Two
 ## Open questions (resolve at sign-off)
 
 - **Q1:** confirm `kitchen_load_ahead` exclusive-of-self is the wanted signal (vs also storing an inclusive `_after`). Rec: exclusive-only for Phase 0; add `_after` only if the model wants post-arrival congestion.
-- **Q2:** keep the coarse `drivers_online` in Phase 0, or omit supply entirely until Phase 0.1's eligibility-accurate version? Rec: keep the coarse honest count (ephemeral, unrecoverable, cheap) with the clear caveat.
+- **Q2 (RESOLVED 2026-07-02):** capture both `drivers_available` + `drivers_on_shift` (ruling in decision 6) — the two raw counts are ephemeral/unrecoverable + cheap; eligibility-accurate supply stays Phase-0.1.
 - **Q3:** own deploy (rec) vs bundle into S3 (forces S3 re-gate — not recommended).
 
 ## Out of scope (later)
