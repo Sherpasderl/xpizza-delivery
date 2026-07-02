@@ -1496,6 +1496,27 @@ const RESTAURANT_ID = 'la_musa';
 const PREVIEW_MODE = false;
 /* ─────────────────────────────────────────────────── */
 
+// CLOSED_BYPASS_ENABLED — dev/QA gate for the secret 5-tap closed-hours bypass below.
+// ⚠️ MUST be false before real-customer launch (one-flip removal, traceable). While true, 5 taps on
+// the "Estamos cerrados" overlay OR the "Confirmar ubicación" button arm a session bypass so a test
+// order completes while the store is actually closed. When false, the taps do nothing.
+const CLOSED_BYPASS_ENABLED = true;   // ⚠️ QA ONLY — flip to false before real-customer traffic
+//
+// Runtime state for the bypass. Session-only: once armed, isOpen() returns true across the whole flow.
+// The server gates intake on `active` (true at launch), NOT on hours, so this client bypass is
+// sufficient to complete the order.
+let bypassClosed = false;
+let closedBypassTaps = 0;   // tap counter for the "Confirmar ubicación" button gesture
+function activateClosedBypass(){
+  if (!CLOSED_BYPASS_ENABLED || bypassClosed) return;
+  bypassClosed = true;
+  const pill = document.createElement('div');
+  pill.textContent = '🔓 Modo prueba — cerrado omitido';
+  pill.style.cssText = 'position:fixed;top:8px;right:8px;z-index:99999;background:#B61218;color:#fff;'
+    + 'font:600 12px/1 system-ui,sans-serif;padding:7px 11px;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,.3)';
+  document.body.appendChild(pill);
+}
+
 const SPS_LAT_CONST = 15.504137854561979;
 const SPS_LNG_CONST = -88.03848413956527;
 
@@ -1631,7 +1652,7 @@ const HOURS = {
 
 // True when the restaurant is currently accepting orders.
 function isOpen() {
-  if (PREVIEW_MODE) return true;
+  if (PREVIEW_MODE || bypassClosed) return true;
   const now = new Date();
   const utc = now.getTime() + now.getTimezoneOffset() * 60000;
   const hn  = new Date(utc - 6 * 3600000);
@@ -2252,7 +2273,11 @@ function goToLocation(){
   const phone=document.getElementById('cphone').value.trim();
   const has=MENU.some(p=>qty[p.id]>0);
   const err=document.getElementById('err1');
-  if(!isOpen()){ err.style.display='block'; err.textContent='Lo sentimos, estamos cerrados. '+getNextOpenText(); return; }
+  if(!isOpen()){
+    // Secret 5-tap on "Confirmar ubicación" arms the dev bypass; the 5th tap unlocks AND continues.
+    if(++closedBypassTaps >= 5){ activateClosedBypass(); closedBypassTaps = 0; }
+    else { err.style.display='block'; err.textContent='Lo sentimos, estamos cerrados. '+getNextOpenText(); return; }
+  }
   if(!has){ err.style.display='block'; err.textContent='Seleccioná al menos una pizza.'; return; }
   if(calcTotal()<MIN_ORDER){ err.style.display='block'; err.textContent='Agrega L '+(MIN_ORDER-calcTotal()).toFixed(0)+' más para alcanzar el mínimo de L '+MIN_ORDER+'.'; return; }
   const phoneDigits=phone.replace(/[^\d]/g,'');
@@ -3600,13 +3625,16 @@ if (!isOpen()) {
   document.getElementById('closed-overlay').style.display = 'flex';
 }
 
-// Secret tap: tap the pizza icon 5 times to bypass closed overlay (for testing)
+// Secret tap: tap the "Estamos cerrados" overlay 5 times to bypass the closed gate (for testing).
+// Arms the same session bypass as the "Confirmar ubicación" gesture, so isOpen() returns true across
+// the whole flow (not just hiding the overlay) — the order can then be completed while closed.
 let tapCount = 0;
 let tapTimer = null;
 document.getElementById('closed-overlay').addEventListener('click', function(e){
   tapCount++;
   clearTimeout(tapTimer);
   if(tapCount >= 5){
+    activateClosedBypass();
     document.getElementById('closed-overlay').style.display = 'none';
     tapCount = 0;
   }
