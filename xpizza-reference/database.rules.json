@@ -84,6 +84,9 @@
       }
     },
 
+    "order_events":    { ".read": false, ".write": false },
+    "order_timelines": { ".read": false, ".write": false },
+
     "incoming_messages": {
       ".read": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
       ".indexOn": ["received_at", "handled"],

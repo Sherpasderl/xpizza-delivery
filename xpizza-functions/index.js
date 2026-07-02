@@ -97,6 +97,7 @@ const {
 } = require('./driver-ingest');
 const { sweepDecision, activeOrderCount, assignmentStrandState, HEAL_TERMINAL_STATUSES } = require('./sweep-pending');
 const { claimDelivery, healStrandedOrder, releaseDeliveryFromDriver } = require('./claim-delivery');
+const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineStampKey } = require('./order-lifecycle');
 
 initializeApp({
   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
@@ -2520,6 +2521,66 @@ exports.sendOrderStatusNotifications = onValueWritten(
     } catch (e) {
       console.error(`sendOrderStatusNotifications: failed for ${orderId} → ${after}`, e.message);
       // Swallow — never throw out of the trigger
+    }
+  }
+);
+
+// ============================================================
+// logOrderLifecycle — Ready-Time Phase 0 lifecycle-event instrumentation (READY_TIME_PHASE0.md).
+//
+// OBSERVER-ONLY + ADDITIVE. On each REAL orders/{id}/status change it does two fully-decoupled writes
+// to two NEW top-level trees — order_events (immutable audit spine) + order_timelines (first-entry
+// label source). It writes NOTHING under /orders, so it fires NO existing order trigger (autoAssign,
+// onOrderCancelled, sendOrderStatusNotifications, materialize, factura). It must not change any
+// X. Pizza / La Musa behavior; the emulator gate proves that. The two ephemeral, unrecoverable context
+// values (kitchen_load_ahead, drivers_online) are captured live — the whole point of banking early.
+exports.logOrderLifecycle = onValueWritten(
+  {
+    ref: '/orders/{orderId}/status',
+    region: 'us-central1'
+  },
+  async (event) => {
+    const before = event.data.before.val();
+    const after = event.data.after.val();
+    // No-op guard (compare .val(), NOT the snapshots): status cleared, or a re-write with no change.
+    if (after == null) return;
+    if (before === after) return;
+
+    const orderId = event.params.orderId;
+    const db = getDatabase();
+
+    try {
+      // restaurant_id from the order (legacy pre-Phase-0 orders lack it → normalize to x_pizza).
+      const ridSnap = await db.ref(`orders/${orderId}/restaurant_id`).once('value');
+      const restaurantId = ridSnap.val() || 'x_pizza';
+
+      // Ephemeral context (unrecoverable after the fact). Two INDEXED status reads for the kitchen
+      // queue (restaurant-filtered + self-excluded in memory — RTDB can't IN-query; orders already has
+      // .indexOn:["status"]) + ONE full /drivers read for the coarse supply proxy (small collection,
+      // filtered in memory → no drivers index needed). All READS — never writes anything.
+      const [newSnap, prepSnap, drvSnap] = await Promise.all([
+        db.ref('orders').orderByChild('status').equalTo('new').once('value'),
+        db.ref('orders').orderByChild('status').equalTo('preparing').once('value'),
+        db.ref('drivers').once('value'),
+      ]);
+      const kitchenLoadAhead = countKitchenLoadAhead(newSnap.val(), prepSnap.val(), restaurantId, orderId);
+      const { drivers_available, drivers_on_shift } = countDriverSupply(drvSnap.val());
+
+      // 1. Immutable event — one per REAL transition (records bounces too, for audit).
+      await db.ref(`order_events/${orderId}`).push(buildLifecycleEvent({
+        from: before, to: after, restaurantId, kitchenLoadAhead,
+        driversAvailable: drivers_available, driversOnShift: drivers_on_shift, now: ServerValue.TIMESTAMP,
+      }));
+
+      // 2. First-entry timeline — the clean label source. Transactional, set ONLY if absent (first
+      //    entry wins), so a ready→preparing→ready bounce / dispatcher override / stale-tab re-write
+      //    can't corrupt the label. Separate top-level tree → no /orders trigger fanout.
+      await db.ref(`order_timelines/${orderId}/${timelineStampKey(after)}`).transaction(
+        (cur) => (cur === null ? ServerValue.TIMESTAMP : undefined)
+      );
+    } catch (e) {
+      // Swallow — instrumentation must NEVER affect the live order path.
+      console.error(`logOrderLifecycle: failed for ${orderId} (${before} → ${after})`, e.message);
     }
   }
 );
