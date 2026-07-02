@@ -15,9 +15,33 @@
  * - Operating hours aware: closed-hours messages include reopening time.
  */
 
-const ORDER_FORM_URL = 'https://xpizzaorders.netlify.app';
-const TRACKING_BASE = 'https://xpizzatrack.netlify.app';
-const RESTAURANT_NAME = 'X. Pizza';
+// Per-restaurant inbound config (mirrors BRAND_BY_RESTAURANT in whatsapp.js). x_pizza values are the
+// EXACT current literals EXCEPT orderFormUrl — migrated to orders.xpizza.hn (the one intended X. Pizza
+// change). la_musa points to its own order form, tracker, brand, and ack emoji.
+const CONFIG_BY_RESTAURANT = {
+  x_pizza: { orderFormUrl: 'https://orders.xpizza.hn',  trackingBase: 'https://xpizzatrack.netlify.app', restaurantName: 'X. Pizza', ackEmoji: '🍕' },
+  la_musa: { orderFormUrl: 'https://orders.lamusa.hn',  trackingBase: 'https://track.lamusa.hn',         restaurantName: 'La Musa',  ackEmoji: '🍜' }
+};
+const KNOWN_INBOUND_RESTAURANTS = Object.keys(CONFIG_BY_RESTAURANT);
+
+// Resolve the restaurant an inbound message is for, from the ?restaurant= webhook query param. Absent /
+// empty / unknown / malformed → 'x_pizza', so X. Pizza's existing webhook URL is byte-identical. The
+// webhook's shared-secret check still gates every request; this only ROUTES an already-authenticated one.
+function resolveInboundRestaurant(raw) {
+  const r = typeof raw === 'string' ? raw.trim() : '';
+  return KNOWN_INBOUND_RESTAURANTS.includes(r) ? r : 'x_pizza';
+}
+function configFor(restaurantId) { return CONFIG_BY_RESTAURANT[restaurantId] || CONFIG_BY_RESTAURANT.x_pizza; }
+
+// True when a NON-EMPTY ?restaurant= param didn't resolve to a known restaurant (→ x_pizza fail-safe).
+// The caller console.warns on this to surface a mis-wired webhook URL instead of silently serving x_pizza
+// replies. Aligned with resolveInboundRestaurant: absent/empty → false (legit default), non-string → true.
+function isUnrecognizedRestaurantParam(raw) {
+  if (raw == null || raw === '') return false;
+  if (typeof raw !== 'string') return true;
+  const r = raw.trim();
+  return r !== '' && !KNOWN_INBOUND_RESTAURANTS.includes(r);
+}
 
 // Operating hours (Honduras / America/Tegucigalpa, UTC-6, no DST)
 // Day index: 0=Sunday, 1=Monday, ..., 6=Saturday
@@ -53,9 +77,9 @@ function nowInHonduras(refDate = new Date()) {
 // Returns { isOpen, opensAt, opensLabel } based on current Honduras time.
 // opensAt: a Date when we'll be open next (or null if currently open).
 // opensLabel: human string like "hoy a las 12:00 PM" or "mañana a las 12:00 PM"
-function getHoursStatus(refDate = new Date()) {
+function getHoursStatus(refDate = new Date(), hoursMap = HOURS) {
   const { dayOfWeek, hours, minutes } = nowInHonduras(refDate);
-  const today = HOURS[dayOfWeek];
+  const today = hoursMap[dayOfWeek];
   const minutesNow = hours * 60 + minutes;
 
   if (today) {
@@ -78,7 +102,7 @@ function getHoursStatus(refDate = new Date()) {
   // After today's close (or all of today off) → find the next open day
   for (let i = 1; i <= 7; i++) {
     const nextDay = (dayOfWeek + i) % 7;
-    const next = HOURS[nextDay];
+    const next = hoursMap[nextDay];
     if (next) {
       const dayLabel = i === 1 ? 'mañana' : `el ${DAY_NAMES[nextDay]}`;
       return {
@@ -96,6 +120,23 @@ function formatTime12(hhmm) {
   const ampm = h >= 12 ? 'PM' : 'AM';
   const displayHr = ((h % 12) || 12);
   return `${displayHr}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+// Convert identity.hours (RTDB config: { mon:{open:bool,start:"HH:MM",end:"HH:MM"}, ... }) to the
+// day-index/open-close shape getHoursStatus expects. This is the SINGLE SOURCE for la_musa's inbound
+// hours — no hardcoded duplication, so the auto-reply can't drift from the identity config. A closed or
+// malformed day → null (getHoursStatus treats null as closed). x_pizza keeps its own hardcoded HOURS.
+const IDENTITY_DAY_ABBR = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']; // index 0..6 (getUTCDay)
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;  // strict 24h HH:MM (00:00–23:59)
+function hoursFromIdentity(identityHours) {
+  const out = {};
+  for (let i = 0; i < 7; i++) {
+    const h = identityHours && identityHours[IDENTITY_DAY_ABBR[i]];
+    // Validate HH:MM — a truthy-but-MALFORMED start/end degrades to null (closed), never passes through
+    // to getHoursStatus where a bad value could misparse. (RegExp.test coerces non-strings → false.)
+    out[i] = (h && h.open === true && HHMM_RE.test(h.start) && HHMM_RE.test(h.end)) ? { open: h.start, close: h.end } : null;
+  }
+  return out;
 }
 
 // ============================================================
@@ -191,13 +232,13 @@ function escapeRegex(s) {
 // REPLY TEMPLATES
 // ============================================================
 
-function tplGeneralInquiry({ isOpen, opensLabel }) {
+function tplGeneralInquiry(cfg, { isOpen, opensLabel }) {
   if (isOpen) {
     return [
       `¡Hola! 👋`,
       ``,
       `Para ver el menú y hacer tu pedido, visita:`,
-      ORDER_FORM_URL,
+      cfg.orderFormUrl,
       ``,
       `Si tienes una pregunta sobre un pedido existente, respóndenos aquí.`
     ].join('\n');
@@ -212,41 +253,41 @@ function tplGeneralInquiry({ isOpen, opensLabel }) {
     `Estamos cerrados ahora. ${opensSentence}`,
     ``,
     `Mientras tanto, puedes ver el menú en:`,
-    ORDER_FORM_URL,
+    cfg.orderFormUrl,
     ``,
     `Y hacer tu pedido cuando abramos. ¡Gracias!`
   ].join('\n');
 }
 
-function tplStatusCheckFound({ trackingToken, customerName }) {
-  const url = `${TRACKING_BASE}/${trackingToken}`;
+function tplStatusCheckFound(cfg, { trackingToken, customerName }) {
+  const url = `${cfg.trackingBase}/${trackingToken}`;
   return [
     `${customerName ? '¡Hola ' + customerName + '! ' : ''}Aquí puedes seguir tu pedido en tiempo real:`,
     url
   ].join('\n');
 }
 
-function tplStatusCheckNotFound() {
+function tplStatusCheckNotFound(cfg) {
   return [
     `No encontramos un pedido activo a tu nombre.`,
     ``,
     `Si acabas de ordenar, espera unos minutos — te avisaremos por aquí.`,
     ``,
-    `Si quieres hacer un nuevo pedido: ${ORDER_FORM_URL}`
+    `Si quieres hacer un nuevo pedido: ${cfg.orderFormUrl}`
   ].join('\n');
 }
 
-function tplShortAck() {
+function tplShortAck(cfg) {
   // Brief, warm, no link spam
-  return `¡Con gusto! 🍕`;
+  return `¡Con gusto! ${cfg.ackEmoji}`;
 }
 
-function tplUnhandled({ isOpen, opensLabel }) {
+function tplUnhandled(cfg, { isOpen, opensLabel }) {
   if (isOpen) {
     return [
       `Recibimos tu mensaje. Un empleado te responderá pronto.`,
       ``,
-      `Si quieres hacer un pedido: ${ORDER_FORM_URL}`
+      `Si quieres hacer un pedido: ${cfg.orderFormUrl}`
     ].join('\n');
   }
   const opensSentence = opensLabel
@@ -256,19 +297,22 @@ function tplUnhandled({ isOpen, opensLabel }) {
     `Recibimos tu mensaje. Estamos cerrados ahora.`,
     `${opensSentence}`,
     ``,
-    `Para ver el menú: ${ORDER_FORM_URL}`
+    `Para ver el menú: ${cfg.orderFormUrl}`
   ].join('\n');
 }
 
 module.exports = {
   classify,
   getHoursStatus,
+  hoursFromIdentity,
   nowInHonduras,
+  resolveInboundRestaurant,
+  isUnrecognizedRestaurantParam,
+  configFor,
   tplGeneralInquiry,
   tplStatusCheckFound,
   tplStatusCheckNotFound,
   tplShortAck,
   tplUnhandled,
-  ORDER_FORM_URL,
-  RESTAURANT_NAME
+  CONFIG_BY_RESTAURANT
 };

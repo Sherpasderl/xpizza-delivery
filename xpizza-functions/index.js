@@ -2669,6 +2669,16 @@ exports.onIncomingWhatsApp = onRequest(
       return res.status(401).send('Unauthorized');
     }
 
+    // Which restaurant's number was texted? From the ?restaurant= webhook param; absent/unknown → x_pizza,
+    // so X. Pizza's existing webhook URL stays byte-identical (the secret check above already gated this;
+    // the param only ROUTES it). Resolved EARLY so even non-chat / unhandled records carry routing context.
+    // Warn on an unrecognized non-empty param — surfaces a mis-wired la_musa webhook instead of silently
+    // serving x_pizza replies.
+    const restaurantId = inbound.resolveInboundRestaurant(req.query && req.query.restaurant);
+    if (inbound.isUnrecognizedRestaurantParam(req.query && req.query.restaurant)) {
+      console.warn(`onIncomingWhatsApp: unrecognized ?restaurant=${JSON.stringify(req.query && req.query.restaurant)} → x_pizza fail-safe (mis-wired webhook?)`);
+    }
+
     const event = req.body || {};
     const data = event.data || {};
 
@@ -2687,6 +2697,7 @@ exports.onIncomingWhatsApp = onRequest(
         const db = getDatabase();
         await db.ref('incoming_messages').push({
           from: data.from || 'unknown',
+          restaurant_id: restaurantId,   // routing context for human follow-up (per-restaurant)
           type: data.type,
           body: data.body || null,
           time: data.time || Math.floor(Date.now() / 1000),
@@ -2706,18 +2717,37 @@ exports.onIncomingWhatsApp = onRequest(
       return res.status(200).send('ignored: no from');
     }
 
-    if (!(await whatsapp.isEnabled(getDatabase()))) {
-      console.log('onIncomingWhatsApp: whatsapp_enabled=false, no auto-reply');
+    const cfg = inbound.configFor(restaurantId);
+
+    // Per-restaurant enablement — for x_pizza this is EXACTLY isEnabled(db) (byte-identical); a
+    // non-x_pizza restaurant additionally requires its identity.whatsapp_enabled (fail-closed).
+    if (!(await whatsapp.isEnabledForRestaurant(getDatabase(), restaurantId))) {
+      console.log(`onIncomingWhatsApp: whatsapp disabled for ${restaurantId}, no auto-reply`);
       return res.status(200).send('ignored: disabled');
     }
 
-    const intent = inbound.classify(body);
-    const hours = inbound.getHoursStatus();
-    console.log(`onIncomingWhatsApp: from=${fromPhoneRaw} intent=${intent} body="${body.substring(0, 80)}"`);
-
+    // Hours for the closed-message. x_pizza uses its hardcoded HOURS (byte-identical). Non-x_pizza reads
+    // identity.hours LIVE (single source — no drift vs the order-form/gate). On a read miss, degrade to a
+    // generic closed reply (still gives the order-form link).
+    let hoursMap;
+    if (restaurantId !== 'x_pizza') {
+      try {
+        const hsnap = await getDatabase().ref(`restaurants/${restaurantId}/identity/hours`).once('value');
+        hoursMap = inbound.hoursFromIdentity(hsnap.val());
+      } catch (e) {
+        console.warn(`onIncomingWhatsApp: hours read failed for ${restaurantId}`, e.message);
+        hoursMap = inbound.hoursFromIdentity(null);
+      }
+    }
     let replyBody = null;
 
     try {
+      // Inside the try: a malformed live identity.hours can only degrade to a reply, never throw → 500 →
+      // UltraMsg retry. (hoursFromIdentity already null-guards bad HH:MM; this is defense-in-depth.)
+      const intent = inbound.classify(body);
+      const hours = inbound.getHoursStatus(new Date(), hoursMap);   // hoursMap undefined → x_pizza HOURS default
+      console.log(`onIncomingWhatsApp: rid=${restaurantId} from=${fromPhoneRaw} intent=${intent} body="${body.substring(0, 80)}"`);
+
       if (intent === 'STATUS_CHECK') {
         // Look up active orders for this phone number. We match by suffix
         // because order.customer_phone may be stored with or without the "+"
@@ -2727,10 +2757,9 @@ exports.onIncomingWhatsApp = onRequest(
         const orders = ordersSnap.val() || {};
         const activeOrders = Object.values(orders).filter(o => {
           if (!o || !o.customer_phone) return false;
-          // C2: this inbound webhook is X. Pizza's number — only surface x_pizza orders
-          // (legacy-normalized). A la_musa customer texting here falls through to
-          // tplStatusCheckNotFound (no cross-restaurant leak). Byte-identical today (all orders x_pizza).
-          if ((o.restaurant_id || 'x_pizza') !== 'x_pizza') return false;
+          // Scope to the restaurant whose number was texted (legacy-normalized). A customer texting the
+          // wrong restaurant's number falls through to tplStatusCheckNotFound (no cross-restaurant leak).
+          if ((o.restaurant_id || 'x_pizza') !== restaurantId) return false;
           const orderPhoneDigits = String(o.customer_phone).replace(/[^\d]/g, '');
           // Match by suffix (handles +504, 504, or just 8-digit local)
           if (!orderPhoneDigits.endsWith(fromPhoneRaw.slice(-8))
@@ -2746,31 +2775,32 @@ exports.onIncomingWhatsApp = onRequest(
           activeOrders.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
           const order = activeOrders[0];
           if (order.tracking_token) {
-            replyBody = inbound.tplStatusCheckFound({
+            replyBody = inbound.tplStatusCheckFound(cfg, {
               trackingToken: order.tracking_token,
               customerName: (order.customer_name || '').split(' ')[0]
             });
           } else {
             // No tracking token (legacy order) — fall back to generic reply
-            replyBody = inbound.tplStatusCheckNotFound();
+            replyBody = inbound.tplStatusCheckNotFound(cfg);
           }
         } else {
-          replyBody = inbound.tplStatusCheckNotFound();
+          replyBody = inbound.tplStatusCheckNotFound(cfg);
         }
 
       } else if (intent === 'GENERAL_INQUIRY') {
-        replyBody = inbound.tplGeneralInquiry(hours);
+        replyBody = inbound.tplGeneralInquiry(cfg, hours);
 
       } else if (intent === 'SHORT_ACK') {
-        replyBody = inbound.tplShortAck();
+        replyBody = inbound.tplShortAck(cfg);
 
       } else {
         // UNHANDLED — log to /incoming_messages for dispatcher review
-        replyBody = inbound.tplUnhandled(hours);
+        replyBody = inbound.tplUnhandled(cfg, hours);
         try {
           const db = getDatabase();
           await db.ref('incoming_messages').push({
             from: fromPhoneRaw,
+            restaurant_id: restaurantId,   // routing context for human follow-up (per-restaurant)
             body: body,
             time: data.time || Math.floor(Date.now() / 1000),
             handled: false,
@@ -2783,7 +2813,7 @@ exports.onIncomingWhatsApp = onRequest(
       }
 
       if (replyBody) {
-        await whatsapp.sendMessage(fromPhoneRaw, replyBody, 'x_pizza');   // inbound = X. Pizza's number/instance
+        await whatsapp.sendMessage(fromPhoneRaw, replyBody, restaurantId);   // reply via the texted restaurant's instance
       }
 
     } catch (e) {
