@@ -509,7 +509,7 @@
     // the real musa-red palette, sourced from the La Musa order form (la-musa-orders/index.html) so the
     // order→track experience is visually consistent. Text wordmark "La Musa" (no asset-hosting dependency).
     const RESTAURANT_BRAND = {
-      la_musa: { nameHtml: 'La Musa', title: 'La Musa · Sigue tu pedido', brand: '#B61218', dark: '#7A0A10', light: '#F4DDDD' },
+      la_musa: { nameHtml: 'La Musa', title: 'La Musa · Sigue tu pedido', brand: '#B61218', dark: '#7A0A10', light: '#F4DDDD', emoji: '🥢🍜' },
     };
     function applyRestaurantBrand(restaurantId) {
       const b = RESTAURANT_BRAND[restaurantId];
@@ -518,12 +518,20 @@
         document.title = b.title;
         const nameEl = document.querySelector('.brand-name');
         if (nameEl) nameEl.innerHTML = b.nameHtml;
+        if (b.emoji) { const iconEl = document.querySelector('.error-icon'); if (iconEl) iconEl.textContent = b.emoji; }  // La Musa → 🥢🍜 (was 🍕)
         const r = document.documentElement.style;
         r.setProperty('--brand', b.brand);
         r.setProperty('--brand-dark', b.dark);
         r.setProperty('--brand-light', b.light);
       } catch (_) { /* branding is best-effort; never break tracking */ }
     }
+    // Host-scoped DEFAULT branding: on La Musa's own tracker origin (track.lamusa.hn), brand La Musa
+    // BEFORE any order loads — so the not-found / loading state shows La Musa + 🥢🍜, not X. Pizza 🍕.
+    // x_pizza's origin has no match → static X. Pizza branding + 🍕 untouched. A real order still
+    // re-brands per data.restaurant_id in render() (order-driven, on either origin).
+    const SITE_RESTAURANT = (location.hostname === 'track.lamusa.hn'
+      || location.hostname.endsWith('--lamusatrack.netlify.app')) ? 'la_musa' : null;
+    if (SITE_RESTAURANT) applyRestaurantBrand(SITE_RESTAURANT);
 
     // Render the page based on data from /order_tracking/{token}
     function render(data) {
