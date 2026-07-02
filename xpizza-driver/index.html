@@ -915,6 +915,20 @@
   .menu button { display: block; width: 100%; text-align: left; background: none; border: none; padding: 11px 16px; font-size: 14px; font-weight: 600; color: var(--text); border-radius: 9px; cursor: pointer; }
   .menu button.danger { color: #C2410C; }
   .menu button:active { background: var(--canvas); }
+
+  /* Incoming cross-hub 2nd-order banner — surfaced above the active card; :empty collapses to nothing */
+  #incoming-banner-slot:empty { display:none; }
+  .incoming-banner { margin:12px 14px 6px; background:var(--surface); border:1.5px solid var(--info); border-radius:16px; box-shadow:var(--shadow-card); overflow:hidden; }
+  .incoming-banner .ib-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; cursor:pointer; }
+  .incoming-banner .ib-title { font-weight:800; font-size:14px; color:var(--info); }
+  .incoming-banner .ib-right { display:flex; align-items:center; gap:8px; }
+  .incoming-banner .ib-chev { display:inline-flex; width:18px; height:18px; color:var(--text-dim); transition:transform .2s; }
+  .incoming-banner.collapsed .ib-chev { transform:rotate(-90deg); }
+  .incoming-banner .ib-body { padding:0 14px 12px; }
+  .incoming-banner.collapsed .ib-body { display:none; }
+  .incoming-banner .ib-sub { color:var(--text-soft); font-size:13px; margin-bottom:10px; }
+  .incoming-banner .accept-countdown { background:var(--surface-2); border:1px solid var(--border); color:var(--text-soft); border-radius:8px; padding:2px 8px; font-size:12px; font-weight:700; }
+  .incoming-banner .slide-confirm { margin:0; height:56px; }
 </style>
 </head>
 
@@ -1029,6 +1043,9 @@
       </div>
     </div>
 
+    <!-- Incoming cross-hub 2nd-order banner slot (above the active card; :empty collapses to zero height) -->
+    <div id="incoming-banner-slot"></div>
+
     <!-- Active order card slot -->
     <div id="active-order-slot"></div>
 
@@ -1080,7 +1097,7 @@
 <audio id="chime" preload="auto" src="order_bell.wav"></audio>
 
 <script type="module">
-import * as XPD from './xpizza-delivery.js?v=16';
+import * as XPD from './xpizza-delivery.js?v=17';
 import { isNative, initNativePush, unregisterNativePush, clearDeliveredNotifications } from './native-push.js';
 import { startNativeTracking, stopNativeTracking, pingNativeLocation } from './native-location.js';
 import { computeVuelto, vueltoSuggestions, computeShiftCash } from './cash-helpers.js';
@@ -1088,7 +1105,7 @@ import { computeVuelto, vueltoSuggestions, computeShiftCash } from './cash-helpe
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '2.1.2';
+const SYSTEM_VERSION = '2.3.1';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -1799,31 +1816,106 @@ function computeReturnEta(lat, lng) {
 }
 
 let queuedOrders = [];
+let slidingEl = null;                 // #4: the .slide-confirm element currently being dragged (render-suppression scope)
+let renderPending = false;            // #4: an RTDB update arrived mid-drag → replay the render on drag-end
+const collapsedBanners = new Set();   // #5: orderIds of collapsed incoming banners (pruned to current pending each render)
 function renderActiveAndQueue() {
+  // #4 drag-suppression: never rebuild the swipeable DOM mid-swipe — an RTDB tick would reset the drag.
+  // Defer the render; attachSlideConfirm's onUp replays it on drag-end so nothing (new order / cancel /
+  // in-progress update) that arrived during the suppressed window is swallowed.
+  if (slidingEl) { renderPending = true; return; }
+  renderPending = false;
+
   const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);
   const idleSlot = $('idle-state');
+  const bannerSlot = $('incoming-banner-slot');
   const activeSlot = $('active-order-slot');
   const queueSlot = $('queue-slot');
 
   if (orders.length === 0) {
     idleSlot.classList.remove('hidden');
     activeSlot.classList.remove('solo');   // drop the full-height solo layout, else the empty slot leaves a blank screen
+    bannerSlot.innerHTML = '';
     activeSlot.innerHTML = '';
     queueSlot.innerHTML = '';
     queuedOrders = [];
+    collapsedBanners.clear();
     renderIdleState();
     return;
   }
   idleSlot.classList.add('hidden');
 
   const [active, ...rest] = orders;
-  const solo = rest.length === 0;
+  // Split rest: 2nd swipe-needed orders (awaiting_acceptance) → incoming banner(s); accepted stacked → view-only queue.
+  const pendingAccept = rest.filter(o => o.phase === 'awaiting_acceptance');
+  const queue = rest.filter(o => o.phase !== 'awaiting_acceptance');
+
+  // #5 collapse-Set discipline: prune to current pending orderIds (no leak); force the soonest expanded.
+  const pendingIds = new Set(pendingAccept.map(o => o.orderId));
+  for (const id of [...collapsedBanners]) if (!pendingIds.has(id)) collapsedBanners.delete(id);
+  if (pendingAccept.length) collapsedBanners.delete(pendingAccept[0].orderId);
+
+  const solo = queue.length === 0 && pendingAccept.length === 0;
   activeSlot.classList.toggle('solo', solo);
+  bannerSlot.innerHTML = renderIncomingBanners(pendingAccept);
   activeSlot.innerHTML = renderActiveCard(active, solo);
-  queuedOrders = rest;
-  queueSlot.innerHTML = renderQueue(rest);
+  queuedOrders = queue;
+  queueSlot.innerHTML = renderQueue(queue);
 
   attachActiveCardHandlers(active);
+  pendingAccept.forEach(attachIncomingBannerHandlers);
+}
+
+// Incoming cross-hub 2nd-order banner(s): a swipe-to-accept for EACH awaiting_acceptance order, surfaced
+// above the active card WITHOUT touching the in-progress delivery. The soonest renders expanded; the rest
+// collapse to a one-line bar (tap the head to toggle). Accept goes through acceptSecondOrder (which writes
+// neither current_task_id nor driver status → the in-progress order keeps its hub).
+function renderIncomingBanners(pending) {
+  if (!pending.length) return '';
+  const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+  return pending.map(o => {
+    const order = o.order || {};
+    const collapsed = collapsedBanners.has(o.orderId);
+    const rest = order.restaurant_id === 'la_musa' ? 'La Musa' : 'X. Pizza';
+    const total = order.total != null ? `L ${Number(order.total).toLocaleString('es-HN')}` : '';
+    const addr = escapeHtml(order.address_detected || o.deliveryTask?.destination_address || order.customer_name || '');
+    const cd = o.pickupTask.assignment_deadline
+      ? `<span class="accept-countdown" data-deadline="${o.pickupTask.assignment_deadline}">--s</span>` : '';
+    return `<div class="incoming-banner${collapsed ? ' collapsed' : ''}" data-order-id="${escapeHtml(o.orderId)}">
+      <div class="ib-head" data-ib-toggle="${escapeHtml(o.orderId)}">
+        <div class="ib-title">🔔 Nuevo pedido · ${rest}</div>
+        <div class="ib-right">${cd}<span class="ib-chev">${CHEV}</span></div>
+      </div>
+      <div class="ib-body">
+        <div class="ib-sub">${total}${addr ? ` · ${addr}` : ''} · otro hub</div>
+        <div class="slide-confirm accept" id="btn-accept-inc-${escapeHtml(o.orderId)}">
+          <div class="slide-fill"></div>
+          <div class="slide-text">Deslizá para aceptar</div>
+          <div class="slide-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function attachIncomingBannerHandlers(o) {
+  const head = document.querySelector(`[data-ib-toggle="${CSS.escape(o.orderId)}"]`);
+  if (head && !head.dataset.ibBound) {
+    head.dataset.ibBound = '1';
+    head.addEventListener('click', () => {
+      if (collapsedBanners.has(o.orderId)) collapsedBanners.delete(o.orderId);
+      else collapsedBanners.add(o.orderId);
+      renderActiveAndQueue();
+    });
+  }
+  // Swipe-to-accept → acceptSecondOrder (does NOT repoint current_task_id / re-stamp the hub).
+  attachSlideConfirm(`btn-accept-inc-${o.orderId}`, async () => {
+    const r = await XPD.acceptSecondOrder(currentUser.uid, o.pickupTask.id);
+    // {ok:false} = the CAS correctly aborted (order reassigned/cancelled mid-swipe). THROW so the slide's
+    // onConfirm catch runs: resets the slider (never leaves a failed accept looking .completed), toasts, and
+    // the #4 accept-error path clears slidingEl + replays any deferred render.
+    if (r && r.ok === false) throw new Error('Ese pedido ya no está disponible');
+  });
 }
 
 function todayMidnightMs(){ const d=new Date(); d.setHours(0,0,0,0); return d.getTime(); }
@@ -2067,6 +2159,8 @@ function startCountdownTick() {
 function attachSlideConfirm(elementId, onConfirm) {
   const el = $(elementId);
   if (!el) return;
+  if (el.dataset.slideAttached) return;   // #7: idempotent — never double-bind pointer/touch listeners on the same node
+  el.dataset.slideAttached = '1';
   const thumb = el.querySelector('.slide-thumb');
   const fill  = el.querySelector('.slide-fill');
   if (!thumb || !fill) return;
@@ -2139,6 +2233,12 @@ function attachSlideConfirm(elementId, onConfirm) {
     } else {
       reset();
     }
+
+    // #4: reset the drag-suppression on EVERY terminating path (completion-success, accept-error above, or
+    // the not-completed reset) and replay a render that was deferred during the drag so a new order /
+    // cancellation / in-progress update that arrived mid-swipe is reflected immediately.
+    if (slidingEl === el) slidingEl = null;
+    if (renderPending) renderActiveAndQueue();
   }
 
   function onDown(e) {
@@ -2149,6 +2249,7 @@ function attachSlideConfirm(elementId, onConfirm) {
     maxLeft = trackWidth - thumbWidth - THUMB_OFFSET;
 
     dragging = true;
+    slidingEl = el;   // #4: suppress renderActiveAndQueue rebuilds while THIS slider is being dragged
     el.classList.add('dragging');
     startX = getX(e);
     startLeft = parseFloat(thumb.style.left) || THUMB_OFFSET;

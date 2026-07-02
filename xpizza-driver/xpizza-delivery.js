@@ -427,6 +427,30 @@ export async function acceptTask(driverId, taskId) {
   await update(ref(db), updates);
 }
 
+// Accept a SECOND (cross-hub, swipe-needed) order WITHOUT it becoming the driver's current task. Unlike
+// acceptTask, it writes NEITHER drivers/{uid}/current_task_id NOR driver status — so the IN-PROGRESS order
+// stays the current task and syncDriverHub keeps ITS hub (accepting a 2nd cross-hub order must never
+// re-stamp the driver's hub off the in-progress delivery — the launch-blocker this fixes). CAS-guarded and
+// atomic on status + ownership (accept-vs-60s-timeout race safe). Touches exactly one task node → cannot
+// auto-accept any other stacked order.
+export async function acceptSecondOrder(driverId, pickupTaskId) {
+  const tx = await runTransaction(ref(db, `tasks/${pickupTaskId}`), (t) => {
+    if (t === null) return null;                     // null-first-safe: RTDB may call with a speculative null when the node
+                                                     //   isn't cached; returning null (not undefined) → the server rejects
+                                                     //   the hash-of-null on a REAL node → RTDB re-runs with the actual
+                                                     //   value; a genuinely-absent task commits a no-op delete → {ok:false}.
+    if (t.status !== TASK_STATUS.ASSIGNED) return;   // cancelled / already accepted / reassigned → abort
+    if (t.assigned_driver_id !== driverId) return;   // reassigned to another driver → abort (accept-vs-timeout race)
+    t.status = TASK_STATUS.ACCEPTED;
+    t.accepted_at = Date.now();                      // client ts — serverTimestamp() sentinel is NOT valid inside a
+                                                     //   transaction; accepted_at is non-load-bearing (cuadre uses completed_at).
+    return t;
+  });
+  const v = tx.snapshot.val();
+  return (tx.committed && v && v.status === TASK_STATUS.ACCEPTED && v.assigned_driver_id === driverId)
+    ? { ok: true } : { ok: false, reason: 'unavailable' };
+}
+
 export async function markTaskInProgress(driverId, taskId) {
   const updates = {};
   updates[`tasks/${taskId}/status`] = TASK_STATUS.IN_PROGRESS;
