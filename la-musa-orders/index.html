@@ -1496,17 +1496,15 @@ const RESTAURANT_ID = 'la_musa';
 const PREVIEW_MODE = false;
 /* ─────────────────────────────────────────────────── */
 
-// CLOSED_BYPASS_ENABLED — dev/QA gate for the secret 5-tap closed-hours bypass below.
-// ⚠️ MUST be false before real-customer launch (one-flip removal, traceable). While true, 5 taps on
-// the "Estamos cerrados" overlay OR the "Confirmar ubicación" button arm a session bypass so a test
-// order completes while the store is actually closed. When false, the taps do nothing.
-const CLOSED_BYPASS_ENABLED = true;   // ⚠️ QA ONLY — flip to false before real-customer traffic
+// CLOSED_BYPASS_ENABLED — dev/QA gate for the secret closed-hours bypass below. DISABLED for
+// real-customer traffic: while false the taps do nothing and real hours are enforced. To re-test a
+// closed day, flip to true and 5-tap the "Estamos cerrados" overlay (the sole arming gesture, matching
+// the X. Pizza order form).
+const CLOSED_BYPASS_ENABLED = false;   // ⚠️ QA ONLY — leave false for real-customer traffic
 //
 // Runtime state for the bypass. Session-only: once armed, isOpen() returns true across the whole flow.
-// The server gates intake on `active` (true at launch), NOT on hours, so this client bypass is
-// sufficient to complete the order.
+// The server gates intake on `active`, NOT on hours, so this client bypass is sufficient to complete the order.
 let bypassClosed = false;
-let closedBypassTaps = 0;   // tap counter for the "Confirmar ubicación" button gesture
 function activateClosedBypass(){
   if (!CLOSED_BYPASS_ENABLED || bypassClosed) return;
   bypassClosed = true;
@@ -2273,11 +2271,7 @@ function goToLocation(){
   const phone=document.getElementById('cphone').value.trim();
   const has=MENU.some(p=>qty[p.id]>0);
   const err=document.getElementById('err1');
-  if(!isOpen()){
-    // Secret 5-tap on "Confirmar ubicación" arms the dev bypass; the 5th tap unlocks AND continues.
-    if(++closedBypassTaps >= 5){ activateClosedBypass(); closedBypassTaps = 0; }
-    else { err.style.display='block'; err.textContent='Lo sentimos, estamos cerrados. '+getNextOpenText(); return; }
-  }
+  if(!isOpen()){ err.style.display='block'; err.textContent='Lo sentimos, estamos cerrados. '+getNextOpenText(); return; }
   if(!has){ err.style.display='block'; err.textContent='Seleccioná al menos una pizza.'; return; }
   if(calcTotal()<MIN_ORDER){ err.style.display='block'; err.textContent='Agrega L '+(MIN_ORDER-calcTotal()).toFixed(0)+' más para alcanzar el mínimo de L '+MIN_ORDER+'.'; return; }
   const phoneDigits=phone.replace(/[^\d]/g,'');
