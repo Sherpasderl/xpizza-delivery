@@ -1109,13 +1109,13 @@
 <script type="module">
 import * as XPD from './xpizza-delivery.js?v=17';
 import { isNative, initNativePush, unregisterNativePush, clearDeliveredNotifications } from './native-push.js';
-import { startNativeTracking, stopNativeTracking, pingNativeLocation } from './native-location.js';
+import { startNativeTracking, stopNativeTracking, pingNativeLocation, disableLingeringTransistorsoft } from './native-location.js';
 import { computeVuelto, vueltoSuggestions, computeShiftCash } from './cash-helpers.js';
 
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '2.3.3';
+const SYSTEM_VERSION = '2.4.0';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -1249,6 +1249,9 @@ async function boot() {
     // Native (Capacitor) build: auto-register for FCM. The web PWA uses the
     // "enable notifications" button (web-push) instead — see enableNotifications.
     if (isNative()) {
+      // 2.4.x uses ShiftLocationService (native FGS). Kill any Transistorsoft tracking persisted from a
+      // 2.3.x install so it can't auto-resurrect and fight our service after the update. Idempotent.
+      disableLingeringTransistorsoft().catch(() => {});
       try { await initNativePush(XPD.getAuthInstance().app, user.uid); }
       catch (e) { console.error('initNativePush failed', e); }
       // App is open → clear any order alerts piled up in the shade + the badge.
