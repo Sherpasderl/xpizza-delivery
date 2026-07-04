@@ -557,7 +557,14 @@ export async function resolveReconciliation(orderId, action, note = '') {
     body: JSON.stringify({ order_id: orderId, action, note })
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || data.detail || `HTTP ${res.status}`);
+  if (!res.ok) {
+    // #9 honest contract: refund_pending / manual_review now return 409 — surface the outcome (not a generic
+    // error) so the panel shows "revisar" instead of a failure. The caller inspects err.outcome.
+    const err = new Error(data.error || data.detail || `HTTP ${res.status}`);
+    err.outcome = data.outcome || null;
+    err.httpStatus = res.status;
+    throw err;
+  }
   return data; // { ok, outcome }
 }
 
