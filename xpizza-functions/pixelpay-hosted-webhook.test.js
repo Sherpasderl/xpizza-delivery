@@ -110,5 +110,40 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     ok('unknown order/attempt → ignored');
   }
 
+  // 8. [rev-5 R4] paid callback while QUEUED (manual_reconciliation, pre-claim) → record evidence, DON'T
+  //    materialize, DON'T change payment_status (stays queued). The order's paid_during_resolve is set.
+  {
+    const db = makeDb(seed({ payment_status: 'manual_reconciliation' }));
+    const r = await handleHostedCallback(deps(db), cb(), NOW);
+    assert.strictEqual(r.code, 200);
+    assert.strictEqual(r.outcome, 'paid_evidence_recorded');
+    assert.strictEqual(db.getAt('orders/O1').payment_status, 'manual_reconciliation'); // UNCHANGED (still queued)
+    assert.strictEqual(db.getAt('orders/O1').paid_during_resolve, true);               // resolver's abandon-CAS will now fail
+    assert.strictEqual(db.getAt(`payment_attempts/${A}`).payment_uuid, 'P-paid-1');    // refund will use this UUID
+    assert.ok(!db.getAt('orders/O1').materialized_at);                                 // never materialized
+    ok('[R4] paid while manual_reconciliation → evidence recorded, status unchanged, paid_during_resolve set');
+  }
+
+  // 9. [rev-5 R2-#1] paid callback while MID-RESOLVE (resolving_abandon) → same: evidence, no status change.
+  {
+    const db = makeDb(seed({ payment_status: 'resolving_abandon', resolving_claim_id: 'CID', resolving_phase: 'claimed' }));
+    const r = await handleHostedCallback(deps(db), cb(), NOW);
+    assert.strictEqual(r.outcome, 'paid_evidence_recorded');
+    assert.strictEqual(db.getAt('orders/O1').payment_status, 'resolving_abandon');     // resolver still owns it
+    assert.strictEqual(db.getAt('orders/O1').paid_during_resolve, true);               // abandon-CAS will fail on this
+    assert.strictEqual(db.getAt(`payment_attempts/${A}`).payment_uuid, 'P-paid-1');
+    ok('[R2-#1] paid while resolving_abandon → evidence recorded, resolver retains ownership');
+  }
+
+  // 10. [rev-5 R3-#2] LATE paid callback after abandoned (status:cancelled) → cancel-race auto-voids → refund.
+  {
+    const db = makeDb(seed({ payment_status: 'abandoned', status: 'cancelled' }));
+    const r = await handleHostedCallback(deps(db), cb(), NOW);
+    assert.strictEqual(r.code, 200);
+    assert.strictEqual(r.outcome, 'cancelled_voided');                                 // voidImpl default → voided
+    assert.strictEqual(db.getAt('orders/O1').payment_status, 'refunded');              // paid-but-abandoned → refunded
+    ok('[R3-#2] late paid on abandoned/cancelled → auto-void → refunded (money returned)');
+  }
+
   console.log(`\nAll ${pass} handleHostedCallback tests passed.`);
 })().catch((e) => { console.error('FAIL:', e && e.stack || e); process.exit(1); });

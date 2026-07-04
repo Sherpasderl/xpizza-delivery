@@ -98,6 +98,8 @@ const {
 const { sweepDecision, activeOrderCount, assignmentStrandState, HEAL_TERMINAL_STATUSES } = require('./sweep-pending');
 const { claimDelivery, healStrandedOrder, releaseDeliveryFromDriver } = require('./claim-delivery');
 const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineStampKey } = require('./order-lifecycle');
+const MR = require('./manual-resolve');   // atomic-claim money state machine (RECON_ATOMIC_CLAIM_PLAN rev-5)
+const { resolveManualReconciliationCore, recoverStaleResolve } = require('./resolve-manual');   // the resolver core + sweep recovery (emulator-driven)
 
 initializeApp({
   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
@@ -1170,6 +1172,7 @@ exports.sweepStalePending = onSchedule(
     const db = getDatabase();
     const now = Date.now();
     const GRACE_MS = 15 * 60 * 1000;   // PixelPay retries the callback 3x/15min after expiry
+    const RESOLVE_STALE_MS = 10 * 60 * 1000;   // recover a CRASHED resolve: >> the 60s fn timeout so an in-flight resolve is never reverted
     const snap = await db.ref('orders').orderByChild('status').equalTo('pending_payment').once('value');
     const orders = snap.val() || {};
     let flagged = 0, left = 0;
@@ -1177,7 +1180,14 @@ exports.sweepStalePending = onSchedule(
     for (const orderId of Object.keys(orders)) {
       const order = orders[orderId];
       if (order.payment_method !== 'online') continue;
-      if (['confirmed', 'manual_reconciliation', 'refunded', 'refund_pending', 'failed', 'abandoned'].includes(order.payment_status)) continue;
+      // [rev-5 D / R2-#2] Phase-aware recovery for a CRASHED resolve. Pre-side-effect stale → revert to
+      // manual_reconciliation (safe, no money moved); post-side-effect stale → manual_review + alert, NEVER
+      // back to re-resolvable (a 2nd resolver could re-void). CAS on the claim_id so a live resolve is untouched.
+      if (MR.isResolving(order.payment_status)) {
+        await recoverStaleResolve(resolveDeps(db), orderId, order, now, RESOLVE_STALE_MS); // [D] phase-aware CAS recovery
+        continue;
+      }
+      if (MR.isStatusChangeClosedToAutomation(order.payment_status)) continue; // skip terminal / manual_reconciliation
       const attempt = order.active_attempt_id
         ? (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val()
         : null;
@@ -1237,6 +1247,8 @@ exports.reconcilePayments = onSchedule(
       const age = now - (Number(o.charged_at || o.created_at) || now);
       if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' });
       if (o.payment_status === 'refund_pending' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_refund_pending' });
+      if (MR.isResolving(o.payment_status) && (now - (Number(o.resolving_claimed_at) || 0)) > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_resolving' }); // [D] sweep-recovery backstop
+
     }
     // Stuck claims never recovered: legacy capturing (crash mid-capture) or hosted creating
     // (crashed after the create-claim but the checkout/callback never resolved).
@@ -1273,6 +1285,20 @@ exports.reconcilePayments = onSchedule(
 //                          Refused if a payment_uuid is recorded (real charge → refund).
 // Auth: RECON_SECRET (server) OR a dispatcher Firebase ID token (the dashboard
 // Pedidos view). Records an audit entry keyed by the verified actor.
+// Deps for the extracted manual-resolve money state machine (resolve-manual.js) — mirrors confirmDeps.
+function resolveDeps(db) {
+  return {
+    db,
+    client: pixelpayClient,
+    buildMaterializeUpdates,
+    restaurant: RESTAURANT,
+    genToken: generateTrackingToken,
+    alert: (kind, detail) => paymentAlert(db, kind, detail),
+    sanitizeText,
+    serverTimestamp: ServerValue.TIMESTAMP,
+  };
+}
+
 exports.resolveManualReconciliation = onRequest(
   { region: 'us-central1', cors: true, timeoutSeconds: 60, memory: '256MiB', maxInstances: 5 },
   async (req, res) => {
@@ -1293,56 +1319,13 @@ exports.resolveManualReconciliation = onRequest(
     if (!['materialize', 'refund', 'keep', 'abandon'].includes(action)) return badRequest(res, 'action must be materialize|refund|keep|abandon');
 
     const db = getDatabase();
-    const order = (await db.ref(`orders/${orderId}`).once('value')).val();
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    if (order.payment_status !== 'manual_reconciliation') {
-      return res.status(409).json({ error: 'Order is not in manual_reconciliation', payment_status: order.payment_status });
-    }
-    const attemptId = order.active_attempt_id;
-
-    const audit = async (outcome, extra = {}) => {
-      await db.ref('payment_audit').push({ order_id: orderId, action, actor, outcome, at: ServerValue.TIMESTAMP, ...extra });
-    };
-
-    try {
-      if (action === 'keep') {
-        await audit('kept_queued');
-        return res.status(200).json({ ok: true, outcome: 'kept_queued' });
-      }
-      if (action === 'abandon') {
-        // Dispatcher verified on the PixelPay portal that NO charge exists → a missed
-        // order, not a lost charge. Terminal (clears the manual_reconciliation queue).
-        // Money-safety rail: REFUSE if a payment_uuid is recorded — a uuid means a real
-        // charge exists, which must be voided via 'refund', never silently abandoned.
-        const uuid = attemptId ? (await db.ref(`payment_attempts/${attemptId}/payment_uuid`).once('value')).val() : null;
-        if (uuid) return res.status(409).json({ error: 'Este pedido tiene un pago registrado (uuid) — usá "Reembolsar", no "Descartar".', payment_uuid_present: true });
-        if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'abandoned', status: 'abandoned', abandoned_at: Date.now() });
-        await db.ref(`orders/${orderId}`).update({ payment_status: 'abandoned', status: 'cancelled' });
-        await audit('abandoned', { note: sanitizeText(body.note || '', 200) });
-        return res.status(200).json({ ok: true, outcome: 'abandoned' });
-      }
-      if (action === 'materialize') {
-        // Dispatcher verified the ledger shows our paid capture → confirm + materialize.
-        if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ status: 'captured', capture_verified: true, manual_verified: true, amount_cents: order.total_cents });
-        await db.ref(`orders/${orderId}`).update({ payment_status: 'pending' }); // let confirmAndMaterialize claim it
-        const r = await confirmAndMaterialize(confirmDeps(db), { orderId, attemptId, now: Date.now(), trackingToken: generateTrackingToken() });
-        await audit('materialized', { confirm_outcome: r.outcome });
-        return res.status(200).json({ ok: true, outcome: r.outcome });
-      }
-      // action === 'refund'
-      const uuid = attemptId ? (await db.ref(`payment_attempts/${attemptId}/payment_uuid`).once('value')).val() : null;
-      let voided = false;
-      if (uuid) {
-        try { const vd = await pixelpayClient.voidTransaction({ payment_uuid: uuid, pixelpayOrderId: `${orderId}-${attemptId}`, voidReason: 'xpizza_manual_refund' }); voided = !!vd.ok; } catch (_) {}
-      }
-      if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ status: voided ? 'refunded' : 'refund_pending', refunded_at: Date.now() });
-      await db.ref(`orders/${orderId}`).update({ payment_status: voided ? 'refunded' : 'refund_pending', status: 'cancelled' });
-      await audit(voided ? 'refunded' : 'refund_pending', { voided });
-      return res.status(200).json({ ok: true, outcome: voided ? 'refunded' : 'refund_pending' });
-    } catch (e) {
-      console.error(`resolveManualReconciliation: ${orderId} ${action} failed`, e.message);
-      return res.status(500).json({ error: 'resolve failed', detail: e.message });
-    }
+    const crypto = require('crypto');
+    // The money state machine lives in resolve-manual.js (deps injected) so the emulator F-matrix drives it
+    // with REAL concurrent transactions. This wrapper is a thin adapter: auth (above) → core → HTTP.
+    const result = await resolveManualReconciliationCore(resolveDeps(db), {
+      orderId, action, actor, note: body.note, now: Date.now(), claimId: crypto.randomUUID(),
+    });
+    return res.status(result.status).json(result.body);
   }
 );
 
@@ -1498,6 +1481,7 @@ exports.cancelPaidOrder = onRequest(
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (order.payment_method !== 'online') return res.status(409).json({ error: 'Not an online order', detail: 'use the dispatch cancel for cash orders' });
     if (order.status === 'cancelled') return res.status(200).json({ ok: true, outcome: 'already_cancelled', order_id: orderId });
+    if (MR.isResolving(order.payment_status)) return res.status(409).json({ error: 'Pedido en reconciliación manual (en proceso) — no se puede cancelar', payment_status: order.payment_status });
 
     const attemptId = order.active_attempt_id || null;
     const attemptRef = attemptId ? db.ref(`payment_attempts/${attemptId}`) : null;

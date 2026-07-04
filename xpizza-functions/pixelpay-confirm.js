@@ -31,6 +31,7 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
   if (order.payment_method !== 'online') return { outcome: 'not_online' };
   if (order.status === 'cancelled') return { outcome: 'cancelled' };
   if (order.payment_status === 'manual_reconciliation') return { outcome: 'manual_reconciliation' };
+  if (require('./manual-resolve').isResolving(order.payment_status)) return { outcome: 'resolving_in_progress' }; // dispatcher mid-resolve — don't auto-transition
   if (order.payment_status === 'failed') return { outcome: 'failed' };
 
   // Already confirmed → ensure materialized (recover crash-after-confirm), then done.
