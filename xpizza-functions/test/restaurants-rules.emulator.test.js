@@ -120,6 +120,17 @@ const withField = (k, v) => ({ ...VALID, [k]: v });
   await no('D: driver writes current_hub_task_id (dispatcher-only -> deny)', set(drvDb, `drivers/${DRV}/current_hub_task_id`, `${DRV}_pickup`));
   await ok('D: dispatcher writes current_hub_task_id (intended writer)', set(dispDb, `drivers/${DRV}/current_hub_task_id`, `${DRV}_pickup`));
 
+  // ── E: Ready-Time admin-only trees (Phase-1) — server-write via admin SDK (bypasses rules); NO client
+  //    read, NO client write. The KDS client key is an authenticated non-dispatcher (drvDb here). Proves
+  //    the KDS cannot read ready_time_model/ (Step-3), nor the prediction/config trees. ──
+  await env.withSecurityRulesDisabled((ctx) => ctx.database().ref('ready_time_model/x_pizza/v1/restaurant').set({ p50: 18, sample_count: 7 }));
+  await no('E: KDS/authed client CANNOT read ready_time_model (admin-only, Step-3)', get(drvDb, 'ready_time_model/x_pizza/v1/restaurant'));
+  await no('E: dispatcher cannot read ready_time_model either (server-only)', get(dispDb, 'ready_time_model'));
+  await no('E: anon cannot read ready_time_model', get(anonDb, 'ready_time_model'));
+  await no('E: authed client cannot WRITE ready_time_model', set(drvDb, 'ready_time_model/x_pizza/v1/restaurant/p50', 5));
+  await no('E: authed client cannot read order_predictions', get(drvDb, 'order_predictions/O1'));
+  await no('E: authed client cannot read prediction_logs', get(drvDb, 'prediction_logs/O1'));
+
   await env.cleanup();
   console.log(`restaurants-rules.emulator: OK (${n} assertions)`);
 })().catch((e) => {

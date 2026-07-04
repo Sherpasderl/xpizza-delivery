@@ -92,4 +92,57 @@ function extractLabels(timeline) {
   };
 }
 
-module.exports = { extractCreationFeatures, extractLabels, TZ_OFFSET_MS };
+// ── Step-3 bucket helpers — take an EXPLICIT `at` anchor (the chosen to:'new' event.at), NEVER
+//    timeline.new_at, which is a separate lagging transaction (R2-#2). Pure; used by both triggers so the
+//    prediction bucket and the model-update bucket are computed identically. ──
+
+// hour-of-day (0–23) in fixed UTC−6 from an explicit ms anchor.
+const hourOf = (atMs) => (isNum(atMs) ? new Date(atMs - TZ_OFFSET_MS).getUTCHours() : null);
+
+// Daypart from the anchor: late (22–4) / morning (5–10) / lunch (11–15) / dinner (16–21).
+function daypartOf(atMs) {
+  const h = hourOf(atMs);
+  if (h === null) return 'na';
+  if (h < 5) return 'late';
+  if (h < 11) return 'morning';
+  if (h < 16) return 'lunch';
+  if (h < 22) return 'dinner';
+  return 'late';
+}
+
+// kitchen_load_ahead bucket — SAME cut points as ready-time-quality.js loadBucket (0 / 1-2 / 3-5 / 6+).
+function loadBucketOf(n) {
+  if (!isNum(n)) return 'na';
+  if (n <= 0) return '0';
+  if (n <= 2) return '1-2';
+  if (n <= 5) return '3-5';
+  return '6+';
+}
+
+// item_count bucket (x_pizza composition). 0/invalid → na.
+function itemCountBucketOf(n) {
+  if (!isNum(n) || n < 1) return 'na';
+  if (n <= 1) return '1';
+  if (n <= 3) return '2-3';
+  return '4+';
+}
+
+// Composite bucket keys. exact = hour × load × items; daypart = daypart × load (the fallback level).
+const bucketKeyExact = (atMs, kitchenLoadAhead, itemCount) => `${hourOf(atMs)}|${loadBucketOf(kitchenLoadAhead)}|${itemCountBucketOf(itemCount)}`;
+const bucketKeyDaypart = (atMs, kitchenLoadAhead) => `${daypartOf(atMs)}|${loadBucketOf(kitchenLoadAhead)}`;
+
+// pickNewEvent — the deterministic chosen to:'new' event row from an order_events map: the min by
+// (at, eventId) among to:'new' rows with a numeric `at` (matches the extractCreationFeatures selection +
+// the quality monitor's). Returns the row (with .at / .kitchen_load_ahead / …) or null. Used by Trigger B
+// to recover the SAME anchor + congestion the prediction used, without depending on timeline.new_at.
+function pickNewEvent(events) {
+  const c = Object.entries(events || {})
+    .filter(([, e]) => e && e.to === 'new' && isNum(e.at))
+    .sort(([ia, a], [ib, b]) => (a.at - b.at) || (ia < ib ? -1 : ia > ib ? 1 : 0));
+  return c.length ? c[0][1] : null;
+}
+
+module.exports = {
+  extractCreationFeatures, extractLabels, TZ_OFFSET_MS,
+  hourOf, daypartOf, loadBucketOf, itemCountBucketOf, bucketKeyExact, bucketKeyDaypart, pickNewEvent,
+};
