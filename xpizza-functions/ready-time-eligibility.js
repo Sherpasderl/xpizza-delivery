@@ -34,6 +34,32 @@ function timelineSanity(timeline) {
   return { ok: true, violation: null };
 }
 
+// nonLabelExclusions — the NON-label exclusions ONLY: epoch cutoff + ops denylists (R6/R7/R8). NO label
+// or timeline-sanity gates. Extracted (Step-1a) so the Step-1 data-quality monitor can filter its
+// population by these WITHOUT the no_ready_label/no_new_label gates — those drop the exact missed-tap
+// rows the monitor exists to count. isTrainingEligible composes it, so its output is byte-identical.
+function nonLabelExclusions(order, timeline, cfg) {
+  const reasons = [];
+  const o = order || {};
+  const t = timeline || {};
+  const c = cfg || {};
+  const rid = normRid(o.restaurant_id);
+  const epochMap = c.epoch_start_ms || {};
+  const epoch = isNum(epochMap[rid]) ? epochMap[rid] : Infinity; // unset → fail-closed (nothing eligible)
+  const excludedPhones = c.excluded_phones || {};
+  const excludedOrders = c.excluded_orders || {};
+
+  // R6 — before the per-restaurant go-live epoch (drops the pre-launch synthetic population wholesale).
+  if (isNum(t.new_at) && t.new_at < epoch) reasons.push('before_epoch');
+  // R7 — ops-maintained phone denylist (reused normalizePhone; null → matches nothing, no throw).
+  const phoneKey = normalizePhone(o.customer_phone);
+  if (phoneKey && excludedPhones[phoneKey] === true) reasons.push('excluded_phone');
+  // R8 — ops-maintained order-id denylist (named known test orders).
+  if (o.order_id && excludedOrders[o.order_id] === true) reasons.push('excluded_order');
+
+  return { excluded: reasons.length > 0, reasons };
+}
+
 // isTrainingEligible — the shared training-row gate. Collects ALL failing reasons (no short-circuit),
 // so eval can attribute exclusions by cohort. cfg is the admin-only ready_time_config (fail-closed
 // defaults when absent). Pure; all inputs are plain objects from the ETL join.
@@ -41,14 +67,8 @@ function isTrainingEligible(order, timeline, events, cfg) {
   const reasons = [];
   const o = order || {};
   const t = timeline || {};
-  const rid = normRid(o.restaurant_id);
   const c = cfg || {};
-
   const maxPrep = isNum(c.max_plausible_prep_ms) ? c.max_plausible_prep_ms : DEFAULT_MAX_PLAUSIBLE_PREP_MS;
-  const epochMap = c.epoch_start_ms || {};
-  const epoch = isNum(epochMap[rid]) ? epochMap[rid] : Infinity; // unset → fail-closed (nothing eligible)
-  const excludedPhones = c.excluded_phones || {};
-  const excludedOrders = c.excluded_orders || {};
 
   // R1 — not predictable: no to:'new' event with a numeric at (used for predictability/provenance only).
   const hasNewEvent = Object.values(events || {}).some((e) => e && e.to === 'new' && isNum(e.at));
@@ -70,15 +90,8 @@ function isTrainingEligible(order, timeline, events, cfg) {
     else if (prep > maxPrep) reasons.push('implausible_prep');
   }
 
-  // R6 — before the per-restaurant go-live epoch (drops the pre-launch synthetic population wholesale).
-  if (isNum(t.new_at) && t.new_at < epoch) reasons.push('before_epoch');
-
-  // R7 — ops-maintained phone denylist (reused normalizePhone; null → matches nothing, no throw).
-  const phoneKey = normalizePhone(o.customer_phone);
-  if (phoneKey && excludedPhones[phoneKey] === true) reasons.push('excluded_phone');
-
-  // R8 — ops-maintained order-id denylist (named known test orders).
-  if (o.order_id && excludedOrders[o.order_id] === true) reasons.push('excluded_order');
+  // R6/R7/R8 — non-label exclusions, appended LAST in the same order → output byte-identical to pre-refactor.
+  reasons.push(...nonLabelExclusions(o, t, c).reasons);
 
   return { eligible: reasons.length === 0, reasons };
 }
@@ -107,4 +120,4 @@ function assertNonzeroEligibleCounts(counts, activeRestaurants) {
   return { ok: true, counts: cnt };
 }
 
-module.exports = { timelineSanity, isTrainingEligible, isValidModelVersion, assertNonzeroEligibleCounts, TZ_OFFSET_MS, DEFAULT_MAX_PLAUSIBLE_PREP_MS };
+module.exports = { timelineSanity, isTrainingEligible, isValidModelVersion, assertNonzeroEligibleCounts, nonLabelExclusions, TZ_OFFSET_MS, DEFAULT_MAX_PLAUSIBLE_PREP_MS };

@@ -8,7 +8,7 @@
 // one), so every branch of the rev-3 design (PHASE1_STEP0_SCHEMA_ELIGIBILITY.md §2-§4) is pinned here.
 const assert = require('assert');
 const {
-  timelineSanity, isTrainingEligible, isValidModelVersion, assertNonzeroEligibleCounts,
+  timelineSanity, isTrainingEligible, isValidModelVersion, assertNonzeroEligibleCounts, nonLabelExclusions,
 } = require('./ready-time-eligibility');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -143,6 +143,24 @@ const cleanEvents = () => ({ '-Ea': { to: 'new', at: NEW, restaurant_id: 'x_pizz
   // active restaurant MISSING from counts → treated as zero → throws
   let e2; try { assertNonzeroEligibleCounts({ x_pizza: 5 }, ['x_pizza', 'la_musa']); } catch (err) { e2 = err; }
   assert.ok(e2 && e2.offenders.some((o) => o.restaurant_id === 'la_musa')); ok('zero-guard: active restaurant missing from counts → throws');
+}
+
+// ── nonLabelExclusions (Step-1a extraction) — epoch + denylists ONLY, NO label/sanity gates ──
+// Step 1's monitor reuses this so the population is filtered by the non-label exclusions WITHOUT the
+// no_ready_label/no_new_label gates (which would drop the exact missed-tap rows the monitor counts).
+{
+  assert.deepStrictEqual(nonLabelExclusions(cleanOrder(), cleanTimeline(), CFG), { excluded: false, reasons: [] }); ok('nonLabel: clean post-epoch non-denylisted → { excluded:false, reasons:[] }');
+  const tpe = cleanTimeline(); tpe.new_at = CFG.epoch_start_ms.x_pizza - 1;
+  assert.deepStrictEqual(nonLabelExclusions(cleanOrder(), tpe, CFG).reasons, ['before_epoch']); ok('nonLabel: pre-epoch → [before_epoch]');
+  const op = cleanOrder(); op.customer_phone = '50493736607';
+  assert.deepStrictEqual(nonLabelExclusions(op, cleanTimeline(), CFG).reasons, ['excluded_phone']); ok('nonLabel: denylisted phone → [excluded_phone]');
+  const oo = cleanOrder(); oo.order_id = 'PZX-260702-145122';
+  assert.deepStrictEqual(nonLabelExclusions(oo, cleanTimeline(), CFG).reasons, ['excluded_order']); ok('nonLabel: denylisted order → [excluded_order]');
+  // NO label/sanity reasons even with no stamps at all (proves it ignores the label gates)
+  assert.deepStrictEqual(nonLabelExclusions(cleanOrder(), {}, CFG), { excluded: false, reasons: [] }); ok('nonLabel: empty timeline → not excluded (no label/sanity gates)');
+  // multi-reason order preserved: before_epoch then excluded_phone
+  const om = cleanOrder(); om.customer_phone = '50493736607'; const tm = cleanTimeline(); tm.new_at = CFG.epoch_start_ms.x_pizza - 1;
+  assert.deepStrictEqual(nonLabelExclusions(om, tm, CFG).reasons, ['before_epoch', 'excluded_phone']); ok('nonLabel: multi → [before_epoch, excluded_phone] in order');
 }
 
 console.log(`\n${n} passed`);

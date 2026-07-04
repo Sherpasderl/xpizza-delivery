@@ -89,6 +89,7 @@
     "order_predictions":{ ".read": false, ".write": false },
     "prediction_logs":  { ".read": false, ".write": false },
     "ready_time_config":{ ".read": false, ".write": false },
+    "ready_time_quality":{ ".read": false, ".write": false },
 
     "incoming_messages": {
       ".read": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
