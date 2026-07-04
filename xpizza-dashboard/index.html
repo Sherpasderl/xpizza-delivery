@@ -672,7 +672,7 @@ a { color: inherit; }
 </div>
 
 <script type="module">
-import * as XPD from './xpizza-delivery.js?v=5';
+import * as XPD from './xpizza-delivery.js?v=6';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU",
@@ -1680,7 +1680,14 @@ async function callAction(name, payload) {
   });
   let data = {};
   try { data = await res.json(); } catch (_) {}
-  if (!res.ok) throw new Error(data.detail || data.error || `Error ${res.status}`);
+  if (!res.ok) {
+    // [Fix#4] carry the honest outcome (refund_pending / manual_review / claim_lost / in_recon_surface) so the
+    // UI renders outcome-specific copy — not a bare "Error 409" — matching dispatch's err.outcome handling.
+    const err = new Error(data.detail || data.error || `Error ${res.status}`);
+    err.outcome = data.outcome || null;
+    err.httpStatus = res.status;
+    throw err;
+  }
   return data;
 }
 
@@ -1701,10 +1708,23 @@ function actionConfig(o) {
     list.push({ act: 'keep', label: 'Mantener en cola', kind: 'soft', confirm: null,
       fn: () => callAction('resolveManualReconciliation', { order_id: id, action: 'keep' }) });
   }
-  if (o.payment_method === 'online' && o.payment_status === 'confirmed' && o.status !== 'cancelled') {
-    list.push({ act: 'cancel', label: 'Cancelar y reembolsar', kind: 'danger',
-      confirm: `Esto cancela el pedido y reembolsa L${o.total ?? '—'} al cliente. ¿Continuar?`,
-      fn: () => callAction('cancelPaidOrder', { order_id: id, reason: 'cancelado por despacho' }) });
+  // Universal cancel — route ALL methods through the money-safe server endpoint (voids iff captured money;
+  // cash degrades to a plain finalize). Not for the recon flow (its own actions above) or a delivered order.
+  const inReconFlow = o.payment_status === 'manual_reconciliation' || String(o.payment_status || '').startsWith('resolving_');
+  if (o.status !== 'delivered' && !inReconFlow) {
+    if (o.status === 'cancelled') {
+      // Heal an already-cancelled order that still shows paid (the L251 residue) → the endpoint voids the charge.
+      if (o.payment_status === 'confirmed') {
+        list.push({ act: 'cancel', label: 'Reembolsar cargo (pedido cancelado)', kind: 'danger',
+          confirm: `Este pedido está cancelado pero el cargo sigue activo. Esto reembolsa L${o.total ?? '—'}. ¿Continuar?`,
+          fn: () => callAction('cancelPaidOrder', { order_id: id, reason: 'reembolso de pedido cancelado' }) });
+      }
+    } else {
+      const paid = o.payment_status === 'confirmed';
+      list.push({ act: 'cancel', label: paid ? 'Cancelar y reembolsar' : 'Cancelar pedido', kind: 'danger',
+        confirm: paid ? `Esto cancela el pedido y reembolsa L${o.total ?? '—'} al cliente. ¿Continuar?` : `Esto cancela el pedido #${id}. ¿Continuar?`,
+        fn: () => callAction('cancelPaidOrder', { order_id: id, reason: 'cancelado por despacho' }) });
+    }
   }
   return list;
 }
@@ -1757,7 +1777,9 @@ function wireActions(actions) {
       const r = await a.fn();
       area.innerHTML = `<div class="pd-action-done">✓ ${escapeHtml(actionResultText(a, r))}</div>`;
     } catch (e) {
-      area.innerHTML = `<div class="pd-action-error">✗ ${escapeHtml(e.message || 'Error')}</div>`;
+      // [Fix#4] outcome-specific copy: refund_pending / manual_review / claim_lost → "… — revisar", not a bare error.
+      const msg = (e && e.outcome) ? `${e.outcome} — revisar` : (e.message || 'Error');
+      area.innerHTML = `<div class="pd-action-error">✗ ${escapeHtml(msg)}</div>`;
       const retry = document.createElement('button');
       retry.className = 'pd-btn pd-btn-soft';
       retry.textContent = 'Reintentar';

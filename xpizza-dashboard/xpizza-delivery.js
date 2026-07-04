@@ -838,39 +838,10 @@ export async function reassignOrder(orderId, newDriverId, expectedFromDriver) {
  * Cancel an order. Marks order + both tasks as cancelled. Clears the
  * assigned driver's current_task_id if they were working this order.
  */
-export async function cancelOrder(orderId, reason = '') {
-  const pickupTaskId = `${orderId}_pickup`;
-  const deliveryTaskId = `${orderId}_delivery`;
-  const pickupSnap = await get(ref(db, `tasks/${pickupTaskId}`));
-  const pickup = pickupSnap.val();
-
-  const updates = {};
-  updates[`orders/${orderId}/status`] = ORDER_STATUS.CANCELLED;
-  updates[`orders/${orderId}/cancelled_at`] = serverTimestamp();
-  if (reason) updates[`orders/${orderId}/cancel_reason`] = reason;
-  updates[`tasks/${pickupTaskId}/status`] = TASK_STATUS.CANCELLED;
-  updates[`tasks/${deliveryTaskId}/status`] = TASK_STATUS.CANCELLED;
-
-  // Clear the assigned driver's current_task_id if they were working this
-  if (pickup && pickup.assigned_driver_id) {
-    const driverSnap = await get(ref(db, `drivers/${pickup.assigned_driver_id}`));
-    const driver = driverSnap.val();
-    if (driver) {
-      const wasWorkingThis = driver.current_task_id === pickupTaskId ||
-                             driver.current_task_id === deliveryTaskId;
-      if (wasWorkingThis) {
-        updates[`drivers/${pickup.assigned_driver_id}/current_task_id`] = null;
-        if (driver.status === DRIVER_STATUS.ASSIGNED ||
-            driver.status === DRIVER_STATUS.AT_RESTAURANT ||
-            driver.status === DRIVER_STATUS.EN_ROUTE_DELIVERY) {
-          updates[`drivers/${pickup.assigned_driver_id}/status`] = DRIVER_STATUS.AVAILABLE;
-        }
-      }
-    }
-  }
-
-  await update(ref(db), updates);
-}
+// [RETIRED] cancelOrder (client RTDB-only cancel) — dead export, no callers. Dispatcher cancellation is now
+// the money-safe server endpoint cancelPaidOrder (voids the charge iff captured money, heals an
+// already-cancelled-but-paid order). The dashboard cancel UI calls it via callAction. Removed so no client
+// surface can write an order cancellation to RTDB without refunding (the L251 bug).
 
 /**
  * Driver taps "Recogí pedido" (picked up the bag at the restaurant).
