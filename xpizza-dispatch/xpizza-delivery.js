@@ -884,38 +884,28 @@ export async function reassignOrder(orderId, newDriverId, expectedFromDriver) {
  * Cancel an order. Marks order + both tasks as cancelled. Clears the
  * assigned driver's current_task_id if they were working this order.
  */
-export async function cancelOrder(orderId, reason = '') {
-  const pickupTaskId = `${orderId}_pickup`;
-  const deliveryTaskId = `${orderId}_delivery`;
-  const pickupSnap = await get(ref(db, `tasks/${pickupTaskId}`));
-  const pickup = pickupSnap.val();
-
-  const updates = {};
-  updates[`orders/${orderId}/status`] = ORDER_STATUS.CANCELLED;
-  updates[`orders/${orderId}/cancelled_at`] = serverTimestamp();
-  if (reason) updates[`orders/${orderId}/cancel_reason`] = reason;
-  updates[`tasks/${pickupTaskId}/status`] = TASK_STATUS.CANCELLED;
-  updates[`tasks/${deliveryTaskId}/status`] = TASK_STATUS.CANCELLED;
-
-  // Clear the assigned driver's current_task_id if they were working this
-  if (pickup && pickup.assigned_driver_id) {
-    const driverSnap = await get(ref(db, `drivers/${pickup.assigned_driver_id}`));
-    const driver = driverSnap.val();
-    if (driver) {
-      const wasWorkingThis = driver.current_task_id === pickupTaskId ||
-                             driver.current_task_id === deliveryTaskId;
-      if (wasWorkingThis) {
-        updates[`drivers/${pickup.assigned_driver_id}/current_task_id`] = null;
-        if (driver.status === DRIVER_STATUS.ASSIGNED ||
-            driver.status === DRIVER_STATUS.AT_RESTAURANT ||
-            driver.status === DRIVER_STATUS.EN_ROUTE_DELIVERY) {
-          updates[`drivers/${pickup.assigned_driver_id}/status`] = DRIVER_STATUS.AVAILABLE;
-        }
-      }
-    }
+// Universal dispatcher cancel → the money-safe SERVER endpoint (voids the charge iff there is captured
+// money, heals an already-cancelled-but-still-paid order, releases the driver). Replaces the old RTDB-only
+// `cancelOrder`, which wrote status+tasks directly and NEVER refunded a paid card order (the L251 bug).
+export async function cancelOrderRemote(orderId, reason = '') {
+  const user = auth && auth.currentUser;
+  if (!user) throw new Error('No hay sesión de dispatcher');
+  const token = await user.getIdToken();
+  const res = await fetch(functionUrl('cancelPaidOrder'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ order_id: orderId, reason })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    // refund_pending / manual_review / claim_lost arrive as non-2xx carrying {outcome} — surface it so the
+    // UI shows the real state ("revisar"), never a bare error that hides a pending refund.
+    const err = new Error(data.error || data.detail || `HTTP ${res.status}`);
+    err.outcome = data.outcome || null;
+    err.httpStatus = res.status;
+    throw err;
   }
-
-  await update(ref(db), updates);
+  return data; // { ok, outcome, refund }
 }
 
 /**
