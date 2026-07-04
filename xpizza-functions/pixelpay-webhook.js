@@ -9,6 +9,8 @@
  * need enough to find the internal order and (best-effort) a payment_uuid.
  */
 
+const MR = require('./manual-resolve');   // atomic-claim predicate (rev-5) — pure, single-source
+
 // attempt_id is 16 lowercase-hex chars (crypto.randomBytes(8).toString('hex')), and
 // pixelpay_order_id = `${order_id}-${attempt_id}`. Strip the suffix to get the order id.
 const ATTEMPT_SUFFIX = /-[0-9a-f]{16}$/;
@@ -60,7 +62,7 @@ function extractWebhookNudge(body) {
 function classifySweepCandidate(order, attempt, now, { confirmTtlMs = 120000, abandonTtlMs = 1800000 } = {}) {
   if (!order) return 'skip';
   if (order.status !== 'pending_payment') return 'skip';
-  if (['confirmed', 'manual_reconciliation', 'failed', 'refund_pending'].includes(order.payment_status)) return 'skip';
+  if (MR.isStatusChangeClosedToAutomation(order.payment_status)) return 'skip'; // resolving_* / terminal / manual — not sweepable
 
   const created = Number(order.created_at) || 0;
   const age = now - created;

@@ -14,6 +14,7 @@ const ppCrypto = require('./pixelpay');
 const { resolvePixelPayConfig } = require('./pixelpay-config');
 const { toCents } = require('./pixelpay-hosted');
 const { confirmAndMaterialize } = require('./pixelpay-confirm');
+const MR = require('./manual-resolve');   // atomic-claim predicate (rev-5): paid-evidence capture in manual-flow states
 
 const ATTEMPT_SUFFIX = /-[0-9a-f]{16}$/;             // hosted_order_id = `${orderId}-${attemptId}` (16-hex)
 const HOSTED_ORDER_RE = /^[A-Za-z0-9_-]{1,96}$/;
@@ -71,8 +72,34 @@ async function handleHostedCallback(deps, body, now) {
   }
 
   // CANCEL race (I9): cancelled before this paid callback → auto-void, NEVER materialize.
-  if (attempt.cancel_pending || order.status === 'cancelled') {
+  // NOTE: an `abandoned` manual-resolve order has status:'cancelled', so a LATE paid callback on an
+  // abandoned order lands HERE → auto-void + refund_pending + alert (rev-5 R3-#2 backstop).
+  // [Fix#3] Also honor an ORDER-level cancel claim (resolving_action='cancel' + cancel_claim_id) — set
+  // ATOMICALLY by cancelOrderCore's claim BEFORE the attempt's cancel_pending flag. A paid callback in the
+  // ~1ms gap between the order-claim and the attempt-flag would otherwise see neither → materialize. This
+  // closes that window completely (the order claim always lands first).
+  if (attempt.cancel_pending || order.status === 'cancelled' || (order.resolving_action === 'cancel' && order.cancel_claim_id)) {
     return voidPaid(deps, { orderId, attemptId, hostedOrderId, uuid, amount, now, reason: 'cancelled_before_payment' });
+  }
+
+  // [rev-5 R2-#1 / R4 / R3-#4] Paid callback while the order is in the manual-reconciliation flow — QUEUED
+  // (manual_reconciliation) or MID-RESOLVE (resolving_*), both still status:'pending_payment'. This is money
+  // EVIDENCE, not noise: record it ATOMICALLY (attempt UUID + verified flags + orders/{id}/paid_during_resolve)
+  // in ONE multi-location update so no partial strand, and do NOT materialize — the dispatcher owns the
+  // resolution. The order flag makes the resolver's abandon-CAS fail and its refund use this UUID.
+  if (order.payment_status === 'manual_reconciliation' || MR.isResolving(order.payment_status)) {
+    await db.ref().update({
+      [`payment_attempts/${attemptId}/hosted_state`]: 'paid',
+      [`payment_attempts/${attemptId}/payment_uuid`]: uuid,
+      [`payment_attempts/${attemptId}/paid_amount_cents`]: toCents(amount),
+      [`payment_attempts/${attemptId}/hosted_callback_verified`]: true,
+      [`payment_attempts/${attemptId}/payment_hash_verified`]: true,
+      [`payment_attempts/${attemptId}/payment_reference`]: txnRef || uuid,
+      [`payment_attempts/${attemptId}/paid_at`]: now,
+      [`orders/${orderId}/paid_during_resolve`]: true,
+    });
+    deps.alert && deps.alert('paid_during_manual_resolve', { orderId, attemptId, payment_status: order.payment_status });
+    return { code: 200, outcome: 'paid_evidence_recorded' };
   }
 
   // Verified paid → persist the verified payment data FIRST (recovery reads it), then

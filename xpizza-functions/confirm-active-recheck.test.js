@@ -119,5 +119,14 @@ function makeDb(initial = {}) {
     ok('pre-capture config-fail -> retryable, no capture');
   }
 
+  // ── [rev-5 Stage-2] resolving_* order → confirm SKIPS (dispatcher mid-resolve owns it) ──
+  {
+    const db = makeDb({ orders: { OR: { order_type: 'pickup', payment_method: 'online', payment_status: 'resolving_refund', active_attempt_id: 'A1', restaurant_id: 'x_pizza', total_cents: 10000 } } });
+    const deps = { db, restaurant: FALLBACK, buildMaterializeUpdates, getIdentity: async () => ID(true), alert: () => {} };
+    const r = await confirmOnlinePayment(deps, { orderId: 'OR', paymentUuid: 'U1', now: 100, trackingToken: 'T' });
+    assert.equal(r.outcome, 'resolving_in_progress');
+    ok('[Stage-2] resolving_* → confirmOnlinePayment skips (resolving_in_progress)');
+  }
+
   console.log(`confirm-active-recheck: OK (${n} cases)`);
 })().catch((e) => { console.error('confirm-active-recheck: FAIL\n', e); process.exit(1); });

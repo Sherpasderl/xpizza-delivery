@@ -15,7 +15,9 @@ function makeDb(initial = {}) {
     ref: (p = '') => ({
       async once() { return { val: () => clone(getAt(p)) }; },
       async set(v) { setAt(p, clone(v)); },
-      async update(patch) { setAt(p, Object.assign({}, getAt(p) || {}, clone(patch))); }
+      async update(patch) { setAt(p, Object.assign({}, getAt(p) || {}, clone(patch))); },
+      // RTDB-like transaction (fn runs speculative-null then real; undefined → abort) for the Fix-B reversal CAS.
+      async transaction(fn) { fn(null); const cur = clone(getAt(p)); const nx = fn(cur); if (nx === undefined) return { committed: false, snapshot: { val: () => cur } }; setAt(p, clone(nx)); return { committed: true, snapshot: { val: () => clone(getAt(p)) } }; }
     })
   };
 }
