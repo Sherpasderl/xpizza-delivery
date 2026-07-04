@@ -207,6 +207,14 @@
   .card.prep  { border-left: 3px solid var(--prep); }
   .card.listo { border-left: 3px solid var(--listo); opacity: 0.7; }
 
+  /* Phase-1 Step 2: v0 overdue nudge — additive VISUAL OVERLAY only (box-shadow/animation, no reflow).
+     Applied post-render by the nudge controller to canonically-overdue preparing cards. */
+  @keyframes nudge-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(176, 42, 20, 0.0); }
+    50%      { box-shadow: 0 0 0 5px rgba(176, 42, 20, 0.55); }
+  }
+  .card.nudge-overdue { animation: nudge-pulse 1.1s ease-in-out infinite; }
+
   /* ── Cancelled state ── */
   .card.cancelled {
     background: #FFF1F0;
@@ -927,6 +935,94 @@ function shortStatus(s) {
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
 import * as XPD from './xpizza-delivery.js?v=16';
+import { nudgeEligibility, classAction, nextBeepState, nudgeRestaurantFromHost } from './ready-nudge.js?v=1';
+
+/* ── Phase-1 Step 2: v0 overdue-nudge controller (isolated; fed the canonical raw orders via a
+   try/caught hook in the subscribeToOrders callback — NO second /orders subscription). Toggles the
+   .nudge-overdue class + edge-beeps; touches NONE of renderCard/render/mapFirebaseOrderToCard. Reads
+   canonical status + per-card order_timelines only (never localState/estado). Fail-closed on an unknown
+   host and on missing preparing_at. See PHASE1_STEP2_KDS_NUDGE.md (rev-3). */
+window.__readyNudge = (() => {
+  const NUDGE_RID = nudgeRestaurantFromHost(location.hostname);   // null on an unrecognized host → inert
+  const BEEP_COOLDOWN_MS = 3000;
+  const raw = {};            // id → canonical raw order
+  const timelines = {};      // id → order_timelines/{id} node
+  const tlUnsub = {};        // id → per-card timeline unsubscribe
+  const eligibleState = {};  // id → last known eligibility (for edge beeps)
+  let thresholdMin = null, thUnsub = null, tick = null, observer = null, running = false;
+  let lastBeepTs = 0, audioCtx = null, rafPending = false;
+
+  function beep() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = 880; g.gain.value = 0.06;
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(); o.stop(audioCtx.currentTime + 0.18);
+    } catch (e) { /* audio best-effort; never affect the display */ }
+  }
+
+  function applyNudges() {
+    if (!running) return;
+    const now = Date.now();
+    let beepThisPass = false;
+    for (const id of Object.keys(raw)) {
+      const nudge = nudgeEligibility(raw[id], timelines[id], thresholdMin, now).nudge;
+      const el = document.getElementById('card-' + id);
+      if (el) {
+        const act = classAction(el.classList.contains('nudge-overdue'), nudge);
+        if (act === 'add') el.classList.add('nudge-overdue');
+        else if (act === 'remove') el.classList.remove('nudge-overdue');
+      }
+      const { beep: doBeep, newState } = nextBeepState(eligibleState[id], nudge, !!el);
+      eligibleState[id] = newState;
+      if (doBeep) beepThisPass = true;
+    }
+    if (beepThisPass && (now - lastBeepTs) > BEEP_COOLDOWN_MS) { beep(); lastBeepTs = now; }  // ≤1 beep/pass + cooldown
+  }
+  function scheduleApply() { if (rafPending) return; rafPending = true; requestAnimationFrame(() => { rafPending = false; applyNudges(); }); }
+
+  function start() {
+    if (running || !NUDGE_RID) return;
+    running = true;
+    thUnsub = XPD.subscribeReadyTimeThreshold(NUDGE_RID, (v) => { thresholdMin = v; applyNudges(); });
+    observer = new MutationObserver(scheduleApply);   // re-apply class within a frame after render() wipes innerHTML
+    for (const cid of ['col-nuevo', 'col-prep', 'col-listo']) {
+      const c = document.getElementById(cid); if (c) observer.observe(c, { childList: true });
+    }
+    tick = setInterval(applyNudges, 1000);            // drives time-boundary transitions
+    for (const ev of ['click', 'keydown', 'touchstart']) window.addEventListener(ev, () => { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }, { once: true, passive: true });
+  }
+
+  return {
+    onOrders(ordersById) {
+      if (!NUDGE_RID) return;                          // unknown host → nudge disabled
+      if (!running) start();
+      const seen = new Set();
+      for (const [key, o] of Object.entries(ordersById || {})) {
+        if (!o) continue;
+        const id = o.order_id || key;                  // raw orders have order_id, not the mapped `id`
+        seen.add(id); raw[id] = o;
+        if (!tlUnsub[id]) tlUnsub[id] = XPD.subscribeToOrderTimeline(id, (node) => { timelines[id] = node; applyNudges(); });
+      }
+      for (const id of Object.keys(raw)) {             // an order that left the active set: unsubscribe + forget
+        if (!seen.has(id)) { if (tlUnsub[id]) tlUnsub[id](); delete tlUnsub[id]; delete raw[id]; delete timelines[id]; delete eligibleState[id]; }
+      }
+      applyNudges();
+    },
+    teardown() {
+      running = false;
+      if (tick) { clearInterval(tick); tick = null; }
+      if (observer) { observer.disconnect(); observer = null; }
+      if (thUnsub) { thUnsub(); thUnsub = null; }
+      for (const id of Object.keys(tlUnsub)) { if (tlUnsub[id]) tlUnsub[id](); delete tlUnsub[id]; }
+      for (const k of Object.keys(raw)) delete raw[k];
+      for (const k of Object.keys(timelines)) delete timelines[k];
+      for (const k of Object.keys(eligibleState)) delete eligibleState[k];
+    },
+  };
+})();
 
 // Same Firebase project config as driver/dispatch.
 // apiKey is NOT a secret — it identifies the project. Real access is gated
@@ -1295,6 +1391,7 @@ let firebaseUnsubscribe = null;
 
 function startOrdersSubscription() {
   if (firebaseUnsubscribe) firebaseUnsubscribe();
+  window.__readyNudge?.teardown?.();   // teardown before (re)subscribing (restart path)
   firebaseUnsubscribe = XPD.subscribeToOrders((ordersById) => {
     // ordersById: { orderId1: {...}, orderId2: {...}, ... }
     const orders = Object.values(ordersById || {})
@@ -1334,6 +1431,9 @@ function startOrdersSubscription() {
     });
     render(activeOrders);
     checkForNewOrders(activeOrders);
+    // Phase-1 Step 2 nudge — fed the canonical RAW ordersById AFTER render; try/caught so a nudge bug
+    // can never take down the live KDS render (optional chaining guards absence, try/catch guards throw).
+    try { window.__readyNudge?.onOrders(ordersById); } catch (e) { console.warn('nudge onOrders failed', e); }
   });
 }
 
@@ -1846,6 +1946,7 @@ $signoutBtn.addEventListener('click', async () => {
     firebaseUnsubscribe();
     firebaseUnsubscribe = null;
   }
+  window.__readyNudge?.teardown?.();   // signout path
   await XPD.signOutUser();
   // onAuth handler will trigger the login screen
 });
@@ -1856,6 +1957,7 @@ XPD.onAuth(async (user) => {
       firebaseUnsubscribe();
       firebaseUnsubscribe = null;
     }
+    window.__readyNudge?.teardown?.();   // !user auth-state path
     showLogin();
     return;
   }

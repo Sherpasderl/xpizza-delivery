@@ -513,6 +513,22 @@ export function subscribeToOrders(callback) {
   return onValue(ordersRef, (snap) => callback(filterLiveOrders(snap.val() || {}, KDS_RESTAURANT_ID)));
 }
 
+// ── Ready-Time Phase-1 Step 2: the KDS overdue nudge (READ-ONLY, additive) ──
+// A single order_timelines/{id} node (preparing_at / ready_at) — subscribed PER active card and
+// unsubscribed when the card leaves (bounded read, not the whole tree). Returns the onValue unsubscribe.
+// Requires the order_timelines .read="auth != null" relaxation (deployed separately by Xavier).
+export function subscribeToOrderTimeline(orderId, callback) {
+  const tlRef = ref(db, `order_timelines/${orderId}`);
+  return onValue(tlRef, (snap) => callback(snap.val() || null));
+}
+
+// Per-restaurant nudge threshold (minutes) from the auth-readable config tree. Streams the raw config
+// value (or null); the fail-closed default is applied by the pure resolveThreshold() in ready-nudge.js.
+export function subscribeReadyTimeThreshold(restaurantId, callback) {
+  const thRef = ref(db, `config/ready_time/${restaurantId}/prep_threshold_min`);
+  return onValue(thRef, (snap) => callback(snap.val()));
+}
+
 /**
  * Dispatcher alerts: things the dispatcher needs to be notified about
  * (e.g., auto-assign couldn't find a driver). Each alert is a record

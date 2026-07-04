@@ -85,7 +85,7 @@
     },
 
     "order_events":     { ".read": false, ".write": false },
-    "order_timelines":  { ".read": false, ".write": false },
+    "order_timelines":  { ".read": "auth != null", ".write": false },
     "order_predictions":{ ".read": false, ".write": false },
     "prediction_logs":  { ".read": false, ".write": false },
     "ready_time_config":{ ".read": false, ".write": false },
