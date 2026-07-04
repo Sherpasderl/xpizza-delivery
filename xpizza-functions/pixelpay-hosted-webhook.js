@@ -74,7 +74,11 @@ async function handleHostedCallback(deps, body, now) {
   // CANCEL race (I9): cancelled before this paid callback → auto-void, NEVER materialize.
   // NOTE: an `abandoned` manual-resolve order has status:'cancelled', so a LATE paid callback on an
   // abandoned order lands HERE → auto-void + refund_pending + alert (rev-5 R3-#2 backstop).
-  if (attempt.cancel_pending || order.status === 'cancelled') {
+  // [Fix#3] Also honor an ORDER-level cancel claim (resolving_action='cancel' + cancel_claim_id) — set
+  // ATOMICALLY by cancelOrderCore's claim BEFORE the attempt's cancel_pending flag. A paid callback in the
+  // ~1ms gap between the order-claim and the attempt-flag would otherwise see neither → materialize. This
+  // closes that window completely (the order claim always lands first).
+  if (attempt.cancel_pending || order.status === 'cancelled' || (order.resolving_action === 'cancel' && order.cancel_claim_id)) {
     return voidPaid(deps, { orderId, attemptId, hostedOrderId, uuid, amount, now, reason: 'cancelled_before_payment' });
   }
 

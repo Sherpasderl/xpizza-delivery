@@ -62,10 +62,22 @@ function claimLanded(committedNodeVal, action, claimId) {
 
 // ── Paid-evidence detection (universal — pre-claim window, during resolve, or post-terminal) ───────
 // Any of: the order's paid_during_resolve flag, or the attempt's persisted UUID / verified capture.
+// BROAD — used to ROUTE AMBIGUITY (a bare UUID may be a declined auth) to manual_review, NEVER to gate a void.
 function hasPaidEvidence(order, attempt) {
   return !!(
     (order && order.paid_during_resolve === true) ||
     (attempt && (attempt.payment_uuid || attempt.capture_verified === true))
+  );
+}
+
+// ── Captured-money evidence — the ONLY void gate (cancel path, F3/F4-r3) ────────────────────────────
+// TIGHT: real settled money only. A bare `payment_uuid` is deliberately EXCLUDED (declined auths carry a
+// UUID) — that ambiguity routes to manual_review via hasPaidEvidence, never an auto-void. Includes the
+// durable `hosted_callback_verified` the hosted webhook writes (:91/:105).
+function hasCapturedMoneyEvidence(order, attempt) {
+  return !!(
+    (order && (order.paid_during_resolve === true || order.payment_status === 'confirmed')) ||
+    (attempt && (attempt.capture_verified === true || attempt.hosted_callback_verified === true || attempt.hosted_state === 'paid'))
   );
 }
 
@@ -93,6 +105,6 @@ function recoveryDecision(order, now, staleMs) {
 
 module.exports = {
   RESOLVE_ACTIONS, ALL_ACTIONS, RESOLVING_PREFIX, resolvingStatus, isResolving, PHASE,
-  isStatusChangeClosedToAutomation, claimDecision, claimLanded, hasPaidEvidence,
+  isStatusChangeClosedToAutomation, claimDecision, claimLanded, hasPaidEvidence, hasCapturedMoneyEvidence,
   FINAL_SUCCESS_OUTCOMES, httpForOutcome, recoveryDecision,
 };

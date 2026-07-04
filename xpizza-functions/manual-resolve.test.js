@@ -38,6 +38,15 @@ assert.strictEqual(M.hasPaidEvidence(null, { payment_uuid: 'S-…' }), true); ok
 assert.strictEqual(M.hasPaidEvidence(null, { capture_verified: true }), true); ok('capture_verified → evidence');
 assert.strictEqual(M.hasPaidEvidence({}, {}), false); ok('no evidence → false (abandon allowed)');
 
+// ── hasCapturedMoneyEvidence: TIGHT void gate — captured money only, bare UUID EXCLUDED (F3/F4) ──
+assert.strictEqual(M.hasCapturedMoneyEvidence({ payment_status: 'confirmed' }, null), true); ok('confirmed order → captured evidence');
+assert.strictEqual(M.hasCapturedMoneyEvidence({ paid_during_resolve: true }, null), true); ok('paid_during_resolve → captured evidence');
+assert.strictEqual(M.hasCapturedMoneyEvidence(null, { hosted_state: 'paid' }), true); ok('hosted_state=paid → captured evidence');
+assert.strictEqual(M.hasCapturedMoneyEvidence(null, { hosted_callback_verified: true }), true); ok('hosted_callback_verified (durable webhook bit) → captured evidence');
+assert.strictEqual(M.hasCapturedMoneyEvidence(null, { capture_verified: true }), true); ok('capture_verified → captured evidence');
+assert.strictEqual(M.hasCapturedMoneyEvidence({ payment_status: 'pending' }, { payment_uuid: 'S-1' }), false); ok('🔴 bare UUID only (declined auth carries one) → NOT captured evidence (no auto-void)');
+assert.strictEqual(M.hasCapturedMoneyEvidence({}, {}), false); ok('nothing → false');
+
 // ── httpForOutcome [E/#9]: 2xx ONLY for genuinely-final, else 409 ──
 for (const o of ['abandoned', 'refunded', 'materialized', 'confirmed', 'already_confirmed'])
   assert.strictEqual(M.httpForOutcome(o), 200, o);

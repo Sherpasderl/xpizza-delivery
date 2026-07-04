@@ -188,7 +188,8 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
   if (deps.voidOrRefund) {
     const freshAttempt = (await attemptRef.once('value')).val();
     const freshOrder = (await orderRef.once('value')).val();
-    if ((freshAttempt && freshAttempt.cancelling) || (freshOrder && freshOrder.status === 'cancelled')) {
+    // [Fix#3] also honor an atomic ORDER-level cancel claim (set before the attempt's cancelling flag).
+    if ((freshAttempt && freshAttempt.cancelling) || (freshOrder && freshOrder.status === 'cancelled') || (freshOrder && freshOrder.resolving_action === 'cancel' && freshOrder.cancel_claim_id)) {
       const vr = await deps.voidOrRefund(deps, { orderId, attemptId, pixelpayOrderId, paymentUuid: uuid, reason: 'cancelled_during_capture', now });
       await orderRef.update({ status: 'cancelled', payment_status: vr.voided ? 'refunded' : 'refund_pending' });
       return { outcome: 'cancelled_voided', voided: vr.voided };
