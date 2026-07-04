@@ -30,7 +30,10 @@ import {
   remove,
   runTransaction,
   serverTimestamp,
-  off
+  off,
+  query,
+  orderByChild,
+  equalTo
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
 
 // ============================================================
@@ -513,6 +516,49 @@ export function subscribeToOrders(callback) {
   // Filter out non-live (e.g. unpaid pending_payment) orders centrally so no
   // reader ever shows an unpaid online order as a real order.
   return onValue(ordersRef, (snap) => callback(filterLiveOrders(snap.val() || {})));
+}
+
+// Orders parked in payment_status:'manual_reconciliation' (money-ambiguous online
+// checkouts a dispatcher must resolve). These are status:'pending_payment', so
+// filterLiveOrders hides them from subscribeToOrders — the reconciliation panel needs
+// this dedicated view. Indexed on the existing 'status' index (manual_reconciliation ⊆
+// pending_payment); payment_status filtered in memory. Callback gets { orderId: order }.
+export function subscribeToManualReconciliation(callback) {
+  const q = query(ref(db, 'orders'), orderByChild('status'), equalTo('pending_payment'));
+  return onValue(q, (snap) => {
+    const all = snap.val() || {};
+    const out = {};
+    for (const id of Object.keys(all)) {
+      const o = all[id];
+      if (o && o.payment_status === 'manual_reconciliation') out[id] = o;
+    }
+    callback(out);
+  });
+}
+
+// Dispatcher-resolve a manual_reconciliation order via the audited server function.
+// action: 'materialize' (verified paid → confirm) | 'refund' (void/refund) | 'abandon'
+// (no charge → close). Auth: the signed-in dispatcher's Firebase ID token (Bearer).
+// Cloud Functions base URL derived from the INITIALIZED app's projectId — never hardcoded prod. So a
+// preview / staging / emulator dispatch page targets ITS OWN project's functions, not prod money actions.
+const FUNCTIONS_REGION = 'us-central1';
+function functionUrl(name) {
+  const pid = app && app.options && app.options.projectId;
+  if (!pid) throw new Error('Firebase no inicializado');
+  return `https://${FUNCTIONS_REGION}-${pid}.cloudfunctions.net/${name}`;
+}
+export async function resolveReconciliation(orderId, action, note = '') {
+  const user = auth && auth.currentUser;
+  if (!user) throw new Error('No hay sesión de dispatcher');
+  const token = await user.getIdToken();
+  const res = await fetch(functionUrl('resolveManualReconciliation'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ order_id: orderId, action, note })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || data.detail || `HTTP ${res.status}`);
+  return data; // { ok, outcome }
 }
 
 /**
