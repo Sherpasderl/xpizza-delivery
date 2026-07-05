@@ -39,11 +39,12 @@ const eligCfg = { epoch_start_ms: { x_pizza: 0, la_musa: 0 }, max_plausible_prep
   // ── 1. Prediction: cold-start + immutable/idempotent on event bounce ──
   await db.ref('/').set(null); await db.ref('ready_time_config').set(eligCfg);
   await db.ref('orders/O1').set({ order_id: 'O1', restaurant_id: 'x_pizza', items: [{ n: 'a' }, { n: 'b' }] });
-  await runPrediction({ db, now: 1000 }, { orderId: 'O1', event: evRow() });
+  await db.ref('order_events/O1/e1').set(evRow());
+  await runPrediction({ db, now: 1000 }, { orderId: 'O1', eventId: 'e1' });
   let p = await val(`order_predictions/O1/${V1}`);
   assert.strictEqual(p.source, 'cold_start'); assert.strictEqual(p.predicted_prep_min, coldStartMin('x_pizza')); assert.strictEqual(p.new_at, T0); ok('1: prediction cold_start on empty model (prep=18, new_at=event.at)');
-  assert.strictEqual(p.predicted_ready_at, T0 + coldStartMin('x_pizza') * 60000); assert.strictEqual(p.features_snapshot.item_bucket, '2-3'); ok('1: predicted_ready_at + features_snapshot correct');
-  await runPrediction({ db, now: 5000 }, { orderId: 'O1', event: evRow() });   // bounce
+  assert.strictEqual(p.predicted_ready_at, T0 + coldStartMin('x_pizza') * 60000); assert.strictEqual(p.features_snapshot.item_bucket, '2-3'); assert.strictEqual(p.source_event_id, 'e1'); ok('1: predicted_ready_at + features_snapshot + source_event_id=e1');
+  await runPrediction({ db, now: 5000 }, { orderId: 'O1', eventId: 'e1' });   // bounce (same event re-delivered)
   assert.strictEqual((await val(`order_predictions/O1/${V1}`)).created_at, 1000); ok('1: event bounce → create-if-absent aborts, node immutable (created_at unchanged)');
 
   // ── 2. Denylist API-spy: ZERO writes outside order_predictions/prediction_logs/ready_time_model ──
@@ -53,7 +54,7 @@ const eligCfg = { epoch_start_ms: { x_pizza: 0, la_musa: 0 }, max_plausible_prep
   await seedEligible('O2');
   const mutated = [];
   const sdb = spyDb(db, mutated);
-  await runPrediction({ db: sdb, now: 2000 }, { orderId: 'O2', event: evRow() });
+  await runPrediction({ db: sdb, now: 2000 }, { orderId: 'O2', eventId: 'e1' });
   await runLabelAndUpdate({ db: sdb, now: 2000 }, { orderId: 'O2', readyAt: T0 + 15 * 60000 });
   const ALLOW = ['order_predictions/', 'prediction_logs/', 'ready_time_model/'];
   const bad = mutated.filter((pth) => !ALLOW.some((a) => pth.startsWith(a)));
@@ -64,15 +65,18 @@ const eligCfg = { epoch_start_ms: { x_pizza: 0, la_musa: 0 }, max_plausible_prep
   await db.ref('orders/O3').set({ restaurant_id: 'x_pizza', items: [{ n: 'a' }, { n: 'b' }] });
   const exactKey = F.bucketKeyExact(T0, 4, 2), daypartKey = F.bucketKeyDaypart(T0, 4);
   await db.ref(`ready_time_model/x_pizza/${V1}/restaurant`).set({ p50: 22, sample_count: 5 });
-  await runPrediction({ db, now: 3000 }, { orderId: 'O3', event: evRow() });
+  await db.ref('order_events/O3/e1').set(evRow());
+  await runPrediction({ db, now: 3000 }, { orderId: 'O3', eventId: 'e1' });
   assert.deepStrictEqual([(await val(`order_predictions/O3/${V1}`)).source, (await val(`order_predictions/O3/${V1}`)).predicted_prep_min], ['restaurant', 22]); ok('3: only restaurant ring ≥ MIN → source restaurant (22)');
   await db.ref(`ready_time_model/x_pizza/${V1}/daypart/${daypartKey}`).set({ p50: 16, sample_count: 5 });
   await db.ref('order_predictions/O3b').remove(); await db.ref('orders/O3b').set({ restaurant_id: 'x_pizza', items: [{ n: 'a' }, { n: 'b' }] });
-  await runPrediction({ db, now: 3000 }, { orderId: 'O3b', event: evRow() });
+  await db.ref('order_events/O3b/e1').set(evRow());
+  await runPrediction({ db, now: 3000 }, { orderId: 'O3b', eventId: 'e1' });
   assert.strictEqual((await val(`order_predictions/O3b/${V1}`)).source, 'daypart'); ok('3: daypart ring present → source daypart (beats restaurant)');
   await db.ref(`ready_time_model/x_pizza/${V1}/exact/${exactKey}`).set({ p50: 12, sample_count: 5 });
   await db.ref('orders/O3c').set({ restaurant_id: 'x_pizza', items: [{ n: 'a' }, { n: 'b' }] });
-  await runPrediction({ db, now: 3000 }, { orderId: 'O3c', event: evRow() });
+  await db.ref('order_events/O3c/e1').set(evRow());
+  await runPrediction({ db, now: 3000 }, { orderId: 'O3c', eventId: 'e1' });
   assert.strictEqual((await val(`order_predictions/O3c/${V1}`)).source, 'exact'); ok('3: exact ring present → source exact (beats daypart)');
 
   // ── 4. Label + model update: eligible x_pizza maintains ALL THREE rings, keyed by orderId ──
@@ -107,7 +111,8 @@ const eligCfg = { epoch_start_ms: { x_pizza: 0, la_musa: 0 }, max_plausible_prep
   // ── 7. la_musa: log-only + constant, NO bucket model ──
   await db.ref('/').set(null); await db.ref('ready_time_config').set(eligCfg);
   await db.ref('orders/OL').set({ restaurant_id: 'la_musa' }); // external_pos: no items
-  await runPrediction({ db, now: 7000 }, { orderId: 'OL', event: evRow({ restaurant_id: 'la_musa' }) });
+  await db.ref('order_events/OL/e1').set(evRow({ restaurant_id: 'la_musa' }));
+  await runPrediction({ db, now: 7000 }, { orderId: 'OL', eventId: 'e1' });
   const pl = await val(`order_predictions/OL/${V1}`);
   assert.strictEqual(pl.source, 'cold_start'); assert.strictEqual(pl.predicted_prep_min, coldStartMin('la_musa')); ok('7: la_musa prediction → cold_start constant (20)');
   await seedEligible('OL', { restaurant: 'la_musa', items: null });
@@ -119,11 +124,41 @@ const eligCfg = { epoch_start_ms: { x_pizza: 0, la_musa: 0 }, max_plausible_prep
   try {
     await db.ref('/').set(null); await db.ref('ready_time_config').set(eligCfg);
     await seedEligible('O8');
-    await runPrediction({ db, now: 8000 }, { orderId: 'O8', event: evRow() });
+    await runPrediction({ db, now: 8000 }, { orderId: 'O8', eventId: 'e1' });
     await runLabelAndUpdate({ db, now: 8000 }, { orderId: 'O8', readyAt: T0 + 15 * 60000 });
     assert.ok(await val(`order_predictions/O8/${V1}`) && await val('order_predictions/O8/v2-shadow-test')); ok('8: v1 + v2 predictions both written (ACTIVE_MODEL_VERSIONS fan-out)');
     assert.ok(await val(`prediction_logs/O8/${V1}`) && await val('prediction_logs/O8/v2-shadow-test')); ok('8: v1 + v2 logs both written');
   } finally { ACTIVE_MODEL_VERSIONS.pop(); }
+
+  // ── 18. Two to:'new' events (bounce): A predicts ONLY for the pickNewEvent winner; A & B share the anchor ──
+  await db.ref('/').set(null); await db.ref('ready_time_config').set(eligCfg);
+  await db.ref('order_events/O18').set({ e1: evRow({ at: T0 }), e2: evRow({ at: T0 + 1000 }) }); // e1 earlier → winner
+  await db.ref('orders/O18').set({ restaurant_id: 'x_pizza', items: [{ n: 'a' }, { n: 'b' }] });
+  await db.ref('order_timelines/O18').set({ new_at: T0, preparing_at: T0 + 2 * 60000, ready_at: T0 + 15 * 60000 });
+  await runPrediction({ db, now: 18000 }, { orderId: 'O18', eventId: 'e2' });  // LATER event fires first
+  assert.strictEqual(await val(`order_predictions/O18/${V1}`), null); ok('18: later event (e2) is NOT the winner → NO prediction created');
+  await runPrediction({ db, now: 18001 }, { orderId: 'O18', eventId: 'e1' });  // winner
+  const pw = await val(`order_predictions/O18/${V1}`);
+  assert.strictEqual(pw.source_event_id, 'e1'); assert.strictEqual(pw.new_at, T0); ok('18: winner (e1) creates the prediction, source_event_id=e1, new_at=e1.at');
+  await runPrediction({ db, now: 18002 }, { orderId: 'O18', eventId: 'e2' });  // late event retries — still not winner
+  assert.strictEqual((await val(`order_predictions/O18/${V1}`)).source_event_id, 'e1'); ok('18: late event retry cannot overwrite → still anchored on e1');
+  await runLabelAndUpdate({ db, now: 18003 }, { orderId: 'O18', readyAt: T0 + 15 * 60000 });
+  const lw = await val(`prediction_logs/O18/${V1}`);
+  assert.strictEqual(lw.new_at, pw.new_at); assert.strictEqual(lw.source_event_id, 'e1'); assert.strictEqual(lw.error_min, pw.predicted_prep_min - 15); ok('18: B anchors on the SAME event → log.new_at==prediction.new_at, source_event_id match, consistent error_min');
+
+  // ── 19. Restaurant provenance: event wins over mutable/missing /orders (la_musa never mislabeled x_pizza) ──
+  await db.ref('/').set(null); await db.ref('ready_time_config').set(eligCfg);
+  await db.ref('order_events/O19/e1').set(evRow({ restaurant_id: 'la_musa' }));       // immutable: la_musa
+  await db.ref('orders/O19').set({ restaurant_id: 'x_pizza', items: [{ n: 'a' }, { n: 'b' }] }); // DISAGREES: x_pizza
+  await db.ref('order_timelines/O19').set({ new_at: T0, preparing_at: T0 + 2 * 60000, ready_at: T0 + 15 * 60000 });
+  await runLabelAndUpdate({ db, now: 19000 }, { orderId: 'O19', readyAt: T0 + 15 * 60000 });
+  assert.strictEqual((await val(`prediction_logs/O19/${V1}`)).restaurant_id, 'la_musa'); ok('19: /orders disagrees → log restaurant_id from the EVENT (la_musa)');
+  assert.strictEqual(await val(`ready_time_model/x_pizza`), null); ok('19: la_musa order → ZERO ready_time_model/x_pizza writes (not mistrained as x_pizza)');
+  // /orders missing entirely → still the event's restaurant
+  await db.ref('order_events/O19b/e1').set(evRow({ restaurant_id: 'la_musa' }));
+  await db.ref('order_timelines/O19b').set({ new_at: T0, preparing_at: T0 + 2 * 60000, ready_at: T0 + 15 * 60000 });
+  await runLabelAndUpdate({ db, now: 19001 }, { orderId: 'O19b', readyAt: T0 + 15 * 60000 });
+  assert.strictEqual((await val(`prediction_logs/O19b/${V1}`)).restaurant_id, 'la_musa'); ok('19: /orders MISSING → restaurant from the event (la_musa), no crash');
 
   console.log(`\n${n} passed`);
   process.exit(0);

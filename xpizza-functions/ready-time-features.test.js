@@ -7,7 +7,7 @@
 const assert = require('assert');
 const {
   extractCreationFeatures, extractLabels,
-  hourOf, daypartOf, loadBucketOf, itemCountBucketOf, bucketKeyExact, bucketKeyDaypart, pickNewEvent,
+  hourOf, daypartOf, loadBucketOf, itemCountBucketOf, bucketKeyExact, bucketKeyDaypart, pickNewEvent, pickNewEventEntry,
 } = require('./ready-time-features');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -119,6 +119,10 @@ assert.deepStrictEqual([1, 2, 3, 4, 10, 0, -1, null, 'x'].map(itemCountBucketOf)
   assert.strictEqual(pickNewEvent({ b: { to: 'new', at: 100 }, a: { to: 'new', at: 100 } }).at, 100); ok('pickNewEvent: same-ms → lexicographic eventId tie-break (no throw)');
   assert.strictEqual(pickNewEvent({ a: { to: 'preparing', at: 100 } }), null); ok('pickNewEvent: no to:new → null');
   assert.strictEqual(pickNewEvent({ a: { to: 'new', at: 'x' } }), null); ok('pickNewEvent: non-numeric at → null');
+  // pickNewEventEntry — returns the winner's { id, event } so A/B agree on the SAME anchor under a bounce
+  assert.deepStrictEqual(pickNewEventEntry({ e2: { to: 'new', at: 200 }, e1: { to: 'new', at: 100 } }), { id: 'e1', event: { to: 'new', at: 100 } }); ok('pickNewEventEntry: earliest at → { id:e1, event }');
+  assert.strictEqual(pickNewEventEntry({ e2: { to: 'new', at: 100 }, e1: { to: 'new', at: 100 } }).id, 'e1'); ok('pickNewEventEntry: same-ms → lexicographic eventId winner (e1)');
+  assert.strictEqual(pickNewEventEntry({}), null); ok('pickNewEventEntry: none → null');
 }
 
 console.log(`\n${n} passed`);

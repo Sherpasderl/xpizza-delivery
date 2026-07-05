@@ -2558,9 +2558,9 @@ exports.predictReadyTimeOnNew = onValueCreated(
   { ref: '/order_events/{orderId}/{eventId}', region: 'us-central1' },
   async (event) => {
     const row = event.data.val();
-    if (!row || row.to !== 'new') return;                       // only the to:'new' transition predicts
-    try {
-      await runPrediction({ db: getDatabase(), now: Date.now() }, { orderId: event.params.orderId, event: row });
+    if (!row || row.to !== 'new') return;                       // cheap pre-filter; the core confirms this
+    try {                                                       // eventId IS the pickNewEvent winner before writing
+      await runPrediction({ db: getDatabase(), now: Date.now() }, { orderId: event.params.orderId, eventId: event.params.eventId });
     } catch (e) {
       console.error(`predictReadyTimeOnNew: failed for ${event.params.orderId}`, e.message);
     }

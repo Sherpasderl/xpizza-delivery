@@ -131,18 +131,20 @@ function itemCountBucketOf(n) {
 const bucketKeyExact = (atMs, kitchenLoadAhead, itemCount) => `${hourOf(atMs)}|${loadBucketOf(kitchenLoadAhead)}|${itemCountBucketOf(itemCount)}`;
 const bucketKeyDaypart = (atMs, kitchenLoadAhead) => `${daypartOf(atMs)}|${loadBucketOf(kitchenLoadAhead)}`;
 
-// pickNewEvent — the deterministic chosen to:'new' event row from an order_events map: the min by
-// (at, eventId) among to:'new' rows with a numeric `at` (matches the extractCreationFeatures selection +
-// the quality monitor's). Returns the row (with .at / .kitchen_load_ahead / …) or null. Used by Trigger B
-// to recover the SAME anchor + congestion the prediction used, without depending on timeline.new_at.
-function pickNewEvent(events) {
+// pickNewEventEntry — the deterministic chosen to:'new' entry { id, event } from an order_events map: the
+// min by (at, eventId) among to:'new' rows with a numeric `at`. Returning the eventId (not just the row)
+// lets BOTH triggers agree on the SAME anchor event under a bounce / two-to:'new' race: Trigger A only
+// predicts when ITS eventId is this winner, and Trigger B recovers the identical row. Returns null if none.
+function pickNewEventEntry(events) {
   const c = Object.entries(events || {})
     .filter(([, e]) => e && e.to === 'new' && isNum(e.at))
     .sort(([ia, a], [ib, b]) => (a.at - b.at) || (ia < ib ? -1 : ia > ib ? 1 : 0));
-  return c.length ? c[0][1] : null;
+  return c.length ? { id: c[0][0], event: c[0][1] } : null;
 }
+// pickNewEvent — the winner's row (or null). Delegates to pickNewEventEntry (single source of the rule).
+const pickNewEvent = (events) => { const e = pickNewEventEntry(events); return e ? e.event : null; };
 
 module.exports = {
   extractCreationFeatures, extractLabels, TZ_OFFSET_MS,
-  hourOf, daypartOf, loadBucketOf, itemCountBucketOf, bucketKeyExact, bucketKeyDaypart, pickNewEvent,
+  hourOf, daypartOf, loadBucketOf, itemCountBucketOf, bucketKeyExact, bucketKeyDaypart, pickNewEvent, pickNewEventEntry,
 };
