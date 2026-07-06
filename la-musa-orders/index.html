@@ -1279,7 +1279,7 @@ textarea{resize:none;height:80px;line-height:1.4}
     <!-- ── Scheduled Orders: Checkout time selector (Estándar = ASAP / Programar = real scheduled_for) ── -->
     <div class="time-select" id="time-select">
       <div class="time-select-label" id="time-select-label">Tiempo de entrega</div>
-      <div class="time-select-note" id="time-select-note" style="display:none">🕐 Cerrado — programá tu pedido para continuar.</div>
+      <div class="time-select-note" id="time-select-note" style="display:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Cerrado — programá tu pedido para continuar.</div>
       <div class="time-select-cards">
         <div class="time-card active" id="time-standard" onclick="selectTimeMode('standard')">
           <div class="time-card-title">Estándar</div>
@@ -1296,19 +1296,19 @@ textarea{resize:none;height:80px;line-height:1.4}
       <div id="pickup-map" style="height:160px;border-radius:var(--radius);overflow:hidden;margin:12px 16px 0"></div>
       <!-- Store info -->
       <div class="pickup-store-row">
-        <div class="pickup-store-icon">🏪</div>
+        <div class="pickup-store-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1E1B18" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5V20a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9.5"/><path d="M2.5 9.5 4.1 4a1 1 0 0 1 1-.7h13.8a1 1 0 0 1 1 .7l1.6 5.5a2.5 2.5 0 0 1-4.8 1.2 2.5 2.5 0 0 1-4.8 0 2.5 2.5 0 0 1-4.8 0 2.5 2.5 0 0 1-4.8-1.2Z"/><path d="M9 21v-5h6v5"/></svg></div>
         <div>
           <div class="pickup-store-name">La Musa Gastropub</div>
           <div class="pickup-store-addr">Barrio Rio Piedras, 5ta. Calle entre 17 & 18 Ave. N.O., San Pedro Sula</div>
         </div>
       </div>
       <!-- Pickup time -->
-      <div class="pickup-whatsapp-note">📱 Te avisamos por WhatsApp cuando esté listo</div>
+      <div class="pickup-whatsapp-note"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg>Te avisamos por WhatsApp cuando esté listo</div>
     </div>
     <div class="pickup-info" id="pickup-info-old" style="display:none">
     </div>
     <div class="zone-notice">
-      📍 Entregamos dentro de San Pedro Sula. Mové el pin a tu ubicación exacta.
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/></svg>Entregamos dentro de San Pedro Sula. Mové el pin a tu ubicación exacta.
     </div>
     <div class="loc-card" id="locinfo">
       <b>Detectando tu ubicación GPS…</b><br/>
@@ -1339,14 +1339,14 @@ textarea{resize:none;height:80px;line-height:1.4}
     <div class="pay-container">
       <div class="pay-options">
         <div class="pay-card" id="pay-online" onclick="selectPay('online')">
-          <div class="pay-icon">🔒</div>
+          <div class="pay-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1E1B18" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
           <div>
             <div class="pay-title">Pagar en línea ahora <span class="pay-badge badge-green">Recomendado</span></div>
             <div class="pay-desc">Pago seguro con tarjeta en la página de PixelPay (3D Secure). Tu pedido se confirma al completar el pago.</div>
           </div>
         </div>
         <div class="pay-card" id="pay-cash" onclick="selectPay('cash')">
-          <div class="pay-icon">💵</div>
+          <div class="pay-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1E1B18" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M5.5 12h.01M18.5 12h.01"/></svg></div>
           <div>
             <div class="pay-title">Efectivo al entregar</div>
             <div class="pay-desc">Pagás en efectivo cuando el repartidor llegue a tu puerta.</div>
@@ -1371,7 +1371,7 @@ textarea{resize:none;height:80px;line-height:1.4}
       <div id="pixelpay-panel" style="display:none">
         <div class="pixelpay-box">
           <div class="pixelpay-header">
-            <span class="pixelpay-logo">🔒 PixelPay · Pago Seguro</span>
+            <span class="pixelpay-logo"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>PixelPay · Pago Seguro</span>
             <span class="pixelpay-total" id="pixelpay-amount">L 0.00</span>
           </div>
           <div style="padding:14px 4px;font-size:14px;color:#555;line-height:1.55;">
@@ -1379,7 +1379,7 @@ textarea{resize:none;height:80px;line-height:1.4}
             tu tarjeta, con la verificación <strong>3D Secure</strong> de tu banco. Volvés aquí
             automáticamente al terminar. <em>(Tu tarjeta nunca pasa por este sitio.)</em>
           </div>
-          <div class="security-row">🔒 Encriptado SSL · PCI DSS · 3D Secure 2.0</div>
+          <div class="security-row"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Encriptado SSL · PCI DSS · 3D Secure 2.0</div>
         </div>
       </div>
 
@@ -2461,7 +2461,7 @@ function closeFullscreenMap() {
   const locCard = document.getElementById('locinfo');
   if (locCard) {
     locCard.className = 'loc-card confirmed';
-    locCard.innerHTML = '<b>📍 Ubicación confirmada</b><br/>Podés tocar el mapa para ajustar.';
+    locCard.innerHTML = '<b><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/></svg>Ubicación confirmada</b><br/>Podés tocar el mapa para ajustar.';
   }
 
   // Enable payment button
@@ -2533,7 +2533,7 @@ function updateLocInfo(la,ln,fallback){
   el.className='loc-card'+(fallback?'':' confirmed');
   el.innerHTML=fallback
     ?'<b>Ubicación aproximada</b><br/>No pudimos detectar tu GPS. Mové el pin al lugar exacto.'
-    :`<b>📍 Ubicación capturada con GPS</b><br/>Lat: ${la.toFixed(5)}, Lng: ${ln.toFixed(5)}<br/><small style="color:var(--muted)">Mové el pin si necesitás ajustar el punto exacto.</small>`;
+    :`<b><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/></svg>Ubicación capturada con GPS</b><br/>Lat: ${la.toFixed(5)}, Lng: ${ln.toFixed(5)}<br/><small style="color:var(--muted)">Mové el pin si necesitás ajustar el punto exacto.</small>`;
   // Update delivery zone status — fires on every pin position change.
   checkDeliveryRadius(la, ln);
 }
