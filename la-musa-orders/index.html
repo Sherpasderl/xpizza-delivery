@@ -1269,7 +1269,7 @@ textarea{resize:none;height:80px;line-height:1.4}
       <div style="background:rgba(0,0,0,0.55);color:#fff;font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 16px;border-radius:20px;backdrop-filter:blur(2px)" id="map-tap-hint">Toca para ajustar tu ubicación</div>
     </div>
   </div>
-  <div class="container" style="padding:0 0 24px">
+  <div class="container" style="padding:0 0 100px">
     <div class="step-label">Paso 2 de 3 — Entrega & Pago</div>
     <div class="delivery-toggle">
       <button class="delivery-toggle-btn active" id="btn-delivery" onclick="setOrderType('delivery')">Delivery</button>
@@ -2304,9 +2304,11 @@ function showStage(id,pct){
   document.getElementById(id).classList.add('active');
   document.getElementById('progress').style.width=pct+'%';
   window.scrollTo(0,0);
-  // Show cart bar only on step 1
+  // Show the cart pill on step 1 AND the Entrega & Pago step (s2) so customers can review/edit
+  // their order before paying without cancelling. s2 has extra bottom padding so the floating
+  // pill never covers the pay buttons.
   const cartBar=document.getElementById('cart-bar');
-  if(cartBar) cartBar.style.display=id==='s1'?'flex':'none';
+  if(cartBar) cartBar.style.display=(id==='s1'||id==='s2')?'flex':'none';
 }
 
 function goBack(id,pct){ showStage(id,pct); }
