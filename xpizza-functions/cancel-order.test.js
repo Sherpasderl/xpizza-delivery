@@ -21,6 +21,10 @@ assert.strictEqual(C.gate({ status: 'pending_payment', payment_status: 'manual_r
 }
 assert.deepStrictEqual(C.gate({ status: 'new', payment_status: 'confirmed' }), { ok: true }); ok('live confirmed order → ok (proceed)');
 assert.deepStrictEqual(C.gate({ status: 'new', payment_method: 'cash' }), { ok: true }); ok('live cash order → ok (uniform path)');
+// Scheduled Orders: a HELD (scheduled/releasing) paid order MUST be cancelable → cancelPaidOrder refunds
+// the captured money via the shipped reversal machine (no held-money trap; the claim guard blocks the race).
+assert.deepStrictEqual(C.gate({ status: 'scheduled', payment_status: 'confirmed' }), { ok: true }); ok('scheduled (held, paid) → ok → cancelPaidOrder refunds it');
+assert.deepStrictEqual(C.gate({ status: 'releasing', payment_status: 'confirmed' }), { ok: true }); ok('releasing (mid-release) paid → ok (cancelable)');
 
 // ── B.4 cancelledDecision (status==='cancelled' only) ──
 assert.deepStrictEqual(C.cancelledDecision({ payment_status: 'refunded' }, {}), { code: 200, outcome: 'already_cancelled' }); ok('cancelled+refunded → already_cancelled (200)');

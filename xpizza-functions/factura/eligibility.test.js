@@ -18,6 +18,11 @@ function onlineSale(over = {}) {
 (async () => {
   // --- facturaSaleEligible ---
   assert.equal(facturaSaleEligible(cashSale(), CUTOFF), true);                          ok('cash sale at creation is eligible');
+  // Scheduled Orders (§I): a HELD order (scheduled/releasing), even confirmed online, is NOT a Sale — no
+  // factura allocation until it materializes at release (status→new). A scheduled cancellation owes none.
+  assert.equal(facturaSaleEligible(onlineSale({ status: 'scheduled' }), CUTOFF), false); ok('scheduled (held, confirmed online) → NOT sale-eligible (factura not_due till release)');
+  assert.equal(facturaSaleEligible(cashSale({ status: 'scheduled' }), CUTOFF), false);   ok('scheduled cash → NOT sale-eligible');
+  assert.equal(facturaSaleEligible(onlineSale({ status: 'releasing' }), CUTOFF), false); ok('releasing (mid-release) → NOT sale-eligible');
   assert.equal(facturaSaleEligible(onlineSale(), CUTOFF), true);                        ok('online sale post-capture is eligible');
   assert.equal(facturaSaleEligible(onlineSale({ payment_status: 'pending' }), CUTOFF), false); ok('online not-yet-confirmed is NOT eligible');
   assert.equal(facturaSaleEligible(cashSale({ status: 'pending_payment' }), CUTOFF), false);    ok('non-new status is NOT eligible');

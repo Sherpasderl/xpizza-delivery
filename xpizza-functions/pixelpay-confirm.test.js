@@ -126,6 +126,26 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     ok('happy path → confirmed + materialized (tasks + tracking + captured)');
   }
 
+  // 1b. Scheduled Orders (§B.1): confirm CAPTURES the money but HOLDS the order — status→scheduled,
+  //     payment confirmed, but NO materialize (no materialized_at, no tasks, no tracking) until release.
+  {
+    const init = pendingOrder();
+    init.orders['PZX-1'].scheduled_for = 1800000000000;
+    init.orders['PZX-1'].release_at = 1799998200000;
+    const db = makeDb(init);
+    const client = mkClient();
+    const r = await confirmOnlinePayment(baseDeps(db, client), { orderId: 'PZX-1', paymentUuid: 'S-uuid', now: 7000, trackingToken: 'TOK7' });
+    assert.strictEqual(r.outcome, 'scheduled_held');
+    const o = db.getAt('orders/PZX-1');
+    assert.strictEqual(o.status, 'scheduled');
+    assert.strictEqual(o.payment_status, 'confirmed');            // money captured at order time
+    assert.ok(!o.materialized_at, 'NOT materialized');
+    assert.ok(!db.getAt('tasks/PZX-1_pickup') && !db.getAt('tasks/PZX-1_delivery'), 'no tasks (held)');
+    assert.ok(!db.getAt('order_tracking/TOK7'), 'no tracking (held)');
+    assert.strictEqual(client.calls.capture, 1, 'captured once');
+    ok('scheduled online → captured + HELD (status scheduled, confirmed, NO materialize/tasks/tracking)');
+  }
+
   // 2. Idempotent re-confirm (already materialized) → no-op.
   {
     const init = pendingOrder();
