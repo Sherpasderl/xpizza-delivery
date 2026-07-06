@@ -128,13 +128,16 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 
   // 1b. Scheduled Orders (§B.1): confirm CAPTURES the money but HOLDS the order — status→scheduled,
   //     payment confirmed, but NO materialize (no materialized_at, no tasks, no tracking) until release.
+  const ALL_OPEN = { sun: { open: true, start: '00:00', end: '24:00' }, mon: { open: true, start: '00:00', end: '24:00' }, tue: { open: true, start: '00:00', end: '24:00' }, wed: { open: true, start: '00:00', end: '24:00' }, thu: { open: true, start: '00:00', end: '24:00' }, fri: { open: true, start: '00:00', end: '24:00' }, sat: { open: true, start: '00:00', end: '24:00' } };
+  const ALL_CLOSED = { sun: { open: false }, mon: { open: false }, tue: { open: false }, wed: { open: false }, thu: { open: false }, fri: { open: false }, sat: { open: false } };
+  const schedDeps = (db, client, hours) => ({ ...baseDeps(db, client), getIdentity: async () => ({ active: true, hours }) });
   {
     const init = pendingOrder();
     init.orders['PZX-1'].scheduled_for = 1800000000000;
     init.orders['PZX-1'].release_at = 1799998200000;
     const db = makeDb(init);
     const client = mkClient();
-    const r = await confirmOnlinePayment(baseDeps(db, client), { orderId: 'PZX-1', paymentUuid: 'S-uuid', now: 7000, trackingToken: 'TOK7' });
+    const r = await confirmOnlinePayment(schedDeps(db, client, ALL_OPEN), { orderId: 'PZX-1', paymentUuid: 'S-uuid', now: 7000, trackingToken: 'TOK7' });
     assert.strictEqual(r.outcome, 'scheduled_held');
     const o = db.getAt('orders/PZX-1');
     assert.strictEqual(o.status, 'scheduled');
@@ -143,7 +146,27 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     assert.ok(!db.getAt('tasks/PZX-1_pickup') && !db.getAt('tasks/PZX-1_delivery'), 'no tasks (held)');
     assert.ok(!db.getAt('order_tracking/TOK7'), 'no tracking (held)');
     assert.strictEqual(client.calls.capture, 1, 'captured once');
-    ok('scheduled online → captured + HELD (status scheduled, confirmed, NO materialize/tasks/tracking)');
+    ok('scheduled online (slot still open) → captured + HELD (status scheduled, NO materialize/tasks/tracking)');
+  }
+
+  // 1c. Codex-on-diff #3: a slot that CLOSED between checkout and the paid callback → NOT silently held.
+  //     Money is captured → route to manual_review + block (dispatcher refunds/reschedules), never materialize.
+  {
+    const init = pendingOrder();
+    init.orders['PZX-1'].scheduled_for = 1800000000000;
+    const db = makeDb(init);
+    const client = mkClient();
+    let alerted = null;
+    const deps = { ...schedDeps(db, client, ALL_CLOSED), alert: async (k, d) => { alerted = { k, d }; } };
+    const r = await confirmOnlinePayment(deps, { orderId: 'PZX-1', paymentUuid: 'S-uuid', now: 7000, trackingToken: 'TOK8' });
+    assert.strictEqual(r.outcome, 'scheduled_confirm_invalid');
+    assert.strictEqual(r.reason, 'closed_at_slot');
+    const o = db.getAt('orders/PZX-1');
+    assert.strictEqual(o.payment_status, 'manual_review');
+    assert.strictEqual(o.scheduled_blocked, true);
+    assert.ok(!o.materialized_at && !db.getAt('order_tracking/TOK8'), 'NOT materialized, no tracking');
+    assert.ok(alerted && alerted.k === 'scheduled_confirm_invalid', 'dispatcher alert raised');
+    ok('scheduled online, slot now CLOSED → scheduled_confirm_invalid + manual_review + blocked (money held for review)');
   }
 
   // 2. Idempotent re-confirm (already materialized) → no-op.

@@ -40,6 +40,14 @@ async function confirmAndMaterializeFromManualClaim(deps, { orderId, attemptId, 
     return { outcome: 'confirm_claim_failed', payment_status: v.payment_status };
   }
   const order = tx.snapshot.val();
+  // Scheduled Orders (Codex-on-diff #2): manual reconciliation is the THIRD pending→new materialize path —
+  // it must be scheduled-safe too. A manually-verified order carrying a scheduled_for is HELD, not
+  // materialized: the confirm above persisted the verified payment; here we flip status→scheduled and STOP.
+  // It goes live only at release, through the single claim (which re-validates hours). Never buildMaterialize.
+  if (Number.isFinite(Number(order.scheduled_for))) {
+    if (order.status !== 'scheduled') await orderRef.update({ status: 'scheduled', scheduled_confirmed_at: now });
+    return { outcome: 'scheduled_held', scheduled_for: order.scheduled_for };
+  }
   const updates = buildMaterializeUpdates({ orderId, order, trackingToken, now, restaurant, paymentReference: attemptId, paymentMethod: 'online' });
   await db.ref().update(updates);
   return { outcome: 'materialized' };

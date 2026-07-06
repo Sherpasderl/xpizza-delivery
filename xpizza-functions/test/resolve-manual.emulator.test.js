@@ -209,6 +209,20 @@ let n = 0; const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); };
     ok('#5 audit-fail after refunded → 500 but order stays refunded (no rollback after money)');
   }
 
+  // ── Scheduled Orders (Codex-on-diff #2): manual 'materialize' of a SCHEDULED order HOLDS it, never
+  //    materializes — the third pending→new path is scheduled-safe. Goes live only at release, via the claim.
+  {
+    await clearAll();
+    await seed({ scheduled_for: 1800000000000, release_at: 1799998200000, order_type: 'delivery', lat: 15.6, lng: -88.1, address_detected: 'Calle 1', address_details: 'azul' }, { payment_uuid: 'S-1', status: 'captured', capture_verified: true });
+    const r = await resolveManualReconciliationCore(mkDeps(clientVoid({ ok: true })).deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW, claimId: 'CID' });
+    const o = await oVal();
+    assert.strictEqual(o.status, 'scheduled', 'held, not new');
+    assert.ok(!o.materialized_at, 'NOT materialized');
+    assert.strictEqual((await db.ref(`tasks/${OID}_delivery`).once('value')).val(), null, 'no tasks (held)');
+    assert.strictEqual((await db.ref('order_tracking').once('value')).val(), null, 'no tracking (held)');
+    ok('scheduled order manual-materialize → HELD (status scheduled, no tasks/tracking) — releases only via the claim');
+  }
+
   console.log(`\nresolve-manual.emulator: OK (${n} scenarios)`);
   process.exit(0);
 })().catch((e) => { console.error('resolve-manual.emulator: FAIL\n', e && e.stack || e); process.exit(1); });

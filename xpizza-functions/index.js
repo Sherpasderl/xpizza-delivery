@@ -427,6 +427,15 @@ createOrderApp.all('*', async (req, res) => {
   const orderId = String(body.order_id);
   const orderType = body.order_type;
 
+  // Online payments must NEVER enter through createOrder — they enter via chargeOnlineOrder as a
+  // pending_payment order that only materializes after a VERIFIED capture. Without this guard a POST with
+  // payment_method:'online' (+ scheduled_for) would write a held/live order with NO charge, and at release
+  // buildMaterializeUpdates({paymentMethod:'online'}) would flip it to payment_status:'confirmed' → an
+  // UNPAID order goes live (Codex-on-diff #1). createOrder is cash / card-on-delivery only.
+  if (fields.payment_method === 'online') {
+    return badRequest(res, 'online payments must use chargeOnlineOrder');
+  }
+
   const db = getDatabase();
 
   // Idempotency check

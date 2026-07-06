@@ -21,6 +21,7 @@
  */
 
 const TERMINAL_ATTEMPT = ['declined', 'voided', 'abandoned', 'converted', 'refunded', 'voided_inactive'];
+const SCHED = require('./scheduled-orders');   // Scheduled Orders — confirm-time slot re-validation (§F)
 
 async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingToken }) {
   const { db, staleMs = 90000 } = deps;
@@ -234,6 +235,20 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
   // sweepStalePending, the materializeOnConfirm recovery) scheduled-safe. The claim above already set
   // payment_status:confirmed + charged_at; here we just flip status→scheduled and stop (no tasks/tracking).
   if (Number.isFinite(Number(order.scheduled_for))) {
+    // Re-validate the slot at CONFIRM (design §F: create+confirm+release; Codex-on-diff #3). Use
+    // releaseTimeValid (slot still within open hours + not a missed window) — NOT the full create-time
+    // validateScheduledFor, whose MIN_LEAD would false-block a legit earliest-slot order that simply took a
+    // while to pay (payment latency must never invalidate a PAID order). A slot that CLOSED between checkout
+    // and the paid callback ⇒ don't accept it as a clean hold: money is captured, so route to manual_review
+    // + block for a dispatcher (refund via cancelPaidOrder or reschedule) — never auto-refund.
+    let hours = null;
+    if (deps.getIdentity) { try { hours = (await deps.getIdentity(db, order.restaurant_id || 'x_pizza')).hours; } catch (_) { hours = null; } }
+    const sv = SCHED.releaseTimeValid(hours, order, now);
+    if (!sv.valid) {
+      await orderRef.update({ payment_status: 'manual_review', scheduled_blocked: true, blocked_reason: 'confirm_' + sv.reason });
+      if (deps.alert) { try { await deps.alert('scheduled_confirm_invalid', { orderId, reason: sv.reason, scheduled_for: order.scheduled_for }); } catch (_) {} }
+      return { outcome: 'scheduled_confirm_invalid', reason: sv.reason };
+    }
     if (order.status !== 'scheduled') await orderRef.update({ status: 'scheduled', scheduled_confirmed_at: now });
     return { outcome: 'scheduled_held', scheduled_for: order.scheduled_for };
   }
