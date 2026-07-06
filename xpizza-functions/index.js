@@ -62,7 +62,9 @@ const ppCrypto = require('./pixelpay');
 const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
 const { buildMaterializeUpdates } = require('./materialize');
 const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
-const { buildCreateOrderUpdates } = require('./create-order-build');
+const { buildCreateOrderUpdates, buildScheduledOrderRecord } = require('./create-order-build');
+const SCHED = require('./scheduled-orders');                              // Scheduled Orders — pure hours/slot/release core
+const { releaseOne: releaseScheduledCore, recoverStaleReleasing } = require('./scheduled-release-core');
 const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
 const { voidOrRefund } = require('./pixelpay-cancel');
 const { handleHostedCallback } = require('./pixelpay-hosted-webhook');
@@ -507,6 +509,30 @@ createOrderApp.all('*', async (req, res) => {
   if (fields.payment_method === 'cash') {
     const ct = Math.round(Number(body.cash_tendered) * 100);
     cashTenderedCents = (Number.isFinite(ct) && ct >= priceBreakdown.total_cents) ? ct : priceBreakdown.total_cents;
+  }
+
+  // ── Scheduled Orders (§B): a cash/card order with a valid scheduled_for is written HELD — no tasks,
+  // no tracking token, no order-received WhatsApp, no factura — and materializes only at release. The
+  // server RE-VALIDATES the slot (never trust the client): open hours + lead/horizon/granularity, UTC−6.
+  const scheduledForRaw = Number(body.scheduled_for);
+  if (Number.isFinite(scheduledForRaw)) {
+    const v = SCHED.validateScheduledFor(restIdentity.hours, scheduledForRaw, Date.now(), orderType);
+    if (!v.valid) return badRequest(res, `Invalid scheduled time (${v.reason})`);
+    const releaseAt = SCHED.releaseAtFor(scheduledForRaw, orderType);
+    const heldUpdates = buildScheduledOrderRecord({
+      orderId, orderType, now, trackingToken, total, lat, lng, fields, hubSnap,
+      restaurantId, priceBreakdown, facturaPriced, cashTenderedCents,
+      scheduledFor: scheduledForRaw, releaseAt,
+    });
+    try {
+      await db.ref().update(heldUpdates);
+      console.log(`createOrder: HELD scheduled ${orderType} order ${orderId} for ${scheduledForRaw} (release ${releaseAt})`);
+    } catch (e) {
+      console.error('createOrder: scheduled write failed', e);
+      return res.status(500).json({ error: 'Database write failed', detail: e.message });
+    }
+    // No tracking token, no "order received" WhatsApp — the customer got a scheduled confirmation client-side.
+    return res.status(200).json({ ok: true, scheduled: true, order_id: orderId, scheduled_for: scheduledForRaw, release_at: releaseAt });
   }
 
   // Order record + driver tasks + public tracking — extracted to a pure builder
@@ -1149,8 +1175,14 @@ exports.paymentStatus = onRequest(
     }
 
     // Coarse, public-safe state.
-    let state = 'pending';
     const ps = order.payment_status, st = order.status;
+    // Scheduled Orders (§B.4 / R2-#4): a paid-and-HELD order (or one mid-release) matches the paid check
+    // below (confirmed) but is NOT cooking. Return a distinct scheduled_paid state carrying scheduled_for
+    // (no tracking token) so the form shows "programado para <slot>", never "ya está en cocina".
+    if (st === 'scheduled' || st === 'releasing') {
+      return res.status(200).json({ ok: true, state: 'scheduled_paid', scheduled_for: order.scheduled_for || null, tracking_token: null });
+    }
+    let state = 'pending';
     if (ps === 'confirmed' || ['new', 'preparing', 'ready', 'out_for_delivery', 'delivered'].includes(st)) state = 'paid';
     else if (st === 'cancelled' || ps === 'refunded' || ps === 'refund_pending') state = 'cancelled';
     else if (ps === 'failed') state = 'failed';
@@ -1244,6 +1276,14 @@ exports.reconcilePayments = onSchedule(
       if (o.resolving_action === 'cancel') {
         await recoverStaleCancel({ db, alert: (k, d) => paymentAlert(db, k, d) }, orderId, o, now, 6 * 3600 * 1000);
         continue;                                                      // mid-cancel — skip the payment breach-checks
+      }
+      // Scheduled Orders (§E / R1-#7,#14): a held (scheduled/releasing) order is LEGITIMATE until its
+      // release_at — NEVER flag it by charged_at age. Only alert when it's genuinely overdue: past
+      // release_at+SLA (still unreleased) or past scheduled_for+grace (never served, capture-now liability).
+      if (o.status === 'scheduled' || o.status === 'releasing') {
+        const ov = SCHED.scheduledOverdue(o, now);
+        if (ov.overdue) breaches.push({ orderId, kind: ov.kind });
+        continue;
       }
       if (o.payment_method !== 'online') continue;
       const a = o.active_attempt_id ? attempts[o.active_attempt_id] : null;
@@ -3697,5 +3737,92 @@ exports.sweepPendingOrders = onSchedule(
       }
     }
     if (offered || waiting || healed) console.log(`sweepPending: offered ${offered}, waiting ${waiting}, healed ${healed}`);
+  }
+);
+
+// ============================================================
+// Scheduled Orders — release sweep + dispatcher override (SCHEDULED_ORDERS_PLAN §C/§D)
+// ============================================================
+
+// Deps for the release core: alert via the shipped dispatcher-alert surface; a fresh public token per release.
+function scheduledReleaseDeps(db) {
+  return { db, alert: (kind, detail) => paymentAlert(db, kind, detail), genToken: () => generateTrackingToken() };
+}
+
+// sweepScheduledReleases — every 2 min: atomically release DUE scheduled orders (scheduled→releasing→new,
+// single-claim; closed-at-release → HOLD + alert) + recover stale releasing claims. Overdue/SLA alerting is
+// reconcilePayments' job (daily) to avoid a 2-min re-alert loop. Runs unless explicitly disabled — a held
+// order that never releases is captured money with no service, so the sweep must run for the feature to be safe.
+exports.sweepScheduledReleases = onSchedule(
+  { schedule: 'every 2 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const crypto = require('crypto');
+    const db = getDatabase();
+    const now = Date.now();
+    const enabledSnap = await db.ref('config/scheduled_releases_enabled').once('value');
+    if (enabledSnap.val() === false) { console.log('sweepScheduledReleases: disabled'); return; }
+
+    const deps = scheduledReleaseDeps(db);
+    let released = 0, blocked = 0, recovered = 0;
+
+    // Due scheduled orders — indexed status query + in-memory release_at filter (R1-#9).
+    const schedSnap = await db.ref('orders').orderByChild('status').equalTo('scheduled').once('value');
+    for (const [orderId, order] of Object.entries(schedSnap.val() || {})) {
+      if (SCHED.releaseDecision(order, now).action !== 'claim') continue;
+      try {
+        const r = await releaseScheduledCore(deps, { orderId, now, claimId: crypto.randomUUID() });
+        if (r.released) released++; else if (r.blocked) blocked++;
+      } catch (e) { console.error(`sweepScheduledReleases: release ${orderId} failed`, e.message); }
+    }
+
+    // Recover stale releasing claims (an owner that died mid-materialize).
+    const relSnap = await db.ref('orders').orderByChild('status').equalTo('releasing').once('value');
+    for (const [orderId, order] of Object.entries(relSnap.val() || {})) {
+      if (SCHED.releaseDecision(order, now).action !== 'recover_stale') continue;
+      try {
+        const r = await recoverStaleReleasing(deps, { orderId, now, claimId: crypto.randomUUID() });
+        if (r.recovered) recovered++;
+      } catch (e) { console.error(`sweepScheduledReleases: recover ${orderId} failed`, e.message); }
+    }
+    if (released || blocked || recovered) console.log(`sweepScheduledReleases: released ${released}, blocked ${blocked}, recovered ${recovered}`);
+  }
+);
+
+// releaseScheduledOrder — dispatcher-only, audited MANUAL release (R2-#2). Clears scheduled_blocked and
+// forces the release gate to now, then runs the IDENTICAL single-claim materialization (never a raw
+// status→new write). If the slot is still closed/invalid it re-blocks (dispatcher then refunds via
+// cancelPaidOrder). Used to clear a scheduled_blocked hold once the kitchen can fulfill it.
+exports.releaseScheduledOrder = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 60, memory: '256MiB', maxInstances: 5 },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).json({ error: 'Method Not Allowed' }); }
+    const crypto = require('crypto');
+    const auth = await authorizeDispatcherAction(req);
+    if (!auth.ok) return res.status(auth.code || 403).json({ error: 'forbidden', detail: auth.msg });
+    const orderId = String((req.body || {}).order_id || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return badRequest(res, 'valid order_id required');
+
+    const db = getDatabase();
+    const now = Date.now();
+    const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+    if (!order) return res.status(404).json({ error: 'not_found' });
+    if (order.status === 'releasing') return res.status(409).json({ error: 'release_in_progress', detail: 'order is materializing; the sweep recovers it if stalled' });
+    if (order.status !== 'scheduled') return res.status(409).json({ error: 'not_releasable', detail: `order is ${order.status}, not scheduled` });
+
+    // Dispatcher override: clear the block + force the release gate to now, then the SAME claim path runs
+    // (which STILL re-validates open hours — a manual release can't dump onto a closed kitchen either).
+    const patch = { release_at: Math.min(Number(order.release_at) || now, now) };
+    if (order.scheduled_blocked) { patch.scheduled_blocked = null; patch.blocked_reason = null; }
+    await db.ref(`orders/${orderId}`).update(patch);
+
+    let result;
+    try {
+      result = await releaseScheduledCore(scheduledReleaseDeps(db), { orderId, now, claimId: crypto.randomUUID() });
+    } catch (e) {
+      console.error(`releaseScheduledOrder: ${orderId} failed`, e.message);
+      return res.status(500).json({ error: 'release_failed', detail: e.message });
+    }
+    await db.ref('scheduled_release_audit').push({ order_id: orderId, actor: auth.actor || 'dispatcher', at: ServerValue.TIMESTAMP, result });
+    return res.status(result.released ? 200 : 409).json({ ok: !!result.released, order_id: orderId, ...result });
   }
 );

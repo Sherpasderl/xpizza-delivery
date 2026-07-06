@@ -116,4 +116,24 @@ function buildCreateOrderUpdates({
   return updates;
 }
 
-module.exports = { buildCreateOrderUpdates };
+/**
+ * Scheduled Orders — the HELD order record (no live side-effects). Reuses buildCreateOrderUpdates as the
+ * single source of the order-record fields, then HOLDS it: status:'scheduled', + scheduled_for/release_at,
+ * and STRIPS everything live — tracking_token, the task-id pointers, and the tasks + order_tracking nodes.
+ * At release, buildMaterializeUpdates re-adds status:'new' + a fresh token + tasks + tracking. Returns a
+ * single-path map { "orders/{id}": heldRecord } — nothing under tasks/ or order_tracking/.
+ */
+function buildScheduledOrderRecord(args) {
+  const { orderId, scheduledFor, releaseAt } = args;
+  const full = buildCreateOrderUpdates(args);          // reuse the record fields (no drift)
+  const record = { ...full[`orders/${orderId}`] };
+  record.status = 'scheduled';
+  record.scheduled_for = scheduledFor;
+  record.release_at = releaseAt;
+  delete record.tracking_token;                        // no public token until release (R1-#13)
+  delete record.pickup_task_id;                        // task pointers/tasks created at release only
+  delete record.delivery_task_id;
+  return { [`orders/${orderId}`]: record };
+}
+
+module.exports = { buildCreateOrderUpdates, buildScheduledOrderRecord };
