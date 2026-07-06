@@ -3070,7 +3070,7 @@ function showSuccess(){
         <span class="receipt-label">${i.qty}× ${i.name}</span>
         <span>L ${i.subtotal.toFixed(2)}</span>
       </div>`).join('')+
-    (o.notes!=='—'?`<div class="receipt-row"><span class="receipt-label">Nota</span><span style="text-align:right;max-width:55%">${o.notes}</span></div>`:'')+
+    (o.notes!=='—'?`<div class="receipt-row"><span class="receipt-label">Nota</span><span style="text-align:right;max-width:55%">${escapeHtml(o.notes)}</span></div>`:'')+
     `<div class="receipt-row" style="font-weight:700"><span>Total</span><span>L ${o.total.toFixed(2)}</span></div>`;
 
   document.getElementById('receipt-payment').innerHTML=`
