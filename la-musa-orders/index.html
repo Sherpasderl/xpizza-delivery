@@ -1137,6 +1137,28 @@ textarea{resize:none;height:80px;line-height:1.4}
 .detail-cta.detail-cta-remove:active {
   background: #a04848;
 }
+/* ── Scheduled Orders: "order for later" slot picker (UberEats-style) ── */
+.sched-modal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;display:none;align-items:flex-end;justify-content:center}
+.sched-modal.open{display:flex}
+.sched-sheet{background:#fff;width:100%;max-width:480px;max-height:88vh;border-radius:20px 20px 0 0;display:flex;flex-direction:column;padding:20px 18px calc(18px + env(safe-area-inset-bottom))}
+.sched-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.sched-head strong{font-size:20px;letter-spacing:-.3px}
+.sched-close{cursor:pointer;font-size:24px;line-height:1;color:#888;padding:4px}
+.sched-days{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px;-webkit-overflow-scrolling:touch}
+.sched-day{flex:0 0 auto;min-width:78px;padding:10px 14px;border:1.5px solid #e2e2e2;border-radius:12px;text-align:center;cursor:pointer;background:#fff}
+.sched-day.sel{border-color:#111;box-shadow:0 0 0 1px #111 inset}
+.sched-day b{display:block;font-size:14px}
+.sched-day span{font-size:11px;color:#999}
+.sched-slots{overflow-y:auto;flex:1;margin:6px 0 12px}
+.sched-slot{display:flex;justify-content:space-between;align-items:center;padding:15px 6px;border-bottom:1px solid #f0f0f0;cursor:pointer;font-size:15px}
+.sched-slot .radio{width:22px;height:22px;border:2px solid #ccc;border-radius:50%;flex:0 0 auto}
+.sched-slot.sel .radio{border-color:#111;background:radial-gradient(#111 42%,transparent 46%)}
+.sched-empty{padding:30px 6px;text-align:center;color:#999;font-size:14px}
+.sched-confirm{padding:16px;background:#111;color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:700;cursor:pointer}
+.sched-confirm:disabled{opacity:.4}
+.sched-open-btn{display:inline-flex;align-items:center;gap:6px;padding:11px 16px;border:1.5px solid #fff;border-radius:12px;background:transparent;color:#fff;font-size:14px;font-weight:600;cursor:pointer;margin-top:14px}
+.sched-later-pill{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:900;background:#111;color:#fff;border:none;border-radius:999px;padding:12px 20px;font-size:14px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.25);cursor:pointer}
+.sched-banner{background:var(--listo-bg,#E8F5EE);color:var(--listo,#1E6B3A);padding:12px 16px;border-radius:12px;font-size:14px;font-weight:600;margin:12px 16px;display:none;text-align:center}
 </style>
 </head>
 <body>
@@ -1154,7 +1176,20 @@ textarea{resize:none;height:80px;line-height:1.4}
       <div class="closed-hours-row"><span>Vie – Sáb</span><span>5:00 pm – 9:45 pm</span></div>
       <div class="closed-hours-row"><span>Lunes</span><span>Cerrado</span></div>
     </div>
+    <button type="button" class="sched-open-btn" onclick="openSched()">🕐 Ordenar para más tarde</button>
     <a href="https://wa.me/50493736607" class="closed-wa">💬 Escríbenos por WhatsApp</a>
+  </div>
+</div>
+
+<!-- ── Scheduled Orders: "order for later" slot picker ── -->
+<div class="sched-banner" id="sched-banner"></div>
+<button type="button" class="sched-later-pill" id="sched-later-pill" onclick="openSched()">🕐 Programar para más tarde</button>
+<div class="sched-modal" id="sched-modal" role="dialog" aria-modal="true">
+  <div class="sched-sheet">
+    <div class="sched-head"><strong>Programar pedido</strong><span class="sched-close" onclick="closeSched()">✕</span></div>
+    <div class="sched-days" id="sched-days"></div>
+    <div class="sched-slots" id="sched-slots"></div>
+    <button type="button" class="sched-confirm" id="sched-confirm" disabled onclick="confirmSched()">Programar</button>
   </div>
 </div>
 
@@ -2271,7 +2306,7 @@ function goToLocation(){
   const phone=document.getElementById('cphone').value.trim();
   const has=MENU.some(p=>qty[p.id]>0);
   const err=document.getElementById('err1');
-  if(!isOpen()){ err.style.display='block'; err.textContent='Lo sentimos, estamos cerrados. '+getNextOpenText(); return; }
+  if(!isOpen() && !window.__scheduledFor){ err.style.display='block'; err.textContent='Lo sentimos, estamos cerrados. '+getNextOpenText()+' Podés ordenar para más tarde.'; return; }
   if(!has){ err.style.display='block'; err.textContent='Seleccioná al menos una pizza.'; return; }
   if(calcTotal()<MIN_ORDER){ err.style.display='block'; err.textContent='Agrega L '+(MIN_ORDER-calcTotal()).toFixed(0)+' más para alcanzar el mínimo de L '+MIN_ORDER+'.'; return; }
   const phoneDigits=phone.replace(/[^\d]/g,'');
@@ -2648,6 +2683,7 @@ function buildOrder(){
     payment_method: selectedPayment,
     order_type: orderType,
     pickup_time: orderType==='pickup' ? (pickupTimeType==='schedule' && pickupScheduledTime ? pickupScheduledTime : 'standard') : null,
+    scheduled_for: window.__scheduledFor || null,
     payment_status: 'pending',
     timestamp: new Date().toISOString(),
   };
@@ -2739,6 +2775,15 @@ async function handlePaymentReturn(){
       const r = await fetch(`${PAYMENTSTATUS_URL}?order_id=${encodeURIComponent(orderId)}&t=${encodeURIComponent(token)}`);
       const j = await r.json().catch(()=>({}));
       const st = (r.ok && j.state) || 'pending';
+      if(st==='scheduled_paid'){
+        try{localStorage.removeItem('lamusa_pending_pay');}catch(_){}
+        window.__scheduledFor = j.scheduled_for || window.__scheduledFor;
+        if(stashedOrder && stashedOrder.order_id === orderId){
+          currentOrder = stashedOrder; currentOrder.scheduled = true; currentOrder.scheduled_for = j.scheduled_for;
+          try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}
+        }
+        showPayReturn('paid'); return true;
+      }
       if(st==='paid'){
         try{localStorage.removeItem('lamusa_pending_pay');}catch(_){}
         if(stashedOrder && stashedOrder.items && stashedOrder.order_id === orderId){
@@ -2980,7 +3025,9 @@ function showSuccess(){
 
   document.getElementById('order-id-display').textContent='Orden # '+o.order_id;
   document.getElementById('success-sub').innerHTML=
-    o.payment_method==='online'&&o.payment_status==='confirmed'
+    (o.scheduled || window.__scheduledFor)
+      ? '🕐 Pedido <strong>programado</strong> para '+schedFmt(o.scheduled_for || window.__scheduledFor)+'. Lo preparamos a tiempo para tu horario.'
+      : o.payment_method==='online'&&o.payment_status==='confirmed'
       ? '✅ Pago PixelPay confirmado. Tu pedido ya está en cocina. Llegamos en ~30 min.'
       : 'Te llegará una confirmación por WhatsApp. Llegamos en aproximadamente <strong>30 minutos</strong>.';
 
@@ -3617,6 +3664,57 @@ function initCardFormatting(){
 if (!isOpen()) {
   document.getElementById('closed-msg').textContent = getNextOpenText();
   document.getElementById('closed-overlay').style.display = 'flex';
+}
+
+/* ── Scheduled Orders: client slot picker (mirrors the server; server RE-VALIDATES on submit) ── */
+const SCHED = { SLOT: 15, LEAD: 60, HORIZON_DAYS: 7, byDay: {}, dayKeys: [], selDay: null, selSlot: null };
+function schedIsOpenAt(ms){ const hn=new Date(ms-6*3600000); const h=HOURS[hn.getUTCDay()]; if(!h) return false; const mins=hn.getUTCHours()*60+hn.getUTCMinutes(); return mins>=h.open && mins<h.close; }
+function schedGenerate(){
+  const now=Date.now(), step=SCHED.SLOT*60000;
+  let start=Math.ceil((now+SCHED.LEAD*60000)/step)*step;
+  const end=now+SCHED.HORIZON_DAYS*86400000;
+  SCHED.byDay={}; SCHED.dayKeys=[];
+  for(let ms=start; ms<=end; ms+=step){
+    if(!schedIsOpenAt(ms)) continue;
+    const hn=new Date(ms-6*3600000), key=hn.getUTCFullYear()+'-'+hn.getUTCMonth()+'-'+hn.getUTCDate();
+    if(!SCHED.byDay[key]){ SCHED.byDay[key]=[]; SCHED.dayKeys.push({key,ms}); }
+    SCHED.byDay[key].push(ms);
+    if(SCHED.dayKeys.length>SCHED.HORIZON_DAYS+1) break;
+  }
+}
+function schedDayLabel(ms){
+  const d=new Date(ms-6*3600000), t=new Date(Date.now()-6*3600000);
+  const diff=Math.round((Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())-Date.UTC(t.getUTCFullYear(),t.getUTCMonth(),t.getUTCDate()))/86400000);
+  if(diff===0) return {a:'Hoy', b:''};
+  if(diff===1) return {a:'Mañana', b:''};
+  const sp=new Date(ms).toLocaleDateString('es-HN',{weekday:'short',day:'numeric',month:'short',timeZone:'America/Tegucigalpa'}).split(' ');
+  return {a:sp[0]||'', b:sp.slice(1).join(' ')};
+}
+function schedFmt(ms){ return new Date(ms).toLocaleTimeString('es-HN',{hour:'2-digit',minute:'2-digit',timeZone:'America/Tegucigalpa'}); }
+function openSched(){
+  schedGenerate();
+  if(!SCHED.dayKeys.length){ alert('No hay horarios disponibles por ahora.'); return; }
+  SCHED.selDay=SCHED.dayKeys[0].key; SCHED.selSlot=null; renderSched();
+  document.getElementById('sched-modal').classList.add('open');
+}
+function closeSched(){ document.getElementById('sched-modal').classList.remove('open'); }
+function renderSched(){
+  const days=document.getElementById('sched-days');
+  days.innerHTML=SCHED.dayKeys.map(d=>{const l=schedDayLabel(d.ms);return `<div class="sched-day ${d.key===SCHED.selDay?'sel':''}" data-k="${d.key}"><b>${l.a}</b><span>${l.b}</span></div>`;}).join('');
+  const list=document.getElementById('sched-slots'), ss=SCHED.byDay[SCHED.selDay]||[];
+  list.innerHTML= ss.length ? ss.map(ms=>`<div class="sched-slot ${ms===SCHED.selSlot?'sel':''}" data-ms="${ms}"><span>${schedFmt(ms)} – ${schedFmt(ms+30*60000)}</span><span class="radio"></span></div>`).join('') : '<div class="sched-empty">Sin horarios este día</div>';
+  document.getElementById('sched-confirm').disabled=!SCHED.selSlot;
+  days.querySelectorAll('.sched-day').forEach(el=>el.onclick=()=>{SCHED.selDay=el.dataset.k;SCHED.selSlot=null;renderSched();});
+  list.querySelectorAll('.sched-slot').forEach(el=>el.onclick=()=>{SCHED.selSlot=+el.dataset.ms;renderSched();});
+}
+function confirmSched(){
+  if(!SCHED.selSlot) return;
+  window.__scheduledFor=SCHED.selSlot;
+  closeSched();
+  const co=document.getElementById('closed-overlay'); if(co) co.style.display='none';
+  const l=schedDayLabel(SCHED.selSlot);
+  const b=document.getElementById('sched-banner'); if(b){ b.style.display='block'; b.textContent='🕐 Programado para '+(l.a+' '+l.b).trim()+' · '+schedFmt(SCHED.selSlot); }
+  const pill=document.getElementById('sched-later-pill'); if(pill) pill.textContent='🕐 Cambiar horario programado';
 }
 
 // Secret tap: tap the "Estamos cerrados" overlay 5 times to bypass the closed gate (for testing).
