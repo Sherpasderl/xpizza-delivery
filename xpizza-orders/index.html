@@ -3030,7 +3030,7 @@ function setOrderType(type) {
     // Init pickup map centered on restaurant
     setTimeout(() => {
       if (!pickupMap && window.google) {
-        const pos = {lat: 15.5044, lng: -88.0251};
+        const pos = {lat: RESTAURANT_LAT, lng: RESTAURANT_LNG};   // real restaurant hub (was stale downtown coords)
         pickupMap = new google.maps.Map(document.getElementById('pickup-map'), {
           center: pos, zoom: 16,
           disableDefaultUI: true,
