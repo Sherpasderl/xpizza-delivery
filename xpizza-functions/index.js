@@ -523,7 +523,10 @@ createOrderApp.all('*', async (req, res) => {
   // ── Scheduled Orders (§B): a cash/card order with a valid scheduled_for is written HELD — no tasks,
   // no tracking token, no order-received WhatsApp, no factura — and materializes only at release. The
   // server RE-VALIDATES the slot (never trust the client): open hours + lead/horizon/granularity, UTC−6.
-  const scheduledForRaw = Number(body.scheduled_for);
+  // Normalize absence BEFORE Number(): the forms send `scheduled_for: null` for ASAP orders, and
+  // Number(null) === 0 (finite) would misclassify every ASAP order as scheduled → validateScheduledFor(0)
+  // → 'in_past' reject. null/'' → NaN → the correct ASAP path.
+  const scheduledForRaw = (body.scheduled_for == null || body.scheduled_for === '') ? NaN : Number(body.scheduled_for);
   if (Number.isFinite(scheduledForRaw)) {
     const v = SCHED.validateScheduledFor(restIdentity.hours, scheduledForRaw, Date.now(), orderType);
     if (!v.valid) return badRequest(res, `Invalid scheduled time (${v.reason})`);
@@ -738,7 +741,10 @@ chargeOnlineApp.all('*', async (req, res) => {
 
   // Scheduled Orders (§B): an online order may be scheduled. Validate the slot SERVER-SIDE (open hours,
   // lead/horizon, granularity, UTC−6) BEFORE opening a payment attempt — fail-closed on a config outage.
-  const scheduledForRaw = Number(body.scheduled_for);
+  // Normalize absence BEFORE Number(): the forms send `scheduled_for: null` for ASAP orders, and
+  // Number(null) === 0 (finite) would misclassify every ASAP order as scheduled → validateScheduledFor(0)
+  // → 'in_past' reject. null/'' → NaN → the correct ASAP path.
+  const scheduledForRaw = (body.scheduled_for == null || body.scheduled_for === '') ? NaN : Number(body.scheduled_for);
   const isScheduled = Number.isFinite(scheduledForRaw);
   let scheduledReleaseAt = null;
   if (isScheduled) {
