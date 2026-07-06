@@ -30,15 +30,23 @@ const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 // v1 defaults; gate-cleared as the executor's call (open-Q3). Per-restaurant override via resolveCfg.
 const DEFAULT_CFG = {
   slotMin: 15,                 // slot granularity
-  minLeadMin: 60,              // earliest a customer may schedule ahead of now
+  minLeadMin: 60,              // customer-facing floor: never offer a slot sooner than this
   maxHorizonHours: 168,        // 7 days
-  releaseLeadMin: 30,          // release ~prep-lead before the slot: release_at = scheduled_for − this
+  // release lead = how long BEFORE the slot the order goes live so it's fulfilled on time. Distinct by
+  // fulfillment (owner-endorsed 2026-07-06): pickup ≈ prep; delivery ≈ prep + drive. release_at =
+  // scheduled_for − lead. The earliest offerable slot is floored at max(minLeadMin, the fulfillment lead)
+  // so an un-fulfillable window is never shown (matches the UberEats "lead baked in" pattern).
+  releaseLeadPickupMin: 30,
+  releaseLeadDeliveryMin: 60,
   releaseJitterMs: 120000,     // delivery-release spread (deterministic per order) to avoid same-minute bursts
   slaReleaseOverdueMin: 30,    // still scheduled past release_at + this → alert
   slaServiceGraceMin: 30,      // past scheduled_for + this, never served → alert (capture-now liability)
   staleReleasingMs: 300000,    // a releasing claim older than this is stale → recover
   maxSlots: 400,               // hard cap on generated slot list
 };
+// prep(+drive) lead in minutes for a fulfillment type; effective customer min-lead is floored by it.
+const leadMinFor = (orderType, c) => (orderType === 'delivery' ? c.releaseLeadDeliveryMin : c.releaseLeadPickupMin);
+const effectiveMinLeadMin = (orderType, c) => Math.max(c.minLeadMin, leadMinFor(orderType, c));
 function resolveCfg(cfg) {
   const c = cfg || {};
   const out = { ...DEFAULT_CFG };
@@ -72,24 +80,26 @@ function isOpenAt(hours, atMs) {
   return mins >= hd.startMin && mins < hd.endMin;   // end exclusive
 }
 
-// validateScheduledFor — the authoritative gate at create/confirm/release. Returns { valid, reason }.
-function validateScheduledFor(hours, scheduledForMs, nowMs, cfg) {
+// validateScheduledFor — the authoritative gate at create/confirm/release. orderType chooses the lead
+// floor (delivery needs a longer lead than pickup). Returns { valid, reason }.
+function validateScheduledFor(hours, scheduledForMs, nowMs, orderType, cfg) {
   const c = resolveCfg(cfg);
   const slotMs = c.slotMin * MS_PER_MIN;
   if (!isNum(scheduledForMs)) return { valid: false, reason: 'not_a_time' };
   if (scheduledForMs <= nowMs) return { valid: false, reason: 'in_past' };
   if (scheduledForMs % slotMs !== 0) return { valid: false, reason: 'not_granular' };
-  if (scheduledForMs < nowMs + c.minLeadMin * MS_PER_MIN) return { valid: false, reason: 'below_min_lead' };
+  if (scheduledForMs < nowMs + effectiveMinLeadMin(orderType, c) * MS_PER_MIN) return { valid: false, reason: 'below_min_lead' };
   if (scheduledForMs > nowMs + c.maxHorizonHours * 3600000) return { valid: false, reason: 'above_max_horizon' };
   if (!isOpenAt(hours, scheduledForMs)) return { valid: false, reason: 'closed_at_slot' };
   return { valid: true, reason: null };
 }
 
-// generateSlots — the offerable future slots (client fetches these; server re-validates on submit).
-function generateSlots(hours, nowMs, cfg) {
+// generateSlots — the offerable future slots for a fulfillment type (client fetches; server re-validates).
+// The first slot is floored at the fulfillment lead so a delivery window that can't be met is never offered.
+function generateSlots(hours, nowMs, orderType, cfg) {
   const c = resolveCfg(cfg);
   const slotMs = c.slotMin * MS_PER_MIN;
-  const start = Math.ceil((nowMs + c.minLeadMin * MS_PER_MIN) / slotMs) * slotMs;
+  const start = Math.ceil((nowMs + effectiveMinLeadMin(orderType, c) * MS_PER_MIN) / slotMs) * slotMs;
   const end = nowMs + c.maxHorizonHours * 3600000;
   const slots = [];
   for (let ms = start; ms <= end && slots.length < c.maxSlots; ms += slotMs) {
@@ -98,7 +108,8 @@ function generateSlots(hours, nowMs, cfg) {
   return slots;
 }
 
-const releaseAtFor = (scheduledForMs, cfg) => scheduledForMs - resolveCfg(cfg).releaseLeadMin * MS_PER_MIN;
+// release_at = scheduled_for − the fulfillment's prep(+drive) lead. Delivery goes live earlier than pickup.
+const releaseAtFor = (scheduledForMs, orderType, cfg) => scheduledForMs - leadMinFor(orderType, resolveCfg(cfg)) * MS_PER_MIN;
 
 // deterministic per-order jitter in [0, releaseJitterMs) for delivery-release spread (no Math.random).
 function releaseJitterMs(orderId, cfg) {

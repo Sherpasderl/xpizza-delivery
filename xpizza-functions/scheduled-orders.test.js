@@ -29,7 +29,7 @@ assert.strictEqual(S.isOpenAt(HOURS, L(2026, 0, 5, 19, 0)), false); ok('isOpenAt
 assert.strictEqual(S.isOpenAt(HOURS, L(2026, 0, 4, 15, 0)), true); ok('isOpenAt: Sun 15:00 → open (Sun window)');
 
 // ── validateScheduledFor ──
-const vf = (ms) => S.validateScheduledFor(HOURS, ms, NOW, CFG);
+const vf = (ms, ot = 'pickup') => S.validateScheduledFor(HOURS, ms, NOW, ot, CFG);
 assert.deepStrictEqual(vf(L(2026, 0, 6, 18, 30)), { valid: true, reason: null }); ok('validate: Tue 18:30 (90m ahead, open, aligned) → valid');
 assert.strictEqual(vf(L(2026, 0, 6, 16, 0)).reason, 'in_past'); ok('validate: past slot → in_past');
 assert.strictEqual(vf(L(2026, 0, 6, 18, 7)).reason, 'not_granular'); ok('validate: :07 → not_granular');
@@ -41,7 +41,7 @@ assert.strictEqual(vf('x').reason, 'not_a_time'); ok('validate: non-numeric → 
 
 // ── generateSlots — only future, in-lead, aligned, within open windows ──
 {
-  const slots = S.generateSlots(HOURS, NOW, CFG);
+  const slots = S.generateSlots(HOURS, NOW, 'pickup', CFG);
   assert.ok(slots.length > 0 && slots.length <= CFG.maxSlots); ok('slots: bounded, non-empty');
   assert.strictEqual(slots[0], L(2026, 0, 6, 18, 0)); ok('slots: first = Tue 18:00 (now 17:00 + 60m lead, aligned up)');
   for (const s of slots) { assert.ok(s >= NOW + CFG.minLeadMin * MIN); assert.strictEqual(s % (CFG.slotMin * MIN), 0); assert.ok(S.isOpenAt(HOURS, s)); }
@@ -50,7 +50,8 @@ assert.strictEqual(vf('x').reason, 'not_a_time'); ok('validate: non-numeric → 
 }
 
 // ── releaseAtFor ──
-assert.strictEqual(S.releaseAtFor(L(2026, 0, 6, 18, 30), CFG), L(2026, 0, 6, 18, 30) - CFG.releaseLeadMin * MIN); ok('releaseAtFor: scheduled_for − releaseLead');
+assert.strictEqual(S.releaseAtFor(L(2026, 0, 6, 18, 30), 'pickup', CFG), L(2026, 0, 6, 18, 30) - CFG.releaseLeadPickupMin * MIN); ok('releaseAtFor(pickup): scheduled_for − pickup lead (30m)');
+assert.strictEqual(S.releaseAtFor(L(2026, 0, 6, 18, 30), 'delivery', CFG), L(2026, 0, 6, 18, 30) - CFG.releaseLeadDeliveryMin * MIN); ok('releaseAtFor(delivery): scheduled_for − delivery lead (60m, prep+drive)');
 
 // ── releaseDecision — the sweep's per-order action ──
 const rd = (o) => S.releaseDecision(o, NOW, CFG);
