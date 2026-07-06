@@ -80,6 +80,14 @@ function isOpenAt(hours, atMs) {
   return mins >= hd.startMin && mins < hd.endMin;   // end exclusive
 }
 
+// Server fail-close guard for the "schedule at Checkout" UX (createOrder + chargeOnlineOrder): an ASAP
+// order (no scheduled_for) placed while the kitchen is CLOSED must be rejected — the client no longer
+// blocks Paso 1, so the server is the authority. A scheduled order carries a scheduled_for (validated
+// separately by validateScheduledFor) and is accepted (held) even while closed. Keys on slot PRESENCE.
+function asapWhileClosed(hours, scheduledForMs, nowMs) {
+  return !isNum(scheduledForMs) && !isOpenAt(hours, nowMs);
+}
+
 // validateScheduledFor — the authoritative gate at create/confirm/release. orderType chooses the lead
 // floor (delivery needs a longer lead than pickup). Returns { valid, reason }.
 function validateScheduledFor(hours, scheduledForMs, nowMs, orderType, cfg) {
@@ -168,6 +176,6 @@ const fingerprintExtra = (fields) => (fields && isNum(fields.scheduled_for)) ? `
 
 module.exports = {
   SCHEDULED, RELEASING, NON_LIVE_STATUSES, isNonLive,
-  resolveCfg, DEFAULT_CFG, isOpenAt, validateScheduledFor, generateSlots, releaseAtFor, releaseJitterMs,
+  resolveCfg, DEFAULT_CFG, isOpenAt, asapWhileClosed, validateScheduledFor, generateSlots, releaseAtFor, releaseJitterMs,
   releaseDecision, releaseTimeValid, scheduledOverdue, fingerprintExtra, TZ_OFFSET_MS,
 };

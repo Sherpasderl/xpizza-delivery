@@ -966,6 +966,16 @@ textarea{resize:none;height:80px;line-height:1.4}
 .sched-open-btn{display:inline-flex;align-items:center;gap:6px;padding:11px 16px;border:1.5px solid #fff;border-radius:12px;background:transparent;color:#fff;font-size:14px;font-weight:600;cursor:pointer;margin-top:14px}
 .sched-later-pill{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:900;background:#111;color:#fff;border:none;border-radius:999px;padding:12px 20px;font-size:14px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.25);cursor:pointer}
 .sched-banner{background:var(--listo-bg,#E8F5EE);color:var(--listo,#1E6B3A);padding:12px 16px;border-radius:12px;font-size:14px;font-weight:600;margin:12px 16px;display:none;text-align:center}
+/* ── Scheduled Orders: Checkout time selector (Estándar / Programar) ── */
+.time-select{padding:14px 16px;border-bottom:1px solid var(--border)}
+.time-select-label{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--charcoal);margin-bottom:10px}
+.time-select-note{font-size:13px;color:var(--brand-red,#c0392b);font-weight:600;margin-bottom:10px}
+.time-select-cards{display:flex;gap:10px}
+.time-card{flex:1;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s}
+.time-card.active{border-color:var(--charcoal);box-shadow:0 0 0 1px var(--charcoal) inset}
+.time-card.disabled{opacity:.45;pointer-events:none}
+.time-card-title{font-family:var(--sans);font-size:15px;font-weight:600;color:var(--charcoal)}
+.time-card-sub{font-size:12px;color:var(--muted);margin-top:3px}
 </style>
 </head>
 <body>
@@ -981,14 +991,11 @@ textarea{resize:none;height:80px;line-height:1.4}
       <div class="closed-hours-row"><span>Dom – Mié</span><span>12:00 pm – 7:45 pm</span></div>
       <div class="closed-hours-row"><span>Jue – Sáb</span><span>12:00 pm – 8:45 pm</span></div>
     </div>
-    <button type="button" class="sched-open-btn" onclick="openSched()">🕐 Ordenar para más tarde</button>
     <a href="https://wa.me/50497952893" class="closed-wa">💬 Escríbenos por WhatsApp</a>
   </div>
 </div>
 
-<!-- ── Scheduled Orders: "order for later" slot picker ── -->
-<div class="sched-banner" id="sched-banner"></div>
-<button type="button" class="sched-later-pill" id="sched-later-pill" onclick="openSched()">🕐 Programar para más tarde</button>
+<!-- ── Scheduled Orders: slot picker modal (opened from the Checkout time selector) ── -->
 <div class="sched-modal" id="sched-modal" role="dialog" aria-modal="true">
   <div class="sched-sheet">
     <div class="sched-head"><strong>Programar pedido</strong><span class="sched-close" onclick="closeSched()">✕</span></div>
@@ -1085,6 +1092,22 @@ textarea{resize:none;height:80px;line-height:1.4}
       <button class="delivery-toggle-btn active" id="btn-delivery" onclick="setOrderType('delivery')">Delivery</button>
       <button class="delivery-toggle-btn" id="btn-pickup" onclick="setOrderType('pickup')">Pickup</button>
     </div>
+
+    <!-- ── Scheduled Orders: Checkout time selector (Estándar = ASAP / Programar = real scheduled_for) ── -->
+    <div class="time-select" id="time-select">
+      <div class="time-select-label" id="time-select-label">Tiempo de entrega</div>
+      <div class="time-select-note" id="time-select-note" style="display:none">🕐 Cerrado — programá tu pedido para continuar.</div>
+      <div class="time-select-cards">
+        <div class="time-card active" id="time-standard" onclick="selectTimeMode('standard')">
+          <div class="time-card-title">Estándar</div>
+          <div class="time-card-sub" id="time-standard-sub">Lo antes posible</div>
+        </div>
+        <div class="time-card" id="time-schedule" onclick="selectTimeMode('schedule')">
+          <div class="time-card-title">Programar</div>
+          <div class="time-card-sub" id="time-schedule-sub">Elegí un horario</div>
+        </div>
+      </div>
+    </div>
     <div class="pickup-info" id="pickup-info" style="display:none">
       <!-- Pickup map -->
       <div id="pickup-map" style="height:160px;border-radius:var(--radius);overflow:hidden;margin:12px 16px 0"></div>
@@ -1097,20 +1120,6 @@ textarea{resize:none;height:80px;line-height:1.4}
         </div>
       </div>
       <!-- Pickup time -->
-      <div class="pickup-time-section">
-        <div class="pickup-time-label">Hora de recogida</div>
-        <div class="pickup-time-options">
-          <div class="pickup-time-btn active" id="pickup-std" onclick="selectPickupTime('standard')">
-            <div class="pickup-time-title">Estándar</div>
-            <div class="pickup-time-sub" id="pickup-std-time">~20 min</div>
-          </div>
-          <div class="pickup-time-btn" id="pickup-sched" onclick="selectPickupTime('schedule')">
-            <div class="pickup-time-title">Programar</div>
-            <div class="pickup-time-sub">Elegir hora</div>
-          </div>
-        </div>
-
-      </div>
       <div class="pickup-whatsapp-note">📱 Te avisamos por WhatsApp cuando esté listo</div>
     </div>
     <div class="pickup-info" id="pickup-info-old" style="display:none">
@@ -1824,7 +1833,8 @@ function goToLocation(){
   const phone=document.getElementById('cphone').value.trim();
   const has=MENU.some(p=>qty[p.id]>0);
   const err=document.getElementById('err1');
-  if(!isOpen() && !window.__bypassClosed && !window.__scheduledFor){ err.style.display='block'; err.textContent='Lo sentimos, estamos cerrados. '+getNextOpenText()+' Podés ordenar para más tarde.'; return; }
+  // Closed-hours no longer blocks Paso 1 — the customer proceeds to Checkout and schedules there
+  // (Estándar disabled / Programar required). The server still fail-closed-rejects ASAP-while-closed.
   if(!has){ err.style.display='block'; err.textContent='Seleccioná al menos una pizza.'; return; }
   if(calcTotal()<MIN_ORDER){ err.style.display='block'; err.textContent='Agrega L '+(MIN_ORDER-calcTotal()).toFixed(0)+' más para alcanzar el mínimo de L '+MIN_ORDER+'.'; return; }
   const phoneDigits=phone.replace(/[^\d]/g,'');
@@ -1835,6 +1845,7 @@ function goToLocation(){
   }
   err.style.display='none';
   showStage('s2',50);
+  refreshTimeSelector();
   setTimeout(initMap, 100);
 }
 
@@ -2121,6 +2132,14 @@ function onCashTenderedInput(){
 
 /* ── Process payment ── */
 async function processPayment(){
+  // Closed now + no scheduled slot → must schedule (Estándar/ASAP is unavailable while closed). The
+  // server also fail-closed-rejects this, but block here for a clear message. bypassClosed = QA only.
+  if(!isOpen() && !window.__scheduledFor && !window.__bypassClosed){
+    const e=document.getElementById('err3'); e.style.display='block';
+    e.textContent='Cerrado — programá tu pedido (elegí "Programar") para continuar.';
+    refreshTimeSelector();
+    return;
+  }
   if(!selectedPayment){
     document.getElementById('err3').style.display='block'; return;
   }
@@ -2353,6 +2372,7 @@ function snapshotForm(){
   const v = id => { const el=document.getElementById(id); return el?el.value:''; };
   return {
     qty, extras: pizzaExtras, orderType, pickupTimeType, pickupScheduledTime,
+    scheduledFor: window.__scheduledFor, timeMode: window.__timeMode,
     lat, lng, payment: selectedPayment,
     // Factura RTN fields — present once the factura integration is merged; captured safely (no-op before).
     rtn: { on: !!document.getElementById('rtn-toggle')?.checked, razon: v('razon-social'), num: v('rtn-cliente') },
@@ -2380,10 +2400,10 @@ function restoreOrderForm(){
     }
     renderMenu(); updateCart(); updateTotal();
     showStage('s2', 50);
-    setOrderType(snap.orderType || 'delivery');
-    if(snap.orderType === 'pickup'){
-      selectPickupTime(snap.pickupTimeType || 'standard');
-    } else {
+    window.__scheduledFor = snap.scheduledFor || null;
+    window.__timeMode = snap.timeMode || 'standard';
+    setOrderType(snap.orderType || 'delivery');   // refreshes the Checkout time selector with the restored schedule
+    if(snap.orderType !== 'pickup'){
       lat = snap.lat; lng = snap.lng;
       if(snap.lat && snap.lng) __restorePos = { lat: snap.lat, lng: snap.lng }; // initMap places this instead of geolocating
       setTimeout(initMap, 100);
@@ -3025,95 +3045,16 @@ function setOrderType(type) {
           }
         });
       }
-      // Update standard time
-      const now = new Date();
-      now.setMinutes(now.getMinutes() + 20);
-      const h = now.getHours().toString().padStart(2,'0');
-      const m = now.getMinutes().toString().padStart(2,'0');
-      document.getElementById('pickup-std-time').textContent = 'Listo ~' + h + ':' + m;
     }, 300);
 
   }
+  // Keep the Checkout time selector's label ("entrega"/"recogida") + state in sync with the mode.
+  refreshTimeSelector();
 }
 
-/* ── Pickup time selection ── */
-let selectedScheduleDate = 0;
-let selectedScheduleSlot = null;
-
-function selectPickupTime(type) {
-  pickupTimeType = type;
-  document.getElementById('pickup-std').classList.toggle('active', type === 'standard');
-  document.getElementById('pickup-sched').classList.toggle('active', type === 'schedule');
-  if (type === 'schedule') openScheduleSheet();
-}
-
-function openScheduleSheet() {
-  buildTimeSlots(0);
-  document.getElementById('schedule-overlay').classList.add('open');
-  document.getElementById('schedule-sheet').classList.add('open');
-  document.body.style.overflow = 'hidden';
-}
-
-function buildTimeSlots(dayIdx) {
-  const now = new Date();
-  const isToday = dayIdx === 0;
-  // Generate 15-min slots from 12:00 to closing
-  const d = new Date(now); d.setDate(d.getDate() + dayIdx);
-  const dayOfWeek = d.getDay();
-  const closeMin = (dayOfWeek >= 4) ? 20*60+45 : 19*60+45; // Thu-Sat close later
-  const slots = [];
-  let start = 12 * 60; // 12:00 PM
-  while (start + 20 <= closeMin) {
-    if (!isToday || (start > (now.getHours()*60 + now.getMinutes() + 20))) {
-      const h1 = Math.floor(start/60), m1 = start%60;
-      const end = start + 20;
-      const h2 = Math.floor(end/60), m2 = end%60;
-      const fmt = (h,m) => `${h>12?h-12:h}:${m.toString().padStart(2,'0')} ${h>=12?'PM':'AM'}`;
-      slots.push({label: `${fmt(h1,m1)}–${fmt(h2,m2)}`, value: `${h1.toString().padStart(2,'0')}:${m1.toString().padStart(2,'0')}`});
-    }
-    start += 15;
-  }
-  document.getElementById('schedule-slots').innerHTML = slots.map(s =>
-    `<div class="schedule-slot" onclick="selectSlot('${s.value}','${s.label}')">
-      <span class="schedule-slot-time">${s.label}</span>
-      <div class="schedule-slot-radio${selectedScheduleSlot===s.value?' selected':''}" id="slot-${s.value.replace(':','-')}"></div>
-    </div>`
-  ).join('') || '<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">No hay horarios disponibles para este día.</div>';
-}
-
-function selectSlot(val, label) {
-  selectedScheduleSlot = val;
-  document.querySelectorAll('.schedule-slot-radio').forEach(r => r.classList.remove('selected'));
-  const el = document.getElementById('slot-'+val.replace(':','-'));
-  if (el) el.classList.add('selected');
-  pickupScheduledTime = label;
-}
-
-function confirmSchedule() {
-  if (!selectedScheduleSlot) {
-    alert('Por favor seleccioná un horario.');
-    return;
-  }
-  closeScheduleSheet();
-  // Update the schedule button to show selected time
-  document.querySelector('#pickup-sched .pickup-time-sub').textContent = pickupScheduledTime || 'Seleccionado';
-}
-
-function closeScheduleSheet() {
-  document.getElementById('schedule-overlay').classList.remove('open');
-  document.getElementById('schedule-sheet').classList.remove('open');
-  document.body.style.overflow = '';
-  // If no slot selected, revert to standard
-  if (!selectedScheduleSlot) {
-    pickupTimeType = 'standard';
-    document.getElementById('pickup-std').classList.add('active');
-    document.getElementById('pickup-sched').classList.remove('active');
-  }
-}
-
-function updateScheduledTime(val) {
-  pickupScheduledTime = val;
-}
+/* ── Pickup/schedule time: the old SOFT pickup schedule-sheet (label-only pickup_time) was superseded by
+   the real Checkout time selector (Estándar / Programar → scheduled_for). Its functions + sheet HTML were
+   removed. pickup_time now stays 'standard' (real scheduling flows through scheduled_for). ── */
 
 /* ── Scroll to details ── */
 function scrollToDetails(){
@@ -3160,11 +3101,9 @@ function initCardFormatting(){
   // (Card number/expiry formatting removed — card entry is on PixelPay's hosted page.)
 }
 
-// Check delivery hours
-if (!isOpen()) {
-  document.getElementById('closed-msg').textContent = getNextOpenText();
-  document.getElementById('closed-overlay').style.display = 'flex';
-}
+// Closed-hours: no blocking overlay on Paso 1 (scheduling moved to Checkout). The closed state is
+// surfaced by the Checkout time selector (Estándar disabled / Programar required) + a server fail-close.
+renderClosedHours();
 
 /* ── Scheduled Orders: client slot picker (mirrors the server; server RE-VALIDATES on submit) ── */
 const SCHED = { SLOT: 15, LEAD: 60, HORIZON_DAYS: 7, byDay: {}, dayKeys: [], selDay: null, selSlot: null };
@@ -3210,11 +3149,58 @@ function renderSched(){
 function confirmSched(){
   if(!SCHED.selSlot) return;
   window.__scheduledFor=SCHED.selSlot;
+  window.__timeMode='schedule';
   closeSched();
-  const co=document.getElementById('closed-overlay'); if(co) co.style.display='none';
-  const l=schedDayLabel(SCHED.selSlot);
-  const b=document.getElementById('sched-banner'); if(b){ b.style.display='block'; b.textContent='🕐 Programado para '+(l.a+' '+l.b).trim()+' · '+schedFmt(SCHED.selSlot); }
-  const pill=document.getElementById('sched-later-pill'); if(pill) pill.textContent='🕐 Cambiar horario programado';
+  refreshTimeSelector();
+}
+
+/* ── Scheduled Orders: Checkout time selector (Estándar = ASAP / Programar = real scheduled_for) ── */
+window.__timeMode='standard';   // 'standard' | 'schedule'
+function selectTimeMode(mode){
+  if(mode==='standard'){
+    if(!isOpen()) return;                 // Estándar (ASAP) is unavailable while closed — must schedule
+    window.__timeMode='standard'; window.__scheduledFor=null; refreshTimeSelector();
+  } else {
+    openSched();                          // confirmSched sets __scheduledFor + __timeMode='schedule'
+  }
+}
+function applyTimeModeUI(){
+  const std=document.getElementById('time-standard'), sch=document.getElementById('time-schedule');
+  if(std) std.classList.toggle('active', window.__timeMode==='standard');
+  if(sch) sch.classList.toggle('active', window.__timeMode==='schedule');
+}
+function refreshTimeSelector(){
+  const open=isOpen();
+  const lbl=document.getElementById('time-select-label');
+  if(lbl) lbl.textContent = 'Tiempo de '+(orderType==='pickup'?'recogida':'entrega');
+  // First available slot for the "Programar" hint.
+  schedGenerate();
+  const first = SCHED.dayKeys.length ? SCHED.byDay[SCHED.dayKeys[0].key][0] : null;
+  const std=document.getElementById('time-standard'), note=document.getElementById('time-select-note');
+  const stdSub=document.getElementById('time-standard-sub'), schSub=document.getElementById('time-schedule-sub');
+  if(!open){
+    if(std) std.classList.add('disabled');
+    if(note) note.style.display='block';
+    if(window.__timeMode==='standard') window.__timeMode='schedule';   // can't ASAP while closed
+  } else {
+    if(std) std.classList.remove('disabled');
+    if(note) note.style.display='none';
+  }
+  if(stdSub) stdSub.textContent = open ? 'Lo antes posible' : 'No disponible';
+  if(schSub){
+    if(window.__scheduledFor){ const l=schedDayLabel(window.__scheduledFor); schSub.textContent=(l.a+' '+l.b).trim()+' · '+schedFmt(window.__scheduledFor); }
+    else schSub.textContent = first ? ('Más temprano: '+schedFmt(first)) : 'Sin horarios';
+  }
+  applyTimeModeUI();
+}
+/* Render the closed-hours rows from HOURS (single source) so they can never go stale. */
+function renderClosedHours(){
+  const el=document.querySelector('.closed-hours'); if(!el) return;
+  const names=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const fmt=m=>{ const h=Math.floor(m/60), mm=m%60, ap=h>=12?'pm':'am', h12=h%12||12; return h12+':'+mm.toString().padStart(2,'0')+' '+ap; };
+  let rows='';
+  for(let d=0; d<7; d++){ const h=HOURS[d]; rows+='<div class="closed-hours-row"><span>'+names[d]+'</span><span>'+(h?fmt(h.open)+' – '+fmt(h.close):'Cerrado')+'</span></div>'; }
+  el.innerHTML=rows;
 }
 
 // Secret tap: tap the pizza icon 5 times to bypass closed overlay (for testing)
@@ -3264,21 +3250,7 @@ handlePaymentReturn();   // if we arrived back from the hosted checkout (?pay=�
 </div>
 
 <!-- Schedule pickup sheet -->
-<div class="schedule-overlay" id="schedule-overlay" onclick="closeScheduleSheet()"></div>
-<div class="schedule-sheet" id="schedule-sheet">
-  <div class="schedule-header">
-    <button class="schedule-close" onclick="closeScheduleSheet()">✕</button>
-    <div class="schedule-title">Programar recogida</div>
-  </div>
-  <div class="schedule-body">
-    <!-- Time slots -->
-    <div class="schedule-slots" id="schedule-slots"></div>
-  </div>
-  <div class="schedule-footer">
-    <button class="btn-primary" onclick="confirmSchedule()">Programar</button>
-    <button class="btn-secondary" style="margin-top:8px" onclick="closeScheduleSheet()">Cancelar</button>
-  </div>
-</div>
+<!-- (soft pickup schedule-sheet removed — replaced by the Checkout time selector + real slot picker) -->
 
 <!-- Cart review sheet -->
 <div class="cart-overlay" id="cart-overlay" onclick="closeCartReview()"></div>

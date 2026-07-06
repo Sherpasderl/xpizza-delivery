@@ -547,6 +547,13 @@ createOrderApp.all('*', async (req, res) => {
     return res.status(200).json({ ok: true, scheduled: true, order_id: orderId, scheduled_for: scheduledForRaw, release_at: releaseAt });
   }
 
+  // ASAP order (no scheduled_for): fail-close if the kitchen is CLOSED now. The client moved scheduling to
+  // Checkout and no longer blocks Paso 1, so the server is the authority (never dump an ASAP order onto a
+  // dark kitchen). A scheduled order took the branch above; this only catches genuine ASAP-while-closed.
+  if (SCHED.asapWhileClosed(restIdentity.hours, scheduledForRaw, Date.now())) {
+    return badRequest(res, 'Cerrado — programá tu pedido');
+  }
+
   // Order record + driver tasks + public tracking — extracted to a pure builder
   // (create-order-build.js) so the cash path is golden-tested for byte-identical output. The
   // field names are load-bearing (driver app, KDS, tracking site, factura trigger).
@@ -747,17 +754,21 @@ chargeOnlineApp.all('*', async (req, res) => {
   const scheduledForRaw = (body.scheduled_for == null || body.scheduled_for === '') ? NaN : Number(body.scheduled_for);
   const isScheduled = Number.isFinite(scheduledForRaw);
   let scheduledReleaseAt = null;
+  // Read hours for BOTH paths: validate the slot (scheduled) OR fail-close an ASAP order while CLOSED
+  // (the client moved scheduling to Checkout and no longer blocks Paso 1). Fail-closed on a config outage.
+  let schedIdentity;
+  try {
+    schedIdentity = await getRestaurantIdentity(db, restaurantId);
+  } catch (e) {
+    res.set('Retry-After', '2');
+    return res.status(e.statusCode || 503).json({ error: 'Service temporarily unavailable', detail: 'restaurant config unavailable', retryable: true });
+  }
   if (isScheduled) {
-    let schedIdentity;
-    try {
-      schedIdentity = await getRestaurantIdentity(db, restaurantId);
-    } catch (e) {
-      res.set('Retry-After', '2');
-      return res.status(e.statusCode || 503).json({ error: 'Service temporarily unavailable', detail: 'restaurant config unavailable', retryable: true });
-    }
     const v = SCHED.validateScheduledFor(schedIdentity.hours, scheduledForRaw, Date.now(), orderType);
     if (!v.valid) return badRequest(res, `Invalid scheduled time (${v.reason})`);
     scheduledReleaseAt = SCHED.releaseAtFor(scheduledForRaw, orderType);
+  } else if (SCHED.asapWhileClosed(schedIdentity.hours, scheduledForRaw, Date.now())) {
+    return badRequest(res, 'Cerrado — programá tu pedido');
   }
 
   const { total_cents, subtotal_cents, tax_cents } = orderBreakdownCents(total, restaurantId);

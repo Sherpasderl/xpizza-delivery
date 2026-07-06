@@ -86,4 +86,17 @@ assert.strictEqual(S.fingerprintExtra({ order_type: 'pickup' }), S.fingerprintEx
 assert.ok(S.SCHEDULED === 'scheduled' && S.RELEASING === 'releasing'); ok('constants: SCHEDULED / RELEASING');
 assert.ok(S.isNonLive('scheduled') && S.isNonLive('releasing') && S.isNonLive('pending_payment') && !S.isNonLive('new')); ok('isNonLive: scheduled/releasing/pending_payment non-live; new is live');
 
+// ── asapWhileClosed: server fail-close guard for ASAP-while-closed (Checkout-scheduling move) ──
+// An ASAP order (no scheduled_for) placed while the kitchen is closed must be rejected server-side; a
+// scheduled order (slot present, validated separately) is accepted (held) even while closed.
+{
+  const closed = L(2026, 0, 5, 19, 0);   // Monday → closed
+  const openT  = L(2026, 0, 6, 17, 0);   // Tue 17:00 → open
+  const slot   = L(2026, 0, 6, 18, 0);   // a scheduled slot (its presence is what the guard keys on)
+  assert.strictEqual(S.asapWhileClosed(HOURS, undefined, closed), true);  ok('asapWhileClosed: ASAP (no slot) while CLOSED → reject');
+  assert.strictEqual(S.asapWhileClosed(HOURS, undefined, openT), false);  ok('asapWhileClosed: ASAP while OPEN → accept');
+  assert.strictEqual(S.asapWhileClosed(HOURS, slot, closed), false);      ok('asapWhileClosed: scheduled (slot present) while closed → accept (held)');
+  assert.strictEqual(S.asapWhileClosed(HOURS, NaN, openT), false);        ok('asapWhileClosed: NaN slot while open → accept (ASAP ok)');
+}
+
 console.log(`\n${n} passed`);
