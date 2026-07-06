@@ -228,6 +228,16 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
   if (order.payment_status !== 'confirmed') return { outcome: 'confirm_claim_failed' };
   if (order.materialized_at) return { outcome: 'already_confirmed', tracking_token: order.tracking_token };
 
+  // ---- Scheduled Orders (§B.1): a confirmed order carrying a scheduled_for is HELD, not materialized —
+  // it goes live ONLY at release (scheduled→releasing→new, scheduled-release-core). This is the sole
+  // pending_payment→new chokepoint, so this one guard makes EVERY confirm entrypoint (confirmOnlinePayment,
+  // sweepStalePending, the materializeOnConfirm recovery) scheduled-safe. The claim above already set
+  // payment_status:confirmed + charged_at; here we just flip status→scheduled and stop (no tasks/tracking).
+  if (Number.isFinite(Number(order.scheduled_for))) {
+    if (order.status !== 'scheduled') await orderRef.update({ status: 'scheduled', scheduled_confirmed_at: now });
+    return { outcome: 'scheduled_held', scheduled_for: order.scheduled_for };
+  }
+
   // 3c (plan 10b): post-capture active-recheck. Money is captured — NEVER strand a paid order;
   // always materialize. If the Restaurant was deactivated mid-flight, alert dispatcher (we owe
   // fulfillment). Idempotent: already-materialized returned above, and the marker is written in the

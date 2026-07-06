@@ -727,8 +727,27 @@ chargeOnlineApp.all('*', async (req, res) => {
     }
   }
 
+  // Scheduled Orders (§B): an online order may be scheduled. Validate the slot SERVER-SIDE (open hours,
+  // lead/horizon, granularity, UTC−6) BEFORE opening a payment attempt — fail-closed on a config outage.
+  const scheduledForRaw = Number(body.scheduled_for);
+  const isScheduled = Number.isFinite(scheduledForRaw);
+  let scheduledReleaseAt = null;
+  if (isScheduled) {
+    let schedIdentity;
+    try {
+      schedIdentity = await getRestaurantIdentity(db, restaurantId);
+    } catch (e) {
+      res.set('Retry-After', '2');
+      return res.status(e.statusCode || 503).json({ error: 'Service temporarily unavailable', detail: 'restaurant config unavailable', retryable: true });
+    }
+    const v = SCHED.validateScheduledFor(schedIdentity.hours, scheduledForRaw, Date.now(), orderType);
+    if (!v.valid) return badRequest(res, `Invalid scheduled time (${v.reason})`);
+    scheduledReleaseAt = SCHED.releaseAtFor(scheduledForRaw, orderType);
+  }
+
   const { total_cents, subtotal_cents, tax_cents } = orderBreakdownCents(total, restaurantId);
-  const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text);
+  // Bind the slot into the fingerprint (R2-#3): a reused cart can't be charged against a different slot.
+  const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text, isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '');
 
   // Factura inputs (FACTURA_PLAN §2) — structured priced items for the factura trigger.
   // factura_status starts 'not_due': a pending_payment order is NOT yet a Sale, so it's
@@ -770,6 +789,12 @@ chargeOnlineApp.all('*', async (req, res) => {
     pendingOrderRecord.maps_link = `https://www.google.com/maps?q=${lat},${lng}`;
   } else {
     pendingOrderRecord.pickup_time = fields.pickup_time;
+  }
+  // Scheduled Orders: carry the slot on the pending record. Confirm HOLDS it (status:scheduled, no
+  // materialize); the sweep releases it at release_at. Stays factura not_due + no tracking until release.
+  if (isScheduled) {
+    pendingOrderRecord.scheduled_for = scheduledForRaw;
+    pendingOrderRecord.release_at = scheduledReleaseAt;
   }
 
   // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a
