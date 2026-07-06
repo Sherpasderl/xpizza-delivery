@@ -80,6 +80,14 @@ function isOpenAt(hours, atMs) {
   return mins >= hd.startMin && mins < hd.endMin;   // end exclusive
 }
 
+// Normalize a request's scheduled_for BEFORE Number() — the single source for both intake handlers. The
+// forms send `scheduled_for: null` for a normal ASAP order, and Number(null) === 0 is FINITE, which would
+// misclassify every ASAP order as scheduled → validateScheduledFor(0) → 'in_past' → 400 on every ASAP
+// order (the live hotfix). Absence (null / '' / undefined) → NaN → not finite → the correct ASAP path.
+function normalizeScheduledFor(raw) {
+  return (raw == null || raw === '') ? NaN : Number(raw);
+}
+
 // Server fail-close guard for the "schedule at Checkout" UX (createOrder + chargeOnlineOrder): an ASAP
 // order (no scheduled_for) placed while the kitchen is CLOSED must be rejected — the client no longer
 // blocks Paso 1, so the server is the authority. A scheduled order carries a scheduled_for (validated
@@ -176,6 +184,6 @@ const fingerprintExtra = (fields) => (fields && isNum(fields.scheduled_for)) ? `
 
 module.exports = {
   SCHEDULED, RELEASING, NON_LIVE_STATUSES, isNonLive,
-  resolveCfg, DEFAULT_CFG, isOpenAt, asapWhileClosed, validateScheduledFor, generateSlots, releaseAtFor, releaseJitterMs,
+  resolveCfg, DEFAULT_CFG, isOpenAt, asapWhileClosed, normalizeScheduledFor, validateScheduledFor, generateSlots, releaseAtFor, releaseJitterMs,
   releaseDecision, releaseTimeValid, scheduledOverdue, fingerprintExtra, TZ_OFFSET_MS,
 };

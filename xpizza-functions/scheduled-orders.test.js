@@ -99,4 +99,17 @@ assert.ok(S.isNonLive('scheduled') && S.isNonLive('releasing') && S.isNonLive('p
   assert.strictEqual(S.asapWhileClosed(HOURS, NaN, openT), false);        ok('asapWhileClosed: NaN slot while open → accept (ASAP ok)');
 }
 
+// ── normalizeScheduledFor: absence → NaN BEFORE Number() (the Number(null)===0 trap). The forms send
+// `scheduled_for: null` for a normal ASAP order; Number(null) === 0 is finite → misclassified as scheduled
+// → validateScheduledFor(0) → 'in_past' → every ASAP order 400-rejected (the live hotfix). A literal-null
+// payload MUST normalize to NaN → not finite → the ASAP path.
+assert.ok(Number.isNaN(S.normalizeScheduledFor(null)), 'null → NaN');
+assert.ok(Number.isNaN(S.normalizeScheduledFor('')), "'' → NaN");
+assert.ok(Number.isNaN(S.normalizeScheduledFor(undefined)), 'undefined → NaN');
+assert.ok(Number.isNaN(S.normalizeScheduledFor('abc')), 'non-numeric string → NaN');
+assert.strictEqual(S.normalizeScheduledFor(1800000000000), 1800000000000, 'number → itself');
+assert.strictEqual(S.normalizeScheduledFor('1800000000000'), 1800000000000, 'numeric string → number');
+assert.strictEqual(Number.isFinite(S.normalizeScheduledFor(null)), false, 'null ASAP payload → NOT finite → ASAP path (never misclassified as scheduled)');
+ok('normalizeScheduledFor: null/empty/undefined/non-numeric → NaN (ASAP); numeric → number (guards Number(null)===0)');
+
 console.log(`\n${n} passed`);
