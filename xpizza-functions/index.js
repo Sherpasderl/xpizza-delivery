@@ -1365,6 +1365,10 @@ exports.materializeOnConfirm = onValueWritten(
     if (after.payment_status !== 'confirmed') return;
     if (after.materialized_at) return;               // already materialized → nothing to do
     if (after.status === 'cancelled') return;
+    // Scheduled Orders: a paid-scheduled order is confirmed + unmaterialized but must NOT auto-release
+    // here — it materializes ONLY at release (scheduled→releasing→new, scheduled-release-core). Gate this
+    // recovery trigger to pending_payment-origin confirms only.
+    if (after.status === 'scheduled' || after.status === 'releasing') return;
     const orderId = event.params.orderId;
     console.warn(`materializeOnConfirm: recovering unmaterialized confirmed order ${orderId}`);
     const db = getDatabase();

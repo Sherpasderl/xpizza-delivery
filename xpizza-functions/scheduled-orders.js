@@ -162,7 +162,9 @@ function scheduledOverdue(order, nowMs, cfg) {
 }
 
 // fingerprintExtra — folded into orderFingerprint so a reused cart can't rebind a DIFFERENT slot (R2-#3).
-const fingerprintExtra = (fields) => `${(fields && fields.scheduled_for) || ''}|${(fields && fields.order_type) || ''}`;
+// EMPTY for ASAP orders → their fingerprint is byte-unchanged (backward-compatible with in-flight pending
+// orders + the shipped 3-part hash); non-empty only when a slot is bound.
+const fingerprintExtra = (fields) => (fields && isNum(fields.scheduled_for)) ? `${fields.scheduled_for}|${fields.order_type || ''}` : '';
 
 module.exports = {
   SCHEDULED, RELEASING, NON_LIVE_STATUSES, isNonLive,

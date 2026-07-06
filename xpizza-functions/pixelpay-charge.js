@@ -16,10 +16,13 @@ function genAttemptId() {
 // Economic fingerprint binding an order_id to the exact thing we're charging.
 // A second charge for the same order_id with a different cart/total yields a
 // different fingerprint → 409 (we never silently charge a mutated amount).
-function orderFingerprint(orderId, totalCents, itemsText) {
-  return crypto.createHash('sha256')
-    .update([orderId, String(totalCents), String(itemsText)].join('|'))
-    .digest('hex');
+function orderFingerprint(orderId, totalCents, itemsText, extra = '') {
+  // `extra` binds the scheduled slot + fulfillment for scheduled orders (R2-#3) so a reused cart can't be
+  // charged against a DIFFERENT slot. EMPTY for ASAP orders → the hash is byte-identical to the shipped
+  // 3-part fingerprint (in-flight pending orders keep matching).
+  const parts = [orderId, String(totalCents), String(itemsText)];
+  if (extra) parts.push(String(extra));
+  return crypto.createHash('sha256').update(parts.join('|')).digest('hex');
 }
 
 // total_cents → decimal-lempira string PixelPay expects (38500 → "385.00").
