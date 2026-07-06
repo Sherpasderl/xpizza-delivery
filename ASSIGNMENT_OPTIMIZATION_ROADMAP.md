@@ -46,6 +46,10 @@ Phases 1 and 2 are **independent** and can proceed in parallel after 0. Phase 3 
 - **§5 tie-in:** to feed Phase 2's `l(y_k)` and Phase 3's `t̃_i`, extend capture (Phase 0.x) with **per-location service/handoff time** and **delivery-tour geometry** (see Phase 2 prereq).
 
 ## Phase 1 — Ready-time predictor
+- **⚠️ SUPERSEDED by `PHASE1_READY_TIME_PREDICTOR.md` (rev-3, Codex-gated 2026-07-03)** for the concrete build: target
+  definition (train/eval both `ready−new` and `ready−preparing`; timeline-sanity filters), segmented eval (not aggregate
+  MAE), the ops-enforced-Listo ground truth + KDS nudge, and the corrected build sequence. The bullets below are the
+  original roadmap sketch.
 - **Goal:** `predictReadyAt(order)` → expected ready timestamp, per-restaurant. Feeds Phase 3's target window `τ`.
 - **Draws from:** prep-time as the material stochastic input (Meituan/GA/MIP).
 - **v1 (heuristic):** per-restaurant rolling prep-time by hour-of-day × item-count × current `kitchen_load_ahead` percentile. **v2 (learned):** gradient-boosting once enough Phase-0 data.
