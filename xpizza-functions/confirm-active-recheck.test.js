@@ -11,7 +11,10 @@ const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-conf
 const { buildMaterializeUpdates } = require('./materialize');
 
 const FALLBACK = { lat: 15.5, lng: -88.0, name: 'X Pizza', phone: '+50497952893' };
-const ID = (active) => ({ active, hub_lat: 15.5, hub_lng: -88.0, name: 'X Pizza', phone: 'p', version: 1, delivery_radius_km: 7 });
+// hours: open 24/7 so the materialize-time closed-kitchen re-check (paid-after-close guard) passes and
+// these tests exercise the inactive-restaurant recheck as intended (a separate concern from hours).
+const OPEN_ALLDAY = { open: true, start: '00:00', end: '24:00' };
+const ID = (active) => ({ active, hours: { sun: OPEN_ALLDAY, mon: OPEN_ALLDAY, tue: OPEN_ALLDAY, wed: OPEN_ALLDAY, thu: OPEN_ALLDAY, fri: OPEN_ALLDAY, sat: OPEN_ALLDAY }, hub_lat: 15.5, hub_lng: -88.0, name: 'X Pizza', phone: 'p', version: 1, delivery_radius_km: 7 });
 let n = 0;
 const ok = (label) => console.log(`  ✓ ${++n} ${label}`);
 

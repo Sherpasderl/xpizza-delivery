@@ -88,7 +88,9 @@ function hasCapturedMoneyEvidence(order, attempt) {
 // scheduled order correctly HOLDS it (verified paid + status:scheduled, out of manual_reconciliation) — it
 // releases live only via the claim. Without this it 409s + audits materialize_failed (a lie) and can never
 // retry (the order is now confirmed, so the manual_reconciliation claim can't re-acquire it).
-const FINAL_SUCCESS_OUTCOMES = new Set(['abandoned', 'refunded', 'materialized', 'confirmed', 'already_confirmed', 'scheduled_held']);
+// `held_closed_at_materialize` (Codex-on-diff paid-after-close) is also a genuine SUCCESS: a paid order the
+// kitchen can't fulfill right now is safely HELD for review (not a false materialize_failed / non-retryable).
+const FINAL_SUCCESS_OUTCOMES = new Set(['abandoned', 'refunded', 'materialized', 'confirmed', 'already_confirmed', 'scheduled_held', 'held_closed_at_materialize']);
 function httpForOutcome(outcome) {
   return FINAL_SUCCESS_OUTCOMES.has(outcome) ? 200 : 409;
 }

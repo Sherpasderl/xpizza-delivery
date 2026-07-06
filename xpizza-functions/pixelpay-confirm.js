@@ -22,6 +22,7 @@
 
 const TERMINAL_ATTEMPT = ['declined', 'voided', 'abandoned', 'converted', 'refunded', 'voided_inactive'];
 const SCHED = require('./scheduled-orders');   // Scheduled Orders — confirm-time slot re-validation (§F)
+const { holdIfClosedAtMaterialize } = require('./materialize-guard');   // paid-after-close re-check (Codex-on-diff)
 
 async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingToken }) {
   const { db, staleMs = 90000 } = deps;
@@ -251,6 +252,14 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
     }
     if (order.status !== 'scheduled') await orderRef.update({ status: 'scheduled', scheduled_confirmed_at: now });
     return { outcome: 'scheduled_held', scheduled_for: order.scheduled_for };
+  }
+
+  // Codex-on-diff (paid-after-close): an UNSCHEDULED online order authorized while OPEN can confirm AFTER
+  // close. Re-check hours at materialize — closed now → HOLD (manual_review + block + alert), never land a
+  // live ASAP order on a dark kitchen. This is the shared chokepoint for confirmOnlinePayment, the hosted
+  // webhook, and the materializeOnConfirm recovery (all delegate here). Open → materialize as today.
+  if (await holdIfClosedAtMaterialize(deps, orderId, order, now)) {
+    return { outcome: 'held_closed_at_materialize' };
   }
 
   // 3c (plan 10b): post-capture active-recheck. Money is captured — NEVER strand a paid order;

@@ -169,6 +169,37 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     ok('scheduled online, slot now CLOSED → scheduled_confirm_invalid + manual_review + blocked (money held for review)');
   }
 
+  // 1d. Codex-on-diff: an UNSCHEDULED online order authorized while OPEN can CONFIRM after close (paid at
+  //     8:50pm past an 8:45pm close). Re-check hours at materialize — closed now → HOLD (manual_review +
+  //     scheduled_blocked + alert), never land a live ASAP order on a dark kitchen.
+  {
+    const db = makeDb(pendingOrder());
+    const client = mkClient();
+    let alerted = null;
+    const deps = { ...schedDeps(db, client, ALL_CLOSED), alert: async (k, d) => { alerted = { k, d }; } };
+    const r = await confirmOnlinePayment(deps, { orderId: 'PZX-1', paymentUuid: 'S-uuid', now: 7000, trackingToken: 'TOK9' });
+    assert.strictEqual(r.outcome, 'held_closed_at_materialize');
+    const o = db.getAt('orders/PZX-1');
+    assert.strictEqual(o.payment_status, 'manual_review');
+    assert.strictEqual(o.scheduled_blocked, true);
+    assert.ok(!o.materialized_at && o.status !== 'new', 'NOT materialized onto a closed kitchen');
+    assert.ok(!db.getAt('order_tracking/TOK9'), 'no tracking');
+    assert.strictEqual(client.calls.capture, 1, 'money captured (held for a dispatcher)');
+    assert.ok(alerted && alerted.k === 'paid_after_close', 'dispatcher alerted');
+    ok('unscheduled online paid AFTER close → HELD (manual_review + alert), never new');
+  }
+
+  // 1e. Same order, kitchen OPEN at materialize → materializes to new (normal paid-while-open, UNCHANGED).
+  {
+    const db = makeDb(pendingOrder());
+    const client = mkClient();
+    const r = await confirmOnlinePayment(schedDeps(db, client, ALL_OPEN), { orderId: 'PZX-1', paymentUuid: 'S-uuid', now: 7000, trackingToken: 'TOKA' });
+    assert.strictEqual(r.outcome, 'confirmed');
+    assert.strictEqual(db.getAt('orders/PZX-1').status, 'new');
+    assert.strictEqual(db.getAt('order_tracking/TOKA').status, 'new', 'tracking materialized');
+    ok('unscheduled online paid while OPEN → materializes to new (normal flow unchanged)');
+  }
+
   // 2. Idempotent re-confirm (already materialized) → no-op.
   {
     const init = pendingOrder();

@@ -1393,6 +1393,7 @@ function resolveDeps(db) {
     buildMaterializeUpdates,
     restaurant: RESTAURANT,
     genToken: generateTrackingToken,
+    getIdentity: getRestaurantIdentity,   // paid-after-close re-check at manual materialize (Codex-on-diff)
     alert: (kind, detail) => paymentAlert(db, kind, detail),
     sanitizeText,
     serverTimestamp: ServerValue.TIMESTAMP,

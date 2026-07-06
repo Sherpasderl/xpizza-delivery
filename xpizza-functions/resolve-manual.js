@@ -19,6 +19,7 @@
  * }
  */
 const MR = require('./manual-resolve');
+const { holdIfClosedAtMaterialize } = require('./materialize-guard');   // paid-after-close re-check (Codex-on-diff)
 
 // [#7/#8] Materialize a manual-verified order WITHOUT reopening the race: CAS resolving_materialize → confirmed
 // on the claim_id (NO transient 'pending', NO materialized_at yet), then materialize atomically. A crash after
@@ -47,6 +48,12 @@ async function confirmAndMaterializeFromManualClaim(deps, { orderId, attemptId, 
   if (Number.isFinite(Number(order.scheduled_for))) {
     if (order.status !== 'scheduled') await orderRef.update({ status: 'scheduled', scheduled_confirmed_at: now });
     return { outcome: 'scheduled_held', scheduled_for: order.scheduled_for };
+  }
+  // Codex-on-diff (paid-after-close): re-check hours for an UNSCHEDULED order — if the kitchen closed since
+  // the money was captured, HOLD it (manual_review + block + alert) instead of materializing onto a dark
+  // kitchen. Shared with confirmAndMaterialize (the confirm/webhook chokepoint). Open → materialize as today.
+  if (await holdIfClosedAtMaterialize(deps, orderId, order, now)) {
+    return { outcome: 'held_closed_at_materialize' };
   }
   const updates = buildMaterializeUpdates({ orderId, order, trackingToken, now, restaurant, paymentReference: attemptId, paymentMethod: 'online' });
   await db.ref().update(updates);

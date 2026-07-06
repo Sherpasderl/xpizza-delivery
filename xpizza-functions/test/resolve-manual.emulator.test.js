@@ -33,14 +33,21 @@ const KEY = '1234567890', SECRET = '@s4ndb0x-abcd-1234-n1l4-p1x3l';   // sandbox
 const RESTAURANT = { lat: 15.5, lng: -88.0, name: 'X Pizza', phone: '+50497952893' };
 const NOW = 1700000000000;
 
+// Hours for the materialize-time closed-kitchen re-check (getIdentity). Default OPEN so existing
+// materialize behavior is unchanged; the paid-after-close case passes ALL_CLOSED.
+const mk = (o) => ({ sun: o, mon: o, tue: o, wed: o, thu: o, fri: o, sat: o });
+const ALL_OPEN = mk({ open: true, start: '00:00', end: '24:00' });
+const ALL_CLOSED = mk({ open: false });
+
 // ── deps factories ──
 const clientVoid = (result) => ({ voidTransaction: async () => result });            // {ok:true}=anulada, {ok:false}=else
 const clientThrow = () => ({ voidTransaction: async () => { throw new Error('412 PreconditionalResponse'); } });
-function mkDeps(client, overDb) {
+function mkDeps(client, overDb, hours) {
   const alerts = [];
   const deps = {
     db: overDb || db, client, buildMaterializeUpdates, restaurant: RESTAURANT,
     genToken: () => 'TOK', alert: async (k, d) => { alerts.push([k, d]); },
+    getIdentity: async () => ({ active: true, hours: hours || ALL_OPEN }),   // materialize-time hours re-check
     sanitizeText: (s) => String(s || '').slice(0, 200), serverTimestamp: 111,
   };
   return { deps, alerts };
@@ -226,6 +233,34 @@ let n = 0; const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); };
     assert.ok((await audits()).some((a) => a.outcome === 'scheduled_held'), 'audit reflects held-success');
     assert.ok(!(await audits()).some((a) => a.outcome === 'materialize_failed'), 'NOT audited as failure');
     ok('scheduled order manual-materialize → HELD + HTTP 200 outcome:scheduled_held + honest audit (not a false failure)');
+  }
+
+  // ── Codex-on-diff (paid-after-close): manual 'materialize' of an UNSCHEDULED order while the kitchen is
+  //    CLOSED now → HOLD (manual_review + scheduled_blocked + alert), never materialize onto a dark kitchen.
+  {
+    await clearAll();
+    await seed({ order_type: 'delivery', customer_phone: '50488887777', lat: 15.6, lng: -88.1, address_detected: 'Calle 1', address_details: 'azul' }, { payment_uuid: 'S-1', status: 'captured', capture_verified: true });
+    const { deps, alerts } = mkDeps(clientVoid({ ok: true }), undefined, ALL_CLOSED);
+    const r = await resolveManualReconciliationCore(deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW, claimId: 'CID' });
+    const o = await oVal();
+    assert.strictEqual(o.status !== 'new', true, 'NOT materialized');
+    assert.strictEqual(o.payment_status, 'manual_review');
+    assert.strictEqual(o.scheduled_blocked, true);
+    assert.strictEqual((await db.ref('order_tracking').once('value')).val(), null, 'no tracking');
+    assert.strictEqual(r.status, 200, 'held is a success outcome (200, not a false materialize_failed)');
+    assert.strictEqual(r.body.outcome, 'held_closed_at_materialize');
+    assert.ok(alerts.some(([k]) => k === 'paid_after_close'), 'dispatcher alerted');
+    ok('unscheduled manual-materialize while CLOSED → HELD (manual_review + alert), never new');
+  }
+
+  // Same, but kitchen OPEN → materializes to new (normal flow unchanged).
+  {
+    await clearAll();
+    await seed({ order_type: 'delivery', customer_phone: '50488887777', lat: 15.6, lng: -88.1, address_detected: 'Calle 1', address_details: 'azul' }, { payment_uuid: 'S-1', status: 'captured', capture_verified: true });
+    const r = await resolveManualReconciliationCore(mkDeps(clientVoid({ ok: true }), undefined, ALL_OPEN).deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW, claimId: 'CID' });
+    assert.strictEqual((await oVal()).status, 'new', 'materialized');
+    assert.strictEqual(r.body.outcome, 'materialized');
+    ok('unscheduled manual-materialize while OPEN → materializes to new (unchanged)');
   }
 
   console.log(`\nresolve-manual.emulator: OK (${n} scenarios)`);
