@@ -84,7 +84,11 @@ function hasCapturedMoneyEvidence(order, attempt) {
 // ── Honest status contract [E / #9] — outcome → HTTP status ────────────────────────────────────────
 // 2xx ONLY for a genuinely-final money outcome. Everything else (refund_pending / manual_review /
 // confirm_claim_failed / attempt_superseded / no_charge / error) is 409 — never a fake success.
-const FINAL_SUCCESS_OUTCOMES = new Set(['abandoned', 'refunded', 'materialized', 'confirmed', 'already_confirmed']);
+// `scheduled_held` is a genuine SUCCESS (Scheduled Orders / Codex-on-diff): manually verifying a paid
+// scheduled order correctly HOLDS it (verified paid + status:scheduled, out of manual_reconciliation) — it
+// releases live only via the claim. Without this it 409s + audits materialize_failed (a lie) and can never
+// retry (the order is now confirmed, so the manual_reconciliation claim can't re-acquire it).
+const FINAL_SUCCESS_OUTCOMES = new Set(['abandoned', 'refunded', 'materialized', 'confirmed', 'already_confirmed', 'scheduled_held']);
 function httpForOutcome(outcome) {
   return FINAL_SUCCESS_OUTCOMES.has(outcome) ? 200 : 409;
 }

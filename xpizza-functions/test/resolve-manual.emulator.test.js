@@ -220,7 +220,12 @@ let n = 0; const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); };
     assert.ok(!o.materialized_at, 'NOT materialized');
     assert.strictEqual((await db.ref(`tasks/${OID}_delivery`).once('value')).val(), null, 'no tasks (held)');
     assert.strictEqual((await db.ref('order_tracking').once('value')).val(), null, 'no tracking (held)');
-    ok('scheduled order manual-materialize → HELD (status scheduled, no tasks/tracking) — releases only via the claim');
+    // Codex-on-diff #4: scheduled_held is a SUCCESS outcome — HTTP 200 + honest audit, not a 409/materialize_failed.
+    assert.strictEqual(r.status, 200, 'HTTP 200 (not 409)');
+    assert.strictEqual(r.body.ok, true); assert.strictEqual(r.body.outcome, 'scheduled_held');
+    assert.ok((await audits()).some((a) => a.outcome === 'scheduled_held'), 'audit reflects held-success');
+    assert.ok(!(await audits()).some((a) => a.outcome === 'materialize_failed'), 'NOT audited as failure');
+    ok('scheduled order manual-materialize → HELD + HTTP 200 outcome:scheduled_held + honest audit (not a false failure)');
   }
 
   console.log(`\nresolve-manual.emulator: OK (${n} scenarios)`);
