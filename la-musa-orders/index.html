@@ -1402,7 +1402,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 <!-- ── STAGE 5: Success ── -->
 <div class="stage" id="s5">
   <div style="padding:32px 16px 40px;text-align:center">
-    <div class="success-stamp">✓</div>
+    <div class="success-stamp"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--green)"><circle cx="12" cy="12" r="9"/><path d="m8.4 12 2.5 2.5 4.7-4.9"/></svg></div>
     <div class="success-title">Pedido recibido</div>
     <p class="success-sub" id="success-sub">Llegamos en aproximadamente <strong style="color:var(--charcoal)">30 minutos</strong>.</p>
     <div class="order-id" id="order-id-display"></div>
@@ -2564,9 +2564,9 @@ function selectPay(type){
   if(cashPanel){ cashPanel.style.display=(type==='cash')?'block':'none'; if(type==='cash') renderChangeChips(); }
   const btn=document.getElementById('btn-pay');
   btn.disabled=false;
-  btn.textContent=type==='online'
-    ? '🔒 Pagar con PixelPay →'
-    : '✓ Confirmar y enviar pedido';
+  btn.innerHTML=type==='online'
+    ? ICON_LOCK+'Pagar con PixelPay →'
+    : ICON_CHECK+'Confirmar y enviar pedido';
   btn.className='btn-primary'+(type==='online'?' btn-green':'');
   document.getElementById('err3').style.display='none';
   // When online payment is selected, scroll the card form into view so
@@ -2733,7 +2733,16 @@ function buildOrder(){
 let orderSubmitting = false;
 let __restorePos = null;
 
-function setSending(msg){ const el=document.getElementById('sending-msg'); if(el) el.textContent=msg; }
+// Inline line-icons for JS-rendered payment/status/success labels (monochrome, blend with the form).
+const ICON_LOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;flex-shrink:0"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+const ICON_CASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;flex-shrink:0"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M5.5 12h.01M18.5 12h.01"/></svg>';
+const ICON_CARD = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;flex-shrink:0"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>';
+const ICON_CLOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+const ICON_CHECK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;flex-shrink:0"><path d="M20 6 9 17l-5-5"/></svg>';
+const ICON_CHECK_CIRCLE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="m8.4 12 2.5 2.5 4.7-4.9"/></svg>';
+const ICON_X_CIRCLE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg>';
+// innerHTML (not textContent) so status messages can carry an inline icon — every caller passes a hardcoded literal.
+function setSending(msg){ const el=document.getElementById('sending-msg'); if(el) el.innerHTML=msg; }
 
 function paymentFallback(msg){
   orderSubmitting=false;
@@ -2908,7 +2917,7 @@ async function submitOrder(paymentStatus){
   orderSubmitting = true;
   showStage('s4',90);
   setSending(paymentStatus==='confirmed'&&selectedPayment==='online'
-    ? '✅ Pago confirmado. Enviando a cocina…'
+    ? ICON_CHECK_CIRCLE+'Pago confirmado. Enviando a cocina…'
     : 'Enviando tu pedido…');
   currentOrder.payment_status=paymentStatus;
 
@@ -2929,8 +2938,8 @@ async function submitOrder(paymentStatus){
         console.error('createOrder rejected', res.status, err);
         orderSubmitting=false;
         setSending(res.status===429
-          ? '❌ Demasiados pedidos seguidos. Esperá un momento e intentá de nuevo.'
-          : '❌ No pudimos enviar el pedido. Revisá los datos e intentá de nuevo.');
+          ? ICON_X_CIRCLE+'Demasiados pedidos seguidos. Esperá un momento e intentá de nuevo.'
+          : ICON_X_CIRCLE+'No pudimos enviar el pedido. Revisá los datos e intentá de nuevo.');
         return;
       }
       lastErr = new Error('HTTP '+res.status);   // 5xx → retry
@@ -2942,7 +2951,7 @@ async function submitOrder(paymentStatus){
   }
   console.error('createOrder failed after retries', lastErr);
   orderSubmitting=false;
-  setSending('❌ Error de conexión. Intentá de nuevo.');
+  setSending(ICON_X_CIRCLE+'Error de conexión. Intentá de nuevo.');
 }
 
 /* ── Cash-change (cambio) helpers ── */
@@ -3040,17 +3049,17 @@ function showSuccess(){
   showStage('s5',100);
   const o=currentOrder;
   const paymentLabels={
-    cash:'💵 Efectivo al entregar',
-    card_delivery:'💳 Tarjeta al entregar (terminal POS)',
-    online:'🔒 Pagado en línea · PixelPay',
+    cash:ICON_CASH+'Efectivo al entregar',
+    card_delivery:ICON_CARD+'Tarjeta al entregar (terminal POS)',
+    online:ICON_LOCK+'Pagado en línea · PixelPay',
   };
 
   document.getElementById('order-id-display').textContent='Orden # '+o.order_id;
   document.getElementById('success-sub').innerHTML=
     (o.scheduled || window.__scheduledFor)
-      ? '🕐 Pedido <strong>programado</strong> para '+schedFmt(o.scheduled_for || window.__scheduledFor)+'. Lo preparamos a tiempo para tu horario.'
+      ? ICON_CLOCK+'Pedido <strong>programado</strong> para '+schedFmt(o.scheduled_for || window.__scheduledFor)+'. Lo preparamos a tiempo para tu horario.'
       : o.payment_method==='online'&&o.payment_status==='confirmed'
-      ? '✅ Pago PixelPay confirmado. Tu pedido ya está en cocina. Llegamos en ~30 min.'
+      ? ICON_CHECK_CIRCLE+'Pago PixelPay confirmado. Tu pedido ya está en cocina. Llegamos en ~30 min.'
       : 'Te llegará una confirmación por WhatsApp. Llegamos en aproximadamente <strong>30 minutos</strong>.';
 
   document.getElementById('receipt-items').innerHTML=
@@ -3070,7 +3079,7 @@ function showSuccess(){
     <div class="receipt-row">
       <span class="receipt-label">Estado</span>
       <span>${o.payment_method==='online'&&o.payment_status==='confirmed'
-        ?'<span class="pay-confirmed">✓ Confirmado</span>'
+        ?'<span class="pay-confirmed">'+ICON_CHECK+'Confirmado</span>'
         :'<span class="pay-pending">Se cobra al entregar</span>'}</span>
     </div>
     <div class="receipt-row">
