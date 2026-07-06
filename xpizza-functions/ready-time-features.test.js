@@ -5,7 +5,10 @@
 // The immutable to:'new' feature contract + the self-guarding label extraction are pinned here — a
 // wrong feature snapshot or a leaked negative delta silently poisons the model.
 const assert = require('assert');
-const { extractCreationFeatures, extractLabels } = require('./ready-time-features');
+const {
+  extractCreationFeatures, extractLabels,
+  hourOf, daypartOf, loadBucketOf, itemCountBucketOf, bucketKeyExact, bucketKeyDaypart, pickNewEvent, pickNewEventEntry,
+} = require('./ready-time-features');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
@@ -83,6 +86,43 @@ assert.strictEqual(extractCreationFeatures({ a: { to: 'preparing', at: 100 } }, 
     }
   }
   ok('labels: invariant — no emitted delta is ever negative');
+}
+
+// ── Step-3 bucket helpers — take an EXPLICIT `at` anchor (event.at), never timeline.new_at (R2-#2) ──
+{
+  // Jan 2 2024 02:30 UTC → UTC−6 = Jan 1 20:30 → hour 20 (dinner). Naive-UTC would be hour 2 (late).
+  const at = Date.UTC(2024, 0, 2, 2, 30, 0);
+  assert.strictEqual(hourOf(at), 20); ok('hourOf: UTC−6 anchor (20, not naive 2)');
+  assert.strictEqual(daypartOf(at), 'dinner'); ok('daypartOf: hour 20 → dinner');
+  // daypart boundaries
+  const H = (h) => Date.UTC(2024, 0, 1, h + 6, 0, 0); // local hour h → UTC h+6
+  assert.deepStrictEqual([0, 5, 10, 11, 15, 16, 21, 22, 23].map((h) => daypartOf(H(h))),
+    ['late', 'morning', 'morning', 'lunch', 'lunch', 'dinner', 'dinner', 'late', 'late']); ok('daypartOf: late<5 / morning5-10 / lunch11-15 / dinner16-21 / late22-4');
+}
+// loadBucketOf — SAME cut points as the quality monitor (0 / 1-2 / 3-5 / 6+); non-numeric → na
+assert.deepStrictEqual([0, 1, 2, 3, 5, 6, 20, null, undefined, NaN].map(loadBucketOf),
+  ['0', '1-2', '1-2', '3-5', '3-5', '6+', '6+', 'na', 'na', 'na']); ok('loadBucketOf: 0/1-2/3-5/6+/na');
+// itemCountBucketOf — x_pizza composition; 0/invalid → na
+assert.deepStrictEqual([1, 2, 3, 4, 10, 0, -1, null, 'x'].map(itemCountBucketOf),
+  ['1', '2-3', '2-3', '4+', '4+', 'na', 'na', 'na', 'na']); ok('itemCountBucketOf: 1/2-3/4+/na');
+// composite keys
+{
+  const at = Date.UTC(2024, 0, 2, 2, 30, 0); // hour 20 dinner
+  assert.strictEqual(bucketKeyExact(at, 4, 2), '20|3-5|2-3'); ok('bucketKeyExact: hour|loadBucket|itemBucket');
+  assert.strictEqual(bucketKeyDaypart(at, 4), 'dinner|3-5'); ok('bucketKeyDaypart: daypart|loadBucket');
+  assert.strictEqual(bucketKeyExact(at, null, null), '20|na|na'); ok('bucketKeyExact: missing load/items → na segments (never throws)');
+}
+
+// ── pickNewEvent (Step 3, Trigger B) — deterministic (at, eventId) chosen to:'new' row ──
+{
+  assert.strictEqual(pickNewEvent({ b: { to: 'new', at: 200 }, a: { to: 'new', at: 100, kitchen_load_ahead: 4 } }).at, 100); ok('pickNewEvent: earliest at wins');
+  assert.strictEqual(pickNewEvent({ b: { to: 'new', at: 100 }, a: { to: 'new', at: 100 } }).at, 100); ok('pickNewEvent: same-ms → lexicographic eventId tie-break (no throw)');
+  assert.strictEqual(pickNewEvent({ a: { to: 'preparing', at: 100 } }), null); ok('pickNewEvent: no to:new → null');
+  assert.strictEqual(pickNewEvent({ a: { to: 'new', at: 'x' } }), null); ok('pickNewEvent: non-numeric at → null');
+  // pickNewEventEntry — returns the winner's { id, event } so A/B agree on the SAME anchor under a bounce
+  assert.deepStrictEqual(pickNewEventEntry({ e2: { to: 'new', at: 200 }, e1: { to: 'new', at: 100 } }), { id: 'e1', event: { to: 'new', at: 100 } }); ok('pickNewEventEntry: earliest at → { id:e1, event }');
+  assert.strictEqual(pickNewEventEntry({ e2: { to: 'new', at: 100 }, e1: { to: 'new', at: 100 } }).id, 'e1'); ok('pickNewEventEntry: same-ms → lexicographic eventId winner (e1)');
+  assert.strictEqual(pickNewEventEntry({}), null); ok('pickNewEventEntry: none → null');
 }
 
 console.log(`\n${n} passed`);

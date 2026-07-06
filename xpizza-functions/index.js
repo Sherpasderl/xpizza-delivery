@@ -46,7 +46,7 @@
  */
 
 const { onRequest, onCall } = require('firebase-functions/v2/https');
-const { onValueWritten } = require('firebase-functions/v2/database');
+const { onValueWritten, onValueCreated } = require('firebase-functions/v2/database');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { beforeUserCreated, HttpsError } = require('firebase-functions/v2/identity');
 const { initializeApp } = require('firebase-admin/app');
@@ -101,6 +101,7 @@ const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineS
 const MR = require('./manual-resolve');   // atomic-claim money state machine (RECON_ATOMIC_CLAIM_PLAN rev-5)
 const { resolveManualReconciliationCore, recoverStaleResolve } = require('./resolve-manual');   // the resolver core + sweep recovery (emulator-driven)
 const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, isReconcilerRetryable } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5)
+const { runPrediction, runLabelAndUpdate } = require('./ready-time-predict-core');   // Phase-1 Step-3 shadow predictor + prediction-logging (PURE SHADOW)
 
 initializeApp({
   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
@@ -2538,6 +2539,45 @@ exports.logOrderLifecycle = onValueWritten(
     } catch (e) {
       // Swallow — instrumentation must NEVER affect the live order path.
       console.error(`logOrderLifecycle: failed for ${orderId} (${before} → ${after})`, e.message);
+    }
+  }
+);
+
+// ============================================================
+// Ready-Time Phase 1 · Step 3 — shadow ready-time predictor + prediction-logging (PURE SHADOW).
+// Two onValueCreated triggers, thin adapters over the deps-injected core (ready-time-predict-core.js).
+// They write ONLY order_predictions / prediction_logs / ready_time_model — NEVER /orders, /order_tracking,
+// /tasks, /drivers, /dispatcher_alerts, any push/notification, or config/ready_time. Shadow-only: no
+// user-facing or dispatch behavior changes. Errors are swallowed so the shadow can never affect live paths.
+// ============================================================
+
+// Trigger A — Prediction: fires on each order_events/{orderId}/{eventId} create; acts only when to==='new'
+// (the creation instant; avoids the /orders/status race with logOrderLifecycle). Anchors new_at on the
+// event's own `at`. Transactional create-if-absent → idempotent against event bounces.
+exports.predictReadyTimeOnNew = onValueCreated(
+  { ref: '/order_events/{orderId}/{eventId}', region: 'us-central1' },
+  async (event) => {
+    const row = event.data.val();
+    if (!row || row.to !== 'new') return;                       // cheap pre-filter; the core confirms this
+    try {                                                       // eventId IS the pickNewEvent winner before writing
+      await runPrediction({ db: getDatabase(), now: Date.now() }, { orderId: event.params.orderId, eventId: event.params.eventId });
+    } catch (e) {
+      console.error(`predictReadyTimeOnNew: failed for ${event.params.orderId}`, e.message);
+    }
+  }
+);
+
+// Trigger B — Actual label + model update: fires on order_timelines/{orderId}/ready_at create (the
+// first-entry ready). Write-once prediction_logs per active version (always the actual; NO backfill) +
+// updates the model rings for eligible + timeline-sane x_pizza rows only.
+exports.logReadyTimeActual = onValueCreated(
+  { ref: '/order_timelines/{orderId}/ready_at', region: 'us-central1' },
+  async (event) => {
+    const readyAt = event.data.val();
+    try {
+      await runLabelAndUpdate({ db: getDatabase(), now: Date.now() }, { orderId: event.params.orderId, readyAt });
+    } catch (e) {
+      console.error(`logReadyTimeActual: failed for ${event.params.orderId}`, e.message);
     }
   }
 );
