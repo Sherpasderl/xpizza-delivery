@@ -13,6 +13,7 @@
     "test:rules": "firebase emulators:exec --only database \"node test/restaurants-rules.emulator.test.js\"",
     "test:quality-runner": "firebase emulators:exec --only functions,database --project demo-xpizza \"node test/ready-time-quality-run.emulator.test.js\"",
     "test:predictor": "firebase emulators:exec --only database --project demo-xpizza \"node test/ready-time-predict.emulator.test.js\"",
+    "test:scheduled-release": "firebase emulators:exec --only database --project demo-xpizza \"node test/scheduled-release.emulator.test.js\"",
     "test:resolve-manual": "firebase emulators:exec --only database --project demo-xpizza \"node test/resolve-manual.emulator.test.js\"",
     "deploy:rules": "npm run check:rules && firebase deploy --only database",
     "logs": "firebase functions:log",
