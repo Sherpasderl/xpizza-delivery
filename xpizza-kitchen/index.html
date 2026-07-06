@@ -1118,6 +1118,13 @@ function formatTime(iso) {
   return new Date(iso).toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' });
 }
 
+/* Scheduled-order target slot (ms epoch) → "mié 6:00 PM" in Honduras local time. The kitchen paces prep
+   against this — it received the card at release but the food is due at this time. (Scheduled Orders.) */
+function formatScheduled(ms) {
+  if (!ms) return '';
+  return new Date(ms).toLocaleString('es-HN', { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'America/Tegucigalpa' });
+}
+
 /* ── Parse items from items_text ── */
 function parseItems(itemsText) {
   if (!itemsText || itemsText === '—') return [];
@@ -1257,6 +1264,7 @@ function renderCard(order) {
         <div class="card-type-badge ${order.order_type === "pickup" ? "pickup" : "delivery"}">${order.order_type === "pickup" ? "🏪 Pickup" : "🛵 Delivery"}</div>
       </div>
       ${order.order_type === 'pickup' && order.pickup_time && order.pickup_time !== 'standard' ? `<div class="card-pickup-time">⏰ ${escapeHtml(order.pickup_time)}</div>` : ''}
+      ${order.scheduled_for ? `<div class="card-pickup-time">⏰ Programado · ${order.order_type === 'delivery' ? 'Entregar' : 'Recoger'} ${escapeHtml(formatScheduled(order.scheduled_for))}</div>` : ''}
 
       <div class="card-items">
         ${renderItems(order.pedido)}
@@ -1483,8 +1491,11 @@ function mapFirebaseOrderToCard(o) {
     estado = 'Nuevo';
   }
 
-  // Format created_at (ms epoch) as ISO so the existing elapsed() helper works
-  const horaIso = o.created_at ? new Date(o.created_at).toISOString() : null;
+  // Elapsed anchor: a released SCHEDULED order reached the kitchen at RELEASE (released_at), not when the
+  // customer placed it hours earlier — anchoring on released_at shows a fresh "0m" card instead of a fake
+  // hours-old red "LATE" one. Every other order keeps created_at (unchanged). (Scheduled Orders.)
+  const elapsedAnchorMs = o.released_at || o.created_at;
+  const horaIso = elapsedAnchorMs ? new Date(elapsedAnchorMs).toISOString() : null;
 
   return {
     id: o.order_id,
@@ -1499,6 +1510,7 @@ function mapFirebaseOrderToCard(o) {
     estado: estado,
     order_type: o.order_type || 'delivery',
     pickup_time: o.pickup_time || null,
+    scheduled_for: o.scheduled_for || null,   // released-scheduled orders show the target slot on the card
     cancelled: o.status === 'cancelled'
   };
 }

@@ -62,4 +62,16 @@ assert.deepEqual(Object.keys(filterLiveOrders(snapshot, 'bogus')).sort(), ['a', 
   ok('SDK import-then-exports the single source (static check)');
 }
 
+// ── Scheduled Orders: scheduled + releasing are NON-LIVE → filtered from every /orders reader ──
+{
+  const snap = {
+    live1: { status: 'new', restaurant_id: 'x_pizza' },
+    sched: { status: 'scheduled', restaurant_id: 'x_pizza' },
+    rel: { status: 'releasing', restaurant_id: 'x_pizza' },
+    pend: { status: 'pending_payment', restaurant_id: 'x_pizza' },
+  };
+  assert.deepEqual(Object.keys(filterLiveOrders(snap, 'x_pizza')).sort(), ['live1']);
+  ok('scheduled + releasing (+ pending_payment) filtered out; only live orders remain');
+}
+
 console.log(`order-filter: OK (${n} cases)`);

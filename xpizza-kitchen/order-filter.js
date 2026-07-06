@@ -13,7 +13,7 @@ export const ORDER_STATUS = {
 };
 
 // Statuses hidden from every /orders reader (an unpaid online order never appears as a real order).
-export const NON_LIVE_ORDER_STATUSES = new Set([ORDER_STATUS.PENDING_PAYMENT]);
+export const NON_LIVE_ORDER_STATUSES = new Set([ORDER_STATUS.PENDING_PAYMENT, 'scheduled', 'releasing']);
 
 // Classify a KDS host to its pinned restaurant. Exact La Musa site OR a Netlify preview/branch host
 // (deploy-preview-N--lamusakitchendisplay.netlify.app) → la_musa; anything else (the X. Pizza KDS

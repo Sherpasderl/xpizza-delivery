@@ -105,7 +105,7 @@ export const PAYMENT_ATTEMPT_STATUS = {
 // Order statuses that are NOT operationally live (hidden from every /orders
 // reader — KDS, dispatch, driver, dashboard — so an unpaid online order never
 // appears as a real order). Live = anything not in this set.
-export const NON_LIVE_ORDER_STATUSES = new Set([ORDER_STATUS.PENDING_PAYMENT]);
+export const NON_LIVE_ORDER_STATUSES = new Set([ORDER_STATUS.PENDING_PAYMENT, 'scheduled', 'releasing']);
 
 export function filterLiveOrders(orders) {
   const out = {};
