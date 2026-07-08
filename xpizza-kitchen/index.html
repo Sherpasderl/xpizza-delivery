@@ -1645,7 +1645,8 @@ function headerState(order, status, anchorIso) {
   const p = pendingWrites[id];
   if (completionSeq[id] === 'completed') return 'ready';             // paso 2: green "Completado" (in Open)
   if (completionSeq[id] === 'completing') return 'completing';       // paso 1: blue "Completando" (in Open)
-  if (p && !p.error && p.action === 'listo') return 'completing';    // in-flight ready write (not committed)
+  // NOTE (#1): an in-flight `listo` write does NOT turn the header blue — it stays frozen at PREP with a
+  // pending strip; the blue "Completando" beat begins ONLY post-resolve (completionSeq). Aligns with empezar.
   const op = opState(order);
   if (op === 'completed') return 'ready';                            // settled Completed / delivered
   if (op === 'cancelado') return 'cancel';
@@ -1686,7 +1687,6 @@ function renderTicket(order) {
   const logStr = Object.entries(log).map(([s, t]) => `${s}: ${formatTime(t)}`).join(' · ');
 
   const hs = headerState(order, status, created);
-  const listoPending = !!(p && !p.error && p.action === 'listo');
   const seqStage = completionSeq[id];   // 'completing' (blue) | 'completed' (green) | undefined
 
   // per-item ring progress (prep only): fills by checked/total. NEVER auto-fires ready.
@@ -1705,8 +1705,8 @@ function renderTicket(order) {
   if (seqStage === 'completed') {
     // paso 2: green "Completado" IN the Open pool, briefly, before the local bump to Completados
     headInner = `<div class="comp-center"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Completado</div>`;
-  } else if (seqStage === 'completing' || listoPending) {
-    // paso 1 (or the in-flight ready write) — blue spinner "Completando" (card stays in the Open pool)
+  } else if (seqStage === 'completing') {
+    // paso 1 (POST-resolve only) — blue spinner "Completando" (card stays in the Open pool)
     headInner = `<div class="comp-center"><span class="spin"><svg viewBox="0 0 24 24"><use href="#i-spin"/></svg></span> Completando</div>`;
   } else if (op === 'completed') {
     // Settled Completado — FROZEN stamp (no live timer / no #elapsed-, so tickElapsed never touches it).
@@ -1750,11 +1750,15 @@ function renderTicket(order) {
   }
   if (notes) body += `<div class="card-notes"><svg viewBox="0 0 24 24"><use href="#i-alert"/></svg>${escapeHtml(notes)}</div>`;
 
-  // ── confirmed-write strip (empezar pending / any error) ──
+  // ── confirmed-write strip — error (retry) · ownership-skip (dismiss) · in-flight pending (frozen) ──
   if (p && p.error) {
     body += `<div class="card-writestrip error"><svg viewBox="0 0 24 24"><use href="#i-alert"/></svg> No se pudo guardar<button class="btn-retry" onclick="retryWrite('${id}')">Reintentar</button></div>`;
-  } else if (p && p.action === 'empezar') {
-    body += `<div class="card-writestrip pending"><span class="spin"><svg viewBox="0 0 24 24"><use href="#i-spin"/></svg></span> Iniciando…</div>`;
+  } else if (p && p.skip) {
+    // #2: the server write was an ownership-skip (order isn't this cocina's) — NON-success, no bump.
+    body += `<div class="card-writestrip error"><svg viewBox="0 0 24 24"><use href="#i-alert"/></svg> ${escapeHtml(p.msg || 'Pedido de otra cocina')}<button class="btn-retry" onclick="dismissWrite('${id}')">Entendido</button></div>`;
+  } else if (p) {
+    // In-flight (non-error, non-skip): frozen at `from` (#1 — listo freezes at PREP like empezar).
+    body += `<div class="card-writestrip pending"><span class="spin"><svg viewBox="0 0 24 24"><use href="#i-spin"/></svg></span> ${p.action === 'listo' ? 'Completando…' : 'Iniciando…'}</div>`;
   }
 
   // ── Recuperar Ticket (fix #2) — full-width in the body (never clipped by the card's overflow:hidden),
@@ -1832,7 +1836,14 @@ async function commitStatusWrite(id, action) {
   pendingWrites[id] = { from, action, error: false };
   renderCurrentTab();                                  // freeze at `from` + show pending strip
   try {
-    await XPD.setOrderStatus(id, fbStatus);            // RESOLVES → server accepted the transition
+    const wrote = await XPD.setOrderStatus(id, fbStatus);   // true = wrote · false = ownership-skip
+    if (wrote !== true) {
+      // #2: the server was NOT written (ownership-skip). NON-success — freeze at `from`, show a notice,
+      // and NEVER commit local state (no bump, no stamp, no completion beat).
+      pendingWrites[id] = { from, action, skip: true, msg: 'Pedido de otra cocina' };
+      renderCurrentTab();
+      return;
+    }
     if (!stateLog[id]) stateLog[id] = {};
     stateLog[id][fbStatus === 'preparing' ? 'En preparación' : 'Listo'] = new Date().toISOString();
     saveState();
@@ -1867,8 +1878,17 @@ function startCompletion(id) {
   }, COMPLETING_MS);
 }
 function empezar(id) { if (pendingWrites[id] && !pendingWrites[id].error) return; commitStatusWrite(id, 'empezar'); }
-function listo(id)   { if (pendingWrites[id] && !pendingWrites[id].error) return; if (completionSeq[id]) return; commitStatusWrite(id, 'listo'); }
+function listo(id)   {
+  if (pendingWrites[id] && !pendingWrites[id].error) return;
+  if (completionSeq[id]) return;
+  // #9: an order that is ALREADY server-ready (opState 'listo') needs no status write — go straight to the
+  // local completion/bump beat instead of a redundant setOrderStatus('ready').
+  const o = lastOrders.find(x => x.id === id) || allOrders.find(x => x.id === id);
+  if (o && opState(o) === 'listo') { startCompletion(id); return; }
+  commitStatusWrite(id, 'listo');
+}
 function retryWrite(id) { const p = pendingWrites[id]; if (p && p.error) commitStatusWrite(id, p.action); }
+function dismissWrite(id) { const p = pendingWrites[id]; if (p && p.skip) { delete pendingWrites[id]; renderCurrentTab(); } }  // clear the ownership-skip notice
 
 /* Header tap (★1) — the card header IS the tap target. Routes to the SAME confirmed-write handlers:
    NUEVO → empezar (→preparing); EN PREPARACIÓN / server-ready → listo (→ready). completed/cancelado
@@ -2468,6 +2488,7 @@ window.headerTap = headerTap;   // ★1 the card header is the tap target (empez
 window.empezar = empezar;
 window.listo = listo;
 window.retryWrite = retryWrite;
+window.dismissWrite = dismissWrite;   // #2 dismiss the ownership-skip notice
 window.recall = recall;
 window.prioritize = prioritize;
 window.toggleItem = toggleItem;

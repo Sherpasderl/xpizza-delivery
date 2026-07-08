@@ -49,8 +49,10 @@ const doc = {
 class MO { observe() {} disconnect() {} }
 
 // ── XPD stub (controllable setOrderStatus) ──
+// setOrderStatus's KDS return contract (#2): true = wrote · false = ownership-skip. resolveWrite() resolves
+// a normal write (true); resolveSkip() resolves an ownership-skip (false); rejectWrite() throws.
 const calls = [];
-let resolveWrite, rejectWrite;
+let resolveWrite, resolveSkip, rejectWrite;
 const XPD = {
   KDS_RESTAURANT_ID: 'x_pizza',
   initDelivery() {}, onAuth(cb) { Promise.resolve().then(() => cb({ uid: 'u1' })); },
@@ -59,7 +61,7 @@ const XPD = {
   subscribeToOrders(cb) { XPD._ordersCb = cb; return () => {}; },
   subscribeToOrderTimeline() { return () => {}; },
   subscribeReadyTimeThreshold() { return () => {}; },
-  setOrderStatus(id, status) { calls.push({ id, status }); return new Promise((res, rej) => { resolveWrite = () => res(); rejectWrite = () => rej(new Error('boom')); }); },
+  setOrderStatus(id, status) { calls.push({ id, status }); return new Promise((res, rej) => { resolveWrite = () => res(true); resolveSkip = () => res(false); rejectWrite = () => rej(new Error('boom')); }); },
 };
 
 // ── globals the module touches at top level ──
@@ -261,5 +263,31 @@ assert.equal(calls.length, 0, 'the expander performs NO setOrderStatus (never a 
 window.setLayoutMode('flex'); await tick();   // restore default; also proves flex shows all items
 assert.equal(countItems(), 5, 'Flex Rail shows all items (no truncation)');
 ok('Tile-Fill expander truncates + reveals items; ZERO status write, distinct control (not header-tap/item-✓)');
+
+// ══ #2 — ownership-skip (setOrderStatus → false) does NOT commit local state (no false-success bump) ══
+window.setTab('open'); await tick();
+XPD._ordersCb({ 'PZX-SKIP': { order_id: 'PZX-SKIP', status: 'preparing', customer_name: 'Not Ours', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' } });
+const openBefore = getEl('count-open').textContent, compBefore = getEl('count-completed').textContent;
+calls.length = 0;
+window.listo('PZX-SKIP');
+await tick();
+assert.deepEqual(calls, [{ id: 'PZX-SKIP', status: 'ready' }], 'the write is attempted');
+resolveSkip();   // server returns false (ownership-skip) — NOT written
+await tick();
+assert.equal(getEl('count-completed').textContent, compBefore, 'a false (ownership-skip) write does NOT bump to Completados');
+assert.equal(getEl('count-open').textContent, openBefore, 'the card stays in the Open pool (frozen at `from`, no divergence)');
+assert.ok(getEl('ticket-grid').innerHTML.includes(`dismissWrite('PZX-SKIP')`), 'shows a dismissable ownership-skip notice (no retry-loop write)');
+ok('#2 ownership-skip (false) → NO local commit / NO bump; frozen with a dismissable notice');
+
+// ══ #9 — an already server-ready order skips the redundant setOrderStatus('ready') ══
+XPD._ordersCb({ 'PZX-RDY': { order_id: 'PZX-RDY', status: 'ready', customer_name: 'Already Ready', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' } });
+calls.length = 0;
+window.listo('PZX-RDY');   // op === 'listo' → straight to the local completion beat, NO write
+await tick();
+assert.equal(calls.length, 0, '#9 an already-ready order performs NO setOrderStatus (no redundant write)');
+flushTimers();             // drive the local blue→green→bump beat
+assert.ok(getEl('ticket-grid') && getEl('count-completed').textContent >= 1, 'it still bumps to Completados via the LOCAL beat (no write needed)');
+assert.equal(calls.length, 0, 'still ZERO writes after the local bump');
+ok('#9 already-ready → skips the redundant ready write, bumps via the local beat only');
 
 console.log(`kds-smoke: OK (${n} cases)`);
