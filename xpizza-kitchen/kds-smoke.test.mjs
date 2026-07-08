@@ -70,7 +70,13 @@ globalThis.location = { hostname: 'localhost' };                 // unknown host
 try { Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true }); } catch (_) {}  // no wakeLock
 globalThis.localStorage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
 globalThis.setInterval = () => 0; globalThis.clearInterval = () => {};
-globalThis.setTimeout = (fn) => { return 0; }; globalThis.clearTimeout = () => {};
+// Controllable setTimeout: queue callbacks so the test can deterministically drive the post-resolve
+// completion beat (blue "Completando" → green "Completado" → local bump). flushTimers() drains the queue,
+// including callbacks scheduled by earlier callbacks (the sequence nests two setTimeouts).
+const timerQ = [];
+globalThis.setTimeout = (fn) => { if (typeof fn === 'function') timerQ.push(fn); return 0; };
+globalThis.clearTimeout = () => {};
+const flushTimers = () => { while (timerQ.length) { const fn = timerQ.shift(); try { fn(); } catch (_) {} } };
 globalThis.requestAnimationFrame = () => 0;
 globalThis.MutationObserver = MO;
 globalThis.AudioContext = class { constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; } createOscillator() { return { connect() {}, start() {}, stop() {}, frequency: { value: 0, setValueAtTime() {} }, type: '' }; } createGain() { return { connect() {}, gain: { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} } }; } resume() { return Promise.resolve(); } };
@@ -107,16 +113,22 @@ assert.deepEqual(calls, [{ id: 'PZX-1', status: 'preparing' }], 'empezar writes 
 resolveWrite(); await new Promise((r) => setImmediate(r));
 ok('empezar → setOrderStatus(preparing), single write');
 
-// ── listo → confirmed-write: completed bump commits ONLY after the write resolves ──
+// ── listo → confirmed-write + the post-resolve completion beat (blue → green → bump) ──
+// The write commits nothing until it RESOLVES; then the card plays the LOCAL blue→green beat IN the Open
+// pool (still counted Open) before the bump to Completados. No status write happens in the beat.
 calls.length = 0;
 window.listo('PZX-1');
 await new Promise((r) => setImmediate(r));
 assert.deepEqual(calls, [{ id: 'PZX-1', status: 'ready' }], 'listo writes ONLY status:ready');
 assert.equal(getEl('count-completed').textContent, 0, 'NOT yet bumped to Completed (write still in flight) — confirmed-write');
 resolveWrite(); await new Promise((r) => setImmediate(r));
-assert.equal(getEl('count-completed').textContent, 1, 'bumped to Completed ONLY after the write RESOLVED');
-assert.equal(getEl('count-open').textContent, 0, 'left the Open pool on completion');
-ok('listo → ready; Completed bump commits ONLY after the write resolves (confirmed-write)');
+assert.equal(getEl('count-completed').textContent, 0, 'post-resolve blue "Completando" beat is IN the Open pool — not yet bumped');
+assert.equal(getEl('count-open').textContent, 1, 'still in the Open pool during the completion beat');
+assert.equal(calls.length, 1, 'the completion beat performs NO additional status write (the write already resolved)');
+flushTimers();   // drive blue → green → bump
+assert.equal(getEl('count-completed').textContent, 1, 'bumped to Completados only AFTER the beat (blue → green → bump)');
+assert.equal(getEl('count-open').textContent, 0, 'left the Open pool once the beat bumps');
+ok('listo → ready; post-resolve blue→green→bump beat, all local, NO extra write (confirmed-write)');
 
 // ── recall → LOCAL un-bump, ZERO status write (never reverts /orders.status) ──
 calls.length = 0;
@@ -169,8 +181,10 @@ await tick();
 assert.deepEqual(calls, [{ id: 'PZX-3', status: 'ready' }], 'headerTap on PREP → setOrderStatus(ready), single write');
 assert.equal(getEl('count-completed').textContent, 0, 'header-tap does NOT bump to Completed until the ready write RESOLVES');
 resolveWrite(); await tick();
-assert.equal(getEl('count-completed').textContent, 1, 'bumped to Completed ONLY after the header-tap write resolved (confirmed-write)');
-ok('headerTap on the PREP header → Completar; bump commits ONLY after the write resolves');
+assert.equal(getEl('count-completed').textContent, 0, 'post-resolve completion beat is IN the Open pool — not yet bumped');
+flushTimers();   // blue → green → bump
+assert.equal(getEl('count-completed').textContent, 1, 'bumped to Completed only AFTER the beat (header-tap routes through the SAME confirmed-write + beat)');
+ok('headerTap on the PREP header → Completar; blue→green→bump beat, all local, after the write resolves');
 
 // header-tap with a REJECTED write → the ticket must NOT advance (no divergence)
 const R = { order_id: 'PZX-4', status: 'preparing', customer_name: 'Dani', items_text: '1x Pepperoni', created_at: Date.now(), order_type: 'pickup' };
@@ -190,5 +204,24 @@ window.toggleItem('PZX-4', 0);
 await tick();
 assert.equal(calls.length, 0, 'per-item check performs NO setOrderStatus (ring progress-only; never auto-fires ready)');
 ok('per-item ring check → ZERO status write (progress-only, explicit completion preserved)');
+
+// ══ headerState golden — TIME-BASED aging on EVERY card (aging-warn restored; prep = light blue) ══
+// Drive orders of known age through the real render and read data-s off the rendered card. Precedence:
+// aging-late(15m+) > aging-warn(8–15m) > prep(<8m, light blue) > nuevo(<8m, gray) — so aging escalates
+// by TIME and aging-warn/late WIN over the prep tint.
+const AGE = (m) => Date.now() - m * 60000;
+XPD._ordersCb({
+  'PZX-PREP': { order_id: 'PZX-PREP', status: 'preparing', customer_name: 'Fresh Prep', items_text: '1x Margherita', created_at: AGE(2) },
+  'PZX-WARN': { order_id: 'PZX-WARN', status: 'preparing', customer_name: 'Warn Prep',  items_text: '1x Margherita', created_at: AGE(10) },
+  'PZX-LATE': { order_id: 'PZX-LATE', status: 'preparing', customer_name: 'Late Prep',  items_text: '1x Margherita', created_at: AGE(20) },
+  'PZX-NEW':  { order_id: 'PZX-NEW',  status: 'new',        customer_name: 'Fresh New',  items_text: '1x Margherita', created_at: AGE(2) },
+});
+const gridHtml = getEl('ticket-grid').innerHTML;
+const dataS = (id) => (gridHtml.match(new RegExp(`data-s="([^"]+)" id="card-${id}"`)) || [, '(none)'])[1];
+assert.equal(dataS('PZX-PREP'), 'prep',  'a freshly-started order (<8m) → prep (light blue)');
+assert.equal(dataS('PZX-NEW'),  'nuevo', 'a fresh new order (<8m) → nuevo (gray)');
+assert.equal(dataS('PZX-WARN'), 'warn',  'an 8–15m preparing order → warn (amber) — aging-warn RESTORED + beats prep');
+assert.equal(dataS('PZX-LATE'), 'late',  'a 15m+ preparing order → late (red) — beats prep');
+ok('headerState: time-based aging on every card — fresh-prep=prep, 8–15m=warn, 15m+=late, warn/late beat prep');
 
 console.log(`kds-smoke: OK (${n} cases)`);
