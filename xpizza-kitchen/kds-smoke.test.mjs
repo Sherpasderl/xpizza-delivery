@@ -144,4 +144,51 @@ assert.equal(getEl('count-completed').textContent, 0, 'failed write NEVER commit
 assert.equal(getEl('count-open').textContent, 1, 'ticket stays in Open after a failed write');
 ok('failed listo write → NO Completed bump, ticket stays Open (error path, no divergence)');
 
+// ══ ★1 header-tap interaction surface — the card HEADER is the tap target (buttons removed) ══
+// The reskin replaced the chunky Empezar/Completar buttons with a header tap. Prove the new surface
+// (window.headerTap) routes through the SAME confirmed-write helper: advance ONLY after the write
+// resolves, a rejected write doesn't advance, and the per-item ring stays progress-only (zero writes).
+const tick = () => new Promise((r) => setImmediate(r));
+
+// header-tap on a NUEVO ticket → Empezar (setOrderStatus 'preparing')
+const N = { order_id: 'PZX-2', status: 'new', customer_name: 'Beto', items_text: '1x Diávola', created_at: Date.now(), order_type: 'pickup' };
+XPD._ordersCb({ 'PZX-2': N });
+calls.length = 0;
+window.headerTap('PZX-2');
+await tick();
+assert.deepEqual(calls, [{ id: 'PZX-2', status: 'preparing' }], 'headerTap on NUEVO → setOrderStatus(preparing), single write');
+resolveWrite(); await tick();
+ok('headerTap on the NUEVO header → Empezar via the confirmed-write helper');
+
+// header-tap on an EN-PREPARACIÓN ticket → Completar (confirmed-write ready)
+const P = { order_id: 'PZX-3', status: 'preparing', customer_name: 'Cata', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' };
+XPD._ordersCb({ 'PZX-3': P });
+calls.length = 0;
+window.headerTap('PZX-3');
+await tick();
+assert.deepEqual(calls, [{ id: 'PZX-3', status: 'ready' }], 'headerTap on PREP → setOrderStatus(ready), single write');
+assert.equal(getEl('count-completed').textContent, 0, 'header-tap does NOT bump to Completed until the ready write RESOLVES');
+resolveWrite(); await tick();
+assert.equal(getEl('count-completed').textContent, 1, 'bumped to Completed ONLY after the header-tap write resolved (confirmed-write)');
+ok('headerTap on the PREP header → Completar; bump commits ONLY after the write resolves');
+
+// header-tap with a REJECTED write → the ticket must NOT advance (no divergence)
+const R = { order_id: 'PZX-4', status: 'preparing', customer_name: 'Dani', items_text: '1x Pepperoni', created_at: Date.now(), order_type: 'pickup' };
+XPD._ordersCb({ 'PZX-3': P, 'PZX-4': R });      // PZX-3 stays completed; PZX-4 is a fresh Open prep ticket
+calls.length = 0;
+window.headerTap('PZX-4');
+await tick();
+assert.deepEqual(calls, [{ id: 'PZX-4', status: 'ready' }], 'headerTap issues the ready write');
+rejectWrite(); await tick();
+assert.equal(getEl('count-completed').textContent, 1, 'a REJECTED header-tap write NEVER bumps to Completed (still just PZX-3)');
+assert.equal(getEl('count-open').textContent, 1, 'PZX-4 stays Open after the rejected header-tap write');
+ok('headerTap with a rejected write → does NOT advance (confirmed-write, no divergence)');
+
+// per-item check via the ring surface → LOCAL only, ZERO writes (ring is progress-only, never auto-ready)
+calls.length = 0;
+window.toggleItem('PZX-4', 0);
+await tick();
+assert.equal(calls.length, 0, 'per-item check performs NO setOrderStatus (ring progress-only; never auto-fires ready)');
+ok('per-item ring check → ZERO status write (progress-only, explicit completion preserved)');
+
 console.log(`kds-smoke: OK (${n} cases)`);
