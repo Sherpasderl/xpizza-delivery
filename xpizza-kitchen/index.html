@@ -1684,6 +1684,7 @@ function headerState(order, status, anchorIso) {
 }
 
 const RING_CIRC = 94.2;   // 2πr, r=15 (matches the mockup ring dasharray)
+const TILE_FILL_ITEMS = 4;   // Tile Fill: max item lines before the "Ver todo · +N" expander
 
 /* ── Render a single ticket (Square target — ★1) ──
    The card HEADER is the tap target: NUEVO → tap → Empezar; EN PREPARACIÓN → a progress ring fills from
@@ -1756,7 +1757,18 @@ function renderTicket(order) {
   if (order.scheduled_for) body += `<div class="sched-line">${order.order_type === 'delivery' ? 'Entregar' : 'Recoger'} ${escapeHtml(formatScheduled(order.scheduled_for))}</div>`;
   if (isPrioritized) body += `<div class="prio"><svg viewBox="0 0 24 24"><use href="#i-prio"/></svg> Priorizado</div>`;
   if (order.order_type === 'pickup' && order.pickup_time && order.pickup_time !== 'standard') body += `<div class="card-pickup-time">${escapeHtml(order.pickup_time)}</div>`;
-  body += `<div class="card-items">${renderItems(order.pedido)}</div>`;
+  // Tile Fill (Phase A #3): truncate the items list to the first N + a "Ver todo · +K" expander (collapsed)
+  // / "Ver menos" (expanded). We slice enumerateItems' raw pieces and re-run the UNCHANGED renderItems on
+  // the subset, so per-item extras stay byte-correct and renderItems is never modified. Flex Rail = all items.
+  const fillTrunc = layoutMode === 'fill' && total > TILE_FILL_ITEMS;
+  const collapsed = fillTrunc && !expandedTiles.has(id);
+  const itemsText = collapsed ? checks.slice(0, TILE_FILL_ITEMS).map(it => it.raw).join(' | ') : order.pedido;
+  body += `<div class="card-items">${renderItems(itemsText)}</div>`;
+  if (fillTrunc) {
+    body += collapsed
+      ? `<button class="ver-todo" onclick="toggleExpand(event,'${id}')">Ver todo · +${total - TILE_FILL_ITEMS}</button>`
+      : `<button class="ver-todo" onclick="toggleExpand(event,'${id}')">Ver menos</button>`;
+  }
   if (notes) body += `<div class="card-notes"><svg viewBox="0 0 24 24"><use href="#i-alert"/></svg>${escapeHtml(notes)}</div>`;
 
   // ── confirmed-write strip (empezar pending / any error) ──
@@ -1792,6 +1804,7 @@ function renderTicket(order) {
   if (order.order_type === 'pickup') cls.push('pickup-order');
   if (isPrioritized) cls.push('is-prio');
   if (p) cls.push(p.error ? 'card-error' : 'card-pending');
+  if (expandedTiles.has(id)) cls.push('expanded');   // Tile Fill: grow to show all items when expanded
 
   return `
     <div class="${cls.join(' ')}" data-s="${hs}" id="card-${id}">

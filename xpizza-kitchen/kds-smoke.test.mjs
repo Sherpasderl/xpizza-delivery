@@ -243,4 +243,23 @@ window.recall('PZX-DEL'); await tick();
 assert.equal(calls.length, 0, 'recall on a server-delivered non-member performs NO status write (local no-op, never reverts status)');
 ok('Recuperar Ticket gated to locally-bumped cards; server-delivered → no button + recall is a local no-op');
 
+// ══ Tile-Fill "Ver todo" expander (Phase A #3) — truncates items; writes NO status, fires NO item-✓ ══
+window.setTab('open'); await tick();
+window.setLayoutMode('fill'); await tick();
+XPD._ordersCb({ 'PZX-BIG': { order_id: 'PZX-BIG', status: 'new', customer_name: 'Big Order', items_text: '1x A | 1x B | 1x C | 1x D | 1x E', created_at: Date.now(), order_type: 'pickup' } });
+const countItems = () => (getEl('ticket-grid').innerHTML.match(/class="card-item"/g) || []).length;
+const collapsedHtml = getEl('ticket-grid').innerHTML;
+assert.equal(countItems(), 4, 'Tile Fill collapsed → only the first 4 item lines rendered (truncated)');
+assert.ok(collapsedHtml.includes('Ver todo · +1') && collapsedHtml.includes(`toggleExpand(event,'PZX-BIG')`), 'shows "Ver todo · +1" with its OWN toggleExpand onclick (a distinct control)');
+calls.length = 0;
+window.toggleExpand({ stopPropagation() {}, preventDefault() {} }, 'PZX-BIG');
+await tick();
+const expandedHtml = getEl('ticket-grid').innerHTML;
+assert.equal(countItems(), 5, 'expanded → ALL 5 item lines rendered');
+assert.ok(expandedHtml.includes('Ver menos'), 'expanded label becomes "Ver menos"');
+assert.equal(calls.length, 0, 'the expander performs NO setOrderStatus (never a status write)');
+window.setLayoutMode('flex'); await tick();   // restore default; also proves flex shows all items
+assert.equal(countItems(), 5, 'Flex Rail shows all items (no truncation)');
+ok('Tile-Fill expander truncates + reveals items; ZERO status write, distinct control (not header-tap/item-✓)');
+
 console.log(`kds-smoke: OK (${n} cases)`);
