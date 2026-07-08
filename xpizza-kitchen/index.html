@@ -138,6 +138,7 @@
   .screen { flex: 1; min-width: 0; background: #fff; color: #1a1a1a; display: flex; flex-direction: column; overflow: hidden; }
   .screen[hidden] { display: none; }
   .content[hidden] { display: none; }
+  .sidebar[hidden] { display: none; }
   .screen-top { display: flex; align-items: center; padding: 14px 20px; border-bottom: 1px solid #ececec; flex-shrink: 0; }
   .screen-top .x { width: 38px; height: 38px; display: grid; place-items: center; background: #f4f4f4; border: 0; border-radius: 9px; font-size: 17px; color: #333; cursor: pointer; }
   .screen-top .x:hover { background: #ececec; }
@@ -2014,13 +2015,15 @@ function toggleExpand(event, id) {
 /* ── Ajustes settings screen (Phase A #2) — opened from the top-bar "Diseño" button; replaces the board. ── */
 function openSettings() {
   document.getElementById('settings-screen')?.removeAttribute('hidden');
-  document.querySelector('.content')?.setAttribute('hidden', '');
+  document.querySelector('.content')?.setAttribute('hidden', '');   // hide the board
+  document.getElementById('sidebar')?.setAttribute('hidden', '');   // + the app sidebar → screen is full main-window
   document.getElementById('btn-settings')?.classList.add('active');
   applyLayout();   // reflect the current selection on the tiles/radios
 }
 function closeSettings() {
   document.getElementById('settings-screen')?.setAttribute('hidden', '');
   document.querySelector('.content')?.removeAttribute('hidden');
+  document.getElementById('sidebar')?.removeAttribute('hidden');
   document.getElementById('btn-settings')?.classList.remove('active');
 }
 
