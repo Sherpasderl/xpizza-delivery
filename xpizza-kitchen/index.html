@@ -937,8 +937,9 @@ function shortStatus(s) {
      else in the card (header + every body banner/expander/writestrip/Recuperar/Priorizar/Archivar) is
      flex:0 → pinned, always fully visible. So Archivar never clips, items don't squeeze to zero, "Ver todo"
      reliably shows, and expand works on completed + cancelled cards too. */
-  .ticket-grid.layout-fill .tk { max-height: 340px; display: flex; flex-direction: column; }
-  .ticket-grid.layout-fill .tk.expanded { max-height: none; }
+  .ticket-grid.layout-fill { align-items: start; }   /* #1: content-height tiles (capped), NOT stretched to the row track → an expanded card can grow freely; fixes Completados expand + clipped footer on tall cards */
+  .ticket-grid.layout-fill .tk { max-height: 340px; display: flex; flex-direction: column; transition: max-height 220ms ease; }   /* #2: animate the cap (reduced-motion kills it via the .tk transition:none rule below) */
+  .ticket-grid.layout-fill .tk.expanded { max-height: 1500px; }   /* #2: finite (none can't transition) — safely above the tallest realistic ticket */
   .ticket-grid.layout-fill .head { flex: 0 0 auto; }
   .ticket-grid.layout-fill .body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
   .ticket-grid.layout-fill .body > * { flex: 0 0 auto; }                 /* pin every body child … */
