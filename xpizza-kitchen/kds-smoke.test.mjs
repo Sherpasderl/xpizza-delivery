@@ -22,7 +22,7 @@ class ClassList {
   contains(c) { return this.s.has(c); }
 }
 class El {
-  constructor(id) { this.id = id; this._text = ''; this._html = ''; this.classList = new ClassList(); this.disabled = false; this.style = {}; this.dataset = {}; this.children = []; }
+  constructor(id) { this.id = id; this._text = ''; this._html = ''; this.classList = new ClassList(); this.disabled = false; this.style = { setProperty() {}, removeProperty() {} }; this.dataset = {}; this.children = []; this.offsetWidth = 0; }
   set textContent(v) { this._text = v; } get textContent() { return this._text; }
   set innerHTML(v) { this._html = v; } get innerHTML() { return this._html; }
   querySelectorAll() { return []; }        // augmentTickets checkbox injection → no-op in the shim
@@ -223,5 +223,24 @@ assert.equal(dataS('PZX-NEW'),  'nuevo', 'a fresh new order (<8m) → nuevo (gra
 assert.equal(dataS('PZX-WARN'), 'warn',  'an 8–15m preparing order → warn (amber) — aging-warn RESTORED + beats prep');
 assert.equal(dataS('PZX-LATE'), 'late',  'a 15m+ preparing order → late (red) — beats prep');
 ok('headerState: time-based aging on every card — fresh-prep=prep, 8–15m=warn, 15m+=late, warn/late beat prep');
+
+// ══ "Recuperar Ticket" gating (fix #2a) — ONLY on a locally-bumped card, NOT a server-delivered one ══
+// A locally-bumped card (this session's completedSet member) shows the recall button; a server-delivered
+// order (estado Archivado, not a local bump) does NOT — recall is local-only and would be a no-op there.
+XPD._ordersCb({ 'PZX-REC': { order_id: 'PZX-REC', status: 'preparing', customer_name: 'Local Bump', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' } });
+calls.length = 0;
+window.listo('PZX-REC'); await tick(); resolveWrite(); await tick(); flushTimers();   // bump PZX-REC locally
+XPD._ordersCb({
+  'PZX-REC': { order_id: 'PZX-REC', status: 'preparing', customer_name: 'Local Bump', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' },
+  'PZX-DEL': { order_id: 'PZX-DEL', status: 'delivered', customer_name: 'Server Delivered', items_text: '1x Pepperoni', created_at: Date.now(), order_type: 'pickup' },
+});
+window.setTab('completed'); await tick();
+const compHtml = getEl('ticket-grid').innerHTML;
+assert.ok(compHtml.includes(`recall('PZX-REC')`) && compHtml.includes('recall-btn'), 'locally-bumped card → "Recuperar Ticket" shown');
+assert.ok(!compHtml.includes(`recall('PZX-DEL')`), 'server-delivered card → NO "Recuperar Ticket" button (recall would be a no-op)');
+calls.length = 0;
+window.recall('PZX-DEL'); await tick();
+assert.equal(calls.length, 0, 'recall on a server-delivered non-member performs NO status write (local no-op, never reverts status)');
+ok('Recuperar Ticket gated to locally-bumped cards; server-delivered → no button + recall is a local no-op');
 
 console.log(`kds-smoke: OK (${n} cases)`);
