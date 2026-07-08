@@ -85,6 +85,23 @@ export function completedTabVisible(o, completedSet, nowMs, recentMs) {
   return ms > 0 && (nowMs - ms) < recentMs;                       // else: only if recent
 }
 
+// Per-tab render ORDERING (pure, testable) — a render-sort only, never a data/status change.
+//   • Open (Abiertos): FIFO — oldest-first by `hora`, with PRIORITIZED cards jumped to the FRONT
+//     (prioritized keep FIFO among themselves; the rest FIFO after). Order #1 sits top-left like a rail.
+//   • Completados: newest-first (descending by `hora`) — the familiar "recently done" feel.
+// V8 Array.sort is stable, so equal `hora` keeps arrival order. `hora` is the mapped anchor ISO.
+function tabTimeMs(o) { return (o && o.hora) ? new Date(o.hora).getTime() : 0; }
+export function orderForTab(list, tab, prioritizedSet) {
+  const arr = Array.isArray(list) ? [...list] : [];
+  if (tab === 'completed') return arr.sort((a, b) => tabTimeMs(b) - tabTimeMs(a));   // newest-first
+  const pr = prioritizedSet instanceof Set ? prioritizedSet : new Set(prioritizedSet || []);
+  return arr.sort((a, b) => {                                                        // open: FIFO, prioritized-first
+    const pa = pr.has(a.id) ? 0 : 1, pb = pr.has(b.id) ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    return tabTimeMs(a) - tabTimeMs(b);                                              // oldest-first
+  });
+}
+
 // Pure pagination. Clamps the requested page into range and returns the slice + derived counts.
 export function paginate(list, page, pageSize) {
   const arr = Array.isArray(list) ? list : [];

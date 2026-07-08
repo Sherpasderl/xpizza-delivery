@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 const src = readFileSync(new URL('./card-model.js', import.meta.url), 'utf8');
 const {
   KDS_STATUS, agingAnchorMs, bandClass, isLateBand,
-  actionStatusWrite, isLocalOnlyAction, deriveTab, completedTabVisible, paginate, countOffPage,
+  actionStatusWrite, isLocalOnlyAction, deriveTab, completedTabVisible, orderForTab, paginate, countOffPage,
 } = await import('data:text/javascript,' + encodeURIComponent(src));
 
 let n = 0;
@@ -134,6 +134,34 @@ assert.equal(countOffPage([], new Set()), 0);                   ok('countOffPage
   const openOrder = { id: 'OPEN-1', estado: KDS_STATUS.PREP, hora: new Date(now).toISOString() };
   assert.equal(completedTabVisible(openOrder, set, now, WIN), false, 'an open order is never completed-tab-visible');
   ok('completedTabVisible: session bump always + recent server-completed shown; OLD delivered excluded');
+}
+
+// ── orderForTab: per-tab render ordering (FIFO Open oldest-first + prioritized-front; Completados newest-first) ──
+{
+  const iso = (m) => new Date(2026, 0, 1, 12, m).toISOString();   // increasing minute = later
+  // A=oldest, B, C, D=newest (by hora). Deliberately pass them out of order.
+  const A = { id: 'A', hora: iso(0) }, B = { id: 'B', hora: iso(5) }, C = { id: 'C', hora: iso(10) }, D = { id: 'D', hora: iso(15) };
+  const input = [C, A, D, B];
+
+  // Open, no prioritized → oldest-first (FIFO): A, B, C, D
+  assert.deepEqual(orderForTab(input, 'open', new Set()).map(o => o.id), ['A', 'B', 'C', 'D'],
+    'Open tab → FIFO oldest-first by hora');
+
+  // Open with D prioritized → D jumps to the FRONT, the rest stay FIFO: D, A, B, C
+  assert.deepEqual(orderForTab(input, 'open', new Set(['D'])).map(o => o.id), ['D', 'A', 'B', 'C'],
+    'Open tab → prioritized jumps to front, rest FIFO');
+
+  // Two prioritized (C,A) → prioritized-first FIFO among themselves (A before C), then rest FIFO (B,D)
+  assert.deepEqual(orderForTab(input, 'open', new Set(['C', 'A'])).map(o => o.id), ['A', 'C', 'B', 'D'],
+    'Open tab → prioritized group is itself FIFO, then the rest FIFO');
+
+  // Completados → newest-first: D, C, B, A (prioritized irrelevant on this tab)
+  assert.deepEqual(orderForTab(input, 'completed', new Set(['A'])).map(o => o.id), ['D', 'C', 'B', 'A'],
+    'Completados tab → newest-first, prioritized ignored');
+
+  // Pure: does not mutate the input array
+  assert.deepEqual(input.map(o => o.id), ['C', 'A', 'D', 'B'], 'orderForTab does not mutate its input');
+  ok('orderForTab: Open FIFO (prioritized-front) · Completados newest-first · pure');
 }
 
 // ── SOURCE-INSPECTION contract: recall + toggleItem handlers perform NO setOrderStatus ──

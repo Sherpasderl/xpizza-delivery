@@ -1192,7 +1192,7 @@ import * as XPD from './xpizza-delivery.js?v=16';
 import { nudgeEligibility, classAction, nextBeepState, nudgeRestaurantFromHost } from './ready-nudge.js?v=1';
 import { railCount, enumerateItems } from './rail-count.js?v=2';
 import { KDS_STATUS, agingAnchorMs, bandClass as bandClassPure, isLateBand,
-         actionStatusWrite, deriveTab, completedTabVisible, paginate, countOffPage } from './card-model.js?v=2';
+         actionStatusWrite, deriveTab, completedTabVisible, orderForTab, paginate, countOffPage } from './card-model.js?v=3';
 
 /* ── Phase-1 Step 2: v0 overdue-nudge controller (isolated; fed the canonical raw orders via a
    try/caught hook in the subscribeToOrders callback — NO second /orders subscription). Toggles the
@@ -1931,10 +1931,10 @@ function refreshBoard() {
 let lastOrders = [];
 let allOrders = [];
 
-// The prioritized-first Open pool (stable: prioritized keep their incoming order, then the rest).
+// The Open pool — FIFO (oldest-first), prioritized cards jumped to the front (pure orderForTab).
 function openPool() {
   const open = lastOrders.filter(o => deriveTab(o, completedSet) === 'open');
-  return [...open.filter(o => prioritized.has(o.id)), ...open.filter(o => !prioritized.has(o.id))];
+  return orderForTab(open, 'open', prioritized);
 }
 
 // Off-page late/overdue count for the Open tab: aging-late OR nudge-overdue ids across the FULL Open
@@ -1959,9 +1959,10 @@ function render(orders) {
   orders.forEach(o => { if (!allOrders.find(a => a.id === o.id)) allOrders.push(o); });
 
   const open = openPool();
-  // Completados = this session's local bumps + server-completed within the recent window (render filter).
+  // Completados = this session's local bumps + server-completed within the recent window (render filter),
+  // ordered newest-first (per-tab sort). Open is FIFO (oldest-first) via openPool → orderForTab.
   const nowMs = Date.now();
-  const completed = orders.filter(o => completedTabVisible(o, completedSet, nowMs, RECENT_COMPLETED_MS));
+  const completed = orderForTab(orders.filter(o => completedTabVisible(o, completedSet, nowMs, RECENT_COMPLETED_MS)), 'completed');
   document.getElementById('count-open').textContent = open.length;
   document.getElementById('count-completed').textContent = completed.length;
 
