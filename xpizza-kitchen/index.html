@@ -1465,6 +1465,27 @@ function saveState() {
   localStorage.setItem('xpizza_log', JSON.stringify(stateLog));
 }
 
+/* #6 — prune persisted local state on load so it can't grow unbounded or force-show stale bumps. Expire
+   completedSet / completedStamp / stateLog entries whose newest timestamp is older than the recency window
+   (~24h). A completed bump older than a day is no longer relevant (the server record is authoritative). */
+const LOCAL_STATE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+(function pruneLocalStateOnLoad() {
+  const now = Date.now();
+  const parseMs = (v) => { const t = v == null ? NaN : new Date(v).getTime(); return Number.isFinite(t) ? t : 0; };
+  // completedStamp (dated bumps): drop stale entries + their completedSet membership.
+  for (const id of Object.keys(completedStamp)) {
+    const t = parseMs(completedStamp[id]);
+    if (!t || (now - t) > LOCAL_STATE_MAX_AGE_MS) { delete completedStamp[id]; completedSet.delete(id); }
+  }
+  // stateLog: drop entries whose latest movement is stale.
+  for (const id of Object.keys(stateLog)) {
+    const times = Object.values(stateLog[id] || {}).map(parseMs).filter((x) => x > 0);
+    const latest = times.length ? Math.max(...times) : 0;
+    if (!latest || (now - latest) > LOCAL_STATE_MAX_AGE_MS) delete stateLog[id];
+  }
+  saveState();
+})();
+
 /* ── Operational state helpers ──
    opState(o): the card's operational bucket, derived from canonical estado + the completed overlay.
      'completed' (bumped or delivered) > 'cancelado' > 'listo' > 'prep' > 'nuevo'.
@@ -2174,17 +2195,13 @@ function startOrdersSubscription() {
   if (firebaseUnsubscribe) firebaseUnsubscribe();
   window.__readyNudge?.teardown?.();   // teardown before (re)subscribing (restart path)
   firebaseUnsubscribe = XPD.subscribeToOrders((ordersById) => {
-    // ordersById: { orderId1: {...}, orderId2: {...}, ... }
-    const orders = Object.values(ordersById || {})
-      // Map Firebase order shape -> kitchen card shape.
-      .map(o => mapFirebaseOrderToCard(o))
-      .filter(o => o !== null)
-      // Most recent first
-      .sort((a, b) => {
-        const ta = a.hora ? new Date(a.hora).getTime() : 0;
-        const tb = b.hora ? new Date(b.hora).getTime() : 0;
-        return tb - ta;
-      });
+    // ordersById: { orderKey1: {...}, orderKey2: {...}, ... }
+    // #4: map from ENTRIES so a record whose order_id is missing can fall back to the snapshot KEY as its
+    // id; a record with NO usable id (no order_id AND no key) null-maps out — the KDS never renders/acts on
+    // an id-less card (and never writes orders/undefined). Per-tab sort governs order downstream.
+    const orders = Object.entries(ordersById || {})
+      .map(([key, o]) => mapFirebaseOrderToCard(o, key))
+      .filter(o => o !== null);
 
     // completedSet is durable and canonical-driven downstream (deriveTab), so no localState reconcile is
     // needed: a delivered order (estado 'Archivado') always classifies to the Completed tab whether or not
@@ -2211,8 +2228,13 @@ function startOrdersSubscription() {
      'delivered'        → 'Archivado' (auto-archived; visible only in archive/history views)
      'cancelled'        → 'Nuevo' with cancel banner so kitchen sees it
 */
-function mapFirebaseOrderToCard(o) {
+function mapFirebaseOrderToCard(o, key) {
   if (!o) return null;
+
+  // #4: resolve a stable id — order_id, else the snapshot KEY. With NEITHER there is nothing to render or
+  // act on (a status write would target orders/undefined) → null-map it out.
+  const oid = o.order_id || key || null;
+  if (!oid) return null;
 
   // HARD GUARD: a payment-pending / unpaid order must NEVER become a kitchen ticket.
   // Online orders are written as status:'pending_payment' and only flip to 'new' after
@@ -2250,9 +2272,9 @@ function mapFirebaseOrderToCard(o) {
   const horaIso = elapsedAnchorMs ? new Date(elapsedAnchorMs).toISOString() : null;
 
   return {
-    id: o.order_id,
+    id: oid,
     hora: horaIso,
-    orden: o.order_id,
+    orden: o.order_id || oid,
     cliente: o.customer_name || '—',
     telefono: o.customer_phone || '',
     pedido: o.items_text || '',
@@ -2263,6 +2285,9 @@ function mapFirebaseOrderToCard(o) {
     order_type: o.order_type || 'delivery',
     pickup_time: o.pickup_time || null,
     scheduled_for: o.scheduled_for || null,   // released-scheduled orders show the target slot on the card
+    // #5: server COMPLETION time (already on the /orders record — no new read), for the Completados recency
+    // anchor. Present only for terminal orders; absent → completedTabVisible falls back to the hora anchor.
+    completed_at: o.delivered_at || o.ready_at || o.completed_at || null,
     cancelled: o.status === 'cancelled'
   };
 }
@@ -2281,11 +2306,13 @@ function showLog(event, id) {
   const title = order ? `${order.orden} · ${order.cliente}` : id;
   document.getElementById('log-modal-title').textContent = title;
   const entries = Object.entries(log);
+  // #10: escape the interpolated log values before innerHTML (cheap XSS hardening — belt-and-suspenders,
+  // even though the status keys are internal). The title above already uses textContent.
   document.getElementById('log-modal-body').innerHTML = entries.length
     ? entries.map(([status, time]) => `
         <div class="log-row">
-          <span class="log-status">${shortStatus(status)}</span>
-          <span class="log-time">${new Date(time).toLocaleTimeString('es-HN', {hour:'2-digit', minute:'2-digit', second:'2-digit'})}</span>
+          <span class="log-status">${escapeHtml(shortStatus(status))}</span>
+          <span class="log-time">${escapeHtml(new Date(time).toLocaleTimeString('es-HN', {hour:'2-digit', minute:'2-digit', second:'2-digit'}))}</span>
         </div>`).join('')
     : '<div style="color:var(--muted);font-size:13px;padding:8px 0">Sin historial disponible.</div>';
   document.getElementById('log-overlay').classList.add('open');
