@@ -930,6 +930,7 @@ function shortStatus(s) {
   .ticket-grid {
     flex: 1; overflow-y: auto; padding: 20px;
     display: grid; grid-template-columns: repeat(var(--kds-cols, 4), minmax(0, 1fr)); gap: 22px 16px; align-content: start;
+    grid-auto-rows: max-content;   /* pin each row to its tallest card's content — the flex:1 definite-height grid was stretching auto rows to equal container fractions → tall tickets overflowed into the next row (mode-agnostic; Tile-Fill cap + .expanded still grow their row) */
   }
   /* Flex Rail (default) — cards are CONTENT-HEIGHT, top-aligned; every item visible, nothing clipped */
   .ticket-grid.layout-flex { align-items: start; }
