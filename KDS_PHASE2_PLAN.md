@@ -39,7 +39,19 @@ Ready is **explicit** (Listo tap), never auto-derived from ephemeral local per-i
 
 ## Sub-phases (Phase 2 outgrows Phase 1's client-only scope)
 
-**2a — KDS interaction paradigm (client-only).** Flat Open pool; NUEVO→Empezar→preparando→per-item ✓→explicit Listo→ready/local-bump; Open/Completed tabs; recall (local); prioritize (`↑≡`→"Prioritizado", reorder only); flex-rail + pagination; left sidebar (all-day + click-highlight). Writes **only** `new`/`preparing`/`ready` via `XPD.setOrderStatus` — lifecycle contract unchanged, only UI/interaction changes. Regression tests: both host classifiers + La Musa guarded write.
+**2a — KDS interaction paradigm (client-only).** Flat Open pool; Open/Completed tabs; recall (local); prioritize (`↑≡`→"Prioritizado", reorder only); flex-rail + pagination; left sidebar (all-day + click-highlight). Writes **only** `new`/`preparing`/`ready` via `XPD.setOrderStatus` — lifecycle contract unchanged, only UI/interaction changes. Regression tests: both host classifiers + La Musa guarded write.
+
+  **★ Square card interaction (the load-bearing UX detail — do NOT reduce to buttons).** The card **top bar (header) is the tap target**, mirroring Square:
+  - **NUEVO** → tap the header → **Empezar** (`setOrderStatus 'preparing'`, confirmed-write). No separate chunky "EMPEZAR" button.
+  - **EN PREPARACIÓN** → a **progress ring on the header fills** as items are checked (per-item ✓ = one-way, local, non-authoritative — the ring is a *progress indicator only*, it **never auto-fires ready**). Tap the header again → **Completar** (`setOrderStatus 'ready'`, explicit, confirmed-write) — Square's own "tap the top of a ticket to complete it." Item ✓ greys the line + advances the ring.
+  - Band still Completing(blue)→Completed(green) on the confirmed `ready`. **Default: explicit completion; auto-complete-on-all-checked is OFF** (firing canonical `ready` from ephemeral checks is the Codex-flagged misfire risk) — a config Xavier may flip, weighed against timestamp cleanliness.
+  - The chunky EMPEZAR/COMPLETAR/Listo buttons from the first 2a build are **replaced** by this header-tap + ring interaction.
+
+  **★ Top bar — remove the inherited Phase-1 chrome → Square-clean.** Drop the old status bar (`LIVE · tiempo real`, `🔔 Sonido`, `⬤ Pantalla activa`, `Ver archivados`, `Historial completo`). Replace with Square's minimal top bar: **hamburger (sidebar toggle) · refresh · Completados/Abiertos tabs · pager**. Relocate the still-useful controls (sound toggle, clock, signout) into the sidebar / a menu — **relocate, don't lose**.
+
+  **★ Defensive render.** Never surface raw `undefined`/blank: `id`/`orden` and `cliente` fallbacks so malformed/seed data can't render junk cards, independent of clearing the `/tmp/mh-seed*` synthetic test orders.
+
+  These three (Square header-tap+ring, top-bar replacement, defensive render) were under-specified in the first 2a pass — they are **explicit gate criteria** for the follow-up build, alongside the unchanged contract below.
 
 **2b — 86 / item availability (KDS + order form + Firebase).** Prerequisites first:
 1. **X Pizza order form must send a stable menu `id`** on each structured item (La Musa already does; X Pizza sends name/qty only today) — pricing-validation-compatible.
