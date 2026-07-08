@@ -963,12 +963,16 @@ function shortStatus(s) {
   }
   /* Flex Rail (default) — cards are CONTENT-HEIGHT, top-aligned; every item visible, nothing clipped */
   .ticket-grid.layout-flex { align-items: start; }
-  /* Tile Fill — uniform capped tiles: header + footer stay in view, the items list truncates + "Ver todo" */
+  /* Tile Fill (tweak #4) — uniform capped tiles. ONLY .card-items is the flexible clip region; EVERYTHING
+     else in the card (header + every body banner/expander/writestrip/Recuperar/Priorizar/Archivar) is
+     flex:0 → pinned, always fully visible. So Archivar never clips, items don't squeeze to zero, "Ver todo"
+     reliably shows, and expand works on completed + cancelled cards too. */
   .ticket-grid.layout-fill .tk { max-height: 340px; display: flex; flex-direction: column; }
   .ticket-grid.layout-fill .tk.expanded { max-height: none; }
   .ticket-grid.layout-fill .head { flex: 0 0 auto; }
   .ticket-grid.layout-fill .body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
-  .ticket-grid.layout-fill .card-items { min-height: 0; overflow: hidden; }
+  .ticket-grid.layout-fill .body > * { flex: 0 0 auto; }                 /* pin every body child … */
+  .ticket-grid.layout-fill .card-items { flex: 1 1 auto; min-height: 0; overflow: hidden; }   /* … except the items list */
   .ticket-grid::-webkit-scrollbar { width: 5px; }
   .ticket-grid::-webkit-scrollbar-thumb { background: var(--stroke2); border-radius: 2px; }
   .ticket-grid .empty { grid-column: 1 / -1; }
@@ -1079,18 +1083,20 @@ function shortStatus(s) {
   .h-stamp { font-weight: 700; opacity: .92; display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
   .h-stamp svg { width: 13px; height: 13px; }
 
-  /* Recuperar Ticket (fix #2) — full-width in the body, never clipped; only on locally-bumped cards */
-  .recall-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: 10px; padding: 10px; border: 1.5px solid #DADAD8; background: #F7F7F6; color: #333; border-radius: 9px; font-family: var(--body); font-size: 13.5px; font-weight: 700; cursor: pointer; }
-  .recall-btn:hover { background: #EFEFEE; }
-  .recall-btn svg { width: 15px; height: 15px; }
+  /* header log button (tweak #2) — small clock/history icon next to the mm:ss timer; own stopPropagation */
+  .h-log { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-right: 2px;
+    border: 0; border-radius: 7px; background: color-mix(in srgb, var(--h-ink) 12%, transparent); color: var(--h-ink);
+    cursor: pointer; flex: 0 0 auto; }
+  .h-log:hover { background: color-mix(in srgb, var(--h-ink) 22%, transparent); }
+  .h-log svg { width: 15px; height: 15px; }
 
-  /* secondary controls (prioritize / archivar / log) — small, labeled, never the primary action (fix #6) */
-  .mini-actions { display: flex; align-items: center; gap: 8px; margin-top: 11px; }
-  .mini-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 8px; border: 1.5px solid #DADAD8; background: #fff; color: #333; font-family: var(--body); font-size: 12.5px; font-weight: 700; cursor: pointer; }
-  .mini-btn:hover { background: #F3F3F2; }
-  .mini-btn svg { width: 14px; height: 14px; }
-  .mini-btn.icon { padding: 7px 9px; }
-  .mini-btn.on { border-color: var(--accent); color: var(--accent); background: #FFF3EE; }
+  /* Full-width card buttons (tweaks #1/#2) — Recuperar / Priorizar / Archivar all card-wide, never clipped */
+  .recall-btn, .fw-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: 10px;
+    padding: 10px; border: 1.5px solid #DADAD8; background: #F7F7F6; color: #333; border-radius: 9px;
+    font-family: var(--body); font-size: 13.5px; font-weight: 700; cursor: pointer; }
+  .recall-btn:hover, .fw-btn:hover { background: #EFEFEE; }
+  .recall-btn svg, .fw-btn svg { width: 15px; height: 15px; }
+  .fw-btn.prio-btn.on { border-color: var(--accent); color: var(--accent); background: #FFF3EE; }
 
   /* ── confirmed-write: pending + error strips (in body) ── */
   .card-writestrip {
@@ -1722,6 +1728,10 @@ function renderTicket(order) {
   const offset = total > 0 ? RING_CIRC * (1 - done / total) : RING_CIRC;
   const ringHtml = `<div class="ring-slot"><svg class="ring" viewBox="0 0 36 36"><circle class="trk" cx="18" cy="18" r="15"/><circle class="prg" cx="18" cy="18" r="15" style="stroke-dasharray:${RING_CIRC};stroke-dashoffset:${offset}"/></svg><div class="done-badge"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></div></div>`;
 
+  // Log button (tweak #2) — sits in the header .h-l2 next to the timer; showLog() stopPropagations so it
+  // never triggers the header-tap Empezar/Completar. Only when there's a per-ticket log to show.
+  const logBtn = logStr ? `<button class="h-log" onclick="showLog(event,'${id}')" title="Historial" aria-label="Historial"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg></button>` : '';
+
   // ── header content ──
   let headInner, headTap = false;
   if (seqStage === 'completed') {
@@ -1736,7 +1746,7 @@ function renderTicket(order) {
     const stampTxt = stampIso ? formatTime(stampIso) : '';
     headInner = `
         <div class="h-l1"><span class="h-name">${escapeHtml(dispName)}</span><span class="h-type">${typeLabel}</span></div>
-        <div class="h-l2"><span class="h-stamp"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Completado${stampTxt ? ' ' + stampTxt : ''}</span><span class="h-id">${escapeHtml(dispId)}</span></div>`;
+        <div class="h-l2">${logBtn}<span class="h-stamp"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Completado${stampTxt ? ' ' + stampTxt : ''}</span><span class="h-id">${escapeHtml(dispId)}</span></div>`;
   } else {
     const showRing = (op === 'prep');
     const l2right = showRing ? ringHtml : `<span class="h-id">${escapeHtml(dispId)}</span>`;
@@ -1748,7 +1758,7 @@ function renderTicket(order) {
     headTap = (op === 'nuevo' || op === 'prep' || op === 'listo') && !(p && !p.error);
     headInner = `
         <div class="h-l1"><span class="h-name">${escapeHtml(dispName)}</span><span class="h-type">${typeLabel}</span></div>
-        <div class="h-l2"><span class="h-timer" id="elapsed-${id}">${elapsed(created)}</span>${l2right}</div>
+        <div class="h-l2">${logBtn}<span class="h-timer" id="elapsed-${id}">${elapsed(created)}</span>${l2right}</div>
         ${cta}`;
   }
 
@@ -1787,17 +1797,12 @@ function renderTicket(order) {
     body += `<button class="recall-btn" onclick="recall('${id}')"><svg viewBox="0 0 24 24"><use href="#i-refresh"/></svg> Recuperar Ticket</button>`;
   }
 
-  // ── secondary controls (never the primary action) — hidden during a non-error pending write and during
-  //    the completion beat. Completed cards use the full-width Recuperar Ticket above, not a mini. ──
-  let mini = '';
+  // ── secondary actions (tweak #1) — FULL-WIDTH card buttons (like Recuperar), never the primary action.
+  //    Hidden during a non-error pending write and during the completion beat. Priorizar active = accent +
+  //    the "Priorizado" body banner (above). Direct children of .body so Tile Fill (#4) pins them. ──
   if (!(p && !p.error) && !seqStage) {
-    const parts = [];
-    if (isCancelled) parts.push(`<button class="mini-btn" onclick="archiveCancel('${id}')"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Archivar</button>`);
-    else if (op !== 'completed') {
-      parts.push(`<button class="mini-btn${isPrioritized ? ' on' : ''}" onclick="prioritize('${id}')" title="Priorizar" aria-label="Priorizar"><svg viewBox="0 0 24 24"><use href="#i-prio"/></svg> Priorizar</button>`);
-      if (logStr) parts.push(`<button class="mini-btn icon" onclick="showLog(event, '${id}')" title="Historial" aria-label="Historial"><svg viewBox="0 0 24 24"><use href="#i-dots"/></svg></button>`);
-    }
-    if (parts.length) mini = `<div class="mini-actions">${parts.join('')}</div>`;
+    if (isCancelled) body += `<button class="fw-btn" onclick="archiveCancel('${id}')"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Archivar</button>`;
+    else if (op !== 'completed') body += `<button class="fw-btn prio-btn${isPrioritized ? ' on' : ''}" onclick="prioritize('${id}')" title="Priorizar" aria-label="Priorizar"><svg viewBox="0 0 24 24"><use href="#i-prio"/></svg> Priorizar</button>`;
   }
 
   const cls = ['tk'];
@@ -1810,7 +1815,7 @@ function renderTicket(order) {
   return `
     <div class="${cls.join(' ')}" data-s="${hs}" id="card-${id}">
       <div class="head${headTap ? ' tap' : ''}"${headTap ? ` onclick="headerTap('${id}')"` : ''}>${headInner}</div>
-      <div class="body">${body}${mini}</div>
+      <div class="body">${body}</div>
     </div>`;
 }
 
