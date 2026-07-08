@@ -50,6 +50,7 @@
     --ready:  #2FA855; --ready-ink:#FFFFFF;     /* ready / settled-completed header + item ✓ */
     --completing:#2F80ED; --comp-ink:#FFFFFF;   /* completing (in-flight ready) header */
     --mod:    #E23B2E;   /* extras red (Square target) */
+    --blue:   #2F6BE6;   /* Ajustes-screen selection accent (tiles/radios/nav) */
     /* light-surface tokens (white cards, archive drawer, modals, login) */
     --black:   #14110E;
     --char:    #FFFFFF;
@@ -121,6 +122,57 @@
     background: var(--h-late); border-radius: 22px; padding: 5px 13px;
   }
   .latepill.hidden { display: none; }
+
+  /* ── top-bar "Diseño" button (Phase A #2) → opens the Ajustes screen ── */
+  .tb-btn {
+    height: 40px; padding: 0 14px; display: inline-flex; align-items: center; gap: 7px; margin-left: 6px;
+    background: var(--panel); border: 1px solid var(--stroke2); border-radius: 10px; color: var(--on-dark);
+    font-family: var(--body); font-size: 13px; font-weight: 700; cursor: pointer;
+  }
+  .tb-btn svg { width: 17px; height: 17px; }
+  .tb-btn:hover { background: #222226; }
+  .tb-btn.hl { border-color: var(--accent); color: var(--accent); }
+  .tb-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* ══════════ Ajustes settings screen (Phase A #2/#3) — main-window, replaces the board ══════════ */
+  .screen { flex: 1; min-width: 0; background: #fff; color: #1a1a1a; display: flex; flex-direction: column; overflow: hidden; }
+  .screen[hidden] { display: none; }
+  .content[hidden] { display: none; }
+  .screen-top { display: flex; align-items: center; padding: 14px 20px; border-bottom: 1px solid #ececec; flex-shrink: 0; }
+  .screen-top .x { width: 38px; height: 38px; display: grid; place-items: center; background: #f4f4f4; border: 0; border-radius: 9px; font-size: 17px; color: #333; cursor: pointer; }
+  .screen-top .x:hover { background: #ececec; }
+  .screen-top .ttl { flex: 1; text-align: center; font-size: 16px; font-weight: 800; margin-right: 38px; color: #1a1a1a; }
+  .screen-body { flex: 1; display: grid; grid-template-columns: 210px 1fr; overflow: hidden; }
+  .screen .nav { border-right: 1px solid #ececec; padding: 16px 12px; overflow-y: auto; }
+  .screen .nav a { display: block; padding: 9px 12px; border-radius: 8px; font-size: 14px; color: #555; font-family: var(--body); }
+  .screen .nav a.on { background: #EAF1FE; color: var(--blue); font-weight: 700; }
+  .screen .nav a.dim { color: #bbb; }
+  .screen .pane { padding: 22px 26px; overflow-y: auto; }
+  .screen .pane h2 { margin: 0 0 4px; font-size: 20px; font-weight: 800; color: #1a1a1a; }
+  .screen .pane .sub { margin: 0 0 18px; font-size: 13px; color: #777; }
+  .screen .pane-lbl { font-size: 14px; font-weight: 800; margin: 0 0 12px; color: #1a1a1a; }
+  .tiles { display: flex; gap: 14px; flex-wrap: wrap; }
+  .tile { width: 150px; cursor: pointer; background: none; border: 0; padding: 0; font-family: var(--body); }
+  .tile.disabled { cursor: default; opacity: .5; }
+  .thumb { height: 78px; border: 2px solid #d7d7d7; border-radius: 9px; padding: 7px; display: grid; gap: 4px; background: #fff; }
+  .tile.on .thumb { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(47,107,230,.18); }
+  .tile .tl { text-align: center; font-size: 11.5px; font-weight: 700; color: #444; letter-spacing: .04em; text-transform: uppercase; margin-top: 8px; }
+  .tile.on .tl { color: var(--blue); }
+  .thumb i { background: #cfcfcf; border-radius: 2px; }
+  .thumb.flex { grid-template-columns: 1fr 1fr; align-items: start; }
+  .thumb.flex i:nth-child(1){height:50px}.thumb.flex i:nth-child(2){height:30px}.thumb.flex i:nth-child(3){height:26px}.thumb.flex i:nth-child(4){height:50px}
+  .thumb.fill { grid-template-columns: repeat(3,1fr); grid-auto-rows: 1fr; }
+  .thumb.r1 { grid-template-columns: repeat(4,1fr); align-items: stretch; }
+  .thumb.r2 { grid-template-columns: repeat(4,1fr); grid-template-rows: 1fr 1fr; }
+  .thumb.r3 { grid-template-columns: repeat(4,1fr); grid-template-rows: 1fr 1fr 1fr; }
+  .settings-banner { display: flex; align-items: center; gap: 9px; background: #EAF1FE; color: #2456b8; border-radius: 9px; padding: 11px 14px; font-size: 13px; margin: 18px 0 22px; }
+  .settings-banner svg { width: 16px; height: 16px; flex: 0 0 auto; }
+  .cols { max-width: 360px; }
+  .cols .opt { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 13px 2px; border: 0; border-bottom: 1px solid #eee; background: none; font-family: var(--body); font-size: 15px; color: #1a1a1a; cursor: pointer; }
+  .cols .opt:hover { color: var(--blue); }
+  .radio { width: 20px; height: 20px; border: 2px solid #cbcbcb; border-radius: 50%; }
+  .radio.on { border-color: var(--blue); background: radial-gradient(var(--blue) 0 6px, #fff 7px); }
+  .cols-note { font-size: 12px; color: #888; margin: 14px 0 0; }
 
   /* ── Columns layout ── */
   .board {
@@ -868,15 +920,6 @@ function shortStatus(s) {
   .sb-foot .fr-clock #clock { font-variant-numeric: tabular-nums; }
   #btn-sound.muted { color: var(--h-late); }
 
-  /* ── ticket-layout settings (fix #5) — per-device columns + density ── */
-  .settings-sub { color: var(--ink-mute); font-size: 11.5px; margin: -4px 0 12px; }
-  .settings-field { margin-bottom: 12px; }
-  .settings-field label { display: block; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-mute); font-weight: 700; margin-bottom: 6px; }
-  .seg { display: inline-flex; border: 1px solid var(--stroke2); border-radius: 9px; overflow: hidden; }
-  .seg button { font-family: var(--body); font-size: 13px; font-weight: 700; padding: 7px 14px; border: 0; background: transparent; color: var(--ink-mute); cursor: pointer; }
-  .seg button:hover { color: var(--on-dark); }
-  .seg button.on { background: var(--accent); color: #fff; }
-
   /* ── content: tab bar + grid + pager ── */
   .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--board); min-width: 0; }
   .tabbar {
@@ -912,20 +955,30 @@ function shortStatus(s) {
   .pager-btn:not(:disabled):hover { background: var(--board-2); }
   .pager-label { font-family: var(--body); font-size: 12px; color: var(--on-dark-mut); font-variant-numeric: tabular-nums; min-width: 66px; text-align: center; }
 
-  /* ── flat ticket grid (Square target pool) — fixed column count + density from per-device settings ── */
+  /* ── flat ticket grid (Square target pool) — fixed column count (--kds-cols) + layout mode ── */
   .ticket-grid {
     flex: 1; overflow-y: auto; padding: 20px;
     display: grid; grid-template-columns: repeat(var(--kds-cols, 4), minmax(0, 1fr)); gap: 22px 16px; align-content: start;
   }
-  .ticket-grid.dense { padding: 12px; gap: 12px 10px; }               /* compacta = more tickets per screen */
-  .ticket-grid.dense .head { padding: 8px 10px 7px; }
-  .ticket-grid.dense .body { padding: 8px 10px 9px; }
-  .ticket-grid.dense .h-name { font-size: 14.5px; }
-  .ticket-grid.dense .card-item { font-size: 13.5px; padding: 3px 0; }
-  .ticket-grid.dense .h-l2 { min-height: 30px; }
+  /* Flex Rail (default) — cards are CONTENT-HEIGHT, top-aligned; every item visible, nothing clipped */
+  .ticket-grid.layout-flex { align-items: start; }
+  /* Tile Fill — uniform capped tiles: header + footer stay in view, the items list truncates + "Ver todo" */
+  .ticket-grid.layout-fill .tk { max-height: 340px; display: flex; flex-direction: column; }
+  .ticket-grid.layout-fill .tk.expanded { max-height: none; }
+  .ticket-grid.layout-fill .head { flex: 0 0 auto; }
+  .ticket-grid.layout-fill .body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .ticket-grid.layout-fill .card-items { min-height: 0; overflow: hidden; }
   .ticket-grid::-webkit-scrollbar { width: 5px; }
   .ticket-grid::-webkit-scrollbar-thumb { background: var(--stroke2); border-radius: 2px; }
   .ticket-grid .empty { grid-column: 1 / -1; }
+
+  /* Tile-Fill "Ver todo · +N" / "Ver menos" expander — a distinct control (never header-tap / item-✓) */
+  .ver-todo {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 11px; border-radius: 8px;
+    border: 1.5px solid #DADAD8; background: #fff; color: var(--blue-ink, #2456b8); font-family: var(--body);
+    font-size: 12.5px; font-weight: 700; cursor: pointer; align-self: flex-start;
+  }
+  .ver-todo:hover { background: #F3F6FD; }
 
   /* fix #7: tab switch — smooth HORIZONTAL slide of the incoming grid, transform-only, no cross-fade */
   @keyframes kds-slide-in-left  { from { transform: translateX(-7%); } to { transform: translateX(0); } }
@@ -1084,6 +1137,8 @@ function shortStatus(s) {
   <g id="i-exit"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M9 12h11M16 8l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
   <g id="i-prio"><path d="M6 15l6-6 6 6M6 10l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
   <g id="i-dots"><circle cx="5" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="19" cy="12" r="1.7" fill="currentColor"/></g>
+  <g id="i-cog"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></g>
+  <g id="i-info"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v5M12 8h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></g>
   <g id="i-spin"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></g>
   <g id="i-alert"><path d="M12 3l9 16H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
 </defs></svg>
@@ -1129,6 +1184,8 @@ function shortStatus(s) {
     <button class="pg" id="pager-last" onclick="gotoPageAbs('last')" aria-label="Última página">››</button>
     <span class="latepill hidden" id="pager-late" title="Tickets atrasados fuera de esta página"></span>
   </div>
+  <!-- Phase A #2: opens the main-window "Ajustes" screen (layout settings moved OUT of the sidebar) -->
+  <button class="tb-btn hl" id="btn-settings" onclick="openSettings()" title="Diseño / Ajustes"><svg viewBox="0 0 24 24"><use href="#i-cog"/></svg> Diseño</button>
 </div>
 
 <!-- Phase 2a: flat pool — left sidebar (all-day make-counts + availability + relocated sound/clock/signout) + grid -->
@@ -1142,26 +1199,7 @@ function shortStatus(s) {
       <div class="sb-h"><svg viewBox="0 0 24 24"><use href="#i-slash"/></svg> Disponibilidad</div>
       <div class="sb-muted">Próximamente · 2b</div>
     </div>
-    <!-- fix #5: lightweight per-device ticket-layout settings (columns + density, localStorage) -->
-    <div class="sb-sec settings">
-      <div class="sb-h"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg> Diseño de tickets</div>
-      <div class="settings-sub">Se guarda en este dispositivo.</div>
-      <div class="settings-field">
-        <label>Columnas</label>
-        <div class="seg" id="seg-cols">
-          <button data-cols="3" onclick="setLayoutCols(3)">3</button>
-          <button data-cols="4" class="on" onclick="setLayoutCols(4)">4</button>
-          <button data-cols="5" onclick="setLayoutCols(5)">5</button>
-        </div>
-      </div>
-      <div class="settings-field">
-        <label>Densidad</label>
-        <div class="seg" id="seg-density">
-          <button data-density="comoda" class="on" onclick="setLayoutDensity('comoda')">Cómoda</button>
-          <button data-density="compacta" onclick="setLayoutDensity('compacta')">Compacta</button>
-        </div>
-      </div>
-    </div>
+    <!-- Phase A #2: ticket-layout settings moved OUT of the sidebar → the top-bar "Diseño" → Ajustes screen. -->
     <div class="sb-foot">
       <button class="fr" id="btn-sound" onclick="toggleSound()" title="Activar/desactivar sonido"><svg viewBox="0 0 24 24"><use href="#i-bell"/></svg> <span id="sound-label">Sonido activado</span></button>
       <div class="fr fr-clock"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg> <span id="clock">--:--</span></div>
@@ -1174,6 +1212,51 @@ function shortStatus(s) {
       <div class="loading">Cargando…</div>
     </div>
   </section>
+
+  <!-- Phase A #2/#3: main-window "Ajustes" settings screen (replaces the board; ✕ returns to it) -->
+  <div class="screen" id="settings-screen" hidden>
+    <div class="screen-top">
+      <button class="x" id="btn-settings-close" onclick="closeSettings()" aria-label="Cerrar" title="Cerrar">✕</button>
+      <span class="ttl">Ajustes</span>
+    </div>
+    <div class="screen-body">
+      <nav class="nav">
+        <a class="on">Diseño</a>
+        <a class="dim">Apariencia · próximamente</a>
+        <a class="dim">Sonido y alertas · próximamente</a>
+      </nav>
+      <div class="pane">
+        <h2>Diseño</h2>
+        <p class="sub">Configurá el diseño para tu flujo de cocina.</p>
+        <p class="pane-lbl">Diseño de tickets</p>
+        <div class="tiles" id="layout-tiles">
+          <button class="tile" data-layout="flex" onclick="setLayoutMode('flex')">
+            <div class="thumb flex"><i></i><i></i><i></i><i></i></div><div class="tl">Flex Rail</div>
+          </button>
+          <button class="tile" data-layout="fill" onclick="setLayoutMode('fill')">
+            <div class="thumb fill"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="tl">Tile Fill</div>
+          </button>
+          <button class="tile disabled" disabled title="Próximamente (Fase B)">
+            <div class="thumb r1"><i></i><i></i><i></i><i></i></div><div class="tl">1 Rail · próx.</div>
+          </button>
+          <button class="tile disabled" disabled title="Próximamente (Fase B)">
+            <div class="thumb r2"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="tl">2 Rails · próx.</div>
+          </button>
+          <button class="tile disabled" disabled title="Próximamente (Fase B)">
+            <div class="thumb r3"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="tl">3 Rails · próx.</div>
+          </button>
+        </div>
+        <div class="settings-banner"><svg viewBox="0 0 24 24"><use href="#i-info"/></svg> Recomendado para ver muchos tickets a la vez</div>
+        <p class="pane-lbl">Columnas</p>
+        <div class="cols" id="cols-opts">
+          <button class="opt" data-cols="3" onclick="setLayoutCols(3)"><span>3</span><span class="radio"></span></button>
+          <button class="opt" data-cols="4" onclick="setLayoutCols(4)"><span>4</span><span class="radio"></span></button>
+          <button class="opt" data-cols="5" onclick="setLayoutCols(5)"><span>5</span><span class="radio"></span></button>
+        </div>
+        <p class="cols-note">Aplica a Flex Rail / Tile Fill. Se guarda en este dispositivo.</p>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -1384,10 +1467,13 @@ const COMPLETED_MS  = 700;    // green "Completado" beat (in the Open pool) befo
 // filter — not a status change, not a new read — so the tab is a short useful list, not 100+ historical).
 const RECENT_COMPLETED_MS = 18 * 60 * 60 * 1000;   // 18h ≈ one service day
 
-// Per-device ticket-layout settings (localStorage; presentational only). Columns 3/4/5 + density.
+// Per-device ticket-layout settings (localStorage; presentational only, Phase A). Columns 3/4/5 + the
+// ticket layout mode: 'flex' (Flex Rail — content-height cards, all items) | 'fill' (Tile Fill — capped
+// tiles, items truncate with a "Ver todo" expander). (1/2/3 Rails are Phase B — not wired.)
 let layoutCols = parseInt(localStorage.getItem('xpizza_kds_cols') || '4', 10);
 if (![3, 4, 5].includes(layoutCols)) layoutCols = 4;
-let layoutDensity = localStorage.getItem('xpizza_kds_density') === 'compacta' ? 'compacta' : 'comoda';
+let layoutMode = localStorage.getItem('xpizza_kds_layout') === 'fill' ? 'fill' : 'flex';   // default Flex Rail (no clip)
+const expandedTiles = new Set();   // Tile-Fill ids the cook expanded to see all items (ephemeral, local)
 
 // Escape HTML-significant chars before interpolating untrusted order data
 // (customer name, items, notes — originate from the public order form) into
@@ -1880,24 +1966,49 @@ function toggleSidebar() {
   document.getElementById('kds-main')?.classList.toggle('sb-collapsed', sidebarCollapsed);
 }
 
-/* ── Ticket-layout settings (fix #5) — per-device, localStorage; presentational only. Columns 3/4/5 +
-   density (comfortable/compact) drive the pool grid minmax()/gap. NOT a status change / read. ── */
+/* ── Ticket-layout settings (Phase A #3) — per-device, localStorage; PURELY presentational (no status /
+   read / order_timelines). Columns 3/4/5 drive --kds-cols; the mode (Flex Rail / Tile Fill) drives the
+   pool grid + per-card truncation. applyLayout also marks the active tiles/radios in the Ajustes screen. ── */
 function applyLayout() {
   const g = document.getElementById('ticket-grid');
   if (g) {
     g.style.setProperty('--kds-cols', layoutCols);
-    g.classList.toggle('dense', layoutDensity === 'compacta');
+    g.classList.toggle('layout-fill', layoutMode === 'fill');
+    g.classList.toggle('layout-flex', layoutMode === 'flex');
   }
-  document.querySelectorAll('[data-cols]').forEach(b => b.classList.toggle('on', +b.dataset.cols === layoutCols));
-  document.querySelectorAll('[data-density]').forEach(b => b.classList.toggle('on', b.dataset.density === layoutDensity));
+  document.querySelectorAll('.tile[data-layout]').forEach(t => t.classList.toggle('on', t.dataset.layout === layoutMode));
+  document.querySelectorAll('.cols .opt[data-cols]').forEach(o => o.querySelector('.radio')?.classList.toggle('on', +o.dataset.cols === layoutCols));
 }
 function setLayoutCols(n) {
   n = [3, 4, 5].includes(n) ? n : 4;
   layoutCols = n; localStorage.setItem('xpizza_kds_cols', String(n)); applyLayout();
 }
-function setLayoutDensity(d) {
-  layoutDensity = d === 'compacta' ? 'compacta' : 'comoda';
-  localStorage.setItem('xpizza_kds_density', layoutDensity); applyLayout();
+function setLayoutMode(m) {
+  layoutMode = m === 'fill' ? 'fill' : 'flex';
+  localStorage.setItem('xpizza_kds_layout', layoutMode);
+  applyLayout(); renderCurrentTab();   // re-render: truncation / all-items depends on the mode
+}
+
+// Tile-Fill "Ver todo · +N" / "Ver menos" expander — a DISTINCT local control: it toggles which items are
+// visible on a truncated tile. It writes NO status and fires NO item-✓ (stopPropagation keeps it off the
+// header-tap and the item lines). Purely presentational local state.
+function toggleExpand(event, id) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  if (expandedTiles.has(id)) expandedTiles.delete(id); else expandedTiles.add(id);
+  renderCurrentTab();
+}
+
+/* ── Ajustes settings screen (Phase A #2) — opened from the top-bar "Diseño" button; replaces the board. ── */
+function openSettings() {
+  document.getElementById('settings-screen')?.removeAttribute('hidden');
+  document.querySelector('.content')?.setAttribute('hidden', '');
+  document.getElementById('btn-settings')?.classList.add('active');
+  applyLayout();   // reflect the current selection on the tiles/radios
+}
+function closeSettings() {
+  document.getElementById('settings-screen')?.setAttribute('hidden', '');
+  document.querySelector('.content')?.removeAttribute('hidden');
+  document.getElementById('btn-settings')?.classList.remove('active');
 }
 
 /* ── Swipe pagination (fix #4) — a horizontal drag past a threshold on the pool → gotoPage(±1). Fires ONLY
@@ -2365,8 +2476,11 @@ window.gotoPageAbs = gotoPageAbs;
 window.highlightItem = highlightItem;
 window.toggleSidebar = toggleSidebar;   // ★2 top-bar hamburger
 window.refreshBoard = refreshBoard;      // ★2 top-bar refresh
-window.setLayoutCols = setLayoutCols;    // fix #5 layout settings
-window.setLayoutDensity = setLayoutDensity;
+window.setLayoutCols = setLayoutCols;    // Phase A #3 layout settings
+window.setLayoutMode = setLayoutMode;
+window.toggleExpand = toggleExpand;      // Tile-Fill "Ver todo" expander (local, no status write)
+window.openSettings = openSettings;      // Phase A #2 Ajustes screen
+window.closeSettings = closeSettings;
 
 /* ── Auth boot ──
    Wait for Firebase Auth state. If signed in + has kitchen role, start the
