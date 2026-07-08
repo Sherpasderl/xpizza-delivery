@@ -127,5 +127,12 @@ assert.equal(countOffPage([], new Set()), 0);                   ok('countOffPage
   }
   ok('CONTRACT recall/toggleItem/prioritize (source): handler bodies call NO setOrderStatus');
 }
+// ── SOURCE-INSPECTION: the SHIPPED anchor IS the golden-tested helper (not an inline fork) ──
+{
+  const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+  assert.ok(/elapsedAnchorMs\s*=\s*agingAnchorMs\(o\)/.test(html),
+    'mapFirebaseOrderToCard must source the aging anchor from card-model.agingAnchorMs');
+  ok('anchor golden is LOAD-BEARING: mapFirebaseOrderToCard uses agingAnchorMs (shipped path == tested helper)');
+}
 
 console.log(`card-model: OK (${n} cases)`);

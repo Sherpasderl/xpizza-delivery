@@ -1942,8 +1942,9 @@ function mapFirebaseOrderToCard(o) {
 
   // Elapsed anchor: a released SCHEDULED order reached the kitchen at RELEASE (released_at), not when the
   // customer placed it hours earlier — anchoring on released_at shows a fresh "0m" card instead of a fake
-  // hours-old red "LATE" one. Every other order keeps created_at (unchanged). (Scheduled Orders.)
-  const elapsedAnchorMs = o.released_at || o.created_at;
+  // hours-old red "LATE" one. Every other order keeps created_at (unchanged). (Scheduled Orders.) Sourced
+  // from card-model.agingAnchorMs so the shipped anchor IS the golden-tested helper (released_at||created_at).
+  const elapsedAnchorMs = agingAnchorMs(o);
   const horaIso = elapsedAnchorMs ? new Date(elapsedAnchorMs).toISOString() : null;
 
   return {
