@@ -245,24 +245,32 @@ window.recall('PZX-DEL'); await tick();
 assert.equal(calls.length, 0, 'recall on a server-delivered non-member performs NO status write (local no-op, never reverts status)');
 ok('Recuperar Ticket gated to locally-bumped cards; server-delivered → no button + recall is a local no-op');
 
-// ══ Tile-Fill "Ver todo" expander (Phase A #3) — truncates items; writes NO status, fires NO item-✓ ══
+// ══ Tile-Fill chevron expander — FULL render (measure-based; no count-slice); toggle writes NO status ══
+// NOTE: the OVERFLOW measure (fade/chevron reveal) is layout-behavioral (scrollHeight/clientHeight are 0
+// under this DOM shim), so it's verified on-device; here we assert the invariants that DON'T need layout:
+// all items always render (no truncation), the chevron is a distinct toggleExpand control, and expanding
+// releases the cap (.expanded) — all with ZERO status writes.
 window.setTab('open'); await tick();
 window.setLayoutMode('fill'); await tick();
 XPD._ordersCb({ 'PZX-BIG': { order_id: 'PZX-BIG', status: 'new', customer_name: 'Big Order', items_text: '1x A | 1x B | 1x C | 1x D | 1x E', created_at: Date.now(), order_type: 'pickup' } });
 const countItems = () => (getEl('ticket-grid').innerHTML.match(/class="card-item"/g) || []).length;
 const collapsedHtml = getEl('ticket-grid').innerHTML;
-assert.equal(countItems(), 4, 'Tile Fill collapsed → only the first 4 item lines rendered (truncated)');
-assert.ok(collapsedHtml.includes('Ver todo · +1') && collapsedHtml.includes(`toggleExpand(event,'PZX-BIG')`), 'shows "Ver todo · +1" with its OWN toggleExpand onclick (a distinct control)');
+assert.equal(countItems(), 5, 'Tile Fill renders ALL 5 items (no count-slice) — full renderItems string');
+assert.ok(collapsedHtml.includes(`toggleExpand(event,'PZX-BIG')`) && collapsedHtml.includes('class="more'), 'collapsed → a subtle .more chevron with its OWN toggleExpand onclick (distinct control)');
+assert.ok(collapsedHtml.includes('#i-chevd'), 'collapsed chevron points DOWN (#i-chevd)');
 calls.length = 0;
 window.toggleExpand({ stopPropagation() {}, preventDefault() {} }, 'PZX-BIG');
 await tick();
 const expandedHtml = getEl('ticket-grid').innerHTML;
-assert.equal(countItems(), 5, 'expanded → ALL 5 item lines rendered');
-assert.ok(expandedHtml.includes('Ver menos'), 'expanded label becomes "Ver menos"');
+assert.equal(countItems(), 5, 'expanded → still all 5 items');
+assert.ok(/class="tk[^"]*\bexpanded\b/.test(expandedHtml), 'expanding releases the cap (card gets .expanded)');
+assert.ok(expandedHtml.includes('#i-chevu') && expandedHtml.includes('Ver menos'), 'expanded chevron points UP (#i-chevu, "Ver menos")');
 assert.equal(calls.length, 0, 'the expander performs NO setOrderStatus (never a status write)');
-window.setLayoutMode('flex'); await tick();   // restore default; also proves flex shows all items
-assert.equal(countItems(), 5, 'Flex Rail shows all items (no truncation)');
-ok('Tile-Fill expander truncates + reveals items; ZERO status write, distinct control (not header-tap/item-✓)');
+window.toggleExpand({ stopPropagation() {}, preventDefault() {} }, 'PZX-BIG'); await tick();   // collapse back
+window.setLayoutMode('flex'); await tick();
+assert.equal(countItems(), 5, 'Flex Rail shows all items (unchanged)');
+assert.ok(!getEl('ticket-grid').innerHTML.includes('class="more'), 'Flex Rail → no chevron');
+ok('Tile-Fill chevron: full render + distinct toggleExpand control + .expanded release; ZERO status write');
 
 // ══ #2 — ownership-skip (setOrderStatus → false) does NOT commit local state (no false-success bump) ══
 window.setTab('open'); await tick();
@@ -289,5 +297,18 @@ flushTimers();             // drive the local blue→green→bump beat
 assert.ok(getEl('ticket-grid') && getEl('count-completed').textContent >= 1, 'it still bumps to Completados via the LOCAL beat (no write needed)');
 assert.equal(calls.length, 0, 'still ZERO writes after the local bump');
 ok('#9 already-ready → skips the redundant ready write, bumps via the local beat only');
+
+// ══ FIX 2 — Archivar shows ONLY in the Abiertos tab; a cancelled card in Completados has no Archivar ══
+window.setLayoutMode('flex'); await tick();
+XPD._ordersCb({ 'PZX-CX': { order_id: 'PZX-CX', status: 'cancelled', customer_name: 'Kevin', items_text: '1x Carnívora', created_at: Date.now(), order_type: 'delivery' } });
+window.setTab('open'); await tick();
+assert.ok(getEl('ticket-grid').innerHTML.includes(`archiveCancel('PZX-CX')`), 'Abiertos: a cancelled card shows the Archivar button');
+window.archiveCancel('PZX-CX');   // local bump → moves to Completados (op completed, estado still Cancelado)
+await tick();
+window.setTab('completed'); await tick();
+const compHtml2 = getEl('ticket-grid').innerHTML;
+assert.ok(!compHtml2.includes(`archiveCancel('PZX-CX')`), 'Completados: the cancelled+archived card has NO Archivar button');
+assert.ok(compHtml2.includes(`recall('PZX-CX')`), 'Completados: it shows Recuperar Ticket (recall) instead');
+ok('FIX 2 Archivar gated to Abiertos; Completados cancelled card → Recuperar only (no Archivar, nothing clips)');
 
 console.log(`kds-smoke: OK (${n} cases)`);

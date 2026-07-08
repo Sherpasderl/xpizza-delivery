@@ -942,18 +942,27 @@ function shortStatus(s) {
   .ticket-grid.layout-fill .head { flex: 0 0 auto; }
   .ticket-grid.layout-fill .body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
   .ticket-grid.layout-fill .body > * { flex: 0 0 auto; }                 /* pin every body child … */
-  .ticket-grid.layout-fill .card-items { flex: 1 1 auto; min-height: 0; overflow: hidden; }   /* … except the items list */
+  .ticket-grid.layout-fill .card-items { flex: 1 1 auto; min-height: 0; overflow: hidden; position: relative; }   /* … except the items list */
+  /* fade edge — added by the post-render MEASURE pass ONLY when the items actually overflow the cap */
+  .ticket-grid.layout-fill .card-items.fade::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 26px;
+    background: linear-gradient(transparent, #fff); pointer-events: none;
+  }
   .ticket-grid::-webkit-scrollbar { width: 5px; }
   .ticket-grid::-webkit-scrollbar-thumb { background: var(--stroke2); border-radius: 2px; }
   .ticket-grid .empty { grid-column: 1 / -1; }
 
-  /* Tile-Fill "Ver todo · +N" / "Ver menos" expander — a distinct control (never header-tap / item-✓) */
-  .ver-todo {
-    display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 11px; border-radius: 8px;
-    border: 1.5px solid #DADAD8; background: #fff; color: var(--blue-ink, #2456b8); font-family: var(--body);
-    font-size: 12.5px; font-weight: 700; cursor: pointer; align-self: flex-start;
+  /* Tile-Fill expander — a SUBTLE muted chevron (never the full-width pill), a distinct control (its own
+     stopPropagation handler — never the header CTA / item-✓). Collapsed "+N ⌄" (count best-effort from the
+     measure) / expanded "⌃". Shown only when the items overflow (measure toggles .hidden). */
+  .more {
+    display: flex; align-items: center; justify-content: center; gap: 5px; padding: 4px 0 8px; width: 100%;
+    background: none; border: 0; color: #9a9a9a; font-family: var(--body); font-size: 11.5px; font-weight: 700;
+    cursor: pointer; letter-spacing: .02em;
   }
-  .ver-todo:hover { background: #F3F6FD; }
+  .more svg { width: 13px; height: 13px; }
+  .more:hover { color: #4a4a4a; }
+  .more.hidden { display: none; }
 
   /* fix #7: tab switch — smooth HORIZONTAL slide of the incoming grid, transform-only, no cross-fade */
   @keyframes kds-slide-in-left  { from { transform: translateX(-7%); } to { transform: translateX(0); } }
@@ -1117,6 +1126,8 @@ function shortStatus(s) {
   <g id="i-info"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v5M12 8h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></g>
   <g id="i-spin"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></g>
   <g id="i-alert"><path d="M12 3l9 16H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
+  <g id="i-chevd"><path d="M5 8.5l7 7 7-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="i-chevu"><path d="M5 15.5l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g>
 </defs></svg>
 
 <!-- Login screen — shown until auth completes + kitchen role verified.
@@ -1681,7 +1692,6 @@ function headerState(order, status, anchorIso) {
 }
 
 const RING_CIRC = 94.2;   // 2πr, r=15 (matches the mockup ring dasharray)
-const TILE_FILL_ITEMS = 4;   // Tile Fill: max item lines before the "Ver todo · +N" expander
 
 /* ── Render a single ticket (Square target — ★1) ──
    The card HEADER is the tap target: NUEVO → tap → Empezar; EN PREPARACIÓN → a progress ring fills from
@@ -1757,17 +1767,14 @@ function renderTicket(order) {
   if (order.scheduled_for) body += `<div class="sched-line">${order.order_type === 'delivery' ? 'Entregar' : 'Recoger'} ${escapeHtml(formatScheduled(order.scheduled_for))}</div>`;
   if (isPrioritized) body += `<div class="prio"><svg viewBox="0 0 24 24"><use href="#i-prio"/></svg> Priorizado</div>`;
   if (order.order_type === 'pickup' && order.pickup_time && order.pickup_time !== 'standard') body += `<div class="card-pickup-time">${escapeHtml(order.pickup_time)}</div>`;
-  // Tile Fill (Phase A #3): truncate the items list to the first N + a "Ver todo · +K" expander (collapsed)
-  // / "Ver menos" (expanded). We slice enumerateItems' raw pieces and re-run the UNCHANGED renderItems on
-  // the subset, so per-item extras stay byte-correct and renderItems is never modified. Flex Rail = all items.
-  const fillTrunc = layoutMode === 'fill' && total > TILE_FILL_ITEMS;
-  const collapsed = fillTrunc && !expandedTiles.has(id);
-  const itemsText = collapsed ? checks.slice(0, TILE_FILL_ITEMS).map(it => it.raw).join(' | ') : order.pedido;
-  body += `<div class="card-items">${renderItems(itemsText)}</div>`;
-  if (fillTrunc) {
-    body += collapsed
-      ? `<button class="ver-todo" onclick="toggleExpand(event,'${id}')">Ver todo · +${total - TILE_FILL_ITEMS}</button>`
-      : `<button class="ver-todo" onclick="toggleExpand(event,'${id}')">Ver menos</button>`;
+  // Items — ALWAYS the FULL list via the UNCHANGED renderItems (Flex Rail + Tile Fill both). Tile Fill caps
+  // the card and, if the items MEASURE as overflowing (post-render, measureTileFill), fades the edge + shows
+  // the subtle chevron expander. This catches long-extras cards that a ">4 items" count trigger missed.
+  body += `<div class="card-items">${renderItems(order.pedido)}</div>`;
+  if (layoutMode === 'fill') {
+    body += expandedTiles.has(id)
+      ? `<button class="more" onclick="toggleExpand(event,'${id}')" aria-label="Ver menos"><svg viewBox="0 0 24 24"><use href="#i-chevu"/></svg></button>`
+      : `<button class="more hidden" onclick="toggleExpand(event,'${id}')" aria-label="Ver más"><span class="more-n"></span><svg viewBox="0 0 24 24"><use href="#i-chevd"/></svg></button>`;
   }
   if (notes) body += `<div class="card-notes"><svg viewBox="0 0 24 24"><use href="#i-alert"/></svg>${escapeHtml(notes)}</div>`;
 
@@ -1794,8 +1801,10 @@ function renderTicket(order) {
   //    Hidden during a non-error pending write and during the completion beat. Priorizar active = accent +
   //    the "Priorizado" body banner (above). Direct children of .body so Tile Fill (#4) pins them. ──
   if (!(p && !p.error) && !seqStage) {
-    if (isCancelled) body += `<button class="fw-btn" onclick="archiveCancel('${id}')"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Archivar</button>`;
-    else if (op !== 'completed') body += `<button class="fw-btn prio-btn${isPrioritized ? ' on' : ''}" onclick="prioritize('${id}')" title="Priorizar" aria-label="Priorizar"><svg viewBox="0 0 24 24"><use href="#i-prio"/></svg> Priorizar</button>`;
+    // FIX 2: Archivar only in the Abiertos tab — a cancelled card in Completados is already archived (shows
+    // Recuperar only). Also removes the 3rd pinned footer button that was overflowing the cap there.
+    if (isCancelled && currentTab === 'open') body += `<button class="fw-btn" onclick="archiveCancel('${id}')"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Archivar</button>`;
+    else if (!isCancelled && op !== 'completed') body += `<button class="fw-btn prio-btn${isPrioritized ? ' on' : ''}" onclick="prioritize('${id}')" title="Priorizar" aria-label="Priorizar"><svg viewBox="0 0 24 24"><use href="#i-prio"/></svg> Priorizar</button>`;
   }
 
   const cls = ['tk'];
@@ -2000,6 +2009,37 @@ function gotoPageAbs(which) {
 function highlightItem(name) { highlightName = (highlightName === name) ? null : name; renderCurrentTab(); }
 function renderCurrentTab() { render(lastOrders); }
 
+/* FIX 1 — post-render MEASURE of Tile-Fill overflow (replaces the ">4 items" count trigger). After layout,
+   for each capped, un-expanded Tile-Fill card: if .card-items overflows its cap (scrollHeight > clientHeight)
+   → fade the edge + reveal the subtle chevron (with a best-effort hidden-DISH count). Non-overflowing cards
+   get neither. Runs in a rAF (needs real layout) after every render + on resize. Purely presentational —
+   reads geometry + toggles classes/text; NO status write, NO order data touched. */
+function measureTileFill() {
+  if (layoutMode !== 'fill' || typeof requestAnimationFrame !== 'function') return;
+  requestAnimationFrame(() => {
+    const cards = document.querySelectorAll('.ticket-grid.layout-fill .tk:not(.expanded)');
+    cards.forEach((card) => {
+      const items = card.querySelector('.card-items');
+      const more  = card.querySelector('.more');
+      if (!items) return;
+      const overflowing = items.scrollHeight > items.clientHeight + 1;   // +1px tolerance
+      items.classList.toggle('fade', overflowing);
+      if (!more) return;
+      more.classList.toggle('hidden', !overflowing);
+      const label = more.querySelector('.more-n');
+      if (label) {
+        // best-effort hidden-dish count: .card-item lines fully below the visible cutoff
+        let hidden = 0;
+        if (overflowing) {
+          const cutoff = items.clientHeight;
+          items.querySelectorAll('.card-item').forEach((el) => { if (el.offsetTop >= cutoff) hidden++; });
+        }
+        label.textContent = hidden > 0 ? `+${hidden} ` : '';
+      }
+    });
+  });
+}
+
 // Top-bar hamburger — collapse/expand the left sidebar (fix #7: 280ms slide via CSS transition).
 let sidebarCollapsed = false;
 function toggleSidebar() {
@@ -2139,6 +2179,7 @@ function render(orders) {
   grid.innerHTML = pageInfo.slice.length ? pageInfo.slice.map(renderTicket).join('') : emptyMsg;
   augmentTickets(pageInfo.slice);
   paintOffPageLate();
+  measureTileFill();   // FIX 1: post-render measure → fade + chevron ONLY on cards that actually overflow
 
   // Sidebar all-day make-count — from the OPEN pool minus Cancelado (things still to make).
   const railOrders = open.filter(o => o.estado !== KDS_STATUS.CANCELADO);
@@ -2163,6 +2204,8 @@ document.getElementById('allday-rail')?.addEventListener('click', (e) => {
 // Apply the persisted per-device layout + wire swipe pagination (fix #4/#5). Grid element exists at parse.
 applyLayout();
 initSwipe();
+// FIX 1: re-measure Tile-Fill overflow on resize (column count / viewport changes card widths → wrapping).
+if (typeof window.addEventListener === 'function') window.addEventListener('resize', measureTileFill, { passive: true });
 
 /* ── Update elapsed timers (mm:ss) + re-derive the header state (data-s) every second, without a full
       re-render. The header recolours live as a card ages (nuevo→late), a scheduled order crosses its slot,
