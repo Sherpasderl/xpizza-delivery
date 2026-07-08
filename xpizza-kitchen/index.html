@@ -824,11 +824,14 @@ function shortStatus(s) {
         relocated sound/clock/signout in the foot) — Square target (kds-phase2-target) ── */
   .sidebar {
     width: 214px; flex-shrink: 0; background: #141416; border-right: 1px solid var(--stroke2);
-    padding: 16px 13px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto;
+    padding: 16px 13px; display: flex; flex-direction: column; gap: 18px; overflow: hidden auto;
+    /* fix #7: smooth slide/collapse on the hamburger toggle (~280ms) */
+    transition: width 280ms ease, padding 280ms ease, border-color 280ms ease;
+    white-space: nowrap;
   }
   .sidebar::-webkit-scrollbar { width: 4px; }
   .sidebar::-webkit-scrollbar-thumb { background: var(--stroke2); border-radius: 2px; }
-  .kds-main.sb-collapsed .sidebar { display: none; }
+  .kds-main.sb-collapsed .sidebar { width: 0; padding-left: 0; padding-right: 0; border-right-color: transparent; }
   .sb-h {
     font-family: var(--stamp); font-size: 11px; letter-spacing: .15em; text-transform: uppercase;
     color: var(--ink-mute); font-weight: 700; margin: 0 0 9px; display: flex; align-items: center; gap: 8px;
@@ -865,6 +868,15 @@ function shortStatus(s) {
   .sb-foot .fr-clock #clock { font-variant-numeric: tabular-nums; }
   #btn-sound.muted { color: var(--h-late); }
 
+  /* ── ticket-layout settings (fix #5) — per-device columns + density ── */
+  .settings-sub { color: var(--ink-mute); font-size: 11.5px; margin: -4px 0 12px; }
+  .settings-field { margin-bottom: 12px; }
+  .settings-field label { display: block; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-mute); font-weight: 700; margin-bottom: 6px; }
+  .seg { display: inline-flex; border: 1px solid var(--stroke2); border-radius: 9px; overflow: hidden; }
+  .seg button { font-family: var(--body); font-size: 13px; font-weight: 700; padding: 7px 14px; border: 0; background: transparent; color: var(--ink-mute); cursor: pointer; }
+  .seg button:hover { color: var(--on-dark); }
+  .seg button.on { background: var(--accent); color: #fff; }
+
   /* ── content: tab bar + grid + pager ── */
   .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--board); min-width: 0; }
   .tabbar {
@@ -900,14 +912,26 @@ function shortStatus(s) {
   .pager-btn:not(:disabled):hover { background: var(--board-2); }
   .pager-label { font-family: var(--body); font-size: 12px; color: var(--on-dark-mut); font-variant-numeric: tabular-nums; min-width: 66px; text-align: center; }
 
-  /* ── flat flex-rail ticket grid (Square target pool) ── */
+  /* ── flat ticket grid (Square target pool) — fixed column count + density from per-device settings ── */
   .ticket-grid {
     flex: 1; overflow-y: auto; padding: 20px;
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 22px 16px; align-content: start;
+    display: grid; grid-template-columns: repeat(var(--kds-cols, 4), minmax(0, 1fr)); gap: 22px 16px; align-content: start;
   }
+  .ticket-grid.dense { padding: 12px; gap: 12px 10px; }               /* compacta = more tickets per screen */
+  .ticket-grid.dense .head { padding: 8px 10px 7px; }
+  .ticket-grid.dense .body { padding: 8px 10px 9px; }
+  .ticket-grid.dense .h-name { font-size: 14.5px; }
+  .ticket-grid.dense .card-item { font-size: 13.5px; padding: 3px 0; }
+  .ticket-grid.dense .h-l2 { min-height: 30px; }
   .ticket-grid::-webkit-scrollbar { width: 5px; }
   .ticket-grid::-webkit-scrollbar-thumb { background: var(--stroke2); border-radius: 2px; }
   .ticket-grid .empty { grid-column: 1 / -1; }
+
+  /* fix #7: tab switch — smooth HORIZONTAL slide of the incoming grid, transform-only, no cross-fade */
+  @keyframes kds-slide-in-left  { from { transform: translateX(-7%); } to { transform: translateX(0); } }
+  @keyframes kds-slide-in-right { from { transform: translateX(7%); }  to { transform: translateX(0); } }
+  .ticket-grid.slide-in-left  { animation: kds-slide-in-left 240ms ease; }
+  .ticket-grid.slide-in-right { animation: kds-slide-in-right 240ms ease; }
 
   /* ══════════ ★1 Square card — header IS the tap target; ring = progress-only ══════════
      Replaces the chunky Empezar/Completar buttons. renderItems output (.card-item / -qty /
@@ -996,12 +1020,22 @@ function shortStatus(s) {
   .tk .card-notes { margin: 9px 0 0; font-size: 13px; font-weight: 600; color: #8A5209; background: #FBEBCF; padding: 6px 9px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-style: normal; letter-spacing: 0; }
   .tk .card-notes svg { width: 14px; height: 14px; flex-shrink: 0; }
 
-  /* secondary controls (prioritize / recall / archivar / log) — small, never the primary action */
-  .mini-actions { display: flex; align-items: center; gap: 7px; margin-top: 10px; }
-  .mini-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 8px; border: 1px solid #E4E2DD; background: #F6F5F2; color: #55504A; font-family: var(--body); font-size: 12px; font-weight: 700; cursor: pointer; }
-  .mini-btn:hover { background: #EDEBE6; }
+  /* completion stamp (fix #1) — FROZEN completion time on a Completado header (no live tick) */
+  .h-stamp { font-weight: 700; opacity: .92; display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+  .h-stamp svg { width: 13px; height: 13px; }
+
+  /* Recuperar Ticket (fix #2) — full-width in the body, never clipped; only on locally-bumped cards */
+  .recall-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: 10px; padding: 10px; border: 1.5px solid #DADAD8; background: #F7F7F6; color: #333; border-radius: 9px; font-family: var(--body); font-size: 13.5px; font-weight: 700; cursor: pointer; }
+  .recall-btn:hover { background: #EFEFEE; }
+  .recall-btn svg { width: 15px; height: 15px; }
+
+  /* secondary controls (prioritize / archivar / log) — small, labeled, never the primary action (fix #6) */
+  .mini-actions { display: flex; align-items: center; gap: 8px; margin-top: 11px; }
+  .mini-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 8px; border: 1.5px solid #DADAD8; background: #fff; color: #333; font-family: var(--body); font-size: 12.5px; font-weight: 700; cursor: pointer; }
+  .mini-btn:hover { background: #F3F3F2; }
   .mini-btn svg { width: 14px; height: 14px; }
-  .mini-btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .mini-btn.icon { padding: 7px 9px; }
+  .mini-btn.on { border-color: var(--accent); color: var(--accent); background: #FFF3EE; }
 
   /* ── confirmed-write: pending + error strips (in body) ── */
   .card-writestrip {
@@ -1023,10 +1057,11 @@ function shortStatus(s) {
   }
   .tk[data-s="late"] { animation: tk-late-pulse 1.25s ease-in-out infinite; }
 
-  /* ── reduced motion: no pulses/spins/pops; static outline instead ── */
+  /* ── reduced motion: no pulses/spins/pops/slides/collapse; static instead (fix #7 respects it) ── */
   @media (prefers-reduced-motion: reduce) {
-    .tk, .ibtn.spinning svg { transition: none !important; }
-    .tk[data-s="late"], .tk.nudge-overdue, .spin svg, .ring .prg, .tk.just-done .done-badge { animation: none !important; }
+    .tk, .ibtn.spinning svg, .sidebar { transition: none !important; }
+    .tk[data-s="late"], .tk.nudge-overdue, .spin svg, .ring .prg, .tk.just-done .done-badge,
+    .ticket-grid.slide-in-left, .ticket-grid.slide-in-right { animation: none !important; }
     .ring .prg { transition: none !important; }
     .tk[data-s="late"] { outline: 3px solid var(--h-late); outline-offset: -1px; }
     .tk.nudge-overdue { outline: 3px solid var(--nuevo); outline-offset: -1px; }
@@ -1047,6 +1082,7 @@ function shortStatus(s) {
   <g id="i-clock"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.5 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></g>
   <g id="i-exit"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M9 12h11M16 8l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
   <g id="i-prio"><path d="M6 15l6-6 6 6M6 10l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="i-dots"><circle cx="5" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="19" cy="12" r="1.7" fill="currentColor"/></g>
   <g id="i-spin"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></g>
   <g id="i-alert"><path d="M12 3l9 16H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
 </defs></svg>
@@ -1105,6 +1141,26 @@ function shortStatus(s) {
       <div class="sb-h"><svg viewBox="0 0 24 24"><use href="#i-slash"/></svg> Disponibilidad</div>
       <div class="sb-muted">Próximamente · 2b</div>
     </div>
+    <!-- fix #5: lightweight per-device ticket-layout settings (columns + density, localStorage) -->
+    <div class="sb-sec settings">
+      <div class="sb-h"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg> Diseño de tickets</div>
+      <div class="settings-sub">Se guarda en este dispositivo.</div>
+      <div class="settings-field">
+        <label>Columnas</label>
+        <div class="seg" id="seg-cols">
+          <button data-cols="3" onclick="setLayoutCols(3)">3</button>
+          <button data-cols="4" class="on" onclick="setLayoutCols(4)">4</button>
+          <button data-cols="5" onclick="setLayoutCols(5)">5</button>
+        </div>
+      </div>
+      <div class="settings-field">
+        <label>Densidad</label>
+        <div class="seg" id="seg-density">
+          <button data-density="comoda" class="on" onclick="setLayoutDensity('comoda')">Cómoda</button>
+          <button data-density="compacta" onclick="setLayoutDensity('compacta')">Compacta</button>
+        </div>
+      </div>
+    </div>
     <div class="sb-foot">
       <button class="fr" id="btn-sound" onclick="toggleSound()" title="Activar/desactivar sonido"><svg viewBox="0 0 24 24"><use href="#i-bell"/></svg> <span id="sound-label">Sonido activado</span></button>
       <div class="fr fr-clock"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg> <span id="clock">--:--</span></div>
@@ -1135,7 +1191,7 @@ import * as XPD from './xpizza-delivery.js?v=16';
 import { nudgeEligibility, classAction, nextBeepState, nudgeRestaurantFromHost } from './ready-nudge.js?v=1';
 import { railCount, enumerateItems } from './rail-count.js?v=2';
 import { KDS_STATUS, agingAnchorMs, bandClass as bandClassPure, isLateBand,
-         actionStatusWrite, deriveTab, paginate, countOffPage } from './card-model.js?v=1';
+         actionStatusWrite, deriveTab, completedTabVisible, paginate, countOffPage } from './card-model.js?v=2';
 
 /* ── Phase-1 Step 2: v0 overdue-nudge controller (isolated; fed the canonical raw orders via a
    try/caught hook in the subscribeToOrders callback — NO second /orders subscription). Toggles the
@@ -1312,6 +1368,9 @@ const pendingWrites  = {};   // id → { from, action, error, msg }  confirmed-w
 // id → 'completing' | 'completed'. No status write happens in any of these beats (the write already
 // resolved); recall clears it. Replaces the old completingUntil timestamp.
 const completionSeq  = {};
+// Durable clock-time (ISO) captured WHEN a card locally bumps to Completado — drives the FROZEN
+// completion stamp on the completed card (no live tick). Persisted with completedSet.
+const completedStamp = JSON.parse(localStorage.getItem('xpizza_kds_completed_at') || '{}');
 
 // View state
 let currentTab = 'open';     // 'open' | 'completed'
@@ -1320,6 +1379,14 @@ const PAGE_SIZE = 12;
 let highlightName = null;     // sidebar make-count click-to-highlight (null = none)
 const COMPLETING_MS = 700;    // blue "Completando" beat
 const COMPLETED_MS  = 700;    // green "Completado" beat (in the Open pool) before the bump
+// Completados tab shows this session's local bumps + server-completed within this recent window (a RENDER
+// filter — not a status change, not a new read — so the tab is a short useful list, not 100+ historical).
+const RECENT_COMPLETED_MS = 18 * 60 * 60 * 1000;   // 18h ≈ one service day
+
+// Per-device ticket-layout settings (localStorage; presentational only). Columns 3/4/5 + density.
+let layoutCols = parseInt(localStorage.getItem('xpizza_kds_cols') || '4', 10);
+if (![3, 4, 5].includes(layoutCols)) layoutCols = 4;
+let layoutDensity = localStorage.getItem('xpizza_kds_density') === 'compacta' ? 'compacta' : 'comoda';
 
 // Escape HTML-significant chars before interpolating untrusted order data
 // (customer name, items, notes — originate from the public order form) into
@@ -1332,6 +1399,7 @@ function escapeHtml(v) {
 
 function saveState() {
   localStorage.setItem('xpizza_kds_completed', JSON.stringify([...completedSet]));
+  localStorage.setItem('xpizza_kds_completed_at', JSON.stringify(completedStamp));
   localStorage.setItem('xpizza_log', JSON.stringify(stateLog));
 }
 
@@ -1573,6 +1641,13 @@ function renderTicket(order) {
   } else if (seqStage === 'completing' || listoPending) {
     // paso 1 (or the in-flight ready write) — blue spinner "Completando" (card stays in the Open pool)
     headInner = `<div class="comp-center"><span class="spin"><svg viewBox="0 0 24 24"><use href="#i-spin"/></svg></span> Completando</div>`;
+  } else if (op === 'completed') {
+    // Settled Completado — FROZEN stamp (no live timer / no #elapsed-, so tickElapsed never touches it).
+    const stampIso = completedStamp[id] || (stateLog[id] && (stateLog[id]['Listo'] || stateLog[id]['Archivado'])) || null;
+    const stampTxt = stampIso ? formatTime(stampIso) : '';
+    headInner = `
+        <div class="h-l1"><span class="h-name">${escapeHtml(dispName)}</span><span class="h-type">${typeLabel}</span></div>
+        <div class="h-l2"><span class="h-stamp"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Completado${stampTxt ? ' ' + stampTxt : ''}</span><span class="h-id">${escapeHtml(dispId)}</span></div>`;
   } else {
     const showRing = (op === 'prep');
     const l2right = showRing ? ringHtml : `<span class="h-id">${escapeHtml(dispId)}</span>`;
@@ -1604,16 +1679,23 @@ function renderTicket(order) {
     body += `<div class="card-writestrip pending"><span class="spin"><svg viewBox="0 0 24 24"><use href="#i-spin"/></svg></span> Iniciando…</div>`;
   }
 
-  // ── secondary controls (never the primary action) — hidden during a non-error pending write
-  //    and during the completion beat (blue "Completando" / green "Completado") ──
+  // ── Recuperar Ticket (fix #2) — full-width in the body (never clipped by the card's overflow:hidden),
+  //    and ONLY on a LOCALLY-bumped card that is NOT server-archivado/delivered. Recall is local-only and
+  //    never reverts /orders.status, so a server-delivered order can't be recalled — no button there. ──
+  const locallyBumped = completedSet.has(id) && order.estado !== KDS_STATUS.ARCHIVADO;
+  if (op === 'completed' && locallyBumped && !seqStage) {
+    body += `<button class="recall-btn" onclick="recall('${id}')"><svg viewBox="0 0 24 24"><use href="#i-refresh"/></svg> Recuperar Ticket</button>`;
+  }
+
+  // ── secondary controls (never the primary action) — hidden during a non-error pending write and during
+  //    the completion beat. Completed cards use the full-width Recuperar Ticket above, not a mini. ──
   let mini = '';
   if (!(p && !p.error) && !seqStage) {
     const parts = [];
-    if (op === 'completed') parts.push(`<button class="mini-btn" onclick="recall('${id}')"><svg viewBox="0 0 24 24"><use href="#i-refresh"/></svg> Recuperar</button>`);
-    else if (isCancelled) parts.push(`<button class="mini-btn" onclick="archiveCancel('${id}')"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Archivar</button>`);
-    else {
-      parts.push(`<button class="mini-btn${isPrioritized ? ' on' : ''}" onclick="prioritize('${id}')" title="Priorizar" aria-label="Priorizar"><svg viewBox="0 0 24 24"><use href="#i-prio"/></svg></button>`);
-      if (logStr) parts.push(`<button class="mini-btn" onclick="showLog(event, '${id}')" title="Historial" aria-label="Historial">···</button>`);
+    if (isCancelled) parts.push(`<button class="mini-btn" onclick="archiveCancel('${id}')"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Archivar</button>`);
+    else if (op !== 'completed') {
+      parts.push(`<button class="mini-btn${isPrioritized ? ' on' : ''}" onclick="prioritize('${id}')" title="Priorizar" aria-label="Priorizar"><svg viewBox="0 0 24 24"><use href="#i-prio"/></svg> Priorizar</button>`);
+      if (logStr) parts.push(`<button class="mini-btn icon" onclick="showLog(event, '${id}')" title="Historial" aria-label="Historial"><svg viewBox="0 0 24 24"><use href="#i-dots"/></svg></button>`);
     }
     if (parts.length) mini = `<div class="mini-actions">${parts.join('')}</div>`;
   }
@@ -1704,6 +1786,7 @@ function startCompletion(id) {
       if (completionSeq[id] !== 'completed') return;     // recalled/aborted mid-beat
       delete completionSeq[id];
       completedSet.add(id);                             // paso 3 — local bump to Completados
+      completedStamp[id] = new Date().toISOString();    // freeze the completion clock-time (no live tick)
       saveState();
       renderCurrentTab();
     }, COMPLETED_MS);
@@ -1740,6 +1823,7 @@ function toggleItem(id, idx) {
 function recall(id) {
   completedSet.delete(id);
   delete completionSeq[id];   // abort any in-flight completion beat
+  delete completedStamp[id];  // clear the frozen stamp
   if (stateLog[id]) stateLog[id]['Recuperado'] = new Date().toISOString();
   saveState();
   renderCurrentTab();
@@ -1754,6 +1838,7 @@ function prioritize(id) {
 // Archive a cancelled ticket — LOCAL bump to Completed (acknowledge stop-cooking). NO status write.
 function archiveCancel(id) {
   completedSet.add(id);
+  completedStamp[id] = new Date().toISOString();
   if (!stateLog[id]) stateLog[id] = {};
   stateLog[id]['Archivado'] = new Date().toISOString();
   saveState();
@@ -1761,23 +1846,78 @@ function archiveCancel(id) {
 }
 
 /* ── View controls ── */
+const prefersReducedMotion = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; } };
+
+// Tab switch (fix #7) — a smooth HORIZONTAL slide of the incoming grid (no cross-fade), transform-only.
+// Completados is the left tab, Abiertos the right → open→completed slides in from the left; the reverse
+// from the right. prefers-reduced-motion → instant (no class).
+function animateTabSlide(dir) {
+  const g = document.getElementById('ticket-grid');
+  if (!g || prefersReducedMotion()) return;
+  g.classList.remove('slide-in-left', 'slide-in-right');
+  void g.offsetWidth;                                   // reflow → restart the animation
+  g.classList.add(dir === 'left' ? 'slide-in-left' : 'slide-in-right');
+}
 function setTab(tab) {
   if (tab === currentTab) return;
+  const dir = tab === 'completed' ? 'left' : 'right';  // Completados (left) ← / Abiertos (right) →
   currentTab = tab; page = 0;
   document.getElementById('tab-open')?.classList.toggle('on', tab === 'open');
   document.getElementById('tab-completed')?.classList.toggle('on', tab === 'completed');
   renderCurrentTab();
+  animateTabSlide(dir);
 }
 function gotoPage(delta) { page = Math.max(0, page + delta); renderCurrentTab(); }
 function gotoPageAbs(which) { page = (which === 'last') ? 9999 : (which | 0); renderCurrentTab(); }  // paginate clamps
 function highlightItem(name) { highlightName = (highlightName === name) ? null : name; renderCurrentTab(); }
 function renderCurrentTab() { render(lastOrders); }
 
-// Top-bar hamburger — collapse/expand the left sidebar.
+// Top-bar hamburger — collapse/expand the left sidebar (fix #7: 280ms slide via CSS transition).
 let sidebarCollapsed = false;
 function toggleSidebar() {
   sidebarCollapsed = !sidebarCollapsed;
   document.getElementById('kds-main')?.classList.toggle('sb-collapsed', sidebarCollapsed);
+}
+
+/* ── Ticket-layout settings (fix #5) — per-device, localStorage; presentational only. Columns 3/4/5 +
+   density (comfortable/compact) drive the pool grid minmax()/gap. NOT a status change / read. ── */
+function applyLayout() {
+  const g = document.getElementById('ticket-grid');
+  if (g) {
+    g.style.setProperty('--kds-cols', layoutCols);
+    g.classList.toggle('dense', layoutDensity === 'compacta');
+  }
+  document.querySelectorAll('[data-cols]').forEach(b => b.classList.toggle('on', +b.dataset.cols === layoutCols));
+  document.querySelectorAll('[data-density]').forEach(b => b.classList.toggle('on', b.dataset.density === layoutDensity));
+}
+function setLayoutCols(n) {
+  n = [3, 4, 5].includes(n) ? n : 4;
+  layoutCols = n; localStorage.setItem('xpizza_kds_cols', String(n)); applyLayout();
+}
+function setLayoutDensity(d) {
+  layoutDensity = d === 'compacta' ? 'compacta' : 'comoda';
+  localStorage.setItem('xpizza_kds_density', layoutDensity); applyLayout();
+}
+
+/* ── Swipe pagination (fix #4) — a horizontal drag past a threshold on the pool → gotoPage(±1). Fires ONLY
+   on a clearly-horizontal swipe (dx>50 and |dx|>|dy|) so header-tap and item-✓ (taps) still work and
+   vertical scroll is never hijacked. Pager arrows stay. ── */
+function initSwipe() {
+  const el = document.getElementById('ticket-grid');
+  if (!el) return;
+  let x0 = 0, y0 = 0, tracking = false;
+  el.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) { tracking = false; return; }
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; tracking = true;
+  }, { passive: true });
+  el.addEventListener('touchend', (e) => {
+    if (!tracking) return;
+    tracking = false;
+    const t = e.changedTouches && e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - x0, dy = t.clientY - y0;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) gotoPage(dx < 0 ? 1 : -1);  // left→next, right→prev
+  }, { passive: true });
 }
 // Top-bar refresh — re-render the board from the latest live set (subscription stays live).
 function refreshBoard() {
@@ -1818,7 +1958,9 @@ function render(orders) {
   orders.forEach(o => { if (!allOrders.find(a => a.id === o.id)) allOrders.push(o); });
 
   const open = openPool();
-  const completed = orders.filter(o => deriveTab(o, completedSet) === 'completed');
+  // Completados = this session's local bumps + server-completed within the recent window (render filter).
+  const nowMs = Date.now();
+  const completed = orders.filter(o => completedTabVisible(o, completedSet, nowMs, RECENT_COMPLETED_MS));
   document.getElementById('count-open').textContent = open.length;
   document.getElementById('count-completed').textContent = completed.length;
 
@@ -1861,6 +2003,10 @@ document.getElementById('allday-rail')?.addEventListener('click', (e) => {
   const item = e.target.closest('.sb-row');
   if (item) highlightItem(item.dataset.name);
 });
+
+// Apply the persisted per-device layout + wire swipe pagination (fix #4/#5). Grid element exists at parse.
+applyLayout();
+initSwipe();
 
 /* ── Update elapsed timers (mm:ss) + re-derive the header state (data-s) every second, without a full
       re-render. The header recolours live as a card ages (nuevo→late), a scheduled order crosses its slot,
@@ -2217,6 +2363,8 @@ window.gotoPageAbs = gotoPageAbs;
 window.highlightItem = highlightItem;
 window.toggleSidebar = toggleSidebar;   // ★2 top-bar hamburger
 window.refreshBoard = refreshBoard;      // ★2 top-bar refresh
+window.setLayoutCols = setLayoutCols;    // fix #5 layout settings
+window.setLayoutDensity = setLayoutDensity;
 
 /* ── Auth boot ──
    Wait for Firebase Auth state. If signed in + has kitchen role, start the
