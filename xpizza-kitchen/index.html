@@ -37,7 +37,18 @@
     --band-listo: #46A24A;   /* Listo green (white text) */
     --band-sched: #E6B93E;   /* scheduled gold (dark text) */
     --extra:      #DC2626;   /* extras red on white */
-    --accent:     #E8763A;   /* terracotta wayfinding only, never a status */
+    --accent:     #F26B38;   /* terracotta wayfinding only, never a status (Square target palette) */
+    /* ── Square Phase-2 target palette (kds-phase2-target mockup) ── */
+    --panel:      #18181A;   /* topbar/sidebar control surface */
+    --stroke2:    #2A2A2E;   /* Square-target hairline */
+    --ink-mute:   #9C988F;   /* muted ink on the dark chrome */
+    --h-fresh:#ECECEC; --h-fresh-ink:#1A1A1A;   /* nuevo header */
+    --h-warn: #F5A524; --h-warn-ink:#1A1A1A;    /* en preparación header */
+    --h-late: #E8483A; --h-late-ink:#FFFFFF;    /* 15m+ alert header */
+    --h-sched:#F5C542; --h-sched-ink:#1A1A1A;   /* scheduled gold header */
+    --ready:  #2FA855; --ready-ink:#FFFFFF;     /* ready / settled-completed header + item ✓ */
+    --completing:#2F80ED; --comp-ink:#FFFFFF;   /* completing (in-flight ready) header */
+    --mod:    #E23B2E;   /* extras red (Square target) */
     /* light-surface tokens (white cards, archive drawer, modals, login) */
     --black:   #14110E;
     --char:    #FFFFFF;
@@ -65,80 +76,50 @@
     height: 100vh;
   }
 
-  /* ── Header ── */
-  .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 22px;
-    border-bottom: 1px solid var(--board-line);
-    background: var(--board-2);
-    flex-shrink: 0;
+  /* ══════════ Square-clean top bar (★2) — hamburger · refresh · tabs · pager ══════════
+     Replaces the inherited Phase-1 chrome (LIVE/Sonido/Pantalla/Ver-archivados/Historial).
+     Sound toggle, clock + signout relocated into the sidebar foot (see .sb-foot). */
+  .topbar {
+    display: flex; align-items: center; gap: 14px;
+    padding: 13px 18px; border-bottom: 1px solid var(--stroke2);
+    background: #161618; flex-shrink: 0;
   }
+  .ibtn {
+    width: 40px; height: 40px; display: grid; place-items: center;
+    background: var(--panel); border: 1px solid var(--stroke2); border-radius: 10px;
+    color: var(--on-dark); cursor: pointer;
+  }
+  .ibtn:hover { background: #222226; }
+  .ibtn svg { width: 19px; height: 19px; }
+  .ibtn.spinning svg { animation: spin .6s linear; }
 
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 14px;
+  .tabs {
+    display: flex; background: var(--panel); border: 1px solid var(--stroke2);
+    border-radius: 10px; overflow: hidden; margin: 0 auto;
   }
+  .tabs button {
+    font-family: var(--body); font-size: 14.5px; font-weight: 700; padding: 10px 26px;
+    border: 0; background: transparent; color: var(--ink-mute); cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .tabs button:hover { color: var(--on-dark); }
+  .tabs button.on { background: #323236; color: var(--on-dark); }
+  .tabs .tab-count { font-variant-numeric: tabular-nums; }
 
-  .brand {
-    font-family: var(--stamp);
-    font-size: 18px;
-    font-weight: 700;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: #FFFFFF;
+  .pager { display: flex; align-items: center; gap: 3px; color: var(--ink-mute); }
+  .pager .pg {
+    min-width: 34px; height: 34px; padding: 0 6px; display: grid; place-items: center;
+    background: var(--panel); border: 1px solid var(--stroke2); border-radius: 8px;
+    font-size: 13px; font-weight: 700; color: var(--ink-mute); cursor: pointer; font-family: var(--body);
   }
-
-  .brand-sep {
-    color: #555555;
-    font-size: 18px;
+  .pager .pg:not(:disabled):hover { background: #222226; color: var(--on-dark); }
+  .pager .pg.num { color: var(--on-dark); cursor: default; }
+  .pager .pg:disabled { opacity: .32; cursor: default; }
+  .latepill {
+    margin-left: 10px; font-size: 12.5px; font-weight: 700; color: #fff;
+    background: var(--h-late); border-radius: 22px; padding: 5px 13px;
   }
-
-  .brand-sub {
-    font-family: var(--stamp);
-    font-size: 12px;
-    font-weight: 400;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: #888888;
-  }
-
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-  }
-
-  .clock {
-    font-family: var(--body);
-    font-size: 20px;
-    font-weight: 600;
-    letter-spacing: 2px;
-    color: #FFFFFF;
-  }
-
-  .refresh-info {
-    font-size: 11px;
-    color: #888888;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-  }
-
-  .refresh-dot {
-    display: inline-block;
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: var(--listo);
-    margin-right: 6px;
-    animation: pulse 2s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-  }
+  .latepill.hidden { display: none; }
 
   /* ── Columns layout ── */
   .board {
@@ -235,7 +216,7 @@
     0%, 100% { box-shadow: 0 0 0 0 rgba(176, 42, 20, 0.0); }
     50%      { box-shadow: 0 0 0 5px rgba(176, 42, 20, 0.55); }
   }
-  .card.nudge-overdue { animation: nudge-pulse 1.1s ease-in-out infinite; }
+  .card.nudge-overdue, .tk.nudge-overdue { animation: nudge-pulse 1.1s ease-in-out infinite; }
 
   /* ── Cancelled state ── */
   .card.cancelled {
@@ -522,6 +503,7 @@
   }
 
   .empty-icon { font-size: 32px; opacity: 0.3; }
+  svg.empty-icon { width: 34px; height: 34px; stroke-width: 1.4; }
 
   /* ── Sound & wake lock ── */
   .btn-sound {
@@ -969,38 +951,50 @@ function shortStatus(s) {
   /* main row: left sidebar + content */
   .kds-main { display: flex; flex: 1; overflow: hidden; background: var(--board-line); gap: 1px; }
 
-  /* ── left sidebar (all-day counts + click-to-highlight; availability = 2b placeholder) ── */
+  /* ── left sidebar (all-day make-counts + click-highlight; availability 2b placeholder;
+        relocated sound/clock/signout in the foot) — Square target (kds-phase2-target) ── */
   .sidebar {
-    width: 232px; flex-shrink: 0; background: var(--board); display: flex; flex-direction: column;
-    overflow: hidden; padding: 14px 0;
+    width: 214px; flex-shrink: 0; background: #141416; border-right: 1px solid var(--stroke2);
+    padding: 16px 13px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto;
   }
-  .sidebar-open {
-    display: flex; flex-direction: column; align-items: flex-start; padding: 0 18px 14px;
-    border-bottom: 1px solid var(--board-line); margin-bottom: 12px;
+  .sidebar::-webkit-scrollbar { width: 4px; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--stroke2); border-radius: 2px; }
+  .kds-main.sb-collapsed .sidebar { display: none; }
+  .sb-h {
+    font-family: var(--stamp); font-size: 11px; letter-spacing: .15em; text-transform: uppercase;
+    color: var(--ink-mute); font-weight: 700; margin: 0 0 9px; display: flex; align-items: center; gap: 8px;
   }
-  .sidebar-open-num { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--on-dark); line-height: 1; }
-  .sidebar-open-lbl { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--on-dark-mut); margin-top: 4px; }
-  .sidebar-title {
-    font-family: var(--stamp); font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
-    color: var(--on-dark-mut); padding: 0 18px 8px;
+  .sb-h svg { width: 14px; height: 14px; opacity: .8; }
+  .sb-rows { display: flex; flex-direction: column; gap: 1px; }
+  .sb-row {
+    display: flex; justify-content: space-between; gap: 10px; font-size: 14px; padding: 6px 9px;
+    border-radius: 8px; cursor: pointer; color: var(--on-dark);
   }
-  .makecount-list { flex: 1; overflow-y: auto; padding: 0 10px; display: flex; flex-direction: column; gap: 2px; }
-  .makecount-list::-webkit-scrollbar { width: 4px; }
-  .makecount-list::-webkit-scrollbar-thumb { background: var(--board-line); border-radius: 2px; }
-  .makecount-item {
-    display: flex; align-items: baseline; gap: 10px; padding: 7px 8px; border-radius: 7px;
-    cursor: pointer; color: var(--on-dark); white-space: nowrap; border: 1px solid transparent;
+  .sb-row:hover { background: #1E1E21; }
+  .sb-row.on { background: #252528; }
+  .sb-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sb-row b { color: var(--h-warn); font-variant-numeric: tabular-nums; }
+  .sb-link {
+    color: #5FA0F0; font-size: 12.5px; font-weight: 700; margin-top: 7px; padding: 4px 9px;
+    cursor: pointer; background: none; border: 0; text-align: left; font-family: var(--body);
   }
-  .makecount-item:hover { background: var(--board-2); }
-  .makecount-item.active { background: var(--board-2); border-color: var(--accent); }
-  .makecount-item .n { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); font-size: 17px; min-width: 24px; }
-  .makecount-item .nm { color: var(--on-dark); font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
-  .makecount-empty { color: var(--on-dark-mut); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; padding: 8px 18px; }
-  .sidebar-avail {
-    margin: 12px 14px 0; padding: 10px 12px; border: 1px dashed var(--board-line); border-radius: 8px;
-    color: var(--on-dark-mut); font-size: 11px; letter-spacing: .5px; line-height: 1.4;
+  .sb-link:hover { text-decoration: underline; }
+  .sb-muted { color: var(--ink-mute); font-size: 12.5px; padding: 5px 9px; font-style: italic; }
+  .sb-empty { color: var(--ink-mute); font-size: 12px; padding: 6px 9px; }
+  .sb-foot {
+    margin-top: auto; border-top: 1px solid var(--stroke2); padding-top: 14px;
+    display: flex; flex-direction: column; gap: 4px;
   }
-  .sidebar-avail strong { color: var(--on-dark); font-family: var(--stamp); letter-spacing: 1px; text-transform: uppercase; font-size: 10px; }
+  .sb-foot .fr {
+    display: flex; align-items: center; gap: 11px; font-size: 13.5px; color: var(--ink-mute);
+    padding: 7px 9px; background: none; border: 0; cursor: pointer; font-family: var(--body);
+    text-align: left; border-radius: 8px; width: 100%;
+  }
+  .sb-foot button.fr:hover { background: #1E1E21; color: var(--on-dark); }
+  .sb-foot .fr svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .sb-foot .fr-clock { cursor: default; }
+  .sb-foot .fr-clock #clock { font-variant-numeric: tabular-nums; }
+  #btn-sound.muted { color: var(--h-late); }
 
   /* ── content: tab bar + grid + pager ── */
   .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--board); min-width: 0; }
@@ -1037,90 +1031,155 @@ function shortStatus(s) {
   .pager-btn:not(:disabled):hover { background: var(--board-2); }
   .pager-label { font-family: var(--body); font-size: 12px; color: var(--on-dark-mut); font-variant-numeric: tabular-nums; min-width: 66px; text-align: center; }
 
-  /* ── flat flex-rail ticket grid ── */
+  /* ── flat flex-rail ticket grid (Square target pool) ── */
   .ticket-grid {
-    flex: 1; overflow-y: auto; padding: 14px;
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 12px; align-content: start;
+    flex: 1; overflow-y: auto; padding: 20px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 22px 16px; align-content: start;
   }
   .ticket-grid::-webkit-scrollbar { width: 5px; }
-  .ticket-grid::-webkit-scrollbar-thumb { background: var(--board-line); border-radius: 2px; }
+  .ticket-grid::-webkit-scrollbar-thumb { background: var(--stroke2); border-radius: 2px; }
   .ticket-grid .empty { grid-column: 1 / -1; }
 
-  /* sidebar make-count → highlight matching tickets */
-  .card.ticket-highlight { outline: 3px solid var(--accent); outline-offset: 1px; }
+  /* ══════════ ★1 Square card — header IS the tap target; ring = progress-only ══════════
+     Replaces the chunky Empezar/Completar buttons. renderItems output (.card-item / -qty /
+     -extra) is preserved byte-for-byte and re-skinned here to the mockup's item look. */
+  .tk { background: #fff; color: #161616; border-radius: 11px; overflow: hidden; box-shadow: 0 3px 12px rgba(0,0,0,.4); }
+  .tk.ticket-highlight { outline: 3px solid var(--accent); outline-offset: 2px; }
 
-  /* ── NUEVO: big misclick-resistant "Empezar" ── */
-  .btn-empezar {
-    flex: 1; padding: 16px; border-radius: 8px; border: 1px solid #C4392A; background: #C4392A; color: #fff;
-    font-family: var(--stamp); font-size: 16px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; cursor: pointer;
-  }
-  .btn-empezar:active { transform: scale(0.98); }
+  /* header — the tap target; color driven by data-s via --h-bg / --h-ink */
+  .head { padding: 11px 13px 9px; color: var(--h-ink, #1A1A1A); background: var(--h-bg, var(--h-fresh)); cursor: default; }
+  .head.tap { cursor: pointer; }
+  .head.tap:active { filter: brightness(.97); }
+  .tk[data-s="nuevo"]      { --h-bg: var(--h-fresh);   --h-ink: var(--h-fresh-ink); }
+  .tk[data-s="prep"]       { --h-bg: var(--h-warn);    --h-ink: var(--h-warn-ink); }
+  .tk[data-s="late"]       { --h-bg: var(--h-late);    --h-ink: var(--h-late-ink); }
+  .tk[data-s="sched"]      { --h-bg: var(--h-sched);   --h-ink: var(--h-sched-ink); }
+  .tk[data-s="ready"]      { --h-bg: var(--ready);     --h-ink: var(--ready-ink); }
+  .tk[data-s="completing"] { --h-bg: var(--completing);--h-ink: var(--comp-ink); }
+  .tk[data-s="cancel"]     { --h-bg: #3A3A3E;          --h-ink: #fff; }
 
-  /* ── EN PREPARACIÓN: per-item ✓ checkbox (LOCAL, non-authoritative, one-way) ── */
-  .card-body .card-item { position: relative; }
-  .item-check {
-    display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex-shrink: 0;
-    border: 2px solid #C9C4B8; border-radius: 6px; margin-right: 2px; cursor: pointer; background: #fff;
-    font-size: 14px; font-weight: 700; color: #fff; transition: background .15s, border-color .15s;
+  .h-l1 { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .h-name { font-family: var(--stamp); font-size: 16.5px; font-weight: 800; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .h-type { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; opacity: .88; white-space: nowrap; }
+  .h-l2 { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 3px; min-height: 36px; }
+  .h-timer { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .h-id { font-size: 12.5px; opacity: .78; }
+  .h-cta {
+    margin-top: 9px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--h-ink) 24%, transparent);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 12.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em;
   }
-  .item-check.checked { background: var(--band-listo); border-color: var(--band-listo); }
-  .card-item.item-done .card-item-qty, .card-item.item-done span:not(.item-check) { color: #A8A29A !important; text-decoration: line-through; }
-  .btn-listo.all-checked { animation: listo-ready-pulse 1.1s ease-in-out infinite; }
-  @keyframes listo-ready-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(70,162,74,0); } 50% { box-shadow: 0 0 0 4px rgba(70,162,74,.5); } }
+  .h-cta svg { width: 14px; height: 14px; }
 
-  /* ── prioritized banner ── */
-  .card.prioritized { box-shadow: 0 1px 2px rgba(0,0,0,.28), 0 0 0 2px var(--accent); }
-  .prioritized-banner {
-    display: flex; align-items: center; gap: 6px; background: var(--accent); color: #fff;
-    font-family: var(--stamp); font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
-    padding: 4px 12px;
+  /* progress ring — thin, fills by checked/total; NEVER auto-fires ready. + centered done-badge */
+  .ring-slot { position: relative; width: 34px; height: 34px; flex: 0 0 auto; }
+  .ring { position: absolute; inset: 0; width: 34px; height: 34px; }
+  .ring circle { fill: none; stroke-width: 2.6; }
+  .ring .trk { stroke: color-mix(in srgb, var(--h-ink) 22%, transparent); }
+  .ring .prg { stroke: var(--h-ink); stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset .3s ease; }
+  .done-badge { position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; border-radius: 50%; background: var(--ready); display: grid; place-items: center; opacity: 0; transform: translate(-50%,-50%) scale(.5); }
+  .done-badge svg { width: 16px; height: 16px; color: #fff; }
+  .tk.just-done .done-badge { animation: donepop 1.2s ease-in-out forwards; }
+  @keyframes donepop {
+    0% { opacity: 0; transform: translate(-50%,-50%) scale(.5); }
+    30% { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+    70% { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%,-50%) scale(.92); }
   }
-  .btn-prioritize {
-    flex: 0 0 44px; padding: 12px 0; border-radius: 8px; border: 1px solid #E4E2DD; background: #F1EFEA;
-    color: #6B655C; font-size: 15px; cursor: pointer;
-  }
-  .btn-prioritize.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-  /* ── confirmed-write: pending + error overlays ── */
-  .card.card-pending { opacity: .7; }
+  /* white body */
+  .body { padding: 10px 13px 12px; }
+  .tk[data-s="completing"] .body { opacity: .6; }
+  .tk[data-s="cancel"] .card-items { opacity: .5; }
+
+  /* items — renderItems output re-skinned to the mockup .it / .q / .ex look */
+  .tk .card-items { border-top: none; padding-top: 0; margin: 0; font-family: var(--body); }
+  .tk .card-item { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 15px; color: #161616; }
+  .tk.items-tappable .card-item { cursor: pointer; }
+  .tk .card-item-qty { font-family: var(--body); font-weight: 800; min-width: 22px; font-variant-numeric: tabular-nums; color: #161616; flex-shrink: 0; }
+  .tk .card-item > span:not(.card-item-qty):not(.chk) { flex: 1; }
+  /* per-item circle appears ONLY on tap — grey (doing) → green ✓ (done); one-way, local */
+  .chk { width: 20px; height: 20px; flex: 0 0 auto; margin-left: auto; border-radius: 50%; display: grid; place-items: center; }
+  .chk svg { width: 12px; height: 12px; color: #fff; }
+  .card-item.doing .chk { border: 2px solid #c4c4c4; }
+  .card-item.doing .chk svg { color: transparent; }
+  .card-item.item-done { color: #B0B0B0; }
+  .card-item.item-done .card-item-qty { color: #B0B0B0; }
+  .card-item.item-done .chk { background: var(--ready); }
+  .card-item.item-done .chk svg { color: #fff; }
+  .tk .card-item-extra { font-size: 14px; color: var(--mod); font-family: var(--body); font-weight: 700; padding: 2px 0 3px 32px; line-height: 1.4; }
+  .tk .card-item-extra-tag { font-size: 11px; color: #7A1F1F; background: rgba(226,59,46,.12); padding: 1px 7px; border-radius: 4px; margin-left: 6px; text-transform: uppercase; letter-spacing: .05em; vertical-align: middle; }
+
+  /* cancel / scheduled / prioritized in-body chips */
+  .cancel-b { margin: 2px 0 9px; font-size: 13.5px; font-weight: 800; color: #fff; background: var(--h-late); border-radius: 7px; padding: 8px 10px; text-align: center; letter-spacing: .05em; text-transform: uppercase; }
+  .sched-line { font-size: 13.5px; font-weight: 700; color: #8A6A00; margin: 2px 0 7px; }
+  .tk .card-pickup-time { font-size: 13px; color: #55504A; margin: 2px 0 7px; }
+  .prio { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 7px; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: #8A6A00; background: #FFF7DA; border: 1px solid #F0D77E; border-radius: 7px; padding: 4px 9px; }
+  .prio svg { width: 12px; height: 12px; }
+
+  /* completing (in-flight ready) spinner */
+  .comp-center { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; font-size: 15px; font-weight: 800; padding: 6px 0; }
+  .spin svg { width: 17px; height: 17px; animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* notes */
+  .tk .card-notes { margin: 9px 0 0; font-size: 13px; font-weight: 600; color: #8A5209; background: #FBEBCF; padding: 6px 9px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-style: normal; letter-spacing: 0; }
+  .tk .card-notes svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+  /* secondary controls (prioritize / recall / archivar / log) — small, never the primary action */
+  .mini-actions { display: flex; align-items: center; gap: 7px; margin-top: 10px; }
+  .mini-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 8px; border: 1px solid #E4E2DD; background: #F6F5F2; color: #55504A; font-family: var(--body); font-size: 12px; font-weight: 700; cursor: pointer; }
+  .mini-btn:hover { background: #EDEBE6; }
+  .mini-btn svg { width: 14px; height: 14px; }
+  .mini-btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ── confirmed-write: pending + error strips (in body) ── */
   .card-writestrip {
-    display: flex; align-items: center; gap: 8px; padding: 9px 13px; font-family: var(--body);
-    font-size: 13px; font-weight: 700; letter-spacing: .3px;
+    display: flex; align-items: center; gap: 8px; margin-top: 9px; padding: 8px 10px; border-radius: 7px;
+    font-family: var(--body); font-size: 13px; font-weight: 700; letter-spacing: .3px;
   }
   .card-writestrip.pending { background: #FBEBCF; color: #8A5209; }
   .card-writestrip.error   { background: #FBE7E4; color: #B02A14; }
-  .card-writestrip .spin {
-    width: 13px; height: 13px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
-    animation: ws-spin .7s linear infinite; flex-shrink: 0;
-  }
-  @keyframes ws-spin { to { transform: rotate(360deg); } }
+  .card-writestrip svg { width: 15px; height: 15px; flex-shrink: 0; }
   .btn-retry {
     margin-left: auto; padding: 5px 12px; border-radius: 7px; border: 1px solid #B02A14; background: #fff;
-    color: #B02A14; font-family: var(--stamp); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
+    color: #B02A14; font-family: var(--body); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
   }
 
-  /* ── Completing (blue) → Completed (green) bands ── */
-  .card.band-completing .card-band { background: #2563EB; color: #FFFFFF; }
-  .card.band-completed  .card-band { background: #15803D; color: #FFFFFF; }
-  .card.band-completing .card-type-badge, .card.band-completed .card-type-badge { background: rgba(255,255,255,.22); }
-  .card.band-completed { opacity: .92; }
-
-  /* ── Completed-tab card: Recall affordance ── */
-  .btn-recall {
-    flex: 1; padding: 12px; border-radius: 8px; border: 1px solid var(--nuevo); background: var(--nuevo-bg);
-    color: var(--nuevo); font-family: var(--stamp); font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
+  /* ── late alert pulse (own keyframes; never touches .nudge-overdue) ── */
+  @keyframes tk-late-pulse {
+    0%, 100% { box-shadow: 0 3px 12px rgba(0,0,0,.4), 0 0 0 0 rgba(232,72,58,0); }
+    50%      { box-shadow: 0 3px 12px rgba(0,0,0,.4), 0 0 0 4px rgba(232,72,58,.5); }
   }
+  .tk[data-s="late"] { animation: tk-late-pulse 1.25s ease-in-out infinite; }
 
-  /* ── reduced motion: no pulses/transitions; static outline instead ── */
+  /* ── reduced motion: no pulses/spins/pops; static outline instead ── */
   @media (prefers-reduced-motion: reduce) {
-    .card, .card.dragging, .refresh-dot { transition: none !important; }
-    .card.aging-late, .card.nudge-overdue, .btn-listo.all-checked, .card-writestrip .spin { animation: none !important; }
-    .card.aging-late { outline: 3px solid var(--late); outline-offset: -1px; }
-    .card.nudge-overdue { outline: 3px solid var(--nuevo); outline-offset: -1px; }
+    .tk, .ibtn.spinning svg { transition: none !important; }
+    .tk[data-s="late"], .tk.nudge-overdue, .spin svg, .ring .prg, .tk.just-done .done-badge { animation: none !important; }
+    .ring .prg { transition: none !important; }
+    .tk[data-s="late"] { outline: 3px solid var(--h-late); outline-offset: -1px; }
+    .tk.nudge-overdue { outline: 3px solid var(--nuevo); outline-offset: -1px; }
   }
 </style>
 </head>
 <body>
+
+<!-- Square-target line-icon set (no emoji anywhere on the board). Referenced via <use href="#i-…">. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="i-menu"><path d="M3 6h18M3 12h18M3 18h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
+  <g id="i-refresh"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="i-check"><path d="M4 12.5l5 5L20 6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="i-play"><path d="M7 5l12 7-12 7z" fill="currentColor"/></g>
+  <g id="i-grid"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" fill="none" stroke="currentColor" stroke-width="1.8"/></g>
+  <g id="i-slash"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6 6l12 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></g>
+  <g id="i-bell"><path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6M10 20a2 2 0 0 0 4 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></g>
+  <g id="i-clock"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.5 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></g>
+  <g id="i-exit"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M9 12h11M16 8l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="i-prio"><path d="M6 15l6-6 6 6M6 10l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="i-spin"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></g>
+  <g id="i-alert"><path d="M12 3l9 16H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
+</defs></svg>
 
 <!-- Login screen — shown until auth completes + kitchen role verified.
      Hidden when the kitchen UI takes over. Always present in DOM so we
@@ -1139,7 +1198,7 @@ function shortStatus(s) {
 </div>
 
 <div class="cancel-banner" id="cancel-banner">
-  <div class="icon">⚠</div>
+  <div class="icon"><svg viewBox="0 0 24 24"><use href="#i-alert"/></svg></div>
   <div class="text">
     <strong>PEDIDO CANCELADO</strong>
     <span class="order-id" id="cancel-banner-id"></span>
@@ -1147,53 +1206,44 @@ function shortStatus(s) {
   <button class="dismiss" id="cancel-banner-dismiss">✕</button>
 </div>
 
-<div class="header">
-  <div class="header-left">
-    <div class="brand">X Pizza</div>
-    <div class="brand-sep">·</div>
-    <div class="brand-sub">Pantalla de Cocina</div>
+<!-- ★2 Square-clean top bar: hamburger (sidebar) · refresh · tabs · pager. Sound/clock/signout relocated to the sidebar foot. -->
+<div class="topbar">
+  <button class="ibtn" id="btn-menu" onclick="toggleSidebar()" title="Menú" aria-label="Mostrar/ocultar panel"><svg viewBox="0 0 24 24"><use href="#i-menu"/></svg></button>
+  <button class="ibtn" id="btn-refresh" onclick="refreshBoard()" title="Refrescar" aria-label="Refrescar"><svg viewBox="0 0 24 24"><use href="#i-refresh"/></svg></button>
+  <div class="tabs">
+    <button id="tab-completed" onclick="setTab('completed')">Completados <span class="tab-count" id="count-completed">0</span></button>
+    <button id="tab-open" class="on" onclick="setTab('open')">Abiertos · <span class="tab-count" id="count-open">0</span></button>
   </div>
-  <div class="header-right">
-    <div class="refresh-info">
-      <span class="refresh-dot"></span>
-      Live · tiempo real
-    </div>
-    <button class="btn-sound" id="btn-sound" onclick="toggleSound()" title="Activar/desactivar sonido">
-      🔔 Sonido ON
-    </button>
-    <div class="wake-indicator" id="wake-indicator" title="Pantalla activa">⬤ Pantalla activa</div>
-    <button class="btn-archive-toggle" id="btn-history-toggle" onclick="toggleHistory()">
-      Historial completo (<span id="history-count">0</span>)
-    </button>
-    <div class="clock" id="clock">--:--:--</div>
-    <button class="signout-btn" id="signout-btn" title="Cerrar sesión">Salir</button>
+  <div class="pager">
+    <button class="pg" id="pager-first" onclick="gotoPageAbs(0)" aria-label="Primera página">‹‹</button>
+    <button class="pg" id="pager-prev" onclick="gotoPage(-1)" aria-label="Página anterior">‹</button>
+    <span class="pg num" id="pager-label">1</span>
+    <button class="pg" id="pager-next" onclick="gotoPage(1)" aria-label="Página siguiente">›</button>
+    <button class="pg" id="pager-last" onclick="gotoPageAbs('last')" aria-label="Última página">››</button>
+    <span class="latepill hidden" id="pager-late" title="Tickets atrasados fuera de esta página"></span>
   </div>
 </div>
 
-<!-- Phase 2a: flat pool — left sidebar (all-day + click-to-highlight) + Open/Completed tabs + grid + pager -->
-<div class="kds-main">
-  <aside class="sidebar">
-    <div class="sidebar-open">
-      <span class="sidebar-open-num" id="allday-open">0</span>
-      <span class="sidebar-open-lbl">Abiertos</span>
+<!-- Phase 2a: flat pool — left sidebar (all-day make-counts + availability + relocated sound/clock/signout) + grid -->
+<div class="kds-main" id="kds-main">
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-sec">
+      <div class="sb-h"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg> Todo el día</div>
+      <div class="sb-rows" id="allday-rail"></div>
+      <button class="sb-link" id="btn-history-toggle" onclick="toggleHistory()">Ver todo</button>
     </div>
-    <div class="sidebar-title">Para hacer (todo el día)</div>
-    <div class="makecount-list" id="allday-rail"></div>
-    <div class="sidebar-avail"><strong>Disponibilidad</strong><br>Panel de 86 — próximamente</div>
+    <div class="sb-sec">
+      <div class="sb-h"><svg viewBox="0 0 24 24"><use href="#i-slash"/></svg> Disponibilidad</div>
+      <div class="sb-muted">Próximamente · 2b</div>
+    </div>
+    <div class="sb-foot">
+      <button class="fr" id="btn-sound" onclick="toggleSound()" title="Activar/desactivar sonido"><svg viewBox="0 0 24 24"><use href="#i-bell"/></svg> <span id="sound-label">Sonido activado</span></button>
+      <div class="fr fr-clock"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg> <span id="clock">--:--</span></div>
+      <button class="fr" id="signout-btn" title="Cerrar sesión"><svg viewBox="0 0 24 24"><use href="#i-exit"/></svg> Cerrar sesión</button>
+    </div>
   </aside>
 
   <section class="content">
-    <div class="tabbar">
-      <button class="tab active" id="tab-open" onclick="setTab('open')">Abiertos <span class="tab-count" id="count-open">0</span></button>
-      <button class="tab" id="tab-completed" onclick="setTab('completed')">Completados <span class="tab-count" id="count-completed">0</span></button>
-      <div class="tabbar-spacer"></div>
-      <div class="pager">
-        <span class="pager-late hidden" id="pager-late" title="Tickets atrasados fuera de esta página"></span>
-        <button class="pager-btn" id="pager-prev" onclick="gotoPage(-1)">‹</button>
-        <span class="pager-label" id="pager-label">1 / 1</span>
-        <button class="pager-btn" id="pager-next" onclick="gotoPage(1)">›</button>
-      </div>
-    </div>
     <div class="ticket-grid" id="ticket-grid">
       <div class="loading">Cargando…</div>
     </div>
@@ -1430,11 +1480,10 @@ function effectiveStatus(o) {
   return o.estado;
 }
 
-/* ── Clock ── */
+/* ── Clock (relocated to the sidebar foot) ── */
 function updateClock() {
-  const now = new Date();
-  document.getElementById('clock').textContent =
-    now.toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const el = document.getElementById('clock');
+  if (el) el.textContent = new Date().toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' });
 }
 setInterval(updateClock, 1000);
 updateClock();
@@ -1579,88 +1628,133 @@ function renderItems(itemsText) {
    in-flight confirmed write freezes the visual at its pre-tap state and shows a pending/error strip.
    Preserves the Phase-1 band/body markup byte-for-byte (renderItems verbatim, #card-/#elapsed- ids,
    red extras). Per-item checkboxes are injected post-render by augmentTickets (keeps renderItems pure). */
+/* ── Header state (data-s) — the Square target palette, resolved by the SAME precedence as bandClass:
+      completing > cancel > ready(listo) > scheduled-pre-slot > aging-late > prep > nuevo. Aging still
+      governs the late→red escalation; op-state governs nuevo(gray)/prep(amber). A settled completed card
+      is 'ready' (green); an in-flight ready write OR the transient completing window is 'completing'
+      (blue). NEVER derived from ephemeral item checks. */
+function headerState(order, status, anchorIso) {
+  const id = order.id;
+  const p = pendingWrites[id];
+  if (p && !p.error && p.action === 'listo') return 'completing';   // in-flight ready write (not committed)
+  const op = opState(order);
+  if (op === 'completed') {
+    return (completingUntil[id] && Date.now() < completingUntil[id]) ? 'completing' : 'ready';
+  }
+  if (op === 'cancelado') return 'cancel';
+  if (op === 'listo') return 'ready';                                // server-ready, not yet bumped
+  const band = bandClass(order, status, anchorIso);                  // pure: scheduled + aging
+  if (band === 'band-scheduled') return 'sched';
+  if (band === 'aging-late') return 'late';
+  if (op === 'prep') return 'prep';
+  return 'nuevo';
+}
+
+const RING_CIRC = 94.2;   // 2πr, r=15 (matches the mockup ring dasharray)
+
+/* ── Render a single ticket (Square target — ★1) ──
+   The card HEADER is the tap target: NUEVO → tap → Empezar; EN PREPARACIÓN → a progress ring fills from
+   item checks (progress-ONLY, never auto-fires ready) → tap → Completar. NO chunky buttons. Confirmed
+   write freezes/reverts on failure (see commitStatusWrite). renderItems output is byte-for-byte; the
+   per-item circles are injected post-render by augmentTickets. Defensive (★3): id/orden + cliente
+   fallbacks so malformed/seed data can never render a junk card. */
 function renderTicket(order) {
+  const id       = order.id;
   const op       = opState(order);
-  const p        = pendingWrites[order.id];
+  const p        = pendingWrites[id];
   const status   = effectiveStatus(order);           // frozen at `from` during an in-flight write
   const created  = order.hora;
   const notes    = order.notas && order.notas !== '—' ? order.notas : null;
   const isCancelled   = order.estado === KDS_STATUS.CANCELADO;
-  const isPrioritized = prioritized.has(order.id) && op !== 'completed';
+  const isPrioritized = prioritized.has(id) && op !== 'completed';
 
-  const statusClass = isCancelled ? 'cancelled'
-                    : op === 'prep' ? 'prep'
-                    : op === 'listo' ? 'listo'
-                    : op === 'completed' ? 'listo'
-                    : 'nuevo';
+  // Defensive render — never surface raw undefined/blank.
+  const dispName = (order.cliente && order.cliente !== '—') ? order.cliente : 'Sin nombre';
+  const dispId   = order.orden || id || 'Sin folio';
+  const typeLabel = order.order_type === 'pickup' ? 'Pickup' : 'Delivery';
 
-  const log = stateLog[order.id] || {};
+  const log = stateLog[id] || {};
   const logStr = Object.entries(log).map(([s, t]) => `${s}: ${formatTime(t)}`).join(' · ');
 
-  // Footer buttons by state — stationary, NO drag, NO "back" (preparing→new would be a spurious write).
-  let buttons = '';
-  if (op === 'completed') {
-    // Completed / bump / recall is KDS-LOCAL: recall un-bumps back to Open, NO /orders.status write.
-    buttons = `<button class="btn-recall" onclick="recall('${order.id}')">↩ Recuperar</button>`;
-  } else if (isCancelled) {
-    buttons = `<button class="btn-action btn-archive-cancel" onclick="archiveCancel('${order.id}')">Archivar</button>`;
-  } else if (op === 'nuevo') {
-    buttons = `
-      <button class="btn-prioritize${isPrioritized ? ' on' : ''}" onclick="prioritize('${order.id}')" title="Priorizar">↑</button>
-      <button class="btn-action btn-empezar" onclick="empezar('${order.id}')">Empezar</button>`;
-  } else if (op === 'prep') {
-    const checks = enumerateItems(order.pedido);
-    const allChecked = checks.length > 0 && checks.every(it => itemChecks[order.id]?.has(it.idx));
-    buttons = `
-      <button class="btn-prioritize${isPrioritized ? ' on' : ''}" onclick="prioritize('${order.id}')" title="Priorizar">↑</button>
-      <button class="btn-action btn-listo${allChecked ? ' all-checked' : ''}" onclick="listo('${order.id}')">Listo ✓</button>`;
-  } else if (op === 'listo') {
-    // Canonically ready (e.g. server-readied) but not yet bumped → explicit Completar (local bump;
-    // listo() is idempotent if already ready).
-    buttons = `<button class="btn-action btn-listo" onclick="listo('${order.id}')">Completar ✓</button>`;
+  const hs = headerState(order, status, created);
+  const listoPending = !!(p && !p.error && p.action === 'listo');
+  const completingNow = (op === 'completed' && completingUntil[id] && Date.now() < completingUntil[id]);
+
+  // per-item ring progress (prep only): fills by checked/total. NEVER auto-fires ready.
+  const checks = enumerateItems(order.pedido);
+  const total  = checks.length;
+  const done   = checks.filter(it => itemChecks[id]?.has(it.idx)).length;
+  const offset = total > 0 ? RING_CIRC * (1 - done / total) : RING_CIRC;
+  const ringHtml = `<div class="ring-slot"><svg class="ring" viewBox="0 0 36 36"><circle class="trk" cx="18" cy="18" r="15"/><circle class="prg" cx="18" cy="18" r="15" style="stroke-dasharray:${RING_CIRC};stroke-dashoffset:${offset}"/></svg><div class="done-badge"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></div></div>`;
+
+  // ── header content ──
+  let headInner, headTap = false;
+  if (listoPending || completingNow) {
+    // completion in progress — blue spinner header (card stays in the Open pool until the write commits)
+    headInner = `<div class="comp-center"><span class="spin"><svg viewBox="0 0 24 24"><use href="#i-spin"/></svg></span> Completando</div>`;
+  } else {
+    const showRing = (op === 'prep');
+    const l2right = showRing ? ringHtml : `<span class="h-id">${escapeHtml(dispId)}</span>`;
+    let cta = '';
+    if (!(p && !p.error)) {          // no CTA while a (non-error) write is pending
+      if (op === 'nuevo') cta = `<div class="h-cta"><svg viewBox="0 0 24 24"><use href="#i-play"/></svg> Empezar</div>`;
+      else if (op === 'prep' || op === 'listo') cta = `<div class="h-cta"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Completar</div>`;
+    }
+    headTap = (op === 'nuevo' || op === 'prep' || op === 'listo') && !(p && !p.error);
+    headInner = `
+        <div class="h-l1"><span class="h-name">${escapeHtml(dispName)}</span><span class="h-type">${typeLabel}</span></div>
+        <div class="h-l2"><span class="h-timer" id="elapsed-${id}">${elapsed(created)}</span>${l2right}</div>
+        ${cta}`;
   }
 
-  // Confirmed-write strip — overrides the footer while the setOrderStatus write is in flight or failed.
-  let writeStrip = '';
+  // ── body ──
+  let body = '';
+  if (isCancelled) body += `<div class="cancel-b">Cancelado — no preparar</div>`;
+  if (order.scheduled_for) body += `<div class="sched-line">${order.order_type === 'delivery' ? 'Entregar' : 'Recoger'} ${escapeHtml(formatScheduled(order.scheduled_for))}</div>`;
+  if (isPrioritized) body += `<div class="prio"><svg viewBox="0 0 24 24"><use href="#i-prio"/></svg> Priorizado</div>`;
+  if (order.order_type === 'pickup' && order.pickup_time && order.pickup_time !== 'standard') body += `<div class="card-pickup-time">${escapeHtml(order.pickup_time)}</div>`;
+  body += `<div class="card-items">${renderItems(order.pedido)}</div>`;
+  if (notes) body += `<div class="card-notes"><svg viewBox="0 0 24 24"><use href="#i-alert"/></svg>${escapeHtml(notes)}</div>`;
+
+  // ── confirmed-write strip (empezar pending / any error) ──
   if (p && p.error) {
-    writeStrip = `<div class="card-writestrip error">⚠ No se pudo guardar<button class="btn-retry" onclick="retryWrite('${order.id}')">Reintentar</button></div>`;
-    buttons = '';
-  } else if (p) {
-    writeStrip = `<div class="card-writestrip pending"><span class="spin"></span>${p.action === 'listo' ? 'Marcando listo…' : 'Iniciando…'}</div>`;
-    buttons = '';
+    body += `<div class="card-writestrip error"><svg viewBox="0 0 24 24"><use href="#i-alert"/></svg> No se pudo guardar<button class="btn-retry" onclick="retryWrite('${id}')">Reintentar</button></div>`;
+  } else if (p && p.action === 'empezar') {
+    body += `<div class="card-writestrip pending"><span class="spin"><svg viewBox="0 0 24 24"><use href="#i-spin"/></svg></span> Iniciando…</div>`;
   }
+
+  // ── secondary controls (never the primary action) — hidden during a non-error pending write ──
+  let mini = '';
+  if (!(p && !p.error)) {
+    const parts = [];
+    if (op === 'completed') parts.push(`<button class="mini-btn" onclick="recall('${id}')"><svg viewBox="0 0 24 24"><use href="#i-refresh"/></svg> Recuperar</button>`);
+    else if (isCancelled) parts.push(`<button class="mini-btn" onclick="archiveCancel('${id}')"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Archivar</button>`);
+    else {
+      parts.push(`<button class="mini-btn${isPrioritized ? ' on' : ''}" onclick="prioritize('${id}')" title="Priorizar" aria-label="Priorizar"><svg viewBox="0 0 24 24"><use href="#i-prio"/></svg></button>`);
+      if (logStr) parts.push(`<button class="mini-btn" onclick="showLog(event, '${id}')" title="Historial" aria-label="Historial">···</button>`);
+    }
+    if (parts.length) mini = `<div class="mini-actions">${parts.join('')}</div>`;
+  }
+
+  const cls = ['tk'];
+  if (op === 'prep' && !p) cls.push('items-tappable');
+  if (order.order_type === 'pickup') cls.push('pickup-order');
+  if (isPrioritized) cls.push('is-prio');
+  if (p) cls.push(p.error ? 'card-error' : 'card-pending');
 
   return `
-    <div class="card ${statusClass} ${bandClass(order, status, created)}${order.order_type === 'pickup' ? ' pickup-order' : ''}${isPrioritized ? ' prioritized' : ''}${p ? (p.error ? ' card-error' : ' card-pending') : ''}" id="card-${order.id}">
-      ${isPrioritized ? '<div class="prioritized-banner">★ Priorizado</div>' : ''}
-      <div class="card-band">
-        <div class="card-band-r1">
-          <span class="card-customer">${isCancelled ? '<span class="cancelled-badge">Cancelado</span>' : ''}${escapeHtml(order.cliente)}</span>
-          <span class="card-type-badge ${order.order_type === "pickup" ? "pickup" : "delivery"}">${order.order_type === "pickup" ? "🏪 Pickup" : "🛵 Delivery"}</span>
-        </div>
-        <div class="card-band-r2">
-          <span class="card-elapsed" id="elapsed-${order.id}">${elapsed(created)}</span>
-          <span class="card-id">${order.orden || order.id}</span>
-        </div>
-      </div>
-      <div class="card-body">
-        ${order.scheduled_for ? `<div class="card-sched">⏰ ${order.order_type === 'delivery' ? 'Entregar' : 'Recoger'} ${escapeHtml(formatScheduled(order.scheduled_for))}</div>` : ''}
-        ${order.order_type === 'pickup' && order.pickup_time && order.pickup_time !== 'standard' ? `<div class="card-pickup-time">⏰ ${escapeHtml(order.pickup_time)}</div>` : ''}
-        <div class="card-items">
-          ${renderItems(order.pedido)}
-        </div>
-        ${notes ? `<div class="card-notes">⚠ ${escapeHtml(notes)}</div>` : ''}
-      </div>
-      ${writeStrip}
-      <div class="card-footer">${buttons}</div>
-      ${logStr && !isCancelled ? `<button class="btn-log" onclick="showLog(event, '${order.id}')">· · ·</button>` : ''}
+    <div class="${cls.join(' ')}" data-s="${hs}" id="card-${id}">
+      <div class="head${headTap ? ' tap' : ''}"${headTap ? ` onclick="headerTap('${id}')"` : ''}>${headInner}</div>
+      <div class="body">${body}${mini}</div>
     </div>`;
 }
 
 /* ── Post-render DOM augmentation ──
-   Injects the per-item ✓ checkboxes (prep state only) + applies the sidebar highlight WITHOUT touching
-   renderItems' output string. The i-th `.card-body .card-item` corresponds to enumerateItems[i] (both
-   use the SAME bracket-aware splitter, same order; extras are .card-item-extra, a different class). */
+   Injects the per-item circle (.chk) into each item line + applies the sidebar highlight WITHOUT touching
+   renderItems' output string. The i-th `.card-items .card-item` corresponds to enumerateItems[i] (both use
+   the SAME bracket-aware splitter, same order; extras are .card-item-extra, a different class). The circle
+   appears only once tapped (grey → green ✓); tapping the LINE is the one-way, local, non-authoritative
+   per-item check (never a status write, never auto-fires ready). */
 function augmentTickets(list) {
   for (const order of list) {
     const card = document.getElementById('card-' + order.id);
@@ -1670,16 +1764,16 @@ function augmentTickets(list) {
       card.classList.toggle('ticket-highlight', names.includes(highlightName));
     }
     if (opState(order) === 'prep' && !pendingWrites[order.id]) {
-      card.querySelectorAll('.card-body .card-item').forEach((el, idx) => {
+      card.querySelectorAll('.card-items .card-item').forEach((el, idx) => {
         const checked = itemChecks[order.id]?.has(idx);
         const box = document.createElement('span');
-        box.className = 'item-check' + (checked ? ' checked' : '');
-        box.textContent = checked ? '✓' : '';
-        box.setAttribute('role', 'checkbox');
-        box.setAttribute('aria-checked', checked ? 'true' : 'false');
-        box.addEventListener('click', (e) => { e.stopPropagation(); toggleItem(order.id, idx); });
-        el.insertBefore(box, el.firstChild);
+        box.className = 'chk';
+        box.innerHTML = '<svg viewBox="0 0 24 24"><use href="#i-check"/></svg>';
+        el.appendChild(box);
+        el.setAttribute('role', 'button');
+        el.setAttribute('aria-pressed', checked ? 'true' : 'false');
         if (checked) el.classList.add('item-done');
+        el.addEventListener('click', (e) => { e.stopPropagation(); toggleItem(order.id, idx); });
       });
     }
   }
@@ -1703,7 +1797,12 @@ async function commitStatusWrite(id, action) {
     await XPD.setOrderStatus(id, fbStatus);            // RESOLVES → server accepted the transition
     if (!stateLog[id]) stateLog[id] = {};
     stateLog[id][fbStatus === 'preparing' ? 'En preparación' : 'Listo'] = new Date().toISOString();
-    if (action === 'listo') { completedSet.add(id); completingUntil[id] = Date.now() + COMPLETING_MS; }
+    if (action === 'listo') {
+      completedSet.add(id); completingUntil[id] = Date.now() + COMPLETING_MS;
+      // Settle the transient blue "Completando" → green Completed once the window elapses (no new
+      // order event required). setTimeout is a no-op under the test shim — harmless there.
+      setTimeout(() => renderCurrentTab(), COMPLETING_MS + 60);
+    }
     saveState();
     delete pendingWrites[id];
     renderCurrentTab();                                // NOW commit the advanced look
@@ -1715,6 +1814,19 @@ async function commitStatusWrite(id, action) {
 function empezar(id) { if (pendingWrites[id] && !pendingWrites[id].error) return; commitStatusWrite(id, 'empezar'); }
 function listo(id)   { if (pendingWrites[id] && !pendingWrites[id].error) return; commitStatusWrite(id, 'listo'); }
 function retryWrite(id) { const p = pendingWrites[id]; if (p && p.error) commitStatusWrite(id, p.action); }
+
+/* Header tap (★1) — the card header IS the tap target. Routes to the SAME confirmed-write handlers:
+   NUEVO → empezar (→preparing); EN PREPARACIÓN / server-ready → listo (→ready). completed/cancelado
+   headers are inert. No separate chunky buttons; this is the ONLY primary interaction. */
+function headerTap(id) {
+  const o = lastOrders.find(x => x.id === id) || allOrders.find(x => x.id === id);
+  if (!o) return;
+  if (pendingWrites[id] && !pendingWrites[id].error) return;   // a write is in flight — ignore taps
+  const op = opState(o);
+  if (op === 'nuevo') empezar(id);
+  else if (op === 'prep' || op === 'listo') listo(id);
+  // op === 'completed' | 'cancelado' → header is not a tap target (no-op)
+}
 
 // Per-item ✓ — LOCAL, ephemeral, NON-authoritative, ONE-WAY ("un-checkable"). NO status write; NEVER
 // auto-fires ready. Only enables/highlights the explicit Listo button when all items are checked.
@@ -1753,13 +1865,27 @@ function archiveCancel(id) {
 function setTab(tab) {
   if (tab === currentTab) return;
   currentTab = tab; page = 0;
-  document.getElementById('tab-open').classList.toggle('active', tab === 'open');
-  document.getElementById('tab-completed').classList.toggle('active', tab === 'completed');
+  document.getElementById('tab-open')?.classList.toggle('on', tab === 'open');
+  document.getElementById('tab-completed')?.classList.toggle('on', tab === 'completed');
   renderCurrentTab();
 }
 function gotoPage(delta) { page = Math.max(0, page + delta); renderCurrentTab(); }
+function gotoPageAbs(which) { page = (which === 'last') ? 9999 : (which | 0); renderCurrentTab(); }  // paginate clamps
 function highlightItem(name) { highlightName = (highlightName === name) ? null : name; renderCurrentTab(); }
 function renderCurrentTab() { render(lastOrders); }
+
+// Top-bar hamburger — collapse/expand the left sidebar.
+let sidebarCollapsed = false;
+function toggleSidebar() {
+  sidebarCollapsed = !sidebarCollapsed;
+  document.getElementById('kds-main')?.classList.toggle('sb-collapsed', sidebarCollapsed);
+}
+// Top-bar refresh — re-render the board from the latest live set (subscription stays live).
+function refreshBoard() {
+  const b = document.getElementById('btn-refresh');
+  if (b) { b.classList.add('spinning'); setTimeout(() => b.classList.remove('spinning'), 600); }
+  renderCurrentTab();
+}
 
 /* ── Render the flat pool ── */
 let lastOrders = [];
@@ -1784,7 +1910,7 @@ function paintOffPageLate() {
     const visibleIds = new Set(paginate(pool, page, PAGE_SIZE).slice.map(o => o.id));
     n = countOffPage(flaggedIds, visibleIds);
   }
-  if (n > 0) { lateEl.textContent = `⚠ ${n} atrasado${n > 1 ? 's' : ''} fuera de vista`; lateEl.classList.remove('hidden'); }
+  if (n > 0) { lateEl.textContent = `${n} atrasado${n > 1 ? 's' : ''} fuera de vista`; lateEl.classList.remove('hidden'); }
   else lateEl.classList.add('hidden');
 }
 
@@ -1803,55 +1929,56 @@ function render(orders) {
   const pageInfo = paginate(list, page, PAGE_SIZE);
   page = pageInfo.page;                                 // clamp
 
-  document.getElementById('pager-label').textContent = `${pageInfo.page + 1} / ${pageInfo.pageCount}`;
-  document.getElementById('pager-prev').disabled = pageInfo.page <= 0;
-  document.getElementById('pager-next').disabled = pageInfo.page >= pageInfo.pageCount - 1;
+  const lbl = document.getElementById('pager-label');
+  if (lbl) lbl.textContent = `${pageInfo.page + 1}`;
+  const atStart = pageInfo.page <= 0, atEnd = pageInfo.page >= pageInfo.pageCount - 1;
+  const pFirst = document.getElementById('pager-first'), pPrev = document.getElementById('pager-prev');
+  const pNext  = document.getElementById('pager-next'),  pLast = document.getElementById('pager-last');
+  if (pFirst) pFirst.disabled = atStart; if (pPrev) pPrev.disabled = atStart;
+  if (pNext) pNext.disabled = atEnd;    if (pLast) pLast.disabled = atEnd;
 
   const grid = document.getElementById('ticket-grid');
   const emptyMsg = currentTab === 'open'
-    ? '<div class="empty"><div class="empty-icon">✓</div>Sin pedidos abiertos</div>'
-    : '<div class="empty"><div class="empty-icon">·</div>Sin pedidos completados</div>';
+    ? '<div class="empty"><svg class="empty-icon" viewBox="0 0 24 24"><use href="#i-check"/></svg>Sin pedidos abiertos</div>'
+    : '<div class="empty"><svg class="empty-icon" viewBox="0 0 24 24"><use href="#i-grid"/></svg>Sin pedidos completados</div>';
   grid.innerHTML = pageInfo.slice.length ? pageInfo.slice.map(renderTicket).join('') : emptyMsg;
   augmentTickets(pageInfo.slice);
   paintOffPageLate();
 
   // Sidebar all-day make-count — from the OPEN pool minus Cancelado (things still to make).
   const railOrders = open.filter(o => o.estado !== KDS_STATUS.CANCELADO);
-  const openEl = document.getElementById('allday-open');
+  const openEl = document.getElementById('allday-open');   // removed from the DOM; guarded for safety
   if (openEl) openEl.textContent = railOrders.length;
   const railEl = document.getElementById('allday-rail');
   if (railEl) {
     const rollup = railCount(railOrders.map(o => o.pedido));
     railEl.innerHTML = rollup.length
-      ? rollup.map(r => `<div class="makecount-item${highlightName === r.name ? ' active' : ''}" data-name="${escapeHtml(r.name)}"><span class="n">${r.qty}</span><span class="nm">${escapeHtml(r.name)}</span></div>`).join('')
-      : '<div class="makecount-empty">Sin pedidos activos</div>';
+      ? rollup.map(r => `<div class="sb-row${highlightName === r.name ? ' on' : ''}" data-name="${escapeHtml(r.name)}"><span>${escapeHtml(r.name)}</span><b>${r.qty}</b></div>`).join('')
+      : '<div class="sb-empty">Sin pedidos activos</div>';
   }
 }
 
 // Sidebar make-count click-to-highlight — event delegation (injection-safe; #allday-rail is rebuilt
 // each render but the parent listener survives).
 document.getElementById('allday-rail')?.addEventListener('click', (e) => {
-  const item = e.target.closest('.makecount-item');
+  const item = e.target.closest('.sb-row');
   if (item) highlightItem(item.dataset.name);
 });
 
-/* ── Update elapsed timers (mm:ss) + re-derive the aging band every second, without a full re-render.
-      The band recolours live as a card ages (fresh→warn→late), a scheduled order crosses its slot, and
-      a Completing card settles to Completed. We ONLY swap band-state classes — .nudge-overdue (owned by
-      ready-nudge.js) and other classes (pickup-order, prioritized) are preserved. Also refreshes the
-      off-page late count so a page-2 ticket crossing late updates the pager. ── */
-const BAND_CLASSES = ['aging-fresh', 'aging-warn', 'aging-late', 'band-listo', 'band-scheduled', 'band-completing', 'band-completed'];
+/* ── Update elapsed timers (mm:ss) + re-derive the header state (data-s) every second, without a full
+      re-render. The header recolours live as a card ages (nuevo→late), a scheduled order crosses its slot,
+      etc. We ONLY swap the data-s attribute — .nudge-overdue (owned by ready-nudge.js) and card classes
+      (pickup-order, is-prio) are preserved. Also refreshes the off-page late count so a page-2 ticket
+      crossing late updates the pager. (A completing→settled transition changes the header STRUCTURE — that
+      needs a full re-render, scheduled by commitStatusWrite's settle timer.) ── */
 function tickElapsed() {
   lastOrders.forEach(o => {
     const el = document.getElementById('elapsed-' + o.id);
     if (el) el.textContent = elapsed(o.hora);
     const card = document.getElementById('card-' + o.id);
     if (card) {
-      const want = bandClass(o, effectiveStatus(o), o.hora);   // '' for a cancelled-not-completed card → skipped
-      if (want && !card.classList.contains(want)) {
-        card.classList.remove(...BAND_CLASSES);
-        card.classList.add(want);
-      }
+      const want = headerState(o, effectiveStatus(o), o.hora);
+      if (card.dataset.s !== want) card.dataset.s = want;
     }
   });
   paintOffPageLate();
@@ -2078,9 +2205,10 @@ function playChime() {
 
 function toggleSound() {
   soundEnabled = !soundEnabled;
-  const btn = document.getElementById('btn-sound');
-  btn.textContent = soundEnabled ? '🔔 Sonido ON' : '🔕 Sonido OFF';
-  btn.classList.toggle('muted', !soundEnabled);
+  const btn = document.getElementById('btn-sound');       // relocated to the sidebar foot
+  const lbl = document.getElementById('sound-label');
+  if (lbl) lbl.textContent = soundEnabled ? 'Sonido activado' : 'Sonido silenciado';
+  if (btn) btn.classList.toggle('muted', !soundEnabled);
   if (soundEnabled) {
     // Unlock audio context on user interaction
     try { getAudioCtx().resume(); } catch(e) {}
@@ -2205,20 +2333,13 @@ document.addEventListener('DOMContentLoaded', () => {
 let wakeLock = null;
 
 async function requestWakeLock() {
+  // Screen stays awake; the old visible "Pantalla activa" indicator was removed with the Phase-1 chrome.
   try {
     if ('wakeLock' in navigator) {
       wakeLock = await navigator.wakeLock.request('screen');
-      document.getElementById('wake-indicator').textContent = '⬤ Pantalla activa';
-      document.getElementById('wake-indicator').classList.remove('inactive');
-      wakeLock.addEventListener('release', () => {
-        document.getElementById('wake-indicator').textContent = '⬤ Pantalla inactiva';
-        document.getElementById('wake-indicator').classList.add('inactive');
-      });
     }
   } catch(e) {
     console.warn('Wake lock error:', e);
-    document.getElementById('wake-indicator').textContent = '⬤ No soportado';
-    document.getElementById('wake-indicator').classList.add('inactive');
   }
 }
 
@@ -2240,7 +2361,8 @@ window.toggleSound = toggleSound;
 window.toggleHistory = toggleHistory;
 window.showLog = showLog;
 window.closeLog = closeLog;
-// Phase 2a ticket + view handlers (inline onclick in renderTicket / the tab bar / the pager)
+// Phase 2a ticket + view handlers (inline onclick in renderTicket / the top bar / the pager / sidebar)
+window.headerTap = headerTap;   // ★1 the card header is the tap target (empezar / listo)
 window.empezar = empezar;
 window.listo = listo;
 window.retryWrite = retryWrite;
@@ -2250,7 +2372,10 @@ window.toggleItem = toggleItem;
 window.archiveCancel = archiveCancel;
 window.setTab = setTab;
 window.gotoPage = gotoPage;
+window.gotoPageAbs = gotoPageAbs;
 window.highlightItem = highlightItem;
+window.toggleSidebar = toggleSidebar;   // ★2 top-bar hamburger
+window.refreshBoard = refreshBoard;      // ★2 top-bar refresh
 
 /* ── Auth boot ──
    Wait for Firebase Auth state. If signed in + has kitchen role, start the
