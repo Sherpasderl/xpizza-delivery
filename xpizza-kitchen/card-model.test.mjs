@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 const src = readFileSync(new URL('./card-model.js', import.meta.url), 'utf8');
 const {
   KDS_STATUS, agingAnchorMs, bandClass, isLateBand,
-  actionStatusWrite, isLocalOnlyAction, deriveTab, paginate, countOffPage,
+  actionStatusWrite, isLocalOnlyAction, deriveTab, completedTabVisible, paginate, countOffPage,
 } = await import('data:text/javascript,' + encodeURIComponent(src));
 
 let n = 0;
@@ -116,6 +116,26 @@ assert.equal(countOffPage([], new Set()), 0);                   ok('countOffPage
   // order_timelines mentions are the read subscription path in the SDK usage/comments.
   ok('CONTRACT no-timeline-write (source): index.html has zero order_timelines write calls');
 }
+// ── completedTabVisible: Completados tab RENDER filter (fix #3 — session bumps + recent, not all history) ──
+{
+  const now = Date.now();
+  const HR = 3600 * 1000, WIN = 18 * HR;
+  const set = new Set(['LOCAL-1']);
+  // (a) this session's local bump → always shown (even if its anchor is ancient)
+  const localBump = { id: 'LOCAL-1', estado: KDS_STATUS.LISTO, hora: new Date(now - 100 * HR).toISOString() };
+  assert.equal(completedTabVisible(localBump, set, now, WIN), true, 'local-bumped completed → shown regardless of age');
+  // (b) a server-delivered order completed TODAY/recent → shown
+  const recentDelivered = { id: 'SRV-NEW', estado: KDS_STATUS.ARCHIVADO, hora: new Date(now - 2 * HR).toISOString() };
+  assert.equal(completedTabVisible(recentDelivered, set, now, WIN), true, 'recent server-delivered → shown');
+  // (c) an OLD server-delivered order (outside the window) → EXCLUDED (this is the endless-scroll fix)
+  const oldDelivered = { id: 'SRV-OLD', estado: KDS_STATUS.ARCHIVADO, hora: new Date(now - 100 * HR).toISOString() };
+  assert.equal(completedTabVisible(oldDelivered, set, now, WIN), false, 'old server-delivered → EXCLUDED from the tab');
+  // (d) a non-completed (open) order → never in the completed tab
+  const openOrder = { id: 'OPEN-1', estado: KDS_STATUS.PREP, hora: new Date(now).toISOString() };
+  assert.equal(completedTabVisible(openOrder, set, now, WIN), false, 'an open order is never completed-tab-visible');
+  ok('completedTabVisible: session bump always + recent server-completed shown; OLD delivered excluded');
+}
+
 // ── SOURCE-INSPECTION contract: recall + toggleItem handlers perform NO setOrderStatus ──
 {
   const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');

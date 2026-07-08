@@ -72,6 +72,19 @@ export function deriveTab(o, completedSet) {
   return 'open';
 }
 
+// Completados-tab RENDER filter (not a status change, not a new read): a completed card is shown only if
+// it's THIS session's local bump (completedSet member — always shown) OR it was server-completed within a
+// recent window. Keeps the tab a short useful list instead of every historical delivered order. `o` is the
+// mapped card shape (id + `hora` anchor); anchorFn extracts the anchor ISO/ms. Pure + golden-testable.
+export function completedTabVisible(o, completedSet, nowMs, recentMs) {
+  if (!o) return false;
+  if (deriveTab(o, completedSet) !== 'completed') return false;   // must be a completed card at all
+  if (completedSet && completedSet.has(o.id)) return true;        // this session's local bump: always
+  const anchor = o.hora || o.released_at || o.created_at || null; // completed-card anchor
+  const ms = typeof anchor === 'number' ? anchor : (anchor ? new Date(anchor).getTime() : 0);
+  return ms > 0 && (nowMs - ms) < recentMs;                       // else: only if recent
+}
+
 // Pure pagination. Clamps the requested page into range and returns the slice + derived counts.
 export function paginate(list, page, pageSize) {
   const arr = Array.isArray(list) ? list : [];
