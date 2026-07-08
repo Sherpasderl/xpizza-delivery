@@ -1962,8 +1962,21 @@ function setTab(tab) {
   renderCurrentTab();
   animateTabSlide(dir);
 }
-function gotoPage(delta) { page = Math.max(0, page + delta); renderCurrentTab(); }
-function gotoPageAbs(which) { page = (which === 'last') ? 9999 : (which | 0); renderCurrentTab(); }  // paginate clamps
+// Page change (arrows + swipe) — animate the incoming page (tweak #5): next → slide in from the RIGHT,
+// prev → from the LEFT (~240ms, transform-only; prefers-reduced-motion → instant). Only when the page
+// actually changed (render clamps `page`, so compare before/after).
+function gotoPage(delta) {
+  const before = page;
+  page = Math.max(0, page + delta);
+  renderCurrentTab();                                    // clamps page
+  if (page !== before) animateTabSlide(delta > 0 ? 'right' : 'left');
+}
+function gotoPageAbs(which) {
+  const before = page;
+  page = (which === 'last') ? 9999 : (which | 0);
+  renderCurrentTab();                                    // paginate clamps
+  if (page !== before) animateTabSlide(page > before ? 'right' : 'left');
+}
 function highlightItem(name) { highlightName = (highlightName === name) ? null : name; renderCurrentTab(); }
 function renderCurrentTab() { render(lastOrders); }
 
