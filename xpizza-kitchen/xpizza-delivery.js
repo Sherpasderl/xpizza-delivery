@@ -305,15 +305,21 @@ export async function setOrderStatus(orderId, status) {
   // KDS write guard (defense-in-depth, plan step 14): the La Musa KDS mutates ONLY its own orders
   // (a stale tab could hold a since-reassigned order). The X. Pizza KDS is the everything-else
   // bucket and its display filter already excludes la_musa → no guard-read (true no-op). Fail-closed:
-  // absent restaurant_id / read failure on the La Musa KDS → no write.
+  // absent restaurant_id / read failure on the La Musa KDS → throws → NO write (caller shows an error).
+  //
+  // RETURN CONTRACT (KDS-local — this copy of the SDK is imported only by xpizza-kitchen/index.html):
+  //   true  → the status was written.
+  //   false → ownership-skip (order isn't this KDS's) — NOT written. The caller (commitStatusWrite) MUST
+  //           treat false as a NON-success and NOT commit any local state (no card bump on a false write).
   if (KDS_RESTAURANT_ID === 'la_musa') {
     const rid = (await get(ref(db, `orders/${orderId}/restaurant_id`))).val();
     if (rid !== 'la_musa') {
       console.warn(`setOrderStatus: ${orderId} (restaurant_id=${rid}) not owned by La Musa KDS, skipping`);
-      return;
+      return false;   // ownership-skip: NOT written
     }
   }
   await update(ref(db, `orders/${orderId}`), { status });
+  return true;        // wrote
 }
 
 /**
