@@ -123,18 +123,8 @@
   }
   .latepill.hidden { display: none; }
 
-  /* ── top-bar "Diseño" button (Phase A #2) → opens the Ajustes screen ── */
-  .tb-btn {
-    height: 40px; padding: 0 14px; display: inline-flex; align-items: center; gap: 7px; margin-left: 6px;
-    background: var(--panel); border: 1px solid var(--stroke2); border-radius: 10px; color: var(--on-dark);
-    font-family: var(--body); font-size: 13px; font-weight: 700; cursor: pointer;
-  }
-  .tb-btn svg { width: 17px; height: 17px; }
-  .tb-btn:hover { background: #222226; }
-  .tb-btn.hl { border-color: var(--accent); color: var(--accent); }
-  .tb-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-
-  /* ══════════ Ajustes settings screen (Phase A #2/#3) — main-window, replaces the board ══════════ */
+  /* ══════════ Ajustes settings screen (Phase A #2/#3) — main-window, replaces the board ══════════
+     Entry point is the sidebar-foot "Ajustes" button (tweak #3); the screen itself is unchanged. */
   .screen { flex: 1; min-width: 0; background: #fff; color: #1a1a1a; display: flex; flex-direction: column; overflow: hidden; }
   .screen[hidden] { display: none; }
   .content[hidden] { display: none; }
@@ -1191,8 +1181,6 @@ function shortStatus(s) {
     <button class="pg" id="pager-last" onclick="gotoPageAbs('last')" aria-label="Última página">››</button>
     <span class="latepill hidden" id="pager-late" title="Tickets atrasados fuera de esta página"></span>
   </div>
-  <!-- Phase A #2: opens the main-window "Ajustes" screen (layout settings moved OUT of the sidebar) -->
-  <button class="tb-btn hl" id="btn-settings" onclick="openSettings()" title="Diseño / Ajustes"><svg viewBox="0 0 24 24"><use href="#i-cog"/></svg> Diseño</button>
 </div>
 
 <!-- Phase 2a: flat pool — left sidebar (all-day make-counts + availability + relocated sound/clock/signout) + grid -->
@@ -1206,8 +1194,9 @@ function shortStatus(s) {
       <div class="sb-h"><svg viewBox="0 0 24 24"><use href="#i-slash"/></svg> Disponibilidad</div>
       <div class="sb-muted">Próximamente · 2b</div>
     </div>
-    <!-- Phase A #2: ticket-layout settings moved OUT of the sidebar → the top-bar "Diseño" → Ajustes screen. -->
+    <!-- tweak #3: the Ajustes ENTRY lives in the sidebar foot; the Ajustes SCREEN is unchanged. -->
     <div class="sb-foot">
+      <button class="fr" id="btn-settings" onclick="openSettings()" title="Ajustes / Diseño"><svg viewBox="0 0 24 24"><use href="#i-cog"/></svg> Ajustes</button>
       <button class="fr" id="btn-sound" onclick="toggleSound()" title="Activar/desactivar sonido"><svg viewBox="0 0 24 24"><use href="#i-bell"/></svg> <span id="sound-label">Sonido activado</span></button>
       <div class="fr fr-clock"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg> <span id="clock">--:--</span></div>
       <button class="fr" id="signout-btn" title="Cerrar sesión"><svg viewBox="0 0 24 24"><use href="#i-exit"/></svg> Cerrar sesión</button>
