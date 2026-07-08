@@ -1653,6 +1653,12 @@
     font-size: 12px;
     color: #555;
   }
+/* Scheduled-order badge (cross-surface identity). Gold pill, dark text — legible on any card bg.
+   Contrast: #7A5B0C on #FBF0CE ≈ 6.4:1. */
+.sched-badge {
+  display: inline-flex; align-items: center; gap: 4px; background: #FBF0CE; color: #7A5B0C;
+  font-weight: 700; font-size: 12px; line-height: 1.2; padding: 3px 9px; border-radius: 7px; margin: 4px 0;
+}
 </style>
 </head>
 
@@ -2640,6 +2646,19 @@ function isCurrentUserAlsoDriver() {
 // ============================================================
 // Unassigned section
 // ============================================================
+// ── Scheduled-order badge (Scheduled Orders) — pure, read-only from order.scheduled_for. Returns a
+// glanceable gold pill (or '' for a normal ASAP order), spliced into render templates only; no handler,
+// SDK, assignment, or money changes. Mirrors the KDS gold band + the driver badge (cross-surface identity).
+function formatScheduledSlot(scheduledFor) {
+  if (!scheduledFor) return '';
+  return new Date(scheduledFor).toLocaleString('es-HN', { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'America/Tegucigalpa' });
+}
+function scheduledBadge(order) {
+  if (!order || !order.scheduled_for) return '';
+  const verb = order.order_type === 'pickup' ? 'Recoger' : 'Entregar';
+  return `<div class="sched-badge">⏰ ${verb} ${formatScheduledSlot(order.scheduled_for)}</div>`;
+}
+
 function renderUnassignedSection() {
   const orders = getPendingOrders();
   const list = $('unassigned-list');
@@ -2665,6 +2684,7 @@ function renderUnassignedSection() {
       </div>
       <div class="customer">${escapeHtml(o.customer_name || '—')}</div>
       <div class="addr">${escapeHtml(o.address_detected || '—')}</div>
+      ${scheduledBadge(o)}
       ${expanded ? renderOrderExpanded(o) : ''}
       <div class="actions">
         ${showSelfBtn ? `<button class="assign-self-btn" data-assign-self="${o.order_id}" title="Asignar a mí">A mí</button>` : ''}
@@ -2730,6 +2750,7 @@ function renderUnassignedSection() {
 
 function renderOrderExpanded(order) {
   const lines = [];
+  if (order.scheduled_for) lines.push(scheduledBadge(order));
   if (order.customer_phone) {
     lines.push(`<div class="row"><span class="label">Tel</span><span class="value"><a href="tel:${order.customer_phone}">${escapeHtml(order.customer_phone)}</a></span></div>`);
   }
@@ -2967,6 +2988,7 @@ function renderTaskRow(driverUid, order) {
       </div>
       <div class="task-customer">${escapeHtml(order.customer_name || '—')}</div>
       <div class="task-addr">${escapeHtml(order.address_detected || '—')}</div>
+      ${scheduledBadge(order)}
       <div class="task-meta">
         <span class="phase-pill ${phase}">${phaseLabel}</span>
       </div>
@@ -3233,6 +3255,7 @@ function renderOrderDetailModal(order) {
 
   // Body sections
   const sections = [];
+  if (order.scheduled_for) sections.push(scheduledBadge(order));
 
   // 1) Customer info
   const customerRows = [];

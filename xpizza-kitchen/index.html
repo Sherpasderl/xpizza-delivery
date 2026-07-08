@@ -5,37 +5,61 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>X Pizza — Cocina</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap"/>
 <style>
   /* X Pizza — Kitchen Display
      Reads live order data from Firebase Realtime Database.
      Requires Firebase Auth + kitchen role membership at /kitchen/{uid}.
   */
 
+  /* Hanken Grotesk (SIL OFL — see fonts/OFL.txt) — self-hosted, no CDN. Variable font: one file
+     covers the 400–700 axis, so a single relative @font-face with a weight RANGE replaces the three
+     static faces (smaller than 3 identical copies). latin subset (covers es-HN accents á é í ó ú ñ ü). */
+  @font-face {
+    font-family: 'Hanken Grotesk';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url('fonts/hankengrotesk-var.woff2') format('woff2');
+  }
+
   :root {
-    --black:   #1A1917;
+    /* ── Square KDS language ── */
+    --board:      #0F0F0F;   /* deepest board bg */
+    --board-2:    #131313;   /* board surface / columns */
+    --board-line: #2A2A2A;   /* board chrome hairlines */
+    --card:       #FFFFFF;   /* white tickets */
+    --on-dark:    #F3F1EC;   /* text on the dark board */
+    --on-dark-mut:#9A968D;   /* muted text on the dark board */
+    /* aging band palette (display-aging) */
+    --fresh:      #E9E9E9;   /* 0–8m band  (dark text) */
+    --warn:       #EE9F3C;   /* 8–15m band (dark text) */
+    --late:       #C4392A;   /* 15m+ band  (white text) + pulse */
+    --band-listo: #46A24A;   /* Listo green (white text) */
+    --band-sched: #E6B93E;   /* scheduled gold (dark text) */
+    --extra:      #DC2626;   /* extras red on white */
+    --accent:     #E8763A;   /* terracotta wayfinding only, never a status */
+    /* light-surface tokens (white cards, archive drawer, modals, login) */
+    --black:   #14110E;
     --char:    #FFFFFF;
-    --surface: #F5F5F3;
-    --border:  #DDDBD6;
+    --surface: #F4F3F0;
+    --border:  #E4E2DD;
     --cream:   #2A2825;
-    --muted:   #6B6860;
-    --nuevo:   #B02A14;
-    --nuevo-bg:#FDECEA;
-    --prep:    #8B6220;
-    --prep-bg: #FEF7E8;
-    --listo:   #1E6B3A;
-    --listo-bg:#E8F5EE;
-    --stamp:   'Special Elite', 'Courier New', monospace;
-    --body:    'Courier Prime', 'Courier New', monospace;
+    --muted:   #8A857C;
+    --nuevo:   #C4392A;  --nuevo-bg:#FBE7E4;
+    --prep:    #B26B15;  --prep-bg: #FBEBCF;
+    --listo:   #2E7D46;  --listo-bg:#DDEFE2;
+    /* Hanken Grotesk everywhere (self-hosted variable font) */
+    --stamp:   'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+    --body:    'Hanken Grotesk', system-ui, -apple-system, sans-serif;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; overflow: hidden; }
   body {
     font-family: var(--body);
-    background: #EBEBEA;
-    color: var(--cream);
+    background: var(--board);
+    color: var(--on-dark);
+    -webkit-font-smoothing: antialiased;
     display: flex;
     flex-direction: column;
     height: 100vh;
@@ -46,9 +70,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 24px;
-    border-bottom: 1px solid var(--border);
-    background: #FFFFFF;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--board-line);
+    background: var(--board-2);
     flex-shrink: 0;
   }
 
@@ -88,7 +112,7 @@
   }
 
   .clock {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--body);
     font-size: 20px;
     font-weight: 600;
     letter-spacing: 2px;
@@ -120,30 +144,27 @@
   .board {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
-    gap: 0;
+    gap: 1px;
     flex: 1;
     overflow: hidden;
-    background: #CCCCCC;
+    background: var(--board-line);
   }
 
   .col {
     display: flex;
     flex-direction: column;
-    border-right: 2px solid #CCCCCC;
     overflow: hidden;
-    background: #EEEEEE;
+    background: var(--board);
   }
-
-  .col:last-child { border-right: none; }
 
   .col-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 2px solid var(--border);
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--board-line);
     flex-shrink: 0;
-    background: #FFFFFF;
+    background: var(--board-2);
   }
 
   .col-header.nuevo  { border-top: 4px solid var(--nuevo); }
@@ -163,10 +184,11 @@
   .col-title.listo { color: var(--listo); }
 
   .col-count {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 24px;
-    font-weight: 600;
-    color: var(--black);
+    font-family: var(--body);
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--on-dark);
   }
 
   .col-body {
@@ -178,10 +200,10 @@
     gap: 10px;
   }
 
-  .col-body { background: #EEEEEE; }
+  .col-body { background: var(--board); }
   .col-body::-webkit-scrollbar { width: 4px; }
   .col-body::-webkit-scrollbar-track { background: transparent; }
-  .col-body::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 2px; }
+  .col-body::-webkit-scrollbar-thumb { background: var(--board-line); border-radius: 2px; }
 
   /* ── Order cards ── */
   .card.pickup-order {
@@ -298,7 +320,7 @@
     letter-spacing: 2px;
   }
   .cancel-banner .text .order-id {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--body);
     font-size: 14px;
     opacity: 0.85;
     letter-spacing: 0;
@@ -336,7 +358,7 @@
     font-weight: 600;
     padding: 2px 8px;
     border-radius: 4px;
-    font-family: 'IBM Plex Sans Condensed', sans-serif;
+    font-family: var(--body);
     letter-spacing: .5px;
     text-transform: uppercase;
   }
@@ -360,7 +382,7 @@
   }
 
   .card-id {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--body);
     font-size: 11px;
     font-weight: 400;
     letter-spacing: 1px;
@@ -368,7 +390,7 @@
   }
 
   .card-elapsed {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--body);
     font-size: 13px;
     font-weight: 600;
     padding: 3px 8px;
@@ -392,7 +414,7 @@
   .card-items {
     font-size: 16px;
     color: #111111;
-    font-family: 'IBM Plex Sans Condensed', sans-serif;
+    font-family: var(--body);
     line-height: 1;
     letter-spacing: 0;
     margin-bottom: 12px;
@@ -403,7 +425,7 @@
   .card-item-extra {
     font-size: 14px;
     color: #D97706;
-    font-family: 'IBM Plex Sans Condensed', sans-serif;
+    font-family: var(--body);
     font-weight: 600;
     padding: 2px 0 2px 24px;
     line-height: 1.5;
@@ -428,7 +450,7 @@
   }
 
   .card-item-qty {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--body);
     font-size: 16px;
     font-weight: 700;
     color: #111111;
@@ -491,7 +513,7 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: var(--muted);
+    color: var(--on-dark-mut);
     font-family: var(--stamp);
     font-size: 13px;
     letter-spacing: 2px;
@@ -636,7 +658,7 @@
     font-size: 11px;
   }
   .archive-log .log-status { font-family: var(--stamp); color: var(--black); letter-spacing: 0.5px; }
-  .archive-log .log-time   { color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size:11px; white-space:nowrap; }
+  .archive-log .log-time   { color: var(--muted); font-family: var(--body); font-size:11px; white-space:nowrap; }
   .btn-restore {
     width: 100%;
     padding: 8px;
@@ -727,7 +749,7 @@ function shortStatus(s) {
   }
   .log-row:last-child { border-bottom: none; }
   .log-status { font-family: var(--stamp); color: var(--black); letter-spacing: 1px; }
-  .log-time { color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size:12px; white-space:nowrap; }
+  .log-time { color: var(--muted); font-family: var(--body); font-size:12px; white-space:nowrap; }
   .btn-close-log {
     margin-top: 16px;
     width: 100%;
@@ -753,7 +775,7 @@ function shortStatus(s) {
     font-size: 14px;
     letter-spacing: 3px;
     text-transform: uppercase;
-    color: var(--black);
+    color: var(--on-dark-mut);
   }
   /* ── Login screen ── */
   .login-screen {
@@ -839,6 +861,114 @@ function shortStatus(s) {
     cursor: pointer;
   }
   .signout-btn:hover { color: var(--cream); border-color: var(--cream); }
+  /* ══════════════ Square KDS redesign — appended overrides (win by order) ══════════════
+     Contrast (tested, WCAG): dark #14110E on --fresh #E9E9E9 ≈13:1; dark #3A2606 on --warn
+     #EE9F3C ≈5.0:1; white on --late #C4392A ≈5.3:1; white on --band-listo #46A24A ≈3.4:1 (AA
+     large/bold band text); dark #3A2E06 on --band-sched #E6B93E ≈7:1; red --extra #DC2626 on
+     white ≈4.9:1. The display pulse is .aging-late (its OWN keyframes) — NOT .nudge-overdue,
+     which stays owned by ready-nudge.js. */
+
+  /* white ticket, band on top */
+  .card {
+    background: var(--card);
+    border: 1px solid #EDEBE6;
+    border-radius: 12px;
+    padding: 0;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0,0,0,.28);
+  }
+  .card.pickup-order { border-left: 1px solid #EDEBE6; }   /* type badge conveys pickup; drop the amber rail */
+  .card.nuevo, .card.prep, .card.listo { border-left: 1px solid #EDEBE6; }  /* status = column + band, not a rail */
+  .card.band-listo { opacity: .9; }   /* subtle "done" dim */
+
+  /* ── aging / status band ── */
+  .card-band { padding: 9px 13px 8px; }
+  .card-band-r1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .card-band-r2 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 1px; }
+  .card.aging-fresh   .card-band { background: var(--fresh);      color: #14110E; }
+  .card.aging-warn    .card-band { background: var(--warn);       color: #3A2606; }
+  .card.aging-late    .card-band { background: var(--late);       color: #FFFFFF; }
+  .card.band-listo    .card-band { background: var(--band-listo); color: #FFFFFF; }
+  .card.band-scheduled .card-band { background: var(--band-sched); color: #3A2E06; }
+  .card.cancelled     .card-band { background: var(--late);       color: #FFFFFF; }
+
+  /* band internals inherit the band's text color */
+  .card-band .card-customer {
+    font-family: var(--stamp); font-weight: 700; font-size: 21px; letter-spacing: -.2px;
+    color: inherit; margin: 0; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .card-band .card-type-badge {
+    background: rgba(0,0,0,.12); color: inherit; border: none; font-family: var(--body);
+    font-size: 11px; font-weight: 700; letter-spacing: .3px; padding: 3px 8px; flex-shrink: 0;
+  }
+  .card.aging-late .card-type-badge, .card.band-listo .card-type-badge, .card.cancelled .card-type-badge { background: rgba(255,255,255,.22); }
+  .card-band .card-elapsed {
+    background: transparent; padding: 0; font-family: var(--body); font-weight: 700; font-size: 16px;
+    font-variant-numeric: tabular-nums; letter-spacing: .5px; color: inherit;
+  }
+  .card-band .card-id { font-family: var(--body); font-size: 11px; font-weight: 600; letter-spacing: .3px; color: inherit; opacity: .72; }
+
+  /* ── white body ── */
+  .card-body { padding: 10px 13px 12px; }
+  .card-body .card-items { border-top: none; padding-top: 0; margin-bottom: 10px; color: #14110E; font-family: var(--body); }
+  .card-body .card-item-qty { font-family: var(--body); font-variant-numeric: tabular-nums; color: #14110E; }
+  .card-body .card-item-extra { color: var(--extra); font-family: var(--body); font-weight: 600; }
+  .card-body .card-item-extra-tag { color: #7A1F1F; background: rgba(220,38,38,.12); }
+
+  /* scheduled slot line (gold, in body — companion to the gold band) */
+  .card-sched {
+    display: inline-block; background: #FBF0CE; color: #7A5B0C; font-weight: 700; font-size: 13px;
+    padding: 4px 9px; border-radius: 7px; margin-bottom: 8px;
+  }
+  .card-body .card-pickup-time { background: #F2EFE9; color: #55504A; }
+
+  /* ── footer buttons (on the white card) ── */
+  .card-footer { padding: 0 13px 12px; gap: 7px; }
+  .btn-action { border-radius: 8px; font-family: var(--body); font-weight: 700; font-size: 13px; letter-spacing: .4px; }
+  .btn-prep  { background: #FBEBCF; color: #8A5209; border: 1px solid #E7C98A; }
+  .btn-listo { background: var(--band-listo); color: #FFFFFF; border: 1px solid #3C8C40; }
+  .btn-back  { background: #F1EFEA; color: #6B655C; border: 1px solid #E4E2DD; }
+  .btn-done  { background: #EDEBE6; color: #55504A; border: 1px solid #E4E2DD; }
+  .btn-log   { border-color: #E4E2DD; color: #A49E93; }
+  .btn-log:hover { background: #F6F5F2; }
+
+  /* ── all-day make-count rail (top bar) ── */
+  .allday-bar {
+    display: flex; align-items: center; padding: 7px 22px; background: var(--board);
+    border-bottom: 1px solid var(--board-line); flex-shrink: 0;
+  }
+  .allday-rail {
+    display: flex; align-items: center; gap: 14px; overflow-x: auto; flex: 1; min-width: 0; margin: 0 18px;
+  }
+  .allday-rail::-webkit-scrollbar { height: 0; }
+  .allday-open {
+    flex-shrink: 0; display: flex; flex-direction: column; align-items: center; line-height: 1;
+    padding-right: 14px; border-right: 1px solid var(--board-line);
+  }
+  .allday-open-num { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--on-dark); }
+  .allday-open-lbl { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--on-dark-mut); margin-top: 2px; }
+  .allday-item {
+    flex-shrink: 0; display: inline-flex; align-items: baseline; gap: 6px; font-size: 13px;
+    color: var(--on-dark); white-space: nowrap;
+  }
+  .allday-item .n { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); font-size: 15px; }
+  .allday-item .nm { color: var(--on-dark-mut); }
+  .allday-empty { color: var(--on-dark-mut); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+
+  /* ── late pulse — OWN keyframes + class (never touches .nudge-overdue) ── */
+  @keyframes aging-late-pulse {
+    0%, 100% { box-shadow: 0 1px 2px rgba(0,0,0,.28), 0 0 0 0 rgba(196,57,42,0); }
+    50%      { box-shadow: 0 1px 2px rgba(0,0,0,.28), 0 0 0 4px rgba(196,57,42,.5); }
+  }
+  .card.aging-late { animation: aging-late-pulse 1.25s ease-in-out infinite; }
+
+  /* ── reduced motion: no pulses/transitions; static outline instead ── */
+  @media (prefers-reduced-motion: reduce) {
+    .card, .card.dragging, .refresh-dot { transition: none !important; }
+    .card.aging-late, .card.nudge-overdue { animation: none !important; }
+    .card.aging-late { outline: 3px solid var(--late); outline-offset: -1px; }
+    .card.nudge-overdue { outline: 3px solid var(--nuevo); outline-offset: -1px; }
+  }
 </style>
 </head>
 <body>
@@ -894,6 +1024,12 @@ function shortStatus(s) {
   </div>
 </div>
 
+<!-- All-day make-count rail (top-bar roll-up + open count) -->
+<div class="allday-bar">
+  <div class="allday-open"><span class="allday-open-num" id="allday-open">0</span><span class="allday-open-lbl">Abiertos</span></div>
+  <div class="allday-rail" id="allday-rail"></div>
+</div>
+
 <div class="board">
   <div class="col">
     <div class="col-header nuevo">
@@ -936,6 +1072,7 @@ function shortStatus(s) {
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
 import * as XPD from './xpizza-delivery.js?v=16';
 import { nudgeEligibility, classAction, nextBeepState, nudgeRestaurantFromHost } from './ready-nudge.js?v=1';
+import { railCount } from './rail-count.js?v=1';
 
 /* ── Phase-1 Step 2: v0 overdue-nudge controller (isolated; fed the canonical raw orders via a
    try/caught hook in the subscribeToOrders callback — NO second /orders subscription). Toggles the
@@ -1100,17 +1237,37 @@ updateClock();
 
 /* ── Elapsed time ── */
 function elapsed(isoTimestamp) {
-  const diff = Math.floor((Date.now() - new Date(isoTimestamp)) / 1000);
+  // Square language: count-up mm:ss (e.g. 04:23), zero-padded, on the aging band.
+  const diff = Math.max(0, Math.floor((Date.now() - new Date(isoTimestamp)) / 1000));
   const m = Math.floor(diff / 60);
   const s = diff % 60;
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+// Retained for any legacy caller; the Square band uses bandClass() below (different thresholds/anchor).
 function elapsedClass(isoTimestamp) {
   const mins = (Date.now() - new Date(isoTimestamp)) / 60000;
   if (mins < 15) return 'ok';
   if (mins < 25) return 'warn';
   return 'late';
+}
+
+// KDS-local DISPLAY-AGING thresholds (minutes). Distinct from ready-nudge.js (different metric + anchor);
+// do NOT fork or conflate the two.
+const AGING = { warnMin: 8, lateMin: 15 };
+
+// Aging/status BAND class — resolves the header-band colour by PRECEDENCE (first match wins):
+//   Cancelado (styled via .card.cancelled) > Listo (green) > scheduled pre-slot (gold, only while
+//   now < scheduled_for) > elapsed aging (fresh/warn/late on released_at||created_at). After the slot
+//   passes, a scheduled order falls through to elapsed aging so a late one is never hidden gold.
+function bandClass(order, status, anchorIso) {
+  if (order.estado === 'Cancelado') return '';                 // .cancelled owns the band styling
+  if (status === 'Listo') return 'band-listo';
+  if (order.scheduled_for && Date.now() < order.scheduled_for) return 'band-scheduled';
+  const mins = (Date.now() - new Date(anchorIso)) / 60000;
+  if (mins >= AGING.lateMin) return 'aging-late';
+  if (mins >= AGING.warnMin) return 'aging-warn';
+  return 'aging-fresh';
 }
 
 function formatTime(iso) {
@@ -1252,24 +1409,27 @@ function renderCard(order) {
   }
 
   return `
-    <div class="card ${statusClass}${order.order_type === 'pickup' ? ' pickup-order' : ''}" id="card-${order.id}"
+    <div class="card ${statusClass} ${bandClass(order, status, created)}${order.order_type === 'pickup' ? ' pickup-order' : ''}" id="card-${order.id}"
       ${isCancelled ? '' : 'draggable="true"'}
       ${isCancelled ? '' : `ondragstart="dragStart(event, '${order.id}')" ondragend="dragEnd(event)"`}>
-      <div class="card-top">
-        <div class="card-id">${isCancelled ? '<span class="cancelled-badge">Cancelado</span>' : ''}${order.orden || order.id}</div>
-        <div class="card-elapsed ${elapsedClass(created)}" id="elapsed-${order.id}">${elapsed(created)}</div>
+      <div class="card-band">
+        <div class="card-band-r1">
+          <span class="card-customer">${isCancelled ? '<span class="cancelled-badge">Cancelado</span>' : ''}${escapeHtml(order.cliente)}</span>
+          <span class="card-type-badge ${order.order_type === "pickup" ? "pickup" : "delivery"}">${order.order_type === "pickup" ? "🏪 Pickup" : "🛵 Delivery"}</span>
+        </div>
+        <div class="card-band-r2">
+          <span class="card-elapsed" id="elapsed-${order.id}">${elapsed(created)}</span>
+          <span class="card-id">${order.orden || order.id}</span>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <div class="card-customer">${escapeHtml(order.cliente)}</div>
-        <div class="card-type-badge ${order.order_type === "pickup" ? "pickup" : "delivery"}">${order.order_type === "pickup" ? "🏪 Pickup" : "🛵 Delivery"}</div>
+      <div class="card-body">
+        ${order.scheduled_for ? `<div class="card-sched">⏰ ${order.order_type === 'delivery' ? 'Entregar' : 'Recoger'} ${escapeHtml(formatScheduled(order.scheduled_for))}</div>` : ''}
+        ${order.order_type === 'pickup' && order.pickup_time && order.pickup_time !== 'standard' ? `<div class="card-pickup-time">⏰ ${escapeHtml(order.pickup_time)}</div>` : ''}
+        <div class="card-items">
+          ${renderItems(order.pedido)}
+        </div>
+        ${notes ? `<div class="card-notes">⚠ ${escapeHtml(notes)}</div>` : ''}
       </div>
-      ${order.order_type === 'pickup' && order.pickup_time && order.pickup_time !== 'standard' ? `<div class="card-pickup-time">⏰ ${escapeHtml(order.pickup_time)}</div>` : ''}
-      ${order.scheduled_for ? `<div class="card-pickup-time">⏰ Programado · ${order.order_type === 'delivery' ? 'Entregar' : 'Recoger'} ${escapeHtml(formatScheduled(order.scheduled_for))}</div>` : ''}
-
-      <div class="card-items">
-        ${renderItems(order.pedido)}
-      </div>
-      ${notes ? `<div class="card-notes">⚠ ${escapeHtml(notes)}</div>` : ''}
       <div class="card-footer">${buttons}</div>
       ${logStr && !isCancelled ? `<button class="btn-log" onclick="showLog(event, '${order.id}')">· · ·</button>` : ''}
     </div>`;
@@ -1345,6 +1505,19 @@ function render(orders) {
   colPrep.innerHTML  = prep.length  ? prep.map(renderCard).join('')  : '<div class="empty"><div class="empty-icon">·</div>Nada en preparación</div>';
   colListo.innerHTML = listo.length ? listo.map(renderCard).join('') : '<div class="empty"><div class="empty-icon">·</div>Nada listo aún</div>';
 
+  // All-day make-count rail — from the SAME post-filter `orders` (Archivado already excluded upstream;
+  // exclude Cancelado here so a cancelled ticket isn't counted as something to make). Never off raw /orders.
+  const railOrders = orders.filter(o => o.estado !== 'Cancelado');
+  const railEl = document.getElementById('allday-rail');
+  const openEl = document.getElementById('allday-open');
+  if (openEl) openEl.textContent = railOrders.length;
+  if (railEl) {
+    const rollup = railCount(railOrders.map(o => o.pedido));
+    railEl.innerHTML = rollup.length
+      ? rollup.map(r => `<span class="allday-item"><span class="n">${r.qty}</span><span class="nm">${escapeHtml(r.name)}</span></span>`).join('')
+      : '<span class="allday-empty">Sin pedidos activos</span>';
+  }
+
   // Render archived
   const archived = allOrders.filter(o => (localState[o.id] || o.estado) === 'Archivado');
   document.getElementById('archive-count').textContent = archived.length;
@@ -1378,13 +1551,23 @@ function render(orders) {
   }
 }
 
-/* ── Update elapsed timers every second without full re-render ── */
+/* ── Update elapsed timers (mm:ss) + re-derive the aging band every second, without a full
+      re-render. The band recolours live as a card ages (fresh→warn→late) and as a scheduled order
+      crosses its slot. We ONLY swap the band-state classes — .nudge-overdue (owned by ready-nudge.js)
+      and other classes (pickup-order, dragging) are preserved. ── */
+const BAND_CLASSES = ['aging-fresh', 'aging-warn', 'aging-late', 'band-listo', 'band-scheduled'];
 function tickElapsed() {
   lastOrders.forEach(o => {
     const el = document.getElementById('elapsed-' + o.id);
-    if (el) {
-      el.textContent  = elapsed(o.hora);
-      el.className    = 'card-elapsed ' + elapsedClass(o.hora);
+    if (el) el.textContent = elapsed(o.hora);
+    const card = document.getElementById('card-' + o.id);
+    if (card && o.estado !== 'Cancelado') {
+      const status = localState[o.id] || o.estado || 'Nuevo';
+      const want = bandClass(o, status, o.hora);
+      if (want && !card.classList.contains(want)) {
+        card.classList.remove(...BAND_CLASSES);
+        card.classList.add(want);
+      }
     }
   });
 }

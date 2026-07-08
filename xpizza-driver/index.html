@@ -939,6 +939,12 @@
   .incoming-banner .ib-sub { color:var(--text-soft); font-size:13px; margin-bottom:10px; }
   .incoming-banner .accept-countdown { background:var(--surface-2); border:1px solid var(--border); color:var(--text-soft); border-radius:8px; padding:2px 8px; font-size:12px; font-weight:700; }
   .incoming-banner .slide-confirm { margin:0; height:56px; }
+/* Scheduled-order badge (cross-surface identity). Gold pill, dark text — legible on any card bg.
+   Contrast: #7A5B0C on #FBF0CE ≈ 6.4:1. */
+.sched-badge {
+  display: inline-flex; align-items: center; gap: 4px; background: #FBF0CE; color: #7A5B0C;
+  font-weight: 700; font-size: 12px; line-height: 1.2; padding: 3px 9px; border-radius: 7px; margin: 4px 0;
+}
 </style>
 </head>
 
@@ -1883,6 +1889,19 @@ function renderActiveAndQueue() {
 // above the active card WITHOUT touching the in-progress delivery. The soonest renders expanded; the rest
 // collapse to a one-line bar (tap the head to toggle). Accept goes through acceptSecondOrder (which writes
 // neither current_task_id nor driver status → the in-progress order keeps its hub).
+// ── Scheduled-order badge (Scheduled Orders) — pure, read-only from order.scheduled_for. Returns a
+// glanceable gold pill (or '' for a normal ASAP order), spliced into render templates only; no handler,
+// SDK, acceptance/assignment, or cash/vuelto changes. Mirrors the KDS gold band + dispatch badge.
+function formatScheduledSlot(scheduledFor) {
+  if (!scheduledFor) return '';
+  return new Date(scheduledFor).toLocaleString('es-HN', { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'America/Tegucigalpa' });
+}
+function scheduledBadge(order) {
+  if (!order || !order.scheduled_for) return '';
+  const verb = order.order_type === 'pickup' ? 'Recoger' : 'Entregar';
+  return `<div class="sched-badge">⏰ ${verb} ${formatScheduledSlot(order.scheduled_for)}</div>`;
+}
+
 function renderIncomingBanners(pending) {
   if (!pending.length) return '';
   const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
@@ -1900,6 +1919,7 @@ function renderIncomingBanners(pending) {
       </div>
       <div class="ib-body">
         <div class="ib-sub">${total}${addr ? ` · ${addr}` : ''} · otro hub</div>
+        ${scheduledBadge(order)}
         <div class="slide-confirm accept" id="btn-accept-inc-${escapeHtml(o.orderId)}">
           <div class="slide-fill"></div>
           <div class="slide-text">Deslizá para aceptar</div>
@@ -2090,6 +2110,7 @@ function renderActiveCard(o, solo) {
         <div class="recipient-name">${escapeHtml(order.customer_name || o.deliveryTask.recipient_name || '—')}</div>
         <div class="ac-meta"><span class="phase-pill ${pill.cls}">${pill.label}</span>${countdownChip}</div>
       </div>
+      ${scheduledBadge(order)}
       ${order.customer_phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(order.customer_phone).replace(/[^\d+]/g,'')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${String(order.customer_phone).replace(/\D/g,'')}?text=${encodeURIComponent('Hola, soy del repartidor de X. Pizza.')}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
       <div class="ac-hr"></div>
       <div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${escapeHtml(order.address_detected || o.deliveryTask.destination_address || '—')}</div>${order.address_details ? `<div class="address-detail">"${escapeHtml(order.address_details)}"</div>` : ''}</div></div>
@@ -2301,6 +2322,7 @@ function renderQueue(orders) {
               <div class="qchip-row">${restaurantChip(order, 'sm')}</div>
               <div class="qname">${escapeHtml(name)}</div>
               <div class="qaddr">${escapeHtml(addr)}</div>
+              ${scheduledBadge(order)}
             </div>
             <span class="qpay ${payClass}">${escapeHtml(payLabel)}</span>
             <span class="qchev">${CHEV}</span>
@@ -2324,6 +2346,7 @@ function renderQueueDetail(o, seq) {
     <div class="grab"></div>
     <div class="ac-chiprow" style="margin-top:2px">${restaurantChip(order)}</div>
     <div class="sh-head"><div class="sh-name">${escapeHtml(name)}</div><span class="sh-pill">${seq}º · EN COLA</span></div>
+    ${scheduledBadge(order)}
     ${phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(phone).replace(/[^\d+]/g,'')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${String(phone).replace(/\D/g,'')}?text=${encodeURIComponent('Hola, soy del repartidor de X. Pizza.')}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
     <div class="ac-hr"></div>
     <div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${escapeHtml(order.address_detected || o.deliveryTask.destination_address || '—')}</div>${order.address_details ? `<div class="address-detail">"${escapeHtml(order.address_details)}"</div>` : ''}</div></div>
