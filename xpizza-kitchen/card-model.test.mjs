@@ -164,6 +164,46 @@ assert.equal(countOffPage([], new Set()), 0);                   ok('countOffPage
   ok('orderForTab: Open FIFO (prioritized-front) · Completados newest-first · pure');
 }
 
+// ── #7 orderForTab robustness: missing/invalid hora sorts LAST + deterministic tie-break ──
+{
+  const iso = (m) => new Date(2026, 0, 1, 12, m).toISOString();
+  const good1 = { id: 'g1', orden: 'g1', hora: iso(0) };
+  const good2 = { id: 'g2', orden: 'g2', hora: iso(5) };
+  const noHora = { id: 'x0', orden: 'x0' };                       // missing hora
+  const badHora = { id: 'x1', orden: 'x1', hora: 'not-a-date' };  // invalid hora
+  // Open (oldest-first): valid times first (g1,g2), the two undated LAST — ordered among themselves by id.
+  assert.deepEqual(orderForTab([badHora, good2, noHora, good1], 'open', new Set()).map(o => o.id),
+    ['g1', 'g2', 'x0', 'x1'], 'Open: missing/invalid hora sort LAST (then tie-break by id)');
+  // Completados (newest-first): valid times first (g2,g1), undated LAST.
+  assert.deepEqual(orderForTab([noHora, good1, badHora, good2], 'completed', new Set()).map(o => o.id),
+    ['g2', 'g1', 'x0', 'x1'], 'Completados: missing/invalid hora sort LAST');
+  // Tie-break: equal hora → deterministic order by orden/id (stable FIFO) regardless of input order.
+  const t = iso(9);
+  const eqA = { id: 'a', orden: 'a', hora: t }, eqB = { id: 'b', orden: 'b', hora: t }, eqC = { id: 'c', orden: 'c', hora: t };
+  assert.deepEqual(orderForTab([eqC, eqA, eqB], 'open', new Set()).map(o => o.id), ['a', 'b', 'c'],
+    'Open: equal hora → stable tie-break by orden/id');
+  ok('#7 orderForTab: missing/invalid hora sorts LAST + deterministic tie-break');
+}
+
+// ── #5 completedTabVisible: recency keys on a COMPLETION time (completed_at) + future-clamp ──
+{
+  const now = Date.now(), HR = 3600 * 1000, WIN = 18 * HR;
+  const set = new Set();
+  // completed_at recent but created (hora) ancient → SHOWN (keys on completion time, not created_at).
+  const doneRecent = { id: 'd1', estado: KDS_STATUS.ARCHIVADO, hora: new Date(now - 100 * HR).toISOString(), completed_at: new Date(now - 1 * HR).toISOString() };
+  assert.equal(completedTabVisible(doneRecent, set, now, WIN), true, 'recent completed_at (ancient created) → shown');
+  // completed_at ancient but created (hora) recent → EXCLUDED (keys on completion time, ignores fresh created).
+  const doneOld = { id: 'd2', estado: KDS_STATUS.ARCHIVADO, hora: new Date(now - 1 * HR).toISOString(), completed_at: new Date(now - 100 * HR).toISOString() };
+  assert.equal(completedTabVisible(doneOld, set, now, WIN), false, 'ancient completed_at (fresh created) → EXCLUDED');
+  // future completed_at (clock skew) → clamped to now → treated as recent → shown.
+  const doneFuture = { id: 'd3', estado: KDS_STATUS.ARCHIVADO, hora: null, completed_at: new Date(now + 60 * 60 * 1000).toISOString() };
+  assert.equal(completedTabVisible(doneFuture, set, now, WIN), true, 'future completed_at → clamped to now (skew guard) → shown');
+  // no completed_at → falls back to the hora anchor (recent → shown).
+  const noStamp = { id: 'd4', estado: KDS_STATUS.ARCHIVADO, hora: new Date(now - 2 * HR).toISOString() };
+  assert.equal(completedTabVisible(noStamp, set, now, WIN), true, 'no completed_at → falls back to hora anchor');
+  ok('#5 completedTabVisible: recency anchored on completed_at (+ hora fallback) + future-clamp');
+}
+
 // ── SOURCE-INSPECTION contract: recall + toggleItem handlers perform NO setOrderStatus ──
 {
   const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');

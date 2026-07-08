@@ -72,33 +72,52 @@ export function deriveTab(o, completedSet) {
   return 'open';
 }
 
+// Parse an ISO/ms timestamp → finite ms, or null if missing/invalid.
+function toMs(v) {
+  if (v == null) return null;
+  const t = typeof v === 'number' ? v : new Date(v).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
 // Completados-tab RENDER filter (not a status change, not a new read): a completed card is shown only if
-// it's THIS session's local bump (completedSet member — always shown) OR it was server-completed within a
-// recent window. Keeps the tab a short useful list instead of every historical delivered order. `o` is the
-// mapped card shape (id + `hora` anchor); anchorFn extracts the anchor ISO/ms. Pure + golden-testable.
-export function completedTabVisible(o, completedSet, nowMs, recentMs) {
+// it's THIS session's local bump (completedSet member — always shown, pruned old on load) OR it was
+// server-completed within a recent window. (#5) The recency anchor keys on a COMPLETION time, not
+// created_at: a server terminal time (`o.completed_at` ← delivered_at/ready_at, already on the /orders
+// record — no new read) when present, else the created/released anchor as a best-effort fallback. A future
+// anchor is clamped to `nowMs` (clock-skew guard) so a bad timestamp can't hide a real card. Pure + golden.
+export function completedTabVisible(o, completedSet, nowMs, recentMs, skewToleranceMs = 5 * 60 * 1000) {
   if (!o) return false;
   if (deriveTab(o, completedSet) !== 'completed') return false;   // must be a completed card at all
-  if (completedSet && completedSet.has(o.id)) return true;        // this session's local bump: always
-  const anchor = o.hora || o.released_at || o.created_at || null; // completed-card anchor
-  const ms = typeof anchor === 'number' ? anchor : (anchor ? new Date(anchor).getTime() : 0);
-  return ms > 0 && (nowMs - ms) < recentMs;                       // else: only if recent
+  if (completedSet && completedSet.has(o.id)) return true;        // this session's local bump: always shown
+  let anchor = toMs(o.completed_at) ?? toMs(o.hora) ?? toMs(o.released_at) ?? toMs(o.created_at);
+  if (anchor == null || anchor <= 0) return false;
+  if (anchor > nowMs + skewToleranceMs) anchor = nowMs;           // future-clamp (skew guard)
+  return (nowMs - anchor) < recentMs;                             // else: only if recent
 }
 
 // Per-tab render ORDERING (pure, testable) — a render-sort only, never a data/status change.
 //   • Open (Abiertos): FIFO — oldest-first by `hora`, with PRIORITIZED cards jumped to the FRONT
 //     (prioritized keep FIFO among themselves; the rest FIFO after). Order #1 sits top-left like a rail.
-//   • Completados: newest-first (descending by `hora`) — the familiar "recently done" feel.
-// V8 Array.sort is stable, so equal `hora` keeps arrival order. `hora` is the mapped anchor ISO.
-function tabTimeMs(o) { return (o && o.hora) ? new Date(o.hora).getTime() : 0; }
+//   • Completados: newest-first (descending by `hora`).
+// (#7) Robustness: a missing/invalid `hora` sorts LAST on either tab, and a deterministic tie-break by
+// `orden`/`id` makes equal times stable FIFO regardless of engine sort stability.
+function tabTimeMs(o) { return toMs(o && o.hora); }               // null when missing/invalid
+function tieKey(o) { return String((o && (o.orden || o.id)) || ''); }
 export function orderForTab(list, tab, prioritizedSet) {
   const arr = Array.isArray(list) ? [...list] : [];
-  if (tab === 'completed') return arr.sort((a, b) => tabTimeMs(b) - tabTimeMs(a));   // newest-first
+  const tie = (a, b) => tieKey(a).localeCompare(tieKey(b));
+  if (tab === 'completed') {
+    return arr.sort((a, b) => {                                   // newest-first; missing time sorts LAST
+      const va = tabTimeMs(a) ?? -Infinity, vb = tabTimeMs(b) ?? -Infinity;
+      return (vb - va) || tie(a, b);                             // NaN (both ±Infinity) → tie-break
+    });
+  }
   const pr = prioritizedSet instanceof Set ? prioritizedSet : new Set(prioritizedSet || []);
-  return arr.sort((a, b) => {                                                        // open: FIFO, prioritized-first
+  return arr.sort((a, b) => {                                     // open: FIFO, prioritized-first
     const pa = pr.has(a.id) ? 0 : 1, pb = pr.has(b.id) ? 0 : 1;
     if (pa !== pb) return pa - pb;
-    return tabTimeMs(a) - tabTimeMs(b);                                              // oldest-first
+    const va = tabTimeMs(a) ?? Infinity, vb = tabTimeMs(b) ?? Infinity;   // oldest-first; missing sorts LAST
+    return (va - vb) || tie(a, b);
   });
 }
 
