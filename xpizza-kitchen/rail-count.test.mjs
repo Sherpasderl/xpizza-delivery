@@ -5,7 +5,7 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('./rail-count.js', import.meta.url), 'utf8');
-const { railSplit, railCount } = await import('data:text/javascript,' + encodeURIComponent(src));
+const { railSplit, railCount, enumerateItems } = await import('data:text/javascript,' + encodeURIComponent(src));
 
 let n = 0;
 const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -69,5 +69,27 @@ ok('empty / "—" → []');
 assert.deepEqual(railCount([]), []);
 assert.deepEqual(railCount(null), []);
 ok('no orders → [] (null-safe)');
+
+// ── enumerateItems: per-item checkbox boundaries (Phase 2a) — bracket-aware, never a naive split ──
+{
+  // two real pizzas → two entries with stable indices
+  const e = enumerateItems('1x Margherita | 2x Hawaiana');
+  assert.deepEqual(e, [
+    { idx: 0, qty: 1, name: 'Margherita', raw: '1x Margherita' },
+    { idx: 1, qty: 2, name: 'Hawaiana', raw: '2x Hawaiana' },
+  ]);
+  ok('enumerateItems: two pizzas → 2 indexed entries with qty/name');
+}
+{
+  // a bracketed " | " must NOT create a phantom checkbox — one pizza, one entry
+  const e = enumerateItems('2x Pepperoni [Pizza 1: extra | Pizza 2: sin cebolla]');
+  assert.equal(e.length, 1, 'one checkbox for one pizza line (bracket " | " ignored)');
+  assert.equal(e[0].qty, 2);
+  assert.equal(e[0].name, 'Pepperoni');
+  ok('enumerateItems: bracketed " | " extras → single checkbox (no phantom boundary)');
+}
+assert.deepEqual(enumerateItems(''), []);
+assert.deepEqual(enumerateItems('—'), []);
+ok('enumerateItems: empty / "—" → [] (no checkboxes)');
 
 console.log(`rail-count: OK (${n} cases)`);

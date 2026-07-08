@@ -24,6 +24,20 @@ export function railSplit(itemsText) {
   return out;
 }
 
+// Enumerate an order's items_text into per-line entries for the KDS per-item checkboxes (Phase 2a).
+// Uses the SAME bracket-aware splitter + qty/name regex as renderItems, so a checkbox boundary can NEVER
+// fall inside a bracketed extras group (the naive split(' | ') bug). Returns [{idx, qty, name, raw}] in
+// render order (idx = stable per-order index for the ephemeral local check set). renderItems stays
+// byte-for-byte; this is a boundary-only companion (extras display is still renderItems' job).
+export function enumerateItems(itemsText) {
+  return railSplit(itemsText).map((raw, idx) => {
+    const m = raw.match(/^(\d+)x\s+(.+?)(?:\s+\(L[\d.]+\))?(?:\s+\[(.+)\])?$/);
+    return m
+      ? { idx, qty: parseInt(m[1], 10), name: m[2].trim(), raw }
+      : { idx, qty: 1, name: raw.trim(), raw };
+  });
+}
+
 // Roll up an array of items_text strings into an ordered make-count [{name, qty}], most-made first
 // (qty desc, then name asc for a stable, deterministic order). Mirrors renderItems' qty/name regex:
 //   ^(\d+)x  Name  (optional " (Lprice)")  (optional " [extras]")
