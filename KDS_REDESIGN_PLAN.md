@@ -104,3 +104,17 @@ Guard: badge insertion sits **away from** `total`, assign buttons, and payment r
 ## Out of scope
 
 Customer order form + tracker (keep identity), the assignment engine, any functions/Firebase/money code, and everything under "deferred to Next."
+
+## Verified anchors (advisor read-only pass, 2026-07-07)
+
+Confirmed against `origin/main` so the executor starts clean — **anchor by function/selector, not line** (line numbers drift as you edit the ~2016-line KDS file):
+
+- **Named renderers all present:**
+  - Dispatch — `renderUnassignedSection` (~:2643), `renderTaskRow` (~:2948), `renderOrderExpanded` (~:2731), `renderOrderDetailModal` (~:3216).
+  - Driver — `renderActiveCard` (~:2005, active card), `renderIncomingBanners` (~:1886, incoming banner), `renderQueue` (~:2283, queue card), `renderQueueDetail` (~:2312, queue detail sheet).
+- **KDS preserve-hooks all present:** `#card-${order.id}`, `#elapsed-${order.id}`, `.nudge-overdue` (CSS ~:216 + nudge controller ~:942/974-976), `.card` `draggable="true"`, inline `moveOrder()`/`showLog()` handlers.
+- **Font sourcing:** Hanken Grotesk is **SIL OFL** (Google Fonts / Hanken Design Co release). Vendor the **400/600/700 `.woff2`** under `xpizza-kitchen/fonts/`, add `OFL.txt`, declare via a **relative `@font-face`**, and remove the existing Google Fonts `<link>`. Do NOT hotlink `fonts.gstatic.com`.
+
+## Gate (advisor, when the diff returns)
+
+`order-filter` + `ready-nudge` + the new rail-parser goldens; extracted-inline-module syntax check + `node --check` on the real `.js` modules; both-host-pin parity; read-only diff pass on the invariants — DOM contracts intact, `.aging-late` (NOT `.nudge-overdue`) for the display pulse, no new Firebase reads, money/lifecycle untouched, contrast + `prefers-reduced-motion` present.
