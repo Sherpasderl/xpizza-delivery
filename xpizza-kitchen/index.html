@@ -42,9 +42,10 @@
     --panel:      #18181A;   /* topbar/sidebar control surface */
     --stroke2:    #2A2A2E;   /* Square-target hairline */
     --ink-mute:   #9C988F;   /* muted ink on the dark chrome */
-    --h-fresh:#ECECEC; --h-fresh-ink:#1A1A1A;   /* nuevo header */
-    --h-warn: #F5A524; --h-warn-ink:#1A1A1A;    /* en preparación header */
-    --h-late: #E8483A; --h-late-ink:#FFFFFF;    /* 15m+ alert header */
+    --h-fresh:#ECECEC; --h-fresh-ink:#1A1A1A;   /* nuevo header (gray) */
+    --h-prep: #6FBEEC; --h-prep-ink:#0E2333;    /* en preparación header (<8m, light blue) */
+    --h-warn: #F5A524; --h-warn-ink:#1A1A1A;    /* aging 8–15m header (amber) */
+    --h-late: #E8483A; --h-late-ink:#FFFFFF;    /* aging 15m+ alert header (red) */
     --h-sched:#F5C542; --h-sched-ink:#1A1A1A;   /* scheduled gold header */
     --ready:  #2FA855; --ready-ink:#FFFFFF;     /* ready / settled-completed header + item ✓ */
     --completing:#2F80ED; --comp-ink:#FFFFFF;   /* completing (in-flight ready) header */
@@ -534,138 +535,6 @@
   }
   .wake-indicator.inactive { color: #CC4444; }
 
-  /* ── Archive toggle button ── */
-  .btn-archive-toggle {
-    font-family: var(--stamp);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    padding: 7px 14px;
-    border-radius: 4px;
-    border: 1px solid #444444;
-    background: transparent;
-    color: #AAAAAA;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-  }
-  .btn-archive-toggle:hover { background: #333333; color: #FFFFFF; }
-  .btn-archive-toggle.active { background: #FFFFFF; color: var(--black); border-color: #FFFFFF; }
-
-  /* ── Archive drawer ── */
-  .archive-drawer {
-    display: none;
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    height: 42vh;
-    background: #fff;
-    border-top: 2px solid var(--black);
-    z-index: 1000;
-    flex-direction: column;
-  }
-  .archive-drawer.open { display: flex; }
-  .archive-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 20px;
-    border-bottom: 1px solid var(--border);
-    background: #F4F4F4;
-    flex-shrink: 0;
-  }
-  .archive-title {
-    font-family: var(--stamp);
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--black);
-  }
-  .archive-body {
-    display: flex;
-    gap: 10px;
-    padding: 12px;
-    overflow-x: auto;
-    flex: 1;
-    align-items: flex-start;
-  }
-  .archive-body::-webkit-scrollbar { height: 4px; }
-  .archive-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-  .archive-card {
-    min-width: 220px;
-    max-width: 220px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--muted);
-    border-radius: 8px;
-    padding: 12px;
-    flex-shrink: 0;
-  }
-  .archive-card-id {
-    font-family: var(--stamp);
-    font-size: 11px;
-    letter-spacing: 1px;
-    color: var(--muted);
-    margin-bottom: 4px;
-  }
-  .archive-card-name {
-    font-family: var(--stamp);
-    font-size: 15px;
-    color: var(--black);
-    margin-bottom: 6px;
-  }
-  .archive-card-items {
-    font-size: 11px;
-    color: var(--muted);
-    line-height: 1.6;
-    margin-bottom: 10px;
-  }
-  .archive-log {
-    margin: 8px 0;
-    padding: 8px;
-    background: var(--surface);
-    border-radius: 6px;
-    border: 1px solid var(--border);
-  }
-  .archive-log-title {
-    font-family: var(--stamp);
-    font-size: 9px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 6px;
-  }
-  .archive-log .log-row {
-    padding: 4px 0;
-    font-size: 11px;
-  }
-  .archive-log .log-status { font-family: var(--stamp); color: var(--black); letter-spacing: 0.5px; }
-  .archive-log .log-time   { color: var(--muted); font-family: var(--body); font-size:11px; white-space:nowrap; }
-  .btn-restore {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid var(--nuevo);
-    background: var(--nuevo-bg);
-    color: var(--nuevo);
-    border-radius: 6px;
-    font-family: var(--stamp);
-    font-size: 11px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    cursor: pointer;
-  }
-  .archive-empty {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    font-family: var(--stamp);
-    font-size: 12px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-
   /* ── Log button ── */
   .btn-log {
     display: block;
@@ -1051,7 +920,8 @@ function shortStatus(s) {
   .head.tap { cursor: pointer; }
   .head.tap:active { filter: brightness(.97); }
   .tk[data-s="nuevo"]      { --h-bg: var(--h-fresh);   --h-ink: var(--h-fresh-ink); }
-  .tk[data-s="prep"]       { --h-bg: var(--h-warn);    --h-ink: var(--h-warn-ink); }
+  .tk[data-s="prep"]       { --h-bg: var(--h-prep);    --h-ink: var(--h-prep-ink); }
+  .tk[data-s="warn"]       { --h-bg: var(--h-warn);    --h-ink: var(--h-warn-ink); }
   .tk[data-s="late"]       { --h-bg: var(--h-late);    --h-ink: var(--h-late-ink); }
   .tk[data-s="sched"]      { --h-bg: var(--h-sched);   --h-ink: var(--h-sched-ink); }
   .tk[data-s="ready"]      { --h-bg: var(--ready);     --h-ink: var(--ready-ink); }
@@ -1230,7 +1100,6 @@ function shortStatus(s) {
     <div class="sb-sec">
       <div class="sb-h"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg> Todo el día</div>
       <div class="sb-rows" id="allday-rail"></div>
-      <button class="sb-link" id="btn-history-toggle" onclick="toggleHistory()">Ver todo</button>
     </div>
     <div class="sb-sec">
       <div class="sb-h"><svg viewBox="0 0 24 24"><use href="#i-slash"/></svg> Disponibilidad</div>
@@ -1416,7 +1285,8 @@ applyKdsBrand();
      • completedSet — KDS-local "bump to Completed" (durable, like the old 'Archivado'). Recall un-bumps.
      • itemChecks   — per-item ✓ (EPHEMERAL, in-memory, NON-authoritative; one-way; never writes status).
      • prioritized  — reorder-to-front + banner (in-memory; no status write).
-     • pendingWrites/completingUntil — confirmed-write bookkeeping (in-memory).
+     • pendingWrites — confirmed-write bookkeeping (in-memory).
+     • completionSeq — post-resolve blue→green→bump completion beat (in-memory; no status write).
    NONE of these overlays ever writes /orders.status except through the empezar/listo handlers, and the
    KDS NEVER writes order_timelines (server instrumentation). */
 
@@ -1437,14 +1307,19 @@ const stateLog = JSON.parse(localStorage.getItem('xpizza_log') || '{}');
 const itemChecks     = {};   // id → Set(itemIdx)  per-item ✓ (one-way, local)
 const prioritized    = new Set();  // ids reordered to the front (+ banner)
 const pendingWrites  = {};   // id → { from, action, error, msg }  confirmed-write bookkeeping
-const completingUntil = {};  // id → ts  transient blue "Completing" band before green "Completed"
+// Post-resolve completion beat (LOCAL, non-authoritative animation): after the ready write RESOLVES the
+// card plays blue "Completando" → green "Completado" IN the Open pool, THEN local-bumps to Completados.
+// id → 'completing' | 'completed'. No status write happens in any of these beats (the write already
+// resolved); recall clears it. Replaces the old completingUntil timestamp.
+const completionSeq  = {};
 
 // View state
 let currentTab = 'open';     // 'open' | 'completed'
 let page = 0;                // 0-indexed page within the current tab
 const PAGE_SIZE = 12;
 let highlightName = null;     // sidebar make-count click-to-highlight (null = none)
-const COMPLETING_MS = 1500;   // blue Completing → green Completed
+const COMPLETING_MS = 700;    // blue "Completando" beat
+const COMPLETED_MS  = 700;    // green "Completado" beat (in the Open pool) before the bump
 
 // Escape HTML-significant chars before interpolating untrusted order data
 // (customer name, items, notes — originate from the public order form) into
@@ -1516,7 +1391,7 @@ function bandClass(order, status, anchorIso) {
   const completed = completedSet.has(order.id) || order.estado === KDS_STATUS.ARCHIVADO;
   return bandClassPure({
     completed,
-    completing: completed && !!completingUntil[order.id] && Date.now() < completingUntil[order.id],
+    completing: completionSeq[order.id] === 'completing',
     cancelled: order.estado === KDS_STATUS.CANCELADO,
     statusStr: status,
     scheduledFor: order.scheduled_for || null,
@@ -1628,26 +1503,29 @@ function renderItems(itemsText) {
    in-flight confirmed write freezes the visual at its pre-tap state and shows a pending/error strip.
    Preserves the Phase-1 band/body markup byte-for-byte (renderItems verbatim, #card-/#elapsed- ids,
    red extras). Per-item checkboxes are injected post-render by augmentTickets (keeps renderItems pure). */
-/* ── Header state (data-s) — the Square target palette, resolved by the SAME precedence as bandClass:
-      completing > cancel > ready(listo) > scheduled-pre-slot > aging-late > prep > nuevo. Aging still
-      governs the late→red escalation; op-state governs nuevo(gray)/prep(amber). A settled completed card
-      is 'ready' (green); an in-flight ready write OR the transient completing window is 'completing'
-      (blue). NEVER derived from ephemeral item checks. */
+/* ── Header state (data-s) — the Square target palette. PRECEDENCE (Codex-approved bandClass order):
+      completion beats (completed-green / completing-blue) > completed (settled/delivered) > cancel >
+      ready(listo) > scheduled-pre-slot > aging-late(15m+, red) > aging-warn(8–15m, amber) >
+      prep(<8m, light blue) > nuevo(<8m, gray).
+   Aging escalates by TIME on EVERY card (aging-warn/late win over the prep tint), so a freshly-started
+   order is light blue then ages amber→red like everything else. NEVER derived from ephemeral item
+   checks. The completion beats + the in-flight ready write are LOCAL and non-authoritative. */
 function headerState(order, status, anchorIso) {
   const id = order.id;
   const p = pendingWrites[id];
-  if (p && !p.error && p.action === 'listo') return 'completing';   // in-flight ready write (not committed)
+  if (completionSeq[id] === 'completed') return 'ready';             // paso 2: green "Completado" (in Open)
+  if (completionSeq[id] === 'completing') return 'completing';       // paso 1: blue "Completando" (in Open)
+  if (p && !p.error && p.action === 'listo') return 'completing';    // in-flight ready write (not committed)
   const op = opState(order);
-  if (op === 'completed') {
-    return (completingUntil[id] && Date.now() < completingUntil[id]) ? 'completing' : 'ready';
-  }
+  if (op === 'completed') return 'ready';                            // settled Completed / delivered
   if (op === 'cancelado') return 'cancel';
   if (op === 'listo') return 'ready';                                // server-ready, not yet bumped
-  const band = bandClass(order, status, anchorIso);                  // pure: scheduled + aging
+  const band = bandClass(order, status, anchorIso);                  // pure: scheduled + time-based aging
   if (band === 'band-scheduled') return 'sched';
-  if (band === 'aging-late') return 'late';
-  if (op === 'prep') return 'prep';
-  return 'nuevo';
+  if (band === 'aging-late') return 'late';                          // 15m+ → red (wins over prep)
+  if (band === 'aging-warn') return 'warn';                          // 8–15m → amber (wins over prep)
+  if (op === 'prep') return 'prep';                                  // <8m in preparation → light blue
+  return 'nuevo';                                                    // <8m new → gray
 }
 
 const RING_CIRC = 94.2;   // 2πr, r=15 (matches the mockup ring dasharray)
@@ -1678,7 +1556,7 @@ function renderTicket(order) {
 
   const hs = headerState(order, status, created);
   const listoPending = !!(p && !p.error && p.action === 'listo');
-  const completingNow = (op === 'completed' && completingUntil[id] && Date.now() < completingUntil[id]);
+  const seqStage = completionSeq[id];   // 'completing' (blue) | 'completed' (green) | undefined
 
   // per-item ring progress (prep only): fills by checked/total. NEVER auto-fires ready.
   const checks = enumerateItems(order.pedido);
@@ -1689,8 +1567,11 @@ function renderTicket(order) {
 
   // ── header content ──
   let headInner, headTap = false;
-  if (listoPending || completingNow) {
-    // completion in progress — blue spinner header (card stays in the Open pool until the write commits)
+  if (seqStage === 'completed') {
+    // paso 2: green "Completado" IN the Open pool, briefly, before the local bump to Completados
+    headInner = `<div class="comp-center"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Completado</div>`;
+  } else if (seqStage === 'completing' || listoPending) {
+    // paso 1 (or the in-flight ready write) — blue spinner "Completando" (card stays in the Open pool)
     headInner = `<div class="comp-center"><span class="spin"><svg viewBox="0 0 24 24"><use href="#i-spin"/></svg></span> Completando</div>`;
   } else {
     const showRing = (op === 'prep');
@@ -1723,9 +1604,10 @@ function renderTicket(order) {
     body += `<div class="card-writestrip pending"><span class="spin"><svg viewBox="0 0 24 24"><use href="#i-spin"/></svg></span> Iniciando…</div>`;
   }
 
-  // ── secondary controls (never the primary action) — hidden during a non-error pending write ──
+  // ── secondary controls (never the primary action) — hidden during a non-error pending write
+  //    and during the completion beat (blue "Completando" / green "Completado") ──
   let mini = '';
-  if (!(p && !p.error)) {
+  if (!(p && !p.error) && !seqStage) {
     const parts = [];
     if (op === 'completed') parts.push(`<button class="mini-btn" onclick="recall('${id}')"><svg viewBox="0 0 24 24"><use href="#i-refresh"/></svg> Recuperar</button>`);
     else if (isCancelled) parts.push(`<button class="mini-btn" onclick="archiveCancel('${id}')"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Archivar</button>`);
@@ -1797,22 +1679,38 @@ async function commitStatusWrite(id, action) {
     await XPD.setOrderStatus(id, fbStatus);            // RESOLVES → server accepted the transition
     if (!stateLog[id]) stateLog[id] = {};
     stateLog[id][fbStatus === 'preparing' ? 'En preparación' : 'Listo'] = new Date().toISOString();
-    if (action === 'listo') {
-      completedSet.add(id); completingUntil[id] = Date.now() + COMPLETING_MS;
-      // Settle the transient blue "Completando" → green Completed once the window elapses (no new
-      // order event required). setTimeout is a no-op under the test shim — harmless there.
-      setTimeout(() => renderCurrentTab(), COMPLETING_MS + 60);
-    }
     saveState();
     delete pendingWrites[id];
-    renderCurrentTab();                                // NOW commit the advanced look
+    if (action === 'listo') startCompletion(id);       // blue → green → bump, ALL post-resolve + local
+    else renderCurrentTab();                            // empezar → NOW commit the advanced (prep) look
   } catch (e) {
     pendingWrites[id] = { from, action, error: true, msg: e?.message || 'Error de red' };
     renderCurrentTab();                                // error/retry; canonical look unchanged
   }
 }
+
+/* Completion beat (★ tweak #3) — LOCAL, non-authoritative, ALL post-resolve (no status write here; the
+   ready write already resolved in commitStatusWrite). paso 1: blue "Completando" IN the Open pool → paso
+   2: green "Completado" IN the Open pool → paso 3: local-bump to Completados (completedSet.add). Recall
+   during any beat clears completionSeq (see recall) so the bump is abandoned. */
+function startCompletion(id) {
+  completionSeq[id] = 'completing';                     // paso 1 (blue) — still in the Open pool
+  renderCurrentTab();
+  setTimeout(() => {
+    if (completionSeq[id] !== 'completing') return;      // recalled/aborted mid-beat
+    completionSeq[id] = 'completed';                    // paso 2 (green) — still in the Open pool
+    renderCurrentTab();
+    setTimeout(() => {
+      if (completionSeq[id] !== 'completed') return;     // recalled/aborted mid-beat
+      delete completionSeq[id];
+      completedSet.add(id);                             // paso 3 — local bump to Completados
+      saveState();
+      renderCurrentTab();
+    }, COMPLETED_MS);
+  }, COMPLETING_MS);
+}
 function empezar(id) { if (pendingWrites[id] && !pendingWrites[id].error) return; commitStatusWrite(id, 'empezar'); }
-function listo(id)   { if (pendingWrites[id] && !pendingWrites[id].error) return; commitStatusWrite(id, 'listo'); }
+function listo(id)   { if (pendingWrites[id] && !pendingWrites[id].error) return; if (completionSeq[id]) return; commitStatusWrite(id, 'listo'); }
 function retryWrite(id) { const p = pendingWrites[id]; if (p && p.error) commitStatusWrite(id, p.action); }
 
 /* Header tap (★1) — the card header IS the tap target. Routes to the SAME confirmed-write handlers:
@@ -1822,6 +1720,7 @@ function headerTap(id) {
   const o = lastOrders.find(x => x.id === id) || allOrders.find(x => x.id === id);
   if (!o) return;
   if (pendingWrites[id] && !pendingWrites[id].error) return;   // a write is in flight — ignore taps
+  if (completionSeq[id]) return;                               // completion beat in progress — ignore taps
   const op = opState(o);
   if (op === 'nuevo') empezar(id);
   else if (op === 'prep' || op === 'listo') listo(id);
@@ -1840,7 +1739,7 @@ function toggleItem(id, idx) {
 // Recall — KDS-LOCAL un-bump back to Open. NO /orders.status write (never reverts `ready`).
 function recall(id) {
   completedSet.delete(id);
-  delete completingUntil[id];
+  delete completionSeq[id];   // abort any in-flight completion beat
   if (stateLog[id]) stateLog[id]['Recuperado'] = new Date().toISOString();
   saveState();
   renderCurrentTab();
@@ -1922,8 +1821,6 @@ function render(orders) {
   const completed = orders.filter(o => deriveTab(o, completedSet) === 'completed');
   document.getElementById('count-open').textContent = open.length;
   document.getElementById('count-completed').textContent = completed.length;
-  const hc = document.getElementById('history-count');
-  if (hc) hc.textContent = allOrders.length;
 
   const list = currentTab === 'open' ? open : completed;
   const pageInfo = paginate(list, page, PAGE_SIZE);
@@ -2008,12 +1905,9 @@ function startOrdersSubscription() {
         return tb - ta;
       });
 
-    // Prune expired Completing timers (blue→green already settled). completedSet is durable and
-    // canonical-driven downstream (deriveTab), so no localState reconcile is needed: a delivered order
-    // (estado 'Archivado') always classifies to the Completed tab whether or not it was locally bumped.
-    const now = Date.now();
-    for (const id of Object.keys(completingUntil)) if (completingUntil[id] <= now) delete completingUntil[id];
-
+    // completedSet is durable and canonical-driven downstream (deriveTab), so no localState reconcile is
+    // needed: a delivered order (estado 'Archivado') always classifies to the Completed tab whether or not
+    // it was locally bumped. The completion beat (completionSeq) is self-clearing via its own timers.
     allOrders = orders;
     // Render the FULL live set — render() splits Open vs Completed by deriveTab (completed = locally
     // bumped OR delivered). checkForNewOrders still fires on the Open pool only.
@@ -2055,9 +1949,9 @@ function mapFirebaseOrderToCard(o) {
     // - Cancelled card styling (renderTicket isCancelled check)
     estado = 'Cancelado';
   } else if (o.status === 'delivered') {
-    // Delivered orders auto-classify to the Completed tab (deriveTab treats 'Archivado' as completed)
-    // and also show in "Historial completo" — the cook can verify what was delivered today. Previously
-    // these were null-filtered and vanished once the driver marked them delivered, which felt like data loss.
+    // Delivered orders auto-classify to the Completed tab (deriveTab treats 'Archivado' as completed) — the
+    // cook can verify what was delivered today. Previously these were null-filtered and vanished once the
+    // driver marked them delivered, which felt like data loss.
     estado = 'Archivado';
   } else if (o.status === 'preparing') {
     estado = 'En preparación';
@@ -2119,58 +2013,6 @@ function showLog(event, id) {
 function closeLog(event) {
   if (event && event.target !== document.getElementById('log-overlay')) return;
   document.getElementById('log-overlay').classList.remove('open');
-}
-
-/* ── Full-day history drawer (independent read-only view; Completed tab is the primary flow) ── */
-let historyOpen = false;
-
-function toggleHistory() {
-  historyOpen = !historyOpen;
-  document.getElementById('history-drawer').classList.toggle('open', historyOpen);
-  document.getElementById('btn-history-toggle').classList.toggle('active', historyOpen);
-  if (historyOpen) renderHistory();
-}
-
-function renderHistory() {
-  const body = document.getElementById('history-body');
-  if (!body) return;
-  const sorted = [...allOrders].reverse();
-  body.innerHTML = sorted.length ? sorted.map(o => {
-    // Derive the display status from canonical estado + the completed overlay (no localState anymore).
-    const op = opState(o);
-    const status = op === 'completed' ? 'Completado'
-                 : op === 'cancelado' ? 'Cancelado'
-                 : op === 'listo' ? 'Listo'
-                 : op === 'prep' ? 'En preparación'
-                 : 'Nuevo';
-    const log = stateLog[o.id] || {};
-    const logEntries = Object.entries(log);
-    const statusColor = op === 'nuevo' ? 'var(--nuevo)'
-                      : op === 'prep' ? 'var(--prep)'
-                      : op === 'listo' ? 'var(--listo)'
-                      : 'var(--muted)';
-    const logHtml = logEntries.length
-      ? logEntries.map(([s, t]) => `
-          <div class="log-row">
-            <span class="log-status">${shortStatus(s)}</span>
-            <span class="log-time">${new Date(t).toLocaleTimeString('es-HN', {hour:'2-digit', minute:'2-digit', second:'2-digit'})}</span>
-          </div>`).join('')
-      : '<div style="color:var(--muted);font-size:11px;padding:4px 0">Sin movimientos.</div>';
-    return `
-      <div class="archive-card" style="border-left-color:${statusColor}">
-        <div class="archive-card-id">${o.orden || o.id}</div>
-        <div class="archive-card-name">${escapeHtml(o.cliente)}</div>
-        <div style="font-size:10px;font-family:var(--stamp);letter-spacing:1px;color:${statusColor};margin-bottom:6px;text-transform:uppercase">${status}</div>
-        <div class="archive-card-items">${escapeHtml(o.pedido)}</div>
-        <div class="archive-log">
-          <div class="archive-log-title">Historial</div>
-          ${logHtml}
-        </div>
-        ${op === 'completed'
-          ? `<button class="btn-restore" onclick="recall('${o.id}')">↩ Recuperar</button>`
-          : ''}
-      </div>`;
-  }).join('') : '<div class="archive-empty">Sin pedidos registrados aún.</div>';
 }
 
 /* ── Sound alert ── */
@@ -2358,7 +2200,6 @@ requestWakeLock();
    loses that auto-globalization, so we attach the functions onclick attributes
    reference back to window explicitly. */
 window.toggleSound = toggleSound;
-window.toggleHistory = toggleHistory;
 window.showLog = showLog;
 window.closeLog = closeLog;
 // Phase 2a ticket + view handlers (inline onclick in renderTicket / the top bar / the pager / sidebar)
@@ -2461,14 +2302,6 @@ XPD.onAuth(async (user) => {
 });
 
 </script>
-
-<div class="archive-drawer" id="history-drawer">
-  <div class="archive-header">
-    <span class="archive-title">Historial completo de pedidos</span>
-    <button class="btn-archive-toggle" onclick="toggleHistory()" style="padding:5px 12px">Cerrar ✕</button>
-  </div>
-  <div class="archive-body" id="history-body"></div>
-</div>
 
 <div class="log-overlay" id="log-overlay" onclick="closeLog(event)">
   <div class="log-modal" id="log-modal">
