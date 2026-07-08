@@ -1013,6 +1013,7 @@ function shortStatus(s) {
 
   /* completing (in-flight ready) spinner */
   .comp-center { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; font-size: 15px; font-weight: 800; padding: 6px 0; }
+  .comp-center svg { width: 17px; height: 17px; flex: 0 0 auto; }   /* size the green ✓ ("Completado") to match the blue spinner so both banners are the same height */
   .spin svg { width: 17px; height: 17px; animation: spin .9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
