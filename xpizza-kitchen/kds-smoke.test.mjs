@@ -207,6 +207,35 @@ await tick();
 assert.equal(calls.length, 0, 'per-item check performs NO setOrderStatus (ring progress-only; never auto-fires ready)');
 ok('per-item ring check → ZERO status write (progress-only, explicit completion preserved)');
 
+// ══ 2b hold-to-complete — the hold GATE decides fire (≥700ms) vs cancel (<700ms) ══
+// The Completar CTA is a press-and-hold: pointerdown arms a 700ms timer that fires the SAME
+// commitStatusWrite('listo') EXACTLY once; a release/leave/cancel before 700ms disarms it (token guard) so
+// the timer callback no-ops → ZERO writes. The ring sweep itself is CSS/on-device; here we drive the
+// timer-gated fire-vs-cancel decision via the controllable timer + the exposed hold API.
+const HP = { order_id: 'PZX-HOLD', status: 'preparing', customer_name: 'Hold', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' };
+
+// (a) a hold RELEASED before the threshold writes NOTHING (cancelled hold → 0 setOrderStatus)
+XPD._ordersCb({ 'PZX-HOLD': HP });
+calls.length = 0;
+window.__holdBegin('PZX-HOLD');    // pointerdown → arms the 700ms timer
+window.__holdCancel('PZX-HOLD');   // released before 700ms → disarm
+flushTimers();                      // the armed timer callback runs, sees it's disarmed → no-op
+await tick();
+assert.equal(calls.length, 0, 'a hold released before 700ms writes NOTHING (below-threshold hold → 0 setOrderStatus)');
+ok('2b hold gate: below-threshold hold (released early) → ZERO status write');
+
+// (b) a COMPLETED hold fires EXACTLY one ready write via the SAME commitStatusWrite path
+XPD._ordersCb({ 'PZX-HOLD': HP });   // re-open (still preparing)
+calls.length = 0;
+window.__holdBegin('PZX-HOLD');      // pointerdown → arms the timer
+flushTimers();                        // reach 700ms → the timer fires listo → commitStatusWrite('listo')
+await tick();
+assert.deepEqual(calls, [{ id: 'PZX-HOLD', status: 'ready' }], 'a completed hold fires EXACTLY one setOrderStatus(ready) — the SAME single write site');
+assert.equal(getEl('count-completed').textContent, 0, 'confirmed-write: no bump until the ready write RESOLVES');
+resolveWrite(); await tick(); flushTimers();   // let the confirmed-write + blue→green→bump beat settle
+assert.equal(getEl('count-completed').textContent, 1, 'after resolve + beat, the held completion bumps to Completados (same beat as a tap)');
+ok('2b hold gate: completed hold (≥700ms) → exactly ONE ready write through commitStatusWrite + the beat');
+
 // ══ headerState golden — TIME-BASED aging on EVERY card (aging-warn restored; prep = light blue) ══
 // Drive orders of known age through the real render and read data-s off the rendered card. Precedence:
 // aging-late(15m+) > aging-warn(8–15m) > prep(<8m, light blue) > nuevo(<8m, gray) — so aging escalates

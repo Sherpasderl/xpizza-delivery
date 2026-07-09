@@ -1034,6 +1034,17 @@ function shortStatus(s) {
     font-size: 12.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em;
   }
   .h-cta svg { width: 14px; height: 14px; }
+  /* 2b hold-to-complete fill ring on the Completar CTA — same thin-ring / stroke-dasharray idiom as the
+     prep progress ring. Sweeps accent 0→100% while the header is held; the write only fires at full. */
+  .hold-ring { position: relative; width: 20px; height: 20px; flex: 0 0 auto; }
+  .hold-ring .hr { position: absolute; inset: 0; width: 20px; height: 20px; transform: rotate(-90deg); }
+  .hold-ring .hr-trk { fill: none; stroke: color-mix(in srgb, var(--h-ink) 26%, transparent); stroke-width: 2.4; }
+  .hold-ring .hr-prg { fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 62.83; stroke-dashoffset: 62.83; transition: stroke-dashoffset .7s linear; }
+  .hold-ring .hr-chk { position: absolute; inset: 0; display: grid; place-items: center; }
+  .hold-ring .hr-chk svg { width: 12px; height: 12px; color: var(--h-ink); }
+  .head.holding .h-cta { color: var(--accent); }
+  .head.holding .hr-prg { stroke-dashoffset: 0; }        /* sweep to full over .7s while held */
+  .head.holding .hr-chk svg { color: var(--accent); }
 
   /* progress ring — thin, fills by checked/total; NEVER auto-fires ready. + centered done-badge */
   .ring-slot { position: relative; width: 34px; height: 34px; flex: 0 0 auto; }
@@ -1062,15 +1073,24 @@ function shortStatus(s) {
   .tk.items-tappable .card-item { cursor: pointer; }
   .tk .card-item-qty { font-family: var(--body); font-weight: 800; min-width: 22px; font-variant-numeric: tabular-nums; color: #161616; flex-shrink: 0; }
   .tk .card-item > span:not(.card-item-qty):not(.chk) { flex: 1; }
-  /* per-item circle appears ONLY on tap — grey (doing) → green ✓ (done); one-way, local */
-  .chk { width: 20px; height: 20px; flex: 0 0 auto; margin-left: auto; border-radius: 50%; display: grid; place-items: center; }
-  .chk svg { width: 12px; height: 12px; color: #fff; }
-  .card-item.doing .chk { border: 2px solid #c4c4c4; }
-  .card-item.doing .chk svg { color: transparent; }
+  /* 2b per-item fill ring — NO permanent circle at rest; on tap the ring sweeps (~350ms) → green disc + ✓
+     and the line greys/strikes. Tap again to un-check. Pure animation layer over the same LOCAL toggle. */
+  .chk { width: 22px; height: 22px; flex: 0 0 auto; margin-left: auto; position: relative; }
+  .chk .cr { position: absolute; inset: 0; width: 22px; height: 22px; transform: rotate(-90deg); opacity: 0; }
+  .chk .cr-bg { fill: none; stroke: #E1DED7; stroke-width: 2.5; }
+  .chk .cr-fg { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 59; stroke-dashoffset: 59; transition: stroke-dashoffset .35s linear; }
+  .chk .cdisc { position: absolute; inset: 1px; border-radius: 50%; background: var(--ready); transform: scale(0); transition: transform .18s ease; }
+  .chk .cchk { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; }
+  .chk .cchk svg { width: 12px; height: 12px; color: #fff; }
+  .tk.items-tappable .card-item:hover .cr { opacity: 1; }         /* mouse affordance only — still no permanent circle */
+  .card-item.item-checking .cr { opacity: 1; }                    /* tapping — ring visible + sweeping */
+  .card-item.item-checking .cr-fg { stroke-dashoffset: 0; }
+  .card-item.item-done .cr { opacity: 0; }                        /* done — ring gone, disc + ✓ */
+  .card-item.item-done .cdisc { transform: scale(1); }
+  .card-item.item-done .cchk { opacity: 1; }
   .card-item.item-done { color: #B0B0B0; }
-  .card-item.item-done .card-item-qty { color: #B0B0B0; }
-  .card-item.item-done .chk { background: var(--ready); }
-  .card-item.item-done .chk svg { color: #fff; }
+  .card-item.item-done .card-item-qty { color: #B0B0B0; text-decoration: line-through; }
+  .card-item.item-done > span:not(.card-item-qty):not(.chk) { text-decoration: line-through; }
   .tk .card-item-extra { font-size: 14px; color: var(--mod); font-family: var(--body); font-weight: 700; padding: 2px 0 3px 32px; line-height: 1.4; }
   .tk .card-item-extra-tag { font-size: 11px; color: #7A1F1F; background: rgba(226,59,46,.12); padding: 1px 7px; border-radius: 4px; margin-left: 6px; text-transform: uppercase; letter-spacing: .05em; vertical-align: middle; }
 
@@ -1135,7 +1155,9 @@ function shortStatus(s) {
     .tk, .ibtn.spinning svg, .sidebar { transition: none !important; }
     .tk[data-s="late"], .tk.nudge-overdue, .spin svg, .ring .prg, .tk.just-done .done-badge,
     .ticket-grid.slide-in-left, .ticket-grid.slide-in-right { animation: none !important; }
-    .ring .prg { transition: none !important; }
+    /* 2b: keep the deliberate 700ms hold + the item toggle, but drop the smooth sweeps (instant/stepped
+       fill) — the hold's 700ms timer + the item's 350ms timer still gate the outcome. */
+    .ring .prg, .hold-ring .hr-prg, .chk .cr-fg, .chk .cdisc { transition: none !important; }
     .tk[data-s="late"] { outline: 3px solid var(--h-late); outline-offset: -1px; }
     .tk.nudge-overdue { outline: 3px solid var(--nuevo); outline-offset: -1px; }
   }
@@ -1479,6 +1501,8 @@ const PAGE_SIZE = 12;
 let highlightName = null;     // sidebar make-count click-to-highlight (null = none)
 const COMPLETING_MS = 700;    // blue "Completando" beat
 const COMPLETED_MS  = 700;    // green "Completado" beat (in the Open pool) before the bump
+const HOLD_COMPLETE_MS = 700; // 2b: press-and-hold on Completar before it fires listo (gated trigger)
+const ITEM_CHECK_MS    = 350; // 2b: per-item fill-ring sweep before the green disc pops (local check)
 // Completados tab shows this session's local bumps + server-completed within this recent window (a RENDER
 // filter — not a status change, not a new read — so the tab is a short useful list, not 100+ historical).
 const RECENT_COMPLETED_MS = 18 * 60 * 60 * 1000;   // 18h ≈ one service day
@@ -1766,7 +1790,7 @@ function renderTicket(order) {
   const logBtn = logStr ? `<button class="h-log" onclick="showLog(event,'${id}')" title="Historial" aria-label="Historial"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg></button>` : '';
 
   // ── header content ──
-  let headInner, headTap = false;
+  let headInner, isTapEmpezar = false, isHoldable = false;
   if (seqStage === 'completed') {
     // paso 2: green "Completado" IN the Open pool, briefly, before the local bump to Completados
     headInner = `<div class="comp-center"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Completado</div>`;
@@ -1783,12 +1807,17 @@ function renderTicket(order) {
   } else {
     const showRing = (op === 'prep');
     const l2right = showRing ? ringHtml : `<span class="h-id">${escapeHtml(dispId)}</span>`;
+    const pendBlock = (p && !p.error);
     let cta = '';
-    if (!(p && !p.error)) {          // no CTA while a (non-error) write is pending
+    if (!pendBlock) {                // no CTA while a (non-error) write is pending
       if (op === 'nuevo') cta = `<div class="h-cta"><svg viewBox="0 0 24 24"><use href="#i-play"/></svg> Empezar</div>`;
-      else if (op === 'prep' || op === 'listo') cta = `<div class="h-cta"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg> Completar</div>`;
+      // 2b: Completar carries the hold fill ring (sweeps while the header is held; fires only at full).
+      else if (op === 'prep' || op === 'listo') cta = `<div class="h-cta"><span class="hold-ring"><svg class="hr" viewBox="0 0 24 24"><circle class="hr-trk" cx="12" cy="12" r="10"/><circle class="hr-prg" cx="12" cy="12" r="10"/></svg><span class="hr-chk"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span></span><span class="h-cta-lbl">Completar</span></div>`;
     }
-    headTap = (op === 'nuevo' || op === 'prep' || op === 'listo') && !(p && !p.error);
+    // 2b: NUEVO stays a single tap (headerTap → empezar). PREP / listo become a press-and-hold (wired
+    // post-render by wireHold) — the header gets NO onclick there, so only a completed hold fires.
+    isTapEmpezar = op === 'nuevo' && !pendBlock;
+    isHoldable   = (op === 'prep' || op === 'listo') && !pendBlock;
     headInner = `
         <div class="h-l1"><span class="h-name">${escapeHtml(dispName)}</span><span class="h-type">${typeLabel}</span></div>
         <div class="h-l2">${logBtn}<span class="h-timer" id="elapsed-${id}">${elapsed(created)}</span>${l2right}</div>
@@ -1850,7 +1879,7 @@ function renderTicket(order) {
 
   return `
     <div class="${cls.join(' ')}" data-s="${hs}" id="card-${id}">
-      <div class="head${headTap ? ' tap' : ''}"${headTap ? ` onclick="headerTap('${id}')"` : ''}>${headInner}</div>
+      <div class="head${(isTapEmpezar || isHoldable) ? ' tap' : ''}${isHoldable ? ' holdable' : ''}"${isTapEmpezar ? ` onclick="headerTap('${id}')"` : ''}>${headInner}</div>
       <div class="body">${body}</div>
     </div>`;
 }
@@ -1874,7 +1903,10 @@ function augmentTickets(list) {
         const checked = itemChecks[order.id]?.has(idx);
         const box = document.createElement('span');
         box.className = 'chk';
-        box.innerHTML = '<svg viewBox="0 0 24 24"><use href="#i-check"/></svg>';
+        // 2b: ring + green disc + ✓ (no permanent circle at rest; the tap animates them in). A re-mount of
+        // an already-checked line shows the settled done state with no animation (transitions don't fire on
+        // initial paint) — only a live tap sweeps.
+        box.innerHTML = '<svg class="cr" viewBox="0 0 22 22"><circle class="cr-bg" cx="11" cy="11" r="9.4"/><circle class="cr-fg" cx="11" cy="11" r="9.4"/></svg><span class="cdisc"></span><span class="cchk"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span>';
         el.appendChild(box);
         el.setAttribute('role', 'button');
         el.setAttribute('aria-pressed', checked ? 'true' : 'false');
@@ -1968,13 +2000,123 @@ function headerTap(id) {
   // op === 'completed' | 'cancelado' → header is not a tap target (no-op)
 }
 
-// Per-item ✓ — LOCAL, ephemeral, NON-authoritative, ONE-WAY ("un-checkable"). NO status write; NEVER
-// auto-fires ready. Only enables/highlights the explicit Listo button when all items are checked.
+/* ── Hold-to-complete (2b) ──────────────────────────────────────────────────────
+   The Completar CTA (op prep / listo) is a ~700ms press-and-hold, NOT a tap: the fill ring sweeps while
+   the header is held and ONLY at full does it fire the EXISTING commitStatusWrite('listo') (via listo())
+   EXACTLY once. Release / leave / cancel before 700ms disarms it (token guard) → the pending timer callback
+   no-ops → NO write. This is a gated trigger for the SAME single write site; it adds no new setOrderStatus
+   call. Empezar (nuevo) stays a single tap (headerTap). Wired to the header by wireHold post-render. */
+let holdSeq = 0;
+let activeHold = null;   // { id, token } — the in-flight hold, or null
+
+function holdBegin(id) {
+  const o = lastOrders.find(x => x.id === id) || allOrders.find(x => x.id === id);
+  if (!o) return;
+  if (pendingWrites[id] && !pendingWrites[id].error) return;   // a write is in flight
+  if (completionSeq[id]) return;                               // completion beat in progress
+  const op = opState(o);
+  if (op !== 'prep' && op !== 'listo') return;                 // only the Completar CTA holds
+  holdCancel();                                                // clear any prior hold first
+  const token = ++holdSeq;
+  activeHold = { id, token };
+  setHoldVisual(id, true);
+  setTimeout(() => holdFire(token), HOLD_COMPLETE_MS);         // fires ONLY if still armed at 700ms
+}
+
+function holdFire(token) {
+  if (!activeHold || activeHold.token !== token) return;        // released / superseded → NO write
+  const { id } = activeHold;
+  setHoldVisual(id, false);
+  activeHold = null;
+  listo(id);                                                    // SAME confirmed-write path, exactly once
+}
+
+// Release / leave / cancel — disarm the active hold (the token guard makes the pending timer a no-op).
+function holdCancel() {
+  if (!activeHold) return;
+  setHoldVisual(activeHold.id, false);
+  activeHold = null;
+}
+
+function setHoldVisual(id, on) {
+  const head = document.getElementById('card-' + id)?.querySelector?.('.head');
+  if (!head) return;
+  head.classList.toggle('holding', on);
+  const lbl = head.querySelector?.('.h-cta-lbl');
+  if (lbl) lbl.textContent = on ? 'Mantené…' : 'Completar';
+}
+
+/* Wire the press-and-hold gesture onto each holdable (prep / listo) card header, post-render. Pointer
+   events cover touch + mouse; pointerup / leave / cancel disarm. stopPropagation so the hold doesn't bubble.
+   The header carries NO onclick for prep/listo (a plain tap does nothing) — only a completed hold fires. */
+function wireHold(list) {
+  for (const order of list) {
+    const op = opState(order);
+    if (op !== 'prep' && op !== 'listo') continue;
+    if (pendingWrites[order.id] && !pendingWrites[order.id].error) continue;
+    if (completionSeq[order.id]) continue;
+    const card = document.getElementById('card-' + order.id);
+    const head = card && card.querySelector ? card.querySelector('.head') : null;
+    if (!head || !head.addEventListener) continue;
+    const id = order.id;
+    head.addEventListener('pointerdown', (e) => {
+      if (e.button != null && e.button !== 0) return;               // primary button / touch only
+      if (e.target && e.target.closest && e.target.closest('.h-log')) return;   // let the history button work
+      e.stopPropagation();
+      holdBegin(id);
+    });
+    head.addEventListener('pointerup',     (e) => { e.stopPropagation(); holdCancel(); });
+    head.addEventListener('pointerleave',  () => holdCancel());
+    head.addEventListener('pointercancel', () => holdCancel());
+  }
+}
+
+// Per-item ✓ — LOCAL, ephemeral, NON-authoritative. NO status write; NEVER auto-fires ready (Listo /
+// Completar stays EXPLICIT). Two-way toggle (tap to check, tap again to un-check); the fill-ring / green
+// disc is a pure animation layer over this SAME local toggle. Paints in place (no full re-render) so the
+// tap's animation survives on its own DOM node; the header progress ring is updated in place too.
 function toggleItem(id, idx) {
   if (!itemChecks[id]) itemChecks[id] = new Set();
-  if (itemChecks[id].has(idx)) return;                 // one-way: cannot un-check
-  itemChecks[id].add(idx);
-  renderCurrentTab();
+  const set = itemChecks[id];
+  const checked = !set.has(idx);
+  if (checked) set.add(idx); else set.delete(idx);
+  paintItemCheck(id, idx, checked);
+}
+
+// Animate the tapped line (ring sweep → green disc + ✓, or clear on un-check) and update the header
+// progress ring — all in place, LOCAL, zero writes. DOM-guarded (no-ops under the test shim).
+function paintItemCheck(id, idx, checked) {
+  const card = document.getElementById('card-' + id);
+  if (!card) return;
+  updateHeaderRing(card, id);
+  const items = card.querySelectorAll ? card.querySelectorAll('.card-items .card-item') : [];
+  const el = items && items[idx];
+  if (!el) return;
+  if (el.setAttribute) el.setAttribute('aria-pressed', checked ? 'true' : 'false');
+  const seq = (el._ckSeq = (el._ckSeq || 0) + 1);        // invalidate any in-flight sweep timer (re-tap race)
+  if (!checked) { el.classList.remove('item-checking', 'item-done'); return; }
+  if (prefersReducedMotion()) { el.classList.remove('item-checking'); el.classList.add('item-done'); return; }
+  el.classList.remove('item-done');
+  el.classList.add('item-checking');                     // ring appears + sweeps (CSS .35s)
+  setTimeout(() => {
+    if (el._ckSeq !== seq) return;                        // superseded by a later tap
+    el.classList.remove('item-checking');
+    el.classList.add('item-done');                        // green disc pops + line greys/strikes
+  }, ITEM_CHECK_MS);
+}
+
+// Recompute checked/total and set the header progress ring's dashoffset in place (it already transitions).
+function updateHeaderRing(card, id) {
+  const prg = card.querySelector ? card.querySelector('.ring .prg') : null;
+  if (!prg || !prg.style) return;
+  const order = lastOrders.find(o => o.id === id) || allOrders.find(o => o.id === id);
+  if (!order) return;
+  const checks = enumerateItems(order.pedido);
+  const total = checks.length;
+  const done = checks.filter(it => itemChecks[id]?.has(it.idx)).length;
+  const offset = total > 0 ? RING_CIRC * (1 - done / total) : RING_CIRC;
+  if (prg.style.setProperty) prg.style.setProperty('stroke-dashoffset', String(offset));
+  else prg.style.strokeDashoffset = String(offset);
 }
 
 // Recall — KDS-LOCAL un-bump back to Open. NO /orders.status write (never reverts `ready`).
@@ -2222,8 +2364,10 @@ function render(orders) {
   // Rail mode: mount the FULL ordered pool into the horizontal grid (native scroll/swipe, no pager slice).
   // Pager modes (Flex Rail / Tile Fill): the paginated slice, UNCHANGED. orderForTab ordering preserved in both.
   const mounted = rail ? list : pageInfo.slice;
+  holdCancel();   // 2b: a full re-render replaces the header nodes → disarm any in-flight hold (no write)
   grid.innerHTML = mounted.length ? mounted.map(renderTicket).join('') : emptyMsg;
   augmentTickets(mounted);
+  wireHold(mounted);   // 2b: attach press-and-hold to prep/listo headers (the Completar gate)
   paintOffPageLate();
   measureTileFill();   // FIX 1: post-render measure → fade + chevron ONLY on cards that actually overflow
 
@@ -2608,6 +2752,10 @@ window.dismissWrite = dismissWrite;   // #2 dismiss the ownership-skip notice
 window.recall = recall;
 window.prioritize = prioritize;
 window.toggleItem = toggleItem;
+// 2b hold-to-complete — the gesture is wired via pointer events (wireHold), not inline onclick; these are
+// test hooks so the smoke test can drive the timer-gated fire-vs-cancel decision under the DOM shim.
+window.__holdBegin = holdBegin;
+window.__holdCancel = holdCancel;
 window.archiveCancel = archiveCancel;
 window.setTab = setTab;
 window.gotoPage = gotoPage;
