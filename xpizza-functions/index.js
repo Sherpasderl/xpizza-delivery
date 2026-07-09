@@ -220,6 +220,7 @@ const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 // factura pricedLineItems call sites byte-identical until A3 makes them restaurant-aware.
 // ---------------------------------------------------------------------------
 const { MENU_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal } = require('./menu-pricing');
+const { checkItemAvailability } = require('./availability-gate');   // KDS 2b — server intake "86" fail-safe (fail-open)
 const MENU_PRICES = MENU_BY_RESTAURANT.x_pizza; // x_pizza table — used by pricedLineItems (factura)
 const { resolveRestaurantId, sameRestaurant } = require('./restaurant-id');
 const { resolveReturnBase } = require('./pixelpay-return-url');
@@ -479,6 +480,17 @@ createOrderApp.all('*', async (req, res) => {
   }
   const hubSnap = hubSnapshot(restIdentity);
 
+  // ── Item availability gate (KDS 2b · KDS_2B_PLAN.md §6/§8). Runs AFTER the idempotency dedupe (an
+  // accepted retry already returned above → no re-eval) and validate, but BEFORE the rate-limit
+  // increment and any order/scheduled write — so a blocked (86'd) cash attempt writes NOTHING (no
+  // orders/{id}, no rate_limits). checkItemAvailability is fail-open internally (a read error/absent
+  // node ⇒ blocked:[] ⇒ the sale proceeds), so a Firebase hiccup can never wrongly reject.
+  const availGate = await checkItemAvailability(db, body.items, restaurantId);
+  if (availGate.blocked.length > 0) {
+    console.warn(`createOrder: rejecting ${orderId} — unavailable item(s): ${availGate.blocked.join(', ')}`);
+    return res.status(400).json({ error: 'item_unavailable', blocked: availGate.blocked });
+  }
+
   // Rate limiting. Only genuinely-NEW orders reach here — idempotent retries of
   // an existing order_id already returned above, so legit retries don't burn
   // budget. Reject before the expensive multi-path write + WhatsApp send.
@@ -668,7 +680,7 @@ exports.createOrder = onRequest(
 // IP+phone rate-limit buckets. The pure helpers (attempt acquisition, fingerprint,
 // money conversion) live in ./pixelpay-charge so they're unit-testable in isolation.
 const { orderFingerprint, centsToLempiras } = require('./pixelpay-charge');
-const { acquireHostedAttempt } = require('./pixelpay-hosted-charge');
+const { acquireHostedAttempt, classifyHostedAttempt } = require('./pixelpay-hosted-charge');
 const { createHostedCharge, formatPixelPayExpiry } = require('./pixelpay-hosted');
 
 const chargeOnlineApp = express();
@@ -730,6 +742,41 @@ chargeOnlineApp.all('*', async (req, res) => {
 
   const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
   const db = getDatabase();
+
+  // ── Item availability gate (KDS 2b · KDS_2B_PLAN.md §6/§7/§8, R4). THE subtle placement:
+  //   1. A READ-ONLY classify (classifyHostedAttempt) runs FIRST. Terminal outcomes — already_paid,
+  //      closed, conflict, in_progress, or reuse (a live checkout URL already issued) — BYPASS the gate
+  //      entirely: we never re-reject a paid order and never regress the "Already paid" success path.
+  //   2. ONLY a fresh / expired-rotate / recover / install attempt (one that WOULD mint a new payable
+  //      checkout URL) is gated. The gate runs BEFORE any orders/{id}, payment_attempts/{id}, OR
+  //      rate_limits write (it sits before the rate-limit increment below and before acquireHostedAttempt),
+  //      so a blocked (86'd) fresh online attempt writes NOTHING and cannot burn the phone/IP quota.
+  //   3. FAIL-OPEN: if the classify read throws we do NOT gate (the CAS in acquireHostedAttempt stays
+  //      authoritative); checkItemAvailability is itself fail-open. A DB hiccup can never block a sale.
+  //   4. A URL already issued while the item was available STAYS payable (plan §7 accepted post-issue
+  //      race); materialize/scheduled-release do NOT re-check.
+  // The fingerprint/slot here are recomputed read-only (pure, from the same inputs as the authoritative
+  // computation below) purely to classify already_paid/conflict — the CAS remains the source of truth.
+  {
+    const schedForRawG = SCHED.normalizeScheduledFor(body.scheduled_for);
+    const isScheduledG = Number.isFinite(schedForRawG);
+    const { total_cents: totalCentsG } = orderBreakdownCents(total, restaurantId);
+    const fingerprintG = orderFingerprint(orderId, totalCentsG, fields.items_text, isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '');
+    let clsG;
+    try {
+      clsG = await classifyHostedAttempt(db, orderId, fingerprintG, Date.now());
+    } catch (e) {
+      console.error(`chargeOnlineOrder: availability classify failed for ${orderId} (failing open, not gating)`, e && e.message);
+      clsG = { willIssueFreshUrl: false };   // fail-open: skip the gate; acquireHostedAttempt stays authoritative
+    }
+    if (clsG.willIssueFreshUrl) {
+      const availGate = await checkItemAvailability(db, body.items, restaurantId);
+      if (availGate.blocked.length > 0) {
+        console.warn(`chargeOnlineOrder: rejecting ${orderId} — unavailable item(s): ${availGate.blocked.join(', ')}`);
+        return res.status(400).json({ error: 'item_unavailable', blocked: availGate.blocked });
+      }
+    }
+  }
 
   // Rate limit (same buckets as createOrder). A genuine retry of an in-flight
   // submit re-enters acquireHostedAttempt and reuses the live checkout, so this throttles
