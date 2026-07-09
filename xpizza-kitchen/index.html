@@ -954,6 +954,35 @@ function shortStatus(s) {
   .ticket-grid::-webkit-scrollbar-thumb { background: var(--stroke2); border-radius: 2px; }
   .ticket-grid .empty { grid-column: 1 / -1; }
 
+  /* ══════════ Phase B — horizontal 1/2/3 Rails (layout-rail) ══════════
+     Flips the pool grid HORIZONTAL: column-major flow so FIFO reads oldest top-left → down the
+     rail → next column. Each rail = viewport ÷ N tall (--kds-rails 1/2/3). Cards fill the rail cell
+     with the Tile-Fill pinned-footer pattern and SCROLL-INSIDE (.card-items). NO pagination — native
+     horizontal scroll/swipe replaces the pager. Must OVERRIDE the vertical mode's grid-template-columns
+     + grid-auto-rows:max-content (higher specificity .ticket-grid.layout-rail beats base .ticket-grid). */
+  .ticket-grid.layout-rail {
+    grid-auto-flow: column;
+    grid-template-columns: none;                                  /* kill the vertical --kds-cols columns */
+    grid-template-rows: repeat(var(--kds-rails, 2), 1fr);         /* N equal-height rails */
+    grid-auto-rows: auto;                                         /* kill the vertical max-content row cap */
+    grid-auto-columns: 260px;
+    overflow-x: auto; overflow-y: hidden;
+    align-content: stretch;
+  }
+  .ticket-grid.layout-rail::-webkit-scrollbar { height: 6px; }
+  .ticket-grid.layout-rail::-webkit-scrollbar-thumb { background: #3a3a3e; border-radius: 3px; }
+  /* card fills its rail cell; header/footer pinned (flex:0), ONLY .card-items scrolls (the scroll-inside) */
+  .ticket-grid.layout-rail .tk { height: 100%; display: flex; flex-direction: column; }
+  .ticket-grid.layout-rail .head { flex: 0 0 auto; }
+  .ticket-grid.layout-rail .body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .ticket-grid.layout-rail .body > * { flex: 0 0 auto; }         /* pin every body child (Completar/Recuperar/Priorizar) … */
+  .ticket-grid.layout-rail .card-items { flex: 1 1 auto; min-height: 0; overflow-y: auto; }   /* … except the items list → scroll-inside */
+  .ticket-grid.layout-rail .card-items::-webkit-scrollbar { width: 4px; }
+  .ticket-grid.layout-rail .card-items::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
+
+  /* rail mode hides the vertical pager (native horizontal scroll replaces it) */
+  .pager.hidden { display: none; }
+
   /* Tile-Fill expander — a SUBTLE muted chevron (never the full-width pill), a distinct control (its own
      stopPropagation handler — never the header CTA / item-✓). Collapsed "+N ⌄" (count best-effort from the
      measure) / expanded "⌃". Shown only when the items overflow (measure toggles .hidden). */
@@ -1224,14 +1253,14 @@ function shortStatus(s) {
           <button class="tile" data-layout="fill" onclick="setLayoutMode('fill')">
             <div class="thumb fill"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="tl">Tile Fill</div>
           </button>
-          <button class="tile disabled" disabled title="Próximamente (Fase B)">
-            <div class="thumb r1"><i></i><i></i><i></i><i></i></div><div class="tl">1 Rail · próx.</div>
+          <button class="tile" data-layout="r1" onclick="setLayoutMode('r1')">
+            <div class="thumb r1"><i></i><i></i><i></i><i></i></div><div class="tl">1 Rail</div>
           </button>
-          <button class="tile disabled" disabled title="Próximamente (Fase B)">
-            <div class="thumb r2"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="tl">2 Rails · próx.</div>
+          <button class="tile" data-layout="r2" onclick="setLayoutMode('r2')">
+            <div class="thumb r2"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="tl">2 Rails</div>
           </button>
-          <button class="tile disabled" disabled title="Próximamente (Fase B)">
-            <div class="thumb r3"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="tl">3 Rails · próx.</div>
+          <button class="tile" data-layout="r3" onclick="setLayoutMode('r3')">
+            <div class="thumb r3"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="tl">3 Rails</div>
           </button>
         </div>
         <div class="settings-banner"><svg viewBox="0 0 24 24"><use href="#i-info"/></svg> Recomendado para ver muchos tickets a la vez</div>
@@ -1460,7 +1489,11 @@ const RECENT_COMPLETED_MS = 18 * 60 * 60 * 1000;   // 18h ≈ one service day
 // tiles, items truncate with a "Ver todo" expander). (1/2/3 Rails are Phase B — not wired.)
 let layoutCols = parseInt(localStorage.getItem('xpizza_kds_cols') || '4', 10);
 if (![3, 4, 5].includes(layoutCols)) layoutCols = 4;
-let layoutMode = localStorage.getItem('xpizza_kds_layout') === 'fill' ? 'fill' : 'flex';   // default Flex Rail (no clip)
+// Phase B: horizontal rail modes (1/2/3 Rails). Presentational only — per-device localStorage, no writes.
+const RAIL_MODES = ['r1', 'r2', 'r3'];
+const isRailMode = () => RAIL_MODES.includes(layoutMode);
+const _storedLayout = localStorage.getItem('xpizza_kds_layout');
+let layoutMode = (_storedLayout === 'fill' || RAIL_MODES.includes(_storedLayout)) ? _storedLayout : 'flex';   // default Flex Rail (no clip)
 const expandedTiles = new Set();   // Tile-Fill ids the cook expanded to see all items (ephemeral, local)
 
 // Escape HTML-significant chars before interpolating untrusted order data
@@ -2054,11 +2087,16 @@ function toggleSidebar() {
    pool grid + per-card truncation. applyLayout also marks the active tiles/radios in the Ajustes screen. ── */
 function applyLayout() {
   const g = document.getElementById('ticket-grid');
+  const rail = isRailMode();
   if (g) {
     g.style.setProperty('--kds-cols', layoutCols);
     g.classList.toggle('layout-fill', layoutMode === 'fill');
     g.classList.toggle('layout-flex', layoutMode === 'flex');
+    g.classList.toggle('layout-rail', rail);                     // Phase B: horizontal rails
+    g.style.setProperty('--kds-rails', rail ? layoutMode.slice(1) : '2');   // 'r2' → 2
   }
+  // Rail mode replaces the pager with native horizontal scroll → hide the whole pager (arrows + late pill).
+  document.querySelector('.pager')?.classList.toggle('hidden', rail);
   document.querySelectorAll('.tile[data-layout]').forEach(t => t.classList.toggle('on', t.dataset.layout === layoutMode));
   document.querySelectorAll('.cols .opt[data-cols]').forEach(o => o.querySelector('.radio')?.classList.toggle('on', +o.dataset.cols === layoutCols));
 }
@@ -2067,9 +2105,9 @@ function setLayoutCols(n) {
   layoutCols = n; localStorage.setItem('xpizza_kds_cols', String(n)); applyLayout();
 }
 function setLayoutMode(m) {
-  layoutMode = m === 'fill' ? 'fill' : 'flex';
+  layoutMode = (m === 'fill' || RAIL_MODES.includes(m)) ? m : 'flex';
   localStorage.setItem('xpizza_kds_layout', layoutMode);
-  applyLayout(); renderCurrentTab();   // re-render: truncation / all-items depends on the mode
+  applyLayout(); renderCurrentTab();   // re-render: truncation / all-items / rail full-pool depends on the mode
 }
 
 // Tile-Fill "Ver todo · +N" / "Ver menos" expander — a DISTINCT local control: it toggles which items are
@@ -2104,11 +2142,12 @@ function initSwipe() {
   if (!el) return;
   let x0 = 0, y0 = 0, tracking = false;
   el.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1) { tracking = false; return; }
+    // Rail mode: don't hijack — native horizontal scroll owns the swipe. Pager modes keep the drag→gotoPage.
+    if (isRailMode() || e.touches.length !== 1) { tracking = false; return; }
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; tracking = true;
   }, { passive: true });
   el.addEventListener('touchend', (e) => {
-    if (!tracking) return;
+    if (!tracking || isRailMode()) return;
     tracking = false;
     const t = e.changedTouches && e.changedTouches[0];
     if (!t) return;
@@ -2139,7 +2178,8 @@ function paintOffPageLate() {
   const lateEl = document.getElementById('pager-late');
   if (!lateEl) return;
   let n = 0;
-  if (currentTab === 'open') {
+  // Guard on non-rail: rail mode hides the pager (no page to be "off"), so skip the compute/paint entirely.
+  if (currentTab === 'open' && !isRailMode()) {
     const pool = openPool();
     const overdue = window.__readyNudge?.overdueIds?.() || new Set();
     const flaggedIds = pool.filter(o => isLateBand(bandClass(o, effectiveStatus(o), o.hora)) || overdue.has(o.id)).map(o => o.id);
@@ -2163,8 +2203,9 @@ function render(orders) {
   document.getElementById('count-completed').textContent = completed.length;
 
   const list = currentTab === 'open' ? open : completed;
+  const rail = isRailMode();                            // Phase B: rails render the FULL pool, no pagination
   const pageInfo = paginate(list, page, PAGE_SIZE);
-  page = pageInfo.page;                                 // clamp
+  page = pageInfo.page;                                 // clamp (kept for the pager modes; harmless in rail)
 
   const lbl = document.getElementById('pager-label');
   if (lbl) lbl.textContent = `${pageInfo.page + 1}`;
@@ -2178,8 +2219,11 @@ function render(orders) {
   const emptyMsg = currentTab === 'open'
     ? '<div class="empty"><svg class="empty-icon" viewBox="0 0 24 24"><use href="#i-check"/></svg>Sin pedidos abiertos</div>'
     : '<div class="empty"><svg class="empty-icon" viewBox="0 0 24 24"><use href="#i-grid"/></svg>Sin pedidos completados</div>';
-  grid.innerHTML = pageInfo.slice.length ? pageInfo.slice.map(renderTicket).join('') : emptyMsg;
-  augmentTickets(pageInfo.slice);
+  // Rail mode: mount the FULL ordered pool into the horizontal grid (native scroll/swipe, no pager slice).
+  // Pager modes (Flex Rail / Tile Fill): the paginated slice, UNCHANGED. orderForTab ordering preserved in both.
+  const mounted = rail ? list : pageInfo.slice;
+  grid.innerHTML = mounted.length ? mounted.map(renderTicket).join('') : emptyMsg;
+  augmentTickets(mounted);
   paintOffPageLate();
   measureTileFill();   // FIX 1: post-render measure → fade + chevron ONLY on cards that actually overflow
 

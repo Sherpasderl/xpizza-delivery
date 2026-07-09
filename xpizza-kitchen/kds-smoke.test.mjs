@@ -311,4 +311,36 @@ assert.ok(!compHtml2.includes(`archiveCancel('PZX-CX')`), 'Completados: the canc
 assert.ok(compHtml2.includes(`recall('PZX-CX')`), 'Completados: it shows Recuperar Ticket (recall) instead');
 ok('FIX 2 Archivar gated to Abiertos; Completados cancelled card → Recuperar only (no Archivar, nothing clips)');
 
+// ══ Phase B — horizontal 1/2/3 Rails: mode wiring (accept + persist r1/r2/r3) + render-skips-pagination ══
+// The rail LAYOUT itself (grid-auto-flow/column, viewport÷N heights, scroll-inside) is BEHAVIORAL CSS —
+// scrollHeight/clientHeight are 0 under this DOM shim, so it's verified on-device/headless. Here we assert
+// the two invariants that DON'T need real layout: the mode string round-trips, and rail mode mounts the
+// FULL ordered pool (no PAGE_SIZE=12 slice) while the pager modes still paginate.
+const railStore = globalThis.localStorage;
+window.setLayoutMode('r2'); await tick();
+assert.equal(railStore.getItem('xpizza_kds_layout'), 'r2', 'setLayoutMode("r2") persists to localStorage xpizza_kds_layout');
+window.setLayoutMode('r1'); await tick();
+assert.equal(railStore.getItem('xpizza_kds_layout'), 'r1', 'r1 accepted + persisted');
+window.setLayoutMode('r3'); await tick();
+assert.equal(railStore.getItem('xpizza_kds_layout'), 'r3', 'r3 accepted + persisted');
+window.setLayoutMode('bogus'); await tick();
+assert.equal(railStore.getItem('xpizza_kds_layout'), 'flex', 'an unknown mode falls back to flex (accept-list guard)');
+ok('Phase B mode wiring: setLayoutMode accepts + persists r1/r2/r3; rejects unknown → flex');
+
+// Feed a fresh pool of 15 OPEN tickets (> PAGE_SIZE=12) and count mounted cards per mode.
+const bigPool = {};
+for (let i = 1; i <= 15; i++) bigPool['PZR-' + i] = { order_id: 'PZR-' + i, status: 'new', customer_name: 'R' + i, items_text: '1x Margarita', created_at: Date.now() - i * 1000, order_type: 'pickup' };
+XPD._ordersCb(bigPool);
+window.setTab('open'); await tick();
+const cardCount = () => (getEl('ticket-grid').innerHTML.match(/id="card-PZR-/g) || []).length;
+window.setLayoutMode('flex'); await tick();
+assert.equal(cardCount(), 12, 'Flex Rail (pager mode) paginates to PAGE_SIZE=12 — UNCHANGED');
+window.setLayoutMode('r2'); await tick();
+assert.equal(cardCount(), 15, 'rail mode mounts the FULL 15-ticket pool (no PAGE_SIZE slice)');
+window.setLayoutMode('r1'); await tick();
+assert.equal(cardCount(), 15, 'r1 also mounts the full pool');
+assert.equal(calls.length, 0, 'switching layout modes performs ZERO setOrderStatus (presentational only)');
+window.setLayoutMode('flex'); await tick();   // restore
+ok('Phase B render path: rail mounts the FULL pool (no pagination); pager modes still slice to PAGE_SIZE');
+
 console.log(`kds-smoke: OK (${n} cases)`);
