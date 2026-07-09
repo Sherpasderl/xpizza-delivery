@@ -1,0 +1,53 @@
+# Plan: KDS Phase 2b — Item Availability ("86")
+_APPROVED by Codex — code-grounded (thread 019f44c1; 5 rounds: REVISE→REVISE→APPROVED→red-team REVISE→APPROVED; 15 findings, all incorporated)_
+
+## Goal
+Let kitchen staff mark a menu item **unavailable ("86'd")** from the KDS, so (a) the item is visibly disabled on the customer order forms, and (b) the server **rejects new orders** for that item — WITHOUT regressing a single thing already built. Pre-launch (no real customers yet), but the hard constraint is **zero regression** to the byte-identical order-form payloads, the server pricing, the intake paths, the KDS load-bearing contract, or the layout system. Availability is a per-restaurant, staff-controlled flag; the whole feature **fails open** (any doubt ⇒ item available) so a glitch can never wrongly block a sale.
+
+## Approach
+
+### Data model
+1. Availability at **`/restaurants/{rid}/item_availability/{key}`** = **`{ available: boolean, updated_at }`** (public-readable). Absent ⇒ available (fail-open). **[R2 #4] Staff audit (`updated_by`) writes to a PRIVATE path** `/restaurants/{rid}/availability_audit/{key}` (staff-read only) so the public node never leaks staff identity. `rid` ∈ {`x_pizza`, `la_musa`}.
+2. **`{key}` mirrors the pricing key** (menu-pricing.js contract, unchanged): x_pizza → item NAME, la_musa → item id/slug. No new payload id. **[R1 #3 / R2 #3] Key encoding = one shared reversible helper `availKey(raw) = encodeURIComponent(raw).replace(/\./g,'%2E')`** (reverse = `decodeURIComponent`). Escapes EVERY RTDB-forbidden char **incl. `.` and a literal `%`** (encodeURIComponent escapes `% # $ [ ] /`; the replace adds `.`) → no two distinct names collide (`A/B`→`A%2FB`, literal `A%2FB`→`A%252FB`). The **identical** helper on all three surfaces (KDS write / form read / server read); fixtures assert equality + a collision/round-trip suite.
+
+### Menu manifest
+3. Canonical per-restaurant manifest published to **`/menus/{rid}`** = `[{ key, label, category }]`, **derived by an extract script from the order-form menu arrays**. **[R1 #2] Anti-drift is enforced, not asserted:** a golden test (CI-runnable) checks the manifest keys are **exactly the `MENU_BY_RESTAURANT[rid]` keys** (the authoritative *gate* keys the server checks) — a toggle on a key the server never checks, or a missing server-valid item, **fails the build**. Publish is an explicit owner-run `publish-menus` script that regenerates from the forms and refuses to publish if the golden fails.
+
+### KDS — Disponibilidad panel (client, `xpizza-kitchen/index.html`)
+4. The sidebar "Disponibilidad" placeholder becomes a real panel: reads `/menus/{rid}` + `/restaurants/{rid}/item_availability`, renders a labeled toggle per item by category; tapping writes `{available}` to that item's node (host-derived `rid`). **[R1 #5] Explicit KDS-contract carve-out:** the load-bearing contract becomes "KDS order-lifecycle writes ONLY `/orders/{id}/status`, **and** the Disponibilidad panel writes ONLY `/restaurants/{rid}/item_availability/{key}` — nothing else." The write-spy / contract goldens are updated to allow *exactly* these two paths and fail on any third. `renderItems`/order-filter/completion/recall/tabs are a **separate DOM subtree, untouched**. Host-agnostic.
+
+### Order forms — sold-out treatment (client, both forms)
+5. Each form **additively** subscribes to `/restaurants/{rid}/item_availability`; for any item with explicit `available === false`: disable add-to-cart **and [R1 #7] freeze quantity increments** for that key, show "Agotado". **Strictly additive + fail-open:** absent/unreadable ⇒ every item available (today's exact behavior); embedded menus, cart, payload construction, submit path **unchanged** → x_pizza + La-Musa payloads stay byte-identical. An item already in the cart when 86'd is preserved (not force-removed); the server gate (#6) rejects at submit. **[R2 #5] The server returns a STRUCTURED error `{ error:'item_unavailable', blocked:[labels] }`** and BOTH forms (cash + online paths) handle it explicitly — naming the blocked item(s) + an 'Agotado, quitá para continuar' prompt — NOT the generic 'Revisá los datos' 4xx copy (which would cause retry loops).
+
+### Server — intake fail-safe (functions, `xpizza-functions/`)
+6. Shared async helper `checkItemAvailability(items, restaurantId) → { blocked: [labels] }` reads each line's node (`availKey` per #2), returns lines with explicit `available === false`. **Gate ordering — the subtle part (R4):**
+   - **Online (`chargeOnlineOrder`):** a **read-only classifier runs FIRST** — the existing `acquireHostedAttempt` terminal-state logic (`already_paid` / `closed` / live-`reuse` / fingerprint-`conflict`). **[R4 #1] Terminal outcomes (`already_paid`, `closed`) BYPASS availability** — never re-reject a paid order, never regress the form's "Already paid" success path. **Only the fresh-create / expired-rotate / payable-URL-issuing branches** run the availability gate — and it runs **before any `orders/{id}` / `payment_attempts/{id}` / `rate_limits` write [R4 #2]** (i.e. before `checkRateLimit`'s increment, so a blocked 86 attempt can't burn the phone/IP quota and 429 a legit retry). A blocked fresh attempt writes **NOTHING**.
+   - **Cash (`createOrder`):** availability runs **after idempotency dedupe** (a retry of an accepted order returns it, no re-eval) but **before the rate-limit increment and the cash-commit**.
+7. **[R1 #1 / R2 #2] Honest guarantee: no FRESH payable URL is created for a blocked cart. A URL already issued while the item was available STAYS payable until its PixelPay TTL — by design (we can't un-pay it).** If the customer pays such a URL after the 86, `materializeOnConfirm` proceeds — kitchen handles the rare paid-then-86 order. `materializeOnConfirm` + scheduled-release do **NOT** re-check. Rationale: re-rejecting/voiding a paid order is worse than a rare manual adjust; late-payment auto-void is out of scope pre-launch (bounded, recoverable).
+8. **Fail-open everywhere:** reject a line ONLY on a successful read returning explicit `available === false`. Missing node, read error, unknown key, malformed ⇒ available. Reads wrapped so a Firebase hiccup logs + allows, never 500s intake.
+9. `validateOrderPayload` + `computeServerTotal` stay **pure + byte-identical**; availability is a separate awaited step in each caller, not folded into pricing.
+
+### Rules + tests
+10. **[R1 #4] RTDB rules bind availability writes to per-restaurant kitchen membership** — `/restaurants/{rid}/item_availability/{key}` writable only if the uid is in `/restaurants/{rid}/kitchen_staff/{uid}` (or an equivalent per-restaurant custom claim), NOT flat `/kitchen/{uid}`; cross-restaurant write denied. Public/order-form **read** allowed on the public `{available, updated_at}` node (fail-open needs it); **the `availability_audit` path is staff-read-only [R2 #4]**. `/menus/{rid}` client-read-only (written by publish script/admin). **[R4 #3] REQUIRED sequenced migration (not an open dependency):** auth is flat `/kitchen/{uid}` today, so 2b MUST (a) create `/restaurants/{rid}/kitchen_staff/{uid}` seeded from the current KDS users **for BOTH restaurants**, (b) update the KDS permission/login/diagnostic path to use it, and (c) tighten the availability rule **only after** the seed lands — else real staff are denied the toggle. Sequence: seed → verify staff can write → tighten rule.
+11. Emulator tests: rules (own-rid write ok, cross denied, read ok, non-staff denied); `checkItemAvailability` fail-open matrix (absent⇒allow, false⇒block, read-error⇒allow, unknown-key⇒allow); intake rejects a 86'd line **before any state write**/charge/commit on every online branch + cash — **incl. "86'd fresh online attempt writes NOTHING" [R2 #1] — a STRICT [R3 nit] assertion of ZERO writes to `orders/{id}`, `payment_attempts/{id}` AND `rate_limits` [R4 #2], not merely "no order created"**; a terminal already_paid/closed order whose item is later 86'd is NOT re-rejected (bypasses availability) [R4 #1]; per-restaurant `kitchen_staff` seeded staff CAN write, non-staff cannot [R4 #3]; the structured `{error:'item_unavailable',blocked}` shape + explicit handling in both forms [R2 #5]; the public availability node exposes NO `updated_by` [R2 #4]; materialize/scheduled-release do NOT re-check; `availKey()` fixture-equality + collision/round-trip across surfaces; **manifest-keys == MENU_BY_RESTAURANT keys** golden. Regression goldens: x_pizza payload byte-identical, `computeServerTotal`/`validateOrderPayload` byte-identical, KDS contract goldens green under the carve-out.
+
+## Key decisions & tradeoffs
+- **Key by name(x_pizza)/slug(la_musa) via reversible `availKey()`, not a new payload id** — mirrors pricing, payloads byte-identical, no encoding collisions. Tradeoff: x_pizza item *rename* orphans the flag (but rename already breaks pricing → name is the established stable key).
+- **Intake-only gate at the online commitment point (URL creation); post-issue race accepted.** Never charge/void for a sold-out item at issue time; a paid-then-86 order materializes (kitchen handles). Deliberate — never reject a paid order.
+- **Manifest keys golden-locked to server pricing keys.** Drift fails the build.
+- **Order forms changed additively + fail-open.** Byte-identical payload/cart/submit; the only additions are a read + a disable/freeze overlay + a graceful rejection message.
+- **Fail-open, not fail-closed.** A flaky read never blocks a sale; a brief order-a-86'd-item window is acceptable (kitchen backstop).
+- **Per-restaurant kitchen auth.** Availability writes bound to `kitchen_staff/{rid}`; may require adding that membership if only flat kitchen exists.
+
+## Risks / open questions
+- **`availKey()` must be identical across KDS/form/server** or a flag is invisible → shared helper + fixtures (blocking).
+- **Auth-model dependency (#10):** does per-restaurant kitchen membership exist today? If not, 2b adds `kitchen_staff/{rid}`. Verify before build.
+- **Touching the x_pizza form** is the top regression surface — must be provably additive + fail-open (form identical with availability absent).
+- **Every payable-URL branch in chargeOnlineOrder** must call the gate — a missed branch = an unguarded pay path. Grep + per-branch tests.
+- **Manifest publish is manual** — mitigated by the build-failing golden + `publish-menus` refusing to publish when stale.
+
+## Out of scope
+- Ingredient-level 86; availability scheduling/auto-re-enable.
+- Re-checking availability at materialize/scheduled-release; late-payment auto-void (post-issue race accepted).
+- Refactoring the order forms to read their menu from the manifest (they keep embedded menus; manifest is KDS-panel-only).
+- 2c (pickup-ready WhatsApp).
