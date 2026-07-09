@@ -977,6 +977,16 @@ textarea{resize:none;height:80px;line-height:1.4}
 .time-card.disabled{opacity:.45;pointer-events:none}
 .time-card-title{font-family:var(--sans);font-size:15px;font-weight:600;color:var(--charcoal)}
 .time-card-sub{font-size:12px;color:var(--muted);margin-top:3px}
+/* ── KDS Phase 2b · "Agotado" (sold-out) overlay — purely additive; only applies to .sold-out cards ── */
+.agotado-pill{background:#1a1a1a;color:#fff;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:999px;white-space:nowrap;z-index:6}
+.pizza-card.sold-out{position:relative}
+.pizza-card.sold-out .agotado-pill{position:absolute;top:10px;left:10px}
+.bev-row.sold-out .agotado-pill{position:static;align-self:center;margin-left:8px}
+.pizza-card.sold-out .pizza-photo{filter:grayscale(1);opacity:.5}
+.pizza-card.sold-out .pizza-card-body{opacity:.5}
+.bev-row.sold-out .bev-row-name,.bev-row.sold-out .bev-row-price{opacity:.5}
+.sold-out .qty-add-btn{pointer-events:none;opacity:.4}
+.sold-out .qty-overlay .qty-controls button:last-child,.sold-out .bev-row-actions .qty-controls button:last-child{pointer-events:none;opacity:.4}
 </style>
 </head>
 <body>
@@ -1266,6 +1276,8 @@ textarea{resize:none;height:80px;line-height:1.4}
 </div>
 
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAuzSLAELV_MaK2xeXrNjS6_lhNXmD_Y0A&libraries=places&callback=googleMapsReady" async defer></script>
+<!-- KDS Phase 2b · availKey — canonical availability-key encoder (window.availKey); shared byte-identical across KDS/forms/server -->
+<script src="avail-key.js"></script>
 <script>
 /* ── Category tab switching ── */
 function switchCat(cat, btn) {
@@ -1471,6 +1483,52 @@ function checkDeliveryRadius(la, ln){
 const qty = {};
 MENU.forEach(p => qty[p.id] = 0);
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   KDS Phase 2b — item availability ("Agotado") overlay.  STRICTLY ADDITIVE + FAIL-OPEN.
+   A pure OVERLAY: a public-read of /restaurants/x_pizza/item_availability + a
+   disable/freeze/badge on the cards. It NEVER touches the embedded MENU, the cart,
+   the payload construction, or the submit fetch — those stay byte-identical, so with
+   availability ABSENT/unreadable the form behaves EXACTLY as before (every item available).
+   Read mechanism: a one-time public REST fetch on load + a light 60s re-poll (the forms
+   have no Firebase SDK; the RTDB node is public-read `.read:true`). The server intake
+   gate (Slice 4/6) is the authoritative backstop — this layer is UX-only.
+   Key mirrors the pricing key: x_pizza → item NAME → window.availKey(name). ───────── */
+const AVAIL_RID = 'x_pizza';
+const AVAIL_URL = 'https://xpizza-delivery-default-rtdb.firebaseio.com/restaurants/' + AVAIL_RID + '/item_availability.json';
+let itemAvail = {};   // raw availKey → { available, updated_at }; empty ⇒ all available (fail-open)
+function isSoldOut(item){
+  try {
+    if(!item || typeof window.availKey !== 'function') return false;
+    const node = itemAvail[window.availKey(item.name)];   // x_pizza keys by NAME
+    return !!(node && node.available === false);           // ONLY an explicit false blocks
+  } catch(_){ return false; }                              // any doubt ⇒ available
+}
+function soldOutById(id){ return isSoldOut(MENU.find(p => p.id === id)); }
+function applyAvailability(){
+  try {
+    MENU.forEach(function(p){
+      const el = document.getElementById('card-' + p.id);
+      if(!el) return;
+      const so = isSoldOut(p);
+      el.classList.toggle('sold-out', so);
+      const addBtn = document.getElementById('qty-add-' + p.id);
+      if(addBtn) addBtn.disabled = so;
+      let pill = el.querySelector(':scope > .agotado-pill');
+      if(so && !pill){ pill = document.createElement('span'); pill.className = 'agotado-pill'; pill.textContent = 'Agotado'; el.appendChild(pill); }
+      else if(!so && pill){ pill.remove(); }
+    });
+  } catch(_){ /* fail-open: never let the overlay break the menu */ }
+}
+async function loadAvailability(){
+  try {
+    const res = await fetch(AVAIL_URL, { cache:'no-store' });
+    if(!res.ok) return;                                    // fail-open: keep prior state
+    const data = await res.json();
+    itemAvail = (data && typeof data === 'object') ? data : {};
+    applyAvailability();
+  } catch(_){ /* fail-open: leave itemAvail untouched (empty ⇒ all available) */ }
+}
+
 let lat=null, lng=null, gmap=null, gmarker=null, mapReady=false;
 let selectedPayment=null, currentOrder=null;
 
@@ -1525,9 +1583,11 @@ function renderMenu(){
     </div>`;
   document.getElementById('menu-individual').innerHTML = indiv.map(card).join('');
   document.getElementById('menu-ny').innerHTML = ny.map(card).join('');
+  applyAvailability();   // KDS 2b: re-apply sold-out overlay after any (re)render (no-op when availability absent)
 }
 
 function chg(id,d){
+  if(d>0 && soldOutById(id)) return;   // KDS 2b: item 86'd — freeze add/increment (decrements still allowed so an in-cart item can be removed). Fail-open: soldOutById is false on any doubt.
   qty[id]=Math.max(0,qty[id]+d);
 
   // Update qty number
@@ -2296,6 +2356,12 @@ async function processPixelPay(){
       orderSubmitting=false; setSending('Preparando tu pago…');
       setTimeout(processPixelPay, 1500); return;
     }
+    // KDS 2b: a line was 86'd between add + submit — NO payable URL is issued. Name the item(s)
+    // instead of the generic "Revisá tus datos". Handled BEFORE the generic !res.ok branch; item stays in cart.
+    if(res.status===400 && cfg && cfg.error==='item_unavailable'){
+      const names = (Array.isArray(cfg.blocked) && cfg.blocked.length) ? cfg.blocked.join(', ') : 'un platillo';
+      return paymentFallback('Agotado — quitá '+names+' del carrito para continuar.');
+    }
     if(!res.ok || !cfg || !cfg.checkout_url){
       return paymentFallback(res.status===429
         ? 'Demasiados intentos seguidos. Esperá un momento.'
@@ -2511,6 +2577,15 @@ async function submitOrder(paymentStatus){
         const err = await res.json().catch(()=>({}));
         console.error('createOrder rejected', res.status, err);
         orderSubmitting=false;
+        // KDS 2b: server rejected because a line was 86'd between add + submit. Name the item(s)
+        // + tell the customer to remove it — NOT the generic "Revisá los datos" (which triggers
+        // confused retries). Handled BEFORE the generic 4xx branch. The item stays in the cart.
+        if(err && err.error === 'item_unavailable'){
+          const names = (Array.isArray(err.blocked) && err.blocked.length) ? err.blocked.join(', ') : 'un platillo';
+          document.getElementById('sending-msg').innerHTML =
+            ICON_X_CIRCLE+'Agotado — quitá '+escapeHtml(names)+' del carrito para continuar.';
+          return;
+        }
         document.getElementById('sending-msg').innerHTML =
           res.status===429
             ? ICON_X_CIRCLE+'Demasiados pedidos seguidos. Esperá un momento e intentá de nuevo.'
@@ -2896,6 +2971,17 @@ function updateDetailCta() {
   cta.style.opacity = '1';
   cta.style.pointerEvents = 'auto';
 
+  // KDS 2b: sold-out + not yet in cart → disable the "Agregar" CTA (chg() already freezes
+  // the add; this is the matching visual). qty>0 falls through to the normal cart pill so an
+  // already-added item can still be reviewed/removed. Fail-open: soldOutById false on any doubt.
+  if (pizzaQty === 0 && typeof soldOutById === 'function' && soldOutById(pizzaId)) {
+    cta.className = 'detail-cta';
+    cta.style.opacity = '.5';
+    cta.style.pointerEvents = 'none';
+    cta.innerHTML = '<span>Agotado</span>';
+    return;
+  }
+
   if (pizzaQty === 0) {
     // qty=0: action button. Tap commits qty=1, modal stays open.
     cta.className = 'detail-cta';
@@ -3241,6 +3327,11 @@ updateTotal();
 updateCart();
 initCardFormatting();
 handlePaymentReturn();   // if we arrived back from the hosted checkout (?pay=…), show the outcome
+
+// KDS 2b: read item availability once on load, then re-poll every 60s (fail-open; the server
+// intake gate is the authoritative backstop). Pure read — never touches the cart/payload/submit.
+loadAvailability();
+setInterval(loadAvailability, 60000);
 
 
 </script>
