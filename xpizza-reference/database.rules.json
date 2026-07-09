@@ -144,7 +144,35 @@
           "version":  { ".validate": "newData.isNumber() && (!data.exists() || newData.val() > data.val())" },
           "whatsapp_enabled":   { ".validate": "newData.isBoolean()" },
           "delivery_radius_km": { ".validate": "newData.isNumber()" }
+        },
+
+        "kitchen_staff": {
+          ".read": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists())",
+          "$uid": {
+            ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
+          }
+        },
+
+        "item_availability": {
+          ".read": true,
+          "$key": {
+            ".write": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()"
+          }
+        },
+
+        "availability_audit": {
+          ".read": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()",
+          "$key": {
+            ".write": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()"
+          }
         }
+      }
+    },
+
+    "menus": {
+      ".read": true,
+      "$rid": {
+        ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
       }
     }
   }

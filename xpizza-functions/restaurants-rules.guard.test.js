@@ -29,18 +29,24 @@ const rid = r['$restaurant_id'];
 assert(rid, 'FAIL: /restaurants/$restaurant_id missing');
 assert(!('.read' in rid) && !('.write' in rid), 'FAIL: .read/.write key present at $restaurant_id');
 
-// (3) The ONLY truthy .read/.write grants under /restaurants live at $restaurant_id/identity.
-//     Explicit `false` denies (e.g. factura_config) are allowed anywhere and never flagged.
+// (3) Every truthy .read/.write grant under /restaurants must live INSIDE one of the allow-listed
+//     per-restaurant child subtrees ($restaurant_id/<subtree>/…) — NEVER at the /restaurants or
+//     $restaurant_id ancestor level (the cascade footgun), and NEVER under factura_config (which stays
+//     an explicit `false` deny). KDS-2b (Slice 3) additively added kitchen_staff / item_availability /
+//     availability_audit as grant-bearing siblings of identity; each is its own child subtree, so the
+//     load-bearing cascade guarantee (no ancestor grant can leak factura_config) is unchanged. To add a
+//     new grant site, allow-list its subtree here on purpose — a grant anywhere else still fails CI.
+const GRANT_SUBTREES = new Set(['identity', 'kitchen_staff', 'item_availability', 'availability_audit']);
 (function walk(node, segs) {
   if (node === null || typeof node !== 'object') return;
   for (const [k, v] of Object.entries(node)) {
     if (k === '.read' || k === '.write') {
       if (v === false) continue; // explicit deny is fine anywhere
-      assert.deepStrictEqual(
-        segs,
-        ['$restaurant_id', 'identity'],
+      assert(
+        segs.length >= 2 && segs[0] === '$restaurant_id' && GRANT_SUBTREES.has(segs[1]),
         `FAIL: truthy ${k} grant at /restaurants/${segs.join('/') || '(root)'} ` +
-          `— only $restaurant_id/identity may grant`
+          `— a grant may only live inside an allow-listed $restaurant_id child subtree ` +
+          `(${[...GRANT_SUBTREES].join(', ')}), never at an ancestor level or under factura_config`
       );
     } else if (k !== '.validate') {
       walk(v, segs.concat(k));
@@ -48,4 +54,4 @@ assert(!('.read' in rid) && !('.write' in rid), 'FAIL: .read/.write key present 
   }
 })(r, []);
 
-console.log('restaurants-rules.guard: OK (invariant holds — no ancestor grant; only identity grants)');
+console.log('restaurants-rules.guard: OK (invariant holds — no ancestor grant; grants only in allow-listed subtrees)');
