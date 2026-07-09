@@ -166,6 +166,11 @@
           "$key": {
             ".write": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()"
           }
+        },
+
+        "availability_reset_marker": {
+          ".read": false,
+          ".write": false
         }
       }
     },

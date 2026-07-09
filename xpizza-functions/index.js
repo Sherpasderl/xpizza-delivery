@@ -1296,6 +1296,35 @@ exports.sweepStalePending = onSchedule(
 );
 
 // ============================================================
+// resetItemAvailability — KDS Phase 2b: end-of-business-day availability auto-reset
+// ============================================================
+//
+// Every 30 min (Tegucigalpa clock), returns each restaurant's sold-out ("86'd") items to available WHILE
+// CLOSED, once per business day (Square's default). Logic lives in ./availability-reset.js (unit-tested with
+// an injected clock). ISOLATION: reads/writes ONLY item_availability + availability_reset_marker under
+// /restaurants/{rid}; only WIDENS (sold-out → available); a crashed partial run self-heals on the next tick.
+// R4: the cutoff is the RTDB server-time started_at (ServerValue.TIMESTAMP, read back), never Date.now().
+exports.resetItemAvailability = onSchedule(
+  { schedule: 'every 30 minutes', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    const { runAvailabilityReset } = require('./availability-reset');
+    // Config parsed INSIDE the handler (never module top-level) with a local try/catch + default, so a bad
+    // env var can't break the co-resident HTTPS/payment/sweep functions at cold start.
+    let restaurants;
+    try {
+      const raw = process.env.AVAILABILITY_RESET_RESTAURANTS;
+      const parsed = raw ? JSON.parse(raw) : null;
+      restaurants = Array.isArray(parsed) && parsed.every((x) => typeof x === 'string') ? parsed : undefined;
+    } catch (e) {
+      console.error('resetItemAvailability: bad AVAILABILITY_RESET_RESTAURANTS — using default', e.message);
+      restaurants = undefined;
+    }
+    // now = wall clock (closed-gate + marker date); the server-time cutoff comes from ServerValue.TIMESTAMP.
+    await runAvailabilityReset({ db: getDatabase(), ServerValue, now: Date.now(), restaurants });
+  }
+);
+
+// ============================================================
 // reconcilePayments — Stage 4 sub-stage 3: daily invariant audit (backstop)
 // ============================================================
 //
