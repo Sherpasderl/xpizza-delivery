@@ -322,6 +322,33 @@ export async function setOrderStatus(orderId, status) {
   return true;        // wrote
 }
 
+// ── KDS Phase 2b: item availability ("86") — the KDS's SECOND write surface (KDS_2B_PLAN #4/#10/#11) ──
+//
+// ONE atomic multi-path update() writes EXACTLY TWO nodes so the public flag + the private audit trail can
+// never diverge (a half-write that flips the flag without an audit row — or vice-versa — is impossible):
+//   1. restaurants/{rid}/item_availability/{key} = { available, updated_at }
+//      PUBLIC (order forms read it, fail-open). Shape is LOCKED to the deployed RTDB .validate:
+//      hasOnly(['available','updated_at']) + available.isBoolean() + updated_at.isNumber() — so we send
+//      EXACTLY those two keys (a boolean + the serverTimestamp sentinel). An extra/missing key ⇒ DENIED.
+//   2. restaurants/{rid}/availability_audit/{key} = { available, updated_at, updated_by }
+//      PRIVATE (staff-read-only) — the ONLY place the staff uid is recorded (the public node never leaks it).
+//
+// {key} = availKey(rawKey) — the byte-identical encoder loaded as a classic-script global (avail-key.js).
+// rid is host-derived by the caller (KDS_RESTAURANT_ID) → host-agnostic, no restaurant hardcoded here.
+// One write + unit-spyable: avail-write.test.mjs loads this real module (firebase stubbed) and asserts the
+// single update() carries EXACTLY these two paths with these exact shapes.
+export async function setItemAvailability(rid, rawKey, available, uid) {
+  const enc = globalThis.availKey;
+  if (typeof enc !== 'function') throw new Error('availKey unavailable');   // avail-key.js classic script missing → surface, don't half-write
+  const key = enc(rawKey);
+  const avail = !!available;
+  const ts = serverTimestamp();
+  await update(ref(db), {
+    [`restaurants/${rid}/item_availability/${key}`]: { available: avail, updated_at: ts },
+    [`restaurants/${rid}/availability_audit/${key}`]: { available: avail, updated_at: ts, updated_by: uid || null }
+  });
+}
+
 /**
  * Save a Web Push subscription against a driver record. Called from the driver
  * app after successfully subscribing via the service worker. The Cloud Function
@@ -533,6 +560,18 @@ export function subscribeToOrderTimeline(orderId, callback) {
 export function subscribeReadyTimeThreshold(restaurantId, callback) {
   const thRef = ref(db, `config/ready_time/${restaurantId}/prep_threshold_min`);
   return onValue(thRef, (snap) => callback(snap.val()));
+}
+
+// ── KDS Phase 2b: Disponibilidad panel READS (additive, read-only — never mutate) ──
+// The published per-restaurant manifest ([{key,label,category}], written by the owner-run publish script);
+// null until published (the panel shows a calm "Menú no publicado"). Host-agnostic — rid is host-derived.
+export function subscribeMenuManifest(rid, callback) {
+  return onValue(ref(db, `menus/${rid}`), (snap) => callback(snap.val()));
+}
+// The current public availability flags: { availKey → { available, updated_at } }. Absent key ⇒ available
+// (fail-open) — the panel treats a missing/true flag as ON, an explicit available===false as OFF.
+export function subscribeItemAvailability(rid, callback) {
+  return onValue(ref(db, `restaurants/${rid}/item_availability`), (snap) => callback(snap.val() || {}));
 }
 
 /**

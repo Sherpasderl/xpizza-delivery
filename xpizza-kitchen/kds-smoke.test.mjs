@@ -53,6 +53,9 @@ class MO { observe() {} disconnect() {} }
 // a normal write (true); resolveSkip() resolves an ownership-skip (false); rejectWrite() throws.
 const calls = [];
 let resolveWrite, resolveSkip, rejectWrite;
+// KDS Phase 2b — the Disponibilidad panel's reads + the ONE atomic availability write, all spyable here.
+const availCalls = [];                 // { rid, rawKey, available, uid } per setItemAvailability
+let resolveAvail, rejectAvail;
 const XPD = {
   KDS_RESTAURANT_ID: 'x_pizza',
   initDelivery() {}, onAuth(cb) { Promise.resolve().then(() => cb({ uid: 'u1' })); },
@@ -62,6 +65,10 @@ const XPD = {
   subscribeToOrderTimeline() { return () => {}; },
   subscribeReadyTimeThreshold() { return () => {}; },
   setOrderStatus(id, status) { calls.push({ id, status }); return new Promise((res, rej) => { resolveWrite = () => res(true); resolveSkip = () => res(false); rejectWrite = () => rej(new Error('boom')); }); },
+  // 2b panel: manifest + flags subscriptions (drive via XPD._manifestCb / XPD._flagsCb), and the atomic write.
+  subscribeMenuManifest(rid, cb) { XPD._manifestRid = rid; XPD._manifestCb = cb; return () => { XPD._manifestUnsub = true; }; },
+  subscribeItemAvailability(rid, cb) { XPD._flagsRid = rid; XPD._flagsCb = cb; return () => { XPD._flagsUnsub = true; }; },
+  setItemAvailability(rid, rawKey, available, uid) { availCalls.push({ rid, rawKey, available, uid }); return new Promise((res, rej) => { resolveAvail = () => res(); rejectAvail = () => rej(new Error('denied')); }); },
 };
 
 // ── globals the module touches at top level ──
@@ -84,6 +91,11 @@ globalThis.MutationObserver = MO;
 globalThis.AudioContext = class { constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; } createOscillator() { return { connect() {}, start() {}, stop() {}, frequency: { value: 0, setValueAtTime() {} }, type: '' }; } createGain() { return { connect() {}, gain: { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} } }; } resume() { return Promise.resolve(); } };
 globalThis.initializeApp = () => ({});
 globalThis.__XPD = XPD;
+
+// ── window.availKey — in the real page this is the classic <script src="avail-key.js"> global the module
+//    reads. Load the REAL avail-key.js (UMD-lite → sets globalThis.availKey) so the panel keys match prod. ──
+await import('data:text/javascript,' + encodeURIComponent(readFileSync(new URL('./avail-key.js', import.meta.url), 'utf8')));
+assert.equal(typeof globalThis.availKey, 'function', 'avail-key.js classic-script global loaded (window.availKey)');
 
 // ── load + rewrite the inline module ──
 const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
@@ -371,5 +383,63 @@ assert.equal(cardCount(), 15, 'r1 also mounts the full pool');
 assert.equal(calls.length, 0, 'switching layout modes performs ZERO setOrderStatus (presentational only)');
 window.setLayoutMode('flex'); await tick();   // restore
 ok('Phase B render path: rail mounts the FULL pool (no pagination); pager modes still slice to PAGE_SIZE');
+
+// ══════════ KDS Phase 2b — Disponibilidad panel (item "86") behavioral smoke ══════════
+// The panel is the KDS's SECOND write surface. Prove: category-grouped render from the manifest; the
+// unpublished-menu calm placeholder; a toggle emits the ONE atomic setItemAvailability write (host-derived
+// rid + the audit uid) and ZERO setOrderStatus (a DIFFERENT helper — the order-status contract is untouched);
+// optimistic UI; revert-on-failure with a calm notice. startAvailPanel already ran in onAuth (uid 'u1').
+const K = (raw) => globalThis.availKey(raw);
+assert.equal(typeof XPD._manifestCb, 'function', 'startAvailPanel subscribed to the manifest');
+assert.equal(typeof XPD._flagsCb, 'function', 'startAvailPanel subscribed to the flags');
+assert.equal(XPD._manifestRid, 'x_pizza', 'panel subscribes with the host-derived rid (host-agnostic)');
+
+// unpublished menu → a calm placeholder, NOT an error
+XPD._manifestCb(null); await tick();
+assert.ok(getEl('avail-panel').innerHTML.includes('Menú no publicado'), 'unpublished manifest → calm "Menú no publicado" placeholder');
+ok('2b panel: unpublished manifest → calm placeholder (no error)');
+
+// publish a manifest + one 86'd flag → grouped render, off-row struck through
+XPD._manifestCb([
+  { key: 'Margherita', label: 'Margherita', category: 'individual' },
+  { key: 'Pepperoni',  label: 'Pepperoni',  category: 'individual' },
+  { key: 'Carnivora NY', label: 'Carnivora NY', category: 'ny' },
+]);
+XPD._flagsCb({ [K('Pepperoni')]: { available: false, updated_at: 1 } });
+await tick();
+let ph = getEl('avail-panel').innerHTML;
+assert.ok(ph.includes('<div class="cat">Individual</div>') && ph.includes('<div class="cat">Ny</div>'), 'items grouped by category with prettified headers');
+assert.ok(/<div class="avrow off[^"]*" data-key="Pepperoni">[\s\S]*?<span class="sw off">/.test(ph), 'the 86\'d item (Pepperoni) → .avrow.off + .sw.off (struck through)');
+assert.ok(/<div class="avrow" data-key="Margherita">[\s\S]*?<span class="sw">/.test(ph), 'an available item (Margherita) → plain .avrow + .sw (toggle ON)');
+ok('2b panel: category-grouped render; absent flag ⇒ ON, explicit false ⇒ OFF (struck)');
+
+// feed a live ticket so we can prove the board is untouched by a toggle
+XPD._ordersCb({ 'PZX-AV': { order_id: 'PZX-AV', status: 'new', customer_name: 'Zoe', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' } });
+const openWas = getEl('count-open').textContent;
+
+// toggle an ON item → setItemAvailability(rid, rawKey, false, uid) — ONE atomic write, ZERO setOrderStatus
+availCalls.length = 0; calls.length = 0;
+window.toggleAvail('Margherita');
+await tick();
+assert.deepEqual(availCalls, [{ rid: 'x_pizza', rawKey: 'Margherita', available: false, uid: 'u1' }], 'toggle ON→OFF emits ONE setItemAvailability(rid, key, false, uid) — host-derived rid + audit uid');
+assert.equal(calls.length, 0, 'a toggle performs ZERO setOrderStatus (availability is a DIFFERENT helper; the order-status contract is untouched)');
+assert.equal(getEl('count-open').textContent, openWas, 'the ticket board is unaffected by a toggle (separate DOM subtree)');
+// optimistic: the row flips to OFF immediately, before the write resolves
+assert.ok(/<div class="avrow off[^"]*" data-key="Margherita">/.test(getEl('avail-panel').innerHTML), 'optimistic UI — Margherita shows OFF before the write resolves');
+resolveAvail(); await tick();
+assert.ok(/<div class="avrow off[^"]*" data-key="Margherita">/.test(getEl('avail-panel').innerHTML), 'after a resolved write the optimistic OFF stays (flags sub reconciles canonically)');
+ok('2b panel: toggle → ONE atomic setItemAvailability + ZERO setOrderStatus; optimistic flip holds on success');
+
+// toggle a currently-OFF item → available:true, then REJECT → revert + a calm notice
+availCalls.length = 0; calls.length = 0;
+window.toggleAvail('Pepperoni');
+await tick();
+assert.deepEqual(availCalls, [{ rid: 'x_pizza', rawKey: 'Pepperoni', available: true, uid: 'u1' }], 'toggle OFF→ON emits setItemAvailability(..., true, uid)');
+assert.ok(!/<div class="avrow off[^"]*" data-key="Pepperoni">/.test(getEl('avail-panel').innerHTML) && /data-key="Pepperoni"/.test(getEl('avail-panel').innerHTML), 'optimistic — Pepperoni flips ON (no longer struck) before the write resolves');
+rejectAvail(); await tick();
+assert.ok(/<div class="avrow off[^"]*" data-key="Pepperoni">/.test(getEl('avail-panel').innerHTML), 'a REJECTED write REVERTS Pepperoni back to OFF (no divergence)');
+assert.equal(getEl('avail-note').hidden, false, 'a denied write shows the calm "Sin permiso" notice');
+assert.equal(calls.length, 0, 'still ZERO setOrderStatus across the failed toggle');
+ok('2b panel: write denial → optimistic REVERT + calm notice; never a status write, never a crash');
 
 console.log(`kds-smoke: OK (${n} cases)`);
