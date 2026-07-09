@@ -792,14 +792,22 @@ chargeOnlineApp.all('*', async (req, res) => {
   // Rate limit (same buckets as createOrder). A genuine retry of an in-flight
   // submit re-enters acquireHostedAttempt and reuses the live checkout, so this throttles
   // distinct submit bursts, not 3DS polling.
-  for (const [bucket, key, cfg] of [
-    ['ip', clientIp, RATE_LIMIT_BUCKETS.ip],
-    ['phone', fields.customer_phone, RATE_LIMIT_BUCKETS.phone]
-  ]) {
-    const { allowed, retryAfterSec } = await checkRateLimit(db, bucket, key, cfg);
-    if (!allowed) {
-      res.set('Retry-After', String(retryAfterSec));
-      return res.status(429).json({ error: 'Too Many Requests', detail: `Rate limit exceeded; retry in ${retryAfterSec}s` });
+  // SLICE-4 (Codex fix #2): checkRateLimit is the ONLY DB write between the availability read and the
+  // authoritative acquireHostedAttempt below. A blocked (86'd) cart is decided by acquire and can ONLY
+  // resolve to item_unavailable / reuse / in_progress / terminal — NONE mint a fresh attempt — so it must
+  // NOT burn rate-limit quota. Run checkRateLimit ONLY on the unblocked path (cartBlocked === []), where a
+  // fresh write may proceed and must be throttled. So a state-drift-blocked fresh attempt writes NOTHING —
+  // no order, no payment_attempt, AND no rate_limits.
+  if (cartBlocked.length === 0) {
+    for (const [bucket, key, cfg] of [
+      ['ip', clientIp, RATE_LIMIT_BUCKETS.ip],
+      ['phone', fields.customer_phone, RATE_LIMIT_BUCKETS.phone]
+    ]) {
+      const { allowed, retryAfterSec } = await checkRateLimit(db, bucket, key, cfg);
+      if (!allowed) {
+        res.set('Retry-After', String(retryAfterSec));
+        return res.status(429).json({ error: 'Too Many Requests', detail: `Rate limit exceeded; retry in ${retryAfterSec}s` });
+      }
     }
   }
 

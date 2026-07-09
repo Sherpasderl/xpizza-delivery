@@ -50,7 +50,11 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   before(body, 'checkItemAvailability(', '.ref(`payment_attempts/', 'online gate before any payment_attempts write');
   // classify precedes the availability read (terminal bypass decided first)
   before(body, 'classifyHostedAttempt(', 'checkItemAvailability(', 'read-only classify before the availability read');
-  ok('chargeOnlineOrder: classify → gate → rate-limit → acquire/charge (gate before every write)');
+  // Codex fix #2: the rate-limit loop is GATED behind cartBlocked===[] — a blocked (86'd) cart is decided by
+  // acquire (item_unavailable/reuse/in_progress/terminal, none minting fresh) and must NOT burn rate-limit
+  // quota. So the blocking path never reaches checkRateLimit → 0 rate_limits writes on a state-drift block.
+  before(body, 'if (cartBlocked.length === 0)', 'checkRateLimit(', 'online rate-limit gated behind cartBlocked===[] (a blocked cart never reaches checkRateLimit)');
+  ok('chargeOnlineOrder: classify → gate → (cartBlocked===[] ? rate-limit) → acquire/charge — blocked cart writes nothing, incl. rate_limits');
 }
 
 // ── post-commitment paths must NOT re-check (plan §4/§7) ──
