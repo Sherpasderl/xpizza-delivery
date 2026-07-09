@@ -1769,7 +1769,8 @@ const STAFF_EMAILS = new Set([
   'hermeztalavera@gmail.com',
   'garayg067@gmail.com',
   'elmeredsantos04@gmail.com',
-  'norisf56@gmail.com'
+  'norisf56@gmail.com',
+  'johanisaac2011@gmail.com'
 ]);
 
 exports.blockPublicSignup = beforeUserCreated({ region: 'us-central1' }, (event) => {
