@@ -155,7 +155,6 @@
   .thumb.fill { grid-template-columns: repeat(3,1fr); grid-auto-rows: 1fr; }
   .thumb.r1 { grid-template-columns: repeat(4,1fr); align-items: stretch; }
   .thumb.r2 { grid-template-columns: repeat(4,1fr); grid-template-rows: 1fr 1fr; }
-  .thumb.r3 { grid-template-columns: repeat(4,1fr); grid-template-rows: 1fr 1fr 1fr; }
   .settings-banner { display: flex; align-items: center; gap: 9px; background: #EAF1FE; color: #2456b8; border-radius: 9px; padding: 11px 14px; font-size: 13px; margin: 18px 0 22px; }
   .settings-banner svg { width: 16px; height: 16px; flex: 0 0 auto; }
   .cols { max-width: 360px; }
@@ -954,7 +953,7 @@ function shortStatus(s) {
   .ticket-grid::-webkit-scrollbar-thumb { background: var(--stroke2); border-radius: 2px; }
   .ticket-grid .empty { grid-column: 1 / -1; }
 
-  /* ══════════ Phase B — horizontal 1/2/3 Rails (layout-rail) ══════════
+  /* ══════════ Phase B — horizontal 1/2 Rails (layout-rail) ══════════
      Flips the pool grid HORIZONTAL: column-major flow so FIFO reads oldest top-left → down the
      rail → next column. Each rail = viewport ÷ N tall (--kds-rails 1/2/3). Cards fill the rail cell
      with the Tile-Fill pinned-footer pattern and SCROLL-INSIDE (.card-items). NO pagination — native
@@ -1259,9 +1258,6 @@ function shortStatus(s) {
           <button class="tile" data-layout="r2" onclick="setLayoutMode('r2')">
             <div class="thumb r2"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="tl">2 Rails</div>
           </button>
-          <button class="tile" data-layout="r3" onclick="setLayoutMode('r3')">
-            <div class="thumb r3"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="tl">3 Rails</div>
-          </button>
         </div>
         <div class="settings-banner"><svg viewBox="0 0 24 24"><use href="#i-info"/></svg> Recomendado para ver muchos tickets a la vez</div>
         <p class="pane-lbl">Columnas</p>
@@ -1486,11 +1482,11 @@ const RECENT_COMPLETED_MS = 18 * 60 * 60 * 1000;   // 18h ≈ one service day
 
 // Per-device ticket-layout settings (localStorage; presentational only, Phase A). Columns 3/4/5 + the
 // ticket layout mode: 'flex' (Flex Rail — content-height cards, all items) | 'fill' (Tile Fill — capped
-// tiles, items truncate with a "Ver todo" expander). (1/2/3 Rails are Phase B — not wired.)
+// tiles, items truncate with a "Ver todo" expander). (1/2 Rails = horizontal, wired in Phase B.)
 let layoutCols = parseInt(localStorage.getItem('xpizza_kds_cols') || '4', 10);
 if (![3, 4, 5].includes(layoutCols)) layoutCols = 4;
-// Phase B: horizontal rail modes (1/2/3 Rails). Presentational only — per-device localStorage, no writes.
-const RAIL_MODES = ['r1', 'r2', 'r3'];
+// Phase B: horizontal rail modes (1/2 Rails). Presentational only — per-device localStorage, no writes.
+const RAIL_MODES = ['r1', 'r2'];   // 3 Rails dropped — too little card height at ÷3 (Xavier, 2026-07-08); a stored 'r3' now falls back to flex
 const isRailMode = () => RAIL_MODES.includes(layoutMode);
 const _storedLayout = localStorage.getItem('xpizza_kds_layout');
 let layoutMode = (_storedLayout === 'fill' || RAIL_MODES.includes(_storedLayout)) ? _storedLayout : 'flex';   // default Flex Rail (no clip)

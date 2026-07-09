@@ -311,7 +311,7 @@ assert.ok(!compHtml2.includes(`archiveCancel('PZX-CX')`), 'Completados: the canc
 assert.ok(compHtml2.includes(`recall('PZX-CX')`), 'Completados: it shows Recuperar Ticket (recall) instead');
 ok('FIX 2 Archivar gated to Abiertos; Completados cancelled card → Recuperar only (no Archivar, nothing clips)');
 
-// ══ Phase B — horizontal 1/2/3 Rails: mode wiring (accept + persist r1/r2/r3) + render-skips-pagination ══
+// ══ Phase B — horizontal 1/2 Rails: mode wiring (accept + persist r1/r2) + render-skips-pagination ══
 // The rail LAYOUT itself (grid-auto-flow/column, viewport÷N heights, scroll-inside) is BEHAVIORAL CSS —
 // scrollHeight/clientHeight are 0 under this DOM shim, so it's verified on-device/headless. Here we assert
 // the two invariants that DON'T need real layout: the mode string round-trips, and rail mode mounts the
@@ -322,10 +322,10 @@ assert.equal(railStore.getItem('xpizza_kds_layout'), 'r2', 'setLayoutMode("r2") 
 window.setLayoutMode('r1'); await tick();
 assert.equal(railStore.getItem('xpizza_kds_layout'), 'r1', 'r1 accepted + persisted');
 window.setLayoutMode('r3'); await tick();
-assert.equal(railStore.getItem('xpizza_kds_layout'), 'r3', 'r3 accepted + persisted');
+assert.equal(railStore.getItem('xpizza_kds_layout'), 'flex', 'r3 removed (3 Rails dropped) → falls back to flex');
 window.setLayoutMode('bogus'); await tick();
 assert.equal(railStore.getItem('xpizza_kds_layout'), 'flex', 'an unknown mode falls back to flex (accept-list guard)');
-ok('Phase B mode wiring: setLayoutMode accepts + persists r1/r2/r3; rejects unknown → flex');
+ok('Phase B mode wiring: setLayoutMode accepts + persists r1/r2; rejects r3/unknown → flex');
 
 // Feed a fresh pool of 15 OPEN tickets (> PAGE_SIZE=12) and count mounted cards per mode.
 const bigPool = {};
