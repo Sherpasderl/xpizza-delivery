@@ -76,6 +76,13 @@ const OUT = 'out-uid';        // authenticated, no role at all
   await no('A: la_musa staff writes CROSS-rid (x_pizza) item_availability — DENIED', set(lstaffDb, 'restaurants/x_pizza/item_availability/Empanada', { available: false, updated_at: 2 }));
   await no('A: legacy flat /kitchen user (no kitchen_staff) writes item_availability — DENIED', set(kuserDb, 'restaurants/x_pizza/item_availability/Empanada', { available: false, updated_at: 2 }));
   await no('A: role-less authed user writes item_availability — DENIED', set(outDb, 'restaurants/x_pizza/item_availability/Empanada', { available: false, updated_at: 2 }));
+  // .validate locks the PUBLIC node shape to exactly {available:boolean, updated_at:number} (Codex REVISE):
+  // an authorized staffer still cannot leak updated_by onto the public node, write a non-boolean available,
+  // add an extra key, or omit a required field. updated_by belongs ONLY in the staff-only availability_audit.
+  await no('A: staff write with updated_by on the PUBLIC node — DENIED (.validate: audit-only, no extra keys)', set(xstaffDb, 'restaurants/x_pizza/item_availability/Empanada', { available: false, updated_at: 2, updated_by: XSTAFF }));
+  await no('A: staff write with a STRING available — DENIED (.validate: available must be boolean)', set(xstaffDb, 'restaurants/x_pizza/item_availability/Empanada', { available: 'false', updated_at: 2 }));
+  await no('A: staff write with an EXTRA key — DENIED (.validate: hasOnly)', set(xstaffDb, 'restaurants/x_pizza/item_availability/Empanada', { available: false, updated_at: 2, debug: { x: 1 } }));
+  await no('A: staff write MISSING updated_at — DENIED (.validate: hasChildren)', set(xstaffDb, 'restaurants/x_pizza/item_availability/Empanada', { available: false }));
   await ok('A: PUBLIC (unauth) reads item_availability node — OK (fail-open order forms)', get(anonDb, 'restaurants/x_pizza/item_availability'));
   await ok('A: PUBLIC (unauth) reads a single item_availability key — OK', get(anonDb, 'restaurants/x_pizza/item_availability/Pizza%20N1'));
 

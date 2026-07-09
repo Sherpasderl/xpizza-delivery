@@ -156,7 +156,8 @@
         "item_availability": {
           ".read": true,
           "$key": {
-            ".write": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()"
+            ".write": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()",
+            ".validate": "newData.hasChildren(['available','updated_at']) && newData.hasOnly(['available','updated_at']) && newData.child('available').isBoolean() && newData.child('updated_at').isNumber()"
           }
         },
 
