@@ -91,7 +91,7 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     const cls = await classifyHostedAttempt(dbC, 'O1', fx.fp, NOW);
     // …acquire (the authoritative CAS + writes) on a fresh copy.
     const dbA = makeDb(fx.init);
-    const acq = await acquireHostedAttempt(dbA, 'O1', PENDING, fx.fp, NOW, seqIds('ATx', 'ATy'), () => 'TOKx');
+    const acq = await acquireHostedAttempt(dbA, 'O1', PENDING, fx.fp, NOW, [], seqIds('ATx', 'ATy'), () => 'TOKx');
 
     const fresh = acq.outcome === 'claimed';
     assert.strictEqual(cls.willIssueFreshUrl, fresh,
@@ -109,6 +109,59 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     const closed = makeDb({ orders: { O1: { ...PENDING, status: 'cancelled' } } });
     assert.strictEqual((await classifyHostedAttempt(closed, 'O1', FP, NOW)).willIssueFreshUrl, false);
     ok('terminal already_paid/closed ⇒ willIssueFreshUrl:false ⇒ gate BYPASSED (never re-reject a paid order)');
+  }
+
+  // ── TOCTOU close (Slice-4 fix): classify predicts REUSE (no fresh issuance) but by the time the
+  // authoritative acquire runs, that live URL has EXPIRED → acquire ROTATES → would mint a FRESH payable
+  // URL. For a 86'd cart, threading cartBlocked into acquire must ABORT that rotation with ZERO writes.
+  const LIVE_INIT = {
+    orders: { O1: { ...PENDING, active_attempt_id: 'AT1', payment_fingerprint: FP } },
+    payment_attempts: { AT1: { order_id: 'O1', hosted_state: 'created', hosted_order_id: 'O1-AT1', hosted_expires_at: NOW + 10000, hosted_checkout_url: 'https://pay/X', poll_token: 'TOK1' } }
+  };
+  {
+    const db = makeDb(LIVE_INIT);
+    // 1) classify sees the live URL → predicts reuse (the UNRELIABLE signal the old gate trusted).
+    const cls = await classifyHostedAttempt(db, 'O1', FP, NOW);
+    assert.strictEqual(cls.willIssueFreshUrl, false);
+    assert.strictEqual(cls.outcome, 'reuse');
+    // 2) STATE DRIFT before the authoritative acquire: the checkout expires (models another actor / real
+    //    wall-clock between the two reads — same NOW, so this is pure state drift, not clock drift).
+    await db.ref('payment_attempts/AT1').update({ hosted_expires_at: NOW - 1 });
+    // 3) acquire now ROTATES — but the cart is 86'd → item_unavailable, and NOTHING is written.
+    const beforeOrders = JSON.stringify(db.getAt('orders'));
+    const beforeAttempts = JSON.stringify(db.getAt('payment_attempts'));
+    const acq = await acquireHostedAttempt(db, 'O1', PENDING, FP, NOW, ['Pizza Margherita'], seqIds('ATx', 'ATy'), () => 'TOKx');
+    assert.strictEqual(acq.outcome, 'item_unavailable');
+    assert.deepStrictEqual(acq.blocked, ['Pizza Margherita']);
+    // ZERO writes — orders / payment_attempts / rate_limits byte-unchanged; no rotation occurred.
+    assert.strictEqual(JSON.stringify(db.getAt('orders')), beforeOrders, 'orders must be byte-unchanged');
+    assert.strictEqual(JSON.stringify(db.getAt('payment_attempts')), beforeAttempts, 'payment_attempts must be byte-unchanged');
+    assert.strictEqual(db.getAt('rate_limits'), null, 'no rate_limits write');
+    assert.strictEqual(db.getAt('orders/O1').active_attempt_id, 'AT1', 'active_attempt_id must NOT rotate');
+    assert.strictEqual(db.getAt('payment_attempts/ATx'), null, 'no fresh attempt record created');
+    ok('TOCTOU: classify(reuse) → acquire ROTATES on a 86\'d cart → item_unavailable, 0 writes (orders/payment_attempts/rate_limits)');
+  }
+
+  // Fail-open control: the SAME drifted (expired) state with an EMPTY cartBlocked (avail read found nothing
+  // OR errored → []) → the CAS proceeds and rotates to a fresh attempt. A DB hiccup never blocks a sale.
+  {
+    const db = makeDb(LIVE_INIT);
+    await db.ref('payment_attempts/AT1').update({ hosted_expires_at: NOW - 1 });
+    const acq = await acquireHostedAttempt(db, 'O1', PENDING, FP, NOW, [], seqIds('ATy'), () => 'TOKy');
+    assert.strictEqual(acq.outcome, 'claimed');
+    assert.strictEqual(acq.attempt_id, 'ATy');
+    assert.strictEqual(db.getAt('orders/O1').active_attempt_id, 'ATy', 'rotated to the fresh attempt');
+    ok('fail-open: expired state + empty cartBlocked → rotate → claimed (sale never blocked by a read miss)');
+  }
+
+  // Genuine reuse of a STILL-LIVE URL proceeds even with a non-empty cartBlocked (plan §7 accepted race:
+  // that URL is already out). acquire returns 'reuse' BEFORE the cartBlocked check → not blocked.
+  {
+    const db = makeDb(LIVE_INIT);
+    const acq = await acquireHostedAttempt(db, 'O1', PENDING, FP, NOW, ['Pizza Margherita'], seqIds('ATz'), () => 'TOKz');
+    assert.strictEqual(acq.outcome, 'reuse');
+    assert.strictEqual(acq.checkout_url, 'https://pay/X');
+    ok('reuse of a live URL proceeds despite a non-empty cartBlocked (§7 accepted post-issue race)');
   }
 
   console.log(`\nAll ${pass} classify/acquire parity checks passed.`);

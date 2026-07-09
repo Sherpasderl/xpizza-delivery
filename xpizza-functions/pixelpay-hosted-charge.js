@@ -33,8 +33,14 @@ function genPollToken() {
 //   { outcome:'conflict' }                   → order_id reused for a different cart (fingerprint).
 //   { outcome:'closed', reason }             → cancelled / voided / refund / manual_reconciliation
 //        → order is closed/ambiguous; no new checkout (avoids double-charge / reopening).
+//   { outcome:'item_unavailable', blocked }  → the cart holds a server-"86'd" item AND this call would
+//        mint a FRESH/rotated payable checkout URL → ABORT BEFORE the CAS (writes NOTHING). See
+//        KDS_2B_PLAN.md §6–8: the authoritative intake gate. A GENUINE reuse of an already-live URL and
+//        every stable-terminal outcome (already_paid/closed/conflict/in_progress) return FIRST, above the
+//        cartBlocked check — so a paid/closed/live-checkout order is NEVER re-rejected. `cartBlocked` is the
+//        caller's checkItemAvailability().blocked labels (fail-open: [] ⇒ the CAS proceeds unchanged).
 //   { outcome:'error' }                      → could not converge.
-async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, genId = genAttemptId, genTok = genPollToken) {
+async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken) {
   const orderRef = db.ref(`orders/${orderId}`);
 
   for (let i = 0; i < 6; i++) {
@@ -78,6 +84,17 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
           decided = { kind: 'rotate', newAaid: candidate, fromAaid: order.active_attempt_id };
         }
       }
+    }
+
+    // KDS 2b · Slice-4 AUTHORITATIVE intake gate (closes the classify↔acquire TOCTOU, KDS_2B_PLAN.md §6–8).
+    // Every stable-terminal and genuine-reuse outcome has already returned ABOVE, so reaching here means
+    // `decided.kind` ∈ {create, install, recover, rotate} — i.e. THIS iteration is about to mint a fresh /
+    // rotated payable checkout URL. If the caller found the cart holds a server-"86'd" item, ABORT NOW —
+    // BEFORE the CAS transaction — so a blocked cart writes NOTHING (no orders/{id}, no payment_attempts,
+    // no charge) and can NEVER be handed a payable URL, regardless of what the read-only classify predicted.
+    // Fail-open: cartBlocked === [] (the default, and every checkItemAvailability read-error) ⇒ CAS proceeds.
+    if (Array.isArray(cartBlocked) && cartBlocked.length > 0) {
+      return { outcome: 'item_unavailable', blocked: cartBlocked };
     }
 
     // CAS on orders/{id} (the lock). Admin SDK calls the fn with null on its first uncached

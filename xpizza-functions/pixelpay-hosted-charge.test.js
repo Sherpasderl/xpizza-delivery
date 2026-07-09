@@ -36,7 +36,7 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   // 1. fresh create → claimed, with the deterministic hosted_order_id pre-persisted
   {
     const db = makeDb({});
-    const r = await acquireHostedAttempt(db, 'O1', PENDING, FP, NOW, seqIds('AT1'), () => 'TOK1');
+    const r = await acquireHostedAttempt(db, 'O1', PENDING, FP, NOW, [], seqIds('AT1'), () => 'TOK1');
     assert.strictEqual(r.outcome, 'claimed');
     assert.strictEqual(r.attempt_id, 'AT1');
     assert.strictEqual(r.hosted_order_id, 'O1-AT1');
@@ -56,7 +56,7 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
       orders: { O1: { ...PENDING, active_attempt_id: 'AT1', payment_fingerprint: FP } },
       payment_attempts: { AT1: { order_id: 'O1', hosted_state: 'created', hosted_order_id: 'O1-AT1', hosted_expires_at: NOW + 10000, hosted_checkout_url: 'https://pay/X', poll_token: 'TOK1' } }
     });
-    const r = await acquireHostedAttempt(db, 'O1', PENDING, FP, NOW, seqIds('AT2'), () => 'TOK2');
+    const r = await acquireHostedAttempt(db, 'O1', PENDING, FP, NOW, [], seqIds('AT2'), () => 'TOK2');
     assert.strictEqual(r.outcome, 'reuse');
     assert.strictEqual(r.checkout_url, 'https://pay/X');
     assert.strictEqual(r.attempt_id, 'AT1');
@@ -103,7 +103,7 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
       orders: { O1: { ...PENDING, active_attempt_id: 'AT1', payment_fingerprint: FP } },
       payment_attempts: { AT1: { hosted_state: 'created', hosted_order_id: 'O1-AT1', hosted_expires_at: NOW - 1, hosted_checkout_url: 'https://pay/OLD' } }
     });
-    const r = await acquireHostedAttempt(db, 'O1', PENDING, FP, NOW, seqIds('AT2'), () => 'TOK2');
+    const r = await acquireHostedAttempt(db, 'O1', PENDING, FP, NOW, [], seqIds('AT2'), () => 'TOK2');
     assert.strictEqual(r.outcome, 'claimed');
     assert.strictEqual(r.attempt_id, 'AT2');
     assert.strictEqual(db.getAt('orders/O1').active_attempt_id, 'AT2');  // rotated

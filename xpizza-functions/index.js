@@ -743,20 +743,29 @@ chargeOnlineApp.all('*', async (req, res) => {
   const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
   const db = getDatabase();
 
-  // ── Item availability gate (KDS 2b · KDS_2B_PLAN.md §6/§7/§8, R4). THE subtle placement:
-  //   1. A READ-ONLY classify (classifyHostedAttempt) runs FIRST. Terminal outcomes — already_paid,
-  //      closed, conflict, in_progress, or reuse (a live checkout URL already issued) — BYPASS the gate
-  //      entirely: we never re-reject a paid order and never regress the "Already paid" success path.
-  //   2. ONLY a fresh / expired-rotate / recover / install attempt (one that WOULD mint a new payable
-  //      checkout URL) is gated. The gate runs BEFORE any orders/{id}, payment_attempts/{id}, OR
-  //      rate_limits write (it sits before the rate-limit increment below and before acquireHostedAttempt),
-  //      so a blocked (86'd) fresh online attempt writes NOTHING and cannot burn the phone/IP quota.
-  //   3. FAIL-OPEN: if the classify read throws we do NOT gate (the CAS in acquireHostedAttempt stays
-  //      authoritative); checkItemAvailability is itself fail-open. A DB hiccup can never block a sale.
-  //   4. A URL already issued while the item was available STAYS payable (plan §7 accepted post-issue
-  //      race); materialize/scheduled-release do NOT re-check.
+  // ── Item availability gate (KDS 2b · KDS_2B_PLAN.md §6/§7/§8, R4). AUTHORITATIVE placement (Slice-4 fix,
+  // closes the classify↔acquire TOCTOU):
+  //   1. Capture `nowTs` ONCE and feed the SAME value to BOTH classifyHostedAttempt (here) and
+  //      acquireHostedAttempt (below), so their freshness/expiry math can't drift between the two calls.
+  //   2. A READ-ONLY classify runs FIRST — but ONLY to skip the availability read for a MONOTONIC-terminal
+  //      order (already_paid / conflict / closed): those can never become a fresh-URL path within a request,
+  //      so we never re-reject a paid/closed order and never regress the "Already paid" success path.
+  //   3. For EVERYTHING ELSE — a predicted fresh attempt, an in_progress or a reuse (both of which can drift
+  //      to a rotate over the multi-await gap before the CAS), or a classify read error — we read
+  //      availability ONCE and thread `cartBlocked` INTO acquireHostedAttempt. The block is then enforced at
+  //      the AUTHORITATIVE fresh-issuance point INSIDE the CAS state machine (create/install/recover/rotate),
+  //      NOT on classify's unreliable prediction. A genuine reuse of a still-live URL returns from acquire
+  //      BEFORE the cartBlocked check, so it still proceeds (plan §7 accepted post-issue race).
+  //   4. The read happens BEFORE any orders/{id}, payment_attempts/{id}, OR rate_limits write (before the
+  //      rate-limit increment below and before acquireHostedAttempt), so a blocked (86'd) attempt writes
+  //      NOTHING and cannot burn the phone/IP quota.
+  //   5. FAIL-OPEN throughout: classify throw ⇒ read availability anyway (the CAS stays authoritative);
+  //      checkItemAvailability is itself fail-open (read error ⇒ blocked:[] ⇒ acquire proceeds). A DB hiccup
+  //      can never block a sale. materialize/scheduled-release do NOT re-check.
   // The fingerprint/slot here are recomputed read-only (pure, from the same inputs as the authoritative
   // computation below) purely to classify already_paid/conflict — the CAS remains the source of truth.
+  const nowTs = Date.now();
+  let cartBlocked = [];
   {
     const schedForRawG = SCHED.normalizeScheduledFor(body.scheduled_for);
     const isScheduledG = Number.isFinite(schedForRawG);
@@ -764,17 +773,19 @@ chargeOnlineApp.all('*', async (req, res) => {
     const fingerprintG = orderFingerprint(orderId, totalCentsG, fields.items_text, isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '');
     let clsG;
     try {
-      clsG = await classifyHostedAttempt(db, orderId, fingerprintG, Date.now());
+      clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs);
     } catch (e) {
-      console.error(`chargeOnlineOrder: availability classify failed for ${orderId} (failing open, not gating)`, e && e.message);
-      clsG = { willIssueFreshUrl: false };   // fail-open: skip the gate; acquireHostedAttempt stays authoritative
+      console.error(`chargeOnlineOrder: availability classify failed for ${orderId} (failing open, reading availability + deferring to the CAS)`, e && e.message);
+      clsG = null;   // unknown → treat as non-terminal → read availability; acquireHostedAttempt stays authoritative
     }
-    if (clsG.willIssueFreshUrl) {
+    // Skip the read ONLY for a MONOTONIC-terminal order — one that provably can't drift into a fresh-URL
+    // path within this request. in_progress / reuse are DELIBERATELY excluded (they can rotate → fresh),
+    // so we read + let the CAS decide. acquire returns in_progress/reuse before the cartBlocked check.
+    const MONOTONIC_TERMINAL = ['already_paid', 'conflict', 'closed'];
+    const bypassGate = clsG && MONOTONIC_TERMINAL.includes(clsG.outcome);
+    if (!bypassGate) {
       const availGate = await checkItemAvailability(db, body.items, restaurantId);
-      if (availGate.blocked.length > 0) {
-        console.warn(`chargeOnlineOrder: rejecting ${orderId} — unavailable item(s): ${availGate.blocked.join(', ')}`);
-        return res.status(400).json({ error: 'item_unavailable', blocked: availGate.blocked });
-      }
+      cartBlocked = availGate.blocked;
     }
   }
 
@@ -911,12 +922,18 @@ chargeOnlineApp.all('*', async (req, res) => {
   // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
   let acq;
   try {
-    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, Date.now());
+    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked);
   } catch (e) {
     console.error(`chargeOnlineOrder: hosted acquire failed for ${orderId}`, e.message);
     return res.status(500).json({ error: 'Database error', detail: e.message });
   }
 
+  // Authoritative intake gate (Slice-4): a fresh/rotated payable URL was about to be minted for a 86'd
+  // cart → the CAS aborted BEFORE any write. Respond 400 with the blocked labels; nothing was persisted.
+  if (acq.outcome === 'item_unavailable') {
+    console.warn(`chargeOnlineOrder: rejecting ${orderId} at the CAS — unavailable item(s): ${(acq.blocked || []).join(', ')}`);
+    return res.status(400).json({ error: 'item_unavailable', blocked: acq.blocked || [] });
+  }
   if (acq.outcome === 'already_paid') {
     return res.status(409).json({ error: 'Already paid', detail: 'This order is already confirmed paid', order_id: orderId });
   }
