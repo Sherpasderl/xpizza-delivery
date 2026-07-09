@@ -1,0 +1,202 @@
+[
+  {
+    "key": "dimsum_01",
+    "label": "Sichuan Spicy Wonton",
+    "category": "dim_sum"
+  },
+  {
+    "key": "dimsum_02",
+    "label": "Pork Belly Buns",
+    "category": "dim_sum"
+  },
+  {
+    "key": "dimsum_03",
+    "label": "Shrimp Dumplings",
+    "category": "dim_sum"
+  },
+  {
+    "key": "dimsum_04",
+    "label": "Fried Wontons",
+    "category": "dim_sum"
+  },
+  {
+    "key": "dimsum_05",
+    "label": "Shrimp Tempura Buns",
+    "category": "dim_sum"
+  },
+  {
+    "key": "starter_01",
+    "label": "Korean BBQ Wings",
+    "category": "starters"
+  },
+  {
+    "key": "starter_02",
+    "label": "Chorizo Parrillero",
+    "category": "starters"
+  },
+  {
+    "key": "starter_03",
+    "label": "Costillitas Chinas",
+    "category": "starters"
+  },
+  {
+    "key": "starter_04",
+    "label": "Camaron Que Se Duerme",
+    "category": "starters"
+  },
+  {
+    "key": "starter_05",
+    "label": "Camaron Asiatico",
+    "category": "starters"
+  },
+  {
+    "key": "starter_06",
+    "label": "Spicy Camaron Tempura",
+    "category": "starters"
+  },
+  {
+    "key": "special_01",
+    "label": "Cantonese Lobster Tail",
+    "category": "house_specials"
+  },
+  {
+    "key": "special_02",
+    "label": "Tuna Tartare",
+    "category": "house_specials"
+  },
+  {
+    "key": "special_04",
+    "label": "Asado de Tira",
+    "category": "house_specials"
+  },
+  {
+    "key": "special_05",
+    "label": "Filete La Muse",
+    "category": "house_specials"
+  },
+  {
+    "key": "crudo_01",
+    "label": "Tuna Crudo",
+    "category": "crudo"
+  },
+  {
+    "key": "crudo_02",
+    "label": "Ceviche Peruano",
+    "category": "crudo"
+  },
+  {
+    "key": "crudo_03",
+    "label": "Ceviche de Camaron",
+    "category": "crudo"
+  },
+  {
+    "key": "noodle_01",
+    "label": "Pad Thai",
+    "category": "noodles"
+  },
+  {
+    "key": "noodle_02",
+    "label": "Broccoli Beef",
+    "category": "noodles"
+  },
+  {
+    "key": "noodle_03",
+    "label": "Hunan Chicken",
+    "category": "noodles"
+  },
+  {
+    "key": "rice_01",
+    "label": "General Tso Chicken",
+    "category": "rice"
+  },
+  {
+    "key": "rice_02",
+    "label": "Mongolian Beef",
+    "category": "rice"
+  },
+  {
+    "key": "rice_03",
+    "label": "Chicken Fried Rice",
+    "category": "rice"
+  },
+  {
+    "key": "rice_04",
+    "label": "Broccoli Chicken",
+    "category": "rice"
+  },
+  {
+    "key": "soup_01",
+    "label": "Cantonese Noodle Soup",
+    "category": "soups_salads"
+  },
+  {
+    "key": "soup_02",
+    "label": "Wonton Soup",
+    "category": "soups_salads"
+  },
+  {
+    "key": "soup_03",
+    "label": "Sunomono Salad",
+    "category": "soups_salads"
+  },
+  {
+    "key": "beer_01",
+    "label": "Corona",
+    "category": "bebidas"
+  },
+  {
+    "key": "beer_02",
+    "label": "Miller Draft",
+    "category": "bebidas"
+  },
+  {
+    "key": "beer_03",
+    "label": "Miller Lite",
+    "category": "bebidas"
+  },
+  {
+    "key": "beer_04",
+    "label": "Toña",
+    "category": "bebidas"
+  },
+  {
+    "key": "beer_05",
+    "label": "Michelob Ultra",
+    "category": "bebidas"
+  },
+  {
+    "key": "beer_06",
+    "label": "Coors Light",
+    "category": "bebidas"
+  },
+  {
+    "key": "beer_07",
+    "label": "Salvavida",
+    "category": "bebidas"
+  },
+  {
+    "key": "beer_08",
+    "label": "Imperial",
+    "category": "bebidas"
+  },
+  {
+    "key": "soft_01",
+    "label": "Coca Cola",
+    "category": "bebidas"
+  },
+  {
+    "key": "soft_02",
+    "label": "Coca Cola Zero",
+    "category": "bebidas"
+  },
+  {
+    "key": "soft_03",
+    "label": "Sprite",
+    "category": "bebidas"
+  },
+  {
+    "key": "soft_04",
+    "label": "Agua",
+    "category": "bebidas"
+  }
+]
