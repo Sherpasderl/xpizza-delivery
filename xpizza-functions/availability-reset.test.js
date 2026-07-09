@@ -190,5 +190,40 @@ assert.strictEqual(AR.localDateInTZ(L(2026, 0, 5, 19, 0)), '2026-01-05'); ok('lo
   assert.strictEqual(good._data.restaurants.la_musa.item_availability.A, undefined); ok('resilience: la_musa 86 cleared');
 }
 
+// ── (9) stale cross-midnight invocation must NOT finalize a NEWER day's marker to 'done' ──────────────────
+// A claimed 'in_progress' on 01-05 (started_at T0) and is slow; after midnight a fresh 01-06 invocation
+// re-claims {01-06, in_progress, T1}. When A finally finalizes, the marker is no longer A's (date/started_at
+// differ), so the CONDITIONAL finalize must ABORT — never clobber the newer day's marker to 'done'.
+{
+  const nowWall = L(2026, 0, 5, 23, 55);          // A runs late on 01-05 (CLOSED) → A.today = '2026-01-05'
+  const T0 = nowWall - 20 * MIN;                  // A's resumed started_at (its own prior claim)
+  const T1 = L(2026, 0, 6, 0, 5);                 // B's fresh 01-06 started_at (> T0)
+  const base = makeDb({ restaurants: { la_musa: {
+    identity: { hours: HOURS },
+    item_availability: {},                        // empty → the clear loop is a no-op; this test is about the finalize
+    availability_reset_marker: { date: '2026-01-05', status: 'in_progress', started_at: T0, completed_at: null },
+  } } }, T0);
+  // Simulate B's fresh 01-06 claim superseding the marker AFTER A reads it back, right before A's finalize:
+  // swap the marker when A reads the item_availability snapshot (which runs between the readback and finalize).
+  let swapped = false;
+  const wrap = (path) => {
+    const inner = base.ref(path);
+    if (path === 'restaurants/la_musa/item_availability') {
+      return { ...inner, once: () => {
+        if (!swapped) { swapped = true; base._data.restaurants.la_musa.availability_reset_marker = { date: '2026-01-06', status: 'in_progress', started_at: T1, completed_at: null }; }
+        return inner.once();
+      } };
+    }
+    return inner;
+  };
+  const db = { _data: base._data, ref: wrap };
+  await AR.runAvailabilityReset({ db, ServerValue: SV, now: nowWall, restaurants: ['la_musa'], log: quietLog });
+  const mk = base._data.restaurants.la_musa.availability_reset_marker;
+  assert.strictEqual(mk.date, '2026-01-06'); ok('cross-midnight: newer-day marker preserved (date not clobbered)');
+  assert.strictEqual(mk.status, 'in_progress'); ok('cross-midnight: stale invocation did NOT finalize the NEWER marker to done');
+  assert.strictEqual(mk.started_at, T1); ok('cross-midnight: newer started_at intact');
+  assert.strictEqual(mk.completed_at, null); ok('cross-midnight: newer marker still awaits its OWN finalize');
+}
+
 console.log(`\navailability-reset: ${n} assertions passed`);
 })().catch((e) => { console.error('availability-reset: FAILED\n', e); process.exit(1); });

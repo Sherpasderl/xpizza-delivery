@@ -105,8 +105,14 @@ async function resetRestaurant(deps, rid) {
   }
 
   // Finalize the lease to 'done' ONLY after a full clear (a crash mid-clear leaves 'in_progress' → the next
-  // 30-min tick, still closed, re-claims + completes). date + started_at are preserved.
-  await markerRef.update({ status: 'done', completed_at: ServerValue.TIMESTAMP });
+  // 30-min tick, still closed, re-claims + completes). CONDITIONAL finalize (transaction): set 'done' ONLY if
+  // the marker is STILL this claim's — same date, still 'in_progress', same started_at. A stale/superseded
+  // invocation (e.g. one that claimed 'in_progress' before midnight and resumed after a NEWER day's claim
+  // already stamped a fresh marker) must NOT clobber the newer marker to 'done'. Else abort. date/started_at kept.
+  await markerRef.transaction((cur) => {
+    if (!cur || cur.date !== today || cur.status !== 'in_progress' || cur.started_at !== startedAt) return; // superseded → abort
+    return { date: today, status: 'done', started_at: startedAt, completed_at: ServerValue.TIMESTAMP };
+  });
 
   // Traceability → Cloud Logging (NOT availability_audit/{key} — that is the staff latest-state record).
   log.info(`resetItemAvailability: ${rid} cleared ${cleared.length}${cleared.length ? ' [' + cleared.join(', ') + ']' : ''}`);
