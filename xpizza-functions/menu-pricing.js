@@ -80,6 +80,15 @@ const LA_MUSA_EXTRAS = {
 };
 const EXTRAS_BY_RESTAURANT = { x_pizza: EXTRA_PRICES, la_musa: LA_MUSA_EXTRAS };
 
+// Per-restaurant item key resolver — the SINGLE source of truth for how an order line maps to its
+// menu key: x_pizza → item.name, la_musa → item.id (stable slug). computeServerTotal (pricing) AND
+// availability-gate.js (the KDS "86" intake gate) both resolve a line's key THROUGH this, so the
+// availability key can never drift from the pricing key. Returns the RAW key (pre-availKey encoding);
+// null/undefined for an unkeyed/absent line (pricing then rejects it; availability treats it as available).
+function itemPricingKey(item, restaurantId) {
+  return restaurantId === 'la_musa' ? (item && item.id) : (item && item.name);
+}
+
 // Recompute the order total from the server price tables for `restaurantId`.
 // Returns { total, error }. Rejects unknown item/extra keys (= tampering) and absurd quantities.
 // Extras model is per-restaurant: x_pizza is name-keyed and counts each once (0/1 toggle);
@@ -97,7 +106,7 @@ function computeServerTotal(items, restaurantId = 'x_pizza') {
   const byId = restaurantId === 'la_musa';
   let total = 0;
   for (const it of items) {
-    const key = byId ? (it && it.id) : (it && it.name);
+    const key = itemPricingKey(it, restaurantId);
     const qty = Number(it && it.qty);
     if (!key || !Object.prototype.hasOwnProperty.call(menu, key)) {
       return { total: NaN, error: `unknown menu item: ${String(key).slice(0, 40)}` };
@@ -141,5 +150,5 @@ function computeServerTotal(items, restaurantId = 'x_pizza') {
 }
 
 module.exports = {
-  MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal,
+  MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal, itemPricingKey,
 };

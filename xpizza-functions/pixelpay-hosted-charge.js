@@ -139,4 +139,52 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
   return { outcome: 'error' };
 }
 
-module.exports = { acquireHostedAttempt, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };
+// ── classifyHostedAttempt — READ-ONLY mirror of acquireHostedAttempt's terminal/intent classification.
+//
+// KDS Phase 2b · Slice 4 (KDS_2B_PLAN.md §6, R4): the online intake availability gate needs to know,
+// WITHOUT writing, whether this charge call would issue a FRESH payable checkout URL (create / install /
+// recover / rotate) versus resolve to a terminal or already-issued outcome (already_paid / closed /
+// conflict / in_progress / reuse). Only a fresh-URL-issuing call is gated for "86'd" items; terminal
+// outcomes BYPASS the gate (never re-reject a paid order; never regress the "Already paid" success path).
+//
+// It performs the SAME read-only reads + decision as acquireHostedAttempt's pre-CAS phase (order-level
+// terminal reads, then the active-attempt state), but NEVER runs the CAS/writes. The
+// `hosted-classify-parity.test.js` fixtures assert this classifier agrees with acquireHostedAttempt on
+// every state (fresh ⟺ outcome 'claimed'; terminal ⟺ the read-only outcomes) so the two cannot drift.
+//
+// Returns { willIssueFreshUrl: boolean, outcome? }. Read errors propagate to the caller, which fails
+// OPEN (treats as "do not gate") — a DB hiccup must never block a sale.
+async function classifyHostedAttempt(db, orderId, fingerprint, now) {
+  const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+
+  // Order-level terminal reads (mirror acquireHostedAttempt L44-49).
+  if (order) {
+    if (order.payment_status === 'confirmed') return { willIssueFreshUrl: false, outcome: 'already_paid' };
+    if (order.payment_fingerprint && order.payment_fingerprint !== fingerprint) return { willIssueFreshUrl: false, outcome: 'conflict' };
+    if (['refunded', 'refund_pending'].includes(order.payment_status) || order.status === 'cancelled') {
+      return { willIssueFreshUrl: false, outcome: 'closed' };
+    }
+  }
+
+  if (!order) return { willIssueFreshUrl: true };                    // create
+  if (!order.active_attempt_id) return { willIssueFreshUrl: true };  // install (recovery, fresh URL)
+
+  const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();
+  if (!att) return { willIssueFreshUrl: true };                      // recover (pointer set, record gone → fresh URL)
+
+  const st = att.hosted_state;
+  if (st === 'paid') return { willIssueFreshUrl: false, outcome: 'already_paid' };
+  if (st === 'creating') return { willIssueFreshUrl: false, outcome: 'in_progress' };
+  if (st === 'created') {
+    if (Number(att.hosted_expires_at) > now && att.hosted_checkout_url) {
+      return { willIssueFreshUrl: false, outcome: 'reuse' };         // live checkout → existing URL, no new one
+    }
+    return { willIssueFreshUrl: true };                              // expired/urless created → rotate (fresh URL)
+  }
+  if (['cancel_pending', 'cancelled', 'voided', 'refund_pending', 'manual_reconciliation'].includes(st)) {
+    return { willIssueFreshUrl: false, outcome: 'closed' };
+  }
+  return { willIssueFreshUrl: true };                                // non-money terminal → rotate (fresh URL)
+}
+
+module.exports = { acquireHostedAttempt, classifyHostedAttempt, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };
