@@ -927,7 +927,7 @@ function shortStatus(s) {
 
   /* ── flat ticket grid (Square target pool) — fixed column count (--kds-cols) + layout mode ── */
   .ticket-grid {
-    flex: 1; overflow-y: auto; padding: 20px;
+    flex: 1; overflow-y: auto; padding: 20px; position: relative;   /* position:relative anchors the absolutely-centered empty-state (below) across all layout modes */
     display: grid; grid-template-columns: repeat(var(--kds-cols, 4), minmax(0, 1fr)); gap: 22px 16px; align-content: start;
     grid-auto-rows: max-content;   /* pin each row to its tallest card's content — the flex:1 definite-height grid was stretching auto rows to equal container fractions → tall tickets overflowed into the next row (mode-agnostic; Tile-Fill cap + .expanded still grow their row) */
   }
@@ -951,7 +951,7 @@ function shortStatus(s) {
   }
   .ticket-grid::-webkit-scrollbar { width: 5px; }
   .ticket-grid::-webkit-scrollbar-thumb { background: var(--stroke2); border-radius: 2px; }
-  .ticket-grid .empty { grid-column: 1 / -1; }
+  .ticket-grid .empty { position: absolute; inset: 0; }   /* out of grid flow → dead-center in every mode (Flex/Tile/1 Rail/2 Rails); .empty already flex-centers icon+text */
 
   /* ══════════ Phase B — horizontal 1/2 Rails (layout-rail) ══════════
      Flips the pool grid HORIZONTAL: column-major flow so FIFO reads oldest top-left → down the
@@ -976,6 +976,9 @@ function shortStatus(s) {
   .ticket-grid.layout-rail .body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
   .ticket-grid.layout-rail .body > * { flex: 0 0 auto; }         /* pin every body child (Completar/Recuperar/Priorizar) … */
   .ticket-grid.layout-rail .card-items { flex: 1 1 auto; min-height: 0; overflow-y: auto; }   /* … except the items list → scroll-inside */
+  /* 1 Rail (r1) — content-height tickets in a single horizontal lane, top-aligned (ragged: short orders short, tall orders tall). The pinned-footer + .card-items scroll-inside (inherited above) only engages for a ticket taller than the lane (rare edge). 2 Rails keeps repeat(2,1fr)+height:100% so its two rows stay aligned. Same specificity as .layout-rail, defined after → wins. */
+  .ticket-grid.rail-single { grid-template-rows: auto; align-items: start; align-content: start; }
+  .ticket-grid.rail-single .tk { height: auto; max-height: 100%; }
   .ticket-grid.layout-rail .card-items::-webkit-scrollbar { width: 4px; }
   .ticket-grid.layout-rail .card-items::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
 
@@ -2089,6 +2092,7 @@ function applyLayout() {
     g.classList.toggle('layout-fill', layoutMode === 'fill');
     g.classList.toggle('layout-flex', layoutMode === 'flex');
     g.classList.toggle('layout-rail', rail);                     // Phase B: horizontal rails
+    g.classList.toggle('rail-single', layoutMode === 'r1');      // 1 Rail = content-height tickets (not stretched to the lane)
     g.style.setProperty('--kds-rails', rail ? layoutMode.slice(1) : '2');   // 'r2' → 2
   }
   // Rail mode replaces the pager with native horizontal scroll → hide the whole pager (arrows + late pill).
