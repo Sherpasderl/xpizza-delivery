@@ -17,6 +17,7 @@
  *   - notifyDriverOnCancellation    (DB trig) — Web Push to assigned driver when order is cancelled
  *   - onOrderCancelled              (DB trig) — Sync cancellations to KDS Sheet
  *   - sendOrderStatusNotifications  (DB trig) — Customer WhatsApp on status transitions
+ *   - notifyPickupReady             (DB trig) — Customer WhatsApp when a pickup order → ready (at most once)
  *   - onIncomingWhatsApp            (HTTPS)   — UltraMsg webhook for inbound customer messages + auto-reply
  *   - autoAssignOnOrderCreate       (DB trig) — Auto-pick driver after grace period (with continuous-at-restaurant stacking)
  *   - monitorAssignmentTimeout      (DB trig) — Reassign on 60s no-accept timeout
@@ -2734,6 +2735,129 @@ exports.logOrderLifecycle = onValueWritten(
     } catch (e) {
       // Swallow — instrumentation must NEVER affect the live order path.
       console.error(`logOrderLifecycle: failed for ${orderId} (${before} → ${after})`, e.message);
+    }
+  }
+);
+
+// ============================================================
+// notifyPickupReady — KDS Phase 2c: pickup-ready customer WhatsApp (KDS_2C_PLAN.md).
+//
+// Watches /orders/{orderId}/status. On a transition INTO 'ready' for a PICKUP order, sends the customer
+// ONE "listo para recoger" WhatsApp via the ORDER's restaurant UltraMsg instance, AT MOST ONCE EVER.
+// SEPARATE from sendOrderStatusNotifications (which stays byte-for-byte unchanged) so the live, money-
+// adjacent delivery/cancel sender is untouched — the only cost is one extra order read per ready transition.
+//
+// State lives in a SEPARATE top-level tree /pickup_ready_notifications/{orderId}, NEVER under /orders:
+// four triggers watch the whole order node (materializeOnConfirm, allocateFacturaOnSale, voidFacturaOnCancel,
+// autoAssignOnOrderCreate), so a mark under the order would re-fire all four. No trigger watches
+// /pickup_ready_notifications, and this trigger watches /orders/{id}/status, so it cannot self-trigger.
+// Mirrors the logOrderLifecycle isolation pattern.
+//
+// At-most-once: a transaction() claim on claimed_at is the SOLE redelivery/concurrency authority (a
+// redelivered new→ready event still carries before='new'; only the claim stops a second send).
+// Mark-before-send: send_started_at is awaited BEFORE sendMessage, so a claimed_at-only node (no
+// send_started_at) is provably unsent. Honest states: sent_at ONLY on a confirmed (non-null) provider
+// return; otherwise send_unresolved_at (a null return may mean the customer already received it → never
+// auto-safe to resend). Never throws (no retry storm); no auto-reclaim.
+const SUPPORTED_WHATSAPP_RESTAURANTS = new Set(['x_pizza', 'la_musa']);
+
+exports.notifyPickupReady = onValueWritten(
+  {
+    ref: '/orders/{orderId}/status',
+    region: 'us-central1'
+  },
+  async (event) => {
+    const before = event.data.before.val();
+    const after = event.data.after.val();
+    // Explicit early return FIRST — a no-op status rewrite does nothing before any diagnostic/claim/send
+    // work. (This is NOT the redelivery guard; the claim transaction below is.)
+    if (after !== 'ready' || before === after) return;
+
+    const orderId = event.params.orderId;
+    const db = getDatabase();
+    const notifRef = db.ref(`pickup_ready_notifications/${orderId}`);
+
+    // Load the order once, then classify eligibility (ALL required; the restaurant check FAILS CLOSED).
+    let order = null;
+    try {
+      order = (await db.ref(`orders/${orderId}`).once('value')).val();
+    } catch (e) {
+      // A transient read error is NOT a durable ineligibility — do NOT skip-stamp, do NOT claim/send. A
+      // redelivery may resolve it (design bias: a missed send is a recoverable nuisance; a wrong stamp isn't).
+      console.warn(`notifyPickupReady: couldn't read order ${orderId}, skipping this invocation`, e.message);
+      return;
+    }
+
+    // skip(): guarded diagnostic stamp. ABORTS if the node already carries claimed_at/sent_at, so a
+    // redelivered-and-now-ineligible invocation can never stamp skipped_at onto an already-claimed/sent
+    // node (sent_at/claimed_at ALWAYS beat skipped_at). Never claims, never sends.
+    const skip = async (reason) => {
+      try {
+        await notifRef.transaction((cur) => {
+          if (cur && (cur.claimed_at || cur.sent_at)) return;   // abort — already claimed/sent
+          return Object.assign(cur || {}, { skipped_at: ServerValue.TIMESTAMP, skipped_reason: reason });
+        });
+      } catch (e) {
+        console.warn(`notifyPickupReady: skip-stamp failed for ${orderId} (${reason})`, e.message);
+      }
+    };
+
+    if (!order) return skip('order_missing');
+    if (order.order_type !== 'pickup') return skip('not_pickup');
+    if (!order.restaurant_id) return skip('no_restaurant_id');
+    if (!SUPPORTED_WHATSAPP_RESTAURANTS.has(order.restaurant_id)) return skip('unsupported_restaurant');
+    if (!order.customer_phone) return skip('no_phone');
+    if (!(await whatsapp.isEnabledForRestaurant(db, order.restaurant_id))) return skip('whatsapp_disabled');
+
+    // ---- Claim → start → send → record (mark-before-send) ----
+    // a. Claim: transaction on claimed_at — present ⇒ abort (already claimed); absent ⇒ win. The SOLE
+    //    redelivery/concurrency authority.
+    let claim;
+    try {
+      claim = await notifRef.child('claimed_at').transaction((cur) => (cur ? undefined : ServerValue.TIMESTAMP));
+    } catch (e) {
+      console.warn(`notifyPickupReady: claim transaction failed for ${orderId}`, e.message);
+      return;   // couldn't claim — do nothing (no send)
+    }
+    if (!claim.committed) return;   // lost the claim (already claimed) — no second send
+
+    // b. Durable start: stamp send_started_at and AWAIT it. If it FAILS, abort WITHOUT sendMessage — this
+    //    guarantees claimed_at-only (no send_started_at) ⇒ sendMessage was never called ⇒ genuinely unsent.
+    try {
+      await notifRef.child('send_started_at').set(ServerValue.TIMESTAMP);
+    } catch (e) {
+      console.error(`notifyPickupReady: send_started_at write failed for ${orderId} — NOT sending`, e.message);
+      return;
+    }
+
+    // c. Build the message (the template OMITS the tracking link when the token is absent).
+    const body = whatsapp.tplPickupReady({
+      customerName: order.customer_name,
+      trackingToken: order.tracking_token,
+      restaurantId: order.restaurant_id
+    });
+
+    // d. Send — handle BOTH a null return and a throw as "unconfirmed".
+    let result = null;
+    try {
+      result = await whatsapp.sendMessage(order.customer_phone, body, order.restaurant_id);
+    } catch (e) {
+      console.error(`notifyPickupReady: sendMessage threw for ${orderId}`, e.message);
+      result = null;
+    }
+
+    // e. Honest record: sent_at ONLY on a confirmed (non-null) return; otherwise send_unresolved_at. NEVER
+    //    set sent_at on a null/thrown result. f. Never throw out of the trigger; no auto-reclaim of claimed_at.
+    try {
+      if (result != null) {
+        await notifRef.child('sent_at').set(ServerValue.TIMESTAMP);
+        console.log(`notifyPickupReady: ${orderId} → pickup-ready WhatsApp sent to ${order.customer_phone}`);
+      } else {
+        await notifRef.child('send_unresolved_at').set(ServerValue.TIMESTAMP);
+        console.warn(`notifyPickupReady: ${orderId} → send UNRESOLVED (no confirmed provider success)`);
+      }
+    } catch (e) {
+      console.error(`notifyPickupReady: outcome write failed for ${orderId}`, e.message);
     }
   }
 );

@@ -295,6 +295,23 @@ function tplCancelled({ orderId }) {
   ].join('\n');
 }
 
+// Pickup ready for collection (KDS Phase 2c). Sent by notifyPickupReady when a PICKUP order → 'ready'
+// (the kitchen "Listo" tap), AT MOST ONCE per order. Per-restaurant brand/emoji/link resolve via
+// resolveWhatsappConfig. The tracking link is INCLUDED when a token is present and OMITTED otherwise
+// (never build a URL from an absent/bad token) — the core "listo para recoger" message still sends.
+function tplPickupReady({ customerName, trackingToken, restaurantId }) {
+  const lines = [
+    `${itemsEmojiFor(restaurantId)} ¡Tu pedido está listo para recoger!`,
+    ``,
+    `${customerName ? '¡Hola ' + customerName + '! 👋 ' : ''}Ya puedes pasar por ${brandFor(restaurantId)} a recogerlo. 🏪`
+  ];
+  if (trackingToken) {
+    lines.push(``, `Detalles:`, trackingUrl(trackingToken, restaurantId));
+  }
+  lines.push(``, `¡Gracias por preferirnos!`);
+  return lines.join('\n');
+}
+
 module.exports = {
   sendMessage,
   isEnabled,
@@ -311,5 +328,6 @@ module.exports = {
   tplOutForDelivery,
   tplDelivered,
   tplCancelled,
+  tplPickupReady,
   TRACKING_BASE
 };
