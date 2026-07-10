@@ -568,14 +568,15 @@
       banner.classList.remove('success', 'danger');
       driverCard.classList.add('hidden');
 
-      // Pickup-aware: order_tracking carries order_type. Relabel the delivery-oriented steps + tailor the copy
-      // so a pickup order reads "Listo para recoger / Recogido" instead of "En camino / Entregado".
+      // Pickup-aware: order_tracking carries order_type. A pickup order has no driver + no handoff signal,
+      // so its journey ENDS at "Listo para recoger" — a 3-step timeline (hide the 4th step) with Listo as the
+      // celebratory terminal state. Delivery keeps its full 4-step En camino / Entregado flow.
       const isPickup = data.order_type === 'pickup';
       const brandName = (rid) => rid === 'la_musa' ? 'La Musa' : 'X. Pizza';
-      const lbl3 = document.querySelector('.step[data-step="out_for_delivery"] .step-label');
-      const lbl4 = document.querySelector('.step[data-step="delivered"] .step-label');
-      if (lbl3) lbl3.textContent = isPickup ? 'Listo' : 'En camino';
-      if (lbl4) lbl4.textContent = isPickup ? 'Recogido' : 'Entregado';
+      const step4El = document.querySelector('.step[data-step="delivered"]');
+      step4El.style.display = isPickup ? 'none' : '';                          // pickup = 3 steps
+      document.querySelector('.step[data-step="out_for_delivery"] .step-label').textContent = isPickup ? 'Listo' : 'En camino';
+      if (!isPickup) step4El.querySelector('.step-label').textContent = 'Entregado';
 
       if (status === 'cancelled') {
         // Cancelled — special state, no timeline progression shown
@@ -599,14 +600,15 @@
       else if (status === 'delivered') progressStep = 4;
       else progressStep = 1;  // unknown status — assume just received
 
-      // Mark steps as done/current
+      // Mark steps as done/current. For pickup, 'ready' is the TERMINAL state → all visible steps green.
+      const pickupDone = isPickup && (status === 'ready' || status === 'delivered');
       const stepNames = ['received', 'preparing', 'out_for_delivery', 'delivered'];
       stepNames.forEach((name, idx) => {
         const stepNum = idx + 1;
         const stepEl = document.querySelector(`.step[data-step="${name}"]`);
-        if (status === 'delivered') {
-          // All steps green when delivered
-          stepEl.classList.add('complete');
+        if (isPickup && name === 'delivered') return;   // 4th step hidden for pickup
+        if (status === 'delivered' || pickupDone) {
+          stepEl.classList.add('complete');             // all visible steps green
         } else if (stepNum < progressStep) {
           stepEl.classList.add('done');
         } else if (stepNum === progressStep) {
@@ -614,10 +616,8 @@
         }
       });
 
-      // Compute fill bar width
-      // Steps are at positions 0%, 33%, 66%, 100% along the bar
-      // Bar fills to the CURRENT step's position
-      const fillWidths = { 1: '0%', 2: '33%', 3: '67%', 4: '100%' };
+      // Fill bar → the current step's position. Pickup is a 3-step timeline (0/50/100%); delivery 4-step.
+      const fillWidths = isPickup ? { 1: '0%', 2: '50%', 3: '100%' } : { 1: '0%', 2: '33%', 3: '67%', 4: '100%' };
       fill.style.width = fillWidths[progressStep] || '0%';
 
       // Banner content per status
