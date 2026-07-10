@@ -279,15 +279,15 @@ function tplDelivered({ customerName, restaurantId }) {
   return [
     `✅ ¡Entregado!`,
     ``,
-    `Esperamos que disfrutes tu ${brandFor(restaurantId)}${customerName ? ', ' + customerName : ''}.`,
+    `Esperamos que disfrutes ${brandFor(restaurantId)}${customerName ? ', ' + customerName : ''}.`,
     ``,
     `¿Algún problema con tu pedido? Responde a este mensaje y te ayudamos.`
   ].join('\n');
 }
 
-function tplCancelled({ orderId }) {
+function tplCancelled({ orderId, restaurantId }) {
   return [
-    `Lamentamos avisarte que tu pedido${orderId ? ' #' + orderId : ''} fue cancelado.`,
+    `Lamentamos avisarte que tu pedido${orderId ? ' #' + orderId : ''} en ${brandFor(restaurantId)} fue cancelado.`,
     ``,
     `Si pagaste por adelantado, te contactaremos pronto sobre el reembolso.`,
     ``,

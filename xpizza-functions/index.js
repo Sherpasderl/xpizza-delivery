@@ -2663,7 +2663,8 @@ exports.sendOrderStatusNotifications = onValueWritten(
 
       } else if (after === 'cancelled') {
         body = whatsapp.tplCancelled({
-          orderId
+          orderId,
+          restaurantId
         });
       }
 

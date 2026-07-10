@@ -34,8 +34,10 @@ assert.equal(w.brandFor(undefined), 'X. Pizza'); ok('brandFor default = "X. Pizz
 const ord = (rid) => w.tplOrderReceived({ customerName: 'Ana', total: 299, itemsText: 'X', trackingToken: 'T', restaurantId: rid });
 assert.ok(ord('x_pizza').includes('Recibimos tu pedido en X. Pizza ✅')); ok('tplOrderReceived x_pizza body byte-identical ("X. Pizza")');
 assert.ok(ord('la_musa').includes('Recibimos tu pedido en La Musa ✅')); ok('tplOrderReceived la_musa body branded ("La Musa")');
-assert.ok(w.tplDelivered({ customerName: 'Ana', restaurantId: 'x_pizza' }).includes('disfrutes tu X. Pizza, Ana.')); ok('tplDelivered x_pizza body byte-identical');
-assert.ok(w.tplDelivered({ customerName: 'Ana', restaurantId: 'la_musa' }).includes('disfrutes tu La Musa, Ana.')); ok('tplDelivered la_musa body branded');
+assert.ok(w.tplDelivered({ customerName: 'Ana', restaurantId: 'x_pizza' }).includes('disfrutes X. Pizza, Ana.')); ok('tplDelivered x_pizza — brand, no "tu"');
+assert.ok(w.tplDelivered({ customerName: 'Ana', restaurantId: 'la_musa' }).includes('disfrutes La Musa, Ana.')); ok('tplDelivered la_musa — brand, no "tu"');
+assert.ok(w.tplCancelled({ orderId: 'PZX-1', restaurantId: 'x_pizza' }).includes('pedido #PZX-1 en X. Pizza fue cancelado')); ok('tplCancelled x_pizza — brand line added');
+assert.ok(w.tplCancelled({ orderId: 'PZX-1', restaurantId: 'la_musa' }).includes('pedido #PZX-1 en La Musa fue cancelado')); ok('tplCancelled la_musa — brand line added');
 
 // ── E1: food-noun copy — x_pizza BYTE-IDENTICAL, la_musa branded ──
 assert.equal(w.itemsEmojiFor('x_pizza'), '🍕'); ok('itemsEmojiFor x_pizza = 🍕');
