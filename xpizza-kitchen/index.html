@@ -943,6 +943,22 @@ function shortStatus(s) {
     font-size: 13px; padding: 10px 13px; margin-top: 14px;
   }
 
+  /* Disponibilidad summary (sidebar) — collapsible header + a compact list of ONLY the sold-out items + link. */
+  .sb-avail-sec .sb-h-btn { background: none; border: 0; width: 100%; cursor: pointer; padding: 0; margin: 0 0 3px; }
+  .sb-avail-sec .sb-h-btn .sb-h-lbl { flex: 1; }
+  .sb-avail-sec .sb-chev { width: 13px; height: 13px; opacity: .6; transition: transform .15s; }
+  .sb-avail-sec.collapsed .sb-chev { transform: rotate(-90deg); }
+  .sb-avail-sec.collapsed .sb-avail-sum { display: none; }
+  .sb-avail-sum { display: flex; flex-direction: column; }
+  .sb-avail-out { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--on-dark-mut); padding: 4px 2px; }
+  .sb-avail-out .dot { width: 6px; height: 6px; border-radius: 50%; background: #D3462F; flex: 0 0 auto; }
+  .sb-avail-out .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: line-through; }
+  .sb-avail-link {
+    background: none; border: 0; color: var(--accent); font-family: var(--body); font-size: 12.5px; font-weight: 600;
+    cursor: pointer; padding: 6px 2px 2px; text-align: left; width: 100%;
+  }
+  .sb-avail-link:hover { text-decoration: underline; }
+
   .sb-foot {
     margin-top: auto; border-top: 1px solid var(--stroke2); padding-top: 14px;
     display: flex; flex-direction: column; gap: 4px;
@@ -1303,10 +1319,20 @@ function shortStatus(s) {
       <div class="sb-h"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg> Todo el día</div>
       <div class="sb-rows" id="allday-rail"></div>
     </div>
-    <!-- Disponibilidad (86) + Ajustes both live as ENTRIES in the sidebar foot; each opens a full main-window
-         screen on click (the toggles no longer sit expanded in the sidebar — kds-2b-panel-relocate). -->
+    <!-- Disponibilidad summary — a glanceable, collapsible list of the CURRENTLY sold-out (86'd) items + a link
+         that opens the full management screen. Reads the same availManifest/availFlags the screen subscribes to. -->
+    <div class="sb-sec sb-avail-sec" id="avail-summary-sec">
+      <button class="sb-h sb-h-btn" id="avail-summary-h" onclick="toggleAvailSummary()" aria-expanded="true" title="Disponibilidad">
+        <svg viewBox="0 0 24 24"><use href="#i-slash"/></svg> <span class="sb-h-lbl">Disponibilidad</span>
+        <svg class="sb-chev" viewBox="0 0 24 24"><use href="#i-chevd"/></svg>
+      </button>
+      <div class="sb-avail-sum" id="avail-summary-body">
+        <div id="avail-summary-list"></div>
+        <button class="sb-avail-link" onclick="openAvailability()">Ver toda la disponibilidad</button>
+      </div>
+    </div>
+    <!-- Ajustes lives as an ENTRY in the sidebar foot; it opens a full main-window screen on click. -->
     <div class="sb-foot">
-      <button class="fr" id="btn-availability" onclick="openAvailability()" title="Disponibilidad — marcar agotados"><svg viewBox="0 0 24 24"><use href="#i-slash"/></svg> Disponibilidad</button>
       <button class="fr" id="btn-settings" onclick="openSettings()" title="Ajustes / Diseño"><svg viewBox="0 0 24 24"><use href="#i-cog"/></svg> Ajustes</button>
       <button class="fr" id="btn-sound" onclick="toggleSound()" title="Activar/desactivar sonido"><svg viewBox="0 0 24 24"><use href="#i-bell"/></svg> <span id="sound-label">Sonido activado</span></button>
       <div class="fr fr-clock"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg> <span id="clock">--:--</span></div>
@@ -2369,13 +2395,11 @@ function openAvailability() {
   document.getElementById('availability-screen')?.removeAttribute('hidden');
   document.querySelector('.content')?.setAttribute('hidden', '');   // hide the board
   document.getElementById('sidebar')?.setAttribute('hidden', '');   // + the app sidebar → screen is full main-window
-  document.getElementById('btn-availability')?.classList.add('active');
 }
 function closeAvailability() {
   document.getElementById('availability-screen')?.setAttribute('hidden', '');
   document.querySelector('.content')?.removeAttribute('hidden');
   document.getElementById('sidebar')?.removeAttribute('hidden');
-  document.getElementById('btn-availability')?.classList.remove('active');
 }
 
 /* ── Swipe pagination (fix #4) — a horizontal drag past a threshold on the pool → gotoPage(±1). Fires ONLY
@@ -2514,6 +2538,7 @@ function availKeyOf(rawKey) { return typeof window.availKey === 'function' ? win
 function isItemOff(rawKey) { return availFlags[availKeyOf(rawKey)]?.available === false; }   // absent/true ⇒ available
 
 function renderAvailPanel() {
+  renderAvailSummary();          // keep the sidebar sold-out summary in sync on every panel render
   const el = document.getElementById('avail-panel');
   if (!el) return;
   if (!Array.isArray(availManifest) || availManifest.length === 0) {
@@ -2544,6 +2569,28 @@ function renderAvailPanel() {
     }
   }
   el.innerHTML = html;
+}
+
+// Sidebar Disponibilidad summary — the CURRENTLY sold-out items only (glanceable); empty ⇒ just the "Ver todo" link.
+function renderAvailSummary() {
+  const list = document.getElementById('avail-summary-list');
+  if (!list) return;
+  const out = [];
+  if (Array.isArray(availManifest)) {
+    for (const it of availManifest) {
+      if (!it || it.key == null) continue;
+      if (isItemOff(it.key)) out.push(it.label != null ? it.label : it.key);
+    }
+  }
+  list.innerHTML = out.map(nm =>
+    `<div class="sb-avail-out"><span class="dot"></span><span class="nm">${escapeHtml(nm)}</span></div>`
+  ).join('');
+}
+function toggleAvailSummary() {
+  const sec = document.getElementById('avail-summary-sec');
+  if (!sec) return;
+  const collapsed = sec.classList.toggle('collapsed');
+  document.getElementById('avail-summary-h')?.setAttribute('aria-expanded', String(!collapsed));
 }
 
 async function toggleAvail(rawKey) {
@@ -2601,6 +2648,7 @@ document.getElementById('avail-panel')?.addEventListener('click', (e) => {
   if (row && row.dataset && row.dataset.key != null) toggleAvail(row.dataset.key);
 });
 window.toggleAvail = toggleAvail;
+window.toggleAvailSummary = toggleAvailSummary;   // Phase 2b sidebar sold-out summary collapse
 
 // Apply the persisted per-device layout + wire swipe pagination (fix #4/#5). Grid element exists at parse.
 applyLayout();
