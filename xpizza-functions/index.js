@@ -2777,30 +2777,35 @@ exports.notifyPickupReady = onValueWritten(
     const db = getDatabase();
     const notifRef = db.ref(`pickup_ready_notifications/${orderId}`);
 
+    // stamp(): guarded diagnostic write. ABORTS if the node already carries claimed_at/sent_at, so a
+    // redelivered invocation can never stamp a diagnostic (skipped_at / read_error_at) onto an already-
+    // claimed/sent node (sent_at/claimed_at ALWAYS beat any diagnostic). Never claims, never sends.
+    const stamp = async (fields) => {
+      try {
+        await notifRef.transaction((cur) => {
+          if (cur && (cur.claimed_at || cur.sent_at)) return;   // abort — already claimed/sent
+          return Object.assign(cur || {}, fields);
+        });
+      } catch (e) {
+        console.warn(`notifyPickupReady: diagnostic stamp failed for ${orderId}`, e.message);
+      }
+    };
+    const skip = (reason) => stamp({ skipped_at: ServerValue.TIMESTAMP, skipped_reason: reason });
+
     // Load the order once, then classify eligibility (ALL required; the restaurant check FAILS CLOSED).
     let order = null;
     try {
       order = (await db.ref(`orders/${orderId}`).once('value')).val();
     } catch (e) {
-      // A transient read error is NOT a durable ineligibility — do NOT skip-stamp, do NOT claim/send. A
-      // redelivery may resolve it (design bias: a missed send is a recoverable nuisance; a wrong stamp isn't).
-      console.warn(`notifyPickupReady: couldn't read order ${orderId}, skipping this invocation`, e.message);
+      // Transient read error ⇒ NOT a durable ineligibility, so do NOT claim/send. But leave a durable
+      // read_error_at trace (RTDB at-least-once does NOT guarantee a business re-attempt after a clean
+      // resolve) so ops can see + manually recover a missed ping. Guarded ⇒ never clobbers a real
+      // claim/sent. Do NOT rethrow — the stamp IS the recovery signal, and the trigger must never throw
+      // (no retry config; a throw would just mark the invocation failed with no benefit).
+      console.warn(`notifyPickupReady: couldn't read order ${orderId}, stamping read_error_at`, e.message);
+      await stamp({ read_error_at: ServerValue.TIMESTAMP, read_error_reason: String((e && e.message) || 'read_failed').slice(0, 200) });
       return;
     }
-
-    // skip(): guarded diagnostic stamp. ABORTS if the node already carries claimed_at/sent_at, so a
-    // redelivered-and-now-ineligible invocation can never stamp skipped_at onto an already-claimed/sent
-    // node (sent_at/claimed_at ALWAYS beat skipped_at). Never claims, never sends.
-    const skip = async (reason) => {
-      try {
-        await notifRef.transaction((cur) => {
-          if (cur && (cur.claimed_at || cur.sent_at)) return;   // abort — already claimed/sent
-          return Object.assign(cur || {}, { skipped_at: ServerValue.TIMESTAMP, skipped_reason: reason });
-        });
-      } catch (e) {
-        console.warn(`notifyPickupReady: skip-stamp failed for ${orderId} (${reason})`, e.message);
-      }
-    };
 
     if (!order) return skip('order_missing');
     if (order.order_type !== 'pickup') return skip('not_pickup');

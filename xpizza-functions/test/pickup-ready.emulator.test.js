@@ -200,6 +200,41 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     ok('durable-start: send_started_at write failure → sendMessage NOT called; node is claimed_at-only (unsent)');
   }
 
+  // ── 5d. Read error → read_error_at stamped (durable trace), no claim/send; guard holds on a sent node ──
+  await reset(); resetSpy('ok');
+  {
+    const RefProto = Object.getPrototypeOf(db.ref('x'));
+    const origOnce = RefProto.once;
+    // Make ONLY the orders/<id> read throw (not the pickup_ready_notifications reads the helpers do).
+    const throwOrderRead = (id) => function (...a) {
+      if (this.key === id && this.parent && this.parent.key === 'orders') return Promise.reject(new Error('injected: order read failed'));
+      return origOnce.apply(this, a);
+    };
+    // (a) fresh order-read failure → read_error_at, no claim, no send
+    await seedOrder('RE', {});
+    try {
+      RefProto.once = throwOrderRead('RE');
+      await app.notifyPickupReady.run(ev('RE', 'preparing', 'ready'));
+    } finally { RefProto.once = origOnce; }
+    assert.strictEqual(sends.length, 0, 'read error → no send');
+    const n = await notif('RE');
+    assert.ok(n && n.read_error_at, 'read_error_at stamped (durable ops-visible trace)');
+    assert.ok(!n.claimed_at && !n.send_started_at && !n.sent_at, 'read error → no claim/start/sent');
+    // (b) guard holds — a read-error redelivery must NOT stamp over an already-sent node
+    await reset(); resetSpy('ok');
+    await seedOrder('RE2', {});
+    await app.notifyPickupReady.run(ev('RE2', 'preparing', 'ready'));   // sends → sent_at
+    assert.ok((await notif('RE2')).sent_at, 'RE2 first run sent');
+    try {
+      RefProto.once = throwOrderRead('RE2');
+      await app.notifyPickupReady.run(ev('RE2', 'new', 'ready'));       // stale redelivery, read now throws
+    } finally { RefProto.once = origOnce; }
+    const n2 = await notif('RE2');
+    assert.ok(n2.sent_at && !n2.read_error_at, 'guard: read-error did NOT stamp over a sent node');
+    assert.strictEqual(sends.length, 1, 'no second send');
+    ok('read error → read_error_at stamped (no claim/send); guard: never overwrites a sent node');
+  }
+
   // ── 6. Missing tracking_token → message sent WITHOUT a link (core message intact) ──
   await reset(); resetSpy('ok');
   {
