@@ -1921,6 +1921,7 @@ MENU.forEach(p => qty[p.id] = 0);
    Key mirrors the pricing key: la_musa → item id/slug → window.availKey(id). ──────── */
 const AVAIL_URL = 'https://xpizza-delivery-default-rtdb.firebaseio.com/restaurants/' + RESTAURANT_ID + '/item_availability.json';
 let itemAvail = {};   // raw availKey → { available, updated_at }; empty ⇒ all available (fail-open)
+let availSeq = 0;   // monotonic poll guard — only the LATEST loadAvailability() mutates state (drops stale/overlapping polls)
 function isSoldOut(item){
   try {
     if(!item || typeof window.availKey !== 'function') return false;
@@ -1945,13 +1946,16 @@ function applyAvailability(){
   } catch(_){ /* fail-open: never let the overlay break the menu */ }
 }
 async function loadAvailability(){
+  const seq = ++availSeq;
   try {
     const res = await fetch(AVAIL_URL, { cache:'no-store' });
+    if(seq !== availSeq) return;                                  // superseded by a newer poll → do nothing
     if(!res.ok){ itemAvail = {}; applyAvailability(); return; }   // fail-open: unreadable node ⇒ every item available (never leave a sellable item disabled from a stale load)
     const data = await res.json();
+    if(seq !== availSeq) return;                                  // superseded after the json await → do nothing
     itemAvail = (data && typeof data === 'object') ? data : {};
     applyAvailability();
-  } catch(_){ itemAvail = {}; applyAvailability(); }   // fail-open: read error ⇒ every item available
+  } catch(_){ if(seq === availSeq){ itemAvail = {}; applyAvailability(); } }   // fail-open: read error ⇒ every item available (only if still the latest poll)
 }
 
 let lat=null, lng=null, gmap=null, gmarker=null, mapReady=false;
