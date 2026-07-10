@@ -47,7 +47,7 @@ assert.strictEqual(tplStatusCheckNotFound(X),
   'No encontramos un pedido activo a tu nombre.\n\nSi acabas de ordenar, espera unos minutos — te avisaremos por aquí.\n\nSi quieres hacer un nuevo pedido: https://orders.xpizza.hn'); ok('x_pizza status-not-found — exact');
 assert.strictEqual(tplShortAck(X), '¡Con gusto! 🍕'); ok('x_pizza short-ack — exact (🍕)');
 assert.strictEqual(tplUnhandled(X, { isOpen: true }),
-  'Recibimos tu mensaje. Un empleado te responderá pronto.\n\nSi quieres hacer un pedido: https://orders.xpizza.hn'); ok('x_pizza unhandled/open — exact');
+  'Recibimos tu mensaje. Un colaborador te responderá pronto.\n\nSi quieres hacer un pedido: https://orders.xpizza.hn'); ok('x_pizza unhandled/open — exact');
 
 // ── la_musa templates — same shape, la_musa substitutions ──
 assert.ok(tplGeneralInquiry(L, { isOpen: true }).includes('https://orders.lamusa.hn')); ok('la_musa general → orders.lamusa.hn');

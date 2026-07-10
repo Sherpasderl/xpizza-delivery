@@ -285,7 +285,7 @@ function tplShortAck(cfg) {
 function tplUnhandled(cfg, { isOpen, opensLabel }) {
   if (isOpen) {
     return [
-      `Recibimos tu mensaje. Un empleado te responderá pronto.`,
+      `Recibimos tu mensaje. Un colaborador te responderá pronto.`,
       ``,
       `Si quieres hacer un pedido: ${cfg.orderFormUrl}`
     ].join('\n');
