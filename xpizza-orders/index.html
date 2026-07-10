@@ -1522,11 +1522,11 @@ function applyAvailability(){
 async function loadAvailability(){
   try {
     const res = await fetch(AVAIL_URL, { cache:'no-store' });
-    if(!res.ok) return;                                    // fail-open: keep prior state
+    if(!res.ok){ itemAvail = {}; applyAvailability(); return; }   // fail-open: unreadable node ⇒ every item available (never leave a sellable item disabled from a stale load)
     const data = await res.json();
     itemAvail = (data && typeof data === 'object') ? data : {};
     applyAvailability();
-  } catch(_){ /* fail-open: leave itemAvail untouched (empty ⇒ all available) */ }
+  } catch(_){ itemAvail = {}; applyAvailability(); }   // fail-open: read error ⇒ every item available
 }
 
 let lat=null, lng=null, gmap=null, gmarker=null, mapReady=false;
