@@ -273,6 +273,14 @@
     font-size: 14px;
     color: var(--text);
   }
+  /* per-restaurant brand chip on the inbound-message row (which line the customer texted) */
+  .msg-row-rest {
+    display: inline-block; margin-left: 8px; vertical-align: middle;
+    font-family: 'Plus Jakarta Sans', sans-serif; font-size: 11px; font-weight: 700;
+    letter-spacing: .01em; padding: 2px 8px; border-radius: 20px;
+  }
+  .msg-row-rest.rest-x_pizza { background: rgba(242,107,56,.16); color: #F6935F; }
+  .msg-row-rest.rest-la_musa { background: rgba(38,166,154,.18); color: #46C7BB; }
   .msg-row-time {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 11px;
@@ -2438,6 +2446,10 @@ function renderMessageRow(m) {
   const time = formatMsgTime(m.received_at);
   const body = escapeHtml(m.body || '(sin contenido)');
   const isHandled = m.handled === true;
+  // Which restaurant's number was texted (stored by onIncomingWhatsApp; legacy/absent → x_pizza). A brand
+  // chip so the dispatcher sees at a glance which line the message came in on.
+  const rid = m.restaurant_id === 'la_musa' ? 'la_musa' : 'x_pizza';
+  const brandChip = `<span class="msg-row-rest rest-${rid}">${rid === 'la_musa' ? 'La Musa' : 'X. Pizza'}</span>`;
 
   let metaLine = '';
   if (isHandled && m.handled_at) {
@@ -2467,7 +2479,7 @@ function renderMessageRow(m) {
 
   return `
     <div class="msg-row${isHandled ? ' handled' : ''}">
-      <div class="msg-row-from">${phone}</div>
+      <div class="msg-row-from">${phone}${brandChip}</div>
       <div class="msg-row-time">${time}</div>
       <div class="msg-row-body">${body}</div>
       ${metaLine}
