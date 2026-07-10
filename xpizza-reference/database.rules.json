@@ -157,7 +157,10 @@
           ".read": true,
           "$key": {
             ".write": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()",
-            ".validate": "newData.hasChildren(['available','updated_at']) && newData.hasOnly(['available','updated_at']) && newData.child('available').isBoolean() && newData.child('updated_at').isNumber()"
+            ".validate": "newData.hasChildren(['available','updated_at'])",
+            "available":  { ".validate": "newData.isBoolean()" },
+            "updated_at": { ".validate": "newData.isNumber()" },
+            "$other":     { ".validate": false }
           }
         },
 

@@ -18,6 +18,7 @@
  */
 const assert = require('assert');
 const http = require('http');
+const express = require('express');
 
 // Env MUST be set before requiring index.js (it reads MAKE_SECRET; the emulator host is set by emulators:exec).
 process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'test-secret';
@@ -34,7 +35,15 @@ const db = getDatabase();
 // POST JSON to an onRequest handler mounted on an ephemeral server; resolves { status, json }.
 function post(handler, body, { secret = SECRET } = {}) {
   return new Promise((resolve, reject) => {
-    const server = http.createServer(handler).listen(0, async () => {
+    // Firebase Functions v2 onRequest AUTO-APPLIES an express.json() body parser in the runtime. A bare
+    // http.createServer(handler) bypasses that layer, so req.body arrives unparsed and every handler 400s
+    // on "missing required fields" (validateOrderPayload) BEFORE ever reaching the availability gate — the
+    // request never exercised what this suite tests. Mount the handler behind express.json() to mirror the
+    // runtime so the (complete) payload passes validation + auth and reaches the gate.
+    const wrapped = express();
+    wrapped.use(express.json());
+    wrapped.use(handler);
+    const server = http.createServer(wrapped).listen(0, async () => {
       try {
         const { port } = server.address();
         const res = await fetch(`http://127.0.0.1:${port}/`, {
