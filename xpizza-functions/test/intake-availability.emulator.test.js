@@ -60,7 +60,15 @@ function post(handler, body, { secret = SECRET } = {}) {
 }
 
 const MARG = availKey('Margherita');
-const IDENTITY = { active: true, hub_lat: 15.5, hub_lng: -88.0, delivery_radius_km: 10, version: 1, name: 'X Pizza', phone: '+50497952893', hours: null };
+// Always-open hours: the handlers gate an ASAP order with SCHED.asapWhileClosed(hours, …, Date.now())
+// (createOrder L564, chargeOnlineOrder L834) BEFORE resolving item_unavailable. With hours:null the kitchen
+// reads CLOSED → 'Cerrado — programá tu pedido' short-circuits the response, so the availability gate is
+// never exercised (and even the AVAILABLE positive-control cart would 400). The handler reads the real
+// Date.now() (no clock injection here), so make every day open 24/7 (end '24:00' = 1440 ⇒ mins < 1440
+// always true) → asapWhileClosed === false always → both handlers reach the availability gate under test.
+const OPEN_ALL_DAY = { open: true, start: '00:00', end: '24:00' };
+const IDENTITY = { active: true, hub_lat: 15.5, hub_lng: -88.0, delivery_radius_km: 10, version: 1, name: 'X Pizza', phone: '+50497952893',
+  hours: { sun: OPEN_ALL_DAY, mon: OPEN_ALL_DAY, tue: OPEN_ALL_DAY, wed: OPEN_ALL_DAY, thu: OPEN_ALL_DAY, fri: OPEN_ALL_DAY, sat: OPEN_ALL_DAY } };
 const cashPayload = (orderId, itemName = 'Margherita') => ({
   restaurant_id: 'x_pizza', order_id: orderId, customer_name: 'Test', customer_phone: '99990000',
   items_text: `1x ${itemName}`, order_type: 'pickup', payment_method: 'cash',
