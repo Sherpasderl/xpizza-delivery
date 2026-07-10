@@ -568,6 +568,15 @@
       banner.classList.remove('success', 'danger');
       driverCard.classList.add('hidden');
 
+      // Pickup-aware: order_tracking carries order_type. Relabel the delivery-oriented steps + tailor the copy
+      // so a pickup order reads "Listo para recoger / Recogido" instead of "En camino / Entregado".
+      const isPickup = data.order_type === 'pickup';
+      const brandName = (rid) => rid === 'la_musa' ? 'La Musa' : 'X. Pizza';
+      const lbl3 = document.querySelector('.step[data-step="out_for_delivery"] .step-label');
+      const lbl4 = document.querySelector('.step[data-step="delivered"] .step-label');
+      if (lbl3) lbl3.textContent = isPickup ? 'Listo' : 'En camino';
+      if (lbl4) lbl4.textContent = isPickup ? 'Recogido' : 'Entregado';
+
       if (status === 'cancelled') {
         // Cancelled — special state, no timeline progression shown
         document.getElementById('timeline').style.opacity = '0.4';
@@ -584,7 +593,8 @@
       // Map status → progress (steps 1-4)
       let progressStep;  // 1, 2, 3, or 4
       if (status === 'new') progressStep = 1;
-      else if (status === 'preparing' || status === 'ready') progressStep = 2;
+      else if (status === 'preparing') progressStep = 2;
+      else if (status === 'ready') progressStep = isPickup ? 3 : 2;   // pickup: ready = "Listo para recoger" (step 3); delivery: still preparing (awaiting driver)
       else if (status === 'out_for_delivery') progressStep = 3;
       else if (status === 'delivered') progressStep = 4;
       else progressStep = 1;  // unknown status — assume just received
@@ -614,9 +624,14 @@
       if (status === 'new') {
         bannerTitle.textContent = 'Recibimos tu pedido';
         bannerSub.textContent = 'Estamos por empezar a preparar tu pizza';
+      } else if (status === 'ready' && isPickup) {
+        banner.classList.add('success');
+        fill.classList.add('success');
+        bannerTitle.textContent = '¡Tu pedido está listo para recoger!';
+        bannerSub.textContent = `Pasá por ${brandName(data.restaurant_id)} a recogerlo`;
       } else if (status === 'preparing' || status === 'ready') {
         bannerTitle.textContent = 'Tu pedido se está preparando';
-        bannerSub.textContent = 'Te avisaremos cuando vaya en camino';
+        bannerSub.textContent = isPickup ? 'Te avisaremos cuando esté listo' : 'Te avisaremos cuando vaya en camino';
       } else if (status === 'out_for_delivery') {
         // Banner is just complementary — main info is in the driver card below
         if (data.driver_name) {
@@ -641,16 +656,17 @@
         banner.classList.remove('hidden');
         banner.classList.add('success');
         fill.classList.add('success');
-        bannerTitle.textContent = '¡Disfruta tu pizza!';
+        bannerTitle.textContent = isPickup ? '¡Gracias por tu compra!' : '¡Disfruta tu pizza!';
+        const doneVerb = isPickup ? 'Recogido' : 'Entregado';
         if (data.delivered_at) {
           const t = new Date(data.delivered_at);
           const hh = t.getHours();
           const mm = String(t.getMinutes()).padStart(2, '0');
           const ampm = hh >= 12 ? 'PM' : 'AM';
           const displayHr = ((hh % 12) || 12);
-          bannerSub.textContent = `Entregado a las ${displayHr}:${mm} ${ampm}`;
+          bannerSub.textContent = `${doneVerb} a las ${displayHr}:${mm} ${ampm}`;
         } else {
-          bannerSub.textContent = 'Entregado';
+          bannerSub.textContent = doneVerb;
         }
         // Hide live updates indicator (terminal state)
         document.getElementById('updated-text').classList.add('hidden');
