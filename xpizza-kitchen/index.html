@@ -875,6 +875,37 @@ function shortStatus(s) {
   .sb-link:hover { text-decoration: underline; }
   .sb-muted { color: var(--ink-mute); font-size: 12.5px; padding: 5px 9px; font-style: italic; }
   .sb-empty { color: var(--ink-mute); font-size: 12px; padding: 6px 9px; }
+
+  /* ── Disponibilidad panel (item "86" toggles) — KDS Phase 2b. A SEPARATE sidebar DOM subtree; touches
+        nothing in the ticket render. Styling per the gated mockup (kds-2b-availability). All scoped under
+        .sb-avail so the generic .cat/.avrow/.sw/.nm names can never collide with the board. ── */
+  .sb-avail .cat {
+    font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #6d6a64;
+    font-weight: 700; margin: 12px 2px 6px; font-family: var(--stamp);
+  }
+  .sb-avail .cat:first-child { margin-top: 0; }
+  .sb-avail .avrow {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 7px 4px; cursor: pointer; user-select: none;
+  }
+  .sb-avail .avrow .nm { font-size: 13px; color: var(--on-dark); overflow: hidden; text-overflow: ellipsis; }
+  .sb-avail .avrow.off .nm { color: var(--on-dark-mut); text-decoration: line-through; }
+  .sb-avail .avrow.pending { opacity: .55; }
+  .sw {
+    width: 38px; height: 22px; border-radius: 11px; background: #2FA855; position: relative;
+    flex: 0 0 auto; transition: background .15s;
+  }
+  .sw::after {
+    content: ""; position: absolute; top: 2px; left: 18px; width: 18px; height: 18px;
+    border-radius: 50%; background: #fff; transition: left .15s;
+  }
+  .sw.off { background: #3a3a3e; }
+  .sw.off::after { left: 2px; }
+  @media (prefers-reduced-motion: reduce) { .sw, .sw::after { transition: none; } }
+  .sb-note {
+    color: #E7A092; font-size: 11.5px; line-height: 1.45; padding: 7px 9px; margin-top: 8px;
+    background: rgba(226,59,46,.10); border: 1px solid rgba(226,59,46,.32); border-radius: 8px;
+  }
   .sb-foot {
     margin-top: auto; border-top: 1px solid var(--stroke2); padding-top: 14px;
     display: flex; flex-direction: column; gap: 4px;
@@ -1237,7 +1268,8 @@ function shortStatus(s) {
     </div>
     <div class="sb-sec">
       <div class="sb-h"><svg viewBox="0 0 24 24"><use href="#i-slash"/></svg> Disponibilidad</div>
-      <div class="sb-muted">Próximamente · 2b</div>
+      <div class="sb-avail" id="avail-panel"><div class="sb-empty">Cargando…</div></div>
+      <div class="sb-note" id="avail-note" hidden></div>
     </div>
     <!-- tweak #3: the Ajustes ENTRY lives in the sidebar foot; the Ajustes SCREEN is unchanged. -->
     <div class="sb-foot">
@@ -1297,6 +1329,10 @@ function shortStatus(s) {
   </div>
 </div>
 
+<!-- KDS Phase 2b: availKey — canonical, byte-identical availability-key encoder. A CLASSIC (non-module)
+     script BY DESIGN: avail-key.js is UMD-lite and publishes window.availKey / window.decodeAvailKey as
+     globals the ESM module below reads (the same bytes the server require()s). Loads before the module. -->
+<script src="avail-key.js?v=1"></script>
 <script type="module">
 // X Pizza Kitchen Display
 // version: 2.1.3
@@ -2391,6 +2427,113 @@ document.getElementById('allday-rail')?.addEventListener('click', (e) => {
   if (item) highlightItem(item.dataset.name);
 });
 
+/* ══════════════ Disponibilidad panel — item "86" toggles (KDS Phase 2b) ══════════════
+   The KDS's SECOND write surface. Self-contained sidebar controller: subscribes to the published manifest
+   (/menus/{rid}) + the current public flags (/restaurants/{rid}/item_availability), renders category-grouped
+   toggles, and on tap performs ONE atomic multi-path write via XPD.setItemAvailability (optimistic UI +
+   revert-on-failure). rid is host-derived (XPD.KDS_RESTAURANT_ID) → host-agnostic, both restaurants. This is
+   a WHOLLY SEPARATE DOM subtree: renderItems / order-filter / completion / recall / the confirmed-write
+   status path are untouched. Fail-calm — an unpublished menu or a write denial never crashes the board. */
+const AVAIL_RID = XPD.KDS_RESTAURANT_ID;
+let availManifest = null;         // array | null (null ⇒ not loaded yet / not published)
+let availFlags = {};              // availKey → { available, updated_at }  (server-canonical, fail-open)
+let availUid = null;              // signed-in staff uid → the PRIVATE audit write only
+let availPending = {};            // rawKey → true while its write is in flight (optimistic lock)
+let availManifestUnsub = null, availFlagsUnsub = null, availNoteTimer = null;
+
+function prettyCat(c) {
+  return String(c || 'Otros').replace(/[_-]+/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+}
+function availKeyOf(rawKey) { return typeof window.availKey === 'function' ? window.availKey(rawKey) : rawKey; }
+function isItemOff(rawKey) { return availFlags[availKeyOf(rawKey)]?.available === false; }   // absent/true ⇒ available
+
+function renderAvailPanel() {
+  const el = document.getElementById('avail-panel');
+  if (!el) return;
+  if (!Array.isArray(availManifest) || availManifest.length === 0) {
+    // Not published yet (expected until the owner runs publish-menus) — a CALM placeholder, not an error.
+    el.innerHTML = '<div class="sb-empty">Menú no publicado</div>';
+    return;
+  }
+  // Group by category, preserving manifest order (first-seen category order + item order within).
+  const cats = [], byCat = new Map();
+  for (const it of availManifest) {
+    if (!it || it.key == null) continue;
+    const c = it.category || 'otros';
+    if (!byCat.has(c)) { byCat.set(c, []); cats.push(c); }
+    byCat.get(c).push(it);
+  }
+  let html = '';
+  for (const c of cats) {
+    html += `<div class="cat">${escapeHtml(prettyCat(c))}</div>`;
+    for (const it of byCat.get(c)) {
+      const off = isItemOff(it.key), pend = availPending[it.key] ? ' pending' : '';
+      const label = it.label != null ? it.label : it.key;
+      // data-key carries the RAW key (escapeHtml-encoded for the attribute; the delegated listener reads the
+      // browser-decoded dataset value) — injection-safe, no JS string embedded in an inline handler.
+      html += `<div class="avrow${off ? ' off' : ''}${pend}" data-key="${escapeHtml(it.key)}">`
+        + `<span class="nm">${escapeHtml(label)}</span><span class="sw${off ? ' off' : ''}"></span></div>`;
+    }
+  }
+  el.innerHTML = html;
+}
+
+async function toggleAvail(rawKey) {
+  if (availPending[rawKey]) return;                    // ignore taps while its write is in flight
+  const nextAvailable = isItemOff(rawKey);             // OFF→available(true) · ON→unavailable(false)
+  const k = availKeyOf(rawKey);
+  const prev = availFlags[k];                          // snapshot for revert-on-failure
+  availFlags[k] = { available: nextAvailable, updated_at: prev?.updated_at ?? null };   // optimistic
+  availPending[rawKey] = true;
+  hideAvailNote();
+  renderAvailPanel();
+  try {
+    await XPD.setItemAvailability(AVAIL_RID, rawKey, nextAvailable, availUid);
+    delete availPending[rawKey];
+    renderAvailPanel();                                // keep optimistic value; the flags sub reconciles canonically
+  } catch (e) {
+    // Denied (not yet kitchen_staff / pre-deploy / offline) — REVERT + a calm notice; never crash the board.
+    if (prev === undefined) delete availFlags[k]; else availFlags[k] = prev;
+    delete availPending[rawKey];
+    renderAvailPanel();
+    showAvailNote('Sin permiso / no se pudo guardar');
+  }
+}
+
+function showAvailNote(msg) {
+  const n = document.getElementById('avail-note');
+  if (!n) return;
+  n.textContent = msg; n.hidden = false;
+  clearTimeout(availNoteTimer);
+  availNoteTimer = setTimeout(() => { n.hidden = true; }, 4000);
+}
+function hideAvailNote() {
+  const n = document.getElementById('avail-note');
+  if (n) n.hidden = true;
+  clearTimeout(availNoteTimer);
+}
+
+function startAvailPanel(uid) {
+  availUid = uid || null;
+  if (availManifestUnsub || availFlagsUnsub) return;   // idempotent (re-auth without a prior teardown)
+  try {
+    availManifestUnsub = XPD.subscribeMenuManifest(AVAIL_RID, (m) => { availManifest = m; renderAvailPanel(); });
+    availFlagsUnsub = XPD.subscribeItemAvailability(AVAIL_RID, (f) => { availFlags = f || {}; renderAvailPanel(); });
+  } catch (e) { console.warn('avail panel subscribe failed', e); }
+}
+function teardownAvailPanel() {
+  try { availManifestUnsub?.(); } catch (_) {}
+  try { availFlagsUnsub?.(); } catch (_) {}
+  availManifestUnsub = availFlagsUnsub = null;
+}
+
+// Delegated tap → toggle (injection-safe; #avail-panel is rebuilt each render but this listener survives).
+document.getElementById('avail-panel')?.addEventListener('click', (e) => {
+  const row = e.target.closest?.('.avrow');
+  if (row && row.dataset && row.dataset.key != null) toggleAvail(row.dataset.key);
+});
+window.toggleAvail = toggleAvail;
+
 // Apply the persisted per-device layout + wire swipe pagination (fix #4/#5). Grid element exists at parse.
 applyLayout();
 initSwipe();
@@ -2836,6 +2979,7 @@ XPD.onAuth(async (user) => {
       firebaseUnsubscribe = null;
     }
     window.__readyNudge?.teardown?.();   // !user auth-state path
+    teardownAvailPanel();
     showLogin();
     return;
   }
@@ -2850,6 +2994,7 @@ XPD.onAuth(async (user) => {
 
   hideLogin();
   startOrdersSubscription();
+  startAvailPanel(user.uid);   // KDS Phase 2b — Disponibilidad panel (host-derived rid; the audit write uses this uid)
 });
 
 </script>
