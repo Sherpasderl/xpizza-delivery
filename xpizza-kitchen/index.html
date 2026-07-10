@@ -2656,6 +2656,12 @@ initSwipe();
 // FIX 1: re-measure Tile-Fill overflow on resize (column count / viewport changes card widths → wrapping).
 if (typeof window.addEventListener === 'function') window.addEventListener('resize', measureTileFill, { passive: true });
 
+// Touchscreen KDS: a long-press (e.g. hold-to-complete) makes Windows fire the native right-click / context
+// menu on release. Suppress it on the BOARD only (never the login screen) so the hold gesture stays clean.
+document.addEventListener('contextmenu', (e) => {
+  if (e.target && e.target.closest && e.target.closest('#kds-main')) e.preventDefault();
+}, { capture: true });
+
 /* ── Update elapsed timers (mm:ss) + re-derive the header state (data-s) every second, without a full
       re-render. The header recolours live as a card ages (nuevo→late), a scheduled order crosses its slot,
       etc. We ONLY swap the data-s attribute — .nudge-overdue (owned by ready-nudge.js) and card classes
