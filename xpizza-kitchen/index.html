@@ -912,12 +912,18 @@ function shortStatus(s) {
         never apply anymore — the panel is no longer in the sidebar). Lista simple: single column, big touch
         toggles, a Disponible/Agotado pill. renderAvailPanel output is unchanged except for the pill span. ── */
   .av-body { grid-template-columns: 1fr; }                 /* no nav rail — Lista simple */
-  .av-pane { max-width: 760px; }
-  .av-pane .sb-avail .cat { color: #9a9a9a; margin: 20px 2px 10px; }
+  .av-pane { max-width: 1360px; margin-inline: auto; width: 100%; }
+  /* fill the wide board: item rows flow into as many responsive columns as fit; category headers
+     span the full width so each section reads as a header + a grid of items beneath it. */
+  .av-pane .sb-avail {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 9px 20px; align-content: start;
+  }
+  .av-pane .sb-avail .cat { grid-column: 1 / -1; color: #9a9a9a; margin: 22px 2px 4px; }
   .av-pane .sb-avail .cat:first-child { margin-top: 0; }
   .av-pane .sb-avail .avrow {
     padding: 12px 15px; border: 1px solid var(--screen-line, #ececec); border-radius: 11px;
-    margin-bottom: 8px; background: #fff;
+    background: #fff;
   }
   .av-pane .sb-avail .avrow:hover { background: #fafafa; }
   .av-pane .sb-avail .avrow .nm { font-size: 15px; font-weight: 600; color: #1a1a1a; }
