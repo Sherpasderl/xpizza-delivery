@@ -868,6 +868,13 @@
   }
   .driver-row:hover { background: var(--surface-2); }
   .driver-row.stale { opacity: 0.55; }
+  /* C1: on-shift driver GPS-dark past the alarm threshold — red row (sidebar-only, no banner). */
+  .driver-row.gps-dark { position: relative; }
+  .driver-row.gps-dark::before {
+    content: ''; position: absolute; left: 0; top: 6px; bottom: 6px;
+    width: 3px; border-radius: 2px; background: var(--accent);
+  }
+  .driver-row.gps-dark .row-status { color: var(--accent); font-weight: 600; }
   .driver-row .name {
     font-family: 'Plus Jakarta Sans', sans-serif;
     font-weight: 600;
@@ -1916,6 +1923,10 @@ const firebaseConfig = {
 const mapsApiKey = "AIzaSyAuzSLAELV_MaK2xeXrNjS6_lhNXmD_Y0A";
 let currentUser = null;
 let allDrivers = {};
+// C1: uids of on-shift drivers the freshness monitor has flagged as GPS-dark past the alarm
+// threshold. Drives the red "sin señal GPS" sidebar row (renderDriverNode); the banner for these
+// is suppressed. Kept in sync from the dispatcher-alerts subscription.
+let staleDriverUids = new Set();
 let allTasks = {};
 let allOrders = {};
 let reconciliationOrders = {};   // manual_reconciliation orders (own subscription; not in allOrders)
@@ -2148,7 +2159,21 @@ function subscribeAll() {
     }
     alertsInitialized = true;
     lastAlertIds = currentIds;
+
+    // C1: which on-shift drivers are flagged GPS-dark (past the server threshold). These render
+    // as a red sidebar row, not a banner. Recompute the set; if it changed, refresh the driver
+    // list so the red state appears/clears. The chime above already fired once per new episode.
+    const flagged = new Set(
+      Object.values(alerts)
+        .filter(a => a && a.type === 'driver_freshness_stale' && a.driver_id)
+        .map(a => a.driver_id)
+    );
+    const flaggedChanged = flagged.size !== staleDriverUids.size
+      || [...flagged].some(uid => !staleDriverUids.has(uid));
+    staleDriverUids = flagged;
+
     renderDispatcherAlerts(alerts);
+    if (flaggedChanged) renderDriversSection();
   });
 
   // Customer WhatsApp messages that the classifier didn't auto-handle.
@@ -2276,15 +2301,10 @@ function renderDispatcherAlerts(alerts) {
       `;
     }
     if (a.type === 'driver_freshness_stale') {
-      // Driver Tracking C1 — driverFreshnessMonitor raised this: an on-shift driver's pings went dark past
-      // the config threshold. Fields (driver_name / silent_sec / driver_id) come from driver-freshness.js.
-      const mins = Math.max(1, Math.round((a.silent_sec || 0) / 60));
-      return `
-        <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">${ICONS.warn}</span>
-          <div class="alert-text"><strong>${escapeHtml(a.driver_name || a.driver_id || '—')}</strong> sin señal GPS · hace ${mins} min — su ubicación no se actualiza. Verificá su teléfono.</div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-        </div>`;
+      // Driver Tracking C1 — surfaced as a red "sin señal GPS" row in the sidebar (renderDriverNode),
+      // NOT a banner: no stacking, no per-minute recurrence. The alert still drives the sidebar flag
+      // (staleDriverUids) and the one-shot per-episode chime; here it renders no banner.
+      return '';
     }
     // Generic fallback — humanize the type instead of dumping the raw token.
     const humanType = String(a.type || 'alerta').replace(/^payment_/, '').replace(/_/g, ' ');
@@ -2915,6 +2935,10 @@ function renderDriverNode(uid, d) {
   // GPS staleness DOESN'T mean unreachable — just means phone idle. Push still works.
   const onDuty = d.active && d.status !== 'off_shift';
   const reachable = onDuty && hasPushReachability(d);
+  // C1: the freshness monitor flagged this on-shift driver as GPS-dark past the alarm threshold.
+  // Gated on d.active so a stale alert lingering for a tick on a just-clocked-off driver can never
+  // paint a red row (it falls through to "Fuera de turno"). Red wins over the amber(stale) tier.
+  const gpsDark = d.active && staleDriverUids.has(uid);
 
   // Status dot:
   //   green  = on duty + GPS fresh + available/at_restaurant
@@ -2922,7 +2946,9 @@ function renderDriverNode(uid, d) {
   //   amber  = on duty + (returning/assigned/idle GPS) — reachable but not actively moving
   //   gray   = off duty or unreachable (no push subscription)
   let dotClass;
-  if (!reachable) {
+  if (gpsDark) {
+    dotClass = 'red';  // C1: GPS-dark past threshold — must win over the amber(stale) tier
+  } else if (!reachable) {
     dotClass = '';  // gray
   } else if (stale) {
     // Stale GPS but still on duty: amber. Driver is in the system but not
@@ -2973,6 +2999,8 @@ function renderDriverNode(uid, d) {
   let statusText;
   if (!d.active) {
     statusText = 'Fuera de turno';
+  } else if (gpsDark) {
+    statusText = `Sin señal GPS · ${staleEs(d.last_ping)}`;
   } else if (!hasPushReachability(d)) {
     statusText = `${statusLabel} · sin notificaciones`;
   } else if (stale) {
@@ -2983,10 +3011,10 @@ function renderDriverNode(uid, d) {
 
   // Only fully-unreachable drivers get the dimmed "stale" row treatment.
   // Stale GPS while on duty = render normally (full opacity).
-  const dimRow = !reachable;
+  const dimRow = !reachable && !gpsDark;  // a red GPS-dark row must not be dimmed
 
   return `
-    <div class="driver-row ${dimRow ? 'stale' : ''} ${hasOrders ? 'has-tasks' : ''} ${expanded ? 'expanded' : ''}" data-driver-uid="${uid}">
+    <div class="driver-row ${gpsDark ? 'gps-dark' : ''} ${dimRow ? 'stale' : ''} ${hasOrders ? 'has-tasks' : ''} ${expanded ? 'expanded' : ''}" data-driver-uid="${uid}">
       <div class="status-dot ${dotClass}"></div>
       <div class="name">${escapeHtml(d.name || 'Sin nombre')}</div>
       <div class="row-status">${escapeHtml(statusText)}</div>
