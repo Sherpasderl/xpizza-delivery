@@ -21,6 +21,7 @@
  *   - onIncomingWhatsApp            (HTTPS)   — UltraMsg webhook for inbound customer messages + auto-reply
  *   - autoAssignOnOrderCreate       (DB trig) — Auto-pick driver after grace period (with continuous-at-restaurant stacking)
  *   - monitorAssignmentTimeout      (DB trig) — Reassign on 60s no-accept timeout
+ *   - driverFreshnessMonitor        (sched)   — alarm dispatch when an on-shift driver's pings go dark (C1)
  *
  * Why this exists:
  *   Make.com needs a way to create orders in the dispatcher. The naive approach
@@ -101,6 +102,7 @@ const {
 const { sweepDecision, activeOrderCount, assignmentStrandState, HEAL_TERMINAL_STATUSES } = require('./sweep-pending');
 const { claimDelivery, healStrandedOrder, releaseDeliveryFromDriver } = require('./claim-delivery');
 const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineStampKey } = require('./order-lifecycle');
+const { computeFreshnessAlerts } = require('./driver-freshness');   // Driver Tracking C1: freshness-alarm reconcile core
 const MR = require('./manual-resolve');   // atomic-claim money state machine (RECON_ATOMIC_CLAIM_PLAN rev-5)
 const { resolveManualReconciliationCore, recoverStaleResolve } = require('./resolve-manual');   // the resolver core + sweep recovery (emulator-driven)
 const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, isReconcilerRetryable } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5)
@@ -1394,6 +1396,66 @@ exports.resetItemAvailability = onSchedule(
     }
     // now = wall clock (closed-gate + marker date); the server-time cutoff comes from ServerValue.TIMESTAMP.
     await runAvailabilityReset({ db: getDatabase(), ServerValue, now: Date.now(), restaurants });
+  }
+);
+
+// ============================================================
+// driverFreshnessMonitor — Driver Tracking C1: the missing safety net. A scheduled sweep (~every 1 min,
+// America/Tegucigalpa) that alarms dispatch when an ON-SHIFT driver's phone goes dark — a freeze, revoked
+// permission, or dead battery that dispatch would otherwise catch only by staring at pins.
+//
+// Freshness = drivers/<uid>/last_ping (SERVER-received ServerValue.TIMESTAMP — the same field dispatch
+// stales pins on, clock-consistent with Date.now(); NOT last_location_ts, which is device GPS-fix time).
+// Dispatch already ambers a pin at 90s; this ALARM sits higher (config default 180s) so it fires on genuine
+// freezes, not routine GPS gaps. Threshold = config/driver_freshness_alert_sec (tunable WITHOUT a redeploy).
+//
+// Alerts are KEYED at dispatcher_alerts/driver_stale_<uid> (the existing floating-alerts channel), so the
+// pure reconcile core (driver-freshness.js) raises exactly ONE alert per silence episode (no per-tick storm),
+// auto-clears on recovery / clock-off / disappearance, and never touches other alert types. Off-shift drivers
+// never alert. Needs NO env (RTDB reads + an alert write). Fail-safe: any read failure skips the tick (no writes).
+exports.driverFreshnessMonitor = onSchedule(
+  { schedule: 'every 1 minutes', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const db = getDatabase();
+    const now = Date.now();
+
+    // Threshold from config (tunable without a redeploy); default 180s. Fail-safe to the default on any issue.
+    let thresholdSec = 180;
+    try {
+      const v = (await db.ref('config/driver_freshness_alert_sec').once('value')).val();
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) thresholdSec = v;
+    } catch (e) {
+      console.warn('driverFreshnessMonitor: config read failed, using default 180s', e.message);
+    }
+
+    let drivers, existingAlerts;
+    try {
+      const [dSnap, aSnap] = await Promise.all([
+        db.ref('drivers').once('value'),
+        db.ref('dispatcher_alerts').once('value'),
+      ]);
+      drivers = dSnap.val() || {};
+      existingAlerts = aSnap.val() || {};
+    } catch (e) {
+      console.error('driverFreshnessMonitor: read failed, skipping tick', e.message);
+      return;   // fail-safe: no reads ⇒ no writes
+    }
+
+    const keyed = computeFreshnessAlerts({
+      drivers, existingAlerts, now, thresholdMs: thresholdSec * 1000, createdAt: ServerValue.TIMESTAMP,
+    });
+    const keys = Object.keys(keyed);
+    if (keys.length === 0) return;
+
+    const updates = {};
+    for (const k of keys) updates[`dispatcher_alerts/${k}`] = keyed[k];
+    const raised = keys.filter((k) => keyed[k] !== null).length;
+    try {
+      await db.ref().update(updates);
+      console.log(`driverFreshnessMonitor: ${raised} raised, ${keys.length - raised} cleared (threshold ${thresholdSec}s)`);
+    } catch (e) {
+      console.error('driverFreshnessMonitor: alert write failed', e.message);
+    }
   }
 );
 
