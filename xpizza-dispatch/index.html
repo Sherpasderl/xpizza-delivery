@@ -2275,6 +2275,17 @@ function renderDispatcherAlerts(alerts) {
         </div>
       `;
     }
+    if (a.type === 'driver_freshness_stale') {
+      // Driver Tracking C1 — driverFreshnessMonitor raised this: an on-shift driver's pings went dark past
+      // the config threshold. Fields (driver_name / silent_sec / driver_id) come from driver-freshness.js.
+      const mins = Math.max(1, Math.round((a.silent_sec || 0) / 60));
+      return `
+        <div class="dispatcher-alert" data-alert-id="${alertId}">
+          <span class="alert-icon">${ICONS.warn}</span>
+          <div class="alert-text"><strong>${escapeHtml(a.driver_name || a.driver_id || '—')}</strong> sin señal GPS · hace ${mins} min — su ubicación no se actualiza. Verificá su teléfono.</div>
+          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
+        </div>`;
+    }
     // Generic fallback — humanize the type instead of dumping the raw token.
     const humanType = String(a.type || 'alerta').replace(/^payment_/, '').replace(/_/g, ' ');
     return `
