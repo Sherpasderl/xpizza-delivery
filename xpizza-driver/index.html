@@ -591,6 +591,14 @@
   .locked{ display:flex; align-items:center; gap:9px; background:#F7F9FB; border:1px solid var(--line); border-radius:12px; padding:11px 13px; margin:13px 0; font-size:12px; font-weight:600; color:var(--text-dim); }
   .locked .ico{ width:15px; height:15px; color:var(--text-dim); flex-shrink:0; }
   .sheet-close{ width:100%; padding:14px; border-radius:14px; background:var(--surface-2); color:var(--text); font-weight:800; font-size:14px; border:none; font-family:inherit; cursor:pointer; }
+  /* C2 OEM onboarding sheet */
+  .oem-title{ font-size:19px; font-weight:800; color:var(--text); margin:2px 0 4px; }
+  .oem-sub{ font-size:13.5px; color:var(--text-soft); line-height:1.4; margin-bottom:16px; }
+  .oem-card{ background:var(--surface-2); border:1px solid var(--border); border-radius:16px; padding:14px; margin-bottom:12px; }
+  .oem-card-t{ font-size:15px; font-weight:800; color:var(--text); margin-bottom:4px; }
+  .oem-card-d{ font-size:13px; color:var(--text-soft); line-height:1.4; margin-bottom:12px; }
+  .oem-btn{ width:100%; padding:12px; border-radius:12px; background:linear-gradient(180deg,#FB5616,#F23E00); color:#fff; font-weight:800; font-size:14px; border:none; font-family:inherit; box-shadow:0 5px 13px rgba(242,62,0,.28); cursor:pointer; }
+  .oem-btn.did{ background:var(--surface-3); color:var(--text-soft); box-shadow:none; }
 
   /* ---- active-card exact-change line (P3) ---- */
   .paywith{ display:flex; align-items:center; gap:9px; margin-top:13px; background:var(--green-bg); border-radius:12px; padding:11px 13px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
@@ -1086,6 +1094,9 @@
 <!-- Clock-out cuadre (cash handoff) -->
 <div id="cuadre-screen"><div class="receipt" id="cuadre-receipt"></div></div>
 
+<!-- C2: OEM-settings onboarding (first launch, native only; dismissible/informational) -->
+<div class="sheet-backdrop" id="oem-onboarding"><div class="sheet" id="oem-onboarding-body"></div></div>
+
 <!-- Hidden audio for new-task chime -->
 <!-- ======================================================== -->
 <!-- HISTORY MODAL — driver's deliveries today -->
@@ -1121,7 +1132,7 @@ import { computeVuelto, vueltoSuggestions, computeShiftCash } from './cash-helpe
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '2.4.1';
+const SYSTEM_VERSION = '2.4.2';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -1267,6 +1278,8 @@ async function boot() {
       catch (e) { console.error('initNativePush failed', e); }
       // App is open → clear any order alerts piled up in the shade + the badge.
       clearDeliveredNotifications();
+      // C2: first-launch OEM-settings onboarding (battery-unrestricted + Honor "App launch"). Once, non-blocking.
+      maybeShowOemOnboarding();
     }
 
     // Subscribe to live state
@@ -1294,6 +1307,65 @@ function subscribeToFirebase() {
     render();
   });
   startCountdownTick();
+}
+
+// ============================================================
+// C2 — OEM-settings onboarding (native, first launch, once)
+// ============================================================
+// Walks the driver through the two residual OEM settings that HARDEN the permanent foreground service:
+// battery-unrestricted (one-tap system dialog) + Honor/Huawei "App launch". Purely informational + dismissible;
+// shown once; graceful no-op when nothing is actionable (non-Honor with battery already unrestricted). Never
+// touches the FGS — it only reads status and deep-links to system settings via the OemSettings native plugin.
+async function maybeShowOemOnboarding() {
+  if (!isNative()) return;
+  if (localStorage.getItem('oem_onboarding_shown')) return;   // once — no nagging on later launches
+  const svc = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.OemSettings;
+  if (!svc) return;
+  let st;
+  try { st = await svc.getStatus(); } catch (e) { return; }
+  const needBattery = !st.batteryUnrestricted;
+  const needAppLaunch = !!st.isHonorHuawei;
+  if (!needBattery && !needAppLaunch) return;                 // nothing to harden → no-op
+  renderOemOnboarding(svc, needBattery, needAppLaunch);
+}
+
+function renderOemOnboarding(svc, needBattery, needAppLaunch) {
+  // Mark shown NOW so it never re-nags, even if the driver leaves for settings or force-closes.
+  localStorage.setItem('oem_onboarding_shown', '1');
+  const batteryCard = needBattery ? `
+    <div class="oem-card">
+      <div class="oem-card-t">🔋 Batería sin restricciones</div>
+      <div class="oem-card-d">Permití que Sherpa Driver siga compartiendo tu ubicación con la pantalla apagada.</div>
+      <button class="oem-btn" id="oem-battery">Activar</button>
+    </div>` : '';
+  const appLaunchCard = needAppLaunch ? `
+    <div class="oem-card">
+      <div class="oem-card-t">🚀 Inicio automático</div>
+      <div class="oem-card-d">Activá "Sherpa Driver" en la lista de inicio de apps para que no se cierre en segundo plano.</div>
+      <button class="oem-btn" id="oem-applaunch">Abrir ajuste</button>
+    </div>` : '';
+  $('oem-onboarding-body').innerHTML = `
+    <div class="grab"></div>
+    <div class="oem-title">Mejorá tu conexión</div>
+    <div class="oem-sub">Dos ajustes rápidos para que el despachador siempre te vea, incluso con la app en segundo plano.</div>
+    ${batteryCard}${appLaunchCard}
+    <button class="sheet-close" id="oem-done">Listo</button>`;
+
+  const bd = $('oem-onboarding');
+  const close = () => bd.classList.remove('open');
+  const btnBattery = $('oem-battery');
+  if (btnBattery) btnBattery.addEventListener('click', () => {
+    svc.openBatterySettings().catch(() => {});
+    btnBattery.classList.add('did'); btnBattery.textContent = 'Abierto ✓';
+  });
+  const btnAppLaunch = $('oem-applaunch');
+  if (btnAppLaunch) btnAppLaunch.addEventListener('click', () => {
+    svc.openAppLaunchSettings().catch(() => {});
+    btnAppLaunch.classList.add('did'); btnAppLaunch.textContent = 'Abierto ✓';
+  });
+  $('oem-done').addEventListener('click', close);
+  bd.addEventListener('click', (e) => { if (e.target === bd) close(); });   // tap backdrop to dismiss
+  bd.classList.add('open');
 }
 
 function detectNewAssignments(tasks) {
