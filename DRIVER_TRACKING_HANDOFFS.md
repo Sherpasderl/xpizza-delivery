@@ -92,3 +92,30 @@ Detect-and-prompt with deep-links to the OEM settings intents; skip where not ap
 **HARD CONSTRAINT (non-negotiable):** the FGS + its permanent notification **must NEVER be dropped** for any interval state — the freeze fix depends on the process staying non-cached; only the cadence changes. Any design that stops/restarts the FGS is rejected.
 
 **Acceptance (if built):** measurable battery reduction vs fixed 10s over a real shift; **re-run the freeze gate** (4 min locked + stationary, **on battery, unplugged** → pin stays fresh, slow tier well under the C1 180s budget); dispatch freshness never worse than the C1 alert threshold in any interval state.
+
+---
+
+## Program Status — 2026-07-12 (final)
+
+**Net: A ✅ / B ✅ / C1 ✅ / C2 ✅ / D ⏳ (measure gate).** The program is complete except the optional, YAGNI-gated D. Both session relays folded in below for the record.
+
+| Item | State | Where |
+|------|-------|-------|
+| **A** Smooth dispatch tracking | ✅ LIVE | client `xpizza-dispatch/driver-glide.js` + 4 edits; dispatch git-CDs from `main` |
+| **B** Driver source → `main` | ✅ DONE | `main` carries driver **2.4.2**, FGS path current (superseded the original v2.4.0 merge) |
+| **C1** Server freshness alerting | ✅ LIVE | `driverFreshnessMonitor`, **38 fns** zero-pruned, `onSchedule` 1-min Tegucigalpa |
+| **C2** OEM onboarding prompts | ✅ SHIPPED | driver **2.4.2 / vc24**; monorepo `2f60e9a`, native `640851a`; Play internal testing |
+| **D** Adaptive ping frequency | ⏳ MEASURE GATE | baseline battery measure pending → defer-YAGNI **or** build motion-based + re-gate |
+
+### Relay — driver-native track (B / C2 / D)
+- **B ✅** — main is current at driver **2.4.2**; no branch to re-merge.
+- **C2 ✅ SHIPPED (2.4.2 / vc24).** Advisor diff-gate APPROVED (source-verified: new `OemSettingsPlugin` only; `ShiftLocationService` + `ShiftKeepAlivePlugin` FGS **untouched**; no functions/`.env` surface). On-device Honor verified: first-launch sheet, **actionable-only** cards (battery card correctly skipped when already Doze-whitelisted), working deep-links, dismissible, once-only. Commits: monorepo `2f60e9a` → `origin/main` (fetched-confirmed at tip), native `640851a`; AAB vc24 published to Play internal testing.
+  - **Advisory (config-only, prod go-live):** manifest now declares `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` → needs a Play permission declaration/justification at **production** submission (delivery-GPS core-function qualifies; fine on internal testing). Logged in the Play-submission checklist.
+  - **Advisory (deferred nit):** the `openBatterySettings` catch-fallback is effectively unreachable (inner `start()` returns a boolean instead of throwing); harmless — the primary intent is universal on API 23+. Fold `if (!start(i))` gating into a later build if D happens. Not worth a re-gate.
+- **D ⏳ MEASURE GATE.** Held at the ruling: baseline measurement first (`batterystats --reset` → real unplugged shift → app %/hour). Acceptable → **defer indefinitely (YAGNI)**; proven drain → build **motion-based** (service stays dumb, FGS never dropped) + re-run the freeze gate + route the diff back to advisor.
+
+### Relay — functions track (C1)
+- **C1 ✅ FULLY LIVE end-to-end.** `driverFreshnessMonitor` deployed **38 fns, zero pruned**, from the current tree with the reconciled 25-key `.env` (payments + La Musa WhatsApp env intact). `onSchedule` every 1 min America/Tegucigalpa, scheduler enabled. Loop: sweeps on-shift drivers → keyed `dispatcher_alerts/driver_stale_<uid>` when `last_ping` ages past **`config/driver_freshness_alert_sec` (default 180s)** → dispatch renders "*&lt;driver&gt; sin señal GPS · hace N min…*" → auto-clears on ping. Dedupe one-per-episode; off-shift never alerts.
+  - **Source facts (do not re-litigate):** freshness field = `last_ping` (server `ServerValue.TIMESTAMP`, clock-consistent with the fn's `Date.now()`), **not** `last_location_ts` (device time). On-shift = `status && status !== 'off_shift'`.
+- **The 180s freshness budget is now D's acceptance anchor** — if D is built, its slow tier must keep dispatch freshness under 180s in every interval state, re-proven on the freeze gate.
+- **No functions work queued.** D is native (`ShiftLocationService.java`) and doesn't touch `functions/`. Any future functions deploy: **zero-prune, current tree, complete `.env`**, and `git fetch` + confirm `origin/main` first.
