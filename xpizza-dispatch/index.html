@@ -1868,6 +1868,7 @@
 
 <script type="module">
 import * as XPD from './xpizza-delivery.js?v=19';
+import { createGlideEngine } from './driver-glide.js?v=1';
 
 // ============================================================
 // System version (bumped each release)
@@ -1925,6 +1926,17 @@ let geofenceCircle = null;
 let driverMarkers = {};   // uid → google.maps.Marker
 let customerMarkers = {}; // orderId → google.maps.Marker
 let infoWindow = null;
+
+// Smoothly glide driver pins between the native service's ~10s pings instead of
+// teleporting. The engine is pure (see driver-glide.js); here we wire it to the
+// real clock, rAF, and a setPosition sink. An open InfoWindow is marker-anchored,
+// so it tracks the gliding pin automatically.
+const glide = createGlideEngine({
+  now: () => performance.now(),
+  raf: (cb) => requestAnimationFrame(cb),
+  caf: (id) => cancelAnimationFrame(id),
+  apply: (uid, pos) => { const m = driverMarkers[uid]; if (m) m.setPosition(pos); },
+});
 let pickerOpen = false;
 let pickerOrderId = null;
 let pickerIsReassign = false;
@@ -3553,7 +3565,7 @@ function updateDriverMarkers() {
     };
 
     if (driverMarkers[uid]) {
-      driverMarkers[uid].setPosition({ lat: d.lat, lng: d.lng });
+      glide.update(uid, { lat: d.lat, lng: d.lng }, { snap: stale });
       driverMarkers[uid].setIcon(icon);
       driverMarkers[uid].setLabel({ text: initial, color: '#fff', fontFamily: 'Plus Jakarta Sans', fontSize: '11px', fontWeight: '700' });
     } else {
@@ -3583,6 +3595,7 @@ function updateDriverMarkers() {
   // Remove markers for drivers no longer active
   for (const uid of Object.keys(driverMarkers)) {
     if (!seen.has(uid)) {
+      glide.cancel(uid);
       driverMarkers[uid].setMap(null);
       delete driverMarkers[uid];
     }
