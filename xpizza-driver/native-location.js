@@ -52,6 +52,8 @@ export async function disableLingeringTransistorsoft() {
 export async function startNativeTracking(app, uid) {
   if (!isNative() || !uid) return null;
   const start = httpsCallable(getFunctions(app, REGION), 'startDriverShift');
+  // Server clock-in. If THIS (or a missing token) throws, the shift genuinely didn't start → the failure
+  // propagates so the caller reverts the optimistic on-shift.
   const res = await start({
     platform: 'native',
     device_id: (window.Capacitor.getPlatform && window.Capacitor.getPlatform()) || 'android'
@@ -59,21 +61,29 @@ export async function startNativeTracking(app, uid) {
   const { shift_id, ingest_token } = (res && res.data) || {};
   if (!ingest_token) throw new Error('startDriverShift returned no ingest_token');
 
-  await disableLingeringTransistorsoft();   // belt: never let TS run alongside our service
-  await getShiftService().start({ token: ingest_token });
-  console.log(`native-location: shift service started (shift ${shift_id})`);
-  return { shift_id };
+  // The driver IS on-shift server-side now. The local foreground service is best-effort: if it fails to
+  // start, don't abort the whole clock-in — surface trackingOk:false so the caller can warn (degraded
+  // tracking) while keeping the driver on-shift. (Fixes the false revert on a post-clock-in local failure.)
+  let trackingOk = true;
+  try {
+    await disableLingeringTransistorsoft();   // belt: never let TS run alongside our service
+    await getShiftService().start({ token: ingest_token });
+  } catch (e) {
+    trackingOk = false;
+    console.error('native-location: shift service failed to start (driver on-shift, tracking degraded)', e);
+  }
+  console.log(`native-location: shift ${shift_id} started (trackingOk=${trackingOk})`);
+  return { shift_id, trackingOk };
 }
 
-/** End a native shift: stop the service, revoke the token server-side. No-op off-native. */
+/** End a native shift: revoke the token server-side FIRST, then stop the local service. No-op off-native.
+ * endDriverShift is awaited first and its failure PROPAGATES (no swallow) so finalizeEndShift's catch
+ * reverts the optimistic off-shift. Because the service isn't stopped until after endDriverShift succeeds,
+ * a failed clock-out reverts to on-shift with tracking STILL running — no stranded active-but-untracked state. */
 export async function stopNativeTracking(app) {
   if (!isNative()) return;
+  await httpsCallable(getFunctions(app, REGION), 'endDriverShift')({});   // throws → caller reverts (service still up)
   try { await getShiftService().stop(); } catch (e) { console.error('native-location: stop failed', e); }
-  try {
-    await httpsCallable(getFunctions(app, REGION), 'endDriverShift')({});
-  } catch (e) {
-    console.error('native-location: endDriverShift failed', e);
-  }
   console.log('native-location: tracking stopped');
 }
 

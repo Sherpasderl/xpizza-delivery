@@ -1121,7 +1121,7 @@ import { computeVuelto, vueltoSuggestions, computeShiftCash } from './cash-helpe
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '2.4.0';
+const SYSTEM_VERSION = '2.4.1';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -1190,6 +1190,11 @@ const firebaseConfig = {
 // ============================================================
 let currentUser = null;
 let driverState = null;
+// Optimistic shift transition: on toggle tap, flip the screen immediately (true=on-shift,
+// false=off-shift) instead of waiting for startDriverShift/endDriverShift + the RTDB echo
+// (a multi-second round-trip on slow connections). Cleared in subscribeToDrivers once the
+// server state catches up; reverted if the shift call fails.
+let optimisticShift = null;
 let allTasks = {};
 let allOrders = {};
 let wakeLock = null;
@@ -1273,6 +1278,10 @@ function subscribeToFirebase() {
   XPD.subscribeToDrivers((drivers) => {
     if (!currentUser) return;
     driverState = drivers[currentUser.uid] || null;
+    // Server caught up to (or past) the optimistic guess → drop the override so RTDB is truth again.
+    if (optimisticShift !== null && !!(driverState && driverState.active) === optimisticShift) {
+      optimisticShift = null;
+    }
     render();
   });
   XPD.subscribeToTasks((tasks) => {
@@ -1381,21 +1390,26 @@ async function handleStartShift() {
       chime.muted = false;
     } catch {}
 
+    // Separate the SERVER clock-in (its failure must revert the optimistic on-shift) from the LOCAL
+    // location setup (its failure keeps the driver on-shift with degraded tracking — no false revert).
+    let trackingOk = true;
     if (isNative()) {
-      // Native (Step 2c): Transistorsoft is the SOLE location source.
-      // startNativeTracking mints the ingest token via startDriverShift (which
-      // also clocks the driver on server-side) and starts background GPS. No
-      // watchPosition, no wake-lock — the native foreground service handles it.
-      await startNativeTracking(XPD.getAuthInstance().app, currentUser.uid);
+      // ShiftLocationService is the sole location source. startNativeTracking throws ONLY if the server
+      // clock-in failed; a local service-start failure comes back as trackingOk:false.
+      const r = await startNativeTracking(XPD.getAuthInstance().app, currentUser.uid);
+      trackingOk = !r || r.trackingOk !== false;
     } else {
-      await XPD.startShift(currentUser.uid);
-      await acquireWakeLock();
-      startGpsStream();
+      await XPD.startShift(currentUser.uid);   // server clock-in — throws → outer catch reverts
+      try { await acquireWakeLock(); startGpsStream(); }
+      catch (e) { trackingOk = false; console.warn('shift: local GPS setup failed (on-shift, degraded)', e); }
     }
-    toast('Turno iniciado', 'success');
+    toast(trackingOk ? 'Turno iniciado' : 'Turno iniciado · problema con ubicación, reintentá',
+          trackingOk ? 'success' : 'error');
   } catch (e) {
-    // Failed to start — reset toggle so it doesn't look enabled
+    // Only the SERVER clock-in throwing reaches here → the shift didn't start → revert the optimistic screen.
+    optimisticShift = null;
     $('duty-toggle-off').classList.remove('on');
+    render();
     toast('Error al iniciar turno', 'error');
   }
 }
@@ -1430,14 +1444,21 @@ function showCuadre() {
 }
 
 async function finalizeEndShift() {
-  await cleanupShift();
-  if (isNative()) {
-    // Native: stop background GPS + revoke the ingest token.
-    await stopNativeTracking(XPD.getAuthInstance().app);
-  } else {
-    await XPD.endShift(currentUser.uid);
+  try {
+    await cleanupShift();                       // inside the try — a throw here must also revert, not strand
+    if (isNative()) {
+      // Native: revoke the ingest token server-side, then stop background GPS.
+      await stopNativeTracking(XPD.getAuthInstance().app);
+    } else {
+      await XPD.endShift(currentUser.uid);
+    }
+    toast('Turno terminado');
+  } catch (e) {
+    // End failed — driver is still on shift server-side; revert the optimistic off-shift screen.
+    optimisticShift = null;
+    render();
+    toast('Error al terminar turno', 'error');
   }
-  toast('Turno terminado');
 }
 
 // Wire up the duty toggles. The off-screen toggle starts the shift; the
@@ -1449,7 +1470,7 @@ let shiftBusy = false;
 $('duty-toggle-off').addEventListener('click', async () => {
   if (shiftBusy) return;
   shiftBusy = true;
-  $('duty-toggle-off').classList.add('on');     // immediate UI feedback
+  optimisticShift = true; render();     // optimistic: show the on-shift screen immediately
   try { await handleStartShift(); } finally { shiftBusy = false; }
 });
 
@@ -1503,21 +1524,29 @@ $('vuelto-sheet').addEventListener('click', (e) => {
 $('cuadre-screen').addEventListener('click', async (e) => {
   if (e.target.id === 'cuadre-back') { $('cuadre-screen').classList.remove('open'); return; }
   if (e.target.id === 'cuadre-confirm') {
+    // Hold the shift-transition lock from here THROUGH finalizeEndShift so the (now visible) off-shift
+    // start toggle can't interleave a clock-in mid-clock-out. shiftBusy was released when the cuadre opened.
+    if (shiftBusy) return;
+    shiftBusy = true;
     const btn = e.target;
     btn.disabled = true;
-    const cash = $('cuadre-screen')._cash || {};
     try {
+      const cash = $('cuadre-screen')._cash || {};
+      // Best-effort cash record — do NOT await: an offline RTDB write's promise never resolves (Firebase
+      // queues it), which would freeze the clock-out on this button. Fire-and-forget so the clock-out
+      // proceeds (and then fails gracefully via endDriverShift if offline); it syncs when back online.
       if (driverState && driverState.current_shift_id) {
-        await XPD.recordCuadre(currentUser.uid, driverState.current_shift_id, {
+        XPD.recordCuadre(currentUser.uid, driverState.current_shift_id, {
           cash_owed: cash.cashOwed || 0,
           cash_order_count: cash.cashOrderCount || 0
-        });
+        }).catch(err => console.warn('cuadre write failed (continuing clock-out):', err));
       }
-    } catch (err) {
-      console.warn('cuadre write failed (continuing clock-out):', err);
+      $('cuadre-screen').classList.remove('open');
+      optimisticShift = false; render();   // optimistic: show the off-shift screen immediately
+      await finalizeEndShift();
+    } finally {
+      shiftBusy = false;
     }
-    $('cuadre-screen').classList.remove('open');
-    await finalizeEndShift();
   }
 });
 
@@ -1744,7 +1773,10 @@ function render() {
 
   const name = driverState?.name || currentUser.email.split('@')[0];
 
-  if (!driverState || !driverState.active) {
+  // Optimistic override wins while a shift transition is in flight; otherwise RTDB is truth.
+  const active = optimisticShift !== null ? optimisticShift : !!(driverState && driverState.active);
+
+  if (!active) {
     stopKeepAlive();
     $('off-driver-name').textContent = (name || '—').toUpperCase();
     showScreen('offshift');
@@ -1752,8 +1784,12 @@ function render() {
   }
 
   showScreen('onshift');
-  renderStatusBar();
-  renderActiveAndQueue();
+  // During the optimistic window driverState may still hold the pre-shift record (off_shift) — the
+  // status bar / queue render fine from it; guarded so an (unexpected) null can't throw mid-transition.
+  if (driverState) {
+    renderStatusBar();
+    renderActiveAndQueue();
+  }
   startKeepAlive();
 }
 
