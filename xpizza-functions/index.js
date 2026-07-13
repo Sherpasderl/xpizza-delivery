@@ -2453,7 +2453,15 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, 
     maxFutureSkewMs: INGEST_MAX_FUTURE_SKEW_MS
   });
   if (accepted.length === 0) {
-    return res.status(200).json({ ok: true, accepted: 0, dropped: points.length });
+    // Liveness receipt (Driver Tracking · BRIEF E · Surface 1). Every point was dropped by the freshness
+    // filters — a verbatim heartbeat re-post, or a rare dup/stale POST — but the AUTHENTICATED, on-shift
+    // device just contacted us, so advance ONLY last_ping (server clock). Deliberately NOT last_location_ts/
+    // lat/lng/status: this writes the last_ping="device alive" vs last_location_ts="fix age" split the system
+    // always implied but never wrote, so position age stays honest. The full auth chain (token → hash→uid →
+    // rate-limit → validateIngestToken → active/off_shift) sits ABOVE this branch, so the receipt is
+    // forge-proof and can't be spammed past the existing per-uid rate limit.
+    await db.ref(`drivers/${uid}/last_ping`).set(ServerValue.TIMESTAMP);
+    return res.status(200).json({ ok: true, accepted: 0, dropped: points.length, liveness: true });
   }
 
   // Server geofence — native drivers only, fail-closed on an unresolvable/mismatched hub.

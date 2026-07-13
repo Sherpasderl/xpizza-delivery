@@ -8,6 +8,7 @@
     "test:intake-availability": "firebase emulators:exec --only database --project demo-xpizza \"node test/intake-availability.emulator.test.js\"",
     "test:pickup-ready": "firebase emulators:exec --only database --project demo-xpizza \"node test/pickup-ready.emulator.test.js\"",
     "test:driver-freshness": "firebase emulators:exec --only database --project demo-xpizza \"node test/driver-freshness.emulator.test.js\"",
+    "test:ingest-liveness": "firebase emulators:exec --only database --project demo-xpizza \"node test/ingest-liveness.emulator.test.js\"",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "deploy": "firebase deploy --only functions",
