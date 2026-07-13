@@ -95,9 +95,43 @@ Detect-and-prompt with deep-links to the OEM settings intents; skip where not ap
 
 ---
 
+## BRIEF E — Stationary-freshness heartbeat (native, `ShiftLocationService.java`)
+**To:** Sherpa driver session (native, repo `~/Projects/sherpa-driver-app`, physical Honor device) · **Status:** ✅ **diagnosis CONFIRMED + fix APPROVED 2026-07-13 — cleared to BUILD.**
+
+**PREREQ:** `git fetch && git reset --hard origin/main` before touching anything — stale-worktree rule (this program has been bitten twice).
+
+### The arc (so the build isn't re-litigated)
+Live C1 red on an on-shift Honor while screen-locked (dispatch dark, pin green on unlock). We did **not** guess the fix — we confirmed:
+- Hypothesis #1 **Wi-Fi-sleep-on-lock** (Honor+Wi-Fi) → a `WifiLock` was proposed → **REFUTED** by an overnight single-session Honor capture (13h locked, file-backed diag log).
+- Advisor independently re-derived from the raw log: **64 dark windows >180s (avg 10.3 min, longest 18.5 min, 11h of 13h dark), every one starting screen-OFF (64/64); POSTs 570/570 = 200, zero errors, zero hangs; Wi-Fi validated + RSSI −62..−49 throughout.**
+- ⇒ **NOT** network-sleep (the WifiLock would have fixed nothing — confirm-first stopped us shipping the wrong fix), **NOT** process-freeze (posts whenever it gets a fix), **NOT** signal loss.
+
+### Confirmed root cause
+`FusedLocationProvider` **throttles location DELIVERY when stationary + screen-off** (~1 fix/10 min vs ~10s normally). POSTs are **fix-driven** (1:1, ~40 ms after each fix), so `last_ping` stales between sparse fixes → dispatch reads the driver dark. It is a **location-delivery** problem, not network and not process.
+
+### The fix (APPROVED): heartbeat re-POST
+Decouple POST cadence from fix cadence: a **fixed ~10 s timer** re-POSTs the **last-known** location regardless of whether a new fix arrived, so `last_ping` stays fresh while the driver is parked. (This is exactly the role Transistorsoft's heartbeat used to play.) Gate conditions:
+1. **Lifecycle bound to the FGS** — timer starts with the service, released on **every** stop path (normal, clock-out, crash-cleanup); never runs independent of the FGS; the FGS notification/lifecycle is **untouched**.
+2. **Honest timestamps (load-bearing).** The heartbeat carries the last fix's **original `ts`/lat/lng/accuracy**, so the server's `last_ping` (receipt) advances = alive, while `last_location_ts` (true fix age) stays truthful. **Do NOT stamp `ts = now`** — that fakes position freshness and destroys the "how old is the actual position" signal.
+3. **Cadence discipline** — ~1 POST/~10 s total; when a real fix arrives and posts, align/reset the heartbeat timer so you don't double-POST. Same ~10 s as normal → no new ingest load.
+4. **First-fix guard** — no heartbeat before the first real fix exists (nothing to re-POST).
+5. **Version bump** consistent: **2.4.2/vc24 → 2.4.3/vc25** across `index.html` + `build.gradle`.
+6. **Acceptance = re-run the SAME diagnostic harness** — locked + stationary + unplugged, multi-hour → **0 dark windows**, `last_ping` fresh (~10 s) throughout; plus the existing **freeze gate** (no regression) and a battery sanity check (re-introducing a 10 s stationary cadence). Prove the fix with the exact harness that found the bug.
+7. **Diff-gate = codex-on-diff** (core freshness path — timestamp/lifecycle/state correctness). Client/native-only; no functions/`.env`/prune surface. Route the diff + the harness re-run evidence back to advisor before the AAB ships.
+
+### System note (context, not an E blocker)
+The heartbeat **changes what C1 means**: `last_ping` fresh becomes "app alive," not "location fresh." New narrow blind spot = **app-alive + GPS-dead + driver MOVING** (dispatch shows them frozen at last-known). Accepted for E v1 (the frequent pain is false-dark on *stationary* drivers); the durable follow-up is a **task-state-aware `last_location_ts`-staleness monitor** (alarm only when the driver should be en route, so a parked driver never false-alarms). Don't build that in E — just know C1's semantics shifted.
+
+### D reframe
+E re-establishes a fixed ~10 s stationary heartbeat = the battery baseline **D** was going to optimize. Build **E first** (fixed 10 s — plays fine with Item A's glide, which just snaps on a stationary driver); **D collapses into "make the heartbeat cadence motion-adaptive"** (its motion-logic lives *in* the heartbeat, its baseline measures the E heartbeat). Don't pre-optimize the interval in E.
+
+*(Historical: the original incident's iPhone+Honor dual-session on one uid was a red herring, ruled out by the single-session capture. The pre-diagnosis WifiLock path is dead — do NOT build it.)*
+
+---
+
 ## Program Status — 2026-07-12 (final)
 
-**Net: A ✅ / B ✅ / C1 ✅ / C2 ✅ / D ⏳ (measure gate).** The program is complete except the optional, YAGNI-gated D. Both session relays folded in below for the record.
+**Net (updated 2026-07-13): A ✅ / B ✅ / C1 ✅ (+UX ✅) / C2 ✅ / E 🔨 (fix approved, build cleared) / D ⏳ (reframed by E — heartbeat-cadence adaptivity).** Both session relays folded in below for the record. **E** (stationary-freshness heartbeat) is the current active thread — diagnosis confirmed from a 13h overnight capture, heartbeat re-POST fix approved, see BRIEF E above.
 
 | Item | State | Where |
 |------|-------|-------|
