@@ -316,6 +316,15 @@
     margin-top: 24px;
     padding: 8px 16px;
   }
+  .text-link:disabled { opacity: 0.5; cursor: not-allowed; }
+  .reset-msg {
+    color: var(--text-soft);
+    font-size: 13px;
+    line-height: 1.5;
+    max-width: 300px;
+    margin: 10px auto 0;
+    text-align: center;
+  }
 
   /* ==================== IDLE STATE ==================== */
   #idle-state {
@@ -980,6 +989,8 @@
     <input type="password" id="login-password" placeholder="contraseña" autocomplete="current-password">
   </div>
   <button class="big-btn primary" id="login-btn">Entrar</button>
+  <button type="button" class="text-link" id="forgot-btn">¿Olvidaste tu contraseña?</button>
+  <div id="reset-msg" class="reset-msg hidden"></div>
   <div class="version-tag" data-version-display></div>
 </div>
 
@@ -1124,7 +1135,7 @@
 <audio id="chime" preload="auto" src="order_bell.wav"></audio>
 
 <script type="module">
-import * as XPD from './xpizza-delivery.js?v=18';
+import * as XPD from './xpizza-delivery.js?v=19';
 import { isNative, initNativePush, unregisterNativePush, clearDeliveredNotifications } from './native-push.js';
 import { startNativeTracking, stopNativeTracking, pingNativeLocation, disableLingeringTransistorsoft } from './native-location.js';
 import { computeVuelto, vueltoSuggestions, computeShiftCash } from './cash-helpers.js';
@@ -1132,7 +1143,7 @@ import { computeVuelto, vueltoSuggestions, computeShiftCash } from './cash-helpe
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '2.4.3';
+const SYSTEM_VERSION = '2.4.4';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -1423,6 +1434,48 @@ $('login-btn').addEventListener('click', async () => {
     $('login-btn').disabled = false;
   }
 });
+
+// Password reset. Client-side (the app origin is an allowed referer for the web key).
+// Firebase keeps only the MOST RECENT reset code valid, so a re-request silently kills the
+// previous email's link — the #1 cause of "expired" resets. We actively discourage re-requests
+// (45s cooldown + copy that names the trap) and use no-enumeration wording.
+let resetCooldown = false;
+$('forgot-btn').addEventListener('click', async () => {
+  if (resetCooldown) return;
+  const email = $('login-email').value.trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return toast('Escribí tu email arriba primero', 'error');
+  }
+  const btn = $('forgot-btn');
+  const original = btn.textContent;
+  resetCooldown = true;
+  btn.disabled = true;
+  try {
+    await XPD.resetPassword(email);
+  } catch (e) {
+    const code = e.code || '';
+    // Only surface non-enumerating operational errors; let the driver retry those.
+    if (code.includes('too-many-requests') || code.includes('network')) {
+      toast(code.includes('network') ? 'Sin conexión' : 'Demasiados intentos, esperá unos minutos', 'error');
+      resetCooldown = false; btn.disabled = false;
+      return;
+    }
+    // Anything else (e.g. user-not-found) → fall through to the SAME neutral confirmation (no account enumeration).
+    console.warn('resetPassword non-fatal:', code || e.message);
+  }
+  // Neutral confirmation + names the multi-request trap + TTL + return-to-app guidance.
+  const msg = $('reset-msg');
+  msg.textContent = 'Si el correo está registrado, te enviamos un enlace. Abrí el del correo MÁS RECIENTE en menos de 1 hora (si pedís otro, los anteriores dejan de servir), luego volvé a la app para iniciar sesión.';
+  msg.classList.remove('hidden');
+  btn.textContent = 'Revisá tu correo…';
+  setTimeout(() => {
+    resetCooldown = false;
+    btn.disabled = false;
+    btn.textContent = original;
+  }, 45000);
+});
+// Tidy: clear the stale reset confirmation once the driver re-engages the email field.
+$('login-email').addEventListener('focus', () => $('reset-msg').classList.add('hidden'));
 
 $('signout-btn').addEventListener('click', async () => {
   // Native: drop the FCM token before signing out so this device stops

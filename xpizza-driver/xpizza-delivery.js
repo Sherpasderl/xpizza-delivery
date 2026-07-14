@@ -17,6 +17,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/fireba
 import {
   getAuth,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   signOut,
   onAuthStateChanged
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
@@ -152,6 +153,14 @@ export async function signIn(email, password) {
 
 export async function signOutUser() {
   return signOut(auth);
+}
+
+// Send a password-reset email. Runs client-side: the app WebView origin (https://localhost)
+// is an allowed referer for the web API key, same as in-app sign-in; server-side calls are blocked.
+// Firebase only keeps the MOST RECENT reset code valid, so the UI must discourage re-requests
+// (a second send silently invalidates the first email's link).
+export async function resetPassword(email) {
+  return sendPasswordResetEmail(auth, email);
 }
 
 export function onAuth(callback) {
