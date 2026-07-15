@@ -1,0 +1,51 @@
+'use strict';
+// Pure graduation core (Phase 1b-i). No I/O, no clock; RNG injected for determinism.
+// Mirrors driver-freshness.js: a pure, unit-tested reconcile/stats core the thin onSchedule monitor wraps.
+// Spec: docs/superpowers/specs/2026-07-14-phase1b-predictor-graduation-design.md (REV-4, codex round-4 APPROVED).
+
+function mean(xs){ return xs.reduce((a,b)=>a+b,0)/xs.length; }
+function quantile(xs, p){ const s=[...xs].sort((a,b)=>a-b); const r=Math.ceil((p/100)*s.length); return s[Math.max(0,Math.min(s.length-1,r-1))]; }
+
+// Benjamini-Hochberg FDR, returned in the ORIGINAL order.
+function bhFdrAdjust(pvals){
+  const n = pvals.length;
+  const idx = pvals.map((p,i)=>[p,i]).sort((a,b)=>a[0]-b[0]);
+  const adj = new Array(n);
+  let prev = 1;
+  for (let k=n-1;k>=0;k--){ const [p,i]=idx[k]; const v=Math.min(prev, p*n/(k+1)); adj[i]=v; prev=v; }
+  return adj;
+}
+
+// BCa one-sided bootstrap for H0: mean(deltas) <= threshold. Returns { pValue, lowerCB }.
+function bootstrapLowerP(deltas, threshold, { rng, resamples=1000, alpha=0.05 }){
+  const n = deltas.length;
+  const theta = mean(deltas);
+  // resample means
+  const means = new Array(resamples);
+  for (let b=0;b<resamples;b++){ let s=0; for(let i=0;i<n;i++) s+=deltas[(rng()*n)|0]; means[b]=s/n; }
+  means.sort((a,b)=>a-b);
+  // z0 bias-correction: proportion of resample means < theta
+  const below = means.filter(m=>m<theta).length;
+  const z0 = invNorm(Math.min(0.999, Math.max(0.001, below/resamples)));
+  // acceleration via jackknife
+  const jack = new Array(n);
+  for (let i=0;i<n;i++){ jack[i] = (theta*n - deltas[i])/(n-1); }
+  const jbar = mean(jack);
+  let num=0, den=0; for(const j of jack){ const d=jbar-j; num+=d*d*d; den+=d*d; }
+  const a = den===0 ? 0 : num/(6*Math.pow(den,1.5));
+  // BCa-adjusted percentile for the one-sided lower bound
+  const zAlpha = invNorm(alpha);
+  const adjP = normCdf(z0 + (z0+zAlpha)/(1-a*(z0+zAlpha)));
+  const lowerCB = means[Math.max(0, Math.min(resamples-1, Math.floor(adjP*resamples)))];
+  // one-sided p for H0 mean<=threshold ≈ BCa-corrected mass at/below threshold
+  const raw = means.filter(m=>m<=threshold).length/resamples;
+  const zRaw = invNorm(Math.min(0.999,Math.max(0.001, raw)));
+  const pValue = normCdf(2*z0 + zRaw);   // BC one-sided tail (+zRaw — plan-gate #1; strong δ → small p → graduates)
+  return { pValue, lowerCB };
+}
+// standard-normal helpers (Acklam inverse CDF + erf-based CDF) — deterministic, no deps
+function invNorm(p){ /* Acklam approximation */ const a=[-3.969683028665376e+01,2.209460984245205e+02,-2.759285104469687e+02,1.383577518672690e+02,-3.066479806614716e+01,2.506628277459239e+00];const b=[-5.447609879822406e+01,1.615858368580409e+02,-1.556989798598866e+02,6.680131188771972e+01,-1.328068155288572e+01];const c=[-7.784894002430293e-03,-3.223964580411365e-01,-2.400758277161838e+00,-2.549732539343734e+00,4.374664141464968e+00,2.938163982698783e+00];const d=[7.784695709041462e-03,3.224671290700398e-01,2.445134137142996e+00,3.754408661907416e+00];const pl=0.02425;let q,r; if(p<pl){q=Math.sqrt(-2*Math.log(p));return(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);} if(p<=1-pl){q=p-0.5;r=q*q;return(((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q/(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);} q=Math.sqrt(-2*Math.log(1-p));return-(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);}
+function normCdf(x){ return 0.5*(1+erf(x/Math.SQRT2)); }
+function erf(x){ const t=1/(1+0.3275911*Math.abs(x)); const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x); return x>=0?y:-y; }
+
+module.exports = { mean, quantile, bhFdrAdjust, bootstrapLowerP };
