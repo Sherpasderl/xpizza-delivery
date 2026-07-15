@@ -3726,6 +3726,11 @@ function updateDriverMarkers() {
         infoWindow.open(map, marker);
       });
       driverMarkers[uid] = marker;
+      // Register the new marker with the glide engine at creation (first-sighting). Without this the
+      // engine only learns of the driver on a later update() call, so its FIRST real move would
+      // teleport (first-sighting snaps) instead of gliding. snap:true = place at the current pos now,
+      // no animation (the marker was just created there anyway).
+      glide.update(uid, { lat: d.lat, lng: d.lng }, { snap: true });
     }
   }
   // Remove markers for drivers no longer active

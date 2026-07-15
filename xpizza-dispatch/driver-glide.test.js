@@ -69,6 +69,18 @@ const NOMARGIN = { marginFactor: 1 };      // exact-timing tests: duration = mea
   ok('first sighting snaps, no animation');
 }
 
+// ---- ★ new-marker init: snap:true registers engine state so the FIRST real move glides ----
+{
+  const h = harness(NOMARGIN);
+  assert.strictEqual(h.engine.has('u1'), false, 'no state before init');
+  h.at(0); h.engine.update('u1', A, { snap: true });   // updateDriverMarkers new-marker branch
+  assert.strictEqual(h.engine.has('u1'), true, 'engine state exists after init');
+  assert.strictEqual(h.pending(), 0, 'init places at pos, no animation');
+  h.at(10000); h.engine.update('u1', B);               // first real move now GLIDES (not a teleport)
+  assert.strictEqual(h.pending(), 1, 'first move glides');
+  ok('new-marker init registers state → first real move glides, not teleports');
+}
+
 // ---- glides A->B over the measured 10s gap (margin-neutral) ----
 {
   const h = harness(NOMARGIN);
