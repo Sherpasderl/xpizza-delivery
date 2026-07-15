@@ -8,6 +8,8 @@
 
 **Tech Stack:** CommonJS Cloud Functions (`xpizza-functions/`), `firebase-functions/v2/scheduler`, Node built-in `node file.test.js` + `assert` (matches `driver-freshness.test.js`). **Spec:** `docs/superpowers/specs/2026-07-14-phase1b-predictor-graduation-design.md` (REV-4, codex round-4 APPROVED).
 
+**Plan-gate corrections folded (advisor 2026-07-14):** (1) `bootstrapLowerP` p-value sign → `normCdf(2*z0 + zRaw)` (Task 1); (2) `isGraduationConfigSigned` = real `version && approved_at`, preview seed omits them, `hashConfig` must cover `graduation_thresholds` (Task 4/6); (3) range-bound the `order_predictions` read to the windowed orderIds — never the whole tree (Task 4).
+
 **Standing invariants (from the spec — do not violate):**
 - Monitor **reads shadow + config, writes ONLY `ready_time_graduation`** — never `/orders`, never the predictor's write paths (shadow boundary).
 - Join base = **`prediction_logs`** (superset) ⟕ `order_predictions`; key fine buckets by the **stored** `(v,source,bucket_key,restaurant)` off the prediction node — never inferred.
@@ -132,7 +134,7 @@ function bootstrapLowerP(deltas, threshold, { rng, resamples=1000, alpha=0.05 })
   // one-sided p for H0 mean<=threshold ≈ BCa-corrected mass at/below threshold
   const raw = means.filter(m=>m<=threshold).length/resamples;
   const zRaw = invNorm(Math.min(0.999,Math.max(0.001, raw)));
-  const pValue = normCdf(2*z0 - zRaw);   // bias-adjusted tail
+  const pValue = normCdf(2*z0 + zRaw);   // BC one-sided tail (+zRaw — plan-gate #1; strong δ → small p → graduates)
   return { pValue, lowerCB };
 }
 // standard-normal helpers (Acklam inverse CDF + erf-based CDF) — deterministic, no deps
@@ -290,15 +292,19 @@ exports.readyTimeGraduationMonitor = onSchedule(
     const from = now - gt.window_ms, to = now - settleLag;
 
     // Read the window: prediction_logs is the join BASE (superset). order_predictions supplies bucket/source/predicted_prep.
-    let logs, preds;
+    // ★ BOUND (plan-gate #3): NEVER read the whole order_predictions tree — fetch ONLY the windowed orderIds.
+    let logsVal, preds = {};
     try {
-      [logs, preds] = await Promise.all([
-        db.ref('prediction_logs').orderByChild('new_at').startAt(from).endAt(to).once('value'),   // requires .indexOn new_at (see rules note)
-        db.ref('order_predictions').once('value'),
-      ]);
+      const logs = await db.ref('prediction_logs').orderByChild('new_at').startAt(from).endAt(to).once('value');  // windowed base (requires .indexOn new_at)
+      logsVal = logs.val() || {};
+      const orderIds = Object.keys(logsVal);
+      const snaps = await Promise.all(orderIds.map((id) => db.ref(`order_predictions/${id}`).once('value')));
+      orderIds.forEach((id, i) => { const v = snaps[i].val(); if (v) preds[id] = v; });
     } catch (e) { console.error('graduation: read failed, skipping', e.message); return; }
 
-    const rows = buildGraduationRows(logs.val() || {}, preds.val() || {}, cfg);   // helper: flatten {orderId}/{v} pairs into join rows
+    const rows = buildGraduationRows(logsVal, preds, cfg);   // flatten {orderId}/{v} pairs into join rows
+    // (If the windowed orderId count ever grows large, switch to order_predictions .indexOn new_at + a range query;
+    //  the per-orderId fanout is bounded by the windowed prediction_logs count — fine for the bake / low volume.)
     // Deterministic RNG seed from the window so reruns are reproducible without Math.random.
     const rng = mulberry32((from ^ to) >>> 0);
     const out = computeGraduation(rows, { ...cfg, config_hash: hashConfig(cfg), signed: isGraduationConfigSigned(cfg) }, { rng, now });
@@ -312,6 +318,15 @@ exports.readyTimeGraduationMonitor = onSchedule(
 );
 ```
 Add `buildGraduationRows`, `isGraduationConfigSigned`, and a local `mulberry32` (or import) as small helpers near the function. `buildGraduationRows` walks `prediction_logs[orderId][v]` (base), attaches the matching `order_predictions[orderId][v]` (`bucket_key`,`source`,`predicted_prep_min`,`restaurant_id`) when present, sets `prediction_missing` from the log flag.
+
+**★ Provenance (plan-gate #2):** `isGraduationConfigSigned` must require a **real version + approval stamp** (mirrors `ready-time-quality.js:156`), NOT a flippable boolean (a bare `signed:false`/`true` is spoofable by any admin write):
+```js
+function isGraduationConfigSigned(cfg){
+  const g = cfg && cfg.graduation_thresholds;
+  return !!(g && g.version && g.approved_at != null);
+}
+```
+The preview seed simply **omits `version`/`approved_at`** (that IS "unsigned"). **Confirm `hashConfig(cfg)` hashes `graduation_thresholds`** so a re-sign flips `config_hash` → old verdicts fail the `_meta/active_config_hash` fence (the whole point of fix 7'); extend `hashConfig` if it doesn't already cover it. Unit-test `isGraduationConfigSigned` (version+approved_at present → true; either missing → false).
 
 - [ ] **Step 3: Update the index.js header comment list** (the `driverFreshnessMonitor (sched)` block) to add `readyTimeGraduationMonitor (sched)`.
 - [ ] **Step 4: `node --check index.js`** → parses. **Commit** — "feat(functions): readyTimeGraduationMonitor scheduled sweep (1b-i)"
@@ -341,8 +356,9 @@ Expected: only the `order_predictions .read`, the new `ready_time_graduation` bl
 
 **Files:** `ready_time_config/graduation_thresholds` (RTDB data), test script
 
-- [ ] **Step 1: Seed `graduation_thresholds` UNSIGNED (preview)** in `ready_time_config` (admin write) with placeholder caps so the monitor runs and REPORTS but `isGraduationConfigSigned` returns false ⇒ `mode:'preview'` ⇒ nothing graduates:
-`{ window_ms: 12096e5 /*14d*/, min_samples: 40, q_fdr: 0.1, coverage_cap: 0.2, excl_cap: 0.2, late_cap: 0.15, p90_cap: 6, within_floor: 0.6, bias_cap: 1.5, margin: 1, margin_bkt: 1, ttl_ms: 216e5 /*6h*/, buffer_prep_min: <measured median from tapped_sane_ready_to_ofd_ms>, signed: false }`
+- [ ] **Step 1: Seed `graduation_thresholds` UNSIGNED (preview)** in `ready_time_config` (admin write) — **omit `version`/`approved_at`** so `isGraduationConfigSigned` returns false ⇒ `mode:'preview'` ⇒ nothing graduates (plan-gate #2: "unsigned" = no version/approval stamp, NOT a `signed:false` flag):
+`{ window_ms: 12096e5 /*14d*/, min_samples: 40, q_fdr: 0.1, coverage_cap: 0.2, excl_cap: 0.2, late_cap: 0.15, p90_cap: 6, within_floor: 0.6, bias_cap: 1.5, margin: 1, margin_bkt: 1, ttl_ms: 216e5 /*6h*/, buffer_prep_min: <measured median from tapped_sane_ready_to_ofd_ms> }`
+After the bake, add `version` + `approved_at` (that is "signing") → flips `hashConfig` → activates authoritative verdicts.
 - [ ] **Step 2: Add tests to the `test` script** in `package.json`: append `&& node ready-time-graduation.test.js`.
 - [ ] **Step 3: Full suite green** — `npm test` (includes the new file). Confirm `node ready-time-graduation.test.js` passes standalone.
 - [ ] **Step 4: Zero-prune check** — the deploy adds ONE function: `firebase functions:list` vs `grep -c "^exports\." index.js` → expect +1 (`readyTimeGraduationMonitor`), nothing pruned.
