@@ -37,8 +37,10 @@ export function distanceMeters(a, b) {
  */
 export function createGlideEngine({ now, raf, caf, apply, options = {} }) {
   const MIN = options.minDurationMs ?? 1000;
-  const MAX = options.maxDurationMs ?? 12000;
+  const MAX = options.maxDurationMs ?? 15000;         // headroom so the margin isn't clamped (was 12000)
   const SNAP_M = options.snapThresholdMeters ?? 500;
+  const NOMOVE_M = options.noMoveMeters ?? 0.5;       // target-moved threshold: below this = same sample (no-op)
+  const MARGIN = options.marginFactor ?? 1.15;        // duration = real inter-target interval × MARGIN (tunable)
   const state = new Map(); // uid -> { rafId, startPos, targetPos, startTime, duration, lastUpdateTime }
 
   // Where the pin visually is right now, given its animation state.
@@ -65,12 +67,20 @@ export function createGlideEngine({ now, raf, caf, apply, options = {} }) {
       return;
     }
 
+    // ★ TARGET-KEYED TIMING (root-cause fix): the app also calls update() on a 5s label-refresh tick
+    // (and on any other driver's ping) with THIS driver's UNCHANGED position. Such stale calls MUST be
+    // true no-ops — otherwise they reset lastUpdateTime, truncating the next real move's measuredDt →
+    // too-short duration → the marker rushes to the sample then idles (the "stop-and-go" beat). Only a
+    // genuinely-MOVED target advances the clock. Compare to the target we're gliding toward (s.targetPos),
+    // NOT the displayed position (which is mid-glide, behind the target — why the snap below misses it).
+    if (!opts.snap && distanceMeters(target, s.targetPos) < NOMOVE_M) return;
+
     const from = displayedPos(s, t);
     const measuredDt = t - s.lastUpdateTime;
     s.lastUpdateTime = t;
     const dist = distanceMeters(from, target);
 
-    // stale (caller-forced) / implausible jump / no real move → snap, never glide
+    // stale (caller-forced) / implausible jump / already-at-target → snap, never glide
     if (opts.snap || dist > SNAP_M || dist < 0.5) {
       settle(s, uid, target, t);
       return;
@@ -80,7 +90,11 @@ export function createGlideEngine({ now, raf, caf, apply, options = {} }) {
     s.startPos = from;
     s.targetPos = target;
     s.startTime = t;
-    s.duration = Math.max(MIN, Math.min(measuredDt, MAX));
+    // Duration ≈ the REAL inter-target interval (measuredDt is now clean — no-op'd ticks don't advance
+    // the clock), inflated by MARGIN so each glide slightly overshoots the interval and is still moving
+    // when the next ping lands (kills jitter/missed-ping micro-stops). Cost: the marker keeps gliding
+    // ~1-2s past a stop before resting. MARGIN is tunable (see the createGlideEngine call).
+    s.duration = Math.max(MIN, Math.min(measuredDt * MARGIN, MAX));
 
     const step = () => {
       const tt = now();

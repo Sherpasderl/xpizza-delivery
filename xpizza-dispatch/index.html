@@ -1946,6 +1946,10 @@ let infoWindow = null;
 // real clock, rAF, and a setPosition sink. An open InfoWindow is marker-anchored,
 // so it tracks the gliding pin automatically.
 const glide = createGlideEngine({
+  // marginFactor: each glide runs ~15% longer than the measured ping interval so the marker keeps
+  // moving through jitter/missed pings instead of stopping (raise if the board still micro-stops;
+  // lower toward 1.0 if the pin lingers past where the driver stopped).
+  options: { marginFactor: 1.15, maxDurationMs: 15000 },
   now: () => performance.now(),
   raf: (cb) => requestAnimationFrame(cb),
   caf: (id) => cancelAnimationFrame(id),
