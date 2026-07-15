@@ -22,6 +22,7 @@
  *   - autoAssignOnOrderCreate       (DB trig) — Auto-pick driver after grace period (with continuous-at-restaurant stacking)
  *   - monitorAssignmentTimeout      (DB trig) — Reassign on 60s no-accept timeout
  *   - driverFreshnessMonitor        (sched)   — alarm dispatch when an on-shift driver's pings go dark (C1)
+ *   - readyTimeGraduationMonitor    (sched)   — hourly predictor graduation verdicts → ready_time_graduation (1b-i)
  *
  * Why this exists:
  *   Make.com needs a way to create orders in the dispatcher. The naive approach
@@ -107,6 +108,9 @@ const MR = require('./manual-resolve');   // atomic-claim money state machine (R
 const { resolveManualReconciliationCore, recoverStaleResolve } = require('./resolve-manual');   // the resolver core + sweep recovery (emulator-driven)
 const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, isReconcilerRetryable } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5)
 const { runPrediction, runLabelAndUpdate } = require('./ready-time-predict-core');   // Phase-1 Step-3 shadow predictor + prediction-logging (PURE SHADOW)
+const { computeGraduation } = require('./ready-time-graduation');   // Phase 1b-i graduation core (writes ONLY ready_time_graduation)
+const { hashConfig } = require('./ready-time-quality-run');          // reuse the signed-config hash (extended to cover graduation_thresholds)
+const { ACTIVE_MODEL_VERSIONS } = require('./ready-time-predict');   // active model version(s) — windows prediction_logs by `<v>/new_at`
 
 initializeApp({
   databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
@@ -2975,6 +2979,91 @@ exports.logReadyTimeActual = onValueCreated(
     } catch (e) {
       console.error(`logReadyTimeActual: failed for ${event.params.orderId}`, e.message);
     }
+  }
+);
+
+// ============================================================
+// readyTimeGraduationMonitor — Phase 1b-i. Hourly graduation sweep. READS prediction_logs ⟕ order_predictions
+// + ready_time_config; WRITES ONLY ready_time_graduation/{v}/{restaurant}/{source}/{bucket_key} +
+// _meta/active_config_hash. PURE-SHADOW-ADJACENT: never touches /orders or the predictor's write paths (the
+// shadow boundary is inviolable). Preview-until-signed: unsigned graduation_thresholds ⇒ verdicts mode:'preview'
+// ⇒ nothing graduates. Mirrors driverFreshnessMonitor's fail-safe shape (any read failure ⇒ skip, no writes).
+// ============================================================
+
+// isGraduationConfigSigned (plan-gate #2): signed = a REAL version + approval stamp (mirrors ready-time-quality.js
+// isCaptureAcceptable), NOT a flippable boolean. The preview seed omits both, so it reads unsigned.
+function isGraduationConfigSigned(cfg){
+  const g = cfg && cfg.graduation_thresholds;
+  return !!(g && g.version && g.approved_at != null);
+}
+// Deterministic PRNG — seeded from the window so reruns are reproducible without Math.random (matches the core's test RNG).
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return((t^t>>>14)>>>0)/4294967296; }; }
+// buildGraduationRows — flatten prediction_logs[orderId][v] (the JOIN BASE, superset) ⟕ order_predictions[orderId][v].
+// Each log row → one graduation row; attach the prediction node's source/bucket_key/predicted_prep_min when present;
+// prediction_missing from the log flag (or an absent prediction). Keyed strictly by the STORED tuple — never inferred.
+function buildGraduationRows(logsVal, preds){
+  const rows = [];
+  for (const orderId in logsVal){
+    const perV = logsVal[orderId] || {};
+    for (const v in perV){
+      const log = perV[v]; if (!log || typeof log !== 'object') continue;
+      const pred = (preds[orderId] || {})[v];
+      rows.push({
+        model_version: v,
+        restaurant_id: log.restaurant_id,
+        new_at: log.new_at,
+        error_min: log.error_min,
+        prediction_missing: log.prediction_missing === true || !pred,
+        quarantined: log.quarantined === true,
+        source: pred && pred.source,
+        bucket_key: pred && pred.bucket_key,
+        predicted_prep_min: pred ? pred.predicted_prep_min : log.predicted_prep_min,
+      });
+    }
+  }
+  return rows;
+}
+
+exports.readyTimeGraduationMonitor = onSchedule(
+  { schedule: 'every 60 minutes', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' },
+  async () => {
+    const db = getDatabase();
+    const now = Date.now();
+    let cfg;
+    try { cfg = (await db.ref('ready_time_config').once('value')).val() || {}; }
+    catch (e) { console.error('readyTimeGraduationMonitor: config read failed, skipping', e.message); return; }
+    const gt = cfg.graduation_thresholds;
+    if (!gt || !Number.isFinite(gt.window_ms)) { console.warn('graduation: no thresholds config, skipping'); return; }
+    const settleLag = Number.isFinite(cfg.settle_lag_ms) ? cfg.settle_lag_ms : 0;
+    const from = now - gt.window_ms, to = now - settleLag;
+
+    // Read the window. Join BASE = prediction_logs (superset). ★ EXECUTOR CORRECTION vs the plan's Task-4
+    // snippet: prediction_logs is TWO-LEVEL — prediction_logs/{orderId}/{v}/…new_at — so a flat
+    // orderByChild('new_at') can't window it (new_at is one level deeper). Query per ACTIVE_MODEL_VERSION by the
+    // DEEP path `${v}/new_at` (matching .indexOn in database.rules.json) and merge. The order_predictions read is
+    // then BOUND (plan-gate #3) to the windowed orderIds — never db.ref('order_predictions').once() on the whole tree.
+    let logsVal = {}, preds = {};
+    try {
+      const perVersion = await Promise.all(ACTIVE_MODEL_VERSIONS.map((v) =>
+        db.ref('prediction_logs').orderByChild(`${v}/new_at`).startAt(from).endAt(to).once('value').then((s) => s.val() || {})
+      ));
+      for (const chunk of perVersion){
+        for (const orderId in chunk){ logsVal[orderId] = { ...(logsVal[orderId] || {}), ...chunk[orderId] }; }
+      }
+      const orderIds = Object.keys(logsVal);
+      const snaps = await Promise.all(orderIds.map((id) => db.ref(`order_predictions/${id}`).once('value')));
+      orderIds.forEach((id, i) => { const v = snaps[i].val(); if (v) preds[id] = v; });
+    } catch (e) { console.error('graduation: read failed, skipping', e.message); return; }
+
+    const rows = buildGraduationRows(logsVal, preds);
+    const rng = mulberry32((from ^ to) >>> 0);   // deterministic per window
+    const out = computeGraduation(rows, { ...cfg, config_hash: hashConfig(cfg), signed: isGraduationConfigSigned(cfg) }, { rng, now });
+
+    const updates = {};
+    for (const path in out.verdicts) updates[path] = out.verdicts[path];
+    updates['ready_time_graduation/_meta/active_config_hash'] = out.activeConfigHash;   // fix 7' pointer
+    try { await db.ref().update(updates); console.log(`graduation: ${Object.keys(out.verdicts).length} verdicts (${out.mode})`); }
+    catch (e) { console.error('graduation: write failed', e.message); }
   }
 );
 

@@ -45,6 +45,10 @@ function hashConfig(cfg) {
     active_restaurants: c.active_restaurants, epoch_start_ms: c.epoch_start_ms,
     excluded_phones: c.excluded_phones, excluded_orders: c.excluded_orders, cleanup_paths: c.cleanup_paths,
     critical_segments: c.critical_segments, quality_thresholds: c.quality_thresholds, settle_lag_ms: c.settle_lag_ms,
+    graduation_thresholds: c.graduation_thresholds,   // Phase 1b-i (plan-gate #2): a re-sign of graduation
+    // thresholds must flip config_hash so old ready_time_graduation verdicts fail the _meta/active_config_hash
+    // fence (fix 7'). NOTE: this couples the quality runner's config_hash to graduation config — a graduation
+    // re-sign also re-stamps quality runs (rare, harmless: an idempotent re-merge). Plan-mandated.
   }));
 }
 

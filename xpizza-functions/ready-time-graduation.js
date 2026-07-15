@@ -100,7 +100,9 @@ function computeGraduation(rows, cfg, { rng, now }){
   const signed = !!c.signed;                     // caller computes it (isGraduationConfigSigned in the monitor)
   const mode = signed ? 'authoritative' : 'preview';
   const configHash = c.config_hash;
-  const buffer = c.buffer_prep_min;              // PREP_BUFFER_MIN — the global flat-buffer baseline
+  // PREP_BUFFER_MIN — the global flat-buffer baseline. Read top-level (test) OR nested in graduation_thresholds
+  // (the Task-6 seed) — the plan places it both ways, so accept either.
+  const buffer = Number.isFinite(c.buffer_prep_min) ? c.buffer_prep_min : gt.buffer_prep_min;
   const ttl = Number.isFinite(gt.ttl_ms) ? gt.ttl_ms : 0;
   const windowMs = Number.isFinite(gt.window_ms) ? gt.window_ms : 0;
   const withinN = Number.isFinite(gt.within_n_min) ? gt.within_n_min : 5;
