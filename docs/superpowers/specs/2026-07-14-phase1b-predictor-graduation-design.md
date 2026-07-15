@@ -1,9 +1,9 @@
-# Phase 1b — Ready-Time Predictor Graduation + Pre-Pickup ETA — Design Spec (REV-3)
+# Phase 1b — Ready-Time Predictor Graduation + Pre-Pickup ETA — Design Spec (REV-4)
 
-**Date:** 2026-07-14 (rev-3) · **Owner (build):** split (functions/rules + dispatch client) · **Gate:** advisor design re-gate (codex round-3) → plan-gate → diff-gate.
-**Status:** rev-3 = codex round-2's fixes 1–4 + §11 rulings + the **corrected §1 rules deploy trap** (the gitignored deploy-file footgun, verified). Nothing coded until re-gated. Worktree on `origin/main` (`695d9b2`).
+**Date:** 2026-07-14 (rev-4) · **Owner (build):** split (functions/rules + dispatch client) · **Gate:** advisor design re-gate (codex round-4/self-verify) → plan-gate → diff-gate.
+**Status:** rev-4 = round-3's two final fixes (5' coverage-granularity split, 7' active-config-hash pointer) on top of rev-3. Nothing coded until re-gated. Worktree on `origin/main` (`faaa29a`).
 
-**Rev-3 changelog:** §1 corrected — the blocker STANDS but reframed (deploy-source file is gitignored/per-checkout, drifts; tracked truth = `xpizza-reference/`); `order_timelines` needs no grant (already live-readable). Fix 1 (join base = `prediction_logs`). Fix 2 (verdict path adds `source`). Fix 3 (drop `sample_count` watermark; drift = bake-measured). Fix 4 (client fence = `mode`/`settled`/TTL, not client-side hash). §11 ruled (BCa; BH-FDR; TTL 3–6h; reuse `settle_lag`; seed after the preview run).
+**Rev-4 changelog:** Fix 5' (§4(b).1) — split coverage vs accuracy granularity (missing-share cap at restaurant×daypart from the log's own fields; accuracy stays fine-bucket). Fix 7' (§5/§6) — monitor publishes `ready_time_graduation/_meta/active_config_hash`; client fence adds `verdict.config_hash === active_config_hash` → fail-closed on threshold re-sign. Rev-3 (still standing): §1 gitignored-rules deploy trap (reconcile to tracked==live `xpizza-reference/` first; two grants; `order_timelines` no grant); fix 1 (join base = `prediction_logs`); fix 2 (verdict path adds `source`); fix 3 (drop watermark; drift = bake-measured); §11 (BCa; BH-FDR; TTL 3–6h; reuse `settle_lag`; seed after preview run).
 
 ---
 
@@ -44,7 +44,10 @@ Signed `isCaptureAcceptable`/`restaurantVerdict` (restaurant/segment) passes.
 **Per-order signals (eligible):** `predErr=|error_min|`; `actual_prep = predicted_prep_min − error_min`; `bufErr=|PREP_BUFFER_MIN − actual_prep|` (global buffer); `bktErr=|bucketMedian_prep − actual_prep|` (per-bucket shrinkage median — finding 4). Paired deltas `δ_buf=bufErr−predErr`, `δ_bkt=bktErr−predErr`.
 
 **Per bucket `(v,restaurant,source,bucket_key)`, GRADUATE iff ALL (fail-closed):**
-1. **Coverage & selection-bias (findings 1,5):** eligible `n ≥ minSamples`; `prediction_missing share ≤ COVERAGE_CAP`; `quarantined+missing share ≤ EXCL_CAP`; report all shares.
+1. **Coverage & selection-bias — split by granularity (findings 1, 5, 5'):**
+   - *Fine bucket* `(v,source,bucket_key,restaurant)`: eligible `n ≥ minSamples`; `quarantined share among matched ≤ EXCL_CAP` — both computable at the fine level (matched rows carry the stored bucket).
+   - *Coarse* `restaurant_id` (× optional `daypartOf(log.new_at)`, a stable **non-model** time bucketing): `prediction_missing share ≤ COVERAGE_CAP`, over ALL orders that reached ready there this window — computed from the **log's own fields**, no inference. A no-prediction row has no stored `(source,bucket_key)` and inference is forbidden, so missing-share is only honest at this coarse level. **A fine bucket cannot graduate if its restaurant(×daypart) coverage is below cap.**
+   - Report all shares (fine + coarse).
 2. **Confidence-bounded improvement (finding 2):** the **one-sided lower confidence bound** — **BCa paired bootstrap** (skewed non-negative deltas at modest n; no normality; paired-t only as a fast fallback) — of `mean(δ_buf) > MARGIN` AND `mean(δ_bkt) > MARGIN_BKT`, with **BH-FDR** multiplicity control at **q ≈ 0.05–0.10** across all buckets tested this run (a false graduate is bounded by the fail-closed + bias/tail/median backstops, so FDR-power > FWER-conservatism at this volume). Subsumes `n ≥ minSamples`.
 3. **Bias & tail guards (finding 3):** `|mean(error_min)| ≤ BIAS_CAP`; **under-prediction (early-ready, `error_min<0`) rate ≤ LATE_CAP**; `p90(predErr) ≤ P90_CAP`; `pct_within_N ≥ WITHIN_FLOOR` — each also no worse than the buffer on the same orders.
 4. **Sensitivity (finding 1):** impute excluded orders worst-case; if it erases the confidence-bounded margin, don't graduate.
@@ -53,7 +56,9 @@ Signed `isCaptureAcceptable`/`restaurantVerdict` (restaurant/segment) passes.
 
 ## 5. Verdict node (path adds `source` — fix 2)
 
-`ready_time_graduation/{v}/{restaurant}/{source}/{bucket_key}` = `{ graduated, n, coverage:{matched,missing,quarantined,shares}, predictor:{mae,p90,bias,late_rate,within_n}, vs_buffer:{mean_delta,lower_cb,q_adj}, vs_bucketmed:{mean_delta,lower_cb,q_adj}, window, computed_at, expires_at, config_hash (audit only), mode:'authoritative'|'preview', settled }`.
+`ready_time_graduation/{v}/{restaurant}/{source}/{bucket_key}` = `{ graduated, n, coverage:{matched,missing,quarantined,fine_shares,coarse_missing_share}, predictor:{mae,p90,bias,late_rate,within_n}, vs_buffer:{mean_delta,lower_cb,q_adj}, vs_bucketmed:{mean_delta,lower_cb,q_adj}, window, computed_at, expires_at, config_hash, mode:'authoritative'|'preview', settled }`.
+
+**Active-config pointer (fix 7'):** the monitor also writes `ready_time_graduation/_meta/active_config_hash` = the current signed config's hash (the hash ONLY, never the thresholds). The client compares each verdict's `config_hash` against this readable pointer (§6) — a fail-closed hash check without exposing admin config. On a threshold re-sign the pointer flips on the monitor's next run; verdicts still carrying the old hash are rejected until recomputed.
 
 **Drift (fix 3):** **no `sample_count` watermark** (it saturates at `RING_N` while the ring median keeps moving → useless). Defense = **hourly re-graduation over a recent window + a short TTL** (a degrading bucket un-graduates as its recent predictions enter the window); explicit caveat that a long window dilutes recent degradation. **Measure the real ring-median drift rate during the 2-week bake** — add recency-weighting or `model_snapshot_id`-matching ONLY if the measured drift warrants (measure-first; don't build snapshot-matching blind).
 
@@ -71,7 +76,8 @@ predReadyAt = order_timelines[id].ready_at
            ?? (new_at + PREP_BUFFER_MIN·60000)
 ```
 
-**Client provenance/TTL fence (fix 4):** the client **cannot read the admin config hash**, so it trusts **`mode==='authoritative' && settled===true && now ≤ expires_at`**. The monitor (Admin SDK, reads signed `ready_time_config`) stamps `authoritative` **only** when computed under a validly-signed config; `config_hash` rides in the verdict for **audit**, not client comparison. During the bake, verdicts are `preview` → client rejects → nothing graduates. Lookup strictly by the stored `(v,source,bucket_key,restaurant_id)` tuple off the prediction node.
+**Client provenance/TTL fence (fixes 4 + 7'):** the client can't read admin config, so it fails-closed on
+`mode==='authoritative' && settled===true && now ≤ expires_at && verdict.config_hash === ready_time_graduation/_meta/active_config_hash` (the readable active-hash pointer the monitor publishes — §5). The monitor (Admin SDK, reads signed `ready_time_config`) stamps `authoritative` only when computed under a validly-signed config; a threshold re-sign flips the pointer → stale-config verdicts rejected → fail-closed to buffer until recomputed. During the bake, verdicts are `preview` → client rejects → nothing graduates. Lookup strictly by the stored `(v,source,bucket_key,restaurant_id)` tuple off the prediction node. (The `ready_time_graduation` read grant already covers the nested `_meta` pointer.)
 
 ## 7. Consumer — pre-pickup PREP ETA (correction B; OD2)
 
@@ -99,7 +105,7 @@ A still-cooking order (not yet `out_for_delivery`) shows the **prep ETA ONLY**: 
 
 ## 11. Open decisions — all ruled
 
-CB = BCa bootstrap (paired-t fallback) ✓; multiplicity = BH-FDR q≈0.05–0.10 ✓; TTL 3–6h ✓; `settle_lag` reuse ✓; seed thresholds after the first `preview` reporting run ✓; join base = `prediction_logs` ✓; verdict path incl. `source` ✓; drift = TTL + bake-measured, no watermark ✓; client fence = mode/settled/TTL ✓; two grants, `order_timelines` no grant ✓; granularity per-`v`+stored-`bucket_key`, coarsen after first run ✓; `PREP_BUFFER_MIN` = measured median ✓. **Nothing outstanding** except the seed constants (set during the bake) + the standing gitignored-rules fragility (Xavier to close).
+CB = BCa bootstrap (paired-t fallback) ✓; multiplicity = BH-FDR q≈0.05–0.10 ✓; TTL 3–6h ✓; `settle_lag` reuse ✓; seed thresholds after the first `preview` reporting run ✓; join base = `prediction_logs` ✓; verdict path incl. `source` ✓; drift = TTL + bake-measured, no watermark ✓; **coverage/missing-share gate at restaurant×daypart, accuracy at fine bucket (5') ✓**; **client fence = mode/settled/TTL + config_hash vs readable `_meta/active_config_hash` pointer (7') ✓**; two grants, `order_timelines` no grant ✓; granularity per-`v`+stored-`bucket_key`, coarsen after first run ✓; `PREP_BUFFER_MIN` = measured median ✓. **Nothing outstanding** except the seed constants (set during the bake) + the standing gitignored-rules fragility (Xavier to close).
 
 ## 12. Out of scope
 
