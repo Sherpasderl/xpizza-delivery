@@ -2,7 +2,23 @@
 const assert = require('assert');
 const { mean, quantile, bhFdrAdjust, bootstrapLowerP } = require('./ready-time-graduation');
 const { coverageByCoarse, gateBucket, daypartKeyOf } = require('./ready-time-graduation');
+const { computeGraduation } = require('./ready-time-graduation');
 let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
+
+const GT = { margin:1, margin_bkt:1, q_fdr:0.1, min_samples:30, coverage_cap:0.2, excl_cap:0.2,
+  late_cap:0.15, p90_cap:5, within_floor:0.6, bias_cap:1, within_n_min:5, ttl_ms:216e5, window_ms:12096e5, bootstrap_resamples:400 };
+// 50 matched rows, one tuple: predictor tracks each order (tiny error), actuals SPREAD 10–20 so both the flat
+// buffer (12) and the bucket median (~15) are poor per-order baselines → δ_buf, δ_bkt clearly positive.
+function makeStrongBucketRows(){
+  const rows = [];
+  for (let i=0;i<50;i++){
+    const actual = 10 + (i % 11);          // 10..20 spread
+    const err = (i % 3) * 0.2;             // 0, 0.2, 0.4 — small, all ≥0 (late_rate 0, small bias)
+    rows.push({ model_version:'v1', restaurant_id:'x_pizza', source:'exact', bucket_key:'b1', new_at: LUNCH,
+      predicted_prep_min: actual + err, error_min: err, prediction_missing:false, quarantined:false });
+  }
+  return rows;
+}
 
 const LUNCH = Date.UTC(2026,6,14,18,0);   // used by Task 2 coverage/gate tests
 
@@ -59,6 +75,25 @@ assert.strictEqual(quantile([1,2,3,4], 50), 2); ok('quantile nearest-rank');
   assert.strictEqual(gateBucket({...strong, n:10}, {missing_share:0.05}, cfg).graduated, false, 'thin n → fail-closed');
   assert.strictEqual(gateBucket({...strong, late_rate:0.5}, {missing_share:0.05}, cfg).graduated, false, 'late-rate cap');
   ok('gateBucket fail-closed');
+}
+
+// ── Task 3: computeGraduation orchestration (authoritative vs preview) ──
+{
+  const cfg = { config_hash:'abc', signed:true, graduation_thresholds: GT, buffer_prep_min: 12 };
+  const rows = makeStrongBucketRows();
+  const out = computeGraduation(rows, cfg, { rng: mulberry32(7), now: 1_700_000_000_000 });
+  assert.strictEqual(out.mode, 'authoritative');
+  assert.strictEqual(out.activeConfigHash, 'abc');
+  const paths = Object.keys(out.verdicts);
+  assert.ok(paths.some(p => out.verdicts[p].graduated === true), 'strong bucket graduates');
+  const v = out.verdicts[paths[0]];
+  assert.strictEqual(v.config_hash, 'abc'); assert.strictEqual(v.settled, true);
+  assert.ok(v.vs_buffer && v.vs_bucketmed && v.predictor && v.coverage, 'verdict node shape (§5)');
+  // unsigned config → preview → nothing graduates
+  const outP = computeGraduation(rows, { ...cfg, signed:false }, { rng: mulberry32(7), now: 1 });
+  assert.strictEqual(outP.mode, 'preview');
+  assert.ok(Object.values(outP.verdicts).every(v => v.graduated === false), 'preview graduates nothing');
+  ok('computeGraduation authoritative vs preview');
 }
 
 // tiny deterministic PRNG for tests

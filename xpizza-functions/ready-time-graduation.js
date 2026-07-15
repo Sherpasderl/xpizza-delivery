@@ -85,3 +85,109 @@ function gateBucket(s, coarseCov, cfg){
   return { graduated: reasons.length === 0, reasons };
 }
 module.exports = { ...module.exports, coverageByCoarse, gateBucket, daypartKeyOf };
+
+// ── Task 3: computeGraduation orchestration ──
+// rows = prediction_logs ⟕ order_predictions join rows (buildGraduationRows in the monitor). A matched row
+// carries model_version/restaurant_id/source/bucket_key/new_at/predicted_prep_min/error_min (+ quarantined);
+// a missing row carries restaurant_id/new_at/prediction_missing:true (coverage only). Spec §4(b)/§5.
+// FLAGS for the codex-gate: (a) bucket baseline uses the PLAIN per-bucket median (plan Task 3 `median(actual)`);
+// spec §finding-4 calls for a "shrinkage median" — the plan simplified it; refine post-bake if warranted.
+// (b) within_n uses cfg.graduation_thresholds.within_n_min (default 5) — add to the seed. (c) sensitivity =
+// append `quarantined` excluded rows at the worst OBSERVED δ and re-check the lower CB (bounded worst-case).
+function computeGraduation(rows, cfg, { rng, now }){
+  const c = cfg || {};
+  const gt = c.graduation_thresholds || {};
+  const signed = !!c.signed;                     // caller computes it (isGraduationConfigSigned in the monitor)
+  const mode = signed ? 'authoritative' : 'preview';
+  const configHash = c.config_hash;
+  const buffer = c.buffer_prep_min;              // PREP_BUFFER_MIN — the global flat-buffer baseline
+  const ttl = Number.isFinite(gt.ttl_ms) ? gt.ttl_ms : 0;
+  const windowMs = Number.isFinite(gt.window_ms) ? gt.window_ms : 0;
+  const withinN = Number.isFinite(gt.within_n_min) ? gt.within_n_min : 5;
+  const resamples = Number.isFinite(gt.bootstrap_resamples) ? gt.bootstrap_resamples : 1000;
+
+  // Coverage over ALL rows (incl. missing) — coarse restaurant×daypart (spec §4(b).1).
+  const coverage = coverageByCoarse(rows);
+
+  // Group by the STORED tuple; track matched + quarantined counts at the fine level.
+  const groups = new Map();
+  const matchedByTuple = new Map();
+  const quarByTuple = new Map();
+  for (const r of rows){
+    if (r.prediction_missing) continue;                         // missing → coverage only, never a fine bucket
+    const tuple = `${r.model_version}/${r.restaurant_id}/${r.source}/${r.bucket_key}`;
+    matchedByTuple.set(tuple, (matchedByTuple.get(tuple)||0)+1);
+    if (r.quarantined){ quarByTuple.set(tuple,(quarByTuple.get(tuple)||0)+1); continue; }   // excluded
+    if (!Number.isFinite(r.error_min) || !Number.isFinite(r.predicted_prep_min)) continue;  // eligible = finite metrics
+    let g = groups.get(tuple);
+    if (!g){ g = { rows:[], v:r.model_version, restaurant:r.restaurant_id, source:r.source, bucket_key:r.bucket_key,
+                   coarseKey:`${r.restaurant_id}|${daypartKeyOf(r.new_at)}` }; groups.set(tuple, g); }
+    g.rows.push(r);
+  }
+
+  // First pass: per-group deltas, CB, and predictor stats (BH-FDR needs all p-values before gating).
+  const stats = [];
+  for (const [tuple, g] of groups){
+    const el = g.rows, n = el.length;
+    if (n < gt.min_samples) continue;                           // fail-closed thin (also subsumed by the CB)
+    const actuals = el.map(r => r.predicted_prep_min - r.error_min);   // actual_prep
+    const bktMed = quantile(actuals, 50);
+    const predErr = el.map(r => Math.abs(r.error_min));
+    const dBuf = actuals.map((a,i) => Math.abs(buffer - a) - predErr[i]);
+    const dBkt = actuals.map((a,i) => Math.abs(bktMed - a) - predErr[i]);
+    const cbBuf = bootstrapLowerP(dBuf, gt.margin, { rng, resamples });
+    const cbBkt = bootstrapLowerP(dBkt, gt.margin_bkt, { rng, resamples });
+    const bias = mean(el.map(r => r.error_min));
+    const mae = mean(predErr);
+    const p90 = quantile(predErr, 90);
+    const late_rate = el.filter(r => r.error_min < 0).length / n;              // under-prediction (spec §4(b).3)
+    const within_n = predErr.filter(e => e <= withinN).length / n;
+    const buffer_within_n = actuals.filter(a => Math.abs(buffer - a) <= withinN).length / n;   // buffer on same orders
+    const matched = matchedByTuple.get(tuple) || n;
+    const quarantined = quarByTuple.get(tuple) || 0;
+    const quarantined_share = matched ? quarantined / matched : 0;
+    // Sensitivity (spec §4(b).4): impute the `quarantined` excluded orders worst-case (at the worst OBSERVED δ),
+    // re-check the lower CB still clears the margin. Bounded, deterministic (flag (c)).
+    let sensitivity_ok;
+    if (quarantined > 0){
+      const wBuf = Math.min(...dBuf), wBkt = Math.min(...dBkt);
+      const sBuf = bootstrapLowerP(dBuf.concat(Array(quarantined).fill(wBuf)), gt.margin, { rng, resamples });
+      const sBkt = bootstrapLowerP(dBkt.concat(Array(quarantined).fill(wBkt)), gt.margin_bkt, { rng, resamples });
+      sensitivity_ok = sBuf.lowerCB > gt.margin && sBkt.lowerCB > gt.margin_bkt;
+    } else sensitivity_ok = cbBuf.lowerCB > gt.margin && cbBkt.lowerCB > gt.margin_bkt;
+    stats.push({ g, tuple, n, matched, quarantined, quarantined_share, cbBuf, cbBkt,
+      meanDBuf: mean(dBuf), meanDBkt: mean(dBkt), bias, mae, p90, late_rate, within_n, buffer_within_n, sensitivity_ok });
+  }
+
+  // BH-FDR across all buckets tested this run (separately for buffer + bucket-median tracks).
+  const pAdjBuf = bhFdrAdjust(stats.map(s => s.cbBuf.pValue));
+  const pAdjBkt = bhFdrAdjust(stats.map(s => s.cbBkt.pValue));
+
+  const verdicts = {};
+  stats.forEach((s, i) => {
+    const coarse = coverage[s.g.coarseKey] || { missing_share: 1, missing: 0, total: 0 };
+    const gate = gateBucket({
+      n: s.n, quarantined_share: s.quarantined_share,
+      pAdjBuf: pAdjBuf[i], pAdjBkt: pAdjBkt[i],
+      lowerCbBuf: s.cbBuf.lowerCB, lowerCbBkt: s.cbBkt.lowerCB,
+      bias: s.bias, late_rate: s.late_rate, p90: s.p90,
+      within_n: s.within_n, buffer_within_n: s.buffer_within_n, sensitivity_ok: s.sensitivity_ok,
+    }, coarse, c);
+    const graduated = signed && gate.graduated;   // unsigned ⇒ preview ⇒ never graduates
+    const path = `ready_time_graduation/${s.g.v}/${s.g.restaurant}/${s.g.source}/${s.g.bucket_key}`;
+    verdicts[path] = {
+      graduated, n: s.n,
+      coverage: { matched: s.matched, missing: coarse.missing || 0, quarantined: s.quarantined,
+        fine_shares: { quarantined_share: s.quarantined_share }, coarse_missing_share: coarse.missing_share },
+      predictor: { mae: s.mae, p90: s.p90, bias: s.bias, late_rate: s.late_rate, within_n: s.within_n },
+      vs_buffer: { mean_delta: s.meanDBuf, lower_cb: s.cbBuf.lowerCB, q_adj: pAdjBuf[i] },
+      vs_bucketmed: { mean_delta: s.meanDBkt, lower_cb: s.cbBkt.lowerCB, q_adj: pAdjBkt[i] },
+      window: { from: now - windowMs, to: now },
+      computed_at: now, expires_at: now + ttl,
+      config_hash: configHash, mode, settled: true,
+      reasons: gate.reasons,   // preview reporting: WHY a bucket didn't graduate
+    };
+  });
+  return { verdicts, activeConfigHash: configHash, mode };
+}
+module.exports = { ...module.exports, computeGraduation };
