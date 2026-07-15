@@ -357,7 +357,8 @@ Expected: only the `order_predictions .read`, the new `ready_time_graduation` bl
 **Files:** `ready_time_config/graduation_thresholds` (RTDB data), test script
 
 - [ ] **Step 1: Seed `graduation_thresholds` UNSIGNED (preview)** in `ready_time_config` (admin write) — **omit `version`/`approved_at`** so `isGraduationConfigSigned` returns false ⇒ `mode:'preview'` ⇒ nothing graduates (plan-gate #2: "unsigned" = no version/approval stamp, NOT a `signed:false` flag):
-`{ window_ms: 12096e5 /*14d*/, min_samples: 40, q_fdr: 0.1, coverage_cap: 0.2, excl_cap: 0.2, late_cap: 0.15, p90_cap: 6, within_floor: 0.6, bias_cap: 1.5, margin: 1, margin_bkt: 1, ttl_ms: 216e5 /*6h*/, buffer_prep_min: <measured median from tapped_sane_ready_to_ofd_ms> }`
+`{ window_ms: 12096e5 /*14d*/, min_samples: 40, q_fdr: 0.1, coverage_cap: 0.2, excl_cap: 0.2, late_cap: 0.15, p90_cap: 6, within_floor: 0.6, bias_cap: 1.5, margin: 1, margin_bkt: 1, ttl_ms: 216e5 /*6h*/, buffer_prep_min: <median of prep_new_min = actual PREP time (ready_at − new_at)> }`
+> **★ Correction (advisor, at deploy):** `buffer_prep_min` is the **prep** baseline = **median `prep_new_min`** (kitchen time), NOT `tapped_sane_ready_to_ofd_ms` (the ready→OFD merchant-dwell leg = the separate `S_merchant`, used only in the deferred assignment-aware pre-pickup `llega`). Don't conflate the legs. The deployed preview seed used a `16` placeholder (harmless while unsigned); set the true median-`prep_new_min` at the signing gate.
 After the bake, add `version` + `approved_at` (that is "signing") → flips `hashConfig` → activates authoritative verdicts.
 - [ ] **Step 2: Add tests to the `test` script** in `package.json`: append `&& node ready-time-graduation.test.js`.
 - [ ] **Step 3: Full suite green** — `npm test` (includes the new file). Confirm `node ready-time-graduation.test.js` passes standalone.
