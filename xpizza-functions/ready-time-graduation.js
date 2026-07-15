@@ -49,3 +49,39 @@ function normCdf(x){ return 0.5*(1+erf(x/Math.SQRT2)); }
 function erf(x){ const t=1/(1+0.3275911*Math.abs(x)); const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x); return x>=0?y:-y; }
 
 module.exports = { mean, quantile, bhFdrAdjust, bootstrapLowerP };
+
+// ── Task 2: coverage split (restaurant×daypart) + the fail-closed gate ──
+
+// Stable, NON-model time bucket for coverage (do not reuse the model's fine bucketer).
+function daypartKeyOf(newAtMs){
+  const h = new Date(newAtMs).getUTCHours();  // coarse; refine to America/Tegucigalpa in the monitor if desired
+  if (h < 11) return 'morning'; if (h < 15) return 'lunch'; if (h < 20) return 'afternoon'; return 'night';
+}
+function coverageByCoarse(logRows){
+  const acc = {};
+  for (const r of logRows){
+    const k = `${r.restaurant_id}|${daypartKeyOf(r.new_at)}`;
+    const a = acc[k] || (acc[k] = { total:0, missing:0, missing_share:0 });
+    a.total++; if (r.prediction_missing) a.missing++;
+  }
+  for (const k in acc){ acc[k].missing_share = acc[k].total ? acc[k].missing/acc[k].total : 1; }
+  return acc;
+}
+// PURE fail-closed gate. Every condition must pass; ANY missing input ⇒ false.
+function gateBucket(s, coarseCov, cfg){
+  const t = (cfg && cfg.graduation_thresholds) || {};
+  const reasons = [];
+  const need = (cond, why) => { if (!cond) reasons.push(why); };
+  need(Number.isFinite(s.n) && s.n >= t.min_samples, 'min_samples');
+  need(coarseCov && coarseCov.missing_share <= t.coverage_cap, 'coverage_cap');   // restaurant×daypart
+  need(s.quarantined_share <= t.excl_cap, 'excl_cap');
+  need(s.pAdjBuf <= t.q_fdr && s.pAdjBkt <= t.q_fdr, 'fdr');                       // BH-adjusted
+  need(s.lowerCbBuf > t.margin && s.lowerCbBkt > t.margin_bkt, 'lower_cb_margin');
+  need(Math.abs(s.bias) <= t.bias_cap, 'bias_cap');
+  need(s.late_rate <= t.late_cap, 'late_cap');
+  need(s.p90 <= t.p90_cap, 'p90_cap');
+  need(s.within_n >= t.within_floor && s.within_n >= s.buffer_within_n, 'within_floor');
+  need(s.sensitivity_ok === true, 'sensitivity');
+  return { graduated: reasons.length === 0, reasons };
+}
+module.exports = { ...module.exports, coverageByCoarse, gateBucket, daypartKeyOf };
