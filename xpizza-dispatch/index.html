@@ -1876,7 +1876,7 @@
 
 <script type="module">
 import * as XPD from './xpizza-delivery.js?v=19';
-import { createGlideEngine } from './driver-glide.js?v=1';
+import { createGlideEngine } from './driver-glide.js?v=2';
 import { etaEligible, projectArrival, relativeEta, clockTime, dueForRefresh, distanceMeters } from './driver-eta.js?v=1';
 
 // ============================================================
@@ -1946,6 +1946,10 @@ let infoWindow = null;
 // real clock, rAF, and a setPosition sink. An open InfoWindow is marker-anchored,
 // so it tracks the gliding pin automatically.
 const glide = createGlideEngine({
+  // marginFactor: each glide runs ~15% longer than the measured ping interval so the marker keeps
+  // moving through jitter/missed pings instead of stopping (raise if the board still micro-stops;
+  // lower toward 1.0 if the pin lingers past where the driver stopped).
+  options: { marginFactor: 1.15, maxDurationMs: 15000 },
   now: () => performance.now(),
   raf: (cb) => requestAnimationFrame(cb),
   caf: (id) => cancelAnimationFrame(id),
@@ -3722,6 +3726,11 @@ function updateDriverMarkers() {
         infoWindow.open(map, marker);
       });
       driverMarkers[uid] = marker;
+      // Register the new marker with the glide engine at creation (first-sighting). Without this the
+      // engine only learns of the driver on a later update() call, so its FIRST real move would
+      // teleport (first-sighting snaps) instead of gliding. snap:true = place at the current pos now,
+      // no animation (the marker was just created there anyway).
+      glide.update(uid, { lat: d.lat, lng: d.lng }, { snap: true });
     }
   }
   // Remove markers for drivers no longer active
