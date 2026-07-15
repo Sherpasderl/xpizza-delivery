@@ -2,7 +2,7 @@
 const assert = require('assert');
 const { mean, quantile, bhFdrAdjust, bootstrapLowerP } = require('./ready-time-graduation');
 const { coverageByCoarse, gateBucket, daypartKeyOf } = require('./ready-time-graduation');
-const { computeGraduation } = require('./ready-time-graduation');
+const { computeGraduation, buildGraduationRows } = require('./ready-time-graduation');
 let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 
 const GT = { margin:1, margin_bkt:1, q_fdr:0.1, min_samples:30, coverage_cap:0.2, excl_cap:0.2,
@@ -94,6 +94,59 @@ assert.strictEqual(quantile([1,2,3,4], 50), 2); ok('quantile nearest-rank');
   assert.strictEqual(outP.mode, 'preview');
   assert.ok(Object.values(outP.verdicts).every(v => v.graduated === false), 'preview graduates nothing');
   ok('computeGraduation authoritative vs preview');
+}
+
+// ── codex-on-diff REVISE — 3 fail-closed fixes ──
+
+// #3 bootstrapLowerP degenerate-safe: n<2 / all-equal / non-finite → {pValue:1, lowerCB:-Infinity} (fail closed)
+{
+  const rng = mulberry32(1);
+  assert.deepStrictEqual(bootstrapLowerP([5], 1, { rng, resamples: 100 }), { pValue: 1, lowerCB: -Infinity });
+  assert.deepStrictEqual(bootstrapLowerP([3,3,3], 1, { rng, resamples: 100 }), { pValue: 1, lowerCB: -Infinity });
+  assert.deepStrictEqual(bootstrapLowerP([1,2,NaN], 1, { rng, resamples: 100 }), { pValue: 1, lowerCB: -Infinity });
+  ok('#3 bootstrapLowerP degenerate (n<2 / all-equal / non-finite) → {pValue:1, lowerCB:-Infinity}');
+}
+
+// #1 buildGraduationRows: the deep-path query returns the WHOLE {orderId} node → only in-window ACTIVE-version rows
+{
+  const from = 1000, to = 2000;
+  const logsVal = {
+    ORD1: {
+      'v1-hier-ringmed-30': { new_at: 1500, restaurant_id: 'x_pizza', error_min: 0.1 },   // in-window, active → keep
+      'v0-old':             { new_at: 1500, restaurant_id: 'x_pizza', error_min: 0.1 },    // other version → drop
+    },
+    ORD2: { 'v1-hier-ringmed-30': { new_at: 9999, restaurant_id: 'x_pizza', error_min: 0 } },  // out-of-window → drop
+  };
+  const rows = buildGraduationRows(logsVal, {}, { from, to, activeVersions: ['v1-hier-ringmed-30'] });
+  assert.strictEqual(rows.length, 1, 'only the in-window active-version row survives');
+  assert.strictEqual(rows[0].new_at, 1500);
+  assert.strictEqual(rows[0].model_version, 'v1-hier-ringmed-30');
+  ok('#1 buildGraduationRows: sibling versions + out-of-window rows dropped (only in-window active v)');
+}
+
+// #2 a malformed matched row (missing bucket_key) → coverage-only, never an `undefined` fine bucket
+{
+  const cfg = { config_hash:'h', signed:true, graduation_thresholds: GT, buffer_prep_min: 12 };
+  const malformed = { model_version:'v1', restaurant_id:'x_pizza', source:'exact', new_at: LUNCH, error_min: 0.1, predicted_prep_min: 15 }; // NO bucket_key
+  const out = computeGraduation(makeStrongBucketRows().concat([malformed]), cfg, { rng: mulberry32(7), now: 1 });
+  const paths = Object.keys(out.verdicts);
+  assert.ok(paths.every(p => !p.includes('undefined')), 'no undefined-bucket verdict emitted');
+  assert.ok(paths.some(p => p.endsWith('/b1')), 'the well-formed bucket still produces its verdict');
+  ok('#2 malformed matched row (no bucket_key) → coverage-only, never an undefined fine bucket');
+}
+
+// #3b a degenerate bucket must not poison the run — all verdicts still written, no ±Infinity/NaN anywhere
+{
+  const cfg = { config_hash:'h', signed:false, graduation_thresholds: GT, buffer_prep_min: 12 };
+  const degen = Array.from({length:40}, () => ({ model_version:'v1', restaurant_id:'x_pizza', source:'daypart',
+    bucket_key:'bd', new_at: LUNCH, error_min: 0, predicted_prep_min: 15 }));   // all-equal δ → degenerate CB
+  const out = computeGraduation(makeStrongBucketRows().concat(degen), cfg, { rng: mulberry32(7), now: 1 });
+  const paths = Object.keys(out.verdicts);
+  assert.ok(paths.some(p => p.endsWith('/b1')) && paths.some(p => p.endsWith('/bd')), 'both the strong AND degenerate bucket got verdicts');
+  const hasNonFinite = (o) => Object.values(o).some(v =>
+    (typeof v === 'number' && !Number.isFinite(v)) || (v && typeof v === 'object' && hasNonFinite(v)));
+  assert.ok(!paths.some(p => hasNonFinite(out.verdicts[p])), 'no ±Infinity/NaN in any verdict (would reject the atomic RTDB update)');
+  ok('#3b degenerate bucket → all verdicts written, lower_cb sanitized to null (no non-finite)');
 }
 
 // tiny deterministic PRNG for tests

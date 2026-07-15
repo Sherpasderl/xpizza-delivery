@@ -19,6 +19,13 @@ function bhFdrAdjust(pvals){
 // BCa one-sided bootstrap for H0: mean(deltas) <= threshold. Returns { pValue, lowerCB }.
 function bootstrapLowerP(deltas, threshold, { rng, resamples=1000, alpha=0.05 }){
   const n = deltas.length;
+  // Fail-closed on degenerate input (codex-on-diff #3): <2 points, any non-finite δ, or zero-variance deltas make
+  // the jackknife den=0 → NaN acceleration → undefined lowerCB → a non-finite that poisons the atomic verdict
+  // write. A degenerate bucket must NOT graduate and must NOT emit a non-finite. lowerCB -Infinity ⇒ (> MARGIN)
+  // is false in the gate; the verdict node sanitizes it to null before writing (RTDB rejects ±Infinity/NaN).
+  if (n < 2 || !deltas.every(Number.isFinite) || deltas.every(d => d === deltas[0])) {
+    return { pValue: 1, lowerCB: -Infinity };
+  }
   const theta = mean(deltas);
   // resample means
   const means = new Array(resamples);
@@ -107,6 +114,7 @@ function computeGraduation(rows, cfg, { rng, now }){
   const windowMs = Number.isFinite(gt.window_ms) ? gt.window_ms : 0;
   const withinN = Number.isFinite(gt.within_n_min) ? gt.within_n_min : 5;
   const resamples = Number.isFinite(gt.bootstrap_resamples) ? gt.bootstrap_resamples : 1000;
+  const fin = (x) => (Number.isFinite(x) ? x : null);   // RTDB rejects ±Infinity/NaN → null-out non-finite verdict numbers
 
   // Coverage over ALL rows (incl. missing) — coarse restaurant×daypart (spec §4(b).1).
   const coverage = coverageByCoarse(rows);
@@ -117,6 +125,10 @@ function computeGraduation(rows, cfg, { rng, now }){
   const quarByTuple = new Map();
   for (const r of rows){
     if (r.prediction_missing) continue;                         // missing → coverage only, never a fine bucket
+    // codex-on-diff #2: a present-but-INCOMPLETE prediction node (any of the stored tuple absent) must NOT group
+    // under `undefined/...` — treat it as coverage-only (still counted by coverageByCoarse over ALL rows), never
+    // a fine bucket. Requires the full stored (v, restaurant_id, source, bucket_key).
+    if (r.model_version == null || r.restaurant_id == null || r.source == null || r.bucket_key == null) continue;
     const tuple = `${r.model_version}/${r.restaurant_id}/${r.source}/${r.bucket_key}`;
     matchedByTuple.set(tuple, (matchedByTuple.get(tuple)||0)+1);
     if (r.quarantined){ quarByTuple.set(tuple,(quarByTuple.get(tuple)||0)+1); continue; }   // excluded
@@ -182,8 +194,8 @@ function computeGraduation(rows, cfg, { rng, now }){
       coverage: { matched: s.matched, missing: coarse.missing || 0, quarantined: s.quarantined,
         fine_shares: { quarantined_share: s.quarantined_share }, coarse_missing_share: coarse.missing_share },
       predictor: { mae: s.mae, p90: s.p90, bias: s.bias, late_rate: s.late_rate, within_n: s.within_n },
-      vs_buffer: { mean_delta: s.meanDBuf, lower_cb: s.cbBuf.lowerCB, q_adj: pAdjBuf[i] },
-      vs_bucketmed: { mean_delta: s.meanDBkt, lower_cb: s.cbBkt.lowerCB, q_adj: pAdjBkt[i] },
+      vs_buffer: { mean_delta: fin(s.meanDBuf), lower_cb: fin(s.cbBuf.lowerCB), q_adj: fin(pAdjBuf[i]) },
+      vs_bucketmed: { mean_delta: fin(s.meanDBkt), lower_cb: fin(s.cbBkt.lowerCB), q_adj: fin(pAdjBkt[i]) },
       window: { from: now - windowMs, to: now },
       computed_at: now, expires_at: now + ttl,
       config_hash: configHash, mode, settled: true,
@@ -192,4 +204,32 @@ function computeGraduation(rows, cfg, { rng, now }){
   });
   return { verdicts, activeConfigHash: configHash, mode };
 }
-module.exports = { ...module.exports, computeGraduation };
+// buildGraduationRows — flatten prediction_logs[orderId][v] (JOIN BASE, superset) ⟕ order_predictions[orderId][v].
+// codex-on-diff #1: the deep-path range query returns the WHOLE {orderId} node, so iterate ONLY the ACTIVE
+// versions and re-verify each log.new_at is finite AND within [from,to] before pushing — never trust the sibling
+// / out-of-window versions the full-node return carries. Attach the prediction node's source/bucket_key/
+// predicted_prep_min when present; keyed strictly by the STORED tuple — never inferred.
+function buildGraduationRows(logsVal, preds, { from, to, activeVersions }){
+  const rows = [];
+  for (const orderId in logsVal){
+    const perV = logsVal[orderId] || {};
+    for (const v of activeVersions){
+      const log = perV[v]; if (!log || typeof log !== 'object') continue;
+      if (!Number.isFinite(log.new_at) || log.new_at < from || log.new_at > to) continue;   // window belt-and-suspenders
+      const pred = (preds[orderId] || {})[v];
+      rows.push({
+        model_version: v,
+        restaurant_id: log.restaurant_id,
+        new_at: log.new_at,
+        error_min: log.error_min,
+        prediction_missing: log.prediction_missing === true || !pred,
+        quarantined: log.quarantined === true,
+        source: pred && pred.source,
+        bucket_key: pred && pred.bucket_key,
+        predicted_prep_min: pred ? pred.predicted_prep_min : log.predicted_prep_min,
+      });
+    }
+  }
+  return rows;
+}
+module.exports = { ...module.exports, computeGraduation, buildGraduationRows };

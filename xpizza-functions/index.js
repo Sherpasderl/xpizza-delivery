@@ -108,7 +108,7 @@ const MR = require('./manual-resolve');   // atomic-claim money state machine (R
 const { resolveManualReconciliationCore, recoverStaleResolve } = require('./resolve-manual');   // the resolver core + sweep recovery (emulator-driven)
 const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, isReconcilerRetryable } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5)
 const { runPrediction, runLabelAndUpdate } = require('./ready-time-predict-core');   // Phase-1 Step-3 shadow predictor + prediction-logging (PURE SHADOW)
-const { computeGraduation } = require('./ready-time-graduation');   // Phase 1b-i graduation core (writes ONLY ready_time_graduation)
+const { computeGraduation, buildGraduationRows } = require('./ready-time-graduation');   // Phase 1b-i graduation core (writes ONLY ready_time_graduation)
 const { hashConfig } = require('./ready-time-quality-run');          // reuse the signed-config hash (extended to cover graduation_thresholds)
 const { ACTIVE_MODEL_VERSIONS } = require('./ready-time-predict');   // active model version(s) — windows prediction_logs by `<v>/new_at`
 
@@ -2998,31 +2998,8 @@ function isGraduationConfigSigned(cfg){
 }
 // Deterministic PRNG — seeded from the window so reruns are reproducible without Math.random (matches the core's test RNG).
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return((t^t>>>14)>>>0)/4294967296; }; }
-// buildGraduationRows — flatten prediction_logs[orderId][v] (the JOIN BASE, superset) ⟕ order_predictions[orderId][v].
-// Each log row → one graduation row; attach the prediction node's source/bucket_key/predicted_prep_min when present;
-// prediction_missing from the log flag (or an absent prediction). Keyed strictly by the STORED tuple — never inferred.
-function buildGraduationRows(logsVal, preds){
-  const rows = [];
-  for (const orderId in logsVal){
-    const perV = logsVal[orderId] || {};
-    for (const v in perV){
-      const log = perV[v]; if (!log || typeof log !== 'object') continue;
-      const pred = (preds[orderId] || {})[v];
-      rows.push({
-        model_version: v,
-        restaurant_id: log.restaurant_id,
-        new_at: log.new_at,
-        error_min: log.error_min,
-        prediction_missing: log.prediction_missing === true || !pred,
-        quarantined: log.quarantined === true,
-        source: pred && pred.source,
-        bucket_key: pred && pred.bucket_key,
-        predicted_prep_min: pred ? pred.predicted_prep_min : log.predicted_prep_min,
-      });
-    }
-  }
-  return rows;
-}
+// buildGraduationRows lives in ready-time-graduation.js (pure + unit-tested; codex-on-diff #1: iterates only the
+// active versions + re-verifies each log.new_at is in [from,to], since the deep-path query returns the whole node).
 
 exports.readyTimeGraduationMonitor = onSchedule(
   { schedule: 'every 60 minutes', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' },
@@ -3055,7 +3032,7 @@ exports.readyTimeGraduationMonitor = onSchedule(
       orderIds.forEach((id, i) => { const v = snaps[i].val(); if (v) preds[id] = v; });
     } catch (e) { console.error('graduation: read failed, skipping', e.message); return; }
 
-    const rows = buildGraduationRows(logsVal, preds);
+    const rows = buildGraduationRows(logsVal, preds, { from, to, activeVersions: ACTIVE_MODEL_VERSIONS });
     const rng = mulberry32((from ^ to) >>> 0);   // deterministic per window
     const out = computeGraduation(rows, { ...cfg, config_hash: hashConfig(cfg), signed: isGraduationConfigSigned(cfg) }, { rng, now });
 
