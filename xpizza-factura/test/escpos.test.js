@@ -2,8 +2,10 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { styleFor, encodeFactura, CMD } = require('../src/escpos');
+const { logoBytes, WIDTH, HEIGHT, DATA } = require('../src/logo');
 
 const rec = { restaurant_name: 'X PIZZA', is_temp: false };
+const GS_V0 = Buffer.from([0x1d, 0x76, 0x30]); // GS v 0 — raster image
 
 // ---- styleFor: which lines get emphasis (bold + double-HEIGHT only; never double-width,
 // which would break the 48-col grid) ----
@@ -69,4 +71,32 @@ test('encodeFactura wraps an emphasized line in bold-on/bold-off', () => {
 test('encodeFactura does not bold a plain line', () => {
   const buf = encodeFactura(rec, ['2 PIZZA PEPPERONI MEDIANA         0%     L347.83']);
   assert.equal(buf.indexOf(Buffer.from(CMD.BOLD_ON)), -1);
+});
+
+// ---- brand logo raster (GS v 0) ----
+
+test('logoBytes: valid GS v 0 raster — centered, dims match DATA length', () => {
+  const b = logoBytes();
+  assert.deepEqual([...b.subarray(0, 3)], [0x1b, 0x61, 0x01]); // ESC a 1 (center)
+  const i = b.indexOf(GS_V0);
+  assert.ok(i >= 0, 'contains GS v 0');
+  const wb = b[i + 4] | (b[i + 5] << 8);   // xL xH = bytes/row
+  const h = b[i + 6] | (b[i + 7] << 8);    // yL yH = height dots
+  assert.equal(wb, WIDTH >> 3);
+  assert.equal(h, HEIGHT);
+  assert.equal(DATA.length, (WIDTH >> 3) * HEIGHT); // no padding drift
+  assert.ok(b.subarray(b.length - 4).includes(Buffer.from([0x1b, 0x61, 0x00]))); // ESC a 0 restore
+});
+
+test('encodeFactura default (text path) carries NO raster — protects the byte tests', () => {
+  const buf = encodeFactura(rec, ['X PIZZA']);
+  assert.equal(buf.indexOf(GS_V0), -1);
+});
+
+test('encodeFactura {logo:true} prepends the logo after INIT, before the header text', () => {
+  const buf = encodeFactura(rec, ['X PIZZA'], { logo: true });
+  assert.deepEqual([...buf.subarray(0, CMD.INIT.length)], CMD.INIT); // INIT still first (reset before image)
+  const raster = buf.indexOf(GS_V0);
+  const text = buf.indexOf(Buffer.from('X PIZZA', 'latin1'));
+  assert.ok(raster > 0 && raster < text, 'raster sits after INIT and above the brand line');
 });
