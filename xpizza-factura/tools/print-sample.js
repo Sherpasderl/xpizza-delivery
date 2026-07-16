@@ -29,7 +29,7 @@ const record = {
   subtotal_cents: 37391, isv_total_cents: 5609, total_cents: 43000,
   forma_de_pago_label: 'EFECTIVO', cambio_cents: 7000,
   fecha_limite: '20/11/2026', rango_desde: '000-001-01-00000001', rango_hasta: '000-001-01-00008000',
-  is_temp: true,
+  is_temp: !process.argv.includes('--nobanner'),   // default: PRUEBA banner. Pass --nobanner to drop it and preview the real factura layout (still a sample: temp CAI, not allocated).
 };
 
 const device = usb.findByIds(VID, PID);
