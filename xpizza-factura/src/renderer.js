@@ -137,7 +137,7 @@ function layoutFactura(rec) {
   // ---- Footer ----
   push(center('BUEN PROVECHO'));
   push(center('PEDIDOS EN LINEA - orders.xpizza.hn'));
-  push('ORIGINAL CLIENTE-COPIA OBLIGADO TRIBUTARIO');
+  push(center('ORIGINAL CLIENTE-COPIA OBLIGADO TRIBUTARIO'));
 
   return lines;
 }
