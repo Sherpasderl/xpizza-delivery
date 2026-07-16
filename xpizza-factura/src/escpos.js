@@ -8,6 +8,7 @@
  */
 
 const { layoutFactura } = require('./renderer');
+const { logoBytes } = require('./logo');
 
 const CMD = {
   INIT: [0x1b, 0x40], // ESC @  — reset
@@ -36,9 +37,13 @@ function styleFor(line, rec) {
   return { bold: false, doubleHeight: false };
 }
 
-// Encode given pre-laid-out lines into one ESC/POS Buffer.
-function encodeFactura(rec, lines) {
+// Encode given pre-laid-out lines into one ESC/POS Buffer. `opts.logo` prepends
+// the centered brand raster right after INIT (kept opt-in so the byte-level unit
+// tests on the text path stay free of the 11KB image blob; the production
+// renderFactura path sets it).
+function encodeFactura(rec, lines, { logo = false } = {}) {
   const parts = [Buffer.from(CMD.INIT), Buffer.from(CMD.CODEPAGE)];
+  if (logo) parts.push(logoBytes());
   for (const line of lines) {
     const s = styleFor(line, rec);
     if (s.doubleHeight) parts.push(Buffer.from(CMD.SIZE_DBL_H));
@@ -56,7 +61,7 @@ function encodeFactura(rec, lines) {
 function renderFactura(rec, copies = 2) {
   const lines = layoutFactura(rec);
   const bufs = [];
-  for (let i = 0; i < copies; i++) bufs.push(encodeFactura(rec, lines));
+  for (let i = 0; i < copies; i++) bufs.push(encodeFactura(rec, lines, { logo: true }));
   return Buffer.concat(bufs);
 }
 
