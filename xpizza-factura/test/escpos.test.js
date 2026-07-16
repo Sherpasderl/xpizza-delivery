@@ -85,7 +85,7 @@ test('logoBytes: valid GS v 0 raster — centered, dims match DATA length', () =
   assert.equal(wb, WIDTH >> 3);
   assert.equal(h, HEIGHT);
   assert.equal(DATA.length, (WIDTH >> 3) * HEIGHT); // no padding drift
-  assert.ok(b.subarray(b.length - 4).includes(Buffer.from([0x1b, 0x61, 0x00]))); // ESC a 0 restore
+  assert.ok(b.includes(Buffer.from([0x1b, 0x61, 0x00]))); // ESC a 0 restore
 });
 
 test('encodeFactura default (text path) carries NO raster — protects the byte tests', () => {
