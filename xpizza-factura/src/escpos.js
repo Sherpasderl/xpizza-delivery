@@ -8,7 +8,7 @@
  */
 
 const { layoutFactura } = require('./renderer');
-const { logoBytes } = require('./logo');
+const { logoBytes, wordmarkBytes } = require('./logo');
 
 const CMD = {
   INIT: [0x1b, 0x40], // ESC @  — reset
@@ -45,6 +45,12 @@ function encodeFactura(rec, lines, { logo = false } = {}) {
   const parts = [Buffer.from(CMD.INIT), Buffer.from(CMD.CODEPAGE)];
   if (logo) parts.push(logoBytes());
   for (const line of lines) {
+    // In logo mode, the plain-text brand header is replaced by the "X. Pizza"
+    // typewriter wordmark raster (a thermal printer can't set a custom text font).
+    if (logo && rec.restaurant_name && line.trim() === rec.restaurant_name) {
+      parts.push(wordmarkBytes());
+      continue;
+    }
     const s = styleFor(line, rec);
     if (s.doubleHeight) parts.push(Buffer.from(CMD.SIZE_DBL_H));
     if (s.bold) parts.push(Buffer.from(CMD.BOLD_ON));

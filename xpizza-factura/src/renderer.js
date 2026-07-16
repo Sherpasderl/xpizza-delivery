@@ -135,9 +135,9 @@ function layoutFactura(rec) {
   push('');
 
   // ---- Footer ----
-  push(center('GRACIAS POR SU PREFERENCIA'));
+  push(center('BUEN PROVECHO'));
+  push(center('PEDIDOS EN LINEA - orders.xpizza.hn'));
   push('ORIGINAL CLIENTE-COPIA OBLIGADO TRIBUTARIO');
-  push('PROPINA NO INCLUIDA');
 
   return lines;
 }

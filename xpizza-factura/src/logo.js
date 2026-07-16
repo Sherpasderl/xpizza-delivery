@@ -1,15 +1,15 @@
 'use strict';
 
 /**
- * Precomputed 1-bit ESC/POS raster of the X. Pizza brand mark (GS v 0).
- * Generated from the brand PNG (distressed "X.") — threshold, no dither.
- * WIDTH/HEIGHT in DOTS; DATA is MSB-first, row-major, bit 1 = black dot.
- * 80mm TM-T20IV = 576 printable dots; logo is 272 wide, centered.
- * Regenerate: scratchpad gen-logo.py (Pillow) if the mark changes.
+ * Factura brand rasters (1-bit ESC/POS GS v 0). Generated — see scratchpad gen-logo.py.
+ *  • DATA    : the "X." distressed mark (272x170), centered atop the factura.
+ *  • WM_DATA : the "X. Pizza" wordmark in Courier New Bold (272x36) — replaces the
+ *              plain-text brand header line so it prints in a typewriter face.
+ * Widths are byte-aligned; bit 1 = black dot, MSB-first row-major.
  */
 
-const WIDTH = 272;   // dots
-const HEIGHT = 170;  // dots
+const WIDTH = 272;
+const HEIGHT = 170;
 const DATA = Buffer.from(
   'AAAwAAAAAAAAA/AAAAAAPgAAAAAAAAAhgAAAAAAAAAAAAAAH+P84AAAAH///gAAAA///4AAAAAD/P/gAAAAAAAAAAAAAN/j/v/wH' +
   '/////+AAAA//////gAf/+5/+AAAAAAAAAAAAAHf5/7//f//////wAAAf////////v/Hf/wAAAAAAAAAAAADj8f8//z//////+AAA' +
@@ -91,16 +91,55 @@ const DATA = Buffer.from(
   'AAD+AAA=' +
   '', 'base64');
 
-// ESC a 1 (center) + GS v 0 raster + ESC a 0 (restore left) + LF gap.
-function logoBytes() {
-  const wb = WIDTH >> 3;
+const WM_WIDTH = 272;
+const WM_HEIGHT = 36;
+const WM_DATA = Buffer.from(
+  'AAAAAAAAAAAAAAAAAAAAAAAAD+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/gAAAAAAAAAAAAAAAAAAA/+Af+AAAA' +
+  'AAAAAAAAP//8AAAP4AAAAAAAAAAAAAAAAAAAf/wP/wAAAAAAAAAAAH///4AAD+AAAAAAAAAAAAAAAAAAAH/8D/8AAAAAAAAAAAB/' +
+  '///AAA/gAAAAAAAAAAAAAAAAAAB//A//AAAAAAAAAAAAf///4AAAAAAAAAAAAAAAAAAAAAAAP/gP/gAAAAAAAAAAAD////AAAAAA' +
+  'AAAAAAAAAAAAAAAAAAfwA/gAAAAAAAAAAAAD8Af4AAAAAAAAAAAAAAAAAAAAAAAD+AfwAAAAAAAAAAAAA/AB+AAAAAAAAAAAAAAA' +
+  'AAAAAAAAA/wP4AAAAAAAAAAAAAPwAPwAAAAAAAAAAAAAAAAAAAAAAAH8H8AAAAAAAAAAAAAD8AD8AAAAAAAAAAAAAAAAAAA/4AAA' +
+  '/j/AAAAAAAAAAAAAA/AAfAH/8AAB///+AH///4AD//gAAH8/gAAAAAAAAAAAAAPwAHwD//AAAf///gB///+AD//+AAA//wAAAAAA' +
+  'AAAAAAAD8AB8A//wAAH///4Af///gB///wAAP/4AAAAAAAAAAAAAA/AA/AP/8AAB///+AH///4Af//8AAB/+AAAAAAAAAAAAAAPw' +
+  'APwB//AAAf///AB///8AD+A/gAAP/AAAAAAAAAAAAAAD8AH8AAPwAAH4B/wAfgH/AA8AH4AAB/gAAAAAAAAAAAAAA/AD+AAD8AAB' +
+  '+A/4AH4D/gAAAA+AAAf4AAAAAAAAAAAAAAPwD/gAA/AAAfgf4AB+B/gAAAAPgAAP/AAAAAAAAAAAAAAD///wAAPwAAD4P8AAPg/w' +
+  'AAAAD4AAH/wAAAAAAAAAAAAAA///4AAD8AAA8H+AADwf4AAAf/+AAB/+AAAAAAAAAAAAAAP//4AAA/AAAAD/AAAAP8AAA///gAA/' +
+  '/wAAAAAAAAAAAAAD//8AAAPwAAAB/gAAAH+AAAf//4AAf3+AAAAAAAAAAAAAA//4AAAD8AAAA/wAAAD/AAAf//+AAP8/gAAAAAAA' +
+  'AAAAAAPwAAAAA/AAAAf4AAAB/gAAP///gAH+H8AAAAAAAAAAAAAD8AAAAAPwAAAP8AAAA/wAAD/AH4AB/A/gAAAAAAAAAAAAA/AA' +
+  'AAAD8AAAH+AcAAf4BwB/AA+AA/gH8AAAAAAAAAAAAAPwAAAAA/AAAD/APgAP8A+AfgAPgAfwB/gAAAAAAAAAAAAD8AAAAAPwAAB/' +
+  'gD4AH+APgPwAH4AP8AP4AAB4AAAAAAAAA/AAAAAD8AAA/wA+AD/AD4B8AH+AP/gP/wAB/AAAAAAAAD//8AAH///4Af///gB///+A' +
+  'fwP/+H/8H/+AAf4AAAAAAAB///gAD////AH///4Af///gH////x//B//gAH+AAAAAAAAf//4AB////wB///+AH///4A//+/8f/wf' +
+  '/4AB/gAAAAAAAH//+AAP///8Af///gB///+AH//P/D/4D/8AAfwAAAAAAAA///AAB///+AH///4Af///gA//D/gAAAAAAAB4AAAA' +
+  'AAAAAAAAAAAAAAAAAAAAAAAAAAAB/AAA' +
+  '', 'base64');
+
+// GS v 0 raster image (m=0). wPx must be byte-aligned.
+function gsv0(wPx, hPx, data) {
+  const wb = wPx >> 3;
   return Buffer.concat([
-    Buffer.from([0x1b, 0x61, 0x01]),
-    Buffer.from([0x1d, 0x76, 0x30, 0x00, wb & 0xff, (wb >> 8) & 0xff, HEIGHT & 0xff, (HEIGHT >> 8) & 0xff]),
-    DATA,
-    Buffer.from([0x1b, 0x61, 0x00]),
-    Buffer.from([0x0a, 0x0a]),
+    Buffer.from([0x1d, 0x76, 0x30, 0x00, wb & 0xff, (wb >> 8) & 0xff, hPx & 0xff, (hPx >> 8) & 0xff]),
+    data,
   ]);
 }
 
-module.exports = { WIDTH, HEIGHT, DATA, logoBytes };
+// The "X." mark, centered, + 1 blank line below.
+function logoBytes() {
+  return Buffer.concat([
+    Buffer.from([0x1b, 0x61, 0x01]),      // ESC a 1 — center
+    gsv0(WIDTH, HEIGHT, DATA),
+    Buffer.from([0x1b, 0x61, 0x00]),      // ESC a 0 — left
+    Buffer.from([0x0a, 0x0a]),            // image line-close + 1 blank line
+  ]);
+}
+
+// The "X. Pizza" typewriter wordmark — centered; replaces the plain-text brand header.
+function wordmarkBytes() {
+  return Buffer.concat([
+    Buffer.from([0x1b, 0x61, 0x01]),
+    gsv0(WM_WIDTH, WM_HEIGHT, WM_DATA),
+    Buffer.from([0x1b, 0x61, 0x00]),
+    Buffer.from([0x0a]),
+  ]);
+}
+
+module.exports = { WIDTH, HEIGHT, DATA, logoBytes, WM_WIDTH, WM_HEIGHT, WM_DATA, wordmarkBytes };

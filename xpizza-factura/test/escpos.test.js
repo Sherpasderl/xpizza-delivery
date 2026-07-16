@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { styleFor, encodeFactura, CMD } = require('../src/escpos');
-const { logoBytes, WIDTH, HEIGHT, DATA } = require('../src/logo');
+const { logoBytes, wordmarkBytes, WIDTH, HEIGHT, DATA, WM_WIDTH, WM_HEIGHT, WM_DATA } = require('../src/logo');
 
 const rec = { restaurant_name: 'X PIZZA', is_temp: false };
 const GS_V0 = Buffer.from([0x1d, 0x76, 0x30]); // GS v 0 — raster image
@@ -93,10 +93,24 @@ test('encodeFactura default (text path) carries NO raster — protects the byte 
   assert.equal(buf.indexOf(GS_V0), -1);
 });
 
-test('encodeFactura {logo:true} prepends the logo after INIT, before the header text', () => {
-  const buf = encodeFactura(rec, ['X PIZZA'], { logo: true });
+test('wordmarkBytes: valid centered GS v 0 raster, dims match WM_DATA', () => {
+  const b = wordmarkBytes();
+  assert.deepEqual([...b.subarray(0, 3)], [0x1b, 0x61, 0x01]); // centered
+  const i = b.indexOf(GS_V0);
+  assert.equal(b[i + 4] | (b[i + 5] << 8), WM_WIDTH >> 3);
+  assert.equal(b[i + 6] | (b[i + 7] << 8), WM_HEIGHT);
+  assert.equal(WM_DATA.length, (WM_WIDTH >> 3) * WM_HEIGHT);
+});
+
+test('encodeFactura {logo:true} emits the logo + REPLACES the brand text with the wordmark image', () => {
+  const buf = encodeFactura(rec, ['X PIZZA', 'SHERPA S. DE R.L.'], { logo: true });
   assert.deepEqual([...buf.subarray(0, CMD.INIT.length)], CMD.INIT); // INIT still first (reset before image)
-  const raster = buf.indexOf(GS_V0);
-  const text = buf.indexOf(Buffer.from('X PIZZA', 'latin1'));
-  assert.ok(raster > 0 && raster < text, 'raster sits after INIT and above the brand line');
+  // the plain-text brand header ('X PIZZA') is replaced by an image → no such text
+  assert.equal(buf.indexOf(Buffer.from('X PIZZA', 'latin1')), -1);
+  // two rasters: logo, then wordmark
+  const first = buf.indexOf(GS_V0);
+  const second = buf.indexOf(GS_V0, first + 1);
+  assert.ok(first > 0 && second > first, 'logo raster precedes the wordmark raster');
+  // a non-brand line still prints as text
+  assert.ok(buf.includes(Buffer.from('SHERPA S. DE R.L.', 'latin1')));
 });
