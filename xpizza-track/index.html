@@ -542,9 +542,11 @@
       showTracking();
       applyRestaurantBrand(data.restaurant_id);   // D2: la_musa-only override; x_pizza untouched
 
-      // Order ID
+      // Order # — display the friendly per-restaurant display_number when the Core has stamped it (§Locked #2);
+      // fall back to the full order_id for pre-ship / not-yet-stamped orders. Display only — the tracking token
+      // stays the key.
       document.getElementById('order-id-display').textContent =
-        'Pedido ' + (data.order_id || '—');
+        'Pedido ' + (Number.isFinite(data.display_number) ? '#' + data.display_number : (data.order_id || '—'));
 
       // Customer + items + address
       document.getElementById('summary-customer').textContent = data.customer_name || '—';

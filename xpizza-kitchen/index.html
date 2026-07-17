@@ -1882,7 +1882,7 @@ function renderTicket(order) {
 
   // Defensive render — never surface raw undefined/blank.
   const dispName = (order.cliente && order.cliente !== '—') ? order.cliente : 'Sin nombre';
-  const dispId   = order.orden || id || 'Sin folio';
+  const dispId   = Number.isFinite(order.display_number) ? '#' + order.display_number : (order.orden || id || 'Sin folio');   // #N label; `id` stays the key
   const typeLabel = order.order_type === 'pickup' ? 'Pickup' : 'Delivery';
 
   const log = stateLog[id] || {};
@@ -2773,6 +2773,7 @@ function mapFirebaseOrderToCard(o, key) {
     id: oid,
     hora: horaIso,
     orden: o.order_id || oid,
+    display_number: o.display_number,   // per-restaurant daily #N (display-only; `id` stays the functional key)
     cliente: o.customer_name || '—',
     telefono: o.customer_phone || '',
     pedido: o.items_text || '',

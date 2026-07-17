@@ -1521,10 +1521,14 @@ function getPedidos() {
   if (q) {
     // A text search looks across ALL time (ignores the date range) — same UX as
     // dispatch's closed-orders search.
+    // Also match the friendly #N (exact, leading '#' optional). It's non-unique across days/restaurants, but
+    // each result row shows the full order_id + date to disambiguate. order_id stays the functional key.
+    const qNum = q.replace(/^#/, '');
     list = list.filter(o =>
       (o.order_id || '').toLowerCase().includes(q) ||
       (o.customer_name || '').toLowerCase().includes(q) ||
-      (o.customer_phone || '').toLowerCase().includes(q));
+      (o.customer_phone || '').toLowerCase().includes(q) ||
+      (o.display_number != null && String(o.display_number) === qNum));
   } else {
     const [from, to] = pedidosRangeMs();
     list = list.filter(o => { const t = orderTime(o); return t >= from && t < to; });
@@ -1554,7 +1558,7 @@ function renderPedidos() {
     const id = o.order_id || '';
     const pay = paymentBadge(o) || `<span class="muted-method">${escapeHtml(methodLabel(o))}</span>`;
     return `<tr data-order-id="${escapeHtml(id)}">
-      <td><div class="ot-name">${escapeHtml(o.customer_name || '—')}</div><div class="ot-id">${escapeHtml(id)}</div></td>
+      <td><div class="ot-name">${escapeHtml(o.customer_name || '—')}</div><div class="ot-id">${Number.isFinite(o.display_number) ? '<strong>#' + o.display_number + '</strong> · ' : ''}${escapeHtml(id)}</div></td>
       <td>${typeBadge(o)}</td>
       <td>${statusBadge(o)}</td>
       <td>${pay}</td>
