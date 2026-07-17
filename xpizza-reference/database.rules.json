@@ -134,6 +134,7 @@
     "payment_audit":    { ".read": false, ".write": false },
 
     "facturas": { ".read": false, ".write": false },
+    "counters":  { ".read": false, ".write": false },
     "restaurants": {
       "$restaurant_id": {
         "factura_config": { ".read": false, ".write": false },

@@ -11,6 +11,7 @@
  *   - reconcilePayments             (sched)   — daily money-safety invariant audit (Stage 4)
  *   - resolveManualReconciliation   (HTTPS)   — audited dispatcher resolver for manual_reconciliation (Stage 4)
  *   - materializeOnConfirm          (DB trig) — re-materialize a confirmed-but-unmaterialized order (Stage 4)
+ *   - allocateDisplayNumberOnSale   (DB trig) — per-restaurant daily #N label on live/Sale (display-only, fail-open)
  *   - cancelPaidOrder               (HTTPS)   — dispatcher void/refund + cancel of a paid online order (Stage 6)
  *   - refundReconciler              (sched)   — retry aged refund_pending voids (Stage 6)
  *   - notifyDriverOnAssignment      (DB trig) — Web Push to driver on assignment
@@ -79,6 +80,8 @@ const { getMessaging } = require('firebase-admin/messaging');
 const { pricedLineItems } = require('./factura/pricing');
 const { facturaSaleEligible, facturaVoidEligible, usesPlatformFactura } = require('./factura/eligibility');
 const { allocateFacturaNumber, voidFactura } = require('./factura/factura-helpers');
+const { decideDisplayNumber, displayNumberEligible } = require('./order-display-number');   // per-restaurant daily #N (display-only)
+const { hnDateISO } = require('./factura/build-record');   // YYYY-MM-DD in America/Tegucigalpa (the factura day boundary)
 const FACTURA_RESTAURANT_ID = 'x_pizza'; // single restaurant until the config-plane migration
 const FACTURA_LAUNCH_CUTOFF_MS = Date.parse('2026-06-26T00:00:00Z'); // never retro-issue pre-launch orders
 const {
@@ -1701,6 +1704,54 @@ exports.allocateFacturaOnSale = onValueWritten(
     } catch (e) {
       console.error(`[factura] allocate ${orderId} threw:`, e.message);
     }
+  }
+);
+
+// ============================================================
+// allocateDisplayNumberOnSale — per-restaurant daily human-friendly order number (#47) for staff verbal
+// reference (order-display-number-design.md · Core). SEPARATE from allocateFacturaOnSale (same live/Sale
+// predicate, INDEPENDENT state) so a cosmetic label can never entangle the money/factura path.
+//
+// Fires on the live/Sale transition (status → 'new'; an online order must be payment-confirmed) — the one
+// moment every creation path converges on (cash create, all online materialize routes, scheduled release) —
+// and NEVER on a hidden pending_payment order (failed payments burn no number; scheduled orders get numbered
+// on release day). INHERENTLY FAIL-OPEN: the trigger runs AFTER the order exists, so a counter failure NEVER
+// blocks an order — display_number just stays absent and every surface falls back to order_id. It is a LABEL,
+// never a key. Idempotent: one transaction keyed by orderId (decideDisplayNumber); any re-fire (incl. our own
+// stamp write, which re-enters this whole-node trigger) short-circuits on the already-set number.
+// ============================================================
+exports.allocateDisplayNumberOnSale = onValueWritten(
+  { ref: '/orders/{orderId}', region: 'us-central1' },
+  async (event) => {
+    const after = event.data.after.val();
+    if (!displayNumberEligible(after)) return;
+    if (Number.isFinite(after.display_number)) return;   // already stamped → nothing to do (also skips our re-fire)
+
+    const orderId = event.params.orderId;
+    const restaurantId = after.restaurant_id || 'x_pizza';   // legacy-normalize (mirror the factura default)
+    const day = hnDateISO(Date.now());                       // YYYY-MM-DD, America/Tegucigalpa (server clock; factura day boundary)
+    const db = getDatabase();
+
+    // Allocate the per-restaurant daily number in ONE transaction keyed by orderId (idempotent + concurrency-safe).
+    let allocated = null;
+    try {
+      await db.ref(`counters/order_display_seq/${restaurantId}/${day}`).transaction((cur) => {
+        const d = decideDisplayNumber(cur, orderId);
+        allocated = d.number;
+        return d.next === undefined ? undefined : d.next;   // undefined ⇒ abort (idempotent no-op, no re-burn)
+      });
+    } catch (e) {
+      console.warn(`allocateDisplayNumberOnSale: counter txn failed for ${orderId} — fail-open (no number)`, e.message);
+      return;   // FAIL-OPEN: a counter failure never blocks the order
+    }
+    if (!Number.isFinite(allocated)) return;
+
+    // Stamp in TWO places: /orders/{id} (auth-readable staff surfaces) AND order_tracking/{token} (the public
+    // customer tracker reads the token-gated node, not auth-only /orders). One atomic multi-path update.
+    const updates = { [`orders/${orderId}/display_number`]: allocated };
+    if (after.tracking_token) updates[`order_tracking/${after.tracking_token}/display_number`] = allocated;
+    try { await db.ref().update(updates); }
+    catch (e) { console.warn(`allocateDisplayNumberOnSale: stamp failed for ${orderId} (#${allocated})`, e.message); }
   }
 );
 
