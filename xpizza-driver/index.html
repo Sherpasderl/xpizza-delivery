@@ -419,6 +419,7 @@
   .rchip.sm { font-size:10px; padding:3px 9px; letter-spacing:.04em; }
   .ac-chiprow { margin-bottom:11px; }
   .qchip-row { margin-bottom:4px; }
+  .order-num { font-weight:800; font-size:13px; color:var(--text-soft); margin-right:8px; letter-spacing:.2px; }
 
   .active-card { background:var(--surface); margin:13px 13px 0; border-radius:17px; border:1px solid rgba(20,30,50,.05); box-shadow:0 1px 2px rgba(20,30,50,.04), 0 8px 20px rgba(20,30,50,.07); padding:16px; }
   .ac-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:11px; }
@@ -1139,11 +1140,12 @@ import * as XPD from './xpizza-delivery.js?v=19';
 import { isNative, initNativePush, unregisterNativePush, clearDeliveredNotifications } from './native-push.js';
 import { startNativeTracking, stopNativeTracking, pingNativeLocation, disableLingeringTransistorsoft } from './native-location.js';
 import { computeVuelto, vueltoSuggestions, computeShiftCash, isCashPayment } from './cash-helpers.js';
+import { displayOrderLabel } from './order-helpers.js';
 
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '2.4.5';
+const SYSTEM_VERSION = '2.4.6';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -2075,7 +2077,7 @@ function renderIncomingBanners(pending) {
       ? `<span class="accept-countdown" data-deadline="${o.pickupTask.assignment_deadline}">--s</span>` : '';
     return `<div class="incoming-banner${collapsed ? ' collapsed' : ''}" data-order-id="${escapeHtml(o.orderId)}">
       <div class="ib-head" data-ib-toggle="${escapeHtml(o.orderId)}">
-        <div class="ib-title">🔔 Nuevo pedido ${restaurantChip(order, 'sm')}</div>
+        <div class="ib-title">🔔 Nuevo pedido ${escapeHtml(displayOrderLabel(order))} ${restaurantChip(order, 'sm')}</div>
         <div class="ib-right">${cd}<span class="ib-chev">${CHEV}</span></div>
       </div>
       <div class="ib-body">
@@ -2266,7 +2268,7 @@ function renderActiveCard(o, solo) {
   const flowBot = solo ? '<div class="ao-spacer ao-spacer-bot"></div>' : '';
   return `${flowTop}
     <div class="active-card">
-      <div class="ac-chiprow">${restaurantChip(order)}</div>
+      <div class="ac-chiprow"><span class="order-num">${escapeHtml(displayOrderLabel(order))}</span>${restaurantChip(order)}</div>
       <div class="ac-head">
         <div class="recipient-name">${escapeHtml(order.customer_name || o.deliveryTask.recipient_name || '—')}</div>
         <div class="ac-meta"><span class="phase-pill ${pill.cls}">${pill.label}</span>${countdownChip}</div>
@@ -2480,7 +2482,7 @@ function renderQueue(orders) {
           <div class="qcard" data-q="${i}">
             <div class="seq">${i + 2}º</div>
             <div class="qmid">
-              <div class="qchip-row">${restaurantChip(order, 'sm')}</div>
+              <div class="qchip-row"><span class="order-num">${escapeHtml(displayOrderLabel(order))}</span>${restaurantChip(order, 'sm')}</div>
               <div class="qname">${escapeHtml(name)}</div>
               <div class="qaddr">${escapeHtml(addr)}</div>
               ${scheduledBadge(order)}
@@ -2505,7 +2507,7 @@ function renderQueueDetail(o, seq) {
   const phone = order.customer_phone;
   return `
     <div class="grab"></div>
-    <div class="ac-chiprow" style="margin-top:2px">${restaurantChip(order)}</div>
+    <div class="ac-chiprow" style="margin-top:2px"><span class="order-num">${escapeHtml(displayOrderLabel(order))}</span>${restaurantChip(order)}</div>
     <div class="sh-head"><div class="sh-name">${escapeHtml(name)}</div><span class="sh-pill">${seq}º · EN COLA</span></div>
     ${scheduledBadge(order)}
     ${phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(phone).replace(/[^\d+]/g,'')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${String(phone).replace(/\D/g,'')}?text=${encodeURIComponent('Hola, soy del repartidor de X. Pizza.')}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
