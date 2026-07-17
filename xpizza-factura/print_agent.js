@@ -80,6 +80,19 @@ async function handle(orderId, known) {
     if (!decision || decision.action !== 'claim') return; // skipped
 
     const record = tx.snapshot.val();
+    // Best-effort #N: read the order's display_number FRESH at print time (by now the platform allocator
+    // has stamped it) so PEDIDO:#N is consistent, not race-dependent on factura-build timing. NEVER blocks
+    // the print — a slow/failed read (2s cap) just prints REF-only. Read-only; enriches the record for render.
+    if (record && record.order_id) {
+      try {
+        const dnSnap = await Promise.race([
+          db.ref(`orders/${record.order_id}/display_number`).once('value'),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('dn-timeout')), 2000)),
+        ]);
+        const dn = dnSnap.val();
+        if (Number.isFinite(dn)) record.display_number = dn;
+      } catch (_) { /* fail-open: print REF-only, never block the factura */ }
+    }
     try {
       await sendToPrinter(renderFactura(record, 2)); // two copies (D4)
       await ref.update({ printed: true, printed_at: now, print_error: null, print_claim: null });

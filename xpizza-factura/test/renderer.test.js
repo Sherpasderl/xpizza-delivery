@@ -65,11 +65,19 @@ test('header carries brand, legal entity, RTN and CAI', () => {
   assert.match(text, /CAI:440857-E69455-F78EE0-63BE03-0909E2-B2/);
 });
 
-test('PEDIDO replaces MESA/MESERO, and FACTURA number prints', () => {
+test('REF carries the order id; FACTURA number prints; no MESA/MESERO', () => {
   const { text } = render(sampleRecord());
-  assert.match(text, /PEDIDO:ORD-7788/);
+  assert.match(text, /REF:ORD-7788/);
   assert.match(text, /FACTURA:000-001-01-00000123/);
   assert.doesNotMatch(text, /MESA|MESERO/);
+  // no display_number in the base record → NO PEDIDO:#N line (REF alone, never blank, never flaky)
+  assert.doesNotMatch(text, /PEDIDO:#/);
+});
+
+test('PEDIDO:#N prints when display_number is set (print-time lookup); REF still carries the id', () => {
+  const { text } = render(sampleRecord({ display_number: 47 }));
+  assert.match(text, /PEDIDO:#47/);
+  assert.match(text, /REF:ORD-7788/);       // full order id stays on the doc (traceable; #N resets daily)
 });
 
 test('no-RTN sale leaves CLIENTE and RTN lines blank', () => {

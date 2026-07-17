@@ -85,7 +85,11 @@ function layoutFactura(rec) {
   push(sep());
 
   // ---- Document head ----
-  push(`PEDIDO:${rec.pedido}`);
+  // PEDIDO = the friendly per-restaurant daily #N (set at print time from the order's display_number;
+  // see print_agent). Absent → the line is omitted, never blank. REF = the permanent unique order id
+  // (was labeled PEDIDO) — always present for traceability since #N resets daily.
+  if (Number.isFinite(rec.display_number)) push(`PEDIDO:#${rec.display_number}`);
+  push(`REF:${rec.order_id || rec.pedido}`);
   push(`FACTURA:${rec.factura_number}`);
   push(center(`${rec.fecha}  ${rec.hora}`));
   push(`RTN :${rec.rtn_cliente || ''}`);
