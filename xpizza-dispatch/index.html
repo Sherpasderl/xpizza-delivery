@@ -2243,7 +2243,7 @@ function renderDispatcherAlerts(alerts) {
           <span class="alert-icon">${ICONS.warn}</span>
           <div class="alert-text">
             <strong>No hay repartidores disponibles</strong>
-            Pedido #${escapeHtml(a.order_id)} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — asigna manualmente
+            Pedido ${escapeHtml(displayOrderLabel(a.order_id))} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — asigna manualmente
           </div>
           <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
         </div>
@@ -2257,7 +2257,7 @@ function renderDispatcherAlerts(alerts) {
           <span class="alert-icon">${ICONS.warn}</span>
           <div class="alert-text">
             <strong>Sin respuesta de repartidores</strong>
-            Pedido #${escapeHtml(a.order_id)} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — ${attempts} intentos sin aceptación, asigna manualmente
+            Pedido ${escapeHtml(displayOrderLabel(a.order_id))} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — ${attempts} intentos sin aceptación, asigna manualmente
           </div>
           <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
         </div>
@@ -2271,7 +2271,7 @@ function renderDispatcherAlerts(alerts) {
           <span class="alert-icon">${ICONS.warn}</span>
           <div class="alert-text">
             <strong>Pedido atascado</strong>
-            Pedido #${escapeHtml(a.order_id)} — la asignación falló a medias, revisá y reasigná manualmente
+            Pedido ${escapeHtml(displayOrderLabel(a.order_id))} — la asignación falló a medias, revisá y reasigná manualmente
           </div>
           <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
         </div>
@@ -2285,7 +2285,7 @@ function renderDispatcherAlerts(alerts) {
           <span class="alert-icon">${ICONS.warn}</span>
           <div class="alert-text">
             <strong>Pago en línea sin confirmar</strong>
-            Pedido #${escapeHtml(d.orderId || '—')}${total} — el cliente abrió un pago en línea que no se completó. Revísalo en “Reconciliación de pagos”.
+            Pedido ${escapeHtml(displayOrderLabel(d.orderId))}${total} — el cliente abrió un pago en línea que no se completó. Revísalo en “Reconciliación de pagos”.
           </div>
           <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
         </div>
@@ -2312,7 +2312,7 @@ function renderDispatcherAlerts(alerts) {
           <span class="alert-icon">${ICONS.warn}</span>
           <div class="alert-text">
             <strong>Reembolso pendiente</strong>
-            Pedido #${escapeHtml(d.orderId || '—')} — un reembolso lleva más de 24h sin completarse. Verifícalo en PixelPay.
+            Pedido ${escapeHtml(displayOrderLabel(d.orderId))} — un reembolso lleva más de 24h sin completarse. Verifícalo en PixelPay.
           </div>
           <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
         </div>
@@ -2599,7 +2599,7 @@ function detectNewPending(tasks) {
   if (fresh.length > 0 && knownPendingOrderIds.size > 0) {
     try { $('chime').play().catch(() => {}); } catch {}
     fresh.forEach(oid => flashOrderCard(oid));
-    toast(`Nuevo pedido: ${fresh.length === 1 ? '#' + fresh[0] : fresh.length + ' pedidos'}`, 'success');
+    toast(`Nuevo pedido: ${fresh.length === 1 ? displayOrderLabel(fresh[0]) : fresh.length + ' pedidos'}`, 'success');
   }
   knownPendingOrderIds = currentPending;
 }
@@ -2752,7 +2752,7 @@ function renderUnassignedSection() {
     return `
     <div class="unassigned-card" data-order-id="${o.order_id}">
       <div class="top">
-        <div class="uid">#${o.order_id}</div>
+        <div class="uid">${displayOrderLabel(o)}</div>
         <div class="total">L${o.total ?? '—'}</div>
       </div>
       <div class="customer">${escapeHtml(o.customer_name || '—')}</div>
@@ -2842,17 +2842,17 @@ function renderOrderExpanded(order) {
 const cancelInFlight = new Set();   // F12: one cancel per order at a time (no double-fire stressing the server race)
 async function confirmCancelOrder(orderId) {
   if (cancelInFlight.has(orderId)) return;
-  if (!confirm(`¿Cancelar el pedido #${orderId}?\n\nEsto lo marcará como cancelado, reembolsará el cargo si hubo pago, y liberará al driver si está asignado.`)) return;
+  if (!confirm(`¿Cancelar el pedido ${displayOrderLabel(orderId)}?\n\nEsto lo marcará como cancelado, reembolsará el cargo si hubo pago, y liberará al driver si está asignado.`)) return;
   cancelInFlight.add(orderId);
   try {
     // Money-safe server cancel: voids the charge iff captured money, heals an already-cancelled-but-paid order.
     const r = await XPD.cancelOrderRemote(orderId, 'Cancelado por dispatcher');
     const refund = r && r.refund;
     const suffix = refund === 'refunded' ? ' (reembolsado)' : refund === 'refund_pending' ? ' (reembolso pendiente)' : '';
-    toast(`Pedido #${orderId} cancelado${suffix}`, 'success');
+    toast(`Pedido ${displayOrderLabel(orderId)} cancelado${suffix}`, 'success');
   } catch (e) {
     // refund_pending / manual_review / claim_lost arrive as a non-2xx carrying e.outcome — show "revisar".
-    if (e && e.outcome) toast(`Pedido #${orderId}: ${e.outcome} — revisar`, 'error');
+    if (e && e.outcome) toast(`Pedido ${displayOrderLabel(orderId)}: ${e.outcome} — revisar`, 'error');
     else toast('Error: ' + e.message, 'error');
   } finally {
     cancelInFlight.delete(orderId);
@@ -2891,7 +2891,7 @@ function renderDriversSection() {
       const items = [];
       if (d.phone) items.push({ label: `Llamar a ${d.name || 'repartidor'}`, icon: ICONS.phone, action: () => { window.location.href = `tel:${d.phone}`; } });
       if (!d.active && Number.isFinite(d.lat) && Number.isFinite(d.lng)) items.push({ label: 'Ver última ubicación', icon: ICONS.pin, action: () => showLastLocation(uid) });
-      if (order) items.push({ label: `Reasignar #${order.order_id}`, icon: ICONS.refresh, action: () => openPicker(order.order_id, true) });
+      if (order) items.push({ label: `Reasignar ${displayOrderLabel(order)}`, icon: ICONS.refresh, action: () => openPicker(order.order_id, true) });
       if (d.active) { if (items.length) items.push({ divider: true }); items.push({ label: 'Sacar de turno', icon: ICONS.close, danger: true, action: () => forceOffShift(uid) }); }
       if (items.length) showActionMenu(btn, items);
     });
@@ -3139,7 +3139,7 @@ function renderTaskRow(driverUid, order) {
   return `
     <div class="task-row" data-order-id="${order.order_id}" data-driver-uid="${driverUid}">
       <div class="task-top">
-        <div class="task-id">#${order.order_id}</div>
+        <div class="task-id">${displayOrderLabel(order)}</div>
         <div style="display: flex; align-items: center; gap: 6px;">
           <div class="task-id mono" style="color: var(--text-soft);">L${order.total ?? '—'}</div>
           <button class="more-btn" data-more-task="${order.order_id}" data-driver-uid="${driverUid}" title="Más opciones">⋯</button>
@@ -3195,13 +3195,17 @@ function renderDeliveredSection() {
     orders = orders.filter(o => closedTime(o) >= dayStartMs);
   } else {
     // Search across all time. Match against order_id, customer_name,
-    // customer_phone (case-insensitive substring).
+    // customer_phone (case-insensitive substring), and the display_number
+    // (#N — exact, with or without the leading '#'; per-restaurant-per-day so
+    // matches are disambiguated by brand + date in the result card below).
     const q = closedOrdersSearchQuery.trim().toLowerCase();
+    const qNum = q.replace(/^#/, '');
     orders = orders.filter(o => {
       const id = (o.order_id || '').toLowerCase();
       const name = (o.customer_name || '').toLowerCase();
       const phone = (o.customer_phone || '').toLowerCase();
-      return id.includes(q) || name.includes(q) || phone.includes(q);
+      const dn = o.display_number != null ? String(o.display_number) : '';
+      return id.includes(q) || name.includes(q) || phone.includes(q) || (dn !== '' && dn === qNum);
     });
   }
 
@@ -3227,10 +3231,15 @@ function renderDeliveredSection() {
   list.innerHTML = orders.map(o => {
     const dt = allTasks[`${o.order_id}_delivery`];
     const driver = allDrivers[dt?.assigned_driver_id];
-    const time = formatTime(closedTime(o));
+    // While searching, results can span days/restaurants — show the full date (formatDateTime) and a
+    // context line "#N · Brand" so a #N match is unambiguous. Non-search (today-only) view is unchanged.
+    const time = isSearching ? formatDateTime(closedTime(o)) : formatTime(closedTime(o));
     const isCancelled = o.status === 'cancelled';
     const statusBadge = isCancelled
       ? '<span class="closed-badge cancelled">Cancelado</span>'
+      : '';
+    const ctx = isSearching
+      ? `<div class="meta"><span>${escapeHtml(displayOrderLabel(o))} · ${escapeHtml((o.restaurant_id || 'x_pizza') === 'la_musa' ? 'La Musa' : 'X. Pizza')}</span></div>`
       : '';
     return `
       <div class="delivered-card ${isCancelled ? 'is-cancelled' : ''}" data-order-id="${o.order_id}">
@@ -3238,6 +3247,7 @@ function renderDeliveredSection() {
           <div class="name">${escapeHtml(o.customer_name || '—')} ${statusBadge}</div>
           <div class="total">L${o.total ?? '—'}</div>
         </div>
+        ${ctx}
         <div class="meta">
           <span class="driver">${escapeHtml(driver?.name || (isCancelled ? 'Sin driver' : '—'))}</span>
           <span>${time}</span>
@@ -3282,7 +3292,7 @@ function renderReconciliationSection() {
     return `
       <div class="recon-card" data-order-id="${escapeHtml(o.order_id)}">
         <div class="recon-top">
-          <span class="recon-id">#${escapeHtml(o.order_id)}</span>
+          <span class="recon-id">${escapeHtml(displayOrderLabel(o))}</span>
           <span class="recon-total">L${o.total ?? '—'}</span>
         </div>
         <div class="recon-sub">${escapeHtml(brand)} · ${escapeHtml(o.customer_name || '—')} · hace ${reconAge(o.created_at)}</div>
@@ -3315,7 +3325,7 @@ async function resolveReconciliationAction(orderId, action) {
   const [label, warn] = prompts[action] || ['Resolver', ''];
   const noteRequired = action === 'abandon';
   // Confirm + collect an operator note in one dialog (required for abandon — the server audits it).
-  const note = prompt(`${label} el pedido #${orderId}\n\n${warn}\n\nNota${noteRequired ? ' (requerida)' : ' (opcional)'}:`, '');
+  const note = prompt(`${label} el pedido ${displayOrderLabel(orderId)}\n\n${warn}\n\nNota${noteRequired ? ' (requerida)' : ' (opcional)'}:`, '');
   if (note === null) return;                                     // cancelled
   if (noteRequired && !note.trim()) { toast('Se requiere una nota para descartar', 'error'); return; }
 
@@ -3327,15 +3337,15 @@ async function resolveReconciliationAction(orderId, action) {
     const r = await XPD.resolveReconciliation(orderId, action, note.trim());
     const outcome = (r && r.outcome) || 'sin_resultado';
     if (RECON_SUCCESS_OUTCOMES.has(outcome)) {
-      toast(`Pedido #${orderId}: ${outcome}`, 'success');
+      toast(`Pedido ${displayOrderLabel(orderId)}: ${outcome}`, 'success');
     } else {
       // 2xx but NOT a genuine completion — surface the real outcome, never fake success.
-      toast(`Pedido #${orderId}: ${outcome} — revisar`, 'error');
+      toast(`Pedido ${displayOrderLabel(orderId)}: ${outcome} — revisar`, 'error');
     }
   } catch (e) {
     // #9 honest contract: refund_pending / manual_review arrive as a 409 carrying e.outcome — show the real
     // outcome as "revisar" (dispatcher must finish in PixelPay), never a bare error that hides what happened.
-    if (e && e.outcome) toast(`Pedido #${orderId}: ${e.outcome} — revisar`, 'error');
+    if (e && e.outcome) toast(`Pedido ${displayOrderLabel(orderId)}: ${e.outcome} — revisar`, 'error');
     else toast('Error: ' + e.message, 'error');
   } finally {
     btns.forEach(b => { b.disabled = false; });                  // re-enable (card may re-render away on success)
@@ -3410,7 +3420,7 @@ function renderOrderDetailModal(order) {
   $('order-detail-title').innerHTML = `
     <span>${escapeHtml(order.customer_name || 'Cliente sin nombre')}</span>
     ${statusPill}
-    <span class="order-id">#${escapeHtml(order.order_id)}</span>
+    <span class="order-id">${escapeHtml(displayOrderLabel(order))}</span>
   `;
 
   // Body sections
@@ -3815,7 +3825,7 @@ function openPicker(orderId, isReassign = false) {
   const order = allOrders[orderId];
   if (!order) return;
 
-  $('picker-title').textContent = isReassign ? `Reasignar #${orderId}` : `Asignar #${orderId}`;
+  $('picker-title').textContent = isReassign ? `Reasignar ${displayOrderLabel(orderId)}` : `Asignar ${displayOrderLabel(orderId)}`;
   $('picker-sub').textContent = `${order.customer_name || '—'} · L${order.total}`;
 
   // Build sorted driver list. Priority: ready-to-pickup first.
@@ -3984,6 +3994,23 @@ function formatDistance(m) {
 function escapeHtml(s) {
   if (s == null) return '';
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[c]);
+}
+
+// Human-facing order label: '#<display_number>' once the server has allocated one, else '#<order_id>'.
+// DISPLAY ONLY — never use for keys, data-* attrs, caches, DOM selectors, or API args (all of those stay
+// order_id). Accepts an order object (reads o.display_number directly) OR a bare order_id string (looks the
+// number up in allOrders — used for alerts/toasts that only carry the id). Returns an UNescaped string that
+// always begins with '#'; wrap in escapeHtml at call sites that render into innerHTML (a '#' + integer or a
+// '#' + charset-safe order_id both pass through escapeHtml unchanged, so the fallback stays byte-identical).
+function displayOrderLabel(orderOrId) {
+  const isObj = orderOrId && typeof orderOrId === 'object';
+  const orderId = isObj ? orderOrId.order_id : orderOrId;
+  let dn = isObj ? orderOrId.display_number : undefined;
+  if (!Number.isFinite(dn) && orderId != null) {
+    const rec = allOrders[orderId];
+    if (rec && Number.isFinite(rec.display_number)) dn = rec.display_number;
+  }
+  return '#' + (Number.isFinite(dn) ? dn : (orderId != null ? orderId : '—'));
 }
 
 // ============================================================
