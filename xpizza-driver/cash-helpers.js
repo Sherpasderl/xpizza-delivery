@@ -32,10 +32,22 @@ export function vueltoSuggestions(total) {
 }
 
 /**
+ * True for a cash-collected order. The platform writes payment_method 'cash' (real
+ * value; see functions ALLOWED_PAYMENT_METHODS = cash|card_delivery|online); 'efectivo'
+ * is only a legacy alias. Never 'card_delivery'/'online'. Case- and whitespace-tolerant.
+ * Mirrors the POS's orderPredicates.isCashPayment (separate repo — kept byte-identical).
+ */
+export function isCashPayment(pm) {
+  if (typeof pm !== 'string') return false;   // a non-string payment_method is not a valid cash order
+  const s = String(pm == null ? '' : pm).trim().toLowerCase();
+  return s === 'cash' || s === 'efectivo';
+}
+
+/**
  * Shift cash + delivery totals from the RTDB task/order maps. Counts only the
  * driver's own delivery tasks that completed at/after `sinceMs`. `cashOwed` =
- * Σ order.total for `efectivo` orders (server-truth — no driver-entered figure).
- * Returns { deliveries, totalCollected, cashOwed, cashOrderCount }.
+ * Σ order.total for cash (real) / legacy efectivo orders (server-truth — no
+ * driver-entered figure). Returns { deliveries, totalCollected, cashOwed, cashOrderCount }.
  */
 export function computeShiftCash(allTasks, allOrders, uid, sinceMs) {
   let deliveries = 0, totalCollected = 0, cashOwed = 0, cashOrderCount = 0;
@@ -49,7 +61,7 @@ export function computeShiftCash(allTasks, allOrders, uid, sinceMs) {
     const o = orders[t.order_id];
     const total = o && typeof o.total === 'number' ? o.total : 0;
     totalCollected += total;
-    if (o && /efectivo/i.test(String(o.payment_method || ''))) {
+    if (o && isCashPayment(o.payment_method)) {
       cashOwed += total;
       cashOrderCount++;
     }

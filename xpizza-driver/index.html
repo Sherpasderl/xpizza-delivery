@@ -1138,12 +1138,12 @@
 import * as XPD from './xpizza-delivery.js?v=19';
 import { isNative, initNativePush, unregisterNativePush, clearDeliveredNotifications } from './native-push.js';
 import { startNativeTracking, stopNativeTracking, pingNativeLocation, disableLingeringTransistorsoft } from './native-location.js';
-import { computeVuelto, vueltoSuggestions, computeShiftCash } from './cash-helpers.js';
+import { computeVuelto, vueltoSuggestions, computeShiftCash, isCashPayment } from './cash-helpers.js';
 
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '2.4.4';
+const SYSTEM_VERSION = '2.4.5';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -2121,7 +2121,7 @@ function syncIdleStats(){
     if (t.status!=='completed' || !t.completed_at || t.completed_at < today) continue;
     count++;
     const o = (allOrders||{})[t.order_id];
-    if (o && typeof o.total==='number' && String(o.payment_method||'').toLowerCase().includes('efectivo')) cash += o.total;
+    if (o && typeof o.total==='number' && isCashPayment(o.payment_method)) cash += o.total;
   }
   const elD = $('stat-deliveries'), elC = $('stat-cash');
   if (elD) elD.textContent = String(count);
