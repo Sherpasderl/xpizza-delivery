@@ -20,7 +20,7 @@ const { hnDateISO } = require('../factura/build-record');
 const db = getDatabase();
 
 const DAY = hnDateISO(Date.now());
-const ev = (orderId, after) => ({ data: { before: { val: () => null }, after: { val: () => after } }, params: { orderId } });
+const ev = (orderId, after, before = null) => ({ data: { before: { val: () => before }, after: { val: () => after } }, params: { orderId } });
 const order = (o = {}) => ({ status: 'new', payment_method: 'cash', restaurant_id: 'x_pizza', tracking_token: 'TOK-' + (o.id || 'x'), ...o });
 const dn = async (id) => (await db.ref(`orders/${id}/display_number`).once('value')).val();
 const trackDn = async (tok) => (await db.ref(`order_tracking/${tok}/display_number`).once('value')).val();
@@ -77,6 +77,32 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   assert.strictEqual(await dn('P'), null, 'pending_payment → no number');
   assert.strictEqual(await counter('x_pizza'), null, 'no counter node created for an ineligible order');
   ok('ineligible (pending_payment) → no number, no counter burn');
+
+  // 7. F1 — an order ALREADY live ('new'→'new', unstamped) on a NON-transition write → NOT numbered, no burn
+  await reset();
+  await seed('PRE', {});
+  await app.allocateDisplayNumberOnSale.run(ev('PRE', order({ id: 'PRE' }), order({ id: 'PRE' })));  // before.status also 'new'
+  assert.strictEqual(await dn('PRE'), null, 'pre-existing live order → NOT numbered on a non-transition write');
+  assert.strictEqual(await counter('x_pizza'), null, 'no counter burn (would have made the real first order #2)');
+  ok('F1: already-live order on a non-transition write → no number, no burn (deploy-day mis-numbering fixed)');
+
+  // 8. F2 + F3 — allocate anchored to the order's LIVE day; a later stamp-fail heals to the SAME number (cross-midnight-safe)
+  await reset();
+  const liveTs = Date.UTC(2026, 6, 16, 6, 0);   // fixed live timestamp → a specific Tegucigalpa day-node
+  const liveDay = hnDateISO(liveTs);
+  await db.ref('orders/H').set(order({ id: 'H', created_at: liveTs }));
+  await app.allocateDisplayNumberOnSale.run(ev('H', order({ id: 'H', created_at: liveTs }), null));  // transition → allocate
+  const n = await dn('H');
+  assert.ok(Number.isFinite(n), 'H allocated a number');
+  const liveNode = async () => (await db.ref(`counters/order_display_seq/x_pizza/${liveDay}`).once('value')).val();
+  assert.strictEqual((await liveNode()).by_order.H, n, 'reservation lives in the LIVE-day node (F2: day from created_at, not trigger time)');
+  // simulate a stamp-fail (the /orders stamp never landed) THEN a later non-transition write (status → preparing)
+  await db.ref('orders/H/display_number').remove();
+  await app.allocateDisplayNumberOnSale.run(
+    ev('H', order({ id: 'H', created_at: liveTs, status: 'preparing' }), order({ id: 'H', created_at: liveTs, status: 'new' })));
+  assert.strictEqual(await dn('H'), n, 'HEAL re-stamped the SAME number (F3) from the live-day node (cross-midnight-safe, F2)');
+  assert.strictEqual((await liveNode()).last, n, 'no NEW number minted on the heal (last unchanged — no duplicate)');
+  ok('F2+F3: allocate on the live-day node; a later stamp-fail heals to the SAME number, no duplicate/next-day burn');
 
   console.log(`\nAll ${pass} display-number emulator assertions passed.`);
   process.exit(0);

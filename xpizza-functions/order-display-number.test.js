@@ -6,7 +6,7 @@ const assert = require('assert');
 const { decideDisplayNumber, displayNumberEligible } = require('./order-display-number');
 let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 
-// ── counter ──
+// ── counter (decideDisplayNumber = the pure ALLOCATE decision; F1/F2/F3 are trigger-level → emulator test) ──
 {
   const d = decideDisplayNumber(null, 'A');
   assert.strictEqual(d.number, 1);
@@ -22,23 +22,21 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 {
   // IDEMPOTENT: the same order again → same number, NO write (next undefined → abort)
   const d = decideDisplayNumber({ last: 2, by_order: { A: 1, B: 2 } }, 'A');
-  assert.strictEqual(d.number, 1);
-  assert.strictEqual(d.next, undefined);
+  assert.strictEqual(d.number, 1); assert.strictEqual(d.next, undefined);
   ok('retry / concurrent re-fire of an allocated order → SAME #1, no write (idempotent, no re-burn/gap)');
 }
 {
-  // CONCURRENCY (the RTDB transaction serializes the update fn — model it as sequential runs on the same order):
+  // CONCURRENCY: allocate COMMITS then RTDB retries with the server value on contention → the concurrent
+  // handler's reservation wins idempotently (model as sequential runs on the same order):
   const d1 = decideDisplayNumber(null, 'A'); assert.strictEqual(d1.number, 1);
   const d2 = decideDisplayNumber(d1.next, 'A'); assert.strictEqual(d2.number, 1); assert.strictEqual(d2.next, undefined);
   ok('concurrency: two handlers for one order converge on one # (no double-burn/gap)');
 }
 {
-  // DAY BOUNDARY: a new YYYY-MM-DD key = an absent node → resets to #1
   assert.strictEqual(decideDisplayNumber(undefined, 'X').number, 1);
   ok('day boundary: new date node (absent) → resets to #1');
 }
 {
-  // Malformed node → fail-safe increment from 0
   assert.strictEqual(decideDisplayNumber({ by_order: {} }, 'Y').number, 1);
   assert.strictEqual(decideDisplayNumber({ last: 'nope', by_order: {} }, 'Z').number, 1);
   ok('malformed node (no last / non-finite last) → #1 (fail-safe)');

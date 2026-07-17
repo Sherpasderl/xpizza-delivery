@@ -1724,27 +1724,57 @@ exports.allocateDisplayNumberOnSale = onValueWritten(
   { ref: '/orders/{orderId}', region: 'us-central1' },
   async (event) => {
     const after = event.data.after.val();
-    if (!displayNumberEligible(after)) return;
+    if (!after) return;                                  // order gone
     if (Number.isFinite(after.display_number)) return;   // already stamped → nothing to do (also skips our re-fire)
+    const before = event.data.before.val();
+
+    // ALLOCATE only on the TRANSITION into live/Sale (F1) — NOT on every write to an already-'new' order (else a
+    // pre-ship live order burns a number on its next unrelated write, mis-numbering the day). Otherwise HEAL-only:
+    // re-stamp an existing reservation whose stamp write earlier failed / crashed (F3). A non-transition write
+    // never mints a number — allocateAllowed = isTransition.
+    const isTransition = displayNumberEligible(after) && (!before || before.status !== 'new');
+    // A pre-live order that isn't transitioning can't hold a reservation (numbers are minted only on the
+    // transition into 'new') → skip the transaction (avoids no-op churn on pending_payment/scheduled writes).
+    const preLive = after.status === 'pending_payment' || after.status === 'scheduled' || after.status === 'releasing';
+    if (!isTransition && preLive) return;
 
     const orderId = event.params.orderId;
     const restaurantId = after.restaurant_id || 'x_pizza';   // legacy-normalize (mirror the factura default)
-    const day = hnDateISO(Date.now());                       // YYYY-MM-DD, America/Tegucigalpa (server clock; factura day boundary)
+    // Day anchored to the order's LIVE timestamp (F2), NOT trigger-run time — deterministic, and it makes the heal
+    // cross-midnight-safe (same day-node → same reservation → same number). cash: created_at; online:
+    // materialized_at; scheduled: released_at. Date.now() only as a last-resort fallback.
+    const liveTs = Number(after.released_at) || Number(after.materialized_at) || Number(after.created_at) || Date.now();
+    const day = hnDateISO(liveTs);                           // YYYY-MM-DD, America/Tegucigalpa (factura day boundary)
     const db = getDatabase();
+    const counterPath = `counters/order_display_seq/${restaurantId}/${day}`;
 
-    // Allocate the per-restaurant daily number in ONE transaction keyed by orderId (idempotent + concurrency-safe).
     let allocated = null;
-    try {
-      await db.ref(`counters/order_display_seq/${restaurantId}/${day}`).transaction((cur) => {
-        const d = decideDisplayNumber(cur, orderId);
-        allocated = d.number;
-        return d.next === undefined ? undefined : d.next;   // undefined ⇒ abort (idempotent no-op, no re-burn)
-      });
-    } catch (e) {
-      console.warn(`allocateDisplayNumberOnSale: counter txn failed for ${orderId} — fail-open (no number)`, e.message);
-      return;   // FAIL-OPEN: a counter failure never blocks the order
+    if (isTransition) {
+      // ALLOCATE atomically. Null-run-safe: the update fn COMMITS (returns .next), so on contention RTDB re-runs
+      // with the true server value — a concurrent handler's reservation then wins idempotently (one number, no gap).
+      try {
+        await db.ref(counterPath).transaction((cur) => {
+          const d = decideDisplayNumber(cur, orderId);
+          allocated = d.number;
+          return d.next === undefined ? undefined : d.next;   // undefined ⇒ abort (already reserved → idempotent)
+        });
+      } catch (e) {
+        console.warn(`allocateDisplayNumberOnSale: counter txn failed for ${orderId} — fail-open (no number)`, e.message);
+        return;   // FAIL-OPEN: a counter failure never blocks the order
+      }
+    } else {
+      // HEAL (F3): re-stamp an existing reservation whose earlier stamp write failed / crashed. A plain READ —
+      // NOT a transaction: a txn that aborts on its initial null-cache run doesn't re-fetch, so it would miss the
+      // reservation. No minting here (not a transition) ⇒ no atomicity needed. Cross-midnight-safe via the
+      // live-timestamp day (F2): same live-day node → same reservation → same number.
+      try {
+        allocated = (await db.ref(`${counterPath}/by_order/${orderId}`).once('value')).val();
+      } catch (e) {
+        console.warn(`allocateDisplayNumberOnSale: heal read failed for ${orderId} — fail-open`, e.message);
+        return;   // FAIL-OPEN
+      }
     }
-    if (!Number.isFinite(allocated)) return;
+    if (!Number.isFinite(allocated)) return;   // no reservation (heal no-op), or nothing to allocate → no-op
 
     // Stamp in TWO places: /orders/{id} (auth-readable staff surfaces) AND order_tracking/{token} (the public
     // customer tracker reads the token-gated node, not auth-only /orders). One atomic multi-path update.

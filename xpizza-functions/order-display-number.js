@@ -11,11 +11,16 @@
  */
 
 // Idempotent per-order allocation within ONE transaction (mirrors factura decideReserve's pending[orderId] shape).
+// Pure ALLOCATE decision — used ONLY inside the transaction on the live/Sale transition (F1: the trigger gates
+// the call on isTransition, so this only ever mints on a real transition). The HEAL path (re-stamping an
+// existing reservation on a later write) is a direct READ in the trigger, NOT this transaction: an RTDB
+// transaction that aborts (returns undefined) on its initial null-cache run does not re-fetch the server value,
+// so a heal-via-transaction would miss the reservation. Allocate is safe under that null-run because it COMMITS
+// (returns .next) → on contention RTDB re-runs with the true server value (idempotent by_order[orderId] then wins).
 function decideDisplayNumber(node, orderId){
   const by_order = (node && node.by_order) || {};
   if (by_order[orderId] != null) {
-    // Already allocated for this order → return the SAME number, no write (ABORT the transaction). Idempotent
-    // on any retry / concurrent handler for the same order — no double-burn, no gap.
+    // Already reserved → return the SAME number, no write (ABORT). Idempotent on any retry / concurrent handler.
     return { number: by_order[orderId], next: undefined };
   }
   const last = node && Number.isFinite(node.last) ? node.last : 0;   // fail-safe: absent/malformed last → 0
