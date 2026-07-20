@@ -625,7 +625,7 @@
       // Banner content per status
       if (status === 'new') {
         bannerTitle.textContent = 'Recibimos tu pedido';
-        bannerSub.textContent = 'Estamos por empezar a preparar tu pizza';
+        bannerSub.textContent = 'Estamos por empezar a preparar tu pedido';
       } else if (status === 'ready' && isPickup) {
         banner.classList.add('success');
         fill.classList.add('success');
@@ -658,7 +658,7 @@
         banner.classList.remove('hidden');
         banner.classList.add('success');
         fill.classList.add('success');
-        bannerTitle.textContent = isPickup ? '¡Gracias por tu compra!' : '¡Disfruta tu pizza!';
+        bannerTitle.textContent = isPickup ? '¡Gracias por tu compra!' : '¡Buen provecho!';
         const doneVerb = isPickup ? 'Recogido' : 'Entregado';
         if (data.delivered_at) {
           const t = new Date(data.delivered_at);
