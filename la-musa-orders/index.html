@@ -2348,7 +2348,7 @@ function updateCartReviewBody(){
     checkoutBtn.textContent=belowMin?'Agrega L '+(MIN_ORDER-total).toFixed(0)+' más para continuar →':'Ir al checkout →';
   }
   if(!items.length){
-    body.innerHTML='<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Agrega pizzas para ver tu pedido aquí.</div>';
+    body.innerHTML='<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Agrega items para ver tus pedidos aquí.</div>';
     return;
   }
   body.innerHTML=items.map(p=>{
@@ -4007,7 +4007,7 @@ initCardFormatting();
     <button class="cart-review-close" onclick="closeCartReview()">✕</button>
   </div>
   <div class="cart-review-body" id="cart-review-body">
-    <div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Agrega pizzas para ver tu pedido aquí.</div>
+    <div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Agrega items para ver tus pedidos aquí.</div>
   </div>
   <div class="cart-review-footer">
     <div class="cart-review-total-row">
