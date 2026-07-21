@@ -2021,24 +2021,28 @@ function renderMenu() {
         // dish has no real photo (graceful fallback).
         (HAS_PHOTO.has(p.id) ? '' : '<div class="pizza-photo-label">' + (p.emoji || '•') + '</div>') +
         (HAS_PHOTO.has(p.id) ? '<img class="pizza-photo-img" loading="lazy" decoding="async" alt="" src="images/' + p.id + '-card.webp" onerror="this.remove()">' : '') +
-        '<div class="qty-overlay" onclick="event.stopPropagation()">' +
-          '<div class="qty-controls" id="qty-controls-' + p.id + '">' +
-            '<button class="qty-ctrl-btn" onclick="chg(\'' + p.id + '\',-1)" id="minus-' + p.id + '">−</button>' +
-            '<span class="qty-ctrl-num" id="qty-' + p.id + '">0</span>' +
-            '<button class="qty-ctrl-btn" onclick="chg(\'' + p.id + '\',1)">+</button>' +
-          '</div>' +
-          '<div class="qty-badge" id="qty-badge-' + p.id + '" style="display:none" onclick="toggleControls(\'' + p.id + '\')">' +
-            '<span id="qty-badge-num-' + p.id + '">1</span>' +
-          '</div>' +
-          '<button class="qty-add-btn" id="qty-add-' + p.id + '" onclick="chg(\'' + p.id + '\',1)">+</button>' +
-        '</div>' +
+        (itemIsLauncher(p)
+          ? '<div class="qty-overlay" onclick="event.stopPropagation()">' +
+              '<button class="qty-add-btn" aria-label="Personalizar" onclick="openDetailModal(\'' + p.id + '\')">+</button>' +
+            '</div>'
+          : '<div class="qty-overlay" onclick="event.stopPropagation()">' +
+              '<div class="qty-controls" id="qty-controls-' + p.id + '">' +
+                '<button class="qty-ctrl-btn" onclick="chg(\'' + p.id + '\',-1)" id="minus-' + p.id + '">−</button>' +
+                '<span class="qty-ctrl-num" id="qty-' + p.id + '">0</span>' +
+                '<button class="qty-ctrl-btn" onclick="chg(\'' + p.id + '\',1)">+</button>' +
+              '</div>' +
+              '<div class="qty-badge" id="qty-badge-' + p.id + '" style="display:none" onclick="toggleControls(\'' + p.id + '\')">' +
+                '<span id="qty-badge-num-' + p.id + '">1</span>' +
+              '</div>' +
+              '<button class="qty-add-btn" id="qty-add-' + p.id + '" onclick="chg(\'' + p.id + '\',1)">+</button>' +
+            '</div>') +
       '</div>' +
       '<div class="pizza-card-body">' +
         badgeHtmlFor(p) +
         '<div class="pizza-card-name">' + p.name + '</div>' +
         '<div class="pizza-card-desc">' + (p.desc || '') + '</div>' +
         '<div class="pizza-card-footer">' +
-          /* LA_MUSA_CURRENCY_PREFIX */ '<span class="pizza-card-price">' + (p.price > 0 ? 'L ' + p.price : '—') + '</span>' +
+          /* LA_MUSA_CURRENCY_PREFIX */ '<span class="pizza-card-price">' + (itemIsLauncher(p) ? 'desde L ' + p.price : (p.price > 0 ? 'L ' + p.price : '—')) + '</span>' +
           '<span class="card-extras-indicator" id="extras-indicator-' + p.id + '" style="display:none">✓ Extras</span>' +
           /* LA_MUSA_POLISH_V1: removed dead 'Extras →' hint (modal opens via photo tap) */
         '</div>' +
