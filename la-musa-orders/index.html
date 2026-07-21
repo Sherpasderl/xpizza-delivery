@@ -458,6 +458,12 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
   background:var(--charcoal);border-color:var(--charcoal);color:#fff;
 }
 
+.detail-req{color:#B61218;font-weight:700;font-size:.85em}
+.detail-variant-row{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border:1.5px solid #ece2e2;border-radius:12px;margin-bottom:8px;cursor:pointer}
+.detail-variant-row.sel{border-color:#B61218;background:#F4DDDD}
+.detail-variant-radio{width:20px;height:20px;border-radius:50%;border:2px solid #b9adae;flex:none}
+.detail-variant-row.sel .detail-variant-radio{border-color:#B61218;box-shadow:inset 0 0 0 5px #B61218}
+
 .detail-cta-bar{
   padding:16px;background:var(--cream);
   border-top:1px solid var(--border);flex-shrink:0;
@@ -3209,9 +3215,17 @@ let currentDetailPizzaId = null;
 /* LA_MUSA_PURE_XP_MODAL — no pendingQty/pendingExtras. Modal writes
    directly to qty[] and pizzaExtras[]. State lives in the cart. */
 
+// Launcher (required-variant) modal staging — used ONLY when the open item is a launcher.
+// The target cart id isn't known until a protein is chosen, and we commit + close on Add,
+// so the launcher path stages locally (the pure-XP modal keeps writing straight to the cart).
+let stagedVariantId = null;   // chosen variant menu id, or null
+let stagedExtras = {};        // { extraId: qty } staged for the chosen line
+
 function openDetailModal(pizzaId) {
   if (pizzaId === undefined || pizzaId === null) return;
   currentDetailPizzaId = pizzaId;
+  const _p = MENU.find(x => x.id === pizzaId);
+  if (itemIsLauncher(_p)) { stagedVariantId = null; stagedExtras = {}; }
   /* LA_MUSA_PURE_XP_MODAL — no staging. Modal reads/writes cart state
      directly. Opens at qty[id] (0 if dish not yet in cart). The CTA
      handles the qty=0 → 1 commit path. */
@@ -3367,6 +3381,8 @@ function renderDetailModal() {
 
   document.getElementById('detail-header-title').textContent = pizza.name;
 
+  if (itemIsLauncher(pizza)) { renderLauncherModal(pizza); return; }
+
   /* LA_MUSA_PURE_XP_MODAL — read live cart state. */
   const pizzaQty = qty[pizzaId] || 0;
   const photoColor = pizza.color || '#C8321A';
@@ -3467,6 +3483,65 @@ function renderDetailModal() {
   document.getElementById('detail-scroll').innerHTML = html;
   document.getElementById('detail-scroll').scrollTop = 0;
   updateDetailCta();
+}
+
+function renderLauncherModal(pizza) {
+  const cfg = VARIANT_ITEMS[pizza.id];
+  const photoColor = pizza.color || '#C8321A';
+  const heroImg = HAS_PHOTO.has(pizza.id)
+    ? `<img class="detail-photo-img" loading="eager" decoding="async" alt="" src="images/${pizza.id}-hero.webp" onerror="this.remove()">` : '';
+  const emojiHtml = HAS_PHOTO.has(pizza.id) ? '' : `<span class="detail-photo-label">${pizza.emoji || '🍜'}</span>`;
+  let html = `<div class="detail-photo" style="background:${photoColor}">${emojiHtml}${heroImg}</div>`;
+  html += `<div class="detail-body">
+    <div class="detail-name">${escapeHtml(pizza.name)}</div>
+    ${pizza.desc ? `<div class="detail-desc">${escapeHtml(pizza.desc)}</div>` : ''}
+    <div class="detail-price">desde L ${cfg.basePrice}</div>
+  </div>`;
+
+  // Required single-select protein group
+  html += `<div class="detail-cat-label">${escapeHtml(cfg.label)} <span class="detail-req">· Requerido</span></div>`;
+  html += `<div class="detail-extras-list">`;
+  cfg.variantIds.forEach(vid => {
+    const v = MENU.find(p => p.id === vid); if (!v) return;
+    const delta = v.price - cfg.basePrice;
+    const priceLabel = delta > 0 ? `+L ${delta}` : `L ${v.price}`;
+    const sel = stagedVariantId === vid;
+    html += `<div class="detail-variant-row${sel ? ' sel' : ''}" onclick="selectVariant('${vid}')">
+      <div><span class="detail-extras-name">${escapeHtml(v.choice)}</span>
+      <span class="detail-extras-price">${priceLabel}</span></div>
+      <span class="detail-variant-radio"></span>
+    </div>`;
+  });
+  html += `</div>`;
+
+  // Optional extras (staged, always visible)
+  extrasCatsForItem(pizza).forEach(cat => {
+    const inCat = EXTRAS.filter(e => e.cat === cat); if (!inCat.length) return;
+    html += `<div class="detail-cat-label">${escapeHtml(cat)}</div><div class="detail-extras-list">`;
+    inCat.forEach(e => {
+      const q = stagedExtras[e.id] || 0;
+      html += `<div class="detail-extras-row${q > 0 ? ' has-qty' : ''}">
+        <div><span class="detail-extras-name">${escapeHtml(e.name)}</span>
+        <span class="detail-extras-price">+L ${e.price}</span></div>
+        <div class="detail-extras-stepper-wrap">${
+          q === 0
+            ? `<button class="qty-add-btn detail-extras-add-btn" onclick="chgStagedExtra('${e.id}',1)">+</button>`
+            : `<div class="qty-controls visible detail-extras-pill"><button class="qty-ctrl-btn" onclick="chgStagedExtra('${e.id}',-1)">−</button><span class="qty-ctrl-num">${q}</span><button class="qty-ctrl-btn" onclick="chgStagedExtra('${e.id}',1)">+</button></div>`
+        }</div></div>`;
+    });
+    html += `</div>`;
+  });
+
+  html += `<div style="height:24px"></div>`;
+  document.getElementById('detail-scroll').innerHTML = html;
+  document.getElementById('detail-scroll').scrollTop = 0;
+  updateDetailCta();
+}
+function selectVariant(vid) { stagedVariantId = vid; updateDetailModal(); }
+function chgStagedExtra(eid, d) {
+  stagedExtras[eid] = Math.max(0, (stagedExtras[eid] || 0) + d);
+  if (!stagedExtras[eid]) delete stagedExtras[eid];
+  updateDetailModal();
 }
 
 function updateDetailCta() {
