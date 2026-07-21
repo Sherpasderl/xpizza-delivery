@@ -3557,6 +3557,25 @@ function updateDetailCta() {
   if (pizzaId === null) return;
   const pizza = MENU.find(p => p.id === pizzaId);
   if (!pizza) return;
+  if (itemIsLauncher(pizza)) {
+    cta.style.opacity = '1'; cta.style.pointerEvents = 'auto';
+    if (!stagedVariantId) {
+      cta.className = 'detail-cta';
+      cta.style.opacity = '.5'; cta.style.pointerEvents = 'none';
+      cta.innerHTML = '<span>Elegí una proteína</span>';
+      return;
+    }
+    const v = MENU.find(p => p.id === stagedVariantId);
+    const extrasSum = Object.keys(stagedExtras).reduce((s, eid) => {
+      const e = EXTRAS.find(x => x.id === eid); return s + (e ? e.price * stagedExtras[eid] : 0);
+    }, 0);
+    const total = (v ? v.price : 0) + extrasSum;
+    cta.className = 'detail-cta';
+    cta.innerHTML = `<span>Agregar al carrito</span>
+      <span class="detail-cta-divider">·</span>
+      <span>L ${total}</span>`;
+    return;
+  }
   const pizzaQty = qty[pizzaId] || 0;
   cta.style.opacity = '1';
   cta.style.pointerEvents = 'auto';
@@ -3598,6 +3617,14 @@ function updateDetailCta() {
 function detailCtaTap() {
   const pizzaId = currentDetailPizzaId;
   if (pizzaId === null) return;
+  const _pizza = MENU.find(p => p.id === pizzaId);
+  if (itemIsLauncher(_pizza)) {
+    if (!stagedVariantId) return;                        // required — no-op until chosen
+    if (Object.keys(stagedExtras).length) pizzaExtras[stagedVariantId] = { ...stagedExtras };
+    chg(stagedVariantId, 1);                             // increments qty + syncs cart/total (null-safe for hidden variant card)
+    closeDetailModal();
+    return;
+  }
   const wasZero = (qty[pizzaId] || 0) === 0;
   if (wasZero) {
     chg(pizzaId, 1);
