@@ -460,7 +460,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 
 .detail-req{color:#B61218;font-weight:700;font-size:.85em}
 .detail-variant-row{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border:1.5px solid #ece2e2;border-radius:12px;margin-bottom:8px;cursor:pointer}
-.detail-variant-row.sel{border-color:#B61218;background:#F4DDDD}
+.detail-variant-row.sel{border-color:#b9adae}
 .detail-variant-radio{width:20px;height:20px;border-radius:50%;border:2px solid #b9adae;flex:none}
 .detail-variant-row.sel .detail-variant-radio{border-color:#B61218;box-shadow:inset 0 0 0 5px #B61218}
 
@@ -3394,11 +3394,13 @@ function renderDetailModal() {
 
   // Hero photo — LA_MUSA_DISH_PHOTOS adds an <img> overlay when a real
   // photo exists for this id; emoji+color sits behind as the fallback.
-  const heroImg = HAS_PHOTO.has(pizzaId)
-    ? `<img class="detail-photo-img" loading="eager" decoding="async" alt="" src="images/${pizzaId}-hero.webp" onerror="this.remove()">`
+  // Variants (e.g. Pad Thai - Pollo) borrow the launcher dish's photo via variantOf.
+  const photoId = pizza.variantOf || pizzaId;
+  const heroImg = HAS_PHOTO.has(photoId)
+    ? `<img class="detail-photo-img" loading="eager" decoding="async" alt="" src="images/${photoId}-hero.webp" onerror="this.remove()">`
     : '';
   // LA_MUSA_CARD_IMG_FIX: emoji only renders when no photo exists.
-  const detailEmojiHtml = HAS_PHOTO.has(pizzaId)
+  const detailEmojiHtml = HAS_PHOTO.has(photoId)
     ? ''
     : `<span class="detail-photo-label">${emoji}</span>`;
   html += `<div class="detail-photo" style="background:${photoColor}">
