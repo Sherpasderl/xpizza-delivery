@@ -45,7 +45,11 @@ const LA_MUSA_MENU = {
   // crudo
   crudo_01: 452, crudo_02: 346, crudo_03: 337,
   // noodles
-  noodle_01: 414, noodle_02: 492, noodle_03: 340,
+  noodle_01: 307,            // Pad Thai — launcher base (kept for form↔server parity; never ordered directly)
+  noodle_01_sin: 307,        // Pad Thai - Sin Proteína
+  noodle_01_pollo: 342,      // Pad Thai - Pollo (+35)
+  noodle_01_camaron: 414,    // Pad Thai - Camarones (+107)
+  noodle_02: 492, noodle_03: 340,
   // rice
   rice_01: 270, rice_02: 456, rice_03: 448, rice_04: 392,
   // soups_salads

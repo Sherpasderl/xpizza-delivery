@@ -52,17 +52,17 @@ const LA_MUSA_MENU_EXPECTED = {
   starter_01: 262, starter_02: 252, starter_03: 265, starter_04: 378, starter_05: 413, starter_06: 409,
   special_01: 588, special_02: 478, special_04: 624, special_05: 384,
   crudo_01: 452, crudo_02: 346, crudo_03: 337,
-  noodle_01: 414, noodle_02: 492, noodle_03: 340,
+  noodle_01: 307, noodle_01_sin: 307, noodle_01_pollo: 342, noodle_01_camaron: 414, noodle_02: 492, noodle_03: 340,
   rice_01: 270, rice_02: 456, rice_03: 448, rice_04: 392,
   soup_01: 255, soup_02: 288, soup_03: 192,
   beer_01: 102, beer_02: 102, beer_03: 102, beer_04: 98, beer_05: 102, beer_06: 102, beer_07: 81, beer_08: 81,
   soft_01: 40, soft_02: 40, soft_03: 40, soft_04: 40,
 };
-assert.equal(Object.keys(MENU_BY_RESTAURANT.la_musa).length, 40); ok('la_musa has exactly 40 items');
+assert.equal(Object.keys(MENU_BY_RESTAURANT.la_musa).length, 43); ok('la_musa has exactly 43 items');
 for (const [id, price] of Object.entries(LA_MUSA_MENU_EXPECTED)) {
   assert.deepStrictEqual(computeServerTotal([{ id, qty: 1 }], 'la_musa'), { total: price, error: null });
 }
-ok('all 40 la_musa ids price exactly');
+ok('all 43 la_musa ids price exactly');
 const fullCart = Object.keys(LA_MUSA_MENU_EXPECTED).map((id) => ({ id, qty: 1 }));
 const expectedSum = Object.values(LA_MUSA_MENU_EXPECTED).reduce((a, b) => a + b, 0);
 assert.deepStrictEqual(computeServerTotal(fullCart, 'la_musa'), { total: expectedSum, error: null }); ok(`la_musa full-menu cart sums to L${expectedSum}`);
@@ -98,5 +98,13 @@ assert.deepStrictEqual(
 assert.deepStrictEqual(
   computeServerTotal([{ name: 'Margherita', qty: 1, extras: [{ name: 'Mozzarella' }, { name: 'Mozzarella' }] }]),
   { total: 299 + 50 + 50, error: null }); ok('x_pizza extras: duplicates counted (no dedup) — #5 guard is la_musa-only');
+
+// ── La Musa Pad Thai protein variants (distinct ids, base 307 / +35 / +107) ──
+assert.deepStrictEqual(computeServerTotal([{ id: 'noodle_01_sin', qty: 1 }], 'la_musa'), { total: 307, error: null }); ok('la_musa Pad Thai Sin Proteína = 307');
+assert.deepStrictEqual(computeServerTotal([{ id: 'noodle_01_pollo', qty: 1 }], 'la_musa'), { total: 342, error: null }); ok('la_musa Pad Thai Pollo = 342');
+assert.deepStrictEqual(computeServerTotal([{ id: 'noodle_01_camaron', qty: 1 }], 'la_musa'), { total: 414, error: null }); ok('la_musa Pad Thai Camarones = 414');
+assert.deepStrictEqual(computeServerTotal([{ id: 'noodle_01_pollo', qty: 1 }, { id: 'noodle_01_camaron', qty: 1 }], 'la_musa'), { total: 342 + 414, error: null }); ok('la_musa mixed protein lines sum');
+assert.deepStrictEqual(computeServerTotal([{ id: 'noodle_01_camaron', qty: 2 }], 'la_musa'), { total: 828, error: null }); ok('la_musa same protein qty 2 = 828');
+assert.equal(computeServerTotal([{ id: 'noodle_01_bogus', qty: 1 }], 'la_musa').error !== null, true); ok('la_musa unknown variant id rejected');
 
 console.log(`menu-pricing: OK (${n} cases)`);
