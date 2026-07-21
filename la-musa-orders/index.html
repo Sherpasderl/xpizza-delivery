@@ -2407,7 +2407,7 @@ function goToLocation(){
   const err=document.getElementById('err1');
   // Closed-hours no longer blocks Paso 1 — the customer proceeds to Checkout and schedules there
   // (Estándar disabled / Programar required). The server still fail-closed-rejects ASAP-while-closed.
-  if(!has){ err.style.display='block'; err.textContent='Seleccioná al menos una pizza.'; return; }
+  if(!has){ err.style.display='block'; err.textContent='Seleccioná al menos un item.'; return; }
   if(calcTotal()<MIN_ORDER){ err.style.display='block'; err.textContent='Agrega L '+(MIN_ORDER-calcTotal()).toFixed(0)+' más para alcanzar el mínimo de L '+MIN_ORDER+'.'; return; }
   const phoneDigits=phone.replace(/[^\d]/g,'');
   if(!name||phoneDigits.length!==11){ 
