@@ -1599,7 +1599,10 @@ const MENU = [
   { id:"crudo_01", cat:"crudo", name:"Tuna Crudo", price:452, desc:"Atún laminado, leche de tigre, ají amarillo, microverdes", tags:["must_try"], color:"#2D5447", emoji:"🐟" },
   { id:"crudo_02", cat:"crudo", name:"Ceviche Peruano", price:346, desc:"Pescado fresco, leche de tigre, cebolla morada, camote, choclo", tags:[], color:"#2D5447", emoji:"🐟" },
   { id:"crudo_03", cat:"crudo", name:"Ceviche de Camaron", price:337, desc:"Camarones tigre, leche de tigre, ají amarillo, pepino", tags:[], color:"#2D5447", emoji:"🐟" },
-  { id:"noodle_01", cat:"noodles", name:"Pad Thai", price:414, desc:"Fideos wok, camarones, tamarindo, maní, brotes, huevo", tags:["most_ordered"], color:"#8A7B6B", emoji:"🍜" },
+  { id:"noodle_01", cat:"noodles", name:"Pad Thai", price:307, desc:"Fideos wok, tamarindo, maní, brotes, huevo", tags:["most_ordered"], color:"#8A7B6B", emoji:"🍜" },
+  { id:"noodle_01_sin",     cat:"noodles", name:"Pad Thai - Sin Proteína", price:307, color:"#8A7B6B", emoji:"🍜", variantOf:"noodle_01", choice:"Sin Proteína" },
+  { id:"noodle_01_pollo",   cat:"noodles", name:"Pad Thai - Pollo",        price:342, color:"#8A7B6B", emoji:"🍜", variantOf:"noodle_01", choice:"Pollo" },
+  { id:"noodle_01_camaron", cat:"noodles", name:"Pad Thai - Camarones",    price:414, color:"#8A7B6B", emoji:"🍜", variantOf:"noodle_01", choice:"Camarones" },
   { id:"noodle_02", cat:"noodles", name:"Broccoli Beef", price:492, desc:"Res tierna, brócoli, salsa de ostras y jengibre", tags:[], color:"#8A7B6B", emoji:"🍜" },
   { id:"noodle_03", cat:"noodles", name:"Hunan Chicken", price:340, desc:"Pollo salteado, chiles secos, frijol negro, bok choy", tags:[], color:"#8A7B6B", emoji:"🍜" },
   { id:"rice_01", cat:"rice", name:"General Tso Chicken", price:270, desc:"Pollo crocante al wok, salsa Tso dulce-picante, sésamo, arroz jazmín", tags:["most_ordered"], color:"#A8814E", emoji:"🍚" },
@@ -1818,6 +1821,16 @@ const EXTRAS_BY_ITEM = {
     "Proteínas"
   ]
 };
+
+// Launcher item id → its required single-select protein variants (each a real MENU id → its own
+// cart line). To add another dish later: add its variant entries to MENU + LA_MUSA_MENU (server),
+// then ONE entry here. No new code.
+const VARIANT_ITEMS = {
+  noodle_01: { label: "Proteína", basePrice: 307,
+               variantIds: ["noodle_01_sin","noodle_01_pollo","noodle_01_camaron"] },
+};
+function itemIsLauncher(p) { return !!(p && VARIANT_ITEMS[p.id]); }
+function itemIsVariant(p)  { return !!(p && p.variantOf); }
 
 // Helpers — used by the card template (to decide whether a card
 // is tappable) and by renderDetailModal (to scope the modifier
@@ -2061,7 +2074,7 @@ function renderMenu() {
   };
 
   CATEGORIES.forEach(c => {
-    const items = MENU.filter(p => p.cat === c.id);
+    const items = MENU.filter(p => p.cat === c.id && !p.variantOf);
     const host = document.getElementById('menu-' + c.id);
     if (!host) return;
     const useList = c.layout === 'list';

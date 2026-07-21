@@ -46,7 +46,7 @@ function assertExactParity(label, form, server, expectedCount) {
 const formMenu = parseEntries(sliceArray('MENU'));
 const formExtras = parseEntries(sliceArray('EXTRAS'));
 
-assertExactParity('MENU', formMenu, MENU_BY_RESTAURANT.la_musa, 40); ok('form MENU (40) === server la_musa menu (exact id-set + prices)');
+assertExactParity('MENU', formMenu, MENU_BY_RESTAURANT.la_musa, 43); ok('form MENU (43) === server la_musa menu (exact id-set + prices)');
 assertExactParity('EXTRAS', formExtras, EXTRAS_BY_RESTAURANT.la_musa, 14); ok('form EXTRAS (14) === server la_musa extras (exact id-set + prices)');
 
 console.log(`menu-parity: OK (${n} cases)`);
