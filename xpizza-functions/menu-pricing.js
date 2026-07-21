@@ -45,6 +45,7 @@ const LA_MUSA_MENU = {
   // crudo
   crudo_01: 452, crudo_02: 346, crudo_03: 337,
   // noodles
+  noodle_01: 414,            // Pad Thai launcher — safe-max fallback: UI never orders it; a forged bare id pays the TOP protein price, so it can never underpay. Kept for zero-downtime / stale-client compat.
   noodle_01_sin: 307,        // Pad Thai - Sin Proteína
   noodle_01_pollo: 342,      // Pad Thai - Pollo (+35)
   noodle_01_camaron: 414,    // Pad Thai - Camarones (+107)

@@ -44,22 +44,9 @@ function assertExactParity(label, form, server, expectedCount) {
 }
 
 const formMenu = parseEntries(sliceArray('MENU'));
-// Launcher ids (VARIANT_ITEMS keys) are UI-only chooser cards — intentionally NOT server-priced
-// (a bare launcher id must be rejected, not charged). Exclude them from the form→server parity set.
-function parseLauncherIds() {
-  const s = FORM.indexOf('const VARIANT_ITEMS = {');
-  if (s === -1) return [];
-  const block = FORM.slice(s, FORM.indexOf('};', s));
-  const re = /(\w+):\s*\{\s*label:/g; const ids = []; let m;
-  while ((m = re.exec(block)) !== null) ids.push(m[1]);
-  return ids;
-}
-const LAUNCHER_IDS = parseLauncherIds();
-assert.ok(LAUNCHER_IDS.length >= 1, 'expected >=1 launcher id (VARIANT_ITEMS) in the form');
-for (const id of LAUNCHER_IDS) delete formMenu[id];
 const formExtras = parseEntries(sliceArray('EXTRAS'));
 
-assertExactParity('MENU', formMenu, MENU_BY_RESTAURANT.la_musa, 42); ok('form MENU (42 orderable, launchers excluded) === server la_musa menu (exact id-set + prices)');
+assertExactParity('MENU', formMenu, MENU_BY_RESTAURANT.la_musa, 43); ok('form MENU (43) === server la_musa menu (exact id-set + prices)');
 assertExactParity('EXTRAS', formExtras, EXTRAS_BY_RESTAURANT.la_musa, 14); ok('form EXTRAS (14) === server la_musa extras (exact id-set + prices)');
 
 console.log(`menu-parity: OK (${n} cases)`);

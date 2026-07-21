@@ -1605,7 +1605,7 @@ const MENU = [
   { id:"crudo_01", cat:"crudo", name:"Tuna Crudo", price:452, desc:"Atún laminado, leche de tigre, ají amarillo, microverdes", tags:["must_try"], color:"#2D5447", emoji:"🐟" },
   { id:"crudo_02", cat:"crudo", name:"Ceviche Peruano", price:346, desc:"Pescado fresco, leche de tigre, cebolla morada, camote, choclo", tags:[], color:"#2D5447", emoji:"🐟" },
   { id:"crudo_03", cat:"crudo", name:"Ceviche de Camaron", price:337, desc:"Camarones tigre, leche de tigre, ají amarillo, pepino", tags:[], color:"#2D5447", emoji:"🐟" },
-  { id:"noodle_01", cat:"noodles", name:"Pad Thai", price:307, desc:"Fideos wok, tamarindo, maní, brotes, huevo", tags:["most_ordered"], color:"#8A7B6B", emoji:"🍜" },
+  { id:"noodle_01", cat:"noodles", name:"Pad Thai", price:414, desc:"Fideos wok, tamarindo, maní, brotes, huevo", tags:["most_ordered"], color:"#8A7B6B", emoji:"🍜" },
   { id:"noodle_01_sin",     cat:"noodles", name:"Pad Thai - Sin Proteína", price:307, color:"#8A7B6B", emoji:"🍜", variantOf:"noodle_01", choice:"Sin Proteína" },
   { id:"noodle_01_pollo",   cat:"noodles", name:"Pad Thai - Pollo",        price:342, color:"#8A7B6B", emoji:"🍜", variantOf:"noodle_01", choice:"Pollo" },
   { id:"noodle_01_camaron", cat:"noodles", name:"Pad Thai - Camarones",    price:414, color:"#8A7B6B", emoji:"🍜", variantOf:"noodle_01", choice:"Camarones" },
@@ -2048,7 +2048,7 @@ function renderMenu() {
         '<div class="pizza-card-name">' + p.name + '</div>' +
         '<div class="pizza-card-desc">' + (p.desc || '') + '</div>' +
         '<div class="pizza-card-footer">' +
-          /* LA_MUSA_CURRENCY_PREFIX */ '<span class="pizza-card-price">' + (itemIsLauncher(p) ? 'desde L ' + p.price : (p.price > 0 ? 'L ' + p.price : '—')) + '</span>' +
+          /* LA_MUSA_CURRENCY_PREFIX */ '<span class="pizza-card-price">' + (itemIsLauncher(p) ? 'desde L ' + VARIANT_ITEMS[p.id].basePrice : (p.price > 0 ? 'L ' + p.price : '—')) + '</span>' +
           '<span class="card-extras-indicator" id="extras-indicator-' + p.id + '" style="display:none">✓ Extras</span>' +
           /* LA_MUSA_POLISH_V1: removed dead 'Extras →' hint (modal opens via photo tap) */
         '</div>' +
