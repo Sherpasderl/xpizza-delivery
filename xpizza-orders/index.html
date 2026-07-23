@@ -653,6 +653,14 @@ textarea{resize:none;height:80px;line-height:1.4}
   background:#fff;color:var(--charcoal);
   box-shadow:0 1px 4px rgba(0,0,0,0.12);
 }
+.pickup-gate{margin:12px 16px 0;border:1px solid #E7B4A8;background:#FBEAE6;border-radius:12px;padding:13px 14px}
+.pickup-gate-title{font-family:var(--sans);font-size:13.5px;font-weight:700;color:#8f2413;line-height:1.4}
+.pickup-gate-body{font-family:var(--sans);font-size:12.5px;color:#7a4034;line-height:1.5;margin:6px 0 11px}
+.pickup-gate-actions{display:flex;gap:8px;flex-wrap:wrap}
+.pickup-gate-btn{border:0;border-radius:9px;padding:9px 12px;font-family:var(--sans);font-size:12.5px;font-weight:700;cursor:pointer}
+.pickup-gate-btn.primary{background:var(--red);color:#fff}
+.pickup-gate-btn.ghost{background:#fff;color:var(--charcoal);border:1px solid var(--border)}
+.pickup-note{margin:12px 16px 0;border:1px solid #BFE0CC;background:var(--green-bg);border-radius:12px;padding:11px 14px;font-family:var(--sans);font-size:12.5px;color:#1f5734}
 .pickup-info{display:none}
 .pickup-store-row{
   display:flex;align-items:flex-start;gap:12px;
@@ -1106,6 +1114,15 @@ textarea{resize:none;height:80px;line-height:1.4}
       <button class="delivery-toggle-btn active" id="btn-delivery" onclick="setOrderType('delivery')">Delivery</button>
       <button class="delivery-toggle-btn" id="btn-pickup" onclick="setOrderType('pickup')">Pickup</button>
     </div>
+    <div class="pickup-gate" id="pickup-gate" style="display:none">
+      <div class="pickup-gate-title">Las NY Pizzas 18" solo están disponibles para pickup</div>
+      <div class="pickup-gate-body">Tu carrito tiene una NY Pizza de 18". Para pedir a domicilio, quitala; o cambiá el pedido a Pickup.</div>
+      <div class="pickup-gate-actions">
+        <button type="button" class="pickup-gate-btn primary" onclick="removePickupOnlyFromCart()">Quitar NY Pizzas 18" del carrito</button>
+        <button type="button" class="pickup-gate-btn ghost" onclick="setOrderType('pickup')">Cambiar a Pickup</button>
+      </div>
+    </div>
+    <div class="pickup-note" id="pickup-note" style="display:none">Pedido para recoger en tienda — incluye NY Pizza de 18".</div>
 
     <!-- ── Scheduled Orders: Checkout time selector (Estándar = ASAP / Programar = real scheduled_for) ── -->
     <div class="time-select" id="time-select">
@@ -3158,6 +3175,21 @@ function setOrderType(type) {
   }
   // Keep the Checkout time selector's label ("entrega"/"recogida") + state in sync with the mode.
   refreshTimeSelector();
+}
+
+// Show the gate iff an 18" NY pizza is in the cart AND the order is Delivery; show the
+// pickup confirmation note when it's Pickup with an 18". Called from chg() and setOrderType().
+function refreshPickupGate(){
+  const gate = document.getElementById('pickup-gate');
+  const note = document.getElementById('pickup-note');
+  const conflict = cartHasPickupOnly() && orderType === 'delivery';
+  if (gate) gate.style.display = conflict ? 'block' : 'none';
+  if (note) note.style.display = (orderType === 'pickup' && cartHasPickupOnly()) ? 'block' : 'none';
+}
+// Remove every pickup-only item from the cart (reuses chg so card UI / totals / cart pill stay correct).
+function removePickupOnlyFromCart(){
+  MENU.forEach(p => { if (isPickupOnlyItem(p) && qty[p.id] > 0) chg(p.id, -qty[p.id]); });
+  refreshPickupGate();
 }
 
 /* ── Pickup/schedule time: the old SOFT pickup schedule-sheet (label-only pickup_time) was superseded by
