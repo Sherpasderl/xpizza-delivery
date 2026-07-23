@@ -2248,6 +2248,14 @@ async function processPayment(){
     document.getElementById('rtn-cliente').focus();
     return;
   }
+  if(orderType==='delivery' && cartHasPickupOnly()){
+    refreshPickupGate();
+    const gate=document.getElementById('pickup-gate');
+    if(gate) gate.scrollIntoView({behavior:'smooth', block:'center'});
+    document.getElementById('err3').style.display='block';
+    document.getElementById('err3').textContent='Las NY Pizzas 18" solo están disponibles para pickup.';
+    return;
+  }
   if(orderType==='delivery' && (!lat || !lng)){
     document.getElementById('err3').style.display='block';
     document.getElementById('err3').textContent='Por favor confirmá tu ubicación en el mapa.';
