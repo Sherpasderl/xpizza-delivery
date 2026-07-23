@@ -261,7 +261,7 @@ git commit -m "feat(xpizza): submit-time guard blocks Delivery + 18\" NY pizza"
 
 ### Task 7: Gate + deploy (advisor + Xavier)
 
-- [ ] **Advisor gate:** source-verify + self-review. **No codex money-gate** (client-side UX only — no money/state/pricing/security).
+- [ ] **Advisor gate:** source-verify + self-review + **codex-on-diff** (adversarial correctness/quality review — standing discipline for ANY built change, money or not). Focus: the gate can't be bypassed (Delivery + 18" can never actually submit), show/hide logic has no stuck/flicker/stale states, the badge/copy is XSS-safe, and zero regression to the 12" / delivery-zone / address / payment flow.
 - [ ] **Deploy (Xavier / advisor under go):** form-only → FF-merge `feature/xpizza-18inch-pickup-only` → `main` → git-CD redeploys `orders.xpizza.hn`. No functions deploy.
 - [ ] **Post-deploy verify from source:** curl `orders.xpizza.hn` and confirm the `Solo Pickup` badge + `pickup-gate` markup are live; do one on-device pass of the gate.
 
