@@ -115,6 +115,8 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
   background:none;border-top:none;border-left:none;border-right:none;
 }
 .cat-tab.active{color:var(--charcoal);border-bottom-color:var(--gold)}
+.tab-pickup{font-size:10px;font-weight:700;letter-spacing:.03em;color:var(--gold-dk);background:var(--gold-lt);padding:2px 6px;border-radius:5px;margin-left:6px;vertical-align:middle}
+.pickup-badge{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.03em;color:var(--gold-dk);background:var(--gold-lt);padding:3px 7px;border-radius:6px;margin-top:5px}
 
 /* ── Category section ── */
 .menu-section{display:none;padding:12px 16px 0}.menu-section.active{display:block}
@@ -1034,7 +1036,7 @@ textarea{resize:none;height:80px;line-height:1.4}
   <!-- Category tabs -->
   <div class="cat-tabs">
     <button class="cat-tab active" onclick="switchCat('individual',this)">12 Inch Pies</button>
-    <button class="cat-tab" onclick="switchCat('ny',this)">NY Slice · 18"</button>
+    <button class="cat-tab" onclick="switchCat('ny',this)">NY Slice · 18" <span class="tab-pickup">Solo Pickup</span></button>
   </div>
 
   <!-- Individual pizzas -->
@@ -1583,6 +1585,7 @@ function renderMenu(){
       </div>
       <div class="pizza-card-body">
         <div class="pizza-card-name">${p.name}</div>
+        ${isPickupOnlyItem(p) ? '<span class="pickup-badge">Solo Pickup</span>' : ''}
         <div class="pizza-card-desc">${p.desc||''}</div>
         <div class="pizza-card-footer">
           <span class="pizza-card-price">L ${p.price}</span>
