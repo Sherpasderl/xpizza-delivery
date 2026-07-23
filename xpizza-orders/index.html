@@ -1483,6 +1483,11 @@ function checkDeliveryRadius(la, ln){
 const qty = {};
 MENU.forEach(p => qty[p.id] = 0);
 
+// 18" NY pizzas are pickup-only. Data-driven: add a category here to make it pickup-only.
+const PICKUP_ONLY_CATS = ['ny'];
+const isPickupOnlyItem = (p) => PICKUP_ONLY_CATS.includes(p.cat);
+const cartHasPickupOnly = () => MENU.some(p => qty[p.id] > 0 && isPickupOnlyItem(p));
+
 /* ─────────────────────────────────────────────────────────────────────────────
    KDS Phase 2b — item availability ("Agotado") overlay.  STRICTLY ADDITIVE + FAIL-OPEN.
    A pure OVERLAY: a public-read of /restaurants/x_pizza/item_availability + a
