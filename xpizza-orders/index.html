@@ -1676,6 +1676,7 @@ function chg(id,d){
 
   updateTotal();
   updateCart();
+  refreshPickupGate();
 }
 
 function refreshCardExtrasIndicator(id){
@@ -3175,6 +3176,7 @@ function setOrderType(type) {
   }
   // Keep the Checkout time selector's label ("entrega"/"recogida") + state in sync with the mode.
   refreshTimeSelector();
+  refreshPickupGate();
 }
 
 // Show the gate iff an 18" NY pizza is in the cart AND the order is Delivery; show the
