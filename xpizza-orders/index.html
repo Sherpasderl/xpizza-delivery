@@ -3274,10 +3274,17 @@ function initPhoneControl(){
   // into {cc, local}. Guarded (hadPlus OR digits exceed local len) so normal local typing is never mis-stripped.
   function applyRaw(raw){
     let digits = String(raw).replace(/\D/g,''); const hadPlus = String(raw).indexOf('+') >= 0;
-    const codes = PHONE_COUNTRIES.map(c=>c.code).sort((a,b)=>b.length-a.length);
-    for(const code of codes){ const cc = PHONE_COUNTRIES.find(x=>x.code===code);
-      if(digits.indexOf(code)===0 && (hadPlus || digits.length > cc.len) && (digits.length - code.length) <= cc.len){
-        if(code !== phoneCC) setCountry(code); digits = digits.slice(code.length); break; } }
+    if(hadPlus){
+      // Explicit international ('+' present) → detect ANY country code (longest-prefix first).
+      const codes = PHONE_COUNTRIES.map(c=>c.code).sort((a,b)=>b.length-a.length);
+      for(const code of codes){ const cc = PHONE_COUNTRIES.find(x=>x.code===code);
+        if(digits.indexOf(code)===0 && (digits.length - code.length) <= cc.len){
+          if(code !== phoneCC) setCountry(code); digits = digits.slice(code.length); break; } }
+    } else if(digits.indexOf(phoneCC)===0 && digits.length > phoneCountry().len && (digits.length - phoneCC.length) <= phoneCountry().len){
+      // No '+' (autofill of a full number) → only strip the CURRENTLY-selected code (never another country's,
+      // so a valid US number whose area code equals a listed country code, e.g. 504, is never mis-stripped).
+      digits = digits.slice(phoneCC.length);
+    }
     inp.value = fmtPhoneLocal(phoneCC, digits.slice(0, phoneCountry().len));
   }
   inp.addEventListener('input', function(){ applyRaw(this.value); });
