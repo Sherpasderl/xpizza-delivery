@@ -192,7 +192,7 @@
     "user_profiles": {
       "$uid": {
         ".read":  "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid && newData.exists() && !root.child('deleted_uids').child($uid).exists()",
+        ".write": "auth != null && auth.uid === $uid && newData.exists() && newData.hasChildren(['phone', 'phone_hash', 'created_at', 'last_login']) && !root.child('deleted_uids').child($uid).exists()",
         "name":       { ".validate": "newData.isString() && newData.val().length <= 80" },
         "phone":      { ".validate": "newData.isString() && (!data.exists() || newData.val() === data.val())" },
         "created_at": { ".validate": "newData.isNumber() && (!data.exists() || newData.val() === data.val())" },

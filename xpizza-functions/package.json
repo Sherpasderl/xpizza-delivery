@@ -25,7 +25,8 @@
     "deploy:rules": "npm run check:rules && firebase deploy --only database",
     "logs": "firebase functions:log",
     "vapid": "npx web-push generate-vapid-keys",
-    "test:cancel-order": "firebase emulators:exec --only database --project demo-xpizza \"node test/cancel-order.emulator.test.js\""
+    "test:cancel-order": "firebase emulators:exec --only database --project demo-xpizza \"node test/cancel-order.emulator.test.js\"",
+    "test:user-profiles-rules": "firebase emulators:exec --only database --project demo-xpizza \"node test/user-profiles-rules.emulator.test.js\""
   },
   "engines": {
     "node": "22"

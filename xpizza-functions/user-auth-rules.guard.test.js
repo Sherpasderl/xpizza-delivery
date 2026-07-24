@@ -40,4 +40,13 @@ assert.ok(/!root\.child\('deleted_uids'\)\.child\(\$uid\)\.exists\(\)/.test(up['
   `user_profiles write must block a tombstoned uid (got: ${up['.write']})`); ok('user_profiles write blocks recreation of a tombstoned (deleted) uid');
 assert.ok(/newData\.val\(\) === data\.val\(\)/.test(up.last_login['.validate']),
   `last_login must be client-immutable (got: ${up.last_login['.validate']})`); ok('last_login client-immutable (cannot future-date to dodge the H9 sweep)');
+
+// ── R2 fix: a client cannot strip a server-truth field via child-delete. .validate does NOT run on a null
+// write, so the immutability guards can't stop a delete; the parent .write requires all 4 fields present
+// (hasChildren), evaluated on the MERGED post-write node, which cascades to child writes. ──
+for (const f of ['phone', 'phone_hash', 'created_at', 'last_login']) {
+  assert.ok(new RegExp(`hasChildren\\([^)]*'${f}'`).test(up['.write']),
+    `user_profiles write must require '${f}' present via hasChildren — got: ${up['.write']}`);
+  ok(`user_profiles write requires ${f} present (blocks client child-delete of server-truth field)`);
+}
 console.log(`user-auth-rules.guard: OK (${n})`);
