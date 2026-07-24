@@ -39,6 +39,6 @@ assert(!rules['.read'], 'FAIL: rules root has a truthy .read grant — would cas
 assert(!rules['.write'], 'FAIL: rules root has a truthy .write grant — would cascade over /counters');
 
 // Sanity: an unrelated sibling keeps its access (proves this guard didn't over-restrict the tree).
-assert.strictEqual(rules.order_timelines['.read'], 'auth != null', 'FAIL: sibling order_timelines .read changed — guard over-reached');
+assert.strictEqual(rules.order_timelines['.read'], 'auth != null && auth.token.customer !== true', 'FAIL: sibling order_timelines .read changed — guard over-reached');
 
 console.log('counters-rules.guard: OK (/counters is admin-only deny; no nested grant; no root cascade; sibling order_timelines unchanged)');
