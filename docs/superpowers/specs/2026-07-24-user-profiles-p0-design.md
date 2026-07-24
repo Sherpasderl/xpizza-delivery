@@ -46,11 +46,11 @@ Both are `onRequest` (CORS for the form origins), admin-SDK, **no `ORDER_SECRET`
     ".read":  "auth != null && auth.uid === $uid",
     ".write": "auth != null && auth.uid === $uid",
     "name":  { ".validate": "newData.isString() && newData.val().length <= 80" },
-    "phone": { ".validate": "newData.isString() && newData.val().length <= 20" },
-    "created_at": { ".validate": "newData.isNumber()" },
-    "updated_at": { ".validate": "newData.isNumber()" },
-    "addresses": { /* P2 — owner-only inherited */ },
-    "$other": { ".validate": false }        // no unexpected keys (PII discipline)
+    "phone": { ".validate": "newData.isString() && (!data.exists() || newData.val() === data.val())" },       // write-once (server sets)
+    "created_at": { ".validate": "newData.isNumber() && (!data.exists() || newData.val() === data.val())" },  // immutable
+    "updated_at": { ".validate": "newData.isNumber() && newData.val() <= now + 60000" },
+    "addresses": { ".validate": false },     // DENIED until P2 ships a strict schema (H5)
+    "$other": { ".validate": false }         // no unexpected keys (PII discipline)
   }
 },
 "user_orders": {                             // P3 history index; server-written, owner-read
@@ -77,7 +77,7 @@ Exactly the locked mockups (login `e6b19959…`, account `a8b5328b…`):
 
 ### 5. Order attribution
 
-When a **logged-in** customer submits, include `customer_uid` (the Auth uid) in the `createOrder` payload. The intake validates it (string, `u_` + hex) and writes `order.customer_uid`; when present it also writes a small `/user_orders/{uid}/{orderId} = { ts, total, order_type, items_text }` index (server-only write) to seed P3. **Guests send no `customer_uid`; the order path is otherwise unchanged.**
+When a **logged-in** customer submits, the client attaches its Firebase **ID token**; `createOrder` verifies it server-side (`admin.auth().verifyIdToken`) and derives **`customer_uid = decoded.uid`** — a client-supplied uid without a valid token is ignored, so attribution cannot be forged (H2). The intake writes `order.customer_uid` + a **server-only** `/user_orders/{uid}/{orderId} = { ts, total, order_type, items_text }` index to seed P3. **Guests send no token; the order path is otherwise unchanged.**
 
 ## Data flow
 
@@ -108,6 +108,28 @@ phone → `requestOtp` (rate-limited, WhatsApp code) → user enters code → `v
 - **Functions (unit):** phoneHash/code hashing; rate-limit windows (30s / 3-per-10min / per-IP); verify success/expiry/attempt-cap/mismatch; uid create-or-reuse (same phone → same uid); token minted only on success; one-time OTP deletion; no-enumeration uniform responses. (Emulator for the RTDB nodes.)
 - **Rules (guard tests):** `/user_profiles/{uid}` readable/writable only by `auth.uid===uid`, denied for other/anon; `$other:false`; `/otp`,`/otp_ip`,`/phone_index` deny all client access; `/user_orders/{uid}` owner-read/no-client-write.
 - **Manual (both forms):** guest order unchanged; log in end-to-end (phone→WhatsApp code→name→chip); reload stays logged in; sign out; a logged-in order carries `customer_uid`; wrong code / resend / rate-limit messaging; no emoji.
+
+## Security hardening (resolves codex design-review R1)
+
+**H1 — Customer auth must NOT satisfy staff reads (BLOCKING pre-req).** Minting customer custom tokens makes customers `auth != null`, which today grants read of every node gated by bare `auth != null` (`/orders`, `/tasks`, `/order_timelines`, `/config`, `/drivers`, restaurant identity) — a mass PII/operational leak. **Before any customer token is minted**, audit every rule and replace bare-`auth != null` operational reads with a **positive staff-role check** (`root.child('dispatchers').child(auth.uid).exists()` / driver / kitchen membership). Customer tokens carry a `customer:true` claim and are never a staff role. This rules-hardening pass is **part of P0 and ships (functions+rules) before the login UI**. Guard tests: a `customer:true` token is DENIED on `/orders`, `/tasks`, `/order_timelines`, `/config`, `/drivers`, etc.; existing staff/driver access is unchanged.
+
+**H2 — Attribution via verified ID token, not client uid.** `createOrder` accepts an optional Firebase **ID token**, `verifyIdToken`s it, and derives `customer_uid = decoded.uid`; a client-supplied uid is ignored. `/user_orders/{uid}` is written server-side only from the verified uid. (Inline above.)
+
+**H3 — Atomic OTP verify + rate-limit (no races).** `verifyOtp` does check-expiry/attempts/code **+ consume in ONE RTDB transaction** (CAS): failure → atomic `attempts++`; success → atomic mark-consumed BEFORE minting, so parallel verifies can't exceed 5 attempts or mint twice. `requestOtp` **reserves the send-slot in an atomic transaction** (30s + 3-per-10min window) BEFORE generating/sending, reconciling send-state after UltraMsg returns.
+
+**H4 — Per-phone limit GLOBAL across brands; per-IP secondary.** The per-phone rate-limit is keyed by `phoneHash` **shared across X. Pizza + La Musa** (not per-brand — else a victim gets 2× the messages). Per-IP uses the platform-trusted client IP (Cloud Run), treated as secondary since XFF is client-spoofable (`index.js:421`); per-phone + an App-Check risk signal are primary. Add a **global send budget** + abuse **monitoring/alerting**; App Check can flip monitor→enforce once telemetry shows safe coverage.
+
+**H5 — Profile rules: server-truth fields immutable.** `phone`/`created_at` are write-once (validated `!data.exists() || newData===data`); `updated_at` bounded to ~now; `addresses` **denied** until P2's strict schema. Owner-only `.read/.write` unchanged. (Inline in the rules block.)
+
+**H6 — Hard CORS allowlist on token endpoints.** `requestOtp`/`verifyOtp` (and the ID-token path on `createOrder`) use an **exact origin allowlist** (`https://orders.xpizza.hn`, `https://orders.lamusa.hn`, Netlify preview domains) — NOT `cors:true`. Unknown origins rejected; responses generic.
+
+**H7 — `OTP_SALT` fail-closed.** Functions assert a present, sufficiently-long `OTP_SALT` at init and **fail-closed (500)** if missing/weak — never hash with an empty/default salt.
+
+**H8 — Guest isolation by design.** Firebase app/auth/database is **lazy-loaded only on first login interaction** (not at page load); all account init is wrapped in isolated `try/catch`; the guest submit path keeps its inline-globals + `fetch`, zero Firebase dependency. **Required test:** block the Firebase SDK at the network layer and confirm a guest order still submits.
+
+**H9 — Recycled-number handling.** Phone-as-identity means a reassigned number could inherit the prior owner's record. P0 exposes only a name (low harm), but **before P2/P3** (addresses/history) this is mitigated: **stale-profile re-confirm** (profile inactive > ~6 months → next login treats it as fresh / requires re-entering name before showing durable data) + an ops redaction path. **Blocking pre-req for P2.**
+
+**H10 — Minimum privacy for launch.** A P0 **"Eliminar mi cuenta"** path (clears `/user_profiles/{uid}` + `/phone_index/{phoneHash}` + `/user_orders/{uid}`) and **disclosure copy** that the account is shared across X. Pizza + La Musa. Full data-export + automated recycled-number recovery tooling tracked for a later privacy pass.
 
 ## Gate & rollout
 
