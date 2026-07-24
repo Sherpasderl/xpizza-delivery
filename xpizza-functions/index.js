@@ -4369,3 +4369,45 @@ exports.requestOtp = onRequest(
     }
   }
 );
+
+exports.verifyOtp = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  async (req, res) => {
+    let OTP;
+    try { OTP = require('./otp-lib'); }
+    catch (e) { console.error('verifyOtp: OTP_SALT misconfigured — failing closed', e.message); return res.status(500).json({ ok: false }); }
+    try {
+      if (req.method !== 'POST') return res.status(405).json({ ok: false });
+      const { phone, code } = req.body || {};
+      const pHash = OTP.phoneHash(phone);
+      if (!pHash || !/^\d{6}$/.test(String(code || ''))) return res.status(200).json({ ok: false });   // generic
+      const now = Date.now();
+      const db = getDatabase();
+      const otpRef = db.ref('otp/' + pHash);
+      // ATOMIC (H3): verify expiry/attempts/code AND consume (mark consumed) in ONE transaction, BEFORE any
+      // mint. Parallel verifies can't exceed the 5-attempt cap or mint twice — `consumed` is CAS-guarded.
+      let outcome = 'fail';
+      await otpRef.transaction((v) => { const r = OTP.verifyConsume(v, now, String(code)); outcome = r.outcome; return r.next; });
+      if (outcome !== 'ok') return res.status(200).json({ ok: false });   // wrong/expired/capped → generic, no mint
+
+      // Resolve/create the stable server-issued uid. `u_`-prefixed → DISJOINT from Firebase staff/driver
+      // UIDs by construction (staff sign in with email/password; their UIDs are never `u_...`), so a
+      // customer:true token can never collide with a staff uid in the uid-match rules.
+      const idxRef = db.ref('phone_index/' + pHash);
+      let uid = (await idxRef.get()).val();
+      if (!uid) { uid = 'u_' + require('crypto').randomBytes(12).toString('hex'); await idxRef.set(uid); }
+      const now2 = Date.now();
+      const profRef = db.ref('user_profiles/' + uid);
+      const prof = (await profRef.get()).val();
+      // phone_hash is stored (server-only write) so deleteAccount/sweep can find /phone_index in O(1).
+      if (!prof) await profRef.set({ phone: OTP.normalizePhone(phone), phone_hash: pHash, created_at: now2, last_login: now2 });
+      else await profRef.child('last_login').set(now2);
+      await otpRef.remove();   // one-time use — the code cannot be replayed
+      const token = await getAuth().createCustomToken(uid, { customer: true });   // mint ONLY after verified+consumed
+      return res.status(200).json({ ok: true, token, is_new: !prof, name: (prof && prof.name) || null });
+    } catch (e) {
+      console.error('verifyOtp', e);
+      return res.status(200).json({ ok: false });
+    }
+  }
+);
