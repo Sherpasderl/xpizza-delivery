@@ -136,4 +136,24 @@ function buildScheduledOrderRecord(args) {
   return { [`orders/${orderId}`]: record };
 }
 
-module.exports = { buildCreateOrderUpdates, buildScheduledOrderRecord };
+/**
+ * Attribution (H2 — User Profiles P0). Stamp a VERIFIED customer_uid onto the order record and a
+ * server-only /user_orders history index. NO-OP for guests (customer_uid falsy) so the guest path stays
+ * byte-identical. The uid comes ONLY from the caller (createOrder derives it from a verified
+ * X-Firebase-ID-Token, never from the request body) — this helper cannot forge it. `orders/{id}` is a
+ * whole-object key in `updates`, so mutating .customer_uid never overlaps a sibling path. Mutates +
+ * returns `updates`. `/user_orders` is server-written and .read-denied until P3.
+ */
+function attachCustomerAttribution(updates, orderId, customer_uid, meta) {
+  if (!customer_uid) return updates;
+  updates[`orders/${orderId}`].customer_uid = customer_uid;
+  updates[`user_orders/${customer_uid}/${orderId}`] = {
+    ts: meta.now,
+    total: meta.total,
+    order_type: meta.orderType,
+    items_text: meta.items_text,
+  };
+  return updates;
+}
+
+module.exports = { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution };

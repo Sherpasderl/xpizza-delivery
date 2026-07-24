@@ -66,7 +66,7 @@ const ppCrypto = require('./pixelpay');
 const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
 const { buildMaterializeUpdates } = require('./materialize');
 const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
-const { buildCreateOrderUpdates, buildScheduledOrderRecord } = require('./create-order-build');
+const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution } = require('./create-order-build');
 const SCHED = require('./scheduled-orders');                              // Scheduled Orders — pure hours/slot/release core
 const { releaseOne: releaseScheduledCore, recoverStaleReleasing } = require('./scheduled-release-core');
 const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
@@ -526,6 +526,17 @@ createOrderApp.all('*', async (req, res) => {
   const now = ServerValue.TIMESTAMP;
   const updates = {};
 
+  // Optional logged-in attribution (H2): a SEPARATE `X-Firebase-ID-Token` header, verified server-side.
+  // Guest path is byte-identical — guests send no token; a missing/malformed/expired/foreign token is
+  // ignored and the order proceeds as guest. A client-supplied customer_uid in the body is NEVER trusted;
+  // only decoded.uid from a VERIFIED customer:true token is used, so attribution can't be forged.
+  let customer_uid = null;
+  const idTok = req.get('x-firebase-id-token');
+  if (idTok) {
+    try { const dec = await getAuth().verifyIdToken(idTok); if (dec && dec.customer === true) customer_uid = dec.uid; }
+    catch (_) { /* malformed/expired/foreign → ignore, treat as guest */ }
+  }
+
   const trackingToken = generateTrackingToken();
   const priceBreakdown = orderBreakdownCents(total, restaurantId);  // platform → ISV 15% incl.; non-platform → no split
   // pricedLineItems feeds order.items, consumed ONLY by the platform factura trigger. Non-platform
@@ -557,6 +568,7 @@ createOrderApp.all('*', async (req, res) => {
       restaurantId, priceBreakdown, facturaPriced, cashTenderedCents,
       scheduledFor: scheduledForRaw, releaseAt,
     });
+    attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total, orderType, items_text: fields.items_text });
     try {
       await db.ref().update(heldUpdates);
       console.log(`createOrder: HELD scheduled ${orderType} order ${orderId} for ${scheduledForRaw} (release ${releaseAt})`);
@@ -582,6 +594,8 @@ createOrderApp.all('*', async (req, res) => {
     orderId, orderType, now, trackingToken, total, lat, lng, fields, hubSnap,
     restaurantId, priceBreakdown, facturaPriced, cashTenderedCents,
   }));
+
+  attachCustomerAttribution(updates, orderId, customer_uid, { now, total, orderType, items_text: fields.items_text });
 
   try {
     await db.ref().update(updates);
