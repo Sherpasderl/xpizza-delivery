@@ -4325,3 +4325,47 @@ exports.releaseScheduledOrder = onRequest(
     return res.status(result.released ? 200 : 409).json({ ok: !!result.released, order_id: orderId, ...result });
   }
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// User Profiles P0 — WhatsApp-OTP account auth (requestOtp / verifyOtp / deleteAccount)
+// These endpoints are their OWN auth (no ORDER_SECRET). CORS = EXACT allowlist (H6). otp-lib is
+// required LAZILY so a missing/weak OTP_SALT fails ONLY these endpoints closed (500, H7) — it does
+// NOT couple the rest of the functions module (createOrder, payments) to the OTP secret.
+// ─────────────────────────────────────────────────────────────────────────────
+const ACCOUNT_ORIGINS = [
+  'https://orders.xpizza.hn',
+  'https://orders.lamusa.hn',
+  /^https:\/\/[a-z0-9-]+--(xpizza|lamusa)?orders?\.netlify\.app$/,
+];
+
+exports.requestOtp = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  async (req, res) => {
+    let OTP;
+    try { OTP = require('./otp-lib'); }
+    catch (e) { console.error('requestOtp: OTP_SALT misconfigured — failing closed', e.message); return res.status(500).json({ ok: false }); }
+    try {
+      if (req.method !== 'POST') return res.status(405).json({ ok: false });
+      const { phone, restaurant_id } = req.body || {};
+      const { restaurantId } = resolveRestaurantId(restaurant_id);
+      const pHash = OTP.phoneHash(phone);
+      if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration
+      const now = Date.now();
+      const db = getDatabase();
+      // per-IP soft cap (secondary; req.ip is the Cloud Run-trusted peer, NOT spoofable XFF — H4)
+      const ipHash = require('crypto').createHash('sha256').update(String(req.ip || '')).digest('hex');
+      const ipTx = await db.ref('otp_ip/' + ipHash).transaction((v) => OTP.ipReserve(v, now));
+      if (!ipTx.committed) return res.status(200).json({ ok: true, cooldown: 30 });   // rate-limited → uniform
+      // per-phone atomic slot reservation (GLOBAL across brands, H4)
+      let code = null;
+      const tx = await db.ref('otp/' + pHash).transaction((v) => { const r = OTP.sendReserve(v, now); code = r.code; return r.next; });
+      if (!tx.committed || !code) return res.status(200).json({ ok: true, cooldown: 30 });   // too soon / too many → uniform
+      const brand = restaurantId === 'la_musa' ? 'La Musa' : 'X. Pizza';
+      await whatsapp.sendMessage(phone, `Tu código de ${brand} es ${code}. Vence en 5 minutos. No lo compartas.`, restaurantId);
+      return res.status(200).json({ ok: true, cooldown: 30 });
+    } catch (e) {
+      console.error('requestOtp', e);
+      return res.status(200).json({ ok: true, cooldown: 30 });   // never leak — uniform
+    }
+  }
+);
