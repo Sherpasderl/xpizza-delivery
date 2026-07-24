@@ -21,4 +21,17 @@ ok('restaurants identity read excludes customer tokens');
 const raw = fs.readFileSync(path.join(__dirname,'..','xpizza-reference','database.rules.json'),'utf8');
 assert.ok(!/"\.read":\s*"auth != null"/.test(raw), 'no bare auth!=null read may remain');
 ok('zero bare auth!=null reads remain');
+
+// ── Task 2: user_profiles owner-only + otp/phone_index/user_orders deny-all ──
+const up = rules.user_profiles.$uid;
+assert.equal(up['.read'],  "auth != null && auth.uid === $uid"); ok('user_profiles read owner-only');
+assert.ok(/newData\.exists\(\)/.test(up['.write']) && /auth\.uid === \$uid/.test(up['.write'])); ok('user_profiles write owner-only + no wholesale delete');
+assert.ok(/newData\.val\(\) === data\.val\(\)/.test(up.phone['.validate'])); ok('phone immutable');
+assert.ok(/newData\.val\(\) === data\.val\(\)/.test(up.created_at['.validate'])); ok('created_at immutable');
+assert.equal(up.addresses['.validate'], false); ok('addresses denied (P2)');
+assert.equal(up.$other['.validate'], false); ok('no stray profile keys');
+for (const k of ['user_orders','otp','otp_ip','phone_index']){
+  const node = k==='user_orders' ? rules.user_orders.$uid : rules[k];
+  assert.equal(node['.read'], false); assert.equal(node['.write'], false); ok(`${k} deny-all`);
+}
 console.log(`user-auth-rules.guard: OK (${n})`);
