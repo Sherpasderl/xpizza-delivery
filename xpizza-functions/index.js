@@ -1009,7 +1009,13 @@ chargeOnlineApp.all('*', async (req, res) => {
   const firstName = pad3(nameParts[0] || 'Cliente');
   const lastName = pad3(nameParts.slice(1).join(' ') || nameParts[0] || 'Cliente');
   const rawEmail = body.customer_email;
-  const email = (typeof rawEmail === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rawEmail.trim())) ? rawEmail.trim() : 'pedidos@xpizza.hn';
+  // Fallback when the customer leaves the (optional) email blank: it MUST be a deliverable, PixelPay-accepted
+  // address. The former 'pedidos@xpizza.hn' is on a domain with NO MX record → PixelPay's email validation
+  // intermittently rejects it ({"_email": invalid}), failing card checkout for every blank-email order.
+  // PIXELPAY_MERCHANT_EMAIL is PixelPay's own registered merchant user (a real gmail.com address, valid MX)
+  // so it can never be rejected. A customer-supplied valid email is used unchanged — only the fallback moves.
+  const fallbackEmail = process.env.PIXELPAY_MERCHANT_EMAIL || 'pedidos@lamusa.hn';   // both deliverable (MX-valid)
+  const email = (typeof rawEmail === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rawEmail.trim())) ? rawEmail.trim() : fallbackEmail;
 
   // Customer-facing return URLs + the AUTHENTICATED server callback (?secret=…).
   // IMPORTANT: the return URLs use the ORDER-SITE origin (where the return/poll page lives),
