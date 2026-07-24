@@ -1,14 +1,14 @@
 {
   "rules": {
     "dispatchers": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.token.customer !== true",
       "$uid": {
         ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
       }
     },
 
     "drivers": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.token.customer !== true",
       "$driver_id": {
         ".write": "auth != null && (auth.uid === $driver_id || root.child('dispatchers').child(auth.uid).exists())",
         ".validate": "newData.hasChildren(['name'])",
@@ -32,7 +32,7 @@
     },
 
     "tasks": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.token.customer !== true",
       ".indexOn": ["assigned_driver_id", "order_id", "status", "type"],
       "$task_id": {
         ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || (data.exists() && data.child('assigned_driver_id').val() === auth.uid))",
@@ -47,7 +47,7 @@
     },
 
     "orders": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.token.customer !== true",
       ".indexOn": ["status", "created_at", "order_type"],
       "$order_id": {
         ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
@@ -65,7 +65,7 @@
     },
 
     "config": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.token.customer !== true",
       ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
     },
 
@@ -85,7 +85,7 @@
     },
 
     "order_events":     { ".read": false, ".write": false },
-    "order_timelines":  { ".read": "auth != null", ".write": false },
+    "order_timelines":  { ".read": "auth != null && auth.token.customer !== true", ".write": false },
     "order_predictions":{ ".read": "auth != null && root.child('dispatchers').child(auth.uid).exists()", ".write": false },
     "prediction_logs":  { ".read": false, ".write": false, ".indexOn": ["v1-hier-ringmed-30/new_at"] },
     "ready_time_config":{ ".read": false, ".write": false },
@@ -104,7 +104,7 @@
     },
 
     "kitchen": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.token.customer !== true",
       "$uid": {
         ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
       }
@@ -139,7 +139,7 @@
       "$restaurant_id": {
         "factura_config": { ".read": false, ".write": false },
         "identity": {
-          ".read": "auth != null",
+          ".read": "auth != null && auth.token.customer !== true",
           ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
           ".validate": "newData.hasChildren(['name','hub_lat','hub_lng','phone','whatsapp_instance','whatsapp_enabled','delivery_radius_km','hours','active','version'])",
           "hub_lat":  { ".validate": "newData.isNumber()" },
