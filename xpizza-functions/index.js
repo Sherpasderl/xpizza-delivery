@@ -4425,3 +4425,48 @@ exports.verifyOtp = onRequest(
     }
   }
 );
+
+// deleteAccount (H10) — server-side account deletion. The client CANNOT null its profile directly (the
+// user_profiles .write rule requires newData.exists()); deletion goes through here, authenticated by the
+// caller's own Firebase ID token. Clears the caller's profile + order history + phone_index atomically.
+const ACCOUNT = require('./account-lib');
+
+exports.deleteAccount = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  async (req, res) => {
+    try {
+      if (req.method !== 'POST') return res.status(405).json({ ok: false });
+      const idTok = req.get('x-firebase-id-token');
+      if (!idTok) return res.status(401).json({ ok: false });
+      let dec;
+      try { dec = await getAuth().verifyIdToken(idTok); }
+      catch (_) { return res.status(401).json({ ok: false }); }
+      if (!dec || dec.customer !== true || !dec.uid) return res.status(403).json({ ok: false });
+      const uid = dec.uid;   // only ever the CALLER's own account — a client can't pass someone else's uid
+      const db = getDatabase();
+      const pHash = (await db.ref(`user_profiles/${uid}/phone_hash`).get()).val();
+      await db.ref().update(ACCOUNT.accountDeleteUpdates(uid, pHash));
+      console.log(`deleteAccount: cleared account ${uid}`);
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      console.error('deleteAccount', e);
+      return res.status(500).json({ ok: false });
+    }
+  }
+);
+
+// Inactivity-aging sweep (H9) — a scheduled server-side prune of accounts dormant > ~6 months, so a
+// recycled phone number resolves to a FRESH account rather than inheriting the prior holder's (a risk
+// REDUCER, not a proof of ownership). Reads all profiles (P0 scale is small) and applies one atomic delete.
+exports.pruneInactiveAccounts = onSchedule(
+  { schedule: 'every 24 hours', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const db = getDatabase();
+    const snap = await db.ref('user_profiles').get();
+    if (!snap.exists()) { console.log('pruneInactiveAccounts: no profiles'); return; }
+    const cutoff = Date.now() - ACCOUNT.INACTIVE_MS;
+    const { updates, count } = ACCOUNT.pruneUpdates(snap.val(), cutoff);
+    if (count) await db.ref().update(updates);
+    console.log(`pruneInactiveAccounts: removed ${count} inactive profile(s) (cutoff ${new Date(cutoff).toISOString()})`);
+  }
+);
