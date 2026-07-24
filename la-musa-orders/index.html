@@ -615,6 +615,15 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .field-divider{border-bottom:1px solid var(--border)}
 .field-label{display:block;font-family:var(--sans);font-size:14px;font-weight:600;color:var(--charcoal);margin-bottom:8px}
 input[type=text],input[type=tel],input[type=email],textarea{width:100%;padding:14px 14px;border:1.5px solid var(--border2);border-radius:8px;background:var(--cream);color:var(--charcoal);font-size:17px;font-family:var(--body);outline:none;transition:border-color .2s;-webkit-appearance:none;min-height:48px}
+.phone-row{display:flex;gap:8px;position:relative}
+.cc-btn{flex:none;display:flex;align-items:center;gap:6px;border:1.5px solid var(--border2);background:var(--cream);border-radius:8px;padding:0 12px;min-height:48px;font-family:inherit;font-size:17px;font-weight:600;color:var(--charcoal);cursor:pointer;white-space:nowrap}
+.cc-btn .caret{color:#8C7B6E;font-size:12px}
+.cc-menu{position:absolute;top:54px;left:0;z-index:30;background:#fff;border:1.5px solid var(--border2);border-radius:10px;box-shadow:0 14px 40px -14px rgba(20,15,10,.3);padding:6px;min-width:240px;max-height:260px;overflow:auto;display:none}
+.cc-menu.open{display:block}
+.cc-opt{display:flex;justify-content:space-between;gap:12px;padding:11px 12px;border-radius:7px;cursor:pointer;font-size:15px;color:var(--charcoal)}
+.cc-opt:hover{background:var(--cream)}
+.cc-opt .code{color:#8C7B6E;font-variant-numeric:tabular-nums}
+.cc-opt.sel{background:var(--cream);font-weight:700}
 input:focus,textarea:focus{border-color:var(--gold);outline:none}
 input::placeholder,textarea::placeholder{color:var(--muted)}
 textarea{resize:none;height:80px;line-height:1.4}
@@ -1248,7 +1257,11 @@ textarea{resize:none;height:80px;line-height:1.4}
       </div>
       <div class="field-group field-divider">
         <label class="field-label">WhatsApp</label>
-        <input type="tel" id="cphone" placeholder="+504 9999-9999" maxlength="14" autocomplete="tel"/>
+        <div class="phone-row">
+          <button type="button" class="cc-btn" id="cc-btn" aria-label="Código de país">+504 <span class="caret">▾</span></button>
+          <input type="tel" id="cphone" inputmode="numeric" placeholder="9999-9999" autocomplete="tel"/>
+          <div class="cc-menu" id="cc-menu" role="listbox"></div>
+        </div>
       </div>
       <div class="field-group field-divider">
         <label class="field-label">Correo <span style="font-weight:400;color:#999">(opcional · para tu recibo)</span></label>
@@ -2410,10 +2423,11 @@ function goToLocation(){
   if(!has){ err.style.display='block'; err.textContent='Seleccioná al menos un item.'; return; }
   if(calcTotal()<MIN_ORDER){ err.style.display='block'; err.textContent='Agrega L '+(MIN_ORDER-calcTotal()).toFixed(0)+' más para alcanzar el mínimo de L '+MIN_ORDER+'.'; return; }
   const phoneDigits=phone.replace(/[^\d]/g,'');
-  if(!name||phoneDigits.length!==11){ 
-    err.style.display='block'; 
-    err.textContent=!name?'Por favor ingresá tu nombre.':'Número de WhatsApp inválido. Debe ser +504 seguido de 8 dígitos.'; 
-    return; 
+  const needLen=phoneCountry().len;
+  if(!name || phoneDigits.length!==needLen){
+    err.style.display='block';
+    err.textContent=!name?'Por favor ingresá tu nombre.':('Número de WhatsApp inválido. Ingresá los '+needLen+' dígitos de tu número.');
+    return;
   }
   err.style.display='none';
   showStage('s2',50);
@@ -2752,7 +2766,7 @@ function buildOrder(){
     restaurant_id: RESTAURANT_ID,
     order_id: orderId,
     customer_name: document.getElementById('cname').value.trim(),
-    customer_phone: document.getElementById('cphone').value.trim(),
+    customer_phone: fullPhone(),
     items: items.map(p=>{
       // 2-level extras shape — extras apply to all units of this item.
       const itemExtras = pizzaExtras[p.id] || {};
@@ -2940,7 +2954,7 @@ function snapshotForm(){
     scheduledFor: window.__scheduledFor, timeMode: window.__timeMode,
     lat, lng, payment: selectedPayment,
     rtn: { on: !!document.getElementById('rtn-toggle')?.checked, razon: v('razon-social'), num: v('rtn-cliente') },
-    fields: { cname:v('cname'), cphone:v('cphone'), cemail:v('cemail'), notes:v('notes'),
+    fields: { cname:v('cname'), cphone:v('cphone'), cphoneCC:phoneCC, cemail:v('cemail'), notes:v('notes'),
               addressDetected:v('address-detected'), addressDetails:v('address-details') }
   };
 }
@@ -2953,7 +2967,9 @@ function restoreOrderForm(){
     Object.keys(qty).forEach(k=>delete qty[k]); Object.assign(qty, snap.qty||{});
     Object.keys(pizzaExtras).forEach(k=>delete pizzaExtras[k]); Object.assign(pizzaExtras, snap.extras||{});
     const setV = (id,val)=>{ const el=document.getElementById(id); if(el) el.value = val||''; };
-    setV('cname',snap.fields.cname); setV('cphone',snap.fields.cphone); setV('cemail',snap.fields.cemail);
+    setV('cname',snap.fields.cname);
+    if(snap.fields.cphoneCC && typeof window.__setPhoneCC==='function') window.__setPhoneCC(snap.fields.cphoneCC);
+    setV('cphone',snap.fields.cphone); setV('cemail',snap.fields.cemail);
     setV('notes',snap.fields.notes); setV('address-detected',snap.fields.addressDetected); setV('address-details',snap.fields.addressDetails);
     if(snap.rtn){
       const t=document.getElementById('rtn-toggle'); if(t) t.checked = !!snap.rtn.on;
@@ -3796,29 +3812,46 @@ function scrollToDetails(){
   },500);
 }
 
+// ── International phone: country-code selector + local number (default Honduras +504) ──
+const PHONE_COUNTRIES = [
+  { code:'504', name:'Honduras', len:8 },
+  { code:'1',   name:'Estados Unidos', len:10 },
+  { code:'502', name:'Guatemala', len:8 },
+  { code:'503', name:'El Salvador', len:8 },
+  { code:'505', name:'Nicaragua', len:8 },
+  { code:'506', name:'Costa Rica', len:8 },
+  { code:'52',  name:'México', len:10 },
+  { code:'34',  name:'España', len:9 },
+];
+let phoneCC = '504';
+function phoneCountry(){ return PHONE_COUNTRIES.find(c => c.code === phoneCC) || PHONE_COUNTRIES[0]; }
+function fmtPhoneLocal(code, d){
+  if(code === '1'){ if(d.length>6) return '('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6); if(d.length>3) return '('+d.slice(0,3)+') '+d.slice(3); return d; }
+  if(phoneCountry().len === 8){ return d.length>4 ? d.slice(0,4)+'-'+d.slice(4) : d; }
+  return d.replace(/(\d{2,3})(?=\d)/g, '$1 ').trim();
+}
+function fullPhone(){ const d=(document.getElementById('cphone')?.value||'').replace(/\D/g,''); return d ? '+'+phoneCC+' '+fmtPhoneLocal(phoneCC,d) : ''; }
+function initPhoneControl(){
+  const inp=document.getElementById('cphone'), btn=document.getElementById('cc-btn'), menu=document.getElementById('cc-menu');
+  if(!inp||!btn||!menu) return;
+  menu.innerHTML = PHONE_COUNTRIES.map(c => '<div class="cc-opt'+(c.code===phoneCC?' sel':'')+'" data-code="'+c.code+'"><span class="nm">'+c.name+'</span><span class="code">+'+c.code+'</span></div>').join('');
+  function setCountry(code){
+    phoneCC = code; const c = phoneCountry();
+    btn.innerHTML = '+'+code+' <span class="caret">▾</span>';
+    inp.placeholder = code==='504' ? '9999-9999' : (code==='1' ? '(555) 123-4567' : 'número local');
+    inp.value = '';
+    menu.querySelectorAll('.cc-opt').forEach(o => o.classList.toggle('sel', o.getAttribute('data-code')===code));
+  }
+  inp.addEventListener('input', function(){ const d=this.value.replace(/\D/g,'').slice(0, phoneCountry().len); this.value = fmtPhoneLocal(phoneCC, d); });
+  btn.addEventListener('click', function(e){ e.stopPropagation(); menu.classList.toggle('open'); });
+  menu.addEventListener('click', function(e){ const o=e.target.closest('.cc-opt'); if(!o) return; setCountry(o.getAttribute('data-code')); menu.classList.remove('open'); inp.focus(); });
+  document.addEventListener('click', function(){ menu.classList.remove('open'); });
+  window.__setPhoneCC = setCountry;   // used by draft restore
+}
+
 /* ── Card number input formatting ── */
 function initCardFormatting(){
-  // ── Phone number: +504 XXXX-XXXX (max 14 chars incl. formatting) ──
-  const phoneInput=document.getElementById('cphone');
-  if(phoneInput){
-    phoneInput.addEventListener('input',function(e){
-      // Strip everything except digits and leading +
-      let raw=this.value.replace(/[^\d]/g,'');
-      // Always prefix with 504 if user hasn't typed it
-      if(!raw.startsWith('504')) raw='504'+raw.replace(/^504/,'');
-      // Limit to 504 + 8 digits = 11 digits total
-      raw=raw.substring(0,11);
-      // Format: +504 XXXX-XXXX
-      let formatted='+'+raw;
-      if(raw.length>3) formatted='+'+raw.substring(0,3)+' '+raw.substring(3);
-      if(raw.length>7) formatted='+'+raw.substring(0,3)+' '+raw.substring(3,7)+'-'+raw.substring(7);
-      this.value=formatted;
-    });
-    // On focus, pre-fill +504 if empty
-    phoneInput.addEventListener('focus',function(){
-      if(!this.value) this.value='+504 ';
-    });
-  }
+  initPhoneControl();
 
   // (Card-number/expiry formatting removed — card entry is on PixelPay's hosted page.)
 }
