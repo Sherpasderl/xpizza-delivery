@@ -2968,8 +2968,9 @@ function restoreOrderForm(){
     Object.keys(pizzaExtras).forEach(k=>delete pizzaExtras[k]); Object.assign(pizzaExtras, snap.extras||{});
     const setV = (id,val)=>{ const el=document.getElementById(id); if(el) el.value = val||''; };
     setV('cname',snap.fields.cname);
-    if(snap.fields.cphoneCC && typeof window.__setPhoneCC==='function') window.__setPhoneCC(snap.fields.cphoneCC);
-    setV('cphone',snap.fields.cphone); setV('cemail',snap.fields.cemail);
+    const _savedPhone = snap.fields.cphoneCC ? ('+'+snap.fields.cphoneCC+' '+(snap.fields.cphone||'')) : (snap.fields.cphone||'');
+    if(typeof window.__applyPhoneRaw==='function') window.__applyPhoneRaw(_savedPhone); else setV('cphone',snap.fields.cphone);
+    setV('cemail',snap.fields.cemail);
     setV('notes',snap.fields.notes); setV('address-detected',snap.fields.addressDetected); setV('address-details',snap.fields.addressDetails);
     if(snap.rtn){
       const t=document.getElementById('rtn-toggle'); if(t) t.checked = !!snap.rtn.on;
@@ -3842,11 +3843,21 @@ function initPhoneControl(){
     inp.value = '';
     menu.querySelectorAll('.cc-opt').forEach(o => o.classList.toggle('sel', o.getAttribute('data-code')===code));
   }
-  inp.addEventListener('input', function(){ const d=this.value.replace(/\D/g,'').slice(0, phoneCountry().len); this.value = fmtPhoneLocal(phoneCC, d); });
+  // Accepts a full/'+'-prefixed/autofilled number: detect a leading country code (longest-prefix) and split
+  // into {cc, local}. Guarded (hadPlus OR digits exceed local len) so normal local typing is never mis-stripped.
+  function applyRaw(raw){
+    let digits = String(raw).replace(/\D/g,''); const hadPlus = String(raw).indexOf('+') >= 0;
+    const codes = PHONE_COUNTRIES.map(c=>c.code).sort((a,b)=>b.length-a.length);
+    for(const code of codes){ const cc = PHONE_COUNTRIES.find(x=>x.code===code);
+      if(digits.indexOf(code)===0 && (hadPlus || digits.length > cc.len) && (digits.length - code.length) <= cc.len){
+        if(code !== phoneCC) setCountry(code); digits = digits.slice(code.length); break; } }
+    inp.value = fmtPhoneLocal(phoneCC, digits.slice(0, phoneCountry().len));
+  }
+  inp.addEventListener('input', function(){ applyRaw(this.value); });
   btn.addEventListener('click', function(e){ e.stopPropagation(); menu.classList.toggle('open'); });
   menu.addEventListener('click', function(e){ const o=e.target.closest('.cc-opt'); if(!o) return; setCountry(o.getAttribute('data-code')); menu.classList.remove('open'); inp.focus(); });
   document.addEventListener('click', function(){ menu.classList.remove('open'); });
-  window.__setPhoneCC = setCountry;   // used by draft restore
+  window.__setPhoneCC = setCountry; window.__applyPhoneRaw = applyRaw;   // used by draft restore
 }
 
 /* ── Card number input formatting ── */
