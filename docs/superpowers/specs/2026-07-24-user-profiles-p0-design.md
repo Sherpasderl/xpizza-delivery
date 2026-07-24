@@ -44,7 +44,7 @@ Both are `onRequest` (CORS for the form origins), admin-SDK, **no `ORDER_SECRET`
 "user_profiles": {
   "$uid": {
     ".read":  "auth != null && auth.uid === $uid",
-    ".write": "auth != null && auth.uid === $uid",
+    ".write": "auth != null && auth.uid === $uid && newData.exists()",       // no wholesale client delete → deletion is server-side only (H10)
     "name":  { ".validate": "newData.isString() && newData.val().length <= 80" },
     "phone": { ".validate": "newData.isString() && (!data.exists() || newData.val() === data.val())" },       // write-once (server sets)
     "created_at": { ".validate": "newData.isNumber() && (!data.exists() || newData.val() === data.val())" },  // immutable
@@ -53,8 +53,8 @@ Both are `onRequest` (CORS for the form origins), admin-SDK, **no `ORDER_SECRET`
     "$other": { ".validate": false }         // no unexpected keys (PII discipline)
   }
 },
-"user_orders": {                             // P3 history index; server-written, owner-read
-  "$uid": { ".read": "auth != null && auth.uid === $uid", ".write": false }
+"user_orders": {                             // seeded server-side in P0 but READ-DENIED until P3 ships the recycled-number mitigation
+  "$uid": { ".read": false, ".write": false }
 },
 "otp":        { ".read": false, ".write": false },   // server-only (admin bypasses)
 "otp_ip":     { ".read": false, ".write": false },
@@ -77,7 +77,7 @@ Exactly the locked mockups (login `e6b19959…`, account `a8b5328b…`):
 
 ### 5. Order attribution
 
-When a **logged-in** customer submits, the client attaches its Firebase **ID token**; `createOrder` verifies it server-side (`admin.auth().verifyIdToken`) and derives **`customer_uid = decoded.uid`** — a client-supplied uid without a valid token is ignored, so attribution cannot be forged (H2). The intake writes `order.customer_uid` + a **server-only** `/user_orders/{uid}/{orderId} = { ts, total, order_type, items_text }` index to seed P3. **Guests send no token; the order path is otherwise unchanged.**
+When a **logged-in** customer submits, the client attaches its Firebase **ID token in a separate header `X-Firebase-ID-Token`** (the existing `Authorization: Bearer ORDER_SECRET` is unchanged — H4/H2 transport). `createOrder` `verifyIdToken`s it and derives **`customer_uid = decoded.uid`**; a client-supplied uid is ignored, so attribution can't be forged. A **missing or malformed** ID token never fails the order — it just falls through to the guest path (guests omit the header). The intake writes `order.customer_uid` + a **server-only** `/user_orders/{uid}/{orderId} = { ts, total, order_type, items_text }` index that is **`.read:false` until P3** (so no recycled-number can read history in P0). **Guests send no token; the order path is otherwise unchanged.**
 
 ## Data flow
 
@@ -127,9 +127,9 @@ phone → `requestOtp` (rate-limited, WhatsApp code) → user enters code → `v
 
 **H8 — Guest isolation by design.** Firebase app/auth/database is **lazy-loaded only on first login interaction** (not at page load); all account init is wrapped in isolated `try/catch`; the guest submit path keeps its inline-globals + `fetch`, zero Firebase dependency. **Required test:** block the Firebase SDK at the network layer and confirm a guest order still submits.
 
-**H9 — Recycled-number handling.** Phone-as-identity means a reassigned number could inherit the prior owner's record. P0 exposes only a name (low harm), but **before P2/P3** (addresses/history) this is mitigated: **stale-profile re-confirm** (profile inactive > ~6 months → next login treats it as fresh / requires re-entering name before showing durable data) + an ops redaction path. **Blocking pre-req for P2.**
+**H9 — Recycled-number handling (deterministic, not time-based).** Phone-as-identity means a reassigned number could resolve to the prior owner's `uid`. So on **every** verified login that resolves to an **existing** profile, the UI presents a deterministic identity confirm — **"¿Continuar como {name}?" / "No soy yo"** — *before* surfacing any profile-derived data. **"No soy yo"** rotates to a **fresh `uid`** (new empty profile) and repoints `/phone_index/{phoneHash}` → the new uid, orphaning the old record for ops redaction. This replaces any time/staleness guess. In P0 the only durable field is the name (shown behind the confirm); `/user_orders` is read-denied until P3 regardless, so **no order history is ever exposed to a recycled number** here. Durable data (addresses/history) is never shown pre-confirm in later phases.
 
-**H10 — Minimum privacy for launch.** A P0 **"Eliminar mi cuenta"** path (clears `/user_profiles/{uid}` + `/phone_index/{phoneHash}` + `/user_orders/{uid}`) and **disclosure copy** that the account is shared across X. Pizza + La Musa. Full data-export + automated recycled-number recovery tooling tracked for a later privacy pass.
+**H10 — Minimum privacy for launch (server-side deletion).** A P0 **"Eliminar mi cuenta"** runs **server-side only** — a `deleteAccount` Cloud Function (admin SDK, authenticated by the caller's ID token) clears `/user_profiles/{uid}` + `/phone_index/{phoneHash}` + `/user_orders/{uid}` atomically. The **client cannot delete the profile node directly** (the `.write` rule requires `newData.exists()`, so wholesale nulling is denied — no state desync). Plus **disclosure copy** that the account is shared across X. Pizza + La Musa. Full data-export + automated recycled-number recovery tooling tracked for a later privacy pass.
 
 ## Gate & rollout
 
