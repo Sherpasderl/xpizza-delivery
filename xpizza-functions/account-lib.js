@@ -7,9 +7,13 @@ const INACTIVE_MS = 180 * 24 * 3600e3;   // ~6 months of dormancy before an acco
 
 // The atomic null-map that clears ONE account's three nodes. phoneHash may be absent (legacy profile) —
 // then the phone_index entry is left (it will resolve to a re-created profile at the same uid on next login).
-function accountDeleteUpdates(uid, phoneHash) {
+function accountDeleteUpdates(uid, phoneHash, tombstoneAt = null) {
   const updates = { [`user_profiles/${uid}`]: null, [`user_orders/${uid}`]: null };
   if (phoneHash) updates[`phone_index/${phoneHash}`] = null;
+  // H10 durability: user-initiated deletion writes a server-only tombstone so the still-valid custom-token
+  // session can't recreate the profile or re-accrue attribution. The inactivity sweep passes no tombstoneAt
+  // (2-arg) — its accounts are 6-month-dormant with no live session, and tombstoning would grow unbounded.
+  if (tombstoneAt != null) updates[`deleted_uids/${uid}`] = tombstoneAt;
   return updates;
 }
 

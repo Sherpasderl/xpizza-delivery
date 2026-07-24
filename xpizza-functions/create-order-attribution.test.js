@@ -2,7 +2,7 @@
 // H2 attribution helper: verified customer_uid stamping. Guest path must be byte-identical (no-op),
 // and the uid can ONLY come from the caller's verified argument — never the request body.
 const assert = require('assert');
-const { attachCustomerAttribution } = require('./create-order-build');
+const { attachCustomerAttribution, attributionUid } = require('./create-order-build');
 let n = 0; const ok = (l) => console.log(`  ok ${++n} ${l}`);
 const ORDER = 'PZX-123';
 const meta = { now: 1700000000000, total: 250, orderType: 'delivery', items_text: '1x Pizza' };
@@ -34,5 +34,23 @@ const base = () => ({ [`orders/${ORDER}`]: { customer_name: 'A', total: 250 } })
 {
   const out = attachCustomerAttribution(base(), ORDER, 'u_verified', { ...meta });
   assert.equal(out[`orders/${ORDER}`].customer_uid, 'u_verified'); ok('customer_uid derives solely from the verified argument');
+}
+// ── H10 durability: a tombstoned (deleted) uid never re-accrues attribution (attributionUid decision) ──
+{
+  const dec = { customer: true, uid: 'u_' + 'b'.repeat(24) };
+  assert.equal(attributionUid(dec, true), null); ok('tombstoned uid → null (order proceeds as guest)');
+  assert.equal(attributionUid(dec, false), dec.uid); ok('non-tombstoned customer uid → attributed');
+  assert.equal(attributionUid({ uid: dec.uid }, false), null); ok('non-customer token → null');
+  assert.equal(attributionUid({ customer: true }, false), null); ok('customer token without uid → null');
+  assert.equal(attributionUid(null, false), null); ok('no decoded token → null');
+}
+// end-to-end: a tombstoned uid resolves to null → attachCustomerAttribution yields a byte-identical guest order
+{
+  const dec = { customer: true, uid: 'u_' + 'c'.repeat(24) };
+  const guest = attachCustomerAttribution(base(), ORDER, attributionUid(dec, true), meta);
+  assert.ok(!('customer_uid' in guest[`orders/${ORDER}`]) && !Object.keys(guest).some((k) => k.startsWith('user_orders/')));
+  ok('tombstoned token → guest order (no customer_uid, no user_orders)');
+  const active = attachCustomerAttribution(base(), ORDER, attributionUid(dec, false), meta);
+  assert.equal(active[`orders/${ORDER}`].customer_uid, dec.uid); ok('active token → order attributed to uid');
 }
 console.log(`create-order-attribution: OK (${n})`);

@@ -66,7 +66,7 @@ const ppCrypto = require('./pixelpay');
 const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
 const { buildMaterializeUpdates } = require('./materialize');
 const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
-const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution } = require('./create-order-build');
+const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
 const SCHED = require('./scheduled-orders');                              // Scheduled Orders — pure hours/slot/release core
 const { releaseOne: releaseScheduledCore, recoverStaleReleasing } = require('./scheduled-release-core');
 const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
@@ -533,8 +533,14 @@ createOrderApp.all('*', async (req, res) => {
   let customer_uid = null;
   const idTok = req.get('x-firebase-id-token');
   if (idTok) {
-    try { const dec = await getAuth().verifyIdToken(idTok); if (dec && dec.customer === true) customer_uid = dec.uid; }
-    catch (_) { /* malformed/expired/foreign → ignore, treat as guest */ }
+    try {
+      const dec = await getAuth().verifyIdToken(idTok);
+      if (dec && dec.customer === true && dec.uid) {
+        // H10 durability: a deleted (tombstoned) account never re-accrues attribution.
+        const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();
+        customer_uid = attributionUid(dec, tomb.exists());
+      }
+    } catch (_) { /* malformed/expired/foreign/tomb-read-failure → ignore, treat as guest */ }
   }
 
   const trackingToken = generateTrackingToken();
@@ -4349,7 +4355,6 @@ exports.releaseScheduledOrder = onRequest(
 const ACCOUNT_ORIGINS = [
   'https://orders.xpizza.hn',
   'https://orders.lamusa.hn',
-  /^https:\/\/[a-z0-9-]+--(xpizza|lamusa)?orders?\.netlify\.app$/,
 ];
 
 exports.requestOtp = onRequest(
@@ -4445,7 +4450,7 @@ exports.deleteAccount = onRequest(
       const uid = dec.uid;   // only ever the CALLER's own account — a client can't pass someone else's uid
       const db = getDatabase();
       const pHash = (await db.ref(`user_profiles/${uid}/phone_hash`).get()).val();
-      await db.ref().update(ACCOUNT.accountDeleteUpdates(uid, pHash));
+      await db.ref().update(ACCOUNT.accountDeleteUpdates(uid, pHash, Date.now()));
       console.log(`deleteAccount: cleared account ${uid}`);
       return res.status(200).json({ ok: true });
     } catch (e) {

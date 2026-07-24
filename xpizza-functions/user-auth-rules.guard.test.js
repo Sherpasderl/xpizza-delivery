@@ -30,8 +30,14 @@ assert.ok(/newData\.val\(\) === data\.val\(\)/.test(up.phone['.validate'])); ok(
 assert.ok(/newData\.val\(\) === data\.val\(\)/.test(up.created_at['.validate'])); ok('created_at immutable');
 assert.equal(up.addresses['.validate'], false); ok('addresses denied (P2)');
 assert.equal(up.$other['.validate'], false); ok('no stray profile keys');
-for (const k of ['user_orders','otp','otp_ip','phone_index']){
+for (const k of ['user_orders','otp','otp_ip','phone_index','deleted_uids']){
   const node = k==='user_orders' ? rules.user_orders.$uid : rules[k];
   assert.equal(node['.read'], false); assert.equal(node['.write'], false); ok(`${k} deny-all`);
 }
+
+// ── R1 durable-deletion fixes: tombstone-guarded recreation + client-immutable last_login ──
+assert.ok(/!root\.child\('deleted_uids'\)\.child\(\$uid\)\.exists\(\)/.test(up['.write']),
+  `user_profiles write must block a tombstoned uid (got: ${up['.write']})`); ok('user_profiles write blocks recreation of a tombstoned (deleted) uid');
+assert.ok(/newData\.val\(\) === data\.val\(\)/.test(up.last_login['.validate']),
+  `last_login must be client-immutable (got: ${up.last_login['.validate']})`); ok('last_login client-immutable (cannot future-date to dodge the H9 sweep)');
 console.log(`user-auth-rules.guard: OK (${n})`);

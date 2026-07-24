@@ -156,4 +156,16 @@ function attachCustomerAttribution(updates, orderId, customer_uid, meta) {
   return updates;
 }
 
-module.exports = { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution };
+/**
+ * H10 durability decision (pure + testable). Given a verified decoded ID token and whether that uid is
+ * tombstoned (a keyed /deleted_uids read done by the caller), return the uid to attribute — or null to fall
+ * back to the guest path. A non-customer token, a missing uid, OR a tombstoned (deleted) account → null.
+ * The RTDB tombstone read + the try/catch fail-safe stay in the createOrder handler; this is only the
+ * decision, so "tombstoned → guest" and "active → attributed" are unit-testable without an emulator.
+ */
+function attributionUid(dec, isTombstoned) {
+  if (!dec || dec.customer !== true || !dec.uid) return null;
+  return isTombstoned ? null : dec.uid;
+}
+
+module.exports = { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid };

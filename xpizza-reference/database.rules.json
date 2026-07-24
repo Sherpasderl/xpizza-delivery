@@ -192,12 +192,12 @@
     "user_profiles": {
       "$uid": {
         ".read":  "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid && newData.exists()",
+        ".write": "auth != null && auth.uid === $uid && newData.exists() && !root.child('deleted_uids').child($uid).exists()",
         "name":       { ".validate": "newData.isString() && newData.val().length <= 80" },
         "phone":      { ".validate": "newData.isString() && (!data.exists() || newData.val() === data.val())" },
         "created_at": { ".validate": "newData.isNumber() && (!data.exists() || newData.val() === data.val())" },
         "updated_at": { ".validate": "newData.isNumber() && newData.val() <= now + 60000" },
-        "last_login": { ".validate": "newData.isNumber()" },
+        "last_login": { ".validate": "newData.isNumber() && (!data.exists() || newData.val() === data.val())" },
         "addresses":  { ".validate": false },
         "$other":     { ".validate": false }
       }
@@ -205,6 +205,7 @@
     "user_orders":  { "$uid": { ".read": false, ".write": false } },
     "otp":          { ".read": false, ".write": false },
     "otp_ip":       { ".read": false, ".write": false },
-    "phone_index":  { ".read": false, ".write": false }
+    "phone_index":  { ".read": false, ".write": false },
+    "deleted_uids": { ".read": false, ".write": false }
   }
 }

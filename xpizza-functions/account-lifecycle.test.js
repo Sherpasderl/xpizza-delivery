@@ -24,6 +24,20 @@ const PH = 'deadbeef'.repeat(8);
   ok('delete touches only the caller uid/phoneHash paths');
 }
 
+// ── tombstone (H10 durable deletion): the user-initiated delete stamps deleted_uids ──
+{
+  const TS = 1700000000000;
+  const u = A.accountDeleteUpdates(UID, PH, TS);
+  assert.equal(u[`deleted_uids/${UID}`], TS); ok('3-arg delete writes deleted_uids tombstone with the timestamp');
+  assert.deepStrictEqual(u, { [`user_profiles/${UID}`]: null, [`user_orders/${UID}`]: null, [`phone_index/${PH}`]: null, [`deleted_uids/${UID}`]: TS });
+  ok('tombstone delete = 3 nulls + deleted_uids tombstone');
+}
+{
+  // 2-arg (inactivity sweep) NEVER tombstones — avoids unbounded /deleted_uids growth (dormant, no live session)
+  const u = A.accountDeleteUpdates(UID, PH);
+  assert.ok(!(`deleted_uids/${UID}` in u)); ok('2-arg delete (sweep) writes NO tombstone');
+}
+
 // ── pruneUpdates ──
 const NOW = 1_700_000_000_000;
 const cutoff = NOW - A.INACTIVE_MS;
@@ -32,7 +46,8 @@ const cutoff = NOW - A.INACTIVE_MS;
   const { updates, count } = A.pruneUpdates(stale, cutoff);
   assert.equal(count, 1);
   assert.deepStrictEqual(updates, { [`user_profiles/${UID}`]: null, [`user_orders/${UID}`]: null, [`phone_index/${PH}`]: null });
-  ok('stale profile (last_login < cutoff) pruned with all 3 nodes');
+  assert.ok(!Object.keys(updates).some((k) => k.startsWith('deleted_uids/'))); // sweep never tombstones
+  ok('stale profile (last_login < cutoff) pruned with all 3 nodes, no tombstone');
 }
 {
   const fresh = { [UID]: { last_login: cutoff + 1, phone_hash: PH } };
