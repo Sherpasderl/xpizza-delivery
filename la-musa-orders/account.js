@@ -820,6 +820,30 @@
   function renderConfirmCard(snap, addr) {
     injectDeliverStyles();
     const mount = $('acct-deliver'); if (!mount) return;
+
+    // INVARIANT (codex re-gate): renderConfirmCard is the ONLY function that HIDES #address-details, so the
+    // usable-reference guard lives here — covering EVERY caller (default autofill, "Mis direcciones" tap,
+    // save-on-order re-render, any future one). An address missing detected/lat/lng OR with details <3 must
+    // NEVER be shown as the hidden-field card (delivery requires details>=3 → checkout would block on a hidden
+    // input). Instead prefill what we have, place the pin, and open the fillable edit view with
+    // #address-details empty + focused so the customer supplies the reference (saveEditedAddress's >=3 guard
+    // then persists it). Keeps the raw fields VISIBLE — never hidden-and-blocked.
+    if (!addr || typeof addr.detected !== 'string' || typeof addr.lat !== 'number' || typeof addr.lng !== 'number'
+        || typeof addr.details !== 'string' || addr.details.trim().length < 3) {
+      const m2 = marker() || {};
+      const nm = (snap && snap.name) || m2.name || '';
+      const ph = (snap && snap.phone) || m2.phone || '';
+      setVal('cname', nm);
+      if (typeof window.__applyPhoneRaw === 'function') window.__applyPhoneRaw(ph); else setVal('cphone', ph);
+      if (addr && typeof addr.detected === 'string') setVal('address-detected', addr.detected);
+      if (addr && typeof addr.lat === 'number' && typeof addr.lng === 'number') placeAccountPin(addr.lat, addr.lng);
+      if (addr && addr.id) _acctAddrId = addr.id;
+      _acctCardActive = false;
+      enterEditMode(false);                                   // reveal raw fields + label picker (hides nothing)
+      const df = $('address-details'); if (df) { df.value = ''; df.focus(); }
+      return;
+    }
+
     const rawWrap = $('raw-name-phone');
     const addrSection = addrSectionEl();
     const m = marker() || {};
