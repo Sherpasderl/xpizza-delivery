@@ -839,8 +839,9 @@
     if (!snap) { refreshSaveToggle(); return; }     // no account / miss/timeout → normal empty form
     _acctData = snap;
     if (pageOrderType() !== 'delivery') { refreshSaveToggle(); return; }   // pickup — leave raw fields
+    if (!profileComplete(snap)) { applyCreateProfileFlow(snap); return; }   // Task 2 — no-skip profile creation
     const addr = pickDefaultAddress(snap);
-    if (!addr) { refreshSaveToggle(); return; }     // account with no usable saved address — normal form
+    if (!addr) { applyCreateProfileFlow(snap); return; }   // defensive only — profileComplete() already implies this
     renderConfirmCard(snap, addr);
   }
 
@@ -951,7 +952,16 @@
 
   function injectDeliverStylesOnce() { injectDeliverStyles(); }   // alias for readability at call sites
 
-  function injectLabelPicker(addrSection) {
+  // opts (Task 2/T2): { ctaText, onSave, showCancel } — all optional, default to the ORIGINAL
+  // Cambiar-flow behavior byte-for-byte (ctaText='Guardar dirección', onSave=saveEditedAddress,
+  // showCancel=true) so this extension is purely additive for existing callers. T2's "Creá tu
+  // perfil" reuses this exact scaffolding with its own CTA text + a dedicated re-validating
+  // handler (saveCreateProfile) and no Cancelar (profile creation isn't skippable).
+  function injectLabelPicker(addrSection, opts) {
+    opts = opts || {};
+    const ctaText = opts.ctaText || 'Guardar dirección';
+    const onSave = opts.onSave || saveEditedAddress;
+    const showCancel = opts.showCancel !== false;
     injectDeliverStylesOnce();
     if (!addrSection || $('acct-label-picker')) return;
     const wrap = document.createElement('div');
@@ -967,8 +977,9 @@
 </div>
 <input type="text" id="acct-label-custom" class="acct-label-custom-inp" placeholder="Ponle un nombre… (ej: Casa de mis papás)" maxlength="40" style="margin-top:10px"/>
 <p class="acct-field-hint">Le ponés el nombre que quieras. La próxima vez la elegís en un toque.</p>
-<button type="button" class="acct-save-addr-btn" id="acct-save-addr-btn">${ICON_CHECK_BIG} Guardar dirección</button>
-<button type="button" class="acct-cancel-edit" id="acct-cancel-edit-btn">‹ Cancelar</button>`;
+<p class="acct-field-hint" id="acct-label-picker-err" style="display:none;color:#B23B3B"></p>
+<button type="button" class="acct-save-addr-btn" id="acct-save-addr-btn">${ICON_CHECK_BIG} ${escapeHtml(ctaText)}</button>
+${showCancel ? '<button type="button" class="acct-cancel-edit" id="acct-cancel-edit-btn">‹ Cancelar</button>' : ''}`;
     addrSection.appendChild(wrap);
 
     wrap.querySelectorAll('.acct-lchip').forEach((chip) => {
@@ -986,7 +997,7 @@
       customInp.value = knownLabel || _acctEditLabel || '';
       customInp.addEventListener('input', () => { _acctEditLabel = customInp.value; });
     }
-    const saveBtn = $('acct-save-addr-btn'); if (saveBtn) saveBtn.onclick = saveEditedAddress;
+    const saveBtn = $('acct-save-addr-btn'); if (saveBtn) saveBtn.onclick = onSave;
     const cancelBtn = $('acct-cancel-edit-btn'); if (cancelBtn) cancelBtn.onclick = cancelEdit;
   }
 
@@ -1213,6 +1224,185 @@ ${rowsHtml}`;
     if (addrSection && isDelivery) addrSection.style.display = 'none';
   }
 
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // Task 2 — "Creá tu perfil": logged-in + !profileComplete, no-skip. Reachable ONLY from
+  // initDeliveryStep()/applyProfileState(), themselves reachable ONLY behind marker() (the
+  // DOMContentLoaded gate at the bottom). A guest never runs a byte of this.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  function injectCreateProfileStyles() {
+    if ($('acct-cp-styles')) return;
+    const st = document.createElement('style');
+    st.id = 'acct-cp-styles';
+    // T7 — the name-capture field reads more substantial at ~58px with a radius that softens
+    // toward the phone field's own rounding, rather than the sheet's tighter 8px squared corner.
+    st.textContent = `
+.acct-cp-card{border:1px solid #E2D8C8;border-radius:20px;overflow:hidden;background:#fff;box-shadow:0 12px 30px -18px rgba(40,28,12,.3);padding:15px;margin-bottom:4px}
+.acct-cp-phonerow{display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 14px;border:1.5px solid #EDE5D9;border-radius:13px;background:#FBF6EE;color:#17130F;margin-bottom:14px}
+.acct-cp-phoneval{font-size:15.5px;font-weight:650;font-variant-numeric:tabular-nums}
+.acct-cp-verified{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2A6A42}
+.acct-cp-two{display:flex;gap:10px}
+.acct-cp-inp{flex:1;min-width:0;height:58px;padding:0 15px;border:1.5px solid #E2D8C8;border-radius:12px;background:#fff;font-size:16px;font-weight:550;color:#17130F;outline:none;font-family:inherit}
+.acct-cp-inp:focus{border-color:#17130F}
+.acct-cp-inp::placeholder{color:#B3A594;font-weight:450}
+`;
+    document.head.appendChild(st);
+  }
+
+  // Best-effort prefill for a returning-but-incomplete-profile customer who already has SOME
+  // saved address (possibly missing a valid reference/lat-lng — a legacy record, or one this
+  // session hasn't finished yet). Unlike pickDefaultAddress(), this does NOT filter for validity —
+  // it's purely a "don't make them start from zero" convenience; saveCreateProfile() re-validates
+  // everything before persisting regardless of what was prefilled.
+  function pickPartialAddress(snap) {
+    if (!snap || !snap.addresses) return null;
+    const ids = Object.keys(snap.addresses);
+    if (!ids.length) return null;
+    const id = (snap.default_address && snap.addresses[snap.default_address]) ? snap.default_address : ids[0];
+    const a = snap.addresses[id];
+    if (!a) return null;
+    return Object.assign({ id }, a);
+  }
+
+  // s2 side of Creá tu perfil: the normal fillable address fields (map/geocode unchanged) PLUS a
+  // REQUIRED "Guardar como" label picker (this profile isn't complete without one) wired to
+  // saveCreateProfile — reuses the existing injectLabelPicker scaffolding via its opts extension.
+  function applyCreateProfileAddressUI(snap) {
+    if (pageOrderType() !== 'delivery') return;   // pickup needs no address — out of scope (spec)
+    const addrSection = addrSectionEl();
+    if (!addrSection) return;
+    addrSection.style.display = '';
+    const partial = pickPartialAddress(snap);
+    if (partial) {
+      if (typeof partial.detected === 'string') setVal('address-detected', partial.detected);
+      if (typeof partial.details === 'string') setVal('address-details', partial.details);
+      if (typeof partial.lat === 'number' && typeof partial.lng === 'number') placeAccountPin(partial.lat, partial.lng);
+    }
+    _acctEditIsNew = !(partial && partial.id);
+    _acctAddrId = (partial && partial.id) || null;
+    _acctEditLabel = (partial && partial.label) || '';
+    injectLabelPicker(addrSection, { ctaText: 'Guardar y continuar', onSave: saveCreateProfile, showCancel: false });
+  }
+
+  // s1 side of Creá tu perfil: phone (read-only + verificado, never asked again) + Nombre +
+  // Apellido as TWO separate inputs. #raw-name-phone (the single #cname field) is hidden but its
+  // inputs stay in the DOM, kept live-synced from nombre+apellido — this is the ONLY reason
+  // goToLocation()/buildOrder() (byte-identical, unmodified) keep working untouched.
+  function applyCreateProfileFlow(snap) {
+    injectDeliverStyles();
+    injectCreateProfileStyles();
+    const mount = $('acct-deliver'); if (!mount) { refreshSaveToggle(); return; }   // host form has no mount — never touch anything
+    const m = marker() || {};
+    const phone = (snap && snap.phone) || m.phone || '';
+    const existingName = ((snap && snap.name) || m.name || '').trim();
+    const parts = existingName.split(/\s+/).filter(Boolean);
+    const nombreVal = parts[0] || '';
+    const apellidoVal = parts.slice(1).join(' ') || '';
+
+    mount.innerHTML = `
+<div class="acct-eyebrow">Creá tu perfil</div>
+<div class="acct-cp-card">
+  <div class="acct-cp-phonerow"><span class="acct-cp-phoneval">${escapeHtml(phone)}</span><span class="acct-cp-verified">${ICON_CHECK_SM} Verificado</span></div>
+  <div class="acct-cp-two">
+    <input type="text" id="acct-cp-nombre" class="acct-cp-inp" placeholder="Nombre" maxlength="40" value="${escapeHtml(nombreVal)}" autocomplete="given-name">
+    <input type="text" id="acct-cp-apellido" class="acct-cp-inp" placeholder="Apellido" maxlength="40" value="${escapeHtml(apellidoVal)}" autocomplete="family-name">
+  </div>
+  <p class="acct-field-hint" id="acct-cp-name-err" style="display:none;color:#B23B3B;margin-top:8px"></p>
+</div>`;
+
+    const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = 'none';
+
+    const syncName = () => {
+      const n = (($('acct-cp-nombre') || {}).value || '');
+      const a = (($('acct-cp-apellido') || {}).value || '');
+      setVal('cname', (n + ' ' + a).trim());
+      const err = $('acct-cp-name-err'); if (err) err.style.display = 'none';
+    };
+    const nInp = $('acct-cp-nombre'), aInp = $('acct-cp-apellido');
+    if (nInp) nInp.addEventListener('input', syncName);
+    if (aInp) aInp.addEventListener('input', syncName);
+    syncName();
+    if (typeof window.__applyPhoneRaw === 'function') window.__applyPhoneRaw(phone); else setVal('cphone', phone);
+
+    applyCreateProfileAddressUI(snap);
+  }
+
+  // "Guardar y continuar" (spec R1 #3 — no-skip): re-validates EVERY field INSIDE the handler,
+  // never trusting a disabled-CTA UI state alone (covers Enter, autofill timing, double-click,
+  // programmatic calls) — before any update({name})/saveAddress()/stage change. saveAddress()
+  // itself (Task 1) independently rejects an invalid persist regardless of this handler.
+  async function saveCreateProfile() {
+    const btn = $('acct-save-addr-btn');
+    const pickerErr = $('acct-label-picker-err');
+    if (pickerErr) pickerErr.style.display = 'none';
+
+    const nombre = (($('acct-cp-nombre') || {}).value || '').trim();
+    const apellido = (($('acct-cp-apellido') || {}).value || '').trim();
+    if (!nombre || !apellido) {
+      const err = $('acct-cp-name-err');
+      if (err) { err.style.display = 'block'; err.textContent = 'Ingresá tu nombre y apellido.'; }
+      (nombre ? $('acct-cp-apellido') : $('acct-cp-nombre'))?.focus();
+      return;
+    }
+    const detected = ($('address-detected') || {}).value || '';
+    const details = ($('address-details') || {}).value || '';
+    const { lat: curLat, lng: curLng } = pageLatLng();
+    const label = (($('acct-label-custom') || {}).value || _acctEditLabel || '').trim();
+
+    if (typeof curLat !== 'number' || typeof curLng !== 'number' || !isFinite(curLat) || !isFinite(curLng) || !detected) {
+      if (pickerErr) { pickerErr.style.display = 'block'; pickerErr.textContent = 'Confirmá tu ubicación en el mapa.'; }
+      return;
+    }
+    if (details.trim().length < 3) {
+      const df = $('address-details'); if (df) df.focus();
+      if (pickerErr) { pickerErr.style.display = 'block'; pickerErr.textContent = 'Agregá una referencia — portón, color, piso…'; }
+      return;
+    }
+    if (!label) {
+      if (pickerErr) { pickerErr.style.display = 'block'; pickerErr.textContent = 'Elegí cómo guardar esta dirección.'; }
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.innerHTML = 'Guardando…'; }
+    const fullName = (nombre + ' ' + apellido).trim().slice(0, 80);
+
+    try {
+      const { auth, db, dbMod } = await ensureFirebase();
+      await auth.authStateReady();
+      if (!auth.currentUser) { heal(); throw new Error('no-session'); }
+      await dbMod.update(dbMod.ref(db, 'user_profiles/' + auth.currentUser.uid), { name: fullName });
+      if (!_acctData) _acctData = {};
+      _acctData.name = fullName;
+      const m = marker(); if (m) { m.name = fullName; try { localStorage.setItem(CONFIG.MARKER, JSON.stringify(m)); } catch (_) {} }
+      renderChip();
+    } catch (_) {
+      // Non-blocking is the wrong call HERE specifically — a failed name write means the profile
+      // will still read as incomplete next time, so surface it and let the customer retry rather
+      // than silently proceeding as if it worked (the address save below hasn't run yet either).
+      if (pickerErr) { pickerErr.style.display = 'block'; pickerErr.textContent = 'No pudimos guardar tu nombre. Intentá de nuevo.'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = ICON_CHECK_BIG + ' Guardar y continuar'; }
+      return;
+    }
+
+    const addrIdForSave = _acctEditIsNew ? undefined : _acctAddrId;
+    const res = await saveAddress({ addrId: addrIdForSave, label, detected, details, lat: curLat, lng: curLng, makeDefault: true });
+    if (!res.ok) {
+      if (pickerErr) { pickerErr.style.display = 'block'; pickerErr.textContent = res.message || 'No pudimos guardar la dirección. Intentá de nuevo.'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = ICON_CHECK_BIG + ' Guardar y continuar'; }
+      return;
+    }
+
+    if (!_acctData.addresses) _acctData.addresses = {};
+    _acctData.addresses[res.addrId] = { label, detected, details, lat: curLat, lng: curLng };
+    _acctData.default_address = res.addrId;
+    _acctAddrId = res.addrId;
+    exitEditMode();
+    toast('Perfil guardado');
+    // Profile is NOW complete (name + address both just wrote successfully) — hand off to
+    // whatever the returning-complete-profile presentation is (Task 3 upgrades this call).
+    renderConfirmCard(_acctData, Object.assign({ id: res.addrId }, _acctData.addresses[res.addrId]));
+  }
+
   function wrapPageHooks() {
     try {
       if (typeof window.setOrderType === 'function' && !window.setOrderType.__acctWrapped) {
@@ -1232,6 +1422,31 @@ ${rowsHtml}`;
         };
         wrapped.__acctWrapped = true;
         window.startAnotherOrder = wrapped;
+      }
+    } catch (_) {}
+    // T2 no-skip: when the Creá-tu-perfil card is the active s1 UI, a blank/one-word name must
+    // NEVER be allowed to advance past s1 — re-validated HERE (inside the wrapped function,
+    // before the ORIGINAL goToLocation() ever runs), not just a disabled-CTA illusion. Guests
+    // (and any complete-profile / no-card state) hit the `if` guard's false branch and fall
+    // straight through to the ORIGINAL, byte-identical goToLocation().
+    try {
+      if (typeof window.goToLocation === 'function' && !window.goToLocation.__acctGuarded) {
+        const orig = window.goToLocation;
+        const wrapped = function () {
+          if (marker() && $('acct-cp-nombre')) {
+            const nombre = ($('acct-cp-nombre').value || '').trim();
+            const apellido = ($('acct-cp-apellido').value || '').trim();
+            if (!nombre || !apellido) {
+              const err = $('acct-cp-name-err');
+              if (err) { err.style.display = 'block'; err.textContent = 'Ingresá tu nombre y apellido.'; }
+              (nombre ? $('acct-cp-apellido') : $('acct-cp-nombre')).focus();
+              return;   // BLOCKED — the original goToLocation() never runs
+            }
+          }
+          return orig.apply(this, arguments);
+        };
+        wrapped.__acctGuarded = true;
+        window.goToLocation = wrapped;
       }
     } catch (_) {}
   }
