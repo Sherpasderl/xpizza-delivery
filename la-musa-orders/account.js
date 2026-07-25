@@ -1153,19 +1153,45 @@ ${showCancel ? '<button type="button" class="acct-cancel-edit" id="acct-cancel-e
   async function onOrderConfirmed(order) {
     try {
       if (!order || order.order_type !== 'delivery') return;
-      if (!marker()) return;                       // guest — never save (unreachable in practice, defense-in-depth)
-      if (_acctAddrOneOff) return;                 // USE-ONCE (Cambiar "Usar en este pedido" / an unsaved edit) — the customer chose NOT to save; never persist or default (FIX B)
-      if (!_acctSaveToggleOn) return;               // dismissed — respect it
-      if (_acctCardActive && !_acctAddrUnsaved) return;   // already a saved, unedited address — nothing new to persist
+      // Save-intent (redirect fix): prefer a PERSISTED block matched to THIS order — it survives the PixelPay
+      // redirect+reload, which resets every closure flag (_acctAddrOneOff/_acctAddrId/_acctEditIsNew/_acctData);
+      // else the live flags (correct for a same-page CASH order). Consume the block ONCE so a later unrelated
+      // confirmation can never replay it.
+      let intent = null;
+      try { const raw = localStorage.getItem('xpizza_acct_intent'); if (raw) { const p = JSON.parse(raw); if (p && p.order_id === order.order_id) intent = p; } } catch (_) {}
+      try { localStorage.removeItem('xpizza_acct_intent'); } catch (_) {}
+      const loggedIn = intent ? !!intent.uid : !!marker();
+      if (!loggedIn) return;                       // guest — never save
+      const oneOff = intent ? !!intent.oneOff : !!_acctAddrOneOff;
+      if (oneOff) return;                          // USE-ONCE ("Usar en este pedido" / an unsaved edit) — never persist or default
+      const addrId = intent ? (intent.addrId || null) : (_acctAddrId || null);
+      if (addrId) return;                          // an ALREADY-SAVED address drove the order → nothing to persist; NEVER mint a DUPLICATE (the redirect bug: reset flags → addrId null → saveAddress would dup) and NEVER change the default
+      const isNew = intent ? !!intent.isNew : !!_acctEditIsNew;
+      if (!isNew) return;                          // no addrId + not a new-address-to-save → nothing
       const detected = order.address_detected, details = order.address_details;
       const la = order.lat, ln = order.lng;
       if (!detected || typeof la !== 'number' || typeof ln !== 'number') return;
+      const label = (intent && intent.label) || (_acctEditLabel && _acctEditLabel.trim()) || 'Dirección';
+      // A genuinely-new address the customer opted to save (not one-off) → persist, NON-default (default is
+      // ONLY ever set by the explicit "Guardar dirección"/"Guardar y continuar" pre-payment).
+      const res = await saveAddress({ label, detected, details, lat: la, lng: ln, makeDefault: false });
+      if (res && res.ok) { _acctAddrUnsaved = false; _acctAddrId = res.addrId; refreshSaveToggle(); }
+    } catch (_) { /* never affects the order — it already succeeded */ }
+  }
+
+  // Persist the account save-intent at ORDER-SUBMIT so the ONLINE (PixelPay) redirect+reload path — which
+  // resets every closure flag — can still enforce the rules in onOrderConfirmed. Called from index.html's
+  // processPixelPay() (BEFORE the redirect) with the order_id. Guest/pickup → clear (nothing to persist).
+  function captureDeliverySaveIntent(orderId) {
+    try {
+      if (!orderId || !marker() || pageOrderType() !== 'delivery') { try { localStorage.removeItem('xpizza_acct_intent'); } catch (_) {} return; }
+      const m = marker() || {};
       const label = (_acctEditLabel && _acctEditLabel.trim())
         || (_acctData && _acctAddrId && _acctData.addresses && _acctData.addresses[_acctAddrId] && _acctData.addresses[_acctAddrId].label)
         || 'Dirección';
-      const res = await saveAddress({ addrId: _acctEditIsNew ? undefined : _acctAddrId, label, detected, details, lat: la, lng: ln, makeDefault: false });   // FIX B: save-on-order NEVER changes the default — only the explicit "Guardar dirección"/"Guardar y continuar" does
-      if (res && res.ok) { _acctAddrUnsaved = false; _acctAddrId = res.addrId; refreshSaveToggle(); }
-    } catch (_) { /* never affects the order — it already succeeded */ }
+      const intent = { order_id: String(orderId), uid: m.uid || 1, oneOff: !!_acctAddrOneOff, addrId: _acctAddrId || null, isNew: !!_acctEditIsNew, label };
+      try { localStorage.setItem('xpizza_acct_intent', JSON.stringify(intent)); } catch (_) {}
+    } catch (_) {}
   }
 
   // ── Task B6: Mis direcciones list in the account sheet — select / add / delete ──
@@ -2026,4 +2052,5 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
   window.__ACCOUNT.deleteAddress = deleteAddress;
   window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;
   window.__ACCOUNT.deliverySubmitBlocked = deliverySubmitBlocked;
+  window.__ACCOUNT.captureDeliverySaveIntent = captureDeliverySaveIntent;
 })();

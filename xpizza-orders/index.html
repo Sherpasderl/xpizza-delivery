@@ -2455,6 +2455,9 @@ async function processPixelPay(){
   // localStorage (NOT sessionStorage): the cross-origin redirect to PixelPay and back can drop
   // sessionStorage on mobile Safari, losing the order details for the confirmation page.
   // `form` is a full snapshot so a cancelled/failed payment can restore the order at the pay step.
+  // Persist the account save-intent BEFORE the redirect (the reload resets account.js's closure flags) so
+  // onOrderConfirmed() can enforce one-off / no-duplicate after return. Guest/pickup → it clears the key.
+  try { if (window.__ACCOUNT && typeof window.__ACCOUNT.captureDeliverySaveIntent === 'function') window.__ACCOUNT.captureDeliverySaveIntent(cfg.order_id); } catch(_){}
   try { localStorage.setItem('xpizza_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder, form: snapshotForm() })); } catch(_){}
   setSending('Redirigiendo a pago seguro…');
   window.location.href = cfg.checkout_url;

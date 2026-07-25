@@ -2921,6 +2921,9 @@ async function processPixelPay(){
   // Stash order + poll token so the return page can resume; localStorage survives the cross-origin
   // redirect to PixelPay and back (sessionStorage can drop on mobile Safari). `form` is a full
   // snapshot so a cancelled/failed payment restores the order at the pay step.
+  // Persist the account save-intent BEFORE the redirect (the reload resets account.js's closure flags) so
+  // onOrderConfirmed() can enforce one-off / no-duplicate after return. Guest/pickup → it clears the key.
+  try { if (window.__ACCOUNT && typeof window.__ACCOUNT.captureDeliverySaveIntent === 'function') window.__ACCOUNT.captureDeliverySaveIntent(cfg.order_id); } catch(_){}
   try { localStorage.setItem('lamusa_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder, form: snapshotForm() })); } catch(_){}
   setSending('Redirigiendo a pago seguro…');
   window.location.href = cfg.checkout_url;
