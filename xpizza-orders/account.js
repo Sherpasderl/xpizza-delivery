@@ -832,17 +832,76 @@
   let _acctAddrUnsaved = false;  // true when the address populating the order isn't a persisted one
   let _acctSaveToggleOn = true;  // B7 "Guardar esta dirección" toggle state (default-checked)
 
-  // ── Task B4: the "Entregar a" confirm card + autofill ──
+  // ── Task B4/3: the "Entregar a" confirm card + autofill — orchestrates the 3 flow states
+  // (spec: guest handled entirely elsewhere by the marker() gate; incomplete profile → Task 2's
+  // Creá tu perfil; complete profile → Task 3's reduced 2-step "cart → pay" flow). FAIL-OPEN at
+  // every step — any miss/timeout/incomplete/invariant-fail routes to the normal fillable UI,
+  // never a hidden-but-empty section, never an advance to payment without valid delivery data.
   async function initDeliveryStep() {
     if (!$('acct-deliver')) return;               // host form has no mount — never touch anything
-    const snap = await accountSnapshot();          // fail-open, timeboxed ~1.5s internally
-    if (!snap) { refreshSaveToggle(); return; }     // no account / miss/timeout → normal empty form
+    const snap = await accountSnapshot();          // fail-open, timeboxed ~1.5s internally — LIVE, authoritative (spec R1 #7)
+    if (!snap) { _acctData = null; revertToNormalFillable(); refreshSaveToggle(); return; }   // no account / miss/timeout → normal empty form
     _acctData = snap;
-    if (pageOrderType() !== 'delivery') { refreshSaveToggle(); return; }   // pickup — leave raw fields
-    if (!profileComplete(snap)) { applyCreateProfileFlow(snap); return; }   // Task 2 — no-skip profile creation
-    const addr = pickDefaultAddress(snap);
-    if (!addr) { applyCreateProfileFlow(snap); return; }   // defensive only — profileComplete() already implies this
-    renderConfirmCard(snap, addr);
+    if (pageOrderType() !== 'delivery') { revertToNormalFillable(); refreshSaveToggle(); return; }   // pickup — out of scope (spec), leave raw fields
+
+    if (profileComplete(snap)) {
+      const addr = pickDefaultAddress(snap);
+      if (addr) {
+        // Map-timing (spec R2): establish the CHECKOUT lat/lng + delivery-zone state DIRECTLY
+        // from the saved address BEFORE the invariant check — gmap isn't initialized until s2
+        // (goToLocation→initMap), so a bare placeAccountPin() call alone would only stash a
+        // pending __restorePos, not values the invariant check below can trust as established.
+        establishCheckoutFromAddress(addr);
+        if (reducedFlowInvariantOk(snap, addr)) {
+          renderS1CompactSummary(snap, addr);
+          renderS2RichSummary(snap, addr);
+          relabelSteps(true);
+          _acctReducedActive = true;
+          _acctAddrId = addr.id;
+          hideRawAndAddrSection();
+          return;
+        }
+      }
+      // FAIL-OPEN: the live snapshot says complete, but the map-timing/zone/invariant re-check
+      // failed RIGHT NOW (e.g. genuinely out of the current delivery zone) — never advance/hide
+      // behind an unconfirmed state. Fall through to the normal fillable flow below.
+    }
+    applyCreateProfileFlow(snap);   // Task 2 — no-skip profile creation (also the fail-open destination above)
+  }
+
+  // Shared "Entregar a" card markup — the decorative map header + name/phone/Cambiar row + address
+  // label/reference — used by BOTH the legacy renderConfirmCard (s1, pre-Task-3 behavior for a
+  // valid-address-but-incomplete-profile customer) and the new Task 3 rich summary atop s2's
+  // payment (renderS2RichSummary). Pure string template, byte-identical to the markup this
+  // replaced inside renderConfirmCard — extracted only to avoid drift between the two mounts.
+  function deliverCardHtml(name, phone, addr, changeBtnId) {
+    return `
+<div class="acct-deliver">
+  <div class="acct-map">
+    <i class="acct-h1"></i><i class="acct-h2"></i><i class="acct-v1"></i><i class="acct-v2"></i>
+    <span class="acct-blk" style="left:16px;top:6px;width:54px;height:19px"></span>
+    <span class="acct-blk" style="left:108px;top:7px;width:66px;height:17px"></span>
+    <span class="acct-blk" style="left:20px;top:44px;width:48px;height:26px"></span>
+    <div class="acct-pindot"></div>
+    <svg class="acct-pin" viewBox="0 0 24 24" fill="${CONFIG.accent}" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
+  </div>
+  <div class="acct-drow">
+    <span class="acct-avatar">${PERSON_SVG}</span>
+    <div class="acct-who">
+      <div class="acct-nm2">${escapeHtml(name)}</div>
+      <div class="acct-ph2">${escapeHtml(phone)}</div>
+    </div>
+    <button class="acct-change" type="button" id="${changeBtnId}">Cambiar</button>
+  </div>
+  <div class="acct-addr">
+    <div class="acct-al">
+      <div class="acct-lbl">${ICON_PIN_SM} ${escapeHtml(addr.label || 'Guardado')}</div>
+      <div class="acct-aname">${escapeHtml((addr.detected || '').split(',')[0] || addr.detected || '')}</div>
+      <div class="acct-aline">${escapeHtml(addr.details || addr.detected || '')}</div>
+      <span class="acct-saved">${ICON_CHECK_SM} Guardado en tu cuenta</span>
+    </div>
+  </div>
+</div>`;
   }
 
   function renderConfirmCard(snap, addr) {
@@ -878,34 +937,7 @@
     const name = (snap && snap.name) || m.name || '';
     const phone = (snap && snap.phone) || m.phone || '';
 
-    mount.innerHTML = `
-<div class="acct-eyebrow">Entregar a</div>
-<div class="acct-deliver">
-  <div class="acct-map">
-    <i class="acct-h1"></i><i class="acct-h2"></i><i class="acct-v1"></i><i class="acct-v2"></i>
-    <span class="acct-blk" style="left:16px;top:6px;width:54px;height:19px"></span>
-    <span class="acct-blk" style="left:108px;top:7px;width:66px;height:17px"></span>
-    <span class="acct-blk" style="left:20px;top:44px;width:48px;height:26px"></span>
-    <div class="acct-pindot"></div>
-    <svg class="acct-pin" viewBox="0 0 24 24" fill="${CONFIG.accent}" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
-  </div>
-  <div class="acct-drow">
-    <span class="acct-avatar">${PERSON_SVG}</span>
-    <div class="acct-who">
-      <div class="acct-nm2">${escapeHtml(name)}</div>
-      <div class="acct-ph2">${escapeHtml(phone)}</div>
-    </div>
-    <button class="acct-change" type="button" id="acct-change-btn">Cambiar</button>
-  </div>
-  <div class="acct-addr">
-    <div class="acct-al">
-      <div class="acct-lbl">${ICON_PIN_SM} ${escapeHtml(addr.label || 'Guardado')}</div>
-      <div class="acct-aname">${escapeHtml((addr.detected || '').split(',')[0] || addr.detected || '')}</div>
-      <div class="acct-aline">${escapeHtml(addr.details || addr.detected || '')}</div>
-      <span class="acct-saved">${ICON_CHECK_SM} Guardado en tu cuenta</span>
-    </div>
-  </div>
-</div>`;
+    mount.innerHTML = `<div class="acct-eyebrow">Entregar a</div>` + deliverCardHtml(name, phone, addr, 'acct-change-btn');
     if (rawWrap) rawWrap.style.display = 'none';
     if (addrSection) addrSection.style.display = 'none';
     const changeBtn = $('acct-change-btn'); if (changeBtn) changeBtn.onclick = () => enterEditMode(false);
@@ -1049,7 +1081,7 @@ ${showCancel ? '<button type="button" class="acct-cancel-edit" id="acct-cancel-e
       _acctData.default_address = res.addrId;
       _acctAddrId = res.addrId;
       exitEditMode();
-      renderConfirmCard(_acctData, Object.assign({ id: res.addrId }, _acctData.addresses[res.addrId]));
+      refreshDeliveryUI(Object.assign({ id: res.addrId }, _acctData.addresses[res.addrId]));
       toast('Dirección guardada');
     } else if (res.reason === 'cap') {
       toast(res.message || 'Ya guardaste el máximo de 10 direcciones.');
@@ -1068,9 +1100,10 @@ ${showCancel ? '<button type="button" class="acct-cancel-edit" id="acct-cancel-e
     exitEditMode();
     if (_acctData) {
       const addr = pickDefaultAddress(_acctData);
-      if (addr) { renderConfirmCard(_acctData, addr); return; }
+      if (addr) { refreshDeliveryUI(addr); return; }
     }
     _acctCardActive = false;   // no saved address to fall back to — leave the raw fields as a guest would see them
+    _acctReducedActive = false;
     refreshSaveToggle();
   }
 
@@ -1081,7 +1114,10 @@ ${showCancel ? '<button type="button" class="acct-cancel-edit" id="acct-cancel-e
   function refreshSaveToggle() {
     const addrSection = addrSectionEl();
     const existing = $('acct-save-toggle-wrap');
-    const shouldShow = !!marker() && pageOrderType() === 'delivery' && !_acctEditMode && (!_acctCardActive || _acctAddrUnsaved);
+    // Never show alongside the Task 3 reduced-flow summary or the Task 2 required label picker —
+    // both of those already own the "save this address" decision for their surface.
+    const shouldShow = !!marker() && pageOrderType() === 'delivery' && !_acctEditMode && !_acctReducedActive
+      && !$('acct-label-picker') && (!_acctCardActive || _acctAddrUnsaved);
     if (!shouldShow) { if (existing) existing.remove(); return; }
     if (existing || !addrSection) return;   // already showing (leave the customer's choice alone) — or no host section
     injectDeliverStylesOnce();
@@ -1161,7 +1197,7 @@ ${rowsHtml}`;
     _acctData.default_address = addrId;
     _acctAddrId = addrId;
     renderAddressesSection();
-    renderConfirmCard(_acctData, Object.assign({ id: addrId }, a));
+    refreshDeliveryUI(Object.assign({ id: addrId }, a));
     placeAccountPin(a.lat, a.lng);
     closeSheet();
     try { await saveAddress({ addrId, label: a.label, detected: a.detected, details: a.details, lat: a.lat, lng: a.lng, makeDefault: true }); }
@@ -1179,7 +1215,8 @@ ${rowsHtml}`;
     if (_acctAddrId === addrId) {
       _acctAddrId = null;
       const next = pickDefaultAddress(_acctData);
-      if (next) renderConfirmCard(_acctData, next);
+      if (next) refreshDeliveryUI(next);
+      else if (_acctReducedActive) revertToNormalFillable();   // the only complete address just got deleted — never leave the reduced/hidden UI standing emptily
       // else: leave the current card/fields as-is rather than yanking the form mid-order.
     }
     try { await deleteAddress(addrId); } catch (_) { /* fail-open — the list already reflects the deletion */ }
@@ -1294,7 +1331,11 @@ ${rowsHtml}`;
     const mount = $('acct-deliver'); if (!mount) { refreshSaveToggle(); return; }   // host form has no mount — never touch anything
     const m = marker() || {};
     const phone = (snap && snap.phone) || m.phone || '';
-    const existingName = ((snap && snap.name) || m.name || '').trim();
+    // Prefer whatever is CURRENTLY typed into #cname (e.g. the customer typed a full name, then
+    // toggled to pickup and back — #cname was live-synced and never cleared) over the last-saved
+    // snapshot name, so a re-render of this card never silently drops in-progress input.
+    const liveCname = (($('cname') || {}).value || '').trim();
+    const existingName = liveCname || ((snap && snap.name) || m.name || '').trim();
     const parts = existingName.split(/\s+/).filter(Boolean);
     const nombreVal = parts[0] || '';
     const apellidoVal = parts.slice(1).join(' ') || '';
@@ -1398,16 +1439,185 @@ ${rowsHtml}`;
     _acctAddrId = res.addrId;
     exitEditMode();
     toast('Perfil guardado');
-    // Profile is NOW complete (name + address both just wrote successfully) — hand off to
-    // whatever the returning-complete-profile presentation is (Task 3 upgrades this call).
-    renderConfirmCard(_acctData, Object.assign({ id: res.addrId }, _acctData.addresses[res.addrId]));
+    // Profile is NOW complete (name + address both just wrote successfully) — collapse into the
+    // same reduced 2-step "Entregar a" experience a returning user gets, for the rest of this
+    // order (refreshDeliveryUI re-derives + re-checks the invariant fresh; never assumes).
+    refreshDeliveryUI(Object.assign({ id: res.addrId }, _acctData.addresses[res.addrId]));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // Task 3 — complete-profile returning flow: cart → pay (3→2 steps), "Entregar a" summary atop
+  // payment. Reachable ONLY from initDeliveryStep()/refreshDeliveryUI(), themselves reachable
+  // ONLY behind marker() (the DOMContentLoaded gate at the bottom). ALL of it is additionally
+  // gated on profileComplete(_acctData) at the call site — a guest, or a logged-in customer whose
+  // LIVE snapshot isn't confirmed complete, never reaches any function in this section.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  let _acctReducedActive = false;   // true while the Task 3 2-step "Entregar a" summary is showing
+
+  function injectCompactSummaryStyles() {
+    if ($('acct-compact-styles')) return;
+    const st = document.createElement('style');
+    st.id = 'acct-compact-styles';
+    st.textContent = `
+.acct-compact{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid #EDE5D9;border-radius:14px;background:#FBF6EE;margin-bottom:4px}
+.acct-compact .acct-cav{width:30px;height:30px;border-radius:50%;background:#F0E8DA;color:#2A231C;display:flex;align-items:center;justify-content:center;flex:none}
+.acct-compact .acct-ctxt{flex:1;min-width:0;font-size:13.5px;color:#17130F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acct-compact .acct-ctxt b{font-weight:700}
+`;
+    document.head.appendChild(st);
+  }
+
+  // Map-timing (spec R2 / codex R2) — gmap isn't initialized until s2 (goToLocation→initMap), and
+  // placeAccountPin() only sets the checkout lat/lng when gmap already exists (else it stashes
+  // __restorePos for later). The invariant re-check below must run against ACTUALLY-ESTABLISHED
+  // values, never a pending __restorePos — so set the bare page globals DIRECTLY from the saved
+  // address here, and ALSO prime __restorePos so a later map init (e.g. via Cambiar) shows the
+  // right pin instead of re-geolocating.
+  function establishCheckoutFromAddress(addr) {
+    if (!addr || typeof addr.lat !== 'number' || typeof addr.lng !== 'number') return;
+    try {
+      lat = addr.lat; lng = addr.lng;   // bare page globals — shared lexical scope (see pageLatLng/placeAccountPin)
+      __restorePos = { lat: addr.lat, lng: addr.lng };
+      if (typeof checkDeliveryRadius === 'function') checkDeliveryRadius(addr.lat, addr.lng);   // establishes isWithinDeliveryZone for the check below
+    } catch (_) { /* fail-open — reducedFlowInvariantOk reads back whatever actually landed and falls back if it's not numeric */ }
+  }
+
+  // The LOCAL invariant re-check (spec R1 #2): non-empty first+last name, phone, address-detected,
+  // numeric lat/lng, IN delivery zone, details>=3 — evaluated against whatever is ACTUALLY
+  // established at call time (never assumes establishCheckoutFromAddress succeeded).
+  function reducedFlowInvariantOk(snap, addr) {
+    try {
+      const nameOk = String((snap && snap.name) || '').trim().split(/\s+/).filter(Boolean).length >= 2;
+      const phoneOk = !!((snap && snap.phone) || (marker() || {}).phone);
+      const detectedOk = !!(addr && typeof addr.detected === 'string' && addr.detected.trim().length > 0);
+      const detailsOk = !!(addr && typeof addr.details === 'string' && addr.details.trim().length >= 3);
+      const { lat: la, lng: ln } = pageLatLng();
+      const latlngOk = typeof la === 'number' && isFinite(la) && typeof ln === 'number' && isFinite(ln);
+      let zoneOk = true;
+      try { zoneOk = (typeof isWithinDeliveryZone !== 'undefined') ? !!isWithinDeliveryZone : true; } catch (_) { zoneOk = true; }
+      return nameOk && phoneOk && detectedOk && detailsOk && latlngOk && zoneOk;
+    } catch (_) { return false; }
+  }
+
+  // Toggle the step-label TEXT ONLY (progress-bar % is untouched — it's driven per-call-site by
+  // the existing showStage()/goBack() calls, not by label text) between "de 3" (default/
+  // guest-identical) and "de 2" (reduced — ONLY ever applied behind marker()+confirmed-complete-
+  // profile). Reversible — the fail-open paths and T6's pickup toggle call this with toTwo=false.
+  function relabelSteps(toTwo) {
+    const l1 = $('step-label-s1'), l2 = $('step-label-s2');
+    if (l1) l1.textContent = toTwo ? 'Paso 1 de 2 — Tu pedido' : 'Paso 1 de 3 — Tu pedido';
+    if (l2) l2.textContent = toTwo ? 'Paso 2 de 2 — Pago' : 'Paso 2 de 3 — Entrega & Pago';
+  }
+
+  function shortAddrLine(addr) {
+    if (!addr) return '';
+    return (addr.details && addr.details.trim()) || (addr.detected || '').split(',')[0] || addr.detected || '';
+  }
+
+  // s1's compact "Entregar a … · Cambiar" line (raw name/phone hidden) — replaces the raw fields
+  // in the SAME #acct-deliver mount. Cambiar opens the Task 4 two-action chooser.
+  function renderS1CompactSummary(snap, addr) {
+    injectDeliverStyles();
+    injectCompactSummaryStyles();
+    const mount = $('acct-deliver'); if (!mount) return;
+    mount.innerHTML = `
+<div class="acct-eyebrow">Entregar a</div>
+<div class="acct-compact">
+  <span class="acct-cav">${PERSON_SVG}</span>
+  <span class="acct-ctxt"><b>${escapeHtml(addr.label || 'Guardado')}</b> · ${escapeHtml(shortAddrLine(addr))}</span>
+  <button class="acct-change" type="button" id="acct-change-btn-s1">Cambiar</button>
+</div>`;
+    const btn = $('acct-change-btn-s1'); if (btn) btn.onclick = () => enterEditMode(false);   // Task 4 upgrades this to the two-action chooser
+  }
+
+  // The rich "Entregar a" summary ATOP s2's payment (above "Forma de pago") — reuses the same
+  // card markup as the legacy renderConfirmCard via deliverCardHtml (byte-identical visuals).
+  function renderS2RichSummary(snap, addr) {
+    injectDeliverStyles();
+    const mount = $('acct-s2-summary'); if (!mount) return;
+    const m = marker() || {};
+    const name = (snap && snap.name) || m.name || '';
+    const phone = (snap && snap.phone) || m.phone || '';
+    mount.innerHTML = `<div class="acct-eyebrow">Entregar a</div>` + deliverCardHtml(name, phone, addr, 'acct-change-btn-s2');
+    const btn = $('acct-change-btn-s2'); if (btn) btn.onclick = () => enterEditMode(false);   // Task 4 upgrades this to the two-action chooser
+  }
+
+  function hideRawAndAddrSection() {
+    const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = 'none';
+    const addrSection = addrSectionEl(); if (addrSection) addrSection.style.display = 'none';
+  }
+
+  // The fail-open reversion: restore the guest-identical fillable DOM (raw fields visible, address
+  // section visible for delivery, step labels back to "de 3"), and clear the Task 3 summary mounts.
+  // Safe/idempotent to call anytime — a fresh page load where nothing was ever hidden is a no-op
+  // beyond the label/mount resets.
+  function revertToNormalFillable() {
+    _acctReducedActive = false;
+    relabelSteps(false);
+    const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
+    const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
+    const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
+    const addrSection = addrSectionEl();
+    if (addrSection) { addrSection.style.display = (pageOrderType() === 'delivery') ? '' : 'none'; }
+    const picker = $('acct-label-picker'); if (picker) picker.remove();
+  }
+
+  // Central re-render dispatcher for every "an address just changed mid-session" call site (Mi
+  // Cuenta's address-list tap, delete-fallback, Cambiar's "Guardar dirección" success, Cancelar).
+  // Re-derives + re-checks the invariant fresh every time — NEVER assumes the caller already
+  // validated anything. Complete + invariant-ok → Task 3 reduced flow; anything else → Task 2's
+  // Creá-tu-perfil-style fillable flow (which itself degrades gracefully to a plain fillable form
+  // when there's nothing to prefill).
+  function refreshDeliveryUI(addrOverride) {
+    if (!_acctData) return;
+    if (pageOrderType() !== 'delivery') { hidePickupDeliverySummary(); return; }
+    if (profileComplete(_acctData)) {
+      const addr = addrOverride || pickDefaultAddress(_acctData);
+      if (addr) {
+        establishCheckoutFromAddress(addr);
+        if (reducedFlowInvariantOk(_acctData, addr)) {
+          renderS1CompactSummary(_acctData, addr);
+          renderS2RichSummary(_acctData, addr);
+          relabelSteps(true);
+          _acctReducedActive = true;
+          _acctAddrId = addr.id;
+          hideRawAndAddrSection();
+          return;
+        }
+      }
+    }
+    _acctReducedActive = false;
+    applyCreateProfileFlow(_acctData);
+  }
+
+  // Task 6 — pickup hides the delivery summary + drops delivery validation WITHOUT clearing
+  // persisted/default data (_acctData / saved addresses are completely untouched — this only
+  // touches DOM/UI state). Restores the raw name/phone fields (prefilled, editable) since pickup
+  // needs no "Entregar a" summary at all.
+  function hidePickupDeliverySummary() {
+    _acctReducedActive = false;
+    relabelSteps(false);
+    const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
+    const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
+    const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
+    const picker = $('acct-label-picker'); if (picker) picker.remove();
   }
 
   function wrapPageHooks() {
     try {
       if (typeof window.setOrderType === 'function' && !window.setOrderType.__acctWrapped) {
         const orig = window.setOrderType;
-        const wrapped = function (type) { orig(type); try { applyCardVisibility(); refreshSaveToggle(); } catch (_) {} };
+        // Task 6 — re-run the completeness application on 'delivery' (reduced flow if still
+        // complete+valid, else the normal fillable UI); 'pickup' hides the summary WITHOUT
+        // touching persisted/default data (hidePickupDeliverySummary/refreshDeliveryUI own this).
+        const wrapped = function (type) {
+          orig(type);
+          try {
+            if (type === 'delivery') { refreshDeliveryUI(); } else { hidePickupDeliverySummary(); }
+            applyCardVisibility(); refreshSaveToggle();
+          } catch (_) {}
+        };
         wrapped.__acctWrapped = true;
         window.setOrderType = wrapped;
       }
@@ -1418,7 +1628,12 @@ ${rowsHtml}`;
         const wrapped = function () {
           orig();
           _acctEditMode = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true;
-          try { applyCardVisibility(); refreshSaveToggle(); } catch (_) {}
+          try {
+            // orig() reset lat/lng/address fields to blank for a fresh order — re-establish the
+            // reduced-flow summary (or the fillable UI) for the NEW order, same as page load.
+            if (pageOrderType() === 'delivery') { refreshDeliveryUI(); } else { hidePickupDeliverySummary(); }
+            applyCardVisibility(); refreshSaveToggle();
+          } catch (_) {}
         };
         wrapped.__acctWrapped = true;
         window.startAnotherOrder = wrapped;
