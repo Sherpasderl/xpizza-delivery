@@ -38,8 +38,10 @@
   const firstName = (n) => String(n || '').trim().split(/\s+/)[0] || '';
   const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-  // Chip CSS — ported from the locked account mockup (.chip/.av/.nm/.cv), brand-recolored via CONFIG.accent.
-  // Injected once, purely local DOM/CSS — no network, safe for the guest fast-path.
+  // Chip CSS — seamless soft-avatar treatment ported VERBATIM from the locked mockup's .chip/.av/.nm/.cv
+  // (docs/superpowers/mockups/xpizza-autofill-mockup.html): NO pill border/background/shadow, a
+  // borderless soft avatar disc + name + caret, hover=opacity only. Injected once, purely local
+  // DOM/CSS — no network, safe for the guest fast-path.
   function injectChipStyles() {
     if ($('acct-chip-styles')) return;
     const st = document.createElement('style');
@@ -47,12 +49,12 @@
     st.textContent = `
 .header{position:relative}
 .acct-chip-mount{position:absolute;top:14px;right:14px;z-index:2;display:flex}
-.acct-chip{display:flex;align-items:center;gap:8px;background:#F5EFE4;border:1px solid #E2D8C8;border-radius:999px;padding:6px 12px 6px 8px;cursor:pointer;font-family:inherit;line-height:1}
-.acct-chip--out{background:#FFFDFA}
-.acct-chip .acct-av{width:26px;height:26px;border-radius:50%;background:${CONFIG.accent};color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
-.acct-chip--out .acct-av{background:#EDE5D9;color:#5b4f41}
-.acct-chip .acct-nm{font-size:14px;font-weight:650;color:#17130F}
-.acct-chip .acct-cv{color:#B3A594;font-size:11px}
+.acct-chip{display:flex;align-items:center;gap:9px;background:transparent;border:none;border-radius:999px;padding:5px 3px;cursor:pointer;font-family:inherit;line-height:1;transition:opacity .15s}
+.acct-chip:hover{opacity:.66}
+.acct-chip .acct-av{width:28px;height:28px;border-radius:50%;background:#F0E8DA;color:#2A231C;display:flex;align-items:center;justify-content:center;flex:none}
+.acct-chip--out .acct-av{background:#F0E8DA;color:#2A231C}
+.acct-chip .acct-nm{font-size:13.5px;font-weight:650;letter-spacing:-.01em;color:#17130F}
+.acct-chip .acct-cv{color:#B3A594;font-size:10px;margin-left:-1px}
 `;
     document.head.appendChild(st);
   }
