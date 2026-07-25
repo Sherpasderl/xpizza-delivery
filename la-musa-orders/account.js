@@ -791,7 +791,7 @@
     if (!ids.length) return null;
     const id = (snap.default_address && snap.addresses[snap.default_address]) ? snap.default_address : ids[0];
     const a = snap.addresses[id];
-    if (!a || typeof a.lat !== 'number' || typeof a.lng !== 'number' || !a.detected) return null;
+    if (!a || typeof a.lat !== 'number' || typeof a.lng !== 'number' || !a.detected || typeof a.details !== 'string' || a.details.trim().length < 3) return null;   // needs a usable reference (delivery requires details>=3); else fall back to the fillable form, never block behind a hidden field
     return Object.assign({ id }, a);
   }
 
@@ -863,7 +863,7 @@
     if (typeof window.__applyPhoneRaw === 'function') window.__applyPhoneRaw(phone); else setVal('cphone', phone);
     setVal('address-detected', addr.detected);
     setVal('address-details', addr.details);
-    __restorePos = { lat: addr.lat, lng: addr.lng };
+    placeAccountPin(addr.lat, addr.lng);   // places the pin NOW if the map is already up, else sets __restorePos for the next initMap (matches selectSavedAddress)
 
     _acctAddrId = addr.id;
     _acctEditIsNew = false;
@@ -948,6 +948,16 @@
     const details = ($('address-details') || {}).value || '';
     const { lat: curLat, lng: curLng } = pageLatLng();
     const label = (($('acct-label-custom') || {}).value || _acctEditLabel || '').trim() || 'Otra';
+
+    // A saved address MUST carry a usable reference: the confirm card HIDES #address-details, and delivery
+    // requires it (>=3 chars), so saving with empty/short details would later block checkout behind a hidden
+    // field. Require it here (matches processPayment's delivery rule); keep the customer in edit mode to fix.
+    if (details.trim().length < 3) {
+      const df = $('address-details'); if (df) df.focus();
+      toast('Agregá una referencia — portón, color, piso…');
+      if (btn) { btn.disabled = false; btn.innerHTML = ICON_CHECK_BIG + ' Guardar dirección'; }
+      return;
+    }
 
     // Name edit → profile `name` write ONLY — NEVER phone (phone is immutable; a per-order contact
     // edit goes to #cphone→createOrder only).
