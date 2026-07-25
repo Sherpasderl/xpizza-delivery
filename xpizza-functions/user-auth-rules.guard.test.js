@@ -28,7 +28,16 @@ assert.equal(up['.read'],  "auth != null && auth.uid === $uid"); ok('user_profil
 assert.ok(/newData\.exists\(\)/.test(up['.write']) && /auth\.uid === \$uid/.test(up['.write'])); ok('user_profiles write owner-only + no wholesale delete');
 assert.ok(/newData\.val\(\) === data\.val\(\)/.test(up.phone['.validate'])); ok('phone immutable');
 assert.ok(/newData\.val\(\) === data\.val\(\)/.test(up.created_at['.validate'])); ok('created_at immutable');
-assert.equal(up.addresses['.validate'], false); ok('addresses denied (P2)');
+// ── P1 saved-addresses: `addresses` is now a structured store (was .validate:false) + referential default ──
+assert.ok(/newData\.child\('addresses'\)\.hasChild\(newData\.child\('default_address'\)\.val\(\)\)/.test(up['.write']),
+  `write must enforce default_address referential integrity (got: ${up['.write']})`); ok('write enforces default_address → existing address (referential invariant)');
+const addr = up.addresses.$addrId;
+assert.ok(/\$addrId\.matches\(/.test(addr['.validate']), `addresses/$addrId must validate the key (got: ${addr['.validate']})`);
+assert.ok(/hasChildren\(\[/.test(addr['.validate']), `addresses/$addrId must hasChildren the 7 fields (got: ${addr['.validate']})`);
+ok('addresses/$addrId validate = $addrId.matches + hasChildren([7 fields])');
+assert.equal(addr.$other['.validate'], false); ok('addresses/$addrId stray keys denied ($other:false)');
+assert.ok(up.default_address['.validate'].includes("newData.parent().child('addresses')"),
+  `default_address must validate against POST-write addresses (got: ${up.default_address['.validate']})`); ok('default_address validated against post-write addresses (newData.parent)');
 assert.equal(up.$other['.validate'], false); ok('no stray profile keys');
 for (const k of ['user_orders','otp','otp_ip','phone_index','deleted_uids']){
   const node = k==='user_orders' ? rules.user_orders.$uid : rules[k];

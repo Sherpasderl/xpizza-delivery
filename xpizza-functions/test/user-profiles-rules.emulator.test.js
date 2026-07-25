@@ -77,7 +77,7 @@ const PROFILE = { phone: '50499998888', phone_hash: 'ph_owner_abc', created_at: 
   await no('C owner cannot advance last_login (dodge sweep)', upd(ownerDb, `user_profiles/${OWNER}`, { last_login: 9999999999999 }));
   await no('C owner cannot change created_at', upd(ownerDb, `user_profiles/${OWNER}`, { created_at: 1 }));
   await no('C owner cannot change phone', upd(ownerDb, `user_profiles/${OWNER}`, { phone: '50400000000' }));
-  await no('C owner cannot write addresses (denied until P2)', set(ownerDb, `user_profiles/${OWNER}/addresses`, { home: 'x' }));
+  await no('C owner cannot write a malformed addresses node (invalid $addrId key)', set(ownerDb, `user_profiles/${OWNER}/addresses`, { home: 'x' }));
   await no('C owner cannot write a stray key ($other denied)', set(ownerDb, `user_profiles/${OWNER}/nickname`, 'z'));
 
   // ── D: tombstone (H10) — a tombstoned uid cannot (re)create/write its profile; deleted_uids deny-all ──
@@ -96,6 +96,35 @@ const PROFILE = { phone: '50499998888', phone_hash: 'ph_owner_abc', created_at: 
   await no('F customer token cannot read /orders', get(custDb, 'orders'));
   await no('F customer token cannot read /tasks', get(custDb, 'tasks'));
   await no('F customer token cannot read /config', get(custDb, 'config'));
+
+  // ── G: saved addresses (P1) — owner-only structured store, bounds, referential default, tombstone ──
+  const VALID = { label: 'Casa', detected: 'Col. Trejo, SPS', details: 'porton negro', lat: 15.5, lng: -88.0, created_at: 1700000000000, last_used_at: 1700000000000 };
+  const AID = 'a_' + 'a'.repeat(12), AID2 = 'a_' + 'b'.repeat(12);
+  const AP = `user_profiles/${OWNER}/addresses`;
+
+  await ok('G owner writes a valid full address', set(ownerDb, `${AP}/${AID}`, VALID));
+  await no('G a different authed uid cannot read this uid addresses', get(otherDb, AP));
+  await no('G a different authed uid cannot write this uid addresses', set(otherDb, `${AP}/${AID}`, VALID));
+  await no('G a tombstoned uid cannot write an address', set(tombDb, `user_profiles/${TOMB}/addresses/${AID}`, VALID));
+  // per-field bounds + shape
+  await no('G lat out of range (91) denied', set(ownerDb, `${AP}/${AID2}`, { ...VALID, lat: 91 }));
+  await no('G lng out of range (-181) denied', set(ownerDb, `${AP}/${AID2}`, { ...VALID, lng: -181 }));
+  await no('G label over length (41) denied', set(ownerDb, `${AP}/${AID2}`, { ...VALID, label: 'x'.repeat(41) }));
+  await no('G detected over length (201) denied', set(ownerDb, `${AP}/${AID2}`, { ...VALID, detected: 'y'.repeat(201) }));
+  await no('G stray $other key in an address denied', set(ownerDb, `${AP}/${AID2}`, { ...VALID, extra: 'z' }));
+  await no('G partial address (missing lat/lng/detected) denied', set(ownerDb, `${AP}/${AID2}`, { label: 'Casa' }));
+  await no('G bad $addrId key (x_1) denied', set(ownerDb, `${AP}/x_1`, VALID));
+  // default_address referential integrity (POST-write, via newData.parent + the .write clause)
+  await no('G default_address → nonexistent addrId denied', upd(ownerDb, `user_profiles/${OWNER}`, { default_address: 'a_' + 'f'.repeat(12) }));
+  await ok('G default_address = null OK', upd(ownerDb, `user_profiles/${OWNER}`, { default_address: null }));
+  await ok('G atomic create-address + set-default in one update OK', upd(ownerDb, `user_profiles/${OWNER}`, { [`addresses/${AID2}`]: VALID, default_address: AID2 }));
+  await no('G delete the referenced address leaving a dangling default denied', upd(ownerDb, `user_profiles/${OWNER}`, { [`addresses/${AID2}`]: null }));
+  await ok('G delete the referenced address + clear default atomically OK', upd(ownerDb, `user_profiles/${OWNER}`, { [`addresses/${AID2}`]: null, default_address: null }));
+  await no('G drop a server-truth field while adding an address denied', upd(ownerDb, `user_profiles/${OWNER}`, { phone: null, [`addresses/${AID2}`]: VALID }));
+  // NOTE: the ≤10-address cap is enforced CLIENT-SIDE (saveAddress, Phase B / Task B3), NOT in rules —
+  // RTDB rules have no child-count function (`numChildren()` is client-SDK only). The addresses node is
+  // owner-only + per-field validated, so an owner over-saving their OWN addresses is a benign nuisance,
+  // not a security exposure. Covered by a Phase B saveAddress JS test.
 
   await env.cleanup();
   console.log(`user-profiles-rules.emulator: OK (${n} assertions)`);
