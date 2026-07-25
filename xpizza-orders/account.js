@@ -89,7 +89,7 @@
 .acct-overlay{position:fixed;inset:0;z-index:1000;display:none;align-items:flex-end;justify-content:center;background:rgba(23,19,15,.46)}
 .acct-overlay.acct-open{display:flex}
 @media (min-width:520px){ .acct-overlay{align-items:center} }
-.acct-sheet{width:100%;max-width:420px;max-height:92vh;background:#FFFDFA;border-radius:22px 22px 0 0;box-shadow:0 -20px 60px -20px rgba(40,28,12,.5);overflow:hidden;display:flex;flex-direction:column;font-family:inherit;animation:acct-up .28s cubic-bezier(.2,.7,.2,1)}
+.acct-sheet{width:100%;max-width:420px;max-height:92vh;background:#FFFDFA;border-radius:22px 22px 0 0;box-shadow:0 -20px 60px -20px rgba(40,28,12,.5);overflow:hidden;display:flex;flex-direction:column;font-family:inherit;animation:acct-up .28s cubic-bezier(.2,.7,.2,1);transition:transform .16s ease-out}
 @media (min-width:520px){ .acct-sheet{border-radius:22px;max-height:88vh} }
 @keyframes acct-up{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
 .acct-topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 8px;flex:none}
@@ -108,6 +108,10 @@
 .acct-inp{flex:1;min-width:0;height:52px;padding:0 15px;border:1.5px solid #E2D8C8;border-radius:14px;background:#fff;font-size:17px;font-weight:550;color:#17130F;outline:none;font-family:inherit}
 .acct-inp::placeholder{color:#B3A594;font-weight:450}
 .acct-inp:focus{border-color:#17130F}
+/* the name-capture field (post-verify pane) is squared to the host FORM's own field radius (8px)
+   rather than the sheet's pill radius — it sits right before the order form's own "Tus datos"
+   step and should read as the same field language. */
+#acct-name-inp{border-radius:8px}
 .acct-cta{width:100%;height:52px;border:none;border-radius:15px;background:#17130F;color:#fff;font-size:16px;font-weight:700;letter-spacing:.01em;cursor:pointer;font-family:inherit;transition:background .15s;margin-top:20px}
 .acct-cta:hover{background:#2A231C}
 .acct-cta[disabled]{background:#E7DFD3;color:#B3A594;cursor:not-allowed}
@@ -215,9 +219,39 @@
   function openOverlay() {
     buildOverlay();
     $('acct-overlay').classList.add('acct-open');
+    bindKeyboardInset();
   }
   function closeSheet() {
     const ov = $('acct-overlay'); if (ov) ov.classList.remove('acct-open');
+    unbindKeyboardInset();
+  }
+
+  // ── Keyboard-safe sheet (Task B2) — on iOS Safari, focusing an input inside the fixed-position
+  // bottom sheet can leave it (and its CTA) hidden under the on-screen keyboard: the sheet is
+  // pinned to the layout viewport, which the keyboard doesn't shrink, only visualViewport does.
+  // Lift the sheet by the covered amount so the focused field stays reachable. No-op wherever
+  // visualViewport isn't supported (desktop / most Android) — those already reflow natively.
+  let _vvBound = false;
+  function applyKeyboardInset() {
+    const sheet = document.querySelector('#acct-overlay .acct-sheet');
+    const vv = window.visualViewport;
+    if (!sheet || !vv) return;
+    const covered = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    sheet.style.transform = covered > 40 ? `translateY(-${covered}px)` : '';
+    const active = document.activeElement;
+    if (covered > 40 && active && sheet.contains(active) && typeof active.scrollIntoView === 'function') {
+      active.scrollIntoView({ block: 'nearest' });
+    }
+  }
+  function bindKeyboardInset() {
+    if (_vvBound || !window.visualViewport) return;
+    _vvBound = true;
+    window.visualViewport.addEventListener('resize', applyKeyboardInset);
+    window.visualViewport.addEventListener('scroll', applyKeyboardInset);
+  }
+  function unbindKeyboardInset() {
+    const sheet = document.querySelector('#acct-overlay .acct-sheet');
+    if (sheet) sheet.style.transform = '';
   }
 
   function openLoginSheet() {
