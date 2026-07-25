@@ -1,0 +1,132 @@
+<title>X. Pizza — Mi cuenta (logged-in mockup)</title>
+<style>
+  :root{
+    --ink:#17130F; --ink-2:#2A231C; --muted:#8C7B6E; --faint:#B3A594;
+    --line:#EDE5D9; --line-2:#E2D8C8; --screen:#FFFDFA; --gold:#A9791A; --gold-lt:#F3E7CC;
+    --ok:#2A6A42; --card:#FFFFFF; --sans:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif; font-synthesis-weight:none;
+  }
+  *{box-sizing:border-box} body{margin:0}
+  .stage{min-height:100vh;background:radial-gradient(120% 80% at 50% -10%, #F3ECE1 0%, #E7DECF 55%, #DCD1BE 100%);display:flex;flex-direction:column;align-items:center;padding:30px 16px 46px;font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  .cap{color:#6a6055;font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin-bottom:14px}
+
+  /* logged-in form header chip (how the order form's top looks) */
+  .hdrdemo{width:100%;max-width:392px;margin-bottom:8px}
+  .hdrdemo .lbl{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#8a7e6d;margin:0 0 7px 2px}
+  .formtop{background:#FFFDFA;border:1px solid var(--line);border-radius:16px;padding:11px 14px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 6px 18px -12px rgba(40,28,12,.3)}
+  .formtop .mk{font-weight:800;font-size:18px;letter-spacing:-.03em;color:var(--ink)} .formtop .mk .dot{color:var(--gold)}
+  .chip{display:flex;align-items:center;gap:8px;background:#F5EFE4;border:1px solid var(--line-2);border-radius:999px;padding:6px 12px 6px 8px;cursor:pointer}
+  .chip .av{width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .chip .nm{font-size:14px;font-weight:650;color:var(--ink)} .chip .cv{color:var(--faint);font-size:11px}
+  .arrowto{text-align:center;color:#8a7e6d;font-size:12px;margin:8px 0 16px;letter-spacing:.02em}
+
+  .screen{width:100%;max-width:392px;background:var(--screen);border-radius:30px;box-shadow:0 30px 70px -24px rgba(40,28,12,.42),0 4px 14px -6px rgba(40,28,12,.18);overflow:hidden;display:flex;flex-direction:column;max-height:760px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 10px;border-bottom:1px solid var(--line);flex:none}
+  .topbar .back{background:none;border:none;font-size:24px;color:var(--ink);cursor:pointer;line-height:1;width:30px}
+  .topbar .tt{font-size:16px;font-weight:700;color:var(--ink);letter-spacing:-.01em}
+  .topbar .ed{background:none;border:none;font-family:inherit;font-size:14px;font-weight:650;color:var(--muted);cursor:pointer}
+
+  .scroll{overflow:auto;padding:22px 22px 26px}
+  .profhead{display:flex;align-items:center;gap:14px}
+  .avatar{width:54px;height:54px;border-radius:50%;background:#F4EEE2;border:1px solid var(--line-2);color:var(--ink);display:flex;align-items:center;justify-content:center;flex:none}
+  .hey{font-size:26px;font-weight:800;letter-spacing:-.025em;color:var(--ink);margin:0}
+  .heysub{color:var(--muted);font-size:14.5px;margin-top:6px;font-variant-numeric:tabular-nums}
+
+  .sec{margin-top:28px}
+  .sechead{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
+  .sectitle{font-size:12px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--faint)}
+  .addlink{background:none;border:none;font-family:inherit;font-size:13px;font-weight:700;color:var(--ink);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+
+  .addr{display:flex;align-items:center;gap:13px;border:1px solid var(--line);border-radius:15px;padding:14px 15px;margin-bottom:10px;background:var(--card);cursor:pointer;transition:border-color .12s}
+  .addr:hover{border-color:var(--line-2)}
+  .addr .dotmark{width:8px;height:8px;border-radius:50%;background:var(--gold);flex:none}
+  .addr .al{flex:1;min-width:0}
+  .addr .alabel{font-size:15px;font-weight:700;color:var(--ink)}
+  .addr .aline{font-size:13px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .addr .ac{color:var(--faint);font-size:19px}
+
+  .order{border:1px solid var(--line);border-radius:16px;padding:15px 16px;margin-bottom:12px;background:var(--card)}
+  .order .oh{display:flex;justify-content:space-between;align-items:baseline}
+  .order .odate{font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.01em}
+  .order .ptot{font-size:15px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+  .order .oitems{font-size:14.5px;color:var(--ink);font-weight:550;margin:8px 0 3px;line-height:1.4}
+  .order .ometa{font-size:12.5px;color:var(--faint)}
+  .order .oact{display:flex;gap:9px;margin-top:13px}
+  .order .repeat{flex:1;height:44px;border:none;border-radius:11px;background:var(--ink);color:#fff;font-family:inherit;font-size:14.5px;font-weight:700;cursor:pointer;transition:background .15s,transform .06s}
+  .order .repeat:hover{background:var(--ink-2)} .order .repeat:active{transform:translateY(1px)}
+  .order .detail{flex:none;height:44px;padding:0 16px;border:1.5px solid var(--line-2);border-radius:11px;background:#fff;color:var(--ink);font-family:inherit;font-size:14.5px;font-weight:650;cursor:pointer}
+
+  .signout{margin-top:26px;text-align:center}
+  .signout button{background:none;border:none;font-family:inherit;font-size:14.5px;font-weight:650;color:var(--muted);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+
+  .toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:13px 20px;border-radius:12px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:all .3s;z-index:50;box-shadow:0 12px 30px -8px rgba(0,0,0,.4)}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .foot{color:#6a6055;font-size:12.5px;line-height:1.6;max-width:392px;margin-top:20px;text-align:center} .foot b{color:#3d372e}
+</style>
+
+<div class="stage">
+  <div class="cap">X. Pizza · Mi cuenta — mockup</div>
+
+  <div class="hdrdemo">
+    <p class="lbl">Arriba del formulario, ya con sesión:</p>
+    <div class="formtop">
+      <div class="mk">X<span class="dot">.</span> Pizza</div>
+      <div class="chip"><span class="av"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.7"/><path d="M5.5 19.5c0-3.5 2.9-5.6 6.5-5.6s6.5 2.1 6.5 5.6"/></svg></span><span class="nm">Xavier</span><span class="cv">▾</span></div>
+    </div>
+  </div>
+  <div class="arrowto">Al tocarlo se abre ↓</div>
+
+  <div class="screen">
+    <div class="topbar">
+      <button class="back" aria-label="Atrás">‹</button>
+      <span class="tt">Mi cuenta</span>
+      <button class="ed">Editar</button>
+    </div>
+    <div class="scroll">
+      <div class="profhead">
+        <span class="avatar"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.7"/><path d="M5.5 19.5c0-3.5 2.9-5.6 6.5-5.6s6.5 2.1 6.5 5.6"/></svg></span>
+        <div><div class="hey">Hola, Xavier</div><div class="heysub">+504 9795-9999</div></div>
+      </div>
+
+      <div class="sec">
+        <div class="sechead"><span class="sectitle">Direcciones guardadas</span><button class="addlink">+ Agregar</button></div>
+        <div class="addr"><span class="dotmark"></span><div class="al"><div class="alabel">Casa</div><div class="aline">Col. Trejo, 2 cuadras del parque · portón negro</div></div><span class="ac">›</span></div>
+        <div class="addr"><span class="dotmark"></span><div class="al"><div class="alabel">Trabajo</div><div class="aline">Blvd. Morazán, Torre Alfa, 4º piso</div></div><span class="ac">›</span></div>
+        <div class="addr"><span class="dotmark"></span><div class="al"><div class="alabel">Casa de mis papás</div><div class="aline">Res. Las Lomas, calle 3, casa 12</div></div><span class="ac">›</span></div>
+      </div>
+
+      <div class="sec">
+        <div class="sechead"><span class="sectitle">Pedidos recientes</span></div>
+
+        <div class="order">
+          <div class="oh"><span class="odate">Sáb 20 jul</span><span class="ptot">L 360</span></div>
+          <div class="oitems">1× Pepperoni · 1× Coca-Cola</div>
+          <div class="ometa">Delivery · Casa</div>
+          <div class="oact"><button class="repeat" onclick="toast('Pedido agregado al carrito')">Repetir pedido</button><button class="detail">Ver detalle</button></div>
+        </div>
+
+        <div class="order">
+          <div class="oh"><span class="odate">Mar 16 jul</span><span class="ptot">L 685</span></div>
+          <div class="oitems">1× Carnivora NY (18")</div>
+          <div class="ometa">Pickup</div>
+          <div class="oact"><button class="repeat" onclick="toast('Pedido agregado al carrito')">Repetir pedido</button><button class="detail">Ver detalle</button></div>
+        </div>
+
+        <div class="order">
+          <div class="oh"><span class="odate">Jue 11 jul</span><span class="ptot">L 598</span></div>
+          <div class="oitems">1× Margherita · 1× Anchovies</div>
+          <div class="ometa">Delivery · Trabajo</div>
+          <div class="oact"><button class="repeat" onclick="toast('Pedido agregado al carrito')">Repetir pedido</button><button class="detail">Ver detalle</button></div>
+        </div>
+      </div>
+
+      <div class="signout"><button>Cerrar sesión</button></div>
+    </div>
+  </div>
+  <p class="foot">Mockup interactivo — tocá <b>Repetir pedido</b>. Direcciones = P2, pedidos + reorder = P3 (esta pantalla es la visión completa). Misma pantalla para La Musa en rojo musa. No es la interfaz final.</p>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+  var tt;
+  window.toast=function(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(tt); tt=setTimeout(function(){t.classList.remove('show');},1800); };
+</script>
