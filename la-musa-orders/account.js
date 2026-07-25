@@ -1230,7 +1230,7 @@ ${rowsHtml}`;
       _acctAddrId = null;
       const next = pickDefaultAddress(_acctData);
       if (next) refreshDeliveryUI(next);
-      else if (_acctReducedActive) revertToNormalFillable();   // the only complete address just got deleted — never leave the reduced/hidden UI standing emptily
+      else if (_acctReducedActive) applyCreateProfileFlow(_acctData);   // the only address just got deleted → profile is now INCOMPLETE: route to the fillable Creá-tu-perfil (hides payment + shows the "Guardar y continuar" CTA the submit-gate points at) — never a payable-looking-but-gate-blocked dead pay button
       // else: leave the current card/fields as-is rather than yanking the form mid-order.
     }
     try { await deleteAddress(addrId); } catch (_) { /* fail-open — the list already reflects the deletion */ }
