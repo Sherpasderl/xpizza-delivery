@@ -2395,9 +2395,24 @@ async function processPixelPay(){
   // (Card entry + 3DS happen on PixelPay's hosted page — never on our site.)
   let cfg;
   try {
+    // Order attribution (User Profiles P0) — fail-open: a logged-in customer's ID token is attached
+    // so the order can be attributed; ANY trouble (no account.js, partial init, slow/failed SDK,
+    // guest) falls back to a plain guest request — never blocks or delays the charge.
+    let __idTok = null;
+    try {
+      if (window.__ACCOUNT && typeof window.__ACCOUNT.customerIdToken === 'function') {
+        __idTok = await Promise.race([
+          window.__ACCOUNT.customerIdToken(),
+          new Promise((r) => setTimeout(() => r(null), 1500)),
+        ]);
+      }
+    } catch (_) { __idTok = null; }   // never block the order on account logic
     const res = await fetch(CHARGEORDER_URL, {
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+ORDER_SECRET},
+      headers: Object.assign(
+        { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ORDER_SECRET },
+        __idTok ? { 'X-Firebase-ID-Token': __idTok } : {}
+      ),
       body: JSON.stringify(currentOrder),
     });
     cfg = await res.json().catch(()=>({}));
@@ -2610,16 +2625,30 @@ async function submitOrder(paymentStatus){
   // seeing a scary error (and re-ordering) when the order actually committed.
   // We do NOT retry 4xx: those are real client errors (bad data / auth / rate
   // limit) that a retry can't fix.
+  // Order attribution (User Profiles P0) — fail-open: a logged-in customer's ID token is attached
+  // so the order can be attributed; ANY trouble (no account.js, partial init, slow/failed SDK,
+  // guest) falls back to a plain guest request — never blocks or delays the order. Computed once
+  // (not per retry attempt) — the token doesn't change across a retry of the same submission.
+  let __idTok = null;
+  try {
+    if (window.__ACCOUNT && typeof window.__ACCOUNT.customerIdToken === 'function') {
+      __idTok = await Promise.race([
+        window.__ACCOUNT.customerIdToken(),
+        new Promise((r) => setTimeout(() => r(null), 1500)),
+      ]);
+    }
+  } catch (_) { __idTok = null; }   // never block the order on account logic
+
   const MAX_TRIES = 3;
   let lastErr = null;
   for(let attempt=1; attempt<=MAX_TRIES; attempt++){
     try {
       const res = await fetch(CREATEORDER_URL,{
         method:'POST',
-        headers:{
-          'Content-Type':'application/json',
-          'Authorization':'Bearer '+ORDER_SECRET,
-        },
+        headers: Object.assign(
+          { 'Content-Type':'application/json', 'Authorization':'Bearer '+ORDER_SECRET },
+          __idTok ? { 'X-Firebase-ID-Token': __idTok } : {}
+        ),
         body:JSON.stringify(currentOrder),
       });
       if(res.ok){                       // 200, including {idempotent:true}

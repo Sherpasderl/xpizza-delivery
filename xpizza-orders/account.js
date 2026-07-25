@@ -496,5 +496,19 @@
     }
   }
 
+  // ── Order attribution — fail-open token helper (Task 7). Guest with no marker returns null
+  // INSTANTLY with zero SDK load, zero network — the byte-identical guest guarantee lives here.
+  async function customerIdToken() {
+    if (!marker()) return null;                        // GUEST — no SDK, no header, byte-identical
+    try {
+      const { auth } = await ensureFirebase();
+      await auth.authStateReady();                      // v10: resolves once persistence restore completes
+      if (auth.currentUser) return await auth.currentUser.getIdToken();
+      heal();                                           // marker present but session truly gone → self-heal to guest (Task 8)
+      return null;
+    } catch (_) { return null; }                        // fail-open — never block the order
+  }
+
   window.__ACCOUNT = { CONFIG, ensureFirebase };   // internal handle for later tasks/tests
+  window.__ACCOUNT.customerIdToken = customerIdToken;
 })();
