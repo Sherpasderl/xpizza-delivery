@@ -455,10 +455,17 @@
     pane.appendChild(del);
   }
 
-  function openAccountSheet() {
+  async function openAccountSheet() {
     openOverlay();
-    renderAccountPane();
+    renderAccountPane();      // from the marker only — instant, no SDK wait, no stale-UI flash
     showPane('account');
+    // Session robustness (Task 8): verify the marker's session is actually alive; if the Firebase
+    // session is genuinely gone (e.g. IndexedDB cleared) self-heal to guest quietly, no crash.
+    try {
+      const { auth } = await ensureFirebase();
+      await auth.authStateReady();
+      if (!auth.currentUser) heal();
+    } catch (_) { /* fail-open — leave the marker as-is; sign-out/delete surface any real trouble */ }
   }
 
   async function doSignOut() {
@@ -495,6 +502,18 @@
       toast('No pudimos eliminar tu cuenta. Intentá de nuevo.');
     }
   }
+
+  // ── Session robustness (Task 8) — self-heal a marker whose Firebase session is actually dead
+  // (e.g. IndexedDB cleared) back to guest, quietly. Callers MUST have already awaited
+  // auth.authStateReady() before concluding currentUser === null — never clear a valid marker
+  // just because persistence restoration hasn't finished yet (customerIdToken above does this).
+  function heal() {
+    try { localStorage.removeItem(CONFIG.MARKER); } catch (_) {}
+    renderChip();
+  }
+  // Invariant: the marker is the ONLY thing gating the guest fast-path — ensureFirebase() is never
+  // called from renderChip() or DOMContentLoaded; only from a login tap, a verified sign-in, an
+  // opened account sheet's sign-out/delete, or a logged-in order's customerIdToken().
 
   // ── Order attribution — fail-open token helper (Task 7). Guest with no marker returns null
   // INSTANTLY with zero SDK load, zero network — the byte-identical guest guarantee lives here.
