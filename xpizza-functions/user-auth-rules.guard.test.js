@@ -31,6 +31,8 @@ assert.ok(/newData\.val\(\) === data\.val\(\)/.test(up.created_at['.validate']))
 // ── P1 saved-addresses: `addresses` is now a structured store (was .validate:false) + referential default ──
 assert.ok(/newData\.child\('addresses'\)\.hasChild\(newData\.child\('default_address'\)\.val\(\)\)/.test(up['.write']),
   `write must enforce default_address referential integrity (got: ${up['.write']})`); ok('write enforces default_address → existing address (referential invariant)');
+assert.ok(/!newData\.isString\(\)/.test(up.addresses['.validate']) && /!newData\.isNumber\(\)/.test(up.addresses['.validate']) && /!newData\.isBoolean\(\)/.test(up.addresses['.validate']),
+  `addresses container .validate must reject scalars (got: ${up.addresses['.validate']})`); ok('addresses container .validate rejects scalar writes (objects only)');
 const addr = up.addresses.$addrId;
 assert.ok(/\$addrId\.matches\(/.test(addr['.validate']), `addresses/$addrId must validate the key (got: ${addr['.validate']})`);
 assert.ok(/hasChildren\(\[/.test(addr['.validate']), `addresses/$addrId must hasChildren the 7 fields (got: ${addr['.validate']})`);

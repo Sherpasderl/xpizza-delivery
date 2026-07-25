@@ -102,6 +102,12 @@ const PROFILE = { phone: '50499998888', phone_hash: 'ph_owner_abc', created_at: 
   const AID = 'a_' + 'a'.repeat(12), AID2 = 'a_' + 'b'.repeat(12);
   const AP = `user_profiles/${OWNER}/addresses`;
 
+  // codex-on-diff FIX: a DIRECT scalar write to the addresses CONTAINER would bypass the $addrId validators
+  // (no child to match) — the container .validate must reject scalars (objects only).
+  await no('G direct scalar write to addresses (string) denied', set(ownerDb, AP, 'x'.repeat(5000)));
+  await no('G direct scalar write to addresses (number) denied', set(ownerDb, AP, 12345));
+  await no('G direct scalar write to addresses (boolean) denied', set(ownerDb, AP, true));
+  await ok('G empty addresses object allowed (clears the map, deletes last address)', set(ownerDb, AP, {}));
   await ok('G owner writes a valid full address', set(ownerDb, `${AP}/${AID}`, VALID));
   await no('G a different authed uid cannot read this uid addresses', get(otherDb, AP));
   await no('G a different authed uid cannot write this uid addresses', set(otherDb, `${AP}/${AID}`, VALID));
