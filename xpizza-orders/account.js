@@ -73,5 +73,180 @@
   }
   document.addEventListener('DOMContentLoaded', renderChip);
 
+  // ── Login / account overlay — built + inserted into <body> lazily, once, on first open.
+  // Markup ported from the locked mockups (xpizza-login-mockup.html / xpizza-account-mockup.html),
+  // classes prefixed `acct-` to avoid any collision with the host form's CSS. No SDK load here.
+  let _overlayBuilt = false;
+  let _loginPhone = '';   // full E.164-ish phone captured phone-pane → otp/name panes (closure state)
+
+  function injectSheetStyles() {
+    if ($('acct-sheet-styles')) return;
+    const st = document.createElement('style');
+    st.id = 'acct-sheet-styles';
+    st.textContent = `
+.acct-overlay{position:fixed;inset:0;z-index:1000;display:none;align-items:flex-end;justify-content:center;background:rgba(23,19,15,.46)}
+.acct-overlay.acct-open{display:flex}
+@media (min-width:520px){ .acct-overlay{align-items:center} }
+.acct-sheet{width:100%;max-width:420px;max-height:92vh;background:#FFFDFA;border-radius:22px 22px 0 0;box-shadow:0 -20px 60px -20px rgba(40,28,12,.5);overflow:hidden;display:flex;flex-direction:column;font-family:inherit;animation:acct-up .28s cubic-bezier(.2,.7,.2,1)}
+@media (min-width:520px){ .acct-sheet{border-radius:22px;max-height:88vh} }
+@keyframes acct-up{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+.acct-topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 8px;flex:none}
+.acct-iconbtn{width:34px;height:34px;border-radius:50%;border:none;background:transparent;color:#17130F;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-family:inherit}
+.acct-iconbtn:hover{background:#F4EEE4}
+.acct-mark{font-weight:800;font-size:17px;letter-spacing:-.03em;color:#17130F}
+.acct-mark .acct-dot{color:${CONFIG.accent}}
+.acct-body{flex:1;overflow:auto;padding:6px 26px 26px}
+.acct-pane{display:none;flex-direction:column}
+.acct-pane.acct-on{display:flex}
+.acct-h1{font-size:26px;line-height:1.12;letter-spacing:-.02em;font-weight:800;color:#17130F;margin:8px 0 0}
+.acct-sub{color:#8C7B6E;font-size:14.5px;line-height:1.5;margin:10px 0 0;max-width:32ch}
+.acct-mlabel{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#B3A594;margin:22px 0 9px}
+.acct-phone-row{display:flex;gap:9px}
+.acct-cc{flex:none;display:flex;align-items:center;gap:7px;height:52px;padding:0 14px;border:1.5px solid #E2D8C8;border-radius:14px;background:#fff;font-size:16px;font-weight:650;color:#17130F;font-family:inherit}
+.acct-inp{flex:1;min-width:0;height:52px;padding:0 15px;border:1.5px solid #E2D8C8;border-radius:14px;background:#fff;font-size:17px;font-weight:550;color:#17130F;outline:none;font-family:inherit}
+.acct-inp::placeholder{color:#B3A594;font-weight:450}
+.acct-inp:focus{border-color:#17130F}
+.acct-cta{width:100%;height:52px;border:none;border-radius:15px;background:#17130F;color:#fff;font-size:16px;font-weight:700;letter-spacing:.01em;cursor:pointer;font-family:inherit;transition:background .15s;margin-top:20px}
+.acct-cta:hover{background:#2A231C}
+.acct-cta[disabled]{background:#E7DFD3;color:#B3A594;cursor:not-allowed}
+.acct-fine{color:#B3A594;font-size:12px;line-height:1.5;text-align:center;margin-top:14px}
+.acct-guest{text-align:center;margin-top:16px}
+.acct-guest button,.acct-linkbtn{background:none;border:none;font-family:inherit;font-size:14px;font-weight:650;color:#17130F;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.acct-otp{display:flex;gap:9px;justify-content:space-between;margin-top:22px}
+.acct-otp input{width:100%;aspect-ratio:1/1.15;text-align:center;font-size:24px;font-weight:700;color:#17130F;border:1.5px solid #E2D8C8;border-radius:14px;background:#fff;outline:none;font-family:inherit}
+.acct-otp input.acct-filled{border-color:#17130F}
+.acct-otp input:focus{border-color:${CONFIG.accent}}
+.acct-resend{margin-top:18px;font-size:13px;color:#8C7B6E}
+.acct-resend button{background:none;border:none;font-family:inherit;font-size:13px;font-weight:700;color:#17130F;cursor:pointer;text-decoration:underline;text-underline-offset:2px;padding:0}
+.acct-resend button[disabled]{color:#B3A594;text-decoration:none;cursor:default}
+.acct-hey{font-size:24px;font-weight:800;letter-spacing:-.02em;color:#17130F;margin:6px 0 0}
+.acct-heysub{color:#8C7B6E;font-size:14px;margin-top:6px}
+.acct-rows{margin-top:22px;border-top:1px solid #EDE5D9}
+.acct-row{display:flex;align-items:center;justify-content:space-between;padding:16px 2px;border-bottom:1px solid #EDE5D9}
+.acct-row .acct-rl{display:flex;flex-direction:column;gap:2px}
+.acct-row .acct-rt{font-size:15px;font-weight:650;color:#17130F}
+.acct-row .acct-rd{font-size:12.5px;color:#B3A594}
+.acct-row.acct-soon .acct-rt{color:#8C7B6E}
+.acct-soon-tag{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${CONFIG.accent};background:#F3E7CC;padding:2px 7px;border-radius:5px}
+.acct-signout{margin-top:22px;text-align:center}
+.acct-signout button{background:none;border:none;font-family:inherit;font-size:14px;font-weight:650;color:#8C7B6E;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.acct-delete{margin-top:10px;text-align:center}
+.acct-delete button{background:none;border:none;font-family:inherit;font-size:12.5px;font-weight:600;color:#B3A594;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.acct-toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:#17130F;color:#fff;padding:12px 18px;border-radius:12px;font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;transition:all .3s;z-index:1100}
+.acct-toast.acct-show{opacity:1;transform:translateX(-50%) translateY(0)}
+`;
+    document.head.appendChild(st);
+  }
+
+  // Brand mark markup — CONFIG.brand is a developer-set constant (not user input); safe to interpolate.
+  function brandMarkHtml() {
+    const parts = String(CONFIG.brand).split('.');
+    return parts.length > 1
+      ? escapeHtml(parts[0]) + '<span class="acct-dot">.</span>' + escapeHtml(parts.slice(1).join('.'))
+      : escapeHtml(CONFIG.brand);
+  }
+
+  function buildOverlay() {
+    if (_overlayBuilt) return;
+    injectSheetStyles();
+    const wrap = document.createElement('div');
+    wrap.id = 'acct-overlay';
+    wrap.className = 'acct-overlay';
+    wrap.innerHTML = `
+<div class="acct-sheet" role="dialog" aria-modal="true" aria-label="Mi cuenta">
+  <div class="acct-topbar">
+    <button class="acct-iconbtn" id="acct-back" type="button" aria-label="Atrás" style="visibility:hidden">‹</button>
+    <div class="acct-mark">${brandMarkHtml()}</div>
+    <button class="acct-iconbtn" id="acct-close" type="button" aria-label="Cerrar">×</button>
+  </div>
+  <div class="acct-body">
+    <section class="acct-pane acct-on" id="acct-pane-phone">
+      <h1 class="acct-h1">Entrá a tu cuenta</h1>
+      <p class="acct-sub">Guardá tus datos y pedí más rápido la próxima vez.</p>
+      <div class="acct-mlabel">Teléfono</div>
+      <div class="acct-phone-row">
+        <button class="acct-cc" type="button" disabled>+504</button>
+        <input class="acct-inp" id="acct-ph-inp" inputmode="numeric" placeholder="9795-9999" autocomplete="off">
+      </div>
+      <button class="acct-cta" id="acct-cont-btn" disabled type="button">Continuar</button>
+      <p class="acct-fine">Te enviaremos un código de verificación por WhatsApp.</p>
+      <div class="acct-guest"><button type="button" id="acct-guest-btn">Prefiero seguir como invitado</button></div>
+    </section>
+
+    <section class="acct-pane" id="acct-pane-otp">
+      <h1 class="acct-h1">Ingresá el código</h1>
+      <p class="acct-sub">Te lo enviamos por WhatsApp al <b id="acct-otp-phone"></b>.</p>
+      <div class="acct-otp" id="acct-otp-boxes">
+        <input inputmode="numeric" maxlength="1"><input inputmode="numeric" maxlength="1"><input inputmode="numeric" maxlength="1">
+        <input inputmode="numeric" maxlength="1"><input inputmode="numeric" maxlength="1"><input inputmode="numeric" maxlength="1">
+      </div>
+      <div class="acct-resend" id="acct-resend"></div>
+      <button class="acct-cta" id="acct-verify-btn" disabled type="button">Verificar</button>
+      <p class="acct-fine" id="acct-otp-err" style="display:none;color:#B23B3B"></p>
+    </section>
+
+    <section class="acct-pane" id="acct-pane-name">
+      <h1 class="acct-h1">¡Listo!</h1>
+      <p class="acct-sub">Ya podés pedir más rápido la próxima vez.</p>
+      <div class="acct-mlabel">Tu nombre</div>
+      <input class="acct-inp" id="acct-name-inp" placeholder="¿Cómo te llamás?" style="width:100%" maxlength="80">
+      <button class="acct-cta" id="acct-save-name-btn" disabled type="button">Guardar</button>
+      <p class="acct-fine" id="acct-name-err" style="display:none"></p>
+    </section>
+
+    <section class="acct-pane" id="acct-pane-account">
+      <!-- built by renderAccountPane() at open time (Task 6) -->
+    </section>
+  </div>
+</div>`;
+    document.body.appendChild(wrap);
+    _overlayBuilt = true;
+    wireOverlayEvents();
+  }
+
+  function showPane(name) {
+    document.querySelectorAll('#acct-overlay .acct-pane').forEach((p) => p.classList.remove('acct-on'));
+    const p = $('acct-pane-' + name); if (p) p.classList.add('acct-on');
+    const back = $('acct-back'); if (back) back.style.visibility = (name === 'otp') ? 'visible' : 'hidden';
+  }
+
+  function openOverlay() {
+    buildOverlay();
+    $('acct-overlay').classList.add('acct-open');
+  }
+  function closeSheet() {
+    const ov = $('acct-overlay'); if (ov) ov.classList.remove('acct-open');
+  }
+
+  function openLoginSheet() {
+    openOverlay();
+    showPane('phone');
+    const inp = $('acct-ph-inp');
+    if (inp) { inp.value = ''; setTimeout(() => inp.focus(), 80); }
+    const cta = $('acct-cont-btn'); if (cta) cta.disabled = true;
+  }
+
+  function wireOverlayEvents() {
+    $('acct-close').onclick = closeSheet;
+    $('acct-guest-btn').onclick = closeSheet;    // guest flow untouched — just closes the sheet
+    $('acct-back').onclick = () => showPane('phone');
+
+    // Phone pane: digits-only NNNN-NNNN formatting, CTA enabled at 8 digits. CC is a static +504
+    // for P0 (the login phone is almost always the local WhatsApp number; a US customer can still
+    // order as guest) — the order form's PHONE_COUNTRIES dropdown is intentionally NOT reused here.
+    const phInp = $('acct-ph-inp'), contBtn = $('acct-cont-btn');
+    phInp.addEventListener('input', () => {
+      const d = phInp.value.replace(/\D/g, '').slice(0, 8);
+      phInp.value = d.length > 4 ? d.slice(0, 4) + '-' + d.slice(4) : d;
+      contBtn.disabled = d.length !== 8;
+    });
+    contBtn.onclick = () => {
+      const digits = phInp.value.replace(/\D/g, '');
+      if (digits.length !== 8) return;
+      contBtn.disabled = true;
+      sendCode('+504' + digits);   // Task 4 — plain fetch, no SDK load here
+    };
+  }
+
   window.__ACCOUNT = { CONFIG, ensureFirebase };   // internal handle for later tasks/tests
 })();
