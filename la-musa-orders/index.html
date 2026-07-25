@@ -1240,7 +1240,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 
 <!-- ── STAGE 1: Menu + Details ── -->
 <div class="stage active" id="s1">
-  <div class="step-label">Paso 1 de 3 — Tu pedido</div>
+  <div class="step-label" id="step-label-s1">Paso 1 de 3 — Tu pedido</div>
 
   <!-- Category tabs (rendered by renderCategoryShell from CATEGORIES) -->
   <div class="cat-tabs" id="cat-tabs"></div>
@@ -1305,7 +1305,7 @@ textarea{resize:none;height:80px;line-height:1.4}
     </div>
   </div>
   <div class="container" style="padding:0 0 100px">
-    <div class="step-label">Paso 2 de 3 — Entrega & Pago</div>
+    <div class="step-label" id="step-label-s2">Paso 2 de 3 — Entrega & Pago</div>
     <div class="delivery-toggle">
       <button class="delivery-toggle-btn active" id="btn-delivery" onclick="setOrderType('delivery')">Delivery</button>
       <button class="delivery-toggle-btn" id="btn-pickup" onclick="setOrderType('pickup')">Pickup</button>
@@ -1368,6 +1368,10 @@ textarea{resize:none;height:80px;line-height:1.4}
         </div>
       </div>
     </div>
+
+    <!-- Mount for the logged-in "Entregar a" summary card ATOP payment (account.js, Task 3/T3).
+         Empty for a guest / incomplete profile / pickup — no card, byte-identical. -->
+    <div id="acct-s2-summary"></div>
 
     <!-- Payment section -->
     <div class="step-label" style="margin-top:8px">Forma de pago</div>

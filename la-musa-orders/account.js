@@ -108,10 +108,11 @@
 .acct-inp{flex:1;min-width:0;height:52px;padding:0 15px;border:1.5px solid #E2D8C8;border-radius:14px;background:#fff;font-size:17px;font-weight:550;color:#17130F;outline:none;font-family:inherit}
 .acct-inp::placeholder{color:#B3A594;font-weight:450}
 .acct-inp:focus{border-color:#17130F}
-/* the name-capture field (post-verify pane) is squared to the host FORM's own field radius (8px)
-   rather than the sheet's pill radius — it sits right before the order form's own "Tus datos"
-   step and should read as the same field language. */
-#acct-name-inp{border-radius:8px}
+/* T7 (codex-visual-fix): the name-capture field (post-verify pane) felt short + too squared at the
+   host form's 8px field radius — raised to 58px (from 52px) and softened toward the phone
+   field's (.acct-cc/.acct-inp) own 14px rounding, so it reads as one substantial, related field
+   language rather than a cramped, unrelated afterthought. */
+#acct-name-inp{height:58px;border-radius:13px}
 .acct-cta{width:100%;height:52px;border:none;border-radius:15px;background:#17130F;color:#fff;font-size:16px;font-weight:700;letter-spacing:.01em;cursor:pointer;font-family:inherit;transition:background .15s;margin-top:20px}
 .acct-cta:hover{background:#2A231C}
 .acct-cta[disabled]{background:#E7DFD3;color:#B3A594;cursor:not-allowed}
@@ -202,6 +203,10 @@
 
     <section class="acct-pane" id="acct-pane-account">
       <!-- built by renderAccountPane() at open time (Task 6) -->
+    </section>
+
+    <section class="acct-pane" id="acct-pane-newaddr">
+      <!-- built by renderNewAddressPane() at open time (Task 5) — self-contained, own map -->
     </section>
   </div>
 </div>`;
@@ -620,6 +625,21 @@
   // Never throws; never blocks a caller — every caller must treat a false return as "didn't save,
   // keep going".
   async function saveAddress({ addrId, label, detected, details, lat, lng, makeDefault } = {}) {
+    // T1 (spec constraint #3) — REJECT, never normalize-and-persist, an invalid address: this is
+    // the LAST line of defense regardless of caller (Cambiar, Creá-tu-perfil, "+ Agregar", any
+    // future one) — so a caller bug can never silently write a saved address that would later
+    // block checkout behind a hidden field (renderConfirmCard's own guard is defense-in-depth,
+    // not the source of truth). Validate BEFORE any network read/write.
+    const _label = String(label || '').trim();
+    const _detected = String(detected || '').trim();
+    const _details = String(details || '').trim();
+    const latOk = typeof lat === 'number' && isFinite(lat);
+    const lngOk = typeof lng === 'number' && isFinite(lng);
+    if (!_label) return { ok: false, reason: 'invalid-label', message: 'Elegí un nombre para la dirección (Casa, Trabajo, etc.).' };
+    if (!_detected) return { ok: false, reason: 'invalid-detected', message: 'No pudimos detectar la dirección — moví el pin en el mapa.' };
+    if (_details.length < 3) return { ok: false, reason: 'invalid-details', message: 'Agregá una referencia para el repartidor (mínimo 3 caracteres).' };
+    if (!latOk || !lngOk) return { ok: false, reason: 'invalid-latlng', message: 'Ubicación inválida — moví el pin en el mapa.' };
+
     try {
       const { auth, db, dbMod } = await ensureFirebase();
       await auth.authStateReady();
@@ -639,9 +659,9 @@
       const now = Date.now();
       const updates = {};
       updates['user_profiles/' + user.uid + '/addresses/' + addrId] = {
-        label: String(label || '').trim().slice(0, 40) || 'Dirección',
-        detected: String(detected || '').trim().slice(0, 200),
-        details: String(details || '').trim().slice(0, 200),
+        label: _label.slice(0, 40),
+        detected: _detected.slice(0, 200),
+        details: _details.slice(0, 200),
         lat, lng,
         created_at: now,
         last_used_at: now,
@@ -703,10 +723,17 @@
 .acct-deliver{border:1px solid #E2D8C8;border-radius:20px;overflow:hidden;background:#fff;box-shadow:0 12px 30px -18px rgba(40,28,12,.3);font-family:inherit;margin-bottom:4px}
 .acct-map{height:84px;position:relative;overflow:hidden;background:radial-gradient(120% 140% at 50% -40%, #EFE7DA 0%, #E4DAC7 100%);border-bottom:1px solid #EDE5D9}
 .acct-map i{position:absolute;background:#F7F2E8;box-shadow:0 0 0 1px #E7DDCB}
-.acct-h1{left:0;right:0;top:26px;height:9px;transform:rotate(-4deg)}
-.acct-h2{left:0;right:0;top:56px;height:12px;transform:rotate(-4deg)}
-.acct-v1{top:0;bottom:0;left:76px;width:10px;transform:rotate(6deg)}
-.acct-v2{top:0;bottom:0;left:182px;width:8px;transform:rotate(6deg)}
+/* T7 (codex-visual-fix): renamed from the collision-prone .acct-h1/.acct-h2 — those names were
+   ALSO the login sheet's real <h1 class="acct-h1"> title class (line ~103 above); since this
+   later stylesheet always wins the cascade, every login/creá-perfil h1 title was silently getting
+   height:9px + rotate(-4deg) applied to it once injectDeliverStyles() had run this pageload
+   (guaranteed sooner now that Tasks 2/3/4/5 call it far more eagerly) — a squashed, rotated title
+   overlapping its subtitle. Purely a class rename on the decorative map's <i> road-lines; the map
+   itself is visually unchanged. */
+.acct-mh1{left:0;right:0;top:26px;height:9px;transform:rotate(-4deg)}
+.acct-mh2{left:0;right:0;top:56px;height:12px;transform:rotate(-4deg)}
+.acct-mv1{top:0;bottom:0;left:76px;width:10px;transform:rotate(6deg)}
+.acct-mv2{top:0;bottom:0;left:182px;width:8px;transform:rotate(6deg)}
 .acct-blk{position:absolute;background:#EAE0CE;border-radius:2px;opacity:.7}
 .acct-pin{position:absolute;left:calc(50% - 11px);top:18px;width:22px;height:22px;z-index:2;filter:drop-shadow(0 5px 4px rgba(40,28,12,.28))}
 .acct-pindot{position:absolute;left:calc(50% - 3px);top:38px;width:7px;height:3px;border-radius:50%;background:rgba(40,28,12,.28);filter:blur(1px)}
@@ -795,6 +822,18 @@
     return Object.assign({ id }, a);
   }
 
+  // ── T1 — "complete profile" predicate (spec constraint #7, codex R1 #8) ──
+  // name complete = first+last (>=2 words); address complete = REUSES pickDefaultAddress's own
+  // guard (detected + numeric lat/lng + details>=3). The LIVE accountSnapshot() snap is
+  // authoritative for this decision — the localStorage marker is only the instant-chip hint,
+  // NEVER the gate for step-removal/reduced-flow (spec R1 #7 / non-negotiable #1).
+  function profileComplete(snap) {
+    if (!snap) return false;
+    const nameOk = String(snap.name || '').trim().split(/\s+/).filter(Boolean).length >= 2;
+    if (!nameOk) return false;
+    return !!pickDefaultAddress(snap);
+  }
+
   // ── Module state for the delivery step / edit flow (Tasks B4–B7). Reset on sign-out. ──
   let _acctData = null;          // last accountSnapshot() profile value, or null
   let _acctAddrId = null;        // addrId currently backing the confirm card / this order
@@ -805,16 +844,77 @@
   let _acctAddrUnsaved = false;  // true when the address populating the order isn't a persisted one
   let _acctSaveToggleOn = true;  // B7 "Guardar esta dirección" toggle state (default-checked)
 
-  // ── Task B4: the "Entregar a" confirm card + autofill ──
+  // ── Task B4/3: the "Entregar a" confirm card + autofill — orchestrates the 3 flow states
+  // (spec: guest handled entirely elsewhere by the marker() gate; incomplete profile → Task 2's
+  // Creá tu perfil; complete profile → Task 3's reduced 2-step "cart → pay" flow). FAIL-OPEN at
+  // every step — any miss/timeout/incomplete/invariant-fail routes to the normal fillable UI,
+  // never a hidden-but-empty section, never an advance to payment without valid delivery data.
   async function initDeliveryStep() {
     if (!$('acct-deliver')) return;               // host form has no mount — never touch anything
-    const snap = await accountSnapshot();          // fail-open, timeboxed ~1.5s internally
-    if (!snap) { refreshSaveToggle(); return; }     // no account / miss/timeout → normal empty form
+    const snap = await accountSnapshot();          // fail-open, timeboxed ~1.5s internally — LIVE, authoritative (spec R1 #7)
+    if (!snap) { _acctData = null; revertToNormalFillable(); refreshSaveToggle(); return; }   // no account / miss/timeout → normal empty form
     _acctData = snap;
-    if (pageOrderType() !== 'delivery') { refreshSaveToggle(); return; }   // pickup — leave raw fields
-    const addr = pickDefaultAddress(snap);
-    if (!addr) { refreshSaveToggle(); return; }     // account with no usable saved address — normal form
-    renderConfirmCard(snap, addr);
+    if (pageOrderType() !== 'delivery') { revertToNormalFillable(); refreshSaveToggle(); return; }   // pickup — out of scope (spec), leave raw fields
+
+    if (profileComplete(snap)) {
+      const addr = pickDefaultAddress(snap);
+      if (addr) {
+        // Map-timing (spec R2): establish the CHECKOUT lat/lng + delivery-zone state DIRECTLY
+        // from the saved address BEFORE the invariant check — gmap isn't initialized until s2
+        // (goToLocation→initMap), so a bare placeAccountPin() call alone would only stash a
+        // pending __restorePos, not values the invariant check below can trust as established.
+        establishCheckoutFromAddress(addr);
+        populateOrderFieldsFromAddress(snap, addr);   // fill the (soon-hidden) submit fields BEFORE the invariant reads them back
+        if (reducedFlowInvariantOk(snap, addr)) {
+          renderS1CompactSummary(snap, addr);
+          renderS2RichSummary(snap, addr);
+          relabelSteps(true);
+          _acctReducedActive = true;
+          _acctAddrId = addr.id;
+          hideRawAndAddrSection();
+          return;
+        }
+      }
+      // FAIL-OPEN: the live snapshot says complete, but the map-timing/zone/invariant re-check
+      // failed RIGHT NOW (e.g. genuinely out of the current delivery zone) — never advance/hide
+      // behind an unconfirmed state. Fall through to the normal fillable flow below.
+    }
+    applyCreateProfileFlow(snap);   // Task 2 — no-skip profile creation (also the fail-open destination above)
+  }
+
+  // Shared "Entregar a" card markup — the decorative map header + name/phone/Cambiar row + address
+  // label/reference — used by BOTH the legacy renderConfirmCard (s1, pre-Task-3 behavior for a
+  // valid-address-but-incomplete-profile customer) and the new Task 3 rich summary atop s2's
+  // payment (renderS2RichSummary). Pure string template, byte-identical to the markup this
+  // replaced inside renderConfirmCard — extracted only to avoid drift between the two mounts.
+  function deliverCardHtml(name, phone, addr, changeBtnId) {
+    return `
+<div class="acct-deliver">
+  <div class="acct-map">
+    <i class="acct-mh1"></i><i class="acct-mh2"></i><i class="acct-mv1"></i><i class="acct-mv2"></i>
+    <span class="acct-blk" style="left:16px;top:6px;width:54px;height:19px"></span>
+    <span class="acct-blk" style="left:108px;top:7px;width:66px;height:17px"></span>
+    <span class="acct-blk" style="left:20px;top:44px;width:48px;height:26px"></span>
+    <div class="acct-pindot"></div>
+    <svg class="acct-pin" viewBox="0 0 24 24" fill="${CONFIG.accent}" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
+  </div>
+  <div class="acct-drow">
+    <span class="acct-avatar">${PERSON_SVG}</span>
+    <div class="acct-who">
+      <div class="acct-nm2">${escapeHtml(name)}</div>
+      <div class="acct-ph2">${escapeHtml(phone)}</div>
+    </div>
+    <button class="acct-change" type="button" id="${changeBtnId}">Cambiar</button>
+  </div>
+  <div class="acct-addr">
+    <div class="acct-al">
+      <div class="acct-lbl">${ICON_PIN_SM} ${escapeHtml(addr.label || 'Guardado')}</div>
+      <div class="acct-aname">${escapeHtml((addr.detected || '').split(',')[0] || addr.detected || '')}</div>
+      <div class="acct-aline">${escapeHtml(addr.details || addr.detected || '')}</div>
+      <span class="acct-saved">${ICON_CHECK_SM} Guardado en tu cuenta</span>
+    </div>
+  </div>
+</div>`;
   }
 
   function renderConfirmCard(snap, addr) {
@@ -850,34 +950,7 @@
     const name = (snap && snap.name) || m.name || '';
     const phone = (snap && snap.phone) || m.phone || '';
 
-    mount.innerHTML = `
-<div class="acct-eyebrow">Entregar a</div>
-<div class="acct-deliver">
-  <div class="acct-map">
-    <i class="acct-h1"></i><i class="acct-h2"></i><i class="acct-v1"></i><i class="acct-v2"></i>
-    <span class="acct-blk" style="left:16px;top:6px;width:54px;height:19px"></span>
-    <span class="acct-blk" style="left:108px;top:7px;width:66px;height:17px"></span>
-    <span class="acct-blk" style="left:20px;top:44px;width:48px;height:26px"></span>
-    <div class="acct-pindot"></div>
-    <svg class="acct-pin" viewBox="0 0 24 24" fill="${CONFIG.accent}" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
-  </div>
-  <div class="acct-drow">
-    <span class="acct-avatar">${PERSON_SVG}</span>
-    <div class="acct-who">
-      <div class="acct-nm2">${escapeHtml(name)}</div>
-      <div class="acct-ph2">${escapeHtml(phone)}</div>
-    </div>
-    <button class="acct-change" type="button" id="acct-change-btn">Cambiar</button>
-  </div>
-  <div class="acct-addr">
-    <div class="acct-al">
-      <div class="acct-lbl">${ICON_PIN_SM} ${escapeHtml(addr.label || 'Guardado')}</div>
-      <div class="acct-aname">${escapeHtml((addr.detected || '').split(',')[0] || addr.detected || '')}</div>
-      <div class="acct-aline">${escapeHtml(addr.details || addr.detected || '')}</div>
-      <span class="acct-saved">${ICON_CHECK_SM} Guardado en tu cuenta</span>
-    </div>
-  </div>
-</div>`;
+    mount.innerHTML = `<div class="acct-eyebrow">Entregar a</div>` + deliverCardHtml(name, phone, addr, 'acct-change-btn');
     if (rawWrap) rawWrap.style.display = 'none';
     if (addrSection) addrSection.style.display = 'none';
     const changeBtn = $('acct-change-btn'); if (changeBtn) changeBtn.onclick = () => enterEditMode(false);
@@ -924,7 +997,16 @@
 
   function injectDeliverStylesOnce() { injectDeliverStyles(); }   // alias for readability at call sites
 
-  function injectLabelPicker(addrSection) {
+  // opts (Task 2/T2): { ctaText, onSave, showCancel } — all optional, default to the ORIGINAL
+  // Cambiar-flow behavior byte-for-byte (ctaText='Guardar dirección', onSave=saveEditedAddress,
+  // showCancel=true) so this extension is purely additive for existing callers. T2's "Creá tu
+  // perfil" reuses this exact scaffolding with its own CTA text + a dedicated re-validating
+  // handler (saveCreateProfile) and no Cancelar (profile creation isn't skippable).
+  function injectLabelPicker(addrSection, opts) {
+    opts = opts || {};
+    const ctaText = opts.ctaText || 'Guardar dirección';
+    const onSave = opts.onSave || saveEditedAddress;
+    const showCancel = opts.showCancel !== false;
     injectDeliverStylesOnce();
     if (!addrSection || $('acct-label-picker')) return;
     const wrap = document.createElement('div');
@@ -940,8 +1022,9 @@
 </div>
 <input type="text" id="acct-label-custom" class="acct-label-custom-inp" placeholder="Ponle un nombre… (ej: Casa de mis papás)" maxlength="40" style="margin-top:10px"/>
 <p class="acct-field-hint">Le ponés el nombre que quieras. La próxima vez la elegís en un toque.</p>
-<button type="button" class="acct-save-addr-btn" id="acct-save-addr-btn">${ICON_CHECK_BIG} Guardar dirección</button>
-<button type="button" class="acct-cancel-edit" id="acct-cancel-edit-btn">‹ Cancelar</button>`;
+<p class="acct-field-hint" id="acct-label-picker-err" style="display:none;color:#B23B3B"></p>
+<button type="button" class="acct-save-addr-btn" id="acct-save-addr-btn">${ICON_CHECK_BIG} ${escapeHtml(ctaText)}</button>
+${showCancel ? '<button type="button" class="acct-cancel-edit" id="acct-cancel-edit-btn">‹ Cancelar</button>' : ''}`;
     addrSection.appendChild(wrap);
 
     wrap.querySelectorAll('.acct-lchip').forEach((chip) => {
@@ -959,7 +1042,7 @@
       customInp.value = knownLabel || _acctEditLabel || '';
       customInp.addEventListener('input', () => { _acctEditLabel = customInp.value; });
     }
-    const saveBtn = $('acct-save-addr-btn'); if (saveBtn) saveBtn.onclick = saveEditedAddress;
+    const saveBtn = $('acct-save-addr-btn'); if (saveBtn) saveBtn.onclick = onSave;
     const cancelBtn = $('acct-cancel-edit-btn'); if (cancelBtn) cancelBtn.onclick = cancelEdit;
   }
 
@@ -1011,7 +1094,7 @@
       _acctData.default_address = res.addrId;
       _acctAddrId = res.addrId;
       exitEditMode();
-      renderConfirmCard(_acctData, Object.assign({ id: res.addrId }, _acctData.addresses[res.addrId]));
+      refreshDeliveryUI(Object.assign({ id: res.addrId }, _acctData.addresses[res.addrId]));
       toast('Dirección guardada');
     } else if (res.reason === 'cap') {
       toast(res.message || 'Ya guardaste el máximo de 10 direcciones.');
@@ -1030,9 +1113,10 @@
     exitEditMode();
     if (_acctData) {
       const addr = pickDefaultAddress(_acctData);
-      if (addr) { renderConfirmCard(_acctData, addr); return; }
+      if (addr) { refreshDeliveryUI(addr); return; }
     }
     _acctCardActive = false;   // no saved address to fall back to — leave the raw fields as a guest would see them
+    _acctReducedActive = false;
     refreshSaveToggle();
   }
 
@@ -1043,7 +1127,10 @@
   function refreshSaveToggle() {
     const addrSection = addrSectionEl();
     const existing = $('acct-save-toggle-wrap');
-    const shouldShow = !!marker() && pageOrderType() === 'delivery' && !_acctEditMode && (!_acctCardActive || _acctAddrUnsaved);
+    // Never show alongside the Task 3 reduced-flow summary or the Task 2 required label picker —
+    // both of those already own the "save this address" decision for their surface.
+    const shouldShow = !!marker() && pageOrderType() === 'delivery' && !_acctEditMode && !_acctReducedActive
+      && !$('acct-label-picker') && (!_acctCardActive || _acctAddrUnsaved);
     if (!shouldShow) { if (existing) existing.remove(); return; }
     if (existing || !addrSection) return;   // already showing (leave the customer's choice alone) — or no host section
     injectDeliverStylesOnce();
@@ -1123,7 +1210,7 @@ ${rowsHtml}`;
     _acctData.default_address = addrId;
     _acctAddrId = addrId;
     renderAddressesSection();
-    renderConfirmCard(_acctData, Object.assign({ id: addrId }, a));
+    refreshDeliveryUI(Object.assign({ id: addrId }, a));
     placeAccountPin(a.lat, a.lng);
     closeSheet();
     try { await saveAddress({ addrId, label: a.label, detected: a.detected, details: a.details, lat: a.lat, lng: a.lng, makeDefault: true }); }
@@ -1141,23 +1228,193 @@ ${rowsHtml}`;
     if (_acctAddrId === addrId) {
       _acctAddrId = null;
       const next = pickDefaultAddress(_acctData);
-      if (next) renderConfirmCard(_acctData, next);
+      if (next) refreshDeliveryUI(next);
+      else if (_acctReducedActive) revertToNormalFillable();   // the only complete address just got deleted — never leave the reduced/hidden UI standing emptily
       // else: leave the current card/fields as-is rather than yanking the form mid-order.
     }
     try { await deleteAddress(addrId); } catch (_) { /* fail-open — the list already reflects the deletion */ }
   }
 
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // Task 5 — "+ Agregar" self-contained Nueva dirección (spec constraint #4 / codex R1 #4). Opens
+  // INSIDE the account sheet with its OWN google.maps.Map/Marker/Geocoder + acctLat/acctLng —
+  // NEVER the checkout gmap/lat/lng/__restorePos/placeAccountPin. On save → saveAddress using
+  // ONLY these account-map values → returns to Mi Cuenta (list, new one shown). NEVER enters the
+  // order/checkout flow (the bug this replaces: the old startAddNewAddress closed the sheet and
+  // dumped the customer into the order form's own address fields).
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  let _nadMap = null, _nadMarker = null, _nadGeocoder = null;
+  let _nadLat = null, _nadLng = null, _nadDetected = '';
+
+  function injectNewAddrStyles() {
+    if ($('acct-nad-styles')) return;
+    const st = document.createElement('style');
+    st.id = 'acct-nad-styles';
+    st.textContent = `
+.acct-nad-top{display:flex;align-items:center;gap:10px;margin:0 0 4px}
+.acct-nad-back{background:none;border:none;font-family:inherit;font-size:14px;font-weight:650;color:#17130F;cursor:pointer;padding:4px 0}
+.acct-nad-title{font-size:15px;font-weight:700;color:#8C7B6E}
+.acct-nad-map{height:168px;border-radius:16px;border:1px solid #E2D8C8;background:#EFE7DA}
+.acct-nad-hint{margin-top:8px;font-size:12px;color:#8C7B6E}
+.acct-nad-textarea{width:100%;min-height:60px;padding:14px 15px;border:1.5px solid #E2D8C8;border-radius:13px;background:#fff;font-size:15px;font-family:inherit;color:#17130F;outline:none;resize:vertical}
+.acct-nad-textarea:focus{border-color:#17130F}
+`;
+    document.head.appendChild(st);
+  }
+
   function startAddNewAddress() {
-    closeSheet();
-    enterEditMode(true);
-    try {
-      const s1 = document.getElementById('s1');
-      if (s1 && s1.classList.contains('active')) {
-        const nameField = document.getElementById('cname'); if (nameField) nameField.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } else if (typeof showStage === 'function') {
-        showStage('s1', 25);
-      }
-    } catch (_) {}
+    renderNewAddressPane();   // self-contained — NEVER closes the sheet, NEVER touches the order form
+  }
+
+  function renderNewAddressPane() {
+    injectDeliverStyles();
+    injectNewAddrStyles();
+    const pane = $('acct-pane-newaddr'); if (!pane) return;
+    _nadLat = null; _nadLng = null; _nadDetected = '';
+    pane.innerHTML = `
+<div class="acct-nad-top">
+  <button type="button" class="acct-nad-back" id="acct-nad-back" aria-label="Volver a Mi cuenta">‹ Mi cuenta</button>
+  <span class="acct-nad-title">Nueva dirección</span>
+</div>
+<div class="acct-eyebrow">Ubicación en el mapa</div>
+<div id="acct-nad-map" class="acct-nad-map"></div>
+<p class="acct-nad-hint" id="acct-nad-hint">Detectando tu ubicación…</p>
+<div class="acct-mlabel" style="margin-top:18px">Referencia</div>
+<textarea id="acct-nad-details" class="acct-nad-textarea" rows="2" placeholder="Portón, color de casa, piso, punto de referencia…" maxlength="200"></textarea>
+<div class="acct-mlabel">Guardar como</div>
+<div class="acct-lchips" id="acct-nad-lchips">
+  <button type="button" class="acct-lchip" data-label="Casa">${ICON_HOUSE}Casa</button>
+  <button type="button" class="acct-lchip" data-label="Trabajo">${ICON_WORK}Trabajo</button>
+  <button type="button" class="acct-lchip acct-on" data-label="">${ICON_TAG}Otra</button>
+</div>
+<input type="text" id="acct-nad-label" class="acct-label-custom-inp" placeholder="Ponle un nombre… (ej: Casa de mis papás)" maxlength="40" style="margin-top:10px"/>
+<p class="acct-field-hint" id="acct-nad-err" style="display:none;color:#B23B3B"></p>
+<button type="button" class="acct-save-addr-btn" id="acct-nad-save-btn">${ICON_CHECK_BIG} Guardar dirección</button>`;
+
+    const backBtn = $('acct-nad-back'); if (backBtn) backBtn.onclick = closeNewAddressPane;
+    wireNewAddrLabelChips();
+    const saveBtn = $('acct-nad-save-btn'); if (saveBtn) saveBtn.onclick = saveNewAddressFromPane;
+
+    showPane('newaddr');
+    initNewAddrMap();
+  }
+
+  function wireNewAddrLabelChips() {
+    const wrap = $('acct-nad-lchips'); if (!wrap) return;
+    wrap.querySelectorAll('.acct-lchip').forEach((chip) => {
+      chip.onclick = () => {
+        wrap.querySelectorAll('.acct-lchip').forEach((c) => c.classList.remove('acct-on'));
+        chip.classList.add('acct-on');
+        const custom = $('acct-nad-label');
+        const val = chip.getAttribute('data-label');
+        if (val) { if (custom) custom.value = val; }
+        else { if (custom) { custom.value = ''; custom.focus(); } }
+      };
+    });
+  }
+
+  // Own map instance — a SECOND google.maps.Map, entirely separate from the checkout gmap. Reuses
+  // whichever Maps JS API script the host page already loaded (same global window.google.maps);
+  // never loads its own script tag. Polls (like the host form's own initMap) until it's ready.
+  function initNewAddrMap() {
+    if (!window.google || !window.google.maps) { setTimeout(initNewAddrMap, 300); return; }
+    const el = $('acct-nad-map'); if (!el) return;
+    let fallback = { lat: 15.5003, lng: -88.025 };
+    try { if (typeof RESTAURANT_LAT === 'number' && typeof RESTAURANT_LNG === 'number') fallback = { lat: RESTAURANT_LAT, lng: RESTAURANT_LNG }; } catch (_) {}
+    // A best-effort center HINT only (read once, never written back) — this pane never touches
+    // the checkout lat/lng/gmap again after reading this single starting hint.
+    let start = fallback;
+    try { if (typeof lat === 'number' && typeof lng === 'number') start = { lat, lng }; } catch (_) {}
+    if (!_nadMap) {
+      _nadMap = new google.maps.Map(el, { center: start, zoom: 16, mapTypeId: 'roadmap', disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy' });
+    } else {
+      _nadMap.setCenter(start);
+    }
+    placeNewAddrPin(start.lat, start.lng);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => placeNewAddrPin(pos.coords.latitude, pos.coords.longitude),
+        () => { /* keep the hint/fallback pin already placed */ },
+        { timeout: 8000, enableHighAccuracy: true, maximumAge: 0 }
+      );
+    }
+  }
+
+  function placeNewAddrPin(la, ln) {
+    _nadLat = la; _nadLng = ln;
+    const pos = { lat: la, lng: ln };
+    if (_nadMap) { _nadMap.setCenter(pos); _nadMap.setZoom(17); }
+    if (_nadMarker) _nadMarker.setMap(null);
+    _nadMarker = new google.maps.Marker({ position: pos, map: _nadMap, draggable: true, animation: google.maps.Animation.DROP, title: 'Moveme para ajustar tu ubicación' });
+    _nadMarker.addListener('dragend', (e) => {
+      _nadLat = e.latLng.lat(); _nadLng = e.latLng.lng();
+      reverseGeocodeNewAddr(_nadLat, _nadLng);
+    });
+    reverseGeocodeNewAddr(la, ln);
+  }
+
+  function reverseGeocodeNewAddr(la, ln) {
+    if (!window.google || !window.google.maps) return;
+    if (!_nadGeocoder) _nadGeocoder = new google.maps.Geocoder();
+    _nadGeocoder.geocode({ location: { lat: la, lng: ln } }, (results, status) => {
+      const hint = $('acct-nad-hint'); if (!hint) return;
+      if (status === 'OK' && results[0]) { _nadDetected = results[0].formatted_address; hint.textContent = _nadDetected; }
+      else { _nadDetected = 'Lat: ' + la.toFixed(5) + ', Lng: ' + ln.toFixed(5); hint.textContent = _nadDetected; }
+    });
+  }
+
+  // Teardown on close (no leak): drop the map/marker/geocoder references — the Maps JS API has no
+  // explicit destroy(), so a full re-init on the NEXT open (initNewAddrMap creates a fresh
+  // google.maps.Map) is the correct, leak-free pattern here, matching how the host form's own
+  // fullscreen-map instance is handled (cached-and-reused, never destroyed).
+  function closeNewAddressPane() {
+    if (_nadMarker) { try { _nadMarker.setMap(null); } catch (_) {} _nadMarker = null; }
+    _nadMap = null; _nadGeocoder = null;
+    _nadLat = null; _nadLng = null; _nadDetected = '';
+    showPane('account');
+  }
+
+  async function saveNewAddressFromPane() {
+    const btn = $('acct-nad-save-btn');
+    const errEl = $('acct-nad-err');
+    if (errEl) errEl.style.display = 'none';
+
+    const details = ($('acct-nad-details') || {}).value || '';
+    const label = (($('acct-nad-label') || {}).value || '').trim();
+
+    // Re-validates INSIDE the handler — the account-map values ONLY, never placeAccountPin/
+    // checkout gmap/lat/lng/__restorePos (spec R1 #4).
+    if (typeof _nadLat !== 'number' || typeof _nadLng !== 'number' || !isFinite(_nadLat) || !isFinite(_nadLng) || !_nadDetected) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Confirmá la ubicación en el mapa.'; }
+      return;
+    }
+    if (details.trim().length < 3) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Agregá una referencia — portón, color, piso…'; }
+      $('acct-nad-details')?.focus();
+      return;
+    }
+    if (!label) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Elegí cómo guardar esta dirección.'; }
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.innerHTML = 'Guardando…'; }
+    const hadNoAddresses = !(_acctData && _acctData.addresses && Object.keys(_acctData.addresses).length);
+    const res = await saveAddress({ label, detected: _nadDetected, details, lat: _nadLat, lng: _nadLng, makeDefault: hadNoAddresses });
+    if (!res.ok) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = res.message || 'No pudimos guardar la dirección. Intentá de nuevo.'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = ICON_CHECK_BIG + ' Guardar dirección'; }
+      return;
+    }
+
+    if (!_acctData) _acctData = {};
+    if (!_acctData.addresses) _acctData.addresses = {};
+    _acctData.addresses[res.addrId] = { label, detected: _nadDetected, details, lat: _nadLat, lng: _nadLng };
+    if (hadNoAddresses) _acctData.default_address = res.addrId;
+    toast('Dirección guardada');
+    closeNewAddressPane();
+    renderAddressesSection();   // Mi Cuenta's list, new one shown
   }
 
   // ── Sign-out / delete-account: revert the form back to the pristine guest state ──
@@ -1186,11 +1443,469 @@ ${rowsHtml}`;
     if (addrSection && isDelivery) addrSection.style.display = 'none';
   }
 
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // Task 2 — "Creá tu perfil": logged-in + !profileComplete, no-skip. Reachable ONLY from
+  // initDeliveryStep()/applyProfileState(), themselves reachable ONLY behind marker() (the
+  // DOMContentLoaded gate at the bottom). A guest never runs a byte of this.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  function injectCreateProfileStyles() {
+    if ($('acct-cp-styles')) return;
+    const st = document.createElement('style');
+    st.id = 'acct-cp-styles';
+    // T7 — the name-capture field reads more substantial at ~58px with a radius that softens
+    // toward the phone field's own rounding, rather than the sheet's tighter 8px squared corner.
+    st.textContent = `
+.acct-cp-card{border:1px solid #E2D8C8;border-radius:20px;overflow:hidden;background:#fff;box-shadow:0 12px 30px -18px rgba(40,28,12,.3);padding:15px;margin-bottom:4px}
+.acct-cp-phonerow{display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 14px;border:1.5px solid #EDE5D9;border-radius:13px;background:#FBF6EE;color:#17130F;margin-bottom:14px}
+.acct-cp-phoneval{font-size:15.5px;font-weight:650;font-variant-numeric:tabular-nums}
+.acct-cp-verified{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2A6A42}
+.acct-cp-two{display:flex;gap:10px}
+.acct-cp-inp{flex:1;min-width:0;height:58px;padding:0 15px;border:1.5px solid #E2D8C8;border-radius:12px;background:#fff;font-size:16px;font-weight:550;color:#17130F;outline:none;font-family:inherit}
+.acct-cp-inp:focus{border-color:#17130F}
+.acct-cp-inp::placeholder{color:#B3A594;font-weight:450}
+`;
+    document.head.appendChild(st);
+  }
+
+  // Best-effort prefill for a returning-but-incomplete-profile customer who already has SOME
+  // saved address (possibly missing a valid reference/lat-lng — a legacy record, or one this
+  // session hasn't finished yet). Unlike pickDefaultAddress(), this does NOT filter for validity —
+  // it's purely a "don't make them start from zero" convenience; saveCreateProfile() re-validates
+  // everything before persisting regardless of what was prefilled.
+  function pickPartialAddress(snap) {
+    if (!snap || !snap.addresses) return null;
+    const ids = Object.keys(snap.addresses);
+    if (!ids.length) return null;
+    const id = (snap.default_address && snap.addresses[snap.default_address]) ? snap.default_address : ids[0];
+    const a = snap.addresses[id];
+    if (!a) return null;
+    return Object.assign({ id }, a);
+  }
+
+  // s2 side of Creá tu perfil: the normal fillable address fields (map/geocode unchanged) PLUS a
+  // REQUIRED "Guardar como" label picker (this profile isn't complete without one) wired to
+  // saveCreateProfile — reuses the existing injectLabelPicker scaffolding via its opts extension.
+  function applyCreateProfileAddressUI(snap) {
+    if (pageOrderType() !== 'delivery') return;   // pickup needs no address — out of scope (spec)
+    const addrSection = addrSectionEl();
+    if (!addrSection) return;
+    addrSection.style.display = '';
+    const partial = pickPartialAddress(snap);
+    if (partial) {
+      if (typeof partial.detected === 'string') setVal('address-detected', partial.detected);
+      if (typeof partial.details === 'string') setVal('address-details', partial.details);
+      if (typeof partial.lat === 'number' && typeof partial.lng === 'number') placeAccountPin(partial.lat, partial.lng);
+    }
+    _acctEditIsNew = !(partial && partial.id);
+    _acctAddrId = (partial && partial.id) || null;
+    _acctEditLabel = (partial && partial.label) || '';
+    injectLabelPicker(addrSection, { ctaText: 'Guardar y continuar', onSave: saveCreateProfile, showCancel: false });
+  }
+
+  // s1 side of Creá tu perfil: phone (read-only + verificado, never asked again) + Nombre +
+  // Apellido as TWO separate inputs. #raw-name-phone (the single #cname field) is hidden but its
+  // inputs stay in the DOM, kept live-synced from nombre+apellido — this is the ONLY reason
+  // goToLocation()/buildOrder() (byte-identical, unmodified) keep working untouched.
+  function applyCreateProfileFlow(snap) {
+    injectDeliverStyles();
+    injectCreateProfileStyles();
+    const mount = $('acct-deliver'); if (!mount) { refreshSaveToggle(); return; }   // host form has no mount — never touch anything
+    const m = marker() || {};
+    const phone = (snap && snap.phone) || m.phone || '';
+    // Prefer whatever is CURRENTLY typed into #cname (e.g. the customer typed a full name, then
+    // toggled to pickup and back — #cname was live-synced and never cleared) over the last-saved
+    // snapshot name, so a re-render of this card never silently drops in-progress input.
+    const liveCname = (($('cname') || {}).value || '').trim();
+    const existingName = liveCname || ((snap && snap.name) || m.name || '').trim();
+    const parts = existingName.split(/\s+/).filter(Boolean);
+    const nombreVal = parts[0] || '';
+    const apellidoVal = parts.slice(1).join(' ') || '';
+
+    mount.innerHTML = `
+<div class="acct-eyebrow">Creá tu perfil</div>
+<div class="acct-cp-card">
+  <div class="acct-cp-phonerow"><span class="acct-cp-phoneval">${escapeHtml(phone)}</span><span class="acct-cp-verified">${ICON_CHECK_SM} Verificado</span></div>
+  <div class="acct-cp-two">
+    <input type="text" id="acct-cp-nombre" class="acct-cp-inp" placeholder="Nombre" maxlength="40" value="${escapeHtml(nombreVal)}" autocomplete="given-name">
+    <input type="text" id="acct-cp-apellido" class="acct-cp-inp" placeholder="Apellido" maxlength="40" value="${escapeHtml(apellidoVal)}" autocomplete="family-name">
+  </div>
+  <p class="acct-field-hint" id="acct-cp-name-err" style="display:none;color:#B23B3B;margin-top:8px"></p>
+</div>`;
+
+    const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = 'none';
+
+    const syncName = () => {
+      const n = (($('acct-cp-nombre') || {}).value || '');
+      const a = (($('acct-cp-apellido') || {}).value || '');
+      setVal('cname', (n + ' ' + a).trim());
+      const err = $('acct-cp-name-err'); if (err) err.style.display = 'none';
+    };
+    const nInp = $('acct-cp-nombre'), aInp = $('acct-cp-apellido');
+    if (nInp) nInp.addEventListener('input', syncName);
+    if (aInp) aInp.addEventListener('input', syncName);
+    syncName();
+    if (typeof window.__applyPhoneRaw === 'function') window.__applyPhoneRaw(phone); else setVal('cphone', phone);
+
+    applyCreateProfileAddressUI(snap);
+  }
+
+  // "Guardar y continuar" (spec R1 #3 — no-skip): re-validates EVERY field INSIDE the handler,
+  // never trusting a disabled-CTA UI state alone (covers Enter, autofill timing, double-click,
+  // programmatic calls) — before any update({name})/saveAddress()/stage change. saveAddress()
+  // itself (Task 1) independently rejects an invalid persist regardless of this handler.
+  async function saveCreateProfile() {
+    const btn = $('acct-save-addr-btn');
+    const pickerErr = $('acct-label-picker-err');
+    if (pickerErr) pickerErr.style.display = 'none';
+
+    const nombre = (($('acct-cp-nombre') || {}).value || '').trim();
+    const apellido = (($('acct-cp-apellido') || {}).value || '').trim();
+    if (!nombre || !apellido) {
+      const err = $('acct-cp-name-err');
+      if (err) { err.style.display = 'block'; err.textContent = 'Ingresá tu nombre y apellido.'; }
+      (nombre ? $('acct-cp-apellido') : $('acct-cp-nombre'))?.focus();
+      return;
+    }
+    const detected = ($('address-detected') || {}).value || '';
+    const details = ($('address-details') || {}).value || '';
+    const { lat: curLat, lng: curLng } = pageLatLng();
+    const label = (($('acct-label-custom') || {}).value || _acctEditLabel || '').trim();
+
+    if (typeof curLat !== 'number' || typeof curLng !== 'number' || !isFinite(curLat) || !isFinite(curLng) || !detected) {
+      if (pickerErr) { pickerErr.style.display = 'block'; pickerErr.textContent = 'Confirmá tu ubicación en el mapa.'; }
+      return;
+    }
+    if (details.trim().length < 3) {
+      const df = $('address-details'); if (df) df.focus();
+      if (pickerErr) { pickerErr.style.display = 'block'; pickerErr.textContent = 'Agregá una referencia — portón, color, piso…'; }
+      return;
+    }
+    if (!label) {
+      if (pickerErr) { pickerErr.style.display = 'block'; pickerErr.textContent = 'Elegí cómo guardar esta dirección.'; }
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.innerHTML = 'Guardando…'; }
+    const fullName = (nombre + ' ' + apellido).trim().slice(0, 80);
+
+    try {
+      const { auth, db, dbMod } = await ensureFirebase();
+      await auth.authStateReady();
+      if (!auth.currentUser) { heal(); throw new Error('no-session'); }
+      await dbMod.update(dbMod.ref(db, 'user_profiles/' + auth.currentUser.uid), { name: fullName });
+      if (!_acctData) _acctData = {};
+      _acctData.name = fullName;
+      const m = marker(); if (m) { m.name = fullName; try { localStorage.setItem(CONFIG.MARKER, JSON.stringify(m)); } catch (_) {} }
+      renderChip();
+    } catch (_) {
+      // Non-blocking is the wrong call HERE specifically — a failed name write means the profile
+      // will still read as incomplete next time, so surface it and let the customer retry rather
+      // than silently proceeding as if it worked (the address save below hasn't run yet either).
+      if (pickerErr) { pickerErr.style.display = 'block'; pickerErr.textContent = 'No pudimos guardar tu nombre. Intentá de nuevo.'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = ICON_CHECK_BIG + ' Guardar y continuar'; }
+      return;
+    }
+
+    const addrIdForSave = _acctEditIsNew ? undefined : _acctAddrId;
+    const res = await saveAddress({ addrId: addrIdForSave, label, detected, details, lat: curLat, lng: curLng, makeDefault: true });
+    if (!res.ok) {
+      if (pickerErr) { pickerErr.style.display = 'block'; pickerErr.textContent = res.message || 'No pudimos guardar la dirección. Intentá de nuevo.'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = ICON_CHECK_BIG + ' Guardar y continuar'; }
+      return;
+    }
+
+    if (!_acctData.addresses) _acctData.addresses = {};
+    _acctData.addresses[res.addrId] = { label, detected, details, lat: curLat, lng: curLng };
+    _acctData.default_address = res.addrId;
+    _acctAddrId = res.addrId;
+    exitEditMode();
+    toast('Perfil guardado');
+    // Profile is NOW complete (name + address both just wrote successfully) — collapse into the
+    // same reduced 2-step "Entregar a" experience a returning user gets, for the rest of this
+    // order (refreshDeliveryUI re-derives + re-checks the invariant fresh; never assumes).
+    refreshDeliveryUI(Object.assign({ id: res.addrId }, _acctData.addresses[res.addrId]));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // Task 3 — complete-profile returning flow: cart → pay (3→2 steps), "Entregar a" summary atop
+  // payment. Reachable ONLY from initDeliveryStep()/refreshDeliveryUI(), themselves reachable
+  // ONLY behind marker() (the DOMContentLoaded gate at the bottom). ALL of it is additionally
+  // gated on profileComplete(_acctData) at the call site — a guest, or a logged-in customer whose
+  // LIVE snapshot isn't confirmed complete, never reaches any function in this section.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  let _acctReducedActive = false;   // true while the Task 3 2-step "Entregar a" summary is showing
+
+  function injectCompactSummaryStyles() {
+    if ($('acct-compact-styles')) return;
+    const st = document.createElement('style');
+    st.id = 'acct-compact-styles';
+    st.textContent = `
+.acct-compact{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid #EDE5D9;border-radius:14px;background:#FBF6EE;margin-bottom:4px}
+.acct-compact .acct-cav{width:30px;height:30px;border-radius:50%;background:#F0E8DA;color:#2A231C;display:flex;align-items:center;justify-content:center;flex:none}
+.acct-compact .acct-ctxt{flex:1;min-width:0;font-size:13.5px;color:#17130F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acct-compact .acct-ctxt b{font-weight:700}
+`;
+    document.head.appendChild(st);
+  }
+
+  // Map-timing (spec R2 / codex R2) — gmap isn't initialized until s2 (goToLocation→initMap), and
+  // placeAccountPin() only sets the checkout lat/lng when gmap already exists (else it stashes
+  // __restorePos for later). The invariant re-check below must run against ACTUALLY-ESTABLISHED
+  // values, never a pending __restorePos — so set the bare page globals DIRECTLY from the saved
+  // address here, and ALSO prime __restorePos so a later map init (e.g. via Cambiar) shows the
+  // right pin instead of re-geolocating.
+  function establishCheckoutFromAddress(addr) {
+    if (!addr || typeof addr.lat !== 'number' || typeof addr.lng !== 'number') return;
+    try {
+      lat = addr.lat; lng = addr.lng;   // bare page globals — shared lexical scope (see pageLatLng/placeAccountPin)
+      __restorePos = { lat: addr.lat, lng: addr.lng };
+      if (typeof checkDeliveryRadius === 'function') checkDeliveryRadius(addr.lat, addr.lng);   // establishes isWithinDeliveryZone for the check below
+    } catch (_) { /* fail-open — reducedFlowInvariantOk reads back whatever actually landed and falls back if it's not numeric */ }
+  }
+
+  // Populate the EXISTING order-submit fields from the saved address. The reduced flow HIDES these fields,
+  // so they MUST be filled or the unchanged processPayment()/buildOrder() would read empties → a returning
+  // complete-profile delivery user could not check out (details<3 error on a hidden field). Mirrors the
+  // legacy renderConfirmCard; name/phone derived from snap+marker() exactly as renderS2RichSummary.
+  function populateOrderFieldsFromAddress(snap, addr) {
+    if (!addr) return;
+    const m = marker() || {};
+    const name = (snap && snap.name) || m.name || '';
+    const phone = (snap && snap.phone) || m.phone || '';
+    setVal('cname', name);
+    if (typeof window.__applyPhoneRaw === 'function') window.__applyPhoneRaw(phone); else setVal('cphone', phone);
+    setVal('address-detected', addr.detected);
+    setVal('address-details', addr.details);
+  }
+
+  // The LOCAL invariant re-check (spec R1 #2): non-empty first+last name, phone, address-detected,
+  // numeric lat/lng, IN delivery zone, details>=3 — evaluated against whatever is ACTUALLY
+  // established at call time (never assumes establishCheckoutFromAddress succeeded).
+  function reducedFlowInvariantOk(snap, addr) {
+    try {
+      const nameOk = String((snap && snap.name) || '').trim().split(/\s+/).filter(Boolean).length >= 2;
+      const phoneOk = !!((snap && snap.phone) || (marker() || {}).phone);
+      const detectedOk = !!(addr && typeof addr.detected === 'string' && addr.detected.trim().length > 0);
+      const detailsOk = !!(addr && typeof addr.details === 'string' && addr.details.trim().length >= 3);
+      const domDetailsOk = (($('address-details') || {}).value || '').trim().length >= 3;   // the ACTUAL submit field — never hide the section over an unpopulated #address-details
+      const { lat: la, lng: ln } = pageLatLng();
+      const latlngOk = typeof la === 'number' && isFinite(la) && typeof ln === 'number' && isFinite(ln);
+      let zoneOk = true;
+      try { zoneOk = (typeof isWithinDeliveryZone !== 'undefined') ? !!isWithinDeliveryZone : true; } catch (_) { zoneOk = true; }
+      return nameOk && phoneOk && detectedOk && detailsOk && domDetailsOk && latlngOk && zoneOk;
+    } catch (_) { return false; }
+  }
+
+  // Toggle the step-label TEXT ONLY (progress-bar % is untouched — it's driven per-call-site by
+  // the existing showStage()/goBack() calls, not by label text) between "de 3" (default/
+  // guest-identical) and "de 2" (reduced — ONLY ever applied behind marker()+confirmed-complete-
+  // profile). Reversible — the fail-open paths and T6's pickup toggle call this with toTwo=false.
+  function relabelSteps(toTwo) {
+    const l1 = $('step-label-s1'), l2 = $('step-label-s2');
+    if (l1) l1.textContent = toTwo ? 'Paso 1 de 2 — Tu pedido' : 'Paso 1 de 3 — Tu pedido';
+    if (l2) l2.textContent = toTwo ? 'Paso 2 de 2 — Pago' : 'Paso 2 de 3 — Entrega & Pago';
+  }
+
+  function shortAddrLine(addr) {
+    if (!addr) return '';
+    return (addr.details && addr.details.trim()) || (addr.detected || '').split(',')[0] || addr.detected || '';
+  }
+
+  // s1's compact "Entregar a … · Cambiar" line (raw name/phone hidden) — replaces the raw fields
+  // in the SAME #acct-deliver mount. Cambiar opens the Task 4 two-action chooser.
+  function renderS1CompactSummary(snap, addr) {
+    injectDeliverStyles();
+    injectCompactSummaryStyles();
+    const mount = $('acct-deliver'); if (!mount) return;
+    mount.innerHTML = `
+<div class="acct-eyebrow">Entregar a</div>
+<div class="acct-compact">
+  <span class="acct-cav">${PERSON_SVG}</span>
+  <span class="acct-ctxt"><b>${escapeHtml(addr.label || 'Guardado')}</b> · ${escapeHtml(shortAddrLine(addr))}</span>
+  <button class="acct-change" type="button" id="acct-change-btn-s1">Cambiar</button>
+</div>`;
+    const btn = $('acct-change-btn-s1'); if (btn) btn.onclick = openCambiarPanel;
+  }
+
+  // The rich "Entregar a" summary ATOP s2's payment (above "Forma de pago") — reuses the same
+  // card markup as the legacy renderConfirmCard via deliverCardHtml (byte-identical visuals).
+  function renderS2RichSummary(snap, addr) {
+    injectDeliverStyles();
+    const mount = $('acct-s2-summary'); if (!mount) return;
+    const m = marker() || {};
+    const name = (snap && snap.name) || m.name || '';
+    const phone = (snap && snap.phone) || m.phone || '';
+    mount.innerHTML = `<div class="acct-eyebrow">Entregar a</div>` + deliverCardHtml(name, phone, addr, 'acct-change-btn-s2');
+    const btn = $('acct-change-btn-s2'); if (btn) btn.onclick = openCambiarPanel;
+  }
+
+  function hideRawAndAddrSection() {
+    const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = 'none';
+    const addrSection = addrSectionEl(); if (addrSection) addrSection.style.display = 'none';
+  }
+
+  // The fail-open reversion: restore the guest-identical fillable DOM (raw fields visible, address
+  // section visible for delivery, step labels back to "de 3"), and clear the Task 3 summary mounts.
+  // Safe/idempotent to call anytime — a fresh page load where nothing was ever hidden is a no-op
+  // beyond the label/mount resets.
+  function revertToNormalFillable() {
+    _acctReducedActive = false;
+    relabelSteps(false);
+    const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
+    const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
+    const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
+    const addrSection = addrSectionEl();
+    if (addrSection) { addrSection.style.display = (pageOrderType() === 'delivery') ? '' : 'none'; }
+    const picker = $('acct-label-picker'); if (picker) picker.remove();
+  }
+
+  // Central re-render dispatcher for every "an address just changed mid-session" call site (Mi
+  // Cuenta's address-list tap, delete-fallback, Cambiar's "Guardar dirección" success, Cancelar).
+  // Re-derives + re-checks the invariant fresh every time — NEVER assumes the caller already
+  // validated anything. Complete + invariant-ok → Task 3 reduced flow; anything else → Task 2's
+  // Creá-tu-perfil-style fillable flow (which itself degrades gracefully to a plain fillable form
+  // when there's nothing to prefill).
+  function refreshDeliveryUI(addrOverride) {
+    if (!_acctData) return;
+    if (pageOrderType() !== 'delivery') { hidePickupDeliverySummary(); return; }
+    if (profileComplete(_acctData)) {
+      const addr = addrOverride || pickDefaultAddress(_acctData);
+      if (addr) {
+        establishCheckoutFromAddress(addr);
+        populateOrderFieldsFromAddress(_acctData, addr);   // fill the (soon-hidden) submit fields BEFORE the invariant reads them back
+        if (reducedFlowInvariantOk(_acctData, addr)) {
+          renderS1CompactSummary(_acctData, addr);
+          renderS2RichSummary(_acctData, addr);
+          relabelSteps(true);
+          _acctReducedActive = true;
+          _acctAddrId = addr.id;
+          hideRawAndAddrSection();
+          return;
+        }
+      }
+    }
+    _acctReducedActive = false;
+    applyCreateProfileFlow(_acctData);
+  }
+
+  // Task 6 — pickup hides the delivery summary + drops delivery validation WITHOUT clearing
+  // persisted/default data (_acctData / saved addresses are completely untouched — this only
+  // touches DOM/UI state). Restores the raw name/phone fields (prefilled, editable) since pickup
+  // needs no "Entregar a" summary at all.
+  function hidePickupDeliverySummary() {
+    _acctReducedActive = false;
+    relabelSteps(false);
+    const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
+    const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
+    const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
+    const picker = $('acct-label-picker'); if (picker) picker.remove();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // Task 4 — Cambiar: TWO distinct actions from the returning-flow summary (spec "Cambiar (on the
+  // returning payment summary)"). "Usar en este pedido" (pick a saved address → order fields
+  // ONLY, no persist, no default change) vs "Guardar dirección" (edit/add → persists via the
+  // EXISTING enterEditMode(true)/saveEditedAddress scaffolding, unchanged, makeDefault:true). No
+  // silent default/profile mutation on a one-off. Reachable only via renderS1CompactSummary/
+  // renderS2RichSummary's Cambiar buttons — themselves only ever rendered behind
+  // marker()+profileComplete (Task 3).
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  function openCambiarPanel() {
+    const mount = $('acct-s2-summary'); if (!mount) return;
+    // Cambiar can be tapped from s1's compact line before s2 (and its map) has ever been shown —
+    // jump there so the chooser (and, if "Usar una dirección nueva" is picked, the real map) is
+    // visible. Name/phone are already known+valid at this point (that's the Task 3 invariant that
+    // got us here), so bypassing goToLocation()'s own re-validation here is safe.
+    try {
+      const s2 = document.getElementById('s2');
+      if (s2 && !s2.classList.contains('active') && typeof showStage === 'function') {
+        showStage('s2', 50);
+        setTimeout(() => { try { if (typeof initMap === 'function') initMap(); } catch (_) {} }, 100);
+      }
+    } catch (_) {}
+
+    injectDeliverStyles();
+    const addrs = (_acctData && _acctData.addresses) || {};
+    const otherIds = Object.keys(addrs).filter((id) => id !== _acctAddrId);
+    const rowsHtml = otherIds.map((id) => {
+      const a = addrs[id];
+      return `<div class="acct-acard" data-use-id="${escapeHtml(id)}">
+  <span class="acct-dotmark" style="background:#CFC2B1"></span>
+  <div class="acct-al2"><div class="acct-aname2">${escapeHtml(a.label || 'Dirección')}</div>
+  <div class="acct-aline2">${escapeHtml(a.details || a.detected || '')}</div></div>
+</div>`;
+    }).join('');
+    mount.innerHTML = `
+<div class="acct-eyebrow">Cambiar dirección de entrega</div>
+${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No tenés otras direcciones guardadas.</p>'}
+<button type="button" class="acct-addlink" id="acct-cambiar-new">+ Usar una dirección nueva</button>
+<button type="button" class="acct-cancel-edit" id="acct-cambiar-cancel">‹ Cancelar</button>`;
+    mount.querySelectorAll('[data-use-id]').forEach((row) => {
+      row.onclick = () => selectSavedAddressForOrder(row.getAttribute('data-use-id'));
+    });
+    const newBtn = $('acct-cambiar-new');
+    if (newBtn) newBtn.onclick = () => {
+      mount.innerHTML = '';
+      relabelSteps(false);
+      _acctReducedActive = false;
+      const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
+      const addrSection = addrSectionEl();
+      if (addrSection) addrSection.style.display = '';
+      enterEditMode(true);   // existing scaffolding — its "Guardar dirección" persists (makeDefault:true) + applies
+      if (addrSection) setTimeout(() => addrSection.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+    };
+    const cancelBtn = $('acct-cambiar-cancel');
+    if (cancelBtn) cancelBtn.onclick = () => refreshDeliveryUI();
+    setTimeout(() => mount.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+  }
+
+  // "Usar en este pedido" — order fields ONLY, NO saveAddress() call, NO default_address change.
+  function selectSavedAddressForOrder(addrId) {
+    if (!_acctData || !_acctData.addresses || !_acctData.addresses[addrId]) return;
+    const a = _acctData.addresses[addrId];
+    _acctAddrId = addrId;   // backs THIS order only — _acctData.default_address is untouched
+    const addr = Object.assign({ id: addrId }, a);
+    establishCheckoutFromAddress(addr);
+    setVal('address-detected', a.detected);
+    setVal('address-details', a.details);
+    placeAccountPin(a.lat, a.lng);
+    if (reducedFlowInvariantOk(_acctData, addr)) {
+      renderS1CompactSummary(_acctData, addr);
+      renderS2RichSummary(_acctData, addr);
+      relabelSteps(true);
+      _acctReducedActive = true;
+      hideRawAndAddrSection();
+      toast('Dirección actualizada para este pedido');
+    } else {
+      // FAIL-OPEN: this saved address fails the invariant right now (e.g. genuinely out of the
+      // current delivery zone) — never leave a hidden-but-invalid summary standing; drop to the
+      // normal fillable view so processPayment()'s own checks (and the customer's eyes) catch it.
+      _acctReducedActive = false;
+      relabelSteps(false);
+      const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
+      const addrSection = addrSectionEl(); if (addrSection) addrSection.style.display = '';
+      const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
+      toast('Esa dirección no está disponible ahora mismo — revisá el mapa.');
+    }
+  }
+
   function wrapPageHooks() {
     try {
       if (typeof window.setOrderType === 'function' && !window.setOrderType.__acctWrapped) {
         const orig = window.setOrderType;
-        const wrapped = function (type) { orig(type); try { applyCardVisibility(); refreshSaveToggle(); } catch (_) {} };
+        // Task 6 — re-run the completeness application on 'delivery' (reduced flow if still
+        // complete+valid, else the normal fillable UI); 'pickup' hides the summary WITHOUT
+        // touching persisted/default data (hidePickupDeliverySummary/refreshDeliveryUI own this).
+        const wrapped = function (type) {
+          orig(type);
+          try {
+            if (type === 'delivery') { refreshDeliveryUI(); } else { hidePickupDeliverySummary(); }
+            applyCardVisibility(); refreshSaveToggle();
+          } catch (_) {}
+        };
         wrapped.__acctWrapped = true;
         window.setOrderType = wrapped;
       }
@@ -1201,10 +1916,40 @@ ${rowsHtml}`;
         const wrapped = function () {
           orig();
           _acctEditMode = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true;
-          try { applyCardVisibility(); refreshSaveToggle(); } catch (_) {}
+          try {
+            // orig() reset lat/lng/address fields to blank for a fresh order — re-establish the
+            // reduced-flow summary (or the fillable UI) for the NEW order, same as page load.
+            if (pageOrderType() === 'delivery') { refreshDeliveryUI(); } else { hidePickupDeliverySummary(); }
+            applyCardVisibility(); refreshSaveToggle();
+          } catch (_) {}
         };
         wrapped.__acctWrapped = true;
         window.startAnotherOrder = wrapped;
+      }
+    } catch (_) {}
+    // T2 no-skip: when the Creá-tu-perfil card is the active s1 UI, a blank/one-word name must
+    // NEVER be allowed to advance past s1 — re-validated HERE (inside the wrapped function,
+    // before the ORIGINAL goToLocation() ever runs), not just a disabled-CTA illusion. Guests
+    // (and any complete-profile / no-card state) hit the `if` guard's false branch and fall
+    // straight through to the ORIGINAL, byte-identical goToLocation().
+    try {
+      if (typeof window.goToLocation === 'function' && !window.goToLocation.__acctGuarded) {
+        const orig = window.goToLocation;
+        const wrapped = function () {
+          if (marker() && $('acct-cp-nombre')) {
+            const nombre = ($('acct-cp-nombre').value || '').trim();
+            const apellido = ($('acct-cp-apellido').value || '').trim();
+            if (!nombre || !apellido) {
+              const err = $('acct-cp-name-err');
+              if (err) { err.style.display = 'block'; err.textContent = 'Ingresá tu nombre y apellido.'; }
+              (nombre ? $('acct-cp-apellido') : $('acct-cp-nombre')).focus();
+              return;   // BLOCKED — the original goToLocation() never runs
+            }
+          }
+          return orig.apply(this, arguments);
+        };
+        wrapped.__acctGuarded = true;
+        window.goToLocation = wrapped;
       }
     } catch (_) {}
   }
@@ -1223,6 +1968,7 @@ ${rowsHtml}`;
   window.__ACCOUNT.accountSnapshot = accountSnapshot;
   window.__ACCOUNT.newAddrId = newAddrId;
   window.__ACCOUNT.saveAddress = saveAddress;
+  window.__ACCOUNT.profileComplete = profileComplete;
   window.__ACCOUNT.deleteAddress = deleteAddress;
   window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;
 })();
