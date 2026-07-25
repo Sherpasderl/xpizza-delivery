@@ -1,0 +1,161 @@
+<title>X. Pizza — logged-in flow (profile-first, no Tus Datos step)</title>
+<style>
+  :root{
+    --ink:#17130F;--ink-2:#2A231C;--muted:#8C7B6E;--faint:#B3A594;--faint-2:#CFC2B1;
+    --line:#EDE5D9;--line-2:#E2D8C8;--screen:#FFFDFA;--cream:#FBF6EE;--gold:#A9791A;--gold-lt:#F3E7CC;--ok:#2A6A42;--ok-lt:#E7F0E9;
+    --sans:-apple-system,system-ui,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;font-synthesis-weight:none;
+  }
+  *{box-sizing:border-box}body{margin:0}
+  .stage{min-height:100vh;background:radial-gradient(125% 85% at 50% -12%,#F5EEE3 0%,#E9E0D1 52%,#DCD1BE 100%);
+    display:flex;flex-direction:column;align-items:center;padding:26px 16px 44px;font-family:var(--sans);-webkit-font-smoothing:antialiased;color:var(--ink)}
+  .cap{color:#6a6055;font-size:11.5px;letter-spacing:.15em;text-transform:uppercase;font-weight:700;margin-bottom:12px;text-align:center;max-width:392px}
+  .cap b{color:#3d372e}
+  .segtabs{display:flex;gap:7px;margin-bottom:15px}
+  .segtabs button{border:1px solid var(--line-2);background:#fff;border-radius:999px;padding:8px 15px;font-family:inherit;font-size:12.5px;font-weight:700;color:var(--muted);cursor:pointer}
+  .segtabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+  .screen{width:100%;max-width:392px;background:var(--screen);border-radius:30px;overflow:hidden;position:relative;min-height:748px;
+    box-shadow:0 30px 74px -24px rgba(40,28,12,.42),0 4px 14px -6px rgba(40,28,12,.16);display:flex;flex-direction:column}
+  .statusbar{height:12px}
+  .head{padding:15px 18px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .mark{font-weight:800;font-size:19px;letter-spacing:-.03em;line-height:1}.mark .dot{color:var(--gold)}
+  .mark .sub{display:block;font-weight:400;font-size:10px;letter-spacing:.02em;color:var(--faint);margin-top:4px}
+  .chip{display:flex;align-items:center;gap:8px;cursor:pointer}
+  .chip .av{width:28px;height:28px;border-radius:50%;background:#F0E8DA;color:var(--ink-2);display:flex;align-items:center;justify-content:center}
+  .chip .nm{font-size:13.5px;font-weight:650}.chip .cv{color:var(--faint);font-size:10px}
+  .prog{height:3px;background:var(--line);position:relative}
+  .prog::after{content:"";position:absolute;left:0;top:0;height:100%;background:linear-gradient(90deg,var(--gold),#C79A3E)}
+  .prog.p2of3::after{width:66%}.prog.p1of2::after{width:52%}
+  .step{padding:14px 20px 2px;font-size:13px;font-weight:700;color:var(--muted)}
+  .body{flex:1;padding:12px 20px 20px;display:flex;flex-direction:column;overflow:auto}
+  .pane{display:none;flex-direction:column;flex:1;animation:in .32s cubic-bezier(.2,.7,.2,1)}
+  .pane.on{display:flex}
+  @keyframes in{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);margin:14px 2px 8px}
+  .eyebrow:first-child{margin-top:4px}
+  .ro{display:flex;align-items:center;justify-content:space-between;height:54px;padding:0 15px;border:1.5px solid var(--line);border-radius:13px;background:var(--cream);color:var(--ink)}
+  .ro .v{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+  .ro .ok{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--ok)}
+  .inp{width:100%;height:56px;padding:0 15px;border:1.5px solid var(--line-2);border-radius:13px;background:#fff;font-size:16.5px;font-weight:500;color:var(--ink);outline:none;font-family:inherit}
+  .inp:focus{border-color:var(--ink)}.inp::placeholder{color:var(--faint);font-weight:450}
+  .two{display:flex;gap:10px}.two .inp{flex:1;min-width:0}
+  .map{height:150px;border-radius:15px;position:relative;overflow:hidden;border:1px solid var(--line-2);background:radial-gradient(120% 140% at 50% -40%,#EFE7DA 0%,#E4DAC7 100%)}
+  .map i{position:absolute;background:#F7F2E8;box-shadow:0 0 0 1px #E7DDCB}
+  .map .h1{left:0;right:0;top:50px;height:13px;transform:rotate(-4deg)}.map .h2{left:0;right:0;top:104px;height:17px;transform:rotate(-4deg)}
+  .map .v1{top:0;bottom:0;left:100px;width:13px;transform:rotate(6deg)}.map .v2{top:0;bottom:0;left:244px;width:10px;transform:rotate(6deg)}
+  .blk{position:absolute;background:#EAE0CE;border-radius:2px;opacity:.7}
+  .pin{position:absolute;left:calc(50% - 14px);top:calc(50% - 32px);width:28px;height:28px;z-index:2;filter:drop-shadow(0 6px 5px rgba(40,28,12,.3))}
+  .pindot{position:absolute;left:calc(50% - 5px);top:calc(50% - 4px);width:10px;height:5px;border-radius:50%;background:rgba(40,28,12,.26);filter:blur(1px)}
+  .repin{position:absolute;right:10px;bottom:10px;background:#fff;border:1px solid var(--line-2);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 3px 8px -4px rgba(40,28,12,.3)}
+  .lchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+  .lchip{display:inline-flex;align-items:center;gap:7px;border:1.5px solid var(--line-2);background:#fff;border-radius:12px;padding:9px 13px;font-family:inherit;font-size:13.5px;font-weight:650;color:var(--muted);cursor:pointer}
+  .lchip svg{color:var(--faint)}.lchip.on{border-color:var(--ink);color:var(--ink);background:var(--cream)}.lchip.on svg{color:var(--gold)}
+  .spacer{flex:1;min-height:18px}
+  .cta{width:100%;height:56px;border:none;border-radius:15px;background:var(--ink);color:#fff;font-size:16.5px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s,transform .06s;margin-top:20px;display:flex;align-items:center;justify-content:center;gap:9px}
+  .cta:hover{background:var(--ink-2)}.cta:active{transform:translateY(1px)}.cta .amt{opacity:.6;font-weight:600}
+
+  /* returning: Entregar-a summary on the payment step */
+  .deliver{display:flex;gap:13px;align-items:flex-start;border:1px solid var(--line-2);border-radius:17px;padding:15px 15px;background:#fff;box-shadow:0 10px 26px -18px rgba(40,28,12,.3)}
+  .deliver .av{width:40px;height:40px;border-radius:50%;background:#F0E8DA;color:var(--ink-2);flex:none;display:flex;align-items:center;justify-content:center;margin-top:1px}
+  .deliver .d{flex:1;min-width:0}
+  .deliver .dl{font-size:10.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--faint)}
+  .deliver .dn{font-size:16px;font-weight:750;letter-spacing:-.01em;margin-top:3px}
+  .deliver .dln{font-size:13px;color:var(--muted);line-height:1.4;margin-top:3px}
+  .deliver .dp{font-size:12.5px;color:var(--faint);margin-top:3px;font-variant-numeric:tabular-nums}
+  .deliver .ch{flex:none;background:none;border:none;font-family:inherit;font-size:13px;font-weight:700;color:var(--ink);text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:4px 0}
+  .paylabel{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);margin:22px 2px 10px}
+  .payopt{display:flex;align-items:center;gap:12px;border:1.5px solid var(--line-2);border-radius:14px;padding:15px 15px;margin-bottom:10px;cursor:pointer;background:#fff}
+  .payopt.on{border-color:var(--ink);box-shadow:0 0 0 3px var(--gold-lt)}
+  .payopt .ic{color:var(--ink)}.payopt .pt{flex:1;font-size:15px;font-weight:650}
+  .payopt .rd{width:19px;height:19px;border-radius:50%;border:2px solid var(--line-2)}
+  .payopt.on .rd{border-color:var(--gold);background:radial-gradient(circle,var(--gold) 42%,transparent 46%)}
+  .foot{color:#6a6055;font-size:12px;line-height:1.6;max-width:392px;margin-top:18px;text-align:center}.foot b{color:#3d372e}
+</style>
+
+<div class="stage">
+  <div class="cap">X. Pizza · <b>flujo con sesión</b> — perfil primero, sin paso "Tus Datos"</div>
+  <div class="segtabs">
+    <button class="on" onclick="go('perfil',this)">1 · Primera vez (crear perfil)</button>
+    <button onclick="go('pago',this)">2 · Ya con perfil → pago</button>
+  </div>
+
+  <div class="screen">
+    <div class="statusbar"></div>
+    <div class="head">
+      <div class="mark">X<span class="dot">.</span> Pizza<span class="sub">Pedido en línea · San Pedro Sula</span></div>
+      <button class="chip"><span class="av"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.6"/><path d="M5.6 19.4c0-3.4 2.9-5.5 6.4-5.5s6.4 2.1 6.4 5.5"/></svg></span><span class="nm">Xavier</span><span class="cv">▾</span></button>
+    </div>
+    <div class="prog p2of3" id="prog"></div>
+    <div class="step" id="stepLbl">Paso 2 de 3 — Creá tu perfil</div>
+
+    <div class="body">
+      <!-- FIRST TIME — create profile (name + address; phone known) -->
+      <section class="pane on" id="pane-perfil">
+        <div class="eyebrow">Teléfono <span style="color:var(--faint);font-weight:600;text-transform:none;letter-spacing:0">· ya verificado</span></div>
+        <div class="ro"><span class="v">+504 9473-8243</span><span class="ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> WhatsApp</span></div>
+
+        <div class="eyebrow">Nombre y apellido</div>
+        <div class="two">
+          <input class="inp" placeholder="Nombre">
+          <input class="inp" placeholder="Apellido">
+        </div>
+
+        <div class="eyebrow">¿A dónde te lo llevamos?</div>
+        <div class="map">
+          <i class="h1"></i><i class="h2"></i><i class="v1"></i><i class="v2"></i>
+          <span class="blk" style="left:18px;top:12px;width:58px;height:24px"></span><span class="blk" style="left:150px;top:74px;width:64px;height:28px"></span>
+          <div class="pindot"></div>
+          <svg class="pin" viewBox="0 0 24 24" fill="var(--gold)" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
+          <button class="repin">Mover el pin</button>
+        </div>
+        <input class="inp" placeholder="Referencia: portón, color, piso…" style="margin-top:9px">
+
+        <div class="eyebrow">Guardar como</div>
+        <div class="lchips">
+          <button class="lchip on" onclick="pk(this)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></svg>Casa</button>
+          <button class="lchip" onclick="pk(this)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7.5" width="18" height="12.5" rx="2"/><path d="M8.5 7.5V6a2 2 0 012-2h3a2 2 0 012 2v1.5"/></svg>Trabajo</button>
+          <button class="lchip" onclick="pk(this)">Otra</button>
+        </div>
+
+        <div class="spacer"></div>
+        <button class="cta" onclick="go('pago',document.querySelectorAll('.segtabs button')[1])">Guardar y continuar al pago →</button>
+      </section>
+
+      <!-- RETURNING — profile complete, no Tus Datos step, summary on payment -->
+      <section class="pane" id="pane-pago">
+        <div class="eyebrow">Entregar a</div>
+        <div class="deliver">
+          <span class="av"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.6"/><path d="M5.6 19.4c0-3.4 2.9-5.5 6.4-5.5s6.4 2.1 6.4 5.5"/></svg></span>
+          <div class="d">
+            <div class="dl">Casa</div>
+            <div class="dn">Xavier Lacayo</div>
+            <div class="dln">Col. Trejo, 2 cuadras del parque, portón negro</div>
+            <div class="dp">+504 9473-8243</div>
+          </div>
+          <button class="ch" onclick="go('perfil',document.querySelectorAll('.segtabs button')[0])">Cambiar</button>
+        </div>
+
+        <div class="paylabel">Método de pago</div>
+        <div class="payopt on"><span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 9.5h19"/></svg></span><span class="pt">Tarjeta · PixelPay</span><span class="rd"></span></div>
+        <div class="payopt"><span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/></svg></span><span class="pt">Efectivo al entregar</span><span class="rd"></span></div>
+
+        <div class="spacer"></div>
+        <button class="cta">Pagar <span class="amt">· L 471</span></button>
+      </section>
+    </div>
+  </div>
+  <p class="foot"><b>Primera vez:</b> el paso de datos se vuelve "Creá tu perfil" — teléfono ya verificado, nombre+apellido, dirección con pin. Se guarda. <b>Después:</b> el paso "Tus Datos" desaparece (3→2 pasos) y la entrega se resume arriba del pago, con "Cambiar". La Musa igual, en rojo musa. No es la interfaz final.</p>
+</div>
+
+<script>
+  window.go=function(name,tabEl){
+    document.querySelectorAll('.pane').forEach(function(p){p.classList.remove('on')});
+    document.getElementById('pane-'+name).classList.add('on');
+    var prog=document.getElementById('prog'), lbl=document.getElementById('stepLbl');
+    if(name==='pago'){ prog.className='prog p1of2'; lbl.textContent='Paso 2 de 2 — Pago'; }
+    else { prog.className='prog p2of3'; lbl.textContent='Paso 2 de 3 — Creá tu perfil'; }
+    if(tabEl){ document.querySelectorAll('.segtabs button').forEach(function(b){b.classList.remove('on')}); tabEl.classList.add('on'); }
+  };
+  window.pk=function(el){document.querySelectorAll('.lchip').forEach(function(c){c.classList.remove('on')});el.classList.add('on')};
+</script>
