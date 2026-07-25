@@ -777,7 +777,7 @@
     try {
       if (typeof gmap !== 'undefined' && gmap && typeof placePin === 'function') { placePin(la, ln, false); return; }
     } catch (_) { /* fall through to __restorePos */ }
-    window.__restorePos = { lat: la, lng: ln };
+    __restorePos = { lat: la, lng: ln };
   }
 
   function addrSectionEl() {
@@ -863,7 +863,7 @@
     if (typeof window.__applyPhoneRaw === 'function') window.__applyPhoneRaw(phone); else setVal('cphone', phone);
     setVal('address-detected', addr.detected);
     setVal('address-details', addr.details);
-    window.__restorePos = { lat: addr.lat, lng: addr.lng };
+    __restorePos = { lat: addr.lat, lng: addr.lng };
 
     _acctAddrId = addr.id;
     _acctEditIsNew = false;
@@ -888,7 +888,7 @@
     if (isNew) {
       setVal('address-detected', '');
       setVal('address-details', '');
-      window.__restorePos = null;   // fresh pin — geolocate/let the customer drop it themselves
+      __restorePos = null;   // fresh pin — geolocate/let the customer drop it themselves
     }
     refreshSaveToggle();
   }
