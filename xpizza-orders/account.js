@@ -246,6 +246,53 @@
       contBtn.disabled = true;
       sendCode('+504' + digits);   // Task 4 — plain fetch, no SDK load here
     };
+    $('acct-back').onclick = () => {
+      showPane('phone');
+      const d = phInp.value.replace(/\D/g, '');
+      contBtn.disabled = d.length !== 8;   // restore the real enabled-state on back-nav
+    };
+  }
+
+  // ── requestOtp (Continuar → send WhatsApp code) — plain fetch, NO Firebase SDK load here (H8).
+  // The backend response is always {ok:true,cooldown:30} (uniform, no-enumeration design); we
+  // advance to the OTP pane and start the resend countdown regardless of network hiccups.
+  let _resendTimer = null;
+  function startResendCountdown() {
+    let t = 29;
+    const el = $('acct-resend');
+    function render() {
+      if (!el) return;
+      if (t <= 0) {
+        clearInterval(_resendTimer);
+        el.innerHTML = '';
+        const label = document.createTextNode('¿No lo recibiste? ');
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.textContent = 'Reenviar código';
+        btn.onclick = () => sendCode(_loginPhone);
+        el.appendChild(label); el.appendChild(btn);
+        return;
+      }
+      el.textContent = '¿No lo recibiste? Reenviar en 0:' + (t < 10 ? '0' : '') + t;
+    }
+    clearInterval(_resendTimer);
+    render();
+    _resendTimer = setInterval(() => { t--; render(); }, 1000);
+  }
+
+  async function sendCode(phone) {
+    _loginPhone = phone;
+    const otpPhoneEl = $('acct-otp-phone'); if (otpPhoneEl) otpPhoneEl.textContent = phone;   // textContent — no innerHTML sink
+    try {
+      await fetch(CONFIG.OTP_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, restaurant_id: CONFIG.restaurant_id }),
+      });
+    } catch (_) { /* uniform UX regardless — never reveal rate-limit/enumeration */ }
+    showPane('otp');
+    startResendCountdown();
+    const boxes = document.querySelectorAll('#acct-otp-boxes input');
+    boxes.forEach((b) => { b.value = ''; b.classList.remove('acct-filled'); });
+    if (boxes[0]) setTimeout(() => boxes[0].focus(), 100);
   }
 
   window.__ACCOUNT = { CONFIG, ensureFirebase };   // internal handle for later tasks/tests
