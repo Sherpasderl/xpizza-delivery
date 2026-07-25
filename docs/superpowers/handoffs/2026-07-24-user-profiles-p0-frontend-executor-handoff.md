@@ -13,7 +13,7 @@ Add optional customer login + account UI to BOTH order forms (X. Pizza + La Musa
 
 ## Read first (in order)
 1. **Plan:** `docs/superpowers/plans/2026-07-24-user-profiles-p0-frontend.md` — execute task-by-task, commit after each. **Read the "Self-review notes" at the bottom first** — it lists the 6 codex-gate fixes already baked into the tasks (do not regress them).
-2. **Locked mockups** (port markup/CSS verbatim, brand-recolored): `scratchpad/xpizza-login-mockup.html`, `scratchpad/xpizza-account-mockup.html` (NOTE: these live in the session scratchpad, not the repo — the advisor will paste them if you can't reach them).
+2. **Locked mockups** (port markup/CSS verbatim, brand-recolored): `docs/superpowers/mockups/xpizza-login-mockup.html`, `docs/superpowers/mockups/xpizza-account-mockup.html` (committed on this branch).
 3. The deployed backend contract is in the plan header (exact `requestOtp`/`verifyOtp`/`deleteAccount` URLs + shapes + `firebaseConfig`).
 
 ## How to build
