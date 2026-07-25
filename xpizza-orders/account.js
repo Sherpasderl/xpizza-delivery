@@ -864,6 +864,7 @@
         // (goToLocation→initMap), so a bare placeAccountPin() call alone would only stash a
         // pending __restorePos, not values the invariant check below can trust as established.
         establishCheckoutFromAddress(addr);
+        populateOrderFieldsFromAddress(snap, addr);   // fill the (soon-hidden) submit fields BEFORE the invariant reads them back
         if (reducedFlowInvariantOk(snap, addr)) {
           renderS1CompactSummary(snap, addr);
           renderS2RichSummary(snap, addr);
@@ -1664,6 +1665,21 @@ ${rowsHtml}`;
     } catch (_) { /* fail-open — reducedFlowInvariantOk reads back whatever actually landed and falls back if it's not numeric */ }
   }
 
+  // Populate the EXISTING order-submit fields from the saved address. The reduced flow HIDES these fields,
+  // so they MUST be filled or the unchanged processPayment()/buildOrder() would read empties → a returning
+  // complete-profile delivery user could not check out (details<3 error on a hidden field). Mirrors the
+  // legacy renderConfirmCard; name/phone derived from snap+marker() exactly as renderS2RichSummary.
+  function populateOrderFieldsFromAddress(snap, addr) {
+    if (!addr) return;
+    const m = marker() || {};
+    const name = (snap && snap.name) || m.name || '';
+    const phone = (snap && snap.phone) || m.phone || '';
+    setVal('cname', name);
+    if (typeof window.__applyPhoneRaw === 'function') window.__applyPhoneRaw(phone); else setVal('cphone', phone);
+    setVal('address-detected', addr.detected);
+    setVal('address-details', addr.details);
+  }
+
   // The LOCAL invariant re-check (spec R1 #2): non-empty first+last name, phone, address-detected,
   // numeric lat/lng, IN delivery zone, details>=3 — evaluated against whatever is ACTUALLY
   // established at call time (never assumes establishCheckoutFromAddress succeeded).
@@ -1673,11 +1689,12 @@ ${rowsHtml}`;
       const phoneOk = !!((snap && snap.phone) || (marker() || {}).phone);
       const detectedOk = !!(addr && typeof addr.detected === 'string' && addr.detected.trim().length > 0);
       const detailsOk = !!(addr && typeof addr.details === 'string' && addr.details.trim().length >= 3);
+      const domDetailsOk = (($('address-details') || {}).value || '').trim().length >= 3;   // the ACTUAL submit field — never hide the section over an unpopulated #address-details
       const { lat: la, lng: ln } = pageLatLng();
       const latlngOk = typeof la === 'number' && isFinite(la) && typeof ln === 'number' && isFinite(ln);
       let zoneOk = true;
       try { zoneOk = (typeof isWithinDeliveryZone !== 'undefined') ? !!isWithinDeliveryZone : true; } catch (_) { zoneOk = true; }
-      return nameOk && phoneOk && detectedOk && detailsOk && latlngOk && zoneOk;
+      return nameOk && phoneOk && detectedOk && detailsOk && domDetailsOk && latlngOk && zoneOk;
     } catch (_) { return false; }
   }
 
@@ -1757,6 +1774,7 @@ ${rowsHtml}`;
       const addr = addrOverride || pickDefaultAddress(_acctData);
       if (addr) {
         establishCheckoutFromAddress(addr);
+        populateOrderFieldsFromAddress(_acctData, addr);   // fill the (soon-hidden) submit fields BEFORE the invariant reads them back
         if (reducedFlowInvariantOk(_acctData, addr)) {
           renderS1CompactSummary(_acctData, addr);
           renderS2RichSummary(_acctData, addr);
