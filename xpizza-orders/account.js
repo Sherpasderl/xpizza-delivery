@@ -251,6 +251,38 @@
       const d = phInp.value.replace(/\D/g, '');
       contBtn.disabled = d.length !== 8;   // restore the real enabled-state on back-nav
     };
+
+    wireOtpBoxes();
+    wireNamePane();
+  }
+
+  // 6-box OTP input: digits-only, auto-advance, backspace-back, Verificar enabled when all 6 filled.
+  function wireOtpBoxes() {
+    const boxes = Array.from(document.querySelectorAll('#acct-otp-boxes input'));
+    const verifyBtn = $('acct-verify-btn');
+    boxes.forEach((b, i) => {
+      b.addEventListener('input', () => {
+        b.value = b.value.replace(/\D/g, '').slice(0, 1);
+        b.classList.toggle('acct-filled', !!b.value);
+        if (b.value && i < boxes.length - 1) boxes[i + 1].focus();
+        verifyBtn.disabled = boxes.some((x) => !x.value);
+      });
+      b.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !b.value && i > 0) boxes[i - 1].focus();
+      });
+    });
+    verifyBtn.onclick = verifyCode;
+  }
+
+  function wireNamePane() {
+    const inp = $('acct-name-inp'), btn = $('acct-save-name-btn');
+    inp.addEventListener('input', () => { btn.disabled = !inp.value.trim(); });
+    btn.onclick = async () => {
+      btn.disabled = true;
+      await saveName(inp.value);
+      renderChip();
+      closeSheet();
+    };
   }
 
   // ── requestOtp (Continuar → send WhatsApp code) — plain fetch, NO Firebase SDK load here (H8).
@@ -293,6 +325,84 @@
     const boxes = document.querySelectorAll('#acct-otp-boxes input');
     boxes.forEach((b) => { b.value = ''; b.classList.remove('acct-filled'); });
     if (boxes[0]) setTimeout(() => boxes[0].focus(), 100);
+  }
+
+  // ── Toast (small transient message; no SDK involved) ──
+  function toast(msg) {
+    let el = $('acct-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'acct-toast';
+      el.className = 'acct-toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;   // textContent — no innerHTML sink
+    el.classList.add('acct-show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.remove('acct-show'), 1800);
+  }
+
+  // ── verifyOtp → signInWithCustomToken → persist marker → (new user) capture name ──
+  async function verifyCode() {
+    const boxes = Array.from(document.querySelectorAll('#acct-otp-boxes input'));
+    const code = boxes.map((b) => b.value).join('');
+    if (code.length !== 6) return;
+    const verifyBtn = $('acct-verify-btn'); if (verifyBtn) verifyBtn.disabled = true;
+    const errEl = $('acct-otp-err'); if (errEl) errEl.style.display = 'none';
+
+    let data;
+    try {
+      const res = await fetch(CONFIG.VERIFY_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: _loginPhone, code }),
+      });
+      data = await res.json().catch(() => ({}));
+    } catch (_) { data = { ok: false }; }
+
+    if (!data || !data.ok || !data.token) {
+      boxes.forEach((b) => { b.value = ''; b.classList.remove('acct-filled'); });
+      if (boxes[0]) boxes[0].focus();
+      if (errEl) { errEl.textContent = 'Código incorrecto o vencido'; errEl.style.display = 'block'; }   // generic — no specifics
+      return;
+    }
+
+    // Success — NOW load Firebase (H8: only on a verified login) and mint the session.
+    try {
+      const { auth, authMod } = await ensureFirebase();
+      await authMod.signInWithCustomToken(auth, data.token);
+      localStorage.setItem(CONFIG.MARKER, JSON.stringify({
+        uid: auth.currentUser.uid, name: data.name || '', phone: _loginPhone,
+      }));
+    } catch (_) {
+      if (errEl) { errEl.textContent = 'No pudimos iniciar sesión. Intentá de nuevo.'; errEl.style.display = 'block'; }
+      if (verifyBtn) verifyBtn.disabled = false;
+      return;
+    }
+
+    if (data.is_new || !data.name) {
+      showPane('name');
+      const nameInp = $('acct-name-inp');
+      if (nameInp) { nameInp.value = ''; setTimeout(() => nameInp.focus(), 80); }
+      const saveBtn = $('acct-save-name-btn'); if (saveBtn) saveBtn.disabled = true;
+    } else {
+      renderChip();
+      closeSheet();
+    }
+  }
+
+  // name ≤80 client-validated to match the RTDB rule's `.validate` (length <= 80) — a longer value
+  // is REJECTED server-side; write failures never wedge the flow (the account already exists).
+  async function saveName(rawName) {
+    const name = String(rawName || '').trim().slice(0, 80);
+    if (!name) return;
+    try {
+      const { auth, db, dbMod } = await ensureFirebase();
+      await dbMod.update(dbMod.ref(db, 'user_profiles/' + auth.currentUser.uid), { name });
+      const m = marker(); if (m) { m.name = name; localStorage.setItem(CONFIG.MARKER, JSON.stringify(m)); }
+    } catch (_) {
+      // account is already live (token minted); a failed name write must not wedge the flow
+      toast('No pudimos guardar tu nombre, podés intentarlo luego');
+    }
   }
 
   window.__ACCOUNT = { CONFIG, ensureFirebase };   // internal handle for later tasks/tests
