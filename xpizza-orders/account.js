@@ -851,6 +851,7 @@
   // never a hidden-but-empty section, never an advance to payment without valid delivery data.
   async function initDeliveryStep() {
     if (!$('acct-deliver')) return;               // host form has no mount — never touch anything
+    setPaymentVisible(true);   // default reveal; only applyCreateProfileFlow (incomplete) hides it (FIX 1)
     const snap = await accountSnapshot();          // fail-open, timeboxed ~1.5s internally — LIVE, authoritative (spec R1 #7)
     if (!snap) { _acctData = null; revertToNormalFillable(); refreshSaveToggle(); return; }   // no account / miss/timeout → normal empty form
     _acctData = snap;
@@ -1246,6 +1247,7 @@ ${rowsHtml}`;
 
   let _nadMap = null, _nadMarker = null, _nadGeocoder = null;
   let _nadLat = null, _nadLng = null, _nadDetected = '';
+  let _nadPinTouched = false;   // TRUE only after a REAL user placement (drag or tap) — never the fallback/GPS auto-pin (codex re-gate FIX 2)
 
   function injectNewAddrStyles() {
     if ($('acct-nad-styles')) return;
@@ -1328,9 +1330,11 @@ ${rowsHtml}`;
     try { if (typeof lat === 'number' && typeof lng === 'number') start = { lat, lng }; } catch (_) {}
     if (!_nadMap) {
       _nadMap = new google.maps.Map(el, { center: start, zoom: 16, mapTypeId: 'roadmap', disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy' });
+      _nadMap.addListener('click', (e) => { placeNewAddrPin(e.latLng.lat(), e.latLng.lng()); _nadPinTouched = true; });   // tap-to-place = a real user placement
     } else {
       _nadMap.setCenter(start);
     }
+    _nadPinTouched = false;   // fresh open — the fallback/GPS pin below is a STARTING VIEW, not a user placement
     placeNewAddrPin(start.lat, start.lng);
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -1349,6 +1353,7 @@ ${rowsHtml}`;
     _nadMarker = new google.maps.Marker({ position: pos, map: _nadMap, draggable: true, animation: google.maps.Animation.DROP, title: 'Moveme para ajustar tu ubicación' });
     _nadMarker.addListener('dragend', (e) => {
       _nadLat = e.latLng.lat(); _nadLng = e.latLng.lng();
+      _nadPinTouched = true;   // user dragged the pin = a real placement
       reverseGeocodeNewAddr(_nadLat, _nadLng);
     });
     reverseGeocodeNewAddr(la, ln);
@@ -1371,7 +1376,7 @@ ${rowsHtml}`;
   function closeNewAddressPane() {
     if (_nadMarker) { try { _nadMarker.setMap(null); } catch (_) {} _nadMarker = null; }
     _nadMap = null; _nadGeocoder = null;
-    _nadLat = null; _nadLng = null; _nadDetected = '';
+    _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;
     showPane('account');
   }
 
@@ -1387,6 +1392,10 @@ ${rowsHtml}`;
     // checkout gmap/lat/lng/__restorePos (spec R1 #4).
     if (typeof _nadLat !== 'number' || typeof _nadLng !== 'number' || !isFinite(_nadLat) || !isFinite(_nadLng) || !_nadDetected) {
       if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Confirmá la ubicación en el mapa.'; }
+      return;
+    }
+    if (!_nadPinTouched) {   // the pin is still the fallback/GPS starting view — require a deliberate placement (FIX 2)
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Ubicá tu dirección en el mapa (arrastrá o tocá el pin).'; }
       return;
     }
     if (details.trim().length < 3) {
@@ -1419,6 +1428,7 @@ ${rowsHtml}`;
 
   // ── Sign-out / delete-account: revert the form back to the pristine guest state ──
   function revertToGuestForm() {
+    setPaymentVisible(true);   // sign-out → guest form, payment visible (FIX 1)
     _acctData = null; _acctAddrId = null; _acctCardActive = false; _acctEditMode = false;
     _acctEditIsNew = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true;
     const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
@@ -1548,6 +1558,7 @@ ${rowsHtml}`;
     if (typeof window.__applyPhoneRaw === 'function') window.__applyPhoneRaw(phone); else setVal('cphone', phone);
 
     applyCreateProfileAddressUI(snap);
+    setPaymentVisible(false);   // hide payment until "Guardar y continuar" saves the profile (FIX 1)
   }
 
   // "Guardar y continuar" (spec R1 #3 — no-skip): re-validates EVERY field INSIDE the handler,
@@ -1689,12 +1700,17 @@ ${rowsHtml}`;
       const phoneOk = !!((snap && snap.phone) || (marker() || {}).phone);
       const detectedOk = !!(addr && typeof addr.detected === 'string' && addr.detected.trim().length > 0);
       const detailsOk = !!(addr && typeof addr.details === 'string' && addr.details.trim().length >= 3);
-      const domDetailsOk = (($('address-details') || {}).value || '').trim().length >= 3;   // the ACTUAL submit field — never hide the section over an unpopulated #address-details
+      // Read back the ACTUAL hidden submit fields — these (not the snapshot) are what buildOrder submits,
+      // so the section must never be hidden over an empty/short one (codex re-gate FIX 3).
+      const domDetailsOk = (($('address-details') || {}).value || '').trim().length >= 3;
+      const domNameOk = (($('cname') || {}).value || '').trim().length > 0;
+      const domDetectedOk = (($('address-detected') || {}).value || '').trim().length > 0;
+      const domPhoneOk = (($('cphone') || {}).value || '').replace(/\D/g, '').length >= 8;
       const { lat: la, lng: ln } = pageLatLng();
       const latlngOk = typeof la === 'number' && isFinite(la) && typeof ln === 'number' && isFinite(ln);
       let zoneOk = true;
       try { zoneOk = (typeof isWithinDeliveryZone !== 'undefined') ? !!isWithinDeliveryZone : true; } catch (_) { zoneOk = true; }
-      return nameOk && phoneOk && detectedOk && detailsOk && domDetailsOk && latlngOk && zoneOk;
+      return nameOk && phoneOk && detectedOk && detailsOk && domDetailsOk && domNameOk && domDetectedOk && domPhoneOk && latlngOk && zoneOk;
     } catch (_) { return false; }
   }
 
@@ -1746,6 +1762,30 @@ ${rowsHtml}`;
     const addrSection = addrSectionEl(); if (addrSection) addrSection.style.display = 'none';
   }
 
+  // Payment-section visibility (codex re-gate FIX 1) — hidden ONLY while "Creá tu perfil" is active
+  // (logged-in + incomplete + delivery) so a first-time user can't skip the profile save and pay.
+  // Shown in EVERY other state. A guest never calls this; the id/class toggles are inert otherwise. Idempotent.
+  function setPaymentVisible(show) {
+    const lbl = $('acct-pay-label'); if (lbl) lbl.style.display = show ? '' : 'none';
+    try { const pc = document.querySelector('.pay-container'); if (pc) pc.style.display = show ? '' : 'none'; } catch (_) {}
+  }
+
+  // Submit-choke gate (codex re-gate FIX 1, defense-in-depth) — block a LOGGED-IN DELIVERY submit when the
+  // profile isn't complete/saved (covers DOM tampering / payment somehow reachable). Guest + complete +
+  // pickup → false (unaffected). Fail-open: any error → false (never block a real order). Called from
+  // processPayment().
+  function deliverySubmitBlocked() {
+    try {
+      if (!marker()) return false;                        // guest — never blocked
+      if (pageOrderType() !== 'delivery') return false;   // pickup — no profile requirement
+      if (profileComplete(_acctData)) return false;       // complete — proceed
+      const err = $('acct-label-picker-err') || $('acct-cp-name-err');
+      if (err) { err.style.display = 'block'; err.textContent = 'Guardá tu perfil para continuar.'; }
+      const btn = $('acct-save-addr-btn'); if (btn) { try { btn.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {} }
+      return true;
+    } catch (_) { return false; }
+  }
+
   // The fail-open reversion: restore the guest-identical fillable DOM (raw fields visible, address
   // section visible for delivery, step labels back to "de 3"), and clear the Task 3 summary mounts.
   // Safe/idempotent to call anytime — a fresh page load where nothing was ever hidden is a no-op
@@ -1768,6 +1808,7 @@ ${rowsHtml}`;
   // Creá-tu-perfil-style fillable flow (which itself degrades gracefully to a plain fillable form
   // when there's nothing to prefill).
   function refreshDeliveryUI(addrOverride) {
+    setPaymentVisible(true);   // default reveal; the incomplete create-profile branch re-hides it (FIX 1)
     if (!_acctData) return;
     if (pageOrderType() !== 'delivery') { hidePickupDeliverySummary(); return; }
     if (profileComplete(_acctData)) {
@@ -1795,6 +1836,7 @@ ${rowsHtml}`;
   // touches DOM/UI state). Restores the raw name/phone fields (prefilled, editable) since pickup
   // needs no "Entregar a" summary at all.
   function hidePickupDeliverySummary() {
+    setPaymentVisible(true);   // pickup always shows payment (FIX 1)
     _acctReducedActive = false;
     relabelSteps(false);
     const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
@@ -1971,4 +2013,5 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
   window.__ACCOUNT.profileComplete = profileComplete;
   window.__ACCOUNT.deleteAddress = deleteAddress;
   window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;
+  window.__ACCOUNT.deliverySubmitBlocked = deliverySubmitBlocked;
 })();

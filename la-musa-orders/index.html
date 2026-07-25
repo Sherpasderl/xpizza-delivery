@@ -1374,7 +1374,7 @@ textarea{resize:none;height:80px;line-height:1.4}
     <div id="acct-s2-summary"></div>
 
     <!-- Payment section -->
-    <div class="step-label" style="margin-top:8px">Forma de pago</div>
+    <div class="step-label" id="acct-pay-label" style="margin-top:8px">Forma de pago</div>
     <div class="pay-container">
       <div class="pay-options">
         <div class="pay-card" id="pay-online" onclick="selectPay('online')">
@@ -2705,6 +2705,10 @@ function rtnIsValid(){
 
 /* ── Process payment ── */
 async function processPayment(){
+  // Logged-in profile-first gate (User Profiles) — block a logged-in DELIVERY submit until the profile is
+  // saved (defense-in-depth beyond the hidden-payment UI). Guest / complete-profile / pickup → no-op;
+  // fail-open (never blocks a real order on an account-logic error).
+  try { if (window.__ACCOUNT && typeof window.__ACCOUNT.deliverySubmitBlocked === 'function' && window.__ACCOUNT.deliverySubmitBlocked()) return; } catch (_) {}
   // Closed now + no scheduled slot → must schedule (Estándar/ASAP is unavailable while closed). The
   // server also fail-closed-rejects this, but block here for a clear message.
   if(!isOpen() && !window.__scheduledFor){
