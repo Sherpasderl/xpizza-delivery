@@ -843,6 +843,8 @@
   let _acctCardActive = false;   // true once the confirm card has replaced the raw Tus-datos fields
   let _acctAddrUnsaved = false;  // true when the address populating the order isn't a persisted one
   let _acctSaveToggleOn = true;  // B7 "Guardar esta dirección" toggle state (default-checked)
+  let _acctCreateProfileActive = false;  // true ONLY while "Creá tu perfil" is on screen (payment hidden + CTA shown) — the submit-gate keys off this, never a profileComplete() inference (FIX A)
+  let _acctAddrOneOff = false;   // true when the order's delivery address is a USE-ONCE choice (Cambiar "Usar en este pedido" / an edit-mode-new address NOT explicitly "Guardar dirección"-saved) — onOrderConfirmed must never makeDefault/persist it (FIX B)
 
   // ── Task B4/3: the "Entregar a" confirm card + autofill — orchestrates the 3 flow states
   // (spec: guest handled entirely elsewhere by the marker() gate; incomplete profile → Task 2's
@@ -1152,6 +1154,7 @@ ${showCancel ? '<button type="button" class="acct-cancel-edit" id="acct-cancel-e
     try {
       if (!order || order.order_type !== 'delivery') return;
       if (!marker()) return;                       // guest — never save (unreachable in practice, defense-in-depth)
+      if (_acctAddrOneOff) return;                 // USE-ONCE (Cambiar "Usar en este pedido" / an unsaved edit) — the customer chose NOT to save; never persist or default (FIX B)
       if (!_acctSaveToggleOn) return;               // dismissed — respect it
       if (_acctCardActive && !_acctAddrUnsaved) return;   // already a saved, unedited address — nothing new to persist
       const detected = order.address_detected, details = order.address_details;
@@ -1160,7 +1163,7 @@ ${showCancel ? '<button type="button" class="acct-cancel-edit" id="acct-cancel-e
       const label = (_acctEditLabel && _acctEditLabel.trim())
         || (_acctData && _acctAddrId && _acctData.addresses && _acctData.addresses[_acctAddrId] && _acctData.addresses[_acctAddrId].label)
         || 'Dirección';
-      const res = await saveAddress({ addrId: _acctEditIsNew ? undefined : _acctAddrId, label, detected, details, lat: la, lng: ln, makeDefault: true });
+      const res = await saveAddress({ addrId: _acctEditIsNew ? undefined : _acctAddrId, label, detected, details, lat: la, lng: ln, makeDefault: false });   // FIX B: save-on-order NEVER changes the default — only the explicit "Guardar dirección"/"Guardar y continuar" does
       if (res && res.ok) { _acctAddrUnsaved = false; _acctAddrId = res.addrId; refreshSaveToggle(); }
     } catch (_) { /* never affects the order — it already succeeded */ }
   }
@@ -1430,7 +1433,7 @@ ${rowsHtml}`;
   function revertToGuestForm() {
     setPaymentVisible(true);   // sign-out → guest form, payment visible (FIX 1)
     _acctData = null; _acctAddrId = null; _acctCardActive = false; _acctEditMode = false;
-    _acctEditIsNew = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true;
+    _acctEditIsNew = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true; _acctAddrOneOff = false;
     const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
     const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
     const addrSection = addrSectionEl();
@@ -1682,6 +1685,7 @@ ${rowsHtml}`;
   // legacy renderConfirmCard; name/phone derived from snap+marker() exactly as renderS2RichSummary.
   function populateOrderFieldsFromAddress(snap, addr) {
     if (!addr) return;
+    _acctAddrOneOff = false;   // a persisted/default address is populating the order — NOT a use-once (covers the reduced flow + every save→refreshDeliveryUI path) (FIX B)
     const m = marker() || {};
     const name = (snap && snap.name) || m.name || '';
     const phone = (snap && snap.phone) || m.phone || '';
@@ -1766,6 +1770,10 @@ ${rowsHtml}`;
   // (logged-in + incomplete + delivery) so a first-time user can't skip the profile save and pay.
   // Shown in EVERY other state. A guest never calls this; the id/class toggles are inert otherwise. Idempotent.
   function setPaymentVisible(show) {
+    // Payment hidden ⇔ "Creá tu perfil" is actively on screen (its the ONLY caller of setPaymentVisible(false),
+    // via applyCreateProfileFlow). The submit-gate keys off THIS explicit flag — never a profileComplete()
+    // inference — so a failed/slow snapshot (→ normal fillable, payment shown) stays fail-open (FIX A).
+    _acctCreateProfileActive = !show;
     const lbl = $('acct-pay-label'); if (lbl) lbl.style.display = show ? '' : 'none';
     try { const pc = document.querySelector('.pay-container'); if (pc) pc.style.display = show ? '' : 'none'; } catch (_) {}
   }
@@ -1776,9 +1784,11 @@ ${rowsHtml}`;
   // processPayment().
   function deliverySubmitBlocked() {
     try {
-      if (!marker()) return false;                        // guest — never blocked
-      if (pageOrderType() !== 'delivery') return false;   // pickup — no profile requirement
-      if (profileComplete(_acctData)) return false;       // complete — proceed
+      // Gate ONLY while the create-profile step is genuinely on screen (explicit flag set inside
+      // applyCreateProfileFlow via setPaymentVisible(false)). Guest / complete / pickup, OR a failed/slow
+      // snapshot that fell back to the normal fillable form (payment shown → flag false), all proceed —
+      // FAIL-OPEN (FIX A). processPayment's own lat/lng/zone/details checks still apply as defense-in-depth.
+      if (!_acctCreateProfileActive) return false;
       const err = $('acct-label-picker-err') || $('acct-cp-name-err');
       if (err) { err.style.display = 'block'; err.textContent = 'Guardá tu perfil para continuar.'; }
       const btn = $('acct-save-addr-btn'); if (btn) { try { btn.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {} }
@@ -1896,6 +1906,7 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
       const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
       const addrSection = addrSectionEl();
       if (addrSection) addrSection.style.display = '';
+      _acctAddrOneOff = true;   // use-once until the customer explicitly taps "Guardar dirección" (which clears it) (FIX B)
       enterEditMode(true);   // existing scaffolding — its "Guardar dirección" persists (makeDefault:true) + applies
       if (addrSection) setTimeout(() => addrSection.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
     };
@@ -1909,6 +1920,7 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
     if (!_acctData || !_acctData.addresses || !_acctData.addresses[addrId]) return;
     const a = _acctData.addresses[addrId];
     _acctAddrId = addrId;   // backs THIS order only — _acctData.default_address is untouched
+    _acctAddrOneOff = true;   // USE-ONCE: onOrderConfirmed must never persist/default this (FIX B)
     const addr = Object.assign({ id: addrId }, a);
     establishCheckoutFromAddress(addr);
     setVal('address-detected', a.detected);
@@ -1957,7 +1969,7 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
         const orig = window.startAnotherOrder;
         const wrapped = function () {
           orig();
-          _acctEditMode = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true;
+          _acctEditMode = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true; _acctAddrOneOff = false;
           try {
             // orig() reset lat/lng/address fields to blank for a fresh order — re-establish the
             // reduced-flow summary (or the fillable UI) for the NEW order, same as page load.
