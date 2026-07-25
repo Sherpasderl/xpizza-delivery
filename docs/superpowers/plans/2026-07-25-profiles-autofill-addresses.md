@@ -43,7 +43,6 @@
   "last_login": { ".validate": "newData.isNumber() && (!data.exists() || newData.val() === data.val())" },
   "default_address": { ".validate": "newData.val() === null || (newData.isString() && newData.parent().child('addresses').child(newData.val()).exists())" },
   "addresses": {
-    ".validate": "newData.numChildren() <= 10",
     "$addrId": {
       ".validate": "$addrId.matches(/^a_[a-f0-9]{6,32}$/) && newData.hasChildren(['label','detected','details','lat','lng','created_at','last_used_at'])",
       "label":        { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 40" },
@@ -69,7 +68,7 @@ Note: `addresses` is NO LONGER `$other` (it's a named child now) — remove the 
 
 **Files:** Modify `xpizza-functions/test/user-profiles-rules.emulator.test.js`; `xpizza-functions/user-auth-rules.guard.test.js`.
 
-- [ ] **Step 1: Add emulator assertions** (mirror the spec's list): owner writes a valid full address → OK; a different authed uid cannot read/write this uid's `addresses` → DENIED; an address write under a **tombstoned** uid → DENIED; out-of-range `lat`(91)/`lng`(-181), over-length `label`(41)/`detected`(201), a stray `$other` key, an **11th** address → each DENIED; a **partial** address `{label:'Casa'}` (missing lat/lng/detected) → DENIED; bad `$addrId` key (`x_1`) → DENIED; `default_address` → non-existent addrId DENIED, `null` OK, **atomic create-address+set-default in one update → OK**, **delete the referenced address leaving default → DENIED**; a profile write that drops a server-truth field while adding an address → DENIED; H1 unchanged (customer token can't read `/orders`).
+- [ ] **Step 1: Add emulator assertions** (mirror the spec's list): owner writes a valid full address → OK; a different authed uid cannot read/write this uid's `addresses` → DENIED; an address write under a **tombstoned** uid → DENIED; out-of-range `lat`(91)/`lng`(-181), over-length `label`(41)/`detected`(201), a stray `$other` key → each DENIED (the ≤10-address cap is CLIENT-side per R6 — `numChildren()` is not an RTDB rules method — asserted in a Phase B `saveAddress` test, NOT here); a **partial** address `{label:'Casa'}` (missing lat/lng/detected) → DENIED; bad `$addrId` key (`x_1`) → DENIED; `default_address` → non-existent addrId DENIED, `null` OK, **atomic create-address+set-default in one update → OK**, **delete the referenced address leaving default → DENIED**; a profile write that drops a server-truth field while adding an address → DENIED; H1 unchanged (customer token can't read `/orders`).
 
 - [ ] **Step 2: Add a structural guard assertion** in `user-auth-rules.guard.test.js`: the `$uid` `.write` contains the referential clause (`newData.child('addresses').hasChild(...)`) and the `addresses/$addrId` `.validate` contains both `$addrId.matches` and `hasChildren([...7 fields])`.
 

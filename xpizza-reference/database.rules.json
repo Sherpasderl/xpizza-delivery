@@ -192,13 +192,26 @@
     "user_profiles": {
       "$uid": {
         ".read":  "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid && newData.exists() && newData.hasChildren(['phone', 'phone_hash', 'created_at', 'last_login']) && !root.child('deleted_uids').child($uid).exists()",
+        ".write": "auth != null && auth.uid === $uid && newData.exists() && newData.hasChildren(['phone', 'phone_hash', 'created_at', 'last_login']) && !root.child('deleted_uids').child($uid).exists() && (!newData.child('default_address').exists() || newData.child('default_address').val() === null || newData.child('addresses').hasChild(newData.child('default_address').val()))",
         "name":       { ".validate": "newData.isString() && newData.val().length <= 80" },
         "phone":      { ".validate": "newData.isString() && (!data.exists() || newData.val() === data.val())" },
         "created_at": { ".validate": "newData.isNumber() && (!data.exists() || newData.val() === data.val())" },
         "updated_at": { ".validate": "newData.isNumber() && newData.val() <= now + 60000" },
         "last_login": { ".validate": "newData.isNumber() && (!data.exists() || newData.val() === data.val())" },
-        "addresses":  { ".validate": false },
+        "default_address": { ".validate": "newData.val() === null || (newData.isString() && newData.parent().child('addresses').child(newData.val()).exists())" },
+        "addresses": {
+          "$addrId": {
+            ".validate": "$addrId.matches(/^a_[a-f0-9]{6,32}$/) && newData.hasChildren(['label','detected','details','lat','lng','created_at','last_used_at'])",
+            "label":        { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 40" },
+            "detected":     { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 200" },
+            "details":      { ".validate": "newData.isString() && newData.val().length <= 200" },
+            "lat":          { ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90" },
+            "lng":          { ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180" },
+            "created_at":   { ".validate": "newData.isNumber()" },
+            "last_used_at": { ".validate": "newData.isNumber()" },
+            "$other":       { ".validate": false }
+          }
+        },
         "$other":     { ".validate": false }
       }
     },
