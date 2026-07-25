@@ -564,6 +564,106 @@
     } catch (_) { return null; }                        // fail-open — never block the order
   }
 
+  // ── Address data layer (Task B3) — fail-open, timeboxed account read + atomic address CRUD.
+  // Guest fast-path is preserved: accountSnapshot() returns null INSTANTLY (no SDK, no network)
+  // when there's no marker, exactly like customerIdToken() above.
+  async function accountSnapshot() {
+    if (!marker()) return null;                                    // guest — no SDK, no read
+    try {
+      return await Promise.race([
+        (async () => {
+          const { auth, db, dbMod } = await ensureFirebase();
+          await auth.authStateReady();
+          if (!auth.currentUser) { heal(); return null; }
+          const snap = await dbMod.get(dbMod.ref(db, 'user_profiles/' + auth.currentUser.uid));
+          return snap.exists() ? snap.val() : null;
+        })(),
+        new Promise((r) => setTimeout(() => r(null), 1500)),        // deadline → treat as no-account
+      ]);
+    } catch (_) { return null; }
+  }
+
+  // $addrId rule: /^a_[a-f0-9]{6,32}$/ — 'a_' + 12 lowercase-hex chars comfortably satisfies it.
+  function newAddrId() {
+    const bytes = new Uint8Array(6);
+    if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
+    else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+    let hex = '';
+    for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
+    return 'a_' + hex;
+  }
+
+  const MAX_ADDRESSES = 10;   // client-side cap (R6) — RTDB rules have no numChildren() validator
+
+  // saveAddress({addrId?, label, detected, details, lat, lng, makeDefault}) — ONE atomic multi-path
+  // update() so the referential `.write` invariant (default_address must point at an existing
+  // address) is always satisfied mid-write. Passing an existing addrId always EDITS it (never
+  // counts against the ≤10 cap); omitting addrId CREATES a new one and is refused past the cap.
+  // Never throws; never blocks a caller — every caller must treat a false return as "didn't save,
+  // keep going".
+  async function saveAddress({ addrId, label, detected, details, lat, lng, makeDefault } = {}) {
+    try {
+      const { auth, db, dbMod } = await ensureFirebase();
+      await auth.authStateReady();
+      const user = auth.currentUser;
+      if (!user) { heal(); return { ok: false, reason: 'no-session' }; }
+
+      const isNew = !addrId;
+      if (isNew) {
+        const profSnap = await dbMod.get(dbMod.ref(db, 'user_profiles/' + user.uid + '/addresses'));
+        const existing = profSnap.exists() ? profSnap.val() : {};
+        if (Object.keys(existing || {}).length >= MAX_ADDRESSES) {
+          return { ok: false, reason: 'cap', message: 'Ya guardaste el máximo de 10 direcciones. Editá o borrá una para agregar otra.' };
+        }
+        addrId = newAddrId();
+      }
+
+      const now = Date.now();
+      const updates = {};
+      updates['user_profiles/' + user.uid + '/addresses/' + addrId] = {
+        label: String(label || '').trim().slice(0, 40) || 'Dirección',
+        detected: String(detected || '').trim().slice(0, 200),
+        details: String(details || '').trim().slice(0, 200),
+        lat, lng,
+        created_at: now,
+        last_used_at: now,
+      };
+      if (makeDefault) updates['user_profiles/' + user.uid + '/default_address'] = addrId;
+      await dbMod.update(dbMod.ref(db), updates);
+      return { ok: true, addrId };
+    } catch (_) {
+      return { ok: false, reason: 'error' };
+    }
+  }
+
+  // deleteAddress(addrId) — clears the node and, if it was the default, nulls default_address in
+  // the SAME atomic update (otherwise the referential `.write` clause would deny a write that left
+  // default_address pointing at a now-missing address).
+  async function deleteAddress(addrId) {
+    if (!addrId) return { ok: false };
+    try {
+      const { auth, db, dbMod } = await ensureFirebase();
+      await auth.authStateReady();
+      const user = auth.currentUser;
+      if (!user) { heal(); return { ok: false, reason: 'no-session' }; }
+
+      const defSnap = await dbMod.get(dbMod.ref(db, 'user_profiles/' + user.uid + '/default_address'));
+      const wasDefault = defSnap.exists() && defSnap.val() === addrId;
+
+      const updates = {};
+      updates['user_profiles/' + user.uid + '/addresses/' + addrId] = null;
+      if (wasDefault) updates['user_profiles/' + user.uid + '/default_address'] = null;
+      await dbMod.update(dbMod.ref(db), updates);
+      return { ok: true };
+    } catch (_) {
+      return { ok: false, reason: 'error' };
+    }
+  }
+
   window.__ACCOUNT = { CONFIG, ensureFirebase };   // internal handle for later tasks/tests
   window.__ACCOUNT.customerIdToken = customerIdToken;
+  window.__ACCOUNT.accountSnapshot = accountSnapshot;
+  window.__ACCOUNT.newAddrId = newAddrId;
+  window.__ACCOUNT.saveAddress = saveAddress;
+  window.__ACCOUNT.deleteAddress = deleteAddress;
 })();
