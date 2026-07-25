@@ -108,10 +108,11 @@
 .acct-inp{flex:1;min-width:0;height:52px;padding:0 15px;border:1.5px solid #E2D8C8;border-radius:14px;background:#fff;font-size:17px;font-weight:550;color:#17130F;outline:none;font-family:inherit}
 .acct-inp::placeholder{color:#B3A594;font-weight:450}
 .acct-inp:focus{border-color:#17130F}
-/* the name-capture field (post-verify pane) is squared to the host FORM's own field radius (8px)
-   rather than the sheet's pill radius — it sits right before the order form's own "Tus datos"
-   step and should read as the same field language. */
-#acct-name-inp{border-radius:8px}
+/* T7 (codex-visual-fix): the name-capture field (post-verify pane) felt short + too squared at the
+   host form's 8px field radius — raised to 58px (from 52px) and softened toward the phone
+   field's (.acct-cc/.acct-inp) own 14px rounding, so it reads as one substantial, related field
+   language rather than a cramped, unrelated afterthought. */
+#acct-name-inp{height:58px;border-radius:13px}
 .acct-cta{width:100%;height:52px;border:none;border-radius:15px;background:#17130F;color:#fff;font-size:16px;font-weight:700;letter-spacing:.01em;cursor:pointer;font-family:inherit;transition:background .15s;margin-top:20px}
 .acct-cta:hover{background:#2A231C}
 .acct-cta[disabled]{background:#E7DFD3;color:#B3A594;cursor:not-allowed}
@@ -722,10 +723,17 @@
 .acct-deliver{border:1px solid #E2D8C8;border-radius:20px;overflow:hidden;background:#fff;box-shadow:0 12px 30px -18px rgba(40,28,12,.3);font-family:inherit;margin-bottom:4px}
 .acct-map{height:84px;position:relative;overflow:hidden;background:radial-gradient(120% 140% at 50% -40%, #EFE7DA 0%, #E4DAC7 100%);border-bottom:1px solid #EDE5D9}
 .acct-map i{position:absolute;background:#F7F2E8;box-shadow:0 0 0 1px #E7DDCB}
-.acct-h1{left:0;right:0;top:26px;height:9px;transform:rotate(-4deg)}
-.acct-h2{left:0;right:0;top:56px;height:12px;transform:rotate(-4deg)}
-.acct-v1{top:0;bottom:0;left:76px;width:10px;transform:rotate(6deg)}
-.acct-v2{top:0;bottom:0;left:182px;width:8px;transform:rotate(6deg)}
+/* T7 (codex-visual-fix): renamed from the collision-prone .acct-h1/.acct-h2 — those names were
+   ALSO the login sheet's real <h1 class="acct-h1"> title class (line ~103 above); since this
+   later stylesheet always wins the cascade, every login/creá-perfil h1 title was silently getting
+   height:9px + rotate(-4deg) applied to it once injectDeliverStyles() had run this pageload
+   (guaranteed sooner now that Tasks 2/3/4/5 call it far more eagerly) — a squashed, rotated title
+   overlapping its subtitle. Purely a class rename on the decorative map's <i> road-lines; the map
+   itself is visually unchanged. */
+.acct-mh1{left:0;right:0;top:26px;height:9px;transform:rotate(-4deg)}
+.acct-mh2{left:0;right:0;top:56px;height:12px;transform:rotate(-4deg)}
+.acct-mv1{top:0;bottom:0;left:76px;width:10px;transform:rotate(6deg)}
+.acct-mv2{top:0;bottom:0;left:182px;width:8px;transform:rotate(6deg)}
 .acct-blk{position:absolute;background:#EAE0CE;border-radius:2px;opacity:.7}
 .acct-pin{position:absolute;left:calc(50% - 11px);top:18px;width:22px;height:22px;z-index:2;filter:drop-shadow(0 5px 4px rgba(40,28,12,.28))}
 .acct-pindot{position:absolute;left:calc(50% - 3px);top:38px;width:7px;height:3px;border-radius:50%;background:rgba(40,28,12,.28);filter:blur(1px)}
@@ -882,7 +890,7 @@
     return `
 <div class="acct-deliver">
   <div class="acct-map">
-    <i class="acct-h1"></i><i class="acct-h2"></i><i class="acct-v1"></i><i class="acct-v2"></i>
+    <i class="acct-mh1"></i><i class="acct-mh2"></i><i class="acct-mv1"></i><i class="acct-mv2"></i>
     <span class="acct-blk" style="left:16px;top:6px;width:54px;height:19px"></span>
     <span class="acct-blk" style="left:108px;top:7px;width:66px;height:17px"></span>
     <span class="acct-blk" style="left:20px;top:44px;width:48px;height:26px"></span>
