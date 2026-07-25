@@ -1528,7 +1528,7 @@ ${rowsHtml}`;
   <span class="acct-ctxt"><b>${escapeHtml(addr.label || 'Guardado')}</b> · ${escapeHtml(shortAddrLine(addr))}</span>
   <button class="acct-change" type="button" id="acct-change-btn-s1">Cambiar</button>
 </div>`;
-    const btn = $('acct-change-btn-s1'); if (btn) btn.onclick = () => enterEditMode(false);   // Task 4 upgrades this to the two-action chooser
+    const btn = $('acct-change-btn-s1'); if (btn) btn.onclick = openCambiarPanel;
   }
 
   // The rich "Entregar a" summary ATOP s2's payment (above "Forma de pago") — reuses the same
@@ -1540,7 +1540,7 @@ ${rowsHtml}`;
     const name = (snap && snap.name) || m.name || '';
     const phone = (snap && snap.phone) || m.phone || '';
     mount.innerHTML = `<div class="acct-eyebrow">Entregar a</div>` + deliverCardHtml(name, phone, addr, 'acct-change-btn-s2');
-    const btn = $('acct-change-btn-s2'); if (btn) btn.onclick = () => enterEditMode(false);   // Task 4 upgrades this to the two-action chooser
+    const btn = $('acct-change-btn-s2'); if (btn) btn.onclick = openCambiarPanel;
   }
 
   function hideRawAndAddrSection() {
@@ -1602,6 +1602,95 @@ ${rowsHtml}`;
     const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
     const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
     const picker = $('acct-label-picker'); if (picker) picker.remove();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // Task 4 — Cambiar: TWO distinct actions from the returning-flow summary (spec "Cambiar (on the
+  // returning payment summary)"). "Usar en este pedido" (pick a saved address → order fields
+  // ONLY, no persist, no default change) vs "Guardar dirección" (edit/add → persists via the
+  // EXISTING enterEditMode(true)/saveEditedAddress scaffolding, unchanged, makeDefault:true). No
+  // silent default/profile mutation on a one-off. Reachable only via renderS1CompactSummary/
+  // renderS2RichSummary's Cambiar buttons — themselves only ever rendered behind
+  // marker()+profileComplete (Task 3).
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  function openCambiarPanel() {
+    const mount = $('acct-s2-summary'); if (!mount) return;
+    // Cambiar can be tapped from s1's compact line before s2 (and its map) has ever been shown —
+    // jump there so the chooser (and, if "Usar una dirección nueva" is picked, the real map) is
+    // visible. Name/phone are already known+valid at this point (that's the Task 3 invariant that
+    // got us here), so bypassing goToLocation()'s own re-validation here is safe.
+    try {
+      const s2 = document.getElementById('s2');
+      if (s2 && !s2.classList.contains('active') && typeof showStage === 'function') {
+        showStage('s2', 50);
+        setTimeout(() => { try { if (typeof initMap === 'function') initMap(); } catch (_) {} }, 100);
+      }
+    } catch (_) {}
+
+    injectDeliverStyles();
+    const addrs = (_acctData && _acctData.addresses) || {};
+    const otherIds = Object.keys(addrs).filter((id) => id !== _acctAddrId);
+    const rowsHtml = otherIds.map((id) => {
+      const a = addrs[id];
+      return `<div class="acct-acard" data-use-id="${escapeHtml(id)}">
+  <span class="acct-dotmark" style="background:#CFC2B1"></span>
+  <div class="acct-al2"><div class="acct-aname2">${escapeHtml(a.label || 'Dirección')}</div>
+  <div class="acct-aline2">${escapeHtml(a.details || a.detected || '')}</div></div>
+</div>`;
+    }).join('');
+    mount.innerHTML = `
+<div class="acct-eyebrow">Cambiar dirección de entrega</div>
+${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No tenés otras direcciones guardadas.</p>'}
+<button type="button" class="acct-addlink" id="acct-cambiar-new">+ Usar una dirección nueva</button>
+<button type="button" class="acct-cancel-edit" id="acct-cambiar-cancel">‹ Cancelar</button>`;
+    mount.querySelectorAll('[data-use-id]').forEach((row) => {
+      row.onclick = () => selectSavedAddressForOrder(row.getAttribute('data-use-id'));
+    });
+    const newBtn = $('acct-cambiar-new');
+    if (newBtn) newBtn.onclick = () => {
+      mount.innerHTML = '';
+      relabelSteps(false);
+      _acctReducedActive = false;
+      const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
+      const addrSection = addrSectionEl();
+      if (addrSection) addrSection.style.display = '';
+      enterEditMode(true);   // existing scaffolding — its "Guardar dirección" persists (makeDefault:true) + applies
+      if (addrSection) setTimeout(() => addrSection.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+    };
+    const cancelBtn = $('acct-cambiar-cancel');
+    if (cancelBtn) cancelBtn.onclick = () => refreshDeliveryUI();
+    setTimeout(() => mount.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+  }
+
+  // "Usar en este pedido" — order fields ONLY, NO saveAddress() call, NO default_address change.
+  function selectSavedAddressForOrder(addrId) {
+    if (!_acctData || !_acctData.addresses || !_acctData.addresses[addrId]) return;
+    const a = _acctData.addresses[addrId];
+    _acctAddrId = addrId;   // backs THIS order only — _acctData.default_address is untouched
+    const addr = Object.assign({ id: addrId }, a);
+    establishCheckoutFromAddress(addr);
+    setVal('address-detected', a.detected);
+    setVal('address-details', a.details);
+    placeAccountPin(a.lat, a.lng);
+    if (reducedFlowInvariantOk(_acctData, addr)) {
+      renderS1CompactSummary(_acctData, addr);
+      renderS2RichSummary(_acctData, addr);
+      relabelSteps(true);
+      _acctReducedActive = true;
+      hideRawAndAddrSection();
+      toast('Dirección actualizada para este pedido');
+    } else {
+      // FAIL-OPEN: this saved address fails the invariant right now (e.g. genuinely out of the
+      // current delivery zone) — never leave a hidden-but-invalid summary standing; drop to the
+      // normal fillable view so processPayment()'s own checks (and the customer's eyes) catch it.
+      _acctReducedActive = false;
+      relabelSteps(false);
+      const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
+      const addrSection = addrSectionEl(); if (addrSection) addrSection.style.display = '';
+      const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
+      toast('Esa dirección no está disponible ahora mismo — revisá el mapa.');
+    }
   }
 
   function wrapPageHooks() {
