@@ -1,0 +1,297 @@
+<title>X. Pizza — logged-in order form (autofill mockup)</title>
+<style>
+  :root{
+    --ink:#17130F; --ink-2:#2A231C; --muted:#8C7B6E; --faint:#B3A594; --faint-2:#CFC2B1;
+    --line:#EDE5D9; --line-2:#E2D8C8; --screen:#FFFDFA; --cream:#FBF6EE;
+    --gold:#A9791A; --gold-lt:#F3E7CC; --ok:#2A6A42; --ok-lt:#E7F0E9;
+    --sans:-apple-system,system-ui,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    font-synthesis-weight:none;
+  }
+  /* CLEAN-WHITE variant — flip via the Cálido/Blanco toggle to compare grounds on the real layout */
+  .stage.white{
+    --screen:#FFFFFF; --cream:#F6F6F5; --line:#ECECEA; --line-2:#E1E1DE; --faint-2:#CFCFCB;
+    background:radial-gradient(125% 85% at 50% -12%, #FAFAF9 0%, #EFEFEE 55%, #E6E6E4 100%);
+  }
+  *{box-sizing:border-box} body{margin:0}
+  .stage{min-height:100vh;background:radial-gradient(125% 85% at 50% -12%, #F5EEE3 0%, #E9E0D1 52%, #DCD1BE 100%);
+    display:flex;flex-direction:column;align-items:center;padding:30px 16px 48px;font-family:var(--sans);-webkit-font-smoothing:antialiased;color:var(--ink);transition:background .3s}
+  .cap{color:#6a6055;font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;margin-bottom:15px}
+
+  .screen{width:100%;max-width:396px;background:var(--screen);border-radius:32px;overflow:hidden;position:relative;
+    box-shadow:0 34px 80px -26px rgba(40,28,12,.44), 0 4px 16px -6px rgba(40,28,12,.16);display:flex;flex-direction:column;min-height:788px}
+  .statusbar{height:14px}
+
+  /* header */
+  .head{padding:16px 20px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .mark{font-weight:800;font-size:20px;letter-spacing:-.03em;line-height:1}
+  .mark .dot{color:var(--gold)}
+  .mark .sub{display:block;font-weight:400;font-size:10.5px;letter-spacing:.02em;color:var(--faint);margin-top:4px}
+  /* refined chip — quiet ink-outline avatar, NOT a loud fill */
+  /* seamless chip — no pill outline, blends into the header */
+  .chip{display:flex;align-items:center;gap:9px;background:transparent;border:none;border-radius:999px;
+    padding:5px 3px;cursor:pointer;transition:opacity .15s}
+  .chip:hover{opacity:.66}
+  /* soft, borderless avatar — no hard ring; smooth + seamless */
+  .chip .av{width:28px;height:28px;border-radius:50%;color:var(--ink-2);
+    display:flex;align-items:center;justify-content:center;background:#F0E8DA}
+  .chip .nm{font-size:13.5px;font-weight:650;letter-spacing:-.01em}
+  .chip .cv{color:var(--faint);font-size:10px;margin-left:-1px}
+
+  .prog{height:3px;background:var(--line);position:relative}
+  .prog::after{content:"";position:absolute;left:0;top:0;height:100%;width:62%;background:linear-gradient(90deg,var(--gold),#C79A3E)}
+  .step{padding:15px 22px 4px;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.01em}
+
+  .body{flex:1;padding:16px 22px 22px;display:flex;flex-direction:column}
+  .pane{display:none;flex-direction:column;flex:1;animation:in .34s cubic-bezier(.2,.7,.2,1)}
+  .pane.on{display:flex}
+  @keyframes in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+  /* segmented delivery / pickup */
+  .seg{display:flex;background:var(--cream);border:1px solid var(--line);border-radius:13px;padding:4px;gap:4px;margin:6px 0 18px}
+  .seg button{flex:1;border:none;background:transparent;font-family:inherit;font-size:14px;font-weight:650;color:var(--muted);
+    padding:9px 0;border-radius:9px;cursor:pointer;transition:.15s;letter-spacing:-.01em}
+  .seg button.on{background:#fff;color:var(--ink);box-shadow:0 2px 8px -3px rgba(40,28,12,.2)}
+
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);margin:0 2px 10px}
+
+  /* THE HERO — "Entregar a" confirm card */
+  .deliver{border:1px solid var(--line-2);border-radius:20px;overflow:hidden;background:#fff;
+    box-shadow:0 12px 30px -18px rgba(40,28,12,.3)}
+  .map{height:104px;position:relative;overflow:hidden;
+    background:
+      radial-gradient(120% 140% at 50% -40%, #EFE7DA 0%, #E4DAC7 100%);
+    border-bottom:1px solid var(--line)}
+  /* stylised streets */
+  .map i{position:absolute;background:#F7F2E8;box-shadow:0 0 0 1px #E7DDCB}
+  .map .h1{left:0;right:0;top:34px;height:11px;transform:rotate(-4deg)}
+  .map .h2{left:0;right:0;top:74px;height:16px;transform:rotate(-4deg)}
+  .map .v1{top:0;bottom:0;left:96px;width:13px;transform:rotate(6deg)}
+  .map .v2{top:0;bottom:0;left:232px;width:10px;transform:rotate(6deg)}
+  .map .blk{position:absolute;background:#EAE0CE;border-radius:2px;opacity:.7}
+  .pin{position:absolute;left:calc(50% - 13px);top:26px;width:26px;height:26px;z-index:2;filter:drop-shadow(0 6px 5px rgba(40,28,12,.28))}
+  .pindot{position:absolute;left:calc(50% - 4px);top:50px;width:8px;height:4px;border-radius:50%;background:rgba(40,28,12,.28);filter:blur(1px)}
+  .mtag{position:absolute;right:10px;bottom:9px;background:rgba(255,253,250,.92);border:1px solid var(--line);border-radius:999px;
+    padding:4px 10px;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.02em;backdrop-filter:blur(3px)}
+
+  .drow{display:flex;align-items:flex-start;gap:13px;padding:16px 16px 4px}
+  .avatar{width:42px;height:42px;border-radius:50%;background:#F0E8DA;flex:none;
+    display:flex;align-items:center;justify-content:center;color:var(--ink-2);margin-top:1px}
+  .who{flex:1;min-width:0}
+  .who .nm{font-size:17px;font-weight:750;letter-spacing:-.02em;line-height:1.15}
+  .who .ph{font-size:13.5px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums}
+  .change{flex:none;background:none;border:none;font-family:inherit;font-size:13px;font-weight:700;color:var(--ink);
+    text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:6px 2px;margin-top:2px}
+  .addr{display:flex;gap:11px;padding:12px 16px 16px;margin-top:8px;border-top:1px dashed var(--line-2)}
+  .addr .lbl{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gold)}
+  .addr .al{flex:1;min-width:0}
+  .addr .aname{font-size:14.5px;font-weight:700;letter-spacing:-.01em}
+  .addr .aline{font-size:13px;color:var(--muted);line-height:1.45;margin-top:2px}
+  .saved{display:inline-flex;align-items:center;gap:5px;margin-top:11px;font-size:11.5px;font-weight:700;color:var(--ok);
+    background:var(--ok-lt);border-radius:999px;padding:4px 10px}
+
+  .spacer{flex:1;min-height:16px}
+  .cta{width:100%;height:56px;border:none;border-radius:16px;background:var(--ink);color:#fff;font-size:16.5px;font-weight:700;
+    letter-spacing:.01em;cursor:pointer;font-family:inherit;transition:transform .06s, background .15s;margin-top:18px;
+    display:flex;align-items:center;justify-content:center;gap:9px}
+  .cta:hover{background:var(--ink-2)} .cta:active{transform:translateY(1px)}
+  .cta .amt{opacity:.62;font-weight:600}
+  .reassure{text-align:center;font-size:12px;color:var(--faint);margin-top:12px;letter-spacing:.01em}
+
+  /* EDIT pane */
+  .mlabel{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:16px 2px 8px}
+  .inp{width:100%;height:52px;padding:0 15px;border:1.5px solid var(--line-2);border-radius:13px;background:#fff;
+    font-size:16px;font-weight:550;color:var(--ink);outline:none;font-family:inherit}
+  .inp:focus{border-color:var(--ink)}
+  .inp::placeholder{color:var(--faint)}
+  .maprow{position:relative;border:1.5px solid var(--line-2);border-radius:13px;overflow:hidden;height:120px;margin-top:2px}
+  .repin{position:absolute;right:10px;top:10px;background:#fff;border:1px solid var(--line-2);border-radius:999px;
+    padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 3px 8px -4px rgba(40,28,12,.3)}
+  .backlink{background:none;border:none;font-family:inherit;font-size:13.5px;font-weight:650;color:var(--muted);
+    cursor:pointer;text-decoration:underline;text-underline-offset:3px;align-self:flex-start;padding:6px 0;margin-top:14px}
+  /* address-label chips */
+  .lchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+  .lchip{display:inline-flex;align-items:center;gap:7px;border:1.5px solid var(--line-2);background:#fff;border-radius:12px;
+    padding:9px 13px;font-family:inherit;font-size:13.5px;font-weight:650;color:var(--muted);cursor:pointer;transition:.14s;letter-spacing:-.01em}
+  .lchip svg{color:var(--faint);transition:color .14s}
+  .lchip:hover{border-color:var(--faint-2)}
+  .lchip.on{border-color:var(--ink);color:var(--ink);background:var(--cream)}
+  .lchip.on svg{color:var(--gold)}
+  .field-hint{font-size:11.5px;color:var(--faint);margin:7px 2px 0;letter-spacing:.01em}
+
+  /* ACCOUNT sheet */
+  .acc-hd{display:flex;align-items:center;gap:14px;padding:6px 2px 0}
+  .acc-hd .avatar{width:52px;height:52px}
+  .hey{font-size:24px;font-weight:800;letter-spacing:-.025em}
+  .heysub{font-size:14px;color:var(--muted);margin-top:4px;font-variant-numeric:tabular-nums}
+  .sec{margin-top:26px}
+  .sechd{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:11px}
+  .sectitle{font-size:11.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+  .addlink{background:none;border:none;font-family:inherit;font-size:13px;font-weight:700;color:var(--ink);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+  .acard{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:15px;padding:14px 15px;margin-bottom:10px;background:#fff;cursor:pointer;transition:border-color .12s}
+  .acard:hover{border-color:var(--line-2)}
+  .acard .dotmark{width:9px;height:9px;border-radius:50%;background:var(--gold);flex:none}
+  .acard.on2{border-color:var(--ink);box-shadow:0 0 0 3px var(--gold-lt)}
+  .acard .al{flex:1;min-width:0}
+  .acard .aname{font-size:15px;font-weight:700}
+  .acard .aline{font-size:12.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .acard .chk{color:var(--gold)}
+  .soon{opacity:.62}
+  .soon-tag{font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--gold);background:var(--gold-lt);padding:2px 7px;border-radius:5px}
+  .signout{margin-top:22px;text-align:center}
+  .signout button{background:none;border:none;font-family:inherit;font-size:14px;font-weight:650;color:var(--muted);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+  .sheet-top{display:flex;align-items:center;justify-content:space-between;padding:2px 0 8px;border-bottom:1px solid var(--line);margin-bottom:16px}
+  .sheet-top .tt{font-size:15px;font-weight:700}
+  .xbtn{background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer;line-height:1;padding:0 4px}
+
+  .foot{color:#6a6055;font-size:12px;line-height:1.65;max-width:396px;margin-top:20px;text-align:center}
+  .foot b{color:#3d372e}
+  .tabs{display:flex;gap:7px;margin-top:16px}
+  .tabs button{border:1px solid var(--line-2);background:#fff;border-radius:999px;padding:7px 14px;font-family:inherit;font-size:12.5px;font-weight:650;color:var(--muted);cursor:pointer}
+  .tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+</style>
+
+<div class="stage">
+  <div class="cap">X. Pizza · pedido con sesión — mockup</div>
+  <div class="tabs" style="margin:0 0 16px" id="groundToggle">
+    <button class="on" onclick="ground('warm',this)">Cálido (actual)</button>
+    <button onclick="ground('white',this)">Blanco (limpio)</button>
+  </div>
+
+  <div class="screen">
+    <div class="statusbar"></div>
+    <div class="head">
+      <div class="mark">X<span class="dot">.</span> Pizza<span class="sub">Pedido en línea · San Pedro Sula</span></div>
+      <button class="chip" id="chipBtn" onclick="show('account')" aria-label="Mi cuenta">
+        <span class="av"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.6"/><path d="M5.6 19.4c0-3.4 2.9-5.5 6.4-5.5s6.4 2.1 6.4 5.5"/></svg></span>
+        <span class="nm">Xavier</span><span class="cv">▾</span>
+      </button>
+    </div>
+    <div class="prog"></div>
+    <div class="step" id="stepLbl">Paso 2 de 3 — Tus datos</div>
+
+    <div class="body">
+      <!-- CONFIRM (hero) -->
+      <section class="pane on" id="pane-confirm">
+        <div class="seg">
+          <button class="on">Delivery</button>
+          <button>Pickup</button>
+        </div>
+        <div class="eyebrow">Entregar a</div>
+        <div class="deliver">
+          <div class="map">
+            <i class="h1"></i><i class="h2"></i><i class="v1"></i><i class="v2"></i>
+            <span class="blk" style="left:18px;top:6px;width:64px;height:22px"></span>
+            <span class="blk" style="left:126px;top:8px;width:78px;height:20px"></span>
+            <span class="blk" style="left:255px;top:14px;width:70px;height:24px"></span>
+            <span class="blk" style="left:24px;top:52px;width:56px;height:30px"></span>
+            <span class="blk" style="left:150px;top:56px;width:62px;height:28px"></span>
+            <div class="pindot"></div>
+            <svg class="pin" viewBox="0 0 24 24" fill="var(--gold)" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
+            <span class="mtag">~ 22 min</span>
+          </div>
+          <div class="drow">
+            <span class="avatar"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.6"/><path d="M5.6 19.4c0-3.4 2.9-5.5 6.4-5.5s6.4 2.1 6.4 5.5"/></svg></span>
+            <div class="who">
+              <div class="nm">Xavier</div>
+              <div class="ph">+504 9473-8243</div>
+            </div>
+            <button class="change" onclick="show('edit')">Cambiar</button>
+          </div>
+          <div class="addr">
+            <div class="al">
+              <div class="lbl"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z"/></svg> Casa</div>
+              <div class="aname" style="margin-top:6px">Col. Trejo</div>
+              <div class="aline">2 cuadras del parque, portón negro · San Pedro Sula</div>
+              <span class="saved"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Guardado de tu último pedido</span>
+            </div>
+          </div>
+        </div>
+        <div class="spacer"></div>
+        <button class="cta">Continuar al pago <span class="amt">· L 471</span></button>
+        <p class="reassure">Sin volver a escribir tus datos. Cambiá lo que quieras.</p>
+      </section>
+
+      <!-- EDIT -->
+      <section class="pane" id="pane-edit">
+        <div class="eyebrow" style="margin-top:4px">Editar entrega</div>
+        <div class="mlabel" style="margin-top:2px">Nombre</div>
+        <input class="inp" value="Xavier">
+        <div class="mlabel">Teléfono</div>
+        <input class="inp" value="+504 9473-8243" style="font-variant-numeric:tabular-nums">
+
+        <div class="mlabel">Ubicación</div>
+        <div class="maprow">
+          <div class="map" style="height:100%;border:none">
+            <i class="h1"></i><i class="h2"></i><i class="v1"></i><i class="v2"></i>
+            <span class="blk" style="left:20px;top:8px;width:60px;height:20px"></span>
+            <span class="blk" style="left:140px;top:56px;width:60px;height:26px"></span>
+            <div class="pindot"></div>
+            <svg class="pin" viewBox="0 0 24 24" fill="var(--gold)" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
+          </div>
+          <button class="repin">Mover el pin</button>
+        </div>
+        <input class="inp" value="Col. Trejo, 2 cuadras del parque, portón negro" style="margin-top:9px;font-size:14px" placeholder="Referencias: portón, color, piso…">
+
+        <div class="mlabel">Guardar como</div>
+        <div class="lchips">
+          <button class="lchip" onclick="pickLabel(this,'Casa')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></svg>Casa</button>
+          <button class="lchip" onclick="pickLabel(this,'Trabajo')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7.5" width="18" height="12.5" rx="2"/><path d="M8.5 7.5V6a2 2 0 012-2h3a2 2 0 012 2v1.5"/></svg>Trabajo</button>
+          <button class="lchip on" onclick="pickLabel(this,'')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4L13.4 20.6a2 2 0 01-2.8 0l-6.2-6.2a2 2 0 01-.6-1.4V5a2 2 0 012-2h7.9a2 2 0 011.4.6l6.2 6.2a2 2 0 010 2.6z"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor" stroke="none"/></svg>Otra</button>
+        </div>
+        <input class="inp" id="labelInp" value="Casa de un amigo" placeholder="Ponle un nombre… (ej: Casa de mis papás)" style="margin-top:10px">
+        <p class="field-hint">Le ponés el nombre que quieras. La próxima vez la elegís en un toque.</p>
+
+        <div class="spacer"></div>
+        <button class="cta" onclick="show('confirm')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Guardar y continuar</button>
+        <button class="backlink" onclick="show('confirm')">‹ Volver</button>
+      </section>
+
+      <!-- ACCOUNT -->
+      <section class="pane" id="pane-account">
+        <div class="sheet-top"><span class="tt">Mi cuenta</span><button class="xbtn" onclick="show('confirm')">×</button></div>
+        <div class="acc-hd">
+          <span class="avatar"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.6"/><path d="M5.6 19.4c0-3.4 2.9-5.5 6.4-5.5s6.4 2.1 6.4 5.5"/></svg></span>
+          <div><div class="hey">Hola, Xavier</div><div class="heysub">+504 9473-8243</div></div>
+        </div>
+        <div class="sec">
+          <div class="sechd"><span class="sectitle">Mis direcciones</span><button class="addlink">+ Agregar</button></div>
+          <div class="acard on2"><span class="dotmark"></span><div class="al"><div class="aname">Casa</div><div class="aline">Col. Trejo, 2 cuadras del parque, portón negro</div></div><span class="chk"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span></div>
+          <div class="acard"><span class="dotmark" style="background:var(--faint-2)"></span><div class="al"><div class="aname">Trabajo</div><div class="aline">Blvd. Morazán, Torre Alfa, 4º piso</div></div><span style="color:var(--faint);font-size:18px">›</span></div>
+        </div>
+        <div class="sec">
+          <div class="sechd"><span class="sectitle">Mis pedidos</span></div>
+          <div class="acard soon"><span class="dotmark" style="background:var(--faint-2)"></span><div class="al"><div class="aname">Repetir un pedido anterior</div><div class="aline">Historial y reorden</div></div><span class="soon-tag">Pronto</span></div>
+        </div>
+        <div class="signout"><button onclick="show('confirm')">Cerrar sesión</button></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="on" onclick="show('confirm',this)">1 · Confirmar</button>
+    <button onclick="show('edit',this)">2 · Cambiar</button>
+    <button onclick="show('account',this)">3 · Mi cuenta</button>
+  </div>
+  <p class="foot">Vista con sesión — el paso "Tus datos" se vuelve <b>una tarjeta de confirmación</b>: nombre, teléfono y dirección ya listos, con el pin en el mapa. <b>Un toque</b> y al pago; “Cambiar” para editar o re-ubicar. La misma pantalla en La Musa (rojo musa, tono apagado). No es la interfaz final.</p>
+</div>
+
+<script>
+  window.ground=function(mode,el){
+    document.querySelector('.stage').classList.toggle('white', mode==='white');
+    document.querySelectorAll('#groundToggle button').forEach(function(b){b.classList.remove('on')});
+    el.classList.add('on');
+  };
+  window.pickLabel=function(el,val){
+    document.querySelectorAll('.lchip').forEach(function(c){c.classList.remove('on')});
+    el.classList.add('on');
+    var inp=document.getElementById('labelInp');
+    if(val){ inp.value=val; } else { inp.value=''; inp.placeholder='Ponle un nombre… (ej: Casa de mis papás)'; inp.focus(); }
+  };
+  window.show=function(name,tabEl){
+    document.querySelectorAll('.pane').forEach(function(p){p.classList.remove('on')});
+    document.getElementById('pane-'+name).classList.add('on');
+    var lbl=document.getElementById('stepLbl');
+    lbl.textContent = name==='account' ? 'Mi cuenta' : name==='edit' ? 'Paso 2 de 3 — Editar entrega' : 'Paso 2 de 3 — Tus datos';
+    if(tabEl){document.querySelectorAll('.tabs button').forEach(function(b){b.classList.remove('on')});tabEl.classList.add('on');}
+  };
+</script>
