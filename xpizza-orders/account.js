@@ -318,6 +318,8 @@
       await saveName(inp.value);
       renderChip();
       closeSheet();
+      // Mid-session login, new-user name capture (Tasks B4–B7) — see the analogous call in verifyCode().
+      try { wrapPageHooks(); initDeliveryStep().catch(() => {}); } catch (_) {}
     };
   }
 
@@ -423,6 +425,10 @@
     } else {
       renderChip();
       closeSheet();
+      // Mid-session login (Tasks B4–B7): the marker-gated DOMContentLoaded init already ran (and
+      // skipped, guest at load time) — re-run it now that marker() is truthy so the confirm card /
+      // save-on-order toggle activate for THIS page load without requiring a reload.
+      try { wrapPageHooks(); initDeliveryStep().catch(() => {}); } catch (_) {}
     }
   }
 
@@ -460,11 +466,17 @@
     sub.textContent = m.phone || '';   // textContent — no innerHTML sink
     pane.appendChild(sub);
 
-    const rows = document.createElement('div');
+    // Mis direcciones (Task B6) — real, populated from whatever _acctData we currently have (may be
+    // stale/empty until openAccountSheet()'s background refresh below lands; never blocks the sheet).
+    const addrSection = document.createElement('div');
+    addrSection.id = 'acct-addr-section';
+    addrSection.className = 'acct-sec';
+    pane.appendChild(addrSection);
+    renderAddressesSection();
+
+    const rows = document.createElement('div');   // Mis pedidos stays Pronto (P3) — untouched
     rows.className = 'acct-rows';
     rows.innerHTML =   // static copy only — zero user values interpolated here
-      '<div class="acct-row acct-soon"><div class="acct-rl"><span class="acct-rt">Mis direcciones</span>' +
-      '<span class="acct-rd">Guardá tus direcciones favoritas</span></div><span class="acct-soon-tag">Pronto</span></div>' +
       '<div class="acct-row acct-soon"><div class="acct-rl"><span class="acct-rt">Mis pedidos</span>' +
       '<span class="acct-rd">Repetí un pedido anterior</span></div><span class="acct-soon-tag">Pronto</span></div>';
     pane.appendChild(rows);
@@ -500,7 +512,11 @@
     try {
       const { auth } = await ensureFirebase();
       await auth.authStateReady();
-      if (!auth.currentUser) heal();
+      if (!auth.currentUser) { heal(); return; }
+      // Mis direcciones (Task B6) — refresh the address list live; fail-open, never blocks the
+      // already-open sheet (which rendered instantly above from the marker alone).
+      const snap = await accountSnapshot();
+      if (snap) { _acctData = snap; renderAddressesSection(); }
     } catch (_) { /* fail-open — leave the marker as-is; sign-out/delete surface any real trouble */ }
   }
 
@@ -512,6 +528,7 @@
     try { localStorage.removeItem(CONFIG.MARKER); } catch (_) {}
     renderChip();
     closeSheet();
+    try { revertToGuestForm(); } catch (_) {}   // Tasks B4–B7: drop the confirm card back to raw fields
   }
 
   async function doDeleteAccount() {
@@ -530,6 +547,7 @@
         try { localStorage.removeItem(CONFIG.MARKER); } catch (_) {}
         renderChip();
         closeSheet();
+        try { revertToGuestForm(); } catch (_) {}   // Tasks B4–B7: drop the confirm card back to raw fields
         toast('Cuenta eliminada');
       } else {
         toast('No pudimos eliminar tu cuenta. Intentá de nuevo.');
@@ -660,10 +678,517 @@
     }
   }
 
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // Tasks B4–B7 — the "Entregar a" confirm card, Cambiar/label-picker edit flow, saved-addresses
+  // management in Mi cuenta, and opt-in save-on-order. ALL of this is gated on marker() being
+  // truthy (a logged-in customer) — a guest never runs a byte of this section (see the
+  // DOMContentLoaded gate at the bottom). Every DOM/network call is try/catch-guarded; nothing
+  // here may block the order form's own submit/validation logic, which is left untouched.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  // Monochrome line-icons only (no emoji) — ported from the locked mockup's label chips + checks.
+  const ICON_HOUSE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></svg>';
+  const ICON_WORK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7.5" width="18" height="12.5" rx="2"/><path d="M8.5 7.5V6a2 2 0 012-2h3a2 2 0 012 2v1.5"/></svg>';
+  const ICON_TAG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4L13.4 20.6a2 2 0 01-2.8 0l-6.2-6.2a2 2 0 01-.6-1.4V5a2 2 0 012-2h7.9a2 2 0 011.4.6l6.2 6.2a2 2 0 010 2.6z"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor" stroke="none"/></svg>';
+  const ICON_PIN_SM = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z"/></svg>';
+  const ICON_CHECK_SM = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+  const ICON_CHECK_BIG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+
+  function injectDeliverStyles() {
+    if ($('acct-deliver-styles')) return;
+    const st = document.createElement('style');
+    st.id = 'acct-deliver-styles';
+    st.textContent = `
+.acct-eyebrow{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#B3A594;margin:0 0 10px}
+.acct-deliver{border:1px solid #E2D8C8;border-radius:20px;overflow:hidden;background:#fff;box-shadow:0 12px 30px -18px rgba(40,28,12,.3);font-family:inherit;margin-bottom:4px}
+.acct-map{height:84px;position:relative;overflow:hidden;background:radial-gradient(120% 140% at 50% -40%, #EFE7DA 0%, #E4DAC7 100%);border-bottom:1px solid #EDE5D9}
+.acct-map i{position:absolute;background:#F7F2E8;box-shadow:0 0 0 1px #E7DDCB}
+.acct-h1{left:0;right:0;top:26px;height:9px;transform:rotate(-4deg)}
+.acct-h2{left:0;right:0;top:56px;height:12px;transform:rotate(-4deg)}
+.acct-v1{top:0;bottom:0;left:76px;width:10px;transform:rotate(6deg)}
+.acct-v2{top:0;bottom:0;left:182px;width:8px;transform:rotate(6deg)}
+.acct-blk{position:absolute;background:#EAE0CE;border-radius:2px;opacity:.7}
+.acct-pin{position:absolute;left:calc(50% - 11px);top:18px;width:22px;height:22px;z-index:2;filter:drop-shadow(0 5px 4px rgba(40,28,12,.28))}
+.acct-pindot{position:absolute;left:calc(50% - 3px);top:38px;width:7px;height:3px;border-radius:50%;background:rgba(40,28,12,.28);filter:blur(1px)}
+.acct-drow{display:flex;align-items:flex-start;gap:12px;padding:14px 15px 4px}
+.acct-avatar{width:38px;height:38px;border-radius:50%;background:#F0E8DA;flex:none;display:flex;align-items:center;justify-content:center;color:#2A231C;margin-top:1px}
+.acct-who{flex:1;min-width:0}
+.acct-nm2{font-size:16px;font-weight:750;letter-spacing:-.02em;line-height:1.15;color:#17130F}
+.acct-ph2{font-size:13px;color:#8C7B6E;margin-top:3px;font-variant-numeric:tabular-nums}
+.acct-change{flex:none;background:none;border:none;font-family:inherit;font-size:13px;font-weight:700;color:#17130F;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:6px 2px;margin-top:2px}
+.acct-addr{display:flex;gap:10px;padding:11px 15px 15px;margin-top:6px;border-top:1px dashed #E2D8C8}
+.acct-lbl{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:${CONFIG.accent}}
+.acct-al{flex:1;min-width:0}
+.acct-aname{font-size:14px;font-weight:700;letter-spacing:-.01em;color:#17130F;margin-top:5px}
+.acct-aline{font-size:12.5px;color:#8C7B6E;line-height:1.45;margin-top:2px}
+.acct-saved{display:inline-flex;align-items:center;gap:5px;margin-top:10px;font-size:11px;font-weight:700;color:#2A6A42;background:#E7F0E9;border-radius:999px;padding:4px 10px}
+.acct-lchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+.acct-lchip{display:inline-flex;align-items:center;gap:7px;border:1.5px solid #E2D8C8;background:#fff;border-radius:12px;padding:9px 13px;font-family:inherit;font-size:13.5px;font-weight:650;color:#8C7B6E;cursor:pointer;transition:.14s;letter-spacing:-.01em}
+.acct-lchip svg{color:#B3A594;transition:color .14s}
+.acct-lchip:hover{border-color:#CFC2B1}
+.acct-lchip.acct-on{border-color:#17130F;color:#17130F;background:#FBF6EE}
+.acct-lchip.acct-on svg{color:${CONFIG.accent}}
+.acct-field-hint{font-size:11.5px;color:#B3A594;margin:7px 2px 0;letter-spacing:.01em}
+.acct-label-custom-inp{width:100%;padding:14px;border:1.5px solid #E2D8C8;border-radius:8px;font-size:15px;font-family:inherit;outline:none;color:#17130F}
+.acct-label-custom-inp:focus{border-color:#17130F}
+.acct-save-addr-btn{width:100%;padding:14px;background:#17130F;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px}
+.acct-save-addr-btn:hover{background:#2A231C}
+.acct-save-addr-btn[disabled]{background:#E7DFD3;color:#B3A594;cursor:not-allowed}
+.acct-cancel-edit{width:100%;padding:10px;background:none;border:none;font-family:inherit;font-size:13.5px;font-weight:650;color:#8C7B6E;text-decoration:underline;text-underline-offset:3px;cursor:pointer;margin-top:2px}
+.acct-savetoggle{display:flex;align-items:center;gap:9px;margin:14px 2px 0;font-size:13px;color:#5b4f41;cursor:pointer;user-select:none;font-family:inherit}
+.acct-savetoggle input{width:auto;margin:0}
+.acct-sec{margin-top:24px}
+.acct-sechd{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:11px}
+.acct-sectitle{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#B3A594}
+.acct-addlink{background:none;border:none;font-family:inherit;font-size:13px;font-weight:700;color:#17130F;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.acct-acard{display:flex;align-items:center;gap:11px;border:1px solid #EDE5D9;border-radius:15px;padding:13px 14px;margin-bottom:9px;background:#fff;cursor:pointer;transition:border-color .12s}
+.acct-acard:hover{border-color:#E2D8C8}
+.acct-acard .acct-dotmark{width:8px;height:8px;border-radius:50%;background:${CONFIG.accent};flex:none}
+.acct-acard.acct-on2{border-color:#17130F;box-shadow:0 0 0 3px #F3E7CC}
+.acct-acard .acct-al2{flex:1;min-width:0}
+.acct-acard .acct-aname2{font-size:14.5px;font-weight:700;color:#17130F}
+.acct-acard .acct-aline2{font-size:12px;color:#8C7B6E;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acct-acard .acct-chk{color:${CONFIG.accent};flex:none;display:flex}
+.acct-acard .acct-del{color:#B3A594;font-size:19px;padding:2px 5px;flex:none;line-height:1}
+.acct-acard .acct-del:hover{color:#B23B3B}
+`;
+    document.head.appendChild(st);
+  }
+
+  function setVal(id, val) { const el = $(id); if (el) el.value = (val == null ? '' : val); }
+
+  // pageOrderType()/pageLatLng() read the HOST FORM's own top-level `let` globals (orderType/lat/lng
+  // — declared in index.html's main inline <script>, which runs BEFORE this file's DOMContentLoaded
+  // callbacks fire). Classic <script> tags on the same page share one top-level lexical scope, so a
+  // bare identifier reference here resolves to the live page variable — no `window.` prefix (`let`
+  // doesn't attach to window). try/catch-guarded so a missing/renamed host global fails open.
+  function pageOrderType() {
+    try { return (typeof orderType !== 'undefined') ? orderType : 'delivery'; } catch (_) { return 'delivery'; }
+  }
+  function pageLatLng() {
+    try { return { lat: (typeof lat !== 'undefined') ? lat : null, lng: (typeof lng !== 'undefined') ? lng : null }; }
+    catch (_) { return { lat: null, lng: null }; }
+  }
+  // Place a pin on the host form's live map if it's already initialized; otherwise stash it via the
+  // form's own __restorePos mechanism for the next initMap() run (identical to the cancelled-
+  // payment-retry path already in index.html).
+  function placeAccountPin(la, ln) {
+    if (la == null || ln == null) return;
+    try {
+      if (typeof gmap !== 'undefined' && gmap && typeof placePin === 'function') { placePin(la, ln, false); return; }
+    } catch (_) { /* fall through to __restorePos */ }
+    window.__restorePos = { lat: la, lng: ln };
+  }
+
+  function addrSectionEl() {
+    try { return document.querySelector('#address-detected')?.closest('.section') || null; }
+    catch (_) { return null; }
+  }
+
+  function pickDefaultAddress(snap) {
+    if (!snap || !snap.addresses) return null;
+    const ids = Object.keys(snap.addresses);
+    if (!ids.length) return null;
+    const id = (snap.default_address && snap.addresses[snap.default_address]) ? snap.default_address : ids[0];
+    const a = snap.addresses[id];
+    if (!a || typeof a.lat !== 'number' || typeof a.lng !== 'number' || !a.detected) return null;
+    return Object.assign({ id }, a);
+  }
+
+  // ── Module state for the delivery step / edit flow (Tasks B4–B7). Reset on sign-out. ──
+  let _acctData = null;          // last accountSnapshot() profile value, or null
+  let _acctAddrId = null;        // addrId currently backing the confirm card / this order
+  let _acctEditMode = false;     // true while "Cambiar" / "+ Agregar" edit surface is open
+  let _acctEditIsNew = false;    // true when the open edit session targets a brand-new address
+  let _acctEditLabel = '';       // chip-picked (or custom) label for the address being edited
+  let _acctCardActive = false;   // true once the confirm card has replaced the raw Tus-datos fields
+  let _acctAddrUnsaved = false;  // true when the address populating the order isn't a persisted one
+  let _acctSaveToggleOn = true;  // B7 "Guardar esta dirección" toggle state (default-checked)
+
+  // ── Task B4: the "Entregar a" confirm card + autofill ──
+  async function initDeliveryStep() {
+    if (!$('acct-deliver')) return;               // host form has no mount — never touch anything
+    const snap = await accountSnapshot();          // fail-open, timeboxed ~1.5s internally
+    if (!snap) { refreshSaveToggle(); return; }     // no account / miss/timeout → normal empty form
+    _acctData = snap;
+    if (pageOrderType() !== 'delivery') { refreshSaveToggle(); return; }   // pickup — leave raw fields
+    const addr = pickDefaultAddress(snap);
+    if (!addr) { refreshSaveToggle(); return; }     // account with no usable saved address — normal form
+    renderConfirmCard(snap, addr);
+  }
+
+  function renderConfirmCard(snap, addr) {
+    injectDeliverStyles();
+    const mount = $('acct-deliver'); if (!mount) return;
+    const rawWrap = $('raw-name-phone');
+    const addrSection = addrSectionEl();
+    const m = marker() || {};
+    const name = (snap && snap.name) || m.name || '';
+    const phone = (snap && snap.phone) || m.phone || '';
+
+    mount.innerHTML = `
+<div class="acct-eyebrow">Entregar a</div>
+<div class="acct-deliver">
+  <div class="acct-map">
+    <i class="acct-h1"></i><i class="acct-h2"></i><i class="acct-v1"></i><i class="acct-v2"></i>
+    <span class="acct-blk" style="left:16px;top:6px;width:54px;height:19px"></span>
+    <span class="acct-blk" style="left:108px;top:7px;width:66px;height:17px"></span>
+    <span class="acct-blk" style="left:20px;top:44px;width:48px;height:26px"></span>
+    <div class="acct-pindot"></div>
+    <svg class="acct-pin" viewBox="0 0 24 24" fill="${CONFIG.accent}" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
+  </div>
+  <div class="acct-drow">
+    <span class="acct-avatar">${PERSON_SVG}</span>
+    <div class="acct-who">
+      <div class="acct-nm2">${escapeHtml(name)}</div>
+      <div class="acct-ph2">${escapeHtml(phone)}</div>
+    </div>
+    <button class="acct-change" type="button" id="acct-change-btn">Cambiar</button>
+  </div>
+  <div class="acct-addr">
+    <div class="acct-al">
+      <div class="acct-lbl">${ICON_PIN_SM} ${escapeHtml(addr.label || 'Guardado')}</div>
+      <div class="acct-aname">${escapeHtml((addr.detected || '').split(',')[0] || addr.detected || '')}</div>
+      <div class="acct-aline">${escapeHtml(addr.details || addr.detected || '')}</div>
+      <span class="acct-saved">${ICON_CHECK_SM} Guardado en tu cuenta</span>
+    </div>
+  </div>
+</div>`;
+    if (rawWrap) rawWrap.style.display = 'none';
+    if (addrSection) addrSection.style.display = 'none';
+    const changeBtn = $('acct-change-btn'); if (changeBtn) changeBtn.onclick = () => enterEditMode(false);
+
+    // Populate the EXISTING order fields — the unchanged submit/validation logic just works.
+    setVal('cname', name);
+    if (typeof window.__applyPhoneRaw === 'function') window.__applyPhoneRaw(phone); else setVal('cphone', phone);
+    setVal('address-detected', addr.detected);
+    setVal('address-details', addr.details);
+    window.__restorePos = { lat: addr.lat, lng: addr.lng };
+
+    _acctAddrId = addr.id;
+    _acctEditIsNew = false;
+    _acctAddrUnsaved = false;
+    _acctCardActive = true;
+    refreshSaveToggle();
+  }
+
+  // ── Task B5: Cambiar — reveal raw fields + label picker; re-pin via the form's own map/geocode ──
+  function enterEditMode(isNew) {
+    _acctEditMode = true;
+    _acctEditIsNew = !!isNew;
+    _acctEditLabel = isNew ? '' : ((_acctData && _acctAddrId && _acctData.addresses && _acctData.addresses[_acctAddrId] && _acctData.addresses[_acctAddrId].label) || '');
+
+    const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
+    const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
+    const addrSection = addrSectionEl();
+    if (addrSection) {
+      if (pageOrderType() === 'delivery') addrSection.style.display = '';
+      injectLabelPicker(addrSection);
+    }
+    if (isNew) {
+      setVal('address-detected', '');
+      setVal('address-details', '');
+      window.__restorePos = null;   // fresh pin — geolocate/let the customer drop it themselves
+    }
+    refreshSaveToggle();
+  }
+
+  function exitEditMode() {
+    _acctEditMode = false;
+    const picker = $('acct-label-picker'); if (picker) picker.remove();
+  }
+
+  function injectDeliverStylesOnce() { injectDeliverStyles(); }   // alias for readability at call sites
+
+  function injectLabelPicker(addrSection) {
+    injectDeliverStylesOnce();
+    if (!addrSection || $('acct-label-picker')) return;
+    const wrap = document.createElement('div');
+    wrap.id = 'acct-label-picker';
+    wrap.className = 'field-group';
+    const knownLabel = (_acctEditLabel === 'Casa' || _acctEditLabel === 'Trabajo') ? _acctEditLabel : '';
+    wrap.innerHTML = `
+<label class="field-label">Guardar como</label>
+<div class="acct-lchips">
+  <button type="button" class="acct-lchip${knownLabel === 'Casa' ? ' acct-on' : ''}" data-label="Casa">${ICON_HOUSE}Casa</button>
+  <button type="button" class="acct-lchip${knownLabel === 'Trabajo' ? ' acct-on' : ''}" data-label="Trabajo">${ICON_WORK}Trabajo</button>
+  <button type="button" class="acct-lchip${knownLabel ? '' : ' acct-on'}" data-label="">${ICON_TAG}Otra</button>
+</div>
+<input type="text" id="acct-label-custom" class="acct-label-custom-inp" placeholder="Ponle un nombre… (ej: Casa de mis papás)" maxlength="40" style="margin-top:10px"/>
+<p class="acct-field-hint">Le ponés el nombre que quieras. La próxima vez la elegís en un toque.</p>
+<button type="button" class="acct-save-addr-btn" id="acct-save-addr-btn">${ICON_CHECK_BIG} Guardar dirección</button>
+<button type="button" class="acct-cancel-edit" id="acct-cancel-edit-btn">‹ Cancelar</button>`;
+    addrSection.appendChild(wrap);
+
+    wrap.querySelectorAll('.acct-lchip').forEach((chip) => {
+      chip.onclick = () => {
+        wrap.querySelectorAll('.acct-lchip').forEach((c) => c.classList.remove('acct-on'));
+        chip.classList.add('acct-on');
+        const custom = $('acct-label-custom');
+        const val = chip.getAttribute('data-label');
+        if (val) { _acctEditLabel = val; if (custom) custom.value = val; }
+        else { _acctEditLabel = (custom && custom.value) || ''; if (custom) { custom.value = ''; custom.placeholder = 'Ponle un nombre… (ej: Casa de mis papás)'; custom.focus(); } }
+      };
+    });
+    const customInp = $('acct-label-custom');
+    if (customInp) {
+      customInp.value = knownLabel || _acctEditLabel || '';
+      customInp.addEventListener('input', () => { _acctEditLabel = customInp.value; });
+    }
+    const saveBtn = $('acct-save-addr-btn'); if (saveBtn) saveBtn.onclick = saveEditedAddress;
+    const cancelBtn = $('acct-cancel-edit-btn'); if (cancelBtn) cancelBtn.onclick = cancelEdit;
+  }
+
+  async function saveEditedAddress() {
+    const btn = $('acct-save-addr-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+
+    const nameVal = ($('cname') || {}).value || '';
+    const detected = ($('address-detected') || {}).value || '';
+    const details = ($('address-details') || {}).value || '';
+    const { lat: curLat, lng: curLng } = pageLatLng();
+    const label = (($('acct-label-custom') || {}).value || _acctEditLabel || '').trim() || 'Otra';
+
+    // Name edit → profile `name` write ONLY — NEVER phone (phone is immutable; a per-order contact
+    // edit goes to #cphone→createOrder only).
+    try {
+      if (_acctData && nameVal.trim() && nameVal.trim() !== (_acctData.name || '')) {
+        const { auth, db, dbMod } = await ensureFirebase();
+        await auth.authStateReady();
+        if (auth.currentUser) {
+          const trimmed = nameVal.trim().slice(0, 80);
+          await dbMod.update(dbMod.ref(db, 'user_profiles/' + auth.currentUser.uid), { name: trimmed });
+          _acctData.name = trimmed;
+          const m = marker(); if (m) { m.name = trimmed; try { localStorage.setItem(CONFIG.MARKER, JSON.stringify(m)); } catch (_) {} }
+          renderChip();
+        }
+      }
+    } catch (_) { /* non-blocking — the address save below still proceeds */ }
+
+    const addrIdForSave = _acctEditIsNew ? undefined : _acctAddrId;
+    const res = (curLat != null && curLng != null && detected)
+      ? await saveAddress({ addrId: addrIdForSave, label, detected, details, lat: curLat, lng: curLng, makeDefault: true })
+      : { ok: false, reason: 'no-pin' };
+
+    if (res.ok) {
+      if (!_acctData) _acctData = {};
+      if (!_acctData.addresses) _acctData.addresses = {};
+      _acctData.addresses[res.addrId] = { label, detected, details, lat: curLat, lng: curLng };
+      _acctData.default_address = res.addrId;
+      _acctAddrId = res.addrId;
+      exitEditMode();
+      renderConfirmCard(_acctData, Object.assign({ id: res.addrId }, _acctData.addresses[res.addrId]));
+      toast('Dirección guardada');
+    } else if (res.reason === 'cap') {
+      toast(res.message || 'Ya guardaste el máximo de 10 direcciones.');
+      if (btn) { btn.disabled = false; btn.innerHTML = ICON_CHECK_BIG + ' Guardar dirección'; }
+    } else {
+      // A failed save must never block the order — the customer still finishes this one with
+      // whatever they typed; we just won't have it saved for next time.
+      _acctAddrUnsaved = true;
+      toast('No pudimos guardar la dirección, pero podés continuar con tu pedido.');
+      exitEditMode();
+      refreshSaveToggle();
+    }
+  }
+
+  function cancelEdit() {
+    exitEditMode();
+    if (_acctData) {
+      const addr = pickDefaultAddress(_acctData);
+      if (addr) { renderConfirmCard(_acctData, addr); return; }
+    }
+    _acctCardActive = false;   // no saved address to fall back to — leave the raw fields as a guest would see them
+    refreshSaveToggle();
+  }
+
+  // ── Task B7: subtle opt-in "Guardar esta dirección" toggle for an order that ISN'T already
+  // riding a saved, unedited address (e.g. a logged-in customer's very first delivery order, or one
+  // whose in-flow save attempt failed). Hidden while the B5 edit surface (with its own explicit
+  // "Guardar dirección") is open — the two affordances are never shown at once.
+  function refreshSaveToggle() {
+    const addrSection = addrSectionEl();
+    const existing = $('acct-save-toggle-wrap');
+    const shouldShow = !!marker() && pageOrderType() === 'delivery' && !_acctEditMode && (!_acctCardActive || _acctAddrUnsaved);
+    if (!shouldShow) { if (existing) existing.remove(); return; }
+    if (existing || !addrSection) return;   // already showing (leave the customer's choice alone) — or no host section
+    injectDeliverStylesOnce();
+    const wrap = document.createElement('label');
+    wrap.id = 'acct-save-toggle-wrap';
+    wrap.className = 'acct-savetoggle';
+    wrap.innerHTML = `<input type="checkbox" id="acct-save-toggle" checked/> Guardar esta dirección en mi cuenta`;
+    addrSection.appendChild(wrap);
+    _acctSaveToggleOn = true;
+    const cb = $('acct-save-toggle');
+    if (cb) cb.addEventListener('change', () => { _acctSaveToggleOn = cb.checked; });
+  }
+
+  // Called from index.html at the ONE point every confirmed-order path funnels through
+  // (showSuccess() — cash-accepted, "already paid", and the online-payment-return "paid"/
+  // "scheduled_paid" states all call it). Never awaited by the caller; never throws.
+  async function onOrderConfirmed(order) {
+    try {
+      if (!order || order.order_type !== 'delivery') return;
+      if (!marker()) return;                       // guest — never save (unreachable in practice, defense-in-depth)
+      if (!_acctSaveToggleOn) return;               // dismissed — respect it
+      if (_acctCardActive && !_acctAddrUnsaved) return;   // already a saved, unedited address — nothing new to persist
+      const detected = order.address_detected, details = order.address_details;
+      const la = order.lat, ln = order.lng;
+      if (!detected || typeof la !== 'number' || typeof ln !== 'number') return;
+      const label = (_acctEditLabel && _acctEditLabel.trim())
+        || (_acctData && _acctAddrId && _acctData.addresses && _acctData.addresses[_acctAddrId] && _acctData.addresses[_acctAddrId].label)
+        || 'Dirección';
+      const res = await saveAddress({ addrId: _acctEditIsNew ? undefined : _acctAddrId, label, detected, details, lat: la, lng: ln, makeDefault: true });
+      if (res && res.ok) { _acctAddrUnsaved = false; _acctAddrId = res.addrId; refreshSaveToggle(); }
+    } catch (_) { /* never affects the order — it already succeeded */ }
+  }
+
+  // ── Task B6: Mis direcciones list in the account sheet — select / add / delete ──
+  function renderAddressesSection() {
+    injectDeliverStylesOnce();
+    const sec = $('acct-addr-section'); if (!sec) return;
+    const addrs = (_acctData && _acctData.addresses) || {};
+    const ids = Object.keys(addrs);
+    const defId = _acctData && _acctData.default_address;
+    let rowsHtml;
+    if (!ids.length) {
+      rowsHtml = '<p class="acct-fine" style="text-align:left;margin:0 0 4px">Aún no tenés direcciones guardadas.</p>';
+    } else {
+      rowsHtml = ids.map((id) => {
+        const a = addrs[id];
+        const isDefault = id === defId;
+        return `<div class="acct-acard${isDefault ? ' acct-on2' : ''}" data-addr-id="${escapeHtml(id)}">
+  <span class="acct-dotmark" style="${isDefault ? '' : 'background:#CFC2B1'}"></span>
+  <div class="acct-al2">
+    <div class="acct-aname2">${escapeHtml(a.label || 'Dirección')}</div>
+    <div class="acct-aline2">${escapeHtml(a.details || a.detected || '')}</div>
+  </div>
+  ${isDefault ? `<span class="acct-chk">${ICON_CHECK_BIG}</span>` : ''}
+  <span class="acct-del" data-del-id="${escapeHtml(id)}" role="button" aria-label="Borrar dirección" title="Borrar">×</span>
+</div>`;
+      }).join('');
+    }
+    sec.innerHTML = `
+<div class="acct-sechd"><span class="acct-sectitle">Mis direcciones</span><button class="acct-addlink" type="button" id="acct-add-addr-btn">+ Agregar</button></div>
+${rowsHtml}`;
+    sec.querySelectorAll('.acct-acard[data-addr-id]').forEach((card) => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('[data-del-id]')) return;
+        selectSavedAddress(card.getAttribute('data-addr-id'));
+      });
+    });
+    sec.querySelectorAll('[data-del-id]').forEach((btn) => {
+      btn.addEventListener('click', (e) => { e.stopPropagation(); removeSavedAddress(btn.getAttribute('data-del-id')); });
+    });
+    const addBtn = $('acct-add-addr-btn'); if (addBtn) addBtn.onclick = startAddNewAddress;
+  }
+
+  async function selectSavedAddress(addrId) {
+    if (!_acctData || !_acctData.addresses || !_acctData.addresses[addrId]) return;
+    const a = _acctData.addresses[addrId];
+    _acctData.default_address = addrId;
+    _acctAddrId = addrId;
+    renderAddressesSection();
+    renderConfirmCard(_acctData, Object.assign({ id: addrId }, a));
+    placeAccountPin(a.lat, a.lng);
+    closeSheet();
+    try { await saveAddress({ addrId, label: a.label, detected: a.detected, details: a.details, lat: a.lat, lng: a.lng, makeDefault: true }); }
+    catch (_) { /* fail-open — the in-memory selection above already applies for this order */ }
+  }
+
+  async function removeSavedAddress(addrId) {
+    if (!_acctData || !_acctData.addresses || !_acctData.addresses[addrId]) return;
+    const ok = window.confirm('¿Borrar esta dirección guardada?');
+    if (!ok) return;
+    const wasDefault = _acctData.default_address === addrId;
+    delete _acctData.addresses[addrId];
+    if (wasDefault) _acctData.default_address = null;
+    renderAddressesSection();
+    if (_acctAddrId === addrId) {
+      _acctAddrId = null;
+      const next = pickDefaultAddress(_acctData);
+      if (next) renderConfirmCard(_acctData, next);
+      // else: leave the current card/fields as-is rather than yanking the form mid-order.
+    }
+    try { await deleteAddress(addrId); } catch (_) { /* fail-open — the list already reflects the deletion */ }
+  }
+
+  function startAddNewAddress() {
+    closeSheet();
+    enterEditMode(true);
+    try {
+      const s1 = document.getElementById('s1');
+      if (s1 && s1.classList.contains('active')) {
+        const nameField = document.getElementById('cname'); if (nameField) nameField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (typeof showStage === 'function') {
+        showStage('s1', 25);
+      }
+    } catch (_) {}
+  }
+
+  // ── Sign-out / delete-account: revert the form back to the pristine guest state ──
+  function revertToGuestForm() {
+    _acctData = null; _acctAddrId = null; _acctCardActive = false; _acctEditMode = false;
+    _acctEditIsNew = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true;
+    const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
+    const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
+    const addrSection = addrSectionEl();
+    if (addrSection) {
+      addrSection.style.display = (pageOrderType() === 'delivery') ? '' : 'none';
+      const picker = $('acct-label-picker'); if (picker) picker.remove();
+    }
+    const toggle = $('acct-save-toggle-wrap'); if (toggle) toggle.remove();
+  }
+
+  // ── Keep card/toggle visibility correct across delivery↔pickup toggles + "another order" resets,
+  // without editing index.html's own functions — wrap them once, fail-open, guest-safe (only ever
+  // installed from the marker()-gated DOMContentLoaded hook below).
+  function applyCardVisibility() {
+    if (!_acctCardActive || _acctEditMode) return;   // nothing to reassert, or edit surface owns visibility
+    const addrSection = addrSectionEl();
+    const rawWrap = $('raw-name-phone');
+    const isDelivery = pageOrderType() === 'delivery';
+    if (rawWrap) rawWrap.style.display = 'none';
+    if (addrSection && isDelivery) addrSection.style.display = 'none';
+  }
+
+  function wrapPageHooks() {
+    try {
+      if (typeof window.setOrderType === 'function' && !window.setOrderType.__acctWrapped) {
+        const orig = window.setOrderType;
+        const wrapped = function (type) { orig(type); try { applyCardVisibility(); refreshSaveToggle(); } catch (_) {} };
+        wrapped.__acctWrapped = true;
+        window.setOrderType = wrapped;
+      }
+    } catch (_) {}
+    try {
+      if (typeof window.startAnotherOrder === 'function' && !window.startAnotherOrder.__acctWrapped) {
+        const orig = window.startAnotherOrder;
+        const wrapped = function () {
+          orig();
+          _acctEditMode = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true;
+          try { applyCardVisibility(); refreshSaveToggle(); } catch (_) {}
+        };
+        wrapped.__acctWrapped = true;
+        window.startAnotherOrder = wrapped;
+      }
+    } catch (_) {}
+  }
+
+  // GUEST BYTE-IDENTICAL GATE: everything in Tasks B4–B7 (SDK, DOM, network) is reachable ONLY
+  // through this listener, and ONLY once marker() (an instant localStorage read, no network) is
+  // truthy. A guest returns before a single byte of this section runs.
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!marker()) return;
+    wrapPageHooks();
+    initDeliveryStep().catch(() => {});
+  });
+
   window.__ACCOUNT = { CONFIG, ensureFirebase };   // internal handle for later tasks/tests
   window.__ACCOUNT.customerIdToken = customerIdToken;
   window.__ACCOUNT.accountSnapshot = accountSnapshot;
   window.__ACCOUNT.newAddrId = newAddrId;
   window.__ACCOUNT.saveAddress = saveAddress;
   window.__ACCOUNT.deleteAddress = deleteAddress;
+  window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;
 })();
