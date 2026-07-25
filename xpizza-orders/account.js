@@ -405,5 +405,96 @@
     }
   }
 
+  // ── Account sheet (logged-in) — name/phone (from marker, no SDK needed to display), Pronto rows
+  // (Mis direcciones / Mis pedidos — P2/P3, disabled), sign-out, delete-account (H10).
+  // name/phone are user-controlled (localStorage marker) — EVERY render uses textContent, never
+  // interpolated into an innerHTML template string (XSS-safe by construction).
+  function renderAccountPane() {
+    const pane = $('acct-pane-account'); if (!pane) return;
+    const m = marker() || {};
+    pane.innerHTML = '';   // rebuilt from scratch each open — the static rows below carry no user values
+
+    const hey = document.createElement('h1');
+    hey.className = 'acct-hey';
+    hey.textContent = 'Hola' + (m.name ? ', ' + firstName(m.name) : '');   // textContent — no innerHTML sink
+    pane.appendChild(hey);
+
+    const sub = document.createElement('p');
+    sub.className = 'acct-heysub';
+    sub.textContent = m.phone || '';   // textContent — no innerHTML sink
+    pane.appendChild(sub);
+
+    const rows = document.createElement('div');
+    rows.className = 'acct-rows';
+    rows.innerHTML =   // static copy only — zero user values interpolated here
+      '<div class="acct-row acct-soon"><div class="acct-rl"><span class="acct-rt">Mis direcciones</span>' +
+      '<span class="acct-rd">Guardá tus direcciones favoritas</span></div><span class="acct-soon-tag">Pronto</span></div>' +
+      '<div class="acct-row acct-soon"><div class="acct-rl"><span class="acct-rt">Mis pedidos</span>' +
+      '<span class="acct-rd">Repetí un pedido anterior</span></div><span class="acct-soon-tag">Pronto</span></div>';
+    pane.appendChild(rows);
+
+    const disclosure = document.createElement('p');   // H9 — phone-account model disclosure
+    disclosure.className = 'acct-fine';
+    disclosure.textContent = 'Tu cuenta está ligada a tu número de WhatsApp.';
+    pane.appendChild(disclosure);
+
+    const signout = document.createElement('div');
+    signout.className = 'acct-signout';
+    const soBtn = document.createElement('button');
+    soBtn.type = 'button'; soBtn.textContent = 'Cerrar sesión';
+    soBtn.onclick = doSignOut;
+    signout.appendChild(soBtn);
+    pane.appendChild(signout);
+
+    const del = document.createElement('div');
+    del.className = 'acct-delete';
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button'; delBtn.textContent = 'Eliminar mi cuenta';
+    delBtn.onclick = doDeleteAccount;
+    del.appendChild(delBtn);
+    pane.appendChild(del);
+  }
+
+  function openAccountSheet() {
+    openOverlay();
+    renderAccountPane();
+    showPane('account');
+  }
+
+  async function doSignOut() {
+    try {
+      const { auth, authMod } = await ensureFirebase();
+      await authMod.signOut(auth);
+    } catch (_) { /* fail-open — clear local state regardless of SDK/network trouble */ }
+    try { localStorage.removeItem(CONFIG.MARKER); } catch (_) {}
+    renderChip();
+    closeSheet();
+  }
+
+  async function doDeleteAccount() {
+    const ok = window.confirm('Esto borra tu cuenta y tus datos. No se puede deshacer.');
+    if (!ok) return;
+    try {
+      const { auth, authMod } = await ensureFirebase();
+      const idTok = await auth.currentUser.getIdToken();
+      const res = await fetch(CONFIG.DELETE_URL, {
+        method: 'POST',
+        headers: { 'x-firebase-id-token': idTok },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data && data.ok) {
+        try { await authMod.signOut(auth); } catch (_) {}
+        try { localStorage.removeItem(CONFIG.MARKER); } catch (_) {}
+        renderChip();
+        closeSheet();
+        toast('Cuenta eliminada');
+      } else {
+        toast('No pudimos eliminar tu cuenta. Intentá de nuevo.');
+      }
+    } catch (_) {
+      toast('No pudimos eliminar tu cuenta. Intentá de nuevo.');
+    }
+  }
+
   window.__ACCOUNT = { CONFIG, ensureFirebase };   // internal handle for later tasks/tests
 })();
