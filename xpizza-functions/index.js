@@ -884,12 +884,20 @@ chargeOnlineApp.all('*', async (req, res) => {
   const idTok = req.get('x-firebase-id-token');
   if (idTok) {
     try {
-      const dec = await getAuth().verifyIdToken(idTok);
-      if (dec && dec.customer === true && dec.uid) {
-        const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();
-        customer_uid = attributionUid(dec, tomb.exists());
-      }
-    } catch (_) { /* malformed/expired/foreign/tomb-read-failure → ignore, treat as guest */ }
+      // Deadline race: a HUNG verifyIdToken/tomb-read (not just an error) must never delay the hosted-checkout
+      // mint → 1.5s cap → guest. Honors the invariant "error OR timeout → charge proceeds".
+      customer_uid = await Promise.race([
+        (async () => {
+          const dec = await getAuth().verifyIdToken(idTok);
+          if (dec && dec.customer === true && dec.uid) {
+            const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();
+            return attributionUid(dec, tomb.exists());
+          }
+          return null;
+        })(),
+        new Promise((resolve) => setTimeout(() => resolve(null), 1500)),   // deadline → guest; never delay/fail a payment
+      ]);
+    } catch (_) { customer_uid = null; }   // any error → guest
   }
 
   // The HIDDEN pending order. Mirrors createOrder's orderRecord (so Stage-4

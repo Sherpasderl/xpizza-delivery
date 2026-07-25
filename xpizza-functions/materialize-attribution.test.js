@@ -43,6 +43,26 @@ const call = (order) => buildMaterializeUpdates({
   assert.equal(wholeNodeKeys.length, 0); ok('(e) every order write is a field-level patch path (orders/{id}/<field>)');
   assert.equal(u[`orders/${ORDER}/customer_uid`], uid); ok('(e) delivery card order still attributes');
 }
+// FIX 2 — a released SCHEDULED CASH order carries customer_uid (createOrder already wrote /user_orders at
+// intake), but method !== 'online' → the shared builder must NOT re-write it (no release-time overwrite).
+{
+  const uid = 'u_' + 'd'.repeat(24);
+  const u = buildMaterializeUpdates({
+    orderId: ORDER, order: base({ customer_uid: uid, payment_method: 'cash' }),
+    trackingToken: TOK, now: NOW, restaurant: REST, paymentMethod: 'cash',
+  });
+  assert.ok(!(`orders/${ORDER}/customer_uid` in u)); ok('scheduled-cash release → NO orders/{id}/customer_uid');
+  assert.ok(!Object.keys(u).some((k) => k.startsWith('user_orders/'))); ok('scheduled-cash release → NO user_orders write (intake attribution preserved)');
+}
+// A scheduled ONLINE card order at release (method online, customer_uid set) → DOES attribute (first+only write).
+{
+  const uid = 'u_' + 'e'.repeat(24);
+  const u = buildMaterializeUpdates({
+    orderId: ORDER, order: base({ customer_uid: uid }), trackingToken: TOK, now: NOW, restaurant: REST, paymentMethod: 'online',
+  });
+  assert.equal(u[`orders/${ORDER}/customer_uid`], uid); ok('scheduled/confirm ONLINE release → attributes (method online)');
+}
+
 // guest byte-identical: attribution adds EXACTLY the 2 paths, nothing else changes
 {
   const uid = 'u_' + 'c'.repeat(24);

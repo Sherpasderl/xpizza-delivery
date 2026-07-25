@@ -48,7 +48,7 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
   // orders/{id}/* fields, so we must NOT call attachCustomerAttribution (it assumes a whole-object
   // orders/{id} node → would throw here and strand a PAID order). Shared builder → confirmOnlinePayment,
   // pixelPayWebhook, sweep-recovery, and scheduled-release all attribute for free.
-  if (order.customer_uid) {
+  if (order.customer_uid && method === 'online') {   // online only — cash was already attributed at intake by createOrder (a scheduled-cash release must NOT rewrite its history entry)
     updates[`orders/${orderId}/customer_uid`] = order.customer_uid;
     updates[`user_orders/${order.customer_uid}/${orderId}`] = {
       ts: now, total: order.total, order_type: order.order_type, items_text: order.items_text,
