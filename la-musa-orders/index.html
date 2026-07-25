@@ -1252,6 +1252,10 @@ textarea{resize:none;height:80px;line-height:1.4}
   <div class="details-section">
     <div class="section">
       <div class="section-head">Tus datos</div>
+      <!-- Mount for the logged-in "Entregar a" confirm card (account.js, Task B4). Empty for a
+           guest / logged-out / no-account / pickup visitor — no card, no reads, byte-identical. -->
+      <div id="acct-deliver"></div>
+      <div id="raw-name-phone">
       <div class="field-group field-divider">
         <label class="field-label">Nombre completo</label>
         <input type="text" id="cname" placeholder="Ej: María García" autocomplete="name"/>
@@ -1263,6 +1267,7 @@ textarea{resize:none;height:80px;line-height:1.4}
           <input type="tel" id="cphone" inputmode="numeric" placeholder="9999-9999" autocomplete="tel"/>
           <div class="cc-menu" id="cc-menu" role="listbox"></div>
         </div>
+      </div>
       </div>
       <div class="field-group field-divider">
         <label class="field-label">Correo <span style="font-weight:400;color:#999">(opcional · para tu recibo)</span></label>
@@ -3247,6 +3252,15 @@ function showSuccess(){
       <span class="receipt-label">WhatsApp</span>
       <span>${o.customer_phone}</span>
     </div>`;
+
+  // Save-on-order (User Profiles P2, Task B7) — showSuccess() is the ONE point every truly-
+  // CONFIRMED order funnels through. Fail-open, fire-and-forget: never awaited, never throws back
+  // into this render, and only touches anything for a logged-in customer (guest = no-op instantly).
+  try {
+    if (window.__ACCOUNT && typeof window.__ACCOUNT.onOrderConfirmed === 'function') {
+      window.__ACCOUNT.onOrderConfirmed(o);
+    }
+  } catch (_) {}
 }
 
 /* ═══════════════════════════════════════════════════
