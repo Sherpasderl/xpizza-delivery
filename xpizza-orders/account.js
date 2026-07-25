@@ -620,6 +620,21 @@
   // Never throws; never blocks a caller — every caller must treat a false return as "didn't save,
   // keep going".
   async function saveAddress({ addrId, label, detected, details, lat, lng, makeDefault } = {}) {
+    // T1 (spec constraint #3) — REJECT, never normalize-and-persist, an invalid address: this is
+    // the LAST line of defense regardless of caller (Cambiar, Creá-tu-perfil, "+ Agregar", any
+    // future one) — so a caller bug can never silently write a saved address that would later
+    // block checkout behind a hidden field (renderConfirmCard's own guard is defense-in-depth,
+    // not the source of truth). Validate BEFORE any network read/write.
+    const _label = String(label || '').trim();
+    const _detected = String(detected || '').trim();
+    const _details = String(details || '').trim();
+    const latOk = typeof lat === 'number' && isFinite(lat);
+    const lngOk = typeof lng === 'number' && isFinite(lng);
+    if (!_label) return { ok: false, reason: 'invalid-label', message: 'Elegí un nombre para la dirección (Casa, Trabajo, etc.).' };
+    if (!_detected) return { ok: false, reason: 'invalid-detected', message: 'No pudimos detectar la dirección — moví el pin en el mapa.' };
+    if (_details.length < 3) return { ok: false, reason: 'invalid-details', message: 'Agregá una referencia para el repartidor (mínimo 3 caracteres).' };
+    if (!latOk || !lngOk) return { ok: false, reason: 'invalid-latlng', message: 'Ubicación inválida — moví el pin en el mapa.' };
+
     try {
       const { auth, db, dbMod } = await ensureFirebase();
       await auth.authStateReady();
@@ -639,9 +654,9 @@
       const now = Date.now();
       const updates = {};
       updates['user_profiles/' + user.uid + '/addresses/' + addrId] = {
-        label: String(label || '').trim().slice(0, 40) || 'Dirección',
-        detected: String(detected || '').trim().slice(0, 200),
-        details: String(details || '').trim().slice(0, 200),
+        label: _label.slice(0, 40),
+        detected: _detected.slice(0, 200),
+        details: _details.slice(0, 200),
         lat, lng,
         created_at: now,
         last_used_at: now,
@@ -793,6 +808,18 @@
     const a = snap.addresses[id];
     if (!a || typeof a.lat !== 'number' || typeof a.lng !== 'number' || !a.detected || typeof a.details !== 'string' || a.details.trim().length < 3) return null;   // needs a usable reference (delivery requires details>=3); else fall back to the fillable form, never block behind a hidden field
     return Object.assign({ id }, a);
+  }
+
+  // ── T1 — "complete profile" predicate (spec constraint #7, codex R1 #8) ──
+  // name complete = first+last (>=2 words); address complete = REUSES pickDefaultAddress's own
+  // guard (detected + numeric lat/lng + details>=3). The LIVE accountSnapshot() snap is
+  // authoritative for this decision — the localStorage marker is only the instant-chip hint,
+  // NEVER the gate for step-removal/reduced-flow (spec R1 #7 / non-negotiable #1).
+  function profileComplete(snap) {
+    if (!snap) return false;
+    const nameOk = String(snap.name || '').trim().split(/\s+/).filter(Boolean).length >= 2;
+    if (!nameOk) return false;
+    return !!pickDefaultAddress(snap);
   }
 
   // ── Module state for the delivery step / edit flow (Tasks B4–B7). Reset on sign-out. ──
@@ -1223,6 +1250,7 @@ ${rowsHtml}`;
   window.__ACCOUNT.accountSnapshot = accountSnapshot;
   window.__ACCOUNT.newAddrId = newAddrId;
   window.__ACCOUNT.saveAddress = saveAddress;
+  window.__ACCOUNT.profileComplete = profileComplete;
   window.__ACCOUNT.deleteAddress = deleteAddress;
   window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;
 })();
