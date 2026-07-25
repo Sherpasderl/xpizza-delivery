@@ -876,6 +876,22 @@ chargeOnlineApp.all('*', async (req, res) => {
     ? pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES)
     : { items: null, error: null };  // non-platform (la_musa) → no factura line items
 
+  // Optional logged-in attribution (H2) — a SEPARATE, verified X-Firebase-ID-Token header; fail-open to
+  // guest exactly like createOrder. A missing/malformed/expired/tombstoned/guest token → null → the charge
+  // is UNAFFECTED (never fail or delay a payment). Only decoded.uid from a verified customer:true,
+  // non-tombstoned token is used — a client-supplied uid is never trusted.
+  let customer_uid = null;
+  const idTok = req.get('x-firebase-id-token');
+  if (idTok) {
+    try {
+      const dec = await getAuth().verifyIdToken(idTok);
+      if (dec && dec.customer === true && dec.uid) {
+        const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();
+        customer_uid = attributionUid(dec, tomb.exists());
+      }
+    } catch (_) { /* malformed/expired/foreign/tomb-read-failure → ignore, treat as guest */ }
+  }
+
   // The HIDDEN pending order. Mirrors createOrder's orderRecord (so Stage-4
   // confirm can materialize tasks/tracking from it) but status=pending_payment,
   // payment_status=pending, and NO tasks/tracking/WhatsApp yet.
@@ -899,7 +915,8 @@ chargeOnlineApp.all('*', async (req, res) => {
     cash_tendered_cents: 0,                     // online: no cash, CAMBIO 0
     ...(facturaPriced.items ? { items: facturaPriced.items } : {}),
     ...(fields.razon_social ? { razon_social: fields.razon_social } : {}),
-    ...(fields.rtn_cliente ? { rtn_cliente: fields.rtn_cliente } : {})
+    ...(fields.rtn_cliente ? { rtn_cliente: fields.rtn_cliente } : {}),
+    ...(customer_uid ? { customer_uid } : {})   // H2: verified logged-in attribution (guest → absent)
   };
   if (orderType === 'delivery') {
     pendingOrderRecord.lat = lat;

@@ -43,6 +43,18 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
     if (paymentReference != null) updates[`orders/${orderId}/payment_reference`] = paymentReference;
   }
 
+  // H2 attribution (Task 0): carry a logged-in customer's uid onto the now-live card order + the
+  // /user_orders history index, identically to a cash order. FIELD-LEVEL paths ONLY — this builder patches
+  // orders/{id}/* fields, so we must NOT call attachCustomerAttribution (it assumes a whole-object
+  // orders/{id} node → would throw here and strand a PAID order). Shared builder → confirmOnlinePayment,
+  // pixelPayWebhook, sweep-recovery, and scheduled-release all attribute for free.
+  if (order.customer_uid) {
+    updates[`orders/${orderId}/customer_uid`] = order.customer_uid;
+    updates[`user_orders/${order.customer_uid}/${orderId}`] = {
+      ts: now, total: order.total, order_type: order.order_type, items_text: order.items_text,
+    };
+  }
+
   // Driver tasks ONLY for delivery (pickup = customer collects, no dispatch).
   if (orderType === 'delivery') {
     const pickupTaskId = `${orderId}_pickup`;
