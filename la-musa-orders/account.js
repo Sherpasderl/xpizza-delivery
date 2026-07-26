@@ -288,6 +288,20 @@
     unbindKeyboardInset();
   }
 
+  // Contextual close (codex F3/F4): ✕ and the scrim route here. If the ORDER-mode new-address pane is
+  // active, run its isolated-map teardown (bump _acctFsEpoch, reset _nad*, restore mode) BEFORE closeSheet
+  // — the polished sheet finalizer doesn't cover that state, so it would otherwise leak stale _nad*/map/
+  // mode into the next open. Every other pane (picker/account) just closes (order unchanged).
+  function dismissSheet() {
+    const nad = $('acct-pane-newaddr');
+    if (nad && nad.classList.contains('acct-on') && _nadPaneMode === 'order') {
+      _acctFsEpoch++;
+      _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;
+      _nadPaneMode = 'account-save';
+    }
+    closeSheet();
+  }
+
   // ── Keyboard-safe sheet (Task B2) — on iOS Safari, focusing an input inside the fixed-position
   // bottom sheet can leave it (and its CTA) hidden under the on-screen keyboard: the sheet is
   // pinned to the layout viewport, which the keyboard doesn't shrink, only visualViewport does.
@@ -325,9 +339,12 @@
   }
 
   function wireOverlayEvents() {
-    $('acct-close').onclick = closeSheet;
+    $('acct-close').onclick = dismissSheet;      // topbar ✕ → contextual close (teardown order-mode newaddr — codex F3)
     $('acct-guest-btn').onclick = closeSheet;    // guest flow untouched — just closes the sheet
     $('acct-back').onclick = () => showPane('phone');
+    // Scrim-dismiss (codex F4): a click on the overlay backdrop (NOT inside .acct-sheet) closes with the
+    // same contextual teardown. Target-guarded so taps inside the sheet never dismiss.
+    const ov = $('acct-overlay'); if (ov) ov.addEventListener('click', (e) => { if (e.target === ov) dismissSheet(); });
 
     // Phone pane: digits-only NNNN-NNNN formatting, CTA enabled at 8 digits. CC is a static +504
     // for P0 (the login phone is almost always the local WhatsApp number; a US customer can still
