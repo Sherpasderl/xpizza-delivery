@@ -1,0 +1,209 @@
+<title>Creá tu perfil — in the login sheet</title>
+<style>
+  :root{
+    --ink:#17130F;--ink-2:#2A231C;--muted:#8C7B6E;--faint:#B3A594;--faint-2:#CFC2B1;
+    --line:#EDE5D9;--line-2:#E2D8C8;--screen:#FFFDFA;--cream:#FBF6EE;--gold:#A9791A;--gold-lt:#F3E7CC;--ok:#2A6A42;--ok-lt:#E7F0E9;
+    --sans:-apple-system,system-ui,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;font-synthesis-weight:none;
+  }
+  [data-brand="musa"]{--gold:#B23B3B;--gold-lt:#F3D9D6;--ok:#2A6A42;}
+  *{box-sizing:border-box}body{margin:0}
+  .stage{min-height:100vh;background:radial-gradient(125% 85% at 50% -12%,#F5EEE3 0%,#E9E0D1 52%,#DCD1BE 100%);
+    display:flex;flex-direction:column;align-items:center;padding:26px 16px 44px;font-family:var(--sans);-webkit-font-smoothing:antialiased;color:var(--ink)}
+  .cap{color:#6a6055;font-size:11.5px;letter-spacing:.15em;text-transform:uppercase;font-weight:700;margin-bottom:12px;text-align:center;max-width:412px}
+  .cap b{color:#3d372e}
+  .segtabs{display:flex;gap:7px;margin-bottom:15px;flex-wrap:wrap;justify-content:center}
+  .segtabs button{border:1px solid var(--line-2);background:#fff;border-radius:999px;padding:8px 15px;font-family:inherit;font-size:12.5px;font-weight:700;color:var(--muted);cursor:pointer}
+  .segtabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .brandtabs button.on{background:var(--gold);border-color:var(--gold);color:#fff}
+
+  .screen{width:100%;max-width:392px;background:var(--screen);border-radius:30px;overflow:hidden;position:relative;min-height:748px;
+    box-shadow:0 30px 74px -24px rgba(40,28,12,.42),0 4px 14px -6px rgba(40,28,12,.16);display:flex;flex-direction:column}
+
+  /* ── faint menu behind the sheet ── */
+  .menu{position:absolute;inset:0;display:flex;flex-direction:column;filter:saturate(.9)}
+  .menu .head{padding:15px 18px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .mark{font-weight:800;font-size:19px;letter-spacing:-.03em;line-height:1}.mark .dot{color:var(--gold)}
+  .mark .sub{display:block;font-weight:400;font-size:10px;letter-spacing:.02em;color:var(--faint);margin-top:4px}
+  .chip{display:flex;align-items:center;gap:8px}
+  .chip .av{width:28px;height:28px;border-radius:50%;background:#F0E8DA;color:var(--ink-2);display:flex;align-items:center;justify-content:center}
+  .chip .nm{font-size:13.5px;font-weight:650}
+  .menucard{margin:8px 16px;border:1px solid var(--line);border-radius:16px;height:96px;display:flex;overflow:hidden;background:#fff}
+  .menucard .ph{width:96px;background:radial-gradient(120% 120% at 30% 10%,#F0E7D8,#E4D8C2)}
+  .menucard .mt{flex:1;padding:14px 14px}
+  .menucard .mt b{font-size:15px;font-weight:750;display:block}
+  .menucard .mt span{font-size:12px;color:var(--muted);display:block;margin-top:5px;line-height:1.4}
+  .scrim{position:absolute;inset:0;background:rgba(24,18,12,.46);backdrop-filter:blur(1.5px)}
+
+  /* ── bottom sheet ── */
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--screen);border-radius:26px 26px 0 0;
+    box-shadow:0 -18px 50px -20px rgba(40,28,12,.5);display:flex;flex-direction:column;max-height:93%;animation:rise .4s cubic-bezier(.2,.75,.2,1)}
+  @keyframes rise{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}
+  .grab{width:38px;height:4px;border-radius:99px;background:var(--line-2);margin:9px auto 2px}
+  .shead{display:flex;align-items:flex-start;gap:10px;padding:6px 20px 2px}
+  .shead .t{flex:1}
+  .shead h1{font-size:21px;font-weight:800;letter-spacing:-.02em;margin:2px 0 0}
+  .shead p{font-size:13px;color:var(--muted);margin:5px 0 0;line-height:1.45}
+  .x{flex:none;width:32px;height:32px;border-radius:50%;border:1px solid var(--line-2);background:#fff;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px}
+  .sbody{padding:8px 20px 22px;overflow:auto;display:flex;flex-direction:column}
+
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);margin:15px 2px 8px}
+  .eyebrow:first-child{margin-top:5px}
+  .ro{display:flex;align-items:center;justify-content:space-between;height:54px;padding:0 15px;border:1.5px solid var(--line);border-radius:13px;background:var(--cream);color:var(--ink)}
+  .ro .v{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+  .ro .ok{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--ok)}
+  .inp{width:100%;height:56px;padding:0 15px;border:1.5px solid var(--line-2);border-radius:13px;background:#fff;font-size:16.5px;font-weight:500;color:var(--ink);outline:none;font-family:inherit}
+  .inp:focus{border-color:var(--ink)}.inp::placeholder{color:var(--faint);font-weight:450}
+  .two{display:flex;gap:10px}.two .inp{flex:1;min-width:0}
+
+  /* map preview — checkout style: tap to blow out */
+  .mapwrap{position:relative;cursor:pointer}
+  .map{height:150px;border-radius:15px;position:relative;overflow:hidden;border:1px solid var(--line-2);background:radial-gradient(120% 140% at 50% -40%,#EFE7DA 0%,#E4DAC7 100%)}
+  .map i{position:absolute;background:#F7F2E8;box-shadow:0 0 0 1px #E7DDCB}
+  .map .h1{left:0;right:0;top:50px;height:13px;transform:rotate(-4deg)}.map .h2{left:0;right:0;top:104px;height:17px;transform:rotate(-4deg)}
+  .map .v1{top:0;bottom:0;left:100px;width:13px;transform:rotate(6deg)}.map .v2{top:0;bottom:0;left:244px;width:10px;transform:rotate(6deg)}
+  .blk{position:absolute;background:#EAE0CE;border-radius:2px;opacity:.7}
+  .taphint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+  .taphint span{background:rgba(24,18,12,.6);color:#fff;font-size:12.5px;font-weight:650;padding:8px 15px;border-radius:20px;backdrop-filter:blur(2px)}
+  .pin{position:absolute;left:calc(50% - 13px);top:calc(50% - 30px);width:26px;height:26px;z-index:2;filter:drop-shadow(0 6px 5px rgba(40,28,12,.3))}
+  .pindot{position:absolute;left:calc(50% - 5px);top:calc(50% - 4px);width:10px;height:5px;border-radius:50%;background:rgba(40,28,12,.26);filter:blur(1px)}
+  .lchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+  .lchip{display:inline-flex;align-items:center;gap:7px;border:1.5px solid var(--line-2);background:#fff;border-radius:12px;padding:9px 13px;font-family:inherit;font-size:13.5px;font-weight:650;color:var(--muted);cursor:pointer}
+  .lchip svg{color:var(--faint)}.lchip.on{border-color:var(--ink);color:var(--ink);background:var(--cream)}.lchip.on svg{color:var(--gold)}
+  .cta{width:100%;height:56px;border:none;border-radius:15px;background:var(--ink);color:#fff;font-size:16.5px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:22px;display:flex;align-items:center;justify-content:center;gap:9px}
+  .cta[disabled]{background:var(--faint-2);cursor:default}
+  .cta:not([disabled]):active{transform:translateY(1px)}
+
+  /* fullscreen blow-out map */
+  .fs{position:absolute;inset:0;display:flex;flex-direction:column;background:#E4DAC7;z-index:5}
+  .fsmap{flex:1;position:relative;overflow:hidden;background:radial-gradient(120% 120% at 50% 30%,#EFE7DA 0%,#E1D6C0 100%)}
+  .fsmap i{position:absolute;background:#F7F2E8;box-shadow:0 0 0 1px #E7DDCB}
+  .fsmap .h1{left:0;right:0;top:180px;height:20px;transform:rotate(-3deg)}.fsmap .h2{left:0;right:0;top:360px;height:26px;transform:rotate(-3deg)}
+  .fsmap .h3{left:0;right:0;top:520px;height:16px;transform:rotate(-3deg)}
+  .fsmap .v1{top:0;bottom:0;left:120px;width:18px;transform:rotate(5deg)}.fsmap .v2{top:0;bottom:0;left:270px;width:14px;transform:rotate(5deg)}
+  .fsmap .b{position:absolute;background:#EAE0CE;border-radius:3px;opacity:.75}
+  .fspin{position:absolute;left:calc(50% - 17px);top:calc(50% - 40px);width:34px;height:34px;z-index:3;filter:drop-shadow(0 8px 7px rgba(40,28,12,.34))}
+  .fspindot{position:absolute;left:calc(50% - 7px);top:calc(50% - 5px);width:14px;height:7px;border-radius:50%;background:rgba(40,28,12,.28);filter:blur(1.5px);z-index:2}
+  .fstoggle{position:absolute;top:14px;right:14px;display:flex;gap:6px;z-index:4}
+  .fstoggle button{padding:7px 12px;font-size:12px;font-weight:700;border:none;border-radius:8px;font-family:inherit;cursor:pointer;box-shadow:0 2px 7px -2px rgba(40,28,12,.35)}
+  .fstoggle .on{background:var(--ink);color:#fff}.fstoggle .off{background:#fff;color:#4a4038}
+  .fszoom{position:absolute;right:14px;bottom:104px;display:flex;flex-direction:column;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 3px 10px -3px rgba(40,28,12,.35);z-index:4}
+  .fszoom button{width:38px;height:38px;border:none;background:#fff;font-size:19px;color:#3a332b;cursor:pointer;font-family:inherit}
+  .fszoom button:first-child{border-bottom:1px solid var(--line)}
+  .fsbar{background:#fff;padding:13px 16px calc(13px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:12px;border-top:1px solid var(--line)}
+  .fsbar .a{flex:1;min-width:0}
+  .fsbar .a .l{font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+  .fsbar .a b{display:block;font-size:14px;font-weight:600;color:var(--ink);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .fsdone{flex:none;background:var(--ink);color:#fff;border:none;border-radius:12px;padding:13px 20px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+
+  .foot{color:#6a6055;font-size:12px;line-height:1.6;max-width:412px;margin-top:18px;text-align:center}.foot b{color:#3d372e}
+</style>
+
+<div class="stage" id="stage" data-brand="xpizza">
+  <div class="cap">Creá tu perfil · <b>dentro del login sheet</b> — después de verificar el teléfono</div>
+  <div class="segtabs brandtabs">
+    <button class="on" onclick="brand('xpizza',this)">X. Pizza</button>
+    <button onclick="brand('musa',this)">La Musa</button>
+  </div>
+  <div class="segtabs">
+    <button class="on" onclick="view('sheet',this)">1 · La hoja (crear perfil)</button>
+    <button onclick="view('fs',this)">2 · Mapa a pantalla completa</button>
+  </div>
+
+  <div class="screen">
+    <!-- menu behind -->
+    <div class="menu">
+      <div class="head">
+        <div class="mark">X<span class="dot">.</span> Pizza<span class="sub">Pedido en línea · San Pedro Sula</span></div>
+        <div class="chip"><span class="av"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.6"/><path d="M5.6 19.4c0-3.4 2.9-5.5 6.4-5.5s6.4 2.1 6.4 5.5"/></svg></span><span class="nm">Xavier</span></div>
+      </div>
+      <div class="menucard"><div class="ph"></div><div class="mt"><b>Pepperoni Clásica</b><span>Salsa de tomate, mozzarella, pepperoni</span></div></div>
+      <div class="menucard"><div class="ph"></div><div class="mt"><b>Margarita</b><span>Tomate, albahaca fresca, mozzarella fior di latte</span></div></div>
+      <div class="menucard"><div class="ph"></div><div class="mt"><b>Cuatro Quesos</b><span>Mozzarella, parmesano, gorgonzola, provolone</span></div></div>
+    </div>
+    <div class="scrim"></div>
+
+    <!-- SHEET view -->
+    <div class="sheet" id="v-sheet">
+      <div class="grab"></div>
+      <div class="shead">
+        <div class="t">
+          <h1>Creá tu perfil</h1>
+          <p>Guardá tu nombre y dirección — la próxima vez pedís en dos toques.</p>
+        </div>
+        <button class="x" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="sbody">
+        <div class="eyebrow">Teléfono <span style="color:var(--faint);font-weight:600;text-transform:none;letter-spacing:0">· ya verificado</span></div>
+        <div class="ro"><span class="v">+504 9473-8243</span><span class="ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> WhatsApp</span></div>
+
+        <div class="eyebrow">Nombre y apellido</div>
+        <div class="two">
+          <input class="inp" placeholder="Nombre" value="Xavier">
+          <input class="inp" placeholder="Apellido">
+        </div>
+
+        <div class="eyebrow">¿A dónde te lo llevamos?</div>
+        <div class="mapwrap" onclick="view('fs')">
+          <div class="map">
+            <i class="h1"></i><i class="h2"></i><i class="v1"></i><i class="v2"></i>
+            <span class="blk" style="left:18px;top:12px;width:58px;height:24px"></span><span class="blk" style="left:150px;top:74px;width:64px;height:28px"></span>
+            <div class="pindot"></div>
+            <svg class="pin" viewBox="0 0 24 24" fill="var(--gold)" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
+            <div class="taphint"><span>Toca para ajustar tu ubicación</span></div>
+          </div>
+        </div>
+        <input class="inp" placeholder="Referencia: portón, color, piso…" style="margin-top:9px">
+
+        <div class="eyebrow">Guardar como</div>
+        <div class="lchips">
+          <button class="lchip on" onclick="pk(this)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></svg>Casa</button>
+          <button class="lchip" onclick="pk(this)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7.5" width="18" height="12.5" rx="2"/><path d="M8.5 7.5V6a2 2 0 012-2h3a2 2 0 012 2v1.5"/></svg>Trabajo</button>
+          <button class="lchip" onclick="pk(this)">Otra</button>
+        </div>
+
+        <button class="cta">Guardar perfil</button>
+      </div>
+    </div>
+
+    <!-- FULLSCREEN MAP view -->
+    <div class="fs" id="v-fs" style="display:none">
+      <div class="fsmap">
+        <i class="h1"></i><i class="h2"></i><i class="h3"></i><i class="v1"></i><i class="v2"></i>
+        <span class="b" style="left:30px;top:70px;width:70px;height:64px"></span>
+        <span class="b" style="left:180px;top:230px;width:88px;height:80px"></span>
+        <span class="b" style="left:44px;top:420px;width:60px;height:70px"></span>
+        <span class="b" style="left:230px;top:470px;width:74px;height:60px"></span>
+        <div class="fstoggle"><button class="on">Mapa</button><button class="off">Satélite</button></div>
+        <div class="fszoom"><button>+</button><button>−</button></div>
+        <div class="fspindot"></div>
+        <svg class="fspin" viewBox="0 0 24 24" fill="var(--gold)" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
+      </div>
+      <div class="fsbar">
+        <div class="a"><div class="l">Tu ubicación</div><b>Col. Trejo, Calle Principal, San Pedro Sula</b></div>
+        <button class="fsdone" onclick="view('sheet')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Listo</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="foot"><b>Misma info que ya aprobaste</b> (teléfono verificado · nombre+apellido · dirección · guardar como) — ahora en la <b>hoja de login</b>, apenas verificás el teléfono. El mapa es el <b>mismo de siempre</b>: tocás la vista previa y se abre a pantalla completa con el <b>pin fijo al centro</b> (movés el mapa, no el pin) + satélite. Se puede cerrar (✕) para seguir viendo el menú; el bloqueo real es al pagar. La Musa igual, en rojo musa.</p>
+</div>
+
+<script>
+  window.view=function(name,tabEl){
+    document.getElementById('v-sheet').style.display = name==='sheet' ? '' : 'none';
+    document.getElementById('v-fs').style.display    = name==='fs'    ? '' : 'none';
+    var tabs=document.querySelectorAll('.segtabs:last-of-type button');
+    tabs.forEach(function(b){b.classList.remove('on')});
+    if(tabEl){tabEl.classList.add('on');}
+    else{tabs[name==='fs'?1:0].classList.add('on');}
+  };
+  window.pk=function(el){var w=el.parentElement;w.querySelectorAll('.lchip').forEach(function(c){c.classList.remove('on')});el.classList.add('on')};
+  window.brand=function(b,tabEl){
+    document.getElementById('stage').setAttribute('data-brand',b);
+    document.querySelector('.mark').innerHTML = b==='musa'
+      ? 'La Musa<span class="sub">Cocina asiática · San Pedro Sula</span>'
+      : 'X<span class="dot">.</span> Pizza<span class="sub">Pedido en línea · San Pedro Sula</span>';
+    document.querySelectorAll('.brandtabs button').forEach(function(x){x.classList.remove('on')});
+    tabEl.classList.add('on');
+  };
+</script>
