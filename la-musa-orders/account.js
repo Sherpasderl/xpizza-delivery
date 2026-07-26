@@ -851,6 +851,9 @@
     st.id = 'acct-deliver-styles';
     st.textContent = `
 .acct-eyebrow{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#B3A594;margin:0 0 10px}
+/* #5/#7: ONE mount-inset so account content (create-profile card, Entregar-a summary, compact line, Cambiar chooser) aligns with the native fields/labels (field-group/step-label horizontal inset = 16px). The rendered cards carry NO horizontal margin, so this insets them uniformly with no double-pad. EMPTY mounts (guest/pickup/non-reduced) add ZERO space. */
+#acct-deliver,#acct-s2-summary{padding-left:16px;padding-right:16px}
+#acct-deliver:empty,#acct-s2-summary:empty{padding:0}
 .acct-deliver{border:1px solid #E2D8C8;border-radius:20px;overflow:hidden;background:#fff;box-shadow:0 12px 30px -18px rgba(40,28,12,.3);font-family:inherit;margin-bottom:4px}
 /* Real Static Maps thumbnail of the saved address (replaces the old decorative fake map). Starts
    hidden (display:none inline) — loadCardMap() reveals it ONLY when a real image loads in time,
@@ -2337,7 +2340,7 @@ ${footer}`;
 /* s1 "Entregar a" alignment (spec #4): the eyebrow sat flush-left while the compact card's content
    is inset 14px, reading slightly misaligned. Inset the s1 eyebrow to match — SCOPED to the compact
    variant only (--inset modifier), so every other .acct-eyebrow surface is untouched. */
-.acct-eyebrow--inset{padding-left:14px}
+/* .acct-eyebrow--inset removed — the #acct-deliver mount-inset (#5/#7) now handles alignment uniformly; a per-eyebrow pad would double-pad */
 `;
     document.head.appendChild(st);
   }
@@ -2418,7 +2421,7 @@ ${footer}`;
     injectCompactSummaryStyles();
     const mount = $('acct-deliver'); if (!mount) return;
     mount.innerHTML = `
-<div class="acct-eyebrow acct-eyebrow--inset">Entregar a</div>
+<div class="acct-eyebrow">Entregar a</div>
 <div class="acct-compact">
   <span class="acct-cav">${PERSON_SVG}</span>
   <span class="acct-ctxt"><b>${escapeHtml(addr.label || 'Guardado')}</b> · ${escapeHtml(shortAddrLine(addr))}</span>
