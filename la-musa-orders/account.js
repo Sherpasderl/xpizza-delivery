@@ -970,6 +970,7 @@
           _acctReducedActive = true;
           _acctAddrId = addr.id;
           hideRawAndAddrSection();
+          setReducedDeliveryChromeVisible(true);   // hide the redundant editable s2 map/banner/locinfo + relabel the button (codex F4/F5)
           return;
         }
       }
@@ -1829,6 +1830,7 @@ ${rowsHtml}`;
     _acctData = null; _acctAddrId = null; _acctCardActive = false; _acctEditMode = false;
     _acctEditIsNew = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true; _acctAddrOneOff = false;
     _acctProfileConfirmedIncomplete = false;   // signed out → no logged-in profile to arm the hard block for (codex R1 FIX 1c)
+    setReducedDeliveryChromeVisible(false);   // sign-out/delete → restore the guest-identical editable map/banner/locinfo (delivery) + button label (codex F4)
     const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
     const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
     const addrSection = addrSectionEl();
@@ -1918,6 +1920,12 @@ ${rowsHtml}`;
   function applyCreateProfileFlow(snap) {
     injectDeliverStyles();
     injectCreateProfileStyles();
+    // Incomplete-profile fillable flow — the customer NEEDS the editable s2 map/banner/locinfo to set
+    // their pin. Restore here so EVERY path into create-profile (initDeliveryStep fall-through,
+    // refreshDeliveryUI fall-through/!_acctData, delete-last-address) un-hides the reduced-flow chrome
+    // (order-type-aware; delivery-only in practice). Idempotent + covers a call site the plan's restore
+    // enumeration omitted (delete-last-address). (codex F4 completeness)
+    setReducedDeliveryChromeVisible(false);
     const mount = $('acct-deliver'); if (!mount) { refreshSaveToggle(); return; }   // host form has no mount — never touch anything
     const m = marker() || {};
     const phone = (snap && snap.phone) || m.phone || '';
@@ -2224,6 +2232,7 @@ ${rowsHtml}`;
   function revertToNormalFillable() {
     _acctReducedActive = false;
     relabelSteps(false);
+    setReducedDeliveryChromeVisible(false);   // restore the editable map/banner/locinfo (delivery) + button label (codex F4)
     const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
     const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
     const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
@@ -2247,6 +2256,7 @@ ${rowsHtml}`;
       // toggle (codex R1 FIX 1c) — keyed off the persistent confirmed-incomplete signal + a live
       // marker + delivery context. A guest (no marker) or a fail-open (flag false) stays on the
       // normal fillable form; payment is never hidden on an unconfirmed state.
+      setReducedDeliveryChromeVisible(false);   // guest / fail-open / confirmed-incomplete → restore the editable map/banner/locinfo (delivery) + button label (codex F4); applyCreateProfileFlow (if armed) keeps it visible for the incomplete-pin path
       if (marker() && _acctProfileConfirmedIncomplete && pageOrderType() === 'delivery') applyCreateProfileFlow(null);
       return;
     }
@@ -2263,6 +2273,7 @@ ${rowsHtml}`;
           _acctReducedActive = true;
           _acctAddrId = addr.id;
           hideRawAndAddrSection();
+          setReducedDeliveryChromeVisible(true);   // hide the redundant editable s2 map/banner/locinfo + relabel the button (codex F4/F5)
           return;
         }
       }
@@ -2279,6 +2290,7 @@ ${rowsHtml}`;
     setPaymentVisible(true);   // pickup always shows payment (FIX 1)
     _acctReducedActive = false;
     relabelSteps(false);
+    setReducedDeliveryChromeVisible(false);   // order-type-aware: pickup KEEPS map/banner/locinfo hidden; button label restores (codex F4/R2)
     const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
     const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
     const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
@@ -2362,6 +2374,7 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
       relabelSteps(true);
       _acctReducedActive = true;
       hideRawAndAddrSection();
+      setReducedDeliveryChromeVisible(true);   // reduced flow — hide the redundant editable s2 map/banner/locinfo + relabel (codex F4/F5)
       toast('Dirección actualizada para este pedido');
     } else {
       // FAIL-OPEN: this saved address fails the invariant right now (e.g. genuinely out of the
@@ -2369,6 +2382,7 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
       // normal fillable view so processPayment()'s own checks (and the customer's eyes) catch it.
       _acctReducedActive = false;
       relabelSteps(false);
+      setReducedDeliveryChromeVisible(false);   // invariant-failure fall-through — restore the editable map/banner/locinfo + button label (codex F4)
       const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
       const addrSection = addrSectionEl(); if (addrSection) addrSection.style.display = '';
       const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
