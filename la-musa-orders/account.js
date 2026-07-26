@@ -887,7 +887,6 @@
   let _acctAddrId = null;        // addrId currently backing the confirm card / this order
   let _acctEditMode = false;     // true while "Cambiar" / "+ Agregar" edit surface is open
   let _acctEditIsNew = false;    // true when the open edit session targets a brand-new address
-  let _acctNewAddrGeoGen = 0;    // monotonic token for the "usar una dirección nueva" async geolocation acquisition — bumped on each new-address gesture, on exitEditMode (cancel), and on any order-type toggle, so a superseded/cancelled/toggled gesture's in-flight GPS callback is invalidated and can never placePin over restored saved-address coords (codex R2 async-race guard)
   let _acctEditLabel = '';       // chip-picked (or custom) label for the address being edited
   let _acctCardActive = false;   // true once the confirm card has replaced the raw Tus-datos fields
   let _acctAddrUnsaved = false;  // true when the address populating the order isn't a persisted one
@@ -1115,7 +1114,6 @@
 
   function exitEditMode() {
     _acctEditMode = false;
-    _acctNewAddrGeoGen++;   // leaving edit mode invalidates any in-flight new-address GPS callback (codex R2)
     const picker = $('acct-label-picker'); if (picker) picker.remove();
   }
 
@@ -2339,26 +2337,15 @@ ${rowsHtml}`;
 
   function openCambiarPanel() {
     const mount = $('acct-s2-summary'); if (!mount) return;
-    // Cambiar can be tapped from s1's compact line before s2 (and its map) has ever been shown —
-    // jump there so the chooser (and, if "Usar una dirección nueva" is picked, the real map) is
-    // visible. Name/phone are already known+valid at this point (that's the Task 3 invariant that
-    // got us here), so bypassing goToLocation()'s own re-validation here is safe.
+    // Cambiar can be tapped from s1's compact line before s2 has ever been shown — jump there so the
+    // chooser (mounted in #acct-s2-summary) is visible. Name/phone are already known+valid (the Task 3
+    // invariant that got us here). NO checkout-map init/seed here: "Usar una dirección nueva" now opens
+    // the ISOLATED account map (Task 4), and the reduced flow keeps the checkout map hidden — so nothing
+    // in this panel touches the checkout map, gmap, __restorePos, or geolocation (the whole race class,
+    // deleted). The isolated map is the SOLE map for a new order address.
     try {
       const s2 = document.getElementById('s2');
-      if (s2 && !s2.classList.contains('active') && typeof showStage === 'function') {
-        // The host initMap() (index.html) geolocates whenever __restorePos is falsy — an UNGUARDED
-        // getCurrentPosition→placePin our generation-guard can't touch (codex R3). SEED __restorePos
-        // with the current saved-address coords (finite-guarded, SPS-center fallback) BEFORE scheduling
-        // initMap, so the host initMap does a SYNCHRONOUS placePin(saved) and NEVER geolocates in either
-        // tap ordering. Our own generation-guarded applyFreshPin stays the SOLE async GPS.
-        try {
-          const cur = pickDefaultAddress(_acctData) || (_acctData && _acctData.addresses && _acctData.addresses[_acctAddrId]) || null;
-          const sla = cur && Number(cur.lat), sln = cur && Number(cur.lng);
-          __restorePos = (Number.isFinite(sla) && Number.isFinite(sln)) ? { lat: sla, lng: sln } : { lat: 15.5003, lng: -88.025 };   // Number.isFinite (not global isFinite, which returns true for null) → a null cur falls back to SPS center, never a null-coord seed the host initMap would reject and then geolocate
-        } catch (_) { __restorePos = { lat: 15.5003, lng: -88.025 }; }
-        showStage('s2', 50);
-        setTimeout(() => { try { if (typeof initMap === 'function') initMap(); } catch (_) {} }, 100);
-      }
+      if (s2 && !s2.classList.contains('active') && typeof showStage === 'function') showStage('s2', 50);
     } catch (_) {}
 
     injectDeliverStyles();
@@ -2381,66 +2368,11 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
       row.onclick = () => selectSavedAddressForOrder(row.getAttribute('data-use-id'));
     });
     const newBtn = $('acct-cambiar-new');
-    if (newBtn) newBtn.onclick = () => {
-      mount.innerHTML = '';
-      relabelSteps(false);
-      _acctReducedActive = false;
-      // Task 1 hid the editable s2 map for the reduced flow — a NEW address needs the customer to
-      // place a pin, so REVEAL the map/banner/locinfo again (order type is delivery here). (codex F1)
-      setReducedDeliveryChromeVisible(false);
-      const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
-      const addrSection = addrSectionEl();
-      if (addrSection) addrSection.style.display = '';
-      _acctAddrOneOff = true;   // use-once until the customer explicitly taps "Guardar dirección" (which clears it) (FIX B)
-      enterEditMode(true);   // existing scaffolding — its "Guardar dirección" persists (makeDefault:true) + applies
-      // FRESH-PIN (codex F1 R1, money-path): enterEditMode(true) clears __restorePos but NOT lat/lng or
-      // the existing gmarker — and simply nulling them is NOT enough: the main map has no click-to-place
-      // handler (only the draggable marker, which we removed) and initMap() is a no-op once gmap exists,
-      // so the customer would be left with a marker-less map and no way to set a pin. Worse,
-      // openFullscreenMap() only recenters fsMap when lat && lng are truthy, so a stale fsMap center
-      // could commit the WRONG coordinate into a paid order. So RESET then RE-ACQUIRE a real fresh pin
-      // exactly like a brand-new delivery order does (index.html initMap()'s fresh branch): clear the old
-      // pin, then call the GLOBAL placePin via geolocation (GPS → placePin, fail → SPS-center fallback).
-      // placePin sets lat/lng to a REAL fresh point, recreates the DRAGGABLE marker + dragend handler,
-      // and runs updateLocInfo/reverseGeocode — so the user can adjust and openFullscreenMap now recenters
-      // to the fresh pin. This is the ONLY place account.js resets these checkout globals, and ONLY on the
-      // explicit "usar una dirección nueva" gesture (never page-load, saved-address pick, or retry-restore).
-      try { if (typeof gmarker !== 'undefined' && gmarker) { gmarker.setMap(null); gmarker = null; } } catch (_) {}
-      // Do NOT null __restorePos (codex R3): enterEditMode(true) just nulled it, but a still-pending host
-      // initMap() (fast tap: new-address chosen before openCambiarPanel's 100ms initMap timer) would then
-      // see it falsy and fire the HOST's OWN unguarded getCurrentPosition→placePin — a second async GPS our
-      // generation-guard can't touch. RE-SEED it with the saved coords so any host initMap does a SYNC
-      // placePin(saved) and never geolocates; our guarded applyFreshPin below stays the SOLE async GPS.
-      try {
-        const cur = pickDefaultAddress(_acctData) || (_acctData && _acctData.addresses && _acctData.addresses[_acctAddrId]) || null;
-        const sla = cur && Number(cur.lat), sln = cur && Number(cur.lng);
-        __restorePos = (Number.isFinite(sla) && Number.isFinite(sln)) ? { lat: sla, lng: sln } : { lat: 15.5003, lng: -88.025 };   // Number.isFinite → null cur falls back to SPS center, never a null-coord seed
-      } catch (_) { __restorePos = { lat: 15.5003, lng: -88.025 }; }
-      try { lat = null; lng = null; } catch (_) {}
-      try {
-        if (typeof gmap !== 'undefined' && gmap) google.maps.event.trigger(gmap, 'resize');   // size the now-visible map BEFORE placePin's setCenter so tiles render
-        // ASYNC-RACE GUARD (codex R2): getCurrentPosition resolves LATER. If the user cancels the edit,
-        // picks a saved address, toggles order type, or re-enters new-address before GPS returns, the
-        // stale callback must NOT placePin over the restored saved-address coords (a paid order would show
-        // the saved card but carry the late GPS point). Apply ONLY if this gesture is still the latest one
-        // (token) AND we're still in the new-address edit state (flags enterEditMode(true) set). Same
-        // generation-guard class as the createprofile R5 fix.
-        const geoGen = ++_acctNewAddrGeoGen;
-        const applyFreshPin = (la, ln, fb) => {
-          if (geoGen !== _acctNewAddrGeoGen) return;                                    // superseded/re-entered, or cancelled/toggled (exitEditMode + wrapped setOrderType bump) → drop
-          if (!(_acctEditMode && _acctEditIsNew && pageOrderType() === 'delivery')) return;   // left the new-address edit, or now on pickup → drop
-          if (typeof placePin === 'function') placePin(la, ln, fb);
-        };
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => applyFreshPin(pos.coords.latitude, pos.coords.longitude, false),
-            () => applyFreshPin(15.5003, -88.025, true),
-            { timeout: 10000, enableHighAccuracy: true, maximumAge: 0 }
-          );
-        } else { applyFreshPin(15.5003, -88.025, true); }
-      } catch (_) {}
-      if (addrSection) setTimeout(() => addrSection.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
-    };
+    // "Usar una dirección nueva" → the ISOLATED order-mode map pane (Task 4). No checkout-map reveal,
+    // no enterEditMode(true), no gmarker/lat/lng/__restorePos reset, no getCurrentPosition — that entire
+    // race class is deleted. The pane writes ONLY _nad*; the order's checkout coordinate is written once,
+    // at confirm, from the explicitly-placed pin (confirmNewAddressForOrder).
+    if (newBtn) newBtn.onclick = () => openNewAddressForOrder();
     const cancelBtn = $('acct-cambiar-cancel');
     if (cancelBtn) cancelBtn.onclick = () => refreshDeliveryUI();
     setTimeout(() => mount.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
@@ -2489,7 +2421,6 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
         const wrapped = function (type) {
           orig(type);
           if (_acctRestoring) return;   // a payment-retry restore calls setOrderType to rebuild the base UI — the snapshot is authoritative, skip the account re-entry entirely (FIX 7 / R4)
-          _acctNewAddrGeoGen++;   // any order-type toggle tears down / re-renders the delivery UI — invalidate a pending new-address GPS callback so it can't clobber the re-rendered saved-address state (codex R2: pickup toggle + toggle-back keep _acctEditMode true, so the flag check alone wouldn't catch them)
           try {
             if (type === 'delivery') { refreshDeliveryUI(); } else { hidePickupDeliverySummary(); }
             applyCardVisibility(); refreshSaveToggle();
