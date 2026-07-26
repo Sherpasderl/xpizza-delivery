@@ -1397,6 +1397,7 @@ ${rowsHtml}`;
   // the account-scoped fullscreen map twin (above) is the ONLY writer. Never the checkout globals.
   let _nadLat = null, _nadLng = null, _nadDetected = '';
   let _nadPinTouched = false;   // TRUE only after a REAL user placement (drag or Listo-commit) — never the fallback/GPS auto-pin (codex re-gate FIX 2)
+  let _nadPaneMode = 'account-save';   // which caller opened the new-address pane: 'account-save' (Mi Cuenta "+ Agregar", unchanged — single "Guardar dirección") | 'order' (Cambiar — "Usar esta dirección" + save-checkbox, confirm-gated, applies to THIS order) (isolated-map rebuild)
 
   function injectNewAddrStyles() {
     if ($('acct-nad-styles')) return;
@@ -1415,6 +1416,9 @@ ${rowsHtml}`;
 .acct-verified-ro .ok{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2A6A42}
 .acct-two{display:flex;gap:10px}
 .acct-two .acct-inp{flex:1;min-width:0;height:58px;border-radius:13px}
+.acct-nad-savechk{display:flex;align-items:center;gap:10px;margin:2px 0 12px;font-size:14px;font-weight:600;color:#4A4038;cursor:pointer;user-select:none}
+.acct-nad-savechk input{width:18px;height:18px;flex:none;accent-color:#17130F;cursor:pointer}
+.acct-save-addr-btn:disabled{opacity:.5;cursor:not-allowed}
 `;
     document.head.appendChild(st);
   }
@@ -1559,6 +1563,7 @@ ${rowsHtml}`;
       // case, codex R1 FIX 2b). Guard to the create pane so an unrelated pane is never touched.
       const cp = document.getElementById('acct-pane-createprofile');
       if (cp && cp.classList.contains('acct-on')) refreshCreateProfileCta();
+      refreshNewAddrOrderGate();   // order-mode newaddr pane: the committed pin's address just landed → enable "Usar esta dirección" (no-op otherwise)
     });
   }
 
@@ -1578,6 +1583,7 @@ ${rowsHtml}`;
     // if the create pane is the active one, its CTA gating depends on the just-committed pin
     const cp = $('acct-pane-createprofile');
     if (cp && cp.classList.contains('acct-on')) refreshCreateProfileCta();
+    refreshNewAddrOrderGate();   // order-mode newaddr pane: reflect the just-committed pin on the confirm gate (no-op otherwise)
   }
 
   function renderAcctMapPreview(containerId) {
@@ -1607,15 +1613,27 @@ ${rowsHtml}`;
     renderNewAddressPane();   // self-contained — NEVER closes the sheet, NEVER touches the order form
   }
 
-  function renderNewAddressPane() {
+  // mode: 'account-save' (default — Mi Cuenta "+ Agregar", UNCHANGED: single "Guardar dirección" →
+  // saveNewAddressFromPane persists + back to Mi Cuenta) | 'order' (Cambiar — footer is a save-checkbox
+  // + primary "Usar esta dirección", confirm DISABLED until an explicit pin + referencia (+ label when
+  // saving), back returns to the ORDER without mutating anything, confirm → confirmNewAddressForOrder).
+  function renderNewAddressPane(opts) {
+    const mode = (opts && opts.mode) || 'account-save';
+    _nadPaneMode = mode;
+    const order = mode === 'order';
     injectDeliverStyles();
     injectNewAddrStyles();
     const pane = $('acct-pane-newaddr'); if (!pane) return;
     _acctFsEpoch++;                          // invalidate any late geocode from a prior map session
     _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;   // fresh address entry
+    const backLabel = order ? '‹ Cancelar' : '‹ Mi cuenta';
+    const footer = order
+      ? `<label class="acct-nad-savechk" for="acct-nad-savechk"><input type="checkbox" id="acct-nad-savechk" checked><span>Guardar en mi cuenta para la próxima</span></label>
+<button type="button" class="acct-save-addr-btn" id="acct-nad-use-btn" disabled>${ICON_CHECK_BIG} Usar esta dirección</button>`
+      : `<button type="button" class="acct-save-addr-btn" id="acct-nad-save-btn">${ICON_CHECK_BIG} Guardar dirección</button>`;
     pane.innerHTML = `
 <div class="acct-nad-top">
-  <button type="button" class="acct-nad-back" id="acct-nad-back" aria-label="Volver a Mi cuenta">‹ Mi cuenta</button>
+  <button type="button" class="acct-nad-back" id="acct-nad-back" aria-label="${order ? 'Cancelar' : 'Volver a Mi cuenta'}">${backLabel}</button>
   <span class="acct-nad-title">Nueva dirección</span>
 </div>
 <div class="acct-eyebrow">Ubicación en el mapa</div>
@@ -1630,14 +1648,48 @@ ${rowsHtml}`;
 </div>
 <input type="text" id="acct-nad-label" class="acct-label-custom-inp" placeholder="Ponle un nombre… (ej: Casa de mis papás)" maxlength="40" style="margin-top:10px"/>
 <p class="acct-field-hint" id="acct-nad-err" style="display:none;color:#B23B3B"></p>
-<button type="button" class="acct-save-addr-btn" id="acct-nad-save-btn">${ICON_CHECK_BIG} Guardar dirección</button>`;
+${footer}`;
 
-    const backBtn = $('acct-nad-back'); if (backBtn) backBtn.onclick = closeNewAddressPane;
+    const backBtn = $('acct-nad-back');
+    if (backBtn) backBtn.onclick = order ? backFromOrderNewAddress : closeNewAddressPane;
     wireNewAddrLabelChips();
-    const saveBtn = $('acct-nad-save-btn'); if (saveBtn) saveBtn.onclick = saveNewAddressFromPane;
+    if (order) {
+      const useBtn = $('acct-nad-use-btn');
+      if (useBtn) useBtn.onclick = () => { const chk = $('acct-nad-savechk'); confirmNewAddressForOrder(chk ? !!chk.checked : true); };
+      const det = $('acct-nad-details'); if (det) det.addEventListener('input', refreshNewAddrOrderGate);
+      const lbl = $('acct-nad-label'); if (lbl) lbl.addEventListener('input', refreshNewAddrOrderGate);
+      const chk = $('acct-nad-savechk'); if (chk) chk.addEventListener('change', refreshNewAddrOrderGate);
+    } else {
+      const saveBtn = $('acct-nad-save-btn'); if (saveBtn) saveBtn.onclick = saveNewAddressFromPane;
+    }
 
     showPane('newaddr');
     renderAcctMapPreview('acct-nad-preview');
+    if (order) refreshNewAddrOrderGate();
+  }
+
+  // Order-mode confirm gate: an explicit pin (touched + numeric + geocoded referencia string) + a
+  // referencia ≥3; a LABEL is required only when the save-checkbox is checked (saveAddress rejects an
+  // empty label — a one-off defaults its label to 'Otra' so none is needed). Pure read; no side effects.
+  function newAddrOrderValid() {
+    const details = (($('acct-nad-details') || {}).value || '').trim();
+    const label = (($('acct-nad-label') || {}).value || '').trim();
+    const chk = $('acct-nad-savechk');
+    const saving = chk ? !!chk.checked : true;
+    const base = _nadPinTouched
+      && typeof _nadLat === 'number' && typeof _nadLng === 'number' && isFinite(_nadLat) && isFinite(_nadLng)
+      && !!_nadDetected && details.length >= 3;
+    return saving ? (base && !!label) : base;
+  }
+
+  // Live-refresh the "Usar esta dirección" disabled state. No-op unless the order-mode newaddr pane is
+  // on screen — safe to call from the shared map-commit/geocode callbacks (createprofile/account-save
+  // are untouched). Called on pin-commit (via reverseGeocodeAcctFs/closeAcctFullscreenMap), referencia
+  // input, label input/chip, and the save-checkbox toggle.
+  function refreshNewAddrOrderGate() {
+    if (_nadPaneMode !== 'order') return;
+    const pane = $('acct-pane-newaddr'); if (!pane || !pane.classList.contains('acct-on')) return;
+    const btn = $('acct-nad-use-btn'); if (btn) btn.disabled = !newAddrOrderValid();
   }
 
   function wireNewAddrLabelChips() {
@@ -1650,6 +1702,7 @@ ${rowsHtml}`;
         const val = chip.getAttribute('data-label');
         if (val) { if (custom) custom.value = val; }
         else { if (custom) { custom.value = ''; custom.focus(); } }
+        refreshNewAddrOrderGate();   // order-mode: a chip pick changes the label → re-evaluate the confirm gate (no-op otherwise)
       };
     });
   }
