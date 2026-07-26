@@ -208,6 +208,10 @@
     <section class="acct-pane" id="acct-pane-newaddr">
       <!-- built by renderNewAddressPane() at open time (Task 5) — self-contained, own map -->
     </section>
+
+    <section class="acct-pane" id="acct-pane-createprofile">
+      <!-- built by renderCreateProfilePane() post-OTP for an incomplete profile -->
+    </section>
   </div>
 </div>`;
     document.body.appendChild(wrap);
@@ -1322,6 +1326,11 @@ ${rowsHtml}`;
 .acct-nad-hint{margin-top:8px;font-size:12px;color:#8C7B6E}
 .acct-nad-textarea{width:100%;min-height:60px;padding:14px 15px;border:1.5px solid #E2D8C8;border-radius:13px;background:#fff;font-size:15px;font-family:inherit;color:#17130F;outline:none;resize:vertical}
 .acct-nad-textarea:focus{border-color:#17130F}
+.acct-verified-ro{display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 15px;border:1.5px solid #EDE5D9;border-radius:13px;background:#FBF6EE;color:#17130F}
+.acct-verified-ro .v{font-size:15.5px;font-weight:650;font-variant-numeric:tabular-nums}
+.acct-verified-ro .ok{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2A6A42}
+.acct-two{display:flex;gap:10px}
+.acct-two .acct-inp{flex:1;min-width:0;height:58px;border-radius:13px}
 `;
     document.head.appendChild(st);
   }
@@ -1539,6 +1548,72 @@ ${rowsHtml}`;
         else { if (custom) { custom.value = ''; custom.focus(); } }
       };
     });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // "Creá tu perfil" IN THE LOGIN SHEET (spec Part A) — a full profile-creation pane shown post-OTP
+  // to a positively-confirmed INCOMPLETE customer. Identity (name) + the account-scoped map twin +
+  // referencia + label. Distinct from the CHECKOUT create flow (saveCreateProfile above): its own
+  // ids (acct-cp-first/last/details/label/preview), its own save (saveCreateProfilePane), its own
+  // _nad* map sink — never the checkout gmap/lat/lng.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  let _acctCpLabel = 'Casa';   // chip-picked (or custom) label for the create-pane address
+
+  function renderCreateProfilePane(prefillName) {
+    injectDeliverStyles(); injectNewAddrStyles(); injectAcctFsStyles();
+    const pane = $('acct-pane-createprofile'); if (!pane) return;
+    _acctFsEpoch++;                                                             // invalidate any late geocode from a prior map session
+    _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;  // fresh address entry
+    _acctCpLabel = 'Casa';                                                      // default preset chosen
+    const phone = (_loginPhone || (marker() && marker().phone) || '').toString();
+    const nm = String(prefillName || '').trim();
+    const parts = nm.split(/\s+/).filter(Boolean);
+    const firstV = parts.length ? parts[0] : '';
+    const lastV = parts.length > 1 ? parts.slice(1).join(' ') : '';
+    pane.innerHTML = `
+<h1 class="acct-h1">Creá tu perfil</h1>
+<p class="acct-sub">Guardá tu nombre y dirección — la próxima vez pedís en dos toques.</p>
+<div class="acct-mlabel">Teléfono <span style="color:#B3A594;font-weight:600">· ya verificado</span></div>
+<div class="acct-verified-ro"><span class="v">${escapeHtml(phone)}</span><span class="ok">${ICON_CHECK_SM} WhatsApp</span></div>
+<div class="acct-mlabel" style="margin-top:16px">Nombre y apellido</div>
+<div class="acct-two">
+  <input type="text" id="acct-cp-first" class="acct-inp" placeholder="Nombre" maxlength="40" value="${escapeHtml(firstV)}" autocomplete="given-name">
+  <input type="text" id="acct-cp-last" class="acct-inp" placeholder="Apellido" maxlength="40" value="${escapeHtml(lastV)}" autocomplete="family-name">
+</div>
+<div class="acct-mlabel" style="margin-top:16px">¿A dónde te lo llevamos?</div>
+<div id="acct-cp-preview"></div>
+<textarea id="acct-cp-details" class="acct-nad-textarea" rows="2" placeholder="Referencia: portón, color, piso…" maxlength="200" style="margin-top:9px"></textarea>
+<div class="acct-mlabel">Guardar como</div>
+<div class="acct-lchips" id="acct-cp-lchips">
+  <button type="button" class="acct-lchip acct-on" data-label="Casa">${ICON_HOUSE}Casa</button>
+  <button type="button" class="acct-lchip" data-label="Trabajo">${ICON_WORK}Trabajo</button>
+  <button type="button" class="acct-lchip" data-label="">${ICON_TAG}Otra</button>
+</div>
+<input type="text" id="acct-cp-label" class="acct-label-custom-inp" placeholder="Ponle un nombre…" maxlength="40" style="margin-top:10px;display:none"/>
+<p class="acct-field-hint" id="acct-cp-err" style="display:none;color:#B23B3B"></p>
+<button type="button" class="acct-cta" id="acct-cp-save" disabled>Guardar perfil</button>`;
+    showPane('createprofile');
+    wireCreateProfilePane();
+    renderAcctMapPreview('acct-cp-preview');
+    refreshCreateProfileCta();
+  }
+
+  function wireCreateProfilePane() {
+    const chips = $('acct-cp-lchips');
+    if (chips) chips.querySelectorAll('.acct-lchip').forEach((chip) => {
+      chip.onclick = () => {
+        chips.querySelectorAll('.acct-lchip').forEach((c) => c.classList.remove('acct-on'));
+        chip.classList.add('acct-on');
+        const custom = $('acct-cp-label'); const val = chip.getAttribute('data-label');
+        if (val) { _acctCpLabel = val; if (custom) custom.style.display = 'none'; }
+        else { if (custom) { custom.style.display = ''; custom.value = ''; custom.focus(); } _acctCpLabel = ''; }
+        refreshCreateProfileCta();
+      };
+    });
+    ['acct-cp-first','acct-cp-last','acct-cp-details','acct-cp-label'].forEach((id) => {
+      const el = $(id); if (el) el.addEventListener('input', () => { if (id === 'acct-cp-label') _acctCpLabel = el.value.trim(); refreshCreateProfileCta(); });
+    });
+    const save = $('acct-cp-save'); if (save) save.onclick = saveCreateProfilePane;
   }
 
   // Teardown on close: bump the map-session epoch so any late reverse-geocode from this pane's
