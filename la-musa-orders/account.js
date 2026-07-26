@@ -237,9 +237,25 @@
     const back = $('acct-back'); if (back) back.style.visibility = (name === 'otp') ? 'visible' : 'hidden';
   }
 
+  function prefersReducedMotion() {
+    try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) { return false; }
+  }
+
+  // Per-overlay generation token + pending-finalizer handles, so a fast close→reopen can't let a stale
+  // close finalizer hide/inert a NOW-OPEN overlay (codex R1 #1). Bumped at the START of every open AND
+  // close; a scheduled finalizer no-ops unless its token still matches and the overlay is still closed.
+  let _acctSheetGen = 0, _acctSheetTimer = null, _acctSheetEnd = null;
+  function cancelSheetFinalizer(ov) {
+    if (_acctSheetTimer) { clearTimeout(_acctSheetTimer); _acctSheetTimer = null; }
+    if (_acctSheetEnd && ov) { try { ov.removeEventListener('transitionend', _acctSheetEnd); } catch (_) {} }
+    _acctSheetEnd = null;
+  }
+
   function openOverlay() {
     buildOverlay();
     const ov = $('acct-overlay');
+    _acctSheetGen++;                          // invalidate any in-flight close finalizer (fast reopen — codex R1 #1)
+    cancelSheetFinalizer(ov);                 // and explicitly cancel its timer + transitionend listener
     ov.style.visibility = ''; ov.removeAttribute('aria-hidden'); ov.inert = false;   // clear the closed inert state before the slide
     void ov.offsetHeight;                     // commit the closed state so adding .acct-open transitions (not a jump)
     ov.classList.add('acct-open');            // scrim fades in + sheet slides up (#8)
@@ -249,12 +265,21 @@
     const ov = $('acct-overlay');
     if (ov) {
       try { if (ov.contains(document.activeElement) && typeof document.activeElement.blur === 'function') document.activeElement.blur(); } catch (_) {}   // move focus OUT before inert (codex note)
+      const myGen = ++_acctSheetGen;          // token for THIS close
+      cancelSheetFinalizer(ov);               // drop any prior pending finalizer
       ov.classList.remove('acct-open');       // scrim fades out + sheet slides down
-      let done = false;
-      const finalize = () => { if (done) return; done = true; try { ov.removeEventListener('transitionend', onEnd); } catch (_) {} try { ov.inert = true; ov.setAttribute('aria-hidden', 'true'); ov.style.visibility = 'hidden'; } catch (_) {} };
-      const onEnd = (e) => { if (e && e.target !== ov) return; if (e && e.propertyName && e.propertyName !== 'opacity') return; finalize(); };   // anchor on the overlay's own opacity fade
-      ov.addEventListener('transitionend', onEnd);
-      setTimeout(finalize, 420);              // fallback: reduced-motion / no transitionend
+      const finalize = () => {
+        if (myGen !== _acctSheetGen) return;                 // a reopen/reclose superseded this close → no-op (never hide a live overlay)
+        if (ov.classList.contains('acct-open')) return;      // overlay is open again → never inert/hide it
+        cancelSheetFinalizer(ov);
+        try { ov.inert = true; ov.setAttribute('aria-hidden', 'true'); ov.style.visibility = 'hidden'; } catch (_) {}
+      };
+      if (prefersReducedMotion()) { finalize(); }            // reduced-motion → instant inert/hide, no wait (codex R1 #2)
+      else {
+        _acctSheetEnd = (e) => { if (e && e.target !== ov) return; if (e && e.propertyName && e.propertyName !== 'opacity') return; finalize(); };   // anchor on the overlay's own opacity fade
+        ov.addEventListener('transitionend', _acctSheetEnd);
+        _acctSheetTimer = setTimeout(finalize, 420);         // fallback if transitionend doesn't fire
+      }
     }
     unbindKeyboardInset();
   }
@@ -1593,6 +1618,16 @@ ${rowsHtml}`;
     if (sat)  { sat.style.background  = type === 'satellite' ? '#17130F' : '#fff'; sat.style.color  = type === 'satellite' ? '#fff' : '#333'; }
   }
 
+  // Fullscreen-map generation token + pending-finalizer handles — same fast-reopen guard as the sheet
+  // (codex R1 #1): a close→reopen within the slide window can't let a stale finalizer hide/inert a
+  // now-open map.
+  let _acctFsGen = 0, _acctFsTimer = null, _acctFsEnd = null;
+  function cancelFsFinalizer(ov) {
+    if (_acctFsTimer) { clearTimeout(_acctFsTimer); _acctFsTimer = null; }
+    if (_acctFsEnd && ov) { try { ov.removeEventListener('transitionend', _acctFsEnd); } catch (_) {} }
+    _acctFsEnd = null;
+  }
+
   function openAcctFullscreenMap(previewId) {
     ensureAcctFsOverlay();
     if (!window.google || !window.google.maps) { setTimeout(() => openAcctFullscreenMap(previewId), 250); return; }
@@ -1637,6 +1672,8 @@ ${rowsHtml}`;
     // #8 reveal: clear inert/visibility BEFORE the slide, then add .open on the next frame so the
     // translateY(100%)→0 transition runs. AFTER the open class, google.maps.resize + recenter — a
     // cached map in a previously-transformed/offscreen container can misrender tiles/center (codex R1 #5).
+    _acctFsGen++;                            // invalidate any in-flight close finalizer (fast reopen — codex R1 #1)
+    cancelFsFinalizer(ov);
     ov.style.visibility = ''; ov.removeAttribute('aria-hidden'); ov.inert = false;
     requestAnimationFrame(() => {
       ov.classList.add('open');
@@ -1679,13 +1716,22 @@ ${rowsHtml}`;
     if (ov) {
       // move focus OUT before the overlay becomes inert (codex note) so focus isn't stranded in an inert subtree
       try { if (ov.contains(document.activeElement) && typeof document.activeElement.blur === 'function') document.activeElement.blur(); } catch (_) {}
+      const myGen = ++_acctFsGen;    // token for THIS close (fast reopen guard — codex R1 #1)
+      cancelFsFinalizer(ov);         // drop any prior pending finalizer
       ov.classList.remove('open');   // slide down
       // at the END of the slide, remove from the a11y/focus tree (pointer-events:none alone leaves buttons tabbable — codex R1 #2)
-      let done = false;
-      const finalize = () => { if (done) return; done = true; try { ov.removeEventListener('transitionend', onEnd); } catch (_) {} try { ov.inert = true; ov.setAttribute('aria-hidden', 'true'); ov.style.visibility = 'hidden'; } catch (_) {} };
-      const onEnd = (e) => { if (e && e.target !== ov) return; finalize(); };
-      ov.addEventListener('transitionend', onEnd);
-      setTimeout(finalize, 450);     // fallback: reduced-motion / no transitionend
+      const finalize = () => {
+        if (myGen !== _acctFsGen) return;                // a reopen/reclose superseded this close → no-op (never hide a live map)
+        if (ov.classList.contains('open')) return;       // map is open again → never inert/hide it
+        cancelFsFinalizer(ov);
+        try { ov.inert = true; ov.setAttribute('aria-hidden', 'true'); ov.style.visibility = 'hidden'; } catch (_) {}
+      };
+      if (prefersReducedMotion()) { finalize(); }        // reduced-motion → instant inert/hide (codex R1 #2)
+      else {
+        _acctFsEnd = (e) => { if (e && e.target !== ov) return; if (e && e.propertyName && e.propertyName !== 'transform') return; finalize(); };
+        ov.addEventListener('transitionend', _acctFsEnd);
+        _acctFsTimer = setTimeout(finalize, 450);        // fallback if transitionend doesn't fire
+      }
     }
     document.body.style.overflow = _acctFsPrevOverflow || '';
     // If the user never dragged but did move the map to a place and tapped Listo, treat the
