@@ -1616,6 +1616,28 @@ ${rowsHtml}`;
     const save = $('acct-cp-save'); if (save) save.onclick = saveCreateProfilePane;
   }
 
+  // Returns {ok:true, first, last, details, label} or {ok:false, msg, focus}. Pure read of the
+  // pane — no side effects. Used by BOTH the live CTA-enable AND the submit-time re-check (codex
+  // R1 #3) so no field can be bypassed via paste/autofill/Enter/double-click/programmatic.
+  function validateCreateProfile() {
+    const first = (($('acct-cp-first') || {}).value || '').trim();
+    const last  = (($('acct-cp-last')  || {}).value || '').trim();
+    const details = (($('acct-cp-details') || {}).value || '').trim();
+    const label = _acctCpLabel;
+    if (!first) return { ok: false, msg: 'Agregá tu nombre.', focus: 'acct-cp-first' };
+    if (!last)  return { ok: false, msg: 'Agregá tu apellido.', focus: 'acct-cp-last' };
+    if (typeof _nadLat !== 'number' || typeof _nadLng !== 'number' || !isFinite(_nadLat) || !isFinite(_nadLng) || !_nadDetected || !_nadPinTouched)
+      return { ok: false, msg: 'Marcá tu ubicación en el mapa (tocá el mapa y ajustá el pin).' };
+    if (details.length < 3) return { ok: false, msg: 'Agregá una referencia — portón, color, piso…', focus: 'acct-cp-details' };
+    if (!label) return { ok: false, msg: 'Elegí cómo guardar la dirección.', focus: 'acct-cp-label' };
+    return { ok: true, first, last, details, label };
+  }
+
+  function refreshCreateProfileCta() {
+    const btn = $('acct-cp-save'); if (!btn) return;
+    btn.disabled = !validateCreateProfile().ok;
+  }
+
   // Teardown on close: bump the map-session epoch so any late reverse-geocode from this pane's
   // fullscreen map is invalidated (codex R1 #5), and reset the account-only _nad* sink. The
   // fullscreen twin's own map/geocoder instances (acctFsMap) are cached-and-reused across opens,
