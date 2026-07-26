@@ -2346,6 +2346,16 @@ ${rowsHtml}`;
     try {
       const s2 = document.getElementById('s2');
       if (s2 && !s2.classList.contains('active') && typeof showStage === 'function') {
+        // The host initMap() (index.html) geolocates whenever __restorePos is falsy — an UNGUARDED
+        // getCurrentPosition→placePin our generation-guard can't touch (codex R3). SEED __restorePos
+        // with the current saved-address coords (finite-guarded, SPS-center fallback) BEFORE scheduling
+        // initMap, so the host initMap does a SYNCHRONOUS placePin(saved) and NEVER geolocates in either
+        // tap ordering. Our own generation-guarded applyFreshPin stays the SOLE async GPS.
+        try {
+          const cur = pickDefaultAddress(_acctData) || (_acctData && _acctData.addresses && _acctData.addresses[_acctAddrId]) || null;
+          const sla = cur && Number(cur.lat), sln = cur && Number(cur.lng);
+          __restorePos = (Number.isFinite(sla) && Number.isFinite(sln)) ? { lat: sla, lng: sln } : { lat: 15.5003, lng: -88.025 };   // Number.isFinite (not global isFinite, which returns true for null) → a null cur falls back to SPS center, never a null-coord seed the host initMap would reject and then geolocate
+        } catch (_) { __restorePos = { lat: 15.5003, lng: -88.025 }; }
         showStage('s2', 50);
         setTimeout(() => { try { if (typeof initMap === 'function') initMap(); } catch (_) {} }, 100);
       }
@@ -2396,7 +2406,16 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
       // to the fresh pin. This is the ONLY place account.js resets these checkout globals, and ONLY on the
       // explicit "usar una dirección nueva" gesture (never page-load, saved-address pick, or retry-restore).
       try { if (typeof gmarker !== 'undefined' && gmarker) { gmarker.setMap(null); gmarker = null; } } catch (_) {}
-      try { __restorePos = null; } catch (_) {}
+      // Do NOT null __restorePos (codex R3): enterEditMode(true) just nulled it, but a still-pending host
+      // initMap() (fast tap: new-address chosen before openCambiarPanel's 100ms initMap timer) would then
+      // see it falsy and fire the HOST's OWN unguarded getCurrentPosition→placePin — a second async GPS our
+      // generation-guard can't touch. RE-SEED it with the saved coords so any host initMap does a SYNC
+      // placePin(saved) and never geolocates; our guarded applyFreshPin below stays the SOLE async GPS.
+      try {
+        const cur = pickDefaultAddress(_acctData) || (_acctData && _acctData.addresses && _acctData.addresses[_acctAddrId]) || null;
+        const sla = cur && Number(cur.lat), sln = cur && Number(cur.lng);
+        __restorePos = (Number.isFinite(sla) && Number.isFinite(sln)) ? { lat: sla, lng: sln } : { lat: 15.5003, lng: -88.025 };   // Number.isFinite → null cur falls back to SPS center, never a null-coord seed
+      } catch (_) { __restorePos = { lat: 15.5003, lng: -88.025 }; }
       try { lat = null; lng = null; } catch (_) {}
       try {
         if (typeof gmap !== 'undefined' && gmap) google.maps.event.trigger(gmap, 'resize');   // size the now-visible map BEFORE placePin's setCenter so tiles render
