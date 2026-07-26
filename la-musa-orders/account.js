@@ -898,6 +898,7 @@
   let _acctAddrUnsaved = false;  // true when the address populating the order isn't a persisted one
   let _acctSaveToggleOn = true;  // B7 "Guardar esta dirección" toggle state (default-checked)
   let _acctCreateProfileActive = false;  // true ONLY while "Creá tu perfil" is on screen (payment hidden + CTA shown) — the submit-gate keys off this, never a profileComplete() inference (FIX A)
+  let _acctProfileConfirmedIncomplete = false;  // codex R1 FIX 1c: the last AUTHORITATIVE (status:'ok') delivery-step read said logged-in + profile NOT complete (INCLUDING a resolved-null empty profile). Persists across a pickup↔delivery toggle (unlike _acctCreateProfileActive, which setPaymentVisible(true) clears) so refreshDeliveryUI can re-arm the hard block for a null/empty profile on return to delivery. FALSE on guest / unavailable(timeout) / complete — so a fail-open never hides payment.
   let _acctAddrOneOff = false;   // true when the order's delivery address is a USE-ONCE choice (Cambiar "Usar en este pedido" / an edit-mode-new address NOT explicitly "Guardar dirección"-saved) — onOrderConfirmed must never makeDefault/persist it (FIX B)
   let _acctRestoring = false;    // true ONLY while index.html's restoreOrderForm() rebuilds a cancelled/failed-payment retry from the xpizza_pending_pay snapshot — the snapshot's delivery data is authoritative, so every account delivery-refresh entry point must early-return (never repopulate the DOM from the DEFAULT saved address) (FIX 7 / R4)
   let _acctRestoreGen = 0;       // bumped on every restore START (setRestoring(true)). initDeliveryStep()'s snapshot read is async: restoreOrderForm() is SYNCHRONOUS and clears _acctRestoring in its finally BEFORE the suspended init can resume, so a flag-only re-check would read false and miss the race. Capturing the gen before the await and comparing after catches a restore that BOTH began and completed during the await (R5 async re-check).
@@ -908,22 +909,49 @@
   // every step — any miss/timeout/incomplete/invariant-fail routes to the normal fillable UI,
   // never a hidden-but-empty section, never an advance to payment without valid delivery data.
   // preSnap (codex R1 FIX 1b): when provided (!== undefined), arm DETERMINISTICALLY from a snapshot
-  // the caller already has — skip the internal accountSnapshot() await entirely (and thus its
-  // post-await R5 re-check, since with no await there's no restore race to catch). verifyCode's
-  // COMPLETE and confirmed-INCOMPLETE branches pass st.snap so _acctCreateProfileActive is set
-  // synchronously (incomplete → hides payment) and a slow/failed SECOND read can't leave checkout
-  // payable. Omitting the arg preserves the original read-and-fail-open behavior for every other
-  // caller (DOMContentLoaded, setOrderType, save-success, the UNAVAILABLE branch).
+  // the caller already has — skip the internal read entirely (and thus its post-await R5 re-check,
+  // since with no await there's no restore race to catch). verifyCode's COMPLETE and confirmed-
+  // INCOMPLETE branches pass st.snap so the hard block is armed synchronously and a slow/failed
+  // SECOND read can't leave checkout payable. Omitting the arg preserves read-and-fail-open for
+  // every other caller (DOMContentLoaded, save-success, the UNAVAILABLE branch).
+  //
+  // TRI-STATE decision (codex R1 FIX 1c): the routing keys off a RESOLVED status, never a bare
+  // `!snap` — because accountSnapshotStatus() returns {status:'ok', snap:null} for a brand-new
+  // logged-in user with NO profile node yet. That resolved-null is a CONFIRMED-INCOMPLETE profile
+  // (must arm the create hard-block), NOT a timeout/guest (must fail-open). The old `!snap` test
+  // collapsed all three and left the most common first-time case payable with raw fields.
   async function initDeliveryStep(preSnap) {
     if (!$('acct-deliver')) return;               // host form has no mount — never touch anything
     if (_acctRestoring) return;                   // a payment-retry restore owns the DOM — the snapshot is authoritative, never repopulate from the profile (FIX 7 / R4)
     const hasPre = (preSnap !== undefined);
     const restoreGen = _acctRestoreGen;           // snapshot the restore generation BEFORE any async read (R5)
     setPaymentVisible(true);   // default reveal; only applyCreateProfileFlow (incomplete) hides it (FIX 1)
-    const snap = hasPre ? preSnap : await accountSnapshot();   // preSnap → deterministic, no await; else fail-open, timeboxed ~1.5s internally — LIVE, authoritative (spec R1 #7)
-    if (!hasPre && (_acctRestoring || _acctRestoreGen !== restoreGen)) return;   // a retry-restore began (and possibly already completed, resetting _acctRestoring) DURING the await — never clobber the restored DOM (R5 async re-check). Only when we actually awaited.
-    if (!snap) { _acctData = null; revertToNormalFillable(); refreshSaveToggle(); return; }   // no account / miss/timeout → normal empty form
+
+    // Resolve to a tri-state {status, snap}. preSnap → treat as a resolved read (status ok, snap may
+    // be null = empty profile). No-arg → accountSnapshotStatus() (NOT accountSnapshot(), which
+    // collapses timeout and resolved-null into one null).
+    let status, snap;
+    if (hasPre) {
+      status = 'ok'; snap = preSnap;
+    } else {
+      const stt = await accountSnapshotStatus();
+      if (_acctRestoring || _acctRestoreGen !== restoreGen) return;   // retry-restore began (maybe already completed) DURING the await — never clobber the restored DOM (R5). Only on the awaited path.
+      status = stt.status; snap = (stt.status === 'ok') ? stt.snap : null;
+    }
+
+    // UNAVAILABLE (timeout / SDK error) → fail-open to the normal fillable checkout; NEVER hide
+    // payment on an unconfirmed read (shipped invariant preserved).
+    if (status !== 'ok') { _acctData = null; _acctProfileConfirmedIncomplete = false; revertToNormalFillable(); refreshSaveToggle(); return; }
+
+    // GUEST (no marker) → normal path; NEVER arm create (guest byte-identical belt-and-suspenders on
+    // top of the DOMContentLoaded marker gate).
+    if (!marker()) { _acctData = snap || null; _acctProfileConfirmedIncomplete = false; revertToNormalFillable(); refreshSaveToggle(); return; }
+
+    // Logged-in + resolved read. snap MAY be null (empty profile). Record the confirmed-incomplete
+    // signal (incl. null) BEFORE the order-type gate, so a pickup→delivery toggle can re-arm.
     _acctData = snap;
+    _acctProfileConfirmedIncomplete = !profileComplete(snap);   // null/partial → true; complete → false
+
     if (pageOrderType() !== 'delivery') { revertToNormalFillable(); refreshSaveToggle(); return; }   // pickup — out of scope (spec), leave raw fields
 
     if (profileComplete(snap)) {
@@ -1800,6 +1828,7 @@ ${rowsHtml}`;
     setPaymentVisible(true);   // sign-out → guest form, payment visible (FIX 1)
     _acctData = null; _acctAddrId = null; _acctCardActive = false; _acctEditMode = false;
     _acctEditIsNew = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true; _acctAddrOneOff = false;
+    _acctProfileConfirmedIncomplete = false;   // signed out → no logged-in profile to arm the hard block for (codex R1 FIX 1c)
     const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
     const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
     const addrSection = addrSectionEl();
@@ -2186,7 +2215,15 @@ ${rowsHtml}`;
   function refreshDeliveryUI(addrOverride) {
     if (_acctRestoring) return;   // a payment-retry restore owns the DOM — the snapshot's address is authoritative, never overwrite it with the default (FIX 7 / R4)
     setPaymentVisible(true);   // default reveal; the incomplete create-profile branch re-hides it (FIX 1)
-    if (!_acctData) return;
+    if (!_acctData) {
+      // _acctData null = either a logged-in user with an empty/null CONFIRMED-incomplete profile, or
+      // a guest / timeout fail-open. Only the first must re-arm the hard block on this delivery
+      // toggle (codex R1 FIX 1c) — keyed off the persistent confirmed-incomplete signal + a live
+      // marker + delivery context. A guest (no marker) or a fail-open (flag false) stays on the
+      // normal fillable form; payment is never hidden on an unconfirmed state.
+      if (marker() && _acctProfileConfirmedIncomplete && pageOrderType() === 'delivery') applyCreateProfileFlow(null);
+      return;
+    }
     if (pageOrderType() !== 'delivery') { hidePickupDeliverySummary(); return; }
     if (profileComplete(_acctData)) {
       const addr = addrOverride || pickDefaultAddress(_acctData);
