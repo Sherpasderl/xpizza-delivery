@@ -55,6 +55,11 @@
 .acct-chip--out .acct-av{background:#F0E8DA;color:#2A231C}
 .acct-chip .acct-nm{font-size:13.5px;font-weight:650;letter-spacing:-.01em;color:#17130F}
 .acct-chip .acct-cv{color:#B3A594;font-size:10px;margin-left:-1px}
+/* Logged-in-only size bump (codex F3): scoped with :not(.acct-chip--out) so the guest "Entrar"
+   chip (.acct-chip--out) stays byte-identical at 13.5px name / 28px avatar. Higher specificity
+   (3 classes) than the base .acct-chip .acct-nm (2 classes), so it wins for the logged-in chip only. */
+.acct-chip:not(.acct-chip--out) .acct-nm{font-size:15px}
+.acct-chip:not(.acct-chip--out) .acct-av{width:31px;height:31px}
 `;
     document.head.appendChild(st);
   }
@@ -775,22 +780,11 @@
     st.textContent = `
 .acct-eyebrow{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#B3A594;margin:0 0 10px}
 .acct-deliver{border:1px solid #E2D8C8;border-radius:20px;overflow:hidden;background:#fff;box-shadow:0 12px 30px -18px rgba(40,28,12,.3);font-family:inherit;margin-bottom:4px}
-.acct-map{height:84px;position:relative;overflow:hidden;background:radial-gradient(120% 140% at 50% -40%, #EFE7DA 0%, #E4DAC7 100%);border-bottom:1px solid #EDE5D9}
-.acct-map i{position:absolute;background:#F7F2E8;box-shadow:0 0 0 1px #E7DDCB}
-/* T7 (codex-visual-fix): renamed from the collision-prone .acct-h1/.acct-h2 — those names were
-   ALSO the login sheet's real <h1 class="acct-h1"> title class (line ~103 above); since this
-   later stylesheet always wins the cascade, every login/creá-perfil h1 title was silently getting
-   height:9px + rotate(-4deg) applied to it once injectDeliverStyles() had run this pageload
-   (guaranteed sooner now that Tasks 2/3/4/5 call it far more eagerly) — a squashed, rotated title
-   overlapping its subtitle. Purely a class rename on the decorative map's <i> road-lines; the map
-   itself is visually unchanged. */
-.acct-mh1{left:0;right:0;top:26px;height:9px;transform:rotate(-4deg)}
-.acct-mh2{left:0;right:0;top:56px;height:12px;transform:rotate(-4deg)}
-.acct-mv1{top:0;bottom:0;left:76px;width:10px;transform:rotate(6deg)}
-.acct-mv2{top:0;bottom:0;left:182px;width:8px;transform:rotate(6deg)}
-.acct-blk{position:absolute;background:#EAE0CE;border-radius:2px;opacity:.7}
-.acct-pin{position:absolute;left:calc(50% - 11px);top:18px;width:22px;height:22px;z-index:2;filter:drop-shadow(0 5px 4px rgba(40,28,12,.28))}
-.acct-pindot{position:absolute;left:calc(50% - 3px);top:38px;width:7px;height:3px;border-radius:50%;background:rgba(40,28,12,.28);filter:blur(1px)}
+/* Real Static Maps thumbnail of the saved address (replaces the old decorative fake map). Starts
+   hidden (display:none inline) — loadCardMap() reveals it ONLY when a real image loads in time,
+   so the card FAILS CLOSED to a clean no-map layout on 403/offline/timeout (codex F2). */
+.acct-cardmap{height:84px;overflow:hidden;border-bottom:1px solid #EDE5D9}
+.acct-cardmap img{width:100%;height:84px;object-fit:cover;display:block}
 .acct-drow{display:flex;align-items:flex-start;gap:12px;padding:14px 15px 4px}
 .acct-avatar{width:38px;height:38px;border-radius:50%;background:#F0E8DA;flex:none;display:flex;align-items:center;justify-content:center;color:#2A231C;margin-top:1px}
 .acct-who{flex:1;min-width:0}
@@ -970,6 +964,7 @@
           _acctReducedActive = true;
           _acctAddrId = addr.id;
           hideRawAndAddrSection();
+          setReducedDeliveryChromeVisible(true);   // hide the redundant editable s2 map/banner/locinfo + relabel the button (codex F4/F5)
           return;
         }
       }
@@ -988,14 +983,7 @@
   function deliverCardHtml(name, phone, addr, changeBtnId) {
     return `
 <div class="acct-deliver">
-  <div class="acct-map">
-    <i class="acct-mh1"></i><i class="acct-mh2"></i><i class="acct-mv1"></i><i class="acct-mv2"></i>
-    <span class="acct-blk" style="left:16px;top:6px;width:54px;height:19px"></span>
-    <span class="acct-blk" style="left:108px;top:7px;width:66px;height:17px"></span>
-    <span class="acct-blk" style="left:20px;top:44px;width:48px;height:26px"></span>
-    <div class="acct-pindot"></div>
-    <svg class="acct-pin" viewBox="0 0 24 24" fill="${CONFIG.accent}" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
-  </div>
+  <div class="acct-cardmap" id="acct-cardmap-${changeBtnId}" style="display:none"></div>
   <div class="acct-drow">
     <span class="acct-avatar">${PERSON_SVG}</span>
     <div class="acct-who">
@@ -1013,6 +1001,41 @@
     </div>
   </div>
 </div>`;
+  }
+
+  // Per-form Google Maps key — READ from the page's existing Maps JS <script> src (never hardcode a
+  // second copy; X. Pizza + La Musa each ship their own key). Cached after first read. null if absent.
+  let _mapsKeyCache;
+  function mapsApiKey() {
+    if (_mapsKeyCache !== undefined) return _mapsKeyCache;
+    _mapsKeyCache = null;
+    try {
+      const s = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
+      if (s) { const m = s.src.match(/[?&]key=([^&]+)/); if (m) _mapsKeyCache = decodeURIComponent(m[1]); }
+    } catch (_) {}
+    return _mapsKeyCache;
+  }
+
+  // Fail-CLOSED Static Maps thumbnail loader (codex F2): the card is rendered in its no-map layout by
+  // DEFAULT (container display:none, empty). We build the image OFF-DOM and reveal the container ONLY
+  // when the image actually LOADS within ~4s. onerror (403/network) OR the timeout (slow/hanging load
+  // that never fires onerror) → stay hidden → a clean no-map card. Never a broken-image icon, never an
+  // empty strip, never a layout gap. The card only ever GAINS a map when one genuinely arrives in time.
+  function loadCardMap(containerId, addr) {
+    const el = $(containerId); if (!el) return;
+    const key = mapsApiKey();
+    const la = Number(addr && addr.lat), ln = Number(addr && addr.lng);
+    if (!key || !isFinite(la) || !isFinite(ln)) return;   // no key / bad coords → stay no-map (clean fallback)
+    const w = Math.max(320, Math.round(el.clientWidth || 320));
+    const url = `https://maps.googleapis.com/maps/api/staticmap?center=${la},${ln}&zoom=16&size=${w}x84&scale=2`
+      + `&markers=color:0x1E1B18%7C${la},${ln}&key=${encodeURIComponent(key)}`;   // black balloon (0x1E1B18) matches the main map's marker
+    let done = false;
+    const img = new Image();
+    const timer = setTimeout(() => { if (!done) { done = true; img.onload = img.onerror = null; } }, 4000);   // hang → stay hidden
+    img.onload = () => { if (done) return; done = true; clearTimeout(timer); el.appendChild(img); el.style.display = ''; };
+    img.onerror = () => { if (done) return; done = true; clearTimeout(timer); /* stay hidden — clean card */ };
+    img.alt = '';
+    img.src = url;
   }
 
   function renderConfirmCard(snap, addr) {
@@ -1049,6 +1072,7 @@
     const phone = (snap && snap.phone) || m.phone || '';
 
     mount.innerHTML = `<div class="acct-eyebrow">Entregar a</div>` + deliverCardHtml(name, phone, addr, 'acct-change-btn');
+    loadCardMap('acct-cardmap-acct-change-btn', addr);   // fail-closed Static Maps thumbnail (codex F2)
     if (rawWrap) rawWrap.style.display = 'none';
     if (addrSection) addrSection.style.display = 'none';
     const changeBtn = $('acct-change-btn'); if (changeBtn) changeBtn.onclick = () => enterEditMode(false);
@@ -1829,6 +1853,7 @@ ${rowsHtml}`;
     _acctData = null; _acctAddrId = null; _acctCardActive = false; _acctEditMode = false;
     _acctEditIsNew = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true; _acctAddrOneOff = false;
     _acctProfileConfirmedIncomplete = false;   // signed out → no logged-in profile to arm the hard block for (codex R1 FIX 1c)
+    setReducedDeliveryChromeVisible(false);   // sign-out/delete → restore the guest-identical editable map/banner/locinfo (delivery) + button label (codex F4)
     const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
     const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
     const addrSection = addrSectionEl();
@@ -1918,6 +1943,12 @@ ${rowsHtml}`;
   function applyCreateProfileFlow(snap) {
     injectDeliverStyles();
     injectCreateProfileStyles();
+    // Incomplete-profile fillable flow — the customer NEEDS the editable s2 map/banner/locinfo to set
+    // their pin. Restore here so EVERY path into create-profile (initDeliveryStep fall-through,
+    // refreshDeliveryUI fall-through/!_acctData, delete-last-address) un-hides the reduced-flow chrome
+    // (order-type-aware; delivery-only in practice). Idempotent + covers a call site the plan's restore
+    // enumeration omitted (delete-last-address). (codex F4 completeness)
+    setReducedDeliveryChromeVisible(false);
     const mount = $('acct-deliver'); if (!mount) { refreshSaveToggle(); return; }   // host form has no mount — never touch anything
     const m = marker() || {};
     const phone = (snap && snap.phone) || m.phone || '';
@@ -2055,6 +2086,10 @@ ${rowsHtml}`;
 .acct-compact .acct-cav{width:30px;height:30px;border-radius:50%;background:#F0E8DA;color:#2A231C;display:flex;align-items:center;justify-content:center;flex:none}
 .acct-compact .acct-ctxt{flex:1;min-width:0;font-size:13.5px;color:#17130F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .acct-compact .acct-ctxt b{font-weight:700}
+/* s1 "Entregar a" alignment (spec #4): the eyebrow sat flush-left while the compact card's content
+   is inset 14px, reading slightly misaligned. Inset the s1 eyebrow to match — SCOPED to the compact
+   variant only (--inset modifier), so every other .acct-eyebrow surface is untouched. */
+.acct-eyebrow--inset{padding-left:14px}
 `;
     document.head.appendChild(st);
   }
@@ -2135,7 +2170,7 @@ ${rowsHtml}`;
     injectCompactSummaryStyles();
     const mount = $('acct-deliver'); if (!mount) return;
     mount.innerHTML = `
-<div class="acct-eyebrow">Entregar a</div>
+<div class="acct-eyebrow acct-eyebrow--inset">Entregar a</div>
 <div class="acct-compact">
   <span class="acct-cav">${PERSON_SVG}</span>
   <span class="acct-ctxt"><b>${escapeHtml(addr.label || 'Guardado')}</b> · ${escapeHtml(shortAddrLine(addr))}</span>
@@ -2153,12 +2188,39 @@ ${rowsHtml}`;
     const name = (snap && snap.name) || m.name || '';
     const phone = (snap && snap.phone) || m.phone || '';
     mount.innerHTML = `<div class="acct-eyebrow">Entregar a</div>` + deliverCardHtml(name, phone, addr, 'acct-change-btn-s2');
+    loadCardMap('acct-cardmap-acct-change-btn-s2', addr);   // fail-closed Static Maps thumbnail (codex F2)
     const btn = $('acct-change-btn-s2'); if (btn) btn.onclick = openCambiarPanel;
   }
 
   function hideRawAndAddrSection() {
     const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = 'none';
     const addrSection = addrSectionEl(); if (addrSection) addrSection.style.display = 'none';
+  }
+
+  // Single source of truth for the reduced-flow chrome (codex F4/F5 + R2): the s2 editable map,
+  // the "Mové el pin" zone banner, the #locinfo card, AND the #btn-continuar label. hide=true when
+  // the complete-profile reduced flow is active; hide=false on every normal/guest/pickup/fail-open
+  // exit. RESTORE is order-type-aware — delivery chrome comes back only for delivery (pickup keeps
+  // it hidden, matching the host setOrderType('pickup')). The button label restores regardless.
+  let _origContinuarText = null;
+  function setReducedDeliveryChromeVisible(hide) {
+    const btn = $('btn-continuar');
+    if (btn && _origContinuarText === null) _origContinuarText = btn.textContent;   // capture once
+    const mapWrap = $('map')?.parentElement || null;
+    const zone = document.querySelector('#s2 .zone-notice') || null;
+    const loc = $('locinfo') || null;
+    if (hide) {
+      if (mapWrap) mapWrap.style.display = 'none';
+      if (zone) zone.style.display = 'none';
+      if (loc) loc.style.display = 'none';
+      if (btn) btn.textContent = 'Continuar al pago';
+    } else {
+      const isDelivery = pageOrderType() === 'delivery';
+      if (mapWrap) mapWrap.style.display = isDelivery ? '' : 'none';   // pickup keeps them hidden (R2)
+      if (zone) zone.style.display = isDelivery ? '' : 'none';
+      if (loc) loc.style.display = isDelivery ? '' : 'none';
+      if (btn && _origContinuarText !== null) btn.textContent = _origContinuarText;   // label restores always
+    }
   }
 
   // Payment-section visibility (codex re-gate FIX 1) — hidden ONLY while "Creá tu perfil" is active
@@ -2198,6 +2260,7 @@ ${rowsHtml}`;
   function revertToNormalFillable() {
     _acctReducedActive = false;
     relabelSteps(false);
+    setReducedDeliveryChromeVisible(false);   // restore the editable map/banner/locinfo (delivery) + button label (codex F4)
     const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
     const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
     const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
@@ -2221,6 +2284,7 @@ ${rowsHtml}`;
       // toggle (codex R1 FIX 1c) — keyed off the persistent confirmed-incomplete signal + a live
       // marker + delivery context. A guest (no marker) or a fail-open (flag false) stays on the
       // normal fillable form; payment is never hidden on an unconfirmed state.
+      setReducedDeliveryChromeVisible(false);   // guest / fail-open / confirmed-incomplete → restore the editable map/banner/locinfo (delivery) + button label (codex F4); applyCreateProfileFlow (if armed) keeps it visible for the incomplete-pin path
       if (marker() && _acctProfileConfirmedIncomplete && pageOrderType() === 'delivery') applyCreateProfileFlow(null);
       return;
     }
@@ -2237,6 +2301,7 @@ ${rowsHtml}`;
           _acctReducedActive = true;
           _acctAddrId = addr.id;
           hideRawAndAddrSection();
+          setReducedDeliveryChromeVisible(true);   // hide the redundant editable s2 map/banner/locinfo + relabel the button (codex F4/F5)
           return;
         }
       }
@@ -2253,6 +2318,7 @@ ${rowsHtml}`;
     setPaymentVisible(true);   // pickup always shows payment (FIX 1)
     _acctReducedActive = false;
     relabelSteps(false);
+    setReducedDeliveryChromeVisible(false);   // order-type-aware: pickup KEEPS map/banner/locinfo hidden; button label restores (codex F4/R2)
     const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
     const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
     const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
@@ -2307,11 +2373,25 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
       mount.innerHTML = '';
       relabelSteps(false);
       _acctReducedActive = false;
+      // Task 1 hid the editable s2 map for the reduced flow — a NEW address needs the customer to
+      // place a pin, so REVEAL the map/banner/locinfo again (order type is delivery here). (codex F1)
+      setReducedDeliveryChromeVisible(false);
       const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
       const addrSection = addrSectionEl();
       if (addrSection) addrSection.style.display = '';
+      // FRESH-PIN (codex F1, money-path): enterEditMode(true) clears __restorePos but NOT the checkout
+      // lat/lng or the existing gmarker — so "usar una dirección nueva" could silently sit on the
+      // PREVIOUS saved coordinates. Null the pin so no stale coordinate carries over; the customer
+      // must place a new one (processPayment's lat/lng + zone checks are the submit backstop). This is
+      // the ONLY place account.js resets these checkout globals, and only on the explicit new-address gesture.
+      try { lat = null; lng = null; } catch (_) {}
+      try { if (typeof gmarker !== 'undefined' && gmarker) { gmarker.setMap(null); gmarker = null; } } catch (_) {}
+      try { __restorePos = null; } catch (_) {}
       _acctAddrOneOff = true;   // use-once until the customer explicitly taps "Guardar dirección" (which clears it) (FIX B)
       enterEditMode(true);   // existing scaffolding — its "Guardar dirección" persists (makeDefault:true) + applies
+      // A map revealed from display:none renders blank tiles until told to resize; recenter only if a
+      // pin still exists (it won't right after the reset — the map keeps its last center for the customer to adjust).
+      try { if (typeof gmap !== 'undefined' && gmap) { google.maps.event.trigger(gmap, 'resize'); if (lat != null && lng != null) gmap.setCenter({ lat, lng }); } } catch (_) {}
       if (addrSection) setTimeout(() => addrSection.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
     };
     const cancelBtn = $('acct-cambiar-cancel');
@@ -2336,6 +2416,7 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
       relabelSteps(true);
       _acctReducedActive = true;
       hideRawAndAddrSection();
+      setReducedDeliveryChromeVisible(true);   // reduced flow — hide the redundant editable s2 map/banner/locinfo + relabel (codex F4/F5)
       toast('Dirección actualizada para este pedido');
     } else {
       // FAIL-OPEN: this saved address fails the invariant right now (e.g. genuinely out of the
@@ -2343,6 +2424,7 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
       // normal fillable view so processPayment()'s own checks (and the customer's eyes) catch it.
       _acctReducedActive = false;
       relabelSteps(false);
+      setReducedDeliveryChromeVisible(false);   // invariant-failure fall-through — restore the editable map/banner/locinfo + button label (codex F4)
       const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
       const addrSection = addrSectionEl(); if (addrSection) addrSection.style.display = '';
       const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
