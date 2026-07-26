@@ -1521,8 +1521,9 @@ ${rowsHtml}`;
     const st = document.createElement('style');
     st.id = 'acct-fs-styles';
     st.textContent = `
-.acct-fs-overlay{position:fixed;inset:0;z-index:1200;display:none;flex-direction:column;background:#E4DAC7}
-.acct-fs-overlay.open{display:flex}
+.acct-fs-overlay{position:fixed;inset:0;z-index:1200;display:flex;flex-direction:column;background:#E4DAC7;transform:translateY(100%);transition:transform .35s cubic-bezier(0.32,0.72,0,1);pointer-events:none}
+.acct-fs-overlay.open{transform:translateY(0);pointer-events:auto}
+@media (prefers-reduced-motion: reduce){ .acct-fs-overlay{transition:none} }
 .acct-fs-map{flex:1;width:100%}
 .acct-fs-toggle{position:absolute;top:14px;right:14px;display:flex;gap:6px;z-index:4}
 .acct-fs-toggle button{padding:7px 12px;font-size:12px;font-weight:700;border:none;border-radius:8px;font-family:inherit;cursor:pointer;box-shadow:0 2px 7px -2px rgba(40,28,12,.35)}
@@ -1562,6 +1563,7 @@ ${rowsHtml}`;
     ov.querySelector('#acct-fs-road').onclick = () => setAcctFsMapType('roadmap');
     ov.querySelector('#acct-fs-sat').onclick = () => setAcctFsMapType('satellite');
     ov.querySelector('#acct-fs-done').onclick = () => closeAcctFullscreenMap(true);
+    ov.inert = true; ov.setAttribute('aria-hidden', 'true'); ov.style.visibility = 'hidden';   // closed initially — not tabbable/painted until open (codex R1 #2; pointer-events:none alone leaves buttons tabbable)
     _acctFsBuilt = true;
   }
 
@@ -1577,7 +1579,6 @@ ${rowsHtml}`;
     if (!window.google || !window.google.maps) { setTimeout(() => openAcctFullscreenMap(previewId), 250); return; }
     _acctFsPreviewId = previewId || null;
     const ov = document.getElementById('acct-fs-overlay');
-    ov.classList.add('open');
     // suppress background scroll; remember prior value so close restores it (sheet may still need lock)
     _acctFsPrevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -1613,6 +1614,15 @@ ${rowsHtml}`;
         () => {}, { timeout: 8000, enableHighAccuracy: true, maximumAge: 0 }
       );
     }
+
+    // #8 reveal: clear inert/visibility BEFORE the slide, then add .open on the next frame so the
+    // translateY(100%)→0 transition runs. AFTER the open class, google.maps.resize + recenter — a
+    // cached map in a previously-transformed/offscreen container can misrender tiles/center (codex R1 #5).
+    ov.style.visibility = ''; ov.removeAttribute('aria-hidden'); ov.inert = false;
+    requestAnimationFrame(() => {
+      ov.classList.add('open');
+      requestAnimationFrame(() => { try { if (_acctFsMap && window.google) { google.maps.event.trigger(_acctFsMap, 'resize'); _acctFsMap.setCenter(start); } } catch (_) {} });
+    });
   }
 
   // Single commit path for a user-placed pin (codex R1 FIX 2b): sets the committed lat/lng, marks
@@ -1646,7 +1656,18 @@ ${rowsHtml}`;
   }
 
   function closeAcctFullscreenMap(commit) {
-    const ov = document.getElementById('acct-fs-overlay'); if (ov) ov.classList.remove('open');
+    const ov = document.getElementById('acct-fs-overlay');
+    if (ov) {
+      // move focus OUT before the overlay becomes inert (codex note) so focus isn't stranded in an inert subtree
+      try { if (ov.contains(document.activeElement) && typeof document.activeElement.blur === 'function') document.activeElement.blur(); } catch (_) {}
+      ov.classList.remove('open');   // slide down
+      // at the END of the slide, remove from the a11y/focus tree (pointer-events:none alone leaves buttons tabbable — codex R1 #2)
+      let done = false;
+      const finalize = () => { if (done) return; done = true; try { ov.removeEventListener('transitionend', onEnd); } catch (_) {} try { ov.inert = true; ov.setAttribute('aria-hidden', 'true'); ov.style.visibility = 'hidden'; } catch (_) {} };
+      const onEnd = (e) => { if (e && e.target !== ov) return; finalize(); };
+      ov.addEventListener('transitionend', onEnd);
+      setTimeout(finalize, 450);     // fallback: reduced-motion / no transitionend
+    }
     document.body.style.overflow = _acctFsPrevOverflow || '';
     // If the user never dragged but did move the map to a place and tapped Listo, treat the
     // resting center as their placement (matches checkout's "close commits center").
