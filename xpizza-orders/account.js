@@ -91,12 +91,18 @@
     const st = document.createElement('style');
     st.id = 'acct-sheet-styles';
     st.textContent = `
-.acct-overlay{position:fixed;inset:0;z-index:1000;display:none;align-items:flex-end;justify-content:center;background:rgba(23,19,15,.46)}
-.acct-overlay.acct-open{display:flex}
+.acct-overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:flex-end;justify-content:center;background:rgba(23,19,15,.46);opacity:0;transition:opacity .3s ease;pointer-events:none}
+.acct-overlay.acct-open{opacity:1;pointer-events:auto}
 @media (min-width:520px){ .acct-overlay{align-items:center} }
-.acct-sheet{width:100%;max-width:420px;max-height:92vh;background:#FFFDFA;border-radius:22px 22px 0 0;box-shadow:0 -20px 60px -20px rgba(40,28,12,.5);overflow:hidden;display:flex;flex-direction:column;font-family:inherit;animation:acct-up .28s cubic-bezier(.2,.7,.2,1);transition:transform .16s ease-out}
+/* #8 keyboard-collision-safe slide: the sheet transform COMPOSES two independent inputs via CSS vars —
+   --acct-open-y (open/close: 0px open, 100% closed) + --acct-kb-y (applyKeyboardInset's keyboard lift).
+   applyKeyboardInset sets ONLY --acct-kb-y (never style.transform), so the keyboard lift still works on
+   an open sheet without clobbering the open/close slide. */
+.acct-sheet{width:100%;max-width:420px;max-height:92vh;background:#FFFDFA;border-radius:22px 22px 0 0;box-shadow:0 -20px 60px -20px rgba(40,28,12,.5);overflow:hidden;display:flex;flex-direction:column;font-family:inherit;transform:translateY(calc(var(--acct-open-y,100%) + var(--acct-kb-y,0px)));transition:transform .3s cubic-bezier(.2,.7,.2,1)}
+.acct-overlay.acct-open .acct-sheet{--acct-open-y:0px}
 @media (min-width:520px){ .acct-sheet{border-radius:22px;max-height:88vh} }
-@keyframes acct-up{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+@keyframes acct-pane-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){ .acct-overlay,.acct-sheet{transition:none} .acct-pane.acct-on{animation:none} }
 .acct-topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 8px;flex:none}
 .acct-iconbtn{width:34px;height:34px;border-radius:50%;border:none;background:transparent;color:#17130F;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-family:inherit}
 .acct-iconbtn:hover{background:#F4EEE4}
@@ -104,7 +110,7 @@
 .acct-mark .acct-dot{color:${CONFIG.accent}}
 .acct-body{flex:1;overflow:auto;padding:6px 26px 26px}
 .acct-pane{display:none;flex-direction:column}
-.acct-pane.acct-on{display:flex}
+.acct-pane.acct-on{display:flex;animation:acct-pane-in .2s ease}
 .acct-h1{font-size:26px;line-height:1.12;letter-spacing:-.02em;font-weight:800;color:#17130F;margin:8px 0 0}
 .acct-sub{color:#8C7B6E;font-size:14.5px;line-height:1.5;margin:10px 0 0;max-width:32ch}
 .acct-mlabel{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#B3A594;margin:22px 0 9px}
@@ -220,6 +226,7 @@
   </div>
 </div>`;
     document.body.appendChild(wrap);
+    wrap.inert = true; wrap.setAttribute('aria-hidden', 'true'); wrap.style.visibility = 'hidden';   // closed initially — not tabbable/painted until openOverlay (codex R1 #2)
     _overlayBuilt = true;
     wireOverlayEvents();
   }
@@ -232,11 +239,23 @@
 
   function openOverlay() {
     buildOverlay();
-    $('acct-overlay').classList.add('acct-open');
+    const ov = $('acct-overlay');
+    ov.style.visibility = ''; ov.removeAttribute('aria-hidden'); ov.inert = false;   // clear the closed inert state before the slide
+    void ov.offsetHeight;                     // commit the closed state so adding .acct-open transitions (not a jump)
+    ov.classList.add('acct-open');            // scrim fades in + sheet slides up (#8)
     bindKeyboardInset();
   }
   function closeSheet() {
-    const ov = $('acct-overlay'); if (ov) ov.classList.remove('acct-open');
+    const ov = $('acct-overlay');
+    if (ov) {
+      try { if (ov.contains(document.activeElement) && typeof document.activeElement.blur === 'function') document.activeElement.blur(); } catch (_) {}   // move focus OUT before inert (codex note)
+      ov.classList.remove('acct-open');       // scrim fades out + sheet slides down
+      let done = false;
+      const finalize = () => { if (done) return; done = true; try { ov.removeEventListener('transitionend', onEnd); } catch (_) {} try { ov.inert = true; ov.setAttribute('aria-hidden', 'true'); ov.style.visibility = 'hidden'; } catch (_) {} };
+      const onEnd = (e) => { if (e && e.target !== ov) return; if (e && e.propertyName && e.propertyName !== 'opacity') return; finalize(); };   // anchor on the overlay's own opacity fade
+      ov.addEventListener('transitionend', onEnd);
+      setTimeout(finalize, 420);              // fallback: reduced-motion / no transitionend
+    }
     unbindKeyboardInset();
   }
 
@@ -251,7 +270,7 @@
     const vv = window.visualViewport;
     if (!sheet || !vv) return;
     const covered = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-    sheet.style.transform = covered > 40 ? `translateY(-${covered}px)` : '';
+    sheet.style.setProperty('--acct-kb-y', covered > 40 ? `-${covered}px` : '0px');   // #8: set ONLY the keyboard var — the sheet's transform composes it with --acct-open-y (never clobber the open/close slide)
     const active = document.activeElement;
     if (covered > 40 && active && sheet.contains(active) && typeof active.scrollIntoView === 'function') {
       active.scrollIntoView({ block: 'nearest' });
@@ -265,7 +284,7 @@
   }
   function unbindKeyboardInset() {
     const sheet = document.querySelector('#acct-overlay .acct-sheet');
-    if (sheet) sheet.style.transform = '';
+    if (sheet) sheet.style.setProperty('--acct-kb-y', '0px');   // clear the keyboard lift (NOT style.transform — that's the stylesheet calc())
   }
 
   function openLoginSheet() {
@@ -569,8 +588,80 @@
     try { revertToGuestForm(); } catch (_) {}   // Tasks B4–B7: drop the confirm card back to raw fields
   }
 
+  // ── On-brand confirm modal (replaces native window.confirm — item #4). Promise<boolean>, singleton,
+  // one-shot settlement, z-1300 (above the fullscreen map 1200 + toast 1100). Cancel/scrim/Escape = the
+  // SAFE default (false); confirm = true once. A native confirm() blocks double-taps; this doesn't — so
+  // the singleton + button-disable + settled-guard enforce exactly-once (codex R1 #3). No cheap emoji.
+  let _acctConfirmOpen = false;
+  function injectAcctConfirmStyles() {
+    if (document.getElementById('acct-confirm-styles')) return;
+    const st = document.createElement('style'); st.id = 'acct-confirm-styles';
+    st.textContent = `
+.acct-cfm-scrim{position:fixed;inset:0;z-index:1300;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(24,18,12,.5);opacity:0;transition:opacity .2s ease}
+.acct-cfm-scrim.acct-on{opacity:1}
+.acct-cfm-card{width:100%;max-width:340px;background:#FFFDFA;border-radius:18px;padding:22px 20px 18px;box-shadow:0 24px 60px -20px rgba(40,28,12,.5);transform:translateY(10px) scale(.98);transition:transform .22s cubic-bezier(.2,.7,.2,1);font-family:inherit}
+.acct-cfm-scrim.acct-on .acct-cfm-card{transform:none}
+.acct-cfm-title{font-size:17px;font-weight:800;color:#17130F;margin:0 0 8px;letter-spacing:-.01em}
+.acct-cfm-msg{font-size:14px;line-height:1.55;color:#6B5E52;margin:0 0 18px}
+.acct-cfm-btns{display:flex;gap:10px}
+.acct-cfm-btn{flex:1;height:46px;border:none;border-radius:12px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer}
+.acct-cfm-cancel{background:#EFE7DA;color:#17130F}
+.acct-cfm-go{background:#17130F;color:#fff}
+.acct-cfm-go.acct-cfm-danger{background:#C0392B}
+.acct-cfm-btn:disabled{opacity:.6;cursor:default}
+@media (prefers-reduced-motion: reduce){ .acct-cfm-scrim,.acct-cfm-card{transition:none} }`;
+    document.head.appendChild(st);
+  }
+  function acctConfirm(opts) {
+    const o = opts || {};
+    return new Promise((resolve) => {
+      if (_acctConfirmOpen) { resolve(false); return; }   // singleton — a second call while one is open is a safe no-op (re-entrancy guard)
+      _acctConfirmOpen = true;
+      injectAcctConfirmStyles();
+      const trigger = document.activeElement;
+      if (trigger && 'disabled' in trigger) { try { trigger.disabled = true; } catch (_) {} }   // disable the triggering control while open
+      const scrim = document.createElement('div');
+      scrim.className = 'acct-cfm-scrim';
+      scrim.setAttribute('role', 'dialog'); scrim.setAttribute('aria-modal', 'true');
+      scrim.innerHTML = `
+<div class="acct-cfm-card">
+  <div class="acct-cfm-title">${escapeHtml(o.title || '¿Confirmar?')}</div>
+  ${o.message ? `<div class="acct-cfm-msg">${escapeHtml(o.message)}</div>` : ''}
+  <div class="acct-cfm-btns">
+    <button type="button" class="acct-cfm-btn acct-cfm-cancel" id="acct-cfm-cancel">Cancelar</button>
+    <button type="button" class="acct-cfm-btn acct-cfm-go${o.destructive ? ' acct-cfm-danger' : ''}" id="acct-cfm-go">${escapeHtml(o.confirmLabel || 'Confirmar')}</button>
+  </div>
+</div>`;
+      document.body.appendChild(scrim);
+      const cancelBtn = scrim.querySelector('#acct-cfm-cancel');
+      const goBtn = scrim.querySelector('#acct-cfm-go');
+      let settled = false;
+      const settle = (val) => {
+        if (settled) return; settled = true;                 // one-shot — every path resolves EXACTLY once
+        goBtn.disabled = true; cancelBtn.disabled = true;    // no double-fire after the first tap
+        document.removeEventListener('keydown', onKey, true);
+        scrim.classList.remove('acct-on');
+        let removed = false;
+        const rm = () => { if (removed) return; removed = true; try { scrim.remove(); } catch (_) {} };
+        scrim.addEventListener('transitionend', rm, { once: true });
+        setTimeout(rm, 280);                                 // fallback (reduced-motion → no transitionend)
+        _acctConfirmOpen = false;
+        if (trigger && 'disabled' in trigger) { try { trigger.disabled = false; } catch (_) {} }   // re-enable BEFORE focus
+        try { if (trigger && typeof trigger.focus === 'function') trigger.focus(); } catch (_) {}
+        resolve(val);
+      };
+      const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); settle(false); } };
+      goBtn.addEventListener('click', () => settle(true));
+      cancelBtn.addEventListener('click', () => settle(false));
+      scrim.addEventListener('click', (e) => { if (e.target === scrim) settle(false); });   // scrim tap = cancel
+      document.addEventListener('keydown', onKey, true);
+      requestAnimationFrame(() => scrim.classList.add('acct-on'));                            // animate in
+      setTimeout(() => { try { cancelBtn.focus(); } catch (_) {} }, 30);                      // focus the SAFE action
+    });
+  }
+
   async function doDeleteAccount() {
-    const ok = window.confirm('Esto borra tu cuenta y tus datos. No se puede deshacer.');
+    const ok = await acctConfirm({ title: 'Eliminar mi cuenta', message: 'Esto borra tu cuenta y tus datos. No se puede deshacer.', confirmLabel: 'Eliminar', destructive: true });
     if (!ok) return;
     try {
       const { auth, authMod } = await ensureFirebase();
@@ -779,6 +870,9 @@
     st.id = 'acct-deliver-styles';
     st.textContent = `
 .acct-eyebrow{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#B3A594;margin:0 0 10px}
+/* #5/#7: ONE mount-inset so account content (create-profile card, Entregar-a summary, compact line, Cambiar chooser) aligns with the native fields/labels (field-group/step-label horizontal inset = 16px). The rendered cards carry NO horizontal margin, so this insets them uniformly with no double-pad. EMPTY mounts (guest/pickup/non-reduced) add ZERO space. */
+#acct-deliver,#acct-s2-summary{padding-left:16px;padding-right:16px}
+#acct-deliver:empty,#acct-s2-summary:empty{padding:0}
 .acct-deliver{border:1px solid #E2D8C8;border-radius:20px;overflow:hidden;background:#fff;box-shadow:0 12px 30px -18px rgba(40,28,12,.3);font-family:inherit;margin-bottom:4px}
 /* Real Static Maps thumbnail of the saved address (replaces the old decorative fake map). Starts
    hidden (display:none inline) — loadCardMap() reveals it ONLY when a real image loads in time,
@@ -1369,7 +1463,7 @@ ${rowsHtml}`;
 
   async function removeSavedAddress(addrId) {
     if (!_acctData || !_acctData.addresses || !_acctData.addresses[addrId]) return;
-    const ok = window.confirm('¿Borrar esta dirección guardada?');
+    const ok = await acctConfirm({ title: '¿Borrar esta dirección guardada?', confirmLabel: 'Borrar', destructive: true });
     if (!ok) return;
     const wasDefault = _acctData.default_address === addrId;
     delete _acctData.addresses[addrId];
@@ -1441,11 +1535,14 @@ ${rowsHtml}`;
 
   let _acctFsStylesDone = false;
   function injectAcctFsStyles() {
-    if (_acctFsStylesDone) return; _acctFsStylesDone = true;
+    if (_acctFsStylesDone || document.getElementById('acct-fs-styles')) { _acctFsStylesDone = true; return; }   // belt-and-suspenders idempotency (flag + stable id)
+    _acctFsStylesDone = true;
     const st = document.createElement('style');
+    st.id = 'acct-fs-styles';
     st.textContent = `
-.acct-fs-overlay{position:fixed;inset:0;z-index:1200;display:none;flex-direction:column;background:#E4DAC7}
-.acct-fs-overlay.open{display:flex}
+.acct-fs-overlay{position:fixed;inset:0;z-index:1200;display:flex;flex-direction:column;background:#E4DAC7;transform:translateY(100%);transition:transform .35s cubic-bezier(0.32,0.72,0,1);pointer-events:none}
+.acct-fs-overlay.open{transform:translateY(0);pointer-events:auto}
+@media (prefers-reduced-motion: reduce){ .acct-fs-overlay{transition:none} }
 .acct-fs-map{flex:1;width:100%}
 .acct-fs-toggle{position:absolute;top:14px;right:14px;display:flex;gap:6px;z-index:4}
 .acct-fs-toggle button{padding:7px 12px;font-size:12px;font-weight:700;border:none;border-radius:8px;font-family:inherit;cursor:pointer;box-shadow:0 2px 7px -2px rgba(40,28,12,.35)}
@@ -1476,7 +1573,7 @@ ${rowsHtml}`;
   <button type="button" id="acct-fs-sat">Satélite</button>
 </div>
 <div class="acct-fs-pindot"></div>
-<svg class="acct-fs-pin" viewBox="0 0 24 24" fill="${CONFIG.accent}" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
+<svg class="acct-fs-pin" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="6.5" fill="#1E1B18" stroke="#fff" stroke-width="1.6"/><line x1="12" y1="14.5" x2="12" y2="23.5" stroke="#1E1B18" stroke-width="2.4" stroke-linecap="round"/></svg>
 <div class="acct-fs-bar">
   <div class="a"><div class="l">Tu ubicación</div><b id="acct-fs-addr">Detectando…</b></div>
   <button type="button" class="acct-fs-done" id="acct-fs-done">${ICON_CHECK_BIG} Listo</button>
@@ -1485,6 +1582,7 @@ ${rowsHtml}`;
     ov.querySelector('#acct-fs-road').onclick = () => setAcctFsMapType('roadmap');
     ov.querySelector('#acct-fs-sat').onclick = () => setAcctFsMapType('satellite');
     ov.querySelector('#acct-fs-done').onclick = () => closeAcctFullscreenMap(true);
+    ov.inert = true; ov.setAttribute('aria-hidden', 'true'); ov.style.visibility = 'hidden';   // closed initially — not tabbable/painted until open (codex R1 #2; pointer-events:none alone leaves buttons tabbable)
     _acctFsBuilt = true;
   }
 
@@ -1500,7 +1598,6 @@ ${rowsHtml}`;
     if (!window.google || !window.google.maps) { setTimeout(() => openAcctFullscreenMap(previewId), 250); return; }
     _acctFsPreviewId = previewId || null;
     const ov = document.getElementById('acct-fs-overlay');
-    ov.classList.add('open');
     // suppress background scroll; remember prior value so close restores it (sheet may still need lock)
     _acctFsPrevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -1536,6 +1633,15 @@ ${rowsHtml}`;
         () => {}, { timeout: 8000, enableHighAccuracy: true, maximumAge: 0 }
       );
     }
+
+    // #8 reveal: clear inert/visibility BEFORE the slide, then add .open on the next frame so the
+    // translateY(100%)→0 transition runs. AFTER the open class, google.maps.resize + recenter — a
+    // cached map in a previously-transformed/offscreen container can misrender tiles/center (codex R1 #5).
+    ov.style.visibility = ''; ov.removeAttribute('aria-hidden'); ov.inert = false;
+    requestAnimationFrame(() => {
+      ov.classList.add('open');
+      requestAnimationFrame(() => { try { if (_acctFsMap && window.google) { google.maps.event.trigger(_acctFsMap, 'resize'); _acctFsMap.setCenter(start); } } catch (_) {} });
+    });
   }
 
   // Single commit path for a user-placed pin (codex R1 FIX 2b): sets the committed lat/lng, marks
@@ -1569,7 +1675,18 @@ ${rowsHtml}`;
   }
 
   function closeAcctFullscreenMap(commit) {
-    const ov = document.getElementById('acct-fs-overlay'); if (ov) ov.classList.remove('open');
+    const ov = document.getElementById('acct-fs-overlay');
+    if (ov) {
+      // move focus OUT before the overlay becomes inert (codex note) so focus isn't stranded in an inert subtree
+      try { if (ov.contains(document.activeElement) && typeof document.activeElement.blur === 'function') document.activeElement.blur(); } catch (_) {}
+      ov.classList.remove('open');   // slide down
+      // at the END of the slide, remove from the a11y/focus tree (pointer-events:none alone leaves buttons tabbable — codex R1 #2)
+      let done = false;
+      const finalize = () => { if (done) return; done = true; try { ov.removeEventListener('transitionend', onEnd); } catch (_) {} try { ov.inert = true; ov.setAttribute('aria-hidden', 'true'); ov.style.visibility = 'hidden'; } catch (_) {} };
+      const onEnd = (e) => { if (e && e.target !== ov) return; finalize(); };
+      ov.addEventListener('transitionend', onEnd);
+      setTimeout(finalize, 450);     // fallback: reduced-motion / no transitionend
+    }
     document.body.style.overflow = _acctFsPrevOverflow || '';
     // If the user never dragged but did move the map to a place and tapped Listo, treat the
     // resting center as their placement (matches checkout's "close commits center").
@@ -1588,13 +1705,16 @@ ${rowsHtml}`;
   }
 
   function renderAcctMapPreview(containerId) {
+    injectAcctFsStyles();   // #1: .acct-map-preview + .acct-fs-pin{width/height:30px} live here — inject BEFORE first paint or the inline-viewBox SVG defaults to filling the container (giant pin). Idempotent.
     const host = document.getElementById(containerId); if (!host) return;
     host.className = 'acct-map-preview';
-    const placed = (typeof _nadLat === 'number' && typeof _nadLng === 'number');
+    // #3: the hint shows ONLY until a REAL user placement (drag/Listo-commit → _nadPinTouched). An
+    // auto/GPS starting pin (typeof _nadLat === 'number' but !_nadPinTouched) still shows the hint;
+    // after a real placement, NO hint — matching the original map's hide-after-placement.
     host.innerHTML = `<div class="pv" id="${containerId}-pv"></div>
-<svg class="acct-fs-pin" style="filter:drop-shadow(0 6px 5px rgba(40,28,12,.3))" viewBox="0 0 24 24" fill="${CONFIG.accent}" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
+<svg class="acct-fs-pin" style="filter:drop-shadow(0 6px 5px rgba(40,28,12,.3))" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="6.5" fill="#1E1B18" stroke="#fff" stroke-width="1.6"/><line x1="12" y1="14.5" x2="12" y2="23.5" stroke="#1E1B18" stroke-width="2.4" stroke-linecap="round"/></svg>
 <div class="acct-fs-pindot"></div>
-<div class="hint"><span>${placed ? 'Toca para ajustar' : 'Toca para marcar tu ubicación'}</span></div>`;
+${!_nadPinTouched ? '<div class="hint"><span>Toca para marcar tu ubicación</span></div>' : ''}`;
     host.onclick = () => openAcctFullscreenMap(containerId);
     initAcctPreviewMap(containerId);
   }
@@ -1642,6 +1762,7 @@ ${rowsHtml}`;
     const order = mode === 'order';
     injectDeliverStyles();
     injectNewAddrStyles();
+    injectAcctFsStyles();   // #1 (defensive): ensure .acct-map-preview/.acct-fs-pin styles exist before the preview renders (renderAcctMapPreview also injects; idempotent)
     const pane = $('acct-pane-newaddr'); if (!pane) return;
     _acctFsEpoch++;                          // invalidate any late geocode from a prior map session
     _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;   // fresh address entry
@@ -2259,7 +2380,7 @@ ${footer}`;
 /* s1 "Entregar a" alignment (spec #4): the eyebrow sat flush-left while the compact card's content
    is inset 14px, reading slightly misaligned. Inset the s1 eyebrow to match — SCOPED to the compact
    variant only (--inset modifier), so every other .acct-eyebrow surface is untouched. */
-.acct-eyebrow--inset{padding-left:14px}
+/* .acct-eyebrow--inset removed — the #acct-deliver mount-inset (#5/#7) now handles alignment uniformly; a per-eyebrow pad would double-pad */
 `;
     document.head.appendChild(st);
   }
@@ -2340,7 +2461,7 @@ ${footer}`;
     injectCompactSummaryStyles();
     const mount = $('acct-deliver'); if (!mount) return;
     mount.innerHTML = `
-<div class="acct-eyebrow acct-eyebrow--inset">Entregar a</div>
+<div class="acct-eyebrow">Entregar a</div>
 <div class="acct-compact">
   <span class="acct-cav">${PERSON_SVG}</span>
   <span class="acct-ctxt"><b>${escapeHtml(addr.label || 'Guardado')}</b> · ${escapeHtml(shortAddrLine(addr))}</span>
