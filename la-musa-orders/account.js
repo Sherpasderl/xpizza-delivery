@@ -569,8 +569,80 @@
     try { revertToGuestForm(); } catch (_) {}   // Tasks B4–B7: drop the confirm card back to raw fields
   }
 
+  // ── On-brand confirm modal (replaces native window.confirm — item #4). Promise<boolean>, singleton,
+  // one-shot settlement, z-1300 (above the fullscreen map 1200 + toast 1100). Cancel/scrim/Escape = the
+  // SAFE default (false); confirm = true once. A native confirm() blocks double-taps; this doesn't — so
+  // the singleton + button-disable + settled-guard enforce exactly-once (codex R1 #3). No cheap emoji.
+  let _acctConfirmOpen = false;
+  function injectAcctConfirmStyles() {
+    if (document.getElementById('acct-confirm-styles')) return;
+    const st = document.createElement('style'); st.id = 'acct-confirm-styles';
+    st.textContent = `
+.acct-cfm-scrim{position:fixed;inset:0;z-index:1300;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(24,18,12,.5);opacity:0;transition:opacity .2s ease}
+.acct-cfm-scrim.acct-on{opacity:1}
+.acct-cfm-card{width:100%;max-width:340px;background:#FFFDFA;border-radius:18px;padding:22px 20px 18px;box-shadow:0 24px 60px -20px rgba(40,28,12,.5);transform:translateY(10px) scale(.98);transition:transform .22s cubic-bezier(.2,.7,.2,1);font-family:inherit}
+.acct-cfm-scrim.acct-on .acct-cfm-card{transform:none}
+.acct-cfm-title{font-size:17px;font-weight:800;color:#17130F;margin:0 0 8px;letter-spacing:-.01em}
+.acct-cfm-msg{font-size:14px;line-height:1.55;color:#6B5E52;margin:0 0 18px}
+.acct-cfm-btns{display:flex;gap:10px}
+.acct-cfm-btn{flex:1;height:46px;border:none;border-radius:12px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer}
+.acct-cfm-cancel{background:#EFE7DA;color:#17130F}
+.acct-cfm-go{background:#17130F;color:#fff}
+.acct-cfm-go.acct-cfm-danger{background:#C0392B}
+.acct-cfm-btn:disabled{opacity:.6;cursor:default}
+@media (prefers-reduced-motion: reduce){ .acct-cfm-scrim,.acct-cfm-card{transition:none} }`;
+    document.head.appendChild(st);
+  }
+  function acctConfirm(opts) {
+    const o = opts || {};
+    return new Promise((resolve) => {
+      if (_acctConfirmOpen) { resolve(false); return; }   // singleton — a second call while one is open is a safe no-op (re-entrancy guard)
+      _acctConfirmOpen = true;
+      injectAcctConfirmStyles();
+      const trigger = document.activeElement;
+      if (trigger && 'disabled' in trigger) { try { trigger.disabled = true; } catch (_) {} }   // disable the triggering control while open
+      const scrim = document.createElement('div');
+      scrim.className = 'acct-cfm-scrim';
+      scrim.setAttribute('role', 'dialog'); scrim.setAttribute('aria-modal', 'true');
+      scrim.innerHTML = `
+<div class="acct-cfm-card">
+  <div class="acct-cfm-title">${escapeHtml(o.title || '¿Confirmar?')}</div>
+  ${o.message ? `<div class="acct-cfm-msg">${escapeHtml(o.message)}</div>` : ''}
+  <div class="acct-cfm-btns">
+    <button type="button" class="acct-cfm-btn acct-cfm-cancel" id="acct-cfm-cancel">Cancelar</button>
+    <button type="button" class="acct-cfm-btn acct-cfm-go${o.destructive ? ' acct-cfm-danger' : ''}" id="acct-cfm-go">${escapeHtml(o.confirmLabel || 'Confirmar')}</button>
+  </div>
+</div>`;
+      document.body.appendChild(scrim);
+      const cancelBtn = scrim.querySelector('#acct-cfm-cancel');
+      const goBtn = scrim.querySelector('#acct-cfm-go');
+      let settled = false;
+      const settle = (val) => {
+        if (settled) return; settled = true;                 // one-shot — every path resolves EXACTLY once
+        goBtn.disabled = true; cancelBtn.disabled = true;    // no double-fire after the first tap
+        document.removeEventListener('keydown', onKey, true);
+        scrim.classList.remove('acct-on');
+        let removed = false;
+        const rm = () => { if (removed) return; removed = true; try { scrim.remove(); } catch (_) {} };
+        scrim.addEventListener('transitionend', rm, { once: true });
+        setTimeout(rm, 280);                                 // fallback (reduced-motion → no transitionend)
+        _acctConfirmOpen = false;
+        if (trigger && 'disabled' in trigger) { try { trigger.disabled = false; } catch (_) {} }   // re-enable BEFORE focus
+        try { if (trigger && typeof trigger.focus === 'function') trigger.focus(); } catch (_) {}
+        resolve(val);
+      };
+      const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); settle(false); } };
+      goBtn.addEventListener('click', () => settle(true));
+      cancelBtn.addEventListener('click', () => settle(false));
+      scrim.addEventListener('click', (e) => { if (e.target === scrim) settle(false); });   // scrim tap = cancel
+      document.addEventListener('keydown', onKey, true);
+      requestAnimationFrame(() => scrim.classList.add('acct-on'));                            // animate in
+      setTimeout(() => { try { cancelBtn.focus(); } catch (_) {} }, 30);                      // focus the SAFE action
+    });
+  }
+
   async function doDeleteAccount() {
-    const ok = window.confirm('Esto borra tu cuenta y tus datos. No se puede deshacer.');
+    const ok = await acctConfirm({ title: 'Eliminar mi cuenta', message: 'Esto borra tu cuenta y tus datos. No se puede deshacer.', confirmLabel: 'Eliminar', destructive: true });
     if (!ok) return;
     try {
       const { auth, authMod } = await ensureFirebase();
@@ -1369,7 +1441,7 @@ ${rowsHtml}`;
 
   async function removeSavedAddress(addrId) {
     if (!_acctData || !_acctData.addresses || !_acctData.addresses[addrId]) return;
-    const ok = window.confirm('¿Borrar esta dirección guardada?');
+    const ok = await acctConfirm({ title: '¿Borrar esta dirección guardada?', confirmLabel: 'Borrar', destructive: true });
     if (!ok) return;
     const wasDefault = _acctData.default_address === addrId;
     delete _acctData.addresses[addrId];
