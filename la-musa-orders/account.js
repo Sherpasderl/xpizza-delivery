@@ -216,6 +216,10 @@
       <!-- built by renderAccountPane() at open time (Task 6) -->
     </section>
 
+    <section class="acct-pane" id="acct-pane-addrpicker">
+      <!-- built by renderAddrPicker() — the focused Cambiar address picker (one-off apply / + nueva) -->
+    </section>
+
     <section class="acct-pane" id="acct-pane-newaddr">
       <!-- built by renderNewAddressPane() at open time (Task 5) — self-contained, own map -->
     </section>
@@ -942,6 +946,13 @@
 .acct-acard .acct-al2{flex:1;min-width:0}
 .acct-acard .acct-aname2{font-size:14.5px;font-weight:700;color:#17130F}
 .acct-acard .acct-aline2{font-size:12px;color:#8C7B6E;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Cambiar address-picker pane */
+.acct-picker-top{display:flex;align-items:center;justify-content:space-between;margin:2px 0 16px}
+.acct-picker-title{font-size:17px;font-weight:800;color:#17130F;letter-spacing:-.01em}
+.acct-acard--active{border-color:${CONFIG.accent};background:#FBF6EE}
+.acct-acard--tapped{border-color:${CONFIG.accent};background:#F4EEE4}
+.acct-acard .acct-pick-check{flex:none;color:${CONFIG.accent};display:flex;align-items:center}
+.acct-picker-new{display:block;width:100%;text-align:center;padding:13px;margin-top:6px;border:1.5px dashed #D8CBB8;border-radius:14px;background:none;font-family:inherit;font-size:14px;font-weight:700;color:#17130F;cursor:pointer}
 .acct-acard .acct-chk{color:${CONFIG.accent};flex:none;display:flex}
 .acct-acard .acct-del{color:#B3A594;font-size:19px;padding:2px 5px;flex:none;line-height:1}
 .acct-acard .acct-del:hover{color:#B23B3B}
@@ -2680,6 +2691,41 @@ ${footer}`;
   // Reachable only via renderS1CompactSummary/renderS2RichSummary's Cambiar buttons — themselves only
   // ever rendered behind marker()+profileComplete (Task 3).
   // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  // The focused Cambiar address picker (a pane in the account sheet) — replaces the old showStage('s2')
+  // jump + #acct-s2-summary inline chooser. Shows every saved address (the one currently backing THIS
+  // order is highlighted); a card tap applies one-off or no-ops if already active (pickAddrFromPicker);
+  // "+ nueva" transitions to the isolated order-mode new-address pane within the SAME sheet (returnTo).
+  // Presentation only — no money-path logic here.
+  function renderAddrPicker() {
+    injectDeliverStyles();
+    const pane = $('acct-pane-addrpicker'); if (!pane) return;
+    const addrs = (_acctData && _acctData.addresses) || {};
+    const activeId = (_acctOrderAddr && _acctOrderAddr.id) || null;   // the SAVED address currently backing the order (null when it's an unsaved one-off — then no card is "active")
+    const cards = Object.keys(addrs).map((id) => {
+      const a = addrs[id];
+      const active = (id === activeId);
+      return `<div class="acct-acard${active ? ' acct-acard--active' : ''}" data-pick-id="${escapeHtml(id)}">
+  <span class="acct-dotmark"${active ? '' : ' style="background:#CFC2B1"'}></span>
+  <div class="acct-al2"><div class="acct-aname2">${escapeHtml(a.label || 'Dirección')}</div>
+  <div class="acct-aline2">${escapeHtml(a.details || a.detected || '')}</div></div>
+  ${active ? `<span class="acct-pick-check">${ICON_CHECK_SM}</span>` : ''}
+</div>`;
+    }).join('');
+    pane.innerHTML = `
+<div class="acct-picker-top">
+  <span class="acct-picker-title">Elegí una dirección</span>
+  <button type="button" class="acct-iconbtn" id="acct-picker-close" aria-label="Cerrar">×</button>
+</div>
+${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No tenés direcciones guardadas.</p>'}
+<button type="button" class="acct-picker-new" id="acct-picker-new">+ Usar una dirección nueva</button>`;
+    const closeBtn = $('acct-picker-close'); if (closeBtn) closeBtn.onclick = dismissSheet;   // contextual close (Task 5)
+    pane.querySelectorAll('[data-pick-id]').forEach((card) => {
+      card.onclick = () => pickAddrFromPicker(card.getAttribute('data-pick-id'), card);       // active=no-op / other=one-off (Task 2)
+    });
+    const newBtn = $('acct-picker-new'); if (newBtn) newBtn.onclick = () => renderNewAddressPane({ mode: 'order', returnTo: 'addrpicker' });   // + nueva → order-mode new-address, back to picker (Task 3)
+    showPane('addrpicker');
+  }
 
   function openCambiarPanel() {
     const mount = $('acct-s2-summary'); if (!mount) return;
