@@ -1638,6 +1638,55 @@ ${rowsHtml}`;
     btn.disabled = !validateCreateProfile().ok;
   }
 
+  // Save the login-sheet Creá tu perfil. Mirrors the checkout create pattern: a THROWING name
+  // write (never saveName(), which swallows failures — codex R1 #2), then the hardened saveAddress,
+  // then a live re-confirm of profileComplete before declaring success (codex R1 #7). Named
+  // distinctly from the checkout saveCreateProfile() to avoid the same-scope collision.
+  async function saveCreateProfilePane() {
+    const errEl = $('acct-cp-err'); if (errEl) errEl.style.display = 'none';
+    const v = validateCreateProfile();                          // submit-time re-validate ALL (codex R1 #3)
+    if (!v.ok) { if (errEl) { errEl.style.display = 'block'; errEl.textContent = v.msg; } const f = v.focus && $(v.focus); if (f) f.focus(); return; }
+    const btn = $('acct-cp-save'); if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+    const fullName = (v.first + ' ' + v.last).trim().slice(0, 80);
+
+    // 1) name — THROWING write (never saveName(), which swallows failures — codex R1 #2)
+    try {
+      const { auth, db, dbMod } = await ensureFirebase();
+      await auth.authStateReady();
+      if (!auth.currentUser) { heal(); throw new Error('no-session'); }
+      await dbMod.update(dbMod.ref(db, 'user_profiles/' + auth.currentUser.uid), { name: fullName });
+      const m = marker(); if (m) { m.name = fullName; try { localStorage.setItem(CONFIG.MARKER, JSON.stringify(m)); } catch (_) {} }
+    } catch (_) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'No pudimos guardar tu nombre. Intentá de nuevo.'; }
+      if (btn) { btn.disabled = false; btn.textContent = 'Guardar perfil'; }
+      return;
+    }
+
+    // 2) address — the hardened writer (rejects empty label/details<3/empty detected/non-numeric)
+    const res = await saveAddress({ label: v.label, detected: _nadDetected, details: v.details, lat: _nadLat, lng: _nadLng, makeDefault: true });
+    if (!res.ok) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = res.message || 'No pudimos guardar la dirección. Intentá de nuevo.'; }
+      if (btn) { btn.disabled = false; btn.textContent = 'Guardar perfil'; }
+      return;
+    }
+
+    // 3) re-confirm the LIVE predicate before declaring success (codex R1 #7)
+    const st = await accountSnapshotStatus();
+    if (st.status === 'ok' && profileComplete(st.snap)) {
+      _acctData = st.snap;
+      renderChip();
+      toast('Perfil creado');
+      closeSheet();
+      try { wrapPageHooks(); initDeliveryStep().catch(() => {}); } catch (_) {}   // reflect completeness THIS load
+      return;
+    }
+    // writes persisted but re-read is unavailable or still-incomplete → do NOT claim success;
+    // fail-open to Mi Cuenta (checkout re-enforces complete-before-pay).
+    _acctData = (st.status === 'ok') ? st.snap : _acctData;
+    renderAccountPane(); showPane('account');
+    if (st.status === 'unavailable') toast('Guardado. Verificá tu conexión.');
+  }
+
   // Teardown on close: bump the map-session epoch so any late reverse-geocode from this pane's
   // fullscreen map is invalidated (codex R1 #5), and reset the account-only _nad* sink. The
   // fullscreen twin's own map/geocoder instances (acctFsMap) are cached-and-reused across opens,
