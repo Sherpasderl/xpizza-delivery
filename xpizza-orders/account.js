@@ -887,6 +887,7 @@
   let _acctAddrId = null;        // addrId currently backing the confirm card / this order
   let _acctEditMode = false;     // true while "Cambiar" / "+ Agregar" edit surface is open
   let _acctEditIsNew = false;    // true when the open edit session targets a brand-new address
+  let _acctNewAddrGeoGen = 0;    // monotonic token for the "usar una dirección nueva" async geolocation acquisition — bumped on each new-address gesture, on exitEditMode (cancel), and on any order-type toggle, so a superseded/cancelled/toggled gesture's in-flight GPS callback is invalidated and can never placePin over restored saved-address coords (codex R2 async-race guard)
   let _acctEditLabel = '';       // chip-picked (or custom) label for the address being edited
   let _acctCardActive = false;   // true once the confirm card has replaced the raw Tus-datos fields
   let _acctAddrUnsaved = false;  // true when the address populating the order isn't a persisted one
@@ -1114,6 +1115,7 @@
 
   function exitEditMode() {
     _acctEditMode = false;
+    _acctNewAddrGeoGen++;   // leaving edit mode invalidates any in-flight new-address GPS callback (codex R2)
     const picker = $('acct-label-picker'); if (picker) picker.remove();
   }
 
@@ -2398,15 +2400,25 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
       try { lat = null; lng = null; } catch (_) {}
       try {
         if (typeof gmap !== 'undefined' && gmap) google.maps.event.trigger(gmap, 'resize');   // size the now-visible map BEFORE placePin's setCenter so tiles render
-        if (typeof placePin === 'function') {
-          if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-              (pos) => placePin(pos.coords.latitude, pos.coords.longitude, false),
-              () => placePin(15.5003, -88.025, true),
-              { timeout: 10000, enableHighAccuracy: true, maximumAge: 0 }
-            );
-          } else { placePin(15.5003, -88.025, true); }
-        }
+        // ASYNC-RACE GUARD (codex R2): getCurrentPosition resolves LATER. If the user cancels the edit,
+        // picks a saved address, toggles order type, or re-enters new-address before GPS returns, the
+        // stale callback must NOT placePin over the restored saved-address coords (a paid order would show
+        // the saved card but carry the late GPS point). Apply ONLY if this gesture is still the latest one
+        // (token) AND we're still in the new-address edit state (flags enterEditMode(true) set). Same
+        // generation-guard class as the createprofile R5 fix.
+        const geoGen = ++_acctNewAddrGeoGen;
+        const applyFreshPin = (la, ln, fb) => {
+          if (geoGen !== _acctNewAddrGeoGen) return;                                    // superseded/re-entered, or cancelled/toggled (exitEditMode + wrapped setOrderType bump) → drop
+          if (!(_acctEditMode && _acctEditIsNew && pageOrderType() === 'delivery')) return;   // left the new-address edit, or now on pickup → drop
+          if (typeof placePin === 'function') placePin(la, ln, fb);
+        };
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => applyFreshPin(pos.coords.latitude, pos.coords.longitude, false),
+            () => applyFreshPin(15.5003, -88.025, true),
+            { timeout: 10000, enableHighAccuracy: true, maximumAge: 0 }
+          );
+        } else { applyFreshPin(15.5003, -88.025, true); }
       } catch (_) {}
       if (addrSection) setTimeout(() => addrSection.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
     };
@@ -2458,6 +2470,7 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
         const wrapped = function (type) {
           orig(type);
           if (_acctRestoring) return;   // a payment-retry restore calls setOrderType to rebuild the base UI — the snapshot is authoritative, skip the account re-entry entirely (FIX 7 / R4)
+          _acctNewAddrGeoGen++;   // any order-type toggle tears down / re-renders the delivery UI — invalidate a pending new-address GPS callback so it can't clobber the re-rendered saved-address state (codex R2: pickup toggle + toggle-back keep _acctEditMode true, so the flag check alone wouldn't catch them)
           try {
             if (type === 'delivery') { refreshDeliveryUI(); } else { hidePickupDeliverySummary(); }
             applyCardVisibility(); refreshSaveToggle();
