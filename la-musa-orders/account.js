@@ -845,6 +845,7 @@
   let _acctSaveToggleOn = true;  // B7 "Guardar esta dirección" toggle state (default-checked)
   let _acctCreateProfileActive = false;  // true ONLY while "Creá tu perfil" is on screen (payment hidden + CTA shown) — the submit-gate keys off this, never a profileComplete() inference (FIX A)
   let _acctAddrOneOff = false;   // true when the order's delivery address is a USE-ONCE choice (Cambiar "Usar en este pedido" / an edit-mode-new address NOT explicitly "Guardar dirección"-saved) — onOrderConfirmed must never makeDefault/persist it (FIX B)
+  let _acctRestoring = false;    // true ONLY while index.html's restoreOrderForm() rebuilds a cancelled/failed-payment retry from the xpizza_pending_pay snapshot — the snapshot's delivery data is authoritative, so every account delivery-refresh entry point must early-return (never repopulate the DOM from the DEFAULT saved address) (FIX 7 / R4)
 
   // ── Task B4/3: the "Entregar a" confirm card + autofill — orchestrates the 3 flow states
   // (spec: guest handled entirely elsewhere by the marker() gate; incomplete profile → Task 2's
@@ -853,6 +854,7 @@
   // never a hidden-but-empty section, never an advance to payment without valid delivery data.
   async function initDeliveryStep() {
     if (!$('acct-deliver')) return;               // host form has no mount — never touch anything
+    if (_acctRestoring) return;                   // a payment-retry restore owns the DOM — the snapshot is authoritative, never repopulate from the profile (FIX 7 / R4)
     setPaymentVisible(true);   // default reveal; only applyCreateProfileFlow (incomplete) hides it (FIX 1)
     const snap = await accountSnapshot();          // fail-open, timeboxed ~1.5s internally — LIVE, authoritative (spec R1 #7)
     if (!snap) { _acctData = null; revertToNormalFillable(); refreshSaveToggle(); return; }   // no account / miss/timeout → normal empty form
@@ -1844,6 +1846,7 @@ ${rowsHtml}`;
   // Creá-tu-perfil-style fillable flow (which itself degrades gracefully to a plain fillable form
   // when there's nothing to prefill).
   function refreshDeliveryUI(addrOverride) {
+    if (_acctRestoring) return;   // a payment-retry restore owns the DOM — the snapshot's address is authoritative, never overwrite it with the default (FIX 7 / R4)
     setPaymentVisible(true);   // default reveal; the incomplete create-profile branch re-hides it (FIX 1)
     if (!_acctData) return;
     if (pageOrderType() !== 'delivery') { hidePickupDeliverySummary(); return; }
@@ -1981,6 +1984,7 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
         // touching persisted/default data (hidePickupDeliverySummary/refreshDeliveryUI own this).
         const wrapped = function (type) {
           orig(type);
+          if (_acctRestoring) return;   // a payment-retry restore calls setOrderType to rebuild the base UI — the snapshot is authoritative, skip the account re-entry entirely (FIX 7 / R4)
           try {
             if (type === 'delivery') { refreshDeliveryUI(); } else { hidePickupDeliverySummary(); }
             applyCardVisibility(); refreshSaveToggle();
@@ -2053,4 +2057,5 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
   window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;
   window.__ACCOUNT.deliverySubmitBlocked = deliverySubmitBlocked;
   window.__ACCOUNT.captureDeliverySaveIntent = captureDeliverySaveIntent;
+  window.__ACCOUNT.setRestoring = function (v) { try { _acctRestoring = !!v; } catch (_) {} };   // index.html's restoreOrderForm() brackets its snapshot rebuild with this so the account refresh can't overwrite the retry's address with the default (FIX 7 / R4)
 })();
