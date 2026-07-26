@@ -2345,11 +2345,25 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
       mount.innerHTML = '';
       relabelSteps(false);
       _acctReducedActive = false;
+      // Task 1 hid the editable s2 map for the reduced flow — a NEW address needs the customer to
+      // place a pin, so REVEAL the map/banner/locinfo again (order type is delivery here). (codex F1)
+      setReducedDeliveryChromeVisible(false);
       const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
       const addrSection = addrSectionEl();
       if (addrSection) addrSection.style.display = '';
+      // FRESH-PIN (codex F1, money-path): enterEditMode(true) clears __restorePos but NOT the checkout
+      // lat/lng or the existing gmarker — so "usar una dirección nueva" could silently sit on the
+      // PREVIOUS saved coordinates. Null the pin so no stale coordinate carries over; the customer
+      // must place a new one (processPayment's lat/lng + zone checks are the submit backstop). This is
+      // the ONLY place account.js resets these checkout globals, and only on the explicit new-address gesture.
+      try { lat = null; lng = null; } catch (_) {}
+      try { if (typeof gmarker !== 'undefined' && gmarker) { gmarker.setMap(null); gmarker = null; } } catch (_) {}
+      try { __restorePos = null; } catch (_) {}
       _acctAddrOneOff = true;   // use-once until the customer explicitly taps "Guardar dirección" (which clears it) (FIX B)
       enterEditMode(true);   // existing scaffolding — its "Guardar dirección" persists (makeDefault:true) + applies
+      // A map revealed from display:none renders blank tiles until told to resize; recenter only if a
+      // pin still exists (it won't right after the reset — the map keeps its last center for the customer to adjust).
+      try { if (typeof gmap !== 'undefined' && gmap) { google.maps.event.trigger(gmap, 'resize'); if (lat != null && lng != null) gmap.setCenter({ lat, lng }); } } catch (_) {}
       if (addrSection) setTimeout(() => addrSection.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
     };
     const cancelBtn = $('acct-cambiar-cancel');
