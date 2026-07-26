@@ -55,6 +55,11 @@
 .acct-chip--out .acct-av{background:#F0E8DA;color:#2A231C}
 .acct-chip .acct-nm{font-size:13.5px;font-weight:650;letter-spacing:-.01em;color:#17130F}
 .acct-chip .acct-cv{color:#B3A594;font-size:10px;margin-left:-1px}
+/* Logged-in-only size bump (codex F3): scoped with :not(.acct-chip--out) so the guest "Entrar"
+   chip (.acct-chip--out) stays byte-identical at 13.5px name / 28px avatar. Higher specificity
+   (3 classes) than the base .acct-chip .acct-nm (2 classes), so it wins for the logged-in chip only. */
+.acct-chip:not(.acct-chip--out) .acct-nm{font-size:15px}
+.acct-chip:not(.acct-chip--out) .acct-av{width:31px;height:31px}
 `;
     document.head.appendChild(st);
   }
@@ -2081,6 +2086,10 @@ ${rowsHtml}`;
 .acct-compact .acct-cav{width:30px;height:30px;border-radius:50%;background:#F0E8DA;color:#2A231C;display:flex;align-items:center;justify-content:center;flex:none}
 .acct-compact .acct-ctxt{flex:1;min-width:0;font-size:13.5px;color:#17130F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .acct-compact .acct-ctxt b{font-weight:700}
+/* s1 "Entregar a" alignment (spec #4): the eyebrow sat flush-left while the compact card's content
+   is inset 14px, reading slightly misaligned. Inset the s1 eyebrow to match — SCOPED to the compact
+   variant only (--inset modifier), so every other .acct-eyebrow surface is untouched. */
+.acct-eyebrow--inset{padding-left:14px}
 `;
     document.head.appendChild(st);
   }
@@ -2161,7 +2170,7 @@ ${rowsHtml}`;
     injectCompactSummaryStyles();
     const mount = $('acct-deliver'); if (!mount) return;
     mount.innerHTML = `
-<div class="acct-eyebrow">Entregar a</div>
+<div class="acct-eyebrow acct-eyebrow--inset">Entregar a</div>
 <div class="acct-compact">
   <span class="acct-cav">${PERSON_SVG}</span>
   <span class="acct-ctxt"><b>${escapeHtml(addr.label || 'Guardado')}</b> · ${escapeHtml(shortAddrLine(addr))}</span>
