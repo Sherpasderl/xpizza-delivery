@@ -885,6 +885,7 @@
   // ── Module state for the delivery step / edit flow (Tasks B4–B7). Reset on sign-out. ──
   let _acctData = null;          // last accountSnapshot() profile value, or null
   let _acctAddrId = null;        // addrId currently backing the confirm card / this order
+  let _acctOrderAddr = null;     // the address object currently backing THIS order (default establish / saved pick / new save-or-one-off confirm). refreshDeliveryUI re-applies it across a delivery↔pickup toggle so a one-off/new address is not clobbered by the default; cleared on sign-out / "otro pedido" (isolated-map rebuild T5)
   let _acctEditMode = false;     // true while "Cambiar" / "+ Agregar" edit surface is open
   let _acctEditIsNew = false;    // true when the open edit session targets a brand-new address
   let _acctEditLabel = '';       // chip-picked (or custom) label for the address being edited
@@ -1898,6 +1899,107 @@ ${footer}`;
     toast('Dirección guardada');
     closeNewAddressPane();
     renderAddressesSection();   // Mi Cuenta's list, new one shown
+  }
+
+  // ── Cambiar "Usar esta dirección" (isolated-map rebuild) — apply the CONFIRMED _nad* values to THIS
+  // order. This is the ONLY place the new-address flow writes a checkout global, and only AFTER an
+  // explicit pin + confirm, synchronously from the confirmed value (never a pending/async/seeded one).
+  // saveToAccount === true → persist (saveAddress, makeDefault only if it's the first address) + apply;
+  // false → one-off (NO persist), _acctAddrOneOff = true so onOrderConfirmed never persists/defaults it.
+  // Mirrors selectSavedAddressForOrder's apply + fail-open; _acctAddrOneOff is written LAST so no shared
+  // helper can flip it (codex R1 #2). #address-detected is guaranteed to end as the confirmed value with
+  // no async checkout-geocode drift (codex R1 #3, watchdog below).
+  async function confirmNewAddressForOrder(saveToAccount) {
+    const errEl = $('acct-nad-err'); if (errEl) errEl.style.display = 'none';
+    const details = ((($('acct-nad-details') || {}).value) || '').trim();
+    const rawLabel = ((($('acct-nad-label') || {}).value) || '').trim();
+
+    // Defense-in-depth re-validate — NEVER trust the disabled button (paste/autofill/Enter/programmatic):
+    // explicit pin + numeric coords + a geocoded referencia string + referencia>=3; label only when saving.
+    if (!_nadPinTouched || typeof _nadLat !== 'number' || typeof _nadLng !== 'number' || !isFinite(_nadLat) || !isFinite(_nadLng) || !_nadDetected) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Marcá tu ubicación en el mapa (tocá el mapa y ajustá el pin).'; }
+      return;
+    }
+    if (details.length < 3) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Agregá una referencia — portón, color, piso…'; }
+      $('acct-nad-details')?.focus();
+      return;
+    }
+    if (saveToAccount && !rawLabel) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Elegí cómo guardar esta dirección.'; }
+      return;
+    }
+
+    const useBtn = $('acct-nad-use-btn'); if (useBtn) { useBtn.disabled = true; useBtn.innerHTML = 'Aplicando…'; }
+    const detectedAtConfirm = _nadDetected;   // the address the customer confirmed on the ISOLATED map — authoritative from here on
+    const laC = _nadLat, lnC = _nadLng;
+
+    let addr;
+    if (saveToAccount) {
+      const hadNoAddresses = !(_acctData && _acctData.addresses && Object.keys(_acctData.addresses).length);
+      const res = await saveAddress({ label: rawLabel, detected: detectedAtConfirm, details, lat: laC, lng: lnC, makeDefault: hadNoAddresses });
+      if (!res || !res.ok) {
+        if (errEl) { errEl.style.display = 'block'; errEl.textContent = (res && res.message) || 'No pudimos guardar la dirección. Intentá de nuevo.'; }
+        if (useBtn) { useBtn.disabled = false; useBtn.innerHTML = ICON_CHECK_BIG + ' Usar esta dirección'; }
+        return;
+      }
+      if (!_acctData) _acctData = {};
+      if (!_acctData.addresses) _acctData.addresses = {};
+      _acctData.addresses[res.addrId] = { label: rawLabel, detected: detectedAtConfirm, details, lat: laC, lng: lnC };
+      if (hadNoAddresses) _acctData.default_address = res.addrId;
+      addr = { id: res.addrId, label: rawLabel, detected: detectedAtConfirm, details, lat: laC, lng: lnC };
+      _acctAddrId = res.addrId;   // this order now uses the new saved address
+    } else {
+      // one-off — NO saveAddress; keep _acctAddrId = prior default; label is implicit ('Otra')
+      addr = { label: rawLabel || 'Otra', detected: detectedAtConfirm, details, lat: laC, lng: lnC };
+    }
+
+    // ── Apply to the order (the ONLY checkout write), synchronously from the confirmed values ──
+    establishCheckoutFromAddress(addr);                 // checkout lat/lng + delivery-zone state
+    setVal('address-detected', detectedAtConfirm);      // MANUAL — never populateOrderFieldsFromAddress (it resets _acctAddrOneOff — codex R1 #2)
+    setVal('address-details', details);
+    placeAccountPin(addr.lat, addr.lng);                // checkout pin (hidden in the reduced flow; __restorePos seeds a later init)
+    _acctOrderAddr = addr;                              // T5 retained pointer — set BEFORE the watchdog so a later order-address change stops it
+
+    // Detected-string authority (codex R1 #3): placeAccountPin→placePin fires an ASYNC checkout reverse-
+    // geocode (index.html) that overwrites #address-detected with the CHECKOUT geocoder's formatting. The
+    // customer confirmed detectedAtConfirm on the ISOLATED map (that's also exactly what got saved) — it
+    // is authoritative. The async geocode fires exactly ONCE; re-assert detectedAtConfirm across a ladder
+    // that outlasts it, guarded by _acctOrderAddr identity so a later toggle/pick/save stops the ladder.
+    // After the flow settles, #address-detected === detectedAtConfirm === the saved address's detected.
+    const appliedAddr = addr;
+    const reassertDetected = () => {
+      if (_acctOrderAddr !== appliedAddr) return;       // a newer order-address application superseded this one → stop
+      setVal('address-detected', detectedAtConfirm);
+    };
+    reassertDetected();
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(reassertDetected);
+    [50, 150, 350, 700, 1200, 2000, 3000].forEach((ms) => setTimeout(reassertDetected, ms));
+
+    if (reducedFlowInvariantOk(_acctData, addr)) {
+      renderS1CompactSummary(_acctData, addr);
+      renderS2RichSummary(_acctData, addr);
+      relabelSteps(true);
+      _acctReducedActive = true;
+      hideRawAndAddrSection();
+      setReducedDeliveryChromeVisible(true);            // reduced flow — hide the redundant editable s2 map/banner/locinfo + relabel
+      _acctAddrOneOff = !saveToAccount;                 // LAST — after every shared helper (nothing flips it now): false=save, true=one-off
+      closeSheet();
+      toast(saveToAccount ? 'Dirección guardada' : 'Dirección actualizada para este pedido');
+    } else {
+      // FAIL-OPEN: out of the delivery zone right now — never leave a hidden-but-invalid summary. Drop to
+      // the normal fillable view (fields are populated + established) so processPayment()/the customer's
+      // eyes catch it. Mirrors selectSavedAddressForOrder's fail-open.
+      _acctReducedActive = false;
+      relabelSteps(false);
+      setReducedDeliveryChromeVisible(false);
+      const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
+      const addrSection = addrSectionEl(); if (addrSection) addrSection.style.display = '';
+      const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
+      _acctAddrOneOff = !saveToAccount;                 // LAST
+      closeSheet();
+      toast('Esa dirección no está disponible ahora mismo — revisá el mapa.');
+    }
   }
 
   // ── Sign-out / delete-account: revert the form back to the pristine guest state ──
