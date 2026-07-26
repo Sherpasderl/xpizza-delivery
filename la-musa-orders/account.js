@@ -1972,29 +1972,22 @@ ${footer}`;
       addr = { label: rawLabel || 'Otra', detected: detectedAtConfirm, details, lat: laC, lng: lnC };
     }
 
-    // ── Apply to the order (the ONLY checkout write), synchronously from the confirmed values ──
-    establishCheckoutFromAddress(addr);                 // checkout lat/lng + delivery-zone state
-    setVal('address-detected', detectedAtConfirm);      // MANUAL — never populateOrderFieldsFromAddress (it resets _acctAddrOneOff — codex R1 #2)
+    // ── Apply to the order (the ONLY checkout write), synchronously from the CONFIRMED values ──
+    // establishCheckoutFromAddress sets the global lat/lng + __restorePos + delivery-zone (checkDeliveryRadius)
+    // with NO geocode — everything processPayment/reducedFlowInvariantOk need. The fields are set once,
+    // manually, from the confirmed _nadDetected (never populateOrderFieldsFromAddress — it resets
+    // _acctAddrOneOff — codex R1 #2). NO placeAccountPin here: placeAccountPin→placePin would fire an
+    // UNCANCELLABLE async checkout reverse-geocode (index.html) that overwrites #address-detected.
+    establishCheckoutFromAddress(addr);
+    setVal('address-detected', detectedAtConfirm);
     setVal('address-details', details);
-    placeAccountPin(addr.lat, addr.lng);                // checkout pin (hidden in the reduced flow; __restorePos seeds a later init)
-    _acctOrderAddr = addr;                              // T5 retained pointer — set BEFORE the watchdog so a later order-address change stops it
-
-    // Detected-string authority (codex R1 #3): placeAccountPin→placePin fires an ASYNC checkout reverse-
-    // geocode (index.html) that overwrites #address-detected with the CHECKOUT geocoder's formatting. The
-    // customer confirmed detectedAtConfirm on the ISOLATED map (that's also exactly what got saved) — it
-    // is authoritative. The async geocode fires exactly ONCE; re-assert detectedAtConfirm across a ladder
-    // that outlasts it, guarded by _acctOrderAddr identity so a later toggle/pick/save stops the ladder.
-    // After the flow settles, #address-detected === detectedAtConfirm === the saved address's detected.
-    const appliedAddr = addr;
-    const reassertDetected = () => {
-      if (_acctOrderAddr !== appliedAddr) return;       // a newer order-address application superseded this one → stop
-      setVal('address-detected', detectedAtConfirm);
-    };
-    reassertDetected();
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(reassertDetected);
-    [50, 150, 350, 700, 1200, 2000, 3000].forEach((ms) => setTimeout(reassertDetected, ms));
+    _acctOrderAddr = addr;                              // T5 retained pointer
 
     if (reducedFlowInvariantOk(_acctData, addr)) {
+      // REDUCED SUMMARY — the checkout map stays hidden (Fix 1). Deliberately NO placeAccountPin: with no
+      // placePin, nothing ever overwrites #address-detected → it stays EXACTLY detectedAtConfirm,
+      // deterministically, with NO timer/watchdog (codex R1 R2 — the confirmed value is authoritative and
+      // provably drift-free; the hidden checkout pin is unused here, __restorePos seeds any later init).
       renderS1CompactSummary(_acctData, addr);
       renderS2RichSummary(_acctData, addr);
       relabelSteps(true);
@@ -2006,8 +1999,10 @@ ${footer}`;
       toast(saveToAccount ? 'Dirección guardada' : 'Dirección actualizada para este pedido');
     } else {
       // FAIL-OPEN: out of the delivery zone right now — never leave a hidden-but-invalid summary. Drop to
-      // the normal fillable view (fields are populated + established) so processPayment()/the customer's
-      // eyes catch it. Mirrors selectSavedAddressForOrder's fail-open.
+      // the normal fillable view (checkout map VISIBLE/editable). Placing the checkout pin here is correct
+      // and its normal reverseGeocode is fine — no hidden-summary drift concern (codex R1 R2). Mirrors
+      // selectSavedAddressForOrder's fail-open.
+      placeAccountPin(addr.lat, addr.lng);
       _acctReducedActive = false;
       relabelSteps(false);
       setReducedDeliveryChromeVisible(false);
