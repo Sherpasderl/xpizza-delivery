@@ -775,22 +775,11 @@
     st.textContent = `
 .acct-eyebrow{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#B3A594;margin:0 0 10px}
 .acct-deliver{border:1px solid #E2D8C8;border-radius:20px;overflow:hidden;background:#fff;box-shadow:0 12px 30px -18px rgba(40,28,12,.3);font-family:inherit;margin-bottom:4px}
-.acct-map{height:84px;position:relative;overflow:hidden;background:radial-gradient(120% 140% at 50% -40%, #EFE7DA 0%, #E4DAC7 100%);border-bottom:1px solid #EDE5D9}
-.acct-map i{position:absolute;background:#F7F2E8;box-shadow:0 0 0 1px #E7DDCB}
-/* T7 (codex-visual-fix): renamed from the collision-prone .acct-h1/.acct-h2 — those names were
-   ALSO the login sheet's real <h1 class="acct-h1"> title class (line ~103 above); since this
-   later stylesheet always wins the cascade, every login/creá-perfil h1 title was silently getting
-   height:9px + rotate(-4deg) applied to it once injectDeliverStyles() had run this pageload
-   (guaranteed sooner now that Tasks 2/3/4/5 call it far more eagerly) — a squashed, rotated title
-   overlapping its subtitle. Purely a class rename on the decorative map's <i> road-lines; the map
-   itself is visually unchanged. */
-.acct-mh1{left:0;right:0;top:26px;height:9px;transform:rotate(-4deg)}
-.acct-mh2{left:0;right:0;top:56px;height:12px;transform:rotate(-4deg)}
-.acct-mv1{top:0;bottom:0;left:76px;width:10px;transform:rotate(6deg)}
-.acct-mv2{top:0;bottom:0;left:182px;width:8px;transform:rotate(6deg)}
-.acct-blk{position:absolute;background:#EAE0CE;border-radius:2px;opacity:.7}
-.acct-pin{position:absolute;left:calc(50% - 11px);top:18px;width:22px;height:22px;z-index:2;filter:drop-shadow(0 5px 4px rgba(40,28,12,.28))}
-.acct-pindot{position:absolute;left:calc(50% - 3px);top:38px;width:7px;height:3px;border-radius:50%;background:rgba(40,28,12,.28);filter:blur(1px)}
+/* Real Static Maps thumbnail of the saved address (replaces the old decorative fake map). Starts
+   hidden (display:none inline) — loadCardMap() reveals it ONLY when a real image loads in time,
+   so the card FAILS CLOSED to a clean no-map layout on 403/offline/timeout (codex F2). */
+.acct-cardmap{height:84px;overflow:hidden;border-bottom:1px solid #EDE5D9}
+.acct-cardmap img{width:100%;height:84px;object-fit:cover;display:block}
 .acct-drow{display:flex;align-items:flex-start;gap:12px;padding:14px 15px 4px}
 .acct-avatar{width:38px;height:38px;border-radius:50%;background:#F0E8DA;flex:none;display:flex;align-items:center;justify-content:center;color:#2A231C;margin-top:1px}
 .acct-who{flex:1;min-width:0}
@@ -989,14 +978,7 @@
   function deliverCardHtml(name, phone, addr, changeBtnId) {
     return `
 <div class="acct-deliver">
-  <div class="acct-map">
-    <i class="acct-mh1"></i><i class="acct-mh2"></i><i class="acct-mv1"></i><i class="acct-mv2"></i>
-    <span class="acct-blk" style="left:16px;top:6px;width:54px;height:19px"></span>
-    <span class="acct-blk" style="left:108px;top:7px;width:66px;height:17px"></span>
-    <span class="acct-blk" style="left:20px;top:44px;width:48px;height:26px"></span>
-    <div class="acct-pindot"></div>
-    <svg class="acct-pin" viewBox="0 0 24 24" fill="${CONFIG.accent}" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
-  </div>
+  <div class="acct-cardmap" id="acct-cardmap-${changeBtnId}" style="display:none"></div>
   <div class="acct-drow">
     <span class="acct-avatar">${PERSON_SVG}</span>
     <div class="acct-who">
@@ -1014,6 +996,41 @@
     </div>
   </div>
 </div>`;
+  }
+
+  // Per-form Google Maps key — READ from the page's existing Maps JS <script> src (never hardcode a
+  // second copy; X. Pizza + La Musa each ship their own key). Cached after first read. null if absent.
+  let _mapsKeyCache;
+  function mapsApiKey() {
+    if (_mapsKeyCache !== undefined) return _mapsKeyCache;
+    _mapsKeyCache = null;
+    try {
+      const s = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
+      if (s) { const m = s.src.match(/[?&]key=([^&]+)/); if (m) _mapsKeyCache = decodeURIComponent(m[1]); }
+    } catch (_) {}
+    return _mapsKeyCache;
+  }
+
+  // Fail-CLOSED Static Maps thumbnail loader (codex F2): the card is rendered in its no-map layout by
+  // DEFAULT (container display:none, empty). We build the image OFF-DOM and reveal the container ONLY
+  // when the image actually LOADS within ~4s. onerror (403/network) OR the timeout (slow/hanging load
+  // that never fires onerror) → stay hidden → a clean no-map card. Never a broken-image icon, never an
+  // empty strip, never a layout gap. The card only ever GAINS a map when one genuinely arrives in time.
+  function loadCardMap(containerId, addr) {
+    const el = $(containerId); if (!el) return;
+    const key = mapsApiKey();
+    const la = Number(addr && addr.lat), ln = Number(addr && addr.lng);
+    if (!key || !isFinite(la) || !isFinite(ln)) return;   // no key / bad coords → stay no-map (clean fallback)
+    const w = Math.max(320, Math.round(el.clientWidth || 320));
+    const url = `https://maps.googleapis.com/maps/api/staticmap?center=${la},${ln}&zoom=16&size=${w}x84&scale=2`
+      + `&markers=color:0x1E1B18%7C${la},${ln}&key=${encodeURIComponent(key)}`;   // black balloon (0x1E1B18) matches the main map's marker
+    let done = false;
+    const img = new Image();
+    const timer = setTimeout(() => { if (!done) { done = true; img.onload = img.onerror = null; } }, 4000);   // hang → stay hidden
+    img.onload = () => { if (done) return; done = true; clearTimeout(timer); el.appendChild(img); el.style.display = ''; };
+    img.onerror = () => { if (done) return; done = true; clearTimeout(timer); /* stay hidden — clean card */ };
+    img.alt = '';
+    img.src = url;
   }
 
   function renderConfirmCard(snap, addr) {
@@ -1050,6 +1067,7 @@
     const phone = (snap && snap.phone) || m.phone || '';
 
     mount.innerHTML = `<div class="acct-eyebrow">Entregar a</div>` + deliverCardHtml(name, phone, addr, 'acct-change-btn');
+    loadCardMap('acct-cardmap-acct-change-btn', addr);   // fail-closed Static Maps thumbnail (codex F2)
     if (rawWrap) rawWrap.style.display = 'none';
     if (addrSection) addrSection.style.display = 'none';
     const changeBtn = $('acct-change-btn'); if (changeBtn) changeBtn.onclick = () => enterEditMode(false);
@@ -2161,6 +2179,7 @@ ${rowsHtml}`;
     const name = (snap && snap.name) || m.name || '';
     const phone = (snap && snap.phone) || m.phone || '';
     mount.innerHTML = `<div class="acct-eyebrow">Entregar a</div>` + deliverCardHtml(name, phone, addr, 'acct-change-btn-s2');
+    loadCardMap('acct-cardmap-acct-change-btn-s2', addr);   // fail-closed Static Maps thumbnail (codex F2)
     const btn = $('acct-change-btn-s2'); if (btn) btn.onclick = openCambiarPanel;
   }
 
