@@ -150,8 +150,8 @@
 .acct-signout button{background:none;border:none;font-family:inherit;font-size:14px;font-weight:650;color:#8C7B6E;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .acct-delete{margin-top:10px;text-align:center}
 .acct-delete button{background:none;border:none;font-family:inherit;font-size:12.5px;font-weight:600;color:#B3A594;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
-.acct-toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:#17130F;color:#fff;padding:12px 18px;border-radius:12px;font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;transition:all .3s;z-index:1100}
-.acct-toast.acct-show{opacity:1;transform:translateX(-50%) translateY(0)}
+.acct-toast{position:fixed;left:50%;top:50%;transform:translate(-50%,calc(-50% + 12px));background:#17130F;color:#fff;padding:12px 18px;border-radius:12px;font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;transition:all .3s;z-index:1100}
+.acct-toast.acct-show{opacity:1;transform:translate(-50%,-50%)}
 `;
     document.head.appendChild(st);
   }
@@ -964,7 +964,7 @@
 .acct-acard .acct-aname2{font-size:14.5px;font-weight:700;color:#17130F}
 .acct-acard .acct-aline2{font-size:12px;color:#8C7B6E;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Cambiar address-picker pane */
-.acct-picker-top{display:flex;align-items:center;justify-content:space-between;margin:2px 0 16px}
+.acct-picker-top{margin:2px 0 16px}
 .acct-picker-title{font-size:17px;font-weight:800;color:#17130F;letter-spacing:-.01em}
 .acct-acard--active{border-color:${CONFIG.accent};background:#FBF6EE}
 .acct-acard--tapped{border-color:${CONFIG.accent};background:#F4EEE4}
@@ -2732,11 +2732,11 @@ ${footer}`;
     pane.innerHTML = `
 <div class="acct-picker-top">
   <span class="acct-picker-title">Elegí una dirección</span>
-  <button type="button" class="acct-iconbtn" id="acct-picker-close" aria-label="Cerrar">×</button>
 </div>
 ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No tenés direcciones guardadas.</p>'}
 <button type="button" class="acct-picker-new" id="acct-picker-new">+ Usar una dirección nueva</button>`;
-    const closeBtn = $('acct-picker-close'); if (closeBtn) closeBtn.onclick = dismissSheet;   // contextual close (Task 5)
+    // No picker-local ✕ — the account sheet's GLOBAL topbar ✕ (#acct-close → dismissSheet) already
+    // covers every pane; a second one here was a duplicate (QF1). Contextual close is unchanged.
     pane.querySelectorAll('[data-pick-id]').forEach((card) => {
       card.onclick = () => pickAddrFromPicker(card.getAttribute('data-pick-id'), card);       // active=no-op / other=one-off (Task 2)
     });
