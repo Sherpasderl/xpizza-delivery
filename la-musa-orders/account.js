@@ -606,6 +606,32 @@
     } catch (_) { return null; }
   }
 
+  // Tri-state variant of accountSnapshot() (codex R1 #1): distinguishes a RESOLVED read
+  // (status:'ok', snap may be null/partial = a real profile state) from an UNAVAILABLE read
+  // (timeout / SDK error / dead session). Callers that must NOT misclassify a slow read as
+  // "incomplete profile" use this; the plain accountSnapshot() (fail-open-to-null) stays for
+  // the checkout autofill path. Guest fast-path preserved: no marker → resolved ok/null instantly.
+  async function accountSnapshotStatus() {
+    if (!marker()) return { status: 'ok', snap: null };            // guest — resolved, no account
+    const TIMEOUT = Symbol('timeout');
+    try {
+      const out = await Promise.race([
+        (async () => {
+          const { auth, db, dbMod } = await ensureFirebase();
+          await auth.authStateReady();
+          if (!auth.currentUser) { heal(); return null; }
+          const snap = await dbMod.get(dbMod.ref(db, 'user_profiles/' + auth.currentUser.uid));
+          return snap.exists() ? snap.val() : null;
+        })(),
+        new Promise((r) => setTimeout(() => r(TIMEOUT), 1500)),
+      ]);
+      if (out === TIMEOUT) return { status: 'unavailable' };
+      return { status: 'ok', snap: out };
+    } catch (_) {
+      return { status: 'unavailable' };
+    }
+  }
+
   // $addrId rule: /^a_[a-f0-9]{6,32}$/ — 'a_' + 12 lowercase-hex chars comfortably satisfies it.
   function newAddrId() {
     const bytes = new Uint8Array(6);
