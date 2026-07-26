@@ -1792,14 +1792,6 @@ ${!_nadPinTouched ? '<div class="hint"><span>Toca para marcar tu ubicación</spa
     renderNewAddressPane();   // self-contained — NEVER closes the sheet, NEVER touches the order form
   }
 
-  // Cambiar "Usar una dirección nueva" → open the account sheet over the order form and show the
-  // ISOLATED new-address pane in ORDER mode. renderNewAddressPane resets _nad* + shows the pane; nothing
-  // touches the checkout map/globals until the customer places a pin and taps "Usar esta dirección".
-  function openNewAddressForOrder() {
-    openOverlay();
-    renderNewAddressPane({ mode: 'order' });
-  }
-
   // Order-mode Back/Cancel — return WITHOUT applying anything, teardown the isolated-map state, then route
   // by _nadReturnTo (codex F2): opened from the Cambiar picker → back to the PICKER (same sheet, seamless);
   // legacy 'order' entry → closeSheet. The order's prior address is untouched (nothing was applied).
@@ -2685,14 +2677,13 @@ ${footer}`;
   }
 
   // ══════════════════════════════════════════════════════════════════════════════════════════
-  // Cambiar chooser (from the returning-flow summary): pick another SAVED address
-  // (selectSavedAddressForOrder → order fields only, no persist, no default change) OR "Usar una
-  // dirección nueva" → the ISOLATED order-mode map pane (openNewAddressForOrder →
-  // confirmNewAddressForOrder), which writes ONLY _nad* until an explicit pin + confirm and never
-  // touches the checkout map/globals before then (isolated-map rebuild — supersedes the racey
-  // enterEditMode(true)/checkout-map fresh-pin path). No silent default/profile mutation on a one-off.
-  // Reachable only via renderS1CompactSummary/renderS2RichSummary's Cambiar buttons — themselves only
-  // ever rendered behind marker()+profileComplete (Task 3).
+  // Cambiar → the focused address-picker PANE (renderAddrPicker): pick another SAVED address
+  // (pickAddrFromPicker → selectSavedAddressForOrder, order fields only, no persist/default change; the
+  // already-active card is a no-op) OR "+ Usar una dirección nueva" → the ISOLATED order-mode map pane
+  // (renderNewAddressPane{mode:'order',returnTo:'addrpicker'} → confirmNewAddressForOrder), which writes
+  // ONLY _nad* until an explicit pin + confirm and never touches the checkout map/globals before then.
+  // No silent default/profile mutation on a one-off. Reachable only via renderS1CompactSummary/
+  // renderS2RichSummary's Cambiar buttons — themselves only ever rendered behind marker()+profileComplete.
   // ══════════════════════════════════════════════════════════════════════════════════════════
 
   // The focused Cambiar address picker (a pane in the account sheet) — replaces the old showStage('s2')
@@ -2745,47 +2736,13 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
     }
   }
 
+  // "Cambiar" → the focused address-picker pane (owner-approved mockup). No more showStage('s2') jump /
+  // step-label flip / #acct-s2-summary inline chooser: the old jump existed only because the OLD
+  // new-address flow needed the checkout map in s2, and that dependency is gone (isolated account map).
+  // The sheet overlays the checkout, so closeSheet returns to whatever stage the user was on.
   function openCambiarPanel() {
-    const mount = $('acct-s2-summary'); if (!mount) return;
-    // Cambiar can be tapped from s1's compact line before s2 has ever been shown — jump there so the
-    // chooser (mounted in #acct-s2-summary) is visible. Name/phone are already known+valid (the Task 3
-    // invariant that got us here). NO checkout-map init/seed here: "Usar una dirección nueva" now opens
-    // the ISOLATED account map (Task 4), and the reduced flow keeps the checkout map hidden — so nothing
-    // in this panel touches the checkout map, gmap, __restorePos, or geolocation (the whole race class,
-    // deleted). The isolated map is the SOLE map for a new order address.
-    try {
-      const s2 = document.getElementById('s2');
-      if (s2 && !s2.classList.contains('active') && typeof showStage === 'function') showStage('s2', 50);
-    } catch (_) {}
-
-    injectDeliverStyles();
-    const addrs = (_acctData && _acctData.addresses) || {};
-    const otherIds = Object.keys(addrs).filter((id) => id !== _acctAddrId);
-    const rowsHtml = otherIds.map((id) => {
-      const a = addrs[id];
-      return `<div class="acct-acard" data-use-id="${escapeHtml(id)}">
-  <span class="acct-dotmark" style="background:#CFC2B1"></span>
-  <div class="acct-al2"><div class="acct-aname2">${escapeHtml(a.label || 'Dirección')}</div>
-  <div class="acct-aline2">${escapeHtml(a.details || a.detected || '')}</div></div>
-</div>`;
-    }).join('');
-    mount.innerHTML = `
-<div class="acct-eyebrow">Cambiar dirección de entrega</div>
-${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No tenés otras direcciones guardadas.</p>'}
-<button type="button" class="acct-addlink" id="acct-cambiar-new">+ Usar una dirección nueva</button>
-<button type="button" class="acct-cancel-edit" id="acct-cambiar-cancel">‹ Cancelar</button>`;
-    mount.querySelectorAll('[data-use-id]').forEach((row) => {
-      row.onclick = () => selectSavedAddressForOrder(row.getAttribute('data-use-id'));
-    });
-    const newBtn = $('acct-cambiar-new');
-    // "Usar una dirección nueva" → the ISOLATED order-mode map pane (Task 4). No checkout-map reveal,
-    // no enterEditMode(true), no gmarker/lat/lng/__restorePos reset, no getCurrentPosition — that entire
-    // race class is deleted. The pane writes ONLY _nad*; the order's checkout coordinate is written once,
-    // at confirm, from the explicitly-placed pin (confirmNewAddressForOrder).
-    if (newBtn) newBtn.onclick = () => openNewAddressForOrder();
-    const cancelBtn = $('acct-cambiar-cancel');
-    if (cancelBtn) cancelBtn.onclick = () => refreshDeliveryUI();
-    setTimeout(() => mount.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+    openOverlay();
+    renderAddrPicker();   // populates #acct-pane-addrpicker + showPane('addrpicker')
   }
 
   // "Usar en este pedido" — order fields ONLY, NO saveAddress() call, NO default_address change.
