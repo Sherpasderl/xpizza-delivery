@@ -2727,6 +2727,21 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
     showPane('addrpicker');
   }
 
+  // Card tap (codex F1). If the tapped card is the address ALREADY backing the order → close, NO state
+  // change: calling selectSavedAddressForOrder there would set _acctAddrOneOff=true and silently convert
+  // a default/saved-backed order into use-once. Only a DIFFERENT card applies (one-off, UNCHANGED logic).
+  // Brief highlight before close so the tap feels responsive.
+  function pickAddrFromPicker(id, cardEl) {
+    if (!id) return;
+    const activeId = (_acctOrderAddr && _acctOrderAddr.id) || null;
+    if (cardEl) cardEl.classList.add('acct-acard--tapped');
+    if (id === activeId) {
+      setTimeout(dismissSheet, 180);                                   // already active → no-op, just close (preserve _acctAddrOneOff)
+    } else {
+      setTimeout(() => { selectSavedAddressForOrder(id); closeSheet(); }, 180);   // different → one-off apply (UNCHANGED) + close
+    }
+  }
+
   function openCambiarPanel() {
     const mount = $('acct-s2-summary'); if (!mount) return;
     // Cambiar can be tapped from s1's compact line before s2 has ever been shown — jump there so the
