@@ -1305,9 +1305,10 @@ ${rowsHtml}`;
   // dumped the customer into the order form's own address fields).
   // ══════════════════════════════════════════════════════════════════════════════════════════
 
-  let _nadMap = null, _nadMarker = null, _nadGeocoder = null;
+  // The "+ Agregar" pane and the login-sheet "Creá tu perfil" pane share this account-only sink;
+  // the account-scoped fullscreen map twin (above) is the ONLY writer. Never the checkout globals.
   let _nadLat = null, _nadLng = null, _nadDetected = '';
-  let _nadPinTouched = false;   // TRUE only after a REAL user placement (drag or tap) — never the fallback/GPS auto-pin (codex re-gate FIX 2)
+  let _nadPinTouched = false;   // TRUE only after a REAL user placement (drag or Listo-commit) — never the fallback/GPS auto-pin (codex re-gate FIX 2)
 
   function injectNewAddrStyles() {
     if ($('acct-nad-styles')) return;
@@ -1497,15 +1498,15 @@ ${rowsHtml}`;
     injectDeliverStyles();
     injectNewAddrStyles();
     const pane = $('acct-pane-newaddr'); if (!pane) return;
-    _nadLat = null; _nadLng = null; _nadDetected = '';
+    _acctFsEpoch++;                          // invalidate any late geocode from a prior map session
+    _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;   // fresh address entry
     pane.innerHTML = `
 <div class="acct-nad-top">
   <button type="button" class="acct-nad-back" id="acct-nad-back" aria-label="Volver a Mi cuenta">‹ Mi cuenta</button>
   <span class="acct-nad-title">Nueva dirección</span>
 </div>
 <div class="acct-eyebrow">Ubicación en el mapa</div>
-<div id="acct-nad-map" class="acct-nad-map"></div>
-<p class="acct-nad-hint" id="acct-nad-hint">Detectando tu ubicación…</p>
+<div id="acct-nad-preview"></div>
 <div class="acct-mlabel" style="margin-top:18px">Referencia</div>
 <textarea id="acct-nad-details" class="acct-nad-textarea" rows="2" placeholder="Portón, color de casa, piso, punto de referencia…" maxlength="200"></textarea>
 <div class="acct-mlabel">Guardar como</div>
@@ -1523,7 +1524,7 @@ ${rowsHtml}`;
     const saveBtn = $('acct-nad-save-btn'); if (saveBtn) saveBtn.onclick = saveNewAddressFromPane;
 
     showPane('newaddr');
-    initNewAddrMap();
+    renderAcctMapPreview('acct-nad-preview');
   }
 
   function wireNewAddrLabelChips() {
@@ -1540,66 +1541,12 @@ ${rowsHtml}`;
     });
   }
 
-  // Own map instance — a SECOND google.maps.Map, entirely separate from the checkout gmap. Reuses
-  // whichever Maps JS API script the host page already loaded (same global window.google.maps);
-  // never loads its own script tag. Polls (like the host form's own initMap) until it's ready.
-  function initNewAddrMap() {
-    if (!window.google || !window.google.maps) { setTimeout(initNewAddrMap, 300); return; }
-    const el = $('acct-nad-map'); if (!el) return;
-    let fallback = { lat: 15.5003, lng: -88.025 };
-    try { if (typeof RESTAURANT_LAT === 'number' && typeof RESTAURANT_LNG === 'number') fallback = { lat: RESTAURANT_LAT, lng: RESTAURANT_LNG }; } catch (_) {}
-    // A best-effort center HINT only (read once, never written back) — this pane never touches
-    // the checkout lat/lng/gmap again after reading this single starting hint.
-    let start = fallback;
-    try { if (typeof lat === 'number' && typeof lng === 'number') start = { lat, lng }; } catch (_) {}
-    if (!_nadMap) {
-      _nadMap = new google.maps.Map(el, { center: start, zoom: 16, mapTypeId: 'roadmap', disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy' });
-      _nadMap.addListener('click', (e) => { placeNewAddrPin(e.latLng.lat(), e.latLng.lng()); _nadPinTouched = true; });   // tap-to-place = a real user placement
-    } else {
-      _nadMap.setCenter(start);
-    }
-    _nadPinTouched = false;   // fresh open — the fallback/GPS pin below is a STARTING VIEW, not a user placement
-    placeNewAddrPin(start.lat, start.lng);
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => placeNewAddrPin(pos.coords.latitude, pos.coords.longitude),
-        () => { /* keep the hint/fallback pin already placed */ },
-        { timeout: 8000, enableHighAccuracy: true, maximumAge: 0 }
-      );
-    }
-  }
-
-  function placeNewAddrPin(la, ln) {
-    _nadLat = la; _nadLng = ln;
-    const pos = { lat: la, lng: ln };
-    if (_nadMap) { _nadMap.setCenter(pos); _nadMap.setZoom(17); }
-    if (_nadMarker) _nadMarker.setMap(null);
-    _nadMarker = new google.maps.Marker({ position: pos, map: _nadMap, draggable: true, animation: google.maps.Animation.DROP, title: 'Moveme para ajustar tu ubicación' });
-    _nadMarker.addListener('dragend', (e) => {
-      _nadLat = e.latLng.lat(); _nadLng = e.latLng.lng();
-      _nadPinTouched = true;   // user dragged the pin = a real placement
-      reverseGeocodeNewAddr(_nadLat, _nadLng);
-    });
-    reverseGeocodeNewAddr(la, ln);
-  }
-
-  function reverseGeocodeNewAddr(la, ln) {
-    if (!window.google || !window.google.maps) return;
-    if (!_nadGeocoder) _nadGeocoder = new google.maps.Geocoder();
-    _nadGeocoder.geocode({ location: { lat: la, lng: ln } }, (results, status) => {
-      const hint = $('acct-nad-hint'); if (!hint) return;
-      if (status === 'OK' && results[0]) { _nadDetected = results[0].formatted_address; hint.textContent = _nadDetected; }
-      else { _nadDetected = 'Lat: ' + la.toFixed(5) + ', Lng: ' + ln.toFixed(5); hint.textContent = _nadDetected; }
-    });
-  }
-
-  // Teardown on close (no leak): drop the map/marker/geocoder references — the Maps JS API has no
-  // explicit destroy(), so a full re-init on the NEXT open (initNewAddrMap creates a fresh
-  // google.maps.Map) is the correct, leak-free pattern here, matching how the host form's own
-  // fullscreen-map instance is handled (cached-and-reused, never destroyed).
+  // Teardown on close: bump the map-session epoch so any late reverse-geocode from this pane's
+  // fullscreen map is invalidated (codex R1 #5), and reset the account-only _nad* sink. The
+  // fullscreen twin's own map/geocoder instances (acctFsMap) are cached-and-reused across opens,
+  // matching the host form's fullscreen-map pattern (never destroyed).
   function closeNewAddressPane() {
-    if (_nadMarker) { try { _nadMarker.setMap(null); } catch (_) {} _nadMarker = null; }
-    _nadMap = null; _nadGeocoder = null;
+    _acctFsEpoch++;                    // invalidate any late geocode from this pane's map
     _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;
     showPane('account');
   }
