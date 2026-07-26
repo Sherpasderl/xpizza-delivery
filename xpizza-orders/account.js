@@ -846,6 +846,7 @@
   let _acctCreateProfileActive = false;  // true ONLY while "Creá tu perfil" is on screen (payment hidden + CTA shown) — the submit-gate keys off this, never a profileComplete() inference (FIX A)
   let _acctAddrOneOff = false;   // true when the order's delivery address is a USE-ONCE choice (Cambiar "Usar en este pedido" / an edit-mode-new address NOT explicitly "Guardar dirección"-saved) — onOrderConfirmed must never makeDefault/persist it (FIX B)
   let _acctRestoring = false;    // true ONLY while index.html's restoreOrderForm() rebuilds a cancelled/failed-payment retry from the xpizza_pending_pay snapshot — the snapshot's delivery data is authoritative, so every account delivery-refresh entry point must early-return (never repopulate the DOM from the DEFAULT saved address) (FIX 7 / R4)
+  let _acctRestoreGen = 0;       // bumped on every restore START (setRestoring(true)). initDeliveryStep()'s snapshot read is async: restoreOrderForm() is SYNCHRONOUS and clears _acctRestoring in its finally BEFORE the suspended init can resume, so a flag-only re-check would read false and miss the race. Capturing the gen before the await and comparing after catches a restore that BOTH began and completed during the await (R5 async re-check).
 
   // ── Task B4/3: the "Entregar a" confirm card + autofill — orchestrates the 3 flow states
   // (spec: guest handled entirely elsewhere by the marker() gate; incomplete profile → Task 2's
@@ -855,8 +856,10 @@
   async function initDeliveryStep() {
     if (!$('acct-deliver')) return;               // host form has no mount — never touch anything
     if (_acctRestoring) return;                   // a payment-retry restore owns the DOM — the snapshot is authoritative, never repopulate from the profile (FIX 7 / R4)
+    const restoreGen = _acctRestoreGen;           // snapshot the restore generation BEFORE the async read (R5)
     setPaymentVisible(true);   // default reveal; only applyCreateProfileFlow (incomplete) hides it (FIX 1)
     const snap = await accountSnapshot();          // fail-open, timeboxed ~1.5s internally — LIVE, authoritative (spec R1 #7)
+    if (_acctRestoring || _acctRestoreGen !== restoreGen) return;   // a retry-restore began (and possibly already completed, resetting _acctRestoring) DURING the await — the restored snapshot DOM is authoritative, never clobber it with the profile default (R5 async re-check)
     if (!snap) { _acctData = null; revertToNormalFillable(); refreshSaveToggle(); return; }   // no account / miss/timeout → normal empty form
     _acctData = snap;
     if (pageOrderType() !== 'delivery') { revertToNormalFillable(); refreshSaveToggle(); return; }   // pickup — out of scope (spec), leave raw fields
@@ -2057,5 +2060,5 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
   window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;
   window.__ACCOUNT.deliverySubmitBlocked = deliverySubmitBlocked;
   window.__ACCOUNT.captureDeliverySaveIntent = captureDeliverySaveIntent;
-  window.__ACCOUNT.setRestoring = function (v) { try { _acctRestoring = !!v; } catch (_) {} };   // index.html's restoreOrderForm() brackets its snapshot rebuild with this so the account refresh can't overwrite the retry's address with the default (FIX 7 / R4)
+  window.__ACCOUNT.setRestoring = function (v) { try { _acctRestoring = !!v; if (v) _acctRestoreGen++; } catch (_) {} };   // index.html's restoreOrderForm() brackets its snapshot rebuild with this so the account refresh can't overwrite the retry's address with the default (FIX 7 / R4); bumping the gen on start lets an in-flight async init detect a restore that completed during its await (R5)
 })();
