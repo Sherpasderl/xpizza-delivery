@@ -2026,6 +2026,7 @@ ${footer}`;
     setPaymentVisible(true);   // sign-out → guest form, payment visible (FIX 1)
     _acctData = null; _acctAddrId = null; _acctCardActive = false; _acctEditMode = false;
     _acctEditIsNew = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true; _acctAddrOneOff = false;
+    _acctOrderAddr = null;   // T5: signed out → no order address retained
     _acctProfileConfirmedIncomplete = false;   // signed out → no logged-in profile to arm the hard block for (codex R1 FIX 1c)
     setReducedDeliveryChromeVisible(false);   // sign-out/delete → restore the guest-identical editable map/banner/locinfo (delivery) + button label (codex F4)
     const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
@@ -2464,16 +2465,24 @@ ${footer}`;
     }
     if (pageOrderType() !== 'delivery') { hidePickupDeliverySummary(); return; }
     if (profileComplete(_acctData)) {
-      const addr = addrOverride || pickDefaultAddress(_acctData);
+      // T5: a pure order-type toggle (or any no-override re-render) re-applies the address currently
+      // backing THIS order — a one-off saved pick or a new save/one-off — NOT the profile default, so it
+      // isn't clobbered. addrOverride (an explicit new selection) still wins; else the retained pointer;
+      // else the default. usingRetained preserves _acctAddrOneOff (populate below unconditionally clears it).
+      const usingRetained = !addrOverride && !!_acctOrderAddr;
+      const addr = addrOverride || _acctOrderAddr || pickDefaultAddress(_acctData);
       if (addr) {
+        const preservedOneOff = _acctAddrOneOff;
         establishCheckoutFromAddress(addr);
         populateOrderFieldsFromAddress(_acctData, addr);   // fill the (soon-hidden) submit fields BEFORE the invariant reads them back
+        if (usingRetained) _acctAddrOneOff = preservedOneOff;   // T5: a pure toggle must not flip a one-off/new address back to save-eligible
         if (reducedFlowInvariantOk(_acctData, addr)) {
           renderS1CompactSummary(_acctData, addr);
           renderS2RichSummary(_acctData, addr);
           relabelSteps(true);
           _acctReducedActive = true;
-          _acctAddrId = addr.id;
+          _acctAddrId = addr.id || _acctAddrId;   // saved addr → its id; a retained one-off NEW addr has none → keep the prior default id
+          _acctOrderAddr = addr;   // retain for the next toggle
           hideRawAndAddrSection();
           setReducedDeliveryChromeVisible(true);   // hide the redundant editable s2 map/banner/locinfo + relabel the button (codex F4/F5)
           return;
@@ -2561,6 +2570,7 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
     _acctAddrOneOff = true;   // USE-ONCE: onOrderConfirmed must never persist/default this (FIX B)
     const addr = Object.assign({ id: addrId }, a);
     establishCheckoutFromAddress(addr);
+    _acctOrderAddr = addr;   // T5 retained pointer — survives a delivery↔pickup toggle (one-off saved pick)
     setVal('address-detected', a.detected);
     setVal('address-details', a.details);
     placeAccountPin(a.lat, a.lng);
@@ -2611,6 +2621,7 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
         const wrapped = function () {
           orig();
           _acctEditMode = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true; _acctAddrOneOff = false;
+          _acctOrderAddr = null;   // T5: fresh order → drop the retained address so refreshDeliveryUI re-establishes from the default
           try {
             // orig() reset lat/lng/address fields to blank for a fresh order — re-establish the
             // reduced-flow summary (or the fillable UI) for the NEW order, same as page load.
