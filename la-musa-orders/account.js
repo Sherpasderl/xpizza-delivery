@@ -426,18 +426,26 @@
       return;
     }
 
-    if (data.is_new || !data.name) {
-      showPane('name');
-      const nameInp = $('acct-name-inp');
-      if (nameInp) { nameInp.value = ''; setTimeout(() => nameInp.focus(), 80); }
-      const saveBtn = $('acct-save-name-btn'); if (saveBtn) saveBtn.disabled = true;
-    } else {
+    // Completeness-routed (not is_new): confirm the LIVE profile before deciding (codex R1 #1).
+    // A TRI-STATE read distinguishes a resolved-but-incomplete profile (→ show Creá tu perfil) from
+    // an unavailable read (timeout/error → fail-open to Mi Cuenta, NEVER the create pane).
+    const st = await accountSnapshotStatus();
+    if (st.status === 'ok' && profileComplete(st.snap)) {
+      _acctData = st.snap;
       renderChip();
       closeSheet();
       // Mid-session login (Tasks B4–B7): the marker-gated DOMContentLoaded init already ran (and
       // skipped, guest at load time) — re-run it now that marker() is truthy so the confirm card /
       // save-on-order toggle activate for THIS page load without requiring a reload.
-      try { wrapPageHooks(); initDeliveryStep().catch(() => {}); } catch (_) {}
+      try { wrapPageHooks(); initDeliveryStep().catch(() => {}); } catch (_) {}   // returning complete user — unchanged
+    } else if (st.status === 'ok') {
+      // positively-confirmed INCOMPLETE → the full Creá tu perfil in the sheet
+      _acctData = st.snap;
+      renderCreateProfilePane((st.snap && st.snap.name) || data.name || '');
+    } else {
+      // read UNAVAILABLE (timeout/error) — never show create on an unconfirmed read; fail-open to Mi Cuenta
+      renderChip();
+      renderAccountPane(); showPane('account');
     }
   }
 
