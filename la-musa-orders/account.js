@@ -1478,7 +1478,7 @@ ${rowsHtml}`;
   <button type="button" id="acct-fs-sat">Satélite</button>
 </div>
 <div class="acct-fs-pindot"></div>
-<svg class="acct-fs-pin" viewBox="0 0 24 24" fill="${CONFIG.accent}" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
+<svg class="acct-fs-pin" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="6.5" fill="#1E1B18" stroke="#fff" stroke-width="1.6"/><line x1="12" y1="14.5" x2="12" y2="23.5" stroke="#1E1B18" stroke-width="2.4" stroke-linecap="round"/></svg>
 <div class="acct-fs-bar">
   <div class="a"><div class="l">Tu ubicación</div><b id="acct-fs-addr">Detectando…</b></div>
   <button type="button" class="acct-fs-done" id="acct-fs-done">${ICON_CHECK_BIG} Listo</button>
@@ -1595,7 +1595,7 @@ ${rowsHtml}`;
     host.className = 'acct-map-preview';
     const placed = (typeof _nadLat === 'number' && typeof _nadLng === 'number');
     host.innerHTML = `<div class="pv" id="${containerId}-pv"></div>
-<svg class="acct-fs-pin" style="filter:drop-shadow(0 6px 5px rgba(40,28,12,.3))" viewBox="0 0 24 24" fill="${CONFIG.accent}" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
+<svg class="acct-fs-pin" style="filter:drop-shadow(0 6px 5px rgba(40,28,12,.3))" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="6.5" fill="#1E1B18" stroke="#fff" stroke-width="1.6"/><line x1="12" y1="14.5" x2="12" y2="23.5" stroke="#1E1B18" stroke-width="2.4" stroke-linecap="round"/></svg>
 <div class="acct-fs-pindot"></div>
 <div class="hint"><span>${placed ? 'Toca para ajustar' : 'Toca para marcar tu ubicación'}</span></div>`;
     host.onclick = () => openAcctFullscreenMap(containerId);
