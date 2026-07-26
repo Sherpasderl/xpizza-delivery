@@ -2161,6 +2161,32 @@ ${rowsHtml}`;
     const addrSection = addrSectionEl(); if (addrSection) addrSection.style.display = 'none';
   }
 
+  // Single source of truth for the reduced-flow chrome (codex F4/F5 + R2): the s2 editable map,
+  // the "Mové el pin" zone banner, the #locinfo card, AND the #btn-continuar label. hide=true when
+  // the complete-profile reduced flow is active; hide=false on every normal/guest/pickup/fail-open
+  // exit. RESTORE is order-type-aware — delivery chrome comes back only for delivery (pickup keeps
+  // it hidden, matching the host setOrderType('pickup')). The button label restores regardless.
+  let _origContinuarText = null;
+  function setReducedDeliveryChromeVisible(hide) {
+    const btn = $('btn-continuar');
+    if (btn && _origContinuarText === null) _origContinuarText = btn.textContent;   // capture once
+    const mapWrap = $('map')?.parentElement || null;
+    const zone = document.querySelector('#s2 .zone-notice') || null;
+    const loc = $('locinfo') || null;
+    if (hide) {
+      if (mapWrap) mapWrap.style.display = 'none';
+      if (zone) zone.style.display = 'none';
+      if (loc) loc.style.display = 'none';
+      if (btn) btn.textContent = 'Continuar al pago';
+    } else {
+      const isDelivery = pageOrderType() === 'delivery';
+      if (mapWrap) mapWrap.style.display = isDelivery ? '' : 'none';   // pickup keeps them hidden (R2)
+      if (zone) zone.style.display = isDelivery ? '' : 'none';
+      if (loc) loc.style.display = isDelivery ? '' : 'none';
+      if (btn && _origContinuarText !== null) btn.textContent = _origContinuarText;   // label restores always
+    }
+  }
+
   // Payment-section visibility (codex re-gate FIX 1) — hidden ONLY while "Creá tu perfil" is active
   // (logged-in + incomplete + delivery) so a first-time user can't skip the profile save and pay.
   // Shown in EVERY other state. A guest never calls this; the id/class toggles are inert otherwise. Idempotent.
