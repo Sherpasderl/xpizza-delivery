@@ -1593,11 +1593,13 @@ ${rowsHtml}`;
     injectAcctFsStyles();   // #1: .acct-map-preview + .acct-fs-pin{width/height:30px} live here — inject BEFORE first paint or the inline-viewBox SVG defaults to filling the container (giant pin). Idempotent.
     const host = document.getElementById(containerId); if (!host) return;
     host.className = 'acct-map-preview';
-    const placed = (typeof _nadLat === 'number' && typeof _nadLng === 'number');
+    // #3: the hint shows ONLY until a REAL user placement (drag/Listo-commit → _nadPinTouched). An
+    // auto/GPS starting pin (typeof _nadLat === 'number' but !_nadPinTouched) still shows the hint;
+    // after a real placement, NO hint — matching the original map's hide-after-placement.
     host.innerHTML = `<div class="pv" id="${containerId}-pv"></div>
 <svg class="acct-fs-pin" style="filter:drop-shadow(0 6px 5px rgba(40,28,12,.3))" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="6.5" fill="#1E1B18" stroke="#fff" stroke-width="1.6"/><line x1="12" y1="14.5" x2="12" y2="23.5" stroke="#1E1B18" stroke-width="2.4" stroke-linecap="round"/></svg>
 <div class="acct-fs-pindot"></div>
-<div class="hint"><span>${placed ? 'Toca para ajustar' : 'Toca para marcar tu ubicación'}</span></div>`;
+${!_nadPinTouched ? '<div class="hint"><span>Toca para marcar tu ubicación</span></div>' : ''}`;
     host.onclick = () => openAcctFullscreenMap(containerId);
     initAcctPreviewMap(containerId);
   }
