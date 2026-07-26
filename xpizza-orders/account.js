@@ -208,6 +208,10 @@
     <section class="acct-pane" id="acct-pane-newaddr">
       <!-- built by renderNewAddressPane() at open time (Task 5) — self-contained, own map -->
     </section>
+
+    <section class="acct-pane" id="acct-pane-createprofile">
+      <!-- built by renderCreateProfilePane() post-OTP for an incomplete profile -->
+    </section>
   </div>
 </div>`;
     document.body.appendChild(wrap);
@@ -422,18 +426,26 @@
       return;
     }
 
-    if (data.is_new || !data.name) {
-      showPane('name');
-      const nameInp = $('acct-name-inp');
-      if (nameInp) { nameInp.value = ''; setTimeout(() => nameInp.focus(), 80); }
-      const saveBtn = $('acct-save-name-btn'); if (saveBtn) saveBtn.disabled = true;
-    } else {
+    // Completeness-routed (not is_new): confirm the LIVE profile before deciding (codex R1 #1).
+    // A TRI-STATE read distinguishes a resolved-but-incomplete profile (→ show Creá tu perfil) from
+    // an unavailable read (timeout/error → fail-open to Mi Cuenta, NEVER the create pane).
+    const st = await accountSnapshotStatus();
+    if (st.status === 'ok' && profileComplete(st.snap)) {
+      _acctData = st.snap;
       renderChip();
       closeSheet();
       // Mid-session login (Tasks B4–B7): the marker-gated DOMContentLoaded init already ran (and
       // skipped, guest at load time) — re-run it now that marker() is truthy so the confirm card /
       // save-on-order toggle activate for THIS page load without requiring a reload.
-      try { wrapPageHooks(); initDeliveryStep().catch(() => {}); } catch (_) {}
+      try { wrapPageHooks(); initDeliveryStep().catch(() => {}); } catch (_) {}   // returning complete user — unchanged
+    } else if (st.status === 'ok') {
+      // positively-confirmed INCOMPLETE → the full Creá tu perfil in the sheet
+      _acctData = st.snap;
+      renderCreateProfilePane((st.snap && st.snap.name) || data.name || '');
+    } else {
+      // read UNAVAILABLE (timeout/error) — never show create on an unconfirmed read; fail-open to Mi Cuenta
+      renderChip();
+      renderAccountPane(); showPane('account');
     }
   }
 
@@ -604,6 +616,32 @@
         new Promise((r) => setTimeout(() => r(null), 1500)),        // deadline → treat as no-account
       ]);
     } catch (_) { return null; }
+  }
+
+  // Tri-state variant of accountSnapshot() (codex R1 #1): distinguishes a RESOLVED read
+  // (status:'ok', snap may be null/partial = a real profile state) from an UNAVAILABLE read
+  // (timeout / SDK error / dead session). Callers that must NOT misclassify a slow read as
+  // "incomplete profile" use this; the plain accountSnapshot() (fail-open-to-null) stays for
+  // the checkout autofill path. Guest fast-path preserved: no marker → resolved ok/null instantly.
+  async function accountSnapshotStatus() {
+    if (!marker()) return { status: 'ok', snap: null };            // guest — resolved, no account
+    const TIMEOUT = Symbol('timeout');
+    try {
+      const out = await Promise.race([
+        (async () => {
+          const { auth, db, dbMod } = await ensureFirebase();
+          await auth.authStateReady();
+          if (!auth.currentUser) { heal(); return null; }
+          const snap = await dbMod.get(dbMod.ref(db, 'user_profiles/' + auth.currentUser.uid));
+          return snap.exists() ? snap.val() : null;
+        })(),
+        new Promise((r) => setTimeout(() => r(TIMEOUT), 1500)),
+      ]);
+      if (out === TIMEOUT) return { status: 'unavailable' };
+      return { status: 'ok', snap: out };
+    } catch (_) {
+      return { status: 'unavailable' };
+    }
   }
 
   // $addrId rule: /^a_[a-f0-9]{6,32}$/ — 'a_' + 12 lowercase-hex chars comfortably satisfies it.
@@ -1279,9 +1317,10 @@ ${rowsHtml}`;
   // dumped the customer into the order form's own address fields).
   // ══════════════════════════════════════════════════════════════════════════════════════════
 
-  let _nadMap = null, _nadMarker = null, _nadGeocoder = null;
+  // The "+ Agregar" pane and the login-sheet "Creá tu perfil" pane share this account-only sink;
+  // the account-scoped fullscreen map twin (above) is the ONLY writer. Never the checkout globals.
   let _nadLat = null, _nadLng = null, _nadDetected = '';
-  let _nadPinTouched = false;   // TRUE only after a REAL user placement (drag or tap) — never the fallback/GPS auto-pin (codex re-gate FIX 2)
+  let _nadPinTouched = false;   // TRUE only after a REAL user placement (drag or Listo-commit) — never the fallback/GPS auto-pin (codex re-gate FIX 2)
 
   function injectNewAddrStyles() {
     if ($('acct-nad-styles')) return;
@@ -1295,8 +1334,177 @@ ${rowsHtml}`;
 .acct-nad-hint{margin-top:8px;font-size:12px;color:#8C7B6E}
 .acct-nad-textarea{width:100%;min-height:60px;padding:14px 15px;border:1.5px solid #E2D8C8;border-radius:13px;background:#fff;font-size:15px;font-family:inherit;color:#17130F;outline:none;resize:vertical}
 .acct-nad-textarea:focus{border-color:#17130F}
+.acct-verified-ro{display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 15px;border:1.5px solid #EDE5D9;border-radius:13px;background:#FBF6EE;color:#17130F}
+.acct-verified-ro .v{font-size:15.5px;font-weight:650;font-variant-numeric:tabular-nums}
+.acct-verified-ro .ok{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2A6A42}
+.acct-two{display:flex;gap:10px}
+.acct-two .acct-inp{flex:1;min-width:0;height:58px;border-radius:13px}
 `;
     document.head.appendChild(st);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // Account-scoped fullscreen map TWIN (spec Part C) — a standalone duplicate of the checkout
+  // fullscreen center-pin map, account-scoped. HARD symbol firewall (codex R1 #4): it NEVER calls
+  // openFullscreenMap/closeFullscreenMap/setFullscreenMapType/reverseGeocodeFS, never uses
+  // #fs-*/#map-fullscreen* ids, and never assigns lat/lng/gmap/gmarker/fsMap/__restorePos. Its
+  // ONLY state sink is _nadLat/_nadLng/_nadDetected/_nadPinTouched. Reading checkout lat/lng ONCE
+  // as a starting center hint (guarded typeof, read-only) is the sole permitted contact.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  let _acctFsMap = null;            // the fullscreen google.maps.Map (account-scoped twin of checkout fsMap)
+  let _acctFsGeocoder = null;
+  let _acctFsEpoch = 0;             // bumped on every open; late async callbacks compare against it
+  let _acctFsPreviewId = null;      // which preview to refresh on Listo
+  let _acctFsPrevOverflow = '';     // document.body.style.overflow at open — restored on close (sheet may still need lock)
+
+  let _acctFsStylesDone = false;
+  function injectAcctFsStyles() {
+    if (_acctFsStylesDone) return; _acctFsStylesDone = true;
+    const st = document.createElement('style');
+    st.textContent = `
+.acct-fs-overlay{position:fixed;inset:0;z-index:1200;display:none;flex-direction:column;background:#E4DAC7}
+.acct-fs-overlay.open{display:flex}
+.acct-fs-map{flex:1;width:100%}
+.acct-fs-toggle{position:absolute;top:14px;right:14px;display:flex;gap:6px;z-index:4}
+.acct-fs-toggle button{padding:7px 12px;font-size:12px;font-weight:700;border:none;border-radius:8px;font-family:inherit;cursor:pointer;box-shadow:0 2px 7px -2px rgba(40,28,12,.35)}
+.acct-fs-bar{background:#fff;padding:13px 16px calc(13px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:12px;border-top:1px solid #EDE5D9}
+.acct-fs-bar .a{flex:1;min-width:0}
+.acct-fs-bar .a .l{font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#B3A594}
+.acct-fs-bar .a b{display:block;font-size:14px;font-weight:600;color:#17130F;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acct-fs-done{flex:none;background:#17130F;color:#fff;border:none;border-radius:12px;padding:13px 20px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.acct-fs-pin{position:absolute;left:calc(50% - 15px);top:calc(50% - 36px);width:30px;height:30px;z-index:3;pointer-events:none;filter:drop-shadow(0 8px 7px rgba(40,28,12,.34))}
+.acct-fs-pindot{position:absolute;left:calc(50% - 6px);top:calc(50% - 4px);width:12px;height:6px;border-radius:50%;background:rgba(40,28,12,.28);filter:blur(1.5px);z-index:2;pointer-events:none}
+.acct-map-preview{height:150px;border-radius:15px;overflow:hidden;border:1px solid #E2D8C8;position:relative;cursor:pointer;background:#E4DAC7}
+.acct-map-preview .pv{position:absolute;inset:0;pointer-events:none}
+.acct-map-preview .hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.acct-map-preview .hint span{background:rgba(24,18,12,.6);color:#fff;font-size:12.5px;font-weight:650;padding:8px 15px;border-radius:20px;backdrop-filter:blur(2px)}`;
+    document.head.appendChild(st);
+  }
+
+  let _acctFsBuilt = false;
+  function ensureAcctFsOverlay() {
+    injectAcctFsStyles();
+    if (_acctFsBuilt) return;
+    const ov = document.createElement('div');
+    ov.className = 'acct-fs-overlay'; ov.id = 'acct-fs-overlay';
+    ov.innerHTML = `
+<div class="acct-fs-map" id="acct-fs-map"></div>
+<div class="acct-fs-toggle">
+  <button type="button" id="acct-fs-road">Mapa</button>
+  <button type="button" id="acct-fs-sat">Satélite</button>
+</div>
+<div class="acct-fs-pindot"></div>
+<svg class="acct-fs-pin" viewBox="0 0 24 24" fill="${CONFIG.accent}" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
+<div class="acct-fs-bar">
+  <div class="a"><div class="l">Tu ubicación</div><b id="acct-fs-addr">Detectando…</b></div>
+  <button type="button" class="acct-fs-done" id="acct-fs-done">${ICON_CHECK_BIG} Listo</button>
+</div>`;
+    document.body.appendChild(ov);
+    ov.querySelector('#acct-fs-road').onclick = () => setAcctFsMapType('roadmap');
+    ov.querySelector('#acct-fs-sat').onclick = () => setAcctFsMapType('satellite');
+    ov.querySelector('#acct-fs-done').onclick = () => closeAcctFullscreenMap(true);
+    _acctFsBuilt = true;
+  }
+
+  function setAcctFsMapType(type) {
+    if (_acctFsMap) _acctFsMap.setMapTypeId(type);
+    const road = document.getElementById('acct-fs-road'), sat = document.getElementById('acct-fs-sat');
+    if (road) { road.style.background = type === 'roadmap' ? '#17130F' : '#fff'; road.style.color = type === 'roadmap' ? '#fff' : '#333'; }
+    if (sat)  { sat.style.background  = type === 'satellite' ? '#17130F' : '#fff'; sat.style.color  = type === 'satellite' ? '#fff' : '#333'; }
+  }
+
+  function openAcctFullscreenMap(previewId) {
+    ensureAcctFsOverlay();
+    if (!window.google || !window.google.maps) { setTimeout(() => openAcctFullscreenMap(previewId), 250); return; }
+    _acctFsPreviewId = previewId || null;
+    const ov = document.getElementById('acct-fs-overlay');
+    ov.classList.add('open');
+    // suppress background scroll; remember prior value so close restores it (sheet may still need lock)
+    _acctFsPrevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const epoch = ++_acctFsEpoch;
+
+    // starting center: current account pin → else checkout lat/lng (READ-ONLY hint) → else restaurant
+    let start = null;
+    if (typeof _nadLat === 'number' && typeof _nadLng === 'number') start = { lat: _nadLat, lng: _nadLng };
+    if (!start) { try { if (typeof lat === 'number' && typeof lng === 'number') start = { lat, lng }; } catch (_) {} }
+    if (!start) { let f = { lat: 15.5003, lng: -88.025 }; try { if (typeof RESTAURANT_LAT === 'number' && typeof RESTAURANT_LNG === 'number') f = { lat: RESTAURANT_LAT, lng: RESTAURANT_LNG }; } catch (_) {} start = f; }
+
+    const el = document.getElementById('acct-fs-map');
+    if (!_acctFsMap) {
+      _acctFsMap = new google.maps.Map(el, { center: start, zoom: 17, mapTypeId: 'roadmap', disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy' });
+      setAcctFsMapType('roadmap');
+      // center-pin: reverse-geocode on any center change (display only) …
+      _acctFsMap.addListener('center_changed', () => {
+        const c = _acctFsMap.getCenter(); reverseGeocodeAcctFs(c.lat(), c.lng(), _acctFsEpoch);
+      });
+      // … but only a USER drag commits lat/lng + marks the pin as user-placed (codex R1 #3)
+      _acctFsMap.addListener('dragend', () => {
+        const c = _acctFsMap.getCenter();
+        _nadLat = c.lat(); _nadLng = c.lng(); _nadPinTouched = true;
+        reverseGeocodeAcctFs(_nadLat, _nadLng, _acctFsEpoch);
+      });
+    } else {
+      _acctFsMap.setCenter(start);
+    }
+    reverseGeocodeAcctFs(start.lat, start.lng, epoch);
+    // If we have no user pin yet, offer geolocation as a starting VIEW (never marks touched)
+    if (!_nadPinTouched && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => { if (_acctFsEpoch === epoch && _acctFsMap) _acctFsMap.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+        () => {}, { timeout: 8000, enableHighAccuracy: true, maximumAge: 0 }
+      );
+    }
+  }
+
+  function reverseGeocodeAcctFs(la, ln, epoch) {
+    if (!window.google || !window.google.maps) return;
+    if (!_acctFsGeocoder) _acctFsGeocoder = new google.maps.Geocoder();
+    _acctFsGeocoder.geocode({ location: { lat: la, lng: ln } }, (results, status) => {
+      if (epoch !== _acctFsEpoch) return;                         // stale — pane/map torn down; ignore (codex R1 #5)
+      const detected = (status === 'OK' && results[0]) ? results[0].formatted_address
+                     : ('Lat: ' + la.toFixed(5) + ', Lng: ' + ln.toFixed(5));
+      _nadDetected = detected;
+      const addrEl = document.getElementById('acct-fs-addr'); if (addrEl) addrEl.textContent = detected;
+    });
+  }
+
+  function closeAcctFullscreenMap(commit) {
+    const ov = document.getElementById('acct-fs-overlay'); if (ov) ov.classList.remove('open');
+    document.body.style.overflow = _acctFsPrevOverflow || '';
+    // If the user never dragged but did move the map to a place and tapped Listo, treat the
+    // resting center as their placement (matches checkout's "close commits center").
+    if (commit && _acctFsMap) {
+      const c = _acctFsMap.getCenter();
+      _nadLat = c.lat(); _nadLng = c.lng(); _nadPinTouched = true;
+    }
+    if (_acctFsPreviewId) renderAcctMapPreview(_acctFsPreviewId);   // reflect the chosen pin + address
+    // if the create pane is the active one, its CTA gating depends on the just-committed pin
+    const cp = $('acct-pane-createprofile');
+    if (cp && cp.classList.contains('acct-on')) refreshCreateProfileCta();
+  }
+
+  function renderAcctMapPreview(containerId) {
+    const host = document.getElementById(containerId); if (!host) return;
+    host.className = 'acct-map-preview';
+    const placed = (typeof _nadLat === 'number' && typeof _nadLng === 'number');
+    host.innerHTML = `<div class="pv" id="${containerId}-pv"></div>
+<svg class="acct-fs-pin" style="filter:drop-shadow(0 6px 5px rgba(40,28,12,.3))" viewBox="0 0 24 24" fill="${CONFIG.accent}" stroke="#fff" stroke-width="1.4"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>
+<div class="acct-fs-pindot"></div>
+<div class="hint"><span>${placed ? 'Toca para ajustar' : 'Toca para marcar tu ubicación'}</span></div>`;
+    host.onclick = () => openAcctFullscreenMap(containerId);
+    initAcctPreviewMap(containerId);
+  }
+
+  function initAcctPreviewMap(containerId) {
+    if (!window.google || !window.google.maps) { setTimeout(() => initAcctPreviewMap(containerId), 300); return; }
+    const el = document.getElementById(containerId + '-pv'); if (!el) return;
+    let c = null;
+    if (typeof _nadLat === 'number' && typeof _nadLng === 'number') c = { lat: _nadLat, lng: _nadLng };
+    if (!c) { try { if (typeof lat === 'number' && typeof lng === 'number') c = { lat, lng }; } catch (_) {} }
+    if (!c) { c = { lat: 15.5003, lng: -88.025 }; try { if (typeof RESTAURANT_LAT === 'number' && typeof RESTAURANT_LNG === 'number') c = { lat: RESTAURANT_LAT, lng: RESTAURANT_LNG }; } catch (_) {} }
+    new google.maps.Map(el, { center: c, zoom: 16, disableDefaultUI: true, gestureHandling: 'none', keyboardShortcuts: false, clickableIcons: false });
+    // preview is display-only; the tappable wrapper opens fullscreen
   }
 
   function startAddNewAddress() {
@@ -1307,15 +1515,15 @@ ${rowsHtml}`;
     injectDeliverStyles();
     injectNewAddrStyles();
     const pane = $('acct-pane-newaddr'); if (!pane) return;
-    _nadLat = null; _nadLng = null; _nadDetected = '';
+    _acctFsEpoch++;                          // invalidate any late geocode from a prior map session
+    _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;   // fresh address entry
     pane.innerHTML = `
 <div class="acct-nad-top">
   <button type="button" class="acct-nad-back" id="acct-nad-back" aria-label="Volver a Mi cuenta">‹ Mi cuenta</button>
   <span class="acct-nad-title">Nueva dirección</span>
 </div>
 <div class="acct-eyebrow">Ubicación en el mapa</div>
-<div id="acct-nad-map" class="acct-nad-map"></div>
-<p class="acct-nad-hint" id="acct-nad-hint">Detectando tu ubicación…</p>
+<div id="acct-nad-preview"></div>
 <div class="acct-mlabel" style="margin-top:18px">Referencia</div>
 <textarea id="acct-nad-details" class="acct-nad-textarea" rows="2" placeholder="Portón, color de casa, piso, punto de referencia…" maxlength="200"></textarea>
 <div class="acct-mlabel">Guardar como</div>
@@ -1333,7 +1541,7 @@ ${rowsHtml}`;
     const saveBtn = $('acct-nad-save-btn'); if (saveBtn) saveBtn.onclick = saveNewAddressFromPane;
 
     showPane('newaddr');
-    initNewAddrMap();
+    renderAcctMapPreview('acct-nad-preview');
   }
 
   function wireNewAddrLabelChips() {
@@ -1350,66 +1558,149 @@ ${rowsHtml}`;
     });
   }
 
-  // Own map instance — a SECOND google.maps.Map, entirely separate from the checkout gmap. Reuses
-  // whichever Maps JS API script the host page already loaded (same global window.google.maps);
-  // never loads its own script tag. Polls (like the host form's own initMap) until it's ready.
-  function initNewAddrMap() {
-    if (!window.google || !window.google.maps) { setTimeout(initNewAddrMap, 300); return; }
-    const el = $('acct-nad-map'); if (!el) return;
-    let fallback = { lat: 15.5003, lng: -88.025 };
-    try { if (typeof RESTAURANT_LAT === 'number' && typeof RESTAURANT_LNG === 'number') fallback = { lat: RESTAURANT_LAT, lng: RESTAURANT_LNG }; } catch (_) {}
-    // A best-effort center HINT only (read once, never written back) — this pane never touches
-    // the checkout lat/lng/gmap again after reading this single starting hint.
-    let start = fallback;
-    try { if (typeof lat === 'number' && typeof lng === 'number') start = { lat, lng }; } catch (_) {}
-    if (!_nadMap) {
-      _nadMap = new google.maps.Map(el, { center: start, zoom: 16, mapTypeId: 'roadmap', disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy' });
-      _nadMap.addListener('click', (e) => { placeNewAddrPin(e.latLng.lat(), e.latLng.lng()); _nadPinTouched = true; });   // tap-to-place = a real user placement
-    } else {
-      _nadMap.setCenter(start);
-    }
-    _nadPinTouched = false;   // fresh open — the fallback/GPS pin below is a STARTING VIEW, not a user placement
-    placeNewAddrPin(start.lat, start.lng);
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => placeNewAddrPin(pos.coords.latitude, pos.coords.longitude),
-        () => { /* keep the hint/fallback pin already placed */ },
-        { timeout: 8000, enableHighAccuracy: true, maximumAge: 0 }
-      );
-    }
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // "Creá tu perfil" IN THE LOGIN SHEET (spec Part A) — a full profile-creation pane shown post-OTP
+  // to a positively-confirmed INCOMPLETE customer. Identity (name) + the account-scoped map twin +
+  // referencia + label. Distinct from the CHECKOUT create flow (saveCreateProfile above): its own
+  // ids (acct-cp-first/last/details/label/preview), its own save (saveCreateProfilePane), its own
+  // _nad* map sink — never the checkout gmap/lat/lng.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  let _acctCpLabel = 'Casa';   // chip-picked (or custom) label for the create-pane address
+
+  function renderCreateProfilePane(prefillName) {
+    injectDeliverStyles(); injectNewAddrStyles(); injectAcctFsStyles();
+    const pane = $('acct-pane-createprofile'); if (!pane) return;
+    _acctFsEpoch++;                                                             // invalidate any late geocode from a prior map session
+    _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;  // fresh address entry
+    _acctCpLabel = 'Casa';                                                      // default preset chosen
+    const phone = (_loginPhone || (marker() && marker().phone) || '').toString();
+    const nm = String(prefillName || '').trim();
+    const parts = nm.split(/\s+/).filter(Boolean);
+    const firstV = parts.length ? parts[0] : '';
+    const lastV = parts.length > 1 ? parts.slice(1).join(' ') : '';
+    pane.innerHTML = `
+<h1 class="acct-h1">Creá tu perfil</h1>
+<p class="acct-sub">Guardá tu nombre y dirección — la próxima vez pedís en dos toques.</p>
+<div class="acct-mlabel">Teléfono <span style="color:#B3A594;font-weight:600">· ya verificado</span></div>
+<div class="acct-verified-ro"><span class="v">${escapeHtml(phone)}</span><span class="ok">${ICON_CHECK_SM} WhatsApp</span></div>
+<div class="acct-mlabel" style="margin-top:16px">Nombre y apellido</div>
+<div class="acct-two">
+  <input type="text" id="acct-cp-first" class="acct-inp" placeholder="Nombre" maxlength="40" value="${escapeHtml(firstV)}" autocomplete="given-name">
+  <input type="text" id="acct-cp-last" class="acct-inp" placeholder="Apellido" maxlength="40" value="${escapeHtml(lastV)}" autocomplete="family-name">
+</div>
+<div class="acct-mlabel" style="margin-top:16px">¿A dónde te lo llevamos?</div>
+<div id="acct-cp-preview"></div>
+<textarea id="acct-cp-details" class="acct-nad-textarea" rows="2" placeholder="Referencia: portón, color, piso…" maxlength="200" style="margin-top:9px"></textarea>
+<div class="acct-mlabel">Guardar como</div>
+<div class="acct-lchips" id="acct-cp-lchips">
+  <button type="button" class="acct-lchip acct-on" data-label="Casa">${ICON_HOUSE}Casa</button>
+  <button type="button" class="acct-lchip" data-label="Trabajo">${ICON_WORK}Trabajo</button>
+  <button type="button" class="acct-lchip" data-label="">${ICON_TAG}Otra</button>
+</div>
+<input type="text" id="acct-cp-label" class="acct-label-custom-inp" placeholder="Ponle un nombre…" maxlength="40" style="margin-top:10px;display:none"/>
+<p class="acct-field-hint" id="acct-cp-err" style="display:none;color:#B23B3B"></p>
+<button type="button" class="acct-cta" id="acct-cp-save" disabled>Guardar perfil</button>`;
+    showPane('createprofile');
+    wireCreateProfilePane();
+    renderAcctMapPreview('acct-cp-preview');
+    refreshCreateProfileCta();
   }
 
-  function placeNewAddrPin(la, ln) {
-    _nadLat = la; _nadLng = ln;
-    const pos = { lat: la, lng: ln };
-    if (_nadMap) { _nadMap.setCenter(pos); _nadMap.setZoom(17); }
-    if (_nadMarker) _nadMarker.setMap(null);
-    _nadMarker = new google.maps.Marker({ position: pos, map: _nadMap, draggable: true, animation: google.maps.Animation.DROP, title: 'Moveme para ajustar tu ubicación' });
-    _nadMarker.addListener('dragend', (e) => {
-      _nadLat = e.latLng.lat(); _nadLng = e.latLng.lng();
-      _nadPinTouched = true;   // user dragged the pin = a real placement
-      reverseGeocodeNewAddr(_nadLat, _nadLng);
+  function wireCreateProfilePane() {
+    const chips = $('acct-cp-lchips');
+    if (chips) chips.querySelectorAll('.acct-lchip').forEach((chip) => {
+      chip.onclick = () => {
+        chips.querySelectorAll('.acct-lchip').forEach((c) => c.classList.remove('acct-on'));
+        chip.classList.add('acct-on');
+        const custom = $('acct-cp-label'); const val = chip.getAttribute('data-label');
+        if (val) { _acctCpLabel = val; if (custom) custom.style.display = 'none'; }
+        else { if (custom) { custom.style.display = ''; custom.value = ''; custom.focus(); } _acctCpLabel = ''; }
+        refreshCreateProfileCta();
+      };
     });
-    reverseGeocodeNewAddr(la, ln);
-  }
-
-  function reverseGeocodeNewAddr(la, ln) {
-    if (!window.google || !window.google.maps) return;
-    if (!_nadGeocoder) _nadGeocoder = new google.maps.Geocoder();
-    _nadGeocoder.geocode({ location: { lat: la, lng: ln } }, (results, status) => {
-      const hint = $('acct-nad-hint'); if (!hint) return;
-      if (status === 'OK' && results[0]) { _nadDetected = results[0].formatted_address; hint.textContent = _nadDetected; }
-      else { _nadDetected = 'Lat: ' + la.toFixed(5) + ', Lng: ' + ln.toFixed(5); hint.textContent = _nadDetected; }
+    ['acct-cp-first','acct-cp-last','acct-cp-details','acct-cp-label'].forEach((id) => {
+      const el = $(id); if (el) el.addEventListener('input', () => { if (id === 'acct-cp-label') _acctCpLabel = el.value.trim(); refreshCreateProfileCta(); });
     });
+    const save = $('acct-cp-save'); if (save) save.onclick = saveCreateProfilePane;
   }
 
-  // Teardown on close (no leak): drop the map/marker/geocoder references — the Maps JS API has no
-  // explicit destroy(), so a full re-init on the NEXT open (initNewAddrMap creates a fresh
-  // google.maps.Map) is the correct, leak-free pattern here, matching how the host form's own
-  // fullscreen-map instance is handled (cached-and-reused, never destroyed).
+  // Returns {ok:true, first, last, details, label} or {ok:false, msg, focus}. Pure read of the
+  // pane — no side effects. Used by BOTH the live CTA-enable AND the submit-time re-check (codex
+  // R1 #3) so no field can be bypassed via paste/autofill/Enter/double-click/programmatic.
+  function validateCreateProfile() {
+    const first = (($('acct-cp-first') || {}).value || '').trim();
+    const last  = (($('acct-cp-last')  || {}).value || '').trim();
+    const details = (($('acct-cp-details') || {}).value || '').trim();
+    const label = _acctCpLabel;
+    if (!first) return { ok: false, msg: 'Agregá tu nombre.', focus: 'acct-cp-first' };
+    if (!last)  return { ok: false, msg: 'Agregá tu apellido.', focus: 'acct-cp-last' };
+    if (typeof _nadLat !== 'number' || typeof _nadLng !== 'number' || !isFinite(_nadLat) || !isFinite(_nadLng) || !_nadDetected || !_nadPinTouched)
+      return { ok: false, msg: 'Marcá tu ubicación en el mapa (tocá el mapa y ajustá el pin).' };
+    if (details.length < 3) return { ok: false, msg: 'Agregá una referencia — portón, color, piso…', focus: 'acct-cp-details' };
+    if (!label) return { ok: false, msg: 'Elegí cómo guardar la dirección.', focus: 'acct-cp-label' };
+    return { ok: true, first, last, details, label };
+  }
+
+  function refreshCreateProfileCta() {
+    const btn = $('acct-cp-save'); if (!btn) return;
+    btn.disabled = !validateCreateProfile().ok;
+  }
+
+  // Save the login-sheet Creá tu perfil. Mirrors the checkout create pattern: a THROWING name
+  // write (never saveName(), which swallows failures — codex R1 #2), then the hardened saveAddress,
+  // then a live re-confirm of profileComplete before declaring success (codex R1 #7). Named
+  // distinctly from the checkout saveCreateProfile() to avoid the same-scope collision.
+  async function saveCreateProfilePane() {
+    const errEl = $('acct-cp-err'); if (errEl) errEl.style.display = 'none';
+    const v = validateCreateProfile();                          // submit-time re-validate ALL (codex R1 #3)
+    if (!v.ok) { if (errEl) { errEl.style.display = 'block'; errEl.textContent = v.msg; } const f = v.focus && $(v.focus); if (f) f.focus(); return; }
+    const btn = $('acct-cp-save'); if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+    const fullName = (v.first + ' ' + v.last).trim().slice(0, 80);
+
+    // 1) name — THROWING write (never saveName(), which swallows failures — codex R1 #2)
+    try {
+      const { auth, db, dbMod } = await ensureFirebase();
+      await auth.authStateReady();
+      if (!auth.currentUser) { heal(); throw new Error('no-session'); }
+      await dbMod.update(dbMod.ref(db, 'user_profiles/' + auth.currentUser.uid), { name: fullName });
+      const m = marker(); if (m) { m.name = fullName; try { localStorage.setItem(CONFIG.MARKER, JSON.stringify(m)); } catch (_) {} }
+    } catch (_) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'No pudimos guardar tu nombre. Intentá de nuevo.'; }
+      if (btn) { btn.disabled = false; btn.textContent = 'Guardar perfil'; }
+      return;
+    }
+
+    // 2) address — the hardened writer (rejects empty label/details<3/empty detected/non-numeric)
+    const res = await saveAddress({ label: v.label, detected: _nadDetected, details: v.details, lat: _nadLat, lng: _nadLng, makeDefault: true });
+    if (!res.ok) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = res.message || 'No pudimos guardar la dirección. Intentá de nuevo.'; }
+      if (btn) { btn.disabled = false; btn.textContent = 'Guardar perfil'; }
+      return;
+    }
+
+    // 3) re-confirm the LIVE predicate before declaring success (codex R1 #7)
+    const st = await accountSnapshotStatus();
+    if (st.status === 'ok' && profileComplete(st.snap)) {
+      _acctData = st.snap;
+      renderChip();
+      toast('Perfil creado');
+      closeSheet();
+      try { wrapPageHooks(); initDeliveryStep().catch(() => {}); } catch (_) {}   // reflect completeness THIS load
+      return;
+    }
+    // writes persisted but re-read is unavailable or still-incomplete → do NOT claim success;
+    // fail-open to Mi Cuenta (checkout re-enforces complete-before-pay).
+    _acctData = (st.status === 'ok') ? st.snap : _acctData;
+    renderAccountPane(); showPane('account');
+    if (st.status === 'unavailable') toast('Guardado. Verificá tu conexión.');
+  }
+
+  // Teardown on close: bump the map-session epoch so any late reverse-geocode from this pane's
+  // fullscreen map is invalidated (codex R1 #5), and reset the account-only _nad* sink. The
+  // fullscreen twin's own map/geocoder instances (acctFsMap) are cached-and-reused across opens,
+  // matching the host form's fullscreen-map pattern (never destroyed).
   function closeNewAddressPane() {
-    if (_nadMarker) { try { _nadMarker.setMap(null); } catch (_) {} _nadMarker = null; }
-    _nadMap = null; _nadGeocoder = null;
+    _acctFsEpoch++;                    // invalidate any late geocode from this pane's map
     _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;
     showPane('account');
   }
