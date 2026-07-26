@@ -91,12 +91,18 @@
     const st = document.createElement('style');
     st.id = 'acct-sheet-styles';
     st.textContent = `
-.acct-overlay{position:fixed;inset:0;z-index:1000;display:none;align-items:flex-end;justify-content:center;background:rgba(23,19,15,.46)}
-.acct-overlay.acct-open{display:flex}
+.acct-overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:flex-end;justify-content:center;background:rgba(23,19,15,.46);opacity:0;transition:opacity .3s ease;pointer-events:none}
+.acct-overlay.acct-open{opacity:1;pointer-events:auto}
 @media (min-width:520px){ .acct-overlay{align-items:center} }
-.acct-sheet{width:100%;max-width:420px;max-height:92vh;background:#FFFDFA;border-radius:22px 22px 0 0;box-shadow:0 -20px 60px -20px rgba(40,28,12,.5);overflow:hidden;display:flex;flex-direction:column;font-family:inherit;animation:acct-up .28s cubic-bezier(.2,.7,.2,1);transition:transform .16s ease-out}
+/* #8 keyboard-collision-safe slide: the sheet transform COMPOSES two independent inputs via CSS vars —
+   --acct-open-y (open/close: 0px open, 100% closed) + --acct-kb-y (applyKeyboardInset's keyboard lift).
+   applyKeyboardInset sets ONLY --acct-kb-y (never style.transform), so the keyboard lift still works on
+   an open sheet without clobbering the open/close slide. */
+.acct-sheet{width:100%;max-width:420px;max-height:92vh;background:#FFFDFA;border-radius:22px 22px 0 0;box-shadow:0 -20px 60px -20px rgba(40,28,12,.5);overflow:hidden;display:flex;flex-direction:column;font-family:inherit;transform:translateY(calc(var(--acct-open-y,100%) + var(--acct-kb-y,0px)));transition:transform .3s cubic-bezier(.2,.7,.2,1)}
+.acct-overlay.acct-open .acct-sheet{--acct-open-y:0px}
 @media (min-width:520px){ .acct-sheet{border-radius:22px;max-height:88vh} }
-@keyframes acct-up{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+@keyframes acct-pane-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){ .acct-overlay,.acct-sheet{transition:none} .acct-pane.acct-on{animation:none} }
 .acct-topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 8px;flex:none}
 .acct-iconbtn{width:34px;height:34px;border-radius:50%;border:none;background:transparent;color:#17130F;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-family:inherit}
 .acct-iconbtn:hover{background:#F4EEE4}
@@ -104,7 +110,7 @@
 .acct-mark .acct-dot{color:${CONFIG.accent}}
 .acct-body{flex:1;overflow:auto;padding:6px 26px 26px}
 .acct-pane{display:none;flex-direction:column}
-.acct-pane.acct-on{display:flex}
+.acct-pane.acct-on{display:flex;animation:acct-pane-in .2s ease}
 .acct-h1{font-size:26px;line-height:1.12;letter-spacing:-.02em;font-weight:800;color:#17130F;margin:8px 0 0}
 .acct-sub{color:#8C7B6E;font-size:14.5px;line-height:1.5;margin:10px 0 0;max-width:32ch}
 .acct-mlabel{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#B3A594;margin:22px 0 9px}
@@ -220,6 +226,7 @@
   </div>
 </div>`;
     document.body.appendChild(wrap);
+    wrap.inert = true; wrap.setAttribute('aria-hidden', 'true'); wrap.style.visibility = 'hidden';   // closed initially — not tabbable/painted until openOverlay (codex R1 #2)
     _overlayBuilt = true;
     wireOverlayEvents();
   }
@@ -232,11 +239,23 @@
 
   function openOverlay() {
     buildOverlay();
-    $('acct-overlay').classList.add('acct-open');
+    const ov = $('acct-overlay');
+    ov.style.visibility = ''; ov.removeAttribute('aria-hidden'); ov.inert = false;   // clear the closed inert state before the slide
+    void ov.offsetHeight;                     // commit the closed state so adding .acct-open transitions (not a jump)
+    ov.classList.add('acct-open');            // scrim fades in + sheet slides up (#8)
     bindKeyboardInset();
   }
   function closeSheet() {
-    const ov = $('acct-overlay'); if (ov) ov.classList.remove('acct-open');
+    const ov = $('acct-overlay');
+    if (ov) {
+      try { if (ov.contains(document.activeElement) && typeof document.activeElement.blur === 'function') document.activeElement.blur(); } catch (_) {}   // move focus OUT before inert (codex note)
+      ov.classList.remove('acct-open');       // scrim fades out + sheet slides down
+      let done = false;
+      const finalize = () => { if (done) return; done = true; try { ov.removeEventListener('transitionend', onEnd); } catch (_) {} try { ov.inert = true; ov.setAttribute('aria-hidden', 'true'); ov.style.visibility = 'hidden'; } catch (_) {} };
+      const onEnd = (e) => { if (e && e.target !== ov) return; if (e && e.propertyName && e.propertyName !== 'opacity') return; finalize(); };   // anchor on the overlay's own opacity fade
+      ov.addEventListener('transitionend', onEnd);
+      setTimeout(finalize, 420);              // fallback: reduced-motion / no transitionend
+    }
     unbindKeyboardInset();
   }
 
@@ -251,7 +270,7 @@
     const vv = window.visualViewport;
     if (!sheet || !vv) return;
     const covered = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-    sheet.style.transform = covered > 40 ? `translateY(-${covered}px)` : '';
+    sheet.style.setProperty('--acct-kb-y', covered > 40 ? `-${covered}px` : '0px');   // #8: set ONLY the keyboard var — the sheet's transform composes it with --acct-open-y (never clobber the open/close slide)
     const active = document.activeElement;
     if (covered > 40 && active && sheet.contains(active) && typeof active.scrollIntoView === 'function') {
       active.scrollIntoView({ block: 'nearest' });
@@ -265,7 +284,7 @@
   }
   function unbindKeyboardInset() {
     const sheet = document.querySelector('#acct-overlay .acct-sheet');
-    if (sheet) sheet.style.transform = '';
+    if (sheet) sheet.style.setProperty('--acct-kb-y', '0px');   // clear the keyboard lift (NOT style.transform — that's the stylesheet calc())
   }
 
   function openLoginSheet() {
