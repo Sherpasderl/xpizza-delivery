@@ -2379,19 +2379,35 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
       const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
       const addrSection = addrSectionEl();
       if (addrSection) addrSection.style.display = '';
-      // FRESH-PIN (codex F1, money-path): enterEditMode(true) clears __restorePos but NOT the checkout
-      // lat/lng or the existing gmarker — so "usar una dirección nueva" could silently sit on the
-      // PREVIOUS saved coordinates. Null the pin so no stale coordinate carries over; the customer
-      // must place a new one (processPayment's lat/lng + zone checks are the submit backstop). This is
-      // the ONLY place account.js resets these checkout globals, and only on the explicit new-address gesture.
-      try { lat = null; lng = null; } catch (_) {}
-      try { if (typeof gmarker !== 'undefined' && gmarker) { gmarker.setMap(null); gmarker = null; } } catch (_) {}
-      try { __restorePos = null; } catch (_) {}
       _acctAddrOneOff = true;   // use-once until the customer explicitly taps "Guardar dirección" (which clears it) (FIX B)
       enterEditMode(true);   // existing scaffolding — its "Guardar dirección" persists (makeDefault:true) + applies
-      // A map revealed from display:none renders blank tiles until told to resize; recenter only if a
-      // pin still exists (it won't right after the reset — the map keeps its last center for the customer to adjust).
-      try { if (typeof gmap !== 'undefined' && gmap) { google.maps.event.trigger(gmap, 'resize'); if (lat != null && lng != null) gmap.setCenter({ lat, lng }); } } catch (_) {}
+      // FRESH-PIN (codex F1 R1, money-path): enterEditMode(true) clears __restorePos but NOT lat/lng or
+      // the existing gmarker — and simply nulling them is NOT enough: the main map has no click-to-place
+      // handler (only the draggable marker, which we removed) and initMap() is a no-op once gmap exists,
+      // so the customer would be left with a marker-less map and no way to set a pin. Worse,
+      // openFullscreenMap() only recenters fsMap when lat && lng are truthy, so a stale fsMap center
+      // could commit the WRONG coordinate into a paid order. So RESET then RE-ACQUIRE a real fresh pin
+      // exactly like a brand-new delivery order does (index.html initMap()'s fresh branch): clear the old
+      // pin, then call the GLOBAL placePin via geolocation (GPS → placePin, fail → SPS-center fallback).
+      // placePin sets lat/lng to a REAL fresh point, recreates the DRAGGABLE marker + dragend handler,
+      // and runs updateLocInfo/reverseGeocode — so the user can adjust and openFullscreenMap now recenters
+      // to the fresh pin. This is the ONLY place account.js resets these checkout globals, and ONLY on the
+      // explicit "usar una dirección nueva" gesture (never page-load, saved-address pick, or retry-restore).
+      try { if (typeof gmarker !== 'undefined' && gmarker) { gmarker.setMap(null); gmarker = null; } } catch (_) {}
+      try { __restorePos = null; } catch (_) {}
+      try { lat = null; lng = null; } catch (_) {}
+      try {
+        if (typeof gmap !== 'undefined' && gmap) google.maps.event.trigger(gmap, 'resize');   // size the now-visible map BEFORE placePin's setCenter so tiles render
+        if (typeof placePin === 'function') {
+          if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => placePin(pos.coords.latitude, pos.coords.longitude, false),
+              () => placePin(15.5003, -88.025, true),
+              { timeout: 10000, enableHighAccuracy: true, maximumAge: 0 }
+            );
+          } else { placePin(15.5003, -88.025, true); }
+        }
+      } catch (_) {}
       if (addrSection) setTimeout(() => addrSection.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
     };
     const cancelBtn = $('acct-cambiar-cancel');
