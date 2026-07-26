@@ -1369,6 +1369,7 @@ ${rowsHtml}`;
   let _acctFsEpoch = 0;             // bumped on every open; late async callbacks compare against it
   let _acctFsPreviewId = null;      // which preview to refresh on Listo
   let _acctFsPrevOverflow = '';     // document.body.style.overflow at open — restored on close (sheet may still need lock)
+  let _nadGeoSeq = 0;               // per-request monotonic seq (codex R1 FIX 2): only the LATEST-requested reverse-geocode may write _nadDetected, so an older in-epoch callback resolving last can't overwrite the committed pin's address
 
   let _acctFsStylesDone = false;
   function injectAcctFsStyles() {
@@ -1473,8 +1474,10 @@ ${rowsHtml}`;
   function reverseGeocodeAcctFs(la, ln, epoch) {
     if (!window.google || !window.google.maps) return;
     if (!_acctFsGeocoder) _acctFsGeocoder = new google.maps.Geocoder();
+    const seq = ++_nadGeoSeq;                                     // latest request wins (codex R1 FIX 2)
     _acctFsGeocoder.geocode({ location: { lat: la, lng: ln } }, (results, status) => {
       if (epoch !== _acctFsEpoch) return;                         // stale — pane/map torn down; ignore (codex R1 #5)
+      if (seq !== _nadGeoSeq) return;                             // superseded by a newer request; in-epoch ordering (codex R1 FIX 2)
       const detected = (status === 'OK' && results[0]) ? results[0].formatted_address
                      : ('Lat: ' + la.toFixed(5) + ', Lng: ' + ln.toFixed(5));
       _nadDetected = detected;
@@ -1490,6 +1493,10 @@ ${rowsHtml}`;
     if (commit && _acctFsMap) {
       const c = _acctFsMap.getCenter();
       _nadLat = c.lat(); _nadLng = c.lng(); _nadPinTouched = true;
+      // Re-geocode the FINAL committed center so _nadDetected converges to the saved pin (codex R1
+      // FIX 2): its seq is newest → its callback is the authoritative writer, regardless of any
+      // older in-epoch geocode still in flight.
+      reverseGeocodeAcctFs(_nadLat, _nadLng, _acctFsEpoch);
     }
     if (_acctFsPreviewId) renderAcctMapPreview(_acctFsPreviewId);   // reflect the chosen pin + address
     // if the create pane is the active one, its CTA gating depends on the just-committed pin
