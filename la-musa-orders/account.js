@@ -1441,8 +1441,10 @@ ${rowsHtml}`;
 
   let _acctFsStylesDone = false;
   function injectAcctFsStyles() {
-    if (_acctFsStylesDone) return; _acctFsStylesDone = true;
+    if (_acctFsStylesDone || document.getElementById('acct-fs-styles')) { _acctFsStylesDone = true; return; }   // belt-and-suspenders idempotency (flag + stable id)
+    _acctFsStylesDone = true;
     const st = document.createElement('style');
+    st.id = 'acct-fs-styles';
     st.textContent = `
 .acct-fs-overlay{position:fixed;inset:0;z-index:1200;display:none;flex-direction:column;background:#E4DAC7}
 .acct-fs-overlay.open{display:flex}
@@ -1588,6 +1590,7 @@ ${rowsHtml}`;
   }
 
   function renderAcctMapPreview(containerId) {
+    injectAcctFsStyles();   // #1: .acct-map-preview + .acct-fs-pin{width/height:30px} live here — inject BEFORE first paint or the inline-viewBox SVG defaults to filling the container (giant pin). Idempotent.
     const host = document.getElementById(containerId); if (!host) return;
     host.className = 'acct-map-preview';
     const placed = (typeof _nadLat === 'number' && typeof _nadLng === 'number');
@@ -1642,6 +1645,7 @@ ${rowsHtml}`;
     const order = mode === 'order';
     injectDeliverStyles();
     injectNewAddrStyles();
+    injectAcctFsStyles();   // #1 (defensive): ensure .acct-map-preview/.acct-fs-pin styles exist before the preview renders (renderAcctMapPreview also injects; idempotent)
     const pane = $('acct-pane-newaddr'); if (!pane) return;
     _acctFsEpoch++;                          // invalidate any late geocode from a prior map session
     _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;   // fresh address entry
