@@ -216,6 +216,10 @@
       <!-- built by renderAccountPane() at open time (Task 6) -->
     </section>
 
+    <section class="acct-pane" id="acct-pane-addrpicker">
+      <!-- built by renderAddrPicker() — the focused Cambiar address picker (one-off apply / + nueva) -->
+    </section>
+
     <section class="acct-pane" id="acct-pane-newaddr">
       <!-- built by renderNewAddressPane() at open time (Task 5) — self-contained, own map -->
     </section>
@@ -284,6 +288,20 @@
     unbindKeyboardInset();
   }
 
+  // Contextual close (codex F3/F4): ✕ and the scrim route here. If the ORDER-mode new-address pane is
+  // active, run its isolated-map teardown (bump _acctFsEpoch, reset _nad*, restore mode) BEFORE closeSheet
+  // — the polished sheet finalizer doesn't cover that state, so it would otherwise leak stale _nad*/map/
+  // mode into the next open. Every other pane (picker/account) just closes (order unchanged).
+  function dismissSheet() {
+    const nad = $('acct-pane-newaddr');
+    if (nad && nad.classList.contains('acct-on') && _nadPaneMode === 'order') {
+      _acctFsEpoch++;
+      _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;
+      _nadPaneMode = 'account-save';
+    }
+    closeSheet();
+  }
+
   // ── Keyboard-safe sheet (Task B2) — on iOS Safari, focusing an input inside the fixed-position
   // bottom sheet can leave it (and its CTA) hidden under the on-screen keyboard: the sheet is
   // pinned to the layout viewport, which the keyboard doesn't shrink, only visualViewport does.
@@ -321,9 +339,12 @@
   }
 
   function wireOverlayEvents() {
-    $('acct-close').onclick = closeSheet;
+    $('acct-close').onclick = dismissSheet;      // topbar ✕ → contextual close (teardown order-mode newaddr — codex F3)
     $('acct-guest-btn').onclick = closeSheet;    // guest flow untouched — just closes the sheet
     $('acct-back').onclick = () => showPane('phone');
+    // Scrim-dismiss (codex F4): a click on the overlay backdrop (NOT inside .acct-sheet) closes with the
+    // same contextual teardown. Target-guarded so taps inside the sheet never dismiss.
+    const ov = $('acct-overlay'); if (ov) ov.addEventListener('click', (e) => { if (e.target === ov) dismissSheet(); });
 
     // Phone pane: digits-only NNNN-NNNN formatting, CTA enabled at 8 digits. CC is a static +504
     // for P0 (the login phone is almost always the local WhatsApp number; a US customer can still
@@ -942,6 +963,13 @@
 .acct-acard .acct-al2{flex:1;min-width:0}
 .acct-acard .acct-aname2{font-size:14.5px;font-weight:700;color:#17130F}
 .acct-acard .acct-aline2{font-size:12px;color:#8C7B6E;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Cambiar address-picker pane */
+.acct-picker-top{display:flex;align-items:center;justify-content:space-between;margin:2px 0 16px}
+.acct-picker-title{font-size:17px;font-weight:800;color:#17130F;letter-spacing:-.01em}
+.acct-acard--active{border-color:${CONFIG.accent};background:#FBF6EE}
+.acct-acard--tapped{border-color:${CONFIG.accent};background:#F4EEE4}
+.acct-acard .acct-pick-check{flex:none;color:${CONFIG.accent};display:flex;align-items:center}
+.acct-picker-new{display:block;width:100%;text-align:center;padding:13px;margin-top:6px;border:1.5px dashed #D8CBB8;border-radius:14px;background:none;font-family:inherit;font-size:14px;font-weight:700;color:#17130F;cursor:pointer}
 .acct-acard .acct-chk{color:${CONFIG.accent};flex:none;display:flex}
 .acct-acard .acct-del{color:#B3A594;font-size:19px;padding:2px 5px;flex:none;line-height:1}
 .acct-acard .acct-del:hover{color:#B23B3B}
@@ -1518,6 +1546,7 @@ ${rowsHtml}`;
   let _nadLat = null, _nadLng = null, _nadDetected = '';
   let _nadPinTouched = false;   // TRUE only after a REAL user placement (drag or Listo-commit) — never the fallback/GPS auto-pin (codex re-gate FIX 2)
   let _nadPaneMode = 'account-save';   // which caller opened the new-address pane: 'account-save' (Mi Cuenta "+ Agregar", unchanged — single "Guardar dirección") | 'order' (Cambiar — "Usar esta dirección" + save-checkbox, confirm-gated, applies to THIS order) (isolated-map rebuild)
+  let _nadReturnTo = 'account';         // where the order-mode new-address BACK returns: 'addrpicker' (opened from the Cambiar picker → back to the picker) | 'order' (legacy order entry → closeSheet) | 'account' (Mi-Cuenta "+ Agregar" → Mi Cuenta) — never a hardcoded target (codex F2)
 
   function injectNewAddrStyles() {
     if ($('acct-nad-styles')) return;
@@ -1780,22 +1809,15 @@ ${!_nadPinTouched ? '<div class="hint"><span>Toca para marcar tu ubicación</spa
     renderNewAddressPane();   // self-contained — NEVER closes the sheet, NEVER touches the order form
   }
 
-  // Cambiar "Usar una dirección nueva" → open the account sheet over the order form and show the
-  // ISOLATED new-address pane in ORDER mode. renderNewAddressPane resets _nad* + shows the pane; nothing
-  // touches the checkout map/globals until the customer places a pin and taps "Usar esta dirección".
-  function openNewAddressForOrder() {
-    openOverlay();
-    renderNewAddressPane({ mode: 'order' });
-  }
-
-  // Order-mode Back/Cancel — return to the order WITHOUT applying anything. Mirror closeNewAddressPane's
-  // teardown (epoch bump + _nad* reset) but close the sheet back to the order (the Cambiar chooser is
-  // still in #acct-s2-summary underneath; the order's prior address is untouched — nothing was applied).
+  // Order-mode Back/Cancel — return WITHOUT applying anything, teardown the isolated-map state, then route
+  // by _nadReturnTo (codex F2): opened from the Cambiar picker → back to the PICKER (same sheet, seamless);
+  // legacy 'order' entry → closeSheet. The order's prior address is untouched (nothing was applied).
   function backFromOrderNewAddress() {
     _acctFsEpoch++;
     _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;
     _nadPaneMode = 'account-save';
-    closeSheet();
+    if (_nadReturnTo === 'addrpicker') { renderAddrPicker(); }   // renderAddrPicker() re-renders + showPane('addrpicker') — pane transition within the same sheet
+    else closeSheet();
   }
 
   // mode: 'account-save' (default — Mi Cuenta "+ Agregar", UNCHANGED: single "Guardar dirección" →
@@ -1806,6 +1828,7 @@ ${!_nadPinTouched ? '<div class="hint"><span>Toca para marcar tu ubicación</spa
     const mode = (opts && opts.mode) || 'account-save';
     _nadPaneMode = mode;
     const order = mode === 'order';
+    _nadReturnTo = (opts && opts.returnTo) || (order ? 'order' : 'account');   // back target by caller (codex F2)
     injectDeliverStyles();
     injectNewAddrStyles();
     injectAcctFsStyles();   // #1 (defensive): ensure .acct-map-preview/.acct-fs-pin styles exist before the preview renders (renderAcctMapPreview also injects; idempotent)
@@ -2671,57 +2694,72 @@ ${footer}`;
   }
 
   // ══════════════════════════════════════════════════════════════════════════════════════════
-  // Cambiar chooser (from the returning-flow summary): pick another SAVED address
-  // (selectSavedAddressForOrder → order fields only, no persist, no default change) OR "Usar una
-  // dirección nueva" → the ISOLATED order-mode map pane (openNewAddressForOrder →
-  // confirmNewAddressForOrder), which writes ONLY _nad* until an explicit pin + confirm and never
-  // touches the checkout map/globals before then (isolated-map rebuild — supersedes the racey
-  // enterEditMode(true)/checkout-map fresh-pin path). No silent default/profile mutation on a one-off.
-  // Reachable only via renderS1CompactSummary/renderS2RichSummary's Cambiar buttons — themselves only
-  // ever rendered behind marker()+profileComplete (Task 3).
+  // Cambiar → the focused address-picker PANE (renderAddrPicker): pick another SAVED address
+  // (pickAddrFromPicker → selectSavedAddressForOrder, order fields only, no persist/default change; the
+  // already-active card is a no-op) OR "+ Usar una dirección nueva" → the ISOLATED order-mode map pane
+  // (renderNewAddressPane{mode:'order',returnTo:'addrpicker'} → confirmNewAddressForOrder), which writes
+  // ONLY _nad* until an explicit pin + confirm and never touches the checkout map/globals before then.
+  // No silent default/profile mutation on a one-off. Reachable only via renderS1CompactSummary/
+  // renderS2RichSummary's Cambiar buttons — themselves only ever rendered behind marker()+profileComplete.
   // ══════════════════════════════════════════════════════════════════════════════════════════
 
-  function openCambiarPanel() {
-    const mount = $('acct-s2-summary'); if (!mount) return;
-    // Cambiar can be tapped from s1's compact line before s2 has ever been shown — jump there so the
-    // chooser (mounted in #acct-s2-summary) is visible. Name/phone are already known+valid (the Task 3
-    // invariant that got us here). NO checkout-map init/seed here: "Usar una dirección nueva" now opens
-    // the ISOLATED account map (Task 4), and the reduced flow keeps the checkout map hidden — so nothing
-    // in this panel touches the checkout map, gmap, __restorePos, or geolocation (the whole race class,
-    // deleted). The isolated map is the SOLE map for a new order address.
-    try {
-      const s2 = document.getElementById('s2');
-      if (s2 && !s2.classList.contains('active') && typeof showStage === 'function') showStage('s2', 50);
-    } catch (_) {}
-
+  // The focused Cambiar address picker (a pane in the account sheet) — replaces the old showStage('s2')
+  // jump + #acct-s2-summary inline chooser. Shows every saved address (the one currently backing THIS
+  // order is highlighted); a card tap applies one-off or no-ops if already active (pickAddrFromPicker);
+  // "+ nueva" transitions to the isolated order-mode new-address pane within the SAME sheet (returnTo).
+  // Presentation only — no money-path logic here.
+  function renderAddrPicker() {
     injectDeliverStyles();
+    const pane = $('acct-pane-addrpicker'); if (!pane) return;
     const addrs = (_acctData && _acctData.addresses) || {};
-    const otherIds = Object.keys(addrs).filter((id) => id !== _acctAddrId);
-    const rowsHtml = otherIds.map((id) => {
+    const activeId = (_acctOrderAddr && _acctOrderAddr.id) || null;   // the SAVED address currently backing the order (null when it's an unsaved one-off — then no card is "active")
+    const cards = Object.keys(addrs).map((id) => {
       const a = addrs[id];
-      return `<div class="acct-acard" data-use-id="${escapeHtml(id)}">
-  <span class="acct-dotmark" style="background:#CFC2B1"></span>
+      const active = (id === activeId);
+      return `<div class="acct-acard${active ? ' acct-acard--active' : ''}" data-pick-id="${escapeHtml(id)}">
+  <span class="acct-dotmark"${active ? '' : ' style="background:#CFC2B1"'}></span>
   <div class="acct-al2"><div class="acct-aname2">${escapeHtml(a.label || 'Dirección')}</div>
   <div class="acct-aline2">${escapeHtml(a.details || a.detected || '')}</div></div>
+  ${active ? `<span class="acct-pick-check">${ICON_CHECK_SM}</span>` : ''}
 </div>`;
     }).join('');
-    mount.innerHTML = `
-<div class="acct-eyebrow">Cambiar dirección de entrega</div>
-${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No tenés otras direcciones guardadas.</p>'}
-<button type="button" class="acct-addlink" id="acct-cambiar-new">+ Usar una dirección nueva</button>
-<button type="button" class="acct-cancel-edit" id="acct-cambiar-cancel">‹ Cancelar</button>`;
-    mount.querySelectorAll('[data-use-id]').forEach((row) => {
-      row.onclick = () => selectSavedAddressForOrder(row.getAttribute('data-use-id'));
+    pane.innerHTML = `
+<div class="acct-picker-top">
+  <span class="acct-picker-title">Elegí una dirección</span>
+  <button type="button" class="acct-iconbtn" id="acct-picker-close" aria-label="Cerrar">×</button>
+</div>
+${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No tenés direcciones guardadas.</p>'}
+<button type="button" class="acct-picker-new" id="acct-picker-new">+ Usar una dirección nueva</button>`;
+    const closeBtn = $('acct-picker-close'); if (closeBtn) closeBtn.onclick = dismissSheet;   // contextual close (Task 5)
+    pane.querySelectorAll('[data-pick-id]').forEach((card) => {
+      card.onclick = () => pickAddrFromPicker(card.getAttribute('data-pick-id'), card);       // active=no-op / other=one-off (Task 2)
     });
-    const newBtn = $('acct-cambiar-new');
-    // "Usar una dirección nueva" → the ISOLATED order-mode map pane (Task 4). No checkout-map reveal,
-    // no enterEditMode(true), no gmarker/lat/lng/__restorePos reset, no getCurrentPosition — that entire
-    // race class is deleted. The pane writes ONLY _nad*; the order's checkout coordinate is written once,
-    // at confirm, from the explicitly-placed pin (confirmNewAddressForOrder).
-    if (newBtn) newBtn.onclick = () => openNewAddressForOrder();
-    const cancelBtn = $('acct-cambiar-cancel');
-    if (cancelBtn) cancelBtn.onclick = () => refreshDeliveryUI();
-    setTimeout(() => mount.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+    const newBtn = $('acct-picker-new'); if (newBtn) newBtn.onclick = () => renderNewAddressPane({ mode: 'order', returnTo: 'addrpicker' });   // + nueva → order-mode new-address, back to picker (Task 3)
+    showPane('addrpicker');
+  }
+
+  // Card tap (codex F1). If the tapped card is the address ALREADY backing the order → close, NO state
+  // change: calling selectSavedAddressForOrder there would set _acctAddrOneOff=true and silently convert
+  // a default/saved-backed order into use-once. Only a DIFFERENT card applies (one-off, UNCHANGED logic).
+  // Brief highlight before close so the tap feels responsive.
+  function pickAddrFromPicker(id, cardEl) {
+    if (!id) return;
+    const activeId = (_acctOrderAddr && _acctOrderAddr.id) || null;
+    if (cardEl) cardEl.classList.add('acct-acard--tapped');
+    if (id === activeId) {
+      setTimeout(dismissSheet, 180);                                   // already active → no-op, just close (preserve _acctAddrOneOff)
+    } else {
+      setTimeout(() => { selectSavedAddressForOrder(id); closeSheet(); }, 180);   // different → one-off apply (UNCHANGED) + close
+    }
+  }
+
+  // "Cambiar" → the focused address-picker pane (owner-approved mockup). No more showStage('s2') jump /
+  // step-label flip / #acct-s2-summary inline chooser: the old jump existed only because the OLD
+  // new-address flow needed the checkout map in s2, and that dependency is gone (isolated account map).
+  // The sheet overlays the checkout, so closeSheet returns to whatever stage the user was on.
+  function openCambiarPanel() {
+    openOverlay();
+    renderAddrPicker();   // populates #acct-pane-addrpicker + showPane('addrpicker')
   }
 
   // "Usar en este pedido" — order fields ONLY, NO saveAddress() call, NO default_address change.
