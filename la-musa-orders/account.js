@@ -1614,6 +1614,24 @@ ${rowsHtml}`;
     renderNewAddressPane();   // self-contained — NEVER closes the sheet, NEVER touches the order form
   }
 
+  // Cambiar "Usar una dirección nueva" → open the account sheet over the order form and show the
+  // ISOLATED new-address pane in ORDER mode. renderNewAddressPane resets _nad* + shows the pane; nothing
+  // touches the checkout map/globals until the customer places a pin and taps "Usar esta dirección".
+  function openNewAddressForOrder() {
+    openOverlay();
+    renderNewAddressPane({ mode: 'order' });
+  }
+
+  // Order-mode Back/Cancel — return to the order WITHOUT applying anything. Mirror closeNewAddressPane's
+  // teardown (epoch bump + _nad* reset) but close the sheet back to the order (the Cambiar chooser is
+  // still in #acct-s2-summary underneath; the order's prior address is untouched — nothing was applied).
+  function backFromOrderNewAddress() {
+    _acctFsEpoch++;
+    _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;
+    _nadPaneMode = 'account-save';
+    closeSheet();
+  }
+
   // mode: 'account-save' (default — Mi Cuenta "+ Agregar", UNCHANGED: single "Guardar dirección" →
   // saveNewAddressFromPane persists + back to Mi Cuenta) | 'order' (Cambiar — footer is a save-checkbox
   // + primary "Usar esta dirección", confirm DISABLED until an explicit pin + referencia (+ label when
@@ -2000,6 +2018,7 @@ ${footer}`;
       closeSheet();
       toast('Esa dirección no está disponible ahora mismo — revisá el mapa.');
     }
+    _nadPaneMode = 'account-save';   // pane lifecycle done — a late acctFs geocode callback's refreshNewAddrOrderGate is now a no-op
   }
 
   // ── Sign-out / delete-account: revert the form back to the pristine guest state ──
@@ -2481,13 +2500,14 @@ ${footer}`;
   }
 
   // ══════════════════════════════════════════════════════════════════════════════════════════
-  // Task 4 — Cambiar: TWO distinct actions from the returning-flow summary (spec "Cambiar (on the
-  // returning payment summary)"). "Usar en este pedido" (pick a saved address → order fields
-  // ONLY, no persist, no default change) vs "Guardar dirección" (edit/add → persists via the
-  // EXISTING enterEditMode(true)/saveEditedAddress scaffolding, unchanged, makeDefault:true). No
-  // silent default/profile mutation on a one-off. Reachable only via renderS1CompactSummary/
-  // renderS2RichSummary's Cambiar buttons — themselves only ever rendered behind
-  // marker()+profileComplete (Task 3).
+  // Cambiar chooser (from the returning-flow summary): pick another SAVED address
+  // (selectSavedAddressForOrder → order fields only, no persist, no default change) OR "Usar una
+  // dirección nueva" → the ISOLATED order-mode map pane (openNewAddressForOrder →
+  // confirmNewAddressForOrder), which writes ONLY _nad* until an explicit pin + confirm and never
+  // touches the checkout map/globals before then (isolated-map rebuild — supersedes the racey
+  // enterEditMode(true)/checkout-map fresh-pin path). No silent default/profile mutation on a one-off.
+  // Reachable only via renderS1CompactSummary/renderS2RichSummary's Cambiar buttons — themselves only
+  // ever rendered behind marker()+profileComplete (Task 3).
   // ══════════════════════════════════════════════════════════════════════════════════════════
 
   function openCambiarPanel() {
