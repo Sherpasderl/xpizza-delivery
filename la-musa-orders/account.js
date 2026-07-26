@@ -444,18 +444,21 @@
       _acctData = st.snap;
       renderChip();
       closeSheet();
-      // Returning complete user — re-run so the confirm card / save-on-order toggle activate for THIS
-      // page load without requiring a reload.
-      try { initDeliveryStep().catch(() => {}); } catch (_) {}
+      // Returning complete user — arm DETERMINISTICALLY from st.snap (codex R1 FIX 1b): the reduced
+      // 2-step flow activates for THIS page load with no second read.
+      try { initDeliveryStep(st.snap).catch(() => {}); } catch (_) {}
     } else if (st.status === 'ok') {
       // positively-confirmed INCOMPLETE → the full Creá tu perfil in the sheet, AND arm the checkout
-      // hard-block underneath so dismissing this overlay pane can't bypass profile-first enforcement.
+      // hard-block underneath from st.snap DIRECTLY (codex R1 FIX 1b) so applyCreateProfileFlow sets
+      // _acctCreateProfileActive=true + hides payment SYNCHRONOUSLY — a slow/failed second read can no
+      // longer leave checkout payable if the user dismisses this overlay pane.
       _acctData = st.snap;
       renderCreateProfilePane((st.snap && st.snap.name) || data.name || '');
-      try { initDeliveryStep().catch(() => {}); } catch (_) {}
+      try { initDeliveryStep(st.snap).catch(() => {}); } catch (_) {}
     } else {
       // read UNAVAILABLE (timeout/error) — never show create on an unconfirmed read; fail-open to Mi
-      // Cuenta, but still arm the checkout layer so its own complete-before-pay gate enforces at pay.
+      // Cuenta, and arm the checkout layer with NO preSnap → it re-reads and fail-opens (correct when
+      // we couldn't confirm; the checkout's own complete-before-pay gate still enforces at pay).
       renderChip();
       renderAccountPane(); showPane('account');
       try { initDeliveryStep().catch(() => {}); } catch (_) {}
@@ -904,13 +907,21 @@
   // Creá tu perfil; complete profile → Task 3's reduced 2-step "cart → pay" flow). FAIL-OPEN at
   // every step — any miss/timeout/incomplete/invariant-fail routes to the normal fillable UI,
   // never a hidden-but-empty section, never an advance to payment without valid delivery data.
-  async function initDeliveryStep() {
+  // preSnap (codex R1 FIX 1b): when provided (!== undefined), arm DETERMINISTICALLY from a snapshot
+  // the caller already has — skip the internal accountSnapshot() await entirely (and thus its
+  // post-await R5 re-check, since with no await there's no restore race to catch). verifyCode's
+  // COMPLETE and confirmed-INCOMPLETE branches pass st.snap so _acctCreateProfileActive is set
+  // synchronously (incomplete → hides payment) and a slow/failed SECOND read can't leave checkout
+  // payable. Omitting the arg preserves the original read-and-fail-open behavior for every other
+  // caller (DOMContentLoaded, setOrderType, save-success, the UNAVAILABLE branch).
+  async function initDeliveryStep(preSnap) {
     if (!$('acct-deliver')) return;               // host form has no mount — never touch anything
     if (_acctRestoring) return;                   // a payment-retry restore owns the DOM — the snapshot is authoritative, never repopulate from the profile (FIX 7 / R4)
-    const restoreGen = _acctRestoreGen;           // snapshot the restore generation BEFORE the async read (R5)
+    const hasPre = (preSnap !== undefined);
+    const restoreGen = _acctRestoreGen;           // snapshot the restore generation BEFORE any async read (R5)
     setPaymentVisible(true);   // default reveal; only applyCreateProfileFlow (incomplete) hides it (FIX 1)
-    const snap = await accountSnapshot();          // fail-open, timeboxed ~1.5s internally — LIVE, authoritative (spec R1 #7)
-    if (_acctRestoring || _acctRestoreGen !== restoreGen) return;   // a retry-restore began (and possibly already completed, resetting _acctRestoring) DURING the await — the restored snapshot DOM is authoritative, never clobber it with the profile default (R5 async re-check)
+    const snap = hasPre ? preSnap : await accountSnapshot();   // preSnap → deterministic, no await; else fail-open, timeboxed ~1.5s internally — LIVE, authoritative (spec R1 #7)
+    if (!hasPre && (_acctRestoring || _acctRestoreGen !== restoreGen)) return;   // a retry-restore began (and possibly already completed, resetting _acctRestoring) DURING the await — never clobber the restored DOM (R5 async re-check). Only when we actually awaited.
     if (!snap) { _acctData = null; revertToNormalFillable(); refreshSaveToggle(); return; }   // no account / miss/timeout → normal empty form
     _acctData = snap;
     if (pageOrderType() !== 'delivery') { revertToNormalFillable(); refreshSaveToggle(); return; }   // pickup — out of scope (spec), leave raw fields
