@@ -1647,7 +1647,7 @@ ${rowsHtml}`;
     _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;   // fresh address entry
     const backLabel = order ? '‹ Cancelar' : '‹ Mi cuenta';
     const footer = order
-      ? `<label class="acct-nad-savechk" for="acct-nad-savechk"><input type="checkbox" id="acct-nad-savechk" checked><span>Guardar en mi cuenta para la próxima</span></label>
+      ? `<label class="acct-nad-savechk"><input type="checkbox" id="acct-nad-savechk" checked><span>Guardar en mi cuenta para la próxima</span></label>
 <button type="button" class="acct-save-addr-btn" id="acct-nad-use-btn" disabled>${ICON_CHECK_BIG} Usar esta dirección</button>`
       : `<button type="button" class="acct-save-addr-btn" id="acct-nad-save-btn">${ICON_CHECK_BIG} Guardar dirección</button>`;
     pane.innerHTML = `

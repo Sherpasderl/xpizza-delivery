@@ -885,9 +885,9 @@
   // ── Module state for the delivery step / edit flow (Tasks B4–B7). Reset on sign-out. ──
   let _acctData = null;          // last accountSnapshot() profile value, or null
   let _acctAddrId = null;        // addrId currently backing the confirm card / this order
+  let _acctOrderAddr = null;     // the address object currently backing THIS order (default establish / saved pick / new save-or-one-off confirm). refreshDeliveryUI re-applies it across a delivery↔pickup toggle so a one-off/new address is not clobbered by the default; cleared on sign-out / "otro pedido" (isolated-map rebuild T5)
   let _acctEditMode = false;     // true while "Cambiar" / "+ Agregar" edit surface is open
   let _acctEditIsNew = false;    // true when the open edit session targets a brand-new address
-  let _acctNewAddrGeoGen = 0;    // monotonic token for the "usar una dirección nueva" async geolocation acquisition — bumped on each new-address gesture, on exitEditMode (cancel), and on any order-type toggle, so a superseded/cancelled/toggled gesture's in-flight GPS callback is invalidated and can never placePin over restored saved-address coords (codex R2 async-race guard)
   let _acctEditLabel = '';       // chip-picked (or custom) label for the address being edited
   let _acctCardActive = false;   // true once the confirm card has replaced the raw Tus-datos fields
   let _acctAddrUnsaved = false;  // true when the address populating the order isn't a persisted one
@@ -1115,7 +1115,6 @@
 
   function exitEditMode() {
     _acctEditMode = false;
-    _acctNewAddrGeoGen++;   // leaving edit mode invalidates any in-flight new-address GPS callback (codex R2)
     const picker = $('acct-label-picker'); if (picker) picker.remove();
   }
 
@@ -1399,6 +1398,7 @@ ${rowsHtml}`;
   // the account-scoped fullscreen map twin (above) is the ONLY writer. Never the checkout globals.
   let _nadLat = null, _nadLng = null, _nadDetected = '';
   let _nadPinTouched = false;   // TRUE only after a REAL user placement (drag or Listo-commit) — never the fallback/GPS auto-pin (codex re-gate FIX 2)
+  let _nadPaneMode = 'account-save';   // which caller opened the new-address pane: 'account-save' (Mi Cuenta "+ Agregar", unchanged — single "Guardar dirección") | 'order' (Cambiar — "Usar esta dirección" + save-checkbox, confirm-gated, applies to THIS order) (isolated-map rebuild)
 
   function injectNewAddrStyles() {
     if ($('acct-nad-styles')) return;
@@ -1417,6 +1417,9 @@ ${rowsHtml}`;
 .acct-verified-ro .ok{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2A6A42}
 .acct-two{display:flex;gap:10px}
 .acct-two .acct-inp{flex:1;min-width:0;height:58px;border-radius:13px}
+.acct-nad-savechk{display:flex;align-items:center;gap:10px;margin:2px 0 12px;font-size:14px;font-weight:600;color:#4A4038;cursor:pointer;user-select:none}
+.acct-nad-savechk input{width:18px;height:18px;flex:none;accent-color:#17130F;cursor:pointer}
+.acct-save-addr-btn:disabled{opacity:.5;cursor:not-allowed}
 `;
     document.head.appendChild(st);
   }
@@ -1561,6 +1564,7 @@ ${rowsHtml}`;
       // case, codex R1 FIX 2b). Guard to the create pane so an unrelated pane is never touched.
       const cp = document.getElementById('acct-pane-createprofile');
       if (cp && cp.classList.contains('acct-on')) refreshCreateProfileCta();
+      refreshNewAddrOrderGate();   // order-mode newaddr pane: the committed pin's address just landed → enable "Usar esta dirección" (no-op otherwise)
     });
   }
 
@@ -1580,6 +1584,7 @@ ${rowsHtml}`;
     // if the create pane is the active one, its CTA gating depends on the just-committed pin
     const cp = $('acct-pane-createprofile');
     if (cp && cp.classList.contains('acct-on')) refreshCreateProfileCta();
+    refreshNewAddrOrderGate();   // order-mode newaddr pane: reflect the just-committed pin on the confirm gate (no-op otherwise)
   }
 
   function renderAcctMapPreview(containerId) {
@@ -1609,15 +1614,45 @@ ${rowsHtml}`;
     renderNewAddressPane();   // self-contained — NEVER closes the sheet, NEVER touches the order form
   }
 
-  function renderNewAddressPane() {
+  // Cambiar "Usar una dirección nueva" → open the account sheet over the order form and show the
+  // ISOLATED new-address pane in ORDER mode. renderNewAddressPane resets _nad* + shows the pane; nothing
+  // touches the checkout map/globals until the customer places a pin and taps "Usar esta dirección".
+  function openNewAddressForOrder() {
+    openOverlay();
+    renderNewAddressPane({ mode: 'order' });
+  }
+
+  // Order-mode Back/Cancel — return to the order WITHOUT applying anything. Mirror closeNewAddressPane's
+  // teardown (epoch bump + _nad* reset) but close the sheet back to the order (the Cambiar chooser is
+  // still in #acct-s2-summary underneath; the order's prior address is untouched — nothing was applied).
+  function backFromOrderNewAddress() {
+    _acctFsEpoch++;
+    _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;
+    _nadPaneMode = 'account-save';
+    closeSheet();
+  }
+
+  // mode: 'account-save' (default — Mi Cuenta "+ Agregar", UNCHANGED: single "Guardar dirección" →
+  // saveNewAddressFromPane persists + back to Mi Cuenta) | 'order' (Cambiar — footer is a save-checkbox
+  // + primary "Usar esta dirección", confirm DISABLED until an explicit pin + referencia (+ label when
+  // saving), back returns to the ORDER without mutating anything, confirm → confirmNewAddressForOrder).
+  function renderNewAddressPane(opts) {
+    const mode = (opts && opts.mode) || 'account-save';
+    _nadPaneMode = mode;
+    const order = mode === 'order';
     injectDeliverStyles();
     injectNewAddrStyles();
     const pane = $('acct-pane-newaddr'); if (!pane) return;
     _acctFsEpoch++;                          // invalidate any late geocode from a prior map session
     _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;   // fresh address entry
+    const backLabel = order ? '‹ Cancelar' : '‹ Mi cuenta';
+    const footer = order
+      ? `<label class="acct-nad-savechk"><input type="checkbox" id="acct-nad-savechk" checked><span>Guardar en mi cuenta para la próxima</span></label>
+<button type="button" class="acct-save-addr-btn" id="acct-nad-use-btn" disabled>${ICON_CHECK_BIG} Usar esta dirección</button>`
+      : `<button type="button" class="acct-save-addr-btn" id="acct-nad-save-btn">${ICON_CHECK_BIG} Guardar dirección</button>`;
     pane.innerHTML = `
 <div class="acct-nad-top">
-  <button type="button" class="acct-nad-back" id="acct-nad-back" aria-label="Volver a Mi cuenta">‹ Mi cuenta</button>
+  <button type="button" class="acct-nad-back" id="acct-nad-back" aria-label="${order ? 'Cancelar' : 'Volver a Mi cuenta'}">${backLabel}</button>
   <span class="acct-nad-title">Nueva dirección</span>
 </div>
 <div class="acct-eyebrow">Ubicación en el mapa</div>
@@ -1632,14 +1667,48 @@ ${rowsHtml}`;
 </div>
 <input type="text" id="acct-nad-label" class="acct-label-custom-inp" placeholder="Ponle un nombre… (ej: Casa de mis papás)" maxlength="40" style="margin-top:10px"/>
 <p class="acct-field-hint" id="acct-nad-err" style="display:none;color:#B23B3B"></p>
-<button type="button" class="acct-save-addr-btn" id="acct-nad-save-btn">${ICON_CHECK_BIG} Guardar dirección</button>`;
+${footer}`;
 
-    const backBtn = $('acct-nad-back'); if (backBtn) backBtn.onclick = closeNewAddressPane;
+    const backBtn = $('acct-nad-back');
+    if (backBtn) backBtn.onclick = order ? backFromOrderNewAddress : closeNewAddressPane;
     wireNewAddrLabelChips();
-    const saveBtn = $('acct-nad-save-btn'); if (saveBtn) saveBtn.onclick = saveNewAddressFromPane;
+    if (order) {
+      const useBtn = $('acct-nad-use-btn');
+      if (useBtn) useBtn.onclick = () => { const chk = $('acct-nad-savechk'); confirmNewAddressForOrder(chk ? !!chk.checked : true); };
+      const det = $('acct-nad-details'); if (det) det.addEventListener('input', refreshNewAddrOrderGate);
+      const lbl = $('acct-nad-label'); if (lbl) lbl.addEventListener('input', refreshNewAddrOrderGate);
+      const chk = $('acct-nad-savechk'); if (chk) chk.addEventListener('change', refreshNewAddrOrderGate);
+    } else {
+      const saveBtn = $('acct-nad-save-btn'); if (saveBtn) saveBtn.onclick = saveNewAddressFromPane;
+    }
 
     showPane('newaddr');
     renderAcctMapPreview('acct-nad-preview');
+    if (order) refreshNewAddrOrderGate();
+  }
+
+  // Order-mode confirm gate: an explicit pin (touched + numeric + geocoded referencia string) + a
+  // referencia ≥3; a LABEL is required only when the save-checkbox is checked (saveAddress rejects an
+  // empty label — a one-off defaults its label to 'Otra' so none is needed). Pure read; no side effects.
+  function newAddrOrderValid() {
+    const details = (($('acct-nad-details') || {}).value || '').trim();
+    const label = (($('acct-nad-label') || {}).value || '').trim();
+    const chk = $('acct-nad-savechk');
+    const saving = chk ? !!chk.checked : true;
+    const base = _nadPinTouched
+      && typeof _nadLat === 'number' && typeof _nadLng === 'number' && isFinite(_nadLat) && isFinite(_nadLng)
+      && !!_nadDetected && details.length >= 3;
+    return saving ? (base && !!label) : base;
+  }
+
+  // Live-refresh the "Usar esta dirección" disabled state. No-op unless the order-mode newaddr pane is
+  // on screen — safe to call from the shared map-commit/geocode callbacks (createprofile/account-save
+  // are untouched). Called on pin-commit (via reverseGeocodeAcctFs/closeAcctFullscreenMap), referencia
+  // input, label input/chip, and the save-checkbox toggle.
+  function refreshNewAddrOrderGate() {
+    if (_nadPaneMode !== 'order') return;
+    const pane = $('acct-pane-newaddr'); if (!pane || !pane.classList.contains('acct-on')) return;
+    const btn = $('acct-nad-use-btn'); if (btn) btn.disabled = !newAddrOrderValid();
   }
 
   function wireNewAddrLabelChips() {
@@ -1652,6 +1721,7 @@ ${rowsHtml}`;
         const val = chip.getAttribute('data-label');
         if (val) { if (custom) custom.value = val; }
         else { if (custom) { custom.value = ''; custom.focus(); } }
+        refreshNewAddrOrderGate();   // order-mode: a chip pick changes the label → re-evaluate the confirm gate (no-op otherwise)
       };
     });
   }
@@ -1849,11 +1919,114 @@ ${rowsHtml}`;
     renderAddressesSection();   // Mi Cuenta's list, new one shown
   }
 
+  // ── Cambiar "Usar esta dirección" (isolated-map rebuild) — apply the CONFIRMED _nad* values to THIS
+  // order. This is the ONLY place the new-address flow writes a checkout global, and only AFTER an
+  // explicit pin + confirm, synchronously from the confirmed value (never a pending/async/seeded one).
+  // saveToAccount === true → persist (saveAddress, makeDefault only if it's the first address) + apply;
+  // false → one-off (NO persist), _acctAddrOneOff = true so onOrderConfirmed never persists/defaults it.
+  // Mirrors selectSavedAddressForOrder's apply + fail-open; _acctAddrOneOff is written LAST so no shared
+  // helper can flip it (codex R1 #2). #address-detected is guaranteed to end as the confirmed value with
+  // no async checkout-geocode drift (codex R1 #3, watchdog below).
+  async function confirmNewAddressForOrder(saveToAccount) {
+    const errEl = $('acct-nad-err'); if (errEl) errEl.style.display = 'none';
+    const details = ((($('acct-nad-details') || {}).value) || '').trim();
+    const rawLabel = ((($('acct-nad-label') || {}).value) || '').trim();
+
+    // Defense-in-depth re-validate — NEVER trust the disabled button (paste/autofill/Enter/programmatic):
+    // explicit pin + numeric coords + a geocoded referencia string + referencia>=3; label only when saving.
+    if (!_nadPinTouched || typeof _nadLat !== 'number' || typeof _nadLng !== 'number' || !isFinite(_nadLat) || !isFinite(_nadLng) || !_nadDetected) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Marcá tu ubicación en el mapa (tocá el mapa y ajustá el pin).'; }
+      return;
+    }
+    if (details.length < 3) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Agregá una referencia — portón, color, piso…'; }
+      $('acct-nad-details')?.focus();
+      return;
+    }
+    if (saveToAccount && !rawLabel) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Elegí cómo guardar esta dirección.'; }
+      return;
+    }
+
+    const useBtn = $('acct-nad-use-btn'); if (useBtn) { useBtn.disabled = true; useBtn.innerHTML = 'Aplicando…'; }
+    const detectedAtConfirm = _nadDetected;   // the address the customer confirmed on the ISOLATED map — authoritative from here on
+    const laC = _nadLat, lnC = _nadLng;
+
+    let addr;
+    if (saveToAccount) {
+      const hadNoAddresses = !(_acctData && _acctData.addresses && Object.keys(_acctData.addresses).length);
+      const res = await saveAddress({ label: rawLabel, detected: detectedAtConfirm, details, lat: laC, lng: lnC, makeDefault: hadNoAddresses });
+      if (!res || !res.ok) {
+        if (errEl) { errEl.style.display = 'block'; errEl.textContent = (res && res.message) || 'No pudimos guardar la dirección. Intentá de nuevo.'; }
+        if (useBtn) { useBtn.disabled = false; useBtn.innerHTML = ICON_CHECK_BIG + ' Usar esta dirección'; }
+        return;
+      }
+      if (!_acctData) _acctData = {};
+      if (!_acctData.addresses) _acctData.addresses = {};
+      _acctData.addresses[res.addrId] = { label: rawLabel, detected: detectedAtConfirm, details, lat: laC, lng: lnC };
+      if (hadNoAddresses) _acctData.default_address = res.addrId;
+      addr = { id: res.addrId, label: rawLabel, detected: detectedAtConfirm, details, lat: laC, lng: lnC };
+      _acctAddrId = res.addrId;   // this order now uses the new saved address
+    } else {
+      // one-off — NO saveAddress; keep _acctAddrId = prior default; label is implicit ('Otra')
+      addr = { label: rawLabel || 'Otra', detected: detectedAtConfirm, details, lat: laC, lng: lnC };
+    }
+
+    // ── Apply to the order (the ONLY checkout write), synchronously from the confirmed values ──
+    establishCheckoutFromAddress(addr);                 // checkout lat/lng + delivery-zone state
+    setVal('address-detected', detectedAtConfirm);      // MANUAL — never populateOrderFieldsFromAddress (it resets _acctAddrOneOff — codex R1 #2)
+    setVal('address-details', details);
+    placeAccountPin(addr.lat, addr.lng);                // checkout pin (hidden in the reduced flow; __restorePos seeds a later init)
+    _acctOrderAddr = addr;                              // T5 retained pointer — set BEFORE the watchdog so a later order-address change stops it
+
+    // Detected-string authority (codex R1 #3): placeAccountPin→placePin fires an ASYNC checkout reverse-
+    // geocode (index.html) that overwrites #address-detected with the CHECKOUT geocoder's formatting. The
+    // customer confirmed detectedAtConfirm on the ISOLATED map (that's also exactly what got saved) — it
+    // is authoritative. The async geocode fires exactly ONCE; re-assert detectedAtConfirm across a ladder
+    // that outlasts it, guarded by _acctOrderAddr identity so a later toggle/pick/save stops the ladder.
+    // After the flow settles, #address-detected === detectedAtConfirm === the saved address's detected.
+    const appliedAddr = addr;
+    const reassertDetected = () => {
+      if (_acctOrderAddr !== appliedAddr) return;       // a newer order-address application superseded this one → stop
+      setVal('address-detected', detectedAtConfirm);
+    };
+    reassertDetected();
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(reassertDetected);
+    [50, 150, 350, 700, 1200, 2000, 3000].forEach((ms) => setTimeout(reassertDetected, ms));
+
+    if (reducedFlowInvariantOk(_acctData, addr)) {
+      renderS1CompactSummary(_acctData, addr);
+      renderS2RichSummary(_acctData, addr);
+      relabelSteps(true);
+      _acctReducedActive = true;
+      hideRawAndAddrSection();
+      setReducedDeliveryChromeVisible(true);            // reduced flow — hide the redundant editable s2 map/banner/locinfo + relabel
+      _acctAddrOneOff = !saveToAccount;                 // LAST — after every shared helper (nothing flips it now): false=save, true=one-off
+      closeSheet();
+      toast(saveToAccount ? 'Dirección guardada' : 'Dirección actualizada para este pedido');
+    } else {
+      // FAIL-OPEN: out of the delivery zone right now — never leave a hidden-but-invalid summary. Drop to
+      // the normal fillable view (fields are populated + established) so processPayment()/the customer's
+      // eyes catch it. Mirrors selectSavedAddressForOrder's fail-open.
+      _acctReducedActive = false;
+      relabelSteps(false);
+      setReducedDeliveryChromeVisible(false);
+      const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
+      const addrSection = addrSectionEl(); if (addrSection) addrSection.style.display = '';
+      const s2mount = $('acct-s2-summary'); if (s2mount) s2mount.innerHTML = '';
+      _acctAddrOneOff = !saveToAccount;                 // LAST
+      closeSheet();
+      toast('Esa dirección no está disponible ahora mismo — revisá el mapa.');
+    }
+    _nadPaneMode = 'account-save';   // pane lifecycle done — a late acctFs geocode callback's refreshNewAddrOrderGate is now a no-op
+  }
+
   // ── Sign-out / delete-account: revert the form back to the pristine guest state ──
   function revertToGuestForm() {
     setPaymentVisible(true);   // sign-out → guest form, payment visible (FIX 1)
     _acctData = null; _acctAddrId = null; _acctCardActive = false; _acctEditMode = false;
     _acctEditIsNew = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true; _acctAddrOneOff = false;
+    _acctOrderAddr = null;   // T5: signed out → no order address retained
     _acctProfileConfirmedIncomplete = false;   // signed out → no logged-in profile to arm the hard block for (codex R1 FIX 1c)
     setReducedDeliveryChromeVisible(false);   // sign-out/delete → restore the guest-identical editable map/banner/locinfo (delivery) + button label (codex F4)
     const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
@@ -2292,16 +2465,24 @@ ${rowsHtml}`;
     }
     if (pageOrderType() !== 'delivery') { hidePickupDeliverySummary(); return; }
     if (profileComplete(_acctData)) {
-      const addr = addrOverride || pickDefaultAddress(_acctData);
+      // T5: a pure order-type toggle (or any no-override re-render) re-applies the address currently
+      // backing THIS order — a one-off saved pick or a new save/one-off — NOT the profile default, so it
+      // isn't clobbered. addrOverride (an explicit new selection) still wins; else the retained pointer;
+      // else the default. usingRetained preserves _acctAddrOneOff (populate below unconditionally clears it).
+      const usingRetained = !addrOverride && !!_acctOrderAddr;
+      const addr = addrOverride || _acctOrderAddr || pickDefaultAddress(_acctData);
       if (addr) {
+        const preservedOneOff = _acctAddrOneOff;
         establishCheckoutFromAddress(addr);
         populateOrderFieldsFromAddress(_acctData, addr);   // fill the (soon-hidden) submit fields BEFORE the invariant reads them back
+        if (usingRetained) _acctAddrOneOff = preservedOneOff;   // T5: a pure toggle must not flip a one-off/new address back to save-eligible
         if (reducedFlowInvariantOk(_acctData, addr)) {
           renderS1CompactSummary(_acctData, addr);
           renderS2RichSummary(_acctData, addr);
           relabelSteps(true);
           _acctReducedActive = true;
-          _acctAddrId = addr.id;
+          _acctAddrId = addr.id || _acctAddrId;   // saved addr → its id; a retained one-off NEW addr has none → keep the prior default id
+          _acctOrderAddr = addr;   // retain for the next toggle
           hideRawAndAddrSection();
           setReducedDeliveryChromeVisible(true);   // hide the redundant editable s2 map/banner/locinfo + relabel the button (codex F4/F5)
           return;
@@ -2328,37 +2509,27 @@ ${rowsHtml}`;
   }
 
   // ══════════════════════════════════════════════════════════════════════════════════════════
-  // Task 4 — Cambiar: TWO distinct actions from the returning-flow summary (spec "Cambiar (on the
-  // returning payment summary)"). "Usar en este pedido" (pick a saved address → order fields
-  // ONLY, no persist, no default change) vs "Guardar dirección" (edit/add → persists via the
-  // EXISTING enterEditMode(true)/saveEditedAddress scaffolding, unchanged, makeDefault:true). No
-  // silent default/profile mutation on a one-off. Reachable only via renderS1CompactSummary/
-  // renderS2RichSummary's Cambiar buttons — themselves only ever rendered behind
-  // marker()+profileComplete (Task 3).
+  // Cambiar chooser (from the returning-flow summary): pick another SAVED address
+  // (selectSavedAddressForOrder → order fields only, no persist, no default change) OR "Usar una
+  // dirección nueva" → the ISOLATED order-mode map pane (openNewAddressForOrder →
+  // confirmNewAddressForOrder), which writes ONLY _nad* until an explicit pin + confirm and never
+  // touches the checkout map/globals before then (isolated-map rebuild — supersedes the racey
+  // enterEditMode(true)/checkout-map fresh-pin path). No silent default/profile mutation on a one-off.
+  // Reachable only via renderS1CompactSummary/renderS2RichSummary's Cambiar buttons — themselves only
+  // ever rendered behind marker()+profileComplete (Task 3).
   // ══════════════════════════════════════════════════════════════════════════════════════════
 
   function openCambiarPanel() {
     const mount = $('acct-s2-summary'); if (!mount) return;
-    // Cambiar can be tapped from s1's compact line before s2 (and its map) has ever been shown —
-    // jump there so the chooser (and, if "Usar una dirección nueva" is picked, the real map) is
-    // visible. Name/phone are already known+valid at this point (that's the Task 3 invariant that
-    // got us here), so bypassing goToLocation()'s own re-validation here is safe.
+    // Cambiar can be tapped from s1's compact line before s2 has ever been shown — jump there so the
+    // chooser (mounted in #acct-s2-summary) is visible. Name/phone are already known+valid (the Task 3
+    // invariant that got us here). NO checkout-map init/seed here: "Usar una dirección nueva" now opens
+    // the ISOLATED account map (Task 4), and the reduced flow keeps the checkout map hidden — so nothing
+    // in this panel touches the checkout map, gmap, __restorePos, or geolocation (the whole race class,
+    // deleted). The isolated map is the SOLE map for a new order address.
     try {
       const s2 = document.getElementById('s2');
-      if (s2 && !s2.classList.contains('active') && typeof showStage === 'function') {
-        // The host initMap() (index.html) geolocates whenever __restorePos is falsy — an UNGUARDED
-        // getCurrentPosition→placePin our generation-guard can't touch (codex R3). SEED __restorePos
-        // with the current saved-address coords (finite-guarded, SPS-center fallback) BEFORE scheduling
-        // initMap, so the host initMap does a SYNCHRONOUS placePin(saved) and NEVER geolocates in either
-        // tap ordering. Our own generation-guarded applyFreshPin stays the SOLE async GPS.
-        try {
-          const cur = pickDefaultAddress(_acctData) || (_acctData && _acctData.addresses && _acctData.addresses[_acctAddrId]) || null;
-          const sla = cur && Number(cur.lat), sln = cur && Number(cur.lng);
-          __restorePos = (Number.isFinite(sla) && Number.isFinite(sln)) ? { lat: sla, lng: sln } : { lat: 15.5003, lng: -88.025 };   // Number.isFinite (not global isFinite, which returns true for null) → a null cur falls back to SPS center, never a null-coord seed the host initMap would reject and then geolocate
-        } catch (_) { __restorePos = { lat: 15.5003, lng: -88.025 }; }
-        showStage('s2', 50);
-        setTimeout(() => { try { if (typeof initMap === 'function') initMap(); } catch (_) {} }, 100);
-      }
+      if (s2 && !s2.classList.contains('active') && typeof showStage === 'function') showStage('s2', 50);
     } catch (_) {}
 
     injectDeliverStyles();
@@ -2381,66 +2552,11 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
       row.onclick = () => selectSavedAddressForOrder(row.getAttribute('data-use-id'));
     });
     const newBtn = $('acct-cambiar-new');
-    if (newBtn) newBtn.onclick = () => {
-      mount.innerHTML = '';
-      relabelSteps(false);
-      _acctReducedActive = false;
-      // Task 1 hid the editable s2 map for the reduced flow — a NEW address needs the customer to
-      // place a pin, so REVEAL the map/banner/locinfo again (order type is delivery here). (codex F1)
-      setReducedDeliveryChromeVisible(false);
-      const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = '';
-      const addrSection = addrSectionEl();
-      if (addrSection) addrSection.style.display = '';
-      _acctAddrOneOff = true;   // use-once until the customer explicitly taps "Guardar dirección" (which clears it) (FIX B)
-      enterEditMode(true);   // existing scaffolding — its "Guardar dirección" persists (makeDefault:true) + applies
-      // FRESH-PIN (codex F1 R1, money-path): enterEditMode(true) clears __restorePos but NOT lat/lng or
-      // the existing gmarker — and simply nulling them is NOT enough: the main map has no click-to-place
-      // handler (only the draggable marker, which we removed) and initMap() is a no-op once gmap exists,
-      // so the customer would be left with a marker-less map and no way to set a pin. Worse,
-      // openFullscreenMap() only recenters fsMap when lat && lng are truthy, so a stale fsMap center
-      // could commit the WRONG coordinate into a paid order. So RESET then RE-ACQUIRE a real fresh pin
-      // exactly like a brand-new delivery order does (index.html initMap()'s fresh branch): clear the old
-      // pin, then call the GLOBAL placePin via geolocation (GPS → placePin, fail → SPS-center fallback).
-      // placePin sets lat/lng to a REAL fresh point, recreates the DRAGGABLE marker + dragend handler,
-      // and runs updateLocInfo/reverseGeocode — so the user can adjust and openFullscreenMap now recenters
-      // to the fresh pin. This is the ONLY place account.js resets these checkout globals, and ONLY on the
-      // explicit "usar una dirección nueva" gesture (never page-load, saved-address pick, or retry-restore).
-      try { if (typeof gmarker !== 'undefined' && gmarker) { gmarker.setMap(null); gmarker = null; } } catch (_) {}
-      // Do NOT null __restorePos (codex R3): enterEditMode(true) just nulled it, but a still-pending host
-      // initMap() (fast tap: new-address chosen before openCambiarPanel's 100ms initMap timer) would then
-      // see it falsy and fire the HOST's OWN unguarded getCurrentPosition→placePin — a second async GPS our
-      // generation-guard can't touch. RE-SEED it with the saved coords so any host initMap does a SYNC
-      // placePin(saved) and never geolocates; our guarded applyFreshPin below stays the SOLE async GPS.
-      try {
-        const cur = pickDefaultAddress(_acctData) || (_acctData && _acctData.addresses && _acctData.addresses[_acctAddrId]) || null;
-        const sla = cur && Number(cur.lat), sln = cur && Number(cur.lng);
-        __restorePos = (Number.isFinite(sla) && Number.isFinite(sln)) ? { lat: sla, lng: sln } : { lat: 15.5003, lng: -88.025 };   // Number.isFinite → null cur falls back to SPS center, never a null-coord seed
-      } catch (_) { __restorePos = { lat: 15.5003, lng: -88.025 }; }
-      try { lat = null; lng = null; } catch (_) {}
-      try {
-        if (typeof gmap !== 'undefined' && gmap) google.maps.event.trigger(gmap, 'resize');   // size the now-visible map BEFORE placePin's setCenter so tiles render
-        // ASYNC-RACE GUARD (codex R2): getCurrentPosition resolves LATER. If the user cancels the edit,
-        // picks a saved address, toggles order type, or re-enters new-address before GPS returns, the
-        // stale callback must NOT placePin over the restored saved-address coords (a paid order would show
-        // the saved card but carry the late GPS point). Apply ONLY if this gesture is still the latest one
-        // (token) AND we're still in the new-address edit state (flags enterEditMode(true) set). Same
-        // generation-guard class as the createprofile R5 fix.
-        const geoGen = ++_acctNewAddrGeoGen;
-        const applyFreshPin = (la, ln, fb) => {
-          if (geoGen !== _acctNewAddrGeoGen) return;                                    // superseded/re-entered, or cancelled/toggled (exitEditMode + wrapped setOrderType bump) → drop
-          if (!(_acctEditMode && _acctEditIsNew && pageOrderType() === 'delivery')) return;   // left the new-address edit, or now on pickup → drop
-          if (typeof placePin === 'function') placePin(la, ln, fb);
-        };
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => applyFreshPin(pos.coords.latitude, pos.coords.longitude, false),
-            () => applyFreshPin(15.5003, -88.025, true),
-            { timeout: 10000, enableHighAccuracy: true, maximumAge: 0 }
-          );
-        } else { applyFreshPin(15.5003, -88.025, true); }
-      } catch (_) {}
-      if (addrSection) setTimeout(() => addrSection.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
-    };
+    // "Usar una dirección nueva" → the ISOLATED order-mode map pane (Task 4). No checkout-map reveal,
+    // no enterEditMode(true), no gmarker/lat/lng/__restorePos reset, no getCurrentPosition — that entire
+    // race class is deleted. The pane writes ONLY _nad*; the order's checkout coordinate is written once,
+    // at confirm, from the explicitly-placed pin (confirmNewAddressForOrder).
+    if (newBtn) newBtn.onclick = () => openNewAddressForOrder();
     const cancelBtn = $('acct-cambiar-cancel');
     if (cancelBtn) cancelBtn.onclick = () => refreshDeliveryUI();
     setTimeout(() => mount.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
@@ -2454,6 +2570,7 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
     _acctAddrOneOff = true;   // USE-ONCE: onOrderConfirmed must never persist/default this (FIX B)
     const addr = Object.assign({ id: addrId }, a);
     establishCheckoutFromAddress(addr);
+    _acctOrderAddr = addr;   // T5 retained pointer — survives a delivery↔pickup toggle (one-off saved pick)
     setVal('address-detected', a.detected);
     setVal('address-details', a.details);
     placeAccountPin(a.lat, a.lng);
@@ -2489,7 +2606,6 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
         const wrapped = function (type) {
           orig(type);
           if (_acctRestoring) return;   // a payment-retry restore calls setOrderType to rebuild the base UI — the snapshot is authoritative, skip the account re-entry entirely (FIX 7 / R4)
-          _acctNewAddrGeoGen++;   // any order-type toggle tears down / re-renders the delivery UI — invalidate a pending new-address GPS callback so it can't clobber the re-rendered saved-address state (codex R2: pickup toggle + toggle-back keep _acctEditMode true, so the flag check alone wouldn't catch them)
           try {
             if (type === 'delivery') { refreshDeliveryUI(); } else { hidePickupDeliverySummary(); }
             applyCardVisibility(); refreshSaveToggle();
@@ -2505,6 +2621,7 @@ ${rowsHtml || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No t
         const wrapped = function () {
           orig();
           _acctEditMode = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true; _acctAddrOneOff = false;
+          _acctOrderAddr = null;   // T5: fresh order → drop the retained address so refreshDeliveryUI re-establishes from the default
           try {
             // orig() reset lat/lng/address fields to blank for a fresh order — re-establish the
             // reduced-flow summary (or the fillable UI) for the NEW order, same as page load.
