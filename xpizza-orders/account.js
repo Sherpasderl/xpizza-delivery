@@ -430,22 +430,35 @@
     // A TRI-STATE read distinguishes a resolved-but-incomplete profile (→ show Creá tu perfil) from
     // an unavailable read (timeout/error → fail-open to Mi Cuenta, NEVER the create pane).
     const st = await accountSnapshotStatus();
+    // Arm the CHECKOUT account layer for THIS page load regardless of branch (codex R1 FIX 1): the
+    // user was a guest at DOMContentLoaded, so the marker-gated init already skipped — wrapPageHooks()
+    // + initDeliveryStep() must run now on EVERY logged-in outcome, not only the complete one. Without
+    // this, an incomplete user who DISMISSES the overlay create pane reaches checkout with the account
+    // layer un-armed (_acctCreateProfileActive false) → the payment hard-block never fires. Arming it
+    // makes checkout enter its own "Creá tu perfil" hard-block (payment hidden until saved).
+    // initDeliveryStep() operates ONLY on the checkout DOM (#acct-deliver / payment) — it never calls
+    // showPane and never disturbs the overlay pane shown below; it also respects the existing
+    // _acctRestoring/_acctRestoreGen guards internally.
+    try { wrapPageHooks(); } catch (_) {}
     if (st.status === 'ok' && profileComplete(st.snap)) {
       _acctData = st.snap;
       renderChip();
       closeSheet();
-      // Mid-session login (Tasks B4–B7): the marker-gated DOMContentLoaded init already ran (and
-      // skipped, guest at load time) — re-run it now that marker() is truthy so the confirm card /
-      // save-on-order toggle activate for THIS page load without requiring a reload.
-      try { wrapPageHooks(); initDeliveryStep().catch(() => {}); } catch (_) {}   // returning complete user — unchanged
+      // Returning complete user — re-run so the confirm card / save-on-order toggle activate for THIS
+      // page load without requiring a reload.
+      try { initDeliveryStep().catch(() => {}); } catch (_) {}
     } else if (st.status === 'ok') {
-      // positively-confirmed INCOMPLETE → the full Creá tu perfil in the sheet
+      // positively-confirmed INCOMPLETE → the full Creá tu perfil in the sheet, AND arm the checkout
+      // hard-block underneath so dismissing this overlay pane can't bypass profile-first enforcement.
       _acctData = st.snap;
       renderCreateProfilePane((st.snap && st.snap.name) || data.name || '');
+      try { initDeliveryStep().catch(() => {}); } catch (_) {}
     } else {
-      // read UNAVAILABLE (timeout/error) — never show create on an unconfirmed read; fail-open to Mi Cuenta
+      // read UNAVAILABLE (timeout/error) — never show create on an unconfirmed read; fail-open to Mi
+      // Cuenta, but still arm the checkout layer so its own complete-before-pay gate enforces at pay.
       renderChip();
       renderAccountPane(); showPane('account');
+      try { initDeliveryStep().catch(() => {}); } catch (_) {}
     }
   }
 
