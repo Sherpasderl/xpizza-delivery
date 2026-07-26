@@ -1111,6 +1111,7 @@
           relabelSteps(true);
           _acctReducedActive = true;
           _acctAddrId = addr.id;
+          _acctOrderAddr = addr;   // populate the retained order-address pointer on the FIRST-load default establish too (matches refreshDeliveryUI/selectSavedAddressForOrder/confirmNewAddressForOrder) → the picker can identify the active card + toggle-survival holds from load 1 (codex F1)
           hideRawAndAddrSection();
           setReducedDeliveryChromeVisible(true);   // hide the redundant editable s2 map/banner/locinfo + relabel the button (codex F4/F5)
           return;
@@ -2712,7 +2713,12 @@ ${footer}`;
     injectDeliverStyles();
     const pane = $('acct-pane-addrpicker'); if (!pane) return;
     const addrs = (_acctData && _acctData.addresses) || {};
-    const activeId = (_acctOrderAddr && _acctOrderAddr.id) || null;   // the SAVED address currently backing the order (null when it's an unsaved one-off — then no card is "active")
+    // The SAVED address currently backing the order. Primary source is _acctOrderAddr (now populated on
+    // EVERY reduced-flow establish incl. first load); if it's ever null, fall back to _acctAddrId (codex
+    // defensive). A one-off NEW address (_acctOrderAddr set but id-less) yields null → NO card is active
+    // (tapping any saved card is a real change), NOT a fall-through to the prior default that would no-op
+    // a genuine switch.
+    const activeId = (_acctOrderAddr ? _acctOrderAddr.id : _acctAddrId) || null;
     const cards = Object.keys(addrs).map((id) => {
       const a = addrs[id];
       const active = (id === activeId);
@@ -2744,7 +2750,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   // Brief highlight before close so the tap feels responsive.
   function pickAddrFromPicker(id, cardEl) {
     if (!id) return;
-    const activeId = (_acctOrderAddr && _acctOrderAddr.id) || null;
+    const activeId = (_acctOrderAddr ? _acctOrderAddr.id : _acctAddrId) || null;   // same resilient active-id as renderAddrPicker (codex F1): _acctOrderAddr primary, _acctAddrId only if it's null
     if (cardEl) cardEl.classList.add('acct-acard--tapped');
     if (id === activeId) {
       setTimeout(dismissSheet, 180);                                   // already active → no-op, just close (preserve _acctAddrOneOff)
