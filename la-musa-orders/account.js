@@ -1529,6 +1529,7 @@ ${rowsHtml}`;
   let _nadLat = null, _nadLng = null, _nadDetected = '';
   let _nadPinTouched = false;   // TRUE only after a REAL user placement (drag or Listo-commit) — never the fallback/GPS auto-pin (codex re-gate FIX 2)
   let _nadPaneMode = 'account-save';   // which caller opened the new-address pane: 'account-save' (Mi Cuenta "+ Agregar", unchanged — single "Guardar dirección") | 'order' (Cambiar — "Usar esta dirección" + save-checkbox, confirm-gated, applies to THIS order) (isolated-map rebuild)
+  let _nadReturnTo = 'account';         // where the order-mode new-address BACK returns: 'addrpicker' (opened from the Cambiar picker → back to the picker) | 'order' (legacy order entry → closeSheet) | 'account' (Mi-Cuenta "+ Agregar" → Mi Cuenta) — never a hardcoded target (codex F2)
 
   function injectNewAddrStyles() {
     if ($('acct-nad-styles')) return;
@@ -1799,14 +1800,15 @@ ${!_nadPinTouched ? '<div class="hint"><span>Toca para marcar tu ubicación</spa
     renderNewAddressPane({ mode: 'order' });
   }
 
-  // Order-mode Back/Cancel — return to the order WITHOUT applying anything. Mirror closeNewAddressPane's
-  // teardown (epoch bump + _nad* reset) but close the sheet back to the order (the Cambiar chooser is
-  // still in #acct-s2-summary underneath; the order's prior address is untouched — nothing was applied).
+  // Order-mode Back/Cancel — return WITHOUT applying anything, teardown the isolated-map state, then route
+  // by _nadReturnTo (codex F2): opened from the Cambiar picker → back to the PICKER (same sheet, seamless);
+  // legacy 'order' entry → closeSheet. The order's prior address is untouched (nothing was applied).
   function backFromOrderNewAddress() {
     _acctFsEpoch++;
     _nadLat = null; _nadLng = null; _nadDetected = ''; _nadPinTouched = false;
     _nadPaneMode = 'account-save';
-    closeSheet();
+    if (_nadReturnTo === 'addrpicker') { renderAddrPicker(); }   // renderAddrPicker() re-renders + showPane('addrpicker') — pane transition within the same sheet
+    else closeSheet();
   }
 
   // mode: 'account-save' (default — Mi Cuenta "+ Agregar", UNCHANGED: single "Guardar dirección" →
@@ -1817,6 +1819,7 @@ ${!_nadPinTouched ? '<div class="hint"><span>Toca para marcar tu ubicación</spa
     const mode = (opts && opts.mode) || 'account-save';
     _nadPaneMode = mode;
     const order = mode === 'order';
+    _nadReturnTo = (opts && opts.returnTo) || (order ? 'order' : 'account');   // back target by caller (codex F2)
     injectDeliverStyles();
     injectNewAddrStyles();
     injectAcctFsStyles();   // #1 (defensive): ensure .acct-map-preview/.acct-fs-pin styles exist before the preview renders (renderAcctMapPreview also injects; idempotent)
