@@ -1466,8 +1466,7 @@ ${rowsHtml}`;
       // … but only a USER drag commits lat/lng + marks the pin as user-placed (codex R1 #3)
       _acctFsMap.addListener('dragend', () => {
         const c = _acctFsMap.getCenter();
-        _nadLat = c.lat(); _nadLng = c.lng(); _nadPinTouched = true;
-        reverseGeocodeAcctFs(_nadLat, _nadLng, _acctFsEpoch);
+        commitAcctPin(c.lat(), c.lng());
       });
     } else {
       _acctFsMap.setCenter(start);
@@ -1482,6 +1481,17 @@ ${rowsHtml}`;
     }
   }
 
+  // Single commit path for a user-placed pin (codex R1 FIX 2b): sets the committed lat/lng, marks
+  // touched, and CLEARS _nadDetected so no stale address can be saved against the new pin — then
+  // starts the latest-seq geocode. Save stays blocked (validateCreateProfile requires _nadDetected)
+  // until that geocode's callback lands and re-enables the CTA. Shared by dragend AND Listo.
+  function commitAcctPin(la, ln) {
+    _nadLat = la; _nadLng = ln; _nadPinTouched = true;
+    _nadDetected = '';                                            // invalidate the prior address until the committed pin's geocode resolves
+    const addrEl = document.getElementById('acct-fs-addr'); if (addrEl) addrEl.textContent = 'Confirmando dirección…';
+    reverseGeocodeAcctFs(la, ln, _acctFsEpoch);
+  }
+
   function reverseGeocodeAcctFs(la, ln, epoch) {
     if (!window.google || !window.google.maps) return;
     if (!_acctFsGeocoder) _acctFsGeocoder = new google.maps.Geocoder();
@@ -1490,9 +1500,13 @@ ${rowsHtml}`;
       if (epoch !== _acctFsEpoch) return;                         // stale — pane/map torn down; ignore (codex R1 #5)
       if (seq !== _nadGeoSeq) return;                             // superseded by a newer request; in-epoch ordering (codex R1 FIX 2)
       const detected = (status === 'OK' && results[0]) ? results[0].formatted_address
-                     : ('Lat: ' + la.toFixed(5) + ', Lng: ' + ln.toFixed(5));
+                     : ('Lat: ' + la.toFixed(5) + ', Lng: ' + ln.toFixed(5));   // fallback → never permanently empty
       _nadDetected = detected;
       const addrEl = document.getElementById('acct-fs-addr'); if (addrEl) addrEl.textContent = detected;
+      // The committed pin's address just landed → re-enable Save (covers the empty→stuck-disabled
+      // case, codex R1 FIX 2b). Guard to the create pane so an unrelated pane is never touched.
+      const cp = document.getElementById('acct-pane-createprofile');
+      if (cp && cp.classList.contains('acct-on')) refreshCreateProfileCta();
     });
   }
 
@@ -1503,11 +1517,10 @@ ${rowsHtml}`;
     // resting center as their placement (matches checkout's "close commits center").
     if (commit && _acctFsMap) {
       const c = _acctFsMap.getCenter();
-      _nadLat = c.lat(); _nadLng = c.lng(); _nadPinTouched = true;
-      // Re-geocode the FINAL committed center so _nadDetected converges to the saved pin (codex R1
-      // FIX 2): its seq is newest → its callback is the authoritative writer, regardless of any
-      // older in-epoch geocode still in flight.
-      reverseGeocodeAcctFs(_nadLat, _nadLng, _acctFsEpoch);
+      // Commit the FINAL center via the shared path (codex R1 FIX 2/2b): clears _nadDetected first
+      // (no stale address can be saved against the new pin) then re-geocodes with the newest seq →
+      // its callback is the authoritative writer of _nadDetected for the committed pin.
+      commitAcctPin(c.lat(), c.lng());
     }
     if (_acctFsPreviewId) renderAcctMapPreview(_acctFsPreviewId);   // reflect the chosen pin + address
     // if the create pane is the active one, its CTA gating depends on the just-committed pin
