@@ -52,6 +52,9 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
     updates[`orders/${orderId}/customer_uid`] = order.customer_uid;
     updates[`user_orders/${order.customer_uid}/${orderId}`] = {
       ts: now, total: order.total, order_type: order.order_type, items_text: order.items_text,
+      restaurant: order.restaurant_id || 'x_pizza',                   // P3 — client filters to its own brand
+      status: 'new',                                                  // P3 — materialized status (this write only runs at confirm); kept fresh by the status trigger
+      items: Array.isArray(order.reorder_items) ? order.reorder_items : [],   // P3 — recipe plumbed onto the pending order at chargeOnlineOrder; copied here at confirm (NEVER order.items/factura lines)
     };
   }
 

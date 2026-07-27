@@ -23,10 +23,17 @@ const call = (order) => buildMaterializeUpdates({
 // (c) pending WITH customer_uid → the two field-level attribution paths, no throw
 {
   const uid = 'u_' + 'a'.repeat(24);
-  const u = call(base({ customer_uid: uid }));
+  const recipe = [{ key: 'Margherita', qty: 1 }];
+  const u = call(base({ customer_uid: uid, reorder_items: recipe }));
   assert.equal(u[`orders/${ORDER}/customer_uid`], uid); ok('(c) orders/{id}/customer_uid field path emitted');
-  assert.deepStrictEqual(u[`user_orders/${uid}/${ORDER}`], { ts: NOW, total: 250, order_type: 'pickup', items_text: '1x Pizza' });
-  ok('(c) user_orders index {ts,total,order_type,items_text} emitted');
+  assert.deepStrictEqual(u[`user_orders/${uid}/${ORDER}`], { ts: NOW, total: 250, order_type: 'pickup', items_text: '1x Pizza', restaurant: 'x_pizza', status: 'new', items: recipe });
+  ok('(c) P3 shape {ts,total,order_type,items_text,restaurant,status,items} — items copied from order.reorder_items');
+}
+// (c2) reorder_items ABSENT on the pending order (e.g. old client) → items:[] (never order.items/factura)
+{
+  const uid = 'u_' + 'f'.repeat(24);
+  const u = call(base({ customer_uid: uid, items: [{ name: 'factura-line', price: 9 }] }));   // order.items = factura lines — MUST be ignored
+  assert.deepStrictEqual(u[`user_orders/${uid}/${ORDER}`].items, []); ok('(c2) no reorder_items → items:[] (factura order.items ignored)');
 }
 // (d) guest (no customer_uid) → NO attribution paths (byte-identical to today)
 {

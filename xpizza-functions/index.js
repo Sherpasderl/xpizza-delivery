@@ -67,6 +67,7 @@ const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-conf
 const { buildMaterializeUpdates } = require('./materialize');
 const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
+const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
 const SCHED = require('./scheduled-orders');                              // Scheduled Orders — pure hours/slot/release core
 const { releaseOne: releaseScheduledCore, recoverStaleReleasing } = require('./scheduled-release-core');
 const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
@@ -924,7 +925,10 @@ chargeOnlineApp.all('*', async (req, res) => {
     ...(facturaPriced.items ? { items: facturaPriced.items } : {}),
     ...(fields.razon_social ? { razon_social: fields.razon_social } : {}),
     ...(fields.rtn_cliente ? { rtn_cliente: fields.rtn_cliente } : {}),
-    ...(customer_uid ? { customer_uid } : {})   // H2: verified logged-in attribution (guest → absent)
+    ...(customer_uid ? { customer_uid } : {}),   // H2: verified logged-in attribution (guest → absent)
+    // P3: the ONLY place the online path has body.items — plumb the normalized reorder recipe onto the
+    // pending order so materialize.js can copy it into user_orders/{uid}.items at CONFIRM (never pending).
+    ...(customer_uid ? { reorder_items: normalizeReorderItems(body.items, restaurantId) } : {})
   };
   if (orderType === 'delivery') {
     pendingOrderRecord.lat = lat;
