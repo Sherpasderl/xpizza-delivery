@@ -147,6 +147,20 @@
 .acct-row .acct-rd{font-size:12.5px;color:#B3A594}
 .acct-row.acct-soon .acct-rt{color:#8C7B6E}
 .acct-soon-tag{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${CONFIG.accent};background:#F3E7CC;padding:2px 7px;border-radius:5px}
+.acct-row-chev{color:#B3A594;font-size:20px;font-weight:400;line-height:1}
+/* P3 "Mis pedidos" history rows */
+.acct-ordcard{border:1px solid ${CONFIG.palette.line2};border-radius:14px;padding:12px 14px;margin-bottom:10px;background:#fff}
+.acct-ordtop{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.acct-orddate{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#B3A594}
+.acct-ordpill{font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px}
+.acct-ordpill--ok{background:#E7F0E9;color:#2A6A42}
+.acct-ordpill--bad{background:#F6E7E5;color:#B23B3B}
+.acct-ordpill--go{background:${CONFIG.palette.tint};color:#17130F}
+.acct-ordpill--mut{background:${CONFIG.palette.chip};color:#8C7B6E}
+.acct-ordline{font-size:14px;color:#17130F;line-height:1.4;margin-bottom:8px}
+.acct-ordbot{display:flex;align-items:center;justify-content:space-between}
+.acct-ordtotal{font-size:15px;font-weight:800;color:#17130F}
+.acct-ordreorder{background:#17130F;color:#fff;border:none;border-radius:10px;padding:9px 16px;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer}
 .acct-signout{margin-top:22px;text-align:center}
 .acct-signout button{background:none;border:none;font-family:inherit;font-size:14px;font-weight:650;color:#8C7B6E;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .acct-delete{margin-top:10px;text-align:center}
@@ -227,6 +241,10 @@
 
     <section class="acct-pane" id="acct-pane-createprofile">
       <!-- built by renderCreateProfilePane() post-OTP for an incomplete profile -->
+    </section>
+
+    <section class="acct-pane" id="acct-pane-orders">
+      <!-- built by renderOrdersPane() — P3 "Mis pedidos" history (read-own, restaurant-filtered) -->
     </section>
   </div>
 </div>`;
@@ -555,6 +573,184 @@
   // (Mis direcciones / Mis pedidos — P2/P3, disabled), sign-out, delete-account (H10).
   // name/phone are user-controlled (localStorage marker) — EVERY render uses textContent, never
   // interpolated into an innerHTML template string (XSS-safe by construction).
+  // P3 — status → on-brand pill. Defensive default so any unmapped/interim status still reads sensibly.
+  function orderStatusPill(status) {
+    switch (String(status || '')) {
+      case 'delivered': return { label: 'Entregado', cls: 'ok' };
+      case 'cancelled': return { label: 'Cancelado', cls: 'bad' };
+      case 'out_for_delivery': return { label: 'En camino', cls: 'go' };
+      case 'ready': return { label: 'Listo', cls: 'go' };
+      case 'scheduled': case 'releasing': return { label: 'Programado', cls: 'mut' };
+      default: return { label: 'En preparación', cls: 'mut' };   // new / preparing / cooking / etc.
+    }
+  }
+  function fmtOrderDate(ts) {
+    const t = Number(ts);
+    if (!Number.isFinite(t)) return '';
+    try { return new Date(t).toLocaleDateString('es-HN', { day: 'numeric', month: 'short' }); } catch (_) { return ''; }
+  }
+
+  // P3 (Task 7) — "Mis pedidos" history pane. Reads user_orders/{uid} (account SDK, marker-gated),
+  // filters to THIS restaurant (entry.restaurant === CONFIG.restaurant_id; old/forward-only entries
+  // without `restaurant` are skipped), newest first, last 15. Row = date + escaped items_text + total +
+  // status pill + Reordenar (only when a normalized recipe exists). NEVER renders raw items[]. Reads only.
+  async function renderOrdersPane() {
+    const pane = $('acct-pane-orders'); if (!pane) return;
+    pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis pedidos</span></div><p class="acct-fine" style="text-align:left">Cargando…</p>`;
+    showPane('orders');
+    let entries = [];
+    try {
+      if (marker()) {
+        const { auth, db, dbMod } = await ensureFirebase();
+        await auth.authStateReady();
+        if (auth.currentUser) {
+          const snap = await Promise.race([
+            dbMod.get(dbMod.ref(db, 'user_orders/' + auth.currentUser.uid)),
+            new Promise((r) => setTimeout(() => r(null), 4000)),
+          ]);
+          const val = (snap && snap.exists && snap.exists()) ? snap.val() : null;
+          if (val && typeof val === 'object') {
+            entries = Object.keys(val).map((id) => Object.assign({ order_id: id }, val[id]))
+              .filter((e) => e && e.restaurant === CONFIG.restaurant_id)   // this brand only; skip old entries missing `restaurant`
+              .sort((a, b) => Number(b.ts) - Number(a.ts))
+              .slice(0, 15);
+          }
+        }
+      }
+    } catch (_) { /* fail-open — show empty state, never break the sheet */ }
+
+    if (!entries.length) {
+      pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis pedidos</span></div>
+<p class="acct-fine" style="text-align:left">Todavía no tenés pedidos.</p>`;
+      return;
+    }
+    const rowsHtml = entries.map((e, i) => {
+      const pill = orderStatusPill(e.status);
+      const line = String(e.items_text || '').slice(0, 80);
+      const canReorder = Array.isArray(e.items) && e.items.length > 0;
+      return `<div class="acct-ordcard">
+  <div class="acct-ordtop"><span class="acct-orddate">${escapeHtml(fmtOrderDate(e.ts))}</span><span class="acct-ordpill acct-ordpill--${pill.cls}">${escapeHtml(pill.label)}</span></div>
+  <div class="acct-ordline">${escapeHtml(line)}</div>
+  <div class="acct-ordbot"><span class="acct-ordtotal">L ${escapeHtml(String(e.total))}</span>${canReorder ? `<button type="button" class="acct-ordreorder" data-ord="${i}">Reordenar</button>` : ''}</div>
+</div>`;
+    }).join('');
+    pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis pedidos</span></div>${rowsHtml}`;
+    pane.querySelectorAll('[data-ord]').forEach((btn) => {
+      btn.onclick = () => reorderFromEntry(entries[Number(btn.getAttribute('data-ord'))]);   // Task 8
+    });
+  }
+
+  // P3 (Task 8) — Reordenar. SEEDS THE CART ONLY: re-resolves each recipe line against TODAY's menu +
+  // availability, drops what's gone/86'd (with a notice), and adds the rest via the form's native cart
+  // state (qty[id] + pizzaExtras[id] — the exact structures the payment-retry restore writes). The
+  // customer then continues through the NORMAL review → submit, which re-prices (computeServerTotal) +
+  // re-gates (checkItemAvailability) server-side and re-applies pickup-only/category in the review. NO
+  // new submit path, NO client re-pricing. account.js stays identical past CONFIG — only CONFIG.restaurant_id
+  // branches the extras shape (la_musa flat {extraId:qty} / x_pizza per-instance).
+  function reorderFromEntry(entry) {
+    try {
+      if (!entry || !Array.isArray(entry.items) || !entry.items.length) return;
+      if (typeof MENU === 'undefined' || typeof qty === 'undefined' || typeof pizzaExtras === 'undefined') { toast('No se pudo reordenar.'); return; }
+      const laMusa = CONFIG.restaurant_id === 'la_musa';
+      const resolved = [];
+      let dropped = 0;
+      for (const rl of entry.items) {
+        if (!rl || rl.key == null) { dropped++; continue; }
+        const item = laMusa ? MENU.find((p) => p.id === rl.key) : MENU.find((p) => p.name === rl.key);   // la_musa by id / x_pizza by name (recipe key)
+        if (!item) { dropped++; continue; }                                   // not on today's menu → drop
+        let so = false; try { so = (typeof soldOutById === 'function') && soldOutById(item.id); } catch (_) {}
+        if (so) { dropped++; continue; }                                      // 86'd → drop (UX best-effort; server re-gates)
+        const n = Number(rl.qty);
+        if (!Number.isInteger(n) || n < 1) { dropped++; continue; }
+        resolved.push({ item: item, qty: n, options: Array.isArray(rl.options) ? rl.options : [] });
+      }
+      if (!resolved.length) { toast('Esos productos ya no están disponibles.'); return; }
+      const notice = () => { if (dropped) toast(dropped === 1 ? '1 producto ya no está disponible' : dropped + ' productos ya no están disponibles'); };
+      const seed = (replace) => {
+        if (replace) { try { Object.keys(qty).forEach((k) => { qty[k] = 0; }); Object.keys(pizzaExtras).forEach((k) => { delete pizzaExtras[k]; }); } catch (_) {} }
+        applyReorderToCart(resolved, laMusa);
+        closeSheet();
+        notice();
+        try { const cb = document.getElementById('cart-bar') || document.querySelector('.cart-bar'); if (cb) setTimeout(() => cb.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120); } catch (_) {}
+      };
+      let cartHasItems = false; try { cartHasItems = MENU.some((p) => (qty[p.id] || 0) > 0); } catch (_) {}
+      if (cartHasItems) reorderCartPrompt(() => seed(false), () => seed(true));   // non-empty → Agregar / Empezar de nuevo
+      else seed(false);
+    } catch (_) { try { toast('No se pudo reordenar.'); } catch (__) {} }
+  }
+
+  function applyReorderToCart(resolved, laMusa) {
+    for (const r of resolved) {
+      const id = r.item.id;
+      try { qty[id] = (qty[id] || 0) + r.qty; } catch (_) {}
+      if (r.options.length) {
+        try {
+          if (laMusa) {
+            // flat per-line extras: pizzaExtras[id] = { extraId: qty }
+            const bucket = pizzaExtras[id] || {};
+            for (const o of r.options) {
+              const eid = o && o.id; if (!eid) continue;
+              const eqty = Number(o.qty);
+              bucket[eid] = (bucket[eid] || 0) + (Number.isInteger(eqty) && eqty > 0 ? eqty : 1);
+            }
+            pizzaExtras[id] = bucket;
+          } else {
+            // x_pizza per-instance: pizzaExtras[id] = { 0:{eid:1}, 1:{eid:1}, … }. Recipe {name,count} →
+            // resolve name→EXTRAS id, seed `count` instances (backward-compat: no count → 1), capped to qty.
+            const inst = pizzaExtras[id] || {};
+            for (const o of r.options) {
+              const name = o && o.name; if (!name || typeof EXTRAS === 'undefined') continue;
+              const exObj = EXTRAS.find((e) => e.name === name); if (!exObj) continue;
+              const count = Math.min(Number(o.count) || 1, r.qty);
+              for (let i = 0; i < count; i++) { inst[i] = inst[i] || {}; inst[i][exObj.id] = 1; }
+            }
+            pizzaExtras[id] = inst;
+          }
+        } catch (_) {}
+      }
+    }
+    try { if (typeof renderMenu === 'function') renderMenu(); } catch (_) {}
+    try { if (typeof updateCart === 'function') updateCart(); } catch (_) {}
+    try { if (typeof updateTotal === 'function') updateTotal(); } catch (_) {}
+  }
+
+  // Smart-cart prompt (non-empty cart) — reuses acctConfirm's scrim/card styles. Two affirmatives + a
+  // scrim/Escape cancel; one-shot settle. onAdd = merge; onReplace = clear-then-add.
+  function reorderCartPrompt(onAdd, onReplace) {
+    try { injectAcctConfirmStyles(); } catch (_) {}
+    const trigger = document.activeElement;
+    const scrim = document.createElement('div');
+    scrim.className = 'acct-cfm-scrim';
+    scrim.setAttribute('role', 'dialog'); scrim.setAttribute('aria-modal', 'true');
+    scrim.innerHTML = `
+<div class="acct-cfm-card">
+  <div class="acct-cfm-title">Ya tenés un pedido</div>
+  <div class="acct-cfm-msg">¿Agregar estos productos a tu pedido actual, o empezar de nuevo?</div>
+  <div class="acct-cfm-btns" style="flex-direction:column;gap:8px">
+    <button type="button" class="acct-cfm-btn acct-cfm-go" id="acct-ro-add">Agregar a mi pedido</button>
+    <button type="button" class="acct-cfm-btn acct-cfm-cancel" id="acct-ro-replace">Empezar de nuevo</button>
+  </div>
+</div>`;
+    document.body.appendChild(scrim);
+    let settled = false;
+    const finish = (fn) => {
+      if (settled) return; settled = true;
+      try { document.removeEventListener('keydown', onKey, true); } catch (_) {}
+      scrim.classList.remove('acct-on');
+      let removed = false; const rm = () => { if (removed) return; removed = true; try { scrim.remove(); } catch (_) {} };
+      scrim.addEventListener('transitionend', rm, { once: true }); setTimeout(rm, 280);
+      try { if (trigger && typeof trigger.focus === 'function') trigger.focus(); } catch (_) {}
+      if (fn) { try { fn(); } catch (_) {} }
+    };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); finish(null); } };
+    scrim.querySelector('#acct-ro-add').onclick = () => finish(onAdd);
+    scrim.querySelector('#acct-ro-replace').onclick = () => finish(onReplace);
+    scrim.addEventListener('click', (e) => { if (e.target === scrim) finish(null); });   // scrim = cancel
+    document.addEventListener('keydown', onKey, true);
+    requestAnimationFrame(() => scrim.classList.add('acct-on'));
+    setTimeout(() => { try { scrim.querySelector('#acct-ro-add').focus(); } catch (_) {} }, 30);
+  }
+
   function renderAccountPane() {
     const pane = $('acct-pane-account'); if (!pane) return;
     const m = marker() || {};
@@ -578,12 +774,14 @@
     pane.appendChild(addrSection);
     renderAddressesSection();
 
-    const rows = document.createElement('div');   // Mis pedidos stays Pronto (P3) — untouched
+    const rows = document.createElement('div');   // Mis pedidos — P3 live: opens the history pane
     rows.className = 'acct-rows';
     rows.innerHTML =   // static copy only — zero user values interpolated here
-      '<div class="acct-row acct-soon"><div class="acct-rl"><span class="acct-rt">Mis pedidos</span>' +
-      '<span class="acct-rd">Repetí un pedido anterior</span></div><span class="acct-soon-tag">Pronto</span></div>';
+      '<div class="acct-row" id="acct-row-orders" role="button" tabindex="0"><div class="acct-rl"><span class="acct-rt">Mis pedidos</span>' +
+      '<span class="acct-rd">Repetí un pedido anterior</span></div><span class="acct-row-chev">›</span></div>';
     pane.appendChild(rows);
+    const ordersRow = rows.querySelector('#acct-row-orders');
+    if (ordersRow) ordersRow.onclick = renderOrdersPane;   // P3 (Task 7)
 
     const disclosure = document.createElement('p');   // H9 — phone-account model disclosure
     disclosure.className = 'acct-fine';
