@@ -57,7 +57,7 @@ A customer reads ONLY their own `user_orders/{uid}` (all their orders; the form 
 Because we kept `user_orders/{uid}`, `account-lib.js` `user_orders/{uid}:null` already deletes ALL of a customer's history on account deletion — **no change needed**. Spec requires the executor to VERIFY (a test) that deletion still removes the extended entries (it does — it nulls the whole `user_orders/{uid}` subtree).
 
 ## Part 5 — Frontend: "Mis pedidos" pane (both account.js)
-The account-sheet "Pronto" row becomes live → a pane (`acct-pane-orders`, existing sheet/pane system) that reads `user_orders/{uid}` (account Firebase SDK, marker-gated), **filters to `entry.restaurant === CONFIG.restaurant`**, sorts by `ts` desc, shows the **last ~15**. Each row: date, `items_text` (escaped, truncated), `total`, a **status pill** (Entregado/Cancelado/En camino/Pendiente… mapped), and **"Reordenar"**. Empty state: "Todavía no tenés pedidos." Per-brand palette (near-white X. Pizza / cream La Musa). Reads only. Never render raw `items[]`.
+The account-sheet "Pronto" row becomes live → a pane (`acct-pane-orders`, existing sheet/pane system) that reads `user_orders/{uid}` (account Firebase SDK, marker-gated), **filters to `entry.restaurant === CONFIG.restaurant_id`**, sorts by `ts` desc, shows the **last ~15**. Each row: date, `items_text` (escaped, truncated), `total`, a **status pill** (Entregado/Cancelado/En camino/Pendiente… mapped), and **"Reordenar"**. Empty state: "Todavía no tenés pedidos." Per-brand palette (near-white X. Pizza / cream La Musa). Reads only. Never render raw `items[]`.
 
 ## Part 6 — Frontend: Reorder (re-resolve by id; seed cart; submit-path authoritative)
 Tap **"Reordenar"**:
