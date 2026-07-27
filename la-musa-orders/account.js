@@ -682,7 +682,8 @@
   function applyReorderToCart(resolved, laMusa) {
     for (const r of resolved) {
       const id = r.item.id;
-      try { qty[id] = (qty[id] || 0) + r.qty; } catch (_) {}
+      let base = 0; try { base = qty[id] || 0; } catch (_) {}   // pre-existing qty — captured BEFORE the increment so x_pizza extras seed onto the NEWLY-added instances, not instance 0 (codex R1 HIGH: an "Agregar" merge onto the same pizza collided on inst[0] → under-seeded → server under-charged)
+      try { qty[id] = base + r.qty; } catch (_) {}
       if (r.options.length) {
         try {
           if (laMusa) {
@@ -702,7 +703,7 @@
               const name = o && o.name; if (!name || typeof EXTRAS === 'undefined') continue;
               const exObj = EXTRAS.find((e) => e.name === name); if (!exObj) continue;
               const count = Math.min(Number(o.count) || 1, r.qty);
-              for (let i = 0; i < count; i++) { inst[i] = inst[i] || {}; inst[i][exObj.id] = 1; }
+              for (let i = 0; i < count; i++) { const idx = base + i; inst[idx] = inst[idx] || {}; inst[idx][exObj.id] = 1; }   // base+i → the instances THIS reorder added (base=0 for empty/replace)
             }
             pizzaExtras[id] = inst;
           }
