@@ -2576,7 +2576,7 @@ ${footer}`;
       if (mapWrap) mapWrap.style.display = 'none';
       if (zone) zone.style.display = 'none';
       if (loc) loc.style.display = 'none';
-      if (btn) btn.textContent = 'Continuar al pago';
+      if (btn) btn.textContent = 'Continuar al checkout';
     } else {
       const isDelivery = pageOrderType() === 'delivery';
       if (mapWrap) mapWrap.style.display = isDelivery ? '' : 'none';   // pickup keeps them hidden (R2)
