@@ -41,9 +41,16 @@ assert.equal(addr.$other['.validate'], false); ok('addresses/$addrId stray keys 
 assert.ok(up.default_address['.validate'].includes("newData.parent().child('addresses')"),
   `default_address must validate against POST-write addresses (got: ${up.default_address['.validate']})`); ok('default_address validated against post-write addresses (newData.parent)');
 assert.equal(up.$other['.validate'], false); ok('no stray profile keys');
-for (const k of ['user_orders','otp','otp_ip','phone_index','deleted_uids']){
-  const node = k==='user_orders' ? rules.user_orders.$uid : rules[k];
+for (const k of ['otp','otp_ip','phone_index','deleted_uids']){
+  const node = rules[k];
   assert.equal(node['.read'], false); assert.equal(node['.write'], false); ok(`${k} deny-all`);
+}
+// P3: user_orders opened to READ-OWN (was deny-all "until P3"); Admin-SDK-only write; indexed by ts
+{
+  const uo = rules.user_orders.$uid;
+  assert.equal(uo['.read'], 'auth != null && auth.uid === $uid'); ok('user_orders/$uid read-own (auth.uid === $uid)');
+  assert.equal(uo['.write'], false); ok('user_orders/$uid write denied (Admin-SDK only)');
+  assert.deepStrictEqual(uo['.indexOn'], ['ts']); ok('user_orders/$uid indexOn ["ts"]');
 }
 
 // ── R1 durable-deletion fixes: tombstone-guarded recreation + client-immutable last_login ──

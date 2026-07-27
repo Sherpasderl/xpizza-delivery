@@ -89,7 +89,11 @@ const PROFILE = { phone: '50499998888', phone_hash: 'ph_owner_abc', created_at: 
   // ── E: deny-all server nodes ──
   await no('E client cannot read otp', get(ownerDb, 'otp/ph_owner_abc'));
   await no('E client cannot read phone_index', get(ownerDb, 'phone_index/ph_owner_abc'));
-  await no('E client cannot read its own user_orders (denied until P3)', get(ownerDb, `user_orders/${OWNER}`));
+  // P3: user_orders opened to read-own (was deny-all "until P3")
+  await ok('E owner CAN read its own user_orders (P3 read-own)', get(ownerDb, `user_orders/${OWNER}`));
+  await no('E a different authed user CANNOT read user_orders', get(otherDb, `user_orders/${OWNER}`));
+  await no('E anon CANNOT read user_orders', get(anonDb, `user_orders/${OWNER}`));
+  await no('E client CANNOT write user_orders (Admin-SDK only)', set(ownerDb, `user_orders/${OWNER}/PZX-1`, { ts: 1 }));
   await no('E client cannot write otp_ip', set(ownerDb, 'otp_ip/x', { count: 1 }));
 
   // ── F: H1 — a customer:true token cannot read staff operational nodes ──

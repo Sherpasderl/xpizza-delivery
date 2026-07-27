@@ -216,7 +216,7 @@
         "$other":     { ".validate": false }
       }
     },
-    "user_orders":  { "$uid": { ".read": false, ".write": false } },
+    "user_orders":  { "$uid": { ".read": "auth != null && auth.uid === $uid", ".write": false, ".indexOn": ["ts"] } },
     "otp":          { ".read": false, ".write": false },
     "otp_ip":       { ".read": false, ".write": false },
     "phone_index":  { ".read": false, ".write": false },
