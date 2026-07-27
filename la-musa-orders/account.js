@@ -917,7 +917,7 @@
     st.textContent = `
 .acct-eyebrow{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#B3A594;margin:0 0 10px}
 /* #5/#7: ONE mount-inset so account content (create-profile card, Entregar-a summary, compact line, Cambiar chooser) aligns with the native fields/labels (field-group/step-label horizontal inset = 16px). The rendered cards carry NO horizontal margin, so this insets them uniformly with no double-pad. EMPTY mounts (guest/pickup/non-reduced) add ZERO space. */
-#acct-deliver,#acct-s2-summary{padding-left:16px;padding-right:16px}
+#acct-deliver,#acct-s2-summary{padding:14px 16px 0}
 #acct-deliver:empty,#acct-s2-summary:empty{padding:0}
 .acct-deliver{border:1px solid #E2D8C8;border-radius:20px;overflow:hidden;background:#fff;box-shadow:0 12px 30px -18px rgba(40,28,12,.3);font-family:inherit;margin-bottom:4px}
 /* Real Static Maps thumbnail of the saved address (replaces the old decorative fake map). Starts
@@ -2447,6 +2447,7 @@ ${footer}`;
 .acct-compact .acct-cav{width:30px;height:30px;border-radius:50%;background:#F0E8DA;color:#2A231C;display:flex;align-items:center;justify-content:center;flex:none}
 .acct-compact .acct-ctxt{flex:1;min-width:0;font-size:13.5px;color:#17130F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .acct-compact .acct-ctxt b{font-weight:700}
+.acct-compact .acct-change{margin-top:0}   /* QF4: center "Cambiar" on the compact row's center line (align-items:center); the global .acct-change{margin-top:2px} stays for the .acct-drow full card (align-items:flex-start) */
 /* s1 "Entregar a" alignment (spec #4): the eyebrow sat flush-left while the compact card's content
    is inset 14px, reading slightly misaligned. Inset the s1 eyebrow to match — SCOPED to the compact
    variant only (--inset modifier), so every other .acct-eyebrow surface is untouched. */
