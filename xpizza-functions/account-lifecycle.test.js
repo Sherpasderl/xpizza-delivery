@@ -12,6 +12,17 @@ const PH = 'deadbeef'.repeat(8);
   assert.deepStrictEqual(u, { [`user_profiles/${UID}`]: null, [`user_orders/${UID}`]: null, [`phone_index/${PH}`]: null });
   ok('delete clears profile + user_orders + phone_index (all null, atomic)');
 }
+// ── P3 PII-safety (codex HIGH-3): the EXTENDED history entries (restaurant/status/items[]) are purged
+// on deletion UNCHANGED — because the delete nulls the WHOLE user_orders/{uid} SUBTREE ROOT (not a
+// field-level path), so every descendant is removed regardless of entry shape. No code change; this is
+// the reason P3 kept the user_orders/{uid} path (did NOT re-nest under restaurant). ──
+{
+  const u = A.accountDeleteUpdates(UID, PH);
+  assert.strictEqual(u[`user_orders/${UID}`], null); ok('P3: deletion nulls the user_orders/{uid} SUBTREE ROOT');
+  assert.ok(!Object.keys(u).some((k) => k.startsWith(`user_orders/${UID}/`)),
+    'must be a subtree-root null, never a field-level path (else a new field could orphan)');
+  ok('P3: subtree-root null purges the new restaurant/status/items[] fields — no orphaned order-history PII');
+}
 {
   const u = A.accountDeleteUpdates(UID, null);
   assert.deepStrictEqual(u, { [`user_profiles/${UID}`]: null, [`user_orders/${UID}`]: null });
