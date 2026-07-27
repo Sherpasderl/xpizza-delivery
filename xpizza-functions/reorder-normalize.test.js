@@ -12,8 +12,8 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 // ── x_pizza: name-keyed items + name-based extras ──
 assert.deepStrictEqual(
   normalizeReorderItems([{ name: 'Margherita', qty: 2, extras: [{ name: 'Mozzarella' }, { name: 'Hongos' }] }], 'x_pizza'),
-  [{ key: 'Margherita', qty: 2, options: [{ name: 'Mozzarella' }, { name: 'Hongos' }] }]);
-ok('x_pizza item + recognized extras → name key + options');
+  [{ key: 'Margherita', qty: 2, options: [{ name: 'Mozzarella', count: 1 }, { name: 'Hongos', count: 1 }] }]);
+ok('x_pizza item + recognized extras → {name,count}');
 
 assert.deepStrictEqual(
   normalizeReorderItems([{ name: 'Pepperoni', qty: 3 }], 'x_pizza'),
@@ -32,13 +32,19 @@ ok('x_pizza unknown item DROPPED');
 
 assert.deepStrictEqual(
   normalizeReorderItems([{ name: 'Margherita', qty: 1, extras: [{ name: 'FakeExtra' }, { name: 'Mozzarella' }] }], 'x_pizza'),
-  [{ key: 'Margherita', qty: 1, options: [{ name: 'Mozzarella' }] }]);
-ok('x_pizza unknown extra DROPPED, recognized kept');
+  [{ key: 'Margherita', qty: 1, options: [{ name: 'Mozzarella', count: 1 }] }]);
+ok('x_pizza unknown extra DROPPED, recognized kept ({name,count})');
 
+// x_pizza multiplicity — an extra on N pizza instances is priced ×N by computeServerTotal (no server
+// dedup), so the recipe must COUNT it (Option 3 fix — old dedup-once lost this).
+assert.deepStrictEqual(
+  normalizeReorderItems([{ name: 'Margherita', qty: 2, extras: [{ name: 'Mozzarella' }, { name: 'Mozzarella' }] }], 'x_pizza'),
+  [{ key: 'Margherita', qty: 2, options: [{ name: 'Mozzarella', count: 2 }] }]);
+ok('x_pizza extra on N instances → count N (multiplicity preserved)');
 assert.deepStrictEqual(
   normalizeReorderItems([{ name: 'Margherita', qty: 1, extras: [{ name: 'Mozzarella' }, { name: 'Mozzarella' }] }], 'x_pizza'),
-  [{ key: 'Margherita', qty: 1, options: [{ name: 'Mozzarella' }] }]);
-ok('x_pizza duplicate extra folded once');
+  [{ key: 'Margherita', qty: 1, options: [{ name: 'Mozzarella', count: 1 }] }]);
+ok('x_pizza extra count capped to item qty (cannot exceed pizza instances)');
 
 // ── la_musa: id-keyed items + id-keyed qty-aware extras (variants are distinct ids) ──
 assert.deepStrictEqual(
