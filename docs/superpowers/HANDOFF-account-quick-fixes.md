@@ -30,3 +30,18 @@ These are mechanical bug fixes (no design decision) — advisor will codex-on-di
 
 ## FILE COORDINATION
 Advisor is NOT editing `account.js` — you are the SOLE editor on this branch. Advisor reads + runs codex-on-diff only. Push `feat/account-quick-fixes`, report the tip SHA. Do NOT deploy/merge/run codex. On APPROVED, owner deploys (Netlify CLI per-folder: xpizzaorders 6f09559f / lamusaorders f8bac377).
+
+---
+
+## QF4 (ADD to this same branch) — "Entregar a" card vertical spacing/centering
+Owner fresh feedback on the LIVE reduced-flow "Entregar a" card in "Tus datos": the "ENTREGAR A" eyebrow is crammed against the "Tus datos" header band, and "Cambiar" sits slightly off the row's center line. Same guardrails as QF1–QF3 (account.js only, both forms, index.html untouched, no logic/money-path change, guest byte-identical, parity past CONFIG).
+
+**Root cause (traced):**
+- `.acct-eyebrow{margin:0 0 10px}` (zero top) + `#acct-deliver{padding-left:16px;padding-right:16px}` (no top padding) → "ENTREGAR A" is flush under the `.section-head` "Tus datos" band, while native `.field-group{padding:14px 16px}` fields have 14px top breathing room. Inconsistent vertical rhythm.
+- `.acct-compact{align-items:center}` centers the row, BUT `.acct-change{...margin-top:2px}` nudges "Cambiar" ~2px below the avatar/text center line.
+
+**Fix:**
+1. Give the account mounts top breathing room matching the native fields: change `#acct-deliver,#acct-s2-summary{padding-left:16px;padding-right:16px}` → add `padding-top:14px` (e.g. `padding:14px 16px 0`). KEEP the `#acct-deliver:empty,#acct-s2-summary:empty{padding:0}` rule so guest/pickup/empty mounts add ZERO space (no phantom gap). Verify the eyebrow now sits ~14px below the "Tus datos" band, matching "Correo"/"Instrucciones" top rhythm.
+2. Vertically center "Cambiar" in the compact row WITHOUT affecting the full-card usage: add a scoped rule `.acct-compact .acct-change{margin-top:0}` (the global `.acct-change{margin-top:2px}` stays for the `.acct-drow` full card, which uses `align-items:flex-start`). Verify avatar + "Casa · …" + "Cambiar" all sit on the same center line in the compact card.
+
+**Verify:** the "Entregar a" card in s1 "Tus datos" — eyebrow has proper top spacing (not crammed), row elements vertically centered; the s2 rich summary + create-profile card top spacing also read consistently (they share `#acct-deliver`/`#acct-s2-summary`); guest/pickup empty mounts still zero-gap; both forms parity; index.html untouched. Mirror to xpizza-orders.
