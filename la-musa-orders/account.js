@@ -266,7 +266,9 @@
   function animateSheetHeight(mutate) {
     const sheet = document.querySelector('#acct-overlay .acct-sheet');
     if (!sheet || prefersReducedMotion() || !sheet.closest('.acct-overlay.acct-open')) { mutate(); return; }
-    let startH = 0; try { startH = sheet.offsetHeight; } catch (_) {}
+    const myGen = ++_acctHAGen;                                  // token THIS run
+    cancelSheetHeightAnim(sheet);                               // drop the prior run's pending timer/listener (it can't clean up after us)
+    let startH = 0; try { startH = sheet.offsetHeight; } catch (_) {}   // current rendered height (mid-transition value if chaining) → smooth continuation
     mutate();
     let endH = 0; try { endH = sheet.offsetHeight; } catch (_) {}
     if (!startH || !endH || startH === endH) return;
@@ -275,10 +277,14 @@
       void sheet.offsetHeight;                                   // commit the start height
       sheet.style.transition = 'transform .3s cubic-bezier(.2,.7,.2,1), height .28s cubic-bezier(.2,.7,.2,1)';   // compose — keep the open/close transform slide working
       sheet.style.height = endH + 'px';
-      const cleanup = () => { sheet.style.height = ''; sheet.style.transition = ''; sheet.removeEventListener('transitionend', onEnd); };   // clear inline → restore the stylesheet transform-only transition + content-driven height
-      const onEnd = (e) => { if (e && e.target === sheet && e.propertyName === 'height') cleanup(); };
-      sheet.addEventListener('transitionend', onEnd);
-      setTimeout(cleanup, 400);                                  // fallback if transitionend doesn't fire
+      const cleanup = () => {
+        if (myGen !== _acctHAGen) return;                        // superseded by a newer anim / open / close → do NOT clobber its inline height/transition (codex R2 #1)
+        cancelSheetHeightAnim(sheet);
+        sheet.style.height = ''; sheet.style.transition = '';    // clear inline → restore the stylesheet transform-only transition + content-driven height
+      };
+      _acctHAEnd = (e) => { if (e && e.target === sheet && e.propertyName === 'height') cleanup(); };
+      sheet.addEventListener('transitionend', _acctHAEnd);
+      _acctHATimer = setTimeout(cleanup, 400);                   // fallback if transitionend doesn't fire
     } catch (_) { try { sheet.style.height = ''; sheet.style.transition = ''; } catch (__) {} }
   }
 
@@ -304,11 +310,23 @@
     _acctSheetEnd = null;
   }
 
+  // Height-animation token (same fast-supersede guard as the close finalizer — codex R2 #1). A rapid pane
+  // switch / closeSheet within the 400ms cleanup window must NOT let a stale cleanup clobber the newer
+  // animation or the open/close transform slide.
+  let _acctHAGen = 0, _acctHATimer = null, _acctHAEnd = null;
+  function cancelSheetHeightAnim(sheet) {
+    if (_acctHATimer) { clearTimeout(_acctHATimer); _acctHATimer = null; }
+    if (_acctHAEnd && sheet) { try { sheet.removeEventListener('transitionend', _acctHAEnd); } catch (_) {} }
+    _acctHAEnd = null;
+  }
+
   function openOverlay() {
     buildOverlay();
     const ov = $('acct-overlay');
     _acctSheetGen++;                          // invalidate any in-flight close finalizer (fast reopen — codex R1 #1)
     cancelSheetFinalizer(ov);                 // and explicitly cancel its timer + transitionend listener
+    _acctHAGen++;                             // invalidate any pending height-anim cleanup so it can't clobber the open slide (codex R2 #1)
+    const _s = ov.querySelector('.acct-sheet'); if (_s) { cancelSheetHeightAnim(_s); _s.style.height = ''; _s.style.transition = ''; }
     ov.style.visibility = ''; ov.removeAttribute('aria-hidden'); ov.inert = false;   // clear the closed inert state before the slide
     void ov.offsetHeight;                     // commit the closed state so adding .acct-open transitions (not a jump)
     ov.classList.add('acct-open');            // scrim fades in + sheet slides up (#8)
@@ -318,6 +336,8 @@
     const ov = $('acct-overlay');
     if (ov) {
       try { if (ov.contains(document.activeElement) && typeof document.activeElement.blur === 'function') document.activeElement.blur(); } catch (_) {}   // move focus OUT before inert (codex note)
+      _acctHAGen++;                           // invalidate any pending height-anim cleanup + clear its inline height/transition BEFORE the slide so it can't clobber the close transform (codex R2 #1)
+      const _s = ov.querySelector('.acct-sheet'); if (_s) { cancelSheetHeightAnim(_s); _s.style.height = ''; _s.style.transition = ''; }
       const myGen = ++_acctSheetGen;          // token for THIS close
       cancelSheetFinalizer(ov);               // drop any prior pending finalizer
       ov.classList.remove('acct-open');       // scrim fades out + sheet slides down
@@ -1754,6 +1774,7 @@ ${rowsHtml}`;
     const addBtn = $('acct-add-addr-btn'); if (addBtn) addBtn.onclick = startAddNewAddress;
   }
 
+  let _acctAddrSaveChain = Promise.resolve();   // serialize concurrent default-writes so the LAST tap wins (codex R2 #2 — stay-open made this reentrant)
   async function selectSavedAddress(addrId) {
     if (!_acctData || !_acctData.addresses || !_acctData.addresses[addrId]) return;
     const a = _acctData.addresses[addrId];
@@ -1763,8 +1784,11 @@ ${rowsHtml}`;
     refreshDeliveryUI(Object.assign({ id: addrId }, a));
     placeAccountPin(a.lat, a.lng);
     toast('Dirección actualizada');   // was closeSheet() — stay in the sheet so the user can reach Mis pedidos; the order's "Entregar a" card already updated via refreshDeliveryUI
-    try { await saveAddress({ addrId, label: a.label, detected: a.detected, details: a.details, lat: a.lat, lng: a.lng, makeDefault: true }); }
-    catch (_) { /* fail-open — the in-memory selection above already applies for this order */ }
+    // Serialize the persistence: tapping A then B fires two makeDefault writes; the CHAIN applies them in
+    // tap order so the persisted default = the last tap (matches the in-memory/UI state). Fail-open per link.
+    _acctAddrSaveChain = _acctAddrSaveChain
+      .then(() => saveAddress({ addrId, label: a.label, detected: a.detected, details: a.details, lat: a.lat, lng: a.lng, makeDefault: true }))
+      .catch(() => {});
   }
 
   async function removeSavedAddress(addrId) {
