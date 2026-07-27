@@ -68,6 +68,7 @@ const { buildMaterializeUpdates } = require('./materialize');
 const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
+const { decideStatusMirror } = require('./status-mirror');          // P3 — status-sync trigger core (update-only-if-exists)
 const SCHED = require('./scheduled-orders');                              // Scheduled Orders — pure hours/slot/release core
 const { releaseOne: releaseScheduledCore, recoverStaleReleasing } = require('./scheduled-release-core');
 const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
@@ -1848,6 +1849,32 @@ exports.allocateDisplayNumberOnSale = onValueWritten(
 // manual reconciliation, client-side cash cancel). If a number was issued → void it (the SAR
 // number is retained, never recycled). If none was issued yet → mark factura_status:'cancelled'
 // (no factura owed — a pre-issuance cancellation isn't a Sale; confirmed with fiscal counsel).
+// P3 — mirror an order's status into the customer's history entry. onValueWritten on the status LEAF so
+// it fires on every status transition. UPDATE-ONLY-IF-EXISTS (decideStatusMirror): reads the order's
+// customer_uid; guest → no-op; else reads user_orders/{uid}/{orderId} and updates its status ONLY if the
+// entry already EXISTS (never creates one → a pending_payment/unpaid checkout is never indexed). Writes a
+// DIFFERENT subtree than it listens on (no loop); fully fail-open (a mirror failure never affects the
+// order's own status write).
+exports.mirrorStatusToHistory = onValueWritten(
+  { ref: '/orders/{orderId}/status', region: 'us-central1' },
+  async (event) => {
+    try {
+      const status = event.data.after.val();
+      if (status == null) return;                          // status cleared / order gone
+      const orderId = event.params.orderId;
+      const db = getDatabase();
+      const uid = (await db.ref(`orders/${orderId}/customer_uid`).get()).val();
+      if (!uid) return;                                    // guest → no-op
+      const entrySnap = await db.ref(`user_orders/${uid}/${orderId}`).get();
+      const decision = decideStatusMirror(orderId, uid, entrySnap.exists(), status);
+      if (!decision) return;                               // no entry (pending/unpaid) → NEVER create
+      await db.ref(decision.path).set(decision.value);     // update the existing entry's status leaf only
+    } catch (e) {
+      console.warn('mirrorStatusToHistory: fail-open —', e && e.message);   // never affect the order-status write
+    }
+  }
+);
+
 exports.voidFacturaOnCancel = onValueWritten(
   { ref: '/orders/{orderId}', region: 'us-central1' },
   async (event) => {
