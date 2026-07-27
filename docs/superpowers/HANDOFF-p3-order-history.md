@@ -97,3 +97,11 @@ qty[id] = base + r.qty;
 for (let i = 0; i < count; i++) { const idx = base + i; inst[idx] = inst[idx] || {}; inst[idx][exObj.id] = 1; }
 ```
 `base=0` for empty/replace (unchanged); `count` stays capped to `r.qty` so `base+i` lands only on the instances this reorder added. La Musa branch UNCHANGED (flat per-line extras already merge additively — correct). Re-run `node reorder-normalize.test.js` (unaffected) + `node --check` both account.js + parity check. Push; report SHA. I resume the codex thread for round 2 (delta only).
+
+---
+
+# PHASE-2 codex-on-diff ROUND 2 → APPROVED (tip 688252f)
+
+R2 clean, no findings. R1 HIGH closed (base captured before increment; x_pizza extras seed at base+i → merge appends onto newly-added instances; duplicate resolved lines append correctly since base recaptured per-loop); La Musa unchanged; both account.js identical past CONFIG. Full P3 batch GATED.
+
+**Cleared to deploy (owner go, backend-before-forms):** (1) functions re-deploy — only backend change is reorder-normalize.js Option 3 count-per-name; complete env + BOTH driver-native + payment code + zero-prune; no rules change. (2) forms — Netlify per-folder (xpizzaorders 6f09559f / lamusaorders f8bac377). Merge feat/p3-order-history → main first. Post-deploy: on-device reorder E2E (empty-cart add + "Agregar a mi pedido" merge with overlapping pizza+extra — the R1-hardened path).
