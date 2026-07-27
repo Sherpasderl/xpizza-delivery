@@ -157,7 +157,12 @@
 .acct-ordpill--bad{background:#F6E7E5;color:#B23B3B}
 .acct-ordpill--go{background:${CONFIG.palette.tint};color:#17130F}
 .acct-ordpill--mut{background:${CONFIG.palette.chip};color:#8C7B6E}
-.acct-ordline{font-size:14px;color:#17130F;line-height:1.4;margin-bottom:8px}
+.acct-oitems{display:flex;flex-direction:column;gap:7px;margin:2px 0 8px}
+.acct-oitem{display:flex;gap:9px;align-items:baseline}
+.acct-oqty{flex:none;min-width:24px;font-size:13.5px;font-weight:800;color:${CONFIG.accent};font-variant-numeric:tabular-nums}
+.acct-oname{font-size:14.5px;font-weight:600;color:#17130F;line-height:1.32}
+.acct-oextra{display:block;font-size:12.5px;font-weight:500;color:#6B5E52;margin-top:1px}
+.acct-omore{font-size:12.5px;font-weight:600;color:#8C7B6E;margin:1px 0 6px}
 .acct-ordbot{display:flex;align-items:center;justify-content:space-between}
 .acct-ordtotal{font-size:15px;font-weight:800;color:#17130F}
 .acct-ordreorder{background:#17130F;color:#fff;border:none;border-radius:10px;padding:9px 16px;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer}
@@ -254,10 +259,35 @@
     wireOverlayEvents();
   }
 
+  // Smoothly animate the sheet's height across a content mutation (pane swap / list fill). Defensive:
+  // instant if closed, reduced-motion, unmeasurable, or on any error — the mutation ALWAYS applies. Only
+  // animates while the sheet is already .acct-open (so it never fights the open/close transform slide,
+  // which happens before .acct-open at openOverlay time).
+  function animateSheetHeight(mutate) {
+    const sheet = document.querySelector('#acct-overlay .acct-sheet');
+    if (!sheet || prefersReducedMotion() || !sheet.closest('.acct-overlay.acct-open')) { mutate(); return; }
+    let startH = 0; try { startH = sheet.offsetHeight; } catch (_) {}
+    mutate();
+    let endH = 0; try { endH = sheet.offsetHeight; } catch (_) {}
+    if (!startH || !endH || startH === endH) return;
+    try {
+      sheet.style.height = startH + 'px';
+      void sheet.offsetHeight;                                   // commit the start height
+      sheet.style.transition = 'transform .3s cubic-bezier(.2,.7,.2,1), height .28s cubic-bezier(.2,.7,.2,1)';   // compose — keep the open/close transform slide working
+      sheet.style.height = endH + 'px';
+      const cleanup = () => { sheet.style.height = ''; sheet.style.transition = ''; sheet.removeEventListener('transitionend', onEnd); };   // clear inline → restore the stylesheet transform-only transition + content-driven height
+      const onEnd = (e) => { if (e && e.target === sheet && e.propertyName === 'height') cleanup(); };
+      sheet.addEventListener('transitionend', onEnd);
+      setTimeout(cleanup, 400);                                  // fallback if transitionend doesn't fire
+    } catch (_) { try { sheet.style.height = ''; sheet.style.transition = ''; } catch (__) {} }
+  }
+
   function showPane(name) {
-    document.querySelectorAll('#acct-overlay .acct-pane').forEach((p) => p.classList.remove('acct-on'));
-    const p = $('acct-pane-' + name); if (p) p.classList.add('acct-on');
-    const back = $('acct-back'); if (back) back.style.visibility = (name === 'otp') ? 'visible' : 'hidden';
+    animateSheetHeight(() => {
+      document.querySelectorAll('#acct-overlay .acct-pane').forEach((p) => p.classList.remove('acct-on'));
+      const p = $('acct-pane-' + name); if (p) p.classList.add('acct-on');
+      const back = $('acct-back'); if (back) back.style.visibility = (name === 'otp') ? 'visible' : 'hidden';
+    });
   }
 
   function prefersReducedMotion() {
@@ -590,13 +620,27 @@
     try { return new Date(t).toLocaleDateString('es-HN', { day: 'numeric', month: 'short' }); } catch (_) { return ''; }
   }
 
+  // Parse the display items_text ("2x Name (L###) [+ extras] | …") into per-item parts for the list view.
+  // Pure string work on the already-sanitized items_text; prices are intentionally dropped (Option A — the
+  // (L###) is a unit price that wouldn't sum, and items[] carries no prices by the P3 XSS/trust decision).
+  function parseOrderItems(txt) {
+    return String(txt || '').split(' | ').map((seg) => {
+      seg = seg.trim(); if (!seg) return null;
+      let m = seg.match(/^(\d+)x\s+([\s\S]+?)\s*\(L[\d.,]+\)\s*(?:\[\+\s*([\s\S]+?)\])?\s*$/);   // "Nx Name (L###)[ [+ extras]]"
+      if (m) return { qty: m[1], name: m[2].trim(), extras: (m[3] || '').replace(/(\d+)x\s/g, '$1× ').trim() };
+      m = seg.match(/^(\d+)x\s+([\s\S]+)$/);                                                       // no price → still split "Nx Name"
+      if (m) return { qty: m[1], name: m[2].trim(), extras: '' };
+      return { qty: '', name: seg, extras: '' };                                                   // unrecognized → show raw (defensive, never throws)
+    }).filter(Boolean);
+  }
+
   // P3 (Task 7) — "Mis pedidos" history pane. Reads user_orders/{uid} (account SDK, marker-gated),
   // filters to THIS restaurant (entry.restaurant === CONFIG.restaurant_id; old/forward-only entries
-  // without `restaurant` are skipped), newest first, last 15. Row = date + escaped items_text + total +
-  // status pill + Reordenar (only when a normalized recipe exists). NEVER renders raw items[]. Reads only.
+  // without `restaurant` are skipped), newest first, last 15. Each row = date + a per-item list (Option A)
+  // + total + status pill + Reordenar (only when a normalized recipe exists). NEVER renders raw items[].
   async function renderOrdersPane() {
     const pane = $('acct-pane-orders'); if (!pane) return;
-    pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis pedidos</span></div><p class="acct-fine" style="text-align:left">Cargando…</p>`;
+    pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis pedidos</span></div><p class="acct-fine" style="text-align:left;min-height:120px">Cargando…</p>`;
     showPane('orders');
     let entries = [];
     try {
@@ -620,23 +664,31 @@
     } catch (_) { /* fail-open — show empty state, never break the sheet */ }
 
     if (!entries.length) {
-      pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis pedidos</span></div>
+      animateSheetHeight(() => {
+        pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis pedidos</span></div>
 <p class="acct-fine" style="text-align:left">Todavía no tenés pedidos.</p>`;
+      });
       return;
     }
     const rowsHtml = entries.map((e, i) => {
       const pill = orderStatusPill(e.status);
-      const line = String(e.items_text || '').slice(0, 80);
+      const parsed = parseOrderItems(e.items_text);   // per-item list (Option A) — escaped, no per-line prices
+      const itemsHtml = parsed.slice(0, 6).map((it) =>
+        `<div class="acct-oitem"><span class="acct-oqty">${escapeHtml(it.qty)}${it.qty ? '×' : ''}</span><span class="acct-oname">${escapeHtml(it.name)}${it.extras ? `<span class="acct-oextra">+ ${escapeHtml(it.extras)}</span>` : ''}</span></div>`
+      ).join('');
+      const moreHtml = parsed.length > 6 ? `<div class="acct-omore">+${parsed.length - 6} más</div>` : '';
       const canReorder = Array.isArray(e.items) && e.items.length > 0;
       return `<div class="acct-ordcard">
   <div class="acct-ordtop"><span class="acct-orddate">${escapeHtml(fmtOrderDate(e.ts))}</span><span class="acct-ordpill acct-ordpill--${pill.cls}">${escapeHtml(pill.label)}</span></div>
-  <div class="acct-ordline">${escapeHtml(line)}</div>
+  <div class="acct-oitems">${itemsHtml}${moreHtml}</div>
   <div class="acct-ordbot"><span class="acct-ordtotal">L ${escapeHtml(String(e.total))}</span>${canReorder ? `<button type="button" class="acct-ordreorder" data-ord="${i}">Reordenar</button>` : ''}</div>
 </div>`;
     }).join('');
-    pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis pedidos</span></div>${rowsHtml}`;
-    pane.querySelectorAll('[data-ord]').forEach((btn) => {
-      btn.onclick = () => reorderFromEntry(entries[Number(btn.getAttribute('data-ord'))]);   // Task 8
+    animateSheetHeight(() => {
+      pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis pedidos</span></div>${rowsHtml}`;
+      pane.querySelectorAll('[data-ord]').forEach((btn) => {
+        btn.onclick = () => reorderFromEntry(entries[Number(btn.getAttribute('data-ord'))]);   // Task 8
+      });
     });
   }
 
@@ -850,7 +902,7 @@
 .acct-cfm-title{font-size:17px;font-weight:800;color:#17130F;margin:0 0 8px;letter-spacing:-.01em}
 .acct-cfm-msg{font-size:14px;line-height:1.55;color:#6B5E52;margin:0 0 18px}
 .acct-cfm-btns{display:flex;gap:10px}
-.acct-cfm-btn{flex:1;height:46px;border:none;border-radius:12px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer}
+.acct-cfm-btn{flex:1;min-height:52px;display:flex;align-items:center;justify-content:center;padding:0 14px;border:none;border-radius:12px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer}
 .acct-cfm-cancel{background:${CONFIG.palette.fillA};color:#17130F}
 .acct-cfm-go{background:#17130F;color:#fff}
 .acct-cfm-go.acct-cfm-danger{background:#C0392B}
@@ -1710,7 +1762,7 @@ ${rowsHtml}`;
     renderAddressesSection();
     refreshDeliveryUI(Object.assign({ id: addrId }, a));
     placeAccountPin(a.lat, a.lng);
-    closeSheet();
+    toast('Dirección actualizada');   // was closeSheet() — stay in the sheet so the user can reach Mis pedidos; the order's "Entregar a" card already updated via refreshDeliveryUI
     try { await saveAddress({ addrId, label: a.label, detected: a.detected, details: a.details, lat: a.lat, lng: a.lng, makeDefault: true }); }
     catch (_) { /* fail-open — the in-memory selection above already applies for this order */ }
   }
