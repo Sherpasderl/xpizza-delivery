@@ -640,6 +640,117 @@
     });
   }
 
+  // P3 (Task 8) — Reordenar. SEEDS THE CART ONLY: re-resolves each recipe line against TODAY's menu +
+  // availability, drops what's gone/86'd (with a notice), and adds the rest via the form's native cart
+  // state (qty[id] + pizzaExtras[id] — the exact structures the payment-retry restore writes). The
+  // customer then continues through the NORMAL review → submit, which re-prices (computeServerTotal) +
+  // re-gates (checkItemAvailability) server-side and re-applies pickup-only/category in the review. NO
+  // new submit path, NO client re-pricing. account.js stays identical past CONFIG — only CONFIG.restaurant_id
+  // branches the extras shape (la_musa flat {extraId:qty} / x_pizza per-instance).
+  function reorderFromEntry(entry) {
+    try {
+      if (!entry || !Array.isArray(entry.items) || !entry.items.length) return;
+      if (typeof MENU === 'undefined' || typeof qty === 'undefined' || typeof pizzaExtras === 'undefined') { toast('No se pudo reordenar.'); return; }
+      const laMusa = CONFIG.restaurant_id === 'la_musa';
+      const resolved = [];
+      let dropped = 0;
+      for (const rl of entry.items) {
+        if (!rl || rl.key == null) { dropped++; continue; }
+        const item = laMusa ? MENU.find((p) => p.id === rl.key) : MENU.find((p) => p.name === rl.key);   // la_musa by id / x_pizza by name (recipe key)
+        if (!item) { dropped++; continue; }                                   // not on today's menu → drop
+        let so = false; try { so = (typeof soldOutById === 'function') && soldOutById(item.id); } catch (_) {}
+        if (so) { dropped++; continue; }                                      // 86'd → drop (UX best-effort; server re-gates)
+        const n = Number(rl.qty);
+        if (!Number.isInteger(n) || n < 1) { dropped++; continue; }
+        resolved.push({ item: item, qty: n, options: Array.isArray(rl.options) ? rl.options : [] });
+      }
+      if (!resolved.length) { toast('Esos productos ya no están disponibles.'); return; }
+      const notice = () => { if (dropped) toast(dropped === 1 ? '1 producto ya no está disponible' : dropped + ' productos ya no están disponibles'); };
+      const seed = (replace) => {
+        if (replace) { try { Object.keys(qty).forEach((k) => { qty[k] = 0; }); Object.keys(pizzaExtras).forEach((k) => { delete pizzaExtras[k]; }); } catch (_) {} }
+        applyReorderToCart(resolved, laMusa);
+        closeSheet();
+        notice();
+        try { const cb = document.getElementById('cart-bar') || document.querySelector('.cart-bar'); if (cb) setTimeout(() => cb.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120); } catch (_) {}
+      };
+      let cartHasItems = false; try { cartHasItems = MENU.some((p) => (qty[p.id] || 0) > 0); } catch (_) {}
+      if (cartHasItems) reorderCartPrompt(() => seed(false), () => seed(true));   // non-empty → Agregar / Empezar de nuevo
+      else seed(false);
+    } catch (_) { try { toast('No se pudo reordenar.'); } catch (__) {} }
+  }
+
+  function applyReorderToCart(resolved, laMusa) {
+    for (const r of resolved) {
+      const id = r.item.id;
+      try { qty[id] = (qty[id] || 0) + r.qty; } catch (_) {}
+      if (r.options.length) {
+        try {
+          if (laMusa) {
+            // flat per-line extras: pizzaExtras[id] = { extraId: qty }
+            const bucket = pizzaExtras[id] || {};
+            for (const o of r.options) {
+              const eid = o && o.id; if (!eid) continue;
+              const eqty = Number(o.qty);
+              bucket[eid] = (bucket[eid] || 0) + (Number.isInteger(eqty) && eqty > 0 ? eqty : 1);
+            }
+            pizzaExtras[id] = bucket;
+          } else {
+            // x_pizza per-instance: pizzaExtras[id] = { 0:{eid:1}, 1:{eid:1}, … }. Recipe {name,count} →
+            // resolve name→EXTRAS id, seed `count` instances (backward-compat: no count → 1), capped to qty.
+            const inst = pizzaExtras[id] || {};
+            for (const o of r.options) {
+              const name = o && o.name; if (!name || typeof EXTRAS === 'undefined') continue;
+              const exObj = EXTRAS.find((e) => e.name === name); if (!exObj) continue;
+              const count = Math.min(Number(o.count) || 1, r.qty);
+              for (let i = 0; i < count; i++) { inst[i] = inst[i] || {}; inst[i][exObj.id] = 1; }
+            }
+            pizzaExtras[id] = inst;
+          }
+        } catch (_) {}
+      }
+    }
+    try { if (typeof renderMenu === 'function') renderMenu(); } catch (_) {}
+    try { if (typeof updateCart === 'function') updateCart(); } catch (_) {}
+    try { if (typeof updateTotal === 'function') updateTotal(); } catch (_) {}
+  }
+
+  // Smart-cart prompt (non-empty cart) — reuses acctConfirm's scrim/card styles. Two affirmatives + a
+  // scrim/Escape cancel; one-shot settle. onAdd = merge; onReplace = clear-then-add.
+  function reorderCartPrompt(onAdd, onReplace) {
+    try { injectAcctConfirmStyles(); } catch (_) {}
+    const trigger = document.activeElement;
+    const scrim = document.createElement('div');
+    scrim.className = 'acct-cfm-scrim';
+    scrim.setAttribute('role', 'dialog'); scrim.setAttribute('aria-modal', 'true');
+    scrim.innerHTML = `
+<div class="acct-cfm-card">
+  <div class="acct-cfm-title">Ya tenés un pedido</div>
+  <div class="acct-cfm-msg">¿Agregar estos productos a tu pedido actual, o empezar de nuevo?</div>
+  <div class="acct-cfm-btns" style="flex-direction:column;gap:8px">
+    <button type="button" class="acct-cfm-btn acct-cfm-go" id="acct-ro-add">Agregar a mi pedido</button>
+    <button type="button" class="acct-cfm-btn acct-cfm-cancel" id="acct-ro-replace">Empezar de nuevo</button>
+  </div>
+</div>`;
+    document.body.appendChild(scrim);
+    let settled = false;
+    const finish = (fn) => {
+      if (settled) return; settled = true;
+      try { document.removeEventListener('keydown', onKey, true); } catch (_) {}
+      scrim.classList.remove('acct-on');
+      let removed = false; const rm = () => { if (removed) return; removed = true; try { scrim.remove(); } catch (_) {} };
+      scrim.addEventListener('transitionend', rm, { once: true }); setTimeout(rm, 280);
+      try { if (trigger && typeof trigger.focus === 'function') trigger.focus(); } catch (_) {}
+      if (fn) { try { fn(); } catch (_) {} }
+    };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); finish(null); } };
+    scrim.querySelector('#acct-ro-add').onclick = () => finish(onAdd);
+    scrim.querySelector('#acct-ro-replace').onclick = () => finish(onReplace);
+    scrim.addEventListener('click', (e) => { if (e.target === scrim) finish(null); });   // scrim = cancel
+    document.addEventListener('keydown', onKey, true);
+    requestAnimationFrame(() => scrim.classList.add('acct-on'));
+    setTimeout(() => { try { scrim.querySelector('#acct-ro-add').focus(); } catch (_) {} }, 30);
+  }
+
   function renderAccountPane() {
     const pane = $('acct-pane-account'); if (!pane) return;
     const m = marker() || {};
