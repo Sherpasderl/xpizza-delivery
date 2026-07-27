@@ -574,7 +574,7 @@ createOrderApp.all('*', async (req, res) => {
       restaurantId, priceBreakdown, facturaPriced, cashTenderedCents,
       scheduledFor: scheduledForRaw, releaseAt,
     });
-    attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total, orderType, items_text: fields.items_text });
+    attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total, orderType, items_text: fields.items_text, restaurantId, items: body.items });
     try {
       await db.ref().update(heldUpdates);
       console.log(`createOrder: HELD scheduled ${orderType} order ${orderId} for ${scheduledForRaw} (release ${releaseAt})`);
@@ -601,7 +601,7 @@ createOrderApp.all('*', async (req, res) => {
     restaurantId, priceBreakdown, facturaPriced, cashTenderedCents,
   }));
 
-  attachCustomerAttribution(updates, orderId, customer_uid, { now, total, orderType, items_text: fields.items_text });
+  attachCustomerAttribution(updates, orderId, customer_uid, { now, total, orderType, items_text: fields.items_text, restaurantId, items: body.items });
 
   try {
     await db.ref().update(updates);

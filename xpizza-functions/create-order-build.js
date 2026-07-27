@@ -1,5 +1,7 @@
 'use strict';
 
+const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe
+
 /**
  * Pure builder for createOrder's atomic write (cash / non-online intake). Mirrors
  * buildMaterializeUpdates: returns the `{ "path": value }` map for one `.update()` — the live
@@ -146,12 +148,16 @@ function buildScheduledOrderRecord(args) {
  */
 function attachCustomerAttribution(updates, orderId, customer_uid, meta) {
   if (!customer_uid) return updates;
-  updates[`orders/${orderId}`].customer_uid = customer_uid;
+  const orderRec = updates[`orders/${orderId}`];
+  orderRec.customer_uid = customer_uid;
   updates[`user_orders/${customer_uid}/${orderId}`] = {
     ts: meta.now,
     total: meta.total,
     order_type: meta.orderType,
     items_text: meta.items_text,
+    restaurant: meta.restaurantId,                              // P3 — client filters to its own brand
+    status: orderRec.status || meta.status || null,            // P3 — order's initial status (new / scheduled), kept fresh by the status trigger
+    items: normalizeReorderItems(meta.items, meta.restaurantId), // P3 — menu-allowlisted reorder recipe (never raw client strings)
   };
   return updates;
 }

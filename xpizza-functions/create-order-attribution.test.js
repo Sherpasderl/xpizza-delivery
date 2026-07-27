@@ -5,8 +5,8 @@ const assert = require('assert');
 const { attachCustomerAttribution, attributionUid } = require('./create-order-build');
 let n = 0; const ok = (l) => console.log(`  ok ${++n} ${l}`);
 const ORDER = 'PZX-123';
-const meta = { now: 1700000000000, total: 250, orderType: 'delivery', items_text: '1x Pizza' };
-const base = () => ({ [`orders/${ORDER}`]: { customer_name: 'A', total: 250 } });
+const meta = { now: 1700000000000, total: 250, orderType: 'delivery', items_text: '1x Pizza', restaurantId: 'x_pizza', items: [{ name: 'Margherita', qty: 1 }] };
+const base = () => ({ [`orders/${ORDER}`]: { customer_name: 'A', total: 250, status: 'new' } });
 
 // guest (null uid) → byte-identical, no attribution keys
 {
@@ -27,8 +27,22 @@ const base = () => ({ [`orders/${ORDER}`]: { customer_name: 'A', total: 250 } })
   const out = attachCustomerAttribution(base(), ORDER, uid, meta);
   assert.equal(out[`orders/${ORDER}`].customer_uid, uid); ok('order record stamped with customer_uid');
   const idx = out[`user_orders/${uid}/${ORDER}`];
-  assert.deepStrictEqual(idx, { ts: meta.now, total: 250, order_type: 'delivery', items_text: '1x Pizza' });
-  ok('user_orders index written {ts,total,order_type,items_text}');
+  assert.deepStrictEqual(idx, { ts: meta.now, total: 250, order_type: 'delivery', items_text: '1x Pizza', restaurant: 'x_pizza', status: 'new', items: [{ key: 'Margherita', qty: 1 }] });
+  ok('user_orders index written {ts,total,order_type,items_text,restaurant,status,items[]}');
+}
+// status is read from the order record (per-path: new / scheduled) not hardcoded
+{
+  const uid = 'u_' + 'd'.repeat(24);
+  const u = base(); u[`orders/${ORDER}`].status = 'scheduled';
+  const out = attachCustomerAttribution(u, ORDER, uid, meta);
+  assert.equal(out[`user_orders/${uid}/${ORDER}`].status, 'scheduled'); ok('history status derives from the order record (scheduled)');
+}
+// normalized items[] drops what the menu does not recognize (never raw client strings)
+{
+  const uid = 'u_' + 'e'.repeat(24);
+  const m = { ...meta, items: [{ name: 'Margherita', qty: 2 }, { name: 'FakePizza', qty: 1 }] };
+  const out = attachCustomerAttribution(base(), ORDER, uid, m);
+  assert.deepStrictEqual(out[`user_orders/${uid}/${ORDER}`].items, [{ key: 'Margherita', qty: 2 }]); ok('items[] menu-allowlisted (unknown dropped)');
 }
 // uid is taken ONLY from the argument — the helper has no access to any request body (forgery-proof)
 {
