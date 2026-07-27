@@ -269,6 +269,7 @@
     const myGen = ++_acctHAGen;                                  // token THIS run
     cancelSheetHeightAnim(sheet);                               // drop the prior run's pending timer/listener (it can't clean up after us)
     let startH = 0; try { startH = sheet.offsetHeight; } catch (_) {}   // current rendered height (mid-transition value if chaining) → smooth continuation
+    sheet.style.height = ''; sheet.style.transition = '';       // drop any prior inline fix BEFORE mutate/endH so endH measures the REAL new content height (an early return can't leave the box pinned to the old target — codex R2b)
     mutate();
     let endH = 0; try { endH = sheet.offsetHeight; } catch (_) {}
     if (!startH || !endH || startH === endH) return;
