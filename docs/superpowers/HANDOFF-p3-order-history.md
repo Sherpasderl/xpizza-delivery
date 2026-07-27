@@ -56,3 +56,26 @@ Phase 1 (backend T1–T6) is LIVE + verified (functions no-prune, rules read-own
 - Finish/verify **T7** (the partial La Musa `renderOrdersPane` — wire its Reordenar to T8; ensure it reads own, restaurant-filters via `CONFIG.restaurant_id`, renders escaped `items_text`, never raw `items[]`), build **T8**, **T9** (mirror both account.js identical past CONFIG), **T10** (guest-safety, proofs, push).
 - Guest byte-identical; both forms identical past CONFIG; no money-path change; no cheap emoji.
 - Push `feat/p3-order-history`, report the frontend SHA. Advisor runs codex-on-diff (heavy on the reorder cart-seed money-adjacency + guest byte-identical + parity) → owner deploys the FORMS (Netlify per-folder) as phase-2 (backend already live).
+
+---
+
+# OPTION 3 DECIDED (robust) — x_pizza extras multiplicity fix + T8 reproduction
+
+Owner chose Option 3: faithful x_pizza extras on reorder. **Verified pricing truth** (`menu-pricing.js` computeServerTotal x_pizza branch): the server adds `extraPrices[name]` **once per entry in the emitted `extras` array — NO server dedup** (the `seen` set is la_musa-only), and the form emits **one entry per instance-extra** → a 2-pizza line with Mozzarella on both = priced **×2**. So x_pizza extras carry per-instance multiplicity, and the phase-1 normalizer's `seen`-dedup LOSES it. Fix it.
+
+## Backend change (phase-1.1 — re-gate + re-deploy functions)
+`xpizza-functions/reorder-normalize.js`, x_pizza branch (the `!byId` path, currently `seen`+`push({name})`): change from **dedup-once** to **count-per-name**:
+- Build a per-name count from the `extras` array (only menu-recognized names, as today): `counts[name] = (counts[name]||0)+1`.
+- Emit `opts = Object.entries(counts).map(([name, count]) => ({ name, count }))`. Bound `count` defensively (e.g. cap at a sane max; a line's extras can't exceed qty × extras-catalog).
+- **La Musa branch UNCHANGED** (`{id, qty}` — already faithful).
+- Update `reorder-normalize.test.js`: assert x_pizza multi-instance extras → `{name, count}` with the right count; single-instance → count:1; la_musa unchanged.
+This is the ONLY backend change for phase 2. Everything else phase-1 stays frozen.
+
+## Frontend T8 reproduction (both forms via CONFIG.restaurant_id branch)
+- **La Musa** option `{id, qty}` → reproduce the flat per-line `pizzaExtras[lineId] = { extraId: qty }` (the exact shape the payment-retry restore writes). Variants = distinct ids → `chg(variantId, n)`.
+- **X. Pizza** option `{name, count}` → resolve the name against today's EXTRA catalog; seed `count` instances of that extra across the line's pizza instances (i.e. the per-instance `pizzaExtras[lineId] = {0:{…},1:{…},…}` structure the form uses), so the reproduced total = the original (same ×N price). If the resolved item qty < count, cap to qty (can't have more instance-extras than pizzas). Item/extra not in today's menu → drop with the "N productos ya no están disponibles" notice.
+- **Backward-compat:** an OLD entry (pre-fix, `{name}` with no `count`) → treat as count:1 (a handful of pre-launch test orders; forward-only). T8 must not crash on either shape.
+- Money-safety unchanged: seed the cart only; the customer reviews cart + total; the server re-prices the seeded cart. No new submit path.
+
+## Sequence
+Executor: normalizer fix + test → T7-fix + T8 + T9 (mirror) + T10 → push, report SHA. Advisor: codex-on-diff on the COMBINED phase-2 diff (heavy on the normalizer count matching computeServerTotal pricing, reproduction fidelity, money-safety seed-only, guest byte-identical, parity). Owner deploys: **functions re-deploy** (complete env, both driver+payment code, zero-prune — same discipline as phase 1) THEN **forms** (Netlify per-folder). Backend-before-forms.
