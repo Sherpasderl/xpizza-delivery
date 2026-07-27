@@ -2003,6 +2003,7 @@ async function loadAvailability(){
 
 let lat=null, lng=null, gmap=null, gmarker=null, mapReady=false;
 let selectedPayment=null, currentOrder=null;
+let cashExactMode=false;   // true while the cash "pay-with" equals the exact total (Pago exacto) → follow future total changes
 
 function genOrderId(){
   const d=new Date();
@@ -2219,7 +2220,20 @@ function pizzaExtrasTotal(pizzaId){
   return total;
 }
 
-function updateTotal(){ const el=document.getElementById('total-display'); if(el) el.textContent='L '+calcTotal().toFixed(2); updateCart(); }
+function updateTotal(){
+  const el=document.getElementById('total-display'); if(el) el.textContent='L '+calcTotal().toFixed(2);
+  updateCart();
+  // Payment widgets are captured on selectPay(); re-sync them to the LIVE cart total after any edit,
+  // otherwise "Pago exacto" / the cash box / the PixelPay amount go stale (owner-reported). Display-sync
+  // ONLY — never touches processPayment / the cash_tendered submit guard / pricing.
+  if(selectedPayment==='cash' && document.getElementById('cash-change-panel') && document.getElementById('cash-change-panel').style.display!=='none'){
+    renderChangeChips();                              // Pago exacto + round-ups now reflect the new total
+    if(cashExactMode) setCashTendered(calcTotal());   // they were on Pago exacto → box follows the new total
+    else onCashTenderedInput();                       // custom amount → just re-validate + re-highlight vs new total
+  } else if(selectedPayment==='online'){
+    const pa=document.getElementById('pixelpay-amount'); if(pa) pa.textContent='L '+calcTotal().toFixed(2);
+  }
+}
 
 function calcTotal(){
   // 2-level pizzaExtras shape: extras apply to all units of an item, so
@@ -3146,6 +3160,7 @@ function setCashTendered(v){
 function onCashTenderedInput(){
   const total=calcTotal();
   const v=parseFloat(document.getElementById('cash-tendered').value);
+  cashExactMode = isFinite(v) && v>0 && Math.abs(v-total) < 0.005;   // on "Pago exacto" → track future total changes; invalid/empty → false
   const hint=document.getElementById('change-hint');
   document.querySelectorAll('#change-chips .change-chip').forEach(b=>b.classList.toggle('active', Number(b.dataset.amt)===v));
   if(!isFinite(v)||v<=0){ hint.textContent=''; return; }
