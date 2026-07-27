@@ -13,10 +13,10 @@
 :root {
   --black:    #111009;
   --charcoal: #1E1B18;
-  --surface:  #F5EFE6;
-  --border:   #E8E0D5;
-  --border2:  #D4C8BA;
-  --cream:    #FBF7F2;
+  --surface:  #F5F5F3;
+  --border:   #E6E6E2;
+  --border2:  #D6D6D0;
+  --cream:    #FCFCFB;
   --muted:    #8C7B6E;
   --gold:     #B8860B;
   --gold-lt:  #F5E6C0;
@@ -309,7 +309,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
    initiates even on a slightly-off touch — the visible bar stays small. */
 .detail-drag-handle{
   width:38px;height:5px;
-  background:#D9D2C5;
+  background:#D6D6D0;
   border-radius:3px;
   margin:8px auto 0;
   flex-shrink:0;
@@ -2592,7 +2592,7 @@ function showPayReturn(kind){
   const v = V[kind] || V.checking;
   let el = document.getElementById('pay-return-overlay');
   if(!el){ el = document.createElement('div'); el.id = 'pay-return-overlay'; document.body.appendChild(el); }
-  el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:var(--cream,#FBF7F2);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;';
+  el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:var(--cream,#FCFCFB);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;';
   // Reuse the X Pizza logo already in the header (no need to re-embed the base64).
   const logoSrc = (document.querySelector('.logo-img')||{}).src || '';
   const logo = logoSrc ? `<img src="${logoSrc}" alt="X Pizza" style="width:84px;height:auto;margin-bottom:30px;"/>` : '';
