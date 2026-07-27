@@ -79,3 +79,21 @@ This is the ONLY backend change for phase 2. Everything else phase-1 stays froze
 
 ## Sequence
 Executor: normalizer fix + test → T7-fix + T8 + T9 (mirror) + T10 → push, report SHA. Advisor: codex-on-diff on the COMBINED phase-2 diff (heavy on the normalizer count matching computeServerTotal pricing, reproduction fidelity, money-safety seed-only, guest byte-identical, parity). Owner deploys: **functions re-deploy** (complete env, both driver+payment code, zero-prune — same discipline as phase 1) THEN **forms** (Netlify per-folder). Backend-before-forms.
+
+---
+
+# PHASE-2 codex-on-diff ROUND 1 → REVISE (1 HIGH) — fix + re-push
+
+Codex CLEARED the spine: no new submit/payment path (reorder only calls `applyReorderToCart`/`renderMenu`/`updateCart`/`updateTotal`), `items_text` escaped + `items[]` never rendered, `user_orders` client read-only, normalizer `{name,count}` matches server per-entry x_pizza pricing, la_musa `{id,qty}` not regressed, tests pass. **One HIGH to fix, then re-gate (I resume the same codex thread).**
+
+## HIGH — x_pizza reorder under-seeds extras on "Agregar a mi pedido" merge (both `account.js:685` + `703-705`, mirrored)
+`applyReorderToCart` increments `qty[id]` first, then seeds x_pizza extras at instance indexes **`0..count-1`** (always from 0). When merging onto a cart that ALREADY holds the same pizza id carrying extras, it overwrites `inst[0]` (no-op) instead of writing the newly-added instance → `buildOrder` posts fewer extra entries → server under-charges → reorder under-reproduces the original. (Empty-cart / "Empezar de nuevo" paths are correct: qty starts at 0.) This is exactly the multiplicity-fidelity failure Option 3 targets — fix it.
+
+**Fix (x_pizza branch only, BOTH forms, keep byte-identical past CONFIG):** capture the pre-existing qty BEFORE the increment and offset the instance index:
+```js
+const base = qty[id] || 0;                 // capture BEFORE incrementing
+qty[id] = base + r.qty;
+// … x_pizza extras loop:
+for (let i = 0; i < count; i++) { const idx = base + i; inst[idx] = inst[idx] || {}; inst[idx][exObj.id] = 1; }
+```
+`base=0` for empty/replace (unchanged); `count` stays capped to `r.qty` so `base+i` lands only on the instances this reorder added. La Musa branch UNCHANGED (flat per-line extras already merge additively — correct). Re-run `node reorder-normalize.test.js` (unaffected) + `node --check` both account.js + parity check. Push; report SHA. I resume the codex thread for round 2 (delta only).
