@@ -13,6 +13,7 @@
           databaseURL:'https://xpizza-delivery-default-rtdb.firebaseio.com', projectId:'xpizza-delivery',
           messagingSenderId:'185867271616', appId:'1:185867271616:web:84bb37552b40c1d517dc25' },
     MARKER: 'lamusa_acct',                    // localStorage key (La Musa: 'lamusa_acct')
+    palette: { screen:'#FFFDFA', tint:'#FBF6EE', tint2:'#F4EEE4', chip:'#F0E8DA', fillA:'#EFE7DA', line:'#EDE5D9', fillB:'#E7DFD3', mapbg:'#E4DAC7', line2:'#E2D8C8', line3:'#D8CBB8', dot:'#CFC2B1' },   // per-brand neutrals — La Musa = EXACT current literals (renders byte-identical); X. Pizza CONFIG carries the near-white set (nearwhite-inventory.md)
   };
 
   // Lazy Firebase — imported on first use only. Returns { auth, db-helpers } cached after first load.
@@ -51,8 +52,8 @@
 .acct-chip-mount{position:absolute;top:14px;right:14px;z-index:2;display:flex}
 .acct-chip{display:flex;align-items:center;gap:9px;background:transparent;border:none;border-radius:999px;padding:5px 3px;cursor:pointer;font-family:inherit;line-height:1;transition:opacity .15s}
 .acct-chip:hover{opacity:.66}
-.acct-chip .acct-av{width:28px;height:28px;border-radius:50%;background:#F0E8DA;color:#2A231C;display:flex;align-items:center;justify-content:center;flex:none}
-.acct-chip--out .acct-av{background:#F0E8DA;color:#2A231C}
+.acct-chip .acct-av{width:28px;height:28px;border-radius:50%;background:${CONFIG.palette.chip};color:#2A231C;display:flex;align-items:center;justify-content:center;flex:none}
+.acct-chip--out .acct-av{background:${CONFIG.palette.chip};color:#2A231C}
 .acct-chip .acct-nm{font-size:13.5px;font-weight:650;letter-spacing:-.01em;color:#17130F}
 .acct-chip .acct-cv{color:#B3A594;font-size:10px;margin-left:-1px}
 /* Logged-in-only size bump (codex F3): scoped with :not(.acct-chip--out) so the guest "Entrar"
@@ -98,14 +99,14 @@
    --acct-open-y (open/close: 0px open, 100% closed) + --acct-kb-y (applyKeyboardInset's keyboard lift).
    applyKeyboardInset sets ONLY --acct-kb-y (never style.transform), so the keyboard lift still works on
    an open sheet without clobbering the open/close slide. */
-.acct-sheet{width:100%;max-width:420px;max-height:92vh;background:#FFFDFA;border-radius:22px 22px 0 0;box-shadow:0 -20px 60px -20px rgba(40,28,12,.5);overflow:hidden;display:flex;flex-direction:column;font-family:inherit;transform:translateY(calc(var(--acct-open-y,100%) + var(--acct-kb-y,0px)));transition:transform .3s cubic-bezier(.2,.7,.2,1)}
+.acct-sheet{width:100%;max-width:420px;max-height:92vh;background:${CONFIG.palette.screen};border-radius:22px 22px 0 0;box-shadow:0 -20px 60px -20px rgba(40,28,12,.5);overflow:hidden;display:flex;flex-direction:column;font-family:inherit;transform:translateY(calc(var(--acct-open-y,100%) + var(--acct-kb-y,0px)));transition:transform .3s cubic-bezier(.2,.7,.2,1)}
 .acct-overlay.acct-open .acct-sheet{--acct-open-y:0px}
 @media (min-width:520px){ .acct-sheet{border-radius:22px;max-height:88vh} }
 @keyframes acct-pane-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion: reduce){ .acct-overlay,.acct-sheet{transition:none} .acct-pane.acct-on{animation:none} }
 .acct-topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 8px;flex:none}
 .acct-iconbtn{width:34px;height:34px;border-radius:50%;border:none;background:transparent;color:#17130F;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-family:inherit}
-.acct-iconbtn:hover{background:#F4EEE4}
+.acct-iconbtn:hover{background:${CONFIG.palette.tint2}}
 .acct-mark{font-weight:800;font-size:17px;letter-spacing:-.03em;color:#17130F}
 .acct-mark .acct-dot{color:${CONFIG.accent}}
 .acct-body{flex:1;overflow:auto;padding:6px 26px 26px}
@@ -115,8 +116,8 @@
 .acct-sub{color:#8C7B6E;font-size:14.5px;line-height:1.5;margin:10px 0 0;max-width:32ch}
 .acct-mlabel{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#B3A594;margin:22px 0 9px}
 .acct-phone-row{display:flex;gap:9px}
-.acct-cc{flex:none;display:flex;align-items:center;gap:7px;height:52px;padding:0 14px;border:1.5px solid #E2D8C8;border-radius:14px;background:#fff;font-size:16px;font-weight:650;color:#17130F;font-family:inherit}
-.acct-inp{flex:1;min-width:0;height:52px;padding:0 15px;border:1.5px solid #E2D8C8;border-radius:14px;background:#fff;font-size:17px;font-weight:550;color:#17130F;outline:none;font-family:inherit}
+.acct-cc{flex:none;display:flex;align-items:center;gap:7px;height:52px;padding:0 14px;border:1.5px solid ${CONFIG.palette.line2};border-radius:14px;background:#fff;font-size:16px;font-weight:650;color:#17130F;font-family:inherit}
+.acct-inp{flex:1;min-width:0;height:52px;padding:0 15px;border:1.5px solid ${CONFIG.palette.line2};border-radius:14px;background:#fff;font-size:17px;font-weight:550;color:#17130F;outline:none;font-family:inherit}
 .acct-inp::placeholder{color:#B3A594;font-weight:450}
 .acct-inp:focus{border-color:#17130F}
 /* T7 (codex-visual-fix): the name-capture field (post-verify pane) felt short + too squared at the
@@ -126,12 +127,12 @@
 #acct-name-inp{height:58px;border-radius:13px}
 .acct-cta{width:100%;height:52px;border:none;border-radius:15px;background:#17130F;color:#fff;font-size:16px;font-weight:700;letter-spacing:.01em;cursor:pointer;font-family:inherit;transition:background .15s;margin-top:20px}
 .acct-cta:hover{background:#2A231C}
-.acct-cta[disabled]{background:#E7DFD3;color:#B3A594;cursor:not-allowed}
+.acct-cta[disabled]{background:${CONFIG.palette.fillB};color:#B3A594;cursor:not-allowed}
 .acct-fine{color:#B3A594;font-size:12px;line-height:1.5;text-align:center;margin-top:14px}
 .acct-guest{text-align:center;margin-top:16px}
 .acct-guest button,.acct-linkbtn{background:none;border:none;font-family:inherit;font-size:14px;font-weight:650;color:#17130F;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .acct-otp{display:flex;gap:9px;justify-content:space-between;margin-top:22px}
-.acct-otp input{width:100%;aspect-ratio:1/1.15;text-align:center;font-size:24px;font-weight:700;color:#17130F;border:1.5px solid #E2D8C8;border-radius:14px;background:#fff;outline:none;font-family:inherit}
+.acct-otp input{width:100%;aspect-ratio:1/1.15;text-align:center;font-size:24px;font-weight:700;color:#17130F;border:1.5px solid ${CONFIG.palette.line2};border-radius:14px;background:#fff;outline:none;font-family:inherit}
 .acct-otp input.acct-filled{border-color:#17130F}
 .acct-otp input:focus{border-color:${CONFIG.accent}}
 .acct-resend{margin-top:18px;font-size:13px;color:#8C7B6E}
@@ -139,8 +140,8 @@
 .acct-resend button[disabled]{color:#B3A594;text-decoration:none;cursor:default}
 .acct-hey{font-size:24px;font-weight:800;letter-spacing:-.02em;color:#17130F;margin:6px 0 0}
 .acct-heysub{color:#8C7B6E;font-size:14px;margin-top:6px}
-.acct-rows{margin-top:22px;border-top:1px solid #EDE5D9}
-.acct-row{display:flex;align-items:center;justify-content:space-between;padding:16px 2px;border-bottom:1px solid #EDE5D9}
+.acct-rows{margin-top:22px;border-top:1px solid ${CONFIG.palette.line}}
+.acct-row{display:flex;align-items:center;justify-content:space-between;padding:16px 2px;border-bottom:1px solid ${CONFIG.palette.line}}
 .acct-row .acct-rl{display:flex;flex-direction:column;gap:2px}
 .acct-row .acct-rt{font-size:15px;font-weight:650;color:#17130F}
 .acct-row .acct-rd{font-size:12.5px;color:#B3A594}
@@ -645,13 +646,13 @@
     st.textContent = `
 .acct-cfm-scrim{position:fixed;inset:0;z-index:1300;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(24,18,12,.5);opacity:0;transition:opacity .2s ease}
 .acct-cfm-scrim.acct-on{opacity:1}
-.acct-cfm-card{width:100%;max-width:340px;background:#FFFDFA;border-radius:18px;padding:22px 20px 18px;box-shadow:0 24px 60px -20px rgba(40,28,12,.5);transform:translateY(10px) scale(.98);transition:transform .22s cubic-bezier(.2,.7,.2,1);font-family:inherit}
+.acct-cfm-card{width:100%;max-width:340px;background:${CONFIG.palette.screen};border-radius:18px;padding:22px 20px 18px;box-shadow:0 24px 60px -20px rgba(40,28,12,.5);transform:translateY(10px) scale(.98);transition:transform .22s cubic-bezier(.2,.7,.2,1);font-family:inherit}
 .acct-cfm-scrim.acct-on .acct-cfm-card{transform:none}
 .acct-cfm-title{font-size:17px;font-weight:800;color:#17130F;margin:0 0 8px;letter-spacing:-.01em}
 .acct-cfm-msg{font-size:14px;line-height:1.55;color:#6B5E52;margin:0 0 18px}
 .acct-cfm-btns{display:flex;gap:10px}
 .acct-cfm-btn{flex:1;height:46px;border:none;border-radius:12px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer}
-.acct-cfm-cancel{background:#EFE7DA;color:#17130F}
+.acct-cfm-cancel{background:${CONFIG.palette.fillA};color:#17130F}
 .acct-cfm-go{background:#17130F;color:#fff}
 .acct-cfm-go.acct-cfm-danger{background:#C0392B}
 .acct-cfm-btn:disabled{opacity:.6;cursor:default}
@@ -919,36 +920,36 @@
 /* #5/#7: ONE mount-inset so account content (create-profile card, Entregar-a summary, compact line, Cambiar chooser) aligns with the native fields/labels (field-group/step-label horizontal inset = 16px). The rendered cards carry NO horizontal margin, so this insets them uniformly with no double-pad. EMPTY mounts (guest/pickup/non-reduced) add ZERO space. */
 #acct-deliver,#acct-s2-summary{padding:14px 16px 0}
 #acct-deliver:empty,#acct-s2-summary:empty{padding:0}
-.acct-deliver{border:1px solid #E2D8C8;border-radius:20px;overflow:hidden;background:#fff;box-shadow:0 12px 30px -18px rgba(40,28,12,.3);font-family:inherit;margin-bottom:4px}
+.acct-deliver{border:1px solid ${CONFIG.palette.line2};border-radius:20px;overflow:hidden;background:#fff;box-shadow:0 12px 30px -18px rgba(40,28,12,.3);font-family:inherit;margin-bottom:4px}
 /* Real Static Maps thumbnail of the saved address (replaces the old decorative fake map). Starts
    hidden (display:none inline) — loadCardMap() reveals it ONLY when a real image loads in time,
    so the card FAILS CLOSED to a clean no-map layout on 403/offline/timeout (codex F2). */
-.acct-cardmap{height:84px;overflow:hidden;border-bottom:1px solid #EDE5D9}
+.acct-cardmap{height:84px;overflow:hidden;border-bottom:1px solid ${CONFIG.palette.line}}
 .acct-cardmap img{width:100%;height:84px;object-fit:cover;display:block}
 .acct-drow{display:flex;align-items:flex-start;gap:12px;padding:14px 15px 4px}
-.acct-avatar{width:38px;height:38px;border-radius:50%;background:#F0E8DA;flex:none;display:flex;align-items:center;justify-content:center;color:#2A231C;margin-top:1px}
+.acct-avatar{width:38px;height:38px;border-radius:50%;background:${CONFIG.palette.chip};flex:none;display:flex;align-items:center;justify-content:center;color:#2A231C;margin-top:1px}
 .acct-who{flex:1;min-width:0}
 .acct-nm2{font-size:16px;font-weight:750;letter-spacing:-.02em;line-height:1.15;color:#17130F}
 .acct-ph2{font-size:13px;color:#8C7B6E;margin-top:3px;font-variant-numeric:tabular-nums}
 .acct-change{flex:none;background:none;border:none;font-family:inherit;font-size:13px;font-weight:700;color:#17130F;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:6px 2px;margin-top:2px}
-.acct-addr{display:flex;gap:10px;padding:11px 15px 15px;margin-top:6px;border-top:1px dashed #E2D8C8}
+.acct-addr{display:flex;gap:10px;padding:11px 15px 15px;margin-top:6px;border-top:1px dashed ${CONFIG.palette.line2}}
 .acct-lbl{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:${CONFIG.accent}}
 .acct-al{flex:1;min-width:0}
 .acct-aname{font-size:14px;font-weight:700;letter-spacing:-.01em;color:#17130F;margin-top:5px}
 .acct-aline{font-size:12.5px;color:#8C7B6E;line-height:1.45;margin-top:2px}
 .acct-saved{display:inline-flex;align-items:center;gap:5px;margin-top:10px;font-size:11px;font-weight:700;color:#2A6A42;background:#E7F0E9;border-radius:999px;padding:4px 10px}
 .acct-lchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
-.acct-lchip{display:inline-flex;align-items:center;gap:7px;border:1.5px solid #E2D8C8;background:#fff;border-radius:12px;padding:9px 13px;font-family:inherit;font-size:13.5px;font-weight:650;color:#8C7B6E;cursor:pointer;transition:.14s;letter-spacing:-.01em}
+.acct-lchip{display:inline-flex;align-items:center;gap:7px;border:1.5px solid ${CONFIG.palette.line2};background:#fff;border-radius:12px;padding:9px 13px;font-family:inherit;font-size:13.5px;font-weight:650;color:#8C7B6E;cursor:pointer;transition:.14s;letter-spacing:-.01em}
 .acct-lchip svg{color:#B3A594;transition:color .14s}
-.acct-lchip:hover{border-color:#CFC2B1}
-.acct-lchip.acct-on{border-color:#17130F;color:#17130F;background:#FBF6EE}
+.acct-lchip:hover{border-color:${CONFIG.palette.dot}}
+.acct-lchip.acct-on{border-color:#17130F;color:#17130F;background:${CONFIG.palette.tint}}
 .acct-lchip.acct-on svg{color:${CONFIG.accent}}
 .acct-field-hint{font-size:11.5px;color:#B3A594;margin:7px 2px 0;letter-spacing:.01em}
-.acct-label-custom-inp{width:100%;padding:14px;border:1.5px solid #E2D8C8;border-radius:8px;font-size:15px;font-family:inherit;outline:none;color:#17130F}
+.acct-label-custom-inp{width:100%;padding:14px;border:1.5px solid ${CONFIG.palette.line2};border-radius:8px;font-size:15px;font-family:inherit;outline:none;color:#17130F}
 .acct-label-custom-inp:focus{border-color:#17130F}
 .acct-save-addr-btn{width:100%;padding:14px;background:#17130F;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px}
 .acct-save-addr-btn:hover{background:#2A231C}
-.acct-save-addr-btn[disabled]{background:#E7DFD3;color:#B3A594;cursor:not-allowed}
+.acct-save-addr-btn[disabled]{background:${CONFIG.palette.fillB};color:#B3A594;cursor:not-allowed}
 .acct-cancel-edit{width:100%;padding:10px;background:none;border:none;font-family:inherit;font-size:13.5px;font-weight:650;color:#8C7B6E;text-decoration:underline;text-underline-offset:3px;cursor:pointer;margin-top:2px}
 .acct-savetoggle{display:flex;align-items:center;gap:9px;margin:14px 2px 0;font-size:13px;color:#5b4f41;cursor:pointer;user-select:none;font-family:inherit}
 .acct-savetoggle input{width:auto;margin:0}
@@ -956,8 +957,8 @@
 .acct-sechd{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:11px}
 .acct-sectitle{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#B3A594}
 .acct-addlink{background:none;border:none;font-family:inherit;font-size:13px;font-weight:700;color:#17130F;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
-.acct-acard{display:flex;align-items:center;gap:11px;border:1px solid #EDE5D9;border-radius:15px;padding:13px 14px;margin-bottom:9px;background:#fff;cursor:pointer;transition:border-color .12s}
-.acct-acard:hover{border-color:#E2D8C8}
+.acct-acard{display:flex;align-items:center;gap:11px;border:1px solid ${CONFIG.palette.line};border-radius:15px;padding:13px 14px;margin-bottom:9px;background:#fff;cursor:pointer;transition:border-color .12s}
+.acct-acard:hover{border-color:${CONFIG.palette.line2}}
 .acct-acard .acct-dotmark{width:8px;height:8px;border-radius:50%;background:${CONFIG.accent};flex:none}
 .acct-acard.acct-on2{border-color:#17130F;box-shadow:0 0 0 3px #F3E7CC}
 .acct-acard .acct-al2{flex:1;min-width:0}
@@ -966,10 +967,10 @@
 /* Cambiar address-picker pane */
 .acct-picker-top{margin:2px 0 16px}
 .acct-picker-title{font-size:17px;font-weight:800;color:#17130F;letter-spacing:-.01em}
-.acct-acard--active{border-color:${CONFIG.accent};background:#FBF6EE}
-.acct-acard--tapped{border-color:${CONFIG.accent};background:#F4EEE4}
+.acct-acard--active{border-color:${CONFIG.accent};background:${CONFIG.palette.tint}}
+.acct-acard--tapped{border-color:${CONFIG.accent};background:${CONFIG.palette.tint2}}
 .acct-acard .acct-pick-check{flex:none;color:${CONFIG.accent};display:flex;align-items:center}
-.acct-picker-new{display:block;width:100%;text-align:center;padding:13px;margin-top:6px;border:1.5px dashed #D8CBB8;border-radius:14px;background:none;font-family:inherit;font-size:14px;font-weight:700;color:#17130F;cursor:pointer}
+.acct-picker-new{display:block;width:100%;text-align:center;padding:13px;margin-top:6px;border:1.5px dashed ${CONFIG.palette.line3};border-radius:14px;background:none;font-family:inherit;font-size:14px;font-weight:700;color:#17130F;cursor:pointer}
 .acct-acard .acct-chk{color:${CONFIG.accent};flex:none;display:flex}
 .acct-acard .acct-del{color:#B3A594;font-size:19px;padding:2px 5px;flex:none;line-height:1}
 .acct-acard .acct-del:hover{color:#B23B3B}
@@ -1477,7 +1478,7 @@ ${showCancel ? '<button type="button" class="acct-cancel-edit" id="acct-cancel-e
         const a = addrs[id];
         const isDefault = id === defId;
         return `<div class="acct-acard${isDefault ? ' acct-on2' : ''}" data-addr-id="${escapeHtml(id)}">
-  <span class="acct-dotmark" style="${isDefault ? '' : 'background:#CFC2B1'}"></span>
+  <span class="acct-dotmark" style="${isDefault ? '' : 'background:'+CONFIG.palette.dot}"></span>
   <div class="acct-al2">
     <div class="acct-aname2">${escapeHtml(a.label || 'Dirección')}</div>
     <div class="acct-aline2">${escapeHtml(a.details || a.detected || '')}</div>
@@ -1557,11 +1558,11 @@ ${rowsHtml}`;
 .acct-nad-top{display:flex;align-items:center;gap:10px;margin:0 0 4px}
 .acct-nad-back{background:none;border:none;font-family:inherit;font-size:14px;font-weight:650;color:#17130F;cursor:pointer;padding:4px 0}
 .acct-nad-title{font-size:15px;font-weight:700;color:#8C7B6E}
-.acct-nad-map{height:168px;border-radius:16px;border:1px solid #E2D8C8;background:#EFE7DA}
+.acct-nad-map{height:168px;border-radius:16px;border:1px solid ${CONFIG.palette.line2};background:${CONFIG.palette.fillA}}
 .acct-nad-hint{margin-top:8px;font-size:12px;color:#8C7B6E}
-.acct-nad-textarea{width:100%;min-height:60px;padding:14px 15px;border:1.5px solid #E2D8C8;border-radius:13px;background:#fff;font-size:15px;font-family:inherit;color:#17130F;outline:none;resize:vertical}
+.acct-nad-textarea{width:100%;min-height:60px;padding:14px 15px;border:1.5px solid ${CONFIG.palette.line2};border-radius:13px;background:#fff;font-size:15px;font-family:inherit;color:#17130F;outline:none;resize:vertical}
 .acct-nad-textarea:focus{border-color:#17130F}
-.acct-verified-ro{display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 15px;border:1.5px solid #EDE5D9;border-radius:13px;background:#FBF6EE;color:#17130F}
+.acct-verified-ro{display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 15px;border:1.5px solid ${CONFIG.palette.line};border-radius:13px;background:${CONFIG.palette.tint};color:#17130F}
 .acct-verified-ro .v{font-size:15.5px;font-weight:650;font-variant-numeric:tabular-nums}
 .acct-verified-ro .ok{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2A6A42}
 .acct-two{display:flex;gap:10px}
@@ -1595,20 +1596,20 @@ ${rowsHtml}`;
     const st = document.createElement('style');
     st.id = 'acct-fs-styles';
     st.textContent = `
-.acct-fs-overlay{position:fixed;inset:0;z-index:1200;display:flex;flex-direction:column;background:#E4DAC7;transform:translateY(100%);transition:transform .35s cubic-bezier(0.32,0.72,0,1);pointer-events:none}
+.acct-fs-overlay{position:fixed;inset:0;z-index:1200;display:flex;flex-direction:column;background:${CONFIG.palette.mapbg};transform:translateY(100%);transition:transform .35s cubic-bezier(0.32,0.72,0,1);pointer-events:none}
 .acct-fs-overlay.open{transform:translateY(0);pointer-events:auto}
 @media (prefers-reduced-motion: reduce){ .acct-fs-overlay{transition:none} }
 .acct-fs-map{flex:1;width:100%}
 .acct-fs-toggle{position:absolute;top:14px;right:14px;display:flex;gap:6px;z-index:4}
 .acct-fs-toggle button{padding:7px 12px;font-size:12px;font-weight:700;border:none;border-radius:8px;font-family:inherit;cursor:pointer;box-shadow:0 2px 7px -2px rgba(40,28,12,.35)}
-.acct-fs-bar{background:#fff;padding:13px 16px calc(13px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:12px;border-top:1px solid #EDE5D9}
+.acct-fs-bar{background:#fff;padding:13px 16px calc(13px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:12px;border-top:1px solid ${CONFIG.palette.line}}
 .acct-fs-bar .a{flex:1;min-width:0}
 .acct-fs-bar .a .l{font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#B3A594}
 .acct-fs-bar .a b{display:block;font-size:14px;font-weight:600;color:#17130F;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .acct-fs-done{flex:none;background:#17130F;color:#fff;border:none;border-radius:12px;padding:13px 20px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
 .acct-fs-pin{position:absolute;left:calc(50% - 15px);top:calc(50% - 36px);width:30px;height:30px;z-index:3;pointer-events:none;filter:drop-shadow(0 8px 7px rgba(40,28,12,.34))}
 .acct-fs-pindot{position:absolute;left:calc(50% - 6px);top:calc(50% - 4px);width:12px;height:6px;border-radius:50%;background:rgba(40,28,12,.28);filter:blur(1.5px);z-index:2;pointer-events:none}
-.acct-map-preview{height:150px;border-radius:15px;overflow:hidden;border:1px solid #E2D8C8;position:relative;cursor:pointer;background:#E4DAC7}
+.acct-map-preview{height:150px;border-radius:15px;overflow:hidden;border:1px solid ${CONFIG.palette.line2};position:relative;cursor:pointer;background:${CONFIG.palette.mapbg}}
 .acct-map-preview .pv{position:absolute;inset:0;pointer-events:none}
 .acct-map-preview .hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
 .acct-map-preview .hint span{background:rgba(24,18,12,.6);color:#fff;font-size:12.5px;font-weight:650;padding:8px 15px;border-radius:20px;backdrop-filter:blur(2px)}`;
@@ -2250,12 +2251,12 @@ ${footer}`;
     // T7 — the name-capture field reads more substantial at ~58px with a radius that softens
     // toward the phone field's own rounding, rather than the sheet's tighter 8px squared corner.
     st.textContent = `
-.acct-cp-card{border:1px solid #E2D8C8;border-radius:20px;overflow:hidden;background:#fff;box-shadow:0 12px 30px -18px rgba(40,28,12,.3);padding:15px;margin-bottom:4px}
-.acct-cp-phonerow{display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 14px;border:1.5px solid #EDE5D9;border-radius:13px;background:#FBF6EE;color:#17130F;margin-bottom:14px}
+.acct-cp-card{border:1px solid ${CONFIG.palette.line2};border-radius:20px;overflow:hidden;background:#fff;box-shadow:0 12px 30px -18px rgba(40,28,12,.3);padding:15px;margin-bottom:4px}
+.acct-cp-phonerow{display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 14px;border:1.5px solid ${CONFIG.palette.line};border-radius:13px;background:${CONFIG.palette.tint};color:#17130F;margin-bottom:14px}
 .acct-cp-phoneval{font-size:15.5px;font-weight:650;font-variant-numeric:tabular-nums}
 .acct-cp-verified{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2A6A42}
 .acct-cp-two{display:flex;gap:10px}
-.acct-cp-inp{flex:1;min-width:0;height:58px;padding:0 15px;border:1.5px solid #E2D8C8;border-radius:12px;background:#fff;font-size:16px;font-weight:550;color:#17130F;outline:none;font-family:inherit}
+.acct-cp-inp{flex:1;min-width:0;height:58px;padding:0 15px;border:1.5px solid ${CONFIG.palette.line2};border-radius:12px;background:#fff;font-size:16px;font-weight:550;color:#17130F;outline:none;font-family:inherit}
 .acct-cp-inp:focus{border-color:#17130F}
 .acct-cp-inp::placeholder{color:#B3A594;font-weight:450}
 `;
@@ -2443,8 +2444,8 @@ ${footer}`;
     const st = document.createElement('style');
     st.id = 'acct-compact-styles';
     st.textContent = `
-.acct-compact{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid #EDE5D9;border-radius:14px;background:#FBF6EE;margin-bottom:4px}
-.acct-compact .acct-cav{width:30px;height:30px;border-radius:50%;background:#F0E8DA;color:#2A231C;display:flex;align-items:center;justify-content:center;flex:none}
+.acct-compact{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid ${CONFIG.palette.line};border-radius:14px;background:${CONFIG.palette.tint};margin-bottom:4px}
+.acct-compact .acct-cav{width:30px;height:30px;border-radius:50%;background:${CONFIG.palette.chip};color:#2A231C;display:flex;align-items:center;justify-content:center;flex:none}
 .acct-compact .acct-ctxt{flex:1;min-width:0;font-size:13.5px;color:#17130F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .acct-compact .acct-ctxt b{font-weight:700}
 .acct-compact .acct-change{margin-top:0}   /* QF4: center "Cambiar" on the compact row's center line (align-items:center); the global .acct-change{margin-top:2px} stays for the .acct-drow full card (align-items:flex-start) */
@@ -2724,7 +2725,7 @@ ${footer}`;
       const a = addrs[id];
       const active = (id === activeId);
       return `<div class="acct-acard${active ? ' acct-acard--active' : ''}" data-pick-id="${escapeHtml(id)}">
-  <span class="acct-dotmark"${active ? '' : ' style="background:#CFC2B1"'}></span>
+  <span class="acct-dotmark"${active ? '' : ' style="background:'+CONFIG.palette.dot+'"'}></span>
   <div class="acct-al2"><div class="acct-aname2">${escapeHtml(a.label || 'Dirección')}</div>
   <div class="acct-aline2">${escapeHtml(a.details || a.detected || '')}</div></div>
   ${active ? `<span class="acct-pick-check">${ICON_CHECK_SM}</span>` : ''}
