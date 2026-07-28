@@ -45,7 +45,7 @@ const { computeEarn, ledgerEntry, REWARDS_CONFIG_VERSION } = require('./rewards-
 // x_pizza: 1 punch per pizza (sum of qty)
 assert.deepStrictEqual(computeEarn({ items:[{qty:2},{qty:3}], restaurantId:'x_pizza' }), { delta:5, unit:'punch' });
 assert.deepStrictEqual(computeEarn({ items:[], restaurantId:'x_pizza' }), { delta:0, unit:'punch' });
-// la_musa: 10 pts / 2500 cents (25 L); L700 order = 70000 cents → floor(70000/3000)=23 → 230
+// la_musa: 10 pts / 3000 cents (30 L); L700 order = 70000 cents → floor(70000/3000)=23 → 230
 assert.deepStrictEqual(computeEarn({ subtotalCents:70000, restaurantId:'la_musa' }), { delta:230, unit:'point' });
 assert.deepStrictEqual(computeEarn({ subtotalCents:2900, restaurantId:'la_musa' }), { delta:0, unit:'point' }); // < 30 L → 0
 // fail-safe
