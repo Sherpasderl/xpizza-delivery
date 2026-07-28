@@ -8,13 +8,15 @@
 
 **Tech Stack:** Vanilla ES modules, `node --test`-style assertions via `node:assert` (mirroring `driver-eta.test.js` / `driver-glide.test.js`), Firebase RTDB (existing subscriptions), Google Maps JS (existing, unchanged).
 
+**Status:** Part A ✅ built + codex-gated (Tasks 1–5). Part B: Task 6 ✅ built + gated; **Task 7 (grid foundation) inserted at build time (R2) — awaiting plan-gate re-approval before build.** Tasks 8–12 re-sequenced (see Revision R2 in Self-Review).
+
 ---
 
 ## Global Constraints (non-negotiable — from the gate-approved spec)
 
 1. **Zero writes, no money-path change.** `assignOrderToDriver`, `cancelOrderRemote`, `resolveReconciliation`, and the glide (`driver-glide.js`) stay untouched. Phase 1 only reads + renders.
 2. **Shadow boundary inviolable.** Any `order_predictions` read is display-only, model/version-labeled, never written back. (Only relevant if the optional on-time preview is included — it is **not** in this plan's tasks; see §1b.)
-3. **Every read-only subscription explicitly declared.** New reads (scheduled-orders; optional `order_timelines`; optional `order_predictions`) must be added as named, read-only subscriptions — no hand-waved reads. In this plan: **Task 9 declares a read-only `subscribeToDriverCash`** (`driver_cash`, no writes) for the cash bar; Task 8 uses only already-subscribed `orders`/`tasks`/`etaCache` data; no other new subscription is added.
+3. **Every read-only subscription explicitly declared.** New reads (scheduled-orders; optional `order_timelines`; optional `order_predictions`) must be added as named, read-only subscriptions — no hand-waved reads. In this plan: **Task 10 declares a read-only `subscribeToDriverCash`** (`driver_cash`, no writes) for the cash bar; Task 9 (order rows) uses only already-subscribed `orders`/`tasks`/`etaCache` data; no other new subscription is added.
 4. **Extraction guard.** Pure modules + Node tests FIRST (Part A), then ONE thin `index.html` integration patch (Part B). No opportunistic rewrites of untouched code.
 5. **Coordinate `index.html` ownership** with the Rewards B1 session before starting Part B — it is the shared hot file. Part A touches only new files and is safe to build in parallel.
 6. **No dropped behavior.** Regression-preserve: the alert set + the `factura_*`/unknown fallback bucket, `driver_freshness_stale`'s derived effects (`staleDriverUids`, red GPS-dark rows, the per-episode chime, dismiss), all dispatcher actions, scheduled orders, `#N`, delivered+search, reconciliation. Route ALL rendered order/message content through the existing `escapeHtml` (`index.html:3994`).
@@ -49,7 +51,7 @@ Expected output ends with `N passed`.
 
 **Modified files (Part B — one coordinated patch):**
 - `xpizza-dispatch/index.html` — import the modules (`?v=1`), add the icon sprite + visual-system CSS (ported from the reviewed mockup), swap the imperative alert if-chain for a registry-driven Torre render, add aging/delivery-risk to order rows, rebuild the right rail (persistent roster + surfaced call + cash bar + switchable tabs), add collapsible rails + Cobertura, and a read-only Comms inbound thread.
-- `xpizza-dispatch/xpizza-delivery.js` — add the read-only `subscribeToDriverCash(cb)` helper (Task 9).
+- `xpizza-dispatch/xpizza-delivery.js` — add the read-only `subscribeToDriverCash(cb)` helper (Task 10).
 
 **Visual source of truth for Part B markup/CSS:** the gate-reviewed mockup `docs/superpowers/mockups/dispatch-board-v6.html` (full "v6" — true palette, glass depth, line-icon sprite, pastel action icons). Part B ports its markup/CSS; it is a real artifact, not a placeholder.
 
@@ -609,15 +611,17 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-# PART B — Integration into `index.html` (ONE thin patch — COORDINATED)
+# PART B — Integration into `index.html` (grid foundation + content tasks — COORDINATED)
 
-> **STOP — coordination gate (Guardrail 5).** Do not begin Part B until `index.html` ownership is coordinated with the parallel Rewards B1 session. Part A above is safe to complete first (new files only). Confirm current tree = `origin/main` before editing (`git fetch`; the spec branch base is byte-identical to `origin/main` per the executor brief, but re-verify at build time).
+> **Sequenced (R2):** the approved design is a **3-column board**, so Part B leads with a **grid-foundation task (Task 7)** that transforms the skeleton, then renders content into the established containers (Tasks 8–12). Task 7 is the one non-additive task; the rest are render/restyle into the grid. One commit per task, in order, each gated by codex-on-diff before the next.
+
+> **STOP — coordination gate (Guardrail 5).** Do not begin Part B until `index.html` ownership is coordinated with the parallel Rewards B1 session. Part A above is safe to complete first (new files only). Confirm current tree = `origin/main` before editing (`git fetch`; the spec branch base is byte-identical to `origin/main` per the executor brief, but re-verify at build time). **Line-number anchors in the tasks are as of the plan base — Task 6 shifted them ≈ +54; re-locate by the named symbol.**
 
 **How to verify Part B (no Node harness — `index.html` is not unit-tested):** load the dispatch board locally, and for each task check the "Expected" acceptance notes with the browser console open (zero errors) and confirm the Guardrail-6 regression list still works.
 
 **Markup/CSS source:** port from `docs/superpowers/mockups/dispatch-board-v6.html` (the gate-reviewed v6). Keep the true palette tokens from `index.html:18–35`; add depth/glass as gradient+shadow layers on top (do not change base token values).
 
-> **⚠ DO-NOT-PORT exclusions (guardrail — applies to every Part-B porting task 6/9/10/11).** The mockup contains **out-of-scope future UI** that is forbidden by the Global Constraints (1b deferred; read-only comms, no send). When porting markup/CSS, **do NOT port**:
+> **⚠ DO-NOT-PORT exclusions (guardrail — applies to every Part-B porting task 7/8/10/11/12).** The mockup contains **out-of-scope future UI** that is forbidden by the Global Constraints (1b deferred; read-only comms, no send). When porting markup/CSS, **do NOT port**:
 > - the **On-time % / "A tiempo" KPI** (mockup `:253`) — that's 1b (no SLA/promise exists yet).
 > - the **"tarde" / "sobre ETA" late-by copy** (mockup `:272`) — Phase 1 shows delivery-risk/aging + "slipping vs primer estimado" only, never a promise-based late-by.
 > - the **"Chat cliente" / "Mensaje" composer/send input** (mockup `:402`) — Phase 1 comms is **read-only** (send is Phase 2).
@@ -653,11 +657,32 @@ git commit -m "feat(dispatch): wire Phase-1 modules + icon sprite + visual syste
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
-## Task 7: Torre de Control — registry-driven render (preserve derived effects)
+## Task 7: Grid foundation — 3-column board + collapse rails (SKELETON TRANSFORM)
 
-**Files:** Modify `xpizza-dispatch/index.html` — `renderDispatcherAlerts` (`2227`), keep `staleDriverUids` computation (`2186–2191`) UNCHANGED.
+**Files:** Modify `xpizza-dispatch/index.html` (DOM structure + CSS + a `tog()` helper).
 
-- [ ] **Step 1:** Replace the imperative `if (a.type === …)` chain in `renderDispatcherAlerts(alerts)` with a registry-driven render. `alerts` is the keyed RTDB object — iterate `for (const e of sortAlertEntries(alerts))` and render an `.ex` row per entry: icon `#${e.iconId}`, severity class from `e.severity`, title/detail from `e.alert` fields (all through `escapeHtml`), and a dismiss button carrying `data-dismiss-id="${e.id}"` so the existing dismiss wiring (`index.html:2339`, `dismissDispatcherAlert(id)`) still fires. Group `!e.known` entries under an "Otros / Revisar" bucket header. Port the `.ex` markup/CSS from `docs/superpowers/mockups/dispatch-board-v6.html`.
+> **The one non-additive, skeleton-transforming task in Part B — it carries the Guardrail-6 risk and gets the hardest gate.** The gate-approved design (R4) is a **3-column board: Torre (left) │ map (center) │ right rail**, with ☰/⇥ collapse rails. The current DOM is a different skeleton (`position:fixed` floating alert strip + a **resizable** `<aside class="sidebar">` + map). This task replaces that skeleton with the approved grid; content Tasks 8–12 then render into the established containers. **Zero-write, no money path, no subscription.** (Line-number anchors below are as of the plan base — Task 6 shifted them ≈ +54; re-locate by the named symbol at build time.)
+
+- [ ] **Step 1 — grid shell + CSS.** Wrap the board regions in the mockup's `.app` container; add the `.main` 3-column grid + `.col` columns + collapse transitions, ported from `docs/superpowers/mockups/dispatch-board-v6.html`: `.app`, `.main{display:grid;grid-template-columns:var(--lw) 1fr var(--rw);transition:grid-template-columns .26s}`, `.app:not(.left-open) .main{--lw:0px}`, `.app:not(.right-open) .main{--rw:0px}`, `.col`/`.col.left`/`.col.right`/`.scroll`. Add `--lw`/`--rw` tokens; reuse the Task-6 tokens. Default the container `class="app left-open right-open"`.
+- [ ] **Step 2 — migrate existing regions (preserve everything).** Reparent the **existing map** — its `google.maps` init, fit/layers controls, legend, glide pins, and all markers **untouched** — into the **center `.col`**. Reparent the current **`<aside class="sidebar" id="sidebar">` content** into the **left `.col`** as-is for now (splitting content into Torre/Sin-asignar on the left vs the roster on the right is Tasks 8–10's job). Add an **empty right `.col`** placeholder (populated in Task 10). **Verify the map still renders/pans/glides and every existing sidebar section — unassigned, drivers, delivered+search, reconciliation — still works.**
+- [ ] **Step 3 — collapse rails + `tog()`.** Add the topbar **☰** (toggles left) and **⇥** (toggles right) buttons (sprite icons `#i-menu` / `#i-panel`) + the helper `function tog(c){document.getElementById('app').classList.toggle(c)}`, ported from the mockup. Rails animate via the grid-column transition.
+- [ ] **Step 4 — consciously retire the drag-resize sidebar model (POINT-2 DECISION, flagged for Xavier).** The spec/mockup use ☰/⇥ collapse, **not** drag-resize. **Remove** `sidebar-resize-handle`, `sidebar-collapse-btn`, `sidebar-show-btn` and their JS wiring — **an intentional user-facing change** (drag-resize → collapse-rails), not a silent drop. Confirm nothing else depends on the removed handles/width-persistence.
+- [ ] **Step 5 — no-gap behavior preservation (Guardrail 6).** The `position:fixed` floating alert strip (`#dispatcher-alerts`) **stays functional and in place** — it floats over the new grid harmlessly and keeps rendering (staleDriverUids / red GPS-dark rows / per-episode chime / dismiss all live). Alerts relocate into the left-rail Torre container **only in Task 8** — there is **never a window where alerts render nowhere**.
+- [ ] **Step 6 — Verify:** board loads as 3 columns; ☰/⇥ collapse each rail (map fills freed space); map + every existing sidebar section + the floating alerts all still work; console clean; `prefers-reduced-motion` respected.
+- [ ] **Step 7 — Commit**
+
+```bash
+git add xpizza-dispatch/index.html
+git commit -m "feat(dispatch): Part B Task 7 — 3-column grid foundation + collapse rails (retire drag-resize)
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+```
+
+## Task 8: Torre de Control — registry-driven render (preserve derived effects)
+
+**Files:** Modify `xpizza-dispatch/index.html` — `renderDispatcherAlerts`, keep the `staleDriverUids` computation UNCHANGED. Now that **Task 7** established the left-rail Torre container, this task **relocates** the alert render into it (under a "Torre de control" section header) and **retires** the `position:fixed` floating `#dispatcher-alerts` strip.
+
+- [ ] **Step 1:** Replace the imperative `if (a.type === …)` chain in `renderDispatcherAlerts(alerts)` with a registry-driven render, targeting the **left-rail Torre container** (from Task 7) under a **"Torre de control"** header. `alerts` is the keyed RTDB object — iterate `for (const e of sortAlertEntries(alerts))` and render an `.ex` row per entry: icon `#${e.iconId}`, severity class from `e.severity`, title/detail from `e.alert` fields (all through `escapeHtml`), and a dismiss button carrying `data-dismiss-id="${e.id}"` so the existing dismiss wiring (`dismissDispatcherAlert(id)`) still fires. **Preserve the per-type copy** for the 7 known types (do NOT regress the existing bespoke titles/details); unknown/`factura_*` (`!e.known`) group under an **"Otros / Revisar"** bucket header (humanized type). Port the `.ex` markup/CSS from `docs/superpowers/mockups/dispatch-board-v6.html`.
 - [ ] **Step 2 (Guardrail 6 — critical):** Preserve `driver_freshness_stale`'s derived effects. Leave lines `2186–2191` (build `staleDriverUids`) and the per-episode chime intact. In the new render, `driver_freshness_stale` now ALSO appears as a red Torre row (it previously rendered no banner) — verify `staleDriverUids`, the red GPS-dark driver rows (`gpsDark`, `3048`), the chime, and `dismissDispatcherAlert` all still fire.
 - [ ] **Step 3: Verify** — inject a fake `factura_cai_low` (no registry entry) and confirm it appears in the "Otros / Revisar" bucket (not dropped); a `driver_freshness_stale` alert shows a red row AND still reddens the driver's row + fires the chime once.
 - [ ] **Step 4: Commit**
@@ -669,7 +694,7 @@ git commit -m "feat(dispatch): Torre registry render + fallback bucket; preserve
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
-## Task 8: Order rows — aging + delivery-risk
+## Task 9: Order rows — aging + delivery-risk
 
 **Files:** Modify `xpizza-dispatch/index.html` — order-row renderers (`renderUnassignedSection`/`renderTaskRow` `3128`), ETA cache (`etaCache`, set at `3007`).
 
@@ -715,7 +740,7 @@ git commit -m "feat(dispatch): order-row aging + delivery-risk (no-baseline agin
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
-## Task 9: Right rail — persistent roster + surfaced call + cash bar + tabs
+## Task 10: Right rail — persistent roster + surfaced call + cash bar + tabs
 
 **Files:**
 - Modify `xpizza-dispatch/index.html` — `renderDriversSection` (`2862`) / `renderDriverNode` (`3039`), sidebar structure.
@@ -738,23 +763,25 @@ git commit -m "feat(dispatch): persistent driver roster + surfaced call + cash b
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
-## Task 10: Collapsible rails + Cobertura drawer
+## Task 11: Cobertura drawer + collapse polish
 
 **Files:** Modify `xpizza-dispatch/index.html`
 
-- [ ] **Step 1:** Add the `☰` (left rail) and `⇥` (right rail) toggles + the CSS grid-column transition (port the `tog()` helper + `.app.left-open/.right-open` classes from `docs/superpowers/mockups/dispatch-board-v6.html`). When the left rail is collapsed, show the exceptions-count dot badge on `☰`.
-- [ ] **Step 2:** Add the collapsible **Cobertura de capacidades** footer drawer (default collapsed).
-- [ ] **Step 3: Verify** — toggles collapse/expand each rail smoothly; map fills the freed space; the badge appears on `☰` when the left rail is closed with pending exceptions; no layout break.
+> The ☰/⇥ collapse rails + `tog()` themselves were built in **Task 7** (grid foundation). This task adds the remaining polish that depends on the content being in place.
+
+- [ ] **Step 1:** Add the collapsible **Cobertura de capacidades** footer drawer (default collapsed) — port markup/CSS from `docs/superpowers/mockups/dispatch-board-v6.html`. (Honor the ⚠ DO-NOT-PORT exclusions.)
+- [ ] **Step 2:** Add the **exceptions-count dot badge on `☰`** shown when the left rail is collapsed *and* the Torre has pending exceptions (depends on the Torre living in the left rail — Task 8).
+- [ ] **Step 3: Verify** — Cobertura drawer opens/closes; the ☰ badge appears only when the left rail is closed with pending exceptions; no layout break; `prefers-reduced-motion` respected.
 - [ ] **Step 4: Commit**
 
 ```bash
 git add xpizza-dispatch/index.html
-git commit -m "feat(dispatch): collapsible rails + Cobertura drawer
+git commit -m "feat(dispatch): Cobertura drawer + collapse-rail exceptions badge polish
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
-## Task 11: Read-only Comms inbound thread
+## Task 12: Read-only Comms inbound thread
 
 **Files:** Modify `xpizza-dispatch/index.html` — Comms tab, using the existing `incoming_messages` subscription (`2391`).
 
@@ -781,14 +808,15 @@ Real SLA-based **on-time % + promise-based lateness** requires predictor graduat
 ## Self-Review
 
 **Spec coverage (Phase 1 items → task):**
-- Torre alert-registry + fallback bucket → Task 1 + Task 7 ✓
-- `driver_freshness_stale` derived effects preserved → Task 7 Step 2 ✓
-- Aging (created-time baseline, band) → Task 2 + Task 8 ✓
-- Delivery-risk + first-observed-ETA snapshot + no-baseline→aging-only → Tasks 3, 4, 8 ✓
-- Rich order rows (payment/WhatsApp chip/ETA already in row; aging/risk added) → Task 8 (+ existing render) ✓
-- Persistent roster + surfaced call + cash bar + tabs → Task 9 ✓
-- Collapsible rails + Cobertura → Task 10 ✓
-- Read-only Comms inbound thread (scoped WhatsApp chip) → Task 5 + Task 11 ✓
+- 3-column grid + collapse rails + skeleton migration → Task 7 (grid foundation) ✓
+- Torre alert-registry + fallback bucket → Task 1 + Task 8 ✓
+- `driver_freshness_stale` derived effects preserved → Task 7 Step 5 (no-gap) + Task 8 Step 2 ✓
+- Aging (created-time baseline, band) → Task 2 + Task 9 ✓
+- Delivery-risk + first-observed-ETA snapshot + no-baseline→aging-only → Tasks 3, 4, 9 ✓
+- Rich order rows (payment/WhatsApp chip/ETA already in row; aging/risk added) → Task 9 (+ existing render) ✓
+- Persistent roster + surfaced call + cash bar + tabs → Task 10 ✓
+- Collapse rails → Task 7; Cobertura drawer + ☰ badge polish → Task 11 ✓
+- Read-only Comms inbound thread (scoped WhatsApp chip) → Task 5 + Task 12 ✓
 - Visual system (icons/glass/depth/pastel) → Task 6 ✓
 - On-time% / promise lateness → correctly DEFERRED to §1b ✓
 
@@ -802,6 +830,12 @@ Real SLA-based **on-time % + promise-based lateness** requires predictor graduat
 5. Task 8: `arrivalMs` extracted to a local before `etaCache` assignment (it was inline at 3007) so `observe` has a value.
 6. Task 8: `etaSnapshots.clear` anchored to the `delete etaCache[...]` branch (~2989); Task 9 `driver_cash` fully specified (helper + shape `{cash_owed,cash_order_count,closed_at}` + closed-cuadre-only aggregation + open-cash explicitly deferred, not guessed).
 
-**Type consistency:** `agingSeconds` (Task 2) output feeds `deliveryRisk({ agingSeconds })` (Task 4); `etaSnapshots.baseline()` (Task 3) feeds `baselineArrivalMs` (Task 4/8); `classifyAlert().iconId`/`severity` (Task 1) consumed in Task 7; `assembleThread` shape (Task 5) consumed in Task 11. Consistent.
+**Type consistency:** `agingSeconds` (Task 2) output feeds `deliveryRisk({ agingSeconds })` (Task 4); `etaSnapshots.baseline()` (Task 3) feeds `baselineArrivalMs` (Task 4/9); `classifyAlert().iconId`/`severity` (Task 1) consumed in Task 8; `assembleThread` shape (Task 5) consumed in Task 12. Consistent.
 
-**Guardrail coverage:** zero-write (all tasks read/render only) ✓; extraction guard (Part A modules before Part B patch) ✓; coordination stop-gate before Part B ✓; no-dropped-behavior regression list in Tasks 7/9/11 verify steps ✓; `escapeHtml` on all rendered content ✓.
+**Guardrail coverage:** zero-write (all tasks read/render only) ✓; extraction guard (Part A modules → Task 6 primitives → Task 7 grid → content tasks) ✓; coordination stop-gate before Part B ✓; no-dropped-behavior called out in Task 7 (skeleton migration + no-gap floating-strip) and Task 8 (freshness effects) verify steps ✓; `escapeHtml` on all rendered content ✓.
+
+**Plan revision R2 (2026-07-28) — grid-foundation sequencing fix (advisor ruling (B)):**
+- **Root cause:** the plan-gate verified leaf anchors/symbols/contracts but NOT that the mockup's 3-column skeleton maps onto the live DOM. At Task 6→7 build time the executor caught it: the live board is a `position:fixed` floating alert strip + a **resizable** `<aside class="sidebar">` + map — there is no left-rail "Torre list" container, and the grid arrived last (old Task 10) instead of first.
+- **Fix:** inserted a new **Task 7 — grid foundation** (the one non-additive, skeleton-transforming task): establishes the `.app`/`.main` 3-column grid + Torre/map/right-rail containers + ☰/⇥ collapse + `tog()`, migrates the existing map + sidebar content, **consciously retires the drag-resize sidebar** for the collapse-rails model (point-2, user-facing — flagged for Xavier), and keeps the floating alert strip live until Task 8 (no window where alerts render nowhere).
+- **Re-sequenced** old Tasks 7–11 → 8–12: Torre render (8, now targets the left-rail container + retires the floating strip), order rows (9), right rail (10), Cobertura + ☰-badge polish (11), Comms (12). Historical R1 log entries above use the old numbers; the current headers are the source of truth.
+- Gate-critical logic unchanged (registry render, freshness effects, fallback bucket, escapeHtml) — only container placement moved.
