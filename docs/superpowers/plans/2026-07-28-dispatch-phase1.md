@@ -770,6 +770,26 @@ git commit -m "feat(dispatch): persistent driver roster + surfaced call + cash b
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
+## Task 10b: Right-rail tab strip (Pedidos · Programados · Comms · Caja · Cerrados)
+
+**Scope:** below the always-visible roster (10a), a tab strip with one active tab at a time + a content region per tab. **Preserve every existing render/handler** (Guardrail 6) — move DOM containers into tabs but keep their render-target ids so the existing render functions still find them. All `escapeHtml`; read-only (no composer/send — that's Task 12); the only writes are pre-existing dispatcher actions (reconciliation resolve, message handled) which are preserved untouched.
+
+**Files:** `xpizza-dispatch/index.html` (tab strip UI + switch JS + content routing) and `xpizza-dispatch/xpizza-delivery.js` (one new read-only sub for Programados).
+
+**Grounded tab mapping (verified from source):**
+- **Pedidos** — `getActiveOrders()` (**already exists**, `index.html:2748`: assigned + not completed/cancelled). Render a flat list of active in-flight orders as the v6 `.ord` rows (reuse the Task-9 row builder) or a compact variant; click → `openOrderDetailModal`. **No new plumbing.**
+- **Programados** — the held scheduled orders are **dropped by `filterLiveOrders`** (`NON_LIVE_ORDER_STATUSES` includes `'scheduled'`/`'releasing'`, `xpizza-delivery.js:108`), so `allOrders` does NOT contain them. Add a **declared read-only `subscribeToScheduledOrders(cb)`** — `onValue(ref(db,'orders'))` keeping only `status ∈ {scheduled, releasing}` — render each with `formatScheduledSlot(o.scheduled_for)`. Read-only, never written.
+- **Comms** — the inbound WhatsApp list. Reuse the existing `renderMessagesLists` (targets `#msg-list-unhandled`/`#msg-list-history`, `#tab-unhandled-count`/`#tab-history-count`) — move those list containers into the Comms tab so the *same* render + the existing handled/unhandled marking + `wa.me` "Responder" work in-tab. `#msg-btn` opens/focuses the Comms tab (or keep the modal as a fallback — build-time call). **No composer/send** (Task 12 adds the read-only thread view within this tab).
+- **Caja** — move `#reconciliation-group` (`renderReconciliationSection`, `index.html:3486`) into the Caja tab; `resolveReconciliation` action preserved. (The cash-bar cuadre total from 10a stays above the tabs.)
+- **Cerrados** — move `#delivered-group` + `#closed-search` (`renderDeliveredSection`, `index.html:3382`) into the Cerrados tab; **preserve the search** + its handlers.
+
+- [ ] **Step 1:** Add the tab strip + a content region per tab + tab-switch JS (one `.tab.on` at a time; wire via `addEventListener`, module-scope). Port the tab CSS from `docs/superpowers/mockups/dispatch-board-v6.html` (neutral count pills). Default tab = Pedidos.
+- [ ] **Step 2:** Move `#reconciliation-group` (→ Caja), `#delivered-group`+`#closed-search` (→ Cerrados), and the `#msg-list-*` containers (→ Comms) into their tab regions **by DOM relocation, keeping their ids** so `renderReconciliationSection`/`renderDeliveredSection`/`renderMessagesLists` still target them. Verify each still renders + its actions fire.
+- [ ] **Step 3:** Pedidos tab → render `getActiveOrders()` as `.ord` rows (read-only, click→detail). Programados tab → `subscribeToScheduledOrders` list with slot. Both `escapeHtml`.
+- [ ] **Step 4:** Add `subscribeToScheduledOrders` to `xpizza-delivery.js` (read-only) + wire it.
+- [ ] **Step 5 — Verify (on-device):** each tab switches + renders; reconciliation resolve, delivered search, message handled/unhandled + Responder all still fire; roster stays above the tabs; console clean; zero new writes.
+- [ ] **Step 6 — Commit.**
+
 ## Task 11: Cobertura drawer + collapse polish
 
 **Files:** Modify `xpizza-dispatch/index.html`
