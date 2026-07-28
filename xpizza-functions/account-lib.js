@@ -8,7 +8,9 @@ const INACTIVE_MS = 180 * 24 * 3600e3;   // ~6 months of dormancy before an acco
 // The atomic null-map that clears ONE account's three nodes. phoneHash may be absent (legacy profile) —
 // then the phone_index entry is left (it will resolve to a re-created profile at the same uid on next login).
 function accountDeleteUpdates(uid, phoneHash, tombstoneAt = null) {
-  const updates = { [`user_profiles/${uid}`]: null, [`user_orders/${uid}`]: null };
+  const updates = { [`user_profiles/${uid}`]: null, [`user_orders/${uid}`]: null, [`user_rewards/${uid}`]: null };
+  // Rewards Phase A: purge balances + ledger with the account, but NEVER null reward_welcome — that
+  // per-phone_hash-per-brand tombstone must survive deletion so a delete+re-login can't re-earn the welcome.
   if (phoneHash) updates[`phone_index/${phoneHash}`] = null;
   // H10 durability: user-initiated deletion writes a server-only tombstone so the still-valid custom-token
   // session can't recreate the profile or re-accrue attribution. The inactivity sweep passes no tombstoneAt

@@ -9,8 +9,17 @@ const PH = 'deadbeef'.repeat(8);
 // ── accountDeleteUpdates ──
 {
   const u = A.accountDeleteUpdates(UID, PH);
-  assert.deepStrictEqual(u, { [`user_profiles/${UID}`]: null, [`user_orders/${UID}`]: null, [`phone_index/${PH}`]: null });
-  ok('delete clears profile + user_orders + phone_index (all null, atomic)');
+  assert.deepStrictEqual(u, { [`user_profiles/${UID}`]: null, [`user_orders/${UID}`]: null, [`user_rewards/${UID}`]: null, [`phone_index/${PH}`]: null });
+  ok('delete clears profile + user_orders + user_rewards + phone_index (all null, atomic)');
+}
+// ── Rewards Phase A: deletion purges user_rewards (balances/ledger) but RETAINS the reward_welcome
+// tombstone (anti-farm: a delete+re-login must NOT re-earn the welcome). ──
+{
+  const u = A.accountDeleteUpdates(UID, PH, 1700000000000);
+  assert.strictEqual(u[`user_rewards/${UID}`], null); ok('deletion nulls the user_rewards/{uid} subtree root');
+  assert.ok(!Object.keys(u).some((k) => k.startsWith('reward_welcome')),
+    'must NOT touch reward_welcome — the tombstone stays so welcome is un-farmable across delete');
+  ok('deletion does NOT null reward_welcome (welcome tombstone survives → un-farmable)');
 }
 // ── P3 PII-safety (codex HIGH-3): the EXTENDED history entries (restaurant/status/items[]) are purged
 // on deletion UNCHANGED — because the delete nulls the WHOLE user_orders/{uid} SUBTREE ROOT (not a
@@ -25,8 +34,8 @@ const PH = 'deadbeef'.repeat(8);
 }
 {
   const u = A.accountDeleteUpdates(UID, null);
-  assert.deepStrictEqual(u, { [`user_profiles/${UID}`]: null, [`user_orders/${UID}`]: null });
-  ok('delete without phone_hash → 2 nodes (no phone_index key)');
+  assert.deepStrictEqual(u, { [`user_profiles/${UID}`]: null, [`user_orders/${UID}`]: null, [`user_rewards/${UID}`]: null });
+  ok('delete without phone_hash → 3 nodes (no phone_index key)');
 }
 {
   // touches ONLY the given uid's namespaces — every key is scoped to UID/PH
@@ -40,8 +49,8 @@ const PH = 'deadbeef'.repeat(8);
   const TS = 1700000000000;
   const u = A.accountDeleteUpdates(UID, PH, TS);
   assert.equal(u[`deleted_uids/${UID}`], TS); ok('3-arg delete writes deleted_uids tombstone with the timestamp');
-  assert.deepStrictEqual(u, { [`user_profiles/${UID}`]: null, [`user_orders/${UID}`]: null, [`phone_index/${PH}`]: null, [`deleted_uids/${UID}`]: TS });
-  ok('tombstone delete = 3 nulls + deleted_uids tombstone');
+  assert.deepStrictEqual(u, { [`user_profiles/${UID}`]: null, [`user_orders/${UID}`]: null, [`user_rewards/${UID}`]: null, [`phone_index/${PH}`]: null, [`deleted_uids/${UID}`]: TS });
+  ok('tombstone delete = 4 nulls + deleted_uids tombstone');
 }
 {
   // 2-arg (inactivity sweep) NEVER tombstones — avoids unbounded /deleted_uids growth (dormant, no live session)
@@ -56,9 +65,9 @@ const cutoff = NOW - A.INACTIVE_MS;
   const stale = { [UID]: { last_login: cutoff - 1, phone_hash: PH } };
   const { updates, count } = A.pruneUpdates(stale, cutoff);
   assert.equal(count, 1);
-  assert.deepStrictEqual(updates, { [`user_profiles/${UID}`]: null, [`user_orders/${UID}`]: null, [`phone_index/${PH}`]: null });
+  assert.deepStrictEqual(updates, { [`user_profiles/${UID}`]: null, [`user_orders/${UID}`]: null, [`user_rewards/${UID}`]: null, [`phone_index/${PH}`]: null });
   assert.ok(!Object.keys(updates).some((k) => k.startsWith('deleted_uids/'))); // sweep never tombstones
-  ok('stale profile (last_login < cutoff) pruned with all 3 nodes, no tombstone');
+  ok('stale profile (last_login < cutoff) pruned with all 4 nodes, no tombstone');
 }
 {
   const fresh = { [UID]: { last_login: cutoff + 1, phone_hash: PH } };
