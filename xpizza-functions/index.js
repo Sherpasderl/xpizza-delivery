@@ -69,6 +69,8 @@ const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restauran
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
 const { shouldEarnOnStatus } = require('./rewards-core');                  //   pure terminal-state gate for the earn trigger
+const { resolveRedemptionForOrder } = require('./rewards-redeem-intake');  // Phase B1 — shared redemption intake (flag+uid gate → compute → avail → reserve)
+const { releaseRedemption } = require('./rewards-reserve');                //   release a reservation on order-write failure (all-or-nothing)
 const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
 const { decideStatusMirror } = require('./status-mirror');          // P3 — status-sync trigger core (update-only-if-exists)
@@ -548,13 +550,40 @@ createOrderApp.all('*', async (req, res) => {
     } catch (_) { /* malformed/expired/foreign/tomb-read-failure → ignore, treat as guest */ }
   }
 
+  // ── Rewards Phase B1: redemption (cash → RESERVE at create; the completion state consumes; cancel releases).
+  // Gated by redemption_enabled + a VERIFIED non-guest uid; the discount is ALWAYS server-computed; ALL-OR-
+  // NOTHING (any failure → non-payable 409/401, no order written). No `redeem` in the body → today's behavior
+  // byte-for-byte (B1 stays inert until B2 flips the flag on and starts sending `redeem`).
+  let redemptionCanonical = null;    // stamped onto the order when a reward is applied
+  let redemptionPriced = null;       // discounted breakdown + factura lines (Task 4)
+  let redemptionReserved = null;     // { uid, rid, orderId } ONLY if THIS call owns the hold → release on write failure
+  if (body.redeem != null) {
+    // cash has no scheduled fingerprint extra at this point (order_id + discounted total + items_text bind the
+    // hold); the completion state consumes, cancel releases. See rewards-redeem-intake.resolveRedemptionForOrder.
+    const rd = await resolveRedemptionForOrder(db, {
+      redeem: body.redeem, items: body.items, restaurantId, orderId,
+      customerUid: customer_uid, itemsText: fields.items_text, totalLempiras: total, schedExtra: '', now: Date.now(),
+    });
+    if (!rd.ok) return res.status(rd.status).json({ ...rd.body, order_id: orderId });   // ALL-OR-NOTHING: non-payable, no order
+    fields.items_text = rd.itemsText;                                                   // La Musa free-item display line appended
+    redemptionCanonical = rd.canonical;
+    redemptionPriced = rd.priced;
+    if (rd.ownsHold) redemptionReserved = { uid: customer_uid, rid: restaurantId, orderId };
+  }
+  const effectiveTotal = redemptionPriced ? redemptionPriced.total_lempiras : total;   // discounted total (== total when no redeem)
+
   const trackingToken = generateTrackingToken();
-  const priceBreakdown = orderBreakdownCents(total, restaurantId);  // platform → ISV 15% incl.; non-platform → no split
+  // Redeemed → the discounted breakdown + split factura lines (Task 4); else today's pricing, byte-identical.
+  const priceBreakdown = redemptionPriced
+    ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents }
+    : orderBreakdownCents(total, restaurantId);  // platform → ISV 15% incl.; non-platform → no split
   // pricedLineItems feeds order.items, consumed ONLY by the platform factura trigger. Non-platform
   // restaurants (la_musa — Soft Restaurant POS) opt out → skip it; order.items is then omitted.
-  const facturaPriced = usesPlatformFactura(restaurantId)
-    ? pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES)
-    : { items: null, error: null };
+  const facturaPriced = redemptionPriced
+    ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }
+    : (usesPlatformFactura(restaurantId)
+      ? pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES)
+      : { items: null, error: null });
 
   // Cash tendered (FACTURA_PLAN §2): validated >= total (never trust client), defaults to exact
   // (no change) when absent/invalid so a bad value never blocks the order. Money in centavos.
@@ -575,16 +604,18 @@ createOrderApp.all('*', async (req, res) => {
     if (!v.valid) return badRequest(res, `Invalid scheduled time (${v.reason})`);
     const releaseAt = SCHED.releaseAtFor(scheduledForRaw, orderType);
     const heldUpdates = buildScheduledOrderRecord({
-      orderId, orderType, now, trackingToken, total, lat, lng, fields, hubSnap,
+      orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
       restaurantId, priceBreakdown, facturaPriced, cashTenderedCents,
       scheduledFor: scheduledForRaw, releaseAt,
     });
-    attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total, orderType, items_text: fields.items_text, restaurantId, items: body.items });
+    attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items });
+    if (redemptionCanonical) heldUpdates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until release→completion)
     try {
       await db.ref().update(heldUpdates);
       console.log(`createOrder: HELD scheduled ${orderType} order ${orderId} for ${scheduledForRaw} (release ${releaseAt})`);
     } catch (e) {
       console.error('createOrder: scheduled write failed', e);
+      if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});   // all-or-nothing: never leave a hold with no order
       return res.status(500).json({ error: 'Database write failed', detail: e.message });
     }
     // No tracking token, no "order received" WhatsApp — the customer got a scheduled confirmation client-side.
@@ -602,17 +633,19 @@ createOrderApp.all('*', async (req, res) => {
   // (create-order-build.js) so the cash path is golden-tested for byte-identical output. The
   // field names are load-bearing (driver app, KDS, tracking site, factura trigger).
   Object.assign(updates, buildCreateOrderUpdates({
-    orderId, orderType, now, trackingToken, total, lat, lng, fields, hubSnap,
+    orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
     restaurantId, priceBreakdown, facturaPriced, cashTenderedCents,
   }));
 
-  attachCustomerAttribution(updates, orderId, customer_uid, { now, total, orderType, items_text: fields.items_text, restaurantId, items: body.items });
+  attachCustomerAttribution(updates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items });
+  if (redemptionCanonical) updates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until completion consumes)
 
   try {
     await db.ref().update(updates);
     console.log(`createOrder: wrote ${orderType} order ${orderId}`);
   } catch (e) {
     console.error('createOrder: write failed', e);
+    if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});   // all-or-nothing: never leave a hold with no order
     return res.status(500).json({ error: 'Database write failed', detail: e.message });
   }
 
@@ -635,7 +668,7 @@ createOrderApp.all('*', async (req, res) => {
           customerName: String(updates[`orders/${orderId}`].customer_name || ''),
           orderId,
           itemsText: String(updates[`orders/${orderId}`].items_text || ''),
-          total,
+          total: effectiveTotal,
           pickupTime: String(updates[`orders/${orderId}`].pickup_time || 'standard'),
           trackingToken,
           restaurantId
@@ -645,7 +678,7 @@ createOrderApp.all('*', async (req, res) => {
           customerName: String(updates[`orders/${orderId}`].customer_name || ''),
           orderId,
           itemsText: String(updates[`orders/${orderId}`].items_text || ''),
-          total,
+          total: effectiveTotal,
           trackingToken,
           restaurantId
         });
