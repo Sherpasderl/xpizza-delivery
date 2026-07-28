@@ -71,6 +71,16 @@ const onStatus = async (db, orderId, after, now) => {
     assert.strictEqual(await bal('uidD', 'x_pizza'), 3); assert.strictEqual(await ledgerN('uidD', 'x_pizza'), 1); ok('status=delivered → +3 punches, 1 ledger entry');
     assert.strictEqual((await onStatus(db, 'O7', 'completed', 702)).credited, false);
     assert.strictEqual(await bal('uidD', 'x_pizza'), 3); ok('a later terminal write → NO double-credit (marker at-most-once)');
+
+    // 7 — welcome tombstone survives account deletion (un-farmable across delete + re-login)
+    assert.deepStrictEqual(await creditWelcome(db, { uid: 'uidE', phoneHash: 'phZ', restaurantId: 'la_musa', now: 800 }), { credited: true });
+    assert.strictEqual(await bal('uidE', 'la_musa'), 100); ok('la_musa welcome → +100 points (first login)');
+    await db.ref('user_rewards/uidE').set(null);   // account deletion nulls user_rewards (Task 6) but NOT reward_welcome
+    assert.strictEqual((await creditWelcome(db, { uid: 'uidG', phoneHash: 'phZ', restaurantId: 'la_musa', now: 801 })).credited, false);
+    assert.strictEqual(await bal('uidG', 'la_musa'), null); ok('re-login same phone after deletion → NO re-credit (tombstone persists)');
+    // same phone, DIFFERENT brand → its own welcome (per-brand tombstone)
+    assert.deepStrictEqual(await creditWelcome(db, { uid: 'uidG', phoneHash: 'phZ', restaurantId: 'x_pizza', now: 802 }), { credited: true });
+    assert.strictEqual(await bal('uidG', 'x_pizza'), 2); ok('same phone, other brand → earns that brand\'s welcome (+2)');
   });
 
   await env.cleanup();

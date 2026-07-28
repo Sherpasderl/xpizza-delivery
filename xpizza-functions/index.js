@@ -4498,6 +4498,10 @@ exports.requestOtp = onRequest(
       let code = null;
       const tx = await db.ref('otp/' + pHash).transaction((v) => { const r = OTP.sendReserve(v, now); code = r.code; return r.next; });
       if (!tx.committed || !code) return res.status(200).json({ ok: true, cooldown: 30 });   // too soon / too many → uniform
+      // Stash the brand this code was requested for (server-only otp node) so verifyOtp can credit the
+      // welcome to the RIGHT brand — spoof-proof, no client-supplied brand at verify. verifyConsume spreads
+      // `...v`, so this rid survives the consume transaction. Fail-open: on miss, verifyOtp defaults x_pizza.
+      try { await db.ref('otp/' + pHash + '/rid').set(restaurantId); } catch (_) {}
       const brand = restaurantId === 'la_musa' ? 'La Musa' : 'X. Pizza';
       await whatsapp.sendMessage(phone, `Tu código de ${brand} es ${code}. Vence en 5 minutos. No lo compartas.`, restaurantId);
       return res.status(200).json({ ok: true, cooldown: 30 });
@@ -4540,8 +4544,13 @@ exports.verifyOtp = onRequest(
       // phone_hash is stored (server-only write) so deleteAccount/sweep can find /phone_index in O(1).
       if (!prof) await profRef.set({ phone: OTP.normalizePhone(phone), phone_hash: pHash, created_at: now2, last_login: now2 });
       else await profRef.child('last_login').set(now2);
+      const rid = resolveRestaurantId((await otpRef.child('rid').get()).val()).restaurantId;   // brand the code was requested for
       await otpRef.remove();   // one-time use — the code cannot be replayed
       const token = await getAuth().createCustomToken(uid, { customer: true });   // mint ONLY after verified+consumed
+      // Rewards Phase A — welcome bonus, once per phone_hash per brand (reward_welcome tombstone → un-farmable,
+      // survives account deletion). Fail-open: NEVER block login/token issuance on a rewards error.
+      try { await creditWelcome(db, { uid, phoneHash: pHash, restaurantId: rid, now: now2 }); }
+      catch (e) { console.warn('verifyOtp: welcome credit fail-open —', e && e.message); }
       return res.status(200).json({ ok: true, token, is_new: !prof, name: (prof && prof.name) || null });
     } catch (e) {
       console.error('verifyOtp', e);
