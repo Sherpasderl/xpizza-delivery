@@ -61,12 +61,12 @@ Build EXACTLY as the approved mockup. Below is the behavior + the brand-config s
 - Renders ONLY when redemption is live for this customer (Constraint #4) AND the customer is **eligible** (X. Pizza `available ≥ card_size`; La Musa `available ≥ min tier cost`).
 - **X. Pizza:** a single **"Usar"** action → redeem one free pizza (server picks the cheapest pizza in the cart). Requires ≥1 pizza in cart (server-enforced; the UI only offers it when a pizza is present).
 - **La Musa:** a **tier picker** → the customer picks a tier they can afford, then picks one item from that tier's list. Only tiers with `available ≥ tier.cost` are offered; only currently-available (not-86'd) items are offered (see edge states).
-- Selecting a reward sets the pending `redeem` payload (`{}` for X. Pizza; `{level, item_id, name}` for La Musa — `name` is the display string, server-sanitized, price/eligibility server-derived).
-- On order submit, `body.redeem` + the token are sent; the server returns the discounted breakdown.
+- Selecting a reward sets the pending `redeem` payload (`{}` for X. Pizza; `{level, item_id, name}` for La Musa — `name` is the display string, server-sanitized, price/eligibility server-derived) and triggers a **`quoteRedemption` call** (§5.1) to fetch the server-authoritative preview.
+- On order **submit**, `body.redeem` + the token are sent; the handler **recomputes authoritatively** and applies the discount to the charge/order — it returns only placement/payment result (`{ok, order_id, tracking_token}` / checkout metadata), NOT the breakdown (that came from the quote).
 - `CONFIG`: "Usar" single-action vs tier-picker component, tier data, copy.
 
 ### 4.5 Review discount line (screen 5)
-- After the server returns the discounted breakdown, the review shows the freed/added item as a **struck-through discount line** and the new (lower, or unchanged-for-La-Musa) total — rendered from the **server's** numbers.
+- Rendered from the **`quoteRedemption` preview** (§5.1) — never a client-computed discount. The review shows the freed/added item as a **struck-through discount line** and the new (lower, or unchanged-for-La-Musa) total, all from the **server quote's** numbers. (The submit later confirms the same total server-side.)
 - X. Pizza: the cheapest pizza struck-through, total drops by its base unit. La Musa: the added tier item at "GRATIS", total unchanged.
 - `CONFIG`: copy; the mechanism is identical.
 
@@ -86,10 +86,14 @@ Build EXACTLY as the approved mockup. Below is the behavior + the brand-config s
 
 ### 5.1 The server QUOTE endpoint (NEW — the only way to show a server-authoritative discount pre-checkout)
 The live order handlers do NOT return the priced breakdown (§2). To render screen 5 (the struck-through review) WITHOUT the client ever computing a discount, B2 adds a **new read-only HTTPS function** — `quoteRedemption` (working name):
-- **Input:** `body.items` (the cart), `body.redeem` (`{}` xp / `{level,item_id}` lm), header `X-Firebase-ID-Token`.
-- **Gate:** `redemptionEnabled(db, uid)` (§6.2) + verified non-guest uid — same authorization as the intake.
-- **Compute:** reuse the EXACT B1 pure functions `computeRedemption` → `applyRedemptionToPricing` (the same code the intake runs) — **no reserve, no order, no DB write, no side effects.**
-- **Returns:** on success `{ ok:true, discount_cents, total_cents (discounted), free_item:{name}, subtotal_cents, tax_cents }`; on failure the **same typed errors** as the intake. Read-only preview.
+- **Input:** `body.items` (the cart), `body.redeem` (`{}` xp / `{level,item_id}` lm), `restaurant_id`, header `X-Firebase-ID-Token`.
+- **Full intake-parity validation (so the quote never shows a reward that submit then rejects) — MINUS the side effects:**
+  - `redemptionEnabled(db, uid)` (§6.2) + verified non-guest uid — same authorization gate as intake.
+  - **Server-compute the cart total itself** (`computeServerTotal`, same as intake) — never trust a client-supplied total.
+  - `computeRedemption` → for La Musa run the **same `checkItemAvailability` 86 gate** → `applyRedemptionToPricing` — the exact code the intake runs.
+  - **Read-only balance/available check** against `user_rewards/{uid}/{rid}` (`available = balance − reserved ≥ cost`) so the quote's `insufficient` matches what the reserve would return. (No reserve is taken — this is a read-only projection.)
+  - **NO reserve, NO order, NO DB write, NO side effects.**
+- **Returns:** on success `{ ok:true, discount_cents, total_cents (discounted), free_item:{name}, subtotal_cents, tax_cents }`; on failure the **same typed errors** as the intake (`reward_unavailable`, `redemption_invalid`, `login_required`, `rewards_disabled`, and an `insufficient`-flavored error mirroring the reserve). Read-only preview. Because quote runs the same gate/compute/availability/balance logic as intake, a passing quote should submit cleanly (barring a concurrent balance/availability change — handled as an edge, §8).
 - **UI use:** when the customer selects a reward, call `quoteRedemption` → render screen 5 from its numbers. Because the quote and the order-submit run the SAME server compute, the previewed total equals the charged total. If the quote fails, show the typed message and don't offer the reward.
 - **Deploy note:** this is a NEW export (functions 46 → 47) — additive, no prune; starts with no special env (DB-only); money-gated as the read-only preview of the money path.
 
@@ -109,7 +113,7 @@ The live order handlers do NOT return the priced breakdown (§2). To render scre
 Three small additive pieces, built first (they gate the UI and enable the canary):
 
 ### 6.1 Client-readable live flag (precise rules — RTDB cascade)
-- **New path** `config/rewards_public/redemption_live` (boolean). RTDB read grants are additive downward (a child `.read` grant applies even when the ancestor `config` expression is false; an ancestor grant can't be revoked by a child) — so grant read at **exactly** `config/rewards_public` (readable by any auth'd user), and add **`"$other": { ".read": false }` under `rewards_public`** so the public node can NEVER accumulate other (sensitive) config later. Do NOT widen `config` itself. `.write` stays staff-only. **Emulator-verified** (customer CAN read `config/rewards_public/redemption_live`; customer CANNOT read any other `config/*`; the rest of the staff-only config rule intact).
+- **New path** `config/rewards_public/redemption_live` (boolean). ⚠️ **RTDB read grants cascade DOWNWARD and a descendant CANNOT revoke an ancestor's grant.** So granting read at the *parent* `config/rewards_public` would expose **every** current and future child under it (a `$other:false` child rule does nothing — it can't revoke the parent grant). Therefore grant `.read` at **exactly the leaf** `config/rewards_public/redemption_live` (a single boolean), with **NO read grant on the parent `config/rewards_public` or on `config`** — so that leaf is the only customer-readable node, and any future sibling under `rewards_public` stays unreadable unless separately granted. `.write` stays staff-only. **Emulator-verified** (customer CAN read `config/rewards_public/redemption_live`; customer CANNOT read `config/rewards_public` itself, any sibling, or any other `config/*`; the staff-only `config` rule otherwise intact).
 - The redeem affordance (§4.4) renders only when this is `true` (OR the canary marker, §6.3). Display surfaces (§4.1–4.3) ignore it.
 - Client-side half of the flip; the server-side authorization stays `config/redemption_enabled` (§6.2).
 
