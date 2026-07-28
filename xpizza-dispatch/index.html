@@ -1700,6 +1700,23 @@
   @keyframes softpulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+
+  /* ============ Torre de Control — 3-column board grid (Task 7 grid foundation) ============ */
+  :root { --lw: 380px; --rw: 344px; }
+  .app { height: calc(100vh - 52px); }
+  .main { display: grid; grid-template-columns: var(--lw) 1fr var(--rw); height: 100%; transition: grid-template-columns .26s cubic-bezier(0.4,0,0.2,1); }
+  .app:not(.left-open) .main  { --lw: 0px; }
+  .app:not(.right-open) .main { --rw: 0px; }
+  .col { min-height: 0; overflow: hidden; }
+  .col.left   { grid-column: 1; background: var(--surface); border-right: 1px solid var(--border-soft); }
+  .col.center { grid-column: 2; position: relative; background: #131826; min-width: 0; }
+  .col.right  { grid-column: 3; background: var(--surface); border-left: 1px solid var(--border-soft); }
+  /* Fixed-width inner so content slides (clips) during the collapse rather than reflowing. */
+  .col.left  .rail-inner { width: 380px; height: 100%; overflow-y: auto; padding-bottom: 32px; }
+  .col.right .rail-inner { width: 344px; height: 100%; overflow-y: auto; }
+  /* Topbar rail-toggle buttons (☰ / ⇥) */
+  .rail-toggle { background: transparent; border: none; color: var(--text-soft); width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; cursor: pointer; }
+  .rail-toggle:hover { background: var(--surface-2); color: var(--text); }
 </style>
 </head>
 
@@ -1764,6 +1781,7 @@
 <!-- ================================ -->
 <div id="screen-main" class="hidden" style="display:flex; flex-direction:column; height:100vh;">
   <header class="topbar">
+    <button class="rail-toggle" id="rail-toggle-left" title="Mostrar/ocultar panel izquierdo" aria-label="Panel izquierdo"><svg class="ic"><use href="#i-menu"/></svg></button>
     <span class="brand">X PIZZA</span>
     <span class="brand-sub">Dispatch</span>
     <div class="topbar-spacer"></div>
@@ -1782,14 +1800,16 @@
       <span class="msg-badge" id="msg-badge">0</span>
     </button>
     <span class="version-tag" data-version-display></span>
+    <button class="rail-toggle" id="rail-toggle-right" title="Mostrar/ocultar panel derecho" aria-label="Panel derecho"><svg class="ic"><use href="#i-panel"/></svg></button>
     <button class="topbar-btn" id="signout-btn">Salir</button>
   </header>
 
   <!-- Floating dispatcher alerts (e.g., "no drivers available") -->
   <div class="dispatcher-alerts" id="dispatcher-alerts"></div>
 
-  <div class="layout">
-    <div id="map-container">
+  <div class="app left-open" id="app">
+  <div class="main" id="main-grid">
+    <div id="map-container" class="col center">
       <button class="map-icon-btn fit" id="map-fit-btn" title="Centrar mapa" aria-label="Centrar mapa">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="9"/>
@@ -1803,9 +1823,8 @@
       <div id="map"></div>
     </div>
 
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-resize-handle" id="sidebar-resize-handle" title="Arrastrar para cambiar el ancho"></div>
-      <button class="sidebar-collapse-btn" id="sidebar-collapse-btn"><span class="sb-icon"></span><span class="sb-label">Ocultar panel</span></button>
+    <div class="col left" id="left-rail"><div class="rail-inner">
+      <div id="torre-list"></div>
 
       <div class="tree-group" id="unassigned-group">
         <div class="tree-group-header">
@@ -1852,10 +1871,10 @@
           <div id="delivered-list"><div class="tree-empty">Aún no hay pedidos cerrados hoy</div></div>
         </div>
       </div>
-    </aside>
+    </div></div>
 
-    <button class="sidebar-show-btn hidden" id="sidebar-show-btn"><span class="sb-icon"></span><span class="sb-label">Panel</span></button>
-  </div>
+    <div class="col right" id="right-rail"><div class="rail-inner"></div></div>
+  </div></div>
 </div>
 
 <!-- Driver picker overlay -->
@@ -4068,27 +4087,25 @@ function displayOrderLabel(orderOrId) {
 }
 
 // ============================================================
-// Sidebar toggle + map fit
+// Collapse rails + map fit
 // ============================================================
-// Populate the icon spans for the sidebar collapse/show buttons and the
-// "Entregados hoy" group toggle. We do this in JS rather than inline HTML
-// because the ICONS object is defined in this script — having the SVG in
-// HTML would require duplicating the markup.
-$('sidebar-collapse-btn').querySelector('.sb-icon').innerHTML = ICONS.chevronRight;
-$('sidebar-show-btn').querySelector('.sb-icon').innerHTML = ICONS.chevronLeft;
+// Populate the icon span for the "Entregados hoy" group toggle in JS (the ICONS
+// object is defined in this script, so inlining the SVG would duplicate markup).
+// (The sidebar collapse/show buttons were retired with the drag-resize model — the
+// collapse-rails wiring is below.)
 $('delivered-toggle').querySelector('.tree-group-toggle').innerHTML = ICONS.chevronDown;
 
-$('sidebar-collapse-btn').addEventListener('click', () => {
-  $('sidebar').classList.add('collapsed');
-  $('sidebar-show-btn').classList.remove('hidden');
-  if (map) google.maps.event.trigger(map, 'resize');
-});
-
-$('sidebar-show-btn').addEventListener('click', () => {
-  $('sidebar').classList.remove('collapsed');
-  $('sidebar-show-btn').classList.add('hidden');
-  if (map) google.maps.event.trigger(map, 'resize');
-});
+// ── Collapse rails (Torre de Control 3-column grid) — replaces the retired drag-resize
+// sidebar. The code runs in a module, so an inline onclick can't resolve → wire via
+// addEventListener.
+function togRail(cls) {
+  $('app').classList.toggle(cls);
+  // Preserve the map re-fit the retired sidebar handlers performed: re-trigger the Maps
+  // resize after the grid-column transition (~260ms) so the map isn't left mis-sized.
+  setTimeout(() => { if (map) google.maps.event.trigger(map, 'resize'); }, 300);
+}
+$('rail-toggle-left').addEventListener('click', () => togRail('left-open'));
+$('rail-toggle-right').addEventListener('click', () => togRail('right-open'));
 
 $('delivered-toggle').addEventListener('click', () => {
   $('delivered-group').classList.toggle('collapsed');
@@ -4143,78 +4160,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// ============================================================
-// Sidebar resize (drag handle on inner edge)
-// ============================================================
-(function setupSidebarResize() {
-  const handle = $('sidebar-resize-handle');
-  const sidebar = $('sidebar');
-  const SIDEBAR_WIDTH_KEY = 'xpd_sidebar_width';
-  const MIN_WIDTH = 280;
-  const MAX_WIDTH = 700;
-
-  // Restore persisted width
-  try {
-    const saved = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY), 10);
-    if (saved && saved >= MIN_WIDTH && saved <= MAX_WIDTH) {
-      sidebar.style.width = `${saved}px`;
-    }
-  } catch {}
-
-  let dragging = false;
-  let startX = 0;
-  let startWidth = 0;
-
-  const onMove = (e) => {
-    if (!dragging) return;
-    const clientX = e.clientX ?? e.touches?.[0]?.clientX;
-    if (clientX == null) return;
-    const delta = startX - clientX; // moving cursor LEFT widens sidebar (handle is on its left edge)
-    const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth + delta));
-    sidebar.style.width = `${newWidth}px`;
-  };
-
-  const onUp = () => {
-    if (!dragging) return;
-    dragging = false;
-    handle.classList.remove('dragging');
-    document.body.classList.remove('resizing-sidebar');
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
-    document.removeEventListener('touchmove', onMove);
-    document.removeEventListener('touchend', onUp);
-    // Persist
-    try {
-      const px = parseInt(sidebar.style.width, 10);
-      if (px) localStorage.setItem(SIDEBAR_WIDTH_KEY, String(px));
-    } catch {}
-    // Map needs to recalc its viewport
-    if (map) google.maps.event.trigger(map, 'resize');
-  };
-
-  const onDown = (e) => {
-    dragging = true;
-    startX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
-    startWidth = sidebar.getBoundingClientRect().width;
-    handle.classList.add('dragging');
-    document.body.classList.add('resizing-sidebar');
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-    document.addEventListener('touchmove', onMove, { passive: false });
-    document.addEventListener('touchend', onUp);
-    e.preventDefault();
-  };
-
-  handle.addEventListener('mousedown', onDown);
-  handle.addEventListener('touchstart', onDown, { passive: false });
-
-  // Double-click handle resets to default 380px
-  handle.addEventListener('dblclick', () => {
-    sidebar.style.width = '380px';
-    try { localStorage.setItem(SIDEBAR_WIDTH_KEY, '380'); } catch {}
-    if (map) google.maps.event.trigger(map, 'resize');
-  });
-})();
 
 $('map-fit-btn').addEventListener('click', () => {
   if (!map) return;
