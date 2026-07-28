@@ -1,7 +1,7 @@
 # Dispatch Redesign — Torre de Control — Design
 
 **Date:** 2026-07-28
-**Status:** Revised R2 (advisor/codex: direction + all prior points settled; 4 residual data-honesty gaps closed) → delta re-gate (expected APPROVE) → phased build (each phase its own plan + codex-on-diff)
+**Status:** Revised R3 (advisor/codex: core fixes clean; propagated the delivery-risk label + snapshot degradation contract to every section) → delta re-gate (expected APPROVE) → phased build (each phase its own plan + codex-on-diff)
 **Surface:** `xpizza-dispatch/index.html` (git-CD from origin/main)
 **Type:** Information-architecture + visual redesign (UI/UX). Phase 1 is a **client-side IA/visual reorg with declared read-only subscription additions** (no writes, no money path); later phases add comms capabilities.
 
@@ -16,11 +16,11 @@ An industry benchmark (19 last-mile platforms) plus a source-level inventory of 
 **Goals**
 1. **Full visibility** — every existing capability legible on one board, nothing buried in a `⋯` menu or a collapsed sub-panel.
 2. **Exceptions-first** — a categorized priority queue of things-going-wrong, not a wall of orders.
-3. **New high-leverage capabilities** — in-app customer reply, in-app driver messaging, a lateness header, a per-order aging timer.
+3. **New high-leverage capabilities** — in-app customer reply, in-app driver messaging, a delivery-risk header, a per-order aging timer.
 4. **Billion-dollar craft** — the true dispatch palette, a monochrome line-icon system, glass/depth, and tasteful motion.
 
 **Success criteria**
-- A dispatcher can, at a glance, see: what needs attention, who's late, who's dark, what's unassigned, cash in the street, and every driver's state — without opening a menu.
+- A dispatcher can, at a glance, see: what needs attention, who's slipping / at risk, who's dark, what's unassigned, cash in the street, and every driver's state — without opening a menu.
 - No regression to any existing money path, subscription, or action.
 - The board reads as elegant and seamless, not busy.
 
@@ -87,7 +87,7 @@ Three columns under a topbar, over a coverage footer. Both side rails collapse.
 - **Alert registry, not a fixed 7-type list.** The backend writes more than the 7 well-known types — also `factura_*` alerts (which carry **no `type` field**) and payment/scheduled **sub-kinds** beyond the base set. A 7-only queue would silently bury real alerts — the opposite of the visibility goal. So the Torre is driven by an **alert registry**: known types map to a category + icon + severity; **anything unrecognized (incl. `factura_*` and new breach sub-kinds) falls into a generic "Otros / Revisar" bucket** so nothing is ever dropped.
 - Known categories map to existing signals: driver-dark (`driver_freshness_stale` — derived, see below), no-driver (`no_drivers_available`), takeover (`no_response_takeover` / `assignment_strand`), payment (`payment_hosted_stale_no_callback`, `payment_reconcile_breaches`, `payment_aged_refund_pending` + sub-kinds), fiscal (`factura_*`), delivery-risk (see next bullet). Reuses `dismissDispatcherAlert`.
 - **`driver_freshness_stale` is a derived state, not just a banner.** Today it renders no banner but drives `staleDriverUids` and the red GPS-dark driver rows. It stays **first-class** in the new IA; the move must preserve its existing effects — regression-test that dismiss, the chime, and the red-row rendering all survive (see §10).
-- **"Delivery risk / aging" header — not "lateness / late-by."** There is **no fixed baseline** to be "late" against: the live ETA is recomputed every refresh (`now + route + dwell`, post-pickup only, `driver-eta.js:16`), so "exceeding live ETA" collapses to `arrivalMs <= now` and drifts as the ETA refreshes. So Phase 1 surfaces **delivery-risk / aging**, built from two honest, client-only signals: (a) **static-threshold aging** — orders past X min since created without delivery; and (b) an optional **first-ETA snapshot** — when a driver goes `out_for_delivery`, snapshot the first ETA locally (client-side, no backend) and flag orders whose *later* ETA has **slipped materially past that first estimate** ("slipping vs first estimate"). **No "late-by" against a promise** — real promise-based lateness/on-time is Phase 1b (§5.1, §7).
+- **"Delivery risk / aging" header — not "lateness / late-by."** There is **no fixed baseline** to be "late" against: the live ETA is recomputed every refresh (`now + route + dwell`, post-pickup only, `driver-eta.js:16`), so "exceeding live ETA" collapses to `arrivalMs <= now` and drifts as the ETA refreshes. So Phase 1 surfaces **delivery-risk / aging**, built from two honest, client-only signals: (a) **static-threshold aging** — orders past X min since created without delivery; and (b) an optional **first-observed-ETA snapshot** — snapshot the **first ETA this dispatcher session observes** for an `out_for_delivery` order locally (client-side, no backend) and flag orders whose *later* ETA has **slipped materially past that first observed estimate** ("slipping vs first observed estimate"). **Graceful-degradation contract (behavioral, for the Phase-1 plan):** the snapshot is only the *first ETA this session saw* — a browser opened *after* the `out_for_delivery` transition never saw the true first ETA. So when **no baseline was observed this session, suppress the slipping comparison entirely** and fall back to **aging only** — never emit a false "slipping" flag. **No "late-by" against a promise** — real promise-based lateness/on-time is Phase 1b (§5.1, §7).
 - **"Tomar" is a local highlight only** — single-dispatcher operation, so no claim/assignee is written (resolved: no multiple dispatchers).
 
 ### 5.3 Sin asignar + rich order rows — *Phase 1*
@@ -100,7 +100,7 @@ Each order card surfaces, on its face (no click):
 ### 5.4 Live map — *Phase 1 (pins) + Phase 3 (motion polish)*
 - Existing glide pins (`driver-glide.js`, unchanged), customer pins, restaurant pin, off-shift last-location, fit + layers controls, legend.
 - Status color-coding by driver state; GPS-dark pin pulses red.
-- **ETA callout** as a glass panel (ETA · distance · late-by), from the Phase-1a ETA.
+- **ETA callout** as a glass panel (ETA · distance · *slipping vs first observed estimate*, when a baseline exists — never a promise-based "late-by"), from the Phase-1a ETA.
 - Phase 3 adds the glowing animated route + sonar as ambient polish (visual only; the underlying position is still the real glide).
 
 ### 5.5 Right rail — persistent driver roster + switchable detail — *Phase 1*
@@ -137,7 +137,7 @@ Each order card surfaces, on its face (no click):
 ## 7. Data & backend
 
 - **Phase 1 is client-side + read-only reads — NOT "no backend" absolutely.** It's an IA/visual layer over subscribed data, with these honest caveats:
-  - Client-side compute: aging timers (created/assigned/pickup/delivery timestamps), lateness aggregation (post-pickup ETA + static thresholds — *not* a promise metric), reading `driver_cash` for the cash bar.
+  - Client-side compute: aging timers (created/assigned/pickup/delivery timestamps), **delivery-risk aggregation** (static-threshold aging + the client-only first-observed-ETA snapshot with its no-baseline→aging-only fallback — *not* a promise metric), reading `driver_cash` for the cash bar.
   - **New read-only subscriptions must be declared per feature** (read-only, no writes, but backend surface area — not "nothing"): **scheduled-orders** for full Programados visibility (`subscribeToOrders` filters them out); optionally **`order_timelines`** for kitchen-phase aging; and, **only if the on-time "preview" is included, `order_predictions`** (model/version-labeled, display-only — respects the shadow boundary). Each is a decision at the Phase-1 plan: add the sub (full feature) or scope/drop it.
   - **On-time %** is deferred (no SLA/promise exists) — optional preview-only off `order_predictions` in the interim (with the declared sub above), real metric with predictor graduation (1b). The Phase-1 delivery-risk header uses only aging + the client-only first-ETA snapshot (§5.2), no new sub.
   - No money-path change.
@@ -148,7 +148,7 @@ Each order card surfaces, on its face (no click):
 
 | Phase | Scope | Backend? | Gate |
 |---|---|---|---|
-| **1 — Exceptions-first + full visibility** | Torre de control (alert-registry + fallback bucket), computable lateness header, rich order/driver rows + aging (subscribed-data baselines), surfaced driver call, cash bar, collapsible rails, Cobertura, visual system (icons/glass/depth). **On-time% deferred / preview-only.** | Client-side + possible **read-only** subs (scheduled-orders; optional `order_timelines`) — **no writes, no money path** | advisor + codex-on-diff |
+| **1 — Exceptions-first + full visibility** | Torre de control (alert-registry + fallback bucket), **delivery-risk header** (aging + first-observed-ETA snapshot), rich order/driver rows + aging (subscribed-data baselines), surfaced driver call, cash bar, collapsible rails, Cobertura, visual system (icons/glass/depth). **On-time% deferred; optional preview only.** | Client-side + declared **read-only** subs (scheduled-orders; optional `order_timelines`; optional `order_predictions` **if** preview included) — **no writes, no money path** | advisor + codex-on-diff |
 | **1b (fast-follow)** | Real SLA-based on-time% + lateness, tied to **predictor graduation** + a pre-pickup drive estimate | Depends on predictor graduation | advisor + codex |
 | **2 — Comms** | Customer in-app reply (**UltraMsg transport** + dedicated authenticated send fn + audit/delivery-state + **ban-risk guard**); in-app dispatcher→driver messaging (store + rules + callable + FCM + anti-spoof + both UIs) | Yes (Cloud Function, FCM, driver app) | advisor + codex (money-adjacent, **hard gate**) |
 | **3 — Palette + polish** | ⌘K command palette; animated route + sonar; motion finishing | Client-only | advisor + codex |
@@ -166,12 +166,12 @@ Phase 1 is the highest-leverage, lowest-risk chunk (the ⅔ "buried" fix, no mon
 - **No money-path regression.** Phase 1 must not alter `assignOrderToDriver`, `cancelOrderRemote`, `resolveReconciliation`, or the glide. Codex-on-diff every build (money or not — standing discipline), with the focus on correctness/stale-UI/XSS-in-new-chrome for the non-money phases.
 - **Don't drop existing behavior while reorganizing** — the **alert registry (incl. the `factura_*` / sub-kind fallback bucket)**, `driver_freshness_stale`'s derived effects (`staleDriverUids`, red GPS-dark rows, chime, dismiss), all dispatcher actions, scheduled orders, `#N`, delivered+search, reconciliation must remain reachable/functional in the new IA. Regression-test each.
 - **Comms (Phase 2)** is the risk-carrying phase: **UltraMsg ban-risk** (unsolicited/out-of-window sends), a proper dispatcher-send failure contract, driver-message spoofing/tamper, stuck-message states, and driver-app receive reliability. Gate it hard.
-- **`index.html` is a large shared hot file — Phase-1 extraction guard:** build **pure modules first** (Torre alert-registry/render, aging compute, lateness aggregation, conversation-thread assembly) with their own Node tests (per the `driver-glide.js`/`driver-eta.js` pattern), then land **one thin integration patch** into `index.html`. **No opportunistic rewrites** of untouched code, and **coordinate ownership with the parallel session** before editing the shared file.
+- **`index.html` is a large shared hot file — Phase-1 extraction guard:** build **pure modules first** (Torre alert-registry/render, aging compute, delivery-risk aggregation, conversation-thread assembly) with their own Node tests (per the `driver-glide.js`/`driver-eta.js` pattern), then land **one thin integration patch** into `index.html`. **No opportunistic rewrites** of untouched code, and **coordinate ownership with the parallel session** before editing the shared file.
 - **XSS:** all customer/driver message content and order fields rendered in new chrome must go through the existing `escapeHtml`.
 
 ## 11. Testing
 
-- Pure/extractable render + compute units (aging, lateness aggregation, conversation-thread assembly) as Node-testable modules where feasible, following the `driver-glide.test.js` pattern.
+- Pure/extractable render + compute units (aging, **delivery-risk aggregation** incl. the no-baseline→aging-only fallback, conversation-thread assembly) as Node-testable modules where feasible, following the `driver-glide.test.js` pattern.
 - Manual: verify every existing action still fires from its new location; verify collapse/focus states; verify `prefers-reduced-motion`; verify no console errors and no dropped subscription.
 - Phase 2: dispatcher-send success/failure surfacing (composer failure contract); UltraMsg ban-risk guard behavior (block/allow by conversation state); driver-app message receipt/reply; tamper/spoof attempts.
 
@@ -200,6 +200,14 @@ Phase 1 is the highest-leverage, lowest-risk chunk (the ⅔ "buried" fix, no mon
 - **WhatsApp chip scoped to real fields:** only `order_received_notified_at` / `order_received_send_unresolved_at` (a limited "Recibido: enviado/no-entregado"); no general automessage send-state exists. Full per-message state → Phase-2 thread store.
 - **Preview read path declared:** the on-time "estimado (preview)" is optional and, if included, requires a **declared read-only `order_predictions` subscription** (model/version-labeled, display-only); else excluded.
 - **Header/body contradiction fixed:** §Type now reads "client-side IA/visual reorg with declared read-only subscription additions," consistent with §7.
+
+→ Sent back for delta re-gate; expecting APPROVE, clearing the Phase 1 (+1b sequencing) plan.
+
+**R3 (2026-07-28) — propagated the R2 fixes into every section (core R2 fixes confirmed clean):**
+- **§5.4 map callout:** "late-by" → "slipping vs first observed estimate (when a baseline exists)".
+- **§7 / §8 / §10 / §11 / §1:** renamed "lateness aggregation / computable lateness header" → **"delivery-risk"** everywhere; success-criteria "who's late" → "who's slipping / at risk".
+- **§8 Phase-1 Backend cell:** added "optional `order_predictions` **if** preview included" (reconciled with the preview declaration).
+- **First-ETA snapshot scoped honestly (behavioral contract):** "first ETA **this dispatcher session** observes"; when **no baseline was observed** (browser opened after the `out_for_delivery` transition), **suppress the slipping comparison → aging only**, never a false "slipping" flag.
 
 → Sent back for delta re-gate; expecting APPROVE, clearing the Phase 1 (+1b sequencing) plan.
 
