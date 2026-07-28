@@ -104,6 +104,26 @@ const onStatus = async (db, orderId, after, now) => {
     assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'OX', order: await load('OX'), now: 1000 }), { reversed: true });
     assert.strictEqual(await bal('uidClamp', 'x_pizza'), 0); ok('reversal clamps balance to 0 (1 - 5 → 0, never negative)');
     assert.strictEqual(await life('uidClamp', 'x_pizza'), 5); ok('reversal leaves lifetime untouched (5)');
+
+    // 10 — [codex R2] TOCTOU: a deletion lands BETWEEN the pre-guard read and the post-commit re-check.
+    //      Simulated with a db.ref shim whose deleted_uids read is null on call #1 (pre-guard, so the credit
+    //      proceeds and the tx recreates the node) and tombstoned on call #2 (post-commit re-check → compensate).
+    //      Final state must have NO user_rewards/{uid}. Shared creditNode → covers BOTH earn and welcome.
+    const raceDbFor = (uid, tomb) => { let reads = 0;
+      const stagedGet = async () => { reads += 1; return { val: () => (reads >= 2 ? tomb : null) }; };
+      const shim = { ref: (path) => (path === `deleted_uids/${uid}`) ? { get: stagedGet } : db.ref(path), _reads: () => reads };
+      return shim;
+    };
+    // earn racing a deletion
+    await db.ref('orders/ORACE').set({ customer_uid: 'uidRaceE', restaurant_id: 'x_pizza', items: [{ qty: 2 }] });
+    const rdE = raceDbFor('uidRaceE', 1700000000000);
+    const re = await creditEarnForOrder(rdE, { orderId: 'ORACE', order: await load('ORACE'), now: 1100 });
+    assert.strictEqual(re.credited, false); ok('earn racing a deletion → reported NOT credited');
+    assert.strictEqual(await node('uidRaceE'), null); assert.strictEqual(rdE._reads(), 2); ok('TOCTOU earn: post-commit re-check purged the recreated zombie node (both reads ran)');
+    // welcome racing a deletion (same creditNode compensation)
+    const rdW = raceDbFor('uidRaceW', 1700000000000);
+    const rw = await creditWelcome(rdW, { uid: 'uidRaceW', phoneHash: 'phRaceW', restaurantId: 'la_musa', now: 1200 });
+    assert.strictEqual(rw.credited, false); assert.strictEqual(await node('uidRaceW'), null); ok('TOCTOU welcome: recreated zombie node purged by the post-commit re-check');
   });
 
   await env.cleanup();

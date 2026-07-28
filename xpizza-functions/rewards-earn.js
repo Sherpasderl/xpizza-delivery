@@ -20,6 +20,12 @@ async function isDeleted(db, uid) {
 // Atomic CREDIT (positive delta: earn / welcome) on the per-brand node, idempotent on `ledgerId`.
 // Applies balance + lifetime + ledger entry in ONE transaction. Returns { applied } — true only when THIS
 // call landed the entry (a duplicate/idempotent retry returns false). Creates the node on first credit.
+//
+// TOCTOU close (codex R2): the caller's pre-guard reads deleted_uids BEFORE this tx, so a deletion can land
+// in the gap and this tx would recreate a just-purged node. We RE-CHECK deleted_uids AFTER committing and
+// compensate — null user_rewards/{uid} — if it's now tombstoned. Deletion writes the tombstone and the
+// user_rewards/{uid} null ATOMICALLY (account-lib's single update map), so this read either sees the
+// tombstone (→ we purge our zombie) or the deletion's own null removes the node. No residual window.
 async function creditNode(db, uid, rid, ledgerId, delta, entry) {
   const ref = db.ref(`user_rewards/${uid}/${rid}`);
   const tx = await ref.transaction((cur) => {
@@ -29,6 +35,10 @@ async function creditNode(db, uid, rid, ledgerId, delta, entry) {
     next.lifetime = (Number(cur.lifetime) || 0) + (delta > 0 ? delta : 0);         // lifetime = cumulative EARNED only
     return next;
   });
+  if (tx.committed && await isDeleted(db, uid)) {                                  // a deletion raced in around our write
+    await db.ref(`user_rewards/${uid}`).set(null);                                 // compensate: purge the recreated zombie node
+    return { applied: false };
+  }
   return { applied: !!tx.committed };
 }
 
