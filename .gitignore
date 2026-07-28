@@ -67,3 +67,6 @@ out/
 # Local Netlify folder
 .netlify
 xpizza-orders/images.bak-*
+
+# Visual-companion brainstorm mockups (local only)
+.superpowers/
