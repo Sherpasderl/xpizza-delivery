@@ -14,7 +14,7 @@
 
 1. **Zero writes, no money-path change.** `assignOrderToDriver`, `cancelOrderRemote`, `resolveReconciliation`, and the glide (`driver-glide.js`) stay untouched. Phase 1 only reads + renders.
 2. **Shadow boundary inviolable.** Any `order_predictions` read is display-only, model/version-labeled, never written back. (Only relevant if the optional on-time preview is included — it is **not** in this plan's tasks; see §1b.)
-3. **Every read-only subscription explicitly declared.** New reads (scheduled-orders; optional `order_timelines`; optional `order_predictions`) must be added as named, read-only subscriptions — no hand-waved reads. This plan adds **no new subscription** unless a task explicitly declares one (Task 8 uses only already-subscribed `orders`/`tasks`/`etaCache` data).
+3. **Every read-only subscription explicitly declared.** New reads (scheduled-orders; optional `order_timelines`; optional `order_predictions`) must be added as named, read-only subscriptions — no hand-waved reads. In this plan: **Task 9 declares a read-only `subscribeToDriverCash`** (`driver_cash`, no writes) for the cash bar; Task 8 uses only already-subscribed `orders`/`tasks`/`etaCache` data; no other new subscription is added.
 4. **Extraction guard.** Pure modules + Node tests FIRST (Part A), then ONE thin `index.html` integration patch (Part B). No opportunistic rewrites of untouched code.
 5. **Coordinate `index.html` ownership** with the Rewards B1 session before starting Part B — it is the shared hot file. Part A touches only new files and is safe to build in parallel.
 6. **No dropped behavior.** Regression-preserve: the alert set + the `factura_*`/unknown fallback bucket, `driver_freshness_stale`'s derived effects (`staleDriverUids`, red GPS-dark rows, the per-episode chime, dismiss), all dispatcher actions, scheduled orders, `#N`, delivered+search, reconciliation. Route ALL rendered order/message content through the existing `escapeHtml` (`index.html:3994`).
@@ -42,7 +42,7 @@ Expected output ends with `N passed`.
 - `dispatch-aging.test.js`
 - `dispatch-eta-snapshot.js` — `createEtaSnapshotStore()` factory (session-scoped first-observed-ETA baseline per order). Pure.
 - `dispatch-eta-snapshot.test.js`
-- `dispatch-delivery-risk.js` — `deliveryRisk(...)` combining aging + snapshot slippage with the no-baseline→aging-only fallback. Pure.
+- `dispatch-delivery-risk.js` — `deliveryRisk(...)` returning `{ band, level, slipMs }` (aging + snapshot slippage, no-baseline→aging-only). Pure. **Imports `agingBand` from `dispatch-aging.js`** (so build Task 2 before Task 4) — same band function drives both the row edge and the header count.
 - `dispatch-delivery-risk.test.js`
 - `dispatch-comms-thread.js` — `assembleThread(...)` read-only ordering of inbound messages + automessage events (display-only; no send — send is Phase 2). Pure.
 - `dispatch-comms-thread.test.js`
@@ -50,7 +50,7 @@ Expected output ends with `N passed`.
 **Modified file (Part B — one coordinated patch):**
 - `xpizza-dispatch/index.html` — import the modules (`?v=1`), add the icon sprite + visual-system CSS (ported from the reviewed mockup), swap the imperative alert if-chain for a registry-driven Torre render, add aging/delivery-risk to order rows, rebuild the right rail (persistent roster + surfaced call + cash bar + switchable tabs), add collapsible rails + Cobertura, and a read-only Comms inbound thread.
 
-**Visual source of truth for Part B markup/CSS:** the gate-reviewed mockup `.superpowers/brainstorm/*/content/board-v6.html` (full "v6" — true palette, glass depth, line-icon sprite, pastel action icons). Part B ports its markup/CSS; it is a real artifact, not a placeholder.
+**Visual source of truth for Part B markup/CSS:** the gate-reviewed mockup `docs/superpowers/mockups/dispatch-board-v6.html` (full "v6" — true palette, glass depth, line-icon sprite, pastel action icons). Part B ports its markup/CSS; it is a real artifact, not a placeholder.
 
 ---
 
@@ -69,7 +69,7 @@ Expected output ends with `N passed`.
   - `order`: numeric sort key (red=0, amber=1, neutral=2) for "most-severe-first"
   - `iconId`: sprite id (`'i-signaloff' | 'i-userx' | 'i-clock' | 'i-phoneoff' | 'i-card' | 'i-alert'`)
   - `known`: boolean (false → fell into the fallback bucket)
-- `sortAlerts(alerts)` → new array sorted most-severe-first (stable).
+- `sortAlertEntries(alertsObj)` → array of `{ id, alert, category, severity, iconId, known }` sorted most-severe-first (stable). **`alertsObj` is the keyed RTDB object** (`{ alertId: alert }`) exactly as delivered by `subscribeToDispatcherAlerts` (`index.html:2168` — the code uses `Object.keys/values`, not an array). The `id` is preserved so the Torre row can keep the existing dismiss wiring (`dismissDispatcherAlert(id)`, `index.html:2339`).
 
 **Registry (must reproduce today's known types — `index.html:2239–2321`):**
 
@@ -90,7 +90,7 @@ Expected output ends with `N passed`.
 ```js
 // xpizza-dispatch/dispatch-alerts.test.js
 import assert from 'node:assert';
-import { classifyAlert, sortAlerts } from './dispatch-alerts.js';
+import { classifyAlert, sortAlertEntries } from './dispatch-alerts.js';
 
 let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 
@@ -123,16 +123,17 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   assert.strictEqual(fac.category, 'fiscal'); assert.strictEqual(fac.known, false);
   ok('unknown / no-type / factura_* → surfaced in fallback bucket');
 }
-// sort is most-severe-first, stable within severity
+// keyed RTDB object → sorted entries, id preserved, most-severe-first
 {
-  const sorted = sortAlerts([
-    { type: 'payment_reconcile_breaches' },   // neutral
-    { type: 'no_drivers_available' },          // red
-    { type: 'assignment_strand' },             // amber
-  ]);
-  assert.deepStrictEqual(sorted.map(a => a.type),
-    ['no_drivers_available', 'assignment_strand', 'payment_reconcile_breaches']);
-  ok('sortAlerts: red → amber → neutral');
+  const entries = sortAlertEntries({
+    a1: { type: 'payment_reconcile_breaches' },  // neutral
+    a2: { type: 'no_drivers_available' },         // red
+    a3: { type: 'assignment_strand' },            // amber
+  });
+  assert.deepStrictEqual(entries.map(e => e.id), ['a2', 'a3', 'a1']);
+  assert.strictEqual(entries[0].alert.type, 'no_drivers_available');
+  assert.strictEqual(entries[0].category, 'no-driver');
+  ok('sortAlertEntries: keyed obj → severity-sorted, id preserved');
 }
 
 console.log(`\n${pass} passed`);
@@ -175,11 +176,15 @@ export function classifyAlert(alert) {
   return { category, severity: 'amber', order: SEV_ORDER.amber, iconId: 'i-alert', known: false };
 }
 
-export function sortAlerts(alerts) {
-  return alerts
-    .map((a, i) => ({ a, i, order: classifyAlert(a).order }))
-    .sort((x, y) => x.order - y.order || x.i - y.i)   // stable within severity
-    .map((x) => x.a);
+// Operates on the keyed RTDB object; preserves each alert's id (needed for dismiss).
+export function sortAlertEntries(alertsObj) {
+  return Object.entries(alertsObj || {})
+    .map(([id, alert], i) => {
+      const c = classifyAlert(alert);
+      return { id, alert, category: c.category, severity: c.severity, iconId: c.iconId, known: c.known, _o: c.order, _i: i };
+    })
+    .sort((x, y) => x._o - y._o || x._i - y._i)   // stable within severity
+    .map(({ _o, _i, ...rest }) => rest);
 }
 ```
 
@@ -399,10 +404,12 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Test: `xpizza-dispatch/dispatch-delivery-risk.test.js`
 
 **Interface:**
-- `deliveryRisk({ agingSeconds, agingThresholds = { amber: 300, red: 600 }, baselineArrivalMs = null, currentArrivalMs = null, slipThresholdMs = 240000 })` → `{ level, slipMs }`
-  - `level`: `'ok' | 'aging' | 'slipping'`
-  - **No-baseline fallback (behavioral contract):** if `baselineArrivalMs` is `null` OR `currentArrivalMs` is `null`, the slipping comparison is **suppressed** — `level` is aging-only (`'aging'` iff `agingSeconds >= agingThresholds.red`, else `'ok'`), and `slipMs` is `null`.
-  - With both present: `slipMs = currentArrivalMs - baselineArrivalMs`; `level = 'slipping'` iff `slipMs >= slipThresholdMs`; else falls back to the aging rule above.
+- `deliveryRisk({ agingSeconds, agingThresholds = { amber: 300, red: 600 }, baselineArrivalMs = null, currentArrivalMs = null, slipThresholdMs = 240000 })` → `{ band, level, slipMs }`
+  - `band`: `'green' | 'amber' | 'red'` — computed with the SAME `agingBand` used on the rows (imported from `dispatch-aging.js`), so the row edge color and this value can never diverge. **Drives the row edge.**
+  - `level`: `'ok' | 'aging' | 'slipping'` — **drives the Torre header count** (count rows where `level !== 'ok'`).
+  - **Explicit contract (removes the row/header divergence):** an **amber band alone is a visual heads-up and does NOT count** (`level:'ok'`). Only **red-band aging** (`level:'aging'`) and a **slip** (`level:'slipping'`) count in the header.
+  - **No-baseline fallback (behavioral contract):** if `baselineArrivalMs` is `null` OR `currentArrivalMs` is `null`, the slipping comparison is **suppressed** — `level` is aging-only (`'aging'` iff `band === 'red'`, else `'ok'`), and `slipMs` is `null`.
+  - With both present: `slipMs = currentArrivalMs - baselineArrivalMs`; `level = 'slipping'` iff `slipMs >= slipThresholdMs`; else falls back to the aging rule above. `band` is always returned regardless of `level`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -413,30 +420,36 @@ import { deliveryRisk } from './dispatch-delivery-risk.js';
 
 let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 
-// no baseline → aging only, never "slipping"
+// no baseline + red band → aging only, never "slipping"
 {
   const r = deliveryRisk({ agingSeconds: 700, baselineArrivalMs: null, currentArrivalMs: 999999 });
+  assert.strictEqual(r.band, 'red');
   assert.strictEqual(r.level, 'aging');   // red-aging, but NOT slipping
   assert.strictEqual(r.slipMs, null);
-  ok('no baseline → aging only, slip suppressed');
+  ok('no baseline + red band → aging, slip suppressed');
 }
+// amber band alone → visual heads-up but does NOT count (level ok)
 {
-  const r = deliveryRisk({ agingSeconds: 120, baselineArrivalMs: null, currentArrivalMs: null });
-  assert.strictEqual(r.level, 'ok'); assert.strictEqual(r.slipMs, null);
-  ok('no baseline + young → ok');
+  const r = deliveryRisk({ agingSeconds: 400, baselineArrivalMs: null, currentArrivalMs: null });
+  assert.strictEqual(r.band, 'amber');
+  assert.strictEqual(r.level, 'ok');
+  assert.strictEqual(r.slipMs, null);
+  ok('amber band alone → level ok (row shows amber, header does not count)');
 }
-// baseline present, slipped past threshold → slipping
+// baseline present, slipped past threshold → slipping (band still reflects aging)
 {
   const base = 1_000_000, cur = base + 5 * 60 * 1000;   // slipped 5 min
   const r = deliveryRisk({ agingSeconds: 60, baselineArrivalMs: base, currentArrivalMs: cur });
+  assert.strictEqual(r.band, 'green');
   assert.strictEqual(r.level, 'slipping');
   assert.strictEqual(r.slipMs, 5 * 60 * 1000);
-  ok('baseline + 5min slip → slipping');
+  ok('baseline + 5min slip → slipping (band=green, level=slipping)');
 }
-// baseline present, within tolerance → aging rule
+// baseline present, within tolerance + old → aging rule
 {
   const base = 1_000_000, cur = base + 60 * 1000;       // only 1 min
   const r = deliveryRisk({ agingSeconds: 700, baselineArrivalMs: base, currentArrivalMs: cur });
+  assert.strictEqual(r.band, 'red');
   assert.strictEqual(r.level, 'aging');
   ok('baseline + small slip + old → aging');
 }
@@ -454,10 +467,14 @@ Expected: FAIL — module not found.
 ```js
 // xpizza-dispatch/dispatch-delivery-risk.js
 /**
- * Pure delivery-risk classifier (dispatch Phase 1). Combines static aging with a
- * "slipping vs first observed estimate" signal. NEVER a promise-based "late-by":
- * with no observed baseline, the slip comparison is suppressed and only aging is used.
+ * Pure delivery-risk classifier (dispatch Phase 1). Returns BOTH the aging `band`
+ * (drives the row edge) and the risk `level` (drives the Torre header count), using
+ * the SAME agingBand as the rows so the two can never diverge. Amber band alone is a
+ * heads-up (level 'ok'); only red-aging and slip count. NEVER a promise-based "late-by":
+ * with no observed baseline the slip comparison is suppressed and only aging is used.
  */
+import { agingBand } from './dispatch-aging.js';
+
 export function deliveryRisk({
   agingSeconds,
   agingThresholds = { amber: 300, red: 600 },
@@ -465,14 +482,15 @@ export function deliveryRisk({
   currentArrivalMs = null,
   slipThresholdMs = 240000,   // 4 min slip vs first observed
 }) {
-  const agingLevel = agingSeconds >= agingThresholds.red ? 'aging' : 'ok';
+  const band = agingBand(agingSeconds, agingThresholds);
+  const agingLevel = band === 'red' ? 'aging' : 'ok';   // amber alone does NOT count
   // No baseline (browser opened mid-delivery / no ETA observed yet) → aging only.
   if (baselineArrivalMs == null || currentArrivalMs == null) {
-    return { level: agingLevel, slipMs: null };
+    return { band, level: agingLevel, slipMs: null };
   }
   const slipMs = currentArrivalMs - baselineArrivalMs;
-  if (slipMs >= slipThresholdMs) return { level: 'slipping', slipMs };
-  return { level: agingLevel, slipMs };
+  if (slipMs >= slipThresholdMs) return { band, level: 'slipping', slipMs };
+  return { band, level: agingLevel, slipMs };
 }
 ```
 
@@ -502,9 +520,9 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 **Interface:**
 - `assembleThread({ inbound = [], autoEvents = [] })` → array of `{ kind, text, ts }` sorted ascending by `ts`.
-  - `inbound` items: `{ body, received_at }` → `{ kind:'in', text: body, ts: received_at }`.
-  - `autoEvents` items: `{ label, at }` → `{ kind:'auto', text: label, ts: at }`.
-  - Items with a non-finite `ts` are dropped (can't be ordered). No HTML here — escaping happens at render (Guardrail 6).
+  - `inbound` items follow the **real `incoming_messages` shape** (confirmed in `xpizza-functions/index.js`): **chat** messages carry `received_at` = `ServerValue.TIMESTAMP` (epoch **ms**, `index.js:3487`); **non-chat/media** messages carry `time` (epoch **seconds**, `index.js:3382`) and **no `received_at`**, with `body` possibly `null`. Derive `ts = received_at` if finite, else `time * 1000` if finite, else DROP. `text = body ?? '(media)'`. → `{ kind:'in', text, ts }`. **This prevents silently dropping non-chat inbound messages** (the naive `received_at`-only version would drop them).
+  - `autoEvents` items: `{ label, at }` → `{ kind:'auto', text: label, ts: at }` (drop non-finite `at`).
+  - No HTML here — escaping happens at render (Guardrail 6).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -517,19 +535,23 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 
 {
   const t = assembleThread({
-    inbound: [{ body: '¿ya viene?', received_at: 200 }],
+    inbound: [
+      { body: '¿ya viene?', received_at: 200 },       // chat, ms
+      { type: 'image', body: null, time: 1 },          // non-chat: time=1s → 1000ms, body null
+    ],
     autoEvents: [{ label: 'Pedido recibido', at: 100 }],
   });
   assert.deepStrictEqual(t, [
     { kind: 'auto', text: 'Pedido recibido', ts: 100 },
     { kind: 'in', text: '¿ya viene?', ts: 200 },
+    { kind: 'in', text: '(media)', ts: 1000 },         // time*1000, media fallback text
   ]);
-  ok('merges + sorts inbound and auto by ts');
+  ok('merges chat(received_at) + non-chat(time*1000) + auto; media fallback');
 }
 {
-  const t = assembleThread({ inbound: [{ body: 'x', received_at: NaN }], autoEvents: [] });
+  const t = assembleThread({ inbound: [{ body: 'x' }], autoEvents: [] });  // no received_at, no time
   assert.deepStrictEqual(t, []);
-  ok('drops items with non-finite ts');
+  ok('drops inbound with no orderable timestamp');
 }
 {
   assert.deepStrictEqual(assembleThread({}), []);
@@ -556,7 +578,12 @@ Expected: FAIL — module not found.
 export function assembleThread({ inbound = [], autoEvents = [] } = {}) {
   const items = [];
   for (const m of inbound) {
-    if (Number.isFinite(m.received_at)) items.push({ kind: 'in', text: m.body, ts: m.received_at });
+    // chat → received_at (ms); non-chat/media → time (seconds). Never silently drop non-chat.
+    const ts = Number.isFinite(m.received_at) ? m.received_at
+             : Number.isFinite(m.time) ? m.time * 1000
+             : null;
+    if (ts == null) continue;
+    items.push({ kind: 'in', text: m.body ?? '(media)', ts });
   }
   for (const e of autoEvents) {
     if (Number.isFinite(e.at)) items.push({ kind: 'auto', text: e.label, ts: e.at });
@@ -587,7 +614,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 **How to verify Part B (no Node harness — `index.html` is not unit-tested):** load the dispatch board locally, and for each task check the "Expected" acceptance notes with the browser console open (zero errors) and confirm the Guardrail-6 regression list still works.
 
-**Markup/CSS source:** port from `.superpowers/brainstorm/*/content/board-v6.html` (the gate-reviewed v6). Keep the true palette tokens from `index.html:18–35`; add depth/glass as gradient+shadow layers on top (do not change base token values).
+**Markup/CSS source:** port from `docs/superpowers/mockups/dispatch-board-v6.html` (the gate-reviewed v6). Keep the true palette tokens from `index.html:18–35`; add depth/glass as gradient+shadow layers on top (do not change base token values).
 
 ## Task 6: Imports + icon sprite + visual-system CSS
 
@@ -596,7 +623,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - [ ] **Step 1: Add module imports** after `index.html:1880` (the `driver-eta.js` import), each with `?v=1`:
 
 ```js
-import { classifyAlert, sortAlerts } from './dispatch-alerts.js?v=1';
+import { classifyAlert, sortAlertEntries } from './dispatch-alerts.js?v=1';
 import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js?v=1';
 import { createEtaSnapshotStore } from './dispatch-eta-snapshot.js?v=1';
 import { deliveryRisk } from './dispatch-delivery-risk.js?v=1';
@@ -604,9 +631,9 @@ import { assembleThread } from './dispatch-comms-thread.js?v=1';
 const etaSnapshots = createEtaSnapshotStore();
 ```
 
-- [ ] **Step 2: Add the SVG icon sprite** — copy the `<svg ...><defs>…</defs></svg>` sprite block from `board-v6.html` (symbols `i-menu, i-panel, i-search, i-chevdown, i-close, i-phone, i-message, i-send, i-more, i-maximize, i-layers, i-signaloff, i-userx, i-clock, i-phoneoff, i-card`) into the top of `<body>`. **Add one more symbol `i-alert`** (fallback-bucket icon), e.g. Feather `alert-triangle`. **Critical:** set `fill:none;stroke:currentColor;stroke-width:2` on each `<symbol>` (or the rendered `.ic` svg) — NOT on a wrapping `<g>` in `<defs>` (that does not propagate through `<use>` and renders black-filled). Add `.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}` to the stylesheet.
+- [ ] **Step 2: Add the SVG icon sprite** — copy the `<svg ...><defs>…</defs></svg>` sprite block from `docs/superpowers/mockups/dispatch-board-v6.html` (symbols `i-menu, i-panel, i-search, i-chevdown, i-close, i-phone, i-message, i-send, i-more, i-maximize, i-layers, i-signaloff, i-userx, i-clock, i-phoneoff, i-card`) into the top of `<body>`. **Add one more symbol `i-alert`** (fallback-bucket icon), e.g. Feather `alert-triangle`. **Critical:** set `fill:none;stroke:currentColor;stroke-width:2` on each `<symbol>` (or the rendered `.ic` svg) — NOT on a wrapping `<g>` in `<defs>` (that does not propagate through `<use>` and renders black-filled). Add `.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}` to the stylesheet.
 
-- [ ] **Step 3: Add the visual-system CSS** — port the depth/glass/pastel classes from `board-v6.html` (card elevation gradients + shadow, glass `backdrop-filter` panels, pastel `.da.call/.msg/.more`, motion keyframes) under a `@media (prefers-reduced-motion: reduce){*{animation:none!important}}` guard. Reuse existing `:root` tokens; do not redefine them.
+- [ ] **Step 3: Add the visual-system CSS** — port the depth/glass/pastel classes from `docs/superpowers/mockups/dispatch-board-v6.html` (card elevation gradients + shadow, glass `backdrop-filter` panels, pastel `.da.call/.msg/.more`, motion keyframes) under a `@media (prefers-reduced-motion: reduce){*{animation:none!important}}` guard. Reuse existing `:root` tokens; do not redefine them.
 
 - [ ] **Step 4: Verify** — reload; console shows no module-load errors; a temporary `<svg class="ic"><use href="#i-signaloff"/></svg>` renders as a visible line icon (not a black blob). Remove the temporary probe.
 
@@ -623,7 +650,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 **Files:** Modify `xpizza-dispatch/index.html` — `renderDispatcherAlerts` (`2227`), keep `staleDriverUids` computation (`2186–2191`) UNCHANGED.
 
-- [ ] **Step 1:** Replace the imperative `if (a.type === …)` chain in `renderDispatcherAlerts` with a registry-driven render: `sortAlerts(alerts)` → for each, `const c = classifyAlert(a)` → render an `.ex` row (icon `#${c.iconId}`, severity class from `c.severity`, title/detail from the alert fields, `escapeHtml` on all text) into the Torre list, grouping the `!c.known` alerts under an "Otros / Revisar" bucket header. Port the `.ex` markup/CSS from `board-v6.html`.
+- [ ] **Step 1:** Replace the imperative `if (a.type === …)` chain in `renderDispatcherAlerts(alerts)` with a registry-driven render. `alerts` is the keyed RTDB object — iterate `for (const e of sortAlertEntries(alerts))` and render an `.ex` row per entry: icon `#${e.iconId}`, severity class from `e.severity`, title/detail from `e.alert` fields (all through `escapeHtml`), and a dismiss button carrying `data-dismiss-id="${e.id}"` so the existing dismiss wiring (`index.html:2339`, `dismissDispatcherAlert(id)`) still fires. Group `!e.known` entries under an "Otros / Revisar" bucket header. Port the `.ex` markup/CSS from `docs/superpowers/mockups/dispatch-board-v6.html`.
 - [ ] **Step 2 (Guardrail 6 — critical):** Preserve `driver_freshness_stale`'s derived effects. Leave lines `2186–2191` (build `staleDriverUids`) and the per-episode chime intact. In the new render, `driver_freshness_stale` now ALSO appears as a red Torre row (it previously rendered no banner) — verify `staleDriverUids`, the red GPS-dark driver rows (`gpsDark`, `3048`), the chime, and `dismissDispatcherAlert` all still fire.
 - [ ] **Step 3: Verify** — inject a fake `factura_cai_low` (no registry entry) and confirm it appears in the "Otros / Revisar" bucket (not dropped); a `driver_freshness_stale` alert shows a red row AND still reddens the driver's row + fires the chime once.
 - [ ] **Step 4: Commit**
@@ -639,12 +666,40 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 **Files:** Modify `xpizza-dispatch/index.html` — order-row renderers (`renderUnassignedSection`/`renderTaskRow` `3128`), ETA cache (`etaCache`, set at `3007`).
 
-- [ ] **Step 1:** Where `etaCache[orderId]` is set (`3007`), also call `etaSnapshots.observe(orderId, arrivalMs)` so the first observed ETA is captured. On order delivery/removal, call `etaSnapshots.clear(orderId)`.
-- [ ] **Step 2:** In the order-row render, compute `const secs = agingSeconds(agingBaselineMs(order), Date.now())`, `const band = agingBand(secs)`, and render `formatAging(secs)` with the band color + a card-edge band class. Add the `data-tick` live-updater (mirroring the mockup) so timers count up.
-- [ ] **Step 3:** Compute `const risk = deliveryRisk({ agingSeconds: secs, baselineArrivalMs: etaSnapshots.baseline(order.order_id), currentArrivalMs: etaCache[order.order_id]?.arrivalMs ?? null })`. Render a "slipping vs primer estimado" indicator ONLY when `risk.level === 'slipping'`; otherwise show aging only. **Never** render a promise-based "late-by."
-- [ ] **Step 4:** Feed the Torre delivery-risk header from the same `risk` results (count of `aging`+`slipping`). No new subscription — uses `orders`/`tasks`/`etaCache` already in memory.
-- [ ] **Step 5: Verify** — an order with no observed ETA shows aging only (no "slipping"); after the session observes an ETA and a later ETA slips ≥4 min, the row flags "slipping vs primer estimado."
-- [ ] **Step 6: Commit**
+- [ ] **Step 1 (observe — extract the local):** at `index.html:3007`, `arrivalMs` is currently computed *inline inside the object literal*, so it is not a local variable. Extract it first, then observe:
+
+```js
+const arrivalMs = projectArrival(t, travelSec, S_CUSTOMER_SEC);
+etaCache[orderId] = { arrivalMs, computedAt: t, driverLat: dLat, driverLng: dLng };
+etaSnapshots.observe(orderId, arrivalMs);   // first-observed-ETA baseline
+renderDriversSection();
+```
+
+- [ ] **Step 2 (clear — anchor to the delete branch):** at `index.html:~2989`, the not-eligible branch does `delete etaCache[o.order_id]; continue;`. Add the snapshot cleanup right after the delete so a delivered/removed order drops its baseline:
+
+```js
+delete etaCache[o.order_id];
+etaSnapshots.clear(o.order_id);
+continue;
+```
+
+- [ ] **Step 3:** In the order-row render, compute `const secs = agingSeconds(agingBaselineMs(order), Date.now())` and render `formatAging(secs)`. Add the `data-tick` live-updater (mirroring the mockup) so timers count up.
+- [ ] **Step 4:** Compute risk once and drive BOTH the row edge and the header from it (they cannot diverge):
+
+```js
+const risk = deliveryRisk({
+  agingSeconds: secs,
+  baselineArrivalMs: etaSnapshots.baseline(order.order_id),
+  currentArrivalMs: etaCache[order.order_id]?.arrivalMs ?? null,
+});
+// row edge color = risk.band (green|amber|red)
+// show "slipping vs primer estimado" ONLY when risk.level === 'slipping'; else aging only.
+// NEVER a promise-based "late-by".
+```
+
+- [ ] **Step 5:** Feed the Torre delivery-risk header count from the same `risk` per row: `count = rows.filter(r => r.level !== 'ok').length` (i.e. `aging` + `slipping`; an amber band alone is `level:'ok'` and correctly does NOT count — see the `deliveryRisk` contract). No new subscription — uses `orders`/`tasks`/`etaCache` already in memory.
+- [ ] **Step 6: Verify** — an order with no observed ETA shows aging only (no "slipping"); an amber-band order shows the amber edge but is NOT in the header count; a red-band order IS counted; after the session observes an ETA and a later ETA slips ≥4 min, the row flags "slipping vs primer estimado" and IS counted.
+- [ ] **Step 7: Commit**
 
 ```bash
 git add xpizza-dispatch/index.html
@@ -657,7 +712,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 **Files:** Modify `xpizza-dispatch/index.html` — `renderDriversSection` (`2862`) / `renderDriverNode` (`3039`), sidebar structure.
 
-- [ ] **Step 1:** Restructure the right rail per §5.5: a compact **Cash/cuadre bar** (read `driver_cash` — declare it as a read-only subscription if not already subscribed; **no writes**) + the **always-visible driver roster** + a switchable tab region (Pedidos/Programados/Comms/Caja). Port markup/CSS from `board-v6.html`.
+- [ ] **Step 1 (cash bar — fully specified, grounded in the rules):** Restructure the right rail per §5.5: a compact **Cash/cuadre bar** + the **always-visible driver roster** + a switchable tab region (Pedidos/Programados/Comms/Caja). Port markup/CSS from `docs/superpowers/mockups/dispatch-board-v6.html`.
+  - **New read-only subscription (declare it):** add `subscribeToDriverCash(cb)` to `xpizza-dispatch/xpizza-delivery.js`, mirroring the existing `subscribeTo*` helpers — `onValue(ref(db, 'driver_cash'), snap => cb(snap.val() || {}))`. Read-only, **no writes**.
+  - **State shape (from `database.rules.json:113`, dispatcher-readable):** `driver_cash/{driverId}/{shiftId}/cuadre/{ cash_owed:number, cash_order_count:number, closed_at:number }`. These are **CLOSED cuadre records only** — the rules define no other child under a shift.
+  - **Aggregation (honest, grounded):** "Cuadre hoy" = across every `cuadre` whose `closed_at` falls on today (America/Tegucigalpa), `sum(cash_owed)` and `sum(cash_order_count)`. Render `Cuadre hoy: L{total} · {count} pedidos`.
+  - **Scope note (no guessing):** an **open "efectivo en calle" (un-settled) figure is NOT derivable from `driver_cash`** — only closed cuadres live there. So the Phase-1 cash bar shows **settled cuadre totals only**; the mockup's live "Efectivo en calle (turno)" number is **deferred** until its real source (active cash orders) is defined in a follow-up. Do not fabricate it from `driver_cash`.
 - [ ] **Step 2:** Surface the existing driver actions on the card face as pastel line-icon buttons: **Llamar** (`tel:${d.phone}`, mint `.da.call` `#i-phone`) — reuse the exact existing `tel:` behavior (`2892`); **Mensaje in-app** (periwinkle `.da.msg` `#i-message`) — Phase-1 stub that opens the read-only Comms thread (send is Phase 2); **`⋯`** (`.da.more` `#i-more`) — the existing menu (last location / reassign / force off-shift). Do not change the underlying actions.
 - [ ] **Step 3:** Keep the GPS-dark red row (`gpsDark`) exactly as-is.
 - [ ] **Step 4: Verify** — roster always visible; Llamar still dials; ⋯ still reassigns / forces off-shift; switching tabs does not hide the roster.
@@ -674,7 +733,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 **Files:** Modify `xpizza-dispatch/index.html`
 
-- [ ] **Step 1:** Add the `☰` (left rail) and `⇥` (right rail) toggles + the CSS grid-column transition (port the `tog()` helper + `.app.left-open/.right-open` classes from `board-v6.html`). When the left rail is collapsed, show the exceptions-count dot badge on `☰`.
+- [ ] **Step 1:** Add the `☰` (left rail) and `⇥` (right rail) toggles + the CSS grid-column transition (port the `tog()` helper + `.app.left-open/.right-open` classes from `docs/superpowers/mockups/dispatch-board-v6.html`). When the left rail is collapsed, show the exceptions-count dot badge on `☰`.
 - [ ] **Step 2:** Add the collapsible **Cobertura de capacidades** footer drawer (default collapsed).
 - [ ] **Step 3: Verify** — toggles collapse/expand each rail smoothly; map fills the freed space; the badge appears on `☰` when the left rail is closed with pending exceptions; no layout break.
 - [ ] **Step 4: Commit**
@@ -690,7 +749,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 **Files:** Modify `xpizza-dispatch/index.html` — Comms tab, using the existing `incoming_messages` subscription (`2391`).
 
-- [ ] **Step 1:** In the Comms tab, for a selected customer, build `assembleThread({ inbound: <their incoming_messages>, autoEvents: [{label:'Recibido', at: order.order_received_notified_at}] })` and render the ordered items **read-only** (glass thread from `board-v6.html`), every text through `escapeHtml`. Show the limited "Recibido: enviado / no-entregado" chip from `order_received_notified_at` / `order_received_send_unresolved_at` only.
+- [ ] **Step 1:** In the Comms tab, for a selected customer, build `assembleThread({ inbound: <their incoming_messages>, autoEvents: [{label:'Recibido', at: order.order_received_notified_at}] })` and render the ordered items **read-only** (glass thread from `docs/superpowers/mockups/dispatch-board-v6.html`), every text through `escapeHtml`. Show the limited "Recibido: enviado / no-entregado" chip from `order_received_notified_at` / `order_received_send_unresolved_at` only.
 - [ ] **Step 2 (Guardrail):** NO composer/send in Phase 1 — the "Responder" affordance stays the existing `wa.me` deep-link until Phase 2 replaces it with the audited dispatcher-send function.
 - [ ] **Step 3: Verify** — inbound messages + the "Recibido" event render in time order, read-only; the existing inbound handled/unhandled marking still works.
 - [ ] **Step 4: Commit**
@@ -724,7 +783,15 @@ Real SLA-based **on-time % + promise-based lateness** requires predictor graduat
 - Visual system (icons/glass/depth/pastel) → Task 6 ✓
 - On-time% / promise lateness → correctly DEFERRED to §1b ✓
 
-**Placeholder scan:** all module tasks contain full test + implementation code. Part B tasks reference the `board-v6.html` mockup for markup/CSS (a real, committed-adjacent artifact) with exact `index.html` anchors — not "TODO"s.
+**Placeholder scan:** all module tasks contain full test + implementation code. Part B tasks reference `docs/superpowers/mockups/dispatch-board-v6.html` for markup/CSS — a **tracked, committed artifact** (`54b4e13`+) available to a fresh executor — with exact `index.html` anchors, not "TODO"s.
+
+**Plan revision R1 (2026-07-28) — folded in the plan-gate REVISE (6 grounding blockers):**
+1. Task 1: `sortAlerts(array)` → `sortAlertEntries(keyedObj)` preserving each alert `id` (real `alerts` is a keyed RTDB object; id needed for `dismissDispatcherAlert`). Task 7 consumes id via `data-dismiss-id`.
+2. Task 4: `deliveryRisk` now returns `{ band, level, slipMs }` (imports `agingBand`) so the row edge and header count share one band — amber-alone = `level:'ok'` (heads-up, uncounted); Task 8 counts `level !== 'ok'`.
+3. Task 5: `assembleThread` derives `ts` from `received_at` (chat, ms) **or** `time*1000` (non-chat, sec), `text = body ?? '(media)'` — non-chat inbound no longer silently dropped.
+4. Committed the v6 mockup to a tracked path `docs/superpowers/mockups/dispatch-board-v6.html`; all Part-B references repointed.
+5. Task 8: `arrivalMs` extracted to a local before `etaCache` assignment (it was inline at 3007) so `observe` has a value.
+6. Task 8: `etaSnapshots.clear` anchored to the `delete etaCache[...]` branch (~2989); Task 9 `driver_cash` fully specified (helper + shape `{cash_owed,cash_order_count,closed_at}` + closed-cuadre-only aggregation + open-cash explicitly deferred, not guessed).
 
 **Type consistency:** `agingSeconds` (Task 2) output feeds `deliveryRisk({ agingSeconds })` (Task 4); `etaSnapshots.baseline()` (Task 3) feeds `baselineArrivalMs` (Task 4/8); `classifyAlert().iconId`/`severity` (Task 1) consumed in Task 7; `assembleThread` shape (Task 5) consumed in Task 11. Consistent.
 
