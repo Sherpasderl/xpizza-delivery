@@ -47,8 +47,9 @@ Expected output ends with `N passed`.
 - `dispatch-comms-thread.js` — `assembleThread(...)` read-only ordering of inbound messages + automessage events (display-only; no send — send is Phase 2). Pure.
 - `dispatch-comms-thread.test.js`
 
-**Modified file (Part B — one coordinated patch):**
+**Modified files (Part B — one coordinated patch):**
 - `xpizza-dispatch/index.html` — import the modules (`?v=1`), add the icon sprite + visual-system CSS (ported from the reviewed mockup), swap the imperative alert if-chain for a registry-driven Torre render, add aging/delivery-risk to order rows, rebuild the right rail (persistent roster + surfaced call + cash bar + switchable tabs), add collapsible rails + Cobertura, and a read-only Comms inbound thread.
+- `xpizza-dispatch/xpizza-delivery.js` — add the read-only `subscribeToDriverCash(cb)` helper (Task 9).
 
 **Visual source of truth for Part B markup/CSS:** the gate-reviewed mockup `docs/superpowers/mockups/dispatch-board-v6.html` (full "v6" — true palette, glass depth, line-icon sprite, pastel action icons). Part B ports its markup/CSS; it is a real artifact, not a placeholder.
 
