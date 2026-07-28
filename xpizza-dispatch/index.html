@@ -1675,10 +1675,57 @@
   display: inline-flex; align-items: center; gap: 4px; background: #FBF0CE; color: #7A5B0C;
   font-weight: 700; font-size: 12px; line-height: 1.2; padding: 3px 9px; border-radius: 7px; margin: 4px 0;
 }
+
+  /* ============ Torre de Control — visual-system primitives (Phase-1 redesign) ============ */
+  /* Depth is layered on top of the existing tokens (never changes base token values). */
+  :root {
+    --hair-top: rgba(255,255,255,0.05);
+    --shadow: 0 4px 16px rgba(0,0,0,0.28), 0 1px 0 var(--hair-top) inset;
+    --shadow-lift: 0 12px 28px rgba(0,0,0,0.4), 0 1px 0 var(--hair-top) inset;
+  }
+  /* Line icon: colored via currentColor on the rendered <svg>, NOT a <g> in <defs>
+     (which does not propagate through <use> and would render black-filled). */
+  .ic { width: 18px; height: 18px; display: block; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .ic.sm { width: 15px; height: 15px; }
+  /* Card depth — applied to the new Torre/row/roster/cash cards created in Tasks 7–11. */
+  .ex, .ord, .drv, .cash { background: linear-gradient(180deg, #262f3e, #222a37); box-shadow: var(--shadow); transition: transform .16s ease, box-shadow .16s ease; }
+  .ex:hover, .ord:hover, .drv:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+  /* Pastel action-icon buttons (call = mint, message = periwinkle, more = slate). */
+  .da { width: 30px; height: 30px; border-radius: 8px; color: #a7b2c5; background: none; border: none; cursor: pointer; display: grid; place-items: center; transition: .14s; }
+  .da.call { color: #8fd8b4; }
+  .da.msg  { color: #9dc0ff; }
+  .da.more { color: #98a3b6; }
+  .da:hover { background: rgba(255,255,255,0.06); transform: translateY(-1px); filter: brightness(1.2); }
+  /* Motion (Phase-1 chrome uses softpulse + rise). Reduced-motion disables all animation. */
+  @keyframes softpulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
 </style>
 </head>
 
 <body>
+
+<!-- Dispatch line-icon sprite (Torre de Control redesign). Coloring via the .ic CSS rule
+     (fill:none;stroke:currentColor) — NOT a wrapping <g>, which does not propagate through <use>. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-menu" viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+  <symbol id="i-chevdown" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+  <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-maximize" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
+  <symbol id="i-signaloff" viewBox="0 0 24 24"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></symbol>
+  <symbol id="i-userx" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="22" y2="13"/><line x1="22" y1="8" x2="17" y2="13"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+  <symbol id="i-phoneoff" viewBox="0 0 24 24"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 3.07 4.18 2 2 0 0 1 5 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></symbol>
+  <symbol id="i-card" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+</defs></svg>
 
 <!-- ================================ -->
 <!-- CONFIG SCREEN -->
@@ -1878,6 +1925,13 @@
 import * as XPD from './xpizza-delivery.js?v=19';
 import { createGlideEngine } from './driver-glide.js?v=2';
 import { etaEligible, projectArrival, relativeEta, clockTime, dueForRefresh, distanceMeters } from './driver-eta.js?v=1';
+// ── Dispatch Phase-1 pure modules (Torre de Control redesign) ──
+import { classifyAlert, sortAlertEntries } from './dispatch-alerts.js?v=1';
+import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js?v=1';
+import { createEtaSnapshotStore } from './dispatch-eta-snapshot.js?v=1';
+import { deliveryRisk } from './dispatch-delivery-risk.js?v=1';
+import { assembleThread } from './dispatch-comms-thread.js?v=1';
+const etaSnapshots = createEtaSnapshotStore();   // session-scoped first-observed-ETA baselines
 
 // ============================================================
 // System version (bumped each release)
