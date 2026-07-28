@@ -15,6 +15,7 @@
  */
 const MR = require('./manual-resolve');
 const C = require('./cancel-order');
+const { reverseEarnForOrder } = require('./rewards-earn');   // Rewards Phase A — earn clawback on cancel (idempotent, fail-open)
 
 // Idempotent, best-effort task-cancel + driver release (NON-money). onOrderCancelled is the durable backstop.
 async function cleanupTasksAndDriver(deps, orderId, order, now) {
@@ -164,6 +165,13 @@ async function cancelOrderCore(deps, { orderId, actor, reason, now, claimId }) {
 
   // B.9 non-money cleanup — separate idempotent best-effort (onOrderCancelled is the durable backstop).
   try { await cleanupTasksAndDriver(deps, orderId, order, now); } catch (e) { console.warn(`cancelOrder cleanup failed for ${orderId}`, e && e.message); }
+
+  // Rewards Phase A — clawback the loyalty earn when a cancel commits. reverseEarnForOrder is idempotent
+  // (its own rewards_reversed_at claim), self-guarded (no-op unless the order actually earned), and fail-open,
+  // so reconciliation retries / refund_pending re-entry / recoverStaleCancel can't double-reverse. Normally a
+  // no-op (the gate blocks delivered/completed, the only states that earn); this covers the earn↔cancel async
+  // race. EARN only — redemption reversal is Phase B. Never blocks the cancel.
+  try { await reverseEarnForOrder(db, { orderId, order, now }); } catch (e) { console.warn(`cancelOrder reverse-earn failed for ${orderId}`, e && e.message); }
 
   const refund = wantVoid ? (voided ? 'refunded' : 'refund_pending') : (fin.payment_status || 'no_payment');
   await audit(fin.outcome, { refund });
