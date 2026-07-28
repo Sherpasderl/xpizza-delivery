@@ -1880,8 +1880,8 @@ exports.mirrorStatusToHistory = onValueWritten(
 
 // Rewards Phase A — credit earn when an order reaches its real TERMINAL state (delivery completes at
 // 'delivered', pickup at 'completed'). 'ready' is pre-collection → must NOT earn. creditEarnForOrder is
-// guest-NOOP + at-most-once (its own rewards_earned_at marker, a SIBLING of /status → can't re-trigger
-// this watcher) + fail-open. Additive; no money-path.
+// guest-NOOP + at-most-once (deterministic earn_${orderId} ledger key inside a single user_rewards
+// transaction → crash-safe, no double-credit on re-fire) + fail-open. Additive; no money-path.
 exports.earnRewardsOnCompletion = onValueWritten(
   { ref: '/orders/{orderId}/status', region: 'us-central1' },
   async (event) => {

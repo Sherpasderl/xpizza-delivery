@@ -285,26 +285,26 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     ok('#21 stale reversing @ claimed → re-driven → refunded (counter=1)');
   }
 
-  // #22 [Rewards Phase A] cancel of an order that EARNED (earn↔cancel race: rewards_earned_at already set on a
-  // still-cancellable order) → the loyalty earn is clawed back exactly once; a retry does NOT double-debit.
+  // #22 [Rewards Phase A] cancel of an order that EARNED (earn↔cancel race: the earn_${orderId} ledger entry
+  // already landed on a still-cancellable order) → the loyalty earn is clawed back exactly once; retry no double-debit.
   {
     await clearAll();
-    // cancellable cash order (no attempt) that already earned +2 punches (marker + balance pre-seeded)
+    // cancellable cash order (no attempt); the earn already applied → authoritative earn_${OID} ledger entry + balance
     await seed({ status: 'out_for_delivery', payment_method: 'cash', payment_status: 'no_payment', active_attempt_id: null,
-      order_type: 'delivery', customer_uid: 'uidCX', restaurant_id: 'x_pizza', rewards_earned_at: { at: NOW - 1000, delta: 2 } }, null);
-    await db.ref('user_rewards/uidCX/x_pizza').set({ balance: 2, lifetime: 2, ledger: { L0: { type: 'earn', delta: 2, ts: NOW - 1000, config_version: 1 } } });
+      order_type: 'delivery', customer_uid: 'uidCX', restaurant_id: 'x_pizza' }, null);
+    await db.ref('user_rewards/uidCX/x_pizza').set({ balance: 2, lifetime: 2, ledger: { [`earn_${OID}`]: { type: 'earn', delta: 2, order_id: OID, ts: NOW - 1000, config_version: 1 } } });
     const r = await cancelOrderCore(mkDeps({}).deps, { orderId: OID, actor: 'A', reason: 'earn-race', now: NOW, claimId: 'CID-E' });
     assert.strictEqual(r.status, 200, `cancel commits, got ${r.status}`);
     assert.strictEqual((await db.ref('user_rewards/uidCX/x_pizza/balance').once('value')).val(), 0, 'earn clawed back → balance 0');
     assert.strictEqual((await db.ref('user_rewards/uidCX/x_pizza/lifetime').once('value')).val(), 2, 'lifetime UNCHANGED by clawback');
-    assert.strictEqual((await db.ref(`orders/${OID}/rewards_reversed_at`).once('value')).val(), NOW, 'reversal marker stamped');
+    assert.strictEqual((await db.ref(`user_rewards/uidCX/x_pizza/ledger/reverse_${OID}`).once('value')).val().delta, -2, 'reverse_${OID} clawback entry appended');
     const ledgerN1 = Object.keys((await db.ref('user_rewards/uidCX/x_pizza/ledger').once('value')).val() || {}).length;
     assert.strictEqual(ledgerN1, 2, 'earn + clawback = 2 ledger entries');
     // retry the whole cancel (idempotent heal path) → NO double-debit
     await cancelOrderCore(mkDeps({}).deps, { orderId: OID, actor: 'A', reason: 'earn-race', now: NOW + 1, claimId: 'CID-E2' });
     assert.strictEqual((await db.ref('user_rewards/uidCX/x_pizza/balance').once('value')).val(), 0, 'retry → still 0 (no double-debit)');
     const ledgerN2 = Object.keys((await db.ref('user_rewards/uidCX/x_pizza/ledger').once('value')).val() || {}).length;
-    assert.strictEqual(ledgerN2, 2, 'retry appends no clawback (rewards_reversed_at idempotent)');
+    assert.strictEqual(ledgerN2, 2, 'retry appends no clawback (reverse_${OID} key idempotent)');
     ok('#22 cancel of an earned order → earn clawed back once, lifetime intact, retry no double-debit');
   }
 
@@ -312,11 +312,10 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   {
     await clearAll();
     await seed({ status: 'out_for_delivery', payment_method: 'cash', payment_status: 'no_payment', active_attempt_id: null,
-      order_type: 'delivery', customer_uid: 'uidCY', restaurant_id: 'x_pizza' }, null);   // no rewards_earned_at
+      order_type: 'delivery', customer_uid: 'uidCY', restaurant_id: 'x_pizza' }, null);   // no earn ledger entry
     const r = await cancelOrderCore(mkDeps({}).deps, { orderId: OID, actor: 'A', reason: 'x', now: NOW, claimId: 'CID-N' });
     assert.strictEqual(r.status, 200);
     assert.strictEqual((await db.ref('user_rewards/uidCY').once('value')).val(), null, 'never-earned cancel → no user_rewards node created');
-    assert.strictEqual((await db.ref(`orders/${OID}/rewards_reversed_at`).once('value')).val(), null, 'no reversal marker for a never-earned order');
     ok('#23 cancel of a never-earned order → reversal no-op (no reward writes)');
   }
 

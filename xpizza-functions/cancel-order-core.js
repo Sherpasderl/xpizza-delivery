@@ -167,7 +167,7 @@ async function cancelOrderCore(deps, { orderId, actor, reason, now, claimId }) {
   try { await cleanupTasksAndDriver(deps, orderId, order, now); } catch (e) { console.warn(`cancelOrder cleanup failed for ${orderId}`, e && e.message); }
 
   // Rewards Phase A — clawback the loyalty earn when a cancel commits. reverseEarnForOrder is idempotent
-  // (its own rewards_reversed_at claim), self-guarded (no-op unless the order actually earned), and fail-open,
+  // (its own reverse_${orderId} ledger key), self-guarded (no-op unless the order actually earned), and fail-open,
   // so reconciliation retries / refund_pending re-entry / recoverStaleCancel can't double-reverse. Normally a
   // no-op (the gate blocks delivered/completed, the only states that earn); this covers the earn↔cancel async
   // race. EARN only — redemption reversal is Phase B. Never blocks the cancel.

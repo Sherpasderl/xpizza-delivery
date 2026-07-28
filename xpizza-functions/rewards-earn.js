@@ -1,23 +1,39 @@
 'use strict';
 
-// Impure earn engine (Phase A) — Admin-SDK writes ONLY. Mark-before-credit (the notifyPickupReady /
-// order-received pattern): claim an idempotency marker via transaction BEFORE mutating balance, so a
-// duplicate trigger / retry can't double-credit. Balance + lifetime are per-LEAF transactions (never a
-// whole-node write) so a concurrent ledger push can't be clobbered. Immutable append-only ledger, every
-// entry stamped with config_version. All three functions fail-open (log, never throw) — earn is additive,
-// not money-path. Timestamps come from the `now` argument (no ServerValue dep → unit/emulator-testable).
+// Impure earn engine (Phase A) — Admin-SDK writes ONLY. Crash-safe + idempotent by construction:
+// EVERY mutation is a SINGLE transaction on user_rewards/{uid}/{rid} keyed by a DETERMINISTIC ledger id
+// (earn_${orderId} / welcome_${phoneHash}_${rid} / reverse_${orderId}). Inside the transaction: if that
+// ledger key already exists → abort unchanged (idempotent); else apply balance + lifetime + the ledger
+// entry TOGETHER (no partial-state window, and a crash-retry re-applies because the key isn't there yet).
+// The ledger key is the sole authority — there is no separate order-node marker to lose or desync.
+//
+// Guards (codex R1):
+//   • deleted_uids/{uid} tombstone → NEVER recreate a purged node (no zombie ledger after account deletion).
+//   • reversal clamps balance to >= 0 and NEVER recreates an absent node; lifetime never decrements.
+// All functions fail-open (log, never throw) — earn is additive, not money-path. Timestamps from `now`.
 const { computeEarn, ledgerEntry, REWARDS_CONFIG } = require('./rewards-core');
 
-async function applyDelta(db, uid, rid, delta) {
-  await db.ref(`user_rewards/${uid}/${rid}/balance`).transaction((cur) => (Number(cur) || 0) + delta);
-  if (delta > 0) await db.ref(`user_rewards/${uid}/${rid}/lifetime`).transaction((cur) => (Number(cur) || 0) + delta);   // lifetime = cumulative EARNED; a clawback reduces balance only
-}
-async function pushLedger(db, uid, rid, entry) {
-  await db.ref(`user_rewards/${uid}/${rid}/ledger`).push(entry);
+async function isDeleted(db, uid) {
+  return (await db.ref(`deleted_uids/${uid}`).get()).val() != null;   // user-initiated deletion tombstone
 }
 
-// Credit earn for a completed order. NO-OP for a guest (no customer_uid) or a zero-delta order. Marker
-// stores {at, delta} so reversal is a single read. At-most-once via the marker claim.
+// Atomic CREDIT (positive delta: earn / welcome) on the per-brand node, idempotent on `ledgerId`.
+// Applies balance + lifetime + ledger entry in ONE transaction. Returns { applied } — true only when THIS
+// call landed the entry (a duplicate/idempotent retry returns false). Creates the node on first credit.
+async function creditNode(db, uid, rid, ledgerId, delta, entry) {
+  const ref = db.ref(`user_rewards/${uid}/${rid}`);
+  const tx = await ref.transaction((cur) => {
+    cur = cur || {};
+    if (cur.ledger && cur.ledger[ledgerId] !== undefined) return;                 // already applied → idempotent abort
+    const next = { ...cur, balance: (Number(cur.balance) || 0) + delta, ledger: { ...(cur.ledger || {}), [ledgerId]: entry } };
+    next.lifetime = (Number(cur.lifetime) || 0) + (delta > 0 ? delta : 0);         // lifetime = cumulative EARNED only
+    return next;
+  });
+  return { applied: !!tx.committed };
+}
+
+// Credit earn for a completed order. NO-OP for guest / zero-delta / a tombstoned (deleted) uid. At-most-once
+// via the earn_${orderId} ledger key — which is ALSO the authoritative earned amount the reversal reads back.
 async function creditEarnForOrder(db, { orderId, order, now }) {
   try {
     if (!order || !order.customer_uid) return { credited: false, delta: 0 };
@@ -25,50 +41,53 @@ async function creditEarnForOrder(db, { orderId, order, now }) {
     const rid = order.restaurant_id || 'x_pizza';
     const { delta } = computeEarn({ items: order.items, subtotalCents: Number(order.subtotal_cents), restaurantId: rid });
     if (!Number.isInteger(delta) || delta <= 0) return { credited: false, delta: 0 };
-    let claim;
-    try { claim = await db.ref(`orders/${orderId}/rewards_earned_at`).transaction((cur) => (cur ? undefined : { at: now, delta })); }
-    catch (e) { console.warn(`rewards earn: claim failed ${orderId}`, e && e.message); return { credited: false, delta: 0 }; }
-    if (!claim.committed) return { credited: false, delta: 0 };   // already earned
-    await applyDelta(db, uid, rid, delta);
-    await pushLedger(db, uid, rid, ledgerEntry({ type: 'earn', delta, orderId, now }));
-    return { credited: true, delta };
+    if (await isDeleted(db, uid)) return { credited: false, delta: 0 };            // never recreate a purged node
+    const { applied } = await creditNode(db, uid, rid, `earn_${orderId}`, delta, ledgerEntry({ type: 'earn', delta, orderId, now }));
+    return { credited: applied, delta: applied ? delta : 0 };
   } catch (e) { console.error(`rewards earn: failed ${orderId}`, e && e.message); return { credited: false, delta: 0 }; }
 }
 
-// Welcome bonus — once per phone_hash per brand. The reward_welcome/{phoneHash}/{rid} tombstone survives
-// account deletion (account-lib does NOT delete it) → un-farmable.
+// Welcome bonus — once per phone_hash per brand. The reward_welcome/{phoneHash}/{rid} tombstone (server-only,
+// survives account deletion — account-lib does NOT delete it) is the cross-uid un-farmable gate; the
+// welcome_${phoneHash}_${rid} ledger key makes the balance apply crash-safe within the uid.
 async function creditWelcome(db, { uid, phoneHash, restaurantId, now }) {
   try {
     if (!uid || !phoneHash) return { credited: false };
     const cfg = REWARDS_CONFIG[restaurantId];
     if (!cfg || !(cfg.welcome > 0)) return { credited: false };
+    if (await isDeleted(db, uid)) return { credited: false };                      // never recreate a purged node
     let claim;
     try { claim = await db.ref(`reward_welcome/${phoneHash}/${restaurantId}`).transaction((cur) => (cur ? undefined : now)); }
     catch (e) { console.warn(`rewards welcome: claim failed`, e && e.message); return { credited: false }; }
-    if (!claim.committed) return { credited: false };   // already welcomed on this brand
-    await applyDelta(db, uid, restaurantId, cfg.welcome);
-    await pushLedger(db, uid, restaurantId, ledgerEntry({ type: 'welcome', delta: cfg.welcome, now }));
-    return { credited: true };
+    if (!claim.committed) return { credited: false };                              // already welcomed on this brand (any uid)
+    const { applied } = await creditNode(db, uid, restaurantId, `welcome_${phoneHash}_${restaurantId}`, cfg.welcome,
+      ledgerEntry({ type: 'welcome', delta: cfg.welcome, now }));
+    return { credited: applied };
   } catch (e) { console.error(`rewards welcome: failed`, e && e.message); return { credited: false }; }
 }
 
-// Reverse earn on refund. Idempotent (its own rewards_reversed_at claim); only if the order actually
-// earned (reads the earn marker's stored delta). No-op if never earned or already reversed.
+// Reverse earn on refund/cancel. Idempotent (reverse_${orderId} ledger key), self-guarded (no-op unless the
+// order actually earned — reads the authoritative earn_${orderId} entry), NEVER recreates an absent/deleted
+// node, and clamps balance to >= 0. Lifetime is intentionally untouched (a clawback reduces balance only).
 async function reverseEarnForOrder(db, { orderId, order, now }) {
   try {
     if (!order || !order.customer_uid) return { reversed: false };
     const uid = order.customer_uid;
     const rid = order.restaurant_id || 'x_pizza';
-    const earn = (await db.ref(`orders/${orderId}/rewards_earned_at`).get()).val();
-    const earned = earn && Number(earn.delta);
-    if (!Number.isFinite(earned) || earned <= 0) return { reversed: false };   // never earned → nothing to reverse
-    let claim;
-    try { claim = await db.ref(`orders/${orderId}/rewards_reversed_at`).transaction((cur) => (cur ? undefined : now)); }
-    catch (e) { console.warn(`rewards reverse: claim failed ${orderId}`, e && e.message); return { reversed: false }; }
-    if (!claim.committed) return { reversed: false };   // already reversed
-    await applyDelta(db, uid, rid, -earned);
-    await pushLedger(db, uid, rid, ledgerEntry({ type: 'clawback', delta: -earned, orderId, now }));
-    return { reversed: true };
+    if (await isDeleted(db, uid)) return { reversed: false };                      // purged node → nothing to reverse
+    const earnEntry = (await db.ref(`user_rewards/${uid}/${rid}/ledger/earn_${orderId}`).get()).val();
+    const earned = earnEntry && Number(earnEntry.delta);
+    if (!Number.isFinite(earned) || earned <= 0) return { reversed: false };       // never earned → no-op
+    const reverseId = `reverse_${orderId}`;
+    const ref = db.ref(`user_rewards/${uid}/${rid}`);
+    const tx = await ref.transaction((cur) => {
+      if (cur === null) return null;                                               // null-first-safe; absent → no recreate
+      if (cur.ledger && cur.ledger[reverseId] !== undefined) return;               // already reversed → idempotent abort
+      const balance = Math.max(0, (Number(cur.balance) || 0) - earned);            // clamp: balance never goes negative
+      return { ...cur, balance, ledger: { ...(cur.ledger || {}), [reverseId]: ledgerEntry({ type: 'clawback', delta: -earned, orderId, now }) } };
+    });
+    const v = tx.snapshot.val();
+    return { reversed: !!(tx.committed && v && v.ledger && v.ledger[reverseId] !== undefined) };   // true only if the clawback landed now
   } catch (e) { console.error(`rewards reverse: failed ${orderId}`, e && e.message); return { reversed: false }; }
 }
 

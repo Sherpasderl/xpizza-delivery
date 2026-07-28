@@ -9,11 +9,11 @@ assert.deepStrictEqual(computeEarn({ items: [{ qty: 2 }, { qty: 3 }], restaurant
 assert.deepStrictEqual(computeEarn({ items: [], restaurantId: 'x_pizza' }), { delta: 0, unit: 'punch' }); ok('x_pizza empty → 0');
 assert.deepStrictEqual(computeEarn({ items: [{ qty: 1 }, { qty: 0 }, { qty: -2 }, { qty: 1.5 }], restaurantId: 'x_pizza' }), { delta: 1, unit: 'punch' }); ok('x_pizza only positive-integer qty count');
 
-// la_musa: 10 pts / 2500 cents (25 L); L700 = 70000 cents → floor(70000/2500)=28 → 280
-assert.deepStrictEqual(computeEarn({ subtotalCents: 70000, restaurantId: 'la_musa' }), { delta: 280, unit: 'point' }); ok('la_musa 70000c → 280 pts');
-assert.deepStrictEqual(computeEarn({ subtotalCents: 2500, restaurantId: 'la_musa' }), { delta: 10, unit: 'point' }); ok('la_musa exactly 25 L → 10 pts');
-assert.deepStrictEqual(computeEarn({ subtotalCents: 2400, restaurantId: 'la_musa' }), { delta: 0, unit: 'point' }); ok('la_musa < 25 L → 0');
-assert.deepStrictEqual(computeEarn({ subtotalCents: 5100, restaurantId: 'la_musa' }), { delta: 20, unit: 'point' }); ok('la_musa 51 L → floor(2.04)*10 = 20 (partial dropped)');
+// la_musa: 10 pts / 3000 cents (30 L); L700 = 70000 cents → floor(70000/3000)=23 → 230
+assert.deepStrictEqual(computeEarn({ subtotalCents: 70000, restaurantId: 'la_musa' }), { delta: 230, unit: 'point' }); ok('la_musa 70000c → 230 pts');
+assert.deepStrictEqual(computeEarn({ subtotalCents: 3000, restaurantId: 'la_musa' }), { delta: 10, unit: 'point' }); ok('la_musa exactly 30 L → 10 pts');
+assert.deepStrictEqual(computeEarn({ subtotalCents: 2900, restaurantId: 'la_musa' }), { delta: 0, unit: 'point' }); ok('la_musa < 30 L → 0');
+assert.deepStrictEqual(computeEarn({ subtotalCents: 9500, restaurantId: 'la_musa' }), { delta: 30, unit: 'point' }); ok('la_musa 95 L → floor(3.16)*10 = 30 (partial dropped)');
 
 // fail-safe — never throws
 assert.deepStrictEqual(computeEarn({ restaurantId: 'unknown' }), { delta: 0, unit: 'point' }); ok('unknown restaurant → 0');

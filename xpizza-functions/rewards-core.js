@@ -3,15 +3,15 @@
 // Pure earn-engine core for the per-brand rewards program (Phase A). Config + earn math + ledger-entry
 // builder — zero deps, no I/O, never throws. Drives the impure rewards-earn.js. Hidden balances; no
 // money-path. Locked earn config (owner): X. Pizza = 1 punch per pizza, welcome 2; La Musa = 10 points
-// per 25 L (from subtotal_cents), welcome 100. Redemption thresholds are Phase B (not here).
+// per 30 L (from subtotal_cents), welcome 100. Redemption thresholds are Phase B (not here).
 const REWARDS_CONFIG_VERSION = 1;
 const REWARDS_CONFIG = {
   x_pizza: { kind: 'punch', welcome: 2 },
-  la_musa: { kind: 'points', pointsPer: 10, perCents: 2500, welcome: 100 },
+  la_musa: { kind: 'points', pointsPer: 10, perCents: 3000, welcome: 100 },
 };
 
 // computeEarn({items, subtotalCents, restaurantId}) → {delta:<int>, unit}. x_pizza: Σ positive-int qty
-// (every x_pizza line is a pizza) → punches. la_musa: floor(subtotalCents / 2500) * 10 → points. Unknown
+// (every x_pizza line is a pizza) → punches. la_musa: floor(subtotalCents / 3000) * 10 → points. Unknown
 // restaurant / non-array items / non-finite subtotal → delta 0 (fail-safe).
 function computeEarn({ items, subtotalCents, restaurantId } = {}) {
   const cfg = REWARDS_CONFIG[restaurantId];
