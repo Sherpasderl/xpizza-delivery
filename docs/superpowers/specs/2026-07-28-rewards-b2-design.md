@@ -17,7 +17,8 @@ Ship the full customer-facing rewards experience — the 7 approved mockup scree
 
 - **B1 backend is LIVE + INERT** (`origin/main @ 4eaf13a`). Contract:
   - Client sends `body.redeem` + header `X-Firebase-ID-Token` (a verified `customer:true` uid) to `createOrder` (cash) / `chargeOnlineOrder` (online).
-  - Server **computes the discount** (`computeRedemption` → `applyRedemptionToPricing`), returns the **discounted breakdown** on success, or a **typed 409/401** (`rewards_disabled`, `login_required`, `redemption_invalid`, `reward_unavailable`, `insufficient`, `redemption_reserve_failed`, `redemption_pricing_failed`). ALL-OR-NOTHING: any failure → non-payable, never a silent full-price redeem.
+  - Server **computes the discount** (`computeRedemption` → `applyRedemptionToPricing`), applies it to the actual charge/order, or returns a **typed 409/401** (`rewards_disabled`, `login_required`, `redemption_invalid`, `reward_unavailable`, `redemption_reserve_failed` — its `reason` may be `insufficient` —, `redemption_pricing_failed`). ALL-OR-NOTHING: any failure → **non-payable, nothing written/charged**, never a silent full-price redeem.
+  - ⚠️ **The order handlers do NOT return the priced breakdown to the client.** `createOrder` returns `{ok, order_id, tracking_token}`; `chargeOnlineOrder` returns checkout metadata only. `priced`/`canonical`/discount total are computed **internally** and never exposed. → **B2 MUST add a read-only server QUOTE endpoint** (§5.1) so the UI can render the review discount (screen 5) from the server's number without ever client-computing a discount.
   - Server stamps `orders/{id}.redemption = canonical`.
   - Flag gate: `redemptionEnabled(db)` reads `config/redemption_enabled` (strict `=== true`, fail-safe OFF). Flag OFF ⇒ every redeem → 409 `rewards_disabled`.
 - **The 7-screen UI mockup is OWNER-APPROVED** (artifact ef637a1b — chip, Mis premios pane, cart earn line, checkout redemption, review discount line, success badge, profile-claim card). **B2 builds it EXACTLY as approved.** No re-design. Owner aesthetic standard: NO crammed icons/text, perfect alignment, seamless — verify before/after each screen.
@@ -35,7 +36,7 @@ Ship the full customer-facing rewards experience — the 7 approved mockup scree
 5. **No half-baked / crammed UI, ever.** Every state (loading, error, unavailable, ineligible) has a clean, aesthetic treatment matching the mockup. If a state can't be made clean, it isn't shown.
 6. **Byte-identical past CONFIG** across the two brands (§2). **Guest byte-identical** to today (§2 in Global Constraints #2).
 7. **The rules addition is RTDB-emulator-verified** (per the standing no-`numChildren()` rule — JSON/codex miss RTDB cascade semantics; only the emulator/deploy catches them). The `redemptionEnabled` change keeps its strict-`=== true` / fail-safe-OFF discipline.
-8. **Deploy is owner-gated with explicit go**; forms git-CD from `main`; the go-live flag flip is a separate manual owner action after the canary passes.
+8. **Deploy is owner-gated with explicit go**; functions deploy BEFORE forms (the quote endpoint must exist before the UI calls it); forms git-CD from `main`; the go-live flip is a separate manual owner action after the canary passes, and it is a **SINGLE ATOMIC multi-location update** setting `config/redemption_enabled` and `config/rewards_public/redemption_live` together (never sequentially) — so UI-live and server-live can never diverge; rollback is the same atomic update in reverse (§10).
 
 ## 4. Components — the 7 screens (both brands, differences in `CONFIG` only)
 
@@ -80,35 +81,44 @@ Build EXACTLY as the approved mockup. Below is the behavior + the brand-config s
 
 ## 5. Wiring contract (client ↔ live B1 backend)
 
-- **Read balance:** subscribe/read `user_rewards/{uid}/{rid}` with the customer's Firebase auth → chip + pane + cart earn line. Read-own; no new backend.
-- **Eligibility (client convenience only):** X. Pizza `available ≥ card_size`; La Musa `available ≥ tier.cost`. Decides whether to *offer* redeem; the server re-checks.
-- **Redeem submit:** the existing order POST gains `body.redeem` when a reward is selected. `X-Firebase-ID-Token` already sent. NO other change to the order request shape.
+- **Read balance:** subscribe/read `user_rewards/{uid}/{rid}` with the customer's Firebase auth → chip + pane + cart earn line. Read-own; no new backend. (Render nothing until auth resolves — never flash a wrong/empty balance.)
+- **Eligibility (client convenience only):** X. Pizza `available ≥ card_size`; La Musa `available ≥ tier.cost`. Decides whether to *offer* redeem; the server re-checks authoritatively.
+
+### 5.1 The server QUOTE endpoint (NEW — the only way to show a server-authoritative discount pre-checkout)
+The live order handlers do NOT return the priced breakdown (§2). To render screen 5 (the struck-through review) WITHOUT the client ever computing a discount, B2 adds a **new read-only HTTPS function** — `quoteRedemption` (working name):
+- **Input:** `body.items` (the cart), `body.redeem` (`{}` xp / `{level,item_id}` lm), header `X-Firebase-ID-Token`.
+- **Gate:** `redemptionEnabled(db, uid)` (§6.2) + verified non-guest uid — same authorization as the intake.
+- **Compute:** reuse the EXACT B1 pure functions `computeRedemption` → `applyRedemptionToPricing` (the same code the intake runs) — **no reserve, no order, no DB write, no side effects.**
+- **Returns:** on success `{ ok:true, discount_cents, total_cents (discounted), free_item:{name}, subtotal_cents, tax_cents }`; on failure the **same typed errors** as the intake. Read-only preview.
+- **UI use:** when the customer selects a reward, call `quoteRedemption` → render screen 5 from its numbers. Because the quote and the order-submit run the SAME server compute, the previewed total equals the charged total. If the quote fails, show the typed message and don't offer the reward.
+- **Deploy note:** this is a NEW export (functions 46 → 47) — additive, no prune; starts with no special env (DB-only); money-gated as the read-only preview of the money path.
+
+### 5.2 Redeem submit (the authoritative action)
+- The existing order POST gains `body.redeem` when a reward is selected. `X-Firebase-ID-Token` already sent. NO other change to the request shape. The server **recomputes authoritatively** (the quote was display-only) and reserves+charges the discounted total.
 - **Response handling:**
-  - **Success:** server returns the discounted breakdown (+ the redemption result). Render the struck-through review from the server total. Proceed to payment/confirmation with the server's total.
+  - **Success:** the order is placed/charged at the discounted total (already previewed via the quote). Proceed to the success screen.
   - **Typed 409/401 → clean message, never a raw error:**
-    - `reward_unavailable` (La Musa 86) → "Ese premio no está disponible ahora" + drop that item from the picker; let the customer pick another or continue without.
-    - `login_required` → prompt login (redemption needs a verified account).
-    - `redemption_invalid` / `redemption_pricing_failed` / `redemption_reserve_failed` → "No pudimos aplicar el premio, intentá de nuevo" + clear the pending redeem (order can proceed at full price).
-    - `insufficient` → shouldn't surface (eligibility-gated) → same graceful clear.
-    - `rewards_disabled` → shouldn't surface (affordance flag-gated) → hide the affordance + clear.
-- **All-or-nothing:** if a redeem fails, the customer can still place the order at full price (the failure clears the redeem, it never blocks checkout). Matches the server's non-payable-on-redeem-failure being surfaced as a clean retry, not a dead end.
+    - `reward_unavailable` (La Musa 86) → "Ese premio no está disponible ahora" + drop that item from the picker.
+    - `login_required` → prompt login.
+    - `redemption_invalid` / `redemption_pricing_failed` / `redemption_reserve_failed` (incl. `reason:'insufficient'`) → "No pudimos aplicar el premio, intentá de nuevo".
+    - `rewards_disabled` → shouldn't surface (affordance flag-gated) → hide the affordance.
+- **Redeem-failure fallback is a CLIENT workflow, not a server behavior (per gate).** The server returns non-payable 401/409 and writes/charges NOTHING on a failed `body.redeem`. So on any redeem failure the client MUST: (a) clear the pending `redeem`, (b) surface the typed message, and (c) let the customer **re-submit as a full-price order** — a **fresh submit with a clean/regenerated `order_id`/idempotency identity** (never reuse the failed submit's identity). "Continue without the reward" = this fresh full-price submit, never a partial or same-id retry.
 
 ## 6. Activation infrastructure
 
 Three small additive pieces, built first (they gate the UI and enable the canary):
 
-### 6.1 Client-readable live flag
-- **New path** `config/rewards_public/redemption_live` (boolean), made **customer-readable** via a scoped rules addition (a public sub-node under `config` that customers may read; the rest of `config` stays staff-only). Emulator-verified.
-- The redeem affordance (§4.4) renders only when this is `true` (OR the canary marker, §6.3).
-- This is the client-side half of the flip; the server-side gate stays `config/redemption_enabled`.
+### 6.1 Client-readable live flag (precise rules — RTDB cascade)
+- **New path** `config/rewards_public/redemption_live` (boolean). RTDB read grants are additive downward (a child `.read` grant applies even when the ancestor `config` expression is false; an ancestor grant can't be revoked by a child) — so grant read at **exactly** `config/rewards_public` (readable by any auth'd user), and add **`"$other": { ".read": false }` under `rewards_public`** so the public node can NEVER accumulate other (sensitive) config later. Do NOT widen `config` itself. `.write` stays staff-only. **Emulator-verified** (customer CAN read `config/rewards_public/redemption_live`; customer CANNOT read any other `config/*`; the rest of the staff-only config rule intact).
+- The redeem affordance (§4.4) renders only when this is `true` (OR the canary marker, §6.3). Display surfaces (§4.1–4.3) ignore it.
+- Client-side half of the flip; the server-side authorization stays `config/redemption_enabled` (§6.2).
 
-### 6.2 Backend allowlist (canary)
-- `redemptionEnabled` becomes: `global config/redemption_enabled === true` **OR** `config/redemption_allowlist/{uid} === true` (staff-only path). Small additive change to `rewards-redeem-config.js`; keeps strict `=== true` + fail-safe OFF.
-- Intake passes the already-resolved `customer_uid` to the check (signature extends `redemptionEnabled(db)` → `redemptionEnabled(db, uid)`, back-compatible: `uid` optional, absent ⇒ global-flag-only).
-- Lets redemption work for ONLY the allowlisted test uid against real prod, pre-global-flip.
+### 6.2 Backend allowlist (canary) — the exact call-site change
+- `redemptionEnabled` extends to `redemptionEnabled(db, uid)`: returns `config/redemption_enabled === true` **OR** (`uid` given AND `config/redemption_allowlist/{uid} === true`). Read the global flag first, allowlist second; keep strict `=== true`; **fail-closed OFF on any read error**; back-compatible (`uid` absent ⇒ global-flag-only). `config/redemption_allowlist` is **staff-only** (inside the existing staff-only `config` rule — customers can't read it).
+- **Call-site (must change exactly):** `prepareRedemption` currently calls `redemptionEnabled(db)` BEFORE it has `customerUid`. Reorder so `customerUid` is validated first, then call `redemptionEnabled(db, customerUid)` — from BOTH the cash (`resolveRedemptionForOrder`) and online (`prepareRedemption` in `chargeOnlineOrder`) paths, and from the new `quoteRedemption`. The uid is the SERVER-verified token uid (`customer:true`, tombstone-checked); a client-supplied uid is never used — so the allowlist can only ever enable the allowlisted verified account, never broaden.
 
 ### 6.3 UI canary marker
-- Read-own `user_rewards/{uid}/{rid}/canary` (Admin-written, staff sets it on the test account). The affordance renders if `redemption_live === true` OR `my user_rewards.canary === true`. Read-own ⇒ no other customer's browser sees it.
+- Read-own `user_rewards/{uid}/{rid}/canary: true` — **Admin/console/server-written ONLY** (`user_rewards` is `.write:false`; a client cannot set it). A boolean child does not violate the UID-node object `.validate` (object-only). The affordance renders if `redemption_live === true` OR `my user_rewards.canary === true`. Read-own ⇒ no other customer's browser sees it.
 
 ## 7. Guest vs logged-in
 
@@ -127,21 +137,24 @@ Three small additive pieces, built first (they gate the UI and enable the canary
 
 Even though everything ships in one go-live, the BUILD is incremental + gated:
 
-1. **Activation infra** — `redemption_live` public flag + `redemption_allowlist` rules (RTDB-emulator-verified) + `redemptionEnabled(db, uid)` allowlist tweak (money-gated, additive) + the canary marker convention. *(Ships inert: `redemption_live` OFF, allowlist empty.)*
+1. **Activation infra (backend)** — the `quoteRedemption` read-only endpoint (§5.1) + `redemptionEnabled(db, uid)` allowlist tweak + the exact call-site reorder in both intake paths (§6.2) [money-gated, additive, 47 exports] + the `config/rewards_public/redemption_live` + `redemption_allowlist` rules (§6.1, RTDB-emulator-verified) + the canary marker convention. *(Ships inert: `redemption_live` OFF, allowlist empty; the endpoint 409s until the flag/allowlist.)*
 2. **Display surfaces** — chip + Mis premios pane + cart earn line (read `user_rewards`), both brands, byte-identical past CONFIG. *(Flag-independent; safe once logged-in reads work.)*
-3. **Checkout redemption** — the redeem affordance + La Musa tier picker + `body.redeem` wiring + the discounted struck-through review + the typed-409 handling. Gated on `redemption_live`/canary.
+3. **Checkout redemption** — the redeem affordance (X. Pizza "Usar" only when a server-priceable pizza is in the cart; La Musa tier picker hiding any tier item that isn't currently priceable/available so the server never has to reject it) + the `quoteRedemption` call → the discounted struck-through review + `body.redeem` on submit + the typed-409 handling + the clear-and-fresh-full-price-resubmit fallback (§5.2). Gated on `redemption_live`/canary.
 4. **Success badge + profile-claim card** — post-order earn-badge + guest profile-claim.
 5. **Parity + polish pass** — X. Pizza ↔ La Musa byte-identical-past-CONFIG audit; owner aesthetic review (no cramming, alignment) on every screen before/after.
 
 ## 10. Deploy + go-live (owner-gated)
 
-1. Merge B2 branch → `main`; forms deploy git-CD (`redemption_live` still OFF → redeem affordance invisible to all; display surfaces live).
-2. **Canary smoke test** on the owner's account: set `config/redemption_allowlist/{ownerUid} = true` + the read-own canary marker. On the LIVE forms, verify end-to-end (advisor verifies each step against prod state):
-   - Display surfaces render clean (chip shows real balance, pane, cart earn line) — no cramming.
-   - **Cash redemption** (real order, no card): redeem affordance → server discount → struck-through review → discounted order → reserve → complete → **consume**; then cancel another → **release/reverse**.
-   - **Online redemption** (real card, small amount): discounted total = PixelPay charge → reserve→attach→consume-at-confirm → factura reconciles; **refund** → reversal credits back.
-   - **Guest** (private window): redemption invisible, checkout byte-identical.
-3. Canary passes → remove the allowlist entry + canary marker → flip `config/rewards_public/redemption_live = true` + `config/redemption_enabled = true` → **redemption live for all**, already proven end-to-end.
+1. Functions deploy FIRST (the `quoteRedemption` export + the `redemptionEnabled(db,uid)` allowlist change + the rules addition): `firebase deploy --only functions` (47 exports, no-prune, both driver+payment, complete env) + `--only database` for the rules (emulator-verified first). Then merge B2 forms → `main`; forms deploy git-CD (`redemption_live` still OFF → redeem affordance invisible to all; display surfaces live). *(Functions-before-forms so the quote endpoint exists before any UI can call it.)*
+2. **Canary smoke test** on the owner's account: set `config/redemption_allowlist/{ownerUid} = true` + the read-own `user_rewards/{ownerUid}/{rid}/canary` marker (both Admin/console-written). On the LIVE forms, verify end-to-end (advisor verifies each step against prod state — `user_rewards` ledger, order records, PixelPay). **Cover B1's full state surface, not just the happy path:**
+   - **Display surfaces** render clean (chip real balance, pane, cart earn line) — no cramming; **quote** returns the right discount for both brands.
+   - **Cash — normal:** redeem → quote discount = order discount → reserve → complete → **consume**; another → **cancel** → **release/reverse** (no points lost, no free discount).
+   - **Cash — scheduled:** a scheduled cash redemption → held through the slot → release → materialize → consume; and one **cancelled before release** → reversal.
+   - **Online — normal:** discounted total = PixelPay charge → reserve→attach→consume-at-confirm → factura reconciles; **refund** → reversal credits back `debit_applied`.
+   - **Online — exceptional paid states:** a **manual-reconciliation** order (paid-during-resolve → `held_paid`) resolved BOTH ways — **abandon/refund** (release, no credit) and **materialize→sale** (consume); a **scheduled online** confirm→hold→release; verify **held_closed_at_materialize** → hold.
+   - **Sweeps backstop:** confirm an abandoned online redemption's hold is reclaimed by the stale-reservation sweep (leave one checkout unpaid past `hosted_expires_at`), and a consume-recovery case is a no-op-safe.
+   - **Guest** (private window): redemption invisible, quote refuses (no verified uid), checkout byte-identical to today.
+3. Canary passes → remove the allowlist entry + canary marker → **atomic flip:** a SINGLE multi-location update `{ config/redemption_enabled: true, config/rewards_public/redemption_live: true }` (both set in one write so there is no window where UI-live ≠ server-live). **Rollback** is the same single update setting both `false`/removed. → **redemption live for all**, already proven end-to-end. *(Because the flip is atomic, there is never a window where a customer sees redeem+409, nor where a crafted `body.redeem` could redeem before the UI reveals it.)*
 
 ## 11. Out of scope
 
