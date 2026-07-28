@@ -37,5 +37,16 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   assert.strictEqual(r.level, 'aging');
   ok('baseline + small slip + old → aging');
 }
+// exact >= slipThresholdMs boundary (default 240000)
+{
+  const base = 1_000_000;
+  const at = deliveryRisk({ agingSeconds: 60, baselineArrivalMs: base, currentArrivalMs: base + 240000 });
+  assert.strictEqual(at.level, 'slipping', 'slip == threshold → slipping (>=)');
+  assert.strictEqual(at.slipMs, 240000);
+  const below = deliveryRisk({ agingSeconds: 60, baselineArrivalMs: base, currentArrivalMs: base + 239999 });
+  assert.strictEqual(below.level, 'ok', 'slip just below threshold → not slipping');
+  assert.strictEqual(below.slipMs, 239999);
+  ok('slip boundary: >= threshold slips, < does not');
+}
 
 console.log(`\n${pass} passed`);

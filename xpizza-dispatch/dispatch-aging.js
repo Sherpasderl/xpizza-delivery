@@ -8,7 +8,8 @@ export function agingBaselineMs(order) {
 }
 
 export function agingSeconds(baselineMs, nowMs) {
-  if (baselineMs == null) return 0;
+  // Contract: null / absent / non-finite (either arg) → 0, never NaN or negative.
+  if (!Number.isFinite(baselineMs) || !Number.isFinite(nowMs)) return 0;
   return Math.max(0, Math.floor((nowMs - baselineMs) / 1000));
 }
 

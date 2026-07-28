@@ -4,24 +4,26 @@ import { classifyAlert, sortAlertEntries } from './dispatch-alerts.js';
 
 let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 
-// known types keep today's category/severity
+// ALL 7 known types keep today's category/severity/icon (Guardrail-6 parity vs
+// index.html:2239–2321 — a silent reclassification here would bury a real alert).
 {
-  const c = classifyAlert({ type: 'driver_freshness_stale', driver_id: 'u1' });
-  assert.strictEqual(c.category, 'driver-dark');
-  assert.strictEqual(c.severity, 'red');
-  assert.strictEqual(c.iconId, 'i-signaloff');
-  assert.strictEqual(c.known, true);
-  ok('driver_freshness_stale → driver-dark/red');
-}
-{
-  const c = classifyAlert({ type: 'no_drivers_available' });
-  assert.strictEqual(c.category, 'no-driver'); assert.strictEqual(c.severity, 'red');
-  ok('no_drivers_available → no-driver/red');
-}
-{
-  const c = classifyAlert({ type: 'payment_aged_refund_pending' });
-  assert.strictEqual(c.category, 'payment'); assert.strictEqual(c.severity, 'neutral');
-  ok('payment_aged_refund_pending → payment/neutral');
+  const KNOWN = [
+    ['driver_freshness_stale',           'driver-dark', 'red',     'i-signaloff'],
+    ['no_drivers_available',             'no-driver',   'red',     'i-userx'],
+    ['no_response_takeover',             'takeover',    'amber',   'i-phoneoff'],
+    ['assignment_strand',                'takeover',    'amber',   'i-phoneoff'],
+    ['payment_hosted_stale_no_callback', 'payment',     'amber',   'i-card'],
+    ['payment_reconcile_breaches',       'payment',     'neutral', 'i-card'],
+    ['payment_aged_refund_pending',      'payment',     'neutral', 'i-card'],
+  ];
+  for (const [type, category, severity, iconId] of KNOWN) {
+    const c = classifyAlert({ type });
+    assert.strictEqual(c.category, category, `${type} category`);
+    assert.strictEqual(c.severity, severity, `${type} severity`);
+    assert.strictEqual(c.iconId, iconId, `${type} iconId`);
+    assert.strictEqual(c.known, true, `${type} known`);
+  }
+  ok('all 7 known types → exact category/severity/icon parity');
 }
 // unknown / no-type / factura → fallback bucket, NEVER dropped
 {
@@ -44,6 +46,16 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   assert.strictEqual(entries[0].alert.type, 'no_drivers_available');
   assert.strictEqual(entries[0].category, 'no-driver');
   ok('sortAlertEntries: keyed obj → severity-sorted, id preserved');
+}
+// same-tier order is STABLE (preserves input/insertion order within a severity)
+{
+  const entries = sortAlertEntries({
+    x1: { type: 'no_response_takeover' },   // amber
+    x2: { type: 'assignment_strand' },      // amber
+    x3: { type: 'payment_hosted_stale_no_callback' }, // amber
+  });
+  assert.deepStrictEqual(entries.map(e => e.id), ['x1', 'x2', 'x3'], 'stable within amber tier');
+  ok('sortAlertEntries: same-tier stable order');
 }
 
 console.log(`\n${pass} passed`);

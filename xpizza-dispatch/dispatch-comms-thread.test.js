@@ -24,6 +24,24 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   assert.deepStrictEqual(t, []);
   ok('drops inbound with no orderable timestamp');
 }
+// explicit non-finite ts (received_at & time both NaN, and a non-finite auto `at`) → dropped
+{
+  const t = assembleThread({
+    inbound: [{ body: 'x', received_at: NaN, time: NaN }],
+    autoEvents: [{ label: 'y', at: NaN }],
+  });
+  assert.deepStrictEqual(t, []);
+  ok('drops non-finite received_at/time and non-finite auto at');
+}
+// equal-ts entries keep a STABLE ascending order (input order preserved on ties)
+{
+  const t = assembleThread({
+    inbound: [{ body: 'A', received_at: 100 }, { body: 'B', received_at: 100 }],
+    autoEvents: [],
+  });
+  assert.deepStrictEqual(t.map(x => x.text), ['A', 'B'], 'stable on equal ts');
+  ok('equal-ts → stable ascending order');
+}
 {
   assert.deepStrictEqual(assembleThread({}), []);
   ok('empty input → empty thread');
