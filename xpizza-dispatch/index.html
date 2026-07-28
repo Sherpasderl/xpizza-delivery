@@ -1771,6 +1771,14 @@
   .ord .meta .m.warn { color: var(--accent); } .ord .meta .m.warn .d { background: var(--accent); }
   .ord .meta .m.slip { color: var(--accent); } .ord .meta .m.slip .d { background: var(--accent); }
   .ord .actions { display: flex; gap: 6px; margin-top: 11px; }
+
+  /* ============ Right rail — cash bar + driver quick actions (Task 10a) ============ */
+  .cash-bar { background: linear-gradient(180deg, #262f3e, #222a37); box-shadow: var(--shadow); border-radius: 13px; padding: 14px 15px; margin: 4px 0 14px; }
+  .cash-lab { font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-dim); font-weight: 600; }
+  .cash-val { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 17px; margin-top: 3px; color: var(--text); }
+  .cash-sub { font-size: 11px; color: var(--text-soft); margin-top: 2px; }
+  .driver-actions { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
+  .driver-row .da { width: 28px; height: 28px; }
 </style>
 </head>
 
@@ -1860,7 +1868,7 @@
 
   <!-- Dispatcher alerts now render into the left-rail Torre de Control (#torre-list) — see renderDispatcherAlerts. -->
 
-  <div class="app left-open" id="app">
+  <div class="app left-open right-open" id="app">
   <div class="main" id="main-grid">
     <div id="map-container" class="col center">
       <button class="map-icon-btn fit" id="map-fit-btn" title="Centrar mapa" aria-label="Centrar mapa">
@@ -1888,13 +1896,7 @@
         <div id="unassigned-list"><div class="tree-empty">Sin pedidos pendientes</div></div>
       </div>
 
-      <div class="tree-group" id="drivers-group">
-        <div class="tree-group-header">
-          <div class="tree-group-title">Repartidores</div>
-          <div class="tree-group-meta" id="drivers-meta">0 de 0 activos</div>
-        </div>
-        <div id="drivers-tree"><div class="tree-empty">Sin repartidores</div></div>
-      </div>
+      <!-- Repartidores roster moved to the right rail (Task 10a) -->
 
       <div class="tree-group hidden" id="reconciliation-group">
         <div class="tree-group-header">
@@ -1927,7 +1929,16 @@
       </div>
     </div></div>
 
-    <div class="col right" id="right-rail"><div class="rail-inner"></div></div>
+    <div class="col right" id="right-rail"><div class="rail-inner">
+      <div class="cash-bar" id="cash-bar"></div>
+      <div class="tree-group" id="drivers-group">
+        <div class="tree-group-header">
+          <div class="tree-group-title">Repartidores</div>
+          <div class="tree-group-meta" id="drivers-meta">0 de 0 activos</div>
+        </div>
+        <div id="drivers-tree"><div class="tree-empty">Sin repartidores</div></div>
+      </div>
+    </div></div>
   </div></div>
 </div>
 
@@ -2290,6 +2301,7 @@ function subscribeAll() {
     updateCustomerMarkers();
     updateStats();
   });
+  XPD.subscribeToDriverCash(renderCashBar);   // read-only cash bar (today's closed cuadres)
   XPD.subscribeToManualReconciliation((orders) => {
     reconciliationOrders = orders || {};
     renderReconciliationSection();
@@ -3003,6 +3015,31 @@ async function confirmCancelOrder(orderId) {
   }
 }
 
+// Cash bar — read-only aggregate of today's CLOSED cuadres
+// (driver_cash/{driver}/{shift}/cuadre/{cash_owed,cash_order_count,closed_at}). Open/in-street
+// cash is NOT in this node, so it is intentionally NOT shown (deferred, not fabricated).
+function renderCashBar(cash) {
+  const el = $('cash-bar');
+  if (!el) return;
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+  const startMs = dayStart.getTime();
+  let total = 0, orders = 0;
+  for (const shifts of Object.values(cash || {})) {
+    for (const shift of Object.values(shifts || {})) {
+      const c = shift && shift.cuadre;
+      if (c && Number.isFinite(c.closed_at) && c.closed_at >= startMs) {
+        total += Number(c.cash_owed) || 0;
+        orders += Number(c.cash_order_count) || 0;
+      }
+    }
+  }
+  el.innerHTML = `
+    <div class="cash-lab">Cuadre de hoy</div>
+    <div class="cash-val">L ${escapeHtml(total.toLocaleString('es-HN'))}</div>
+    <div class="cash-sub">${escapeHtml(String(orders))} pedido(s) cerrado(s)</div>
+  `;
+}
+
 function renderDriversSection() {
   updateRiskSummary();
   const allEntries = Object.entries(allDrivers);
@@ -3040,6 +3077,14 @@ function renderDriversSection() {
       if (d.active) { if (items.length) items.push({ divider: true }); items.push({ label: 'Sacar de turno', icon: ICONS.close, danger: true, action: () => forceOffShift(uid) }); }
       if (items.length) showActionMenu(btn, items);
     });
+  });
+
+  // Surfaced quick actions on the card face (Task 10a).
+  tree.querySelectorAll('[data-call-driver]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); window.location.href = `tel:${btn.dataset.callDriver}`; });
+  });
+  tree.querySelectorAll('[data-msg-driver]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); toast('Mensajería al repartidor: disponible en Fase 2'); });
   });
 
   tree.querySelectorAll('.driver-row').forEach(row => {
@@ -3261,7 +3306,11 @@ function renderDriverNode(uid, d) {
       <div class="status-dot ${dotClass}"></div>
       <div class="name">${escapeHtml(d.name || 'Sin nombre')}</div>
       <div class="row-status">${escapeHtml(statusText)}</div>
-      <button class="more-btn" data-more-driver="${uid}" title="Acciones del repartidor">⋯</button>
+      <div class="driver-actions">
+        ${d.phone ? `<button class="da call" data-call-driver="${escapeHtml(String(d.phone))}" title="Llamar"><svg class="ic sm"><use href="#i-phone"/></svg></button>` : ''}
+        <button class="da msg" data-msg-driver="${uid}" title="Mensaje in-app (Fase 2)"><svg class="ic sm"><use href="#i-message"/></svg></button>
+        <button class="da more" data-more-driver="${uid}" title="Acciones del repartidor"><svg class="ic sm"><use href="#i-more"/></svg></button>
+      </div>
       <span class="chevron">${ICONS.chevronRight}</span>
     </div>
     <div class="driver-tasks ${expanded ? '' : 'collapsed'}">

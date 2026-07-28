@@ -511,6 +511,13 @@ export function subscribeToTasks(callback) {
   return onValue(tasksRef, (snap) => callback(snap.val() || {}));
 }
 
+// Read-only: driver_cash/{driverId}/{shiftId}/cuadre/{cash_owed,cash_order_count,closed_at}
+// (dispatcher-readable per database.rules.json). Cash bar aggregation only — never written.
+export function subscribeToDriverCash(callback) {
+  const cashRef = ref(db, 'driver_cash');
+  return onValue(cashRef, (snap) => callback(snap.val() || {}));
+}
+
 export function subscribeToOrders(callback) {
   const ordersRef = ref(db, 'orders');
   // Filter out non-live (e.g. unpaid pending_payment) orders centrally so no
