@@ -2337,13 +2337,13 @@ function alertContent(a) {
   const label = (id) => escapeHtml(displayOrderLabel(id));
   switch (a.type) {
     case 'no_drivers_available': {
-      const total = a.total != null ? ` · L${a.total}` : '';
+      const total = a.total != null ? ` · L${escapeHtml(String(a.total))}` : '';
       return { title: 'No hay repartidores disponibles',
         detail: `Pedido ${label(a.order_id)} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — asigna manualmente` };
     }
     case 'no_response_takeover': {
-      const total = a.total != null ? ` · L${a.total}` : '';
-      const attempts = a.attempts || 2;
+      const total = a.total != null ? ` · L${escapeHtml(String(a.total))}` : '';
+      const attempts = escapeHtml(String(a.attempts || 2));
       return { title: 'Sin respuesta de repartidores',
         detail: `Pedido ${label(a.order_id)} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — ${attempts} intentos sin aceptación, asigna manualmente` };
     }
@@ -2395,11 +2395,12 @@ function renderDispatcherAlerts(alerts) {
   const rowHtml = (e) => {
     const sev = e.severity === 'red' ? 'red' : e.severity === 'amber' ? 'amber' : '';
     const { title, detail } = alertContent(e.alert);
+    const idAttr = escapeHtml(e.id);
     return `
-      <div class="ex ${sev}" data-alert-id="${e.id}">
+      <div class="ex ${sev}" data-alert-id="${idAttr}">
         <div class="exi"><svg class="ic sm"><use href="#${e.iconId}"/></svg></div>
         <div class="b"><div class="t">${escapeHtml(title)}</div><div class="d">${detail}</div></div>
-        <button class="alert-dismiss ex-dismiss" data-dismiss-id="${e.id}" title="Descartar"><svg class="ic sm"><use href="#i-close"/></svg></button>
+        <button class="alert-dismiss ex-dismiss" data-dismiss-id="${idAttr}" title="Descartar"><svg class="ic sm"><use href="#i-close"/></svg></button>
       </div>`;
   };
 
