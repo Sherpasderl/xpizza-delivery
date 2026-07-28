@@ -1,9 +1,9 @@
 # Dispatch Redesign — Torre de Control — Design
 
 **Date:** 2026-07-28
-**Status:** Revised R1 (advisor/codex gate = REVISE, direction approved) → delta re-gate → phased build (each phase its own plan + codex-on-diff)
+**Status:** Revised R2 (advisor/codex: direction + all prior points settled; 4 residual data-honesty gaps closed) → delta re-gate (expected APPROVE) → phased build (each phase its own plan + codex-on-diff)
 **Surface:** `xpizza-dispatch/index.html` (git-CD from origin/main)
-**Type:** Information-architecture + visual redesign (UI/UX). Phase 1 is a client-side reorg over existing data; later phases add comms capabilities.
+**Type:** Information-architecture + visual redesign (UI/UX). Phase 1 is a **client-side IA/visual reorg with declared read-only subscription additions** (no writes, no money path); later phases add comms capabilities.
 
 ---
 
@@ -78,21 +78,23 @@ Three columns under a topbar, over a coverage footer. Both side rails collapse.
 
 ### 5.1 Topbar
 - **Restaurant selector** (X.Pizza / La Musa), **brand**, **☰** (toggle left rail; red dot badge when collapsed and exceptions pending).
-- **KPI group** (borderless, hairline dividers, count-up on load): En turno · Sin asignar · Activos. **On-time % is NOT a firm Phase-1 KPI** — a true customer-facing on-time rate needs an SLA/promise time that does not exist yet (see §5.2 and §7). It lands as a fast-follow tied to predictor graduation (Phase 1b) + a pre-pickup drive estimate; in the interim it may appear only as a clearly-labeled **"estimado (preview)"** read off the shadow prediction (read-only display, never written back — respects the inviolable shadow boundary).
+- **KPI group** (borderless, hairline dividers, count-up on load): En turno · Sin asignar · Activos. **On-time % is NOT a firm Phase-1 KPI** — a true customer-facing on-time rate needs an SLA/promise time that does not exist yet (see §5.2 and §7). It lands as a fast-follow tied to predictor graduation (Phase 1b) + a pre-pickup drive estimate.
+- **"estimado (preview)" is optional in Phase 1 and requires a declared read path.** If included, it reads off `order_predictions` — dispatcher-readable but **not** in current subscriptions — so Phase 1 must **explicitly add a read-only `order_predictions` subscription** (model/version-labeled, display-only, never written back — respects the inviolable shadow boundary). If we don't add that subscription, the preview is **excluded** from Phase 1.
 - **Auto-asignar** toggle (existing `setAutoAssignEnabled`), **⌘K** search/command entry, **messages** icon (inbound badge), **⇥** (toggle right rail).
 
 ### 5.2 Torre de control (exceptions-first) — *flagship, Phase 1*
 - Promotes dispatcher alerts from a floating strip into a **categorized priority queue**: severity-ranked (red → amber → neutral), each row = icon · title · one-line detail · **"Tomar" (take-ownership)** on hover.
 - **Alert registry, not a fixed 7-type list.** The backend writes more than the 7 well-known types — also `factura_*` alerts (which carry **no `type` field**) and payment/scheduled **sub-kinds** beyond the base set. A 7-only queue would silently bury real alerts — the opposite of the visibility goal. So the Torre is driven by an **alert registry**: known types map to a category + icon + severity; **anything unrecognized (incl. `factura_*` and new breach sub-kinds) falls into a generic "Otros / Revisar" bucket** so nothing is ever dropped.
-- Known categories map to existing signals: driver-dark (`driver_freshness_stale` — derived, see below), no-driver (`no_drivers_available`), takeover (`no_response_takeover` / `assignment_strand`), payment (`payment_hosted_stale_no_callback`, `payment_reconcile_breaches`, `payment_aged_refund_pending` + sub-kinds), fiscal (`factura_*`), late (see next bullet). Reuses `dismissDispatcherAlert`.
+- Known categories map to existing signals: driver-dark (`driver_freshness_stale` — derived, see below), no-driver (`no_drivers_available`), takeover (`no_response_takeover` / `assignment_strand`), payment (`payment_hosted_stale_no_callback`, `payment_reconcile_breaches`, `payment_aged_refund_pending` + sub-kinds), fiscal (`factura_*`), delivery-risk (see next bullet). Reuses `dismissDispatcherAlert`.
 - **`driver_freshness_stale` is a derived state, not just a banner.** Today it renders no banner but drives `staleDriverUids` and the red GPS-dark driver rows. It stays **first-class** in the new IA; the move must preserve its existing effects — regression-test that dismiss, the chime, and the red-row rendering all survive (see §10).
-- **Lateness header — scoped to what's computable.** A promise/SLA time does **not** exist yet (§7). So the header aggregates only computable signals: **out-of-delivery orders exceeding their live post-pickup ETA** (the Phase-1a ETA is post-pickup only, `driver-eta.js:16`) plus **static-threshold aging** (orders past X min since created without delivery). It is **not** a promise-based on-time metric — that is deferred with the on-time KPI (§5.1).
+- **"Delivery risk / aging" header — not "lateness / late-by."** There is **no fixed baseline** to be "late" against: the live ETA is recomputed every refresh (`now + route + dwell`, post-pickup only, `driver-eta.js:16`), so "exceeding live ETA" collapses to `arrivalMs <= now` and drifts as the ETA refreshes. So Phase 1 surfaces **delivery-risk / aging**, built from two honest, client-only signals: (a) **static-threshold aging** — orders past X min since created without delivery; and (b) an optional **first-ETA snapshot** — when a driver goes `out_for_delivery`, snapshot the first ETA locally (client-side, no backend) and flag orders whose *later* ETA has **slipped materially past that first estimate** ("slipping vs first estimate"). **No "late-by" against a promise** — real promise-based lateness/on-time is Phase 1b (§5.1, §7).
 - **"Tomar" is a local highlight only** — single-dispatcher operation, so no claim/assignee is written (resolved: no multiple dispatchers).
 
 ### 5.3 Sin asignar + rich order rows — *Phase 1*
 Each order card surfaces, on its face (no click):
 - `#N` (mono), customer, **live aging timer**. **Baselines from currently-subscribed data only:** created-time (unassigned), then assigned / picked-up / delivered timestamps (available on `orders`/`tasks`). **Kitchen-phase aging is NOT computable from current subscriptions** — it needs `order_timelines`, which dispatch does not subscribe to; Phase 1 either excludes kitchen-phase aging or **explicitly adds a read-only `order_timelines` subscription** (declared, not hand-waved). Green→amber→red band on the card edge.
-- Items summary; **payment type** (Efectivo L… / Pagado online) from existing order data; **WhatsApp status** (sent) from automessage state; **ETA** when out-for-delivery (post-pickup); assigned driver + status dot.
+- Items summary; **payment type** (Efectivo L… / Pagado online) from existing order data; **ETA** when out-for-delivery (post-pickup); assigned driver + status dot.
+- **WhatsApp indicator — scoped to order-level fields only.** There is **no general subscribable automessage send-state** (`sendOrderStatusNotifications` mostly doesn't persist it; `pickup_ready_notifications` is read-denied). So the Phase-1 chip reflects **only the order-level fields that exist** — `order_received_notified_at` / `order_received_send_unresolved_at` — as a limited **"Recibido: enviado / no-entregado"** chip. Full per-message delivery state belongs to the **Phase-2 audited thread store**, not Phase 1. (Drop the chip entirely if we don't want even that.)
 - **Assign** affordance (existing `assignOrderToDriver` / distance-ranked picker); drag-drop is a later enhancement (§9).
 
 ### 5.4 Live map — *Phase 1 (pins) + Phase 3 (motion polish)*
@@ -136,8 +138,8 @@ Each order card surfaces, on its face (no click):
 
 - **Phase 1 is client-side + read-only reads — NOT "no backend" absolutely.** It's an IA/visual layer over subscribed data, with these honest caveats:
   - Client-side compute: aging timers (created/assigned/pickup/delivery timestamps), lateness aggregation (post-pickup ETA + static thresholds — *not* a promise metric), reading `driver_cash` for the cash bar.
-  - **New read-only subscriptions may be required:** a **scheduled-orders** subscription for full Programados visibility (`subscribeToOrders` filters them out), and optionally **`order_timelines`** if we want kitchen-phase aging. These are read-only, no writes — but they are backend surface area to declare, not "nothing."
-  - **On-time %** is deferred (no SLA/promise exists) — preview-only off the shadow prediction in the interim, real metric with predictor graduation.
+  - **New read-only subscriptions must be declared per feature** (read-only, no writes, but backend surface area — not "nothing"): **scheduled-orders** for full Programados visibility (`subscribeToOrders` filters them out); optionally **`order_timelines`** for kitchen-phase aging; and, **only if the on-time "preview" is included, `order_predictions`** (model/version-labeled, display-only — respects the shadow boundary). Each is a decision at the Phase-1 plan: add the sub (full feature) or scope/drop it.
+  - **On-time %** is deferred (no SLA/promise exists) — optional preview-only off `order_predictions` in the interim (with the declared sub above), real metric with predictor graduation (1b). The Phase-1 delivery-risk header uses only aging + the client-only first-ETA snapshot (§5.2), no new sub.
   - No money-path change.
 - **Phase 2 backend:** a **dedicated authenticated dispatcher-send Cloud Function** for customer replies (audit + delivery-state + failure contract; UltraMsg QR transport + ban-risk guard — **not** Cloud-API template logic); driver messaging (message store + RTDB rules + callable send + FCM + anti-spoof + driver-app receive/reply UI).
 - **Phase 3:** command palette (client search over subscribed data); motion polish (client-only).
@@ -192,6 +194,14 @@ Phase 1 is the highest-leverage, lowest-risk chunk (the ⅔ "buried" fix, no mon
 - **D. Guardrails:** Phase-1 module-extraction guard (pure modules + one thin patch, no opportunistic rewrites, coordinate the shared `index.html`); icon sprite stroke on each `<symbol>`/rendered `<svg>` + in-browser prototype; token citation fixed to `:root` (18–35) with intentional `--*-soft` reuse.
 
 → Sent back for delta re-gate (codex thread held open).
+
+**R2 (2026-07-28) — closed 4 residual data-honesty gaps (direction + 11 prior points already settled):**
+- **Delivery-risk, not lateness:** dropped "late-by / exceeding live ETA" (the live ETA has no fixed baseline — it recomputes each refresh, so it collapses to `arrivalMs <= now`). Phase 1 now surfaces **delivery-risk / aging** = static-threshold aging + an optional **client-only first-ETA snapshot** ("slipping vs first estimate"). Promise-based lateness stays in 1b.
+- **WhatsApp chip scoped to real fields:** only `order_received_notified_at` / `order_received_send_unresolved_at` (a limited "Recibido: enviado/no-entregado"); no general automessage send-state exists. Full per-message state → Phase-2 thread store.
+- **Preview read path declared:** the on-time "estimado (preview)" is optional and, if included, requires a **declared read-only `order_predictions` subscription** (model/version-labeled, display-only); else excluded.
+- **Header/body contradiction fixed:** §Type now reads "client-side IA/visual reorg with declared read-only subscription additions," consistent with §7.
+
+→ Sent back for delta re-gate; expecting APPROVE, clearing the Phase 1 (+1b sequencing) plan.
 
 ---
 
