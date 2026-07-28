@@ -3295,7 +3295,7 @@ function renderTaskRow(driverUid, order) {
   return `
     <div class="task-row" data-order-id="${order.order_id}" data-driver-uid="${driverUid}">
       <div class="task-top">
-        <div class="task-id">${displayOrderLabel(order)}</div>
+        <div class="task-id">${escapeHtml(displayOrderLabel(order))}</div>
         <div style="display: flex; align-items: center; gap: 6px;">
           <div class="task-id mono" style="color: var(--text-soft);">L${order.total ?? '—'}</div>
           <button class="more-btn" data-more-task="${order.order_id}" data-driver-uid="${driverUid}" title="Más opciones">⋯</button>
