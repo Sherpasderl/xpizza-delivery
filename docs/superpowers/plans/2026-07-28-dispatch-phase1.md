@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vanilla ES modules, `node --test`-style assertions via `node:assert` (mirroring `driver-eta.test.js` / `driver-glide.test.js`), Firebase RTDB (existing subscriptions), Google Maps JS (existing, unchanged).
 
-**Status:** Part A ✅ built + codex-gated (Tasks 1–5). Part B: Task 6 ✅ built + gated; **Task 7 (grid foundation) R3 — 4 grounded corrections folded in, awaiting plan-gate re-approval before build.** Tasks 8–12 re-sequenced (see Revisions R2/R3 in Self-Review).
+**Status:** Part A ✅ + Task 6 ✅ + Task 7 ✅ (built+gated+on-device) + Task 8 ✅ (built+on-device; codex pending). Tasks 9–12 pending. **Task 13 (topbar restyle) ADDED at Xavier's request (R5) — awaiting plan-gate before build.** Building in worktree `/Users/xavierlacayo/Downloads/xpizza-dispatch-redesign`.
 
 ---
 
@@ -799,6 +799,25 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
+## Task 13: Topbar restyle (visual parity with the mockup)
+
+**Added at Xavier's request (2026-07-28)** for full v6 parity, **conditioned on preserving every advisor-flagged behavior** — this is a *visual restyle only*, no new behavior, no dropped handler.
+
+**Files:** Modify `xpizza-dispatch/index.html` (topbar markup + CSS).
+
+- [ ] **Step 1 — restyle to the mockup topbar**, porting markup/CSS from `docs/superpowers/mockups/dispatch-board-v6.html`: KPI **chips** (En turno · Sin asignar · Activos · Entregados), the **auto-asignar pill**, the **messages** icon-button (with badge), an **avatar pill** (user initials from the signed-in email, replacing the raw email text), and a **restaurant-name display pill** (current restaurant, **display only — NOT a switcher**; dispatch is single-restaurant). Keep the ☰ (left) / ⇥ (right) toggles from Task 7. Map mockup tokens to the real `--text-*` tokens.
+- [ ] **Step 2 — preserve EVERY existing behavior (Guardrail 6):** keep the exact handlers + bindings — `auto-assign-toggle` → `setAutoAssignEnabled` and its on/off state sync; `msg-btn` → `openMessagesModal` + the `msg-badge` count; `signout-btn`; the live stat bindings (`stat-drivers` / `stat-pending` / `stat-active` / `stat-delivered`); the `data-version-display` tag. Restyle the elements; do not rewire them.
+- [ ] **Step 3 — EXCLUDE the design-deferred controls (DO-NOT-PORT):** **no On-time % / "A tiempo" KPI** (→ 1b) and **no ⌘K search / command palette** (→ Phase 3). The 4 existing stats stay (relabeled to the mockup style, same underlying ids/bindings).
+- [ ] **Step 4 — Verify (on-device):** auto-assign toggles + reflects state; messages opens the modal + badge updates; signout works; all four stats still update live; ☰/⇥ still collapse the rails; console clean; `prefers-reduced-motion` respected.
+- [ ] **Step 5 — Commit**
+
+```bash
+git add xpizza-dispatch/index.html
+git commit -m "feat(dispatch): Part B Task 13 — topbar restyle to v6 (chips/pills/avatar), handlers preserved
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+```
+
 ## §1b — Deferred (NOT in this plan)
 
 Real SLA-based **on-time % + promise-based lateness** requires predictor graduation + a pre-pickup drive estimate. It is a separate row/plan (Phase 1b) and must NOT be added to the tasks above. The optional "estimado (preview)" off `order_predictions` (with a declared read-only subscription, display-only) is likewise **out of scope here** — add it only in a dedicated task if/when chosen.
@@ -847,3 +866,5 @@ Real SLA-based **on-time % + promise-based lateness** requires predictor graduat
 4. **Torre seam** — Task 7 Step 1 now creates an explicit empty `#torre-list` render target; Task 8 targets `#torre-list` (no guessing).
 
 **Plan revision R4 (2026-07-28) — one residual (plan-gate REVISE):** the drag-resize retirement (Step 4) also had to account for the pre-handler icon-init at `4077–4078` (`$('sidebar-collapse-btn')…` / `$('sidebar-show-btn')…`) — leaving those after removing the buttons throws a null-deref in the module script before board wiring finishes (whole board breaks on load). Step 4 now names them for removal, keeping line `4079` (`delivered-toggle`).
+
+**Plan revision R5 (2026-07-28) — added Task 13 (topbar restyle):** Xavier requested full v6 topbar parity in Phase 1, conditioned on preserving every advisor-flagged behavior. Added **Task 13** as a *visual-only* restyle (KPI chips, auto-asignar pill, messages, avatar, restaurant-name display pill) that keeps every existing handler/binding (auto-assign toggle + state sync, messages modal + badge, signout, live stats, version tag, ☰/⇥) and **excludes** the design-deferred controls (on-time% → 1b, ⌘K → Phase 3). Restaurant selector is display-only (dispatch is single-restaurant; a switcher would be new scope, not a restyle).
