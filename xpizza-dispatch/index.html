@@ -1723,6 +1723,28 @@
   /* Topbar rail-toggle buttons (☰ / ⇥) */
   .rail-toggle { background: transparent; border: none; color: var(--text-soft); width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; cursor: pointer; }
   .rail-toggle:hover { background: var(--surface-2); color: var(--text); }
+
+  /* ============ Torre de Control — exceptions queue (Task 8) ============ */
+  #torre-list:not(:empty) { padding: 14px 12px 6px; }
+  .torre-head { display: flex; align-items: baseline; gap: 10px; margin: 0 2px 12px; }
+  .torre-head h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .9px; color: var(--text-dim); font-weight: 700; }
+  .torre-count { font-size: 11px; color: var(--text-soft); font-weight: 700; }
+  .torre-count.hot { color: var(--accent); animation: softpulse 2.4s infinite; }
+  .otros-head { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-dim); font-weight: 700; margin: 14px 2px 8px; }
+  .ex-list { display: flex; flex-direction: column; gap: 9px; }
+  /* .ex base depth (gradient/shadow/hover-lift) comes from the Task-6 .ex,.ord,.drv,.cash rule. */
+  .ex { display: flex; gap: 12px; align-items: center; border-radius: 13px; padding: 12px 13px; position: relative; }
+  .ex::before { content: ""; position: absolute; left: 0; top: 11px; bottom: 11px; width: 3px; border-radius: 3px; background: var(--text-dim); }
+  .ex.red::before   { background: var(--accent); box-shadow: 0 0 10px rgba(220,38,38,.5); }
+  .ex.amber::before { background: var(--warn);   box-shadow: 0 0 10px rgba(245,158,11,.4); }
+  .ex .exi { width: 30px; height: 30px; border-radius: 9px; background: rgba(0,0,0,.25); display: grid; place-items: center; flex: none; margin-left: 4px; color: var(--text-soft); }
+  .ex.red .exi   { color: #ff6b69; }
+  .ex.amber .exi { color: var(--warn); }
+  .ex .b { flex: 1; min-width: 0; }
+  .ex .t { font-weight: 600; font-size: 13px; color: var(--text); }
+  .ex .d { color: var(--text-dim); font-size: 11.5px; margin-top: 2px; }
+  .ex .ex-dismiss { flex: none; width: 26px; height: 26px; border-radius: 7px; background: none; border: none; color: var(--text-dim); cursor: pointer; display: grid; place-items: center; }
+  .ex .ex-dismiss:hover { color: var(--text); background: rgba(255,255,255,0.06); }
 </style>
 </head>
 
@@ -1810,8 +1832,7 @@
     <button class="topbar-btn" id="signout-btn">Salir</button>
   </header>
 
-  <!-- Floating dispatcher alerts (e.g., "no drivers available") -->
-  <div class="dispatcher-alerts" id="dispatcher-alerts"></div>
+  <!-- Dispatcher alerts now render into the left-rail Torre de Control (#torre-list) — see renderDispatcherAlerts. -->
 
   <div class="app left-open" id="app">
   <div class="main" id="main-grid">
@@ -2308,121 +2329,92 @@ function subscribeAll() {
 }
 
 // ============================================================
-// Dispatcher alert banner rendering
+// Torre de Control — exceptions queue (registry-driven, Task 8)
 // ============================================================
-function renderDispatcherAlerts(alerts) {
-  const container = $('dispatcher-alerts');
-  if (!container) return;
-
-  const ids = Object.keys(alerts);
-  if (ids.length === 0) {
-    container.innerHTML = '';
-    return;
-  }
-
-  container.innerHTML = ids.map(alertId => {
-    const a = alerts[alertId];
-    if (a.type === 'no_drivers_available') {
+// Per-type Torre copy (title + already-escaped detail HTML). Preserves the exact bespoke copy
+// the old floating banners used; classifyAlert (via sortAlertEntries) supplies category/severity/icon.
+function alertContent(a) {
+  const label = (id) => escapeHtml(displayOrderLabel(id));
+  switch (a.type) {
+    case 'no_drivers_available': {
       const total = a.total != null ? ` · L${a.total}` : '';
-      return `
-        <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">${ICONS.warn}</span>
-          <div class="alert-text">
-            <strong>No hay repartidores disponibles</strong>
-            Pedido ${escapeHtml(displayOrderLabel(a.order_id))} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — asigna manualmente
-          </div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-        </div>
-      `;
+      return { title: 'No hay repartidores disponibles',
+        detail: `Pedido ${label(a.order_id)} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — asigna manualmente` };
     }
-    if (a.type === 'no_response_takeover') {
+    case 'no_response_takeover': {
       const total = a.total != null ? ` · L${a.total}` : '';
       const attempts = a.attempts || 2;
-      return `
-        <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">${ICONS.warn}</span>
-          <div class="alert-text">
-            <strong>Sin respuesta de repartidores</strong>
-            Pedido ${escapeHtml(displayOrderLabel(a.order_id))} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — ${attempts} intentos sin aceptación, asigna manualmente
-          </div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-        </div>
-      `;
+      return { title: 'Sin respuesta de repartidores',
+        detail: `Pedido ${label(a.order_id)} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — ${attempts} intentos sin aceptación, asigna manualmente` };
     }
-    if (a.type === 'assignment_strand') {
-      // S3d: emitted only on a double RTDB fault (finalize write AND rollback both failed) — the order may
-      // be delivery-claimed but pickup-unassigned (hidden from SIN ASIGNAR). Surface it so a human recovers.
-      return `
-        <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">${ICONS.warn}</span>
-          <div class="alert-text">
-            <strong>Pedido atascado</strong>
-            Pedido ${escapeHtml(displayOrderLabel(a.order_id))} — la asignación falló a medias, revisá y reasigná manualmente
-          </div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-        </div>
-      `;
-    }
-    if (a.type === 'payment_hosted_stale_no_callback') {
+    case 'assignment_strand':
+      return { title: 'Pedido atascado',
+        detail: `Pedido ${label(a.order_id)} — la asignación falló a medias, revisá y reasigná manualmente` };
+    case 'payment_hosted_stale_no_callback': {
       const d = a.detail || {};
       const total = d.total != null ? ` (L${escapeHtml(String(d.total))})` : '';
-      return `
-        <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">${ICONS.warn}</span>
-          <div class="alert-text">
-            <strong>Pago en línea sin confirmar</strong>
-            Pedido ${escapeHtml(displayOrderLabel(d.orderId))}${total} — el cliente abrió un pago en línea que no se completó. Revísalo en “Reconciliación de pagos”.
-          </div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-        </div>
-      `;
+      return { title: 'Pago en línea sin confirmar',
+        detail: `Pedido ${label(d.orderId)}${total} — el cliente abrió un pago en línea que no se completó. Revísalo en “Reconciliación de pagos”.` };
     }
-    if (a.type === 'payment_reconcile_breaches') {
+    case 'payment_reconcile_breaches': {
       const d = a.detail || {};
       const n = d.count != null ? d.count : (d.breaches ? d.breaches.length : 0);
-      return `
-        <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">${ICONS.warn}</span>
-          <div class="alert-text">
-            <strong>Pagos por reconciliar</strong>
-            ${escapeHtml(String(n))} pedido(s) con pago en línea sin confirmar necesitan revisión. Ábrelos en “Reconciliación de pagos”.
-          </div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-        </div>
-      `;
+      return { title: 'Pagos por reconciliar',
+        detail: `${escapeHtml(String(n))} pedido(s) con pago en línea sin confirmar necesitan revisión. Ábrelos en “Reconciliación de pagos”.` };
     }
-    if (a.type === 'payment_aged_refund_pending') {
+    case 'payment_aged_refund_pending': {
       const d = a.detail || {};
-      return `
-        <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">${ICONS.warn}</span>
-          <div class="alert-text">
-            <strong>Reembolso pendiente</strong>
-            Pedido ${escapeHtml(displayOrderLabel(d.orderId))} — un reembolso lleva más de 24h sin completarse. Verifícalo en PixelPay.
-          </div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-        </div>
-      `;
+      return { title: 'Reembolso pendiente',
+        detail: `Pedido ${label(d.orderId)} — un reembolso lleva más de 24h sin completarse. Verifícalo en PixelPay.` };
     }
-    if (a.type === 'driver_freshness_stale') {
-      // Driver Tracking C1 — surfaced as a red "sin señal GPS" row in the sidebar (renderDriverNode),
-      // NOT a banner: no stacking, no per-minute recurrence. The alert still drives the sidebar flag
-      // (staleDriverUids) and the one-shot per-episode chime; here it renders no banner.
-      return '';
+    case 'driver_freshness_stale': {
+      // NEW: now a first-class Torre row (it previously rendered no banner). Its derived effects
+      // (staleDriverUids, red GPS-dark driver rows, per-episode chime) live in the
+      // subscribeToDispatcherAlerts callback and are untouched.
+      const name = escapeHtml(allDrivers[a.driver_id]?.name || 'Un repartidor');
+      return { title: 'Driver sin señal GPS',
+        detail: `${name} está sin señal GPS reciente — revisá su última ubicación en el mapa.` };
     }
-    // Generic fallback — humanize the type instead of dumping the raw token.
-    const humanType = String(a.type || 'alerta').replace(/^payment_/, '').replace(/_/g, ' ');
-    return `
-      <div class="dispatcher-alert" data-alert-id="${alertId}">
-        <span class="alert-icon">${ICONS.warn}</span>
-        <div class="alert-text"><strong>Alerta</strong> ${escapeHtml(humanType)}</div>
-        <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-      </div>
-    `;
-  }).join('');
+    default: {
+      // Fallback bucket (factura_* / unknown / no-type) — humanize, NEVER drop.
+      const humanType = String(a.type || '').replace(/^(payment|factura)_/, '').replace(/_/g, ' ').trim();
+      return { title: 'Alerta', detail: escapeHtml(humanType || 'sin tipo') };
+    }
+  }
+}
 
-  // Wire up dismiss buttons
-  container.querySelectorAll('.alert-dismiss').forEach(btn => {
+// Renders the exceptions queue into #torre-list (left rail). Replaces the old floating
+// #dispatcher-alerts strip. sortAlertEntries preserves each alert id (dismiss) + classifies
+// severity/icon; unknown/factura_* fall into an "Otros / Revisar" bucket (nothing dropped).
+function renderDispatcherAlerts(alerts) {
+  const container = $('torre-list');
+  if (!container) return;
+  const entries = sortAlertEntries(alerts);
+  if (entries.length === 0) { container.innerHTML = ''; return; }
+
+  const rowHtml = (e) => {
+    const sev = e.severity === 'red' ? 'red' : e.severity === 'amber' ? 'amber' : '';
+    const { title, detail } = alertContent(e.alert);
+    return `
+      <div class="ex ${sev}" data-alert-id="${e.id}">
+        <div class="exi"><svg class="ic sm"><use href="#${e.iconId}"/></svg></div>
+        <div class="b"><div class="t">${escapeHtml(title)}</div><div class="d">${detail}</div></div>
+        <button class="alert-dismiss ex-dismiss" data-dismiss-id="${e.id}" title="Descartar"><svg class="ic sm"><use href="#i-close"/></svg></button>
+      </div>`;
+  };
+
+  const known = entries.filter((e) => e.known);
+  const unknown = entries.filter((e) => !e.known);
+  const anyRed = entries.some((e) => e.severity === 'red');
+  let html = `<div class="torre-head"><h3>Torre de control</h3><span class="torre-count${anyRed ? ' hot' : ''}">${entries.length}</span></div>`;
+  html += `<div class="ex-list">${known.map(rowHtml).join('')}</div>`;
+  if (unknown.length) {
+    html += `<div class="otros-head">Otros / Revisar</div><div class="ex-list">${unknown.map(rowHtml).join('')}</div>`;
+  }
+  container.innerHTML = html;
+
+  // Dismiss wiring preserved (data-dismiss-id → dismissDispatcherAlert).
+  container.querySelectorAll('.alert-dismiss').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.dismissId;
       try { await XPD.dismissDispatcherAlert(id); } catch {}
