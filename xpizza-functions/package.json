@@ -26,7 +26,13 @@
     "logs": "firebase functions:log",
     "vapid": "npx web-push generate-vapid-keys",
     "test:cancel-order": "firebase emulators:exec --only database --project demo-xpizza \"node test/cancel-order.emulator.test.js\"",
-    "test:user-profiles-rules": "firebase emulators:exec --only database --project demo-xpizza \"node test/user-profiles-rules.emulator.test.js\""
+    "test:user-profiles-rules": "firebase emulators:exec --only database --project demo-xpizza \"node test/user-profiles-rules.emulator.test.js\"",
+    "test:rewards-rules": "firebase emulators:exec --only database --project demo-xpizza \"node test/rewards-rules.emulator.test.js\"",
+    "test:rewards-earn": "firebase emulators:exec --only database --project demo-xpizza \"node test/rewards-earn.emulator.test.js\"",
+    "test:rewards-reserve": "firebase emulators:exec --only database --project demo-xpizza \"node test/rewards-reserve.emulator.test.js\"",
+    "test:rewards-intake": "firebase emulators:exec --only database --project demo-xpizza \"node test/rewards-redeem-intake.emulator.test.js\"",
+    "test:rewards-settle": "firebase emulators:exec --only database --project demo-xpizza \"node test/rewards-redeem-settle.emulator.test.js\"",
+    "test:rewards:emulator": "firebase emulators:exec --only database --project demo-xpizza \"node test/rewards-rules.emulator.test.js && node test/rewards-earn.emulator.test.js && node test/rewards-reserve.emulator.test.js && node test/rewards-redeem-intake.emulator.test.js && node test/rewards-redeem-settle.emulator.test.js\""
   },
   "engines": {
     "node": "22"
