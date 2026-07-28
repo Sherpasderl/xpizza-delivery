@@ -64,6 +64,23 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   // quota. So the blocking path never reaches checkRateLimit → 0 rate_limits writes on a state-drift block.
   before(body, 'if (cartBlocked.length === 0)', 'checkRateLimit(', 'online rate-limit gated behind cartBlocked===[] (a blocked cart never reaches checkRateLimit)');
   ok('chargeOnlineOrder: classify → gate → (cartBlocked===[] ? rate-limit) → acquire/charge — blocked cart writes nothing, incl. rate_limits');
+
+  // Rewards B1 (online): prepare BEFORE both fingerprint sites (so both carry the discounted total); reserve
+  // BEFORE the CAS; attach the claimed attempt after acquire; release on EVERY abandoned outcome; PRESERVE on
+  // in_progress/reuse. A regression that drops a release (orphaned hold) or moves the reserve ahead of
+  // placeability / behind the fingerprints fails HERE.
+  before(body, 'prepareRedemption(', 'orderFingerprint(', 'B1: redemption prepared before the (read-only) fingerprint site');
+  before(body, 'prepareRedemption(', 'reserveRedemption(', 'B1: prepare (compute/price) before the reserve (debit)');
+  before(body, 'reserveRedemption(', 'acquireHostedAttempt(', 'B1: reserve before the CAS acquire');
+  before(body, 'acquireHostedAttempt(', 'attachAttempt(', 'B1: attach the claimed attempt AFTER the acquire');
+  // every truly-abandoned branch releases the owned hold: acquire-throw, item_unavailable, already_paid,
+  // conflict, closed, !claimed, hosted-create throw, hosted-create !ok = 8 call-sites.
+  const releaseCount = (body.match(/releaseHoldIfOwned\(\)/g) || []).length;
+  assert.strictEqual(releaseCount, 8, `expected releaseHoldIfOwned() on all 8 abandoned branches, got ${releaseCount}`);
+  // in_progress + reuse must PRESERVE the hold (no release) — they back a creating/live checkout.
+  const preserveSpan = body.slice(body.indexOf("outcome === 'in_progress'"), body.indexOf("outcome !== 'claimed'"));
+  assert.ok(preserveSpan.length > 0 && !/releaseHoldIfOwned/.test(preserveSpan), 'in_progress + reuse branches must PRESERVE the hold (no release)');
+  ok('chargeOnlineOrder: prepare → fingerprints → placeability → reserve → acquire → (release abandoned | preserve in_progress/reuse | attach claimed)');
 }
 
 // ── post-commitment paths must NOT re-check (plan §4/§7) ──

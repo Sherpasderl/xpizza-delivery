@@ -8,7 +8,10 @@
  */
 const assert = require('assert');
 const { initializeTestEnvironment } = require('@firebase/rules-unit-testing');
-const { resolveRedemptionForOrder } = require('../rewards-redeem-intake');
+const { resolveRedemptionForOrder, prepareRedemption } = require('../rewards-redeem-intake');
+const { reserveRedemption, releaseRedemption, attachAttempt } = require('../rewards-reserve');
+const { REDEMPTION_CONFIG_VERSION } = require('../rewards-redeem-config');
+const { orderFingerprint } = require('../pixelpay-charge');
 const { availKey } = require('../avail-key');
 
 const NOW = 1_700_000_000_000;
@@ -77,6 +80,37 @@ const NOW = 1_700_000_000_000;
     // 9 — the free-item display NAME is sanitized (money-safe: display only)
     r = await resolveRedemptionForOrder(db, { restaurantId: 'la_musa', items: [{ id: 'dimsum_01', qty: 1 }], itemsText: 'dimsum x1', totalLempiras: 223, schedExtra: '', now: NOW, redeem: { type: 'free_item', level: 2, item_id: 'soup_01', name: '<script>x</script>Sopa' }, orderId: 'ON', customerUid: 'uI' });
     assert.strictEqual(r.ok, true); assert.ok(/1x scriptx\/scriptSopa \(Recompensa\)/.test(r.itemsText)); assert.ok(!/[<>]/.test(r.itemsText)); ok('free-item display name sanitized (no <> reach items_text)');
+
+    // ── prepareRedemption (online path): compute/gate/price WITHOUT reserving ──
+    // 10 — prepare is a no-op on the hold: valid → ok + priced, but NO reservation is created (reserve is separate)
+    await seedPts('uPrep', 20);
+    const prep = await prepareRedemption(db, { redeem: { type: 'discount_cheapest_pizza' }, items: xpItems, restaurantId: 'x_pizza', itemsText: 'x', totalLempiras: 717, customerUid: 'uPrep' });
+    assert.strictEqual(prep.ok, true); assert.strictEqual(prep.priced.total_cents, 41800); assert.strictEqual(prep.redemption.cost, 8);
+    assert.strictEqual(await rsv('uPrep'), 0); assert.strictEqual(await resv('uPrep', 'OPREP'), null); ok('prepareRedemption: computes discounted pricing but does NOT reserve (reserved 0)');
+    // flag/uid gates still enforced by prepare
+    assert.strictEqual((await prepareRedemption(db, { redeem: { type: 'discount_cheapest_pizza' }, items: xpItems, restaurantId: 'x_pizza', itemsText: 'x', totalLempiras: 717, customerUid: null })).status, 401); ok('prepareRedemption: guest → 401 (gate enforced before reserve)');
+
+    // ── online sequence: prepare → reserve(bound to payment fingerprint) → { release on abandon | attach on claim } ──
+    const onlineReserve = async (uid, orderId, canonical, cost, fp) => reserveRedemption(db, { uid, rid: 'x_pizza', orderId, cost, canonical, orderFingerprint: fp, configVersion: REDEMPTION_CONFIG_VERSION, now: NOW });
+    // 11 — abandoned acquire outcome → release frees the owned hold (no orphan)
+    await seedPts('uAb', 20);
+    const pAb = await prepareRedemption(db, { redeem: { type: 'discount_cheapest_pizza' }, items: xpItems, restaurantId: 'x_pizza', itemsText: 'x', totalLempiras: 717, customerUid: 'uAb' });
+    const fpAb = orderFingerprint('OAB', pAb.priced.total_cents, pAb.itemsText, '');
+    const rrAb = await onlineReserve('uAb', 'OAB', pAb.canonical, pAb.redemption.cost, fpAb);
+    assert.strictEqual(rrAb.action, 'created'); assert.strictEqual(await rsv('uAb'), 8);   // hold owned
+    await releaseRedemption(db, { uid: 'uAb', rid: 'x_pizza', orderId: 'OAB', now: NOW });   // simulate a truly-abandoned acquire branch
+    assert.strictEqual(await rsv('uAb'), 0); assert.strictEqual((await resv('uAb', 'OAB')).state, 'released'); ok('online abandoned → releaseHoldIfOwned frees the debit (reserved 0, released) — no orphaned hold');
+    // 12 — claimed → attach the attempt (state stays reserved, points held until confirm)
+    await seedPts('uCl', 20);
+    const pCl = await prepareRedemption(db, { redeem: { type: 'discount_cheapest_pizza' }, items: xpItems, restaurantId: 'x_pizza', itemsText: 'x', totalLempiras: 717, customerUid: 'uCl' });
+    const fpCl = orderFingerprint('OCL', pCl.priced.total_cents, pCl.itemsText, '');
+    await onlineReserve('uCl', 'OCL', pCl.canonical, pCl.redemption.cost, fpCl);
+    await attachAttempt(db, { uid: 'uCl', rid: 'x_pizza', orderId: 'OCL', attemptId: 'att_9', hostedExpiresAt: NOW + 900000, now: NOW });
+    const recCl = await resv('uCl', 'OCL');
+    assert.strictEqual(recCl.state, 'reserved'); assert.strictEqual(recCl.attempt_id, 'att_9'); assert.strictEqual(recCl.hosted_expires_at, NOW + 900000); assert.strictEqual(await rsv('uCl'), 8); ok('online claimed → attachAttempt sets attempt_id + hosted_expires_at, hold stays reserved (8)');
+    // 13 — reuse/retry: the payment fingerprint matches → reserve is idempotent 'reused' (NOT ownsHold → never release on preserve)
+    const rrReuse = await onlineReserve('uCl', 'OCL', pCl.canonical, pCl.redemption.cost, fpCl);
+    assert.strictEqual(rrReuse.action, 'reused'); assert.strictEqual(await rsv('uCl'), 8); ok('online reuse (same order/fingerprint) → reserve reused (no re-debit); a preserve branch never releases');
   });
 
   await env.cleanup();

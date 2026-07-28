@@ -26,7 +26,12 @@ function sanitizeName(v, maxLen = 80) {
   return s.length > maxLen ? s.slice(0, maxLen) : s;
 }
 
-async function resolveRedemptionForOrder(db, { redeem, items, restaurantId, orderId, customerUid, itemsText, totalLempiras, schedExtra, now }) {
+// prepareRedemption — the gate/compute/price/append phase with NO reserve. Online (chargeOnlineOrder) calls
+// this BEFORE its two fingerprint sites (so both fingerprints + the pending order carry the discounted total),
+// then reserves separately right before acquireHostedAttempt (so it can release on abandoned acquire outcomes).
+// Cash uses the combined resolveRedemptionForOrder below. Returns { ok:false, status, body } or
+// { ok:true, redemption, canonical, priced, itemsText, freeName }.
+async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, totalLempiras, customerUid }) {
   if (!(await redemptionEnabled(db))) return { ok: false, status: 409, body: { error: 'rewards_disabled' } };   // flag OFF → non-payable, no silent full-price order
   if (!customerUid) return { ok: false, status: 401, body: { error: 'login_required', detail: 'redemption requires a verified account' } };   // NOT guest fail-open
   const redemption = computeRedemption({ redeem, items, restaurantId });                                         // server-computed reward (never trusts client price/cost)
@@ -44,13 +49,20 @@ async function resolveRedemptionForOrder(db, { redeem, items, restaurantId, orde
   const priced = applyRedemptionToPricing({ items, restaurantId, redemption, totalLempiras });                   // discounted, fail-closed reconciling lines
   if (!priced.ok) return { ok: false, status: 409, body: { error: 'redemption_pricing_failed' } };
 
-  const fp = orderFingerprint(orderId, priced.total_cents, outText, schedExtra || '');                           // bind the hold to THIS order (discounted total + final items_text)
-  const rr = await reserveRedemption(db, { uid: customerUid, rid: restaurantId, orderId, cost: redemption.cost,
-    canonical: redemption.canonical, orderFingerprint: fp, configVersion: REDEMPTION_CONFIG_VERSION, now });     // debit-first, idempotent
-  if (!rr.ok) return { ok: false, status: 409, body: { error: 'redemption_reserve_failed', reason: rr.reason } };
-
-  return { ok: true, canonical: redemption.canonical, priced, itemsText: outText,
-    ownsHold: (rr.action === 'created' || rr.action === 're_reserved'), freeName };
+  return { ok: true, redemption, canonical: redemption.canonical, priced, itemsText: outText, freeName };
 }
 
-module.exports = { resolveRedemptionForOrder };
+// Combined intake for the CASH path (createOrder): prepare + reserve (bound to the order fingerprint).
+async function resolveRedemptionForOrder(db, { redeem, items, restaurantId, orderId, customerUid, itemsText, totalLempiras, schedExtra, now }) {
+  const prep = await prepareRedemption(db, { redeem, items, restaurantId, itemsText, totalLempiras, customerUid });
+  if (!prep.ok) return prep;
+  const fp = orderFingerprint(orderId, prep.priced.total_cents, prep.itemsText, schedExtra || '');               // bind the hold to THIS order (discounted total + final items_text)
+  const rr = await reserveRedemption(db, { uid: customerUid, rid: restaurantId, orderId, cost: prep.redemption.cost,
+    canonical: prep.canonical, orderFingerprint: fp, configVersion: REDEMPTION_CONFIG_VERSION, now });           // debit-first, idempotent
+  if (!rr.ok) return { ok: false, status: 409, body: { error: 'redemption_reserve_failed', reason: rr.reason } };
+
+  return { ok: true, canonical: prep.canonical, priced: prep.priced, itemsText: prep.itemsText,
+    ownsHold: (rr.action === 'created' || rr.action === 're_reserved'), freeName: prep.freeName };
+}
+
+module.exports = { prepareRedemption, resolveRedemptionForOrder };

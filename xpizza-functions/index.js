@@ -69,8 +69,9 @@ const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restauran
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
 const { shouldEarnOnStatus } = require('./rewards-core');                  //   pure terminal-state gate for the earn trigger
-const { resolveRedemptionForOrder } = require('./rewards-redeem-intake');  // Phase B1 — shared redemption intake (flag+uid gate → compute → avail → reserve)
-const { releaseRedemption } = require('./rewards-reserve');                //   release a reservation on order-write failure (all-or-nothing)
+const { resolveRedemptionForOrder, prepareRedemption } = require('./rewards-redeem-intake');   // Phase B1 — redemption intake (cash combined / online prepare)
+const { reserveRedemption, releaseRedemption, attachAttempt } = require('./rewards-reserve');  //   reservation lifecycle (online: reserve before acquire, attach, release on abandon)
+const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');  //   config version for the reservation binding
 const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
 const { decideStatusMirror } = require('./status-mirror');          // P3 — status-sync trigger core (update-only-if-exists)
@@ -817,6 +818,50 @@ chargeOnlineApp.all('*', async (req, res) => {
   const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
   const db = getDatabase();
 
+  // Optional verified logged-in attribution (H2) — resolved EARLY here because the redemption path needs the
+  // verified uid and both fingerprint sites need the discounted total. Fail-open to guest EXACTLY as before
+  // (missing/malformed/expired/tombstoned/guest/timeout → null → the charge is UNAFFECTED). 1.5s deadline so a
+  // hung verifyIdToken/tomb-read never delays the hosted-checkout mint. A client-supplied uid is never trusted.
+  let customer_uid = null;
+  const idTok = req.get('x-firebase-id-token');
+  if (idTok) {
+    try {
+      customer_uid = await Promise.race([
+        (async () => {
+          const dec = await getAuth().verifyIdToken(idTok);
+          if (dec && dec.customer === true && dec.uid) {
+            const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();
+            return attributionUid(dec, tomb.exists());
+          }
+          return null;
+        })(),
+        new Promise((resolve) => setTimeout(() => resolve(null), 1500)),   // deadline → guest; never delay/fail a payment
+      ]);
+    } catch (_) { customer_uid = null; }   // any error → guest
+  }
+
+  // ── Rewards Phase B1 (online): PREPARE the redemption BEFORE both fingerprint sites, so the reservation
+  // binding AND the PixelPay payment fingerprint carry the discounted total + appended items_text. The RESERVE
+  // (the debit) happens later — right before acquireHostedAttempt, after all placeability — so an abandoned
+  // acquire releases it. Gated by redemption_enabled + a VERIFIED uid; ALL-OR-NOTHING (any failure → non-payable
+  // 409/401, no attempt/URL). No `redeem` → byte-identical online path (effTotal===total, items_text unchanged).
+  let redemptionCanonical = null, redemptionPriced = null, redemptionCost = 0;
+  let effTotal = total;
+  if (body.redeem != null) {
+    const prep = await prepareRedemption(db, { redeem: body.redeem, items: body.items, restaurantId,
+      itemsText: fields.items_text, totalLempiras: total, customerUid: customer_uid });
+    if (!prep.ok) return res.status(prep.status).json({ ...prep.body, order_id: orderId });   // non-payable, nothing written, NO reserve yet
+    redemptionCanonical = prep.canonical;
+    redemptionPriced = prep.priced;
+    redemptionCost = prep.redemption.cost;
+    effTotal = prep.priced.total_lempiras;
+    fields.items_text = prep.itemsText;   // free-item display line → flows into BOTH fingerprints + the pending order
+  }
+  // Effective (discounted) breakdown used by both fingerprint sites, the pending record, and the charge amount.
+  const effBreakdown = redemptionPriced
+    ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents }
+    : orderBreakdownCents(total, restaurantId);
+
   // ── Item availability gate (KDS 2b · KDS_2B_PLAN.md §6/§7/§8, R4). AUTHORITATIVE placement (Slice-4 fix,
   // closes the classify↔acquire TOCTOU):
   //   1. Capture `nowTs` ONCE and feed the SAME value to BOTH classifyHostedAttempt (here) and
@@ -843,7 +888,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   {
     const schedForRawG = SCHED.normalizeScheduledFor(body.scheduled_for);
     const isScheduledG = Number.isFinite(schedForRawG);
-    const { total_cents: totalCentsG } = orderBreakdownCents(total, restaurantId);
+    const totalCentsG = effBreakdown.total_cents;   // discounted when redeemed → the read-only classify fingerprint matches the authoritative one
     const fingerprintG = orderFingerprint(orderId, totalCentsG, fields.items_text, isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '');
     let clsG;
     try {
@@ -909,40 +954,22 @@ chargeOnlineApp.all('*', async (req, res) => {
     return badRequest(res, 'Cerrado — programá tu pedido');
   }
 
-  const { total_cents, subtotal_cents, tax_cents } = orderBreakdownCents(total, restaurantId);
-  // Bind the slot into the fingerprint (R2-#3): a reused cart can't be charged against a different slot.
+  const { total_cents, subtotal_cents, tax_cents } = effBreakdown;   // discounted when redeemed (Task 4); else today's breakdown
+  // Bind the slot into the fingerprint (R2-#3): a reused cart can't be charged against a different slot. When
+  // redeemed, total_cents (discounted) + items_text (free line appended) make this fingerprint carry the reward
+  // — the SAME fingerprint the reservation binds to (below), so hold ↔ order ↔ charge are one identity.
   const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text, isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '');
 
   // Factura inputs (FACTURA_PLAN §2) — structured priced items for the factura trigger.
   // factura_status starts 'not_due': a pending_payment order is NOT yet a Sale, so it's
   // never reconciled; the trigger only acts once it materializes (status:new + confirmed).
-  const facturaPriced = usesPlatformFactura(restaurantId)
-    ? pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES)
-    : { items: null, error: null };  // non-platform (la_musa) → no factura line items
+  const facturaPriced = redemptionPriced
+    ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // discounted split (x_pizza) / skipped (la_musa)
+    : (usesPlatformFactura(restaurantId)
+      ? pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES)
+      : { items: null, error: null });  // non-platform (la_musa) → no factura line items
 
-  // Optional logged-in attribution (H2) — a SEPARATE, verified X-Firebase-ID-Token header; fail-open to
-  // guest exactly like createOrder. A missing/malformed/expired/tombstoned/guest token → null → the charge
-  // is UNAFFECTED (never fail or delay a payment). Only decoded.uid from a verified customer:true,
-  // non-tombstoned token is used — a client-supplied uid is never trusted.
-  let customer_uid = null;
-  const idTok = req.get('x-firebase-id-token');
-  if (idTok) {
-    try {
-      // Deadline race: a HUNG verifyIdToken/tomb-read (not just an error) must never delay the hosted-checkout
-      // mint → 1.5s cap → guest. Honors the invariant "error OR timeout → charge proceeds".
-      customer_uid = await Promise.race([
-        (async () => {
-          const dec = await getAuth().verifyIdToken(idTok);
-          if (dec && dec.customer === true && dec.uid) {
-            const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();
-            return attributionUid(dec, tomb.exists());
-          }
-          return null;
-        })(),
-        new Promise((resolve) => setTimeout(() => resolve(null), 1500)),   // deadline → guest; never delay/fail a payment
-      ]);
-    } catch (_) { customer_uid = null; }   // any error → guest
-  }
+  // (customer_uid was resolved EARLY, above — the redemption prepare + both fingerprint sites need it.)
 
   // The HIDDEN pending order. Mirrors createOrder's orderRecord (so Stage-4
   // confirm can materialize tasks/tracking from it) but status=pending_payment,
@@ -952,9 +979,10 @@ chargeOnlineApp.all('*', async (req, res) => {
     order_id: orderId,
     customer_name: fields.customer_name,
     customer_phone: fields.customer_phone,
-    items_text: fields.items_text,
-    total: total,
-    total_cents, subtotal_cents, tax_cents,   // breakdown per restaurant (x_pizza ISV 15% incl.; la_musa no split)
+    items_text: fields.items_text,            // includes the La Musa free-item display line when redeemed
+    total: effTotal,                          // discounted total (== total when no redeem)
+    total_cents, subtotal_cents, tax_cents,   // discounted breakdown when redeemed; else x_pizza ISV 15% incl. / la_musa no split
+    ...(redemptionCanonical ? { redemption: redemptionCanonical } : {}),   // bind the reward to the order (reserved until confirm consumes/holds)
     notes: fields.notes,
     payment_method: 'online',
     payment_status: 'pending',
@@ -1029,12 +1057,31 @@ chargeOnlineApp.all('*', async (req, res) => {
     Object.assign(pendingOrderRecord, hubSnapshot(id)); // immutable snapshot on the fresh pending order
   }
 
+  // ── Rewards Phase B1 (online): RESERVE the hold NOW — after ALL placeability (slot/closed/active/zone),
+  // so the only post-reserve failures are the acquire outcomes + hosted-create, each released below. Bound to
+  // the SAME payment fingerprint the attempt uses → hold ↔ order ↔ charge are one identity. Idempotent: a
+  // retry/reuse returns 'reused' (a prior attempt's hold → we do NOT own the debit).
+  let redemptionOwnsHold = false;
+  if (redemptionCanonical) {
+    const rr = await reserveRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, cost: redemptionCost,
+      canonical: redemptionCanonical, orderFingerprint: fingerprint, configVersion: REDEMPTION_CONFIG_VERSION, now: nowTs });
+    if (!rr.ok) return res.status(409).json({ error: 'redemption_reserve_failed', reason: rr.reason, order_id: orderId });
+    redemptionOwnsHold = (rr.action === 'created' || rr.action === 're_reserved');
+  }
+  // Release THIS call's hold on a truly-ABANDONED acquire/hosted-create outcome — ONLY if we own the debit
+  // (created/re_reserved). A 'reused' hold belongs to a prior in-flight attempt → NEVER release. in_progress /
+  // reuse PRESERVE the hold (a creating/live checkout is backed by it — releasing would strand a payable URL).
+  const releaseHoldIfOwned = async () => {
+    if (redemptionOwnsHold) await releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }).catch(() => {});
+  };
+
   // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
   let acq;
   try {
     acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked);
   } catch (e) {
     console.error(`chargeOnlineOrder: hosted acquire failed for ${orderId}`, e.message);
+    await releaseHoldIfOwned();   // abandoned: no attempt written → release our hold
     return res.status(500).json({ error: 'Database error', detail: e.message });
   }
 
@@ -1042,28 +1089,41 @@ chargeOnlineApp.all('*', async (req, res) => {
   // cart → the CAS aborted BEFORE any write. Respond 400 with the blocked labels; nothing was persisted.
   if (acq.outcome === 'item_unavailable') {
     console.warn(`chargeOnlineOrder: rejecting ${orderId} at the CAS — unavailable item(s): ${(acq.blocked || []).join(', ')}`);
+    await releaseHoldIfOwned();   // abandoned: CAS aborted before any write → release our hold
     return res.status(400).json({ error: 'item_unavailable', blocked: acq.blocked || [] });
   }
   if (acq.outcome === 'already_paid') {
+    await releaseHoldIfOwned();   // abandoned for THIS call (order already paid via another attempt)
     return res.status(409).json({ error: 'Already paid', detail: 'This order is already confirmed paid', order_id: orderId });
   }
   if (acq.outcome === 'conflict') {
+    await releaseHoldIfOwned();   // abandoned: order_id used for a different cart/total
     return res.status(409).json({ error: 'Order conflict', detail: 'order_id already used for a different cart/total', order_id: orderId });
   }
   if (acq.outcome === 'closed') {
+    await releaseHoldIfOwned();   // abandoned: order is in a terminal-closed state
     return res.status(409).json({ error: 'Order closed', detail: `order is ${acq.reason}; please start a new order`, order_id: orderId });
   }
   if (acq.outcome === 'in_progress') {
-    // A checkout is being created for this order — don't start a 2nd (one-live-checkout, I10).
+    // A checkout is being created for this order — don't start a 2nd (one-live-checkout, I10). PRESERVE the
+    // hold: the concurrent creating checkout is backed by it (releasing would strand a payable discounted URL).
     return res.status(202).json({ ok: true, status: 'in_progress', detail: 'a checkout is being created; retry shortly', order_id: orderId });
   }
-  // Double-submit while a checkout is still live → return the SAME url (I10).
+  // Double-submit while a checkout is still live → return the SAME url (I10). PRESERVE the hold (the live
+  // checkout it backs is being reused; this call's reserve was 'reused' → we don't own it anyway).
   if (acq.outcome === 'reuse') {
     console.log(`chargeOnlineOrder: reuse live hosted checkout ${orderId}-${acq.attempt_id}`);
     return res.status(200).json({ ok: true, order_id: orderId, attempt_id: acq.attempt_id, poll_token: acq.poll_token, checkout_url: acq.checkout_url, payment_status: 'pending' });
   }
   if (acq.outcome !== 'claimed') {
+    await releaseHoldIfOwned();   // abandoned: no fresh attempt minted
     return res.status(503).json({ error: 'Could not start payment', detail: 'please retry', order_id: orderId });
+  }
+
+  // Claimed a FRESH attempt → bind it to the reservation (attempt_id + hosted_expires_at) for the sweep +
+  // Task-7 consume/hold at confirm. Idempotent; only when this order carries a reward.
+  if (redemptionCanonical) {
+    await attachAttempt(db, { uid: customer_uid, rid: restaurantId, orderId, attemptId: acq.attempt_id, hostedExpiresAt: acq.expires_at, now: nowTs }).catch(() => {});
   }
 
   // We own a FRESH attempt in hosted_state:'creating' (hosted_order_id already persisted by the
@@ -1113,12 +1173,14 @@ chargeOnlineApp.all('*', async (req, res) => {
   } catch (e) {
     console.error(`chargeOnlineOrder: hosted create threw for ${pixelpayOrderId}`, e.message);
     await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'failed_create', failed_create_reason: 'network', updated_at: now }).catch(() => {});
+    await releaseHoldIfOwned();   // hosted-create failed after claim → abandoned → release our hold
     return res.status(502).json({ error: 'Payment gateway error', detail: 'could not create checkout; please retry', order_id: orderId });
   }
 
   if (!hosted.ok || !hosted.url) {
     console.error(`chargeOnlineOrder: hosted create rejected for ${pixelpayOrderId}`, JSON.stringify(hosted.errors || hosted.raw || {}).slice(0, 400));
     await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'failed_create', failed_create_reason: JSON.stringify(hosted.errors || {}).slice(0, 300), updated_at: now }).catch(() => {});
+    await releaseHoldIfOwned();   // hosted-create rejected after claim → abandoned → release our hold
     return res.status(502).json({ error: 'Payment gateway error', detail: 'checkout not created; please retry', order_id: orderId });
   }
 
