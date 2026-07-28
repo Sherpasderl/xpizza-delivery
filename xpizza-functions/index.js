@@ -67,6 +67,7 @@ const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-conf
 const { buildMaterializeUpdates } = require('./materialize');
 const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
+const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
 const { decideStatusMirror } = require('./status-mirror');          // P3 — status-sync trigger core (update-only-if-exists)
 const SCHED = require('./scheduled-orders');                              // Scheduled Orders — pure hours/slot/release core
@@ -2806,6 +2807,40 @@ exports.sendOrderStatusNotifications = onValueWritten(
       } catch (e) {
         console.warn(`sendOrderStatusNotifications: tracking mirror update failed`, e.message);
       }
+    }
+
+    // Order-received confirmation for ONLINE (prepaid) orders — cash/pickup already got it inline from
+    // createOrder; online (chargeOnlineOrder→confirm→materialize) never notified until now. Fires on the
+    // live-transition to 'new' (both unscheduled materialize AND scheduled release converge here); held
+    // states (scheduled hold / manual_review) never reach 'new' → correctly no message. Additive +
+    // fail-open; money-path untouched.
+    if (after === 'new') {
+      if (!order) { console.warn(`orderReceived: order ${orderId} not loaded on 'new', skipping`); return; }   // the trigger allows order=null — guard before any order.*
+      if (!shouldSendOrderReceived(order, after)) return;   // not online / no phone → skip (cash & pickup already sent → no double-send)
+      if (!(await whatsapp.isEnabledForRestaurant(db, restaurantId))) return;
+
+      // Mark-before-send (mirror notifyPickupReady): atomic claim so a duplicate 'new' write / trigger
+      // redelivery can't double-send. The marker is a SIBLING of /status → it does NOT re-trigger this watcher.
+      let claim;
+      try { claim = await db.ref(`orders/${orderId}/order_received_notified_at`).transaction((cur) => (cur ? undefined : ServerValue.TIMESTAMP)); }
+      catch (e) { console.warn(`orderReceived: claim failed ${orderId}`, e.message); return; }
+      if (!claim.committed) return;   // already sent
+
+      const body = (order.order_type === 'pickup')
+        ? whatsapp.tplPickupReceived({ customerName: order.customer_name, orderId, itemsText: order.items_text, total: order.total, pickupTime: order.pickup_time || 'standard', trackingToken, restaurantId })
+        : whatsapp.tplOrderReceived({ customerName: order.customer_name, orderId, itemsText: order.items_text, total: order.total, trackingToken, restaurantId });
+
+      // sendMessage RETURNS null on failure (bad phone / no config / provider error) — it does NOT throw.
+      // Marker already committed (at-most-once, no auto-retry — same tradeoff as notifyPickupReady). Record
+      // a failed send so it's visible/recoverable, never silently marked sent.
+      let res = null;
+      try { res = await whatsapp.sendMessage(order.customer_phone, body, restaurantId); }
+      catch (e) { console.error(`orderReceived: send threw ${orderId}`, e.message); }
+      if (res == null) {
+        try { await db.ref(`orders/${orderId}/order_received_send_unresolved_at`).set(ServerValue.TIMESTAMP); } catch (_) {}
+        console.warn(`orderReceived: send unresolved (null) ${orderId} — marked for visibility, not retried`);
+      }
+      return;   // 'new' handled — do NOT fall through to the delivery/cancel logic below
     }
 
     // WhatsApp send only fires for these specific transitions. preparing/ready
