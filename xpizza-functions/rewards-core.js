@@ -27,6 +27,13 @@ function computeEarn({ items, subtotalCents, restaurantId } = {}) {
   return { delta: Math.floor(c / cfg.perCents) * cfg.pointsPer, unit: 'point' };
 }
 
+// Earn fires ONLY on an order's real terminal state: delivery completes at 'delivered', pickup at
+// 'completed'. 'ready' is pre-collection and must NOT earn. Pure gate for the earnRewardsOnCompletion
+// trigger (mirrors the shouldSendOrderReceived / decideStatusMirror predicate split).
+function shouldEarnOnStatus(after) {
+  return after === 'delivered' || after === 'completed';
+}
+
 // Immutable append-only ledger entry — always stamps ts + config_version; drops null-valued optional keys.
 function ledgerEntry({ type, delta, orderId = null, redemptionId = null, now, note = null }) {
   const e = { type, delta, ts: now, config_version: REWARDS_CONFIG_VERSION };
@@ -36,4 +43,4 @@ function ledgerEntry({ type, delta, orderId = null, redemptionId = null, now, no
   return e;
 }
 
-module.exports = { REWARDS_CONFIG, REWARDS_CONFIG_VERSION, computeEarn, ledgerEntry };
+module.exports = { REWARDS_CONFIG, REWARDS_CONFIG_VERSION, computeEarn, shouldEarnOnStatus, ledgerEntry };

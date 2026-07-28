@@ -1,7 +1,7 @@
 'use strict';
 // Unit test for the pure rewards earn core (rewards-core.js). Run: node rewards-core.test.js
 const assert = require('assert');
-const { computeEarn, ledgerEntry, REWARDS_CONFIG, REWARDS_CONFIG_VERSION } = require('./rewards-core');
+const { computeEarn, shouldEarnOnStatus, ledgerEntry, REWARDS_CONFIG, REWARDS_CONFIG_VERSION } = require('./rewards-core');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 // x_pizza: 1 punch per pizza (sum of qty)
@@ -20,6 +20,13 @@ assert.deepStrictEqual(computeEarn({ restaurantId: 'unknown' }), { delta: 0, uni
 assert.deepStrictEqual(computeEarn({ items: 'x', restaurantId: 'x_pizza' }), { delta: 0, unit: 'punch' }); ok('x_pizza non-array items → 0');
 assert.deepStrictEqual(computeEarn({ subtotalCents: NaN, restaurantId: 'la_musa' }), { delta: 0, unit: 'point' }); ok('la_musa NaN cents → 0');
 assert.deepStrictEqual(computeEarn(), { delta: 0, unit: 'point' }); ok('no args → 0 (no throw)');
+
+// terminal-state gate: earn ONLY on delivered/completed (ready is pre-collection)
+assert.strictEqual(shouldEarnOnStatus('delivered'), true); ok('gate: delivered → earn');
+assert.strictEqual(shouldEarnOnStatus('completed'), true); ok('gate: completed → earn');
+assert.strictEqual(shouldEarnOnStatus('ready'), false); ok('gate: ready → NO earn (pre-collection)');
+['new', 'preparing', 'out_for_delivery', 'cancelled', null, undefined, ''].forEach((s) =>
+  assert.strictEqual(shouldEarnOnStatus(s), false)); ok('gate: every non-terminal status → NO earn');
 
 // welcome config locked
 assert.strictEqual(REWARDS_CONFIG.x_pizza.welcome, 2); ok('x_pizza welcome = 2 punches');

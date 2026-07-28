@@ -67,6 +67,8 @@ const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-conf
 const { buildMaterializeUpdates } = require('./materialize');
 const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
+const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
+const { shouldEarnOnStatus } = require('./rewards-core');                  //   pure terminal-state gate for the earn trigger
 const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
 const { decideStatusMirror } = require('./status-mirror');          // P3 — status-sync trigger core (update-only-if-exists)
@@ -1872,6 +1874,26 @@ exports.mirrorStatusToHistory = onValueWritten(
       await db.ref(decision.path).set(decision.value);     // update the existing entry's status leaf only
     } catch (e) {
       console.warn('mirrorStatusToHistory: fail-open —', e && e.message);   // never affect the order-status write
+    }
+  }
+);
+
+// Rewards Phase A — credit earn when an order reaches its real TERMINAL state (delivery completes at
+// 'delivered', pickup at 'completed'). 'ready' is pre-collection → must NOT earn. creditEarnForOrder is
+// guest-NOOP + at-most-once (its own rewards_earned_at marker, a SIBLING of /status → can't re-trigger
+// this watcher) + fail-open. Additive; no money-path.
+exports.earnRewardsOnCompletion = onValueWritten(
+  { ref: '/orders/{orderId}/status', region: 'us-central1' },
+  async (event) => {
+    try {
+      const after = event.data.after.val();
+      if (!shouldEarnOnStatus(after)) return;
+      const orderId = event.params.orderId;
+      const db = getDatabase();
+      const order = (await db.ref(`orders/${orderId}`).get()).val();
+      await creditEarnForOrder(db, { orderId, order, now: Date.now() });
+    } catch (e) {
+      console.warn('earnRewardsOnCompletion: fail-open —', e && e.message);   // never affect the order-status write
     }
   }
 );

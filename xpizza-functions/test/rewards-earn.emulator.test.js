@@ -7,6 +7,14 @@
 const assert = require('assert');
 const { initializeTestEnvironment } = require('@firebase/rules-unit-testing');
 const { creditEarnForOrder, creditWelcome, reverseEarnForOrder } = require('../rewards-earn');
+const { shouldEarnOnStatus } = require('../rewards-core');
+
+// Mirrors the earnRewardsOnCompletion trigger body: gate on the status, then credit the loaded order.
+const onStatus = async (db, orderId, after, now) => {
+  if (!shouldEarnOnStatus(after)) return { credited: false, delta: 0 };
+  const order = (await db.ref(`orders/${orderId}`).get()).val();
+  return creditEarnForOrder(db, { orderId, order, now });
+};
 
 (async () => {
   const env = await initializeTestEnvironment({ projectId: 'demo-xpizza', database: { rules: '{ "rules": { ".read": true, ".write": true } }' } });
@@ -54,6 +62,15 @@ const { creditEarnForOrder, creditWelcome, reverseEarnForOrder } = require('../r
     // reversing a never-earned order → no-op
     await db.ref('orders/O9').set({ customer_uid: 'uidA', restaurant_id: 'x_pizza', items: [{ qty: 1 }] });
     assert.strictEqual((await reverseEarnForOrder(db, { orderId: 'O9', order: await load('O9'), now: 600 })).reversed, false); ok('reverse a never-earned order → NO-OP');
+
+    // 6 — trigger gate (earnRewardsOnCompletion): 'ready' earns nothing; 'delivered' credits once
+    await db.ref('orders/O7').set({ customer_uid: 'uidD', restaurant_id: 'x_pizza', items: [{ qty: 3 }] });
+    assert.strictEqual((await onStatus(db, 'O7', 'ready', 700)).credited, false);
+    assert.strictEqual(await bal('uidD', 'x_pizza'), null); assert.strictEqual((await marker('O7', 'rewards_earned_at')), null); ok('status=ready → NO earn (no marker, no balance)');
+    assert.deepStrictEqual(await onStatus(db, 'O7', 'delivered', 701), { credited: true, delta: 3 });
+    assert.strictEqual(await bal('uidD', 'x_pizza'), 3); assert.strictEqual(await ledgerN('uidD', 'x_pizza'), 1); ok('status=delivered → +3 punches, 1 ledger entry');
+    assert.strictEqual((await onStatus(db, 'O7', 'completed', 702)).credited, false);
+    assert.strictEqual(await bal('uidD', 'x_pizza'), 3); ok('a later terminal write → NO double-credit (marker at-most-once)');
   });
 
   await env.cleanup();
