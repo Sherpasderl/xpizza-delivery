@@ -34,7 +34,7 @@
 
 **Interfaces — Produces:**
 - `REWARDS_CONFIG_VERSION` (number, start `1`).
-- `REWARDS_CONFIG` = `{ x_pizza: { kind:'punch', welcome:2 }, la_musa: { kind:'points', pointsPer:10, perCents:2500, welcome:100 } }`.
+- `REWARDS_CONFIG` = `{ x_pizza: { kind:'punch', welcome:2 }, la_musa: { kind:'points', pointsPer:10, perCents:3000, welcome:100 } }`.
 - `computeEarn({ items, subtotalCents, restaurantId }) → { delta:<int>, unit:'punch'|'point' }` — x_pizza: `delta = Σ item.qty` (every x_pizza line is a pizza), unit 'punch'; la_musa: `delta = Math.floor(subtotalCents / perCents) * pointsPer`, unit 'point'. Unknown restaurant → `{delta:0}`. Non-array items / non-finite subtotal → `{delta:0}` (fail-safe, never throws).
 - `ledgerEntry({ type, delta, orderId=null, redemptionId=null, now, note=null }) → { type, delta, order_id, redemption_id, ts, config_version, note }` (drops null keys except ts/type/delta/config_version).
 
@@ -45,9 +45,9 @@ const { computeEarn, ledgerEntry, REWARDS_CONFIG_VERSION } = require('./rewards-
 // x_pizza: 1 punch per pizza (sum of qty)
 assert.deepStrictEqual(computeEarn({ items:[{qty:2},{qty:3}], restaurantId:'x_pizza' }), { delta:5, unit:'punch' });
 assert.deepStrictEqual(computeEarn({ items:[], restaurantId:'x_pizza' }), { delta:0, unit:'punch' });
-// la_musa: 10 pts / 2500 cents (25 L); L700 order = 70000 cents → floor(70000/2500)=28 → 280
-assert.deepStrictEqual(computeEarn({ subtotalCents:70000, restaurantId:'la_musa' }), { delta:280, unit:'point' });
-assert.deepStrictEqual(computeEarn({ subtotalCents:2400, restaurantId:'la_musa' }), { delta:0, unit:'point' }); // < 25 L → 0
+// la_musa: 10 pts / 2500 cents (25 L); L700 order = 70000 cents → floor(70000/3000)=23 → 230
+assert.deepStrictEqual(computeEarn({ subtotalCents:70000, restaurantId:'la_musa' }), { delta:230, unit:'point' });
+assert.deepStrictEqual(computeEarn({ subtotalCents:2900, restaurantId:'la_musa' }), { delta:0, unit:'point' }); // < 30 L → 0
 // fail-safe
 assert.deepStrictEqual(computeEarn({ restaurantId:'unknown' }), { delta:0, unit:'point' });
 assert.deepStrictEqual(computeEarn({ items:'x', restaurantId:'x_pizza' }), { delta:0, unit:'punch' });
@@ -64,7 +64,7 @@ console.log('rewards-core OK');
 const REWARDS_CONFIG_VERSION = 1;
 const REWARDS_CONFIG = {
   x_pizza: { kind: 'punch', welcome: 2 },
-  la_musa: { kind: 'points', pointsPer: 10, perCents: 2500, welcome: 100 },
+  la_musa: { kind: 'points', pointsPer: 10, perCents: 3000, welcome: 100 },
 };
 function computeEarn({ items, subtotalCents, restaurantId } = {}) {
   const cfg = REWARDS_CONFIG[restaurantId];
