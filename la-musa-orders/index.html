@@ -2263,6 +2263,9 @@ function updateCart(){
   const pillText=document.getElementById('cart-pill-text');
   if(pillText) pillText.textContent=count>0?count+(count===1?' plato':' platos'):'Tu pedido';
 
+  // REWARDS cart earn line (B2 Task 3) — read-own display estimate (logged-in) / register nudge (guest). Fail-safe.
+  try{ if(window.__ACCOUNT&&window.__ACCOUNT.renderCartEarn) window.__ACCOUNT.renderCartEarn(Math.round(total*100),count); }catch(_){}
+
   // Item count badge
   const badge=document.getElementById('cart-badge');
   if(badge){ badge.textContent=count; badge.style.display=count>0?'flex':'none'; }
@@ -4144,6 +4147,7 @@ initCardFormatting();
       <span style="font-family:var(--sans);font-size:13px;color:var(--muted)">Total</span>
       <span class="cart-review-total" id="cart-review-total">L 0.00</span>
     </div>
+    <!-- REWARDS cart earn line (B2 Task 3) — filled by window.__ACCOUNT.renderCartEarn (read-own, flag-independent) --><div id="acct-cart-earn"></div>
     <button class="btn-primary" style="margin-top:10px" id="cart-review-checkout" onclick="closeCartReview();closeDetailModal();scrollToDetails()">Ir al checkout →</button>
   </div>
 </div>

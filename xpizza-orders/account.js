@@ -14,6 +14,9 @@
           messagingSenderId:'185867271616', appId:'1:185867271616:web:84bb37552b40c1d517dc25' },
     MARKER: 'xpizza_acct',                    // localStorage key (La Musa: 'lamusa_acct')
     palette: { screen:'#FCFCFB', tint:'#F6F6F4', tint2:'#F1F1EF', chip:'#EFEFEC', fillA:'#EDEDEA', line:'#ECECEA', fillB:'#E8E8E5', mapbg:'#E7E7E3', line2:'#E2E2DE', line3:'#D6D6D0', dot:'#CFCFC9' },   // per-brand neutrals — X. Pizza NEAR-WHITE set (nearwhite-inventory.md); La Musa CONFIG carries the exact current literals (byte-identical)
+    // Rewards B2 — the ONLY brand difference in the rewards UI (everything past CONFIG is byte-identical).
+    // X. Pizza = punch card → free pizza; La Musa = points → free-item tiers. Earn rates mirror Phase A (live).
+    rewards: { kind:'punch', card_size:8, unit:'sello', unitPlural:'sellos', earnPerPizza:1 },
   };
 
   // Lazy Firebase — imported on first use only. Returns { auth, db-helpers } cached after first load.
@@ -71,8 +74,9 @@
     const m = marker();
     if (m && m.name) {
       el.innerHTML = `<button class="acct-chip" type="button" aria-label="Mi cuenta">
-        <span class="acct-av">${PERSON_SVG}</span><span class="acct-nm">${escapeHtml(firstName(m.name))}</span><span class="acct-cv">▾</span></button>`;
+        <span class="acct-av">${PERSON_SVG}</span><span class="acct-nm">${escapeHtml(firstName(m.name))}</span>${rwChipSegment()}<span class="acct-cv">▾</span></button>`;
       el.querySelector('button').onclick = openAccountSheet;      // defined Task 6
+      rewardsSubscribe();   // B2: read-own live balance → chip count (guests never reach this branch)
     } else {
       el.innerHTML = `<button class="acct-chip acct-chip--out" type="button" aria-label="Entrar a mi cuenta">
         <span class="acct-av">${PERSON_SVG}</span><span class="acct-nm">Entrar</span></button>`;
@@ -80,6 +84,131 @@
     }
   }
   document.addEventListener('DOMContentLoaded', renderChip);
+
+  // ══════════ REWARDS DISPLAY (B2 Task 3) — BEGIN ══════════ (parity guard: byte-identical past CONFIG)
+  // Read-own user_rewards → header chip + Mis premios pane + cart earn line. FLAG-INDEPENDENT (ignores
+  // redemption_live; the redeem affordance is Task 4). Guests never subscribe/render. All dynamic values via
+  // escapeHtml / textContent. Brand differences (punch vs points/tiers) come ONLY from CONFIG.rewards.
+  const RW = CONFIG.rewards;
+  const GIFT_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>';
+  let _rwState = null;    // { balance, reserved, lifetime } | null   (null = guest / not yet loaded / no node)
+  let _rwSubbed = false;  // one live subscription per session
+  const rwAvailable = () => Math.max(0, (Number(_rwState && _rwState.balance) || 0) - (Number(_rwState && _rwState.reserved) || 0));
+
+  // Punch-card progress on the CURRENT card + whether a reward is redeemable.
+  function rwPunch() {
+    const av = rwAvailable(), size = RW.card_size;
+    const onCard = (av > 0 && av % size === 0) ? size : (av % size);   // full card shows size/size; else the remainder
+    return { av, size, onCard, redeemable: av >= size };
+  }
+
+  // The chip's reward segment: "· 5/8 [gift]" (punch) / "· 380 pts [gift]" (points). '' until a balance loads.
+  function rwChipSegment() {
+    if (!_rwState) return '';
+    let label;
+    if (RW.kind === 'punch') { const p = rwPunch(); label = `${p.onCard}/${p.size}`; }
+    else label = `${rwAvailable()} ${RW.unit}`;
+    return `<span class="acct-rw" aria-label="Recompensas">· <span class="acct-rw-n">${escapeHtml(label)}</span> <span class="acct-rw-g">${GIFT_SVG}</span></span>`;
+  }
+
+  // Read-own live subscription — renders NOTHING until Firebase auth resolves; guests never subscribe.
+  async function rewardsSubscribe() {
+    if (_rwSubbed) return;
+    try {
+      const m = marker(); if (!m || !m.uid) return;                 // guest → no read
+      const { auth, db, dbMod } = await ensureFirebase();
+      await auth.authStateReady();
+      const uid = auth.currentUser && auth.currentUser.uid;
+      if (!uid) return;                                             // session gone → no read
+      _rwSubbed = true;
+      const r = dbMod.ref(db, `user_rewards/${uid}/${CONFIG.restaurant_id}`);
+      dbMod.onValue(r, (snap) => { _rwState = snap.val() || null; rewardsRender(); }, () => {});   // read-own; onError no-op (display non-critical)
+    } catch (_) { /* fail-silent — the display is non-critical, never blocks the form */ }
+  }
+  // Reset on logout (heal clears the marker); the chip drops the segment on next render.
+  function rewardsReset() { _rwState = null; _rwSubbed = false; }
+
+  function rewardsRender() {
+    renderChip();                                                   // re-render the chip with the fresh count
+    if ($('acct-pane-rewards') && $('acct-pane-rewards').classList.contains('acct-on')) renderRewardsPane();
+    const cl = $('acct-cart-earn'); if (cl && cl._rwRefresh) cl._rwRefresh();   // refresh an already-mounted cart earn line
+  }
+
+  // Mis premios pane (screen 2): punch card (X. Pizza) / milestone bar (La Musa). Read-only.
+  function renderRewardsPane() {
+    const pane = $('acct-pane-rewards'); if (!pane) return;
+    injectRewardsStyles();
+    const av = rwAvailable();
+    let hero;
+    if (RW.kind === 'punch') {
+      const p = rwPunch();
+      let slots = '';
+      for (let i = 0; i < p.size; i++) slots += `<span class="acct-rw-slot${i < p.onCard ? ' acct-rw-slot--on' : ''}"></span>`;
+      const sub = p.redeemable ? '¡Tenés una pizza gratis para canjear!' : `${p.size - p.onCard} ${p.size - p.onCard === 1 ? 'sello' : 'sellos'} para tu próxima pizza gratis`;
+      hero = `<div class="acct-rw-card"><div class="acct-rw-slots">${slots}</div><p class="acct-rw-sub"></p></div>`;
+      // sub set via textContent below (never innerHTML for the dynamic sentence)
+      pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis premios</span></div>${hero}`;
+      pane.querySelector('.acct-rw-sub').textContent = sub;
+    } else {
+      const tiers = RW.tiers, maxT = tiers[tiers.length - 1];
+      const pct = Math.max(0, Math.min(100, Math.round((av / maxT) * 100)));
+      let marks = '';
+      for (const t of tiers) marks += `<span class="acct-rw-tier${av >= t ? ' acct-rw-tier--on' : ''}" style="left:${Math.round((t / maxT) * 100)}%"><i></i><b>${t}</b></span>`;
+      const next = tiers.find((t) => t > av);
+      const sub = next ? `${next - av} ${RW.unit} para tu próximo premio` : '¡Podés canjear el premio más alto!';
+      hero = `<div class="acct-rw-bar-wrap"><div class="acct-rw-bar"><div class="acct-rw-bar-fill" style="width:${pct}%"></div>${marks}</div></div><p class="acct-rw-sub"></p>`;
+      pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis premios</span></div><div class="acct-rw-pts"></div>${hero}`;
+      pane.querySelector('.acct-rw-pts').textContent = `${av} ${RW.unit}`;
+      pane.querySelector('.acct-rw-sub').textContent = sub;
+    }
+  }
+
+  // Cart earn line (screen 3): "ganás 1 sello" / "ganás X pts" (logged-in, DISPLAY estimate) or the guest nudge.
+  // `subtotalCents`/`pizzaCount` come from index.html's cart; the earn RATE + unit come from CONFIG.rewards.
+  function rwCartEarnLabel(subtotalCents, pizzaCount) {
+    if (RW.kind === 'punch') { const n = Math.max(0, Number(pizzaCount) || 0) * RW.earnPerPizza; return `${n} ${n === 1 ? RW.unit : RW.unitPlural}`; }
+    const pts = Math.floor((Math.max(0, Number(subtotalCents) || 0)) / RW.perCents) * RW.ptsPer; return `${pts} ${RW.unit}`;
+  }
+  // Called from index.html updateCart(): fills #acct-cart-earn (logged-in → "ganás X"; guest → register nudge).
+  function renderCartEarn(subtotalCents, pizzaCount) {
+    const el = $('acct-cart-earn'); if (!el) return;
+    injectRewardsStyles();
+    const m = marker();
+    const label = rwCartEarnLabel(subtotalCents, pizzaCount);
+    el._rwRefresh = () => renderCartEarn(subtotalCents, pizzaCount);   // let a balance update re-run it
+    if (m && m.name) { el.className = 'acct-cart-earn'; el.textContent = ''; const g = document.createElement('span'); g.className = 'acct-cart-earn-g'; g.innerHTML = GIFT_SVG; const t = document.createElement('span'); t.textContent = ` ganás ${label}`; el.appendChild(g); el.appendChild(t); }
+    else { el.className = 'acct-cart-earn acct-cart-earn--guest'; el.textContent = `Creá tu perfil y ganás ${label}`; el.onclick = () => { try { openLoginSheet(); } catch (_) {} }; }
+  }
+
+  function injectRewardsStyles() {
+    if ($('acct-rw-styles')) return;
+    const st = document.createElement('style'); st.id = 'acct-rw-styles';
+    st.textContent = `
+.acct-chip .acct-rw{display:inline-flex;align-items:center;gap:4px;color:${CONFIG.accent};font-size:12.5px;font-weight:650;margin-left:1px}
+.acct-chip .acct-rw-g{display:inline-flex;color:${CONFIG.accent};opacity:.9}
+.acct-rw-card{padding:6px 4px 2px}
+.acct-rw-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin:2px 0 14px}
+.acct-rw-slot{aspect-ratio:1;border-radius:50%;border:1.5px solid ${CONFIG.palette.line3};background:${CONFIG.palette.tint}}
+.acct-rw-slot--on{background:${CONFIG.accent};border-color:${CONFIG.accent}}
+.acct-rw-sub{margin:0;font-size:13px;color:#6B6255;text-align:center;line-height:1.4}
+.acct-rw-pts{font-size:26px;font-weight:750;letter-spacing:-.02em;color:#17130F;text-align:center;margin:2px 0 16px}
+.acct-rw-bar-wrap{padding:26px 6px 30px}
+.acct-rw-bar{position:relative;height:6px;border-radius:999px;background:${CONFIG.palette.fillA}}
+.acct-rw-bar-fill{position:absolute;left:0;top:0;height:100%;border-radius:999px;background:${CONFIG.accent};transition:width .4s ease}
+.acct-rw-tier{position:absolute;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center}
+.acct-rw-tier i{width:11px;height:11px;border-radius:50%;background:#fff;border:2px solid ${CONFIG.palette.line3}}
+.acct-rw-tier--on i{background:${CONFIG.accent};border-color:${CONFIG.accent}}
+.acct-rw-tier b{position:absolute;top:15px;font-size:10px;font-weight:600;color:#9A8F7E}
+.acct-cart-earn{display:flex;align-items:center;justify-content:center;gap:6px;font-size:12.5px;font-weight:600;color:${CONFIG.accent};padding:7px 0 2px}
+.acct-cart-earn-g{display:inline-flex}
+.acct-cart-earn--guest{color:#6B6255;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+`;
+    document.head.appendChild(st);
+  }
+
+  // renderCartEarn is exposed on window.__ACCOUNT at the canonical export block near the end of the IIFE
+  // (that block REASSIGNS window.__ACCOUNT, so exposing here would be clobbered — B2 fix).
+  // ══════════ REWARDS DISPLAY (B2 Task 3) — END ══════════
 
   // ── Login / account overlay — built + inserted into <body> lazily, once, on first open.
   // Markup ported from the locked mockups (xpizza-login-mockup.html / xpizza-account-mockup.html),
@@ -250,6 +379,10 @@
 
     <section class="acct-pane" id="acct-pane-orders">
       <!-- built by renderOrdersPane() — P3 "Mis pedidos" history (read-own, restaurant-filtered) -->
+    </section>
+
+    <section class="acct-pane" id="acct-pane-rewards">
+      <!-- built by renderRewardsPane() — B2 "Mis premios" (read-own punch card / milestone bar) -->
     </section>
   </div>
 </div>`;
@@ -848,12 +981,16 @@
     pane.appendChild(addrSection);
     renderAddressesSection();
 
-    const rows = document.createElement('div');   // Mis pedidos — P3 live: opens the history pane
+    const rows = document.createElement('div');   // Mis premios (B2, read-own rewards) + Mis pedidos (P3, history)
     rows.className = 'acct-rows';
-    rows.innerHTML =   // static copy only — zero user values interpolated here
+    rows.innerHTML =   // static copy only (brand-neutral) — zero user values interpolated here
+      '<div class="acct-row" id="acct-row-rewards" role="button" tabindex="0"><div class="acct-rl"><span class="acct-rt">Mis premios</span>' +
+      '<span class="acct-rd">Tu progreso y recompensas</span></div><span class="acct-row-chev">›</span></div>' +
       '<div class="acct-row" id="acct-row-orders" role="button" tabindex="0"><div class="acct-rl"><span class="acct-rt">Mis pedidos</span>' +
       '<span class="acct-rd">Repetí un pedido anterior</span></div><span class="acct-row-chev">›</span></div>';
     pane.appendChild(rows);
+    const rewardsRow = rows.querySelector('#acct-row-rewards');
+    if (rewardsRow) rewardsRow.onclick = () => { renderRewardsPane(); showPane('rewards'); };   // B2 (Task 3)
     const ordersRow = rows.querySelector('#acct-row-orders');
     if (ordersRow) ordersRow.onclick = renderOrdersPane;   // P3 (Task 7)
 
@@ -3161,6 +3298,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.profileComplete = profileComplete;
   window.__ACCOUNT.deleteAddress = deleteAddress;
   window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;
+  window.__ACCOUNT.renderCartEarn = renderCartEarn;   // B2 Task 3 — index.html updateCart() fills the cart earn line
   window.__ACCOUNT.deliverySubmitBlocked = deliverySubmitBlocked;
   window.__ACCOUNT.captureDeliverySaveIntent = captureDeliverySaveIntent;
   window.__ACCOUNT.setRestoring = function (v) { try { _acctRestoring = !!v; if (v) _acctRestoreGen++; } catch (_) {} };   // index.html's restoreOrderForm() brackets its snapshot rebuild with this so the account refresh can't overwrite the retry's address with the default (FIX 7 / R4); bumping the gen on start lets an in-flight async init detect a restore that completed during its await (R5)
