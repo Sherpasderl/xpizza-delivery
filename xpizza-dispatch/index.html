@@ -463,7 +463,10 @@
     order: 1;
     min-width: 0;
   }
-  #map { width: 100%; height: 100%; }
+  /* Fill via absolute inset (not height:100%): #map-container is a CSS-grid item whose
+     stretched height is indefinite for a percentage-height child, so height:100% collapsed
+     the map. position:absolute against the position:relative #map-container fills it robustly. */
+  #map { position: absolute; inset: 0; }
 
   /* Drag-resize handle on sidebar's inner (left) edge */
   .sidebar-resize-handle {
@@ -1704,10 +1707,13 @@
   /* ============ Torre de Control — 3-column board grid (Task 7 grid foundation) ============ */
   :root { --lw: 380px; --rw: 344px; }
   .app { height: calc(100vh - 52px); }
-  .main { display: grid; grid-template-columns: var(--lw) 1fr var(--rw); height: 100%; transition: grid-template-columns .26s cubic-bezier(0.4,0,0.2,1); }
+  .main { display: grid; grid-template-columns: var(--lw) 1fr var(--rw); grid-template-rows: 100%; height: 100%; transition: grid-template-columns .26s cubic-bezier(0.4,0,0.2,1); }
   .app:not(.left-open) .main  { --lw: 0px; }
   .app:not(.right-open) .main { --rw: 0px; }
-  .col { min-height: 0; overflow: hidden; }
+  /* All three columns share the single row. grid-row:1 is REQUIRED — the map has an explicit
+     grid-column:2 but comes first in DOM, so sparse auto-flow would otherwise push the left
+     rail (column 1) to a new row 2, collapsing the map's row to its (absolute-only) content. */
+  .col { min-height: 0; overflow: hidden; grid-row: 1; }
   .col.left   { grid-column: 1; background: var(--surface); border-right: 1px solid var(--border-soft); }
   .col.center { grid-column: 2; position: relative; background: #131826; min-width: 0; }
   .col.right  { grid-column: 3; background: var(--surface); border-left: 1px solid var(--border-soft); }
@@ -2174,6 +2180,13 @@ function initMap() {
   infoWindow = new google.maps.InfoWindow();
   dirService = new google.maps.DirectionsService();
   drawRestaurant();
+  // The map is created inside a CSS-grid column while #screen-main may still be display:none
+  // (0-size), and its column also changes width on rail collapse/expand. A ResizeObserver keeps
+  // the map filling its column across the reveal, async content, and the collapse transitions —
+  // no timing guesswork. (Fires once on observe, then on every container size change.)
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => { if (map) google.maps.event.trigger(map, 'resize'); }).observe($('map-container'));
+  }
 }
 
 function drawRestaurant() {
@@ -4100,9 +4113,8 @@ $('delivered-toggle').querySelector('.tree-group-toggle').innerHTML = ICONS.chev
 // addEventListener.
 function togRail(cls) {
   $('app').classList.toggle(cls);
-  // Preserve the map re-fit the retired sidebar handlers performed: re-trigger the Maps
-  // resize after the grid-column transition (~260ms) so the map isn't left mis-sized.
-  setTimeout(() => { if (map) google.maps.event.trigger(map, 'resize'); }, 300);
+  // The map re-fit during/after the grid-column transition is handled by the ResizeObserver
+  // in initMap (it fires as #map-container's width animates), so no manual resize is needed here.
 }
 $('rail-toggle-left').addEventListener('click', () => togRail('left-open'));
 $('rail-toggle-right').addEventListener('click', () => togRail('right-open'));
