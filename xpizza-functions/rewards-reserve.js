@@ -61,7 +61,7 @@ async function alertIfUndercollateralized(db, { uid, rid, orderId, now }) {
 // Debit-first (into `reserved`) + idempotent by order_id + bound to the canonical/fingerprint. Returns
 // explicit `action` so the online handler knows if IT owns the hold: created/re_reserved = this call took the
 // debit (release on abandon); reused = a pre-existing hold (NEVER release on failure).
-async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, orderFingerprint, configVersion, now }) {
+async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, orderFingerprint, configVersion, now, hostedExpiresAt = null }) {
   try {
     if (!uid || !rid || !orderId || !(Number.isInteger(cost) && cost > 0)) return { ok: false, reason: 'bad_request' };
     if (!Number.isInteger(configVersion) || configVersion !== REDEMPTION_CONFIG_VERSION) return { ok: false, reason: 'config_version_mismatch' };
@@ -91,12 +91,12 @@ async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, order
         if (balance - reserved < cost) { outcome = { ok: false, reason: 'insufficient' }; return; }
         const seq = (Number(rec.seq) || 0) + 1;
         outcome = { ok: true, action: 're_reserved', state: 'reserved' };
-        return writeReserve(cur, orderId, rec, fp, canonical, orderFingerprint, configVersion, cost, seq, now);
+        return writeReserve(cur, orderId, rec, fp, canonical, orderFingerprint, configVersion, cost, seq, now, hostedExpiresAt);
       }
       // fresh reserve
       if (balance - reserved < cost) { outcome = { ok: false, reason: 'insufficient' }; return; }
       outcome = { ok: true, action: 'created', state: 'reserved' };
-      return writeReserve(cur, orderId, null, fp, canonical, orderFingerprint, configVersion, cost, 1, now);
+      return writeReserve(cur, orderId, null, fp, canonical, orderFingerprint, configVersion, cost, 1, now, hostedExpiresAt);
     });
 
     const res = outcome || { ok: false, reason: 'insufficient' };   // outcome null ⟺ node absent ⟺ no points
@@ -109,10 +109,14 @@ async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, order
   } catch (e) { console.error(`reserveRedemption: failed ${orderId}`, e && e.message); return { ok: false, reason: 'error' }; }
 }
 
-function writeReserve(cur, orderId, prevRec, fp, canonical, orderFingerprint, configVersion, cost, seq, now) {
+function writeReserve(cur, orderId, prevRec, fp, canonical, orderFingerprint, configVersion, cost, seq, now, hostedExpiresAt = null) {
   const rec = {
     state: 'reserved', cost, fp, canonical: canonical || null, order_fingerprint: orderFingerprint || null,
-    config_version: configVersion, attempt_id: null, hosted_expires_at: null,
+    // Online binds hosted_expires_at AT RESERVE (a deterministic nowTs + HOSTED_TTL bound) so an unattached
+    // hold is sweep-visible as an ONLINE hold immediately — the online-expiry sweep reclaims it whether or not
+    // attachAttempt ever lands (crash/attach-fail). attachAttempt later refines it to the exact attempt expiry.
+    // Cash passes null (its sweep branch is order-status-driven and already reclaims cash orphans).
+    config_version: configVersion, attempt_id: null, hosted_expires_at: (hostedExpiresAt != null ? hostedExpiresAt : null),
     created_at: (prevRec && prevRec.created_at) || now, updated_at: now, seq,
   };
   return {

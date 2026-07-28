@@ -755,7 +755,7 @@ exports.createOrder = onRequest(
 // IP+phone rate-limit buckets. The pure helpers (attempt acquisition, fingerprint,
 // money conversion) live in ./pixelpay-charge so they're unit-testable in isolation.
 const { orderFingerprint, centsToLempiras } = require('./pixelpay-charge');
-const { acquireHostedAttempt, classifyHostedAttempt } = require('./pixelpay-hosted-charge');
+const { acquireHostedAttempt, classifyHostedAttempt, HOSTED_TTL_MS } = require('./pixelpay-hosted-charge');
 const { createHostedCharge, formatPixelPayExpiry } = require('./pixelpay-hosted');
 
 const chargeOnlineApp = express();
@@ -1063,8 +1063,11 @@ chargeOnlineApp.all('*', async (req, res) => {
   // retry/reuse returns 'reused' (a prior attempt's hold → we do NOT own the debit).
   let redemptionOwnsHold = false;
   if (redemptionCanonical) {
+    // hosted_expires_at bound AT RESERVE = nowTs + HOSTED_TTL_MS — IDENTICAL to acquireHostedAttempt's
+    // expires_at (same nowTs, same TTL) — so an unattached hold is sweep-visible immediately; attach refines
+    // to the exact attempt expiry (same value). Closes the crash/attach-fail orphan by construction.
     const rr = await reserveRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, cost: redemptionCost,
-      canonical: redemptionCanonical, orderFingerprint: fingerprint, configVersion: REDEMPTION_CONFIG_VERSION, now: nowTs });
+      canonical: redemptionCanonical, orderFingerprint: fingerprint, configVersion: REDEMPTION_CONFIG_VERSION, now: nowTs, hostedExpiresAt: nowTs + HOSTED_TTL_MS });
     if (!rr.ok) return res.status(409).json({ error: 'redemption_reserve_failed', reason: rr.reason, order_id: orderId });
     redemptionOwnsHold = (rr.action === 'created' || rr.action === 're_reserved');
   }

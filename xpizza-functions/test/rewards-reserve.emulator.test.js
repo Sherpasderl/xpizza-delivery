@@ -192,6 +192,20 @@ const NOW = 1_700_000_000_000;
     assert.ok(alerts.some((a) => a.type === 'rewards_undercollateralized' && a.order_id === 'OU' && a.shortfall === 5)); ok('safety-net: under-collateralization → dispatcher alert (shortfall 5), not a silent free discount');
     await R.reverseRedemptionForRefund(db, { uid: 'uUC', rid: 'x_pizza', orderId: 'OU', disposition: 'refund', now: NOW + 1 });
     assert.strictEqual(await bal('uUC'), 3); ok('safety-net: refund credits only debit_applied (3), NOT cost (8) → no minting');
+
+    // ── [T6 R1] online binds hosted_expires_at AT RESERVE → an unattached hold is sweep-visible immediately ──
+    await db.ref('user_rewards').set(null); await db.ref('orders').set(null);
+    await seed('uHE', 100);
+    await R.reserveRedemption(db, { uid: 'uHE', rid: 'x_pizza', orderId: 'OHE', cost: 8, canonical: canon(), orderFingerprint: 'FPHE', configVersion: 1, now: NOW, hostedExpiresAt: NOW - 1 });
+    assert.strictEqual((await db.ref(`${P('uHE')}/reservations/OHE/hosted_expires_at`).get()).val(), NOW - 1);
+    assert.strictEqual((await db.ref(`${P('uHE')}/reservations/OHE/attempt_id`).get()).val(), null); ok('online reserve binds hosted_expires_at at RESERVE (attempt_id still null — attach refines later)');
+    const sweepHE = await R.sweepStaleReservations(db, { now: NOW });   // NO attachAttempt ever ran
+    assert.ok(sweepHE.released.some((x) => x.orderId === 'OHE' && x.kind === 'online_expired'));
+    assert.strictEqual(await st('uHE', 'OHE'), 'released'); ok('unattached online hold → sweep releases on expiry (no orphan even if attach never lands — crash/attach-fail closed)');
+    // cash reserve (no hostedExpiresAt) stays null → its sweep branch stays order-status-driven, unchanged
+    await seed('uCa', 100);
+    await R.reserveRedemption(db, { uid: 'uCa', rid: 'x_pizza', orderId: 'OCA', cost: 8, canonical: canon(), orderFingerprint: 'FPCA', configVersion: 1, now: NOW });
+    assert.strictEqual((await db.ref(`${P('uCa')}/reservations/OCA/hosted_expires_at`).get()).val(), null); ok('cash reserve leaves hosted_expires_at null (order-status-driven sweep, unchanged)');
   });
 
   await env.cleanup();
