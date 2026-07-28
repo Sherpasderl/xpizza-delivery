@@ -60,7 +60,8 @@ const B = 'u_bbbb00000000000000000';
   // ── B2 (Phase B1): the reservations + rsv_ ledger child shape inherits the SAME spine ──
   await ok('B2 owner reads its own reservations subtree', get(aDb, `user_rewards/${A}/x_pizza/reservations`));
   await ok('B2 owner reads a specific reservation record (its own hold)', get(aDb, `user_rewards/${A}/x_pizza/reservations/PZX1`));
-  await ok('B2 owner reads its reserved counter + rsv_ ledger (validate admits the Admin-written shape)', get(aDb, `user_rewards/${A}/x_pizza/reserved`));
+  await ok('B2 owner reads its reserved counter (validate admits the Admin-written shape)', get(aDb, `user_rewards/${A}/x_pizza/reserved`));
+  await ok('B2 owner reads its own rsv_ ledger entry', get(aDb, `user_rewards/${A}/x_pizza/ledger/rsv_PZX1_1`));
   await no('B2 a different user CANNOT read another\'s reservations', get(bDb, `user_rewards/${A}/x_pizza/reservations`));
   await no('B2 anon CANNOT read reservations', get(anonDb, `user_rewards/${A}/x_pizza/reservations`));
   await no('B2 owner CANNOT forge a reservation (write:false — Admin-only spine)', set(aDb, `user_rewards/${A}/x_pizza/reservations/FORGED`, { state: 'reserved', cost: 8 }));
