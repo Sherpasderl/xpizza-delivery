@@ -745,6 +745,10 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ## Task 10: Right rail — persistent roster + surfaced call + cash bar + tabs
 
+> **SPLIT (2026-07-28, Xavier approved).** Built in two gate-able slices:
+> - **10a** — right-rail **driver roster** (moved from the left rail) + **cash/cuadre bar** (`subscribeToDriverCash`, today's closed cuadres) + **surfaced pastel actions** (Llamar mint / Mensaje in-app periwinkle / ⋯). Default the right rail open. No new plumbing. Reconciliation/delivered stay in the left rail until 10b. *(This slice = the roster/cash/actions portion of the gated Task 10.)*
+> - **10b** — the **tab strip** (Pedidos · Programados · Comms · Caja): Pedidos = active in-flight orders; **Programados** = a declared read-only scheduled sub (or released-only); **Comms** = the WhatsApp inbound moved from the modal into its own right-rail tab; **Caja** = reconciliation + cash cuadre; **Cerrados hoy** = its own tab (has search). 10b gets its own plan detail + gate before build.
+
 **Files:**
 - Modify `xpizza-dispatch/index.html` — `renderDriversSection` (`2862`) / `renderDriverNode` (`3039`), sidebar structure.
 - Modify `xpizza-dispatch/xpizza-delivery.js` — add the read-only `subscribeToDriverCash(cb)` helper next to the existing `subscribeTo*` helpers (`xpizza-delivery.js:504/606`). **Commit this file too** (see Step 5).
