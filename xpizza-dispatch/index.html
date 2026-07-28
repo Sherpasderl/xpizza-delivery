@@ -879,6 +879,9 @@
   }
   .driver-row.gps-dark .row-status { color: var(--accent); font-weight: 600; }
   .eta-chip { font-size: 11px; font-weight: 600; color: var(--info); margin-left: 6px; font-variant-numeric: tabular-nums; }
+  .slip-chip { font-size: 11px; font-weight: 600; color: var(--accent); margin-left: 6px; }
+  #risk-summary:not(:empty) { padding: 0 14px 10px; }
+  #risk-summary .risk-count { font-size: 11px; font-weight: 700; color: var(--warn); }
   .driver-row .name {
     font-family: 'Plus Jakarta Sans', sans-serif;
     font-weight: 600;
@@ -1745,6 +1748,29 @@
   .ex .d { color: var(--text-dim); font-size: 11.5px; margin-top: 2px; }
   .ex .ex-dismiss { flex: none; width: 26px; height: 26px; border-radius: 7px; background: none; border: none; color: var(--text-dim); cursor: pointer; display: grid; place-items: center; }
   .ex .ex-dismiss:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+
+  /* ============ v6 rich order row (Task 9) — .ord overrides the old .unassigned-card container ============ */
+  /* base depth (gradient/shadow) from the Task-6 .ex,.ord,.drv,.cash rule */
+  .ord.unassigned-card { border: none; border-radius: 13px; padding: 13px; margin: 0 0 9px; position: relative; overflow: hidden; cursor: pointer; }
+  .ord::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--success); }
+  .ord.aging::after { background: var(--warn); }
+  .ord.late::after  { background: var(--accent); }
+  .ord .r1 { display: flex; align-items: center; gap: 9px; }
+  .ord .num  { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 13px; color: var(--text-soft); }
+  .ord .cust { font-weight: 600; font-size: 13px; color: var(--text); }
+  .ord .ord-age { margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-soft); }
+  .ord .ord-age.band-amber { color: var(--warn); }
+  .ord .ord-age.band-red   { color: var(--accent); }
+  .ord .items { color: var(--text-soft); font-size: 12px; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ord .meta { display: flex; gap: 12px; margin-top: 10px; align-items: center; color: var(--text-dim); font-size: 11.5px; flex-wrap: wrap; }
+  .ord .meta .m { display: inline-flex; gap: 6px; align-items: center; }
+  .ord .meta .m .d { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
+  .ord .meta .m.pay .d  { background: var(--warn); }
+  .ord .meta .m.paid .d { background: var(--success); }
+  .ord .meta .m.wa .d   { background: var(--success); }
+  .ord .meta .m.warn { color: var(--accent); } .ord .meta .m.warn .d { background: var(--accent); }
+  .ord .meta .m.slip { color: var(--accent); } .ord .meta .m.slip .d { background: var(--accent); }
+  .ord .actions { display: flex; gap: 6px; margin-top: 11px; }
 </style>
 </head>
 
@@ -1852,6 +1878,7 @@
 
     <div class="col left" id="left-rail"><div class="rail-inner">
       <div id="torre-list"></div>
+      <div id="risk-summary"></div>
 
       <div class="tree-group" id="unassigned-group">
         <div class="tree-group-header">
@@ -2811,7 +2838,28 @@ function scheduledBadge(order) {
   return `<div class="sched-badge">⏰ ${verb} ${formatScheduledSlot(order.scheduled_for)}</div>`;
 }
 
+// Delivery-risk summary — count of active orders (unassigned + in-flight) with level !== 'ok'
+// (red-aging + slipping; amber alone does not count, per the deliveryRisk contract).
+function updateRiskSummary() {
+  const el = $('risk-summary');
+  if (!el) return;
+  let count = 0;
+  const consider = (o) => {
+    const secs = agingSeconds(agingBaselineMs(o), Date.now());
+    const risk = deliveryRisk({
+      agingSeconds: secs,
+      baselineArrivalMs: etaSnapshots.baseline(o.order_id),
+      currentArrivalMs: etaCache[o.order_id]?.arrivalMs ?? null,
+    });
+    if (risk.level !== 'ok') count++;
+  };
+  getPendingOrders().forEach(consider);
+  for (const uid of Object.keys(allDrivers)) getOrdersForDriver(uid).forEach(consider);
+  el.innerHTML = count > 0 ? `<span class="risk-count">${count} pedido(s) en riesgo de retraso</span>` : '';
+}
+
 function renderUnassignedSection() {
+  updateRiskSummary();
   const orders = getPendingOrders();
   const list = $('unassigned-list');
   const meta = $('unassigned-meta');
@@ -2828,14 +2876,31 @@ function renderUnassignedSection() {
 
   list.innerHTML = orders.map(o => {
     const expanded = expandedOrderIds.has(o.order_id);
+    // Aging (created-time) + delivery-risk drive the row-edge band from ONE computation.
+    const secs = agingSeconds(agingBaselineMs(o), Date.now());
+    const risk = deliveryRisk({
+      agingSeconds: secs,
+      baselineArrivalMs: etaSnapshots.baseline(o.order_id),   // null for unassigned → aging-only
+      currentArrivalMs: etaCache[o.order_id]?.arrivalMs ?? null,
+    });
+    const edge = risk.band === 'red' ? ' late' : risk.band === 'amber' ? ' aging' : '';
+    const isCash = o.payment_method === 'cash' || o.payment_method === 'efectivo';
+    const payChip = `<span class="m ${isCash ? 'pay' : 'paid'}"><span class="d"></span>${isCash ? `Efectivo · L${escapeHtml(String(o.total ?? '—'))}` : 'Pagado online'}</span>`;
+    const waChip = o.order_received_notified_at
+      ? '<span class="m wa"><span class="d"></span>WhatsApp ✓</span>'
+      : o.order_received_send_unresolved_at
+        ? '<span class="m warn"><span class="d"></span>WhatsApp no entregado</span>'
+        : '';
+    const slip = risk.level === 'slipping' ? '<span class="m slip"><span class="d"></span>slipping vs primer estimado</span>' : '';
     return `
-    <div class="unassigned-card" data-order-id="${o.order_id}">
-      <div class="top">
-        <div class="uid">${displayOrderLabel(o)}</div>
-        <div class="total">L${o.total ?? '—'}</div>
+    <div class="ord unassigned-card${edge}" data-order-id="${o.order_id}">
+      <div class="r1">
+        <span class="num">${escapeHtml(displayOrderLabel(o))}</span>
+        <span class="cust">${escapeHtml(o.customer_name || '—')}</span>
+        <span class="ord-age band-${risk.band}" data-aging="${o.created_at ?? ''}">${formatAging(secs)}</span>
       </div>
-      <div class="customer">${escapeHtml(o.customer_name || '—')}</div>
-      <div class="addr">${escapeHtml(o.address_detected || '—')}</div>
+      <div class="items">${escapeHtml(o.items_text || o.address_detected || '—')}</div>
+      <div class="meta">${payChip}${waChip}${slip}</div>
       ${scheduledBadge(o)}
       ${expanded ? renderOrderExpanded(o) : ''}
       <div class="actions">
@@ -2847,7 +2912,7 @@ function renderUnassignedSection() {
   `}).join('');
 
   // Card click → open the full detail modal (same rich view as completed orders).
-  list.querySelectorAll('.unassigned-card').forEach(card => {
+  list.querySelectorAll('.ord[data-order-id]').forEach(card => {
     card.addEventListener('click', (e) => {
       // ignore clicks on action buttons
       if (e.target.closest('button')) return;
@@ -2939,6 +3004,7 @@ async function confirmCancelOrder(orderId) {
 }
 
 function renderDriversSection() {
+  updateRiskSummary();
   const allEntries = Object.entries(allDrivers);
   const tree = $('drivers-tree');
   const meta = $('drivers-meta');
@@ -3067,6 +3133,7 @@ function refreshDeliveryEtas() {
       const pt = allTasks[`${o.order_id}_pickup`];
       if (!etaEligible({ pickupStatus: pt?.status, destLat: dt?.destination_lat, destLng: dt?.destination_lng, driverLat: d.lat, driverLng: d.lng })) {
         delete etaCache[o.order_id];
+        etaSnapshots.clear(o.order_id);   // drop the first-observed-ETA baseline on delivery/removal
         continue;
       }
       const cached = etaCache[o.order_id];
@@ -3083,7 +3150,9 @@ function refreshDeliveryEtas() {
         const leg = res.routes[0].legs[0];
         const travelSec = (leg.duration_in_traffic || leg.duration).value;
         const t = Date.now();
-        etaCache[orderId] = { arrivalMs: projectArrival(t, travelSec, S_CUSTOMER_SEC), computedAt: t, driverLat: dLat, driverLng: dLng };
+        const arrivalMs = projectArrival(t, travelSec, S_CUSTOMER_SEC);
+        etaCache[orderId] = { arrivalMs, computedAt: t, driverLat: dLat, driverLng: dLng };
+        etaSnapshots.observe(orderId, arrivalMs);   // first-observed-ETA baseline (delivery-risk)
         renderDriversSection();
       });
     }
@@ -3215,6 +3284,14 @@ function renderTaskRow(driverUid, order) {
 
   const expanded = expandedOrderIds.has(order.order_id);
 
+  // Delivery-risk: slipping only when the CURRENT ETA has drifted past the first observed one.
+  const secs = agingSeconds(agingBaselineMs(order), Date.now());
+  const risk = deliveryRisk({
+    agingSeconds: secs,
+    baselineArrivalMs: etaSnapshots.baseline(order.order_id),
+    currentArrivalMs: etaCache[order.order_id]?.arrivalMs ?? null,
+  });
+
   return `
     <div class="task-row" data-order-id="${order.order_id}" data-driver-uid="${driverUid}">
       <div class="task-top">
@@ -3230,6 +3307,7 @@ function renderTaskRow(driverUid, order) {
       <div class="task-meta">
         <span class="phase-pill ${phase}">${phaseLabel}</span>
         ${(() => { const e = etaCache[order.order_id]; if (!e) return ''; const now = Date.now(); return `<span class="eta-chip">${relativeEta(e.arrivalMs, now)} · ${clockTime(e.arrivalMs)}</span>`; })()}
+        ${risk.level === 'slipping' ? '<span class="slip-chip" title="Retrasándose vs. el primer ETA observado">retrasándose</span>' : ''}
       </div>
       ${expanded ? renderOrderExpanded(order) : ''}
     </div>
@@ -4111,6 +4189,14 @@ function togRail(cls) {
 }
 $('rail-toggle-left').addEventListener('click', () => togRail('left-open'));
 $('rail-toggle-right').addEventListener('click', () => togRail('right-open'));
+
+// Live-tick the aging timers each second (recompute from each row's created-time baseline in-place).
+setInterval(() => {
+  document.querySelectorAll('[data-aging]').forEach((el) => {
+    const base = Number(el.dataset.aging);
+    if (Number.isFinite(base)) el.textContent = formatAging(agingSeconds(base, Date.now()));
+  });
+}, 1000);
 
 $('delivered-toggle').addEventListener('click', () => {
   $('delivered-group').classList.toggle('collapsed');
