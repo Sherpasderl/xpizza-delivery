@@ -319,6 +319,21 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     ok('#23 cancel of a never-earned order → reversal no-op (no reward writes)');
   }
 
+  // #24 [Rewards B1] cancel of a REDEEMED order → the redemption hold is reversed via the single helper in
+  // cancelOrderCore. A consumed hold → the spent points are credited back (once).
+  {
+    await clearAll();
+    await seed({ status: 'out_for_delivery', payment_method: 'cash', payment_status: 'no_payment', active_attempt_id: null,
+      order_type: 'delivery', customer_uid: 'uidRZ', restaurant_id: 'x_pizza', redemption: { restaurant_id: 'x_pizza', model: 'discount', cost: 8 } }, null);
+    await db.ref('user_rewards/uidRZ/x_pizza').set({ balance: 12, lifetime: 20, reserved: 0,
+      reservations: { [OID]: { state: 'consumed', cost: 8, debit_applied: 8, seq: 2, fp: 'F' } }, ledger: { seed: { type: 'earn', delta: 12, ts: 1 } } });
+    const r = await cancelOrderCore(mkDeps({}).deps, { orderId: OID, actor: 'A', reason: 'x', now: NOW, claimId: 'CID-RZ' });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual((await db.ref('user_rewards/uidRZ/x_pizza/balance').once('value')).val(), 20, 'consumed redemption refunded → balance +cost (12→20)');
+    assert.strictEqual((await db.ref(`user_rewards/uidRZ/x_pizza/reservations/${OID}/state`).once('value')).val(), 'refunded');
+    ok('#24 cancel of a redeemed order (consumed) → redemption credited back once via cancelOrderCore');
+  }
+
   console.log(`\ncancel-order.emulator: OK (${n} scenarios)`);
   process.exit(0);
 })().catch((e) => { console.error('cancel-order.emulator: FAIL\n', e && e.stack || e); process.exit(1); });

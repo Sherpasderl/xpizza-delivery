@@ -90,6 +90,26 @@ const NOW = 1_700_000_000_000;
     const relAb = await R.sweepStaleReservations(db, { now: NOW });
     assert.ok(relAb.released.some((x) => x.orderId === 'OAB2' && x.kind === 'online_expired'));
     assert.strictEqual(await st('uAb', 'OAB2'), 'released'); ok('release sweep: expired hold on an ABANDONED (absent) order IS still released (genuine abandon)');
+
+    // ── [T8] reverseRedemptionForOrder — the SINGLE-helper reversal cancelOrderCore + resolve-manual invoke ──
+    await db.ref('user_rewards').set(null); await db.ref('orders').set(null);
+    const revOrder = async (o, disp) => R.reverseRedemptionForOrder(db, { orderId: o, order: (await db.ref(`orders/${o}`).get()).val(), disposition: disp, now: NOW });
+    // consumed → refund credits debit_applied back, once (retry no double)
+    await seedPts('uRR', 20); await reserve('uRR', 'ORR'); await R.consumeRedemption(db, { uid: 'uRR', rid: 'x_pizza', orderId: 'ORR', now: NOW }); await seedOrder('ORR', { uid: 'uRR', status: 'cancelled' });
+    assert.strictEqual(await bal('uRR'), 12);
+    assert.strictEqual((await revOrder('ORR', 'refund')).action, 'refunded'); assert.strictEqual(await bal('uRR'), 20); ok('reverse(refund) consumed → balance +cost once (credit debit_applied)');
+    assert.strictEqual((await revOrder('ORR', 'refund')).action, 'noop'); assert.strictEqual(await bal('uRR'), 20); ok('reverse(refund) consumed retry → noop (no double-credit)');
+    // held_paid → refund releases the hold, NO balance credit
+    await seedPts('uHP', 20); await reserve('uHP', 'OHP'); await R.markHeldPaid(db, { uid: 'uHP', rid: 'x_pizza', orderId: 'OHP', now: NOW }); await seedOrder('OHP', { uid: 'uHP', status: 'cancelled' });
+    assert.strictEqual((await revOrder('OHP', 'refund')).action, 'released_held'); assert.strictEqual(await bal('uHP'), 20); assert.strictEqual(await rsv('uHP'), 0); ok('reverse(refund) held_paid → hold released, balance UNCHANGED (no double-credit)');
+    // held_paid → sale consumes (manual finalize-to-sale)
+    await seedPts('uSA', 20); await reserve('uSA', 'OSA'); await R.markHeldPaid(db, { uid: 'uSA', rid: 'x_pizza', orderId: 'OSA', now: NOW }); await seedOrder('OSA', { uid: 'uSA', status: 'new' });
+    assert.strictEqual((await revOrder('OSA', 'sale')).action, 'consumed'); assert.strictEqual(await bal('uSA'), 12); ok('reverse(sale) held_paid → consumed (balance −cost once)');
+    // reserved-unpaid → refund releases
+    await seedPts('uRE', 20); await reserve('uRE', 'ORE'); await seedOrder('ORE', { uid: 'uRE', status: 'cancelled' });
+    assert.strictEqual((await revOrder('ORE', 'refund')).action, 'released'); assert.strictEqual(await rsv('uRE'), 0); ok('reverse(refund) reserved-unpaid → released');
+    // non-redeemed → skip (no reservation, no throw)
+    assert.strictEqual((await R.reverseRedemptionForOrder(db, { orderId: 'ONO', order: { customer_uid: 'x', status: 'cancelled' }, disposition: 'refund', now: NOW })).skipped, true); ok('reverse non-redeemed order → skipped (no-op)');
   });
 
   await env.cleanup();

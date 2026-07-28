@@ -314,6 +314,17 @@ async function settleRedemptionAtConfirm(db, { orderId, order, disposition, now 
   } catch (e) { console.warn(`settleRedemptionAtConfirm(${disposition}) failed for ${orderId}`, e && e.message); return { ok: false, error: true }; }
 }
 
+// reverseRedemptionForOrder — thin wrapper (cancelOrderCore + resolve-manual) that maps an ORDER onto the
+// single reverseRedemptionForRefund helper — never open-codes balance math. Fail-open; no-op for a
+// non-redeemed order. disposition 'refund' (state-branch: consumed→credit debit_applied, held_paid→release
+// NO-credit, reserved→release) | 'sale' (held_paid/reserved→consume). Idempotent, keyed by order_id.
+async function reverseRedemptionForOrder(db, { orderId, order, disposition = 'refund', now }) {
+  try {
+    if (!order || !order.redemption || !order.customer_uid) return { ok: false, skipped: true };
+    return await reverseRedemptionForRefund(db, { uid: order.customer_uid, rid: order.restaurant_id || 'x_pizza', orderId, disposition, now });
+  } catch (e) { console.warn(`reverseRedemptionForOrder(${disposition}) failed for ${orderId}`, e && e.message); return { ok: false, error: true }; }
+}
+
 // sweepConsumeRecovery — backstop for the NON-atomic (orders/* vs user_rewards/*) consume: an order can reach
 // materialized/delivered/completed while its consume failed, leaving the hold stuck 'reserved'. Find those and
 // CONSUME (idempotent — primary + recovery both run safely). Alerts (aged) when a stuck hold was old. Never
@@ -345,6 +356,6 @@ async function sweepConsumeRecovery(db, { now, staleMs = CASH_STALE_MS }) {
 
 module.exports = {
   reserveRedemption, attachAttempt, consumeRedemption, markHeldPaid, releaseRedemption,
-  reverseRedemptionForRefund, sweepStaleReservations, settleRedemptionAtConfirm, sweepConsumeRecovery,
-  consumeEligible, CASH_STALE_MS,
+  reverseRedemptionForRefund, reverseRedemptionForOrder, sweepStaleReservations, settleRedemptionAtConfirm,
+  sweepConsumeRecovery, consumeEligible, CASH_STALE_MS,
 };

@@ -20,6 +20,7 @@
  */
 const MR = require('./manual-resolve');
 const { holdIfClosedAtMaterialize } = require('./materialize-guard');   // paid-after-close re-check (Codex-on-diff)
+const { reverseRedemptionForOrder, settleRedemptionAtConfirm } = require('./rewards-reserve');   // Phase B1 — redemption reversal/settle on manual resolve (single helper, no-op for non-redeemed)
 
 // [#7/#8] Materialize a manual-verified order WITHOUT reopening the race: CAS resolving_materialize → confirmed
 // on the claim_id (NO transient 'pending', NO materialized_at yet), then materialize atomically. A crash after
@@ -107,6 +108,7 @@ async function resolveManualReconciliationCore(deps, { orderId, action, actor, n
         return { status: 409, body: { error: 'No se pudo descartar (el estado cambió)', payment_status: cur.payment_status } };
       }
       if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'abandoned', status: 'abandoned', abandoned_at: now });
+      await reverseRedemptionForOrder(db, { orderId, order, disposition: 'refund', now });   // no charge → release the hold (held_paid/reserved → released, no credit)
       await audit('abandoned', { note: sanitizeText(note || '', 200) });
       return { status: 200, body: { ok: true, outcome: 'abandoned' } };
     }
@@ -114,6 +116,10 @@ async function resolveManualReconciliationCore(deps, { orderId, action, actor, n
     if (action === 'materialize') {
       const r = await confirmAndMaterializeFromManualClaim(deps, { orderId, attemptId, claimId, now, trackingToken: deps.genToken() });
       if (MR.FINAL_SUCCESS_OUTCOMES.has(r.outcome)) {
+        // Realize the redemption on a manual materialize-to-sale (paid + live → consume). A paid-but-kitchen-
+        // closed outcome instead HOLDS the points (held_paid; the dispatcher re-resolves later).
+        if (r.outcome === 'held_closed_at_materialize') await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'hold', now });
+        else await reverseRedemptionForOrder(db, { orderId, order, disposition: 'sale', now });
         await audit(r.outcome, { confirm_outcome: r.outcome });
         return { status: 200, body: { ok: true, outcome: r.outcome } };
       }
@@ -138,6 +144,7 @@ async function resolveManualReconciliationCore(deps, { orderId, action, actor, n
     const finalStatus = voided ? 'refunded' : 'refund_pending';         // any non-anulada void → refund_pending, never fake refunded
     if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ status: finalStatus, refunded_at: now });
     await orderRef.update({ payment_status: finalStatus, status: 'cancelled', resolving_action: null, resolving_claim_id: null, resolving_claimed_at: null, resolving_phase: null });
+    await reverseRedemptionForOrder(db, { orderId, order, disposition: 'refund', now });   // manual refund → release the hold (held_paid/reserved → released; consumed → credit debit_applied)
     await audit(finalStatus, { voided });
     return { status: MR.httpForOutcome(finalStatus), body: { ok: voided, outcome: finalStatus } };
   } catch (e) {
