@@ -15,6 +15,7 @@ const { resolvePixelPayConfig } = require('./pixelpay-config');
 const { toCents } = require('./pixelpay-hosted');
 const { confirmAndMaterialize } = require('./pixelpay-confirm');
 const MR = require('./manual-resolve');   // atomic-claim predicate (rev-5): paid-evidence capture in manual-flow states
+const { settleRedemptionAtConfirm } = require('./rewards-reserve');   // Phase B1 — HOLD the redemption on paid-during-manual (no-op for non-redeemed)
 
 const ATTEMPT_SUFFIX = /-[0-9a-f]{16}$/;             // hosted_order_id = `${orderId}-${attemptId}` (16-hex)
 const HOSTED_ORDER_RE = /^[A-Za-z0-9_-]{1,96}$/;
@@ -98,6 +99,7 @@ async function handleHostedCallback(deps, body, now) {
       [`payment_attempts/${attemptId}/paid_at`]: now,
       [`orders/${orderId}/paid_during_resolve`]: true,
     });
+    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'hold', now });   // paid evidence in manual-flow → HOLD the points (dispatcher resolves)
     deps.alert && deps.alert('paid_during_manual_resolve', { orderId, attemptId, payment_status: order.payment_status });
     return { code: 200, outcome: 'paid_evidence_recorded' };
   }

@@ -23,6 +23,7 @@
 const TERMINAL_ATTEMPT = ['declined', 'voided', 'abandoned', 'converted', 'refunded', 'voided_inactive'];
 const SCHED = require('./scheduled-orders');   // Scheduled Orders — confirm-time slot re-validation (§F)
 const { holdIfClosedAtMaterialize } = require('./materialize-guard');   // paid-after-close re-check (Codex-on-diff)
+const { settleRedemptionAtConfirm } = require('./rewards-reserve');     // Phase B1 — consume/hold the redemption at materialize (no-op for a non-redeemed order)
 
 async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingToken }) {
   const { db, staleMs = 90000 } = deps;
@@ -228,7 +229,10 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
   if (!order || order.status === 'cancelled') return { outcome: 'cancelled_during_confirm' };
   if (attemptId && order.active_attempt_id !== attemptId) return { outcome: 'attempt_superseded' };
   if (order.payment_status !== 'confirmed') return { outcome: 'confirm_claim_failed' };
-  if (order.materialized_at) return { outcome: 'already_confirmed', tracking_token: order.tracking_token };
+  if (order.materialized_at) {
+    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'consume', now });   // idempotent backstop (crash-after-consume recovery)
+    return { outcome: 'already_confirmed', tracking_token: order.tracking_token };
+  }
 
   // ---- Scheduled Orders (§B.1): a confirmed order carrying a scheduled_for is HELD, not materialized —
   // it goes live ONLY at release (scheduled→releasing→new, scheduled-release-core). This is the sole
@@ -247,10 +251,12 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
     const sv = SCHED.releaseTimeValid(hours, order, now);
     if (!sv.valid) {
       await orderRef.update({ payment_status: 'manual_review', scheduled_blocked: true, blocked_reason: 'confirm_' + sv.reason });
+      await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'hold', now });   // paid but slot closed → HOLD the points (dispatcher resolves)
       if (deps.alert) { try { await deps.alert('scheduled_confirm_invalid', { orderId, reason: sv.reason, scheduled_for: order.scheduled_for }); } catch (_) {} }
       return { outcome: 'scheduled_confirm_invalid', reason: sv.reason };
     }
     if (order.status !== 'scheduled') await orderRef.update({ status: 'scheduled', scheduled_confirmed_at: now });
+    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'consume', now });   // paid + held-for-schedule → realize the debit (cancel-before-release refunds it)
     return { outcome: 'scheduled_held', scheduled_for: order.scheduled_for };
   }
 
@@ -259,6 +265,7 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
   // live ASAP order on a dark kitchen. This is the shared chokepoint for confirmOnlinePayment, the hosted
   // webhook, and the materializeOnConfirm recovery (all delegate here). Open → materialize as today.
   if (await holdIfClosedAtMaterialize(deps, orderId, order, now)) {
+    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'hold', now });   // paid but kitchen closed → HOLD the points (dispatcher resolves)
     return { outcome: 'held_closed_at_materialize' };
   }
 
@@ -299,6 +306,7 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
       console.error(`confirmAndMaterialize: inactive-materialize alert failed for ${orderId} (order materialized, not stranded): ${e && e.message}`);
     }
   }
+  await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'consume', now });   // fresh materialize (paid + live) → realize the debit (online primary consume)
   return { outcome: 'confirmed', tracking_token: token };
 }
 

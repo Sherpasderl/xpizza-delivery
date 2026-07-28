@@ -277,7 +277,66 @@ async function sweepStaleReservations(db, { now }) {
   return { released, audited };
 }
 
+// States where an ONLINE order has materialized live (paid + not pending/scheduled/cancelled).
+const ONLINE_LIVE = new Set(['new', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'completed']);
+const TERMINAL_DONE = new Set(['delivered', 'completed']);
+
+// Is a reservation's order "realized" (money captured + order live/terminal) → the hold should be CONSUMED?
+//   delivered/completed → yes (cash primary consume happens here; online is idempotent). online materialized-
+//   live (payment_status confirmed + a live status) → yes (online primary consume happens at confirm).
+function consumeEligible(order) {
+  if (!order) return false;
+  if (TERMINAL_DONE.has(order.status)) return true;
+  if (order.payment_method === 'online' && order.payment_status === 'confirmed' && ONLINE_LIVE.has(order.status)) return true;
+  return false;
+}
+
+// settleRedemptionAtConfirm — map a confirm/webhook disposition onto the reservation of a REDEEMED order:
+//   'consume' (paid + live → realize the debit), 'hold' (paid but manual_review → dispatcher resolves),
+//   'release' (unpaid abandon → free the hold). Fail-open — NEVER blocks the payment/materialize. No-op for a
+//   non-redeemed order (no order.redemption). All three primitives are idempotent, so re-entry is safe.
+async function settleRedemptionAtConfirm(db, { orderId, order, disposition, now }) {
+  try {
+    if (!order || !order.redemption || !order.customer_uid) return { ok: false, skipped: true };
+    const args = { uid: order.customer_uid, rid: order.restaurant_id || 'x_pizza', orderId, now };
+    if (disposition === 'consume') return await consumeRedemption(db, args);
+    if (disposition === 'hold') return await markHeldPaid(db, args);
+    if (disposition === 'release') return await releaseRedemption(db, args);
+    return { ok: false, skipped: true };
+  } catch (e) { console.warn(`settleRedemptionAtConfirm(${disposition}) failed for ${orderId}`, e && e.message); return { ok: false, error: true }; }
+}
+
+// sweepConsumeRecovery — backstop for the NON-atomic (orders/* vs user_rewards/*) consume: an order can reach
+// materialized/delivered/completed while its consume failed, leaving the hold stuck 'reserved'. Find those and
+// CONSUME (idempotent — primary + recovery both run safely). Alerts (aged) when a stuck hold was old. Never
+// touches held_paid/consumed/released. Counterpart to sweepStaleReservations (abandon → release).
+async function sweepConsumeRecovery(db, { now, staleMs = CASH_STALE_MS }) {
+  const consumed = [], aged = [];
+  try {
+    const all = (await db.ref('user_rewards').get()).val() || {};
+    for (const uid of Object.keys(all)) {
+      const brands = all[uid] || {};
+      for (const rid of Object.keys(brands)) {
+        const reservations = (brands[rid] && brands[rid].reservations) || {};
+        for (const orderId of Object.keys(reservations)) {
+          const rec = reservations[orderId];
+          if (!rec || rec.state !== 'reserved') continue;
+          const order = (await db.ref(`orders/${orderId}`).get()).val();
+          if (!consumeEligible(order)) continue;
+          const r = await consumeRedemption(db, { uid, rid, orderId, now });   // idempotent
+          if (r && r.action === 'applied') {
+            consumed.push({ uid, rid, orderId, status: order.status });
+            if ((now - (Number(rec.created_at) || 0)) > staleMs) aged.push({ uid, rid, orderId, status: order.status });   // stuck a long time → flag
+          }
+        }
+      }
+    }
+  } catch (e) { console.error('sweepConsumeRecovery: failed', e && e.message); }
+  return { consumed, aged };
+}
+
 module.exports = {
   reserveRedemption, attachAttempt, consumeRedemption, markHeldPaid, releaseRedemption,
-  reverseRedemptionForRefund, sweepStaleReservations, CASH_STALE_MS,
+  reverseRedemptionForRefund, sweepStaleReservations, settleRedemptionAtConfirm, sweepConsumeRecovery,
+  consumeEligible, CASH_STALE_MS,
 };

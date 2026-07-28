@@ -70,7 +70,7 @@ const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttrib
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
 const { shouldEarnOnStatus } = require('./rewards-core');                  //   pure terminal-state gate for the earn trigger
 const { resolveRedemptionForOrder, prepareRedemption } = require('./rewards-redeem-intake');   // Phase B1 — redemption intake (cash combined / online prepare)
-const { reserveRedemption, releaseRedemption, attachAttempt } = require('./rewards-reserve');  //   reservation lifecycle (online: reserve before acquire, attach, release on abandon)
+const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, sweepStaleReservations, sweepConsumeRecovery } = require('./rewards-reserve');  //   reservation lifecycle + confirm-settle + sweeps
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');  //   config version for the reservation binding
 const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
@@ -1700,6 +1700,20 @@ exports.reconcilePayments = onSchedule(
     } else {
       console.log('reconcilePayments: no breaches');
     }
+
+    // ── Rewards Phase B1: reconcile redemption reservations (money-safety backstops) ──
+    // (1) release ABANDONED holds — online past hosted_expires_at, cash orphan/cancelled (sweepStaleReservations);
+    // (2) consume-recovery — holds stuck 'reserved' on an order that already materialized/delivered/completed
+    // (orders/* and user_rewards/* are NOT one atomic write, so a failed primary consume must be caught here).
+    // Both are idempotent + fail-open; alert on aged/audited so a human sees a persistent stuck hold.
+    try {
+      const rel = await sweepStaleReservations(db, { now });
+      const rec = await sweepConsumeRecovery(db, { now });
+      if (rel.audited.length || rec.aged.length) {
+        await paymentAlert(db, 'redemption_sweep', { released: rel.released.length, audited: rel.audited.slice(0, 20), consume_recovered: rec.consumed.length, aged: rec.aged.slice(0, 20) });
+      }
+      if (rel.released.length || rec.consumed.length) console.log(`reconcilePayments: redemption sweep — released ${rel.released.length}, consume-recovered ${rec.consumed.length}`);
+    } catch (e) { console.error('reconcilePayments: redemption sweep failed', e && e.message); }
   }
 );
 
@@ -1996,6 +2010,9 @@ exports.earnRewardsOnCompletion = onValueWritten(
       const db = getDatabase();
       const order = (await db.ref(`orders/${orderId}`).get()).val();
       await creditEarnForOrder(db, { orderId, order, now: Date.now() });
+      // Phase B1: CASH primary redemption consume at delivered/completed (online already consumed at confirm →
+      // idempotent no-op). Realizes the debit; the consume-recovery sweep is the backstop. Fail-open.
+      await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'consume', now: Date.now() });
     } catch (e) {
       console.warn('earnRewardsOnCompletion: fail-open —', e && e.message);   // never affect the order-status write
     }
