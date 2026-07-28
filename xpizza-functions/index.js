@@ -69,7 +69,7 @@ const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restauran
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
 const { shouldEarnOnStatus } = require('./rewards-core');                  //   pure terminal-state gate for the earn trigger
-const { resolveRedemptionForOrder, prepareRedemption } = require('./rewards-redeem-intake');   // Phase B1 — redemption intake (cash combined / online prepare)
+const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
 const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, sweepStaleReservations, sweepConsumeRecovery } = require('./rewards-reserve');  //   reservation lifecycle + confirm-settle + sweeps
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');  //   config version for the reservation binding
 const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
@@ -4678,6 +4678,46 @@ exports.verifyOtp = onRequest(
     } catch (e) {
       console.error('verifyOtp', e);
       return res.status(200).json({ ok: false });
+    }
+  }
+);
+
+// ============================================================
+// quoteRedemption (Rewards B2) — READ-ONLY redemption preview for the checkout review (mockup screen 5)
+// ============================================================
+// The live order handlers compute the discount internally but never return it, so the UI needs a server-
+// authoritative preview WITHOUT ever client-computing a discount. This runs the SAME redemption flow as intake
+// (uid-first gate/allowlist → server-priced cart → compute/La-Musa-86/price) + a read-only available check —
+// NO reserve, NO order, NO DB write. Guarantee (narrowed): the quoted discount === the discount submit applies
+// GIVEN submit reaches redemption (submit-only cart/placeability gates are not run here — the UI routes their
+// item_unavailable/closed to the existing cart error paths, never the redemption fallback).
+exports.quoteRedemption = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  async (req, res) => {
+    try {
+      if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
+      const body = req.body || {};
+      const { restaurantId, error: ridError } = resolveRestaurantId(body.restaurant_id);
+      if (ridError) return res.status(400).json({ ok: false, error: 'bad_request', detail: ridError });
+      const db = getDatabase();
+      // Verified non-guest uid — SAME as intake (customer:true + tombstone check); a client-supplied uid is never used.
+      let customerUid = null;
+      const idTok = req.get('x-firebase-id-token');
+      if (idTok) {
+        try {
+          const dec = await getAuth().verifyIdToken(idTok);
+          if (dec && dec.customer === true && dec.uid) {
+            const tomb = await db.ref('deleted_uids/' + dec.uid).get();
+            customerUid = attributionUid(dec, tomb.exists());
+          }
+        } catch (_) { customerUid = null; }   // malformed/expired/foreign/tomb-read-failure → guest
+      }
+      const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId, customerUid });
+      if (!q.ok) return res.status(q.status).json({ ok: false, ...q.body });   // same typed errors as intake (+ bad_cart)
+      return res.status(200).json(q);   // { ok:true, discount_cents, total_cents, subtotal_cents, tax_cents, free_item:{name} }
+    } catch (e) {
+      console.error('quoteRedemption', e && e.message);
+      return res.status(500).json({ ok: false, error: 'error' });
     }
   }
 );

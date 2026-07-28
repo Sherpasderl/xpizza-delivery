@@ -8,7 +8,7 @@
  */
 const assert = require('assert');
 const { initializeTestEnvironment } = require('@firebase/rules-unit-testing');
-const { resolveRedemptionForOrder, prepareRedemption } = require('../rewards-redeem-intake');
+const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('../rewards-redeem-intake');
 const { reserveRedemption, releaseRedemption, attachAttempt } = require('../rewards-reserve');
 const { REDEMPTION_CONFIG_VERSION } = require('../rewards-redeem-config');
 const { orderFingerprint } = require('../pixelpay-charge');
@@ -111,6 +111,38 @@ const NOW = 1_700_000_000_000;
     // 13 — reuse/retry: the payment fingerprint matches → reserve is idempotent 'reused' (NOT ownsHold → never release on preserve)
     const rrReuse = await onlineReserve('uCl', 'OCL', pCl.canonical, pCl.redemption.cost, fpCl);
     assert.strictEqual(rrReuse.action, 'reused'); assert.strictEqual(await rsv('uCl'), 8); ok('online reuse (same order/fingerprint) → reserve reused (no re-debit); a preserve branch never releases');
+
+    // ── [B2 T1] canary allowlist: global flag OFF but an allowlisted uid can redeem ──
+    await enable(false);   // global OFF
+    const allow = (uid, on) => db.ref(`config/redemption_allowlist/${uid}`).set(on);
+    await seedPts('uAL', 20); await allow('uAL', true);
+    const rAL = await resolveRedemptionForOrder(db, { restaurantId: 'x_pizza', itemsText: 'x', totalLempiras: 717, schedExtra: '', now: NOW, items: xpItems, redeem: { type: 'discount_cheapest_pizza' }, orderId: 'OAL', customerUid: 'uAL' });
+    assert.strictEqual(rAL.ok, true); assert.strictEqual(await rsv('uAL'), 8); ok('canary: global OFF + allowlisted uid → redemption proceeds (reserved 8)');
+    await seedPts('uNA', 20);   // NOT allowlisted
+    const rNA = await resolveRedemptionForOrder(db, { restaurantId: 'x_pizza', itemsText: 'x', totalLempiras: 717, schedExtra: '', now: NOW, items: xpItems, redeem: { type: 'discount_cheapest_pizza' }, orderId: 'ONA', customerUid: 'uNA' });
+    assert.deepStrictEqual({ ok: rNA.ok, status: rNA.status, err: rNA.body.error }, { ok: false, status: 409, err: 'rewards_disabled' });
+    assert.strictEqual(await rsv('uNA'), 0); ok('canary: global OFF + NON-allowlisted uid → 409 rewards_disabled, no reserve');
+    // uid-first reorder: a flag-OFF GUEST now returns login_required (not rewards_disabled) — inert (guests never redeem)
+    const rG = await resolveRedemptionForOrder(db, { restaurantId: 'x_pizza', itemsText: 'x', totalLempiras: 717, schedExtra: '', now: NOW, items: xpItems, redeem: { type: 'discount_cheapest_pizza' }, orderId: 'OG2', customerUid: null });
+    assert.deepStrictEqual({ ok: rG.ok, status: rG.status, err: rG.body.error }, { ok: false, status: 401, err: 'login_required' }); ok('uid-first reorder: flag-OFF guest → 401 login_required (inert; guests send no redeem)');
+
+    // ── [B2 T1] quoteRedemptionCore — READ-ONLY preview, NO reserve, same typed errors, quote == applied discount ──
+    await enable(true);   // global ON for the quote happy-paths
+    await seedPts('uQ', 20);
+    const q = await quoteRedemptionCore(db, { redeem: { type: 'discount_cheapest_pizza' }, items: xpItems, restaurantId: 'x_pizza', customerUid: 'uQ' });
+    assert.deepStrictEqual({ ok: q.ok, discount_cents: q.discount_cents, total_cents: q.total_cents, name: q.free_item.name }, { ok: true, discount_cents: 29900, total_cents: 41800, name: 'Margherita' });
+    assert.strictEqual(await rsv('uQ'), 0); assert.strictEqual(await resv('uQ', 'ANY'), null); ok('quoteRedemptionCore: discounted numbers returned, NO reserve taken (reserved 0, no reservation)');
+    // quote == applied: the same cart+redeem through the intake charges the SAME discounted total
+    const sub = await resolveRedemptionForOrder(db, { restaurantId: 'x_pizza', itemsText: 'x', totalLempiras: 717, schedExtra: '', now: NOW, items: xpItems, redeem: { type: 'discount_cheapest_pizza' }, orderId: 'OQ', customerUid: 'uQ' });
+    assert.strictEqual(sub.priced.total_cents, q.total_cents); assert.strictEqual(sub.priced.discount_cents, q.discount_cents); ok('quote == applied: quoted total/discount === what the intake charges (given submit reaches redemption)');
+    // quote typed errors mirror intake
+    await seedPts('uQI', 5);   // insufficient
+    assert.deepStrictEqual((await quoteRedemptionCore(db, { redeem: { type: 'discount_cheapest_pizza' }, items: xpItems, restaurantId: 'x_pizza', customerUid: 'uQI' })).body, { error: 'redemption_reserve_failed', reason: 'insufficient' }); ok('quote insufficient → 409 redemption_reserve_failed (mirrors reserve), no reserve');
+    assert.deepStrictEqual(await quoteRedemptionCore(db, { redeem: { type: 'discount_cheapest_pizza' }, items: xpItems, restaurantId: 'x_pizza', customerUid: null }), { ok: false, status: 401, body: { error: 'login_required' } }); ok('quote guest → 401 login_required');
+    assert.deepStrictEqual(await quoteRedemptionCore(db, { redeem: { type: 'discount_cheapest_pizza' }, items: [{ name: 'NotARealPizza', qty: 1 }], restaurantId: 'x_pizza', customerUid: 'uQ' }), { ok: false, status: 400, body: { error: 'bad_cart' } }); ok('quote malformed cart → 400 bad_cart (never feeds NaN to pricing)');
+    // quote flag-OFF non-allowlisted → rewards_disabled
+    await enable(false);
+    assert.deepStrictEqual((await quoteRedemptionCore(db, { redeem: { type: 'discount_cheapest_pizza' }, items: xpItems, restaurantId: 'x_pizza', customerUid: 'uQ' })).body, { error: 'rewards_disabled' }); ok('quote flag-OFF non-allowlisted → 409 rewards_disabled');
   });
 
   await env.cleanup();

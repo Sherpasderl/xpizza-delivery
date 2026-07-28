@@ -41,13 +41,24 @@ assert.strictEqual(itemInTier('x_pizza', 1, 'anything'), false); ok('itemInTier 
 }
 
 // ── redemptionEnabled: default + fail-safe false ──
-const dbWith = (val, throws) => ({ ref: () => ({ get: async () => { if (throws) throw new Error('boom'); return { val: () => val }; } }) });
+// Path-aware mock: `flags` maps an exact ref path → value; absent path → undefined. `throws` fails every read.
+const dbMock = (flags = {}, throws = false) => ({ ref: (p) => ({ get: async () => { if (throws) throw new Error('boom'); return { val: () => flags[p] }; } }) });
+const GLOBAL = 'config/redemption_enabled';
+const ALLOW = (u) => `config/redemption_allowlist/${u}`;
 (async () => {
-  assert.strictEqual(await redemptionEnabled(dbWith(undefined)), false); ok('redemptionEnabled: absent flag → false (default off)');
-  assert.strictEqual(await redemptionEnabled(dbWith(false)), false);
-  assert.strictEqual(await redemptionEnabled(dbWith('true')), false);        // string, not boolean → false
-  assert.strictEqual(await redemptionEnabled(dbWith(1)), false); ok('redemptionEnabled: only strict boolean true enables (false/"true"/1 → off)');
-  assert.strictEqual(await redemptionEnabled(dbWith(true)), true); ok('redemptionEnabled: strict true → enabled');
-  assert.strictEqual(await redemptionEnabled(dbWith(null, true)), false); ok('redemptionEnabled: read throws → fail-safe off');
+  // global flag (back-compatible — uid absent ⇒ global-only)
+  assert.strictEqual(await redemptionEnabled(dbMock({})), false); ok('redemptionEnabled: absent global flag → false (default off)');
+  assert.strictEqual(await redemptionEnabled(dbMock({ [GLOBAL]: false })), false);
+  assert.strictEqual(await redemptionEnabled(dbMock({ [GLOBAL]: 'true' })), false);
+  assert.strictEqual(await redemptionEnabled(dbMock({ [GLOBAL]: 1 })), false); ok('redemptionEnabled: only strict boolean true enables global (false/"true"/1 → off)');
+  assert.strictEqual(await redemptionEnabled(dbMock({ [GLOBAL]: true })), true); ok('redemptionEnabled: strict global true → enabled');
+  // canary allowlist (B2) — global OFF, uid-specific
+  assert.strictEqual(await redemptionEnabled(dbMock({ [ALLOW('uX')]: true }), 'uX'), true); ok('redemptionEnabled: global OFF + allowlisted uid → enabled (canary)');
+  assert.strictEqual(await redemptionEnabled(dbMock({}), 'uX'), false); ok('redemptionEnabled: global OFF + NON-allowlisted uid → off');
+  assert.strictEqual(await redemptionEnabled(dbMock({ [ALLOW('uX')]: true })), false); ok('redemptionEnabled: allowlisted but no uid passed (back-compat) → global-only off');
+  assert.strictEqual(await redemptionEnabled(dbMock({ [ALLOW('uX')]: 1 }), 'uX'), false); ok('redemptionEnabled: non-boolean allowlist value → off (strict === true)');
+  assert.strictEqual(await redemptionEnabled(dbMock({ [GLOBAL]: true, [ALLOW('uX')]: false }), 'uX'), true); ok('redemptionEnabled: global true wins regardless of allowlist');
+  // fail-closed
+  assert.strictEqual(await redemptionEnabled(dbMock({}, true), 'uX'), false); ok('redemptionEnabled: read throws → fail-closed OFF');
   console.log(`\nrewards-redeem-config: ${n} assertions passed`);
 })().catch((e) => { console.error(e); process.exit(1); });

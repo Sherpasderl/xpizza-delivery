@@ -49,15 +49,19 @@ function itemInTier(restaurantId, level, itemId) {
   return !!(tier && itemId && tier.items.includes(itemId));
 }
 
-// Server flag: is redemption enabled at all? Reads config/redemption_enabled. DEFAULT + fail-safe FALSE —
-// absent, non-true, or unreadable ⇒ false (B1 ships inert; the flag is flipped when B2's checkout UI lands).
-async function redemptionEnabled(db) {
+// Server flag: is redemption enabled for this request? DEFAULT + fail-safe FALSE — absent, non-true, or
+// unreadable ⇒ false. Enabled iff the GLOBAL flag config/redemption_enabled === true, OR (B2 canary) a
+// server-verified `uid` is present AND config/redemption_allowlist/{uid} === true (staff-set, staff-only-read).
+// The uid is ALWAYS the server-verified token uid — never client-supplied — so the allowlist can only ever
+// enable the allowlisted verified account, never broaden. Back-compatible: `uid` absent ⇒ global-flag-only.
+async function redemptionEnabled(db, uid) {
   try {
-    const v = (await db.ref('config/redemption_enabled').get()).val();
-    return v === true;                    // strictly boolean true; everything else ⇒ disabled
+    if ((await db.ref('config/redemption_enabled').get()).val() === true) return true;   // global flag (the atomic go-live)
+    if (uid && (await db.ref(`config/redemption_allowlist/${uid}`).get()).val() === true) return true;   // canary allowlist
+    return false;
   } catch (e) {
     console.warn('redemptionEnabled: read failed — fail-safe OFF', e && e.message);
-    return false;
+    return false;                         // fail-closed on ANY read error
   }
 }
 

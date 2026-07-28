@@ -18,6 +18,7 @@ const { reserveRedemption } = require('./rewards-reserve');
 const { REDEMPTION_CONFIG_VERSION, redemptionEnabled } = require('./rewards-redeem-config');
 const { checkItemAvailability } = require('./availability-gate');
 const { orderFingerprint } = require('./pixelpay-charge');
+const { computeServerTotal } = require('./menu-pricing');   // B2 quote: server-priced cart (same as intake)
 
 // Mirrors index.js sanitizeText (strip <>, control chars, trim, cap) — the free-item display NAME is
 // client text; price + eligibility are server-derived from item_id + tier, so the name is display-only.
@@ -32,8 +33,11 @@ function sanitizeName(v, maxLen = 80) {
 // Cash uses the combined resolveRedemptionForOrder below. Returns { ok:false, status, body } or
 // { ok:true, redemption, canonical, priced, itemsText, freeName }.
 async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, totalLempiras, customerUid }) {
-  if (!(await redemptionEnabled(db))) return { ok: false, status: 409, body: { error: 'rewards_disabled' } };   // flag OFF → non-payable, no silent full-price order
+  // B2: uid FIRST — the flag now keys on the verified uid (redemptionEnabled(db, uid) checks the canary
+  // allowlist for this account). A flag-OFF guest returns login_required (was rewards_disabled); both are
+  // non-payable and a guest never sends `redeem`, so this reorder is inert for guests.
   if (!customerUid) return { ok: false, status: 401, body: { error: 'login_required', detail: 'redemption requires a verified account' } };   // NOT guest fail-open
+  if (!(await redemptionEnabled(db, customerUid))) return { ok: false, status: 409, body: { error: 'rewards_disabled' } };   // global flag OR this uid's canary allowlist
   const redemption = computeRedemption({ redeem, items, restaurantId });                                         // server-computed reward (never trusts client price/cost)
   if (!redemption.ok) return { ok: false, status: 409, body: { error: 'redemption_invalid', reason: redemption.reason } };
 
@@ -65,4 +69,29 @@ async function resolveRedemptionForOrder(db, { redeem, items, restaurantId, orde
     ownsHold: (rr.action === 'created' || rr.action === 're_reserved'), freeName: prep.freeName };
 }
 
-module.exports = { prepareRedemption, resolveRedemptionForOrder };
+// quoteRedemptionCore (B2) — the READ-ONLY redemption preview for the checkout review (screen 5). Runs the
+// SAME redemption flow as intake (uid-first gate/allowlist → server-priced cart → compute/La-Musa-86/price)
+// + a READ-ONLY available projection (balance − reserved ≥ cost, mirroring the reserve's insufficient check)
+// — NO reserve, NO order, NO DB write, NO side effects. `customerUid` is the SERVER-verified token uid the
+// HTTP handler resolved. Returns { ok:true, discount_cents, total_cents, subtotal_cents, tax_cents,
+// free_item:{name} } or { ok:false, status, body } (the SAME typed errors as intake, plus bad_cart).
+//
+// GUARANTEE (narrowed, plan-gate #1): the quoted discount === the discount submit applies, GIVEN submit
+// reaches redemption. It does NOT run submit-only gates (cash placeability, online regular-cart availability),
+// so a passing quote can still be rejected by submit as item_unavailable/closed — those are NON-redemption
+// rejections the UI routes to the existing cart error paths, never the redemption fallback.
+async function quoteRedemptionCore(db, { redeem, items, restaurantId, customerUid }) {
+  if (!customerUid) return { ok: false, status: 401, body: { error: 'login_required' } };   // uid-first (matches prepareRedemption)
+  const { total, error: totalError } = computeServerTotal(items, restaurantId);             // server-priced — never trust a client total
+  if (totalError) return { ok: false, status: 400, body: { error: 'bad_cart' } };           // malformed/tampered cart → fail-closed (matches submit's payload validation)
+  const prep = await prepareRedemption(db, { redeem, items, restaurantId, itemsText: '', totalLempiras: total, customerUid });
+  if (!prep.ok) return prep;                                                                 // same typed errors as intake (rewards_disabled / redemption_invalid / reward_unavailable / …)
+  const node = (await db.ref(`user_rewards/${customerUid}/${restaurantId}`).get()).val() || {};
+  const available = (Number(node.balance) || 0) - (Number(node.reserved) || 0);
+  if (available < prep.redemption.cost) return { ok: false, status: 409, body: { error: 'redemption_reserve_failed', reason: 'insufficient' } };   // mirrors the reserve; NO reserve taken
+  const p = prep.priced;
+  return { ok: true, discount_cents: p.discount_cents, total_cents: p.total_cents, subtotal_cents: p.subtotal_cents, tax_cents: p.tax_cents,
+    free_item: { name: prep.freeName || (prep.canonical && prep.canonical.free_item_key) || null } };   // la_musa sanitized display name / x_pizza cheapest-pizza name
+}
+
+module.exports = { prepareRedemption, resolveRedemptionForOrder, quoteRedemptionCore };
