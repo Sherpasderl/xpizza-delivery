@@ -136,6 +136,23 @@ const onStatus = async (db, orderId, after, now) => {
     await db.ref('orders/OF').set({ customer_uid: 'uRsv2', restaurant_id: 'x_pizza', items: [{ qty: 8 }] });
     assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'OF', order: await load('OF'), now: 1301 }), { reversed: true });
     assert.strictEqual(await bal('uRsv2', 'x_pizza'), 3); ok('clawback partially-committed → reclaims only uncommitted (5), balance 3 == reserved 3 (invariant held)');
+
+    // ── [Task 9] earn EXCLUDES the redeemed free unit ──
+    // x_pizza: 3 pizzas, 1 redeemed-free → earns 2 punches (not 3)
+    await db.ref('orders/ORX').set({ customer_uid: 'uidRX', restaurant_id: 'x_pizza', items: [{ qty: 3 }], redemption: { model: 'discount' } });
+    assert.deepStrictEqual(await creditEarnForOrder(db, { orderId: 'ORX', order: await load('ORX'), now: 1400 }), { credited: true, delta: 2 });
+    assert.strictEqual(await bal('uidRX', 'x_pizza'), 2); ok('x_pizza redeemed (3 pizzas, 1 freed) → earns 2 punches (not 3)');
+    // a wholly-free order (single freed pizza) → 0 earn
+    await db.ref('orders/ORX1').set({ customer_uid: 'uidRX1', restaurant_id: 'x_pizza', items: [{ qty: 1 }], redemption: { model: 'discount' } });
+    assert.strictEqual((await creditEarnForOrder(db, { orderId: 'ORX1', order: await load('ORX1'), now: 1401 })).credited, false);
+    assert.strictEqual(await bal('uidRX1', 'x_pizza'), null); ok('x_pizza single freed pizza → 0 earn (no punch for a wholly-free order)');
+    // la_musa: earns on the PAID subtotal only (add_free item is 0-price, absent from subtotal_cents → no adjustment)
+    await db.ref('orders/ORL').set({ customer_uid: 'uidRL', restaurant_id: 'la_musa', subtotal_cents: 60000, redemption: { model: 'add_free' } });
+    assert.deepStrictEqual(await creditEarnForOrder(db, { orderId: 'ORL', order: await load('ORL'), now: 1402 }), { credited: true, delta: 200 });   // floor(60000/3000)*10
+    assert.strictEqual(await bal('uidRL', 'la_musa'), 200); ok('la_musa redeemed → earns on paid subtotal only (add_free item excluded)');
+    // the refund reverses the ADJUSTED amount (reads earn_ORX.delta = 2, not the pre-adjustment 3)
+    assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'ORX', order: await load('ORX'), now: 1500 }), { reversed: true });
+    assert.strictEqual(await bal('uidRX', 'x_pizza'), 0); ok('refund reverses the ADJUSTED earn (2 → balance 0), not the pre-adjustment 3');
   });
 
   await env.cleanup();

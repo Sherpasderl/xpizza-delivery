@@ -50,10 +50,15 @@ async function creditEarnForOrder(db, { orderId, order, now }) {
     const uid = order.customer_uid;
     const rid = order.restaurant_id || 'x_pizza';
     const { delta } = computeEarn({ items: order.items, subtotalCents: Number(order.subtotal_cents), restaurantId: rid });
-    if (!Number.isInteger(delta) || delta <= 0) return { credited: false, delta: 0 };
+    // Phase B1: the REDEEMED free unit doesn't earn. X. Pizza frees exactly ONE pizza base unit → −1 punch
+    // (redemption model 'discount'). La Musa's free item is a 0-price line ABSENT from subtotal_cents, so its
+    // points-earn is already correct (no adjustment). The stored earn amount is the ADJUSTED delta, so the
+    // Phase-A cancel/refund reversal (which reads earn_${orderId}.delta) reverses the adjusted amount too.
+    const earnDelta = (order.redemption && order.redemption.model === 'discount') ? Math.max(0, delta - 1) : delta;
+    if (!Number.isInteger(earnDelta) || earnDelta <= 0) return { credited: false, delta: 0 };
     if (await isDeleted(db, uid)) return { credited: false, delta: 0 };            // never recreate a purged node
-    const { applied } = await creditNode(db, uid, rid, `earn_${orderId}`, delta, ledgerEntry({ type: 'earn', delta, orderId, now }));
-    return { credited: applied, delta: applied ? delta : 0 };
+    const { applied } = await creditNode(db, uid, rid, `earn_${orderId}`, earnDelta, ledgerEntry({ type: 'earn', delta: earnDelta, orderId, now }));
+    return { credited: applied, delta: applied ? earnDelta : 0 };
   } catch (e) { console.error(`rewards earn: failed ${orderId}`, e && e.message); return { credited: false, delta: 0 }; }
 }
 
