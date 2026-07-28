@@ -550,6 +550,21 @@ createOrderApp.all('*', async (req, res) => {
     } catch (_) { /* malformed/expired/foreign/tomb-read-failure → ignore, treat as guest */ }
   }
 
+  // ── Placeability gate (§B) — RE-VALIDATE the slot / closed-kitchen BEFORE any redemption reserve, so that
+  // NOTHING between the reserve and the order write can fail (the write itself already releases the hold on
+  // failure). These checks depend only on restIdentity.hours / scheduledForRaw / orderType — never on the
+  // redemption — so proving placeability first eliminates the orphaned-hold class by construction.
+  const scheduledForRaw = SCHED.normalizeScheduledFor(body.scheduled_for);
+  const isScheduled = Number.isFinite(scheduledForRaw);
+  let releaseAt = null;
+  if (isScheduled) {
+    const v = SCHED.validateScheduledFor(restIdentity.hours, scheduledForRaw, Date.now(), orderType);
+    if (!v.valid) return badRequest(res, `Invalid scheduled time (${v.reason})`);
+    releaseAt = SCHED.releaseAtFor(scheduledForRaw, orderType);
+  } else if (SCHED.asapWhileClosed(restIdentity.hours, scheduledForRaw, Date.now())) {
+    return badRequest(res, 'Cerrado — programá tu pedido');   // ASAP while closed → never dump onto a dark kitchen
+  }
+
   // ── Rewards Phase B1: redemption (cash → RESERVE at create; the completion state consumes; cancel releases).
   // Gated by redemption_enabled + a VERIFIED non-guest uid; the discount is ALWAYS server-computed; ALL-OR-
   // NOTHING (any failure → non-payable 409/401, no order written). No `redeem` in the body → today's behavior
@@ -594,15 +609,10 @@ createOrderApp.all('*', async (req, res) => {
   }
 
   // ── Scheduled Orders (§B): a cash/card order with a valid scheduled_for is written HELD — no tasks,
-  // no tracking token, no order-received WhatsApp, no factura — and materializes only at release. The
-  // server RE-VALIDATES the slot (never trust the client): open hours + lead/horizon/granularity, UTC−6.
-  // Normalize absence BEFORE Number() — guards the Number(null)===0 trap (see SCHED.normalizeScheduledFor):
-  // the forms send `scheduled_for: null` for a normal ASAP order → NaN → not finite → the ASAP path.
-  const scheduledForRaw = SCHED.normalizeScheduledFor(body.scheduled_for);
-  if (Number.isFinite(scheduledForRaw)) {
-    const v = SCHED.validateScheduledFor(restIdentity.hours, scheduledForRaw, Date.now(), orderType);
-    if (!v.valid) return badRequest(res, `Invalid scheduled time (${v.reason})`);
-    const releaseAt = SCHED.releaseAtFor(scheduledForRaw, orderType);
+  // no tracking token, no order-received WhatsApp, no factura — and materializes only at release. The slot
+  // was already RE-VALIDATED above (before the reserve); releaseAt was computed there. No re-validation here
+  // (nothing between the reserve and this write may fail — that's the orphaned-hold fix).
+  if (isScheduled) {
     const heldUpdates = buildScheduledOrderRecord({
       orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
       restaurantId, priceBreakdown, facturaPriced, cashTenderedCents,
@@ -622,12 +632,8 @@ createOrderApp.all('*', async (req, res) => {
     return res.status(200).json({ ok: true, scheduled: true, order_id: orderId, scheduled_for: scheduledForRaw, release_at: releaseAt });
   }
 
-  // ASAP order (no scheduled_for): fail-close if the kitchen is CLOSED now. The client moved scheduling to
-  // Checkout and no longer blocks Paso 1, so the server is the authority (never dump an ASAP order onto a
-  // dark kitchen). A scheduled order took the branch above; this only catches genuine ASAP-while-closed.
-  if (SCHED.asapWhileClosed(restIdentity.hours, scheduledForRaw, Date.now())) {
-    return badRequest(res, 'Cerrado — programá tu pedido');
-  }
+  // ASAP order (no scheduled_for): the closed-kitchen fail-close was already applied above (before the
+  // reserve). Fall through to the live-order write.
 
   // Order record + driver tasks + public tracking — extracted to a pure builder
   // (create-order-build.js) so the cash path is golden-tested for byte-identical output. The

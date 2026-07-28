@@ -39,6 +39,15 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   // dedupe must precede the gate (idempotent retry returns before an availability eval)
   before(body, "already exists, returning idempotent", 'checkItemAvailability(', 'idempotency dedupe before the gate');
   ok('createOrder: dedupe → gate → rate-limit → write (gate before rate-limit + any write)');
+
+  // Rewards B1 (orphaned-hold fix): placeability (scheduled-slot validate + asapWhileClosed) MUST be proven
+  // BEFORE the redemption reserve, and the reserve BEFORE the order write — so no reject between reserve and
+  // write can strand a hold (the write itself releases on failure). A future edit that moves the reserve
+  // ahead of either placeability check fails HERE.
+  before(body, 'SCHED.validateScheduledFor(', 'resolveRedemptionForOrder(', 'B1: scheduled-slot validate before the redemption reserve');
+  before(body, 'SCHED.asapWhileClosed(', 'resolveRedemptionForOrder(', 'B1: asapWhileClosed before the redemption reserve');
+  before(body, 'resolveRedemptionForOrder(', 'db.ref().update(', 'B1: redemption reserve before the order write');
+  ok('createOrder: placeability (slot/closed) → reserve → write (no reject can orphan a redemption hold)');
 }
 
 // ── chargeOnlineOrder (online) handler body ──
