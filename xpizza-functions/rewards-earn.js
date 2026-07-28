@@ -78,7 +78,10 @@ async function creditWelcome(db, { uid, phoneHash, restaurantId, now }) {
 
 // Reverse earn on refund/cancel. Idempotent (reverse_${orderId} ledger key), self-guarded (no-op unless the
 // order actually earned — reads the authoritative earn_${orderId} entry), NEVER recreates an absent/deleted
-// node, and clamps balance to >= 0. Lifetime is intentionally untouched (a clawback reduces balance only).
+// node. A clawback reclaims only UNCOMMITTED balance (balance − reserved), so it can never drop balance below
+// the points already held by an in-flight redemption — maintaining the balance >= reserved invariant the B1
+// reservation layer depends on (Phase-B1 money-gate: a clawback of the earning order must not under-
+// collateralize a live reserve → free discount + minted points). Lifetime is untouched (clawback ≠ un-earn).
 async function reverseEarnForOrder(db, { orderId, order, now }) {
   try {
     if (!order || !order.customer_uid) return { reversed: false };
@@ -93,8 +96,11 @@ async function reverseEarnForOrder(db, { orderId, order, now }) {
     const tx = await ref.transaction((cur) => {
       if (cur === null) return null;                                               // null-first-safe; absent → no recreate
       if (cur.ledger && cur.ledger[reverseId] !== undefined) return;               // already reversed → idempotent abort
-      const balance = Math.max(0, (Number(cur.balance) || 0) - earned);            // clamp: balance never goes negative
-      return { ...cur, balance, ledger: { ...(cur.ledger || {}), [reverseId]: ledgerEntry({ type: 'clawback', delta: -earned, orderId, now }) } };
+      const oldBal = Number(cur.balance) || 0;
+      const reserved = Number(cur.reserved) || 0;
+      const reduction = Math.min(earned, Math.max(0, oldBal - reserved));          // reclaim ONLY uncommitted balance
+      const balance = oldBal - reduction;                                          // ≥ reserved (and ≥ 0); never mints
+      return { ...cur, balance, ledger: { ...(cur.ledger || {}), [reverseId]: ledgerEntry({ type: 'clawback', delta: -reduction, orderId, now }) } };   // delta = ACTUAL reduction → Σledger survives the clamp
     });
     const v = tx.snapshot.val();
     return { reversed: !!(tx.committed && v && v.ledger && v.ledger[reverseId] !== undefined) };   // true only if the clawback landed now

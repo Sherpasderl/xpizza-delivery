@@ -8,6 +8,7 @@
 const assert = require('assert');
 const { initializeTestEnvironment } = require('@firebase/rules-unit-testing');
 const R = require('../rewards-reserve');
+const { creditEarnForOrder, reverseEarnForOrder } = require('../rewards-earn');   // real Phase-A mutators for the cross-module chain
 
 const NOW = 1_700_000_000_000;
 
@@ -162,6 +163,35 @@ const NOW = 1_700_000_000_000;
     assert.ok(sweep2.audited.some((a) => a.orderId === 'CASH_AGED'));
     assert.ok(!sweep2.released.some((x) => x.orderId === 'CASH_AGED'));
     assert.strictEqual(await st('uSw2', 'CASH_AGED'), 'reserved'); ok('sweep: aged-but-live cash order → audited, NOT auto-released (never strand a live order)');
+
+    // 26 — [money-gate cross-module chain] the exact reported chain: earn X → reserve Y → clawback X →
+    //      consume Y → refund Y. Assert NO free discount (consume debits full cost) and NO minting (refund
+    //      credits only debit_applied). Uses the REAL Phase-A creditEarn/reverseEarn on the same node.
+    await db.ref('user_rewards').set(null); await db.ref('orders').set(null); await db.ref('deleted_uids').set(null);
+    await db.ref('orders/X').set({ customer_uid: 'uZ', restaurant_id: 'x_pizza', items: [{ qty: 8 }] });   // 8 pizzas → 8 punches
+    assert.strictEqual((await creditEarnForOrder(db, { orderId: 'X', order: (await db.ref('orders/X').get()).val(), now: NOW })).credited, true);
+    assert.strictEqual(await bal('uZ'), 8);
+    assert.strictEqual((await reserve('uZ', 'Y')).action, 'created'); assert.strictEqual(await rsv('uZ'), 8);   // reserve 8 → available 0
+    await reverseEarnForOrder(db, { orderId: 'X', order: (await db.ref('orders/X').get()).val(), now: NOW + 1 });   // X refunded → clawback
+    assert.strictEqual(await bal('uZ'), 8); assert.ok((await bal('uZ')) >= (await rsv('uZ'))); ok('chain: clawback of the earning order cannot under-collateralize the live reserve (balance 8 ≥ reserved 8)');
+    await R.consumeRedemption(db, { uid: 'uZ', rid: 'x_pizza', orderId: 'Y', now: NOW + 2 });                 // Y completes → consume
+    assert.strictEqual(await bal('uZ'), 0);
+    assert.strictEqual((await db.ref(`${P('uZ')}/reservations/Y/debit_applied`).get()).val(), 8); ok('chain: consume debits the FULL cost (debit_applied 8, no free discount)');
+    await R.reverseRedemptionForRefund(db, { uid: 'uZ', rid: 'x_pizza', orderId: 'Y', disposition: 'refund', now: NOW + 3 });   // Y refunded
+    assert.strictEqual(await bal('uZ'), 8); assert.strictEqual(await ledgerSum('uZ'), 8); ok('chain: refund credits only debit_applied (8) → NO minting; Σledger.delta===balance');
+
+    // 27 — [Part 2/3 belt-and-suspenders] even if balance < reserved somehow (invariant violated), consume
+    //      debits only what's there (no silent free discount → alerted) and refund credits only debit_applied.
+    await db.ref('dispatcher_alerts').set(null);
+    await db.ref('user_rewards/uUC/x_pizza').set({ balance: 3, reserved: 8, lifetime: 8,
+      reservations: { OU: { state: 'reserved', cost: 8, seq: 1, fp: 'X', created_at: NOW } }, ledger: { seed: { type: 'earn', delta: 3, ts: NOW } } });
+    await R.consumeRedemption(db, { uid: 'uUC', rid: 'x_pizza', orderId: 'OU', now: NOW });
+    assert.strictEqual(await bal('uUC'), 0);
+    assert.strictEqual((await db.ref(`${P('uUC')}/reservations/OU/debit_applied`).get()).val(), 3); ok('safety-net: under-collateralized consume debits only 3 (not 8), records debit_applied=3');
+    const alerts = Object.values((await db.ref('dispatcher_alerts').get()).val() || {});
+    assert.ok(alerts.some((a) => a.type === 'rewards_undercollateralized' && a.order_id === 'OU' && a.shortfall === 5)); ok('safety-net: under-collateralization → dispatcher alert (shortfall 5), not a silent free discount');
+    await R.reverseRedemptionForRefund(db, { uid: 'uUC', rid: 'x_pizza', orderId: 'OU', disposition: 'refund', now: NOW + 1 });
+    assert.strictEqual(await bal('uUC'), 3); ok('safety-net: refund credits only debit_applied (3), NOT cost (8) → no minting');
   });
 
   await env.cleanup();

@@ -124,6 +124,18 @@ const onStatus = async (db, orderId, after, now) => {
     const rdW = raceDbFor('uidRaceW', 1700000000000);
     const rw = await creditWelcome(rdW, { uid: 'uidRaceW', phoneHash: 'phRaceW', restaurantId: 'la_musa', now: 1200 });
     assert.strictEqual(rw.credited, false); assert.strictEqual(await node('uidRaceW'), null); ok('TOCTOU welcome: recreated zombie node purged by the post-commit re-check');
+
+    // 11 — [B1 money-gate Part 1] a clawback reclaims ONLY uncommitted balance (balance − reserved), so it
+    //      can never drop balance below points held by an in-flight redemption (maintains balance >= reserved).
+    await db.ref('user_rewards/uRsv/x_pizza').set({ balance: 8, lifetime: 8, reserved: 8, ledger: { earn_OE: { type: 'earn', delta: 8, order_id: 'OE', ts: 1, config_version: 1 } } });
+    await db.ref('orders/OE').set({ customer_uid: 'uRsv', restaurant_id: 'x_pizza', items: [{ qty: 8 }] });
+    assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'OE', order: await load('OE'), now: 1300 }), { reversed: true });
+    assert.strictEqual(await bal('uRsv', 'x_pizza'), 8); ok('clawback with balance==reserved → 0 reclaimed (balance stays 8 ≥ reserved 8, no under-collateralization)');
+    // partially committed: balance 8, reserved 3, earn 8 → reclaim only the uncommitted 5 → balance 3 (== reserved)
+    await db.ref('user_rewards/uRsv2/x_pizza').set({ balance: 8, lifetime: 8, reserved: 3, ledger: { earn_OF: { type: 'earn', delta: 8, order_id: 'OF', ts: 1, config_version: 1 } } });
+    await db.ref('orders/OF').set({ customer_uid: 'uRsv2', restaurant_id: 'x_pizza', items: [{ qty: 8 }] });
+    assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'OF', order: await load('OF'), now: 1301 }), { reversed: true });
+    assert.strictEqual(await bal('uRsv2', 'x_pizza'), 3); ok('clawback partially-committed → reclaims only uncommitted (5), balance 3 == reserved 3 (invariant held)');
   });
 
   await env.cleanup();

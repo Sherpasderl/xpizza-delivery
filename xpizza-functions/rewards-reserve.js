@@ -44,6 +44,19 @@ function bindingFp({ canonical, orderFingerprint, configVersion }) {
 const ledgerKey = (orderId, seq) => `rsv_${orderId}_${seq}`;
 const entry = (type, delta, cost, orderId, state, ts) => ({ type, delta, cost, order_id: orderId, state, ts });
 
+// Part 3 (money-gate): a consume that debits LESS than cost means the reserve was under-collateralized (a
+// concurrent Phase-A clawback should now be prevented by the reserve-aware clamp, but this surfaces any
+// residual instead of silently granting a free discount). Best-effort dispatcher alert; never blocks consume.
+async function alertIfUndercollateralized(db, { uid, rid, orderId, now }) {
+  try {
+    const rec = (await db.ref(`user_rewards/${uid}/${rid}/reservations/${orderId}`).get()).val();
+    if (rec && Number(rec.debit_applied) < Number(rec.cost)) {
+      await db.ref('dispatcher_alerts').push({ type: 'rewards_undercollateralized', order_id: orderId, uid, rid,
+        cost: Number(rec.cost), debit_applied: Number(rec.debit_applied), shortfall: Number(rec.cost) - Number(rec.debit_applied), created_at: now });
+    }
+  } catch (e) { console.warn('rewards undercollateralized alert failed', e && e.message); }
+}
+
 // ── reserveRedemption ─────────────────────────────────────────────────────────────────────────────────
 // Debit-first (into `reserved`) + idempotent by order_id + bound to the canonical/fingerprint. Returns
 // explicit `action` so the online handler knows if IT owns the hold: created/re_reserved = this call took the
@@ -133,17 +146,21 @@ async function runTransition(db, { uid, rid, orderId, from, to }, applyMoney) {
 }
 
 // consumed: realize the debit. balance−=cost, reserved−=cost (both clamped ≥0). from reserved|held_paid.
+// Records debit_applied = the points ACTUALLY taken (== cost when collateralized), so a later refund can
+// credit back only what was debited — never mints (Part 2). Alerts if under-collateralized (Part 3).
 async function consumeRedemption(db, { uid, rid, orderId, now }) {
-  return runTransition(db, { uid, rid, orderId, from: ['reserved', 'held_paid'], to: 'consumed' }, (cur, rec, seq) => {
+  const res = await runTransition(db, { uid, rid, orderId, from: ['reserved', 'held_paid'], to: 'consumed' }, (cur, rec, seq) => {
     const cost = Number(rec.cost) || 0;
     const oldBal = Number(cur.balance) || 0, newBal = Math.max(0, oldBal - cost);
     const newRes = Math.max(0, (Number(cur.reserved) || 0) - cost);
     return {
       ...cur, balance: newBal, reserved: newRes,
-      reservations: { ...cur.reservations, [orderId]: { ...rec, state: 'consumed', updated_at: now, seq } },
+      reservations: { ...cur.reservations, [orderId]: { ...rec, state: 'consumed', debit_applied: oldBal - newBal, updated_at: now, seq } },
       ledger: { ...(cur.ledger || {}), [ledgerKey(orderId, seq)]: entry('redeem', newBal - oldBal, cost, orderId, 'consumed', now) },
     };
   });
+  if (res.ok && res.action === 'applied') await alertIfUndercollateralized(db, { uid, rid, orderId, now });
+  return res;
 }
 
 // held_paid: money captured, points STILL held (reserved unchanged) — dispatcher will resolve. from reserved.
@@ -180,16 +197,16 @@ async function attachAttempt(db, { uid, rid, orderId, attemptId, hostedExpiresAt
 // math elsewhere. No-op on absent / already-reversed.
 async function reverseRedemptionForRefund(db, { uid, rid, orderId, disposition = 'refund', now }) {
   if (!uid || !rid || !orderId) return { ok: false, reason: 'bad_request' };
-  let outcome = null;
+  let outcome = null, consumed = false;
   const ref = db.ref(`user_rewards/${uid}/${rid}`);
   const tx = await ref.transaction((cur) => {
-    outcome = null;
+    outcome = null; consumed = false;
     if (cur === null) return null;                                        // absent node → nothing to reverse
     const rec = (cur.reservations || {})[orderId];
     if (!rec) { outcome = { ok: true, action: 'noop', absent: true }; return; }
     const cost = Number(rec.cost) || 0;
     const seq = (Number(rec.seq) || 0) + 1;
-    const setRec = (state) => ({ ...cur.reservations, [orderId]: { ...rec, state, updated_at: now, seq } });
+    const setRec = (state, extra = {}) => ({ ...cur.reservations, [orderId]: { ...rec, state, updated_at: now, seq, ...extra } });
     const withLedger = (next, type, delta, state) => ({ ...next, ledger: { ...(cur.ledger || {}), [ledgerKey(orderId, seq)]: entry(type, delta, cost, orderId, state, now) } });
 
     if (disposition === 'sale') {
@@ -198,16 +215,17 @@ async function reverseRedemptionForRefund(db, { uid, rid, orderId, disposition =
       if (rec.state === 'reserved' || rec.state === 'held_paid') {
         const oldBal = Number(cur.balance) || 0, newBal = Math.max(0, oldBal - cost);
         const newRes = Math.max(0, (Number(cur.reserved) || 0) - cost);
-        outcome = { ok: true, action: 'consumed', state: 'consumed' };
-        return withLedger({ ...cur, balance: newBal, reserved: newRes, reservations: setRec('consumed') }, 'redeem', newBal - oldBal, 'consumed');
+        outcome = { ok: true, action: 'consumed', state: 'consumed' }; consumed = true;
+        return withLedger({ ...cur, balance: newBal, reserved: newRes, reservations: setRec('consumed', { debit_applied: oldBal - newBal }) }, 'redeem', newBal - oldBal, 'consumed');
       }
       outcome = { ok: true, action: 'noop', state: rec.state }; return;   // released/refunded → nothing to sell
     }
 
     // disposition 'refund' (default)
-    if (rec.state === 'consumed') {                                        // spent → return the points to balance
+    if (rec.state === 'consumed') {                                        // spent → return ONLY what was actually debited (Part 2: never mint)
+      const back = Number.isFinite(Number(rec.debit_applied)) ? Number(rec.debit_applied) : cost;
       outcome = { ok: true, action: 'refunded', state: 'refunded' };
-      return withLedger({ ...cur, balance: (Number(cur.balance) || 0) + cost, reservations: setRec('refunded') }, 'refund', cost, 'refunded');
+      return withLedger({ ...cur, balance: (Number(cur.balance) || 0) + back, reservations: setRec('refunded') }, 'refund', back, 'refunded');
     }
     if (rec.state === 'held_paid') {                                       // paid-but-not-spent → release hold, NO balance credit
       outcome = { ok: true, action: 'released_held', state: 'released' };
@@ -219,7 +237,9 @@ async function reverseRedemptionForRefund(db, { uid, rid, orderId, disposition =
     }
     outcome = { ok: true, action: 'noop', state: rec.state }; return;      // released/refunded → idempotent no-op
   });
-  return outcome || (tx.committed ? { ok: true, action: 'noop', absent: true } : { ok: false, reason: 'aborted' });
+  const res = outcome || (tx.committed ? { ok: true, action: 'noop', absent: true } : { ok: false, reason: 'aborted' });
+  if (consumed) await alertIfUndercollateralized(db, { uid, rid, orderId, now });   // sale-finalize consume → same Part-3 guard
+  return res;
 }
 
 // ── sweepStaleReservations — release RESERVED orphans (never touches held_paid/consumed) ────────────────
