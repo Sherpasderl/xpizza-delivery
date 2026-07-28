@@ -1,0 +1,259 @@
+'use strict';
+
+// Rewards Phase B1 — redemption reservation lifecycle (THE money spine). Admin-SDK ONLY. Mirrors
+// payment_attempts (reserve → consume-on-completion → release-on-failure, keyed by order_id) and reuses the
+// Phase-A discipline: EVERY mutation is ONE atomic transaction on user_rewards/{uid}/{rid}, so balance +
+// reserved + the reservation record + the audit ledger move together. Idempotency is enforced by the
+// reservation STATE MACHINE (a transition fires only from its allowed prior state; a repeat is a no-op).
+//
+// State model on user_rewards/{uid}/{rid}:
+//   balance   — spendable points (Phase A).       reserved — points HELD by open reservations (not yet spent).
+//   available = balance - reserved                 (what a fresh reserve must cover).
+//   reservations/{orderId} = { state, cost, fp, canonical, order_fingerprint, config_version, attempt_id,
+//                              hosted_expires_at, created_at, updated_at, seq }
+//   ledger/rsv_{orderId}_{seq} = { type, delta, cost, order_id, state, ts }   (delta = the BALANCE change;
+//   reserve/release/held_paid are delta 0, so Σ ledger.delta === balance holds throughout — a gate invariant.)
+//
+// States: reserved → consumed | released ; plus held_paid (money captured, awaiting dispatcher resolve) and
+// refunded (a consumed redemption reversed). Debit is realized (balance−=cost) only at CONSUME; reserve just
+// moves points into `reserved`. deleted_uids: a single-node txn can't read it atomically → pre-read guard +
+// post-commit recheck that compensates (purge the recreated node) — same as Phase A.
+const crypto = require('crypto');
+const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');
+
+// Cash reservations have no hosted-checkout expiry; a cash order still 'reserved' this long after create with
+// no terminal state is treated as an orphan candidate by the sweep (policy — tune with ops).
+const CASH_STALE_MS = 6 * 60 * 60 * 1000;   // 6h
+const TERMINAL_CANCEL = new Set(['cancelled']);
+const LIVE_STATES = new Set(['new', 'preparing', 'ready', 'out_for_delivery', 'scheduled', 'releasing', 'pending_payment']);
+
+async function isDeleted(db, uid) {
+  return (await db.ref(`deleted_uids/${uid}`).get()).val() != null;
+}
+
+// Deterministic binding hash: same order_id may be reused ONLY for the exact same {order, reward, version}.
+function bindingFp({ canonical, orderFingerprint, configVersion }) {
+  const stable = JSON.stringify({
+    c: canonical ? Object.keys(canonical).sort().reduce((o, k) => (o[k] = canonical[k], o), {}) : null,
+    o: orderFingerprint || null,
+    v: configVersion,
+  });
+  return crypto.createHash('sha256').update(stable).digest('hex');
+}
+
+const ledgerKey = (orderId, seq) => `rsv_${orderId}_${seq}`;
+const entry = (type, delta, cost, orderId, state, ts) => ({ type, delta, cost, order_id: orderId, state, ts });
+
+// ── reserveRedemption ─────────────────────────────────────────────────────────────────────────────────
+// Debit-first (into `reserved`) + idempotent by order_id + bound to the canonical/fingerprint. Returns
+// explicit `action` so the online handler knows if IT owns the hold: created/re_reserved = this call took the
+// debit (release on abandon); reused = a pre-existing hold (NEVER release on failure).
+async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, orderFingerprint, configVersion, now }) {
+  try {
+    if (!uid || !rid || !orderId || !(Number.isInteger(cost) && cost > 0)) return { ok: false, reason: 'bad_request' };
+    if (!Number.isInteger(configVersion) || configVersion !== REDEMPTION_CONFIG_VERSION) return { ok: false, reason: 'config_version_mismatch' };
+    if (await isDeleted(db, uid)) return { ok: false, reason: 'deleted' };
+    const fp = bindingFp({ canonical, orderFingerprint, configVersion });
+
+    let outcome = null;
+    const ref = db.ref(`user_rewards/${uid}/${rid}`);
+    const tx = await ref.transaction((cur) => {
+      outcome = null;
+      // null-first-safe (mirrors cancel-order-core finalize): pass RTDB's speculative null so the txn proceeds
+      // to real server data instead of aborting. A truly-absent node = no points earned = insufficient (never
+      // create the node here — points only exist because Phase A earn/welcome created it).
+      if (cur === null) return null;
+      const reservations = cur.reservations || {};
+      const rec = reservations[orderId];
+      const balance = Number(cur.balance) || 0;
+      const reserved = Number(cur.reserved) || 0;
+
+      if (rec) {
+        if (rec.fp !== fp) { outcome = { ok: false, reason: 'reservation_conflict' }; return; }   // different order/reward → conflict, NO debit
+        if (rec.state === 'reserved' || rec.state === 'held_paid' || rec.state === 'consumed') {   // active/progressing/terminal → idempotent, NO re-debit
+          outcome = { ok: true, action: 'reused', state: rec.state }; return;
+        }
+        if (rec.state !== 'released') { outcome = { ok: false, reason: 'reservation_conflict' }; return; }   // refunded/unknown → don't re-issue a hold
+        // released → treat as NO active hold: re-reserve fresh (new available check + new debit)
+        if (balance - reserved < cost) { outcome = { ok: false, reason: 'insufficient' }; return; }
+        const seq = (Number(rec.seq) || 0) + 1;
+        outcome = { ok: true, action: 're_reserved', state: 'reserved' };
+        return writeReserve(cur, orderId, rec, fp, canonical, orderFingerprint, configVersion, cost, seq, now);
+      }
+      // fresh reserve
+      if (balance - reserved < cost) { outcome = { ok: false, reason: 'insufficient' }; return; }
+      outcome = { ok: true, action: 'created', state: 'reserved' };
+      return writeReserve(cur, orderId, null, fp, canonical, orderFingerprint, configVersion, cost, 1, now);
+    });
+
+    const res = outcome || { ok: false, reason: 'insufficient' };   // outcome null ⟺ node absent ⟺ no points
+    // TOCTOU: a deletion racing around our debit would recreate a purged node → compensate (mirror Phase A).
+    if (res.ok && (res.action === 'created' || res.action === 're_reserved') && await isDeleted(db, uid)) {
+      await db.ref(`user_rewards/${uid}`).set(null);
+      return { ok: false, reason: 'deleted' };
+    }
+    return res;
+  } catch (e) { console.error(`reserveRedemption: failed ${orderId}`, e && e.message); return { ok: false, reason: 'error' }; }
+}
+
+function writeReserve(cur, orderId, prevRec, fp, canonical, orderFingerprint, configVersion, cost, seq, now) {
+  const rec = {
+    state: 'reserved', cost, fp, canonical: canonical || null, order_fingerprint: orderFingerprint || null,
+    config_version: configVersion, attempt_id: null, hosted_expires_at: null,
+    created_at: (prevRec && prevRec.created_at) || now, updated_at: now, seq,
+  };
+  return {
+    ...cur,
+    reserved: (Number(cur.reserved) || 0) + cost,                         // balance unchanged; points HELD
+    reservations: { ...(cur.reservations || {}), [orderId]: rec },
+    ledger: { ...(cur.ledger || {}), [ledgerKey(orderId, seq)]: entry('reserve', 0, cost, orderId, 'reserved', now) },
+  };
+}
+
+// ── generic state transition (consume / release / markHeldPaid / attach) ────────────────────────────────
+// Atomic on the node. Idempotent: already in `to` → noop ok; absent record/node → noop (nothing to do);
+// wrong prior state → { ok:false, reason:'invalid_state' }. applyMoney(cur, rec, seq) returns the next node.
+async function runTransition(db, { uid, rid, orderId, from, to }, applyMoney) {
+  if (!uid || !rid || !orderId) return { ok: false, reason: 'bad_request' };
+  let outcome = null;
+  const ref = db.ref(`user_rewards/${uid}/${rid}`);
+  const tx = await ref.transaction((cur) => {
+    outcome = null;
+    if (cur === null) return null;                                        // null-first-safe; absent node → no recreate
+    const rec = (cur.reservations || {})[orderId];
+    if (!rec) { outcome = { ok: true, action: 'noop', absent: true }; return; }
+    if (rec.state === to) { outcome = { ok: true, action: 'noop', state: to }; return; }   // idempotent
+    if (!from.includes(rec.state)) { outcome = { ok: false, reason: 'invalid_state', state: rec.state }; return; }
+    const seq = (Number(rec.seq) || 0) + 1;
+    outcome = { ok: true, action: 'applied', state: to };
+    return applyMoney(cur, rec, seq);
+  });
+  if (outcome) return outcome;
+  return tx.committed ? { ok: true, action: 'noop', absent: true } : { ok: false, reason: 'aborted' };
+}
+
+// consumed: realize the debit. balance−=cost, reserved−=cost (both clamped ≥0). from reserved|held_paid.
+async function consumeRedemption(db, { uid, rid, orderId, now }) {
+  return runTransition(db, { uid, rid, orderId, from: ['reserved', 'held_paid'], to: 'consumed' }, (cur, rec, seq) => {
+    const cost = Number(rec.cost) || 0;
+    const oldBal = Number(cur.balance) || 0, newBal = Math.max(0, oldBal - cost);
+    const newRes = Math.max(0, (Number(cur.reserved) || 0) - cost);
+    return {
+      ...cur, balance: newBal, reserved: newRes,
+      reservations: { ...cur.reservations, [orderId]: { ...rec, state: 'consumed', updated_at: now, seq } },
+      ledger: { ...(cur.ledger || {}), [ledgerKey(orderId, seq)]: entry('redeem', newBal - oldBal, cost, orderId, 'consumed', now) },
+    };
+  });
+}
+
+// held_paid: money captured, points STILL held (reserved unchanged) — dispatcher will resolve. from reserved.
+async function markHeldPaid(db, { uid, rid, orderId, now }) {
+  return runTransition(db, { uid, rid, orderId, from: ['reserved'], to: 'held_paid' }, (cur, rec, seq) => ({
+    ...cur,
+    reservations: { ...cur.reservations, [orderId]: { ...rec, state: 'held_paid', updated_at: now, seq } },
+    ledger: { ...(cur.ledger || {}), [ledgerKey(orderId, seq)]: entry('held_paid', 0, Number(rec.cost) || 0, orderId, 'held_paid', now) },
+  }));
+}
+
+// released: return the held points to available. reserved−=cost, balance unchanged. REFUSES held_paid/consumed.
+async function releaseRedemption(db, { uid, rid, orderId, now }) {
+  return runTransition(db, { uid, rid, orderId, from: ['reserved'], to: 'released' }, (cur, rec, seq) => {
+    const newRes = Math.max(0, (Number(cur.reserved) || 0) - (Number(rec.cost) || 0));
+    return {
+      ...cur, reserved: newRes,
+      reservations: { ...cur.reservations, [orderId]: { ...rec, state: 'released', updated_at: now, seq } },
+      ledger: { ...(cur.ledger || {}), [ledgerKey(orderId, seq)]: entry('release', 0, Number(rec.cost) || 0, orderId, 'released', now) },
+    };
+  });
+}
+
+// attach the claimed payment attempt to the reservation (after acquireHostedAttempt). Money-neutral.
+async function attachAttempt(db, { uid, rid, orderId, attemptId, hostedExpiresAt, now }) {
+  return runTransition(db, { uid, rid, orderId, from: ['reserved'], to: '__attach__' }, (cur, rec, seq) => ({
+    ...cur,
+    reservations: { ...cur.reservations, [orderId]: { ...rec, attempt_id: attemptId || null, hosted_expires_at: hostedExpiresAt || null, updated_at: now, seq } },
+  }));
+}
+
+// ── reverseRedemptionForRefund — the SINGLE reversal API (cancel / refund / manual-resolve) ─────────────
+// State-specific + idempotent by order_id. disposition 'refund' (default) | 'sale'. NEVER open-code balance
+// math elsewhere. No-op on absent / already-reversed.
+async function reverseRedemptionForRefund(db, { uid, rid, orderId, disposition = 'refund', now }) {
+  if (!uid || !rid || !orderId) return { ok: false, reason: 'bad_request' };
+  let outcome = null;
+  const ref = db.ref(`user_rewards/${uid}/${rid}`);
+  const tx = await ref.transaction((cur) => {
+    outcome = null;
+    if (cur === null) return null;                                        // absent node → nothing to reverse
+    const rec = (cur.reservations || {})[orderId];
+    if (!rec) { outcome = { ok: true, action: 'noop', absent: true }; return; }
+    const cost = Number(rec.cost) || 0;
+    const seq = (Number(rec.seq) || 0) + 1;
+    const setRec = (state) => ({ ...cur.reservations, [orderId]: { ...rec, state, updated_at: now, seq } });
+    const withLedger = (next, type, delta, state) => ({ ...next, ledger: { ...(cur.ledger || {}), [ledgerKey(orderId, seq)]: entry(type, delta, cost, orderId, state, now) } });
+
+    if (disposition === 'sale') {
+      // manual finalize-to-sale: realize the debit (consume) from a held/reserved hold.
+      if (rec.state === 'consumed') { outcome = { ok: true, action: 'noop', state: 'consumed' }; return; }
+      if (rec.state === 'reserved' || rec.state === 'held_paid') {
+        const oldBal = Number(cur.balance) || 0, newBal = Math.max(0, oldBal - cost);
+        const newRes = Math.max(0, (Number(cur.reserved) || 0) - cost);
+        outcome = { ok: true, action: 'consumed', state: 'consumed' };
+        return withLedger({ ...cur, balance: newBal, reserved: newRes, reservations: setRec('consumed') }, 'redeem', newBal - oldBal, 'consumed');
+      }
+      outcome = { ok: true, action: 'noop', state: rec.state }; return;   // released/refunded → nothing to sell
+    }
+
+    // disposition 'refund' (default)
+    if (rec.state === 'consumed') {                                        // spent → return the points to balance
+      outcome = { ok: true, action: 'refunded', state: 'refunded' };
+      return withLedger({ ...cur, balance: (Number(cur.balance) || 0) + cost, reservations: setRec('refunded') }, 'refund', cost, 'refunded');
+    }
+    if (rec.state === 'held_paid') {                                       // paid-but-not-spent → release hold, NO balance credit
+      outcome = { ok: true, action: 'released_held', state: 'released' };
+      return withLedger({ ...cur, reserved: Math.max(0, (Number(cur.reserved) || 0) - cost), reservations: setRec('released') }, 'release', 0, 'released');
+    }
+    if (rec.state === 'reserved') {                                        // unpaid hold → release
+      outcome = { ok: true, action: 'released', state: 'released' };
+      return withLedger({ ...cur, reserved: Math.max(0, (Number(cur.reserved) || 0) - cost), reservations: setRec('released') }, 'release', 0, 'released');
+    }
+    outcome = { ok: true, action: 'noop', state: rec.state }; return;      // released/refunded → idempotent no-op
+  });
+  return outcome || (tx.committed ? { ok: true, action: 'noop', absent: true } : { ok: false, reason: 'aborted' });
+}
+
+// ── sweepStaleReservations — release RESERVED orphans (never touches held_paid/consumed) ────────────────
+// online: past hosted_expires_at → release. cash (no attempt): order absent/cancelled → release; still-live
+// but aged past CASH_STALE_MS → audit only (never auto-release a possibly-live order). Returns the actions.
+// NOTE (scale): scans user_rewards. Pre-launch volume is fine; a flat reservation index is the graduation
+// path if the rewards tree grows (same class as the Phase-A ledger-compaction note).
+async function sweepStaleReservations(db, { now }) {
+  const released = [], audited = [];
+  try {
+    const all = (await db.ref('user_rewards').get()).val() || {};
+    for (const uid of Object.keys(all)) {
+      const brands = all[uid] || {};
+      for (const rid of Object.keys(brands)) {
+        const reservations = (brands[rid] && brands[rid].reservations) || {};
+        for (const orderId of Object.keys(reservations)) {
+          const rec = reservations[orderId];
+          if (!rec || rec.state !== 'reserved') continue;                 // only reserved orphans
+          if (rec.hosted_expires_at != null) {                            // online checkout
+            if (Number(rec.hosted_expires_at) < now) { await releaseRedemption(db, { uid, rid, orderId, now }); released.push({ uid, rid, orderId, kind: 'online_expired' }); }
+            continue;
+          }
+          // cash (no hosted expiry): consult the order
+          const status = (await db.ref(`orders/${orderId}/status`).get()).val();
+          if (status == null || TERMINAL_CANCEL.has(status)) { await releaseRedemption(db, { uid, rid, orderId, now }); released.push({ uid, rid, orderId, kind: status == null ? 'cash_orphan' : 'cash_cancelled' }); continue; }
+          if (LIVE_STATES.has(status) && (now - (Number(rec.created_at) || 0)) > CASH_STALE_MS) { audited.push({ uid, rid, orderId, status, age_ms: now - (Number(rec.created_at) || 0) }); }
+        }
+      }
+    }
+  } catch (e) { console.error('sweepStaleReservations: failed', e && e.message); }
+  return { released, audited };
+}
+
+module.exports = {
+  reserveRedemption, attachAttempt, consumeRedemption, markHeldPaid, releaseRedemption,
+  reverseRedemptionForRefund, sweepStaleReservations, CASH_STALE_MS,
+};
