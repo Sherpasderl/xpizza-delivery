@@ -71,6 +71,25 @@ const NOW = 1_700_000_000_000;
     // idempotent — re-run consumes nothing new (no double-debit)
     const sweep2 = await R.sweepConsumeRecovery(db, { now: NOW + 1 });
     assert.strictEqual(sweep2.consumed.length, 0); assert.strictEqual(await bal('uSw'), 14); ok('sweepConsumeRecovery re-run → 0 consumed (idempotent, no double-debit)');
+
+    // ── [T7 R1] the online-expiry RELEASE must NOT release a PAID-but-consume-failed hold (free-redemption race) ──
+    await db.ref('user_rewards').set(null); await db.ref('orders').set(null);
+    await seedPts('uRace', 20);
+    // online hold whose expiry PASSED, but the order materialized PAID+LIVE and the primary consume fail-opened → still reserved
+    await R.reserveRedemption(db, { uid: 'uRace', rid: 'x_pizza', orderId: 'ORACE', cost: 8, canonical: canon, orderFingerprint: 'FP', configVersion: 1, now: NOW, hostedExpiresAt: NOW - 1 });
+    await seedOrder('ORACE', { uid: 'uRace', status: 'new', payment_method: 'online', payment_status: 'confirmed' });   // realized
+    const relRace = await R.sweepStaleReservations(db, { now: NOW });
+    assert.ok(!relRace.released.some((x) => x.orderId === 'ORACE'));
+    assert.strictEqual(await st('uRace', 'ORACE'), 'reserved'); ok('release sweep: expired hold on a PAID+live order is NOT released (paid ≠ abandoned) — closes the free-redemption race');
+    const recRace = await R.sweepConsumeRecovery(db, { now: NOW });
+    assert.ok(recRace.consumed.some((x) => x.orderId === 'ORACE'));
+    assert.strictEqual(await st('uRace', 'ORACE'), 'consumed'); assert.strictEqual(await bal('uRace'), 12); ok('consume-recovery then realizes the paid-but-consume-failed hold (20→12) — points spent, not freed');
+    // a genuinely-abandoned expired online hold (order absent) IS still released
+    await seedPts('uAb', 20);
+    await R.reserveRedemption(db, { uid: 'uAb', rid: 'x_pizza', orderId: 'OAB2', cost: 8, canonical: canon, orderFingerprint: 'FP', configVersion: 1, now: NOW, hostedExpiresAt: NOW - 1 });   // expired, NO order
+    const relAb = await R.sweepStaleReservations(db, { now: NOW });
+    assert.ok(relAb.released.some((x) => x.orderId === 'OAB2' && x.kind === 'online_expired'));
+    assert.strictEqual(await st('uAb', 'OAB2'), 'released'); ok('release sweep: expired hold on an ABANDONED (absent) order IS still released (genuine abandon)');
   });
 
   await env.cleanup();

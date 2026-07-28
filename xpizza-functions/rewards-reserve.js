@@ -263,7 +263,15 @@ async function sweepStaleReservations(db, { now }) {
           const rec = reservations[orderId];
           if (!rec || rec.state !== 'reserved') continue;                 // only reserved orphans
           if (rec.hosted_expires_at != null) {                            // online checkout
-            if (Number(rec.hosted_expires_at) < now) { await releaseRedemption(db, { uid, rid, orderId, now }); released.push({ uid, rid, orderId, kind: 'online_expired' }); }
+            if (Number(rec.hosted_expires_at) < now) {
+              // Expired ≠ necessarily abandoned: a PAID order whose primary consume fail-opened ALSO has an
+              // expired expiry + a reserved hold. Consult the order — if it realized (paid + live/terminal),
+              // do NOT release (leave it for consume-recovery); only a genuinely-unrealized order is abandoned.
+              // Mirrors the cash branch (which already reads status) → safe regardless of sweep ordering.
+              const order = (await db.ref(`orders/${orderId}`).get()).val();
+              if (consumeEligible(order)) continue;                       // paid + live → realized, not abandoned
+              await releaseRedemption(db, { uid, rid, orderId, now }); released.push({ uid, rid, orderId, kind: 'online_expired' });
+            }
             continue;
           }
           // cash (no hosted expiry): consult the order

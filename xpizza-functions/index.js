@@ -1707,8 +1707,10 @@ exports.reconcilePayments = onSchedule(
     // (orders/* and user_rewards/* are NOT one atomic write, so a failed primary consume must be caught here).
     // Both are idempotent + fail-open; alert on aged/audited so a human sees a persistent stuck hold.
     try {
-      const rel = await sweepStaleReservations(db, { now });
+      // Order matters (belt-and-suspenders — the online-release branch is now self-guarding anyway):
+      // realize paid-but-consume-failed holds FIRST, THEN release genuinely-abandoned ones.
       const rec = await sweepConsumeRecovery(db, { now });
+      const rel = await sweepStaleReservations(db, { now });
       if (rel.audited.length || rec.aged.length) {
         await paymentAlert(db, 'redemption_sweep', { released: rel.released.length, audited: rel.audited.slice(0, 20), consume_recovered: rec.consumed.length, aged: rec.aged.slice(0, 20) });
       }
