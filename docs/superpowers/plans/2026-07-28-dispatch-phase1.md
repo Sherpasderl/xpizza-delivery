@@ -616,6 +616,12 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 **Markup/CSS source:** port from `docs/superpowers/mockups/dispatch-board-v6.html` (the gate-reviewed v6). Keep the true palette tokens from `index.html:18–35`; add depth/glass as gradient+shadow layers on top (do not change base token values).
 
+> **⚠ DO-NOT-PORT exclusions (guardrail — applies to every Part-B porting task 6/9/10/11).** The mockup contains **out-of-scope future UI** that is forbidden by the Global Constraints (1b deferred; read-only comms, no send). When porting markup/CSS, **do NOT port**:
+> - the **On-time % / "A tiempo" KPI** (mockup `:253`) — that's 1b (no SLA/promise exists yet).
+> - the **"tarde" / "sobre ETA" late-by copy** (mockup `:272`) — Phase 1 shows delivery-risk/aging + "slipping vs primer estimado" only, never a promise-based late-by.
+> - the **"Chat cliente" / "Mensaje" composer/send input** (mockup `:402`) — Phase 1 comms is **read-only** (send is Phase 2).
+> Port structure, layout, the icon sprite, depth/glass, pastel actions, aging timers, and the exceptions/roster/cash chrome only. If in doubt, a control that *writes* or *promises* is out of scope.
+
 ## Task 6: Imports + icon sprite + visual-system CSS
 
 **Files:** Modify `xpizza-dispatch/index.html`
@@ -633,7 +639,7 @@ const etaSnapshots = createEtaSnapshotStore();
 
 - [ ] **Step 2: Add the SVG icon sprite** — copy the `<svg ...><defs>…</defs></svg>` sprite block from `docs/superpowers/mockups/dispatch-board-v6.html` (symbols `i-menu, i-panel, i-search, i-chevdown, i-close, i-phone, i-message, i-send, i-more, i-maximize, i-layers, i-signaloff, i-userx, i-clock, i-phoneoff, i-card`) into the top of `<body>`. **Add one more symbol `i-alert`** (fallback-bucket icon), e.g. Feather `alert-triangle`. **Critical:** set `fill:none;stroke:currentColor;stroke-width:2` on each `<symbol>` (or the rendered `.ic` svg) — NOT on a wrapping `<g>` in `<defs>` (that does not propagate through `<use>` and renders black-filled). Add `.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}` to the stylesheet.
 
-- [ ] **Step 3: Add the visual-system CSS** — port the depth/glass/pastel classes from `docs/superpowers/mockups/dispatch-board-v6.html` (card elevation gradients + shadow, glass `backdrop-filter` panels, pastel `.da.call/.msg/.more`, motion keyframes) under a `@media (prefers-reduced-motion: reduce){*{animation:none!important}}` guard. Reuse existing `:root` tokens; do not redefine them.
+- [ ] **Step 3: Add the visual-system CSS** — port the depth/glass/pastel classes from `docs/superpowers/mockups/dispatch-board-v6.html` (card elevation gradients + shadow, glass `backdrop-filter` panels, pastel `.da.call/.msg/.more`, motion keyframes) under a `@media (prefers-reduced-motion: reduce){*{animation:none!important}}` guard. Reuse existing `:root` tokens; do not redefine them. **Honor the ⚠ DO-NOT-PORT exclusions above** — do not bring over the on-time% KPI, late-by copy, or composer markup/CSS.
 
 - [ ] **Step 4: Verify** — reload; console shows no module-load errors; a temporary `<svg class="ic"><use href="#i-signaloff"/></svg>` renders as a visible line icon (not a black blob). Remove the temporary probe.
 
@@ -710,9 +716,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ## Task 9: Right rail — persistent roster + surfaced call + cash bar + tabs
 
-**Files:** Modify `xpizza-dispatch/index.html` — `renderDriversSection` (`2862`) / `renderDriverNode` (`3039`), sidebar structure.
+**Files:**
+- Modify `xpizza-dispatch/index.html` — `renderDriversSection` (`2862`) / `renderDriverNode` (`3039`), sidebar structure.
+- Modify `xpizza-dispatch/xpizza-delivery.js` — add the read-only `subscribeToDriverCash(cb)` helper next to the existing `subscribeTo*` helpers (`xpizza-delivery.js:504/606`). **Commit this file too** (see Step 5).
 
-- [ ] **Step 1 (cash bar — fully specified, grounded in the rules):** Restructure the right rail per §5.5: a compact **Cash/cuadre bar** + the **always-visible driver roster** + a switchable tab region (Pedidos/Programados/Comms/Caja). Port markup/CSS from `docs/superpowers/mockups/dispatch-board-v6.html`.
+- [ ] **Step 1 (cash bar — fully specified, grounded in the rules):** Restructure the right rail per §5.5: a compact **Cash/cuadre bar** + the **always-visible driver roster** + a switchable tab region (Pedidos/Programados/Comms/Caja). Port markup/CSS from `docs/superpowers/mockups/dispatch-board-v6.html`. **Honor the ⚠ DO-NOT-PORT exclusions above** — the mockup's topbar "A tiempo %" KPI and the cash bar's live "Efectivo en calle" number are out of scope (1b / deferred); port the roster + cuadre-total chrome only.
   - **New read-only subscription (declare it):** add `subscribeToDriverCash(cb)` to `xpizza-dispatch/xpizza-delivery.js`, mirroring the existing `subscribeTo*` helpers — `onValue(ref(db, 'driver_cash'), snap => cb(snap.val() || {}))`. Read-only, **no writes**.
   - **State shape (from `database.rules.json:113`, dispatcher-readable):** `driver_cash/{driverId}/{shiftId}/cuadre/{ cash_owed:number, cash_order_count:number, closed_at:number }`. These are **CLOSED cuadre records only** — the rules define no other child under a shift.
   - **Aggregation (honest, grounded):** "Cuadre hoy" = across every `cuadre` whose `closed_at` falls on today (America/Tegucigalpa), `sum(cash_owed)` and `sum(cash_order_count)`. Render `Cuadre hoy: L{total} · {count} pedidos`.
@@ -720,10 +728,10 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - [ ] **Step 2:** Surface the existing driver actions on the card face as pastel line-icon buttons: **Llamar** (`tel:${d.phone}`, mint `.da.call` `#i-phone`) — reuse the exact existing `tel:` behavior (`2892`); **Mensaje in-app** (periwinkle `.da.msg` `#i-message`) — Phase-1 stub that opens the read-only Comms thread (send is Phase 2); **`⋯`** (`.da.more` `#i-more`) — the existing menu (last location / reassign / force off-shift). Do not change the underlying actions.
 - [ ] **Step 3:** Keep the GPS-dark red row (`gpsDark`) exactly as-is.
 - [ ] **Step 4: Verify** — roster always visible; Llamar still dials; ⋯ still reassigns / forces off-shift; switching tabs does not hide the roster.
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Commit** (include BOTH files — the helper in `xpizza-delivery.js` and the render in `index.html`):
 
 ```bash
-git add xpizza-dispatch/index.html
+git add xpizza-dispatch/xpizza-delivery.js xpizza-dispatch/index.html
 git commit -m "feat(dispatch): persistent driver roster + surfaced call + cash bar + tabs
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -749,7 +757,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 **Files:** Modify `xpizza-dispatch/index.html` — Comms tab, using the existing `incoming_messages` subscription (`2391`).
 
-- [ ] **Step 1:** In the Comms tab, for a selected customer, build `assembleThread({ inbound: <their incoming_messages>, autoEvents: [{label:'Recibido', at: order.order_received_notified_at}] })` and render the ordered items **read-only** (glass thread from `docs/superpowers/mockups/dispatch-board-v6.html`), every text through `escapeHtml`. Show the limited "Recibido: enviado / no-entregado" chip from `order_received_notified_at` / `order_received_send_unresolved_at` only.
+- [ ] **Step 1:** In the Comms tab, for a selected customer, build `assembleThread({ inbound: <their incoming_messages>, autoEvents: [{label:'Recibido', at: order.order_received_notified_at}] })` and render the ordered items **read-only** (glass thread from `docs/superpowers/mockups/dispatch-board-v6.html`), every text through `escapeHtml`. Show the limited "Recibido: enviado / no-entregado" chip from `order_received_notified_at` / `order_received_send_unresolved_at` only. **Honor the ⚠ DO-NOT-PORT exclusions above — port the thread bubbles/header ONLY; do NOT port the "Chat cliente / Mensaje" composer/send input (mockup `:402`).**
 - [ ] **Step 2 (Guardrail):** NO composer/send in Phase 1 — the "Responder" affordance stays the existing `wa.me` deep-link until Phase 2 replaces it with the audited dispatcher-send function.
 - [ ] **Step 3: Verify** — inbound messages + the "Recibido" event render in time order, read-only; the existing inbound handled/unhandled marking still works.
 - [ ] **Step 4: Commit**
