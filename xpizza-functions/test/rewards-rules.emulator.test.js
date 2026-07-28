@@ -25,7 +25,7 @@ const B = 'u_bbbb00000000000000000';
   // ADMITS the child shape (the seed succeeds) and the .read-own / .write:false spine still holds over it.
   await env.withSecurityRulesDisabled(async (ctx) => {
     await ctx.database().ref(`user_rewards/${A}/x_pizza`).set({
-      balance: 2, lifetime: 2, reserved: 8,
+      balance: 2, lifetime: 2, reserved: 8, canary: true,   // B2 canary marker (Admin-written boolean child)
       ledger: { L1: { type: 'earn', delta: 2, ts: 1, config_version: 1 }, rsv_PZX1_1: { type: 'reserve', delta: 0, cost: 8, order_id: 'PZX1', state: 'reserved', ts: 1 } },
       reservations: { PZX1: { state: 'reserved', cost: 8, fp: 'abc', order_fingerprint: 'of', config_version: 1, attempt_id: null, hosted_expires_at: null, created_at: 1, updated_at: 1, seq: 1, canonical: { restaurant_id: 'x_pizza', model: 'discount', cost: 8, discount_cents: 29900, free_item_key: 'Margherita' } } },
     });
@@ -68,6 +68,10 @@ const B = 'u_bbbb00000000000000000';
   await no('B2 owner CANNOT tamper a reservation cost', set(aDb, `user_rewards/${A}/x_pizza/reservations/PZX1/cost`, 0));
   await no('B2 owner CANNOT set the reserved counter', set(aDb, `user_rewards/${A}/x_pizza/reserved`, 0));
   await no('B2 owner CANNOT push an rsv_ ledger entry', set(aDb, `user_rewards/${A}/x_pizza/ledger/rsv_forged_1`, { type: 'redeem', delta: -8, ts: 2 }));
+  // B2 canary marker — read-own (owner sees it), Admin-only write (client can't forge it to reveal the affordance early)
+  await ok('B2 owner reads its own canary marker', get(aDb, `user_rewards/${A}/x_pizza/canary`));
+  await no('B2 a different user CANNOT read the owner\'s canary', get(bDb, `user_rewards/${A}/x_pizza/canary`));
+  await no('B2 owner CANNOT set its own canary (write:false — Admin-only)', set(aDb, `user_rewards/${A}/x_pizza/canary`, true));
 
   // ── C: reward_welcome fully deny-all (un-farmable tombstone) ──
   await no('C client CANNOT read reward_welcome', get(aDb, 'reward_welcome/ph_seed/x_pizza'));

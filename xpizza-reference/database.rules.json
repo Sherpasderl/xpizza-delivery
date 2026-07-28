@@ -66,7 +66,10 @@
 
     "config": {
       ".read": "auth != null && auth.token.customer !== true",
-      ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
+      ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
+      "rewards_public": {
+        "redemption_live": { ".read": true }
+      }
     },
 
     "dispatcher_alerts": {
