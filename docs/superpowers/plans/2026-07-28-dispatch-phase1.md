@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vanilla ES modules, `node --test`-style assertions via `node:assert` (mirroring `driver-eta.test.js` / `driver-glide.test.js`), Firebase RTDB (existing subscriptions), Google Maps JS (existing, unchanged).
 
-**Status:** Part A ✅ + Task 6 ✅ + Task 7 ✅ (built+gated+on-device) + Task 8 ✅ (built+on-device; codex pending). Tasks 9–12 pending. **Task 13 (topbar restyle) ADDED at Xavier's request (R5) — awaiting plan-gate before build.** Building in worktree `/Users/xavierlacayo/Downloads/xpizza-dispatch-redesign`.
+**Status:** Part A ✅ + Task 6 ✅ + Task 7 ✅ + Task 8 ✅ (all built+gated+on-device). Task 13 plan ✅ (gated). **Task 9 expanded to FULL v6 rich rows (R7) at Xavier's request — awaiting plan-gate before build.** Tasks 10–12 (full v6) + 13 pending. Building in worktree `/Users/xavierlacayo/Downloads/xpizza-dispatch-redesign`.
 
 ---
 
@@ -694,9 +694,11 @@ git commit -m "feat(dispatch): Torre registry render + fallback bucket; preserve
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
-## Task 9: Order rows — aging + delivery-risk
+## Task 9: Order rows — full v6 rich rows + aging + delivery-risk
 
-**Files:** Modify `xpizza-dispatch/index.html` — order-row renderers (`renderUnassignedSection`/`renderTaskRow` `3128`), ETA cache (`etaCache`, set at `3007`).
+**Scope (Xavier, 2026-07-28): FULL v6.** The Sin asignar cards are rebuilt to the mockup's rich `.ord` row (not just aging added to the old card), **conditioned on preserving every existing behavior** — assign / assign-self / more handlers, card→detail-modal, scheduledBadge, the expanded view. This is the pattern for all content tasks (9–12): full v6 restyle, no dropped behavior, all dynamic fields through `escapeHtml`.
+
+**Files:** Modify `xpizza-dispatch/index.html` — `renderUnassignedSection` (Sin asignar cards, `2814`), `renderTaskRow` (delivery-risk on active deliveries, `3207`), the `etaCache` observe site (`etaCache[orderId] = { arrivalMs: projectArrival(...) }`, `3086`) + its delete branch (`3069`). (Line numbers are pre-Task-6/7/8 shift — re-locate by symbol.) Grounded order fields: `order.payment_method` (cash → Efectivo, else Pagado online — `2909`), `order.items_text` (comma-split — `2912`), `order.created_at` (aging baseline), `order_received_notified_at` / `order_received_send_unresolved_at` (WhatsApp chip; may be absent → chip hidden). Port `.ord` markup/CSS from `docs/superpowers/mockups/dispatch-board-v6.html` (map `--dim`/`--soft` → `--text-dim`/`--text-soft`; honor the ⚠ DO-NOT-PORT exclusions).
 
 - [ ] **Step 1 (observe — extract the local):** at `index.html:3007`, `arrivalMs` is currently computed *inline inside the object literal*, so it is not a local variable. Extract it first, then observe:
 
@@ -715,8 +717,9 @@ etaSnapshots.clear(o.order_id);
 continue;
 ```
 
-- [ ] **Step 3:** In the order-row render, compute `const secs = agingSeconds(agingBaselineMs(order), Date.now())` and render `formatAging(secs)`. Add the `data-tick` live-updater (mirroring the mockup) so timers count up.
-- [ ] **Step 4:** Compute risk once and drive BOTH the row edge and the header from it (they cannot diverge):
+- [ ] **Step 3 — rebuild the Sin asignar cards to the v6 `.ord` rich row** (`renderUnassignedSection`). Each card renders: **`#N`** (`displayOrderLabel(o)`, mono), **customer** (`escapeHtml(o.customer_name)`), a **live aging timer** — `const secs = agingSeconds(agingBaselineMs(o), Date.now())`, `formatAging(secs)` — with a **band edge** from `agingBand(secs)` (`green`/`amber`/`red` → the `.ord`/`.ord.aging`/`.ord.late` left-edge) and a `data-tick` attribute for the live updater; **items** (`o.items_text`, `escapeHtml`, single-line ellipsis); a **payment chip** (`o.payment_method === 'cash'` → `Efectivo · L${escapeHtml(String(o.total))}` else `Pagado online`); a **WhatsApp chip** (if `o.order_received_notified_at` → "WhatsApp ✓"; else if `o.order_received_send_unresolved_at` → "WhatsApp no entregado"; else no chip); and the **assign** affordance. **Preserve exactly:** the `data-assign-order`/`data-assign-self`/`data-more-unassigned` buttons + their handlers, the card-click → `openOrderDetailModal`, `scheduledBadge(o)`, and the `renderOrderExpanded(o)` expanded view. Every dynamic field through `escapeHtml`.
+- [ ] **Step 3b — data-tick updater:** add a single `setInterval` (~1s) that re-renders `[data-tick]` aging timers in place (recompute `formatAging` from the row's baseline vs `Date.now()`), so timers count up between full re-renders. One interval for the whole board.
+- [ ] **Step 4:** Compute risk once and drive BOTH the row edge and the header from it (they cannot diverge). Unassigned cards have no observed ETA → `baselineArrivalMs` null → **aging-only** (band from aging, never "slipping"). The **"slipping vs primer estimado"** signal applies on **active deliveries** in `renderTaskRow` (where an ETA has been observed):
 
 ```js
 const risk = deliveryRisk({
@@ -873,3 +876,5 @@ Real SLA-based **on-time % + promise-based lateness** requires predictor graduat
 **Plan revision R4 (2026-07-28) — one residual (plan-gate REVISE):** the drag-resize retirement (Step 4) also had to account for the pre-handler icon-init at `4077–4078` (`$('sidebar-collapse-btn')…` / `$('sidebar-show-btn')…`) — leaving those after removing the buttons throws a null-deref in the module script before board wiring finishes (whole board breaks on load). Step 4 now names them for removal, keeping line `4079` (`delivered-toggle`).
 
 **Plan revision R5 (2026-07-28) — added Task 13 (topbar restyle):** Xavier requested full v6 topbar parity in Phase 1, conditioned on preserving every advisor-flagged behavior. Added **Task 13** as a *visual-only* restyle (KPI chips, auto-asignar pill, messages, avatar, restaurant-name display pill) that keeps every existing handler/binding (auto-assign toggle + state sync, messages modal + badge, signout, live stats, version tag, ☰/⇥) and **excludes** the design-deferred controls (on-time% → 1b, ⌘K → Phase 3). Restaurant selector is display-only (dispatch is single-restaurant; a switcher would be new scope, not a restyle).
+
+**Plan revision R7 (2026-07-28) — content tasks go FULL v6 (Xavier: "as long as we're not breaking anything lets go full v6"):** Task 9 expanded from "add aging/risk to the old cards" to a **full v6 rich order-row restyle** — the Sin asignar cards rebuilt to the mockup `.ord` row (`#N`, customer, live aging timer + band edge, items, payment chip, WhatsApp chip, assign) **preserving every existing action** (assign/assign-self/more handlers, card→detail-modal, scheduledBadge, expanded view), grounded in real fields (`payment_method`, `items_text`, `created_at`, `order_received_notified_at`). Tasks 10 (right rail) and 12 (comms) were already full v6; Task 11 (Cobertura) is a port. Guardrail holds across all: full restyle, no dropped behavior, `escapeHtml` on all dynamic content, design-deferred controls (on-time%/late-by/composer/⌘K) still excluded.
