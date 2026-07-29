@@ -73,16 +73,16 @@
 body.s1-active .acct-chip-mount{position:fixed;z-index:150}
 /* Scrolled past the hero on paso 1 → the pinned chip collapses to just the avatar circle (Talkin-Tacos
    corner chip) so it stops covering the sticky category tabs. index.html toggles body.chip-mini on scroll. */
-body.s1-active.chip-mini .acct-chip{padding:3px;gap:0}
+body.s1-active.chip-mini .acct-chip{padding:3px}
 body.s1-active.chip-mini .acct-chip .acct-nm,
 body.s1-active.chip-mini .acct-chip .acct-rw,
-body.s1-active.chip-mini .acct-chip .acct-cv{display:none}
-.acct-chip{display:flex;align-items:center;gap:7px;max-width:100%;min-width:0;overflow:hidden;background:rgba(255,255,255,.42);border:1px solid rgba(255,255,255,.55);box-shadow:0 3px 14px rgba(0,0,0,.16);backdrop-filter:blur(13px) saturate(1.5);-webkit-backdrop-filter:blur(13px) saturate(1.5);border-radius:999px;padding:4px 11px 4px 4px;cursor:pointer;font-family:inherit;line-height:1;transition:opacity .15s}
+body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0}
+.acct-chip{display:flex;align-items:center;gap:0;max-width:100%;min-width:0;overflow:hidden;background:rgba(255,255,255,.42);border:1px solid rgba(255,255,255,.55);box-shadow:0 3px 14px rgba(0,0,0,.16);backdrop-filter:blur(13px) saturate(1.5);-webkit-backdrop-filter:blur(13px) saturate(1.5);border-radius:999px;padding:4px 11px 4px 4px;cursor:pointer;font-family:inherit;line-height:1;transition:padding .3s cubic-bezier(.4,0,.2,1),opacity .15s}
 .acct-chip:hover{opacity:.85}
 .acct-chip .acct-av{width:27px;height:27px;border-radius:50%;background:${CONFIG.accent};color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
 .acct-chip--out .acct-av{background:${CONFIG.accent};color:#fff}
-.acct-chip .acct-nm{font-size:13.5px;font-weight:650;letter-spacing:-.01em;color:#17130F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 2px rgba(255,255,255,.5)}
-.acct-chip .acct-cv{color:#6B6255;font-size:10px;margin-left:-1px;flex:none}
+.acct-chip .acct-nm{font-size:13.5px;font-weight:650;letter-spacing:-.01em;color:#17130F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 2px rgba(255,255,255,.5);margin-left:7px;max-width:170px;transition:max-width .3s cubic-bezier(.4,0,.2,1),opacity .22s ease,margin-left .3s cubic-bezier(.4,0,.2,1)}
+.acct-chip .acct-cv{color:#6B6255;font-size:10px;margin-left:4px;flex:none;max-width:16px;overflow:hidden;transition:max-width .28s cubic-bezier(.4,0,.2,1),opacity .2s ease,margin-left .28s}
 /* Compact account pill (round 2): logged-in a hair larger than the guest "Entrar" pill, but tuned to ≈ the
    logo's visual weight — not heavier. */
 .acct-chip:not(.acct-chip--out) .acct-nm{font-size:14px}
@@ -225,7 +225,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{display:none}
     if ($('acct-rw-styles')) return;
     const st = document.createElement('style'); st.id = 'acct-rw-styles';
     st.textContent = `
-.acct-chip .acct-rw{display:inline-flex;align-items:center;gap:4px;color:${CONFIG.accent};font-size:13px;font-weight:650;margin-left:1px;flex:none;white-space:nowrap}
+.acct-chip .acct-rw{display:inline-flex;align-items:center;gap:4px;color:${CONFIG.accent};font-size:13px;font-weight:650;margin-left:5px;flex:none;white-space:nowrap;max-width:140px;overflow:hidden;transition:max-width .3s cubic-bezier(.4,0,.2,1),opacity .22s ease,margin-left .3s}
 .acct-chip .acct-rw-g{display:inline-flex;color:${CONFIG.accent};opacity:.9}
 .acct-chip .acct-rw-g svg{width:13px;height:13px}
 .acct-rw-card{padding:6px 4px 2px}
