@@ -47,6 +47,7 @@ const NOW = 1_700_000_000_000;
     r = await call({ redeem: { type: 'discount_cheapest_pizza' }, orderId: 'OX', customerUid: 'uX' });
     assert.strictEqual(r.ok, true); assert.strictEqual(r.priced.total_cents, 41800); assert.strictEqual(r.priced.discount_cents, 29900);
     assert.strictEqual(r.canonical.free_item_key, 'Margherita'); assert.strictEqual(r.ownsHold, true);
+    assert.ok(/1x Margherita \(Recompensa\)/.test(r.itemsText)); assert.ok(!/[<>]/.test(r.itemsText)); ok('A4: x_pizza items_text annotates the freed cheapest pizza as a reward (KDS/driver/WhatsApp), sanitized');
     assert.strictEqual((await resv('uX', 'OX')).state, 'reserved'); assert.strictEqual(await rsv('uX'), 8); assert.strictEqual(await bal('uX'), 20); ok('x_pizza valid → discounted total 41800, RESERVED (reserved 8, balance 20 untouched), canonical + ownsHold');
 
     // 4 — idempotent: same order + same reward → reused, no re-debit

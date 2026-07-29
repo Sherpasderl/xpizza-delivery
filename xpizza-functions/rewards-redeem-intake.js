@@ -48,6 +48,14 @@ async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, t
     if (freeGate.blocked.length > 0) return { ok: false, status: 409, body: { error: 'reward_unavailable', blocked: freeGate.blocked } };
     freeName = sanitizeName((redeem && redeem.name) || redemption.freeItem.item_id, 80);
     outText = `${itemsText}\n1x ${freeName} (Recompensa)`;                                                       // trusted server-rendered 0-price display line
+  } else if (redemption.model === 'discount') {
+    // A4: X. Pizza comps ONE base unit of the cheapest pizza — which is ALREADY in the cart at full price, so
+    // items_text (KDS/driver/WhatsApp) shows the freed unit unmarked ([[items-text-pricing-decoupling]]).
+    // Append a trusted, server-rendered reward line so the comped unit reads as a reward. SAME `\n`-prefixed
+    // format La Musa already ships — `\n` is not a split delimiter on ANY surface (all split on ' | ' or ','),
+    // so it rides as annotation on the last card, never a phantom make-item.
+    freeName = sanitizeName(redemption.freeItem.line_key, 80);
+    outText = `${itemsText}\n1x ${freeName} (Recompensa)`;                                                       // freed base unit — display-only; pricing/factura already comp it (A-F)
   }
 
   const priced = applyRedemptionToPricing({ items, restaurantId, redemption, totalLempiras });                   // discounted, fail-closed reconciling lines
