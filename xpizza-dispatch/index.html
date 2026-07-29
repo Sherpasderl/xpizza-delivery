@@ -1941,9 +1941,50 @@
   .rtab .rlabel { display: none; }
   .rtab.on .rlabel { display: inline; }
   .rtab .rn { font-size: 10px; font-weight: 700; color: var(--text-soft); background: rgba(255,255,255,0.08); border-radius: 999px; padding: 0 6px; min-width: 16px; text-align: center; }
-  .comms-row { background: var(--surface); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .comms-row { background: var(--surface); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: background .14s; }
+  .comms-row:hover { background: var(--surface-2); }
   .comms-from { font-weight: 600; font-size: 12.5px; color: var(--text); }
   .comms-body { font-size: 11.5px; color: var(--text-soft); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---- Task 12: read-only Comms thread sheet (floating glass over the board) ---- */
+  .comms-scrim { position: fixed; inset: 0; z-index: 39; background: rgba(0,0,0,0.30); display: none; }
+  .comms-scrim.open { display: block; }
+  .comms-sheet {
+    position: fixed; top: 72px; bottom: 72px; left: 50%; transform: translateX(-50%);
+    width: min(430px, 92vw);
+    background: rgba(28,35,46,0.92);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    backdrop-filter: blur(24px) saturate(1.4);
+    border-radius: 18px;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px var(--hair-top);
+    display: none; flex-direction: column; overflow: hidden; z-index: 40;
+  }
+  .comms-sheet.open { display: flex; animation: sheetin .34s cubic-bezier(.34,1.1,.64,1) both; }
+  @keyframes sheetin {
+    from { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.985); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  }
+  .sh-head { padding: 13px 12px 13px 15px; background: rgba(35,43,57,0.6); display: flex; align-items: center; gap: 11px; box-shadow: 0 1px 0 var(--hair-top); }
+  .sh-av { width: 38px; height: 38px; border-radius: 12px; background: rgba(0,0,0,0.3); display: grid; place-items: center; font-weight: 700; color: var(--text-soft); flex: none; font-size: 13px; }
+  .sh-id { flex: 1; min-width: 0; }
+  .sh-id .nm { font-weight: 700; font-size: 14px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sh-id .su { font-size: 11px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sh-ic { width: 34px; height: 34px; border-radius: 9px; color: #a7b2c5; background: none; border: none; cursor: pointer; display: grid; place-items: center; transition: .14s; text-decoration: none; }
+  .sh-ic svg { width: 16px; height: 16px; }
+  .sh-ic.call { color: #8fd8b4; }
+  .sh-ic:hover { background: rgba(255,255,255,0.07); filter: brightness(1.2); }
+  .sh-recibido { padding: 9px 15px 0; }
+  .sh-body { flex: 1; overflow-y: auto; padding: 16px 15px; display: flex; flex-direction: column; gap: 12px; }
+  .sh-empty { align-self: center; margin: auto 0; color: var(--text-dim); font-size: 12px; }
+  .daymark { align-self: center; font-size: 10px; color: var(--text-dim); background: rgba(0,0,0,0.25); border-radius: 999px; padding: 3px 11px; }
+  .msgrow { display: flex; flex-direction: column; max-width: 82%; animation: rise .3s both; }
+  .msgrow.in { align-self: flex-start; align-items: flex-start; }
+  .msgrow.out { align-self: flex-end; align-items: flex-end; }
+  .bub { padding: 9px 12px; border-radius: 15px; font-size: 12.5px; line-height: 1.42; box-shadow: 0 2px 6px rgba(0,0,0,0.2); color: #eaf0f7; word-break: break-word; }
+  .in .bub { background: #2b3444; border-bottom-left-radius: 5px; }
+  .out.auto .bub { background: #333d4e; border-bottom-right-radius: 5px; }
+  .bmeta { font-size: 9.5px; color: var(--text-dim); margin-top: 4px; display: flex; gap: 6px; align-items: center; }
+  .autotag { color: var(--info); font-weight: 600; }
   .comms-open { width: 100%; margin-top: 4px; padding: 8px; border: none; border-radius: 9px; background: rgba(79,140,255,0.12); color: var(--info); font-weight: 600; font-size: 12px; cursor: pointer; }
   .comms-open:hover { background: rgba(79,140,255,0.2); }
 
@@ -2180,6 +2221,10 @@
     </div>
   </div>
 </div>
+
+<!-- Task 12: read-only Comms thread sheet (floating glass over the board; populated by renderCommsThread) -->
+<div class="comms-scrim" id="comms-scrim"></div>
+<div class="comms-sheet" id="comms-sheet" role="dialog" aria-modal="true" aria-label="Conversación con cliente"></div>
 
 <!-- Mensajes (incoming customer messages) modal -->
 <div class="msg-modal" id="msg-modal">
@@ -2782,11 +2827,14 @@ function initMessagesSubscription() {
   $('tab-unhandled')?.addEventListener('click', () => switchMsgTab('unhandled'));
   $('tab-history')?.addEventListener('click', () => switchMsgTab('history'));
 
-  // Escape key closes modal
+  // Task 12: the read-only Comms thread sheet — click scrim closes it
+  $('comms-scrim')?.addEventListener('click', closeCommsThread);
+
+  // Escape key closes modal / the Comms thread sheet
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && $('msg-modal')?.classList.contains('open')) {
-      closeMessagesModal();
-    }
+    if (e.key !== 'Escape') return;
+    if (commsSheetTail) { closeCommsThread(); return; }
+    if ($('msg-modal')?.classList.contains('open')) closeMessagesModal();
   });
 
   // Subscribe to /incoming_messages
@@ -2823,6 +2871,7 @@ function initMessagesSubscription() {
       renderMessagesLists();
     }
     renderCommsTab();   // …but the in-tab Comms list stays live regardless (Task 10b)
+    if (commsSheetTail) renderCommsThread();  // Task 12: keep an open thread sheet live
   });
 }
 
@@ -3368,11 +3417,121 @@ function renderCommsTab() {
   const n = $('tab-comms-n'); if (n) n.textContent = String(unhandled.length);
   if (unhandled.length === 0) { el.innerHTML = '<div class="tree-empty">Sin mensajes sin atender</div>'; return; }
   el.innerHTML = unhandled.map(([_, m]) => `
-    <div class="comms-row">
+    <div class="comms-row" data-comms-from="${escapeHtml(String(m.from || ''))}">
       <div class="comms-from">${escapeHtml(formatMsgPhone(m.from))}</div>
       <div class="comms-body">${escapeHtml((m.body || '').slice(0, 90))}</div>
     </div>`).join('') + '<button class="comms-open" id="comms-open-inbox">Abrir bandeja completa</button>';
+  el.querySelectorAll('.comms-row[data-comms-from]').forEach(row => {
+    row.addEventListener('click', () => openCommsThread(row.dataset.commsFrom));
+  });
   $('comms-open-inbox')?.addEventListener('click', openMessagesModal);
+}
+
+// ============================================================
+// Task 12 — read-only Comms thread sheet (assembleThread)
+// Floating glass over the board. Shows a customer's inbound WhatsApp messages
+// + the "Recibido" automessage event, time-ordered, READ-ONLY (no composer —
+// send is Phase 2). Identity/Recibido derived from the best-matching order.
+// ============================================================
+let commsSheetTail = null;  // last-8 phone digits of the open thread, or null when closed
+
+function phoneTail(v) { return String(v || '').replace(/\D/g, '').slice(-8); }
+
+function formatCommsDay(ms) {
+  if (!Number.isFinite(ms)) return '';
+  const d = new Date(ms), now = new Date();
+  if (d.toDateString() === now.toDateString()) return 'Hoy';
+  return d.toLocaleDateString('es-HN', { day: 'numeric', month: 'short' });
+}
+
+function openCommsThread(fromRaw) {
+  const tail = phoneTail(fromRaw);
+  if (!tail) return;
+  commsSheetTail = tail;
+  renderCommsThread();
+  $('comms-scrim')?.classList.add('open');
+  $('comms-sheet')?.classList.add('open');
+}
+
+function closeCommsThread() {
+  commsSheetTail = null;
+  $('comms-scrim')?.classList.remove('open');
+  $('comms-sheet')?.classList.remove('open');
+}
+
+function renderCommsThread() {
+  const sheet = $('comms-sheet');
+  if (!sheet || !commsSheetTail) return;
+  const tail = commsSheetTail;
+
+  // This customer's inbound messages (matched by trailing phone digits).
+  const inbound = Object.values(allMessages || {}).filter(m => phoneTail(m.from) === tail);
+
+  // Best-matching order (most recent) → header identity + the "Recibido" event/chip.
+  const order = Object.values(allOrders || {})
+    .filter(o => phoneTail(o.customer_phone) === tail)
+    .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0] || null;
+
+  const autoEvents = (order && Number.isFinite(order.order_received_notified_at))
+    ? [{ label: 'Pedido recibido — confirmación enviada', at: order.order_received_notified_at }]
+    : [];
+  const items = assembleThread({ inbound, autoEvents });
+
+  // Identity
+  const rawFrom = inbound[0]?.from || order?.customer_phone || '';
+  const name = order?.customer_name || formatMsgPhone(rawFrom);
+  const initials = ((order?.customer_name
+    ? order.customer_name.trim().split(/\s+/).slice(0, 2).map(s => s[0]).join('')
+    : phoneTail(rawFrom).slice(-2)) || '#').toUpperCase();
+  const waDigits = String(rawFrom).replace(/\D/g, '');
+  let sub = escapeHtml(formatMsgPhone(rawFrom));  // formatMsgPhone → digits only, safe
+  if (order) {
+    const isCash = order.payment_method === 'cash' || order.payment_method === 'efectivo';
+    const pay = isCash ? `Efectivo L${escapeHtml(String(order.total ?? '—'))}`
+              : order.payment_method ? 'Pagado online' : '';
+    sub = `${escapeHtml(displayOrderLabel(order))}${pay ? ' · ' + pay : ''}`;
+  }
+
+  // "Recibido" chip — limited to the two documented send-state fields only.
+  let recibido = '';
+  if (order) {
+    if (Number.isFinite(order.order_received_notified_at)) {
+      recibido = '<span class="m wa"><span class="d"></span>Recibido: enviado</span>';
+    } else if (Number.isFinite(order.order_received_send_unresolved_at)) {
+      recibido = '<span class="m warn"><span class="d"></span>Recibido: no entregado</span>';
+    }
+  }
+
+  // Body — read-only bubbles: inbound (.in) + auto events (.out.auto). No dispatcher-sent bubbles in Phase 1.
+  let body;
+  if (items.length === 0) {
+    body = '<div class="sh-empty">Sin mensajes todavía</div>';
+  } else {
+    const rows = items.map(it => {
+      const cls = it.kind === 'auto' ? 'out auto' : 'in';
+      const meta = it.kind === 'auto'
+        ? `<span class="autotag">Automático</span> · ${escapeHtml(formatMsgTime(it.ts))}`
+        : escapeHtml(formatMsgTime(it.ts));
+      return `<div class="msgrow ${cls}"><div class="bub">${escapeHtml(it.text)}</div><div class="bmeta">${meta}</div></div>`;
+    }).join('');
+    body = `<div class="daymark">${escapeHtml(formatCommsDay(items[0].ts))}</div>${rows}`;
+  }
+
+  const callBtn = waDigits
+    ? `<a class="sh-ic call" href="tel:+${escapeHtml(waDigits)}" title="Llamar" aria-label="Llamar"><svg class="ic"><use href="#i-phone"/></svg></a>`
+    : '';
+
+  sheet.innerHTML = `
+    <div class="sh-head">
+      <div class="sh-av">${escapeHtml(initials)}</div>
+      <div class="sh-id"><div class="nm">${escapeHtml(name)}</div><div class="su">${sub}</div></div>
+      ${callBtn}
+      <button class="sh-ic" id="comms-sheet-close" title="Cerrar" aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
+    </div>
+    ${recibido ? `<div class="sh-recibido">${recibido}</div>` : ''}
+    <div class="sh-body">${body}</div>
+  `;
+  $('comms-sheet-close')?.addEventListener('click', closeCommsThread);
 }
 
 function renderDriversSection() {
