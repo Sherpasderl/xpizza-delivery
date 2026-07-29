@@ -98,6 +98,7 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
       recipient_phone: order.customer_phone,
       payment_method: method,
       total: order.total,
+      ...(order.free_order ? { free_order: true } : {}),   // A1: a scheduled free order's task is built HERE (not at create) — carry the flag so the driver suppresses collection
       notes: order.items_text,
       created_at: now
     };

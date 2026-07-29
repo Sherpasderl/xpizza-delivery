@@ -16,7 +16,7 @@ const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — me
  */
 function buildCreateOrderUpdates({
   orderId, orderType, now, trackingToken, total, lat, lng, fields, hubSnap,
-  restaurantId, priceBreakdown, facturaPriced, cashTenderedCents,
+  restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder,
 }) {
   const pickupTaskId = `${orderId}_pickup`;
   const deliveryTaskId = `${orderId}_delivery`;
@@ -44,6 +44,7 @@ function buildCreateOrderUpdates({
     restaurant_phone: hubSnap.restaurant_phone,
     factura_status: 'not_due',
     cash_tendered_cents: cashTenderedCents,
+    ...(freeOrder ? { free_order: true } : {}),   // A1: a redemption zeroed the total — nothing to collect (driver/accounting honor this)
     ...(facturaPriced.items ? { items: facturaPriced.items } : {}),
     ...(fields.razon_social ? { razon_social: fields.razon_social } : {}),
     ...(fields.rtn_cliente ? { rtn_cliente: fields.rtn_cliente } : {}),
@@ -95,6 +96,7 @@ function buildCreateOrderUpdates({
       recipient_phone: fields.customer_phone,
       payment_method: fields.payment_method,
       total: total,
+      ...(freeOrder ? { free_order: true } : {}),   // A1: driver cash surfaces suppress collection on a free order
       notes: fields.items_text,
       created_at: now,
     };

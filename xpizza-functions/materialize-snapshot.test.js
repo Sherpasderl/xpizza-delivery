@@ -65,4 +65,13 @@ const ok = (label) => console.log(`  ✓ ${++n} ${label}`);
   ok('order_tracking restaurant_id stamped from order (la_musa / legacy→x_pizza)');
 }
 
+// 6) A1: a scheduled FREE order (fully-comped redemption) carries free_order onto the released delivery task
+//    (its task is built HERE, not at create). Non-free release omits the field → byte-identical.
+{
+  const free = buildMaterializeUpdates({ orderId: 'o7', order: baseOrder({ free_order: true, payment_method: 'cash', total: 0 }), trackingToken: 't7', now: 1, restaurant: FALLBACK })['tasks/o7_delivery'];
+  assert.equal(free.free_order, true); ok('scheduled free order → free_order:true on the released delivery task');
+  const paid = buildMaterializeUpdates({ orderId: 'o8', order: baseOrder({}), trackingToken: 't8', now: 1, restaurant: FALLBACK })['tasks/o8_delivery'];
+  assert.equal('free_order' in paid, false); ok('non-free release omits free_order (byte-identical)');
+}
+
 console.log(`materialize-snapshot: OK (${n} cases)`);

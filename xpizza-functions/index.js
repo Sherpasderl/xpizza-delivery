@@ -594,6 +594,19 @@ createOrderApp.all('*', async (req, res) => {
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
     : orderBreakdownCents(total, restaurantId);  // platform → ISV 15% incl.; non-platform → no split
+
+  // ── A1: free-order intake. The forms grey out both payment methods + submit `free_order:true` ONLY when
+  // the server quote zeroed the total (a fully-comping redemption). We RE-DERIVE it here from the
+  // authoritative (re-priced) breakdown — the client flag is an optimistic hint, never trusted. If the
+  // client claimed free but the total is NOT actually 0 (stale quote / reward invalidated), REJECT (and
+  // release the hold) so the forms re-enable a payment method — we never silently place a payable order the
+  // customer never paid for. When free, `free_order:true` is stamped onto the order + driver tasks so cash
+  // surfaces show nothing to collect and accounting/factura (A-F) treat it as a comp.
+  const freeOrder = !!redemptionPriced && priceBreakdown.total_cents === 0;
+  if (body.free_order === true && !freeOrder) {
+    if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});
+    return res.status(409).json({ error: 'free_order_stale', detail: 'El pedido ya no es gratis; seleccioná un método de pago', order_id: orderId, total_cents: priceBreakdown.total_cents });
+  }
   // pricedLineItems feeds order.items, consumed ONLY by the platform factura trigger. Non-platform
   // restaurants (la_musa — Soft Restaurant POS) opt out → skip it; order.items is then omitted.
   const facturaPriced = redemptionPriced
@@ -617,7 +630,7 @@ createOrderApp.all('*', async (req, res) => {
   if (isScheduled) {
     const heldUpdates = buildScheduledOrderRecord({
       orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
-      restaurantId, priceBreakdown, facturaPriced, cashTenderedCents,
+      restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder,
       scheduledFor: scheduledForRaw, releaseAt,
     });
     attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items });
@@ -642,7 +655,7 @@ createOrderApp.all('*', async (req, res) => {
   // field names are load-bearing (driver app, KDS, tracking site, factura trigger).
   Object.assign(updates, buildCreateOrderUpdates({
     orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
-    restaurantId, priceBreakdown, facturaPriced, cashTenderedCents,
+    restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder,
   }));
 
   attachCustomerAttribution(updates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items });
@@ -796,25 +809,11 @@ chargeOnlineApp.all('*', async (req, res) => {
   const orderId = String(body.order_id);
   const orderType = body.order_type;
 
-
-  // Resolve PixelPay config up front — fail fast (500) before any DB write if
-  // production creds are missing, so we never open an attempt we can't sign.
-  let pp;
-  try {
-    pp = resolvePixelPayConfig();
-  } catch (e) {
-    console.error('chargeOnlineOrder: PixelPay config error', e.message);
-    return res.status(500).json({ error: 'Payment not configured', detail: e.message });
-  }
-
-  // Restaurant-aware hosted-checkout return base (B2-server). Resolved up front — before any DB write
-  // — and FAIL-CLOSED for la_musa if unconfigured (never fall back to the x_pizza origin). x_pizza is
-  // unaffected (its default is intrinsic, not env-dependent), so this is byte-identical for x_pizza.
-  const returnBase = resolveReturnBase(restaurantId, process.env);
-  if (returnBase.error) {
-    console.error(`chargeOnlineOrder: ${returnBase.error} for ${orderId} (${restaurantId})`);
-    return res.status(500).json({ error: 'Payment not configured', detail: 'return URL not configured for restaurant' });
-  }
+  // NOTE (A1 · #2, R7): the PixelPay config + return-base reads were MOVED DOWN — to just before the
+  // reserve/acquire, after the reprice + $0 guard + all non-PixelPay gates. Rationale: a $0 (free) order
+  // must return BEFORE ever touching PixelPay config (it never charges), AND a payable order must prove
+  // PixelPay is signable AFTER the gates but BEFORE opening any attempt/hold — preserving "never open an
+  // attempt we can't sign" while never 500-ing a free order on a config read. See the reserve block below.
 
   const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
   const db = getDatabase();
@@ -863,6 +862,16 @@ chargeOnlineApp.all('*', async (req, res) => {
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
     : orderBreakdownCents(total, restaurantId);
+
+  // ── A1 (#2, R7): a $0 order is NOT chargeable online. The forms route a fully-comped ($0) order to
+  // createOrder (the free path); this is the DEFENSIVE server guard for a stale/direct $0 request. Return a
+  // typed non-payable response HERE — after the reprice, but BEFORE any config read, availability read,
+  // rate-limit write, reserve, or acquire — so a $0 request opens no attempt and holds no reward, and the
+  // client re-routes to the free path. (Sub-min online is a forms-side concern — cash-only routing — and is
+  // unreachable server-side given min-order + redemption economics, so no server threshold is invented.)
+  if (effBreakdown.total_cents === 0) {
+    return res.status(409).json({ error: 'not_payable_online', reason: 'free_order', detail: 'El pedido es gratis; confirmá sin pago', order_id: orderId });
+  }
 
   // ── Item availability gate (KDS 2b · KDS_2B_PLAN.md §6/§7/§8, R4). AUTHORITATIVE placement (Slice-4 fix,
   // closes the classify↔acquire TOCTOU):
@@ -1058,6 +1067,24 @@ chargeOnlineApp.all('*', async (req, res) => {
       }
     }
     Object.assign(pendingOrderRecord, hubSnapshot(id)); // immutable snapshot on the fresh pending order
+  }
+
+  // ── A1 (#2, R7): PixelPay config + return-base — resolved HERE, after the reprice + $0 guard + ALL
+  // non-PixelPay gates (availability / rate-limit / schedule / active / zone), but BEFORE the reserve +
+  // acquire. Fail fast (500) if production creds / the return URL are missing, so we NEVER open an attempt
+  // (reserve/acquire) we can't sign — while a $0 (free) order already returned above and never reaches this.
+  // FAIL-CLOSED for la_musa if the return base is unconfigured (never fall back to the x_pizza origin).
+  let pp;
+  try {
+    pp = resolvePixelPayConfig();
+  } catch (e) {
+    console.error('chargeOnlineOrder: PixelPay config error', e.message);
+    return res.status(500).json({ error: 'Payment not configured', detail: e.message });
+  }
+  const returnBase = resolveReturnBase(restaurantId, process.env);
+  if (returnBase.error) {
+    console.error(`chargeOnlineOrder: ${returnBase.error} for ${orderId} (${restaurantId})`);
+    return res.status(500).json({ error: 'Payment not configured', detail: 'return URL not configured for restaurant' });
   }
 
   // ── Rewards Phase B1 (online): RESERVE the hold NOW — after ALL placeability (slot/closed/active/zone),
