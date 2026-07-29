@@ -1740,7 +1740,7 @@ function updateTotal(){
     if(cashExactMode) setCashTendered(calcTotal());   // they were on Pago exacto → box follows the new total
     else onCashTenderedInput();                       // custom amount → just re-validate + re-highlight vs new total
   } else if(selectedPayment==='online'){
-    const pa=document.getElementById('pixelpay-amount'); if(pa) pa.textContent='L '+calcTotal().toFixed(2);
+    const pa=document.getElementById('pixelpay-amount'); if(pa) pa.textContent='L '+redeemAdjustedTotal().toFixed(2);
   }
   renderRedeemUI();   // REWARDS (B2 Task 4): re-render the redeem affordance on any cart/pay change (a pending reward re-syncs the total via onQuoted)
 }
@@ -1762,6 +1762,10 @@ function renderRedeemUI(){
       onQuoted: applyRedeemQuoteToTotals,
     });
   }catch(_){}
+}
+// REWARDS (B2 Task 4): the pay-step total honors the SERVER quote while a reward is pending (never full price).
+function redeemAdjustedTotal(){
+  try{ const rc=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuoteTotalCents)?window.__ACCOUNT.getRedeemQuoteTotalCents():null; return rc!=null?(rc/100):calcTotal(); }catch(_){ return calcTotal(); }
 }
 
 function calcTotal(){
@@ -2218,7 +2222,7 @@ function updateLocInfo(la,ln,fallback){
 /* ── Stage 2 → 3 ── */
 function goToPayment(){
   showStage('s2',50);
-  document.getElementById('pixelpay-amount').textContent='L '+calcTotal().toFixed(2);
+  document.getElementById('pixelpay-amount').textContent='L '+redeemAdjustedTotal().toFixed(2);
 }
 
 // Clear the address-details inline error as soon as the customer starts
@@ -2235,7 +2239,7 @@ function selectPay(type){
   document.querySelectorAll('.pay-card').forEach(c=>c.classList.remove('selected'));
   document.getElementById('pay-'+type).classList.add('selected');
   document.getElementById('pixelpay-panel').style.display=(type==='online')?'block':'none';
-  if(type==='online'){ document.getElementById('pixelpay-amount').textContent='L '+calcTotal().toFixed(2); }
+  if(type==='online'){ document.getElementById('pixelpay-amount').textContent='L '+redeemAdjustedTotal().toFixed(2); }
   // Cash-change picker only for EFECTIVO.
   const cashPanel=document.getElementById('cash-change-panel');
   if(cashPanel){ cashPanel.style.display=(type==='cash')?'block':'none'; if(type==='cash') renderChangeChips(); }
@@ -2631,7 +2635,7 @@ function restoreOrderForm(){
       setTimeout(initMap, 100);
     }
     if(snap.payment) selectPay(snap.payment);
-    const amt=document.getElementById('pixelpay-amount'); if(amt) amt.textContent='L '+calcTotal().toFixed(2);
+    const amt=document.getElementById('pixelpay-amount'); if(amt) amt.textContent='L '+redeemAdjustedTotal().toFixed(2);
     setTimeout(()=>{ const p=document.querySelector('.pay-container'); if(p) p.scrollIntoView({behavior:'smooth',block:'start'}); }, 350);
   } catch(e){ location.href='/'; }
   finally { try { if (window.__ACCOUNT && typeof window.__ACCOUNT.setRestoring === 'function') window.__ACCOUNT.setRestoring(false); } catch(_){} }

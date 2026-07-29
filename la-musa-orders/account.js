@@ -244,6 +244,9 @@
   const redeemAvailable = () => Math.max(0, (Number(_rwState && _rwState.balance) || 0) - (Number(_rwState && _rwState.reserved) || 0));
 
   function getRedeemPayload() { return _redeemPending; }   // index.html sets currentOrder.redeem = this when non-null
+  // The SERVER-quoted discounted total (cents) while a reward is pending — the pay-step display MUST use this,
+  // never client calcTotal(), so the customer never sees full price while a discount is applied. null = none.
+  function getRedeemQuoteTotalCents() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote.total_cents : null; }
   function clearRedeem() { _redeemPending = null; _redeemQuote = null; }
   // Two error classes for the submit handler (spec §5.2 / plan-gate #1):
   //   'redemption' → clear the redeem + FRESH-order_id full-price resubmit.
@@ -3455,6 +3458,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.renderCartEarn = renderCartEarn;   // B2 Task 3 — index.html updateCart() fills the cart earn line
   window.__ACCOUNT.renderRedeem = renderRedeem;       // B2 Task 4 — checkout redeem affordance + review (server-authoritative)
   window.__ACCOUNT.getRedeemPayload = getRedeemPayload;   //   → currentOrder.redeem on submit (null = none)
+  window.__ACCOUNT.getRedeemQuoteTotalCents = getRedeemQuoteTotalCents;   //   pay-step display uses the SERVER quote total while a reward is pending
   window.__ACCOUNT.clearRedeem = clearRedeem;             //   fresh-resubmit fallback clears the pending reward
   window.__ACCOUNT.classifyRedeemError = classifyRedeemError;   //   'redemption' | 'other' → two-error-class submit handling
   window.__ACCOUNT.deliverySubmitBlocked = deliverySubmitBlocked;
