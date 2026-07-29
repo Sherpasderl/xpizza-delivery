@@ -1,8 +1,8 @@
-# Rewards Batch A — Redemption Correctness + Payment-Page Order Summary (build plan · R4)
+# Rewards Batch A — Redemption Correctness + Payment-Page Order Summary (build plan · R5)
 
-_Executor build plan for advisor **re-gate**. R1→REVISE(8) → R2 resolved 6/8 → R3 = the A1 pivot ($0 via `createOrder`) + factura #4 specifics + #6 mandatory → **R3 re-gate: CORE DESIGN VALIDATED** (codex: "scheduled $0 via createOrder itself is sound — reserve before write, failed writes release, release only materializes, completion consumes, cancel reverses"). **R4 = 5 implementation-completeness fixes** (which files to touch + one defensive server guard), not design changes. Off `main` (`f6cfee0`). A1 + Factura money-gated. **No code until this clears.**_
+_Executor build plan for advisor **re-gate**. Convergence: R1→REVISE(8) → R2 6/8 → R3 core design VALIDATED → R4 = 5 completeness fixes → **R4 re-gate: down to 2** (A-F factura, #5 paymentStatus, scheduled-$0 lifecycle, #7/#8 all confirmed clean). **R5 = the last two seams** (both real, both contained): the driver-side `free_order` honoring (#1) and the PixelPay config-read ordering (#2). Off `main` (`f6cfee0`). A1 + Factura money-gated. **No code until this clears.**_
 
-**Confirmed clean / validated — DO NOT re-touch:** #7 (cash change + guard, `index.html:2412–2456`), #8 (Stage-2 renderer, cart pillbox untouched), the **scheduled-$0 `createOrder` lifecycle** (reserve→held→consume, cancel→reverse). Earlier R2 items #2/#5 remain resolved.
+**Confirmed clean / validated — DO NOT re-touch:** A-F factura (#3/#4), #5 (`paymentStatus` poll-token-gated summary), the scheduled-$0 `createOrder` lifecycle, #7 (cash change + guard), #8 (Stage-2 renderer). Earlier #2/#5 remain resolved.
 
 ## Why this batch exists
 Redemption (B1 + B2) is live-inert on main, mid-**canary**; money spine proven intact via RTDB inspection. The **atomic go-live flip is HELD** until Batch A lands. Batch A = the free-$0-checkout money-path state (A1), the factura comp representation (A-F), and the display/edge fixes (A2–A6). After gated + re-merged → **re-canary** → **then flip**.
@@ -32,17 +32,23 @@ Redemption (B1 + B2) is live-inert on main, mid-**canary**; money spine proven i
 - **`0 < total < PIXELPAY_MIN`** (rare / likely unreachable) → grey out **online**, cash only.
 - **total `>= PIXELPAY_MIN`** → both methods, unchanged.
 
-**The `free_order` flag — name ALL consumers (#1):** (a) forms submit routing → cash + `free_order:true` when the quote total is 0; (b) driver app → "nothing to collect" keyed on `free_order` (not a `free` method); (c) factura comp path (A-F) keyed on `free_order`/redemption, not the method; (d) accounting/reconcile reads the flag. Cash's own `cash_tendered`/vuelto path is a no-op at total 0.
+**The `free_order` flag — persist + honor on EVERY cash consumer (R5 · #1 · the driver seam).** A `$0` order marked `cash` avoids cash-owed (total 0) but, because the driver's cash surfaces key ONLY on `payment_method==='cash'`, it renders as a **phantom cash order** — an "A COBRAR L0" card, a vuelto widget, and a +1 in the cuadre count. So the flag must be persisted AND honored:
+- **Persist `free_order:true` on the ORDER and the driver TASKS** (`createOrder` writes both — the driver reads tasks).
+- **Driver app** (`xpizza-driver`, separate Capacitor app / own release): at every cash surface that keys on `payment_method==='cash'` — active-card "A COBRAR" + vuelto (`index.html:2282`), queue-card cash render (`index.html:2518`), and `computeShiftCash`'s order filter (`cash-helpers.js:52`) — add a **`&& !order.free_order`** exclusion so `free_order:true` is NOT cash-collection: **suppress the vuelto**, label **"Nada que cobrar,"** and **exclude it from the cash counts / cuadre**. **Keep `isCashPayment(pm)` (`cash-helpers.js:41`) BYTE-IDENTICAL** (it's the standing cross-repo invariant with POS/dispatch — [[pos-premium-cierre]]); the `free_order` exclusion lives at the call sites + `computeShiftCash`'s filter, NOT inside `isCashPayment`. Update `cash-helpers.test.js`. _(This is why the marker is `cash + free_order`, not a `free` enum: the driver surfaces must honor the flag — a bare `free` method would just blank/mislabel.)_
+- **Factura** comp path (A-F) keys on redemption/`free_order`; **accounting/reconcile** reads the flag. Cash's `cash_tendered`/vuelto is a no-op at total 0.
 
-**#2 — defensive `chargeOnlineOrder` server guard (real money-safety, R4).** The client reroute to `createOrder` is NOT a server invariant — `chargeOnlineOrder` still reprices to 0, reserves, and sends 0 to PixelPay (`index.js:843/1060/1138/1170`); a stale or direct client hitting it with a $0 order would still fail. ADD a server guard: **post-reprice, `total_cents === 0` → return a typed non-payable / free-path response BEFORE reserve/acquire/PixelPay** (sub-min → the same, before PixelPay). Belt to the client's suspenders.
+**#2 — `chargeOnlineOrder`: move PixelPay reads below the guard (R5 · real money-safety).** A defensive post-reprice `$0` guard alone **fires too late**: PixelPay config + return-base are read BEFORE repricing (`index.js:~799` `resolvePixelPayConfig` / `~812` `resolveReturnBase`; reprice at `:843`), so a stale/direct `$0` request 500s on the config read before reaching the free-path response. FIX: **move the PixelPay config + return-base reads BELOW the redemption reprice (`:843`) AND below the `$0`/sub-min typed guard**, so: identity/availability/schedule/zone/rate-limit gates (NOT PixelPay deps) run first → reprice → `total_cents===0` (or sub-min) → **typed non-payable / free-path BEFORE any PixelPay config read, reserve, or acquire** → else resolve PixelPay config and charge. (`index.js:1060/1138/1170` reserve/acquire/PixelPay stay after the guard.)
 
 **Money-safety (preserve all-or-nothing / #5 — recovery-visible):** the grey-out is **optimistic** (client reads the quote). **`createOrder` re-prices server-side** and, if the total isn't actually 0 (stale quote / reward invalidated), **rejects and the forms re-enable payment** — never silently places a `> 0` order without payment.
 
 **Lifecycle (reuse the proven cash path — codex-VALIDATED):** reserve at `createOrder` → (scheduled → **held**; release only materializes, no consume) → **consume at completion**; cancel-before-release **reverses via `reverseRedemptionForOrder`** (`cancel-order-core.js:181`, disposition `refund`, idempotent by `reverse_${orderId}`). **No new free_checkout online state, no reconciler extension, no new recovery predicate.**
 
-**Files:** forms (`xpizza-orders/index.html` + `la-musa-orders/index.html`: `selectPay`/`processPayment` availability + cash+`free_order:true` submit routing) + `xpizza-functions/index.js` (`createOrder` intake: accept `free_order:true` + $0 re-price guard; **AND the defensive `chargeOnlineOrder` $0/sub-min guard** per #2) + driver-app "nothing to collect" on `free_order`.
-**Verification (emulator + forms):** $0 quote → both greyed + "Confirmar pedido gratis" + `createOrder` places a cash+`free_order` reserved order (no PixelPay) → consume at completion; **stale quote** → `createOrder` rejects + forms re-enable; **direct/stale `chargeOnlineOrder` with $0** → typed non-payable BEFORE reserve/PixelPay (#2); scheduled-$0 → reserved→held→consume; cancel-$0 → `reverseRedemptionForOrder`; sub-min → online greyed (client) + `chargeOnlineOrder` guard (server). Normal-discount unchanged.
-**Gate:** money-gate.
+**Files:**
+- **Forms** (`xpizza-orders/index.html` + `la-musa-orders/index.html`): `selectPay`/`processPayment` availability + cash+`free_order:true` submit routing.
+- **`xpizza-functions/index.js`**: `createOrder` intake (accept `free_order:true`, persist on the order AND tasks, $0 re-price guard); `chargeOnlineOrder` — **move the PixelPay config/return-base reads below the reprice** + add the `$0`/sub-min typed guard before them (#2).
+- **`xpizza-driver`** (separate app / own release): `index.html` (active `:2282` + queue `:2518` — `&& !order.free_order` → suppress vuelto, "Nada que cobrar", no cash amount) + `cash-helpers.js` (`computeShiftCash` filter `:52` excludes `free_order`; **`isCashPayment` `:41` UNCHANGED / byte-identical**) + `cash-helpers.test.js`.
+**Verification:** $0 quote → both greyed + "Confirmar pedido gratis" + `createOrder` places a cash+`free_order` reserved order (persisted on order+tasks, no PixelPay) → consume at completion; **stale quote** → `createOrder` rejects + forms re-enable; **direct/stale `chargeOnlineOrder` $0** → typed non-payable BEFORE the PixelPay config read/reserve/acquire (#2); **driver** → free_order shows "Nada que cobrar", no vuelto, excluded from cuadre (tests); scheduled-$0 → reserved→held→consume; cancel-$0 → `reverseRedemptionForOrder`. Normal cash/online unchanged.
+**Gate:** money-gate (+ driver `isCashPayment` invariant — keep byte-identical to POS/dispatch, see [[pos-premium-cierre]]).
 
 ## A-F — Factura: comp representation (full-value items + explicit rebaja)  [MONEY-GATE]  · addresses #4
 
@@ -112,14 +118,13 @@ Redemption (B1 + B2) is live-inert on main, mid-**canary**; money spine proven i
 
 ---
 
-## R4 implementation-completeness refinements (core design validated; these are file-scope + one guard)
-| R4 | Fix | Where |
+## R5 — the last two seams (3 R4 items now confirmed clean)
+| R5 | Fix | Where |
 |---|---|---|
-| #1 | free marker = **`payment_method:'cash' + free_order:true`** (not a `free` enum; `ALLOWED_PAYMENT_METHODS` @`index.js:231/309`); flag drives every consumer (forms submit, driver "nothing to collect", factura comp path) | A1 |
-| #2 | **defensive `chargeOnlineOrder` guard**: post-reprice `total_cents===0` → typed non-payable/free-path BEFORE reserve/acquire/PixelPay (`index.js:843/1060/1138/1170`); sub-min → before PixelPay | A1 |
-| #3 | **`rewards-redeem-pricing.js`** must emit gross display cents + discount cents on the redeemed line (today `line_gross_cents:0` @`:47`), net identity preserved | A-F |
-| #4 | update the **duplicate `xpizza-factura/src/build-record.js`** (also net base/`desc_rebaja:0`) — or mark non-runtime + fix goldens | A-F |
-| #5 | **`paymentStatus` server change**: return a poll-token-gated summary (`total_cents`, `redemption`, scheduled) — today coarse state only (`index.js:1476/1485`) | #6 |
+| #1 | **driver seam**: persist `free_order:true` on order + tasks; add `&& !order.free_order` at the driver cash surfaces (`index.html:2282/2518`) + `computeShiftCash` filter (`cash-helpers.js:52`) → suppress vuelto / "Nada que cobrar" / exclude from cuadre; **`isCashPayment` unchanged (byte-identical invariant)** + tests | A1 / driver |
+| #2 | **config ordering**: move the PixelPay config/return-base reads (`index.js:~799/812`) BELOW the reprice (`:843`) and BELOW the `$0`/sub-min guard (a post-reprice guard alone fires too late — config read 500s first). Keep identity/availability/schedule/zone/rate-limit gates before | A1 |
+| ~~#3/#4~~ | A-F factura chain (pricing + both build-records + renderer + goldens) | ✅ confirmed clean |
+| ~~#5~~ | `paymentStatus` poll-token-gated summary | ✅ confirmed clean |
 
 ## Findings → resolution map (original 8, for the re-gate)
 | # | Finding (cited) | R3 status |
@@ -138,5 +143,8 @@ Redemption (B1 + B2) is live-inert on main, mid-**canary**; money spine proven i
 ## Deploy & go-live
 Functions (A1, A-F, A4) + forms (A2/A3/A5/A6) → **inert** → **re-canary** (owner uid): $0-online, sub-min→cash, scheduled-$0, factura comp line, items_text, all display surfaces → verified vs prod → **atomic flip** `{config/redemption_enabled:true, config/rewards_public/redemption_live:true}`.
 
+## Deploy note (R5)
+The `free_order` driver-honoring (#1) lands in **`xpizza-driver`** — a separate Capacitor app with its own release (AAB → Play Store, [[sherpa-driver-playstore]]). The driver update should ship **before/with** the flip so a free order never renders "A COBRAR L0" on a live driver. Functions + forms (git-CD) + driver release → inert → re-canary → atomic flip.
+
 ## Handoff
-Advisor re-gates THIS plan. On approval → executor builds task-by-task on `feat/rewards-batch-a` off `main`, functions-first (A1+A-F money-gated, A4), then forms, parity-green, byte-identical past CONFIG. Related: [[rewards-loyalty-program]], [[items-text-pricing-decoupling]], [[factura-integration]].
+Advisor re-gates THIS plan. On approval → executor builds task-by-task on `feat/rewards-batch-a` off `main`, functions-first (A1+A-F money-gated, A4), then forms, then the `xpizza-driver` free_order honoring, parity-green, byte-identical past CONFIG (+ driver `isCashPayment` byte-identical invariant). Related: [[rewards-loyalty-program]], [[items-text-pricing-decoupling]], [[factura-integration]], [[pos-premium-cierre]], [[sherpa-driver-cash-feature]].

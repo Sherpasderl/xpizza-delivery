@@ -1,26 +1,26 @@
-# Handoff to Advisor — Rewards Batch A **PLAN RE-GATE** (R4)
+# Handoff to Advisor — Rewards Batch A **PLAN RE-GATE** (R5)
 
 **Branch:** `docs/rewards-batch-a-plan` · **base:** `main` (`f6cfee0`).
-**Plan:** `docs/superpowers/plans/2026-07-29-rewards-batch-a.md` (R4).
+**Plan:** `docs/superpowers/plans/2026-07-29-rewards-batch-a.md` (R5).
 
-R3 re-gate = **REVISE, core design VALIDATED** (codex: the scheduled-$0 `createOrder` lifecycle is sound; #7/#8 not regressed). **R4 = the 5 implementation-completeness fixes** — file scope + one defensive server guard, no design change. No code until this clears.
+Convergence: R1→REVISE(8) → R2 6/8 → R3 core design VALIDATED → R4 = 5 completeness fixes → **R4 re-gate: down to 2** (A-F factura, #5 paymentStatus, scheduled-$0 lifecycle, #7/#8 all confirmed clean). **R5 = the last two seams.** No code until this clears.
 
-## The 5 (grounded to verified file:line)
-1. **#1 — free marker.** `free` isn't a valid method (`ALLOWED_PAYMENT_METHODS=['cash','card_delivery','online']`, blanked at `index.js:231/309`). Use **`payment_method:'cash' + free_order:true`**; the flag drives every consumer — forms submit routing, driver "nothing to collect", the factura comp path. (A1)
-2. **#2 — defensive `chargeOnlineOrder` server guard.** The client reroute isn't a server invariant — `chargeOnlineOrder` still reprices to 0/reserves/sends 0 to PixelPay (`index.js:843/1060/1138/1170`). Add: post-reprice `total_cents===0` → typed non-payable/free-path **before reserve/acquire/PixelPay**; sub-min → before PixelPay. (A1)
-3. **#3 — A-F must include `rewards-redeem-pricing.js`.** The redeemed line is emitted at `line_gross_cents:0` (`:47`), so build-record can't print gross L299. It must emit **gross display cents + discount cents** while keeping the net identity (`subtotal+tax===total`). (A-F)
-4. **#4 — the duplicate factura producer.** `xpizza-factura/src/build-record.js` also emits net base / `desc_rebaja:0` → **update it too**, or mark non-runtime + fix goldens. (A-F)
-5. **#5 — #6 needs a server change.** `paymentStatus` returns only coarse state (`index.js:1476/1485`); "server-confirmed wins on return" requires it to return a **poll-token-gated summary** (`total_cents`, `redemption`, scheduled fields). Added `index.js` to #6's files. (#6)
+## The 2 (grounded)
+**#1 — driver seam (the phantom cash order).** A `$0` order marked `cash` avoids cash-owed (total 0) but the driver's cash surfaces key only on `payment_method==='cash'`, so it renders "A COBRAR L0" + a vuelto widget + a +1 in the cuadre. Fix:
+- Persist **`free_order:true` on the order AND the driver tasks** (`createOrder` writes both).
+- In `xpizza-driver`: add `&& !order.free_order` at the active-card "A COBRAR"/vuelto (`index.html:2282`), queue-card cash render (`index.html:2518`), and `computeShiftCash`'s filter (`cash-helpers.js:52`) → suppress vuelto, "Nada que cobrar," exclude from cuadre. **`isCashPayment(pm)` (`:41`) stays byte-identical** (standing cross-repo invariant with POS/dispatch); the exclusion is at the call sites, not inside it. Update `cash-helpers.test.js`.
+- (This is exactly why the marker is `cash + free_order`, not a `free` enum — the surfaces must honor the flag.)
 
-## Untouched (validated / resolved)
-#7 (cash change + `cash_tendered` guard), #8 (Stage-2 renderer, cart pillbox untouched), the scheduled-$0 `createOrder` lifecycle, and earlier #2/#5.
+**#2 — config-read ordering (guard fires too late).** The defensive post-reprice `$0` guard alone doesn't help because PixelPay config + return-base are read **before** repricing (`index.js:~799` `resolvePixelPayConfig` / `~812` `resolveReturnBase`; reprice `:843`) → a stale/direct `$0` request 500s on the config read first. Fix: **move those two reads BELOW the reprice and BELOW the `$0`/sub-min typed guard** (identity/availability/schedule/zone/rate-limit gates stay before). So: gates → reprice → `$0`/sub-min → typed non-payable/free-path **before any PixelPay config read/reserve/acquire** → else resolve config + charge.
 
-## Sequencing (unchanged shape)
-Money-gated core (**A-F** factura chain incl. pricing + both build-records + renderer + goldens; **A1** createOrder $0 + cash/free_order marker + defensive `chargeOnlineOrder` guard) → **A4** (items_text) → **#6** (`paymentStatus` summary + forms) → **A2/A5** → **A3** → **A6**. Ships **inert** → re-canary → atomic flip.
+## Confirmed clean — untouched
+A-F factura chain (#3/#4: `rewards-redeem-pricing.js` gross+discount → both build-records → renderer → goldens), #5 (`paymentStatus` poll-token-gated summary), the scheduled-$0 `createOrder` lifecycle, #7 (cash change+guard), #8 (Stage-2 renderer).
+
+## Scope note (new in R5)
+The driver-side #1 lands in **`xpizza-driver`** — a separate Capacitor app with its own release (AAB → Play Store). The plan says ship the driver update **before/with** the flip so a free order never renders "A COBRAR L0" on a live driver.
 
 ## For the re-gate
-- Confirm `cash + free_order:true` (not a new enum) is the intended marker + all consumers named.
-- Confirm the A-F producer chain (`rewards-redeem-pricing.js` gross+discount → both build-records → renderer → goldens) is complete.
-- Confirm `paymentStatus` returning a poll-token-gated summary is acceptable (vs. another return channel).
+- Confirm the driver-side exclusion at the call sites + `computeShiftCash` filter (keeping `isCashPayment` byte-identical) is the intended shape.
+- Confirm the config-read move (below reprice + guard, non-payment gates preserved).
 
-Plan committed on `docs/rewards-batch-a-plan`. Executor revises again on REVISE, else builds task-by-task (functions-first) on approval.
+Plan committed on `docs/rewards-batch-a-plan`. Executor revises again on REVISE, else builds on approval (functions-first → forms → driver).
