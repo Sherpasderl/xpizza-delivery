@@ -1203,7 +1203,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 .sold-out .qty-overlay .qty-controls button:last-child,.sold-out .bev-row-actions .qty-controls button:last-child{pointer-events:none;opacity:.4}
 </style>
 </head>
-<body>
+<body class="s1-active">
 <div class="preview-mode-pill" id="preview-pill">🔧 Preview mode</div>
 
 <!-- ── Closed overlay ── -->
@@ -2463,6 +2463,7 @@ function updateCartReviewBody(){
 function showStage(id,pct){
   document.querySelectorAll('.stage').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  document.body.classList.toggle('s1-active', id==='s1');   // pin the account chip only on paso 1
   document.getElementById('progress').style.width=pct+'%';
   window.scrollTo(0,0);
   // Show the cart pill on step 1 AND the Entrega & Pago step (s2) so customers can review/edit

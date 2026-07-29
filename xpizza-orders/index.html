@@ -83,7 +83,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 }
 
 .header{position:relative;background:var(--cream);padding:0;text-align:center;border-bottom:1px solid var(--border);overflow:hidden;min-height:210px;display:flex;flex-direction:column;justify-content:flex-end}
-.brand-lockup{position:relative;z-index:1;display:flex;align-items:flex-end;justify-content:center;gap:2px;margin:0 0 18px;opacity:.88;filter:drop-shadow(0 1px 5px rgba(0,0,0,.18))}
+.brand-lockup{position:relative;z-index:1;display:flex;align-items:flex-end;justify-content:center;gap:2px;margin:0 0 18px;opacity:.8;filter:drop-shadow(0 1px 5px rgba(0,0,0,.18))}
 /* round 5: faded hero photo behind the header — the food shot fades into the cream page; a glass
    account chip is anchored top-right (account.js) and the logo sits centered over the fade. */
 .hero-bg{position:absolute;inset:0;z-index:0;background:url('hero.jpg') center 40%/cover no-repeat}
@@ -91,7 +91,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 /* Item 1 (round 3): centered stack — logo, then the account chip pill centered under it (account.js
    centers .acct-chip-mount), then the sub-line. Header text-align:center handles the rest. */
 .brand-pizza-only{font-family:'Special Elite','Courier New',monospace;font-size:22px;letter-spacing:3px;text-transform:uppercase;color:var(--charcoal);line-height:1}
-.logo-img{width:83px;height:auto;display:block}
+.logo-img{width:104px;height:auto;display:block}
 
 .brand-sub{font-size:13px;color:var(--muted);letter-spacing:0;margin-top:12px;font-weight:400}
 .progress-bar{display:flex;background:var(--border2);height:2px}
@@ -1014,7 +1014,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 .sold-out .qty-overlay .qty-controls button:last-child,.sold-out .bev-row-actions .qty-controls button:last-child{pointer-events:none;opacity:.4}
 </style>
 </head>
-<body>
+<body class="s1-active">
 
 <!-- ── Closed overlay ── -->
 <div class="closed-overlay" id="closed-overlay" style="display:none">
@@ -1990,6 +1990,7 @@ function updateCartReviewBody(){
 function showStage(id,pct){
   document.querySelectorAll('.stage').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  document.body.classList.toggle('s1-active', id==='s1');   // pin the account chip only on paso 1
   document.getElementById('progress').style.width=pct+'%';
   window.scrollTo(0,0);
   // Show the cart pill on step 1 AND the Entrega & Pago step (s2) so customers can review/edit
