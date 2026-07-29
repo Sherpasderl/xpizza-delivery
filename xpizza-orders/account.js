@@ -52,10 +52,10 @@
     st.id = 'acct-chip-styles';
     st.textContent = `
 .header{position:relative}
-/* Item 1 (round 3): centered STACK — the chip pill sits centered directly UNDER the centered logo (index.html
-   stacks brand-lockup → acct-chip → brand-sub). Centering gives the name full room (ellipsis kept only as a
-   last-resort fallback). Light-fill pill (tinted bg + hairline border) + accent avatar disc anchor it on-brand. */
-.acct-chip-mount{display:flex;justify-content:center;min-width:0;margin-top:10px}
+/* Item 1 (round 4): centered logo with the chip pill in the row BELOW it, right-aligned (bottom-right).
+   index.html stacks brand-lockup → acct-chip (subtitle removed). Full-width row → the name never truncates
+   (ellipsis kept only as a last resort). Light-fill pill (tinted bg + hairline border) + accent avatar disc. */
+.acct-chip-mount{display:flex;justify-content:flex-end;min-width:0;margin-top:10px}
 .acct-chip{display:flex;align-items:center;gap:7px;max-width:100%;min-width:0;overflow:hidden;background:${CONFIG.palette.tint2};border:1px solid ${CONFIG.palette.line2};border-radius:999px;padding:4px 11px 4px 4px;cursor:pointer;font-family:inherit;line-height:1;transition:opacity .15s,background .15s}
 .acct-chip:hover{opacity:.82}
 .acct-chip .acct-av{width:27px;height:27px;border-radius:50%;background:${CONFIG.accent};color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
