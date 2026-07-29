@@ -518,6 +518,22 @@ export function subscribeToDriverCash(callback) {
   return onValue(cashRef, (snap) => callback(snap.val() || {}));
 }
 
+// Read-only: HELD scheduled/releasing orders — these are excluded from the live feed by
+// filterLiveOrders (NON_LIVE_ORDER_STATUSES), so they never reach allOrders. For the Programados
+// tab only. Never written.
+export function subscribeToScheduledOrders(callback) {
+  const ordersRef = ref(db, 'orders');
+  return onValue(ordersRef, (snap) => {
+    const all = snap.val() || {};
+    const out = {};
+    for (const id of Object.keys(all)) {
+      const o = all[id];
+      if (o && (o.status === 'scheduled' || o.status === 'releasing')) out[id] = o;
+    }
+    callback(out);
+  });
+}
+
 export function subscribeToOrders(callback) {
   const ordersRef = ref(db, 'orders');
   // Filter out non-live (e.g. unpaid pending_payment) orders centrally so no
