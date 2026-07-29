@@ -52,13 +52,16 @@
     st.id = 'acct-chip-styles';
     st.textContent = `
 .header{position:relative}
-.acct-chip-mount{position:absolute;top:14px;right:14px;z-index:2;display:flex}
-.acct-chip{display:flex;align-items:center;gap:9px;background:transparent;border:none;border-radius:999px;padding:5px 3px;cursor:pointer;font-family:inherit;line-height:1;transition:opacity .15s}
+/* Item 1: the chip is a reserved right-column FLEX item (index.html .brand-row balances it against an equal
+   left spacer so the logo stays truly centered and the populated chip can never overlap it). min-width:0 +
+   name ellipsis let the name truncate on narrow widths while the avatar + rewards segment stay whole. */
+.acct-chip-mount{display:flex;justify-content:flex-end;min-width:0}
+.acct-chip{display:flex;align-items:center;gap:9px;max-width:100%;min-width:0;overflow:hidden;background:transparent;border:none;border-radius:999px;padding:5px 3px;cursor:pointer;font-family:inherit;line-height:1;transition:opacity .15s}
 .acct-chip:hover{opacity:.66}
 .acct-chip .acct-av{width:28px;height:28px;border-radius:50%;background:${CONFIG.palette.chip};color:#2A231C;display:flex;align-items:center;justify-content:center;flex:none}
 .acct-chip--out .acct-av{background:${CONFIG.palette.chip};color:#2A231C}
-.acct-chip .acct-nm{font-size:13.5px;font-weight:650;letter-spacing:-.01em;color:#17130F}
-.acct-chip .acct-cv{color:#B3A594;font-size:10px;margin-left:-1px}
+.acct-chip .acct-nm{font-size:13.5px;font-weight:650;letter-spacing:-.01em;color:#17130F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acct-chip .acct-cv{color:#B3A594;font-size:10px;margin-left:-1px;flex:none}
 /* Logged-in-only size bump (codex F3): scoped with :not(.acct-chip--out) so the guest "Entrar"
    chip (.acct-chip--out) stays byte-identical at 13.5px name / 28px avatar. Higher specificity
    (3 classes) than the base .acct-chip .acct-nm (2 classes), so it wins for the logged-in chip only. */
@@ -91,6 +94,13 @@
   // escapeHtml / textContent. Brand differences (punch vs points/tiers) come ONLY from CONFIG.rewards.
   const RW = CONFIG.rewards;
   const GIFT_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>';
+  // Item 2: monochrome pizza-slice line icon for the punch-card slots (X. Pizza) — NOT the 🍕 emoji. Sized via
+  // CSS (.acct-rw-slot svg); currentColor = the slot's color (muted when empty, white on the accent-filled --on).
+  const PIZZA_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21 5.7 6.4a9 9 0 0 1 12.6 0z"/><path d="M6.6 8.4a9 9 0 0 1 10.8 0"/><circle cx="10" cy="11.2" r="1"/><circle cx="13.4" cy="14" r="1"/></svg>';
+  // Item 3: a back arrow for the Mis premios / Mis pedidos sub-panes → returns to the account-sheet root
+  // (reuses the sheet's pane-nav; showPane('account') drops the sub-pane's acct-on and re-shows the root).
+  const PICKER_BACK = '<button class="acct-iconbtn acct-picker-back" type="button" aria-label="Volver a Mi cuenta">‹</button>';
+  function wirePickerBack(pane) { const b = pane && pane.querySelector('.acct-picker-back'); if (b) b.onclick = () => showPane('account'); }
   let _rwState = null;    // { balance, reserved, lifetime } | null   (null = guest / not yet loaded / no node)
   let _rwSubbed = false;  // one live subscription per session
   let _rwUnsub = null;    // the onValue unsubscribe handle → detached on logout (no cross-user leak)
@@ -149,11 +159,11 @@
     if (RW.kind === 'punch') {
       const p = rwPunch();
       let slots = '';
-      for (let i = 0; i < p.size; i++) slots += `<span class="acct-rw-slot${i < p.onCard ? ' acct-rw-slot--on' : ''}"></span>`;
+      for (let i = 0; i < p.size; i++) slots += `<span class="acct-rw-slot${i < p.onCard ? ' acct-rw-slot--on' : ''}">${PIZZA_SVG}</span>`;
       const sub = p.redeemable ? '¡Tenés una pizza gratis para canjear!' : `${p.size - p.onCard} ${p.size - p.onCard === 1 ? 'sello' : 'sellos'} para tu próxima pizza gratis`;
       hero = `<div class="acct-rw-card"><div class="acct-rw-slots">${slots}</div><p class="acct-rw-sub"></p></div>`;
       // sub set via textContent below (never innerHTML for the dynamic sentence)
-      pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis premios</span></div>${hero}`;
+      pane.innerHTML = `<div class="acct-picker-top">${PICKER_BACK}<span class="acct-picker-title">Mis premios</span></div>${hero}`;
       pane.querySelector('.acct-rw-sub').textContent = sub;
     } else {
       const tiers = RW.tiers, maxT = tiers[tiers.length - 1].cost;
@@ -163,10 +173,11 @@
       const next = tiers.find((t) => t.cost > av);
       const sub = next ? `${next.cost - av} ${RW.unit} para tu próximo premio` : '¡Podés canjear el premio más alto!';
       hero = `<div class="acct-rw-bar-wrap"><div class="acct-rw-bar"><div class="acct-rw-bar-fill" style="width:${pct}%"></div>${marks}</div></div><p class="acct-rw-sub"></p>`;
-      pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis premios</span></div><div class="acct-rw-pts"></div>${hero}`;
+      pane.innerHTML = `<div class="acct-picker-top">${PICKER_BACK}<span class="acct-picker-title">Mis premios</span></div><div class="acct-rw-pts"></div>${hero}`;
       pane.querySelector('.acct-rw-pts').textContent = `${av} ${RW.unit}`;
       pane.querySelector('.acct-rw-sub').textContent = sub;
     }
+    wirePickerBack(pane);
   }
 
   // Cart earn line (screen 3): "ganás 1 sello" / "ganás X pts" (logged-in, DISPLAY estimate) or the guest nudge.
@@ -190,12 +201,13 @@
     if ($('acct-rw-styles')) return;
     const st = document.createElement('style'); st.id = 'acct-rw-styles';
     st.textContent = `
-.acct-chip .acct-rw{display:inline-flex;align-items:center;gap:4px;color:${CONFIG.accent};font-size:12.5px;font-weight:650;margin-left:1px}
+.acct-chip .acct-rw{display:inline-flex;align-items:center;gap:4px;color:${CONFIG.accent};font-size:12.5px;font-weight:650;margin-left:1px;flex:none;white-space:nowrap}
 .acct-chip .acct-rw-g{display:inline-flex;color:${CONFIG.accent};opacity:.9}
 .acct-rw-card{padding:6px 4px 2px}
 .acct-rw-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin:2px 0 14px}
-.acct-rw-slot{aspect-ratio:1;border-radius:50%;border:1.5px solid ${CONFIG.palette.line3};background:${CONFIG.palette.tint}}
-.acct-rw-slot--on{background:${CONFIG.accent};border-color:${CONFIG.accent}}
+.acct-rw-slot{aspect-ratio:1;border-radius:50%;border:1.5px solid ${CONFIG.palette.line3};background:${CONFIG.palette.tint};display:flex;align-items:center;justify-content:center;color:#B3A594}
+.acct-rw-slot svg{width:58%;height:58%}
+.acct-rw-slot--on{background:${CONFIG.accent};border-color:${CONFIG.accent};color:#fff}
 .acct-rw-sub{margin:0;font-size:13px;color:#6B6255;text-align:center;line-height:1.4}
 .acct-rw-pts{font-size:26px;font-weight:750;letter-spacing:-.02em;color:#17130F;text-align:center;margin:2px 0 16px}
 .acct-rw-bar-wrap{padding:26px 6px 30px}
@@ -205,7 +217,7 @@
 .acct-rw-tier i{width:11px;height:11px;border-radius:50%;background:#fff;border:2px solid ${CONFIG.palette.line3}}
 .acct-rw-tier--on i{background:${CONFIG.accent};border-color:${CONFIG.accent}}
 .acct-rw-tier b{position:absolute;top:15px;font-size:10px;font-weight:600;color:#9A8F7E}
-.acct-cart-earn{display:flex;align-items:center;justify-content:center;gap:6px;font-size:12.5px;font-weight:600;color:${CONFIG.accent};padding:7px 0 2px}
+.acct-cart-earn{display:flex;align-items:center;justify-content:center;gap:6px;font-size:14px;font-weight:600;color:${CONFIG.accent};padding:7px 0 2px}
 .acct-cart-earn-g{display:inline-flex}
 .acct-cart-earn--guest{color:#6B6255;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 `;
@@ -988,7 +1000,8 @@
   // + total + status pill + Reordenar (only when a normalized recipe exists). NEVER renders raw items[].
   async function renderOrdersPane() {
     const pane = $('acct-pane-orders'); if (!pane) return;
-    pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis pedidos</span></div><p class="acct-fine" style="text-align:left;min-height:120px">Cargando…</p>`;
+    pane.innerHTML = `<div class="acct-picker-top">${PICKER_BACK}<span class="acct-picker-title">Mis pedidos</span></div><p class="acct-fine" style="text-align:left;min-height:120px">Cargando…</p>`;
+    wirePickerBack(pane);
     showPane('orders');
     let entries = [];
     try {
@@ -1013,8 +1026,9 @@
 
     if (!entries.length) {
       animateSheetHeight(() => {
-        pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis pedidos</span></div>
+        pane.innerHTML = `<div class="acct-picker-top">${PICKER_BACK}<span class="acct-picker-title">Mis pedidos</span></div>
 <p class="acct-fine" style="text-align:left">Todavía no tenés pedidos.</p>`;
+        wirePickerBack(pane);
       });
       return;
     }
@@ -1033,7 +1047,8 @@
 </div>`;
     }).join('');
     animateSheetHeight(() => {
-      pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis pedidos</span></div>${rowsHtml}`;
+      pane.innerHTML = `<div class="acct-picker-top">${PICKER_BACK}<span class="acct-picker-title">Mis pedidos</span></div>${rowsHtml}`;
+      wirePickerBack(pane);
       pane.querySelectorAll('[data-ord]').forEach((btn) => {
         btn.onclick = () => reorderFromEntry(entries[Number(btn.getAttribute('data-ord'))]);   // Task 8
       });
@@ -1571,7 +1586,8 @@
 .acct-acard .acct-aname2{font-size:14.5px;font-weight:700;color:#17130F}
 .acct-acard .acct-aline2{font-size:12px;color:#8C7B6E;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Cambiar address-picker pane */
-.acct-picker-top{margin:2px 0 16px}
+.acct-picker-top{display:flex;align-items:center;gap:4px;margin:2px 0 16px}
+.acct-picker-back{margin-left:-8px;flex:none}
 .acct-picker-title{font-size:17px;font-weight:800;color:#17130F;letter-spacing:-.01em}
 .acct-acard--active{border-color:${CONFIG.accent};background:${CONFIG.palette.tint}}
 .acct-acard--tapped{border-color:${CONFIG.accent};background:${CONFIG.palette.tint2}}
