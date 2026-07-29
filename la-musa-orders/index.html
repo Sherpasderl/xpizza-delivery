@@ -94,7 +94,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
   text-decoration:none;
 }
 
-.header{position:relative;background:var(--cream);padding:0;text-align:center;border-bottom:1px solid var(--border);overflow:hidden;min-height:210px;display:flex;flex-direction:column;justify-content:flex-end}
+.header{position:relative;background:var(--cream);padding:0;text-align:center;overflow:hidden;min-height:210px;display:flex;flex-direction:column;justify-content:flex-end}
 .brand-lockup{position:relative;z-index:1;display:flex;align-items:flex-end;justify-content:center;gap:2px;margin:0 0 18px;opacity:.88;filter:drop-shadow(0 1px 5px rgba(0,0,0,.18))}
 /* round 5: faded hero photo behind the header — the food shot fades into the cream page; a glass
    account chip is anchored top-right (account.js) and the logo sits centered over the fade. */
@@ -106,7 +106,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .logo-img{width:150px;height:auto;display:block} /* LA_MUSA_LOGO_SIZE */
 
 .brand-sub{font-size:13px;color:var(--muted);letter-spacing:0;margin-top:12px;font-weight:400}
-.progress-bar{display:flex;background:var(--border2);height:2px}
+.progress-bar{display:none}
 .progress-fill{background:var(--gold);height:3px;transition:width .4s ease;border-radius:2px}
 
 /* ── Stages ── */
