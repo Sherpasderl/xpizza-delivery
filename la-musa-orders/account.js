@@ -364,6 +364,55 @@
   }
   // ══════════ REWARDS REDEEM (B2 Task 4) — END ══════════
 
+  // ══════════ REWARDS SUCCESS (B2 Task 5) — BEGIN ══════════ (post-order earn badge + guest profile-claim card)
+  // Post-order success screen (screens 6–7). Logged-in → the earn badge ("+1 sello" / "+X pts", a DISPLAY
+  // estimate; the server is authoritative at completion) + a confirming note when a reward was redeemed on this
+  // order. Guest → the profile-claim card leading with the reward ("Creá tu perfil · Guardá X de este pedido"),
+  // deep-linking the existing create flow (openLoginSheet). env: { subtotalCents, pizzaCount, redeemed }.
+  // Fail-safe: any throw leaves the success screen untouched (guests never send redeem → redeemed is always false).
+  function renderSuccessRewards(env) {
+    try {
+      const el = $('acct-success-rewards'); if (!el) return;
+      injectRewardsStyles(); injectSuccessStyles();
+      env = env || {};
+      const label = rwCartEarnLabel(env.subtotalCents, env.pizzaCount);
+      const m = marker();
+      if (m && m.name) {
+        const note = env.redeemed
+          ? `<div class="acct-sx-note"><span class="acct-sx-g">${GIFT_SVG}</span><span>Premio aplicado a este pedido</span></div>`
+          : '';
+        el.className = 'acct-sx';
+        el.innerHTML = `<div class="acct-sx-badge"><span class="acct-sx-g">${GIFT_SVG}</span><span class="acct-sx-earn">+${escapeHtml(label)}</span></div>${note}`;
+      } else {
+        el.className = 'acct-sx acct-sx--guest';
+        el.innerHTML = `<div class="acct-sx-claim"><span class="acct-sx-g">${GIFT_SVG}</span><div class="acct-sx-claim-tx"><b>Creá tu perfil</b><span>Guardá ${escapeHtml(label)} de este pedido</span></div></div><button class="acct-sx-btn" type="button">Crear perfil</button>`;
+        const btn = el.querySelector('.acct-sx-btn'); if (btn) btn.onclick = () => { try { openLoginSheet(); } catch (_) {} };
+      }
+    } catch (_) {}
+  }
+
+  function injectSuccessStyles() {
+    if ($('acct-sx-styles')) return;
+    const st = document.createElement('style'); st.id = 'acct-sx-styles';
+    st.textContent = `
+.acct-sx{margin:16px 0 4px;text-align:center}
+.acct-sx-badge{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:999px;background:${CONFIG.palette.tint};color:${CONFIG.accent};font-size:13.5px;font-weight:750}
+.acct-sx-g{display:inline-flex;color:${CONFIG.accent};flex:none}
+.acct-sx-earn{letter-spacing:.2px}
+.acct-sx-note{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;font-size:12px;color:#6B6255;font-weight:600}
+.acct-sx--guest{margin:18px 0 4px;text-align:left}
+.acct-sx-claim{display:flex;align-items:center;gap:11px;padding:14px;border:1px solid ${CONFIG.palette.line3};border-radius:14px;background:${CONFIG.palette.tint}}
+.acct-sx-claim .acct-sx-g{align-self:flex-start;margin-top:2px}
+.acct-sx-claim-tx{display:flex;flex-direction:column;gap:2px;line-height:1.35;min-width:0}
+.acct-sx-claim-tx b{font-size:14px;color:#17130F;font-weight:750}
+.acct-sx-claim-tx span{font-size:12.5px;color:#6B6255}
+.acct-sx-btn{margin-top:12px;width:100%;padding:12px;border:none;border-radius:12px;background:${CONFIG.accent};color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer}
+`;
+    document.head.appendChild(st);
+  }
+  // renderSuccessRewards is exposed on window.__ACCOUNT at the canonical export block near the end of the IIFE.
+  // ══════════ REWARDS SUCCESS (B2 Task 5) — END ══════════
+
   // ── Login / account overlay — built + inserted into <body> lazily, once, on first open.
   // Markup ported from the locked mockups (xpizza-login-mockup.html / xpizza-account-mockup.html),
   // classes prefixed `acct-` to avoid any collision with the host form's CSS. No SDK load here.
@@ -3461,6 +3510,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.getRedeemQuoteTotalCents = getRedeemQuoteTotalCents;   //   pay-step display uses the SERVER quote total while a reward is pending
   window.__ACCOUNT.clearRedeem = clearRedeem;             //   fresh-resubmit fallback clears the pending reward
   window.__ACCOUNT.classifyRedeemError = classifyRedeemError;   //   'redemption' | 'other' → two-error-class submit handling
+  window.__ACCOUNT.renderSuccessRewards = renderSuccessRewards;   // B2 Task 5 — post-order earn badge + guest profile-claim card
   window.__ACCOUNT.deliverySubmitBlocked = deliverySubmitBlocked;
   window.__ACCOUNT.captureDeliverySaveIntent = captureDeliverySaveIntent;
   window.__ACCOUNT.setRestoring = function (v) { try { _acctRestoring = !!v; if (v) _acctRestoreGen++; } catch (_) {} };   // index.html's restoreOrderForm() brackets its snapshot rebuild with this so the account refresh can't overwrite the retry's address with the default (FIX 7 / R4); bumping the gen on start lets an in-flight async init detect a restore that completed during its await (R5)

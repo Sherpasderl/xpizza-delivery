@@ -1275,6 +1275,7 @@ textarea{resize:none;height:80px;line-height:1.4}
     <div class="success-title">Pedido recibido</div>
     <p class="success-sub" id="success-sub">Llegamos en aproximadamente <strong style="color:var(--charcoal)">30 minutos</strong>.</p>
     <div class="order-id" id="order-id-display"></div>
+    <!-- REWARDS success (B2 Task 5) — filled by window.__ACCOUNT.renderSuccessRewards (logged-in earn badge / guest profile-claim card) --><div id="acct-success-rewards"></div>
     <div class="receipt">
       <div class="receipt-head">Resumen del pedido</div>
       <div id="receipt-items"></div>
@@ -2910,6 +2911,19 @@ function showSuccess(){
   try {
     if (window.__ACCOUNT && typeof window.__ACCOUNT.onOrderConfirmed === 'function') {
       window.__ACCOUNT.onOrderConfirmed(o);
+    }
+  } catch (_) {}
+
+  // REWARDS success (B2 Task 5) — earn badge (logged-in) / profile-claim card (guest). DISPLAY estimate from the
+  // ORDER object (survives the online payment-return reload where the live cart is gone); server is authoritative
+  // at completion. Fail-safe; guests hit the register-nudge branch (no read, no body.redeem — byte-identical money path).
+  try {
+    if (window.__ACCOUNT && typeof window.__ACCOUNT.renderSuccessRewards === 'function') {
+      window.__ACCOUNT.renderSuccessRewards({
+        subtotalCents: Math.round((Number(o.total) || 0) * 100),
+        pizzaCount: (o.items || []).reduce((s, i) => s + (Number(i.qty) || 0), 0),
+        redeemed: !!o.redeem,
+      });
     }
   } catch (_) {}
 }
