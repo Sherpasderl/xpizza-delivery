@@ -1,6 +1,6 @@
-# Rewards Batch A — Redemption Correctness + Payment-Page Order Summary (build plan · R6 · FINAL)
+# Rewards Batch A — Redemption Correctness + Payment-Page Order Summary (build plan · R7 · APPROVED — BUILD REFERENCE)
 
-_Executor build plan for advisor **final re-gate**. Convergence: R1→8 → R2 6/8 → R3 core VALIDATED → R4 5 fixes → R5 down to 2 → **R6 = two mechanical edits** (codex handed the exact edits): (a) `materialize.js` copies `free_order` onto released scheduled tasks + a scheduled-free test; (b) A1's gate-ordering corrected to the exact safe sequence. Everything else confirmed clean — untouched. Off `main` (`f6cfee0`). A1 + Factura money-gated. **No code until this clears.**_
+_**Plan-gate APPROVED** (R1→8 → R2 6/8 → R3 core VALIDATED → R4 5 → R5 2 → R6 mechanical → **R7 text-only fix, no re-gate**: A1 `chargeOnlineOrder` config reads go after the $0 guard but BEFORE any write, so a payable order proves PixelPay signable before opening a hosted attempt — R6 had config after reserve/acquire, corrected). Off `main` (`f6cfee0`). A1 + Factura money-gated. **Now building task-by-task on `feat/rewards-batch-a`; advisor code-gates each SHA; advisor verifies the real A1 ordering at the A1 code-gate.**_
 
 **Confirmed clean / validated — DO NOT re-touch:** A-F factura (#3/#4), #5 (`paymentStatus` poll-token-gated summary), the scheduled-$0 `createOrder` lifecycle, #7 (cash change + guard), #8 (Stage-2 renderer). Earlier #2/#5 remain resolved.
 
@@ -37,14 +37,16 @@ Redemption (B1 + B2) is live-inert on main, mid-**canary**; money spine proven i
 - **Driver app** (`xpizza-driver`, separate Capacitor app / own release): at every cash surface that keys on `payment_method==='cash'` — active-card "A COBRAR" + vuelto (`index.html:2282`), queue-card cash render (`index.html:2518`), and `computeShiftCash`'s order filter (`cash-helpers.js:52`) — add a **`&& !order.free_order`** exclusion so `free_order:true` is NOT cash-collection: **suppress the vuelto**, label **"Nada que cobrar,"** and **exclude it from the cash counts / cuadre**. **Keep `isCashPayment(pm)` (`cash-helpers.js:41`) BYTE-IDENTICAL** (it's the standing cross-repo invariant with POS/dispatch — [[pos-premium-cierre]]); the `free_order` exclusion lives at the call sites + `computeShiftCash`'s filter, NOT inside `isCashPayment`. Update `cash-helpers.test.js`. _(This is why the marker is `cash + free_order`, not a `free` enum: the driver surfaces must honor the flag — a bare `free` method would just blank/mislabel.)_
 - **Factura** comp path (A-F) keys on redemption/`free_order`; **accounting/reconcile** reads the flag. Cash's `cash_tendered`/vuelto is a no-op at total 0.
 
-**#2 — `chargeOnlineOrder` gate ordering (R6 — exact safe sequence).** A post-reprice `$0` guard alone **fires too late**: PixelPay config + return-base are read BEFORE repricing (`index.js:~799` `resolvePixelPayConfig` / `~812` `resolveReturnBase`; reprice `:843`), so a stale/direct `$0` request 500s on the config read first. FIX — reorder `chargeOnlineOrder` to exactly:
+**#2 — `chargeOnlineOrder` gate ordering (R7 — exact safe sequence).** A post-reprice `$0` guard alone fires too late: PixelPay config + return-base are read BEFORE repricing (`index.js:~799` `resolvePixelPayConfig` / `~812` `resolveReturnBase`; reprice `:843`), so a stale/direct `$0` request 500s on the config read first. FIX — reorder `chargeOnlineOrder` to exactly:
 1. **auth / validate / uid**
 2. **reprice** (redemption)
-3. **`$0` / sub-min → typed non-payable / free-path response** (return here)
-4. **[payable totals only] existing non-PixelPay gates → reserve → acquire** (`:1060/1138/1170`)
-5. **[payable totals only] PixelPay config / return-base reads → charge** (`resolvePixelPayConfig`/`resolveReturnBase` moved here, `~799/812`)
+3. **`$0` / sub-min → typed non-payable / free-path response** (return here — before any config read OR write)
+4. **non-PixelPay gates** (identity / availability / schedule / zone / rate-limit)
+5. **PixelPay config / return-base reads** (`resolvePixelPayConfig` / `resolveReturnBase`, moved from `~799/812`) — **fail-fast BEFORE any write** (preserves the "never open an attempt we can't sign" invariant)
+6. **reserve / acquire** (`:1060/1138/1170`)
+7. **charge**
 
-So the `$0`/sub-min response is reached BEFORE any PixelPay config read, reserve, or acquire; the PixelPay config/return-base reads move to the payable tail. Identity/availability/schedule/zone/rate-limit gates are the non-PixelPay gates in step 4 (they are NOT PixelPay deps).
+So the `$0`/sub-min response is reached before any config read/reserve/acquire (a free order never touches PixelPay config), AND on the payable path the config is proven signable BEFORE the reserve + hosted attempt (config after the $0 guard, but before any write). R6 had config after reserve/acquire — corrected in R7.
 
 **Money-safety (preserve all-or-nothing / #5 — recovery-visible):** the grey-out is **optimistic** (client reads the quote). **`createOrder` re-prices server-side** and, if the total isn't actually 0 (stale quote / reward invalidated), **rejects and the forms re-enable payment** — never silently places a `> 0` order without payment.
 
@@ -52,7 +54,7 @@ So the `$0`/sub-min response is reached BEFORE any PixelPay config read, reserve
 
 **Files:**
 - **Forms** (`xpizza-orders/index.html` + `la-musa-orders/index.html`): `selectPay`/`processPayment` availability + cash+`free_order:true` submit routing.
-- **`xpizza-functions/index.js`**: `createOrder` intake (accept `free_order:true`, persist on the order AND tasks, $0 re-price guard); `chargeOnlineOrder` — **reorder to the exact safe sequence** (#2: auth/validate/uid → reprice → $0/sub-min response → non-PixelPay gates/reserve/acquire → PixelPay config/return-base).
+- **`xpizza-functions/index.js`**: `createOrder` intake (accept `free_order:true`, persist on the order AND tasks, $0 re-price guard); `chargeOnlineOrder` — **reorder to the exact safe sequence** (#2/R7: auth/validate/uid → reprice → $0/sub-min return → non-PixelPay gates → PixelPay config/return-base → reserve/acquire → charge).
 - **`xpizza-functions/materialize.js`** (`:61+`): copy `order.free_order` onto the released scheduled delivery tasks + a scheduled-free test (the scheduled-free driver path).
 - **`xpizza-driver`** (separate app / own release): `index.html` (active `:2282` + queue `:2518` — `&& !order.free_order` → suppress vuelto, "Nada que cobrar", no cash amount) + `cash-helpers.js` (`computeShiftCash` filter `:52` excludes `free_order`; **`isCashPayment` `:41` UNCHANGED / byte-identical**) + `cash-helpers.test.js`.
 **Verification:** $0 quote → both greyed + "Confirmar pedido gratis" + `createOrder` places a cash+`free_order` reserved order (persisted on order+tasks, no PixelPay) → consume at completion; **stale quote** → `createOrder` rejects + forms re-enable; **direct/stale `chargeOnlineOrder` $0** → typed non-payable BEFORE the PixelPay config read/reserve/acquire (#2); **driver** → free_order shows "Nada que cobrar", no vuelto, excluded from cuadre (tests); scheduled-$0 → reserved→held→consume; cancel-$0 → `reverseRedemptionForOrder`. Normal cash/online unchanged.
@@ -130,7 +132,7 @@ So the `$0`/sub-min response is reached BEFORE any PixelPay config read, reserve
 | R6 | Fix | Where |
 |---|---|---|
 | #1 | **`materialize.js` copies `order.free_order` onto the released scheduled delivery tasks** + a scheduled-free test — closes the phantom-cash gap on the scheduled-free path (createOrder only writes the immediate task) | A1 / `materialize.js:61+` |
-| #2 | **A1 gate-ordering → exact safe sequence**: auth/validate/uid → reprice → `$0`/sub-min typed response → non-PixelPay gates/reserve/acquire → PixelPay config/return-base (payable only) | A1 `chargeOnlineOrder` |
+| #2 | **A1 gate-ordering → exact safe sequence (R7)**: auth/validate/uid → reprice → `$0`/sub-min typed return → non-PixelPay gates → PixelPay config/return-base → reserve/acquire → charge (config BEFORE any write) | A1 `chargeOnlineOrder` |
 | ✅ | A-F (#3/#4), #5 `paymentStatus`, #6, #7, #8, the driver `free_order` seam, the scheduled-$0 lifecycle | confirmed clean — untouched |
 
 ## Findings → resolution map (original 8, for the re-gate)
