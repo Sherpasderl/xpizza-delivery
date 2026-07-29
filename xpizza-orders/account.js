@@ -52,21 +52,21 @@
     st.id = 'acct-chip-styles';
     st.textContent = `
 .header{position:relative}
-/* Item 1: the chip is a reserved right-column FLEX item (index.html .brand-row balances it against an equal
-   left spacer so the logo stays truly centered and the populated chip can never overlap it). min-width:0 +
-   name ellipsis let the name truncate on narrow widths while the avatar + rewards segment stay whole. */
+/* Item 1 (Batch B): logo-left / chip-right header (index.html .brand-row = space-between). The chip is a
+   light-fill PILL (tinted bg + hairline border) sized to hold its own next to the logo; the logo-left layout
+   frees width so the full first name shows — the name ellipsis is kept only as a last-resort fallback on the
+   narrowest phones. Accent avatar disc anchors the pill on-brand. */
 .acct-chip-mount{display:flex;justify-content:flex-end;min-width:0}
-.acct-chip{display:flex;align-items:center;gap:9px;max-width:100%;min-width:0;overflow:hidden;background:transparent;border:none;border-radius:999px;padding:5px 3px;cursor:pointer;font-family:inherit;line-height:1;transition:opacity .15s}
-.acct-chip:hover{opacity:.66}
-.acct-chip .acct-av{width:28px;height:28px;border-radius:50%;background:${CONFIG.palette.chip};color:#2A231C;display:flex;align-items:center;justify-content:center;flex:none}
-.acct-chip--out .acct-av{background:${CONFIG.palette.chip};color:#2A231C}
-.acct-chip .acct-nm{font-size:13.5px;font-weight:650;letter-spacing:-.01em;color:#17130F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.acct-chip .acct-cv{color:#B3A594;font-size:10px;margin-left:-1px;flex:none}
-/* Logged-in-only size bump (codex F3): scoped with :not(.acct-chip--out) so the guest "Entrar"
-   chip (.acct-chip--out) stays byte-identical at 13.5px name / 28px avatar. Higher specificity
-   (3 classes) than the base .acct-chip .acct-nm (2 classes), so it wins for the logged-in chip only. */
-.acct-chip:not(.acct-chip--out) .acct-nm{font-size:15px}
-.acct-chip:not(.acct-chip--out) .acct-av{width:31px;height:31px}
+.acct-chip{display:flex;align-items:center;gap:8px;max-width:100%;min-width:0;overflow:hidden;background:${CONFIG.palette.tint2};border:1px solid ${CONFIG.palette.line2};border-radius:999px;padding:5px 13px 5px 5px;cursor:pointer;font-family:inherit;line-height:1;transition:opacity .15s,background .15s}
+.acct-chip:hover{opacity:.82}
+.acct-chip .acct-av{width:30px;height:30px;border-radius:50%;background:${CONFIG.accent};color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+.acct-chip--out .acct-av{background:${CONFIG.accent};color:#fff}
+.acct-chip .acct-nm{font-size:14px;font-weight:650;letter-spacing:-.01em;color:#17130F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acct-chip .acct-cv{color:#B3A594;font-size:11px;margin-left:-1px;flex:none}
+/* Logged-in chip runs larger (owner: it looked dwarfed next to the logo) — avatar + name scale up; scoped
+   with :not(.acct-chip--out) so the guest "Entrar" pill stays a touch smaller. */
+.acct-chip:not(.acct-chip--out) .acct-nm{font-size:16px}
+.acct-chip:not(.acct-chip--out) .acct-av{width:36px;height:36px}
 `;
     document.head.appendChild(st);
   }
@@ -96,7 +96,7 @@
   const GIFT_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>';
   // Item 2: monochrome pizza-slice line icon for the punch-card slots (X. Pizza) — NOT the 🍕 emoji. Sized via
   // CSS (.acct-rw-slot svg); currentColor = the slot's color (muted when empty, white on the accent-filled --on).
-  const PIZZA_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21 5.7 6.4a9 9 0 0 1 12.6 0z"/><path d="M6.6 8.4a9 9 0 0 1 10.8 0"/><circle cx="10" cy="11.2" r="1"/><circle cx="13.4" cy="14" r="1"/></svg>';
+  const PIZZA_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.8 5.4 6.6a1 1 0 0 1 .5-1.35 15.5 15.5 0 0 1 12.2 0 1 1 0 0 1 .5 1.35z"/><path d="M6.7 8.1a12.5 12.5 0 0 1 10.6 0"/><circle cx="9.9" cy="11" r=".85"/><circle cx="13.5" cy="13" r=".85"/><circle cx="11.3" cy="15.4" r=".85"/></svg>';
   // Item 3: a back arrow for the Mis premios / Mis pedidos sub-panes → returns to the account-sheet root
   // (reuses the sheet's pane-nav; showPane('account') drops the sub-pane's acct-on and re-shows the root).
   const PICKER_BACK = '<button class="acct-iconbtn acct-picker-back" type="button" aria-label="Volver a Mi cuenta">‹</button>';
@@ -158,8 +158,12 @@
     let hero;
     if (RW.kind === 'punch') {
       const p = rwPunch();
+      // 7 pizza cells + 1 gift cell (always last). Pizza cells fill with onCard (capped at 7); the gift stays
+      // muted/locked until the card completes (redeemable) then turns accent.
       let slots = '';
-      for (let i = 0; i < p.size; i++) slots += `<span class="acct-rw-slot${i < p.onCard ? ' acct-rw-slot--on' : ''}">${PIZZA_SVG}</span>`;
+      const pizzaCells = p.size - 1;
+      for (let i = 0; i < pizzaCells; i++) slots += `<span class="acct-rw-slot acct-rw-slot--pizza${i < Math.min(p.onCard, pizzaCells) ? ' acct-rw-slot--on' : ''}">${PIZZA_SVG}</span>`;
+      slots += `<span class="acct-rw-slot acct-rw-slot--gift${p.redeemable ? ' acct-rw-slot--on' : ''}">${GIFT_SVG}</span>`;
       const sub = p.redeemable ? '¡Tenés una pizza gratis para canjear!' : `${p.size - p.onCard} ${p.size - p.onCard === 1 ? 'sello' : 'sellos'} para tu próxima pizza gratis`;
       hero = `<div class="acct-rw-card"><div class="acct-rw-slots">${slots}</div><p class="acct-rw-sub"></p></div>`;
       // sub set via textContent below (never innerHTML for the dynamic sentence)
@@ -201,13 +205,17 @@
     if ($('acct-rw-styles')) return;
     const st = document.createElement('style'); st.id = 'acct-rw-styles';
     st.textContent = `
-.acct-chip .acct-rw{display:inline-flex;align-items:center;gap:4px;color:${CONFIG.accent};font-size:12.5px;font-weight:650;margin-left:1px;flex:none;white-space:nowrap}
+.acct-chip .acct-rw{display:inline-flex;align-items:center;gap:4px;color:${CONFIG.accent};font-size:14px;font-weight:650;margin-left:1px;flex:none;white-space:nowrap}
 .acct-chip .acct-rw-g{display:inline-flex;color:${CONFIG.accent};opacity:.9}
+.acct-chip .acct-rw-g svg{width:15px;height:15px}
 .acct-rw-card{padding:6px 4px 2px}
 .acct-rw-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin:2px 0 14px}
 .acct-rw-slot{aspect-ratio:1;border-radius:50%;border:1.5px solid ${CONFIG.palette.line3};background:${CONFIG.palette.tint};display:flex;align-items:center;justify-content:center;color:#B3A594}
 .acct-rw-slot svg{width:58%;height:58%}
-.acct-rw-slot--on{background:${CONFIG.accent};border-color:${CONFIG.accent};color:#fff}
+/* Filled PIZZA cell: invert — tinted disc + accent border + accent pizza (color the pizza, NOT the whole disc). */
+.acct-rw-slot--pizza.acct-rw-slot--on{background:${CONFIG.palette.tint};border-color:${CONFIG.accent};color:${CONFIG.accent}}
+/* GIFT cell (always last): muted/locked (subtle gray) until the card completes, then a filled accent disc + white gift. */
+.acct-rw-slot--gift.acct-rw-slot--on{background:${CONFIG.accent};border-color:${CONFIG.accent};color:#fff}
 .acct-rw-sub{margin:0;font-size:13px;color:#6B6255;text-align:center;line-height:1.4}
 .acct-rw-pts{font-size:26px;font-weight:750;letter-spacing:-.02em;color:#17130F;text-align:center;margin:2px 0 16px}
 .acct-rw-bar-wrap{padding:26px 6px 30px}
