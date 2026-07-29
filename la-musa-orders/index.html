@@ -800,6 +800,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 .pay-options{display:flex;flex-direction:column;gap:10px;margin-bottom:4px}
 .pay-card{border:1.5px solid var(--border2);border-radius:var(--radius);padding:14px 16px;cursor:pointer;transition:border-color .2s,background .2s;display:flex;align-items:flex-start;gap:14px;background:#fff}
 .pay-card.selected{border-color:var(--charcoal);background:var(--surface)}
+.pay-card--free-disabled{opacity:.45;pointer-events:none;filter:grayscale(.5)}
 .pay-icon{font-size:22px;flex-shrink:0;margin-top:2px}
 .pay-title{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--charcoal);margin-bottom:3px}
 .pay-desc{font-size:14px;color:#5A4F47;line-height:1.5;letter-spacing:0}
@@ -2249,18 +2250,44 @@ function updateTotal(){
 function applyRedeemQuoteToTotals(q){
   const pa=document.getElementById('pixelpay-amount');
   if(pa) pa.textContent = q ? ('L '+(q.total_cents/100).toFixed(2)) : ('L '+calcTotal().toFixed(2));   // online charge = the SERVER discounted total
+  syncFreeOrderUI();   // A1: a $0 (fully-comped) server quote → free-order payment availability
 }
 function renderRedeemUI(){
   try{
-    if(!(window.__ACCOUNT&&window.__ACCOUNT.renderRedeem)) return;
-    const box=document.getElementById('acct-redeem'); if(!box) return;
-    window.__ACCOUNT.renderRedeem({
-      container: box,
-      items: redeemCartItems(),
-      pizzaCount: MENU.reduce((s,p)=>s+qty[p.id],0),
-      itemName: (id)=>{ const p=(MENU.find(x=>x.id===id))||(typeof EXTRAS!=='undefined'&&EXTRAS.find(x=>x.id===id)); return p?p.name:id; },
-      onQuoted: applyRedeemQuoteToTotals,
-    });
+    if(window.__ACCOUNT&&window.__ACCOUNT.renderRedeem){
+      const box=document.getElementById('acct-redeem');
+      if(box) window.__ACCOUNT.renderRedeem({
+        container: box,
+        items: redeemCartItems(),
+        pizzaCount: MENU.reduce((s,p)=>s+qty[p.id],0),
+        itemName: (id)=>{ const p=(MENU.find(x=>x.id===id))||(typeof EXTRAS!=='undefined'&&EXTRAS.find(x=>x.id===id)); return p?p.name:id; },
+        onQuoted: applyRedeemQuoteToTotals,
+      });
+    }
+  }catch(_){}
+  syncFreeOrderUI();   // A1: always reconcile payment availability with the current server quote (reward-cleared / stage-2 entry)
+}
+// A1: when the SERVER quote zeroes the total (a fully-comping reward), no payment method can be charged
+// (PixelPay can't charge L0). Grey out BOTH methods + swap the CTA to a free-confirm button that submits the
+// free path (createOrder, cash + free_order:true). The SERVER re-prices + rejects a stale free claim, so this
+// is UX only — the server is authoritative. Reward removed / total > 0 → restore the normal selection prompt.
+function syncFreeOrderUI(){
+  try{
+    const rc=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuoteTotalCents)?window.__ACCOUNT.getRedeemQuoteTotalCents():null;
+    const free = rc===0;
+    window.__freeOrder = free;
+    const online=document.getElementById('pay-online'), cash=document.getElementById('pay-cash'), btn=document.getElementById('btn-pay');
+    if(free){
+      selectedPayment=null;
+      [online,cash].forEach(c=>{ if(c){ c.classList.remove('selected'); c.classList.add('pay-card--free-disabled'); c.setAttribute('aria-disabled','true'); } });
+      const pp=document.getElementById('pixelpay-panel'); if(pp) pp.style.display='none';
+      const cc=document.getElementById('cash-change-panel'); if(cc) cc.style.display='none';
+      const e3=document.getElementById('err3'); if(e3) e3.style.display='none';
+      if(btn){ btn.disabled=false; btn.className='btn-primary btn-green'; btn.textContent='Confirmar pedido gratis'; }
+    } else {
+      [online,cash].forEach(c=>{ if(c){ c.classList.remove('pay-card--free-disabled'); c.removeAttribute('aria-disabled'); } });
+      if(btn && !selectedPayment){ btn.disabled=true; btn.className='btn-primary'; btn.textContent='Seleccioná una opción de pago'; }
+    }
   }catch(_){}
 }
 // REWARDS (B2 Task 4): the pay-step total honors the SERVER quote while a reward is pending (never full price).
@@ -2730,6 +2757,7 @@ function clearAddressDetailsError(){
 
 /* ── Payment selection ── */
 function selectPay(type){
+  if(window.__freeOrder) return;   // A1: free order — payment methods are disabled; the CTA submits the free path
   selectedPayment=type;
   document.querySelectorAll('.pay-card').forEach(c=>c.classList.remove('selected'));
   document.getElementById('pay-'+type).classList.add('selected');
@@ -2780,7 +2808,9 @@ async function processPayment(){
     refreshTimeSelector();
     return;
   }
-  if(!selectedPayment){
+  // A1: a fully-comped ($0) order has NO payment method — the free-confirm CTA submits the free path.
+  const isFreeOrder = !!window.__freeOrder;
+  if(!isFreeOrder && !selectedPayment){
     document.getElementById('err3').style.display='block'; return;
   }
   // RTN, when requested, must be exactly 14 digits (the server silently drops an invalid RTN, so the
@@ -2827,6 +2857,14 @@ async function processPayment(){
     }
   }
   buildOrder();
+  if(isFreeOrder){
+    // A1: the free path reuses the cash lifecycle. Server RE-PRICES via the redeem payload + rejects a stale
+    // free claim (free_order_stale) → the forms would re-enable payment; here it confirms a $0 order.
+    currentOrder.payment_method='cash';
+    currentOrder.free_order=true;
+    delete currentOrder.cash_tendered;
+    await submitOrder('confirmed'); return;
+  }
   if(selectedPayment==='online'){
     processPixelPay(); return;
   } else {
