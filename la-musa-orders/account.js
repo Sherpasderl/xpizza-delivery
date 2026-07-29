@@ -61,10 +61,11 @@
     st.id = 'acct-chip-styles';
     st.textContent = `
 .header{position:relative}
-/* Item 1 (round 5): the account chip is a frosted-GLASS info pill anchored top-right over the header hero
-   photo (index.html .header is a faded-hero band). Talkin-Tacos style: translucent white + backdrop-blur +
-   hairline border + soft shadow; accent avatar disc; the name carries a subtle light text-shadow for
-   legibility over the photo. Guest "Entrar" chip shares the glass. */
+/* Item 1: the account chip is a frosted-GLASS info pill anchored top-right INSIDE the header hero band
+   (position:absolute) — visible on paso 1 at the top, scrolls with the header (NOT viewport-fixed, so it
+   does not float over the payment page). Talkin-Tacos style: translucent white + backdrop-blur + hairline
+   border + soft shadow; accent avatar disc; name has a light text-shadow for legibility over the photo.
+   Guest "Entrar" chip shares the glass. */
 .acct-chip-mount{position:absolute;top:14px;right:14px;z-index:3;display:flex;min-width:0}
 .acct-chip{display:flex;align-items:center;gap:7px;max-width:100%;min-width:0;overflow:hidden;background:rgba(255,255,255,.42);border:1px solid rgba(255,255,255,.55);box-shadow:0 3px 14px rgba(0,0,0,.16);backdrop-filter:blur(13px) saturate(1.5);-webkit-backdrop-filter:blur(13px) saturate(1.5);border-radius:999px;padding:4px 11px 4px 4px;cursor:pointer;font-family:inherit;line-height:1;transition:opacity .15s}
 .acct-chip:hover{opacity:.85}
