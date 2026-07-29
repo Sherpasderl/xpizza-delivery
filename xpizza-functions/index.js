@@ -1500,11 +1500,20 @@ exports.paymentStatus = onRequest(
 
     // Coarse, public-safe state.
     const ps = order.payment_status, st = order.status;
+    // A2/A5/#6 — poll-token-gated SAFE SUMMARY for the online-return success screen. After the PixelPay
+    // redirect the in-memory redeem quote is gone, so the return page can't recompute the discounted total.
+    // This gives it the SERVER-CONFIRMED total_cents + a minimal redemption summary (discount + freed/added
+    // item name + model) so the success Total + reward display come from the server, not stale client values.
+    // Poll-token-gated (only the customer who started THIS payment) → their own order money/reward, no PII.
+    const redeemSummary = order.redemption
+      ? { discount_cents: Number(order.redemption.discount_cents) || 0, free_item: order.redemption.free_item_key || null, model: order.redemption.model || null }
+      : null;
     // Scheduled Orders (§B.4 / R2-#4): a paid-and-HELD order (or one mid-release) matches the paid check
     // below (confirmed) but is NOT cooking. Return a distinct scheduled_paid state carrying scheduled_for
     // (no tracking token) so the form shows "programado para <slot>", never "ya está en cocina".
     if (st === 'scheduled' || st === 'releasing') {
-      return res.status(200).json({ ok: true, state: 'scheduled_paid', scheduled_for: order.scheduled_for || null, tracking_token: null });
+      return res.status(200).json({ ok: true, state: 'scheduled_paid', scheduled_for: order.scheduled_for || null, tracking_token: null,
+        total_cents: Number.isFinite(order.total_cents) ? order.total_cents : null, redemption: redeemSummary });
     }
     let state = 'pending';
     if (ps === 'confirmed' || ['new', 'preparing', 'ready', 'out_for_delivery', 'delivered'].includes(st)) state = 'paid';
@@ -1512,7 +1521,9 @@ exports.paymentStatus = onRequest(
     else if (ps === 'failed') state = 'failed';
     else if (ps === 'manual_reconciliation') state = 'verifying';
 
-    return res.status(200).json({ ok: true, state, tracking_token: state === 'paid' ? (order.tracking_token || null) : null });
+    return res.status(200).json({ ok: true, state, tracking_token: state === 'paid' ? (order.tracking_token || null) : null,
+      total_cents: state === 'paid' ? (Number.isFinite(order.total_cents) ? order.total_cents : null) : null,
+      redemption: state === 'paid' ? redeemSummary : null });
   }
 );
 

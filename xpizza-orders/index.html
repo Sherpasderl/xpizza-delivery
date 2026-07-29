@@ -1745,7 +1745,7 @@ function updateTotal(){
   // ONLY — never touches processPayment / the cash_tendered submit guard / pricing.
   if(selectedPayment==='cash' && document.getElementById('cash-change-panel') && document.getElementById('cash-change-panel').style.display!=='none'){
     renderChangeChips();                              // Pago exacto + round-ups now reflect the new total
-    if(cashExactMode) setCashTendered(calcTotal());   // they were on Pago exacto → box follows the new total
+    if(cashExactMode) setCashTendered(redeemAdjustedTotal());   // A3: on Pago exacto → box follows the DISCOUNTED total
     else onCashTenderedInput();                       // custom amount → just re-validate + re-highlight vs new total
   } else if(selectedPayment==='online'){
     const pa=document.getElementById('pixelpay-amount'); if(pa) pa.textContent='L '+redeemAdjustedTotal().toFixed(2);
@@ -1801,6 +1801,16 @@ function syncFreeOrderUI(){
 // REWARDS (B2 Task 4): the pay-step total honors the SERVER quote while a reward is pending (never full price).
 function redeemAdjustedTotal(){
   try{ const rc=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuoteTotalCents)?window.__ACCOUNT.getRedeemQuoteTotalCents():null; return rc!=null?(rc/100):calcTotal(); }catch(_){ return calcTotal(); }
+}
+// A2/#6: the success-receipt total in CENTS — SERVER-authoritative. Online-return → the persisted server
+// total (o.total_cents, from the paymentStatus summary). Same-session cash → the live quote
+// (getRedeemQuoteTotalCents). Stash fallback → o.redeem_total_cents. Non-redeem → the full cart total.
+// Never a client-computed discount.
+function successTotalCents(o){
+  if(o && Number.isFinite(o.total_cents)) return o.total_cents;
+  try{ const rc=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuoteTotalCents)?window.__ACCOUNT.getRedeemQuoteTotalCents():null; if(rc!=null) return rc; }catch(_){}
+  if(o && Number.isFinite(o.redeem_total_cents)) return o.redeem_total_cents;
+  return Math.round(((o&&o.total)||0)*100);
 }
 //__REWARDS_PARITY_END__
 
@@ -2320,7 +2330,7 @@ function rtnIsValid(){
   return /^\d{14}$/.test(document.getElementById('rtn-cliente').value.trim());
 }
 function renderChangeChips(){
-  const total=calcTotal();
+  const total=redeemAdjustedTotal();   // A3: change chips round up from the DISCOUNTED total (server quote), not full price
   const box=document.getElementById('change-chips'); if(!box) return;
   // Realistic "pay with": Honduras' largest banknote is L500 (no L1,000 note), and a customer
   // hands over the FEWEST 500-bills that exceed the total — never more (a <L1,000 order needs
@@ -2335,7 +2345,7 @@ function setCashTendered(v){
   onCashTenderedInput();
 }
 function onCashTenderedInput(){
-  const total=calcTotal();
+  const total=redeemAdjustedTotal();   // A3: validate the tender + compute "Tu cambio" against the DISCOUNTED total
   const v=parseFloat(document.getElementById('cash-tendered').value);
   cashExactMode = isFinite(v) && v>0 && Math.abs(v-total) < 0.005;   // on "Pago exacto" → track future total changes; invalid/empty → false
   const hint=document.getElementById('change-hint');
@@ -2491,7 +2501,7 @@ function buildOrder(){
   currentOrder.rtn_cliente  = rtnOn ? document.getElementById('rtn-cliente').value.trim() : '';
   if(selectedPayment==='cash'){
     const ct=parseFloat(document.getElementById('cash-tendered')?.value);
-    if(isFinite(ct) && ct>=total) currentOrder.cash_tendered = ct; // else server defaults to exact (no change)
+    if(isFinite(ct) && ct>=redeemAdjustedTotal()) currentOrder.cash_tendered = ct; // A3: guard against the DISCOUNTED total (server re-validates ≥ server total); else server defaults to exact
   }
   // REWARDS (B2 Task 4): attach the pending redeem (logged-in + reward selected). Guest → null → no field → byte-identical.
   try{ const __rd=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemPayload)?window.__ACCOUNT.getRedeemPayload():null; if(__rd) currentOrder.redeem=__rd; }catch(_){}
@@ -2578,6 +2588,10 @@ async function processPixelPay(){
   // Persist the account save-intent BEFORE the redirect (the reload resets account.js's closure flags) so
   // onOrderConfirmed() can enforce one-off / no-duplicate after return. Guest/pickup → it clears the key.
   try { if (window.__ACCOUNT && typeof window.__ACCOUNT.captureDeliverySaveIntent === 'function') window.__ACCOUNT.captureDeliverySaveIntent(cfg.order_id); } catch(_){}
+  // #6: persist the SERVER discounted total onto the stashed order (the redeem payload is already on
+  // currentOrder.redeem) so the online-return success screen can show the discounted total even though the
+  // in-memory quote is gone after the redirect. The paymentStatus summary is preferred on return; this is the fallback.
+  try{ const __rq=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuoteTotalCents)?window.__ACCOUNT.getRedeemQuoteTotalCents():null; if(__rq!=null) currentOrder.redeem_total_cents=__rq; }catch(_){}
   try { localStorage.setItem('xpizza_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder, form: snapshotForm() })); } catch(_){}
   setSending('Redirigiendo a pago seguro…');
   window.location.href = cfg.checkout_url;
@@ -2611,6 +2625,8 @@ async function handlePaymentReturn(){
         window.__scheduledFor = j.scheduled_for || window.__scheduledFor;
         if(stashedOrder && stashedOrder.order_id === orderId){
           currentOrder = stashedOrder; currentOrder.scheduled = true; currentOrder.scheduled_for = j.scheduled_for;
+          if(j.total_cents!=null) currentOrder.total_cents=j.total_cents;   // #6: server-confirmed discounted total wins over the stashed client total
+          if(j.redemption) currentOrder.redemption=j.redemption;            // #6: detection uses o.redemption || o.redeem
           try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}
         }
         showPayReturn('paid'); return true;
@@ -2623,6 +2639,8 @@ async function handlePaymentReturn(){
         // THIS order (localStorage can hold a stale one). Fall back to the simple overlay otherwise.
         if(stashedOrder && stashedOrder.items && stashedOrder.order_id === orderId){
           currentOrder = stashedOrder; currentOrder.payment_status = 'confirmed';
+          if(j.total_cents!=null) currentOrder.total_cents=j.total_cents;   // #6: server-confirmed discounted total wins over the stashed client total
+          if(j.redemption) currentOrder.redemption=j.redemption;            // #6: detection uses o.redemption || o.redeem
           try {
             showSuccess();
             const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove();
@@ -2936,7 +2954,12 @@ function showSuccess(){
       </div>`).join('')+
     (o.notes!=='—'?`<div class="receipt-row"><span class="receipt-label">Nota</span><span style="text-align:right;max-width:55%">${escapeHtml(o.notes)}</span></div>`:'')+
     (o.order_type==='delivery'?`<div class="receipt-row"><span class="receipt-label" style="color:var(--green);font-weight:600;letter-spacing:.2px;display:inline-flex;align-items:center;gap:7px">${DELIVERY_BAG_SVG}Envío Gratis</span><span style="text-decoration:line-through;color:#bbb">L 70.00</span></div>`:'')+
-    `<div class="receipt-row" style="font-weight:700"><span>Total</span><span>L ${o.total.toFixed(2)}</span></div>`;
+    // A2: the Total is the SERVER discounted total (never the client full price). When a reward discounted it
+    // (X. Pizza comp), show a green "Recompensa −L…" line; La Musa (added free item, total unchanged) shows no
+    // discount line. Non-redeem → full total, unchanged.
+    (()=>{ const tc=successTotalCents(o), full=Math.round((o.total||0)*100), disc=full-tc, redeemed=!!(o.redemption||o.redeem);
+      return (redeemed&&disc>0?`<div class="receipt-row"><span class="receipt-label" style="color:var(--green);font-weight:600">Recompensa</span><span style="color:var(--green)">− L ${(disc/100).toFixed(2)}</span></div>`:'')
+        +`<div class="receipt-row" style="font-weight:700"><span>Total</span><span>L ${(tc/100).toFixed(2)}</span></div>`; })();
 
   document.getElementById('receipt-payment').innerHTML=`
     <div class="receipt-row">
