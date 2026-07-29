@@ -54,52 +54,156 @@
 
   /* ==================== HEADER ==================== */
   header.topbar {
-    height: 52px;
-    background: var(--surface);
+    height: 56px;
+    background: linear-gradient(180deg, #283143 0%, var(--surface) 78%);
     border-bottom: 1px solid var(--border-soft);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 8px 22px -12px rgba(0,0,0,0.6);
     display: flex;
     align-items: center;
-    padding: 0 18px;
-    gap: 16px;
+    padding: 0 16px;
+    gap: 14px;
     position: relative;
     z-index: 10;
   }
-  .brand {
-    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
-    font-size: 22px;
-    letter-spacing: 0.12em;
-    color: var(--accent);
-  }
-  .brand-sub {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-weight: 500;
-    font-size: 13px;
+  /* ---- v6 brand ---- */
+  .tb-brand {
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700;
+    font-size: 15px;
     letter-spacing: -0.01em;
-    color: var(--text-soft);
-    margin-left: -8px;
-  }
-  .topbar-spacer { flex: 1; }
-  .topbar-stat {
-    font-size: 12px;
-    color: var(--text-soft);
-    padding: 0 14px;
-    border-left: 1px solid var(--border-soft);
-    height: 30px;
-    display: flex;
+    color: var(--text);
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    white-space: nowrap;
   }
-  .topbar-stat .num {
+  .tb-brand .tb-x {
+    display: inline-grid;
+    place-items: center;
+    width: 26px; height: 26px;
+    border-radius: 8px;
+    background: linear-gradient(145deg, #ef4444 0%, var(--accent) 55%, #b3202f 100%);
+    color: #fff;
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 0;
+    box-shadow: 0 2px 6px rgba(220,38,38,0.35), 0 1px 0 rgba(255,255,255,0.25) inset;
+  }
+  .tb-restaurant {
     font-family: 'Plus Jakarta Sans', sans-serif;
     font-weight: 600;
-    font-size: 16px;
-    color: var(--text);
-  }
-  .topbar-user {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-weight: 500;
-    font-size: 12px;
+    font-size: 11.5px;
+    letter-spacing: 0.01em;
     color: var(--text-soft);
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    padding: 5px 12px;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset;
+  }
+  .tb-restaurant::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 6px rgba(22,163,74,0.55);
+    flex: 0 0 auto;
+  }
+
+  /* ---- v6 KPI chips ---- */
+  .tb-kpis {
+    margin-left: auto;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    background: linear-gradient(180deg, #29323f 0%, #222a37 100%);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    padding: 4px;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 2px 8px -4px rgba(0,0,0,0.5);
+  }
+  .tb-kpi {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 64px;
+    padding: 3px 13px;
+    position: relative;
+    line-height: 1;
+    border-radius: 8px;
+    transition: background 0.2s;
+  }
+  .tb-kpi + .tb-kpi::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 7px; bottom: 7px;
+    width: 1px;
+    background: var(--border-soft);
+  }
+  .tb-kpi b {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--text);
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    transition: color 0.2s;
+  }
+  .tb-kpi span {
+    font-size: 8.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-dim);
+    margin-top: 4px;
+    transition: color 0.2s;
+  }
+  /* live cue: unassigned orders waiting */
+  .tb-kpi.alert { background: var(--warn-soft); }
+  .tb-kpi.alert + .tb-kpi::before,
+  .tb-kpi.alert::before { background: transparent; }
+  .tb-kpi.alert b { color: var(--warn); }
+  .tb-kpi.alert span { color: #d99436; }
+
+  /* ---- v6 right cluster ---- */
+  .tb-right {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-left: 20px;
+  }
+  .tb-icon {
+    width: 34px; height: 34px;
+    display: grid;
+    place-items: center;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 9px;
+    color: var(--text-soft);
+    cursor: pointer;
+    position: relative;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset;
+    transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
+  }
+  .tb-icon:hover { background: var(--surface-3); color: var(--text); }
+  .tb-icon:active { transform: translateY(1px); }
+  .tb-avatar {
+    width: 34px; height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: linear-gradient(140deg, #ef4444, var(--accent) 55%, #9d1b2c);
+    color: #fff;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    user-select: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.35), 0 1px 0 rgba(255,255,255,0.25) inset;
   }
   .version-tag {
     font-family: 'IBM Plex Mono', monospace;
@@ -119,40 +223,28 @@
   }
   .topbar-btn:hover { background: var(--surface-3); color: var(--text); }
 
-  /* ==================== MENSAJES BUTTON + BADGE ==================== */
-  .msg-btn {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text-soft);
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 12px;
-    font-family: inherit;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    position: relative;
-    font-weight: 500;
-    letter-spacing: -0.01em;
-    transition: background 0.15s, color 0.15s;
-  }
-  .msg-btn:hover { background: var(--surface-3); color: var(--text); }
+  /* ==================== MENSAJES ICON BUTTON + BADGE ==================== */
   .msg-btn .msg-icon {
-    width: 14px;
-    height: 14px;
+    width: 17px;
+    height: 17px;
     display: inline-flex;
   }
   .msg-btn .msg-icon svg { width: 100%; height: 100%; }
   .msg-btn .msg-badge {
+    position: absolute;
+    top: -5px; right: -5px;
     background: var(--accent);
     color: white;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
+    line-height: 15px;
     border-radius: 99px;
-    padding: 1px 6px;
-    min-width: 18px;
+    padding: 0 4px;
+    min-width: 15px;
+    height: 15px;
     text-align: center;
+    box-sizing: border-box;
+    box-shadow: 0 0 0 2px var(--surface);
     display: none;
   }
   .msg-btn.has-unhandled { color: var(--accent); border-color: var(--accent); }
@@ -347,16 +439,19 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 5px 14px;
-    border: 1px solid var(--border);
+    height: 34px;
+    padding: 0 15px;
+    border: 1px solid var(--border-soft);
     border-radius: 99px;
     cursor: pointer;
-    background: transparent;
+    background: var(--surface-2);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset;
     color: var(--text-soft);
     font-size: 12px;
     font-weight: 500;
     font-family: inherit;
     letter-spacing: -0.01em;
+    white-space: nowrap;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
   }
   .auto-assign-toggle:hover { background: var(--surface-3); }
@@ -367,7 +462,7 @@
     background: var(--text-dim);
     transition: background 0.2s;
   }
-  .auto-assign-toggle.on { color: var(--success); border-color: var(--success); }
+  .auto-assign-toggle.on { color: var(--success); border-color: var(--success); background: var(--success-soft); }
   .auto-assign-toggle.on .aa-dot {
     background: var(--success);
     box-shadow: 0 0 6px rgba(22,163,74,0.6);
@@ -468,6 +563,47 @@
      the map. position:absolute against the position:relative #map-container fills it robustly. */
   #map { position: absolute; inset: 0; }
 
+  /* ---- Minimalist v6 map controls (replace Google's default zoom/fullscreen) ---- */
+  .map-ctrl-group {
+    display: flex;
+    flex-direction: column;
+    background: rgba(24,30,42,0.82);
+    -webkit-backdrop-filter: blur(9px);
+    backdrop-filter: blur(9px);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.42), 0 1px 0 rgba(255,255,255,0.05) inset;
+    margin: 0 14px 14px 0;
+  }
+  .map-ctrl {
+    width: 38px; height: 38px;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    border: none;
+    color: var(--text-soft);
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.14s, color 0.14s;
+  }
+  .map-ctrl:hover { background: rgba(255,255,255,0.07); color: var(--text); }
+  .map-ctrl:active { background: rgba(255,255,255,0.13); }
+  .map-ctrl svg { width: 17px; height: 17px; display: block; }
+  .map-ctrl-group .map-ctrl + .map-ctrl { border-top: 1px solid var(--border-soft); }
+  /* standalone rounded button (fullscreen) */
+  .map-ctrl-solo {
+    background: rgba(24,30,42,0.82);
+    -webkit-backdrop-filter: blur(9px);
+    backdrop-filter: blur(9px);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.42), 0 1px 0 rgba(255,255,255,0.05) inset;
+    margin: 0 14px 14px 0;
+  }
+  .map-ctrl-solo:hover { background: rgba(40,48,64,0.9); }
+  .map-ctrl-top { margin: 14px 14px 0 0; }
+
   /* Drag-resize handle on sidebar's inner (left) edge */
   .sidebar-resize-handle {
     position: absolute;
@@ -491,24 +627,26 @@
   .map-icon-btn {
     position: absolute;
     z-index: 5;
-    width: 36px;
-    height: 36px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text);
-    border-radius: 50%;
+    width: 38px;
+    height: 38px;
+    background: rgba(24,30,42,0.82);
+    -webkit-backdrop-filter: blur(9px);
+    backdrop-filter: blur(9px);
+    border: 1px solid var(--border-soft);
+    color: var(--text-soft);
+    border-radius: 12px;
     padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
-    transition: background 0.15s, transform 0.15s;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.42), 0 1px 0 rgba(255,255,255,0.05) inset;
+    transition: background 0.14s, color 0.14s, transform 0.14s;
   }
-  .map-icon-btn:hover { background: var(--surface-2); transform: translateY(-1px); }
+  .map-icon-btn:hover { background: rgba(40,48,64,0.9); color: var(--text); transform: translateY(-1px); }
   .map-icon-btn:active { transform: translateY(0); }
   .map-icon-btn.fit { top: 14px; left: 14px; }
-  .map-icon-btn svg { width: 18px; height: 18px; display: block; }
+  .map-icon-btn svg { width: 17px; height: 17px; display: block; }
 
   .sidebar-collapse-btn {
     position: sticky;
@@ -898,6 +1036,20 @@
     color: var(--text-soft);
     letter-spacing: -0.01em;
     flex-shrink: 0;
+    /* Hover-reveal: the status dot carries the at-a-glance state; the verbose
+       line ("Disponible · inactivo 5 min") slides+fades in only on row hover,
+       so the resting roster stays clean. No layout shift, no tooltip clipping. */
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-align: right;
+    transition: max-width 0.22s ease, opacity 0.16s ease, margin-left 0.22s ease;
+  }
+  .driver-row:hover .row-status {
+    max-width: 220px;
+    opacity: 1;
+    margin-left: 4px;
   }
   .driver-row.has-tasks .name {
     color: var(--text);
@@ -1876,26 +2028,31 @@
 <div id="screen-main" class="hidden" style="display:flex; flex-direction:column; height:100vh;">
   <header class="topbar">
     <button class="rail-toggle" id="rail-toggle-left" title="Mostrar/ocultar panel izquierdo" aria-label="Panel izquierdo"><svg class="ic"><use href="#i-menu"/></svg><span class="rail-badge" id="left-rail-badge"></span></button>
-    <span class="brand">X PIZZA</span>
-    <span class="brand-sub">Dispatch</span>
-    <div class="topbar-spacer"></div>
-    <button class="auto-assign-toggle" id="auto-assign-toggle" title="Asignación automática de pedidos">
-      <span class="aa-dot"></span>
-      <span class="aa-label">Auto-asignar</span>
-    </button>
-    <div class="topbar-stat">Drivers <span class="num" id="stat-drivers">0</span></div>
-    <div class="topbar-stat">Pendientes <span class="num" id="stat-pending">0</span></div>
-    <div class="topbar-stat">Activos <span class="num" id="stat-active">0</span></div>
-    <div class="topbar-stat">Hoy <span class="num" id="stat-delivered">0</span></div>
-    <div class="topbar-user" id="topbar-user">—</div>
-    <button class="msg-btn" id="msg-btn" title="Mensajes de clientes">
-      <span class="msg-icon"></span>
-      <span>Mensajes</span>
-      <span class="msg-badge" id="msg-badge">0</span>
-    </button>
-    <span class="version-tag" data-version-display></span>
-    <button class="rail-toggle" id="rail-toggle-right" title="Mostrar/ocultar panel derecho" aria-label="Panel derecho"><svg class="ic"><use href="#i-panel"/></svg></button>
-    <button class="topbar-btn" id="signout-btn">Salir</button>
+    <span class="tb-brand"><span class="tb-x">X</span> Dispatch</span>
+    <span class="tb-restaurant" id="tb-restaurant">X. Pizza</span>
+
+    <div class="tb-kpis">
+      <div class="tb-kpi"><b id="stat-drivers">0</b><span>En turno</span></div>
+      <div class="tb-kpi" id="kpi-pending"><b id="stat-pending">0</b><span>Sin asignar</span></div>
+      <div class="tb-kpi"><b id="stat-active">0</b><span>Activos</span></div>
+      <div class="tb-kpi"><b id="stat-delivered">0</b><span>Entregados</span></div>
+    </div>
+
+    <div class="tb-right">
+      <button class="auto-assign-toggle" id="auto-assign-toggle" title="Asignación automática de pedidos">
+        <span class="aa-dot"></span>
+        <span class="aa-label">Auto-asignar</span>
+      </button>
+      <button class="tb-icon msg-btn" id="msg-btn" title="Mensajes de clientes">
+        <span class="msg-icon"></span>
+        <span class="msg-badge" id="msg-badge">0</span>
+      </button>
+      <div class="tb-avatar" id="topbar-avatar" title="Sesión">—</div>
+      <span id="topbar-user" hidden></span>
+      <button class="rail-toggle" id="rail-toggle-right" title="Mostrar/ocultar panel derecho" aria-label="Panel derecho"><svg class="ic"><use href="#i-panel"/></svg></button>
+      <button class="topbar-btn" id="signout-btn">Salir</button>
+      <span class="version-tag" data-version-display></span>
+    </div>
   </header>
 
   <!-- Dispatcher alerts now render into the left-rail Torre de Control (#torre-list) — see renderDispatcherAlerts. -->
@@ -2219,6 +2376,12 @@ async function boot() {
     }
 
     $('topbar-user').textContent = user.email;
+    const _av = $('topbar-avatar');
+    if (_av) {
+      const _em = (user.email || '').trim();
+      _av.textContent = _em ? _em.slice(0, 2).toUpperCase() : '—';
+      _av.title = _em || 'Sesión';
+    }
     showScreen('main');
     await loadGoogleMaps();
     initMap();
@@ -2290,22 +2453,23 @@ const DARK_MAP_STYLE = [
 ];
 
 function initMap() {
+  const _tbr = $('tb-restaurant');
+  if (_tbr && XPD.RESTAURANT && XPD.RESTAURANT.name) _tbr.textContent = XPD.RESTAURANT.name;
   map = new google.maps.Map($('map'), {
     center: { lat: XPD.RESTAURANT.lat, lng: XPD.RESTAURANT.lng },
     zoom: 15,
     styles: DARK_MAP_STYLE,
     disableDefaultUI: true,
-    zoomControl: true,
-    zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
+    zoomControl: false,
     mapTypeControl: false,
     streetViewControl: false,
-    fullscreenControl: true,
-    fullscreenControlOptions: { position: google.maps.ControlPosition.TOP_RIGHT },
+    fullscreenControl: false,
     gestureHandling: 'greedy',
     backgroundColor: '#131826'
   });
   infoWindow = new google.maps.InfoWindow();
   dirService = new google.maps.DirectionsService();
+  addMapControls();
   drawRestaurant();
   // The map is created inside a CSS-grid column while #screen-main may still be display:none
   // (0-size), and its column also changes width on rail collapse/expand. A ResizeObserver keeps
@@ -2314,6 +2478,50 @@ function initMap() {
   if (window.ResizeObserver) {
     new ResizeObserver(() => { if (map) google.maps.event.trigger(map, 'resize'); }).observe($('map-container'));
   }
+}
+
+// Minimalist v6 map controls, replacing Google's default zoom/fullscreen chrome.
+// Mounted via the Maps control API so they stay corner-anchored across resizes.
+function addMapControls() {
+  const g = google.maps;
+  const svg = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+  const mkBtn = (cls, title, icon) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = cls;
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    b.innerHTML = icon;
+    return b;
+  };
+
+  // Zoom group (+ / −)
+  const zoomGroup = document.createElement('div');
+  zoomGroup.className = 'map-ctrl-group';
+  const zin = mkBtn('map-ctrl', 'Acercar', svg('<path d="M12 6v12M6 12h12"/>'));
+  const zout = mkBtn('map-ctrl', 'Alejar', svg('<path d="M6 12h12"/>'));
+  zin.addEventListener('click', () => map.setZoom((map.getZoom() || 15) + 1));
+  zout.addEventListener('click', () => map.setZoom((map.getZoom() || 15) - 1));
+  zoomGroup.appendChild(zin);
+  zoomGroup.appendChild(zout);
+
+  // Fullscreen toggle on the map column
+  const expandIcon = svg('<path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 0-1 1h-4"/>');
+  const compressIcon = svg('<path d="M9 5v3a1 1 0 0 1-1 1H5M15 5v3a1 1 0 0 0 1 1h3M9 19v-3a1 1 0 0 0-1-1H5M15 19v-3a1 1 0 0 1 1-1h3"/>');
+  const fs = mkBtn('map-ctrl map-ctrl-solo map-ctrl-top', 'Pantalla completa', expandIcon);
+  const mapContainer = $('map-container');
+  fs.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (mapContainer.requestFullscreen) mapContainer.requestFullscreen();
+  });
+  document.addEventListener('fullscreenchange', () => {
+    const isFs = document.fullscreenElement === mapContainer;
+    fs.innerHTML = isFs ? compressIcon : expandIcon;
+    if (map) g.event.trigger(map, 'resize');
+  });
+
+  map.controls[g.ControlPosition.RIGHT_BOTTOM].push(zoomGroup);
+  map.controls[g.ControlPosition.RIGHT_TOP].push(fs);
 }
 
 function drawRestaurant() {
@@ -4298,9 +4506,12 @@ async function assignOrder(orderId, driverId) {
 // ============================================================
 function updateStats() {
   $('stat-drivers').textContent = getActiveDrivers().length;
-  $('stat-pending').textContent = getPendingOrders().length;
+  const pendingCount = getPendingOrders().length;
+  $('stat-pending').textContent = pendingCount;
   $('stat-active').textContent = getActiveOrders().length;
   $('stat-delivered').textContent = getDeliveredTodayCount();
+  const kpiPending = $('kpi-pending');
+  if (kpiPending) kpiPending.classList.toggle('alert', pendingCount > 0);
 }
 
 function getDotClass(d) {
