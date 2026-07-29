@@ -451,7 +451,12 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       const el = $('acct-success-rewards'); if (!el) return;
       injectRewardsStyles(); injectSuccessStyles();
       env = env || {};
-      const label = rwCartEarnLabel(env.subtotalCents, env.pizzaCount);
+      // A5: a redeemed X. Pizza (punch) order comps ONE pizza → that unit earns no punch (the server already
+      // subtracts it — rewards-earn.js earnDelta = max(0, delta-1) for the discount model). Align the client
+      // badge estimate: drop one pizza when redeemed. La Musa (points) earns on subtotal — the added free
+      // item doesn't change it — so it's unchanged. Non-redeem unchanged (env.redeemed false).
+      const earnPizzas = (env.redeemed && RW.kind === 'punch') ? Math.max(0, (Number(env.pizzaCount) || 0) - 1) : env.pizzaCount;
+      const label = rwCartEarnLabel(env.subtotalCents, earnPizzas);
       const m = marker();
       if (m && m.name) {
         const note = env.redeemed

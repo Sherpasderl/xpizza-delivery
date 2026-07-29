@@ -3003,7 +3003,7 @@ function showSuccess(){
       window.__ACCOUNT.renderSuccessRewards({
         subtotalCents: Math.round((Number(o.total) || 0) * 100),
         pizzaCount: (o.items || []).reduce((s, i) => s + (Number(i.qty) || 0), 0),
-        redeemed: !!o.redeem,
+        redeemed: !!(o.redemption || o.redeem),   // #6: server stamps o.redemption (online-return); o.redeem is the same-session cash payload
       });
     }
   } catch (_) {}
