@@ -199,22 +199,14 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
            + `<div class="acct-rw-card"><div class="acct-rw-slots">${slots}</div></div>`;
       pane.innerHTML = hero;
     } else {
-      const tiers = RW.tiers, n = tiers.length, maxT = tiers[n - 1].cost;
+      const tiers = RW.tiers, n = tiers.length;
       const fmt = (x) => Number(x).toLocaleString('en-US');           // 1000 → "1,000"
       const nodeX = (i) => Math.round(((i + 0.5) / n) * 1000) / 10;   // equal-spaced node position % (inset margins)
-      // Current position along the EQUAL-spaced bar: bracket-interpolate from 0 pts through the tier nodes.
-      const posFor = (v) => {
-        if (v <= 0) return 0;
-        if (v >= maxT) return nodeX(n - 1);
-        let loCost = 0, loPos = 0;
-        for (let i = 0; i < n; i++) {
-          if (v < tiers[i].cost) { const seg = tiers[i].cost - loCost; return loPos + (seg > 0 ? (v - loCost) / seg : 0) * (nodeX(i) - loPos); }
-          loCost = tiers[i].cost; loPos = nodeX(i);
-        }
-        return nodeX(n - 1);
-      };
-      const pos = Math.round(posFor(av) * 10) / 10;
-      const reached = tiers.some((t) => t.cost <= av);
+      // Fill the bar up to the LAST reached tier node; the tier dots fill accent when reached (no slider thumb).
+      let lastReached = -1;
+      for (let i = 0; i < n; i++) if (av >= tiers[i].cost) lastReached = i;
+      const fillW = lastReached >= 0 ? nodeX(lastReached) : 0;
+      const reached = lastReached >= 0;
       const next = tiers.find((t) => t.cost > av);
       let marks = '';
       for (let i = 0; i < n; i++) marks += `<span class="acct-rw-tier${av >= tiers[i].cost ? ' acct-rw-tier--on' : ''}" style="left:${nodeX(i)}%"><i></i><b>${fmt(tiers[i].cost)}</b></span>`;
@@ -222,7 +214,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       for (let i = 0; i < n; i++) rows += `<div class="acct-rw-row${av >= tiers[i].cost ? ' acct-rw-row--on' : ''}"><span class="acct-rw-num">${i + 1}</span><div class="acct-rw-rl"><div class="acct-rw-rn"></div><div class="acct-rw-rd"></div></div><span class="acct-rw-rc">${fmt(tiers[i].cost)}</span></div>`;
       hero = rwPaneHead(`<span class="acct-rw-cnum">${fmt(av)}</span>`, 'puntos')
            + `<div class="acct-rw-pill"></div>`
-           + `<div class="acct-rw-bar-wrap"><div class="acct-rw-bar"><div class="acct-rw-bar-fill" style="width:${pos}%"></div><span class="acct-rw-thumb" style="left:${pos}%"></span>${marks}</div></div>`
+           + `<div class="acct-rw-bar-wrap"><div class="acct-rw-bar"><div class="acct-rw-bar-fill" style="width:${fillW}%"></div>${marks}</div></div>`
            + `<div class="acct-rw-list">${rows}</div>`;
       pane.innerHTML = hero;
       pane.querySelector('.acct-rw-pill').textContent = next ? `faltan ${fmt(next.cost - av)} ${RW.unit} para tu ${reached ? 'próximo' : 'primer'} premio` : '¡Podés canjear el premio más alto!';
@@ -283,16 +275,15 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 .acct-rw-cden{font-family:var(--display);font-size:34px;font-weight:600;color:#C9BEAF;margin-left:5px}
 .acct-rw-clbl{margin:4px 0 0;text-align:center;font-size:14px;color:#8A8072}
 .acct-rw-pill{display:block;width:max-content;max-width:100%;margin:16px auto 0;background:${CONFIG.palette.tint2};color:#6B6255;font-size:13.5px;font-weight:600;padding:9px 18px;border-radius:999px;text-align:center;box-sizing:border-box}
-.acct-rw-thumb{position:absolute;top:50%;width:16px;height:16px;border-radius:50%;background:${CONFIG.accent};border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.22);transform:translate(-50%,-50%);transition:left .4s ease;z-index:2}
 .acct-rw-list{margin-top:8px}
-.acct-rw-row{display:flex;align-items:center;gap:14px;padding:15px 2px;border-top:1px solid ${CONFIG.palette.line}}
+.acct-rw-row{display:flex;align-items:center;gap:13px;padding:13px 2px;border-top:1px solid ${CONFIG.palette.line}}
 .acct-rw-row:first-child{border-top:none}
-.acct-rw-num{flex:none;width:38px;height:38px;border-radius:50%;background:${CONFIG.palette.tint2};color:#9A8F7E;font-family:var(--display);font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.acct-rw-num{flex:none;width:34px;height:34px;border-radius:50%;background:${CONFIG.palette.tint2};color:#9A8F7E;font-family:var(--display);font-size:14px;font-weight:600;line-height:1;display:flex;align-items:center;justify-content:center;text-align:center}
 .acct-rw-row--on .acct-rw-num{background:${CONFIG.accent};color:#fff}
 .acct-rw-rl{flex:1;min-width:0}
-.acct-rw-rn{font-size:16px;font-weight:700;color:#17130F;letter-spacing:-.01em}
-.acct-rw-rd{font-size:13px;color:#8A8072;margin-top:2px}
-.acct-rw-rc{flex:none;font-family:var(--display);font-size:18px;font-weight:600;color:#17130F}
+.acct-rw-rn{font-size:14.5px;font-weight:650;color:#17130F;letter-spacing:-.01em}
+.acct-rw-rd{font-size:12px;color:#8A8072;margin-top:2px}
+.acct-rw-rc{flex:none;font-family:var(--display);font-size:17px;font-weight:600;color:#17130F}
 .acct-cart-earn{display:flex;align-items:center;justify-content:center;gap:6px;font-size:14px;font-weight:600;color:${CONFIG.accent};padding:7px 0 2px}
 .acct-cart-earn-g{display:inline-flex}
 .acct-cart-earn--guest{color:#6B6255;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
