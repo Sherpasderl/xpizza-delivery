@@ -75,7 +75,7 @@ const NOW = 1_700_000_000_000;
     r = await resolveRedemptionForOrder(db, { restaurantId: 'la_musa', items: [{ id: 'dimsum_01', qty: 1 }], itemsText: 'dimsum x1', totalLempiras: 223, schedExtra: '', now: NOW, redeem: { type: 'free_item', level: 1, item_id: 'soft_01', name: 'Coca-Cola' }, orderId: 'OL', customerUid: 'uI' });
     assert.strictEqual(r.ok, true); assert.strictEqual(r.priced.factura_items, null); assert.strictEqual(r.priced.total_cents, 22300); assert.strictEqual(r.priced.discount_cents, 0);
     assert.ok(/1x Coca-Cola \(Recompensa\)/.test(r.itemsText)); assert.deepStrictEqual(r.priced.free_line, { item_id: 'soft_01', qty: 1, price_cents: 0, added: true });
-    assert.strictEqual((await resv('uI', 'OL', 'la_musa')).state, 'reserved'); assert.strictEqual(await rsv('uI', 'la_musa'), 500); ok('La Musa valid → items_text appended (0-price line), factura skipped, total unchanged, reserved 500');
+    assert.strictEqual((await resv('uI', 'OL', 'la_musa')).state, 'reserved'); assert.strictEqual(await rsv('uI', 'la_musa'), 300); ok('La Musa valid → items_text appended (0-price line), factura skipped, total unchanged, reserved 300');
 
     // 9 — the free-item display NAME is sanitized (money-safe: display only)
     r = await resolveRedemptionForOrder(db, { restaurantId: 'la_musa', items: [{ id: 'dimsum_01', qty: 1 }], itemsText: 'dimsum x1', totalLempiras: 223, schedExtra: '', now: NOW, redeem: { type: 'free_item', level: 2, item_id: 'soup_01', name: '<script>x</script>Sopa' }, orderId: 'ON', customerUid: 'uI' });

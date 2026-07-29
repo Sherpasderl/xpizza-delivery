@@ -12,6 +12,9 @@
 // dimsum_0x, noodle_0x, rice_0x, crudo_0x, special_0x, starter_0x, soup_0x) AND extras/"Acompañamientos"
 // (rice_white, rice_chinese, papas_fritas live in EXTRAS_BY_RESTAURANT.la_musa, not MENU_BY_RESTAURANT).
 // The free-item price lookup + availability gate (Tasks 2/5/6) must resolve an id against BOTH.
+// Pre-launch config finalization: La Musa tiers retuned to ~10% value-back (300/850/1400/1650/2100).
+// Version stays 1 — redemption is still inert (redemption_enabled OFF, zero reservations ever stamped), so
+// there is no mid-flight redemption to invalidate. Bump this ONLY when changing costs AFTER go-live.
 const REDEMPTION_CONFIG_VERSION = 1;
 
 const REDEMPTION_CONFIG = {
@@ -20,17 +23,17 @@ const REDEMPTION_CONFIG = {
     kind: 'points',
     reward: 'add_free_item',
     tiers: [
-      { level: 1, cost: 500,  items: ['soft_01', 'soft_02', 'soft_03', 'soft_04',
+      { level: 1, cost: 300,  items: ['soft_01', 'soft_02', 'soft_03', 'soft_04',
                                       'beer_01', 'beer_02', 'beer_03', 'beer_04', 'beer_05', 'beer_06', 'beer_07', 'beer_08',
                                       'rice_white', 'rice_chinese', 'papas_fritas'] },
-      { level: 2, cost: 1000, items: ['dimsum_01', 'dimsum_02', 'dimsum_03', 'dimsum_04', 'dimsum_05',
+      { level: 2, cost: 850,  items: ['dimsum_01', 'dimsum_02', 'dimsum_03', 'dimsum_04', 'dimsum_05',
                                       'starter_01', 'starter_02', 'starter_03',
                                       'soup_01', 'soup_02', 'soup_03'] },
-      { level: 3, cost: 1500, items: ['noodle_01', 'noodle_01_sin', 'noodle_01_pollo', 'noodle_01_camaron', 'noodle_03',
+      { level: 3, cost: 1400, items: ['noodle_01', 'noodle_01_sin', 'noodle_01_pollo', 'noodle_01_camaron', 'noodle_03',
                                       'rice_01', 'rice_04', 'crudo_02', 'crudo_03', 'special_05'] },
-      { level: 4, cost: 2500, items: ['noodle_02', 'rice_02', 'rice_03',
+      { level: 4, cost: 1650, items: ['noodle_02', 'rice_02', 'rice_03',
                                       'starter_04', 'starter_05', 'starter_06', 'crudo_01', 'special_02'] },
-      { level: 5, cost: 3500, items: ['special_01', 'special_04'] },
+      { level: 5, cost: 2100, items: ['special_01', 'special_04'] },
     ],
   },
 };

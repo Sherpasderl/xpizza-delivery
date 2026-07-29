@@ -20,11 +20,11 @@
     // via the form MENU at render; availability via the 86 read. Server stays authoritative (a drift → the
     // quote/submit rejects with a typed message; never a money bug).
     rewards: { kind:'points', unit:'pts', perCents:3000, ptsPer:10, paneIntro:'Ganás puntos en cada pedido y los canjeás por comida gratis.', tiers:[
-      { cost:500,  name:'Bebida o acompañamiento', desc:'soda · papas · arroz', items:['soft_01','soft_02','soft_03','soft_04','beer_01','beer_02','beer_03','beer_04','beer_05','beer_06','beer_07','beer_08','rice_white','rice_chinese','papas_fritas'] },
-      { cost:1000, name:'Dim sum o starter', desc:'dumplings · buns · wontons', items:['dimsum_01','dimsum_02','dimsum_03','dimsum_04','dimsum_05','starter_01','starter_02','starter_03','soup_01','soup_02','soup_03'] },
-      { cost:1500, name:'Plato fuerte', desc:'noodles · rice · ceviches', items:['noodle_01','noodle_01_sin','noodle_01_pollo','noodle_01_camaron','noodle_03','rice_01','rice_04','crudo_02','crudo_03','special_05'] },
-      { cost:2500, name:'House special', desc:'tuna · beef premium', items:['noodle_02','rice_02','rice_03','starter_04','starter_05','starter_06','crudo_01','special_02'] },
-      { cost:3500, name:'Gran plato', desc:'lobster · asado', items:['special_01','special_04'] },
+      { cost:300,  name:'Bebida o acompañamiento', desc:'soda · papas · arroz', items:['soft_01','soft_02','soft_03','soft_04','beer_01','beer_02','beer_03','beer_04','beer_05','beer_06','beer_07','beer_08','rice_white','rice_chinese','papas_fritas'] },
+      { cost:850,  name:'Dim sum o starter', desc:'dumplings · buns · wontons', items:['dimsum_01','dimsum_02','dimsum_03','dimsum_04','dimsum_05','starter_01','starter_02','starter_03','soup_01','soup_02','soup_03'] },
+      { cost:1400, name:'Plato fuerte', desc:'noodles · rice · ceviches', items:['noodle_01','noodle_01_sin','noodle_01_pollo','noodle_01_camaron','noodle_03','rice_01','rice_04','crudo_02','crudo_03','special_05'] },
+      { cost:1650, name:'House special', desc:'tuna · beef premium', items:['noodle_02','rice_02','rice_03','starter_04','starter_05','starter_06','crudo_01','special_02'] },
+      { cost:2100, name:'Gran plato', desc:'lobster · asado', items:['special_01','special_04'] },
     ] },
   };
 

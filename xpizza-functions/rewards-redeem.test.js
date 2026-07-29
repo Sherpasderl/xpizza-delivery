@@ -32,8 +32,8 @@ const lm = (redeem, items = [{ id: 'dimsum_01', qty: 1 }]) => computeRedemption(
 // ── La Musa: add a chosen eligible tier item free (0-price) ──
 {
   const r = lm({ type: 'free_item', level: 1, item_id: 'soft_01' });   // menu-namespace, 40 → 4000
-  assert.strictEqual(r.ok, true); assert.strictEqual(r.model, 'add_free'); assert.strictEqual(r.cost, 500);
-  assert.strictEqual(r.discount_cents, 0); assert.deepStrictEqual(r.freeItem, { item_id: 'soft_01', price_cents: 4000, added: true }); ok('lm L1 soft_01 (menu) → add_free, cost 500, discount 0, price 4000, added');
+  assert.strictEqual(r.ok, true); assert.strictEqual(r.model, 'add_free'); assert.strictEqual(r.cost, 300);
+  assert.strictEqual(r.discount_cents, 0); assert.deepStrictEqual(r.freeItem, { item_id: 'soft_01', price_cents: 4000, added: true }); ok('lm L1 soft_01 (menu) → add_free, cost 300, discount 0, price 4000, added');
 }
 {
   const r = lm({ type: 'free_item', level: 1, item_id: 'rice_white' });   // EXTRAS-namespace, 50 → 5000
@@ -41,7 +41,7 @@ const lm = (redeem, items = [{ id: 'dimsum_01', qty: 1 }]) => computeRedemption(
 }
 {
   const r = lm({ type: 'free_item', level: 5, item_id: 'special_01' });   // 588 → 58800
-  assert.strictEqual(r.cost, 3500); assert.strictEqual(r.freeItem.price_cents, 58800); ok('lm L5 special_01 → cost 3500, price 58800');
+  assert.strictEqual(r.cost, 2100); assert.strictEqual(r.freeItem.price_cents, 58800); ok('lm L5 special_01 → cost 2100, price 58800');
 }
 {
   const r = lm({ type: 'free_item', level: 1, item_id: 'special_01' });   // special_01 is L5, not L1
@@ -57,7 +57,7 @@ const lm = (redeem, items = [{ id: 'dimsum_01', qty: 1 }]) => computeRedemption(
   const rx = xp([{ name: 'Ham', qty: 1 }]).canonical;
   assert.deepStrictEqual(rx, { restaurant_id: 'x_pizza', model: 'discount', type: 'discount_cheapest_pizza', config_version: REDEMPTION_CONFIG_VERSION, cost: 8, discount_cents: 28200, free_item_key: 'Ham' });
   const rl = lm({ type: 'free_item', level: 1, item_id: 'soft_01' }).canonical;
-  assert.deepStrictEqual(rl, { restaurant_id: 'la_musa', model: 'add_free', type: 'add_free_item', config_version: REDEMPTION_CONFIG_VERSION, cost: 500, discount_cents: 0, free_item_key: 'soft_01' });
+  assert.deepStrictEqual(rl, { restaurant_id: 'la_musa', model: 'add_free', type: 'add_free_item', config_version: REDEMPTION_CONFIG_VERSION, cost: 300, discount_cents: 0, free_item_key: 'soft_01' });
   assert.ok(!('line_index' in rx), 'line_index must NOT leak into canonical (fingerprint stability)'); ok('canonical: full server identity for both brands, config_version + model present, no line_index leak');
 }
 

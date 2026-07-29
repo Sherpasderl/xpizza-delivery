@@ -10,12 +10,12 @@ assert.strictEqual(REDEMPTION_CONFIG.x_pizza.kind, 'punch');
 assert.strictEqual(REDEMPTION_CONFIG.x_pizza.cost, 8);
 assert.strictEqual(REDEMPTION_CONFIG.x_pizza.reward, 'discount_cheapest_pizza'); ok('x_pizza = punch, cost 8, discount_cheapest_pizza');
 assert.strictEqual(REDEMPTION_CONFIG.la_musa.kind, 'points');
-assert.deepStrictEqual(REDEMPTION_CONFIG.la_musa.tiers.map((t) => t.cost), [500, 1000, 1500, 2500, 3500]); ok('la_musa tiers cost ladder 500/1000/1500/2500/3500');
+assert.deepStrictEqual(REDEMPTION_CONFIG.la_musa.tiers.map((t) => t.cost), [300, 850, 1400, 1650, 2100]); ok('la_musa tiers cost ladder 300/850/1400/1650/2100');
 assert.deepStrictEqual(REDEMPTION_CONFIG.la_musa.tiers.map((t) => t.level), [1, 2, 3, 4, 5]); ok('la_musa tier levels 1..5');
 
 // ── getTier ──
-assert.strictEqual(getTier('la_musa', 1).cost, 500);
-assert.strictEqual(getTier('la_musa', 5).cost, 3500);
+assert.strictEqual(getTier('la_musa', 1).cost, 300);
+assert.strictEqual(getTier('la_musa', 5).cost, 2100);
 assert.strictEqual(getTier('la_musa', 9), null); ok('getTier resolves by level; unknown level → null');
 assert.strictEqual(getTier('x_pizza', 1), null); ok('getTier on a brand with no tiers → null');
 
