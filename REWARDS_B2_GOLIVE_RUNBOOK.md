@@ -45,7 +45,7 @@ firebase deploy --only functions
 **Verify:**
 - [ ] Deploy reports **47 functions**, no deletions/prunes.
 - [ ] `quoteRedemption` Cloud Run revision **bumped** (new revision timestamp).
-- [ ] The intake functions (`createOrder`, `chargeOnlineOrder`, `confirmOnlineOrder`) revisions bumped (they carry the B2 uid-first reorder from T1).
+- [ ] The intake functions (`createOrder`, `chargeOnlineOrder`, `confirmOnlinePayment`) revisions bumped (they carry the B2 uid-first reorder from T1).
 - [ ] **Env note:** `quoteRedemption` is read-only — token verify + RTDB reads + `computeServerTotal` (menu-pricing). It needs **no** PixelPay/WhatsApp secret. Confirm it responds (a smoke `POST` with no token → `401 login_required`; a guest-style malformed call → typed JSON, not a 500). A fresh function starts with no env — that's fine here because it needs none.
 
 ---
@@ -60,15 +60,19 @@ cd ~/Downloads/xpizza-rewards/xpizza-functions
 npm run sync:rules                     # copies xpizza-reference/database.rules.json → database.rules.json (SoT is the reference)
 node scripts/assert-rules-synced.js    # or: npm run check:rules  (sync + all rules guards)
 
-# Emulator-verify the B2 rules (SHOW the run — do not claim it):
+# Emulator-verify the B2 rules (SHOW the run — do not claim it). BOTH rules suites, one emulator boot:
+#   rewards-config-rules → the client-readable redemption_live leaf + config staff-only
+#   rewards-rules        → the user_rewards spine (owner-reads-own incl. canary, other-uid/anon denied, client set(canary) denied)
 export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"; export JAVA_HOME=/opt/homebrew/opt/openjdk
-firebase emulators:exec --only database --project demo-xpizza "node test/rewards-config-rules.emulator.test.js"
+firebase emulators:exec --only database --project demo-xpizza \
+  "node test/rewards-rules.emulator.test.js && node test/rewards-config-rules.emulator.test.js"
+# (equivalently: `npm run test:rewards:emulator`, which also runs earn/reserve/intake/settle — more than Step 2 needs.)
 
 firebase deploy --only database
 ```
 
 **Verify:**
-- [ ] Emulator run **shown** green: a customer CAN read `config/rewards_public/redemption_live`; CANNOT read `config/rewards_public` itself, a sibling under it, `config/redemption_allowlist`, or any other `config/*`; CANNOT write `redemption_live`; the `user_rewards` spine holds (owner reads own incl. `canary`, other uid + anon denied, client `set(.../canary)` denied by `.write:false`).
+- [ ] Both emulator suites **shown** green — the config leaf: a customer CAN read `config/rewards_public/redemption_live`; CANNOT read `config/rewards_public` itself, a sibling under it, `config/redemption_allowlist`, or any other `config/*`; CANNOT write `redemption_live`. The spine (`rewards-rules`): owner reads own `user_rewards/{uid}/{rid}` incl. `canary`; other uid + anon denied; client `set(.../canary)` denied by `.write:false`.
 - [ ] `--only database` deploy succeeds.
 
 ---
@@ -91,8 +95,11 @@ the redeem affordance is invisible to all; the display surfaces (chip / pane / c
 
 ## Step 4 — Canary (your account only) — smoke-test the full money path
 
-Turn redemption on for **only your uid** via Admin/console writes (not the global flag). The affordance
-appears for you (read-own `canary` OR the allowlist), everyone else stays inert.
+Turn redemption on for **only your uid** via Admin/console writes (not the global flag). You need BOTH
+writes — they gate different sides: the **client affordance** appears via your read-own
+`user_rewards/{uid}/{rid}/canary` (or the global `redemption_live` leaf, still OFF here) — the client
+CANNOT read the allowlist; the **allowlist** opens the **server** quote/intake gate. Set both so the UI
+shows the affordance AND the server honors the redemption; everyone else stays inert.
 
 **Console / Admin writes** (rid = `x_pizza` and `la_musa`; `{uid}` = your customer uid):
 
@@ -172,5 +179,5 @@ through the existing B1 lifecycle (consume on completion, reverse on cancel) —
 ## Notes
 
 - Restaurant ids: `x_pizza`, `la_musa`. User rewards node: `user_rewards/{uid}/{rid}` → `{ balance, reserved, lifetime, canary, ledger, reservations }`, `available = balance − reserved`.
-- `redemption_live` (client-readable leaf) gates the **UI affordance**; `redemption_enabled` (staff-only) gates the **server** quote/intake. The atomic flip sets both true together; the allowlist/canary let one account run ahead for the canary.
+- Two independent gates: the **UI affordance** is client-gated by `redemption_live` (client-readable leaf) OR read-own `user_rewards/{uid}/{rid}/canary` — the client evaluates `_redeemLiveFlag || _rwState.canary` and cannot read the allowlist; the **server** quote/intake is gated by `redemption_enabled` (staff-only) OR `config/redemption_allowlist/{uid}`. For the canary, the `canary` marker opens the client side and the allowlist opens the server side (both needed); the atomic flip sets `redemption_live` + `redemption_enabled` true together for everyone.
 - The parity guard (`rewards-parity.guard.test.js`) runs in `npm test` — any future rewards edit that isn't mirrored across both forms fails CI before it can reach a deploy.
