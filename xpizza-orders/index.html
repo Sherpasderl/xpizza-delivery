@@ -1746,6 +1746,7 @@ function updateTotal(){
   renderRedeemUI();   // REWARDS (B2 Task 4): re-render the redeem affordance on any cart/pay change (a pending reward re-syncs the total via onQuoted)
 }
 
+//__REWARDS_PARITY_BEGIN__ (B2) — the block between this marker and __END__ MUST be byte-identical in BOTH order forms (enforced by rewards-parity.guard.test.js). Brand-specific rewards code lives OUTSIDE this block.
 // REWARDS (B2 Task 4): the checkout redeem affordance (server-authoritative discount). Fail-safe; guest → nothing.
 function applyRedeemQuoteToTotals(q){
   const pa=document.getElementById('pixelpay-amount');
@@ -1768,6 +1769,7 @@ function renderRedeemUI(){
 function redeemAdjustedTotal(){
   try{ const rc=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuoteTotalCents)?window.__ACCOUNT.getRedeemQuoteTotalCents():null; return rc!=null?(rc/100):calcTotal(); }catch(_){ return calcTotal(); }
 }
+//__REWARDS_PARITY_END__
 
 function calcTotal(){
   let total=MENU.reduce((s,p)=>s+p.price*qty[p.id],0);
