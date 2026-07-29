@@ -82,16 +82,16 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
   text-decoration:none;
 }
 
-.header{position:relative;background:var(--cream);padding:0;text-align:center;border-bottom:1px solid var(--border);overflow:hidden;min-height:190px;display:flex;flex-direction:column;justify-content:flex-end}
-.brand-lockup{position:relative;z-index:1;display:flex;align-items:flex-end;justify-content:center;gap:2px;margin:0 0 16px;filter:drop-shadow(0 2px 7px rgba(0,0,0,.28))}
+.header{position:relative;background:var(--cream);padding:0;text-align:center;border-bottom:1px solid var(--border);overflow:hidden;min-height:210px;display:flex;flex-direction:column;justify-content:flex-end}
+.brand-lockup{position:relative;z-index:1;display:flex;align-items:flex-end;justify-content:center;gap:2px;margin:0 0 18px;opacity:.88;filter:drop-shadow(0 1px 5px rgba(0,0,0,.18))}
 /* round 5: faded hero photo behind the header — the food shot fades into the cream page; a glass
    account chip is anchored top-right (account.js) and the logo sits centered over the fade. */
 .hero-bg{position:absolute;inset:0;z-index:0;background:url('hero.jpg') center 40%/cover no-repeat}
-.hero-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(18,14,10,.30) 0%,rgba(18,14,10,.04) 32%,var(--cream) 82%)}
+.hero-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.15) 0%,rgba(0,0,0,0) 22%),linear-gradient(180deg,rgba(252,252,251,0) 28%,rgba(252,252,251,.5) 58%,rgba(252,252,251,.85) 80%,var(--cream) 100%)}
 /* Item 1 (round 3): centered stack — logo, then the account chip pill centered under it (account.js
    centers .acct-chip-mount), then the sub-line. Header text-align:center handles the rest. */
 .brand-pizza-only{font-family:'Special Elite','Courier New',monospace;font-size:22px;letter-spacing:3px;text-transform:uppercase;color:var(--charcoal);line-height:1}
-.logo-img{width:72px;height:auto;display:block}
+.logo-img{width:83px;height:auto;display:block}
 
 .brand-sub{font-size:13px;color:var(--muted);letter-spacing:0;margin-top:12px;font-weight:400}
 .progress-bar{display:flex;background:var(--border2);height:2px}
