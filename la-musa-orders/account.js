@@ -66,13 +66,16 @@
    does not float over the payment page). Talkin-Tacos style: translucent white + backdrop-blur + hairline
    border + soft shadow; accent avatar disc; name has a light text-shadow for legibility over the photo.
    Guest "Entrar" chip shares the glass. */
-.acct-chip-mount{position:absolute;top:14px;right:14px;z-index:3;display:flex;min-width:0}
+.acct-chip-mount{position:absolute;top:14px;right:14px;z-index:3;display:flex;min-width:0;transition:top .3s cubic-bezier(.4,0,.2,1)}
 /* Paso 1 only: pin the chip to the viewport top-right so it stays visible while scrolling the menu
    (index.html toggles body.s1-active per stage). Other stages (paso 2 payment) fall back to the
    header-anchored absolute position above — visible at the top, not pinned. */
 body.s1-active .acct-chip-mount{position:fixed;z-index:150}
 /* Scrolled past the hero on paso 1 → the pinned chip collapses to just the avatar circle (Talkin-Tacos
    corner chip) so it stops covering the sticky category tabs. index.html toggles body.chip-mini on scroll. */
+/* Collapsed avatar shifts up to sit vertically centered on the sticky category bar (~46px tall) instead of
+   hanging low at the full-pill's top:14. */
+body.s1-active.chip-mini .acct-chip-mount{top:6px}
 body.s1-active.chip-mini .acct-chip{padding:3px}
 body.s1-active.chip-mini .acct-chip .acct-nm,
 body.s1-active.chip-mini .acct-chip .acct-rw,
