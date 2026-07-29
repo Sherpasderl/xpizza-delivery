@@ -76,7 +76,10 @@ body.s1-active .acct-chip-mount{position:fixed;z-index:150}
 /* Collapsed avatar shifts up to sit vertically centered on the sticky category bar (~46px tall) instead of
    hanging low at the full-pill's top:14. */
 body.s1-active.chip-mini .acct-chip-mount{top:6px}
-body.s1-active.chip-mini .acct-chip{padding:3px}
+/* Collapsed state = a CIRCLE: pin the content height to the avatar so the (0-width) collapsing name/counter
+   can't inflate it into a tall oval; justify-center keeps the avatar centered. Width stays auto → smooth shrink. */
+body.s1-active.chip-mini .acct-chip{padding:3px;height:29px;justify-content:center}
+body.s1-active.chip-mini .acct-chip--out{height:27px}
 body.s1-active.chip-mini .acct-chip .acct-nm,
 body.s1-active.chip-mini .acct-chip .acct-rw,
 body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0}
