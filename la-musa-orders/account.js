@@ -19,12 +19,12 @@
     // tiers MIRROR the LOCKED server config (rewards-redeem-config.js, config_version 1) — item names resolve
     // via the form MENU at render; availability via the 86 read. Server stays authoritative (a drift → the
     // quote/submit rejects with a typed message; never a money bug).
-    rewards: { kind:'points', unit:'pts', perCents:3000, ptsPer:10, tiers:[
-      { cost:500,  items:['soft_01','soft_02','soft_03','soft_04','beer_01','beer_02','beer_03','beer_04','beer_05','beer_06','beer_07','beer_08','rice_white','rice_chinese','papas_fritas'] },
-      { cost:1000, items:['dimsum_01','dimsum_02','dimsum_03','dimsum_04','dimsum_05','starter_01','starter_02','starter_03','soup_01','soup_02','soup_03'] },
-      { cost:1500, items:['noodle_01','noodle_01_sin','noodle_01_pollo','noodle_01_camaron','noodle_03','rice_01','rice_04','crudo_02','crudo_03','special_05'] },
-      { cost:2500, items:['noodle_02','rice_02','rice_03','starter_04','starter_05','starter_06','crudo_01','special_02'] },
-      { cost:3500, items:['special_01','special_04'] },
+    rewards: { kind:'points', unit:'pts', perCents:3000, ptsPer:10, paneIntro:'Ganás puntos en cada pedido y los canjeás por comida gratis.', tiers:[
+      { cost:500,  name:'Bebida o acompañamiento', desc:'soda · papas · arroz', items:['soft_01','soft_02','soft_03','soft_04','beer_01','beer_02','beer_03','beer_04','beer_05','beer_06','beer_07','beer_08','rice_white','rice_chinese','papas_fritas'] },
+      { cost:1000, name:'Dim sum o starter', desc:'dumplings · buns · wontons', items:['dimsum_01','dimsum_02','dimsum_03','dimsum_04','dimsum_05','starter_01','starter_02','starter_03','soup_01','soup_02','soup_03'] },
+      { cost:1500, name:'Plato fuerte', desc:'noodles · rice · ceviches', items:['noodle_01','noodle_01_sin','noodle_01_pollo','noodle_01_camaron','noodle_03','rice_01','rice_04','crudo_02','crudo_03','special_05'] },
+      { cost:2500, name:'House special', desc:'tuna · beef premium', items:['noodle_02','rice_02','rice_03','starter_04','starter_05','starter_06','crudo_01','special_02'] },
+      { cost:3500, name:'Gran plato', desc:'lobster · asado', items:['special_01','special_04'] },
     ] },
   };
 
@@ -178,6 +178,13 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     const pane = $('acct-pane-rewards'); if (!pane) return;
     injectRewardsStyles();
     const av = rwAvailable();
+    // Shared elegant pane head: back+title, the intro copy (CONFIG, trusted HTML), the big serif counter,
+    // and its label. `counterHtml` is number-only markup (safe); `clbl` is static text (escaped).
+    const rwPaneHead = (counterHtml, clbl) =>
+      `<div class="acct-picker-top">${PICKER_BACK}<span class="acct-picker-title acct-rw-title">Mis premios</span></div>`
+      + `<p class="acct-rw-intro">${RW.paneIntro || ''}</p>`
+      + `<div class="acct-rw-counter">${counterHtml}</div>`
+      + `<p class="acct-rw-clbl">${escapeHtml(clbl)}</p>`;
     let hero;
     if (RW.kind === 'punch') {
       const p = rwPunch();
@@ -187,22 +194,39 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       const pizzaCells = p.size - 1;
       for (let i = 0; i < pizzaCells; i++) slots += `<span class="acct-rw-slot acct-rw-slot--pizza${i < Math.min(p.onCard, pizzaCells) ? ' acct-rw-slot--on' : ''}">${PIZZA_SVG}</span>`;
       slots += `<span class="acct-rw-slot acct-rw-slot--gift${p.redeemable ? ' acct-rw-slot--on' : ''}">${GIFT_SVG}</span>`;
-      const sub = p.redeemable ? '¡Tenés una pizza gratis para canjear!' : `${p.size - p.onCard} ${p.size - p.onCard === 1 ? 'sello' : 'sellos'} para tu próxima pizza gratis`;
-      hero = `<div class="acct-rw-card"><div class="acct-rw-slots">${slots}</div><p class="acct-rw-sub"></p></div>`;
-      // sub set via textContent below (never innerHTML for the dynamic sentence)
-      pane.innerHTML = `<div class="acct-picker-top">${PICKER_BACK}<span class="acct-picker-title">Mis premios</span></div>${hero}`;
-      pane.querySelector('.acct-rw-sub').textContent = sub;
+      const clbl = p.redeemable ? '¡Tenés una pizza gratis para canjear!' : 'sellos para tu pizza gratis';
+      hero = rwPaneHead(`<span class="acct-rw-cnum">${p.onCard}</span><span class="acct-rw-cden">/ ${p.size}</span>`, clbl)
+           + `<div class="acct-rw-card"><div class="acct-rw-slots">${slots}</div></div>`;
+      pane.innerHTML = hero;
     } else {
-      const tiers = RW.tiers, maxT = tiers[tiers.length - 1].cost;
-      const pct = Math.max(0, Math.min(100, Math.round((av / maxT) * 100)));
-      let marks = '';
-      for (const t of tiers) marks += `<span class="acct-rw-tier${av >= t.cost ? ' acct-rw-tier--on' : ''}" style="left:${Math.round((t.cost / maxT) * 100)}%"><i></i><b>${t.cost}</b></span>`;
+      const tiers = RW.tiers, n = tiers.length, maxT = tiers[n - 1].cost;
+      const fmt = (x) => Number(x).toLocaleString('en-US');           // 1000 → "1,000"
+      const nodeX = (i) => Math.round(((i + 0.5) / n) * 1000) / 10;   // equal-spaced node position % (inset margins)
+      // Current position along the EQUAL-spaced bar: bracket-interpolate from 0 pts through the tier nodes.
+      const posFor = (v) => {
+        if (v <= 0) return 0;
+        if (v >= maxT) return nodeX(n - 1);
+        let loCost = 0, loPos = 0;
+        for (let i = 0; i < n; i++) {
+          if (v < tiers[i].cost) { const seg = tiers[i].cost - loCost; return loPos + (seg > 0 ? (v - loCost) / seg : 0) * (nodeX(i) - loPos); }
+          loCost = tiers[i].cost; loPos = nodeX(i);
+        }
+        return nodeX(n - 1);
+      };
+      const pos = Math.round(posFor(av) * 10) / 10;
+      const reached = tiers.some((t) => t.cost <= av);
       const next = tiers.find((t) => t.cost > av);
-      const sub = next ? `${next.cost - av} ${RW.unit} para tu próximo premio` : '¡Podés canjear el premio más alto!';
-      hero = `<div class="acct-rw-bar-wrap"><div class="acct-rw-bar"><div class="acct-rw-bar-fill" style="width:${pct}%"></div>${marks}</div></div><p class="acct-rw-sub"></p>`;
-      pane.innerHTML = `<div class="acct-picker-top">${PICKER_BACK}<span class="acct-picker-title">Mis premios</span></div><div class="acct-rw-pts"></div>${hero}`;
-      pane.querySelector('.acct-rw-pts').textContent = `${av} ${RW.unit}`;
-      pane.querySelector('.acct-rw-sub').textContent = sub;
+      let marks = '';
+      for (let i = 0; i < n; i++) marks += `<span class="acct-rw-tier${av >= tiers[i].cost ? ' acct-rw-tier--on' : ''}" style="left:${nodeX(i)}%"><i></i><b>${fmt(tiers[i].cost)}</b></span>`;
+      let rows = '';
+      for (let i = 0; i < n; i++) rows += `<div class="acct-rw-row${av >= tiers[i].cost ? ' acct-rw-row--on' : ''}"><span class="acct-rw-num">${i + 1}</span><div class="acct-rw-rl"><div class="acct-rw-rn"></div><div class="acct-rw-rd"></div></div><span class="acct-rw-rc">${fmt(tiers[i].cost)}</span></div>`;
+      hero = rwPaneHead(`<span class="acct-rw-cnum">${fmt(av)}</span>`, 'puntos')
+           + `<div class="acct-rw-pill"></div>`
+           + `<div class="acct-rw-bar-wrap"><div class="acct-rw-bar"><div class="acct-rw-bar-fill" style="width:${pos}%"></div><span class="acct-rw-thumb" style="left:${pos}%"></span>${marks}</div></div>`
+           + `<div class="acct-rw-list">${rows}</div>`;
+      pane.innerHTML = hero;
+      pane.querySelector('.acct-rw-pill').textContent = next ? `faltan ${fmt(next.cost - av)} ${RW.unit} para tu ${reached ? 'próximo' : 'primer'} premio` : '¡Podés canjear el premio más alto!';
+      pane.querySelectorAll('.acct-rw-row').forEach((row, i) => { row.querySelector('.acct-rw-rn').textContent = tiers[i].name || ''; row.querySelector('.acct-rw-rd').textContent = tiers[i].desc || ''; });
     }
     wirePickerBack(pane);
   }
@@ -232,7 +256,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 .acct-chip .acct-rw-g{display:inline-flex;color:${CONFIG.accent};opacity:.9}
 .acct-chip .acct-rw-g svg{width:13px;height:13px}
 .acct-rw-card{padding:6px 4px 2px}
-.acct-rw-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin:2px 0 14px}
+.acct-rw-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin:20px 0 8px}
 .acct-rw-slot{aspect-ratio:1;border-radius:50%;border:1.5px solid ${CONFIG.palette.line3};background:${CONFIG.palette.tint};display:flex;align-items:center;justify-content:center;color:#B3A594}
 .acct-rw-slot svg{width:58%;height:58%}
 /* Round 2: slant the pizza slice (tip toward lower-right) to match the mockup; the gift stays upright. */
@@ -243,13 +267,32 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 .acct-rw-slot--gift.acct-rw-slot--on{background:${CONFIG.accent};border-color:${CONFIG.accent};color:#fff}
 .acct-rw-sub{margin:0;font-size:13px;color:#6B6255;text-align:center;line-height:1.4}
 .acct-rw-pts{font-size:26px;font-weight:750;letter-spacing:-.02em;color:#17130F;text-align:center;margin:2px 0 16px}
-.acct-rw-bar-wrap{padding:26px 6px 30px}
+.acct-rw-bar-wrap{padding:32px 12px 20px}
 .acct-rw-bar{position:relative;height:6px;border-radius:999px;background:${CONFIG.palette.fillA}}
 .acct-rw-bar-fill{position:absolute;left:0;top:0;height:100%;border-radius:999px;background:${CONFIG.accent};transition:width .4s ease}
 .acct-rw-tier{position:absolute;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center}
-.acct-rw-tier i{width:11px;height:11px;border-radius:50%;background:#fff;border:2px solid ${CONFIG.palette.line3}}
+.acct-rw-tier i{width:13px;height:13px;border-radius:50%;background:#fff;border:2px solid ${CONFIG.palette.line3}}
 .acct-rw-tier--on i{background:${CONFIG.accent};border-color:${CONFIG.accent}}
-.acct-rw-tier b{position:absolute;top:15px;font-size:10px;font-weight:600;color:#9A8F7E}
+.acct-rw-tier b{position:absolute;bottom:16px;font-family:var(--display);font-size:12px;font-weight:600;color:#9A8F7E;white-space:nowrap}
+/* Elegant Mis premios (both brands): big serif counter + intro + (La Musa) pill / slider thumb / tier list. */
+.acct-rw-title{font-family:var(--display);font-size:25px;font-weight:800;letter-spacing:-.01em}
+.acct-rw-intro{margin:12px 2px 18px;font-size:14px;color:#8A8072;line-height:1.55}
+.acct-rw-intro b{color:#6B6255;font-weight:700}
+.acct-rw-counter{text-align:center;margin:16px 0 4px;line-height:1}
+.acct-rw-cnum{font-family:var(--display);font-size:52px;font-weight:700;color:#17130F;letter-spacing:.01em}
+.acct-rw-cden{font-family:var(--display);font-size:34px;font-weight:600;color:#C9BEAF;margin-left:5px}
+.acct-rw-clbl{margin:4px 0 0;text-align:center;font-size:14px;color:#8A8072}
+.acct-rw-pill{display:block;width:max-content;max-width:100%;margin:16px auto 0;background:${CONFIG.palette.tint2};color:#6B6255;font-size:13.5px;font-weight:600;padding:9px 18px;border-radius:999px;text-align:center;box-sizing:border-box}
+.acct-rw-thumb{position:absolute;top:50%;width:16px;height:16px;border-radius:50%;background:${CONFIG.accent};border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.22);transform:translate(-50%,-50%);transition:left .4s ease;z-index:2}
+.acct-rw-list{margin-top:8px}
+.acct-rw-row{display:flex;align-items:center;gap:14px;padding:15px 2px;border-top:1px solid ${CONFIG.palette.line}}
+.acct-rw-row:first-child{border-top:none}
+.acct-rw-num{flex:none;width:38px;height:38px;border-radius:50%;background:${CONFIG.palette.tint2};color:#9A8F7E;font-family:var(--display);font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.acct-rw-row--on .acct-rw-num{background:${CONFIG.accent};color:#fff}
+.acct-rw-rl{flex:1;min-width:0}
+.acct-rw-rn{font-size:16px;font-weight:700;color:#17130F;letter-spacing:-.01em}
+.acct-rw-rd{font-size:13px;color:#8A8072;margin-top:2px}
+.acct-rw-rc{flex:none;font-family:var(--display);font-size:18px;font-weight:600;color:#17130F}
 .acct-cart-earn{display:flex;align-items:center;justify-content:center;gap:6px;font-size:14px;font-weight:600;color:${CONFIG.accent};padding:7px 0 2px}
 .acct-cart-earn-g{display:inline-flex}
 .acct-cart-earn--guest{color:#6B6255;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
