@@ -2944,7 +2944,7 @@ function renderUnassignedSection() {
       <div class="r1">
         <span class="num">${escapeHtml(displayOrderLabel(o))}</span>
         <span class="cust">${escapeHtml(o.customer_name || '—')}</span>
-        <span class="ord-age band-${risk.band}" data-aging="${o.created_at ?? ''}">${formatAging(secs)}</span>
+        <span class="ord-age band-${risk.band}" data-aging="${escapeHtml(String(o.created_at ?? ''))}">${formatAging(secs)}</span>
       </div>
       <div class="items">${escapeHtml(o.items_text || o.address_detected || '—')}</div>
       <div class="meta">${payChip}${waChip}${slip}</div>
@@ -3089,7 +3089,7 @@ function renderPedidosTab() {
     const edge = band === 'red' ? ' late' : band === 'amber' ? ' aging' : '';
     return `
       <div class="ord${edge}" data-order-id="${escapeHtml(o.order_id)}">
-        <div class="r1"><span class="num">${escapeHtml(displayOrderLabel(o))}</span><span class="cust">${escapeHtml(o.customer_name || '—')}</span><span class="ord-age band-${band}" data-aging="${o.created_at ?? ''}">${formatAging(secs)}</span></div>
+        <div class="r1"><span class="num">${escapeHtml(displayOrderLabel(o))}</span><span class="cust">${escapeHtml(o.customer_name || '—')}</span><span class="ord-age band-${band}" data-aging="${escapeHtml(String(o.created_at ?? ''))}">${formatAging(secs)}</span></div>
         <div class="items">${escapeHtml(driver && driver.name ? `Con ${driver.name}` : 'Asignado')}</div>
       </div>`;
   }).join('');
