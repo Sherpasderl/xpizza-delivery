@@ -2000,6 +2000,17 @@ function showStage(id,pct){
   if(cartBar) cartBar.style.display=(id==='s1'||id==='s2')?'flex':'none';
 }
 
+// Collapse the pinned account chip to just the avatar circle once scrolled past the hero on paso 1
+// (so it stops covering the sticky category tabs). Threshold tracks the header height.
+(function(){
+  var thr=150;
+  function calc(){ var h=document.querySelector('.header'); thr=h?Math.max(80,h.offsetHeight-60):150; }
+  function onScroll(){ document.body.classList.toggle('chip-mini', window.scrollY>thr); }
+  window.addEventListener('resize', calc, {passive:true});
+  window.addEventListener('scroll', onScroll, {passive:true});
+  document.addEventListener('DOMContentLoaded', function(){ calc(); onScroll(); });
+})();
+
 function goBack(id,pct){ showStage(id,pct); }
 
 /* ── Stage 1 → 2 ── */
