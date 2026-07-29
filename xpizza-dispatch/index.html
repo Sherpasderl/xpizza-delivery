@@ -1779,6 +1779,18 @@
   .cash-sub { font-size: 11px; color: var(--text-soft); margin-top: 2px; }
   .driver-actions { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
   .driver-row .da { width: 28px; height: 28px; }
+
+  /* ============ Right-rail tab strip (Task 10b) ============ */
+  .rail-tabs { display: flex; gap: 3px; background: rgba(0,0,0,0.28); border-radius: 12px; padding: 4px; margin: 14px 0 10px; }
+  .rtab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 4px; border: none; background: none; border-radius: 9px; font-size: 11.5px; font-weight: 600; color: var(--text-dim); cursor: pointer; white-space: nowrap; transition: .14s; }
+  .rtab:hover { color: var(--text-soft); }
+  .rtab.on { background: var(--surface-2); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+  .rtab .rn { font-size: 10px; font-weight: 700; color: var(--text-soft); background: rgba(255,255,255,0.08); border-radius: 999px; padding: 0 6px; min-width: 16px; text-align: center; }
+  .comms-row { background: var(--surface); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .comms-from { font-weight: 600; font-size: 12.5px; color: var(--text); }
+  .comms-body { font-size: 11.5px; color: var(--text-soft); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .comms-open { width: 100%; margin-top: 4px; padding: 8px; border: none; border-radius: 9px; background: rgba(79,140,255,0.12); color: var(--info); font-weight: 600; font-size: 12px; cursor: pointer; }
+  .comms-open:hover { background: rgba(79,140,255,0.2); }
 </style>
 </head>
 
@@ -1898,35 +1910,7 @@
 
       <!-- Repartidores roster moved to the right rail (Task 10a) -->
 
-      <div class="tree-group hidden" id="reconciliation-group">
-        <div class="tree-group-header">
-          <div class="tree-group-title">Reconciliación de pagos</div>
-          <div class="tree-group-meta hot" id="reconciliation-meta">0</div>
-        </div>
-        <div class="group-body">
-          <div id="reconciliation-list"></div>
-        </div>
-      </div>
-
-      <div class="tree-group collapsed" id="delivered-group">
-        <div class="tree-group-header toggleable" id="delivered-toggle">
-          <div class="tree-group-title"><span class="tree-group-toggle"></span>Cerrados hoy</div>
-          <div class="tree-group-meta" id="delivered-meta">0</div>
-        </div>
-        <div class="group-body">
-          <div class="closed-orders-search-wrap">
-            <input
-              type="text"
-              id="closed-search"
-              class="closed-orders-search"
-              placeholder="Buscar pedido por ID, teléfono o nombre..."
-              autocomplete="off"
-            />
-            <button class="closed-search-clear hidden" id="closed-search-clear" title="Limpiar búsqueda">×</button>
-          </div>
-          <div id="delivered-list"><div class="tree-empty">Aún no hay pedidos cerrados hoy</div></div>
-        </div>
-      </div>
+      <!-- Reconciliación + Cerrados moved to the right-rail Caja/Cerrados tabs (Task 10b) -->
     </div></div>
 
     <div class="col right" id="right-rail"><div class="rail-inner">
@@ -1937,6 +1921,54 @@
           <div class="tree-group-meta" id="drivers-meta">0 de 0 activos</div>
         </div>
         <div id="drivers-tree"><div class="tree-empty">Sin repartidores</div></div>
+      </div>
+
+      <div class="rail-tabs" id="rail-tabs">
+        <button class="rtab on" data-tab="pedidos">Pedidos <span class="rn" id="tab-pedidos-n">0</span></button>
+        <button class="rtab" data-tab="programados">Programados <span class="rn" id="tab-programados-n">0</span></button>
+        <button class="rtab" data-tab="comms">Comms <span class="rn" id="tab-comms-n">0</span></button>
+        <button class="rtab" data-tab="caja">Caja</button>
+        <button class="rtab" data-tab="cerrados">Cerrados</button>
+      </div>
+
+      <div class="rtab-pane" data-pane="pedidos"><div id="pedidos-list"><div class="tree-empty">Sin pedidos activos</div></div></div>
+
+      <div class="rtab-pane hidden" data-pane="programados"><div id="programados-list"><div class="tree-empty">Sin pedidos programados</div></div></div>
+
+      <div class="rtab-pane hidden" data-pane="comms"><div id="comms-list"><div class="tree-empty">Sin mensajes sin atender</div></div></div>
+
+      <div class="rtab-pane hidden" data-pane="caja">
+        <div class="tree-group hidden" id="reconciliation-group">
+          <div class="tree-group-header">
+            <div class="tree-group-title">Reconciliación de pagos</div>
+            <div class="tree-group-meta hot" id="reconciliation-meta">0</div>
+          </div>
+          <div class="group-body">
+            <div id="reconciliation-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rtab-pane hidden" data-pane="cerrados">
+        <div class="tree-group" id="delivered-group">
+          <div class="tree-group-header toggleable" id="delivered-toggle">
+            <div class="tree-group-title"><span class="tree-group-toggle"></span>Cerrados hoy</div>
+            <div class="tree-group-meta" id="delivered-meta">0</div>
+          </div>
+          <div class="group-body">
+            <div class="closed-orders-search-wrap">
+              <input
+                type="text"
+                id="closed-search"
+                class="closed-orders-search"
+                placeholder="Buscar pedido por ID, teléfono o nombre..."
+                autocomplete="off"
+              />
+              <button class="closed-search-clear hidden" id="closed-search-clear" title="Limpiar búsqueda">×</button>
+            </div>
+            <div id="delivered-list"><div class="tree-empty">Aún no hay pedidos cerrados hoy</div></div>
+          </div>
+        </div>
       </div>
     </div></div>
   </div></div>
@@ -2302,6 +2334,7 @@ function subscribeAll() {
     updateStats();
   });
   XPD.subscribeToDriverCash(renderCashBar);   // read-only cash bar (today's closed cuadres)
+  XPD.subscribeToScheduledOrders(renderProgramadosTab);   // read-only Programados tab (held orders)
   XPD.subscribeToManualReconciliation((orders) => {
     reconciliationOrders = orders || {};
     renderReconciliationSection();
@@ -2535,10 +2568,11 @@ function initMessagesSubscription() {
     lastUnhandledIds = unhandledIds;
 
     updateMessagesBadge(unhandledIds.size);
-    // Re-render modal lists if it's open
+    // Modal lists re-render only when the modal is open (fallback triage surface)…
     if ($('msg-modal')?.classList.contains('open')) {
       renderMessagesLists();
     }
+    renderCommsTab();   // …but the in-tab Comms list stays live regardless (Task 10b)
   });
 }
 
@@ -2785,6 +2819,7 @@ function renderSidebar() {
   renderDriversSection();
   renderDeliveredSection();
   renderReconciliationSection();
+  renderPedidosTab();
 }
 
 // ============================================================
@@ -2905,7 +2940,7 @@ function renderUnassignedSection() {
         : '';
     const slip = risk.level === 'slipping' ? '<span class="m slip"><span class="d"></span>slipping vs primer estimado</span>' : '';
     return `
-    <div class="ord unassigned-card${edge}" data-order-id="${o.order_id}">
+    <div class="ord unassigned-card${edge}" data-order-id="${escapeHtml(o.order_id)}">
       <div class="r1">
         <span class="num">${escapeHtml(displayOrderLabel(o))}</span>
         <span class="cust">${escapeHtml(o.customer_name || '—')}</span>
@@ -3038,6 +3073,56 @@ function renderCashBar(cash) {
     <div class="cash-val">L ${escapeHtml(total.toLocaleString('es-HN'))}</div>
     <div class="cash-sub">${escapeHtml(String(orders))} pedido(s) cerrado(s)</div>
   `;
+}
+
+// Pedidos tab — active in-flight orders (getActiveOrders), read-only, click → detail modal.
+function renderPedidosTab() {
+  const el = $('pedidos-list'); if (!el) return;
+  const orders = getActiveOrders();
+  const n = $('tab-pedidos-n'); if (n) n.textContent = String(orders.length);
+  if (orders.length === 0) { el.innerHTML = '<div class="tree-empty">Sin pedidos activos</div>'; return; }
+  el.innerHTML = orders.map(o => {
+    const secs = agingSeconds(agingBaselineMs(o), Date.now());
+    const band = agingBand(secs);
+    const dt = allTasks[`${o.order_id}_delivery`];
+    const driver = allDrivers[dt && dt.assigned_driver_id];
+    const edge = band === 'red' ? ' late' : band === 'amber' ? ' aging' : '';
+    return `
+      <div class="ord${edge}" data-order-id="${escapeHtml(o.order_id)}">
+        <div class="r1"><span class="num">${escapeHtml(displayOrderLabel(o))}</span><span class="cust">${escapeHtml(o.customer_name || '—')}</span><span class="ord-age band-${band}" data-aging="${o.created_at ?? ''}">${formatAging(secs)}</span></div>
+        <div class="items">${escapeHtml(driver && driver.name ? `Con ${driver.name}` : 'Asignado')}</div>
+      </div>`;
+  }).join('');
+  el.querySelectorAll('.ord[data-order-id]').forEach(card => {
+    card.addEventListener('click', () => openOrderDetailModal(card.dataset.orderId));
+  });
+}
+
+// Programados tab — HELD scheduled/releasing orders (from subscribeToScheduledOrders). Read-only.
+function renderProgramadosTab(scheduled) {
+  const el = $('programados-list'); if (!el) return;
+  const list = Object.values(scheduled || {}).sort((a, b) => (a.scheduled_for || 0) - (b.scheduled_for || 0));
+  const n = $('tab-programados-n'); if (n) n.textContent = String(list.length);
+  if (list.length === 0) { el.innerHTML = '<div class="tree-empty">Sin pedidos programados</div>'; return; }
+  el.innerHTML = list.map(o => `
+    <div class="ord">
+      <div class="r1"><span class="num">${escapeHtml(displayOrderLabel(o))}</span><span class="cust">${escapeHtml(o.customer_name || '—')}</span></div>
+      <div class="items">⏰ ${escapeHtml(formatScheduledSlot(o.scheduled_for))}</div>
+    </div>`).join('');
+}
+
+// Comms tab — live read-only unhandled inbound list (the full modal triage stays as fallback).
+function renderCommsTab() {
+  const el = $('comms-list'); if (!el) return;
+  const unhandled = Object.entries(allMessages || {}).filter(([_, m]) => m.handled !== true);
+  const n = $('tab-comms-n'); if (n) n.textContent = String(unhandled.length);
+  if (unhandled.length === 0) { el.innerHTML = '<div class="tree-empty">Sin mensajes sin atender</div>'; return; }
+  el.innerHTML = unhandled.map(([_, m]) => `
+    <div class="comms-row">
+      <div class="comms-from">${escapeHtml(formatMsgPhone(m.from))}</div>
+      <div class="comms-body">${escapeHtml((m.body || '').slice(0, 90))}</div>
+    </div>`).join('') + '<button class="comms-open" id="comms-open-inbox">Abrir bandeja completa</button>';
+  $('comms-open-inbox')?.addEventListener('click', openMessagesModal);
 }
 
 function renderDriversSection() {
@@ -3448,10 +3533,10 @@ function renderDeliveredSection() {
       ? `<div class="meta"><span>${escapeHtml(displayOrderLabel(o))} · ${escapeHtml((o.restaurant_id || 'x_pizza') === 'la_musa' ? 'La Musa' : 'X. Pizza')}</span></div>`
       : '';
     return `
-      <div class="delivered-card ${isCancelled ? 'is-cancelled' : ''}" data-order-id="${o.order_id}">
+      <div class="delivered-card ${isCancelled ? 'is-cancelled' : ''}" data-order-id="${escapeHtml(o.order_id)}">
         <div class="top">
           <div class="name">${escapeHtml(o.customer_name || '—')} ${statusBadge}</div>
-          <div class="total">L${o.total ?? '—'}</div>
+          <div class="total">L${escapeHtml(String(o.total ?? '—'))}</div>
         </div>
         ${ctx}
         <div class="meta">
@@ -3499,7 +3584,7 @@ function renderReconciliationSection() {
       <div class="recon-card" data-order-id="${escapeHtml(o.order_id)}">
         <div class="recon-top">
           <span class="recon-id">${escapeHtml(displayOrderLabel(o))}</span>
-          <span class="recon-total">L${o.total ?? '—'}</span>
+          <span class="recon-total">L${escapeHtml(String(o.total ?? '—'))}</span>
         </div>
         <div class="recon-sub">${escapeHtml(brand)} · ${escapeHtml(o.customer_name || '—')} · hace ${reconAge(o.created_at)}</div>
         <div class="recon-reason">Pago en línea sin confirmar</div>
@@ -4246,6 +4331,15 @@ setInterval(() => {
     if (Number.isFinite(base)) el.textContent = formatAging(agingSeconds(base, Date.now()));
   });
 }, 1000);
+
+// Right-rail tabs (Task 10b) — one active pane at a time; wired via addEventListener (module scope).
+document.querySelectorAll('#rail-tabs .rtab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('#rail-tabs .rtab').forEach((b) => b.classList.toggle('on', b === btn));
+    document.querySelectorAll('.rtab-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== tab));
+  });
+});
 
 $('delivered-toggle').addEventListener('click', () => {
   $('delivered-group').classList.toggle('collapsed');
