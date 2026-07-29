@@ -116,12 +116,12 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 
 /* ── Category tabs ── */
 .cat-tabs{
-  /* LA_MUSA_STICKY_TABS — visual cue when pinned. */
+  /* LA_MUSA_STICKY_TABS — visual cue when pinned. Solid-ish cream (no backdrop-filter): the sticky bar's
+     per-frame blur re-render was the cause of the vertical-scroll jank on La Musa (stacked with the fixed
+     glass chip's blur). The 0.97-opaque cream + shadow keeps the pinned cue with none of the scroll cost. */
   display:flex;
   position:sticky;top:0;z-index:100;
-  background:rgba(248,244,237,0.92);
-  backdrop-filter:saturate(180%) blur(8px);
-  -webkit-backdrop-filter:saturate(180%) blur(8px);
+  background:rgba(248,244,237,0.97);
   border-bottom:1px solid var(--border);
   box-shadow:0 2px 8px rgba(19,16,14,0.06);
   padding:0 16px;
