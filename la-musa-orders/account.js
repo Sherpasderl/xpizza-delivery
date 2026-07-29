@@ -66,16 +66,16 @@
    frees width so the full first name shows — the name ellipsis is kept only as a last-resort fallback on the
    narrowest phones. Accent avatar disc anchors the pill on-brand. */
 .acct-chip-mount{display:flex;justify-content:flex-end;min-width:0}
-.acct-chip{display:flex;align-items:center;gap:8px;max-width:100%;min-width:0;overflow:hidden;background:${CONFIG.palette.tint2};border:1px solid ${CONFIG.palette.line2};border-radius:999px;padding:5px 13px 5px 5px;cursor:pointer;font-family:inherit;line-height:1;transition:opacity .15s,background .15s}
+.acct-chip{display:flex;align-items:center;gap:7px;max-width:100%;min-width:0;overflow:hidden;background:${CONFIG.palette.tint2};border:1px solid ${CONFIG.palette.line2};border-radius:999px;padding:4px 11px 4px 4px;cursor:pointer;font-family:inherit;line-height:1;transition:opacity .15s,background .15s}
 .acct-chip:hover{opacity:.82}
-.acct-chip .acct-av{width:30px;height:30px;border-radius:50%;background:${CONFIG.accent};color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+.acct-chip .acct-av{width:27px;height:27px;border-radius:50%;background:${CONFIG.accent};color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
 .acct-chip--out .acct-av{background:${CONFIG.accent};color:#fff}
-.acct-chip .acct-nm{font-size:14px;font-weight:650;letter-spacing:-.01em;color:#17130F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.acct-chip .acct-cv{color:#B3A594;font-size:11px;margin-left:-1px;flex:none}
-/* Logged-in chip runs larger (owner: it looked dwarfed next to the logo) — avatar + name scale up; scoped
-   with :not(.acct-chip--out) so the guest "Entrar" pill stays a touch smaller. */
-.acct-chip:not(.acct-chip--out) .acct-nm{font-size:16px}
-.acct-chip:not(.acct-chip--out) .acct-av{width:36px;height:36px}
+.acct-chip .acct-nm{font-size:13.5px;font-weight:650;letter-spacing:-.01em;color:#17130F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acct-chip .acct-cv{color:#B3A594;font-size:10px;margin-left:-1px;flex:none}
+/* Compact account pill (round 2): logged-in a hair larger than the guest "Entrar" pill, but tuned to ≈ the
+   logo's visual weight — not heavier. */
+.acct-chip:not(.acct-chip--out) .acct-nm{font-size:14px}
+.acct-chip:not(.acct-chip--out) .acct-av{width:29px;height:29px}
 `;
     document.head.appendChild(st);
   }
@@ -214,13 +214,15 @@
     if ($('acct-rw-styles')) return;
     const st = document.createElement('style'); st.id = 'acct-rw-styles';
     st.textContent = `
-.acct-chip .acct-rw{display:inline-flex;align-items:center;gap:4px;color:${CONFIG.accent};font-size:14px;font-weight:650;margin-left:1px;flex:none;white-space:nowrap}
+.acct-chip .acct-rw{display:inline-flex;align-items:center;gap:4px;color:${CONFIG.accent};font-size:13px;font-weight:650;margin-left:1px;flex:none;white-space:nowrap}
 .acct-chip .acct-rw-g{display:inline-flex;color:${CONFIG.accent};opacity:.9}
-.acct-chip .acct-rw-g svg{width:15px;height:15px}
+.acct-chip .acct-rw-g svg{width:13px;height:13px}
 .acct-rw-card{padding:6px 4px 2px}
 .acct-rw-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin:2px 0 14px}
 .acct-rw-slot{aspect-ratio:1;border-radius:50%;border:1.5px solid ${CONFIG.palette.line3};background:${CONFIG.palette.tint};display:flex;align-items:center;justify-content:center;color:#B3A594}
 .acct-rw-slot svg{width:58%;height:58%}
+/* Round 2: slant the pizza slice (tip toward lower-right) to match the mockup; the gift stays upright. */
+.acct-rw-slot--pizza svg{transform:rotate(-22deg)}
 /* Filled PIZZA cell: invert — tinted disc + accent border + accent pizza (color the pizza, NOT the whole disc). */
 .acct-rw-slot--pizza.acct-rw-slot--on{background:${CONFIG.palette.tint};border-color:${CONFIG.accent};color:${CONFIG.accent}}
 /* GIFT cell (always last): muted/locked (subtle gray) until the card completes, then a filled accent disc + white gift. */
