@@ -93,6 +93,7 @@
   const GIFT_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>';
   let _rwState = null;    // { balance, reserved, lifetime } | null   (null = guest / not yet loaded / no node)
   let _rwSubbed = false;  // one live subscription per session
+  let _rwUnsub = null;    // the onValue unsubscribe handle → detached on logout (no cross-user leak)
   const rwAvailable = () => Math.max(0, (Number(_rwState && _rwState.balance) || 0) - (Number(_rwState && _rwState.reserved) || 0));
 
   // Punch-card progress on the CURRENT card + whether a reward is redeemable.
@@ -122,11 +123,15 @@
       if (!uid) return;                                             // session gone → no read
       _rwSubbed = true;
       const r = dbMod.ref(db, `user_rewards/${uid}/${CONFIG.restaurant_id}`);
-      dbMod.onValue(r, (snap) => { _rwState = snap.val() || null; rewardsRender(); }, () => {});   // read-own; onError no-op (display non-critical)
+      _rwUnsub = dbMod.onValue(r, (snap) => { _rwState = snap.val() || null; rewardsRender(); }, () => {});   // read-own; unsub handle kept for logout; onError no-op (display non-critical)
     } catch (_) { /* fail-silent — the display is non-critical, never blocks the form */ }
   }
-  // Reset on logout (heal clears the marker); the chip drops the segment on next render.
-  function rewardsReset() { _rwState = null; _rwSubbed = false; }
+  // Reset on logout — DETACH the read-own subscription + clear state, so a re-login on the same page session
+  // subscribes fresh to the NEW uid's node (never shows the prior user's balance — no cross-user leak).
+  function rewardsReset() {
+    if (_rwUnsub) { try { _rwUnsub(); } catch (_) {} _rwUnsub = null; }
+    _rwState = null; _rwSubbed = false;
+  }
 
   function rewardsRender() {
     renderChip();                                                   // re-render the chip with the fresh count
@@ -1039,6 +1044,7 @@
       await authMod.signOut(auth);
     } catch (_) { /* fail-open — clear local state regardless of SDK/network trouble */ }
     try { localStorage.removeItem(CONFIG.MARKER); } catch (_) {}
+    rewardsReset();   // B2: detach the read-own subscription + clear state so a re-login can't show the prior user's balance
     renderChip();
     closeSheet();
     try { revertToGuestForm(); } catch (_) {}   // Tasks B4–B7: drop the confirm card back to raw fields
@@ -1130,6 +1136,7 @@
       if (data && data.ok) {
         try { await authMod.signOut(auth); } catch (_) {}
         try { localStorage.removeItem(CONFIG.MARKER); } catch (_) {}
+        rewardsReset();   // B2: session end → detach + clear rewards (no cross-user leak on re-login)
         renderChip();
         closeSheet();
         try { revertToGuestForm(); } catch (_) {}   // Tasks B4–B7: drop the confirm card back to raw fields
@@ -1148,6 +1155,7 @@
   // just because persistence restoration hasn't finished yet (customerIdToken above does this).
   function heal() {
     try { localStorage.removeItem(CONFIG.MARKER); } catch (_) {}
+    rewardsReset();   // B2: dead-session heal → detach the read-own subscription too
     renderChip();
   }
   // Invariant: the marker is the ONLY thing gating the guest fast-path — ensureFirebase() is never
