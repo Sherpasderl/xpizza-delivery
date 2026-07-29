@@ -1422,6 +1422,7 @@ textarea{resize:none;height:80px;line-height:1.4}
         </div>
       </div>
 
+      <!-- REWARDS redeem affordance + review (B2 Task 4) — filled by window.__ACCOUNT.renderRedeem; server-authoritative discount, gated on redemption_live/canary --><div id="acct-redeem"></div>
       <button class="btn-primary" id="btn-pay" onclick="processPayment()" disabled>Seleccioná una opción de pago</button>
       <button class="btn-secondary" onclick="goBack('s1',25)">← Volver</button>
       <div class="error-box" id="err3" style="margin:8px 0 0">Seleccioná una forma de pago para continuar.</div>
@@ -2233,6 +2234,26 @@ function updateTotal(){
   } else if(selectedPayment==='online'){
     const pa=document.getElementById('pixelpay-amount'); if(pa) pa.textContent='L '+calcTotal().toFixed(2);
   }
+  renderRedeemUI();   // REWARDS (B2 Task 4): re-render the redeem affordance on any cart/pay change (a pending reward re-syncs the total via onQuoted)
+}
+
+// REWARDS (B2 Task 4): the checkout redeem affordance (server-authoritative discount). Fail-safe; guest → nothing.
+function applyRedeemQuoteToTotals(q){
+  const pa=document.getElementById('pixelpay-amount');
+  if(pa) pa.textContent = q ? ('L '+(q.total_cents/100).toFixed(2)) : ('L '+calcTotal().toFixed(2));   // online charge = the SERVER discounted total
+}
+function renderRedeemUI(){
+  try{
+    if(!(window.__ACCOUNT&&window.__ACCOUNT.renderRedeem)) return;
+    const box=document.getElementById('acct-redeem'); if(!box) return;
+    window.__ACCOUNT.renderRedeem({
+      container: box,
+      items: redeemCartItems(),
+      pizzaCount: MENU.reduce((s,p)=>s+qty[p.id],0),
+      itemName: (id)=>{ const p=(MENU.find(x=>x.id===id))||(typeof EXTRAS!=='undefined'&&EXTRAS.find(x=>x.id===id)); return p?p.name:id; },
+      onQuoted: applyRedeemQuoteToTotals,
+    });
+  }catch(_){}
 }
 
 function calcTotal(){
@@ -2788,6 +2809,26 @@ async function processPayment(){
   }
 }
 
+// REWARDS (B2 Task 4): cart → order items — SHARED by buildOrder AND the redeem quote so the quoted discount
+// equals the charged one (quote==submit uses the identical items serialization).
+function redeemCartItems(){
+  return MENU.filter(p=>qty[p.id]>0).map(p=>{
+    const itemExtras = pizzaExtras[p.id] || {};
+    const extrasArr = Object.entries(itemExtras)
+      .filter(([,q]) => q > 0)
+      .map(([eid,q]) => {
+        const ex = EXTRAS.find(e => e.id === eid);
+        return ex ? { id: ex.id, name: ex.name, price: ex.price, qty: q } : null;
+      }).filter(Boolean);
+    const extrasTotal = extrasArr.reduce((s,e) => s + e.price * e.qty, 0);
+    return {
+      id: p.id, name: p.name, cat: p.cat, qty: qty[p.id],
+      price: p.price,
+      subtotal: p.price * qty[p.id] + extrasTotal,
+      extras: extrasArr, extrasTotal
+    };
+  });
+}
 function buildOrder(){
   const items=MENU.filter(p=>qty[p.id]>0);
   const total=calcTotal();
@@ -2799,24 +2840,7 @@ function buildOrder(){
     order_id: orderId,
     customer_name: document.getElementById('cname').value.trim(),
     customer_phone: fullPhone(),
-    items: items.map(p=>{
-      // 2-level extras shape — extras apply to all units of this item.
-      const itemExtras = pizzaExtras[p.id] || {};
-      const extrasArr = Object.entries(itemExtras)
-        .filter(([,q]) => q > 0)
-        .map(([eid,q]) => {
-          const ex = EXTRAS.find(e => e.id === eid);
-          return ex ? { id: ex.id, name: ex.name, price: ex.price, qty: q } : null;
-        }).filter(Boolean);
-      // Extras are standalone — sum independently of item qty.
-      const extrasTotal = extrasArr.reduce((s,e) => s + e.price * e.qty, 0);
-      return {
-        id: p.id, name: p.name, cat: p.cat, qty: qty[p.id],
-        price: p.price,
-        subtotal: p.price * qty[p.id] + extrasTotal,
-        extras: extrasArr, extrasTotal
-      };
-    }),
+    items: redeemCartItems(),
     items_text: items.map(p => {
       const itemExtras = pizzaExtras[p.id] || {};
       const names = Object.entries(itemExtras)
@@ -2856,6 +2880,8 @@ function buildOrder(){
     const ct=parseFloat(document.getElementById('cash-tendered')?.value);
     if(isFinite(ct) && ct>=total) currentOrder.cash_tendered = ct;
   }
+  // REWARDS (B2 Task 4): attach the pending redeem (logged-in + reward selected). Guest → null → no field → byte-identical.
+  try{ const __rd=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemPayload)?window.__ACCOUNT.getRedeemPayload():null; if(__rd) currentOrder.redeem=__rd; }catch(_){}
 }
 
 /* ── PixelPay online card payment (HOSTED redirect) ──
@@ -2924,7 +2950,15 @@ async function processPixelPay(){
     // instead of the generic "Revisá tus datos". Handled BEFORE the generic !res.ok branch; item stays in cart.
     if(res.status===400 && cfg && cfg.error==='item_unavailable'){
       const names = (Array.isArray(cfg.blocked) && cfg.blocked.length) ? cfg.blocked.join(', ') : 'un platillo';
-      return paymentFallback('Agotado — quitá '+names+' del carrito para continuar.');
+      return paymentFallback('Agotado — quitá '+names+' del carrito para continuar.');   // CART error → reward PRESERVED
+    }
+    // REWARDS (B2 Task 4): a typed REDEMPTION failure → clear the reward + revert the total; the customer's
+    // next pay-tap rebuilds a FRESH order_id, full-price ("Continuar sin premio"). (item_unavailable/closed are
+    // CART/order errors handled above / below and PRESERVE the reward.)
+    if((res.status===409||res.status===401) && cfg && window.__ACCOUNT && window.__ACCOUNT.classifyRedeemError && window.__ACCOUNT.classifyRedeemError(cfg)==='redemption'){
+      try{ window.__ACCOUNT.clearRedeem(); }catch(_){}
+      try{ renderRedeemUI(); }catch(_){}
+      return paymentFallback(cfg.error==='reward_unavailable' ? 'Ese premio no está disponible ahora. Podés continuar sin él.' : 'No pudimos aplicar el premio. Podés continuar sin él.');
     }
     if(!res.ok || !cfg || !cfg.checkout_url){
       return paymentFallback(res.status===429
@@ -3125,7 +3159,15 @@ async function submitOrder(paymentStatus){
         // confused retries). Handled BEFORE the generic 4xx branch. The item stays in the cart.
         if(err && err.error === 'item_unavailable'){
           const names = (Array.isArray(err.blocked) && err.blocked.length) ? err.blocked.join(', ') : 'un platillo';
-          setSending(ICON_X_CIRCLE+'Agotado — quitá '+escapeHtml(names)+' del carrito para continuar.');
+          setSending(ICON_X_CIRCLE+'Agotado — quitá '+escapeHtml(names)+' del carrito para continuar.');   // CART error → reward PRESERVED
+          return;
+        }
+        // REWARDS (B2 Task 4): typed REDEMPTION failure → clear the reward + revert total; the customer's next
+        // submit rebuilds a FRESH order_id, full-price ("Continuar sin premio"). (item_unavailable/closed = CART/order errors, reward PRESERVED.)
+        if(err && window.__ACCOUNT && window.__ACCOUNT.classifyRedeemError && window.__ACCOUNT.classifyRedeemError(err)==='redemption'){
+          try{ window.__ACCOUNT.clearRedeem(); }catch(_){}
+          try{ renderRedeemUI(); }catch(_){}
+          setSending(ICON_X_CIRCLE + (err.error==='reward_unavailable' ? 'Ese premio no está disponible ahora. Podés continuar sin él.' : 'No pudimos aplicar el premio. Podés continuar sin él.'));
           return;
         }
         setSending(res.status===429

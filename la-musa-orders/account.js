@@ -16,7 +16,16 @@
     palette: { screen:'#FFFDFA', tint:'#FBF6EE', tint2:'#F4EEE4', chip:'#F0E8DA', fillA:'#EFE7DA', line:'#EDE5D9', fillB:'#E7DFD3', mapbg:'#E4DAC7', line2:'#E2D8C8', line3:'#D8CBB8', dot:'#CFC2B1' },   // per-brand neutrals — La Musa = EXACT current literals (renders byte-identical); X. Pizza CONFIG carries the near-white set (nearwhite-inventory.md)
     // Rewards B2 — the ONLY brand difference in the rewards UI (everything past CONFIG is byte-identical).
     // X. Pizza = punch card → free pizza; La Musa = points → free-item tiers. Earn rates mirror Phase A (live).
-    rewards: { kind:'points', unit:'pts', perCents:3000, ptsPer:10, tiers:[500,1000,1500,2500,3500] },
+    // tiers MIRROR the LOCKED server config (rewards-redeem-config.js, config_version 1) — item names resolve
+    // via the form MENU at render; availability via the 86 read. Server stays authoritative (a drift → the
+    // quote/submit rejects with a typed message; never a money bug).
+    rewards: { kind:'points', unit:'pts', perCents:3000, ptsPer:10, tiers:[
+      { cost:500,  items:['soft_01','soft_02','soft_03','soft_04','beer_01','beer_02','beer_03','beer_04','beer_05','beer_06','beer_07','beer_08','rice_white','rice_chinese','papas_fritas'] },
+      { cost:1000, items:['dimsum_01','dimsum_02','dimsum_03','dimsum_04','dimsum_05','starter_01','starter_02','starter_03','soup_01','soup_02','soup_03'] },
+      { cost:1500, items:['noodle_01','noodle_01_sin','noodle_01_pollo','noodle_01_camaron','noodle_03','rice_01','rice_04','crudo_02','crudo_03','special_05'] },
+      { cost:2500, items:['noodle_02','rice_02','rice_03','starter_04','starter_05','starter_06','crudo_01','special_02'] },
+      { cost:3500, items:['special_01','special_04'] },
+    ] },
   };
 
   // Lazy Firebase — imported on first use only. Returns { auth, db-helpers } cached after first load.
@@ -131,6 +140,7 @@
   function rewardsReset() {
     if (_rwUnsub) { try { _rwUnsub(); } catch (_) {} _rwUnsub = null; }
     _rwState = null; _rwSubbed = false;
+    try { clearRedeem(); } catch (_) {}   // B2 Task 4: drop any pending reward on logout
   }
 
   function rewardsRender() {
@@ -155,12 +165,12 @@
       pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis premios</span></div>${hero}`;
       pane.querySelector('.acct-rw-sub').textContent = sub;
     } else {
-      const tiers = RW.tiers, maxT = tiers[tiers.length - 1];
+      const tiers = RW.tiers, maxT = tiers[tiers.length - 1].cost;
       const pct = Math.max(0, Math.min(100, Math.round((av / maxT) * 100)));
       let marks = '';
-      for (const t of tiers) marks += `<span class="acct-rw-tier${av >= t ? ' acct-rw-tier--on' : ''}" style="left:${Math.round((t / maxT) * 100)}%"><i></i><b>${t}</b></span>`;
-      const next = tiers.find((t) => t > av);
-      const sub = next ? `${next - av} ${RW.unit} para tu próximo premio` : '¡Podés canjear el premio más alto!';
+      for (const t of tiers) marks += `<span class="acct-rw-tier${av >= t.cost ? ' acct-rw-tier--on' : ''}" style="left:${Math.round((t.cost / maxT) * 100)}%"><i></i><b>${t.cost}</b></span>`;
+      const next = tiers.find((t) => t.cost > av);
+      const sub = next ? `${next.cost - av} ${RW.unit} para tu próximo premio` : '¡Podés canjear el premio más alto!';
       hero = `<div class="acct-rw-bar-wrap"><div class="acct-rw-bar"><div class="acct-rw-bar-fill" style="width:${pct}%"></div>${marks}</div></div><p class="acct-rw-sub"></p>`;
       pane.innerHTML = `<div class="acct-picker-top"><span class="acct-picker-title">Mis premios</span></div><div class="acct-rw-pts"></div>${hero}`;
       pane.querySelector('.acct-rw-pts').textContent = `${av} ${RW.unit}`;
@@ -214,6 +224,142 @@
   // renderCartEarn is exposed on window.__ACCOUNT at the canonical export block near the end of the IIFE
   // (that block REASSIGNS window.__ACCOUNT, so exposing here would be clobbered — B2 fix).
   // ══════════ REWARDS DISPLAY (B2 Task 3) — END ══════════
+
+  // ══════════ REWARDS REDEEM (B2 Task 4) — BEGIN ══════════ (money-touching checkout UI; server-authoritative)
+  // The redeem affordance + the struck-through review. The discount is ALWAYS the server quoteRedemption
+  // number — NEVER client-computed. Gated on redemption_live (client-readable leaf) OR read-own canary; the
+  // affordance renders only when live + eligible (never a control that can't complete). Guests: no affordance.
+  const QUOTE_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/quoteRedemption';
+  let _redeemLiveFlag = false, _redeemLiveRead = false;   // config/rewards_public/redemption_live (cached); canary is read-own via _rwState
+  let _redeemPending = null;   // null | {} (X. Pizza) | { type:'free_item', level, item_id, name } (La Musa)
+  let _redeemQuote = null;     // last SERVER quote { ok, discount_cents, total_cents, free_item:{name} } | null
+
+  async function redeemReadLiveFlag() {
+    if (_redeemLiveRead) return;
+    try { const { db, dbMod } = await ensureFirebase(); const s = await dbMod.get(dbMod.ref(db, 'config/rewards_public/redemption_live')); _redeemLiveFlag = (s && s.val && s.val()) === true; }
+    catch (_) { _redeemLiveFlag = false; }   // fail-safe OFF
+    _redeemLiveRead = true;
+  }
+  const redemptionLive = () => _redeemLiveFlag === true || !!(_rwState && _rwState.canary === true);
+  const redeemAvailable = () => Math.max(0, (Number(_rwState && _rwState.balance) || 0) - (Number(_rwState && _rwState.reserved) || 0));
+
+  function getRedeemPayload() { return _redeemPending; }   // index.html sets currentOrder.redeem = this when non-null
+  function clearRedeem() { _redeemPending = null; _redeemQuote = null; }
+  // Two error classes for the submit handler (spec §5.2 / plan-gate #1):
+  //   'redemption' → clear the redeem + FRESH-order_id full-price resubmit.
+  //   'other' (item_unavailable/closed) → the EXISTING cart error path, redeem PRESERVED.
+  function classifyRedeemError(err) {
+    const e = err && err.error;
+    return (e === 'reward_unavailable' || e === 'login_required' || e === 'rewards_disabled' ||
+            e === 'redemption_invalid' || e === 'redemption_pricing_failed' || e === 'redemption_reserve_failed' || e === 'bad_cart') ? 'redemption' : 'other';
+  }
+
+  async function redeemQuoteFetch(items) {
+    try {
+      const idTok = await customerIdToken();
+      const res = await fetch(QUOTE_URL, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, idTok ? { 'X-Firebase-ID-Token': idTok } : {}),
+        body: JSON.stringify({ items, redeem: _redeemPending, restaurant_id: CONFIG.restaurant_id }) });   // restaurant_id from CONFIG → brand-correct
+      return await res.json().catch(() => ({ ok: false, error: 'error' }));
+    } catch (_) { return { ok: false, error: 'error' }; }
+  }
+
+  // env = { container, items, pizzaCount, itemName:(id)=>string, itemAvailable:(id)=>bool, onQuoted:(quote|null)=>void }
+  async function renderRedeem(env) {
+    const box = env && env.container; if (!box) return;
+    injectRedeemStyles();
+    await redeemReadLiveFlag();
+    const m = marker();
+    // Gate: logged-in + redemption LIVE for this customer + ELIGIBLE — else no affordance (never a dead control).
+    if (!m || !m.name || !redemptionLive()) { box.innerHTML = ''; if (_redeemPending) { clearRedeem(); if (env.onQuoted) env.onQuoted(null); } return; }
+    const av = redeemAvailable();
+    const eligible = RW.kind === 'punch' ? (av >= RW.card_size && Number(env.pizzaCount) >= 1) : RW.tiers.some((t) => av >= t.cost);
+    if (!eligible) { box.innerHTML = ''; if (_redeemPending) { clearRedeem(); if (env.onQuoted) env.onQuoted(null); } return; }
+    if (_redeemPending && _redeemQuote && _redeemQuote.ok) return renderRedeemReview(env);
+    renderRedeemOffer(env);
+  }
+
+  function renderRedeemOffer(env) {
+    const box = env.container;
+    if (RW.kind === 'punch') {
+      box.innerHTML = `<div class="acct-rd"><div class="acct-rd-l"><span class="acct-rd-g">${GIFT_SVG}</span><span class="acct-rd-t">Canjear premio</span><span class="acct-rd-d">Una pizza gratis</span></div><button class="acct-rd-btn" type="button">Usar</button></div>`;
+      box.querySelector('.acct-rd-btn').onclick = async () => { _redeemPending = {}; await redeemSelect(env); };
+    } else {
+      const av = redeemAvailable();
+      let chips = '';
+      RW.tiers.forEach((t, i) => { const ok = av >= t.cost; chips += `<button class="acct-rd-tier${ok ? '' : ' acct-rd-tier--off'}" type="button" data-lvl="${i + 1}"${ok ? '' : ' disabled'}>${t.cost}<span> pts</span></button>`; });
+      box.innerHTML = `<div class="acct-rd"><div class="acct-rd-l"><span class="acct-rd-g">${GIFT_SVG}</span><span class="acct-rd-t">Canjear premio</span><span class="acct-rd-d">Elegí un nivel</span></div></div><div class="acct-rd-tiers">${chips}</div><div class="acct-rd-items" id="acct-rd-items"></div>`;
+      box.querySelectorAll('.acct-rd-tier:not(.acct-rd-tier--off)').forEach((b) => { b.onclick = () => renderRedeemItems(env, Number(b.getAttribute('data-lvl'))); });
+    }
+  }
+
+  // La Musa: after a tier is chosen, list its currently-AVAILABLE items (86-filtered) with server-known names.
+  function renderRedeemItems(env, level) {
+    const tier = RW.tiers[level - 1]; if (!tier) return;
+    const wrap = $('acct-rd-items'); if (!wrap) return;
+    const opts = tier.items.filter((id) => !env.itemAvailable || env.itemAvailable(id))   // only not-86'd → the server never has to reject
+      .map((id) => { const nm = (env.itemName && env.itemName(id)) || id; return `<button class="acct-rd-item" type="button" data-id="${escapeHtml(id)}" data-nm="${escapeHtml(nm)}">${escapeHtml(nm)}</button>`; }).join('');
+    wrap.innerHTML = opts || '<p class="acct-rd-empty">No hay premios disponibles en este nivel ahora.</p>';
+    wrap.querySelectorAll('.acct-rd-item').forEach((b) => { b.onclick = async () => { _redeemPending = { type: 'free_item', level, item_id: b.getAttribute('data-id'), name: b.getAttribute('data-nm') }; await redeemSelect(env); }; });
+  }
+
+  // Selected a reward → fetch the SERVER quote → review (or a typed message on failure; never a dead reward).
+  async function redeemSelect(env) {
+    const box = env.container;
+    box.innerHTML = '<div class="acct-rd acct-rd--load"><span>Calculando premio…</span></div>';
+    const q = await redeemQuoteFetch(env.items);
+    if (!q || !q.ok) {
+      _redeemQuote = null;
+      const msg = (q && q.error === 'reward_unavailable') ? 'Ese premio no está disponible ahora' : 'No pudimos aplicar el premio, intentá de nuevo';
+      _redeemPending = null;
+      box.innerHTML = `<div class="acct-rd acct-rd--err"><span>${escapeHtml(msg)}</span></div>`;
+      if (env.onQuoted) env.onQuoted(null);
+      setTimeout(() => { try { renderRedeem(env); } catch (_) {} }, 1800);   // fall back to the offer
+      return;
+    }
+    _redeemQuote = q;
+    if (env.onQuoted) env.onQuoted(q);   // index.html updates the checkout total from the SERVER number
+    renderRedeemReview(env);
+  }
+
+  function renderRedeemReview(env) {
+    const box = env.container, q = _redeemQuote; if (!q) return;
+    const name = (q.free_item && q.free_item.name) || 'Premio';
+    // X. Pizza: the freed pizza struck-through (total drops). La Musa: the added item "GRATIS" (total unchanged).
+    const line = (RW.kind === 'punch')
+      ? `<span class="acct-rd-name"><s>${escapeHtml(name)}</s></span><span class="acct-rd-free">−L ${Math.round(q.discount_cents / 100)}</span>`
+      : `<span class="acct-rd-name">${escapeHtml(name)}</span><span class="acct-rd-free">GRATIS</span>`;
+    box.innerHTML = `<div class="acct-rd acct-rd--on"><div class="acct-rd-l"><span class="acct-rd-g">${GIFT_SVG}</span><span class="acct-rd-t">Premio aplicado</span></div><button class="acct-rd-x" type="button" aria-label="Quitar premio">Quitar</button></div><div class="acct-rd-review">${line}</div>`;
+    if (env.onQuoted) env.onQuoted(q);   // sync the checkout total whenever the review shows (fresh OR cached re-render)
+    box.querySelector('.acct-rd-x').onclick = () => { clearRedeem(); if (env.onQuoted) env.onQuoted(null); renderRedeem(env); };
+  }
+
+  function injectRedeemStyles() {
+    if ($('acct-rd-styles')) return;
+    const st = document.createElement('style'); st.id = 'acct-rd-styles';
+    st.textContent = `
+.acct-rd{display:flex;align-items:center;justify-content:space-between;gap:10px;background:${CONFIG.palette.tint};border:1px solid ${CONFIG.palette.line};border-radius:14px;padding:11px 13px;margin:2px 0 4px}
+.acct-rd-l{display:flex;align-items:center;gap:8px;min-width:0}
+.acct-rd-g{display:inline-flex;color:${CONFIG.accent};flex:none}
+.acct-rd-t{font-size:13.5px;font-weight:700;color:#17130F}
+.acct-rd-d{font-size:12px;color:#8A8072;margin-left:2px}
+.acct-rd-btn{background:${CONFIG.accent};color:#fff;border:none;border-radius:999px;padding:7px 16px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;flex:none}
+.acct-rd-x{background:transparent;border:none;color:#9A8F7E;font-size:12.5px;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px;font-family:inherit;flex:none}
+.acct-rd-tiers{display:flex;flex-wrap:wrap;gap:7px;margin:4px 0 2px}
+.acct-rd-tier{background:${CONFIG.palette.tint};border:1.5px solid ${CONFIG.palette.line2};border-radius:999px;padding:6px 13px;font-weight:700;font-size:13px;color:#17130F;cursor:pointer;font-family:inherit}
+.acct-rd-tier span{font-weight:600;color:#9A8F7E;font-size:11px}
+.acct-rd-tier--off{opacity:.4;cursor:not-allowed}
+.acct-rd-items{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 2px}
+.acct-rd-item{background:#fff;border:1.5px solid ${CONFIG.palette.line2};border-radius:10px;padding:7px 12px;font-size:12.5px;font-weight:600;color:#17130F;cursor:pointer;font-family:inherit}
+.acct-rd-empty{font-size:12.5px;color:#8A8072;margin:6px 0}
+.acct-rd-review{display:flex;align-items:center;justify-content:space-between;padding:6px 4px 2px;font-size:13.5px}
+.acct-rd-name{color:#17130F;font-weight:600}.acct-rd-name s{color:#9A8F7E}
+.acct-rd-free{color:${CONFIG.accent};font-weight:750}
+.acct-rd--load,.acct-rd--err{justify-content:center;color:#8A8072;font-size:13px}
+.acct-rd--on{background:#fff;border-color:${CONFIG.accent}44}
+`;
+    document.head.appendChild(st);
+  }
+  // ══════════ REWARDS REDEEM (B2 Task 4) — END ══════════
 
   // ── Login / account overlay — built + inserted into <body> lazily, once, on first open.
   // Markup ported from the locked mockups (xpizza-login-mockup.html / xpizza-account-mockup.html),
@@ -3307,6 +3453,10 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.deleteAddress = deleteAddress;
   window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;
   window.__ACCOUNT.renderCartEarn = renderCartEarn;   // B2 Task 3 — index.html updateCart() fills the cart earn line
+  window.__ACCOUNT.renderRedeem = renderRedeem;       // B2 Task 4 — checkout redeem affordance + review (server-authoritative)
+  window.__ACCOUNT.getRedeemPayload = getRedeemPayload;   //   → currentOrder.redeem on submit (null = none)
+  window.__ACCOUNT.clearRedeem = clearRedeem;             //   fresh-resubmit fallback clears the pending reward
+  window.__ACCOUNT.classifyRedeemError = classifyRedeemError;   //   'redemption' | 'other' → two-error-class submit handling
   window.__ACCOUNT.deliverySubmitBlocked = deliverySubmitBlocked;
   window.__ACCOUNT.captureDeliverySaveIntent = captureDeliverySaveIntent;
   window.__ACCOUNT.setRestoring = function (v) { try { _acctRestoring = !!v; if (v) _acctRestoreGen++; } catch (_) {} };   // index.html's restoreOrderForm() brackets its snapshot rebuild with this so the account refresh can't overwrite the retry's address with the default (FIX 7 / R4); bumping the gen on start lets an in-flight async init detect a restore that completed during its await (R5)
