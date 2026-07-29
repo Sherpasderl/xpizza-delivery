@@ -597,6 +597,10 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .review-arrow{font-size:16px;color:var(--muted);transition:transform .2s}
 .review-arrow.open{transform:rotate(180deg)}
 .review-body{padding:0 16px 14px;border-top:1px solid var(--border)}
+/* A6: Stage-2 order summary — reuses the .review-item / .review-total machinery inside a card. */
+.order-summary-s2{margin:4px 0 10px;border:1px solid var(--border);border-radius:14px;padding:6px 16px 12px;background:#fff}
+.order-summary-s2:empty{display:none}
+.s2-summary-head{font-family:var(--display);font-size:16px;font-weight:700;color:var(--charcoal);padding:12px 0 4px}
 .review-item{
   display:flex;justify-content:space-between;
   padding:10px 0;border-bottom:1px solid var(--border);
@@ -1379,6 +1383,9 @@ textarea{resize:none;height:80px;line-height:1.4}
     <!-- Mount for the logged-in "Entregar a" summary card ATOP payment (account.js, Task 3/T3).
          Empty for a guest / incomplete profile / pickup — no card, byte-identical. -->
     <div id="acct-s2-summary"></div>
+
+    <!-- A6: Stage-2 order summary (items + Envío + reward GRATIS line + SERVER discounted total) — filled by renderStage2Summary(); empty when the cart is empty. -->
+    <div class="order-summary-s2" id="s2-summary"></div>
 
     <!-- Payment section -->
     <div class="step-label" id="acct-pay-label" style="margin-top:8px">Forma de pago</div>
@@ -2243,6 +2250,7 @@ function updateTotal(){
     const pa=document.getElementById('pixelpay-amount'); if(pa) pa.textContent='L '+redeemAdjustedTotal().toFixed(2);
   }
   renderRedeemUI();   // REWARDS (B2 Task 4): re-render the redeem affordance on any cart/pay change (a pending reward re-syncs the total via onQuoted)
+  try{ renderStage2Summary(); }catch(_){}   // A6: keep the Stage-2 summary fresh on any cart/pay edit
 }
 
 //__REWARDS_PARITY_BEGIN__ (B2) — the block between this marker and __END__ MUST be byte-identical in BOTH order forms (enforced by rewards-parity.guard.test.js). Brand-specific rewards code lives OUTSIDE this block.
@@ -2251,6 +2259,7 @@ function applyRedeemQuoteToTotals(q){
   const pa=document.getElementById('pixelpay-amount');
   if(pa) pa.textContent = q ? ('L '+(q.total_cents/100).toFixed(2)) : ('L '+calcTotal().toFixed(2));   // online charge = the SERVER discounted total
   syncFreeOrderUI();   // A1: a $0 (fully-comped) server quote → free-order payment availability
+  try{ if(typeof renderStage2Summary==='function') renderStage2Summary(); }catch(_){}   // A6: refresh the Stage-2 summary reward line + total when the quote changes
 }
 function renderRedeemUI(){
   try{
@@ -2359,6 +2368,28 @@ function updateCart(){
   }
 }
 
+// A6: dedicated Stage-2 order summary (mockup screen-5 "Resumen del pedido") — items + Envío + a struck
+// reward GRATIS line + the SERVER discounted total. Reuses the .review-item / .review-total machinery; sources
+// the reward + total from the SERVER quote (getRedeemQuote / redeemAdjustedTotal), never a client discount.
+// The cart pillbox / updateCartReviewBody are left untouched. Guest / non-redeem → items + total, no reward line.
+function renderStage2Summary(){
+  const box=document.getElementById('s2-summary'); if(!box) return;
+  const items=MENU.filter(p=>qty[p.id]>0);
+  if(!items.length){ box.innerHTML=''; return; }
+  const rows=items.map(p=>{
+    const extras=pizzaExtras[p.id]||{};
+    const extrasArr=Object.entries(extras).filter(([,q])=>q>0).map(([eid,q])=>{ const ex=EXTRAS.find(e=>e.id===eid); return ex?(q>1?q+'x ':'')+ex.name:null; }).filter(Boolean);
+    const extrasTotal=Object.entries(extras).reduce((s,[eid,q])=>{ const ex=EXTRAS.find(e=>e.id===eid); return s+(ex?ex.price*q:0); },0);
+    const subtotal=p.price*qty[p.id]+extrasTotal;
+    return '<div class="review-item"><div class="review-item-left"><div class="review-item-name">'+qty[p.id]+'x '+escapeHtml(p.name)+'</div>'+(extrasArr.length?'<div class="review-item-extras">+ '+escapeHtml(extrasArr.join(', '))+'</div>':'')+'</div><div class="review-item-price">L '+subtotal.toFixed(0)+'</div></div>';
+  }).join('');
+  const envio = orderType==='delivery' ? '<div class="review-item"><div class="review-item-left"><div class="review-item-name" style="color:var(--green)">Envío</div></div><div class="review-item-price" style="color:var(--green)">Gratis</div></div>' : '';
+  let reward='';
+  try{ const q=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuote)?window.__ACCOUNT.getRedeemQuote():null;
+    if(q && q.free_item && q.free_item.name){ reward='<div class="review-item"><div class="review-item-left"><div class="review-item-name" style="color:var(--green)"><s>'+escapeHtml(q.free_item.name)+'</s> · Recompensa</div></div><div class="review-item-price" style="color:var(--green)">GRATIS</div></div>'; }
+  }catch(_){}
+  box.innerHTML='<div class="s2-summary-head">Resumen del pedido</div>'+rows+envio+reward+'<div class="review-total"><span>Total</span><span>L '+redeemAdjustedTotal().toFixed(0)+'</span></div>';
+}
 function updateReview(){
   const body=document.getElementById('review-body');
   if(!body) return;
@@ -2508,6 +2539,7 @@ function showStage(id,pct){
   // pill never covers the pay buttons.
   const cartBar=document.getElementById('cart-bar');
   if(cartBar) cartBar.style.display=(id==='s1'||id==='s2')?'flex':'none';
+  if(id==='s2'){ try{ renderStage2Summary(); }catch(_){} }   // A6: render the order summary on entering the pay step
 }
 
 // Collapse the pinned account chip to just the avatar circle once scrolled past the hero on paso 1

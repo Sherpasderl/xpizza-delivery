@@ -314,6 +314,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // The SERVER-quoted discounted total (cents) while a reward is pending — the pay-step display MUST use this,
   // never client calcTotal(), so the customer never sees full price while a discount is applied. null = none.
   function getRedeemQuoteTotalCents() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote.total_cents : null; }
+  function getRedeemQuote() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote : null; }   // A6: full server quote {discount_cents,total_cents,free_item} for the Stage-2 order summary
   function clearRedeem() { _redeemPending = null; _redeemQuote = null; }
   // Two error classes for the submit handler (spec §5.2 / plan-gate #1):
   //   'redemption' → clear the redeem + FRESH-order_id full-price resubmit.
@@ -3584,6 +3585,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.renderRedeem = renderRedeem;       // B2 Task 4 — checkout redeem affordance + review (server-authoritative)
   window.__ACCOUNT.getRedeemPayload = getRedeemPayload;   //   → currentOrder.redeem on submit (null = none)
   window.__ACCOUNT.getRedeemQuoteTotalCents = getRedeemQuoteTotalCents;   //   pay-step display uses the SERVER quote total while a reward is pending
+  window.__ACCOUNT.getRedeemQuote = getRedeemQuote;   // A6 — Stage-2 order-summary reward line (server quote)
   window.__ACCOUNT.clearRedeem = clearRedeem;             //   fresh-resubmit fallback clears the pending reward
   window.__ACCOUNT.classifyRedeemError = classifyRedeemError;   //   'redemption' | 'other' → two-error-class submit handling
   window.__ACCOUNT.renderSuccessRewards = renderSuccessRewards;   // B2 Task 5 — post-order earn badge + guest profile-claim card
