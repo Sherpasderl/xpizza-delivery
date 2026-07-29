@@ -1791,6 +1791,21 @@
   .comms-body { font-size: 11.5px; color: var(--text-soft); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .comms-open { width: 100%; margin-top: 4px; padding: 8px; border: none; border-radius: 9px; background: rgba(79,140,255,0.12); color: var(--info); font-weight: 600; font-size: 12px; cursor: pointer; }
   .comms-open:hover { background: rgba(79,140,255,0.2); }
+
+  /* ============ Cobertura drawer + ☰ exceptions badge (Task 11) ============ */
+  .cobertura { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--surface); box-shadow: 0 -1px 0 var(--border-soft); }
+  .cob-toggle { display: block; margin-left: auto; background: none; border: none; color: var(--text-soft); font-size: 11.5px; font-weight: 600; padding: 8px 16px; cursor: pointer; }
+  .cob-toggle:hover { color: var(--text); }
+  .cob-drawer { max-height: 0; overflow: hidden; transition: max-height .26s ease; }
+  .cobertura.open .cob-drawer { max-height: 160px; }
+  .cob-inner { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 16px 14px; }
+  .cv { font-size: 10.5px; white-space: nowrap; padding: 5px 11px; border-radius: 999px; background: var(--bg); color: var(--text-soft); }
+  .cv.new { color: #e9c877; }
+  /* keep the fixed Cobertura bar from covering scrolled rail content */
+  .col.left .rail-inner, .col.right .rail-inner { padding-bottom: 46px; }
+  .rail-toggle { position: relative; }
+  .rail-badge { display: none; position: absolute; top: 3px; right: 3px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 9px; font-weight: 700; line-height: 15px; text-align: center; box-sizing: border-box; }
+  .app:not(.left-open) #rail-toggle-left .rail-badge.has { display: block; }
 </style>
 </head>
 
@@ -1855,7 +1870,7 @@
 <!-- ================================ -->
 <div id="screen-main" class="hidden" style="display:flex; flex-direction:column; height:100vh;">
   <header class="topbar">
-    <button class="rail-toggle" id="rail-toggle-left" title="Mostrar/ocultar panel izquierdo" aria-label="Panel izquierdo"><svg class="ic"><use href="#i-menu"/></svg></button>
+    <button class="rail-toggle" id="rail-toggle-left" title="Mostrar/ocultar panel izquierdo" aria-label="Panel izquierdo"><svg class="ic"><use href="#i-menu"/></svg><span class="rail-badge" id="left-rail-badge"></span></button>
     <span class="brand">X PIZZA</span>
     <span class="brand-sub">Dispatch</span>
     <div class="topbar-spacer"></div>
@@ -1972,6 +1987,22 @@
       </div>
     </div></div>
   </div></div>
+</div>
+
+<!-- Cobertura de capacidades — full-visibility proof (Task 11); fixed, collapsed by default. -->
+<div class="cobertura" id="cobertura">
+  <button class="cob-toggle" id="cob-toggle">Cobertura de capacidades ▴</button>
+  <div class="cob-drawer">
+    <div class="cob-inner">
+      <span class="cv">Mapa en vivo</span><span class="cv">Glide pins</span><span class="cv">Drivers + estado</span>
+      <span class="cv">GPS liveness</span><span class="cv">Llamar driver</span><span class="cv">Sin asignar</span>
+      <span class="cv">Auto-asignar</span><span class="cv">ETA entrega</span><span class="cv">Cancelar/refund</span>
+      <span class="cv">Programados</span><span class="cv">#N</span><span class="cv">Entregados + búsqueda</span>
+      <span class="cv">WhatsApp entrante</span><span class="cv">Reconciliación</span>
+      <span class="cv new">★ Torre de control</span><span class="cv new">★ Delivery-risk</span><span class="cv new">★ Timer envejecimiento</span>
+      <span class="cv new">★ Cash / cuadre</span><span class="cv new">★ Paneles colapsables</span><span class="cv new">★ Tabs del panel</span>
+    </div>
+  </div>
 </div>
 
 <!-- Driver picker overlay -->
@@ -2462,6 +2493,9 @@ function renderDispatcherAlerts(alerts) {
   const container = $('torre-list');
   if (!container) return;
   const entries = sortAlertEntries(alerts);
+  // ☰ collapsed-rail exceptions badge (Task 11) — count shown only when the left rail is collapsed.
+  const badge = $('left-rail-badge');
+  if (badge) { badge.textContent = String(entries.length); badge.classList.toggle('has', entries.length > 0); }
   if (entries.length === 0) { container.innerHTML = ''; return; }
 
   const rowHtml = (e) => {
@@ -4340,6 +4374,9 @@ document.querySelectorAll('#rail-tabs .rtab').forEach((btn) => {
     document.querySelectorAll('.rtab-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== tab));
   });
 });
+
+// Cobertura drawer toggle (Task 11).
+$('cob-toggle')?.addEventListener('click', () => $('cobertura')?.classList.toggle('open'));
 
 $('delivered-toggle').addEventListener('click', () => {
   $('delivered-group').classList.toggle('collapsed');
