@@ -2,13 +2,14 @@
 
 // Rewards Phase B1 — apply a validated redemption to the order pricing + the ONE legal factura line
 // representation. Pure + fail-closed: ANY reconcile violation → { ok:false, error } so the handler makes the
-// order non-payable (all-or-nothing). line_gross_cents are TAX-INCLUSIVE (Σ === total_cents); per-line bases
-// (reconcileLineBases) foot to subtotal_cents; all bases ≥ 0 (subtotal ≠ total under the x_pizza ISV split).
+// order non-payable (all-or-nothing). line_gross_cents are TAX-INCLUSIVE.
 //
-//   X. Pizza (discount): SPLIT the cheapest pizza's line into (a) a FREE base unit at 0, (b) the paid
-//     remainder (qty−1 base units), (c) a PAID extras line (extras are NEVER freed). discountedTotal =
-//     total − baseUnit. The free 0-line is placed FIRST so reconcileLineBases' residual always lands on a
-//     PAID line → no base can go negative.
+//   X. Pizza (discount, A-F): the factura shows the FULL-VALUE line items UNCHANGED (Σ line_gross === the
+//     FULL, pre-discount total) plus an explicit "Desc. y Reb. Otorg" (desc_rebaja_cents) for the comped
+//     base unit. SAR: a discount stated on the factura leaves the base gravable → ISV computes on the NET
+//     (paid) amount, the comped ISV is 0, a fully-comped order issues 0/0/0. The DISCOUNTED breakdown
+//     (subtotal/tax/total) is the money spine and preserves subtotal + tax === total; the comp is carried by
+//     desc_rebaja_cents (= FULL net − paid net), never baked into 0-price lines. extras are NEVER comped.
 //   La Musa (add_free): breakdown UNCHANGED (the free item is a 0-price line, total unaffected); NO platform
 //     factura (la_musa's POS issues its own) — factura_items is null, the free item is a display-only line.
 const { orderBreakdownCents } = require('./order-money');
@@ -39,32 +40,30 @@ function applyXPizza(items, redemption, totalLempiras) {
   const baseUnitCents = menu[name] * 100;
   if (baseUnitCents !== redemption.discount_cents) return { ok: false, error: 'discount_mismatch' };   // canonical must match the server menu
   const origGross = priced.items[idx].line_gross_cents;
-  const extrasCents = origGross - menu[name] * Q * 100;                               // folded extras (added once, qty-independent)
-  if (extrasCents < 0) return { ok: false, error: 'extras_invariant' };
-  const extraNames = (Array.isArray(cartLine.extras) ? cartLine.extras : []).map((e) => e && e.name).filter(Boolean);
+  if (origGross - menu[name] * Q * 100 < 0) return { ok: false, error: 'extras_invariant' };           // the line must cover its own base units
 
-  // Split: free base unit first (0), then paid remainder + paid extras, then the untouched other lines.
-  const freeLine = { qty: 1, description: `${name} (Recompensa)`, line_gross_cents: 0 };
-  const paid = [];
-  priced.items.forEach((ln, i) => {
-    if (i !== idx) { paid.push(ln); return; }
-    if (Q > 1) paid.push({ qty: Q - 1, description: name, line_gross_cents: menu[name] * (Q - 1) * 100 });
-    if (extrasCents > 0) paid.push({ qty: 1, description: extraNames.length ? `${name} (+${extraNames.join(', ')})` : `${name} (adicionales)`, line_gross_cents: extrasCents });
-  });
-  const factura_items = [freeLine, ...paid];
+  // A-F: factura_items are the FULL-VALUE lines, untouched (no 0-price split). The comp is carried by an
+  // explicit desc_rebaja_cents; the item PRECIOs print at full value, the rebaja line states the discount.
+  const factura_items = priced.items;
 
   const discountedLempiras = totalLempiras - menu[name];
   if (!(discountedLempiras >= 0)) return { ok: false, error: 'negative_total' };
-  const bd = orderBreakdownCents(discountedLempiras, 'x_pizza');
+  const bd = orderBreakdownCents(discountedLempiras, 'x_pizza');                        // DISCOUNTED (paid) — money spine
+  const full = orderBreakdownCents(totalLempiras, 'x_pizza');                           // FULL (pre-discount) breakdown
 
   // fail-closed money invariants
-  const sum = factura_items.reduce((s, l) => s + l.line_gross_cents, 0);
-  if (sum !== bd.total_cents) return { ok: false, error: 'reconcile_mismatch' };       // Σ line_gross === total_cents
-  const bases = reconcileLineBases(factura_items.map((l) => l.line_gross_cents), bd.subtotal_cents);
-  if (bases.some((b) => b < 0) || bases.reduce((a, b) => a + b, 0) !== bd.subtotal_cents) return { ok: false, error: 'base_invariant' };
+  const fullGross = factura_items.reduce((s, l) => s + l.line_gross_cents, 0);
+  if (fullGross !== full.total_cents) return { ok: false, error: 'reconcile_mismatch' };            // Σ line_gross === FULL total
+  if (full.total_cents - bd.total_cents !== redemption.discount_cents) return { ok: false, error: 'discount_reconcile' }; // full − paid === comped gross
+  const desc_rebaja_cents = full.subtotal_cents - bd.subtotal_cents;                    // net comped value (exact residual → foots)
+  if (desc_rebaja_cents < 0) return { ok: false, error: 'rebaja_invariant' };
+  // full-value bases foot to the FULL net; gravado = paid net = FULL net − rebaja (the factura reconciles both)
+  const bases = reconcileLineBases(factura_items.map((l) => l.line_gross_cents), full.subtotal_cents);
+  if (bases.some((b) => b < 0) || bases.reduce((a, b) => a + b, 0) !== full.subtotal_cents) return { ok: false, error: 'base_invariant' };
 
   return { ok: true, restaurant_id: 'x_pizza', total_lempiras: discountedLempiras, total_cents: bd.total_cents,
-    subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents, discount_cents: redemption.discount_cents, factura_items, free_line: freeLine };
+    subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents, discount_cents: redemption.discount_cents,
+    desc_rebaja_cents, factura_items };
 }
 
 function applyLaMusa(redemption, totalLempiras) {

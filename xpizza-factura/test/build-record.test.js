@@ -111,6 +111,22 @@ test('money: 15%-only mapping, verbatim from order, lines foot to subtotal', () 
   assert.equal(r.items.length, 3);
 });
 
+test('A-F redeemed: full-value item bases foot to FULL net, rebaja states the comp, paid ISV identity holds', () => {
+  // Full 52000 gross; a comp of 20000 gross → paid 32000. items stay at FULL value; the comp is the rebaja.
+  // subtotal/tax = priceBreakdown(32000); desc_rebaja = full net (45217) − paid net (27826).
+  const redeemed = order({ total_cents: 32000, subtotal_cents: 27826, tax_cents: 4174, desc_rebaja_cents: 17391 });
+  const r = buildFacturaRecord({ order: redeemed, config: cfg(), reserved: 1, now: 0 });
+  assert.equal(r.desc_rebaja_cents, 17391);                          // explicit Desc. y Reb. Otorg — NOT baked into 0-lines
+  assert.equal(r.gravado_15_cents, 27826);                           // taxable base = PAID net
+  assert.equal(r.isv_15_cents, 4174);
+  assert.equal(r.total_cents, 32000);
+  assert.equal(r.subtotal_cents + r.isv_total_cents, r.total_cents); // paid ISV identity preserved
+  const colSum = r.items.reduce((a, i) => a + i.base_cents, 0);
+  assert.equal(colSum, r.subtotal_cents + r.desc_rebaja_cents);      // full-value bases foot to the FULL net
+  assert.equal(colSum - r.desc_rebaja_cents, r.gravado_15_cents);    // Σ base − rebaja === gravado (receipt foots)
+  assert.ok(r.items.every((i) => i.base_cents >= 0));
+});
+
 test('snapshots emisor identity + range strings + is_temp + DMY fecha_limite', () => {
   const r = buildFacturaRecord({ order: order(), config: cfg(), reserved: 1, now: 0 });
   assert.equal(r.rtn, '05019024114145');

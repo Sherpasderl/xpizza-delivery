@@ -591,7 +591,8 @@ createOrderApp.all('*', async (req, res) => {
   const trackingToken = generateTrackingToken();
   // Redeemed → the discounted breakdown + split factura lines (Task 4); else today's pricing, byte-identical.
   const priceBreakdown = redemptionPriced
-    ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents }
+    ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
+        ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
     : orderBreakdownCents(total, restaurantId);  // platform → ISV 15% incl.; non-platform → no split
   // pricedLineItems feeds order.items, consumed ONLY by the platform factura trigger. Non-platform
   // restaurants (la_musa — Soft Restaurant POS) opt out → skip it; order.items is then omitted.
@@ -859,7 +860,8 @@ chargeOnlineApp.all('*', async (req, res) => {
   }
   // Effective (discounted) breakdown used by both fingerprint sites, the pending record, and the charge amount.
   const effBreakdown = redemptionPriced
-    ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents }
+    ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
+        ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
     : orderBreakdownCents(total, restaurantId);
 
   // ── Item availability gate (KDS 2b · KDS_2B_PLAN.md §6/§7/§8, R4). AUTHORITATIVE placement (Slice-4 fix,
@@ -982,6 +984,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     items_text: fields.items_text,            // includes the La Musa free-item display line when redeemed
     total: effTotal,                          // discounted total (== total when no redeem)
     total_cents, subtotal_cents, tax_cents,   // discounted breakdown when redeemed; else x_pizza ISV 15% incl. / la_musa no split
+    ...(effBreakdown.desc_rebaja_cents ? { desc_rebaja_cents: effBreakdown.desc_rebaja_cents } : {}),   // A-F: factura comp rebaja (x_pizza only)
     ...(redemptionCanonical ? { redemption: redemptionCanonical } : {}),   // bind the reward to the order (reserved until confirm consumes/holds)
     notes: fields.notes,
     payment_method: 'online',
