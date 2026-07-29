@@ -70,7 +70,7 @@
 /* Paso 1 only: pin the chip to the viewport top-right so it stays visible while scrolling the menu
    (index.html toggles body.s1-active per stage). Other stages (paso 2 payment) fall back to the
    header-anchored absolute position above — visible at the top, not pinned. */
-body.s1-active .acct-chip-mount{position:fixed;z-index:40}
+body.s1-active .acct-chip-mount{position:fixed;z-index:150}
 .acct-chip{display:flex;align-items:center;gap:7px;max-width:100%;min-width:0;overflow:hidden;background:rgba(255,255,255,.42);border:1px solid rgba(255,255,255,.55);box-shadow:0 3px 14px rgba(0,0,0,.16);backdrop-filter:blur(13px) saturate(1.5);-webkit-backdrop-filter:blur(13px) saturate(1.5);border-radius:999px;padding:4px 11px 4px 4px;cursor:pointer;font-family:inherit;line-height:1;transition:opacity .15s}
 .acct-chip:hover{opacity:.85}
 .acct-chip .acct-av{width:27px;height:27px;border-radius:50%;background:${CONFIG.accent};color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
