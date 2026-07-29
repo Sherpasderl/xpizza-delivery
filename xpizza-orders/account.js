@@ -52,16 +52,17 @@
     st.id = 'acct-chip-styles';
     st.textContent = `
 .header{position:relative}
-/* Item 1 (round 4): centered logo with the chip pill in the row BELOW it, right-aligned (bottom-right).
-   index.html stacks brand-lockup → acct-chip (subtitle removed). Full-width row → the name never truncates
-   (ellipsis kept only as a last resort). Light-fill pill (tinted bg + hairline border) + accent avatar disc. */
-.acct-chip-mount{display:flex;justify-content:flex-end;min-width:0;margin-top:10px}
-.acct-chip{display:flex;align-items:center;gap:7px;max-width:100%;min-width:0;overflow:hidden;background:${CONFIG.palette.tint2};border:1px solid ${CONFIG.palette.line2};border-radius:999px;padding:4px 11px 4px 4px;cursor:pointer;font-family:inherit;line-height:1;transition:opacity .15s,background .15s}
-.acct-chip:hover{opacity:.82}
+/* Item 1 (round 5): the account chip is a frosted-GLASS info pill anchored top-right over the header hero
+   photo (index.html .header is a faded-hero band). Talkin-Tacos style: translucent white + backdrop-blur +
+   hairline border + soft shadow; accent avatar disc; the name carries a subtle light text-shadow for
+   legibility over the photo. Guest "Entrar" chip shares the glass. */
+.acct-chip-mount{position:absolute;top:14px;right:14px;z-index:3;display:flex;min-width:0}
+.acct-chip{display:flex;align-items:center;gap:7px;max-width:100%;min-width:0;overflow:hidden;background:rgba(255,255,255,.42);border:1px solid rgba(255,255,255,.55);box-shadow:0 3px 14px rgba(0,0,0,.16);backdrop-filter:blur(13px) saturate(1.5);-webkit-backdrop-filter:blur(13px) saturate(1.5);border-radius:999px;padding:4px 11px 4px 4px;cursor:pointer;font-family:inherit;line-height:1;transition:opacity .15s}
+.acct-chip:hover{opacity:.85}
 .acct-chip .acct-av{width:27px;height:27px;border-radius:50%;background:${CONFIG.accent};color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
 .acct-chip--out .acct-av{background:${CONFIG.accent};color:#fff}
-.acct-chip .acct-nm{font-size:13.5px;font-weight:650;letter-spacing:-.01em;color:#17130F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.acct-chip .acct-cv{color:#B3A594;font-size:10px;margin-left:-1px;flex:none}
+.acct-chip .acct-nm{font-size:13.5px;font-weight:650;letter-spacing:-.01em;color:#17130F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 2px rgba(255,255,255,.5)}
+.acct-chip .acct-cv{color:#6B6255;font-size:10px;margin-left:-1px;flex:none}
 /* Compact account pill (round 2): logged-in a hair larger than the guest "Entrar" pill, but tuned to ≈ the
    logo's visual weight — not heavier. */
 .acct-chip:not(.acct-chip--out) .acct-nm{font-size:14px}
