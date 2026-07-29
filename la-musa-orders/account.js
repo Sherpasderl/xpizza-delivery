@@ -80,7 +80,7 @@ body.s1-active.chip-mini .acct-chip{padding:3px}
 body.s1-active.chip-mini .acct-chip .acct-nm,
 body.s1-active.chip-mini .acct-chip .acct-rw,
 body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0}
-.acct-chip{display:flex;align-items:center;gap:0;max-width:100%;min-width:0;overflow:hidden;background:rgba(255,255,255,.42);border:1px solid rgba(255,255,255,.55);box-shadow:0 3px 14px rgba(0,0,0,.16);backdrop-filter:blur(13px) saturate(1.5);-webkit-backdrop-filter:blur(13px) saturate(1.5);border-radius:999px;padding:4px 11px 4px 4px;cursor:pointer;font-family:inherit;line-height:1;transition:padding .3s cubic-bezier(.4,0,.2,1),opacity .15s}
+.acct-chip{display:flex;align-items:center;gap:0;max-width:100%;min-width:0;overflow:hidden;background:rgba(255,255,255,.9);border:1px solid rgba(255,255,255,.6);box-shadow:0 3px 14px rgba(0,0,0,.16);border-radius:999px;padding:4px 11px 4px 4px;cursor:pointer;font-family:inherit;line-height:1;transition:padding .3s cubic-bezier(.4,0,.2,1),opacity .15s}
 .acct-chip:hover{opacity:.85}
 .acct-chip .acct-av{width:27px;height:27px;border-radius:50%;background:${CONFIG.accent};color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
 .acct-chip--out .acct-av{background:${CONFIG.accent};color:#fff}
@@ -244,9 +244,9 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     if ($('acct-rw-styles')) return;
     const st = document.createElement('style'); st.id = 'acct-rw-styles';
     st.textContent = `
-.acct-chip .acct-rw{display:inline-flex;align-items:center;gap:4px;color:${CONFIG.accent};font-size:13px;font-weight:650;margin-left:5px;flex:none;white-space:nowrap;max-width:140px;overflow:hidden;transition:max-width .3s cubic-bezier(.4,0,.2,1),opacity .22s ease,margin-left .3s}
+.acct-chip .acct-rw{display:inline-flex;align-items:center;gap:4px;color:${CONFIG.accent};font-size:14px;font-weight:650;margin-left:5px;flex:none;white-space:nowrap;max-width:140px;overflow:hidden;transition:max-width .3s cubic-bezier(.4,0,.2,1),opacity .22s ease,margin-left .3s}
 .acct-chip .acct-rw-g{display:inline-flex;color:${CONFIG.accent};opacity:.9}
-.acct-chip .acct-rw-g svg{width:13px;height:13px}
+.acct-chip .acct-rw-g svg{width:15px;height:15px}
 .acct-rw-card{padding:6px 4px 2px}
 .acct-rw-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin:20px 0 8px}
 .acct-rw-slot{aspect-ratio:1;border-radius:50%;border:1.5px solid ${CONFIG.palette.line3};background:${CONFIG.palette.tint};display:flex;align-items:center;justify-content:center;color:#B3A594}
@@ -256,10 +256,11 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 /* Filled PIZZA cell: invert — tinted disc + accent border + accent pizza (color the pizza, NOT the whole disc). */
 .acct-rw-slot--pizza.acct-rw-slot--on{background:${CONFIG.palette.tint};border-color:${CONFIG.accent};color:${CONFIG.accent}}
 /* GIFT cell (always last): muted/locked (subtle gray) until the card completes, then a filled accent disc + white gift. */
+.acct-rw-slot--gift{box-shadow:0 0 12px rgba(169,121,26,.5)}
 .acct-rw-slot--gift.acct-rw-slot--on{background:${CONFIG.accent};border-color:${CONFIG.accent};color:#fff}
 .acct-rw-sub{margin:0;font-size:13px;color:#6B6255;text-align:center;line-height:1.4}
 .acct-rw-pts{font-size:26px;font-weight:750;letter-spacing:-.02em;color:#17130F;text-align:center;margin:2px 0 16px}
-.acct-rw-bar-wrap{padding:38px 12px 34px}
+.acct-rw-bar-wrap{padding:48px 12px 44px}
 .acct-rw-bar{position:relative;height:6px;border-radius:999px;background:${CONFIG.palette.fillA}}
 .acct-rw-bar-fill{position:absolute;left:0;top:0;height:100%;border-radius:999px;background:${CONFIG.accent};transition:width .4s ease}
 .acct-rw-tier{position:absolute;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center}
@@ -279,7 +280,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 .acct-rw-row{display:flex;align-items:center;gap:12px;padding:15px 2px;border-top:1px solid ${CONFIG.palette.line}}
 .acct-rw-row:first-child{border-top:none}
 .acct-rw-num{flex:none;width:32px;height:32px;border-radius:50%;background:${CONFIG.palette.tint2};color:#9A8F7E;font-family:var(--display);font-size:13px;font-weight:600;line-height:1;display:flex;align-items:center;justify-content:center;text-align:center}
-.acct-rw-row--on .acct-rw-num{background:${CONFIG.accent};color:#fff}
+.acct-rw-row--on .acct-rw-num{background:#A9791A;color:#fff}
 .acct-rw-rl{flex:1;min-width:0}
 .acct-rw-rn{font-size:14px;font-weight:600;color:#17130F;letter-spacing:-.01em}
 .acct-rw-rd{font-size:11.5px;color:#8A8072;margin-top:3px}
