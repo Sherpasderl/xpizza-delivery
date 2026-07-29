@@ -1,6 +1,8 @@
-# Rewards Batch A — Redemption Correctness + Payment-Page Order Summary (build plan · R2)
+# Rewards Batch A — Redemption Correctness + Payment-Page Order Summary (build plan · R3)
 
-_Executor build plan for advisor **re-gate** (R1 plan-gate → REVISE, 8 findings; all addressed below with cited file:line). Off `main` (`f6cfee0` — has B + polish-r2). Functions + forms. A1 + Factura are money-gated; the rest codex-on-diff. **No code until this clears.**_
+_Executor build plan for advisor **re-gate**. R1→REVISE (8 findings) → R2 resolved 6/8 (codex-traced, left as-is) → R3 = three changes: the **A1 pivot** ($0 via `createOrder`, not `chargeOnlineOrder`), the **factura #4 specifics**, and making **#6 mandatory**. Off `main` (`f6cfee0` — has B + polish-r2). A1 + Factura money-gated; rest codex-on-diff. **No code until this clears.**_
+
+**R2 confirmed resolved — DO NOT re-touch:** #2 (PixelPay reads below $0/sub-min — keep the non-PixelPay identity/availability/schedule/zone/rate-limit gates intact), #5 (recovery-visible state machine), #7 (cash change + `cash_tendered` guard → `redeemAdjustedTotal`, `index.html:2412–2456`; server re-validates vs `priceBreakdown.total_cents`), #8 (dedicated Stage-2 renderer, cart pillbox untouched). #1/#3 backend edits were sound but are **superseded by the A1 pivot** (moot: no $0 online path).
 
 ## Why this batch exists
 Redemption (B1 + B2) is live-inert on main, mid-**canary**; money spine proven intact via RTDB inspection. The **atomic go-live flip is HELD** until Batch A lands. Batch A = the free-$0-checkout money-path state (A1), the factura comp representation (A-F), and the display/edge fixes (A2–A6). After gated + re-merged → **re-canary** → **then flip**.
@@ -12,36 +14,31 @@ Redemption (B1 + B2) is live-inert on main, mid-**canary**; money spine proven i
 - Build ON TOP of main (has B).
 
 ## Sequencing / gates
-1. **Functions, money-gated first:** **A1** (free_checkout state) + **A-F** (factura comp representation) — these two are the money core and share the redeemed-order confirm/factura path; gate together or A-F→A1.
+1. **Money-gated core:** **A-F** (factura comp representation, functions) + **A1** (`createOrder` $0 intake guard + forms payment-availability/free-submit). Gate together or A-F→A1.
 2. **A4** (functions, items_text — code-gate).
 3. **Forms:** the shared **online-return persistence** (#6 infra) → **A2** + **A5** → **A3** → **A6**. Each codex-on-diff.
-4. Ships **inert**. Deploy = functions + forms → **re-canary** (owner uid): $0-online, sub-min→cash, scheduled-$0, factura comp line, all display surfaces, items_text → **THEN atomic flip**.
+4. Ships **inert**. Deploy = functions + forms → **re-canary** (owner uid): $0-order-via-createOrder, sub-min→cash-only, scheduled-$0 (held→consume), factura gross+rebaja line, all display surfaces, items_text → **THEN atomic flip**.
 
 ---
 
-## A1 — free_checkout as a first-class state  [MONEY-GATE]  · addresses #1, #2, #3, #5
+## A1 — $0 order via `createOrder` (total-driven payment availability)  [MONEY-GATE]  · PIVOT, supersedes #1/#2/#3
 
-**Problem (canary):** a redemption that zeroes the online total can't open a PixelPay checkout (can't charge L0) → "checkout not created" → stuck.
+**Problem (canary):** a redemption that zeroes the online total can't open a PixelPay checkout (can't charge L0) → "checkout not created."
 
-**The state machine (#5 — recovery-visible, not atomic).** In `chargeOnlineOrder`, redemption flows:
-1. **reserve** (debit → `reserved`, keyed order_id) — BEFORE placement. Reserve fails → 409 non-payable, no order (release-not-needed, nothing reserved).
-2. **reprice** → branch on discounted `total_cents`:
-   - **`=== 0`** → **free_checkout**: place a `$0 confirmed` online order stamped **`free_checkout:true`** (+ `payment_status:'confirmed'`, `payment_method:'online'`, amount 0, `o.redemption` set) — **no PixelPay attempt**.
-   - **`0 < total < PIXELPAY_MIN`** → **cash fallback**: release the online reserve, return a typed `sub_minimum_online → pay_cash` so the client re-submits as cash on the discounted remainder (cash has its own reserve path).
-   - **`>= PIXELPAY_MIN`** → unchanged PixelPay charge on the discounted total.
-   Placement failure BEFORE the order row is written → **release the hold** (release-pre-order).
-3. **consume (best-effort)** — a `$0 free_checkout` order is confirmed at placement (no pending payment), so **consume the reservation AT PLACEMENT** (immediate AND scheduled — a $0 order has no materialization-payment step). Consume-write failure → order stays confirmed (free), reservation stays `reserved` but **recovery-visible**.
-4. **recovery-sweep** — `sweepConsumeRecovery` gains a predicate so a missed $0 consume is recovered: **`confirmed && free_checkout && reserved` → consume** (this covers scheduled-$0 too — see #3). Cancel-before-materialize → existing `cancelOrderCore` clawback reverses (unchanged).
+**Pivot (owner-directed, R3):** don't force the $0 order through the online charge path at all. The canary already proved the **`createOrder` (cash) path places a $0 order correctly** (reserved, scheduled→held). Route $0 there and skip `chargeOnlineOrder` entirely. This drops ALL of the R2 online-$0 surface — the `free_checkout` online state, the `reconcilePayments` breach edit (#1), the PixelPay read-reordering (#2), the new `sweepConsumeRecovery` predicate (#3), and the codex-flagged new $0-online forms handler (`index.html:2526`).
 
-**#1 — reconciler.** A `$0 confirmed` order with no PixelPay would be flagged `confirmed_without_verified_payment` by `reconcilePayments` (`index.js:1676`). FIX: stamp **`free_checkout:true`** on the order, and extend the breach check to **skip when `free_checkout === true && total_cents === 0`** (i.e. "confirmed without a PixelPay charge is legitimate ONLY for a zero-total free_checkout"). Any non-zero confirmed-without-payment still breaches.
+**Design — total-driven payment-method availability** (client reads the server quote):
+- **server total `=== 0`** → grey out BOTH payment methods, show **"Confirmar pedido gratis"**, submit to **`createOrder`** with a **free marker** (`payment_method:'free'` or a `free_order:true` flag — **distinct from cash**, so the driver app reads "nothing to collect" and accounting reads it right). **No PixelPay, no `chargeOnlineOrder`.**
+- **`0 < total < PIXELPAY_MIN`** (rare / likely unreachable) → grey out **online**, cash only.
+- **total `>= PIXELPAY_MIN`** → both methods, unchanged.
 
-**#2 — read ordering.** PixelPay config + return-URL are resolved BEFORE repricing today (`index.js:799`, via `resolvePixelPayConfig`/`resolveReturnBase`). FIX: **move those reads BELOW the `$0`/`sub-min` branches** so they're resolved ONLY on the `>= PIXELPAY_MIN` charge path (a $0/sub-min order never touches PixelPay config).
+**Money-safety (preserve all-or-nothing / #5 — recovery-visible):** the grey-out is **optimistic** (client reads the quote). **`createOrder` re-prices server-side** and, if the total isn't actually 0 (stale quote / reward invalidated), **rejects and the forms re-enable payment** — never silently places a `> 0` order without payment.
 
-**#3 — scheduled-$0 (HANDLED, not carved).** `consumeEligible` excludes `scheduled` (`rewards-reserve.js:288/295`), so a scheduled-$0 reservation would be neither consumed nor recovery-visible. FIX (per advisor's option A): **consume-at-placement for $0 free_checkout applies to scheduled too** (step 3 above), and the recovery predicate is **`confirmed && free_checkout && reserved`** (NOT gated on `consumeEligible`, so it catches scheduled). Result: scheduled-$0 consumes at placement + is recovery-visible; cancel-before-materialize → clawback. _(Fallback if the advisor prefers a smaller v1: reject a scheduled order that reprices to exactly $0 with a typed message and defer — but the handled path above is cleaner UX and is the recommendation.)_
+**Lifecycle (reuse the proven cash path — codex-confirmed):** reserve at `createOrder` → (scheduled → **held**; release only materializes, no consume) → **consume at completion**; cancel-before-release **reverses via `reverseRedemptionForOrder`** (`cancel-order-core.js:181`, disposition `refund`, idempotent by `reverse_${orderId}`). **No new free_checkout online state, no reconciler extension, no new recovery predicate.**
 
-**Files:** `xpizza-functions/index.js` (`chargeOnlineOrder` branch + read-ordering + `reconcilePayments:1676`), `rewards-reserve.js` (`sweepConsumeRecovery` predicate + consume-at-placement helper), `rewards-redeem.js`/intake (consume at $0).
-**Verification (emulator):** $0-online → confirmed + `free_checkout:true` + reserved→consumed + **no PixelPay call** + reconciler no-breach; sub-min → online reserve released + `pay_cash` typed; scheduled-$0 → consume-at-placement + recovery predicate catches a forced missed-consume; failure pre-order → hold released; idempotent re-submit; cancel-$0 → clawback reverses. Normal-discount online unchanged.
-**Gate:** money-gate.
+**Files:** forms (`xpizza-orders/index.html` + `la-musa-orders/index.html`: `selectPay`/`processPayment` payment-method availability driven by the quote total, + "Confirmar pedido gratis" free-order submit routing to `createOrder`; `account.js` exposes the quote total already) + `xpizza-functions/index.js` (`createOrder` intake: accept a `free`-marked redeemed order + the server re-price guard that the discounted total is genuinely 0 before allowing no-payment).
+**Verification (emulator + forms):** $0 quote → both methods greyed + "Confirmar pedido gratis" + `createOrder` places a `free`-marked reserved order (no PixelPay) → consume at completion; **stale quote** (server total ≠ 0) → `createOrder` rejects + forms re-enable payment (no >0 no-payment order); scheduled-$0 → reserved→held→consume via the existing cash path; cancel-$0 → `reverseRedemptionForOrder`; sub-min → online greyed, cash only. Normal-discount unchanged.
+**Gate:** money-gate (redemption placement path — far less surface than R2).
 
 ## A-F — Factura: comp representation (full-value items + explicit rebaja)  [MONEY-GATE]  · addresses #4
 
@@ -50,8 +47,13 @@ Redemption (B1 + B2) is live-inert on main, mid-**canary**; money spine proven i
 - This **changes B1's factura representation**: today the discount is baked into 0-price lines with `desc_rebaja_cents:0`; now → **full-value line items + an explicit rebaja line** (`desc_rebaja` = comped value), preserving the golden **ISV identity** (`subtotal + tax === total`, all footing on the *net* base).
 - **La Musa unchanged** — Soft Restaurant POS owns its fiscal doc; the comp is recorded in the rewards ledger + order record for reconciliation, not the platform factura.
 
-**Files:** `xpizza-functions/buildFacturaRecord` + `rewards-redeem-pricing.js` (the X. Pizza `discount` model — emit full-value lines + `desc_rebaja` instead of the 0-base split).
-**Verification (golden/unit):** redeemed X. Pizza factura = full-value items + `desc_rebaja` = comped value, base gravable = net, ISV on net, comped ISV 0, `subtotal+tax===total`; fully-comped → 0/0/0 and issues; La Musa `factura_items:null` unchanged; non-redeem factura byte-identical. Reconcile with `orderBreakdownCents`.
+**Exact schema + renderer change (R3 — codex found the R2 wording unachievable as written):** today `build-record.js:51–58` stores the item's `base_cents` from `reconcileLineBases(lineGross, order.subtotal_cents)` — i.e. the **NET** base (subtotal is post-discount) — and the renderer (`xpizza-factura/src/renderer.js:96–98`) prints `L(it.base_cents)` as **PRECIO**, so a comped line would print **PRECIO L0.00**, not L299. The `DESC. Y REB. OTORG :${L(rec.desc_rebaja_cents)}` line already exists in the renderer (`renderer.js:104`) but is fed 0 today.
+  Change:
+  - **Item line prints the GROSS/full value** (Margherita PRECIO **L299**) — the printed PRECIO must be the gross line value, not the discounted base. (Store a gross per-line value for display; keep the gravado base separate.)
+  - **`desc_rebaja_cents` = the comped value** (L299) on the existing "Desc. Y Reb. Otorg" line.
+  - **Totals foot on the NET**: `base_gravable = Σ gross − desc_rebaja`, ISV on the net, the comped portion's ISV = L0, and the **golden ISV identity `subtotal + tax === total`** holds on the net. Fully-comped → base 0 / ISV 0 / total 0 and the factura **issues**.
+**Files:** `xpizza-functions/factura/build-record.js` (gross line value + `desc_rebaja_cents` + net gravado base) **AND** the duplicated **`xpizza-factura/src/renderer.js`** (print gross PRECIO + the rebaja line) + the **golden tests** for both; reconcile with `orderBreakdownCents`.
+**Verification (golden/unit):** redeemed X. Pizza factura = gross item PRECIO (L299) + `desc_rebaja` = comped value + base gravable = net + ISV on net + comped ISV 0 + `subtotal+tax===total`; fully-comped → 0/0/0 and issues; La Musa `factura_items:null` unchanged; non-redeem factura byte-identical.
 **Gate:** money-gate (factura money-math).
 
 ## A4 — reconstruct `items_text` for the freed/added item  [functions · code-gate]
@@ -65,9 +67,10 @@ Redemption (B1 + B2) is live-inert on main, mid-**canary**; money spine proven i
 ## #6 — online-return persistence  (shared infra for A2 + A5)
 
 **Problem (advisor #6):** after the PixelPay redirect+return the in-memory `_redeemQuote` is gone; the success screen rebuilds `currentOrder` from `stashedOrder` (client full total, `index.html:2556–2587`), so `redeemAdjustedTotal()` can't work post-return, and detection uses `!!o.redeem` (`index.html:2945`) — but the **server stamps `o.redemption`, not `o.redeem`**.
-**Fix (foundation A2/A5 build on):**
-1. **Persist the server quote** (`total_cents`, `discount_cents`, `free_item`) into the **stashed order** (`xpizza_pending_pay`) BEFORE the PixelPay redirect — OR read them back from the server-confirmed order / `paymentStatus` poll on return. Recommendation: stash the quote summary at redirect **and** prefer the server-confirmed order's `total_cents`/`redemption` on return (server wins).
-2. **Detection:** everywhere the success/earn path tests redemption, use **`o.redemption || o.redeem`** (server stamps `o.redemption`).
+**Fix (foundation A2/A5 build on) — MANDATORY both (R3, not OR):**
+1. **Persist the server quote** (`total_cents`, `discount_cents`, `free_item`) into the **stashed order** (`xpizza_pending_pay`) BEFORE the PixelPay redirect, **AND**
+2. **On the online return, prefer the SERVER-CONFIRMED order's `total_cents`/`redemption`** (server wins over the stashed client values) — do not rely on the stash alone. The `paymentStatus`/poll response (or a read of the confirmed order) is authoritative; the stash is the fallback if the server summary is momentarily absent.
+3. **Detection:** everywhere the success/earn path tests redemption, use **`o.redemption || o.redeem`** (server stamps `o.redemption`, not `o.redeem` — `index.html:2945`).
 **Files:** `xpizza-orders/index.html` + `la-musa-orders/index.html` (stash-at-redirect + return path 2556–2587; detection at 2945).
 
 ## A2 — success-screen Total shows the server discounted total  [forms · display]  · addresses #6
@@ -102,17 +105,17 @@ Redemption (B1 + B2) is live-inert on main, mid-**canary**; money spine proven i
 
 ---
 
-## R1 findings → resolution map (for the re-gate)
-| # | Finding (cited) | Task | Resolution |
-|---|---|---|---|
-| 1 | `reconcilePayments` flags $0-no-PixelPay (`index.js:1676`) | A1 | `free_checkout:true` marker + breach skip when `free_checkout && total_cents===0` |
-| 2 | PixelPay config/return read before repricing (`index.js:799`) | A1 | move reads BELOW the $0/sub-min branches (charge path only) |
-| 3 | scheduled-$0 not recoverable (`rewards-reserve.js:288/295`) | A1 | HANDLED: consume-at-placement for $0 (incl. scheduled) + recovery predicate `confirmed && free_checkout && reserved` (carve-out offered as fallback) |
-| 4 | factura must issue reflecting the comp (SAR) | A-F | full-value items + explicit `desc_rebaja` line, ISV on net, comped ISV 0, issues at 0/0/0; La Musa unchanged; money-gate |
-| 5 | reframe all-or-nothing | A1 | explicit state machine, **recovery-visible not atomic**; every exception releases-pre-order or is recovery-visible |
-| 6 | online-return: quote gone, `o.redeem` vs `o.redemption` (`index.html:2556–2587,2945`) | #6/A2/A5 | persist server quote into stashed order (+ server-confirmed wins on return); detect `o.redemption || o.redeem` |
-| 7 | `cash_tendered` guard uses full `calcTotal()` (`index.html:2456`) | A3 | fix BOTH displayed change AND the submit guard to `redeemAdjustedTotal()` |
-| 8 | A6 renderer | A6 | dedicated Stage-2 renderer from server quote; leave cart pillbox/`updateCartReviewBody` untouched |
+## Findings → resolution map (R3, for the re-gate)
+| # | Finding (cited) | R3 status |
+|---|---|---|
+| 1 | `reconcilePayments` flags $0-no-PixelPay (`index.js:1676`) | **SUPERSEDED by A1 pivot** — no $0 online path, so no reconciler edit |
+| 2 | PixelPay reads before repricing (`index.js:799`) | R2 resolved (leave); **moot** under the pivot (no $0/sub-min branch in `chargeOnlineOrder`) |
+| 3 | scheduled-$0 not recoverable (`rewards-reserve.js:288/295`) | **SUPERSEDED by A1 pivot** — cash path already handles scheduled (held→consume); no new predicate |
+| 4 | factura must issue reflecting the comp (SAR) | **A-F, revised R3**: gross item PRECIO + `desc_rebaja` line, net gravado base, ISV on net, 0/0/0 issues; update `build-record.js` + `xpizza-factura/renderer.js` + goldens; La Musa unchanged; money-gate |
+| 5 | reframe all-or-nothing | **recovery-visible** via the reused cash lifecycle (reserve→held→consume; cancel→`reverseRedemptionForOrder`); optimistic grey-out + server re-price guard |
+| 6 | online-return: quote gone, `o.redeem` vs `o.redemption` (`index.html:2556–2587,2945`) | **#6, MANDATORY both (R3)**: persist server quote at redirect AND server-confirmed wins on return; detect `o.redemption \|\| o.redeem` |
+| 7 | `cash_tendered` guard uses full `calcTotal()` (`index.html:2412–2456`) | R2 resolved (leave): both change + guard → `redeemAdjustedTotal`; server re-validates |
+| 8 | A6 renderer (`index.html:2526` old handler) | R2 resolved (leave): dedicated Stage-2 renderer; cart pillbox/`updateCartReviewBody` untouched |
 
 **Confirmed sound (advisor, no change):** `redeemAdjustedTotal`/`getRedeemQuoteTotalCents` correct while the quote is live; quote endpoint runs the same pricing; server earn already subtracts the freed unit (A5 = client alignment only, once `o.redemption` detection is fixed).
 
