@@ -66,11 +66,13 @@ body.s1-active .acct-chip-mount{position:fixed;z-index:150}
    corner chip) so it stops covering the sticky category tabs. index.html toggles body.chip-mini on scroll. */
 /* Collapsed avatar shifts up to sit vertically centered on the sticky category bar (~46px tall) instead of
    hanging low at the full-pill's top:14. */
-body.s1-active.chip-mini .acct-chip-mount{top:6px}
-/* Collapsed state = a CIRCLE: pin the content height to the avatar so the (0-width) collapsing name/counter
-   can't inflate it into a tall oval; justify-center keeps the avatar centered. Width stays auto → smooth shrink. */
-body.s1-active.chip-mini .acct-chip{padding:3px;height:29px;justify-content:center}
-body.s1-active.chip-mini .acct-chip--out{height:27px}
+body.s1-active.chip-mini .acct-chip-mount{top:5px}
+/* Collapsed state = a CIRCLE. box-sizing is border-box, so height is the TOTAL: avatar 29 + padding 6 +
+   border 2 = 37px (guest avatar 27 → 35). Pinning the height stops the (0-width) collapsing name/counter from
+   inflating it into a tall oval, and it's sized to fit the avatar exactly (no top/bottom clip). Width stays
+   auto → smooth horizontal shrink to the circle. */
+body.s1-active.chip-mini .acct-chip{padding:3px;height:37px;justify-content:center}
+body.s1-active.chip-mini .acct-chip--out{height:35px}
 body.s1-active.chip-mini .acct-chip .acct-nm,
 body.s1-active.chip-mini .acct-chip .acct-rw,
 body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0}
