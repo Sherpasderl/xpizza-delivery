@@ -2043,7 +2043,7 @@
         <span class="aa-dot"></span>
         <span class="aa-label">Auto-asignar</span>
       </button>
-      <button class="tb-icon msg-btn" id="msg-btn" title="Mensajes de clientes">
+      <button class="tb-icon msg-btn" id="msg-btn" title="Mensajes de clientes" aria-label="Mensajes de clientes">
         <span class="msg-icon"></span>
         <span class="msg-badge" id="msg-badge">0</span>
       </button>
@@ -2517,6 +2517,9 @@ function addMapControls() {
   document.addEventListener('fullscreenchange', () => {
     const isFs = document.fullscreenElement === mapContainer;
     fs.innerHTML = isFs ? compressIcon : expandIcon;
+    const fsLabel = isFs ? 'Salir de pantalla completa' : 'Pantalla completa';
+    fs.title = fsLabel;
+    fs.setAttribute('aria-label', fsLabel);
     if (map) g.event.trigger(map, 'resize');
   });
 
