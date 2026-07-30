@@ -19,7 +19,7 @@
     // tiers MIRROR the LOCKED server config (rewards-redeem-config.js, config_version 1) — item names resolve
     // via the form MENU at render; availability via the 86 read. Server stays authoritative (a drift → the
     // quote/submit rejects with a typed message; never a money bug).
-    rewards: { kind:'points', unit:'pts', perCents:3000, ptsPer:10, paneIntro:'Ganás puntos en cada pedido y los canjeás por comida gratis.', tiers:[
+    rewards: { kind:'points', unit:'pts', perCents:3000, ptsPer:10, welcome:100, paneIntro:'Ganás puntos en cada pedido y los canjeás por comida gratis.', tiers:[
       { cost:300,  name:'Bebida o acompañamiento', desc:'soda · papas · arroz', items:['soft_01','soft_02','soft_03','soft_04','beer_01','beer_02','beer_03','beer_04','beer_05','beer_06','beer_07','beer_08','rice_white','rice_chinese','papas_fritas'] },
       { cost:850,  name:'Dim sum o starter', desc:'dumplings · buns · wontons', items:['dimsum_01','dimsum_02','dimsum_03','dimsum_04','dimsum_05','starter_01','starter_02','starter_03','soup_01','soup_02','soup_03'] },
       { cost:1400, name:'Plato fuerte', desc:'noodles · rice · ceviches', items:['noodle_01','noodle_01_sin','noodle_01_pollo','noodle_01_camaron','noodle_03','rice_01','rice_04','crudo_02','crudo_03','special_05'] },
@@ -447,6 +447,43 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // order. Guest → the profile-claim card leading with the reward ("Creá tu perfil · Guardá X de este pedido"),
   // deep-linking the existing create flow (openLoginSheet). env: { subtotalCents, pizzaCount, redeemed }.
   // Fail-safe: any throw leaves the success screen untouched (guests never send redeem → redeemed is always false).
+  // Reward-led profile-claim card (mockup f9681eb8) — the reward the guest is ALREADY earning is the hero:
+  // the concrete earned number + the welcome bonus stacked in, with points-bar (La Musa) / punch-slots
+  // (X. Pizza) proof. Client-computed from the just-placed cart (env.pizzaCount / env.subtotalCents — the SAME
+  // earn logic as computeEarn) + CONFIG.rewards (welcome / goal / card_size / tiers). Brand differences come
+  // ONLY from CONFIG.rewards + RW.kind → this block is byte-identical across both forms. All interpolated
+  // values are computed integers or CONFIG literals (no XSS).
+  const RW_CHECK = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+  function rwClaimCardHtml(env) {
+    const welcome = Number(RW.welcome) || 0;
+    let h3, math, proof, cta, sub;
+    if (RW.kind === 'punch') {
+      const earned = (env.redeemed ? Math.max(0, (Number(env.pizzaCount) || 0) - 1) : (Number(env.pizzaCount) || 0)) * RW.earnPerPizza;
+      const size = RW.card_size, filled = Math.min(size, earned + welcome), remaining = Math.max(0, size - filled);
+      math = `Este pedido suma <b>${earned} ${earned === 1 ? RW.unit : RW.unitPlural}</b> + <b>${welcome} de bienvenida</b> al crear tu perfil.`;
+      h3 = remaining <= 1 ? 'A una pizza de tu pizza gratis' : (filled * 2 >= size ? 'Ya vas a mitad de tu pizza gratis' : 'Empezá a llenar tu tarjeta de pizza gratis');
+      let slots = '';
+      for (let i = 0; i < size; i++) {
+        if (i === size - 1 && filled < size) slots += `<span class="rw-slot rw-slot--goal">${GIFT_SVG}</span>`;
+        else if (i < filled) slots += `<span class="rw-slot rw-slot--on">${RW_CHECK}</span>`;
+        else slots += '<span class="rw-slot"></span>';
+      }
+      proof = `<div class="rw-slots">${slots}</div><div class="rw-slotcap"><b>${filled} / ${size}</b> — ${remaining} ${remaining === 1 ? 'pizza' : 'pizzas'} más para tu pizza gratis.</div>`;
+      cta = 'Crear mi perfil y guardar mis sellos';
+      sub = 'Guardá tus sellos, direcciones e historial — reordená en un toque.';
+    } else {
+      const earned = Math.floor(Math.max(0, Number(env.subtotalCents) || 0) / RW.perCents) * RW.ptsPer;
+      const goal = (RW.tiers && RW.tiers[0]) ? RW.tiers[0].cost : 0, total = earned + welcome;
+      const ready = goal > 0 && total >= goal, pct = goal > 0 ? Math.min(100, Math.round(total / goal * 100)) : 0;
+      math = `Este pedido suma <b>${earned} ${RW.unit}</b> + <b>${welcome} de bienvenida</b> al crear tu perfil.`;
+      h3 = ready ? 'Tu primer premio ya te espera' : `Vas <b>${total} ${RW.unit}</b>, a solo <b>${Math.max(0, goal - total)}</b> de tu primer premio`;
+      const goalCap = ready ? `${RW_CHECK} Primer premio · ${goal} ${RW.unit}` : `faltan ${Math.max(0, goal - total)}`;
+      proof = `<div class="rw-ptrow"><span class="rw-bignum">${total}</span><span class="rw-bigunit">${RW.unit}</span></div><div class="rw-bar"><i style="width:${pct}%"></i></div><div class="rw-barcap"><span>0</span><span class="rw-goal">${goalCap}</span></div>`;
+      cta = 'Crear mi perfil y reclamarlo';
+      sub = 'Guardá tus puntos, direcciones e historial — reordená en un toque.';
+    }
+    return `<div class="rw"><div class="rw-label">${GIFT_SVG} Tu recompensa</div><h3 class="rw-h3">${h3}</h3><p class="rw-math">${math}</p>${proof}<button class="rwcta" type="button">${cta}</button><p class="rw-sub">${sub}</p></div>`;
+  }
   function renderSuccessRewards(env) {
     try {
       const el = $('acct-success-rewards'); if (!el) return;
@@ -466,9 +503,9 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
         el.className = 'acct-sx';
         el.innerHTML = `<div class="acct-sx-badge"><span class="acct-sx-g">${GIFT_SVG}</span><span class="acct-sx-earn">+${escapeHtml(label)}</span></div>${note}`;
       } else {
-        el.className = 'acct-sx acct-sx--guest';
-        el.innerHTML = `<div class="acct-sx-claim"><span class="acct-sx-g">${GIFT_SVG}</span><div class="acct-sx-claim-tx"><b>Creá tu perfil</b><span>Guardá ${escapeHtml(label)} de este pedido</span></div></div><button class="acct-sx-btn" type="button">Crear perfil</button>`;
-        const btn = el.querySelector('.acct-sx-btn'); if (btn) btn.onclick = () => { try { openLoginSheet({ phone: env.claimPhone, name: env.claimName }); } catch (_) {} };   // Track A: soft-fill from the just-placed order
+        el.className = 'acct-sx acct-sx--rw';
+        el.innerHTML = rwClaimCardHtml(env);   // reward-led card (mockup f9681eb8) — hero earned+welcome, points-bar/punch-slots proof
+        const btn = el.querySelector('.rwcta'); if (btn) btn.onclick = () => { try { openLoginSheet({ phone: env.claimPhone, name: env.claimName }); } catch (_) {} };   // Track A: soft-fill from the just-placed order
       }
     } catch (_) {}
   }
@@ -489,6 +526,31 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 .acct-sx-claim-tx b{font-size:14px;color:#17130F;font-weight:750}
 .acct-sx-claim-tx span{font-size:12.5px;color:#6B6255}
 .acct-sx-btn{margin-top:12px;width:100%;padding:12px;border:none;border-radius:12px;background:${CONFIG.accent};color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer}
+.acct-sx--rw{margin:16px 0 4px;text-align:left}
+.rw{position:relative;border-radius:20px;padding:20px 18px 18px;overflow:hidden;background:radial-gradient(130% 80% at 82% -10%,rgba(201,162,74,.28),rgba(201,162,74,0) 60%),linear-gradient(180deg,#fffdf8,#fbf4e4);border:1px solid rgba(169,121,26,.34);box-shadow:0 1px 2px rgba(120,86,20,.10),0 16px 34px -22px rgba(120,86,20,.5)}
+.rw-label{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#7d580f;font-weight:700;margin-bottom:9px}
+.rw-label svg{width:16px;height:16px;color:#7d580f;flex:none}
+.rw-h3{font-family:var(--display);font-weight:700;font-size:20.5px;line-height:1.15;color:#1b1a17;margin:0 0 4px}
+.rw-h3 b{color:#7d580f}
+.rw-math{font-size:13px;color:#6b665c;margin:0 0 13px;line-height:1.5}
+.rw-math b{color:#7d580f;font-weight:700}
+.rw-ptrow{display:flex;align-items:flex-end;gap:10px;margin-bottom:6px}
+.rw-bignum{font-family:var(--display);font-weight:700;font-size:38px;line-height:.9;color:#7d580f;font-variant-numeric:tabular-nums}
+.rw-bigunit{font-size:14px;font-weight:600;color:#7d580f;margin-bottom:4px}
+.rw-bar{height:9px;border-radius:99px;background:rgba(169,121,26,.16);overflow:hidden;margin:8px 0 5px}
+.rw-bar>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#A9791A,#C9A24A)}
+.rw-barcap{display:flex;justify-content:space-between;font-size:11px;color:#6b665c;font-variant-numeric:tabular-nums}
+.rw-barcap .rw-goal{color:#7d580f;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.rw-barcap .rw-goal svg{width:12px;height:12px}
+.rw-slots{display:flex;gap:7px;flex-wrap:wrap;margin:2px 0 8px}
+.rw-slot{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;border:1.5px solid rgba(169,121,26,.4);color:rgba(169,121,26,.55)}
+.rw-slot svg{width:14px;height:14px}
+.rw-slot--on{background:linear-gradient(160deg,#C9A24A,#A9791A);border-color:#7d580f;color:#fff5df}
+.rw-slot--goal{border-style:dashed;border-color:#7d580f;color:#7d580f}
+.rw-slotcap{font-size:11px;color:#6b665c;margin-bottom:8px}
+.rw-slotcap b{color:#7d580f}
+.rwcta{display:block;width:100%;border:0;border-radius:13px;padding:14px;font-family:inherit;font-size:15px;font-weight:700;color:#fff;text-align:center;cursor:pointer;margin-top:4px;background:linear-gradient(180deg,#A9791A,#7d580f);box-shadow:0 6px 16px -8px rgba(125,88,15,.8)}
+.rw-sub{text-align:center;font-size:11.5px;color:#6b665c;margin:9px 0 0}
 `;
     document.head.appendChild(st);
   }
