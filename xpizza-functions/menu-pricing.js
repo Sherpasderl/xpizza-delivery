@@ -198,9 +198,15 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null) {
     lines.push({ name, qty, cents: lineL * 100 });
   }
   if (redemption && redemption.model === 'discount' && Number.isInteger(redemption.discount_cents) && redemption.discount_cents > 0) {
-    lines.push({ name: summaryLineName(redemption.name, 'Recompensa') + ' · Recompensa', qty: 1, cents: -redemption.discount_cents });
+    lines.push({ name: summaryLineName(redemption.name, 'Recompensa') + ' · Recompensa', qty: 1, cents: -redemption.discount_cents });   // legacy (unused in v2)
   } else if (redemption && redemption.model === 'add_free') {
-    lines.push({ name: summaryLineName(redemption.name, 'Recompensa'), qty: 1, cents: 0 });   // added free item → GRATIS
+    // v2: one 0-cents line per redeemed item (multiset-aware). Accepts items:[{name,qty}] OR a single {name}.
+    const freeArr = Array.isArray(redemption.items) ? redemption.items : (redemption.name != null ? [{ name: redemption.name, qty: 1 }] : []);
+    for (const f of freeArr) {
+      const q = Number(f && f.qty);
+      if (!Number.isInteger(q) || q < 1 || q > 50) return null;
+      lines.push({ name: summaryLineName(f && f.name, 'Recompensa'), qty: q, cents: 0 });   // added free item → GRATIS
+    }
   }
   return lines;
 }

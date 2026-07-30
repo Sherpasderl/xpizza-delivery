@@ -1,59 +1,73 @@
 'use strict';
 
-// Rewards Phase B1 — redemption config (versioned, static module). Pure data + tiny accessors; the money
+const { MENU_BY_RESTAURANT } = require('./menu-pricing');
+
+// Rewards Redemption v2 — redemption config (versioned, static module). Pure data + tiny accessors; the money
 // calculator (rewards-redeem.js) and the handlers read ONLY from here. Owner-locked (design-gate approved):
-//   • X. Pizza  — punch card_size 8; reward = discount the cheapest pizza already in the cart to free.
-//   • La Musa   — points tiers 500/1000/1500/2500/3500; reward = ADD a chosen eligible tier item free.
+//   • X. Pizza — punch card_size 8; reward = customer picks ANY 12" `individual` pizza, ADDED free (L0 line).
+//                The order total is unchanged (the pizza is added at 0). Was discount_cheapest_pizza (v1).
+//   • La Musa  — points WALLET; redeem one or more non-alcohol dishes à la carte, each ADDED free (L0 line);
+//                the balance decrements per item. cost_pts = round(price_L × 10/3) → ~10% value-back. Was tiers (v1).
 // REDEMPTION_CONFIG_VERSION stamps every redemption so a config change mid-flight is detectable (a version
-// mismatch → non-payable). The spec's "versioned RTDB config" is deferred (plan-gate #11): B1 = code config
-// + this constant; B2/later can graduate to RTDB without changing the redemption record shape.
-//
-// NOTE for downstream tasks: La Musa tier item ids span TWO namespaces — main menu items (soft_0x, beer_0x,
-// dimsum_0x, noodle_0x, rice_0x, crudo_0x, special_0x, starter_0x, soup_0x) AND extras/"Acompañamientos"
-// (rice_white, rice_chinese, papas_fritas live in EXTRAS_BY_RESTAURANT.la_musa, not MENU_BY_RESTAURANT).
-// The free-item price lookup + availability gate (Tasks 2/5/6) must resolve an id against BOTH.
-// Pre-launch config finalization: La Musa tiers retuned to ~10% value-back (300/850/1400/1650/2100).
-// Version stays 1 — redemption is still inert (redemption_enabled OFF, zero reservations ever stamped), so
-// there is no mid-flight redemption to invalidate. Bump this ONLY when changing costs AFTER go-live.
-const REDEMPTION_CONFIG_VERSION = 1;
+// mismatch → non-payable). Bumped 1 → 2 for the v2 model. Safe while redemption is gated OFF
+// (config/redemption_enabled !== true → zero reservations ever stamped → no migration hazard).
+const REDEMPTION_CONFIG_VERSION = 2;
+
+// La Musa points↔lempira rate: cost_pts = round(price_L × REDEEM_POINTS_PER_LEMPIRA) → ~10% value-back
+// (each point is worth L0.30). This is the ONE place the rate is defined; the calculator reads ONLY from here.
+const REDEEM_POINTS_PER_LEMPIRA = 10 / 3;
 
 const REDEMPTION_CONFIG = {
-  x_pizza: { kind: 'punch', cost: 8, reward: 'discount_cheapest_pizza' },
-  la_musa: {
-    kind: 'points',
-    reward: 'add_free_item',
-    tiers: [
-      { level: 1, cost: 300,  items: ['soft_01', 'soft_02', 'soft_03', 'soft_04',
-                                      'beer_01', 'beer_02', 'beer_03', 'beer_04', 'beer_05', 'beer_06', 'beer_07', 'beer_08',
-                                      'rice_white', 'rice_chinese', 'papas_fritas'] },
-      { level: 2, cost: 850,  items: ['dimsum_01', 'dimsum_02', 'dimsum_03', 'dimsum_04', 'dimsum_05',
-                                      'starter_01', 'starter_02', 'starter_03',
-                                      'soup_01', 'soup_02', 'soup_03'] },
-      { level: 3, cost: 1400, items: ['noodle_01', 'noodle_01_sin', 'noodle_01_pollo', 'noodle_01_camaron', 'noodle_03',
-                                      'rice_01', 'rice_04', 'crudo_02', 'crudo_03', 'special_05'] },
-      { level: 4, cost: 1650, items: ['noodle_02', 'rice_02', 'rice_03',
-                                      'starter_04', 'starter_05', 'starter_06', 'crudo_01', 'special_02'] },
-      { level: 5, cost: 2100, items: ['special_01', 'special_04'] },
-    ],
-  },
+  x_pizza: { kind: 'punch', cost: 8, reward: 'free_pizza_choice' },
+  la_musa: { kind: 'points', reward: 'points_ala_carte', rate: REDEEM_POINTS_PER_LEMPIRA, exclude: ['beer_*', 'sauce_*', 'protein_*'] },
 };
 
-// The tier object for {restaurantId, level}, or null. (La Musa only; other brands have no tiers.)
-function getTier(restaurantId, level) {
-  const cfg = REDEMPTION_CONFIG[restaurantId];
-  if (!cfg || !Array.isArray(cfg.tiers)) return null;
-  return cfg.tiers.find((t) => t.level === level) || null;
+// ── X. Pizza eligible set — the canonical, server-authoritative list of 12" `individual` pizzas a punch card
+// may redeem free. The 18" NY pies (cat:'ny', L624–702) are EXCLUDED. This is an explicit fail-closed ALLOWLIST
+// (matched by exact name, NEVER a substring heuristic): an unknown / new / NY name is simply not redeemable, so
+// a forged name can never free an expensive pie. Keep in sync with cat:'individual' in xpizza-orders/index.html
+// (a new 12" pizza must be ADDED here to become redeemable; the failure mode is "not redeemable", never "over-freed").
+const X_PIZZA_REDEEM_ELIGIBLE = new Set([
+  'Sopressatta Chili Honey', 'Carnivora', 'Crispy Bacon', 'Sweet Corn & Calabrian Chili', 'Mushroom',
+  'Spinach', 'Pancetta Vodka Sauce', 'Margherita', 'Pepperoni', 'Anchovies', 'Shrimp Scampi',
+  'Pistaccio Mortadella', 'Prosciutto', 'Potato & Dill Sausage', 'Cacio e Pepe', 'Ham', 'Nutella',
+]);
+
+// ── La Musa eligible set — every la_musa MENU dish EXCEPT alcohol (`beer_*`; softs allowed), PLUS the three
+// standalone acompañamientos from EXTRAS (rice_white / rice_chinese / papas_fritas). Modifiers (`sauce_*` /
+// `protein_*`) are NOT redeemable. Alcohol still EARNS points — it is only hidden from the redeem picker.
+// Non-alcohol dishes derive from the menu table (a new dish is auto-eligible); the EXTRAS acompañamientos are
+// an explicit allowlist (so no other extra ever becomes redeemable).
+const LA_MUSA_ACOMP = new Set(['rice_white', 'rice_chinese', 'papas_fritas']);
+
+function isXPizzaEligible(name) { return !!(name && X_PIZZA_REDEEM_ELIGIBLE.has(name)); }
+
+function isLaMusaEligible(id) {
+  if (!id || typeof id !== 'string') return false;
+  if (LA_MUSA_ACOMP.has(id)) return true;                                                 // acompañamientos (EXTRAS namespace)
+  if (id.startsWith('beer_')) return false;                                               // alcohol — excluded from the picker
+  return Object.prototype.hasOwnProperty.call(MENU_BY_RESTAURANT.la_musa || {}, id);      // any non-alcohol MENU dish
 }
 
-// Is `itemId` an eligible reward in {restaurantId, level}? Pure tier membership — real-id/price/availability
-// validation happens at the calculator + intake gate, never here.
-function itemInTier(restaurantId, level, itemId) {
-  const tier = getTier(restaurantId, level);
-  return !!(tier && itemId && tier.items.includes(itemId));
+// Is `key` (x_pizza → pizza NAME, la_musa → item id) redeem-eligible for this brand? Server-authoritative.
+function isRedeemEligible(restaurantId, key) {
+  return restaurantId === 'x_pizza' ? isXPizzaEligible(key)
+    : restaurantId === 'la_musa' ? isLaMusaEligible(key)
+      : false;
+}
+
+// The full eligible key list for a brand (for validation / a server-driven picker if ever needed).
+function eligibleKeys(restaurantId) {
+  if (restaurantId === 'x_pizza') return Array.from(X_PIZZA_REDEEM_ELIGIBLE);
+  if (restaurantId === 'la_musa') {
+    const menu = MENU_BY_RESTAURANT.la_musa || {};
+    return Object.keys(menu).filter((id) => !id.startsWith('beer_')).concat(Array.from(LA_MUSA_ACOMP));
+  }
+  return [];
 }
 
 // Server flag: is redemption enabled for this request? DEFAULT + fail-safe FALSE — absent, non-true, or
-// unreadable ⇒ false. Enabled iff the GLOBAL flag config/redemption_enabled === true, OR (B2 canary) a
+// unreadable ⇒ false. Enabled iff the GLOBAL flag config/redemption_enabled === true, OR (canary) a
 // server-verified `uid` is present AND config/redemption_allowlist/{uid} === true (staff-set, staff-only-read).
 // The uid is ALWAYS the server-verified token uid — never client-supplied — so the allowlist can only ever
 // enable the allowlisted verified account, never broaden. Back-compatible: `uid` absent ⇒ global-flag-only.
@@ -68,4 +82,7 @@ async function redemptionEnabled(db, uid) {
   }
 }
 
-module.exports = { REDEMPTION_CONFIG_VERSION, REDEMPTION_CONFIG, getTier, itemInTier, redemptionEnabled };
+module.exports = {
+  REDEMPTION_CONFIG_VERSION, REDEMPTION_CONFIG, REDEEM_POINTS_PER_LEMPIRA,
+  X_PIZZA_REDEEM_ELIGIBLE, isXPizzaEligible, isLaMusaEligible, isRedeemEligible, eligibleKeys, redemptionEnabled,
+};
