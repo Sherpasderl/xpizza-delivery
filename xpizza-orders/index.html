@@ -1251,6 +1251,8 @@ textarea{resize:none;height:80px;line-height:1.4}
     <!-- A6: Stage-2 order summary (items + Envío + reward GRATIS line + SERVER discounted total) — filled by renderStage2Summary(); empty when the cart is empty. -->
     <div class="order-summary-s2" id="s2-summary"></div>
 
+    <!-- REWARDS redeem affordance + review (B2 Task 4) — RELOCATED above "Forma de pago" (order summary → redeem row → pago); filled by window.__ACCOUNT.renderRedeem; server-authoritative discount, gated on redemption_live/canary. Mount id unchanged — renderRedeem/apply wiring untouched. --><div id="acct-redeem"></div>
+
     <!-- Payment section -->
     <div class="step-label" id="acct-pay-label" style="margin-top:8px">Forma de pago</div>
     <div class="pay-container">
@@ -1297,7 +1299,6 @@ textarea{resize:none;height:80px;line-height:1.4}
         </div>
       </div>
 
-      <!-- REWARDS redeem affordance + review (B2 Task 4) — filled by window.__ACCOUNT.renderRedeem; server-authoritative discount, gated on redemption_live/canary --><div id="acct-redeem"></div>
       <button class="btn-primary" id="btn-pay" onclick="processPayment()">Confirmar y enviar pedido</button>
       <button class="btn-secondary" onclick="goBack('s1',25)">← Volver</button>
       <div class="error-box" id="err3" style="margin:8px 0 0">Seleccioná una forma de pago para continuar.</div>
