@@ -3465,6 +3465,8 @@ function showSuccess(){
         subtotalCents: Math.round((Number(o.total) || 0) * 100),
         pizzaCount: (o.items || []).reduce((s, i) => s + (Number(i.qty) || 0), 0),
         redeemed: !!(o.redemption || o.redeem),   // #6: server stamps o.redemption (online-return); o.redeem is the same-session cash payload
+        claimPhone: o.customer_phone || '',   // Track A: soft-fill the create-profile sheet from the just-placed order
+        claimName: o.customer_name || '',
       });
     }
   } catch (_) {}

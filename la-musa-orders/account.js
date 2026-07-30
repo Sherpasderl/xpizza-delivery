@@ -468,7 +468,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       } else {
         el.className = 'acct-sx acct-sx--guest';
         el.innerHTML = `<div class="acct-sx-claim"><span class="acct-sx-g">${GIFT_SVG}</span><div class="acct-sx-claim-tx"><b>Creá tu perfil</b><span>Guardá ${escapeHtml(label)} de este pedido</span></div></div><button class="acct-sx-btn" type="button">Crear perfil</button>`;
-        const btn = el.querySelector('.acct-sx-btn'); if (btn) btn.onclick = () => { try { openLoginSheet(); } catch (_) {} };
+        const btn = el.querySelector('.acct-sx-btn'); if (btn) btn.onclick = () => { try { openLoginSheet({ phone: env.claimPhone, name: env.claimName }); } catch (_) {} };   // Track A: soft-fill from the just-placed order
       }
     } catch (_) {}
   }
@@ -500,6 +500,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // classes prefixed `acct-` to avoid any collision with the host form's CSS. No SDK load here.
   let _overlayBuilt = false;
   let _loginPhone = '';   // full E.164-ish phone captured phone-pane → otp/name panes (closure state)
+  let _prefillName = '';   // Track A: name soft-filled from the just-placed order (openLoginSheet prefill → name pane)
 
   function injectSheetStyles() {
     if ($('acct-sheet-styles')) return;
@@ -711,6 +712,8 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     animateSheetHeight(() => {
       document.querySelectorAll('#acct-overlay .acct-pane').forEach((p) => p.classList.remove('acct-on'));
       const p = $('acct-pane-' + name); if (p) p.classList.add('acct-on');
+      // Track A: a new profile's name pane pre-fills from the just-placed order (soft-fill; user can edit).
+      if (name === 'name' && _prefillName) { const ni = $('acct-name-inp'); if (ni && !ni.value) { ni.value = _prefillName; const sb = $('acct-save-name-btn'); if (sb) sb.disabled = !ni.value.trim(); } }
       const back = $('acct-back'); if (back) back.style.visibility = (name === 'otp') ? 'visible' : 'hidden';
     });
   }
@@ -818,12 +821,18 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     if (sheet) sheet.style.setProperty('--acct-kb-y', '0px');   // clear the keyboard lift (NOT style.transform — that's the stylesheet calc())
   }
 
-  function openLoginSheet() {
+  function openLoginSheet(prefill) {
     openOverlay();
     showPane('phone');
-    const inp = $('acct-ph-inp');
-    if (inp) { inp.value = ''; setTimeout(() => inp.focus(), 80); }
-    const cta = $('acct-cont-btn'); if (cta) cta.disabled = true;
+    // Track A: soft-fill from the just-placed order (success claim card / tracker deep-link). prefill.phone →
+    // the last 8 digits (Honduras local; the +504 CC is fixed here) formatted NNNN-NNNN + CTA enabled;
+    // prefill.name → stashed for the name pane (new profile). NO prefill (Entrar chip / cart nudge) → clears
+    // + disabled, byte-identical to before.
+    const inp = $('acct-ph-inp'), cta = $('acct-cont-btn');
+    const digits = (prefill && prefill.phone) ? String(prefill.phone).replace(/\D/g, '').slice(-8) : '';
+    _prefillName = (prefill && prefill.name) ? String(prefill.name) : '';
+    if (inp) { inp.value = digits.length === 8 ? digits.slice(0, 4) + '-' + digits.slice(4) : ''; setTimeout(() => inp.focus(), 80); }
+    if (cta) cta.disabled = digits.length !== 8;
   }
 
   function wireOverlayEvents() {
