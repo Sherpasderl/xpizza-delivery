@@ -73,5 +73,22 @@ t('shiftCash: empty input → zeros', () => {
   const r = computeShiftCash({}, {}, 'me', SINCE);
   assert.deepEqual(r, { deliveries: 0, totalCollected: 0, cashOwed: 0, cashOrderCount: 0 });
 });
+// A fully-comped rewards redemption places the order as payment_method:'cash' + free_order:true
+// (total $0). It must NOT count as a cash-collection order — no phantom +1 in the cuadre.
+t('shiftCash: free_order cash order EXCLUDED from cashOwed + cashOrderCount (still a delivery)', () => {
+  const tasks  = { fd: { type: 'delivery', assigned_driver_id: 'me', status: 'completed', completed_at: 2000, order_id: 'fo' } };
+  const orders = { fo: { total: 0, payment_method: 'cash', free_order: true } };
+  const r = computeShiftCash(tasks, orders, 'me', SINCE);
+  assert.equal(r.deliveries, 1);       // it IS a completed delivery
+  assert.equal(r.cashOwed, 0);         // nothing to collect
+  assert.equal(r.cashOrderCount, 0);   // NOT a cash order → no phantom +1
+});
+t('shiftCash: normal cash order still counts (free_order absent) — byte-identical', () => {
+  const tasks  = { nd: { type: 'delivery', assigned_driver_id: 'me', status: 'completed', completed_at: 2000, order_id: 'no' } };
+  const orders = { no: { total: 370, payment_method: 'cash' } };
+  const r = computeShiftCash(tasks, orders, 'me', SINCE);
+  assert.equal(r.cashOwed, 370);
+  assert.equal(r.cashOrderCount, 1);
+});
 
 console.log(`✓ cash-helpers: ${passed} tests passed`);

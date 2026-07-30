@@ -61,7 +61,9 @@ export function computeShiftCash(allTasks, allOrders, uid, sinceMs) {
     const o = orders[t.order_id];
     const total = o && typeof o.total === 'number' ? o.total : 0;
     totalCollected += total;
-    if (o && isCashPayment(o.payment_method)) {
+    // free_order (fully-comped rewards redemption) is cash-typed but there is nothing to collect —
+    // exclude at the call-site (isCashPayment stays byte-identical to the POS/dispatch copies).
+    if (o && isCashPayment(o.payment_method) && !o.free_order) {
       cashOwed += total;
       cashOrderCount++;
     }

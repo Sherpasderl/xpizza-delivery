@@ -448,6 +448,8 @@
   .pay-label { font-size:9.5px; letter-spacing:.12em; font-weight:800; color:var(--text-dim); margin-bottom:2px; }
   .payment-amount { font-family:inherit; font-size:27px; font-weight:800; letter-spacing:-.025em; color:var(--text); font-variant-numeric:tabular-nums; line-height:.95; }
   .payment-amount .pay-cur { font-size:15px; color:var(--text-dim); margin-right:2px; font-weight:700; }
+  .payment-amount.free-amount { font-size:18px; letter-spacing:0; color:var(--green); }
+  .payment-method.free { color:var(--green); background:var(--green-bg); }
   .payment-method { font-family:inherit; font-size:12.5px; font-weight:800; text-transform:none; letter-spacing:0; color:var(--text-dim); background:var(--surface-3); padding:7px 13px; border-radius:10px; }
   .payment-method.cash { color:var(--green); background:var(--green-bg); }
   .payment-method.card { color:var(--maps); background:var(--maps-bg); }
@@ -2123,7 +2125,7 @@ function syncIdleStats(){
     if (t.status!=='completed' || !t.completed_at || t.completed_at < today) continue;
     count++;
     const o = (allOrders||{})[t.order_id];
-    if (o && typeof o.total==='number' && isCashPayment(o.payment_method)) cash += o.total;
+    if (o && typeof o.total==='number' && isCashPayment(o.payment_method) && !o.free_order) cash += o.total;
   }
   const elD = $('stat-deliveries'), elC = $('stat-cash');
   if (elD) elD.textContent = String(count);
@@ -2230,6 +2232,7 @@ function renderActiveCard(o, solo) {
   };
   const pill = phasePillMap[o.phase] || { cls: '', label: o.phase };
 
+  const isFree = !!order.free_order;   // fully-comped rewards redemption → nothing to collect
   const isCash = /efectivo|cash/i.test(order.payment_method || '');
   const isCard = /tarjeta|pixel|card/i.test(order.payment_method || '');
   const paymentClass = isCash ? 'cash' : isCard ? 'card' : '';
@@ -2279,9 +2282,11 @@ function renderActiveCard(o, solo) {
       <div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${escapeHtml(order.address_detected || o.deliveryTask.destination_address || '—')}</div>${order.address_details ? `<div class="address-detail">"${escapeHtml(order.address_details)}"</div>` : ''}</div></div>
       ${order.items_text ? `<div class="items-list">${order.items_text.split(',').map(s => `<div class="item">${escapeHtml(s.trim())}</div>`).join('')}</div>` : ''}
       <div class="ac-hr"></div>
-      <div class="payment-row"><div><div class="pay-label">A COBRAR</div><div class="payment-amount"><span class="pay-cur">L</span>${totalFmt}</div></div><div class="payment-method ${paymentClass}">${escapeHtml(paymentChipLabel)}</div></div>
+      ${isFree
+        ? `<div class="payment-row"><div><div class="pay-label">A COBRAR</div><div class="payment-amount free-amount">Nada que cobrar</div></div><div class="payment-method free">Pedido gratis</div></div>`
+        : `<div class="payment-row"><div><div class="pay-label">A COBRAR</div><div class="payment-amount"><span class="pay-cur">L</span>${totalFmt}</div></div><div class="payment-method ${paymentClass}">${escapeHtml(paymentChipLabel)}</div></div>`}
       ${(() => {
-        if (!isCash) return '';
+        if (isFree || !isCash) return '';   // free order → no vuelto widget
         const tendered = (Number(order.cash_tendered_cents) || 0) / 100;
         const change = computeVuelto(order.total, tendered);
         if (change != null) {
@@ -2472,10 +2477,11 @@ function renderQueue(orders) {
       <div class="qlabel">Orden de despacho</div>
       ${orders.map((o, i) => {
         const order = o.order || {};
+        const isFree = !!order.free_order;   // fully-comped rewards redemption
         const isCash = /efectivo|cash/i.test(order.payment_method || '');
         const isCard = /tarjeta|pixel|card/i.test(order.payment_method || '');
         const payClass = isCash ? '' : isCard ? 'card' : '';
-        const payLabel = isCash ? `L ${Number(order.total || 0).toLocaleString('es-HN')}` : isCard ? 'Tarjeta' : (order.payment_method || '—');
+        const payLabel = isFree ? 'Gratis' : isCash ? `L ${Number(order.total || 0).toLocaleString('es-HN')}` : isCard ? 'Tarjeta' : (order.payment_method || '—');
         const name = order.customer_name || o.deliveryTask.recipient_name || '—';
         const addr = order.address_detected || o.deliveryTask.destination_address || '—';
         return `
@@ -2499,6 +2505,7 @@ function renderQueueDetail(o, seq) {
   const name = order.customer_name || o.deliveryTask.recipient_name || '—';
   const targetLat = order.lat || o.deliveryTask.destination_lat;
   const targetLng = order.lng || o.deliveryTask.destination_lng;
+  const isFree = !!order.free_order;   // fully-comped rewards redemption
   const isCash = /efectivo|cash/i.test(order.payment_method || '');
   const isCard = /tarjeta|pixel|card/i.test(order.payment_method || '');
   const paymentClass = isCash ? 'cash' : isCard ? 'card' : '';
@@ -2515,7 +2522,9 @@ function renderQueueDetail(o, seq) {
     <div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${escapeHtml(order.address_detected || o.deliveryTask.destination_address || '—')}</div>${order.address_details ? `<div class="address-detail">"${escapeHtml(order.address_details)}"</div>` : ''}</div></div>
     ${order.items_text ? `<div class="items-list">${order.items_text.split(',').map(s => `<div class="item">${escapeHtml(s.trim())}</div>`).join('')}</div>` : ''}
     <div class="ac-hr"></div>
-    <div class="payment-row"><div><div class="pay-label">A COBRAR</div><div class="payment-amount"><span class="pay-cur">L</span>${totalFmt}</div></div><div class="payment-method ${paymentClass}">${escapeHtml(paymentChipLabel)}</div></div>
+    ${isFree
+      ? `<div class="payment-row"><div><div class="pay-label">A COBRAR</div><div class="payment-amount free-amount">Nada que cobrar</div></div><div class="payment-method free">Pedido gratis</div></div>`
+      : `<div class="payment-row"><div><div class="pay-label">A COBRAR</div><div class="payment-amount"><span class="pay-cur">L</span>${totalFmt}</div></div><div class="payment-method ${paymentClass}">${escapeHtml(paymentChipLabel)}</div></div>`}
     <div class="nav-row" style="margin-top:14px">
       <a class="nav-btn waze-btn" href="https://waze.com/ul?ll=${targetLat},${targetLng}&navigate=yes" target="_blank" rel="noopener"><span class="nav-icon">${ICONS.nav}</span>Waze</a>
       <a class="nav-btn maps-btn" href="https://www.google.com/maps/dir/?api=1&destination=${targetLat},${targetLng}&travelmode=driving" target="_blank" rel="noopener"><span class="nav-icon">${ICONS.nav}</span>Maps</a>
