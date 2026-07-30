@@ -318,6 +318,13 @@
     }
 
     /* Footer */
+    /* Track A: guest-only profile-claim card (deep-links to the brand order form to create a profile). */
+    .claim-card { background:#fff; border-radius:16px; padding:22px 20px; margin-top:14px; border:1px solid rgba(0,0,0,.05); box-shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px -16px rgba(0,0,0,.28); }
+    .claim-title { font-size:17px; font-weight:700; color:#1a1a1a; margin-bottom:6px; }
+    .claim-copy { font-size:14px; color:#666; line-height:1.5; margin-bottom:12px; }
+    .claim-feat { display:flex; align-items:center; gap:9px; font-size:13.5px; color:#333; margin:7px 0; }
+    .claim-check { flex:none; display:inline-flex; color:var(--brand,#C8321A); }
+    .claim-btn { display:block; text-align:center; margin-top:16px; padding:13px; border-radius:12px; background:var(--brand,#C8321A); color:#fff; font-size:15px; font-weight:700; text-decoration:none; }
     .footer {
       text-align: center;
       margin-top: 24px;
@@ -423,6 +430,15 @@
         <div class="updated-text" id="updated-text">
           <span class="updated-indicator"></span>Actualizando en tiempo real
         </div>
+      </div>
+
+      <!-- Track A: guest-only profile-claim card — shown by render() when the order has no profile (data.has_profile !== true). -->
+      <div id="claim-card" class="claim-card hidden">
+        <div class="claim-title">Guardalo para reordenar</div>
+        <div class="claim-copy">Creá tu perfil y reordená este pedido cuando quieras, en un toque.</div>
+        <div class="claim-feat"><span class="claim-check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></span>Reordenar en un toque</div>
+        <div class="claim-feat"><span class="claim-check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></span>Direcciones e historial guardados</div>
+        <a id="claim-btn" class="claim-btn" href="#" rel="noopener">Crear mi perfil</a>
       </div>
 
       <div class="footer">
@@ -553,6 +569,20 @@
       document.getElementById('summary-items').textContent = data.items_text || '—';
       document.getElementById('summary-address').textContent = data.address_short || '—';
       document.getElementById('summary-total').textContent = 'Total: ' + formatLps(data.total);
+
+      // Track A: guest-only profile-claim card. GUEST order (no has_profile) → show + wire a brand-aware
+      // deep-link with the tracking token in the FRAGMENT (never sent to servers/Referer/logs). Profiled → hide.
+      // Read-only tracker → deep-links OUT to the order form's account creation (no OTP here).
+      const claimCard = document.getElementById('claim-card');
+      if (claimCard) {
+        if (data.has_profile === true) { claimCard.classList.add('hidden'); }
+        else {
+          const origin = data.restaurant_id === 'la_musa' ? 'https://orders.lamusa.hn' : 'https://orders.xpizza.hn';
+          const cbtn = document.getElementById('claim-btn');
+          if (cbtn) cbtn.href = origin + '/?claim=' + encodeURIComponent(data.order_id || '') + '#t=' + encodeURIComponent(token);
+          claimCard.classList.remove('hidden');
+        }
+      }
 
       // Reset all step classes
       const steps = document.querySelectorAll('.step');
