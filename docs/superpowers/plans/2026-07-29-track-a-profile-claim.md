@@ -4,7 +4,14 @@ _Additive account-creation UX. Money path UNTOUCHED → code-gate. Ships INDEPEN
 
 ## The one design decision (advisor to gate): soft-fill transport tracker → order form
 
-**RESOLVED: (b) — token-gated lookup. No phone in a shareable URL.**
+**GATED: (b) — token-gated lookup. No phone in a shareable URL. APPROVE-WITH-CHANGES (codex thread 019fb102 confirmed the mechanism sound: token entropy ~6×10²⁰, `.order_id===order_id` binding correct, OTP-gating → leaked token non-hijacking). 3 must-fix folded in below.**
+
+### Must-fix (folded in)
+- **MF1 — token in the URL FRAGMENT, not the query.** Deep-link → `orders.{brand}.hn/?claim=<order_id>#t=<token>`. The `#fragment` is never sent to servers or in `Referer` → the token never hits Netlify logs nor leaks to Google Fonts (`index.html:7`) / Maps (`:1336`) / Firebase (`account.js:26`). Read it from `location.hash`; do the hash-read + `history.replaceState` in an **inline `<head>` script BEFORE any third-party resource loads**. Add `Referrer-Policy: strict-origin-when-cross-origin` to BOTH `netlify.toml`. `order_id` stays in the query (not a capability).
+- **MF2 — set `has_profile` INSIDE the shared `buildMaterializeUpdates()`** (`materialize.js:111`), conditioned on `order.customer_uid` — NOT only at named call sites. That builder also feeds manual reconciliation (`resolve-manual.js:59`), pixelpay-confirm (`:286`), and scheduled-release (`:58`); missing it there → a profiled customer's online/manual/scheduled order wrongly shows the guest card. Immediate createOrder path: set it on the resolved server `customer_uid` (after `attachCustomerAttribution`). Guest omission stays conditional → guest `order_tracking` byte-identical.
+- **MF3 — per-IP throttle on `claimPrefill`** — reuse the existing rate-limit bucket (`index.js:330` def / `:517` enforcement). `maxInstances` is concurrency, not a rate limit; this returns phone PII → throttle replay/harassment on a leaked link.
+- Minor: `claimPrefill` strict string compare + reject missing `order_id` as 403. Fix the stale `generateTrackingToken` comment (`index.js:160` says 64-char alphabet; it's actually 54).
+- NOT doing the masked-phone/server-OTP redesign (codex nice-to-have) — after MF1 the token never leaks, residual elevation is bounded (customer's own phone, OTP-hijack-proof). Owner deferred.
 
 Grounding (verified in code):
 - The tracker reads **public** `order_tracking/{token}` (`xpizza-track/index.html:689` `onValue`). Its schema (`create-order-build.js` / `materialize.js`) has `customer_name` but **NO `customer_phone` and NO `customer_uid`**. So the tracker can neither tell guest-vs-profile nor read the phone today.
