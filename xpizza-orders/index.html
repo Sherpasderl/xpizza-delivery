@@ -14,8 +14,8 @@
     var q = new URLSearchParams(location.search);
     var orderId = q.get('claim');
     if(!orderId) return;
-    var token = new URLSearchParams((location.hash||'').replace(/^#/,'')).get('t') || '';
-    window.__claimParams = { order_id: orderId, token: token };
+    var hp = new URLSearchParams((location.hash||'').replace(/^#/,''));
+    window.__claimParams = { order_id: orderId, token: hp.get('t') || '', n: hp.get('n') || '', u: hp.get('u') || '' };
     q.delete('claim');
     history.replaceState(null, '', location.pathname + (q.toString() ? '?'+q.toString() : ''));   // strip ?claim + the #fragment token
   }catch(_){}
@@ -3071,6 +3071,7 @@ function showSuccess(){
         redeemed: !!(o.redemption || o.redeem),   // #6: server stamps o.redemption (online-return); o.redeem is the same-session cash payload
         claimPhone: o.customer_phone || '',   // Track A: soft-fill the create-profile sheet from the just-placed order
         claimName: o.customer_name || '',
+        claimOrderId: o.order_id || '',   // Task 4: claim context — tokenless (success card)
       });
     }
   } catch (_) {}
@@ -3730,12 +3731,14 @@ async function handleProfileClaim(){
   try{
     var cp = window.__claimParams; if(!cp || !cp.order_id) return;
     window.__claimParams = null;   // one-shot
-    var prefill = {};
+    // Task 4: carry the claim context (order + earned N/unit from the tracker fragment) so startProfileClaim
+    // credits the order + shows the confirmation after signup.
+    var prefill = { order_id: cp.order_id, token: cp.token || null, n: Number(cp.n) || 0, unit: cp.u === 'punch' ? 'punch' : 'point' };
     if(cp.token){
       try{
         const r = await fetch(CLAIMPREFILL_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ order_id: cp.order_id, token: cp.token }) });
         const j = await r.json().catch(()=>({}));
-        if(r.ok && j && j.ok){ prefill = { phone: j.phone||'', name: j.name||'' }; }
+        if(r.ok && j && j.ok){ prefill.phone = j.phone||''; prefill.name = j.name||''; }
       }catch(_){}
     }
     if(window.__ACCOUNT && typeof window.__ACCOUNT.startProfileClaim === 'function') window.__ACCOUNT.startProfileClaim(prefill);

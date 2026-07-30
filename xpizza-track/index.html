@@ -617,7 +617,9 @@
         proof = `<div class="rw-ptrow"><span class="rw-bignum">${total}</span><span class="rw-bigunit">pts</span></div><div class="rw-bar"><i style="width:${pct}%"></i></div><div class="rw-barcap"><span>0</span><span class="rw-goal">${goalCap}</span></div>`;
         cta = 'Crear mi perfil y reclamarlo'; sub = 'Guardá tus puntos y reordená este pedido en un toque.';
       }
-      const href = origin + '/?claim=' + encodeURIComponent(orderId) + '#t=' + encodeURIComponent(tok);
+      // Fragment carries the earned N + unit (Task 4) so the order-form confirmation shows the same number the
+      // card showed — all in the #fragment, never sent to servers/Referer.
+      const href = origin + '/?claim=' + encodeURIComponent(orderId) + '#t=' + encodeURIComponent(tok) + '&n=' + delta + '&u=' + (ep.unit === 'punch' ? 'punch' : 'point');
       return `<div class="rw"><div class="rw-label">${RW_GIFT} Tu recompensa</div><h3 class="rw-h3">${h3}</h3><p class="rw-math">${math}</p>${proof}<a class="rwcta" href="${href}" rel="noopener">${cta}</a><p class="rw-sub">${sub}</p></div>`;
     }
     // Itemized summary rows from the stamped summary_lines — textContent per line (XSS-safe; the la_musa name

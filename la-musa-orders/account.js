@@ -306,6 +306,8 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // number — NEVER client-computed. Gated on redemption_live (client-readable leaf) OR read-own canary; the
   // affordance renders only when live + eligible (never a control that can't complete). Guests: no affordance.
   const QUOTE_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/quoteRedemption';
+  const CLAIMORDER_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/claimOrder';   // Task 4 — retro-credit a claimed guest order
+  let _claimCtx = null;   // { order_id, token?, n, unit } — stashed when a reward-card CTA / tracker deep-link opens the sheet; consumed post-signup
   let _redeemLiveFlag = false, _redeemLiveRead = false;   // config/rewards_public/redemption_live (cached); canary is read-own via _rwState
   let _redeemPending = null;   // null | {} (X. Pizza) | { type:'free_item', level, item_id, name } (La Musa)
   let _redeemQuote = null;     // last SERVER quote { ok, discount_cents, total_cents, free_item:{name} } | null
@@ -484,6 +486,44 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     }
     return `<div class="rw"><div class="rw-label">${GIFT_SVG} Tu recompensa</div><h3 class="rw-h3">${h3}</h3><p class="rw-math">${math}</p>${proof}<button class="rwcta" type="button">${cta}</button><p class="rw-sub">${sub}</p></div>`;
   }
+  // Task 4: after a claim-context signup, call the LIVE claimOrder to retro-credit THIS order + show the
+  // credited/pending confirmation (mockup f9681eb8). FAIL-OPEN: any claim failure closes silently — the
+  // profile is already created; a claim credit must NEVER block signup. claimOrder is idempotent + money-safe
+  // server-side (already cleared). N (the amount the reward card showed) comes from the stashed context;
+  // the badge + copy come from the response `credited` flag (no extra fetch).
+  async function runClaimConfirm() {
+    const ctx = _claimCtx; _claimCtx = null;   // one-shot
+    if (!ctx || !ctx.order_id) { closeSheet(); return; }
+    let ok = false, credited = false, n = Number(ctx.n) || 0, unit = ctx.unit || 'point';
+    try {
+      const idTok = await customerIdToken();
+      if (idTok) {
+        const body = { order_id: ctx.order_id }; if (ctx.token) body.token = ctx.token;
+        const res = await fetch(CLAIMORDER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Firebase-ID-Token': idTok }, body: JSON.stringify(body) });
+        const j = await res.json().catch(() => ({}));
+        if (res.ok && j && j.ok) { ok = true; credited = !!j.credited; if (j.unit) unit = j.unit; if (credited && Number.isFinite(j.delta) && j.delta > 0) n = j.delta; }
+      }
+    } catch (_) { /* fail-open */ }
+    if (ok) showClaimConfirm(credited, n, unit); else closeSheet();
+  }
+  function showClaimConfirm(credited, n, unit) {
+    injectSuccessStyles();
+    const el = $('acct-cf'); if (!el) { closeSheet(); return; }
+    const punch = unit === 'punch';
+    const shortW = punch ? (n === 1 ? 'sello' : 'sellos') : 'pts';   // count-aware (for "+N")
+    const longW = punch ? 'sellos' : 'puntos';                        // collective (for the sub — always plural)
+    const state = credited ? 'ok' : 'wait';
+    const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+    const CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2"/></svg>';
+    const badge = credited ? '<span class="acct-cf-badge acct-cf-badge--ok">Acreditados</span>' : '<span class="acct-cf-badge acct-cf-badge--wait">En camino</span>';
+    const sub = credited
+      ? `Sumaste los ${longW} de este pedido. Ya están en tu cuenta.`
+      : `Tus ${longW} se acreditan cuando entreguemos tu pedido — te avisamos apenas estén listos.`;
+    const cta = credited ? 'Ver mis premios' : 'Seguir mi pedido';
+    el.innerHTML = `<div class="acct-cf-icon acct-cf-icon--${state}">${credited ? CHECK : CLOCK}</div><div class="acct-cf-h">¡Perfil creado!</div><div class="acct-cf-pts acct-cf-pts--${state}">+${n} <small>${shortW}</small></div>${badge}<p class="acct-cf-sub">${sub}</p><button class="acct-cf-cta" type="button" id="acct-cf-btn">${cta}</button>`;
+    const btn = $('acct-cf-btn'); if (btn) btn.onclick = () => { try { closeSheet(); } catch (_) {} };
+    showPane('confirm');
+  }
   function renderSuccessRewards(env) {
     try {
       const el = $('acct-success-rewards'); if (!el) return;
@@ -505,7 +545,12 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       } else {
         el.className = 'acct-sx acct-sx--rw';
         el.innerHTML = rwClaimCardHtml(env);   // reward-led card (mockup f9681eb8) — hero earned+welcome, points-bar/punch-slots proof
-        const btn = el.querySelector('.rwcta'); if (btn) btn.onclick = () => { try { openLoginSheet({ phone: env.claimPhone, name: env.claimName }); } catch (_) {} };   // Track A: soft-fill from the just-placed order
+        // The earned amount the card showed (Task 4: N in the post-claim confirmation) + the claim context.
+        const _rwEarned = RW.kind === 'punch'
+          ? ((env.redeemed ? Math.max(0, (Number(env.pizzaCount) || 0) - 1) : (Number(env.pizzaCount) || 0)) * RW.earnPerPizza)
+          : (Math.floor(Math.max(0, Number(env.subtotalCents) || 0) / RW.perCents) * RW.ptsPer);
+        const _rwUnit = RW.kind === 'punch' ? 'punch' : 'point';
+        const btn = el.querySelector('.rwcta'); if (btn) btn.onclick = () => { try { openLoginSheet({ phone: env.claimPhone, name: env.claimName, order_id: env.claimOrderId, n: _rwEarned, unit: _rwUnit }); } catch (_) {} };   // Track A soft-fill + Task 4 claim context (tokenless success)
       }
     } catch (_) {}
   }
@@ -551,6 +596,22 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 .rw-slotcap b{color:#7d580f}
 .rwcta{display:block;width:100%;border:0;border-radius:13px;padding:14px;font-family:inherit;font-size:15px;font-weight:700;color:#fff;text-align:center;cursor:pointer;margin-top:20px;background:linear-gradient(180deg,#A9791A,#7d580f);box-shadow:0 6px 16px -8px rgba(125,88,15,.8)}
 .rw-sub{text-align:center;font-size:11.5px;color:#6b665c;margin:9px 0 0}
+.acct-cf{text-align:center;padding:10px 4px 4px}
+.acct-cf-icon{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;margin:0 auto 16px}
+.acct-cf-icon--ok{background:linear-gradient(160deg,#C9A24A,#A9791A);box-shadow:0 12px 26px -12px rgba(125,88,15,.75)}
+.acct-cf-icon--ok svg{width:32px;height:32px;stroke:#fff}
+.acct-cf-icon--wait{border:2px solid #A9791A;background:#FBF4E4}
+.acct-cf-icon--wait svg{width:30px;height:30px;stroke:#7d580f}
+.acct-cf-h{font-family:var(--display);font-weight:700;font-size:23px;color:#17130F;margin:0 0 12px}
+.acct-cf-pts{font-family:var(--display);font-weight:700;font-size:40px;line-height:1;font-variant-numeric:tabular-nums;margin-bottom:8px}
+.acct-cf-pts--ok{color:#7d580f}
+.acct-cf-pts--wait{color:#A9791A}
+.acct-cf-pts small{font-size:16px;font-weight:600}
+.acct-cf-badge{display:inline-block;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;padding:3px 11px;border-radius:99px;margin-bottom:14px}
+.acct-cf-badge--ok{background:rgba(46,125,91,.12);color:#2e7d5b}
+.acct-cf-badge--wait{background:#FBF4E4;color:#7d580f;border:1px solid rgba(169,121,26,.32)}
+.acct-cf-sub{font-size:14px;color:#6B6255;line-height:1.55;margin:0 auto 22px;max-width:30ch}
+.acct-cf-cta{display:block;width:100%;box-sizing:border-box;border:0;border-radius:13px;padding:14px;font-family:inherit;font-size:15px;font-weight:700;color:#fff;cursor:pointer;background:linear-gradient(180deg,#A9791A,#7d580f);box-shadow:0 6px 16px -8px rgba(125,88,15,.8)}
 `;
     document.head.appendChild(st);
   }
@@ -707,6 +768,10 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       <input class="acct-inp" id="acct-name-inp" placeholder="¿Cómo te llamás?" style="width:100%" maxlength="80">
       <button class="acct-cta" id="acct-save-name-btn" disabled type="button">Guardar</button>
       <p class="acct-fine" id="acct-name-err" style="display:none"></p>
+    </section>
+
+    <section class="acct-pane" id="acct-pane-confirm">
+      <div class="acct-cf" id="acct-cf"></div>
     </section>
 
     <section class="acct-pane" id="acct-pane-account">
@@ -893,6 +958,11 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     const inp = $('acct-ph-inp'), cta = $('acct-cont-btn');
     const digits = (prefill && prefill.phone) ? String(prefill.phone).replace(/\D/g, '').slice(-8) : '';
     _prefillName = (prefill && prefill.name) ? String(prefill.name) : '';
+    // Task 4: stash the claim context (order to retro-credit + the earned amount the card showed) so the
+    // post-signup flow can call claimOrder + show the credited/pending confirmation. Absent → no claim.
+    _claimCtx = (prefill && prefill.order_id)
+      ? { order_id: String(prefill.order_id), token: prefill.token ? String(prefill.token) : null, n: Number(prefill.n) || 0, unit: prefill.unit === 'punch' ? 'punch' : 'point' }
+      : null;
     if (inp) { inp.value = digits.length === 8 ? digits.slice(0, 4) + '-' + digits.slice(4) : ''; setTimeout(() => inp.focus(), 80); }
     if (cta) cta.disabled = digits.length !== 8;
   }
@@ -1075,6 +1145,16 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     // showPane and never disturbs the overlay pane shown below; it also respects the existing
     // _acctRestoring/_acctRestoreGen guards internally.
     try { wrapPageHooks(); } catch (_) {}
+    // Task 4: a claim-context signup (reward-card CTA / tracker deep-link) → persist the soft-filled name,
+    // credit THIS order via claimOrder, and show the credited/pending confirmation — for BOTH new + existing
+    // users (claimOrder needs only the profile phone_hash, set at verify, + the fresh token). Fail-open.
+    if (_claimCtx) {
+      try { if (_prefillName) await saveName(_prefillName); } catch (_) {}
+      try { renderChip(); } catch (_) {}
+      try { initDeliveryStep(st.status === 'ok' ? st.snap : undefined).catch(() => {}); } catch (_) {}
+      await runClaimConfirm();
+      return;
+    }
     if (st.status === 'ok' && profileComplete(st.snap)) {
       _acctData = st.snap;
       renderChip();
