@@ -92,4 +92,20 @@ assert.deepEqual(enumerateItems(''), []);
 assert.deepEqual(enumerateItems('—'), []);
 ok('enumerateItems: empty / "—" → [] (no checkboxes)');
 
+// ── Rewards A4 (code-gate REVISE): a redeemed La Musa order appends the added free item with ' | ' (NOT
+// '\n'). Prove the make-count stays correct — all real items intact AND the reward counted — so the '\n'
+// regression (which dropped the preceding real item) can't come back. ' | ' is the ONLY rail-safe delimiter.
+{
+  const redeemed = '1x Dim Sum (L223) | 1x Anchovies (L418) | 1x Coca-Cola (Recompensa)';
+  assert.deepEqual(railCount([redeemed]), [
+    { name: 'Anchovies', qty: 1 },
+    { name: 'Coca-Cola (Recompensa)', qty: 1 },
+    { name: 'Dim Sum', qty: 1 },
+  ]);
+  ok('A4: La Musa redeemed items_text (" | "-appended reward) rail-counts ALL real items + the reward — no drop');
+  // guard the regression: a '\n'-appended reward DROPS the preceding real item (Anchovies) — must never ship
+  assert.equal(railCount(['1x Dim Sum (L223) | 1x Anchovies (L418)\n1x Coca-Cola (Recompensa)']).length, 1);
+  ok('A4: regression guard — a "\\n"-appended reward WOULD drop the last real item (why we use " | ")');
+}
+
 console.log(`rail-count: OK (${n} cases)`);

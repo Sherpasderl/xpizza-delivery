@@ -47,16 +47,19 @@ async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, t
     const freeGate = await checkItemAvailability(db, [{ id: redemption.freeItem.item_id, qty: 1 }], restaurantId);   // same 86 gate as the cart
     if (freeGate.blocked.length > 0) return { ok: false, status: 409, body: { error: 'reward_unavailable', blocked: freeGate.blocked } };
     freeName = sanitizeName((redeem && redeem.name) || redemption.freeItem.item_id, 80);
-    outText = `${itemsText}\n1x ${freeName} (Recompensa)`;                                                       // trusted server-rendered 0-price display line
-  } else if (redemption.model === 'discount') {
-    // A4: X. Pizza comps ONE base unit of the cheapest pizza — which is ALREADY in the cart at full price, so
-    // items_text (KDS/driver/WhatsApp) shows the freed unit unmarked ([[items-text-pricing-decoupling]]).
-    // Append a trusted, server-rendered reward line so the comped unit reads as a reward. SAME `\n`-prefixed
-    // format La Musa already ships — `\n` is not a split delimiter on ANY surface (all split on ' | ' or ','),
-    // so it rides as annotation on the last card, never a phantom make-item.
-    freeName = sanitizeName(redemption.freeItem.line_key, 80);
-    outText = `${itemsText}\n1x ${freeName} (Recompensa)`;                                                       // freed base unit — display-only; pricing/factura already comp it (A-F)
+    // A4 (code-gate REVISE): the added free item is a REAL make-item (not in the cart) → it MUST reach the
+    // kitchen/driver via items_text. Delimit with ' | ' (the standard items_text separator), NOT '\n': the
+    // shared KDS all-day rail (rail-count.js railSplit) splits ONLY on ' | ', and its qty/name regex's '.'
+    // never crosses a '\n' — so a '\n'-appended entry makes the PRECEDING real item fail the regex and DROP
+    // from the make-count (empirically verified). ' | ' is rail-count-safe (counts as its own make-item) +
+    // renders inline on WhatsApp + as its own KDS card. (X. Pizza's discount model appends NOTHING — below.)
+    outText = `${itemsText} | 1x ${freeName} (Recompensa)`;                                                     // trusted server-rendered 0-price display line
   }
+  // A4 (code-gate REVISE) — discount (X. Pizza): NO items_text reconstruction. The comped cheapest pizza is
+  // ALREADY a cart line, so an append (a) wouldn't fix its stale per-line price and (b) — as a '\n' line —
+  // broke the KDS rail make-count + added a phantom WhatsApp line. The comp is fully captured where decisions
+  // are made: total_cents (money spine), the A-F factura (gross + rebaja), the A6 Stage-2 summary, and driver
+  // collection (reads order.total, never per-line prices). Per-line price staleness is cosmetic, drives nothing.
 
   const priced = applyRedemptionToPricing({ items, restaurantId, redemption, totalLempiras });                   // discounted, fail-closed reconciling lines
   if (!priced.ok) return { ok: false, status: 409, body: { error: 'redemption_pricing_failed' } };
