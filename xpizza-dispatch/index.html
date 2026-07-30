@@ -3885,16 +3885,17 @@ function renderDriverNode(uid, d) {
     ? `<div class="dark-row"><svg class="ic sm"><use href="#i-signaloff"/></svg><span>Sin señal ${escapeHtml(gpsAgeShort(d.last_ping))} — considerar reasignar</span></div>`
     : '';
 
+  const uidAttr = escapeHtml(String(uid));
   return `
-    <div class="driver-row ${gpsDark ? 'gps-dark' : ''} ${dimRow ? 'stale' : ''} ${hasOrders ? 'has-tasks' : ''} ${expanded ? 'expanded' : ''}" data-driver-uid="${uid}">
+    <div class="driver-row ${gpsDark ? 'gps-dark' : ''} ${dimRow ? 'stale' : ''} ${hasOrders ? 'has-tasks' : ''} ${expanded ? 'expanded' : ''}" data-driver-uid="${uidAttr}">
       <div class="dh">
         <div class="av">${initial}<span class="s ${dotClass}"></span></div>
         <div class="who"><div class="dn">${escapeHtml(d.name || 'Sin nombre')}</div><div class="dm">${escapeHtml(metaText)}</div></div>
         ${gpsChip}
         <div class="dacts">
-          ${d.phone ? `<button class="da call" data-call-driver="${escapeHtml(String(d.phone))}" title="Llamar"><svg class="ic sm"><use href="#i-phone"/></svg></button>` : ''}
-          <button class="da msg" data-msg-driver="${uid}" title="Mensaje in-app (Fase 2)"><svg class="ic sm"><use href="#i-message"/></svg></button>
-          <button class="da more" data-more-driver="${uid}" title="Acciones del repartidor"><svg class="ic sm"><use href="#i-more"/></svg></button>
+          ${d.phone ? `<button class="da call" data-call-driver="${escapeHtml(String(d.phone))}" title="Llamar" aria-label="Llamar"><svg class="ic sm"><use href="#i-phone"/></svg></button>` : ''}
+          <button class="da msg" data-msg-driver="${uidAttr}" title="Mensaje in-app (Fase 2)" aria-label="Mensaje in-app"><svg class="ic sm"><use href="#i-message"/></svg></button>
+          <button class="da more" data-more-driver="${uidAttr}" title="Acciones del repartidor" aria-label="Acciones del repartidor"><svg class="ic sm"><use href="#i-more"/></svg></button>
         </div>
       </div>
       ${darkRow}
@@ -3929,12 +3930,12 @@ function renderTaskRow(driverUid, order) {
   });
 
   return `
-    <div class="task-row" data-order-id="${order.order_id}" data-driver-uid="${driverUid}">
+    <div class="task-row" data-order-id="${escapeHtml(String(order.order_id))}" data-driver-uid="${escapeHtml(String(driverUid))}">
       <div class="task-top">
         <div class="task-id">${escapeHtml(displayOrderLabel(order))}</div>
         <div style="display: flex; align-items: center; gap: 6px;">
-          <div class="task-id mono" style="color: var(--text-soft);">L${order.total ?? '—'}</div>
-          <button class="more-btn" data-more-task="${order.order_id}" data-driver-uid="${driverUid}" title="Más opciones"><svg class="ic sm"><use href="#i-more"/></svg></button>
+          <div class="task-id mono" style="color: var(--text-soft);">L${escapeHtml(String(order.total ?? '—'))}</div>
+          <button class="more-btn" data-more-task="${escapeHtml(String(order.order_id))}" data-driver-uid="${escapeHtml(String(driverUid))}" title="Más opciones"><svg class="ic sm"><use href="#i-more"/></svg></button>
         </div>
       </div>
       <div class="task-customer">${escapeHtml(order.customer_name || '—')}</div>
@@ -4262,7 +4263,7 @@ function renderOrderDetailModal(order) {
   if (order.total != null) {
     orderRows.push(`<div class="od-row">
       <span class="od-label">Total</span>
-      <span class="od-value">L ${order.total}</span>
+      <span class="od-value">L ${escapeHtml(String(order.total))}</span>
     </div>`);
   }
   if (order.items_text) {
@@ -4366,7 +4367,7 @@ function renderOrderDetailModal(order) {
   }
   // Cancel — reuses the money-safe server cancel (voids charge / releases driver). Only for
   // orders that aren't already terminal.
-  const cancellable = order.status !== 'cancelled' && order.status !== 'delivered' && order.status !== 'completed';
+  const cancellable = !['cancelled', 'delivered', 'completed', 'picked_up'].includes(order.status);
   if (cancellable) {
     actions.push(`<button class="od-action-btn danger" id="od-cancel-order">Cancelar pedido</button>`);
   }
