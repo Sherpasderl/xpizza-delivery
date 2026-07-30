@@ -575,7 +575,9 @@
       // Read-only tracker → deep-links OUT to the order form's account creation (no OTP here).
       const claimCard = document.getElementById('claim-card');
       if (claimCard) {
-        if (data.has_profile === true) { claimCard.classList.add('hidden'); }
+        // Hide for a profiled order (nothing to claim) AND for a cancelled one (a negative moment — the
+        // "guardalo para reordenar" push reads tone-deaf there).
+        if (data.has_profile === true || data.status === 'cancelled') { claimCard.classList.add('hidden'); }
         else {
           const origin = data.restaurant_id === 'la_musa' ? 'https://orders.lamusa.hn' : 'https://orders.xpizza.hn';
           const cbtn = document.getElementById('claim-btn');

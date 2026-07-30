@@ -1547,14 +1547,18 @@ exports.paymentStatus = onRequest(
 exports.claimPrefill = onRequest(
   { region: 'us-central1', cors: true, timeoutSeconds: 10, memory: '256MiB', maxInstances: 5 },
   async (req, res) => {
-    if (req.method !== 'POST' && req.method !== 'GET') { res.set('Allow', 'POST, GET'); return res.status(405).json({ error: 'Method Not Allowed' }); }
-    const orderId = String((req.body && req.body.order_id) || (req.query && req.query.order_id) || '').trim();
-    const token = String((req.body && req.body.token) || (req.query && (req.query.t || req.query.token)) || '').trim();
+    // MF-A: POST-only, and read {order_id, token} from the JSON BODY ONLY. A query-string token would
+    // reintroduce the exact URL / access-log leak the fragment transport (MF1) exists to prevent.
+    if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).json({ error: 'Method Not Allowed' }); }
+    const orderId = String((req.body && req.body.order_id) || '').trim();
+    const token = String((req.body && req.body.token) || '').trim();
     // Missing/malformed order_id → 403 (no info). Token must be present + RTDB-path-safe (real tokens are 12
     // alphanumerics) so `order_tracking/{token}` can never be a path-injection.
     const db = getDatabase();
     // MF3 — per-IP throttle BEFORE any read: this endpoint returns phone PII.
-    const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+    // MF-B: key on req.ip (the Cloud-Run-trusted peer, NOT the spoofable left-most X-Forwarded-For — H4),
+    // so the throttle can't be bypassed by rotating the XFF header.
+    const clientIp = req.ip || 'unknown';
     const rl = await checkRateLimit(db, 'claim_ip', clientIp, RATE_LIMIT_BUCKETS.claim_ip);
     if (!rl.allowed) { res.set('Retry-After', String(rl.retryAfterSec)); return res.status(429).json({ error: 'Too Many Requests' }); }
     // Validation + token↔order STRICT bind + phone lookup — pure core (claim-prefill.js), emulator-tested.
