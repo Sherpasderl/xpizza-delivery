@@ -1,0 +1,142 @@
+<title>Menu icon system — replacing the emoji</title>
+<style>
+  :root{
+    --page:#efece6;--ink:#26241f;--panel:#fbf9f5;--hair:#e7e3da;--soft:#8a8172;
+    --xp:#FCFCFB;--xp-ink:#1b1a17;--xp-accent:#C8321A;
+    --lm:#F4EFE4;--lm-ink:#2a241b;--lm-accent:#B61218;
+    --serif:"Playfair Display",Georgia,serif;--mono:"SFMono-Regular",Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root{--page:#161511;--ink:#e9e5db;--panel:#201e19;--hair:#2c2a24;--soft:#9a9080}}
+  :root[data-theme="dark"]{--page:#161511;--ink:#e9e5db;--panel:#201e19;--hair:#2c2a24;--soft:#9a9080}
+  :root[data-theme="light"]{--page:#efece6;--ink:#26241f;--panel:#fbf9f5;--hair:#e7e3da;--soft:#8a8172}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--page);color:var(--ink);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:44px 22px 90px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--lm-accent);margin:0 0 10px}
+  h1{font-family:var(--serif);font-weight:800;font-size:31px;line-height:1.12;margin:0 0 12px;text-wrap:balance;max-width:16ch}
+  .lede{font-size:15px;opacity:.85;margin:0 0 6px;max-width:64ch}
+  h2{font-family:var(--serif);font-weight:800;font-size:20px;margin:44px 0 4px}
+  .sub{font-size:13px;color:var(--soft);margin:0 0 18px}
+
+  /* icon system board */
+  .board{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:12px}
+  .chip{background:var(--panel);border:1px solid var(--hair);border-radius:14px;padding:16px 10px 11px;text-align:center}
+  .chip svg{width:34px;height:34px;color:var(--ink);stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+  .chip .nm{font-size:11px;color:var(--soft);margin-top:9px;letter-spacing:.02em}
+  .chip .old{font-size:15px;opacity:.5;margin-top:2px}
+
+  /* cards before/after */
+  .cardsrow{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:8px}
+  @media (max-width:720px){.cardsrow{grid-template-columns:1fr}}
+  .brandcol h3{font-family:var(--serif);font-size:16px;margin:0 0 3px}
+  .brandcol .h3s{font-size:12px;color:var(--soft);margin:0 0 14px}
+  .cgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .card{border-radius:16px;overflow:hidden;border:1px solid var(--hair);background:var(--cardbg,#fff)}
+  .tile{height:96px;display:grid;place-items:center;position:relative}
+  .tile .emoji{font-size:40px}
+  .tile svg{width:44px;height:44px;stroke:rgba(255,255,255,.92);fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+  .card .meta{padding:9px 11px 11px}
+  .card .cn{font-family:var(--serif);font-weight:700;font-size:13.5px;color:var(--ink);line-height:1.15}
+  .card .cp{font-size:12px;color:var(--soft);margin-top:3px}
+  .tag{position:absolute;top:8px;left:8px;font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;padding:2px 6px;border-radius:5px;background:rgba(0,0,0,.35);color:#fff}
+  .tag.after{background:rgba(255,255,255,.85);color:#1a1a1a}
+
+  /* picker tie-in */
+  .pk{max-width:380px;border:1px solid var(--hair);border-radius:16px;overflow:hidden;background:var(--panel);margin-top:6px}
+  .pk-row{display:flex;align-items:center;gap:12px;padding:11px 15px;border-bottom:1px solid var(--hair)}
+  .pk-ic{flex:none;width:26px;height:26px;color:var(--lm-accent);stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+  .pk-nm{flex:1;font-family:var(--serif);font-weight:700;font-size:14px;color:var(--ink)}
+  .pk-pt{font-family:Georgia,serif;font-weight:800;font-size:13px;color:#8a6a1e}
+  .pk-pt span{font-size:9.5px;opacity:.7}
+
+  .note{background:var(--panel);border:1px solid var(--hair);border-radius:16px;padding:20px;margin-top:34px}
+  .mv{display:flex;gap:9px;font-size:13.5px;margin:9px 0}.mv b{color:var(--lm-accent)}
+  .mv .d{flex:none;width:6px;height:6px;border-radius:50%;background:var(--lm-accent);margin-top:7px}
+</style>
+
+<svg width="0" height="0" style="position:absolute"><defs>
+  <!-- La Musa categories -->
+  <symbol id="i-dumpling" viewBox="0 0 24 24"><path d="M3.5 14.5 H20.5"/><path d="M4 14.5 Q4 8.5 12 8.5 Q20 8.5 20 14.5"/><path d="M8 14.5 L8.7 11"/><path d="M12 14.5 L12 10.4"/><path d="M16 14.5 L15.3 11"/></symbol>
+  <symbol id="i-skewer" viewBox="0 0 24 24"><path d="M5.5 18.5 L18.5 5.5"/><circle cx="8.6" cy="15.4" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="15.4" cy="8.6" r="2.2"/></symbol>
+  <symbol id="i-soup" viewBox="0 0 24 24"><path d="M3.5 12 H20.5"/><path d="M4.5 12 Q4.5 18 12 18 Q19.5 18 19.5 12"/><path d="M9 8.5 Q10.2 6.5 9 4.5"/><path d="M14 8.5 Q15.2 6.5 14 4.5"/></symbol>
+  <symbol id="i-noodle" viewBox="0 0 24 24"><path d="M3.5 12 H20.5"/><path d="M4.5 12 Q4.5 18 12 18 Q19.5 18 19.5 12"/><path d="M13 3.5 L19.5 9"/><path d="M15.5 2.8 L21.6 7.4"/></symbol>
+  <symbol id="i-rice" viewBox="0 0 24 24"><path d="M4.5 13 H19.5"/><path d="M5 13 Q5 18 12 18 Q19 18 19 13"/><path d="M7 13 Q12 7.5 17 13"/></symbol>
+  <symbol id="i-fish" viewBox="0 0 24 24"><path d="M3.5 12 Q9.5 6 15.5 12 Q9.5 18 3.5 12 Z"/><path d="M15.5 12 L20.5 8 L20.5 16 Z"/><circle cx="7" cy="11" r="0.7" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3 L13.6 10.4 L21 12 L13.6 13.6 L12 21 L10.4 13.6 L3 12 L10.4 10.4 Z"/></symbol>
+  <symbol id="i-glass" viewBox="0 0 24 24"><path d="M6.8 4.5 H17.2 L15.6 19.5 H8.4 Z"/><path d="M8 8.5 H16"/></symbol>
+  <!-- X. Pizza toppings -->
+  <symbol id="i-slice" viewBox="0 0 24 24"><path d="M12 21 L5 7 Q12 4 19 7 Z"/><path d="M5 7 Q12 9.5 19 7"/><circle cx="10.5" cy="11" r="1" fill="currentColor" stroke="none"/><circle cx="13.5" cy="14" r="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M6 18 Q6 6 18 6 Q18 18 6 18 Z"/><path d="M8.5 15.5 L15.5 8.5"/></symbol>
+  <symbol id="i-mushroom" viewBox="0 0 24 24"><path d="M4.5 11 Q4.5 5 12 5 Q19.5 5 19.5 11 Z"/><path d="M10 11 V16.5 Q10 18.5 12 18.5 Q14 18.5 14 16.5 V11"/></symbol>
+  <symbol id="i-tomato" viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="6"/><path d="M9 7.5 L12 4.5 L15 7.5"/></symbol>
+  <symbol id="i-meat" viewBox="0 0 24 24"><path d="M6 9 Q6 6 10 6 H15 Q19 6 19 10 Q19 15 14 15 H9 Q6 15 6 12 Z"/><circle cx="14" cy="10.5" r="1.6"/></symbol>
+  <symbol id="i-bacon" viewBox="0 0 24 24"><path d="M4 9 Q8 6 12 9 Q16 12 20 9"/><path d="M4 14 Q8 11 12 14 Q16 17 20 14"/></symbol>
+  <symbol id="i-chili" viewBox="0 0 24 24"><path d="M8 20 Q3.5 15.5 7 11 Q10.5 6.5 15.5 9.5 Q13 15 8 20 Z"/><path d="M15.5 9.5 Q16.5 6.5 19 6"/></symbol>
+  <symbol id="i-cheese" viewBox="0 0 24 24"><path d="M4 16 L17.5 8 L20 12.5 Q13.5 18 4 16 Z"/><circle cx="9" cy="13.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="13" cy="11.5" r="0.9" fill="currentColor" stroke="none"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+  <p class="eyebrow">Menu identity · both order forms</p>
+  <h1>An icon language to replace the emoji</h1>
+  <p class="lede">One cohesive set of fine-line, monochrome icons — drawn in the same restrained hand as the rest of the form. They sit on the item's colored tile where a photo isn't shown, and become the row mark in the redeem picker. No cartoon emoji anywhere.</p>
+
+  <h2>The set</h2>
+  <p class="sub">La Musa is per-category; X. Pizza is per-topping. Same stroke weight, same corner language.</p>
+  <div class="board">
+    <div class="chip"><svg><use href="#i-dumpling"/></svg><div class="nm">Dim sum</div><div class="old">🥟</div></div>
+    <div class="chip"><svg><use href="#i-skewer"/></svg><div class="nm">Starters</div><div class="old">🍢</div></div>
+    <div class="chip"><svg><use href="#i-soup"/></svg><div class="nm">Sopas</div><div class="old">🥣</div></div>
+    <div class="chip"><svg><use href="#i-noodle"/></svg><div class="nm">Noodles</div><div class="old">🍜</div></div>
+    <div class="chip"><svg><use href="#i-rice"/></svg><div class="nm">Rice</div><div class="old">🍚</div></div>
+    <div class="chip"><svg><use href="#i-fish"/></svg><div class="nm">Crudo</div><div class="old">🐟</div></div>
+    <div class="chip"><svg><use href="#i-star"/></svg><div class="nm">Especiales</div><div class="old">✦</div></div>
+    <div class="chip"><svg><use href="#i-glass"/></svg><div class="nm">Bebidas</div><div class="old">🥤</div></div>
+    <div class="chip"><svg><use href="#i-slice"/></svg><div class="nm">Pizza</div><div class="old">🍕</div></div>
+    <div class="chip"><svg><use href="#i-leaf"/></svg><div class="nm">Spinach</div><div class="old">🌿</div></div>
+    <div class="chip"><svg><use href="#i-mushroom"/></svg><div class="nm">Mushroom</div><div class="old">🍄</div></div>
+    <div class="chip"><svg><use href="#i-tomato"/></svg><div class="nm">Tomato</div><div class="old">🍅</div></div>
+    <div class="chip"><svg><use href="#i-meat"/></svg><div class="nm">Carne</div><div class="old">🥩</div></div>
+    <div class="chip"><svg><use href="#i-bacon"/></svg><div class="nm">Bacon</div><div class="old">🥓</div></div>
+    <div class="chip"><svg><use href="#i-chili"/></svg><div class="nm">Chili</div><div class="old">🌶️</div></div>
+    <div class="chip"><svg><use href="#i-cheese"/></svg><div class="nm">Cacio</div><div class="old">🧀</div></div>
+  </div>
+
+  <h2>On the cards</h2>
+  <p class="sub">Left = today's emoji tile · right = the line icon. (Where a real photo exists, the photo still leads — this is the no-photo tile.)</p>
+  <div class="cardsrow">
+    <div class="brandcol">
+      <h3>La Musa</h3><p class="h3s">per-category · cream ground</p>
+      <div class="cgrid cgrid2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="card" style="--cardbg:#fbf7ef"><div class="tile" style="background:#A8814E"><span class="tag">Antes</span><span class="emoji">🥟</span></div><div class="meta"><div class="cn">Pork Belly Buns</div><div class="cp">L248</div></div></div>
+        <div class="card" style="--cardbg:#fbf7ef"><div class="tile" style="background:#A8814E"><span class="tag after">Después</span><svg><use href="#i-dumpling"/></svg></div><div class="meta"><div class="cn">Pork Belly Buns</div><div class="cp">L248</div></div></div>
+        <div class="card" style="--cardbg:#fbf7ef"><div class="tile" style="background:#7C8A5A"><span class="tag">Antes</span><span class="emoji">🥤</span></div><div class="meta"><div class="cn">Coca Cola</div><div class="cp">L40</div></div></div>
+        <div class="card" style="--cardbg:#fbf7ef"><div class="tile" style="background:#7C8A5A"><span class="tag after">Después</span><svg><use href="#i-glass"/></svg></div><div class="meta"><div class="cn">Coca Cola</div><div class="cp">L40</div></div></div>
+      </div>
+    </div>
+    <div class="brandcol">
+      <h3>X. Pizza</h3><p class="h3s">per-topping · near-white ground</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="card" style="--cardbg:#fff"><div class="tile" style="background:#5A4A3A"><span class="tag">Antes</span><span class="emoji">🍄</span></div><div class="meta"><div class="cn">Mushroom</div><div class="cp">L323</div></div></div>
+        <div class="card" style="--cardbg:#fff"><div class="tile" style="background:#5A4A3A"><span class="tag after">Después</span><svg><use href="#i-mushroom"/></svg></div><div class="meta"><div class="cn">Mushroom</div><div class="cp">L323</div></div></div>
+        <div class="card" style="--cardbg:#fff"><div class="tile" style="background:#C8321A"><span class="tag">Antes</span><span class="emoji">🍅</span></div><div class="meta"><div class="cn">Margherita</div><div class="cp">L299</div></div></div>
+        <div class="card" style="--cardbg:#fff"><div class="tile" style="background:#C8321A"><span class="tag after">Después</span><svg><use href="#i-tomato"/></svg></div><div class="meta"><div class="cn">Margherita</div><div class="cp">L299</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>In the redeem picker</h2>
+  <p class="sub">The same icons give each picker row a quiet anchor — no emoji, fully on-brand.</p>
+  <div class="pk">
+    <div class="pk-row"><svg class="pk-ic"><use href="#i-dumpling"/></svg><span class="pk-nm">Sichuan Spicy Wonton</span><span class="pk-pt">743<span> pts</span></span></div>
+    <div class="pk-row"><svg class="pk-ic"><use href="#i-noodle"/></svg><span class="pk-nm">Pad Thai</span><span class="pk-pt">1,380<span> pts</span></span></div>
+    <div class="pk-row"><svg class="pk-ic"><use href="#i-fish"/></svg><span class="pk-nm">Ceviche de Camaron</span><span class="pk-pt">1,123<span> pts</span></span></div>
+    <div class="pk-row"><svg class="pk-ic"><use href="#i-star"/></svg><span class="pk-nm">Asado de Tira</span><span class="pk-pt">2,080<span> pts</span></span></div>
+  </div>
+
+  <div class="note">
+    <div class="mv"><span class="d"></span><div><b>Scope</b> — the icons replace the per-item/per-category emoji field on both forms' menu cards (the no-photo tile + detail modal) and the redeem picker. Data-driven: swap each item's <code>emoji</code> for an <code>icon</code> key, render an inline SVG <code>&lt;use&gt;</code> instead of a text glyph.</div></div>
+    <div class="mv"><span class="d"></span><div><b>One direction shown</b> — fine-line, monochrome, cream-on-tile. If you want a different feel (filled/duotone, heavier weight, gold accent) I'll re-cut the set; the whole set moves together.</div></div>
+    <div class="mv"><span class="d"></span><div><b>Coverage</b> — La Musa needs 8 category icons; X. Pizza needs one per topping-emoji in use. This board shows the language on a representative slice; the build fills every item.</div></div>
+  </div>
+</div>
