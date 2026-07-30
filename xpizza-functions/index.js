@@ -67,6 +67,7 @@ const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-conf
 const { buildMaterializeUpdates } = require('./materialize');
 const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
+const { claimPrefillCore } = require('./claim-prefill');   // Track A — profile-claim soft-fill (pure core; wrapper below)
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
 const { shouldEarnOnStatus } = require('./rewards-core');                  //   pure terminal-state gate for the earn trigger
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
@@ -157,8 +158,8 @@ const RESTAURANT = {
 // hubSnapshot (the ADR-0002 allowlist mapping identity -> immutable per-order snapshot) is
 // defined in and imported from restaurant-config.js, above.
 
-// Generate a random URL-safe tracking token. 12 chars from a 64-char alphabet
-// gives 64^12 = ~4.7e21 possible tokens — guessing one is impossible. The
+// Generate a random URL-safe tracking token. 12 chars from a 54-char alphabet
+// gives 54^12 = ~6.3e20 possible tokens — guessing one is impossible. The
 // token is part of the public tracking URL, so don't include chars that
 // require URL-encoding.
 const TOKEN_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';  // no 0/O/1/l/I to avoid confusion if printed
@@ -345,9 +346,11 @@ function validateOrderPayload(body, restaurantId) {
 const RATE_LIMIT_BUCKETS = {
   ip:    { windowMs: 10 * 60 * 1000, max: 20 },  // coarse flood guard (CGNAT-aware)
   phone: { windowMs: 10 * 60 * 1000, max: 4 },   // primary: new orders per phone / 10 min
-  confirm_ip: { windowMs: 10 * 60 * 1000, max: 80 } // confirm/poll guard: each payment does
+  confirm_ip: { windowMs: 10 * 60 * 1000, max: 80 }, // confirm/poll guard: each payment does
                                                     // ~1 confirm (+ a few polls on 202), so this
                                                     // caps capture-hammering without blocking legit polling
+  claim_ip: { windowMs: 10 * 60 * 1000, max: 30 } // Track A claimPrefill: token-gated phone lookup returns
+                                                  // PII → throttle replay/harassment on a leaked tracker link
 };
 
 // Hash a rate-limit key (IP / phone) into an RTDB-safe, non-PII key. Avoids
@@ -659,6 +662,9 @@ createOrderApp.all('*', async (req, res) => {
   }));
 
   attachCustomerAttribution(updates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items });
+  // Track A (MF2): immediate (cash/live) path — order_tracking is built HERE (not via buildMaterializeUpdates),
+  // so stamp has_profile from the resolved server customer_uid. Guest → omitted → order_tracking byte-identical.
+  if (customer_uid && updates[`order_tracking/${trackingToken}`]) updates[`order_tracking/${trackingToken}`].has_profile = true;
   if (redemptionCanonical) updates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until completion consumes)
 
   try {
@@ -1524,6 +1530,36 @@ exports.paymentStatus = onRequest(
     return res.status(200).json({ ok: true, state, tracking_token: state === 'paid' ? (order.tracking_token || null) : null,
       total_cents: state === 'paid' ? (Number.isFinite(order.total_cents) ? order.total_cents : null) : null,
       redemption: state === 'paid' ? redeemSummary : null });
+  }
+);
+
+// ============================================================
+// claimPrefill — Track A: token-gated name+phone lookup for the profile-claim soft-fill
+// ============================================================
+//
+// The tracker's "Crear mi perfil" deep-links to the order form with ?claim=<order_id>#t=<tracking_token>
+// (token in the URL FRAGMENT — never sent to servers/Referer/logs; MF1). The order form POSTs {order_id,
+// token} here to soft-fill the create-profile sheet with the just-ordered customer's OWN name+phone (one tap
+// → OTP, no re-type). Capability = the tracking_token, which is bound to exactly ONE order: we return the
+// phone ONLY when order_tracking/{token}.order_id STRICTLY equals the requested order_id. Read-only, returns
+// NO other PII (no address/items/uid), per-IP throttled (MF3 — this returns phone PII), and account creation
+// stays OTP-gated so a leaked token can't hijack. Money path untouched.
+exports.claimPrefill = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 10, memory: '256MiB', maxInstances: 5 },
+  async (req, res) => {
+    if (req.method !== 'POST' && req.method !== 'GET') { res.set('Allow', 'POST, GET'); return res.status(405).json({ error: 'Method Not Allowed' }); }
+    const orderId = String((req.body && req.body.order_id) || (req.query && req.query.order_id) || '').trim();
+    const token = String((req.body && req.body.token) || (req.query && (req.query.t || req.query.token)) || '').trim();
+    // Missing/malformed order_id → 403 (no info). Token must be present + RTDB-path-safe (real tokens are 12
+    // alphanumerics) so `order_tracking/{token}` can never be a path-injection.
+    const db = getDatabase();
+    // MF3 — per-IP throttle BEFORE any read: this endpoint returns phone PII.
+    const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+    const rl = await checkRateLimit(db, 'claim_ip', clientIp, RATE_LIMIT_BUCKETS.claim_ip);
+    if (!rl.allowed) { res.set('Retry-After', String(rl.retryAfterSec)); return res.status(429).json({ error: 'Too Many Requests' }); }
+    // Validation + token↔order STRICT bind + phone lookup — pure core (claim-prefill.js), emulator-tested.
+    const r = await claimPrefillCore(db, orderId, token);
+    return res.status(r.status).json(r.body);
   }
 );
 

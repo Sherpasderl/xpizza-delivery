@@ -117,7 +117,11 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
     total: order.total,
     address_short: addressShort,
     status: 'new',
-    created_at: now
+    created_at: now,
+    // Track A (MF2): a profiled order sets has_profile:true so the tracker hides the guest profile-claim card.
+    // Set in the SHARED builder → covers materialize + resolve-manual + pixelpay-confirm + scheduled-release.
+    // Guests OMIT it → guest order_tracking byte-identical (goldens unaffected). Boolean only, no PII.
+    ...(order.customer_uid ? { has_profile: true } : {})
   };
 
   return updates;

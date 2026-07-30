@@ -74,4 +74,13 @@ const ok = (label) => console.log(`  ✓ ${++n} ${label}`);
   assert.equal('free_order' in paid, false); ok('non-free release omits free_order (byte-identical)');
 }
 
+// 7) Track A: a PROFILED materialized order stamps order_tracking.has_profile:true (tracker hides the guest
+//    claim card); a guest order OMITS it → order_tracking byte-identical.
+{
+  const prof = buildMaterializeUpdates({ orderId: 'o9', order: baseOrder({ customer_uid: 'uZ' }), trackingToken: 't9', now: 1, restaurant: FALLBACK })['order_tracking/t9'];
+  assert.equal(prof.has_profile, true); ok('profiled order → order_tracking.has_profile:true (tracker hides guest claim card)');
+  const guest = buildMaterializeUpdates({ orderId: 'o10', order: baseOrder({}), trackingToken: 't10', now: 1, restaurant: FALLBACK })['order_tracking/t10'];
+  assert.equal('has_profile' in guest, false); ok('guest order → order_tracking omits has_profile (byte-identical)');
+}
+
 console.log(`materialize-snapshot: OK (${n} cases)`);

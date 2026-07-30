@@ -77,8 +77,15 @@ const call = (order) => buildMaterializeUpdates({
   const authed = call(base({ customer_uid: uid }));
   const delta = Object.keys(authed).filter((k) => !(k in guest));
   assert.deepStrictEqual(delta.sort(), [`orders/${ORDER}/customer_uid`, `user_orders/${uid}/${ORDER}`].sort());
-  ok('attribution delta vs guest = exactly the 2 attribution paths');
-  for (const k of Object.keys(guest)) assert.deepStrictEqual(authed[k], guest[k]);
-  ok('all non-attribution materialize paths byte-identical to guest');
+  ok('attribution delta (new keys) vs guest = exactly the 2 attribution paths');
+  // Track A (MF2): a profiled order's order_tracking now carries has_profile:true (so the tracker hides the
+  // guest profile-claim card). That's the ONLY field difference; every other node stays byte-identical.
+  const TRK = `order_tracking/${TOK}`;
+  for (const k of Object.keys(guest)) { if (k === TRK) continue; assert.deepStrictEqual(authed[k], guest[k]); }
+  ok('all non-attribution, non-order_tracking materialize paths byte-identical to guest');
+  assert.strictEqual(authed[TRK].has_profile, true);
+  const trkNoFlag = { ...authed[TRK] }; delete trkNoFlag.has_profile;
+  assert.deepStrictEqual(trkNoFlag, guest[TRK]);
+  ok('order_tracking attribution delta = has_profile:true only (guest order_tracking byte-identical)');
 }
 console.log(`materialize-attribution: OK (${n})`);
