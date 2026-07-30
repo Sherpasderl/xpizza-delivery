@@ -68,6 +68,7 @@ const { buildMaterializeUpdates } = require('./materialize');
 const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
 const { claimPrefillCore } = require('./claim-prefill');   // Track A — profile-claim soft-fill (pure core; wrapper below)
+const { claimOrderCore } = require('./claim-order');       // claimOrder — retro-credit a guest order's earn (pure core; wrapper below)
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
 const { shouldEarnOnStatus } = require('./rewards-core');                  //   pure terminal-state gate for the earn trigger
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
@@ -349,11 +350,14 @@ const RATE_LIMIT_BUCKETS = {
   confirm_ip: { windowMs: 10 * 60 * 1000, max: 80 }, // confirm/poll guard: each payment does
                                                     // ~1 confirm (+ a few polls on 202), so this
                                                     // caps capture-hammering without blocking legit polling
-  claim_token: { windowMs: 10 * 60 * 1000, max: 15 } // Track A claimPrefill: throttle per-TOKEN (the spoof-PROOF
+  claim_token: { windowMs: 10 * 60 * 1000, max: 15 }, // Track A claimPrefill: throttle per-TOKEN (the spoof-PROOF
                                                      // capability; on Cloud Run req.ip == the client-appended
                                                      // XFF, spoofable) — caps repeated phone pulls on one leaked
                                                      // link. Generous for legit retries; invalid-token probing
                                                      // is 403'd by the core + bounded by maxInstances.
+  claim_uid: { windowMs: 10 * 60 * 1000, max: 20 }  // claimOrder: throttle per verified UID — protects the
+                                                    // TOKENLESS order_id-enumeration path (the per-token bucket
+                                                    // can't). The uid is OTP-minted (not spoofable).
 };
 
 // Hash a rate-limit key (IP / phone) into an RTDB-safe, non-PII key. Avoids
@@ -1568,6 +1572,45 @@ exports.claimPrefill = onRequest(
     if (!rl.allowed) { res.set('Retry-After', String(rl.retryAfterSec)); return res.status(429).json({ error: 'Too Many Requests' }); }
     // Validation + token↔order STRICT bind + phone lookup — pure core (claim-prefill.js), emulator-tested.
     const r = await claimPrefillCore(db, orderId, token);
+    return res.status(r.status).json(r.body);
+  }
+);
+
+// ============================================================
+// claimOrder — retro-credit a guest order's loyalty earn on profile-claim (MONEY-PATH)
+// ============================================================
+//
+// After creating a profile from a Track A claim card / deep-link, the client calls this with the new ID
+// token + { order_id, token? } to bind THAT ONE guest order to the uid and credit its earn. Token is OPTIONAL
+// (success-card scheduled orders have no tracking_token) — the PHONE-MATCH is the required gate. Auth here
+// (verified customer ID token → uid, tombstone guard); the token↔order bind / phone-match / atomic bind /
+// credit live in the pure claim-order.js core (emulator-tested). Grants loyalty points → money-gated.
+exports.claimOrder = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 10, memory: '256MiB', maxInstances: 5 },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).json({ error: 'Method Not Allowed' }); }
+    // Auth: a VERIFIED customer ID token (never a body-supplied uid). Mirrors the attribution guards.
+    const idTok = req.get('x-firebase-id-token');
+    if (!idTok) return res.status(401).json({ error: 'unauthorized' });
+    let uid = null;
+    try {
+      const dec = await getAuth().verifyIdToken(idTok);
+      if (!dec || dec.customer !== true || !dec.uid) return res.status(401).json({ error: 'unauthorized' });
+      uid = dec.uid;
+    } catch (_) { return res.status(401).json({ error: 'unauthorized' }); }
+    const db = getDatabase();
+    // H10 durability: a tombstoned (deleted) uid never binds/earns.
+    if ((await db.ref('deleted_uids/' + uid).get()).exists()) return res.status(403).json({ error: 'forbidden' });
+    const orderId = String((req.body && req.body.order_id) || '').trim();
+    const token = String((req.body && req.body.token) || '').trim();
+    // Rate-limit: per-UID ALWAYS (guards the tokenless order_id-enumeration path); per-TOKEN when presented.
+    const ru = await checkRateLimit(db, 'claim_uid', uid, RATE_LIMIT_BUCKETS.claim_uid);
+    if (!ru.allowed) { res.set('Retry-After', String(ru.retryAfterSec)); return res.status(429).json({ error: 'Too Many Requests' }); }
+    if (token) {
+      const rt = await checkRateLimit(db, 'claim_token', token, RATE_LIMIT_BUCKETS.claim_token);
+      if (!rt.allowed) { res.set('Retry-After', String(rt.retryAfterSec)); return res.status(429).json({ error: 'Too Many Requests' }); }
+    }
+    const r = await claimOrderCore(db, { uid, orderId, token: token || null, now: Date.now() });
     return res.status(r.status).json(r.body);
   }
 );
