@@ -1003,6 +1003,12 @@ textarea{resize:none;height:80px;line-height:1.4}
 .order-id{font-size:10px;color:var(--border2);margin-bottom:10px;font-family:var(--stamp);letter-spacing:2px}
 .receipt{background:#fff;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;text-align:left;margin-bottom:12px}
 .receipt-head{background:var(--surface);padding:14px 16px;font-family:var(--sans);font-size:14px;font-weight:700;color:var(--gold-dk);border-bottom:1px solid var(--border)}
+.receipt-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;border:none;font-family:inherit;text-align:left;cursor:pointer}
+.receipt-chev{display:inline-flex;flex:none;color:var(--gold-dk);transition:transform .25s ease}
+.receipt-toggle[aria-expanded="true"] .receipt-chev{transform:rotate(180deg)}
+.receipt-collapse{max-height:0;overflow:hidden;transition:max-height .28s ease}
+.receipt-collapse.receipt-open{max-height:1200px}
+@media (prefers-reduced-motion:reduce){.receipt-chev,.receipt-collapse{transition:none}}
 .receipt-row{display:flex;justify-content:space-between;align-items:flex-start;padding:9px 16px;font-size:12px;border-bottom:1px solid var(--border);color:var(--charcoal);letter-spacing:.3px}
 .receipt-row:last-child{border-bottom:none}
 .receipt-label{color:var(--muted)}
@@ -1479,8 +1485,8 @@ textarea{resize:none;height:80px;line-height:1.4}
     <div class="order-id" id="order-id-display"></div>
     <!-- REWARDS success (B2 Task 5) — filled by window.__ACCOUNT.renderSuccessRewards (logged-in earn badge / guest profile-claim card) --><div id="acct-success-rewards"></div>
     <div class="receipt">
-      <div class="receipt-head">Resumen del pedido</div>
-      <div id="receipt-items"></div>
+      <button class="receipt-head receipt-toggle" id="receipt-toggle" type="button" aria-expanded="false" aria-controls="receipt-items" onclick="toggleReceiptSummary()">Resumen del pedido<span class="receipt-chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></button>
+      <div id="receipt-items" class="receipt-collapse"></div>
     </div>
     <div class="receipt">
       <div class="receipt-head">Pago y entrega</div>
@@ -3410,8 +3416,17 @@ function startAnotherOrder(){
   showStage('s1', 25);
 }
 
+// Reward-card priority: the success "Resumen del pedido" is a collapsible (chevron), DEFAULT COLLAPSED so the
+// reward card leads. The Total is the last row INSIDE the body (A2). Reduced-motion → instant (CSS).
+function toggleReceiptSummary(){
+  const b=document.getElementById('receipt-toggle'), body=document.getElementById('receipt-items'); if(!b||!body)return;
+  const open=b.getAttribute('aria-expanded')==='true';
+  b.setAttribute('aria-expanded', open?'false':'true'); body.classList.toggle('receipt-open', !open);
+}
 function showSuccess(){
   showStage('s5',100);
+  // Default the order summary to COLLAPSED on every success render (reward card first).
+  try{ const rt=document.getElementById('receipt-toggle'); if(rt) rt.setAttribute('aria-expanded','false'); const rb=document.getElementById('receipt-items'); if(rb) rb.classList.remove('receipt-open'); }catch(_){}
   const o=currentOrder;
   const paymentLabels={
     cash:ICON_CASH+'Efectivo al entregar',
