@@ -8,7 +8,7 @@
   <title>X. Pizza · Sigue tu pedido</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&family=Playfair+Display:wght@700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
     :root {
       --brand: #BA7517;
@@ -325,6 +325,40 @@
     .claim-feat { display:flex; align-items:center; gap:9px; font-size:13.5px; color:#333; margin:7px 0; }
     .claim-check { flex:none; display:inline-flex; color:var(--brand,#C8321A); }
     .claim-btn { display:block; text-align:center; margin-top:16px; padding:13px; border-radius:12px; background:var(--brand,#C8321A); color:#fff; font-size:15px; font-weight:700; text-decoration:none; }
+    /* Reward-led card (mockup f9681eb8) — gold reward identity for BOTH brands, spacing per the updated mockup. */
+    .rw{position:relative;border-radius:20px;padding:26px 22px 22px;overflow:hidden;margin-top:14px;background:radial-gradient(130% 80% at 82% -10%,rgba(201,162,74,.28),rgba(201,162,74,0) 60%),linear-gradient(180deg,#fffdf8,#fbf4e4);border:1px solid rgba(169,121,26,.34);box-shadow:0 1px 2px rgba(120,86,20,.10),0 16px 34px -22px rgba(120,86,20,.5)}
+    .rw-label{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#7d580f;font-weight:700;margin-bottom:15px}
+    .rw-label svg{width:16px;height:16px;color:#7d580f;flex:none}
+    .rw-h3{font-family:'Playfair Display',Georgia,serif;font-weight:700;font-size:20.5px;line-height:1.2;color:#1b1a17;margin:0 0 11px}
+    .rw-h3 b{color:#7d580f}
+    .rw-math{font-size:13px;color:#6b665c;margin:0 0 20px;line-height:1.55}
+    .rw-math b{color:#7d580f;font-weight:700}
+    .rw-ptrow{display:flex;align-items:flex-end;gap:10px;margin-bottom:6px}
+    .rw-bignum{font-family:'Playfair Display',Georgia,serif;font-weight:700;font-size:38px;line-height:.9;color:#7d580f;font-variant-numeric:tabular-nums}
+    .rw-bigunit{font-size:14px;font-weight:600;color:#7d580f;margin-bottom:4px}
+    .rw-bar{height:9px;border-radius:99px;background:rgba(169,121,26,.16);overflow:hidden;margin:12px 0 7px}
+    .rw-bar>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#A9791A,#C9A24A)}
+    .rw-barcap{display:flex;justify-content:space-between;font-size:11px;color:#6b665c;font-variant-numeric:tabular-nums}
+    .rw-barcap .rw-goal{color:#7d580f;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+    .rw-barcap .rw-goal svg{width:12px;height:12px}
+    .rw-slots{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px}
+    .rw-slot{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;border:1.5px solid rgba(169,121,26,.4);color:rgba(169,121,26,.55)}
+    .rw-slot svg{width:14px;height:14px}
+    .rw-slot--on{background:linear-gradient(160deg,#C9A24A,#A9791A);border-color:#7d580f;color:#fff5df}
+    .rw-slot--goal{border-style:dashed;border-color:#7d580f;color:#7d580f}
+    .rw-slotcap{font-size:11px;color:#6b665c;margin-bottom:12px}
+    .rw-slotcap b{color:#7d580f}
+    .rwcta{display:block;width:100%;box-sizing:border-box;border:0;border-radius:13px;padding:14px;font-family:inherit;font-size:15px;font-weight:700;color:#fff;text-align:center;text-decoration:none;cursor:pointer;margin-top:20px;background:linear-gradient(180deg,#A9791A,#7d580f);box-shadow:0 6px 16px -8px rgba(125,88,15,.8)}
+    .rw-sub{text-align:center;font-size:11.5px;color:#6b665c;margin:9px 0 0}
+    /* Collapsible "Resumen del pedido" — normal-case header button + chevron + itemized rows. */
+    .summary-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;border:none;background:none;padding:0;font-family:inherit;font-size:15px;font-weight:700;color:var(--ink,#1b1a17);text-align:left;cursor:pointer}
+    .summary-chev{display:inline-flex;flex:none;color:#9a9488;transition:transform .25s ease}
+    .summary-toggle[aria-expanded="true"] .summary-chev{transform:rotate(180deg)}
+    .summary-collapse{max-height:0;overflow:hidden;transition:max-height .28s ease}
+    .summary-collapse.summary-open{max-height:1600px}
+    .summary-row{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid rgba(0,0,0,.07);font-size:13.5px}
+    .summary-row-p{font-variant-numeric:tabular-nums;white-space:nowrap}
+    @media (prefers-reduced-motion:reduce){.summary-chev,.summary-collapse{transition:none}}
     .footer {
       text-align: center;
       margin-top: 24px;
@@ -418,13 +452,15 @@
           </div>
         </div>
 
-        <!-- Order summary -->
+        <!-- Order summary — collapsible "Resumen del pedido" (default collapsed so the reward card leads) -->
         <div class="order-summary">
-          <div class="summary-label">Tu pedido</div>
-          <div class="summary-customer" id="summary-customer">—</div>
-          <div class="summary-line" id="summary-items">—</div>
-          <div class="summary-line" id="summary-address">—</div>
-          <div class="summary-total" id="summary-total">—</div>
+          <button class="summary-toggle" id="summary-toggle" type="button" aria-expanded="false" aria-controls="summary-body">Resumen del pedido<span class="summary-chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></button>
+          <div class="summary-collapse" id="summary-body">
+            <div class="summary-customer" id="summary-customer">—</div>
+            <div class="summary-line" id="summary-items">—</div>
+            <div class="summary-line" id="summary-address">—</div>
+            <div class="summary-total" id="summary-total">—</div>
+          </div>
         </div>
 
         <div class="updated-text" id="updated-text">
@@ -433,6 +469,9 @@
       </div>
 
       <!-- Track A: guest-only profile-claim card — shown by render() when the order has no profile (data.has_profile !== true). -->
+      <!-- Reward-led card (mockup f9681eb8) — filled by render() from the stamped earn_preview; fails open to
+           the plain claim card below when earn_preview is absent (pre-deploy orders). -->
+      <div id="reward-card"></div>
       <div id="claim-card" class="claim-card hidden">
         <div class="claim-title">Guardalo para reordenar</div>
         <div class="claim-copy">Creá tu perfil y reordená este pedido cuando quieras, en un toque.</div>
@@ -550,6 +589,51 @@
     if (SITE_RESTAURANT) applyRestaurantBrand(SITE_RESTAURANT);
 
     // Render the page based on data from /order_tracking/{token}
+    // Reward-led card from the stamped earn_preview {unit, delta, welcome, goal} — the tracker embeds ZERO
+    // reward constants (welcome/goal come from the stamp). Same copy/structure as the order-form success card
+    // (mockup f9681eb8). All values are server-stamped ints; the CTA is a brand-aware fragment deep-link.
+    const RW_CHECK = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+    const RW_GIFT = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>';
+    function rewardCardHtml(ep, origin, orderId, tok) {
+      const welcome = Number(ep.welcome) || 0, delta = Number(ep.delta) || 0, goal = Number(ep.goal) || 0;
+      let h3, math, proof, cta, sub;
+      if (ep.unit === 'punch') {
+        const size = goal, filled = Math.min(size, delta + welcome), remaining = Math.max(0, size - filled);
+        math = `Este pedido suma <b>${delta} ${delta === 1 ? 'sello' : 'sellos'}</b> + <b>${welcome} de bienvenida</b> al crear tu perfil.`;
+        h3 = remaining <= 1 ? 'A una pizza de tu pizza gratis' : (filled * 2 >= size ? 'Ya vas a mitad de tu pizza gratis' : 'Empezá a llenar tu tarjeta de pizza gratis');
+        let slots = '';
+        for (let i = 0; i < size; i++) {
+          if (i === size - 1 && filled < size) slots += `<span class="rw-slot rw-slot--goal">${RW_GIFT}</span>`;
+          else if (i < filled) slots += `<span class="rw-slot rw-slot--on">${RW_CHECK}</span>`;
+          else slots += '<span class="rw-slot"></span>';
+        }
+        proof = `<div class="rw-slots">${slots}</div><div class="rw-slotcap"><b>${filled} / ${size}</b> — ${remaining} ${remaining === 1 ? 'pizza' : 'pizzas'} más para tu pizza gratis.</div>`;
+        cta = 'Crear mi perfil y guardar mis sellos'; sub = 'Guardá tus sellos y reordená este pedido en un toque.';
+      } else {
+        const total = delta + welcome, ready = goal > 0 && total >= goal, pct = goal > 0 ? Math.min(100, Math.round(total / goal * 100)) : 0;
+        math = `Este pedido suma <b>${delta} pts</b> + <b>${welcome} de bienvenida</b> al crear tu perfil.`;
+        h3 = ready ? 'Este pedido ya te da tu primer premio' : `Vas <b>${total} pts</b>, a solo <b>${Math.max(0, goal - total)}</b> de tu primer premio`;
+        const goalCap = ready ? `${RW_CHECK} Primer premio · ${goal} pts` : `faltan ${Math.max(0, goal - total)}`;
+        proof = `<div class="rw-ptrow"><span class="rw-bignum">${total}</span><span class="rw-bigunit">pts</span></div><div class="rw-bar"><i style="width:${pct}%"></i></div><div class="rw-barcap"><span>0</span><span class="rw-goal">${goalCap}</span></div>`;
+        cta = 'Crear mi perfil y reclamarlo'; sub = 'Guardá tus puntos y reordená este pedido en un toque.';
+      }
+      const href = origin + '/?claim=' + encodeURIComponent(orderId) + '#t=' + encodeURIComponent(tok);
+      return `<div class="rw"><div class="rw-label">${RW_GIFT} Tu recompensa</div><h3 class="rw-h3">${h3}</h3><p class="rw-math">${math}</p>${proof}<a class="rwcta" href="${href}" rel="noopener">${cta}</a><p class="rw-sub">${sub}</p></div>`;
+    }
+    // Itemized summary rows from the stamped summary_lines — textContent per line (XSS-safe; the la_musa name
+    // is a client display string). Fail-open to the run-on items_text when the field is absent (pre-deploy).
+    function renderSummaryItems(data) {
+      const el = document.getElementById('summary-items'); if (!el) return;
+      if (Array.isArray(data.summary_lines) && data.summary_lines.length) {
+        el.className = 'summary-lines'; el.textContent = '';
+        data.summary_lines.forEach((l) => {
+          const row = document.createElement('div'); row.className = 'summary-row';
+          const nm = document.createElement('span'); nm.textContent = `${l.qty}× ${l.name}`;
+          const pr = document.createElement('span'); pr.className = 'summary-row-p'; pr.textContent = formatLps((Number(l.cents) || 0) / 100);
+          row.appendChild(nm); row.appendChild(pr); el.appendChild(row);
+        });
+      } else { el.className = 'summary-line'; el.textContent = data.items_text || '—'; }
+    }
     function render(data) {
       if (!data) {
         showError();
@@ -566,23 +650,31 @@
 
       // Customer + items + address
       document.getElementById('summary-customer').textContent = data.customer_name || '—';
-      document.getElementById('summary-items').textContent = data.items_text || '—';
+      renderSummaryItems(data);   // itemized rows from summary_lines (fail-open to items_text)
       document.getElementById('summary-address').textContent = data.address_short || '—';
       document.getElementById('summary-total').textContent = 'Total: ' + formatLps(data.total);
 
       // Track A: guest-only profile-claim card. GUEST order (no has_profile) → show + wire a brand-aware
       // deep-link with the tracking token in the FRAGMENT (never sent to servers/Referer/logs). Profiled → hide.
       // Read-only tracker → deep-links OUT to the order form's account creation (no OTP here).
-      const claimCard = document.getElementById('claim-card');
-      if (claimCard) {
-        // Hide for a profiled order (nothing to claim) AND for a cancelled one (a negative moment — the
-        // "guardalo para reordenar" push reads tone-deaf there).
-        if (data.has_profile === true || data.status === 'cancelled') { claimCard.classList.add('hidden'); }
-        else {
-          const origin = data.restaurant_id === 'la_musa' ? 'https://orders.lamusa.hn' : 'https://orders.xpizza.hn';
+      // Reward-led card vs the plain Track A claim card. Guest-only (no has_profile) + not cancelled (a
+      // negative moment). When earn_preview is stamped → the reward card; else FAIL-OPEN to the plain claim
+      // card (pre-deploy orders). Both deep-link (fragment token) to the brand order form's account creation.
+      const claimCard = document.getElementById('claim-card'), rewardCard = document.getElementById('reward-card');
+      const isGuest = data.has_profile !== true && data.status !== 'cancelled';
+      if (!isGuest) {
+        if (claimCard) claimCard.classList.add('hidden');
+        if (rewardCard) rewardCard.innerHTML = '';
+      } else {
+        const origin = data.restaurant_id === 'la_musa' ? 'https://orders.lamusa.hn' : 'https://orders.xpizza.hn';
+        if (data.earn_preview && rewardCard) {
+          rewardCard.innerHTML = rewardCardHtml(data.earn_preview, origin, data.order_id || '', token);
+          if (claimCard) claimCard.classList.add('hidden');
+        } else if (claimCard) {
           const cbtn = document.getElementById('claim-btn');
           if (cbtn) cbtn.href = origin + '/?claim=' + encodeURIComponent(data.order_id || '') + '#t=' + encodeURIComponent(token);
           claimCard.classList.remove('hidden');
+          if (rewardCard) rewardCard.innerHTML = '';
         }
       }
 
@@ -711,6 +803,17 @@
         banner.classList.remove('hidden');
       }
     }
+
+    // Collapsible "Resumen del pedido" toggle (default collapsed so the reward card leads; reduced-motion
+    // instant via CSS). Wired once — the elements are static.
+    (function () {
+      const b = document.getElementById('summary-toggle'), body = document.getElementById('summary-body');
+      if (b && body) b.addEventListener('click', () => {
+        const open = b.getAttribute('aria-expanded') === 'true';
+        b.setAttribute('aria-expanded', open ? 'false' : 'true');
+        body.classList.toggle('summary-open', !open);
+      });
+    })();
 
     // Main entry
     const token = extractToken();
