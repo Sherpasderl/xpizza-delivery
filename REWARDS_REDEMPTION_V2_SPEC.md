@@ -76,6 +76,43 @@ So this model change is safe pre-flip: **no migration, no in-flight redemptions 
   rate: 10/3, exclude:['beer_*','sauce_*','protein_*']}` (drop the `tiers` array). X. Pizza
   `{kind:'punch', cost:8, reward:'free_pizza_choice'}`. Keep the calculator/handlers reading ONLY from config.
 
+### 1e. Codex design-gate — REQUIRED refinements (APPROVE-WITH-CHANGES, thread 019fb4fe) — BINDING
+These are part of the approved design; build them in.
+1. **`rewards-reserve.js` — ONE AGGREGATE reservation per order (not per-item / not an order-sensitive array).**
+   La Musa: `reservations/{orderId}.cost = Σ(cost_pts × qty)`; `canonical` stores
+   `{model:'add_free', type:'points_ala_carte', items:[{free_item_key,cost,qty,price_cents}], total_cost}`
+   with items **sorted + coalesced by `free_item_key` before hashing** (reorder-/duplicate-stable). Do NOT
+   create independent child reservations unless all children are created/consumed/released in the **same parent
+   transaction**.
+2. **Payment fingerprint must bind the full redeemed set.** Current `orderFingerprint(orderId,total,itemsText,extra)`
+   is weak for v2 (La Musa total unchanged; `itemsText` is display text). Add a stable `redemptionFingerprint`
+   (canonical-set hash) into the fingerprint input for **both** cash reserve binding and online
+   `payment_fingerprint`. Never rely on client item names or UI order.
+3. **`rewards-redeem-intake.js` — guard server-side BEFORE reserve.** Compute paid `subtotal_cents` from the
+   server-priced submitted **paid** cart only (before appending reward lines); reject `<= 0` with `needs_paid_item`.
+   Never count redeemed items, free lines, display summary lines, or client totals.
+4. **`rewards-redeem.js` — multiset-aware (La Musa).** Accept only a **bounded** array/multiset of {id, qty};
+   coalesce duplicates; validate integer `qty ≥ 1`; price each id server-side; `cost_pts = round(price_L×10/3)`
+   per unit; reject if any id ineligible; return aggregate `cost` + canonical item set.
+5. **`rewards-redeem-config.js` — authoritative eligible-set helpers; `REDEMPTION_CONFIG_VERSION = 2`.**
+   X. Pizza: only `cat === 'individual'`, explicitly exclude `ny`. La Musa: menu ids except `beer_*`, plus
+   `rice_white/rice_chinese/papas_fritas`; reject `sauce_*` / `protein_*`.
+6. **`rewards-redeem-pricing.js` — add-free for BOTH brands + N free lines.** X. Pizza is no longer `discount`;
+   it's `add_free/free_pizza_choice` (unchanged total, one L0 pizza). La Musa emits all redeemed free lines with
+   qtys. No expensive/NY/modifier item ever priced free unless it passed server eligibility.
+7. **`rewards-core.js` + `rewards-earn.js` — DROP the X. Pizza `model==='discount'` `−1` adjustment for v2.**
+   Add-free L0 pizza is not a paid punch-earning line in `order.items`, so `earnPreview` === `computeEarn` ===
+   `creditEarnForOrder`. **Update the parity test** to assert **no subtraction** for
+   `model:'add_free', type:'free_pizza_choice'`.
+8. **Clawback/reversal generalizes** (`releaseRedemption`/`consumeRedemption`/`reverseRedemptionForRefund`/sweeps/
+   `reverseEarnForOrder`) **iff `rec.cost` is the full aggregate sum**; the B1 `balance ≥ reserved` invariant then
+   holds across N because reserve+clawback transact on `user_rewards/{uid}/{rid}`.
+9. **Config bump 1→2 while gated OFF is safe** (zero stamped reservations → no migration hazard). Functions-first deploy.
+- **Smaller (do them):** `buildRewardStamp`/`summaryLines` render multiple add-free lines; quote response returns
+  `free_items[]` + `total_cost`/`remaining`; add tests for concurrent La Musa reserves, duplicate-coalescing,
+  reorder-stable fingerprints, NY exclusion, modifier/alcohol exclusion, the paid-item guard, cancel/refund
+  releases, and earn-preview-vs-credit.
+
 ---
 
 ## 2. UI — BUILD TO `rewards-v2-mockups/redeem-experience.html` EXACTLY
