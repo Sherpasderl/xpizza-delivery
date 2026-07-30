@@ -184,6 +184,16 @@ the Listo button.
 + re-render; apply → `renderStage2Summary`/total. Do NOT touch `redeemSelect`, the quote call, pricing, or the
 cash-tendered submit guard.
 
+**⚠️ v2 REQUEST CONTRACT — HARD REQUIREMENT (the §1 server now enforces `redeem.type`; caught at money re-gate).**
+The picker MUST emit the **v2 redeem request shape** or the server returns `bad_request`:
+- X. Pizza → `{ type: 'free_pizza_choice', item_id: <12″ pizza menu key> }`
+- La Musa → `{ type: 'points_ala_carte', items: [ { id, qty }, … ] }` (multiset; qty ≥ 1)
+
+The **old v1 shapes are now REJECTED**: `{}` (X. Pizza) and `{ type:'free_item', level, item_id, name }` (La Musa).
+Replace them in `_redeemPending`/the redeem request builder in BOTH `account.js`. **Do NOT flip redemption ON until
+BOTH functions AND forms are on v2** (functions-first deploy is safe only because redemption stays gated OFF until
+the atomic flip, so the v1-client / v2-server window is inert).
+
 ---
 
 ## 3. Menu ICON system (separate, parallel display-only handoff) — `rewards-v2-mockups/menu-icons.html`
