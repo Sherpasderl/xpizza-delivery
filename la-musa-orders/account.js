@@ -16,16 +16,11 @@
     palette: { screen:'#FFFDFA', tint:'#FBF6EE', tint2:'#F4EEE4', chip:'#F0E8DA', fillA:'#EFE7DA', line:'#EDE5D9', fillB:'#E7DFD3', mapbg:'#E4DAC7', line2:'#E2D8C8', line3:'#D8CBB8', dot:'#CFC2B1' },   // per-brand neutrals — La Musa = EXACT current literals (renders byte-identical); X. Pizza CONFIG carries the near-white set (nearwhite-inventory.md)
     // Rewards B2 — the ONLY brand difference in the rewards UI (everything past CONFIG is byte-identical).
     // X. Pizza = punch card → free pizza; La Musa = points → free-item tiers. Earn rates mirror Phase A (live).
-    // tiers MIRROR the LOCKED server config (rewards-redeem-config.js, config_version 1) — item names resolve
-    // via the form MENU at render; availability via the 86 read. Server stays authoritative (a drift → the
-    // quote/submit rejects with a typed message; never a money bug).
-    rewards: { kind:'points', unit:'pts', perCents:3000, ptsPer:10, welcome:100, paneIntro:'Ganás puntos en cada pedido y los canjeás por comida gratis.', tiers:[
-      { cost:300,  name:'Bebida o acompañamiento', desc:'soda · papas · arroz', items:['soft_01','soft_02','soft_03','soft_04','beer_01','beer_02','beer_03','beer_04','beer_05','beer_06','beer_07','beer_08','rice_white','rice_chinese','papas_fritas'] },
-      { cost:850,  name:'Dim sum o starter', desc:'dumplings · buns · wontons', items:['dimsum_01','dimsum_02','dimsum_03','dimsum_04','dimsum_05','starter_01','starter_02','starter_03','soup_01','soup_02','soup_03'] },
-      { cost:1400, name:'Plato fuerte', desc:'noodles · rice · ceviches', items:['noodle_01','noodle_01_sin','noodle_01_pollo','noodle_01_camaron','noodle_03','rice_01','rice_04','crudo_02','crudo_03','special_05'] },
-      { cost:1650, name:'House special', desc:'tuna · beef premium', items:['noodle_02','rice_02','rice_03','starter_04','starter_05','starter_06','crudo_01','special_02'] },
-      { cost:2100, name:'Gran plato', desc:'lobster · asado', items:['special_01','special_04'] },
-    ] },
+    // v2 (à-la-carte): points are spent on ANY dish at the pago-page ticket — there are NO tiers. This CONFIG is
+    // the "Mis premios" progress-pane DISPLAY model only; `redeemFrom` is the chip threshold = the cheapest
+    // redeemable item's cost_pts (round(L40 × 10/3) = 133, a soft drink). Server (rewards-redeem-config.js v2)
+    // owns redemption + eligibility; a drift → the quote/submit rejects with a typed message, never a money bug.
+    rewards: { kind:'points', unit:'pts', perCents:3000, ptsPer:10, welcome:100, goal:300, redeemFrom:133, paneIntro:'Ganás puntos en cada pedido y los canjeás por comida gratis.' },
   };
 
   // Lazy Firebase — imported on first use only. Returns { auth, db-helpers } cached after first load.
@@ -199,31 +194,24 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       const pizzaCells = p.size - 1;
       for (let i = 0; i < pizzaCells; i++) slots += `<span class="acct-rw-slot acct-rw-slot--pizza${i < Math.min(p.onCard, pizzaCells) ? ' acct-rw-slot--on' : ''}">${PIZZA_SVG}</span>`;
       slots += `<span class="acct-rw-slot acct-rw-slot--gift${p.redeemable ? ' acct-rw-slot--on' : ''}">${GIFT_SVG}</span>`;
-      const clbl = p.redeemable ? '¡Tenés una pizza gratis para canjear!' : 'sellos para tu pizza gratis';
+      const clbl = p.redeemable ? 'Ya podés canjear tu pizza gratis · en el checkout' : 'sellos para tu pizza gratis';   // §3: mirror the checkout at 8/8
       hero = rwPaneHead(`<span class="acct-rw-cnum">${p.onCard}</span><span class="acct-rw-cden">/ ${p.size}</span>`, clbl)
            + `<div class="acct-rw-card"><div class="acct-rw-slots">${slots}</div></div>`;
       pane.innerHTML = hero;
     } else {
-      const tiers = RW.tiers, n = tiers.length;
-      const fmt = (x) => Number(x).toLocaleString('en-US');           // 1000 → "1,000"
-      const nodeX = (i) => Math.round(((i + 0.5) / n) * 1000) / 10;   // equal-spaced node position % (inset margins)
-      // Fill the bar up to the LAST reached tier node; the tier dots fill accent when reached (no slider thumb).
-      let lastReached = -1;
-      for (let i = 0; i < n; i++) if (av >= tiers[i].cost) lastReached = i;
-      const fillW = lastReached >= 0 ? nodeX(lastReached) : 0;
-      const reached = lastReached >= 0;
-      const next = tiers.find((t) => t.cost > av);
-      let marks = '';
-      for (let i = 0; i < n; i++) marks += `<span class="acct-rw-tier${av >= tiers[i].cost ? ' acct-rw-tier--on' : ''}" style="left:${nodeX(i)}%"><i></i><b>${fmt(tiers[i].cost)}</b></span>`;
-      let rows = '';
-      for (let i = 0; i < n; i++) rows += `<div class="acct-rw-row${av >= tiers[i].cost ? ' acct-rw-row--on' : ''}"><span class="acct-rw-num">${i + 1}</span><div class="acct-rw-rl"><div class="acct-rw-rn"></div><div class="acct-rw-rd"></div></div><span class="acct-rw-rc">${fmt(tiers[i].cost)}</span></div>`;
-      hero = rwPaneHead(`<span class="acct-rw-cnum">${fmt(av)}</span>`, 'puntos')
-           + `<div class="acct-rw-pill"></div>`
-           + `<div class="acct-rw-bar-wrap"><div class="acct-rw-bar"><div class="acct-rw-bar-fill" style="width:${fillW}%"></div>${marks}</div></div>`
-           + `<div class="acct-rw-list">${rows}</div>`;
-      pane.innerHTML = hero;
-      pane.querySelector('.acct-rw-pill').textContent = next ? `faltan ${fmt(next.cost - av)} ${RW.unit} para tu ${reached ? 'próximo' : 'primer'} premio` : '¡Podés canjear el premio más alto!';
-      pane.querySelectorAll('.acct-rw-row').forEach((row, i) => { row.querySelector('.acct-rw-rn').textContent = tiers[i].name || ''; row.querySelector('.acct-rw-rd').textContent = tiers[i].desc || ''; });
+      // La Musa (points) — the à-la-carte reframe (§3): a points-AS-VALUE card, NOT a tier ladder. A gold status
+      // chip shows once the balance covers the cheapest redeemable item (RW.redeemFrom); below that a muted
+      // "Seguí sumando". Redemption itself lives at the pago-page ticket, so this card is purely informational —
+      // no money value, no tier ladder, no earn-rate line. Ported from rewards-v2-mockups/progress-reframe.html.
+      const fmt = (x) => Number(x).toLocaleString('en-US');
+      const canRedeem = av >= (Number(RW.redeemFrom) || Infinity);
+      const chip = canRedeem
+        ? `<div class="acct-pt-worth"><svg class="acct-pt-chk" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg>Ya podés canjear</div>`
+        : `<div class="acct-pt-worth acct-pt-worth--wait">Seguí sumando</div>`;
+      pane.innerHTML = `<div class="acct-picker-top">${PICKER_BACK}<span class="acct-picker-title acct-rw-title">Mis premios</span></div>`
+        + `<div class="acct-pt-card"><div class="acct-pt-num">${fmt(av)}</div><div class="acct-pt-unit">puntos</div>`
+        + chip
+        + `<div class="acct-pt-msg">Canjeá tus puntos <b>en el checkout</b> — por cualquier plato del menú.</div></div>`;
     }
     wirePickerBack(pane);
   }
@@ -272,6 +260,15 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 .acct-rw-tier i{width:13px;height:13px;border-radius:50%;background:#fff;border:2px solid ${CONFIG.palette.line3}}
 .acct-rw-tier--on i{background:${CONFIG.accent};border-color:${CONFIG.accent}}
 .acct-rw-tier b{position:absolute;bottom:16px;font-family:var(--display);font-size:12px;font-weight:600;color:#9A8F7E;white-space:nowrap}
+/* §3 La Musa points-as-value card (à-la-carte reframe) — FIXED brand-neutral gold (matches the ticket) */
+.acct-pt-card{text-align:center;padding:14px 4px 6px}
+.acct-pt-num{font-family:var(--display,'Playfair Display',Georgia,serif);font-weight:700;font-size:52px;line-height:1;color:#5a3d0c;font-variant-numeric:tabular-nums}
+.acct-pt-unit{font-family:var(--sans,'DM Sans',sans-serif);font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#7a5410;margin-top:4px}
+.acct-pt-worth{display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:7px 15px;border-radius:999px;background:linear-gradient(116deg,#f3e5b2,#e0c37c);border:1px solid #d9b65a;color:#5a3d0c;font-weight:700;font-size:13.5px}
+.acct-pt-worth .acct-pt-chk{width:15px;height:15px;stroke:#5a3d0c;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.acct-pt-worth--wait{background:none;border-color:${CONFIG.palette.line3};color:#8A8072;font-weight:600}
+.acct-pt-msg{font-size:13.5px;color:#1b1a17;margin-top:16px;max-width:34ch;margin-left:auto;margin-right:auto}
+.acct-pt-msg b{color:#8a6a1e}
 /* Elegant Mis premios (both brands): big serif counter + intro + (La Musa) pill / slider thumb / tier list. */
 .acct-rw-title{font-family:var(--display);font-size:25px;font-weight:800;letter-spacing:-.01em}
 .acct-rw-intro{margin:12px 2px 18px;font-size:14px;color:#8A8072;line-height:1.55}
@@ -309,8 +306,8 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   const CLAIMORDER_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/claimOrder';   // Task 4 — retro-credit a claimed guest order
   let _claimCtx = null;   // { order_id, token?, n, unit } — stashed when a reward-card CTA / tracker deep-link opens the sheet; consumed post-signup
   let _redeemLiveFlag = false, _redeemLiveRead = false;   // config/rewards_public/redemption_live (cached); canary is read-own via _rwState
-  let _redeemPending = null;   // null | {} (X. Pizza) | { type:'free_item', level, item_id, name } (La Musa)
-  let _redeemQuote = null;     // last SERVER quote { ok, discount_cents, total_cents, free_item:{name} } | null
+  let _redeemPending = null;   // v2: null | { type:'free_pizza_choice', item_id, name } (X. Pizza) | { type:'points_ala_carte', items:[{id,qty,name}] } (La Musa)
+  let _redeemQuote = null;     // v2 SERVER quote { ok, total_cents, discount_cents:0, free_items:[{item_id,qty,name,price_cents}], savings_cents, total_cost, remaining } | null
 
   async function redeemReadLiveFlag() {
     if (_redeemLiveRead) return;
@@ -325,7 +322,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // The SERVER-quoted discounted total (cents) while a reward is pending — the pay-step display MUST use this,
   // never client calcTotal(), so the customer never sees full price while a discount is applied. null = none.
   function getRedeemQuoteTotalCents() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote.total_cents : null; }
-  function getRedeemQuote() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote : null; }   // A6: full server quote {discount_cents,total_cents,free_item} for the Stage-2 order summary
+  function getRedeemQuote() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote : null; }   // v2: full server quote {total_cents, free_items[], savings_cents, total_cost, remaining} for the Stage-2 order summary
   function clearRedeem() { _redeemPending = null; _redeemQuote = null; }
   // Two error classes for the submit handler (spec §5.2 / plan-gate #1):
   //   'redemption' → clear the redeem + FRESH-order_id full-price resubmit.
@@ -636,7 +633,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       sub = 'Guardá tus sellos, direcciones e historial — reordená en un toque.';
     } else {
       const earned = Math.floor(Math.max(0, Number(env.subtotalCents) || 0) / RW.perCents) * RW.ptsPer;
-      const goal = (RW.tiers && RW.tiers[0]) ? RW.tiers[0].cost : 0, total = earned + welcome;
+      const goal = Number(RW.goal) || 0, total = earned + welcome;   // v2: success-card milestone (CONFIG.rewards.goal, mirrors server REWARDS_CONFIG.goal); tiers dropped
       const ready = goal > 0 && total >= goal, pct = goal > 0 ? Math.min(100, Math.round(total / goal * 100)) : 0;
       math = `Este pedido suma <b>${earned} ${RW.unit}</b> + <b>${welcome} de bienvenida</b> al crear tu perfil.`;
       h3 = ready ? 'Tu primer premio ya te espera' : `Vas <b>${total} ${RW.unit}</b>, a solo <b>${Math.max(0, goal - total)}</b> de tu primer premio`;
