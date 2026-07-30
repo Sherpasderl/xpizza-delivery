@@ -27,8 +27,11 @@ const NOW = 1_700_000_000_000;
     // seed includes the earn ledger entry that produced the balance (as Phase A would) so the
     // Σledger.delta === balance invariant is faithful, not artificially pre-violated.
     const seed = async (u, points, r = 'x_pizza') => db.ref(P(u, r)).set({ balance: points, lifetime: points, ledger: { seed_earn: { type: 'earn', delta: points, cost: 0, order_id: null, state: 'earned', ts: NOW } } });
-    const canon = (over = {}) => ({ restaurant_id: 'x_pizza', model: 'discount', type: 'discount_cheapest_pizza', config_version: 1, cost: 8, discount_cents: 29900, free_item_key: 'Margherita', ...over });
-    const reserve = (u, o, { c = canon(), cost = 8, fp = 'FP1', cv = 1 } = {}) => R.reserveRedemption(db, { uid: u, rid: 'x_pizza', orderId: o, cost, canonical: c, orderFingerprint: fp, configVersion: cv, now: NOW });
+    // v2: X. Pizza add-free single-item canonical; La Musa points_ala_carte AGGREGATE multiset canonical.
+    const canon = (over = {}) => ({ restaurant_id: 'x_pizza', model: 'add_free', type: 'free_pizza_choice', config_version: 2, cost: 8, discount_cents: 0, free_item_key: 'Margherita', ...over });
+    const laCanon = (over = {}) => ({ restaurant_id: 'la_musa', model: 'add_free', type: 'points_ala_carte', config_version: 2, discount_cents: 0, total_cost: 1619, items: [{ free_item_key: 'dimsum_01', cost: 743, qty: 2, price_cents: 22300 }, { free_item_key: 'soft_01', cost: 133, qty: 1, price_cents: 4000 }], ...over });
+    const reserve = (u, o, { c = canon(), cost = 8, fp = 'FP1', cv = 2 } = {}) => R.reserveRedemption(db, { uid: u, rid: 'x_pizza', orderId: o, cost, canonical: c, orderFingerprint: fp, configVersion: cv, now: NOW });
+    const laReserve = (u, o, { c = laCanon(), cost = 1619, fp = 'LFP', cv = 2 } = {}) => R.reserveRedemption(db, { uid: u, rid: 'la_musa', orderId: o, cost, canonical: c, orderFingerprint: fp, configVersion: cv, now: NOW });
 
     // 1 — fresh reserve debits AVAILABLE (not balance), writes record + ledger; Σledger.delta === balance
     await seed('uA', 100);
@@ -57,7 +60,7 @@ const NOW = 1_700_000_000_000;
     assert.strictEqual(r4b.reason, 'insufficient'); assert.strictEqual(await rsv('uA'), 8); ok('reserve honors available = balance − reserved (92 free → cost 93 rejected)');
 
     // 5 — config_version mismatch → non-payable, no debit
-    assert.deepStrictEqual(await reserve('uA', 'O3', { cv: 2, fp: 'FP3' }), { ok: false, reason: 'config_version_mismatch' });
+    assert.deepStrictEqual(await reserve('uA', 'O3', { cv: 1, fp: 'FP3' }), { ok: false, reason: 'config_version_mismatch' });   // v2: cv 1 is now the mismatch
     assert.strictEqual(await rsv('uA'), 8); ok('reserve config_version mismatch → non-payable, no debit');
 
     // 6 — deleted_uids PRE-guard: tombstoned before reserve → refused, node untouched
@@ -70,7 +73,7 @@ const NOW = 1_700_000_000_000;
     await seed('uRace', 100);
     let reads = 0;
     const raceDb = { ref: (path) => (path === 'deleted_uids/uRace') ? { get: async () => { reads += 1; return { val: () => (reads >= 2 ? NOW : null) }; } } : db.ref(path) };
-    const rRace = await R.reserveRedemption(raceDb, { uid: 'uRace', rid: 'x_pizza', orderId: 'O1', cost: 8, canonical: canon(), orderFingerprint: 'FP1', configVersion: 1, now: NOW });
+    const rRace = await R.reserveRedemption(raceDb, { uid: 'uRace', rid: 'x_pizza', orderId: 'O1', cost: 8, canonical: canon(), orderFingerprint: 'FP1', configVersion: 2, now: NOW });
     assert.deepStrictEqual(rRace, { ok: false, reason: 'deleted' });
     assert.strictEqual(await node('uRace'), null); assert.strictEqual(reads, 2); ok('reserve post-commit TOCTOU: racing deletion → node purged, hold not stranded (both reads ran)');
 
@@ -196,7 +199,7 @@ const NOW = 1_700_000_000_000;
     // ── [T6 R1] online binds hosted_expires_at AT RESERVE → an unattached hold is sweep-visible immediately ──
     await db.ref('user_rewards').set(null); await db.ref('orders').set(null);
     await seed('uHE', 100);
-    await R.reserveRedemption(db, { uid: 'uHE', rid: 'x_pizza', orderId: 'OHE', cost: 8, canonical: canon(), orderFingerprint: 'FPHE', configVersion: 1, now: NOW, hostedExpiresAt: NOW - 1 });
+    await R.reserveRedemption(db, { uid: 'uHE', rid: 'x_pizza', orderId: 'OHE', cost: 8, canonical: canon(), orderFingerprint: 'FPHE', configVersion: 2, now: NOW, hostedExpiresAt: NOW - 1 });
     assert.strictEqual((await db.ref(`${P('uHE')}/reservations/OHE/hosted_expires_at`).get()).val(), NOW - 1);
     assert.strictEqual((await db.ref(`${P('uHE')}/reservations/OHE/attempt_id`).get()).val(), null); ok('online reserve binds hosted_expires_at at RESERVE (attempt_id still null — attach refines later)');
     const sweepHE = await R.sweepStaleReservations(db, { now: NOW });   // NO attachAttempt ever ran
@@ -204,8 +207,42 @@ const NOW = 1_700_000_000_000;
     assert.strictEqual(await st('uHE', 'OHE'), 'released'); ok('unattached online hold → sweep releases on expiry (no orphan even if attach never lands — crash/attach-fail closed)');
     // cash reserve (no hostedExpiresAt) stays null → its sweep branch stays order-status-driven, unchanged
     await seed('uCa', 100);
-    await R.reserveRedemption(db, { uid: 'uCa', rid: 'x_pizza', orderId: 'OCA', cost: 8, canonical: canon(), orderFingerprint: 'FPCA', configVersion: 1, now: NOW });
+    await R.reserveRedemption(db, { uid: 'uCa', rid: 'x_pizza', orderId: 'OCA', cost: 8, canonical: canon(), orderFingerprint: 'FPCA', configVersion: 2, now: NOW });
     assert.strictEqual((await db.ref(`${P('uCa')}/reservations/OCA/hosted_expires_at`).get()).val(), null); ok('cash reserve leaves hosted_expires_at null (order-status-driven sweep, unchanged)');
+
+    // ── [v2 §1e-1/8] La Musa AGGREGATE reservation — ONE reservation binds the full N-item multiset (cost = Σ);
+    //     cancel/refund releases the whole aggregate (never a partial strand). ──
+    await db.ref('user_rewards').set(null); await db.ref('orders').set(null);
+    await seed('uLA', 2000, 'la_musa');
+    const la1 = await laReserve('uLA', 'OLA');
+    assert.strictEqual(la1.action, 'created'); assert.strictEqual(await rsv('uLA', 'la_musa'), 1619); ok('La Musa aggregate reserve: ONE reservation, reserved = Σ(cost×qty) = 1619 (not per-item)');
+    assert.strictEqual((await R.consumeRedemption(db, { uid: 'uLA', rid: 'la_musa', orderId: 'OLA', now: NOW })).action, 'applied');
+    assert.strictEqual(await bal('uLA', 'la_musa'), 2000 - 1619);
+    assert.strictEqual((await db.ref(`${P('uLA', 'la_musa')}/reservations/OLA/debit_applied`).get()).val(), 1619); ok('La Musa aggregate consume: debits the FULL aggregate (1619), balance 2000→381');
+    assert.strictEqual((await R.reverseRedemptionForRefund(db, { uid: 'uLA', rid: 'la_musa', orderId: 'OLA', disposition: 'refund', now: NOW + 1 })).action, 'refunded');
+    assert.strictEqual(await bal('uLA', 'la_musa'), 2000); ok('La Musa cancel/refund releases the FULL N-item aggregate (credits 1619 → back to 2000, no partial strand)');
+
+    // ── [v2 §1e] transaction ATOMICITY under CONCURRENT La Musa reserves — no double-spend, no mint ──
+    await db.ref('user_rewards').set(null);
+    await seed('uCon', 10, 'la_musa');                              // enough for EXACTLY ONE cost-8 reserve
+    const c8 = laCanon({ total_cost: 8, items: [{ free_item_key: 'soft_01', cost: 8, qty: 1, price_cents: 2400 }] });
+    const [ra, rb] = await Promise.all([
+      R.reserveRedemption(db, { uid: 'uCon', rid: 'la_musa', orderId: 'OcA', cost: 8, canonical: c8, orderFingerprint: 'CA', configVersion: 2, now: NOW }),
+      R.reserveRedemption(db, { uid: 'uCon', rid: 'la_musa', orderId: 'OcB', cost: 8, canonical: c8, orderFingerprint: 'CB', configVersion: 2, now: NOW }),
+    ]);
+    assert.strictEqual([ra, rb].filter((x) => x.ok).length, 1);    // EXACTLY one debits (atomic transaction)
+    assert.strictEqual([ra, rb].find((x) => !x.ok).reason, 'insufficient');
+    assert.strictEqual(await rsv('uCon', 'la_musa'), 8);
+    assert.ok((await bal('uCon', 'la_musa')) >= (await rsv('uCon', 'la_musa'))); ok('concurrent La Musa reserves (balance 10, two cost-8): EXACTLY one succeeds atomically — no double-spend, balance ≥ reserved');
+
+    // ── [v2 §1e-8] balance ≥ reserved holds across a La Musa AGGREGATE reserve + earn clawback (generalized B1 bug) ──
+    await db.ref('user_rewards').set(null); await db.ref('orders').set(null);
+    await db.ref('orders/LZ').set({ customer_uid: 'uLZ', restaurant_id: 'la_musa', subtotal_cents: 486000, items: [{ id: 'noodle_02', qty: 1 }] });   // floor(486000/3000)*10 = 1620 pts
+    assert.strictEqual((await creditEarnForOrder(db, { orderId: 'LZ', order: (await db.ref('orders/LZ').get()).val(), now: NOW })).credited, true);
+    assert.strictEqual(await bal('uLZ', 'la_musa'), 1620);
+    assert.strictEqual((await laReserve('uLZ', 'LY', { cost: 1619 })).action, 'created');   // reserve Σ 1619 → available 1
+    await reverseEarnForOrder(db, { orderId: 'LZ', order: (await db.ref('orders/LZ').get()).val(), now: NOW + 1 });   // clawback the earning order
+    assert.ok((await bal('uLZ', 'la_musa')) >= (await rsv('uLZ', 'la_musa'))); ok('La Musa chain: clawback of the earning order cannot under-collateralize the live aggregate reserve (balance ≥ reserved)');
   });
 
   await env.cleanup();

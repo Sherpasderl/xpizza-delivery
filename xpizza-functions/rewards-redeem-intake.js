@@ -45,14 +45,17 @@ function nameMapFrom(redeem) {
 async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, totalLempiras, customerUid }) {
   if (!customerUid) return { ok: false, status: 401, body: { error: 'login_required', detail: 'redemption requires a verified account' } };
   if (!(await redemptionEnabled(db, customerUid))) return { ok: false, status: 409, body: { error: 'rewards_disabled' } };
+
+  // Anti-abuse (design-gate #3 / §1c) — BEFORE compute/reserve: a reward applies ONLY if the PAID cart has ≥1
+  // item of real value (the free item can never be the whole order). Computed from the server-priced submitted
+  // cart only — never client totals, never the reward's free lines. An empty paid cart → needs_paid_item.
+  if (!Array.isArray(items) || items.length === 0) return { ok: false, status: 409, body: { error: 'needs_paid_item' } };
+  const paid = computeServerTotal(items, restaurantId);
+  if (paid.error) return { ok: false, status: 400, body: { error: 'bad_cart' } };                        // malformed / tampered cart
+  if (!(Number(paid.total) > 0)) return { ok: false, status: 409, body: { error: 'needs_paid_item' } };
+
   const redemption = computeRedemption({ redeem, items, restaurantId });                                 // server-computed reward (never trusts client price/cost/id)
   if (!redemption.ok) return { ok: false, status: 409, body: { error: 'redemption_invalid', reason: redemption.reason } };
-
-  // Anti-abuse (design-gate #3 / §1c): a reward applies ONLY if the cart has ≥1 OTHER PAID item. Compute the
-  // PAID subtotal from the server-priced submitted cart (never client totals, never the reward's free lines).
-  const paid = computeServerTotal(items, restaurantId);
-  if (paid.error) return { ok: false, status: 400, body: { error: 'bad_cart' } };
-  if (!(Number(paid.total) > 0)) return { ok: false, status: 409, body: { error: 'needs_paid_item' } };  // free item(s) can't be the whole order
 
   // Enrich every free item with a sanitized display name (for items_text / summary / quote).
   const nameMap = nameMapFrom(redeem);

@@ -137,22 +137,20 @@ const onStatus = async (db, orderId, after, now) => {
     assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'OF', order: await load('OF'), now: 1301 }), { reversed: true });
     assert.strictEqual(await bal('uRsv2', 'x_pizza'), 3); ok('clawback partially-committed → reclaims only uncommitted (5), balance 3 == reserved 3 (invariant held)');
 
-    // ── [Task 9] earn EXCLUDES the redeemed free unit ──
-    // x_pizza: 3 pizzas, 1 redeemed-free → earns 2 punches (not 3)
-    await db.ref('orders/ORX').set({ customer_uid: 'uidRX', restaurant_id: 'x_pizza', items: [{ qty: 3 }], redemption: { model: 'discount' } });
-    assert.deepStrictEqual(await creditEarnForOrder(db, { orderId: 'ORX', order: await load('ORX'), now: 1400 }), { credited: true, delta: 2 });
-    assert.strictEqual(await bal('uidRX', 'x_pizza'), 2); ok('x_pizza redeemed (3 pizzas, 1 freed) → earns 2 punches (not 3)');
-    // a wholly-free order (single freed pizza) → 0 earn
-    await db.ref('orders/ORX1').set({ customer_uid: 'uidRX1', restaurant_id: 'x_pizza', items: [{ qty: 1 }], redemption: { model: 'discount' } });
-    assert.strictEqual((await creditEarnForOrder(db, { orderId: 'ORX1', order: await load('ORX1'), now: 1401 })).credited, false);
-    assert.strictEqual(await bal('uidRX1', 'x_pizza'), null); ok('x_pizza single freed pizza → 0 earn (no punch for a wholly-free order)');
-    // la_musa: earns on the PAID subtotal only (add_free item is 0-price, absent from subtotal_cents → no adjustment)
-    await db.ref('orders/ORL').set({ customer_uid: 'uidRL', restaurant_id: 'la_musa', subtotal_cents: 60000, redemption: { model: 'add_free' } });
+    // ── [v2 §1e-7] earn is computed over the PAID order.items ONLY — the ADD-FREE reward is never a paid line ──
+    // x_pizza: a redeemed order's order.items are the 3 PAID pizzas (the free pizza is a separate add-free line,
+    // ABSENT from order.items) → earns exactly 3 punches. NO −1 adjustment (the v1 discount model is gone).
+    await db.ref('orders/ORX').set({ customer_uid: 'uidRX', restaurant_id: 'x_pizza', items: [{ qty: 3 }], redemption: { model: 'add_free', type: 'free_pizza_choice', free_item_key: 'Margherita' } });
+    assert.deepStrictEqual((await load('ORX')).items, [{ qty: 3 }]); ok('v2 x_pizza redeemed order: the free pizza is NOT in order.items (only the 3 paid pizzas)');
+    assert.deepStrictEqual(await creditEarnForOrder(db, { orderId: 'ORX', order: await load('ORX'), now: 1400 }), { credited: true, delta: 3 });
+    assert.strictEqual(await bal('uidRX', 'x_pizza'), 3); ok('v2 x_pizza redeemed: earns exactly the PAID order.items qty (3 punches), NO −1');
+    // la_musa: earns on the PAID subtotal only (add_free items are 0-price, absent from subtotal_cents → no adjustment)
+    await db.ref('orders/ORL').set({ customer_uid: 'uidRL', restaurant_id: 'la_musa', subtotal_cents: 60000, redemption: { model: 'add_free', type: 'points_ala_carte', total_cost: 743, items: [{ free_item_key: 'dimsum_01', cost: 743, qty: 1, price_cents: 22300 }] } });
     assert.deepStrictEqual(await creditEarnForOrder(db, { orderId: 'ORL', order: await load('ORL'), now: 1402 }), { credited: true, delta: 200 });   // floor(60000/3000)*10
-    assert.strictEqual(await bal('uidRL', 'la_musa'), 200); ok('la_musa redeemed → earns on paid subtotal only (add_free item excluded)');
-    // the refund reverses the ADJUSTED amount (reads earn_ORX.delta = 2, not the pre-adjustment 3)
+    assert.strictEqual(await bal('uidRL', 'la_musa'), 200); ok('v2 la_musa redeemed: earns on the PAID subtotal only (add-free items are 0-price, excluded)');
+    // the refund reverses the FULL earned amount (reads earn_ORX.delta = 3)
     assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'ORX', order: await load('ORX'), now: 1500 }), { reversed: true });
-    assert.strictEqual(await bal('uidRX', 'x_pizza'), 0); ok('refund reverses the ADJUSTED earn (2 → balance 0), not the pre-adjustment 3');
+    assert.strictEqual(await bal('uidRX', 'x_pizza'), 0); ok('v2 refund reverses the FULL earned punches (3 → balance 0)');
   });
 
   await env.cleanup();

@@ -22,8 +22,8 @@ const NOW = 1_700_000_000_000;
     const rsv = async (u) => (await db.ref(`${P(u)}/reserved`).get()).val() || 0;
     const st = async (u, o) => (await db.ref(`${P(u)}/reservations/${o}/state`).get()).val();
     const seedPts = (u, pts) => db.ref(P(u)).set({ balance: pts, lifetime: pts, ledger: { seed: { type: 'earn', delta: pts, ts: NOW } } });
-    const canon = { restaurant_id: 'x_pizza', model: 'discount', type: 'discount_cheapest_pizza', config_version: 1, cost: 8, discount_cents: 29900, free_item_key: 'Margherita' };
-    const reserve = (u, o) => R.reserveRedemption(db, { uid: u, rid: 'x_pizza', orderId: o, cost: 8, canonical: canon, orderFingerprint: 'FP', configVersion: 1, now: NOW });
+    const canon = { restaurant_id: 'x_pizza', model: 'add_free', type: 'free_pizza_choice', config_version: 2, cost: 8, discount_cents: 0, free_item_key: 'Margherita' };
+    const reserve = (u, o) => R.reserveRedemption(db, { uid: u, rid: 'x_pizza', orderId: o, cost: 8, canonical: canon, orderFingerprint: 'FP', configVersion: 2, now: NOW });
     const seedOrder = (o, over) => db.ref(`orders/${o}`).set({ customer_uid: over.uid, restaurant_id: 'x_pizza', redemption: canon, ...over });
 
     // ── consumeEligible (pure predicate) ──
@@ -76,7 +76,7 @@ const NOW = 1_700_000_000_000;
     await db.ref('user_rewards').set(null); await db.ref('orders').set(null);
     await seedPts('uRace', 20);
     // online hold whose expiry PASSED, but the order materialized PAID+LIVE and the primary consume fail-opened → still reserved
-    await R.reserveRedemption(db, { uid: 'uRace', rid: 'x_pizza', orderId: 'ORACE', cost: 8, canonical: canon, orderFingerprint: 'FP', configVersion: 1, now: NOW, hostedExpiresAt: NOW - 1 });
+    await R.reserveRedemption(db, { uid: 'uRace', rid: 'x_pizza', orderId: 'ORACE', cost: 8, canonical: canon, orderFingerprint: 'FP', configVersion: 2, now: NOW, hostedExpiresAt: NOW - 1 });
     await seedOrder('ORACE', { uid: 'uRace', status: 'new', payment_method: 'online', payment_status: 'confirmed' });   // realized
     const relRace = await R.sweepStaleReservations(db, { now: NOW });
     assert.ok(!relRace.released.some((x) => x.orderId === 'ORACE'));
@@ -86,7 +86,7 @@ const NOW = 1_700_000_000_000;
     assert.strictEqual(await st('uRace', 'ORACE'), 'consumed'); assert.strictEqual(await bal('uRace'), 12); ok('consume-recovery then realizes the paid-but-consume-failed hold (20→12) — points spent, not freed');
     // a genuinely-abandoned expired online hold (order absent) IS still released
     await seedPts('uAb', 20);
-    await R.reserveRedemption(db, { uid: 'uAb', rid: 'x_pizza', orderId: 'OAB2', cost: 8, canonical: canon, orderFingerprint: 'FP', configVersion: 1, now: NOW, hostedExpiresAt: NOW - 1 });   // expired, NO order
+    await R.reserveRedemption(db, { uid: 'uAb', rid: 'x_pizza', orderId: 'OAB2', cost: 8, canonical: canon, orderFingerprint: 'FP', configVersion: 2, now: NOW, hostedExpiresAt: NOW - 1 });   // expired, NO order
     const relAb = await R.sweepStaleReservations(db, { now: NOW });
     assert.ok(relAb.released.some((x) => x.orderId === 'OAB2' && x.kind === 'online_expired'));
     assert.strictEqual(await st('uAb', 'OAB2'), 'released'); ok('release sweep: expired hold on an ABANDONED (absent) order IS still released (genuine abandon)');
