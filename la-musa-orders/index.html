@@ -1212,13 +1212,22 @@ textarea{resize:none;height:80px;line-height:1.4}
 /* ── Scheduled Orders: Checkout time selector (Estándar / Programar) ── */
 .time-select{padding:14px 16px;border-bottom:1px solid var(--border)}
 .time-select-label{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--charcoal);margin-bottom:10px}
-.time-select-note{font-size:13px;color:var(--brand-red,#c0392b);font-weight:600;margin-bottom:10px}
+.time-select-note{font-size:13px;color:var(--muted,#8C7B6E);font-weight:500;margin-bottom:10px}
 .time-select-cards{display:flex;gap:10px}
 .time-card{flex:1;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s}
 .time-card.active{border-color:var(--charcoal);box-shadow:0 0 0 1px var(--charcoal) inset}
 .time-card.disabled{opacity:.45;pointer-events:none}
 .time-card-title{font-family:var(--sans);font-size:15px;font-weight:600;color:var(--charcoal)}
 .time-card-sub{font-size:12px;color:var(--muted);margin-top:3px}
+/* ── Guided step-2 validation: quiet cues + on-miss highlights (no bottom banner, no glow/pulse) ── */
+.time-select-note .opt{color:var(--muted,#8C7B6E);font-weight:400}
+.time-select.needed .time-card{border-color:var(--red,#C8321A)}
+.time-select.needed .time-select-note{color:var(--red,#C8321A);font-weight:600}
+.addr-req{font-size:11.5px;font-weight:600;color:var(--muted,#8C7B6E);margin-left:6px}
+.addr-ok{color:var(--green,#2A6A42);font-size:12.5px;font-weight:700;margin-left:6px;opacity:0;transition:opacity .2s}
+.addr-ok.show{opacity:1}
+#address-details.needed{border-color:var(--red,#C8321A)!important;box-shadow:0 0 0 3px rgba(200,50,26,.14)}
+.pay-container.needed .pay-card{border-color:var(--red,#C8321A)}
 /* ── KDS Phase 2b · "Agotado" (sold-out) overlay — purely additive; only applies to .sold-out cards ── */
 .agotado-pill{background:#1a1a1a;color:#fff;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:999px;white-space:nowrap;z-index:6}
 .pizza-card.sold-out{position:relative}
@@ -1348,7 +1357,7 @@ textarea{resize:none;height:80px;line-height:1.4}
     <!-- ── Scheduled Orders: Checkout time selector (Estándar = ASAP / Programar = real scheduled_for) ── -->
     <div class="time-select" id="time-select">
       <div class="time-select-label" id="time-select-label">Tiempo de entrega</div>
-      <div class="time-select-note" id="time-select-note" style="display:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Cerrado — programá tu pedido para continuar.</div>
+      <div class="time-select-note" id="time-select-note" style="display:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span id="time-select-note-text">Elegí un horario para tu pedido.</span></div>
       <div class="time-select-cards">
         <div class="time-card active" id="time-standard" onclick="selectTimeMode('standard')">
           <div class="time-card-title">Estándar</div>
@@ -1396,7 +1405,7 @@ textarea{resize:none;height:80px;line-height:1.4}
           <input type="text" id="address-detected" placeholder="Detectando..." readonly style="background:var(--surface);color:var(--muted)"/>
         </div>
         <div class="field-group">
-          <label class="field-label">Detalles adicionales <span style="color:var(--red,#C8321A)">*</span></label>
+          <label class="field-label">Detalles adicionales <span style="color:var(--red,#C8321A)">*</span><span class="addr-req" id="addr-req">requerido</span><span class="addr-ok" id="addr-ok">✓</span></label>
           <input type="text" id="address-details" placeholder="Ej: Colonia Las Palmas, portón negro, 2do piso..." required oninput="clearAddressDetailsError()"/>
           <div class="error-box" id="err-address-details" style="display:none;margin-top:6px"></div>
         </div>
@@ -1460,7 +1469,7 @@ textarea{resize:none;height:80px;line-height:1.4}
       </div>
 
       <!-- REWARDS redeem affordance + review (B2 Task 4) — filled by window.__ACCOUNT.renderRedeem; server-authoritative discount, gated on redemption_live/canary --><div id="acct-redeem"></div>
-      <button class="btn-primary" id="btn-pay" onclick="processPayment()" disabled>Seleccioná una opción de pago</button>
+      <button class="btn-primary" id="btn-pay" onclick="processPayment()">Confirmar y enviar pedido</button>
       <button class="btn-secondary" onclick="goBack('s1',25)">← Volver</button>
       <div class="error-box" id="err3" style="margin:8px 0 0">Seleccioná una forma de pago para continuar.</div>
       <div class="contact-line">¿Problemas con tu pedido? Escríbenos al <a href="https://wa.me/50493736607" style="color:var(--green);font-weight:600;text-decoration:none">+504 9373-6607</a></div>
@@ -1974,16 +1983,8 @@ function checkDeliveryRadius(la, ln){
     warnEl.style.display = isWithinDeliveryZone ? 'none' : 'block';
   }
 
-  // Disable payment button when out of zone (prevents submission). When
-  // back in zone, only re-enable if a payment method is also selected.
-  const payBtn = document.getElementById('btn-pay');
-  if (payBtn){
-    if (!isWithinDeliveryZone){
-      payBtn.disabled = true;
-    } else if (selectedPayment){
-      payBtn.disabled = false;
-    }
-  }
+  // The Confirmar button is never disabled — the out-of-zone warning above is the signal, and
+  // processPayment()'s zone gate takes the customer there on tap. (isWithinDeliveryZone still gates submit.)
 }
 
 
@@ -2319,7 +2320,7 @@ function syncFreeOrderUI(){
       if(btn){ btn.disabled=false; btn.className='btn-primary btn-green'; btn.textContent='Confirmar pedido gratis'; }
     } else {
       [online,cash].forEach(c=>{ if(c){ c.classList.remove('pay-card--free-disabled'); c.removeAttribute('aria-disabled'); } });
-      if(btn && !selectedPayment){ btn.disabled=true; btn.className='btn-primary'; btn.textContent='Seleccioná una opción de pago'; }
+      if(btn && !selectedPayment){ btn.disabled=false; btn.className='btn-primary'; btn.textContent='Confirmar y enviar pedido'; }   // never disabled — Confirmar stays tappable
     }
   }catch(_){}
 }
@@ -2663,7 +2664,7 @@ function placePin(la,ln,fallback){
   reverseGeocode(la,ln);
   // Also show payment section hint
   const payEl = document.getElementById('btn-pay');
-  if(payEl) payEl.disabled = !selectedPayment;
+  if(payEl) payEl.disabled = false;   // never disabled — Confirmar stays tappable (processPayment guides on a miss)
 }
 
 function setMapType(type){
@@ -2735,17 +2736,19 @@ function closeFullscreenMap() {
 
   // Enable payment button
   const payBtn = document.getElementById('btn-pay');
-  if (payBtn && selectedPayment) payBtn.disabled = false;
+  if (payBtn) payBtn.disabled = false;   // never disabled — Confirmar stays tappable
 
-  // Slow smooth scroll to the address-details field after the map closes.
-  // address-details is required for delivery orders, so it's the customer's
-  // immediate next step — scrolling there places the cursor where they need
-  // to type next. Originally scrolled to payment, but with the new required
-  // field that would skip past it.
+  // Slow smooth scroll after the map closes — reveal the NEXT unfilled required step in order, never
+  // leaping a step. Closed hours → Programar (land the delivery toggle near the top, Programar just below);
+  // open / already-scheduled → the Detalles field. Never scrolls an un-addressed control off the top.
   setTimeout(() => {
-    const detailsField = document.getElementById('address-details');
-    if (!detailsField) return;
-    const targetY = detailsField.getBoundingClientRect().top + window.scrollY - 80;
+    const needsSchedule = !isOpen() && !window.__scheduledFor;
+    const targetEl = needsSchedule
+      ? document.querySelector('.delivery-toggle')
+      : document.getElementById('address-details');
+    if (!targetEl) return;
+    const offset = needsSchedule ? 70 : 80;
+    const targetY = targetEl.getBoundingClientRect().top + window.scrollY - offset;
     const startY = window.scrollY;
     const distance = targetY - startY;
     const duration = 900;
@@ -2819,6 +2822,13 @@ function goToPayment(){
 function clearAddressDetailsError(){
   const inlineErr = document.getElementById('err-address-details');
   if(inlineErr) inlineErr.style.display='none';
+  // Quiet cue: soft "requerido" flips to ✓ once a valid reference is present — never red while typing.
+  const inp=document.getElementById('address-details');
+  const filled=((inp&&inp.value)||'').trim().length>=3;
+  if(inp) inp.classList.remove('needed');
+  const req=document.getElementById('addr-req'), ok=document.getElementById('addr-ok');
+  if(req) req.style.display=filled?'none':'';
+  if(ok) ok.classList.toggle('show',filled);
 }
 
 /* ── Payment selection ── */
@@ -2839,6 +2849,7 @@ function selectPay(type){
     : ICON_CHECK+'Confirmar y enviar pedido';
   btn.className='btn-primary'+(type==='online'?' btn-green':'');
   document.getElementById('err3').style.display='none';
+  const pcSel=document.querySelector('.pay-container'); if(pcSel) pcSel.classList.remove('needed');
   // When online payment is selected, scroll the card form into view so
   // the customer doesn't have to manually scroll to find it.
   if (type === 'online') {
@@ -2866,61 +2877,62 @@ async function processPayment(){
   // saved (defense-in-depth beyond the hidden-payment UI). Guest / complete-profile / pickup → no-op;
   // fail-open (never blocks a real order on an account-logic error).
   try { if (window.__ACCOUNT && typeof window.__ACCOUNT.deliverySubmitBlocked === 'function' && window.__ACCOUNT.deliverySubmitBlocked()) return; } catch (_) {}
-  // Closed now + no scheduled slot → must schedule (Estándar/ASAP is unavailable while closed). The
-  // server also fail-closed-rejects this, but block here for a clear message.
-  if(!isOpen() && !window.__scheduledFor){
-    const e=document.getElementById('err3'); e.style.display='block';
-    e.textContent='Cerrado — programá tu pedido (elegí "Programar") para continuar.';
-    refreshTimeSelector();
-    return;
-  }
-  // A1: a fully-comped ($0) order has NO payment method — the free-confirm CTA submits the free path.
+  // Guided top-to-bottom validation. The Confirmar button is never disabled; on a miss we take the
+  // customer to the FIRST unfilled step and put the message on THAT field — no bottom banner, no pulse.
+  // Order mirrors the form: schedule (if closed) → location → Detalles → payment. The money path
+  // (buildOrder → submit) below is unchanged.
   const isFreeOrder = !!window.__freeOrder;
-  if(!isFreeOrder && !selectedPayment){
-    document.getElementById('err3').style.display='block'; return;
-  }
-  // RTN, when requested, must be exactly 14 digits (the server silently drops an invalid RTN, so the
-  // client is the real guard). Mirrors X. Pizza rtnIsValid().
-  if(!rtnIsValid()){
-    document.getElementById('rtn-error').style.display='block';
-    document.getElementById('rtn-cliente').focus();
+
+  // 1) Programar — closed hours require a scheduled slot (ASAP is unavailable while closed).
+  //    Server also fail-closed-rejects an ASAP-while-closed order; this guides the customer to the picker.
+  if(!isOpen() && !window.__scheduledFor){
+    refreshTimeSelector();
+    const ts=document.getElementById('time-select');
+    if(ts){ ts.classList.add('needed'); ts.scrollIntoView({behavior:'smooth', block:'center'}); }
     return;
   }
+  // 2) location pin.
   if(orderType==='delivery' && (!lat || !lng)){
+    const m=document.getElementById('map'); if(m) m.scrollIntoView({behavior:'smooth', block:'center'});
     document.getElementById('err3').style.display='block';
-    document.getElementById('err3').textContent='Por favor confirmá tu ubicación en el mapa.';
+    document.getElementById('err3').textContent='Confirmá tu ubicación en el mapa.';
     return;
   }
-  // Final delivery-zone gate. UI keeps payBtn disabled when out of zone,
-  // but defense-in-depth in case button state got out of sync.
+  // 3) delivery zone → the out-of-zone warning (message on the field, near the address).
   if(orderType==='delivery' && !isWithinDeliveryZone){
-    document.getElementById('err3').style.display='block';
-    document.getElementById('err3').textContent='Tu ubicación está fuera de nuestra zona de delivery';
+    const w=document.getElementById('out-of-zone-warning');
+    if(w){ w.style.display='block'; w.scrollIntoView({behavior:'smooth', block:'center'}); }
     return;
   }
-  // address_details is required for delivery orders. Honduras has poor
-  // street-address coverage, so a customer-provided landmark / reference
-  // is essential for the driver to find the specific house once they
-  // arrive at the lat/lng. Minimum 3 chars to filter out placeholder
-  // single-character entries.
-  //
-  // Error is shown INLINE next to the field (err-address-details), not
-  // at the bottom near payment (err3). This way the customer sees the
-  // error message at the same spot they're being scrolled to, instead
-  // of having to scroll back down to find out what went wrong.
+  // 4) Detalles adicionales — a reference is required for delivery. Honduras has poor street-address
+  //    coverage, so a customer-provided landmark is essential for the driver to find the house once at
+  //    the lat/lng. Red border on the INPUT + the message on the field (min 3 chars filters placeholders).
   if(orderType==='delivery'){
     const detailsVal = (document.getElementById('address-details')?.value || '').trim();
     if(detailsVal.length < 3){
       const inlineErr = document.getElementById('err-address-details');
+      const inp=document.getElementById('address-details');
       if(inlineErr){
         inlineErr.style.display='block';
-        inlineErr.textContent='Por favor agregá una referencia para el repartidor (color de casa, portón, piso, etc.)';
+        inlineErr.textContent='Agregá una referencia — el repartidor la necesita para encontrarte.';
       }
-      // Scroll the field into view so the customer sees what's missing.
-      document.getElementById('address-details')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      document.getElementById('address-details')?.focus();
+      if(inp){ inp.classList.add('needed'); inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); inp.focus(); }
       return;
     }
+  }
+  // 5) payment method (a fully-comped $0 order has none — the free-confirm CTA submits the free path).
+  if(!isFreeOrder && !selectedPayment){
+    const pc=document.querySelector('.pay-container'); if(pc) pc.classList.add('needed');
+    const e3=document.getElementById('err3'); if(e3){ e3.style.display='block'; e3.textContent='Elegí cómo querés pagar.'; }
+    if(pc) pc.scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
+  // 6) RTN (factura) — must be exactly 14 digits when requested (the server silently drops an invalid RTN,
+  //    so the client is the real guard). Mirrors X. Pizza rtnIsValid().
+  if(!rtnIsValid()){
+    document.getElementById('rtn-error').style.display='block';
+    document.getElementById('rtn-cliente').focus();
+    return;
   }
   buildOrder();
   if(isFreeOrder){
@@ -3371,7 +3383,9 @@ function startAnotherOrder(){
   const addrDetected = document.getElementById('address-detected');
   if (addrDetected) addrDetected.value = '';
   const addrDetails = document.getElementById('address-details');
-  if (addrDetails) addrDetails.value = '';
+  if (addrDetails) { addrDetails.value = ''; addrDetails.classList.remove('needed'); }
+  const addrReqR = document.getElementById('addr-req'); if (addrReqR) addrReqR.style.display = '';
+  const addrOkR = document.getElementById('addr-ok'); if (addrOkR) addrOkR.classList.remove('show');
   const outOfZone = document.getElementById('out-of-zone-warning');
   if (outOfZone) outOfZone.style.display = 'none';
 
@@ -3380,10 +3394,13 @@ function startAnotherOrder(){
   document.querySelectorAll('.pay-card').forEach(c => c.classList.remove('selected'));
   const payBtn = document.getElementById('btn-pay');
   if (payBtn) {
-    payBtn.disabled = true;
-    payBtn.textContent = 'Seleccioná una opción de pago';
+    payBtn.disabled = false;   // never disabled — Confirmar stays tappable
+    payBtn.textContent = 'Confirmar y enviar pedido';
     payBtn.className = 'btn-primary';
   }
+  // Clear guided-validation miss states so a re-order starts clean.
+  const payContainerR = document.querySelector('.pay-container'); if (payContainerR) payContainerR.classList.remove('needed');
+  const tSelR = document.getElementById('time-select'); if (tSelR) tSelR.classList.remove('needed');
   const pixelpayPanel = document.getElementById('pixelpay-panel');
   if (pixelpayPanel) pixelpayPanel.style.display = 'none';
   // Reset cash-change (cambio) — the amount is per-order, must not carry over to the next.
@@ -4244,14 +4261,20 @@ function refreshTimeSelector(){
   const first = SCHED.dayKeys.length ? SCHED.byDay[SCHED.dayKeys[0].key][0] : null;
   const std=document.getElementById('time-standard'), note=document.getElementById('time-select-note');
   const stdSub=document.getElementById('time-standard-sub'), schSub=document.getElementById('time-schedule-sub');
+  const noteText=document.getElementById('time-select-note-text');
+  const ts=document.getElementById('time-select');
   if(!open){
     if(std) std.classList.add('disabled');
     if(note) note.style.display='block';
+    if(noteText) noteText.textContent='Estamos cerrados — elegí un horario para tu pedido.';   // neutral required cue; red only after a failed Confirmar
     if(window.__timeMode==='standard') window.__timeMode='schedule';   // can't ASAP while closed
   } else {
     if(std) std.classList.remove('disabled');
-    if(note) note.style.display='none';
+    if(note) note.style.display='block';                                                        // open → optional reframe (was hidden)
+    if(noteText) noteText.innerHTML='Lo preparamos ahora — o programá para más tarde <span class="opt">(opcional)</span>.';
   }
+  // On-miss red state clears once the step is addressed (open = optional, or a slot chosen).
+  if(ts && (open || window.__scheduledFor)) ts.classList.remove('needed');
   if(stdSub){
     if(!open) stdSub.textContent='No disponible';
     // Pickup Estándar (ASAP) shows a ~10-min ready window starting 30 min out — display only; the order
