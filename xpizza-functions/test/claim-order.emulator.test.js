@@ -105,6 +105,19 @@ const NOW = 1_700_000_000_000;
     const o12 = (await db.ref('orders/O12').get()).val();
     await reverseEarnForOrder(db, { orderId: 'O12', order: o12, now: NOW });
     assert.strictEqual(await bal('u12'), 0); ok('cancel-after-claim → reverseEarnForOrder reverses (balance 3 → 0)');
+
+    // 15 — MUST-FIX (money before history): the user_orders attribution write fails → the CREDIT still lands.
+    await reset(); await seedProfile('u15'); await seedOrder('O15');
+    const throwDb = { ref: (p) => String(p).startsWith('user_orders/') ? { set: () => Promise.reject(new Error('history down')) } : db.ref(p) };
+    r = await claimOrderCore(throwDb, { uid: 'u15', orderId: 'O15', token: null, now: NOW });
+    assert.strictEqual(r.status, 200); assert.strictEqual(r.body.credited, true); assert.strictEqual(r.body.delta, 3);
+    assert.strictEqual(await bal('u15'), 3); assert.strictEqual(await boundUid('O15'), 'u15');
+    assert.strictEqual((await db.ref('user_orders/u15/O15').get()).exists(), false); ok('attribution write fails → CREDIT still lands (money before history), user_orders absent');
+
+    // 16 — fold-in: payment_status resolving_* (manual reconciliation in progress) → 403, no bind
+    await reset(); await seedProfile('u16'); await seedOrder('O16', { status: 'new', payment_status: 'resolving_capture' });
+    assert.strictEqual((await claimOrderCore(db, { uid: 'u16', orderId: 'O16', token: null, now: NOW })).status, 403);
+    assert.strictEqual(await boundUid('O16'), null); ok('payment_status resolving_* → 403, no bind (manual-reconciliation race guard)');
   });
 
   await env.cleanup();

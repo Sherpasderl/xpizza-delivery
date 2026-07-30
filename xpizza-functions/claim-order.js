@@ -29,6 +29,7 @@ function bindDecision(cur, uid, h2, now) {
   if (cur.status === 'cancelled') return undefined;
   if (cur.resolving_action === 'cancel' && cur.cancel_claim_id) return undefined;
   if (cur.payment_status === 'refunded' || cur.payment_status === 'refund_pending' || cur.payment_status === 'manual_review') return undefined;
+  if (typeof cur.payment_status === 'string' && cur.payment_status.startsWith('resolving_')) return undefined;   // don't bind while a manual reconciliation is resolving
   if (!(cur.customer_phone && phoneHash(cur.customer_phone) === h2)) return undefined;   // phone-match re-checked IN-TX
   return { ...cur, customer_uid: uid };
 }
@@ -67,26 +68,33 @@ async function claimOrderCore(db, { uid, orderId, token, now }) {
   const committed = tx.committed ? tx.snapshot.val() : null;
   if (!committed || committed.customer_uid !== uid) return FORBIDDEN;             // bound-by-another / cancelled / mismatch
 
-  // Attribution — mirror attachCustomerAttribution's user_orders shape (guest orders carry no reorder recipe).
-  await db.ref(`user_orders/${uid}/${orderId}`).set({
-    ts: now,
-    total: committed.total,
-    order_type: committed.order_type,
-    items_text: committed.items_text,
-    restaurant: committed.restaurant_id || 'x_pizza',
-    status: committed.status || null,
-    items: Array.isArray(committed.reorder_items) ? committed.reorder_items : [],
-  });
-
-  // Credit from the COMMITTED snapshot — only for a terminal (delivered/completed) order; otherwise bind-only
-  // (earnRewardsOnCompletion credits at completion, now that customer_uid is set). creditEarnForOrder is
-  // idempotent on earn_${orderId} → no double grant even if both fire.
+  // CREDIT FIRST — money before the non-money history write (money code-gate must-fix). A terminal order must
+  // never end up bound-but-uncredited: the completion trigger already fired while it was a guest and will NOT
+  // refire, so if we gated the credit behind a failing user_orders write it would only heal on a re-claim.
+  // Credit from the COMMITTED snapshot — only for a terminal (delivered/completed) order; else bind-only
+  // (earnRewardsOnCompletion credits at completion, now that customer_uid is set). Idempotent on
+  // earn_${orderId} → no double grant even if both fire.
   let credited = false, delta = 0;
   if (shouldEarnOnStatus(committed.status)) {
     const r = await creditEarnForOrder(db, { orderId, order: committed, now });
     credited = r.credited; delta = r.delta;
   }
   const unit = committed.restaurant_id === 'la_musa' ? 'point' : 'punch';
+
+  // Attribution — BEST-EFFORT (mirror attachCustomerAttribution's user_orders shape). MUST NOT block the
+  // credit above; the P3 status trigger / a later history-view backfill heal a missed write. Guest orders
+  // carry no reorder recipe → items [].
+  try {
+    await db.ref(`user_orders/${uid}/${orderId}`).set({
+      ts: now,
+      total: committed.total,
+      order_type: committed.order_type,
+      items_text: committed.items_text,
+      restaurant: committed.restaurant_id || 'x_pizza',
+      status: committed.status || null,
+      items: Array.isArray(committed.reorder_items) ? committed.reorder_items : [],
+    });
+  } catch (_) { /* history is best-effort — never block the credit */ }
 
   // Flip has_profile on the order's OWN tracking_token so the tracker hides the guest card (best-effort;
   // scheduled orders — no tracking_token yet — get has_profile at materialize from the now-set customer_uid).
