@@ -2,6 +2,12 @@
 
 _For the advisor plan-gate. Money path UNTOUCHED → code-gate + a codex pass on the earn-preview (rewards-domain → money-adjacent). Both brands, both capture screens (order-form success + tracker). Mockup: artifact `f9681eb8` — build EXACTLY to it. Branch `feat/reward-led-claim` STACKS on `feat/track-a-profile-claim` (`b9cdc65`) — it replaces Track A's claim card, so it merges after/with Track A._
 
+## PLAN-GATE changes folded (cleared to build) + claimOrder now LIVE
+- **(a) `summaryLines` MUST FOOT for redeemed orders** — takes the order-shaped input (items + `redemption`/discount cents) and adds a struck **GRATIS / Descuento** line so Σ lines === the DISCOUNTED total. (X. Pizza discount → a `−L<discount>` line; La Musa add_free → the added item as a `GRATIS` 0-cents line, total unchanged.)
+- **(b) `earn_preview = { unit, delta, welcome, goal }`** — stamp `welcome` + `goal` too, so the TRACKER embeds ZERO reward constants (drift-proof). `welcome`/`goal` = display mirror of `REWARDS_CONFIG.welcome` + the redemption threshold (X. Pizza card_size 8 / La Musa first tier 300).
+- **NEW — client `claimOrder` call + post-claim confirmation states** (claimOrder is LIVE, so the earn actually credits → the copy is honest). After a claim-context signup, call `claimOrder` with the new ID token (TOKENLESS for the success card / scheduled; token when the tracker deep-link has it), **fail-open (never block signup)**. Then a confirmation driven by the response `credited`: `credited:true` → **"¡Sumaste N puntos/sellos!"**; `credited:false` → **"Tus N se acreditan cuando entreguemos tu pedido."** (`N` = the number the card displayed). Build exactly to the mockup's Post-claim confirmation section.
+- **Sequence:** functions (earn_preview+summary_lines+goldens) → success reward card → tracker card + itemized summary → client claimOrder call + confirmation states. Branch rebased onto main (`9b492aa` — Track A + claimOrder + the lazy-phoneHash deploy hotfix).
+
 ## Design (from the mockup — verbatim)
 
 **The reward card (`.rw`)** replaces the current "Creá tu perfil" card on (a) the order-form success screen (`account.js renderSuccessRewards` guest branch — KEEP the Track A `env.claimPhone/claimName` soft-fill) and (b) the tracker guest claim card. Structure:

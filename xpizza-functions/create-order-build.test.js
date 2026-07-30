@@ -34,4 +34,21 @@ for (const [key, combo] of Object.entries(COMBOS)) {
   ok(`${key}: held record = scheduled + slot, NO tasks/tracking/token/task-pointers (single order path)`);
 }
 
+// ── Reward card: rewardStamp threads earn_preview + summary_lines onto the order record AND order_tracking
+//    (additive; absent when not passed → the COMBO goldens above stay byte-identical). ──
+{
+  const [, combo] = Object.entries(COMBOS)[0];
+  const stamp = { earn_preview: { unit: 'punch', delta: 3, welcome: 2, goal: 8 }, summary_lines: [{ name: 'Margherita', qty: 3, cents: 89700 }] };
+  const u = buildCreateOrderUpdates({ ...combo.input, hubSnap: combo.snapshot, rewardStamp: stamp });
+  const rec = u[`orders/${combo.input.orderId}`];
+  assert.deepStrictEqual(rec.earn_preview, stamp.earn_preview);
+  assert.deepStrictEqual(rec.summary_lines, stamp.summary_lines);
+  const trk = u[`order_tracking/${combo.input.trackingToken}`];
+  assert.deepStrictEqual(trk.earn_preview, stamp.earn_preview);
+  assert.deepStrictEqual(trk.summary_lines, stamp.summary_lines);
+  const trk0 = buildCreateOrderUpdates({ ...combo.input, hubSnap: combo.snapshot })[`order_tracking/${combo.input.trackingToken}`];
+  assert.ok(!('earn_preview' in trk0) && !('summary_lines' in trk0), 'no rewardStamp → omitted (byte-identical)');
+  ok('rewardStamp → earn_preview + summary_lines on order record + order_tracking; absent when not passed');
+}
+
 console.log(`create-order-build: OK (${n} cases)`);

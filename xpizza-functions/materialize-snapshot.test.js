@@ -83,4 +83,15 @@ const ok = (label) => console.log(`  ✓ ${++n} ${label}`);
   assert.equal('has_profile' in guest, false); ok('guest order → order_tracking omits has_profile (byte-identical)');
 }
 
+// 8) Reward card: earn_preview + summary_lines stamped on the order at intake are COPIED onto order_tracking
+//    at materialize (scheduled/online paths); an order without them omits them (tracker fails open).
+{
+  const ep = { unit: 'point', delta: 530, welcome: 100, goal: 300 };
+  const sl = [{ name: 'Wonton', qty: 2, cents: 44600 }];
+  const trk = buildMaterializeUpdates({ orderId: 'o11', order: baseOrder({ earn_preview: ep, summary_lines: sl }), trackingToken: 't11', now: 1, restaurant: FALLBACK })['order_tracking/t11'];
+  assert.deepEqual(trk.earn_preview, ep); assert.deepEqual(trk.summary_lines, sl); ok('materialize copies earn_preview + summary_lines onto order_tracking');
+  const bare = buildMaterializeUpdates({ orderId: 'o12', order: baseOrder({}), trackingToken: 't12', now: 1, restaurant: FALLBACK })['order_tracking/t12'];
+  assert.equal('earn_preview' in bare, false); assert.equal('summary_lines' in bare, false); ok('order without preview → order_tracking omits them (tracker fails open)');
+}
+
 console.log(`materialize-snapshot: OK (${n} cases)`);

@@ -16,8 +16,15 @@ const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — me
  */
 function buildCreateOrderUpdates({
   orderId, orderType, now, trackingToken, total, lat, lng, fields, hubSnap,
-  restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder,
+  restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
 }) {
+  // Reward-card display fields (earn_preview + summary_lines) — stamped for ALL orders on BOTH the order
+  // record (so a scheduled order's materialize can copy them onto order_tracking) AND order_tracking (the
+  // immediate path). Display-only, no PII. Absent (null summary_lines / no stamp) → omitted.
+  const rw = {
+    ...(rewardStamp && rewardStamp.earn_preview ? { earn_preview: rewardStamp.earn_preview } : {}),
+    ...(rewardStamp && rewardStamp.summary_lines ? { summary_lines: rewardStamp.summary_lines } : {}),
+  };
   const pickupTaskId = `${orderId}_pickup`;
   const deliveryTaskId = `${orderId}_delivery`;
   const updates = {};
@@ -45,6 +52,7 @@ function buildCreateOrderUpdates({
     factura_status: 'not_due',
     cash_tendered_cents: cashTenderedCents,
     ...(freeOrder ? { free_order: true } : {}),   // A1: a redemption zeroed the total — nothing to collect (driver/accounting honor this)
+    ...rw,   // reward-card earn_preview + summary_lines (also on order_tracking below; carried for materialize)
     ...(facturaPriced.items ? { items: facturaPriced.items } : {}),
     ...(fields.razon_social ? { razon_social: fields.razon_social } : {}),
     ...(fields.rtn_cliente ? { rtn_cliente: fields.rtn_cliente } : {}),
@@ -115,6 +123,7 @@ function buildCreateOrderUpdates({
     address_short: addressShort,
     status: 'new',
     created_at: now,
+    ...rw,   // reward-card earn_preview + summary_lines for the tracker (immediate path)
   };
 
   return updates;

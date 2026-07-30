@@ -153,6 +153,58 @@ function computeServerTotal(items, restaurantId = 'x_pizza') {
   return { total, error: null };
 }
 
+// Per-line order summary for the reward-card display (name · qty · line cents), stamped on order_tracking for
+// the TRACKER (which has no cart). MIRRORS computeServerTotal's per-line arithmetic EXACTLY (same menu/extras
+// maps, same key/qty/extras validation) so the displayed cents never drift from the charged total. Cents are
+// server-authoritative; the la_musa NAME is the client display string (sanitized — la_musa's menu is id→price
+// only, exactly as items_text sources names). Redemption (plan-gate (a)) FOOTS to the DISCOUNTED total: X.
+// Pizza discount → a negative "· Recompensa" line (−discount_cents); La Musa add_free → the added item as a
+// 0-cents GRATIS line. Any validation miss → null (the tracker fails open to items_text). Display-only.
+// redemption: null | { model:'discount', discount_cents:<int>, name:<str> } | { model:'add_free', name:<str> }
+function summaryLineName(v, fallback) {
+  const s = String(v == null ? '' : v).replace(/[<>]/g, '').trim().slice(0, 80);
+  return s || fallback;
+}
+function summaryLines(items, restaurantId = 'x_pizza', redemption = null) {
+  const menu = MENU_BY_RESTAURANT[restaurantId];
+  const extraPrices = EXTRAS_BY_RESTAURANT[restaurantId] || {};
+  if (!menu || !Array.isArray(items) || items.length === 0) return null;
+  const byId = restaurantId === 'la_musa';
+  const lines = [];
+  for (const it of items) {
+    const key = itemPricingKey(it, restaurantId);
+    const qty = Number(it && it.qty);
+    if (!key || !Object.prototype.hasOwnProperty.call(menu, key)) return null;
+    if (!Number.isInteger(qty) || qty < 1 || qty > 50) return null;
+    let lineL = menu[key] * qty;
+    if (byId && it.extras != null && !Array.isArray(it.extras)) return null;
+    const extras = Array.isArray(it.extras) ? it.extras : [];
+    const seen = byId ? new Set() : null;
+    for (const ex of extras) {
+      if (byId) {
+        const eid = ex && ex.id;
+        if (!eid || !Object.prototype.hasOwnProperty.call(extraPrices, eid)) return null;
+        if (seen.has(eid)) return null; seen.add(eid);
+        const eqty = Number(ex && ex.qty);
+        if (!Number.isInteger(eqty) || eqty < 1 || eqty > 50) return null;
+        lineL += extraPrices[eid] * eqty;
+      } else {
+        const ename = ex && ex.name;
+        if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices, ename)) return null;
+        lineL += extraPrices[ename];
+      }
+    }
+    const name = byId ? summaryLineName(it && it.name, key) : key;
+    lines.push({ name, qty, cents: lineL * 100 });
+  }
+  if (redemption && redemption.model === 'discount' && Number.isInteger(redemption.discount_cents) && redemption.discount_cents > 0) {
+    lines.push({ name: summaryLineName(redemption.name, 'Recompensa') + ' · Recompensa', qty: 1, cents: -redemption.discount_cents });
+  } else if (redemption && redemption.model === 'add_free') {
+    lines.push({ name: summaryLineName(redemption.name, 'Recompensa'), qty: 1, cents: 0 });   // added free item → GRATIS
+  }
+  return lines;
+}
+
 module.exports = {
-  MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal, itemPricingKey,
+  MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal, itemPricingKey, summaryLines,
 };

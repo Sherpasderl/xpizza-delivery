@@ -6,8 +6,11 @@
 // per 30 L (from subtotal_cents), welcome 100. Redemption thresholds are Phase B (not here).
 const REWARDS_CONFIG_VERSION = 1;
 const REWARDS_CONFIG = {
-  x_pizza: { kind: 'punch', welcome: 2 },
-  la_musa: { kind: 'points', pointsPer: 10, perCents: 3000, welcome: 100 },
+  // `goal` = the FIRST-reward display threshold (a mirror of the redemption config, rewards-redeem-config.js:
+  // X. Pizza punch card_size 8 / La Musa first tier cost 300). Display-only — stamped into earn_preview so the
+  // tracker/success reward card embed ZERO reward constants (drift-proof). Hand-synced with the redemption config.
+  x_pizza: { kind: 'punch', welcome: 2, goal: 8 },
+  la_musa: { kind: 'points', pointsPer: 10, perCents: 3000, welcome: 100, goal: 300 },
 };
 
 // computeEarn({items, subtotalCents, restaurantId}) → {delta:<int>, unit}. x_pizza: Σ positive-int qty
@@ -27,6 +30,17 @@ function computeEarn({ items, subtotalCents, restaurantId } = {}) {
   return { delta: Math.floor(c / cfg.perCents) * cfg.pointsPer, unit: 'point' };
 }
 
+// earn_preview (reward card) — the DISPLAY preview of what an order earns + the reward context, stamped on
+// order_tracking for the tracker (the success card computes the same client-side). { unit, delta } come from
+// computeEarn (the SAME function the authoritative earnRewardsOnCompletion uses → the preview never disagrees
+// with what credits); welcome + goal are the display constants so the tracker embeds none. Writes NOTHING to
+// balances. delta 0 → still return the shape (card shows welcome-only proximity).
+function earnPreview({ items, subtotalCents, restaurantId } = {}) {
+  const { delta, unit } = computeEarn({ items, subtotalCents, restaurantId });
+  const cfg = REWARDS_CONFIG[restaurantId] || {};
+  return { unit, delta, welcome: cfg.welcome || 0, goal: cfg.goal || 0 };
+}
+
 // Earn fires ONLY on an order's real terminal state: delivery completes at 'delivered', pickup at
 // 'completed'. 'ready' is pre-collection and must NOT earn. Pure gate for the earnRewardsOnCompletion
 // trigger (mirrors the shouldSendOrderReceived / decideStatusMirror predicate split).
@@ -43,4 +57,4 @@ function ledgerEntry({ type, delta, orderId = null, redemptionId = null, now, no
   return e;
 }
 
-module.exports = { REWARDS_CONFIG, REWARDS_CONFIG_VERSION, computeEarn, shouldEarnOnStatus, ledgerEntry };
+module.exports = { REWARDS_CONFIG, REWARDS_CONFIG_VERSION, computeEarn, earnPreview, shouldEarnOnStatus, ledgerEntry };

@@ -70,7 +70,7 @@ const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttrib
 const { claimPrefillCore } = require('./claim-prefill');   // Track A — profile-claim soft-fill (pure core; wrapper below)
 const { claimOrderCore } = require('./claim-order');       // claimOrder — retro-credit a guest order's earn (pure core; wrapper below)
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
-const { shouldEarnOnStatus } = require('./rewards-core');                  //   pure terminal-state gate for the earn trigger
+const { shouldEarnOnStatus, earnPreview } = require('./rewards-core');     //   pure terminal-state gate + the reward-card earn_preview
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
 const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, sweepStaleReservations, sweepConsumeRecovery } = require('./rewards-reserve');  //   reservation lifecycle + confirm-settle + sweeps
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');  //   config version for the reservation binding
@@ -239,9 +239,25 @@ const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 // match by name, la_musa → by id). EXTRA_PRICES + the x_pizza alias below keep the
 // factura pricedLineItems call sites byte-identical until A3 makes them restaurant-aware.
 // ---------------------------------------------------------------------------
-const { MENU_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal } = require('./menu-pricing');
+const { MENU_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal, summaryLines } = require('./menu-pricing');
 const { checkItemAvailability } = require('./availability-gate');   // KDS 2b — server intake "86" fail-safe (fail-open)
 const MENU_PRICES = MENU_BY_RESTAURANT.x_pizza; // x_pizza table — used by pricedLineItems (factura)
+
+// Reward-card display fields for order_tracking — earn_preview (what this order earns + welcome/goal) +
+// summary_lines (itemized rows that FOOT to the discounted total). Display-only, writes nothing to balances.
+// The redemption line (plan-gate (a)) makes summary_lines foot when redeemed: X. Pizza discount → the freed
+// pizza name at −discount; La Musa add_free → the added item as GRATIS.
+function buildRewardStamp(items, restaurantId, subtotalCents, redemptionCanonical, freeName) {
+  const earn_preview = earnPreview({ items, subtotalCents, restaurantId });
+  let redArg = null;
+  if (redemptionCanonical) {
+    redArg = redemptionCanonical.model === 'discount'
+      ? { model: 'discount', discount_cents: redemptionCanonical.discount_cents, name: redemptionCanonical.free_item_key }
+      : { model: 'add_free', name: freeName || redemptionCanonical.free_item_key };
+  }
+  const summary_lines = summaryLines(items, restaurantId, redArg);
+  return { earn_preview, ...(summary_lines ? { summary_lines } : {}) };
+}
 const { resolveRestaurantId, sameRestaurant } = require('./restaurant-id');
 const { resolveReturnBase } = require('./pixelpay-return-url');
 const { resolveAssignHub, X_PIZZA_HUB } = require('./assign-hub');
@@ -583,6 +599,7 @@ createOrderApp.all('*', async (req, res) => {
   let redemptionCanonical = null;    // stamped onto the order when a reward is applied
   let redemptionPriced = null;       // discounted breakdown + factura lines (Task 4)
   let redemptionReserved = null;     // { uid, rid, orderId } ONLY if THIS call owns the hold → release on write failure
+  let redemptionFreeName = null;     // La Musa added-free display name → the reward summary_lines footing line
   if (body.redeem != null) {
     // cash has no scheduled fingerprint extra at this point (order_id + discounted total + items_text bind the
     // hold); the completion state consumes, cancel releases. See rewards-redeem-intake.resolveRedemptionForOrder.
@@ -594,6 +611,7 @@ createOrderApp.all('*', async (req, res) => {
     fields.items_text = rd.itemsText;                                                   // La Musa free-item display line appended
     redemptionCanonical = rd.canonical;
     redemptionPriced = rd.priced;
+    redemptionFreeName = rd.freeName || null;
     if (rd.ownsHold) redemptionReserved = { uid: customer_uid, rid: restaurantId, orderId };
   }
   const effectiveTotal = redemptionPriced ? redemptionPriced.total_lempiras : total;   // discounted total (== total when no redeem)
@@ -604,6 +622,10 @@ createOrderApp.all('*', async (req, res) => {
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
     : orderBreakdownCents(total, restaurantId);  // platform → ISV 15% incl.; non-platform → no split
+
+  // Reward-card display fields (earn_preview + summary_lines) — stamped for ALL orders on the order record +
+  // order_tracking. summary_lines uses the DISCOUNTED subtotal-driven footing so it matches the charged total.
+  const rewardStamp = buildRewardStamp(body.items, restaurantId, priceBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName);
 
   // ── A1: free-order intake. The forms grey out both payment methods + submit `free_order:true` ONLY when
   // the server quote zeroed the total (a fully-comping redemption). We RE-DERIVE it here from the
@@ -640,7 +662,7 @@ createOrderApp.all('*', async (req, res) => {
   if (isScheduled) {
     const heldUpdates = buildScheduledOrderRecord({
       orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
-      restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder,
+      restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
       scheduledFor: scheduledForRaw, releaseAt,
     });
     attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items });
@@ -665,7 +687,7 @@ createOrderApp.all('*', async (req, res) => {
   // field names are load-bearing (driver app, KDS, tracking site, factura trigger).
   Object.assign(updates, buildCreateOrderUpdates({
     orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
-    restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder,
+    restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
   }));
 
   attachCustomerAttribution(updates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items });
@@ -858,7 +880,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // (the debit) happens later — right before acquireHostedAttempt, after all placeability — so an abandoned
   // acquire releases it. Gated by redemption_enabled + a VERIFIED uid; ALL-OR-NOTHING (any failure → non-payable
   // 409/401, no attempt/URL). No `redeem` → byte-identical online path (effTotal===total, items_text unchanged).
-  let redemptionCanonical = null, redemptionPriced = null, redemptionCost = 0;
+  let redemptionCanonical = null, redemptionPriced = null, redemptionCost = 0, redemptionFreeName = null;
   let effTotal = total;
   if (body.redeem != null) {
     const prep = await prepareRedemption(db, { redeem: body.redeem, items: body.items, restaurantId,
@@ -867,6 +889,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     redemptionCanonical = prep.canonical;
     redemptionPriced = prep.priced;
     redemptionCost = prep.redemption.cost;
+    redemptionFreeName = prep.freeName || null;
     effTotal = prep.priced.total_lempiras;
     fields.items_text = prep.itemsText;   // free-item display line → flows into BOTH fingerprints + the pending order
   }
@@ -875,6 +898,9 @@ chargeOnlineApp.all('*', async (req, res) => {
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
     : orderBreakdownCents(total, restaurantId);
+
+  // Reward-card display fields — stamped on the pending order (materialize copies them onto order_tracking at confirm/release).
+  const onlineRewardStamp = buildRewardStamp(body.items, restaurantId, effBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName);
 
   // ── A1 (#2, R7): a $0 order is NOT chargeable online. The forms route a fully-comped ($0) order to
   // createOrder (the free path); this is the DEFENSIVE server guard for a stale/direct $0 request. Return a
@@ -1007,6 +1033,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     total: effTotal,                          // discounted total (== total when no redeem)
     total_cents, subtotal_cents, tax_cents,   // discounted breakdown when redeemed; else x_pizza ISV 15% incl. / la_musa no split
     ...(effBreakdown.desc_rebaja_cents ? { desc_rebaja_cents: effBreakdown.desc_rebaja_cents } : {}),   // A-F: factura comp rebaja (x_pizza only)
+    ...onlineRewardStamp,   // reward-card earn_preview + summary_lines (materialize copies to order_tracking at confirm/release)
     ...(redemptionCanonical ? { redemption: redemptionCanonical } : {}),   // bind the reward to the order (reserved until confirm consumes/holds)
     notes: fields.notes,
     payment_method: 'online',

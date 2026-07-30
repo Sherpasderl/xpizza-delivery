@@ -121,7 +121,11 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
     // Track A (MF2): a profiled order sets has_profile:true so the tracker hides the guest profile-claim card.
     // Set in the SHARED builder → covers materialize + resolve-manual + pixelpay-confirm + scheduled-release.
     // Guests OMIT it → guest order_tracking byte-identical (goldens unaffected). Boolean only, no PII.
-    ...(order.customer_uid ? { has_profile: true } : {})
+    ...(order.customer_uid ? { has_profile: true } : {}),
+    // Reward card: copy the earn_preview + summary_lines stamped on the order at intake onto order_tracking
+    // (the tracker's source). Display-only, no PII. Absent on a pre-deploy order → omitted (tracker fails open).
+    ...(order.earn_preview ? { earn_preview: order.earn_preview } : {}),
+    ...(order.summary_lines ? { summary_lines: order.summary_lines } : {})
   };
 
   return updates;
