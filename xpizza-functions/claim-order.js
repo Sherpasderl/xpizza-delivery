@@ -11,7 +11,11 @@
 // The uid is OTP-minted; a guessed order_id is useless without controlling the order's phone → phone-match is
 // sufficient. No double-credit: the bind TRANSACTION admits exactly one uid, and creditEarnForOrder is
 // idempotent on earn_${orderId}. Credit reads the COMMITTED post-tx snapshot (never a stale read).
-const { phoneHash } = require('./otp-lib');
+// otp-lib is required LAZILY (via this wrapper) — its module-load fail-closes on a missing OTP_SALT, which is
+// NOT set during `firebase deploy` source discovery (only at runtime). Loading THIS module must not trigger
+// that. Existing code lazy-requires otp-lib the same way (index.js requestOtp/verifyOtp). require() is cached
+// after the first call, so per-call cost is nil; phoneHash is never called during discovery.
+function phoneHash(raw) { return require('./otp-lib').phoneHash(raw); }
 const { creditEarnForOrder } = require('./rewards-earn');
 const { shouldEarnOnStatus } = require('./rewards-core');
 
