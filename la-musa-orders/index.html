@@ -22,7 +22,7 @@
 })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Playfair+Display:wght@600;700;900&family=DM+Sans:wght@300;400;500;600;700;800&display=swap"/>
 
 <style>
 :root {
@@ -618,6 +618,12 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .order-summary-s2{margin:4px 0 10px;border:1px solid var(--border);border-radius:14px;padding:6px 16px 12px;background:#fff}
 .order-summary-s2:empty{display:none}
 .s2-summary-head{font-family:var(--display);font-size:16px;font-weight:700;color:var(--charcoal);padding:12px 0 4px}
+/* Redemption v2 order-summary (2c): Premio chip + savings + points sub-line (gold literals — brand-neutral) */
+.s2-prem{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:#8a6a1e;border:1px solid #c9a13e;border-radius:4px;padding:1px 4px;margin-left:4px;vertical-align:1px}
+.review-item-price s{color:#9A8F7E;font-weight:400}
+.s2-save{font-size:12.5px;color:var(--green);font-weight:700;margin-top:7px;text-align:right}
+.s2-savesub{font-size:10.5px;color:#6b6459;font-weight:500;text-align:right;margin-top:2px;font-variant-numeric:tabular-nums}
+.s2-savesub b{color:#8a6a1e;font-weight:700}
 .review-item{
   display:flex;justify-content:space-between;
   padding:10px 0;border-bottom:1px solid var(--border);
@@ -2297,6 +2303,7 @@ function renderRedeemUI(){
         items: redeemCartItems(),
         pizzaCount: MENU.reduce((s,p)=>s+qty[p.id],0),
         itemName: (id)=>{ const p=(MENU.find(x=>x.id===id))||(typeof EXTRAS!=='undefined'&&EXTRAS.find(x=>x.id===id)); return p?p.name:id; },
+        catalog: buildRedeemCatalog(),   // v2 picker catalog — brand-specific, defined OUTSIDE this parity block
         onQuoted: applyRedeemQuoteToTotals,
       });
     }
@@ -2341,6 +2348,15 @@ function successTotalCents(o){
   return Math.round(((o&&o.total)||0)*100);
 }
 //__REWARDS_PARITY_END__
+// Redemption v2 picker catalog (brand-specific — OUTSIDE the parity block): every non-alcohol MENU dish grouped
+// by category (per-category fine-line icon) PLUS the 3 acompañamientos from EXTRAS. Alcohol (beer_*) is excluded.
+function buildRedeemCatalog(){
+  const CAT={ dim_sum:['Dim Sum','dumpling'], starters:['Starters','skewer'], soups_salads:['Sopas y ensaladas','soup'], noodles:['Noodles','noodle'], rice:['Rice','rice'], crudo:['Crudo','fish'], house_specials:['Especiales','star'], bebidas:['Bebidas','glass'] };
+  const out=[];
+  MENU.forEach(p=>{ if(String(p.id).indexOf('beer_')===0) return; const c=CAT[p.cat]; if(!c) return; out.push({ key:p.id, name:p.name, price_cents:Math.round(p.price*100), section:c[0], icon:c[1] }); });
+  (typeof EXTRAS!=='undefined'?EXTRAS:[]).forEach(e=>{ if(e.cat!=='Acompañamientos') return; out.push({ key:e.id, name:e.name, price_cents:Math.round(e.price*100), section:'Acompañamientos', icon:'rice' }); });
+  return out;
+}
 
 function calcTotal(){
   // 2-level pizzaExtras shape: extras apply to all units of an item, so
@@ -2413,7 +2429,16 @@ function renderStage2Summary(){
   const envio = orderType==='delivery' ? '<div class="review-item"><div class="review-item-left"><div class="review-item-name" style="color:var(--green)">Envío</div></div><div class="review-item-price" style="color:var(--green)">Gratis</div></div>' : '';
   let reward='';
   try{ const q=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuote)?window.__ACCOUNT.getRedeemQuote():null;
-    if(q && q.free_item && q.free_item.name){ reward='<div class="review-item"><div class="review-item-left"><div class="review-item-name" style="color:var(--green)"><s>'+escapeHtml(q.free_item.name)+'</s> · Recompensa</div></div><div class="review-item-price" style="color:var(--green)">GRATIS</div></div>'; }
+    if(q && Array.isArray(q.free_items) && q.free_items.length){
+      q.free_items.forEach(fi=>{ const nm=escapeHtml(fi.name||fi.item_id)+(fi.qty>1?' ×'+fi.qty:''); const l=Math.round((Number(fi.price_cents)||0)*(Number(fi.qty)||1)/100);
+        reward+='<div class="review-item"><div class="review-item-left"><div class="review-item-name">'+nm+' <span class="s2-prem">Premio</span></div></div><div class="review-item-price"><s>L'+l+'</s> <b style="color:var(--green)">L0</b></div></div>'; });
+      const save=Math.round((Number(q.savings_cents)||0)/100);
+      if(save>0){ reward+='<div class="s2-save">Ahorrás L'+save+'</div>';
+        // La Musa (points wallet): the used/remaining points sub-line ("te quedan …" in gold).
+        const used=Number(q.total_cost)||0, rem=Number(q.remaining)||0;
+        reward+='<div class="s2-savesub">'+used.toLocaleString('en-US')+' pts usados · <b>te quedan '+rem.toLocaleString('en-US')+' pts</b></div>';
+      }
+    }
   }catch(_){}
   box.innerHTML='<div class="s2-summary-head">Resumen del pedido</div>'+rows+envio+reward+'<div class="review-total"><span>Total</span><span>L '+redeemAdjustedTotal().toFixed(0)+'</span></div>';
 }
