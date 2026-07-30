@@ -835,6 +835,12 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     if (cta) cta.disabled = digits.length !== 8;
   }
 
+  // Track A: open the profile-claim create flow soft-filled from a tracker deep-link (index.html
+  // handleProfileClaim → here). Skip if this device already has a profile (nothing to claim). Fail-safe.
+  function startProfileClaim(prefill) {
+    try { const m = marker(); if (m && m.name) return; openLoginSheet(prefill || {}); } catch (_) {}
+  }
+
   function wireOverlayEvents() {
     $('acct-close').onclick = dismissSheet;      // topbar ✕ → contextual close (teardown order-mode newaddr — codex F3)
     $('acct-guest-btn').onclick = closeSheet;    // guest flow untouched — just closes the sheet
@@ -3607,6 +3613,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.clearRedeem = clearRedeem;             //   fresh-resubmit fallback clears the pending reward
   window.__ACCOUNT.classifyRedeemError = classifyRedeemError;   //   'redemption' | 'other' → two-error-class submit handling
   window.__ACCOUNT.renderSuccessRewards = renderSuccessRewards;   // B2 Task 5 — post-order earn badge + guest profile-claim card
+  window.__ACCOUNT.startProfileClaim = startProfileClaim;   // Track A — tracker deep-link → soft-filled create flow (skips if already a profile)
   window.__ACCOUNT.deliverySubmitBlocked = deliverySubmitBlocked;
   window.__ACCOUNT.captureDeliverySaveIntent = captureDeliverySaveIntent;
   window.__ACCOUNT.setRestoring = function (v) { try { _acctRestoring = !!v; if (v) _acctRestoreGen++; } catch (_) {} };   // index.html's restoreOrderForm() brackets its snapshot rebuild with this so the account refresh can't overwrite the retry's address with the default (FIX 7 / R4); bumping the gen on start lets an in-flight async init detect a restore that completed during its await (R5)

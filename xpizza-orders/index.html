@@ -4,6 +4,23 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <title>X Pizza — Pedido en línea</title>
+<script>
+/* Track A (MF1): capture the profile-claim deep-link token from the URL FRAGMENT (#t=…) — a fragment is NEVER
+   sent to servers or in Referer — and SCRUB it from the URL/history IMMEDIATELY, before any third-party
+   resource (Fonts/Maps/Firebase) is even referenced. order_id stays in the query (not a capability).
+   handleProfileClaim() below consumes window.__claimParams. */
+(function(){
+  try{
+    var q = new URLSearchParams(location.search);
+    var orderId = q.get('claim');
+    if(!orderId) return;
+    var token = new URLSearchParams((location.hash||'').replace(/^#/,'')).get('t') || '';
+    window.__claimParams = { order_id: orderId, token: token };
+    q.delete('claim');
+    history.replaceState(null, '', location.pathname + (q.toString() ? '?'+q.toString() : ''));   // strip ?claim + the #fragment token
+  }catch(_){}
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap"/>
 <!-- PixelPay Hosted Payment: card entry + 3DS happen on PixelPay's hosted checkout (redirect),
@@ -1354,6 +1371,7 @@ function switchCat(cat, btn) {
 const CREATEORDER_URL  = 'https://us-central1-xpizza-delivery.cloudfunctions.net/createOrder';
 const CHARGEORDER_URL  = 'https://us-central1-xpizza-delivery.cloudfunctions.net/chargeOnlineOrder';
 const PAYMENTSTATUS_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/paymentStatus';
+const CLAIMPREFILL_URL  = 'https://us-central1-xpizza-delivery.cloudfunctions.net/claimPrefill';   // Track A
 const ORDER_SECRET     = '8bf741d5f90a8d5156845d4b92eeca65130eb5459bcfa725b150b5c3ab083846';
 // PixelPay creds are NOT hardcoded here — chargeOnlineOrder returns the SDK config
 // (mode/endpoint/app_key/auth_hash) per order. The server is the source of truth.
@@ -3689,6 +3707,26 @@ updateTotal();
 updateCart();
 initCardFormatting();
 handlePaymentReturn();   // if we arrived back from the hosted checkout (?pay=…), show the outcome
+
+// Track A: profile-claim deep-link from the tracker (?claim=<order_id>#t=<token>, captured + scrubbed by the
+// <head> script into window.__claimParams). Resolve the just-placed order's name+phone via the token-gated
+// claimPrefill, then open the create-profile sheet SOFT-FILLED. Fail-open: any error → open it empty (never block).
+async function handleProfileClaim(){
+  try{
+    var cp = window.__claimParams; if(!cp || !cp.order_id) return;
+    window.__claimParams = null;   // one-shot
+    var prefill = {};
+    if(cp.token){
+      try{
+        const r = await fetch(CLAIMPREFILL_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ order_id: cp.order_id, token: cp.token }) });
+        const j = await r.json().catch(()=>({}));
+        if(r.ok && j && j.ok){ prefill = { phone: j.phone||'', name: j.name||'' }; }
+      }catch(_){}
+    }
+    if(window.__ACCOUNT && typeof window.__ACCOUNT.startProfileClaim === 'function') window.__ACCOUNT.startProfileClaim(prefill);
+  }catch(_){}
+}
+handleProfileClaim();
 
 // KDS 2b: read item availability once on load, then re-poll every 60s (fail-open; the server
 // intake gate is the authoritative backstop). Pure read — never touches the cart/payload/submit.
