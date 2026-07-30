@@ -33,6 +33,18 @@ const { claimPrefillCore } = require('../claim-prefill');
 
     await db.ref('order_tracking/Ghost123abcd').set({ order_id: 'GHOST' });
     r = await claimPrefillCore(db, 'GHOST', 'Ghost123abcd'); assert.strictEqual(r.status, 404); ok('token valid but order absent → 404');
+
+    // MF-B (R2) — the per-TOKEN throttle the claimPrefill wrapper applies BEFORE the DB read. Exercises the
+    // REAL checkRateLimit + claim_token bucket from index.js (require-safe under the emulator): same token,
+    // (max+1)th call in-window → not allowed (→ the wrapper returns 429 + Retry-After). Per-TOKEN, so it's
+    // independent of the Cloud-Run IP-spoofability problem (the token is the spoof-proof capability).
+    const { checkRateLimit, RATE_LIMIT_BUCKETS } = require('../index.js');
+    const CT = RATE_LIMIT_BUCKETS.claim_token; const tkn = 'RateLimTok01';
+    for (let i = 0; i < CT.max; i++) { const rr = await checkRateLimit(db, 'claim_token', tkn, CT); assert.strictEqual(rr.allowed, true); }
+    const over = await checkRateLimit(db, 'claim_token', tkn, CT);
+    assert.strictEqual(over.allowed, false); assert.ok(over.retryAfterSec > 0); ok(`per-token throttle: same token → call ${CT.max + 1} in-window → throttled (429, Retry-After ${over.retryAfterSec}s)`);
+    const other = await checkRateLimit(db, 'claim_token', 'DifferentTok9', CT);
+    assert.strictEqual(other.allowed, true); ok('per-token throttle: a DIFFERENT token has its own bucket (independent)');
   });
 
   await env.cleanup();

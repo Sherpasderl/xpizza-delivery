@@ -349,8 +349,11 @@ const RATE_LIMIT_BUCKETS = {
   confirm_ip: { windowMs: 10 * 60 * 1000, max: 80 }, // confirm/poll guard: each payment does
                                                     // ~1 confirm (+ a few polls on 202), so this
                                                     // caps capture-hammering without blocking legit polling
-  claim_ip: { windowMs: 10 * 60 * 1000, max: 30 } // Track A claimPrefill: token-gated phone lookup returns
-                                                  // PII → throttle replay/harassment on a leaked tracker link
+  claim_token: { windowMs: 10 * 60 * 1000, max: 15 } // Track A claimPrefill: throttle per-TOKEN (the spoof-PROOF
+                                                     // capability; on Cloud Run req.ip == the client-appended
+                                                     // XFF, spoofable) — caps repeated phone pulls on one leaked
+                                                     // link. Generous for legit retries; invalid-token probing
+                                                     // is 403'd by the core + bounded by maxInstances.
 };
 
 // Hash a rate-limit key (IP / phone) into an RTDB-safe, non-PII key. Avoids
@@ -1555,11 +1558,13 @@ exports.claimPrefill = onRequest(
     // Missing/malformed order_id → 403 (no info). Token must be present + RTDB-path-safe (real tokens are 12
     // alphanumerics) so `order_tracking/{token}` can never be a path-injection.
     const db = getDatabase();
-    // MF3 — per-IP throttle BEFORE any read: this endpoint returns phone PII.
-    // MF-B: key on req.ip (the Cloud-Run-trusted peer, NOT the spoofable left-most X-Forwarded-For — H4),
-    // so the throttle can't be bypassed by rotating the XFF header.
-    const clientIp = req.ip || 'unknown';
-    const rl = await checkRateLimit(db, 'claim_ip', clientIp, RATE_LIMIT_BUCKETS.claim_ip);
+    // MF-B (R2) — throttle per-TOKEN, not per-IP. On Cloud Run the Functions Framework enables `trust proxy`,
+    // so req.ip resolves to the client-APPENDED left-most X-Forwarded-For (spoofable) — an IP key is bypassable
+    // by rotating the header. The tracking_token is the spoof-PROOF capability, and the real abuse is repeated
+    // pulls of ONE leaked link's phone → a per-token cap limits that directly, independent of IP spoofability.
+    // checkRateLimit hashes the key (the token never sits in rate_limits in the clear). BEFORE the DB read.
+    // An empty token → checkRateLimit no-ops (allowed) → the core 403s it (missing token).
+    const rl = await checkRateLimit(db, 'claim_token', token, RATE_LIMIT_BUCKETS.claim_token);
     if (!rl.allowed) { res.set('Retry-After', String(rl.retryAfterSec)); return res.status(429).json({ error: 'Too Many Requests' }); }
     // Validation + token↔order STRICT bind + phone lookup — pure core (claim-prefill.js), emulator-tested.
     const r = await claimPrefillCore(db, orderId, token);
@@ -4847,3 +4852,9 @@ exports.pruneInactiveAccounts = onSchedule(
     console.log(`pruneInactiveAccounts: removed ${count} inactive profile(s) (cutoff ${new Date(cutoff).toISOString()})`);
   }
 );
+
+// ── Test-only exports (NOT Cloud Function triggers — the Firebase deployer only deploys CloudFunction
+// instances, so these plain values are ignored at deploy). Let the RTDB emulator suites exercise the
+// per-token claimPrefill throttle (checkRateLimit + the claim_token bucket) directly.
+module.exports.checkRateLimit = checkRateLimit;
+module.exports.RATE_LIMIT_BUCKETS = RATE_LIMIT_BUCKETS;
