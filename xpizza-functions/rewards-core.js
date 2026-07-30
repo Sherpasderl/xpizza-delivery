@@ -35,10 +35,15 @@ function computeEarn({ items, subtotalCents, restaurantId } = {}) {
 // computeEarn (the SAME function the authoritative earnRewardsOnCompletion uses → the preview never disagrees
 // with what credits); welcome + goal are the display constants so the tracker embeds none. Writes NOTHING to
 // balances. delta 0 → still return the shape (card shows welcome-only proximity).
-function earnPreview({ items, subtotalCents, restaurantId } = {}) {
+function earnPreview({ items, subtotalCents, restaurantId, redemption } = {}) {
   const { delta, unit } = computeEarn({ items, subtotalCents, restaurantId });
+  // delta MUST equal what actually credits (rewards-earn.js creditEarnForOrder): an X. Pizza `discount`
+  // redemption frees ONE pizza base unit → −1 punch. Apply the SAME adjustment so preview === credited for
+  // ALL orders. (Guests can't redeem → no adjustment; La Musa add_free's free item is a 0-price line absent
+  // from subtotal_cents → its points-earn is already correct, no adjustment.)
+  const adjusted = (redemption && redemption.model === 'discount') ? Math.max(0, delta - 1) : delta;
   const cfg = REWARDS_CONFIG[restaurantId] || {};
-  return { unit, delta, welcome: cfg.welcome || 0, goal: cfg.goal || 0 };
+  return { unit, delta: adjusted, welcome: cfg.welcome || 0, goal: cfg.goal || 0 };
 }
 
 // Earn fires ONLY on an order's real terminal state: delivery completes at 'delivered', pickup at

@@ -248,7 +248,7 @@ const MENU_PRICES = MENU_BY_RESTAURANT.x_pizza; // x_pizza table — used by pri
 // The redemption line (plan-gate (a)) makes summary_lines foot when redeemed: X. Pizza discount → the freed
 // pizza name at −discount; La Musa add_free → the added item as GRATIS.
 function buildRewardStamp(items, restaurantId, subtotalCents, redemptionCanonical, freeName) {
-  const earn_preview = earnPreview({ items, subtotalCents, restaurantId });
+  const earn_preview = earnPreview({ items, subtotalCents, restaurantId, redemption: redemptionCanonical });
   let redArg = null;
   if (redemptionCanonical) {
     redArg = redemptionCanonical.model === 'discount'
