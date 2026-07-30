@@ -48,6 +48,7 @@ function costPtsFor(priceCents) { return Math.round((priceCents / 100) * REDEEM_
 // (x_pizza's menu key IS the item name.) The chosen pizza is NOT a paid line; it never enters order.items, so it
 // earns zero punches with no adjustment (design-gate refinement #7).
 function computeXPizza(redeem) {
+  if (!redeem || redeem.type !== REDEMPTION_CONFIG.x_pizza.reward) return { ok: false, reason: 'bad_request' };   // fail-closed: type MUST match the brand's reward
   const name = redeem && redeem.item_id;
   if (typeof name !== 'string' || !name) return { ok: false, reason: 'bad_request' };
   if (!isXPizzaEligible(name)) return { ok: false, reason: 'ineligible_item' };   // NY / unknown / non-individual
@@ -65,6 +66,7 @@ function computeXPizza(redeem) {
 // redeem = { type:'points_ala_carte', items:[{ id, qty }, …] }. Duplicates coalesced; ids sorted for a stable
 // fingerprint; each priced + eligibility-checked server-side.
 function computeLaMusa(redeem) {
+  if (!redeem || redeem.type !== REDEMPTION_CONFIG.la_musa.reward) return { ok: false, reason: 'bad_request' };   // fail-closed: type MUST match the brand's reward
   const raw = redeem && redeem.items;
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_REDEEM_DISTINCT) return { ok: false, reason: 'bad_request' };
   const qtyById = new Map();

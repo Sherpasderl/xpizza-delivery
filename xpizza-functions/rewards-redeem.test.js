@@ -84,6 +84,12 @@ assert.strictEqual(lm({ type: 'points_ala_carte', items: Array.from({ length: 10
   assert.notStrictEqual(redemptionFingerprint(a), redemptionFingerprint(d)); ok('redemptionFingerprint: a DIFFERENT set hashes differently');
 }
 
+// ── fail-closed: redeem.type MUST match the brand's reward (a bogus type with a valid item is rejected) ──
+assert.strictEqual(xp({ type: 'points_ala_carte', item_id: 'Margherita' }).reason, 'bad_request');
+assert.strictEqual(xp({ item_id: 'Margherita' }).reason, 'bad_request');                                        // missing type
+assert.strictEqual(lm({ type: 'free_pizza_choice', items: [{ id: 'dimsum_01', qty: 1 }] }).reason, 'bad_request');
+assert.strictEqual(lm({ items: [{ id: 'dimsum_01', qty: 1 }] }).reason, 'bad_request'); ok('type guard: redeem.type must === the brand reward (mismatched/absent type → bad_request, fail-closed)');
+
 // ── dispatch guards ──
 assert.strictEqual(computeRedemption({ redeem: { type: 'x' }, items: [], restaurantId: 'x_pizza' }).reason, 'bad_request');
 assert.strictEqual(computeRedemption({ redeem: { type: 'x' }, items: XCART, restaurantId: 'nope' }).reason, 'bad_request');

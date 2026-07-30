@@ -45,7 +45,9 @@ function isXPizzaEligible(name) { return !!(name && X_PIZZA_REDEEM_ELIGIBLE.has(
 function isLaMusaEligible(id) {
   if (!id || typeof id !== 'string') return false;
   if (LA_MUSA_ACOMP.has(id)) return true;                                                 // acompañamientos (EXTRAS namespace)
-  if (id.startsWith('beer_')) return false;                                               // alcohol — excluded from the picker
+  // EXPLICITLY reject alcohol + modifiers BEFORE the MENU lookup — fail-closed, never by mere absence from MENU
+  // (so a modifier that ever landed in MENU still can't be redeemed).
+  if (id.startsWith('beer_') || id.startsWith('sauce_') || id.startsWith('protein_')) return false;
   return Object.prototype.hasOwnProperty.call(MENU_BY_RESTAURANT.la_musa || {}, id);      // any non-alcohol MENU dish
 }
 
