@@ -1,6 +1,8 @@
-# Pickup-order completion — design spec (v4: `completed`, complete consumer matrix, on current main)
+# Pickup-order completion — design spec (v5: `completed`, EXHAUSTIVE consumer matrix, on current main)
 
-**Date:** 2026-07-31 · **Status:** REVISED (v4) — folds the re-gate's findings ⑤⑥⑦ **plus** a full systematic enumeration so the design is **complete-by-construction** (next gate confirms, not discovers). **Base = `origin/main` `c09fe12`** (post-rewards-v2). Worktree **`feat/pickup-completion`**. Supersedes v3 (`9f29872`).
+**Date:** 2026-07-31 · **Status:** REVISED (v5) — folds v4-regate's 3 (queryPaymentStatus, SDK live-filter, claim-order) after an **exhaustive** enumeration covering BOTH `status` equality branches **and** status Set/list membership, across functions + all clients + the 5-copy SDK. Complete-by-construction. **Base = `origin/main` `c09fe12`** (post-rewards-v2). Worktree **`feat/pickup-completion`**. Supersedes v4 (`c47b5da`).
+
+**Enumeration methodology (why v5 is provably complete):** two grep classes were run — (a) `=== 'delivered'` / `!== 'delivered'` equality branches (v1–v4), and (b) status **Set/array/`includes()`** membership (v5, the class that hid `NON_LIVE_ORDER_STATUSES` + `queryPaymentStatus`'s paid-list). Both classes, over `xpizza-functions/*`, `xpizza-dispatch`/`-dashboard`/`-kitchen`/`-track`, `xpizza-orders`/`la-musa-orders`, and `xpizza-delivery.js`. Every hit is bucketed in §3.
 **One-line:** KDS "Completar" on a **pickup** order → write `status='completed'`, and wire `completed` into **every** terminal/active consumer that currently only knows `delivered`. Earns rewards + consumes redemption (already wired). **Delivery + driver path byte-untouched; `delivered` stays delivery-only.**
 
 ## 1. Problem
@@ -40,11 +42,13 @@ Pickup orders (`order_type:'pickup'`) never reach a terminal status → never ea
 **Account "Mis pedidos" — BOTH copies** (finding ⑦ — customer-facing)
 - **A1** `xpizza-orders/account.js` (:1376, `orderStatusPill`) + **A2** `la-musa-orders/account.js` (:1380): add `case 'completed': return { label: 'Recogido', cls: 'ok' };` before the `default: 'En preparación'`.
 
-**Functions — `xpizza-functions/index.js`** ⚠ **the one functions change → functions deploy required**
+**Functions — `xpizza-functions/index.js`** ⚠ **the functions changes (F1, F2) → functions deploy required** (both in `index.js`, one deploy)
 - **F1** (:3738, inbound WhatsApp status-check active filter `status !== 'delivered' && status !== 'cancelled'`): add `&& o.status !== 'completed'` → a customer texting after pickup no longer gets an "active order" reply.
+- **F2** (:1569, `queryPaymentStatus` paid-derivation `['new','preparing','ready','out_for_delivery','delivered'].includes(st)`): add `'completed'` to the list → a `completed` order (esp. a **cash** pickup, where `payment_status` isn't `'confirmed'`) correctly reads `state:'paid'` instead of slipping to not-paid. Safe (a completed order IS paid/fulfilled); no-op for online orders (already `confirmed`).
 
-### 3B. LEAVE `delivered`-only (deliberate — delivery/driver measures)
-Dashboard `isPlausibleDelivery` (:805), delivery-count (:1247/:1249), prep-time (:1254/:1256), **driver leaderboard** (:1364), `rv-delivered` display (:1260). Functions: tracking `delivered_at` stamp (:3111 — the mirror already propagates the status; `delivered_at` is delivery-specific), `tplDelivered` (:3242 — unreachable for `completed` via the :3160 notify guard). Dispatch `closedTime` (:3998 — `completed` has no `delivered_at`, sorts by `created_at`; accepted, Option A).
+### 3B. LEAVE (deliberate)
+- **`delivered`-only delivery/driver measures:** dashboard `isPlausibleDelivery` (:805), delivery-count (:1247/:1249), prep-time (:1254/:1256), **driver leaderboard** (:1364), `rv-delivered` display (:1260). Functions: tracking `delivered_at` stamp (:3111 — the mirror already propagates the status; `delivered_at` is delivery-specific), `tplDelivered` (:3242 — unreachable for `completed` via the :3160 notify guard). Dispatch `closedTime` (:3998 — `completed` has no `delivered_at`, sorts by `created_at`; accepted, Option A).
+- **SDK live-filter `NON_LIVE_ORDER_STATUSES` / `filterLiveOrders`** (`order-filter.js` + `xpizza-delivery.js`, **byte-identical across 5 copies**: kitchen/dispatch/dashboard/driver/reference): set = `{pending_payment, scheduled, releasing}`. **DECISION: LEAVE — `completed` stays LIVE**, mirroring `delivered` (also not in the set). Rationale: live orders reach `allOrders`; the matrix's dispatch closed-list (DI1) + dashboard completed-stats (D3–D6) **require `completed` orders to be present** to display them as terminal. Making `completed` non-live would filter them out of `allOrders` → contradict the design. **No SDK edit → the 5-copy byte-identical invariant is untouched** (documented so: were it ever changed, all 5 copies MUST change together, same class as `isCashPayment` — but we don't).
 
 ### 3C. ALREADY HANDLES `completed` — NO CHANGE (verified on main)
 - `rewards-core.js:53` `shouldEarnOnStatus = delivered||completed` → **earns + consumes** (the feature).
@@ -56,6 +60,8 @@ Dashboard `isPlausibleDelivery` (:805), delivery-count (:1247/:1249), prep-time 
 - functions `sendOrderStatusNotifications` (:3160) — early-returns unless `{out_for_delivery,delivered,cancelled}` → `completed` silent (no WhatsApp).
 - functions `logOrderLifecycle` (:3276) — logs the transition + `timelineStampKey('completed')='completed_at'` (valid, harmless, useful).
 - tracking status mirror (:3111) — propagates `completed` to `order_tracking.status` (feeds the tracker T1–T3).
+- functions `claim-order.js` (:82) — gates its earn on the shared `shouldEarnOnStatus(committed.status)` (`= delivered||completed`) → **already handles `completed`** (no change).
+- `cancel-order.js:19` already listed above; the broadened Set-sweep confirmed all other terminal Sets (`sweep-pending HEAL_TERMINAL_STATUSES`, `cancel-order TERMINAL_SUCCESS`) include `completed`, and the remaining Sets (`driver-push TERMINAL_FCM_CODES`, `manual-resolve AUTOMATION_CLOSED_TERMINAL`, `MONOTONIC_TERMINAL`) key on driver/FCM/payment status, not order status → N/A.
 
 ## 4. Backfill
 Pickup-scoped, **dry-run-first** script: `order_type==='pickup'` AND non-terminal status → `completed`. Cannot touch a delivery order. Retroactive earn/consume fires per order — **idempotent** (earn via `earn_${orderId}`; consume state-machine idempotent; `sweepConsumeRecovery` includes `completed`) → safe on re-run. Accepted (launch = test orders, low stakes); printed as a conscious write.
@@ -70,7 +76,7 @@ Change gated on `order_type==='pickup'`; delivery Completar = local `completedSe
 Reusing an intended-but-**unwired** enum status = **audit EVERY terminal/active check** (buckets, action gates, estado maps, tracker steps, closed/history filters, inbound/outbound comms, cancel-gate, sweeper, leaderboard, status mirror, lifecycle stamps), not just earn+queue+stats — because unmapped statuses fall to a wrong default. Corollary: **run verification on the CURRENT build base** (the v3 gate ran stale and mis-reported the consume path + every line number).
 
 ## 8. Files touched (complete)
-`xpizza-kitchen/index.html` (K1,K2) · `xpizza-dashboard/index.html` (D1–D8) · `xpizza-dispatch/index.html` (DI1–DI4) · `xpizza-track/index.html` (T1–T3) · `xpizza-orders/account.js` (A1) · `la-musa-orders/account.js` (A2) · `xpizza-functions/index.js` (F1) · backfill script. **NOT touched:** RTDB rules; `xpizza-delivery.js` (any copy); the driver app; all §3C machinery.
+`xpizza-kitchen/index.html` (K1,K2) · `xpizza-dashboard/index.html` (D1–D8) · `xpizza-dispatch/index.html` (DI1–DI4) · `xpizza-track/index.html` (T1–T3) · `xpizza-orders/account.js` (A1) · `la-musa-orders/account.js` (A2) · `xpizza-functions/index.js` (F1, F2) · backfill script. **NOT touched:** RTDB rules; **`xpizza-delivery.js` / `order-filter.js` (the 5-copy SDK — deliberate LEAVE, §3B: `completed` stays live like `delivered`)**; the driver app; all §3C machinery.
 
 ## 9. Testing
 Per-consumer assertions where pure (bucket/pill/estado/tracker/inbound-filter for `completed`). **On-device proof:** pickup → KDS Completar → `status='completed'` → (a) earns + consumes (rewards ledger); (b) leaves dispatch En Fila, appears in closed search, detail pill "Recogido", topbar done +1; (c) dashboard: completed aggregate +1, "Recogido", NOT active, NO refund action; leaderboard/prep unchanged; (d) KDS 2nd device shows it Archivado (not Nuevo); (e) tracker shows terminal "Recogido" (not step-1); (f) "Mis pedidos" shows "Recogido" (not "En preparación"); (g) customer text → not "active order"; no WhatsApp. Then: delivery Completar + driver "¡Entregado!" path verified unchanged. Backfill: dry-run pickup-only list reviewed; retro-earn noted.
