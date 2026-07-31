@@ -4367,7 +4367,10 @@ function renderOrderDetailModal(order) {
   }
   // Cancel — reuses the money-safe server cancel (voids charge / releases driver). Only for
   // orders that aren't already terminal.
-  const cancellable = !['cancelled', 'delivered', 'completed', 'picked_up'].includes(order.status);
+  // picked_up (out-for-delivery) IS cancelable — a dispatcher can abort an in-progress
+  // delivery; the server voids the charge + recalls the driver (Xavier's call, 2026-07-31).
+  // Client + server agree (both allow); only terminal states hide Cancel.
+  const cancellable = !['cancelled', 'delivered', 'completed'].includes(order.status);
   if (cancellable) {
     actions.push(`<button class="od-action-btn danger" id="od-cancel-order">Cancelar pedido</button>`);
   }
