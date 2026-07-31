@@ -54,52 +54,136 @@
 
   /* ==================== HEADER ==================== */
   header.topbar {
-    height: 52px;
-    background: var(--surface);
+    height: 60px;
+    background: linear-gradient(180deg, #222a37, #1c232e);
     border-bottom: 1px solid var(--border-soft);
+    box-shadow: 0 1px 0 var(--hair-top), 0 4px 20px rgba(0,0,0,0.25);
     display: flex;
     align-items: center;
-    padding: 0 18px;
-    gap: 16px;
+    padding: 0 16px;
+    gap: 14px;
     position: relative;
     z-index: 10;
   }
-  .brand {
+  /* ---- v6 brand (mockup .brand) ---- */
+  .tb-brand {
     font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
-    font-size: 22px;
-    letter-spacing: 0.12em;
-    color: var(--accent);
+    font-size: 15px;
+    color: var(--text);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap;
   }
-  .brand-sub {
+  .tb-brand .tb-x {
+    display: inline-grid;
+    place-items: center;
+    width: 26px; height: 26px;
+    border-radius: 8px;
+    background: linear-gradient(160deg, #e85a58, #cc2e2c);
+    color: #fff;
+    font-weight: 800;
+    font-size: 14px;
+    box-shadow: 0 2px 8px rgba(224,65,63,0.35);
+  }
+  /* restaurant pill (mockup .sel — display-only; dispatch is single-restaurant, not a switcher) */
+  .tb-restaurant {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-weight: 500;
+    font-weight: 600;
     font-size: 13px;
-    letter-spacing: -0.01em;
     color: var(--text-soft);
-    margin-left: -8px;
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 7px 12px;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: var(--shadow);
   }
-  .topbar-spacer { flex: 1; }
-  .topbar-stat {
-    font-size: 12px;
-    color: var(--text-soft);
-    padding: 0 14px;
-    border-left: 1px solid var(--border-soft);
-    height: 30px;
+  .tb-restaurant::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 6px rgba(22,163,74,0.55);
+    flex: 0 0 auto;
+  }
+
+  /* ---- v6 KPI cluster (mockup .kpis — CENTERED, borderless, hairline dividers) ---- */
+  .tb-kpis {
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    padding: 0 4px;
+  }
+  .tb-kpi {
+    text-align: center;
+    line-height: 1;
+    padding: 4px 8px;
+    border-radius: 9px;
+    transition: background 0.2s;
+  }
+  .kdiv { width: 1px; height: 26px; background: var(--hair-top); flex: 0 0 auto; }
+  .tb-kpi b {
+    display: block;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 800;
+    font-size: 19px;
+    color: var(--text);
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    transition: color 0.2s;
+  }
+  .tb-kpi span {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-dim);
+    transition: color 0.2s;
+  }
+  /* live cue: unassigned orders waiting */
+  .tb-kpi.alert { background: var(--warn-soft); }
+  .tb-kpi.alert b { color: var(--warn); }
+  .tb-kpi.alert span { color: #d99436; }
+
+  /* ---- v6 right cluster (mockup .rgt) ---- */
+  .tb-right {
     display: flex;
     align-items: center;
     gap: 6px;
   }
-  .topbar-stat .num {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-weight: 600;
-    font-size: 16px;
-    color: var(--text);
-  }
-  .topbar-user {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-weight: 500;
-    font-size: 12px;
+  /* borderless icon buttons (mockup .iconbtn) */
+  .iconbtn {
+    width: 36px; height: 36px;
+    display: grid;
+    place-items: center;
+    background: none;
+    border: none;
+    border-radius: 10px;
     color: var(--text-soft);
+    cursor: pointer;
+    position: relative;
+    transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+  }
+  .iconbtn:hover { background: var(--surface); color: var(--text); transform: translateY(-1px); }
+  .iconbtn svg { width: 18px; height: 18px; }
+  .tb-avatar {
+    width: 34px; height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #3a4557, #2b3444);
+    color: var(--text-soft);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    user-select: none;
+    margin-left: 2px;
+    box-shadow: var(--shadow);
   }
   .version-tag {
     font-family: 'IBM Plex Mono', monospace;
@@ -119,40 +203,28 @@
   }
   .topbar-btn:hover { background: var(--surface-3); color: var(--text); }
 
-  /* ==================== MENSAJES BUTTON + BADGE ==================== */
-  .msg-btn {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text-soft);
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 12px;
-    font-family: inherit;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    position: relative;
-    font-weight: 500;
-    letter-spacing: -0.01em;
-    transition: background 0.15s, color 0.15s;
-  }
-  .msg-btn:hover { background: var(--surface-3); color: var(--text); }
+  /* ==================== MENSAJES ICON BUTTON + BADGE ==================== */
   .msg-btn .msg-icon {
-    width: 14px;
-    height: 14px;
+    width: 17px;
+    height: 17px;
     display: inline-flex;
   }
   .msg-btn .msg-icon svg { width: 100%; height: 100%; }
   .msg-btn .msg-badge {
+    position: absolute;
+    top: -5px; right: -5px;
     background: var(--accent);
     color: white;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
+    line-height: 15px;
     border-radius: 99px;
-    padding: 1px 6px;
-    min-width: 18px;
+    padding: 0 4px;
+    min-width: 15px;
+    height: 15px;
     text-align: center;
+    box-sizing: border-box;
+    box-shadow: 0 0 0 2px var(--surface);
     display: none;
   }
   .msg-btn.has-unhandled { color: var(--accent); border-color: var(--accent); }
@@ -343,35 +415,48 @@
   .msg-action-btn .btn-icon svg { width: 100%; height: 100%; }
 
   /* ==================== AUTO-ASSIGN TOGGLE ==================== */
+  /* Auto-asignar (mockup .apill + sliding switch .sw) */
   .auto-assign-toggle {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 5px 14px;
-    border: 1px solid var(--border);
-    border-radius: 99px;
+    gap: 9px;
+    padding: 8px 13px;
+    border: none;
+    border-radius: 11px;
     cursor: pointer;
-    background: transparent;
+    background: var(--surface);
+    box-shadow: var(--shadow);
     color: var(--text-soft);
-    font-size: 12px;
-    font-weight: 500;
+    font-size: 12.5px;
+    font-weight: 600;
     font-family: inherit;
-    letter-spacing: -0.01em;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+    transition: color 0.15s;
   }
-  .auto-assign-toggle:hover { background: var(--surface-3); }
-  .auto-assign-toggle .aa-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--text-dim);
+  .auto-assign-toggle .aa-sw {
+    width: 34px; height: 19px;
+    border-radius: 999px;
+    background: var(--surface-3);
+    position: relative;
+    flex: 0 0 auto;
     transition: background 0.2s;
   }
-  .auto-assign-toggle.on { color: var(--success); border-color: var(--success); }
-  .auto-assign-toggle.on .aa-dot {
-    background: var(--success);
-    box-shadow: 0 0 6px rgba(22,163,74,0.6);
+  .auto-assign-toggle .aa-sw::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 15px; height: 15px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    transition: left 0.2s;
   }
+  .auto-assign-toggle.on { color: var(--success); }
+  .auto-assign-toggle.on .aa-sw {
+    background: linear-gradient(90deg, #1f9e59, #2bc472);
+    box-shadow: 0 0 12px rgba(38,181,104,0.4);
+  }
+  .auto-assign-toggle.on .aa-sw::after { left: 17px; }
 
   /* ==================== DISPATCHER ALERT BANNER ==================== */
   .dispatcher-alerts {
@@ -463,7 +548,51 @@
     order: 1;
     min-width: 0;
   }
-  #map { width: 100%; height: 100%; }
+  /* Fill via absolute inset (not height:100%): #map-container is a CSS-grid item whose
+     stretched height is indefinite for a percentage-height child, so height:100% collapsed
+     the map. position:absolute against the position:relative #map-container fills it robustly. */
+  #map { position: absolute; inset: 0; }
+
+  /* ---- Minimalist v6 map controls (replace Google's default zoom/fullscreen) ---- */
+  .map-ctrl-group {
+    display: flex;
+    flex-direction: column;
+    background: rgba(24,30,42,0.82);
+    -webkit-backdrop-filter: blur(9px);
+    backdrop-filter: blur(9px);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.42), 0 1px 0 rgba(255,255,255,0.05) inset;
+    margin: 0 14px 14px 0;
+  }
+  .map-ctrl {
+    width: 38px; height: 38px;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    border: none;
+    color: var(--text-soft);
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.14s, color 0.14s;
+  }
+  .map-ctrl:hover { background: rgba(255,255,255,0.07); color: var(--text); }
+  .map-ctrl:active { background: rgba(255,255,255,0.13); }
+  .map-ctrl svg { width: 17px; height: 17px; display: block; }
+  .map-ctrl-group .map-ctrl + .map-ctrl { border-top: 1px solid var(--border-soft); }
+  /* standalone rounded button (fullscreen) */
+  .map-ctrl-solo {
+    background: rgba(24,30,42,0.82);
+    -webkit-backdrop-filter: blur(9px);
+    backdrop-filter: blur(9px);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.42), 0 1px 0 rgba(255,255,255,0.05) inset;
+    margin: 0 14px 14px 0;
+  }
+  .map-ctrl-solo:hover { background: rgba(40,48,64,0.9); }
+  .map-ctrl-top { margin: 14px 14px 0 0; }
 
   /* Drag-resize handle on sidebar's inner (left) edge */
   .sidebar-resize-handle {
@@ -488,24 +617,26 @@
   .map-icon-btn {
     position: absolute;
     z-index: 5;
-    width: 36px;
-    height: 36px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text);
-    border-radius: 50%;
+    width: 38px;
+    height: 38px;
+    background: rgba(24,30,42,0.82);
+    -webkit-backdrop-filter: blur(9px);
+    backdrop-filter: blur(9px);
+    border: 1px solid var(--border-soft);
+    color: var(--text-soft);
+    border-radius: 12px;
     padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
-    transition: background 0.15s, transform 0.15s;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.42), 0 1px 0 rgba(255,255,255,0.05) inset;
+    transition: background 0.14s, color 0.14s, transform 0.14s;
   }
-  .map-icon-btn:hover { background: var(--surface-2); transform: translateY(-1px); }
+  .map-icon-btn:hover { background: rgba(40,48,64,0.9); color: var(--text); transform: translateY(-1px); }
   .map-icon-btn:active { transform: translateY(0); }
   .map-icon-btn.fit { top: 14px; left: 14px; }
-  .map-icon-btn svg { width: 18px; height: 18px; display: block; }
+  .map-icon-btn svg { width: 17px; height: 17px; display: block; }
 
   .sidebar-collapse-btn {
     position: sticky;
@@ -857,62 +988,78 @@
   .recon-btn:hover { filter: brightness(1.12); }
   .recon-btn:disabled { opacity: 0.45; cursor: default; filter: none; }
 
+  /* ---- v6 driver card (mockup .drv — gradient + elevation + hover-lift) ---- */
   .driver-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 8px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-  .driver-row:hover { background: var(--surface-2); }
-  .driver-row.stale { opacity: 0.55; }
-  /* C1: on-shift driver GPS-dark past the alarm threshold — red row (sidebar-only, no banner). */
-  .driver-row.gps-dark { position: relative; }
-  .driver-row.gps-dark::before {
-    content: ''; position: absolute; left: 0; top: 6px; bottom: 6px;
-    width: 3px; border-radius: 2px; background: var(--accent);
-  }
-  .driver-row.gps-dark .row-status { color: var(--accent); font-weight: 600; }
-  .eta-chip { font-size: 11px; font-weight: 600; color: var(--info); margin-left: 6px; font-variant-numeric: tabular-nums; }
-  .driver-row .name {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-weight: 600;
-    font-size: 14px;
-    letter-spacing: -0.01em;
-    flex: 1;
-    min-width: 0;
+    border-radius: 13px;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    background: linear-gradient(180deg, #262f3e, #222a37);
+    cursor: pointer;
+    margin-bottom: 9px;
+    box-shadow: var(--shadow);
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
   }
-  .driver-row .row-status {
-    font-size: 11px;
-    color: var(--text-soft);
-    letter-spacing: -0.01em;
-    flex-shrink: 0;
+  .driver-row:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+  .driver-row.stale { opacity: 0.6; }
+  /* header row */
+  .driver-row .dh { display: flex; align-items: center; gap: 10px; padding: 10px 11px; }
+  .av {
+    width: 34px; height: 34px; border-radius: 11px;
+    background: rgba(0,0,0,0.25);
+    display: grid; place-items: center;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 700; font-size: 13px;
+    position: relative; flex: none; color: var(--text-soft);
   }
-  .driver-row.has-tasks .name {
-    color: var(--text);
+  .av .s {
+    position: absolute; bottom: -2px; right: -2px;
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 2.5px solid var(--surface);
+    background: var(--text-dim);
   }
-  .driver-row .chevron {
-    color: var(--text-dim);
-    transition: transform 0.15s;
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 14px;
-    height: 14px;
+  .av .s.green { background: var(--success); }
+  .av .s.blue  { background: var(--info); }
+  .av .s.amber { background: var(--warn); }
+  .av .s.red   { background: var(--accent); }
+  .who { flex: 1; min-width: 0; }
+  .who .dn {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600; font-size: 13px; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .driver-row .chevron svg { width: 100%; height: 100%; }
-  .driver-row.expanded .chevron { transform: rotate(90deg); }
+  .who .dm { font-size: 11px; color: var(--text-dim); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gps { font-size: 10.5px; color: var(--text-soft); display: flex; align-items: center; gap: 5px; margin-right: 2px; flex: none; }
+  .gps .d { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 6px rgba(38,181,104,0.7); }
+  .gps.dark { color: var(--accent); }
+  .gps.dark .d { background: var(--accent); box-shadow: 0 0 6px rgba(224,65,63,0.7); animation: softpulse 1.6s infinite; }
+  .dacts { display: flex; align-items: center; gap: 1px; flex: none; }
+  .driver-row .da {
+    width: 30px; height: 30px; border-radius: 8px;
+    color: #a7b2c5; background: none; border: none;
+    display: grid; place-items: center; cursor: pointer;
+    transition: 0.14s;
+  }
+  .driver-row .da.call { color: #8fd8b4; }   /* soft mint */
+  .driver-row .da.msg  { color: #9dc0ff; }   /* soft periwinkle */
+  .driver-row .da.more { color: #98a3b6; }   /* quiet slate */
+  .driver-row .da:hover { background: rgba(255,255,255,0.06); transform: translateY(-1px); filter: brightness(1.2); }
+  .driver-row .da svg { width: 15px; height: 15px; }
+  /* sin-señal strip (gps-dark) */
+  .dark-row { padding: 9px 11px; font-size: 11px; color: var(--accent); background: rgba(224,65,63,0.1); display: flex; gap: 8px; align-items: center; }
+  .dark-row svg { width: 15px; height: 15px; color: var(--accent); flex: none; }
+  /* inline active-task summary line (collapsed state) */
+  .dt { border-top: 1px solid var(--hair-top); padding: 10px 11px; font-size: 11.5px; color: var(--text-soft); display: flex; align-items: center; gap: 9px; }
+  .dt .mono { font-family: 'IBM Plex Mono', monospace; color: var(--text); font-weight: 600; flex: none; }
+  .dt .cust { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .dt .eta { margin-left: auto; font-family: 'IBM Plex Mono', monospace; color: var(--info); flex: none; }
+  .dt .eta.late { color: var(--accent); }
+  .eta-chip { font-size: 11px; font-weight: 600; color: var(--info); margin-left: 6px; font-variant-numeric: tabular-nums; }
+  .slip-chip { font-size: 11px; font-weight: 600; color: var(--accent); margin-left: 6px; }
+  #risk-summary:not(:empty) { padding: 0 14px 10px; }
+  #risk-summary .risk-count { font-size: 11px; font-weight: 700; color: var(--warn); }
 
   .driver-tasks {
-    padding: 0 0 8px 28px;
-    border-left: 1px solid var(--border-soft);
-    margin-left: 12px;
+    padding: 2px 4px 8px;
+    margin: -4px 0 8px;
   }
   .driver-tasks.collapsed { display: none; }
   .driver-tasks-empty {
@@ -1086,11 +1233,12 @@
     height: 24px;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 14px;
-    line-height: 1;
+    display: grid;
+    place-items: center;
     padding: 0;
     flex-shrink: 0;
   }
+  .more-btn:hover { color: var(--text-soft); }
   .more-btn:hover { background: var(--surface-3); color: var(--text); }
 
   /* ==================== ACTION MENU (popover) ==================== */
@@ -1454,6 +1602,12 @@
   .od-action-btn.primary:hover {
     filter: brightness(1.08);
   }
+  .od-action-btn.danger {
+    background: transparent;
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .od-action-btn.danger:hover { background: var(--accent-soft); }
 
   .tree-group.collapsed .group-body { display: none; }
   .tree-group-header.toggleable { cursor: pointer; }
@@ -1675,10 +1829,221 @@
   display: inline-flex; align-items: center; gap: 4px; background: #FBF0CE; color: #7A5B0C;
   font-weight: 700; font-size: 12px; line-height: 1.2; padding: 3px 9px; border-radius: 7px; margin: 4px 0;
 }
+
+  /* ============ Torre de Control — visual-system primitives (Phase-1 redesign) ============ */
+  /* Depth is layered on top of the existing tokens (never changes base token values). */
+  :root {
+    --hair-top: rgba(255,255,255,0.05);
+    --shadow: 0 4px 16px rgba(0,0,0,0.28), 0 1px 0 var(--hair-top) inset;
+    --shadow-lift: 0 12px 28px rgba(0,0,0,0.4), 0 1px 0 var(--hair-top) inset;
+  }
+  /* Line icon: colored via currentColor on the rendered <svg>, NOT a <g> in <defs>
+     (which does not propagate through <use> and would render black-filled). */
+  .ic { width: 18px; height: 18px; display: block; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .ic.sm { width: 15px; height: 15px; }
+  /* Card depth — applied to the new Torre/row/roster/cash cards created in Tasks 7–11. */
+  .ex, .ord, .drv, .cash { background: linear-gradient(180deg, #262f3e, #222a37); box-shadow: var(--shadow); transition: transform .16s ease, box-shadow .16s ease; }
+  .ex:hover, .ord:hover, .drv:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+  /* Pastel action-icon buttons (call = mint, message = periwinkle, more = slate). */
+  .da { width: 30px; height: 30px; border-radius: 8px; color: #a7b2c5; background: none; border: none; cursor: pointer; display: grid; place-items: center; transition: .14s; }
+  .da.call { color: #8fd8b4; }
+  .da.msg  { color: #9dc0ff; }
+  .da.more { color: #98a3b6; }
+  .da:hover { background: rgba(255,255,255,0.06); transform: translateY(-1px); filter: brightness(1.2); }
+  /* Motion (Phase-1 chrome uses softpulse + rise). Reduced-motion disables all animation. */
+  @keyframes softpulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+
+  /* ============ Torre de Control — 3-column board grid (Task 7 grid foundation) ============ */
+  /* --lw-size/--rw-size = the rail's resizable width (persisted); --lw/--rw = the grid
+     column, which drops to 0 on collapse while the inner keeps --*-size so it slides/clips. */
+  :root { --lw-size: 380px; --rw-size: 344px; --lw: var(--lw-size); --rw: var(--rw-size); }
+  .app { height: calc(100vh - 60px); }
+  .main { display: grid; grid-template-columns: var(--lw) 1fr var(--rw); grid-template-rows: 100%; height: 100%; transition: grid-template-columns .26s cubic-bezier(0.4,0,0.2,1); }
+  .main.resizing { transition: none; }   /* no lag while dragging a rail edge */
+  .app:not(.left-open) .main  { --lw: 0px; }
+  .app:not(.right-open) .main { --rw: 0px; }
+  /* All three columns share the single row. grid-row:1 is REQUIRED — the map has an explicit
+     grid-column:2 but comes first in DOM, so sparse auto-flow would otherwise push the left
+     rail (column 1) to a new row 2, collapsing the map's row to its (absolute-only) content. */
+  .col { min-height: 0; overflow: hidden; grid-row: 1; }
+  .col.left   { grid-column: 1; position: relative; background: var(--surface); border-right: 1px solid var(--border-soft); }
+  .col.center { grid-column: 2; position: relative; background: #131826; min-width: 0; }
+  .col.right  { grid-column: 3; position: relative; background: var(--surface); border-left: 1px solid var(--border-soft); }
+  /* Fixed-width inner so content slides (clips) during the collapse rather than reflowing. */
+  .col.left  .rail-inner { width: var(--lw-size); height: 100%; overflow-y: auto; padding-bottom: 32px; }
+  .col.right .rail-inner { width: var(--rw-size); height: 100%; overflow-y: auto; }
+  /* Drag-to-resize handles on each rail's map-facing edge. */
+  .rail-resize { position: absolute; top: 0; bottom: 0; width: 7px; z-index: 16; cursor: col-resize; }
+  .rail-resize::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; transition: background .15s; }
+  .rail-resize:hover::after, .rail-resize.active::after { background: rgba(255,255,255,0.28); }
+  .col.left  .rail-resize { right: 0; }
+  .col.right .rail-resize { left: 0; }
+  .col.right .rail-resize::after { left: auto; right: 3px; }
+  .app:not(.left-open)  #rail-resize-left  { display: none; }
+  .app:not(.right-open) #rail-resize-right { display: none; }
+  /* Topbar rail-toggle buttons (☰ / ⇥) */
+  .rail-toggle { background: transparent; border: none; color: var(--text-soft); width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; cursor: pointer; }
+  .rail-toggle:hover { background: var(--surface-2); color: var(--text); }
+
+  /* ============ Torre de Control — exceptions queue (Task 8) ============ */
+  #torre-list:not(:empty) { padding: 14px 12px 6px; }
+  .torre-head { display: flex; align-items: baseline; gap: 10px; margin: 0 2px 12px; }
+  .torre-head h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .9px; color: var(--text-dim); font-weight: 700; }
+  .torre-count { font-size: 11px; color: var(--text-soft); font-weight: 700; }
+  .torre-count.hot { color: var(--accent); animation: softpulse 2.4s infinite; }
+  .otros-head { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-dim); font-weight: 700; margin: 14px 2px 8px; }
+  .ex-list { display: flex; flex-direction: column; gap: 9px; }
+  /* .ex base depth (gradient/shadow/hover-lift) comes from the Task-6 .ex,.ord,.drv,.cash rule. */
+  .ex { display: flex; gap: 12px; align-items: center; border-radius: 13px; padding: 12px 13px; position: relative; }
+  .ex::before { content: ""; position: absolute; left: 0; top: 11px; bottom: 11px; width: 3px; border-radius: 3px; background: var(--text-dim); }
+  .ex.red::before   { background: var(--accent); box-shadow: 0 0 10px rgba(220,38,38,.5); }
+  .ex.amber::before { background: var(--warn);   box-shadow: 0 0 10px rgba(245,158,11,.4); }
+  .ex .exi { width: 30px; height: 30px; border-radius: 9px; background: rgba(0,0,0,.25); display: grid; place-items: center; flex: none; margin-left: 4px; color: var(--text-soft); }
+  .ex.red .exi   { color: #ff6b69; }
+  .ex.amber .exi { color: var(--warn); }
+  .ex .b { flex: 1; min-width: 0; }
+  .ex .t { font-weight: 600; font-size: 13px; color: var(--text); }
+  .ex .d { color: var(--text-dim); font-size: 11.5px; margin-top: 2px; }
+  .ex .ex-dismiss { flex: none; width: 26px; height: 26px; border-radius: 7px; background: none; border: none; color: var(--text-dim); cursor: pointer; display: grid; place-items: center; }
+  .ex .ex-dismiss:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+
+  /* ============ v6 rich order row (Task 9) — .ord overrides the old .unassigned-card container ============ */
+  /* base depth (gradient/shadow) from the Task-6 .ex,.ord,.drv,.cash rule */
+  .ord { border: none; border-radius: 13px; padding: 13px; margin: 0 0 9px; position: relative; overflow: hidden; cursor: pointer; }
+  .ord::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--success); }
+  .ord.aging::after { background: var(--warn); }
+  .ord.late::after  { background: var(--accent); }
+  .ord .r1 { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .ord .num  { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 13px; color: var(--text-soft); flex: none; }
+  .ord .cust { font-weight: 600; font-size: 13px; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ord .ord-age { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-soft); flex: none; }
+  .ord .ord-age.band-amber { color: var(--warn); }
+  .ord .ord-age.band-red   { color: var(--accent); }
+  .ord .items { color: var(--text-soft); font-size: 12px; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ord .meta { display: flex; gap: 12px; margin-top: 10px; align-items: center; color: var(--text-dim); font-size: 11.5px; flex-wrap: wrap; }
+  .ord .meta .m { display: inline-flex; gap: 6px; align-items: center; }
+  .ord .meta .m .d { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
+  .ord .meta .m.pay .d  { background: var(--warn); }
+  .ord .meta .m.paid .d { background: var(--success); }
+  .ord .meta .m.wa .d   { background: var(--success); }
+  .ord .meta .m.warn { color: var(--accent); } .ord .meta .m.warn .d { background: var(--accent); }
+  .ord .meta .m.slip { color: var(--accent); } .ord .meta .m.slip .d { background: var(--accent); }
+  .ord .actions { display: flex; gap: 6px; margin-top: 11px; }
+
+  /* ============ Right rail — cash bar + driver quick actions (Task 10a) ============ */
+  .cash-bar { background: linear-gradient(180deg, #262f3e, #222a37); box-shadow: var(--shadow); border-radius: 13px; padding: 14px 15px; margin: 4px 0 14px; }
+  .cash-lab { font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-dim); font-weight: 600; }
+  .cash-val { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 17px; margin-top: 3px; color: var(--text); }
+  .cash-sub { font-size: 11px; color: var(--text-soft); margin-top: 2px; }
+
+  /* ============ Right-rail tab strip (Task 10b) ============ */
+  .rail-tabs { display: flex; gap: 3px; background: rgba(0,0,0,0.28); border-radius: 12px; padding: 4px; margin: 14px 0 10px; }
+  /* Icon tabs: compact (icon + count) when inactive; the ACTIVE tab grows to show its label. */
+  .rtab { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 8px 9px; border: none; background: none; border-radius: 9px; font-size: 11.5px; font-weight: 600; color: var(--text-dim); cursor: pointer; white-space: nowrap; transition: color .14s, background .14s; }
+  .rtab:hover { color: var(--text-soft); }
+  .rtab.on { flex: 1 1 auto; background: var(--surface-2); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+  .rtab .rlabel { display: none; }
+  .rtab.on .rlabel { display: inline; }
+  .rtab .rn { font-size: 10px; font-weight: 700; color: var(--text-soft); background: rgba(255,255,255,0.08); border-radius: 999px; padding: 0 6px; min-width: 16px; text-align: center; }
+  /* the pane holds the tab's list; .hidden collapses it (tap the active tab to toggle) */
+  .rtab-pane { padding: 14px 16px 0; }
+  .rtab-pane.hidden { display: none; }
+  /* En Fila queue — category groups (Entrega / Recoger / Programados) */
+  .q-cat { margin-bottom: 14px; }
+  .q-cat-hd { display: flex; align-items: center; gap: 8px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-dim); padding: 0 2px 7px; }
+  .q-cat-n { font-size: 10px; font-weight: 700; color: var(--text-soft); background: rgba(255,255,255,0.08); border-radius: 999px; padding: 1px 7px; min-width: 18px; text-align: center; }
+  .comms-row { background: var(--surface); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: background .14s; }
+  .comms-row:hover { background: var(--surface-2); }
+  .comms-from { font-weight: 600; font-size: 12.5px; color: var(--text); display: flex; align-items: center; gap: 7px; }
+  .comms-flag { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--warn); background: var(--warn-soft); border-radius: 999px; padding: 1px 7px; }
+  .comms-body { font-size: 11.5px; color: var(--text-soft); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---- Task 12: read-only Comms thread sheet (floating glass over the board) ---- */
+  .comms-scrim { position: fixed; inset: 0; z-index: 39; background: rgba(0,0,0,0.30); display: none; }
+  .comms-scrim.open { display: block; }
+  .comms-sheet {
+    position: fixed; top: 72px; bottom: 72px; left: 50%; transform: translateX(-50%);
+    width: min(430px, 92vw);
+    background: rgba(28,35,46,0.92);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    backdrop-filter: blur(24px) saturate(1.4);
+    border-radius: 18px;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px var(--hair-top);
+    display: none; flex-direction: column; overflow: hidden; z-index: 40;
+  }
+  .comms-sheet.open { display: flex; animation: sheetin .34s cubic-bezier(.34,1.1,.64,1) both; }
+  @keyframes sheetin {
+    from { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.985); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  }
+  .sh-head { padding: 13px 12px 13px 15px; background: rgba(35,43,57,0.6); display: flex; align-items: center; gap: 11px; box-shadow: 0 1px 0 var(--hair-top); }
+  .sh-av { width: 38px; height: 38px; border-radius: 12px; background: rgba(0,0,0,0.3); display: grid; place-items: center; font-weight: 700; color: var(--text-soft); flex: none; font-size: 13px; }
+  .sh-id { flex: 1; min-width: 0; }
+  .sh-id .nm { font-weight: 700; font-size: 14px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sh-id .su { font-size: 11px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sh-ic { width: 34px; height: 34px; border-radius: 9px; color: #a7b2c5; background: none; border: none; cursor: pointer; display: grid; place-items: center; transition: .14s; text-decoration: none; }
+  .sh-ic svg { width: 16px; height: 16px; }
+  .sh-ic.call { color: #8fd8b4; }
+  .sh-ic:hover { background: rgba(255,255,255,0.07); filter: brightness(1.2); }
+  .sh-recibido { padding: 9px 15px 0; }
+  .sh-body { flex: 1; overflow-y: auto; padding: 16px 15px; display: flex; flex-direction: column; gap: 12px; }
+  .sh-empty { align-self: center; margin: auto 0; color: var(--text-dim); font-size: 12px; }
+  .daymark { align-self: center; font-size: 10px; color: var(--text-dim); background: rgba(0,0,0,0.25); border-radius: 999px; padding: 3px 11px; }
+  .msgrow { display: flex; flex-direction: column; max-width: 82%; animation: rise .3s both; }
+  .msgrow.in { align-self: flex-start; align-items: flex-start; }
+  .msgrow.out { align-self: flex-end; align-items: flex-end; }
+  .bub { padding: 9px 12px; border-radius: 15px; font-size: 12.5px; line-height: 1.42; box-shadow: 0 2px 6px rgba(0,0,0,0.2); color: #eaf0f7; word-break: break-word; }
+  .in .bub { background: #2b3444; border-bottom-left-radius: 5px; }
+  .out.auto .bub { background: #333d4e; border-bottom-right-radius: 5px; }
+  .bmeta { font-size: 9.5px; color: var(--text-dim); margin-top: 4px; display: flex; gap: 6px; align-items: center; }
+  .autotag { color: var(--info); font-weight: 600; }
+  .comms-open { width: 100%; margin-top: 4px; padding: 8px; border: none; border-radius: 9px; background: rgba(79,140,255,0.12); color: var(--info); font-weight: 600; font-size: 12px; cursor: pointer; }
+  .comms-open:hover { background: rgba(79,140,255,0.2); }
+
+  /* ============ Cobertura drawer + ☰ exceptions badge (Task 11) ============ */
+  .cobertura { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--surface); box-shadow: 0 -1px 0 var(--border-soft); }
+  .cob-toggle { display: block; margin-left: auto; background: none; border: none; color: var(--text-soft); font-size: 11.5px; font-weight: 600; padding: 8px 16px; cursor: pointer; }
+  .cob-toggle:hover { color: var(--text); }
+  .cob-drawer { max-height: 0; overflow: hidden; transition: max-height .26s ease; }
+  .cobertura.open .cob-drawer { max-height: 160px; }
+  .cob-inner { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 16px 14px; }
+  .cv { font-size: 10.5px; white-space: nowrap; padding: 5px 11px; border-radius: 999px; background: var(--bg); color: var(--text-soft); }
+  .cv.new { color: #e9c877; }
+  /* keep the fixed Cobertura bar from covering scrolled rail content */
+  .col.left .rail-inner, .col.right .rail-inner { padding-bottom: 46px; }
+  .rail-toggle { position: relative; }
+  .rail-badge { display: none; position: absolute; top: 3px; right: 3px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 9px; font-weight: 700; line-height: 15px; text-align: center; box-sizing: border-box; }
+  .app:not(.left-open) #rail-toggle-left .rail-badge.has { display: block; }
 </style>
 </head>
 
 <body>
+
+<!-- Dispatch line-icon sprite (Torre de Control redesign). Coloring via the .ic CSS rule
+     (fill:none;stroke:currentColor) — NOT a wrapping <g>, which does not propagate through <use>. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-menu" viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+  <symbol id="i-chevdown" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+  <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-maximize" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
+  <symbol id="i-signaloff" viewBox="0 0 24 24"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></symbol>
+  <symbol id="i-userx" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="22" y2="13"/><line x1="22" y1="8" x2="17" y2="13"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+  <symbol id="i-phoneoff" viewBox="0 0 24 24"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 3.07 4.18 2 2 0 0 1 5 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></symbol>
+  <symbol id="i-card" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+  <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1z"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/></symbol>
+</defs></svg>
 
 <!-- ================================ -->
 <!-- CONFIG SCREEN -->
@@ -1717,32 +2082,42 @@
 <!-- ================================ -->
 <div id="screen-main" class="hidden" style="display:flex; flex-direction:column; height:100vh;">
   <header class="topbar">
-    <span class="brand">X PIZZA</span>
-    <span class="brand-sub">Dispatch</span>
-    <div class="topbar-spacer"></div>
-    <button class="auto-assign-toggle" id="auto-assign-toggle" title="Asignación automática de pedidos">
-      <span class="aa-dot"></span>
-      <span class="aa-label">Auto-asignar</span>
-    </button>
-    <div class="topbar-stat">Drivers <span class="num" id="stat-drivers">0</span></div>
-    <div class="topbar-stat">Pendientes <span class="num" id="stat-pending">0</span></div>
-    <div class="topbar-stat">Activos <span class="num" id="stat-active">0</span></div>
-    <div class="topbar-stat">Hoy <span class="num" id="stat-delivered">0</span></div>
-    <div class="topbar-user" id="topbar-user">—</div>
-    <button class="msg-btn" id="msg-btn" title="Mensajes de clientes">
-      <span class="msg-icon"></span>
-      <span>Mensajes</span>
-      <span class="msg-badge" id="msg-badge">0</span>
-    </button>
-    <span class="version-tag" data-version-display></span>
-    <button class="topbar-btn" id="signout-btn">Salir</button>
+    <button class="rail-toggle" id="rail-toggle-left" title="Mostrar/ocultar panel izquierdo" aria-label="Panel izquierdo"><svg class="ic"><use href="#i-menu"/></svg><span class="rail-badge" id="left-rail-badge"></span></button>
+    <span class="tb-brand"><span class="tb-x">X</span> Dispatch</span>
+    <span class="tb-restaurant" id="tb-restaurant">X. Pizza</span>
+
+    <div class="tb-kpis">
+      <div class="tb-kpi"><b id="stat-drivers">0</b><span>En turno</span></div>
+      <span class="kdiv"></span>
+      <div class="tb-kpi" id="kpi-pending"><b id="stat-pending">0</b><span>Sin asignar</span></div>
+      <span class="kdiv"></span>
+      <div class="tb-kpi"><b id="stat-active">0</b><span>Activos</span></div>
+      <span class="kdiv"></span>
+      <div class="tb-kpi"><b id="stat-delivered">0</b><span>Entregados</span></div>
+    </div>
+
+    <div class="tb-right">
+      <button class="auto-assign-toggle" id="auto-assign-toggle" title="Asignación automática de pedidos">
+        <span class="aa-label">Auto-asignar</span>
+        <span class="aa-sw"></span>
+      </button>
+      <button class="iconbtn msg-btn" id="msg-btn" title="Mensajes de clientes" aria-label="Mensajes de clientes">
+        <span class="msg-icon"></span>
+        <span class="msg-badge" id="msg-badge">0</span>
+      </button>
+      <div class="tb-avatar" id="topbar-avatar" title="Sesión">—</div>
+      <span id="topbar-user" hidden></span>
+      <button class="rail-toggle" id="rail-toggle-right" title="Mostrar/ocultar panel derecho" aria-label="Panel derecho"><svg class="ic"><use href="#i-panel"/></svg></button>
+      <button class="topbar-btn" id="signout-btn">Salir</button>
+      <span class="version-tag" data-version-display></span>
+    </div>
   </header>
 
-  <!-- Floating dispatcher alerts (e.g., "no drivers available") -->
-  <div class="dispatcher-alerts" id="dispatcher-alerts"></div>
+  <!-- Dispatcher alerts now render into the left-rail Torre de Control (#torre-list) — see renderDispatcherAlerts. -->
 
-  <div class="layout">
-    <div id="map-container">
+  <div class="app left-open right-open" id="app">
+  <div class="main" id="main-grid">
+    <div id="map-container" class="col center">
       <button class="map-icon-btn fit" id="map-fit-btn" title="Centrar mapa" aria-label="Centrar mapa">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="9"/>
@@ -1756,9 +2131,11 @@
       <div id="map"></div>
     </div>
 
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-resize-handle" id="sidebar-resize-handle" title="Arrastrar para cambiar el ancho"></div>
-      <button class="sidebar-collapse-btn" id="sidebar-collapse-btn"><span class="sb-icon"></span><span class="sb-label">Ocultar panel</span></button>
+    <div class="col left" id="left-rail">
+      <div class="rail-resize" id="rail-resize-left" title="Ajustar ancho del panel"></div>
+      <div class="rail-inner">
+      <div id="torre-list"></div>
+      <div id="risk-summary"></div>
 
       <div class="tree-group" id="unassigned-group">
         <div class="tree-group-header">
@@ -1768,46 +2145,93 @@
         <div id="unassigned-list"><div class="tree-empty">Sin pedidos pendientes</div></div>
       </div>
 
-      <div class="tree-group" id="drivers-group">
-        <div class="tree-group-header">
-          <div class="tree-group-title">Repartidores</div>
-          <div class="tree-group-meta" id="drivers-meta">0 de 0 activos</div>
-        </div>
-        <div id="drivers-tree"><div class="tree-empty">Sin repartidores</div></div>
+      <!-- Repartidores roster moved to the right rail (Task 10a) -->
+
+      <!-- Reconciliación + Cerrados moved to the right-rail Caja/Cerrados tabs (Task 10b) -->
+    </div></div>
+
+    <div class="col right" id="right-rail">
+      <div class="rail-resize" id="rail-resize-right" title="Ajustar ancho del panel"></div>
+      <div class="rail-inner">
+      <div class="rail-tabs" id="rail-tabs">
+        <button class="rtab on" data-tab="pedidos" title="Pedidos en fila (entrega · recoger · programados)"><svg class="ic sm"><use href="#i-receipt"/></svg><span class="rlabel">En Fila</span><span class="rn" id="tab-pedidos-n">0</span></button>
+        <button class="rtab" data-tab="comms" title="Comms"><svg class="ic sm"><use href="#i-message"/></svg><span class="rlabel">Comms</span><span class="rn" id="tab-comms-n">0</span></button>
+        <button class="rtab" data-tab="caja" title="Caja / reconciliación"><svg class="ic sm"><use href="#i-card"/></svg><span class="rlabel">Caja</span></button>
+        <button class="rtab" data-tab="cerrados" title="Cerrados hoy"><svg class="ic sm"><use href="#i-check"/></svg><span class="rlabel">Cerrados</span></button>
       </div>
 
-      <div class="tree-group hidden" id="reconciliation-group">
-        <div class="tree-group-header">
-          <div class="tree-group-title">Reconciliación de pagos</div>
-          <div class="tree-group-meta hot" id="reconciliation-meta">0</div>
-        </div>
-        <div class="group-body">
-          <div id="reconciliation-list"></div>
-        </div>
-      </div>
+      <div class="rtab-pane" data-pane="pedidos"><div id="pedidos-list"><div class="tree-empty">Sin pedidos en fila</div></div></div>
 
-      <div class="tree-group collapsed" id="delivered-group">
-        <div class="tree-group-header toggleable" id="delivered-toggle">
-          <div class="tree-group-title"><span class="tree-group-toggle"></span>Cerrados hoy</div>
-          <div class="tree-group-meta" id="delivered-meta">0</div>
-        </div>
-        <div class="group-body">
-          <div class="closed-orders-search-wrap">
-            <input
-              type="text"
-              id="closed-search"
-              class="closed-orders-search"
-              placeholder="Buscar pedido por ID, teléfono o nombre..."
-              autocomplete="off"
-            />
-            <button class="closed-search-clear hidden" id="closed-search-clear" title="Limpiar búsqueda">×</button>
+      <div class="rtab-pane hidden" data-pane="comms"><div id="comms-list"><div class="tree-empty">Sin mensajes sin atender</div></div></div>
+
+      <div class="rtab-pane hidden" data-pane="caja">
+        <div class="tree-group hidden" id="reconciliation-group">
+          <div class="tree-group-header">
+            <div class="tree-group-title">Reconciliación de pagos</div>
+            <div class="tree-group-meta hot" id="reconciliation-meta">0</div>
           </div>
-          <div id="delivered-list"><div class="tree-empty">Aún no hay pedidos cerrados hoy</div></div>
+          <div class="group-body">
+            <div id="reconciliation-list"></div>
+          </div>
         </div>
       </div>
-    </aside>
 
-    <button class="sidebar-show-btn hidden" id="sidebar-show-btn"><span class="sb-icon"></span><span class="sb-label">Panel</span></button>
+      <div class="rtab-pane hidden" data-pane="cerrados">
+        <div class="tree-group" id="delivered-group">
+          <div class="tree-group-header toggleable" id="delivered-toggle">
+            <div class="tree-group-title"><span class="tree-group-toggle"></span>Cerrados hoy</div>
+            <div class="tree-group-meta" id="delivered-meta">0</div>
+          </div>
+          <div class="group-body">
+            <div class="closed-orders-search-wrap">
+              <input
+                type="text"
+                id="closed-search"
+                class="closed-orders-search"
+                placeholder="Buscar pedido por ID, teléfono o nombre..."
+                autocomplete="off"
+              />
+              <button class="closed-search-clear hidden" id="closed-search-clear" title="Limpiar búsqueda">×</button>
+            </div>
+            <div id="delivered-list"><div class="tree-empty">Aún no hay pedidos cerrados hoy</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cash-bar" id="cash-bar"></div>
+
+      <div class="tree-group" id="drivers-live-group">
+        <div class="tree-group-header toggleable" id="drivers-live-toggle">
+          <div class="tree-group-title"><span class="tree-group-toggle"></span>En turno</div>
+          <div class="tree-group-meta" id="drivers-live-meta">0</div>
+        </div>
+        <div class="group-body"><div id="drivers-tree-live"><div class="tree-empty">Sin repartidores en turno</div></div></div>
+      </div>
+
+      <div class="tree-group collapsed" id="drivers-off-group">
+        <div class="tree-group-header toggleable" id="drivers-off-toggle">
+          <div class="tree-group-title"><span class="tree-group-toggle"></span>Fuera de turno</div>
+          <div class="tree-group-meta" id="drivers-off-meta">0</div>
+        </div>
+        <div class="group-body"><div id="drivers-tree-off"><div class="tree-empty">Ninguno fuera de turno</div></div></div>
+      </div>
+    </div></div>
+  </div></div>
+</div>
+
+<!-- Cobertura de capacidades — full-visibility proof (Task 11); fixed, collapsed by default. -->
+<div class="cobertura" id="cobertura">
+  <button class="cob-toggle" id="cob-toggle">Cobertura de capacidades ▴</button>
+  <div class="cob-drawer">
+    <div class="cob-inner">
+      <span class="cv">Mapa en vivo</span><span class="cv">Glide pins</span><span class="cv">Drivers + estado</span>
+      <span class="cv">GPS liveness</span><span class="cv">Llamar driver</span><span class="cv">Sin asignar</span>
+      <span class="cv">Auto-asignar</span><span class="cv">ETA entrega</span><span class="cv">Cancelar/refund</span>
+      <span class="cv">Programados</span><span class="cv">#N</span><span class="cv">Entregados + búsqueda</span>
+      <span class="cv">WhatsApp entrante</span><span class="cv">Reconciliación</span>
+      <span class="cv new">Torre de control</span><span class="cv new">Delivery-risk</span><span class="cv new">Timer envejecimiento</span>
+      <span class="cv new">Cash / cuadre</span><span class="cv new">Paneles colapsables</span><span class="cv new">Tabs del panel</span>
+    </div>
   </div>
 </div>
 
@@ -1824,6 +2248,10 @@
     </div>
   </div>
 </div>
+
+<!-- Task 12: read-only Comms thread sheet (floating glass over the board; populated by renderCommsThread) -->
+<div class="comms-scrim" id="comms-scrim"></div>
+<div class="comms-sheet" id="comms-sheet" role="dialog" aria-modal="true" aria-label="Conversación con cliente"></div>
 
 <!-- Mensajes (incoming customer messages) modal -->
 <div class="msg-modal" id="msg-modal">
@@ -1878,6 +2306,13 @@
 import * as XPD from './xpizza-delivery.js?v=19';
 import { createGlideEngine } from './driver-glide.js?v=2';
 import { etaEligible, projectArrival, relativeEta, clockTime, dueForRefresh, distanceMeters } from './driver-eta.js?v=1';
+// ── Dispatch Phase-1 pure modules (Torre de Control redesign) ──
+import { classifyAlert, sortAlertEntries } from './dispatch-alerts.js?v=1';
+import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js?v=2';
+import { createEtaSnapshotStore } from './dispatch-eta-snapshot.js?v=1';
+import { deliveryRisk } from './dispatch-delivery-risk.js?v=1';
+import { assembleThread } from './dispatch-comms-thread.js?v=1';
+const etaSnapshots = createEtaSnapshotStore();   // session-scoped first-observed-ETA baselines
 
 // ============================================================
 // System version (bumped each release)
@@ -1932,6 +2367,7 @@ let allDrivers = {};
 let staleDriverUids = new Set();
 let allTasks = {};
 let allOrders = {};
+let allScheduled = {};           // scheduled/releasing held orders (own read-only sub; not in allOrders)
 let reconciliationOrders = {};   // manual_reconciliation orders (own subscription; not in allOrders)
 let knownPendingOrderIds = new Set();
 let map = null;
@@ -2013,6 +2449,12 @@ async function boot() {
     }
 
     $('topbar-user').textContent = user.email;
+    const _av = $('topbar-avatar');
+    if (_av) {
+      const _em = (user.email || '').trim();
+      _av.textContent = _em ? _em.slice(0, 2).toUpperCase() : '—';
+      _av.title = _em || 'Sesión';
+    }
     showScreen('main');
     await loadGoogleMaps();
     initMap();
@@ -2084,23 +2526,78 @@ const DARK_MAP_STYLE = [
 ];
 
 function initMap() {
+  const _tbr = $('tb-restaurant');
+  if (_tbr && XPD.RESTAURANT && XPD.RESTAURANT.name) _tbr.textContent = XPD.RESTAURANT.name;
   map = new google.maps.Map($('map'), {
     center: { lat: XPD.RESTAURANT.lat, lng: XPD.RESTAURANT.lng },
     zoom: 15,
     styles: DARK_MAP_STYLE,
     disableDefaultUI: true,
-    zoomControl: true,
-    zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
+    zoomControl: false,
     mapTypeControl: false,
     streetViewControl: false,
-    fullscreenControl: true,
-    fullscreenControlOptions: { position: google.maps.ControlPosition.TOP_RIGHT },
+    fullscreenControl: false,
     gestureHandling: 'greedy',
     backgroundColor: '#131826'
   });
   infoWindow = new google.maps.InfoWindow();
   dirService = new google.maps.DirectionsService();
+  addMapControls();
   drawRestaurant();
+  // The map is created inside a CSS-grid column while #screen-main may still be display:none
+  // (0-size), and its column also changes width on rail collapse/expand. A ResizeObserver keeps
+  // the map filling its column across the reveal, async content, and the collapse transitions —
+  // no timing guesswork. (Fires once on observe, then on every container size change.)
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => { if (map) google.maps.event.trigger(map, 'resize'); }).observe($('map-container'));
+  }
+}
+
+// Minimalist v6 map controls, replacing Google's default zoom/fullscreen chrome.
+// Mounted via the Maps control API so they stay corner-anchored across resizes.
+function addMapControls() {
+  const g = google.maps;
+  const svg = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+  const mkBtn = (cls, title, icon) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = cls;
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    b.innerHTML = icon;
+    return b;
+  };
+
+  // Zoom group (+ / −)
+  const zoomGroup = document.createElement('div');
+  zoomGroup.className = 'map-ctrl-group';
+  const zin = mkBtn('map-ctrl', 'Acercar', svg('<path d="M12 6v12M6 12h12"/>'));
+  const zout = mkBtn('map-ctrl', 'Alejar', svg('<path d="M6 12h12"/>'));
+  zin.addEventListener('click', () => map.setZoom((map.getZoom() || 15) + 1));
+  zout.addEventListener('click', () => map.setZoom((map.getZoom() || 15) - 1));
+  zoomGroup.appendChild(zin);
+  zoomGroup.appendChild(zout);
+
+  // Fullscreen toggle on the map column
+  const expandIcon = svg('<path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 0-1 1h-4"/>');
+  const compressIcon = svg('<path d="M9 5v3a1 1 0 0 1-1 1H5M15 5v3a1 1 0 0 0 1 1h3M9 19v-3a1 1 0 0 0-1-1H5M15 19v-3a1 1 0 0 1 1-1h3"/>');
+  const fs = mkBtn('map-ctrl map-ctrl-solo map-ctrl-top', 'Pantalla completa', expandIcon);
+  const mapContainer = $('map-container');
+  fs.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (mapContainer.requestFullscreen) mapContainer.requestFullscreen();
+  });
+  document.addEventListener('fullscreenchange', () => {
+    const isFs = document.fullscreenElement === mapContainer;
+    fs.innerHTML = isFs ? compressIcon : expandIcon;
+    const fsLabel = isFs ? 'Salir de pantalla completa' : 'Pantalla completa';
+    fs.title = fsLabel;
+    fs.setAttribute('aria-label', fsLabel);
+    if (map) g.event.trigger(map, 'resize');
+  });
+
+  map.controls[g.ControlPosition.RIGHT_BOTTOM].push(zoomGroup);
+  map.controls[g.ControlPosition.RIGHT_TOP].push(fs);
 }
 
 function drawRestaurant() {
@@ -2155,6 +2652,11 @@ function subscribeAll() {
     renderSidebar();
     updateCustomerMarkers();
     updateStats();
+  });
+  XPD.subscribeToDriverCash(renderCashBar);   // read-only cash bar (today's closed cuadres)
+  XPD.subscribeToScheduledOrders((scheduled) => {           // read-only held orders → En Fila queue
+    allScheduled = scheduled || {};
+    renderPedidosTab();
   });
   XPD.subscribeToManualReconciliation((orders) => {
     reconciliationOrders = orders || {};
@@ -2222,121 +2724,96 @@ function subscribeAll() {
 }
 
 // ============================================================
-// Dispatcher alert banner rendering
+// Torre de Control — exceptions queue (registry-driven, Task 8)
 // ============================================================
-function renderDispatcherAlerts(alerts) {
-  const container = $('dispatcher-alerts');
-  if (!container) return;
-
-  const ids = Object.keys(alerts);
-  if (ids.length === 0) {
-    container.innerHTML = '';
-    return;
-  }
-
-  container.innerHTML = ids.map(alertId => {
-    const a = alerts[alertId];
-    if (a.type === 'no_drivers_available') {
-      const total = a.total != null ? ` · L${a.total}` : '';
-      return `
-        <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">${ICONS.warn}</span>
-          <div class="alert-text">
-            <strong>No hay repartidores disponibles</strong>
-            Pedido ${escapeHtml(displayOrderLabel(a.order_id))} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — asigna manualmente
-          </div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-        </div>
-      `;
+// Per-type Torre copy (title + already-escaped detail HTML). Preserves the exact bespoke copy
+// the old floating banners used; classifyAlert (via sortAlertEntries) supplies category/severity/icon.
+function alertContent(a) {
+  const label = (id) => escapeHtml(displayOrderLabel(id));
+  switch (a.type) {
+    case 'no_drivers_available': {
+      const total = a.total != null ? ` · L${escapeHtml(String(a.total))}` : '';
+      return { title: 'No hay repartidores disponibles',
+        detail: `Pedido ${label(a.order_id)} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — asigna manualmente` };
     }
-    if (a.type === 'no_response_takeover') {
-      const total = a.total != null ? ` · L${a.total}` : '';
-      const attempts = a.attempts || 2;
-      return `
-        <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">${ICONS.warn}</span>
-          <div class="alert-text">
-            <strong>Sin respuesta de repartidores</strong>
-            Pedido ${escapeHtml(displayOrderLabel(a.order_id))} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — ${attempts} intentos sin aceptación, asigna manualmente
-          </div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-        </div>
-      `;
+    case 'no_response_takeover': {
+      const total = a.total != null ? ` · L${escapeHtml(String(a.total))}` : '';
+      const attempts = escapeHtml(String(a.attempts || 2));
+      return { title: 'Sin respuesta de repartidores',
+        detail: `Pedido ${label(a.order_id)} · ${escapeHtml(a.customer_name || 'Cliente')}${total} — ${attempts} intentos sin aceptación, asigna manualmente` };
     }
-    if (a.type === 'assignment_strand') {
-      // S3d: emitted only on a double RTDB fault (finalize write AND rollback both failed) — the order may
-      // be delivery-claimed but pickup-unassigned (hidden from SIN ASIGNAR). Surface it so a human recovers.
-      return `
-        <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">${ICONS.warn}</span>
-          <div class="alert-text">
-            <strong>Pedido atascado</strong>
-            Pedido ${escapeHtml(displayOrderLabel(a.order_id))} — la asignación falló a medias, revisá y reasigná manualmente
-          </div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-        </div>
-      `;
-    }
-    if (a.type === 'payment_hosted_stale_no_callback') {
+    case 'assignment_strand':
+      return { title: 'Pedido atascado',
+        detail: `Pedido ${label(a.order_id)} — la asignación falló a medias, revisá y reasigná manualmente` };
+    case 'payment_hosted_stale_no_callback': {
       const d = a.detail || {};
       const total = d.total != null ? ` (L${escapeHtml(String(d.total))})` : '';
-      return `
-        <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">${ICONS.warn}</span>
-          <div class="alert-text">
-            <strong>Pago en línea sin confirmar</strong>
-            Pedido ${escapeHtml(displayOrderLabel(d.orderId))}${total} — el cliente abrió un pago en línea que no se completó. Revísalo en “Reconciliación de pagos”.
-          </div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-        </div>
-      `;
+      return { title: 'Pago en línea sin confirmar',
+        detail: `Pedido ${label(d.orderId)}${total} — el cliente abrió un pago en línea que no se completó. Revísalo en “Reconciliación de pagos”.` };
     }
-    if (a.type === 'payment_reconcile_breaches') {
+    case 'payment_reconcile_breaches': {
       const d = a.detail || {};
       const n = d.count != null ? d.count : (d.breaches ? d.breaches.length : 0);
-      return `
-        <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">${ICONS.warn}</span>
-          <div class="alert-text">
-            <strong>Pagos por reconciliar</strong>
-            ${escapeHtml(String(n))} pedido(s) con pago en línea sin confirmar necesitan revisión. Ábrelos en “Reconciliación de pagos”.
-          </div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-        </div>
-      `;
+      return { title: 'Pagos por reconciliar',
+        detail: `${escapeHtml(String(n))} pedido(s) con pago en línea sin confirmar necesitan revisión. Ábrelos en “Reconciliación de pagos”.` };
     }
-    if (a.type === 'payment_aged_refund_pending') {
+    case 'payment_aged_refund_pending': {
       const d = a.detail || {};
-      return `
-        <div class="dispatcher-alert" data-alert-id="${alertId}">
-          <span class="alert-icon">${ICONS.warn}</span>
-          <div class="alert-text">
-            <strong>Reembolso pendiente</strong>
-            Pedido ${escapeHtml(displayOrderLabel(d.orderId))} — un reembolso lleva más de 24h sin completarse. Verifícalo en PixelPay.
-          </div>
-          <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-        </div>
-      `;
+      return { title: 'Reembolso pendiente',
+        detail: `Pedido ${label(d.orderId)} — un reembolso lleva más de 24h sin completarse. Verifícalo en PixelPay.` };
     }
-    if (a.type === 'driver_freshness_stale') {
-      // Driver Tracking C1 — surfaced as a red "sin señal GPS" row in the sidebar (renderDriverNode),
-      // NOT a banner: no stacking, no per-minute recurrence. The alert still drives the sidebar flag
-      // (staleDriverUids) and the one-shot per-episode chime; here it renders no banner.
-      return '';
+    case 'driver_freshness_stale': {
+      // NEW: now a first-class Torre row (it previously rendered no banner). Its derived effects
+      // (staleDriverUids, red GPS-dark driver rows, per-episode chime) live in the
+      // subscribeToDispatcherAlerts callback and are untouched.
+      const name = escapeHtml(allDrivers[a.driver_id]?.name || 'Un repartidor');
+      return { title: 'Driver sin señal GPS',
+        detail: `${name} está sin señal GPS reciente — revisá su última ubicación en el mapa.` };
     }
-    // Generic fallback — humanize the type instead of dumping the raw token.
-    const humanType = String(a.type || 'alerta').replace(/^payment_/, '').replace(/_/g, ' ');
-    return `
-      <div class="dispatcher-alert" data-alert-id="${alertId}">
-        <span class="alert-icon">${ICONS.warn}</span>
-        <div class="alert-text"><strong>Alerta</strong> ${escapeHtml(humanType)}</div>
-        <button class="alert-dismiss" data-dismiss-id="${alertId}" title="Descartar">${ICONS.close}</button>
-      </div>
-    `;
-  }).join('');
+    default: {
+      // Fallback bucket (factura_* / unknown / no-type) — humanize, NEVER drop.
+      const humanType = String(a.type || '').replace(/^(payment|factura)_/, '').replace(/_/g, ' ').trim();
+      return { title: 'Alerta', detail: escapeHtml(humanType || 'sin tipo') };
+    }
+  }
+}
 
-  // Wire up dismiss buttons
-  container.querySelectorAll('.alert-dismiss').forEach(btn => {
+// Renders the exceptions queue into #torre-list (left rail). Replaces the old floating
+// #dispatcher-alerts strip. sortAlertEntries preserves each alert id (dismiss) + classifies
+// severity/icon; unknown/factura_* fall into an "Otros / Revisar" bucket (nothing dropped).
+function renderDispatcherAlerts(alerts) {
+  const container = $('torre-list');
+  if (!container) return;
+  const entries = sortAlertEntries(alerts);
+  // ☰ collapsed-rail exceptions badge (Task 11) — count shown only when the left rail is collapsed.
+  const badge = $('left-rail-badge');
+  if (badge) { badge.textContent = String(entries.length); badge.classList.toggle('has', entries.length > 0); }
+  if (entries.length === 0) { container.innerHTML = ''; return; }
+
+  const rowHtml = (e) => {
+    const sev = e.severity === 'red' ? 'red' : e.severity === 'amber' ? 'amber' : '';
+    const { title, detail } = alertContent(e.alert);
+    const idAttr = escapeHtml(e.id);
+    return `
+      <div class="ex ${sev}" data-alert-id="${idAttr}">
+        <div class="exi"><svg class="ic sm"><use href="#${e.iconId}"/></svg></div>
+        <div class="b"><div class="t">${escapeHtml(title)}</div><div class="d">${detail}</div></div>
+        <button class="alert-dismiss ex-dismiss" data-dismiss-id="${idAttr}" title="Descartar"><svg class="ic sm"><use href="#i-close"/></svg></button>
+      </div>`;
+  };
+
+  const known = entries.filter((e) => e.known);
+  const unknown = entries.filter((e) => !e.known);
+  const anyRed = entries.some((e) => e.severity === 'red');
+  let html = `<div class="torre-head"><h3>Torre de control</h3><span class="torre-count${anyRed ? ' hot' : ''}">${entries.length}</span></div>`;
+  html += `<div class="ex-list">${known.map(rowHtml).join('')}</div>`;
+  if (unknown.length) {
+    html += `<div class="otros-head">Otros / Revisar</div><div class="ex-list">${unknown.map(rowHtml).join('')}</div>`;
+  }
+  container.innerHTML = html;
+
+  // Dismiss wiring preserved (data-dismiss-id → dismissDispatcherAlert).
+  container.querySelectorAll('.alert-dismiss').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.dismissId;
       try { await XPD.dismissDispatcherAlert(id); } catch {}
@@ -2381,11 +2858,14 @@ function initMessagesSubscription() {
   $('tab-unhandled')?.addEventListener('click', () => switchMsgTab('unhandled'));
   $('tab-history')?.addEventListener('click', () => switchMsgTab('history'));
 
-  // Escape key closes modal
+  // Task 12: the read-only Comms thread sheet — click scrim closes it
+  $('comms-scrim')?.addEventListener('click', closeCommsThread);
+
+  // Escape key closes modal / the Comms thread sheet
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && $('msg-modal')?.classList.contains('open')) {
-      closeMessagesModal();
-    }
+    if (e.key !== 'Escape') return;
+    if (commsSheetTail) { closeCommsThread(); return; }
+    if ($('msg-modal')?.classList.contains('open')) closeMessagesModal();
   });
 
   // Subscribe to /incoming_messages
@@ -2417,10 +2897,12 @@ function initMessagesSubscription() {
     lastUnhandledIds = unhandledIds;
 
     updateMessagesBadge(unhandledIds.size);
-    // Re-render modal lists if it's open
+    // Modal lists re-render only when the modal is open (fallback triage surface)…
     if ($('msg-modal')?.classList.contains('open')) {
       renderMessagesLists();
     }
+    renderCommsTab();   // …but the in-tab Comms list stays live regardless (Task 10b)
+    if (commsSheetTail) renderCommsThread();  // Task 12: keep an open thread sheet live
   });
 }
 
@@ -2652,21 +3134,18 @@ function getActiveDrivers() {
 
 // Track which driver groups are expanded (default: all expanded)
 const expandedDrivers = new Set();
-let expandedDriversInitialized = false;
 
 // Track which order cards are inline-expanded for details
 const expandedOrderIds = new Set();
 
 function renderSidebar() {
-  // Initialize: expand all known drivers on first render
-  if (!expandedDriversInitialized) {
-    Object.keys(allDrivers).forEach(uid => expandedDrivers.add(uid));
-    expandedDriversInitialized = true;
-  }
+  // Drivers start COLLAPSED — a clean roster card each; tap a driver to expand its
+  // full task detail. (Drivers with active orders still show the inline .dt summary.)
   renderUnassignedSection();
   renderDriversSection();
   renderDeliveredSection();
   renderReconciliationSection();
+  renderPedidosTab();
 }
 
 // ============================================================
@@ -2729,10 +3208,31 @@ function formatScheduledSlot(scheduledFor) {
 function scheduledBadge(order) {
   if (!order || !order.scheduled_for) return '';
   const verb = order.order_type === 'pickup' ? 'Recoger' : 'Entregar';
-  return `<div class="sched-badge">⏰ ${verb} ${formatScheduledSlot(order.scheduled_for)}</div>`;
+  return `<div class="sched-badge"><svg class="ic sm"><use href="#i-clock"/></svg> ${verb} ${formatScheduledSlot(order.scheduled_for)}</div>`;
+}
+
+// Delivery-risk summary — count of active orders (unassigned + in-flight) with level !== 'ok'
+// (red-aging + slipping; amber alone does not count, per the deliveryRisk contract).
+function updateRiskSummary() {
+  const el = $('risk-summary');
+  if (!el) return;
+  let count = 0;
+  const consider = (o) => {
+    const secs = agingSeconds(agingBaselineMs(o), Date.now());
+    const risk = deliveryRisk({
+      agingSeconds: secs,
+      baselineArrivalMs: etaSnapshots.baseline(o.order_id),
+      currentArrivalMs: etaCache[o.order_id]?.arrivalMs ?? null,
+    });
+    if (risk.level !== 'ok') count++;
+  };
+  getPendingOrders().forEach(consider);
+  for (const uid of Object.keys(allDrivers)) getOrdersForDriver(uid).forEach(consider);
+  el.innerHTML = count > 0 ? `<span class="risk-count">${count} pedido(s) en riesgo de retraso</span>` : '';
 }
 
 function renderUnassignedSection() {
+  updateRiskSummary();
   const orders = getPendingOrders();
   const list = $('unassigned-list');
   const meta = $('unassigned-meta');
@@ -2749,26 +3249,43 @@ function renderUnassignedSection() {
 
   list.innerHTML = orders.map(o => {
     const expanded = expandedOrderIds.has(o.order_id);
+    // Aging (created-time) + delivery-risk drive the row-edge band from ONE computation.
+    const secs = agingSeconds(agingBaselineMs(o), Date.now());
+    const risk = deliveryRisk({
+      agingSeconds: secs,
+      baselineArrivalMs: etaSnapshots.baseline(o.order_id),   // null for unassigned → aging-only
+      currentArrivalMs: etaCache[o.order_id]?.arrivalMs ?? null,
+    });
+    const edge = risk.band === 'red' ? ' late' : risk.band === 'amber' ? ' aging' : '';
+    const isCash = isCashPayment(o.payment_method);
+    const payChip = `<span class="m ${isCash ? 'pay' : 'paid'}"><span class="d"></span>${isCash ? `Efectivo · L${escapeHtml(String(o.total ?? '—'))}` : 'Pagado online'}</span>`;
+    const waChip = o.order_received_notified_at
+      ? '<span class="m wa"><span class="d"></span>WhatsApp ✓</span>'
+      : o.order_received_send_unresolved_at
+        ? '<span class="m warn"><span class="d"></span>WhatsApp no entregado</span>'
+        : '';
+    const slip = risk.level === 'slipping' ? '<span class="m slip"><span class="d"></span>slipping vs primer estimado</span>' : '';
     return `
-    <div class="unassigned-card" data-order-id="${o.order_id}">
-      <div class="top">
-        <div class="uid">${displayOrderLabel(o)}</div>
-        <div class="total">L${o.total ?? '—'}</div>
+    <div class="ord unassigned-card${edge}" data-order-id="${escapeHtml(o.order_id)}">
+      <div class="r1">
+        <span class="num">${escapeHtml(displayOrderLabel(o))}</span>
+        <span class="cust">${escapeHtml(o.customer_name || '—')}</span>
+        <span class="ord-age band-${risk.band}" data-aging="${escapeHtml(String(o.created_at ?? ''))}">${formatAging(secs)}</span>
       </div>
-      <div class="customer">${escapeHtml(o.customer_name || '—')}</div>
-      <div class="addr">${escapeHtml(o.address_detected || '—')}</div>
+      <div class="items">${escapeHtml(o.items_text || o.address_detected || '—')}</div>
+      <div class="meta">${payChip}${waChip}${slip}</div>
       ${scheduledBadge(o)}
       ${expanded ? renderOrderExpanded(o) : ''}
       <div class="actions">
         ${showSelfBtn ? `<button class="assign-self-btn" data-assign-self="${o.order_id}" title="Asignar a mí">A mí</button>` : ''}
         <button class="assign-btn" data-assign-order="${o.order_id}">Asignar</button>
-        <button class="more-btn" data-more-unassigned="${o.order_id}" title="Más opciones">⋯</button>
+        <button class="more-btn" data-more-unassigned="${o.order_id}" title="Más opciones"><svg class="ic sm"><use href="#i-more"/></svg></button>
       </div>
     </div>
   `}).join('');
 
   // Card click → open the full detail modal (same rich view as completed orders).
-  list.querySelectorAll('.unassigned-card').forEach(card => {
+  list.querySelectorAll('.ord[data-order-id]').forEach(card => {
     card.addEventListener('click', (e) => {
       // ignore clicks on action buttons
       if (e.target.closest('button')) return;
@@ -2859,29 +3376,266 @@ async function confirmCancelOrder(orderId) {
   }
 }
 
-function renderDriversSection() {
-  const allEntries = Object.entries(allDrivers);
-  const tree = $('drivers-tree');
-  const meta = $('drivers-meta');
+// Cash bar — read-only aggregate of today's CLOSED cuadres
+// (driver_cash/{driver}/{shift}/cuadre/{cash_owed,cash_order_count,closed_at}). Open/in-street
+// cash is NOT in this node, so it is intentionally NOT shown (deferred, not fabricated).
+function renderCashBar(cash) {
+  const el = $('cash-bar');
+  if (!el) return;
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+  const startMs = dayStart.getTime();
+  let total = 0, orders = 0;
+  for (const shifts of Object.values(cash || {})) {
+    for (const shift of Object.values(shifts || {})) {
+      const c = shift && shift.cuadre;
+      if (c && Number.isFinite(c.closed_at) && c.closed_at >= startMs) {
+        total += Number(c.cash_owed) || 0;
+        orders += Number(c.cash_order_count) || 0;
+      }
+    }
+  }
+  el.innerHTML = `
+    <div class="cash-lab">Cuadre de hoy</div>
+    <div class="cash-val">L ${escapeHtml(total.toLocaleString('es-HN'))}</div>
+    <div class="cash-sub">${escapeHtml(String(orders))} pedido(s) cerrado(s)</div>
+  `;
+}
 
-  const onDuty = allEntries.filter(([_, d]) => d.active).length;
-  meta.textContent = `${onDuty} de ${allEntries.length} activos`;
+// Pedidos tab — active in-flight orders (getActiveOrders), read-only, click → detail modal.
+// Every non-completed DELIVERY order (assigned + unassigned). Pickup orders excluded
+// (they have no delivery task); scheduled excluded (own store).
+function getDeliveryQueue() {
+  return Object.values(allOrders).filter(o => {
+    if (o.order_type === 'pickup') return false;
+    const dt = allTasks[`${o.order_id}_delivery`];
+    return dt && dt.status !== 'completed' && dt.status !== 'cancelled';
+  }).sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+}
+// Non-terminal PICKUP orders — order_type 'pickup'. These have no delivery task, so
+// they were invisible in every delivery-keyed view until now.
+function getPickupQueue() {
+  const done = new Set(['cancelled', 'delivered', 'completed', 'picked_up']);
+  return Object.values(allOrders)
+    .filter(o => o.order_type === 'pickup' && !done.has(o.status))
+    .sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+}
 
-  if (allEntries.length === 0) {
-    tree.innerHTML = '<div class="tree-empty">Sin repartidores</div>';
-    return;
+// En Fila — the unified pending queue: every order grouped by category (Entrega /
+// Recoger / Programados). Tap any row → detail modal (cancel / call / message there).
+function renderPedidosTab() {
+  const el = $('pedidos-list'); if (!el) return;
+  const delivery = getDeliveryQueue();
+  const pickup = getPickupQueue();
+  const scheduled = Object.values(allScheduled || {}).sort((a, b) => (a.scheduled_for || 0) - (b.scheduled_for || 0));
+  const total = delivery.length + pickup.length + scheduled.length;
+  const n = $('tab-pedidos-n'); if (n) n.textContent = String(total);
+
+  if (total === 0) { el.innerHTML = '<div class="tree-empty">Sin pedidos en fila</div>'; return; }
+
+  const agedOrd = (o, itemsHtml) => {
+    const secs = agingSeconds(agingBaselineMs(o), Date.now());
+    const band = agingBand(secs);
+    const edge = band === 'red' ? ' late' : band === 'amber' ? ' aging' : '';
+    return `<div class="ord${edge}" data-order-id="${escapeHtml(o.order_id)}">
+      <div class="r1"><span class="num">${escapeHtml(displayOrderLabel(o))}</span><span class="cust">${escapeHtml(o.customer_name || '—')}</span><span class="ord-age band-${band}" data-aging="${escapeHtml(String(o.created_at ?? ''))}">${formatAging(secs)}</span></div>
+      <div class="items">${itemsHtml}</div>
+    </div>`;
+  };
+  const cat = (title, count, rows) => count === 0 ? ''
+    : `<div class="q-cat"><div class="q-cat-hd">${title}<span class="q-cat-n">${count}</span></div>${rows}</div>`;
+
+  const deliveryRows = delivery.map(o => {
+    const dt = allTasks[`${o.order_id}_delivery`];
+    const drv = allDrivers[dt && dt.assigned_driver_id];
+    return agedOrd(o, escapeHtml(drv && drv.name ? `Con ${drv.name}` : 'Sin asignar'));
+  }).join('');
+  const pickupRows = pickup.map(o => agedOrd(o, 'Para recoger en restaurante')).join('');
+  const schedRows = scheduled.map(o =>
+    `<div class="ord" data-order-id="${escapeHtml(o.order_id)}">
+      <div class="r1"><span class="num">${escapeHtml(displayOrderLabel(o))}</span><span class="cust">${escapeHtml(o.customer_name || '—')}</span></div>
+      <div class="items"><svg class="ic" style="display:inline-block;width:12px;height:12px;vertical-align:-2px"><use href="#i-clock"/></svg> ${escapeHtml(formatScheduledSlot(o.scheduled_for))}</div>
+    </div>`).join('');
+
+  el.innerHTML =
+    cat('Entrega', delivery.length, deliveryRows) +
+    cat('Recoger', pickup.length, pickupRows) +
+    cat('Programados', scheduled.length, schedRows);
+
+  el.querySelectorAll('.ord[data-order-id]').forEach(card => {
+    card.addEventListener('click', () => openOrderDetailModal(card.dataset.orderId));
+  });
+}
+
+// Comms tab — live read-only unhandled inbound list (the full modal triage stays as fallback).
+function renderCommsTab() {
+  const el = $('comms-list'); if (!el) return;
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  // Recent conversations — latest inbound message per customer (by phone) in the last 24h,
+  // so handled chats are still reachable (tap → thread), not just unhandled ones.
+  const byPhone = new Map();
+  for (const m of Object.values(allMessages || {})) {
+    if (!m || (m.received_at || 0) < cutoff) continue;
+    const key = phoneTail(m.from);
+    if (!key) continue;
+    const prev = byPhone.get(key);
+    if (!prev || (m.received_at || 0) > (prev.received_at || 0)) byPhone.set(key, m);
+  }
+  const convos = [...byPhone.values()].sort((a, b) => {
+    const au = a.handled !== true, bu = b.handled !== true;
+    if (au !== bu) return au ? -1 : 1;                   // unhandled first
+    return (b.received_at || 0) - (a.received_at || 0);  // then most recent
+  });
+  const unhandledCount = convos.filter(m => m.handled !== true).length;
+  const n = $('tab-comms-n'); if (n) n.textContent = String(unhandledCount);
+
+  if (convos.length === 0) { el.innerHTML = '<div class="tree-empty">Sin conversaciones recientes</div>'; return; }
+  el.innerHTML = convos.map(m => {
+    const flag = m.handled !== true ? '<span class="comms-flag">Sin atender</span>' : '';
+    return `<div class="comms-row" data-comms-from="${escapeHtml(String(m.from || ''))}">
+      <div class="comms-from">${escapeHtml(formatMsgPhone(m.from))}${flag}</div>
+      <div class="comms-body">${escapeHtml((m.body || '').slice(0, 90))}</div>
+    </div>`;
+  }).join('') + '<button class="comms-open" id="comms-open-inbox">Abrir bandeja completa</button>';
+  el.querySelectorAll('.comms-row[data-comms-from]').forEach(row => {
+    row.addEventListener('click', () => openCommsThread(row.dataset.commsFrom));
+  });
+  $('comms-open-inbox')?.addEventListener('click', openMessagesModal);
+}
+
+// ============================================================
+// Task 12 — read-only Comms thread sheet (assembleThread)
+// Floating glass over the board. Shows a customer's inbound WhatsApp messages
+// + the "Recibido" automessage event, time-ordered, READ-ONLY (no composer —
+// send is Phase 2). Identity/Recibido derived from the best-matching order.
+// ============================================================
+let commsSheetTail = null;  // last-8 phone digits of the open thread, or null when closed
+
+function phoneTail(v) { return String(v || '').replace(/\D/g, '').slice(-8); }
+
+function formatCommsDay(ms) {
+  if (!Number.isFinite(ms)) return '';
+  const d = new Date(ms), now = new Date();
+  if (d.toDateString() === now.toDateString()) return 'Hoy';
+  return d.toLocaleDateString('es-HN', { day: 'numeric', month: 'short' });
+}
+
+function openCommsThread(fromRaw) {
+  const tail = phoneTail(fromRaw);
+  if (!tail) return;
+  commsSheetTail = tail;
+  renderCommsThread();
+  $('comms-scrim')?.classList.add('open');
+  $('comms-sheet')?.classList.add('open');
+}
+
+function closeCommsThread() {
+  commsSheetTail = null;
+  $('comms-scrim')?.classList.remove('open');
+  $('comms-sheet')?.classList.remove('open');
+}
+
+function renderCommsThread() {
+  const sheet = $('comms-sheet');
+  if (!sheet || !commsSheetTail) return;
+  const tail = commsSheetTail;
+
+  // This customer's inbound messages (matched by trailing phone digits).
+  const inbound = Object.values(allMessages || {}).filter(m => phoneTail(m.from) === tail);
+
+  // Best-matching order (most recent) → header identity + the "Recibido" event/chip.
+  const order = Object.values(allOrders || {})
+    .filter(o => phoneTail(o.customer_phone) === tail)
+    .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0] || null;
+
+  const autoEvents = (order && Number.isFinite(order.order_received_notified_at))
+    ? [{ label: 'Pedido recibido — confirmación enviada', at: order.order_received_notified_at }]
+    : [];
+  const items = assembleThread({ inbound, autoEvents });
+
+  // Identity
+  const rawFrom = inbound[0]?.from || order?.customer_phone || '';
+  const name = order?.customer_name || formatMsgPhone(rawFrom);
+  const initials = ((order?.customer_name
+    ? order.customer_name.trim().split(/\s+/).slice(0, 2).map(s => s[0]).join('')
+    : phoneTail(rawFrom).slice(-2)) || '#').toUpperCase();
+  const waDigits = String(rawFrom).replace(/\D/g, '');
+  let sub = escapeHtml(formatMsgPhone(rawFrom));  // formatMsgPhone → digits only, safe
+  if (order) {
+    const isCash = isCashPayment(order.payment_method);
+    const pay = isCash ? `Efectivo L${escapeHtml(String(order.total ?? '—'))}`
+              : order.payment_method ? 'Pagado online' : '';
+    sub = `${escapeHtml(displayOrderLabel(order))}${pay ? ' · ' + pay : ''}`;
   }
 
-  // Sort: active first, then alphabetical
-  allEntries.sort((a, b) => {
-    if (a[1].active !== b[1].active) return a[1].active ? -1 : 1;
-    return (a[1].name || '').localeCompare(b[1].name || '');
-  });
+  // "Recibido" chip — limited to the two documented send-state fields only.
+  let recibido = '';
+  if (order) {
+    if (Number.isFinite(order.order_received_notified_at)) {
+      recibido = '<span class="m wa"><span class="d"></span>Recibido: enviado</span>';
+    } else if (Number.isFinite(order.order_received_send_unresolved_at)) {
+      recibido = '<span class="m warn"><span class="d"></span>Recibido: no entregado</span>';
+    }
+  }
 
-  tree.innerHTML = allEntries.map(([uid, d]) => renderDriverNode(uid, d)).join('');
+  // Body — read-only bubbles: inbound (.in) + auto events (.out.auto). No dispatcher-sent bubbles in Phase 1.
+  let body;
+  if (items.length === 0) {
+    body = '<div class="sh-empty">Sin mensajes todavía</div>';
+  } else {
+    const rows = items.map(it => {
+      const cls = it.kind === 'auto' ? 'out auto' : 'in';
+      const meta = it.kind === 'auto'
+        ? `<span class="autotag">Automático</span> · ${escapeHtml(formatMsgTime(it.ts))}`
+        : escapeHtml(formatMsgTime(it.ts));
+      return `<div class="msgrow ${cls}"><div class="bub">${escapeHtml(it.text)}</div><div class="bmeta">${meta}</div></div>`;
+    }).join('');
+    body = `<div class="daymark">${escapeHtml(formatCommsDay(items[0].ts))}</div>${rows}`;
+  }
 
+  const callBtn = waDigits
+    ? `<a class="sh-ic call" href="tel:+${escapeHtml(waDigits)}" title="Llamar" aria-label="Llamar"><svg class="ic"><use href="#i-phone"/></svg></a>`
+    : '';
+
+  sheet.innerHTML = `
+    <div class="sh-head">
+      <div class="sh-av">${escapeHtml(initials)}</div>
+      <div class="sh-id"><div class="nm">${escapeHtml(name)}</div><div class="su">${sub}</div></div>
+      ${callBtn}
+      <button class="sh-ic" id="comms-sheet-close" title="Cerrar" aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
+    </div>
+    ${recibido ? `<div class="sh-recibido">${recibido}</div>` : ''}
+    <div class="sh-body">${body}</div>
+  `;
+  $('comms-sheet-close')?.addEventListener('click', closeCommsThread);
+}
+
+function renderDriversSection() {
+  updateRiskSummary();
+  const allEntries = Object.entries(allDrivers);
+  // Split into two independently-collapsible groups: En turno (live) vs Fuera de turno.
+  const liveTree = $('drivers-tree-live');
+  const offTree = $('drivers-tree-off');
+  const wire = $('right-rail');
+  if (!liveTree || !offTree || !wire) return;
+
+  const byName = (a, b) => (a[1].name || '').localeCompare(b[1].name || '');
+  const live = allEntries.filter(([_, d]) => d.active).sort(byName);
+  const off  = allEntries.filter(([_, d]) => !d.active).sort(byName);
+
+  const liveMeta = $('drivers-live-meta'); if (liveMeta) liveMeta.textContent = String(live.length);
+  const offMeta  = $('drivers-off-meta');  if (offMeta)  offMeta.textContent  = String(off.length);
+
+  liveTree.innerHTML = live.length
+    ? live.map(([uid, d]) => renderDriverNode(uid, d)).join('')
+    : '<div class="tree-empty">Sin repartidores en turno</div>';
+  offTree.innerHTML = off.length
+    ? off.map(([uid, d]) => renderDriverNode(uid, d)).join('')
+    : '<div class="tree-empty">Ninguno fuera de turno</div>';
+
+  // Wiring — query the whole right rail so BOTH group trees are covered.
+  // (.driver-row / data-*-driver only exist in the roster, never in the tab panes.)
   // Click handlers — toggle expand on row click, pan map on chevron click
-  tree.querySelectorAll('[data-more-driver]').forEach(btn => {
+  wire.querySelectorAll('[data-more-driver]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const uid = btn.dataset.moreDriver;
@@ -2897,7 +3651,15 @@ function renderDriversSection() {
     });
   });
 
-  tree.querySelectorAll('.driver-row').forEach(row => {
+  // Surfaced quick actions on the card face (Task 10a).
+  wire.querySelectorAll('[data-call-driver]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); window.location.href = `tel:${btn.dataset.callDriver}`; });
+  });
+  wire.querySelectorAll('[data-msg-driver]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); toast('Mensajería al repartidor: disponible en Fase 2'); });
+  });
+
+  wire.querySelectorAll('.driver-row').forEach(row => {
     row.addEventListener('click', (e) => {
       if (e.target.closest('button')) return;   // let the ⋯ menu button handle its own click
       const uid = row.dataset.driverUid;
@@ -2915,7 +3677,7 @@ function renderDriversSection() {
   });
 
   // Task click → toggle expand + fit map to driver + customer + restaurant
-  tree.querySelectorAll('.task-row').forEach(row => {
+  wire.querySelectorAll('.task-row').forEach(row => {
     row.addEventListener('click', (e) => {
       if (e.target.closest('button')) return;
       e.stopPropagation();
@@ -2924,7 +3686,7 @@ function renderDriversSection() {
   });
 
   // More button on tasks
-  tree.querySelectorAll('[data-more-task]').forEach(btn => {
+  wire.querySelectorAll('[data-more-task]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const oid = btn.dataset.moreTask;
@@ -2975,6 +3737,15 @@ function staleEs(ms) {
   return `hace ${Math.floor(min / 60)} h`;
 }
 
+// Compact GPS-age for the driver-card .gps chip (mockup: "4m" / "12m").
+function gpsAgeShort(ms) {
+  if (!ms) return '—';
+  const min = Math.floor((Date.now() - ms) / 60000);
+  if (min < 1) return '<1m';
+  if (min < 60) return `${min}m`;
+  return `${Math.floor(min / 60)}h`;
+}
+
 // Phase 1a: recompute live delivery ETAs for orders whose driver holds the food. Throttled per
 // order (≥30s or >50m move). Fills etaCache + re-renders the sidebar. Errors swallowed → a
 // Directions/key failure degrades to "no ETA", never breaks the board.
@@ -2988,6 +3759,7 @@ function refreshDeliveryEtas() {
       const pt = allTasks[`${o.order_id}_pickup`];
       if (!etaEligible({ pickupStatus: pt?.status, destLat: dt?.destination_lat, destLng: dt?.destination_lng, driverLat: d.lat, driverLng: d.lng })) {
         delete etaCache[o.order_id];
+        etaSnapshots.clear(o.order_id);   // drop the first-observed-ETA baseline on delivery/removal
         continue;
       }
       const cached = etaCache[o.order_id];
@@ -3004,7 +3776,9 @@ function refreshDeliveryEtas() {
         const leg = res.routes[0].legs[0];
         const travelSec = (leg.duration_in_traffic || leg.duration).value;
         const t = Date.now();
-        etaCache[orderId] = { arrivalMs: projectArrival(t, travelSec, S_CUSTOMER_SEC), computedAt: t, driverLat: dLat, driverLng: dLng };
+        const arrivalMs = projectArrival(t, travelSec, S_CUSTOMER_SEC);
+        etaCache[orderId] = { arrivalMs, computedAt: t, driverLat: dLat, driverLng: dLng };
+        etaSnapshots.observe(orderId, arrivalMs);   // first-observed-ETA baseline (delivery-risk)
         renderDriversSection();
       });
     }
@@ -3091,30 +3865,58 @@ function renderDriverNode(uid, d) {
   };
   const statusLabel = statusEs[d.status] || d.status;
 
-  let statusText;
-  if (!d.active) {
-    statusText = 'Fuera de turno';
-  } else if (gpsDark) {
-    statusText = `Sin señal GPS · ${staleEs(d.last_ping)}`;
-  } else if (!hasPushReachability(d)) {
-    statusText = `${statusLabel} · sin notificaciones`;
-  } else if (stale) {
-    statusText = `${statusLabel} · inactivo ${staleEs(d.last_ping)}`;
-  } else {
-    statusText = `${statusLabel} · en vivo`;
+  // Card meta line (.dm) — concise state. No vehicle field exists in the data,
+  // so we don't invent "Moto"; we show availability / active-order count honestly.
+  let metaText;
+  if (!d.active) metaText = 'Fuera de turno';
+  else if (gpsDark) metaText = 'Sin señal';
+  else if (!hasPushReachability(d)) metaText = 'Sin notificaciones';
+  else if (hasOrders) metaText = `${ordersForDriver.length} activa${ordersForDriver.length > 1 ? 's' : ''}`;
+  else if (d.status === 'available' || d.status === 'at_restaurant') metaText = 'Libre';
+  else metaText = statusLabel;
+
+  // GPS liveness chip (.gps) — only meaningful on-shift.
+  let gpsChip = '';
+  if (d.active) {
+    if (gpsDark) gpsChip = `<div class="gps dark"><span class="d"></span>${escapeHtml(gpsAgeShort(d.last_ping))}</div>`;
+    else if (stale) gpsChip = `<div class="gps"><span class="d"></span>${escapeHtml(gpsAgeShort(d.last_ping))}</div>`;
+    else gpsChip = '<div class="gps"><span class="d"></span>vivo</div>';
   }
 
-  // Only fully-unreachable drivers get the dimmed "stale" row treatment.
-  // Stale GPS while on duty = render normally (full opacity).
-  const dimRow = !reachable && !gpsDark;  // a red GPS-dark row must not be dimmed
+  // Only fully-unreachable drivers get the dimmed treatment (a red gps-dark row must not be dimmed).
+  const dimRow = !reachable && !gpsDark;
+  const initial = escapeHtml((d.name || '?').charAt(0).toUpperCase());
 
+  // Inline active-task summary line(s), shown collapsed; the rich .driver-tasks cards
+  // (below) take over when expanded.
+  const now = Date.now();
+  const dtLines = (hasOrders && !expanded)
+    ? ordersForDriver.map(o => {
+        const e = etaCache[o.order_id];
+        const etaHtml = e ? `<span class="eta">${escapeHtml(relativeEta(e.arrivalMs, now))}</span>` : '';
+        return `<div class="dt"><span class="mono">${escapeHtml(displayOrderLabel(o))}</span><span class="cust">${escapeHtml(o.customer_name || '—')}</span>${etaHtml}</div>`;
+      }).join('')
+    : '';
+
+  const darkRow = gpsDark
+    ? `<div class="dark-row"><svg class="ic sm"><use href="#i-signaloff"/></svg><span>Sin señal ${escapeHtml(gpsAgeShort(d.last_ping))} — considerar reasignar</span></div>`
+    : '';
+
+  const uidAttr = escapeHtml(String(uid));
   return `
-    <div class="driver-row ${gpsDark ? 'gps-dark' : ''} ${dimRow ? 'stale' : ''} ${hasOrders ? 'has-tasks' : ''} ${expanded ? 'expanded' : ''}" data-driver-uid="${uid}">
-      <div class="status-dot ${dotClass}"></div>
-      <div class="name">${escapeHtml(d.name || 'Sin nombre')}</div>
-      <div class="row-status">${escapeHtml(statusText)}</div>
-      <button class="more-btn" data-more-driver="${uid}" title="Acciones del repartidor">⋯</button>
-      <span class="chevron">${ICONS.chevronRight}</span>
+    <div class="driver-row ${gpsDark ? 'gps-dark' : ''} ${dimRow ? 'stale' : ''} ${hasOrders ? 'has-tasks' : ''} ${expanded ? 'expanded' : ''}" data-driver-uid="${uidAttr}">
+      <div class="dh">
+        <div class="av">${initial}<span class="s ${dotClass}"></span></div>
+        <div class="who"><div class="dn">${escapeHtml(d.name || 'Sin nombre')}</div><div class="dm">${escapeHtml(metaText)}</div></div>
+        ${gpsChip}
+        <div class="dacts">
+          ${d.phone ? `<button class="da call" data-call-driver="${escapeHtml(String(d.phone))}" title="Llamar" aria-label="Llamar"><svg class="ic sm"><use href="#i-phone"/></svg></button>` : ''}
+          <button class="da msg" data-msg-driver="${uidAttr}" title="Mensaje in-app (Fase 2)" aria-label="Mensaje in-app"><svg class="ic sm"><use href="#i-message"/></svg></button>
+          <button class="da more" data-more-driver="${uidAttr}" title="Acciones del repartidor" aria-label="Acciones del repartidor"><svg class="ic sm"><use href="#i-more"/></svg></button>
+        </div>
+      </div>
+      ${darkRow}
+      ${dtLines}
     </div>
     <div class="driver-tasks ${expanded ? '' : 'collapsed'}">
       ${hasOrders
@@ -3136,13 +3938,21 @@ function renderTaskRow(driverUid, order) {
 
   const expanded = expandedOrderIds.has(order.order_id);
 
+  // Delivery-risk: slipping only when the CURRENT ETA has drifted past the first observed one.
+  const secs = agingSeconds(agingBaselineMs(order), Date.now());
+  const risk = deliveryRisk({
+    agingSeconds: secs,
+    baselineArrivalMs: etaSnapshots.baseline(order.order_id),
+    currentArrivalMs: etaCache[order.order_id]?.arrivalMs ?? null,
+  });
+
   return `
-    <div class="task-row" data-order-id="${order.order_id}" data-driver-uid="${driverUid}">
+    <div class="task-row" data-order-id="${escapeHtml(String(order.order_id))}" data-driver-uid="${escapeHtml(String(driverUid))}">
       <div class="task-top">
-        <div class="task-id">${displayOrderLabel(order)}</div>
+        <div class="task-id">${escapeHtml(displayOrderLabel(order))}</div>
         <div style="display: flex; align-items: center; gap: 6px;">
-          <div class="task-id mono" style="color: var(--text-soft);">L${order.total ?? '—'}</div>
-          <button class="more-btn" data-more-task="${order.order_id}" data-driver-uid="${driverUid}" title="Más opciones">⋯</button>
+          <div class="task-id mono" style="color: var(--text-soft);">L${escapeHtml(String(order.total ?? '—'))}</div>
+          <button class="more-btn" data-more-task="${escapeHtml(String(order.order_id))}" data-driver-uid="${escapeHtml(String(driverUid))}" title="Más opciones"><svg class="ic sm"><use href="#i-more"/></svg></button>
         </div>
       </div>
       <div class="task-customer">${escapeHtml(order.customer_name || '—')}</div>
@@ -3151,6 +3961,7 @@ function renderTaskRow(driverUid, order) {
       <div class="task-meta">
         <span class="phase-pill ${phase}">${phaseLabel}</span>
         ${(() => { const e = etaCache[order.order_id]; if (!e) return ''; const now = Date.now(); return `<span class="eta-chip">${relativeEta(e.arrivalMs, now)} · ${clockTime(e.arrivalMs)}</span>`; })()}
+        ${risk.level === 'slipping' ? '<span class="slip-chip" title="Retrasándose vs. el primer ETA observado">retrasándose</span>' : ''}
       </div>
       ${expanded ? renderOrderExpanded(order) : ''}
     </div>
@@ -3242,10 +4053,10 @@ function renderDeliveredSection() {
       ? `<div class="meta"><span>${escapeHtml(displayOrderLabel(o))} · ${escapeHtml((o.restaurant_id || 'x_pizza') === 'la_musa' ? 'La Musa' : 'X. Pizza')}</span></div>`
       : '';
     return `
-      <div class="delivered-card ${isCancelled ? 'is-cancelled' : ''}" data-order-id="${o.order_id}">
+      <div class="delivered-card ${isCancelled ? 'is-cancelled' : ''}" data-order-id="${escapeHtml(o.order_id)}">
         <div class="top">
           <div class="name">${escapeHtml(o.customer_name || '—')} ${statusBadge}</div>
-          <div class="total">L${o.total ?? '—'}</div>
+          <div class="total">L${escapeHtml(String(o.total ?? '—'))}</div>
         </div>
         ${ctx}
         <div class="meta">
@@ -3293,7 +4104,7 @@ function renderReconciliationSection() {
       <div class="recon-card" data-order-id="${escapeHtml(o.order_id)}">
         <div class="recon-top">
           <span class="recon-id">${escapeHtml(displayOrderLabel(o))}</span>
-          <span class="recon-total">L${o.total ?? '—'}</span>
+          <span class="recon-total">L${escapeHtml(String(o.total ?? '—'))}</span>
         </div>
         <div class="recon-sub">${escapeHtml(brand)} · ${escapeHtml(o.customer_name || '—')} · hace ${reconAge(o.created_at)}</div>
         <div class="recon-reason">Pago en línea sin confirmar</div>
@@ -3390,7 +4201,7 @@ function formatDateTime(ts) {
 let currentDetailOrderId = null;
 
 function openOrderDetailModal(orderId) {
-  const order = allOrders[orderId];
+  const order = allOrders[orderId] || allScheduled[orderId];   // scheduled orders live outside allOrders
   if (!order) {
     toast('Pedido no encontrado', 'error');
     return;
@@ -3429,6 +4240,10 @@ function renderOrderDetailModal(order) {
 
   // 1) Customer info
   const customerRows = [];
+  customerRows.push(`<div class="od-row">
+    <span class="od-label">Código</span>
+    <span class="od-value" style="font-family:'IBM Plex Mono',monospace; letter-spacing:0.02em;">${escapeHtml(orderCode(order))}</span>
+  </div>`);
   if (order.customer_phone) {
     customerRows.push(`<div class="od-row">
       <span class="od-label">Teléfono</span>
@@ -3465,7 +4280,7 @@ function renderOrderDetailModal(order) {
   if (order.total != null) {
     orderRows.push(`<div class="od-row">
       <span class="od-label">Total</span>
-      <span class="od-value">L ${order.total}</span>
+      <span class="od-value">L ${escapeHtml(String(order.total))}</span>
     </div>`);
   }
   if (order.items_text) {
@@ -3560,12 +4375,32 @@ function renderOrderDetailModal(order) {
   // Footer actions
   const actions = [];
   if (order.customer_phone) {
+    const waDigits = String(order.customer_phone).replace(/\D/g, '');
     actions.push(`<a class="od-action-btn primary" href="tel:${escapeHtml(order.customer_phone)}" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;">Llamar al cliente</a>`);
+    if (waDigits) actions.push(`<a class="od-action-btn" href="https://wa.me/${escapeHtml(waDigits)}" target="_blank" rel="noopener" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;">Mensaje</a>`);
   }
   if (order.lat && order.lng) {
     actions.push(`<button class="od-action-btn" id="od-center-map">Ver en mapa</button>`);
   }
+  // Cancel — reuses the money-safe server cancel (voids charge / releases driver). Only for
+  // orders that aren't already terminal.
+  // picked_up (out-for-delivery) IS cancelable — a dispatcher can abort an in-progress
+  // delivery; the server voids the charge + recalls the driver (Xavier's call, 2026-07-31).
+  // Client + server agree (both allow); only terminal states hide Cancel.
+  const cancellable = !['cancelled', 'delivered', 'completed'].includes(order.status);
+  if (cancellable) {
+    actions.push(`<button class="od-action-btn danger" id="od-cancel-order">Cancelar pedido</button>`);
+  }
   $('order-detail-actions').innerHTML = actions.join('');
+
+  const cancelBtn = $('od-cancel-order');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      const oid = order.order_id;
+      closeOrderDetailModal();
+      confirmCancelOrder(oid);   // existing money-safe flow (own confirm + toast)
+    });
+  }
 
   // Wire up the center-map button — drops a distinctive temporary pin at
   // the delivery location so the dispatcher can SEE where the order went,
@@ -3968,9 +4803,12 @@ async function assignOrder(orderId, driverId) {
 // ============================================================
 function updateStats() {
   $('stat-drivers').textContent = getActiveDrivers().length;
-  $('stat-pending').textContent = getPendingOrders().length;
+  const pendingCount = getPendingOrders().length;
+  $('stat-pending').textContent = pendingCount;
   $('stat-active').textContent = getActiveOrders().length;
   $('stat-delivered').textContent = getDeliveredTodayCount();
+  const kpiPending = $('kpi-pending');
+  if (kpiPending) kpiPending.classList.toggle('alert', pendingCount > 0);
 }
 
 function getDotClass(d) {
@@ -4002,6 +4840,9 @@ function escapeHtml(s) {
 // number up in allOrders — used for alerts/toasts that only carry the id). Returns an UNescaped string that
 // always begins with '#'; wrap in escapeHtml at call sites that render into innerHTML (a '#' + integer or a
 // '#' + charset-safe order_id both pass through escapeHtml unchanged, so the fallback stays byte-identical).
+// Compact glance label for LISTS — the friendly daily "#47", or a short code suffix
+// when a daily number hasn't been assigned yet. The full order code (PZSX…) is NOT
+// shown in lists; it lives in the detail modal (see orderCode / renderOrderDetailModal).
 function displayOrderLabel(orderOrId) {
   const isObj = orderOrId && typeof orderOrId === 'object';
   const orderId = isObj ? orderOrId.order_id : orderOrId;
@@ -4010,35 +4851,127 @@ function displayOrderLabel(orderOrId) {
     const rec = allOrders[orderId];
     if (rec && Number.isFinite(rec.display_number)) dn = rec.display_number;
   }
-  return '#' + (Number.isFinite(dn) ? dn : (orderId != null ? orderId : '—'));
+  if (Number.isFinite(dn)) return '#' + dn;
+  const s = orderId != null ? String(orderId) : '';
+  return s ? '#' + s.slice(-4).toUpperCase() : '#—';
+}
+
+// The full order code (PZSX…) — for the detail modal only, never crammed into lists.
+function orderCode(order) {
+  return order && order.order_id != null ? String(order.order_id) : '—';
+}
+
+// Display-only cash predicate. Normalizes (trim + lowercase) before comparing, mirroring
+// xpizza-driver/cash-helpers.js's isCashPayment shape so "Cash"/padded values don't
+// mislabel as online. Display only — never gates settlement/cuadre/writes.
+function isCashPayment(pm) {
+  const v = String(pm || '').trim().toLowerCase();
+  return v === 'cash' || v === 'efectivo';
 }
 
 // ============================================================
-// Sidebar toggle + map fit
+// Collapse rails + map fit
 // ============================================================
-// Populate the icon spans for the sidebar collapse/show buttons and the
-// "Entregados hoy" group toggle. We do this in JS rather than inline HTML
-// because the ICONS object is defined in this script — having the SVG in
-// HTML would require duplicating the markup.
-$('sidebar-collapse-btn').querySelector('.sb-icon').innerHTML = ICONS.chevronRight;
-$('sidebar-show-btn').querySelector('.sb-icon').innerHTML = ICONS.chevronLeft;
+// Populate the icon span for the "Entregados hoy" group toggle in JS (the ICONS
+// object is defined in this script, so inlining the SVG would duplicate markup).
+// (The sidebar collapse/show buttons were retired with the drag-resize model — the
+// collapse-rails wiring is below.)
 $('delivered-toggle').querySelector('.tree-group-toggle').innerHTML = ICONS.chevronDown;
 
-$('sidebar-collapse-btn').addEventListener('click', () => {
-  $('sidebar').classList.add('collapsed');
-  $('sidebar-show-btn').classList.remove('hidden');
-  if (map) google.maps.event.trigger(map, 'resize');
+// ── Collapse rails (Torre de Control 3-column grid) — replaces the retired drag-resize
+// sidebar. The code runs in a module, so an inline onclick can't resolve → wire via
+// addEventListener.
+function togRail(cls) {
+  $('app').classList.toggle(cls);
+  // The map re-fit during/after the grid-column transition is handled by the ResizeObserver
+  // in initMap (it fires as #map-container's width animates), so no manual resize is needed here.
+}
+$('rail-toggle-left').addEventListener('click', () => togRail('left-open'));
+$('rail-toggle-right').addEventListener('click', () => togRail('right-open'));
+
+// Live-tick the aging timers each second (recompute from each row's created-time baseline in-place).
+setInterval(() => {
+  document.querySelectorAll('[data-aging]').forEach((el) => {
+    const base = Number(el.dataset.aging);
+    if (Number.isFinite(base)) el.textContent = formatAging(agingSeconds(base, Date.now()));
+  });
+}, 1000);
+
+// Right-rail tabs — tap a tab to open its list; tap the ACTIVE tab again to collapse it
+// (no pane shown). Wired via addEventListener (module scope).
+document.querySelectorAll('#rail-tabs .rtab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    if (btn.classList.contains('on')) {
+      // collapse: hide the list, deactivate the tab
+      btn.classList.remove('on');
+      document.querySelectorAll('.rtab-pane').forEach((p) => p.classList.add('hidden'));
+    } else {
+      document.querySelectorAll('#rail-tabs .rtab').forEach((b) => b.classList.toggle('on', b === btn));
+      document.querySelectorAll('.rtab-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== tab));
+    }
+  });
 });
 
-$('sidebar-show-btn').addEventListener('click', () => {
-  $('sidebar').classList.remove('collapsed');
-  $('sidebar-show-btn').classList.add('hidden');
-  if (map) google.maps.event.trigger(map, 'resize');
-});
+// Cobertura drawer toggle (Task 11).
+$('cob-toggle')?.addEventListener('click', () => $('cobertura')?.classList.toggle('open'));
 
 $('delivered-toggle').addEventListener('click', () => {
   $('delivered-group').classList.toggle('collapsed');
 });
+
+// Driver roster — two independently-collapsible groups (En turno / Fuera de turno).
+const _liveTog = $('drivers-live-toggle')?.querySelector('.tree-group-toggle');
+const _offTog = $('drivers-off-toggle')?.querySelector('.tree-group-toggle');
+if (_liveTog) _liveTog.innerHTML = ICONS.chevronDown;
+if (_offTog) _offTog.innerHTML = ICONS.chevronDown;
+$('drivers-live-toggle')?.addEventListener('click', () => $('drivers-live-group').classList.toggle('collapsed'));
+$('drivers-off-toggle')?.addEventListener('click', () => $('drivers-off-group').classList.toggle('collapsed'));
+
+// ── Drag-to-resize rails. Updates --lw-size/--rw-size on :root (grid column + rail-inner
+// width both derive from it), clamped + persisted. Disables the grid transition while
+// dragging so it tracks the cursor; the map re-fits via its ResizeObserver.
+function setupRailResize(handleId, sizeVar, side, storeKey) {
+  const handle = $(handleId);
+  if (!handle) return;
+  const MIN = 260, MAX = 620, DEFAULT = side === 'left' ? 380 : 344;
+  try {
+    const saved = parseInt(localStorage.getItem(storeKey) || '', 10);
+    if (Number.isFinite(saved)) {
+      document.documentElement.style.setProperty(sizeVar, `${Math.max(MIN, Math.min(MAX, saved))}px`);
+    }
+  } catch {}
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = parseInt(getComputedStyle(document.documentElement).getPropertyValue(sizeVar), 10) || DEFAULT;
+    handle.classList.add('active');
+    $('main-grid').classList.add('resizing');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (ev) => {
+      const delta = ev.clientX - startX;
+      let w = side === 'left' ? startW + delta : startW - delta;   // right rail grows as you drag left
+      w = Math.max(MIN, Math.min(MAX, w));
+      document.documentElement.style.setProperty(sizeVar, `${w}px`);
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      handle.classList.remove('active');
+      $('main-grid').classList.remove('resizing');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      const finalW = parseInt(getComputedStyle(document.documentElement).getPropertyValue(sizeVar), 10);
+      try { if (Number.isFinite(finalW)) localStorage.setItem(storeKey, String(finalW)); } catch {}
+      if (typeof map !== 'undefined' && map) google.maps.event.trigger(map, 'resize');
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+setupRailResize('rail-resize-left', '--lw-size', 'left', 'disp_lw');
+setupRailResize('rail-resize-right', '--rw-size', 'right', 'disp_rw');
 
 // ============================================================
 // Closed-orders search + detail modal wiring
@@ -4089,78 +5022,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// ============================================================
-// Sidebar resize (drag handle on inner edge)
-// ============================================================
-(function setupSidebarResize() {
-  const handle = $('sidebar-resize-handle');
-  const sidebar = $('sidebar');
-  const SIDEBAR_WIDTH_KEY = 'xpd_sidebar_width';
-  const MIN_WIDTH = 280;
-  const MAX_WIDTH = 700;
-
-  // Restore persisted width
-  try {
-    const saved = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY), 10);
-    if (saved && saved >= MIN_WIDTH && saved <= MAX_WIDTH) {
-      sidebar.style.width = `${saved}px`;
-    }
-  } catch {}
-
-  let dragging = false;
-  let startX = 0;
-  let startWidth = 0;
-
-  const onMove = (e) => {
-    if (!dragging) return;
-    const clientX = e.clientX ?? e.touches?.[0]?.clientX;
-    if (clientX == null) return;
-    const delta = startX - clientX; // moving cursor LEFT widens sidebar (handle is on its left edge)
-    const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth + delta));
-    sidebar.style.width = `${newWidth}px`;
-  };
-
-  const onUp = () => {
-    if (!dragging) return;
-    dragging = false;
-    handle.classList.remove('dragging');
-    document.body.classList.remove('resizing-sidebar');
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
-    document.removeEventListener('touchmove', onMove);
-    document.removeEventListener('touchend', onUp);
-    // Persist
-    try {
-      const px = parseInt(sidebar.style.width, 10);
-      if (px) localStorage.setItem(SIDEBAR_WIDTH_KEY, String(px));
-    } catch {}
-    // Map needs to recalc its viewport
-    if (map) google.maps.event.trigger(map, 'resize');
-  };
-
-  const onDown = (e) => {
-    dragging = true;
-    startX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
-    startWidth = sidebar.getBoundingClientRect().width;
-    handle.classList.add('dragging');
-    document.body.classList.add('resizing-sidebar');
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-    document.addEventListener('touchmove', onMove, { passive: false });
-    document.addEventListener('touchend', onUp);
-    e.preventDefault();
-  };
-
-  handle.addEventListener('mousedown', onDown);
-  handle.addEventListener('touchstart', onDown, { passive: false });
-
-  // Double-click handle resets to default 380px
-  handle.addEventListener('dblclick', () => {
-    sidebar.style.width = '380px';
-    try { localStorage.setItem(SIDEBAR_WIDTH_KEY, '380'); } catch {}
-    if (map) google.maps.event.trigger(map, 'resize');
-  });
-})();
 
 $('map-fit-btn').addEventListener('click', () => {
   if (!map) return;
