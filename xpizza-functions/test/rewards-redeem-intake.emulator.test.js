@@ -47,9 +47,11 @@ const XP = { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita
     // 3 — x_pizza valid → ADD-FREE priced (total UNCHANGED), RESERVED (not consumed), owns hold, items_text appended
     await seedPts('uX', 20);
     r = await call({ redeem: XP, orderId: 'OX', customerUid: 'uX' });
-    assert.strictEqual(r.ok, true); assert.strictEqual(r.priced.total_cents, 71700); assert.strictEqual(r.priced.discount_cents, 0);
+    assert.strictEqual(r.ok, true); assert.strictEqual(r.priced.total_cents, 71700);   // PAID total UNCHANGED (the free pizza nets to L0)
+    assert.strictEqual(r.priced.discount_cents, 0); assert.strictEqual(r.priced.desc_rebaja_cents, 26000);   // A-F: add-free doesn't discount the bill; comped Margherita (L299) → full-value factura line + rebaja (26000 net)
+    assert.ok(r.priced.items.length === 2 && !r.priced.items.some((l) => l.redeemed) && r.priced.factura_items.length === 3 && r.priced.factura_items.some((l) => l.redeemed && l.description === 'Margherita'));   // items = paid-only (earn base); factura_items = paid + comped (SAR doc)
     assert.strictEqual(r.canonical.free_item_key, 'Margherita'); assert.strictEqual(r.canonical.model, 'add_free'); assert.strictEqual(r.ownsHold, true);
-    assert.ok(/ \| 1x Margherita \(Recompensa\)/.test(r.itemsText)); ok('x_pizza add-free: total UNCHANGED 71700, discount 0, free pizza appended to items_text ( | rail-safe)');
+    assert.ok(/ \| 1x Margherita \(Recompensa\)/.test(r.itemsText)); ok('x_pizza add-free: PAID total UNCHANGED 71700, comped Margherita = full-value factura line + rebaja, free pizza appended to items_text');
     assert.strictEqual((await resv('uX', 'OX')).state, 'reserved'); assert.strictEqual(await rsv('uX'), 8); assert.strictEqual(await bal('uX'), 20); ok('x_pizza valid → RESERVED (reserved 8, balance 20 untouched), canonical + ownsHold');
 
     // 4 — idempotent: same order + same reward → reused, no re-debit

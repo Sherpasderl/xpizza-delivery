@@ -644,10 +644,12 @@ createOrderApp.all('*', async (req, res) => {
     if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});
     return res.status(409).json({ error: 'free_order_stale', detail: 'El pedido ya no es gratis; seleccioná un método de pago', order_id: orderId, total_cents: priceBreakdown.total_cents });
   }
-  // pricedLineItems feeds order.items, consumed ONLY by the platform factura trigger. Non-platform
-  // restaurants (la_musa — Soft Restaurant POS) opt out → skip it; order.items is then omitted.
+  // order.items = the PAID cart lines (the earn base + the non-redeemed factura source); order.factura_items =
+  // paid + comped (redeemed x_pizza SAR doc — build-record reads factura_items || items). Non-platform
+  // (la_musa — Soft Restaurant POS) opts out → both null → order.items/factura_items omitted.
   const facturaPriced = redemptionPriced
-    ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }
+    ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
+        factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn base); factura_items = paid + comped (SAR doc)
     : (usesPlatformFactura(restaurantId)
       ? pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES)
       : { items: null, error: null });
@@ -1022,7 +1024,8 @@ chargeOnlineApp.all('*', async (req, res) => {
   // factura_status starts 'not_due': a pending_payment order is NOT yet a Sale, so it's
   // never reconciled; the trigger only acts once it materializes (status:new + confirmed).
   const facturaPriced = redemptionPriced
-    ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // discounted split (x_pizza) / skipped (la_musa)
+    ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
+        factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn); factura_items = paid + comped (SAR doc)
     : (usesPlatformFactura(restaurantId)
       ? pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES)
       : { items: null, error: null });  // non-platform (la_musa) → no factura line items
@@ -1054,6 +1057,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     factura_status: 'not_due',
     cash_tendered_cents: 0,                     // online: no cash, CAMBIO 0
     ...(facturaPriced.items ? { items: facturaPriced.items } : {}),
+    ...(facturaPriced.factura_items ? { factura_items: facturaPriced.factura_items } : {}),   // A-F: paid + comped SAR line set (redeemed x_pizza only; build-record reads factura_items || items)
     ...(fields.razon_social ? { razon_social: fields.razon_social } : {}),
     ...(fields.rtn_cliente ? { rtn_cliente: fields.rtn_cliente } : {}),
     ...(customer_uid ? { customer_uid } : {}),   // H2: verified logged-in attribution (guest → absent)

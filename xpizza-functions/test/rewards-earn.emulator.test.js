@@ -152,9 +152,10 @@ const onStatus = async (db, orderId, after, now) => {
     assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'ORX', order: await load('ORX'), now: 1500 }), { reversed: true });
     assert.strictEqual(await bal('uidRX', 'x_pizza'), 0); ok('v2 refund reverses the FULL earned punches (3 → balance 0)');
 
-    // ── [v2 §1e-7] BUILDER-BACKED: the real applyRedemptionToPricing + buildCreateOrderUpdates write orders/{id}.items
-    //    WITHOUT the add-free pizza (it lives in free_lines, never factura_items) → earns the PAID qty only. Guards a
-    //    builder regression that would leak the free line into order.items (rather than hand-seeding the exclusion). ──
+    // ── [A-F restore] BUILDER-BACKED: the real applyRedemptionToPricing + buildCreateOrderUpdates split the two
+    //    line sets — orders/{id}.items = PAID-only (the earn base, NO comped pizza) while orders/{id}.factura_items =
+    //    paid + the comped pizza at FULL value (the SAR doc) + desc_rebaja_cents. Proves the earn decoupling (punch
+    //    delta == Σ paid qty) AND that the comped pizza reaches the factura. Guards a builder regression either way. ──
     {
       const { computeRedemption } = require('../rewards-redeem');
       const { applyRedemptionToPricing } = require('../rewards-redeem-pricing');
@@ -162,21 +163,24 @@ const onStatus = async (db, orderId, after, now) => {
       const paidCart = [{ name: 'Margherita', qty: 1 }, { name: 'Anchovies', qty: 1 }];   // 2 PAID pizzas
       const redemption = computeRedemption({ redeem: { type: 'free_pizza_choice', item_id: 'Pepperoni' }, items: paidCart, restaurantId: 'x_pizza' });   // free Pepperoni — NOT in the paid cart
       const priced = applyRedemptionToPricing({ items: paidCart, restaurantId: 'x_pizza', redemption, totalLempiras: 717 });
-      assert.strictEqual(priced.ok, true); assert.deepStrictEqual(priced.free_lines, [{ item_id: 'Pepperoni', qty: 1, price_cents: 0, added: true }]);
+      assert.strictEqual(priced.ok, true); assert.ok(priced.desc_rebaja_cents > 0);
       const built = buildCreateOrderUpdates({
         orderId: 'OB', orderType: 'delivery', now: 2000, trackingToken: 'tkB', total: priced.total_lempiras, lat: 15, lng: -88,
         fields: { customer_name: 'C', customer_phone: '+504', items_text: 'Margherita x1 | Anchovies x1 | 1x Pepperoni (Recompensa)', notes: '', payment_method: 'cash', address_detected: 'a', address_details: 'b' },
         hubSnap: { hub_lat: 15, hub_lng: -88, restaurant_name: 'X', restaurant_phone: '+504' },
-        restaurantId: 'x_pizza', priceBreakdown: { total_cents: priced.total_cents, subtotal_cents: priced.subtotal_cents, tax_cents: priced.tax_cents },
-        facturaPriced: { items: priced.factura_items, error: null }, cashTenderedCents: null, freeOrder: false, rewardStamp: null,
+        restaurantId: 'x_pizza', priceBreakdown: { total_cents: priced.total_cents, subtotal_cents: priced.subtotal_cents, tax_cents: priced.tax_cents, desc_rebaja_cents: priced.desc_rebaja_cents },
+        facturaPriced: { items: priced.items, factura_items: priced.factura_items, error: null }, cashTenderedCents: null, freeOrder: false, rewardStamp: null,
       });
       const rec = built['orders/OB']; rec.customer_uid = 'uidB';   // attribution attaches uid separately in prod; set it for the earn read
       await db.ref('orders/OB').set(rec);
-      const writtenItems = (await load('OB')).items;
-      assert.ok(Array.isArray(writtenItems) && writtenItems.length === 2, 'orders/OB.items = the 2 PAID factura lines');
-      assert.ok(!writtenItems.some((it) => (it.description || it.name) === 'Pepperoni'), 'the add-free Pepperoni is NOT written into orders/OB.items (it is a free_line only)');
+      const written = await load('OB');
+      assert.ok(Array.isArray(written.items) && written.items.length === 2, 'orders/OB.items = the 2 PAID lines');
+      assert.ok(!written.items.some((it) => (it.description || it.name) === 'Pepperoni'), 'the add-free Pepperoni is NOT in orders/OB.items (the earn base)');
+      assert.ok(Array.isArray(written.factura_items) && written.factura_items.length === 3, 'orders/OB.factura_items = paid + comped (3 lines)');
+      assert.ok(written.factura_items.some((it) => it.description === 'Pepperoni' && it.redeemed === true && it.line_gross_cents > 0), 'the comped Pepperoni IS a FULL-value line on orders/OB.factura_items (SAR doc)');
+      assert.strictEqual(written.desc_rebaja_cents, priced.desc_rebaja_cents); ok('A-F builder-backed: order.items = paid-only (earn), order.factura_items = paid + comped full-value + desc_rebaja (factura)');
       assert.deepStrictEqual(await creditEarnForOrder(db, { orderId: 'OB', order: await load('OB'), now: 2001 }), { credited: true, delta: 2 });
-      assert.strictEqual(await bal('uidB', 'x_pizza'), 2); ok('v2 builder-backed: orders/{id}.items EXCLUDES the add-free pizza → creditEarnForOrder earns exactly the PAID qty (2), no leak');
+      assert.strictEqual(await bal('uidB', 'x_pizza'), 2); ok('A-F builder-backed: creditEarnForOrder earns exactly the PAID qty (2) — the comped pizza never earns its own punch');
     }
   });
 
