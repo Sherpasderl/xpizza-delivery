@@ -91,3 +91,6 @@ Advisor **codex DESIGN re-gate** on v4 (should CONFIRM — matrix is complete-by
 
 ## 11. Out of scope
 `delivered_at`/`picked_up_at` for pickups; delivery-path change; a distinct new status; Phase-2 comms.
+
+## v8 build-time correction (2026-07-31)
+**D5 reverted to `delivered`-only.** During build, `completedOrders` (`xpizza-dashboard/index.html:921`) was found to feed ONLY the delivery-duration metrics (`prepDur` filters `picked_up_at`; `delvDur` via `isPlausibleDelivery` which requires `status==='delivered'`), not an aggregate count. So it belongs in §3B LEAVE (delivery-duration, delivered-only) — including `completed` was a harmless no-op (completed pickups are filtered out downstream) but semantically wrong. The aggregate completed COUNT is D3 (`:898 const completed`, includes completed ✅) and the completed sparkline is D6 (`:958 completedSeries`, includes completed ✅). Net: 14 client FIX sites (D5 removed), not 15.

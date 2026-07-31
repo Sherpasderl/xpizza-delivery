@@ -918,7 +918,7 @@ function renderHoy() {
   // Times. Prep duration uses any delivered order with timestamps. Delivery
   // duration applies the plausibility floor (drops sub-30s deliveries that
   // are testing artifacts) so a 4-second outlier doesn't poison the average.
-  const completedOrders = todayOrders.filter(o => o.status === 'delivered' || o.status === 'completed');
+  const completedOrders = todayOrders.filter(o => o.status === 'delivered');
   const prepDur = completedOrders.filter(o => o.picked_up_at && o.created_at).map(o => o.picked_up_at - o.created_at);
   const delvDur = completedOrders.filter(isPlausibleDelivery).map(o => o.delivered_at - o.picked_up_at);
   const prepAvg = avg(prepDur);
