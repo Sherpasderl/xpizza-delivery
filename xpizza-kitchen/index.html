@@ -2065,10 +2065,12 @@ async function commitStatusWrite(id, action) {
   }
 }
 
-/* Completion beat (★ tweak #3) — LOCAL, non-authoritative, ALL post-resolve (no status write here; the
-   ready write already resolved in commitStatusWrite). paso 1: blue "Completando" IN the Open pool → paso
-   2: green "Completado" IN the Open pool → paso 3: local-bump to Completados (completedSet.add). Recall
-   during any beat clears completionSeq (see recall) so the bump is abandoned. */
+/* Completion beat (★ tweak #3) — LOCAL blue→green→bump. For a PICKUP order this FIRST publishes
+   status='completed' via setOrderStatus (gated on the write, exactly like commitStatusWrite) so pickups
+   reach a terminal status and earn rewards; DELIVERY orders skip that write (the driver owns 'delivered')
+   and this stays purely local. paso 1: blue "Completando" IN the Open pool → paso 2: green "Completado" IN
+   the Open pool → paso 3: local-bump to Completados (completedSet.add). Recall during any beat clears
+   completionSeq (see recall) so the bump is abandoned. */
 async function startCompletion(id) {
   // Pickup orders have no driver/delivery-task, so nothing else ever writes a terminal ORDER status
   // (the only 'delivered' transition is driver delivery-task completion). When the kitchen completes a
