@@ -222,6 +222,22 @@ const NOW = 1_700_000_000_000;
     assert.strictEqual((await R.reverseRedemptionForRefund(db, { uid: 'uLA', rid: 'la_musa', orderId: 'OLA', disposition: 'refund', now: NOW + 1 })).action, 'refunded');
     assert.strictEqual(await bal('uLA', 'la_musa'), 2000); ok('La Musa cancel/refund releases the FULL N-item aggregate (credits 1619 → back to 2000, no partial strand)');
 
+    // ── [v2 §1e] La Musa aggregate RELEASE-while-reserved returns the FULL Σ (not a per-item cost), exactly once.
+    //     Guards a "released only 8" bug that consume→refund coverage alone would miss. ──
+    await db.ref('user_rewards').set(null);
+    await seed('uLR', 2000, 'la_musa');
+    assert.strictEqual((await laReserve('uLR', 'OLR')).action, 'created'); assert.strictEqual(await rsv('uLR', 'la_musa'), 1619);
+    assert.strictEqual((await R.releaseRedemption(db, { uid: 'uLR', rid: 'la_musa', orderId: 'OLR', now: NOW })).action, 'applied');
+    assert.strictEqual(await rsv('uLR', 'la_musa'), 0); assert.strictEqual(await st('uLR', 'OLR', 'la_musa'), 'released'); assert.strictEqual(await bal('uLR', 'la_musa'), 2000);
+    ok('La Musa aggregate release-while-reserved: reserved 1619→0 (the FULL Σ released, NOT 8), state released, balance UNCHANGED (2000)');
+    // reverse(refund) on a still-RESERVED aggregate → releases the FULL Σ once; retry → no second release
+    await seed('uLR2', 2000, 'la_musa');
+    assert.strictEqual((await laReserve('uLR2', 'OLR2')).action, 'created'); assert.strictEqual(await rsv('uLR2', 'la_musa'), 1619);
+    assert.strictEqual((await R.reverseRedemptionForRefund(db, { uid: 'uLR2', rid: 'la_musa', orderId: 'OLR2', disposition: 'refund', now: NOW })).action, 'released');
+    assert.strictEqual(await rsv('uLR2', 'la_musa'), 0); assert.strictEqual(await bal('uLR2', 'la_musa'), 2000);
+    assert.strictEqual((await R.reverseRedemptionForRefund(db, { uid: 'uLR2', rid: 'la_musa', orderId: 'OLR2', disposition: 'refund', now: NOW + 1 })).action, 'noop');
+    assert.strictEqual(await rsv('uLR2', 'la_musa'), 0); assert.strictEqual(await bal('uLR2', 'la_musa'), 2000); ok('La Musa aggregate reverse(refund) reserved-unpaid → FULL Σ released ONCE (reserved 0, balance 2000), retry → noop (no second release)');
+
     // ── [v2 §1e] transaction ATOMICITY under CONCURRENT La Musa reserves — no double-spend, no mint ──
     await db.ref('user_rewards').set(null);
     await seed('uCon', 10, 'la_musa');                              // enough for EXACTLY ONE cost-8 reserve
