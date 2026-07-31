@@ -405,15 +405,15 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     _rkEnv = env;
     const root = rkSheetRoot();
     root.innerHTML = '<div class="rk-dim" data-rk-dismiss="1"></div>' + rkSheetHtml();
-    root.querySelector('[data-rk-dismiss]').addEventListener('click', () => rkCloseSheet(env));
+    root.querySelectorAll('[data-rk-dismiss]').forEach((el) => el.addEventListener('click', () => rkCloseSheet(env)));   // B: scrim + ✕ both dismiss
     rkWireSheet(env);
   }
   function rkSheetHtml() {
     if (RW.kind === 'punch') {
       const rows = rkCat().map((c) => '<div class="rk-row" data-rk-pick="' + escapeHtml(c.key) + '">' + rkIco(c.icon) + '<span class="rk-rnm">' + escapeHtml(c.name) + '</span><span class="rk-rgo">›</span></div>').join('');
-      return '<div class="rk-sheet"><div class="rk-shd"><div class="rk-grab"></div><div class="rk-shk">Tu premio</div><div class="rk-sht">Elegí tu pizza</div><div class="rk-shsub">12 pulgadas · la que quieras</div></div><div class="rk-slist">' + rows + '</div></div>';
+      return '<div class="rk-sheet"><div class="rk-shd"><div class="rk-grab"></div><div class="rk-shrow"><button class="rk-shx" type="button" data-rk-dismiss="1" aria-label="Cerrar">✕</button><div class="rk-shmid"><div class="rk-shk">Tu premio</div><div class="rk-sht">Elegí tu pizza</div><div class="rk-shsub">12 pulgadas · la que quieras</div></div><span class="rk-shx rk-shx--sp" aria-hidden="true"></span></div></div><div class="rk-slist">' + rows + '</div></div>';
     }
-    return '<div class="rk-sheet"><div class="rk-shd"><div class="rk-grab"></div><div class="rk-shrow"><div><div class="rk-shk">Canjeá</div><div class="rk-sht">Elegí tus platos</div></div><div class="rk-bal"><b id="rk-balnum">' + rkFmt(rkRemaining()) + '</b><span>Tus puntos</span></div></div></div><div class="rk-slist" id="rk-slist">' + rkLaRows() + '</div><div class="rk-sfoot" id="rk-sfoot">' + rkLaFoot() + '</div></div>';
+    return '<div class="rk-sheet"><div class="rk-shd"><div class="rk-grab"></div><div class="rk-shrow"><button class="rk-shx" type="button" data-rk-dismiss="1" aria-label="Cerrar">✕</button><div class="rk-shmid"><div class="rk-shk">Canjeá</div><div class="rk-sht">Elegí tus platos</div></div><div class="rk-bal"><b id="rk-balnum">' + rkFmt(rkRemaining()) + '</b><span>Tus puntos</span></div></div></div><div class="rk-slist" id="rk-slist">' + rkLaRows() + '</div><div class="rk-sfoot" id="rk-sfoot">' + rkLaFoot() + '</div></div>';
   }
   function rkLaRows() {
     const rem = rkRemaining(); let html = '', lastSec = null;
@@ -469,10 +469,20 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 
   // ── Commit → SERVER quote → applied ticket (closing the sheet applies the current selection) ──
   async function rkCloseSheet(env) {
-    rkUnmountSheet();
+    rkAnimateSheetClose();   // A8: exit slide-down + fade (instant under reduced-motion); the ticket updates behind
     const hasSel = RW.kind === 'punch' ? !!_rkPick : rkUnits() > 0;
     if (!hasSel) { rkClear(env, true); return; }
     await rkCommit(env);
+  }
+  // A8: animate the picker sheet OUT (reverse of rk-slideup) then remove the node; instant when reduced-motion.
+  function rkAnimateSheetClose() {
+    const root = $('rk-sheet-root'); if (!root) return;
+    const sheet = root.querySelector('.rk-sheet'), dim = root.querySelector('.rk-dim');
+    if (!sheet || prefersReducedMotion()) { rkUnmountSheet(); return; }
+    sheet.classList.add('rk-closing'); if (dim) dim.classList.add('rk-closing');
+    let done = false; const finish = () => { if (done) return; done = true; rkUnmountSheet(); };
+    sheet.addEventListener('animationend', finish, { once: true });
+    setTimeout(finish, 360);   // fallback if animationend never fires
   }
   async function rkCommit(env) {
     _redeemPending = (RW.kind === 'punch')
@@ -545,7 +555,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 .rk-ico{flex:none;width:24px;height:24px;color:var(--rk-gi);stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .rk-tx{flex:1;min-width:0;line-height:1.06;text-align:center}
 .rk-tk-k{font-family:var(--rk-slab);font-weight:700;font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--rk-gi2);white-space:nowrap}
-.rk-tk-h{font-family:var(--rk-serif);font-weight:600;font-size:16px;color:var(--rk-gi);text-shadow:0 1px 0 rgba(255,255,255,.45);margin-top:3px}
+.rk-tk-h{font-family:var(--rk-serif);font-weight:600;font-size:18px;color:var(--rk-gi);text-shadow:0 1px 0 rgba(255,255,255,.45);margin-top:3px}
 .rk-perf{position:relative;width:0;align-self:stretch;margin:5px 0;border-left:1.5px dashed rgba(90,61,12,.5);z-index:2}
 .rk-perf::before,.rk-perf::after{content:"";position:absolute;left:-6px;width:11px;height:11px;border-radius:50%;background:var(--rk-scr);box-shadow:0 0 0 1px rgba(90,61,12,.3) inset}
 .rk-perf::before{top:-8px}.rk-perf::after{bottom:-8px}
@@ -561,30 +571,37 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 @keyframes rk-fade{from{opacity:0}}
 .rk-sheet{position:fixed;left:0;right:0;bottom:0;z-index:3001;background:var(--rk-scr);border-radius:20px 20px 0 0;box-shadow:0 -14px 40px -20px rgba(0,0,0,.5);display:flex;flex-direction:column;max-height:92vh;animation:rk-slideup .24s cubic-bezier(.2,.7,.3,1);font-family:var(--rk-sans)}
 @keyframes rk-slideup{from{transform:translateY(100%)}}
+.rk-sheet.rk-closing{animation:rk-slidedown .22s cubic-bezier(.32,.72,0,1) forwards}
+@keyframes rk-slidedown{to{transform:translateY(100%);opacity:0}}
+.rk-dim.rk-closing{animation:rk-fadeout .18s ease forwards}
+@keyframes rk-fadeout{to{opacity:0}}
 .rk-shd{position:relative;padding:9px 16px 13px;border-bottom:1px solid rgba(122,84,16,.32);background:linear-gradient(116deg,#e4cd8a 0%,#f3e5b2 22%,#dcc074 44%,#ecdb9e 64%,#e0c37c 100%);box-shadow:0 1px 0 rgba(255,255,255,.4) inset}
 .rk-grab{width:34px;height:4px;border-radius:2px;background:rgba(90,61,12,.3);margin:2px auto 9px}
 .rk-shk{font-family:var(--rk-sans);font-weight:700;font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--rk-gi2);opacity:.9}
-.rk-sht{font-family:var(--rk-sans);font-weight:800;font-size:17px;letter-spacing:-.01em;color:var(--rk-gi);margin:1px 0 0}
+.rk-sht{font-family:var(--rk-sans);font-weight:800;font-size:18px;letter-spacing:-.01em;color:var(--rk-gi);margin:1px 0 0}
 .rk-shsub{font-size:11.5px;color:var(--rk-gi2);opacity:.85}
-.rk-shrow{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.rk-shrow{display:flex;align-items:center;gap:10px}
+.rk-shx{flex:none;width:26px;height:26px;border-radius:50%;border:0;background:rgba(90,61,12,.14);color:var(--rk-gi);font-size:14px;line-height:1;cursor:pointer;display:grid;place-items:center;font-family:var(--rk-sans);padding:0}
+.rk-shx--sp{background:none;visibility:hidden;pointer-events:none}
+.rk-shmid{flex:1;min-width:0;text-align:center}
 .rk-bal{text-align:right;flex:none}
 .rk-bal b{font-family:var(--rk-serif);font-weight:700;font-size:23px;color:var(--rk-gi);display:block;line-height:1;font-variant-numeric:tabular-nums}
 .rk-bal span{font-family:var(--rk-sans);font-size:10px;font-weight:600;letter-spacing:.01em;color:var(--rk-gi2)}
 .rk-slist{overflow-y:auto;padding:0 0 6px;background:var(--rk-scr);-webkit-overflow-scrolling:touch}
-.rk-sec{font-family:var(--rk-sans);font-size:11.5px;font-weight:700;letter-spacing:.005em;color:var(--rk-gi2);padding:13px 16px 6px;position:sticky;top:0;z-index:2;background:var(--rk-scr);box-shadow:0 1px 0 var(--rk-hair)}
+.rk-sec{font-family:var(--rk-sans);font-size:12.5px;font-weight:700;letter-spacing:.005em;color:var(--rk-gi2);padding:13px 16px 6px;position:sticky;top:0;z-index:2;background:var(--rk-scr);box-shadow:0 1px 0 var(--rk-hair)}
 .rk-row{display:flex;align-items:center;gap:12px;padding:11px 16px;cursor:pointer;border-bottom:1px solid var(--rk-hair);transition:opacity .28s ease}
 .rk-row:active{background:rgba(201,161,62,.12)}
 .rk-rico{flex:none;width:25px;height:25px;color:var(--rk-ge);stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
-.rk-rnm{flex:1;min-width:0;font-family:var(--rk-sans);font-weight:600;font-size:13.5px;color:var(--rk-sink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rk-rnm{flex:1;min-width:0;font-family:var(--rk-sans);font-weight:600;font-size:15px;color:var(--rk-sink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rk-rgo{flex:none;color:var(--rk-ssoft);font-size:17px;opacity:.55}
-.rk-rcost{flex:none;font-family:var(--rk-serif);font-weight:600;font-size:14px;color:var(--rk-ge);font-variant-numeric:tabular-nums}
+.rk-rcost{flex:none;font-family:var(--rk-serif);font-weight:600;font-size:15px;color:var(--rk-ge);font-variant-numeric:tabular-nums}
 .rk-rcost span{font-family:var(--rk-sans);font-size:9px;font-weight:600;opacity:.7}
 .rk-row.rk-has .rk-rcost{display:none}
 .rk-qwrap{flex:none;display:none;align-items:center;gap:9px}
 .rk-row.rk-has .rk-qwrap{display:flex}
 .rk-qminus{width:20px;height:20px;border-radius:50%;border:1px solid rgba(138,106,30,.38);background:none;color:var(--rk-ge);font-family:var(--rk-serif);font-size:15px;font-weight:600;line-height:1;display:grid;place-items:center;cursor:pointer;padding:0}
 .rk-qminus:active{background:rgba(201,161,62,.16)}
-.rk-qn{font-family:var(--rk-serif);font-weight:700;font-size:17px;color:var(--rk-ge);min-width:13px;text-align:center;font-variant-numeric:tabular-nums;display:inline-block}
+.rk-qn{font-family:var(--rk-serif);font-weight:700;font-size:18px;color:var(--rk-ge);min-width:13px;text-align:center;font-variant-numeric:tabular-nums;display:inline-block}
 .rk-qn.rk-bump{animation:rk-qbump .24s cubic-bezier(.2,.8,.3,1)}
 @keyframes rk-qbump{0%{transform:scale(.55);opacity:.35}60%{transform:scale(1.18)}100%{transform:scale(1)}}
 .rk-row.rk-off{opacity:.42;cursor:default}.rk-row.rk-off:active{background:none}

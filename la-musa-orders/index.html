@@ -128,6 +128,10 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 
 /* ── Stages ── */
 .stage{display:none}.stage.active{display:block}
+.stage.active{transition:opacity .18s cubic-bezier(.32,.72,0,1)}
+.stage.stage-out{opacity:0;transition:opacity .12s cubic-bezier(.32,.72,0,1)}
+.stage.stage-in{opacity:0;transition:none}
+@media (prefers-reduced-motion:reduce){.stage.active,.stage.stage-out,.stage.stage-in{transition:none!important;opacity:1!important}}
 .container{max-width:480px;margin:0 auto;padding:0 0 24px}
 .step-label{font-family:var(--sans);font-size:13px;font-weight:600;color:var(--gold-dk);padding:16px 16px 8px}
 
@@ -334,7 +338,12 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
   z-index:300;display:none;
   opacity:1;transition:opacity .25s ease-out;
 }
-.detail-overlay.open{display:block}
+.detail-overlay.open{display:block;animation:scrimIn .25s ease-out}
+@keyframes scrimIn{from{opacity:0}}
+/* A4: incoming pickup panel fades in on order-type swap (display:none->block restarts it) */
+#pickup-info{animation:pkfade .22s cubic-bezier(.32,.72,0,1)}
+@keyframes pkfade{from{opacity:0;transform:translateY(4px)}}
+@media (prefers-reduced-motion:reduce){.detail-overlay.open,.cart-overlay.open,#pickup-info{animation:none}}
 .detail-overlay.dragging{transition:none}
 .detail-modal{
   position:fixed;left:0;right:0;bottom:0;top:0;
@@ -682,6 +691,13 @@ textarea{resize:none;height:80px;line-height:1.4}
 
 /* ── Error box ── */
 .error-box{background:#FFF0EE;border:1px solid #F5C1B8;border-radius:8px;padding:14px 16px;font-size:14px;font-weight:500;color:#9E2412;margin:8px 16px 0;display:none;letter-spacing:0;line-height:1.4}
+/* A5: error boxes fade+slide in on show (display:none->block restarts the animation) */
+.error-box{animation:efade .2s cubic-bezier(.32,.72,0,1)}
+@keyframes efade{from{opacity:0;transform:translateY(-4px)}}
+/* A3: payment reveal panels (cash change / online) slide+fade open on show */
+#cash-change-panel,#pixelpay-panel{overflow:hidden;animation:panelReveal .25s cubic-bezier(.32,.72,0,1)}
+@keyframes panelReveal{from{max-height:0;opacity:0}to{max-height:600px;opacity:1}}
+@media (prefers-reduced-motion:reduce){.error-box,#cash-change-panel,#pixelpay-panel{animation:none}}
 
 /* ── Map ── */
 #map{height:260px;overflow:hidden}
@@ -893,7 +909,7 @@ textarea{resize:none;height:80px;line-height:1.4}
    Tapping the overlay closes only the cart sheet, leaving the detail
    modal underneath (if it was open before). */
 .cart-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:320;display:none}
-.cart-overlay.open{display:block}
+.cart-overlay.open{display:block;animation:scrimIn .25s ease-out}
 .cart-review-sheet{
   position:fixed;bottom:0;left:0;right:0;
   background:#fff;border-radius:16px 16px 0 0;
@@ -1194,9 +1210,12 @@ textarea{resize:none;height:80px;line-height:1.4}
   background: #a04848;
 }
 /* ── Scheduled Orders: "order for later" slot picker (UberEats-style) ── */
-.sched-modal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;display:none;align-items:flex-end;justify-content:center}
+.sched-modal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;display:none;align-items:flex-end;justify-content:center;opacity:0;transition:opacity .25s ease}
+.sched-modal.shown{opacity:1}
+@media (prefers-reduced-motion:reduce){.sched-modal{transition:none}.sched-sheet{transition:none!important}}
 .sched-modal.open{display:flex}
-.sched-sheet{background:#fff;width:100%;max-width:480px;max-height:88vh;border-radius:20px 20px 0 0;display:flex;flex-direction:column;padding:20px 18px calc(18px + env(safe-area-inset-bottom))}
+.sched-sheet{background:#fff;width:100%;max-width:480px;max-height:88vh;border-radius:20px 20px 0 0;display:flex;flex-direction:column;padding:20px 18px calc(18px + env(safe-area-inset-bottom));transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1)}
+.sched-modal.shown .sched-sheet{transform:none}
 .sched-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .sched-head strong{font-size:20px;letter-spacing:-.3px}
 .sched-close{cursor:pointer;font-size:24px;line-height:1;color:#888;padding:4px}
@@ -2580,12 +2599,26 @@ function updateCartReviewBody(){
 }
 
 /* ── Stage navigation ── */
+// A1: reduced-motion check (JS — index.html only had the CSS media query before).
+function _prm(){ try{ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(_){ return false; } }
 function showStage(id,pct){
-  document.querySelectorAll('.stage').forEach(s=>s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+  const _t=document.getElementById(id); if(!_t) return;
+  const _cur=document.querySelector('.stage.active');
+  const _swap=()=>{ _showStageSwap(id,pct,_t); };
+  // A1: cross-dissolve — fade the current stage out, swap+scrollTo(0,0), fade the incoming stage in. Never a hard cut.
+  if(_prm() || !_cur || _cur===_t){ _swap(); return; }
+  _cur.classList.add('stage-out');
+  let _done=false; const _go=()=>{ if(_done) return; _done=true; _swap(); };
+  _cur.addEventListener('transitionend', _go, {once:true});
+  setTimeout(_go, 170);   // fallback if transitionend never fires
+}
+function _showStageSwap(id,pct,_t){
+  document.querySelectorAll('.stage').forEach(s=>s.classList.remove('active','stage-out','stage-in'));
+  _t.classList.add('active');
   document.body.classList.toggle('s1-active', id==='s1');   // pin the account chip only on paso 1
   document.getElementById('progress').style.width=pct+'%';
   window.scrollTo(0,0);
+  if(!_prm()){ _t.classList.add('stage-in'); requestAnimationFrame(()=>requestAnimationFrame(()=>{ _t.classList.remove('stage-in'); })); }
   // Show the cart pill on step 1 AND the Entrega & Pago step (s2) so customers can review/edit
   // their order before paying without cancelling. s2 has extra bottom padding so the floating
   // pill never covers the pay buttons.
@@ -4242,9 +4275,11 @@ function openSched(){
   schedGenerate();
   if(!SCHED.dayKeys.length){ alert('No hay horarios disponibles por ahora.'); return; }
   SCHED.selDay=SCHED.dayKeys[0].key; SCHED.selSlot=null; renderSched();
-  document.getElementById('sched-modal').classList.add('open');
+  const _sm=document.getElementById('sched-modal'); _sm.classList.add('open');
+  if(_prm()){ _sm.classList.add('shown'); } else { requestAnimationFrame(()=>requestAnimationFrame(()=>_sm.classList.add('shown'))); }   // A2: backdrop fade + sheet slide-up
 }
-function closeSched(){ document.getElementById('sched-modal').classList.remove('open'); }
+function closeSched(){ const _sm=document.getElementById('sched-modal'); if(_prm()){ _sm.classList.remove('open','shown'); return; }
+  _sm.classList.remove('shown'); let _d=false; const _done=()=>{ if(_d)return; _d=true; _sm.classList.remove('open'); }; _sm.addEventListener('transitionend', _done, {once:true}); setTimeout(_done, 340); }
 function renderSched(){
   const days=document.getElementById('sched-days');
   days.innerHTML=SCHED.dayKeys.map(d=>{const l=schedDayLabel(d.ms);return `<div class="sched-day ${d.key===SCHED.selDay?'sel':''}" data-k="${d.key}"><b>${l.a}</b><span>${l.b}</span></div>`;}).join('');
