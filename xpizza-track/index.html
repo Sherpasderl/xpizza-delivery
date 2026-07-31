@@ -725,11 +725,11 @@
       else if (status === 'preparing') progressStep = 2;
       else if (status === 'ready') progressStep = isPickup ? 3 : 2;   // pickup: ready = "Listo para recoger" (step 3); delivery: still preparing (awaiting driver)
       else if (status === 'out_for_delivery') progressStep = 3;
-      else if (status === 'delivered') progressStep = 4;
+      else if (status === 'delivered' || status === 'completed') progressStep = 4;
       else progressStep = 1;  // unknown status — assume just received
 
       // Mark steps as done/current. For pickup, 'ready' is the TERMINAL state → all visible steps green.
-      const pickupDone = isPickup && (status === 'ready' || status === 'delivered');
+      const pickupDone = isPickup && (status === 'ready' || status === 'delivered' || status === 'completed');
       const stepNames = ['received', 'preparing', 'out_for_delivery', 'delivered'];
       stepNames.forEach((name, idx) => {
         const stepNum = idx + 1;
@@ -780,7 +780,7 @@
           bannerTitle.textContent = 'Tu pedido va en camino';
           bannerSub.textContent = 'Pronto llegará a tu dirección';
         }
-      } else if (status === 'delivered') {
+      } else if (status === 'delivered' || status === 'completed') {
         banner.classList.remove('hidden');
         banner.classList.add('success');
         fill.classList.add('success');
