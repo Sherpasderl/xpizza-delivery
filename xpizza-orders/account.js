@@ -533,7 +533,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     // (byte-identical both forms), adapted to a fixed viewport bottom-sheet (z 3000/3001). No backdrop-filter/blur.
     st.textContent = `
 #acct-redeem,#rk-sheet-root{--rk-ge:#8a6a1e;--rk-gm:#c9a13e;--rk-gh:#f7e9b0;--rk-gi:#5a3d0c;--rk-gi2:#7a5410;--rk-grn:#2A6A42;--rk-scr:#FCFCFB;--rk-sink:#1b1a17;--rk-ssoft:#6b6459;--rk-hair:#ECECEA;--rk-serif:'Playfair Display',Georgia,serif;--rk-slab:Georgia,'Times New Roman',serif;--rk-sans:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif}
-.rk-tk{position:relative;display:flex;align-items:stretch;border-radius:11px;padding:3px;margin:3px 0 4px;background:linear-gradient(116deg,#e4cd8a 0%,#f3e5b2 22%,#dcc074 44%,#ecdb9e 64%,#e0c37c 100%);box-shadow:0 1px 0 rgba(255,255,255,.55) inset,0 -1px 0 rgba(90,61,12,.22) inset,0 1px 2px rgba(90,61,12,.18),0 8px 20px -14px rgba(90,61,12,.5);color:var(--rk-gi);cursor:pointer}
+.rk-tk{position:relative;display:flex;align-items:stretch;border-radius:11px;padding:3px;margin:3px 16px 4px;background:linear-gradient(116deg,#e4cd8a 0%,#f3e5b2 22%,#dcc074 44%,#ecdb9e 64%,#e0c37c 100%);box-shadow:0 1px 0 rgba(255,255,255,.55) inset,0 -1px 0 rgba(90,61,12,.22) inset,0 1px 2px rgba(90,61,12,.18),0 8px 20px -14px rgba(90,61,12,.5);color:var(--rk-gi);cursor:pointer}
 .rk-tk::before{content:"";position:absolute;inset:0;border-radius:11px;pointer-events:none;z-index:3;background:radial-gradient(120% 120% at 82% -20%,rgba(255,255,255,.6),transparent 45%),linear-gradient(102deg,transparent 40%,rgba(255,255,255,.42) 50%,transparent 62%)}
 .rk-tk-frame{position:relative;flex:1;display:flex;align-items:center;gap:11px;border:1px solid var(--rk-gi2);border-radius:8px;box-shadow:0 0 0 1px rgba(255,255,255,.3) inset;padding:10px 8px;min-width:0;min-height:50px;z-index:2}
 .rk-cnr{position:absolute;width:20px;height:20px;z-index:2;opacity:.85;color:var(--rk-gi)}
@@ -551,7 +551,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 .rk--on{background:linear-gradient(116deg,#dfe9c9,#eef3dc 45%,#dbe6c2)}
 .rk--on .rk-tk-frame{border-color:#5f7a3f}.rk--on .rk-ico,.rk--on .rk-tk-h,.rk--on .rk-tk-k{color:#2f5c34}.rk--on .rk-cnr{color:#3f6b41}
 .rk-quitar{font-family:var(--rk-serif);font-size:12.5px;font-weight:600;color:#3f6b41;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
-.rk-msg{display:flex;justify-content:center;align-items:center;background:var(--rk-scr);border:1px solid var(--rk-hair);border-radius:11px;padding:13px;font-family:var(--rk-sans);font-size:13px;color:var(--rk-ssoft);margin:3px 0 4px;min-height:50px}
+.rk-msg{display:flex;justify-content:center;align-items:center;background:var(--rk-scr);border:1px solid var(--rk-hair);border-radius:11px;padding:13px;font-family:var(--rk-sans);font-size:13px;color:var(--rk-ssoft);margin:3px 16px 4px;min-height:50px}
 .rk-msg--err{color:#a3402f}
 .rk-dim{position:fixed;inset:0;background:rgba(20,15,6,.42);z-index:3000;animation:rk-fade .18s ease}
 @keyframes rk-fade{from{opacity:0}}
