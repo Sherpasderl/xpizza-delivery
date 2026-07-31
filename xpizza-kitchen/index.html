@@ -2766,7 +2766,7 @@ function mapFirebaseOrderToCard(o, key) {
     // - Cancelado stays in the OPEN pool with stop-cooking treatment until acknowledged/archived
     // - Cancelled card styling (renderTicket isCancelled check)
     estado = 'Cancelado';
-  } else if (o.status === 'delivered') {
+  } else if (o.status === 'delivered' || o.status === 'completed') {
     // Delivered orders auto-classify to the Completed tab (deriveTab treats 'Archivado' as completed) — the
     // cook can verify what was delivered today. Previously these were null-filtered and vanished once the
     // driver marked them delivered, which felt like data loss.
