@@ -2069,7 +2069,24 @@ async function commitStatusWrite(id, action) {
    ready write already resolved in commitStatusWrite). paso 1: blue "Completando" IN the Open pool → paso
    2: green "Completado" IN the Open pool → paso 3: local-bump to Completados (completedSet.add). Recall
    during any beat clears completionSeq (see recall) so the bump is abandoned. */
-function startCompletion(id) {
+async function startCompletion(id) {
+  // Pickup orders have no driver/delivery-task, so nothing else ever writes a terminal ORDER status
+  // (the only 'delivered' transition is driver delivery-task completion). When the kitchen completes a
+  // PICKUP, publish it as status='completed' — earns rewards + consumes redemption (already wired), and
+  // dispatch/stats/tracker read it. Gate the local completion beat on the write, exactly like
+  // commitStatusWrite. Delivery orders are UNTOUCHED — the driver owns their 'delivered' transition.
+  const order = lastOrders.find(o => o.id === id) || allOrders.find(o => o.id === id);
+  if (order && order.order_type === 'pickup'
+      && !['completed', 'delivered', 'cancelled'].includes(order.status)) {   // idempotent: skip terminal
+    let wrote;
+    try { wrote = await XPD.setOrderStatus(id, 'completed'); }
+    catch (e) { wrote = false; console.error('startCompletion: pickup complete write failed', id, e && e.message); }
+    if (wrote !== true) {   // ownership-skip / failure → NON-success: do NOT run the local completion beat
+      pendingWrites[id] = { from: opState(order), action: 'completar', skip: true, msg: 'No se pudo completar' };
+      renderCurrentTab();
+      return;
+    }
+  }
   completionSeq[id] = 'completing';                     // paso 1 (blue) — still in the Open pool
   renderCurrentTab();
   setTimeout(() => {
