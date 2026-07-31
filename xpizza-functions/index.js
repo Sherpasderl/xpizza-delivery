@@ -1566,7 +1566,7 @@ exports.paymentStatus = onRequest(
         total_cents: Number.isFinite(order.total_cents) ? order.total_cents : null, redemption: redeemSummary });
     }
     let state = 'pending';
-    if (ps === 'confirmed' || ['new', 'preparing', 'ready', 'out_for_delivery', 'delivered'].includes(st)) state = 'paid';
+    if (ps === 'confirmed' || ['new', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'completed'].includes(st)) state = 'paid';
     else if (st === 'cancelled' || ps === 'refunded' || ps === 'refund_pending') state = 'cancelled';
     else if (ps === 'failed') state = 'failed';
     else if (ps === 'manual_reconciliation') state = 'verifying';
@@ -3735,7 +3735,7 @@ exports.onIncomingWhatsApp = onRequest(
             return false;
           }
           // Active = not delivered, not cancelled
-          return o.status !== 'delivered' && o.status !== 'cancelled';
+          return o.status !== 'delivered' && o.status !== 'cancelled' && o.status !== 'completed';
         });
 
         if (activeOrders.length > 0) {
