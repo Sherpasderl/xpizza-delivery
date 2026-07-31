@@ -90,6 +90,21 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     ok('[B] verify-fail on a redeemed order → reservation held_paid (never left reserved for a sweep to release)');
   }
 
+  // 4c. [B revise] a release-sweep race freed the hold (reservation already 'released') BEFORE this entry runs →
+  //      holdRedemptionForManual CANNOT secure held_paid → ALERT reward_hold_lost_possibly_paid (never a silent
+  //      mint), and it does NOT re-acquire (the freed punches may already be re-spent).
+  {
+    const db = makeDb(seed({ customer_uid: 'uW', restaurant_id: 'x_pizza', redemption: { model: 'add_free', free_item_key: 'Margherita' } }));
+    await db.ref('user_rewards/uW/x_pizza').update({ balance: 100, reserved: 0, reservations: { O1: { state: 'released', cost: 8, seq: 2 } } });
+    const alerts = [];
+    const d = Object.assign({}, deps(db), { alert: (k, det) => alerts.push({ k, det }) });
+    const r = await handleHostedCallback(d, cb({ amount: 1, payment_hash: paymentHash(`O1-${A}`, KEY, SECRET) }), NOW);
+    assert.strictEqual(r.outcome, 'manual_reconciliation');
+    assert.strictEqual(db.getAt('user_rewards/uW/x_pizza/reservations/O1').state, 'released');   // NOT re-acquired (unsafe)
+    assert.ok(alerts.some((a) => a.k === 'reward_hold_lost_possibly_paid' && a.det.orderId === 'O1' && a.det.state === 'released'));
+    ok('[B revise] hold already released (sweep race) → reward_hold_lost_possibly_paid alert (no silent mint, no unsafe re-acquire)');
+  }
+
   // 5. non-paid status → telemetry only (ignored), order untouched
   {
     const db = makeDb(seed());

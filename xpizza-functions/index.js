@@ -72,7 +72,7 @@ const { claimOrderCore } = require('./claim-order');       // claimOrder — ret
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
 const { shouldEarnOnStatus, earnPreview } = require('./rewards-core');     //   pure terminal-state gate + the reward-card earn_preview
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
-const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, sweepStaleReservations, sweepConsumeRecovery } = require('./rewards-reserve');  //   reservation lifecycle + confirm-settle + sweeps
+const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, holdRedemptionForManual, sweepStaleReservations, sweepConsumeRecovery } = require('./rewards-reserve');  //   reservation lifecycle + confirm-settle + sweeps + [B] hold-or-alert at manual entries
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');  //   config version for the reservation binding
 const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
@@ -1699,7 +1699,7 @@ exports.sweepStalePending = onSchedule(
         if (expires && now > expires + GRACE_MS) {
           try {
             await db.ref(`payment_attempts/${order.active_attempt_id}`).update({ hosted_state: 'manual_reconciliation', manual_reason: 'stale_no_callback', flagged_at: now });
-            await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'hold', now });   // [B] stale hosted (no callback, POSSIBLY paid + hold is EXPIRED → sweep-eligible): secure held_paid BEFORE advertising manual_reconciliation so the release sweep can't free it in the gap
+            await holdRedemptionForManual(db, { orderId, order, now, alert: (k, d) => paymentAlert(db, k, d) });   // [B] stale hosted (POSSIBLY paid + hold is EXPIRED → sweep-eligible): secure held_paid; if a release-sweep race already freed it, ALERT (reward_hold_lost_possibly_paid) — never a silent mint
             await db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });
             await paymentAlert(db, 'hosted_stale_no_callback', { orderId, total: order.total || null });
             flagged++;

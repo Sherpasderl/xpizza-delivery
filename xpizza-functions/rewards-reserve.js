@@ -314,6 +314,30 @@ async function settleRedemptionAtConfirm(db, { orderId, order, disposition, now 
   } catch (e) { console.warn(`settleRedemptionAtConfirm(${disposition}) failed for ${orderId}`, e && e.message); return { ok: false, error: true }; }
 }
 
+// A hold is SECURED iff the reservation is now held_paid (applied or idempotent-noop) OR already consumed
+// (the punch was legitimately spent on a sale — not a mint). Anything else (released/refunded/absent/aborted/
+// error) means the hold was NOT secured.
+function redemptionHoldSecured(r) {
+  if (!r) return false;
+  if (r.state === 'held_paid') return true;
+  if (r.reason === 'invalid_state' && r.state === 'consumed') return true;
+  return false;
+}
+
+// holdRedemptionForManual — [B] secure a POSSIBLY-PAID redeemed order's hold as held_paid at a
+// manual_reconciliation entry. If the hold could NOT be secured because a release sweep won the race and freed
+// it (reserved→released before markHeldPaid committed), the punches are re-spendable and a later materialization
+// would silently MINT a free item — so ALERT (reward_hold_lost_possibly_paid) and let ops catch it before
+// materialization. Re-acquiring is UNSAFE (the freed points may already be re-spent) → escalate, never silent.
+// No-op for a non-redeemed order (skipped). Returns the settle result. (C eliminates the race at its source.)
+async function holdRedemptionForManual(db, { orderId, order, now, alert }) {
+  const r = await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'hold', now });
+  if (r && r.skipped !== true && !redemptionHoldSecured(r) && typeof alert === 'function') {
+    await alert('reward_hold_lost_possibly_paid', { orderId, state: (r && r.state) || null, reason: (r && r.reason) || null });
+  }
+  return r;
+}
+
 // reverseRedemptionForOrder — thin wrapper (cancelOrderCore + resolve-manual) that maps an ORDER onto the
 // single reverseRedemptionForRefund helper — never open-codes balance math. Fail-open; no-op for a
 // non-redeemed order. disposition 'refund' (state-branch: consumed→credit debit_applied, held_paid→release
@@ -357,5 +381,5 @@ async function sweepConsumeRecovery(db, { now, staleMs = CASH_STALE_MS }) {
 module.exports = {
   reserveRedemption, attachAttempt, consumeRedemption, markHeldPaid, releaseRedemption,
   reverseRedemptionForRefund, reverseRedemptionForOrder, sweepStaleReservations, settleRedemptionAtConfirm,
-  sweepConsumeRecovery, consumeEligible, CASH_STALE_MS,
+  holdRedemptionForManual, redemptionHoldSecured, sweepConsumeRecovery, consumeEligible, CASH_STALE_MS,
 };

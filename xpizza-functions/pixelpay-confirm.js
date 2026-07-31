@@ -23,7 +23,7 @@
 const TERMINAL_ATTEMPT = ['declined', 'voided', 'abandoned', 'converted', 'refunded', 'voided_inactive'];
 const SCHED = require('./scheduled-orders');   // Scheduled Orders — confirm-time slot re-validation (§F)
 const { holdIfClosedAtMaterialize } = require('./materialize-guard');   // paid-after-close re-check (Codex-on-diff)
-const { settleRedemptionAtConfirm } = require('./rewards-reserve');     // Phase B1 — consume/hold the redemption at materialize (no-op for a non-redeemed order)
+const { settleRedemptionAtConfirm, holdRedemptionForManual } = require('./rewards-reserve');     // Phase B1 — consume/hold the redemption at materialize; [B] hold-or-alert at a manual-reconciliation entry
 
 async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingToken }) {
   const { db, staleMs = 90000 } = deps;
@@ -322,7 +322,7 @@ async function routeManualReconciliation(deps, { orderId, attemptId, uuid, now }
   // manual_reconciliation, so no release sweep frees it in the gap (dispatcher consumes/releases on resolve).
   // No-op for a non-redeemed order.
   const order = (await deps.db.ref(`orders/${orderId}`).once('value')).val();
-  await settleRedemptionAtConfirm(deps.db, { orderId, order, disposition: 'hold', now });
+  await holdRedemptionForManual(deps.db, { orderId, order, now, alert: deps.alert });   // [B] alerts if a release-sweep race already freed the hold → possible mint
   await deps.db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });
   deps.alert && deps.alert('manual_reconciliation', { orderId, attemptId, uuid });
 }
