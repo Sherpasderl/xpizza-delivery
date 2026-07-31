@@ -119,7 +119,7 @@ const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineS
 const { computeFreshnessAlerts } = require('./driver-freshness');   // Driver Tracking C1: freshness-alarm reconcile core
 const MR = require('./manual-resolve');   // atomic-claim money state machine (RECON_ATOMIC_CLAIM_PLAN rev-5)
 const { resolveManualReconciliationCore, recoverStaleResolve } = require('./resolve-manual');   // the resolver core + sweep recovery (emulator-driven)
-const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, isReconcilerRetryable } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5)
+const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, isReconcilerRetryable } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5) + [A] ledger-repair retry
 const { runPrediction, runLabelAndUpdate } = require('./ready-time-predict-core');   // Phase-1 Step-3 shadow predictor + prediction-logging (PURE SHADOW)
 const { computeGraduation, buildGraduationRows } = require('./ready-time-graduation');   // Phase 1b-i graduation core (writes ONLY ready_time_graduation)
 const { hashConfig } = require('./ready-time-quality-run');          // reuse the signed-config hash (extended to cover graduation_thresholds)
@@ -1706,7 +1706,12 @@ exports.sweepStalePending = onSchedule(
         } else { left++; }
       } else { left++; }
     }
-    console.log(`sweepStalePending: manual_flagged=${flagged} left=${left}`);
+    // [A — ledger atomicity] heal any durable ledger-repair records (a cancel whose earn-clawback/redemption-
+    // reversal failed): re-run both reversals (idempotent), clear when consistent. Fail-open — never breaks the sweep.
+    let repair = { healed: 0, pending: 0 };
+    try { repair = await retryRewardLedgerRepair({ db, alert: (k, d) => paymentAlert(db, k, d) }, { now }); }
+    catch (e) { console.error('sweepStalePending: ledger-repair retry failed', e && e.message); }
+    console.log(`sweepStalePending: manual_flagged=${flagged} left=${left} ledger_healed=${repair.healed} ledger_pending=${repair.pending}`);
   }
 );
 
