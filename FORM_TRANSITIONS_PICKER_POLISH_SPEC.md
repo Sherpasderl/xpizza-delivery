@@ -9,6 +9,10 @@ has the golden-ticket + order-summary 16px inset). Build → **Netlify draft bot
 (no "more smoothness"). Every added transition must respect `@media (prefers-reduced-motion:reduce)` → instant.
 Line refs below are `xpizza-orders/index.html` (IH) / `account.js` (AJ); mirror into la-musa identically.
 
+## SCOPE (owner-locked 2026-07-31): **TIER 1 transition fixes ONLY** + picker header + text bump.
+Build Section A **Tier 1** (items 1–8), Section B (picker header ✕/title/points), Section C (text bump). **Tier 2 and
+Tier 3 are DEFERRED** — do not build them this pass (owner may pull them in later). Everything in "LEAVE UNTOUCHED" stays untouched.
+
 ## A. Transition fixes — the SNAP inventory (from the full audit)
 
 ### Tier 1 — high-visibility (do these)
