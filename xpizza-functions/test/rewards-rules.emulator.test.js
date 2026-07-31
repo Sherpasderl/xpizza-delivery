@@ -27,7 +27,7 @@ const B = 'u_bbbb00000000000000000';
     await ctx.database().ref(`user_rewards/${A}/x_pizza`).set({
       balance: 2, lifetime: 2, reserved: 8, canary: true,   // B2 canary marker (Admin-written boolean child)
       ledger: { L1: { type: 'earn', delta: 2, ts: 1, config_version: 1 }, rsv_PZX1_1: { type: 'reserve', delta: 0, cost: 8, order_id: 'PZX1', state: 'reserved', ts: 1 } },
-      reservations: { PZX1: { state: 'reserved', cost: 8, fp: 'abc', order_fingerprint: 'of', config_version: 1, attempt_id: null, hosted_expires_at: null, created_at: 1, updated_at: 1, seq: 1, canonical: { restaurant_id: 'x_pizza', model: 'discount', cost: 8, discount_cents: 29900, free_item_key: 'Margherita' } } },
+      reservations: { PZX1: { state: 'reserved', cost: 8, fp: 'abc', order_fingerprint: 'of', config_version: 2, attempt_id: null, hosted_expires_at: null, created_at: 1, updated_at: 1, seq: 1, canonical: { restaurant_id: 'x_pizza', model: 'add_free', type: 'free_pizza_choice', config_version: 2, cost: 8, discount_cents: 0, free_item_key: 'Margherita' } } },
     });
     await ctx.database().ref('reward_welcome/ph_seed/x_pizza').set(1700000000000);
   });

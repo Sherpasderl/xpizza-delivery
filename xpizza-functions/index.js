@@ -247,13 +247,16 @@ const MENU_PRICES = MENU_BY_RESTAURANT.x_pizza; // x_pizza table — used by pri
 // summary_lines (itemized rows that FOOT to the discounted total). Display-only, writes nothing to balances.
 // The redemption line (plan-gate (a)) makes summary_lines foot when redeemed: X. Pizza discount → the freed
 // pizza name at −discount; La Musa add_free → the added item as GRATIS.
-function buildRewardStamp(items, restaurantId, subtotalCents, redemptionCanonical, freeName) {
-  const earn_preview = earnPreview({ items, subtotalCents, restaurantId, redemption: redemptionCanonical });
+function buildRewardStamp(items, restaurantId, subtotalCents, redemptionCanonical, freeName, freeItems) {
+  // `items` is the PAID cart (the free reward item is NEVER here) → earnPreview earns the correct amount with
+  // no adjustment. v2 is add_free for both brands: the summary emits one 0-cents line per redeemed item (qty-aware).
+  const earn_preview = earnPreview({ items, subtotalCents, restaurantId });
   let redArg = null;
   if (redemptionCanonical) {
-    redArg = redemptionCanonical.model === 'discount'
-      ? { model: 'discount', discount_cents: redemptionCanonical.discount_cents, name: redemptionCanonical.free_item_key }
-      : { model: 'add_free', name: freeName || redemptionCanonical.free_item_key };
+    const arr = (Array.isArray(freeItems) && freeItems.length)
+      ? freeItems.map((fi) => ({ name: fi.name || fi.item_id, qty: Number(fi.qty) || 1 }))
+      : (freeName ? [{ name: freeName, qty: 1 }] : (redemptionCanonical.free_item_key ? [{ name: redemptionCanonical.free_item_key, qty: 1 }] : []));
+    redArg = { model: 'add_free', items: arr };
   }
   const summary_lines = summaryLines(items, restaurantId, redArg);
   return { earn_preview, ...(summary_lines ? { summary_lines } : {}) };
@@ -599,7 +602,8 @@ createOrderApp.all('*', async (req, res) => {
   let redemptionCanonical = null;    // stamped onto the order when a reward is applied
   let redemptionPriced = null;       // discounted breakdown + factura lines (Task 4)
   let redemptionReserved = null;     // { uid, rid, orderId } ONLY if THIS call owns the hold → release on write failure
-  let redemptionFreeName = null;     // La Musa added-free display name → the reward summary_lines footing line
+  let redemptionFreeName = null;     // first added-free display name (back-compat)
+  let redemptionFreeItems = null;    // v2: the full [{item_id,qty,price_cents,name,cost_pts?}] set → summary_lines footing
   if (body.redeem != null) {
     // cash has no scheduled fingerprint extra at this point (order_id + discounted total + items_text bind the
     // hold); the completion state consumes, cancel releases. See rewards-redeem-intake.resolveRedemptionForOrder.
@@ -612,6 +616,7 @@ createOrderApp.all('*', async (req, res) => {
     redemptionCanonical = rd.canonical;
     redemptionPriced = rd.priced;
     redemptionFreeName = rd.freeName || null;
+    redemptionFreeItems = rd.freeItems || null;
     if (rd.ownsHold) redemptionReserved = { uid: customer_uid, rid: restaurantId, orderId };
   }
   const effectiveTotal = redemptionPriced ? redemptionPriced.total_lempiras : total;   // discounted total (== total when no redeem)
@@ -625,7 +630,7 @@ createOrderApp.all('*', async (req, res) => {
 
   // Reward-card display fields (earn_preview + summary_lines) — stamped for ALL orders on the order record +
   // order_tracking. summary_lines uses the DISCOUNTED subtotal-driven footing so it matches the charged total.
-  const rewardStamp = buildRewardStamp(body.items, restaurantId, priceBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName);
+  const rewardStamp = buildRewardStamp(body.items, restaurantId, priceBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName, redemptionFreeItems);
 
   // ── A1: free-order intake. The forms grey out both payment methods + submit `free_order:true` ONLY when
   // the server quote zeroed the total (a fully-comping redemption). We RE-DERIVE it here from the
@@ -881,6 +886,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // acquire releases it. Gated by redemption_enabled + a VERIFIED uid; ALL-OR-NOTHING (any failure → non-payable
   // 409/401, no attempt/URL). No `redeem` → byte-identical online path (effTotal===total, items_text unchanged).
   let redemptionCanonical = null, redemptionPriced = null, redemptionCost = 0, redemptionFreeName = null;
+  let redemptionFreeItems = null, redemptionFp = '';   // v2: full free-item set (summary) + canonical-set hash (fingerprint fold-in)
   let effTotal = total;
   if (body.redeem != null) {
     const prep = await prepareRedemption(db, { redeem: body.redeem, items: body.items, restaurantId,
@@ -890,6 +896,8 @@ chargeOnlineApp.all('*', async (req, res) => {
     redemptionPriced = prep.priced;
     redemptionCost = prep.redemption.cost;
     redemptionFreeName = prep.freeName || null;
+    redemptionFreeItems = prep.freeItems || null;
+    redemptionFp = prep.redemptionFp || '';
     effTotal = prep.priced.total_lempiras;
     fields.items_text = prep.itemsText;   // free-item display line → flows into BOTH fingerprints + the pending order
   }
@@ -900,7 +908,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     : orderBreakdownCents(total, restaurantId);
 
   // Reward-card display fields — stamped on the pending order (materialize copies them onto order_tracking at confirm/release).
-  const onlineRewardStamp = buildRewardStamp(body.items, restaurantId, effBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName);
+  const onlineRewardStamp = buildRewardStamp(body.items, restaurantId, effBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName, redemptionFreeItems);
 
   // ── A1 (#2, R7): a $0 order is NOT chargeable online. The forms route a fully-comped ($0) order to
   // createOrder (the free path); this is the DEFENSIVE server guard for a stale/direct $0 request. Return a
@@ -939,7 +947,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     const schedForRawG = SCHED.normalizeScheduledFor(body.scheduled_for);
     const isScheduledG = Number.isFinite(schedForRawG);
     const totalCentsG = effBreakdown.total_cents;   // discounted when redeemed → the read-only classify fingerprint matches the authoritative one
-    const fingerprintG = orderFingerprint(orderId, totalCentsG, fields.items_text, isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '');
+    const fingerprintG = orderFingerprint(orderId, totalCentsG, fields.items_text, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));   // v2: bind the redeemed SET into payment_fingerprint (design-gate #2)
     let clsG;
     try {
       clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs);
@@ -1008,7 +1016,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // Bind the slot into the fingerprint (R2-#3): a reused cart can't be charged against a different slot. When
   // redeemed, total_cents (discounted) + items_text (free line appended) make this fingerprint carry the reward
   // — the SAME fingerprint the reservation binds to (below), so hold ↔ order ↔ charge are one identity.
-  const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text, isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '');
+  const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text, [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));   // v2: + redeemed-SET hash (design-gate #2)
 
   // Factura inputs (FACTURA_PLAN §2) — structured priced items for the factura trigger.
   // factura_status starts 'not_due': a pending_payment order is NOT yet a Sale, so it's
@@ -1546,7 +1554,9 @@ exports.paymentStatus = onRequest(
     // item name + model) so the success Total + reward display come from the server, not stale client values.
     // Poll-token-gated (only the customer who started THIS payment) → their own order money/reward, no PII.
     const redeemSummary = order.redemption
-      ? { discount_cents: Number(order.redemption.discount_cents) || 0, free_item: order.redemption.free_item_key || null, model: order.redemption.model || null }
+      ? { discount_cents: Number(order.redemption.discount_cents) || 0, free_item: order.redemption.free_item_key || null, model: order.redemption.model || null,
+          // v2: La Musa is a multiset (no single free_item_key) → carry the redeemed unit count so the success screen shows "N premios".
+          free_count: Array.isArray(order.redemption.items) ? order.redemption.items.reduce((s, it) => s + (Number(it && it.qty) || 0), 0) : (order.redemption.free_item_key ? 1 : 0) }
       : null;
     // Scheduled Orders (§B.4 / R2-#4): a paid-and-HELD order (or one mid-release) matches the paid check
     // below (confirmed) but is NOT cooking. Return a distinct scheduled_paid state carrying scheduled_for

@@ -324,7 +324,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   {
     await clearAll();
     await seed({ status: 'out_for_delivery', payment_method: 'cash', payment_status: 'no_payment', active_attempt_id: null,
-      order_type: 'delivery', customer_uid: 'uidRZ', restaurant_id: 'x_pizza', redemption: { restaurant_id: 'x_pizza', model: 'discount', cost: 8 } }, null);
+      order_type: 'delivery', customer_uid: 'uidRZ', restaurant_id: 'x_pizza', redemption: { restaurant_id: 'x_pizza', model: 'add_free', type: 'free_pizza_choice', config_version: 2, cost: 8, discount_cents: 0, free_item_key: 'Margherita' } }, null);
     await db.ref('user_rewards/uidRZ/x_pizza').set({ balance: 12, lifetime: 20, reserved: 0,
       reservations: { [OID]: { state: 'consumed', cost: 8, debit_applied: 8, seq: 2, fp: 'F' } }, ledger: { seed: { type: 'earn', delta: 12, ts: 1 } } });
     const r = await cancelOrderCore(mkDeps({}).deps, { orderId: OID, actor: 'A', reason: 'x', now: NOW, claimId: 'CID-RZ' });

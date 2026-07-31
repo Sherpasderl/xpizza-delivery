@@ -16,16 +16,11 @@
     palette: { screen:'#FFFDFA', tint:'#FBF6EE', tint2:'#F4EEE4', chip:'#F0E8DA', fillA:'#EFE7DA', line:'#EDE5D9', fillB:'#E7DFD3', mapbg:'#E4DAC7', line2:'#E2D8C8', line3:'#D8CBB8', dot:'#CFC2B1' },   // per-brand neutrals — La Musa = EXACT current literals (renders byte-identical); X. Pizza CONFIG carries the near-white set (nearwhite-inventory.md)
     // Rewards B2 — the ONLY brand difference in the rewards UI (everything past CONFIG is byte-identical).
     // X. Pizza = punch card → free pizza; La Musa = points → free-item tiers. Earn rates mirror Phase A (live).
-    // tiers MIRROR the LOCKED server config (rewards-redeem-config.js, config_version 1) — item names resolve
-    // via the form MENU at render; availability via the 86 read. Server stays authoritative (a drift → the
-    // quote/submit rejects with a typed message; never a money bug).
-    rewards: { kind:'points', unit:'pts', perCents:3000, ptsPer:10, welcome:100, paneIntro:'Ganás puntos en cada pedido y los canjeás por comida gratis.', tiers:[
-      { cost:300,  name:'Bebida o acompañamiento', desc:'soda · papas · arroz', items:['soft_01','soft_02','soft_03','soft_04','beer_01','beer_02','beer_03','beer_04','beer_05','beer_06','beer_07','beer_08','rice_white','rice_chinese','papas_fritas'] },
-      { cost:850,  name:'Dim sum o starter', desc:'dumplings · buns · wontons', items:['dimsum_01','dimsum_02','dimsum_03','dimsum_04','dimsum_05','starter_01','starter_02','starter_03','soup_01','soup_02','soup_03'] },
-      { cost:1400, name:'Plato fuerte', desc:'noodles · rice · ceviches', items:['noodle_01','noodle_01_sin','noodle_01_pollo','noodle_01_camaron','noodle_03','rice_01','rice_04','crudo_02','crudo_03','special_05'] },
-      { cost:1650, name:'House special', desc:'tuna · beef premium', items:['noodle_02','rice_02','rice_03','starter_04','starter_05','starter_06','crudo_01','special_02'] },
-      { cost:2100, name:'Gran plato', desc:'lobster · asado', items:['special_01','special_04'] },
-    ] },
+    // v2 (à-la-carte): points are spent on ANY dish at the pago-page ticket — there are NO tiers. This CONFIG is
+    // the "Mis premios" progress-pane DISPLAY model only; `redeemFrom` is the chip threshold = the cheapest
+    // redeemable item's cost_pts (round(L40 × 10/3) = 133, a soft drink). Server (rewards-redeem-config.js v2)
+    // owns redemption + eligibility; a drift → the quote/submit rejects with a typed message, never a money bug.
+    rewards: { kind:'points', unit:'pts', perCents:3000, ptsPer:10, welcome:100, goal:300, redeemFrom:133, paneIntro:'Ganás puntos en cada pedido y los canjeás por comida gratis.' },
   };
 
   // Lazy Firebase — imported on first use only. Returns { auth, db-helpers } cached after first load.
@@ -199,31 +194,24 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       const pizzaCells = p.size - 1;
       for (let i = 0; i < pizzaCells; i++) slots += `<span class="acct-rw-slot acct-rw-slot--pizza${i < Math.min(p.onCard, pizzaCells) ? ' acct-rw-slot--on' : ''}">${PIZZA_SVG}</span>`;
       slots += `<span class="acct-rw-slot acct-rw-slot--gift${p.redeemable ? ' acct-rw-slot--on' : ''}">${GIFT_SVG}</span>`;
-      const clbl = p.redeemable ? '¡Tenés una pizza gratis para canjear!' : 'sellos para tu pizza gratis';
+      const clbl = p.redeemable ? 'Ya podés canjear tu pizza gratis · en el checkout' : 'sellos para tu pizza gratis';   // §3: mirror the checkout at 8/8
       hero = rwPaneHead(`<span class="acct-rw-cnum">${p.onCard}</span><span class="acct-rw-cden">/ ${p.size}</span>`, clbl)
            + `<div class="acct-rw-card"><div class="acct-rw-slots">${slots}</div></div>`;
       pane.innerHTML = hero;
     } else {
-      const tiers = RW.tiers, n = tiers.length;
-      const fmt = (x) => Number(x).toLocaleString('en-US');           // 1000 → "1,000"
-      const nodeX = (i) => Math.round(((i + 0.5) / n) * 1000) / 10;   // equal-spaced node position % (inset margins)
-      // Fill the bar up to the LAST reached tier node; the tier dots fill accent when reached (no slider thumb).
-      let lastReached = -1;
-      for (let i = 0; i < n; i++) if (av >= tiers[i].cost) lastReached = i;
-      const fillW = lastReached >= 0 ? nodeX(lastReached) : 0;
-      const reached = lastReached >= 0;
-      const next = tiers.find((t) => t.cost > av);
-      let marks = '';
-      for (let i = 0; i < n; i++) marks += `<span class="acct-rw-tier${av >= tiers[i].cost ? ' acct-rw-tier--on' : ''}" style="left:${nodeX(i)}%"><i></i><b>${fmt(tiers[i].cost)}</b></span>`;
-      let rows = '';
-      for (let i = 0; i < n; i++) rows += `<div class="acct-rw-row${av >= tiers[i].cost ? ' acct-rw-row--on' : ''}"><span class="acct-rw-num">${i + 1}</span><div class="acct-rw-rl"><div class="acct-rw-rn"></div><div class="acct-rw-rd"></div></div><span class="acct-rw-rc">${fmt(tiers[i].cost)}</span></div>`;
-      hero = rwPaneHead(`<span class="acct-rw-cnum">${fmt(av)}</span>`, 'puntos')
-           + `<div class="acct-rw-pill"></div>`
-           + `<div class="acct-rw-bar-wrap"><div class="acct-rw-bar"><div class="acct-rw-bar-fill" style="width:${fillW}%"></div>${marks}</div></div>`
-           + `<div class="acct-rw-list">${rows}</div>`;
-      pane.innerHTML = hero;
-      pane.querySelector('.acct-rw-pill').textContent = next ? `faltan ${fmt(next.cost - av)} ${RW.unit} para tu ${reached ? 'próximo' : 'primer'} premio` : '¡Podés canjear el premio más alto!';
-      pane.querySelectorAll('.acct-rw-row').forEach((row, i) => { row.querySelector('.acct-rw-rn').textContent = tiers[i].name || ''; row.querySelector('.acct-rw-rd').textContent = tiers[i].desc || ''; });
+      // La Musa (points) — the à-la-carte reframe (§3): a points-AS-VALUE card, NOT a tier ladder. A gold status
+      // chip shows once the balance covers the cheapest redeemable item (RW.redeemFrom); below that a muted
+      // "Seguí sumando". Redemption itself lives at the pago-page ticket, so this card is purely informational —
+      // no money value, no tier ladder, no earn-rate line. Ported from rewards-v2-mockups/progress-reframe.html.
+      const fmt = (x) => Number(x).toLocaleString('en-US');
+      const canRedeem = av >= (Number(RW.redeemFrom) || Infinity);
+      const chip = canRedeem
+        ? `<div class="acct-pt-worth"><svg class="acct-pt-chk" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg>Ya podés canjear</div>`
+        : `<div class="acct-pt-worth acct-pt-worth--wait">Seguí sumando</div>`;
+      pane.innerHTML = `<div class="acct-picker-top">${PICKER_BACK}<span class="acct-picker-title acct-rw-title">Mis premios</span></div>`
+        + `<div class="acct-pt-card"><div class="acct-pt-num">${fmt(av)}</div><div class="acct-pt-unit">puntos</div>`
+        + chip
+        + `<div class="acct-pt-msg">Canjeá tus puntos <b>en el checkout</b> — por cualquier plato del menú.</div></div>`;
     }
     wirePickerBack(pane);
   }
@@ -272,6 +260,15 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 .acct-rw-tier i{width:13px;height:13px;border-radius:50%;background:#fff;border:2px solid ${CONFIG.palette.line3}}
 .acct-rw-tier--on i{background:${CONFIG.accent};border-color:${CONFIG.accent}}
 .acct-rw-tier b{position:absolute;bottom:16px;font-family:var(--display);font-size:12px;font-weight:600;color:#9A8F7E;white-space:nowrap}
+/* §3 La Musa points-as-value card (à-la-carte reframe) — FIXED brand-neutral gold (matches the ticket) */
+.acct-pt-card{text-align:center;padding:14px 4px 6px}
+.acct-pt-num{font-family:var(--display,'Playfair Display',Georgia,serif);font-weight:700;font-size:52px;line-height:1;color:#5a3d0c;font-variant-numeric:tabular-nums}
+.acct-pt-unit{font-family:var(--sans,'DM Sans',sans-serif);font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#7a5410;margin-top:4px}
+.acct-pt-worth{display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:7px 15px;border-radius:999px;background:linear-gradient(116deg,#f3e5b2,#e0c37c);border:1px solid #d9b65a;color:#5a3d0c;font-weight:700;font-size:13.5px}
+.acct-pt-worth .acct-pt-chk{width:15px;height:15px;stroke:#5a3d0c;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.acct-pt-worth--wait{background:none;border-color:${CONFIG.palette.line3};color:#8A8072;font-weight:600}
+.acct-pt-msg{font-size:13.5px;color:#1b1a17;margin-top:16px;max-width:34ch;margin-left:auto;margin-right:auto}
+.acct-pt-msg b{color:#8a6a1e}
 /* Elegant Mis premios (both brands): big serif counter + intro + (La Musa) pill / slider thumb / tier list. */
 .acct-rw-title{font-family:var(--display);font-size:25px;font-weight:800;letter-spacing:-.01em}
 .acct-rw-intro{margin:12px 2px 18px;font-size:14px;color:#8A8072;line-height:1.55}
@@ -309,8 +306,8 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   const CLAIMORDER_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/claimOrder';   // Task 4 — retro-credit a claimed guest order
   let _claimCtx = null;   // { order_id, token?, n, unit } — stashed when a reward-card CTA / tracker deep-link opens the sheet; consumed post-signup
   let _redeemLiveFlag = false, _redeemLiveRead = false;   // config/rewards_public/redemption_live (cached); canary is read-own via _rwState
-  let _redeemPending = null;   // null | {} (X. Pizza) | { type:'free_item', level, item_id, name } (La Musa)
-  let _redeemQuote = null;     // last SERVER quote { ok, discount_cents, total_cents, free_item:{name} } | null
+  let _redeemPending = null;   // v2: null | { type:'free_pizza_choice', item_id, name } (X. Pizza) | { type:'points_ala_carte', items:[{id,qty,name}] } (La Musa)
+  let _redeemQuote = null;     // v2 SERVER quote { ok, total_cents, discount_cents:0, free_items:[{item_id,qty,name,price_cents}], savings_cents, total_cost, remaining } | null
 
   async function redeemReadLiveFlag() {
     if (_redeemLiveRead) return;
@@ -325,7 +322,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // The SERVER-quoted discounted total (cents) while a reward is pending — the pay-step display MUST use this,
   // never client calcTotal(), so the customer never sees full price while a discount is applied. null = none.
   function getRedeemQuoteTotalCents() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote.total_cents : null; }
-  function getRedeemQuote() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote : null; }   // A6: full server quote {discount_cents,total_cents,free_item} for the Stage-2 order summary
+  function getRedeemQuote() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote : null; }   // v2: full server quote {total_cents, free_items[], savings_cents, total_cost, remaining} for the Stage-2 order summary
   function clearRedeem() { _redeemPending = null; _redeemQuote = null; }
   // Two error classes for the submit handler (spec §5.2 / plan-gate #1):
   //   'redemption' → clear the redeem + FRESH-order_id full-price resubmit.
@@ -345,99 +342,260 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     } catch (_) { return { ok: false, error: 'error' }; }
   }
 
-  // env = { container, items, pizzaCount, itemName:(id)=>string, itemAvailable:(id)=>bool, onQuoted:(quote|null)=>void }
+  // ═══ Redemption v2 UI — the golden ticket (redeem row) + the picker sheet. Ported VERBATIM from
+  // rewards-v2-mockups/redeem-experience.html (rk- prefixed so the generic .row/.sec/.sheet/.tk + the OVERLOADED
+  // .acct-rd never collide; scoped to #acct-redeem + #rk-sheet-root). The gold is FIXED brand-neutral literals
+  // (NOT CONFIG.accent) — byte-identical in both forms, which strengthens the parity guard. The picker updates
+  // the DOM IN PLACE (no per-tap innerHTML rebuild); CSS opacity/transform transitions only; no blur.
+  // env = { container, items, pizzaCount, itemName, onQuoted, catalog:[{ key, name, price_cents, section?, icon }] }
+  let _rkPick = null;    // X. Pizza: chosen pizza { key, name, price_cents } | null
+  let _rkQty = {};       // La Musa: key → count (the wallet working set)
+  let _rkEnv = null;     // current env (sheet handlers close over this)
+  let _rkTt = null;      // toast timer
+  const RK_RATE = 10 / 3;
+  const rkPts = (cents) => Math.round((Number(cents) / 100) * RK_RATE);          // mirrors server cost_pts (display; server authoritative)
+  const rkFmt = (n) => Number(n).toLocaleString('en-US');
+  const rkCat = () => (_rkEnv && Array.isArray(_rkEnv.catalog)) ? _rkEnv.catalog : [];
+  const rkItem = (key) => rkCat().find((c) => c.key === key) || null;
+  const rkUsed = () => Object.keys(_rkQty).reduce((s, k) => { const it = rkItem(k); return s + (it ? rkPts(it.price_cents) * _rkQty[k] : 0); }, 0);
+  const rkRemaining = () => redeemAvailable() - rkUsed();
+  const rkUnits = () => Object.keys(_rkQty).reduce((s, k) => s + _rkQty[k], 0);
+  const rkApplied = () => !!(_redeemPending && _redeemQuote && _redeemQuote.ok);
+  const rkIco = (id) => `<svg class="rk-rico"><use href="#rk-i-${id}"/></svg>`;
+  function rkCorners() { return '<svg class="rk-cnr rk-tl" viewBox="0 0 26 26"><use href="#rk-corner"/></svg><svg class="rk-cnr rk-tr" viewBox="0 0 26 26"><use href="#rk-corner"/></svg><svg class="rk-cnr rk-bl" viewBox="0 0 26 26"><use href="#rk-corner"/></svg><svg class="rk-cnr rk-br" viewBox="0 0 26 26"><use href="#rk-corner"/></svg>'; }
+
   async function renderRedeem(env) {
     const box = env && env.container; if (!box) return;
-    injectRedeemStyles();
+    injectRedeemStyles(); rkInjectDefs();
     await redeemReadLiveFlag();
     const m = marker();
-    // Gate: logged-in + redemption LIVE for this customer + ELIGIBLE — else no affordance (never a dead control).
-    if (!m || !m.name || !redemptionLive()) { box.innerHTML = ''; if (_redeemPending) { clearRedeem(); if (env.onQuoted) env.onQuoted(null); } return; }
+    if (!m || !m.name || !redemptionLive()) { box.innerHTML = ''; if (_redeemPending) rkClear(env, false); return; }
+    _rkEnv = env;
+    const cat = rkCat();
     const av = redeemAvailable();
-    const eligible = RW.kind === 'punch' ? (av >= RW.card_size && Number(env.pizzaCount) >= 1) : RW.tiers.some((t) => av >= t.cost);
-    if (!eligible) { box.innerHTML = ''; if (_redeemPending) { clearRedeem(); if (env.onQuoted) env.onQuoted(null); } return; }
-    if (_redeemPending && _redeemQuote && _redeemQuote.ok) return renderRedeemReview(env);
-    renderRedeemOffer(env);
+    const cheapest = cat.length ? Math.min.apply(null, cat.map((c) => rkPts(c.price_cents))) : Infinity;
+    // Eligible = a live, completable offer. Punch: full card + a pizza in cart + a catalog. Points: ≥1 affordable dish.
+    const eligible = RW.kind === 'punch' ? (av >= RW.card_size && Number(env.pizzaCount) >= 1 && cat.length > 0) : (cat.length > 0 && av >= cheapest);
+    if (!eligible) { box.innerHTML = ''; if (_redeemPending) rkClear(env, false); return; }
+    box.innerHTML = rkTicketHtml();
+    rkWireTicket(env);
   }
 
-  function renderRedeemOffer(env) {
-    const box = env.container;
+  // ── The golden ticket ──
+  function rkTicketHtml() {
+    const gift = '<svg class="rk-ico"><use href="#rk-i-gift"/></svg>', chk = '<svg class="rk-ico"><use href="#rk-i-check"/></svg>';
     if (RW.kind === 'punch') {
-      box.innerHTML = `<div class="acct-rd"><div class="acct-rd-l"><span class="acct-rd-g">${GIFT_SVG}</span><span class="acct-rd-t">Canjear premio</span><span class="acct-rd-d">Una pizza gratis</span></div><button class="acct-rd-btn" type="button">Usar</button></div>`;
-      box.querySelector('.acct-rd-btn').onclick = async () => { _redeemPending = {}; await redeemSelect(env); };
-    } else {
-      const av = redeemAvailable();
-      let chips = '';
-      RW.tiers.forEach((t, i) => { const ok = av >= t.cost; chips += `<button class="acct-rd-tier${ok ? '' : ' acct-rd-tier--off'}" type="button" data-lvl="${i + 1}"${ok ? '' : ' disabled'}>${t.cost}<span> pts</span></button>`; });
-      box.innerHTML = `<div class="acct-rd"><div class="acct-rd-l"><span class="acct-rd-g">${GIFT_SVG}</span><span class="acct-rd-t">Canjear premio</span><span class="acct-rd-d">Elegí un nivel</span></div></div><div class="acct-rd-tiers">${chips}</div><div class="acct-rd-items" id="acct-rd-items"></div>`;
-      box.querySelectorAll('.acct-rd-tier:not(.acct-rd-tier--off)').forEach((b) => { b.onclick = () => renderRedeemItems(env, Number(b.getAttribute('data-lvl'))); });
+      if (!rkApplied() || !_rkPick) return '<div class="rk-tk" data-rk-open="1">' + rkCorners() + '<div class="rk-tk-frame">' + gift + '<div class="rk-tx"><div class="rk-tk-k">Tu premio</div><div class="rk-tk-h">1 Pizza</div></div></div><div class="rk-perf"></div><div class="rk-stub"><span class="rk-use">Usar</span><span class="rk-arrow">→</span></div></div>';
+      return '<div class="rk-tk rk--on" data-rk-open="1">' + rkCorners() + '<div class="rk-tk-frame">' + chk + '<div class="rk-tx"><div class="rk-tk-k">Premio aplicado</div><div class="rk-tk-h" style="font-size:15px">' + escapeHtml(_rkPick.name) + '</div></div></div><div class="rk-perf"></div><div class="rk-stub"><span class="rk-quitar" data-rk-clear="1">Quitar</span></div></div>';
     }
+    const u = rkUnits();
+    if (u === 0 || !rkApplied()) return '<div class="rk-tk" data-rk-open="1">' + rkCorners() + '<div class="rk-tk-frame">' + gift + '<div class="rk-tx"><div class="rk-tk-k">Tu premio</div><div class="rk-tk-h">Canjeá tus puntos</div></div></div><div class="rk-perf"></div><div class="rk-stub"><span class="rk-use" style="font-size:11px">Canjear</span></div></div>';
+    return '<div class="rk-tk rk--on" data-rk-open="1">' + rkCorners() + '<div class="rk-tk-frame">' + chk + '<div class="rk-tx"><div class="rk-tk-k">Premio aplicado</div><div class="rk-tk-h" style="font-size:15px">' + u + (u === 1 ? ' premio' : ' premios') + '</div></div></div><div class="rk-perf"></div><div class="rk-stub"><span class="rk-quitar" data-rk-clear="1">Quitar</span></div></div>';
+  }
+  function rkWireTicket(env) {
+    const tk = env.container.querySelector('.rk-tk'); if (!tk) return;
+    tk.addEventListener('click', (e) => { if (e.target.closest('[data-rk-clear]')) return; rkOpenSheet(env); });
+    const q = env.container.querySelector('[data-rk-clear]'); if (q) q.addEventListener('click', (e) => { e.stopPropagation(); rkClear(env, true); });
   }
 
-  // La Musa: after a tier is chosen, list its currently-AVAILABLE items (86-filtered) with server-known names.
-  function renderRedeemItems(env, level) {
-    const tier = RW.tiers[level - 1]; if (!tier) return;
-    const wrap = $('acct-rd-items'); if (!wrap) return;
-    const opts = tier.items.filter((id) => !env.itemAvailable || env.itemAvailable(id))   // only not-86'd → the server never has to reject
-      .map((id) => { const nm = (env.itemName && env.itemName(id)) || id; return `<button class="acct-rd-item" type="button" data-id="${escapeHtml(id)}" data-nm="${escapeHtml(nm)}">${escapeHtml(nm)}</button>`; }).join('');
-    wrap.innerHTML = opts || '<p class="acct-rd-empty">No hay premios disponibles en este nivel ahora.</p>';
-    wrap.querySelectorAll('.acct-rd-item').forEach((b) => { b.onclick = async () => { _redeemPending = { type: 'free_item', level, item_id: b.getAttribute('data-id'), name: b.getAttribute('data-nm') }; await redeemSelect(env); }; });
+  // ── The picker sheet (bottom sheet over the pago page) ──
+  function rkSheetRoot() { let r = $('rk-sheet-root'); if (!r) { r = document.createElement('div'); r.id = 'rk-sheet-root'; document.body.appendChild(r); } return r; }
+  function rkUnmountSheet() { const r = $('rk-sheet-root'); if (r) r.innerHTML = ''; }
+  function rkOpenSheet(env) {
+    _rkEnv = env;
+    const root = rkSheetRoot();
+    root.innerHTML = '<div class="rk-dim" data-rk-dismiss="1"></div>' + rkSheetHtml();
+    root.querySelector('[data-rk-dismiss]').addEventListener('click', () => rkCloseSheet(env));
+    rkWireSheet(env);
+  }
+  function rkSheetHtml() {
+    if (RW.kind === 'punch') {
+      const rows = rkCat().map((c) => '<div class="rk-row" data-rk-pick="' + escapeHtml(c.key) + '">' + rkIco(c.icon) + '<span class="rk-rnm">' + escapeHtml(c.name) + '</span><span class="rk-rgo">›</span></div>').join('');
+      return '<div class="rk-sheet"><div class="rk-shd"><div class="rk-grab"></div><div class="rk-shk">Tu premio</div><div class="rk-sht">Elegí tu pizza</div><div class="rk-shsub">12 pulgadas · la que quieras</div></div><div class="rk-slist">' + rows + '</div></div>';
+    }
+    return '<div class="rk-sheet"><div class="rk-shd"><div class="rk-grab"></div><div class="rk-shrow"><div><div class="rk-shk">Canjeá</div><div class="rk-sht">Elegí tus platos</div></div><div class="rk-bal"><b id="rk-balnum">' + rkFmt(rkRemaining()) + '</b><span>Tus puntos</span></div></div></div><div class="rk-slist" id="rk-slist">' + rkLaRows() + '</div><div class="rk-sfoot" id="rk-sfoot">' + rkLaFoot() + '</div></div>';
+  }
+  function rkLaRows() {
+    const rem = rkRemaining(); let html = '', lastSec = null;
+    rkCat().forEach((c) => {
+      if (c.section && c.section !== lastSec) { html += '<div class="rk-sec">' + escapeHtml(c.section) + '</div>'; lastSec = c.section; }
+      const cst = rkPts(c.price_cents), nqy = _rkQty[c.key] || 0, off = (nqy === 0 && cst > rem);
+      html += '<div class="rk-row' + (nqy > 0 ? ' rk-has' : '') + (off ? ' rk-off' : '') + '" data-rk-id="' + escapeHtml(c.key) + '" data-rk-add="' + escapeHtml(c.key) + '">'
+        + rkIco(c.icon) + '<span class="rk-rnm">' + escapeHtml(c.name) + '</span>'
+        + '<span class="rk-rmiss">' + (off ? 'te faltan ' + rkFmt(cst - rem) : '') + '</span>'
+        + '<span class="rk-rcost">' + rkFmt(cst) + '<span> pts</span></span>'
+        + '<span class="rk-qwrap"><button class="rk-qminus" type="button" data-rk-minus="' + escapeHtml(c.key) + '">−</button><span class="rk-qn">' + (nqy || 1) + '</span></span></div>';
+    });
+    return html;
+  }
+  function rkLaFoot() { const u = rkUnits(); return u ? '<button class="rk-sbtn" type="button" data-rk-done="1">Listo · ' + u + (u === 1 ? ' premio' : ' premios') + '</button>' : '<div class="rk-hint">Tocá un plato para agregarlo — se descuenta de tus puntos</div>'; }
+  function rkWireSheet(env) {
+    const root = $('rk-sheet-root'); if (!root) return;
+    if (RW.kind === 'punch') {
+      root.querySelectorAll('[data-rk-pick]').forEach((el) => el.addEventListener('click', () => { const it = rkItem(el.getAttribute('data-rk-pick')); if (it) { _rkPick = { key: it.key, name: it.name, price_cents: it.price_cents }; rkCloseSheet(env); } }));
+      return;
+    }
+    root.querySelectorAll('[data-rk-add]').forEach((el) => el.addEventListener('click', (e) => { if (e.target.closest('[data-rk-minus]')) return; rkAdd(el.getAttribute('data-rk-add')); }));
+    root.querySelectorAll('[data-rk-minus]').forEach((el) => el.addEventListener('click', (e) => { e.stopPropagation(); rkMinus(el.getAttribute('data-rk-minus')); }));
+    const done = root.querySelector('[data-rk-done]'); if (done) done.addEventListener('click', () => rkCloseSheet(env));
+  }
+  function rkAdd(key) {
+    const it = rkItem(key); if (!it) return;
+    const cst = rkPts(it.price_cents);
+    if (cst <= rkRemaining()) { _rkQty[key] = (_rkQty[key] || 0) + 1; rkUpdateLa(key); }
+    else rkToast('Te faltan ' + rkFmt(cst - rkRemaining()) + ' pts');
+  }
+  function rkMinus(key) { if (_rkQty[key]) { _rkQty[key]--; if (!_rkQty[key]) delete _rkQty[key]; rkUpdateLa(key); } }
+  // Update the sheet DOM IN PLACE — toggle classes + edit text on the existing rows (no innerHTML rebuild → keeps
+  // transitions + scroll). Balance is set directly (no per-frame JS tween — the owner cut the count-up).
+  function rkUpdateLa(changed) {
+    const rem = rkRemaining(), root = $('rk-sheet-root'); if (!root) return;
+    root.querySelectorAll('#rk-slist .rk-row').forEach((row) => {
+      const key = row.getAttribute('data-rk-id'), it = rkItem(key); if (!it) return;
+      const cst = rkPts(it.price_cents), nqy = _rkQty[key] || 0, off = (nqy === 0 && cst > rem);
+      row.classList.toggle('rk-has', nqy > 0); row.classList.toggle('rk-off', off);
+      const miss = row.querySelector('.rk-rmiss'); if (miss) miss.textContent = off ? 'te faltan ' + rkFmt(cst - rem) : '';
+      const qn = row.querySelector('.rk-qn'); if (qn && nqy > 0) { qn.textContent = nqy; if (key === changed) { qn.classList.remove('rk-bump'); void qn.offsetWidth; qn.classList.add('rk-bump'); } }
+    });
+    const bal = $('rk-balnum'); if (bal) bal.textContent = rkFmt(rem);
+    const foot = $('rk-sfoot'); if (foot) { foot.innerHTML = rkLaFoot(); const d = foot.querySelector('[data-rk-done]'); if (d) d.addEventListener('click', () => rkCloseSheet(_rkEnv)); }
+  }
+  function rkToast(msg) {
+    const root = $('rk-sheet-root'); if (!root) return;
+    const o = root.querySelector('.rk-toast'); if (o) o.remove();
+    const t = document.createElement('div'); t.className = 'rk-toast'; t.textContent = msg; (root.querySelector('.rk-sheet') || root).appendChild(t);
+    clearTimeout(_rkTt); _rkTt = setTimeout(() => { const x = root.querySelector('.rk-toast'); if (x) x.remove(); }, 1400);
   }
 
-  // Selected a reward → fetch the SERVER quote → review (or a typed message on failure; never a dead reward).
-  async function redeemSelect(env) {
+  // ── Commit → SERVER quote → applied ticket (closing the sheet applies the current selection) ──
+  async function rkCloseSheet(env) {
+    rkUnmountSheet();
+    const hasSel = RW.kind === 'punch' ? !!_rkPick : rkUnits() > 0;
+    if (!hasSel) { rkClear(env, true); return; }
+    await rkCommit(env);
+  }
+  async function rkCommit(env) {
+    _redeemPending = (RW.kind === 'punch')
+      ? { type: 'free_pizza_choice', item_id: _rkPick.key, name: _rkPick.name }
+      : { type: 'points_ala_carte', items: Object.keys(_rkQty).map((k) => { const it = rkItem(k); return { id: k, qty: _rkQty[k], name: it ? it.name : k }; }) };
     const box = env.container;
-    box.innerHTML = '<div class="acct-rd acct-rd--load"><span>Calculando premio…</span></div>';
+    box.innerHTML = '<div class="rk-msg">Aplicando premio…</div>';
     const q = await redeemQuoteFetch(env.items);
     if (!q || !q.ok) {
-      _redeemQuote = null;
-      const msg = (q && q.error === 'reward_unavailable') ? 'Ese premio no está disponible ahora' : 'No pudimos aplicar el premio, intentá de nuevo';
-      _redeemPending = null;
-      box.innerHTML = `<div class="acct-rd acct-rd--err"><span>${escapeHtml(msg)}</span></div>`;
+      _redeemQuote = null; _redeemPending = null; _rkPick = null; _rkQty = {};
       if (env.onQuoted) env.onQuoted(null);
-      setTimeout(() => { try { renderRedeem(env); } catch (_) {} }, 1800);   // fall back to the offer
+      const msg = (q && q.error === 'reward_unavailable') ? 'Ese premio no está disponible ahora'
+        : (q && q.error === 'needs_paid_item') ? 'Agregá algo más para usar tu premio'
+          : (q && q.error === 'redemption_reserve_failed') ? 'No te alcanzan los puntos' : 'No pudimos aplicar el premio, intentá de nuevo';
+      box.innerHTML = '<div class="rk-msg rk-msg--err">' + escapeHtml(msg) + '</div>';
+      setTimeout(() => { try { renderRedeem(env); } catch (_) {} }, 1900);
       return;
     }
     _redeemQuote = q;
-    if (env.onQuoted) env.onQuoted(q);   // index.html updates the checkout total from the SERVER number
-    renderRedeemReview(env);
+    if (env.onQuoted) env.onQuoted(q);   // index.html syncs the checkout total (unchanged for add-free) + the Stage-2 summary
+    box.innerHTML = rkTicketHtml(); rkWireTicket(env);
+  }
+  function rkClear(env, reRender) {
+    _rkPick = null; _rkQty = {}; clearRedeem();
+    if (env && env.onQuoted) env.onQuoted(null);
+    if (reRender && env) { try { renderRedeem(env); } catch (_) {} }
   }
 
-  function renderRedeemReview(env) {
-    const box = env.container, q = _redeemQuote; if (!q) return;
-    const name = (q.free_item && q.free_item.name) || 'Premio';
-    // X. Pizza: the freed pizza struck-through (total drops). La Musa: the added item "GRATIS" (total unchanged).
-    const line = (RW.kind === 'punch')
-      ? `<span class="acct-rd-name"><s>${escapeHtml(name)}</s></span><span class="acct-rd-free">−L ${Math.round(q.discount_cents / 100)}</span>`
-      : `<span class="acct-rd-name">${escapeHtml(name)}</span><span class="acct-rd-free">GRATIS</span>`;
-    box.innerHTML = `<div class="acct-rd acct-rd--on"><div class="acct-rd-l"><span class="acct-rd-g">${GIFT_SVG}</span><span class="acct-rd-t">Premio aplicado</span></div><button class="acct-rd-x" type="button" aria-label="Quitar premio">Quitar</button></div><div class="acct-rd-review">${line}</div>`;
-    if (env.onQuoted) env.onQuoted(q);   // sync the checkout total whenever the review shows (fresh OR cached re-render)
-    box.querySelector('.acct-rd-x').onclick = () => { clearRedeem(); if (env.onQuoted) env.onQuoted(null); renderRedeem(env); };
+  // The corner filigree + gift/check + fine-line dish/topping icon symbols (ported from the mockups, rk- prefixed).
+  const RK_DEFS = '<g id="rk-corner" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 22 L4 10 Q4 4 10 4 L22 4"/><path d="M9 17 Q9 9 17 8"/></g>'
+    + '<symbol id="rk-i-gift" viewBox="0 0 24 24"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C12 2 12 7 12 7z"/></symbol>'
+    + '<symbol id="rk-i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>'
+    + '<symbol id="rk-i-dumpling" viewBox="0 0 24 24"><path d="M3.5 14.5 H20.5"/><path d="M4 14.5 Q4 8.5 12 8.5 Q20 8.5 20 14.5"/><path d="M8 14.5 L8.7 11"/><path d="M12 14.5 L12 10.4"/><path d="M16 14.5 L15.3 11"/></symbol>'
+    + '<symbol id="rk-i-skewer" viewBox="0 0 24 24"><path d="M5.5 18.5 L18.5 5.5"/><circle cx="8.6" cy="15.4" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="15.4" cy="8.6" r="2.2"/></symbol>'
+    + '<symbol id="rk-i-soup" viewBox="0 0 24 24"><path d="M3.5 12 H20.5"/><path d="M4.5 12 Q4.5 18 12 18 Q19.5 18 19.5 12"/><path d="M9 8.5 Q10.2 6.5 9 4.5"/><path d="M14 8.5 Q15.2 6.5 14 4.5"/></symbol>'
+    + '<symbol id="rk-i-noodle" viewBox="0 0 24 24"><path d="M3.5 12 H20.5"/><path d="M4.5 12 Q4.5 18 12 18 Q19.5 18 19.5 12"/><path d="M13 3.5 L19.5 9"/><path d="M15.5 2.8 L21.6 7.4"/></symbol>'
+    + '<symbol id="rk-i-rice" viewBox="0 0 24 24"><path d="M4.5 13 H19.5"/><path d="M5 13 Q5 18 12 18 Q19 18 19 13"/><path d="M7 13 Q12 7.5 17 13"/></symbol>'
+    + '<symbol id="rk-i-fish" viewBox="0 0 24 24"><path d="M3.5 12 Q9.5 6 15.5 12 Q9.5 18 3.5 12 Z"/><path d="M15.5 12 L20.5 8 L20.5 16 Z"/><circle cx="7" cy="11" r="0.7" fill="currentColor" stroke="none"/></symbol>'
+    + '<symbol id="rk-i-star" viewBox="0 0 24 24"><path d="M12 3 L13.6 10.4 L21 12 L13.6 13.6 L12 21 L10.4 13.6 L3 12 L10.4 10.4 Z"/></symbol>'
+    + '<symbol id="rk-i-glass" viewBox="0 0 24 24"><path d="M6.8 4.5 H17.2 L15.6 19.5 H8.4 Z"/><path d="M8 8.5 H16"/></symbol>'
+    + '<symbol id="rk-i-slice" viewBox="0 0 24 24"><path d="M12 21 L5 7 Q12 4 19 7 Z"/><path d="M5 7 Q12 9.5 19 7"/><circle cx="10.5" cy="11" r="1" fill="currentColor" stroke="none"/><circle cx="13.5" cy="14" r="1" fill="currentColor" stroke="none"/></symbol>'
+    + '<symbol id="rk-i-leaf" viewBox="0 0 24 24"><path d="M6 18 Q6 6 18 6 Q18 18 6 18 Z"/><path d="M8.5 15.5 L15.5 8.5"/></symbol>'
+    + '<symbol id="rk-i-mushroom" viewBox="0 0 24 24"><path d="M4.5 11 Q4.5 5 12 5 Q19.5 5 19.5 11 Z"/><path d="M10 11 V16.5 Q10 18.5 12 18.5 Q14 18.5 14 16.5 V11"/></symbol>'
+    + '<symbol id="rk-i-tomato" viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="6"/><path d="M9 7.5 L12 4.5 L15 7.5"/></symbol>'
+    + '<symbol id="rk-i-meat" viewBox="0 0 24 24"><path d="M6 9 Q6 6 10 6 H15 Q19 6 19 10 Q19 15 14 15 H9 Q6 15 6 12 Z"/><circle cx="14" cy="10.5" r="1.6"/></symbol>'
+    + '<symbol id="rk-i-bacon" viewBox="0 0 24 24"><path d="M4 9 Q8 6 12 9 Q16 12 20 9"/><path d="M4 14 Q8 11 12 14 Q16 17 20 14"/></symbol>'
+    + '<symbol id="rk-i-chili" viewBox="0 0 24 24"><path d="M8 20 Q3.5 15.5 7 11 Q10.5 6.5 15.5 9.5 Q13 15 8 20 Z"/><path d="M15.5 9.5 Q16.5 6.5 19 6"/></symbol>'
+    + '<symbol id="rk-i-cheese" viewBox="0 0 24 24"><path d="M4 16 L17.5 8 L20 12.5 Q13.5 18 4 16 Z"/><circle cx="9" cy="13.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="13" cy="11.5" r="0.9" fill="currentColor" stroke="none"/></symbol>';
+  function rkInjectDefs() {
+    if ($('rk-defs')) return;
+    const d = document.createElement('div');
+    d.id = 'rk-defs'; d.setAttribute('aria-hidden', 'true');
+    d.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+    d.innerHTML = '<svg width="0" height="0"><defs>' + RK_DEFS + '</defs></svg>';
+    document.body.appendChild(d);
   }
 
   function injectRedeemStyles() {
     if ($('acct-rd-styles')) return;
     const st = document.createElement('style'); st.id = 'acct-rd-styles';
+    // Ported VERBATIM from rewards-v2-mockups/redeem-experience.html — rk- prefixed, FIXED brand-neutral gold
+    // (byte-identical both forms), adapted to a fixed viewport bottom-sheet (z 3000/3001). No backdrop-filter/blur.
     st.textContent = `
-.acct-rd{display:flex;align-items:center;justify-content:space-between;gap:10px;background:${CONFIG.palette.tint};border:1px solid ${CONFIG.palette.line};border-radius:14px;padding:11px 13px;margin:2px 0 4px}
-.acct-rd-l{display:flex;align-items:center;gap:8px;min-width:0}
-.acct-rd-g{display:inline-flex;color:${CONFIG.accent};flex:none}
-.acct-rd-t{font-size:13.5px;font-weight:700;color:#17130F}
-.acct-rd-d{font-size:12px;color:#8A8072;margin-left:2px}
-.acct-rd-btn{background:${CONFIG.accent};color:#fff;border:none;border-radius:999px;padding:7px 16px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;flex:none}
-.acct-rd-x{background:transparent;border:none;color:#9A8F7E;font-size:12.5px;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px;font-family:inherit;flex:none}
-.acct-rd-tiers{display:flex;flex-wrap:wrap;gap:7px;margin:4px 0 2px}
-.acct-rd-tier{background:${CONFIG.palette.tint};border:1.5px solid ${CONFIG.palette.line2};border-radius:999px;padding:6px 13px;font-weight:700;font-size:13px;color:#17130F;cursor:pointer;font-family:inherit}
-.acct-rd-tier span{font-weight:600;color:#9A8F7E;font-size:11px}
-.acct-rd-tier--off{opacity:.4;cursor:not-allowed}
-.acct-rd-items{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 2px}
-.acct-rd-item{background:#fff;border:1.5px solid ${CONFIG.palette.line2};border-radius:10px;padding:7px 12px;font-size:12.5px;font-weight:600;color:#17130F;cursor:pointer;font-family:inherit}
-.acct-rd-empty{font-size:12.5px;color:#8A8072;margin:6px 0}
-.acct-rd-review{display:flex;align-items:center;justify-content:space-between;padding:6px 4px 2px;font-size:13.5px}
-.acct-rd-name{color:#17130F;font-weight:600}.acct-rd-name s{color:#9A8F7E}
-.acct-rd-free{color:${CONFIG.accent};font-weight:750}
-.acct-rd--load,.acct-rd--err{justify-content:center;color:#8A8072;font-size:13px}
-.acct-rd--on{background:#fff;border-color:${CONFIG.accent}44}
+#acct-redeem,#rk-sheet-root{--rk-ge:#8a6a1e;--rk-gm:#c9a13e;--rk-gh:#f7e9b0;--rk-gi:#5a3d0c;--rk-gi2:#7a5410;--rk-grn:#2A6A42;--rk-scr:#FCFCFB;--rk-sink:#1b1a17;--rk-ssoft:#6b6459;--rk-hair:#ECECEA;--rk-serif:'Playfair Display',Georgia,serif;--rk-slab:Georgia,'Times New Roman',serif;--rk-sans:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif}
+.rk-tk{position:relative;display:flex;align-items:stretch;border-radius:11px;padding:3px;margin:3px 0 4px;background:linear-gradient(116deg,#e4cd8a 0%,#f3e5b2 22%,#dcc074 44%,#ecdb9e 64%,#e0c37c 100%);box-shadow:0 1px 0 rgba(255,255,255,.55) inset,0 -1px 0 rgba(90,61,12,.22) inset,0 1px 2px rgba(90,61,12,.18),0 8px 20px -14px rgba(90,61,12,.5);color:var(--rk-gi);cursor:pointer}
+.rk-tk::before{content:"";position:absolute;inset:0;border-radius:11px;pointer-events:none;z-index:3;background:radial-gradient(120% 120% at 82% -20%,rgba(255,255,255,.6),transparent 45%),linear-gradient(102deg,transparent 40%,rgba(255,255,255,.42) 50%,transparent 62%)}
+.rk-tk-frame{position:relative;flex:1;display:flex;align-items:center;gap:11px;border:1px solid var(--rk-gi2);border-radius:8px;box-shadow:0 0 0 1px rgba(255,255,255,.3) inset;padding:10px 8px;min-width:0;min-height:50px;z-index:2}
+.rk-cnr{position:absolute;width:20px;height:20px;z-index:2;opacity:.85;color:var(--rk-gi)}
+.rk-cnr.rk-tl{top:2px;left:2px}.rk-cnr.rk-tr{top:2px;right:2px;transform:scaleX(-1)}.rk-cnr.rk-bl{bottom:2px;left:2px;transform:scaleY(-1)}.rk-cnr.rk-br{bottom:2px;right:2px;transform:scale(-1,-1)}
+.rk-ico{flex:none;width:24px;height:24px;color:var(--rk-gi);stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.rk-tx{flex:1;min-width:0;line-height:1.06;text-align:center}
+.rk-tk-k{font-family:var(--rk-slab);font-weight:700;font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--rk-gi2);white-space:nowrap}
+.rk-tk-h{font-family:var(--rk-serif);font-weight:600;font-size:16px;color:var(--rk-gi);text-shadow:0 1px 0 rgba(255,255,255,.45);margin-top:3px}
+.rk-perf{position:relative;width:0;align-self:stretch;margin:5px 0;border-left:1.5px dashed rgba(90,61,12,.5);z-index:2}
+.rk-perf::before,.rk-perf::after{content:"";position:absolute;left:-6px;width:11px;height:11px;border-radius:50%;background:var(--rk-scr);box-shadow:0 0 0 1px rgba(90,61,12,.3) inset}
+.rk-perf::before{top:-8px}.rk-perf::after{bottom:-8px}
+.rk-stub{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 14px;z-index:2}
+.rk-use{font-family:var(--rk-slab);font-weight:800;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--rk-gi)}
+.rk-arrow{font-size:12px;color:var(--rk-gi2)}
+.rk--on{background:linear-gradient(116deg,#dfe9c9,#eef3dc 45%,#dbe6c2)}
+.rk--on .rk-tk-frame{border-color:#5f7a3f}.rk--on .rk-ico,.rk--on .rk-tk-h,.rk--on .rk-tk-k{color:#2f5c34}.rk--on .rk-cnr{color:#3f6b41}
+.rk-quitar{font-family:var(--rk-serif);font-size:12.5px;font-weight:600;color:#3f6b41;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.rk-msg{display:flex;justify-content:center;align-items:center;background:var(--rk-scr);border:1px solid var(--rk-hair);border-radius:11px;padding:13px;font-family:var(--rk-sans);font-size:13px;color:var(--rk-ssoft);margin:3px 0 4px;min-height:50px}
+.rk-msg--err{color:#a3402f}
+.rk-dim{position:fixed;inset:0;background:rgba(20,15,6,.42);z-index:3000;animation:rk-fade .18s ease}
+@keyframes rk-fade{from{opacity:0}}
+.rk-sheet{position:fixed;left:0;right:0;bottom:0;z-index:3001;background:var(--rk-scr);border-radius:20px 20px 0 0;box-shadow:0 -14px 40px -20px rgba(0,0,0,.5);display:flex;flex-direction:column;max-height:92vh;animation:rk-slideup .24s cubic-bezier(.2,.7,.3,1);font-family:var(--rk-sans)}
+@keyframes rk-slideup{from{transform:translateY(100%)}}
+.rk-shd{position:relative;padding:9px 16px 13px;border-bottom:1px solid rgba(122,84,16,.32);background:linear-gradient(116deg,#e4cd8a 0%,#f3e5b2 22%,#dcc074 44%,#ecdb9e 64%,#e0c37c 100%);box-shadow:0 1px 0 rgba(255,255,255,.4) inset}
+.rk-grab{width:34px;height:4px;border-radius:2px;background:rgba(90,61,12,.3);margin:2px auto 9px}
+.rk-shk{font-family:var(--rk-sans);font-weight:700;font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--rk-gi2);opacity:.9}
+.rk-sht{font-family:var(--rk-sans);font-weight:800;font-size:17px;letter-spacing:-.01em;color:var(--rk-gi);margin:1px 0 0}
+.rk-shsub{font-size:11.5px;color:var(--rk-gi2);opacity:.85}
+.rk-shrow{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.rk-bal{text-align:right;flex:none}
+.rk-bal b{font-family:var(--rk-serif);font-weight:700;font-size:23px;color:var(--rk-gi);display:block;line-height:1;font-variant-numeric:tabular-nums}
+.rk-bal span{font-family:var(--rk-sans);font-size:10px;font-weight:600;letter-spacing:.01em;color:var(--rk-gi2)}
+.rk-slist{overflow-y:auto;padding:0 0 6px;background:var(--rk-scr);-webkit-overflow-scrolling:touch}
+.rk-sec{font-family:var(--rk-sans);font-size:11.5px;font-weight:700;letter-spacing:.005em;color:var(--rk-gi2);padding:13px 16px 6px;position:sticky;top:0;z-index:2;background:var(--rk-scr);box-shadow:0 1px 0 var(--rk-hair)}
+.rk-row{display:flex;align-items:center;gap:12px;padding:11px 16px;cursor:pointer;border-bottom:1px solid var(--rk-hair);transition:opacity .28s ease}
+.rk-row:active{background:rgba(201,161,62,.12)}
+.rk-rico{flex:none;width:25px;height:25px;color:var(--rk-ge);stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.rk-rnm{flex:1;min-width:0;font-family:var(--rk-sans);font-weight:600;font-size:13.5px;color:var(--rk-sink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rk-rgo{flex:none;color:var(--rk-ssoft);font-size:17px;opacity:.55}
+.rk-rcost{flex:none;font-family:var(--rk-serif);font-weight:600;font-size:14px;color:var(--rk-ge);font-variant-numeric:tabular-nums}
+.rk-rcost span{font-family:var(--rk-sans);font-size:9px;font-weight:600;opacity:.7}
+.rk-row.rk-has .rk-rcost{display:none}
+.rk-qwrap{flex:none;display:none;align-items:center;gap:9px}
+.rk-row.rk-has .rk-qwrap{display:flex}
+.rk-qminus{width:20px;height:20px;border-radius:50%;border:1px solid rgba(138,106,30,.38);background:none;color:var(--rk-ge);font-family:var(--rk-serif);font-size:15px;font-weight:600;line-height:1;display:grid;place-items:center;cursor:pointer;padding:0}
+.rk-qminus:active{background:rgba(201,161,62,.16)}
+.rk-qn{font-family:var(--rk-serif);font-weight:700;font-size:17px;color:var(--rk-ge);min-width:13px;text-align:center;font-variant-numeric:tabular-nums;display:inline-block}
+.rk-qn.rk-bump{animation:rk-qbump .24s cubic-bezier(.2,.8,.3,1)}
+@keyframes rk-qbump{0%{transform:scale(.55);opacity:.35}60%{transform:scale(1.18)}100%{transform:scale(1)}}
+.rk-row.rk-off{opacity:.42;cursor:default}.rk-row.rk-off:active{background:none}
+.rk-rmiss{flex:none;display:none;font-size:9.5px;color:#b06a3a;font-weight:600;margin-right:6px}
+.rk-row.rk-off .rk-rmiss{display:inline-block}
+.rk-sfoot{padding:11px 16px calc(11px + env(safe-area-inset-bottom));border-top:1px solid var(--rk-hair);background:var(--rk-scr)}
+.rk-sbtn{width:100%;border:0;border-radius:12px;padding:13px;font-family:var(--rk-sans);font-weight:800;font-size:14px;color:#fff;background:linear-gradient(180deg,#b78a1f,#7a5410);box-shadow:0 6px 16px -8px rgba(90,61,12,.8);cursor:pointer}
+.rk-hint{text-align:center;font-size:11.5px;color:var(--rk-ssoft);padding:2px 4px}
+.rk-toast{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(40,26,6,.94);color:#f7e9b0;font-family:var(--rk-sans);font-size:12.5px;font-weight:600;padding:9px 17px;border-radius:999px;z-index:8;white-space:nowrap;box-shadow:0 10px 26px -8px rgba(0,0,0,.55);animation:rk-pop .16s ease}
+@keyframes rk-pop{from{opacity:0;transform:translate(-50%,calc(-50% + 6px))}}
+@media (prefers-reduced-motion:reduce){.rk-tk,.rk-dim,.rk-sheet,.rk-qn.rk-bump,.rk-toast{animation:none!important}.rk-row{transition:none!important}}
 `;
     document.head.appendChild(st);
   }
@@ -475,7 +633,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       sub = 'Guardá tus sellos, direcciones e historial — reordená en un toque.';
     } else {
       const earned = Math.floor(Math.max(0, Number(env.subtotalCents) || 0) / RW.perCents) * RW.ptsPer;
-      const goal = (RW.tiers && RW.tiers[0]) ? RW.tiers[0].cost : 0, total = earned + welcome;
+      const goal = Number(RW.goal) || 0, total = earned + welcome;   // v2: success-card milestone (CONFIG.rewards.goal, mirrors server REWARDS_CONFIG.goal); tiers dropped
       const ready = goal > 0 && total >= goal, pct = goal > 0 ? Math.min(100, Math.round(total / goal * 100)) : 0;
       math = `Este pedido suma <b>${earned} ${RW.unit}</b> + <b>${welcome} de bienvenida</b> al crear tu perfil.`;
       h3 = ready ? 'Tu primer premio ya te espera' : `Vas <b>${total} ${RW.unit}</b>, a solo <b>${Math.max(0, goal - total)}</b> de tu primer premio`;
