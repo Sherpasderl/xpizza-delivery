@@ -1956,7 +1956,8 @@
   .q-cat-n { font-size: 10px; font-weight: 700; color: var(--text-soft); background: rgba(255,255,255,0.08); border-radius: 999px; padding: 1px 7px; min-width: 18px; text-align: center; }
   .comms-row { background: var(--surface); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: background .14s; }
   .comms-row:hover { background: var(--surface-2); }
-  .comms-from { font-weight: 600; font-size: 12.5px; color: var(--text); }
+  .comms-from { font-weight: 600; font-size: 12.5px; color: var(--text); display: flex; align-items: center; gap: 7px; }
+  .comms-flag { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--warn); background: var(--warn-soft); border-radius: 999px; padding: 1px 7px; }
   .comms-body { font-size: 11.5px; color: var(--text-soft); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* ---- Task 12: read-only Comms thread sheet (floating glass over the board) ---- */
@@ -3468,14 +3469,33 @@ function renderPedidosTab() {
 // Comms tab — live read-only unhandled inbound list (the full modal triage stays as fallback).
 function renderCommsTab() {
   const el = $('comms-list'); if (!el) return;
-  const unhandled = Object.entries(allMessages || {}).filter(([_, m]) => m.handled !== true);
-  const n = $('tab-comms-n'); if (n) n.textContent = String(unhandled.length);
-  if (unhandled.length === 0) { el.innerHTML = '<div class="tree-empty">Sin mensajes sin atender</div>'; return; }
-  el.innerHTML = unhandled.map(([_, m]) => `
-    <div class="comms-row" data-comms-from="${escapeHtml(String(m.from || ''))}">
-      <div class="comms-from">${escapeHtml(formatMsgPhone(m.from))}</div>
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  // Recent conversations — latest inbound message per customer (by phone) in the last 24h,
+  // so handled chats are still reachable (tap → thread), not just unhandled ones.
+  const byPhone = new Map();
+  for (const m of Object.values(allMessages || {})) {
+    if (!m || (m.received_at || 0) < cutoff) continue;
+    const key = phoneTail(m.from);
+    if (!key) continue;
+    const prev = byPhone.get(key);
+    if (!prev || (m.received_at || 0) > (prev.received_at || 0)) byPhone.set(key, m);
+  }
+  const convos = [...byPhone.values()].sort((a, b) => {
+    const au = a.handled !== true, bu = b.handled !== true;
+    if (au !== bu) return au ? -1 : 1;                   // unhandled first
+    return (b.received_at || 0) - (a.received_at || 0);  // then most recent
+  });
+  const unhandledCount = convos.filter(m => m.handled !== true).length;
+  const n = $('tab-comms-n'); if (n) n.textContent = String(unhandledCount);
+
+  if (convos.length === 0) { el.innerHTML = '<div class="tree-empty">Sin conversaciones recientes</div>'; return; }
+  el.innerHTML = convos.map(m => {
+    const flag = m.handled !== true ? '<span class="comms-flag">Sin atender</span>' : '';
+    return `<div class="comms-row" data-comms-from="${escapeHtml(String(m.from || ''))}">
+      <div class="comms-from">${escapeHtml(formatMsgPhone(m.from))}${flag}</div>
       <div class="comms-body">${escapeHtml((m.body || '').slice(0, 90))}</div>
-    </div>`).join('') + '<button class="comms-open" id="comms-open-inbox">Abrir bandeja completa</button>';
+    </div>`;
+  }).join('') + '<button class="comms-open" id="comms-open-inbox">Abrir bandeja completa</button>';
   el.querySelectorAll('.comms-row[data-comms-from]').forEach(row => {
     row.addEventListener('click', () => openCommsThread(row.dataset.commsFrom));
   });
