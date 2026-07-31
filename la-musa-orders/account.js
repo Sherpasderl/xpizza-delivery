@@ -1378,6 +1378,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   function orderStatusPill(status) {
     switch (String(status || '')) {
       case 'delivered': return { label: 'Entregado', cls: 'ok' };
+      case 'completed': return { label: 'Recogido', cls: 'ok' };
       case 'cancelled': return { label: 'Cancelado', cls: 'bad' };
       case 'out_for_delivery': return { label: 'En camino', cls: 'go' };
       case 'ready': return { label: 'Listo', cls: 'go' };
