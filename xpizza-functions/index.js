@@ -1699,6 +1699,7 @@ exports.sweepStalePending = onSchedule(
         if (expires && now > expires + GRACE_MS) {
           try {
             await db.ref(`payment_attempts/${order.active_attempt_id}`).update({ hosted_state: 'manual_reconciliation', manual_reason: 'stale_no_callback', flagged_at: now });
+            await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'hold', now });   // [B] stale hosted (no callback, POSSIBLY paid + hold is EXPIRED → sweep-eligible): secure held_paid BEFORE advertising manual_reconciliation so the release sweep can't free it in the gap
             await db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });
             await paymentAlert(db, 'hosted_stale_no_callback', { orderId, total: order.total || null });
             flagged++;

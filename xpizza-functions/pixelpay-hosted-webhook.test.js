@@ -78,6 +78,18 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     ok('bad payment_hash → manual_reconciliation');
   }
 
+  // 4b. [B] verify-fail on a REDEEMED order → the reservation is HELD (held_paid) BEFORE manual_reconciliation,
+  //      so no release sweep can free a possibly-paid hold (→ free item delivered without consuming punches).
+  {
+    const db = makeDb(seed({ customer_uid: 'uW', restaurant_id: 'x_pizza', redemption: { model: 'add_free', free_item_key: 'Margherita' } }));
+    await db.ref('user_rewards/uW/x_pizza').update({ balance: 100, reserved: 8, reservations: { O1: { state: 'reserved', cost: 8, seq: 1, created_at: NOW } } });
+    const r = await handleHostedCallback(deps(db), cb({ amount: 1, payment_hash: paymentHash(`O1-${A}`, KEY, SECRET) }), NOW);   // amount mismatch → verify-fail
+    assert.strictEqual(r.outcome, 'manual_reconciliation');
+    assert.strictEqual(db.getAt('orders/O1').payment_status, 'manual_reconciliation');
+    assert.strictEqual(db.getAt('user_rewards/uW/x_pizza/reservations/O1').state, 'held_paid');
+    ok('[B] verify-fail on a redeemed order → reservation held_paid (never left reserved for a sweep to release)');
+  }
+
   // 5. non-paid status → telemetry only (ignored), order untouched
   {
     const db = makeDb(seed());

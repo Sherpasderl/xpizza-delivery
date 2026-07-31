@@ -234,6 +234,11 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     init.payment_attempts['A'].status = 'capturing';
     init.payment_attempts['A'].capturing_started_at = 0; // stale → take over
     init.payment_attempts['A'].payment_uuid = 'S-uuid';
+    // [B] a REDEEMED order with a reserved hold: the paid-but-unverifiable route must HOLD it (held_paid) so no
+    // release sweep frees a possibly-paid hold → free item delivered without consuming punches.
+    init.orders['PZX-1'].customer_uid = 'uC'; init.orders['PZX-1'].restaurant_id = 'x_pizza';
+    init.orders['PZX-1'].redemption = { model: 'add_free', free_item_key: 'Margherita' };
+    init.user_rewards = { uC: { x_pizza: { balance: 100, reserved: 8, reservations: { 'PZX-1': { state: 'reserved', cost: 8, seq: 1, created_at: 0 } } } } };
     const db = makeDb(init);
     const client = mkClient({ statusValue: 'paid' });
     // now far past capturing_started_at(0) + staleMs → stale claim, we take over.
@@ -242,7 +247,8 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     assert.strictEqual(db.getAt('orders/PZX-1').payment_status, 'manual_reconciliation');
     assert.strictEqual(db.getAt('payment_attempts/A').status, 'capture_unverified');
     assert.strictEqual(client.calls.capture, 0, 'never re-capture a paid-but-unverified uuid');
-    ok('getStatus=paid + no verified result → manual_reconciliation (no re-capture)');
+    assert.strictEqual(db.getAt('user_rewards/uC/x_pizza/reservations/PZX-1').state, 'held_paid');
+    ok('getStatus=paid + no verified result → manual_reconciliation + [B] redemption held_paid (no re-capture)');
   }
 
   // 5. Capture declined (amount>auth etc.) → failed, no money moved.

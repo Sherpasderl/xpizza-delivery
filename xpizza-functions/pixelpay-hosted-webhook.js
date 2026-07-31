@@ -67,6 +67,7 @@ async function handleHostedCallback(deps, body, now) {
       manual_reason: `verify_fail binding=${bindingOk} hash=${hashOk} amount=${amountOk}`,
       payment_uuid: uuid, paid_amount_cents: toCents(amount), flagged_at: now
     });
+    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'hold', now });   // [B] a 'paid' callback that failed verify → POSSIBLY paid → secure the redemption as held_paid BEFORE advertising manual_reconciliation, so no release sweep frees it in the gap (dispatcher consumes/releases on resolve)
     await db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });
     deps.alert && deps.alert('hosted_verify_fail', { orderId, attemptId, bindingOk, hashOk, amountOk });
     return { code: 200, outcome: 'manual_reconciliation' };

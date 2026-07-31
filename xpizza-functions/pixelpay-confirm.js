@@ -318,6 +318,11 @@ async function routeManualReconciliation(deps, { orderId, attemptId, uuid, now }
     manual_reason: 'paid_lost_capture_response',
     flagged_at: now
   });
+  // [B] paid-but-unverifiable capture → POSSIBLY paid → secure the redemption as held_paid BEFORE advertising
+  // manual_reconciliation, so no release sweep frees it in the gap (dispatcher consumes/releases on resolve).
+  // No-op for a non-redeemed order.
+  const order = (await deps.db.ref(`orders/${orderId}`).once('value')).val();
+  await settleRedemptionAtConfirm(deps.db, { orderId, order, disposition: 'hold', now });
   await deps.db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });
   deps.alert && deps.alert('manual_reconciliation', { orderId, attemptId, uuid });
 }
