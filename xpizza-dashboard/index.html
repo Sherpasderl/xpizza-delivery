@@ -558,6 +558,7 @@ a { color: inherit; }
           <option value="all">Todos los estados</option>
           <option value="active">Activos</option>
           <option value="delivered">Entregados</option>
+          <option value="completed">Recogidos</option>
           <option value="cancelled">Cancelados</option>
           <option value="pending_payment">Pago pendiente</option>
         </select>
@@ -894,7 +895,7 @@ function renderHoy() {
   const todayOrders = getCleanOrders().filter(o => (o.created_at || 0) >= startMs);
 
   const total = todayOrders.length;
-  const completed = todayOrders.filter(o => o.status === 'delivered').length;
+  const completed = todayOrders.filter(o => o.status === 'delivered' || o.status === 'completed').length;
   const cancelled = todayOrders.filter(o => o.status === 'cancelled').length;
   const inProgress = total - completed - cancelled;
 
@@ -908,7 +909,7 @@ function renderHoy() {
   renderSparklines();
 
   // Pipeline
-  const active = todayOrders.filter(o => !['delivered', 'cancelled'].includes(o.status));
+  const active = todayOrders.filter(o => !['delivered', 'cancelled', 'completed'].includes(o.status));
   setPipe('pipe-nuevo', active.filter(o => o.status === 'new' || !o.status).length);
   setPipe('pipe-prep',  active.filter(o => o.status === 'preparing').length);
   setPipe('pipe-listo', active.filter(o => o.status === 'ready').length);
@@ -917,7 +918,7 @@ function renderHoy() {
   // Times. Prep duration uses any delivered order with timestamps. Delivery
   // duration applies the plausibility floor (drops sub-30s deliveries that
   // are testing artifacts) so a 4-second outlier doesn't poison the average.
-  const completedOrders = todayOrders.filter(o => o.status === 'delivered');
+  const completedOrders = todayOrders.filter(o => o.status === 'delivered' || o.status === 'completed');
   const prepDur = completedOrders.filter(o => o.picked_up_at && o.created_at).map(o => o.picked_up_at - o.created_at);
   const delvDur = completedOrders.filter(isPlausibleDelivery).map(o => o.delivered_at - o.picked_up_at);
   const prepAvg = avg(prepDur);
@@ -954,7 +955,7 @@ function renderSparklines() {
 
   const allArr = getCleanOrders();
   const totalSeries     = days.map(d => allArr.filter(o => o.created_at >= d.start && o.created_at < d.end).length);
-  const completedSeries = days.map(d => allArr.filter(o => o.created_at >= d.start && o.created_at < d.end && o.status === 'delivered').length);
+  const completedSeries = days.map(d => allArr.filter(o => o.created_at >= d.start && o.created_at < d.end && (o.status === 'delivered' || o.status === 'completed')).length);
   const cancelledSeries = days.map(d => allArr.filter(o => o.created_at >= d.start && o.created_at < d.end && o.status === 'cancelled').length);
 
   drawSparkline('spark-total', totalSeries);
@@ -1444,6 +1445,7 @@ function statusBucket(o) {
   if (s === 'pending_payment') return 'pending_payment';
   if (s === 'cancelled') return 'cancelled';
   if (s === 'delivered') return 'delivered';
+  if (s === 'completed') return 'completed';
   return 'active'; // new / preparing / ready / out_for_delivery
 }
 function paymentBucket(o) {
@@ -1592,7 +1594,7 @@ function openOrderDetail(orderId) {
 
   const isDelivery = orderTypeOf(o) === 'delivery';
   const closeMs = o.delivered_at || o.cancelled_at || 0;
-  const closeLabel = o.status === 'cancelled' ? 'Cancelado' : (o.status === 'delivered' ? 'Entregado' : null);
+  const closeLabel = o.status === 'cancelled' ? 'Cancelado' : (o.status === 'delivered' ? 'Entregado' : (o.status === 'completed' ? 'Recogido' : null));
 
   // Driver (delivery only) lives on the _delivery task.
   const dtask = allTasks[`${o.order_id}_delivery`];
@@ -1715,7 +1717,7 @@ function actionConfig(o) {
   // Universal cancel — route ALL methods through the money-safe server endpoint (voids iff captured money;
   // cash degrades to a plain finalize). Not for the recon flow (its own actions above) or a delivered order.
   const inReconFlow = o.payment_status === 'manual_reconciliation' || String(o.payment_status || '').startsWith('resolving_');
-  if (o.status !== 'delivered' && !inReconFlow) {
+  if (o.status !== 'delivered' && o.status !== 'completed' && !inReconFlow) {
     if (o.status === 'cancelled') {
       // Heal an already-cancelled order that still shows paid (the L251 residue) → the endpoint voids the charge.
       if (o.payment_status === 'confirmed') {
