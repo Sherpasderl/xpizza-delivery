@@ -1,11 +1,18 @@
-// One-off: mark already-collected PICKUP orders (stuck non-terminal) as status='completed'.
-// STRICTLY pickup + non-terminal → physically cannot touch a delivery order. Dry-run by default.
-// Each applied write fires earnRewardsOnCompletion (retroactive earn/consume, idempotent via earn_${id}).
-const TERMINAL = new Set(['completed', 'delivered', 'cancelled']);
+// One-off: mark already-collected PICKUP orders (stuck in a live kitchen state) as status='completed'.
+//
+// SAFETY (money-adjacent — each write fires earnRewardsOnCompletion → earn/consume):
+//   - Strictly order_type==='pickup' → PHYSICALLY cannot touch a delivery order.
+//   - ALLOWLIST of live kitchen states {new, preparing, ready} — NOT a denylist. This EXCLUDES:
+//       terminal (completed/delivered/cancelled — already done),
+//       pending_payment (NOT paid → must never be marked completed / earn),
+//       scheduled / releasing (held, not collected).
+//   - Dry-run by default; --apply required. Review the dry-run list (confirm each was actually
+//     collected) before applying. Retroactive earn/consume is idempotent (earn_${id} + state machine).
+const LIVE_KITCHEN = new Set(['new', 'preparing', 'ready']);
 
 export function selectBackfillCandidates(orders) {
   return Object.values(orders || {}).filter(
-    (o) => o && o.order_type === 'pickup' && !TERMINAL.has(o.status)
+    (o) => o && o.order_type === 'pickup' && LIVE_KITCHEN.has(o.status)
   );
 }
 
