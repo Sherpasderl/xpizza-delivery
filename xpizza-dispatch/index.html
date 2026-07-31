@@ -1911,14 +1911,14 @@
 
   /* ============ v6 rich order row (Task 9) — .ord overrides the old .unassigned-card container ============ */
   /* base depth (gradient/shadow) from the Task-6 .ex,.ord,.drv,.cash rule */
-  .ord.unassigned-card { border: none; border-radius: 13px; padding: 13px; margin: 0 0 9px; position: relative; overflow: hidden; cursor: pointer; }
+  .ord { border: none; border-radius: 13px; padding: 13px; margin: 0 0 9px; position: relative; overflow: hidden; cursor: pointer; }
   .ord::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--success); }
   .ord.aging::after { background: var(--warn); }
   .ord.late::after  { background: var(--accent); }
-  .ord .r1 { display: flex; align-items: center; gap: 9px; }
-  .ord .num  { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 13px; color: var(--text-soft); }
-  .ord .cust { font-weight: 600; font-size: 13px; color: var(--text); }
-  .ord .ord-age { margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-soft); }
+  .ord .r1 { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .ord .num  { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 13px; color: var(--text-soft); flex: none; }
+  .ord .cust { font-weight: 600; font-size: 13px; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ord .ord-age { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-soft); flex: none; }
   .ord .ord-age.band-amber { color: var(--warn); }
   .ord .ord-age.band-red   { color: var(--accent); }
   .ord .items { color: var(--text-soft); font-size: 12px; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1948,6 +1948,7 @@
   .rtab.on .rlabel { display: inline; }
   .rtab .rn { font-size: 10px; font-weight: 700; color: var(--text-soft); background: rgba(255,255,255,0.08); border-radius: 999px; padding: 0 6px; min-width: 16px; text-align: center; }
   /* the pane holds the tab's list; .hidden collapses it (tap the active tab to toggle) */
+  .rtab-pane { padding: 14px 16px 0; }
   .rtab-pane.hidden { display: none; }
   /* En Fila queue — category groups (Entrega / Recoger / Programados) */
   .q-cat { margin-bottom: 14px; }
@@ -2306,7 +2307,7 @@ import { createGlideEngine } from './driver-glide.js?v=2';
 import { etaEligible, projectArrival, relativeEta, clockTime, dueForRefresh, distanceMeters } from './driver-eta.js?v=1';
 // ── Dispatch Phase-1 pure modules (Torre de Control redesign) ──
 import { classifyAlert, sortAlertEntries } from './dispatch-alerts.js?v=1';
-import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js?v=1';
+import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js?v=2';
 import { createEtaSnapshotStore } from './dispatch-eta-snapshot.js?v=1';
 import { deliveryRisk } from './dispatch-delivery-risk.js?v=1';
 import { assembleThread } from './dispatch-comms-thread.js?v=1';
@@ -3132,17 +3133,13 @@ function getActiveDrivers() {
 
 // Track which driver groups are expanded (default: all expanded)
 const expandedDrivers = new Set();
-let expandedDriversInitialized = false;
 
 // Track which order cards are inline-expanded for details
 const expandedOrderIds = new Set();
 
 function renderSidebar() {
-  // Initialize: expand all known drivers on first render
-  if (!expandedDriversInitialized) {
-    Object.keys(allDrivers).forEach(uid => expandedDrivers.add(uid));
-    expandedDriversInitialized = true;
-  }
+  // Drivers start COLLAPSED — a clean roster card each; tap a driver to expand its
+  // full task detail. (Drivers with active orders still show the inline .dt summary.)
   renderUnassignedSection();
   renderDriversSection();
   renderDeliveredSection();

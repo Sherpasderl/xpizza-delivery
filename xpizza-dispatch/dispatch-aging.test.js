@@ -38,7 +38,11 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 {
   assert.strictEqual(formatAging(65), '1:05');
   assert.strictEqual(formatAging(600), '10:00');
-  ok('formatAging m:ss');
+  assert.strictEqual(formatAging(3600), '1h');     // 1h → "Nh"
+  assert.strictEqual(formatAging(7200), '2h');
+  assert.strictEqual(formatAging(86400), '1d');     // 24h → "Nd"
+  assert.strictEqual(formatAging(1756800), '20d');  // ancient order caps, no overflow
+  ok('formatAging m:ss / Nh / Nd');
 }
 
 console.log(`\n${pass} passed`);

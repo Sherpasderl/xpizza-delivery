@@ -19,8 +19,16 @@ export function agingBand(seconds, thresholds = { amber: 300, red: 600 }) {
   return 'green';
 }
 
+// Compact aging label. Under an hour → "M:SS" (live ticking); an hour or more →
+// "Nh"; a day or more → "Nd". Caps the display so a stale/ancient order reads
+// "20d" instead of an unbounded "29280:22" that overflows the row.
 export function formatAging(seconds) {
-  const m = Math.floor(seconds / 60);
-  const s = String(seconds % 60).padStart(2, '0');
-  return `${m}:${s}`;
+  if (seconds < 3600) {
+    const m = Math.floor(seconds / 60);
+    const s = String(seconds % 60).padStart(2, '0');
+    return `${m}:${s}`;
+  }
+  const h = Math.floor(seconds / 3600);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
 }
