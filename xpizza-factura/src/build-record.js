@@ -48,14 +48,16 @@ function buildFacturaRecord({ order, config, reserved, now }) {
   const num = String(reserved).padStart(8, '0');
   const { fecha, hora } = formatHN(now);
 
-  // A-F: a redeemed X. Pizza order carries desc_rebaja_cents (the net comped value); its items are FULL-value,
-  // so the line bases foot to the FULL net (= paid subtotal + rebaja) and the rebaja line states the discount.
-  // Non-redeemed order → desc_rebaja 0, fullNet === subtotal_cents → byte-identical to before.
+  // A-F: a redeemed X. Pizza order carries desc_rebaja_cents (the net comped value) + factura_items (the paid
+  // cart lines PLUS the comped pizza at FULL value); the line bases foot to the FULL net (= paid subtotal +
+  // rebaja) and the rebaja line states the comp. Non-redeemed order → no factura_items (falls back to
+  // order.items, paid-only) + desc_rebaja 0, fullNet === subtotal_cents → byte-identical to before.
   const rebaja = order.desc_rebaja_cents || 0;
   const fullNet = order.subtotal_cents + rebaja;
-  const lineGross = order.items.map((i) => i.line_gross_cents);
+  const facturaItems = order.factura_items || order.items;   // paid + comped when redeemed; else the paid cart (order.items)
+  const lineGross = facturaItems.map((i) => i.line_gross_cents);
   const bases = reconcileLineBases(lineGross, fullNet);
-  const items = order.items.map((it, i) => ({
+  const items = facturaItems.map((it, i) => ({
     qty: it.qty,
     description: it.description,
     desc_pct: 0,

@@ -54,6 +54,7 @@ function buildCreateOrderUpdates({
     ...(freeOrder ? { free_order: true } : {}),   // A1: a redemption zeroed the total — nothing to collect (driver/accounting honor this)
     ...rw,   // reward-card earn_preview + summary_lines (also on order_tracking below; carried for materialize)
     ...(facturaPriced.items ? { items: facturaPriced.items } : {}),
+    ...(facturaPriced.factura_items ? { factura_items: facturaPriced.factura_items } : {}),   // A-F: paid + comped SAR line set (redeemed x_pizza only; build-record reads factura_items || items)
     ...(fields.razon_social ? { razon_social: fields.razon_social } : {}),
     ...(fields.rtn_cliente ? { rtn_cliente: fields.rtn_cliente } : {}),
   };
