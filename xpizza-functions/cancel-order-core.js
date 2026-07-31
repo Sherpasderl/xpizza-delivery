@@ -183,6 +183,7 @@ async function cancelOrderCore(deps, { orderId, actor, reason, now, claimId }) {
   const redFailed = !!redRes && redRes.ok === false && redRes.skipped !== true;   // skipped = non-redeemed order (legit no-op), NOT a failure
   if (earnFailed || redFailed) {
     await db.ref(`reward_ledger_repair/${orderId}`).update({ order_id: orderId, disposition: 'refund',
+      uid: order.customer_uid || null, rid: order.restaurant_id || 'x_pizza', has_redemption: !!order.redemption,   // [A revise] ledger coords → heal INDEPENDENTLY of the order node (a purged order can't orphan a diverged ledger)
       earn_failed: earnFailed, redemption_failed: redFailed, reason: reason || 'cancel', first_failed_at: now, updated_at: now, attempts: 0 })
       .catch((e) => console.error(`cancelOrder repair-journal write failed for ${orderId}`, e && e.message));
     await alert('reward_reversal_failed', { orderId, earn_failed: earnFailed, redemption_failed: redFailed });
@@ -224,10 +225,17 @@ async function retryRewardLedgerRepair(deps, { now }) {
   for (const orderId of Object.keys(repairs)) {
     const rec = repairs[orderId] || {};
     const order = (await db.ref(`orders/${orderId}`).once('value')).val();
-    if (!order) { await db.ref(`reward_ledger_repair/${orderId}`).remove(); continue; }   // order purged → nothing to heal
+    // [A revise] Heal INDEPENDENTLY of the order node: the reversals key off orderId + uid/rid + the ledger, so
+    // synthesize the coords from the enriched record when the order was purged. NEVER silently drop the record on
+    // a missing order — that would orphan a still-diverged ledger. If we have NO uid at all (a legacy pre-enrich
+    // record whose order is also gone), we can't verify/heal → escalate an orphan alert and KEEP the record.
+    const uid = (order && order.customer_uid) || rec.uid || null;
+    const rid = (order && order.restaurant_id) || rec.rid || 'x_pizza';
+    if (!uid) { pending++; await alert('reward_reversal_orphaned', { orderId }); continue; }
+    const ord = order || { customer_uid: uid, restaurant_id: rid, redemption: rec.has_redemption ? true : null };
     let earn = { ok: false }, red = { ok: false };
-    try { earn = await reverseEarnForOrder(db, { orderId, order, now }); } catch (_) { earn = { ok: false }; }
-    try { red = await reverseRedemptionForOrder(db, { orderId, order, disposition: rec.disposition || 'refund', now }); } catch (_) { red = { ok: false }; }
+    try { earn = await reverseEarnForOrder(db, { orderId, order: ord, now }); } catch (_) { earn = { ok: false }; }
+    try { red = await reverseRedemptionForOrder(db, { orderId, order: ord, disposition: rec.disposition || 'refund', now }); } catch (_) { red = { ok: false }; }
     const earnOk = !!earn && earn.ok !== false;
     const redOk = !!red && (red.ok !== false || red.skipped === true);
     if (earnOk && redOk) { await db.ref(`reward_ledger_repair/${orderId}`).remove(); healed++; continue; }

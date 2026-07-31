@@ -51,10 +51,24 @@ const { reverseEarnForOrder } = require('../rewards-earn');
     assert.deepStrictEqual(r, { healed: 0, pending: 0 });
     assert.strictEqual(await bal('u1', 'x_pizza'), 8); assert.strictEqual((await lkey('u1', 'x_pizza', 'reverse_ORD')).delta, -3); ok('retry idempotent: no repair record → no re-reversal (balance still 8)');
 
-    // 3 — a repair record whose order is gone (purged) → cleaned up, not stuck forever.
-    await db.ref('reward_ledger_repair/GONE').set({ order_id: 'GONE', disposition: 'refund', attempts: 0 });
+    // 3 — [A revise] a PURGED order must NOT orphan a diverged ledger: an ENRICHED record (uid/rid/has_redemption)
+    //     heals INDEPENDENTLY of the order node. Seed the divergence with NO orders/PURGED present.
+    await db.ref('user_rewards/u3/x_pizza').set({ balance: 3, lifetime: 3, reserved: 0,
+      ledger: { earn_PURGED: { type: 'earn', delta: 3, order_id: 'PURGED', ts: 1, config_version: 2 } },
+      reservations: { PURGED: { state: 'consumed', cost: 8, debit_applied: 8, seq: 1, updated_at: 1 } } });
+    await db.ref('reward_ledger_repair/PURGED').set({ order_id: 'PURGED', disposition: 'refund',
+      uid: 'u3', rid: 'x_pizza', has_redemption: true, earn_failed: true, redemption_failed: true, attempts: 0 });
     r = await retryRewardLedgerRepair(deps, { now: 1200 });
-    assert.strictEqual(await repair('GONE'), null); ok('retry: repair record for a purged order → removed (never orphaned)');
+    assert.strictEqual((await lkey('u3', 'x_pizza', 'reverse_PURGED')).delta, -3);
+    assert.strictEqual(await resvState('u3', 'x_pizza', 'PURGED'), 'refunded');
+    assert.strictEqual(await bal('u3', 'x_pizza'), 8); assert.strictEqual(await repair('PURGED'), null); ok('retry: a PURGED order with an enriched record still HEALS from stored coords (never silently orphaned)');
+
+    // 3b — a legacy (pre-enrich) record with NO uid AND a purged order → CANNOT heal → orphan ALERT + record KEPT
+    //      (never silently dropped: the divergence stays visible to a human, not lost).
+    await db.ref('reward_ledger_repair/LEGACY').set({ order_id: 'LEGACY', disposition: 'refund', attempts: 0 });
+    r = await retryRewardLedgerRepair(deps, { now: 1250 });
+    assert.notStrictEqual(await repair('LEGACY'), null); ok('retry: legacy record + purged order → KEPT, not silently removed');
+    assert.ok(alerts.some((a) => a.kind === 'reward_reversal_orphaned' && a.detail && a.detail.orderId === 'LEGACY')); ok('retry: unhealable orphan → reward_reversal_orphaned alert (visible, never lost)');
 
     // 4 — reverseEarnForOrder ok-discriminator: a legit no-op (never-earned order) is ok:true (nothing to repair).
     await db.ref('orders/ONE').set({ customer_uid: 'u1', restaurant_id: 'x_pizza', items: [{ qty: 1 }] });
