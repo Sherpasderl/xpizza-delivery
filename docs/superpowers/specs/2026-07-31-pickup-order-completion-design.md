@@ -1,60 +1,68 @@
-# Pickup-order completion — design spec
+# Pickup-order completion — design spec (REVISED: `completed`, not `delivered`)
 
-**Date:** 2026-07-31 · **Status:** design LOCKED (Xavier), ready for writing-plans.
-**One-line:** when the KDS "Completar" fires on a **pickup** order, publish its completion by writing `status='delivered'`, so dispatch/Cerrados/stats read it as done. **Delivery orders and the driver path are not touched.**
+**Date:** 2026-07-31 · **Status:** design REVISED per advisor codex design-gate + owner devil's-advocate. Supersedes the `delivered` version (`ab1e15a`, gated REVISE). Advisor handoff: `HANDOFF-pickup-completion-REVISED.md` (main `3cec760`). Awaiting advisor DESIGN re-gate on this revision.
+**One-line:** when the KDS "Completar" fires on a **pickup** order, write **`status='completed'`** — which earns rewards + consumes redemption (already wired), clears the dispatch queue, and closes the order in stats. **No functions / dispatch / rules change. Delivery + driver path 100% untouched; `delivered` stays delivery-only.**
 
-## 1. Problem
+## 1. Problem (bigger than the queue)
 
-Customer-pickup orders (`order_type:'pickup'`) never reach a terminal status, so they linger forever — in the new dispatch **En Fila → Recoger** queue, and (pre-existing) invisible to `getDeliveredTodayCount` / **Cerrados hoy** / delivered stats. Confirmed live: order `PZX-260726-140358-K976W1PP` sits at `status:'ready'`, collected weeks ago, no terminal transition.
+Customer-pickup orders (`order_type:'pickup'`) never reach a terminal status — no driver, no delivery task, and the only `delivered` transition (`completeDeliveryTask`, `xpizza-delivery.js:461`) never fires. Consequences:
+- **Rewards hole (the real one):** pickups **never earn rewards** — an entire channel, including X. Pizza's pickup-only 18″ NY. This must close **before/with the rewards redemption launch** so the program launches whole.
+- They linger in dispatch **En Fila → Recoger**, and are invisible to dashboard completed-stats.
+- Confirmed live: `PZX-260726-140358-K976W1PP` sits at `ready`, collected weeks ago.
 
-## 2. Root cause (verified)
+## 2. Decision — write `status='completed'` (NOT `delivered`)
 
-- Order status enum (`xpizza-delivery.js ORDER_STATUS`): `new / preparing / ready / out_for_delivery / delivered / cancelled`. **No `completed`/`picked_up` order status** (those are TASK statuses / a `picked_up_at` timestamp on the driver flow).
-- The **only** transition to terminal `delivered` is **driver delivery-task completion** (`xpizza-delivery.js:461` `completeDeliveryTask`, writes `status='delivered'` + `delivered_at`). **A pickup order has no driver and no delivery task → that transition never fires.**
-- The KDS **"Completar"** action is a **device-local archive only** — `completedSet` ← `localStorage.xpizza_kds_completed` (`xpizza-kitchen/index.html:1586`, saved `:1645`); it writes **nothing** to the DB ("ONLY empezar→preparing and listo→ready write /orders.status", `:2034`). So completing a pickup today leaves **zero trace in shared data** — nothing for dispatch to read.
+`completed` is the codebase's intended terminal-fulfilled-without-delivery status ("intended-but-never-written today"). `delivered` is delivery-only and reusing it would misfire driver/customer paths. The KDS taps Completar on a `order_type==='pickup'` order → also `setOrderStatus(id,'completed')`.
 
-## 3. Design
+## 3. Why `completed` is correct (source-verified — assert, don't take on faith)
 
-**Mechanism.** In the KDS "Completar" beat (`xpizza-kitchen/index.html`, the `completedSet.add(id)` path ~`:2082`), add a branch: **only when `order.order_type === 'pickup'`**, first `await XPD.setOrderStatus(id, 'delivered')`; treat its return per the existing contract (`true` = wrote → proceed with the local bump; `false` = ownership-skip → do NOT bump, surface the existing error path — mirror `commitStatusWrite`). Delivery orders never enter this branch.
+1. **Earns + consumes redemption, ALREADY WIRED — no functions change.** `earnRewardsOnCompletion` (`xpizza-functions/index.js:2171`, trigger `/orders/{id}/status`) gates on `shouldEarnOnStatus(after) = delivered||completed` (`rewards-core.js:53`) → fires on `completed` → `creditEarnForOrder` (earn) + `settleRedemptionAtConfirm(...,'consume')`. Comment: *"CASH primary redemption consume at delivered/completed."*
+2. **Clears En Fila for free — no dispatch change.** `getPickupQueue` done-set = `{cancelled,delivered,completed,picked_up}` (`xpizza-dispatch/index.html:3416`) → **already excludes `completed`.**
+3. **Silent to the customer (correct) — no functions change.** `sendOrderStatusNotifications` early-returns unless status ∈ `{out_for_delivery,delivered,cancelled}` (`index.js:3160`) → `completed` sends **no WhatsApp**; the pickup customer's last touchpoint stays the ready-stage `tplPickupReady` *"¡Tu pedido está listo para recoger!"*. (Dissolves the `delivered`-version codex finding ③.)
+4. **No leaderboard pollution.** The driver leaderboard keys on `status==='delivered'` (`xpizza-dashboard/index.html:1364`) → `completed` pickups never enter it. (Dissolves finding ②.)
+5. **No misbehaving consumer.** Terminal-sets already treat `completed` as terminal (`TERMINAL_DONE`; `cancel-order.js` gate → `not_cancelable`; `sweep-pending` heal). Nothing reads `status==='completed'` assuming a driver/task.
 
-**Why this is safe against the delivery path (hard invariant).**
-- The branch is gated entirely on `order_type === 'pickup'`. **Delivery orders hit `false` → the KDS "Completar" runs exactly as today (local `completedSet` bump), byte-unchanged.**
-- **`xpizza-delivery.js` `completeDeliveryTask` is NOT modified** — the seamless driver status path is untouched.
-- **No RTDB rules change** (Option A). The delivery path depends on the `status` and `delivered_at` rules; this design edits neither.
+## 4. Build — client-only (KDS + dashboard) + a backfill. NO functions, NO dispatch, NO rules.
 
-**Grounding that makes it "just works" (verified):**
-- `setOrderStatus(id, status)` writes any status via `update(ref(db,'orders/'+id), { status })` — no whitelist; `'delivered'` writes cleanly. La Musa KDS ownership guard returns `false` for non-`la_musa` orders (fine — a pickup belongs to its KDS → returns `true`). Writes **only `status`** (Option A — no `delivered_at`).
-- **RTDB rules:** `orders/$id/status .write` already permits the **kitchen** role (any value; the only guard is `cancelled`-on-paid-online, which we don't hit). `orders/$id/delivered_at .write` does NOT permit the kitchen → so Option A (status only) is both the safe and the necessary choice; a `{status, delivered_at}` multi-path write would be atomically rejected.
-- Dispatch reads `status`: `getPickupQueue` excludes `delivered` → completed pickups leave En Fila with **zero dispatch change**; Cerrados + delivered stats begin counting them.
+**4.1 KDS — `xpizza-kitchen/index.html`** (~`:2082`, the Completar `completedSet.add(id)` beat): **only when `order.order_type==='pickup'`**, also `await XPD.setOrderStatus(id,'completed')`. Honor the return contract (`false`=ownership-skip / throw → do NOT local-bump, surface the existing error). **Idempotent:** only transition a non-terminal pickup. Delivery Completar stays the local `completedSet` bump — **do not touch it**; `completeDeliveryTask` + driver status path stay **byte-untouched**.
 
-**Decisions (locked):**
-- **① Reuse `delivered`** (not a new `picked_up` status): every downstream "done" predicate already keys off `status ∈ {delivered,cancelled}`; `order_type` still distinguishes pickup for any "Recogido" labeling. A new status would mean threading it through every predicate — rejected (YAGNI + risk).
-- **② Option A — write only `status='delivered'`** (no rules change, no SDK edit, no delivery-path edit). Trade-off accepted: pickups carry no `delivered_at` → Cerrados sorts them by `created_at` and they get no "Recogido" timeline stamp. (`getDeliveredTodayCount` keys off `created_at`, unaffected.) A `delivered_at`-for-pickups follow-up (needs a kitchen `delivered_at` rule) is out of scope.
-- **③ Backfill** the already-stuck `ready` pickups: a one-time script **strictly scoped to `order_type==='pickup'` AND a non-terminal status** (`ready`/`preparing`/`new`), setting `status='delivered'`. Scope makes it physically unable to touch a delivery order. Bound by age or a dry-run list reviewed before the write.
+**4.2 Dashboard — `xpizza-dashboard/index.html`** (count pickups as completed in the AGGREGATE; keep driver metrics `delivered`-only — a deliberate *orders-completed* vs *driver-deliveries* split):
+- **ADD `completed`** to: "completed today" count (`:897`), `completedOrders` (`:920`), `completedSeries` (`:957`), and the **active-exclusion** (`:911`, so a completed pickup isn't counted "active").
+- **Close label** (`:1595`): a `completed` order reads **"Recogido"** (currently only `delivered`→"Entregado").
+- **LEAVE `delivered`-only**: the driver **leaderboard** (`:1364`), the delivery-count (`:1247/1249`), and prep-time metrics (`:1254/1256`) — driver/delivery measures.
 
-## 4. Idempotency & errors
+**4.3 Backfill** — pickup-scoped, **dry-run-first** script: `order_type==='pickup'` **AND** non-terminal status → set `status='completed'`. Review the dry-run list before writing; **cannot touch a delivery order**. Note: each backfilled order fires `earnRewardsOnCompletion` → **retroactive earn/consume** — **accepted** (launch-status = test orders only, low stakes) but printed in the run as a conscious write.
 
-- **Idempotent:** only transition a non-terminal pickup; if `order.status` is already `delivered`/`cancelled`, do nothing (guard before the write).
-- **Ownership-skip / write failure:** honor the existing `setOrderStatus` return contract — on `false` or throw, do NOT bump the card and surface the KDS's existing error path (no silent success).
+## 5. Idempotency & errors
 
-## 5. Files / surfaces
+Only transition a non-terminal pickup (skip if `status ∈ {completed,delivered,cancelled}`). Honor `setOrderStatus` return: `false`/throw → no card bump, surface the KDS's existing error path (no silent success). Fail-closed.
 
-- **`xpizza-kitchen/index.html`** — the one `order_type==='pickup'` branch in the Completar handler. *This is the entire behavioral change.*
-- **Backfill script** (one-off, e.g. `scripts/backfill-pickup-completion.mjs` or a REST/admin one-shot) — pickup-scoped, dry-run first.
-- **NOT touched:** `xpizza-delivery.js` (any copy), RTDB rules, `xpizza-dispatch/*`, the driver app.
-- **Deploy:** `xpizza-kitchen/` is a per-folder Netlify site — deploys to **both** the `lamusakitchendisplay` (La Musa) and X. Pizza KDS sites; pass the explicit `--site` ([[netlify-deploy-mechanics]]). No functions/rules deploy.
+## 6. Invariants (owner hard constraint)
 
-## 6. Testing
+Delivery/driver path byte-untouched: change gated on `order_type==='pickup'`; delivery Completar = local `completedSet`; `completeDeliveryTask` unmodified; **no rules edit; no functions edit; `delivered` stays delivery-only.**
 
-- **Unit-ish:** the branch predicate + idempotency guard (pure — `order_type==='pickup' && !terminal(status)`), ideally extracted so it's testable without the DOM.
-- **On-device (the real proof):** a pickup order in the KDS → tap **Completar** → it archives on the KDS AND `orders/{id}/status` becomes `delivered` in RTDB → it **leaves dispatch En Fila → Recoger** and appears in **Cerrados hoy**. Then verify a **delivery** order's Completar is unchanged (local bump only, `status` stays whatever the driver flow set) and the driver "¡Entregado!" path still writes `delivered`+`delivered_at`.
-- **Backfill:** dry-run prints the pickup-only candidate list; confirm no delivery `order_id` appears before writing.
+## 7. Files / surfaces
 
-## 7. Gating
+- **`xpizza-kitchen/index.html`** — one `order_type==='pickup'` branch in Completar.
+- **`xpizza-dashboard/index.html`** — aggregate-stats `completed` inclusion + "Recogido" label (driver metrics unchanged).
+- **Backfill script** (one-off, pickup-scoped, dry-run) — e.g. `scripts/backfill-pickup-completion.mjs`.
+- **NOT touched:** `xpizza-functions/*` (the earn/consume trigger already handles `completed`), `xpizza-dispatch/*`, RTDB rules, `xpizza-delivery.js` (any copy), the driver app.
 
-- **Codex money-adjacent gate** ([[codex-gate-money-adjacent]]) on the diff — order-lifecycle write. The gate must specifically confirm: the delivery/driver path is byte-untouched; the branch is pickup-only; no `cancelled`/payment axis touched; backfill is pickup-scoped.
-- No rules deploy (Option A) → no RTDB-emulator step needed. (If a future `delivered_at`-for-pickups is ever done, THAT needs the emulator per [[rtdb-rules-no-numchildren]].)
+## 8. Testing
 
-## 8. Out of scope
+- **Pure:** the KDS branch predicate + idempotency guard (`order_type==='pickup' && !terminal(status)`), extracted so it's testable without the DOM. Dashboard `completed`-inclusion assertions where feasible.
+- **On-device (the proof):** a pickup order in the KDS → Completar → `orders/{id}/status='completed'` in RTDB → leaves dispatch En Fila → Recoger; earn credited + any redemption consumed (verify against the rewards ledger); dashboard aggregate "completed" +1 and label "Recogido"; **no WhatsApp sent**; driver leaderboard/metrics unchanged. Then confirm a **delivery** order's Completar is unchanged (local bump; status untouched) and the driver "¡Entregado!" path still writes `delivered`+`delivered_at`.
+- **Backfill:** dry-run prints the pickup-only candidates; confirm no delivery `order_id` before writing; note the retroactive earn.
 
-`delivered_at` for pickups (needs a kitchen `delivered_at` rule); any delivery-path change; a distinct `PICKED_UP` status; Phase-2 comms.
+## 9. Gating
+
+- Advisor **codex DESIGN re-gate** on this revised spec (should be clean given §3 source-verification).
+- Then writing-plans → build → advisor **codex-on-diff (money-adjacent** — the KDS `completed` write triggers the already-gated `earnRewardsOnCompletion` earn/consume; the gate confirms the trigger path, the delivery-path byte-untouched invariant, dashboard split, and backfill scope).
+
+## 10. Deploy
+
+`xpizza-kitchen/` = per-folder Netlify, **TWO sites** (lamusakitchendisplay + X. Pizza) — explicit `--site` each ([[netlify-deploy-mechanics]]). `xpizza-dashboard/` = its own site. **No functions/rules deploy.** **Fold into the rewards launch** — ship pickup earning **before/with** the redemption flip so the program launches whole.
+
+## 11. Out of scope
+
+`delivered_at`/`picked_up_at` for pickups; any delivery-path change; a distinct new status; Phase-2 comms.
