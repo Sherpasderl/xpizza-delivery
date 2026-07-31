@@ -13,14 +13,18 @@ Order `PZX-260726-140358-K976W1PP` (order_type `pickup`, paid online L1432): **s
 - Therefore **customer-pickup orders never reach a terminal status** — they sit at `ready` after the kitchen marks them ready and the customer collects. Nothing in the platform represents "customer collected the pickup."
 - Downstream blast radius (everything keys "done" off `status ∈ {delivered, cancelled}`): completed pickups are **also** invisible to `getDeliveredTodayCount`, the **Cerrados hoy** section, and delivered stats — not just the En Fila queue. The queue merely made the existing hole visible.
 
-## Full fix (all the way)
+## Full fix (all the way) — CONTAINED to the KDS (footprint corrected 2026-07-31)
 
-**1. A completion action — the counter/kitchen marks the pickup handed over.**
-- Home = the **KDS** (`lamusakitchendisplay` / kitchen-display repo) — the counter sees the customer collect it. Add an **"Entregado al cliente / Recogido"** action on pickup-type orders (the natural analogue of the driver's "Entregado"). (Optionally also a dispatch-side action, but the counter is the real observer.)
+The KDS ALREADY owns order-status writes: `XPD.setOrderStatus` drives `empezar→preparing` and `listo→ready` (tested; `xpizza-kitchen/avail-write.test.mjs` — "setOrderStatus writes ONLY orders/{id}.{status}"). The **"Completar"** action, though, is a **LOCAL archive** (`completedSet.add(id)`, `xpizza-kitchen/index.html:~2082`) that deliberately does NOT write `/orders.status` — correct for DELIVERY (the driver's "¡Entregado!" swipe writes `status='delivered'`, `xpizza-delivery.js:489`), but a PICKUP order has no driver, so "Completar" archives it locally while `order.status` stays `ready` forever. **That's the whole bug, at the source.**
 
-**2. The write — reuse the existing terminal state.**
-- The action sets `orders/{id}/status = 'delivered'` + `orders/{id}/delivered_at = serverTimestamp()` (mirror `completeDeliveryTask`). Reusing `delivered` means **every downstream consumer already works** (queue exclusion, `getDeliveredTodayCount`, Cerrados, delivered stats) with zero further change. If a distinct pickup semantic is wanted, add `ORDER_STATUS.PICKED_UP` and thread it through ALL "done" predicates — but `delivered` reuse is DRY and lower-risk.
-- **Server-authoritative / rules-guarded**, like the driver pickup/delivery completions — a callable fn or a transaction, not an unguarded client write. Guard: only `order_type:'pickup'` + non-terminal status may transition; idempotent.
+**1. The change — make "Completar" close pickup orders on the server.**
+- In the KDS Completar handler (`xpizza-kitchen/index.html`, the `completedSet.add(id)` beat ~2082): when `order.order_type === 'pickup'`, ALSO `await XPD.setOrderStatus(id, ORDER_STATUS.DELIVERED)` (+ `delivered_at`). Delivery orders keep today's behavior (local bump only; the driver owns their terminal transition). Reuses the existing `setOrderStatus` machinery — no new action, no new UI.
+- Reusing terminal `delivered` means **every downstream consumer already works** (queue exclusion, `getDeliveredTodayCount`, Cerrados, delivered stats) with zero further change. A distinct `PICKED_UP` status would mean threading it through ALL "done" predicates — `delivered` reuse is DRY and lower-risk.
+- Idempotency/guard: only transition a non-terminal pickup; don't re-write if already `delivered`/`cancelled`.
+
+**2. RTDB rules — a CHECK, likely a small tweak.**
+- The kitchen already writes `preparing`/`ready` to `/orders/{id}/status`. **Verify** whether the rules whitelist specific statuses (would need `delivered` added for the kitchen role) or allow any authenticated-kitchen status write (then no change). ⚠ RTDB rules have no child-count fn and only the emulator catches issues — run the emulator before any rules deploy ([[rtdb-rules-no-numchildren]]).
+- If `setOrderStatus` is extended to stamp `delivered_at`, sync the **byte-identical `xpizza-delivery.js`** across all 5 surface copies (the one real "spread"). Prefer stamping `delivered_at` in the KDS caller if it avoids touching the shared SDK.
 
 **3. Money/gate posture.** A status→terminal transition (no charge/refund) — but it IS an order-lifecycle write → **own design gate + codex money-adjacent gate** ([[codex-gate-money-adjacent]]). Confirm it does NOT collide with the paid/refund axis (pickup orders are prepaid online or cash-at-counter; closing them must not touch `payment_status`).
 
@@ -30,4 +34,4 @@ Order `PZX-260726-140358-K976W1PP` (order_type `pickup`, paid online L1432): **s
 
 ## Sequencing
 
-Cross-repo (KDS UI + functions/rules + optional backfill), money-adjacent → **its own brainstorm → design gate → build → codex money-gate**, sequenced into the next work phase (independent of 1b/Phase-2/Phase-3; arguably before them since it's a live correctness hole). Not a Phase-1 blocker: Phase 1 correctly *shows* pickup orders; this ends their lifecycle.
+**Contained to the KDS** (`xpizza-kitchen/index.html` Completar handler + an RTDB-rules check; possibly a synced `xpizza-delivery.js` helper for `delivered_at`). **Dispatch needs no change.** Order-lifecycle write → still gets **codex money-adjacent gate** ([[codex-gate-money-adjacent]]) + the RTDB emulator before any rules deploy ([[rtdb-rules-no-numchildren]]), but it's a tight change, not a sprawling cross-surface build. Sequence into the next work push alongside Phase 2 (independent of it). Not a Phase-1 blocker.
