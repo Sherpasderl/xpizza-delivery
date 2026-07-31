@@ -3259,7 +3259,7 @@ function renderUnassignedSection() {
       currentArrivalMs: etaCache[o.order_id]?.arrivalMs ?? null,
     });
     const edge = risk.band === 'red' ? ' late' : risk.band === 'amber' ? ' aging' : '';
-    const isCash = o.payment_method === 'cash' || o.payment_method === 'efectivo';
+    const isCash = isCashPayment(o.payment_method);
     const payChip = `<span class="m ${isCash ? 'pay' : 'paid'}"><span class="d"></span>${isCash ? `Efectivo · L${escapeHtml(String(o.total ?? '—'))}` : 'Pagado online'}</span>`;
     const waChip = o.order_received_notified_at
       ? '<span class="m wa"><span class="d"></span>WhatsApp ✓</span>'
@@ -3544,7 +3544,7 @@ function renderCommsThread() {
   const waDigits = String(rawFrom).replace(/\D/g, '');
   let sub = escapeHtml(formatMsgPhone(rawFrom));  // formatMsgPhone → digits only, safe
   if (order) {
-    const isCash = order.payment_method === 'cash' || order.payment_method === 'efectivo';
+    const isCash = isCashPayment(order.payment_method);
     const pay = isCash ? `Efectivo L${escapeHtml(String(order.total ?? '—'))}`
               : order.payment_method ? 'Pagado online' : '';
     sub = `${escapeHtml(displayOrderLabel(order))}${pay ? ' · ' + pay : ''}`;
@@ -4839,6 +4839,14 @@ function displayOrderLabel(orderOrId) {
 // The full order code (PZSX…) — for the detail modal only, never crammed into lists.
 function orderCode(order) {
   return order && order.order_id != null ? String(order.order_id) : '—';
+}
+
+// Display-only cash predicate. Normalizes (trim + lowercase) before comparing, mirroring
+// xpizza-driver/cash-helpers.js's isCashPayment shape so "Cash"/padded values don't
+// mislabel as online. Display only — never gates settlement/cuadre/writes.
+function isCashPayment(pm) {
+  const v = String(pm || '').trim().toLowerCase();
+  return v === 'cash' || v === 'efectivo';
 }
 
 // ============================================================
