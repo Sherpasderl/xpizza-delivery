@@ -3119,7 +3119,7 @@ function getDeliveredTodayCount() {
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
   return Object.values(allOrders).filter(o =>
-    o.status === 'delivered' && o.created_at >= dayStart.getTime()
+    (o.status === 'delivered' || o.status === 'completed') && o.created_at >= dayStart.getTime()
   ).length;
 }
 
@@ -3998,7 +3998,7 @@ function renderDeliveredSection() {
   const closedTime = (o) => o.delivered_at || o.cancelled_at || o.created_at || 0;
 
   let orders = Object.values(allOrders).filter(o =>
-    o.status === 'delivered' || o.status === 'cancelled'
+    o.status === 'delivered' || o.status === 'cancelled' || o.status === 'completed'
   );
 
   if (!isSearching) {
@@ -4027,7 +4027,7 @@ function renderDeliveredSection() {
   if (isSearching) {
     meta.textContent = orders.length === 1 ? '1 resultado' : `${orders.length} resultados`;
   } else {
-    const dCount = orders.filter(o => o.status === 'delivered').length;
+    const dCount = orders.filter(o => o.status === 'delivered' || o.status === 'completed').length;
     const cCount = orders.length - dCount;
     meta.textContent = cCount > 0 ? `${dCount} ✓  ${cCount} ✕` : String(dCount);
   }
@@ -4227,7 +4227,9 @@ function renderOrderDetailModal(order) {
     ? '<span class="od-status-pill cancelled">Cancelado</span>'
     : order.status === 'delivered'
       ? '<span class="od-status-pill delivered">Entregado</span>'
-      : `<span class="od-status-pill">${escapeHtml(order.status || '—')}</span>`;
+      : order.status === 'completed'
+        ? '<span class="od-status-pill delivered">Recogido</span>'
+        : `<span class="od-status-pill">${escapeHtml(order.status || '—')}</span>`;
   $('order-detail-title').innerHTML = `
     <span>${escapeHtml(order.customer_name || 'Cliente sin nombre')}</span>
     ${statusPill}
