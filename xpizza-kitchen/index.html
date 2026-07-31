@@ -2065,34 +2065,40 @@ async function commitStatusWrite(id, action) {
   }
 }
 
-/* Completion beat (★ tweak #3) — LOCAL blue→green→bump. For a PICKUP order this FIRST publishes
-   status='completed' via setOrderStatus (gated on the write, exactly like commitStatusWrite) so pickups
-   reach a terminal status and earn rewards; DELIVERY orders skip that write (the driver owns 'delivered')
-   and this stays purely local. paso 1: blue "Completando" IN the Open pool → paso 2: green "Completado" IN
-   the Open pool → paso 3: local-bump to Completados (completedSet.add). Recall during any beat clears
-   completionSeq (see recall) so the bump is abandoned. */
+/* Completion beat (★ tweak #3 + pickup-ready coalescing safeguard) — LOCAL blue→green→bump. paso 1 blue
+   "Completando" shows IMMEDIATELY on hold (instant feedback). For a PICKUP order, status='completed' is
+   published via setOrderStatus AFTER the blue beat (COMPLETING_MS) — NOT back-to-back with the 'ready'
+   write — so the ready→completed pair is ≥700ms apart and an RTDB trigger can't coalesce them and swallow
+   the pickup-ready WhatsApp. The write is gated exactly like commitStatusWrite (fail-closed). DELIVERY
+   orders write nothing (the driver owns 'delivered') and stay purely local, same timing. Recall during
+   ANY beat — INCLUDING the new pre-write delay — clears completionSeq and abandons the completion. */
 async function startCompletion(id) {
-  // Pickup orders have no driver/delivery-task, so nothing else ever writes a terminal ORDER status
-  // (the only 'delivered' transition is driver delivery-task completion). When the kitchen completes a
-  // PICKUP, publish it as status='completed' — earns rewards + consumes redemption (already wired), and
-  // dispatch/stats/tracker read it. Gate the local completion beat on the write, exactly like
-  // commitStatusWrite. Delivery orders are UNTOUCHED — the driver owns their 'delivered' transition.
   const order = lastOrders.find(o => o.id === id) || allOrders.find(o => o.id === id);
-  if (order && order.order_type === 'pickup'
-      && !['completed', 'delivered', 'cancelled'].includes(order.status)) {   // idempotent: skip terminal
-    let wrote;
-    try { wrote = await XPD.setOrderStatus(id, 'completed'); }
-    catch (e) { wrote = false; console.error('startCompletion: pickup complete write failed', id, e && e.message); }
-    if (wrote !== true) {   // ownership-skip / failure → NON-success: do NOT run the local completion beat
-      pendingWrites[id] = { from: opState(order), action: 'completar', skip: true, msg: 'No se pudo completar' };
-      renderCurrentTab();
-      return;
-    }
-  }
-  completionSeq[id] = 'completing';                     // paso 1 (blue) — still in the Open pool
+  // Idempotent: only a non-terminal PICKUP order publishes 'completed'. Delivery skips the write entirely.
+  const publishCompleted = !!(order && order.order_type === 'pickup'
+    && !['completed', 'delivered', 'cancelled'].includes(order.status));
+
+  completionSeq[id] = 'completing';                     // paso 1 (blue) — IMMEDIATE, still in the Open pool
   renderCurrentTab();
-  setTimeout(() => {
-    if (completionSeq[id] !== 'completing') return;      // recalled/aborted mid-beat
+
+  setTimeout(async () => {
+    if (completionSeq[id] !== 'completing') return;      // recalled/aborted during the blue beat → NO write
+
+    if (publishCompleted) {
+      // Publish AFTER the blue beat (≥COMPLETING_MS since the 'ready' write) so the pickup-ready WhatsApp
+      // can't be coalesced away. Gated + fail-closed, exactly like commitStatusWrite.
+      let wrote;
+      try { wrote = await XPD.setOrderStatus(id, 'completed'); }
+      catch (e) { wrote = false; console.error('startCompletion: pickup complete write failed', id, e && e.message); }
+      if (completionSeq[id] !== 'completing') return;    // recalled during the write round-trip → abandon
+      if (wrote !== true) {                              // ownership-skip / failure → fail-closed
+        delete completionSeq[id];                        // abandon: no green, no bump — keep card in Open
+        pendingWrites[id] = { from: opState(order), action: 'completar', skip: true, msg: 'No se pudo completar' };
+        renderCurrentTab();
+        return;
+      }
+    }
+
     completionSeq[id] = 'completed';                    // paso 2 (green) — still in the Open pool
     renderCurrentTab();
     setTimeout(() => {
