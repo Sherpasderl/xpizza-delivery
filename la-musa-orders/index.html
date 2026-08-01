@@ -2308,6 +2308,7 @@ function updateTotal(){
 //__REWARDS_PARITY_BEGIN__ (B2) — the block between this marker and __END__ MUST be byte-identical in BOTH order forms (enforced by rewards-parity.guard.test.js). Brand-specific rewards code lives OUTSIDE this block.
 // REWARDS (B2 Task 4): the checkout redeem affordance (server-authoritative discount). Fail-safe; guest → nothing.
 function applyRedeemQuoteToTotals(q){
+  if(!q){ try{ window.__resumeOrderId=null; }catch(_){} }   // D: reward cleared (quitar) → a resumed redeemed order must NOT reuse its order_id (server still carries the redemption) → build a FRESH full-price order
   const pa=document.getElementById('pixelpay-amount');
   if(pa) pa.textContent = q ? ('L '+(q.total_cents/100).toFixed(2)) : ('L '+calcTotal().toFixed(2));   // online charge = the SERVER discounted total
   syncFreeOrderUI();   // A1: a $0 (fully-comped) server quote → free-order payment availability
@@ -3030,7 +3031,7 @@ function redeemCartItems(){
 function buildOrder(){
   const items=MENU.filter(p=>qty[p.id]>0);
   const total=calcTotal();
-  const orderId=genOrderId();
+  const orderId=(window.__resumeOrderId||genOrderId()); window.__resumeOrderId=null;   // D: a RESUMED retry reuses the original order_id (server reuses the ONE reservation — no double-reserve); else a fresh id
   const mapsLink=`https://www.google.com/maps?q=${lat},${lng}`;
   const wazeLink=`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`;
   currentOrder={
@@ -3130,6 +3131,10 @@ async function processPixelPay(){
         ]);
       }
     } catch (_) { __idTok = null; }   // never block the order on account logic
+    // D/#26: a logged-in customer with a selected reward whose ID token TIMED OUT must NOT be silently downgraded to
+    // a GUEST request → the server returns login_required and the reward is dropped (paid full-price). A pending
+    // redeem implies logged-in, so a null token here is a transient session hiccup — retry, never guest-downgrade.
+    try{ const __hasRedeem=!!(window.__ACCOUNT&&window.__ACCOUNT.getRedeemPayload&&window.__ACCOUNT.getRedeemPayload()); if(__hasRedeem && !__idTok){ return paymentFallback('No pudimos verificar tu sesión. Tocá pagar de nuevo para no perder tu premio.'); } }catch(_){}
     const res = await fetch(CHARGEORDER_URL, {
       method:'POST',
       headers: Object.assign(
@@ -3177,7 +3182,7 @@ async function processPixelPay(){
   // currentOrder.redeem) so the online-return success screen can show the discounted total even though the
   // in-memory quote is gone after the redirect. The paymentStatus summary is preferred on return; this is the fallback.
   try{ const __rq=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuoteTotalCents)?window.__ACCOUNT.getRedeemQuoteTotalCents():null; if(__rq!=null) currentOrder.redeem_total_cents=__rq; }catch(_){}
-  try { localStorage.setItem('lamusa_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder, form: snapshotForm() })); } catch(_){}
+  try { localStorage.setItem('lamusa_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder, form: snapshotForm(), ts: Date.now() })); } catch(_){}
   setSending('Redirigiendo a pago seguro…');
   window.location.href = cfg.checkout_url;
 }
@@ -3243,6 +3248,9 @@ function snapshotForm(){
     qty, extras: pizzaExtras, orderType, pickupTimeType, pickupScheduledTime,
     scheduledFor: window.__scheduledFor, timeMode: window.__timeMode,
     lat, lng, payment: selectedPayment,
+    // D (retry-resume): capture the selected redeem + its server quote so restore re-renders the golden ticket and the resumed order re-attaches the SAME redeem (server reuses the ONE reservation — no double-reserve).
+    redeem: (function(){ try{ return (window.__ACCOUNT&&window.__ACCOUNT.getRedeemPayload)?window.__ACCOUNT.getRedeemPayload():null; }catch(_){ return null; } })(),
+    redeemQuote: (function(){ try{ return (window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuote)?window.__ACCOUNT.getRedeemQuote():null; }catch(_){ return null; } })(),
     rtn: { on: !!document.getElementById('rtn-toggle')?.checked, razon: v('razon-social'), num: v('rtn-cliente') },
     fields: { cname:v('cname'), cphone:v('cphone'), cphoneCC:phoneCC, cemail:v('cemail'), notes:v('notes'),
               addressDetected:v('address-detected'), addressDetails:v('address-details') }
@@ -3250,7 +3258,7 @@ function snapshotForm(){
 }
 function restoreOrderForm(){
   let snap = null;
-  try { const s = JSON.parse(localStorage.getItem('lamusa_pending_pay')||'null'); snap = s && s.form; } catch(_){}
+  try { const s = JSON.parse(localStorage.getItem('lamusa_pending_pay')||'null'); snap = s && s.form; if(s && s.ts && (Date.now()-s.ts) > 3600000){ snap=null; }   /* D/#6/#11: ignore a STALE stash (>1h > hosted TTL) — never restore a day-old order/reservation */ else if(s&&s.order_id){ window.__resumeOrderId = s.order_id;   /* D: a resumed retry REUSES the original order_id → the server reuses the ONE reservation (no double-reserve) */ } } catch(_){}
   if(!snap){ location.href='/'; return; }
   try {
     // R4: the snapshot holds this order's ACTUAL delivery data — suppress the logged-in account
@@ -3272,6 +3280,8 @@ function restoreOrderForm(){
       if(snap.rtn.on){ setV('razon-social',snap.rtn.razon); setV('rtn-cliente',snap.rtn.num); }
     }
     renderMenu(); updateCart(); updateTotal();
+    // D: restore the selected redeem → re-render the golden ticket + sync the discounted total/summary; the resumed order re-attaches the SAME redeem.
+    try{ if(snap.redeem && window.__ACCOUNT && window.__ACCOUNT.restoreRedeem){ window.__ACCOUNT.restoreRedeem(snap.redeem, snap.redeemQuote); if(typeof renderRedeemUI==='function') renderRedeemUI(); try{ const _q=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuote)?window.__ACCOUNT.getRedeemQuote():null; if(typeof applyRedeemQuoteToTotals==='function') applyRedeemQuoteToTotals(_q); }catch(_){} } }catch(_){}
     showStage('s2', 50);
     window.__scheduledFor = snap.scheduledFor || null;
     window.__timeMode = snap.timeMode || 'standard';

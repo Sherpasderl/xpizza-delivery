@@ -121,6 +121,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   const PICKER_BACK = '<button class="acct-iconbtn acct-picker-back" type="button" aria-label="Volver a Mi cuenta">‹</button>';
   function wirePickerBack(pane) { const b = pane && pane.querySelector('.acct-picker-back'); if (b) b.onclick = () => showPane('account'); }
   let _rwState = null;    // { balance, reserved, lifetime } | null   (null = guest / not yet loaded / no node)
+  let _rwLoadedOnce = false;  // D/#2: true once the read-own subscription has delivered at least once → _rwState is DEFINITIVE (null then means "no node", not "still loading"). Only a definitive state may clear a selected/restored redeem.
   let _rwSubbed = false;  // one live subscription per session
   let _rwUnsub = null;    // the onValue unsubscribe handle → detached on logout (no cross-user leak)
   const rwAvailable = () => Math.max(0, (Number(_rwState && _rwState.balance) || 0) - (Number(_rwState && _rwState.reserved) || 0));
@@ -138,7 +139,12 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     let label;
     if (RW.kind === 'punch') { const p = rwPunch(); label = `${p.onCard}/${p.size}`; }
     else label = `${rwAvailable()} ${RW.unit}`;
-    return `<span class="acct-rw" aria-label="Recompensas">· <span class="acct-rw-n">${escapeHtml(label)}</span> <span class="acct-rw-g">${GIFT_SVG}</span></span>`;
+    // D-interim: a HELD (reserved) balance depresses the shown count — surface it honestly (title + a11y label) so
+    // it never reads as LOST while an abandoned checkout's reservation is still held (released later — C / PixelPay Q1).
+    const _res = Number(_rwState && _rwState.reserved) || 0, _av = rwAvailable();
+    const _hint = _res > 0 ? `${_av} ${_av === 1 ? 'disponible' : 'disponibles'} · ${_res} en un pedido pendiente` : '';
+    const _t = _hint ? ` title="${escapeHtml(_hint)}"` : '';
+    return `<span class="acct-rw" aria-label="${_hint ? escapeHtml('Recompensas — ' + _hint) : 'Recompensas'}"${_t}>· <span class="acct-rw-n">${escapeHtml(label)}</span> <span class="acct-rw-g">${GIFT_SVG}</span></span>`;
   }
 
   // Read-own live subscription — renders NOTHING until Firebase auth resolves; guests never subscribe.
@@ -152,14 +158,14 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       if (!uid) return;                                             // session gone → no read
       _rwSubbed = true;
       const r = dbMod.ref(db, `user_rewards/${uid}/${CONFIG.restaurant_id}`);
-      _rwUnsub = dbMod.onValue(r, (snap) => { _rwState = snap.val() || null; rewardsRender(); }, () => {});   // read-own; unsub handle kept for logout; onError no-op (display non-critical)
+      _rwUnsub = dbMod.onValue(r, (snap) => { _rwState = snap.val() || null; _rwLoadedOnce = true; rewardsRender(); }, () => {});   // read-own; D/#2: mark loaded → state is now definitive; unsub handle kept for logout; onError no-op (display non-critical)
     } catch (_) { /* fail-silent — the display is non-critical, never blocks the form */ }
   }
   // Reset on logout — DETACH the read-own subscription + clear state, so a re-login on the same page session
   // subscribes fresh to the NEW uid's node (never shows the prior user's balance — no cross-user leak).
   function rewardsReset() {
     if (_rwUnsub) { try { _rwUnsub(); } catch (_) {} _rwUnsub = null; }
-    _rwState = null; _rwSubbed = false;
+    _rwState = null; _rwSubbed = false; _rwLoadedOnce = false;   // D/#2: a fresh sub must re-establish a definitive state
     try { clearRedeem(); } catch (_) {}   // B2 Task 4: drop any pending reward on logout
   }
 
@@ -167,6 +173,9 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     renderChip();                                                   // re-render the chip with the fresh count
     if ($('acct-pane-rewards') && $('acct-pane-rewards').classList.contains('acct-on')) renderRewardsPane();
     const cl = $('acct-cart-earn'); if (cl && cl._rwRefresh) cl._rwRefresh();   // refresh an already-mounted cart earn line
+    // D/#2: re-validate a mounted redeem box when the subscription lands — a render that was held during the
+    // transient (pre-load) window now runs against the DEFINITIVE state (renders the ticket, or clears if truly ineligible).
+    try { if (_rkEnv && _rkEnv.container && document.body.contains(_rkEnv.container)) renderRedeem(_rkEnv); } catch (_) {}
   }
 
   // Mis premios pane (screen 2): punch card (X. Pizza) / milestone bar (La Musa). Read-only.
@@ -176,11 +185,16 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     const av = rwAvailable();
     // Shared elegant pane head: back+title, the intro copy (CONFIG, trusted HTML), the big serif counter,
     // and its label. `counterHtml` is number-only markup (safe); `clbl` is static text (escaped).
+    const _resHeld = Number(_rwState && _rwState.reserved) || 0;   // D-interim: points held behind a pending order
+    const _heldLine = _resHeld > 0
+      ? `<p class="acct-rw-clbl" style="opacity:.72;font-weight:600;margin-top:2px">${escapeHtml(_resHeld + (RW.kind === 'punch' ? (_resHeld === 1 ? ' sello' : ' sellos') : ' ' + RW.unitPlural) + ' en un pedido pendiente')}</p>`
+      : '';
     const rwPaneHead = (counterHtml, clbl) =>
       `<div class="acct-picker-top">${PICKER_BACK}<span class="acct-picker-title acct-rw-title">Mis premios</span></div>`
       + `<p class="acct-rw-intro">${RW.paneIntro || ''}</p>`
       + `<div class="acct-rw-counter">${counterHtml}</div>`
-      + `<p class="acct-rw-clbl">${escapeHtml(clbl)}</p>`;
+      + `<p class="acct-rw-clbl">${escapeHtml(clbl)}</p>`
+      + _heldLine;   // D-interim: honest "held" line so a depressed counter never reads as lost
     let hero;
     if (RW.kind === 'punch') {
       const p = rwPunch();
@@ -324,7 +338,15 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // golden ticket re-renders and the RESUMED order re-attaches the SAME redeem (same canonical → the server
   // reuses the ONE existing reservation, never a second). The quote is display-only (the server re-prices on
   // submit); require .ok so the applied-ticket predicate (rkApplied) matches. No payload → no-op (guest / non-redeemed retry).
-  function restoreRedeem(payload, quote) { if (!payload) return; _redeemPending = payload; _redeemQuote = (quote && quote.ok) ? quote : null; }
+  function restoreRedeem(payload, quote) {
+    if (!payload) return;
+    _redeemPending = payload;
+    _redeemQuote = (quote && quote.ok) ? quote : null;
+    // Rebuild the picker state so rkTicketHtml() renders the APPLIED ticket (pizza name / premio count), not the
+    // offer — the applied punch ticket reads _rkPick.name; the applied points ticket reads rkUnits() from _rkQty.
+    if (payload.type === 'free_pizza_choice') { _rkPick = { key: payload.item_id, name: payload.name }; _rkQty = {}; }
+    else if (payload.type === 'points_ala_carte' && Array.isArray(payload.items)) { _rkPick = null; _rkQty = {}; payload.items.forEach((it) => { if (it && it.id) _rkQty[it.id] = Number(it.qty) || 1; }); }
+  }
   // Two error classes for the submit handler (spec §5.2 / plan-gate #1):
   //   'redemption' → clear the redeem + FRESH-order_id full-price resubmit.
   //   'other' (item_unavailable/closed) → the EXISTING cart error path, redeem PRESERVED.
@@ -367,17 +389,34 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 
   async function renderRedeem(env) {
     const box = env && env.container; if (!box) return;
+    _rkEnv = env;   // D/#2: keep the env so rewardsRender() can re-validate this box once _rwState lands
     injectRedeemStyles(); rkInjectDefs();
     await redeemReadLiveFlag();
     const m = marker();
-    if (!m || !m.name || !redemptionLive()) { box.innerHTML = ''; if (_redeemPending) rkClear(env, false); return; }
-    _rkEnv = env;
+    const applied = rkApplied();   // D/#24: an APPLIED/restored redeem — its points are already reserved for THIS order
+    if (!m || !m.name) { box.innerHTML = ''; if (_redeemPending) rkClear(env, false); return; }   // guest (marker is sync → definitive)
+    if (!redemptionLive()) {
+      // D/#2: redemptionLive can be transiently false pre-subscription (the canary check needs _rwState). Only a
+      // DEFINITIVE state (loaded) may clear; while loading, hold an applied ticket + render nothing for a bare selection.
+      if (_rwLoadedOnce) { box.innerHTML = ''; if (_redeemPending) rkClear(env, false); return; }
+      if (applied) { box.innerHTML = rkTicketHtml(); rkWireTicket(env); return; }
+      box.innerHTML = ''; return;
+    }
+    // D/#24: an applied redeem ALWAYS shows its ticket — a low `available` is a CONSEQUENCE of this reservation, not
+    // a disqualifier (the SERVER re-validates the redemption on submit). Only the NEW-apply path below gates on av.
+    if (applied) { box.innerHTML = rkTicketHtml(); rkWireTicket(env); return; }
     const cat = rkCat();
     const av = redeemAvailable();
     const cheapest = cat.length ? Math.min.apply(null, cat.map((c) => rkPts(c.price_cents))) : Infinity;
     // Eligible = a live, completable offer. Punch: full card + a pizza in cart + a catalog. Points: ≥1 affordable dish.
     const eligible = RW.kind === 'punch' ? (av >= RW.card_size && Number(env.pizzaCount) >= 1 && cat.length > 0) : (cat.length > 0 && av >= cheapest);
-    if (!eligible) { box.innerHTML = ''; if (_redeemPending) rkClear(env, false); return; }
+    if (!eligible) {
+      box.innerHTML = '';
+      // D/#2: clear a bare (not-applied) selection ONLY on a definitive state — a transient _rwState (av reads 0)
+      // must not silently drop a selection mid-load.
+      if (_redeemPending && _rwLoadedOnce) rkClear(env, false);
+      return;
+    }
     box.innerHTML = rkTicketHtml();
     rkWireTicket(env);
   }
