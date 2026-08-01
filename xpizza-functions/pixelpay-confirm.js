@@ -74,14 +74,29 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
     }
     if (activeNow === false) {
       const uuid0 = paymentUuid || preAttempt.payment_uuid;
-      try {
-        if (uuid0) await deps.client.voidTransaction({ payment_uuid: uuid0, pixelpayOrderId, voidReason: 'xpizza_inactive_void' });
-      } catch (_) { /* best-effort auth void; terminalize + alert regardless */ }
-      await attemptRef.update({ status: 'voided_inactive', voided_at: now, void_reason: 'restaurant_inactive' });
-      await orderRef.update({ payment_status: 'failed' });
-      await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly
-      deps.alert && deps.alert('confirm_voided_inactive', { orderId, attemptId, restaurant_id: rid });
-      return { outcome: 'voided_inactive' };
+      // [C revise/#1] The auth void must be CONFIRMED before we treat this as not-captured. A failed/timed-out
+      // void (or no uuid to void) leaves the auth possibly-LIVE → capturable → releasing the hold would be a mint.
+      let voided = false;
+      if (uuid0) {
+        try { const vd = await deps.client.voidTransaction({ payment_uuid: uuid0, pixelpayOrderId, voidReason: 'xpizza_inactive_void' }); voided = !!(vd && vd.ok); }
+        catch (_) { voided = false; }   // void errored/timed out → the auth may still capture → ambiguous
+      }
+      if (voided) {
+        // CONFIRMED void → DEFINITIVELY not captured → fail + release the hold promptly.
+        await attemptRef.update({ status: 'voided_inactive', voided_at: now, void_reason: 'restaurant_inactive' });
+        await orderRef.update({ payment_status: 'failed' });
+        await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // definitive not-captured → release
+        deps.alert && deps.alert('confirm_voided_inactive', { orderId, attemptId, restaurant_id: rid });
+        return { outcome: 'voided_inactive' };
+      }
+      // Void UNCONFIRMED (failed / timed out / no uuid) → AMBIGUOUS (possibly-captured): route to
+      // manual_reconciliation + HOLD the redemption BEFORE advertising it (never 'failed', never release) so
+      // neither the confirm path NOR the conservative sweep frees a possibly-capturable hold. Dispatcher resolves.
+      await attemptRef.update({ status: 'manual_reconciliation', manual_reason: 'inactive_void_unconfirmed', flagged_at: now, ...(uuid0 ? { payment_uuid: uuid0 } : {}) });
+      await holdRedemptionForManual(db, { orderId, order, now, alert: deps.alert });
+      await orderRef.update({ payment_status: 'manual_reconciliation' });
+      deps.alert && deps.alert('confirm_inactive_void_unconfirmed', { orderId, attemptId, restaurant_id: rid });
+      return { outcome: 'manual_reconciliation' };
     }
   }
 

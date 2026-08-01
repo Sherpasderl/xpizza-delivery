@@ -76,7 +76,7 @@ function makeDb(initial = {}) {
     const alerts = [];
     const deps = {
       db,
-      client: { getStatus: async () => { calls.getStatus++; return {}; }, interpretStatus: () => ({}), capture: async () => { calls.capture++; return {}; }, voidTransaction: async () => { calls.void++; return { success: true }; } },
+      client: { getStatus: async () => { calls.getStatus++; return {}; }, interpretStatus: () => ({}), capture: async () => { calls.capture++; return {}; }, voidTransaction: async () => { calls.void++; return { ok: true, success: true }; } },
       getIdentity: async () => ID(false), chargeAmountLempiras: (c) => c / 100, restaurant: FALLBACK, buildMaterializeUpdates, alert: (k, d) => alerts.push([k, d]),
     };
     const r = await confirmOnlinePayment(deps, { orderId: 'O3', paymentUuid: 'U1', now: 100, trackingToken: 'T3' });
@@ -88,6 +88,29 @@ function makeDb(initial = {}) {
     assert.equal(db._get('orders/O3').payment_status, 'failed');
     assert.deepEqual(alerts.map((a) => a[0]), ['confirm_voided_inactive']);
     ok('pre-capture inactive -> void + voided_inactive + order failed + NO capture/claim');
+  }
+
+  // [C revise/#1] Pre-capture inactive but the void is NOT confirmed (ok:false / timeout) → the auth may still
+  //   capture → AMBIGUOUS: manual_reconciliation + HOLD the redemption (never 'failed', never release → no mint).
+  {
+    const db = makeDb({
+      orders: { O3B: { payment_method: 'online', payment_status: 'pending', active_attempt_id: 'A1', restaurant_id: 'x_pizza', total_cents: 10000, customer_uid: 'uI', redemption: { model: 'add_free', free_item_key: 'Margherita' } } },
+      payment_attempts: { A1: { status: 'active', payment_uuid: 'U1' } },
+      user_rewards: { uI: { x_pizza: { balance: 100, reserved: 8, reservations: { O3B: { state: 'reserved', cost: 8, seq: 1 } } } } },
+    });
+    const alerts = [];
+    const deps = {
+      db,
+      client: { getStatus: async () => ({}), interpretStatus: () => ({}), capture: async () => ({}), voidTransaction: async () => ({ ok: false }) },   // void NOT confirmed
+      getIdentity: async () => ID(false), chargeAmountLempiras: (c) => c / 100, restaurant: FALLBACK, buildMaterializeUpdates, alert: (k, d) => alerts.push([k, d]),
+    };
+    const r = await confirmOnlinePayment(deps, { orderId: 'O3B', paymentUuid: 'U1', now: 100, trackingToken: 'T3B' });
+    assert.equal(r.outcome, 'manual_reconciliation');
+    assert.equal(db._get('orders/O3B').payment_status, 'manual_reconciliation');            // NOT 'failed'
+    assert.equal(db._get('payment_attempts/A1').status, 'manual_reconciliation');
+    assert.equal(db._get('user_rewards/uI/x_pizza/reservations/O3B').state, 'held_paid');   // HELD, not released
+    assert.ok(alerts.map((a) => a[0]).includes('confirm_inactive_void_unconfirmed'));
+    ok('[C revise] inactive + UNCONFIRMED void → manual_reconciliation + redemption held_paid (never failed/released → no mint)');
   }
 
   // ── Pre-capture: active -> recheck passes, proceeds to capture flow ──
