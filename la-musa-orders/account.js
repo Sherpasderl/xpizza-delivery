@@ -324,6 +324,11 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   function getRedeemQuoteTotalCents() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote.total_cents : null; }
   function getRedeemQuote() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote : null; }   // v2: full server quote {total_cents, free_items[], savings_cents, total_cost, remaining} for the Stage-2 order summary
   function clearRedeem() { _redeemPending = null; _redeemQuote = null; }
+  // D (retry-resume): restore the selected redeem + its server quote after a PixelPay redirect/reload, so the
+  // golden ticket re-renders and the RESUMED order re-attaches the SAME redeem (same canonical → the server
+  // reuses the ONE existing reservation, never a second). The quote is display-only (the server re-prices on
+  // submit); require .ok so the applied-ticket predicate (rkApplied) matches. No payload → no-op (guest / non-redeemed retry).
+  function restoreRedeem(payload, quote) { if (!payload) return; _redeemPending = payload; _redeemQuote = (quote && quote.ok) ? quote : null; }
   // Two error classes for the submit handler (spec §5.2 / plan-gate #1):
   //   'redemption' → clear the redeem + FRESH-order_id full-price resubmit.
   //   'other' (item_unavailable/closed) → the EXISTING cart error path, redeem PRESERVED.
@@ -3929,6 +3934,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.getRedeemQuoteTotalCents = getRedeemQuoteTotalCents;   //   pay-step display uses the SERVER quote total while a reward is pending
   window.__ACCOUNT.getRedeemQuote = getRedeemQuote;   // A6 — Stage-2 order-summary reward line (server quote)
   window.__ACCOUNT.clearRedeem = clearRedeem;             //   fresh-resubmit fallback clears the pending reward
+  window.__ACCOUNT.restoreRedeem = restoreRedeem;         //   D — restore redeem+quote after a PixelPay reload (golden ticket re-renders; resumed order reuses the reservation)
   window.__ACCOUNT.classifyRedeemError = classifyRedeemError;   //   'redemption' | 'other' → two-error-class submit handling
   window.__ACCOUNT.renderSuccessRewards = renderSuccessRewards;   // B2 Task 5 — post-order earn badge + guest profile-claim card
   window.__ACCOUNT.startProfileClaim = startProfileClaim;   // Track A — tracker deep-link → soft-filled create flow (skips if already a profile)
