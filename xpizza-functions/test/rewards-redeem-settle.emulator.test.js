@@ -88,7 +88,7 @@ const NOW = 1_700_000_000_000;
     await seedPts('uAb', 20);
     await R.reserveRedemption(db, { uid: 'uAb', rid: 'x_pizza', orderId: 'OAB2', cost: 8, canonical: canon, orderFingerprint: 'FP', configVersion: 2, now: NOW, hostedExpiresAt: NOW - 1 });   // expired, NO order
     const relAb = await R.sweepStaleReservations(db, { now: NOW });
-    assert.ok(relAb.released.some((x) => x.orderId === 'OAB2' && x.kind === 'online_expired'));
+    assert.ok(relAb.released.some((x) => x.orderId === 'OAB2' && x.kind === 'online_not_captured'));
     assert.strictEqual(await st('uAb', 'OAB2'), 'released'); ok('release sweep: expired hold on an ABANDONED (absent) order IS still released (genuine abandon)');
 
     // ── [T8] reverseRedemptionForOrder — the SINGLE-helper reversal cancelOrderCore + resolve-manual invoke ──

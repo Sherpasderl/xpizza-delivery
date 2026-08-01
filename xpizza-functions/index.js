@@ -1269,8 +1269,15 @@ chargeOnlineApp.all('*', async (req, res) => {
     return res.status(502).json({ error: 'Payment gateway error', detail: 'checkout not created; please retry', order_id: orderId });
   }
 
-  // Persist the live checkout URL + mark 'created' (payable until expires_at).
-  await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'created', hosted_checkout_url: hosted.url, updated_at: now });
+  // Persist the live checkout URL + mark 'created' (payable until expires_at). [C/#30] wrap it: if this write
+  // fails the customer never receives the URL (the order can't proceed) → release our hold, never strand it.
+  try {
+    await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'created', hosted_checkout_url: hosted.url, updated_at: now });
+  } catch (e) {
+    console.error(`chargeOnlineOrder: persist 'created' failed for ${pixelpayOrderId}`, e && e.message);
+    await releaseHoldIfOwned();   // [C/#30] never leave a reserved hold behind a checkout the customer can't reach
+    return res.status(500).json({ error: 'Payment gateway error', detail: 'checkout not persisted; please retry', order_id: orderId });
+  }
 
   console.log(`chargeOnlineOrder: created hosted checkout ${pixelpayOrderId} (mode=${pp.mode}, ${amountStr} HNL)`);
   return res.status(200).json({

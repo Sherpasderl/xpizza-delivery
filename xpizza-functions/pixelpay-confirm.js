@@ -79,6 +79,7 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
       } catch (_) { /* best-effort auth void; terminalize + alert regardless */ }
       await attemptRef.update({ status: 'voided_inactive', voided_at: now, void_reason: 'restaurant_inactive' });
       await orderRef.update({ payment_status: 'failed' });
+      await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly
       deps.alert && deps.alert('confirm_voided_inactive', { orderId, attemptId, restaurant_id: rid });
       return { outcome: 'voided_inactive' };
     }
@@ -124,6 +125,7 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
   if (status.reversed || status.declined) {
     await attemptRef.update({ status: 'declined', failed_at: now, decline_reason: status.status });
     await orderRef.update({ payment_status: 'failed' });
+    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly
     return { outcome: 'failed', reason: status.status };
   }
 
@@ -150,12 +152,14 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
     }
     await attemptRef.update({ status: 'declined', failed_at: now, decline_message: cap.message || 'capture_not_found' });
     await orderRef.update({ payment_status: 'failed' });
+    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly
     return { outcome: 'capture_failed', message: cap.message || 'capture not found' };
   }
   if (!cap.ok) {
     // Declined / amount>auth / etc. — no money moved. Open for COD fallback.
     await attemptRef.update({ status: 'declined', failed_at: now, decline_message: cap.message || null });
     await orderRef.update({ payment_status: 'failed' });
+    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly
     return { outcome: 'capture_failed', message: cap.message };
   }
 

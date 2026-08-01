@@ -15,7 +15,7 @@ const { resolvePixelPayConfig } = require('./pixelpay-config');
 const { toCents } = require('./pixelpay-hosted');
 const { confirmAndMaterialize } = require('./pixelpay-confirm');
 const MR = require('./manual-resolve');   // atomic-claim predicate (rev-5): paid-evidence capture in manual-flow states
-const { holdRedemptionForManual } = require('./rewards-reserve');   // [B] HOLD the redemption at a manual-reconciliation entry — alerts if a release-sweep race already freed it (never a silent mint)
+const { holdRedemptionForManual, reverseRedemptionForOrder } = require('./rewards-reserve');   // [B] HOLD at a manual entry (alerts on a lost race); [C/#18] reverse the hold when a late paid callback voids a cancelled order
 
 const ATTEMPT_SUFFIX = /-[0-9a-f]{16}$/;             // hosted_order_id = `${orderId}-${attemptId}` (16-hex)
 const HOSTED_ORDER_RE = /^[A-Za-z0-9_-]{1,96}$/;
@@ -140,6 +140,11 @@ async function voidPaid(deps, { orderId, attemptId, hostedOrderId, uuid, amount,
     paid_amount_cents: toCents(amount), voided_at: now
   });
   await db.ref(`orders/${orderId}`).update({ status: 'cancelled', payment_status: voided ? 'refunded' : 'refund_pending' });
+  // [C/#18] a late paid callback on a cancelled/abandoned order → the money is voided/refunded, so reverse the
+  // redemption hold too (reserved/held_paid→released, consumed→credit debit_applied). Idempotent (order_id-keyed)
+  // → a no-op if the cancel path already reversed it; closes the gap where voidPaid moved money but not the hold.
+  const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+  await reverseRedemptionForOrder(db, { orderId, order, disposition: 'refund', now });
   deps.alert && deps.alert('hosted_cancel_void', { orderId, attemptId, voided, reason });
   return { code: 200, outcome: voided ? 'cancelled_voided' : 'cancelled_refund_pending' };
 }

@@ -115,9 +115,11 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     ok('non-paid callback → telemetry-only ignore (order untouched, I12)');
   }
 
-  // 6. cancel_pending → auto-void, never materialize
+  // 6. cancel_pending → auto-void, never materialize. [C/#18] a REDEEMED order's hold is REVERSED when the late
+  //    paid callback voids/refunds it (never money-moved-but-hold-stranded).
   {
-    const db = makeDb(seed({}, { cancel_pending: true }));
+    const db = makeDb(seed({ customer_uid: 'uV', restaurant_id: 'x_pizza', redemption: { model: 'add_free', free_item_key: 'Margherita' } }, { cancel_pending: true }));
+    await db.ref('user_rewards/uV/x_pizza').update({ balance: 100, reserved: 8, reservations: { O1: { state: 'reserved', cost: 8, seq: 1 } } });
     let voidedArgs = null;
     const r = await handleHostedCallback(deps(db, async (_d, a) => { voidedArgs = a; return { voided: true }; }), cb(), NOW);
     assert.strictEqual(r.outcome, 'cancelled_voided');
@@ -125,8 +127,8 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     assert.strictEqual(db.getAt('orders/O1').payment_status, 'refunded');
     assert.strictEqual(db.getAt(`payment_attempts/${A}`).hosted_state, 'voided');
     assert.strictEqual(voidedArgs.paymentUuid, 'P-paid-1');
-    assert.notStrictEqual(db.getAt('orders/O1').status, 'new');
-    ok('cancel_pending + paid callback → auto-void (refunded), never materialized (I9)');
+    assert.strictEqual(db.getAt('user_rewards/uV/x_pizza/reservations/O1').state, 'released');   // [C/#18] hold reversed when voidPaid refunds the cancelled order
+    ok('cancel_pending + paid callback → auto-void (refunded) + [C/#18] redemption hold reversed, never materialized (I9)');
   }
 
   // 7. unknown order/attempt → ignored

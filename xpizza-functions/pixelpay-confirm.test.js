@@ -251,16 +251,22 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     ok('getStatus=paid + no verified result → manual_reconciliation + [B] redemption held_paid (no re-capture)');
   }
 
-  // 5. Capture declined (amount>auth etc.) → failed, no money moved.
+  // 5. Capture declined (amount>auth etc.) → failed, no money moved. [C/#15] a REDEEMED order's hold is RELEASED
+  //    promptly (definitive not-captured — PixelPay was queried), never left reserved for the daily sweep.
   {
-    const db = makeDb(pendingOrder());
+    const init = pendingOrder();
+    init.orders['PZX-1'].customer_uid = 'uD'; init.orders['PZX-1'].restaurant_id = 'x_pizza';
+    init.orders['PZX-1'].redemption = { model: 'add_free', free_item_key: 'Margherita' };
+    init.user_rewards = { uD: { x_pizza: { balance: 100, reserved: 8, reservations: { 'PZX-1': { state: 'reserved', cost: 8, seq: 1 } } } } };
+    const db = makeDb(init);
     const client = mkClient({ capture: { ok: false, httpStatus: 402, message: 'El monto enviado es mayor al monto autorizado' } });
     const r = await confirmOnlinePayment(baseDeps(db, client), { orderId: 'PZX-1', paymentUuid: 'S-uuid', now: 5000 });
     assert.strictEqual(r.outcome, 'capture_failed');
     assert.strictEqual(db.getAt('orders/PZX-1').payment_status, 'failed');
     assert.strictEqual(db.getAt('payment_attempts/A').status, 'declined');
     assert.strictEqual(db.getAt('orders/PZX-1').status, 'pending_payment', 'order not materialized');
-    ok('capture declined → failed (order stays pending for fallback)');
+    assert.strictEqual(db.getAt('user_rewards/uD/x_pizza/reservations/PZX-1').state, 'released');   // [C/#15] hold released on the definitive decline
+    ok('capture declined → failed + [C/#15] redemption hold released promptly (order stays pending for fallback)');
   }
 
   // 6. Hash mismatch (uuid for a different order) → VOID + fail.

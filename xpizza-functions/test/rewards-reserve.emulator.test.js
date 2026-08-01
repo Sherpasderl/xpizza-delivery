@@ -203,8 +203,27 @@ const NOW = 1_700_000_000_000;
     assert.strictEqual((await db.ref(`${P('uHE')}/reservations/OHE/hosted_expires_at`).get()).val(), NOW - 1);
     assert.strictEqual((await db.ref(`${P('uHE')}/reservations/OHE/attempt_id`).get()).val(), null); ok('online reserve binds hosted_expires_at at RESERVE (attempt_id still null — attach refines later)');
     const sweepHE = await R.sweepStaleReservations(db, { now: NOW });   // NO attachAttempt ever ran
-    assert.ok(sweepHE.released.some((x) => x.orderId === 'OHE' && x.kind === 'online_expired'));
+    assert.ok(sweepHE.released.some((x) => x.orderId === 'OHE' && x.kind === 'online_not_captured'));
     assert.strictEqual(await st('uHE', 'OHE'), 'released'); ok('unattached online hold → sweep releases on expiry (no orphan even if attach never lands — crash/attach-fail closed)');
+
+    // [C] CONSERVATIVE sweep: an expired online hold is released ONLY when the order is DEFINITIVELY not captured
+    // (absent / payment_status 'failed' / cancelled). An AMBIGUOUS one (manual_reconciliation — paid-but-lost is
+    // possible) is HELD (audited), never released → kills the Finding-2 mint AND designs out B's release-race.
+    await db.ref('user_rewards').set(null); await db.ref('orders').set(null);
+    await db.ref('user_rewards/uCon/x_pizza').set({ balance: 100, reserved: 24, reservations: {
+      ONLINE_MANUAL: { state: 'reserved', cost: 8, seq: 1, created_at: NOW - 10, hosted_expires_at: NOW - 1 },
+      ONLINE_FAILED: { state: 'reserved', cost: 8, seq: 1, created_at: NOW - 10, hosted_expires_at: NOW - 1 },
+      ONLINE_ORPHAN: { state: 'reserved', cost: 8, seq: 1, created_at: NOW - 10, hosted_expires_at: NOW - 1 },   // no order
+    } });
+    await db.ref('orders/ONLINE_MANUAL').set({ status: 'pending_payment', payment_status: 'manual_reconciliation' });   // AMBIGUOUS
+    await db.ref('orders/ONLINE_FAILED').set({ status: 'pending_payment', payment_status: 'failed' });                   // DEFINITIVE not-captured
+    const swC = await R.sweepStaleReservations(db, { now: NOW });
+    assert.strictEqual(await st('uCon', 'ONLINE_MANUAL'), 'reserved');   // HELD — never released
+    assert.ok(swC.audited.some((a) => a.orderId === 'ONLINE_MANUAL' && a.kind === 'online_ambiguous_held'));
+    assert.ok(!swC.released.some((x) => x.orderId === 'ONLINE_MANUAL')); ok('[C] expired hold on a manual_reconciliation (ambiguous) order → HELD + audited, NEVER released (mint guard + B race)');
+    assert.strictEqual(await st('uCon', 'ONLINE_FAILED'), 'released');
+    assert.strictEqual(await st('uCon', 'ONLINE_ORPHAN'), 'released');
+    assert.ok(swC.released.some((x) => x.orderId === 'ONLINE_FAILED' && x.kind === 'online_not_captured') && swC.released.some((x) => x.orderId === 'ONLINE_ORPHAN')); ok('[C] expired hold on a DEFINITIVELY-not-captured order (failed / orphan) → released promptly');
     // cash reserve (no hostedExpiresAt) stays null → its sweep branch stays order-status-driven, unchanged
     await seed('uCa', 100);
     await R.reserveRedemption(db, { uid: 'uCa', rid: 'x_pizza', orderId: 'OCA', cost: 8, canonical: canon(), orderFingerprint: 'FPCA', configVersion: 2, now: NOW });

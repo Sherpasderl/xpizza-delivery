@@ -266,11 +266,16 @@ async function sweepStaleReservations(db, { now }) {
             if (Number(rec.hosted_expires_at) < now) {
               // Expired ≠ necessarily abandoned: a PAID order whose primary consume fail-opened ALSO has an
               // expired expiry + a reserved hold. Consult the order — if it realized (paid + live/terminal),
-              // do NOT release (leave it for consume-recovery); only a genuinely-unrealized order is abandoned.
-              // Mirrors the cash branch (which already reads status) → safe regardless of sweep ordering.
+              // do NOT release (leave it for consume-recovery).
               const order = (await db.ref(`orders/${orderId}`).get()).val();
               if (consumeEligible(order)) continue;                       // paid + live → realized, not abandoned
-              await releaseRedemption(db, { uid, rid, orderId, now }); released.push({ uid, rid, orderId, kind: 'online_expired' });
+              // [C] CONSERVATIVE: release ONLY a DEFINITIVELY-not-captured hold. An AMBIGUOUS one
+              // (manual_reconciliation / still pending / unknown) MIGHT be paid-but-lost → releasing it risks a
+              // MINT (re-spend, then a dispatcher reconciles the original as paid → consume no-ops on the freed
+              // hold) and is exactly B's release-race. HOLD it (audit); the dispatcher / the deferred
+              // hosted-abandon auto-release (pending PixelPay's non-paid-callback answer) own the ambiguous case.
+              if (!definitivelyNotCaptured(order)) { audited.push({ uid, rid, orderId, status: order && order.payment_status, kind: 'online_ambiguous_held' }); continue; }
+              await releaseRedemption(db, { uid, rid, orderId, now }); released.push({ uid, rid, orderId, kind: 'online_not_captured' });
             }
             continue;
           }
@@ -296,6 +301,19 @@ function consumeEligible(order) {
   if (!order) return false;
   if (TERMINAL_DONE.has(order.status)) return true;
   if (order.payment_method === 'online' && order.payment_status === 'confirmed' && ONLINE_LIVE.has(order.status)) return true;
+  return false;
+}
+
+// [C] Is an online order DEFINITIVELY not captured → safe to fast-release its hold (nothing can later reconcile
+// it as paid and mint on the freed points)? YES only for: an ABSENT order (orphan — no order to materialize),
+// payment_status 'failed' (the confirm path queried PixelPay and got declined/reversed/capture-failed — a
+// DEFINITIVE not-captured; stale-hosted is 'manual_reconciliation', NEVER 'failed', by decision I6), or a
+// cancelled order (the cancel path owns the reversal). Everything else (manual_reconciliation / pending /
+// unknown) is AMBIGUOUS (paid-but-lost is possible) → NEVER release from the sweep.
+function definitivelyNotCaptured(order) {
+  if (!order) return true;                                          // orphan — no order that could reconcile-as-paid
+  if (order.payment_status === 'failed') return true;              // confirm path queried PixelPay → declined
+  if (TERMINAL_CANCEL.has(order.status)) return true;             // cancelled → cancelOrderCore owns the reversal
   return false;
 }
 
