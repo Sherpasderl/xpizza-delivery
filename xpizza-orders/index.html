@@ -2274,7 +2274,7 @@ function openFullscreenMap() {
       gestureHandling: 'greedy',
     });
     // Center-pin style — update on drag
-    fsMap.addListener('center_changed', () => {
+    fsMap.addListener('idle', () => {   // GEOCODING COST FIX: reverse-geocode on SETTLE (idle), not per pan-frame (center_changed) — was firing dozens–hundreds of Geocoding requests per drag
       const c = fsMap.getCenter();
       reverseGeocodeFS(c.lat(), c.lng());
     });

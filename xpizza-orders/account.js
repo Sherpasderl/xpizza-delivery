@@ -2714,7 +2714,7 @@ ${rowsHtml}`;
       _acctFsMap = new google.maps.Map(el, { center: start, zoom: 17, mapTypeId: 'roadmap', disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy' });
       setAcctFsMapType('roadmap');
       // center-pin: reverse-geocode on any center change (display only) …
-      _acctFsMap.addListener('center_changed', () => {
+      _acctFsMap.addListener('idle', () => {   // GEOCODING COST FIX: reverse-geocode on SETTLE (idle), not per pan-frame (center_changed)
         const c = _acctFsMap.getCenter(); reverseGeocodeAcctFs(c.lat(), c.lng(), _acctFsEpoch);
       });
       // … but only a USER drag commits lat/lng + marks the pin as user-placed (codex R1 #3)
