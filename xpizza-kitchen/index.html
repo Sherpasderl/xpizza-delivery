@@ -1219,6 +1219,9 @@ function shortStatus(s) {
   .tk .card-pickup-time { font-size: 13px; color: #55504A; margin: 2px 0 7px; }
   .prio { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 7px; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: #8A6A00; background: #FFF7DA; border: 1px solid #F0D77E; border-radius: 7px; padding: 4px 9px; }
   .prio svg { width: 12px; height: 12px; }
+  /* PICKUP-SPLIT: "Listo · esperando recogida" — a ready pickup awaiting collection (green, calm) */
+  .wait-pickup { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 8px; font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: #1E7A46; background: #E4F3EA; border: 1px solid #B7E0C6; border-radius: 7px; padding: 5px 10px; }
+  .wait-pickup svg { width: 13px; height: 13px; }
 
   /* completing (in-flight ready) spinner */
   .comp-center { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; font-size: 15px; font-weight: 800; padding: 6px 0; }
@@ -1982,11 +1985,16 @@ function renderTicket(order) {
     const showRing = (op === 'prep');
     const l2right = showRing ? ringHtml : `<span class="h-id">${escapeHtml(dispId)}</span>`;
     const pendBlock = (p && !p.error);
+    // PICKUP-SPLIT: a READY pickup (op 'listo') is "Listo · esperando recogida" — its hold CTA is Entregado
+    // (→ 'completed' + earn). A prep card, or a ready DELIVERY, keeps the Completar hold (→ 'ready' / local beat).
+    const isReadyPickup = op === 'listo' && order.order_type === 'pickup';
+    const ctaLbl = isReadyPickup ? 'Entregado' : 'Completar';
     let cta = '';
     if (!pendBlock) {                // no CTA while a (non-error) write is pending
       if (op === 'nuevo') cta = `<div class="h-cta"><svg viewBox="0 0 24 24"><use href="#i-play"/></svg> Empezar</div>`;
-      // 2b: Completar carries the hold fill ring (sweeps while the header is held; fires only at full).
-      else if (op === 'prep' || op === 'listo') cta = `<div class="h-cta"><span class="hold-ring"><svg class="hr" viewBox="0 0 24 24"><circle class="hr-trk" cx="12" cy="12" r="10"/><circle class="hr-prg" cx="12" cy="12" r="10"/></svg><span class="hr-chk"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span></span><span class="h-cta-lbl">Completar</span></div>`;
+      // 2b: the hold fill ring (sweeps while held; fires only at full). Label is Completar (prep / ready
+      // delivery) or Entregado (ready pickup) — holdFire routes to listo / entregado accordingly.
+      else if (op === 'prep' || op === 'listo') cta = `<div class="h-cta"><span class="hold-ring"><svg class="hr" viewBox="0 0 24 24"><circle class="hr-trk" cx="12" cy="12" r="10"/><circle class="hr-prg" cx="12" cy="12" r="10"/></svg><span class="hr-chk"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span></span><span class="h-cta-lbl">${ctaLbl}</span></div>`;
     }
     // 2b: NUEVO stays a single tap (headerTap → empezar). PREP / listo become a press-and-hold (wired
     // post-render by wireHold) — the header gets NO onclick there, so only a completed hold fires.
@@ -2003,6 +2011,8 @@ function renderTicket(order) {
   if (isCancelled) body += `<div class="cancel-b">Cancelado — no preparar</div>`;
   if (order.scheduled_for) body += `<div class="sched-line">${order.order_type === 'delivery' ? 'Entregar' : 'Recoger'} ${escapeHtml(formatScheduled(order.scheduled_for))}</div>`;
   if (isPrioritized) body += `<div class="prio"><svg viewBox="0 0 24 24"><use href="#i-prio"/></svg> Priorizado</div>`;
+  // PICKUP-SPLIT: a READY pickup awaiting collection — the WhatsApp fired at Listo; earn happens at Entregado.
+  if (op === 'listo' && order.order_type === 'pickup' && !(p && !p.error) && !seqStage) body += `<div class="wait-pickup"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg> Listo · esperando recogida</div>`;
   if (order.order_type === 'pickup' && order.pickup_time && order.pickup_time !== 'standard') body += `<div class="card-pickup-time">${escapeHtml(order.pickup_time)}</div>`;
   // Items — ALWAYS the FULL list via the UNCHANGED renderItems (Flex Rail + Tile Fill both). Tile Fill caps
   // the card and, if the items MEASURE as overflowing (post-render, measureTileFill), fades the edge + shows
@@ -2022,8 +2032,9 @@ function renderTicket(order) {
     // #2: the server write was an ownership-skip (order isn't this cocina's) — NON-success, no bump.
     body += `<div class="card-writestrip error"><svg viewBox="0 0 24 24"><use href="#i-alert"/></svg> ${escapeHtml(p.msg || 'Pedido de otra cocina')}<button class="btn-retry" onclick="dismissWrite('${id}')">Entendido</button></div>`;
   } else if (p) {
-    // In-flight (non-error, non-skip): frozen at `from` (#1 — listo freezes at PREP like empezar).
-    body += `<div class="card-writestrip pending"><span class="spin"><svg viewBox="0 0 24 24"><use href="#i-spin"/></svg></span> ${p.action === 'listo' ? 'Completando…' : 'Iniciando…'}</div>`;
+    // In-flight (non-error, non-skip): frozen at `from` (#1 — listo freezes at PREP like empezar). The 'ready'
+    // write is now the Listo step (notify), not completion → "Marcando listo…".
+    body += `<div class="card-writestrip pending"><span class="spin"><svg viewBox="0 0 24 24"><use href="#i-spin"/></svg></span> ${p.action === 'listo' ? 'Marcando listo…' : 'Iniciando…'}</div>`;
   }
 
   // ── Recuperar Ticket (fix #2) — full-width in the body (never clipped by the card's overflow:hidden),
@@ -2266,7 +2277,12 @@ function setHoldVisual(id, on) {
   if (!head) return;
   head.classList.toggle('holding', on);
   const lbl = head.querySelector?.('.h-cta-lbl');
-  if (lbl) lbl.textContent = on ? 'Mantené…' : 'Completar';
+  if (lbl) {
+    // PICKUP-SPLIT: reset to the correct CTA label — Entregado for a ready pickup, else Completar.
+    const o = lastOrders.find(x => x.id === id) || allOrders.find(x => x.id === id);
+    const rest = (o && o.order_type === 'pickup' && opState(o) === 'listo') ? 'Entregado' : 'Completar';
+    lbl.textContent = on ? 'Mantené…' : rest;
+  }
 }
 
 /* Wire the press-and-hold gesture onto each holdable (prep / listo) card header, post-render. Pointer
