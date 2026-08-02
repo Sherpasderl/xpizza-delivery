@@ -132,29 +132,55 @@ assert.deepEqual(calls, [{ id: 'PZX-1', status: 'preparing' }], 'empezar writes 
 resolveWrite(); await new Promise((r) => setImmediate(r));
 ok('empezar → setOrderStatus(preparing), single write');
 
-// ── listo → confirmed 'ready' write, then (PICKUP) the blue beat, THEN a confirmed 'completed' write ──
-// Coalescing safeguard: the 'ready' write commits nothing until it RESOLVES; then startCompletion shows the
-// blue "Completando" beat IMMEDIATELY but DEFERS the pickup 'completed' write until AFTER the COMPLETING_MS
-// beat (≥700ms after 'ready') so the ready→completed pair can't be coalesced. Order: ready write → resolve →
-// blue beat (NO write yet) → beat fires the ONE 'completed' write → resolve → green → local bump.
+// ══ PICKUP-SPLIT — Listo ('ready', notify) and Entregado ('completed', earn) are TWO deliberate steps ══
+// (a) PICKUP Listo → writes ONLY 'ready' (fires notifyPickupReady WhatsApp), STAYS on the active board,
+//     writes NO 'completed' → NO earn/consume on an uncollected order (the money-gate invariant).
+const flush2 = () => { flushTimers(); flushTimers(); };
 calls.length = 0;
-window.listo('PZX-1');
+window.listo('PZX-1');                                   // PZX-1 is a PICKUP (order_type:'pickup')
 await new Promise((r) => setImmediate(r));
-assert.deepEqual(calls, [{ id: 'PZX-1', status: 'ready' }], 'listo writes ONLY status:ready');
-assert.equal(getEl('count-completed').textContent, 0, 'NOT yet bumped to Completed (write still in flight) — confirmed-write');
-resolveWrite(); await new Promise((r) => setImmediate(r));   // 'ready' resolves → startCompletion shows blue, DEFERS the write
-assert.deepEqual(calls, [{ id: 'PZX-1', status: 'ready' }], 'still ONLY ready — the pickup completed write is DEFERRED to after the blue beat (coalescing safeguard)');
-assert.equal(getEl('count-completed').textContent, 0, 'blue "Completando" beat is IN the Open pool — not yet bumped');
-assert.equal(getEl('count-open').textContent, 1, 'still in the Open pool during the blue beat');
-flushTimers();   // COMPLETING_MS blue-beat timer fires → NOW the pickup 'completed' write is issued (≥700ms after ready)
-assert.deepEqual(calls, [{ id: 'PZX-1', status: 'ready' }, { id: 'PZX-1', status: 'completed' }], 'the pickup completed write fires AFTER the blue beat — exactly ONE extra write, gated like commitStatusWrite');
-assert.equal(getEl('count-completed').textContent, 0, 'still NOT bumped — the completed write is in flight');
-assert.equal(getEl('count-open').textContent, 1, 'still in the Open pool while the completed write is in flight');
-resolveWrite(); await new Promise((r) => setImmediate(r));   // 'completed' resolves true → past the gate → green queued
-flushTimers();   // drive green → bump
-assert.equal(getEl('count-completed').textContent, 1, 'bumped to Completados only AFTER the beat (blue → write → green → bump)');
-assert.equal(getEl('count-open').textContent, 0, 'left the Open pool once the beat bumps');
-ok('listo → ready → blue beat → (pickup) completed write → green → bump; the completed write is deferred past the beat');
+assert.deepEqual(calls, [{ id: 'PZX-1', status: 'ready' }], 'PICKUP Listo writes ONLY status:ready (notify)');
+resolveWrite(); await new Promise((r) => setImmediate(r));
+XPD._ordersCb({ 'PZX-1': { ...ORDER, status: 'ready' } });   // server echoes 'ready' → card becomes op 'listo'
+flush2();   // there is NO deferred completion beat for a pickup Listo — nothing should fire
+assert.deepEqual(calls, [{ id: 'PZX-1', status: 'ready' }], 'PICKUP Listo does NOT write completed — NO earn at Listo');
+assert.equal(getEl('count-completed').textContent, 0, 'PICKUP Listo does NOT bump — stays on the active board');
+assert.equal(getEl('count-open').textContent, 1, '"Listo · esperando recogida" — still Open, awaiting Entregado');
+ok('(a) PICKUP Listo → ready only, stays on board, NO completed write / NO earn');
+
+// (b) PICKUP Entregado (on the READY pickup) → the ONE 'completed' write (server earns+consumes) → green → bump.
+calls.length = 0;
+window.entregado('PZX-1');
+await new Promise((r) => setImmediate(r));   // blue beat shown; the completed write is DEFERRED past COMPLETING_MS
+assert.deepEqual(calls, [], 'Entregado shows the blue beat first — the completed write is deferred');
+assert.equal(getEl('count-completed').textContent, 0, 'blue beat is IN the Open pool — not yet bumped');
+flushTimers();   // COMPLETING_MS → the ONE completed write fires
+assert.deepEqual(calls, [{ id: 'PZX-1', status: 'completed' }], 'Entregado writes status:completed EXACTLY ONCE (earn fires here, once)');
+assert.equal(getEl('count-completed').textContent, 0, 'not bumped until the completed write resolves (fail-closed gate)');
+resolveWrite(); await new Promise((r) => setImmediate(r));   // completed resolves true → past the gate → green queued
+flushTimers();   // green → bump
+assert.equal(getEl('count-completed').textContent, 1, 'bumped to Completados only AFTER Entregado completes');
+assert.equal(getEl('count-open').textContent, 0, 'left the active board on Entregado');
+ok('(b) PICKUP Entregado → completed written ONCE (earn once) → bump to Completados');
+
+// (c) DELIVERY listo → UNCHANGED: writes ONLY 'ready', then the LOCAL completion beat (NO 'completed' write —
+//     the driver owns 'delivered') → local bump. Proves the pickup split does NOT leak into delivery.
+const DEL = { order_id: 'PZX-DEL', status: 'preparing', customer_name: 'Deli', items_text: '1x Margherita', created_at: Date.now(), order_type: 'delivery' };
+XPD._ordersCb({ 'PZX-DEL': DEL });
+calls.length = 0;
+window.listo('PZX-DEL');
+await new Promise((r) => setImmediate(r));
+assert.deepEqual(calls, [{ id: 'PZX-DEL', status: 'ready' }], 'DELIVERY listo writes ONLY status:ready');
+resolveWrite(); await new Promise((r) => setImmediate(r));   // ready resolves → startCompletion shows blue (LOCAL only)
+flushTimers();   // COMPLETING_MS beat — a DELIVERY writes NOTHING here (no 'completed'); green queued
+assert.deepEqual(calls, [{ id: 'PZX-DEL', status: 'ready' }], 'DELIVERY writes NO completed — the driver owns delivered (byte-unchanged)');
+flushTimers();   // green → bump (local)
+assert.equal(getEl('count-completed').textContent, 1, 'DELIVERY bumps locally after the beat (unchanged), with NO completed write');
+ok('(c) DELIVERY listo → ready + LOCAL beat (no completed write) → bump; pickup split does NOT leak into delivery');
+
+// restore a PZX-1-only snapshot (drop PZX-DEL) for the recall/toggle/error cases below. PZX-1 is in
+// completedSet from (b) → renders as completed until recalled.
+XPD._ordersCb({ 'PZX-1': { ...ORDER, status: 'ready' } });
 
 // ── recall → LOCAL un-bump, ZERO status write (never reverts /orders.status) ──
 calls.length = 0;
@@ -174,6 +200,7 @@ assert.equal(calls.length, 0, 'toggleItem + prioritize perform NO setOrderStatus
 ok('toggleItem + prioritize → LOCAL only, ZERO status write');
 
 // ── error path: a rejected listo write must NOT bump to Completed ──
+XPD._ordersCb({ 'PZX-1': { ...ORDER, status: 'preparing' } });   // back to prep so listo issues a real 'ready' write
 calls.length = 0;
 window.listo('PZX-1');
 await new Promise((r) => setImmediate(r));
@@ -198,24 +225,29 @@ assert.deepEqual(calls, [{ id: 'PZX-2', status: 'preparing' }], 'headerTap on NU
 resolveWrite(); await tick();
 ok('headerTap on the NUEVO header → Empezar via the confirmed-write helper');
 
-// header-tap on an EN-PREPARACIÓN ticket → Completar (confirmed-write ready)
+// header-tap on an EN-PREPARACIÓN pickup → Listo (writes 'ready' ONLY, stays on board), then Entregado → completed
 const P = { order_id: 'PZX-3', status: 'preparing', customer_name: 'Cata', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' };
 XPD._ordersCb({ 'PZX-3': P });
 calls.length = 0;
 window.headerTap('PZX-3');
 await tick();
-assert.deepEqual(calls, [{ id: 'PZX-3', status: 'ready' }], 'headerTap on PREP → setOrderStatus(ready), single write');
+assert.deepEqual(calls, [{ id: 'PZX-3', status: 'ready' }], 'headerTap on PREP pickup → Listo → setOrderStatus(ready), single write');
 assert.equal(getEl('count-completed').textContent, 0, 'header-tap does NOT bump to Completed until the ready write RESOLVES');
-resolveWrite(); await tick();   // ready resolves → startCompletion shows blue, DEFERS the completed write
-assert.deepEqual(calls, [{ id: 'PZX-3', status: 'ready' }], 'still ONLY ready — the completed write is deferred past the blue beat');
-assert.equal(getEl('count-completed').textContent, 0, 'blue beat in the Open pool — not yet bumped');
-flushTimers();   // blue-beat timer → NOW the pickup completed write fires
-assert.deepEqual(calls, [{ id: 'PZX-3', status: 'ready' }, { id: 'PZX-3', status: 'completed' }], 'a PICKUP header-tap completion writes exactly one extra status:completed, AFTER the blue beat');
-assert.equal(getEl('count-completed').textContent, 0, 'still awaiting the completed write — not yet bumped');
-resolveWrite(); await tick();   // completed resolves → past the gate → green queued
+resolveWrite(); await tick();
+XPD._ordersCb({ 'PZX-3': { ...P, status: 'ready' } });   // server echoes ready → op 'listo'
+flush2();   // no deferred completion beat for a pickup Listo
+assert.deepEqual(calls, [{ id: 'PZX-3', status: 'ready' }], 'PICKUP Listo writes NO completed — stays "esperando recogida", NO earn');
+assert.equal(getEl('count-completed').textContent, 0, 'not bumped at Listo — waits for Entregado');
+// Entregado on the ready pickup → the ONE completed write → bump
+calls.length = 0;
+window.entregado('PZX-3');
+await tick();
+flushTimers();   // blue beat → completed write fires
+assert.deepEqual(calls, [{ id: 'PZX-3', status: 'completed' }], 'Entregado writes status:completed EXACTLY ONCE (earn once)');
+resolveWrite(); await tick();
 flushTimers();   // green → bump
-assert.equal(getEl('count-completed').textContent, 1, 'bumped to Completed only AFTER the beat (header-tap routes through the SAME confirmed-write + deferred write + beat)');
-ok('headerTap on the PREP header → Completar; blue→write→green→bump beat, all local, after the write resolves');
+assert.equal(getEl('count-completed').textContent, 1, 'bumped to Completed only AFTER Entregado completes');
+ok('headerTap PREP pickup → Listo (ready, stays); Entregado → completed once → bump (split)');
 
 // header-tap with a REJECTED write → the ticket must NOT advance (no divergence)
 const R = { order_id: 'PZX-4', status: 'preparing', customer_name: 'Dani', items_text: '1x Pepperoni', created_at: Date.now(), order_type: 'pickup' };
@@ -253,21 +285,30 @@ await tick();
 assert.equal(calls.length, 0, 'a hold released before 700ms writes NOTHING (below-threshold hold → 0 setOrderStatus)');
 ok('2b hold gate: below-threshold hold (released early) → ZERO status write');
 
-// (b) a COMPLETED hold fires EXACTLY one ready write via the SAME commitStatusWrite path
+// (b) a COMPLETED hold on a PREP pickup fires EXACTLY one 'ready' write (Listo) — stays on the board, NO earn
 XPD._ordersCb({ 'PZX-HOLD': HP });   // re-open (still preparing)
 calls.length = 0;
 window.__holdBegin('PZX-HOLD');      // pointerdown → arms the timer
-flushTimers();                        // reach 700ms → the timer fires listo → commitStatusWrite('listo')
+flushTimers();                        // reach 700ms → the timer fires holdFire → (prep) listo → commitStatusWrite('listo')
 await tick();
-assert.deepEqual(calls, [{ id: 'PZX-HOLD', status: 'ready' }], 'a completed hold fires EXACTLY one setOrderStatus(ready) — the SAME single write site');
-assert.equal(getEl('count-completed').textContent, 0, 'confirmed-write: no bump until the ready write RESOLVES');
-resolveWrite(); await tick();   // ready resolves → startCompletion shows blue, DEFERS the completed write
-assert.deepEqual(calls, [{ id: 'PZX-HOLD', status: 'ready' }], 'still ONLY ready — the held pickup completed write is deferred past the blue beat');
-flushTimers();   // blue-beat timer → NOW the held pickup completed write fires
-assert.deepEqual(calls, [{ id: 'PZX-HOLD', status: 'ready' }, { id: 'PZX-HOLD', status: 'completed' }], 'the held PICKUP completion adds exactly one status:completed write, AFTER the blue beat');
+assert.deepEqual(calls, [{ id: 'PZX-HOLD', status: 'ready' }], 'a completed hold on a PREP pickup fires EXACTLY one setOrderStatus(ready) — Listo');
+resolveWrite(); await tick();
+XPD._ordersCb({ 'PZX-HOLD': { ...HP, status: 'ready' } });   // server echoes ready → op 'listo'
+flush2();
+assert.deepEqual(calls, [{ id: 'PZX-HOLD', status: 'ready' }], 'held PICKUP Listo writes NO completed — stays on board, NO earn');
+assert.equal(getEl('count-completed').textContent, 0, 'held PICKUP Listo does NOT bump');
+
+// (c) a COMPLETED hold on the READY pickup → holdFire routes to ENTREGADO → the ONE completed write → bump.
+// (flushTimers is greedy — the 700ms hold timer fires holdFire→entregado→startCompletion, which queues the
+//  blue-beat timer that the SAME flush then drains → the completed write; the beat is verified separately above.)
+calls.length = 0;
+window.__holdBegin('PZX-HOLD');      // pointerdown on the "Entregado" CTA → arms the timer
+flushTimers();                        // 700ms → holdFire → (ready pickup) entregado → startCompletion → beat → completed write
+await tick();
+assert.deepEqual(calls, [{ id: 'PZX-HOLD', status: 'completed' }], 'the held Entregado writes status:completed EXACTLY ONCE (earn once) — the hold routes to entregado for a ready pickup');
 resolveWrite(); await tick(); flushTimers();   // completed resolves → green → bump
-assert.equal(getEl('count-completed').textContent, 1, 'after resolve + beat, the held completion bumps to Completados (same beat as a tap)');
-ok('2b hold gate: completed hold (≥700ms) → one ready write + one deferred pickup completed write through commitStatusWrite + the beat');
+assert.equal(getEl('count-completed').textContent, 1, 'after resolve + beat, the held Entregado bumps to Completados');
+ok('2b hold gate: held Listo → ready (stays); held Entregado (ready pickup) → completed once → bump (split routing via holdFire)');
 
 // ══ headerState golden — TIME-BASED aging on EVERY card (aging-warn restored; prep = light blue) ══
 // Drive orders of known age through the real render and read data-s off the rendered card. Precedence:
@@ -291,9 +332,12 @@ ok('headerState: time-based aging on every card — fresh-prep=prep, 8–15m=war
 // ══ "Recuperar Ticket" gating (fix #2a) — ONLY on a locally-bumped card, NOT a server-delivered one ══
 // A locally-bumped card (this session's completedSet member) shows the recall button; a server-delivered
 // order (estado Archivado, not a local bump) does NOT — recall is local-only and would be a no-op there.
-XPD._ordersCb({ 'PZX-REC': { order_id: 'PZX-REC', status: 'preparing', customer_name: 'Local Bump', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' } });
+const REC = { order_id: 'PZX-REC', status: 'preparing', customer_name: 'Local Bump', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' };
+XPD._ordersCb({ 'PZX-REC': REC });
 calls.length = 0;
-window.listo('PZX-REC'); await tick(); resolveWrite(); await tick(); flushTimers(); resolveWrite(); await tick(); flushTimers();   // ready → resolve → blue beat fires (pickup) completed → resolve → bump PZX-REC locally
+window.listo('PZX-REC'); await tick(); resolveWrite(); await tick();                 // Listo → 'ready' written (stays)
+XPD._ordersCb({ 'PZX-REC': { ...REC, status: 'ready' } });                            // echo ready → op 'listo'
+window.entregado('PZX-REC'); await tick(); flushTimers(); resolveWrite(); await tick(); flushTimers();   // Entregado → 'completed' → bump PZX-REC locally
 XPD._ordersCb({
   'PZX-REC': { order_id: 'PZX-REC', status: 'preparing', customer_name: 'Local Bump', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' },
   'PZX-DEL': { order_id: 'PZX-DEL', status: 'delivered', customer_name: 'Server Delivered', items_text: '1x Pepperoni', created_at: Date.now(), order_type: 'pickup' },
@@ -349,22 +393,32 @@ assert.equal(getEl('count-open').textContent, openBefore, 'the card stays in the
 assert.ok(getEl('ticket-grid').innerHTML.includes(`dismissWrite('PZX-SKIP')`), 'shows a dismissable ownership-skip notice (no retry-loop write)');
 ok('#2 ownership-skip (false) → NO local commit / NO bump; frozen with a dismissable notice');
 
-// ══ #9 — an already server-ready PICKUP skips the redundant setOrderStatus('ready') but still writes 'completed' ══
-// op === 'listo' → straight to startCompletion (NO redundant ready write). startCompletion shows the blue
-// beat immediately and DEFERS the pickup 'completed' write to after COMPLETING_MS — server-ready ('ready') is
-// non-terminal → exactly ONE 'completed' write (after the beat), gated on its resolve, then the green→bump.
+// ══ #9 + PICKUP-SPLIT — listo() on an already-ready order NEVER earns a pickup ══
+// (a) an already-ready PICKUP → listo() is a NO-OP (a stray "Listo" on a ready pickup writes NOTHING and
+//     never publishes 'completed' → no earn); Entregado is the separate earn action.
 XPD._ordersCb({ 'PZX-RDY': { order_id: 'PZX-RDY', status: 'ready', customer_name: 'Already Ready', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' } });
 calls.length = 0;
-window.listo('PZX-RDY');   // op === 'listo' → straight to startCompletion, skips the redundant ready write, shows blue
-await tick();
-assert.deepEqual(calls, [], '#9 already-ready pickup → NO redundant ready write, and the completed write is DEFERRED past the blue beat');
-flushTimers();   // blue-beat timer → NOW the deferred pickup completed write fires
-assert.deepEqual(calls, [{ id: 'PZX-RDY', status: 'completed' }], '#9 the pickup completion writes status:completed once, AFTER the blue beat');
-resolveWrite(); await tick();   // the completed write resolves true → green queued
-flushTimers();             // drive green → bump
-assert.ok(getEl('ticket-grid') && getEl('count-completed').textContent >= 1, 'it bumps to Completados after the deferred completed write + the LOCAL beat');
-assert.equal(calls.length, 1, 'exactly ONE write (completed) — the redundant ready write was skipped');
-ok('#9 already-ready pickup → skips the redundant ready write; the pickup completion writes completed once (deferred past the beat), then bumps');
+window.listo('PZX-RDY');   // op 'listo' + pickup → NO-OP (never a 'completed' write)
+await tick(); flush2();
+assert.deepEqual(calls, [], '#9 listo() on a ready PICKUP writes NOTHING — no ready re-write, and NEVER a completed write (no earn)');
+assert.equal(getEl('count-completed').textContent, 0, 'a ready pickup is NOT bumped by listo() — only Entregado bumps it');
+// Entregado on the ready pickup → the ONE completed write → bump.
+calls.length = 0;
+window.entregado('PZX-RDY'); await tick(); flushTimers();
+assert.deepEqual(calls, [{ id: 'PZX-RDY', status: 'completed' }], '#9 Entregado on the ready pickup writes status:completed ONCE (earn once)');
+resolveWrite(); await tick(); flushTimers();
+assert.equal(getEl('count-completed').textContent, 1, 'bumps to Completados after Entregado completes');
+ok('#9 already-ready PICKUP: listo() is a no-op (never earns); Entregado writes completed once → bump');
+
+// (b) an already-ready DELIVERY → the #9 skip still applies: listo() → LOCAL completion beat (NO 'completed'
+//     write; driver owns 'delivered') → bump. UNCHANGED.
+XPD._ordersCb({ 'PZX-RDD': { order_id: 'PZX-RDD', status: 'ready', customer_name: 'Ready Delivery', items_text: '1x Margherita', created_at: Date.now(), order_type: 'delivery' } });
+calls.length = 0;
+window.listo('PZX-RDD');   // op 'listo' + delivery → #9: straight to the LOCAL beat (no ready re-write, no completed write)
+await tick(); flushTimers(); flushTimers();
+assert.deepEqual(calls, [], '#9 already-ready DELIVERY → NO status write at all (local beat only; driver owns delivered)');
+assert.equal(getEl('count-completed').textContent >= 1, true, 'the ready delivery bumps LOCALLY via the beat (unchanged), with zero writes');
+ok('#9 already-ready DELIVERY: listo() → local beat only, ZERO writes → bump (unchanged)');
 
 // ══ FIX 2 — Archivar shows ONLY in the Abiertos tab; a cancelled card in Completados has no Archivar ══
 window.setLayoutMode('flex'); await tick();
@@ -490,38 +544,44 @@ assert.equal(Number(getEl('count-completed').textContent), dlvCompletedBefore + 
 assert.equal(calls.length, 1, 'still exactly ONE write (ready) across the whole delivery completion');
 ok('DELIVERY completion → purely local blue→green→bump beat, ZERO extra status write (only pickups publish completed)');
 
-// ══ Coalescing safeguard — RECALL during the new pre-write delay abandons → NO completed write (invariant #3) ══
-// The deferred completed write is guarded by the recall check. If the kitchen recalls the ticket DURING the
-// blue "Completando" beat (before COMPLETING_MS elapses), the blue-beat timer must see completionSeq cleared
-// and issue NO status:completed write at all — the whole point of moving the write behind the recall guard.
-XPD._ordersCb({ 'PZX-RCB': { order_id: 'PZX-RCB', status: 'preparing', customer_name: 'Recall Beat', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' } });
-const compBeforeRCB = Number(getEl('count-completed').textContent);
-calls.length = 0;
-window.listo('PZX-RCB'); await tick();
-assert.deepEqual(calls, [{ id: 'PZX-RCB', status: 'ready' }], 'listo writes ready');
-resolveWrite(); await tick();   // ready resolves → startCompletion shows the blue beat (write still DEFERRED)
-assert.deepEqual(calls, [{ id: 'PZX-RCB', status: 'ready' }], 'no completed write yet — deferred to after the beat');
-window.recall('PZX-RCB'); await tick();   // RECALL mid-beat → clears completionSeq before the timer fires
-flushTimers();   // the blue-beat timer runs → recall-guard sees completionSeq cleared → issues NO write
-assert.deepEqual(calls, [{ id: 'PZX-RCB', status: 'ready' }], 'a recall during the pre-write delay issues NO status:completed write (invariant #3)');
-assert.equal(Number(getEl('count-completed').textContent), compBeforeRCB, 'the recalled ticket is NOT bumped to Completados');
-ok('coalescing safeguard: recall during the pre-write delay abandons the completion — ZERO completed write (invariant #3)');
+// ══ Recall during the ENTREGADO beat abandons → NO completed write (invariant #3, now on the Entregado path) ══
+// The deferred 'completed' write (issued by startCompletion for the Entregado of a ready pickup) is guarded by
+// the recall check. If the kitchen recalls DURING the blue "Completando" beat, the blue-beat timer must see
+// completionSeq cleared and issue NO status:completed write at all — no earn on an abandoned handover.
+{
+  const RCB = { order_id: 'PZX-RCB', status: 'preparing', customer_name: 'Recall Beat', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' };
+  XPD._ordersCb({ 'PZX-RCB': RCB });
+  const compBeforeRCB = Number(getEl('count-completed').textContent);
+  window.listo('PZX-RCB'); await tick(); resolveWrite(); await tick();   // Listo → ready
+  XPD._ordersCb({ 'PZX-RCB': { ...RCB, status: 'ready' } });              // echo ready → op 'listo'
+  calls.length = 0;
+  window.entregado('PZX-RCB'); await tick();   // Entregado → startCompletion → blue beat (completed write DEFERRED)
+  assert.deepEqual(calls, [], 'Entregado shows the blue beat; the completed write is deferred');
+  window.recall('PZX-RCB'); await tick();      // RECALL mid-beat → clears completionSeq before the timer fires
+  flushTimers();   // blue-beat timer runs → recall-guard sees completionSeq cleared → issues NO write
+  assert.deepEqual(calls, [], 'a recall during the Entregado pre-write delay issues NO status:completed write (invariant #3)');
+  assert.equal(Number(getEl('count-completed').textContent), compBeforeRCB, 'the recalled ticket is NOT bumped to Completados (no phantom complete)');
+  ok('recall during the Entregado beat abandons the completion — ZERO completed write (invariant #3)');
+}
 
-// ══ Fail-closed — a DEFERRED completed write that ownership-skips (false) does NOT bump (invariant #1) ══
-// After the blue beat, if the pickup 'completed' write returns !== true (ownership-skip), the beat must fail
-// closed — clear completionSeq, surface the skip strip, keep the card in Open, NEVER bump. Same guarantee as
-// the pre-fix code, just now enforced on the write that fires AFTER the beat.
-XPD._ordersCb({ 'PZX-FC': { order_id: 'PZX-FC', status: 'preparing', customer_name: 'Fail Closed', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' } });
-const compBeforeFC = Number(getEl('count-completed').textContent);
-calls.length = 0;
-window.listo('PZX-FC'); await tick();
-resolveWrite(); await tick();   // ready resolves → blue beat (completed write deferred)
-flushTimers();   // blue-beat timer → issues the deferred completed write
-assert.deepEqual(calls, [{ id: 'PZX-FC', status: 'ready' }, { id: 'PZX-FC', status: 'completed' }], 'the deferred completed write is issued after the beat');
-resolveSkip(); await tick();   // the completed write returns FALSE (ownership-skip)
-assert.equal(Number(getEl('count-completed').textContent), compBeforeFC, 'a false (ownership-skip) completed write does NOT bump to Completados (fail-closed)');
-assert.ok(getEl('ticket-grid').innerHTML.includes('card-PZX-FC'), 'the card stays rendered in the Open pool');
-assert.ok(getEl('ticket-grid').innerHTML.includes(`dismissWrite('PZX-FC')`) && getEl('ticket-grid').innerHTML.includes('No se pudo completar'), 'shows the dismissable "No se pudo completar" skip strip');
-ok('fail-closed: a deferred completed write that ownership-skips → NO bump, skip strip, card stays Open (invariant #1)');
+// ══ Fail-closed — the ENTREGADO 'completed' write that ownership-skips (false) does NOT bump (invariant #1) ══
+// After the blue beat, if the Entregado 'completed' write returns !== true (ownership-skip), fail closed —
+// clear completionSeq, surface the skip strip, keep the card in Open, NEVER bump (no earn on a failed write).
+{
+  const FC = { order_id: 'PZX-FC', status: 'preparing', customer_name: 'Fail Closed', items_text: '1x Margherita', created_at: Date.now(), order_type: 'pickup' };
+  XPD._ordersCb({ 'PZX-FC': FC });
+  const compBeforeFC = Number(getEl('count-completed').textContent);
+  window.listo('PZX-FC'); await tick(); resolveWrite(); await tick();   // Listo → ready
+  XPD._ordersCb({ 'PZX-FC': { ...FC, status: 'ready' } });              // echo ready → op 'listo'
+  calls.length = 0;
+  window.entregado('PZX-FC'); await tick();
+  flushTimers();   // blue-beat timer → issues the deferred completed write
+  assert.deepEqual(calls, [{ id: 'PZX-FC', status: 'completed' }], 'Entregado issues the deferred completed write after the beat');
+  resolveSkip(); await tick();   // the completed write returns FALSE (ownership-skip)
+  assert.equal(Number(getEl('count-completed').textContent), compBeforeFC, 'a false (ownership-skip) completed write does NOT bump (fail-closed) → no earn');
+  assert.ok(getEl('ticket-grid').innerHTML.includes('card-PZX-FC'), 'the card stays rendered in the Open pool');
+  assert.ok(getEl('ticket-grid').innerHTML.includes(`dismissWrite('PZX-FC')`) && getEl('ticket-grid').innerHTML.includes('No se pudo completar'), 'shows the dismissable "No se pudo completar" skip strip');
+  ok('fail-closed: an Entregado completed write that ownership-skips → NO bump, skip strip, card stays Open (invariant #1)');
+}
 
 console.log(`kds-smoke: OK (${n} cases)`);

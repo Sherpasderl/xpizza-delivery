@@ -2118,7 +2118,13 @@ async function commitStatusWrite(id, action) {
     stateLog[id][fbStatus === 'preparing' ? 'En preparación' : 'Listo'] = new Date().toISOString();
     saveState();
     delete pendingWrites[id];
-    if (action === 'listo') startCompletion(id);       // blue → green → bump, ALL post-resolve + local
+    // PICKUP-SPLIT: Listo (`ready`) and Entregado (`completed`) are two deliberate staff actions.
+    //   • PICKUP listo → 'ready' written (fires notifyPickupReady WhatsApp). Do NOT chain startCompletion —
+    //     the card STAYS on the active board as "Listo · esperando recogida" with the Entregado hold CTA.
+    //     NO 'completed' write here → NO earn/consume on an uncollected order (money-gate: earn only at Entregado).
+    //   • DELIVERY listo → local completion beat (no 'completed' write; the driver owns 'delivered'). UNCHANGED.
+    if (action === 'listo' && order && order.order_type === 'pickup') renderCurrentTab();
+    else if (action === 'listo') startCompletion(id);  // DELIVERY (+ non-pickup): local beat only
     else renderCurrentTab();                            // empezar → NOW commit the advanced (prep) look
   } catch (e) {
     pendingWrites[id] = { from, action, error: true, msg: e?.message || 'Error de red' };
@@ -2126,13 +2132,15 @@ async function commitStatusWrite(id, action) {
   }
 }
 
-/* Completion beat (★ tweak #3 + pickup-ready coalescing safeguard) — LOCAL blue→green→bump. paso 1 blue
-   "Completando" shows IMMEDIATELY on hold (instant feedback). For a PICKUP order, status='completed' is
-   published via setOrderStatus AFTER the blue beat (COMPLETING_MS) — NOT back-to-back with the 'ready'
-   write — so the ready→completed pair is ≥700ms apart and an RTDB trigger can't coalesce them and swallow
-   the pickup-ready WhatsApp. The write is gated exactly like commitStatusWrite (fail-closed). DELIVERY
-   orders write nothing (the driver owns 'delivered') and stay purely local, same timing. Recall during
-   ANY beat — INCLUDING the new pre-write delay — clears completionSeq and abandons the completion. */
+/* Completion beat (★ tweak #3) — LOCAL blue→green→bump. paso 1 blue "Completando" shows IMMEDIATELY (instant
+   feedback). For a PICKUP order this now runs ONLY from Entregado (the split): status='completed' is published
+   via setOrderStatus AFTER the blue beat (COMPLETING_MS), gated + fail-closed exactly like commitStatusWrite.
+   DELIVERY orders write nothing here (the driver owns 'delivered') and stay purely local.
+   COALESCING (superseded): the COMPLETING_MS pre-write delay originally kept the 'ready'→'completed' pair
+   ≥700ms apart so an RTDB trigger couldn't coalesce them and swallow the pickup-ready WhatsApp. After the
+   PICKUP-SPLIT, Listo ('ready') and Entregado ('completed') are two deliberate staff actions MINUTES apart —
+   there is no adjacent 'ready' write to coalesce against — so that rationale no longer applies. The beat is
+   KEPT purely as the completion animation (harmless). Recall during ANY beat clears completionSeq and abandons. */
 async function startCompletion(id) {
   const order = lastOrders.find(o => o.id === id) || allOrders.find(o => o.id === id);
   // Idempotent: only a non-terminal PICKUP order publishes 'completed'. Delivery skips the write entirely.
@@ -2176,11 +2184,23 @@ function empezar(id) { if (pendingWrites[id] && !pendingWrites[id].error) return
 function listo(id)   {
   if (pendingWrites[id] && !pendingWrites[id].error) return;
   if (completionSeq[id]) return;
-  // #9: an order that is ALREADY server-ready (opState 'listo') needs no status write — go straight to the
-  // local completion/bump beat instead of a redundant setOrderStatus('ready').
   const o = lastOrders.find(x => x.id === id) || allOrders.find(x => x.id === id);
-  if (o && opState(o) === 'listo') { startCompletion(id); return; }
+  // Already server-ready (opState 'listo'): no 'ready' re-write needed.
+  //   • PICKUP: 'Listo' is already done → Entregado is the SEPARATE next action. listo() writes NOTHING
+  //     here — it must NEVER publish 'completed' for a pickup (that would earn on an uncollected order).
+  //   • DELIVERY (#9): go straight to the local completion beat (no 'completed' write; driver owns 'delivered').
+  if (o && opState(o) === 'listo') { if (o.order_type !== 'pickup') startCompletion(id); return; }
   commitStatusWrite(id, 'listo');
+}
+// Entregado (pickup handover) — the ONLY place a pickup writes 'completed'. On a READY pickup, run the
+// existing pickup-gated, fail-closed completion beat (startCompletion → setOrderStatus 'completed' → server
+// earnRewardsOnCompletion earns + consumes → local green → bump to Completados). Guards mirror listo().
+function entregado(id) {
+  if (pendingWrites[id] && !pendingWrites[id].error) return;   // a write is in flight
+  if (completionSeq[id]) return;                               // completion beat already running (idempotent)
+  const o = lastOrders.find(x => x.id === id) || allOrders.find(x => x.id === id);
+  if (!o || o.order_type !== 'pickup' || opState(o) !== 'listo') return;   // ONLY a ready pickup earns
+  startCompletion(id);
 }
 function retryWrite(id) { const p = pendingWrites[id]; if (p && p.error) commitStatusWrite(id, p.action); }
 function dismissWrite(id) { const p = pendingWrites[id]; if (p && p.skip) { delete pendingWrites[id]; renderCurrentTab(); } }  // clear the ownership-skip notice
@@ -2227,7 +2247,11 @@ function holdFire(token) {
   const { id } = activeHold;
   setHoldVisual(id, false);
   activeHold = null;
-  listo(id);                                                    // SAME confirmed-write path, exactly once
+  // PICKUP-SPLIT routing: a READY pickup's CTA is "Entregado" → publish 'completed' (earn). Everything else
+  // (prep card, or a ready DELIVERY) → the "Completar" listo path (a delivery ready → local beat only).
+  const o = lastOrders.find(x => x.id === id) || allOrders.find(x => x.id === id);
+  if (o && o.order_type === 'pickup' && opState(o) === 'listo') entregado(id);
+  else listo(id);                                               // SAME confirmed-write path, exactly once
 }
 
 // Release / leave / cancel — disarm the active hold (the token guard makes the pending timer a no-op).
@@ -3174,6 +3198,7 @@ window.closeLog = closeLog;
 window.headerTap = headerTap;   // ★1 the card header is the tap target (empezar / listo)
 window.empezar = empezar;
 window.listo = listo;
+window.entregado = entregado;   // pickup-split: Entregado (ready pickup → 'completed' + earn)
 window.retryWrite = retryWrite;
 window.dismissWrite = dismissWrite;   // #2 dismiss the ownership-skip notice
 window.recall = recall;
