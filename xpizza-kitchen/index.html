@@ -1739,9 +1739,18 @@ function effectiveStatus(o) {
 }
 
 /* ── Clock (relocated to the sidebar foot) ── */
+let schedLastMinute = -1;
 function updateClock() {
+  const now = new Date();
   const el = document.getElementById('clock');
-  if (el) el.textContent = new Date().toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' });
+  if (el) el.textContent = now.toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' });
+  // Programados: re-evaluate day membership at most once per minute so an order crosses midnight into the
+  // right day (Hoy→ayer etc.) without a manual refresh. Only while the screen is open. Read-only, no writes.
+  const min = now.getMinutes();
+  if (min !== schedLastMinute) {
+    schedLastMinute = min;
+    if (!document.getElementById('scheduled-screen')?.hasAttribute('hidden')) renderScheduled();
+  }
 }
 setInterval(updateClock, 1000);
 updateClock();

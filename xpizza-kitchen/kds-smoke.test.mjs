@@ -32,6 +32,7 @@ class El {
   addEventListener() {} removeEventListener() {}
   insertBefore() {} appendChild() {} remove() { }
   setAttribute() {} removeAttribute() {}
+  hasAttribute() { return true; }   // scheduled-screen treated as hidden in the shim (screen closed)
   closest() { return null; }
   cloneNode() { return new El(this.id); }
   focus() {} click() {}
@@ -64,6 +65,7 @@ const XPD = {
   isKitchen: async () => true,
   signIn: async () => {}, signOutUser: async () => {},
   subscribeToOrders(cb) { XPD._ordersCb = cb; return () => {}; },
+  subscribeScheduledOrders(cb) { XPD._schedCb = cb; cb({}); return () => {}; },   // Programados (read-only) — empty in the smoke
   subscribeToOrderTimeline() { return () => {}; },
   subscribeReadyTimeThreshold() { return () => {}; },
   setOrderStatus(id, status) { calls.push({ id, status }); return new Promise((res, rej) => { resolveWrite = () => res(true); resolveSkip = () => res(false); rejectWrite = () => rej(new Error('boom')); }); },
@@ -107,6 +109,7 @@ mod = mod
   .replace(/import \* as XPD from '\.\/xpizza-delivery\.js\?v=\d+';/, 'const XPD = globalThis.__XPD;')
   .replace(/from '\.\/ready-nudge\.js\?v=\d+'/, `from '${new URL('./ready-nudge.js', import.meta.url).href}'`)
   .replace(/from '\.\/rail-count\.js\?v=\d+'/, `from '${new URL('./rail-count.js', import.meta.url).href}'`)
+  .replace(/from '\.\/scheduled-view\.js\?v=\d+'/, `from '${new URL('./scheduled-view.js', import.meta.url).href}'`)
   .replace(/from '\.\/card-model\.js\?v=\d+'/, `from '${new URL('./card-model.js', import.meta.url).href}'`);
 
 await import('data:text/javascript,' + encodeURIComponent(mod));
