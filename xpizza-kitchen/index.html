@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- X Pizza Kitchen - version: 2.2.0 -->
+<!-- X Pizza Kitchen - version: 2.2.1 -->
 <html lang="es">
 <head>
 <meta charset="UTF-8"/>
@@ -1375,7 +1375,7 @@ function shortStatus(s) {
       <div class="fr fr-clock"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg> <span id="clock">--:--</span></div>
       <button class="fr" id="signout-btn" title="Cerrar sesión"><svg viewBox="0 0 24 24"><use href="#i-exit"/></svg> Cerrar sesión</button>
     </div>
-    <div class="kds-version">v2.2.0</div>
+    <div class="kds-version">v2.2.1</div>
   </aside>
 
   <section class="content">
@@ -1463,7 +1463,7 @@ function shortStatus(s) {
 <script src="avail-key.js?v=1"></script>
 <script type="module">
 // X Pizza Kitchen Display
-// version: 2.2.0
+// version: 2.2.1
 //
 // Major rewrite from the original Sheets-polling design:
 //   - Reads orders directly from Firebase Realtime Database (live subscription)
@@ -2508,6 +2508,10 @@ function schedSlot(o) { return o.scheduled_for ? formatScheduled(o.scheduled_for
 /* Render the Programados screen — day-chip row (all scheduled days at once, quiet grey selection, amber
    heavy-day count) + the selected day in full (header line, per-day make-count roll-up, gold view-only
    cards sorted soonest-slot-first). Reuses renderItems verbatim. VIEW-ONLY: no action handlers, no writes. */
+// Item noun for the per-day summary — brand-aware (La Musa sells platos, not pizzas). Host-derived.
+function schedDishNoun(n) {
+  return XPD.KDS_RESTAURANT_ID === 'la_musa' ? (n === 1 ? 'plato' : 'platos') : (n === 1 ? 'pizza' : 'pizzas');
+}
 function renderScheduled() {
   const groups = groupScheduledByDay(scheduledOrders, Date.now());
   const daysel = document.getElementById('sched-daysel');
@@ -2537,7 +2541,7 @@ function renderScheduled() {
 
   dayEl.innerHTML = `
     <div class="seld-head"><span class="seld-title">${escapeHtml(sel.label)}</span><span class="seld-date">${escapeHtml(sel.dateLabel)}</span>
-      <span class="seld-meta"><b>${sel.count}</b> ${sel.count === 1 ? 'pedido' : 'pedidos'} · <b>${sel.pizzas}</b> ${sel.pizzas === 1 ? 'pizza' : 'pizzas'}</span></div>
+      <span class="seld-meta"><b>${sel.count}</b> ${sel.count === 1 ? 'pedido' : 'pedidos'} · <b>${sel.pizzas}</b> ${schedDishNoun(sel.pizzas)}</span></div>
     <div class="mc allday-rail">${mc}</div>
     <div class="cards sched-cards">${cards}</div>`;
 }
