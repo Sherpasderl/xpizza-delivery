@@ -3493,11 +3493,21 @@ function startAnotherOrder(){
   currentOrder = null;
   orderSubmitting = false;
 
+  // [E/#9] Reset schedule + time-mode so the NEXT order NEVER silently carries the old scheduled slot.
+  window.__scheduledFor = null; window.__timeMode = 'standard';
+  // [E/#10] Reset free-order mode + clear the account redeem selection so a fresh order never inherits a stale
+  // reward (free_order_stale / a lingering golden ticket). clearRedeem is client-only — a COMPLETED order has no
+  // live server reservation to release, so this never touches the money spine.
+  window.__freeOrder = false;
+  try { if (window.__ACCOUNT && typeof window.__ACCOUNT.clearRedeem === 'function') window.__ACCOUNT.clearRedeem(); } catch(_){}
+
   // Re-render the menu so quantity badges/buttons reflect the cleared cart
   renderCategoryShell();
   renderMenu();
   setupScrollSpy();
   updateCart();
+  try { updateTotal(); } catch(_){}                                              // [E] reconcile the total after clearing the reward
+  try { if (typeof renderRedeemUI === 'function') renderRedeemUI(); } catch(_){}  // [E/#10] re-render the redeem affordance for the fresh order — no stale golden ticket
 
   // Back to stage 1. showStage handles scroll-to-top and cart-bar visibility.
   showStage('s1', 25);
