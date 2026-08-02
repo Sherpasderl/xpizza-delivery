@@ -909,6 +909,7 @@ function shortStatus(s) {
   .sb-link:hover { text-decoration: underline; }
   .sb-muted { color: var(--ink-mute); font-size: 12.5px; padding: 5px 9px; font-style: italic; }
   .sb-empty { color: var(--ink-mute); font-size: 12px; padding: 6px 9px; }
+  .kds-version { padding: 9px 9px 3px; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; color: var(--on-dark-mut); opacity: .6; font-variant-numeric: tabular-nums; }
 
   /* ── Disponibilidad panel (item "86" toggles) — KDS Phase 2b. A SEPARATE sidebar DOM subtree; touches
         nothing in the ticket render. Styling per the gated mockup (kds-2b-availability). All scoped under
@@ -1374,6 +1375,7 @@ function shortStatus(s) {
       <div class="fr fr-clock"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg> <span id="clock">--:--</span></div>
       <button class="fr" id="signout-btn" title="Cerrar sesión"><svg viewBox="0 0 24 24"><use href="#i-exit"/></svg> Cerrar sesión</button>
     </div>
+    <div class="kds-version">v2.2.0</div>
   </aside>
 
   <section class="content">
