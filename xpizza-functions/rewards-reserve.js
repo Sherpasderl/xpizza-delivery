@@ -165,7 +165,10 @@ async function consumeRedemption(db, { uid, rid, orderId, now }) {
       ledger: { ...(cur.ledger || {}), [ledgerKey(orderId, seq)]: entry('redeem', newBal - oldBal, cost, orderId, 'consumed', now) },
     };
   });
-  if (res.ok && res.action === 'applied') await alertIfUndercollateralized(db, { uid, rid, orderId, now });
+  if (res.ok && res.action === 'applied') {
+    await alertIfUndercollateralized(db, { uid, rid, orderId, now });
+    await db.ref(`dispatcher_alerts/reward_hold_stale_${orderId}`).remove().catch(() => {});   // [F R2/#2] a normally-completed order clears its own hold-stale alert — never orphans a resolved one
+  }
   // [F/#22 mint backstop] a consume attempt on an ALREADY-RELEASED hold means an order reached delivered/completed
   // AFTER its hold was released (F's SLA auto-release, or a manual dispatch release). NEVER silent — alert so ops
   // catches the rare botched late-completion of a dead order before it becomes a mint (free item + points already returned/re-spent).
@@ -305,7 +308,11 @@ async function sweepStaleReservations(db, { now }) {
           // [F/#22] Cash live (new/preparing/ready/out_for_delivery) — HYBRID: auto-release past a long SLA;
           // hold + a durable per-order escalating alert in the 6h→SLA window so ops can release early (never orphaned).
           if (LIVE_STATES.has(status)) {
-            const age = now - (Number(rec.created_at) || 0);
+            // [F R2/#1] Age from the LIVE start, NOT placement: a scheduled CASH order placed >24h before its slot
+            // must NOT be auto-released the moment it materializes. materialized_at (when it went live) is the real
+            // clock start; a normal cash order has none → falls back to created_at (unchanged behavior).
+            const liveStart = Math.max(Number(rec.created_at) || 0, Number(order.materialized_at) || 0);
+            const age = now - liveStart;
             if (age > CASH_LIVE_SLA_MS) {
               // definitively abandoned → AUTO-release. A botched late-completion is caught by the consumeRedemption
               // consume-after-release backstop → never a silent mint (free item + already-returned-and-respent points).

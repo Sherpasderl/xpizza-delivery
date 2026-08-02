@@ -268,6 +268,19 @@ const NOW = 1_700_000_000_000;
     const cmb = await R.consumeRedemption(db, { uid: 'uMB', rid: 'x_pizza', orderId: 'OMB', now: NOW });
     assert.strictEqual(cmb.ok, false); assert.strictEqual(cmb.state, 'released');
     assert.strictEqual(await alertKind('reward_consume_after_release_OMB'), 'reward_consume_after_release'); ok('[F] mint backstop: consume on a RELEASED hold → reward_consume_after_release alert (order completed after release → never a silent mint)');
+
+    // 7 — [F R2/#1] cash-live age is from LIVE-START (materialized_at), NOT placement: a scheduled CASH order placed
+    //     >24h before its slot, JUST materialized (live), is NOT released — the 24h clock starts at materialized_at.
+    await resetF(); await db.ref('user_rewards/uMz/x_pizza').set({ balance: 100, reserved: 8, reservations: { OMZ: { state: 'reserved', cost: 8, seq: 1, created_at: NOW - 48 * H } } });
+    await db.ref('orders/OMZ').set({ status: 'preparing', materialized_at: NOW - 2 * H });   // placed 48h ago, went live 2h ago
+    sw = await R.sweepStaleReservations(db, { now: NOW });
+    assert.strictEqual(await st('uMz', 'OMZ'), 'reserved'); assert.ok(!sw.released.some((x) => x.orderId === 'OMZ') && !sw.audited.some((a) => a.orderId === 'OMZ')); assert.strictEqual(await alertKind('reward_hold_stale_OMZ'), null); ok('[F R2] cash-live age from materialized_at (live-start), not placement — a just-materialized scheduled-cash order is NOT released/alerted despite an old created_at');
+
+    // 8 — [F R2/#2] a normally-completed order CLEARS its own reward_hold_stale alert on consume (never orphaned)
+    await resetF(); await db.ref('user_rewards/uCl/x_pizza').set({ balance: 100, reserved: 8, reservations: { OCL: { state: 'reserved', cost: 8, seq: 1 } } });
+    await db.ref('dispatcher_alerts/reward_hold_stale_OCL').set({ kind: 'reward_hold_stale' });   // an earlier sweep flagged it
+    const ccl = await R.consumeRedemption(db, { uid: 'uCl', rid: 'x_pizza', orderId: 'OCL', now: NOW });
+    assert.strictEqual(ccl.action, 'applied'); assert.strictEqual(await alertKind('reward_hold_stale_OCL'), null); ok('[F R2] normal consume clears its own reward_hold_stale alert (never orphaned)');
     await db.ref('user_rewards').set(null); await db.ref('orders').set(null); await db.ref('dispatcher_alerts').set(null);
     // cash reserve (no hostedExpiresAt) stays null → its sweep branch stays order-status-driven, unchanged
     await seed('uCa', 100);
