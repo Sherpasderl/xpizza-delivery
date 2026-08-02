@@ -23,7 +23,9 @@ const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');
 
 // Cash reservations have no hosted-checkout expiry; a cash order still 'reserved' this long after create with
 // no terminal state is treated as an orphan candidate by the sweep (policy — tune with ops).
-const CASH_STALE_MS = 6 * 60 * 60 * 1000;   // 6h
+const CASH_STALE_MS = 6 * 60 * 60 * 1000;   // 6h — a live cash hold past this is SURFACED (held + durable alert) for ops
+const CASH_LIVE_SLA_MS = 24 * 60 * 60 * 1000;   // 24h [F/#22] — a still-live cash hold a full service-day past any real cash-order lifecycle is definitively abandoned → AUTO-release (the consume-after-release backstop covers a botched late completion)
+const SCHED_OVERDUE_GRACE_MS = 6 * 60 * 60 * 1000;   // 6h [F/#22] — grace past a scheduled order's release_at before its still-un-materialized (never-delivered → never-consumed → mint-safe) hold is auto-released
 const TERMINAL_CANCEL = new Set(['cancelled']);
 const LIVE_STATES = new Set(['new', 'preparing', 'ready', 'out_for_delivery', 'scheduled', 'releasing', 'pending_payment']);
 
@@ -164,6 +166,13 @@ async function consumeRedemption(db, { uid, rid, orderId, now }) {
     };
   });
   if (res.ok && res.action === 'applied') await alertIfUndercollateralized(db, { uid, rid, orderId, now });
+  // [F/#22 mint backstop] a consume attempt on an ALREADY-RELEASED hold means an order reached delivered/completed
+  // AFTER its hold was released (F's SLA auto-release, or a manual dispatch release). NEVER silent — alert so ops
+  // catches the rare botched late-completion of a dead order before it becomes a mint (free item + points already returned/re-spent).
+  if (res && res.reason === 'invalid_state' && res.state === 'released') {
+    try { await db.ref(`dispatcher_alerts/reward_consume_after_release_${orderId}`).set({ kind: 'reward_consume_after_release', order_id: orderId, uid, rid, ts: now }); } catch (_) {}
+    console.warn(`reward_consume_after_release: ${orderId} — consume attempted on a released hold (F backstop)`);
+  }
   return res;
 }
 
@@ -279,10 +288,34 @@ async function sweepStaleReservations(db, { now }) {
             }
             continue;
           }
-          // cash (no hosted expiry): consult the order
-          const status = (await db.ref(`orders/${orderId}/status`).get()).val();
-          if (status == null || TERMINAL_CANCEL.has(status)) { await releaseRedemption(db, { uid, rid, orderId, now }); released.push({ uid, rid, orderId, kind: status == null ? 'cash_orphan' : 'cash_cancelled' }); continue; }
-          if (LIVE_STATES.has(status) && (now - (Number(rec.created_at) || 0)) > CASH_STALE_MS) { audited.push({ uid, rid, orderId, status, age_ms: now - (Number(rec.created_at) || 0) }); }
+          // cash / scheduled (no hosted expiry): consult the FULL order (need release_at / materialized_at too).
+          const order = (await db.ref(`orders/${orderId}`).get()).val();
+          const status = order && order.status;
+          if (status == null || TERMINAL_CANCEL.has(status)) { await releaseRedemption(db, { uid, rid, orderId, now }); await db.ref(`dispatcher_alerts/reward_hold_stale_${orderId}`).remove().catch(() => {}); released.push({ uid, rid, orderId, kind: status == null ? 'cash_orphan' : 'cash_cancelled' }); continue; }
+          // [F/#22] Scheduled: LEGITIMATE until its slot — NEVER flag before release_at. Only stale when PAST
+          // release_at + grace AND still un-materialized (→ it never released/delivered → never consumed → mint-safe auto-return).
+          if (status === 'scheduled' || status === 'releasing') {
+            const releaseAt = Number(order.release_at) || 0;
+            if (releaseAt && now > releaseAt + SCHED_OVERDUE_GRACE_MS && !order.materialized_at) {
+              await releaseRedemption(db, { uid, rid, orderId, now }); await db.ref(`dispatcher_alerts/reward_hold_stale_${orderId}`).remove().catch(() => {});
+              released.push({ uid, rid, orderId, kind: 'scheduled_overdue' });
+            }
+            continue;   // before release_at (or already materialized) → legit; never flag/release
+          }
+          // [F/#22] Cash live (new/preparing/ready/out_for_delivery) — HYBRID: auto-release past a long SLA;
+          // hold + a durable per-order escalating alert in the 6h→SLA window so ops can release early (never orphaned).
+          if (LIVE_STATES.has(status)) {
+            const age = now - (Number(rec.created_at) || 0);
+            if (age > CASH_LIVE_SLA_MS) {
+              // definitively abandoned → AUTO-release. A botched late-completion is caught by the consumeRedemption
+              // consume-after-release backstop → never a silent mint (free item + already-returned-and-respent points).
+              await releaseRedemption(db, { uid, rid, orderId, now }); await db.ref(`dispatcher_alerts/reward_hold_stale_${orderId}`).remove().catch(() => {});
+              released.push({ uid, rid, orderId, kind: 'cash_live_sla_released', age_ms: age });
+            } else if (age > CASH_STALE_MS) {
+              audited.push({ uid, rid, orderId, status, age_ms: age });
+              await db.ref(`dispatcher_alerts/reward_hold_stale_${orderId}`).update({ kind: 'reward_hold_stale', order_id: orderId, uid, rid, status, age_ms: age, updated_at: now }).catch(() => {});   // durable, keyed → re-fired each run until resolved
+            }
+          }
         }
       }
     }

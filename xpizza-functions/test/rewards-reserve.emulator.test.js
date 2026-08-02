@@ -224,6 +224,51 @@ const NOW = 1_700_000_000_000;
     assert.strictEqual(await st('uCon', 'ONLINE_FAILED'), 'released');
     assert.strictEqual(await st('uCon', 'ONLINE_ORPHAN'), 'released');
     assert.ok(swC.released.some((x) => x.orderId === 'ONLINE_FAILED' && x.kind === 'online_not_captured') && swC.released.some((x) => x.orderId === 'ONLINE_ORPHAN')); ok('[C] expired hold on a DEFINITIVELY-not-captured order (failed / orphan) → released promptly');
+
+    // ── [F/#22] long-lived reservation policy (hybrid: hold+alert 6h→SLA, auto-release past SLA, scheduled by release_at, mint backstop) ──
+    const resetF = async () => { await db.ref('user_rewards').set(null); await db.ref('orders').set(null); await db.ref('dispatcher_alerts').set(null); };
+    const seedCashResv = async (u, o, ageMs, state = 'reserved') => db.ref(`${P(u)}`).set({ balance: 100, reserved: state === 'reserved' || state === 'held_paid' ? 8 : 0, reservations: { [o]: { state, cost: 8, seq: 1, created_at: NOW - ageMs } } });
+    const alertKind = async (k) => (await db.ref(`dispatcher_alerts/${k}/kind`).get()).val();
+    const H = 3600 * 1000;
+
+    // 1 — cash live 6h–24h → HELD + audited + a DURABLE per-order alert (never orphaned)
+    await resetF(); await seedCashResv('uHold', 'OHOLD', 7 * H); await db.ref('orders/OHOLD').set({ status: 'preparing' });
+    let sw = await R.sweepStaleReservations(db, { now: NOW });
+    assert.strictEqual(await st('uHold', 'OHOLD'), 'reserved'); assert.ok(sw.audited.some((a) => a.orderId === 'OHOLD') && !sw.released.some((x) => x.orderId === 'OHOLD'));
+    assert.strictEqual(await alertKind('reward_hold_stale_OHOLD'), 'reward_hold_stale'); ok('[F] cash live 6h–24h → HELD + audited + durable reward_hold_stale alert (never released, never orphaned)');
+
+    // 2 — cash live PAST the 24h SLA → AUTO-released + the stale alert cleared
+    await resetF(); await seedCashResv('uSla', 'OSLA', 25 * H); await db.ref('orders/OSLA').set({ status: 'preparing' }); await db.ref('dispatcher_alerts/reward_hold_stale_OSLA').set({ kind: 'reward_hold_stale' });
+    sw = await R.sweepStaleReservations(db, { now: NOW });
+    assert.strictEqual(await st('uSla', 'OSLA'), 'released'); assert.ok(sw.released.some((x) => x.orderId === 'OSLA' && x.kind === 'cash_live_sla_released'));
+    assert.strictEqual(await alertKind('reward_hold_stale_OSLA'), null); ok('[F] cash live past 24h SLA → AUTO-released + stale alert cleared');
+
+    // 3 — scheduled BEFORE release_at → LEGIT, never flagged/released (no false positive)
+    await resetF(); await seedCashResv('uSch', 'OSCH', 9 * H); await db.ref('orders/OSCH').set({ status: 'scheduled', release_at: NOW + 48 * H });
+    sw = await R.sweepStaleReservations(db, { now: NOW });
+    assert.strictEqual(await st('uSch', 'OSCH'), 'reserved'); assert.ok(!sw.released.some((x) => x.orderId === 'OSCH') && !sw.audited.some((a) => a.orderId === 'OSCH')); ok('[F] scheduled BEFORE release_at → LEGIT, never flagged/released (no false positive)');
+
+    // 4 — scheduled PAST release_at + grace, still un-materialized → released (never delivered → mint-safe)
+    await resetF(); await seedCashResv('uSov', 'OSOV', 30 * H); await db.ref('orders/OSOV').set({ status: 'scheduled', release_at: NOW - 12 * H });
+    sw = await R.sweepStaleReservations(db, { now: NOW });
+    assert.strictEqual(await st('uSov', 'OSOV'), 'released'); assert.ok(sw.released.some((x) => x.orderId === 'OSOV' && x.kind === 'scheduled_overdue')); ok('[F] scheduled PAST release_at+grace, un-materialized → released (scheduled_overdue, mint-safe)');
+
+    // 4b — scheduled past release_at but MATERIALIZED → NOT released (it went live/delivering)
+    await resetF(); await seedCashResv('uSm', 'OSM', 30 * H); await db.ref('orders/OSM').set({ status: 'releasing', release_at: NOW - 12 * H, materialized_at: NOW - 11 * H });
+    sw = await R.sweepStaleReservations(db, { now: NOW });
+    assert.strictEqual(await st('uSm', 'OSM'), 'reserved'); ok('[F] scheduled past release_at but MATERIALIZED → NOT released (live/delivering)');
+
+    // 5 — held_paid EXEMPT: even aged past the SLA, the sweep NEVER releases a held_paid hold (per B)
+    await resetF(); await seedCashResv('uHP', 'OHP', 30 * H, 'held_paid'); await db.ref('orders/OHP').set({ status: 'preparing' });
+    sw = await R.sweepStaleReservations(db, { now: NOW });
+    assert.strictEqual(await st('uHP', 'OHP'), 'held_paid'); assert.ok(!sw.released.some((x) => x.orderId === 'OHP')); ok('[F] held_paid EXEMPT: aged past SLA still NOT released by the sweep (per B)');
+
+    // 6 — MINT BACKSTOP: a consume attempt on an already-RELEASED hold → reward_consume_after_release alert (never a silent mint)
+    await resetF(); await db.ref('user_rewards/uMB/x_pizza').set({ balance: 100, reserved: 0, reservations: { OMB: { state: 'released', cost: 8, seq: 2 } } });
+    const cmb = await R.consumeRedemption(db, { uid: 'uMB', rid: 'x_pizza', orderId: 'OMB', now: NOW });
+    assert.strictEqual(cmb.ok, false); assert.strictEqual(cmb.state, 'released');
+    assert.strictEqual(await alertKind('reward_consume_after_release_OMB'), 'reward_consume_after_release'); ok('[F] mint backstop: consume on a RELEASED hold → reward_consume_after_release alert (order completed after release → never a silent mint)');
+    await db.ref('user_rewards').set(null); await db.ref('orders').set(null); await db.ref('dispatcher_alerts').set(null);
     // cash reserve (no hostedExpiresAt) stays null → its sweep branch stays order-status-driven, unchanged
     await seed('uCa', 100);
     await R.reserveRedemption(db, { uid: 'uCa', rid: 'x_pizza', orderId: 'OCA', cost: 8, canonical: canon(), orderFingerprint: 'FPCA', configVersion: 2, now: NOW });
