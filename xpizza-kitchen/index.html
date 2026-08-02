@@ -185,6 +185,18 @@
   .daychip.on .d { color: var(--on-dark); }
   .daychip.heavy .pz { background: rgba(224,167,60,.15); color: #E0A73C; }
   .sched-empty { padding: 40px 8px; text-align: center; color: var(--on-dark-mut); font-size: 14px; }
+  /* selected day in full: header line + make-count roll-up + gold view-only cards */
+  .seld-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; color: var(--on-dark); }
+  .seld-title { font-family: var(--stamp); font-size: 20px; font-weight: 800; }
+  .seld-date { color: var(--on-dark-mut); font-size: 14px; text-transform: capitalize; }
+  .seld-meta { color: var(--on-dark-mut); font-size: 13px; margin-left: auto; font-variant-numeric: tabular-nums; }
+  .seld-meta b { color: var(--on-dark); font-weight: 800; }
+  #scheduled-screen .mc.allday-rail { margin: 0 0 16px; flex: none; flex-wrap: wrap; gap: 8px 18px; }
+  #scheduled-screen .allday-item .n { color: #E0A73C; }   /* amber make-count numerals (design) */
+  .ch-slot { display: inline-flex; align-items: center; gap: 5px; font-family: var(--body); font-weight: 700; font-size: 14px; color: inherit; }
+  .ch-slot svg { width: 13px; height: 13px; }
+  .sched-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 14px; align-content: start; }
+  .sched-card { box-shadow: 0 3px 12px rgba(0,0,0,.4); }   /* view-only: no CTA/ring/timer, no action handlers */
 
   /* ── Columns layout ── */
   .board {
@@ -1462,6 +1474,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/fireba
 import * as XPD from './xpizza-delivery.js?v=17';
 import { nudgeEligibility, classAction, nextBeepState, nudgeRestaurantFromHost } from './ready-nudge.js?v=1';
 import { railCount, enumerateItems } from './rail-count.js?v=2';
+import { groupScheduledByDay } from './scheduled-view.js?v=1';
 import { KDS_STATUS, agingAnchorMs, bandClass as bandClassPure, isLateBand,
          actionStatusWrite, deriveTab, completedTabVisible, orderForTab, paginate, countOffPage } from './card-model.js?v=3';
 
@@ -2478,7 +2491,47 @@ function closeScheduled() {
   document.querySelector('.content')?.removeAttribute('hidden');
   document.getElementById('sidebar')?.removeAttribute('hidden');
 }
-function renderScheduled() {}   // Task-4 stub; real implementation lands in Task 5
+// Slot time only (view-only) — reuse formatScheduled (Tegucigalpa) and strip the weekday prefix → "7:00 p. m.".
+function schedSlot(o) { return o.scheduled_for ? formatScheduled(o.scheduled_for).replace(/^.*,\s*/, '') : ''; }
+
+/* Render the Programados screen — day-chip row (all scheduled days at once, quiet grey selection, amber
+   heavy-day count) + the selected day in full (header line, per-day make-count roll-up, gold view-only
+   cards sorted soonest-slot-first). Reuses renderItems verbatim. VIEW-ONLY: no action handlers, no writes. */
+function renderScheduled() {
+  const groups = groupScheduledByDay(scheduledOrders, Date.now());
+  const daysel = document.getElementById('sched-daysel');
+  const dayEl = document.getElementById('sched-day');
+  if (!daysel || !dayEl) return;
+  if (!groups.length) { daysel.innerHTML = ''; dayEl.innerHTML = '<div class="sched-empty">Sin pedidos programados</div>'; return; }
+
+  // selected day (default: first/soonest group), resilient to a day that has emptied out
+  let sel = groups.find(g => g.dayKey === schedSelectedDay) || groups[0];
+  schedSelectedDay = sel.dayKey;
+
+  daysel.innerHTML = groups.map(g => `
+    <button class="daychip${g.dayKey === sel.dayKey ? ' on' : ''}${g.pizzas >= 10 ? ' heavy' : ''}" onclick="selectSchedDay('${escapeHtml(g.dayKey)}')">
+      <span class="d">${escapeHtml(g.label)}<small>${escapeHtml(g.dateLabel)}</small></span>
+      <span class="pz">${g.pizzas}</span>
+    </button>`).join('');
+
+  const mc = sel.makeCount.map(m => `<span class="allday-item"><span class="n">${m.qty}</span><span class="nm">${escapeHtml(m.name)}</span></span>`).join('');
+  const cards = sel.orders.map(o => `
+    <div class="card sched-card">
+      <div class="card-band" style="background:var(--band-sched);color:#3A2E06">
+        <div class="card-band-r1"><span class="card-customer">${escapeHtml(o.customer_name || 'Sin nombre')}</span><span class="card-type-badge">${o.order_type === 'pickup' ? 'Recoger' : 'Entregar'}</span></div>
+        <div class="card-band-r2"><span class="ch-slot"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg>${escapeHtml(schedSlot(o))}</span></div>
+      </div>
+      <div class="card-body"><div class="card-items">${renderItems(o.items_text)}</div></div>
+    </div>`).join('');
+
+  dayEl.innerHTML = `
+    <div class="seld-head"><span class="seld-title">${escapeHtml(sel.label)}</span><span class="seld-date">${escapeHtml(sel.dateLabel)}</span>
+      <span class="seld-meta"><b>${sel.count}</b> ${sel.count === 1 ? 'pedido' : 'pedidos'} · <b>${sel.pizzas}</b> ${sel.pizzas === 1 ? 'pizza' : 'pizzas'}</span></div>
+    <div class="mc allday-rail">${mc}</div>
+    <div class="cards sched-cards">${cards}</div>`;
+}
+function selectSchedDay(k) { schedSelectedDay = k; renderScheduled(); }
+window.selectSchedDay = selectSchedDay;
 
 /* ── Swipe pagination (fix #4) — a horizontal drag past a threshold on the pool → gotoPage(±1). Fires ONLY
    on a clearly-horizontal swipe (dx>50 and |dx|>|dy|) so header-tap and item-✓ (taps) still work and
@@ -2767,9 +2820,24 @@ setInterval(tickElapsed, 1000);
    Maps Firebase order shape to the kitchen card shape. */
 let firebaseUnsubscribe = null;
 
+// Programados (view-only) state: the latest scheduled/held set + the selected day (local UI state).
+let schedUnsubscribe = null;
+let scheduledOrders = {};
+let schedSelectedDay = null;   // selected dayKey (null → default to the first/soonest group)
+
 function startOrdersSubscription() {
   if (firebaseUnsubscribe) firebaseUnsubscribe();
+  if (schedUnsubscribe) schedUnsubscribe();
   window.__readyNudge?.teardown?.();   // teardown before (re)subscribing (restart path)
+  // Programados: read-only second onValue on the same /orders ref (reuses the sync; no new network read).
+  // Keeps the scheduled set in memory, drives the calendar-glyph accent cue live, and re-renders the
+  // screen if it's open. Never writes.
+  schedUnsubscribe = XPD.subscribeScheduledOrders((orders) => {
+    scheduledOrders = orders || {};
+    const has = Object.keys(scheduledOrders).length > 0;
+    document.getElementById('btn-scheduled')?.classList.toggle('sched-on', has);
+    if (!document.getElementById('scheduled-screen')?.hasAttribute('hidden')) renderScheduled();   // live while open
+  });
   firebaseUnsubscribe = XPD.subscribeToOrders((ordersById) => {
     // ordersById: { orderKey1: {...}, orderKey2: {...}, ... }
     // #4: map from ENTRIES so a record whose order_id is missing can fall back to the snapshot KEY as its
@@ -3172,6 +3240,7 @@ $signoutBtn.addEventListener('click', async () => {
     firebaseUnsubscribe();
     firebaseUnsubscribe = null;
   }
+  if (schedUnsubscribe) { schedUnsubscribe(); schedUnsubscribe = null; }
   window.__readyNudge?.teardown?.();   // signout path
   await XPD.signOutUser();
   // onAuth handler will trigger the login screen
@@ -3183,6 +3252,7 @@ XPD.onAuth(async (user) => {
       firebaseUnsubscribe();
       firebaseUnsubscribe = null;
     }
+    if (schedUnsubscribe) { schedUnsubscribe(); schedUnsubscribe = null; }
     window.__readyNudge?.teardown?.();   // !user auth-state path
     teardownAvailPanel();
     showLogin();
