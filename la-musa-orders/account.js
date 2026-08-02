@@ -360,11 +360,11 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
             e === 'redemption_invalid' || e === 'redemption_pricing_failed' || e === 'redemption_reserve_failed' || e === 'bad_cart') ? 'redemption' : 'other';
   }
 
-  async function redeemQuoteFetch(items) {
+  async function redeemQuoteFetch(items, pending) {
     try {
       const idTok = await customerIdToken();
       const res = await fetch(QUOTE_URL, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, idTok ? { 'X-Firebase-ID-Token': idTok } : {}),
-        body: JSON.stringify({ items, redeem: _redeemPending, restaurant_id: CONFIG.restaurant_id }) });   // restaurant_id from CONFIG → brand-correct
+        body: JSON.stringify({ items, redeem: (pending !== undefined ? pending : _redeemPending), restaurant_id: CONFIG.restaurant_id }) });   // restaurant_id from CONFIG → brand-correct; D(revise): quote a passed pending so rkCommit can defer setting the global
       return await res.json().catch(() => ({ ok: false, error: 'error' }));
     } catch (_) { return { ok: false, error: 'error' }; }
   }
@@ -529,12 +529,15 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     setTimeout(finish, 360);   // fallback if animationend never fires
   }
   async function rkCommit(env) {
-    _redeemPending = (RW.kind === 'punch')
+    // D(revise 1b): compute the payload LOCALLY and quote WITH it — set the global _redeemPending ONLY after the
+    // quote lands. A mid-commit form snapshot (fast pay-tap during "Aplicando premio…") then can't capture a redeem
+    // WITHOUT its quote → a resumed retry would fresh-id a still-attached redeem = DOUBLE-RESERVE.
+    const pending = (RW.kind === 'punch')
       ? { type: 'free_pizza_choice', item_id: _rkPick.key, name: _rkPick.name }
       : { type: 'points_ala_carte', items: Object.keys(_rkQty).map((k) => { const it = rkItem(k); return { id: k, qty: _rkQty[k], name: it ? it.name : k }; }) };
     const box = env.container;
     box.innerHTML = '<div class="rk-msg">Aplicando premio…</div>';
-    const q = await redeemQuoteFetch(env.items);
+    const q = await redeemQuoteFetch(env.items, pending);
     if (!q || !q.ok) {
       _redeemQuote = null; _redeemPending = null; _rkPick = null; _rkQty = {};
       if (env.onQuoted) env.onQuoted(null);
@@ -545,7 +548,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       setTimeout(() => { try { renderRedeem(env); } catch (_) {} }, 1900);
       return;
     }
-    _redeemQuote = q;
+    _redeemPending = pending; _redeemQuote = q;   // D(revise 1b): set the global pending ONLY now that the quote landed
     if (env.onQuoted) env.onQuoted(q);   // index.html syncs the checkout total (unchanged for add-free) + the Stage-2 summary
     box.innerHTML = rkTicketHtml(); rkWireTicket(env);
   }

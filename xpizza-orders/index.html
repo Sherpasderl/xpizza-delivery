@@ -1818,7 +1818,7 @@ function updateTotal(){
 //__REWARDS_PARITY_BEGIN__ (B2) — the block between this marker and __END__ MUST be byte-identical in BOTH order forms (enforced by rewards-parity.guard.test.js). Brand-specific rewards code lives OUTSIDE this block.
 // REWARDS (B2 Task 4): the checkout redeem affordance (server-authoritative discount). Fail-safe; guest → nothing.
 function applyRedeemQuoteToTotals(q){
-  if(!q){ try{ window.__resumeOrderId=null; }catch(_){} }   // D: reward cleared (quitar) → a resumed redeemed order must NOT reuse its order_id (server still carries the redemption) → build a FRESH full-price order
+  if(!q){ try{ const _pend=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemPayload&&window.__ACCOUNT.getRedeemPayload()); if(!_pend) window.__resumeOrderId=null; }catch(_){} }   // D(revise 1): drop the resume ONLY on a GENUINE removal (quitar → no redeem pending). A transient/null quote while a redeem is STILL pending must NOT drop it — else buildOrder fresh-ids a still-attached redeem → DOUBLE-RESERVE
   const pa=document.getElementById('pixelpay-amount');
   if(pa) pa.textContent = q ? ('L '+(q.total_cents/100).toFixed(2)) : ('L '+calcTotal().toFixed(2));   // online charge = the SERVER discounted total
   syncFreeOrderUI();   // A1: a $0 (fully-comped) server quote → free-order payment availability
@@ -2808,7 +2808,7 @@ function snapshotForm(){
 }
 function restoreOrderForm(){
   let snap = null;
-  try { const s = JSON.parse(localStorage.getItem('xpizza_pending_pay')||'null'); snap = s && s.form; if(s && s.ts && (Date.now()-s.ts) > 3600000){ snap=null; }   /* D/#6/#11: ignore a STALE stash (>1h > hosted TTL) — never restore a day-old order/reservation */ else if(s&&s.order_id){ window.__resumeOrderId = s.order_id;   /* D: a resumed retry REUSES the original order_id → the server reuses the ONE reservation (no double-reserve) */ } } catch(_){}
+  try { const s = JSON.parse(localStorage.getItem('xpizza_pending_pay')||'null'); snap = s && s.form; if(s && s.ts && (Date.now()-s.ts) > 3600000){ snap=null; try{ localStorage.removeItem('xpizza_pending_pay'); }catch(_){} }   /* D/#6/#11(revise): CLEAR a STALE stash (>1h > hosted TTL), don't just ignore it — never restore a day-old order/reservation */ else if(s&&s.order_id){ window.__resumeOrderId = s.order_id;   /* D: a resumed retry REUSES the original order_id → the server reuses the ONE reservation (no double-reserve) */ } } catch(_){}
   if(!snap){ location.href='/'; return; }
   try {
     // R4: the snapshot holds this order's ACTUAL delivery data — suppress the logged-in account
@@ -2929,6 +2929,9 @@ async function submitOrder(paymentStatus){
       ]);
     }
   } catch (_) { __idTok = null; }   // never block the order on account logic
+  // D/#26 (cash path): a logged-in customer with a selected reward whose ID token TIMED OUT must NOT submit as a
+  // GUEST (→ server login_required → reward dropped). A pending redeem implies logged-in → show a retry, preserve the reward.
+  try{ const __hasRedeem=!!(window.__ACCOUNT&&window.__ACCOUNT.getRedeemPayload&&window.__ACCOUNT.getRedeemPayload()); if(__hasRedeem && !__idTok){ orderSubmitting=false; const _sm=document.getElementById('sending-msg'); if(_sm) _sm.innerHTML = ICON_X_CIRCLE + 'No pudimos verificar tu sesión. Volvé e intentá de nuevo para no perder tu premio.'; return; } }catch(_){}
 
   const MAX_TRIES = 3;
   let lastErr = null;
