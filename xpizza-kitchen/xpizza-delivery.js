@@ -36,8 +36,8 @@ import {
 // Order-status vocab + the live/restaurant order filter + the KDS host classifier live in a
 // dependency-free module so they're node-testable. import-then-export gives LOCAL bindings (the
 // SDK's internal ORDER_STATUS uses resolve) AND keeps XPD.* consumers unchanged.
-import { ORDER_STATUS, NON_LIVE_ORDER_STATUSES, filterLiveOrders, kdsRestaurantFromHost } from './order-filter.js';
-export { ORDER_STATUS, NON_LIVE_ORDER_STATUSES, filterLiveOrders };
+import { ORDER_STATUS, NON_LIVE_ORDER_STATUSES, filterLiveOrders, filterScheduledOrders, kdsRestaurantFromHost } from './order-filter.js';
+export { ORDER_STATUS, NON_LIVE_ORDER_STATUSES, filterLiveOrders, filterScheduledOrders };
 
 // ============================================================
 // CONSTANTS
@@ -544,6 +544,13 @@ export function subscribeToOrders(callback) {
   // Filter out non-live (e.g. unpaid pending_payment) orders centrally so no
   // reader ever shows an unpaid online order as a real order.
   return onValue(ordersRef, (snap) => callback(filterLiveOrders(snap.val() || {}, KDS_RESTAURANT_ID)));
+}
+
+// Programados view (read-only): the scheduled/held orders for this KDS. A SECOND onValue on the SAME
+// `orders` ref → reuses the sync subscribeToOrders already opened (no new network read). Never writes.
+export function subscribeScheduledOrders(callback) {
+  const ordersRef = ref(db, 'orders');
+  return onValue(ordersRef, (snap) => callback(filterScheduledOrders(snap.val() || {}, KDS_RESTAURANT_ID)));
 }
 
 // ── Ready-Time Phase-1 Step 2: the KDS overdue nudge (READ-ONLY, additive) ──
