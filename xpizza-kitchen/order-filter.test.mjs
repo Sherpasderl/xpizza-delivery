@@ -5,7 +5,7 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('./order-filter.js', import.meta.url), 'utf8');
-const { filterLiveOrders, kdsRestaurantFromHost } =
+const { filterLiveOrders, kdsRestaurantFromHost, filterScheduledOrders, SCHEDULED_ORDER_STATUSES } =
   await import('data:text/javascript,' + encodeURIComponent(src));
 
 let n = 0;
@@ -72,6 +72,35 @@ assert.deepEqual(Object.keys(filterLiveOrders(snapshot, 'bogus')).sort(), ['a', 
   };
   assert.deepEqual(Object.keys(filterLiveOrders(snap, 'x_pizza')).sort(), ['live1']);
   ok('scheduled + releasing (+ pending_payment) filtered out; only live orders remain');
+}
+
+// ── filterScheduledOrders: held/scheduled orders only, per restaurant (Programados view) ──
+{
+  const orders = {
+    a: { status: 'scheduled',       restaurant_id: 'x_pizza' },
+    b: { status: 'releasing',       restaurant_id: 'x_pizza' },
+    c: { status: 'new',             restaurant_id: 'x_pizza' },   // live → excluded
+    d: { status: 'pending_payment', restaurant_id: 'x_pizza' },   // unpaid → excluded
+    e: { status: 'scheduled',       restaurant_id: 'la_musa' },   // wrong restaurant for x_pizza
+  };
+  assert.deepEqual(Object.keys(filterScheduledOrders(orders, 'x_pizza')).sort(), ['a', 'b']);
+  ok('filterScheduledOrders: x_pizza → scheduled+releasing only, excludes live/unpaid/la_musa');
+
+  assert.deepEqual(Object.keys(filterScheduledOrders(orders, 'la_musa')), ['e']);
+  ok('filterScheduledOrders: la_musa → strict own-restaurant scheduled only');
+
+  // unpaid is NEVER prep-worthy even for the right restaurant
+  assert.deepEqual(filterScheduledOrders({ x: { status: 'pending_payment', restaurant_id: 'x_pizza' } }, 'x_pizza'), {});
+  ok('filterScheduledOrders: pending_payment excluded (unpaid never shown)');
+
+  assert.deepEqual(filterScheduledOrders({}, 'x_pizza'), {});
+  assert.deepEqual(filterScheduledOrders(null, 'x_pizza'), {});
+  ok('filterScheduledOrders: empty/null → {} (safe)');
+
+  // SCHEDULED_ORDER_STATUSES is the two held statuses; NEVER pending_payment
+  assert.ok(SCHEDULED_ORDER_STATUSES.has('scheduled') && SCHEDULED_ORDER_STATUSES.has('releasing'));
+  assert.ok(!SCHEDULED_ORDER_STATUSES.has('pending_payment'));
+  ok('SCHEDULED_ORDER_STATUSES = {scheduled, releasing} (excl. pending_payment)');
 }
 
 console.log(`order-filter: OK (${n} cases)`);

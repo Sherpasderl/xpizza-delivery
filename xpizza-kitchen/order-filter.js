@@ -41,3 +41,21 @@ export function filterLiveOrders(orders, restaurantId = 'x_pizza') {
   }
   return out;
 }
+
+// Held/scheduled orders (NOT operationally live, but paid+confirmed) for the Programados view.
+// Deliberately EXCLUDES pending_payment (an unpaid online order must never appear as prep-worthy).
+export const SCHEDULED_ORDER_STATUSES = new Set(['scheduled', 'releasing']);
+
+// Filter a /orders snapshot to the scheduled/held orders for one restaurant. Mirrors filterLiveOrders'
+// restaurant match exactly (la_musa strict; x_pizza = everything not-la_musa). Read-only, pure.
+export function filterScheduledOrders(orders, restaurantId = 'x_pizza') {
+  const pin = restaurantId === 'la_musa' ? 'la_musa' : 'x_pizza';
+  const out = {};
+  for (const id of Object.keys(orders || {})) {
+    const o = orders[id];
+    if (!o || !SCHEDULED_ORDER_STATUSES.has(o.status)) continue;
+    if (pin === 'la_musa' ? o.restaurant_id !== 'la_musa' : o.restaurant_id === 'la_musa') continue;
+    out[id] = o;
+  }
+  return out;
+}
