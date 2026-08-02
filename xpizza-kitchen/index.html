@@ -164,6 +164,28 @@
   .radio.on { border-color: var(--blue); background: radial-gradient(var(--blue) 0 6px, #fff 7px); }
   .cols-note { font-size: 12px; color: #888; margin: 14px 0 0; }
 
+  /* ══════════ Programados (scheduled-orders) view — DARK main-window screen, gold view-only cards ══════════
+     Reuses the .screen open/close pattern but overrides the white settings chrome to the dark board world.
+     Reconciled tokens: --stroke2 (file has no --stroke); --on-dark-mut for muted-on-dark (file's dark muted). */
+  #scheduled-screen { background: var(--board); color: var(--on-dark); overflow-y: auto; }
+  #scheduled-screen .screen-top { border-bottom: 1px solid var(--stroke2); }
+  #scheduled-screen .screen-top .x { background: var(--panel); color: var(--on-dark); }
+  #scheduled-screen .screen-top .x:hover { background: #222226; }
+  #scheduled-screen .ttl { color: var(--on-dark); }
+  #scheduled-screen .ttl small { display: block; font-size: 11px; font-weight: 600; color: var(--on-dark-mut); margin-top: 2px; }
+  /* cue: only the calendar GLYPH goes accent when scheduled orders exist; the button box is untouched */
+  .ibtn.sched-on svg { color: var(--accent); }
+  .sched-body { padding: 16px 20px 24px; }
+  .daysel { display: flex; gap: 9px; flex-wrap: wrap; padding-bottom: 16px; margin-bottom: 17px; border-bottom: 1px solid var(--stroke2); overflow-x: auto; }
+  .daychip { display: inline-flex; align-items: center; gap: 11px; padding: 8px 13px; background: var(--panel); border: 1px solid var(--stroke2); border-radius: 11px; cursor: pointer; white-space: nowrap; font-family: var(--body); }
+  .daychip .d { font-size: 14px; font-weight: 800; color: var(--on-dark-mut); line-height: 1.15; text-align: left; }
+  .daychip .d small { display: block; font-size: 11px; font-weight: 600; color: var(--on-dark-mut); opacity: .75; text-transform: capitalize; margin-top: 1px; }
+  .daychip .pz { display: inline-grid; place-items: center; font-size: 12px; font-weight: 800; min-width: 24px; height: 24px; padding: 0 8px; background: #26262A; color: var(--on-dark-mut); border-radius: 20px; font-variant-numeric: tabular-nums; }
+  .daychip.on { background: #2C2C30; border-color: #3C3C40; }
+  .daychip.on .d { color: var(--on-dark); }
+  .daychip.heavy .pz { background: rgba(224,167,60,.15); color: #E0A73C; }
+  .sched-empty { padding: 40px 8px; text-align: center; color: var(--on-dark-mut); font-size: 14px; }
+
   /* ── Columns layout ── */
   .board {
     display: grid;
@@ -1262,6 +1284,7 @@ function shortStatus(s) {
   <g id="i-exit"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M9 12h11M16 8l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
   <g id="i-prio"><path d="M6 15l6-6 6 6M6 10l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
   <g id="i-cog"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></g>
+  <g id="i-cal"><rect x="3" y="4.5" width="18" height="16" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></g>
   <g id="i-info"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v5M12 8h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></g>
   <g id="i-spin"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></g>
   <g id="i-alert"><path d="M12 3l9 16H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
@@ -1298,6 +1321,7 @@ function shortStatus(s) {
 <div class="topbar">
   <button class="ibtn" id="btn-menu" onclick="toggleSidebar()" title="Menú" aria-label="Mostrar/ocultar panel"><svg viewBox="0 0 24 24"><use href="#i-menu"/></svg></button>
   <button class="ibtn" id="btn-refresh" onclick="refreshBoard()" title="Refrescar" aria-label="Refrescar"><svg viewBox="0 0 24 24"><use href="#i-refresh"/></svg></button>
+  <button class="ibtn" id="btn-scheduled" onclick="openScheduled()" title="Programados" aria-label="Programados"><svg viewBox="0 0 24 24"><use href="#i-cal"/></svg></button>
   <div class="tabs">
     <button id="tab-completed" onclick="setTab('completed')">Completados <span class="tab-count" id="count-completed">0</span></button>
     <button id="tab-open" class="on" onclick="setTab('open')">Abiertos · <span class="tab-count" id="count-open">0</span></button>
@@ -1402,6 +1426,19 @@ function shortStatus(s) {
         <div class="sb-avail" id="avail-panel"><div class="sb-empty">Cargando…</div></div>
         <div class="sb-note" id="avail-note" hidden></div>
       </div>
+    </div>
+  </div>
+
+  <!-- Programados (view-only): scheduled/held orders grouped by day, before they materialize onto the board.
+       Dark main-window screen; ✕ returns to the board (mirrors openSettings/openAvailability). Zero writes. -->
+  <div class="screen sched-screen" id="scheduled-screen" hidden>
+    <div class="screen-top">
+      <button class="x" id="btn-scheduled-close" onclick="closeScheduled()" aria-label="Cerrar" title="Cerrar">✕</button>
+      <div class="ttl">Programados<small>Pedidos agendados — antes de llegar al tablero</small></div>
+    </div>
+    <div class="sched-body">
+      <div class="daysel" id="sched-daysel"></div>
+      <div id="sched-day"></div>
     </div>
   </div>
 </div>
@@ -2427,6 +2464,22 @@ function closeAvailability() {
   document.getElementById('sidebar')?.removeAttribute('hidden');
 }
 
+// Programados — same full main-window swap as Ajustes/Disponibilidad (hide board + sidebar, show screen);
+// ✕ restores the board unchanged. View-only: no writes, no order actions. renderScheduled is defined in
+// Task 5; a temporary no-op stub keeps open/close working standalone here.
+function openScheduled() {
+  document.getElementById('scheduled-screen')?.removeAttribute('hidden');
+  document.querySelector('.content')?.setAttribute('hidden', '');
+  document.getElementById('sidebar')?.setAttribute('hidden', '');
+  renderScheduled();
+}
+function closeScheduled() {
+  document.getElementById('scheduled-screen')?.setAttribute('hidden', '');
+  document.querySelector('.content')?.removeAttribute('hidden');
+  document.getElementById('sidebar')?.removeAttribute('hidden');
+}
+function renderScheduled() {}   // Task-4 stub; real implementation lands in Task 5
+
 /* ── Swipe pagination (fix #4) — a horizontal drag past a threshold on the pool → gotoPage(±1). Fires ONLY
    on a clearly-horizontal swipe (dx>50 and |dx|>|dy|) so header-tap and item-✓ (taps) still work and
    vertical scroll is never hijacked. Pager arrows stay. ── */
@@ -3061,6 +3114,8 @@ window.openSettings = openSettings;      // Phase A #2 Ajustes screen
 window.closeSettings = closeSettings;
 window.openAvailability = openAvailability;   // Phase 2b Disponibilidad screen (relocated from sidebar)
 window.closeAvailability = closeAvailability;
+window.openScheduled = openScheduled;         // Programados scheduled-orders view (view-only)
+window.closeScheduled = closeScheduled;
 
 /* ── Auth boot ──
    Wait for Firebase Auth state. If signed in + has kitchen role, start the
