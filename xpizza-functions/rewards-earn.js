@@ -85,15 +85,18 @@ async function creditWelcome(db, { uid, phoneHash, restaurantId, now }) {
 // the points already held by an in-flight redemption — maintaining the balance >= reserved invariant the B1
 // reservation layer depends on (Phase-B1 money-gate: a clawback of the earning order must not under-
 // collateralize a live reserve → free discount + minted points). Lifetime is untouched (clawback ≠ un-earn).
+// Returns { reversed, ok }. `ok:false` ONLY on a real FAILURE (exception, or the reduction tx needed to run
+// but didn't land) → the caller journals a durable ledger-repair retry (cancel-order-core A). Legit no-ops
+// (no uid / purged / never earned / already reversed) are ok:true — nothing to repair.
 async function reverseEarnForOrder(db, { orderId, order, now }) {
   try {
-    if (!order || !order.customer_uid) return { reversed: false };
+    if (!order || !order.customer_uid) return { reversed: false, ok: true };
     const uid = order.customer_uid;
     const rid = order.restaurant_id || 'x_pizza';
-    if (await isDeleted(db, uid)) return { reversed: false };                      // purged node → nothing to reverse
+    if (await isDeleted(db, uid)) return { reversed: false, ok: true };            // purged node → nothing to reverse
     const earnEntry = (await db.ref(`user_rewards/${uid}/${rid}/ledger/earn_${orderId}`).get()).val();
     const earned = earnEntry && Number(earnEntry.delta);
-    if (!Number.isFinite(earned) || earned <= 0) return { reversed: false };       // never earned → no-op
+    if (!Number.isFinite(earned) || earned <= 0) return { reversed: false, ok: true };   // never earned → no-op
     const reverseId = `reverse_${orderId}`;
     const ref = db.ref(`user_rewards/${uid}/${rid}`);
     const tx = await ref.transaction((cur) => {
@@ -106,8 +109,10 @@ async function reverseEarnForOrder(db, { orderId, order, now }) {
       return { ...cur, balance, ledger: { ...(cur.ledger || {}), [reverseId]: ledgerEntry({ type: 'clawback', delta: -reduction, orderId, now }) } };   // delta = ACTUAL reduction → Σledger survives the clamp
     });
     const v = tx.snapshot.val();
-    return { reversed: !!(tx.committed && v && v.ledger && v.ledger[reverseId] !== undefined) };   // true only if the clawback landed now
-  } catch (e) { console.error(`rewards reverse: failed ${orderId}`, e && e.message); return { reversed: false }; }
+    const present = !!(v && v.ledger && v.ledger[reverseId] !== undefined);        // the reverse entry landed (by us now, or already there)
+    // ok unless the clawback was needed but never landed (contention/abort with the node still un-reversed) → repairable.
+    return { reversed: !!(tx.committed && present), ok: present };
+  } catch (e) { console.error(`rewards reverse: failed ${orderId}`, e && e.message); return { reversed: false, ok: false }; }
 }
 
 module.exports = { creditEarnForOrder, creditWelcome, reverseEarnForOrder };

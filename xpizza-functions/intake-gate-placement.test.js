@@ -74,9 +74,9 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   before(body, 'reserveRedemption(', 'acquireHostedAttempt(', 'B1: reserve before the CAS acquire');
   before(body, 'acquireHostedAttempt(', 'attachAttempt(', 'B1: attach the claimed attempt AFTER the acquire');
   // every truly-abandoned branch releases the owned hold: acquire-throw, item_unavailable, already_paid,
-  // conflict, closed, !claimed, hosted-create throw, hosted-create !ok = 8 call-sites.
+  // conflict, closed, !claimed, hosted-create throw, hosted-create !ok, hosted-create persist-fail [C/#30] = 9 call-sites.
   const releaseCount = (body.match(/releaseHoldIfOwned\(\)/g) || []).length;
-  assert.strictEqual(releaseCount, 8, `expected releaseHoldIfOwned() on all 8 abandoned branches, got ${releaseCount}`);
+  assert.strictEqual(releaseCount, 9, `expected releaseHoldIfOwned() on all 9 abandoned branches, got ${releaseCount}`);
   // in_progress + reuse must PRESERVE the hold (no release) — they back a creating/live checkout.
   const preserveSpan = body.slice(body.indexOf("outcome === 'in_progress'"), body.indexOf("outcome !== 'claimed'"));
   assert.ok(preserveSpan.length > 0 && !/releaseHoldIfOwned/.test(preserveSpan), 'in_progress + reuse branches must PRESERVE the hold (no release)');

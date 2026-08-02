@@ -23,7 +23,7 @@
 const TERMINAL_ATTEMPT = ['declined', 'voided', 'abandoned', 'converted', 'refunded', 'voided_inactive'];
 const SCHED = require('./scheduled-orders');   // Scheduled Orders — confirm-time slot re-validation (§F)
 const { holdIfClosedAtMaterialize } = require('./materialize-guard');   // paid-after-close re-check (Codex-on-diff)
-const { settleRedemptionAtConfirm } = require('./rewards-reserve');     // Phase B1 — consume/hold the redemption at materialize (no-op for a non-redeemed order)
+const { settleRedemptionAtConfirm, holdRedemptionForManual } = require('./rewards-reserve');     // Phase B1 — consume/hold the redemption at materialize; [B] hold-or-alert at a manual-reconciliation entry
 
 async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingToken }) {
   const { db, staleMs = 90000 } = deps;
@@ -74,13 +74,29 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
     }
     if (activeNow === false) {
       const uuid0 = paymentUuid || preAttempt.payment_uuid;
-      try {
-        if (uuid0) await deps.client.voidTransaction({ payment_uuid: uuid0, pixelpayOrderId, voidReason: 'xpizza_inactive_void' });
-      } catch (_) { /* best-effort auth void; terminalize + alert regardless */ }
-      await attemptRef.update({ status: 'voided_inactive', voided_at: now, void_reason: 'restaurant_inactive' });
-      await orderRef.update({ payment_status: 'failed' });
-      deps.alert && deps.alert('confirm_voided_inactive', { orderId, attemptId, restaurant_id: rid });
-      return { outcome: 'voided_inactive' };
+      // [C revise/#1] The auth void must be CONFIRMED before we treat this as not-captured. A failed/timed-out
+      // void (or no uuid to void) leaves the auth possibly-LIVE → capturable → releasing the hold would be a mint.
+      let voided = false;
+      if (uuid0) {
+        try { const vd = await deps.client.voidTransaction({ payment_uuid: uuid0, pixelpayOrderId, voidReason: 'xpizza_inactive_void' }); voided = !!(vd && vd.ok); }
+        catch (_) { voided = false; }   // void errored/timed out → the auth may still capture → ambiguous
+      }
+      if (voided) {
+        // CONFIRMED void → DEFINITIVELY not captured → fail + release the hold promptly.
+        await attemptRef.update({ status: 'voided_inactive', voided_at: now, void_reason: 'restaurant_inactive' });
+        await orderRef.update({ payment_status: 'failed' });
+        await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // definitive not-captured → release
+        deps.alert && deps.alert('confirm_voided_inactive', { orderId, attemptId, restaurant_id: rid });
+        return { outcome: 'voided_inactive' };
+      }
+      // Void UNCONFIRMED (failed / timed out / no uuid) → AMBIGUOUS (possibly-captured): route to
+      // manual_reconciliation + HOLD the redemption BEFORE advertising it (never 'failed', never release) so
+      // neither the confirm path NOR the conservative sweep frees a possibly-capturable hold. Dispatcher resolves.
+      await attemptRef.update({ status: 'manual_reconciliation', manual_reason: 'inactive_void_unconfirmed', flagged_at: now, ...(uuid0 ? { payment_uuid: uuid0 } : {}) });
+      await holdRedemptionForManual(db, { orderId, order, now, alert: deps.alert });
+      await orderRef.update({ payment_status: 'manual_reconciliation' });
+      deps.alert && deps.alert('confirm_inactive_void_unconfirmed', { orderId, attemptId, restaurant_id: rid });
+      return { outcome: 'manual_reconciliation' };
     }
   }
 
@@ -124,6 +140,7 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
   if (status.reversed || status.declined) {
     await attemptRef.update({ status: 'declined', failed_at: now, decline_reason: status.status });
     await orderRef.update({ payment_status: 'failed' });
+    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly
     return { outcome: 'failed', reason: status.status };
   }
 
@@ -150,12 +167,14 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
     }
     await attemptRef.update({ status: 'declined', failed_at: now, decline_message: cap.message || 'capture_not_found' });
     await orderRef.update({ payment_status: 'failed' });
+    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly
     return { outcome: 'capture_failed', message: cap.message || 'capture not found' };
   }
   if (!cap.ok) {
     // Declined / amount>auth / etc. — no money moved. Open for COD fallback.
     await attemptRef.update({ status: 'declined', failed_at: now, decline_message: cap.message || null });
     await orderRef.update({ payment_status: 'failed' });
+    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly
     return { outcome: 'capture_failed', message: cap.message };
   }
 
@@ -318,6 +337,11 @@ async function routeManualReconciliation(deps, { orderId, attemptId, uuid, now }
     manual_reason: 'paid_lost_capture_response',
     flagged_at: now
   });
+  // [B] paid-but-unverifiable capture → POSSIBLY paid → secure the redemption as held_paid BEFORE advertising
+  // manual_reconciliation, so no release sweep frees it in the gap (dispatcher consumes/releases on resolve).
+  // No-op for a non-redeemed order.
+  const order = (await deps.db.ref(`orders/${orderId}`).once('value')).val();
+  await holdRedemptionForManual(deps.db, { orderId, order, now, alert: deps.alert });   // [B] alerts if a release-sweep race already freed the hold → possible mint
   await deps.db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });
   deps.alert && deps.alert('manual_reconciliation', { orderId, attemptId, uuid });
 }

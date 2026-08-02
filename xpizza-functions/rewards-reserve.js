@@ -23,7 +23,9 @@ const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');
 
 // Cash reservations have no hosted-checkout expiry; a cash order still 'reserved' this long after create with
 // no terminal state is treated as an orphan candidate by the sweep (policy — tune with ops).
-const CASH_STALE_MS = 6 * 60 * 60 * 1000;   // 6h
+const CASH_STALE_MS = 6 * 60 * 60 * 1000;   // 6h — a live cash hold past this is SURFACED (held + durable alert) for ops
+const CASH_LIVE_SLA_MS = 24 * 60 * 60 * 1000;   // 24h [F/#22] — a still-live cash hold a full service-day past any real cash-order lifecycle is definitively abandoned → AUTO-release (the consume-after-release backstop covers a botched late completion)
+const SCHED_OVERDUE_GRACE_MS = 6 * 60 * 60 * 1000;   // 6h [F/#22] — grace past a scheduled order's release_at before its still-un-materialized (never-delivered → never-consumed → mint-safe) hold is auto-released
 const TERMINAL_CANCEL = new Set(['cancelled']);
 const LIVE_STATES = new Set(['new', 'preparing', 'ready', 'out_for_delivery', 'scheduled', 'releasing', 'pending_payment']);
 
@@ -163,7 +165,17 @@ async function consumeRedemption(db, { uid, rid, orderId, now }) {
       ledger: { ...(cur.ledger || {}), [ledgerKey(orderId, seq)]: entry('redeem', newBal - oldBal, cost, orderId, 'consumed', now) },
     };
   });
-  if (res.ok && res.action === 'applied') await alertIfUndercollateralized(db, { uid, rid, orderId, now });
+  if (res.ok && res.action === 'applied') {
+    await alertIfUndercollateralized(db, { uid, rid, orderId, now });
+    await db.ref(`dispatcher_alerts/reward_hold_stale_${orderId}`).remove().catch(() => {});   // [F R2/#2] a normally-completed order clears its own hold-stale alert — never orphans a resolved one
+  }
+  // [F/#22 mint backstop] a consume attempt on an ALREADY-RELEASED hold means an order reached delivered/completed
+  // AFTER its hold was released (F's SLA auto-release, or a manual dispatch release). NEVER silent — alert so ops
+  // catches the rare botched late-completion of a dead order before it becomes a mint (free item + points already returned/re-spent).
+  if (res && res.reason === 'invalid_state' && res.state === 'released') {
+    try { await db.ref(`dispatcher_alerts/reward_consume_after_release_${orderId}`).set({ kind: 'reward_consume_after_release', order_id: orderId, uid, rid, ts: now }); } catch (_) {}
+    console.warn(`reward_consume_after_release: ${orderId} — consume attempted on a released hold (F backstop)`);
+  }
   return res;
 }
 
@@ -266,18 +278,51 @@ async function sweepStaleReservations(db, { now }) {
             if (Number(rec.hosted_expires_at) < now) {
               // Expired ≠ necessarily abandoned: a PAID order whose primary consume fail-opened ALSO has an
               // expired expiry + a reserved hold. Consult the order — if it realized (paid + live/terminal),
-              // do NOT release (leave it for consume-recovery); only a genuinely-unrealized order is abandoned.
-              // Mirrors the cash branch (which already reads status) → safe regardless of sweep ordering.
+              // do NOT release (leave it for consume-recovery).
               const order = (await db.ref(`orders/${orderId}`).get()).val();
               if (consumeEligible(order)) continue;                       // paid + live → realized, not abandoned
-              await releaseRedemption(db, { uid, rid, orderId, now }); released.push({ uid, rid, orderId, kind: 'online_expired' });
+              // [C] CONSERVATIVE: release ONLY a DEFINITIVELY-not-captured hold. An AMBIGUOUS one
+              // (manual_reconciliation / still pending / unknown) MIGHT be paid-but-lost → releasing it risks a
+              // MINT (re-spend, then a dispatcher reconciles the original as paid → consume no-ops on the freed
+              // hold) and is exactly B's release-race. HOLD it (audit); the dispatcher / the deferred
+              // hosted-abandon auto-release (pending PixelPay's non-paid-callback answer) own the ambiguous case.
+              if (!definitivelyNotCaptured(order)) { audited.push({ uid, rid, orderId, status: order && order.payment_status, kind: 'online_ambiguous_held' }); continue; }
+              await releaseRedemption(db, { uid, rid, orderId, now }); released.push({ uid, rid, orderId, kind: 'online_not_captured' });
             }
             continue;
           }
-          // cash (no hosted expiry): consult the order
-          const status = (await db.ref(`orders/${orderId}/status`).get()).val();
-          if (status == null || TERMINAL_CANCEL.has(status)) { await releaseRedemption(db, { uid, rid, orderId, now }); released.push({ uid, rid, orderId, kind: status == null ? 'cash_orphan' : 'cash_cancelled' }); continue; }
-          if (LIVE_STATES.has(status) && (now - (Number(rec.created_at) || 0)) > CASH_STALE_MS) { audited.push({ uid, rid, orderId, status, age_ms: now - (Number(rec.created_at) || 0) }); }
+          // cash / scheduled (no hosted expiry): consult the FULL order (need release_at / materialized_at too).
+          const order = (await db.ref(`orders/${orderId}`).get()).val();
+          const status = order && order.status;
+          if (status == null || TERMINAL_CANCEL.has(status)) { await releaseRedemption(db, { uid, rid, orderId, now }); await db.ref(`dispatcher_alerts/reward_hold_stale_${orderId}`).remove().catch(() => {}); released.push({ uid, rid, orderId, kind: status == null ? 'cash_orphan' : 'cash_cancelled' }); continue; }
+          // [F/#22] Scheduled: LEGITIMATE until its slot — NEVER flag before release_at. Only stale when PAST
+          // release_at + grace AND still un-materialized (→ it never released/delivered → never consumed → mint-safe auto-return).
+          if (status === 'scheduled' || status === 'releasing') {
+            const releaseAt = Number(order.release_at) || 0;
+            if (releaseAt && now > releaseAt + SCHED_OVERDUE_GRACE_MS && !order.materialized_at) {
+              await releaseRedemption(db, { uid, rid, orderId, now }); await db.ref(`dispatcher_alerts/reward_hold_stale_${orderId}`).remove().catch(() => {});
+              released.push({ uid, rid, orderId, kind: 'scheduled_overdue' });
+            }
+            continue;   // before release_at (or already materialized) → legit; never flag/release
+          }
+          // [F/#22] Cash live (new/preparing/ready/out_for_delivery) — HYBRID: auto-release past a long SLA;
+          // hold + a durable per-order escalating alert in the 6h→SLA window so ops can release early (never orphaned).
+          if (LIVE_STATES.has(status)) {
+            // [F R2/#1] Age from the LIVE start, NOT placement: a scheduled CASH order placed >24h before its slot
+            // must NOT be auto-released the moment it materializes. materialized_at (when it went live) is the real
+            // clock start; a normal cash order has none → falls back to created_at (unchanged behavior).
+            const liveStart = Math.max(Number(rec.created_at) || 0, Number(order.materialized_at) || 0);
+            const age = now - liveStart;
+            if (age > CASH_LIVE_SLA_MS) {
+              // definitively abandoned → AUTO-release. A botched late-completion is caught by the consumeRedemption
+              // consume-after-release backstop → never a silent mint (free item + already-returned-and-respent points).
+              await releaseRedemption(db, { uid, rid, orderId, now }); await db.ref(`dispatcher_alerts/reward_hold_stale_${orderId}`).remove().catch(() => {});
+              released.push({ uid, rid, orderId, kind: 'cash_live_sla_released', age_ms: age });
+            } else if (age > CASH_STALE_MS) {
+              audited.push({ uid, rid, orderId, status, age_ms: age });
+              await db.ref(`dispatcher_alerts/reward_hold_stale_${orderId}`).update({ kind: 'reward_hold_stale', order_id: orderId, uid, rid, status, age_ms: age, updated_at: now }).catch(() => {});   // durable, keyed → re-fired each run until resolved
+            }
+          }
         }
       }
     }
@@ -299,6 +344,19 @@ function consumeEligible(order) {
   return false;
 }
 
+// [C] Is an online order DEFINITIVELY not captured → safe to fast-release its hold (nothing can later reconcile
+// it as paid and mint on the freed points)? YES only for: an ABSENT order (orphan — no order to materialize),
+// payment_status 'failed' (the confirm path queried PixelPay and got declined/reversed/capture-failed — a
+// DEFINITIVE not-captured; stale-hosted is 'manual_reconciliation', NEVER 'failed', by decision I6), or a
+// cancelled order (the cancel path owns the reversal). Everything else (manual_reconciliation / pending /
+// unknown) is AMBIGUOUS (paid-but-lost is possible) → NEVER release from the sweep.
+function definitivelyNotCaptured(order) {
+  if (!order) return true;                                          // orphan — no order that could reconcile-as-paid
+  if (order.payment_status === 'failed') return true;              // confirm path queried PixelPay → declined
+  if (TERMINAL_CANCEL.has(order.status)) return true;             // cancelled → cancelOrderCore owns the reversal
+  return false;
+}
+
 // settleRedemptionAtConfirm — map a confirm/webhook disposition onto the reservation of a REDEEMED order:
 //   'consume' (paid + live → realize the debit), 'hold' (paid but manual_review → dispatcher resolves),
 //   'release' (unpaid abandon → free the hold). Fail-open — NEVER blocks the payment/materialize. No-op for a
@@ -312,6 +370,30 @@ async function settleRedemptionAtConfirm(db, { orderId, order, disposition, now 
     if (disposition === 'release') return await releaseRedemption(db, args);
     return { ok: false, skipped: true };
   } catch (e) { console.warn(`settleRedemptionAtConfirm(${disposition}) failed for ${orderId}`, e && e.message); return { ok: false, error: true }; }
+}
+
+// A hold is SECURED iff the reservation is now held_paid (applied or idempotent-noop) OR already consumed
+// (the punch was legitimately spent on a sale — not a mint). Anything else (released/refunded/absent/aborted/
+// error) means the hold was NOT secured.
+function redemptionHoldSecured(r) {
+  if (!r) return false;
+  if (r.state === 'held_paid') return true;
+  if (r.reason === 'invalid_state' && r.state === 'consumed') return true;
+  return false;
+}
+
+// holdRedemptionForManual — [B] secure a POSSIBLY-PAID redeemed order's hold as held_paid at a
+// manual_reconciliation entry. If the hold could NOT be secured because a release sweep won the race and freed
+// it (reserved→released before markHeldPaid committed), the punches are re-spendable and a later materialization
+// would silently MINT a free item — so ALERT (reward_hold_lost_possibly_paid) and let ops catch it before
+// materialization. Re-acquiring is UNSAFE (the freed points may already be re-spent) → escalate, never silent.
+// No-op for a non-redeemed order (skipped). Returns the settle result. (C eliminates the race at its source.)
+async function holdRedemptionForManual(db, { orderId, order, now, alert }) {
+  const r = await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'hold', now });
+  if (r && r.skipped !== true && !redemptionHoldSecured(r) && typeof alert === 'function') {
+    await alert('reward_hold_lost_possibly_paid', { orderId, state: (r && r.state) || null, reason: (r && r.reason) || null });
+  }
+  return r;
 }
 
 // reverseRedemptionForOrder — thin wrapper (cancelOrderCore + resolve-manual) that maps an ORDER onto the
@@ -357,5 +439,5 @@ async function sweepConsumeRecovery(db, { now, staleMs = CASH_STALE_MS }) {
 module.exports = {
   reserveRedemption, attachAttempt, consumeRedemption, markHeldPaid, releaseRedemption,
   reverseRedemptionForRefund, reverseRedemptionForOrder, sweepStaleReservations, settleRedemptionAtConfirm,
-  sweepConsumeRecovery, consumeEligible, CASH_STALE_MS,
+  holdRedemptionForManual, redemptionHoldSecured, sweepConsumeRecovery, consumeEligible, CASH_STALE_MS,
 };

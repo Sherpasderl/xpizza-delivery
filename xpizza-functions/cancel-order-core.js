@@ -167,19 +167,27 @@ async function cancelOrderCore(deps, { orderId, actor, reason, now, claimId }) {
   // B.9 non-money cleanup — separate idempotent best-effort (onOrderCancelled is the durable backstop).
   try { await cleanupTasksAndDriver(deps, orderId, order, now); } catch (e) { console.warn(`cancelOrder cleanup failed for ${orderId}`, e && e.message); }
 
-  // Rewards Phase A — clawback the loyalty earn when a cancel commits. reverseEarnForOrder is idempotent
-  // (its own reverse_${orderId} ledger key), self-guarded (no-op unless the order actually earned), and fail-open,
-  // so reconciliation retries / refund_pending re-entry / recoverStaleCancel can't double-reverse. Normally a
-  // no-op (the gate blocks delivered/completed, the only states that earn); this covers the earn↔cancel async
-  // race. EARN only — redemption reversal is Phase B. Never blocks the cancel.
-  try { await reverseEarnForOrder(db, { orderId, order, now }); } catch (e) { console.warn(`cancelOrder reverse-earn failed for ${orderId}`, e && e.message); }
-
-  // Rewards Phase B1 — reverse the REDEMPTION hold when a cancel commits, via the SINGLE reversal helper
-  // (state-branch: consumed→credit debit_applied / held_paid→release-no-credit / reserved→release). Idempotent
-  // by order_id (reverse_${orderId}), so refund_pending re-entry / recoverStaleCancel / reconciler retries
-  // can't double-apply, and composes with the earn reversal above (both order_id-keyed). No-op for a
-  // non-redeemed order. Fail-open — never blocks the cancel.
-  try { await reverseRedemptionForOrder(db, { orderId, order, disposition: 'refund', now }); } catch (e) { console.warn(`cancelOrder reverse-redemption failed for ${orderId}`, e && e.message); }
+  // Rewards clawback + redemption reversal when a cancel commits. Both idempotent (reverse_${orderId} /
+  // order_id-keyed) and self-guarded (no-op unless the order earned/redeemed), so refund_pending re-entry /
+  // recoverStaleCancel / reconciler retries can't double-reverse. Normally a no-op; covers the earn↔cancel race.
+  //
+  // [A — ledger atomicity] The order is ALREADY cancelled + its factura voided by this point. We must NOT block
+  // or undo the cancel (the customer's refund is committed) — but we also must NOT silently swallow a ledger fix
+  // that failed (that's the money-loss: refunded order keeps consumed punches / earned rewards). So on a REAL
+  // failure (not a legit no-op) we journal a durable `reward_ledger_repair/${orderId}` record + alert; the
+  // sweepStalePending retry (retryRewardLedgerRepair) re-runs both — idempotent, so it heals without double-reversing.
+  let earnRes = { ok: false }, redRes = { ok: false };
+  try { earnRes = await reverseEarnForOrder(db, { orderId, order, now }); } catch (e) { earnRes = { ok: false }; console.warn(`cancelOrder reverse-earn failed for ${orderId}`, e && e.message); }
+  try { redRes = await reverseRedemptionForOrder(db, { orderId, order, disposition: 'refund', now }); } catch (e) { redRes = { ok: false }; console.warn(`cancelOrder reverse-redemption failed for ${orderId}`, e && e.message); }
+  const earnFailed = !earnRes || earnRes.ok === false;
+  const redFailed = !!redRes && redRes.ok === false && redRes.skipped !== true;   // skipped = non-redeemed order (legit no-op), NOT a failure
+  if (earnFailed || redFailed) {
+    await db.ref(`reward_ledger_repair/${orderId}`).update({ order_id: orderId, disposition: 'refund',
+      uid: order.customer_uid || null, rid: order.restaurant_id || 'x_pizza', has_redemption: !!order.redemption,   // [A revise] ledger coords → heal INDEPENDENTLY of the order node (a purged order can't orphan a diverged ledger)
+      earn_failed: earnFailed, redemption_failed: redFailed, reason: reason || 'cancel', first_failed_at: now, updated_at: now, attempts: 0 })
+      .catch((e) => console.error(`cancelOrder repair-journal write failed for ${orderId}`, e && e.message));
+    await alert('reward_reversal_failed', { orderId, earn_failed: earnFailed, redemption_failed: redFailed });
+  }
 
   const refund = wantVoid ? (voided ? 'refunded' : 'refund_pending') : (fin.payment_status || 'no_payment');
   await audit(fin.outcome, { refund });
@@ -205,4 +213,38 @@ async function recoverStaleCancel(deps, orderId, order, now, staleMs) {
   return cas.committed ? { recovered: true, to: rec.to || 'cleared' } : null;
 }
 
-module.exports = { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, isReconcilerRetryable: C.isReconcilerRetryable };
+// [A — ledger atomicity] Retry the durable ledger-repair records cancelOrderCore journaled when a reversal
+// failed. Idempotent: reverseEarnForOrder / reverseRedemptionForOrder are order_id-keyed, so re-running both is
+// safe even if one already succeeded — no double-reverse. Clears the record once the ledger is consistent
+// (earn clawed back AND redemption reversed); otherwise bumps attempts + escalates an alert on a persistent
+// divergence. Runs on the 5-min sweepStalePending so a refunded-but-diverged ledger heals promptly.
+async function retryRewardLedgerRepair(deps, { now }) {
+  const { db, alert } = deps;
+  const repairs = (await db.ref('reward_ledger_repair').once('value')).val() || {};
+  let healed = 0, pending = 0;
+  for (const orderId of Object.keys(repairs)) {
+    const rec = repairs[orderId] || {};
+    const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+    // [A revise] Heal INDEPENDENTLY of the order node: the reversals key off orderId + uid/rid + the ledger, so
+    // synthesize the coords from the enriched record when the order was purged. NEVER silently drop the record on
+    // a missing order — that would orphan a still-diverged ledger. If we have NO uid at all (a legacy pre-enrich
+    // record whose order is also gone), we can't verify/heal → escalate an orphan alert and KEEP the record.
+    const uid = (order && order.customer_uid) || rec.uid || null;
+    const rid = (order && order.restaurant_id) || rec.rid || 'x_pizza';
+    if (!uid) { pending++; await alert('reward_reversal_orphaned', { orderId }); continue; }
+    const ord = order || { customer_uid: uid, restaurant_id: rid, redemption: rec.has_redemption ? true : null };
+    let earn = { ok: false }, red = { ok: false };
+    try { earn = await reverseEarnForOrder(db, { orderId, order: ord, now }); } catch (_) { earn = { ok: false }; }
+    try { red = await reverseRedemptionForOrder(db, { orderId, order: ord, disposition: rec.disposition || 'refund', now }); } catch (_) { red = { ok: false }; }
+    const earnOk = !!earn && earn.ok !== false;
+    const redOk = !!red && (red.ok !== false || red.skipped === true);
+    if (earnOk && redOk) { await db.ref(`reward_ledger_repair/${orderId}`).remove(); healed++; continue; }
+    pending++;
+    const attempts = (Number(rec.attempts) || 0) + 1;
+    await db.ref(`reward_ledger_repair/${orderId}`).update({ attempts, updated_at: now, earn_failed: !earnOk, redemption_failed: !redOk });
+    if (attempts === 3 || attempts % 12 === 0) await alert('reward_reversal_stuck', { orderId, attempts });   // persistent divergence → escalate to a human
+  }
+  return { healed, pending };
+}
+
+module.exports = { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, isReconcilerRetryable: C.isReconcilerRetryable };

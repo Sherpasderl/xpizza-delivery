@@ -15,7 +15,7 @@ const { resolvePixelPayConfig } = require('./pixelpay-config');
 const { toCents } = require('./pixelpay-hosted');
 const { confirmAndMaterialize } = require('./pixelpay-confirm');
 const MR = require('./manual-resolve');   // atomic-claim predicate (rev-5): paid-evidence capture in manual-flow states
-const { settleRedemptionAtConfirm } = require('./rewards-reserve');   // Phase B1 — HOLD the redemption on paid-during-manual (no-op for non-redeemed)
+const { holdRedemptionForManual, reverseRedemptionForOrder } = require('./rewards-reserve');   // [B] HOLD at a manual entry (alerts on a lost race); [C/#18] reverse the hold when a late paid callback voids a cancelled order
 
 const ATTEMPT_SUFFIX = /-[0-9a-f]{16}$/;             // hosted_order_id = `${orderId}-${attemptId}` (16-hex)
 const HOSTED_ORDER_RE = /^[A-Za-z0-9_-]{1,96}$/;
@@ -67,6 +67,7 @@ async function handleHostedCallback(deps, body, now) {
       manual_reason: `verify_fail binding=${bindingOk} hash=${hashOk} amount=${amountOk}`,
       payment_uuid: uuid, paid_amount_cents: toCents(amount), flagged_at: now
     });
+    await holdRedemptionForManual(db, { orderId, order, now, alert: deps.alert });   // [B] a 'paid' callback that failed verify → POSSIBLY paid → secure held_paid BEFORE advertising manual_reconciliation (alerts if a release-sweep race already freed it → possible mint)
     await db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });
     deps.alert && deps.alert('hosted_verify_fail', { orderId, attemptId, bindingOk, hashOk, amountOk });
     return { code: 200, outcome: 'manual_reconciliation' };
@@ -99,7 +100,7 @@ async function handleHostedCallback(deps, body, now) {
       [`payment_attempts/${attemptId}/paid_at`]: now,
       [`orders/${orderId}/paid_during_resolve`]: true,
     });
-    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'hold', now });   // paid evidence in manual-flow → HOLD the points (dispatcher resolves)
+    await holdRedemptionForManual(db, { orderId, order, now, alert: deps.alert });   // paid evidence in manual-flow → HOLD the points (alerts if a race already freed the hold → possible mint)
     deps.alert && deps.alert('paid_during_manual_resolve', { orderId, attemptId, payment_status: order.payment_status });
     return { code: 200, outcome: 'paid_evidence_recorded' };
   }
@@ -139,6 +140,11 @@ async function voidPaid(deps, { orderId, attemptId, hostedOrderId, uuid, amount,
     paid_amount_cents: toCents(amount), voided_at: now
   });
   await db.ref(`orders/${orderId}`).update({ status: 'cancelled', payment_status: voided ? 'refunded' : 'refund_pending' });
+  // [C/#18] a late paid callback on a cancelled/abandoned order → the money is voided/refunded, so reverse the
+  // redemption hold too (reserved/held_paid→released, consumed→credit debit_applied). Idempotent (order_id-keyed)
+  // → a no-op if the cancel path already reversed it; closes the gap where voidPaid moved money but not the hold.
+  const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+  await reverseRedemptionForOrder(db, { orderId, order, disposition: 'refund', now });
   deps.alert && deps.alert('hosted_cancel_void', { orderId, attemptId, voided, reason });
   return { code: 200, outcome: voided ? 'cancelled_voided' : 'cancelled_refund_pending' };
 }

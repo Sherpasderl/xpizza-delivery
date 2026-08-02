@@ -72,7 +72,7 @@ const { claimOrderCore } = require('./claim-order');       // claimOrder — ret
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
 const { shouldEarnOnStatus, earnPreview } = require('./rewards-core');     //   pure terminal-state gate + the reward-card earn_preview
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
-const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, sweepStaleReservations, sweepConsumeRecovery } = require('./rewards-reserve');  //   reservation lifecycle + confirm-settle + sweeps
+const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, holdRedemptionForManual, sweepStaleReservations, sweepConsumeRecovery } = require('./rewards-reserve');  //   reservation lifecycle + confirm-settle + sweeps + [B] hold-or-alert at manual entries
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');  //   config version for the reservation binding
 const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
@@ -119,7 +119,7 @@ const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineS
 const { computeFreshnessAlerts } = require('./driver-freshness');   // Driver Tracking C1: freshness-alarm reconcile core
 const MR = require('./manual-resolve');   // atomic-claim money state machine (RECON_ATOMIC_CLAIM_PLAN rev-5)
 const { resolveManualReconciliationCore, recoverStaleResolve } = require('./resolve-manual');   // the resolver core + sweep recovery (emulator-driven)
-const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, isReconcilerRetryable } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5)
+const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, isReconcilerRetryable } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5) + [A] ledger-repair retry
 const { runPrediction, runLabelAndUpdate } = require('./ready-time-predict-core');   // Phase-1 Step-3 shadow predictor + prediction-logging (PURE SHADOW)
 const { computeGraduation, buildGraduationRows } = require('./ready-time-graduation');   // Phase 1b-i graduation core (writes ONLY ready_time_graduation)
 const { hashConfig } = require('./ready-time-quality-run');          // reuse the signed-config hash (extended to cover graduation_thresholds)
@@ -1269,8 +1269,15 @@ chargeOnlineApp.all('*', async (req, res) => {
     return res.status(502).json({ error: 'Payment gateway error', detail: 'checkout not created; please retry', order_id: orderId });
   }
 
-  // Persist the live checkout URL + mark 'created' (payable until expires_at).
-  await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'created', hosted_checkout_url: hosted.url, updated_at: now });
+  // Persist the live checkout URL + mark 'created' (payable until expires_at). [C/#30] wrap it: if this write
+  // fails the customer never receives the URL (the order can't proceed) → release our hold, never strand it.
+  try {
+    await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'created', hosted_checkout_url: hosted.url, updated_at: now });
+  } catch (e) {
+    console.error(`chargeOnlineOrder: persist 'created' failed for ${pixelpayOrderId}`, e && e.message);
+    await releaseHoldIfOwned();   // [C/#30] never leave a reserved hold behind a checkout the customer can't reach
+    return res.status(500).json({ error: 'Payment gateway error', detail: 'checkout not persisted; please retry', order_id: orderId });
+  }
 
   console.log(`chargeOnlineOrder: created hosted checkout ${pixelpayOrderId} (mode=${pp.mode}, ${amountStr} HNL)`);
   return res.status(200).json({
@@ -1699,6 +1706,7 @@ exports.sweepStalePending = onSchedule(
         if (expires && now > expires + GRACE_MS) {
           try {
             await db.ref(`payment_attempts/${order.active_attempt_id}`).update({ hosted_state: 'manual_reconciliation', manual_reason: 'stale_no_callback', flagged_at: now });
+            await holdRedemptionForManual(db, { orderId, order, now, alert: (k, d) => paymentAlert(db, k, d) });   // [B] stale hosted (POSSIBLY paid + hold is EXPIRED → sweep-eligible): secure held_paid; if a release-sweep race already freed it, ALERT (reward_hold_lost_possibly_paid) — never a silent mint
             await db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });
             await paymentAlert(db, 'hosted_stale_no_callback', { orderId, total: order.total || null });
             flagged++;
@@ -1706,7 +1714,12 @@ exports.sweepStalePending = onSchedule(
         } else { left++; }
       } else { left++; }
     }
-    console.log(`sweepStalePending: manual_flagged=${flagged} left=${left}`);
+    // [A — ledger atomicity] heal any durable ledger-repair records (a cancel whose earn-clawback/redemption-
+    // reversal failed): re-run both reversals (idempotent), clear when consistent. Fail-open — never breaks the sweep.
+    let repair = { healed: 0, pending: 0 };
+    try { repair = await retryRewardLedgerRepair({ db, alert: (k, d) => paymentAlert(db, k, d) }, { now }); }
+    catch (e) { console.error('sweepStalePending: ledger-repair retry failed', e && e.message); }
+    console.log(`sweepStalePending: manual_flagged=${flagged} left=${left} ledger_healed=${repair.healed} ledger_pending=${repair.pending}`);
   }
 );
 

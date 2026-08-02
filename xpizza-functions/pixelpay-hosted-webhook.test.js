@@ -78,6 +78,33 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     ok('bad payment_hash → manual_reconciliation');
   }
 
+  // 4b. [B] verify-fail on a REDEEMED order → the reservation is HELD (held_paid) BEFORE manual_reconciliation,
+  //      so no release sweep can free a possibly-paid hold (→ free item delivered without consuming punches).
+  {
+    const db = makeDb(seed({ customer_uid: 'uW', restaurant_id: 'x_pizza', redemption: { model: 'add_free', free_item_key: 'Margherita' } }));
+    await db.ref('user_rewards/uW/x_pizza').update({ balance: 100, reserved: 8, reservations: { O1: { state: 'reserved', cost: 8, seq: 1, created_at: NOW } } });
+    const r = await handleHostedCallback(deps(db), cb({ amount: 1, payment_hash: paymentHash(`O1-${A}`, KEY, SECRET) }), NOW);   // amount mismatch → verify-fail
+    assert.strictEqual(r.outcome, 'manual_reconciliation');
+    assert.strictEqual(db.getAt('orders/O1').payment_status, 'manual_reconciliation');
+    assert.strictEqual(db.getAt('user_rewards/uW/x_pizza/reservations/O1').state, 'held_paid');
+    ok('[B] verify-fail on a redeemed order → reservation held_paid (never left reserved for a sweep to release)');
+  }
+
+  // 4c. [B revise] a release-sweep race freed the hold (reservation already 'released') BEFORE this entry runs →
+  //      holdRedemptionForManual CANNOT secure held_paid → ALERT reward_hold_lost_possibly_paid (never a silent
+  //      mint), and it does NOT re-acquire (the freed punches may already be re-spent).
+  {
+    const db = makeDb(seed({ customer_uid: 'uW', restaurant_id: 'x_pizza', redemption: { model: 'add_free', free_item_key: 'Margherita' } }));
+    await db.ref('user_rewards/uW/x_pizza').update({ balance: 100, reserved: 0, reservations: { O1: { state: 'released', cost: 8, seq: 2 } } });
+    const alerts = [];
+    const d = Object.assign({}, deps(db), { alert: (k, det) => alerts.push({ k, det }) });
+    const r = await handleHostedCallback(d, cb({ amount: 1, payment_hash: paymentHash(`O1-${A}`, KEY, SECRET) }), NOW);
+    assert.strictEqual(r.outcome, 'manual_reconciliation');
+    assert.strictEqual(db.getAt('user_rewards/uW/x_pizza/reservations/O1').state, 'released');   // NOT re-acquired (unsafe)
+    assert.ok(alerts.some((a) => a.k === 'reward_hold_lost_possibly_paid' && a.det.orderId === 'O1' && a.det.state === 'released'));
+    ok('[B revise] hold already released (sweep race) → reward_hold_lost_possibly_paid alert (no silent mint, no unsafe re-acquire)');
+  }
+
   // 5. non-paid status → telemetry only (ignored), order untouched
   {
     const db = makeDb(seed());
@@ -88,9 +115,11 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     ok('non-paid callback → telemetry-only ignore (order untouched, I12)');
   }
 
-  // 6. cancel_pending → auto-void, never materialize
+  // 6. cancel_pending → auto-void, never materialize. [C/#18] a REDEEMED order's hold is REVERSED when the late
+  //    paid callback voids/refunds it (never money-moved-but-hold-stranded).
   {
-    const db = makeDb(seed({}, { cancel_pending: true }));
+    const db = makeDb(seed({ customer_uid: 'uV', restaurant_id: 'x_pizza', redemption: { model: 'add_free', free_item_key: 'Margherita' } }, { cancel_pending: true }));
+    await db.ref('user_rewards/uV/x_pizza').update({ balance: 100, reserved: 8, reservations: { O1: { state: 'reserved', cost: 8, seq: 1 } } });
     let voidedArgs = null;
     const r = await handleHostedCallback(deps(db, async (_d, a) => { voidedArgs = a; return { voided: true }; }), cb(), NOW);
     assert.strictEqual(r.outcome, 'cancelled_voided');
@@ -98,8 +127,8 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     assert.strictEqual(db.getAt('orders/O1').payment_status, 'refunded');
     assert.strictEqual(db.getAt(`payment_attempts/${A}`).hosted_state, 'voided');
     assert.strictEqual(voidedArgs.paymentUuid, 'P-paid-1');
-    assert.notStrictEqual(db.getAt('orders/O1').status, 'new');
-    ok('cancel_pending + paid callback → auto-void (refunded), never materialized (I9)');
+    assert.strictEqual(db.getAt('user_rewards/uV/x_pizza/reservations/O1').state, 'released');   // [C/#18] hold reversed when voidPaid refunds the cancelled order
+    ok('cancel_pending + paid callback → auto-void (refunded) + [C/#18] redemption hold reversed, never materialized (I9)');
   }
 
   // 7. unknown order/attempt → ignored

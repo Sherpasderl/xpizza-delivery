@@ -59,7 +59,7 @@ const onStatus = async (db, orderId, after, now) => {
     assert.strictEqual(await bal('uidC', 'x_pizza'), 2); ok('second welcome same phone_hash → NO-OP (tombstoned)');
 
     // 5 — reversal of the earned O1 (uidA had 2); reads the authoritative earn_O1 entry, writes reverse_O1
-    assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'O1', order: await load('O1'), now: 500 }), { reversed: true });
+    assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'O1', order: await load('O1'), now: 500 }), { reversed: true, ok: true });
     assert.strictEqual(await bal('uidA', 'x_pizza'), 0); assert.strictEqual(await life('uidA', 'x_pizza'), 2); ok('reverse earned order → balance -2 (=0), lifetime UNCHANGED (2)');
     assert.strictEqual(await ledgerN('uidA', 'x_pizza'), 2); assert.strictEqual((await lkey('uidA', 'x_pizza', 'reverse_O1')).delta, -2); ok('clawback appended as reverse_O1 (2 ledger entries)');
     assert.strictEqual((await reverseEarnForOrder(db, { orderId: 'O1', order: await load('O1'), now: 501 })).reversed, false);
@@ -101,7 +101,7 @@ const onStatus = async (db, orderId, after, now) => {
     //     lifetime untouched. (Simulates a partial-spend / drift where balance < the recorded earn.)
     await db.ref('user_rewards/uidClamp/x_pizza').set({ balance: 1, lifetime: 5, ledger: { earn_OX: { type: 'earn', delta: 5, ts: 1, config_version: 1 } } });
     await db.ref('orders/OX').set({ customer_uid: 'uidClamp', restaurant_id: 'x_pizza', items: [{ qty: 5 }] });
-    assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'OX', order: await load('OX'), now: 1000 }), { reversed: true });
+    assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'OX', order: await load('OX'), now: 1000 }), { reversed: true, ok: true });
     assert.strictEqual(await bal('uidClamp', 'x_pizza'), 0); ok('reversal clamps balance to 0 (1 - 5 → 0, never negative)');
     assert.strictEqual(await life('uidClamp', 'x_pizza'), 5); ok('reversal leaves lifetime untouched (5)');
 
@@ -129,12 +129,12 @@ const onStatus = async (db, orderId, after, now) => {
     //      can never drop balance below points held by an in-flight redemption (maintains balance >= reserved).
     await db.ref('user_rewards/uRsv/x_pizza').set({ balance: 8, lifetime: 8, reserved: 8, ledger: { earn_OE: { type: 'earn', delta: 8, order_id: 'OE', ts: 1, config_version: 1 } } });
     await db.ref('orders/OE').set({ customer_uid: 'uRsv', restaurant_id: 'x_pizza', items: [{ qty: 8 }] });
-    assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'OE', order: await load('OE'), now: 1300 }), { reversed: true });
+    assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'OE', order: await load('OE'), now: 1300 }), { reversed: true, ok: true });
     assert.strictEqual(await bal('uRsv', 'x_pizza'), 8); ok('clawback with balance==reserved → 0 reclaimed (balance stays 8 ≥ reserved 8, no under-collateralization)');
     // partially committed: balance 8, reserved 3, earn 8 → reclaim only the uncommitted 5 → balance 3 (== reserved)
     await db.ref('user_rewards/uRsv2/x_pizza').set({ balance: 8, lifetime: 8, reserved: 3, ledger: { earn_OF: { type: 'earn', delta: 8, order_id: 'OF', ts: 1, config_version: 1 } } });
     await db.ref('orders/OF').set({ customer_uid: 'uRsv2', restaurant_id: 'x_pizza', items: [{ qty: 8 }] });
-    assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'OF', order: await load('OF'), now: 1301 }), { reversed: true });
+    assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'OF', order: await load('OF'), now: 1301 }), { reversed: true, ok: true });
     assert.strictEqual(await bal('uRsv2', 'x_pizza'), 3); ok('clawback partially-committed → reclaims only uncommitted (5), balance 3 == reserved 3 (invariant held)');
 
     // ── [v2 §1e-7] earn is computed over the PAID order.items ONLY — the ADD-FREE reward is never a paid line ──
@@ -149,7 +149,7 @@ const onStatus = async (db, orderId, after, now) => {
     assert.deepStrictEqual(await creditEarnForOrder(db, { orderId: 'ORL', order: await load('ORL'), now: 1402 }), { credited: true, delta: 200 });   // floor(60000/3000)*10
     assert.strictEqual(await bal('uidRL', 'la_musa'), 200); ok('v2 la_musa redeemed: earns on the PAID subtotal only (add-free items are 0-price, excluded)');
     // the refund reverses the FULL earned amount (reads earn_ORX.delta = 3)
-    assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'ORX', order: await load('ORX'), now: 1500 }), { reversed: true });
+    assert.deepStrictEqual(await reverseEarnForOrder(db, { orderId: 'ORX', order: await load('ORX'), now: 1500 }), { reversed: true, ok: true });
     assert.strictEqual(await bal('uidRX', 'x_pizza'), 0); ok('v2 refund reverses the FULL earned punches (3 → balance 0)');
 
     // ── [A-F restore] BUILDER-BACKED: the real applyRedemptionToPricing + buildCreateOrderUpdates split the two
