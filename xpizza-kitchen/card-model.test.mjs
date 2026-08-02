@@ -59,6 +59,13 @@ assert.equal(isLateBand('aging-late'), true); assert.equal(isLateBand('aging-war
 assert.equal(actionStatusWrite('empezar'), 'preparing'); ok('CONTRACT: empezar → preparing (the one start write)');
 assert.equal(actionStatusWrite('listo'),   'ready');     ok('CONTRACT: listo → ready (the one ready write)');
 
+// ── PICKUP-SPLIT MONEY GUARD: 'entregado' is NOT a confirmed-write status action ──
+// Entregado publishes 'completed' out-of-band via startCompletion (the pickup-gated, fail-closed beat) — it
+// must NEVER route through actionStatusWrite (that would let commitStatusWrite write a status directly). It
+// stays in the closed LOCAL-only set {null} here; the 'completed' write is issued only by startCompletion.
+assert.equal(actionStatusWrite('entregado'), null);      ok('CONTRACT pickup-split: entregado → null (never a commitStatusWrite status; completed is issued by startCompletion)');
+assert.equal(isLocalOnlyAction('entregado'), true);      ok('CONTRACT: entregado is LOCAL-only wrt actionStatusWrite (no direct status write)');
+
 // ── CONTRACT GOLDEN: recall NEVER reverts /orders.status (recall performs NO status write) ──
 assert.equal(actionStatusWrite('recall'), null);         ok('CONTRACT recall-doesnt-revert-status: recall → null (NO /orders write, never reverts ready)');
 assert.equal(isLocalOnlyAction('recall'), true);         ok('CONTRACT: recall is LOCAL-only');
@@ -85,6 +92,10 @@ ok('CONTRACT no-timeline-write: the write set is CLOSED to {null, preparing, rea
   assert.equal(deriveTab({ id: 'del', estado: KDS_STATUS.ARCHIVADO }, completed), 'completed'); ok('deriveTab: delivered (Archivado) → completed');
   assert.equal(deriveTab({ id: 'p', estado: KDS_STATUS.PREP }, completed), 'open');              ok('deriveTab: preparing → open');
   assert.equal(deriveTab({ id: 'c', estado: KDS_STATUS.CANCELADO }, completed), 'open');         ok('deriveTab: cancelado stays OPEN (stop-cooking until archived)');
+  // PICKUP-SPLIT invariant #4: a READY (estado LISTO) order that is NOT locally bumped stays on the ACTIVE
+  // board (deriveTab 'open') — so a "Listo · esperando recogida" pickup keeps waiting for Entregado, not
+  // pre-bumped. Only completedSet membership (Entregado) OR a server-terminal Archivado moves it to Completados.
+  assert.equal(deriveTab({ id: 'ready', estado: KDS_STATUS.LISTO }, completed), 'open');          ok('deriveTab: ready (LISTO) not-bumped → OPEN (ready pickup stays active until Entregado)');
 }
 
 // ── paginate: clamps, slices, derives counts ──
