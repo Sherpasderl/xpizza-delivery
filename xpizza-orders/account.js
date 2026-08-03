@@ -2213,6 +2213,57 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     applyCreateProfileFlow(snap);   // Task 2 — no-skip profile creation (also the fail-open destination above)
   }
 
+  // ── Checkout-transition self-heal (logged-in address-autofill fail-open recovery) ──────────────
+  // initDeliveryStep() is wired to page-LOAD + login ONLY. On a SLOW cold load it can fire before
+  // Firebase/auth are ready → accountSnapshotStatus() trips its 1500ms timeout → fail-open to the raw
+  // "Tus datos" form, even for a logged-in customer WITH a complete profile + saved default address.
+  // The read is warm (~81ms) a moment later, but nothing re-runs the step, so the stale raw form
+  // persists to checkout. Fix: re-run initDeliveryStep() on the checkout (s2) transition, when the
+  // read is warm, so the saved address pre-loads into the reduced flow — no timeout tuning.
+  //
+  // shouldRecoverDeliveryStep — PURE decision (no DOM/closure reads; the caller passes a state
+  // snapshot) so the invariant matrix is unit-testable. Recovery is SAFE only in the fail-open-to-raw
+  // state: logged-in + delivery + NONE of the deliberate states active. Any deliberate state → skip,
+  // so the re-run can NEVER: hide an empty field (an unavailable re-read still reverts to raw),
+  // clobber a picked address (reducedActive), an open edit (editMode), or hand-entered delivery text
+  // (rawDeliveryDirty), re-arm/mis-fire the create-profile block (createProfileActive /
+  // confirmedIncomplete), or fight a payment-retry restore (restoring — R5).
+  function shouldRecoverDeliveryStep(s) {
+    return !!s
+      && s.loggedIn === true
+      && s.orderType === 'delivery'
+      && s.restoring !== true
+      && s.reducedActive !== true
+      && s.editMode !== true
+      && s.createProfileActive !== true
+      && s.confirmedIncomplete !== true
+      && s.rawDeliveryDirty !== true;
+  }
+
+  function maybeRecoverDeliveryStep() {
+    if (!$('acct-deliver')) return;   // host form has no mount — nothing to heal
+    const state = {
+      loggedIn: !!marker(),
+      orderType: pageOrderType(),
+      restoring: _acctRestoring,
+      reducedActive: _acctReducedActive,
+      editMode: _acctEditMode,
+      createProfileActive: _acctCreateProfileActive,
+      confirmedIncomplete: _acctProfileConfirmedIncomplete,
+      // the ONLY user-typed delivery-address signal. Name/phone are re-derived from the profile in the
+      // reduced flow exactly as a fast load would, so they aren't a clobber signal; #address-details is
+      // hand-entry ONLY here, because reducedActive=false means WE never populated it.
+      rawDeliveryDirty: String((($('address-details') || {}).value) || '').trim().length > 0,
+    };
+    if (!shouldRecoverDeliveryStep(state)) return;
+    // Fail-open-to-raw state → re-read the now-warm snapshot. initDeliveryStep re-applies its full
+    // tri-state routing: complete + in-zone → reduced flow (the fix); still-unavailable → raw form
+    // (unchanged, fail-open preserved); confirmed-incomplete → create block. It carries its own
+    // _acctRestoring/restoreGen R5 guards across the async read. Fire-and-forget; it never advances a
+    // stage on its own.
+    initDeliveryStep().catch(() => {});
+  }
+
   // Shared "Entregar a" card markup — the decorative map header + name/phone/Cambiar row + address
   // label/reference — used by BOTH the legacy renderConfirmCard (s1, pre-Task-3 behavior for a
   // valid-address-but-incomplete-profile customer) and the new Task 3 rich summary atop s2's
@@ -3952,7 +4003,13 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
               return;   // BLOCKED — the original goToLocation() never runs
             }
           }
-          return orig.apply(this, arguments);
+          const _r = orig.apply(this, arguments);
+          // Self-heal a slow-cold-load fail-open on the checkout transition: the load-time
+          // initDeliveryStep may have raced Firebase/auth readiness and fallen open to the raw form.
+          // Re-run it now (warm read) so the saved default address pre-loads into the reduced flow.
+          // Gated (shouldRecoverDeliveryStep) to the fail-open state ONLY — a no-op in every other case.
+          try { maybeRecoverDeliveryStep(); } catch (_) {}
+          return _r;
         };
         wrapped.__acctGuarded = true;
         window.goToLocation = wrapped;
@@ -3975,6 +4032,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.newAddrId = newAddrId;
   window.__ACCOUNT.saveAddress = saveAddress;
   window.__ACCOUNT.profileComplete = profileComplete;
+  window.__ACCOUNT.shouldRecoverDeliveryStep = shouldRecoverDeliveryStep;   // pure fail-open-recovery decision (diagnostic + unit-test hook)
   window.__ACCOUNT.deleteAddress = deleteAddress;
   window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;
   window.__ACCOUNT.renderCartEarn = renderCartEarn;   // B2 Task 3 — index.html updateCart() fills the cart earn line
