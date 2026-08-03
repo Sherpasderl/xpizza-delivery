@@ -133,15 +133,17 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // Punch-card progress on the CURRENT card + whether a reward is redeemable.
   function rwPunch() {
     const av = rwAvailable(), size = RW.card_size;
-    const onCard = (av > 0 && av % size === 0) ? size : (av % size);   // full card shows size/size; else the remainder
-    return { av, size, onCard, redeemable: av >= size };
+    const freePizzas = Math.floor(av / size);   // [display fix 1] whole free pizzas earned (av 9, size 8 → 1)
+    const onNext = av % size;                    // [display fix 1] progress toward the NEXT card (av 9 → 1)
+    const onCard = (av > 0 && onNext === 0) ? size : onNext;   // full card shows size/size; else the remainder
+    return { av, size, onCard, onNext, freePizzas, redeemable: av >= size };
   }
 
   // The chip's reward segment: "· 5/8 [gift]" (punch) / "· 380 pts [gift]" (points). '' until a balance loads.
   function rwChipSegment() {
     if (!_rwState) return '';
     let label;
-    if (RW.kind === 'punch') { const p = rwPunch(); label = `${p.onCard}/${p.size}`; }
+    if (RW.kind === 'punch') { const p = rwPunch(); label = p.redeemable ? `${p.size}/${p.size}` : `${p.onCard}/${p.size}`; }   // [display fix 1] redeemable → show the FULL card, never a deflating "1/8"
     else label = `${rwAvailable()} ${RW.unit}`;
     // D-interim: a HELD (reserved) balance depresses the shown count — surface it honestly (title + a11y label) so
     // it never reads as LOST while an abandoned checkout's reservation is still held (released later — C / PixelPay Q1).
@@ -206,11 +208,20 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       // muted/locked until the card completes (redeemable) then turns accent.
       let slots = '';
       const pizzaCells = p.size - 1;
-      for (let i = 0; i < pizzaCells; i++) slots += `<span class="acct-rw-slot acct-rw-slot--pizza${i < Math.min(p.onCard, pizzaCells) ? ' acct-rw-slot--on' : ''}">${PIZZA_SVG}</span>`;
+      const filled = p.redeemable ? pizzaCells : Math.min(p.onCard, pizzaCells);   // [display fix 1] redeemable → full card, else onCard
+      for (let i = 0; i < pizzaCells; i++) slots += `<span class="acct-rw-slot acct-rw-slot--pizza${i < filled ? ' acct-rw-slot--on' : ''}">${PIZZA_SVG}</span>`;
       slots += `<span class="acct-rw-slot acct-rw-slot--gift${p.redeemable ? ' acct-rw-slot--on' : ''}">${GIFT_SVG}</span>`;
-      const clbl = p.redeemable ? 'Ya podés canjear tu pizza gratis · en el checkout' : 'sellos para tu pizza gratis';   // §3: mirror the checkout at 8/8
-      hero = rwPaneHead(`<span class="acct-rw-cnum">${p.onCard}</span><span class="acct-rw-cden">/ ${p.size}</span>`, clbl)
-           + `<div class="acct-rw-card"><div class="acct-rw-slots">${slots}</div></div>`;
+      if (p.redeemable) {
+        // [display fix 1] LEAD with the achievement (full card, not a deflating "1/8") + surface the REAL balance below.
+        const headline = p.freePizzas >= 2 ? `Tenés ${p.freePizzas} pizzas gratis` : 'Ya podés canjear tu pizza gratis';
+        const balLine = p.onNext > 0 ? `<p class="acct-rw-clbl" style="opacity:.72;margin-top:2px">${escapeHtml('Tenés ' + p.av + (p.av === 1 ? ' sello' : ' sellos') + ' · te quedan ' + (p.size - p.onNext) + ' para la próxima')}</p>` : '';
+        hero = rwPaneHead(`<span class="acct-rw-cnum">${p.size}</span><span class="acct-rw-cden">/ ${p.size}</span>`, headline + ' · en el checkout')
+             + `<div class="acct-rw-card"><div class="acct-rw-slots">${slots}</div></div>`
+             + balLine;
+      } else {
+        hero = rwPaneHead(`<span class="acct-rw-cnum">${p.onCard}</span><span class="acct-rw-cden">/ ${p.size}</span>`, 'sellos para tu pizza gratis')
+             + `<div class="acct-rw-card"><div class="acct-rw-slots">${slots}</div></div>`;
+      }
       pane.innerHTML = hero;
     } else {
       // La Musa (points) — the à-la-carte reframe (§3): a points-AS-VALUE card, NOT a tier ladder. A gold status
@@ -755,7 +766,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       // subtracts it — rewards-earn.js earnDelta = max(0, delta-1) for the discount model). Align the client
       // badge estimate: drop one pizza when redeemed. La Musa (points) earns on subtotal — the added free
       // item doesn't change it — so it's unchanged. Non-redeem unchanged (env.redeemed false).
-      const earnPizzas = (env.redeemed && RW.kind === 'punch') ? Math.max(0, (Number(env.pizzaCount) || 0) - 1) : env.pizzaCount;
+      const earnPizzas = env.pizzaCount;   // [display fix 2] v2 add-free: the free pizza is NEVER in o.items → pizzaCount is already paid-only; the old redeemed −1 (v1 discount model) double-subtracted → "+0 sellos". Matches the server.
       const label = rwCartEarnLabel(env.subtotalCents, earnPizzas);
       const m = marker();
       if (m && m.name) {
@@ -769,7 +780,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
         el.innerHTML = rwClaimCardHtml(env);   // reward-led card (mockup f9681eb8) — hero earned+welcome, points-bar/punch-slots proof
         // The earned amount the card showed (Task 4: N in the post-claim confirmation) + the claim context.
         const _rwEarned = RW.kind === 'punch'
-          ? ((env.redeemed ? Math.max(0, (Number(env.pizzaCount) || 0) - 1) : (Number(env.pizzaCount) || 0)) * RW.earnPerPizza)
+          ? ((Number(env.pizzaCount) || 0) * RW.earnPerPizza)   // [display fix 2] drop the stale v1 redeemed −1 (matches the server: earns on paid pizzas, no adjustment)
           : (Math.floor(Math.max(0, Number(env.subtotalCents) || 0) / RW.perCents) * RW.ptsPer);
         const _rwUnit = RW.kind === 'punch' ? 'punch' : 'point';
         const btn = el.querySelector('.rwcta'); if (btn) btn.onclick = () => { try { openLoginSheet({ phone: env.claimPhone, name: env.claimName, order_id: env.claimOrderId, n: _rwEarned, unit: _rwUnit }); } catch (_) {} };   // Track A soft-fill + Task 4 claim context (tokenless success)

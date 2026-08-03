@@ -3102,8 +3102,8 @@ function showSuccess(){
     (o.scheduled || window.__scheduledFor)
       ? ICON_CLOCK+'Pedido <strong>programado</strong> para '+schedFmt(o.scheduled_for || window.__scheduledFor)+'. Lo preparamos a tiempo para tu horario.'
       : o.payment_method==='online'&&o.payment_status==='confirmed'
-        ? ICON_CHECK_CIRCLE+'Pago PixelPay confirmado. Tu pedido ya está en cocina. Llegamos en ~30 min.'
-        : 'Te llegará una confirmación por WhatsApp. Llegamos en aproximadamente <strong>30 minutos</strong>.';
+        ? ICON_CHECK_CIRCLE+'Pago PixelPay confirmado. Tu pedido ya está en cocina. '+(o.order_type==='pickup'?'Estará listo para recoger en ~30 min.':'Llegamos en ~30 min.')   /* [display fix 4] pickup-aware */
+        : 'Te llegará una confirmación por WhatsApp. '+(o.order_type==='pickup'?'Estará listo para recoger en aproximadamente <strong>30 minutos</strong>.':'Llegamos en aproximadamente <strong>30 minutos</strong>.');
 
   document.getElementById('receipt-items').innerHTML=
     o.items.map(i=>`
@@ -3111,6 +3111,24 @@ function showSuccess(){
         <span class="receipt-label">${i.qty}× ${i.name}</span>
         <span>L ${i.subtotal.toFixed(2)}</span>
       </div>`).join('')+
+    // [display fix 3] the FREE redeemed item(s) are never in o.items (v2 add-free) → the receipt omitted them.
+    // Append a struck GRATIS row (mirror renderStage2Summary). Same-session → the client quote (has the struck
+    // price); online-return (stashed order, quote gone) → the redeem payload's name(s). Non-redeem → '' (byte-identical).
+    (function(){ let r='';
+      try{
+        const q=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuote)?window.__ACCOUNT.getRedeemQuote():null;
+        if(q && Array.isArray(q.free_items) && q.free_items.length){
+          q.free_items.forEach(fi=>{ const nm=escapeHtml((fi.name||fi.item_id||'')+((Number(fi.qty)||1)>1?' ×'+fi.qty:''));
+            const l=Math.round((Number(fi.price_cents)||0)*(Number(fi.qty)||1)/100);
+            r+=`<div class="receipt-row"><span class="receipt-label">${nm} · <span style="color:var(--green);font-weight:600">Premio</span></span><span><s style="color:#bbb">L ${l.toFixed(2)}</s> <b style="color:var(--green)">GRATIS</b></span></div>`; });
+        } else if(o.redeem){
+          const fis = o.redeem.type==='free_pizza_choice' ? [{name:o.redeem.name||o.redeem.item_id, qty:1}] : (Array.isArray(o.redeem.items)?o.redeem.items.map(it=>({name:it.name||it.id, qty:Number(it.qty)||1})):[]);
+          fis.forEach(fi=>{ const nm=escapeHtml((fi.name||'')+((Number(fi.qty)||1)>1?' ×'+fi.qty:''));
+            r+=`<div class="receipt-row"><span class="receipt-label">${nm} · <span style="color:var(--green);font-weight:600">Premio</span></span><span style="color:var(--green);font-weight:700">GRATIS</span></div>`; });
+        }
+      }catch(_){}
+      return r;
+    })()+
     (o.notes!=='—'?`<div class="receipt-row"><span class="receipt-label">Nota</span><span style="text-align:right;max-width:55%">${escapeHtml(o.notes)}</span></div>`:'')+
     (o.order_type==='delivery'?`<div class="receipt-row"><span class="receipt-label" style="color:var(--green);font-weight:600;letter-spacing:.2px;display:inline-flex;align-items:center;gap:7px">${DELIVERY_BAG_SVG}Envío Gratis</span><span style="text-decoration:line-through;color:#bbb">L 70.00</span></div>`:'')+
     // A2: the Total is the SERVER discounted total (never the client full price). When a reward discounted it
