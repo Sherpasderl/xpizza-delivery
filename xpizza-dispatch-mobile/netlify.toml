@@ -1,0 +1,13 @@
+# Netlify config for the mobile dispatch-lite site — its own per-folder git-CD site.
+# Mirrors xpizza-kitchen/netlify.toml: static HTML/CSS/JS served as-is, no build step.
+#
+# CSP: intentionally NONE here — matching every existing sibling surface (xpizza-kitchen
+# ships no CSP; xpizza-dispatch ships no netlify.toml at all). The plan's Task 1 caveat is
+# "confirm the CSP against dispatch's known-good served headers" — and dispatch's is empty.
+# A hand-rolled CSP can't be smoke-tested before this site exists, and Google Maps JS pulls
+# blob: workers + several *.googleapis/gstatic subresources that a slightly-wrong policy would
+# silently break (degrading the core map/board). CSP hardening is deferred to a follow-up that
+# can be validated on a real deploy preview. (Executor note flagged to advisor.)
+
+[build]
+  publish = "."

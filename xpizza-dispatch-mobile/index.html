@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dispatch · X. Pizza + La Musa</title>
+<style>
+  @font-face {
+    font-family: 'Hanken Grotesk';
+    font-weight: 400 700;
+    font-display: swap;
+    src: url('fonts/hankengrotesk-var.woff2') format('woff2');
+  }
+  html,body{ margin:0; font-family:'Hanken Grotesk',system-ui,sans-serif; }
+  .full-screen{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  .hidden{ display:none !important; }
+  .login-form{ display:flex; flex-direction:column; gap:10px; width:min(320px,86vw); }
+  .login-form input{ padding:12px; font:inherit; }
+</style>
+</head>
+<body>
+  <div id="screen-login" class="full-screen hidden">
+    <div class="login-form">
+      <h2>Dispatch</h2>
+      <input type="email" id="login-email" placeholder="email" autocomplete="email">
+      <input type="password" id="login-password" placeholder="contraseña" autocomplete="current-password">
+      <button id="login-btn">Entrar</button>
+      <div id="login-error"></div>
+    </div>
+  </div>
+
+  <div id="screen-main" class="full-screen hidden">
+    <div id="app-root">cargando…</div>
+  </div>
+
+<script type="module">
+import * as XPD from './xpizza-delivery.js';
+
+// apiKey is NOT a secret — it identifies the project; real access is gated by Auth + RTDB rules.
+// Copied verbatim from xpizza-dispatch/index.html's firebaseConfig block.
+const firebaseConfig = {
+  apiKey: "AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU",
+  authDomain: "xpizza-delivery.firebaseapp.com",
+  databaseURL: "https://xpizza-delivery-default-rtdb.firebaseio.com",
+  projectId: "xpizza-delivery",
+  messagingSenderId: "185867271616",
+  appId: "1:185867271616:web:84bb37552b40c1d517dc25"
+};
+
+const $ = (id) => document.getElementById(id);
+const show = (which) => {
+  $('screen-login').classList.toggle('hidden', which !== 'login');
+  $('screen-main').classList.toggle('hidden', which !== 'main');
+};
+
+XPD.initDelivery(firebaseConfig);
+
+XPD.onAuth((user) => {
+  // Staff-only surface. A customer token can technically auth but the RTDB rules
+  // deny /orders + /drivers reads (auth.token.customer !== true), so the board stays empty.
+  if (!user) { show('login'); return; }
+  show('main');
+  window.__startApp?.();   // later tasks define __startApp (subscriptions + render)
+});
+
+$('login-btn').addEventListener('click', async () => {
+  const email = $('login-email').value.trim();
+  const password = $('login-password').value;
+  if (!email || !password) { $('login-error').textContent = 'Email y contraseña requeridos'; return; }
+  $('login-btn').disabled = true;
+  try {
+    await XPD.signIn(email, password);
+  } catch (e) {
+    const code = String(e?.code || e);
+    $('login-error').textContent = /invalid-credential|wrong-password|user-not-found/.test(code)
+      ? 'Credenciales inválidas' : 'No se pudo iniciar sesión';
+  } finally {
+    $('login-btn').disabled = false;
+  }
+});
+</script>
+</body>
+</html>
