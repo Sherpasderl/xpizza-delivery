@@ -83,6 +83,62 @@
     border-radius:12px; cursor:pointer; transition:color .25s var(--ease); }
   .tab-btn[aria-selected="true"]{ color:var(--ink); }
   .tab-btn svg{ opacity:.9; }
+
+  /* ── Chip bar ── */
+  .chipbar{ display:flex; gap:8px; overflow-x:auto; padding:2px 2px 12px; margin:0 -2px 4px;
+    scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+  .chipbar::-webkit-scrollbar{ display:none; }
+  .chip{ flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; padding:8px 13px; font:inherit;
+    font-size:13px; font-weight:600; color:var(--ink-mute); background:var(--card); border:1px solid var(--line);
+    border-radius:999px; cursor:pointer; white-space:nowrap; transition:background .22s var(--ease), color .22s var(--ease), border-color .22s var(--ease); }
+  .chip.on{ background:var(--accent); color:var(--accent-fg); border-color:transparent; }
+  .chip .ct{ font-variant-numeric:tabular-nums; font-size:12px; color:var(--ink-mute); }
+  .chip.on .ct{ color:var(--accent-fg); opacity:.85; }
+  .chip .ct.attn{ color:var(--listo); }
+  .chip.on .ct.attn{ color:var(--accent-fg); }
+  .chip .chk{ display:inline-grid; place-items:center; font-size:11px; line-height:1; }
+  .attn-dot{ width:7px; height:7px; border-radius:50%; background:var(--listo); }
+
+  /* ── Sections ── */
+  .sec{ margin:0 0 14px; }
+  .sec-head{ display:flex; align-items:center; gap:8px; width:100%; padding:6px 2px; font:inherit;
+    font-size:13px; font-weight:700; letter-spacing:.01em; color:var(--ink); background:transparent; border:none;
+    cursor:pointer; text-align:left; }
+  .sec-head .dot{ width:9px; height:9px; border-radius:3px; background:var(--sc, var(--line)); }
+  .sec-head .sc-count{ font-size:12px; font-weight:600; color:var(--ink-mute); font-variant-numeric:tabular-nums; }
+  .sec-head .caret{ margin-left:auto; color:var(--ink-mute); transition:transform .25s var(--ease); }
+  .sec.collapsed .caret{ transform:rotate(-90deg); }
+  .sec.collapsed .sec-body{ display:none; }
+  .sec-body{ display:flex; flex-direction:column; gap:9px; padding-top:4px; }
+  .slot{ margin:0 0 6px; }
+  .slot h4{ margin:8px 2px 6px; font-size:12px; font-weight:700; color:var(--gold); letter-spacing:.01em; }
+
+  /* ── Order card ── */
+  .card{ position:relative; padding:12px 13px 11px 15px; background:var(--card); border:1px solid var(--line);
+    border-radius:14px; box-shadow:var(--shadow); overflow:hidden; cursor:pointer;
+    transition:transform .12s var(--ease), border-color .2s var(--ease); }
+  .card:active{ transform:scale(.992); }
+  .card::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--edge, var(--line)); }
+  .card-head{ display:flex; align-items:baseline; gap:8px; }
+  .card-head .cust{ font-weight:700; font-size:15px; letter-spacing:-.01em; }
+  .card-head .onum{ font-size:13px; font-weight:600; color:var(--ink-mute); font-variant-numeric:tabular-nums; }
+  .card-head .age{ margin-left:auto; font-size:12px; font-weight:700; font-variant-numeric:tabular-nums;
+    padding:2px 8px; border-radius:999px; background:color-mix(in srgb, currentColor 12%, transparent); }
+  .card-head .age.muted{ color:var(--ink-mute); font-weight:600; background:transparent; padding:2px 0; }
+  .card-items{ margin:5px 0 0; font-size:13px; color:var(--ink-mute); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .card-foot{ display:flex; align-items:center; gap:8px; margin-top:9px; }
+  .card-foot .tag{ font-size:11px; font-weight:600; color:var(--ink-mute); padding:2px 8px; border-radius:7px;
+    background:var(--card2); border:1px solid var(--line); }
+  .card-foot .brand{ font-size:11px; font-weight:600; color:var(--ink-mute); }
+  .card-foot .drv{ display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; color:var(--ink); }
+  .card-foot .mappin{ margin-left:auto; display:grid; place-items:center; width:32px; height:32px; padding:0;
+    color:var(--ink-mute); background:transparent; border:1px solid var(--line); border-radius:9px; cursor:pointer; }
+  .card-foot .mappin:active{ color:var(--ink); }
+  .gps{ width:7px; height:7px; border-radius:50%; flex:0 0 auto; }
+  .gps.live{ background:var(--listo); }
+  .gps.stale{ background:var(--ink-mute); }
+
+  .empty{ padding:18px 2px; font-size:13px; color:var(--ink-mute); text-align:center; }
 </style>
 </head>
 <body>
@@ -127,6 +183,10 @@
 
 <script type="module">
 import * as XPD from './xpizza-delivery.js';
+import { SECTIONS, sectionForOrder, assignedDriverId, isUnassignedDelivery, canReassign,
+         matchesChip, chipCounts, orderCompare } from './board-model.js';
+import { groupScheduledBySlot } from './slot-format.js';
+import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js';
 
 // apiKey is NOT a secret — it identifies the project; real access is gated by Auth + RTDB rules.
 // Copied verbatim from xpizza-dispatch/index.html's firebaseConfig block.
@@ -196,6 +256,175 @@ window.__showTab = (which) => {
 };
 document.querySelectorAll('.tab-btn').forEach(b =>
   b.addEventListener('click', () => window.__showTab(b.dataset.tab)));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pedidos board — live subscriptions → pure models → DOM. READ-ONLY (no writes).
+// ─────────────────────────────────────────────────────────────────────────────
+const STORE = { orders:{}, scheduled:{}, drivers:{}, tasks:{} };
+let activeChip = 'todos';
+let started = false;
+const collapsed = new Set();   // section labels the user has collapsed (persists across re-renders)
+
+window.__startApp = () => {
+  if (started) return; started = true;
+  XPD.subscribeToOrders((o)          => { STORE.orders = o || {};    renderBoard(); });
+  XPD.subscribeToScheduledOrders((s) => { STORE.scheduled = s || {}; renderBoard(); });
+  XPD.subscribeToDrivers((d)         => { STORE.drivers = d || {};   renderBoard(); window.__driversUpdated?.(); });
+  XPD.subscribeToTasks((t)           => { STORE.tasks = t || {};     renderBoard(); });
+  setInterval(renderBoard, 30000);   // refresh elapsed/aging chips
+};
+
+// ── small helpers ──
+function escapeHtml(s){
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' })[c]);
+}
+// Human-facing label — '#<display_number>' once the server allocates one, else a short order-id
+// fallback. DISPLAY ONLY (mirrors the desktop's displayOrderLabel); never used as a key/selector/arg.
+function displayLabel(id, order){
+  const dn = order && order.display_number;
+  if (Number.isFinite(dn)) return '#' + dn;
+  const s = id != null ? String(id) : '';
+  return s ? '#' + s.slice(-4).toUpperCase() : '#—';
+}
+function oneLineItems(order){ return (order && order.items_text) ? String(order.items_text) : '—'; }
+
+const SECTION_LABELS = { nuevos:'Nuevos', preparacion:'En preparación', listos:'Listos', camino:'En camino', completados:'Completados' };
+const SECTION_VAR = { nuevos:'--nuevo', preparacion:'--prep', listos:'--listo', camino:'--camino', completados:'--done', gold:'--gold' };
+function statusColorVar(section){ return SECTION_VAR[section] || '--line'; }
+
+const CARET_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+const PIN_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 21s6-5.2 6-10a6 6 0 1 0-12 0c0 4.8 6 10 6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>';
+
+// ── chip bar — Todos · Sin asignar · Delivery · Pickup · Programados ──
+const CHIPS = [
+  { key:'todos', label:'Todos' },
+  { key:'unassigned', label:'Sin asignar', attn:true },
+  { key:'delivery', label:'Delivery' },
+  { key:'pickup', label:'Pickup' },
+  { key:'programados', label:'Programados' },
+];
+function renderChips(counts){
+  return CHIPS.map(c => {
+    const active = activeChip === c.key;
+    const n = counts[c.key] ?? 0;
+    const dot = (c.attn && !active && n > 0) ? '<span class="attn-dot"></span>' : '';
+    const check = active ? '<span class="chk">✓</span>' : '';
+    const countCls = c.attn ? 'ct attn' : 'ct';
+    return `<button class="chip${active?' on':''}" data-chip="${c.key}">${check}${dot}${escapeHtml(c.label)} <span class="${countCls}">${n}</span></button>`;
+  }).join('');
+}
+
+// ── driver name + GPS-liveness dot on an assigned delivery card ──
+function driverLabel(orderId){
+  const drvId = assignedDriverId(orderId, STORE.tasks);
+  if (!drvId) return '';
+  const d = STORE.drivers[drvId];
+  const name = d?.name || 'Repartidor';
+  const live = d && !XPD.isStalePing(d.last_ping);
+  return `<span class="drv"><span class="gps ${live?'live':'stale'}"></span>${escapeHtml(name)}</span>`;
+}
+
+// ── one order card ──
+function orderCard(id, order, now){
+  const section = sectionForOrder(order);
+  const brand = order.restaurant_id === 'la_musa' ? 'La Musa' : 'X. Pizza';
+  const type = order.order_type === 'pickup' ? 'Recoge el cliente' : 'Delivery';
+  const secs = agingSeconds(agingBaselineMs(order), now);
+  // Aging cue: ONLY Nuevos/En preparación heat up (spec §3.5). dispatch-aging.agingBand returns
+  // 'green'|'amber'|'red'; pass the spec thresholds (amber 8min / red 15min). The card edge heats too.
+  const heats = section === 'nuevos' || section === 'preparacion';
+  const band = heats ? agingBand(secs, { amber: 480, red: 900 }) : 'green';
+  const bandVar = band === 'red' ? '--red' : band === 'amber' ? '--amber' : statusColorVar(section);
+  const edgeVar = heats ? bandVar : statusColorVar(section);
+  const ageChip = heats
+    ? `<span class="age" style="color:var(${bandVar})">${formatAging(secs)}</span>`
+    : `<span class="age muted">${formatAging(secs)}</span>`;
+  const pin = `<button class="mappin" data-order="${id}" aria-label="Ver en mapa">${PIN_SVG}</button>`;
+  return `
+    <article class="card" style="--edge:var(${edgeVar})" data-order="${id}">
+      <div class="card-head">
+        <span class="cust">${escapeHtml(order.customer_name || 'Cliente')}</span>
+        <span class="onum">${escapeHtml(displayLabel(id, order))}</span>
+        ${ageChip}
+      </div>
+      <div class="card-items">${escapeHtml(oneLineItems(order))}</div>
+      <div class="card-foot">
+        <span class="tag">${escapeHtml(type)}</span><span class="brand">${escapeHtml(brand)}</span>
+        ${driverLabel(id)}
+        ${order.order_type === 'delivery' ? pin : ''}
+      </div>
+    </article>`;
+}
+
+function sectionBlock(label, innerHTML, sectionKey, count){
+  const isCollapsed = collapsed.has(label);
+  const cnt = (count != null) ? `<span class="sc-count">${count}</span>` : '';
+  return `<section class="sec${isCollapsed?' collapsed':''}" data-sec="${escapeHtml(label)}">
+    <button class="sec-head" style="--sc:var(${statusColorVar(sectionKey)})">
+      <span class="dot"></span>${escapeHtml(label)} ${cnt}<span class="caret">${CARET_SVG}</span>
+    </button>
+    <div class="sec-body">${innerHTML}</div>
+  </section>`;
+}
+function emptyState(text){ return `<div class="empty">${escapeHtml(text)}</div>`; }
+
+function renderBoard(){
+  if (!started) return;
+  const now = Date.now();
+  const counts = chipCounts(STORE.orders, STORE.tasks, Object.keys(STORE.scheduled).length);
+  const chipBar = `<div class="chipbar">${renderChips(counts)}</div>`;
+
+  let body = '';
+  if (activeChip === 'programados') {
+    const groups = groupScheduledBySlot(STORE.scheduled, now);
+    body = groups.length
+      ? groups.map(g => sectionBlock(g.label, g.orders.map(({id,order}) => orderCard(id, order, now)).join(''), 'gold', g.orders.length)).join('')
+      : emptyState('Sin pedidos programados');
+  } else {
+    // live sections
+    const ids = Object.keys(STORE.orders).filter(id =>
+      matchesChip(STORE.orders[id], id, STORE.tasks, activeChip));
+    const bySection = Object.fromEntries(SECTIONS.map(s => [s, []]));
+    for (const id of ids) {
+      const sec = sectionForOrder(STORE.orders[id]);
+      if (sec) bySection[sec].push(id);
+    }
+    body = SECTIONS.map(sec => {
+      const list = bySection[sec].sort((a,b) => orderCompare(STORE.orders[a], STORE.orders[b]));
+      if (!list.length && activeChip !== 'todos') return '';   // hide empty under a filter
+      const cards = list.map(id => orderCard(id, STORE.orders[id], now)).join('') || emptyState('—');
+      return sectionBlock(SECTION_LABELS[sec], cards, sec, list.length);
+    }).join('');
+    // Programados section sits LAST on Todos (not under a type filter, per spec §3.2 partition)
+    if (activeChip === 'todos') {
+      const groups = groupScheduledBySlot(STORE.scheduled, now);
+      if (groups.length) {
+        const inner = groups.map(g => `<div class="slot"><h4>${escapeHtml(g.label)}</h4>${g.orders.map(({id,order}) => orderCard(id, order, now)).join('')}</div>`).join('');
+        body += sectionBlock('Programados', inner, 'gold', groups.reduce((n,g)=>n+g.orders.length,0));
+      }
+    }
+  }
+  $('tab-pedidos').innerHTML = chipBar + (body || emptyState('Sin pedidos activos'));
+  bindBoardEvents();
+}
+
+function bindBoardEvents(){
+  const root = $('tab-pedidos');
+  root.querySelectorAll('.chip').forEach(b =>
+    b.addEventListener('click', () => { activeChip = b.dataset.chip; renderBoard(); }));
+  root.querySelectorAll('.sec-head').forEach(h =>
+    h.addEventListener('click', () => {
+      const sec = h.closest('.sec'); const label = sec?.dataset.sec;
+      if (!label) return;
+      if (collapsed.has(label)) collapsed.delete(label); else collapsed.add(label);
+      sec.classList.toggle('collapsed');
+    }));
+  root.querySelectorAll('.mappin').forEach(b =>
+    b.addEventListener('click', (e) => { e.stopPropagation(); window.__showTab('mapa'); window.__focusOrderOnMap?.(b.dataset.order); }));
+  root.querySelectorAll('.card').forEach(c =>
+    c.addEventListener('click', () => window.__openOrderDetail?.(c.dataset.order)));
+}
 </script>
 </body>
 </html>
