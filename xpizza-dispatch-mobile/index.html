@@ -97,6 +97,7 @@
   .theme-btn{ width:34px; height:34px; border-radius:50%; border:1px solid var(--line); background:var(--stage);
     color:var(--ink); display:grid; place-items:center; cursor:pointer; padding:0; }
   .theme-btn svg{ width:17px; height:17px; }
+  #push-toggle.on{ color:var(--vivo); border-color:color-mix(in srgb,var(--vivo) 45%,var(--line)); }
   .live-dot{ display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--mut); font-weight:600; white-space:nowrap; }
   .live-dot i{ width:7px; height:7px; border-radius:50%; background:var(--vivo); animation:pulse 2s infinite; }
   @keyframes pulse{ 0%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--vivo) 55%, transparent);} 70%{ box-shadow:0 0 0 6px transparent;} 100%{ box-shadow:0 0 0 0 transparent;} }
@@ -291,6 +292,7 @@
         <div class="sub" id="head-sub">— activos · — marcas</div>
       </div>
       <div class="head-r">
+        <button class="theme-btn" id="push-toggle" aria-label="Notificaciones" hidden></button>
         <button class="theme-btn" id="theme-toggle" aria-label="Cambiar tema"></button>
         <div class="live-dot"><i></i> En vivo</div>
       </div>
@@ -343,6 +345,10 @@ import { SECTIONS, sectionForOrder, assignedDriverId, isUnassignedDelivery, canR
 import { groupScheduledBySlot, slotLabel } from './slot-format.js';
 import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js';
 import { driverPickList } from './reassign-model.js';
+import { pushSupport } from './push-support.js';
+// DB helpers for the ONE direct write (own push subscription) — same firebase-database module the SDK
+// imports (v10.13.2, browser-deduped); NOT an edit to the bundled SDK.
+import { ref, set, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
 
 // apiKey is NOT a secret — it identifies the project; real access is gated by Auth + RTDB rules.
 // Copied verbatim from xpizza-dispatch/index.html's firebaseConfig block.
@@ -454,6 +460,67 @@ window.__startApp = () => {
   XPD.subscribeToTasks((t)           => { STORE.tasks = t || {};     renderBoard(); });
   setInterval(renderBoard, 30000);   // refresh elapsed/aging chips
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Staff web push (Phase 2a) — opt-in + PushManager.subscribe → own staff_push node.
+// The staff_push set() is the SECOND and ONLY other RTDB write in the app (readonly.test guards it).
+// ─────────────────────────────────────────────────────────────────────────────
+const VAPID_PUBLIC_KEY_B64 = "BE5fD1EXpWBalKvLopadT1n7ffCE0o0vBDB-JCRIB9Lrn7AyrA953IWLyIqy1-_24wSZ_TKas1gWC-08NecHxWQ";  // PUBLIC key — safe to hardcode
+const urlB64ToU8 = (b64) => { const pad='='.repeat((4-b64.length%4)%4); const s=(b64+pad).replace(/-/g,'+').replace(/_/g,'/'); const raw=atob(s); return Uint8Array.from([...raw].map(c=>c.charCodeAt(0))); };
+const iosVer = () => { const m=navigator.userAgent.match(/OS (\d+)_(\d+)/); return m ? parseFloat(`${m[1]}.${m[2]}`) : null; };
+const PUSH_MSG = { 'not-installed':'Añadí la app a tu pantalla de inicio primero', 'ios-too-old':'Requiere iOS 16.4+', 'unsupported':'Tu navegador no soporta notificaciones', 'denied':'Permiso denegado — activalo en Ajustes' };
+const BELL    = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 1.6 5.5 2 6H4c.4-.5 2-1 2-6z"/><path d="M10.4 20a1.8 1.8 0 0 0 3.2 0"/></svg>';
+const BELL_ON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 1.6 5.5 2 6H4c.4-.5 2-1 2-6z"/><path d="M10.4 20a1.8 1.8 0 0 0 3.2 0" fill="none" stroke-width="1.7" stroke-linecap="round"/></svg>';
+
+function currentPushSupport(){
+  return pushSupport({
+    standalone: matchMedia('(display-mode: standalone)').matches || navigator.standalone === true,
+    iosVersion: /iPhone|iPad|iPod/.test(navigator.userAgent) ? iosVer() : null,
+    hasServiceWorker: 'serviceWorker' in navigator,
+    hasPushManager: 'PushManager' in window,
+    permission: (window.Notification && Notification.permission) || 'default',
+  });
+}
+function syncPushToggle(on){
+  const b = $('push-toggle'); if (!b) return;
+  b.innerHTML = on ? BELL_ON : BELL;
+  b.classList.toggle('on', !!on);
+  b.setAttribute('aria-pressed', String(!!on));
+  b.title = on ? 'Notificaciones activadas' : 'Activar notificaciones';
+}
+async function enableStaffPush(){
+  const sup = currentPushSupport();
+  if (!sup.ok) { toast(PUSH_MSG[sup.reason] || 'No disponible', 'error'); return; }
+  const perm = await Notification.requestPermission();   // requires the user gesture (this tap)
+  if (perm !== 'granted') { toast('Permiso denegado', 'error'); return; }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToU8(VAPID_PUBLIC_KEY_B64) });
+    const uid = XPD.getAuthInstance().currentUser?.uid;
+    if (!uid) { toast('Iniciá sesión', 'error'); return; }
+    // THE SECOND (and only other) WRITE — the user's OWN push subscription. Direct set via the SDK's getDb().
+    await set(ref(XPD.getDb(), `staff_push/${uid}`), { subscription: sub.toJSON(), updated_at: serverTimestamp() });
+    toast('Notificaciones activadas'); syncPushToggle(true);
+  } catch (e) { toast('No se pudo activar', 'error'); }
+}
+// Reveal the bell only where push is even possible; wire the tap; reflect an existing subscription on load.
+(() => {
+  const b = $('push-toggle');
+  if (!b || !('PushManager' in window) || !('serviceWorker' in navigator)) return;   // stays hidden on unsupported
+  b.hidden = false;
+  syncPushToggle(false);
+  b.addEventListener('click', enableStaffPush);
+  navigator.serviceWorker.ready.then((reg) => reg.pushManager.getSubscription()).then((s) => { if (s) syncPushToggle(true); }).catch(() => {});
+})();
+
+// A notification tap (SW postMessage) or a cold "#order=<id>" open → open that order's detail sheet once loaded.
+let __pendingOrderId = (() => { const m = String(location.hash || '').match(/order=([^&]+)/); return m ? decodeURIComponent(m[1]) : null; })();
+function openOrderWhenReady(orderId){
+  if (!orderId) return;
+  if (STORE.orders[orderId] || STORE.scheduled[orderId]) { __pendingOrderId = null; window.__openOrderDetail?.(orderId); }
+  else { __pendingOrderId = orderId; }   // not loaded yet — renderBoard retries when data arrives
+}
+navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data?.type === 'open-order' && e.data.orderId) openOrderWhenReady(e.data.orderId); });
 
 // ── small helpers ──
 function escapeHtml(s){
@@ -665,6 +732,8 @@ function renderBoard(){
   }
   $('tab-pedidos').innerHTML = chipBar + (body || emptyState('Sin pedidos activos'));
   bindBoardEvents();
+  if (__pendingOrderId) openOrderWhenReady(__pendingOrderId);   // deferred notification/#order= open, once data is in
+
 }
 
 function bindBoardEvents(){
