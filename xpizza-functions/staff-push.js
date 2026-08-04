@@ -58,4 +58,29 @@ function formatGrouped(pending) {
   return { title: `🔔 ${total} ${noun}`, body: parts.join(' · ') };
 }
 
-module.exports = { coalesceDecision, formatNewOrder, formatGrouped, brandLabel };
+/**
+ * Send one web-push and, on a TERMINAL (dead-subscription) error, clean it up — WITHOUT ever
+ * rejecting. Codex 2b REVISE fix: the terminal-cleanup remove() sits in the catch, so if IT rejects
+ * (RTDB hiccup) the send would reject and throw up into notifyStaffOnNewOrder / flushStaffPushQueue —
+ * and flushStaffPushQueue clears its pending buffer BEFORE sending, so a throw there would DROP the
+ * already-cleared grouped ping. Here the cleanup is swallowed so this never rejects: a dead/failed
+ * send becomes a logged no-op ({sent:false}), never a thrown trigger.
+ *
+ * Deps injected (send / removeSub / isTerminal) so it unit-tests with no firebase/web-push. The
+ * index.js sendStaffPush wrapper composes this over webpush.sendNotification + a real db remove().
+ * @returns {sent:true} | {sent:false, reason:'no_sub'|'failed', statusCode?}
+ */
+async function pushWithCleanup({ send, removeSub, isTerminal }, sub, payload) {
+  if (!sub || !sub.endpoint) return { sent: false, reason: 'no_sub' };
+  try {
+    await send(sub, payload);
+    return { sent: true };
+  } catch (err) {
+    if (isTerminal(err)) {
+      try { await removeSub(); } catch (_) { /* cleanup MUST NOT reject the send — swallow */ }
+    }
+    return { sent: false, reason: 'failed', statusCode: err && err.statusCode };
+  }
+}
+
+module.exports = { coalesceDecision, formatNewOrder, formatGrouped, brandLabel, pushWithCleanup };

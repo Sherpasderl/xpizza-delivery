@@ -104,7 +104,7 @@ const {
   PUSH_TTL_SECONDS
 } = require('./driver-push');
 // Staff web-push lane (Phase 2b) — pure coalesce/format helpers. Additive; the driver lane above is untouched.
-const { coalesceDecision, formatNewOrder, formatGrouped } = require('./staff-push');
+const { coalesceDecision, formatNewOrder, formatGrouped, pushWithCleanup } = require('./staff-push');
 const {
   geofenceTransition,
   isHubResolvable,
@@ -2523,29 +2523,34 @@ async function pushWindowMs(db) {
 // terminal-error cleanup: a 404/410 (dead subscription) removes staff_push/<uid>.
 async function sendStaffPush(db, uid, payload) {
   const sub = (await db.ref(`staff_push/${uid}/subscription`).once('value')).val();
-  if (!sub || !sub.endpoint) return { sent: false, reason: 'no_sub' };
-  try {
-    await webpush.sendNotification(
-      sub,
-      JSON.stringify({ title: payload.title, body: payload.body, tag: payload.tag, data: payload.data || {} }),
-      { urgency: 'high', TTL: PUSH_TTL_SECONDS }
-    );
-    return { sent: true };
-  } catch (err) {
-    const terminal = isTerminalWebPushError(err);
-    console.error(`sendStaffPush: ${uid} status=${err.statusCode} terminal=${terminal} (${payload.tag})`);
-    if (terminal) { await db.ref(`staff_push/${uid}`).remove(); }   // dead sub → clear
-    return { sent: false, reason: 'failed' };
+  // pushWithCleanup NEVER rejects (codex 2b REVISE): a terminal 404/410 removes the dead sub, and a
+  // cleanup-remove() rejection is swallowed — so this can't throw up into the triggers (flushStaffPushQueue
+  // clears its buffer before sending, so a throw would drop the grouped ping).
+  const res = await pushWithCleanup(
+    {
+      send: (s) => webpush.sendNotification(
+        s,
+        JSON.stringify({ title: payload.title, body: payload.body, tag: payload.tag, data: payload.data || {} }),
+        { urgency: 'high', TTL: PUSH_TTL_SECONDS }
+      ),
+      removeSub: () => db.ref(`staff_push/${uid}`).remove(),
+      isTerminal: isTerminalWebPushError,
+    },
+    sub, payload);
+  if (!res.sent && res.reason === 'failed') {
+    console.error(`sendStaffPush: ${uid} status=${res.statusCode} (${payload.tag})`);
   }
+  return { sent: res.sent, reason: res.reason };
 }
 
-// Fan a payload out to every subscribed staff member. Failures are isolated per-uid.
+// Fan a payload out to every subscribed staff member. allSettled (not all): one recipient's failure
+// can't reject the whole fan-out (belt-and-suspenders — sendStaffPush already never rejects).
 async function fanoutStaffPush(db, payload) {
   const all = (await db.ref('staff_push').once('value')).val() || {};
-  const results = await Promise.all(Object.keys(all).map((uid) => sendStaffPush(db, uid, payload)));
-  const sent = results.filter((r) => r && r.sent).length;
-  console.log(`fanoutStaffPush: ${sent}/${results.length} sent (${payload.tag})`);
-  return { sent, total: results.length };
+  const settled = await Promise.allSettled(Object.keys(all).map((uid) => sendStaffPush(db, uid, payload)));
+  const sent = settled.filter((r) => r.status === 'fulfilled' && r.value && r.value.sent).length;
+  console.log(`fanoutStaffPush: ${sent}/${settled.length} sent (${payload.tag})`);
+  return { sent, total: settled.length };
 }
 
 // notifyStaffOnNewOrder — ping dispatch staff when an order first becomes a LIVE PAID order.
@@ -2591,7 +2596,8 @@ exports.notifyStaffOnNewOrder = onValueWritten(
     if (!tx.committed) return;                                     // aborted (never happens here) → no send
 
     if (decision === 'immediate') {
-      await fanoutStaffPush(db, { ...formatNewOrder(after), tag: 'neworder', data: { orderId } });
+      try { await fanoutStaffPush(db, { ...formatNewOrder(after), tag: 'neworder', data: { orderId } }); }
+      catch (e) { console.error(`notifyStaffOnNewOrder: fanout failed for ${orderId}`, e.message); }
     }
     // buffered → flushStaffPushQueue sends the single grouped ping once the window elapses
   }
@@ -2620,7 +2626,10 @@ exports.flushStaffPushQueue = onSchedule(
       return s;
     });
     if (tx.committed && toSend) {
-      await fanoutStaffPush(db, { ...formatGrouped(toSend), tag: 'neworder', data: {} });
+      // The buffer is already cleared (atomic txn above); the fan-out never rejects, but wrap anyway so
+      // a surprise throw can't crash the scheduled invocation.
+      try { await fanoutStaffPush(db, { ...formatGrouped(toSend), tag: 'neworder', data: {} }); }
+      catch (e) { console.error('flushStaffPushQueue: fanout failed', e.message); }
     }
   }
 );

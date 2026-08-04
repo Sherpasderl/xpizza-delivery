@@ -4,7 +4,10 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { coalesceDecision, formatNewOrder, formatGrouped } = require('./staff-push.js');
+const { coalesceDecision, formatNewOrder, formatGrouped, pushWithCleanup } = require('./staff-push.js');
+
+const isTerminal = (e) => !!(e && (e.statusCode === 404 || e.statusCode === 410));
+const terminalErr = () => { const e = new Error('gone'); e.statusCode = 410; return e; };
 
 const WIN = 2 * 60 * 1000;
 
@@ -51,4 +54,42 @@ test('formatNewOrder: unknown restaurant_id falls back to X. Pizza label', () =>
   const f = formatNewOrder({ restaurant_id: undefined, display_number: 3 });
   assert.match(f.body, /X\. Pizza/);
   assert.match(f.body, /#3/);
+});
+
+// ---- pushWithCleanup (codex 2b REVISE: the send path must never reject) ----
+test('pushWithCleanup: success → {sent:true}, no cleanup', async () => {
+  let removed = false;
+  const r = await pushWithCleanup(
+    { send: async () => {}, removeSub: async () => { removed = true; }, isTerminal },
+    { endpoint: 'x' }, { title: 't' });
+  assert.deepEqual(r, { sent: true });
+  assert.equal(removed, false);
+});
+test('pushWithCleanup: missing/empty sub → {sent:false, no_sub}, never sends', async () => {
+  let sent = false;
+  const r = await pushWithCleanup(
+    { send: async () => { sent = true; }, removeSub: async () => {}, isTerminal },
+    null, {});
+  assert.equal(r.sent, false); assert.equal(r.reason, 'no_sub'); assert.equal(sent, false);
+});
+test('pushWithCleanup: terminal (410) error → removes the dead sub, {sent:false}', async () => {
+  let removed = false;
+  const r = await pushWithCleanup(
+    { send: async () => { throw terminalErr(); }, removeSub: async () => { removed = true; }, isTerminal },
+    { endpoint: 'x' }, {});
+  assert.equal(r.sent, false); assert.equal(r.reason, 'failed'); assert.equal(removed, true);
+});
+test('pushWithCleanup: RESOLVES (never rejects) when cleanup removeSub throws — THE codex REVISE fix', async () => {
+  // send fails terminally AND the cleanup remove() rejects (RTDB hiccup): must still resolve, not throw.
+  const r = await pushWithCleanup(
+    { send: async () => { throw terminalErr(); }, removeSub: async () => { throw new Error('rtdb down'); }, isTerminal },
+    { endpoint: 'x' }, {});
+  assert.equal(r.sent, false); assert.equal(r.reason, 'failed');   // resolved — did NOT reject
+});
+test('pushWithCleanup: non-terminal (500) error → does NOT remove the sub', async () => {
+  let removed = false;
+  const r = await pushWithCleanup(
+    { send: async () => { const e = new Error('boom'); e.statusCode = 500; throw e; }, removeSub: async () => { removed = true; }, isTerminal },
+    { endpoint: 'x' }, {});
+  assert.equal(r.sent, false); assert.equal(removed, false);
 });
