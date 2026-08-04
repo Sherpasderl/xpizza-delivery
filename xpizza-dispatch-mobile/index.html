@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Dispatch · X. Pizza + La Musa</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0e1013" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dispatch">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
   @font-face {
     font-family: 'Hanken Grotesk';
@@ -241,6 +248,10 @@
 
 <script type="module">
 import * as XPD from './xpizza-delivery.js';
+
+// PWA: register the static-shell service worker (never caches live RTDB/Maps — see sw.js).
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+
 import { SECTIONS, sectionForOrder, assignedDriverId, isUnassignedDelivery, canReassign,
          matchesChip, chipCounts, orderCompare } from './board-model.js';
 import { groupScheduledBySlot } from './slot-format.js';
