@@ -105,6 +105,7 @@
   main{ flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; padding:14px 14px 18px; }
   .tab-pane{ animation:fade .32s var(--ease); }
   @keyframes fade{ from{ opacity:0; transform:translateY(4px);} to{ opacity:1; transform:none;} }
+  .board-fade{ animation:fade .28s var(--ease); }   /* r8: applied to the fresh .board-body ONLY on a chip change */
 
   #tabbar{ flex:0 0 auto; display:flex; gap:6px; padding:6px 10px calc(env(safe-area-inset-bottom) + 6px);
     background:var(--bg); border-top:1px solid var(--line); }
@@ -140,8 +141,12 @@
   .sec.prog .sec-h .name{ color:var(--prog); }
   .sec-h .cnt{ margin-left:auto; font-size:12px; font-weight:800; color:var(--mut); background:var(--stage);
     border:1px solid var(--line); border-radius:20px; padding:2px 9px; min-width:24px; text-align:center; }
-  .sec.collapsed .sec-body{ display:none; }
-  .sec-body{ display:flex; flex-direction:column; gap:9px; padding-top:4px; }
+  /* r8 collapse glide: grid-rows 1fr↔0fr on .sec-body clips the .sec-inner (its single grid item),
+     which carries the card flex-column. prefers-reduced-motion kills the transition via the global guard. */
+  .sec-body{ display:grid; grid-template-rows:1fr; transition:grid-template-rows .28s var(--ease); }
+  .sec.collapsed .sec-body{ grid-template-rows:0fr; }
+  .sec-inner{ display:flex; flex-direction:column; gap:9px; padding-top:4px; overflow:hidden; min-height:0; transition:opacity .2s var(--ease); }
+  .sec.collapsed .sec-inner{ opacity:0; }
   .slot{ margin:0 0 6px; }
   .slot h4{ margin:8px 2px 6px; font-size:12px; font-weight:700; color:var(--gold); letter-spacing:.01em; }
 
@@ -430,6 +435,9 @@ window.__setTheme = (mode) => {
 
 // ── Tab switch (Pedidos / Mapa / Drivers) — panes + topbar title/subtitle ──
 const TAB_TITLES = { pedidos:'Pedidos', mapa:'Mapa', drivers:'Drivers' };
+// r8: restart a CSS animation on an element (the "set none → reflow → clear" trick).
+function fadeInPane(el){ if (!el) return; el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; }
+
 window.__showTab = (which) => {
   document.querySelectorAll('.tab-btn').forEach(b =>
     b.setAttribute('aria-selected', String(b.dataset.tab === which)));
@@ -438,6 +446,7 @@ window.__showTab = (which) => {
   $('tab-drivers').classList.toggle('hidden', which !== 'drivers');
   const ht = $('head-title'); if (ht) ht.textContent = TAB_TITLES[which] || 'Dispatch';
   const hs = $('head-sub'); if (hs) hs.style.display = which === 'pedidos' ? 'block' : 'none';
+  fadeInPane($('tab-' + which));   // r8: fade the incoming content pane (Mapa's CSS animation:none → instant, no tile reflow)
   if (which === 'mapa') window.__onMapaShown?.();   // Task 6 lazy-inits Maps here
   if (which === 'drivers') renderDriversTab();       // r2-C — read-only roster
 };
@@ -683,7 +692,7 @@ function sectionBlock(label, innerHTML, sectionKey, count){
       <span class="name">${escapeHtml(label)}</span>
       ${cnt}
     </div>
-    <div class="sec-body">${innerHTML}</div>
+    <div class="sec-body"><div class="sec-inner">${innerHTML}</div></div>
   </section>`;
 }
 function emptyState(text){ return `<div class="empty">${escapeHtml(text)}</div>`; }
@@ -730,7 +739,7 @@ function renderBoard(){
       }
     }
   }
-  $('tab-pedidos').innerHTML = chipBar + (body || emptyState('Sin pedidos activos'));
+  $('tab-pedidos').innerHTML = chipBar + `<div class="board-body">${body || emptyState('Sin pedidos activos')}</div>`;
   bindBoardEvents();
   if (__pendingOrderId) openOrderWhenReady(__pendingOrderId);   // deferred notification/#order= open, once data is in
 
@@ -739,7 +748,7 @@ function renderBoard(){
 function bindBoardEvents(){
   const root = $('tab-pedidos');
   root.querySelectorAll('.chip').forEach(b =>
-    b.addEventListener('click', () => { activeChip = b.dataset.chip; renderBoard(); }));
+    b.addEventListener('click', () => { activeChip = b.dataset.chip; renderBoard(); root.querySelector('.board-body')?.classList.add('board-fade'); }));   // r8: fade only on chip change, not data re-renders
   root.querySelectorAll('.sec-h').forEach(h =>
     h.addEventListener('click', () => {
       const sec = h.closest('.sec'); const label = sec?.dataset.sec;
@@ -928,7 +937,7 @@ function rosterSection(title, entries, stripeVar){
       <span class="stripe" style="background:var(${stripeVar})"></span>
       <span class="name">${escapeHtml(title)}</span>
       <span class="cnt">${entries.length}</span>
-    </div><div class="sec-body">${rows}</div></div>`;
+    </div><div class="sec-body"><div class="sec-inner">${rows}</div></div></div>`;
 }
 function renderDriversTab(){
   const all = Object.entries(STORE.drivers).filter(([, d]) => d && (d.name || typeof d.lat === 'number' || d.status));
