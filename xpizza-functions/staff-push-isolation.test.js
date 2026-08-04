@@ -25,6 +25,7 @@ test('staff lane added additively — helpers + triggers present', () => {
   assert.ok(src.includes('async function fanoutStaffPush(db, payload)'), 'fanoutStaffPush present');
   assert.ok(src.includes('exports.notifyStaffOnNewOrder = onValueWritten('), 'notifyStaffOnNewOrder present');
   assert.ok(src.includes('exports.flushStaffPushQueue = onSchedule('), 'flushStaffPushQueue present');
+  assert.ok(src.includes('exports.sweepStuckOrders = onSchedule('), 'sweepStuckOrders present');
 });
 
 test('staff lane never touches driver storage nodes', () => {

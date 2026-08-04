@@ -104,7 +104,7 @@ const {
   PUSH_TTL_SECONDS
 } = require('./driver-push');
 // Staff web-push lane (Phase 2b) — pure coalesce/format helpers. Additive; the driver lane above is untouched.
-const { coalesceDecision, formatNewOrder, formatGrouped, pushWithCleanup } = require('./staff-push');
+const { coalesceDecision, formatNewOrder, formatGrouped, pushWithCleanup, isStuck, stuckDedupe, formatStuck } = require('./staff-push');
 const {
   geofenceTransition,
   isHubResolvable,
@@ -2630,6 +2630,50 @@ exports.flushStaffPushQueue = onSchedule(
       // a surprise throw can't crash the scheduled invocation.
       try { await fanoutStaffPush(db, { ...formatGrouped(toSend), tag: 'neworder', data: {} }); }
       catch (e) { console.error('flushStaffPushQueue: fanout failed', e.message); }
+    }
+  }
+);
+
+// sweepStuckOrders (Phase 2c) — scheduled ~2 min. Alert dispatch staff ONCE when an order is stuck:
+// a ready delivery with no driver past config/push/unassigned_ms, or any live order aging past
+// aging_ms. Dedupe via an admin-only marker staff_push_alerted/<orderId> (NOT a field on the order —
+// that would mutate the order and re-fire every /orders trigger). Cleared when the order recovers.
+// isStuck/stuckDedupe are pure + unit-tested; the assignment is read from the `_delivery` task, the
+// same task dispatch's board-model.assignedDriverId keys off. NOT money-path (a nudge).
+exports.sweepStuckOrders = onSchedule(
+  { schedule: 'every 2 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const db = getDatabase();
+    const now = Date.now();
+    const [ordersSnap, tasksSnap, cfgSnap, alertedSnap] = await Promise.all([
+      db.ref('orders').once('value'),
+      db.ref('tasks').once('value'),
+      db.ref('config/push').once('value'),
+      db.ref('staff_push_alerted').once('value'),
+    ]);
+    const orders = ordersSnap.val() || {};
+    const tasks = tasksSnap.val() || {};
+    const cfg = cfgSnap.val() || {};
+    const alerted = alertedSnap.val() || {};
+    const thresholds = {
+      unassignedMs: (typeof cfg.unassigned_ms === 'number' && cfg.unassigned_ms > 0) ? cfg.unassigned_ms : 600000,   // 10 min
+      agingMs: (typeof cfg.aging_ms === 'number' && cfg.aging_ms > 0) ? cfg.aging_ms : 1500000,                       // 25 min
+    };
+
+    for (const [orderId, order] of Object.entries(orders)) {
+      const deliveryTask = tasks[`${orderId}_delivery`] || null;
+      const result = isStuck(order, deliveryTask, now, thresholds);
+      const action = stuckDedupe(alerted[orderId] === true, result.stuck);
+      if (action === 'alert') {
+        // Mark BEFORE the send so a fan-out failure can't cause a re-alert next sweep (send is a nudge;
+        // the marker is the dedupe source of truth). fanoutStaffPush never rejects; wrap anyway.
+        await db.ref(`staff_push_alerted/${orderId}`).set(true);
+        try {
+          await fanoutStaffPush(db, { ...formatStuck(order, result), tag: `stuck:${orderId}`, data: { orderId } });
+        } catch (e) { console.error(`sweepStuckOrders: fanout failed for ${orderId}`, e.message); }
+      } else if (action === 'clear') {
+        await db.ref(`staff_push_alerted/${orderId}`).remove();   // recovered/terminal → drop the marker
+      }
     }
   }
 );

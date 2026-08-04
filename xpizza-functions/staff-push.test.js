@@ -4,7 +4,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { coalesceDecision, formatNewOrder, formatGrouped, pushWithCleanup } = require('./staff-push.js');
+const { coalesceDecision, formatNewOrder, formatGrouped, pushWithCleanup, isStuck, stuckDedupe, formatStuck } = require('./staff-push.js');
 
 const isTerminal = (e) => !!(e && (e.statusCode === 404 || e.statusCode === 410));
 const terminalErr = () => { const e = new Error('gone'); e.statusCode = 410; return e; };
@@ -92,4 +92,61 @@ test('pushWithCleanup: non-terminal (500) error → does NOT remove the sub', as
     { send: async () => { const e = new Error('boom'); e.statusCode = 500; throw e; }, removeSub: async () => { removed = true; }, isTerminal },
     { endpoint: 'x' }, {});
   assert.equal(r.sent, false); assert.equal(removed, false);
+});
+
+// ---- isStuck (Phase 2c) ----
+const TH = { unassignedMs: 10 * 60 * 1000, agingMs: 25 * 60 * 1000 };
+const NOW = 100 * 60 * 1000;
+const min = (n) => n * 60 * 1000;
+
+test('isStuck: ready delivery, no driver, past unassignedMs → stuck(unassigned)', () => {
+  const o = { status: 'ready', order_type: 'delivery', created_at: NOW - min(12) };
+  const r = isStuck(o, { assigned_driver_id: null }, NOW, TH);
+  assert.equal(r.stuck, true); assert.equal(r.kind, 'unassigned'); assert.equal(r.minutes, 12);
+});
+test('isStuck: assigned ready delivery → not unassigned-stuck (and not yet aging)', () => {
+  const o = { status: 'ready', order_type: 'delivery', created_at: NOW - min(12) };
+  assert.notEqual(isStuck(o, { assigned_driver_id: 'd1' }, NOW, TH).kind, 'unassigned');
+});
+test('isStuck: absent order_type counts as delivery', () => {
+  const o = { status: 'ready', created_at: NOW - min(12) };
+  assert.equal(isStuck(o, { assigned_driver_id: null }, NOW, TH).kind, 'unassigned');
+});
+test('isStuck: unassigned but not yet past threshold → not stuck', () => {
+  const o = { status: 'ready', order_type: 'delivery', created_at: NOW - min(8) };
+  assert.equal(isStuck(o, { assigned_driver_id: null }, NOW, TH).stuck, false);
+});
+test('isStuck: aging past agingMs (pickup) → stuck(aging)', () => {
+  const o = { status: 'preparing', order_type: 'pickup', created_at: NOW - min(30) };
+  assert.equal(isStuck(o, null, NOW, TH).kind, 'aging');
+});
+test('isStuck: unassigned takes precedence over aging', () => {
+  const o = { status: 'ready', order_type: 'delivery', created_at: NOW - min(30) };  // past BOTH thresholds
+  assert.equal(isStuck(o, { assigned_driver_id: null }, NOW, TH).kind, 'unassigned');
+});
+test('isStuck: terminal/ pre-live status → never stuck', () => {
+  for (const status of ['delivered', 'completed', 'cancelled', 'pending_payment', 'scheduled']) {
+    assert.equal(isStuck({ status, created_at: NOW - min(99) }, null, NOW, TH).stuck, false, status);
+  }
+});
+test('isStuck: no age anchor → never stuck', () => {
+  assert.equal(isStuck({ status: 'ready', order_type: 'delivery' }, null, NOW, TH).stuck, false);
+});
+
+// ---- stuckDedupe ----
+test('stuckDedupe: alert once, then skip, clear when unstuck, else skip', () => {
+  assert.equal(stuckDedupe(false, true), 'alert');
+  assert.equal(stuckDedupe(true, true), 'skip');
+  assert.equal(stuckDedupe(true, false), 'clear');
+  assert.equal(stuckDedupe(false, false), 'skip');
+});
+
+// ---- formatStuck ----
+test('formatStuck: unassigned → "sin repartidor", aging → "sin completar", #n when stamped', () => {
+  const u = formatStuck({ display_number: 7 }, { kind: 'unassigned', minutes: 14 });
+  assert.match(u.title, /⚠️ Pedido #7/); assert.match(u.body, /14 min sin repartidor/);
+  const a = formatStuck({ display_number: 7 }, { kind: 'aging', minutes: 40 });
+  assert.match(a.body, /40 min sin completar/);
+  const noN = formatStuck({}, { kind: 'aging', minutes: 40 });
+  assert.equal(/#/.test(noN.title), false);
 });
