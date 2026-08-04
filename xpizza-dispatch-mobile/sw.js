@@ -1,15 +1,21 @@
 // Static-shell service worker + Phase-2a staff web push. Precaches ONLY the app shell and NEVER
 // intercepts live RTDB/Maps requests (staleness would violate "never present stale data as live").
-// v2: added push-support.js to the shell + the push / notificationclick handlers.
-const SHELL = 'dl-shell-v2';
+// v3: skipWaiting()/clients.claim() so a deployed SW/push update takes control of existing installs
+//     immediately (else it stays 'waiting' until every tab closes — a re-install for the owner).
+const SHELL = 'dl-shell-v3';
 const ASSETS = [
   './index.html', './xpizza-delivery.js', './board-model.js', './slot-format.js',
   './reassign-model.js', './dispatch-aging.js', './push-support.js', './fonts/hankengrotesk-var.woff2', './manifest.json',
 ];
 
-self.addEventListener('install', (e) => e.waitUntil(caches.open(SHELL).then((c) => c.addAll(ASSETS))));
+self.addEventListener('install', (e) => {
+  self.skipWaiting();   // don't wait for all tabs to close — activate the new SW as soon as it installs
+  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(ASSETS)));
+});
 self.addEventListener('activate', (e) => e.waitUntil(
-  caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== SHELL).map((k) => caches.delete(k))))
+  caches.keys()
+    .then((ks) => Promise.all(ks.filter((k) => k !== SHELL).map((k) => caches.delete(k))))
+    .then(() => self.clients.claim())   // take control of already-open clients now, so the update reaches them
 ));
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
