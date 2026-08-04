@@ -144,30 +144,33 @@
   .slot{ margin:0 0 6px; }
   .slot h4{ margin:8px 2px 6px; font-size:12px; font-weight:700; color:var(--gold); letter-spacing:.01em; }
 
-  /* ── Order card ── */
-  .card{ position:relative; padding:12px 13px 11px 15px; background:var(--card); border:1px solid var(--line);
-    border-radius:14px; box-shadow:var(--shadow); overflow:hidden; cursor:pointer;
-    transition:transform .12s var(--ease), border-color .2s var(--ease); }
-  .card:active{ transform:scale(.992); }
-  .card::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--edge, var(--line)); }
-  .card-head{ display:flex; align-items:baseline; gap:8px; }
-  .card-head .cust{ font-weight:700; font-size:17px; letter-spacing:-.01em; }
-  .card-head .onum{ font-size:14.5px; font-weight:600; color:var(--ink-mute); font-variant-numeric:tabular-nums; }
-  .card-head .age{ margin-left:auto; font-size:12.5px; font-weight:700; font-variant-numeric:tabular-nums;
-    padding:2px 8px; border-radius:999px; background:color-mix(in srgb, currentColor 12%, transparent); }
-  .card-head .age.muted{ color:var(--ink-mute); font-weight:600; background:transparent; padding:2px 0; }
-  .card-items{ margin:5px 0 0; font-size:14.5px; color:var(--ink-mute); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .card-foot{ display:flex; align-items:center; gap:8px; margin-top:9px; }
-  .card-foot .tag{ font-size:12px; font-weight:600; color:var(--ink-mute); padding:3px 9px; border-radius:7px;
-    background:var(--card2); border:1px solid var(--line); }
-  .card-foot .brand{ font-size:12px; font-weight:600; color:var(--ink-mute); }
-  .card-foot .drv{ display:inline-flex; align-items:center; gap:5px; font-size:12.5px; font-weight:600; color:var(--ink); }
-  .card-foot .mappin{ margin-left:auto; display:grid; place-items:center; width:32px; height:32px; padding:0;
-    color:var(--ink-mute); background:transparent; border:1px solid var(--line); border-radius:9px; cursor:pointer; }
-  .card-foot .mappin:active{ color:var(--ink); }
-  .gps{ width:7px; height:7px; border-radius:50%; flex:0 0 auto; }
-  .gps.live{ background:var(--listo); }
-  .gps.stale{ background:var(--ink-mute); }
+  /* ── Order card — mockup 3-part (header / items / footer). NOTE: card chips use .cchip (NOT .chip —
+     .chip is the filter chip-bar above; sharing the name would collide, cf. the r4 .gps bug). ── */
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:15px; padding:12px 13px 12px 14px; cursor:pointer; position:relative; overflow:hidden; transition:background-color .2s var(--ease), border-color .2s var(--ease), transform .12s var(--ease); }
+  .card:active{ background:var(--card2); transform:scale(.988); }
+  .card .edge{ position:absolute; left:0; top:0; bottom:0; width:4px; }   /* status spine — stage / KDS aging color */
+  .c-r1{ display:flex; align-items:center; gap:8px; }
+  .c-name{ font-size:15px; font-weight:700; letter-spacing:-.012em; }
+  .c-num{ margin-left:auto; font-size:13px; font-weight:800; color:var(--mut); font-variant-numeric:tabular-nums; }
+  .c-items{ font-size:12.5px; color:var(--mut); margin-top:4px; line-height:1.35; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .c-r3{ display:flex; align-items:center; gap:8px; margin-top:8px; }
+  .c-right{ margin-left:auto; display:inline-flex; align-items:center; gap:8px; }
+  .cchip{ font-size:11px; font-weight:700; padding:3px 8px; border-radius:7px; background:var(--stage); border:1px solid var(--line); color:var(--mut); display:inline-flex; align-items:center; gap:5px; }
+  .cchip svg{ width:11px; height:11px; }
+  .cchip.slot{ color:var(--prog); background:color-mix(in srgb,var(--prog) 12%,transparent); border-color:color-mix(in srgb,var(--prog) 30%,var(--line)); font-weight:800; }
+  .cchip.aging{ background:color-mix(in srgb,currentColor 13%,transparent); border-color:color-mix(in srgb,currentColor 34%,transparent); font-weight:800; }
+  .drv{ margin-left:auto; display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; }
+  .drv .ld{ width:8px; height:8px; border-radius:50%; }
+  .ld.vivo{ background:var(--vivo); } .ld.inact{ background:var(--inact); }
+  .unassigned{ margin-left:auto; font-size:11.5px; font-weight:800; color:var(--listo); background:color-mix(in srgb,var(--listo) 13%,transparent); border:1px solid color-mix(in srgb,var(--listo) 30%,transparent); border-radius:7px; padding:3px 9px; }
+  .pickup-tag{ margin-left:auto; display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; color:var(--mut); }
+  .pickup-tag svg{ width:12px; height:12px; }
+  .pickup-tag.ready{ color:var(--listo); }
+  .card.done{ opacity:.62; }
+  .card.done .c-name{ font-weight:600; }
+  .map-btn{ flex:0 0 auto; width:28px; height:28px; border-radius:9px; border:1px solid var(--line); background:var(--card2); color:var(--mut); display:grid; place-items:center; cursor:pointer; }
+  .map-btn:active{ background:var(--line); color:var(--ink); }
+  .map-btn svg{ width:14px; height:14px; }
 
   .empty{ padding:18px 2px; font-size:13px; color:var(--ink-mute); text-align:center; }
 
@@ -220,9 +223,10 @@
   .sh-body::-webkit-scrollbar{ width:0; }
   .sh-title{ font-size:19px; font-weight:800; letter-spacing:-.01em; }
   .sh-sub{ font-size:12.5px; color:var(--mut); margin-top:2px; }
-  .brand{ font-size:9.5px; font-weight:800; letter-spacing:.03em; padding:2px 6px; border-radius:5px; text-transform:uppercase; flex:0 0 auto; }
+  .brand{ display:inline-flex; align-items:center; gap:5px; font-size:10px; font-weight:800; letter-spacing:.03em; padding:2px 7px; border-radius:6px; flex:0 0 auto; }
   .brand.xp{ color:var(--xp); background:color-mix(in srgb,var(--xp) 14%,transparent); }
-  .brand.lm{ color:var(--lm); background:color-mix(in srgb,var(--lm) 14%,transparent); }
+  .brand.lm{ color:var(--lm); background:color-mix(in srgb,var(--lm) 16%,transparent); }
+  .status-row .av svg{ width:16px; height:16px; }
   .kv{ display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--line); font-size:13.5px; }
   .kv .k{ color:var(--mut); } .kv .v{ font-weight:600; text-align:right; }
   .items-box{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:11px 13px; margin:12px 0; }
@@ -541,44 +545,62 @@ function renderChips(counts){
   }).join('');
 }
 
-// ── driver name + GPS-liveness dot on an assigned delivery card ──
-function driverLabel(orderId){
-  const drvId = assignedDriverId(orderId, STORE.tasks);
-  if (!drvId) return '';
-  const d = STORE.drivers[drvId];
-  const name = d?.name || 'Repartidor';
-  const live = d && !XPD.isStalePing(d.last_ping);
-  return `<span class="drv"><span class="gps ${live?'live':'stale'}"></span>${escapeHtml(name)}</span>`;
+// ── footer-right cluster (mirrors the mockup cardRight): slot / clock / pickup-tag / driver / Sin asignar / — ──
+// Pure display; reuses assignedDriverId + isUnassignedDelivery + XPD.isStalePing (data derivation unchanged).
+function cardRight(id, order, section, isProg){
+  if (isProg) return `<span class="cchip slot">${IC_CAL} ${escapeHtml(slotLabelSafe(order.scheduled_for))}</span>`;
+  if (section === 'completados') return `<span class="cchip">${IC_CLOCK} ${escapeHtml(formatAging(agingSeconds(agingBaselineMs(order), Date.now())))}</span>`;
+  if (order.order_type === 'pickup') {
+    const ready = section === 'listos';
+    return `<span class="pickup-tag ${ready?'ready':''}">${IC_STORE} ${ready?'Listo p/ recoger':'Recoge el cliente'}</span>`;
+  }
+  const drvId = assignedDriverId(id, STORE.tasks);
+  if (drvId) {
+    const d = STORE.drivers[drvId] || {};
+    const live = !XPD.isStalePing(d.last_ping);
+    const first = escapeHtml(String(d.name || 'Repartidor').split(' ')[0]);
+    return `<span class="drv"><span class="ld ${live?'vivo':'inact'}"></span>${first}</span>`;
+  }
+  if (isUnassignedDelivery(order, id, STORE.tasks)) return `<span class="unassigned">Sin asignar</span>`;
+  return `<span class="drv" style="color:var(--dim);font-weight:600">—</span>`;
 }
 
-// ── one order card ──
+// ── one order card — mockup 3-part structure (header · items · footer). All data derivation kept. ──
 function orderCard(id, order, now){
   const section = sectionForOrder(order);
-  const brand = order.restaurant_id === 'la_musa' ? 'La Musa' : 'X. Pizza';
-  const type = order.order_type === 'pickup' ? 'Recoge el cliente' : 'Delivery';
+  const isProg = order.status === 'scheduled';
+  const isDone = section === 'completados';
+  const brandC = order.restaurant_id === 'la_musa' ? 'lm' : 'xp';
+  const typeIcon = order.order_type === 'pickup' ? IC_BAG : IC_BIKE;
+  const typeText = order.order_type === 'pickup' ? 'Recoger' : 'Entregar';
   const secs = agingSeconds(agingBaselineMs(order), now);
-  // Aging cue: ONLY Nuevos/En preparación heat up (spec §3.5). dispatch-aging.agingBand returns
-  // 'green'|'amber'|'red'; pass the spec thresholds (amber 8min / red 15min). The card edge heats too.
+  // Aging cue: ONLY Nuevos/En preparación heat up (spec §3.5). agingBand returns 'green'|'amber'|'red';
+  // spec thresholds amber 8min / red 15min. ac (aging color) → edge spine + the elapsed clock chip heat.
   const heats = section === 'nuevos' || section === 'preparacion';
   const band = heats ? agingBand(secs, { amber: 480, red: 900 }) : 'green';
-  const bandVar = band === 'red' ? '--red' : band === 'amber' ? '--amber' : statusColorVar(section);
-  const edgeVar = heats ? bandVar : statusColorVar(section);
-  const ageChip = heats
-    ? `<span class="age" style="color:var(${bandVar})">${formatAging(secs)}</span>`
-    : `<span class="age muted">${formatAging(secs)}</span>`;
-  const pin = `<button class="mappin" data-order="${id}" aria-label="Ver en mapa">${PIN_SVG}</button>`;
+  const ac = band === 'red' ? 'var(--red)' : band === 'amber' ? 'var(--amber)' : null;
+  const edgeColor = ac || `var(${isProg ? '--gold' : statusColorVar(section)})`;
+  const el = formatAging(secs);
+  const showEl = !isProg && !isDone;   // elapsed/clock chip in the footer for live orders (moved out of the header)
+  const elChip = showEl
+    ? (ac ? `<span class="cchip aging" style="color:${ac};border-color:${ac}">${IC_CLOCK} ${escapeHtml(el)}</span>`
+          : `<span class="cchip">${IC_CLOCK} ${escapeHtml(el)}</span>`)
+    : '';
+  const mapBtn = order.order_type === 'delivery'
+    ? `<button class="map-btn" data-order="${id}" aria-label="Ver en mapa" title="Ver en mapa">${IC_MAPPIN}</button>` : '';
   return `
-    <article class="card" style="--edge:var(${edgeVar})" data-order="${id}">
-      <div class="card-head">
-        <span class="cust">${escapeHtml(order.customer_name || 'Cliente')}</span>
-        <span class="onum">${escapeHtml(displayLabel(id, order))}</span>
-        ${ageChip}
+    <article class="card${isDone?' done':''}" data-order="${id}">
+      <span class="edge" style="background:${edgeColor}"></span>
+      <div class="c-r1">
+        <span class="c-name">${escapeHtml(order.customer_name || 'Cliente')}</span>
+        <span class="brand ${brandC}">${brandC === 'xp' ? 'X.PIZZA' : 'LA MUSA'}</span>
+        <span class="c-num">${escapeHtml(displayLabel(id, order))}</span>
       </div>
-      <div class="card-items">${escapeHtml(oneLineItems(order))}</div>
-      <div class="card-foot">
-        <span class="tag">${escapeHtml(type)}</span><span class="brand">${escapeHtml(brand)}</span>
-        ${driverLabel(id)}
-        ${order.order_type === 'delivery' ? pin : ''}
+      <div class="c-items">${escapeHtml(oneLineItems(order))}</div>
+      <div class="c-r3">
+        <span class="cchip">${typeIcon} ${escapeHtml(typeText)}</span>
+        ${elChip}
+        <span class="c-right">${cardRight(id, order, section, isProg)}${mapBtn}</span>
       </div>
     </article>`;
 }
@@ -656,7 +678,7 @@ function bindBoardEvents(){
       if (collapsed.has(label)) collapsed.delete(label); else collapsed.add(label);
       sec.classList.toggle('collapsed');
     }));
-  root.querySelectorAll('.mappin').forEach(b =>
+  root.querySelectorAll('.map-btn').forEach(b =>
     b.addEventListener('click', (e) => { e.stopPropagation(); window.__showTab('mapa'); window.__focusOrderOnMap?.(b.dataset.order); }));
   root.querySelectorAll('.card').forEach(c =>
     c.addEventListener('click', () => window.__openOrderDetail?.(c.dataset.order)));
@@ -939,8 +961,14 @@ function assignFailMsg(reason){
 }
 
 // Sheet icons (calendar for scheduled, storefront for pickup) — stroke=currentColor to sit on the av bg.
-const IC_CAL='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/></svg>';
-const IC_STORE='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.7V20h16V9.7M3.2 6.6 4.4 4h15.2l1.2 2.6a2.3 2.3 0 0 1-4.4 1 2.3 2.3 0 0 1-4.4 0 2.3 2.3 0 0 1-4.4 0 2.3 2.3 0 0 1-4.4 0Z"/></svg>';
+// Card + sheet icons — copied verbatim from the mockup (sized per-context via CSS: .cchip svg 11px,
+// .pickup-tag svg 12px, .map-btn svg 14px, .status-row .av svg 16px).
+const IC_CLOCK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" stroke-linecap="round"/></svg>';
+const IC_BIKE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 18 10 8h4l2 4M9 8h5"/></svg>';
+const IC_BAG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l1 13H5L6 7Z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>';
+const IC_STORE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h16l-1-4H5L4 9Z"/><path d="M5 9v10h14V9M9 19v-5h6v5"/></svg>';
+const IC_CAL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>';
+const IC_MAPPIN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5.2-8 11-8 11s-8-5.8-8-11a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/></svg>';
 
 const brandCls = (order) => order && order.restaurant_id === 'la_musa' ? 'lm' : 'xp';
 const brandName = (order) => order && order.restaurant_id === 'la_musa' ? 'La Musa' : 'X. Pizza';
