@@ -705,7 +705,7 @@ function renderBoard(){
     const groups = groupScheduledBySlot(STORE.scheduled, now);
     body = groups.length
       ? groups.map(g => sectionBlock(g.label, g.orders.map(({id,order}) => orderCard(id, order, now)).join(''), 'gold', g.orders.length)).join('')
-      : emptyState('Sin pedidos programados');
+      : emptyState('No hay pedidos programados');
   } else {
     // live sections
     const ids = Object.keys(STORE.orders).filter(id =>
@@ -718,7 +718,7 @@ function renderBoard(){
     body = SECTIONS.map(sec => {
       const list = bySection[sec].sort((a,b) => orderCompare(STORE.orders[a], STORE.orders[b]));
       if (!list.length && activeChip !== 'todos') return '';   // hide empty under a filter
-      const cards = list.map(id => orderCard(id, STORE.orders[id], now)).join('') || emptyState('—');
+      const cards = list.map(id => orderCard(id, STORE.orders[id], now)).join('') || emptyState('No hay pedidos ' + SECTION_LABELS[sec].toLowerCase());
       return sectionBlock(SECTION_LABELS[sec], cards, sec, list.length);
     }).join('');
     // Programados section sits LAST on Todos (not under a type filter, per spec §3.2 partition)
@@ -923,7 +923,7 @@ function driverRowHtml(uid, d){
   </div>`;
 }
 function rosterSection(title, entries, stripeVar){
-  const rows = entries.map(([uid, d]) => driverRowHtml(uid, d)).join('') || `<div class="empty">—</div>`;
+  const rows = entries.map(([uid, d]) => driverRowHtml(uid, d)).join('') || emptyState('No hay repartidores ' + title.toLowerCase());
   return `<div class="rsec"><div class="sec-h">
       <span class="stripe" style="background:var(${stripeVar})"></span>
       <span class="name">${escapeHtml(title)}</span>
