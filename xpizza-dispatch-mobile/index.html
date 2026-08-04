@@ -76,11 +76,12 @@
   /* ── App shell — a 100dvh flex COLUMN so the tab bar is a real flex child at the true bottom (NOT
      position:fixed). This kills the fresh-load grey band (a fixed bar anchored to the layout viewport
      before the URL bar collapsed). header (fixed height) · main (flex:1, scrolls) · tab bar (flex:none). */
-  /* iOS standalone miscomputes 100dvh at first paint (shell renders short → grey shows below it until
-     the first scroll forces a recompute). Pin all four edges with NO computed height so the compositor
-     sizes the shell to the exact visual viewport, sidestepping vh/dvh entirely. */
-  #screen-main{ position:fixed; inset:0; height:auto; flex-direction:column; align-items:stretch;
-    justify-content:flex-start; background:var(--bg); overflow:hidden; }
+  /* iOS standalone PWA miscomputes viewport height at first paint (100dvh AND inset:0 both leave the
+     shell short → a grey band below it that only fills after the first scroll). The reliable fix is to
+     PIN the height in JS from window.visualViewport.height (see __fitShell). This top-anchored 100dvh is
+     only the pre-JS fallback; __fitShell overrides the exact px height. */
+  #screen-main{ position:fixed; top:0; left:0; right:0; bottom:auto; height:100dvh; flex-direction:column;
+    align-items:stretch; justify-content:flex-start; background:var(--bg); overflow:hidden; }
 
   /* topbar — mockup .apphead (per-tab title + subtitle + En-vivo dot + theme toggle) */
   .apphead{ flex:0 0 auto; padding:calc(env(safe-area-inset-top) + 6px) 18px 12px; display:flex;
@@ -165,7 +166,9 @@
 
   .empty{ padding:18px 2px; font-size:13px; color:var(--ink-mute); text-align:center; }
 
-  /* ── Drivers roster (r2-C, Option 1) — mockup .drow/.gps/.dord + .rsec reuses .sec-h ── */
+  /* ── Drivers roster (r2-C, Option 1) — mockup .drow/.gpspill/.dord + .rsec reuses .sec-h.
+     NOTE: the pill is .gpspill, NOT .gps — .gps is the 7×7 order-card liveness DOT above; sharing the
+     name clamped the roster pill to 7px and overlapped the order#. ── */
   .roster{ padding:4px 0 6px; }
   .drow{ display:flex; align-items:center; gap:11px; margin:0 0 8px; padding:12px 13px; background:var(--card);
     border:1px solid var(--line); border-radius:14px; cursor:pointer; transition:background-color .2s var(--ease), transform .12s var(--ease); }
@@ -175,13 +178,13 @@
   .dnm{ font-size:15px; font-weight:700; letter-spacing:-.012em; }
   .dsub{ font-size:12px; color:var(--mut); margin-top:2px; font-weight:600; }
   .dright{ display:flex; align-items:center; gap:9px; flex:0 0 auto; }
-  .gps{ font-size:10px; font-weight:800; padding:3px 8px 3px 7px; border-radius:20px; display:inline-flex; align-items:center; gap:5px; letter-spacing:.01em; }
-  .gps::before{ content:""; width:6px; height:6px; border-radius:50%; flex:0 0 auto; }
-  .gps.vivo{ color:var(--vivo); background:color-mix(in srgb,var(--vivo) 14%,transparent); }
-  .gps.vivo::before{ background:var(--vivo); }
-  .gps.inact{ color:var(--inact); background:color-mix(in srgb,var(--inact) 16%,transparent); }
-  .gps.inact::before{ background:var(--inact); }
-  .dord{ font-size:13px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums; min-width:38px; text-align:right; }
+  .gpspill{ flex:0 0 auto; white-space:nowrap; font-size:10px; font-weight:800; padding:3px 8px 3px 7px; border-radius:20px; display:inline-flex; align-items:center; gap:5px; letter-spacing:.01em; }
+  .gpspill::before{ content:""; width:6px; height:6px; border-radius:50%; flex:0 0 auto; }
+  .gpspill.vivo{ color:var(--vivo); background:color-mix(in srgb,var(--vivo) 14%,transparent); }
+  .gpspill.vivo::before{ background:var(--vivo); }
+  .gpspill.inact{ color:var(--inact); background:color-mix(in srgb,var(--inact) 16%,transparent); }
+  .gpspill.inact::before{ background:var(--inact); }
+  .dord{ flex:0 0 auto; white-space:nowrap; font-size:13px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums; min-width:38px; text-align:right; }
   .dord.dash{ color:var(--dim); font-weight:700; }
   .rsec{ margin:0 0 10px; }
   .rsec .sec-h{ cursor:default; }
@@ -347,7 +350,24 @@ const $ = (id) => document.getElementById(id);
 const show = (which) => {
   $('screen-login').classList.toggle('hidden', which !== 'login');
   $('screen-main').classList.toggle('hidden', which !== 'main');
+  if (which === 'main') requestAnimationFrame(__fitShell);   // pin the shell height once it's visible
 };
+
+// iOS standalone PWA miscomputes the viewport height at first paint (a grey band below the shell that
+// only fills after the first scroll — CSS 100dvh/inset:0 don't beat it). Pin #screen-main to the ACTUAL
+// visual viewport height so it always reaches the true bottom.
+function __fitShell(){
+  const el = document.getElementById('screen-main');
+  const vv = window.visualViewport;
+  const h = (vv && vv.height) ? vv.height : window.innerHeight;
+  if (el && h) el.style.height = h + 'px';
+}
+window.visualViewport?.addEventListener('resize', __fitShell);
+window.visualViewport?.addEventListener('scroll', __fitShell);
+window.addEventListener('resize', __fitShell);
+window.addEventListener('orientationchange', () => { __fitShell(); setTimeout(__fitShell, 300); });
+window.addEventListener('load', () => { __fitShell(); requestAnimationFrame(__fitShell); setTimeout(__fitShell, 300); });
+__fitShell(); requestAnimationFrame(__fitShell);
 
 XPD.initDelivery(firebaseConfig);
 
@@ -799,7 +819,7 @@ function driverRowHtml(uid, d){
     <span class="dstat" style="background:${col}"></span>
     <div class="dinfo"><div class="dnm">${escapeHtml(d.name || 'Repartidor')}</div><div class="dsub">${escapeHtml(statusEs)}</div></div>
     <div class="dright">
-      <span class="gps ${live?'vivo':'inact'}">${live?'GPS vivo':'inactivo'}</span>
+      <span class="gpspill ${live?'vivo':'inact'}">${live?'GPS vivo':'inactivo'}</span>
       ${ordLabel ? `<span class="dord">${escapeHtml(ordLabel)}</span>` : '<span class="dord dash">sin pedido</span>'}
     </div>
   </div>`;
