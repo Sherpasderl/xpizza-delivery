@@ -31,6 +31,13 @@
       }
     },
 
+    "staff_push": {
+      "$uid": {
+        ".read":  "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && auth.token.customer !== true"
+      }
+    },
+
     "tasks": {
       ".read": "auth != null && auth.token.customer !== true",
       ".indexOn": ["assigned_driver_id", "order_id", "status", "type"],

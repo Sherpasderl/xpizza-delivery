@@ -28,6 +28,7 @@
     "test:cancel-order": "firebase emulators:exec --only database --project demo-xpizza \"node test/cancel-order.emulator.test.js\"",
     "test:user-profiles-rules": "firebase emulators:exec --only database --project demo-xpizza \"node test/user-profiles-rules.emulator.test.js\"",
     "test:rewards-rules": "firebase emulators:exec --only database --project demo-xpizza \"node test/rewards-rules.emulator.test.js\"",
+    "test:staff-push-rules": "firebase emulators:exec --only database --project demo-xpizza \"node test/staff-push-rules.emulator.test.js\"",
     "test:rewards-config-rules": "firebase emulators:exec --only database --project demo-xpizza \"node test/rewards-config-rules.emulator.test.js\"",
     "test:rewards-earn": "firebase emulators:exec --only database --project demo-xpizza \"node test/rewards-earn.emulator.test.js\"",
     "test:rewards-reserve": "firebase emulators:exec --only database --project demo-xpizza \"node test/rewards-reserve.emulator.test.js\"",
