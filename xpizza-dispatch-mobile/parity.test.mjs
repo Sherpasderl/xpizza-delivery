@@ -18,3 +18,9 @@ test('bundled dispatch-aging.js is byte-identical to the dispatch copy', () => {
   const dispatch = readFileSync(join(repo, 'xpizza-dispatch/dispatch-aging.js'));
   assert.equal(Buffer.compare(mobile, dispatch), 0, 'aging module drift — re-copy verbatim');
 });
+
+test('bundled driver-glide.js is byte-identical to the dispatch copy (glide engine)', () => {
+  const mobile = readFileSync(join(repo, 'xpizza-dispatch-mobile/driver-glide.js'));
+  const dispatch = readFileSync(join(repo, 'xpizza-dispatch/driver-glide.js'));
+  assert.equal(Buffer.compare(mobile, dispatch), 0, 'glide engine drift — re-copy xpizza-dispatch/driver-glide.js verbatim');
+});

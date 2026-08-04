@@ -351,6 +351,7 @@ import { groupScheduledBySlot, slotLabel } from './slot-format.js';
 import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js';
 import { driverPickList } from './reassign-model.js';
 import { pushSupport } from './push-support.js';
+import { createGlideEngine } from './driver-glide.js';   // bundled verbatim from xpizza-dispatch (parity test)
 // DB helpers for the ONE direct write (own push subscription) — same firebase-database module the SDK
 // imports (v10.13.2, browser-deduped); NOT an edit to the bundled SDK.
 import { ref, set, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
@@ -788,6 +789,17 @@ const DARK_MAP_STYLE = [
 ];
 
 let map, driverMarkers = {}, focusLayer = { markers:[], line:null, route:null }, mapReady = false, mapFailed = false;
+
+// Smoothly glide driver pins between the native service's ~10s pings instead of teleporting. The engine
+// is pure (driver-glide.js, bundled verbatim from the desktop); here we wire it to the real clock, rAF, and
+// a setPosition sink. An open InfoWindow is marker-anchored, so it tracks the gliding pin automatically.
+const glide = createGlideEngine({
+  options: { marginFactor: 1.15, maxDurationMs: 15000 },   // each glide runs ~15% past the ping interval (kills micro-stops)
+  now: () => performance.now(),
+  raf: (cb) => requestAnimationFrame(cb),
+  caf: (id) => cancelAnimationFrame(id),
+  apply: (uid, pos) => { const m = driverMarkers[uid]; if (m) m.setPosition(pos); },
+});
 let driverInfoWindow = null, dirService = null;
 // Spanish driver-status labels (XPD.formatStatus returns English; the mobile UI is Spanish — mirror
 // the desktop dispatch's statusEs).
@@ -875,14 +887,14 @@ function renderDrivers(){
     const icon = { path: google.maps.SymbolPath.CIRCLE, scale: 13, fillColor: driverMarkerColor(d.status, stale),
                    fillOpacity: 1, strokeColor: strokeCol, strokeWeight: 2.5 };
     const label = { text: (d.name || '?').charAt(0).toUpperCase(), color:'#fff', fontFamily:'Hanken Grotesk', fontSize:'11px', fontWeight:'700' };
-    if (driverMarkers[uid]) { driverMarkers[uid].setPosition(pos); driverMarkers[uid].setIcon(icon); driverMarkers[uid].setLabel(label); }
+    if (driverMarkers[uid]) { glide.update(uid, pos, { snap: stale }); driverMarkers[uid].setIcon(icon); driverMarkers[uid].setLabel(label); }   // glide between pings; snap a stale ping so it doesn't drift from an old spot
     else {
       const mk = new google.maps.Marker({ map, position:pos, icon, label, title: d.name || 'Repartidor', zIndex:1000 });
       mk.addListener('click', () => openDriverInfo(uid));   // styled info window (name · status · order#)
       driverMarkers[uid] = mk;
     }
   }
-  for (const uid of Object.keys(driverMarkers)) if (!seen.has(uid)) { driverMarkers[uid].setMap(null); delete driverMarkers[uid]; }
+  for (const uid of Object.keys(driverMarkers)) if (!seen.has(uid)) { glide.cancel(uid); driverMarkers[uid].setMap(null); delete driverMarkers[uid]; }   // cancel any in-flight glide for a removed/off-shift driver
 }
 
 // Driver info window (rendered in Google's light bubble → fixed dark text): name · status · current order#.

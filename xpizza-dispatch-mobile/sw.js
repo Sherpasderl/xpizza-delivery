@@ -2,10 +2,10 @@
 // intercepts live RTDB/Maps requests (staleness would violate "never present stale data as live").
 // v3: skipWaiting()/clients.claim() so a deployed SW/push update takes control of existing installs
 //     immediately (else it stays 'waiting' until every tab closes — a re-install for the owner).
-const SHELL = 'dl-shell-v3';
+const SHELL = 'dl-shell-v4';
 const ASSETS = [
   './index.html', './xpizza-delivery.js', './board-model.js', './slot-format.js',
-  './reassign-model.js', './dispatch-aging.js', './push-support.js', './fonts/hankengrotesk-var.woff2', './manifest.json',
+  './reassign-model.js', './dispatch-aging.js', './driver-glide.js', './push-support.js', './fonts/hankengrotesk-var.woff2', './manifest.json',
 ];
 
 self.addEventListener('install', (e) => {
