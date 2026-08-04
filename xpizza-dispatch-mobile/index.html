@@ -131,14 +131,14 @@
 
   /* ── Sections — mockup .sec-h (chevron LEFT · stripe · UPPERCASE name · count pill right) ── */
   .sec{ margin:0 0 14px; }
-  .sec-h{ display:flex; align-items:center; gap:10px; padding:10px 14px 10px 6px; cursor:pointer; user-select:none;
+  .sec-h{ display:flex; align-items:center; gap:10px; padding:10px 6px; cursor:pointer; user-select:none;
     width:100%; background:transparent; border:none; text-align:left; }
   .sec-h .chev{ width:15px; height:15px; color:var(--dim); transition:transform .2s; flex:0 0 auto; }
   .sec.collapsed .chev{ transform:rotate(-90deg); }
   .sec-h .stripe{ width:9px; height:9px; border-radius:3px; flex:0 0 auto; }
   .sec-h .name{ font-size:16px; font-weight:800; letter-spacing:.095em; text-transform:uppercase; color:var(--ink); }
   .sec.prog .sec-h .name{ color:var(--prog); }
-  .sec-h .cnt{ margin-left:auto; font-size:13px; font-weight:800; color:var(--mut); background:var(--stage);
+  .sec-h .cnt{ margin-left:auto; font-size:12px; font-weight:800; color:var(--mut); background:var(--stage);
     border:1px solid var(--line); border-radius:20px; padding:2px 9px; min-width:24px; text-align:center; }
   .sec.collapsed .sec-body{ display:none; }
   .sec-body{ display:flex; flex-direction:column; gap:9px; padding-top:4px; }
