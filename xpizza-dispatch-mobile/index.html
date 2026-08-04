@@ -759,7 +759,9 @@ $('theme-toggle').addEventListener('click', () => { if (mapReady && map) map.set
 
 function orderForDriver(uid){
   for (const id of Object.keys(STORE.orders)) {
-    if (assignedDriverId(id, STORE.tasks) === uid) return id;
+    const sec = sectionForOrder(STORE.orders[id]);
+    if (sec === null || sec === 'completados') continue;   // assigned_driver_id persists after completion —
+    if (assignedDriverId(id, STORE.tasks) === uid) return id;  //   a finished/non-live order is not "current"
   }
   return null;
 }
