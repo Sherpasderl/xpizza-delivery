@@ -1,10 +1,10 @@
-// Static-shell-only service worker — Phase 1 PWA installability (spec §8).
-// It precaches ONLY the app shell and NEVER intercepts the live RTDB/Maps requests: staleness there
-// would violate spec §7 ("never present stale data as live"). Offline/badges/push are Phases 2–3.
-const SHELL = 'dl-shell-v1';
+// Static-shell service worker + Phase-2a staff web push. Precaches ONLY the app shell and NEVER
+// intercepts live RTDB/Maps requests (staleness would violate "never present stale data as live").
+// v2: added push-support.js to the shell + the push / notificationclick handlers.
+const SHELL = 'dl-shell-v2';
 const ASSETS = [
   './index.html', './xpizza-delivery.js', './board-model.js', './slot-format.js',
-  './reassign-model.js', './dispatch-aging.js', './fonts/hankengrotesk-var.woff2', './manifest.json',
+  './reassign-model.js', './dispatch-aging.js', './push-support.js', './fonts/hankengrotesk-var.woff2', './manifest.json',
 ];
 
 self.addEventListener('install', (e) => e.waitUntil(caches.open(SHELL).then((c) => c.addAll(ASSETS))));
@@ -17,4 +17,23 @@ self.addEventListener('fetch', (e) => {
   if (/firebaseio\.com|googleapis\.com|gstatic\.com/.test(url.host)) return;
   // Everything else (the static shell): network-first, fall back to the cached shell when offline.
   e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+});
+
+// ── Phase 2a: staff web push ── payload {title, body, tag, data:{orderId?}} ──
+self.addEventListener('push', (e) => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch {}
+  e.waitUntil(self.registration.showNotification(d.title || 'Dispatch', {
+    body: d.body || '', tag: d.tag || 'dispatch', data: d.data || {}, renotify: true,
+    icon: './icon-192.png', badge: './icon-192.png',
+  }));
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const orderId = e.notification.data && e.notification.data.orderId;
+  e.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const client = all.find((c) => c.url.includes(self.registration.scope)) || all[0];
+    if (client) { await client.focus(); client.postMessage({ type: 'open-order', orderId }); }
+    else { await self.clients.openWindow(orderId ? `./index.html#order=${orderId}` : './index.html'); }
+  })());
 });
