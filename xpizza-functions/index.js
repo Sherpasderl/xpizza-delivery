@@ -103,6 +103,8 @@ const {
   validateTokenOwner,
   PUSH_TTL_SECONDS
 } = require('./driver-push');
+// Staff web-push lane (Phase 2b) — pure coalesce/format helpers. Additive; the driver lane above is untouched.
+const { coalesceDecision, formatNewOrder, formatGrouped, pushWithCleanup, isStuck, stuckDedupe, formatStuck } = require('./staff-push');
 const {
   geofenceTransition,
   isHubResolvable,
@@ -2497,6 +2499,184 @@ async function sendDriverPush(db, uid, payload) {
   }
   return { sent: false, reason: 'all_failed' };
 }
+
+// ============================================================
+// STAFF WEB-PUSH LANE (Phase 2b) — additive, parallel to the driver lane above.
+// The driver path (sendDriverPush / notifyDriverOnAssignment / FCM / driver_push_tokens /
+// refreshPushReachable) is byte-for-byte untouched. This lane pushes DISPATCH STAFF on new
+// orders (coalesced), reusing web-push + isTerminalWebPushError (404/410 → dead sub) from the
+// driver lane. NOT money-path: a nudge; a failed/missed push never blocks or alters an order.
+// ============================================================
+
+// Coalesce window (ms) staff-new-order pushes fold into one grouped ping. config/push/coalesce_window_ms, default 120000 (2 min).
+async function pushWindowMs(db) {
+  try {
+    const v = (await db.ref('config/push/coalesce_window_ms').once('value')).val();
+    return (typeof v === 'number' && v > 0) ? v : 120000;
+  } catch (e) {
+    console.warn('pushWindowMs: config read failed — default 120000', e.message);
+    return 120000;
+  }
+}
+
+// Send a web-push to ONE staff subscription. Mirrors sendDriverPush's web-push half +
+// terminal-error cleanup: a 404/410 (dead subscription) removes staff_push/<uid>.
+async function sendStaffPush(db, uid, payload) {
+  const sub = (await db.ref(`staff_push/${uid}/subscription`).once('value')).val();
+  // pushWithCleanup NEVER rejects (codex 2b REVISE): a terminal 404/410 removes the dead sub, and a
+  // cleanup-remove() rejection is swallowed — so this can't throw up into the triggers (flushStaffPushQueue
+  // clears its buffer before sending, so a throw would drop the grouped ping).
+  const res = await pushWithCleanup(
+    {
+      send: (s) => webpush.sendNotification(
+        s,
+        JSON.stringify({ title: payload.title, body: payload.body, tag: payload.tag, data: payload.data || {} }),
+        { urgency: 'high', TTL: PUSH_TTL_SECONDS }
+      ),
+      removeSub: () => db.ref(`staff_push/${uid}`).remove(),
+      isTerminal: isTerminalWebPushError,
+    },
+    sub, payload);
+  if (!res.sent && res.reason === 'failed') {
+    console.error(`sendStaffPush: ${uid} status=${res.statusCode} (${payload.tag})`);
+  }
+  return { sent: res.sent, reason: res.reason };
+}
+
+// Fan a payload out to every subscribed staff member. allSettled (not all): one recipient's failure
+// can't reject the whole fan-out (belt-and-suspenders — sendStaffPush already never rejects).
+async function fanoutStaffPush(db, payload) {
+  const all = (await db.ref('staff_push').once('value')).val() || {};
+  const settled = await Promise.allSettled(Object.keys(all).map((uid) => sendStaffPush(db, uid, payload)));
+  const sent = settled.filter((r) => r.status === 'fulfilled' && r.value && r.value.sent).length;
+  console.log(`fanoutStaffPush: ${sent}/${settled.length} sent (${payload.tag})`);
+  return { sent, total: settled.length };
+}
+
+// notifyStaffOnNewOrder — ping dispatch staff when an order first becomes a LIVE PAID order.
+// Transition guard mirrors allocateDisplayNumberOnSale: reuses displayNumberEligible (status:'new'
+// AND, for online, payment confirmed) on BOTH edges so it fires exactly once, on the false→true
+// flip — and correctly skips unpaid-online writes. First order in a quiet window pings immediately;
+// bursts within config/push/coalesce_window_ms accumulate atomically into staff_push_state.pending
+// for the grouped follow-up (sent by flushStaffPushQueue). staff_push_state is admin-only (functions
+// bypass rules); no client rule exists for it.
+exports.notifyStaffOnNewOrder = onValueWritten(
+  { ref: '/orders/{orderId}', region: 'us-central1' },
+  async (event) => {
+    const after = event.data.after.val();
+    if (!after) return;                                            // order gone
+    const before = event.data.before.val();
+    const becameLive = displayNumberEligible(after) && !displayNumberEligible(before);
+    if (!becameLive) return;                                       // fire once, on the transition into live/paid
+
+    const db = getDatabase();
+    const orderId = event.params.orderId;
+    const brand = after.restaurant_id === 'la_musa' ? 'la_musa' : 'x_pizza';
+    const now = Date.now();
+    const WINDOW = await pushWindowMs(db);
+
+    // Atomic: decide immediate-vs-buffer AND accumulate the pending buffer in one transaction, so a
+    // burst of concurrent new orders can't lose an update. `decision` is captured from the COMMITTED
+    // run (RTDB re-runs the fn until commit; the final run's values are the committed ones — same idiom
+    // as allocateDisplayNumberOnSale). Reset each run so only the committed run's value survives.
+    let decision = null;
+    const tx = await db.ref('staff_push_state').transaction((s) => {
+      decision = null;
+      s = s || { last_sent_at: 0, pending: { x_pizza: 0, la_musa: 0, ids: [] } };
+      if (!s.pending) s.pending = { x_pizza: 0, la_musa: 0, ids: [] };
+      decision = coalesceDecision({ lastSentAt: s.last_sent_at || 0, now, windowMs: WINDOW });
+      if (decision === 'immediate') {
+        s.last_sent_at = now;                                      // open a fresh window
+      } else {
+        s.pending[brand] = (s.pending[brand] || 0) + 1;           // fold into the grouped follow-up
+        s.pending.ids = [...(s.pending.ids || []), orderId];
+      }
+      return s;
+    });
+    if (!tx.committed) return;                                     // aborted (never happens here) → no send
+
+    if (decision === 'immediate') {
+      try { await fanoutStaffPush(db, { ...formatNewOrder(after), tag: 'neworder', data: { orderId } }); }
+      catch (e) { console.error(`notifyStaffOnNewOrder: fanout failed for ${orderId}`, e.message); }
+    }
+    // buffered → flushStaffPushQueue sends the single grouped ping once the window elapses
+  }
+);
+
+// flushStaffPushQueue — scheduled ~1 min. Once a coalesce window has elapsed with a non-empty pending
+// buffer, send ONE grouped ping and clear the buffer. The read+clear is a single transaction (the spec's
+// atomic-clear invariant) so an order buffered concurrently is either included or survives to the next
+// flush — never double-sent, never dropped. `toSend` is captured from the committed run (reset each run).
+exports.flushStaffPushQueue = onSchedule(
+  { schedule: 'every 1 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const db = getDatabase();
+    const now = Date.now();
+    const WINDOW = await pushWindowMs(db);
+    let toSend = null;
+    const tx = await db.ref('staff_push_state').transaction((s) => {
+      toSend = null;
+      if (!s || !s.pending) return s;                             // nothing buffered
+      const total = (s.pending.x_pizza || 0) + (s.pending.la_musa || 0);
+      if (total === 0) return s;                                  // nothing to send
+      if (now - (s.last_sent_at || 0) < WINDOW) return s;         // still inside the window — wait
+      toSend = s.pending;
+      s.last_sent_at = now;
+      s.pending = { x_pizza: 0, la_musa: 0, ids: [] };
+      return s;
+    });
+    if (tx.committed && toSend) {
+      // The buffer is already cleared (atomic txn above); the fan-out never rejects, but wrap anyway so
+      // a surprise throw can't crash the scheduled invocation.
+      try { await fanoutStaffPush(db, { ...formatGrouped(toSend), tag: 'neworder', data: {} }); }
+      catch (e) { console.error('flushStaffPushQueue: fanout failed', e.message); }
+    }
+  }
+);
+
+// sweepStuckOrders (Phase 2c) — scheduled ~2 min. Alert dispatch staff ONCE when an order is stuck:
+// a ready delivery with no driver past config/push/unassigned_ms, or any live order aging past
+// aging_ms. Dedupe via an admin-only marker staff_push_alerted/<orderId> (NOT a field on the order —
+// that would mutate the order and re-fire every /orders trigger). Cleared when the order recovers.
+// isStuck/stuckDedupe are pure + unit-tested; the assignment is read from the `_delivery` task, the
+// same task dispatch's board-model.assignedDriverId keys off. NOT money-path (a nudge).
+exports.sweepStuckOrders = onSchedule(
+  { schedule: 'every 2 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const db = getDatabase();
+    const now = Date.now();
+    const [ordersSnap, tasksSnap, cfgSnap, alertedSnap] = await Promise.all([
+      db.ref('orders').once('value'),
+      db.ref('tasks').once('value'),
+      db.ref('config/push').once('value'),
+      db.ref('staff_push_alerted').once('value'),
+    ]);
+    const orders = ordersSnap.val() || {};
+    const tasks = tasksSnap.val() || {};
+    const cfg = cfgSnap.val() || {};
+    const alerted = alertedSnap.val() || {};
+    const thresholds = {
+      unassignedMs: (typeof cfg.unassigned_ms === 'number' && cfg.unassigned_ms > 0) ? cfg.unassigned_ms : 600000,   // 10 min
+      agingMs: (typeof cfg.aging_ms === 'number' && cfg.aging_ms > 0) ? cfg.aging_ms : 1500000,                       // 25 min
+    };
+
+    for (const [orderId, order] of Object.entries(orders)) {
+      const deliveryTask = tasks[`${orderId}_delivery`] || null;
+      const result = isStuck(order, deliveryTask, now, thresholds);
+      const action = stuckDedupe(alerted[orderId] === true, result.stuck);
+      if (action === 'alert') {
+        // Mark BEFORE the send so a fan-out failure can't cause a re-alert next sweep (send is a nudge;
+        // the marker is the dedupe source of truth). fanoutStaffPush never rejects; wrap anyway.
+        await db.ref(`staff_push_alerted/${orderId}`).set(true);
+        try {
+          await fanoutStaffPush(db, { ...formatStuck(order, result), tag: `stuck:${orderId}`, data: { orderId } });
+        } catch (e) { console.error(`sweepStuckOrders: fanout failed for ${orderId}`, e.message); }
+      } else if (action === 'clear') {
+        await db.ref(`staff_push_alerted/${orderId}`).remove();   // recovered/terminal → drop the marker
+      }
+    }
+  }
+);
 
 exports.notifyDriverOnAssignment = onValueWritten(
   {
