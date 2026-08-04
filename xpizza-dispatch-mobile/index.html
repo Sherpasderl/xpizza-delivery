@@ -151,6 +151,41 @@
   .map-msg{ position:absolute; left:50%; bottom:16px; transform:translateX(-50%); z-index:5; max-width:80%;
     padding:9px 14px; font-size:13px; color:var(--ink); background:var(--card); border:1px solid var(--line);
     border-radius:12px; box-shadow:var(--shadow); text-align:center; }
+
+  /* ── Bottom sheet + scrim + toast ── */
+  #scrim{ position:fixed; inset:0; z-index:40; background:rgba(0,0,0,.45); opacity:0; visibility:hidden;
+    transition:opacity .28s var(--ease), visibility .28s var(--ease); }
+  #scrim.on{ opacity:1; visibility:visible; }
+  #sheet{ position:fixed; left:0; right:0; bottom:0; z-index:41; background:var(--sheet); color:var(--ink);
+    border-radius:20px 20px 0 0; box-shadow:0 -8px 40px rgba(0,0,0,.35);
+    padding:8px 18px calc(env(safe-area-inset-bottom) + 22px); max-height:82vh; overflow-y:auto;
+    transform:translateY(101%); transition:transform .34s var(--ease); }
+  #sheet.on{ transform:translateY(0); }
+  #sheet::before{ content:""; display:block; width:38px; height:4px; border-radius:2px; background:var(--line); margin:6px auto 14px; }
+  #sheet h3{ margin:0 0 4px; font-size:17px; font-weight:700; letter-spacing:-.01em; }
+  #sheet p{ margin:6px 0; font-size:14px; color:var(--ink-mute); }
+  #sheet p.cur{ color:var(--ink); }
+  #sheet .muted{ color:var(--ink-mute); }
+  #sheet .confirm-flow{ font-size:16px; font-weight:600; color:var(--ink); margin:10px 0 16px; }
+  #sheet button.primary{ width:100%; margin-top:12px; padding:14px; font:inherit; font-weight:700; font-size:15px;
+    color:var(--accent-fg); background:var(--accent); border:none; border-radius:13px; cursor:pointer; }
+  #sheet button.ghost{ width:100%; margin-top:8px; padding:13px; font:inherit; font-weight:600; color:var(--ink-mute);
+    background:transparent; border:1px solid var(--line); border-radius:13px; cursor:pointer; }
+  #sheet button:disabled{ opacity:.55; }
+  .pick-list{ display:flex; flex-direction:column; gap:8px; margin-top:6px; }
+  .drv-row{ display:flex; align-items:center; gap:10px; width:100%; padding:12px 13px; font:inherit;
+    color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:13px; cursor:pointer; text-align:left; }
+  .drv-row.current{ border-color:var(--accent); cursor:default; }
+  .drv-row .dn{ font-weight:600; font-size:14px; }
+  .drv-row .dm{ margin-left:auto; font-size:12px; color:var(--ink-mute); font-variant-numeric:tabular-nums; }
+  .drv-row .dl{ font-size:12px; color:var(--ink-mute); }
+
+  #toast{ position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom) + 84px); transform:translateX(-50%) translateY(12px);
+    z-index:50; max-width:82vw; padding:11px 16px; font-size:14px; font-weight:600; color:var(--accent-fg);
+    background:var(--accent); border-radius:12px; box-shadow:var(--shadow); opacity:0; visibility:hidden;
+    transition:opacity .25s var(--ease), transform .25s var(--ease), visibility .25s var(--ease); }
+  #toast.on{ opacity:1; visibility:visible; transform:translateX(-50%) translateY(0); }
+  #toast.error{ background:var(--red); color:#fff; }
 </style>
 </head>
 <body>
@@ -199,12 +234,18 @@
     </nav>
   </div>
 
+  <!-- Bottom sheet (order detail → driver pick → confirm) + scrim + toast -->
+  <div id="scrim"></div>
+  <div id="sheet" role="dialog" aria-modal="true"><div id="sheet-body"></div></div>
+  <div id="toast"></div>
+
 <script type="module">
 import * as XPD from './xpizza-delivery.js';
 import { SECTIONS, sectionForOrder, assignedDriverId, isUnassignedDelivery, canReassign,
          matchesChip, chipCounts, orderCompare } from './board-model.js';
 import { groupScheduledBySlot } from './slot-format.js';
 import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js';
+import { driverPickList } from './reassign-model.js';
 
 // apiKey is NOT a secret — it identifies the project; real access is gated by Auth + RTDB rules.
 // Copied verbatim from xpizza-dispatch/index.html's firebaseConfig block.
@@ -569,6 +610,100 @@ window.__focusOrderOnMap = async (orderId) => {
 };
 
 $('ver-todos').addEventListener('click', () => { clearFocus(); if (mapReady) { map.setZoom(13); renderDrivers(); } });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Assign / reassign — the ONE mutation. Order detail → driver pick → confirm → write.
+// The write mirrors the DESKTOP dispatch EXACTLY (xpizza-dispatch/index.html assignOrder):
+//   • reassign of an ALREADY-assigned order → SDK reassignOrder (id, drv, fromDriver)
+//     (CAS against the driver captured at pick-open + old-driver current_task_id/status cleanup)
+//   • fresh assign of an UNASSIGNED order   → SDK assignOrderToDriver (id, drv)
+// Both are the bundled, byte-identical SDK paths — we add/subtract NO assignment rules. Using only
+// assignOrderToDriver (as the plan sketch did) would fail every real reassign: its CAS commits only
+// when the delivery task is currently unassigned, so an already-assigned order returns
+// {ok:false, reason:'already_assigned'} and never moves + never releases the old driver.
+// ─────────────────────────────────────────────────────────────────────────────
+let pickerFromDriver = null;   // driver frozen at pick-open — reassignOrder's CAS anchor (stale-view guard)
+let pickerIsReassign = false;
+
+function openSheet(html){ $('sheet-body').innerHTML = html; $('scrim').classList.add('on'); $('sheet').classList.add('on'); }
+function closeSheet(){ $('scrim').classList.remove('on'); $('sheet').classList.remove('on'); }
+$('scrim').addEventListener('click', closeSheet);
+
+let _toastT;
+function toast(msg, kind){
+  const el = $('toast'); el.textContent = msg; el.className = kind === 'error' ? 'on error' : 'on';
+  clearTimeout(_toastT); _toastT = setTimeout(() => el.classList.remove('on'), 2600);
+}
+
+// Failure copy — mirrors the desktop's assignFailMsg.
+function assignFailMsg(reason){
+  switch (reason) {
+    case 'already_assigned':
+    case 'pickup_taken': return 'Ya fue asignada a otro repartidor';
+    case 'claim_stale': return 'La asignación cambió — actualizá e intentá de nuevo';
+    case 'write_failed': return 'No se pudo asignar (error de red) — reintentá';
+    default: return 'No se pudo asignar';
+  }
+}
+
+window.__openOrderDetail = (orderId) => {
+  const order = STORE.orders[orderId]; if (!order) return;
+  const drvId = assignedDriverId(orderId, STORE.tasks);
+  const actionable = canReassign(order);   // delivery + live only (pickup/scheduled/completed → no action)
+  const label = drvId ? 'Reasignar' : 'Asignar';
+  openSheet(`
+    <h3>${escapeHtml(order.customer_name || 'Cliente')} · ${escapeHtml(displayLabel(orderId, order))}</h3>
+    <p>${escapeHtml(oneLineItems(order))}</p>
+    ${drvId ? `<p class="cur">Repartidor actual: ${escapeHtml(STORE.drivers[drvId]?.name || '—')}</p>` : ''}
+    ${actionable ? `<button id="do-reassign" class="primary">${escapeHtml(label)}</button>` : '<p class="muted">Sin acción de repartidor para este pedido.</p>'}
+    <button id="detail-close" class="ghost">Cerrar</button>`);
+  $('detail-close').addEventListener('click', closeSheet);
+  if (actionable) $('do-reassign').addEventListener('click', () => openDriverPick(orderId));
+};
+
+function openDriverPick(orderId){
+  const order = STORE.orders[orderId]; if (!order) return;
+  // Freeze the from-driver + reassign-ness AS SHOWN when the picker opens (mirrors desktop openPicker):
+  // reassignOrder CASes against pickerFromDriver, so if the order moves between open and confirm the
+  // write aborts instead of clobbering the driver it moved to.
+  pickerFromDriver = assignedDriverId(orderId, STORE.tasks);
+  pickerIsReassign = !!pickerFromDriver;
+  const hub = HUBS[order.restaurant_id] || HUBS.x_pizza;
+  const list = driverPickList({ order, orderId, drivers:STORE.drivers, tasks:STORE.tasks, hub, now:Date.now(), isStale:XPD.isStalePing });
+  const rows = list.length ? list.map(d => `
+    <button class="drv-row${d.isCurrent?' current':''}" data-drv="${escapeHtml(d.id)}"${d.isCurrent?' disabled':''}>
+      <span class="gps ${d.live?'live':'stale'}"></span>
+      <span class="dn">${escapeHtml(d.name)}${d.isCurrent?' · actual':''}</span>
+      <span class="dm">${Number.isFinite(d.distanceM)?Math.round(d.distanceM)+' m':'—'}</span>
+      <span class="dl">${d.load} en curso</span>
+    </button>`).join('') : emptyState('No hay repartidores en turno');
+  openSheet(`<h3>Elegí un repartidor</h3><div class="pick-list">${rows}</div>`);
+  document.querySelectorAll('#sheet .drv-row:not(.current)').forEach(b =>
+    b.addEventListener('click', () => confirmReassign(orderId, b.dataset.drv)));
+}
+
+function confirmReassign(orderId, driverId){
+  const fromName = pickerFromDriver ? (STORE.drivers[pickerFromDriver]?.name || '—') : 'Sin asignar';
+  const toName = STORE.drivers[driverId]?.name || 'Repartidor';
+  openSheet(`
+    <h3>Confirmar</h3>
+    <p class="confirm-flow"><b>${escapeHtml(fromName)}</b> → <b>${escapeHtml(toName)}</b></p>
+    <button id="confirm-yes" class="primary">Confirmar</button>
+    <button id="confirm-no" class="ghost">Cancelar</button>`);
+  $('confirm-no').addEventListener('click', closeSheet);
+  $('confirm-yes').addEventListener('click', async () => {
+    const btn = $('confirm-yes'); btn.disabled = true;
+    try {
+      // THE ONE (RE)ASSIGNMENT WRITE — the exact desktop path per case, unchanged. No allTasks arg →
+      // the SDK reads /tasks itself. Surfaces {ok,reason}; never a silent partial (spec §7).
+      const res = pickerIsReassign
+        ? await XPD.reassignOrder(orderId, driverId, pickerFromDriver)
+        : await XPD.assignOrderToDriver(orderId, driverId);
+      if (res && res.ok) { toast(pickerIsReassign ? 'Reasignado' : 'Asignado'); closeSheet(); }
+      else { toast(assignFailMsg(res?.reason), 'error'); btn.disabled = false; }
+    } catch (e) { toast('Error de red — reintentá', 'error'); btn.disabled = false; }
+  });
+}
 </script>
 </body>
 </html>
