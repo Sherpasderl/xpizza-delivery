@@ -139,6 +139,18 @@
   .gps.stale{ background:var(--ink-mute); }
 
   .empty{ padding:18px 2px; font-size:13px; color:var(--ink-mute); text-align:center; }
+
+  /* ── Mapa — a fixed layer between the header and the tab bar (ignores board scroll) ── */
+  #tab-mapa{ animation:none; }   /* the map layer is fixed; skip the pane fade so tiles don't reflow */
+  .map-wrap{ position:fixed; left:0; right:0; top:calc(env(safe-area-inset-top) + 62px);
+    bottom:calc(env(safe-area-inset-bottom) + 70px); }
+  #map{ position:absolute; inset:0; background:var(--stage); }
+  #ver-todos{ position:absolute; top:12px; right:12px; z-index:5; padding:9px 14px; font:inherit;
+    font-size:13px; font-weight:600; color:var(--ink); background:color-mix(in srgb, var(--card) 92%, transparent);
+    border:1px solid var(--line); border-radius:999px; box-shadow:var(--shadow); cursor:pointer; }
+  .map-msg{ position:absolute; left:50%; bottom:16px; transform:translateX(-50%); z-index:5; max-width:80%;
+    padding:9px 14px; font-size:13px; color:var(--ink); background:var(--card); border:1px solid var(--line);
+    border-radius:12px; box-shadow:var(--shadow); text-align:center; }
 </style>
 </head>
 <body>
@@ -164,7 +176,13 @@
 
     <main>
       <section id="tab-pedidos" class="tab-pane"></section>
-      <section id="tab-mapa" class="tab-pane hidden"></section>
+      <section id="tab-mapa" class="tab-pane hidden">
+        <div class="map-wrap">
+          <div id="map"></div>
+          <button id="ver-todos" class="hidden">Ver todos</button>
+          <div id="map-msg" class="map-msg hidden"></div>
+        </div>
+      </section>
     </main>
 
     <nav id="tabbar">
@@ -425,6 +443,132 @@ function bindBoardEvents(){
   root.querySelectorAll('.card').forEach(c =>
     c.addEventListener('click', () => window.__openOrderDetail?.(c.dataset.order)));
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mapa — live Google map of drivers + per-order focus. Auxiliary: degrades to the
+// board if Maps fails. No writes.
+// ─────────────────────────────────────────────────────────────────────────────
+const mapsApiKey = "AIzaSyAuzSLAELV_MaK2xeXrNjS6_lhNXmD_Y0A";   // same key as xpizza-dispatch/index.html (project x-pizza-delivery)
+// Restaurant hubs — the full-precision seed coords the SDK's ALLOWED_HUBS uses (display/focus only).
+const HUBS = { x_pizza:{ lat:15.507489753573818, lng:-88.0398486953722 }, la_musa:{ lat:15.50414, lng:-88.03848 } };
+// Dark map styling, copied from xpizza-dispatch/index.html (applied only in the dark theme).
+const DARK_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#131826' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#0a0d18' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#9ca3af' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d4d4d8' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0d1f1a' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#3a4459' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#131826' }] },
+  { featureType: 'road.local', elementType: 'geometry', stylers: [{ color: '#3a4459' }] },
+  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#4a5670' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#5a6685' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#131826' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0a1929' }] }
+];
+
+let map, driverMarkers = {}, focusLayer = { markers:[], line:null }, mapReady = false, mapFailed = false;
+
+const currentTheme = () => document.documentElement.getAttribute('data-theme')
+  || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+const mapStyles = () => currentTheme() === 'dark' ? DARK_MAP_STYLE : null;
+
+function loadMaps() {
+  return new Promise((resolve, reject) => {
+    if (window.google && window.google.maps && window.google.maps.Map) return resolve();
+    // Inline the official Google Maps bootstrap loader (verbatim from xpizza-dispatch/index.html).
+    (g => { var h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary", q = "__ib__", m = document, b = window; b = b[c] || (b[c] = {}); var d = b.maps || (b.maps = {}), r = new Set, e = new URLSearchParams, u = () => h || (h = new Promise(async (f, n) => { await (a = m.createElement("script")); e.set("libraries", [...r] + ""); for (k in g) e.set(k.replace(/[A-Z]/g, t => "_" + t[0].toLowerCase()), g[k]); e.set("callback", c + ".maps." + q); a.src = `https://maps.${c}apis.com/maps/api/js?` + e; d[q] = f; a.onerror = () => h = n(Error(p + " could not load.")); a.nonce = m.querySelector("script[nonce]")?.nonce || ""; m.head.append(a); })); d[l] ? console.warn(p + " only loads once. Ignoring:", g) : d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)); })({ key: mapsApiKey, v: "weekly" });
+    google.maps.importLibrary("maps").then(() => resolve()).catch(reject);
+  });
+}
+
+function showMapMsg(text){ const el = $('map-msg'); if (!el) return; el.textContent = text; el.classList.toggle('hidden', !text); }
+
+window.__onMapaShown = async () => {
+  if (mapFailed) return;
+  if (!mapReady) {
+    try {
+      await loadMaps();
+      map = new google.maps.Map($('map'), {
+        center: { lat:15.5063, lng:-88.0250 }, zoom:13, styles: mapStyles(),
+        disableDefaultUI:true, gestureHandling:'greedy', backgroundColor:'#131826',
+      });
+      mapReady = true;
+      if (window.ResizeObserver) new ResizeObserver(() => { if (map) google.maps.event.trigger(map, 'resize'); }).observe(document.querySelector('.map-wrap'));
+    } catch (e) {
+      mapFailed = true; showMapMsg('Mapa no disponible — el tablero sigue en vivo.'); return;
+    }
+  } else {
+    google.maps.event.trigger(map, 'resize');
+  }
+  renderDrivers();
+};
+
+// Restyle the live map when the theme toggles (registered AFTER Task 2's toggle handler, which flips
+// data-theme first, so this reads the new theme).
+$('theme-toggle').addEventListener('click', () => { if (mapReady && map) map.setOptions({ styles: mapStyles() }); });
+
+function orderForDriver(uid){
+  for (const id of Object.keys(STORE.orders)) {
+    if (assignedDriverId(id, STORE.tasks) === uid) return id;
+  }
+  return null;
+}
+
+window.__driversUpdated = () => { if (mapReady) renderDrivers(); };
+
+function renderDrivers(){
+  if (!mapReady) return;
+  const seen = new Set();
+  for (const [uid, d] of Object.entries(STORE.drivers)) {
+    if (typeof d?.lat !== 'number' || typeof d?.lng !== 'number') continue;
+    seen.add(uid);
+    const live = !XPD.isStalePing(d.last_ping);
+    const pos = { lat:d.lat, lng:d.lng };
+    if (driverMarkers[uid]) { driverMarkers[uid].setPosition(pos); driverMarkers[uid].setOpacity(live?1:0.5); }
+    else {
+      const mk = new google.maps.Marker({ map, position:pos, opacity: live?1:0.5, title: d.name || 'Repartidor' });
+      mk.addListener('click', () => { const oid = orderForDriver(uid); if (oid) window.__openOrderDetail?.(oid); });
+      driverMarkers[uid] = mk;
+    }
+  }
+  for (const uid of Object.keys(driverMarkers)) if (!seen.has(uid)) { driverMarkers[uid].setMap(null); delete driverMarkers[uid]; }
+}
+
+function clearFocus(){
+  focusLayer.markers.forEach(m => m.setMap(null)); focusLayer.markers = [];
+  if (focusLayer.line) { focusLayer.line.setMap(null); focusLayer.line = null; }
+  $('ver-todos')?.classList.add('hidden');
+}
+
+// Per-order focus (Ver en mapa): destination pin + assigned-driver pin + a route line driver→dest.
+// Pickup focuses the restaurant origin (no delivery destination).
+window.__focusOrderOnMap = async (orderId) => {
+  await window.__onMapaShown();
+  if (!mapReady) return;
+  clearFocus();
+  const dt = STORE.tasks[`${orderId}_delivery`];
+  const order = STORE.orders[orderId];
+  $('ver-todos')?.classList.remove('hidden');
+  if (order?.order_type === 'pickup') {   // focus origin/restaurant
+    const hub = HUBS[order.restaurant_id] || HUBS.x_pizza;
+    map.panTo(hub); map.setZoom(15);
+    focusLayer.markers.push(new google.maps.Marker({ map, position:hub, label:'R' }));
+    return;
+  }
+  const finite = (v) => typeof v === 'number' && isFinite(v);
+  const dest = finite(dt?.destination_lat) ? { lat:dt.destination_lat, lng:dt.destination_lng }
+             : (finite(order?.lat) ? { lat:order.lat, lng:order.lng } : null);
+  const drvId = dt?.assigned_driver_id; const drv = drvId && STORE.drivers[drvId];
+  if (dest) { focusLayer.markers.push(new google.maps.Marker({ map, position:dest, label:'D' })); map.panTo(dest); map.setZoom(15); }
+  if (drv && finite(drv.lat)) focusLayer.markers.push(new google.maps.Marker({ map, position:{lat:drv.lat,lng:drv.lng}, opacity: XPD.isStalePing(drv.last_ping)?0.5:1 }));
+  if (dest && drv && finite(drv.lat))
+    focusLayer.line = new google.maps.Polyline({ map, path:[{lat:drv.lat,lng:drv.lng}, dest], strokeOpacity:0.7, strokeWeight:3 });
+};
+
+$('ver-todos').addEventListener('click', () => { clearFocus(); if (mapReady) { map.setZoom(13); renderDrivers(); } });
 </script>
 </body>
 </html>
