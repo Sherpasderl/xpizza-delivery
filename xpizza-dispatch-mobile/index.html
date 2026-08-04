@@ -76,19 +76,22 @@
   /* ── App shell — a 100dvh flex COLUMN so the tab bar is a real flex child at the true bottom (NOT
      position:fixed). This kills the fresh-load grey band (a fixed bar anchored to the layout viewport
      before the URL bar collapsed). header (fixed height) · main (flex:1, scrolls) · tab bar (flex:none). */
-  #screen-main{ inset:auto; top:0; left:0; right:0; height:100dvh; flex-direction:column; align-items:stretch;
+  /* iOS standalone miscomputes 100dvh at first paint (shell renders short → grey shows below it until
+     the first scroll forces a recompute). Pin all four edges with NO computed height so the compositor
+     sizes the shell to the exact visual viewport, sidestepping vh/dvh entirely. */
+  #screen-main{ position:fixed; inset:0; height:auto; flex-direction:column; align-items:stretch;
     justify-content:flex-start; background:var(--bg); overflow:hidden; }
 
   /* topbar — mockup .apphead (per-tab title + subtitle + En-vivo dot + theme toggle) */
   .apphead{ flex:0 0 auto; padding:calc(env(safe-area-inset-top) + 6px) 18px 12px; display:flex;
     align-items:center; justify-content:space-between; gap:10px; border-bottom:1px solid var(--line); }
-  .apphead .t{ font-size:23px; font-weight:800; letter-spacing:-.026em; line-height:1.04; }
-  .apphead .sub{ font-size:11.5px; color:var(--mut); margin-top:3px; font-weight:600; letter-spacing:.004em; }
+  .apphead .t{ font-size:24px; font-weight:800; letter-spacing:-.026em; line-height:1.04; }
+  .apphead .sub{ font-size:13px; color:var(--mut); margin-top:3px; font-weight:600; letter-spacing:.004em; }
   .head-r{ display:flex; align-items:center; gap:12px; }
   .theme-btn{ width:34px; height:34px; border-radius:50%; border:1px solid var(--line); background:var(--stage);
     color:var(--ink); display:grid; place-items:center; cursor:pointer; padding:0; }
   .theme-btn svg{ width:17px; height:17px; }
-  .live-dot{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--mut); font-weight:600; white-space:nowrap; }
+  .live-dot{ display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--mut); font-weight:600; white-space:nowrap; }
   .live-dot i{ width:7px; height:7px; border-radius:50%; background:var(--vivo); animation:pulse 2s infinite; }
   @keyframes pulse{ 0%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--vivo) 55%, transparent);} 70%{ box-shadow:0 0 0 6px transparent;} 100%{ box-shadow:0 0 0 0 transparent;} }
 
@@ -123,12 +126,12 @@
   .sec{ margin:0 0 14px; }
   .sec-h{ display:flex; align-items:center; gap:10px; padding:10px 6px; cursor:pointer; user-select:none;
     width:100%; background:transparent; border:none; text-align:left; }
-  .sec-h .chev{ width:14px; height:14px; color:var(--dim); transition:transform .2s; flex:0 0 auto; }
+  .sec-h .chev{ width:15px; height:15px; color:var(--dim); transition:transform .2s; flex:0 0 auto; }
   .sec.collapsed .chev{ transform:rotate(-90deg); }
   .sec-h .stripe{ width:9px; height:9px; border-radius:3px; flex:0 0 auto; }
-  .sec-h .name{ font-size:13px; font-weight:800; letter-spacing:.095em; text-transform:uppercase; color:var(--ink); }
+  .sec-h .name{ font-size:14.5px; font-weight:800; letter-spacing:.095em; text-transform:uppercase; color:var(--ink); }
   .sec.prog .sec-h .name{ color:var(--prog); }
-  .sec-h .cnt{ margin-left:auto; font-size:12px; font-weight:800; color:var(--mut); background:var(--stage);
+  .sec-h .cnt{ margin-left:auto; font-size:13px; font-weight:800; color:var(--mut); background:var(--stage);
     border:1px solid var(--line); border-radius:20px; padding:2px 9px; min-width:24px; text-align:center; }
   .sec.collapsed .sec-body{ display:none; }
   .sec-body{ display:flex; flex-direction:column; gap:9px; padding-top:4px; }
