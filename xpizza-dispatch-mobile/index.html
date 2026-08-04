@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- FIRST-PAINT root background: on an iOS installed PWA the screen is taller than the web viewport
+     (e.g. 852 vs 793) and iOS paints the out-of-bounds bottom strip itself, sampling the DOCUMENT-ROOT
+     background at first paint — BEFORE the main <style> applies. This tiny style must come first so
+     <html> already carries --bg the instant iOS samples it (else the strip renders grey). -->
+<style>html{background:#f5f6f8}@media(prefers-color-scheme:dark){html{background:#0e1013}}</style>
 <title>Dispatch · X. Pizza + La Musa</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0e1013" media="(prefers-color-scheme: dark)">
