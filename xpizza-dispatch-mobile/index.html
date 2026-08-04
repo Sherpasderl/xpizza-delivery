@@ -47,8 +47,12 @@
     }
   }
 
-  html,body{ margin:0; font-family:'Hanken Grotesk',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
-  body{ background:var(--bg); color:var(--ink); transition:background .35s var(--ease), color .35s var(--ease); }
+  /* Solid --bg on the root + body so the Android dynamic-viewport gesture-nav inset never exposes a
+     grey band behind the shell/tab-bar; color-scheme keeps the UA overscroll canvas on-theme. */
+  html{ background:var(--bg); color-scheme:dark light; }
+  :root[data-theme="light"]{ color-scheme:light; }
+  html,body{ margin:0; min-height:100dvh; font-family:'Hanken Grotesk',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  body{ background:var(--bg); color:var(--ink); min-height:100dvh; transition:background .35s var(--ease), color .35s var(--ease); }
   @media (prefers-reduced-motion: reduce){ *{ transition:none !important; animation:none !important; } }
   .full-screen{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
   .hidden{ display:none !important; }
@@ -83,8 +87,9 @@
 
   #tabbar{ position:fixed; left:0; right:0; bottom:0; display:flex; z-index:20;
     padding:6px 10px calc(env(safe-area-inset-bottom) + 6px); gap:6px;
-    background:color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter:blur(14px) saturate(1.2);
-    border-top:1px solid var(--line); }
+    /* opaque --bg (not translucent) so the safe-area/gesture-nav inset it extends through reads as
+       solid --bg, never a grey band showing the page behind a frosted bar. */
+    background:var(--bg); border-top:1px solid var(--line); }
   .tab-btn{ flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 4px;
     font:inherit; font-size:11px; font-weight:600; color:var(--ink-mute); background:transparent; border:none;
     border-radius:12px; cursor:pointer; transition:color .25s var(--ease); }
@@ -95,11 +100,11 @@
   .chipbar{ display:flex; gap:8px; overflow-x:auto; padding:2px 2px 12px; margin:0 -2px 4px;
     scrollbar-width:none; -webkit-overflow-scrolling:touch; }
   .chipbar::-webkit-scrollbar{ display:none; }
-  .chip{ flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; padding:8px 13px; font:inherit;
-    font-size:13px; font-weight:600; color:var(--ink-mute); background:var(--card); border:1px solid var(--line);
+  .chip{ flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; padding:9px 14px; font:inherit;
+    font-size:14px; font-weight:600; color:var(--ink-mute); background:var(--card); border:1px solid var(--line);
     border-radius:999px; cursor:pointer; white-space:nowrap; transition:background .22s var(--ease), color .22s var(--ease), border-color .22s var(--ease); }
   .chip.on{ background:var(--accent); color:var(--accent-fg); border-color:transparent; }
-  .chip .ct{ font-variant-numeric:tabular-nums; font-size:12px; color:var(--ink-mute); }
+  .chip .ct{ font-variant-numeric:tabular-nums; font-size:13px; color:var(--ink-mute); }
   .chip.on .ct{ color:var(--accent-fg); opacity:.85; }
   .chip .ct.attn{ color:var(--listo); }
   .chip.on .ct.attn{ color:var(--accent-fg); }
@@ -108,11 +113,11 @@
 
   /* ── Sections ── */
   .sec{ margin:0 0 14px; }
-  .sec-head{ display:flex; align-items:center; gap:8px; width:100%; padding:6px 2px; font:inherit;
-    font-size:13px; font-weight:700; letter-spacing:.01em; color:var(--ink); background:transparent; border:none;
+  .sec-head{ display:flex; align-items:center; gap:8px; width:100%; padding:7px 2px; font:inherit;
+    font-size:15px; font-weight:700; letter-spacing:.01em; color:var(--ink); background:transparent; border:none;
     cursor:pointer; text-align:left; }
   .sec-head .dot{ width:9px; height:9px; border-radius:3px; background:var(--sc, var(--line)); }
-  .sec-head .sc-count{ font-size:12px; font-weight:600; color:var(--ink-mute); font-variant-numeric:tabular-nums; }
+  .sec-head .sc-count{ font-size:13px; font-weight:600; color:var(--ink-mute); font-variant-numeric:tabular-nums; }
   .sec-head .caret{ margin-left:auto; color:var(--ink-mute); transition:transform .25s var(--ease); }
   .sec.collapsed .caret{ transform:rotate(-90deg); }
   .sec.collapsed .sec-body{ display:none; }
@@ -127,17 +132,17 @@
   .card:active{ transform:scale(.992); }
   .card::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--edge, var(--line)); }
   .card-head{ display:flex; align-items:baseline; gap:8px; }
-  .card-head .cust{ font-weight:700; font-size:15px; letter-spacing:-.01em; }
-  .card-head .onum{ font-size:13px; font-weight:600; color:var(--ink-mute); font-variant-numeric:tabular-nums; }
-  .card-head .age{ margin-left:auto; font-size:12px; font-weight:700; font-variant-numeric:tabular-nums;
+  .card-head .cust{ font-weight:700; font-size:17px; letter-spacing:-.01em; }
+  .card-head .onum{ font-size:14.5px; font-weight:600; color:var(--ink-mute); font-variant-numeric:tabular-nums; }
+  .card-head .age{ margin-left:auto; font-size:12.5px; font-weight:700; font-variant-numeric:tabular-nums;
     padding:2px 8px; border-radius:999px; background:color-mix(in srgb, currentColor 12%, transparent); }
   .card-head .age.muted{ color:var(--ink-mute); font-weight:600; background:transparent; padding:2px 0; }
-  .card-items{ margin:5px 0 0; font-size:13px; color:var(--ink-mute); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .card-items{ margin:5px 0 0; font-size:14.5px; color:var(--ink-mute); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .card-foot{ display:flex; align-items:center; gap:8px; margin-top:9px; }
-  .card-foot .tag{ font-size:11px; font-weight:600; color:var(--ink-mute); padding:2px 8px; border-radius:7px;
+  .card-foot .tag{ font-size:12px; font-weight:600; color:var(--ink-mute); padding:3px 9px; border-radius:7px;
     background:var(--card2); border:1px solid var(--line); }
-  .card-foot .brand{ font-size:11px; font-weight:600; color:var(--ink-mute); }
-  .card-foot .drv{ display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; color:var(--ink); }
+  .card-foot .brand{ font-size:12px; font-weight:600; color:var(--ink-mute); }
+  .card-foot .drv{ display:inline-flex; align-items:center; gap:5px; font-size:12.5px; font-weight:600; color:var(--ink); }
   .card-foot .mappin{ margin-left:auto; display:grid; place-items:center; width:32px; height:32px; padding:0;
     color:var(--ink-mute); background:transparent; border:1px solid var(--line); border-radius:9px; cursor:pointer; }
   .card-foot .mappin:active{ color:var(--ink); }
@@ -174,6 +179,13 @@
   #sheet p.cur{ color:var(--ink); }
   #sheet .muted{ color:var(--ink-mute); }
   #sheet .confirm-flow{ font-size:16px; font-weight:600; color:var(--ink); margin:10px 0 16px; }
+  /* Itemized order summary (KDS-style): qty× name + red "↳ extras" sub-lines. */
+  .detail-items{ margin:8px 0 6px; display:flex; flex-direction:column; gap:3px; }
+  .dl-item{ display:flex; align-items:baseline; gap:9px; font-size:15px; color:var(--ink); line-height:1.35; }
+  .dl-item.muted{ color:var(--ink-mute); font-size:14px; }
+  .dl-qty{ font-weight:700; color:var(--ink-mute); font-variant-numeric:tabular-nums; min-width:26px; }
+  .dl-extra{ font-size:13px; color:var(--red); margin:0 0 2px 35px; line-height:1.3; }
+  .dl-extra-tag{ color:var(--ink-mute); font-size:12px; font-weight:600; }
   #sheet button.primary{ width:100%; margin-top:12px; padding:14px; font:inherit; font-weight:700; font-size:15px;
     color:var(--accent-fg); background:var(--accent); border:none; border-radius:13px; cursor:pointer; }
   #sheet button.ghost{ width:100%; margin-top:8px; padding:13px; font:inherit; font-weight:600; color:var(--ink-mute);
@@ -359,6 +371,55 @@ function displayLabel(id, order){
 }
 function oneLineItems(order){ return (order && order.items_text) ? String(order.items_text) : '—'; }
 
+// Itemized order summary for the detail sheet — qty× name + "↳ extras" per line, matching the KDS card.
+// Ported from xpizza-kitchen renderItems (the canonical consumer of items_text): parses the same
+// ' | '-joined "Nx Name (Lprice) [extras]" string the KDS parses, so the phone reads identically to the
+// kitchen screen. (Structured order.items is id-keyed for La Musa → names need the menu we don't bundle;
+// summary_lines is rewards-only. items_text is present on every order, both brands, name-resolved.)
+function renderOrderItems(order){
+  const itemsText = order && order.items_text;
+  if (!itemsText || itemsText === '—') return '<div class="dl-item muted">Sin detalle del pedido</div>';
+  // Split items by ' | ' but NOT inside [] (extras).
+  const parts = [];
+  let depth = 0, cur = '';
+  for (let i = 0; i < itemsText.length; i++) {
+    const c = itemsText[i];
+    if (c === '[') depth++;
+    else if (c === ']') depth--;
+    if (depth === 0 && itemsText.slice(i, i + 3) === ' | ') { parts.push(cur.trim()); cur = ''; i += 2; }
+    else cur += c;
+  }
+  if (cur.trim()) parts.push(cur.trim());
+
+  return parts.map(part => {
+    // Qty, Name, optional (Lprice), optional [extras]
+    const m = part.match(/^(\d+)x\s+(.+?)(?:\s+\(L[\d.]+\))?(?:\s+\[(.+)\])?$/);
+    if (!m) return `<div class="dl-item"><span>${escapeHtml(part)}</span></div>`;
+    const qty = parseInt(m[1], 10);
+    const name = escapeHtml(m[2]);
+    const extrasRaw = m[3] ? escapeHtml(m[3]) : m[3];
+    let extrasHtml = '';
+    if (extrasRaw) {
+      if (extrasRaw.includes('Pizza ')) {
+        // Per-instance "Pizza N:" extras. Strip the prefix only when qty===1 (else it says WHICH one).
+        const perPizza = extrasRaw.split(/\s*\|\s*(?=Pizza \d)/);
+        if (qty === 1) {
+          extrasHtml = `<div class="dl-extra">↳ ${perPizza[0].replace(/^Pizza \d+:\s*/, '').trim()}</div>`;
+        } else {
+          const allSame = perPizza.length === qty && perPizza.every((p, i, arr) =>
+            p.replace(/^Pizza \d+:\s*/, '').trim() === arr[0].replace(/^Pizza \d+:\s*/, '').trim());
+          extrasHtml = allSame
+            ? `<div class="dl-extra">↳ ${perPizza[0].replace(/^Pizza \d+:\s*/, '').trim()} <span class="dl-extra-tag">(todas)</span></div>`
+            : perPizza.map(p => `<div class="dl-extra">↳ ${p.trim()}</div>`).join('');
+        }
+      } else {
+        extrasHtml = `<div class="dl-extra">↳ ${extrasRaw}</div>`;
+      }
+    }
+    return `<div class="dl-item"><span class="dl-qty">${qty}×</span><span>${name}</span></div>${extrasHtml}`;
+  }).join('');
+}
+
 const SECTION_LABELS = { nuevos:'Nuevos', preparacion:'En preparación', listos:'Listos', camino:'En camino', completados:'Completados' };
 const SECTION_VAR = { nuevos:'--nuevo', preparacion:'--prep', listos:'--listo', camino:'--camino', completados:'--done', gold:'--gold' };
 function statusColorVar(section){ return SECTION_VAR[section] || '--line'; }
@@ -521,7 +582,14 @@ const DARK_MAP_STYLE = [
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0a1929' }] }
 ];
 
-let map, driverMarkers = {}, focusLayer = { markers:[], line:null }, mapReady = false, mapFailed = false;
+let map, driverMarkers = {}, focusLayer = { markers:[], line:null, route:null }, mapReady = false, mapFailed = false;
+let driverInfoWindow = null, dirService = null;
+// Spanish driver-status labels (XPD.formatStatus returns English; the mobile UI is Spanish — mirror
+// the desktop dispatch's statusEs).
+const DRIVER_STATUS_ES = {
+  off_shift:'Fuera de turno', available:'Disponible', assigned:'Asignado',
+  at_restaurant:'En restaurante', en_route_delivery:'En camino', returning:'Regresando', on_break:'En descanso',
+};
 
 const currentTheme = () => document.documentElement.getAttribute('data-theme')
   || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
@@ -571,27 +639,61 @@ function orderForDriver(uid){
 
 window.__driversUpdated = () => { if (mapReady) renderDrivers(); };
 
+// Marker fill by status/staleness — brand tokens (mirrors the desktop dispatch's color tiers).
+function driverMarkerColor(status, stale){
+  if (stale) return '#EE9F3C';                                       // amber — reachable, just idle
+  switch (status) {
+    case 'available': case 'at_restaurant': return '#46A24A';        // green (--listo)
+    case 'en_route_delivery': return '#6E77CC';                      // indigo (--camino)
+    case 'returning': case 'assigned': return '#EE9F3C';             // amber
+    default: return '#6f7681';                                       // grey (--done)
+  }
+}
+
 function renderDrivers(){
   if (!mapReady) return;
+  const strokeCol = currentTheme() === 'dark' ? '#131826' : '#ffffff';
   const seen = new Set();
   for (const [uid, d] of Object.entries(STORE.drivers)) {
-    if (typeof d?.lat !== 'number' || typeof d?.lng !== 'number') continue;
+    // Only plot ON-SHIFT drivers with real coords — an off-shift driver's last stale position is not
+    // a live pin (was: every driver with lat/lng → bare red pins, incl. off-shift/stale).
+    if (!d || d.status === XPD.DRIVER_STATUS.OFF_SHIFT) continue;
+    if (typeof d.lat !== 'number' || typeof d.lng !== 'number') continue;
     seen.add(uid);
-    const live = !XPD.isStalePing(d.last_ping);
+    const stale = XPD.isStalePing(d.last_ping);
     const pos = { lat:d.lat, lng:d.lng };
-    if (driverMarkers[uid]) { driverMarkers[uid].setPosition(pos); driverMarkers[uid].setOpacity(live?1:0.5); }
+    const icon = { path: google.maps.SymbolPath.CIRCLE, scale: 13, fillColor: driverMarkerColor(d.status, stale),
+                   fillOpacity: 1, strokeColor: strokeCol, strokeWeight: 2.5 };
+    const label = { text: (d.name || '?').charAt(0).toUpperCase(), color:'#fff', fontFamily:'Hanken Grotesk', fontSize:'11px', fontWeight:'700' };
+    if (driverMarkers[uid]) { driverMarkers[uid].setPosition(pos); driverMarkers[uid].setIcon(icon); driverMarkers[uid].setLabel(label); }
     else {
-      const mk = new google.maps.Marker({ map, position:pos, opacity: live?1:0.5, title: d.name || 'Repartidor' });
-      mk.addListener('click', () => { const oid = orderForDriver(uid); if (oid) window.__openOrderDetail?.(oid); });
+      const mk = new google.maps.Marker({ map, position:pos, icon, label, title: d.name || 'Repartidor', zIndex:1000 });
+      mk.addListener('click', () => openDriverInfo(uid));   // styled info window (name · status · order#)
       driverMarkers[uid] = mk;
     }
   }
   for (const uid of Object.keys(driverMarkers)) if (!seen.has(uid)) { driverMarkers[uid].setMap(null); delete driverMarkers[uid]; }
 }
 
+// Driver info window (rendered in Google's light bubble → fixed dark text): name · status · current order#.
+function openDriverInfo(uid){
+  const d = STORE.drivers[uid], mk = driverMarkers[uid];
+  if (!d || !mk) return;
+  if (!driverInfoWindow) driverInfoWindow = new google.maps.InfoWindow();
+  const oid = orderForDriver(uid);
+  const ordLabel = oid ? displayLabel(oid, STORE.orders[oid]) : null;
+  const statusEs = DRIVER_STATUS_ES[d.status] || d.status || '';
+  driverInfoWindow.setContent(`<div style="font-family:'Hanken Grotesk',system-ui,sans-serif;padding:1px 3px;min-width:118px">
+    <div style="font-weight:700;font-size:14px;color:#1b1e24">${escapeHtml(d.name || 'Repartidor')}</div>
+    <div style="font-size:12px;color:#6b727c;margin-top:1px">${escapeHtml(statusEs)}${ordLabel ? ` · ${escapeHtml(ordLabel)}` : ''}</div>
+  </div>`);
+  driverInfoWindow.open(map, mk);
+}
+
 function clearFocus(){
   focusLayer.markers.forEach(m => m.setMap(null)); focusLayer.markers = [];
   if (focusLayer.line) { focusLayer.line.setMap(null); focusLayer.line = null; }
+  if (focusLayer.route) { focusLayer.route.setMap(null); focusLayer.route = null; }
   $('ver-todos')?.classList.add('hidden');
 }
 
@@ -616,8 +718,24 @@ window.__focusOrderOnMap = async (orderId) => {
   const drvId = dt?.assigned_driver_id; const drv = drvId && STORE.drivers[drvId];
   if (dest) { focusLayer.markers.push(new google.maps.Marker({ map, position:dest, label:'D' })); map.panTo(dest); map.setZoom(15); }
   if (drv && finite(drv.lat)) focusLayer.markers.push(new google.maps.Marker({ map, position:{lat:drv.lat,lng:drv.lng}, opacity: XPD.isStalePing(drv.last_ping)?0.5:1 }));
-  if (dest && drv && finite(drv.lat))
-    focusLayer.line = new google.maps.Polyline({ map, path:[{lat:drv.lat,lng:drv.lng}, dest], strokeOpacity:0.7, strokeWeight:3 });
+  // Real road route (was a literal straight segment): DirectionsService → DirectionsRenderer, drawn only
+  // when there's a live driver + destination; keep our own dest/driver pins (suppressMarkers). Auxiliary:
+  // a Directions failure degrades to no line, never breaks the map (the pins still convey it).
+  if (dest && drv && finite(drv.lat)) {
+    if (!dirService) dirService = new google.maps.DirectionsService();
+    const renderer = new google.maps.DirectionsRenderer({
+      map, suppressMarkers:true, preserveViewport:true,
+      polylineOptions: { strokeColor:'#6E77CC', strokeOpacity:0.9, strokeWeight:5 },
+    });
+    focusLayer.route = renderer;
+    dirService.route({
+      origin: { lat:drv.lat, lng:drv.lng }, destination: dest, travelMode: google.maps.TravelMode.DRIVING,
+    }, (res, status) => {
+      if (focusLayer.route !== renderer) { renderer.setMap(null); return; }   // a newer focus/clear superseded us
+      if (status === 'OK' && res) renderer.setDirections(res);
+      else { renderer.setMap(null); focusLayer.route = null; }                // degrade: no line
+    });
+  }
 };
 
 $('ver-todos').addEventListener('click', () => { clearFocus(); if (mapReady) { map.setZoom(13); renderDrivers(); } });
@@ -664,7 +782,7 @@ window.__openOrderDetail = (orderId) => {
   const label = drvId ? 'Reasignar' : 'Asignar';
   openSheet(`
     <h3>${escapeHtml(order.customer_name || 'Cliente')} · ${escapeHtml(displayLabel(orderId, order))}</h3>
-    <p>${escapeHtml(oneLineItems(order))}</p>
+    <div class="detail-items">${renderOrderItems(order)}</div>
     ${drvId ? `<p class="cur">Repartidor actual: ${escapeHtml(STORE.drivers[drvId]?.name || '—')}</p>` : ''}
     ${actionable ? `<button id="do-reassign" class="primary">${escapeHtml(label)}</button>` : '<p class="muted">Sin acción de repartidor para este pedido.</p>'}
     <button id="detail-close" class="ghost">Cerrar</button>`);
