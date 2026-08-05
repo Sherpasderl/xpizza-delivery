@@ -1138,7 +1138,7 @@
 <audio id="chime" preload="auto" src="order_bell.wav"></audio>
 
 <script type="module">
-import * as XPD from './xpizza-delivery.js?v=19';
+import * as XPD from './xpizza-delivery.js?v=20';
 import { isNative, initNativePush, unregisterNativePush, clearDeliveredNotifications } from './native-push.js';
 import { startNativeTracking, stopNativeTracking, pingNativeLocation, disableLingeringTransistorsoft } from './native-location.js';
 import { computeVuelto, vueltoSuggestions, computeShiftCash, isCashPayment } from './cash-helpers.js';
@@ -1147,7 +1147,7 @@ import { displayOrderLabel } from './order-helpers.js';
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '2.4.7';
+const SYSTEM_VERSION = '2.4.8';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -1270,6 +1270,7 @@ function showScreen(name) {
 // ============================================================
 async function boot() {
   XPD.initDelivery(firebaseConfig);
+  XPD.initDiag();   // add-only: start the dark-by-default diagnostics subscriptions (config + .info/connected)
 
   XPD.onAuth(async (user) => {
     currentUser = user;
@@ -2304,7 +2305,19 @@ function renderActiveCard(o, solo) {
 function attachActiveCardHandlers(o) {
   if ($('btn-accept')) {
     attachSlideConfirm('btn-accept', async () => {
-      await XPD.acceptTask(currentUser.uid, o.pickupTask.id);
+      // Add-only diagnostics (dark unless config/driver_diag_enabled): OBSERVE the accept promise
+      // without altering it. accept_swipe present + no accept_result ⇒ the accept never reached the
+      // server (the reassign incident). The `await p` below preserves the exact success→toast /
+      // error→attachSlideConfirm-catch control flow; the observer is fire-and-forget.
+      const _diagTaskId = o.pickupTask.id, _diagT0 = Date.now();
+      XPD.emitDiag({ type: 'accept_swipe', taskId: _diagTaskId, connected: XPD.getDiagConnState() });
+      const _diagPending = setTimeout(() => { try { XPD.emitDiag({ type: 'accept_pending', taskId: _diagTaskId }); } catch (e) {} }, 10000);
+      const p = XPD.acceptTask(currentUser.uid, o.pickupTask.id);
+      p.then(
+        () => { clearTimeout(_diagPending); XPD.emitDiag({ type: 'accept_result', taskId: _diagTaskId, latencyMs: Date.now() - _diagT0 }); },
+        (e) => { clearTimeout(_diagPending); XPD.emitDiag({ type: 'accept_err', taskId: _diagTaskId, err: String((e && e.message) || e) }); }
+      );
+      await p;
       toast('Aceptado', 'success');
     });
   }

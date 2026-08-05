@@ -34,6 +34,7 @@ import {
   off
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
 import { stackedTasksToAccept } from './stacking-helpers.js';
+import { getIngestToken } from './native-location.js';   // add-only: per-shift token for the diag sink
 
 // ============================================================
 // CONSTANTS
@@ -141,6 +142,71 @@ export function initDelivery(firebaseConfig) {
 
 export function getDb() { return db; }
 export function getAuthInstance() { return auth; }
+
+// ============================================================================
+// DRIVER DIAGNOSTICS — ADD-ONLY, logging-only. Catches the accept-reassign incident
+// (a swipe-accept whose RTDB write never reached the server). Fully DARK unless
+// config/driver_diag_enabled === true AND config/driver_diag_url is set. Every path is
+// try/catch fire-and-forget and NEVER awaited by the accept flow. Client timestamps only.
+// ============================================================================
+let _diagEnabled = false;
+let _diagUrl = null;
+let _diagLastConn = null;
+let _diagFlushing = false;
+let _diagRetryTimer = null;
+const _diagBuffer = [];
+
+// Subscribe to the live flag + url + socket state. Call once after initDelivery (from index.html).
+export function initDiag() {
+  try {
+    onValue(ref(db, 'config/driver_diag_enabled'), (s) => { _diagEnabled = s.val() === true; }, () => {});
+    onValue(ref(db, 'config/driver_diag_url'),     (s) => { const v = s.val(); _diagUrl = (typeof v === 'string' && v) ? v : null; }, () => {});
+    onValue(ref(db, '.info/connected'),            (s) => {
+      const c = s.val() === true;
+      _diagLastConn = c;
+      emitDiag({ type: 'rtdb_conn', connected: c });
+    }, () => {});
+  } catch (e) { /* fire-and-forget */ }
+}
+
+// Current RTDB socket state (read by the accept_swipe emit). null until the first .info/connected fires.
+export function getDiagConnState() { return _diagLastConn; }
+
+// Buffer an event and immediately best-effort flush. No-op unless enabled+wired. NEVER throws.
+export function emitDiag(evt) {
+  try {
+    if (!_diagEnabled || !_diagUrl) return;
+    _diagBuffer.push({ ...evt, at: Date.now() });
+    if (_diagBuffer.length > 50) _diagBuffer.splice(0, _diagBuffer.length - 50);   // bounded
+    _diagFlush();
+  } catch (e) { /* never propagate into the caller */ }
+}
+
+function _diagFlush() {
+  try {
+    if (_diagFlushing || !_diagEnabled || !_diagUrl || !_diagBuffer.length) return;
+    const token = getIngestToken();
+    if (!token) return;   // no shift token → nothing to auth with
+    _diagFlushing = true;
+    const batch = _diagBuffer.slice();
+    fetch(_diagUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-driver-token': token },
+      body: JSON.stringify({ events: batch }),
+    }).then((r) => {
+      _diagFlushing = false;
+      if (r && r.ok) { _diagBuffer.splice(0, batch.length); if (_diagBuffer.length) _diagFlush(); }
+      else _diagRetry();
+    }).catch(() => { _diagFlushing = false; _diagRetry(); });
+  } catch (e) { _diagFlushing = false; /* fire-and-forget */ }
+}
+
+function _diagRetry() {
+  try {
+    if (_diagRetryTimer) return;
+    _diagRetryTimer = setTimeout(() => { _diagRetryTimer = null; _diagFlush(); }, 10000);
+  } catch (e) { /* */ }
+}
 
 // ============================================================
 // AUTH
