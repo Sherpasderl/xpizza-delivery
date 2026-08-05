@@ -173,6 +173,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     if (_rwUnsub) { try { _rwUnsub(); } catch (_) {} _rwUnsub = null; }
     _rwState = null; _rwSubbed = false; _rwLoadedOnce = false;   // D/#2: a fresh sub must re-establish a definitive state
     try { clearRedeem(); } catch (_) {}   // B2 Task 4: drop any pending reward on logout
+    deliveryHealReset();   // session end → drop the address-heal listener/timer + clear the loading hold
   }
 
   function rewardsRender() {
@@ -2137,6 +2138,9 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   let _acctAddrOneOff = false;   // true when the order's delivery address is a USE-ONCE choice (Cambiar "Usar en este pedido" / an edit-mode-new address NOT explicitly "Guardar dirección"-saved) — onOrderConfirmed must never makeDefault/persist it (FIX B)
   let _acctRestoring = false;    // true ONLY while index.html's restoreOrderForm() rebuilds a cancelled/failed-payment retry from the xpizza_pending_pay snapshot — the snapshot's delivery data is authoritative, so every account delivery-refresh entry point must early-return (never repopulate the DOM from the DEFAULT saved address) (FIX 7 / R4)
   let _acctRestoreGen = 0;       // bumped on every restore START (setRestoring(true)). initDeliveryStep()'s snapshot read is async: restoreOrderForm() is SYNCHRONOUS and clears _acctRestoring in its finally BEFORE the suspended init can resume, so a flag-only re-check would read false and miss the race. Capturing the gen before the await and comparing after catches a restore that BOTH began and completed during the await (R5 async re-check).
+  let _healUnsub = null;             // active heal-on-arrival onValue handle (user_profiles/<uid>), or null. At most one.
+  let _healTimer = null;             // bounded fail-open fallback timer handle, or null.
+  let _acctDeliveryLoading = false;  // true while "Cargando tu dirección…" occupies the step-1 #acct-deliver slot.
 
   // ── Task B4/3: the "Entregar a" confirm card + autofill — orchestrates the 3 flow states
   // (spec: guest handled entirely elsewhere by the marker() gate; incomplete profile → Task 2's
@@ -2155,11 +2159,118 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // logged-in user with NO profile node yet. That resolved-null is a CONFIRMED-INCOMPLETE profile
   // (must arm the create hard-block), NOT a timeout/guest (must fail-open). The old `!snap` test
   // collapsed all three and left the most common first-time case payable with raw fields.
+  // The logged-out/guest + bounded-fallback fail-open reversion: guest-identical fillable DOM,
+  // no confirmed-incomplete arming. (setPaymentVisible(true) is already ensured by the caller /
+  // initDeliveryStep's top-of-function reveal, so payment shows.) Behavior-identical to the
+  // inline body it replaced.
+  function failOpenToRaw() {
+    _acctData = null;
+    _acctProfileConfirmedIncomplete = false;
+    revertToNormalFillable();
+    refreshSaveToggle();
+  }
+
+  // Drop the heal listener + fallback timer (one-shot cleanup).
+  function detachHeal() {
+    if (_healUnsub) { try { _healUnsub(); } catch (_) {} _healUnsub = null; }
+    if (_healTimer) { try { clearTimeout(_healTimer); } catch (_) {} _healTimer = null; }
+  }
+
+  // Exit the loading hold — just the flag. Payment is on the separate step-2 screen and is never
+  // touched by this fix; the subsequent render (reduced via initDeliveryStep(val), or raw via
+  // failOpenToRaw) owns the #acct-deliver mount.
+  function clearDeliveryLoading() {
+    _acctDeliveryLoading = false;
+  }
+
+  // Session-end teardown — called from rewardsReset (all sign-out paths).
+  function deliveryHealReset() {
+    detachHeal();
+    clearDeliveryLoading();
+  }
+
+  // Logged-in fail-open hold (STEP 1 only): a clean "Cargando tu dirección…" line in the SAME
+  // #acct-deliver mount the reduced summary will use (minimal layout shift on resolve), with the
+  // step-1 raw name/phone fields hidden so they don't flash. Never touches payment or step 2, never
+  // advances a stage. Reuses the acct-eyebrow/acct-compact shell + PERSON_SVG so loading→summary is
+  // on-brand and monochrome (no emoji).
+  function showDeliveryLoading() {
+    _acctDeliveryLoading = true;
+    injectDeliverStyles();
+    injectCompactSummaryStyles();   // R2-FIX-1: .acct-compact/.acct-cav/.acct-ctxt live here (NOT in injectDeliverStyles); on a cold fail-open renderS1CompactSummary never ran → without this the loading line is UNSTYLED
+    const mount = $('acct-deliver');
+    if (mount) {
+      mount.innerHTML = `
+<div class="acct-eyebrow">Entregar a</div>
+<div class="acct-compact">
+  <span class="acct-cav">${PERSON_SVG}</span>
+  <span class="acct-ctxt acct-fine">Cargando tu dirección…</span>
+</div>`;
+    }
+    const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = 'none';   // hide step-1 raw fields
+  }
+
+  // Bounded fail-open fallback: if the profile hasn't resolved the loading hold within ~5s, reveal
+  // the raw step-1 fields so the customer can fill them in and proceed (never trapped). LEAVE
+  // _healUnsub armed — a late arrival still upgrades raw→summary via the heal callback (gated by
+  // shouldRecoverDeliveryStep → skips if the user has since typed).
+  function startHealFallback() {
+    if (_healTimer) return;
+    _healTimer = setTimeout(function () {
+      _healTimer = null;
+      if (!_acctDeliveryLoading) return;   // already resolved by the heal
+      clearDeliveryLoading();
+      failOpenToRaw();
+    }, 5000);
+  }
+
+  // One-shot no-deadline listener on the profile (the reward chip's pattern) — armed ONLY on a
+  // logged-in fail-open. When the profile lands it detaches, and if the recovery state is still safe
+  // it routes through initDeliveryStep(val) (preSnap → no re-read) to the reduced/create/raw flow.
+  // Fail-silent throughout; the bounded fallback guarantees raw regardless.
+  function armDeliveryHeal() {
+    if (_healUnsub) return;             // at most one at a time (idempotent across repeated fail-opens)
+    if (!marker()) return;             // guests never subscribe (belt; guest never reaches this branch)
+    (async () => {
+      try {
+        const m = marker(); if (!m || !m.uid) return;
+        const { auth, db, dbMod } = await ensureFirebase();
+        await auth.authStateReady();
+        const uid = auth.currentUser && auth.currentUser.uid;
+        if (!uid) return;
+        if (_healUnsub) return;         // re-check after the await — no double-sub
+        const r = dbMod.ref(db, 'user_profiles/' + uid);
+        _healUnsub = dbMod.onValue(r, (snap) => {
+          const val = snap.exists() ? snap.val() : null;
+          detachHeal();                 // one-shot: drop listener + fallback timer
+          const state = deliveryRecoveryState();
+          if (!shouldRecoverDeliveryStep(state)) {
+            // R2-FIX-2: detachHeal() just cleared the fallback timer, so if we're STILL holding we
+            // must not leave "Cargando…" stuck (no timer left to rescue it) — reveal raw so the step
+            // never traps. Skip the DOM reveal during a restore (R5 owns the DOM); just clear the flag.
+            if (_acctDeliveryLoading) { clearDeliveryLoading(); if (!_acctRestoring) failOpenToRaw(); }
+            return;
+          }
+          clearDeliveryLoading();
+          initDeliveryStep(val).catch(() => {});           // routes reduced / create-profile / raw from the landed value
+        }, () => {
+          // onError: the listener is dead → tear down fully AND reveal raw now (no late upgrade possible).
+          if (_healUnsub) { try { _healUnsub(); } catch (_) {} _healUnsub = null; }
+          if (_healTimer) { try { clearTimeout(_healTimer); } catch (_) {} _healTimer = null; }
+          if (_acctDeliveryLoading) { clearDeliveryLoading(); failOpenToRaw(); }
+        });
+      } catch (_) { /* fail-silent — the bounded fallback still guarantees raw */ }
+    })();
+  }
+
   async function initDeliveryStep(preSnap) {
     if (!$('acct-deliver')) return;               // host form has no mount — never touch anything
     if (_acctRestoring) return;                   // a payment-retry restore owns the DOM — the snapshot is authoritative, never repopulate from the profile (FIX 7 / R4)
     const hasPre = (preSnap !== undefined);
     const restoreGen = _acctRestoreGen;           // snapshot the restore generation BEFORE any async read (R5)
+    // R3: any resolution below OWNS the loading state (the unavailable branch re-sets it via showDeliveryLoading).
+    // Prevents a stale flag from letting a late heal/timer revert a reduced flow rendered by the no-arg recovery path.
+    _acctDeliveryLoading = false;
     setPaymentVisible(true);   // default reveal; only applyCreateProfileFlow (incomplete) hides it (FIX 1)
 
     // Resolve to a tri-state {status, snap}. preSnap → treat as a resolved read (status ok, snap may
@@ -2176,7 +2287,16 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 
     // UNAVAILABLE (timeout / SDK error) → fail-open to the normal fillable checkout; NEVER hide
     // payment on an unconfirmed read (shipped invariant preserved).
-    if (status !== 'ok') { _acctData = null; _acctProfileConfirmedIncomplete = false; revertToNormalFillable(); refreshSaveToggle(); return; }
+    // UNAVAILABLE (timeout / SDK error). Logged-in: hold the step-1 "Tus datos" slot with
+    // "Cargando tu dirección…" + arm the no-deadline heal + a bounded raw fallback, so a registered
+    // user sees their address (not the raw fields) when it lands, and is never trapped. Payment
+    // (step 2) is untouched — the shipped "never hide payment on an unconfirmed read" invariant holds.
+    // Guest: raw immediately (byte-identical to today).
+    if (status !== 'ok') {
+      if (marker()) { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }
+      else { failOpenToRaw(); }
+      return;
+    }
 
     // GUEST (no marker) → normal path; NEVER arm create (guest byte-identical belt-and-suspenders on
     // top of the DOMContentLoaded marker gate).
@@ -2244,9 +2364,10 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       && s.rawDeliveryDirty !== true;
   }
 
-  function maybeRecoverDeliveryStep() {
-    if (!$('acct-deliver')) return;   // host form has no mount — nothing to heal
-    const state = {
+  // Recovery-state snapshot shared by maybeRecoverDeliveryStep (checkout re-run) and the heal
+  // callback — one builder so the invariant matrix can't drift. Pure read of live module state + DOM.
+  function deliveryRecoveryState() {
+    return {
       loggedIn: !!marker(),
       orderType: pageOrderType(),
       restoring: _acctRestoring,
@@ -2254,11 +2375,15 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       editMode: _acctEditMode,
       createProfileActive: _acctCreateProfileActive,
       confirmedIncomplete: _acctProfileConfirmedIncomplete,
-      // the ONLY user-typed delivery-address signal. Name/phone are re-derived from the profile in the
-      // reduced flow exactly as a fast load would, so they aren't a clobber signal; #address-details is
-      // hand-entry ONLY here, because reducedActive=false means WE never populated it.
+      // the ONLY user-typed delivery-address signal (#address-details is hand-entry only here —
+      // reducedActive=false means WE never populated it). Name/phone re-derive from the profile.
       rawDeliveryDirty: String((($('address-details') || {}).value) || '').trim().length > 0,
     };
+  }
+
+  function maybeRecoverDeliveryStep() {
+    if (!$('acct-deliver')) return;   // host form has no mount — nothing to heal
+    const state = deliveryRecoveryState();
     if (!shouldRecoverDeliveryStep(state)) return;
     // Fail-open-to-raw state → re-read the now-warm snapshot. initDeliveryStep re-applies its full
     // tri-state routing: complete + in-zone → reduced flow (the fix); still-unavailable → raw form

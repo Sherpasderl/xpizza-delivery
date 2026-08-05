@@ -87,6 +87,46 @@ for (const form of ['xpizza-orders', 'la-musa-orders']) {
   assert.ok(/rawDeliveryDirty: String\(\(\(\$\('address-details'\)/.test(src), `${form}: rawDeliveryDirty must read #address-details`);
   assert.ok(src.includes('initDeliveryStep().catch(() => {});'), `${form}: maybeRecoverDeliveryStep must re-run initDeliveryStep()`);
   ok(`${form}: wiring present — wrapper → maybeRecoverDeliveryStep → gated initDeliveryStep re-run`);
+
+  // ── Task 1: DRY extraction (deliveryRecoveryState + failOpenToRaw) ──
+  assert.ok(/function deliveryRecoveryState\(\)/.test(src), `${form}: deliveryRecoveryState() not found`);
+  assert.ok(src.includes('const state = deliveryRecoveryState();'), `${form}: maybeRecoverDeliveryStep must consume deliveryRecoveryState()`);
+  assert.ok(/rawDeliveryDirty: String\(\(\(\$\('address-details'\)/.test(src), `${form}: deliveryRecoveryState must read #address-details for rawDeliveryDirty`);
+  assert.ok(/function failOpenToRaw\(\)/.test(src), `${form}: failOpenToRaw() not found`);
+  ok(`${form}: Task 1 — deliveryRecoveryState() + failOpenToRaw() extracted`);
+
+  // ── Task 2: heal machinery present (unwired) ──
+  assert.ok(/let _healUnsub = null;/.test(src), `${form}: _healUnsub state missing`);
+  assert.ok(/let _healTimer = null;/.test(src), `${form}: _healTimer state missing`);
+  assert.ok(/let _acctDeliveryLoading = false;/.test(src), `${form}: _acctDeliveryLoading state missing`);
+  assert.ok(/function detachHeal\(\)/.test(src), `${form}: detachHeal() not found`);
+  assert.ok(/function clearDeliveryLoading\(\)/.test(src), `${form}: clearDeliveryLoading() not found`);
+  assert.ok(/function deliveryHealReset\(\)/.test(src), `${form}: deliveryHealReset() not found`);
+  assert.ok(/function showDeliveryLoading\(\)/.test(src), `${form}: showDeliveryLoading() not found`);
+  assert.ok(src.includes('Cargando tu dirección'), `${form}: loading copy missing`);
+  assert.ok(/showDeliveryLoading[\s\S]{0,260}injectCompactSummaryStyles\(\)/.test(src), `${form}: showDeliveryLoading must inject compact-summary styles so the loading line is styled on a cold fail-open (R2-FIX-1)`);
+  assert.ok(/if \(_acctDeliveryLoading\) \{ clearDeliveryLoading\(\); if \(!_acctRestoring\) failOpenToRaw\(\); \}/.test(src), `${form}: heal bail path must reveal raw when still holding (no stuck "Cargando…", R5-safe) (R2-FIX-2)`);
+  assert.ok(/function startHealFallback\(\)/.test(src), `${form}: startHealFallback() not found`);
+  assert.ok(/function armDeliveryHeal\(\)/.test(src), `${form}: armDeliveryHeal() not found`);
+  assert.ok(src.includes("'user_profiles/' + uid"), `${form}: heal must subscribe user_profiles/<uid>`);
+  assert.ok(src.includes('dbMod.onValue('), `${form}: heal must use onValue (no-deadline)`);
+  assert.ok(src.includes('initDeliveryStep(val)'), `${form}: heal must route via initDeliveryStep(val) — preSnap, no re-read`);
+  assert.ok(src.includes('if (!shouldRecoverDeliveryStep(state)) return;'), `${form}: heal callback must gate on shouldRecoverDeliveryStep(state)`);
+  ok(`${form}: Task 2 — heal machinery present`);
+
+  // ── Task 3: activation (branch split + logout teardown) ──
+  assert.ok(src.includes('if (marker()) { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }'),
+    `${form}: fail-open branch must split logged-in→loading+heal vs guest→raw`);
+  assert.ok(/if \(status !== 'ok'\) \{\s*\n\s*if \(marker\(\)\)/.test(src),
+    `${form}: the split must be the status!=='ok' fail-open branch`);
+  assert.ok(src.includes('deliveryHealReset();'), `${form}: rewardsReset must call deliveryHealReset() (logout teardown)`);
+  ok(`${form}: Task 3 — activated: branch split, logout teardown`);
+
+  // ── R3 (Task 5): initDeliveryStep resolution OWNS the loading flag (prevents a late heal/timer
+  // reverting a reduced flow the no-arg recovery path rendered) ──
+  assert.ok(/_acctDeliveryLoading = false;[\s\S]{0,180}setPaymentVisible\(true\)/.test(src),
+    `${form}: initDeliveryStep must reset _acctDeliveryLoading before setPaymentVisible(true) (R3)`);
+  ok(`${form}: R3 — initDeliveryStep resets _acctDeliveryLoading before setPaymentVisible`);
 }
 
 console.log(`address-autofill-recheckout: OK (${n} cases)`);
