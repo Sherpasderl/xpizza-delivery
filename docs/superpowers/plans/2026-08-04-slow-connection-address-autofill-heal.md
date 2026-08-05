@@ -12,8 +12,8 @@
 
 - **BOTH forms, identical edit:** every source change applies verbatim to `la-musa-orders/account.js` AND `xpizza-orders/account.js`. They are byte-identical past the CONFIG block; the test suite loops both, so an edit to one only fails until both match. Never let them drift.
 - **Fast path untouched:** nothing new runs when the read lands `ok` (fast connection). No new listeners, timers, or DOM work on the warm path. Form load and first paint are unchanged.
-- **Never trap the customer:** every failure mode must degrade to the raw fillable form + visible payment (fail-open). The bounded fallback guarantees this.
-- **No `setPaymentVisible(false)` for the loading hold:** it sets `_acctCreateProfileActive = true`, which `shouldRecoverDeliveryStep` treats as a deliberate state → would block the heal. Hold payment via the dedicated `holdPaymentForLoading()` only.
+- **Never trap the customer:** every failure mode must degrade to the raw fillable fields (fail-open). The bounded fallback guarantees this.
+- **Payment and step 2 are untouched:** the prefill and its loading state are entirely on step 1 (`#acct-deliver` / `#raw-name-phone`, above the Continuar button); payment lives on the separate step-2 screen behind the map-confirm step. Do NOT call `setPaymentVisible`, add a submit gate, or alter `.pay-container`.
 - **Preserve invariants:** R5 restore-race (`_acctRestoring`/`_acctRestoreGen`), no-clobber of `#address-details`, guest byte-identical, pickup out of scope.
 - **No emoji in form chrome:** the loading line uses the existing `PERSON_SVG` + `.acct-fine` copy idiom (clean, monochrome).
 - **Client-only:** no functions deploy, no rules change. Owner deploys the two order forms (Netlify per-folder, explicit `--site`) after the order-form codex checkout-integrity gate.
@@ -23,7 +23,7 @@
 
 ## File Structure
 
-- **Modify:** `la-musa-orders/account.js` — all source changes (state, helpers, fail-open branch split, submit gate, logout teardown).
+- **Modify:** `la-musa-orders/account.js` — all source changes (state, helpers, fail-open branch split, logout teardown).
 - **Modify:** `xpizza-orders/account.js` — identical changes (parity).
 - **Modify:** `xpizza-functions/address-autofill-recheckout.test.js` — extend the existing both-forms wiring-guard test with the seamless-heal assertions. (The pure `shouldRecoverDeliveryStep` truth table already there is reused unchanged — the heal callback gates on that same function.)
 
@@ -31,7 +31,7 @@ Anchors (origin/main line numbers, la-musa; xpizza differs by a few lines — ma
 - `_acct*` module state block: ~2132
 - `initDeliveryStep(preSnap)`: 2158; fail-open branch: 2178
 - `maybeRecoverDeliveryStep`: 2247 (inline state object ~2248)
-- `rewardsReset`: 172; `injectDeliverStyles`: 2005; `renderS1CompactSummary`: 3678; `hideRawAndAddrSection`: 3705; `setPaymentVisible`: 3739; `deliverySubmitBlocked`: 3752; `revertToNormalFillable`: 3770
+- `rewardsReset`: 172; `injectDeliverStyles`: 2005; `renderS1CompactSummary` (shell reference): 3678; `revertToNormalFillable`: 3770. Step-1 mounts: `#acct-deliver` (index.html:1326), `#raw-name-phone` (1327). Payment (`#s2`) is NOT touched.
 
 ---
 
@@ -145,8 +145,8 @@ Add the module state and all helper functions. None is wired into the fail-open 
 - Test: `xpizza-functions/address-autofill-recheckout.test.js`
 
 **Interfaces:**
-- Consumes: `deliveryRecoveryState()`, `shouldRecoverDeliveryStep(state)`, `initDeliveryStep(preSnap)`, `ensureFirebase()`, `marker()`, `injectDeliverStyles()`, `hideRawAndAddrSection()`, `PERSON_SVG`, `$`.
-- Produces: `_healUnsub`, `_healTimer`, `_acctDeliveryLoading` (state); `detachHeal()`, `holdPaymentForLoading(hold)`, `clearDeliveryLoading()`, `deliveryHealReset()`, `showDeliveryLoading()`, `startHealFallback()`, `armDeliveryHeal()`.
+- Consumes: `deliveryRecoveryState()`, `shouldRecoverDeliveryStep(state)`, `initDeliveryStep(preSnap)`, `ensureFirebase()`, `marker()`, `injectDeliverStyles()`, `PERSON_SVG`, `$`.
+- Produces: `_healUnsub`, `_healTimer`, `_acctDeliveryLoading` (state); `detachHeal()`, `clearDeliveryLoading()`, `deliveryHealReset()`, `showDeliveryLoading()`, `startHealFallback()`, `armDeliveryHeal()`.
 
 - [ ] **Step 1: Add the failing wiring assertions.** Append inside the both-forms loop:
 
@@ -156,7 +156,6 @@ Add the module state and all helper functions. None is wired into the fail-open 
   assert.ok(/let _healTimer = null;/.test(src), `${form}: _healTimer state missing`);
   assert.ok(/let _acctDeliveryLoading = false;/.test(src), `${form}: _acctDeliveryLoading state missing`);
   assert.ok(/function detachHeal\(\)/.test(src), `${form}: detachHeal() not found`);
-  assert.ok(/function holdPaymentForLoading\(hold\)/.test(src), `${form}: holdPaymentForLoading() not found`);
   assert.ok(/function clearDeliveryLoading\(\)/.test(src), `${form}: clearDeliveryLoading() not found`);
   assert.ok(/function deliveryHealReset\(\)/.test(src), `${form}: deliveryHealReset() not found`);
   assert.ok(/function showDeliveryLoading\(\)/.test(src), `${form}: showDeliveryLoading() not found`);
@@ -180,10 +179,10 @@ Expected: FAIL — `_healUnsub state missing`.
 ```js
   let _healUnsub = null;             // active heal-on-arrival onValue handle (user_profiles/<uid>), or null. At most one.
   let _healTimer = null;             // bounded fail-open fallback timer handle, or null.
-  let _acctDeliveryLoading = false;  // true while "Cargando tu dirección…" occupies #acct-deliver (payment held).
+  let _acctDeliveryLoading = false;  // true while "Cargando tu dirección…" occupies the step-1 #acct-deliver slot.
 ```
 
-- [ ] **Step 4: Add the teardown + payment-hold utilities** in BOTH forms (place near `revertToNormalFillable`):
+- [ ] **Step 4: Add the teardown utilities** in BOTH forms (place near `revertToNormalFillable`):
 
 ```js
   // Drop the heal listener + fallback timer (one-shot cleanup).
@@ -192,19 +191,11 @@ Expected: FAIL — `_healUnsub state missing`.
     if (_healTimer) { try { clearTimeout(_healTimer); } catch (_) {} _healTimer = null; }
   }
 
-  // Hold/restore the payment section for the loading state WITHOUT touching _acctCreateProfileActive
-  // (setPaymentVisible(false) would set it → shouldRecoverDeliveryStep sees createProfileActive and
-  // blocks the heal). Pure DOM toggle, mirroring setPaymentVisible's ids.
-  function holdPaymentForLoading(hold) {
-    const lbl = $('acct-pay-label'); if (lbl) lbl.style.display = hold ? 'none' : '';
-    try { const pc = document.querySelector('.pay-container'); if (pc) pc.style.display = hold ? 'none' : ''; } catch (_) {}
-  }
-
-  // Exit the loading hold: clear the flag + restore payment. (The subsequent render — reduced via
-  // initDeliveryStep(val), or raw via failOpenToRaw — owns the #acct-deliver mount.)
+  // Exit the loading hold — just the flag. Payment is on the separate step-2 screen and is never
+  // touched by this fix; the subsequent render (reduced via initDeliveryStep(val), or raw via
+  // failOpenToRaw) owns the #acct-deliver mount.
   function clearDeliveryLoading() {
     _acctDeliveryLoading = false;
-    holdPaymentForLoading(false);
   }
 
   // Session-end teardown — called from rewardsReset (all sign-out paths).
@@ -217,10 +208,11 @@ Expected: FAIL — `_healUnsub state missing`.
 - [ ] **Step 5: Add `showDeliveryLoading()` + `startHealFallback()`** in BOTH forms (near the above):
 
 ```js
-  // Logged-in fail-open hold: a clean "Cargando tu dirección…" line in the SAME #acct-deliver mount
-  // the reduced summary will use (minimal layout shift on resolve), raw fields + address section
-  // hidden, payment held. Never advances a stage. Reuses the acct-eyebrow/acct-compact shell +
-  // PERSON_SVG so loading→card is on-brand and monochrome (no emoji).
+  // Logged-in fail-open hold (STEP 1 only): a clean "Cargando tu dirección…" line in the SAME
+  // #acct-deliver mount the reduced summary will use (minimal layout shift on resolve), with the
+  // step-1 raw name/phone fields hidden so they don't flash. Never touches payment or step 2, never
+  // advances a stage. Reuses the acct-eyebrow/acct-compact shell + PERSON_SVG so loading→summary is
+  // on-brand and monochrome (no emoji).
   function showDeliveryLoading() {
     _acctDeliveryLoading = true;
     injectDeliverStyles();
@@ -233,14 +225,13 @@ Expected: FAIL — `_healUnsub state missing`.
   <span class="acct-ctxt acct-fine">Cargando tu dirección…</span>
 </div>`;
     }
-    hideRawAndAddrSection();
-    holdPaymentForLoading(true);
+    const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = 'none';   // hide step-1 raw fields
   }
 
   // Bounded fail-open fallback: if the profile hasn't resolved the loading hold within ~5s, reveal
-  // the raw fillable form + payment (never trapped). LEAVE _healUnsub armed — a late arrival still
-  // upgrades raw→reduced via the heal callback (gated by shouldRecoverDeliveryStep → skips if the
-  // user has since typed).
+  // the raw step-1 fields so the customer can fill them in and proceed (never trapped). LEAVE
+  // _healUnsub armed — a late arrival still upgrades raw→summary via the heal callback (gated by
+  // shouldRecoverDeliveryStep → skips if the user has since typed).
   function startHealFallback() {
     if (_healTimer) return;
     _healTimer = setTimeout(function () {
@@ -303,12 +294,12 @@ git commit -m "feat(order-form): add seamless-heal machinery for slow-load autof
 
 ---
 
-### Task 3: Activate — fail-open branch split + submit gate + logout teardown
+### Task 3: Activate — fail-open branch split + logout teardown
 
-The behavior-changing task (the codex gate's focus). Wire the machinery: logged-in fail-open → loading hold + heal + fallback; guest → raw immediately. Hold submit during loading. Tear down on logout.
+The behavior-changing task (the codex gate's focus). Wire the machinery: logged-in fail-open → loading hold + heal + fallback; guest → raw immediately. Tear down on logout. (No submit/payment change — the prefill is step-1; payment is a separate step behind Continuar.)
 
 **Files:**
-- Modify: `la-musa-orders/account.js` + `xpizza-orders/account.js` (fail-open branch ~2178; `deliverySubmitBlocked` ~3752; `rewardsReset` ~172)
+- Modify: `la-musa-orders/account.js` + `xpizza-orders/account.js` (fail-open branch ~2178; `rewardsReset` ~172)
 - Test: `xpizza-functions/address-autofill-recheckout.test.js`
 
 **Interfaces:**
@@ -317,15 +308,13 @@ The behavior-changing task (the codex gate's focus). Wire the machinery: logged-
 - [ ] **Step 1: Add the failing wiring assertions.** Append inside the both-forms loop:
 
 ```js
-  // ── Task 3: activation (branch split + submit gate + logout teardown) ──
+  // ── Task 3: activation (branch split + logout teardown) ──
   assert.ok(src.includes('if (marker()) { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }'),
     `${form}: fail-open branch must split logged-in→loading+heal vs guest→raw`);
   assert.ok(/if \(status !== 'ok'\) \{\s*\n\s*if \(marker\(\)\)/.test(src),
     `${form}: the split must be the status!=='ok' fail-open branch`);
-  assert.ok(/if \(_acctDeliveryLoading\) return true;/.test(src),
-    `${form}: deliverySubmitBlocked must hold submit while _acctDeliveryLoading`);
   assert.ok(src.includes('deliveryHealReset();'), `${form}: rewardsReset must call deliveryHealReset() (logout teardown)`);
-  ok(`${form}: Task 3 — activated: branch split, submit-gate, logout teardown`);
+  ok(`${form}: Task 3 — activated: branch split, logout teardown`);
 ```
 
 - [ ] **Step 2: Run the test, verify it fails.**
@@ -336,10 +325,11 @@ Expected: FAIL — branch-split assertion.
 - [ ] **Step 3: Split the fail-open branch** in BOTH forms. Replace the Task-1 line `if (status !== 'ok') { failOpenToRaw(); return; }` with:
 
 ```js
-    // UNAVAILABLE (timeout / SDK error) → NEVER hide payment on an unconfirmed read (shipped
-    // invariant). Logged-in: hold with "Cargando tu dirección…" + arm the no-deadline heal + a
-    // bounded raw fallback, so a registered user sees their address (not the raw form) when it lands,
-    // and is never trapped. Guest: raw immediately (byte-identical to today).
+    // UNAVAILABLE (timeout / SDK error). Logged-in: hold the step-1 "Tus datos" slot with
+    // "Cargando tu dirección…" + arm the no-deadline heal + a bounded raw fallback, so a registered
+    // user sees their address (not the raw fields) when it lands, and is never trapped. Payment
+    // (step 2) is untouched — the shipped "never hide payment on an unconfirmed read" invariant holds.
+    // Guest: raw immediately (byte-identical to today).
     if (status !== 'ok') {
       if (marker()) { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }
       else { failOpenToRaw(); }
@@ -347,33 +337,27 @@ Expected: FAIL — branch-split assertion.
     }
 ```
 
-- [ ] **Step 4: Hold submit during loading** in BOTH forms. In `deliverySubmitBlocked()`, as the FIRST statement inside the `try {`:
-
-```js
-      if (_acctDeliveryLoading) return true;   // slow-load address hold on screen (payment hidden) — defense-in-depth
-```
-
-- [ ] **Step 5: Wire logout teardown** in BOTH forms. In `rewardsReset()`, add as the last statement of the function body:
+- [ ] **Step 4: Wire logout teardown** in BOTH forms. In `rewardsReset()`, add as the last statement of the function body:
 
 ```js
     deliveryHealReset();   // session end → drop the address-heal listener/timer + clear the loading hold
 ```
 
-- [ ] **Step 6: Run the test, verify it passes.**
+- [ ] **Step 5: Run the test, verify it passes.**
 
 Run: `cd xpizza-functions && node address-autofill-recheckout.test.js`
 Expected: PASS — all Task 1–3 assertions + the pre-existing truth table.
 
-- [ ] **Step 7: Run the FULL suite** (guard against collateral breakage):
+- [ ] **Step 6: Run the FULL suite** (guard against collateral breakage):
 
 Run: `cd xpizza-functions && npm test`
 Expected: PASS (all existing tests + this one).
 
-- [ ] **Step 8: Commit.**
+- [ ] **Step 7: Commit.**
 
 ```bash
 git add la-musa-orders/account.js xpizza-orders/account.js xpizza-functions/address-autofill-recheckout.test.js
-git commit -m "feat(order-form): seamless address heal on slow load — loading hold, onValue resolve, bounded raw fallback"
+git commit -m "feat(order-form): seamless address heal on slow load — step-1 loading hold, onValue resolve, bounded raw fallback"
 ```
 
 ---
@@ -415,6 +399,6 @@ Expected: PASS.
 
 ## Self-Review (completed by plan author)
 
-- **Spec coverage:** loading hold (Task 2–3), one-shot `onValue` heal via `initDeliveryStep(preSnap)` (Task 2), bounded raw fallback (Task 2–3), guest/fast untouched (branch split, Task 3), submit gate (Task 3), logout teardown (Task 2–3), DRY extraction (Task 1), parity (every task, both forms + Task 4 diff). All spec sections map to a task.
+- **Spec coverage:** step-1 loading hold (Task 2–3), one-shot `onValue` heal via `initDeliveryStep(preSnap)` (Task 2), bounded raw fallback (Task 2–3), guest/fast untouched (branch split, Task 3), logout teardown (Task 2–3), DRY extraction (Task 1), parity (every task, both forms + Task 4 diff). Payment/step-2 explicitly untouched. All spec sections map to a task.
 - **Placeholder scan:** none — every code step has real code; every test step has a runnable command + expected result.
-- **Type/name consistency:** `deliveryRecoveryState`, `failOpenToRaw`, `detachHeal`, `holdPaymentForLoading`, `clearDeliveryLoading`, `deliveryHealReset`, `showDeliveryLoading`, `startHealFallback`, `armDeliveryHeal`, `_healUnsub`, `_healTimer`, `_acctDeliveryLoading` are used identically across the impl steps and the test assertions.
+- **Type/name consistency:** `deliveryRecoveryState`, `failOpenToRaw`, `detachHeal`, `clearDeliveryLoading`, `deliveryHealReset`, `showDeliveryLoading`, `startHealFallback`, `armDeliveryHeal`, `_healUnsub`, `_healTimer`, `_acctDeliveryLoading` are used identically across the impl steps and the test assertions.
