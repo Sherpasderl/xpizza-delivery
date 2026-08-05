@@ -410,6 +410,48 @@ Expected: PASS.
 
 ---
 
+### Task 5: R3 gate correction — reset the loading flag in `initDeliveryStep` (fixes a FIX-2 regression)
+
+The re-gate (codex checkout-integrity, R2 fixes) confirmed a regression introduced by FIX-2: `_acctDeliveryLoading` is set by `showDeliveryLoading()` but the no-arg `maybeRecoverDeliveryStep → initDeliveryStep()` recovery path renders the reduced flow **without clearing it** (and without detaching the heal). The stale flag then lets the late `onValue` heal (bail path) OR the still-live 5s `startHealFallback` timer call `failOpenToRaw()` **over a correctly-rendered reduced flow** — reverting a loaded address to raw. Fix: make any `initDeliveryStep()` resolution own the loading state by resetting the flag near the top; the unavailable branch immediately re-sets it via `showDeliveryLoading()`, so normal heal/fallback/late-upgrade behavior is intact. (Codex: the flag-reset alone neutralizes both destructive paths — the later bail/timer become no-ops.)
+
+**Files:**
+- Modify: `la-musa-orders/account.js` + `xpizza-orders/account.js` (`initDeliveryStep` top, after the `!$('acct-deliver')` / `_acctRestoring` guards)
+- Test: `xpizza-functions/address-autofill-recheckout.test.js`
+
+- [ ] **Step 1: Add the failing wiring assertion.** Append inside the both-forms loop:
+
+```js
+  // ── Task 5 (R3): initDeliveryStep resets the loading flag before its default-reveal ──
+  assert.ok(/_acctDeliveryLoading = false;[\s\S]{0,180}setPaymentVisible\(true\)/.test(src),
+    `${form}: initDeliveryStep must reset _acctDeliveryLoading before setPaymentVisible(true) so a stale flag can't revert a reduced flow (R3)`);
+  ok(`${form}: Task 5 — initDeliveryStep owns/reset the loading flag (R3)`);
+```
+
+- [ ] **Step 2: Run the test, verify it fails.**
+
+Run: `cd xpizza-functions && node address-autofill-recheckout.test.js`
+Expected: FAIL — the reset line isn't present yet.
+
+- [ ] **Step 3: Add the reset** in BOTH forms. In `initDeliveryStep`, immediately after `const restoreGen = _acctRestoreGen;` (the last guard/capture line before the default reveal) and before `setPaymentVisible(true);`:
+
+```js
+    _acctDeliveryLoading = false;   // R3: any resolution below OWNS the loading state (the unavailable branch re-sets it via showDeliveryLoading). Prevents a stale flag from letting a late heal/timer revert a reduced flow rendered by the no-arg recovery path.
+```
+
+- [ ] **Step 4: Run the test + full suite, verify green.**
+
+Run: `cd xpizza-functions && node address-autofill-recheckout.test.js` → PASS
+Run: `cd xpizza-functions && npm test` → PASS
+
+- [ ] **Step 5: Commit.**
+
+```bash
+git add la-musa-orders/account.js xpizza-orders/account.js xpizza-functions/address-autofill-recheckout.test.js
+git commit -m "fix(order-form): R3 — reset _acctDeliveryLoading in initDeliveryStep so a stale flag can't revert a reduced flow"
+```
+
+---
+
 ## Self-Review (completed by plan author)
 
 - **Spec coverage:** step-1 loading hold (Task 2–3), one-shot `onValue` heal via `initDeliveryStep(preSnap)` (Task 2), bounded raw fallback (Task 2–3), guest/fast untouched (branch split, Task 3), logout teardown (Task 2–3), DRY extraction (Task 1), parity (every task, both forms + Task 4 diff). Payment/step-2 explicitly untouched. All spec sections map to a task.

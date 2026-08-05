@@ -145,6 +145,7 @@ Guest slow: → failOpenToRaw() immediately (unchanged).
 - Customer acted before arrival → `shouldRecoverDeliveryStep` false → no heal, no clobber.
 - Restore in flight → `_acctRestoring` short-circuits both `shouldRecoverDeliveryStep` and `initDeliveryStep`'s top guard.
 - Mid-loading pickup↔delivery toggle → `refreshDeliveryUI` reverts to fillable (fail-open); the armed `onValue` re-upgrades when it lands. Acceptable edge.
+- **Continuar tapped during the loading hold (R3):** the no-arg `maybeRecover → initDeliveryStep()` recovery can render the reduced flow from a now-warm read. `initDeliveryStep` **resets `_acctDeliveryLoading = false` near its top** (after the restore/mount guards, before the default reveal), so any resolution owns the loading state — a stale flag can never let the late heal bail or the 5s timer revert a correctly-rendered reduced flow to raw. The unavailable branch re-sets the flag via `showDeliveryLoading()`, so normal heal/fallback/late-upgrade is intact. (Regression caught + fix validated at re-gate.)
 
 Every failure mode degrades to today's behavior (raw fields) — never worse, never trapped.
 
