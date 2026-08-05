@@ -2268,6 +2268,9 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     if (_acctRestoring) return;                   // a payment-retry restore owns the DOM — the snapshot is authoritative, never repopulate from the profile (FIX 7 / R4)
     const hasPre = (preSnap !== undefined);
     const restoreGen = _acctRestoreGen;           // snapshot the restore generation BEFORE any async read (R5)
+    // R3: any resolution below OWNS the loading state (the unavailable branch re-sets it via showDeliveryLoading).
+    // Prevents a stale flag from letting a late heal/timer revert a reduced flow rendered by the no-arg recovery path.
+    _acctDeliveryLoading = false;
     setPaymentVisible(true);   // default reveal; only applyCreateProfileFlow (incomplete) hides it (FIX 1)
 
     // Resolve to a tri-state {status, snap}. preSnap → treat as a resolved read (status ok, snap may

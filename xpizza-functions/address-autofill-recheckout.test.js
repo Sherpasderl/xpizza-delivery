@@ -121,6 +121,12 @@ for (const form of ['xpizza-orders', 'la-musa-orders']) {
     `${form}: the split must be the status!=='ok' fail-open branch`);
   assert.ok(src.includes('deliveryHealReset();'), `${form}: rewardsReset must call deliveryHealReset() (logout teardown)`);
   ok(`${form}: Task 3 — activated: branch split, logout teardown`);
+
+  // ── R3 (Task 5): initDeliveryStep resolution OWNS the loading flag (prevents a late heal/timer
+  // reverting a reduced flow the no-arg recovery path rendered) ──
+  assert.ok(/_acctDeliveryLoading = false;[\s\S]{0,180}setPaymentVisible\(true\)/.test(src),
+    `${form}: initDeliveryStep must reset _acctDeliveryLoading before setPaymentVisible(true) (R3)`);
+  ok(`${form}: R3 — initDeliveryStep resets _acctDeliveryLoading before setPaymentVisible`);
 }
 
 console.log(`address-autofill-recheckout: OK (${n} cases)`);
