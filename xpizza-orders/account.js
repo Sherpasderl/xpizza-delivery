@@ -2151,6 +2151,17 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // logged-in user with NO profile node yet. That resolved-null is a CONFIRMED-INCOMPLETE profile
   // (must arm the create hard-block), NOT a timeout/guest (must fail-open). The old `!snap` test
   // collapsed all three and left the most common first-time case payable with raw fields.
+  // The logged-out/guest + bounded-fallback fail-open reversion: guest-identical fillable DOM,
+  // no confirmed-incomplete arming. (setPaymentVisible(true) is already ensured by the caller /
+  // initDeliveryStep's top-of-function reveal, so payment shows.) Behavior-identical to the
+  // inline body it replaced.
+  function failOpenToRaw() {
+    _acctData = null;
+    _acctProfileConfirmedIncomplete = false;
+    revertToNormalFillable();
+    refreshSaveToggle();
+  }
+
   async function initDeliveryStep(preSnap) {
     if (!$('acct-deliver')) return;               // host form has no mount — never touch anything
     if (_acctRestoring) return;                   // a payment-retry restore owns the DOM — the snapshot is authoritative, never repopulate from the profile (FIX 7 / R4)
@@ -2172,7 +2183,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 
     // UNAVAILABLE (timeout / SDK error) → fail-open to the normal fillable checkout; NEVER hide
     // payment on an unconfirmed read (shipped invariant preserved).
-    if (status !== 'ok') { _acctData = null; _acctProfileConfirmedIncomplete = false; revertToNormalFillable(); refreshSaveToggle(); return; }
+    if (status !== 'ok') { failOpenToRaw(); return; }
 
     // GUEST (no marker) → normal path; NEVER arm create (guest byte-identical belt-and-suspenders on
     // top of the DOMContentLoaded marker gate).
@@ -2240,9 +2251,10 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       && s.rawDeliveryDirty !== true;
   }
 
-  function maybeRecoverDeliveryStep() {
-    if (!$('acct-deliver')) return;   // host form has no mount — nothing to heal
-    const state = {
+  // Recovery-state snapshot shared by maybeRecoverDeliveryStep (checkout re-run) and the heal
+  // callback — one builder so the invariant matrix can't drift. Pure read of live module state + DOM.
+  function deliveryRecoveryState() {
+    return {
       loggedIn: !!marker(),
       orderType: pageOrderType(),
       restoring: _acctRestoring,
@@ -2250,11 +2262,15 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       editMode: _acctEditMode,
       createProfileActive: _acctCreateProfileActive,
       confirmedIncomplete: _acctProfileConfirmedIncomplete,
-      // the ONLY user-typed delivery-address signal. Name/phone are re-derived from the profile in the
-      // reduced flow exactly as a fast load would, so they aren't a clobber signal; #address-details is
-      // hand-entry ONLY here, because reducedActive=false means WE never populated it.
+      // the ONLY user-typed delivery-address signal (#address-details is hand-entry only here —
+      // reducedActive=false means WE never populated it). Name/phone re-derive from the profile.
       rawDeliveryDirty: String((($('address-details') || {}).value) || '').trim().length > 0,
     };
+  }
+
+  function maybeRecoverDeliveryStep() {
+    if (!$('acct-deliver')) return;   // host form has no mount — nothing to heal
+    const state = deliveryRecoveryState();
     if (!shouldRecoverDeliveryStep(state)) return;
     // Fail-open-to-raw state → re-read the now-warm snapshot. initDeliveryStep re-applies its full
     // tri-state routing: complete + in-zone → reduced flow (the fix); still-unavailable → raw form

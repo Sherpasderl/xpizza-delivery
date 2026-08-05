@@ -87,6 +87,13 @@ for (const form of ['xpizza-orders', 'la-musa-orders']) {
   assert.ok(/rawDeliveryDirty: String\(\(\(\$\('address-details'\)/.test(src), `${form}: rawDeliveryDirty must read #address-details`);
   assert.ok(src.includes('initDeliveryStep().catch(() => {});'), `${form}: maybeRecoverDeliveryStep must re-run initDeliveryStep()`);
   ok(`${form}: wiring present — wrapper → maybeRecoverDeliveryStep → gated initDeliveryStep re-run`);
+
+  // ── Task 1: DRY extraction (deliveryRecoveryState + failOpenToRaw) ──
+  assert.ok(/function deliveryRecoveryState\(\)/.test(src), `${form}: deliveryRecoveryState() not found`);
+  assert.ok(src.includes('const state = deliveryRecoveryState();'), `${form}: maybeRecoverDeliveryStep must consume deliveryRecoveryState()`);
+  assert.ok(/rawDeliveryDirty: String\(\(\(\$\('address-details'\)/.test(src), `${form}: deliveryRecoveryState must read #address-details for rawDeliveryDirty`);
+  assert.ok(/function failOpenToRaw\(\)/.test(src), `${form}: failOpenToRaw() not found`);
+  ok(`${form}: Task 1 — deliveryRecoveryState() + failOpenToRaw() extracted`);
 }
 
 console.log(`address-autofill-recheckout: OK (${n} cases)`);
