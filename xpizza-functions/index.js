@@ -3184,6 +3184,8 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, 
   return res.status(200).json({ ok: true, accepted: accepted.length, dropped: points.length - accepted.length, status });
 });
 
+exports.driverDiagIngest = require('./driver-diag').driverDiagIngest;
+
 // ============================================================
 // syncDriverHub — server-writes the driver's per-restaurant hub snapshot (S1 E3)
 // ============================================================
