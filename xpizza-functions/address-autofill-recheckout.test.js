@@ -94,6 +94,23 @@ for (const form of ['xpizza-orders', 'la-musa-orders']) {
   assert.ok(/rawDeliveryDirty: String\(\(\(\$\('address-details'\)/.test(src), `${form}: deliveryRecoveryState must read #address-details for rawDeliveryDirty`);
   assert.ok(/function failOpenToRaw\(\)/.test(src), `${form}: failOpenToRaw() not found`);
   ok(`${form}: Task 1 — deliveryRecoveryState() + failOpenToRaw() extracted`);
+
+  // ── Task 2: heal machinery present (unwired) ──
+  assert.ok(/let _healUnsub = null;/.test(src), `${form}: _healUnsub state missing`);
+  assert.ok(/let _healTimer = null;/.test(src), `${form}: _healTimer state missing`);
+  assert.ok(/let _acctDeliveryLoading = false;/.test(src), `${form}: _acctDeliveryLoading state missing`);
+  assert.ok(/function detachHeal\(\)/.test(src), `${form}: detachHeal() not found`);
+  assert.ok(/function clearDeliveryLoading\(\)/.test(src), `${form}: clearDeliveryLoading() not found`);
+  assert.ok(/function deliveryHealReset\(\)/.test(src), `${form}: deliveryHealReset() not found`);
+  assert.ok(/function showDeliveryLoading\(\)/.test(src), `${form}: showDeliveryLoading() not found`);
+  assert.ok(src.includes('Cargando tu dirección'), `${form}: loading copy missing`);
+  assert.ok(/function startHealFallback\(\)/.test(src), `${form}: startHealFallback() not found`);
+  assert.ok(/function armDeliveryHeal\(\)/.test(src), `${form}: armDeliveryHeal() not found`);
+  assert.ok(src.includes("'user_profiles/' + uid"), `${form}: heal must subscribe user_profiles/<uid>`);
+  assert.ok(src.includes('dbMod.onValue('), `${form}: heal must use onValue (no-deadline)`);
+  assert.ok(src.includes('initDeliveryStep(val)'), `${form}: heal must route via initDeliveryStep(val) — preSnap, no re-read`);
+  assert.ok(src.includes('if (!shouldRecoverDeliveryStep(state)) return;'), `${form}: heal callback must gate on shouldRecoverDeliveryStep(state)`);
+  ok(`${form}: Task 2 — heal machinery present`);
 }
 
 console.log(`address-autofill-recheckout: OK (${n} cases)`);

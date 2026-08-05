@@ -2137,6 +2137,9 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   let _acctAddrOneOff = false;   // true when the order's delivery address is a USE-ONCE choice (Cambiar "Usar en este pedido" / an edit-mode-new address NOT explicitly "Guardar dirección"-saved) — onOrderConfirmed must never makeDefault/persist it (FIX B)
   let _acctRestoring = false;    // true ONLY while index.html's restoreOrderForm() rebuilds a cancelled/failed-payment retry from the xpizza_pending_pay snapshot — the snapshot's delivery data is authoritative, so every account delivery-refresh entry point must early-return (never repopulate the DOM from the DEFAULT saved address) (FIX 7 / R4)
   let _acctRestoreGen = 0;       // bumped on every restore START (setRestoring(true)). initDeliveryStep()'s snapshot read is async: restoreOrderForm() is SYNCHRONOUS and clears _acctRestoring in its finally BEFORE the suspended init can resume, so a flag-only re-check would read false and miss the race. Capturing the gen before the await and comparing after catches a restore that BOTH began and completed during the await (R5 async re-check).
+  let _healUnsub = null;             // active heal-on-arrival onValue handle (user_profiles/<uid>), or null. At most one.
+  let _healTimer = null;             // bounded fail-open fallback timer handle, or null.
+  let _acctDeliveryLoading = false;  // true while "Cargando tu dirección…" occupies the step-1 #acct-deliver slot.
 
   // ── Task B4/3: the "Entregar a" confirm card + autofill — orchestrates the 3 flow states
   // (spec: guest handled entirely elsewhere by the marker() gate; incomplete profile → Task 2's
@@ -2164,6 +2167,92 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     _acctProfileConfirmedIncomplete = false;
     revertToNormalFillable();
     refreshSaveToggle();
+  }
+
+  // Drop the heal listener + fallback timer (one-shot cleanup).
+  function detachHeal() {
+    if (_healUnsub) { try { _healUnsub(); } catch (_) {} _healUnsub = null; }
+    if (_healTimer) { try { clearTimeout(_healTimer); } catch (_) {} _healTimer = null; }
+  }
+
+  // Exit the loading hold — just the flag. Payment is on the separate step-2 screen and is never
+  // touched by this fix; the subsequent render (reduced via initDeliveryStep(val), or raw via
+  // failOpenToRaw) owns the #acct-deliver mount.
+  function clearDeliveryLoading() {
+    _acctDeliveryLoading = false;
+  }
+
+  // Session-end teardown — called from rewardsReset (all sign-out paths).
+  function deliveryHealReset() {
+    detachHeal();
+    clearDeliveryLoading();
+  }
+
+  // Logged-in fail-open hold (STEP 1 only): a clean "Cargando tu dirección…" line in the SAME
+  // #acct-deliver mount the reduced summary will use (minimal layout shift on resolve), with the
+  // step-1 raw name/phone fields hidden so they don't flash. Never touches payment or step 2, never
+  // advances a stage. Reuses the acct-eyebrow/acct-compact shell + PERSON_SVG so loading→summary is
+  // on-brand and monochrome (no emoji).
+  function showDeliveryLoading() {
+    _acctDeliveryLoading = true;
+    injectDeliverStyles();
+    const mount = $('acct-deliver');
+    if (mount) {
+      mount.innerHTML = `
+<div class="acct-eyebrow">Entregar a</div>
+<div class="acct-compact">
+  <span class="acct-cav">${PERSON_SVG}</span>
+  <span class="acct-ctxt acct-fine">Cargando tu dirección…</span>
+</div>`;
+    }
+    const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = 'none';   // hide step-1 raw fields
+  }
+
+  // Bounded fail-open fallback: if the profile hasn't resolved the loading hold within ~5s, reveal
+  // the raw step-1 fields so the customer can fill them in and proceed (never trapped). LEAVE
+  // _healUnsub armed — a late arrival still upgrades raw→summary via the heal callback (gated by
+  // shouldRecoverDeliveryStep → skips if the user has since typed).
+  function startHealFallback() {
+    if (_healTimer) return;
+    _healTimer = setTimeout(function () {
+      _healTimer = null;
+      if (!_acctDeliveryLoading) return;   // already resolved by the heal
+      clearDeliveryLoading();
+      failOpenToRaw();
+    }, 5000);
+  }
+
+  // One-shot no-deadline listener on the profile (the reward chip's pattern) — armed ONLY on a
+  // logged-in fail-open. When the profile lands it detaches, and if the recovery state is still safe
+  // it routes through initDeliveryStep(val) (preSnap → no re-read) to the reduced/create/raw flow.
+  // Fail-silent throughout; the bounded fallback guarantees raw regardless.
+  function armDeliveryHeal() {
+    if (_healUnsub) return;             // at most one at a time (idempotent across repeated fail-opens)
+    if (!marker()) return;             // guests never subscribe (belt; guest never reaches this branch)
+    (async () => {
+      try {
+        const m = marker(); if (!m || !m.uid) return;
+        const { auth, db, dbMod } = await ensureFirebase();
+        await auth.authStateReady();
+        const uid = auth.currentUser && auth.currentUser.uid;
+        if (!uid) return;
+        if (_healUnsub) return;         // re-check after the await — no double-sub
+        const r = dbMod.ref(db, 'user_profiles/' + uid);
+        _healUnsub = dbMod.onValue(r, (snap) => {
+          const val = snap.exists() ? snap.val() : null;
+          detachHeal();                 // one-shot: drop listener + fallback timer
+          const state = deliveryRecoveryState();
+          if (!shouldRecoverDeliveryStep(state)) return;   // user acted / not a heal state → leave as-is (no clobber)
+          clearDeliveryLoading();
+          initDeliveryStep(val).catch(() => {});           // routes reduced / create-profile / raw from the landed value
+        }, () => {
+          // onError: the listener is dead → tear down fully AND reveal raw now (no late upgrade possible).
+          if (_healUnsub) { try { _healUnsub(); } catch (_) {} _healUnsub = null; }
+          if (_healTimer) { try { clearTimeout(_healTimer); } catch (_) {} _healTimer = null; }
+          if (_acctDeliveryLoading) { clearDeliveryLoading(); failOpenToRaw(); }
+        });
+      } catch (_) { /* fail-silent — the bounded fallback still guarantees raw */ }
+    })();
   }
 
   async function initDeliveryStep(preSnap) {
