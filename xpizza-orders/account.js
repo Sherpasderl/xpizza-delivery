@@ -2193,6 +2193,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   function showDeliveryLoading() {
     _acctDeliveryLoading = true;
     injectDeliverStyles();
+    injectCompactSummaryStyles();   // R2-FIX-1: .acct-compact/.acct-cav/.acct-ctxt live here (NOT in injectDeliverStyles); on a cold fail-open renderS1CompactSummary never ran → without this the loading line is UNSTYLED
     const mount = $('acct-deliver');
     if (mount) {
       mount.innerHTML = `
@@ -2239,7 +2240,13 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
           const val = snap.exists() ? snap.val() : null;
           detachHeal();                 // one-shot: drop listener + fallback timer
           const state = deliveryRecoveryState();
-          if (!shouldRecoverDeliveryStep(state)) return;   // user acted / not a heal state → leave as-is (no clobber)
+          if (!shouldRecoverDeliveryStep(state)) {
+            // R2-FIX-2: detachHeal() just cleared the fallback timer, so if we're STILL holding we
+            // must not leave "Cargando…" stuck (no timer left to rescue it) — reveal raw so the step
+            // never traps. Skip the DOM reveal during a restore (R5 owns the DOM); just clear the flag.
+            if (_acctDeliveryLoading) { clearDeliveryLoading(); if (!_acctRestoring) failOpenToRaw(); }
+            return;
+          }
           clearDeliveryLoading();
           initDeliveryStep(val).catch(() => {});           // routes reduced / create-profile / raw from the landed value
         }, () => {

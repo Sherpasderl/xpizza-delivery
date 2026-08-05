@@ -104,6 +104,8 @@ for (const form of ['xpizza-orders', 'la-musa-orders']) {
   assert.ok(/function deliveryHealReset\(\)/.test(src), `${form}: deliveryHealReset() not found`);
   assert.ok(/function showDeliveryLoading\(\)/.test(src), `${form}: showDeliveryLoading() not found`);
   assert.ok(src.includes('Cargando tu dirección'), `${form}: loading copy missing`);
+  assert.ok(/showDeliveryLoading[\s\S]{0,260}injectCompactSummaryStyles\(\)/.test(src), `${form}: showDeliveryLoading must inject compact-summary styles so the loading line is styled on a cold fail-open (R2-FIX-1)`);
+  assert.ok(/if \(_acctDeliveryLoading\) \{ clearDeliveryLoading\(\); if \(!_acctRestoring\) failOpenToRaw\(\); \}/.test(src), `${form}: heal bail path must reveal raw when still holding (no stuck "Cargando…", R5-safe) (R2-FIX-2)`);
   assert.ok(/function startHealFallback\(\)/.test(src), `${form}: startHealFallback() not found`);
   assert.ok(/function armDeliveryHeal\(\)/.test(src), `${form}: armDeliveryHeal() not found`);
   assert.ok(src.includes("'user_profiles/' + uid"), `${form}: heal must subscribe user_profiles/<uid>`);
