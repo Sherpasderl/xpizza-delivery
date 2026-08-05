@@ -50,8 +50,10 @@ The `onValue` arms at the **load-time** fail-open, so the profile resolves *whil
 | Fast read, complete + in-zone | "Entregar a …" reduced summary *(unchanged)* |
 | Fast read, incomplete | Creá-tu-perfil block *(unchanged)* |
 | Fast read, complete but zone/invariant fails now | Raw name/phone fields, fail-open *(unchanged)* |
-| **Slow read (unavailable), logged-in + delivery** | **NEW: "Cargando tu dirección…" → resolves via heal, or bounded fallback to raw fields** |
-| Slow read (unavailable), **guest OR pickup** | Raw fields, immediately *(unchanged — the loading hold is delivery-only; the fail-open branch itself must exclude pickup since the pickup gate is downstream in the resolved path)* |
+| **Slow read (unavailable), logged-in** | **NEW: "Cargando tu dirección…" → resolves via heal, or bounded fallback to raw fields** |
+| Slow read (unavailable), **guest** | Raw fields, immediately *(unchanged — guests never wait)* |
+
+*Pickup is not gated on this branch: at page-1 load `orderType` is always the default `delivery` (the pickup toggle is on step 2), so a pickup hold is unreachable; and if it ever weren't, the heal callback's `shouldRecover` gate (delivery-only) + the bail-reveal resolve any stray hold to raw. Owner call — page-2 delivery/pickup has no reported issues; don't gate what isn't reachable.*
 
 ### Components
 
@@ -97,12 +99,12 @@ The recovery-state object built inline in `maybeRecoverDeliveryStep` (`account.j
 Split the fail-open on login state:
 ```
 if (status !== 'ok') {
-  if (marker() && pageOrderType() === 'delivery') { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }
-  else { failOpenToRaw(); }        // guest OR pickup — raw immediately, unchanged
+  if (marker()) { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }
+  else { failOpenToRaw(); }        // guest — raw immediately, unchanged
   return;
 }
 ```
-The ONLY path that arms the heal/loading — fires exclusively on a timed-out/errored read for a logged-in **delivery** user. Pickup is excluded here because its gate (`revertToNormalFillable` on `pageOrderType() !== 'delivery'`) is only in the resolved-read path below, so the fail-open branch must exclude it itself. When `initDeliveryStep` is called WITH a `preSnap` (`status` forced `ok`), this branch is never reached → the heal's own `initDeliveryStep(val)` can never re-arm (no loop).
+The ONLY path that arms the heal/loading — fires exclusively on a timed-out/errored read for a logged-in user. Order type is not gated here: at page-1 load it's always the default `delivery`, so a pickup hold is unreachable, and any stray hold resolves to raw via the heal's `shouldRecover` gate + bail-reveal (see state-machine note). When `initDeliveryStep` is called WITH a `preSnap` (`status` forced `ok`), this branch is never reached → the heal's own `initDeliveryStep(val)` can never re-arm (no loop).
 
 **9. Teardown helpers**
 - `detachHeal()`: `if (_healUnsub) { _healUnsub(); _healUnsub = null; } if (_healTimer) { clearTimeout(_healTimer); _healTimer = null; }`.

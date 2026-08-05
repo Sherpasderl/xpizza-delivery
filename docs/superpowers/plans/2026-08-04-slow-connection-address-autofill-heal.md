@@ -318,10 +318,10 @@ The behavior-changing task (the codex gate's focus). Wire the machinery: logged-
 
 ```js
   // ── Task 3: activation (branch split + logout teardown) ──
-  assert.ok(src.includes("if (marker() && pageOrderType() === 'delivery') { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }"),
-    `${form}: fail-open branch must gate the loading hold on logged-in + DELIVERY (guest/pickup → raw) (R2-FIX-3)`);
-  assert.ok(/if \(status !== 'ok'\) \{\s*\n\s*if \(marker\(\) && pageOrderType\(\) === 'delivery'\)/.test(src),
-    `${form}: the delivery-gated split must be the status!=='ok' fail-open branch`);
+  assert.ok(src.includes('if (marker()) { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }'),
+    `${form}: fail-open branch must split logged-in→loading+heal vs guest→raw`);
+  assert.ok(/if \(status !== 'ok'\) \{\s*\n\s*if \(marker\(\)\)/.test(src),
+    `${form}: the split must be the status!=='ok' fail-open branch`);
   assert.ok(src.includes('deliveryHealReset();'), `${form}: rewardsReset must call deliveryHealReset() (logout teardown)`);
   ok(`${form}: Task 3 — activated: branch split, logout teardown`);
 ```
@@ -334,15 +334,17 @@ Expected: FAIL — branch-split assertion.
 - [ ] **Step 3: Split the fail-open branch** in BOTH forms. Replace the Task-1 line `if (status !== 'ok') { failOpenToRaw(); return; }` with:
 
 ```js
-    // UNAVAILABLE (timeout / SDK error). Logged-in DELIVERY: hold the step-1 "Tus datos" slot with
+    // UNAVAILABLE (timeout / SDK error). Logged-in: hold the step-1 "Tus datos" slot with
     // "Cargando tu dirección…" + arm the no-deadline heal + a bounded raw fallback, so a registered
     // user sees their address (not the raw fields) when it lands, and is never trapped. Payment
     // (step 2) is untouched — the shipped "never hide payment on an unconfirmed read" invariant holds.
-    // Guest OR pickup → raw immediately (byte-identical to today). R2-FIX-3: the pickup gate lives in
-    // the resolved path below, so the fail-open branch MUST itself exclude pickup or a slow logged-in
-    // pickup wrongly gets the delivery loading UI.
+    // Guest: raw immediately (byte-identical to today). Order type is NOT gated here: at page-1 load
+    // orderType is always the default 'delivery' (the pickup toggle lives on step 2), so a pickup
+    // hold is unreachable on this branch — and if it ever weren't, the heal callback's shouldRecover
+    // gate (delivery-only) + the R2-FIX-2 bail-reveal resolve any stray hold to raw. (Owner call:
+    // don't gate what isn't reachable; page-2 delivery/pickup has no reported issues.)
     if (status !== 'ok') {
-      if (marker() && pageOrderType() === 'delivery') { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }
+      if (marker()) { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }
       else { failOpenToRaw(); }
       return;
     }
