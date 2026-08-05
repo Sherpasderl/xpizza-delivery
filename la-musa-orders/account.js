@@ -173,6 +173,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     if (_rwUnsub) { try { _rwUnsub(); } catch (_) {} _rwUnsub = null; }
     _rwState = null; _rwSubbed = false; _rwLoadedOnce = false;   // D/#2: a fresh sub must re-establish a definitive state
     try { clearRedeem(); } catch (_) {}   // B2 Task 4: drop any pending reward on logout
+    deliveryHealReset();   // session end → drop the address-heal listener/timer + clear the loading hold
   }
 
   function rewardsRender() {
@@ -2276,7 +2277,16 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 
     // UNAVAILABLE (timeout / SDK error) → fail-open to the normal fillable checkout; NEVER hide
     // payment on an unconfirmed read (shipped invariant preserved).
-    if (status !== 'ok') { failOpenToRaw(); return; }
+    // UNAVAILABLE (timeout / SDK error). Logged-in: hold the step-1 "Tus datos" slot with
+    // "Cargando tu dirección…" + arm the no-deadline heal + a bounded raw fallback, so a registered
+    // user sees their address (not the raw fields) when it lands, and is never trapped. Payment
+    // (step 2) is untouched — the shipped "never hide payment on an unconfirmed read" invariant holds.
+    // Guest: raw immediately (byte-identical to today).
+    if (status !== 'ok') {
+      if (marker()) { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }
+      else { failOpenToRaw(); }
+      return;
+    }
 
     // GUEST (no marker) → normal path; NEVER arm create (guest byte-identical belt-and-suspenders on
     // top of the DOMContentLoaded marker gate).

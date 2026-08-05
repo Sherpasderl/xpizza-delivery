@@ -111,6 +111,14 @@ for (const form of ['xpizza-orders', 'la-musa-orders']) {
   assert.ok(src.includes('initDeliveryStep(val)'), `${form}: heal must route via initDeliveryStep(val) — preSnap, no re-read`);
   assert.ok(src.includes('if (!shouldRecoverDeliveryStep(state)) return;'), `${form}: heal callback must gate on shouldRecoverDeliveryStep(state)`);
   ok(`${form}: Task 2 — heal machinery present`);
+
+  // ── Task 3: activation (branch split + logout teardown) ──
+  assert.ok(src.includes('if (marker()) { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }'),
+    `${form}: fail-open branch must split logged-in→loading+heal vs guest→raw`);
+  assert.ok(/if \(status !== 'ok'\) \{\s*\n\s*if \(marker\(\)\)/.test(src),
+    `${form}: the split must be the status!=='ok' fail-open branch`);
+  assert.ok(src.includes('deliveryHealReset();'), `${form}: rewardsReset must call deliveryHealReset() (logout teardown)`);
+  ok(`${form}: Task 3 — activated: branch split, logout teardown`);
 }
 
 console.log(`address-autofill-recheckout: OK (${n} cases)`);
