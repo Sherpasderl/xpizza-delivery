@@ -44,10 +44,11 @@ Reading a recurrence: `accept_swipe{connected:false}` + `rtdb_conn:false` around
 The function admin-writes `driver_events` (bypasses rules); the owner reads it via the **Firebase admin console** after a recurrence. No rules change, no rules deploy, no emulator step. *(A dispatcher `.read` for a dashboard view is a deferred, separate change.)*
 
 ## Surfaces touched (all add-only)
-- `xpizza-functions/index.js` — NEW `driverDiagIngest` export (+ a pure validate/prune helper in `./driver-ingest`, unit-tested). Existing code untouched.
+- `xpizza-functions/driver-diag.js` — **NEW module**: all `driverDiagIngest` handler logic + a pure validate/prune helper, unit-tested.
+- `xpizza-functions/index.js` — **ONE added line**: `exports.driverDiagIngest = require('./driver-diag').driverDiagIngest;` (Firebase requires the export here). Confine the shared-hot-file edit to this single line to minimize collision with a concurrent dispatch session ([[parallel-session-file-coordination]] — confirm no one is mid-edit on `index.js` before adding it). No existing code in `index.js` touched.
 - `xpizza-driver/xpizza-delivery.js` — NEW `emitDiag` + buffer/flush + `.info/connected` listener.
 - `xpizza-driver/index.html` — log emits + promise observer in the `btn-accept` handler (behavior byte-identical).
-- **No rules file. No existing function modified.**
+- **No rules file. No existing function modified.** Owner: driver-app session, end-to-end (both repos).
 
 ## Deploy safety (locked)
 1. **Reconcile `.env` → live** first ([[functions-env-management]]).
