@@ -18,6 +18,12 @@ import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/
 
 const REGION = 'us-central1';
 
+// Add-only (diagnostics): stash the per-shift ingest token so the diag sink (driverDiagIngest) can
+// authenticate with the same x-driver-token as ingestDriverLocation. Set on shift start, cleared on
+// shift end. Nothing else reads/writes it; the existing token flow is unchanged.
+let _ingestToken = null;
+export function getIngestToken() { return _ingestToken; }
+
 export function isNative() {
   return !!(window.Capacitor
     && typeof window.Capacitor.isNativePlatform === 'function'
@@ -60,6 +66,7 @@ export async function startNativeTracking(app, uid) {
   });
   const { shift_id, ingest_token } = (res && res.data) || {};
   if (!ingest_token) throw new Error('startDriverShift returned no ingest_token');
+  _ingestToken = ingest_token;   // add-only: expose for the diag sink; the flow below is unchanged
 
   // The driver IS on-shift server-side now. The local foreground service is best-effort: if it fails to
   // start, don't abort the whole clock-in — surface trackingOk:false so the caller can warn (degraded
@@ -83,6 +90,7 @@ export async function startNativeTracking(app, uid) {
 export async function stopNativeTracking(app) {
   if (!isNative()) return;
   await httpsCallable(getFunctions(app, REGION), 'endDriverShift')({});   // throws → caller reverts (service still up)
+  _ingestToken = null;   // add-only: token revoked server-side above → clear the diag copy
   try { await getShiftService().stop(); } catch (e) { console.error('native-location: stop failed', e); }
   console.log('native-location: tracking stopped');
 }
