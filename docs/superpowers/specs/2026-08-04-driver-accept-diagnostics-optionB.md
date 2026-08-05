@@ -1,80 +1,68 @@
-# SPEC — Driver-accept diagnostic telemetry, **Option B (HTTP sink)** — read-only, dark-shipped
+# SPEC — Driver accept-reassign incident logger (add-only, logging-only)
 
-**Status:** DESIGN for gate (no code yet). **Sink:** **Option B (HTTP)** — owner decision 2026-08-04, superseding Option A after the advisor+codex gate REVISE'd A (RTDB web SDK has no cross-session persistence → A loses events on a mid-stall app-kill/WebView-death; this app is known to suffer OEM WebView death). **Supersedes** `2026-08-04-driver-accept-diagnostics.md` (Option A). **Type:** additive/diagnostic; touches a live driver function (`ingestDriverLocation`) → advisor + codex gate + emulator-not-needed (no rules change) before merge. Still **logging-only — NO accept-path fix** (the fix is deferred until telemetry proves the mechanism, its own later gate).
+**Status:** DESIGN for gate (no code yet). **Sink:** HTTP (Option B), via a **NEW isolated function** — chosen after the Option-A gate REVISE (RTDB web SDK has no cross-session persistence → loses events on app-kill). **Supersedes** `2026-08-04-driver-accept-diagnostics.md` (Option A) and the earlier "extend `ingestDriverLocation`" draft. **Type:** purely additive diagnostic → advisor + codex gate before merge. **Logging-only — NO fix.**
 
-## Why B over A (settled at gate)
-The incident's evidenced failure mode is **app-alive, RTDB WebSocket stalled** (continuous native HTTP location pings proved the app was alive throughout). B delivers each breadcrumb over **HTTP — the channel proven to keep working during the stall** — in ~real-time at emit, so events are captured even if the app/WebView dies seconds later. A's in-memory RTDB queue would lose exactly those events on a kill. B's cost is a functions deploy; that cost is **contained to a single-function, prune-safe deploy** (see Deploy safety).
+## Owner constraint (LOCKED, verbatim intent)
+**Do NOT disturb any already-working function or code. Add code that only serves to log incidents/events. The one goal: catch the problem we hit — an ACCEPTED order being reassigned. That's it.** Every line added is log-only and behavior-preserving; NOTHING in `acceptTask`, `monitorAssignmentTimeout`, `sweepPendingOrders`, `ingestDriverLocation`, `startDriverShift`, or any order/task write is modified.
 
-## Incident recap (proven — see the Option-A spec + handoff for the full timeline)
-Order `PZX-260804-192831-HRSR7VGH`: driver Hermez swipe-accepted, UI looked normal, the 60s `monitorAssignmentTimeout` reassigned because his accept **never reached the server** (authoritative status still `assigned` at timeout). Server behaved correctly. First occurrence in hundreds. Leading (unproven) hypothesis: RTDB socket stalled while HTTP kept working → `acceptTask` applied to local cache → optimistic "accepted" → never synced. Two alternatives share the identical server footprint (swipe never crossed 85%; one-off app error) → need CLIENT telemetry to disambiguate.
+## The incident to catch (proven — see the Option-A spec/handoff for the full timeline)
+Order `PZX-260804-192831-HRSR7VGH`: driver Hermez swipe-accepted, UI looked normal, the 60s `monitorAssignmentTimeout` reassigned him because his accept **never reached the server** (authoritative status still `assigned` at timeout). Server behaved correctly. First occurrence in hundreds. Leading (unproven) hypothesis: RTDB WebSocket stalled while HTTP kept working → `acceptTask`'s write applied to local cache (optimistic UI advance via local listeners) but never server-acked. Two alternatives share the identical server footprint (swipe never crossed 85%; one-off app error) → only CLIENT logs can disambiguate.
 
-## Goal
-Capture, with certainty and surviving an app-kill, the exact client-side mechanism whenever a driver's accept does not reach the server — so the NEXT occurrence is proven from data, not inferred. Observe first; do not touch working accept/assignment code.
+## Why this is decisive WITHOUT touching the engine (source-verified)
+- `acceptTask` (xpizza-delivery.js:400) ends in `await update(ref(db), updates)` — its last step; RTDB's `update()` promise resolves **only on server ack**.
+- The swipe handler (index.html:2306) does `await XPD.acceptTask(...)` then `toast('Aceptado')`; `attachSlideConfirm` owns the error path (slider reset).
+- ⇒ a stalled/never-acked write manifests as **`acceptTask` never resolving** — fully observable **from the call site**. We attach a fire-and-forget observer to the returned promise and keep the `await` byte-identical. No line goes inside `acceptTask`.
+
+## Events (minimal set for THIS incident) — each `{uid, at: Date.now(), type, ...ctx}`
+1. `rtdb_conn {connected}` — from a NEW `.info/connected` listener; emitted on every transition. The socket up/down signal; `false` bracketing an accept = stall.
+2. `accept_swipe {taskId, connected}` — the swipe crossed 85% and `acceptTask` is about to be called, plus the current `.info/connected` value. Absence (when an order was reassigned) ⇒ gesture never fired.
+3. `accept_result {taskId, latencyMs}` — the `acceptTask` promise resolved (write server-acked). **Absent (or huge `latencyMs`) while `accept_swipe` is present ⇒ the accept never reached the server — the incident, proven.**
+4. `accept_err {taskId, err}` — the `acceptTask` promise rejected (e.g., the defensive "ya no está disponible" after a reassign).
+5. `accept_pending {taskId}` *(optional watchdog)* — a bare `setTimeout(…,10000)` emits if the promise hasn't settled in 10s. Observation only — no `Promise.race`, no abort; the real `await` is untouched.
+
+Reading a recurrence: `accept_swipe{connected:false}` + `rtdb_conn:false` around it + **no `accept_result`** = socket-stall, accepted-locally-never-synced. No `accept_swipe` = gesture never fired. `accept_result{normal latency}` yet reassigned = look elsewhere. Decisive for all three.
 
 ## Hard guardrails (non-negotiable)
-1. **No accept behavior change.** The `acceptTask` `get()`/`update()` calls and their result-handling stay byte-identical; the assignment engine, monitor, sweeper, and every order/task write are untouched. Breadcrumbs are interleaved observation only. *(Fence correction from the gate: "no behavior/logic/control-flow change" — NOT "zero lines in `acceptTask`"; capturing `accept_read`/`accept_write_*` necessarily adds emit lines inside `acceptTask`.)*
-2. **Fire-and-forget, never awaited.** Every emit + every HTTP flush is `try/catch`-wrapped and never `await`ed in the accept critical path. The `accept_write_ack` latency timing observes the existing `update()` promise only; the 10s `accept_write_timeout` watchdog is a bare `setTimeout` — **no `Promise.race`, no abort, no retry, no UI gate, no rejection path** that could throw into accept. The emit helper's own construction cannot throw outside its wrapper.
-3. **Server telemetry path cannot break location ingestion.** In `ingestDriverLocation`, the events[] handling runs in its own `try/catch` **after** the location-processing side effects, so a malformed/oversized events payload can never fail or delay the location write (the function's primary, critical job).
-4. **Dark by default.** Gated on `config/driver_diag_enabled` — **live-read/subscribed** (or checked fresh at emit time), never cached once at startup, so a flip to false takes effect with no app restart. Absent/false ⇒ fully inert (no buffering, no POSTs).
-5. **Bounded.** Client caps the buffer (~50 events); server inline-prunes per-uid on write (drop `> 7 days` or keep last ~200). No unbounded growth. Server also caps events accepted per request (≤50) and validates each `{type, at}` + bounded ctx.
-6. **Client timestamps.** Every event carries `at: Date.now()` (client). NEVER `serverTimestamp()` — a late/retried flush would misstamp at delivery time.
+1. **Engine frozen.** No edit to `acceptTask`/monitor/sweeper/`ingestDriverLocation`/any order-task write. The swipe handler gains only log emits + a promise observer; the `await XPD.acceptTask(...)` line and the success `toast` are byte-identical, so control flow (success→toast, error→`attachSlideConfirm` catch) is unchanged.
+2. **Fire-and-forget.** Every emit and every HTTP flush is `try/catch`-wrapped, never `await`ed in the accept path. The promise observer is `p.then(onOk, onErr)` attached ALONGSIDE the existing `await p` (both consume `p`, so no unhandled rejection) and cannot alter the awaited outcome. The optional watchdog is a bare `setTimeout` that only emits.
+3. **Dark by default.** Gated on `config/driver_diag_enabled` — **live-read/subscribed**, never cached once at startup; absent/false ⇒ fully inert (no listener writes, no buffering, no POSTs).
+4. **Bounded.** Client buffer cap (~50 events); the new function caps events/request (≤50), validates each `{type, at}`, and inline-prunes that uid's `driver_events` (drop `>7d` or keep last ~200). No unbounded growth.
+5. **Client timestamps.** `at: Date.now()` always. NEVER `serverTimestamp()` (a retried/late flush would misstamp).
 
-## Events to capture (unchanged from A) — each `{uid, at, type, ...ctx}`
-1. `rtdb_conn` — `.info/connected` transition `{connected}`. **Key signal**; `false` bracketing the accept window = stall proven.
-2. `accept_swipe` — swipe crossed the 85% threshold, `onConfirm` about to run `{taskId}`. Presence rules OUT "incomplete swipe."
-3. `accept_conn` — `.info/connected` value at the instant of accept `{connected}`.
-4. `accept_read` — `acceptTask` `get()` resolved `{taskId, status_seen, fromCache}` (or `accept_read_err {taskId, err}`).
-5. `accept_write_start` — about to call `update()` `{taskId}`.
-6. `accept_write_ack` — `update()` resolved `{taskId, latencyMs}`. Absent or `latencyMs ≥ 60000` ⇒ the stall, proven.
-7. `accept_write_err` — `update()` rejected `{taskId, err}`.
-8. `accept_write_timeout` — 10s watchdog `{taskId}`, observation only.
+## Sink — a NEW isolated function (nothing existing redeployed)
+### Server — `xpizza-functions/index.js`: add `exports.driverDiagIngest` (HTTP `onRequest`, us-central1)
+- Authed by the SAME per-shift opaque bearer token as `ingestDriverLocation`, by **importing the existing pure validator from `./driver-ingest` read-only** (the validator is NOT modified). Token → `uid`.
+- Body `{ events: [{type, at, ...ctx}] }`; validate + cap (≤50), then **admin-write** each to `driver_events/{uid}/{pushId}` and inline-prune. A soft per-uid rate guard (mirror `ingestDriverLocation`'s). All in `try/catch` — a bad payload just 400s, never affects anything else.
+- **It is a brand-new export → deploying it redeploys NONE of the working functions** (see Deploy).
 
-## Sink — Option B (HTTP), extend `ingestDriverLocation`
+### Client — `xpizza-driver` (add-only)
+- New `emitDiag(evt)` helper (gated on the live flag): push `{...evt, at: Date.now()}` to a bounded buffer, then **immediately** fire-and-forget `fetch(DIAG_URL, { method:'POST', headers:{Authorization:'Bearer '+ingestToken}, body: JSON.stringify({events: buffer}) })`; on 2xx clear flushed, else keep for a ~10s retry flush. Immediate (not debounced) so the swipe/result burst lands before any app-kill. The `ingestToken` is already held in the WebView JS (`native-location.js` ← `startDriverShift`).
+- New `.info/connected` listener on app start → `rtdb_conn` + a `lastConnState` module var (read by `accept_swipe`).
+- In the `btn-accept` swipe handler (index.html:2306), ADD: an `accept_swipe` emit, then attach `p.then(res-emit, err-emit)` to the `acceptTask` promise while keeping `await p` unchanged, plus the optional 10s watchdog.
 
-### Server (`xpizza-functions/index.js` + `./driver-ingest` if pure logic is added)
-`ingestDriverLocation` is an HTTP `onRequest` (us-central1) authed by the per-shift opaque **bearer token**; today it takes `{ locations: [...] }`. **Additive change:**
-- Accept an **optional** `events` array in the JSON body: `{ locations?: [...], events?: [{type, at, ...ctx}] }`. If `events` is absent → byte-identical to today. Make `locations` tolerated-absent too (an events-only POST processes events and skips the location path).
-- **After** the existing token validation (which yields `uid`) **and after** the location side effects, in a **separate `try/catch`**: validate + cap `events` (≤50/request, each has `type` + numeric `at`, ctx size-bounded), then **admin-write** each to `driver_events/{uid}/{pushId}` (admin bypasses rules). Inline-prune that uid's `driver_events` (drop `> 7d` or trim to last ~200) in the same path.
-- The existing rate-limit (120/min/uid) already covers this; event flushes stay well under it (see client).
-- A failure anywhere in the events block is swallowed (logged, not thrown) — **location ingestion is never affected**.
+### Rules — NONE
+The function admin-writes `driver_events` (bypasses rules); the owner reads it via the **Firebase admin console** after a recurrence. No rules change, no rules deploy, no emulator step. *(A dispatcher `.read` for a dashboard view is a deferred, separate change.)*
 
-### Client (`xpizza-driver` WebView JS — `xpizza-delivery.js` + `index.html`)
-The WebView JS already holds the shift `ingest_token` (via `native-location.js` ← `startDriverShift`) and the endpoint `INGEST_URL` (`native-location.js:102`). So breadcrumbs POST directly over WebView HTTP — the RTDB socket stall doesn't affect `fetch()`:
-- `emitDiag(evt)` (gated on the live `driver_diag_enabled` flag): push `{...evt, at: Date.now()}` to a bounded in-memory buffer, then schedule a **debounced (~750ms) fire-and-forget `fetch(INGEST_URL, {method:'POST', headers:{Authorization: 'Bearer '+token}, body: JSON.stringify({events: buffer})})`**. On 2xx → clear the flushed events; on failure → keep them for the next flush. Batches an accept burst into ~1 POST while still delivering in ~real-time. **Never `await`ed in accept.**
-- **Retry flush:** a lightweight timer (~every 10s, or on the next accept event) re-attempts any events left in the buffer, so a transient `fetch` failure doesn't strand them.
-- Wire the emits: `.info/connected` listener on app start (`accept_conn` reads its latest value); `accept_swipe` at the 85%-threshold fire in `attachSlideConfirm`; `accept_read`/`accept_write_start`/`accept_write_ack`(+latency)/`accept_write_err`/`accept_write_timeout` interleaved around `acceptTask`'s existing `get()`/`update()` (observation only, guardrail #1/#2).
+## Surfaces touched (all add-only)
+- `xpizza-functions/index.js` — NEW `driverDiagIngest` export (+ a pure validate/prune helper in `./driver-ingest`, unit-tested). Existing code untouched.
+- `xpizza-driver/xpizza-delivery.js` — NEW `emitDiag` + buffer/flush + `.info/connected` listener.
+- `xpizza-driver/index.html` — log emits + promise observer in the `btn-accept` handler (behavior byte-identical).
+- **No rules file. No existing function modified.**
 
-### Rules — **NONE required**
-The server admin-writes `driver_events` (bypasses rules) and the owner reads it via the **Firebase admin console** (or an admin script) after a recurrence. So **no rules change, no rules deploy, no emulator step** for this ship. *(Optional, deferred: a `driver_events/$uid` `.read` for `dispatchers` + `.indexOn ["at"]` if a dispatch-dashboard view is later wanted — its own rules-emulator'd change.)*
-
-## Surfaces touched
-- `xpizza-functions/index.js` — additive `events[]` handling in `ingestDriverLocation` (+ pure validate/prune helper in `./driver-ingest`, unit-tested).
-- `xpizza-driver/xpizza-delivery.js` — `emitDiag` + buffer/flush; `.info/connected` listener; breadcrumbs around `acceptTask`.
-- `xpizza-driver/index.html` — `accept_swipe` at the slide-confirm fire; init the conn-listener.
-- **No rules file. No new function export.**
-
-## Deploy safety — THE hard constraint (locked)
-Modifying `ingestDriverLocation` requires a functions deploy. To avoid the prune footgun ([[prod-functions-deployed-state]]: a partial full-deploy prunes live functions → **drivers unassignable**) and the env-strip footgun ([[functions-env-management]]: gitignored `.env` strips live runtime env):
-1. **Reconcile `.env` to live** first (from `xpizza-reference/` / gcloud), per [[functions-env-management]].
-2. Deploy **only the one function**: `firebase deploy --only functions:ingestDriverLocation`. Scoping to the single function **updates only it and deletes nothing** — it cannot prune the driver-native or payment functions.
-3. **Verify:** `gcloud functions list … --filter='state!=ACTIVE'` is empty; confirm the deploy log shows only `ingestDriverLocation` updated and **zero deletions**; smoke a location ping still ingests.
-
-## How this delivers certainty on recurrence (now app-kill-resilient)
-Read `driver_events/{driver}` (admin) after the next incident:
-- `rtdb_conn:false @ T1 … true @ T2` bracketing accept → **socket was down. Proven.**
-- `accept_swipe` + `accept_conn:false` + `accept_read.fromCache:true` + `accept_write_start` with `accept_write_ack` absent/late → **optimistic-accept-over-dead-socket. Proven.**
-- No `accept_swipe` → **gesture never fired. Proven.**
-Because each breadcrumb was HTTP-POSTed at emit, the record survives a subsequent app-kill/WebView-death (A's failure mode). Only THEN design the fix (confirm-before-success / connectivity gate) as a separate gated change.
+## Deploy safety (locked)
+1. **Reconcile `.env` → live** first ([[functions-env-management]]).
+2. Deploy the new function ONLY: `firebase deploy --only functions:driverDiagIngest`. A scoped deploy **creates just this function and deletes/redeploys nothing** — the driver-native, payment, `ingestDriverLocation`, and every other live function are untouched, so the prune footgun ([[prod-functions-deployed-state]]) cannot fire.
+3. **Verify:** deploy log shows only `driverDiagIngest` created, **zero deletions/updates elsewhere**; `gcloud functions list … --filter='state!=ACTIVE'` empty; `ingestDriverLocation` still ingests a test ping.
 
 ## Rollout
-1. Build in the driver-app repo behind the live `config/driver_diag_enabled` (dark) + the additive `ingestDriverLocation` change.
-2. **Reconcile `.env` → deploy `--only functions:ingestDriverLocation` → verify no prune / env intact / location still ingests.**
+1. Build in the driver-app repo behind the live `config/driver_diag_enabled` (dark); add `driverDiagIngest`.
+2. Reconcile `.env` → deploy `--only functions:driverDiagIngest` → verify (above).
 3. Ship the driver app version; flip `driver_diag_enabled=true`.
-4. Controlled repro: block the RTDB socket, keep HTTP up, swipe accept → confirm `driver_events` captured it; and/or the next live recurrence.
-5. Read `driver_events` → confirm or kill the hypothesis → design the fix with certainty.
+4. Controlled repro (block the RTDB socket, keep HTTP up, swipe accept) and/or wait for the next live recurrence.
+5. Read `driver_events` (admin) → confirm or kill the hypothesis → THEN design the actual accept-path fix as a separate, gated change.
 
-## Gate (fresh — this is Option B, its own gate)
-Advisor review + **codex glance** of the built diff (driver-path + touches a live function). Emulator not needed (no rules change). **Verify at gate:** (1) fence — accept behavior byte-identical; (2) fire-and-forget on both client emit and server events block, watchdog pure; (3) server events-block failure can't break location ingestion; (4) dark + live-flag; (5) bounded (client cap + server cap + inline prune) + client `at`; (6) decisive for the three buckets; (7) **deploy safety** — single-function `--only` target, `.env` reconciled, zero deletions. Not money-adjacent. Do not self-merge; owner deploys.
+## Gate (this design)
+Advisor + **codex** review of the built diff (driver-path; a new function). No emulator (no rules). Verify: engine byte-identical (the `await XPD.acceptTask` line + success toast unchanged); fire-and-forget on emits/flush/observer/watchdog; new function is isolated + fail-safe; dark + live flag; bounded (client + server caps + inline prune) + client `at`; decisive for the accept-reassign incident; deploy safety (single NEW-function `--only` target, `.env` reconciled, zero collateral). Not money-adjacent. Do not self-merge; owner deploys.
 
 ## Out of scope (separate, acknowledged)
-(a) lite-app map-freeze/berserk-on-pin-tap stability bug; (b) latent `acceptTask` CAS race (real, code-confirmed, did NOT cause this incident) — proactive hardening; (c) the eventual accept-path fix (deferred until telemetry proves the mechanism).
+(a) lite-app map-freeze/berserk-on-pin-tap stability bug; (b) latent `acceptTask` CAS race (real, did NOT cause this incident); (c) the eventual accept-path fix (deferred until telemetry proves the mechanism).
