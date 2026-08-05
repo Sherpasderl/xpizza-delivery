@@ -50,8 +50,8 @@ The `onValue` arms at the **load-time** fail-open, so the profile resolves *whil
 | Fast read, complete + in-zone | "Entregar a …" reduced summary *(unchanged)* |
 | Fast read, incomplete | Creá-tu-perfil block *(unchanged)* |
 | Fast read, complete but zone/invariant fails now | Raw name/phone fields, fail-open *(unchanged)* |
-| **Slow read (unavailable), logged-in** | **NEW: "Cargando tu dirección…" → resolves via heal, or bounded fallback to raw fields** |
-| Slow read (unavailable), **guest** | Raw fields, immediately *(unchanged — guests never wait)* |
+| **Slow read (unavailable), logged-in + delivery** | **NEW: "Cargando tu dirección…" → resolves via heal, or bounded fallback to raw fields** |
+| Slow read (unavailable), **guest OR pickup** | Raw fields, immediately *(unchanged — the loading hold is delivery-only; the fail-open branch itself must exclude pickup since the pickup gate is downstream in the resolved path)* |
 
 ### Components
 
@@ -67,6 +67,7 @@ The exact body of today's fail-open (`_acctData = null; _acctProfileConfirmedInc
 
 **3. `showDeliveryLoading()` — the logged-in fail-open hold (step-1 only)**
 - `_acctDeliveryLoading = true`.
+- Inject **both** `injectDeliverStyles()` and `injectCompactSummaryStyles()` — the `.acct-compact/.acct-cav/.acct-ctxt` classes live in the latter, which `renderS1CompactSummary` normally calls but which never ran on the fail-open path; without it the loading line is unstyled.
 - Render a minimal, clean loading line into `#acct-deliver`: an "Entregar a" eyebrow + `PERSON_SVG` + **"Cargando tu dirección…"** (`.acct-fine`), reusing the same `acct-eyebrow`/`acct-compact` shell as the reduced summary so the loading→summary swap is a minimal layout shift.
 - Hide the raw name/phone (`#raw-name-phone`) so the fields don't flash.
 - **Does not touch payment or step 2.** Payment is a separate step behind Continuar + the map-confirm step; by the time a customer navigates there, the profile has landed (or the existing step-2 fail-open + validation apply). No submit gate is needed.
@@ -81,7 +82,7 @@ The exact body of today's fail-open (`_acctData = null; _acctProfileConfirmedInc
 **5. The heal callback — resolve through the normal router**
 1. `val = snap.exists() ? snap.val() : null`.
 2. `detachHeal()` — one-shot (drops `_healUnsub` + `_healTimer`).
-3. Build `deliveryRecoveryState()` (see #7). **Guard:** `if (!shouldRecoverDeliveryStep(state)) return;` — abandons if the customer acted meanwhile (typed → `rawDeliveryDirty`; switched to pickup; opened edit; a restore started; reduced already active). Never clobbers.
+3. Build `deliveryRecoveryState()` (see #7). **Guard:** `if (!shouldRecoverDeliveryStep(state))` → abandon. But because `detachHeal()` in step 2 already cleared the fallback timer, a plain `return` here would leave "Cargando…" stuck with nothing to rescue it. So on abandon, **if still holding, reveal raw** (`if (_acctDeliveryLoading) { clearDeliveryLoading(); if (!_acctRestoring) failOpenToRaw(); }`) — never trap. The `!_acctRestoring` guard preserves R5 (don't touch the DOM a restore owns). This covers the customer who typed (`rawDeliveryDirty`) before the profile landed. (Post-fallback late arrival is already safe — `_acctDeliveryLoading` is false, so this is a no-op and raw stays.)
 4. `clearDeliveryLoading()` (just clears `_acctDeliveryLoading`) then `initDeliveryStep(val).catch(()=>{})`. Passing `val` as `preSnap` means `initDeliveryStep` treats it as a resolved (`status:'ok'`) read and does **no re-read** — the crux that works on a slow link. It routes normally: complete+in-zone → "Entregar a" summary; incomplete → Creá-tu-perfil; complete-but-zone-fails → raw. From a loading line (not raw), any resolution is coherent and non-jarring.
 5. `initDeliveryStep` carries its own `_acctRestoring`/`_acctRestoreGen` R5 guards.
 
@@ -96,12 +97,12 @@ The recovery-state object built inline in `maybeRecoverDeliveryStep` (`account.j
 Split the fail-open on login state:
 ```
 if (status !== 'ok') {
-  if (marker()) { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }
-  else { failOpenToRaw(); }        // guest — raw immediately, unchanged
+  if (marker() && pageOrderType() === 'delivery') { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }
+  else { failOpenToRaw(); }        // guest OR pickup — raw immediately, unchanged
   return;
 }
 ```
-The ONLY path that arms the heal/loading — fires exclusively on a timed-out/errored read for a logged-in user. When `initDeliveryStep` is called WITH a `preSnap` (`status` forced `ok`), this branch is never reached → the heal's own `initDeliveryStep(val)` can never re-arm (no loop).
+The ONLY path that arms the heal/loading — fires exclusively on a timed-out/errored read for a logged-in **delivery** user. Pickup is excluded here because its gate (`revertToNormalFillable` on `pageOrderType() !== 'delivery'`) is only in the resolved-read path below, so the fail-open branch must exclude it itself. When `initDeliveryStep` is called WITH a `preSnap` (`status` forced `ok`), this branch is never reached → the heal's own `initDeliveryStep(val)` can never re-arm (no loop).
 
 **9. Teardown helpers**
 - `detachHeal()`: `if (_healUnsub) { _healUnsub(); _healUnsub = null; } if (_healTimer) { clearTimeout(_healTimer); _healTimer = null; }`.

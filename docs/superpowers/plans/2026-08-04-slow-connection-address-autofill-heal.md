@@ -160,6 +160,8 @@ Add the module state and all helper functions. None is wired into the fail-open 
   assert.ok(/function deliveryHealReset\(\)/.test(src), `${form}: deliveryHealReset() not found`);
   assert.ok(/function showDeliveryLoading\(\)/.test(src), `${form}: showDeliveryLoading() not found`);
   assert.ok(src.includes('Cargando tu dirección'), `${form}: loading copy missing`);
+  assert.ok(/showDeliveryLoading[\s\S]{0,260}injectCompactSummaryStyles\(\)/.test(src), `${form}: showDeliveryLoading must inject compact-summary styles so the loading line is styled on a cold fail-open (R2-FIX-1)`);
+  assert.ok(/if \(_acctDeliveryLoading\) \{ clearDeliveryLoading\(\); if \(!_acctRestoring\) failOpenToRaw\(\); \}/.test(src), `${form}: heal bail path must reveal raw when still holding (no stuck "Cargando…", R5-safe) (R2-FIX-2)`);
   assert.ok(/function startHealFallback\(\)/.test(src), `${form}: startHealFallback() not found`);
   assert.ok(/function armDeliveryHeal\(\)/.test(src), `${form}: armDeliveryHeal() not found`);
   assert.ok(src.includes("'user_profiles/' + uid"), `${form}: heal must subscribe user_profiles/<uid>`);
@@ -216,6 +218,7 @@ Expected: FAIL — `_healUnsub state missing`.
   function showDeliveryLoading() {
     _acctDeliveryLoading = true;
     injectDeliverStyles();
+    injectCompactSummaryStyles();   // R2-FIX-1: .acct-compact/.acct-cav/.acct-ctxt live here (NOT in injectDeliverStyles); on a cold fail-open renderS1CompactSummary never ran → without this the loading line is UNSTYLED
     const mount = $('acct-deliver');
     if (mount) {
       mount.innerHTML = `
@@ -266,7 +269,13 @@ Expected: FAIL — `_healUnsub state missing`.
           const val = snap.exists() ? snap.val() : null;
           detachHeal();                 // one-shot: drop listener + fallback timer
           const state = deliveryRecoveryState();
-          if (!shouldRecoverDeliveryStep(state)) return;   // user acted / not a heal state → leave as-is (no clobber)
+          if (!shouldRecoverDeliveryStep(state)) {
+            // R2-FIX-2: detachHeal() just cleared the fallback timer, so if we're STILL holding we
+            // must not leave "Cargando…" stuck (no timer left to rescue it) — reveal raw so the step
+            // never traps. Skip the DOM reveal during a restore (R5 owns the DOM); just clear the flag.
+            if (_acctDeliveryLoading) { clearDeliveryLoading(); if (!_acctRestoring) failOpenToRaw(); }
+            return;
+          }
           clearDeliveryLoading();
           initDeliveryStep(val).catch(() => {});           // routes reduced / create-profile / raw from the landed value
         }, () => {
@@ -309,10 +318,10 @@ The behavior-changing task (the codex gate's focus). Wire the machinery: logged-
 
 ```js
   // ── Task 3: activation (branch split + logout teardown) ──
-  assert.ok(src.includes('if (marker()) { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }'),
-    `${form}: fail-open branch must split logged-in→loading+heal vs guest→raw`);
-  assert.ok(/if \(status !== 'ok'\) \{\s*\n\s*if \(marker\(\)\)/.test(src),
-    `${form}: the split must be the status!=='ok' fail-open branch`);
+  assert.ok(src.includes("if (marker() && pageOrderType() === 'delivery') { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }"),
+    `${form}: fail-open branch must gate the loading hold on logged-in + DELIVERY (guest/pickup → raw) (R2-FIX-3)`);
+  assert.ok(/if \(status !== 'ok'\) \{\s*\n\s*if \(marker\(\) && pageOrderType\(\) === 'delivery'\)/.test(src),
+    `${form}: the delivery-gated split must be the status!=='ok' fail-open branch`);
   assert.ok(src.includes('deliveryHealReset();'), `${form}: rewardsReset must call deliveryHealReset() (logout teardown)`);
   ok(`${form}: Task 3 — activated: branch split, logout teardown`);
 ```
@@ -325,13 +334,15 @@ Expected: FAIL — branch-split assertion.
 - [ ] **Step 3: Split the fail-open branch** in BOTH forms. Replace the Task-1 line `if (status !== 'ok') { failOpenToRaw(); return; }` with:
 
 ```js
-    // UNAVAILABLE (timeout / SDK error). Logged-in: hold the step-1 "Tus datos" slot with
+    // UNAVAILABLE (timeout / SDK error). Logged-in DELIVERY: hold the step-1 "Tus datos" slot with
     // "Cargando tu dirección…" + arm the no-deadline heal + a bounded raw fallback, so a registered
     // user sees their address (not the raw fields) when it lands, and is never trapped. Payment
     // (step 2) is untouched — the shipped "never hide payment on an unconfirmed read" invariant holds.
-    // Guest: raw immediately (byte-identical to today).
+    // Guest OR pickup → raw immediately (byte-identical to today). R2-FIX-3: the pickup gate lives in
+    // the resolved path below, so the fail-open branch MUST itself exclude pickup or a slow logged-in
+    // pickup wrongly gets the delivery loading UI.
     if (status !== 'ok') {
-      if (marker()) { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }
+      if (marker() && pageOrderType() === 'delivery') { showDeliveryLoading(); armDeliveryHeal(); startHealFallback(); }
       else { failOpenToRaw(); }
       return;
     }
