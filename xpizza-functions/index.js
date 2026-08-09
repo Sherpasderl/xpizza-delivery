@@ -3854,6 +3854,7 @@ exports.onIncomingWhatsApp = onRequest(
       return res.status(200).send('ignored: event_type');
     }
     if (data.fromMe === true) {
+      console.log('FROMME-PREREQ to=', data.to, 'body=', String(data.body||'').slice(0,40));   // STEP-0 PROBE (temporary, log-only) — verify UltraMsg fires fromMe for staff app-replies + that data.to = the customer. REMOVE after the pre-req passes.
       return res.status(200).send('ignored: fromMe');
     }
     if (data.type && data.type !== 'chat') {
