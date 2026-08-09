@@ -301,8 +301,43 @@ function tplUnhandled(cfg, { isOpen, opensLabel }) {
   ].join('\n');
 }
 
+// ── Auto-mute helpers (Path A) ──────────────────────────────────────────────
+// When a human staff member replies to a customer from the WhatsApp app, suppress the bot's
+// auto-reply to that customer for a window so the bot doesn't talk over the human. Pure — the
+// admin RTDB reads/writes live in onIncomingWhatsApp.
+
+// The mute leaf key for a phone: the SAME last-8-digit suffix the order-matching uses
+// (fromPhoneRaw.slice(-8)), so the inbound `data.from` key and the outbound `data.to` key resolve
+// to ONE leaf per customer. Strips a trailing @c.us (harmless if already stripped). '' on empty
+// input (the caller skips the write) — and last-8-digits is always a valid RTDB key.
+function muteKeyFor(phone) {
+  return String(phone == null ? '' : phone).replace(/@c\.us$/, '').slice(-8);
+}
+
+// A HUMAN staff app-reply worth muting on, vs the bot's own API send. UltraMsg marks any outbound
+// fromMe:true; self:false = typed by a person in the app, self:true = sent by our API (the bot).
+// Strict === false so a missing `self` is treated as NOT-human (safe: never self-mutes the bot).
+function isHumanOutbound(data) {
+  return !!data && data.fromMe === true && data.self === false;
+}
+
+// Suppress the auto-reply iff a fresh human-handling mark exists within the window.
+function shouldSuppressAutoReply(muteRecord, now, windowMs) {
+  return !!muteRecord && Number.isFinite(muteRecord.at) && (now - muteRecord.at) < windowMs;
+}
+
+// The live mute window (ms) from config, or a 10-min default on unset / non-finite / non-positive.
+function resolveMuteWindowMs(configVal) {
+  const n = Number(configVal);
+  return (Number.isFinite(n) && n > 0) ? n : 10 * 60 * 1000;
+}
+
 module.exports = {
   classify,
+  muteKeyFor,
+  isHumanOutbound,
+  shouldSuppressAutoReply,
+  resolveMuteWindowMs,
   getHoursStatus,
   hoursFromIdentity,
   nowInHonduras,

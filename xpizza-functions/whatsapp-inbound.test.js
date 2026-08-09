@@ -6,7 +6,8 @@
 const assert = require('assert');
 const {
   classify, getHoursStatus, hoursFromIdentity, resolveInboundRestaurant, isUnrecognizedRestaurantParam, configFor,
-  tplGeneralInquiry, tplStatusCheckFound, tplStatusCheckNotFound, tplShortAck, tplUnhandled, CONFIG_BY_RESTAURANT
+  tplGeneralInquiry, tplStatusCheckFound, tplStatusCheckNotFound, tplShortAck, tplUnhandled, CONFIG_BY_RESTAURANT,
+  muteKeyFor, isHumanOutbound, shouldSuppressAutoReply, resolveMuteWindowMs
 } = require('./whatsapp_inbound');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -84,5 +85,41 @@ assert.strictEqual(typeof getHoursStatus().isOpen, 'boolean'); ok('getHoursStatu
 assert.strictEqual(classify('hola quiero una pizza'), 'GENERAL_INQUIRY'); ok('classify greeting/order → GENERAL_INQUIRY');
 assert.strictEqual(classify('donde esta mi pedido'), 'STATUS_CHECK'); ok('classify → STATUS_CHECK');
 assert.strictEqual(classify('gracias'), 'SHORT_ACK'); ok('classify → SHORT_ACK');
+
+// ── auto-mute helpers (Path A: staff app-reply → suppress the bot auto-reply for a window) ──
+const WMS = 10 * 60 * 1000;
+
+// shouldSuppressAutoReply — fresh mark within the window → true; else false
+assert.strictEqual(shouldSuppressAutoReply(null, 1000, WMS), false); ok('mute: no record → false');
+assert.strictEqual(shouldSuppressAutoReply(undefined, 1000, WMS), false); ok('mute: undefined record → false');
+assert.strictEqual(shouldSuppressAutoReply({}, 1000, WMS), false); ok('mute: missing at → false');
+assert.strictEqual(shouldSuppressAutoReply({ at: 'x' }, 1000, WMS), false); ok('mute: non-finite at → false');
+assert.strictEqual(shouldSuppressAutoReply({ at: 1000 }, 1000 + WMS - 1, WMS), true); ok('mute: fresh (within window) → true');
+assert.strictEqual(shouldSuppressAutoReply({ at: 1000 }, 1000 + WMS, WMS), false); ok('mute: at window edge → false (>= window)');
+assert.strictEqual(shouldSuppressAutoReply({ at: 1000 }, 1000 + WMS + 5000, WMS), false); ok('mute: stale → false');
+
+// resolveMuteWindowMs — live value, else 10-min default
+assert.strictEqual(resolveMuteWindowMs(120000), 120000); ok('window: valid → value');
+assert.strictEqual(resolveMuteWindowMs(undefined), WMS); ok('window: unset → 10-min default');
+assert.strictEqual(resolveMuteWindowMs(null), WMS); ok('window: null → default');
+assert.strictEqual(resolveMuteWindowMs(0), WMS); ok('window: 0 → default');
+assert.strictEqual(resolveMuteWindowMs(-5), WMS); ok('window: negative → default');
+assert.strictEqual(resolveMuteWindowMs('nope'), WMS); ok('window: NaN → default');
+
+// muteKeyFor — same last-8 suffix as order-matching; inbound-from & outbound-to → one leaf
+assert.strictEqual(muteKeyFor('50499887766@c.us'), '99887766'); ok('key: strips @c.us + last-8');
+assert.strictEqual(muteKeyFor('50499887766'), '99887766'); ok('key: bare 504 number → last-8');
+assert.strictEqual(muteKeyFor('+50499887766'), '99887766'); ok('key: +504 → last-8');
+assert.strictEqual(muteKeyFor('99887766'), '99887766'); ok('key: 8-digit local → itself');
+assert.strictEqual(muteKeyFor('50499887766@c.us'), muteKeyFor('+50499887766')); ok('key: inbound-from == outbound-to leaf (PARITY)');
+assert.strictEqual(muteKeyFor(''), ''); ok('key: empty → empty (caller skips the write)');
+assert.strictEqual(muteKeyFor(null), ''); ok('key: null → empty');
+
+// isHumanOutbound — self:false = human app-reply, self:true = our bot API send
+assert.strictEqual(isHumanOutbound({ fromMe: true, self: false }), true); ok('human: fromMe + self:false → true');
+assert.strictEqual(isHumanOutbound({ fromMe: true, self: true }), false); ok('human: bot self:true → false');
+assert.strictEqual(isHumanOutbound({ fromMe: false, self: false }), false); ok('human: not fromMe → false');
+assert.strictEqual(isHumanOutbound({ fromMe: true }), false); ok('human: self undefined → false (safe: never self-mutes)');
+assert.strictEqual(isHumanOutbound(null), false); ok('human: null → false');
 
 console.log(`whatsapp-inbound: OK (${n} cases)`);

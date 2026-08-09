@@ -3848,7 +3848,34 @@ exports.onIncomingWhatsApp = onRequest(
 
     const event = req.body || {};
     const data = event.data || {};
-    console.log('WA-PROBE evt=' + event.event_type + ' data=' + JSON.stringify(data).slice(0, 400));   // STEP-0 WIDE PROBE (temporary, log-only, auth already passed) — capture EVERY event so we can see the staff message_create (data.to=customer), the bot's own message_create, and the customer message_received side by side (Path A vs B). REMOVE before the feature ships.
+
+    // Auto-mute SET: a HUMAN staff reply from the WhatsApp app arrives as message_create with
+    // self:false (the bot's own API sends are self:true → skipped). Mark the CUSTOMER (data.to) muted
+    // so the inbound auto-reply below stays silent for a window and doesn't talk over the human.
+    // Writes ONLY whatsapp_mute; best-effort (a mute is a nicety, never fail the webhook); always 200.
+    // Then prune marks older than a few windows so the node stays bounded.
+    if (event.event_type === 'message_create') {
+      if (inbound.isHumanOutbound(data)) {
+        try {
+          const k = inbound.muteKeyFor(String(data.to || '').replace(/@c\.us$/, ''));
+          if (k) {
+            const mdb = getDatabase();
+            await mdb.ref(`whatsapp_mute/${restaurantId}/${k}`).set({ at: Date.now() });
+            try {
+              const windowMs = inbound.resolveMuteWindowMs((await mdb.ref('config/whatsapp_mute_window_ms').once('value')).val());
+              const cutoff = Date.now() - 6 * windowMs;
+              const all = (await mdb.ref(`whatsapp_mute/${restaurantId}`).once('value')).val() || {};
+              const dead = {};
+              for (const [key, rec] of Object.entries(all)) {
+                if (!rec || !Number.isFinite(rec.at) || rec.at < cutoff) dead[key] = null;
+              }
+              if (Object.keys(dead).length) await mdb.ref(`whatsapp_mute/${restaurantId}`).update(dead);
+            } catch (_) { /* prune is best-effort */ }
+          }
+        } catch (_) { /* best-effort — muting must never fail the webhook */ }
+      }
+      return res.status(200).send('handled: message_create');
+    }
 
     // Filter out non-customer events
     if (event.event_type !== 'message_received') {
@@ -3893,6 +3920,24 @@ exports.onIncomingWhatsApp = onRequest(
       console.log(`onIncomingWhatsApp: whatsapp disabled for ${restaurantId}, no auto-reply`);
       return res.status(200).send('ignored: disabled');
     }
+
+    // Auto-mute CHECK: if a human staff member replied to THIS customer within the window, stay silent
+    // (log to incoming_messages for dispatcher visibility) instead of auto-replying over them.
+    // FAIL-OPEN: any mute/config read error → fall through and classify+reply exactly as today.
+    try {
+      const mdb = getDatabase();
+      const windowMs = inbound.resolveMuteWindowMs((await mdb.ref('config/whatsapp_mute_window_ms').once('value')).val());
+      const muteRec = (await mdb.ref(`whatsapp_mute/${restaurantId}/${inbound.muteKeyFor(fromPhoneRaw)}`).once('value')).val();
+      if (inbound.shouldSuppressAutoReply(muteRec, Date.now(), windowMs)) {
+        await mdb.ref('incoming_messages').push({
+          from: data.from, restaurant_id: restaurantId, body,
+          time: data.time || Math.floor(Date.now() / 1000),
+          handled: false, reason: 'muted: human handling'
+        });
+        console.log(`onIncomingWhatsApp: muted (human handling) rid=${restaurantId} from=${fromPhoneRaw}`);
+        return res.status(200).send('muted');
+      }
+    } catch (_) { /* FAIL-OPEN → reply as today */ }
 
     // Hours for the closed-message. x_pizza uses its hardcoded HOURS (byte-identical). Non-x_pizza reads
     // identity.hours LIVE (single source — no drift vs the order-form/gate). On a read miss, degrade to a
