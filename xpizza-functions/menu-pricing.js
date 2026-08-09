@@ -28,7 +28,7 @@ const X_PIZZA_MENU = {
   'Prosciutto': 402, 'Potato & Dill Sausage': 299, 'Cacio e Pepe': 297,
   'Ham': 282, 'Nutella': 251,
   'Carnivora NY': 685, 'Margherita NY': 624, 'Cacio e Pepe NY': 641,
-  'Mushroom NY': 702, 'Jamon o Pepperoni NY': 641, 'Crispy Bacon NY': 662
+  'Mushroom NY': 702, 'Jamon NY': 641, 'Pepperoni NY': 641, 'Crispy Bacon NY': 662
 };
 
 // La Musa — keyed by stable `id` slug. In sync with the MENU const in the La Musa

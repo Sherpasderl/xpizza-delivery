@@ -42,7 +42,11 @@ assert.ok(computeServerTotal([{ id: 'dimsum_01', qty: 1 }], 'x_pizza').error.sta
 assert.deepStrictEqual(computeServerTotal([{ name: 'Margherita', qty: 1 }], 'taco_bell'), { total: NaN, error: 'unknown restaurant: taco_bell' }); ok('unknown restaurant rejected');
 
 // ── table integrity ──
-assert.equal(Object.keys(MENU_BY_RESTAURANT.x_pizza).length, 23); ok('x_pizza table has 23 items (unchanged)');
+assert.equal(Object.keys(MENU_BY_RESTAURANT.x_pizza).length, 24); ok('x_pizza table has 24 items (NY split: Jamon o Pepperoni → Jamon + Pepperoni)');
+// NY split integrity: the combined item is gone; the two split items price at the shared 641.
+assert.equal(MENU_BY_RESTAURANT.x_pizza['Jamon o Pepperoni NY'], undefined); ok('old combined "Jamon o Pepperoni NY" removed');
+assert.equal(MENU_BY_RESTAURANT.x_pizza['Jamon NY'], 641); ok('Jamon NY → 641');
+assert.equal(MENU_BY_RESTAURANT.x_pizza['Pepperoni NY'], 641); ok('Pepperoni NY → 641');
 
 // ── La Musa menu pricing: every id prices exactly + full-cart sum ──
 // (Form-vs-table PARITY — exact id-set equality both directions — lives in menu-parity.test.js,

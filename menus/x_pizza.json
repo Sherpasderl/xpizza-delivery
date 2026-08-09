@@ -105,8 +105,13 @@
     "category": "ny"
   },
   {
-    "key": "Jamon o Pepperoni NY",
-    "label": "Jamon o Pepperoni NY",
+    "key": "Jamon NY",
+    "label": "Jamon NY",
+    "category": "ny"
+  },
+  {
+    "key": "Pepperoni NY",
+    "label": "Pepperoni NY",
     "category": "ny"
   },
   {
