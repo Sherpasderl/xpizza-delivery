@@ -1054,6 +1054,13 @@
   .dt .eta.late { color: var(--accent); }
   .eta-chip { font-size: 11px; font-weight: 600; color: var(--info); margin-left: 6px; font-variant-numeric: tabular-nums; }
   .slip-chip { font-size: 11px; font-weight: 600; color: var(--accent); margin-left: 6px; }
+  /* Stalled (offered-but-unaccepted, deadline expired) — warn chip reuses the accent/slip vocabulary. */
+  .stalled-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--accent); margin-left: 6px; }
+  .stalled-chip .ic { width: 13px; height: 13px; }
+  .task-row.stalled { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+  .task-row .task-actions { margin-top: 8px; }
+  .task-row .reassign-btn { background: var(--accent); color: white; border: none; padding: 7px 14px; border-radius: 5px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: -0.01em; cursor: pointer; }
+  .task-row .reassign-btn:hover { background: #b91c1c; }
   #risk-summary:not(:empty) { padding: 0 14px 10px; }
   #risk-summary .risk-count { font-size: 11px; font-weight: 700; color: var(--warn); }
 
@@ -2309,6 +2316,7 @@ import { etaEligible, projectArrival, relativeEta, clockTime, dueForRefresh, dis
 // ── Dispatch Phase-1 pure modules (Torre de Control redesign) ──
 import { classifyAlert, sortAlertEntries } from './dispatch-alerts.js?v=1';
 import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js?v=2';
+import { isStalledAssignment } from './dispatch-stalled.js?v=1';
 import { createEtaSnapshotStore } from './dispatch-eta-snapshot.js?v=1';
 import { deliveryRisk } from './dispatch-delivery-risk.js?v=1';
 import { assembleThread } from './dispatch-comms-thread.js?v=1';
@@ -3619,7 +3627,18 @@ function renderDriversSection() {
   if (!liveTree || !offTree || !wire) return;
 
   const byName = (a, b) => (a[1].name || '').localeCompare(b[1].name || '');
-  const live = allEntries.filter(([_, d]) => d.active).sort(byName);
+  // Float any driver holding a stalled (offered-but-unaccepted, deadline-expired) order to the top of
+  // the live roster so the dispatcher sees the order needing rescue first. Display-only ordering —
+  // isStalledAssignment writes nothing and the getActiveOrders/getPendingOrders buckets are untouched.
+  const nowTs = Date.now();
+  const stalledDriverUids = new Set();
+  for (const o of Object.values(allOrders)) {
+    const dtx = allTasks[`${o.order_id}_delivery`];
+    if (dtx && isStalledAssignment(dtx, nowTs)) stalledDriverUids.add(dtx.assigned_driver_id);
+  }
+  const byStalledThenName = (a, b) =>
+    ((stalledDriverUids.has(a[0]) ? 0 : 1) - (stalledDriverUids.has(b[0]) ? 0 : 1)) || byName(a, b);
+  const live = allEntries.filter(([_, d]) => d.active).sort(byStalledThenName);
   const off  = allEntries.filter(([_, d]) => !d.active).sort(byName);
 
   const liveMeta = $('drivers-live-meta'); if (liveMeta) liveMeta.textContent = String(live.length);
@@ -3711,6 +3730,15 @@ function renderDriversSection() {
         }
       ].filter(Boolean);
       showActionMenu(btn, items);
+    });
+  });
+
+  // Stalled-order rescue: a prominent "Reasignar" straight from the stalled task-row — mirrors the
+  // unassigned card's assign-btn wiring but in reassign mode (the existing CAS-safe picker/reassignOrder).
+  wire.querySelectorAll('[data-reassign-order]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openPicker(btn.dataset.reassignOrder, true);
     });
   });
 }
@@ -3946,8 +3974,14 @@ function renderTaskRow(driverUid, order) {
     currentArrivalMs: etaCache[order.order_id]?.arrivalMs ?? null,
   });
 
+  // Stalled = offered to a driver who never accepted + the acceptance deadline lapsed. Display-only:
+  // isStalledAssignment writes nothing; it only decides whether to surface the rescue affordance.
+  const now = Date.now();
+  const stalled = isStalledAssignment(dt, now);
+  const stalledDriverName = stalled ? (allDrivers[dt.assigned_driver_id]?.name || 'repartidor') : '';
+
   return `
-    <div class="task-row" data-order-id="${escapeHtml(String(order.order_id))}" data-driver-uid="${escapeHtml(String(driverUid))}">
+    <div class="task-row${stalled ? ' stalled' : ''}" data-order-id="${escapeHtml(String(order.order_id))}" data-driver-uid="${escapeHtml(String(driverUid))}">
       <div class="task-top">
         <div class="task-id">${escapeHtml(displayOrderLabel(order))}</div>
         <div style="display: flex; align-items: center; gap: 6px;">
@@ -3960,9 +3994,11 @@ function renderTaskRow(driverUid, order) {
       ${scheduledBadge(order)}
       <div class="task-meta">
         <span class="phase-pill ${phase}">${phaseLabel}</span>
+        ${stalled ? `<span class="stalled-chip" title="El repartidor no aceptó y el tiempo expiró — reasigná"><svg class="ic sm"><use href="#i-alert"/></svg>${escapeHtml(stalledDriverName)} · sin aceptar · expiró</span>` : ''}
         ${(() => { const e = etaCache[order.order_id]; if (!e) return ''; const now = Date.now(); return `<span class="eta-chip">${relativeEta(e.arrivalMs, now)} · ${clockTime(e.arrivalMs)}</span>`; })()}
         ${risk.level === 'slipping' ? '<span class="slip-chip" title="Retrasándose vs. el primer ETA observado">retrasándose</span>' : ''}
       </div>
+      ${stalled ? `<div class="task-actions"><button class="reassign-btn" data-reassign-order="${escapeHtml(String(order.order_id))}">Reasignar</button></div>` : ''}
       ${expanded ? renderOrderExpanded(order) : ''}
     </div>
   `;
@@ -4390,6 +4426,15 @@ function renderOrderDetailModal(order) {
   // delivery; the server voids the charge + recalls the driver (Xavier's call, 2026-07-31).
   // Client + server agree (both allow); only terminal states hide Cancel.
   const cancellable = !['cancelled', 'delivered', 'completed'].includes(order.status);
+  // Reasignar — the direct-from-the-order rescue the stalled case was missing ("I clicked the order and
+  // there was no button"). Shown for any assigned, non-terminal order; visually primary when the offer
+  // stalled. Opens the existing CAS-safe picker → reassignOrder (which owns its own result toast).
+  const dtDetail = allTasks[`${order.order_id}_delivery`];
+  const isAssignedActive = !!(dtDetail && dtDetail.assigned_driver_id) && cancellable;
+  if (isAssignedActive) {
+    const stalledDetail = isStalledAssignment(dtDetail, Date.now());
+    actions.push(`<button class="od-action-btn${stalledDetail ? ' primary' : ''}" id="od-reassign-order">Reasignar</button>`);
+  }
   if (cancellable) {
     actions.push(`<button class="od-action-btn danger" id="od-cancel-order">Cancelar pedido</button>`);
   }
@@ -4401,6 +4446,15 @@ function renderOrderDetailModal(order) {
       const oid = order.order_id;
       closeOrderDetailModal();
       confirmCancelOrder(oid);   // existing money-safe flow (own confirm + toast)
+    });
+  }
+
+  const reassignBtn = $('od-reassign-order');
+  if (reassignBtn) {
+    reassignBtn.addEventListener('click', () => {
+      const oid = order.order_id;
+      closeOrderDetailModal();
+      openPicker(oid, true);   // existing CAS-safe picker → reassignOrder (owns its own result toast)
     });
   }
 
