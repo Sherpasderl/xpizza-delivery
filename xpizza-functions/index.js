@@ -72,7 +72,8 @@ const { claimOrderCore } = require('./claim-order');       // claimOrder — ret
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
 const { shouldEarnOnStatus, earnPreview } = require('./rewards-core');     //   pure terminal-state gate + the reward-card earn_preview
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
-const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, holdRedemptionForManual, sweepStaleReservations, sweepConsumeRecovery, reverseRedemptionForOrder } = require('./rewards-reserve');  //   reservation lifecycle + confirm-settle + sweeps + [B] hold-or-alert at manual entries + paid-after-close hold release
+const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, holdRedemptionForManual, sweepStaleReservations, sweepConsumeRecovery, reverseRedemptionForOrder } = require('./rewards-reserve');
+const { paymentPollState } = require('./payment-poll-state');   // online-return poll state machine (incl. closed_refunded)  //   reservation lifecycle + confirm-settle + sweeps + [B] hold-or-alert at manual entries + paid-after-close hold release
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');  //   config version for the reservation binding
 const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
@@ -1585,18 +1586,18 @@ exports.paymentStatus = onRequest(
           // v2: La Musa is a multiset (no single free_item_key) → carry the redeemed unit count so the success screen shows "N premios".
           free_count: Array.isArray(order.redemption.items) ? order.redemption.items.reduce((s, it) => s + (Number(it && it.qty) || 0), 0) : (order.redemption.free_item_key ? 1 : 0) }
       : null;
-    // Scheduled Orders (§B.4 / R2-#4): a paid-and-HELD order (or one mid-release) matches the paid check
-    // below (confirmed) but is NOT cooking. Return a distinct scheduled_paid state carrying scheduled_for
-    // (no tracking token) so the form shows "programado para <slot>", never "ya está en cocina".
-    if (st === 'scheduled' || st === 'releasing') {
+    const state = paymentPollState(order);   // pure state machine (payment-poll-state.js, unit-tested)
+    // Scheduled Orders (§B.4 / R2-#4): a paid-and-HELD order (or one mid-release) is confirmed but NOT
+    // cooking. Distinct scheduled_paid carrying scheduled_for (no token) → "programado para <slot>".
+    if (state === 'scheduled_paid') {
       return res.status(200).json({ ok: true, state: 'scheduled_paid', scheduled_for: order.scheduled_for || null, tracking_token: null,
         total_cents: Number.isFinite(order.total_cents) ? order.total_cents : null, redemption: redeemSummary });
     }
-    let state = 'pending';
-    if (ps === 'confirmed' || ['new', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'completed'].includes(st)) state = 'paid';
-    else if (st === 'cancelled' || ps === 'refunded' || ps === 'refund_pending') state = 'cancelled';
-    else if (ps === 'failed') state = 'failed';
-    else if (ps === 'manual_reconciliation') state = 'verifying';
+    // Paid-after-close AUTO-REFUND: distinct terminal state so the return page shows the honest
+    // "te reembolsamos L{total}" screen (not the generic "cancelled"). blocked_reason is the guard's sentinel.
+    if (state === 'closed_refunded') {
+      return res.status(200).json({ ok: true, state: 'closed_refunded', refunded_total_cents: Number.isFinite(order.total_cents) ? order.total_cents : null });
+    }
 
     return res.status(200).json({ ok: true, state, tracking_token: state === 'paid' ? (order.tracking_token || null) : null,
       total_cents: state === 'paid' ? (Number.isFinite(order.total_cents) ? order.total_cents : null) : null,
