@@ -72,7 +72,7 @@ const { claimOrderCore } = require('./claim-order');       // claimOrder — ret
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
 const { shouldEarnOnStatus, earnPreview } = require('./rewards-core');     //   pure terminal-state gate + the reward-card earn_preview
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
-const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, holdRedemptionForManual, sweepStaleReservations, sweepConsumeRecovery } = require('./rewards-reserve');  //   reservation lifecycle + confirm-settle + sweeps + [B] hold-or-alert at manual entries
+const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, holdRedemptionForManual, sweepStaleReservations, sweepConsumeRecovery, reverseRedemptionForOrder } = require('./rewards-reserve');  //   reservation lifecycle + confirm-settle + sweeps + [B] hold-or-alert at manual entries + paid-after-close hold release
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');  //   config version for the reservation binding
 const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
@@ -1451,6 +1451,16 @@ exports.confirmOnlinePayment = onRequest(
 );
 
 // Shared deps + entrypoint for the confirm machine (used by webhook + sweep).
+// Post-close materialize grace (paid-after-close), in ms. config/order_grace_minutes; default 15 on
+// unset / non-finite / non-positive. Fail-open to 15 on a read error (never strand captured money).
+async function getGraceMinutes(db) {
+  try {
+    const v = (await db.ref('config/order_grace_minutes').once('value')).val();
+    const n = Number(v);
+    return (Number.isFinite(n) && n > 0) ? n : 15;
+  } catch (_) { return 15; }
+}
+
 function confirmDeps(db) {
   return {
     db,
@@ -1458,6 +1468,10 @@ function confirmDeps(db) {
     restaurant: RESTAURANT,
     buildMaterializeUpdates,
     getIdentity: getRestaurantIdentity,   // 3c: confirm-time active-recheck (plan 10b)
+    getGraceMinutes,   // paid-after-close: post-close materialize grace window
+    // Release a redemption hold on a paid-after-close auto-refund — the EXACT cancel-path call
+    // (reverseRedemptionForOrder disposition:'refund'). Idempotent; no-op for a non-redeemed order.
+    releaseRewardHold: (db2, { orderId, order, now }) => reverseRedemptionForOrder(db2, { orderId, order, disposition: 'refund', now }),
     // Config-aware capture amount: sandbox → 1-14 test amount; production → real total.
     chargeAmountLempiras: (totalCents) => {
       try { return pixelPayChargeAmountLempiras(resolvePixelPayConfig(), totalCents); }
