@@ -16,17 +16,26 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 // Slice a top-level `const <NAME> = [ … ];` array literal out of the form source. The array's close
 // is the first `];` after the declaration (item `tags:[]` arrays never produce `];`).
-function sliceArray(constName) {
-  const start = FORM.indexOf(`const ${constName} = [`);
+function sliceArray(src, constName) {
+  const start = src.indexOf(`const ${constName} = [`);
   assert.notStrictEqual(start, -1, `${constName} array not found in form`);
-  const end = FORM.indexOf('];', start);
+  const end = src.indexOf('];', start);
   assert.notStrictEqual(end, -1, `${constName} array close not found`);
-  return FORM.slice(start, end);
+  return src.slice(start, end);
 }
-// Each entry is `{ id:"slug", … price:NNN … }` with price after id — pull id→price.
+// La Musa entry = `{ id:"slug", … price:NNN … }` with price after id — pull id→price.
 function parseEntries(block) {
   const out = {};
   const re = /id:"([a-z0-9_]+)"[^}]*?price:(\d+)/g;
+  let m;
+  while ((m = re.exec(block)) !== null) out[m[1]] = Number(m[2]);
+  return out;
+}
+// X. Pizza entry = `{ id:N, cat:'…', name:'…', price:NNN, … }` — NAME-keyed (the server prices by exact
+// item.name; the numeric form id is ignored). name is a single-quoted string (no apostrophes) BEFORE price.
+function parseNameEntries(block) {
+  const out = {};
+  const re = /name:'([^']+)'[^}]*?price:(\d+)/g;
   let m;
   while ((m = re.exec(block)) !== null) out[m[1]] = Number(m[2]);
   return out;
@@ -43,10 +52,29 @@ function assertExactParity(label, form, server, expectedCount) {
   }
 }
 
-const formMenu = parseEntries(sliceArray('MENU'));
-const formExtras = parseEntries(sliceArray('EXTRAS'));
+const formMenu = parseEntries(sliceArray(FORM, 'MENU'));
+const formExtras = parseEntries(sliceArray(FORM, 'EXTRAS'));
 
 assertExactParity('MENU', formMenu, MENU_BY_RESTAURANT.la_musa, 43); ok('form MENU (43) === server la_musa menu (exact id-set + prices)');
 assertExactParity('EXTRAS', formExtras, EXTRAS_BY_RESTAURANT.la_musa, 14); ok('form EXTRAS (14) === server la_musa extras (exact id-set + prices)');
+
+// ── X. Pizza 3-source parity (NAME-keyed) — closes the "no automated form↔price guard" gap that the NY
+// split had to hand-verify. Drift across the 3 hand-synced sources now FAILS CI instead of mis-pricing live. ──
+const FORM_X = readFileSync(join(__dirname, '..', 'xpizza-orders', 'index.html'), 'utf8');
+const X_JSON = JSON.parse(readFileSync(join(__dirname, '..', 'menus', 'x_pizza.json'), 'utf8'));
+
+// 1. MENU (money-critical): form name→price === X_PIZZA_MENU, exact name-set both ways + price equality.
+assertExactParity('x_pizza MENU', parseNameEntries(sliceArray(FORM_X, 'MENU')), MENU_BY_RESTAURANT.x_pizza, 24);
+ok('form MENU (24) === server x_pizza menu (exact name-set + prices)');
+// 2. EXTRAS: form name→price === x_pizza extras.
+assertExactParity('x_pizza EXTRAS', parseNameEntries(sliceArray(FORM_X, 'EXTRAS')), EXTRAS_BY_RESTAURANT.x_pizza, 14);
+ok('form EXTRAS (14) === server x_pizza extras (exact name-set + prices)');
+// 3. KDS manifest (3rd source): menus/x_pizza.json key-set === X_PIZZA_MENU key-set (name-only; json has no prices).
+const jsonKeys = X_JSON.map((e) => e.key).sort();
+const serverMenuKeys = Object.keys(MENU_BY_RESTAURANT.x_pizza).sort();
+assert.equal(jsonKeys.length, 24, `x_pizza.json: parsed ${jsonKeys.length} keys, expected 24 (broken parse or drift)`);
+assert.deepStrictEqual(jsonKeys, serverMenuKeys,
+  `x_pizza.json manifest key-set mismatch — json-only: [${jsonKeys.filter((k) => !serverMenuKeys.includes(k))}], server-only: [${serverMenuKeys.filter((k) => !jsonKeys.includes(k))}]`);
+ok('menus/x_pizza.json KDS manifest (24) === X_PIZZA_MENU key-set (name-only)');
 
 console.log(`menu-parity: OK (${n} cases)`);
