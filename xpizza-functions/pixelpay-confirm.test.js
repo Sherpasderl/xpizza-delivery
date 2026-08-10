@@ -38,6 +38,7 @@ function makeDb(initial = {}) {
     const last = parts[parts.length - 1];
     if (val === null) delete node[last]; else node[last] = val;
   };
+  let _pk = 0;
   const ref = (path = '') => ({
     async once() { const v = getAt(path); return { val: () => clone(v) }; },
     async transaction(fn) {
@@ -57,7 +58,10 @@ function makeDb(initial = {}) {
     async update(patch) {
       if (!path) { for (const [k, v] of Object.entries(patch)) setAt(k, clone(v)); return; }
       setAt(path, Object.assign({}, getAt(path) || {}, clone(patch)));
-    }
+    },
+    async set(val) { setAt(path, clone(val)); },
+    async push(val) { const k = `k${++_pk}`; setAt(path ? `${path}/${k}` : k, clone(val)); return { key: k }; },
+    async remove() { setAt(path, null); }
   });
   return { root, ref, getAt };
 }
@@ -169,9 +173,12 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     ok('scheduled online, slot now CLOSED → scheduled_confirm_invalid + manual_review + blocked (money held for review)');
   }
 
-  // 1d. Codex-on-diff: an UNSCHEDULED online order authorized while OPEN can CONFIRM after close (paid at
-  //     8:50pm past an 8:45pm close). Re-check hours at materialize — closed now → HOLD (manual_review +
-  //     scheduled_blocked + alert), never land a live ASAP order on a dark kitchen.
+  // 1d. Paid-after-close (grace + auto-refund): an UNSCHEDULED online order authorized while OPEN can CONFIRM
+  //     after close (paid at 8:50pm past an 8:45pm close). Re-check hours at materialize; past the REAL kitchen
+  //     close (config close + grace) → AUTO-REFUND the captured payment (pre-materialization → no factura),
+  //     never land a live ASAP order on a dark kitchen. A CONFIRMED reversal → payment_status:'refunded' +
+  //     status:'cancelled' (no dispatcher alert; the fallback manual_review path is exercised in the guard's
+  //     own unit test). ALL_CLOSED ⇒ isWithinGrace false at every instant → the refund branch.
   {
     const db = makeDb(pendingOrder());
     const client = mkClient();
@@ -180,13 +187,15 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     const r = await confirmOnlinePayment(deps, { orderId: 'PZX-1', paymentUuid: 'S-uuid', now: 7000, trackingToken: 'TOK9' });
     assert.strictEqual(r.outcome, 'held_closed_at_materialize');
     const o = db.getAt('orders/PZX-1');
-    assert.strictEqual(o.payment_status, 'manual_review');
-    assert.strictEqual(o.scheduled_blocked, true);
+    assert.strictEqual(o.payment_status, 'refunded');                  // auto-refunded (was: manual_review hold)
+    assert.strictEqual(o.status, 'cancelled');
+    assert.strictEqual(o.blocked_reason, 'refunded_paid_after_close');
     assert.ok(!o.materialized_at && o.status !== 'new', 'NOT materialized onto a closed kitchen');
     assert.ok(!db.getAt('order_tracking/TOK9'), 'no tracking');
-    assert.strictEqual(client.calls.capture, 1, 'money captured (held for a dispatcher)');
-    assert.ok(alerted && alerted.k === 'paid_after_close', 'dispatcher alerted');
-    ok('unscheduled online paid AFTER close → HELD (manual_review + alert), never new');
+    assert.strictEqual(client.calls.capture, 1, 'money captured…');
+    assert.ok(client.calls.void >= 1, '…then reversed to PixelPay');
+    assert.strictEqual(alerted, null, 'no dispatcher alert on a successful auto-refund');
+    ok('unscheduled online paid AFTER close, past grace → AUTO-REFUNDED (refunded + cancelled), never new');
   }
 
   // 1e. Same order, kitchen OPEN at materialize → materializes to new (normal paid-while-open, UNCHANGED).
