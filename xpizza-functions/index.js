@@ -73,7 +73,8 @@ const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Re
 const { shouldEarnOnStatus, earnPreview } = require('./rewards-core');     //   pure terminal-state gate + the reward-card earn_preview
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
 const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, holdRedemptionForManual, sweepStaleReservations, sweepConsumeRecovery, reverseRedemptionForOrder } = require('./rewards-reserve');
-const { paymentPollState } = require('./payment-poll-state');   // online-return poll state machine (incl. closed_refunded)  //   reservation lifecycle + confirm-settle + sweeps + [B] hold-or-alert at manual entries + paid-after-close hold release
+const { paymentPollState } = require('./payment-poll-state');   // online-return poll state machine (incl. closed_refunded)
+const { alertsToPrune } = require('./alert-prune');   // auto-dismiss dispatcher alerts whose orders are resolved  //   reservation lifecycle + confirm-settle + sweeps + [B] hold-or-alert at manual entries + paid-after-close hold release
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');  //   config version for the reservation binding
 const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
@@ -1917,6 +1918,21 @@ exports.reconcilePayments = onSchedule(
     } else {
       console.log('reconcilePayments: no breaches');
     }
+
+    // Task 8 — auto-dismiss STALE dispatcher alerts: an order-scoped alert whose referenced orders are all
+    // resolved (cancelled/refunded/gone) no longer needs attention. Best-effort + idempotent. The breach
+    // alert just pushed references currently-breaching (still-flagged) orders → it is never pruned. Only
+    // detail-referenced alerts are touched (keyed factura_/reward_ alerts have their own clearing).
+    try {
+      const alerts = (await db.ref('dispatcher_alerts').once('value')).val() || {};
+      const stale = alertsToPrune(alerts, orders);
+      if (stale.length) {
+        const updates = {};
+        for (const k of stale) updates[`dispatcher_alerts/${k}`] = null;
+        await db.ref().update(updates);
+        console.log(`reconcilePayments: auto-dismissed ${stale.length} stale dispatcher alert(s)`);
+      }
+    } catch (e) { console.error('reconcilePayments: alert prune failed', e && e.message); }
 
     // ── Rewards Phase B1: reconcile redemption reservations (money-safety backstops) ──
     // (1) release ABANDONED holds — online past hosted_expires_at, cash orphan/cancelled (sweepStaleReservations);
