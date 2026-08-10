@@ -4136,6 +4136,12 @@ function renderReconciliationSection() {
   if (meta) meta.textContent = orders.length;
   list.innerHTML = orders.map(o => {
     const brand = (o.restaurant_id || 'x_pizza') === 'la_musa' ? 'La Musa' : 'X. Pizza';
+    // State-aware reason so staff know which action applies. NOTE: a manual_review order (e.g.
+    // refund_failed_paid_after_close) is NOT claimable by resolveManualReconciliation (server requires
+    // manual_reconciliation) → the resolve buttons will 409; the reason directs a manual PixelPay refund.
+    const reason = o.blocked_reason === 'refund_failed_paid_after_close'
+      ? 'Reembolso automático falló (cocina cerrada) — reembolsá manualmente en PixelPay'
+      : (o.payment_status === 'manual_review' ? 'Requiere revisión manual' : 'Pago en línea sin confirmar');
     return `
       <div class="recon-card" data-order-id="${escapeHtml(o.order_id)}">
         <div class="recon-top">
@@ -4143,7 +4149,7 @@ function renderReconciliationSection() {
           <span class="recon-total">L${escapeHtml(String(o.total ?? '—'))}</span>
         </div>
         <div class="recon-sub">${escapeHtml(brand)} · ${escapeHtml(o.customer_name || '—')} · hace ${reconAge(o.created_at)}</div>
-        <div class="recon-reason">Pago en línea sin confirmar</div>
+        <div class="recon-reason">${escapeHtml(reason)}</div>
         <div class="recon-actions">
           <button class="recon-btn materialize" data-recon-oid="${escapeHtml(o.order_id)}" data-recon-action="materialize">Materializar</button>
           <button class="recon-btn refund" data-recon-oid="${escapeHtml(o.order_id)}" data-recon-action="refund">Reembolsar</button>

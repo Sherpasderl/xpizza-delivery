@@ -553,7 +553,10 @@ export function subscribeToManualReconciliation(callback) {
     const out = {};
     for (const id of Object.keys(all)) {
       const o = all[id];
-      if (o && o.payment_status === 'manual_reconciliation') out[id] = o;
+      // manual_reconciliation (money-ambiguous online) AND manual_review (e.g. a paid-after-close order whose
+      // auto-refund FAILED: blocked_reason 'refund_failed_paid_after_close') — both are dead-end holds that need
+      // a reachable dispatcher action, so surface both (they stay status:'pending_payment' pre-materialization).
+      if (o && (o.payment_status === 'manual_reconciliation' || o.payment_status === 'manual_review')) out[id] = o;
     }
     callback(out);
   });
