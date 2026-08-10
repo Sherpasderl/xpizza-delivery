@@ -10,10 +10,12 @@
  *
  * This is the shared re-check at the two materialize chokepoints (confirmAndMaterialize — which the
  * hosted webhook + materializeOnConfirm recovery both delegate to — and confirmAndMaterializeFrom
- * ManualClaim). For an UNSCHEDULED (ASAP) order, it re-reads current hours and, if the kitchen is closed
- * NOW, HOLDS the paid order (payment_status:'manual_review' + scheduled_blocked + dispatcher alert) for a
- * dispatcher to release-when-open / contact / refund — never status:'new'. This reuses the SHIPPED
- * hold+alert policy (mirrors closed-at-release and the scheduled-confirm re-validation); no new policy.
+ * ManualClaim). For an UNSCHEDULED (ASAP) order it re-reads current hours and: OPEN or within the
+ * post-close GRACE (config close + config/order_grace_minutes) → materialize normally; PAST the real
+ * kitchen close → AUTO-REFUND the captured payment (pre-materialization → no factura → no fiscal void),
+ * never land a live ASAP order on a dark kitchen. Refund-failure is split by cause (refund_pending →
+ * reconciler owns it; hard-fail → manual_reconciliation), never a false "refunded". Returns true iff the
+ * caller must NOT materialize (held / refunded / refund_pending / manual_reconciliation).
  *
  * Scheduled orders are untouched (they take their own hold path before reaching here). A config outage →
  * materialize (return false): captured money is NEVER stranded over a config blip, mirroring the shipped
@@ -51,10 +53,11 @@ async function holdIfClosedAtMaterialize(deps, orderId, order, now) {
     if (!o) return o;
     if (o.payment_status === 'refunded' || o.status === 'cancelled' || o.materialized_at) return o; // already resolved (lost the race)
     if (o.payment_status === 'refunding_paid_after_close') return o;                                 // another pass owns the refund
+    if (o.payment_status !== 'confirmed') return o;                                                  // REVISE-4: only claim a CONFIRMED order (defensive — the guard runs post-confirm)
     didClaim = true;
     return { ...o, payment_status: 'refunding_paid_after_close', refunding_at: now };
   });
-  if (!claim.committed || !didClaim) return true;   // lost / other-owned / already-resolved → no-op (held; caller must NOT materialize)
+  if (!claim.committed || !didClaim) return true;   // lost / not-confirmed / other-owned / already-resolved → no-op
 
   const attemptId = order && order.active_attempt_id;
   // The captured payment's uuid — voidOrRefund needs it to ACTUALLY reverse the capture. A FALSY uuid makes
@@ -63,31 +66,66 @@ async function holdIfClosedAtMaterialize(deps, orderId, order, now) {
   let paymentUuid = null;
   try { paymentUuid = (await deps.db.ref(`payment_attempts/${attemptId}/payment_uuid`).once('value')).val() || null; } catch (_) {}
 
+  // REVISE-1: missing uuid → NO reversal is/was attempted → route to manual_reconciliation (dispatcher-resolvable
+  // in the existing panel; the resolver's no-uuid branch converges honestly). No reversal in flight ⇒ no race
+  // with the hourly refundReconciler (which only re-drives refund_pending / stale reversing attempts).
+  if (!paymentUuid) {
+    await orderRef.update({ payment_status: 'manual_reconciliation', blocked_reason: 'refund_failed_paid_after_close' });
+    if (deps.alert) { try { await deps.alert('refund_failed_paid_after_close', { orderId, restaurant_id: rid, reason: 'no_payment_uuid' }); } catch (_) {} }
+    return true;
+  }
+
+  let rref = null, threw = null;
   try {
-    if (!paymentUuid) throw new Error('paid_after_close: missing payment_uuid — cannot confirm a real reversal');
-    const rref = await deps.voidOrRefund(deps, {
-      orderId, attemptId, pixelpayOrderId: `${orderId}-${attemptId}`, paymentUuid, reason: 'paid_after_close', now,
-    });
-    // Mark refunded ONLY on a CONFIRMED reversal. voided:false (refund_pending) is NOT a refund — the
-    // refundReconciler will retry the attempt; the order must not falsely say "refunded" nor message the
-    // customer. Treat any non-confirmed outcome as a failure → manual_review below.
-    if (!rref || rref.voided !== true) throw new Error(`paid_after_close: reversal not confirmed (${rref && rref.message})`);
+    rref = await deps.voidOrRefund(deps, { orderId, attemptId, pixelpayOrderId: `${orderId}-${attemptId}`, paymentUuid, reason: 'paid_after_close', now });
+  } catch (e) { threw = e; }
+
+  // CONFIRMED reversal (voided===true) → refund the customer. (An order-update throw here leaves the order at
+  // refunding_paid_after_close; the item-5 stale-recovery sweep re-reads the attempt and finalizes it.)
+  if (!threw && rref && rref.voided === true) {
     await orderRef.update({
       payment_status: 'refunded', status: 'cancelled', blocked_reason: 'refunded_paid_after_close',
       refunded_at: now, refund_ref: (rref && rref.ref) || rref.outcome || null,
     });
-    // Release any redemption hold — the EXACT cancel-path call (reverseRedemptionForOrder disposition:'refund':
-    // reserved/held_paid → released). Best-effort + idempotent; no-op for a non-redeemed order.
-    if (deps.releaseRewardHold) { try { await deps.releaseRewardHold(deps.db, { orderId, order, now }); } catch (_) {} }
+    if (deps.releaseRewardHold) { try { await deps.releaseRewardHold(deps.db, { orderId, order, now }); } catch (_) {} }   // exact cancel-path reverseRedemptionForOrder('refund'); idempotent, no-op for non-redeemed
     try { await deps.db.ref('paid_after_close_audit').push({ order_id: orderId, restaurant_id: rid, actor: 'system:paid_after_close', at: now, outcome: 'refunded' }); } catch (_) {}
-    if (deps.sendPaidAfterCloseRefund) { try { await deps.sendPaidAfterCloseRefund(deps.db, { orderId, order }); } catch (_) {} }   // brand-aware customer message (only after a CONFIRMED refund)
-  } catch (e) {
-    // Missing uuid / refund threw / refund not confirmed → NEVER strand & never falsely refund: fall back to
-    // manual_review + a reachable dispatcher action (Task 7, action = Reembolsar) + alert.
-    await orderRef.update({ payment_status: 'manual_review', blocked_reason: 'refund_failed_paid_after_close' });
-    if (deps.alert) { try { await deps.alert('refund_failed_paid_after_close', { orderId, restaurant_id: rid, error: e && e.message }); } catch (_) {} }
+    if (deps.sendPaidAfterCloseRefund) { try { await deps.sendPaidAfterCloseRefund(deps.db, { orderId, order }); } catch (_) {} }   // customer message ONLY after a confirmed refund
+    return true;
   }
-  return true;   // held / refunded / manual_review — caller must NOT materialize
+
+  // REVERSAL NOT CONFIRMED — split by whether a reversal is IN FLIGHT (owned by the hourly refundReconciler,
+  // which re-drives an attempt in refund_pending / stale reversing via voidOrRefund's attempt-CAS). Re-read the
+  // attempt: voided===false ⇒ voidOrRefund set it refund_pending; a throw may have left it reversing or untouched.
+  let attemptStatus = null;
+  try { attemptStatus = (await deps.db.ref(`payment_attempts/${attemptId}/status`).once('value')).val(); } catch (_) {}
+  if (attemptStatus === 'refund_pending' || attemptStatus === 'reversing') {
+    // REVISE-1: reversal IN FLIGHT → the reconciler finishes it (idempotent). Do NOT expose a manual button —
+    // a direct manual void (resolve-manual.js) bypasses the attempt-CAS → double-refund. refund_pending sentinel.
+    await orderRef.update({ payment_status: 'refund_pending', blocked_reason: 'refund_pending_paid_after_close' });
+    if (deps.alert) { try { await deps.alert('refund_pending_paid_after_close', { orderId, restaurant_id: rid, error: threw && threw.message }); } catch (_) {} }
+  } else {
+    // No reversal in flight (threw before the reversal CAS) → dispatcher-resolvable. SAFE: the reconciler ignores
+    // this attempt (not refund_pending/reversing), so the resolver's direct void is the SOLE reversal — no race.
+    await orderRef.update({ payment_status: 'manual_reconciliation', blocked_reason: 'refund_failed_paid_after_close' });
+    if (deps.alert) { try { await deps.alert('refund_failed_paid_after_close', { orderId, restaurant_id: rid, error: threw && threw.message }); } catch (_) {} }
+  }
+  return true;   // held / refunded / refund_pending / manual_reconciliation — caller must NOT materialize
 }
 
-module.exports = { holdIfClosedAtMaterialize };
+// REVISE-5: stale-recovery decision for an order stuck at 'refunding_paid_after_close' (a crash between
+// voidOrRefund and the order-update). PURE — the sweep (refundReconciler) re-reads the attempt and applies
+// this. Money is always safe (the attempt's own CAS/idempotency); this just finalizes the ORDER outcome.
+//   attempt refunded/voided → finalize_refunded (complete the order + customer message);
+//   attempt refund_pending/reversing → refund_pending (reconciler still owns it);
+//   else (captured / gone) → manual_reconciliation (no reversal in flight → dispatcher-resolvable).
+// Fresh (< staleMs since refunding_at) or not-stuck → none (let the in-flight guard pass finish).
+function recoverRefundingDecision(order, attempt, now, staleMs) {
+  if (!order || order.payment_status !== 'refunding_paid_after_close') return { action: 'none' };
+  if ((now - (Number(order.refunding_at) || 0)) < staleMs) return { action: 'none' };
+  const st = attempt && attempt.status;
+  if (st === 'refunded' || st === 'voided') return { action: 'finalize_refunded' };
+  if (st === 'refund_pending' || st === 'reversing') return { action: 'refund_pending' };
+  return { action: 'manual_reconciliation' };
+}
+
+module.exports = { holdIfClosedAtMaterialize, recoverRefundingDecision };

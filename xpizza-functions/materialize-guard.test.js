@@ -7,7 +7,7 @@
  * on an already-resolved order is a no-op. Run: node materialize-guard.test.js
  */
 const assert = require('assert');
-const { holdIfClosedAtMaterialize } = require('./materialize-guard');
+const { holdIfClosedAtMaterialize, recoverRefundingDecision } = require('./materialize-guard');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
@@ -100,18 +100,18 @@ function mkDeps(db, over = {}) {
     ok('C: past grace, refund OK → refunded once + audit + message + release');
   }
 
-  // D) past grace, refund THROWS → true; manual_review + alert; no message
+  // D) past grace, refund THROWS with NO reversal in flight (attempt still 'captured') → manual_reconciliation
   {
-    const db = makeDb(DB0());
+    const db = makeDb(DB0());   // attempt A1 status 'captured'
     const { deps, calls } = mkDeps(db, { voidOrRefund: async () => { throw new Error('pixelpay down'); } });
     const held = await holdIfClosedAtMaterialize(deps, 'O1', ORDER(), PAST);
     assert.equal(held, true, 'D: refund fail → still held (true, never materialize)');
     const o = db._get('orders/O1');
-    assert.equal(o.payment_status, 'manual_review', 'D: fallback manual_review');
+    assert.equal(o.payment_status, 'manual_reconciliation', 'D: threw, no reversal in flight → manual_reconciliation (resolvable)');
     assert.equal(o.blocked_reason, 'refund_failed_paid_after_close', 'D: fallback blocked_reason');
     assert.deepEqual(calls.alerts.map((a) => a[0]), ['refund_failed_paid_after_close'], 'D: alert fired');
     assert.equal(calls.send, 0, 'D: no customer refund message on failure');
-    ok('D: refund throws → manual_review + alert, no message');
+    ok('D: refund throws (no reversal in flight) → manual_reconciliation + alert, no message');
   }
 
   // E) already refunded (re-entry) → true; voidOrRefund NOT called
@@ -157,31 +157,55 @@ function mkDeps(db, over = {}) {
     ok('H: two concurrent passes → refund + message exactly once (tight CAS)');
   }
 
-  // I) refund NOT confirmed (voided:false, refund_pending) → manual_review + alert, NO false-refund, NO message
+  // I) refund IN FLIGHT (voided:false → attempt refund_pending) → refund_pending, NO button, NO false-refund/message
   {
     const db = makeDb(DB0());
-    const { deps, calls } = mkDeps(db, { voidOrRefund: async () => { calls.void++; return { voided: false, outcome: 'refund_pending', message: 'in_flight' }; } });
+    const { deps, calls } = mkDeps(db, { voidOrRefund: async () => { calls.void++; await db.ref('payment_attempts/A1').update({ status: 'refund_pending' }); return { voided: false, outcome: 'refund_pending', message: 'in_flight' }; } });
     const held = await holdIfClosedAtMaterialize(deps, 'O1', ORDER(), PAST);
     assert.equal(held, true, 'I: refund_pending → still held');
     const o = db._get('orders/O1');
-    assert.equal(o.payment_status, 'manual_review', 'I: NOT falsely refunded — manual_review');
+    assert.equal(o.payment_status, 'refund_pending', 'I: reversal in flight → refund_pending (reconciler owns, no button)');
+    assert.equal(o.blocked_reason, 'refund_pending_paid_after_close', 'I: refund_pending sentinel');
     assert.notEqual(o.payment_status, 'refunded', 'I: never marks refunded on refund_pending');
-    assert.deepEqual(calls.alerts.map((a) => a[0]), ['refund_failed_paid_after_close'], 'I: alert fired');
+    assert.deepEqual(calls.alerts.map((a) => a[0]), ['refund_pending_paid_after_close'], 'I: refund_pending alert');
     assert.equal(calls.send, 0, 'I: no "refunded" message when refund only pending');
-    ok('I: refund_pending (voided:false) → manual_review, never falsely refunded/messaged');
+    ok('I: refund_pending (attempt in flight) → refund_pending route, reconciler owns');
   }
 
-  // J) captured order missing payment_uuid → manual_review + alert; voidOrRefund NEVER called (no fake reversal)
+  // J) captured order missing payment_uuid → manual_reconciliation + alert; voidOrRefund NEVER called
   {
     const db = makeDb({ orders: { O1: ORDER() }, payment_attempts: { A1: { status: 'captured' } } });   // no payment_uuid
     const { deps, calls } = mkDeps(db);
     const held = await holdIfClosedAtMaterialize(deps, 'O1', ORDER(), PAST);
     assert.equal(held, true, 'J: missing uuid → still held');
-    assert.equal(db._get('orders/O1').payment_status, 'manual_review', 'J: manual_review (never falsely refunded)');
+    assert.equal(db._get('orders/O1').payment_status, 'manual_reconciliation', 'J: manual_reconciliation (resolvable, no reversal)');
     assert.equal(calls.void, 0, 'J: voidOrRefund NOT called with a null uuid (would falsely succeed)');
     assert.deepEqual(calls.alerts.map((a) => a[0]), ['refund_failed_paid_after_close'], 'J: alert fired');
-    ok('J: captured order w/o payment_uuid → manual_review, no fake reversal');
+    ok('J: captured order w/o payment_uuid → manual_reconciliation, no fake reversal');
   }
+
+  // K) REVISE-4: guard CAS only claims a CONFIRMED order (defensive) — a non-confirmed order → no claim, no refund
+  {
+    const db = makeDb({ orders: { O1: { ...ORDER(), payment_status: 'pending' } }, payment_attempts: { A1: { payment_uuid: 'PU-1', status: 'captured' } } });
+    const { deps, calls } = mkDeps(db);
+    const held = await holdIfClosedAtMaterialize(deps, 'O1', { ...ORDER(), payment_status: 'pending' }, PAST);
+    assert.equal(held, true, 'K: not-confirmed past grace → held (no materialize)');
+    assert.equal(db._get('orders/O1').payment_status, 'pending', 'K: CAS refused (not confirmed) — order untouched');
+    assert.equal(calls.void, 0, 'K: no refund on a non-confirmed order');
+    ok('K: guard CAS requires confirmed — non-confirmed order not claimed/refunded');
+  }
+
+  // ── recoverRefundingDecision (REVISE-5 stale-recovery) ──
+  const STALE = 5 * 60 * 1000;
+  const refunding = (over = {}) => ({ payment_status: 'refunding_paid_after_close', refunding_at: 0, active_attempt_id: 'A1', ...over });
+  assert.equal(recoverRefundingDecision(refunding(), { status: 'refunded' }, STALE + 1, STALE).action, 'finalize_refunded'); ok('recover: attempt refunded → finalize_refunded');
+  assert.equal(recoverRefundingDecision(refunding(), { status: 'voided' }, STALE + 1, STALE).action, 'finalize_refunded'); ok('recover: attempt voided → finalize_refunded');
+  assert.equal(recoverRefundingDecision(refunding(), { status: 'refund_pending' }, STALE + 1, STALE).action, 'refund_pending'); ok('recover: attempt refund_pending → refund_pending');
+  assert.equal(recoverRefundingDecision(refunding(), { status: 'reversing' }, STALE + 1, STALE).action, 'refund_pending'); ok('recover: attempt reversing → refund_pending');
+  assert.equal(recoverRefundingDecision(refunding(), { status: 'captured' }, STALE + 1, STALE).action, 'manual_reconciliation'); ok('recover: attempt captured (no reversal) → manual_reconciliation');
+  assert.equal(recoverRefundingDecision(refunding(), null, STALE + 1, STALE).action, 'manual_reconciliation'); ok('recover: no attempt → manual_reconciliation');
+  assert.equal(recoverRefundingDecision(refunding({ refunding_at: 100 }), { status: 'refunded' }, 100 + STALE - 1, STALE).action, 'none'); ok('recover: fresh (< staleMs) → none');
+  assert.equal(recoverRefundingDecision({ payment_status: 'confirmed' }, { status: 'refunded' }, STALE + 1, STALE).action, 'none'); ok('recover: not stuck (not refunding) → none');
 
   console.log(`\n${n} passed`);
 })();

@@ -7,7 +7,8 @@
 function paymentPollState(order) {
   const ps = order && order.payment_status, st = order && order.status;
   if (st === 'scheduled' || st === 'releasing') return 'scheduled_paid';
-  if (order && order.blocked_reason === 'refunded_paid_after_close') return 'closed_refunded';   // paid-after-close auto-refund
+  if (order && order.blocked_reason === 'refunded_paid_after_close') return 'closed_refunded';   // paid-after-close auto-refund (confirmed)
+  if (order && order.blocked_reason === 'refund_pending_paid_after_close') return 'verifying';   // refund IN FLIGHT (reconciler owns) — reassure, not the generic refund_pending→'cancelled'
   if (ps === 'confirmed' || ['new', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'completed'].includes(st)) return 'paid';
   if (st === 'cancelled' || ps === 'refunded' || ps === 'refund_pending') return 'cancelled';
   if (ps === 'failed') return 'failed';

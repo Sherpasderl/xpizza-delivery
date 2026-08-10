@@ -74,7 +74,8 @@ const { shouldEarnOnStatus, earnPreview } = require('./rewards-core');     //   
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
 const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, holdRedemptionForManual, sweepStaleReservations, sweepConsumeRecovery, reverseRedemptionForOrder } = require('./rewards-reserve');
 const { paymentPollState } = require('./payment-poll-state');   // online-return poll state machine (incl. closed_refunded)
-const { alertsToPrune } = require('./alert-prune');   // auto-dismiss dispatcher alerts whose orders are resolved  //   reservation lifecycle + confirm-settle + sweeps + [B] hold-or-alert at manual entries + paid-after-close hold release
+const { alertsToPrune } = require('./alert-prune');   // auto-dismiss dispatcher alerts whose orders are resolved
+const { recoverRefundingDecision } = require('./materialize-guard');   // stale-recovery for a crash mid-paid-after-close-refund  //   reservation lifecycle + confirm-settle + sweeps + [B] hold-or-alert at manual entries + paid-after-close hold release
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');  //   config version for the reservation binding
 const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
@@ -2343,6 +2344,31 @@ exports.refundReconciler = onSchedule(
       }
     }
     console.log(`refundReconciler: retried=${retried} stillPending=${stillPending}`);
+
+    // REVISE-5: stale-refunding recovery — an order stuck at 'refunding_paid_after_close' (a crash between the
+    // guard's voidOrRefund and its order-update; money already safe via the attempt's own CAS/idempotency).
+    // Re-read the attempt's TERMINAL state and finalize the hanging ORDER/customer outcome (>5 min stale).
+    const orders = (await db.ref('orders').once('value')).val() || {};
+    let recovered = 0;
+    for (const orderId of Object.keys(orders)) {
+      const o = orders[orderId];
+      if (!o || o.payment_status !== 'refunding_paid_after_close') continue;
+      const a = o.active_attempt_id ? (await db.ref(`payment_attempts/${o.active_attempt_id}`).once('value')).val() : null;
+      const dec = recoverRefundingDecision(o, a, now, 5 * 60 * 1000);
+      if (dec.action === 'none') continue;
+      recovered++;
+      if (dec.action === 'finalize_refunded') {
+        await db.ref(`orders/${orderId}`).update({ payment_status: 'refunded', status: 'cancelled', blocked_reason: 'refunded_paid_after_close', refunded_at: now });
+        try { await reverseRedemptionForOrder(db, { orderId, order: o, disposition: 'refund', now }); } catch (_) {}
+        try { await db.ref('paid_after_close_audit').push({ order_id: orderId, actor: 'system:paid_after_close_recovery', at: now, outcome: 'refunded' }); } catch (_) {}
+        try { await sendPaidAfterCloseRefund(db, { orderId, order: o }); } catch (_) {}
+      } else if (dec.action === 'refund_pending') {
+        await db.ref(`orders/${orderId}`).update({ payment_status: 'refund_pending', blocked_reason: 'refund_pending_paid_after_close' });
+      } else if (dec.action === 'manual_reconciliation') {
+        await db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation', blocked_reason: 'refund_failed_paid_after_close' });
+      }
+    }
+    if (recovered) console.log(`refundReconciler: stale-refunding recovered=${recovered}`);
   }
 );
 

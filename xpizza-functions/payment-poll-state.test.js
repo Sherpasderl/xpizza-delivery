@@ -9,6 +9,8 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 // NEW: paid-after-close auto-refund → closed_refunded (before the generic cancelled mapping)
 assert.strictEqual(paymentPollState({ blocked_reason: 'refunded_paid_after_close', payment_status: 'refunded', status: 'cancelled' }), 'closed_refunded'); ok('paid-after-close refund → closed_refunded');
 assert.strictEqual(paymentPollState({ blocked_reason: 'refunded_paid_after_close', status: 'cancelled', payment_status: 'refunded' }), 'closed_refunded'); ok('closed_refunded takes precedence over the generic cancelled mapping');
+// REVISE: refund-in-flight (paid-after-close) → verifying, NOT the generic refund_pending→cancelled
+assert.strictEqual(paymentPollState({ payment_status: 'refund_pending', blocked_reason: 'refund_pending_paid_after_close' }), 'verifying'); ok('refund_pending_paid_after_close → verifying (reassure, not cancelled)');
 
 // Regression: existing states unchanged
 assert.strictEqual(paymentPollState({ payment_status: 'confirmed', status: 'new' }), 'paid'); ok('confirmed/new → paid');
