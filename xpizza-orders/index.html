@@ -2776,6 +2776,7 @@ async function handlePaymentReturn(){
         }
         showPayReturn('paid'); return true;
       }
+      if(st==='closed_refunded'){ try{localStorage.removeItem('xpizza_pending_pay');}catch(_){}; showPayReturn('closed_refunded'); return true; }   // paid-after-close auto-refund → honest terminal screen (no infinite "en proceso")
       if(st==='failed'){ showPayReturn('failed'); return true; }
       if(st==='cancelled'){ showPayReturn('cancel'); return true; }
       if(st==='verifying'){ showPayReturn('verifying'); return true; }
@@ -2857,7 +2858,8 @@ function showPayReturn(kind){
     pending_timeout: {wait:true,  t:'Pago en proceso',      m:'Tu pago se está procesando. Te confirmaremos por WhatsApp en breve — no vuelvas a pagar.'},
     paid:            {mark:'ok',  t:'¡Pago confirmado!',    m:'Tu pedido fue recibido y está en preparación. Te enviaremos novedades por WhatsApp. ¡Gracias!'},
     failed:          {mark:'err', t:'Pago no completado',   m:'No se pudo procesar tu pago. Podés intentar de nuevo o pagar en efectivo.', retry:true},
-    cancel:          {mark:'err', t:'Pago cancelado',       m:'Cancelaste el pago. Podés intentar de nuevo cuando quieras.', retry:true}
+    cancel:          {mark:'err', t:'Pago cancelado',       m:'Cancelaste el pago. Podés intentar de nuevo cuando quieras.', retry:true},
+    closed_refunded: {mark:'ok',  t:'Te reembolsamos tu pago', m:'Recibimos tu pago pero nuestra cocina ya está cerrada. Te reembolsamos el total completo — no se te cobrará. ¡Te esperamos mañana! 🍕'}
   };
   const v = V[kind] || V.checking;
   let el = document.getElementById('pay-return-overlay');
