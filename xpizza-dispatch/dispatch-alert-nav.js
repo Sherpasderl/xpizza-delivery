@@ -27,14 +27,14 @@ export function alertNavTarget(a) {
 }
 
 // En Fila "needs attention" = count of unique order_ids whose delivery task is UNASSIGNED (mirrors
-// getPendingOrders EXACTLY: no assigned_driver_id and status !== 'cancelled') OR STALLED (offered but
+// getPendingOrders EXACTLY: no assigned_driver_id and status not cancelled/completed) OR STALLED (offered but
 // never accepted, acceptance deadline expired). De-duped by order_id. Pure — reads only its args.
 export function enFilaAttentionCount(orders, tasks, now) {
   const ids = new Set();
   for (const o of Object.values(orders || {})) {
     const dt = (tasks || {})[`${o.order_id}_delivery`];
     if (!dt) continue;
-    const unassigned = !dt.assigned_driver_id && dt.status !== 'cancelled';   // == getPendingOrders predicate
+    const unassigned = !dt.assigned_driver_id && dt.status !== 'cancelled' && dt.status !== 'completed';   // == getPendingOrders predicate
     if (unassigned || isStalledAssignment(dt, now)) ids.add(o.order_id);
   }
   return ids.size;

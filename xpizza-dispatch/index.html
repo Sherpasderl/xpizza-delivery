@@ -3140,7 +3140,7 @@ function getPendingOrders() {
   // Order is pending if its delivery task exists and has no assigned driver yet
   return Object.values(allOrders).filter(o => {
     const dt = allTasks[`${o.order_id}_delivery`];
-    return dt && !dt.assigned_driver_id && dt.status !== 'cancelled';
+    return dt && !dt.assigned_driver_id && dt.status !== 'cancelled' && dt.status !== 'completed';
   }).sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
 }
 

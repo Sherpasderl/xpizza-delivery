@@ -33,13 +33,15 @@ const now = 1000;
   assert.equal(enFilaAttentionCount(orders, tasks, now), 2); ok('attention = unassigned(A)+stalled(B), not active(C)');
 }
 {
-  // Cancelled unassigned is NOT pending (mirrors getPendingOrders); a not-yet-expired assigned order is not stalled.
-  const orders = { X: { order_id: 'X' }, Y: { order_id: 'Y' } };
+  // Terminal unassigned deliveries — cancelled OR completed (e.g. delivered off-book / manually completed
+  // with no driver) — are NOT pending (mirrors getPendingOrders); a not-yet-expired assigned order isn't stalled.
+  const orders = { X: { order_id: 'X' }, W: { order_id: 'W' }, Y: { order_id: 'Y' } };
   const tasks = {
     X_delivery: { status: 'cancelled' },                                                  // unassigned but cancelled → no
+    W_delivery: { status: 'completed', assigned_driver_id: null },                         // completed, no driver → no (the fix)
     Y_delivery: { assigned_driver_id: 'd3', status: 'assigned', assignment_deadline: now + 60000 }, // deadline open → no
   };
-  assert.equal(enFilaAttentionCount(orders, tasks, now), 0); ok('cancelled-unassigned + not-yet-expired → 0');
+  assert.equal(enFilaAttentionCount(orders, tasks, now), 0); ok('cancelled/completed-unassigned + not-yet-expired → 0');
 }
 {
   assert.equal(enFilaAttentionCount({}, {}, now), 0); ok('empty → 0');
