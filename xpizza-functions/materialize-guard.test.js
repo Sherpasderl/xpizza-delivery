@@ -207,5 +207,14 @@ function mkDeps(db, over = {}) {
   assert.equal(recoverRefundingDecision(refunding({ refunding_at: 100 }), { status: 'refunded' }, 100 + STALE - 1, STALE).action, 'none'); ok('recover: fresh (< staleMs) → none');
   assert.equal(recoverRefundingDecision({ payment_status: 'confirmed' }, { status: 'refunded' }, STALE + 1, STALE).action, 'none'); ok('recover: not stuck (not refunding) → none');
 
+  // REVISE-2: also finalize refund_pending + refund_pending_paid_after_close orders (silent-refund fix)
+  const refundPending = (over = {}) => ({ payment_status: 'refund_pending', blocked_reason: 'refund_pending_paid_after_close', refunding_at: 0, active_attempt_id: 'A1', ...over });
+  assert.equal(recoverRefundingDecision(refundPending(), { status: 'refunded' }, STALE + 1, STALE).action, 'finalize_refunded'); ok('recover(pending): attempt now refunded → finalize_refunded (silent-refund fix)');
+  assert.equal(recoverRefundingDecision(refundPending(), { status: 'refund_pending' }, STALE + 1, STALE).action, 'refund_pending'); ok('recover(pending): attempt still in flight → refund_pending (leave, reconciler owns)');
+  assert.equal(recoverRefundingDecision(refundPending(), { status: 'captured' }, STALE + 1, STALE).action, 'manual_reconciliation'); ok('recover(pending): attempt captured (no reversal) → manual_reconciliation');
+  assert.equal(recoverRefundingDecision(refundPending({ refunding_at: 100 }), { status: 'refunded' }, 100 + STALE - 1, STALE).action, 'none'); ok('recover(pending): fresh → none');
+  // a GENERIC refund_pending (not paid-after-close) is never touched
+  assert.equal(recoverRefundingDecision({ payment_status: 'refund_pending', refunding_at: 0 }, { status: 'refunded' }, STALE + 1, STALE).action, 'none'); ok('recover: generic refund_pending (no paid-after-close reason) → none');
+
   console.log(`\n${n} passed`);
 })();

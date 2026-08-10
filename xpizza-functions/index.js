@@ -2352,7 +2352,12 @@ exports.refundReconciler = onSchedule(
     let recovered = 0;
     for (const orderId of Object.keys(orders)) {
       const o = orders[orderId];
-      if (!o || o.payment_status !== 'refunding_paid_after_close') continue;
+      // Hanging paid-after-close ORDER outcomes: the crash-stuck 'refunding_paid_after_close' AND the
+      // in-flight 'refund_pending' + 'refund_pending_paid_after_close' (reconciler drove the attempt to
+      // terminal, but nothing finalized the ORDER → refunded-but-silent). recoverRefundingDecision handles both.
+      const isPac = !!o && (o.payment_status === 'refunding_paid_after_close'
+        || (o.payment_status === 'refund_pending' && o.blocked_reason === 'refund_pending_paid_after_close'));
+      if (!isPac) continue;
       const a = o.active_attempt_id ? (await db.ref(`payment_attempts/${o.active_attempt_id}`).once('value')).val() : null;
       const dec = recoverRefundingDecision(o, a, now, 5 * 60 * 1000);
       if (dec.action === 'none') continue;

@@ -112,15 +112,22 @@ async function holdIfClosedAtMaterialize(deps, orderId, order, now) {
   return true;   // held / refunded / refund_pending / manual_reconciliation — caller must NOT materialize
 }
 
-// REVISE-5: stale-recovery decision for an order stuck at 'refunding_paid_after_close' (a crash between
-// voidOrRefund and the order-update). PURE — the sweep (refundReconciler) re-reads the attempt and applies
-// this. Money is always safe (the attempt's own CAS/idempotency); this just finalizes the ORDER outcome.
-//   attempt refunded/voided → finalize_refunded (complete the order + customer message);
-//   attempt refund_pending/reversing → refund_pending (reconciler still owns it);
+// REVISE-5/-2: stale-recovery decision for a paid-after-close order whose ORDER outcome is hanging — either
+//   (a) stuck at 'refunding_paid_after_close' (a crash between voidOrRefund and the order-update), OR
+//   (b) parked at payment_status:'refund_pending' + blocked_reason:'refund_pending_paid_after_close' (the
+//       reversal was in flight; the hourly reconciler re-drives the ATTEMPT to terminal, but nothing else
+//       finalizes the ORDER → refunded-but-silent).
+// PURE — the sweep (refundReconciler) re-reads the attempt and applies this. Money is always safe (the
+// attempt's own CAS/idempotency); this closes the ORDER/customer outcome. Both states carry refunding_at.
+//   attempt refunded/voided → finalize_refunded (complete the order + customer message — fires once);
+//   attempt refund_pending/reversing → refund_pending (reconciler still owns it — leave as-is);
 //   else (captured / gone) → manual_reconciliation (no reversal in flight → dispatcher-resolvable).
-// Fresh (< staleMs since refunding_at) or not-stuck → none (let the in-flight guard pass finish).
+// Fresh (< staleMs since refunding_at) or not a paid-after-close hanging order → none.
 function recoverRefundingDecision(order, attempt, now, staleMs) {
-  if (!order || order.payment_status !== 'refunding_paid_after_close') return { action: 'none' };
+  if (!order) return { action: 'none' };
+  const isRefunding = order.payment_status === 'refunding_paid_after_close';
+  const isRefundPending = order.payment_status === 'refund_pending' && order.blocked_reason === 'refund_pending_paid_after_close';
+  if (!isRefunding && !isRefundPending) return { action: 'none' };
   if ((now - (Number(order.refunding_at) || 0)) < staleMs) return { action: 'none' };
   const st = attempt && attempt.status;
   if (st === 'refunded' || st === 'voided') return { action: 'finalize_refunded' };
