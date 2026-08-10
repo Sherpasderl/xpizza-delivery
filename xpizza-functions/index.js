@@ -118,6 +118,7 @@ const {
   validateIngestToken,
   coerceTs
 } = require('./driver-ingest');
+const { activeDropOrderId, shouldMirror } = require('./tracking-mirror');
 const { sweepDecision, activeOrderCount, assignmentStrandState, HEAL_TERMINAL_STATUSES } = require('./sweep-pending');
 const { claimDelivery, healStrandedOrder, releaseDeliveryFromDriver } = require('./claim-delivery');
 const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineStampKey } = require('./order-lifecycle');
@@ -3260,10 +3261,53 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, 
   if (arrived) updates[`drivers/${uid}/arrived_at_restaurant_at`] = ServerValue.TIMESTAMP;
   await db.ref().update(updates);
 
+  // Live-tracker mirror (Phase A): push the ACTIVE drop's driver location to that order's public tracking
+  // node — throttled + best-effort (must NEVER fail the ingest). Gated to the order whose _delivery leg is
+  // the driver's current task AND status === 'out_for_delivery'. A stacked driver's WAITING order is never
+  // mirrored (no is_active_drop → the tracker shows the locked "finishing another delivery" copy, then
+  // auto-upgrades to the map when this driver becomes its active drop).
+  try {
+    const oid = activeDropOrderId(driver.current_task_id);
+    if (oid && Number.isFinite(final.lat) && Number.isFinite(final.lng)) {
+      const [token, ordStatus] = await Promise.all([
+        db.ref(`orders/${oid}/tracking_token`).once('value').then((s) => s.val()),
+        db.ref(`orders/${oid}/status`).once('value').then((s) => s.val()),
+      ]);
+      if (token && ordStatus === 'out_for_delivery') {
+        const prev = (await db.ref(`order_tracking/${token}/driver_location`).once('value')).val();
+        if (shouldMirror(prev, { lat: final.lat, lng: final.lng }, Date.now(), { throttleMs: 12000, minMoveMeters: 40 })) {
+          await db.ref(`order_tracking/${token}`).update({
+            driver_location: { lat: final.lat, lng: final.lng, at: Date.now() },
+            is_active_drop: true,
+          });
+        }
+      }
+    }
+  } catch (e) { console.warn('ingestDriverLocation: tracker mirror failed', e && e.message); }
+
   return res.status(200).json({ ok: true, accepted: accepted.length, dropped: points.length - accepted.length, status });
 });
 
 exports.driverDiagIngest = require('./driver-diag').driverDiagIngest;
+
+// clearTrackerMirrorOnDone (Phase A) — when an order leaves 'out_for_delivery' (delivered/cancelled/etc.),
+// null its public tracking node's live-driver fields so no stale location lingers (privacy + hygiene). The
+// ingest mirror only WRITES while out_for_delivery; this is the paired CLEAR. Idempotent, best-effort.
+exports.clearTrackerMirrorOnDone = onValueWritten(
+  { ref: '/orders/{orderId}/status', region: 'us-central1' },
+  async (event) => {
+    const before = event.data.before.val();
+    const after = event.data.after.val();
+    if (before !== 'out_for_delivery' || after === 'out_for_delivery') return;   // only the leaving edge
+    const orderId = event.params.orderId;
+    const db = getDatabase();
+    try {
+      const token = (await db.ref(`orders/${orderId}/tracking_token`).once('value')).val();
+      if (!token) return;
+      await db.ref(`order_tracking/${token}`).update({ driver_location: null, is_active_drop: null });
+    } catch (e) { console.warn('clearTrackerMirrorOnDone: failed', orderId, e && e.message); }
+  }
+);
 
 // ============================================================
 // syncDriverHub — server-writes the driver's per-restaurant hub snapshot (S1 E3)
