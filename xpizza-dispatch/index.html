@@ -971,6 +971,10 @@
     border: 1px solid var(--border, #2a3550);
     border-radius: 8px; padding: 10px; margin-bottom: 8px;
   }
+  /* Transient highlight when navigated to from a Torre de Control alert. */
+  .recon-card.flash { animation: reconFlash 1.6s ease; }
+  @keyframes reconFlash { 0%, 100% { box-shadow: none; } 20%, 60% { box-shadow: 0 0 0 2px var(--accent); } }
+  @media (prefers-reduced-motion: reduce) { .recon-card.flash { animation: none; box-shadow: 0 0 0 2px var(--accent); } }
   .recon-top { display: flex; justify-content: space-between; align-items: center; }
   .recon-id { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: var(--text-soft, #94a3b8); }
   .recon-total { font-weight: 700; font-size: 13px; }
@@ -1953,7 +1957,9 @@
   .rtab.on { flex: 1 1 auto; background: var(--surface-2); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
   .rtab .rlabel { display: none; }
   .rtab.on .rlabel { display: inline; }
-  .rtab .rn { font-size: 10px; font-weight: 700; color: var(--text-soft); background: rgba(255,255,255,0.08); border-radius: 999px; padding: 0 6px; min-width: 16px; text-align: center; }
+  /* Needs-attention badge: red bubble, shown ONLY when count > 0 (toggled via .has by setTabBadge). */
+  .rtab .rn { display: none; font-size: 10px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 999px; padding: 0 6px; min-width: 16px; text-align: center; }
+  .rtab .rn.has { display: inline-block; }
   /* the pane holds the tab's list; .hidden collapses it (tap the active tab to toggle) */
   .rtab-pane { padding: 14px 16px 0; }
   .rtab-pane.hidden { display: none; }
@@ -2163,7 +2169,7 @@
       <div class="rail-tabs" id="rail-tabs">
         <button class="rtab on" data-tab="pedidos" title="Pedidos en fila (entrega · recoger · programados)"><svg class="ic sm"><use href="#i-receipt"/></svg><span class="rlabel">En Fila</span><span class="rn" id="tab-pedidos-n">0</span></button>
         <button class="rtab" data-tab="comms" title="Comms"><svg class="ic sm"><use href="#i-message"/></svg><span class="rlabel">Comms</span><span class="rn" id="tab-comms-n">0</span></button>
-        <button class="rtab" data-tab="caja" title="Caja / reconciliación"><svg class="ic sm"><use href="#i-card"/></svg><span class="rlabel">Caja</span></button>
+        <button class="rtab" data-tab="caja" title="Caja / reconciliación"><svg class="ic sm"><use href="#i-card"/></svg><span class="rlabel">Caja</span><span class="rn" id="tab-caja-n">0</span></button>
         <button class="rtab" data-tab="cerrados" title="Cerrados hoy"><svg class="ic sm"><use href="#i-check"/></svg><span class="rlabel">Cerrados</span></button>
       </div>
 
@@ -2317,6 +2323,7 @@ import { etaEligible, projectArrival, relativeEta, clockTime, dueForRefresh, dis
 import { classifyAlert, sortAlertEntries } from './dispatch-alerts.js?v=1';
 import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js?v=2';
 import { isStalledAssignment } from './dispatch-stalled.js?v=1';
+import { alertNavTarget, enFilaAttentionCount } from './dispatch-alert-nav.js?v=1';
 import { createEtaSnapshotStore } from './dispatch-eta-snapshot.js?v=1';
 import { deliveryRisk } from './dispatch-delivery-risk.js?v=1';
 import { assembleThread } from './dispatch-comms-thread.js?v=1';
@@ -2669,6 +2676,7 @@ function subscribeAll() {
   XPD.subscribeToManualReconciliation((orders) => {
     reconciliationOrders = orders || {};
     renderReconciliationSection();
+    setTabBadge('tab-caja-n', Object.keys(reconciliationOrders).length);
   });
 
   // Dispatcher alerts: floating banner + sound when auto-assign couldn't
@@ -2820,11 +2828,31 @@ function renderDispatcherAlerts(alerts) {
   }
   container.innerHTML = html;
 
-  // Dismiss wiring preserved (data-dismiss-id → dismissDispatcherAlert).
+  // Dismiss wiring preserved (data-dismiss-id → dismissDispatcherAlert). stopPropagation so a dismiss
+  // click never bubbles up to the card-navigation handler below.
   container.querySelectorAll('.alert-dismiss').forEach((btn) => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
       const id = btn.dataset.dismissId;
       try { await XPD.dismissDispatcherAlert(id); } catch {}
+    });
+  });
+
+  // Clickable, type-aware navigation: route each alert card to where the dispatcher resolves it —
+  // the order's detail modal, Caja → Reconciliación, or the driver on the map. Reuses existing nav only.
+  container.querySelectorAll('.ex[data-alert-id]').forEach((card) => {
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.alert-dismiss')) return;   // the × dismiss never navigates
+      const entry = entries.find((x) => x.id === card.dataset.alertId);
+      if (!entry) return;
+      const tgt = alertNavTarget(entry.alert);
+      if (tgt.kind === 'order') openOrderDetailModal(tgt.orderId);
+      else if (tgt.kind === 'caja') navigateToCaja(tgt.orderId);
+      else if (tgt.kind === 'driver') {
+        const d = allDrivers[tgt.driverId];
+        if (d && d.lat != null && d.lng != null) { map.panTo({ lat: d.lat, lng: d.lng }); map.setZoom(Math.max(map.getZoom(), 16)); }
+      }
     });
   });
 }
@@ -3436,7 +3464,9 @@ function renderPedidosTab() {
   const pickup = getPickupQueue();
   const scheduled = Object.values(allScheduled || {}).sort((a, b) => (a.scheduled_for || 0) - (b.scheduled_for || 0));
   const total = delivery.length + pickup.length + scheduled.length;
-  const n = $('tab-pedidos-n'); if (n) n.textContent = String(total);
+  // Badge shows NEEDS-ATTENTION (unassigned + stalled deliveries), not the full queue total. The list
+  // below still renders off `total` (delivery + pickup + scheduled). (Owner-approved semantic change.)
+  setTabBadge('tab-pedidos-n', enFilaAttentionCount(allOrders, allTasks, Date.now()));
 
   if (total === 0) { el.innerHTML = '<div class="tree-empty">Sin pedidos en fila</div>'; return; }
 
@@ -3494,7 +3524,7 @@ function renderCommsTab() {
     return (b.received_at || 0) - (a.received_at || 0);  // then most recent
   });
   const unhandledCount = convos.filter(m => m.handled !== true).length;
-  const n = $('tab-comms-n'); if (n) n.textContent = String(unhandledCount);
+  setTabBadge('tab-comms-n', unhandledCount);
 
   if (convos.length === 0) { el.innerHTML = '<div class="tree-empty">Sin conversaciones recientes</div>'; return; }
   el.innerHTML = convos.map(m => {
@@ -4122,6 +4152,31 @@ function reconAge(ts) {
   if (m < 60) return m + 'm';
   const h = Math.floor(m / 60);
   return h < 24 ? h + 'h' : Math.floor(h / 24) + 'd';
+}
+
+// Navigate the dispatcher to Caja → Reconciliación and, if the alert named exactly one order, flash its
+// card. Reuses the existing rtab switch (clicks the Caja tab) + the recon-card the panel already renders.
+function navigateToCaja(orderId) {
+  const tab = document.querySelector('#rail-tabs .rtab[data-tab="caja"]');
+  if (tab) tab.click();
+  if (!orderId) return;
+  requestAnimationFrame(() => {
+    const sel = (window.CSS && CSS.escape) ? CSS.escape(orderId) : orderId;
+    const card = document.querySelector(`.recon-card[data-order-id="${sel}"]`);
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('flash');
+      setTimeout(() => card.classList.remove('flash'), 1600);
+    }
+  });
+}
+
+// Red needs-attention tab badge setter — writes the count and shows the bubble ONLY when > 0.
+function setTabBadge(id, count) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = String(count);
+  el.classList.toggle('has', count > 0);
 }
 
 function renderReconciliationSection() {
