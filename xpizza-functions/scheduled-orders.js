@@ -96,6 +96,18 @@ function asapWhileClosed(hours, scheduledForMs, nowMs) {
   return !isNum(scheduledForMs) && !isOpenAt(hours, nowMs);
 }
 
+// Materialize-time grace (paid-after-close): an in-flight PAID order may still complete up to graceMin
+// after the config close — the "real kitchen close". Open per config → true; else true iff it was open
+// graceMin ago (i.e. now is within the post-close grace, real close = config close + grace, EXCLUSIVE).
+// No pre-open grace; a closed day (open:false) grants none. INTAKE never uses this (asapWhileClosed keys
+// on the config close, unchanged) — only the materialize guard (holdIfClosedAtMaterialize) does.
+function isWithinGrace(hours, nowMs, graceMin) {
+  if (isOpenAt(hours, nowMs)) return true;
+  const g = Number(graceMin);
+  if (!Number.isFinite(g) || g <= 0) return false;
+  return isOpenAt(hours, nowMs - g * 60000);   // open graceMin ago ⇒ within post-close grace
+}
+
 // validateScheduledFor — the authoritative gate at create/confirm/release. orderType chooses the lead
 // floor (delivery needs a longer lead than pickup). Returns { valid, reason }.
 function validateScheduledFor(hours, scheduledForMs, nowMs, orderType, cfg) {
@@ -184,6 +196,6 @@ const fingerprintExtra = (fields) => (fields && isNum(fields.scheduled_for)) ? `
 
 module.exports = {
   SCHEDULED, RELEASING, NON_LIVE_STATUSES, isNonLive,
-  resolveCfg, DEFAULT_CFG, isOpenAt, asapWhileClosed, normalizeScheduledFor, validateScheduledFor, generateSlots, releaseAtFor, releaseJitterMs,
+  resolveCfg, DEFAULT_CFG, isOpenAt, isWithinGrace, asapWhileClosed, normalizeScheduledFor, validateScheduledFor, generateSlots, releaseAtFor, releaseJitterMs,
   releaseDecision, releaseTimeValid, scheduledOverdue, fingerprintExtra, TZ_OFFSET_MS,
 };

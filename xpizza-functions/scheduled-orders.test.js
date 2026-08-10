@@ -112,4 +112,15 @@ assert.strictEqual(S.normalizeScheduledFor('1800000000000'), 1800000000000, 'num
 assert.strictEqual(Number.isFinite(S.normalizeScheduledFor(null)), false, 'null ASAP payload → NOT finite → ASAP path (never misclassified as scheduled)');
 ok('normalizeScheduledFor: null/empty/undefined/non-numeric → NaN (ASAP); numeric → number (guards Number(null)===0)');
 
+// ── isWithinGrace (Task 1: post-close MATERIALIZE grace; real close = config close + grace, exclusive) ──
+assert.strictEqual(S.isWithinGrace(HOURS, L(2026, 0, 6, 20, 0), 15), true);  ok('isWithinGrace: Tue 20:00 (open, before 20:45 close) → true');
+assert.strictEqual(S.isWithinGrace(HOURS, L(2026, 0, 6, 20, 50), 15), true); ok('isWithinGrace: 5 min after 20:45 close, grace 15 → true (within grace)');
+assert.strictEqual(S.isWithinGrace(HOURS, L(2026, 0, 6, 21, 0), 15), false); ok('isWithinGrace: exactly 15 min after close (real close, EXCLUSIVE) → false');
+assert.strictEqual(S.isWithinGrace(HOURS, L(2026, 0, 6, 21, 1), 15), false); ok('isWithinGrace: past real close → false');
+assert.strictEqual(S.isWithinGrace(HOURS, L(2026, 0, 6, 16, 59), 15), false); ok('isWithinGrace: before open (NO pre-open grace) → false');
+assert.strictEqual(S.isWithinGrace(HOURS, L(2026, 0, 5, 19, 0), 15), false);  ok('isWithinGrace: Mon (open:false) → false even within any grace (closed day grants none)');
+assert.strictEqual(S.isWithinGrace(HOURS, L(2026, 0, 6, 20, 50), 0), false);  ok('isWithinGrace: grace 0 → strict (no grace)');
+assert.strictEqual(S.isWithinGrace(HOURS, L(2026, 0, 6, 20, 50), NaN), false); ok('isWithinGrace: invalid grace (NaN) → strict');
+assert.strictEqual(S.isWithinGrace(HOURS, L(2026, 0, 6, 20, 50), -5), false);  ok('isWithinGrace: negative grace → strict');
+
 console.log(`\n${n} passed`);
