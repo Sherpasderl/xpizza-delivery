@@ -122,4 +122,20 @@ assert.strictEqual(isHumanOutbound({ fromMe: false, self: false }), false); ok('
 assert.strictEqual(isHumanOutbound({ fromMe: true }), false); ok('human: self undefined → false (safe: never self-mutes)');
 assert.strictEqual(isHumanOutbound(null), false); ok('human: null → false');
 
+// ── tplPaidAfterCloseRefunded (paid-after-close auto-refund customer message) ──
+const { tplPaidAfterCloseRefunded } = require('./whatsapp_inbound');
+{
+  const m = tplPaidAfterCloseRefunded({ customerName: 'Ana', total: 699, restaurantId: 'x_pizza' });
+  assert.ok(/Hola Ana/.test(m)); ok('paid-after-close: greets by name');
+  assert.ok(/cocina ya está cerrada/.test(m)); ok('paid-after-close: says kitchen closed');
+  assert.ok(/L699/.test(m)); ok('paid-after-close: includes refunded total');
+  assert.ok(/no se te cobrará/.test(m)); ok('paid-after-close: reassures no charge');
+  assert.ok(/🍕/.test(m)); ok('paid-after-close: X. Pizza sign-off keeps 🍕');
+  const lm = tplPaidAfterCloseRefunded({ customerName: 'Ana', total: 500, restaurantId: 'la_musa' });
+  assert.ok(!/🍕/.test(lm)); ok('paid-after-close: La Musa has NO pizza emoji');
+  assert.ok(/L500/.test(lm)); ok('paid-after-close: La Musa total');
+  const anon = tplPaidAfterCloseRefunded({ total: 300, restaurantId: 'x_pizza' });
+  assert.ok(!/Hola/.test(anon) && /recibimos tu pago/.test(anon)); ok('paid-after-close: no name → no greeting, still coherent');
+}
+
 console.log(`whatsapp-inbound: OK (${n} cases)`);

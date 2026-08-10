@@ -332,8 +332,18 @@ function resolveMuteWindowMs(configVal) {
   return (Number.isFinite(n) && n > 0) ? n : 10 * 60 * 1000;
 }
 
+// Paid-after-close AUTO-REFUND customer message (owner-approved copy). Brand-aware sign-off: La Musa
+// carries no pizza emoji (per the no-emoji-in-form-chrome design rule); X. Pizza keeps the 🍕 sign-off
+// (OS notification text, not UI chrome). `total` is the whole-lempira refunded amount.
+function tplPaidAfterCloseRefunded({ customerName, total, restaurantId }) {
+  const hi = customerName ? `Hola ${customerName}, ` : '';
+  const signoff = restaurantId === 'la_musa' ? '¡Te esperamos mañana!' : '¡Te esperamos mañana! 🍕';
+  return `${hi}recibimos tu pago pero nuestra cocina ya está cerrada. Te reembolsamos L${total} completos — no se te cobrará. ${signoff}`;
+}
+
 module.exports = {
   classify,
+  tplPaidAfterCloseRefunded,
   muteKeyFor,
   isHumanOutbound,
   shouldSuppressAutoReply,

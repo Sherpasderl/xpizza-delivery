@@ -1462,6 +1462,22 @@ async function getGraceMinutes(db) {
   } catch (_) { return 15; }
 }
 
+// Paid-after-close AUTO-REFUND customer message — reuses the EXACT customer-notify send path
+// (whatsapp.isEnabledForRestaurant gate + whatsapp.sendMessage, same as sendOrderStatusNotifications).
+// Best-effort: a failed send never un-does the refund (the guard already returned; the customer also
+// sees the closed_refunded return screen). total = the whole-lempira refunded amount.
+async function sendPaidAfterCloseRefund(db, { orderId, order }) {
+  try {
+    const rid = (order && order.restaurant_id) || 'x_pizza';
+    if (!order || !order.customer_phone) { console.warn(`sendPaidAfterCloseRefund: ${orderId} has no customer_phone`); return; }
+    if (!(await whatsapp.isEnabledForRestaurant(db, rid))) { console.log(`sendPaidAfterCloseRefund: whatsapp disabled for ${rid}, skip`); return; }
+    const total = Number.isFinite(Number(order.total_cents)) ? Math.round(Number(order.total_cents) / 100) : (Number(order.total) || 0);
+    const body = inbound.tplPaidAfterCloseRefunded({ customerName: order.customer_name, total, restaurantId: rid });
+    await whatsapp.sendMessage(order.customer_phone, body, rid);
+    console.log(`sendPaidAfterCloseRefund: ${orderId} → refund WhatsApp sent to ${order.customer_phone}`);
+  } catch (e) { console.warn(`sendPaidAfterCloseRefund failed for ${orderId}`, e && e.message); }
+}
+
 function confirmDeps(db) {
   return {
     db,
@@ -1473,6 +1489,7 @@ function confirmDeps(db) {
     // Release a redemption hold on a paid-after-close auto-refund — the EXACT cancel-path call
     // (reverseRedemptionForOrder disposition:'refund'). Idempotent; no-op for a non-redeemed order.
     releaseRewardHold: (db2, { orderId, order, now }) => reverseRedemptionForOrder(db2, { orderId, order, disposition: 'refund', now }),
+    sendPaidAfterCloseRefund,   // brand-aware customer refund message (only after a CONFIRMED reversal)
     // Config-aware capture amount: sandbox → 1-14 test amount; production → real total.
     chargeAmountLempiras: (totalCents) => {
       try { return pixelPayChargeAmountLempiras(resolvePixelPayConfig(), totalCents); }
