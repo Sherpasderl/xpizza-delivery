@@ -3269,17 +3269,25 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, 
   try {
     const oid = activeDropOrderId(driver.current_task_id);
     if (oid && Number.isFinite(final.lat) && Number.isFinite(final.lng)) {
-      const [token, ordStatus] = await Promise.all([
+      const [token, ordStatus, destLat, destLng] = await Promise.all([
         db.ref(`orders/${oid}/tracking_token`).once('value').then((s) => s.val()),
         db.ref(`orders/${oid}/status`).once('value').then((s) => s.val()),
+        db.ref(`orders/${oid}/lat`).once('value').then((s) => s.val()),   // customer delivery coords (== delivery task destination)
+        db.ref(`orders/${oid}/lng`).once('value').then((s) => s.val()),
       ]);
       if (token && ordStatus === 'out_for_delivery') {
         const prev = (await db.ref(`order_tracking/${token}/driver_location`).once('value')).val();
         if (shouldMirror(prev, { lat: final.lat, lng: final.lng }, Date.now(), { throttleMs: 12000, minMoveMeters: 40 })) {
-          await db.ref(`order_tracking/${token}`).update({
+          const patch = {
             driver_location: { lat: final.lat, lng: final.lng, at: Date.now() },
             is_active_drop: true,
-          });
+          };
+          // Customer pin — the delivery destination, TRANSIENT: written ONLY inside the active
+          // out_for_delivery window (gated + cleared exactly like driver_location), so the always-on public
+          // node stays just address_short. Omitted if the order has no resolvable coords → tracker falls
+          // back to a driver-centered map (no pin, no crash).
+          if (Number.isFinite(destLat) && Number.isFinite(destLng)) { patch.dest_lat = destLat; patch.dest_lng = destLng; }
+          await db.ref(`order_tracking/${token}`).update(patch);
         }
       }
     }
@@ -3304,7 +3312,7 @@ exports.clearTrackerMirrorOnDone = onValueWritten(
     try {
       const token = (await db.ref(`orders/${orderId}/tracking_token`).once('value')).val();
       if (!token) return;
-      await db.ref(`order_tracking/${token}`).update({ driver_location: null, is_active_drop: null });
+      await db.ref(`order_tracking/${token}`).update({ driver_location: null, is_active_drop: null, dest_lat: null, dest_lng: null });
     } catch (e) { console.warn('clearTrackerMirrorOnDone: failed', orderId, e && e.message); }
   }
 );

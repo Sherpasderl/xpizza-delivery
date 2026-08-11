@@ -286,6 +286,16 @@
       color: var(--brand-dark);
       opacity: 0.85;
     }
+    /* Live driver map (Phase A) */
+    .driver-map {
+      width: 100%;
+      height: 220px;
+      border-radius: 12px;
+      overflow: hidden;
+      margin: 0 0 14px;
+      background: var(--brand-light);
+      border: 1px solid var(--border);
+    }
 
     /* Order summary */
     .order-summary {
@@ -452,6 +462,9 @@
           </div>
         </div>
 
+        <!-- Live driver map (Phase A) — shown only for the ACTIVE out_for_delivery drop; hidden otherwise -->
+        <div id="driver-map" class="driver-map hidden" aria-hidden="true"></div>
+
         <!-- Order summary — collapsible "Resumen del pedido" (default collapsed so the reward card leads) -->
         <div class="order-summary">
           <button class="summary-toggle" id="summary-toggle" type="button" aria-expanded="false" aria-controls="summary-body">Resumen del pedido<span class="summary-chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></button>
@@ -502,6 +515,7 @@
 
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
     import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+    import { createGlideEngine } from './driver-glide.js';
 
     // Same Firebase config as driver/dispatch (public app config — safe to embed)
     const firebaseConfig = {
@@ -515,6 +529,45 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
+
+    // ── Live driver map (Phase A) — lazy-loaded Google Maps; the driver marker glides toward the customer
+    //    pin (dest_lat/dest_lng, transient) once the order is the driver's ACTIVE out_for_delivery drop.
+    //    Load failure is non-fatal: the map stays hidden and the driver card still renders (no crash).
+    const MAPS_KEY = 'AIzaSyAuzSLAELV_MaK2xeXrNjS6_lhNXmD_Y0A';   // browser key (project x-pizza-delivery); tracker hosts must be referer-allowlisted
+    let mapsLoad = null;
+    function loadMaps() {
+      if (mapsLoad) return mapsLoad;
+      (g => { var h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary", q = "__ib__", m = document, b = window; b = b[c] || (b[c] = {}); var d = b.maps || (b.maps = {}), r = new Set, e = new URLSearchParams, u = () => h || (h = new Promise(async (f, n) => { await (a = m.createElement("script")); e.set("libraries", [...r] + ""); for (k in g) e.set(k.replace(/[A-Z]/g, t => "_" + t[0].toLowerCase()), g[k]); e.set("callback", c + ".maps." + q); a.src = `https://maps.${c}apis.com/maps/api/js?` + e; d[q] = f; a.onerror = () => h = n(Error(p + " could not load.")); a.nonce = m.querySelector("script[nonce]")?.nonce || ""; m.head.append(a); })); d[l] ? console.warn(p + " only loads once. Ignoring:", g) : d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)); })({ key: MAPS_KEY, v: "weekly" });
+      mapsLoad = google.maps.importLibrary('maps').catch((e) => { console.warn('tracker: Maps load failed', e && e.message); return null; });
+      return mapsLoad;
+    }
+    const dotIcon = (fill) => ({ path: (window.google && google.maps) ? google.maps.SymbolPath.CIRCLE : 0, scale: 8, fillColor: fill, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 });
+    let dMap = null, dDriverMk = null, dCustMk = null, dGlide = null;
+    const DRV = 'd';
+    async function updateDriverMap(data) {
+      const el = document.getElementById('driver-map');
+      const loc = data.driver_location;
+      if (!el || !loc || !Number.isFinite(loc.lat) || !Number.isFinite(loc.lng)) return;
+      el.classList.remove('hidden');
+      const lib = await loadMaps();
+      if (!lib || !(window.google && google.maps)) { el.classList.add('hidden'); return; }   // load failed → card still shows
+      const hasDest = Number.isFinite(data.dest_lat) && Number.isFinite(data.dest_lng);
+      if (!dMap) {
+        dMap = new google.maps.Map(el, { center: { lat: loc.lat, lng: loc.lng }, zoom: 15, disableDefaultUI: true, gestureHandling: 'greedy', clickableIcons: false });
+        if (hasDest) dCustMk = new google.maps.Marker({ map: dMap, position: { lat: data.dest_lat, lng: data.dest_lng }, title: 'Tu dirección', icon: dotIcon('#111827') });
+        dDriverMk = new google.maps.Marker({ map: dMap, position: { lat: loc.lat, lng: loc.lng }, title: data.driver_name || 'Repartidor', icon: { ...dotIcon('#BA7517'), scale: 9 } });
+        dGlide = createGlideEngine({ options: { marginFactor: 1.15, maxDurationMs: 15000 }, now: () => performance.now(), raf: (cb) => requestAnimationFrame(cb), caf: (id) => cancelAnimationFrame(id), apply: (uid, pos) => { if (dDriverMk) dDriverMk.setPosition(pos); } });
+        if (hasDest) { const bnds = new google.maps.LatLngBounds(); bnds.extend({ lat: loc.lat, lng: loc.lng }); bnds.extend({ lat: data.dest_lat, lng: data.dest_lng }); dMap.fitBounds(bnds, 56); }
+      } else {
+        if (hasDest && !dCustMk) dCustMk = new google.maps.Marker({ map: dMap, position: { lat: data.dest_lat, lng: data.dest_lng }, title: 'Tu dirección', icon: dotIcon('#111827') });
+        dGlide.update(DRV, { lat: loc.lat, lng: loc.lng });   // supersede-glide toward the new fix (no teleport)
+      }
+    }
+    function hideDriverMap() {
+      const el = document.getElementById('driver-map');
+      if (el) el.classList.add('hidden');
+      if (dGlide) dGlide.cancel(DRV);
+    }
 
     // Token = path segment. URL is /<token>, possibly with trailing slash.
     function extractToken() {
@@ -695,6 +748,7 @@
 
       banner.classList.remove('success', 'danger');
       driverCard.classList.add('hidden');
+      hideDriverMap();   // reset the live map every render; only the active-drop branch below re-shows it
 
       // Pickup-aware: order_tracking carries order_type. A pickup order has no driver + no handoff signal,
       // so its journey ENDS at "Listo para recoger" — a 3-step timeline (hide the 4th step) with Listo as the
@@ -769,12 +823,26 @@
           const driverName = data.driver_name;
           document.getElementById('driver-avatar').textContent =
             driverName.charAt(0).toUpperCase();
-          document.getElementById('driver-name').textContent =
-            driverName + ' está en camino';
-          const eta = computeEta(data);
-          document.getElementById('driver-eta').textContent = eta
-            ? `Llega en ~${eta} min`
-            : 'En ruta a tu dirección';
+          // Active drop = this order is the driver's current live delivery (server-gated is_active_drop +
+          // a mirrored location). A stacked driver's WAITING order is out_for_delivery WITHOUT is_active_drop.
+          const isActiveDrop = !!(data.is_active_drop && data.driver_location
+            && Number.isFinite(data.driver_location.lat) && Number.isFinite(data.driver_location.lng));
+          if (isActiveDrop) {
+            // Live map — the driver glides toward the customer pin. Keep the name + ETA copy.
+            document.getElementById('driver-name').textContent = driverName + ' está en camino';
+            const eta = computeEta(data);
+            document.getElementById('driver-eta').textContent = eta
+              ? `Llega en ~${eta} min`
+              : 'En ruta a tu dirección';
+            updateDriverMap(data);
+          } else {
+            // Waiting stacked drop — the driver is finishing another delivery first. Show the locked
+            // reassurance copy instead of a confusing map (they'd watch the driver visit someone else).
+            // The onValue sub auto-upgrades this to the live map the moment they become the active drop.
+            document.getElementById('driver-name').textContent = driverName;
+            document.getElementById('driver-eta').textContent =
+              'Tu driver está terminando una entrega que queda en camino hacia tu dirección. Pronto saldrá directo hacia ti.';
+          }
         } else {
           banner.classList.remove('hidden');
           bannerTitle.textContent = 'Tu pedido va en camino';
