@@ -835,13 +835,23 @@
               ? `Llega en ~${eta} min`
               : 'En ruta a tu dirección';
             updateDriverMap(data);
-          } else {
-            // Waiting stacked drop — the driver is finishing another delivery first. Show the locked
-            // reassurance copy instead of a confusing map (they'd watch the driver visit someone else).
-            // The onValue sub auto-upgrades this to the live map the moment they become the active drop.
+          } else if (data.is_active_drop === false) {
+            // EXPLICIT stacked waiting drop — the driver is finishing another delivery first. Locked copy,
+            // no map (they'd otherwise watch the driver visit someone else). Auto-upgrades to the live map
+            // via the onValue sub the moment they become the active drop. (Requires the server false-signal;
+            // Phase A ships the client 3-way, so today a genuine stacked-wait falls to the neutral branch.)
             document.getElementById('driver-name').textContent = driverName;
             document.getElementById('driver-eta').textContent =
               'Tu driver está terminando una entrega que queda en camino hacia tu dirección. Pronto saldrá directo hacia ti.';
+          } else {
+            // Absent/unknown (the seconds between status→out_for_delivery and the first GPS mirror, on a
+            // single order) → today's NEUTRAL copy. Never the false "finishing another delivery"; no map.
+            // Upgrades to the live map on the first mirror.
+            document.getElementById('driver-name').textContent = driverName + ' está en camino';
+            const eta = computeEta(data);
+            document.getElementById('driver-eta').textContent = eta
+              ? `Llega en ~${eta} min`
+              : 'En ruta a tu dirección';
           }
         } else {
           banner.classList.remove('hidden');

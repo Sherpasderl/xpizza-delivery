@@ -3302,18 +3302,22 @@ exports.driverDiagIngest = require('./driver-diag').driverDiagIngest;
 // null its public tracking node's live-driver fields so no stale location lingers (privacy + hygiene). The
 // ingest mirror only WRITES while out_for_delivery; this is the paired CLEAR. Idempotent, best-effort.
 exports.clearTrackerMirrorOnDone = onValueWritten(
-  { ref: '/orders/{orderId}/status', region: 'us-central1' },
+  // retry: true — the cleanup nulls PRECISE customer coords off a PUBLIC node; a swallowed one-shot failure
+  // would leave them there forever (privacy leak). Let a write failure propagate so the platform retries;
+  // the null update is idempotent so retries are safe.
+  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true },
   async (event) => {
     const before = event.data.before.val();
     const after = event.data.after.val();
     if (before !== 'out_for_delivery' || after === 'out_for_delivery') return;   // only the leaving edge
     const orderId = event.params.orderId;
     const db = getDatabase();
-    try {
-      const token = (await db.ref(`orders/${orderId}/tracking_token`).once('value')).val();
-      if (!token) return;
-      await db.ref(`order_tracking/${token}`).update({ driver_location: null, is_active_drop: null, dest_lat: null, dest_lng: null });
-    } catch (e) { console.warn('clearTrackerMirrorOnDone: failed', orderId, e && e.message); }
+    const token = (await db.ref(`orders/${orderId}/tracking_token`).once('value')).val();
+    if (!token) return;   // permanent (no token) — nothing to clear; return so it does NOT retry forever
+    // No try/catch: a transient read/write error throws → platform retries (idempotent null update).
+    await db.ref(`order_tracking/${token}`).update({
+      driver_location: null, is_active_drop: null, dest_lat: null, dest_lng: null,
+    });
   }
 );
 
