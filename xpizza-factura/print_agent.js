@@ -16,12 +16,18 @@ const admin = require('firebase-admin');
 const usb = require('usb');
 const { renderFactura } = require('./src/escpos');
 const { decidePrintClaim } = require('./src/print-claim');
+const { retryCandidate } = require('./src/print-recovery');
 
 const RID = process.env.RESTAURANT_ID || 'x_pizza';
 const VID = parseInt(process.env.USB_VID || '0x04B8', 16); // Epson
 const PID = parseInt(process.env.USB_PID || '0x0202', 16); // VERIFY with Zadig (SP variant!)
 const TTL = parseInt(process.env.PRINT_CLAIM_TTL_MS || '60000', 10);
+const RETRY_MS = parseInt(process.env.PRINT_RETRY_INTERVAL_MS || '60000', 10);
 const OWNER = `${require('os').hostname()}:${process.pid}`;
+
+// Facturas seen as not-yet-printed → retried on a timer until they print (printer-recovery
+// self-heal). In-memory only; startup child_added rehydrates it after any restart.
+const pendingRetry = new Map();
 
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
@@ -77,15 +83,22 @@ async function handle(orderId, known) {
       if (decision.action !== 'claim') return undefined; // abort cleanly (no write/delete)
       return { ...r, print_claim: decision.nextClaim };
     });
-    if (!decision || decision.action !== 'claim') return; // skipped
+    if (!decision || decision.action !== 'claim') {
+      // Terminal (printed/void/absent) → drop from retry. Keep it queued if another owner
+      // holds a live claim (that owner's attempt may still fail and strand the record).
+      if (decision && decision.reason !== 'claimed_by_other') pendingRetry.delete(orderId);
+      return;
+    }
 
     const record = tx.snapshot.val();
     try {
       await sendToPrinter(renderFactura(record, 2)); // two copies (D4)
       await ref.update({ printed: true, printed_at: now, print_error: null, print_claim: null });
+      pendingRetry.delete(orderId); // printed → done
       console.log(`[print] ${record.factura_number} (${orderId}) OK`);
     } catch (e) {
       await ref.update({ print_error: String(e.message).slice(0, 300), print_claim: null });
+      pendingRetry.set(orderId, record); // strand → retry on the timer until it prints
       console.error(`[print] ${orderId} FAILED: ${e.message}`);
     }
   } finally {
@@ -98,6 +111,19 @@ function start() {
   const root = db.ref(`facturas/${RID}`);
   root.on('child_added', (snap) => handle(snap.key, snap.val()).catch((e) => console.error('[agent] child_added', e)));
   root.on('child_changed', (snap) => handle(snap.key, snap.val()).catch((e) => console.error('[agent] child_changed', e)));
+
+  // Self-heal: re-run handle() for every stranded (printed:false) factura each interval, so a
+  // record left by a brief printer outage (paper-out / USB drop / power) prints once the printer
+  // recovers — no manual RTDB poke. handle() is the single authority on membership; the unchanged
+  // transactional decidePrintClaim still guards every print (overlapping ticks can't double-print).
+  // Fail-safe: a retry error is logged, never crashes the always-on service.
+  // retryCandidate is imported for parity with the reprint tool / future seeding.
+  setInterval(() => {
+    for (const [orderId, rec] of pendingRetry) {
+      handle(orderId, rec).catch((e) => console.error('[retry]', orderId, e && e.message));
+    }
+  }, RETRY_MS);
+  console.log(`[agent] retry sweep every ${RETRY_MS}ms`);
 }
 
 start();
