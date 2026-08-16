@@ -70,6 +70,13 @@ nssm set XPizzaFacturaAgent AppDirectory "C:\path\to\xpizza-factura"
 nssm start XPizzaFacturaAgent
 ```
 
+## Reprint a stranded factura
+
+If a factura failed to print (paper-out / USB drop / power) the agent self-heals — it retries
+every `PRINT_RETRY_INTERVAL_MS` (default 60s) until it prints. To force it immediately:
+`node tools/reprint.js <orderId>` (clears the print flags so the running agent re-fires the SAME
+número/CAI). It **refuses** already-printed (`printed:true`) and `void` records.
+
 ## 7. Go-live (when SAR issues X. Pizza's real CAI)
 
 Per `FACTURA_PLAN.md` §11: update the real `cai_code` / establecimiento / punto / tipo /
