@@ -2322,7 +2322,7 @@ import { etaEligible, projectArrival, relativeEta, clockTime, dueForRefresh, dis
 // ── Dispatch Phase-1 pure modules (Torre de Control redesign) ──
 import { classifyAlert, sortAlertEntries } from './dispatch-alerts.js?v=1';
 import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js?v=2';
-import { isStalledAssignment } from './dispatch-stalled.js?v=1';
+import { isStalledAssignment } from './dispatch-stalled.js?v=2';
 import { alertNavTarget, enFilaAttentionCount } from './dispatch-alert-nav.js?v=1';
 import { createEtaSnapshotStore } from './dispatch-eta-snapshot.js?v=1';
 import { deliveryRisk } from './dispatch-delivery-risk.js?v=1';
@@ -3664,7 +3664,8 @@ function renderDriversSection() {
   const stalledDriverUids = new Set();
   for (const o of Object.values(allOrders)) {
     const dtx = allTasks[`${o.order_id}_delivery`];
-    if (dtx && isStalledAssignment(dtx, nowTs)) stalledDriverUids.add(dtx.assigned_driver_id);
+    const ptx = allTasks[`${o.order_id}_pickup`];
+    if (dtx && isStalledAssignment(dtx, nowTs, ptx)) stalledDriverUids.add(dtx.assigned_driver_id);
   }
   const byStalledThenName = (a, b) =>
     ((stalledDriverUids.has(a[0]) ? 0 : 1) - (stalledDriverUids.has(b[0]) ? 0 : 1)) || byName(a, b);
@@ -4007,7 +4008,7 @@ function renderTaskRow(driverUid, order) {
   // Stalled = offered to a driver who never accepted + the acceptance deadline lapsed. Display-only:
   // isStalledAssignment writes nothing; it only decides whether to surface the rescue affordance.
   const now = Date.now();
-  const stalled = isStalledAssignment(dt, now);
+  const stalled = isStalledAssignment(dt, now, pt);   // pt = pickup leg; accepted pickup ⇒ not stalled
   const stalledDriverName = stalled ? (allDrivers[dt.assigned_driver_id]?.name || 'repartidor') : '';
 
   return `
@@ -4485,9 +4486,10 @@ function renderOrderDetailModal(order) {
   // there was no button"). Shown for any assigned, non-terminal order; visually primary when the offer
   // stalled. Opens the existing CAS-safe picker → reassignOrder (which owns its own result toast).
   const dtDetail = allTasks[`${order.order_id}_delivery`];
+  const ptDetail = allTasks[`${order.order_id}_pickup`];
   const isAssignedActive = !!(dtDetail && dtDetail.assigned_driver_id) && cancellable;
   if (isAssignedActive) {
-    const stalledDetail = isStalledAssignment(dtDetail, Date.now());
+    const stalledDetail = isStalledAssignment(dtDetail, Date.now(), ptDetail);
     actions.push(`<button class="od-action-btn${stalledDetail ? ' primary' : ''}" id="od-reassign-order">Reasignar</button>`);
   }
   if (cancellable) {

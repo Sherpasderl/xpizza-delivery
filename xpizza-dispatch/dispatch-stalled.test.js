@@ -54,4 +54,24 @@ const dt = (extra = {}) => ({ assigned_driver_id: 'drv1', status: 'assigned', as
   ok('null / undefined task → false');
 }
 
+{
+  // TWO-LEG GUARD: the delivery leg is dormant 'assigned' + expired (the stalled shape) BUT the driver
+  // already accepted the pickup leg → NOT stalled (driver is actively in 'Recogida'). This is the
+  // Fernando-Kattan false-positive.
+  for (const pstatus of ['accepted', 'in_progress', 'at_restaurant', 'en_route_delivery', 'completed']) {
+    assert.strictEqual(isStalledAssignment(dt(), NOW, { status: pstatus }), false, `pickup='${pstatus}' → not stalled`);
+  }
+  ok('pickup accepted/in_progress/... → delivery NOT stalled (driver accepted the entry leg)');
+
+  // Genuine no-accept: pickup ALSO still 'assigned' (never accepted either leg) → still flags.
+  assert.strictEqual(isStalledAssignment(dt(), NOW, { status: 'assigned' }), true);
+  ok('pickup still assigned + delivery assigned/expired → true (genuine stall)');
+
+  // Missing / malformed pickup task must not suppress the genuine stall.
+  assert.strictEqual(isStalledAssignment(dt(), NOW, null), true);
+  assert.strictEqual(isStalledAssignment(dt(), NOW, undefined), true);
+  assert.strictEqual(isStalledAssignment(dt(), NOW, {}), true);
+  ok('no / malformed pickup task → falls through to the delivery-task check');
+}
+
 console.log(`\n${pass} passed`);
