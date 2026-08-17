@@ -516,7 +516,7 @@
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
     import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
     import { createGlideEngine } from './driver-glide.js';
-    import { projectArrival, dueForRefresh, distanceMeters } from './driver-eta.js';
+    import { dueForRefresh, distanceMeters } from './driver-eta.js';
 
     // Same Firebase config as driver/dispatch (public app config — safe to embed)
     const firebaseConfig = {
@@ -578,7 +578,7 @@
     //    driver_location to the customer pin, throttled. ANY failure falls back to the 12-min computeEta;
     //    never throws into the render, never blanks, never touches the glide. (No server / no server key.)
     const ETA_INTERVAL_MS = 60000, ETA_MOVE_M = 200, ETA_DWELL_SEC = 120;
-    let dSvc = null, etaLastAt = null, etaLastPos = null, etaLastText = null;
+    let dSvc = null, etaLastAt = null, etaLastPos = null, etaLastText = null, etaIsActive = false;
     function setEtaText(t) { const el = document.getElementById('driver-eta'); if (el && t) el.textContent = t; }
     function fallbackEta(data) {
       const eta = computeEta(data);
@@ -593,24 +593,28 @@
       const moved = etaLastPos ? distanceMeters(etaLastPos, { lat: loc.lat, lng: loc.lng }) : Infinity;
       if (!dueForRefresh(etaLastAt, now, ETA_INTERVAL_MS, moved, ETA_MOVE_M)) { if (etaLastText) setEtaText(etaLastText); return; }
       etaLastAt = now; etaLastPos = { lat: loc.lat, lng: loc.lng };
-      if (!dSvc) dSvc = new google.maps.DirectionsService();
-      dSvc.route({
-        origin: { lat: loc.lat, lng: loc.lng },
-        destination: { lat: data.dest_lat, lng: data.dest_lng },
-        travelMode: google.maps.TravelMode.DRIVING,
-        drivingOptions: { departureTime: new Date() },   // traffic-aware (duration_in_traffic)
-      }, (res, status) => {
-        try {
-          if (status !== 'OK' || !res || !res.routes[0]) { fallbackEta(data); return; }
-          const leg = res.routes[0].legs[0];
-          const travelSec = (leg.duration_in_traffic && leg.duration_in_traffic.value) || leg.duration.value;
-          const arrivalMs = projectArrival(Date.now(), travelSec, ETA_DWELL_SEC);
-          const mins = Math.round((arrivalMs - Date.now()) / 60000);
-          etaLastText = mins <= 1 ? 'Tu pedido está llegando' : `Llega en ~${mins} min`;
-          setEtaText(etaLastText);
-        } catch (_) { fallbackEta(data); }
-      });
-      if (etaLastText) setEtaText(etaLastText);   // keep the last good text while the new route is in flight
+      try {
+        if (!dSvc) dSvc = new google.maps.DirectionsService();
+        dSvc.route({
+          origin: { lat: loc.lat, lng: loc.lng },
+          destination: { lat: data.dest_lat, lng: data.dest_lng },
+          travelMode: google.maps.TravelMode.DRIVING,
+          drivingOptions: { departureTime: new Date() },   // traffic-aware (duration_in_traffic)
+        }, (res, status) => {
+          if (!etaIsActive) return;                          // Fix C — drop a stale callback after an active→waiting flip
+          try {
+            if (status !== 'OK' || !res || !res.routes[0]) { fallbackEta(data); return; }
+            const leg = res.routes[0].legs[0];
+            const travelSec = (leg.duration_in_traffic && leg.duration_in_traffic.value) || leg.duration.value;
+            const mins = Math.round((travelSec + ETA_DWELL_SEC) / 60);
+            // Fix B — near-arrival keys on TRAVEL time (the 120s dwell floors the numeric ETA at 2 min, so
+            // mins<=1 was unreachable). Driver essentially at the door (travel ≤45s) → "está llegando".
+            etaLastText = travelSec <= 45 ? 'Tu pedido está llegando' : `Llega en ~${mins} min`;
+            setEtaText(etaLastText);
+          } catch (_) { fallbackEta(data); }
+        });
+      } catch (_) { fallbackEta(data); return; }             // Fix A — a synchronous throw from route()/ctor falls back
+      if (etaLastText) setEtaText(etaLastText); else fallbackEta(data);   // Fix D — never leave the slot at '—'
     }
 
     // Token = path segment. URL is /<token>, possibly with trailing slash.
@@ -793,6 +797,7 @@
       banner.classList.remove('success', 'danger');
       driverCard.classList.add('hidden');
       hideDriverMap();   // reset the live map every render; only the active-drop branch below re-shows it
+      etaIsActive = false;   // Fix C — cleared each render; only the active-drop branch re-arms ETA writes
 
       // Pickup-aware: order_tracking carries order_type. A pickup order has no driver + no handoff signal,
       // so its journey ENDS at "Listo para recoger" — a 3-step timeline (hide the 4th step) with Listo as the
@@ -874,6 +879,7 @@
           if (isActiveDrop) {
             // Live map — the driver glides toward the customer pin, with a real tightening ETA (Phase B).
             document.getElementById('driver-name').textContent = driverName + ' está en camino';
+            etaIsActive = true;       // Fix C — arm ETA writes; a route callback that resolves after a flip is dropped
             refreshDriverEta(data);   // throttled traffic-aware Directions ETA; falls back to 12-min on any failure
             updateDriverMap(data);
           } else if (data.is_active_drop === false) {
