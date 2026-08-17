@@ -29,16 +29,22 @@ const db = admin.database();
 
 (async () => {
   const ref = db.ref(`facturas/${RID}/${orderId}`);
-  const rec = (await ref.once('value')).val();
-  const d = reprintDecision(rec);
-  if (d.action !== 'reprint') {
-    console.error(`refuse: ${d.reason} (${orderId})` +
+  // Transactional: re-check reprintDecision on the LIVE value at commit time, so if the agent
+  // prints (printed:true) or the record is voided between read and write, we abort — never
+  // clobber printed:false back over a just-printed factura (which would reprint the número).
+  const res = await ref.transaction((cur) => {
+    const d = reprintDecision(cur);
+    if (d.action !== 'reprint') return;                 // abort: no write
+    return { ...cur, printed: false, printed_at: null, print_error: null, print_claim: null };
+  });
+  if (!res.committed) {
+    const d = reprintDecision(res.snapshot.val());
+    console.error(`refuse: ${d.reason || 'not_reprintable'} (${orderId})` +
       (d.reason === 'already_printed'
         ? ' — a reprint of an ISSUED+printed factura needs a fiscal COPIA decision; not done here.'
         : ''));
     process.exit(1);
   }
-  await ref.update({ printed: false, printed_at: null, print_error: null, print_claim: null });
-  console.log(`reprint queued: ${rec.factura_number} (${orderId}) — the print agent will print it shortly.`);
+  console.log(`reprint queued: ${res.snapshot.val().factura_number} (${orderId}) — the print agent will print it shortly.`);
   process.exit(0);
 })().catch((e) => { console.error('error:', e && e.message); process.exit(1); });

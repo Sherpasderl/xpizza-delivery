@@ -16,7 +16,6 @@ const admin = require('firebase-admin');
 const usb = require('usb');
 const { renderFactura } = require('./src/escpos');
 const { decidePrintClaim } = require('./src/print-claim');
-const { retryCandidate } = require('./src/print-recovery');
 
 const RID = process.env.RESTAURANT_ID || 'x_pizza';
 const VID = parseInt(process.env.USB_VID || '0x04B8', 16); // Epson
@@ -91,15 +90,25 @@ async function handle(orderId, known) {
     }
 
     const record = tx.snapshot.val();
+    let physicallyPrinted = false;
     try {
       await sendToPrinter(renderFactura(record, 2)); // two copies (D4)
+      physicallyPrinted = true;
       await ref.update({ printed: true, printed_at: now, print_error: null, print_claim: null });
       pendingRetry.delete(orderId); // printed → done
       console.log(`[print] ${record.factura_number} (${orderId}) OK`);
     } catch (e) {
-      await ref.update({ print_error: String(e.message).slice(0, 300), print_claim: null });
-      pendingRetry.set(orderId, record); // strand → retry on the timer until it prints
-      console.error(`[print] ${orderId} FAILED: ${e.message}`);
+      if (physicallyPrinted) {
+        // Printed on paper but couldn't record it → DO NOT auto-reprint (would duplicate the número).
+        // Drop from retry + flag for a manual eyeball.
+        pendingRetry.delete(orderId);
+        await ref.update({ print_error: `printed_ack_failed: ${String(e.message).slice(0, 260)}`, print_claim: null }).catch(() => {});
+        console.error(`[print] ${orderId} PRINTED but ack failed — NOT retrying (manual check): ${e.message}`);
+      } else {
+        await ref.update({ print_error: String(e.message).slice(0, 300), print_claim: null });
+        pendingRetry.set(orderId, record); // genuine print failure → retry until it prints
+        console.error(`[print] ${orderId} FAILED: ${e.message}`);
+      }
     }
   } finally {
     inFlight.delete(orderId);
@@ -111,13 +120,15 @@ function start() {
   const root = db.ref(`facturas/${RID}`);
   root.on('child_added', (snap) => handle(snap.key, snap.val()).catch((e) => console.error('[agent] child_added', e)));
   root.on('child_changed', (snap) => handle(snap.key, snap.val()).catch((e) => console.error('[agent] child_changed', e)));
+  // Prune a deleted node so a stale captured record can't be resurrected + reprinted on the timer.
+  // (Facturas are voided, never deleted, in the fiscal lifecycle — this is defensive.)
+  root.on('child_removed', (snap) => pendingRetry.delete(snap.key));
 
   // Self-heal: re-run handle() for every stranded (printed:false) factura each interval, so a
   // record left by a brief printer outage (paper-out / USB drop / power) prints once the printer
   // recovers — no manual RTDB poke. handle() is the single authority on membership; the unchanged
   // transactional decidePrintClaim still guards every print (overlapping ticks can't double-print).
   // Fail-safe: a retry error is logged, never crashes the always-on service.
-  // retryCandidate is imported for parity with the reprint tool / future seeding.
   setInterval(() => {
     for (const [orderId, rec] of pendingRetry) {
       handle(orderId, rec).catch((e) => console.error('[retry]', orderId, e && e.message));
