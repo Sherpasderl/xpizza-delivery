@@ -566,7 +566,11 @@
     function hideDriverMap() {
       const el = document.getElementById('driver-map');
       if (el) el.classList.add('hidden');
-      if (dGlide) dGlide.cancel(DRV);
+      // Do NOT cancel the glide here. hideDriverMap() runs at the TOP of every render; cancelling would
+      // state.delete(DRV) so the next updateDriverMap()->glide.update() is treated as a first-sighting and
+      // SNAPS (the point-to-point jump). The engine's target-keyed no-op guard already absorbs redundant
+      // same-position updates, and a genuinely-hidden map's glide self-completes (rafId->null) within
+      // maxDurationMs. This matches how dispatch drives the same engine (update-only, never cancel-per-render).
     }
 
     // Token = path segment. URL is /<token>, possibly with trailing slash.
