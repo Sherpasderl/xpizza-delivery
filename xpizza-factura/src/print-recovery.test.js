@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('assert');
-const { retryCandidate, reprintDecision } = require('./print-recovery');
+const { retryCandidate, reprintDecision, printedAckFailed } = require('./print-recovery');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 // --- retryCandidate ---
@@ -19,3 +19,10 @@ assert.deepEqual(reprintDecision({ printed: true }), { action: 'refuse', reason:
 assert.deepEqual(reprintDecision({ void: true }),   { action: 'refuse', reason: 'void' });            ok('void → refuse');
 assert.deepEqual(reprintDecision(null),             { action: 'refuse', reason: 'not_found' });        ok('missing → refuse');
 console.log('print-recovery(reprintDecision): OK');
+
+// --- printedAckFailed (Fix A marker → skip-guard) ---
+assert.equal(printedAckFailed({ print_error: 'printed_ack_failed: EPIPE' }), true); ok('marker → true');
+assert.equal(printedAckFailed({ print_error: 'printer not found' }), false);        ok('other error → false');
+assert.equal(printedAckFailed({ printed: false }), false);                          ok('no error → false');
+assert.equal(printedAckFailed(null), false);                                        ok('null → false');
+console.log('print-recovery(printedAckFailed): OK');

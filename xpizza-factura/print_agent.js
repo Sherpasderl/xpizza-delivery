@@ -16,6 +16,7 @@ const admin = require('firebase-admin');
 const usb = require('usb');
 const { renderFactura } = require('./src/escpos');
 const { decidePrintClaim } = require('./src/print-claim');
+const { printedAckFailed } = require('./src/print-recovery');
 
 const RID = process.env.RESTAURANT_ID || 'x_pizza';
 const VID = parseInt(process.env.USB_VID || '0x04B8', 16); // Epson
@@ -78,6 +79,9 @@ async function handle(orderId, known) {
     const now = Date.now();
     const tx = await ref.transaction((rec) => {
       const r = rec == null ? known : rec;
+      // Already printed on paper but we couldn't record it (Fix A marker) → do NOT auto-(re)print;
+      // leave for manual resolution. Makes printed_ack_failed a real guard, not just a log line.
+      if (printedAckFailed(r)) { decision = { action: 'skip', reason: 'printed_ack_failed' }; return undefined; }
       decision = decidePrintClaim(r, { owner: OWNER, now, ttlMs: TTL });
       if (decision.action !== 'claim') return undefined; // abort cleanly (no write/delete)
       return { ...r, print_claim: decision.nextClaim };

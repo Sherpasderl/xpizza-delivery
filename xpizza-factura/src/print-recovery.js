@@ -14,4 +14,10 @@ function reprintDecision(record) {
   return { action: 'reprint' };
 }
 
-module.exports = { retryCandidate, reprintDecision };
+// True when a record is flagged as already-printed-on-paper-but-not-recorded (Fix A's marker).
+// Such a record must NOT be auto-(re)printed — it waits for a manual decision.
+function printedAckFailed(record) {
+  return !!record && typeof record.print_error === 'string' && record.print_error.startsWith('printed_ack_failed');
+}
+
+module.exports = { retryCandidate, reprintDecision, printedAckFailed };
