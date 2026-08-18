@@ -142,7 +142,8 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
   background:none;border-top:none;border-left:none;border-right:none;
 }
 .cat-tab.active{color:var(--charcoal);border-bottom-color:var(--gold)}
-.ny-pickup-banner{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.03em;color:var(--gold-dk);background:var(--gold-lt);padding:6px 12px;border-radius:8px;margin-bottom:12px}
+.ny-pickup-banner{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.03em;color:var(--gold-dk);background:var(--gold-lt);padding:6px 12px;border-radius:8px;margin-bottom:6px}
+.ny-avail-note{font-size:11.5px;font-weight:600;letter-spacing:.02em;color:var(--muted);margin-bottom:12px}
 
 /* ── Category section ── */
 .menu-section{display:none;padding:12px 16px 0}.menu-section.active{display:block;animation:mnfade .2s cubic-bezier(.32,.72,0,1)}
@@ -1139,6 +1140,7 @@ textarea{resize:none;height:80px;line-height:1.4}
   <div class="menu-section" id="cat-ny">
     <div style="padding:12px 16px 0">
       <div class="ny-pickup-banner">Solo para Pickup</div>
+      <div class="ny-avail-note">Disponibles viernes, sábado y domingo</div>
       <div class="pizza-grid" id="menu-ny"></div>
     </div>
   </div>
@@ -1717,7 +1719,6 @@ function renderMenu(){
         <div class="pizza-card-desc">${p.desc||''}</div>
         <div class="pizza-card-footer">
           <span class="pizza-card-price">L ${p.price}</span>
-          ${isWeekendOnlyItem(p) && !HN_WEEKEND.has(hnDay(Date.now())) ? '<span class="pay-badge badge-gray">Disponible viernes, sábado y domingo</span>' : ''}
           <span class="card-extras-indicator" id="extras-indicator-${p.id}" style="display:none">✓ Extras</span>
         </div>
       </div>
