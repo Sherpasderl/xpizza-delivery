@@ -31,6 +31,26 @@ const X_PIZZA_MENU = {
   'Mushroom NY': 702, 'Jamon NY': 641, 'Pepperoni NY': 641, 'Crispy Bacon NY': 662
 };
 
+// 18" NY pizzas are a WEEKEND special (Fri/Sat/Sun only). Keyed by the exact names X. Pizza sends (same
+// match key as X_PIZZA_MENU above). Keep in sync with WEEKEND_ONLY_CATS=['ny'] in xpizza-orders/index.html.
+// This is availability-only — it NEVER touches pricing (weekendOnlyViolation only READS item names).
+const X_PIZZA_WEEKEND_ONLY = new Set([
+  'Carnivora NY', 'Margherita NY', 'Cacio e Pepe NY', 'Mushroom NY', 'Jamon NY', 'Pepperoni NY', 'Crispy Bacon NY',
+]);
+const WEEKEND_DAYS = new Set([5, 6, 0]);   // Fri, Sat, Sun (getUTCDay: 0=Sun..6=Sat)
+
+// Honduras day-of-week from an epoch-ms — UTC−6, no DST. Matches the form's schedIsOpenAt day math.
+function hnDayFromMs(ms) { return new Date(ms - 6 * 3600000).getUTCDay(); }
+
+// The first weekend-only item NOT allowed on the order's FULFILLMENT day (scheduled_for ?? now), else null.
+// PURE + restaurant-scoped (only x_pizza has weekend-only items today) → no-op for any other restaurant.
+function weekendOnlyViolation(items, restaurantId, fulfillmentMs) {
+  if (restaurantId !== 'x_pizza' || !Array.isArray(items)) return null;
+  if (WEEKEND_DAYS.has(hnDayFromMs(fulfillmentMs))) return null;                 // Fri/Sat/Sun → everything allowed
+  const hit = items.find((it) => it && X_PIZZA_WEEKEND_ONLY.has(it.name));
+  return hit ? hit.name : null;
+}
+
 // La Musa — keyed by stable `id` slug. In sync with the MENU const in the La Musa
 // order form (la-musa-orders/index.html), 40 items. Whole-lempira, tax-INCLUSIVE
 // prices; the platform stores NO ISV split for La Musa (Soft Restaurant POS issues
@@ -213,4 +233,5 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null) {
 
 module.exports = {
   MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal, itemPricingKey, summaryLines,
+  X_PIZZA_WEEKEND_ONLY, hnDayFromMs, weekendOnlyViolation,
 };

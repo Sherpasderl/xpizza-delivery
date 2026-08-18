@@ -112,4 +112,26 @@ assert.deepStrictEqual(computeServerTotal([{ id: 'noodle_01_pollo', qty: 1 }, { 
 assert.deepStrictEqual(computeServerTotal([{ id: 'noodle_01_camaron', qty: 2 }], 'la_musa'), { total: 828, error: null }); ok('la_musa same protein qty 2 = 828');
 assert.equal(computeServerTotal([{ id: 'noodle_01_bogus', qty: 1 }], 'la_musa').error !== null, true); ok('la_musa unknown variant id rejected');
 
+// ── 18" NY weekend-only availability checker (Fri/Sat/Sun), x_pizza-scoped, schedule-aware ──
+const { hnDayFromMs, weekendOnlyViolation } = require('./menu-pricing');
+const FRI = Date.UTC(2026, 7, 15, 0, 0);   // 2026-08-14 18:00 HN = Friday
+const SAT = Date.UTC(2026, 7, 16, 0, 0);
+const SUN = Date.UTC(2026, 7, 17, 0, 0);
+const MON = Date.UTC(2026, 7, 18, 0, 0);   // 2026-08-17 18:00 HN = Monday
+assert.equal(hnDayFromMs(FRI), 5); ok('hnDayFromMs: Fri → 5');
+assert.equal(hnDayFromMs(MON), 1); ok('hnDayFromMs: Mon → 1');
+const ny = [{ name: 'Margherita NY', qty: 1 }];
+assert.equal(weekendOnlyViolation(ny, 'x_pizza', MON), 'Margherita NY'); ok('NY + weekday → blocked (offending name)');
+assert.equal(weekendOnlyViolation(ny, 'x_pizza', FRI), null); ok('NY + Friday → ok');
+assert.equal(weekendOnlyViolation(ny, 'x_pizza', SAT), null); ok('NY + Saturday → ok');
+assert.equal(weekendOnlyViolation(ny, 'x_pizza', SUN), null); ok('NY + Sunday → ok');
+assert.equal(weekendOnlyViolation([{ name: 'Margherita', qty: 1 }], 'x_pizza', MON), null); ok('non-NY item weekday → ok');
+assert.equal(weekendOnlyViolation([{ name: 'Margherita', qty: 1 }, { name: 'Jamon NY', qty: 1 }], 'x_pizza', MON), 'Jamon NY'); ok('mixed cart weekday → the offending NY name');
+assert.equal(weekendOnlyViolation(ny, 'la_musa', MON), null); ok('la_musa → no weekend rule (x_pizza scoped)');
+assert.equal(weekendOnlyViolation([], 'x_pizza', MON), null); ok('empty cart → null');
+assert.equal(weekendOnlyViolation(null, 'x_pizza', MON), null); ok('non-array items → null (defensive)');
+for (const nm of ['Carnivora NY', 'Margherita NY', 'Cacio e Pepe NY', 'Mushroom NY', 'Jamon NY', 'Pepperoni NY', 'Crispy Bacon NY'])
+  assert.equal(weekendOnlyViolation([{ name: nm, qty: 1 }], 'x_pizza', MON), nm);
+ok('all 7 NY names blocked on a weekday');
+
 console.log(`menu-pricing: OK (${n} cases)`);
