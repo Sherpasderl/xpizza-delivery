@@ -545,6 +545,18 @@ createOrderApp.all('*', async (req, res) => {
   }
 
   // Rate limiting. Only genuinely-NEW orders reach here — idempotent retries of
+  // 18" NY pizzas are WEEKEND-ONLY (Fri/Sat/Sun) — reject BEFORE any write/reserve AND before checkRateLimit:
+  // an availability rejection is a legit-user mistake, not abuse, so it must not burn a rate-limit token
+  // (the pure check is also cheaper than the rate-limit transaction). Schedule-aware; x_pizza-scoped.
+  {
+    const fMs = Number.isFinite(SCHED.normalizeScheduledFor(body.scheduled_for)) ? SCHED.normalizeScheduledFor(body.scheduled_for) : Date.now();
+    const weekendBad = weekendOnlyViolation(body.items, restaurantId, fMs);
+    if (weekendBad) {
+      return res.status(400).json({ ok: false, error: 'weekend_only', item: weekendBad,
+        message: 'Las pizzas de 18" solo están disponibles viernes, sábado y domingo.' });
+    }
+  }
+
   // an existing order_id already returned above, so legit retries don't burn
   // budget. Reject before the expensive multi-path write + WhatsApp send.
   for (const [bucket, key, cfg] of [
@@ -599,14 +611,6 @@ createOrderApp.all('*', async (req, res) => {
     releaseAt = SCHED.releaseAtFor(scheduledForRaw, orderType);
   } else if (SCHED.asapWhileClosed(restIdentity.hours, scheduledForRaw, Date.now())) {
     return badRequest(res, 'Cerrado — programá tu pedido');   // ASAP while closed → never dump onto a dark kitchen
-  }
-
-  // 18" NY pizzas are WEEKEND-ONLY (Fri/Sat/Sun) — reject BEFORE any write/reserve. Schedule-aware:
-  // fulfillment day = the scheduled slot when scheduling, else now. x_pizza-scoped (no-op elsewhere).
-  const weekendBad = weekendOnlyViolation(body.items, restaurantId, Number.isFinite(scheduledForRaw) ? scheduledForRaw : Date.now());
-  if (weekendBad) {
-    return res.status(400).json({ ok: false, error: 'weekend_only', item: weekendBad,
-      message: 'Las pizzas de 18" solo están disponibles viernes, sábado y domingo.' });
   }
 
   // ── Rewards Phase B1: redemption (cash → RESERVE at create; the completion state consumes; cancel releases).
@@ -982,6 +986,17 @@ chargeOnlineApp.all('*', async (req, res) => {
     }
   }
 
+  // 18" NY pizzas are WEEKEND-ONLY (Fri/Sat/Sun) — reject BEFORE opening the payment attempt AND before
+  // checkRateLimit: an availability rejection must not burn a rate-limit token. Schedule-aware; x_pizza-scoped.
+  {
+    const fMs = Number.isFinite(SCHED.normalizeScheduledFor(body.scheduled_for)) ? SCHED.normalizeScheduledFor(body.scheduled_for) : Date.now();
+    const weekendBad = weekendOnlyViolation(body.items, restaurantId, fMs);
+    if (weekendBad) {
+      return res.status(400).json({ ok: false, error: 'weekend_only', item: weekendBad,
+        message: 'Las pizzas de 18" solo están disponibles viernes, sábado y domingo.' });
+    }
+  }
+
   // Rate limit (same buckets as createOrder). A genuine retry of an in-flight
   // submit re-enters acquireHostedAttempt and reuses the live checkout, so this throttles
   // distinct submit bursts, not 3DS polling.
@@ -1026,14 +1041,6 @@ chargeOnlineApp.all('*', async (req, res) => {
     scheduledReleaseAt = SCHED.releaseAtFor(scheduledForRaw, orderType);
   } else if (SCHED.asapWhileClosed(schedIdentity.hours, scheduledForRaw, Date.now())) {
     return badRequest(res, 'Cerrado — programá tu pedido');
-  }
-
-  // 18" NY pizzas are WEEKEND-ONLY (Fri/Sat/Sun) — reject BEFORE opening the payment attempt (no charge-then-
-  // reject). Schedule-aware: fulfillment day = the scheduled slot when scheduling, else now. x_pizza-scoped.
-  const weekendBad = weekendOnlyViolation(body.items, restaurantId, Number.isFinite(scheduledForRaw) ? scheduledForRaw : Date.now());
-  if (weekendBad) {
-    return res.status(400).json({ ok: false, error: 'weekend_only', item: weekendBad,
-      message: 'Las pizzas de 18" solo están disponibles viernes, sábado y domingo.' });
   }
 
   const { total_cents, subtotal_cents, tax_cents } = effBreakdown;   // discounted when redeemed (Task 4); else today's breakdown

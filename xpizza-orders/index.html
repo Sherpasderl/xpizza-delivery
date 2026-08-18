@@ -1214,7 +1214,7 @@ textarea{resize:none;height:80px;line-height:1.4}
     </div>
     <div class="pickup-note" id="pickup-note" style="display:none">Pedido para recoger en tienda — incluye NY Pizza de 18".</div>
     <div class="pickup-gate" id="weekend-gate" style="display:none">
-      <div class="pickup-gate-title">Las pizzas de 18" solo están disponibles viernes a domingo</div>
+      <div class="pickup-gate-title">Las pizzas de 18" solo están disponibles viernes, sábado y domingo</div>
       <div class="pickup-gate-actions">
         <button type="button" class="pickup-gate-btn primary" onclick="removeWeekendOnly()">Quitar del carrito</button>
       </div>
@@ -1717,7 +1717,7 @@ function renderMenu(){
         <div class="pizza-card-desc">${p.desc||''}</div>
         <div class="pizza-card-footer">
           <span class="pizza-card-price">L ${p.price}</span>
-          ${isWeekendOnlyItem(p) && !HN_WEEKEND.has(hnDay(Date.now())) ? '<span class="pay-badge badge-gray">Disponible viernes a domingo</span>' : ''}
+          ${isWeekendOnlyItem(p) && !HN_WEEKEND.has(hnDay(Date.now())) ? '<span class="pay-badge badge-gray">Disponible viernes, sábado y domingo</span>' : ''}
           <span class="card-extras-indicator" id="extras-indicator-${p.id}" style="display:none">✓ Extras</span>
         </div>
       </div>
@@ -2528,7 +2528,7 @@ async function processPayment(){
     refreshWeekendGate();
     const g=document.getElementById('weekend-gate'); if(g) g.scrollIntoView({behavior:'smooth', block:'center'});
     document.getElementById('err3').style.display='block';
-    document.getElementById('err3').textContent='Las pizzas de 18" solo están disponibles viernes a domingo — programá tu pedido para el fin de semana o quitalas.';
+    document.getElementById('err3').textContent='Las pizzas de 18" solo están disponibles viernes, sábado y domingo — programá tu pedido para el fin de semana o quitalas.';
     return;
   }
   // 3) location pin.
