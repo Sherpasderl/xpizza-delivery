@@ -1213,6 +1213,12 @@ textarea{resize:none;height:80px;line-height:1.4}
       </div>
     </div>
     <div class="pickup-note" id="pickup-note" style="display:none">Pedido para recoger en tienda — incluye NY Pizza de 18".</div>
+    <div class="pickup-gate" id="weekend-gate" style="display:none">
+      <div class="pickup-gate-title">Las pizzas de 18" solo están disponibles viernes a domingo</div>
+      <div class="pickup-gate-actions">
+        <button type="button" class="pickup-gate-btn primary" onclick="removeWeekendOnly()">Quitar del carrito</button>
+      </div>
+    </div>
 
     <!-- ── Scheduled Orders: Checkout time selector (Estándar = ASAP / Programar = real scheduled_for) ── -->
     <div class="time-select" id="time-select">
@@ -1601,6 +1607,16 @@ MENU.forEach(p => qty[p.id] = 0);
 const PICKUP_ONLY_CATS = ['ny'];
 const isPickupOnlyItem = (p) => PICKUP_ONLY_CATS.includes(p.cat);
 const cartHasPickupOnly = () => MENU.some(p => qty[p.id] > 0 && isPickupOnlyItem(p));
+// 18" NY pizzas are a WEEKEND special (Fri/Sat/Sun) — mirrors the server X_PIZZA_WEEKEND_ONLY /
+// weekendOnlyViolation (menu-pricing.js). Data-driven membership kept in sync (both = the 'ny' cat).
+const WEEKEND_ONLY_CATS = ['ny'];
+const isWeekendOnlyItem = (p) => WEEKEND_ONLY_CATS.includes(p.cat);
+const cartHasWeekendOnly = () => MENU.some(p => qty[p.id] > 0 && isWeekendOnlyItem(p));
+const HN_WEEKEND = new Set([5, 6, 0]);                                // Fri, Sat, Sun (getUTCDay)
+const hnDay = (ms) => new Date(ms - 6 * 3600000).getUTCDay();        // Honduras day, UTC−6 (matches the server)
+// Fulfillment day the customer has effectively chosen: the scheduled slot if scheduling, else now.
+const fulfillmentDayNow = () => hnDay(Number.isFinite(window.__scheduledFor) ? window.__scheduledFor : Date.now());
+const weekendOnlyBlocked = () => cartHasWeekendOnly() && !HN_WEEKEND.has(fulfillmentDayNow());
 
 /* ─────────────────────────────────────────────────────────────────────────────
    KDS Phase 2b — item availability ("Agotado") overlay.  STRICTLY ADDITIVE + FAIL-OPEN.
@@ -1701,6 +1717,7 @@ function renderMenu(){
         <div class="pizza-card-desc">${p.desc||''}</div>
         <div class="pizza-card-footer">
           <span class="pizza-card-price">L ${p.price}</span>
+          ${isWeekendOnlyItem(p) && !HN_WEEKEND.has(hnDay(Date.now())) ? '<span class="pay-badge badge-gray">Disponible viernes a domingo</span>' : ''}
           <span class="card-extras-indicator" id="extras-indicator-${p.id}" style="display:none">✓ Extras</span>
         </div>
       </div>
@@ -2504,6 +2521,14 @@ async function processPayment(){
     if(gate) gate.scrollIntoView({behavior:'smooth', block:'center'});
     document.getElementById('err3').style.display='block';
     document.getElementById('err3').textContent='Las NY Pizzas 18" son solo para Pickup.';
+    return;
+  }
+  // 2b) weekend-only (18" NY) on a non-weekend fulfillment day → the weekend gate (the server 400 is the safety net).
+  if(weekendOnlyBlocked()){
+    refreshWeekendGate();
+    const g=document.getElementById('weekend-gate'); if(g) g.scrollIntoView({behavior:'smooth', block:'center'});
+    document.getElementById('err3').style.display='block';
+    document.getElementById('err3').textContent='Las pizzas de 18" solo están disponibles viernes a domingo — programá tu pedido para el fin de semana o quitalas.';
     return;
   }
   // 3) location pin.
@@ -3625,6 +3650,16 @@ function removePickupOnlyFromCart(){
   MENU.forEach(p => { if (isPickupOnlyItem(p) && qty[p.id] > 0) chg(p.id, -qty[p.id]); });
   refreshPickupGate();
 }
+// Weekend-only (18" NY): show the gate iff the cart has a weekend-only item on a non-weekend fulfillment day.
+function refreshWeekendGate(){
+  const gate = document.getElementById('weekend-gate');
+  if (gate) gate.style.display = weekendOnlyBlocked() ? 'block' : 'none';
+}
+// One-tap remove of every weekend-only item (mirror removePickupOnlyFromCart).
+function removeWeekendOnly(){
+  MENU.forEach(p => { if (isWeekendOnlyItem(p) && qty[p.id] > 0) chg(p.id, -qty[p.id]); });
+  refreshWeekendGate();
+}
 
 /* ── Pickup/schedule time: the old SOFT pickup schedule-sheet (label-only pickup_time) was superseded by
    the real Checkout time selector (Estándar / Programar → scheduled_for). Its functions + sheet HTML were
@@ -3816,6 +3851,7 @@ function refreshTimeSelector(){
     else schSub.textContent = first ? ('Más temprano: '+schedFmt(first)) : 'Sin horarios';
   }
   applyTimeModeUI();
+  refreshWeekendGate();   // weekend-only (18") gate reflects the chosen fulfillment day (schedule-aware)
 }
 /* Render the closed-hours rows from HOURS (single source) so they can never go stale. */
 function renderClosedHours(){
