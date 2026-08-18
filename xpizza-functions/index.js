@@ -245,7 +245,7 @@ const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 // match by name, la_musa → by id). EXTRA_PRICES + the x_pizza alias below keep the
 // factura pricedLineItems call sites byte-identical until A3 makes them restaurant-aware.
 // ---------------------------------------------------------------------------
-const { MENU_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal, summaryLines } = require('./menu-pricing');
+const { MENU_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal, summaryLines, weekendOnlyViolation } = require('./menu-pricing');
 const { checkItemAvailability } = require('./availability-gate');   // KDS 2b — server intake "86" fail-safe (fail-open)
 const MENU_PRICES = MENU_BY_RESTAURANT.x_pizza; // x_pizza table — used by pricedLineItems (factura)
 
@@ -599,6 +599,14 @@ createOrderApp.all('*', async (req, res) => {
     releaseAt = SCHED.releaseAtFor(scheduledForRaw, orderType);
   } else if (SCHED.asapWhileClosed(restIdentity.hours, scheduledForRaw, Date.now())) {
     return badRequest(res, 'Cerrado — programá tu pedido');   // ASAP while closed → never dump onto a dark kitchen
+  }
+
+  // 18" NY pizzas are WEEKEND-ONLY (Fri/Sat/Sun) — reject BEFORE any write/reserve. Schedule-aware:
+  // fulfillment day = the scheduled slot when scheduling, else now. x_pizza-scoped (no-op elsewhere).
+  const weekendBad = weekendOnlyViolation(body.items, restaurantId, Number.isFinite(scheduledForRaw) ? scheduledForRaw : Date.now());
+  if (weekendBad) {
+    return res.status(400).json({ ok: false, error: 'weekend_only', item: weekendBad,
+      message: 'Las pizzas de 18" solo están disponibles viernes, sábado y domingo.' });
   }
 
   // ── Rewards Phase B1: redemption (cash → RESERVE at create; the completion state consumes; cancel releases).
@@ -1018,6 +1026,14 @@ chargeOnlineApp.all('*', async (req, res) => {
     scheduledReleaseAt = SCHED.releaseAtFor(scheduledForRaw, orderType);
   } else if (SCHED.asapWhileClosed(schedIdentity.hours, scheduledForRaw, Date.now())) {
     return badRequest(res, 'Cerrado — programá tu pedido');
+  }
+
+  // 18" NY pizzas are WEEKEND-ONLY (Fri/Sat/Sun) — reject BEFORE opening the payment attempt (no charge-then-
+  // reject). Schedule-aware: fulfillment day = the scheduled slot when scheduling, else now. x_pizza-scoped.
+  const weekendBad = weekendOnlyViolation(body.items, restaurantId, Number.isFinite(scheduledForRaw) ? scheduledForRaw : Date.now());
+  if (weekendBad) {
+    return res.status(400).json({ ok: false, error: 'weekend_only', item: weekendBad,
+      message: 'Las pizzas de 18" solo están disponibles viernes, sábado y domingo.' });
   }
 
   const { total_cents, subtotal_cents, tax_cents } = effBreakdown;   // discounted when redeemed (Task 4); else today's breakdown
