@@ -2497,6 +2497,10 @@ function onCashTenderedInput(){
 
 /* ── Process payment ── */
 async function processPayment(){
+  if(window.__paySubmitting) return;            // Layer 1: ignore rapid re-taps while a submit is in flight
+  window.__paySubmitting = true;
+  const _payCta = document.getElementById('btn-pay'); if(_payCta) _payCta.disabled = true;
+  try {
   // Logged-in profile-first gate (User Profiles) — block a logged-in DELIVERY submit until the profile is
   // saved (defense-in-depth beyond the hidden-payment UI). Guest / complete-profile / pickup → no-op;
   // fail-open (never blocks a real order on an account-logic error).
@@ -2584,9 +2588,13 @@ async function processPayment(){
     await submitOrder('confirmed'); return;
   }
   if(selectedPayment==='online'){
-    processPixelPay(); return;
+    await processPixelPay();                     // awaited so the submit-lock holds through the charge/redirect
   } else {
     await submitOrder('confirmed');
+  }
+  } finally {
+    window.__paySubmitting = false;
+    if(_payCta) _payCta.disabled = false;        // online has navigated away by here; on error/return the CTA re-enables
   }
 }
 
@@ -2607,10 +2615,28 @@ function redeemCartItems(){
     return {name:p.name,qty:qty[p.id],price:p.price,subtotal:p.price*qty[p.id],extras:extrasArr,extrasTotal};
   });
 }
+// A signature of the current cart's FULL content — MUST change iff anything the order captures changes
+// (items, per-item extras, type, slot, applied reward). createOrder's idempotent-return hands back an
+// existing order_id WITHOUT re-checking content, so the sig must cover extras + redeem, not just base items.
+function cartSig(){
+  const items = MENU.filter(p=>qty[p.id]>0).map(p=>[p.id, qty[p.id], JSON.stringify(pizzaExtras[p.id]||{})]).sort();
+  let redeem = '';
+  try { const r = window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload(); redeem = r ? JSON.stringify(r) : ''; } catch(_){}
+  return JSON.stringify(items) + '|' + orderType + '|' + (window.__scheduledFor||'') + '|' + redeem;
+}
+// Reuse the same order_id while the cart is UNCHANGED → a re-tap rides the server's idempotency (createOrder
+// idempotent-return / chargeOnlineOrder acquireHostedAttempt reuse): no duplicate order, no rate-limit burn.
+// A resumed retry (__resumeOrderId) folds in; a content change / completion mints a fresh id.
+function orderIdForThisCart(){
+  const sig = cartSig();
+  if (window.__resumeOrderId){ const id = window.__resumeOrderId; window.__resumeOrderId = null; window.__pendingOrder = { id, sig }; return id; }
+  if (window.__pendingOrder && window.__pendingOrder.sig === sig) return window.__pendingOrder.id;
+  const id = genOrderId(); window.__pendingOrder = { id, sig }; return id;
+}
 function buildOrder(){
   const items=MENU.filter(p=>qty[p.id]>0);
   const total=calcTotal();
-  const orderId=(window.__resumeOrderId||genOrderId()); window.__resumeOrderId=null;   // D: a RESUMED retry reuses the original order_id (server reuses the ONE reservation — no double-reserve); else a fresh id
+  const orderId = orderIdForThisCart();   // Layer 1: reuse the id while the cart is unchanged; folds __resumeOrderId; content change / completion mints fresh
   const mapsLink=`https://www.google.com/maps?q=${lat},${lng}`;
   const wazeLink=`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`;
   currentOrder={
@@ -3032,6 +3058,7 @@ async function submitOrder(paymentStatus){
 // belongs here. Anything order-specific (cart contents, location pin,
 // payment selection) gets cleared.
 function startAnotherOrder(){
+  window.__pendingOrder = null;   // Layer 1: next distinct order mints a fresh id
   // Reset cart quantities
   Object.keys(qty).forEach(k => { qty[k] = 0; });
 
