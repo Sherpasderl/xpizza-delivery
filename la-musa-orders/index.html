@@ -3040,10 +3040,26 @@ function redeemCartItems(){
 // (items, per-item extras, type, slot, applied reward). createOrder's idempotent-return hands back an
 // existing order_id WITHOUT re-checking content, so the sig must cover extras + redeem, not just base items.
 function cartSig(){
+  // Layer 1 dedup key — hash EVERY order-identifying field buildOrder captures (order_id excluded).
+  // MIRROR buildOrder: any field the server persists/overwrites MUST appear here, else editing it on the
+  // SAME cart + re-tapping returns the STALE order (createOrder idempotent-return / chargeOnlineOrder
+  // acquireHostedAttempt reuse do NOT re-check content) → wrong delivery / name / phone / RTN factura / cash.
+  // Raw input accessors (not the derived/fallback values) → identical across both forms.
   const items = MENU.filter(p=>qty[p.id]>0).map(p=>[p.id, qty[p.id], JSON.stringify(pizzaExtras[p.id]||{})]).sort();
+  const g = id => (document.getElementById(id)?.value ?? '');
   let redeem = '';
   try { const r = window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload(); redeem = r ? JSON.stringify(r) : ''; } catch(_){}
-  return JSON.stringify(items) + '|' + orderType + '|' + (window.__scheduledFor||'') + '|' + redeem;
+  const rtnOn = document.getElementById('rtn-toggle')?.checked ? '1' : '0';
+  const pickup = orderType==='pickup' ? (pickupTimeType==='schedule' && pickupScheduledTime ? pickupScheduledTime : 'standard') : '';
+  return JSON.stringify([
+    items, orderType, (window.__scheduledFor||''),
+    fullPhone(), g('cname').trim(), g('cemail').trim(), g('notes').trim(),
+    String(lat), String(lng), g('address-detected'), g('address-details'),
+    selectedPayment, pickup,
+    (selectedPayment==='cash' ? g('cash-tendered') : ''),
+    rtnOn, (rtnOn==='1' ? g('razon-social').trim() : ''), (rtnOn==='1' ? g('rtn-cliente').trim() : ''),
+    redeem
+  ]);
 }
 // Reuse the same order_id while the cart is UNCHANGED → a re-tap rides the server's idempotency (createOrder
 // idempotent-return / chargeOnlineOrder acquireHostedAttempt reuse): no duplicate order, no rate-limit burn.
@@ -3551,6 +3567,7 @@ function toggleReceiptSummary(){
 }
 function showSuccess(){
   showStage('s5',100);
+  window.__pendingOrder = null;   // Layer 1: this order is DONE — an identical follow-up cart must mint a fresh id (never reuse a completed order_id → idempotent-return "success" with no new order)
   // Default the order summary to COLLAPSED on every success render (reward card first).
   try{ const rt=document.getElementById('receipt-toggle'); if(rt) rt.setAttribute('aria-expanded','false'); const rb=document.getElementById('receipt-items'); if(rb) rb.classList.remove('receipt-open'); }catch(_){}
   const o=currentOrder;
