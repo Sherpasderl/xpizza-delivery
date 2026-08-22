@@ -246,6 +246,8 @@ const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 // factura pricedLineItems call sites byte-identical until A3 makes them restaurant-aware.
 // ---------------------------------------------------------------------------
 const { MENU_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal, summaryLines, weekendOnlyViolation } = require('./menu-pricing');
+const { orderContentKey, isContentRetap } = require('./order-dedup');   // Layer 2 — content-aware phone rate limit
+const CONTENT_DEDUP_WINDOW_MS = 120000;   // a same-phone same-cart resubmit within 2 min = a re-tap, not a new order
 const { checkItemAvailability } = require('./availability-gate');   // KDS 2b — server intake "86" fail-safe (fail-open)
 const MENU_PRICES = MENU_BY_RESTAURANT.x_pizza; // x_pizza table — used by pricedLineItems (factura)
 
@@ -557,12 +559,33 @@ createOrderApp.all('*', async (req, res) => {
     }
   }
 
+  // Layer 2 — content-aware phone rate limit: a same-phone same-content re-tap within the window does NOT
+  // consume a phone token, so frantic re-taps of ONE cart can't exhaust the abuse quota meant for DISTINCT
+  // orders. Best-effort + FAIL-SAFE (any error → count normally). The ip bucket still counts every submit.
+  let phoneRetap = false;
+  try {
+    const _sf = SCHED.normalizeScheduledFor(body.scheduled_for);
+    const ck = orderContentKey({ phone: fields.customer_phone, itemsText: fields.items_text, orderType, scheduledFor: Number.isFinite(_sf) ? _sf : null });
+    if (fields.customer_phone && ck) {
+      const cbase = db.ref(`recent_order_content/${rateLimitKey(fields.customer_phone)}`);
+      const rec = (await cbase.child(ck).once('value')).val();
+      phoneRetap = isContentRetap(rec, Date.now(), CONTENT_DEDUP_WINDOW_MS);
+      await cbase.child(ck).set({ at: Date.now() });
+      // bounded: prune this phone's expired content stamps (mirror the whatsapp_mute prune)
+      const all = (await cbase.once('value')).val() || {};
+      const cutoff = Date.now() - CONTENT_DEDUP_WINDOW_MS, dead = {};
+      for (const [k, v] of Object.entries(all)) if (!v || !Number.isFinite(v.at) || v.at < cutoff) dead[k] = null;
+      if (Object.keys(dead).length) await cbase.update(dead);
+    }
+  } catch (_) { phoneRetap = false; }
+
   // an existing order_id already returned above, so legit retries don't burn
   // budget. Reject before the expensive multi-path write + WhatsApp send.
   for (const [bucket, key, cfg] of [
     ['ip', clientIp, RATE_LIMIT_BUCKETS.ip],
     ['phone', fields.customer_phone, RATE_LIMIT_BUCKETS.phone]
   ]) {
+    if (bucket === 'phone' && phoneRetap) continue;   // Layer 2: same-cart re-tap → don't burn a phone token
     const { allowed, retryAfterSec } = await checkRateLimit(db, bucket, key, cfg);
     if (!allowed) {
       console.warn(`createOrder: rate limit (${bucket}) hit for order ${orderId}, retry ${retryAfterSec}s`);
@@ -1007,10 +1030,28 @@ chargeOnlineApp.all('*', async (req, res) => {
   // fresh write may proceed and must be throttled. So a state-drift-blocked fresh attempt writes NOTHING —
   // no order, no payment_attempt, AND no rate_limits.
   if (cartBlocked.length === 0) {
+    // Layer 2 — content-aware phone rate limit (same as createOrder): a same-phone same-content re-tap within
+    // the window does NOT consume a phone token. Best-effort + FAIL-SAFE. ip still counts every submit.
+    let phoneRetap = false;
+    try {
+      const _sf = SCHED.normalizeScheduledFor(body.scheduled_for);
+      const ck = orderContentKey({ phone: fields.customer_phone, itemsText: fields.items_text, orderType, scheduledFor: Number.isFinite(_sf) ? _sf : null });
+      if (fields.customer_phone && ck) {
+        const cbase = db.ref(`recent_order_content/${rateLimitKey(fields.customer_phone)}`);
+        const rec = (await cbase.child(ck).once('value')).val();
+        phoneRetap = isContentRetap(rec, Date.now(), CONTENT_DEDUP_WINDOW_MS);
+        await cbase.child(ck).set({ at: Date.now() });
+        const all = (await cbase.once('value')).val() || {};
+        const cutoff = Date.now() - CONTENT_DEDUP_WINDOW_MS, dead = {};
+        for (const [k, v] of Object.entries(all)) if (!v || !Number.isFinite(v.at) || v.at < cutoff) dead[k] = null;
+        if (Object.keys(dead).length) await cbase.update(dead);
+      }
+    } catch (_) { phoneRetap = false; }
     for (const [bucket, key, cfg] of [
       ['ip', clientIp, RATE_LIMIT_BUCKETS.ip],
       ['phone', fields.customer_phone, RATE_LIMIT_BUCKETS.phone]
     ]) {
+      if (bucket === 'phone' && phoneRetap) continue;   // Layer 2: same-cart re-tap → don't burn a phone token
       const { allowed, retryAfterSec } = await checkRateLimit(db, bucket, key, cfg);
       if (!allowed) {
         res.set('Retry-After', String(retryAfterSec));
