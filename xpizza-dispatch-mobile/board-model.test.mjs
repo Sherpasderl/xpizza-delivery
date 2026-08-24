@@ -41,6 +41,8 @@ test('isUnassignedDelivery = live delivery with no driver (any stage — desktop
   // completed / cancelled delivery task → not unassigned
   assert.equal(isUnassignedDelivery(del('delivered'), 'o1', tasks), false); // completados section
   assert.equal(isUnassignedDelivery(del('ready'), 'o1', { 'o1_delivery':{assigned_driver_id:null,status:'cancelled'} }), false);
+  // missing task row → NOT unassigned (desktop parity: task must exist; no phantom assign)
+  assert.equal(isUnassignedDelivery(del('ready'), 'o2', tasks), false);
 });
 
 test('canReassign: any live delivery (assign pre-ready), not pickup/completed', () => {
@@ -51,7 +53,7 @@ test('canReassign: any live delivery (assign pre-ready), not pickup/completed', 
   assert.equal(canReassign(del('preparing'), 'o1', noDrv), true);
   assert.equal(canReassign(del('ready'), 'o1', noDrv), true);
   assert.equal(canReassign(del('out_for_delivery'), 'o1', drv), true);  // reassign an assigned one
-  assert.equal(canReassign(del('ready'), 'o1', {}), true);              // missing task row → still assignable
+  assert.equal(canReassign(del('ready'), 'o1', {}), false);             // missing task row → NOT assignable (desktop parity: no phantom assign)
   // no driver leg / terminal → no action
   assert.equal(canReassign(pick('ready'), 'o1', noDrv), false);
   assert.equal(canReassign(del('completed'), 'o1', drv), false);
@@ -71,9 +73,9 @@ test('chip partition holds: delivery + pickup + programados = todos', () => {
 
 test('unassigned count is a cross-cutting subset (not part of the partition)', () => {
   const orders = { o1:del('ready'), o2:del('ready') };
-  const tasks = { 'o1_delivery':{assigned_driver_id:null,status:'pending'} }; // o1 unassigned, o2 has no task row → also unassigned
+  const tasks = { 'o1_delivery':{assigned_driver_id:null,status:'pending'} }; // o1 unassigned (has task); o2 has NO task row → excluded (desktop parity, no phantom)
   const c = chipCounts(orders, tasks, 0);
-  assert.equal(c.unassigned, 2);
+  assert.equal(c.unassigned, 1);
   assert.ok(c.unassigned <= c.delivery); // subset of delivery
 });
 

@@ -29,16 +29,18 @@ export function assignedDriverId(orderId, tasks) {
 }
 
 // A delivery order is "on the live board and eligible for a driver" when it's a delivery (not pickup),
-// maps to a live section (not completed/scheduled/cancelled), and its delivery task isn't
+// maps to a live section (not completed/scheduled/cancelled), and its delivery task EXISTS and isn't
 // cancelled/completed. Mirrors the desktop dispatch's pending/active predicate (getPendingOrders /
-// getActiveOrders key on a non-cancelled/-completed delivery task, regardless of order.status) — so a
-// driver can be assigned from the moment the order exists, NOT only once the kitchen marks it ready.
+// getActiveOrders key on `dt && ...` — an existing, non-cancelled/-completed delivery task, regardless
+// of order.status) — so a driver can be assigned from the moment the order exists, NOT only once the
+// kitchen marks it ready.
 function isLiveDelivery(order, orderId, tasks) {
   if (!order || order.order_type === 'pickup') return false;
   const sec = sectionForOrder(order);
   if (!sec || sec === 'completados') return false;
   const dt = (tasks || {})[deliveryTaskId(orderId)];
-  if (dt && (dt.status === 'cancelled' || dt.status === 'completed')) return false;
+  if (!dt) return false;   // desktop parity: the _delivery task must exist — a missing row would let assignOrderToDriver's CAS (cur==null) commit a phantom task (driver assigned, no destination/linkage)
+  if (dt.status === 'cancelled' || dt.status === 'completed') return false;
   return true;
 }
 
