@@ -5,8 +5,6 @@
 
 export const SECTIONS = ['nuevos', 'preparacion', 'listos', 'camino', 'completados'];
 
-const LIVE_STATUSES = new Set(['ready', 'out_for_delivery']); // "live for a driver"
-
 // order.status → board section. Pickup orders have no driver leg, so they can
 // never be "En camino" — a (malformed) pickup at out_for_delivery still shows in Listos.
 export function sectionForOrder(order) {
@@ -30,23 +28,36 @@ export function assignedDriverId(orderId, tasks) {
   return dt && dt.assigned_driver_id ? dt.assigned_driver_id : null;
 }
 
-// "Sin asignar": a live (ready/out) delivery order whose delivery task has no
-// driver and isn't cancelled. A missing task row counts as unassigned (nothing
-// claimed it yet). Pickup is never "sin asignar".
-export function isUnassignedDelivery(order, orderId, tasks) {
+// A delivery order is "on the live board and eligible for a driver" when it's a delivery (not pickup),
+// maps to a live section (not completed/scheduled/cancelled), and its delivery task isn't
+// cancelled/completed. Mirrors the desktop dispatch's pending/active predicate (getPendingOrders /
+// getActiveOrders key on a non-cancelled/-completed delivery task, regardless of order.status) — so a
+// driver can be assigned from the moment the order exists, NOT only once the kitchen marks it ready.
+function isLiveDelivery(order, orderId, tasks) {
   if (!order || order.order_type === 'pickup') return false;
-  if (!LIVE_STATUSES.has(order.status)) return false;
+  const sec = sectionForOrder(order);
+  if (!sec || sec === 'completados') return false;
   const dt = (tasks || {})[deliveryTaskId(orderId)];
-  if (dt && dt.status === 'cancelled') return false;
+  if (dt && (dt.status === 'cancelled' || dt.status === 'completed')) return false;
+  return true;
+}
+
+// "Sin asignar": a live delivery order (ANY stage — new/preparing/ready/en camino) whose delivery task
+// has no driver. A missing task row counts as unassigned (nothing claimed it yet). Pickup is never
+// "sin asignar". Broadened to match desktop getPendingOrders — surfaces before the order is ready.
+export function isUnassignedDelivery(order, orderId, tasks) {
+  if (!isLiveDelivery(order, orderId, tasks)) return false;
+  const dt = (tasks || {})[deliveryTaskId(orderId)];
   return !(dt && dt.assigned_driver_id);
 }
 
-// The reassign action is available on delivery orders that are live (not
-// new/scheduled/completed) — matching spec §3.4 (a pickup/scheduled has no driver).
-export function canReassign(order) {
-  if (!order || order.order_type === 'pickup') return false;
-  const sec = sectionForOrder(order);
-  return sec === 'listos' || sec === 'camino';
+// The assign/reassign action is available on any live delivery order (new/preparing/ready/en camino)
+// whose delivery task isn't cancelled/completed — whether unassigned (→ "Asignar") or already assigned
+// (→ "Reasignar"). Broadened from the old ready/out-only rule to match the desktop dispatch, so an
+// unassigned order gets a driver immediately instead of waiting for "listo". Pickup/scheduled/completed
+// have no driver leg → no action.
+export function canReassign(order, orderId, tasks) {
+  return isLiveDelivery(order, orderId, tasks);
 }
 
 export const typeChip = (order) => (order && order.order_type === 'pickup' ? 'pickup' : 'delivery');

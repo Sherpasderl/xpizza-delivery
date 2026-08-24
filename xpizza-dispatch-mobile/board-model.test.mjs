@@ -30,19 +30,32 @@ test('assignedDriverId reads the delivery task', () => {
   assert.equal(assignedDriverId('o2', tasks), null);
 });
 
-test('isUnassignedDelivery = live delivery with no driver', () => {
+test('isUnassignedDelivery = live delivery with no driver (any stage — desktop parity)', () => {
   const tasks = { 'o1_delivery': { assigned_driver_id: null, status:'pending' } };
   assert.equal(isUnassignedDelivery(del('ready'), 'o1', tasks), true);
   assert.equal(isUnassignedDelivery(del('ready'), 'o1', { 'o1_delivery':{assigned_driver_id:'drvA'} }), false);
   assert.equal(isUnassignedDelivery(pick('ready'), 'o1', tasks), false); // pickup is never "sin asignar"
-  assert.equal(isUnassignedDelivery(del('new'), 'o1', tasks), false);    // not yet live-for-driver
+  // BROADENED: new/preparing delivery with no driver now counts as unassigned (assignable pre-ready)
+  assert.equal(isUnassignedDelivery(del('new'), 'o1', tasks), true);
+  assert.equal(isUnassignedDelivery(del('preparing'), 'o1', tasks), true);
+  // completed / cancelled delivery task → not unassigned
+  assert.equal(isUnassignedDelivery(del('delivered'), 'o1', tasks), false); // completados section
+  assert.equal(isUnassignedDelivery(del('ready'), 'o1', { 'o1_delivery':{assigned_driver_id:null,status:'cancelled'} }), false);
 });
 
-test('canReassign: delivery + live only', () => {
-  assert.equal(canReassign(del('ready')), true);
-  assert.equal(canReassign(del('out_for_delivery')), true);
-  assert.equal(canReassign(pick('ready')), false);
-  assert.equal(canReassign(del('completed')), false);
+test('canReassign: any live delivery (assign pre-ready), not pickup/completed', () => {
+  const noDrv = { 'o1_delivery': { assigned_driver_id: null, status:'pending' } };
+  const drv   = { 'o1_delivery': { assigned_driver_id: 'drvA', status:'accepted' } };
+  // BROADENED: assignable while new/preparing (was ready/out-only before)
+  assert.equal(canReassign(del('new'), 'o1', noDrv), true);
+  assert.equal(canReassign(del('preparing'), 'o1', noDrv), true);
+  assert.equal(canReassign(del('ready'), 'o1', noDrv), true);
+  assert.equal(canReassign(del('out_for_delivery'), 'o1', drv), true);  // reassign an assigned one
+  assert.equal(canReassign(del('ready'), 'o1', {}), true);              // missing task row → still assignable
+  // no driver leg / terminal → no action
+  assert.equal(canReassign(pick('ready'), 'o1', noDrv), false);
+  assert.equal(canReassign(del('completed'), 'o1', drv), false);
+  assert.equal(canReassign(del('ready'), 'o1', { 'o1_delivery':{assigned_driver_id:'drvA',status:'completed'} }), false);
 });
 
 test('chip partition holds: delivery + pickup + programados = todos', () => {

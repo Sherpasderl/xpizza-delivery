@@ -1088,7 +1088,7 @@ window.__openOrderDetail = (orderId) => {
   const order = STORE.orders[orderId] || STORE.scheduled[orderId]; if (!order) return;
   const isScheduled = order.status === 'scheduled' || (!!STORE.scheduled[orderId] && !STORE.orders[orderId]);
   const drvId = assignedDriverId(orderId, STORE.tasks);
-  const actionable = canReassign(order);   // delivery + live only (pickup/scheduled/completed → no action)
+  const actionable = canReassign(order, orderId, STORE.tasks);   // any live delivery (new/preparing/ready/en camino) → Asignar/Reasignar; pickup/scheduled/completed → no action
   const section = sectionForOrder(order);
   const estado = isScheduled ? 'Programado' : (SECTION_LABELS[section] || '—');
   const slot = isScheduled && Number(order.scheduled_for) ? slotLabelSafe(order.scheduled_for) : '';
