@@ -45,8 +45,9 @@ function isLiveDelivery(order, orderId, tasks) {
 }
 
 // "Sin asignar": a live delivery order (ANY stage — new/preparing/ready/en camino) whose delivery task
-// has no driver. A missing task row counts as unassigned (nothing claimed it yet). Pickup is never
-// "sin asignar". Broadened to match desktop getPendingOrders — surfaces before the order is ready.
+// EXISTS and has no driver. A missing task row is excluded (isLiveDelivery requires the task — desktop
+// parity, no phantom assign). Pickup is never "sin asignar". Broadened to match desktop getPendingOrders
+// — surfaces before the order is ready.
 export function isUnassignedDelivery(order, orderId, tasks) {
   if (!isLiveDelivery(order, orderId, tasks)) return false;
   const dt = (tasks || {})[deliveryTaskId(orderId)];
