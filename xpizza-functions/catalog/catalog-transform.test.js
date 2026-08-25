@@ -27,3 +27,17 @@ ok('round-trip is identity (key-agnostic: works for id-keyed la_musa)');
 assert.deepStrictEqual(buildTablesFromDocs([], []), { menu: {}, extras: {} });
 ok('empty → {menu:{}, extras:{}}');
 console.log(`catalog-transform: OK (${n})`);
+
+// ── Transform correctness (NOT parity): the pure transforms are mutual inverses on the live tables. ──
+// This does NOT prove the CATALOG reproduces prices (no Firestore here) — Task 6's emulator round-trip does.
+const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
+for (const rid of ['x_pizza', 'la_musa']) {
+  const menu = MENU_BY_RESTAURANT[rid];
+  const extras = EXTRAS_BY_RESTAURANT[rid] || {};
+  const encoded = codeTablesToCatalogDocs(menu, extras);
+  const back = buildTablesFromDocs(encoded.itemDocs, encoded.extraDocs);
+  assert.deepStrictEqual(back.menu, menu, `${rid} menu transform round-trip`);
+  assert.deepStrictEqual(back.extras, extras, `${rid} extras transform round-trip`);
+  ok(`transform round-trip ${rid}: ${Object.keys(menu).length} items + ${Object.keys(extras).length} extras`);
+}
+console.log(`catalog-transform (incl. live-table round-trip): OK (${n})`);
