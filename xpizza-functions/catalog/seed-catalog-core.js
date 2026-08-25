@@ -30,10 +30,13 @@ async function seedCatalog(db, restaurants) {
       const col = rref.collection(sub);
       const wantIds = new Set(docs.map((d) => d.id));
       const existing = await col.get();
-      // Chunked at 450 (Firestore caps a batch at 500 ops) so a large future menu + stale docs can't fail
-      // the whole subcollection commit. Stale DELETES are queued before the sets deliberately: if a chunk
-      // ever fails midway, the catalog is left MISSING items (1b fails closed on an unknown key) rather
-      // than carrying a resurrected item at a stale price. verify-catalog.js catches either direction.
+      // Chunked at 450 (Firestore caps a batch at 500 ops). NOTE: a sequence of batches is NOT atomic — a
+      // partial failure (e.g. the 2nd delete chunk throws) can leave the catalog INCONSISTENT: stale docs
+      // survive or current docs are missing. This is acceptable ONLY because (a) 1a's real seeds are single-
+      // batch (x_pizza 24, la_musa 43 << 450 → atomic in practice), and (b) the REQUIRED post-seed
+      // `verify-catalog.js` gate byte-compares prod vs code and blocks deploy on any mismatch. Atomic cutover
+      // under a LIVE reader (a real large-menu re-seed) needs the 1b versioned-publish precondition — NOT this.
+      // Delete-before-set is kept as the better-of-two partial states, NOT as a guarantee.
       const ops = [];
       existing.forEach((snap) => { if (!wantIds.has(snap.id)) { ops.push((b) => b.delete(snap.ref)); reconciled++; } });   // reconcile stale
       for (const d of docs) ops.push((b) => b.set(col.doc(d.id), { key: d.key, price: d.price }));
