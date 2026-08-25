@@ -66,6 +66,28 @@ const read = async (rid) => { const d = await getRestaurantDocs(db, rid); return
   await bad.collection('menu_items').doc('d2').set({ key: 'Pizza', price: 100 });    // duplicate key, different id
   await assert.rejects(() => getRestaurantDocs(db, 'bad_shop'), /catalog_dup_key/);
   ok('duplicate pricing key across two docs → throws (no silent last-write-wins)');
+  // (5) PROFILE IS FULLY SEED-OWNED (advisor gate, security) — {merge:true} would leave a pre-existing
+  //     private field alive on the PUBLIC-READ profile. The allowlist only constrains what WE write, not
+  //     the doc's final contents, so the seed must FULL-OVERWRITE. Pre-plant a secret, re-seed, assert gone.
+  await db.collection('restaurants').doc('x_pizza').set({ name: 'X. Pizza', tier: 'flagship', bank_account: 'SECRET-HN-0001' });
+  await seedCatalog(db, R());
+  const prof = (await db.collection('restaurants').doc('x_pizza').get()).data();
+  assert.ok(!('bank_account' in prof), 'a pre-existing private field MUST be scrubbed from the public profile');
+  assert.deepStrictEqual(Object.keys(prof).sort(), ['name', 'tier'], 'profile contains EXACTLY the seeded allowlisted fields');
+  ok('profile full-overwrite scrubs a pre-existing private field (no payout data on a public-read doc)');
+  // (6) BATCH CHUNKING (advisor gate, robustness) — 1a's tables are 24/43 items, so nothing here would
+  //     otherwise cross Firestore's 500-op batch cap. Seed 600 synthetic items (>450 sets → multi-chunk),
+  //     then reconcile ALL of them away (>450 deletes → multi-chunk) and confirm both directions commit.
+  const big = {}; for (let i = 0; i < 600; i++) big[`synthetic_item_${i}`] = 100 + i;
+  await seedCatalog(db, { bulk_shop: { profile: { name: 'Bulk', tier: 'flagship' }, menu: big, extras: {} } });
+  const bulk = await read('bulk_shop');
+  assert.strictEqual(Object.keys(bulk.menu).length, 600, '600 items survive a multi-chunk commit');
+  assert.strictEqual(bulk.menu.synthetic_item_599, 699, 'the LAST item of the last chunk landed');
+  ok('chunking: 600 items (>450 ops) commit across multiple batches');
+  await seedCatalog(db, { bulk_shop: { profile: { name: 'Bulk', tier: 'flagship' }, menu: { only_one: 1 }, extras: {} } });
+  const shrunk = await read('bulk_shop');
+  assert.deepStrictEqual(shrunk.menu, { only_one: 1 }, '599 stale docs reconciled away across multiple delete chunks');
+  ok('chunking: >450 stale deletes reconcile across multiple batches');
   console.log(`catalog-parity(emulator): OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('PARITY FAILED:', e && e.message); process.exit(1); });

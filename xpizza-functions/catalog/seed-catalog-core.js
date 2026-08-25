@@ -30,12 +30,26 @@ async function seedCatalog(db, restaurants) {
       const col = rref.collection(sub);
       const wantIds = new Set(docs.map((d) => d.id));
       const existing = await col.get();
-      const batch = db.batch();
-      existing.forEach((snap) => { if (!wantIds.has(snap.id)) { batch.delete(snap.ref); reconciled++; } });   // reconcile stale
-      for (const d of docs) batch.set(col.doc(d.id), { key: d.key, price: d.price });
-      await batch.commit();
+      // Chunked at 450 (Firestore caps a batch at 500 ops) so a large future menu + stale docs can't fail
+      // the whole subcollection commit. Stale DELETES are queued before the sets deliberately: if a chunk
+      // ever fails midway, the catalog is left MISSING items (1b fails closed on an unknown key) rather
+      // than carrying a resurrected item at a stale price. verify-catalog.js catches either direction.
+      const ops = [];
+      existing.forEach((snap) => { if (!wantIds.has(snap.id)) { ops.push((b) => b.delete(snap.ref)); reconciled++; } });   // reconcile stale
+      for (const d of docs) ops.push((b) => b.set(col.doc(d.id), { key: d.key, price: d.price }));
+      for (let i = 0; i < ops.length; i += 450) {
+        const b = db.batch();
+        for (const op of ops.slice(i, i + 450)) op(b);
+        await b.commit();
+      }
     }
-    await rref.set(meta.profile, { merge: true });   // profile LAST — completeness marker on a first seed
+    // FULL overwrite, NO merge (advisor gate, security): the profile is public-read, and {merge:true} would
+    // leave a PRE-EXISTING private field (payout/bank_account from a future phase or a manual write) alive on
+    // it — the allowlist constrains only what WE write, not the doc's final contents. A full set makes the doc
+    // contain EXACTLY the allowlisted fields, scrubbing anything stale. Private data lives on a server-only
+    // path, never here. NOTE: because this REPLACES the doc, any future seed-managed public profile field must
+    // be added to BOTH PROFILE_FIELDS and meta.profile, or it will be wiped on the next seed.
+    await rref.set(meta.profile);   // profile LAST — completeness marker on a first seed
     report[rid] = { items: itemDocs.length, extras: extraDocs.length, reconciled };
   }
   return report;
