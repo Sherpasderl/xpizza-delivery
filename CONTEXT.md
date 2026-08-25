@@ -25,6 +25,10 @@ one bank account, one PixelPay account. Both X. Pizza and La Musa Orders charge 
 this single Merchant; the [[Restaurant]] is a layer *below* the Merchant. Per-Restaurant
 P&L is therefore a reporting concern (filter by `restaurant_id`), not a payment-rail one.
 _Avoid_: account, business (ambiguous between Merchant and Restaurant).
+_Note_: program/platform docs sometimes say "merchant" loosely for a selling business
+("merchants #1 and #2"). That sense is **not** used here — a selling business is a
+[[Restaurant]]. The external selling party the platform will later remit to needs its own
+non-colliding term (candidate: Partner), chosen when that concept actually arrives.
 
 **Hub**:
 The physical pickup location of a Restaurant (lat/lng + geofence radius). Drivers are
@@ -55,6 +59,23 @@ coords, phone, WhatsApp instance, hours, active, version), client-readable by au
 and dispatcher-writable. It lives under the `/restaurants/{id}` node, whose sibling
 `/restaurants/{id}/factura_config` (fiscal: CAI/sequence) is **not** part of the config plane and
 stays Admin-SDK-only. Apps read identity from here, not from in-code constants.
+
+**Catalog**:
+The stored, queryable representation of a [[Restaurant]]'s menu and prices — the items a
+customer can order and what each costs. Distinct from the [[Config plane]], which is a
+Restaurant's *identity* (hub coords, hours, WhatsApp line), not what it sells. A Restaurant
+has exactly one Catalog, keyed by `restaurant_id`. The Catalog is the intended source of
+truth for prices; until it becomes so, the in-code price tables remain authoritative and the
+Catalog must reproduce them exactly.
+_Avoid_: menu (means the customer-facing list), price table (means the in-code tables
+specifically), merchant catalog (see [[Merchant]] — a Catalog belongs to a Restaurant).
+
+**Pricing key**:
+The value that maps an order line to its Catalog entry — per-[[Restaurant]] by deliberate
+contract: X. Pizza matches on item *name*, La Musa on item *id* slug. Not a display field:
+availability ("86") and pricing resolve a line through the same Pricing key, so the two can
+never drift apart.
+_Avoid_: item key, sku, product id.
 
 **Factura**:
 The SAR-authorized fiscal sales document Honduras law requires for **every** Sale (one per

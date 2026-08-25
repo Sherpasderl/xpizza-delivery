@@ -1,0 +1,40 @@
+# SPEC — Phase 1: Data-driven merchant model (Sherpa platform foundation)
+
+**Date:** 2026-08-25 · **Program:** Sherpa Platform ([[sherpa-platform-initiative]], `2026-08-25-sherpa-platform-architecture-diligence.md`). **Surface:** `xpizza-functions` (catalog reader + pricing cutover) + Firestore (new catalog store) + later the forms. **Type:** foundational migration. **MONEY-CRITICAL** (pricing source of truth) → advisor + **codex grill** gate at every cutover; never self-approve ([[codex-gate-money-adjacent]]). **Executor:** "Sherpa Last Mile Delivery app executor" session builds; this session audits/gates.
+
+## Goal
+Move merchant config + menu/pricing/hours/branding from **hand-synced code** to a **Firestore catalog** the server reads per-merchant at runtime, so **adding/editing a merchant becomes a DATA operation, not a code change**. Also retires the "menu = 3 hand-synced sources" tech debt ([[platform-sot-supabase-retired]]) for the existing Tier-1 brands.
+
+## THE money-safety invariant (the whole gate story)
+**Phase 1 changes WHERE prices are read from, never WHAT they are.** Every cutover is guarded by a **parity invariant**: the Firestore-sourced pricing tables must be **byte-identical** to today's code tables. We migrate the *source*, not the *values*. The codex grill verifies this invariant at each step.
+
+## Current state (verified from source)
+- Server pricing SoT: `xpizza-functions/menu-pricing.js` — `MENU_BY_RESTAURANT = { x_pizza: X_PIZZA_MENU (keyed by item NAME), la_musa: LA_MUSA_MENU (keyed by item ID) }`, `EXTRAS_BY_RESTAURANT`, pure `computeServerTotal(items, restaurantId)` + `summaryLines` + `itemPricingKey`.
+- Money choke point: `index.js:321` `computeServerTotal(body.items, restaurantId)`; `MENU_PRICES = MENU_BY_RESTAURANT.x_pizza` also feeds factura `pricedLineItems` (`index.js:252`).
+- The **3 hand-synced sources**: (1) server `menu-pricing.js` tables; (2) each form's client `MENU` const (`xpizza-orders/index.html`, `la-musa-orders/index.html`); (3) POS `pos-menu.json` (separate `xpizza-pos` repo).
+
+## Architecture
+- **Firestore catalog** (new) — **collection = `restaurants/{restaurant_id}`** (matches CONTEXT.md glossary [Restaurant = `restaurant_id`] + RTDB's existing `/restaurants/{id}`; "Merchant" is RESERVED for Sherpa-the-payment-entity per CONTEXT.md and is NOT this layer — see terminology note in the diligence doc): `restaurants/{restaurant_id}` (profile — **PUBLIC-read fields ONLY**: name, tier flagship|platform, hours, branding, restaurant coords, active — **NO payout/bank/private fields on this doc**; grill Q3a: the profile is world-readable for menu display, so payout/ledger data lives in a **server-only path** added in Phase 4, never here, and Phase 1a's rules enumerate only `menu_items`/`extras` as public — no recursive wildcard) + `restaurants/{restaurant_id}/menu_items/{itemId}` (`key` [the exact pricing key — NAME for x_pizza, ID for la_musa], `price` [verbatim table value, whole lempiras — NOT cents], category, availability) + `restaurants/{restaurant_id}/extras/{extraId}` (`key`, `price`). Schema faithfully represents the CURRENT tables; the reader reproduces `itemPricingKey` behavior exactly (key carried verbatim, key-agnostic).
+- **Pure catalog reader** (`catalog.js`, new): given `restaurant_id`, returns the SAME shapes `menu-pricing.js` exposes (`{ menu, extras }` == `MENU_BY_RESTAURANT[rid]` / `EXTRAS_BY_RESTAURANT[rid]`) sourced from Firestore, with a bounded in-memory cache (menus change rarely). Pure/DI-tested (Firestore reads injected).
+- **Firestore security rules** (new): catalog = **public read** (menu display) + **server/admin write only** (no client writes). Firestore-rules test (emulator).
+
+## Decomposition (expand-contract — each independently gated; money-gated at cutover)
+- **Phase 1a — Schema + seed + reader + PARITY (NO cutover). ← FIRST executor plan.**
+  Define the Firestore schema; a **seed script** that writes the catalog from the current code tables; the pure `catalog.js` reader; and a **PARITY test** proving the Firestore-sourced `{menu,extras}` for x_pizza + la_musa are **byte-identical** to `MENU_BY_RESTAURANT`/`EXTRAS_BY_RESTAURANT` today. **Purely additive — the live pricing path still uses `menu-pricing.js`.** Safe, gateable, no money-path change yet. Deliverable: catalog seeded in a NON-prod/prod-catalog namespace + green parity.
+- **Phase 1b — Server pricing reads the catalog (money + FISCAL cutover).** **Grill Q6 — the cutover surface is FOUR consumers of the pricing tables, not one:** (1) `computeServerTotal` (index.js:321, order total — fails CLOSED on unknown keys, both brands, so an empty/missing table REJECTS an order, never prices at zero); (2) `summaryLines` (:269); (3) **factura `pricedLineItems(…, MENU_PRICES, …)` (:695, :1100) — FISCAL:** those prices print on a SAR document drawn from a permanently-consumed CAI sequence (Void-only, never corrected) → **Phase 1b trips [[fiscal-representation-owner-gate]], not just the money gate**; (4) `rewards-redeem-pricing.js` — a divergence doesn't misprice, it **hard-rejects already-issued reward canonicals with `discount_mismatch`**. All four must switch together under the runtime **parity guard** (catalog-vs-code mismatch → alarm + fall back to the code table, fail-safe) AND the reader's **fail-signal contract** (Q5: a read failure/not-found throws → 1b falls back to code tables, never caches a plausible-empty). Code tables retained as the fallback. **Heaviest codex grill + fiscal owner gate.** **1b PRECONDITION (Codex, do not inherit silently):** Phase 1a's seed writes the profile LAST as a completeness marker, which is safe ONLY because nothing reads the catalog in 1a; once a LIVE reader exists (1b), a re-seed briefly deletes/rewrites docs underneath it → 1b must adopt **versioned-publish** (write a new version, atomically flip a pointer) OR a no-reads-during-seed window.
+- **Phase 1c — Forms source their menu from the catalog** (generated bundle or fetch) → retire the client hand-sync. Zero-window/expand-contract per the NY-split playbook ([[xpizza-ny-menu-split]]).
+- **Phase 1d — Retire the code tables + consolidate POS** once the catalog is authoritative + verified stable. Contract. (POS `pos-menu.json` sync becomes catalog-derived.)
+
+## Non-goals (Phase 1 — YAGNI; later phases)
+Merchant self-serve editing / dashboard (Phase 3 onboarding+console — Phase 1 edits via seed/admin script) · onboarding flow · the ledger/payouts (Phase 4) · Tier-2 handheld app (Phase 2) · customer discovery/search. Phase 1 is JUST: the catalog data model + the server reading from it + migrating the 2 existing brands, safely.
+
+## Testing
+- **1a:** the money proof is the **EMULATOR round-trip** (grill Q2) — real `seedCatalog(emulatorDb)` → real `getRestaurantDocs` read → byte-identical vs the code tables, **both brands**, and **FALSIFIABLE** (a mutated price + a re-seed-drift case must be detected). The in-memory transform round-trip is a transform-correctness guard only, NOT the proof. Plus seed stale-doc reconcile; reader cache; Firestore-rules emulator (public-read/deny-client-write).
+- **1b:** `computeServerTotal` byte-identical output catalog-vs-code across a representative cart matrix; the mismatch→alarm+fallback path; full functions suite green.
+- Money invariant everywhere: no price VALUE changes vs. today.
+
+## Gate & deploy
+Advisor + **codex grill** (money-adjacent) — 1a is additive (light), 1b is the heavy money gate (parity guard, fail-safe fallback, byte-identical output). Deploy: Firestore rules (emulator-first) + scoped functions (`--only functions:createOrder,functions:chargeOnlineOrder` etc., per-fn prefix, gcloud-verify — [[prod-functions-deployed-state]], [[functions-env-management]]). Catalog seed is a controlled admin op.
+
+## First deliverable to relay
+**Phase 1a plan** (schema + seed + reader + parity, no cutover) — the safe foundation the whole migration rides on.
