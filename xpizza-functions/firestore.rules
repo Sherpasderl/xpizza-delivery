@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Catalog — PUBLIC-READ menu display (profile + menu_items + extras); all writes SERVER/ADMIN ONLY
+    // (Admin SDK bypasses rules). NO recursive wildcard: any OTHER subcollection under a restaurant
+    // (Phase-4 payouts/ledger/private) is deny-by-default until a later phase opens it EXPLICITLY.
+    match /restaurants/{restaurantId} {
+      allow read: if true;                                              // profile: public fields ONLY
+      allow write: if false;
+      match /menu_items/{itemId} { allow read: if true; allow write: if false; }
+      match /extras/{extraId}    { allow read: if true; allow write: if false; }
+      // deliberately NO `match /{sub=**}` — unenumerated subpaths (payouts, ledger, private) → deny.
+    }
+    match /{document=**} { allow read, write: if false; }               // global default-deny
+  }
+}
