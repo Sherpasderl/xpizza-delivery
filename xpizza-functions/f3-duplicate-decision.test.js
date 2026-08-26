@@ -70,6 +70,18 @@ const orderX = () => ({ order_id: 'X', customer_phone: PHONE, items_text: '1x Pa
     assert.equal(store['orders/X'].payment_status, 'manual_reconciliation');
     ok('PIN 1 regression: stamp 10min old but Y live → still HOLD');
   }
+  // REVISE (codex): X concurrently transitions to a non-confirmed money-state between the guard's read and the
+  // CAS commit → the CAS must NOT clobber that in-flight refund/cancel/resolve into manual_reconciliation. The
+  // `order` param is the confirmed read (so collision detection fires), but orders/X at CAS time is refund_pending.
+  for (const cur of [{ payment_status: 'refund_pending', blocked_reason: 'refund_pending_paid_after_close' }, { payment_status: 'refunded', status: 'cancelled' }, { payment_status: 'manual_review' }, { payment_status: 'failed' }]) {
+    const store = { [stampPath]: { at: Date.now(), order_id: 'Y', payment_method: 'cash' }, 'orders/Y': { status: 'new' }, 'orders/X': { ...orderX(), ...cur } };
+    const held = await holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', orderX(), 123);
+    assert.equal(held, true, `collision detected but must not materialize (${cur.payment_status})`);
+    assert.equal(store['orders/X'].payment_status, cur.payment_status, `concurrent ${cur.payment_status} PRESERVED — not clobbered to manual_reconciliation`);
+    assert.notEqual(store['orders/X'].blocked_reason, 'duplicate_of_sibling', `F3 did not overwrite the in-flight ${cur.payment_status}`);
+  }
+  ok('REVISE: concurrent non-confirmed X (refund_pending/refunded/manual_review/failed) → money-state PRESERVED, still not materialized');
+
   // sibling cancelled → NO hold (materialize X)
   {
     const store = { [stampPath]: { at: Date.now(), order_id: 'Y', payment_method: 'cash' }, 'orders/Y': { status: 'cancelled' }, 'orders/X': orderX() };

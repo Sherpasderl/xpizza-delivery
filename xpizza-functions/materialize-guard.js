@@ -183,6 +183,7 @@ async function holdIfDuplicateSibling(deps, orderId, order, now) {
       const o = cur || order;
       if (!o) return o;
       if (o.status === 'cancelled' || o.materialized_at || o.payment_status === 'manual_reconciliation') return o; // already resolved / materialized (lost the race)
+      if (o.payment_status !== 'confirmed') return o;   // REVISE: only claim a CONFIRMED order — never clobber a concurrent refund/cancel/resolve (refunded/refund_pending/manual_review/failed/…) into manual_reconciliation (mirror holdIfClosedAtMaterialize)
       didClaim = true;
       return { ...o, payment_status: 'manual_reconciliation', blocked_reason: 'duplicate_of_sibling', sibling_order_id: dec.siblingOrderId, duplicate_held_at: now };
     });
