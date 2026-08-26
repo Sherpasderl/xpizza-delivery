@@ -8,7 +8,7 @@
  */
 process.env.PIXELPAY_MODE = 'sandbox';
 const assert = require('assert');
-const { confirmOnlinePayment } = require('./pixelpay-confirm');
+const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
 const { buildMaterializeUpdates } = require('./materialize');
 const { voidOrRefund } = require('./pixelpay-cancel');
 const realClient = require('./pixelpay-client');
@@ -171,6 +171,47 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     assert.ok(!o.materialized_at && !db.getAt('order_tracking/TOK8'), 'NOT materialized, no tracking');
     assert.ok(alerted && alerted.k === 'scheduled_confirm_invalid', 'dispatcher alert raised');
     ok('scheduled online, slot now CLOSED → scheduled_confirm_invalid + manual_review + blocked (money held for review)');
+  }
+
+  // 1d. F2 — paid scheduled slot-closed → customer WhatsApp sent ONCE + notify marker claimed (via confirmAndMaterialize).
+  {
+    const init = pendingOrder(); init.orders['PZX-1'].scheduled_for = 1800000000000;
+    const db = makeDb(init);
+    let sent = 0;
+    const deps = { ...schedDeps(db, mkClient(), ALL_CLOSED), alert: async () => {}, sendScheduledSlotClosed: async () => { sent++; } };
+    const r = await confirmAndMaterialize(deps, { orderId: 'PZX-1', attemptId: 'A', now: 7000, trackingToken: 'TOK' });
+    assert.strictEqual(r.outcome, 'scheduled_confirm_invalid');
+    assert.strictEqual(db.getAt('orders/PZX-1').payment_status, 'manual_review');
+    assert.strictEqual(sent, 1, 'customer WhatsApp sent ONCE on the first transition');
+    assert.strictEqual(db.getAt('orders/PZX-1').scheduled_slot_closed_notified_at, 7000, 'notify marker claimed (idempotency CAS)');
+    ok('F2: paid scheduled slot-closed → held + customer WhatsApp ONCE + notify marker set');
+  }
+
+  // 1e. F2 IDEMPOTENCY — a CONCURRENT confirm pass already claimed the notify (marker set, order read as confirmed) →
+  //     this pass reaches the branch but does NOT re-send (prevents the double WhatsApp the relay's dead guard missed).
+  {
+    const init = pendingOrder();
+    init.orders['PZX-1'].scheduled_for = 1800000000000;
+    init.orders['PZX-1'].payment_status = 'confirmed';                // a concurrent pass already claimed pending→confirmed
+    init.orders['PZX-1'].scheduled_slot_closed_notified_at = 6999;    // ...and already claimed the one-time notify
+    const db = makeDb(init);
+    let sent = 0;
+    const deps = { ...schedDeps(db, mkClient(), ALL_CLOSED), alert: async () => {}, sendScheduledSlotClosed: async () => { sent++; } };
+    const r = await confirmAndMaterialize(deps, { orderId: 'PZX-1', attemptId: 'A', now: 8000, trackingToken: 'TOK' });
+    assert.strictEqual(r.outcome, 'scheduled_confirm_invalid');
+    assert.strictEqual(sent, 0, 'notify marker already claimed → NO second send (concurrent double-send prevented)');
+    ok('F2 idempotency: marker pre-set (concurrent race) → customer WhatsApp NOT re-sent');
+  }
+
+  // 1f. F2 FAIL-OPEN — a WhatsApp send failure must NEVER break the confirm/hold (money + hold persist).
+  {
+    const init = pendingOrder(); init.orders['PZX-1'].scheduled_for = 1800000000000;
+    const db = makeDb(init);
+    const deps = { ...schedDeps(db, mkClient(), ALL_CLOSED), alert: async () => {}, sendScheduledSlotClosed: async () => { throw new Error('whatsapp down'); } };
+    const r = await confirmAndMaterialize(deps, { orderId: 'PZX-1', attemptId: 'A', now: 7000, trackingToken: 'TOK' });
+    assert.strictEqual(r.outcome, 'scheduled_confirm_invalid');
+    assert.strictEqual(db.getAt('orders/PZX-1').payment_status, 'manual_review', 'hold persists despite the WhatsApp failure (fail-open)');
+    ok('F2 fail-open: sendScheduledSlotClosed throws → confirm/hold still succeeds, order held');
   }
 
   // 1d. Paid-after-close (grace + auto-refund): an UNSCHEDULED online order authorized while OPEN can CONFIRM

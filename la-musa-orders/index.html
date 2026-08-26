@@ -3288,6 +3288,7 @@ async function handlePaymentReturn(){
         showPayReturn('paid'); return true;
       }
       if(st==='closed_refunded'){ try{localStorage.removeItem('lamusa_pending_pay');}catch(_){}; showPayReturn('closed_refunded'); return true; }   // paid-after-close auto-refund → honest terminal screen (no infinite "en proceso")
+      if(st==='scheduled_review'){ try{localStorage.removeItem('lamusa_pending_pay');}catch(_){}; showPayReturn('scheduled_review'); return true; }   // F2: paid SCHEDULED order, slot closed at confirm → held; honest terminal screen (no endless "Pago en proceso")
       if(st==='failed'){ showPayReturn('failed'); return true; }
       if(st==='cancelled'){ showPayReturn('cancel'); return true; }
       if(st==='verifying'){ showPayReturn('verifying'); return true; }
@@ -3365,7 +3366,8 @@ function showPayReturn(kind){
     paid:            {mark:'ok',  t:'¡Pago confirmado!',    m:'Tu pedido fue recibido y está en preparación. Te enviaremos novedades por WhatsApp. ¡Gracias!'},
     failed:          {mark:'err', t:'Pago no completado',   m:'No se pudo procesar tu pago. Podés intentar de nuevo o pagar en efectivo.', retry:true},
     cancel:          {mark:'err', t:'Pago cancelado',       m:'Cancelaste el pago. Podés intentar de nuevo cuando quieras.', retry:true},
-    closed_refunded: {mark:'ok',  t:'Te reembolsamos tu pago', m:'Recibimos tu pago pero nuestra cocina ya está cerrada. Te reembolsamos el total completo — no se te cobrará. ¡Te esperamos mañana!'}
+    closed_refunded: {mark:'ok',  t:'Te reembolsamos tu pago', m:'Recibimos tu pago pero nuestra cocina ya está cerrada. Te reembolsamos el total completo — no se te cobrará. ¡Te esperamos mañana!'},
+    scheduled_review:{mark:'ok',  t:'Pago recibido ✓', m:'Recibimos tu pago. Lastimosamente el pedido se recibió fuera de horario; un agente te contactará en breve para coordinar un nuevo horario o reembolsarte la transacción si prefieres.'}
   };
   const v = V[kind] || V.checking;
   let el = document.getElementById('pay-return-overlay');

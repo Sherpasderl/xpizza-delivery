@@ -1597,6 +1597,20 @@ async function sendPaidAfterCloseRefund(db, { orderId, order }) {
   } catch (e) { console.warn(`sendPaidAfterCloseRefund failed for ${orderId}`, e && e.message); }
 }
 
+// F2: paid SCHEDULED order whose slot CLOSED at confirm → held (manual_review, NOT refunded). Keep the
+// "un agente te contactará" promise even after the customer leaves the return screen (the primary channel —
+// the late confirm usually lands after they're gone). VERBATIM owner-locked copy. Idempotency is enforced by
+// the CALLER (pixelpay-confirm sends only on the FIRST transition into manual_review); this is comms-only + fail-open.
+async function sendScheduledSlotClosed(db, { orderId, order }) {
+  try {
+    const rid = (order && order.restaurant_id) || 'x_pizza';
+    if (!order || !order.customer_phone) { console.warn(`sendScheduledSlotClosed: ${orderId} has no customer_phone`); return; }
+    if (!(await whatsapp.isEnabledForRestaurant(db, rid))) { console.log(`sendScheduledSlotClosed: whatsapp disabled for ${rid}, skip`); return; }
+    await whatsapp.sendMessage(order.customer_phone, inbound.tplScheduledSlotClosed(), rid);
+    console.log(`sendScheduledSlotClosed: ${orderId} → slot-closed WhatsApp sent to ${order.customer_phone}`);
+  } catch (e) { console.warn(`sendScheduledSlotClosed failed for ${orderId}`, e && e.message); }
+}
+
 function confirmDeps(db) {
   return {
     db,
@@ -1609,6 +1623,7 @@ function confirmDeps(db) {
     // (reverseRedemptionForOrder disposition:'refund'). Idempotent; no-op for a non-redeemed order.
     releaseRewardHold: (db2, { orderId, order, now }) => reverseRedemptionForOrder(db2, { orderId, order, disposition: 'refund', now }),
     sendPaidAfterCloseRefund,   // brand-aware customer refund message (only after a CONFIRMED reversal)
+    sendScheduledSlotClosed,    // F2: paid-scheduled slot-closed customer message (only on the FIRST manual_review transition)
     // Config-aware capture amount: sandbox → 1-14 test amount; production → real total.
     chargeAmountLempiras: (totalCents) => {
       try { return pixelPayChargeAmountLempiras(resolvePixelPayConfig(), totalCents); }

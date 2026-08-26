@@ -9,6 +9,10 @@ function paymentPollState(order) {
   if (st === 'scheduled' || st === 'releasing') return 'scheduled_paid';
   if (order && order.blocked_reason === 'refunded_paid_after_close') return 'closed_refunded';   // paid-after-close auto-refund (confirmed)
   if (order && order.blocked_reason === 'refund_pending_paid_after_close') return 'verifying';   // refund IN FLIGHT (reconciler owns) — reassure, not the generic refund_pending→'cancelled'
+  // F2: paid SCHEDULED order whose slot closed at confirm → manual_review + blocked_reason:'confirm_<reason>'
+  // (set ONLY at pixelpay-confirm.js:272 → uniquely this branch). status:pending_payment + payment_status:
+  // manual_review otherwise falls through to 'pending' → the endless "Pago en proceso" screen. Terminal state.
+  if (order && typeof order.blocked_reason === 'string' && order.blocked_reason.startsWith('confirm_')) return 'scheduled_review';
   if (ps === 'confirmed' || ['new', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'completed'].includes(st)) return 'paid';
   if (st === 'cancelled' || ps === 'refunded' || ps === 'refund_pending') return 'cancelled';
   if (ps === 'failed') return 'failed';

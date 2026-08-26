@@ -272,6 +272,21 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
       await orderRef.update({ payment_status: 'manual_review', scheduled_blocked: true, blocked_reason: 'confirm_' + sv.reason });
       await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'hold', now });   // paid but slot closed → HOLD the points (dispatcher resolves)
       if (deps.alert) { try { await deps.alert('scheduled_confirm_invalid', { orderId, reason: sv.reason, scheduled_for: order.scheduled_for }); } catch (_) {} }
+      // F2 customer WhatsApp — keep the "un agente te contactará" promise even after they leave the screen.
+      // 🔒 IDEMPOTENCY (executor correction — the relay's `order.payment_status !== 'manual_review'` guard is DEAD:
+      // confirmAndMaterialize returns confirm_claim_failed at :250 unless payment_status==='confirmed', so this
+      // branch is ALWAYS reached with 'confirmed' → that guard is always true. Sequential retries are already
+      // blocked at :250; the real risk is a CONCURRENT confirm race (webhook + return-poll both read 'confirmed')
+      // → both reach here → double send). Claim the one-time notify with an ATOMIC CAS on a dedicated marker:
+      // only the pass that FIRST sets scheduled_slot_closed_notified_at sends. Comms-only + fail-open — a send or
+      // claim failure NEVER breaks the confirm/hold (money + hold already persisted above).
+      let didNotify = false;
+      try {
+        let wasAbsent = false;
+        const claimN = await db.ref(`orders/${orderId}/scheduled_slot_closed_notified_at`).transaction((cur) => { wasAbsent = !cur; return cur ? cur : now; });
+        didNotify = !!(claimN && claimN.committed && wasAbsent);   // only the pass that found the marker ABSENT (and set it) owns the send
+      } catch (_) { didNotify = false; }
+      if (didNotify && deps.sendScheduledSlotClosed) { try { await deps.sendScheduledSlotClosed(db, { orderId, order }); } catch (_) {} }
       return { outcome: 'scheduled_confirm_invalid', reason: sv.reason };
     }
     if (order.status !== 'scheduled') await orderRef.update({ status: 'scheduled', scheduled_confirmed_at: now });

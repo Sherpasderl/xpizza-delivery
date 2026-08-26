@@ -341,9 +341,18 @@ function tplPaidAfterCloseRefunded({ customerName, total, restaurantId }) {
   return `${hi}recibimos tu pago pero nuestra cocina ya está cerrada. Te reembolsamos L${total} completos — no se te cobrará. ${signoff}`;
 }
 
+// Paid SCHEDULED order whose slot CLOSED between checkout and the paid callback (F2). Money is captured + HELD
+// (manual_review, NEVER auto-refunded — the slot may be reschedulable; a dispatcher follows up via the existing
+// scheduled_confirm_invalid alert). Owner-LOCKED copy, VERBATIM — identical on the return screen AND this
+// WhatsApp; do NOT alter (no greeting/sign-off/personalization — the locked sentence is the whole message).
+function tplScheduledSlotClosed() {
+  return 'Recibimos tu pago. Lastimosamente el pedido se recibió fuera de horario; un agente te contactará en breve para coordinar un nuevo horario o reembolsarte la transacción si prefieres.';
+}
+
 module.exports = {
   classify,
   tplPaidAfterCloseRefunded,
+  tplScheduledSlotClosed,
   muteKeyFor,
   isHumanOutbound,
   shouldSuppressAutoReply,

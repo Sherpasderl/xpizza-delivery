@@ -25,4 +25,10 @@ assert.strictEqual(paymentPollState({}), 'pending'); ok('empty → pending');
 assert.strictEqual(paymentPollState({ status: 'scheduled' }), 'scheduled_paid'); ok('scheduled → scheduled_paid');
 assert.strictEqual(paymentPollState({ status: 'releasing' }), 'scheduled_paid'); ok('releasing → scheduled_paid');
 
+// F2 — paid scheduled order, slot closed at confirm → manual_review + blocked_reason:'confirm_<reason>' → scheduled_review
+assert.strictEqual(paymentPollState({ status: 'pending_payment', payment_status: 'manual_review', blocked_reason: 'confirm_closed_at_slot' }), 'scheduled_review'); ok('F2: confirm_closed_at_slot → scheduled_review');
+assert.strictEqual(paymentPollState({ status: 'pending_payment', payment_status: 'manual_review', blocked_reason: 'confirm_missed_window' }), 'scheduled_review'); ok('F2: confirm_missed_window → scheduled_review');
+assert.strictEqual(paymentPollState({ status: 'pending_payment', payment_status: 'manual_review' }), 'pending'); ok('F2 boundary: manual_review WITHOUT confirm_ blocked_reason → pending (unchanged)');
+assert.strictEqual(paymentPollState({ status: 'scheduled', blocked_reason: 'confirm_closed_at_slot' }), 'scheduled_paid'); ok('F2 order: a live scheduled order still → scheduled_paid (scheduled check precedes)');
+
 console.log(`\n${n} passed`);
