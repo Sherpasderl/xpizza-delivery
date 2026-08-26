@@ -64,6 +64,7 @@ const { resolvePixelPayConfig, pixelPayCallbackUrl, pixelPayChargeAmountLempiras
 const pixelpayClient = require('./pixelpay-client');
 const ppCrypto = require('./pixelpay');
 const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
+const N2 = require('./n2-paid-strand-decision');   // N2: sweep re-drives a stranded PAID hosted order (paid attempt + still-pending order)
 const { buildMaterializeUpdates } = require('./materialize');
 const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
@@ -1846,9 +1847,10 @@ exports.sweepStalePending = onSchedule(
     const now = Date.now();
     const GRACE_MS = 15 * 60 * 1000;   // PixelPay retries the callback 3x/15min after expiry
     const RESOLVE_STALE_MS = 10 * 60 * 1000;   // recover a CRASHED resolve: >> the 60s fn timeout so an in-flight resolve is never reverted
+    const PAID_STRAND_GRACE_MS = 20 * 60 * 1000;   // N2: a paid order still unrecovered after 20min of re-drives → flag a human
     const snap = await db.ref('orders').orderByChild('status').equalTo('pending_payment').once('value');
     const orders = snap.val() || {};
-    let flagged = 0, left = 0;
+    let flagged = 0, left = 0, recovered = 0;
 
     for (const orderId of Object.keys(orders)) {
       const order = orders[orderId];
@@ -1864,7 +1866,36 @@ exports.sweepStalePending = onSchedule(
       const attempt = order.active_attempt_id
         ? (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val()
         : null;
-      if (!attempt || attempt.hosted_state === 'paid') { left++; continue; }
+      if (!attempt) { left++; continue; }
+      if (attempt.hosted_state === 'paid') {
+        // N2: a paid hosted attempt whose ORDER is still pending_payment (not confirmed/materialized) is STRANDED
+        // — the webhook captured the money but confirmAndMaterialize threw before the confirm-claim committed →
+        // captured money, no KDS, no notify. RE-DRIVE the IDEMPOTENT confirmAndMaterialize (routes through every
+        // guard: confirm-claim, paid-after-close hold, F3 duplicate hold) instead of skipping. A genuinely-done
+        // paid order (confirmed/materialized) is untouched. Bounded: still stranded past PAID_STRAND_GRACE_MS →
+        // manual_reconciliation + dispatcher alert (a human resolves it). Fail-open throughout (never break the sweep).
+        if (!N2.isPaidStranded(order)) { left++; continue; }   // paid + confirmed/materialized → genuinely done (unchanged)
+        try {
+          await confirmAndMaterialize(confirmDeps(db), { orderId, attemptId: order.active_attempt_id, now, trackingToken: generateTrackingToken() });
+        } catch (e) { console.warn(`sweep: paid-strand re-drive failed for ${orderId}: ${e && e.message}`); }
+        try {
+          const after = (await db.ref(`orders/${orderId}`).once('value')).val() || order;
+          const dec = N2.postRedrivePaidStrand(after, now, PAID_STRAND_GRACE_MS);
+          if (dec.outcome === 'recovered') {
+            if (Number.isFinite(after.paid_strand_seen_at)) await db.ref(`orders/${orderId}/paid_strand_seen_at`).remove();   // clear so a later re-strand re-stamps fresh
+            recovered++;
+          } else if (dec.outcome === 'stamp') {
+            await db.ref(`orders/${orderId}/paid_strand_seen_at`).set(now);   // first detection → start the grace clock
+            left++;
+          } else if (dec.outcome === 'flag') {
+            await db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation', blocked_reason: 'paid_strand_unrecovered' });
+            await db.ref(`dispatcher_alerts/paid_strand_${orderId}`).set({ order_id: orderId, restaurant_id: after.restaurant_id || null, at: now, kind: 'paid_strand' });
+            await paymentAlert(db, 'paid_strand_unrecovered', { orderId, total: order.total || null });
+            flagged++;
+          } else { left++; }   // leave — within grace, re-drive again next sweep
+        } catch (e) { console.warn(`sweep: paid-strand post-redrive handling failed for ${orderId}: ${e && e.message}`); left++; }
+        continue;
+      }
 
       // Hosted: a checkout is payable until hosted_expires_at. Past expiry + the callback-retry
       // grace with no paid callback is AMBIGUOUS (paid-but-lost is possible; no uuid to query) →
@@ -1887,7 +1918,7 @@ exports.sweepStalePending = onSchedule(
     let repair = { healed: 0, pending: 0 };
     try { repair = await retryRewardLedgerRepair({ db, alert: (k, d) => paymentAlert(db, k, d) }, { now }); }
     catch (e) { console.error('sweepStalePending: ledger-repair retry failed', e && e.message); }
-    console.log(`sweepStalePending: manual_flagged=${flagged} left=${left} ledger_healed=${repair.healed} ledger_pending=${repair.pending}`);
+    console.log(`sweepStalePending: manual_flagged=${flagged} left=${left} paid_strand_recovered=${recovered} ledger_healed=${repair.healed} ledger_pending=${repair.pending}`);
   }
 );
 
