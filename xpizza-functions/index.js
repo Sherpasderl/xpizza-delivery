@@ -55,6 +55,7 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { beforeUserCreated, HttpsError } = require('firebase-functions/v2/identity');
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
+const { getFirestore } = require('firebase-admin/firestore');   // Phase 1b-1 — index.js's FIRST Firestore touch (the pricing catalog)
 const { getAuth } = require('firebase-admin/auth');
 const webpush = require('web-push');
 const { google } = require('googleapis');
@@ -249,17 +250,50 @@ const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 // match by name, la_musa → by id). EXTRA_PRICES + the x_pizza alias below keep the
 // factura pricedLineItems call sites byte-identical until A3 makes them restaurant-aware.
 // ---------------------------------------------------------------------------
-const { MENU_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal, summaryLines, weekendOnlyViolation } = require('./menu-pricing');
+const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal, summaryLines, weekendOnlyViolation } = require('./menu-pricing');
 const { orderContentKey, isContentRetap, rateLimitKey } = require('./order-dedup');   // Layer 2 — content-aware phone rate limit; rateLimitKey shared with the F3 guard
 const CONTENT_DEDUP_WINDOW_MS = 120000;   // a same-phone same-cart resubmit within 2 min = a re-tap, not a new order
 const { checkItemAvailability } = require('./availability-gate');   // KDS 2b — server intake "86" fail-safe (fail-open)
 const MENU_PRICES = MENU_BY_RESTAURANT.x_pizza; // x_pizza table — used by pricedLineItems (factura)
 
+// ── Phase 1b-1: the GUARDED pricing resolver (order-total path only) ────────────────────────────
+// Prices are read from the Firestore catalog ONLY when it byte-equals the in-code table; on any
+// divergence, read failure, or malformed shape the code table serves and an alarm fires. The SOURCE
+// moves, the VALUES never do. The redemption cluster (1b-1b) and the fiscal pricedLineItems path
+// (1b-2) pass NO tables and stay entirely on code — no split-brain.
+//
+// TWO datastores, injected explicitly so they cannot be conflated: the reader is FIRESTORE
+// (getRestaurantDocs → db.collection), the alarm is RTDB (paymentAlert → db.ref).
+//
+// Module-level + lazy so the 1a reader's 5-min per-restaurant cache survives across requests on a
+// warm instance — no per-order Firestore round-trip. A cold or unreachable Firestore never blocks
+// or misprices an order: the resolver's fail-safe returns the code table and alarms.
+const { createCatalogReader } = require('./catalog/catalog');
+const { getRestaurantDocs } = require('./catalog/catalog-firestore');
+const { createPricingResolver } = require('./catalog/pricing-tables');
+let _pricingResolver = null;
+function pricingResolver() {
+  if (!_pricingResolver) {
+    const firestore = getFirestore();
+    _pricingResolver = createPricingResolver({
+      reader: createCatalogReader({ getRestaurantDocs: (rid) => getRestaurantDocs(firestore, rid) }),   // FIRESTORE
+      codeFor: (rid) => ({ menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] }),
+      alarm: (kind, detail) => paymentAlert(getDatabase(), kind, detail),                                // RTDB
+    });
+  }
+  return _pricingResolver;
+}
+// Never throws (the resolver is fail-safe); returns restaurant-TAGGED { restaurantId, menu, extras }.
+async function resolvePricingTables(restaurantId) {
+  try { return await pricingResolver().getPricingTables(restaurantId); }
+  catch (e) { console.error('resolvePricingTables: unexpected', e && e.message); return null; }   // null → callers use the code default
+}
+
 // Reward-card display fields for order_tracking — earn_preview (what this order earns + welcome/goal) +
 // summary_lines (itemized rows that FOOT to the discounted total). Display-only, writes nothing to balances.
 // The redemption line (plan-gate (a)) makes summary_lines foot when redeemed: X. Pizza discount → the freed
 // pizza name at −discount; La Musa add_free → the added item as GRATIS.
-function buildRewardStamp(items, restaurantId, subtotalCents, redemptionCanonical, freeName, freeItems) {
+function buildRewardStamp(items, restaurantId, subtotalCents, redemptionCanonical, freeName, freeItems, tables = null) {
   // `items` is the PAID cart (the free reward item is NEVER here) → earnPreview earns the correct amount with
   // no adjustment. v2 is add_free for both brands: the summary emits one 0-cents line per redeemed item (qty-aware).
   const earn_preview = earnPreview({ items, subtotalCents, restaurantId });
@@ -270,7 +304,7 @@ function buildRewardStamp(items, restaurantId, subtotalCents, redemptionCanonica
       : (freeName ? [{ name: freeName, qty: 1 }] : (redemptionCanonical.free_item_key ? [{ name: redemptionCanonical.free_item_key, qty: 1 }] : []));
     redArg = { model: 'add_free', items: arr };
   }
-  const summary_lines = summaryLines(items, restaurantId, redArg);
+  const summary_lines = summaryLines(items, restaurantId, redArg, tables);   // 1b-1: guarded catalog tables (null → code default)
   return { earn_preview, ...(summary_lines ? { summary_lines } : {}) };
 }
 const { resolveRestaurantId, sameRestaurant } = require('./restaurant-id');
@@ -306,7 +340,7 @@ function sanitizePhone(v) {
 // ---------------------------------------------------------------------------
 const { orderBreakdownCents } = require('./order-money');
 
-function validateOrderPayload(body, restaurantId) {
+function validateOrderPayload(body, restaurantId, tables = null) {
   const errors = [];
   const required = ['order_id', 'customer_name', 'customer_phone', 'items_text', 'order_type'];
   for (const f of required) {
@@ -322,7 +356,7 @@ function validateOrderPayload(body, restaurantId) {
   const lng = asNumber(body.lng);
 
   // Recompute total server-side — NEVER trust body.total. Priced against the order's restaurant menu.
-  const { total, error: totalError } = computeServerTotal(body.items, restaurantId);
+  const { total, error: totalError } = computeServerTotal(body.items, restaurantId, tables);   // 1b-1: guarded catalog tables (null → code default)
   if (totalError) errors.push(totalError);
 
   if (body.order_type === 'delivery') {
@@ -477,7 +511,9 @@ createOrderApp.all('*', async (req, res) => {
   const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id);
   if (ridError) return badRequest(res, ridError);
   if (!ridDefaulted) console.log(`createOrder: restaurant_id=${restaurantId}`);
-  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId);
+  const db = getDatabase();                                            // 1b-1: hoisted above validation (the RTDB alarm sink)
+  const pricingTables = await resolvePricingTables(restaurantId);      // 1b-1: guarded catalog tables; fail-safe → null/code
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
   if (errors.length > 0) {
     return badRequest(res, errors.join('; '));
   }
@@ -494,7 +530,7 @@ createOrderApp.all('*', async (req, res) => {
     return badRequest(res, 'online payments must use chargeOnlineOrder');
   }
 
-  const db = getDatabase();
+  // (1b-1: `db` is now obtained above, before validation, so the pricing resolver can alarm on RTDB.)
 
   // Logged-in attribution (H2) — a SEPARATE `X-Firebase-ID-Token`, verified server-side. Guest path byte-identical
   // (no/malformed/expired/foreign token → guest); a client-supplied customer_uid is NEVER trusted. Derived HERE
@@ -707,7 +743,7 @@ createOrderApp.all('*', async (req, res) => {
 
   // Reward-card display fields (earn_preview + summary_lines) — stamped for ALL orders on the order record +
   // order_tracking. summary_lines uses the DISCOUNTED subtotal-driven footing so it matches the charged total.
-  const rewardStamp = buildRewardStamp(body.items, restaurantId, priceBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName, redemptionFreeItems);
+  const rewardStamp = buildRewardStamp(body.items, restaurantId, priceBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName, redemptionFreeItems, pricingTables);
 
   // ── A1: free-order intake. The forms grey out both payment methods + submit `free_order:true` ONLY when
   // the server quote zeroed the total (a fully-comping redemption). We RE-DERIVE it here from the
@@ -933,7 +969,9 @@ chargeOnlineApp.all('*', async (req, res) => {
   const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id);
   if (ridError) return badRequest(res, ridError);
   if (!ridDefaulted) console.log(`chargeOnlineOrder: restaurant_id=${restaurantId}`);
-  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId);
+  const db = getDatabase();                                            // 1b-1: hoisted above validation (the RTDB alarm sink)
+  const pricingTables = await resolvePricingTables(restaurantId);      // 1b-1: guarded catalog tables; fail-safe → null/code
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
   if (errors.length > 0) return badRequest(res, errors.join('; '));
 
   // This endpoint is ONLY for online card payments. cash/card_delivery use createOrder.
@@ -951,7 +989,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // attempt we can't sign" while never 500-ing a free order on a config read. See the reserve block below.
 
   const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
-  const db = getDatabase();
+  // (1b-1: `db` is now obtained above, before validation, so the pricing resolver can alarm on RTDB.)
 
   // Optional verified logged-in attribution (H2) — resolved EARLY here because the redemption path needs the
   // verified uid and both fingerprint sites need the discounted total. Fail-open to guest EXACTLY as before
@@ -1003,7 +1041,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     : orderBreakdownCents(total, restaurantId);
 
   // Reward-card display fields — stamped on the pending order (materialize copies them onto order_tracking at confirm/release).
-  const onlineRewardStamp = buildRewardStamp(body.items, restaurantId, effBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName, redemptionFreeItems);
+  const onlineRewardStamp = buildRewardStamp(body.items, restaurantId, effBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName, redemptionFreeItems, pricingTables);
 
   // ── A1 (#2, R7): a $0 order is NOT chargeable online. The forms route a fully-comped ($0) order to
   // createOrder (the free path); this is the DEFENSIVE server guard for a stale/direct $0 request. Return a

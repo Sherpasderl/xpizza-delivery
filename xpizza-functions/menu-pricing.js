@@ -113,14 +113,33 @@ function itemPricingKey(item, restaurantId) {
   return restaurantId === 'la_musa' ? (item && item.id) : (item && item.name);
 }
 
+// Phase 1b-1 — resolve WHICH price tables price this order. Omitting `tables` keeps today's exact
+// behaviour (the in-code tables), which is what every non-order-total caller still does: the
+// redemption cluster (1b-1b) and the fiscal pricedLineItems path (1b-2) pass nothing and stay 100%
+// on code, so there is no split-brain. When the order-total path passes guarded catalog tables,
+// those supply the PRICES while `restaurantId` still drives itemPricingKey (an unchanged contract).
+//
+// PIN B — the tables must be TAGGED for this exact restaurant and we FAIL CLOSED otherwise. x_pizza
+// keys by NAME and la_musa by ID: pricing one brand's items against the other's table would silently
+// resolve almost nothing (and could resolve a colliding key), so a mismatch throws rather than prices.
+// This is a programmer error, never user input — it must be impossible to reach in production.
+function resolvePriceTables(restaurantId, tables) {
+  if (tables == null) {
+    return { menu: MENU_BY_RESTAURANT[restaurantId], extraPrices: EXTRAS_BY_RESTAURANT[restaurantId] || {} };
+  }
+  if (tables.restaurantId !== restaurantId) {
+    throw new Error(`pricing_tables_restaurant_mismatch: tables=${String(tables.restaurantId)} expected=${String(restaurantId)}`);
+  }
+  return { menu: tables.menu, extraPrices: tables.extras || {} };
+}
+
 // Recompute the order total from the server price tables for `restaurantId`.
 // Returns { total, error }. Rejects unknown item/extra keys (= tampering) and absurd quantities.
 // Extras model is per-restaurant: x_pizza is name-keyed and counts each once (0/1 toggle);
 // la_musa is id-keyed and qty-aware/standalone with anti-tamper guards (non-array/unknown/qty/dup).
 // restaurantId defaults to 'x_pizza' so existing x_pizza callers are byte-identical.
-function computeServerTotal(items, restaurantId = 'x_pizza') {
-  const menu = MENU_BY_RESTAURANT[restaurantId];
-  const extraPrices = EXTRAS_BY_RESTAURANT[restaurantId] || {};
+function computeServerTotal(items, restaurantId = 'x_pizza', tables = null) {
+  const { menu, extraPrices } = resolvePriceTables(restaurantId, tables);
   if (!menu) {
     return { total: NaN, error: `unknown restaurant: ${String(restaurantId).slice(0, 40)}` };
   }
@@ -185,9 +204,8 @@ function summaryLineName(v, fallback) {
   const s = String(v == null ? '' : v).replace(/[<>]/g, '').trim().slice(0, 80);
   return s || fallback;
 }
-function summaryLines(items, restaurantId = 'x_pizza', redemption = null) {
-  const menu = MENU_BY_RESTAURANT[restaurantId];
-  const extraPrices = EXTRAS_BY_RESTAURANT[restaurantId] || {};
+function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables = null) {
+  const { menu, extraPrices } = resolvePriceTables(restaurantId, tables);
   if (!menu || !Array.isArray(items) || items.length === 0) return null;
   const byId = restaurantId === 'la_musa';
   const lines = [];
