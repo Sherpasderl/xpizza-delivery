@@ -72,6 +72,7 @@ const { claimOrderCore } = require('./claim-order');       // claimOrder — ret
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
 const { shouldEarnOnStatus, earnPreview } = require('./rewards-core');     //   pure terminal-state gate + the reward-card earn_preview
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
+const { classifyExistingOrder, computeIncomingFingerprint } = require('./createorder-classify');   // F1: method/state/content-aware idempotent-return (no false "order placed")
 const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, holdRedemptionForManual, sweepStaleReservations, sweepConsumeRecovery, reverseRedemptionForOrder } = require('./rewards-reserve');
 const { paymentPollState } = require('./payment-poll-state');   // online-return poll state machine (incl. closed_refunded)
 const { alertsToPrune } = require('./alert-prune');   // auto-dismiss dispatcher alerts whose orders are resolved
@@ -494,17 +495,50 @@ createOrderApp.all('*', async (req, res) => {
 
   const db = getDatabase();
 
-  // Idempotency check
+  // Logged-in attribution (H2) — a SEPARATE `X-Firebase-ID-Token`, verified server-side. Guest path byte-identical
+  // (no/malformed/expired/foreign token → guest); a client-supplied customer_uid is NEVER trusted. Derived HERE
+  // (moved above the idempotency check) because the content-fingerprint recompute (redemption branch) needs the
+  // verified uid. Read-only — no side effect on ordering.
+  let customer_uid = null;
+  const idTok = req.get('x-firebase-id-token');
+  if (idTok) {
+    try {
+      const dec = await getAuth().verifyIdToken(idTok);
+      if (dec && dec.customer === true && dec.uid) {
+        const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();   // H10: a tombstoned account never re-accrues
+        customer_uid = attributionUid(dec, tomb.exists());
+      }
+    } catch (_) { /* malformed/expired/foreign/tomb-read-failure → ignore, treat as guest */ }
+  }
+
+  // Content fingerprint for THIS request — computed ONCE, read-only, and threaded to BOTH the idempotency
+  // content-check (below) AND the stored payment_fingerprint (create-order-build), so store==compare can never
+  // drift (a drift would false-409 every legit retry → double orders). Redemption uses prepareRedemption
+  // (read-only — NEVER the reserve). Fail-open → null (case 4 skipped; a recompute failure never blocks a retry).
+  const scheduledForRawEarly = SCHED.normalizeScheduledFor(body.scheduled_for);
+  const incomingFp = await computeIncomingFingerprint(
+    { orderId, restaurantId, total, itemsText: fields.items_text, items: body.items, redeem: body.redeem,
+      customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType },
+    { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra: SCHED.fingerprintExtra, db });
+
+  // Idempotency check — a re-submit of an EXISTING order_id returns idempotent-200 ONLY for the SAME LIVE cash
+  // order (same restaurant + method + non-terminal + content match); every other state → 409 order_conflict,
+  // never a false "order placed" (F1/Miguel: a cash re-submit of an abandoned ONLINE order_id used to 200 with
+  // NOTHING on the KDS). Resolved HERE — before config/rate-limit/reserve — so a legit retry short-circuits
+  // exactly as today's return did (no 429-on-retry, no re-reserve). See createorder-classify.js.
   try {
     const existing = await db.ref(`orders/${orderId}`).once('value');
     if (existing.exists()) {
-      // Legacy-normalized compare: a stored order with no restaurant_id is a pre-Phase-0 x_pizza order.
-      if (!sameRestaurant(existing.val().restaurant_id, restaurantId)) {
-        console.warn(`createOrder: ${orderId} exists for a different restaurant — conflict`);
-        return res.status(409).json({ error: 'Order conflict', detail: 'order_id already used for a different restaurant', order_id: orderId });
+      const ev = existing.val();
+      const cls = classifyExistingOrder(ev,
+        { paymentMethod: fields.payment_method, restaurantMatches: sameRestaurant(ev.restaurant_id, restaurantId) },
+        incomingFp, { isPaymentStatusClosed: MR.isStatusChangeClosedToAutomation });
+      if (cls.action === '409') {
+        console.warn(`createOrder: ${orderId} exists — 409 order_conflict (${cls.reason})`);
+        return res.status(409).json({ error: 'order_conflict', reason: cls.reason, order_id: orderId });
       }
       console.log(`createOrder: order ${orderId} already exists, returning idempotent`);
-      return res.status(200).json({ ok: true, idempotent: true, order_id: orderId });
+      return res.status(200).json({ ok: true, idempotent: true, order_id: orderId, tracking_token: ev.tracking_token || null });
     }
   } catch (e) {
     console.error('createOrder: existence check failed', e);
@@ -604,22 +638,7 @@ createOrderApp.all('*', async (req, res) => {
   const now = ServerValue.TIMESTAMP;
   const updates = {};
 
-  // Optional logged-in attribution (H2): a SEPARATE `X-Firebase-ID-Token` header, verified server-side.
-  // Guest path is byte-identical — guests send no token; a missing/malformed/expired/foreign token is
-  // ignored and the order proceeds as guest. A client-supplied customer_uid in the body is NEVER trusted;
-  // only decoded.uid from a VERIFIED customer:true token is used, so attribution can't be forged.
-  let customer_uid = null;
-  const idTok = req.get('x-firebase-id-token');
-  if (idTok) {
-    try {
-      const dec = await getAuth().verifyIdToken(idTok);
-      if (dec && dec.customer === true && dec.uid) {
-        // H10 durability: a deleted (tombstoned) account never re-accrues attribution.
-        const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();
-        customer_uid = attributionUid(dec, tomb.exists());
-      }
-    } catch (_) { /* malformed/expired/foreign/tomb-read-failure → ignore, treat as guest */ }
-  }
+  // (customer_uid + the content fingerprint were derived above the idempotency check — see there.)
 
   // ── Placeability gate (§B) — RE-VALIDATE the slot / closed-kitchen BEFORE any redemption reserve, so that
   // NOTHING between the reserve and the order write can fail (the write itself already releases the hold on
@@ -711,7 +730,7 @@ createOrderApp.all('*', async (req, res) => {
     const heldUpdates = buildScheduledOrderRecord({
       orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
       restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
-      scheduledFor: scheduledForRaw, releaseAt,
+      scheduledFor: scheduledForRaw, releaseAt, paymentFingerprint: incomingFp,   // F1: same fp computed at :500 → store==compare
     });
     attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items });
     if (redemptionCanonical) heldUpdates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until release→completion)
@@ -736,6 +755,7 @@ createOrderApp.all('*', async (req, res) => {
   Object.assign(updates, buildCreateOrderUpdates({
     orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
     restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
+    paymentFingerprint: incomingFp,   // F1: same fp computed at :500 → store==compare (idempotent retry recomputes identical)
   }));
 
   attachCustomerAttribution(updates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items });

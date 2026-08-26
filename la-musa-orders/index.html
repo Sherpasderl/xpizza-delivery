@@ -2933,6 +2933,7 @@ function rtnIsValid(){
 async function processPayment(){
   if(window.__paySubmitting) return;            // Layer 1: ignore rapid re-taps while a submit is in flight
   window.__paySubmitting = true;
+  window.__conflictHealed = false;              // F4: this user-initiated submit gets exactly ONE auto-heal on a 409 order_conflict
   const _payCta = document.getElementById('btn-pay'); if(_payCta) _payCta.disabled = true;
   try {
   // Logged-in profile-first gate (User Profiles) — block a logged-in DELIVERY submit until the profile is
@@ -3205,6 +3206,21 @@ async function processPixelPay(){
       try{ renderRedeemUI(); }catch(_){}
       return paymentFallback(cfg.error==='reward_unavailable' ? 'Ese premio no está disponible ahora. Podés continuar sin él.' : 'No pudimos aplicar el premio. Podés continuar sin él.');
     }
+    // F4 self-heal (online): chargeOnlineOrder refused this order_id — a different cart/total on a reused id
+    // ("Order conflict"), or the order was cancelled/closed ("Order closed"). No NEW charge was created, so clear
+    // the ids, mint a fresh one, and retry ONCE (guarded) instead of dead-ending on the generic "Revisá tus datos".
+    if(res.status===409 && cfg && (cfg.error==='Order conflict' || cfg.error==='Order closed')){
+      if(!window.__conflictHealed){
+        window.__conflictHealed = true;
+        window.__pendingOrder = null; window.__resumeOrderId = null;   // force a fresh order_id
+        currentOrder.order_id = genOrderId();                          // same cart, brand-new id (409 → no new charge → no dup)
+        orderSubmitting = false;
+        return processPixelPay();                                      // retry ONCE
+      }
+      return paymentFallback(cfg.error==='Order closed'
+        ? 'Ese pedido ya no está disponible — empezá un pedido nuevo.'
+        : 'No pudimos procesar el pedido — empezá un pedido nuevo.');
+    }
     if(!res.ok || !cfg || !cfg.checkout_url){
       return paymentFallback(res.status===429
         ? 'Demasiados intentos seguidos. Esperá un momento.'
@@ -3423,6 +3439,34 @@ async function submitOrder(paymentStatus){
         if(err && err.error === 'item_unavailable'){
           const names = (Array.isArray(err.blocked) && err.blocked.length) ? err.blocked.join(', ') : 'un platillo';
           setSending(ICON_X_CIRCLE+'Agotado — quitá '+escapeHtml(names)+' del carrito para continuar.');   // CART error → reward PRESERVED
+          return;
+        }
+        // F1/F4 self-heal: the server refused to idempotent-return this order_id (method/state/content conflict —
+        // e.g. a cash re-submit landing on an abandoned ONLINE order_id). A 409 proves NOTHING was created for that
+        // id, so clear the ids, mint a FRESH one, and resubmit ONCE (never a loop — __conflictHealed guards it).
+        if(err && err.error === 'order_conflict'){
+          if(!window.__conflictHealed){
+            window.__conflictHealed = true;
+            window.__pendingOrder = null; window.__resumeOrderId = null;   // force a fresh order_id
+            currentOrder.order_id = genOrderId();                          // same cart, brand-new id (no duplicate — 409 created nothing)
+            orderSubmitting = false;
+            return submitOrder(paymentStatus);                             // resubmit ONCE
+          }
+          setSending(ICON_X_CIRCLE + (err.reason==='closed'
+            ? 'Ese pedido ya no está disponible — empezá un pedido nuevo.'
+            : 'No pudimos procesar el pedido — empezá un pedido nuevo.'));
+          return;
+        }
+        // N1: a fully-comped FREE order is no longer free (reward invalidated). The server already released the
+        // hold; unlock payment selection (clear the reward → syncFreeOrderUI un-greys the methods) so the customer
+        // can choose cash/online and continue WITHOUT a reload — delivering the recovery the free path promised.
+        if(err && err.error === 'free_order_stale'){
+          try{ if(window.__ACCOUNT && window.__ACCOUNT.clearRedeem) window.__ACCOUNT.clearRedeem(); }catch(_){}
+          try{ renderRedeemUI(); }catch(_){}
+          try{ syncFreeOrderUI(); }catch(_){}   // __freeOrder → false; payment methods re-enabled
+          window.__pendingOrder = null;         // the stale free order_id must not be reused for the now-paid order
+          const _pc=document.querySelector('.pay-container'); if(_pc){ _pc.classList.add('needed'); _pc.scrollIntoView({behavior:'smooth', block:'center'}); }
+          setSending(ICON_X_CIRCLE + 'El pedido ya no es gratis — elegí un método de pago para continuar.');
           return;
         }
         // REWARDS (B2 Task 4): typed REDEMPTION failure → clear the reward + revert total; the customer's next
