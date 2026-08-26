@@ -74,6 +74,7 @@ const { shouldEarnOnStatus, earnPreview } = require('./rewards-core');     //   
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
 const { classifyExistingOrder, computeIncomingFingerprint } = require('./createorder-classify');   // F1: method/state/content-aware idempotent-return (no false "order placed")
 const { redemptionFingerprint } = require('./rewards-redeem');   // F1 residual: recompute a redemption order's fp from the RESOLVED reserve (guaranteed present) if the top-level compute blipped
+const { duplicateSiblingDecision } = require('./materialize-guard');   // F3 create-side: shared pure sibling-collision decision
 const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, holdRedemptionForManual, sweepStaleReservations, sweepConsumeRecovery, reverseRedemptionForOrder } = require('./rewards-reserve');
 const { paymentPollState } = require('./payment-poll-state');   // online-return poll state machine (incl. closed_refunded)
 const { alertsToPrune } = require('./alert-prune');   // auto-dismiss dispatcher alerts whose orders are resolved
@@ -248,7 +249,7 @@ const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 // factura pricedLineItems call sites byte-identical until A3 makes them restaurant-aware.
 // ---------------------------------------------------------------------------
 const { MENU_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal, summaryLines, weekendOnlyViolation } = require('./menu-pricing');
-const { orderContentKey, isContentRetap } = require('./order-dedup');   // Layer 2 — content-aware phone rate limit
+const { orderContentKey, isContentRetap, rateLimitKey } = require('./order-dedup');   // Layer 2 — content-aware phone rate limit; rateLimitKey shared with the F3 guard
 const CONTENT_DEDUP_WINDOW_MS = 120000;   // a same-phone same-cart resubmit within 2 min = a re-tap, not a new order
 const { checkItemAvailability } = require('./availability-gate');   // KDS 2b — server intake "86" fail-safe (fail-open)
 const MENU_PRICES = MENU_BY_RESTAURANT.x_pizza; // x_pizza table — used by pricedLineItems (factura)
@@ -392,9 +393,7 @@ const RATE_LIMIT_BUCKETS = {
 // Hash a rate-limit key (IP / phone) into an RTDB-safe, non-PII key. Avoids
 // storing raw IPs/phones under /rate_limits and dodges forbidden key chars
 // ('.', ':', '+', etc).
-function rateLimitKey(raw) {
-  return require('crypto').createHash('sha256').update(String(raw)).digest('hex').slice(0, 32);
-}
+// rateLimitKey is imported from ./order-dedup (extracted so require-safe modules — the F3 guard — share it).
 
 // Fixed-window rate limit backed by an atomic RTDB transaction (correct across
 // concurrent instances). Returns { allowed, retryAfterSec }. FAILS OPEN on any
@@ -605,7 +604,23 @@ createOrderApp.all('*', async (req, res) => {
       const cbase = db.ref(`recent_order_content/${rateLimitKey(fields.customer_phone)}`);
       const rec = (await cbase.child(ck).once('value')).val();
       phoneRetap = isContentRetap(rec, Date.now(), CONTENT_DEDUP_WINDOW_MS);
-      await cbase.child(ck).set({ at: Date.now() });
+      // F3 create-side (SECONDARY, NON-BLOCKING): the PRIOR stamp `rec` may hold a live ONLINE sibling X (same
+      // cart) — the rare "X already live when this cash order Y is placed" variant. Raise a dispatcher alert
+      // linking X+Y; NEVER block the sale. Detection only, fail-open (any error → Y proceeds silently).
+      try {
+        if (rec && rec.order_id && rec.order_id !== orderId && rec.payment_method === 'online') {
+          const _sib = (await db.ref(`orders/${rec.order_id}`).once('value')).val();
+          if (duplicateSiblingDecision(orderId, rec, _sib, 'online').collision) {
+            await db.ref(`dispatcher_alerts/duplicate_order_${orderId}`).set({
+              order_id: orderId, sibling_order_id: rec.order_id, restaurant_id: restaurantId,
+              kind: 'duplicate_of_sibling_create', at: Date.now(),
+            });
+          }
+        }
+      } catch (_) {}
+      // F3 (Task 1): the stamp now carries {order_id, payment_method} so the materialize-side guard can read the
+      // most-recent order for this content-key + point-read its live status. Additive — rate-limit reads only .at.
+      await cbase.child(ck).set({ at: Date.now(), order_id: orderId, payment_method: fields.payment_method });
       // bounded: prune this phone's expired content stamps (mirror the whatsapp_mute prune)
       const all = (await cbase.once('value')).val() || {};
       const cutoff = Date.now() - CONTENT_DEDUP_WINDOW_MS, dead = {};
@@ -1076,7 +1091,8 @@ chargeOnlineApp.all('*', async (req, res) => {
         const cbase = db.ref(`recent_order_content/${rateLimitKey(fields.customer_phone)}`);
         const rec = (await cbase.child(ck).once('value')).val();
         phoneRetap = isContentRetap(rec, Date.now(), CONTENT_DEDUP_WINDOW_MS);
-        await cbase.child(ck).set({ at: Date.now() });
+        // F3 (Task 1): stamp carries {order_id, payment_method} for the materialize-side guard. Additive.
+        await cbase.child(ck).set({ at: Date.now(), order_id: orderId, payment_method: fields.payment_method });
         const all = (await cbase.once('value')).val() || {};
         const cutoff = Date.now() - CONTENT_DEDUP_WINDOW_MS, dead = {};
         for (const [k, v] of Object.entries(all)) if (!v || !Number.isFinite(v.at) || v.at < cutoff) dead[k] = null;

@@ -22,7 +22,7 @@
 
 const TERMINAL_ATTEMPT = ['declined', 'voided', 'abandoned', 'converted', 'refunded', 'voided_inactive'];
 const SCHED = require('./scheduled-orders');   // Scheduled Orders — confirm-time slot re-validation (§F)
-const { holdIfClosedAtMaterialize } = require('./materialize-guard');   // paid-after-close re-check (Codex-on-diff)
+const { holdIfClosedAtMaterialize, holdIfDuplicateSibling } = require('./materialize-guard');   // paid-after-close re-check (Codex-on-diff) + F3 duplicate-sibling hold
 const { settleRedemptionAtConfirm, holdRedemptionForManual } = require('./rewards-reserve');     // Phase B1 — consume/hold the redemption at materialize; [B] hold-or-alert at a manual-reconciliation entry
 
 async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingToken }) {
@@ -286,6 +286,15 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
   if (await holdIfClosedAtMaterialize(deps, orderId, order, now)) {
     await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'hold', now });   // paid but kitchen closed → HOLD the points (dispatcher resolves)
     return { outcome: 'held_closed_at_materialize' };
+  }
+
+  // F3 (double-order guard): if this online order X would materialize while a live CASH sibling Y (same customer
+  // + same cart) is already on the KDS, HOLD X for the dispatcher (manual_reconciliation → Reconciliación panel)
+  // rather than land a duplicate. NEVER auto-refund (X's money stays put), NEVER double-cook. Fail-open: any
+  // uncertainty → materialize. Runs AFTER the closed-kitchen guard so a paid-after-close X still refunds normally.
+  if (await holdIfDuplicateSibling(deps, orderId, order, now)) {
+    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'hold', now });   // held for a human → HOLD the points too
+    return { outcome: 'held_duplicate_sibling' };
   }
 
   // 3c (plan 10b): post-capture active-recheck. Money is captured — NEVER strand a paid order;

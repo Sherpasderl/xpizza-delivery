@@ -23,4 +23,11 @@ function isContentRetap(rec, now, windowMs) {
   return !!rec && Number.isFinite(rec.at) && (now - rec.at) < windowMs;
 }
 
-module.exports = { orderContentKey, isContentRetap };
+// Hashed bucket key for /rate_limits and /recent_order_content — avoids storing raw IPs/phones and dodges
+// forbidden RTDB key chars ('.', ':', '+'). PURE. (Extracted from index.js so require-safe modules — e.g. the
+// F3 materialize-side duplicate guard — can resolve the SAME content-stamp path index.js writes.)
+function rateLimitKey(raw) {
+  return require('crypto').createHash('sha256').update(String(raw)).digest('hex').slice(0, 32);
+}
+
+module.exports = { orderContentKey, isContentRetap, rateLimitKey };

@@ -22,6 +22,7 @@
  * inactive-restaurant post-capture posture. Returns true iff the order was held (caller must NOT materialize).
  */
 const SCHED = require('./scheduled-orders');
+const { orderContentKey, rateLimitKey } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write
 
 async function holdIfClosedAtMaterialize(deps, orderId, order, now) {
   // Scheduled orders hold via their own path; this guard is ASAP-only. (G)
@@ -135,4 +136,68 @@ function recoverRefundingDecision(order, attempt, now, staleMs) {
   return { action: 'manual_reconciliation' };
 }
 
-module.exports = { holdIfClosedAtMaterialize, recoverRefundingDecision };
+// ── F3: double-order guard (late online confirm collides with a live cash sibling) ──────────────────────────
+// A statuses-set for "this sibling order is NOT live" — a materialized cash order on the KDS is live; a
+// cancelled/finished one is not a collision (X may materialize).
+const SIBLING_TERMINAL = new Set(['cancelled', 'delivered', 'completed']);
+
+// PURE collision decision, shared by the materialize-side HOLD (siblingMethod='cash') and the create-side ALERT
+// (siblingMethod='online'). A collision iff the content-key stamp holds a DIFFERENT order (≠ self) of the
+// expected payment method whose point-read shows it currently LIVE. **PIN 1: deliberately independent of
+// stamp.at / the 2-min freshness window** — a late confirm's window is the 45-min hosted TTL, so Y's LIVENESS is
+// the truth, not the stamp's recency. `stamp` = { at, order_id, payment_method } | null; `siblingOrder` = the
+// point-read orders/{stamp.order_id} | null.
+function duplicateSiblingDecision(orderId, stamp, siblingOrder, siblingMethod) {
+  if (!stamp || !stamp.order_id || stamp.order_id === orderId) return { collision: false };
+  if (stamp.payment_method !== siblingMethod) return { collision: false };
+  if (!siblingOrder || SIBLING_TERMINAL.has(siblingOrder.status)) return { collision: false };
+  return { collision: true, siblingOrderId: stamp.order_id };
+}
+
+// Materialize-side PRIMARY guard: if this online order X would materialize while a live CASH sibling Y (same
+// customer + same cart content) is already on the KDS, HOLD X for the dispatcher (manual_reconciliation →
+// Reconciliación panel) instead of landing a duplicate. NEVER auto-refund (X's captured money stays put for a
+// human), NEVER double-cook. Returns true iff the caller must NOT materialize. FAIL-OPEN: any error →
+// materialize normally (a catchable double-cook beats a wrongful hold on a paid order). Mirrors
+// holdIfClosedAtMaterialize's CAS-claim so two concurrent passes can never double-hold.
+async function holdIfDuplicateSibling(deps, orderId, order, now) {
+  try {
+    if (!deps || !deps.db || !order || !order.customer_phone) return false;
+    // Already resolved (materialized returns earlier in the caller; defensive) → let the normal flow handle it.
+    if (order.status === 'cancelled' || order.materialized_at || order.payment_status === 'manual_reconciliation') return false;
+    const sf = SCHED.normalizeScheduledFor(order.scheduled_for);
+    const ck = orderContentKey({ phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null });
+    if (!ck) return false;
+    const stamp = (await deps.db.ref(`recent_order_content/${rateLimitKey(order.customer_phone)}/${ck}`).once('value')).val();
+    // fast-out before the sibling point-read (no stamp / self / non-cash → not our collision)
+    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') return false;
+    const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();
+    const dec = duplicateSiblingDecision(orderId, stamp, siblingOrder, 'cash');   // PIN 1: no 2-min gate — liveness of Y decides
+    if (!dec.collision) return false;
+    // CAS-claim X → manual_reconciliation. ONLY the pass that transitions this order proceeds (didClaim); a
+    // concurrent guard pass no-ops. NEVER refund, NEVER materialize; the dispatcher resolves in the panel.
+    const orderRef = deps.db.ref(`orders/${orderId}`);
+    let didClaim = false;
+    const claim = await orderRef.transaction((cur) => {
+      didClaim = false;
+      const o = cur || order;
+      if (!o) return o;
+      if (o.status === 'cancelled' || o.materialized_at || o.payment_status === 'manual_reconciliation') return o; // already resolved / materialized (lost the race)
+      didClaim = true;
+      return { ...o, payment_status: 'manual_reconciliation', blocked_reason: 'duplicate_of_sibling', sibling_order_id: dec.siblingOrderId, duplicate_held_at: now };
+    });
+    if (!claim.committed || !didClaim) return true;   // lost race / already held → still must NOT materialize
+    try {
+      await deps.db.ref(`dispatcher_alerts/duplicate_order_${orderId}`).set({
+        order_id: orderId, sibling_order_id: dec.siblingOrderId, restaurant_id: order.restaurant_id || null,
+        kind: 'duplicate_of_sibling', at: now,
+      });
+    } catch (_) {}
+    if (deps.alert) { try { await deps.alert('duplicate_order', { orderId, restaurant_id: order.restaurant_id || null, sibling_order_id: dec.siblingOrderId }); } catch (_) {} }
+    return true;   // HELD — caller must NOT materialize
+  } catch (_) {
+    return false;   // FAIL-OPEN — never hold a paid order on uncertainty
+  }
+}
+
+module.exports = { holdIfClosedAtMaterialize, recoverRefundingDecision, holdIfDuplicateSibling, duplicateSiblingDecision };
