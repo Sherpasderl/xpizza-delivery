@@ -11,6 +11,7 @@ const { buildCreateOrderUpdates } = require('./create-order-build');
 const { orderFingerprint } = require('./pixelpay-charge');
 const { orderBreakdownCents } = require('./order-money');
 const { isStatusChangeClosedToAutomation } = require('./manual-resolve');
+const { redemptionFingerprint } = require('./rewards-redeem');
 
 let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 const D = { isPaymentStatusClosed: isStatusChangeClosedToAutomation };
@@ -108,6 +109,29 @@ const fpDeps = (o = {}) => ({ orderBreakdownCents, orderFingerprint, schedFinger
   assert.deepEqual(keysDelta, ['payment_fingerprint'], 'with fp → EXACTLY one added field');
   assert.equal(withFp.payment_fingerprint, 'DEADBEEF');
   ok('15 additive-guardrail: payment_fingerprint is the ONLY delta; absent → pre-F1 byte-identical');
+
+  // 16 — REDEMPTION RESIDUAL (codex follow-up): when the top-level fp compute blips to null, createOrder
+  //      recomputes the store fp from the ALREADY-RESOLVED reserve (redemptionPriced + redemptionCanonical). That
+  //      recompute MUST equal what a retry's computeIncomingFingerprint produces, or store!=compare → false-409.
+  {
+    const canonical = { rid: 'la_musa', reward: 'r', set: ['pad-thai'] };
+    const rfp = redemptionFingerprint(canonical);
+    const priced = { total_cents: 30000 }, itemsText = '1x Pad Thai (L500) | 1x Postre (Recompensa)';
+    const schedExtra = `${1787000000000}|delivery`;
+    // the exact store-side formula index.js uses (schedExtra + rf:<redemptionFingerprint(canonical)>):
+    const storeFormula = orderFingerprint('PZX-R', priced.total_cents, itemsText, [schedExtra, `rf:${rfp}`].filter(Boolean).join('|'));
+    // the retry's compare, via computeIncomingFingerprint with a prep that returns those same resolved values:
+    const compareFp = await computeIncomingFingerprint(
+      { orderId: 'PZX-R', restaurantId: 'la_musa', total: 500, itemsText: 'raw', items: [], redeem: { r: 1 }, customerUid: 'u1', scheduledForRaw: 1787000000000, orderType: 'delivery' },
+      fpDeps({ prepareRedemption: async () => ({ ok: true, priced, itemsText, redemptionFp: rfp }) }));
+    assert.equal(storeFormula, compareFp, 'redemption store-recompute == retry compare (store==compare on the blip path)');
+    ok('16 redemption blip: store-recompute fp == retry compare (no false-409)');
+
+    // structural: index.js guards the recompute (only when incomingFp blipped AND it is a redemption order)
+    assert.ok(/if \(!storeFp && redemptionCanonical && redemptionPriced\)/.test(SRC), 'recompute guarded by !storeFp && redemptionCanonical && redemptionPriced');
+    assert.ok(/redemptionFingerprint\(redemptionCanonical\)/.test(SRC), 'recompute uses redemptionFingerprint(redemptionCanonical)');
+    ok('16b recompute is guarded (redemption + fp-null only) and uses the resolved canonical');
+  }
 
   console.log(`\ncreateorder-idempotent.test.js: ${pass} passed`);
 })().catch((e) => { console.error(e); process.exit(1); });

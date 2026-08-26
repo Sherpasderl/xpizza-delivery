@@ -73,6 +73,7 @@ const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Re
 const { shouldEarnOnStatus, earnPreview } = require('./rewards-core');     //   pure terminal-state gate + the reward-card earn_preview
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
 const { classifyExistingOrder, computeIncomingFingerprint } = require('./createorder-classify');   // F1: method/state/content-aware idempotent-return (no false "order placed")
+const { redemptionFingerprint } = require('./rewards-redeem');   // F1 residual: recompute a redemption order's fp from the RESOLVED reserve (guaranteed present) if the top-level compute blipped
 const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, holdRedemptionForManual, sweepStaleReservations, sweepConsumeRecovery, reverseRedemptionForOrder } = require('./rewards-reserve');
 const { paymentPollState } = require('./payment-poll-state');   // online-return poll state machine (incl. closed_refunded)
 const { alertsToPrune } = require('./alert-prune');   // auto-dismiss dispatcher alerts whose orders are resolved
@@ -722,6 +723,21 @@ createOrderApp.all('*', async (req, res) => {
     cashTenderedCents = (Number.isFinite(ct) && ct >= priceBreakdown.total_cents) ? ct : priceBreakdown.total_cents;
   }
 
+  // F1 residual (codex-gate follow-up): guarantee a REDEMPTION order stores a payment_fingerprint even if the
+  // top-level computeIncomingFingerprint blipped to null (a transient prepareRedemption read at :500). The order
+  // only reaches here because resolveRedemptionForOrder SUCCEEDED, so redemptionPriced/redemptionCanonical are
+  // present — recompute the fp from THOSE (no new I/O), using the SAME formula as computeIncomingFingerprint so
+  // store==compare still holds (a retry recomputes an identical fp). Non-redemption keeps incomingFp (already
+  // present via the pure orderBreakdownCents). Fail-open — never break the write.
+  let storeFp = incomingFp;
+  if (!storeFp && redemptionCanonical && redemptionPriced) {
+    try {
+      const _schedExtra = Number.isFinite(scheduledForRaw) ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '';
+      storeFp = orderFingerprint(orderId, redemptionPriced.total_cents, fields.items_text,
+        [_schedExtra, `rf:${redemptionFingerprint(redemptionCanonical)}`].filter(Boolean).join('|'));
+    } catch (_) { storeFp = incomingFp; }
+  }
+
   // ── Scheduled Orders (§B): a cash/card order with a valid scheduled_for is written HELD — no tasks,
   // no tracking token, no order-received WhatsApp, no factura — and materializes only at release. The slot
   // was already RE-VALIDATED above (before the reserve); releaseAt was computed there. No re-validation here
@@ -730,7 +746,7 @@ createOrderApp.all('*', async (req, res) => {
     const heldUpdates = buildScheduledOrderRecord({
       orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
       restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
-      scheduledFor: scheduledForRaw, releaseAt, paymentFingerprint: incomingFp,   // F1: same fp computed at :500 → store==compare
+      scheduledFor: scheduledForRaw, releaseAt, paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare
     });
     attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items });
     if (redemptionCanonical) heldUpdates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until release→completion)
@@ -755,7 +771,7 @@ createOrderApp.all('*', async (req, res) => {
   Object.assign(updates, buildCreateOrderUpdates({
     orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
     restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
-    paymentFingerprint: incomingFp,   // F1: same fp computed at :500 → store==compare (idempotent retry recomputes identical)
+    paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare (idempotent retry recomputes identical)
   }));
 
   attachCustomerAttribution(updates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items });
