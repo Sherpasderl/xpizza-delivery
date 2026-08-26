@@ -19,6 +19,7 @@
     "test:rules": "firebase emulators:exec --only database \"node test/restaurants-rules.emulator.test.js\"",
     "test:catalog-rules": "firebase emulators:exec --only firestore --project demo-xpizza \"node test/catalog-rules.emulator.test.js\"",
     "test:catalog-parity": "firebase emulators:exec --only firestore --project demo-xpizza \"node test/catalog-parity.emulator.test.js\"",
+    "test:pricing-cutover": "firebase emulators:exec --only firestore --project demo-xpizza \"node test/pricing-cutover.emulator.test.js\"",
     "test:kitchen-staff-rules": "firebase emulators:exec --only database --project demo-xpizza \"node test/kitchen-staff-rules.emulator.test.js\"",
     "test:quality-runner": "firebase emulators:exec --only functions,database --project demo-xpizza \"node test/ready-time-quality-run.emulator.test.js\"",
     "test:predictor": "firebase emulators:exec --only database --project demo-xpizza \"node test/ready-time-predict.emulator.test.js\"",

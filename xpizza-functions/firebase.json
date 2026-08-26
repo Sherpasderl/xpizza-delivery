@@ -9,7 +9,8 @@
     "rules": "firestore.rules",
     "predeploy": [
       "npm --prefix \"$RESOURCE_DIR\" run test:catalog-rules",
-      "npm --prefix \"$RESOURCE_DIR\" run test:catalog-parity"
+      "npm --prefix \"$RESOURCE_DIR\" run test:catalog-parity",
+      "npm --prefix \"$RESOURCE_DIR\" run test:pricing-cutover"
     ]
   },
   "functions": [
