@@ -3246,13 +3246,72 @@ async function processPixelPay(){
 }
 
 // ── Return from the hosted checkout (?pay=complete|cancel&order=&t=) ──
+// Per-state dispatch for a paymentStatus poll result. Returns true iff it showed a TERMINAL screen (caller
+// stops); false for pending/unknown (caller keeps polling). SHARED by the poll loop AND the cancel-verify
+// single-check (N4) so both handle every terminal state identically — a future state added here is honored on
+// the cancel path too.
+function applyPollState(st, j, orderId, stashedOrder){
+  if(st==='scheduled_paid'){
+    try{localStorage.removeItem('lamusa_pending_pay');}catch(_){}
+    window.__scheduledFor = j.scheduled_for || window.__scheduledFor;
+    if(stashedOrder && stashedOrder.order_id === orderId){
+      currentOrder = stashedOrder; currentOrder.scheduled = true; currentOrder.scheduled_for = j.scheduled_for;
+      if(j.total_cents!=null) currentOrder.total_cents=j.total_cents;   // #6: server-confirmed discounted total wins over the stashed client total
+      if(j.redemption) currentOrder.redemption=j.redemption;            // #6: detection uses o.redemption || o.redeem
+      try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}
+    }
+    showPayReturn('paid'); return true;
+  }
+  if(st==='paid'){
+    try{localStorage.removeItem('lamusa_pending_pay');}catch(_){}
+    if(stashedOrder && stashedOrder.items && stashedOrder.order_id === orderId){
+      currentOrder = stashedOrder; currentOrder.payment_status = 'confirmed';
+      if(j.total_cents!=null) currentOrder.total_cents=j.total_cents;   // #6: server-confirmed discounted total wins over the stashed client total
+      if(j.redemption) currentOrder.redemption=j.redemption;            // #6: detection uses o.redemption || o.redeem
+      try {
+        showSuccess();
+        const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove();
+        return true;
+      } catch(_){ /* fall through to the simple overlay */ }
+    }
+    showPayReturn('paid'); return true;
+  }
+  if(st==='closed_refunded'){ try{localStorage.removeItem('lamusa_pending_pay');}catch(_){}; showPayReturn('closed_refunded'); return true; }   // paid-after-close auto-refund → honest terminal screen (no infinite "en proceso")
+  if(st==='scheduled_review'){ try{localStorage.removeItem('lamusa_pending_pay');}catch(_){}; showPayReturn('scheduled_review'); return true; }   // F2: paid SCHEDULED order, slot closed at confirm → held; honest terminal screen (no endless "Pago en proceso")
+  if(st==='failed'){ showPayReturn('failed'); return true; }
+  if(st==='cancelled'){ showPayReturn('cancel'); return true; }
+  if(st==='verifying'){ showPayReturn('verifying'); return true; }
+  return false;   // pending / unknown → not terminal (loop continues; cancel-verify falls through to 'cancel')
+}
+
 async function handlePaymentReturn(){
   const q = new URLSearchParams(location.search);
   const pay = q.get('pay');
   if(!pay) return false;
   let orderId = q.get('order'), token = q.get('t'), stashedOrder = null;
   try { const s = JSON.parse(localStorage.getItem('lamusa_pending_pay')||'null'); if(s){ orderId = orderId||s.order_id; token = token||s.t; stashedOrder = s.order || null; } } catch(_){}
-  if(pay==='cancel'){ showPayReturn('cancel'); return true; }
+  // N4: a genuinely-PAID order can land on the cancel redirect (back-button after complete / double-redirect /
+  // cancel-after-capture). Do ONE bounded paymentStatus check before asserting "Pago cancelado" — if it's
+  // actually paid, show the REAL terminal screen. Can't verify (no id/token) → cancel (unchanged fallback).
+  if(pay==='cancel' && (!orderId || !token)){ showPayReturn('cancel'); return true; }
+  if(pay==='cancel'){
+    showPayReturn('checking');
+    try {
+      // SINGLE check, ~5s bounded (P1 — NOT the 90s loop: a genuine cancel stays pending_payment forever and
+      // must resolve to 'cancel' instantly). The stray fetch is a harmless read-only GET.
+      const r = await Promise.race([
+        fetch(`${PAYMENTSTATUS_URL}?order_id=${encodeURIComponent(orderId)}&t=${encodeURIComponent(token)}`),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), 5000)),
+      ]);
+      const j = await r.json().catch(()=>({}));
+      const st = (r.ok && j.state) || 'pending';
+      // Only a genuinely-terminal PAID state overrides "cancelled" — everything else (pending/failed/verifying/
+      // cancelled) is a real/ambiguous cancel → show 'cancel'. Accepted residual: a paid order whose webhook
+      // hasn't confirmed yet reads 'pending' here → 'cancel'; self-heals on retry (resumed id → already_paid).
+      if((st==='paid' || st==='scheduled_paid' || st==='closed_refunded' || st==='scheduled_review') && applyPollState(st, j, orderId, stashedOrder)) return true;
+    } catch(_){}
+    showPayReturn('cancel'); return true;   // P2 fail-safe: pending / error / timeout / non-ok → instant 'cancel', never hang on "checking"
+  }
   if(pay!=='complete' || !orderId || !token){ showPayReturn('pending_timeout'); return true; }
 
   showPayReturn('checking');
@@ -3262,36 +3321,7 @@ async function handlePaymentReturn(){
       const r = await fetch(`${PAYMENTSTATUS_URL}?order_id=${encodeURIComponent(orderId)}&t=${encodeURIComponent(token)}`);
       const j = await r.json().catch(()=>({}));
       const st = (r.ok && j.state) || 'pending';
-      if(st==='scheduled_paid'){
-        try{localStorage.removeItem('lamusa_pending_pay');}catch(_){}
-        window.__scheduledFor = j.scheduled_for || window.__scheduledFor;
-        if(stashedOrder && stashedOrder.order_id === orderId){
-          currentOrder = stashedOrder; currentOrder.scheduled = true; currentOrder.scheduled_for = j.scheduled_for;
-          if(j.total_cents!=null) currentOrder.total_cents=j.total_cents;   // #6: server-confirmed discounted total wins over the stashed client total
-          if(j.redemption) currentOrder.redemption=j.redemption;            // #6: detection uses o.redemption || o.redeem
-          try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}
-        }
-        showPayReturn('paid'); return true;
-      }
-      if(st==='paid'){
-        try{localStorage.removeItem('lamusa_pending_pay');}catch(_){}
-        if(stashedOrder && stashedOrder.items && stashedOrder.order_id === orderId){
-          currentOrder = stashedOrder; currentOrder.payment_status = 'confirmed';
-          if(j.total_cents!=null) currentOrder.total_cents=j.total_cents;   // #6: server-confirmed discounted total wins over the stashed client total
-          if(j.redemption) currentOrder.redemption=j.redemption;            // #6: detection uses o.redemption || o.redeem
-          try {
-            showSuccess();
-            const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove();
-            return true;
-          } catch(_){ /* fall through to the simple overlay */ }
-        }
-        showPayReturn('paid'); return true;
-      }
-      if(st==='closed_refunded'){ try{localStorage.removeItem('lamusa_pending_pay');}catch(_){}; showPayReturn('closed_refunded'); return true; }   // paid-after-close auto-refund → honest terminal screen (no infinite "en proceso")
-      if(st==='scheduled_review'){ try{localStorage.removeItem('lamusa_pending_pay');}catch(_){}; showPayReturn('scheduled_review'); return true; }   // F2: paid SCHEDULED order, slot closed at confirm → held; honest terminal screen (no endless "Pago en proceso")
-      if(st==='failed'){ showPayReturn('failed'); return true; }
-      if(st==='cancelled'){ showPayReturn('cancel'); return true; }
-      if(st==='verifying'){ showPayReturn('verifying'); return true; }
+      if(applyPollState(st, j, orderId, stashedOrder)) return true;
     } catch(_){}
     await new Promise(res=>setTimeout(res, 2500));
   }
