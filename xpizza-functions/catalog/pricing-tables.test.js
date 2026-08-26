@@ -3,6 +3,12 @@
 const assert = require('assert');
 const { createPricingResolver, tablesEqual } = require('./pricing-tables');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+// A never-settling await inside the async IIFE drains the event loop and Node exits 0 having run only
+// part of the file — a HANG would read as a PASS. This turns "exited before the end" into a failure.
+let finished = false;
+process.on('exit', (code) => {
+  if (code === 0 && !finished) { console.error('FATAL: pricing-tables.test.js exited early (a hang?) without completing'); process.exitCode = 1; }
+});
 
 const CODE = { x_pizza: { menu: { Margherita: 299, Pepperoni: 307 }, extras: { Mozzarella: 50 } },
                la_musa: { menu: { dimsum_01: 223 }, extras: { rice_white: 50 } } };
@@ -70,5 +76,52 @@ const mk = (getTables) => { const seen = []; return { resolver: createPricingRes
     assert.ok(seen.length === 1, 'malformed catalog alarms');
   }
   ok('malformed catalog shapes → CODE tables + alarm (compare never throws)');
+  // ── BOUNDED DEADLINE (codex money-grill): a HANG must land on code, fast. The fail-safe catches a
+  //    REJECT; it does not catch a read that never settles. Unbounded, the handler's `await` would block
+  //    until the 30s function timeout and DROP the order — an intake outage caused by the pricing cutover.
+  {
+    const alarms = [];
+    const hung = createPricingResolver({
+      reader: { getTables: () => new Promise(() => {}) },        // never resolves, never rejects
+      codeFor, alarm: (k, d) => { alarms.push([k, d]); }, deadlineMs: 20,
+    });
+    const t0 = Date.now();
+    const t = await hung.getPricingTables('x_pizza');
+    const elapsed = Date.now() - t0;
+    assert.deepStrictEqual(t, { restaurantId: 'x_pizza', menu: CODE.x_pizza.menu, extras: CODE.x_pizza.extras }, 'a hang falls back to CODE tables');
+    assert.ok(elapsed < 500, `must return within the deadline, not block (took ${elapsed}ms)`);
+    assert.strictEqual(alarms.length, 1);
+    assert.strictEqual(alarms[0][0], 'catalog_read_timeout', 'a HANG alarms catalog_read_timeout, NOT catalog_read_failed');
+    ok(`bounded deadline: a never-resolving catalog read → CODE tables in ${elapsed}ms + catalog_read_timeout`);
+  }
+  {
+    // Regression: a REJECT still reports catalog_read_failed (the two failure modes stay distinguishable
+    // so the prod-prove window can tell a hang from an error).
+    const { resolver, seen } = mk(async () => { throw new Error('boom'); });
+    await resolver.getPricingTables('x_pizza');
+    assert.strictEqual(seen[0][0], 'catalog_read_failed', 'a reject is still catalog_read_failed, not timeout');
+    ok('regression: reject → catalog_read_failed (distinct from the timeout kind)');
+  }
+  {
+    // Regression: a fast reader still wins the race and the CATALOG serves (the deadline must not
+    // accidentally beat a healthy read).
+    const { resolver, seen } = mk(async (r) => clone(r));
+    const t = await resolver.getPricingTables('x_pizza');
+    assert.deepStrictEqual(t.menu, CODE.x_pizza.menu);
+    assert.deepStrictEqual(seen, [], 'a healthy read raises no alarm');
+    ok('regression: a fast reader still returns CATALOG tables (deadline does not misfire)');
+  }
+  {
+    // A late rejection after the deadline must not surface as an unhandled rejection.
+    let rejectLate; const late = new Promise((_, rej) => { rejectLate = rej; });
+    const r2 = createPricingResolver({ reader: { getTables: () => late }, codeFor, alarm: () => {}, deadlineMs: 10 });
+    const t = await r2.getPricingTables('x_pizza');
+    assert.deepStrictEqual(t.menu, CODE.x_pizza.menu);
+    rejectLate(new Error('arrived after the deadline'));
+    await new Promise((res) => setTimeout(res, 30));
+    ok('a rejection arriving AFTER the deadline is swallowed (no unhandled rejection)');
+  }
+
+  finished = true;
   console.log(`pricing-tables: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });
