@@ -1889,6 +1889,7 @@ exports.sweepStalePending = onSchedule(
             left++;
           } else if (dec.outcome === 'flag') {
             await db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation', blocked_reason: 'paid_strand_unrecovered' });
+            await holdRedemptionForManual(db, { orderId, order, now, alert: (k, d) => paymentAlert(db, k, d) });   // REVISE (parity with the stale-hosted flag :1908): secure the reward as held_paid (idempotent; no-op if non-redeemed); a race that already freed it → reward_hold_lost_possibly_paid alert, never a silent mint
             await db.ref(`dispatcher_alerts/paid_strand_${orderId}`).set({ order_id: orderId, restaurant_id: after.restaurant_id || null, at: now, kind: 'paid_strand' });
             await paymentAlert(db, 'paid_strand_unrecovered', { orderId, total: order.total || null });
             flagged++;

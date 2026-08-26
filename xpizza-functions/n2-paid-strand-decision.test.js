@@ -57,6 +57,9 @@ ok('null re-read → leave');
   inBody(/paid_strand_seen_at`\)\.set\(now\)/, 'P3: first-detection stamp');
   inBody(/payment_status: 'manual_reconciliation', blocked_reason: 'paid_strand_unrecovered'/, 'P3: flag → manual_reconciliation');
   inBody(/dispatcher_alerts\/paid_strand_\$\{orderId\}/, 'P3: dispatcher alert written');
+  // REVISE parity: the flag branch secures the redemption hold (mirror the stale-hosted :1908 path).
+  // Ordered between the manual_reconciliation update and the dispatcher alert, inside the fail-open try.
+  inBody(/blocked_reason: 'paid_strand_unrecovered' \}\);\s*\n\s*await holdRedemptionForManual\(db, \{ orderId, order, now, alert: \(k, d\) => paymentAlert\(db, k, d\) \}\);/, 'REVISE: flag secures the reward via holdRedemptionForManual (parity with :1908)');
   inBody(/paid_strand_seen_at`\)\.remove\(\)/, 'clear stamp on recovery');
   // fail-open — the re-drive AND the post-handling are try/caught (never break the sweep)
   inBody(/paid-strand re-drive failed for/, 'fail-open: re-drive wrapped (catch → continue)');
