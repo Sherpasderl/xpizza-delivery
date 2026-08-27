@@ -3198,13 +3198,6 @@ async function processPixelPay(){
       const names = (Array.isArray(cfg.blocked) && cfg.blocked.length) ? cfg.blocked.join(', ') : 'un platillo';
       return paymentFallback('Agotado — quitá '+names+' del carrito para continuar.');   // CART error → reward PRESERVED
     }
-    // N3: the 18" NY special is weekend-only (server-enforced). The server rejects a weekday attempt with a
-    // friendly `message`, but this response carries `message` (not `detail`), so the generic fallback below
-    // showed the useless "No pudimos iniciar el pago". Show the reason + the action. (Defense-in-depth: only
-    // fires if the client weekend gate was bypassed/stale; X. Pizza only.)
-    if(res.status===400 && cfg && cfg.error==='weekend_only'){
-      return paymentFallback((cfg.message || 'Las pizzas de 18" solo están disponibles viernes, sábado y domingo.') + ' Quitá la pizza de 18" del carrito para continuar.');
-    }
     // REWARDS (B2 Task 4): a typed REDEMPTION failure → clear the reward + revert the total; the customer's
     // next pay-tap rebuilds a FRESH order_id, full-price ("Continuar sin premio"). (item_unavailable/closed are
     // CART/order errors handled above / below and PRESERVE the reward.)
@@ -3478,11 +3471,6 @@ async function submitOrder(paymentStatus){
         if(err && err.error === 'item_unavailable'){
           const names = (Array.isArray(err.blocked) && err.blocked.length) ? err.blocked.join(', ') : 'un platillo';
           setSending(ICON_X_CIRCLE+'Agotado — quitá '+escapeHtml(names)+' del carrito para continuar.');   // CART error → reward PRESERVED
-          return;
-        }
-        // N3: weekend-only rejection (see processPixelPay) — show the reason + removal hint, not the generic.
-        if(err && err.error === 'weekend_only'){
-          setSending(ICON_X_CIRCLE + (err.message || 'Las pizzas de 18" solo están disponibles viernes, sábado y domingo.') + ' Quitá la pizza de 18" del carrito para continuar.');
           return;
         }
         // F1/F4 self-heal: the server refused to idempotent-return this order_id (method/state/content conflict —
