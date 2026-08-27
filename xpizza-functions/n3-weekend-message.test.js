@@ -7,6 +7,11 @@ const path = require('path');
 
 const HINT = ' Quitá la pizza de 18" del carrito para continuar.';
 const FALLBACK = 'Las pizzas de 18" solo están disponibles viernes, sábado y domingo.';
+// Generic catch-all anchors — a weekend_only branch placed BELOW these is unreachable (shadowed), the exact bug
+// N3 fixes. Use the FULL generic strings (unique to the branch): "No pudimos iniciar el pago" alone also appears
+// in the N3 comment, so anchor on "…Revisá tus datos" to land on the real online fallback, not the comment.
+const ONLINE_GENERIC = 'No pudimos iniciar el pago. Revisá tus datos';   // the !res.ok catch-all (shadows any 400 → would shadow a mis-placed weekend branch)
+const CASH_GENERIC = 'No pudimos enviar el pedido';                       // the cash catch-all
 const FORMS = {
   'la-musa': { file: path.join(__dirname, '..', 'la-musa-orders', 'index.html'), cash: 'setSending(ICON_X_CIRCLE + (err.message' },
   'x-pizza': { file: path.join(__dirname, '..', 'xpizza-orders', 'index.html'), cash: "sending-msg').innerHTML =\n            ICON_X_CIRCLE + (err.message" },
@@ -29,9 +34,15 @@ for (const [brand, { file, cash }] of Object.entries(FORMS)) {
   for (const sib of ["error==='item_unavailable'", "error === 'item_unavailable'", "error === 'order_conflict'", "error === 'free_order_stale'"]) {
     has(sib, `sibling branch intact: ${sib}`);
   }
-  // the weekend branch sits AFTER item_unavailable, BEFORE the generic fallback (online) / redemption (cash)
-  assert.ok(src.indexOf("cfg.error==='item_unavailable'") < src.indexOf("cfg.error==='weekend_only'"), `[${brand}] online: weekend after item_unavailable`);
-  ok(`${brand}: online + cash weekend_only branches, correct copy, siblings intact`);
+  // Placement / REACHABILITY — weekend_only must sit AFTER item_unavailable AND BEFORE the generic catch-all in
+  // BOTH paths. A branch below the generic is unreachable (the exact N3 bug). Anchors are present-checked (>-1)
+  // so a missing one fails LOUD instead of comparing against -1.
+  const at = (s) => { const i = src.indexOf(s); assert.ok(i !== -1, `[${brand}] placement anchor missing: ${s}`); return i; };
+  assert.ok(at("cfg.error==='item_unavailable'") < at("cfg.error==='weekend_only'"), `[${brand}] online: weekend AFTER item_unavailable`);
+  assert.ok(at("cfg.error==='weekend_only'") < at(ONLINE_GENERIC), `[${brand}] online: weekend BEFORE the generic fallback (reachable, not shadowed)`);
+  assert.ok(at("err.error === 'item_unavailable'") < at("err.error === 'weekend_only'"), `[${brand}] cash: weekend AFTER item_unavailable`);
+  assert.ok(at("err.error === 'weekend_only'") < at(CASH_GENERIC), `[${brand}] cash: weekend BEFORE the generic fallback (reachable, not shadowed)`);
+  ok(`${brand}: online + cash weekend_only branches, correct copy, siblings intact, REACHABLE (after item / before generic)`);
 }
 
 // byte-parallel: identical N3 tokens in BOTH forms (online branch + copy are byte-identical across brands)
