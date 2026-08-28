@@ -125,7 +125,7 @@ const {
 } = require('./driver-ingest');
 const { activeDropOrderId, shouldMirror } = require('./tracking-mirror');
 const { sweepDecision, activeOrderCount, assignmentStrandState, HEAL_TERMINAL_STATUSES } = require('./sweep-pending');
-const { REALTIME_TERMINAL_STATUSES, tasksToDelete, entersTerminalEdge } = require('./tasks-retention');   // RTDB egress Stage 1 — /tasks retention
+const { REALTIME_TERMINAL_STATUSES, tasksToDelete, entersTerminalEdge, confirmTaskDelete } = require('./tasks-retention');   // RTDB egress Stage 1 — /tasks retention
 const { claimDelivery, healStrandedOrder, releaseDeliveryFromDriver } = require('./claim-delivery');
 const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineStampKey } = require('./order-lifecycle');
 const { computeFreshnessAlerts } = require('./driver-freshness');   // Driver Tracking C1: freshness-alarm reconcile core
@@ -3565,25 +3565,33 @@ exports.retentionSweepTasks = onSchedule(
   { schedule: 'every 6 hours', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
   async () => {
     const db = getDatabase();
-    // FULL snapshots — a complete /orders read is required so a live order is never misread as an orphan.
-    const [ordersSnap, tasksSnap, modeSnap] = await Promise.all([
-      db.ref('orders').once('value'),
-      db.ref('tasks').once('value'),
-      db.ref('config/retention/tasks_mode').once('value'),
-    ]);
-    const orders = ordersSnap.val() || {};
-    const tasks = tasksSnap.val() || {};
-    const toDelete = tasksToDelete(orders, tasks, HEAL_TERMINAL_STATUSES);
-    const mode = modeSnap.val();
+    // Read /tasks BEFORE /orders (sequential, NOT Promise.all) as defense-in-depth: a task is written
+    // atomically WITH its order, so any task in this snapshot has its order committed before this read → the
+    // LATER /orders read includes it. (The per-candidate fresh re-read below is the primary, obviously-correct
+    // guard.) A complete /orders read is still required so a live order is never misread as an orphan.
+    const tasks = (await db.ref('tasks').once('value')).val() || {};
+    const orders = (await db.ref('orders').once('value')).val() || {};
+    const mode = (await db.ref('config/retention/tasks_mode').once('value')).val();
+    const toDelete = tasksToDelete(orders, tasks, HEAL_TERMINAL_STATUSES);   // batch CANDIDATES
     if (mode !== 'execute') {
       console.log(`retentionSweepTasks: DRY-RUN — would delete ${toDelete.length}/${Object.keys(tasks).length} tasks. sample=${JSON.stringify(toDelete.slice(0, 10))}. Set config/retention/tasks_mode='execute' to delete.`);
       return;
     }
     if (!toDelete.length) { console.log('retentionSweepTasks: execute — nothing to delete'); return; }
+    // REVISE (codex cross-snapshot orphan race): the batch /orders+/tasks reads are NOT a consistent snapshot.
+    // Before deleting each candidate, re-read its order FRESH and delete ONLY if still a target (absent → orphan;
+    // terminal → done); a fresh non-terminal order = a live/just-created order raced by the batch → SKIP. Never
+    // delete a live order's task (the impossible regression). N small single-key reads (candidate count).
     const updates = {};
-    for (const taskId of toDelete) updates[`tasks/${taskId}`] = null;   // batched multi-path null-update
-    await db.ref().update(updates);
-    console.log(`retentionSweepTasks: execute — deleted ${toDelete.length}/${Object.keys(tasks).length} tasks`);
+    let confirmed = 0, skipped = 0;
+    for (const taskId of toDelete) {
+      const orderId = (tasks[taskId] && tasks[taskId].order_id) || String(taskId).replace(/_(pickup|delivery)$/, '');
+      const fresh = (await db.ref(`orders/${orderId}`).once('value')).val();
+      if (confirmTaskDelete(fresh, HEAL_TERMINAL_STATUSES)) { updates[`tasks/${taskId}`] = null; confirmed++; }
+      else skipped++;   // fresh live/just-created order (cross-snapshot race) → keep its task
+    }
+    if (confirmed) await db.ref().update(updates);   // batched multi-path null-update of the CONFIRMED deletes
+    console.log(`retentionSweepTasks: execute — deleted ${confirmed}, skipped ${skipped} (raced-live) of ${toDelete.length} candidates (${Object.keys(tasks).length} tasks)`);
   }
 );
 

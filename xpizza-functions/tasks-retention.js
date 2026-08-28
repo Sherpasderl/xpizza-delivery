@@ -40,4 +40,15 @@ function tasksToDelete(orders, tasks, terminalStatuses) {
   return out;
 }
 
-module.exports = { REALTIME_TERMINAL_STATUSES, tasksToDelete, entersTerminalEdge };
+// PURE. The batch /orders + /tasks reads are NOT a consistent cross-node snapshot — an order + its tasks are
+// written atomically (one multi-path update), but the two `once('value')` reads can straddle that write, so a
+// brand-new LIVE order's task can appear as an orphan (its order absent from the earlier /orders read). Before
+// deleting a CANDIDATE, the sweep re-reads its order FRESH and passes it here: absent → genuine orphan (delete);
+// present + terminal → delete; present + NON-terminal → a live/just-created order (the race) → KEEP. Mirrors
+// sweep-pending.js's fresh-status guard before a destructive write.
+function confirmTaskDelete(freshOrder, terminalStatuses) {
+  if (!freshOrder) return true;                                              // absent on the fresh re-read → true orphan
+  return !!(terminalStatuses && terminalStatuses.has(freshOrder.status));    // terminal → delete; live/non-terminal → KEEP
+}
+
+module.exports = { REALTIME_TERMINAL_STATUSES, tasksToDelete, entersTerminalEdge, confirmTaskDelete };

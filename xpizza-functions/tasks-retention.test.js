@@ -1,7 +1,7 @@
 'use strict';
 // RTDB egress Stage 1 — /tasks retention decisions. Run: node tasks-retention.test.js
 const assert = require('assert');
-const { REALTIME_TERMINAL_STATUSES, tasksToDelete, entersTerminalEdge } = require('./tasks-retention');
+const { REALTIME_TERMINAL_STATUSES, tasksToDelete, entersTerminalEdge, confirmTaskDelete } = require('./tasks-retention');
 const { HEAL_TERMINAL_STATUSES, assignmentStrandState } = require('./sweep-pending');
 
 let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
@@ -78,6 +78,28 @@ ok('IMPOSSIBLE-REGRESSION: no live status is an entering-terminal edge → a liv
   ok('heal-regression: LIVE order strand STILL detected/healed after the delivered tasks are gone');
 }
 
+// ── confirmTaskDelete — REVISE: fresh re-read gates the delete, NOT the stale batch classification (codex race) ──
+{
+  // The cross-snapshot race: a fresh LIVE order's task looked like an orphan in the batch (its order was created
+  // between the /orders and /tasks reads). The fresh per-candidate re-read must SKIP it.
+  assert.equal(confirmTaskDelete({ status: 'new' }, HEAL_TERMINAL_STATUSES), false);
+  assert.equal(confirmTaskDelete({ status: 'out_for_delivery' }, HEAL_TERMINAL_STATUSES), false);
+  ok('race: candidate whose order is PRESENT + non-terminal on fresh re-read → NOT deleted (skipped)');
+  assert.equal(confirmTaskDelete(null, HEAL_TERMINAL_STATUSES), true);
+  ok('fresh re-read ABSENT → genuine orphan → delete');
+  assert.equal(confirmTaskDelete({ status: 'delivered' }, HEAL_TERMINAL_STATUSES), true);
+  assert.equal(confirmTaskDelete({ status: 'cancelled' }, HEAL_TERMINAL_STATUSES), true);
+  ok('fresh re-read PRESENT + terminal → delete');
+  // end-to-end: a task that was an orphan-candidate in the batch but whose order re-reads as fresh+live is kept
+  const batchOrders = {};   // stale batch: the new order NOT yet visible
+  const batchTasks = { newlive_delivery: { order_id: 'newlive' } };
+  const candidates = tasksToDelete(batchOrders, batchTasks, HEAL_TERMINAL_STATUSES);
+  assert.deepEqual(candidates, ['newlive_delivery']);   // batch flags it (false-positive orphan)
+  const freshReread = { status: 'new' };                // ...but the order exists + is live on fresh re-read
+  assert.equal(confirmTaskDelete(freshReread, HEAL_TERMINAL_STATUSES), false);
+  ok('IMPOSSIBLE-REGRESSION: batch false-orphan of a fresh live order → fresh re-read gates it → task KEPT');
+}
+
 // ── Static wiring guards on index.js (not require-safe) ──
 {
   const fs = require('fs');
@@ -93,6 +115,14 @@ ok('IMPOSSIBLE-REGRESSION: no live status is an entering-terminal edge → a liv
   has(/config\/retention\/tasks_mode/, 'backstop: gated on config/retention/tasks_mode');
   has(/if \(mode !== 'execute'\)/, 'backstop: DRY-RUN unless mode==="execute"');
   has(/tasksToDelete\(orders, tasks, HEAL_TERMINAL_STATUSES\)/, 'backstop: uses tasksToDelete + HEAL set (incl cancelled)');
+  // REVISE — execute path re-reads each candidate's order FRESH and gates on confirmTaskDelete (no cross-snapshot orphan delete)
+  has(/const fresh = \(await db\.ref\(`orders\/\$\{orderId\}`\)\.once\('value'\)\)\.val\(\);/, 'REVISE: fresh per-candidate order re-read before delete');
+  has(/if \(confirmTaskDelete\(fresh, HEAL_TERMINAL_STATUSES\)\)/, 'REVISE: delete gated on confirmTaskDelete (fresh), not the batch');
+  // scope to the retentionSweepTasks body: its batch reads must be sequential (tasks then orders), NOT Promise.all
+  const rsA = SRC.indexOf('exports.retentionSweepTasks'); const rsB = SRC.indexOf('exports.', rsA + 20);
+  const rsBody = SRC.slice(rsA, rsB === -1 ? undefined : rsB);
+  assert.ok(!/Promise\.all\(/.test(rsBody), 'REVISE: retentionSweepTasks batch reads are sequential, no Promise.all() call');
+  assert.ok(rsBody.indexOf("db.ref('tasks').once") < rsBody.indexOf("db.ref('orders').once"), 'REVISE: reads /tasks BEFORE /orders (defense-in-depth)');
   // Part C — sweepStuckOrders 2→5 min; sweepPendingOrders UNCHANGED (heal pass wants 1-min frequency)
   has(/exports\.sweepStuckOrders = onSchedule\(\s*[\s\S]*?schedule: 'every 5 minutes'/, 'Part C: sweepStuckOrders → every 5 minutes');
   assert.ok(!/exports\.sweepStuckOrders[\s\S]{0,200}every 2 minutes/.test(SRC), 'Part C: no lingering 2-min on sweepStuckOrders');
