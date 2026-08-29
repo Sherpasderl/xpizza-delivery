@@ -87,6 +87,42 @@ const build = () => {
     ok('fail-safe: an unreadable catalog → CODE tables + catalog_read_failed (order still prices)');
   }
 
+  // (5) 1b-1b PIN E — the REDEMPTION cluster on the real Firestore-read catalog. Same discriminator:
+  //     on parity the values match either way, so we prove the tables were consulted with a sentinel and
+  //     prove the fiscal output is byte-identical to the code-fed path.
+  await seedCatalog(firestore, R());
+  {
+    const { computeRedemption } = require('../rewards-redeem');
+    const { applyRedemptionToPricing } = require('../rewards-redeem-pricing');
+    const { resolver } = build();
+    const t = await resolver.getPricingTables('x_pizza');
+    const paid = [{ name: 'Ham', qty: 1 }];
+    const XKEY = 'Margherita';
+    const redeem = { type: 'free_pizza_choice', item_id: XKEY };
+    const rCat = computeRedemption({ redeem, items: paid, restaurantId: 'x_pizza', tables: t });
+    const rCode = computeRedemption({ redeem, items: paid, restaurantId: 'x_pizza' });
+    assert.deepStrictEqual(rCat, rCode, 'redemption computed off the FIRESTORE-read catalog == code');
+    assert.notStrictEqual(t.menu, MENU_BY_RESTAURANT.x_pizza, 'and the tables really came from Firestore');
+    const total = MENU_BY_RESTAURANT.x_pizza.Ham;
+    const pCat = applyRedemptionToPricing({ items: paid, restaurantId: 'x_pizza', redemption: rCat, totalLempiras: total, tables: t });
+    const pCode = applyRedemptionToPricing({ items: paid, restaurantId: 'x_pizza', redemption: rCode, totalLempiras: total });
+    assert.deepStrictEqual(pCat, pCode, 'redeemed FACTURA value (factura_items + desc_rebaja) byte-identical off the real catalog');
+    ok(`PIN E 1b-1b: redemption + redeemed factura off the REAL catalog == code (rebaja ${pCat.desc_rebaja_cents})`);
+  }
+  // (6) 1b-1b falsifiable — a diverged catalog price → the resolver serves CODE, so redemption prices on
+  //     CODE too. The whole cluster moves together; there is no split-brain even under divergence.
+  {
+    const XKEY = 'Margherita';
+    await seedCatalog(firestore, R({ x_pizza: { ...MENU_BY_RESTAURANT.x_pizza, [XKEY]: 88888 } }));
+    const { computeRedemption } = require('../rewards-redeem');
+    const { resolver, alarms } = build();
+    const t = await resolver.getPricingTables('x_pizza');
+    const r = computeRedemption({ redeem: { type: 'free_pizza_choice', item_id: XKEY }, items: [{ name: 'Ham', qty: 1 }], restaurantId: 'x_pizza', tables: t });
+    assert.strictEqual(r.freeItems[0].price_cents, MENU_BY_RESTAURANT.x_pizza[XKEY] * 100, 'redemption prices on CODE when the catalog diverges');
+    assert.strictEqual(alarms[0][0], 'catalog_parity_mismatch');
+    ok('PIN E 1b-1b falsifiable: a diverged catalog → redemption prices on CODE + parity alarm (no split-brain)');
+  }
+
   await seedCatalog(firestore, R());   // restore
   console.log(`pricing-cutover(emulator): OK (${n})`);
   process.exit(0);
