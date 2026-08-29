@@ -125,6 +125,7 @@ const {
 } = require('./driver-ingest');
 const { activeDropOrderId, shouldMirror } = require('./tracking-mirror');
 const { sweepDecision, activeOrderCount, assignmentStrandState, HEAL_TERMINAL_STATUSES } = require('./sweep-pending');
+const { REALTIME_TERMINAL_STATUSES, tasksToDelete, entersTerminalEdge, confirmTaskDelete } = require('./tasks-retention');   // RTDB egress Stage 1 — /tasks retention
 const { claimDelivery, healStrandedOrder, releaseDeliveryFromDriver } = require('./claim-delivery');
 const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineStampKey } = require('./order-lifecycle');
 const { computeFreshnessAlerts } = require('./driver-freshness');   // Driver Tracking C1: freshness-alarm reconcile core
@@ -2940,7 +2941,10 @@ exports.flushStaffPushQueue = onSchedule(
 // isStuck/stuckDedupe are pure + unit-tested; the assignment is read from the `_delivery` task, the
 // same task dispatch's board-model.assignedDriverId keys off. NOT money-path (a nudge).
 exports.sweepStuckOrders = onSchedule(
-  { schedule: 'every 2 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  // RTDB egress Stage 1: 2min → 5min. This sweep only fires a staff nudge on a stuck order (no money/heal path);
+  // 5-min detection latency on a stuck-order alert is fine, and it cuts this scan's /orders+/tasks reads 60%.
+  // (sweepPendingOrders stays 1-min — its heal/offer pass is strand-recovery-critical and wants the frequency.)
+  { schedule: 'every 5 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
   async () => {
     const db = getDatabase();
     const now = Date.now();
@@ -3537,6 +3541,75 @@ exports.clearTrackerMirrorOnDone = onValueWritten(
     await db.ref(`order_tracking/${token}`).update({
       driver_location: null, is_active_drop: null, dest_lat: null, dest_lng: null,
     });
+  }
+);
+
+// deleteTasksOnOrderTerminal (RTDB egress Stage 1 — /tasks retention). When an order first enters a DELIVERED or
+// COMPLETED status, delete its two operational task rows in real time. /tasks had no retention → 438 bloated keys
+// that every 1–2min scan re-read for zero live value (~950 MB/day idle egress). A terminal order's tasks are dead
+// weight (only live dispatch/driver/sweep read /tasks, all skip a terminal order), so deleting them shrinks every
+// scan with ZERO change to the heal/offer logic.
+// ⚠️ 'cancelled' is DELIBERATELY EXCLUDED (REALTIME_TERMINAL_STATUSES = {delivered,completed} only). Gate-check-3
+// finding: notifyDriverOnCancellation fires on this SAME /status→cancelled edge and reads tasks/{id}_pickup for
+// the assigned driver to notify them of the cancellation — a real-time delete would RACE it (~50% → driver not
+// notified, no retry there). Cancelled tasks are reclaimed by the periodic retentionSweepTasks instead, which
+// runs long after that notify. delivered/completed edges have NO task reader (verified) → race-free here.
+// Runs alongside clearTrackerMirrorOnDone on the same /status leaf (Firebase allows multiple triggers).
+exports.deleteTasksOnOrderTerminal = onValueWritten(
+  // retry: true + idempotent null-update → a transient failure retries safely (never strands a bloated node).
+  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true },
+  async (event) => {
+    const before = event.data.before.val();
+    const after = event.data.after.val();
+    // ENTERING-terminal edge ONLY — fire once when an order first goes delivered/completed. A terminal→terminal
+    // or live→live write is a no-op. A LIVE order (new/preparing/ready/out_for_delivery/pending_payment/scheduled/
+    // releasing) — and a CANCELLED order — never matches `after` → their tasks are untouched here.
+    if (!entersTerminalEdge(before, after, REALTIME_TERMINAL_STATUSES)) return;
+    const orderId = event.params.orderId;
+    const db = getDatabase();
+    // Idempotent multi-path null-update (both legs); safe to retry. No try/catch — a transient error throws → retry.
+    await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });
+  }
+);
+
+// retentionSweepTasks (RTDB egress Stage 1 — periodic drain + backstop). Reclaims tasks the real-time trigger
+// doesn't: CANCELLED orders (excluded above to avoid the notifyDriverOnCancellation race) + ORPHANS (task whose
+// order no longer exists) + a one-time drain of the accumulated 438. Runs infrequently (6h → 4 scans/day, a
+// rounding error vs the 720+/day that caused the bloat). ⚠️ DRY-RUN by DEFAULT: gated on config/retention/
+// tasks_mode — 'execute' deletes, anything else (incl. absent) logs the count + a sample and deletes NOTHING.
+// Owner: deploy → read the dry-run log (or "Run now" in Cloud Scheduler for an immediate one) → review the count
+// → set config/retention/tasks_mode='execute'. Uses HEAL_TERMINAL_STATUSES (ALL terminal incl. cancelled).
+exports.retentionSweepTasks = onSchedule(
+  { schedule: 'every 6 hours', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    const db = getDatabase();
+    // Read /tasks BEFORE /orders (sequential, NOT Promise.all) as defense-in-depth: a task is written
+    // atomically WITH its order, so any task in this snapshot has its order committed before this read → the
+    // LATER /orders read includes it. (The per-candidate fresh re-read below is the primary, obviously-correct
+    // guard.) A complete /orders read is still required so a live order is never misread as an orphan.
+    const tasks = (await db.ref('tasks').once('value')).val() || {};
+    const orders = (await db.ref('orders').once('value')).val() || {};
+    const mode = (await db.ref('config/retention/tasks_mode').once('value')).val();
+    const toDelete = tasksToDelete(orders, tasks, HEAL_TERMINAL_STATUSES);   // batch CANDIDATES
+    if (mode !== 'execute') {
+      console.log(`retentionSweepTasks: DRY-RUN — would delete ${toDelete.length}/${Object.keys(tasks).length} tasks. sample=${JSON.stringify(toDelete.slice(0, 10))}. Set config/retention/tasks_mode='execute' to delete.`);
+      return;
+    }
+    if (!toDelete.length) { console.log('retentionSweepTasks: execute — nothing to delete'); return; }
+    // REVISE (codex cross-snapshot orphan race): the batch /orders+/tasks reads are NOT a consistent snapshot.
+    // Before deleting each candidate, re-read its order FRESH and delete ONLY if still a target (absent → orphan;
+    // terminal → done); a fresh non-terminal order = a live/just-created order raced by the batch → SKIP. Never
+    // delete a live order's task (the impossible regression). N small single-key reads (candidate count).
+    const updates = {};
+    let confirmed = 0, skipped = 0;
+    for (const taskId of toDelete) {
+      const orderId = (tasks[taskId] && tasks[taskId].order_id) || String(taskId).replace(/_(pickup|delivery)$/, '');
+      const fresh = (await db.ref(`orders/${orderId}`).once('value')).val();
+      if (confirmTaskDelete(fresh, HEAL_TERMINAL_STATUSES)) { updates[`tasks/${taskId}`] = null; confirmed++; }
+      else skipped++;   // fresh live/just-created order (cross-snapshot race) → keep its task
+    }
+    if (confirmed) await db.ref().update(updates);   // batched multi-path null-update of the CONFIRMED deletes
+    console.log(`retentionSweepTasks: execute — deleted ${confirmed}, skipped ${skipped} (raced-live) of ${toDelete.length} candidates (${Object.keys(tasks).length} tasks)`);
   }
 );
 
