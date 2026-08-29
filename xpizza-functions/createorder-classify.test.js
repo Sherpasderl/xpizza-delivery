@@ -56,7 +56,11 @@ const live = (over = {}) => ({ restaurant_id: 'la_musa', payment_method: 'cash',
 }
 
 // ── computeIncomingFingerprint (read-only) ───────────────────────────────────
-const fpDeps = (over = {}) => ({ orderBreakdownCents, orderFingerprint, schedFingerprintExtra: (f) => (f && Number.isFinite(f.scheduled_for)) ? `${f.scheduled_for}|${f.order_type || ''}` : '', db: {}, prepareRedemption: async () => ({ ok: false }), ...over });
+// 1b-1b: the redemption branch of the classifier is a PRODUCTION seam and enforces the hard contract —
+// it requires restaurant-tagged guarded tables. The non-redeem branch never touches prices, so tables
+// are irrelevant there; supplying them uniformly keeps the deps factory simple.
+const LA_MUSA_TABLES = { restaurantId: 'la_musa', menu: {}, extras: {} };
+const fpDeps = (over = {}) => ({ orderBreakdownCents, orderFingerprint, schedFingerprintExtra: (f) => (f && Number.isFinite(f.scheduled_for)) ? `${f.scheduled_for}|${f.order_type || ''}` : '', db: {}, prepareRedemption: async () => ({ ok: false }), tables: LA_MUSA_TABLES, ...over });
 
 (async () => {
   const base = { orderId: 'PZX-1', restaurantId: 'la_musa', total: 500, itemsText: '1x Pad Thai (L500)', items: [], redeem: null, customerUid: null, scheduledForRaw: null, orderType: 'delivery' };

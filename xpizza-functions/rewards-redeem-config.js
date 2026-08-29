@@ -1,6 +1,6 @@
 'use strict';
 
-const { MENU_BY_RESTAURANT } = require('./menu-pricing');
+const { MENU_BY_RESTAURANT, resolvePriceTables } = require('./menu-pricing');
 
 // Rewards Redemption v2 — redemption config (versioned, static module). Pure data + tiny accessors; the money
 // calculator (rewards-redeem.js) and the handlers read ONLY from here. Owner-locked (design-gate approved):
@@ -42,27 +42,31 @@ const LA_MUSA_ACOMP = new Set(['rice_white', 'rice_chinese', 'papas_fritas']);
 
 function isXPizzaEligible(name) { return !!(name && X_PIZZA_REDEEM_ELIGIBLE.has(name)); }
 
-function isLaMusaEligible(id) {
+// 1b-1b: `tables` (guarded catalog) supplies BOTH the key set and the prices — the la_musa menu IS the
+// membership list. Omitted → the in-code table (backward compat for the legacy pure unit tests only;
+// every production seam passes tables and throws without them).
+function isLaMusaEligible(id, tables = null) {
   if (!id || typeof id !== 'string') return false;
   if (LA_MUSA_ACOMP.has(id)) return true;                                                 // acompañamientos (EXTRAS namespace)
   // EXPLICITLY reject alcohol + modifiers BEFORE the MENU lookup — fail-closed, never by mere absence from MENU
   // (so a modifier that ever landed in MENU still can't be redeemed).
   if (id.startsWith('beer_') || id.startsWith('sauce_') || id.startsWith('protein_')) return false;
-  return Object.prototype.hasOwnProperty.call(MENU_BY_RESTAURANT.la_musa || {}, id);      // any non-alcohol MENU dish
+  const { menu } = resolvePriceTables('la_musa', tables);                                 // PIN B asserts the tag
+  return Object.prototype.hasOwnProperty.call(menu || {}, id);                             // any non-alcohol MENU dish
 }
 
 // Is `key` (x_pizza → pizza NAME, la_musa → item id) redeem-eligible for this brand? Server-authoritative.
-function isRedeemEligible(restaurantId, key) {
+function isRedeemEligible(restaurantId, key, tables = null) {
   return restaurantId === 'x_pizza' ? isXPizzaEligible(key)
-    : restaurantId === 'la_musa' ? isLaMusaEligible(key)
+    : restaurantId === 'la_musa' ? isLaMusaEligible(key, tables)
       : false;
 }
 
 // The full eligible key list for a brand (for validation / a server-driven picker if ever needed).
-function eligibleKeys(restaurantId) {
+function eligibleKeys(restaurantId, tables = null) {
   if (restaurantId === 'x_pizza') return Array.from(X_PIZZA_REDEEM_ELIGIBLE);
   if (restaurantId === 'la_musa') {
-    const menu = MENU_BY_RESTAURANT.la_musa || {};
+    const menu = resolvePriceTables('la_musa', tables).menu || {};                          // PIN B asserts the tag
     return Object.keys(menu).filter((id) => !id.startsWith('beer_')).concat(Array.from(LA_MUSA_ACOMP));
   }
   return [];

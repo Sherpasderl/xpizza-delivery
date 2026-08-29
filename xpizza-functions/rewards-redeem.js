@@ -12,7 +12,7 @@
 // Eligibility is server-authoritative (rewards-redeem-config): X. Pizza = the individual allowlist (NY excluded);
 // La Musa = any non-alcohol menu dish + the 3 acompañamientos (modifiers/alcohol rejected). Never throws.
 const crypto = require('crypto');
-const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./menu-pricing');
+const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, resolvePriceTables } = require('./menu-pricing');
 const { REDEMPTION_CONFIG, REDEMPTION_CONFIG_VERSION, REDEEM_POINTS_PER_LEMPIRA, isXPizzaEligible, isLaMusaEligible } = require('./rewards-redeem-config');
 
 const toCents = (lempiras) => Math.round(lempiras * 100);   // menu tables are whole-lempira; ×100 is exact
@@ -31,9 +31,10 @@ const MAX_REDEEM_DISTINCT = 40;
 const MAX_REDEEM_UNITS = 40;
 
 // La Musa free-item price in cents, resolved across menu THEN extras. null if the id has no price in either.
-function laMusaPriceCents(itemId) {
-  const menu = MENU_BY_RESTAURANT.la_musa || {};
-  const extras = EXTRAS_BY_RESTAURANT.la_musa || {};
+function laMusaPriceCents(itemId, tables = null) {
+  const t = resolvePriceTables('la_musa', tables);                       // PIN B asserts the tag
+  const menu = t.menu || {};
+  const extras = t.extraPrices || {};
   let p;
   if (Object.prototype.hasOwnProperty.call(menu, itemId)) p = menu[itemId];
   else if (Object.prototype.hasOwnProperty.call(extras, itemId)) p = extras[itemId];
@@ -47,12 +48,12 @@ function costPtsFor(priceCents) { return Math.round((priceCents / 100) * REDEEM_
 // X. Pizza — the customer's chosen 12" pizza, added free. redeem = { type:'free_pizza_choice', item_id:<name> }.
 // (x_pizza's menu key IS the item name.) The chosen pizza is NOT a paid line; it never enters order.items, so it
 // earns zero punches with no adjustment (design-gate refinement #7).
-function computeXPizza(redeem) {
+function computeXPizza(redeem, tables = null) {
   if (!redeem || redeem.type !== REDEMPTION_CONFIG.x_pizza.reward) return { ok: false, reason: 'bad_request' };   // fail-closed: type MUST match the brand's reward
   const name = redeem && redeem.item_id;
   if (typeof name !== 'string' || !name) return { ok: false, reason: 'bad_request' };
   if (!isXPizzaEligible(name)) return { ok: false, reason: 'ineligible_item' };   // NY / unknown / non-individual
-  const unit = MENU_BY_RESTAURANT.x_pizza[name];
+  const unit = (resolvePriceTables('x_pizza', tables).menu || {})[name];   // PIN B asserts the tag
   const price_cents = toCents(unit);
   if (!(Number.isFinite(price_cents) && price_cents > 0)) return { ok: false, reason: 'ineligible_item' };
   const cfg = REDEMPTION_CONFIG.x_pizza;
@@ -65,7 +66,7 @@ function computeXPizza(redeem) {
 // La Musa — a MULTISET of chosen non-alcohol dishes, each added free; wallet debited Σ(cost_pts × qty).
 // redeem = { type:'points_ala_carte', items:[{ id, qty }, …] }. Duplicates coalesced; ids sorted for a stable
 // fingerprint; each priced + eligibility-checked server-side.
-function computeLaMusa(redeem) {
+function computeLaMusa(redeem, tables = null) {
   if (!redeem || redeem.type !== REDEMPTION_CONFIG.la_musa.reward) return { ok: false, reason: 'bad_request' };   // fail-closed: type MUST match the brand's reward
   const raw = redeem && redeem.items;
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_REDEEM_DISTINCT) return { ok: false, reason: 'bad_request' };
@@ -85,8 +86,8 @@ function computeLaMusa(redeem) {
   const freeItems = [];
   let total_cost = 0;
   for (const id of ids) {
-    if (!isLaMusaEligible(id)) return { ok: false, reason: 'ineligible_item' };   // alcohol / modifier / unknown
-    const price_cents = laMusaPriceCents(id);
+    if (!isLaMusaEligible(id, tables)) return { ok: false, reason: 'ineligible_item' };   // alcohol / modifier / unknown
+    const price_cents = laMusaPriceCents(id, tables);
     if (price_cents === null) return { ok: false, reason: 'ineligible_item' };
     const qty = qtyById.get(id);
     const cost_pts = costPtsFor(price_cents);
@@ -102,14 +103,16 @@ function computeLaMusa(redeem) {
 
 // computeRedemption({ redeem, items, restaurantId }) — `items` is the SERVER-priced cart (must be non-empty;
 // the ≥1-OTHER-PAID-item anti-abuse guard is enforced at intake, not here). Malformed → { ok:false, reason }.
-function computeRedemption({ redeem, items, restaurantId } = {}) {
+// 1b-1b: `tables` are the guarded catalog tables for THIS restaurant; they supply the redemption prices
+// AND the eligible key set. Omitted → the in-code tables (legacy pure tests only — production seams throw).
+function computeRedemption({ redeem, items, restaurantId, tables = null } = {}) {
   try {
     if (!redeem || typeof redeem !== 'object') return { ok: false, reason: 'bad_request' };
     const cfg = REDEMPTION_CONFIG[restaurantId];
     if (!cfg) return { ok: false, reason: 'bad_request' };
     if (!Array.isArray(items) || items.length === 0) return { ok: false, reason: 'bad_request' };
-    if (cfg.reward === 'free_pizza_choice') return computeXPizza(redeem);
-    if (cfg.reward === 'points_ala_carte') return computeLaMusa(redeem);
+    if (cfg.reward === 'free_pizza_choice') return computeXPizza(redeem, tables);
+    if (cfg.reward === 'points_ala_carte') return computeLaMusa(redeem, tables);
     return { ok: false, reason: 'bad_request' };
   } catch (e) {
     console.warn('computeRedemption: unexpected —', e && e.message);

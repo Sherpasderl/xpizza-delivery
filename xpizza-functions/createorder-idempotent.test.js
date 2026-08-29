@@ -17,7 +17,10 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 const D = { isPaymentStatusClosed: isStatusChangeClosedToAutomation };
 const live = (o = {}) => ({ restaurant_id: 'la_musa', payment_method: 'cash', status: 'new', payment_status: 'pending', ...o });
 const cls = (existing, method, matches, fp) => classifyExistingOrder(existing, { paymentMethod: method, restaurantMatches: matches }, fp, D);
-const fpDeps = (o = {}) => ({ orderBreakdownCents, orderFingerprint, schedFingerprintExtra: (f) => (f && Number.isFinite(f.scheduled_for)) ? `${f.scheduled_for}|${f.order_type || ''}` : '', db: {}, prepareRedemption: async () => ({ ok: false }), ...o });
+// 1b-1b: the classifier's redemption branch is a PRODUCTION seam under the hard contract — it requires
+// restaurant-tagged guarded tables (GRILL-FIX #1/#2), so the dedup fingerprint can never price a
+// redemption on a different source than the reserve (that drift is what case 16 below guards).
+const fpDeps = (o = {}) => ({ orderBreakdownCents, orderFingerprint, schedFingerprintExtra: (f) => (f && Number.isFinite(f.scheduled_for)) ? `${f.scheduled_for}|${f.order_type || ''}` : '', db: {}, prepareRedemption: async () => ({ ok: false }), tables: { restaurantId: 'la_musa', menu: {}, extras: {} }, ...o });
 
 (async () => {
   // 1 — same method + content + non-terminal → 200

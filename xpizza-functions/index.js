@@ -556,7 +556,7 @@ createOrderApp.all('*', async (req, res) => {
   const incomingFp = await computeIncomingFingerprint(
     { orderId, restaurantId, total, itemsText: fields.items_text, items: body.items, redeem: body.redeem,
       customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType },
-    { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra: SCHED.fingerprintExtra, db });
+    { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra: SCHED.fingerprintExtra, db, tables: pricingTables });   // 1b-1b GRILL-FIX #1: classifier prices redemption on the SAME source as the reserve
 
   // Idempotency check — a re-submit of an EXISTING order_id returns idempotent-200 ONLY for the SAME LIVE cash
   // order (same restaurant + method + non-terminal + content match); every other state → 409 order_conflict,
@@ -723,6 +723,7 @@ createOrderApp.all('*', async (req, res) => {
     const rd = await resolveRedemptionForOrder(db, {
       redeem: body.redeem, items: body.items, restaurantId, orderId,
       customerUid: customer_uid, itemsText: fields.items_text, totalLempiras: total, schedExtra: '', now: Date.now(),
+      tables: pricingTables,                                                            // 1b-1b: same guarded tables as the order total
     });
     if (!rd.ok) return res.status(rd.status).json({ ...rd.body, order_id: orderId });   // ALL-OR-NOTHING: non-payable, no order
     fields.items_text = rd.itemsText;                                                   // La Musa free-item display line appended
@@ -1023,7 +1024,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   let effTotal = total;
   if (body.redeem != null) {
     const prep = await prepareRedemption(db, { redeem: body.redeem, items: body.items, restaurantId,
-      itemsText: fields.items_text, totalLempiras: total, customerUid: customer_uid });
+      itemsText: fields.items_text, totalLempiras: total, customerUid: customer_uid, tables: pricingTables });   // 1b-1b
     if (!prep.ok) return res.status(prep.status).json({ ...prep.body, order_id: orderId });   // non-payable, nothing written, NO reserve yet
     redemptionCanonical = prep.canonical;
     redemptionPriced = prep.priced;
@@ -5459,7 +5460,10 @@ exports.quoteRedemption = onRequest(
           }
         } catch (_) { customerUid = null; }   // malformed/expired/foreign/tomb-read-failure → guest
       }
-      const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId, customerUid });
+      // 1b-1b: quoteRedemption is NEW to the resolver — the quote must price on the same source as the
+      // order it previews, or a customer sees one number and is charged from another.
+      const quoteTables = await resolvePricingTables(restaurantId);
+      const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId, customerUid, tables: quoteTables });
       if (!q.ok) return res.status(q.status).json({ ok: false, ...q.body });   // same typed errors as intake (+ bad_cart)
       return res.status(200).json(q);   // { ok:true, discount_cents, total_cents, subtotal_cents, tax_cents, free_item:{name} }
     } catch (e) {

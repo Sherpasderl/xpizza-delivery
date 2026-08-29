@@ -72,7 +72,20 @@ function withDeadline(promise, deadlineMs) {
 //   alarm   — (kind, detail) => ... wired to RTDB paymentAlert; never allowed to break pricing
 // Returns tables TAGGED with the restaurant (PIN B) so a caller can never price one brand's items
 // against the other's table (x_pizza keys by NAME, la_musa by ID — disjoint namespaces).
-function createPricingResolver({ reader, codeFor, alarm, deadlineMs = CATALOG_READ_DEADLINE_MS }) {
+// Heartbeat: a durable POSITIVE signal that the catalog actually served. Without it, "zero alarms" is
+// ambiguous — it reads the same whether the catalog served every order or the read never ran at all.
+// SAMPLED per restaurant (never per order): at most one line per HEARTBEAT_MS, so a busy hour emits a
+// handful of lines, not thousands.
+const HEARTBEAT_MS = 60000;
+const _lastHeartbeat = new Map();   // restaurantId -> ms
+function heartbeat(restaurantId, now) {
+  const last = _lastHeartbeat.get(restaurantId) || 0;
+  if (now - last < HEARTBEAT_MS) return;
+  _lastHeartbeat.set(restaurantId, now);
+  console.log('pricing_catalog_hit', JSON.stringify({ restaurantId }));
+}
+
+function createPricingResolver({ reader, codeFor, alarm, deadlineMs = CATALOG_READ_DEADLINE_MS, now = Date.now }) {
   const fire = (kind, detail) => {                       // an alarm must never break pricing
     try { const r = alarm && alarm(kind, detail); if (r && typeof r.catch === 'function') r.catch(() => {}); }
     catch (_) { /* swallowed: alarming is best-effort, pricing is not */ }
@@ -95,7 +108,10 @@ function createPricingResolver({ reader, codeFor, alarm, deadlineMs = CATALOG_RE
       return fallback;                                    // fail-safe: the live code table still prices the order, fast
     }
     try {
-      if (tablesEqual(cat, code)) return { restaurantId, menu: cat.menu, extras: cat.extras };   // ← the cutover
+      if (tablesEqual(cat, code)) {
+        heartbeat(restaurantId, now());                                                  // sampled "catalog served" signal
+        return { restaurantId, menu: cat.menu, extras: cat.extras };                     // ← the cutover
+      }
       fire('catalog_parity_mismatch', { restaurantId, diff: diffSummary(cat, code) });
     } catch (e) {
       fire('catalog_parity_mismatch', { restaurantId, error: (e && e.message) ? String(e.message).slice(0, 200) : 'compare failed' });
@@ -104,4 +120,15 @@ function createPricingResolver({ reader, codeFor, alarm, deadlineMs = CATALOG_RE
   }
   return { getPricingTables };
 }
-module.exports = { createPricingResolver, tablesEqual };
+// GRILL-FIX #2 — HARD CONTRACT at production seams. A missed thread must be a LOUD failure, never a
+// silent fall back to the code tables: that would reintroduce exactly the split-brain 1b-1b exists to
+// eliminate (one half of a redemption priced on catalog, the other on code). Optional `tables` remains
+// optional ONLY in the pure calculators, for the legacy unit tests that predate the cutover.
+function requireTables(seam, restaurantId, tables) {
+  if (tables == null) throw new Error(`pricing_tables_required: ${seam} (restaurantId=${String(restaurantId)})`);
+  if (tables.restaurantId !== restaurantId) {
+    throw new Error(`pricing_tables_restaurant_mismatch: ${seam} tables=${String(tables.restaurantId)} expected=${String(restaurantId)}`);
+  }
+  return tables;
+}
+module.exports = { createPricingResolver, tablesEqual, requireTables };

@@ -16,14 +16,18 @@
 const { orderBreakdownCents } = require('./order-money');
 const { pricedLineItems } = require('./factura/pricing');
 const { reconcileLineBases } = require('./factura/money');
-const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./menu-pricing');
+const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, resolvePriceTables } = require('./menu-pricing');
 
-function applyRedemptionToPricing({ items, restaurantId, redemption, totalLempiras }) {
+// 1b-1b FISCAL (owner-approved): this produces the REDEEMED X. Pizza factura value (factura_items +
+// desc_rebaja_cents). Threading `tables` moves only the SOURCE — the value is byte-identical while the
+// parity guard holds. The NON-redeem factura path (index.js pricedLineItems / MENU_PRICES) stays on code
+// until 1b-2 and is deliberately untouched here.
+function applyRedemptionToPricing({ items, restaurantId, redemption, totalLempiras, tables = null }) {
   try {
     if (!redemption || redemption.ok !== true) return { ok: false, error: 'no_redemption' };
     if (redemption.model !== 'add_free') return { ok: false, error: 'model_restaurant_mismatch' };
     if (!Number.isFinite(Number(totalLempiras))) return { ok: false, error: 'bad_total' };
-    if (restaurantId === 'x_pizza') return applyXPizza(items, redemption, Number(totalLempiras));
+    if (restaurantId === 'x_pizza') return applyXPizza(items, redemption, Number(totalLempiras), tables);
     if (restaurantId === 'la_musa') return applyLaMusa(redemption, Number(totalLempiras));
     return { ok: false, error: 'model_restaurant_mismatch' };
   } catch (e) { console.warn('applyRedemptionToPricing:', e && e.message); return { ok: false, error: 'error' }; }
@@ -35,8 +39,9 @@ function freeLinesFrom(redemption) {
   return fis.map((fi) => ({ item_id: fi.item_id, qty: Number(fi.qty) || 1, price_cents: 0, added: true }));
 }
 
-function applyXPizza(items, redemption, totalLempiras) {
-  const menu = MENU_BY_RESTAURANT.x_pizza, extra = EXTRAS_BY_RESTAURANT.x_pizza;
+function applyXPizza(items, redemption, totalLempiras, tables = null) {
+  const t = resolvePriceTables('x_pizza', tables);                       // PIN B asserts the tag
+  const menu = t.menu, extra = t.extraPrices;
   const priced = pricedLineItems(items, menu, extra);                                  // the PAID cart lines (mirrors computeServerTotal)
   if (priced.error) return { ok: false, error: priced.error };
   const free_lines = freeLinesFrom(redemption);

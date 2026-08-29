@@ -14,6 +14,7 @@
 //   freeItems    — [{ item_id, qty, price_cents, name, cost_pts? }] for the summary/quote render
 //   redemptionFp — canonical-set hash, folded into the order fingerprint (design-gate refinement #2)
 const { computeRedemption, redemptionFingerprint } = require('./rewards-redeem');
+const { requireTables } = require('./catalog/pricing-tables');   // 1b-1b GRILL-FIX #2 — the hard contract
 const { applyRedemptionToPricing } = require('./rewards-redeem-pricing');
 const { reserveRedemption } = require('./rewards-reserve');
 const { REDEMPTION_CONFIG_VERSION, redemptionEnabled } = require('./rewards-redeem-config');
@@ -42,7 +43,8 @@ function nameMapFrom(redeem) {
   return m;
 }
 
-async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, totalLempiras, customerUid }) {
+async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, totalLempiras, customerUid, tables }) {
+  requireTables('prepareRedemption', restaurantId, tables);   // GRILL-FIX #2: hard contract — no silent code fallback
   if (!customerUid) return { ok: false, status: 401, body: { error: 'login_required', detail: 'redemption requires a verified account' } };
   if (!(await redemptionEnabled(db, customerUid))) return { ok: false, status: 409, body: { error: 'rewards_disabled' } };
 
@@ -50,11 +52,11 @@ async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, t
   // item of real value (the free item can never be the whole order). Computed from the server-priced submitted
   // cart only — never client totals, never the reward's free lines. An empty paid cart → needs_paid_item.
   if (!Array.isArray(items) || items.length === 0) return { ok: false, status: 409, body: { error: 'needs_paid_item' } };
-  const paid = computeServerTotal(items, restaurantId);
+  const paid = computeServerTotal(items, restaurantId, tables);
   if (paid.error) return { ok: false, status: 400, body: { error: 'bad_cart' } };                        // malformed / tampered cart
   if (!(Number(paid.total) > 0)) return { ok: false, status: 409, body: { error: 'needs_paid_item' } };
 
-  const redemption = computeRedemption({ redeem, items, restaurantId });                                 // server-computed reward (never trusts client price/cost/id)
+  const redemption = computeRedemption({ redeem, items, restaurantId, tables });                                 // server-computed reward (never trusts client price/cost/id)
   if (!redemption.ok) return { ok: false, status: 409, body: { error: 'redemption_invalid', reason: redemption.reason } };
 
   // Enrich every free item with a sanitized display name (for items_text / summary / quote).
@@ -77,7 +79,7 @@ async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, t
   const outText = `${itemsText}${appends}`;
   const freeName = (freeItems[0] && freeItems[0].name) || null;
 
-  const priced = applyRedemptionToPricing({ items, restaurantId, redemption, totalLempiras });            // fail-closed reconciling lines (total unchanged)
+  const priced = applyRedemptionToPricing({ items, restaurantId, redemption, totalLempiras, tables });            // fail-closed reconciling lines (total unchanged)
   if (!priced.ok) return { ok: false, status: 409, body: { error: 'redemption_pricing_failed' } };
 
   return { ok: true, redemption, canonical: redemption.canonical, priced, itemsText: outText, freeName, freeItems,
@@ -85,8 +87,9 @@ async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, t
 }
 
 // Combined intake for the CASH path (createOrder): prepare + reserve (bound to the order fingerprint + set hash).
-async function resolveRedemptionForOrder(db, { redeem, items, restaurantId, orderId, customerUid, itemsText, totalLempiras, schedExtra, now }) {
-  const prep = await prepareRedemption(db, { redeem, items, restaurantId, itemsText, totalLempiras, customerUid });
+async function resolveRedemptionForOrder(db, { redeem, items, restaurantId, orderId, customerUid, itemsText, totalLempiras, schedExtra, now, tables }) {
+  requireTables('resolveRedemptionForOrder', restaurantId, tables);   // GRILL-FIX #2
+  const prep = await prepareRedemption(db, { redeem, items, restaurantId, itemsText, totalLempiras, customerUid, tables });
   if (!prep.ok) return prep;
   const fp = orderFingerprint(orderId, prep.priced.total_cents, prep.itemsText, fingerprintExtra(schedExtra, prep.redemptionFp));   // bind hold to THIS order + redeemed set
   const rr = await reserveRedemption(db, { uid: customerUid, rid: restaurantId, orderId, cost: prep.redemption.cost,
@@ -100,11 +103,12 @@ async function resolveRedemptionForOrder(db, { redeem, items, restaurantId, orde
 // quoteRedemptionCore (read-only preview for the checkout review) — SAME flow as intake (uid-first gate → priced
 // cart → compute / 86 / price / paid-item guard) + a READ-ONLY available projection (balance − reserved ≥ Σcost).
 // NO reserve, NO write, NO side effects. Returns the v2 shape: free_items[] + total_cost + remaining + savings.
-async function quoteRedemptionCore(db, { redeem, items, restaurantId, customerUid }) {
+async function quoteRedemptionCore(db, { redeem, items, restaurantId, customerUid, tables }) {
+  requireTables('quoteRedemptionCore', restaurantId, tables);   // GRILL-FIX #2
   if (!customerUid) return { ok: false, status: 401, body: { error: 'login_required' } };
-  const { total, error: totalError } = computeServerTotal(items, restaurantId);
+  const { total, error: totalError } = computeServerTotal(items, restaurantId, tables);   // quote↔order parity: same source
   if (totalError) return { ok: false, status: 400, body: { error: 'bad_cart' } };
-  const prep = await prepareRedemption(db, { redeem, items, restaurantId, itemsText: '', totalLempiras: total, customerUid });
+  const prep = await prepareRedemption(db, { redeem, items, restaurantId, itemsText: '', totalLempiras: total, customerUid, tables });
   if (!prep.ok) return prep;
   const node = (await db.ref(`user_rewards/${customerUid}/${restaurantId}`).get()).val() || {};
   const available = (Number(node.balance) || 0) - (Number(node.reserved) || 0);
