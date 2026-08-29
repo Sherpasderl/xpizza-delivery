@@ -177,6 +177,51 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
     ok('quote↔order parity: both quote computeServerTotal calls and the quote seam price from the guarded tables');
   }
 
-    finished = true;
+    // ── 9. THE NULL-DROP (advisor + codex REVISE): the fail-safe must never hand a seam `null`. ─────
+  //    The order-total path reads null as "use code" and proceeds; the redemption hard contract THROWS
+  //    on null — so the SAME catastrophic failure that the order total shrugs off would DROP a redemption
+  //    order. The fix is on the fail-safe side (return a code-tagged object), never by weakening the
+  //    contract: a genuine missed thread must still throw.
+  {
+    const { computeIncomingFingerprint } = require('./createorder-classify');
+    const { orderBreakdownCents } = require('./order-money');
+    const orderFingerprint = (id, cents, text, extra) => `${id}|${cents}|${text}|${extra || ''}`;
+    // Exactly what the fixed resolvePricingTables returns on a catastrophic resolver failure.
+    const codeTagged = { restaurantId: 'la_musa', menu: MENU_BY_RESTAURANT.la_musa, extras: EXTRAS_BY_RESTAURANT.la_musa };
+
+    assert.doesNotThrow(() => requireTables('prepareRedemption', 'la_musa', codeTagged),
+      'a code-tagged catastrophic fallback must SATISFY the contract (order proceeds on code)');
+    ok('null-drop: the code-tagged fail-safe passes the hard contract (redemption prices on code, order proceeds)');
+
+    const ctx = { orderId: 'PZX-ND', restaurantId: 'la_musa', total: 500, itemsText: 'raw', items: [],
+                  redeem: { r: 1 }, customerUid: 'u1', scheduledForRaw: null, orderType: 'delivery' };
+    const deps = (tables) => ({ orderBreakdownCents, orderFingerprint, schedFingerprintExtra: () => '', db: {}, tables,
+      prepareRedemption: async () => ({ ok: true, priced: { total_cents: 30000 }, itemsText: 'x', redemptionFp: 'rf' }) });
+    const fp = await computeIncomingFingerprint(ctx, deps(codeTagged));
+    assert.ok(fp && typeof fp === 'string', 'the CASH redemption classifier must NOT throw under the catastrophic fallback');
+    ok('null-drop: a cash redemption fingerprint computes under the catastrophic fallback (no drop)');
+
+    // The classifier's requireTables runs BEFORE its local try, so a null here escapes the handler entirely
+    // — this is the exact propagation that made the drop possible. The contract must still catch it.
+    await assert.rejects(() => computeIncomingFingerprint(ctx, deps(null)), /pricing_tables_required/,
+      'null at a seam STILL throws — the contract is not weakened');
+    await assert.rejects(() => computeIncomingFingerprint(ctx, deps(undefined)), /pricing_tables_required/,
+      'a genuine MISSED THREAD (undefined) still throws loudly');
+    ok('null-drop: the contract stays strict — a missed thread at the classifier still throws (not weakened)');
+  }
+  {
+    // Structural: resolvePricingTables must never return null, and its fallback must be shaped exactly
+    // like the resolver's own codeFor() code-serve so the two code-serves are indistinguishable downstream.
+    const SRC = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
+    const fn = SRC.slice(SRC.indexOf('async function resolvePricingTables'), SRC.indexOf('async function resolvePricingTables') + 1400);
+    assert.ok(!/return null/.test(fn), 'resolvePricingTables must NEVER return null');
+    assert.ok(/return \{ restaurantId, menu: MENU_BY_RESTAURANT\[restaurantId\], extras: EXTRAS_BY_RESTAURANT\[restaurantId\] \}/.test(fn),
+      'the catastrophic fallback must be code-TAGGED and shaped exactly like codeFor(rid)');
+    assert.ok(/codeFor: \(rid\) => \(\{ menu: MENU_BY_RESTAURANT\[rid\], extras: EXTRAS_BY_RESTAURANT\[rid\] \}\)/.test(SRC),
+      'and codeFor must still have that exact shape (indistinguishable code-serves)');
+    ok('null-drop (structural): resolvePricingTables never returns null; its fallback matches codeFor exactly');
+  }
+
+  finished = true;
     console.log(`rewards-catalog-cutover: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

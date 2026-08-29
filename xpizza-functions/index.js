@@ -283,10 +283,27 @@ function pricingResolver() {
   }
   return _pricingResolver;
 }
-// Never throws (the resolver is fail-safe); returns restaurant-TAGGED { restaurantId, menu, extras }.
+// Never throws AND never returns null — always a restaurant-TAGGED { restaurantId, menu, extras }.
+//
+// The null return this used to have was a latent ORDER DROP. The order-total path reads null as "use the
+// code tables" and proceeds, but the redemption hard contract (requireTables) THROWS on null — so the very
+// same catastrophic failure that the order total shrugs off would drop a REDEMPTION order (the cash path
+// throws inside computeIncomingFingerprint before its own try, so it escapes the handler entirely). A
+// fail-safe that returns null turns the contract into the drop the contract exists to prevent.
+//
+// The fallback is shaped EXACTLY like the resolver's own codeFor() code-serve, so a catastrophic-code-serve
+// and an ordinary parity-fallback code-serve are indistinguishable downstream. requireTables stays strict:
+// this removes the only LEGITIMATE source of null at a seam, so any remaining null/undefined there is a
+// genuine missed thread — precisely what the contract should catch, loudly.
 async function resolvePricingTables(restaurantId) {
   try { return await pricingResolver().getPricingTables(restaurantId); }
-  catch (e) { console.error('resolvePricingTables: unexpected', e && e.message); return null; }   // null → callers use the code default
+  catch (e) {
+    console.error('resolvePricingTables: unexpected', e && e.message);
+    // Distinct from the resolver's own catalog_read_* alarms: this is a resolver-CONSTRUCTION failure
+    // (e.g. Firestore init), not a catalog read. Best-effort — alarming must never break pricing.
+    try { paymentAlert(getDatabase(), 'pricing_resolver_failed', { restaurantId, error: String(e && e.message).slice(0, 200) }); } catch (_) {}
+    return { restaurantId, menu: MENU_BY_RESTAURANT[restaurantId], extras: EXTRAS_BY_RESTAURANT[restaurantId] };   // code-tagged → contract passes → order PROCEEDS on code
+  }
 }
 
 // Reward-card display fields for order_tracking — earn_preview (what this order earns + welcome/goal) +
