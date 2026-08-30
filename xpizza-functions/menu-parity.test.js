@@ -55,7 +55,7 @@ function assertExactParity(label, form, server, expectedCount) {
 const formMenu = parseEntries(sliceArray(FORM, 'MENU'));
 const formExtras = parseEntries(sliceArray(FORM, 'EXTRAS'));
 
-assertExactParity('MENU', formMenu, MENU_BY_RESTAURANT.la_musa, 43); ok('form MENU (43) === server la_musa menu (exact id-set + prices)');
+assertExactParity('MENU', formMenu, MENU_BY_RESTAURANT.la_musa, 44); ok('form MENU (44) === server la_musa menu (exact id-set + prices)');
 assertExactParity('EXTRAS', formExtras, EXTRAS_BY_RESTAURANT.la_musa, 14); ok('form EXTRAS (14) === server la_musa extras (exact id-set + prices)');
 
 // ── X. Pizza 3-source parity (NAME-keyed) — closes the "no automated form↔price guard" gap that the NY

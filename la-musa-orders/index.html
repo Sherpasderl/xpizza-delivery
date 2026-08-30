@@ -1715,6 +1715,7 @@ const MENU = [
   { id:"rice_02", cat:"rice", name:"Mongolian Beef", price:456, desc:"Res al wok, hoisin, jengibre, cebollín, arroz", tags:[], color:"#A8814E", emoji:"🍚" },
   { id:"rice_03", cat:"rice", name:"Chicken Fried Rice", price:448, desc:"Arroz jazmín al wok, huevo, vegetales, salsa de ostras", tags:[], color:"#A8814E", emoji:"🍚" },
   { id:"rice_04", cat:"rice", name:"Broccoli Chicken", price:392, desc:"lascas de pollo, brócoli salteado, salsa de ostras preparada", tags:[], color:"#A8814E", emoji:"🍚" },
+  { id:"rice_05", cat:"rice", name:"Lap Cheong", price:292, desc:"longaniza china, arroz blanco, arvejas chinas salteadas", tags:[], color:"#A8814E", emoji:"🍚" },
   { id:"soup_01", cat:"soups_salads", name:"Cantonese Noodle Soup", price:255, desc:"Caldo de huesos, fideos de huevo, char siu, bok choy", tags:[], color:"#2D5447", emoji:"🥣" },
   { id:"soup_02", cat:"soups_salads", name:"Wonton Soup", price:288, desc:"Wonton de cerdo y camarón, caldo de la casa, jengibre, cebollín", tags:[], color:"#2D5447", emoji:"🥣" },
   { id:"soup_03", cat:"soups_salads", name:"Sunomono Salad", price:192, desc:"Pepino japonés, wakame, sésamo, vinagre de arroz", tags:[], color:"#2D5447", emoji:"🥣" },
@@ -1952,7 +1953,7 @@ function extrasCatsForItem(item) {
 // LA_MUSA_DISH_PHOTOS — items that have a real photo on disk.
 // Rendered conditionally in the card and modal; missing items
 // fall back to the emoji+color treatment.
-const HAS_PHOTO = new Set(["crudo_01", "crudo_02", "crudo_03", "dimsum_01", "dimsum_02", "dimsum_03", "dimsum_04", "dimsum_05", "noodle_01", "noodle_02", "noodle_03", "rice_01", "rice_02", "rice_03", "rice_04", "soup_01", "soup_03", "special_01", "special_02", "special_04", "special_05", "starter_01", "starter_02", "starter_03", "starter_04", "starter_05", "starter_06"]);
+const HAS_PHOTO = new Set(["crudo_01", "crudo_02", "crudo_03", "dimsum_01", "dimsum_02", "dimsum_03", "dimsum_04", "dimsum_05", "noodle_01", "noodle_02", "noodle_03", "rice_01", "rice_02", "rice_03", "rice_04", "rice_05", "soup_01", "soup_03", "special_01", "special_02", "special_04", "special_05", "starter_01", "starter_02", "starter_03", "starter_04", "starter_05", "starter_06"]);
 function itemHasExtras(item) {
   return extrasCatsForItem(item).length > 0;
 }

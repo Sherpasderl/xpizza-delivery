@@ -57,16 +57,16 @@ const LA_MUSA_MENU_EXPECTED = {
   special_01: 588, special_02: 478, special_04: 624, special_05: 384,
   crudo_01: 452, crudo_02: 346, crudo_03: 337,
   noodle_01: 414, noodle_01_sin: 307, noodle_01_pollo: 342, noodle_01_camaron: 414, noodle_02: 492, noodle_03: 340,
-  rice_01: 270, rice_02: 456, rice_03: 448, rice_04: 392,
+  rice_01: 270, rice_02: 456, rice_03: 448, rice_04: 392, rice_05: 292,
   soup_01: 255, soup_02: 288, soup_03: 192,
   beer_01: 102, beer_02: 102, beer_03: 102, beer_04: 98, beer_05: 102, beer_06: 102, beer_07: 81, beer_08: 81,
   soft_01: 40, soft_02: 40, soft_03: 40, soft_04: 40,
 };
-assert.equal(Object.keys(MENU_BY_RESTAURANT.la_musa).length, 43); ok('la_musa has exactly 43 items');
+assert.equal(Object.keys(MENU_BY_RESTAURANT.la_musa).length, 44); ok('la_musa has exactly 44 items');
 for (const [id, price] of Object.entries(LA_MUSA_MENU_EXPECTED)) {
   assert.deepStrictEqual(computeServerTotal([{ id, qty: 1 }], 'la_musa'), { total: price, error: null });
 }
-ok('all 43 la_musa ids price exactly');
+ok('all 44 la_musa ids price exactly');
 const fullCart = Object.keys(LA_MUSA_MENU_EXPECTED).map((id) => ({ id, qty: 1 }));
 const expectedSum = Object.values(LA_MUSA_MENU_EXPECTED).reduce((a, b) => a + b, 0);
 assert.deepStrictEqual(computeServerTotal(fullCart, 'la_musa'), { total: expectedSum, error: null }); ok(`la_musa full-menu cart sums to L${expectedSum}`);

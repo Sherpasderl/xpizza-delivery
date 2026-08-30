@@ -95,6 +95,21 @@
     "category": "noodles"
   },
   {
+    "key": "noodle_01_sin",
+    "label": "Pad Thai - Sin Proteína",
+    "category": "noodles"
+  },
+  {
+    "key": "noodle_01_pollo",
+    "label": "Pad Thai - Pollo",
+    "category": "noodles"
+  },
+  {
+    "key": "noodle_01_camaron",
+    "label": "Pad Thai - Camarones",
+    "category": "noodles"
+  },
+  {
     "key": "noodle_02",
     "label": "Broccoli Beef",
     "category": "noodles"
@@ -122,6 +137,11 @@
   {
     "key": "rice_04",
     "label": "Broccoli Chicken",
+    "category": "rice"
+  },
+  {
+    "key": "rice_05",
+    "label": "Lap Cheong",
     "category": "rice"
   },
   {

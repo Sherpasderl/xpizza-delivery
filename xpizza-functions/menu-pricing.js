@@ -71,7 +71,7 @@ const LA_MUSA_MENU = {
   noodle_01_camaron: 414,    // Pad Thai - Camarones (+107)
   noodle_02: 492, noodle_03: 340,
   // rice
-  rice_01: 270, rice_02: 456, rice_03: 448, rice_04: 392,
+  rice_01: 270, rice_02: 456, rice_03: 448, rice_04: 392, rice_05: 292,
   // soups_salads
   soup_01: 255, soup_02: 288, soup_03: 192,
   // bebidas — cervezas (alcohol)
