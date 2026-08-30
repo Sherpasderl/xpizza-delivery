@@ -1,10 +1,5 @@
 [
   {
-    "key": "Sopressatta Chili Honey",
-    "label": "Sopressatta Chili Honey",
-    "category": "individual"
-  },
-  {
     "key": "Carnivora",
     "label": "Carnivora",
     "category": "individual"
@@ -77,6 +72,11 @@
   {
     "key": "Ham",
     "label": "Ham",
+    "category": "individual"
+  },
+  {
+    "key": "Sopressatta Chili Honey",
+    "label": "Sopressatta Chili Honey",
     "category": "individual"
   },
   {

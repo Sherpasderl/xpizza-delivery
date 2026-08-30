@@ -23,7 +23,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const MENUS_DIR = join(__dirname, '..', 'menus');
 
 // Expected item counts (snapshot) — pins the manifest size so an unintended menu change shows here.
-const EXPECTED_COUNT = { x_pizza: 23, la_musa: 44 };
+const EXPECTED_COUNT = { x_pizza: 24, la_musa: 44 };
 const RTDB_FORBIDDEN = /[.#$[\]/]/; // chars RTDB rejects in a key path segment
 
 let n = 0;
