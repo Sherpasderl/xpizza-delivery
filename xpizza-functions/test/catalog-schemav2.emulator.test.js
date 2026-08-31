@@ -90,6 +90,25 @@ const R = (over = {}) => ({
     await assert.rejects(() => getRestaurantMenu(db, 'noorder_shop'), /item_order references missing item GHOST/);
     ok('trust boundary: a missing or inconsistent menu_structure throws (no silently dropped/reordered dish)');
   }
+  // (5) BIJECTION — item_order must cover each record EXACTLY once. Existence + equal-length alone are
+  //     fooled by a duplicate: records [A,B] with item_order [A,A] passes both checks (both exist,
+  //     2 === 2) and returns [A,A], silently DROPPING B. A partial menu is precisely what this reader
+  //     promises it cannot return, so uniqueness is the third load-bearing check.
+  {
+    const rref = db.collection('restaurants').doc('dup_shop');
+    await rref.collection('menu_items').doc('d1').set({ key: 'A', price: 1, display: { id: 'A' } });
+    await rref.collection('menu_items').doc('d2').set({ key: 'B', price: 2, display: { id: 'B' } });
+    await rref.set({ name: 'DUP' });
+    await rref.collection('meta').doc('menu_structure').set({ schema_version: 2, item_order: ['A', 'A'] });
+    await assert.rejects(() => getRestaurantMenu(db, 'dup_shop'), /item_order has duplicate keys/,
+      'a duplicated item_order must THROW, not return [A,A] and silently drop B');
+    // and the honest ordering still works once the duplicate is removed
+    await rref.collection('meta').doc('menu_structure').set({ schema_version: 2, item_order: ['B', 'A'] });
+    const got = await getRestaurantMenu(db, 'dup_shop');
+    assert.deepStrictEqual(got.items.map((r) => r.key), ['B', 'A'], 'a valid permutation is still honoured');
+    ok('bijection: a duplicated item_order throws (no silent partial menu); a valid permutation is honoured');
+  }
+
   console.log(`catalog-schemav2(emulator): OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('SCHEMA-V2 FAILED:', e && e.message); process.exit(1); });

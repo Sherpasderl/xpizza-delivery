@@ -119,4 +119,57 @@ ok('PIN 1: adding the schema-v2 payload leaves doc id / key / price byte-identic
   }
   ok('additive guardrail: the pricing reader projects only {key, price}; neither form reads the catalog yet');
 }
+// ── 7. LOSSLESSNESS IS MUTATION-PROVEN, not merely deep-equality-implied ───────────────────────
+//    The round-trip above WOULD catch a dropped field, but "would" is not a test. These assert the
+//    comparison actually FAILS when a display field goes missing — so losslessness is falsifiable.
+for (const rid of ['x_pizza', 'la_musa']) {
+  const { items, structure } = buildCatalogV2(rid);
+  const formDishes = readLiteral(formSource(rid), 'MENU');
+  for (const field of ['desc', 'name', 'cat', 'emoji', 'color']) {
+    const lossy = items.map((i, idx) => {
+      if (idx !== 0) return i;
+      const { [field]: _dropped, ...rest } = i.display;
+      return { ...i, display: rest };
+    });
+    assert.throws(() => assert.deepStrictEqual(rebuildFormMenu(rid, lossy, structure).dishes, formDishes),
+      `${rid}: dropping display.${field} MUST fail the round-trip`);
+  }
+  // and a changed value, not just a missing key
+  const altered = items.map((i, idx) => (idx === 0 ? { ...i, display: { ...i.display, desc: 'CHANGED' } } : i));
+  assert.throws(() => assert.deepStrictEqual(rebuildFormMenu(rid, altered, structure).dishes, formDishes),
+    `${rid}: altering a display value MUST fail the round-trip`);
+  ok(`mutation-proven ${rid}: dropping any of 5 display fields — or altering one — fails the round-trip`);
+}
+{
+  // Structure loss must fail too: a dropped la_musa subcat / variant / photo flag.
+  const { items, structure } = buildCatalogV2('la_musa');
+  const src = formSource('la_musa');
+  const noVariants = { ...structure, variant_items: {} };
+  assert.throws(() => assert.deepStrictEqual(rebuildFormMenu('la_musa', items, noVariants).variant_items, readLiteral(src, 'VARIANT_ITEMS', '{', '}')),
+    'dropping VARIANT_ITEMS must fail');
+  const noSubcats = { ...structure, categories: structure.categories.map((c) => ({ id: c.id, name: c.name })) };
+  assert.throws(() => assert.deepStrictEqual(rebuildFormMenu('la_musa', items, noSubcats).categories, readLiteral(src, 'CATEGORIES')),
+    'dropping the subcats/layout must fail');
+  ok('mutation-proven: dropping the variant map or the category subcats/layout fails the round-trip');
+}
+
+// ── 8. The literal scanner is string- and comment-aware (SHOULD-FIX 2 hardening) ────────────────
+{
+  const { readLiteral: rl, readSetLiteral: rsl } = require('./catalog/form-menu-source');
+  // A bracket inside a description, and one inside a comment — a raw-character counter mis-slices both.
+  const tricky = `const MENU = [\n  // a comment with a ] bracket and a } brace\n  { id:1, name:'Pizza [special]', desc:"con salsa } picante", price:100 },\n  { id:2, name:'Otra', desc:'fin', price:200 }\n];\n`;
+  const parsed = rl(tricky, 'MENU');
+  assert.strictEqual(parsed.length, 2, 'both dishes must survive a bracket in a string and in a comment');
+  assert.strictEqual(parsed[0].name, 'Pizza [special]');
+  assert.strictEqual(parsed[0].desc, 'con salsa } picante');
+  const set = rsl(`const HAS_PHOTO = new Set(["a]b", "c"]);\n`, 'HAS_PHOTO');
+  assert.deepStrictEqual(set, ['a]b', 'c'], 'a bracket inside a Set entry must not truncate the slice');
+  ok('scanner: brackets inside strings and comments no longer mis-slice (menu copy is free prose)');
+  // And the real forms still slice cleanly (the guard the relay asked for).
+  for (const rid of ['x_pizza', 'la_musa']) {
+    assert.ok(readLiteral(formSource(rid), 'MENU').length > 0, `${rid} MENU slices cleanly`);
+  }
+  ok('scanner: both live forms still slice cleanly');
+}
+
 console.log(`catalog-schemav2: OK (${n})`);

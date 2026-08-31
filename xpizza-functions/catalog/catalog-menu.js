@@ -45,9 +45,16 @@ async function getRestaurantMenu(db, restaurantId) {
     return rec;
   });
 
-  // item_order is the regeneration contract: every ordered key must exist, and every stored item must
-  // be ordered. Either gap would silently drop or reorder a dish in the generated bundle.
+  // item_order is the regeneration contract, and it must be a genuine BIJECTION with the records.
+  // Three checks, and all three are load-bearing — any two of them can be satisfied while the menu is
+  // still wrong. Existence alone permits duplicates; existence + length permits [A,A] over records
+  // [A,B], which passes (both exist, 2 === 2) and silently DROPS B — a partial menu, exactly what this
+  // reader promises it cannot return. Uniqueness closes it: unique + all-exist + equal-length together
+  // prove every stored item is emitted exactly once, in a defined order.
   const byKey = new Map(records.map((r) => [r.key, r]));
+  if (new Set(structure.item_order).size !== structure.item_order.length) {
+    throw new Error(`menu_structure_bad: ${restaurantId} — item_order has duplicate keys`);
+  }
   for (const k of structure.item_order) {
     if (!byKey.has(k)) throw new Error(`menu_structure_bad: ${restaurantId} — item_order references missing item ${k}`);
   }

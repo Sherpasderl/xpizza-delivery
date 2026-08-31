@@ -29,28 +29,46 @@ const FORM_PATH = {
   la_musa: ['..', '..', 'la-musa-orders', 'index.html'],
 };
 
-// Slice a balanced `const NAME = <open>…<close>` literal out of the form source.
+// Scan a balanced <open>…<close> region starting at `begin`, counting delimiters ONLY in code
+// position: string bodies (single, double, template) and comments are skipped.
+//
+// A naive raw-character count works on today's forms but would mis-slice the moment a description or
+// a comment contained a bracket — and menu copy is free Spanish prose, while the arrays already carry
+// `// ── Individual ──`-style comments. The seed re-runs this on EVERY re-seed (it is not a one-time
+// bootstrap), so a silent mis-slice is worth designing out rather than documenting around. The
+// round-trip parity stays the backstop: a bad slice fails loudly, never seeds silently.
+function scanBalanced(src, begin, open, close, label) {
+  let depth = 0;
+  for (let i = begin; i < src.length; i++) {
+    const c = src[i];
+    if (c === '"' || c === "'" || c === '`') {                     // string body — skip to its close
+      const quote = c;
+      for (i++; i < src.length; i++) {
+        if (src[i] === '\\') { i++; continue; }                     // escaped char inside the string
+        if (src[i] === quote) break;
+      }
+      continue;
+    }
+    if (c === '/' && src[i + 1] === '/') { const nl = src.indexOf('\n', i); if (nl < 0) break; i = nl; continue; }
+    if (c === '/' && src[i + 1] === '*') { const ce = src.indexOf('*/', i); if (ce < 0) break; i = ce + 1; continue; }
+    if (c === open) depth++;
+    else if (c === close) { depth--; if (depth === 0) return src.slice(begin, i + 1); }
+  }
+  throw new Error(`form_literal_unbalanced: ${label}`);
+}
+// `const NAME = [ … ]` / `const NAME = { … }`
 function sliceLiteral(src, name, open, close) {
   const decl = src.indexOf(`const ${name} = ${open}`);
   if (decl < 0) throw new Error(`form_literal_not_found: ${name}`);
-  const begin = src.indexOf(open, decl);
-  let depth = 0, i = begin;
-  for (; i < src.length; i++) {
-    if (src[i] === open) depth++;
-    else if (src[i] === close) { depth--; if (depth === 0) break; }
-  }
-  if (depth !== 0) throw new Error(`form_literal_unbalanced: ${name}`);
-  return src.slice(begin, i + 1);
+  return scanBalanced(src, src.indexOf(open, decl), open, close, name);
 }
 const evalLiteral = (lit) => new Function(`return (${lit})`)();          // object/array literals only
 const readLiteral = (src, name, open = '[', close = ']') => evalLiteral(sliceLiteral(src, name, open, close));
-// `new Set([...])` — slice the inner array.
+// `const NAME = new Set([ … ])` — slice the inner array with the same scanner.
 function readSetLiteral(src, name) {
   const decl = src.indexOf(`const ${name} = new Set(`);
   if (decl < 0) throw new Error(`form_literal_not_found: ${name}`);
-  const begin = src.indexOf('[', decl);
-  const end = src.indexOf(']', begin);
-  return evalLiteral(src.slice(begin, end + 1));
+  return evalLiteral(scanBalanced(src, src.indexOf('[', decl), '[', ']', name));
 }
 
 function formSource(restaurantId, root) {
