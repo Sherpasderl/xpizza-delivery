@@ -1,13 +1,17 @@
 'use strict';
-// Phase 1c-b1 — PARITY GATE A (load-bearing) + determinism, for the GENERATED form bundle.
+// Phase 1c-b1 — PARITY GATE A: form/bootstrap parity + stale-artifact guard + deterministic inverse.
 // Run: node catalog-form-bundle.test.js
 //
-// The claim: the catalog-generated form bundle == today's hard-coded form MENU, byte-identical incl.
-// EVERY field AND order, both brands — the dish array, category order/labels/subcats/layout, La Musa
-// VARIANT_ITEMS, the HAS_PHOTO set, and the X. Pizza PICKUP_ONLY / WEEKEND_ONLY gate cats. A wrong or
-// reordered bundle = the wrong customer menu once 1c-b3 flips the form to read it. Plus: the COMMITTED
-// artifact is not stale, generation is deterministic, and it's non-vacuous (a catalog-only field change
-// flows into the bundle — proving the bundle is generated from the catalog records, not the form).
+// SCOPE (claim-accuracy — same discipline as 1c-a's "mutation-proven" wording): this gate generates via
+// catalogSnapshot() → buildCatalogV2(), which slices the FORM, so it proves
+// `rebuildFormMenu(buildCatalogV2(form)) == form` — i.e. the bundle the BOOTSTRAP produces equals today's
+// hard-coded form MENU byte-identical incl. EVERY field AND order, both brands (dish array, category
+// order/labels/subcats/layout, La Musa VARIANT_ITEMS, the HAS_PHOTO set, the X. Pizza PICKUP_ONLY /
+// WEEKEND_ONLY gate cats), the COMMITTED artifact is not stale, generation is a deterministic inverse,
+// and it is non-vacuous (mutating the snapshot changes the bundle). It does NOT prove the artifact matches
+// the LIVE catalog store — that (the sole real catalog-store proof, load-bearing) is the EMULATOR test
+// test/catalog-generation.emulator.test.js, which reads via the real getRestaurantMenu + a catalog-only
+// sentinel. A wrong/reordered bundle here = the wrong customer menu once 1c-b3 flips the form to read it.
 const assert = require('assert');
 const { readFileSync } = require('fs');
 const { join } = require('path');
@@ -59,9 +63,11 @@ for (const rid of ['x_pizza', 'la_musa']) {
   ok(`committed artifact ${rid}: menu-bundle.generated.json == fresh generation == the form MENU`);
 }
 
-// ── 3. NON-VACUITY + SENTINEL: a catalog-only field change flows into the bundle ───────────────────
-//    Proves the bundle is generated from the CATALOG RECORDS (mutating the snapshot changes the
-//    bundle) — reading the form instead of the catalog would ignore this and the asserts would fail.
+// ── 3. NON-VACUITY + SENTINEL: a change to the snapshot RECORDS flows into the bundle ──────────────
+//    Proves the generator is driven by its { items, structure } INPUT — mutating a snapshot record
+//    changes the bundle — not by a re-read of the form. NOTE: the snapshot here is the bootstrap
+//    (catalogSnapshot → buildCatalogV2), so this proves RECORD-driven generation, NOT live-catalog-store
+//    provenance; that (a value seeded ONLY into Firestore) is the emulator test's job.
 {
   const snap = catalogSnapshot('la_musa');
   const mutated = {
@@ -73,7 +79,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
   assert.strictEqual(bundle.dishes[0].name, 'SENTINEL DISH', 'a catalog-only display value must surface in the bundle');
   assert.strictEqual(bundle.dishes[0].desc, 'catalog-only text');
   assert.notStrictEqual(readLiteral(formSource('la_musa'), 'MENU')[0].name, 'SENTINEL DISH', 'the form does NOT carry the sentinel');
-  ok('non-vacuity: a catalog-only display value drives the bundle (generation reads the catalog, not the form)');
+  ok('non-vacuity: a snapshot-record change drives the bundle (generation is record-driven, not a form re-read)');
 }
 {
   // order is data: permuting item_order permutes the bundle.
