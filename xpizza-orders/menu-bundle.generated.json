@@ -1,0 +1,250 @@
+{
+  "dishes": [
+    {
+      "id": 2,
+      "cat": "individual",
+      "name": "Carnivora",
+      "price": 340,
+      "emoji": "🥩",
+      "color": "#7A2515",
+      "desc": "Mixed meats, rich tomato sauce",
+      "img": "images/02-carnivora.jpg"
+    },
+    {
+      "id": 3,
+      "cat": "individual",
+      "name": "Crispy Bacon",
+      "price": 337,
+      "emoji": "🥓",
+      "color": "#6B3020",
+      "desc": "Crispy bacon, mozzarella",
+      "img": "images/03-crispy-bacon.jpg"
+    },
+    {
+      "id": 4,
+      "cat": "individual",
+      "name": "Sweet Corn & Calabrian Chili",
+      "price": 314,
+      "emoji": "🌽",
+      "color": "#B8860B",
+      "desc": "Sweet corn, spicy calabrian chili",
+      "img": "images/04-sweet-corn.jpg"
+    },
+    {
+      "id": 5,
+      "cat": "individual",
+      "name": "Mushroom",
+      "price": 323,
+      "emoji": "🍄",
+      "color": "#5A4A3A",
+      "desc": "Wild mushrooms, garlic, herbs",
+      "img": "images/05-mushroom.jpg"
+    },
+    {
+      "id": 6,
+      "cat": "individual",
+      "name": "Spinach",
+      "price": 307,
+      "emoji": "🌿",
+      "color": "#2D5A27",
+      "desc": "Fresh spinach, ricotta, garlic",
+      "img": "images/06-spinach.jpg"
+    },
+    {
+      "id": 7,
+      "cat": "individual",
+      "name": "Pancetta Vodka Sauce",
+      "price": 328,
+      "emoji": "🍅",
+      "color": "#A0321A",
+      "desc": "Pancetta, creamy vodka tomato sauce",
+      "img": "images/07-pancetta-vodka.jpg"
+    },
+    {
+      "id": 8,
+      "cat": "individual",
+      "name": "Margherita",
+      "price": 299,
+      "emoji": "🍅",
+      "color": "#C8321A",
+      "desc": "San Marzano tomato, fresh mozzarella",
+      "img": "images/08-margherita.jpg"
+    },
+    {
+      "id": 9,
+      "cat": "individual",
+      "name": "Pepperoni",
+      "price": 307,
+      "emoji": "🔴",
+      "color": "#9E2412",
+      "desc": "Classic pepperoni, mozzarella",
+      "img": "images/09-pepperoni.jpg"
+    },
+    {
+      "id": 10,
+      "cat": "individual",
+      "name": "Anchovies",
+      "price": 418,
+      "emoji": "🐟",
+      "color": "#3A5A7A",
+      "desc": "Salted anchovies, capers, olives",
+      "img": "images/10-anchovies.jpg"
+    },
+    {
+      "id": 11,
+      "cat": "individual",
+      "name": "Shrimp Scampi",
+      "price": 412,
+      "emoji": "🍤",
+      "color": "#C87A3A",
+      "desc": "Garlic shrimp, lemon, white wine",
+      "img": "images/11-shrimp-scampi.jpg"
+    },
+    {
+      "id": 12,
+      "cat": "individual",
+      "name": "Pistaccio Mortadella",
+      "price": 409,
+      "emoji": "💚",
+      "color": "#3A6A2A",
+      "desc": "Pistachio cream, mortadella, stracciatella",
+      "img": "images/12-pistaccio-mortadella.jpg"
+    },
+    {
+      "id": 13,
+      "cat": "individual",
+      "name": "Prosciutto",
+      "price": 402,
+      "emoji": "🥩",
+      "color": "#8A3A2A",
+      "desc": "Prosciutto crudo, arugula, parmesan",
+      "img": "images/13-prosciutto.jpg"
+    },
+    {
+      "id": 14,
+      "cat": "individual",
+      "name": "Potato & Dill Sausage",
+      "price": 299,
+      "emoji": "🥔",
+      "color": "#7A6A3A",
+      "desc": "Roasted potato, dill, house sausage",
+      "img": "images/14-potato-sausage.jpg"
+    },
+    {
+      "id": 15,
+      "cat": "individual",
+      "name": "Cacio e Pepe",
+      "price": 297,
+      "emoji": "🧀",
+      "color": "#8A7A5A",
+      "desc": "Pecorino, black pepper, olive oil",
+      "img": "images/15-cacio-pepe.jpg"
+    },
+    {
+      "id": 16,
+      "cat": "individual",
+      "name": "Ham",
+      "price": 282,
+      "emoji": "🐷",
+      "color": "#C87A8A",
+      "desc": "Classic ham, mozzarella",
+      "img": "images/16-ham.jpg"
+    },
+    {
+      "id": 1,
+      "cat": "individual",
+      "name": "Sopressatta Chili Honey",
+      "price": 385,
+      "emoji": "🍕",
+      "color": "#8B3A1A",
+      "desc": "Sopressatta, chili, honey drizzle"
+    },
+    {
+      "id": 17,
+      "cat": "individual",
+      "name": "Nutella",
+      "price": 251,
+      "emoji": "🍫",
+      "color": "#5A3A20",
+      "desc": "Nutella, powdered sugar, banana option",
+      "img": "images/17-nutella.jpg"
+    },
+    {
+      "id": 18,
+      "cat": "ny",
+      "name": "Carnivora NY",
+      "price": 685,
+      "emoji": "🥩",
+      "color": "#7A2515",
+      "desc": "6 massive slices, mixed meats"
+    },
+    {
+      "id": 19,
+      "cat": "ny",
+      "name": "Margherita NY",
+      "price": 624,
+      "emoji": "🍅",
+      "color": "#C8321A",
+      "desc": "6 slices, classic tomato & mozzarella"
+    },
+    {
+      "id": 20,
+      "cat": "ny",
+      "name": "Cacio e Pepe NY",
+      "price": 641,
+      "emoji": "🧀",
+      "color": "#8A7A5A",
+      "desc": "6 slices, pecorino & black pepper"
+    },
+    {
+      "id": 21,
+      "cat": "ny",
+      "name": "Mushroom NY",
+      "price": 702,
+      "emoji": "🍄",
+      "color": "#5A4A3A",
+      "desc": "6 slices, wild mushrooms & herbs"
+    },
+    {
+      "id": 22,
+      "cat": "ny",
+      "name": "Jamon NY",
+      "price": 641,
+      "emoji": "🍖",
+      "color": "#9E2412",
+      "desc": "6 slices, ham"
+    },
+    {
+      "id": 24,
+      "cat": "ny",
+      "name": "Pepperoni NY",
+      "price": 641,
+      "emoji": "🔴",
+      "color": "#9E2412",
+      "desc": "6 slices, pepperoni"
+    },
+    {
+      "id": 23,
+      "cat": "ny",
+      "name": "Crispy Bacon NY",
+      "price": 662,
+      "emoji": "🥓",
+      "color": "#6B3020",
+      "desc": "6 slices, crispy bacon"
+    }
+  ],
+  "categories": [
+    {
+      "id": "individual"
+    },
+    {
+      "id": "ny"
+    }
+  ],
+  "pickup_only_cats": [
+    "ny"
+  ],
+  "weekend_only_cats": [
+    "ny"
+  ]
+}
