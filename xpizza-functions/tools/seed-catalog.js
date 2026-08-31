@@ -8,10 +8,15 @@ const { execSync } = require('child_process');
 const admin = require('firebase-admin');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { seedCatalog } = require('../catalog/seed-catalog-core');
+const { buildCatalogV2 } = require('../catalog/form-menu-source');   // 1c-a: schema-v2 bootstrap (display from the forms, price from menu-pricing)
 
+// 1c-a: each restaurant now seeds schema-v2 — {key, price} exactly as before, PLUS the verbatim form
+// display record per item and a menu_structure doc. Prices still come from menu-pricing (the
+// authority); only the DISPLAY half is sourced from the forms.
+const V2 = { x_pizza: buildCatalogV2('x_pizza'), la_musa: buildCatalogV2('la_musa') };
 const RESTAURANTS = {
-  x_pizza: { profile: { name: 'X. Pizza', tier: 'flagship', pricing_key_mode: 'name', active: true }, menu: MENU_BY_RESTAURANT.x_pizza, extras: EXTRAS_BY_RESTAURANT.x_pizza },
-  la_musa: { profile: { name: 'La Musa', tier: 'flagship', pricing_key_mode: 'id',   active: true }, menu: MENU_BY_RESTAURANT.la_musa, extras: EXTRAS_BY_RESTAURANT.la_musa },
+  x_pizza: { profile: { name: 'X. Pizza', tier: 'flagship', pricing_key_mode: 'name', active: true, schema_version: 2 }, menu: MENU_BY_RESTAURANT.x_pizza, extras: EXTRAS_BY_RESTAURANT.x_pizza, v2Items: V2.x_pizza.items, structure: V2.x_pizza.structure },
+  la_musa: { profile: { name: 'La Musa', tier: 'flagship', pricing_key_mode: 'id',   active: true, schema_version: 2 }, menu: MENU_BY_RESTAURANT.la_musa, extras: EXTRAS_BY_RESTAURANT.la_musa, v2Items: V2.la_musa.items, structure: V2.la_musa.structure },
 };
 
 // Codex: a money-adjacent controlled op must be auditable — record WHAT was written and from WHICH source.
@@ -24,7 +29,7 @@ seedCatalog(admin.firestore(), RESTAURANTS)
   .then((report) => {
     console.log(`catalog seed complete (additive) — source ${gitSha()} @ ${new Date().toISOString()}`);
     for (const [rid, r] of Object.entries(report)) {
-      console.log(`  ${rid}: ${r.items} items + ${r.extras} extras written, ${r.reconciled} stale doc(s) deleted` +
+      console.log(`  ${rid}: ${r.items} items (schema-v2) + ${r.extras} extras written, ${r.reconciled} stale doc(s) deleted` +
         `  [menu ${tableHash(MENU_BY_RESTAURANT[rid])} / extras ${tableHash(EXTRAS_BY_RESTAURANT[rid])}]`);
     }
     console.log('NEXT (required): node tools/verify-catalog.js — proves the production seed landed byte-identical');

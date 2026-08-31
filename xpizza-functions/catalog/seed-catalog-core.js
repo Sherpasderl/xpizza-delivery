@@ -5,14 +5,24 @@ const { codeTablesToCatalogDocs } = require('./catalog-transform');
 // The EXACT pricing key always travels in the `key` field — never derive the key from the doc id.
 const docId = (key) => crypto.createHash('sha1').update(String(key)).digest('hex').slice(0, 20);
 // Pure: code tables → the doc set (each doc carries its target id + the EXACT pricing key + price).
-function catalogDocsForRestaurant(menuTable, extraTable) {
+// 1c-a: `v2ByKey` optionally supplies each item's schema-v2 payload (the verbatim form display record
+// + has_photo). `key` and `price` are produced EXACTLY as before — the 1b pricing reader reads only
+// those two and is untouched by the new fields (PIN 1). Extras stay {key, price}.
+function catalogDocsForRestaurant(menuTable, extraTable, v2ByKey = null) {
   const { itemDocs, extraDocs } = codeTablesToCatalogDocs(menuTable, extraTable || {});
   const withId = (docs) => docs.map((d) => ({ id: docId(d.key), key: d.key, price: d.price }));
-  return { itemDocs: withId(itemDocs), extraDocs: withId(extraDocs) };
+  const items = withId(itemDocs).map((d) => {
+    const v2 = v2ByKey && v2ByKey.get(d.key);
+    if (!v2) return d;
+    const out = { ...d, display: v2.display };
+    if (v2.has_photo !== undefined) out.has_photo = v2.has_photo;
+    return out;
+  });
+  return { itemDocs: items, extraDocs: withId(extraDocs) };
 }
 // Codex: the profile doc is PUBLIC-read + the Admin SDK BYPASSES Firestore rules → an allowlist here is
 // the ONLY thing that keeps private/payout data off the public profile. Reject any non-allowlisted field.
-const PROFILE_FIELDS = new Set(['name', 'tier', 'active', 'hours', 'branding', 'pricing_key_mode']);
+const PROFILE_FIELDS = new Set(['name', 'tier', 'active', 'hours', 'branding', 'pricing_key_mode', 'schema_version']);   // 1c-a: schema_version (the allowlist WIPES anything unlisted)
 // IMPORTABLE writer (DI'd Firestore db). RECONCILES stale docs (re-seed after a rename/removal deletes the
 // old doc). Writes the PROFILE LAST — so on a FIRST seed, profile.exists ⇒ a COMPLETE seed (an interrupted
 // seed leaves no profile → getRestaurantDocs throws restaurant_not_found, safe, never a plausible-empty).
@@ -23,7 +33,8 @@ async function seedCatalog(db, restaurants) {
   for (const [rid, meta] of Object.entries(restaurants)) {
     const bad = Object.keys(meta.profile || {}).filter((k) => !PROFILE_FIELDS.has(k));
     if (bad.length) throw new Error(`profile field not allowlisted for ${rid}: ${bad.join(',')}`);   // no private data on the public doc
-    const { itemDocs, extraDocs } = catalogDocsForRestaurant(meta.menu, meta.extras);
+    const v2ByKey = meta.v2Items ? new Map(meta.v2Items.map((i) => [i.key, i])) : null;   // 1c-a schema-v2 payload
+    const { itemDocs, extraDocs } = catalogDocsForRestaurant(meta.menu, meta.extras, v2ByKey);
     const rref = db.collection('restaurants').doc(rid);
     let reconciled = 0;
     for (const [sub, docs] of [['menu_items', itemDocs], ['extras', extraDocs]]) {   // subcollections FIRST
@@ -39,7 +50,11 @@ async function seedCatalog(db, restaurants) {
       // Delete-before-set is kept as the better-of-two partial states, NOT as a guarantee.
       const ops = [];
       existing.forEach((snap) => { if (!wantIds.has(snap.id)) { ops.push((b) => b.delete(snap.ref)); reconciled++; } });   // reconcile stale
-      for (const d of docs) ops.push((b) => b.set(col.doc(d.id), { key: d.key, price: d.price }));
+      for (const d of docs) ops.push((b) => b.set(col.doc(d.id), {
+        key: d.key, price: d.price,                                             // pricing identity + value — UNCHANGED (PIN 1)
+        ...(d.display !== undefined ? { display: d.display } : {}),              // 1c-a: verbatim form record
+        ...(d.has_photo !== undefined ? { has_photo: d.has_photo } : {}),
+      }));
       for (let i = 0; i < ops.length; i += 450) {
         const b = db.batch();
         for (const op of ops.slice(i, i + 450)) op(b);
@@ -52,6 +67,11 @@ async function seedCatalog(db, restaurants) {
     // contain EXACTLY the allowlisted fields, scrubbing anything stale. Private data lives on a server-only
     // path, never here. NOTE: because this REPLACES the doc, any future seed-managed public profile field must
     // be added to BOTH PROFILE_FIELDS and meta.profile, or it will be wiped on the next seed.
+    // 1c-a: the menu_structure doc (category order/labels, la_musa subcats + variants, x_pizza gate
+    // flags, and the ITEM ORDER — Firestore returns docs in hashed-id order, so the form's array order
+    // must be carried explicitly or a regenerated bundle would be correct but reordered). Written just
+    // before the profile so the profile remains the LAST write, i.e. still the completeness marker.
+    if (meta.structure) await rref.collection('meta').doc('menu_structure').set(meta.structure);
     await rref.set(meta.profile);   // profile LAST — completeness marker on a first seed
     report[rid] = { items: itemDocs.length, extras: extraDocs.length, reconciled };
   }
