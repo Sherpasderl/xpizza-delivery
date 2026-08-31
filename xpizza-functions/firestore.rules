@@ -9,7 +9,14 @@ service cloud.firestore {
       allow write: if false;
       match /menu_items/{itemId} { allow read: if true; allow write: if false; }
       match /extras/{extraId}    { allow read: if true; allow write: if false; }
-      // deliberately NO `match /{sub=**}` — unenumerated subpaths (payouts, ledger, private) → deny.
+      // 1c-b2 VERSIONED PUBLISH — the versioned catalog is SERVER-READ-ONLY (the pricing + display
+      // readers are server-side via the Admin SDK, which BYPASSES rules; the customer forms read a static
+      // committed bundle, never Firestore). So versions/** + meta/active_version + meta/publish_lock +
+      // publish_probes stay DENY-BY-DEFAULT to clients. Deliberately NO `match /{sub=**}` public-read
+      // wildcard (the 1a Q3a blocker — it would world-expose future version subpaths). The existing
+      // menu_items/extras public-read above stays until the flat layout is CONTRACTED (a later step).
+      // deliberately NO `match /{sub=**}` — unenumerated subpaths (versions, meta/*, publish_lock,
+      // publish_probes, payouts, ledger, private) → deny.
     }
     match /{document=**} { allow read, write: if false; }               // global default-deny
   }

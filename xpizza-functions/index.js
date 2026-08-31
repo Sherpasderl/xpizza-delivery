@@ -270,14 +270,21 @@ const MENU_PRICES = MENU_BY_RESTAURANT.x_pizza; // x_pizza table — used by pri
 // warm instance — no per-order Firestore round-trip. A cold or unreachable Firestore never blocks
 // or misprices an order: the resolver's fail-safe returns the code table and alarms.
 const { createCatalogReader } = require('./catalog/catalog');
-const { getRestaurantDocs } = require('./catalog/catalog-firestore');
+const { getRestaurantDocs, getActiveVersionId } = require('./catalog/catalog-firestore');
 const { createPricingResolver } = require('./catalog/pricing-tables');
 let _pricingResolver = null;
 function pricingResolver() {
   if (!_pricingResolver) {
     const firestore = getFirestore();
     _pricingResolver = createPricingResolver({
-      reader: createCatalogReader({ getRestaurantDocs: (rid) => getRestaurantDocs(firestore, rid) }),   // FIRESTORE
+      // 1c-b2: version-aware reader. getRestaurantDocs resolves the active_version pointer → the pointed
+      // immutable version's docs (verified) with a flat fallback for an un-migrated restaurant;
+      // getActiveVersionId is the cheap pointer probe that lets a warm instance serve the active version
+      // from the version cache with no doc fetch (one small pointer read amortized over the short TTL).
+      reader: createCatalogReader({
+        getRestaurantDocs: (rid) => getRestaurantDocs(firestore, rid),           // FIRESTORE, full resolve+read+verify
+        getActiveVersionId: (rid) => getActiveVersionId(firestore, rid),         // FIRESTORE, cheap pointer probe
+      }),
       codeFor: (rid) => ({ menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] }),
       alarm: (kind, detail) => paymentAlert(getDatabase(), kind, detail),                                // RTDB
     });

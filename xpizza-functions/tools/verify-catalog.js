@@ -1,9 +1,14 @@
 'use strict';
-// READ-ONLY post-seed PRODUCTION verification. After the owner runs the seed, this reads the real
-// Firestore catalog back and compares counts/keys/prices to menu-pricing.js — prints a diff, exits
-// NON-ZERO on any mismatch. The emulator proves the CODE; only this proves the PRODUCTION seed landed.
-// Run (owner, post-seed, PRE rules-deploy): node tools/verify-catalog.js
+// READ-ONLY post-seed / post-publish PRODUCTION verification. Reads the real Firestore catalog back and
+// compares counts/keys/prices to menu-pricing.js — prints a diff, exits NON-ZERO on any mismatch. The
+// emulator proves the CODE; only this proves the PRODUCTION store landed.
+// Run (owner, post-seed OR post publish-version, PRE rules-deploy): node tools/verify-catalog.js
 // This script only READS. It never writes to Firestore.
+//
+// 1c-b2: getRestaurantDocs is now POINTER-FIRST — it resolves restaurants/{rid}/meta/active_version and
+// reads the pointed IMMUTABLE version (with completeness verification), falling back to the flat layout
+// only when the pointer is cleanly absent. So this verifier reads via the pointer automatically once the
+// catalog is migrated, and prints which versionId served (null = still on the flat layout).
 try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; this needs only ADC */ }
 const admin = require('firebase-admin');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
@@ -16,8 +21,9 @@ const db = admin.firestore();
 (async () => {
   let bad = 0;
   for (const rid of ['x_pizza', 'la_musa']) {
-    const d = await getRestaurantDocs(db, rid);                 // throws on not-found/empty/malformed
+    const d = await getRestaurantDocs(db, rid);                 // pointer-first; throws on not-found/empty/malformed/completeness
     const back = buildTablesFromDocs(d.itemDocs, d.extraDocs);
+    console.log(`${rid}: serving via ${d.versionId ? `active_version ${d.versionId}` : 'the FLAT layout (not yet migrated)'}`);
     for (const [label, got, want] of [['menu', back.menu, MENU_BY_RESTAURANT[rid]], ['extras', back.extras, EXTRAS_BY_RESTAURANT[rid] || {}]]) {
       for (const k of new Set([...Object.keys(got), ...Object.keys(want)])) {
         if (got[k] !== want[k]) {

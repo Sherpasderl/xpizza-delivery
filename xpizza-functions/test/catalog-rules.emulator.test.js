@@ -37,6 +37,11 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     await setDoc(doc(db, 'restaurants/x_pizza/menu_items/abc123'), { key: 'Margherita', price: 299 });
     await setDoc(doc(db, 'restaurants/x_pizza/extras/def456'), { key: 'Mozzarella', price: 50 });
     await setDoc(doc(db, 'restaurants/x_pizza/payouts/2026-09'), { amount_hnl: 125000, bank: 'REDACTED' });
+    // 1c-b2 versioned-publish server-only paths
+    await setDoc(doc(db, 'restaurants/x_pizza/versions/v-1/menu_items/abc123'), { key: 'Margherita', price: 299 });
+    await setDoc(doc(db, 'restaurants/x_pizza/versions/v-1'), { version: 'v-1', item_count: 1 });
+    await setDoc(doc(db, 'restaurants/x_pizza/meta/active_version'), { version: 'v-1' });
+    await setDoc(doc(db, 'restaurants/x_pizza/meta/publish_lock'), { owner_token: 't' });
   });
 
   const anon = env.unauthenticatedContext().firestore();
@@ -69,6 +74,20 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   ok('client SET restaurants/x_pizza/payouts/* DENIED');
   await assertFails(getDoc(doc(anon, 'restaurants/x_pizza/ledger/entry1')));
   ok('unauth GET an arbitrary future subcollection DENIED (deny-by-default holds)');
+
+  // ── 1c-b2 REGRESSION GUARD: the VERSIONED catalog is server-only (no public-read wildcard) ──
+  await assertFails(getDoc(doc(anon, 'restaurants/x_pizza/versions/v-1')));
+  ok('unauth GET a version-record DENIED (versions/** is server-only)');
+  await assertFails(getDocs(collection(anon, 'restaurants/x_pizza/versions')));
+  ok('unauth LIST versions DENIED');
+  await assertFails(getDoc(doc(anon, 'restaurants/x_pizza/versions/v-1/menu_items/abc123')));
+  ok('unauth GET a version menu_item DENIED (no versions/{v}/{sub=**} public wildcard — the 1a Q3a lesson)');
+  await assertFails(getDoc(doc(anon, 'restaurants/x_pizza/meta/active_version')));
+  ok('unauth GET meta/active_version (the pointer) DENIED');
+  await assertFails(getDoc(doc(anon, 'restaurants/x_pizza/meta/publish_lock')));
+  ok('unauth GET meta/publish_lock DENIED (readers never touch the lock)');
+  await assertFails(setDoc(doc(anon, 'restaurants/x_pizza/meta/active_version'), { version: 'pwned' }));
+  ok('client SET meta/active_version DENIED (only the Admin SDK flips the pointer)');
 
   // ── global default-deny outside the catalog ──
   await assertFails(getDoc(doc(anon, 'anything_else/x')));
