@@ -251,7 +251,7 @@ const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 // match by name, la_musa → by id). EXTRA_PRICES + the x_pizza alias below keep the
 // factura pricedLineItems call sites byte-identical until A3 makes them restaurant-aware.
 // ---------------------------------------------------------------------------
-const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal, summaryLines, weekendOnlyViolation } = require('./menu-pricing');
+const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal, summaryLines, weekendOnlyViolation, resolvePriceTables } = require('./menu-pricing');
 const { orderContentKey, isContentRetap, rateLimitKey } = require('./order-dedup');   // Layer 2 — content-aware phone rate limit; rateLimitKey shared with the F3 guard
 const CONTENT_DEDUP_WINDOW_MS = 120000;   // a same-phone same-cart resubmit within 2 min = a re-tap, not a new order
 const { checkItemAvailability } = require('./availability-gate');   // KDS 2b — server intake "86" fail-safe (fail-open)
@@ -779,11 +779,19 @@ createOrderApp.all('*', async (req, res) => {
   // order.items = the PAID cart lines (the earn base + the non-redeemed factura source); order.factura_items =
   // paid + comped (redeemed x_pizza SAR doc — build-record reads factura_items || items). Non-platform
   // (la_musa — Soft Restaurant POS) opts out → both null → order.items/factura_items omitted.
+  // 1b-2 — the NON-redeem X. Pizza factura prices from the GUARDED catalog tables (the last code-table
+  // read on the fiscal path). Same pricingTables the order total and the redemption cluster already use,
+  // so one order's charged total and its SAR document can never come from two different sources.
+  // PIN B: resolvePriceTables asserts the tables are tagged for THIS restaurant. Fail-safe, no drop —
+  // pricingTables is always a valid tagged object (post-1b-1b it is never null) and holds the CODE tables
+  // whenever the catalog is unavailable or diverged, so the factura still prices; this is not a
+  // hard-contract seam and must never throw on catalog trouble.
+  const { menu: facturaMenu, extraPrices: facturaExtras } = resolvePriceTables(restaurantId, pricingTables);
   const facturaPriced = redemptionPriced
     ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
         factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn base); factura_items = paid + comped (SAR doc)
     : (usesPlatformFactura(restaurantId)
-      ? pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES)
+      ? pricedLineItems(body.items, facturaMenu, facturaExtras)
       : { items: null, error: null });
 
   // Cash tendered (FACTURA_PLAN §2): validated >= total (never trust client), defaults to exact
@@ -1203,11 +1211,19 @@ chargeOnlineApp.all('*', async (req, res) => {
   // Factura inputs (FACTURA_PLAN §2) — structured priced items for the factura trigger.
   // factura_status starts 'not_due': a pending_payment order is NOT yet a Sale, so it's
   // never reconciled; the trigger only acts once it materializes (status:new + confirmed).
+  // 1b-2 — the NON-redeem X. Pizza factura prices from the GUARDED catalog tables (the last code-table
+  // read on the fiscal path). Same pricingTables the order total and the redemption cluster already use,
+  // so one order's charged total and its SAR document can never come from two different sources.
+  // PIN B: resolvePriceTables asserts the tables are tagged for THIS restaurant. Fail-safe, no drop —
+  // pricingTables is always a valid tagged object (post-1b-1b it is never null) and holds the CODE tables
+  // whenever the catalog is unavailable or diverged, so the factura still prices; this is not a
+  // hard-contract seam and must never throw on catalog trouble.
+  const { menu: facturaMenu, extraPrices: facturaExtras } = resolvePriceTables(restaurantId, pricingTables);
   const facturaPriced = redemptionPriced
     ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
         factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn); factura_items = paid + comped (SAR doc)
     : (usesPlatformFactura(restaurantId)
-      ? pricedLineItems(body.items, MENU_PRICES, EXTRA_PRICES)
+      ? pricedLineItems(body.items, facturaMenu, facturaExtras)
       : { items: null, error: null });  // non-platform (la_musa) → no factura line items
 
   // (customer_uid was resolved EARLY, above — the redemption prepare + both fingerprint sites need it.)

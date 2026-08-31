@@ -123,6 +123,39 @@ const build = () => {
     ok('PIN E 1b-1b falsifiable: a diverged catalog → redemption prices on CODE + parity alarm (no split-brain)');
   }
 
+  // (7) 1b-2 PIN E — the NON-redeem X. Pizza FACTURA off the real Firestore-read catalog. The factura is
+  //     a Void-only SAR document, so this is the strictest byte-identity claim in the migration.
+  await seedCatalog(firestore, R());
+  {
+    const { pricedLineItems } = require('../factura/pricing');
+    const { resolvePriceTables } = require('../menu-pricing');
+    const { resolver, alarms } = build();
+    const t = await resolver.getPricingTables('x_pizza');
+    assert.notStrictEqual(t.menu, MENU_BY_RESTAURANT.x_pizza, 'the tables really came from Firestore');
+    const cart = [{ name: 'Margherita', qty: 2, extras: [{ name: 'Mozzarella' }] }, { name: 'Ham', qty: 1 }];
+    const { menu, extraPrices } = resolvePriceTables('x_pizza', t);
+    const cat = pricedLineItems(cart, menu, extraPrices);
+    const code = pricedLineItems(cart, MENU_BY_RESTAURANT.x_pizza, EXTRAS_BY_RESTAURANT.x_pizza);
+    assert.strictEqual(cat.error, null);
+    assert.deepStrictEqual(cat, code, 'non-redeem factura lines byte-identical off the REAL catalog');
+    assert.deepStrictEqual(alarms, [], 'no alarm on parity');
+    ok(`PIN E 1b-2: non-redeem X. Pizza factura off the REAL catalog == code (${cat.items.length} lines, ${cat.items[0].line_gross_cents} cents on line 1)`);
+  }
+  // (8) 1b-2 falsifiable — a diverged catalog price → the resolver serves CODE, so the SAR document
+  //     carries the CODE value. A factura can never assert a diverged price.
+  {
+    const { pricedLineItems } = require('../factura/pricing');
+    const { resolvePriceTables } = require('../menu-pricing');
+    await seedCatalog(firestore, R({ x_pizza: { ...MENU_BY_RESTAURANT.x_pizza, Margherita: 55555 } }));
+    const { resolver, alarms } = build();
+    const t = await resolver.getPricingTables('x_pizza');
+    const { menu, extraPrices } = resolvePriceTables('x_pizza', t);
+    const r = pricedLineItems([{ name: 'Margherita', qty: 1 }], menu, extraPrices);
+    assert.strictEqual(r.items[0].line_gross_cents, MENU_BY_RESTAURANT.x_pizza.Margherita * 100, 'the factura asserts the CODE price when the catalog diverges');
+    assert.strictEqual(alarms[0][0], 'catalog_parity_mismatch');
+    ok('PIN E 1b-2 falsifiable: a diverged catalog → the SAR document still carries the CODE value + parity alarm');
+  }
+
   await seedCatalog(firestore, R());   // restore
   console.log(`pricing-cutover(emulator): OK (${n})`);
   process.exit(0);
