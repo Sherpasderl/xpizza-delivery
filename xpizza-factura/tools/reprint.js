@@ -42,7 +42,9 @@ const db = admin.database();
     console.error(`refuse: ${d.reason || 'not_reprintable'} (${orderId})` +
       (d.reason === 'already_printed'
         ? ' — a reprint of an ISSUED+printed factura needs a fiscal COPIA decision; not done here.'
-        : ''));
+        : d.reason === 'printed_ack_failed'
+          ? ' — this factura printed on paper but the record didn\'t save (check the printer). If it DID print, mark printed:true (do NOT blind-reprint — it would duplicate the número). If it did NOT print, clear print_error so the agent reprints it.'
+          : ''));
     process.exit(1);
   }
   console.log(`reprint queued: ${res.snapshot.val().factura_number} (${orderId}) — the print agent will print it shortly.`);

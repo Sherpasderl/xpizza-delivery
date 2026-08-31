@@ -18,6 +18,12 @@ assert.deepEqual(reprintDecision({}), { action: 'reprint' });                   
 assert.deepEqual(reprintDecision({ printed: true }), { action: 'refuse', reason: 'already_printed' }); ok('printed → refuse (fiscal copy)');
 assert.deepEqual(reprintDecision({ void: true }),   { action: 'refuse', reason: 'void' });            ok('void → refuse');
 assert.deepEqual(reprintDecision(null),             { action: 'refuse', reason: 'not_found' });        ok('missing → refuse');
+// REGRESSION (codex): a printed_ack_failed record has printed:false but ALREADY printed ON PAPER — reprintDecision
+// must REFUSE it (its own gate), NOT fall through to 'reprint', else the manual tool duplicates the número (the
+// automatic agent path is skip-guarded; this closes the manual bypass).
+assert.deepEqual(reprintDecision({ printed: false, print_error: 'printed_ack_failed: EPIPE' }), { action: 'refuse', reason: 'printed_ack_failed' }); ok('printed_ack_failed (printed:false) → refuse (no duplicate physical print)');
+assert.deepEqual(reprintDecision({ void: true, print_error: 'printed_ack_failed: X' }),   { action: 'refuse', reason: 'void' });            ok('void wins over printed_ack_failed');
+assert.deepEqual(reprintDecision({ printed: true, print_error: 'printed_ack_failed: X' }), { action: 'refuse', reason: 'already_printed' }); ok('printed:true wins → already_printed');
 console.log('print-recovery(reprintDecision): OK');
 
 // --- printedAckFailed (Fix A marker → skip-guard) ---
