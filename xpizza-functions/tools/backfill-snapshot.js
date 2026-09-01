@@ -29,11 +29,16 @@ const mirror = makeRtdbMirror(admin.database());
     if (!versionId) { console.error(`${rid}: NO active version pointer — nothing to backfill (publish first)`); failures++; continue; }
     // readVersionDocs runs the same completeness + price-validity checks the money path uses, so a
     // version that could not be served cannot be snapshotted either.
-    const { menuTable, extraTable } = tablesFromVersionDocs(await readVersionDocs(db, rid, versionId));
-    await snapshotRefOf(db, rid).set(snapshotOf(rid, versionId, menuTable, extraTable));
-    const res = await writeMirror(mirror, null, rid, { version: versionId, rid, menu: menuTable, extras: extraTable });
+    const docs = await readVersionDocs(db, rid, versionId);
+    const { menuTable, extraTable } = tablesFromVersionDocs(docs);
+    // 2b-pre: RE-RUNNING THIS IS MANDATORY, not incidental. The snapshots and mirrors written before
+    // the ordinal existed carry no `seq`, and 2b's reader treats an absent seq as too-stale (never
+    // distance-zero) — so until this re-run lands, the fallback is correctly but permanently refused.
+    if (!Number.isInteger(docs.seq)) throw new Error(`backfill_missing_seq: ${rid}/${versionId} — the version record has no seq ordinal`);
+    await snapshotRefOf(db, rid).set(snapshotOf(rid, versionId, docs.seq, menuTable, extraTable));
+    const res = await writeMirror(mirror, null, rid, { version: versionId, seq: docs.seq, rid, menu: menuTable, extras: extraTable });
     if (!res.mirrored) failures++;
-    console.log(`${rid}: snapshot + ${res.mirrored ? 'mirror' : 'MIRROR FAILED'} for active version ${versionId} ` +
+    console.log(`${rid}: snapshot + ${res.mirrored ? 'mirror' : 'MIRROR FAILED'} for active version ${versionId} (seq ${docs.seq}) ` +
       `(${Object.keys(menuTable).length} items + ${Object.keys(extraTable).length} extras) — pointer UNCHANGED`);
   }
   if (failures) { console.error(`backfill-snapshot: ${failures} failure(s)`); process.exit(1); }

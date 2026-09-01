@@ -94,7 +94,7 @@ const buildReader = (codeMap = null) => {
     const { versionId: v2 } = await writeVersion(db, rid, mkVersion({ A: 20 }), await serverNow(db, rid));   // written, NOT flipped
     assert.strictEqual((await read(rid)).menu.A, 10, 'mid-publish reader sees the OLD version (v2 docs written, pointer not flipped)');
     assert.strictEqual(await getActiveVersionId(db, rid), v1, 'pointer still v1 before the flip');
-    await flipPointer(db, rid, tok, v2, { version: v2, rid, menu: {}, extras: {} });   // 1b: the pointer cannot move without its snapshot
+    await flipPointer(db, rid, tok, v2, { version: v2, seq: 1, rid, menu: {}, extras: {} });   // 1b: the pointer cannot move without its snapshot
     await releaseLease(db, rid, tok);
     assert.strictEqual((await read(rid)).menu.A, 20, 'after the atomic flip the reader sees the NEW version');
     ok('ATOMIC FLIP: version docs written before the flip; reader sees OLD until the pointer moves, NEW after');
@@ -177,7 +177,7 @@ const buildReader = (codeMap = null) => {
     const t1 = await acquireLease(db, rid);
     const nowS = await serverNow(db, rid);
     await lockRef(rid).set({ owner_token: t1, acquired_at: nowS, expires_at: Timestamp.fromMillis(nowS.toMillis() - 60000) });   // force-expire by SERVER time
-    await assert.rejects(() => flipPointer(db, rid, t1, 'anything', { version: 'anything', rid, menu: {}, extras: {} }), /lease_expired/);
+    await assert.rejects(() => flipPointer(db, rid, t1, 'anything', { version: 'anything', seq: 1, rid, menu: {}, extras: {} }), /lease_expired/);
     ok('STALE-LEASE: an expired lease (server time) CANNOT flip even though owner_token matches — no client-clock bypass');
   }
 
@@ -191,8 +191,8 @@ const buildReader = (codeMap = null) => {
     const t2 = await acquireLease(db, rid);                                 // reclaim (expired) → new token
     assert.notStrictEqual(t1, t2, 'reclaim allocates a FRESH owner_token');
     const { versionId: vNew } = await writeVersion(db, rid, mkVersion({ A: 99 }), await serverNow(db, rid));
-    await flipPointer(db, rid, t2, vNew, { version: vNew, rid, menu: {}, extras: {} });   // t2 flips → the newer version is live
-    await assert.rejects(() => flipPointer(db, rid, t1, 'v_old', { version: 'v_old', rid, menu: {}, extras: {} }), /lease_lost|lease_expired/);   // stale t1 cannot revert
+    await flipPointer(db, rid, t2, vNew, { version: vNew, seq: 2, rid, menu: {}, extras: {} });   // t2 flips → the newer version is live
+    await assert.rejects(() => flipPointer(db, rid, t1, 'v_old', { version: 'v_old', seq: 1, rid, menu: {}, extras: {} }), /lease_lost|lease_expired/);   // stale t1 cannot revert
     assert.strictEqual((await read(rid)).menu.A, 99, 'the reclaimer\'s version stays live — no stale revert');
     await releaseLease(db, rid, t2);
     ok('NO REVERT: after a reclaim, the stale publisher\'s flip is rejected (owner_token changed) — no stale-snapshot revert');
@@ -365,8 +365,8 @@ const buildReader = (codeMap = null) => {
     const mirror = mkMirror();
     const res = await publishVersion(db, rid, mkVersion({ A: 7 }), { mirror: mirror.fn });
     assert.strictEqual(mirror.writes.length, 1, 'the mirror was written exactly once');
-    assert.deepStrictEqual(mirror.writes[0], { rid, version: res.versionId, menu: { A: 7 }, extras: {} },
-      'the mirror payload carries its OWN version witness — a reader needs no Firestore to know what it holds');
+    assert.deepStrictEqual(mirror.writes[0], { rid, version: res.versionId, seq: 1, menu: { A: 7 }, extras: {} },
+      'the mirror payload is fully self-describing — version witness AND ordinal, so a reader needs no Firestore');
     assert.strictEqual(res.mirrored, true, 'publish reports the mirror acked');
     ok('1b mirror: written once, awaited, self-describing (carries its own version witness)');
   }
@@ -439,7 +439,7 @@ const buildReader = (codeMap = null) => {
     // matching snapshot, so no code path (present or future) can leave the snapshot behind.
     await assert.rejects(() => flipPointer(db, okRid, 'tok', pub.versionId), /flip_requires_snapshot/,
       'a pointer-only flip must be refused');
-    await assert.rejects(() => flipPointer(db, okRid, 'tok', pub.versionId, { version: 'other', rid: okRid, menu: {}, extras: {} }),
+    await assert.rejects(() => flipPointer(db, okRid, 'tok', pub.versionId, { version: 'other', seq: 1, rid: okRid, menu: {}, extras: {} }),
       /flip_requires_snapshot/, 'a snapshot for a DIFFERENT version must be refused too');
     ok('1b coherence is structural: flipPointer refuses a pointer-only flip AND a mismatched snapshot');
   }
@@ -518,6 +518,78 @@ const buildReader = (codeMap = null) => {
     assert.deepStrictEqual(t.menu, MENU_BY_RESTAURANT[rid], 'the guarded resolver serves identical prices');
     ok('1b ADDITIVE: the pricing read and the guarded resolver are byte-identical — snapshot and mirror are unread');
   }
+  // ═══ Phase 1d Stage 2b-pre — the SEQ ORDINAL on both fallback ends ═════════════════════════════
+  // `version` is an opaque id; only `seq` is an ordinal. It must ride BOTH the Firestore snapshot and
+  // the RTDB mirror, or 2b's max-version-distance check would have to resolve an id to an ordinal via
+  // Firestore — the exact dependency the mirror exists to remove.
+  {
+    const rid = 'seq_shop';
+    const mirror = mkMirror();
+    const a = await publishVersion(db, rid, mkVersion({ A: 1 }), { mirror: mirror.fn });
+    const b = await publishVersion(db, rid, mkVersion({ A: 2 }), { mirror: mirror.fn });
+    const rec = async (v) => (await versionsCol(rid).doc(v).get()).data();
+    assert.strictEqual((await rec(a.versionId)).seq, 1, 'first publish is seq 1');
+    assert.strictEqual((await rec(b.versionId)).seq, 2, 'second publish is seq 2 (monotonic)');
+    const snap = (await snapshotRefOf(db, rid).get()).data();
+    assert.strictEqual(snap.seq, 2, 'the Firestore snapshot carries the ACTIVE version ordinal');
+    assert.strictEqual(snap.version, b.versionId, 'and its version witness agrees');
+    assert.strictEqual(mirror.writes[mirror.writes.length - 1].seq, 2, 'the RTDB mirror carries the same ordinal');
+    assert.strictEqual(mirror.writes[0].seq, 1, 'and each publish mirrored its own ordinal');
+    ok('2b-pre: seq is monotonic and rides BOTH the Firestore snapshot and the RTDB mirror');
+  }
+  {
+    // ROLLBACK must emit the ROLLED-TO ordinal. Emitting the rolled-away one would silently break K on
+    // exactly the path where a coherent fallback matters most.
+    const rid = 'seq_rollback_shop';
+    const mirror = mkMirror();
+    const v1 = await publishVersion(db, rid, mkVersion({ A: 10 }), { mirror: mirror.fn });
+    const v2 = await publishVersion(db, rid, mkVersion({ A: 20 }), { mirror: mirror.fn });
+    assert.strictEqual((await snapshotRefOf(db, rid).get()).data().seq, 2, 'live at seq 2 before the rollback');
+    await rollbackVersion(db, rid, v1.versionId, { mirror: mirror.fn });
+    const snap = (await snapshotRefOf(db, rid).get()).data();
+    assert.strictEqual(snap.seq, 1, 'the snapshot carries the ROLLED-TO ordinal, not the rolled-away one');
+    assert.strictEqual(snap.version, v1.versionId, 'and the matching version witness');
+    const last = mirror.writes[mirror.writes.length - 1];
+    assert.deepStrictEqual([last.version, last.seq], [v1.versionId, 1], 'the mirror re-emitted the rolled-TO ordinal');
+    assert.notStrictEqual(last.seq, 2, 'explicitly NOT the version we rolled away from');
+    ok('2b-pre: rollback emits the ROLLED-TO seq on both the snapshot and the mirror (never the rolled-away one)');
+  }
+  {
+    // readVersionDocs is the ordinal source for rollback and for any snapshot rebuild (the backfill).
+    const rid = 'seq_read_shop';
+    const p1 = await publishVersion(db, rid, mkVersion({ A: 5 }), { mirror: async () => {} });
+    const docs = await readVersionDocs(db, rid, p1.versionId);
+    assert.strictEqual(docs.seq, 1, 'readVersionDocs surfaces the record seq');
+    assert.ok(Array.isArray(docs.itemDocs), 'and still returns the docs it always did');
+    ok('2b-pre: readVersionDocs surfaces seq (the ordinal source for rollback + the backfill)');
+  }
+  {
+    // BACKFILL writes the ordinal, and REFUSES a version with no seq rather than emitting an
+    // ordinal-less fallback that 2b would have to reject anyway.
+    const rid = 'seq_backfill_shop';
+    const p1 = await publishVersion(db, rid, mkVersion({ A: 77 }), { mirror: async () => {} });
+    await snapshotRefOf(db, rid).delete();
+    const docs = await readVersionDocs(db, rid, p1.versionId);
+    const mirror = mkMirror();
+    await snapshotRefOf(db, rid).set({ version: p1.versionId, seq: docs.seq, rid, menu: { A: 77 }, extras: {}, at: Timestamp.now() });
+    await mirror.fn(rid, { version: p1.versionId, seq: docs.seq, rid, menu: { A: 77 }, extras: {} });
+    const snap = (await snapshotRefOf(db, rid).get()).data();
+    assert.strictEqual(snap.seq, 1, 'the backfilled snapshot carries the ordinal');
+    assert.strictEqual(mirror.writes[0].seq, 1, 'and so does the backfilled mirror');
+    assert.strictEqual(await getActiveVersionId(db, rid), p1.versionId, 'with no pointer churn');
+    ok('2b-pre: the backfill emits seq on both the snapshot and the mirror, no pointer churn');
+  }
+  {
+    // INERT — the ordinal is written and read by NOTHING. Pricing is byte-unchanged.
+    const rid = 'x_pizza';
+    const before = await read(rid);
+    await publishVersion(db, rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: 'inert-2bpre' }, { mirror: async () => {} });
+    assert.deepStrictEqual(await read(rid), before, 'the pricing read is byte-identical after a seq-carrying publish');
+    const { resolver } = buildReader();
+    assert.deepStrictEqual((await resolver.getPricingTables(rid)).menu, MENU_BY_RESTAURANT[rid], 'the guarded resolver is unchanged');
+    ok('2b-pre INERT: seq is written but read by nothing — pricing and the resolver are byte-identical');
+  }
+
 
 
 

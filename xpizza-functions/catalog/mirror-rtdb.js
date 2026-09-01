@@ -19,6 +19,8 @@ function makeRtdbMirror(rtdb) {
   return async function mirrorToRtdb(restaurantId, payload) {
     await rtdb.ref(`catalog_snapshot/${restaurantId}`).set({
       version: payload.version,
+      seq: payload.seq,      // 2b-pre: the monotonic ordinal — lets a reader compute version distance
+                             // WITHOUT Firestore, which is the whole point of a Firestore-independent mirror
       rid: payload.rid,
       menu: payload.menu,
       extras: payload.extras,

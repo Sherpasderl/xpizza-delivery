@@ -46,8 +46,12 @@ const snapshotRefOf = (db, rid) => db.collection('restaurants').doc(rid).collect
 
 // Build the snapshot payload for a version. The tables are the SAME {key: price} shape codeFor returns
 // today, so Stage 2 can drop it straight in where the code tables are read now.
-const snapshotOf = (rid, versionId, menuTable, extraTable) => ({
-  version: versionId, rid, menu: menuTable, extras: extraTable, at: FieldValue.serverTimestamp(),
+// 2b-pre: `seq` is the MONOTONIC ORDINAL, and it rides the snapshot as well as the mirror. Without it
+// on both ends the 2b max-version-distance (K) check has nothing to measure from: `version` is an
+// opaque id, not an ordinal, and resolving it to one would require a Firestore lookup — the very
+// dependency the RTDB mirror exists to remove.
+const snapshotOf = (rid, versionId, seq, menuTable, extraTable) => ({
+  version: versionId, seq, rid, menu: menuTable, extras: extraTable, at: FieldValue.serverTimestamp(),
 });
 
 // The RTDB mirror is the Firestore-INDEPENDENT disaster fallback, so it must be bounded: a hung write
@@ -188,6 +192,7 @@ async function writeVersion(db, rid, { items, structure, extras, source_sha }, n
   // next seq (informational ordering) — read under the lease, so serial per restaurant
   const existing = await versionsColOf(db, rid).get();
   let maxSeq = 0; existing.forEach((d) => { const s = (d.data() || {}).seq; if (Number.isInteger(s) && s > maxSeq) maxSeq = s; });
+  const seq = maxSeq + 1;   // 2b-pre: named once — written into the record AND returned for the snapshot/mirror
   const versionId = newVersionId(nowServer);
   const vref = versionsColOf(db, rid).doc(versionId);
   const { itemDocs, extraDocs } = catalogDocsForRestaurant(menuTable, extraTable, v2ByKey);
@@ -202,12 +207,12 @@ async function writeVersion(db, rid, { items, structure, extras, source_sha }, n
   await commitOps(db, ops);
   // the version RECORD (reservation marker) LAST among the version's docs — create-not-exists.
   await vref.create({
-    version: versionId, schema_version: 2, seq: maxSeq + 1,
+    version: versionId, schema_version: 2, seq,
     item_count: desc.item_count, extra_count: desc.extra_count,
     menu_hash: desc.menu_hash, extras_hash: desc.extras_hash,
     source_sha: source_sha || 'unknown', created_at: FieldValue.serverTimestamp(),
   });
-  return { versionId, descriptor: desc, menuTable, extraTable };   // 1b: tables returned so the caller can build the coherent snapshot
+  return { versionId, descriptor: desc, seq, menuTable, extraTable };   // 1b: tables for the coherent snapshot; 2b-pre: + the ordinal
 }
 
 // PUBLISH — acquire the lease, write+verify the version, FLIP LAST, prune retention, release.
@@ -215,14 +220,14 @@ async function publishVersion(db, rid, input, { mirror, alarm } = {}) {
   const token = await acquireLease(db, rid);
   try {
     const nowServer = await serverNow(db, rid);
-    const { versionId, descriptor, menuTable, extraTable } = await writeVersion(db, rid, input, nowServer);
+    const { versionId, descriptor, seq, menuTable, extraTable } = await writeVersion(db, rid, input, nowServer);
     // VERIFY by re-reading via the REAL reader path (proves counts + BOTH hashes + structure BEFORE the flip).
     await readVersionDocs(db, rid, versionId);        // throws on completeness fail (counts + both hashes)
     await verifyVersionStructure(db, rid, versionId); // throws on a broken menu_structure bijection
-    const snapshot = snapshotOf(rid, versionId, menuTable, extraTable);
+    const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable);
     await flipPointer(db, rid, token, versionId, snapshot);   // ← the atomic cutover (pointer + snapshot), LAST
     // Mirror AFTER the flip and BEFORE releasing the lease — see writeMirror for why both matter.
-    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, rid, menu: menuTable, extras: extraTable });
+    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable });
     await pruneRetention(db, rid, { protect: [versionId] }).catch(() => {});   // never let prune fail the publish
     return { versionId, ...descriptor, mirrored: mirrorResult.mirrored };
   } finally {
@@ -250,11 +255,13 @@ async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm } = {})
     // 1b: reuse the verify read's tables to re-emit the snapshot + mirror. A rollback that moved the
     // pointer without re-emitting would leave the fallback describing the version we just rolled AWAY
     // from — the fallback must always describe whatever is actually live.
-    const { menuTable, extraTable } = tablesFromVersionDocs(await readVersionDocs(db, rid, targetVersionId));
+    const targetDocs = await readVersionDocs(db, rid, targetVersionId);
+    const { menuTable, extraTable } = tablesFromVersionDocs(targetDocs);
+    const seq = targetDocs.seq;   // 2b-pre: the ROLLED-TO version's ordinal — never the one we rolled away from
     await verifyVersionStructure(db, rid, targetVersionId);
-    const snapshot = snapshotOf(rid, targetVersionId, menuTable, extraTable);
+    const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable);
     await flipPointer(db, rid, token, targetVersionId, snapshot);
-    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, rid, menu: menuTable, extras: extraTable });
+    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable });
     return { versionId: targetVersionId, rolledBack: true, mirrored: mirrorResult.mirrored };
   } finally {
     await releaseLease(db, rid, token);

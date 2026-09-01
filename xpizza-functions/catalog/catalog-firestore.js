@@ -70,7 +70,11 @@ async function readVersionDocs(db, restaurantId, versionId) {
   // pure transform the pricing path uses, so the reader-side hashes are computed exactly as the publisher's.
   const { menu, extras: extraTable } = buildTablesFromDocs(itemDocs, extraDocs);
   assertComplete(record, menu, extraTable, where);
-  return { itemDocs, extraDocs };
+  // 2b-pre: surface the record's SEQ — the monotonic ordinal. Rollback builds its snapshot/mirror
+  // payload from here, and without it a rollback would emit an ordinal-less fallback on exactly the
+  // path where a coherent fallback matters most. Read-side (2b) treats an ABSENT seq as too-stale,
+  // never as distance-zero, so a pre-ordinal mirror can never read as perfectly fresh.
+  return { itemDocs, extraDocs, seq: record.seq };
 }
 
 // ── The FLAT layout (un-migrated restaurant) — byte-identical to the pre-1c-b2 reader ────────────
