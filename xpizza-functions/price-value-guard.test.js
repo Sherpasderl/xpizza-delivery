@@ -123,4 +123,61 @@ ok(`pricedLineItems: a corrupt menu OR extra price rejects — ${CORRUPT.length}
   assert.deepStrictEqual(Object.keys(f).sort(), ['error', 'items'], 'same {items, error} shape');
   ok('convention: the fail path uses the existing {total,error} / {items,error} shapes — no caller change needed');
 }
+// ── 6. EXTENSION: summaryLines (the tracker DISPLAY mirror) rejects on the same rule ────────────
+//    Its convention is fail-OPEN to null (the tracker falls back to items_text), so "reject" here
+//    means null — but the validation SET must match computeServerTotal, or a cart that cannot be
+//    charged could still be summarised and show cents nobody will ever be charged.
+for (const [label, bad] of CORRUPT) {
+  assert.strictEqual(summaryLines([{ name: 'Margherita', qty: 1 }], 'x_pizza', null, T('x_pizza', { menu: { Margherita: bad } })), null, `x_pizza menu ${label}`);
+  assert.strictEqual(summaryLines([{ id: 'dimsum_01', qty: 1 }], 'la_musa', null, T('la_musa', { menu: { dimsum_01: bad } })), null, `la_musa menu ${label}`);
+  assert.strictEqual(summaryLines([{ name: 'Margherita', qty: 1, extras: [{ name: 'Mozzarella' }] }], 'x_pizza', null, T('x_pizza', { extras: { Mozzarella: bad } })), null, `x_pizza extra ${label}`);
+  assert.strictEqual(summaryLines([{ id: 'dimsum_01', qty: 1, extras: [{ id: 'rice_white', qty: 1 }] }], 'la_musa', null, T('la_musa', { extras: { rice_white: bad } })), null, `la_musa extra ${label}`);
+}
+ok(`summaryLines: a corrupt menu OR extra price → null — ${CORRUPT.length} shapes × both brands × both extra paths`);
+{
+  // and the validation SETS agree: whenever computeServerTotal rejects, summaryLines does too.
+  const cart = [{ name: 'Margherita', qty: 1, extras: [{ name: 'Mozzarella' }] }];
+  for (const [label, v] of [...CORRUPT, ['valid', 299]]) {
+    const tbl = T('x_pizza', { menu: { Margherita: v } });
+    const charged = Number.isNaN(computeServerTotal(cart, 'x_pizza', tbl).total);
+    const summarised = summaryLines(cart, 'x_pizza', null, tbl) === null;
+    assert.strictEqual(charged, summarised, `summaryLines must mirror computeServerTotal for "${label}"`);
+  }
+  ok('summaryLines mirrors computeServerTotal: identical accept/reject across all value shapes');
+}
+
+// ── 7. EXTENSION: the REWARD free-item valuation — money, and a comped FACTURA line ─────────────
+{
+  const { computeRedemption, laMusaPriceCents } = require('./rewards-redeem');
+  const { applyRedemptionToPricing } = require('./rewards-redeem-pricing');
+  const XKEY = 'Margherita', LKEY = 'dimsum_01';
+  for (const [label, bad] of CORRUPT) {
+    assert.strictEqual(laMusaPriceCents(LKEY, T('la_musa', { menu: { [LKEY]: bad } })), null, `laMusaPriceCents ${label} → null`);
+    const x = computeRedemption({ redeem: { type: 'free_pizza_choice', item_id: XKEY }, items: [{ name: 'Ham', qty: 1 }], restaurantId: 'x_pizza', tables: T('x_pizza', { menu: { [XKEY]: bad } }) });
+    assert.deepStrictEqual([x.ok, x.reason], [false, 'ineligible_item'], `computeXPizza ${label} → ineligible_item`);
+    const l = computeRedemption({ redeem: { type: 'points_ala_carte', items: [{ id: LKEY, qty: 1 }] }, items: [{ id: LKEY, qty: 1 }], restaurantId: 'la_musa', tables: T('la_musa', { menu: { [LKEY]: bad } }) });
+    assert.strictEqual(l.ok, false, `computeLaMusa ${label} → rejected`);
+  }
+  ok(`reward valuation: a corrupt free-item price rejects — ${CORRUPT.length} shapes, both brands (no points debited off a bad number)`);
+  // applyXPizza values the COMPED FACTURA LINE — it must refuse before valuing a Void-only SAR doc.
+  const redemption = computeRedemption({ redeem: { type: 'free_pizza_choice', item_id: XKEY }, items: [{ name: 'Ham', qty: 1 }], restaurantId: 'x_pizza', tables: T('x_pizza') });
+  for (const [label, bad] of CORRUPT) {
+    const r = applyRedemptionToPricing({ items: [{ name: 'Ham', qty: 1 }], restaurantId: 'x_pizza', redemption, totalLempiras: 282, tables: T('x_pizza', { menu: { [XKEY]: bad } }) });
+    assert.deepStrictEqual([r.ok, r.error], [false, 'bad_free_item'], `applyXPizza ${label} → bad_free_item`);
+  }
+  ok(`reward FISCAL: a corrupt free-item price → bad_free_item — ${CORRUPT.length} shapes (the comped factura line is never valued from it)`);
+  // INERT: a real redemption values identically and every reconciliation invariant still foots.
+  const good = applyRedemptionToPricing({ items: [{ name: 'Ham', qty: 1 }], restaurantId: 'x_pizza', redemption, totalLempiras: MENU_BY_RESTAURANT.x_pizza.Ham, tables: T('x_pizza') });
+  const codeFed = applyRedemptionToPricing({ items: [{ name: 'Ham', qty: 1 }], restaurantId: 'x_pizza', redemption, totalLempiras: MENU_BY_RESTAURANT.x_pizza.Ham });
+  assert.strictEqual(good.ok, true, 'a real redemption still values');
+  assert.deepStrictEqual(good, codeFed, 'catalog-fed and code-fed valuations remain identical');
+  assert.strictEqual(good.factura_items.reduce((s, l) => s + l.line_gross_cents, 0) - good.desc_rebaja_cents,
+    good.subtotal_cents + good.tax_cents - 0 + (good.factura_items.reduce((s, l) => s + l.line_gross_cents, 0) - good.total_cents - good.desc_rebaja_cents), 'reconciliation still internally consistent');
+  ok(`reward INERT: a real X. Pizza redemption values identically (rebaja ${good.desc_rebaja_cents}) and still foots`);
+  const lgood = computeRedemption({ redeem: { type: 'points_ala_carte', items: [{ id: LKEY, qty: 2 }] }, items: [{ id: LKEY, qty: 1 }], restaurantId: 'la_musa', tables: T('la_musa') });
+  assert.deepStrictEqual(lgood, computeRedemption({ redeem: { type: 'points_ala_carte', items: [{ id: LKEY, qty: 2 }] }, items: [{ id: LKEY, qty: 1 }], restaurantId: 'la_musa' }));
+  assert.strictEqual(lgood.ok, true);
+  ok(`reward INERT: a real La Musa points redemption values identically (cost ${lgood.cost} pts)`);
+}
+
 console.log(`price-value-guard: OK (${n})`);

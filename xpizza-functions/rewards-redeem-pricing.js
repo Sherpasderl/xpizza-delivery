@@ -17,6 +17,7 @@ const { orderBreakdownCents } = require('./order-money');
 const { pricedLineItems } = require('./factura/pricing');
 const { reconcileLineBases } = require('./factura/money');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, resolvePriceTables } = require('./menu-pricing');
+const { isValidPrice } = require('./price-valid');   // 1d-1a EXTENSION: the ONE price-validity rule
 
 // 1b-1b FISCAL (owner-approved): this produces the REDEEMED X. Pizza factura value (factura_items +
 // desc_rebaja_cents). Threading `tables` moves only the SOURCE — the value is byte-identical while the
@@ -49,6 +50,10 @@ function applyXPizza(items, redemption, totalLempiras, tables = null) {
   const freeName = free_lines[0].item_id;
   const freeQty = Number(free_lines[0].qty);
   if (!Number.isInteger(freeQty) || freeQty < 1) return { ok: false, error: 'bad_free_item' };
+  // 1d-1a EXTENSION: this one guard covers BOTH uses of menu[freeName] — the comped unit value here
+  // and the FULL (paid + comped) breakdown below. The comped line lands on a Void-only SAR factura, so
+  // a corrupt price must reject the redemption rather than value the document from it.
+  if (!isValidPrice(menu[freeName])) return { ok: false, error: 'bad_free_item' };
   const unitCents = menu[freeName] * 100;                                              // the server menu is the source of truth for value
   const fi0 = (redemption.freeItems || [])[0] || {};                                   // free_lines zeroes price_cents (0-price display); the real menu-derived price is on the canonical
   if (unitCents !== Number(fi0.price_cents)) return { ok: false, error: 'discount_mismatch' };   // the canonical's server-derived price MUST match the current server menu

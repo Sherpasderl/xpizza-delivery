@@ -1,4 +1,5 @@
 'use strict';
+const { isValidPrice } = require('./price-valid');   // 1d-1a EXTENSION: the ONE price-validity rule
 
 // ---------------------------------------------------------------------------
 // Server-side price tables — the SOURCE OF TRUTH for an order's total.
@@ -164,7 +165,7 @@ function computeServerTotal(items, restaurantId = 'x_pizza', tables = null) {
     // authoritative a portal fat-finger REJECTS instead of silently charging a wrong or zero total.
     // The predicate is byte-identical to the one in factura/pricing.js — see the LOCKSTEP note there.
     const price = menu[key];
-    if (!Number.isInteger(price) || price <= 0) {
+    if (!isValidPrice(price)) {
       return { total: NaN, error: `invalid price for ${key}` };
     }
     total += price * qty;
@@ -190,7 +191,7 @@ function computeServerTotal(items, restaurantId = 'x_pizza', tables = null) {
           return { total: NaN, error: `invalid quantity for extra ${eid}` };
         }
         const eprice = extraPrices[eid];                                    // 1d-1a: same fail-closed value rule
-        if (!Number.isInteger(eprice) || eprice <= 0) {
+        if (!isValidPrice(eprice)) {
           return { total: NaN, error: `invalid price for extra ${eid}` };
         }
         total += eprice * eqty;            // server table only — client ex.price ignored
@@ -200,7 +201,7 @@ function computeServerTotal(items, restaurantId = 'x_pizza', tables = null) {
           return { total: NaN, error: `unknown extra: ${String(ename).slice(0, 40)}` };
         }
         const eprice = extraPrices[ename];                                  // 1d-1a: same fail-closed value rule
-        if (!Number.isInteger(eprice) || eprice <= 0) {
+        if (!isValidPrice(eprice)) {
           return { total: NaN, error: `invalid price for extra ${ename}` };
         }
         total += eprice;
@@ -232,6 +233,11 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
     const qty = Number(it && it.qty);
     if (!key || !Object.prototype.hasOwnProperty.call(menu, key)) return null;
     if (!Number.isInteger(qty) || qty < 1 || qty > 50) return null;
+    // 1d-1a EXTENSION: the same price rule as computeServerTotal, on this function's own fail-open
+    // convention (null → the tracker falls back to items_text). Keeps "MIRRORS computeServerTotal"
+    // literally true: the same validation set, so a cart that cannot be charged cannot be summarised
+    // either — the displayed cents can never be derived from a price the charge rejected.
+    if (!isValidPrice(menu[key])) return null;
     let lineL = menu[key] * qty;
     if (byId && it.extras != null && !Array.isArray(it.extras)) return null;
     const extras = Array.isArray(it.extras) ? it.extras : [];
@@ -243,10 +249,12 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
         if (seen.has(eid)) return null; seen.add(eid);
         const eqty = Number(ex && ex.qty);
         if (!Number.isInteger(eqty) || eqty < 1 || eqty > 50) return null;
+        if (!isValidPrice(extraPrices[eid])) return null;                 // 1d-1a: same rule, null convention
         lineL += extraPrices[eid] * eqty;
       } else {
         const ename = ex && ex.name;
         if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices, ename)) return null;
+        if (!isValidPrice(extraPrices[ename])) return null;               // 1d-1a: same rule, null convention
         lineL += extraPrices[ename];
       }
     }

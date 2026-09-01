@@ -1,4 +1,5 @@
 'use strict';
+const { isValidPrice } = require('../price-valid');   // 1d-1a EXTENSION: the ONE price-validity rule
 
 /**
  * Per-line gross cents for the factura, mirroring index.js computeServerTotal's validation
@@ -24,12 +25,13 @@ function pricedLineItems(items, menuPrices, extraPrices) {
       return { items: null, error: `invalid quantity for ${name}` };
     }
     // Phase 1d Stage 1a — FAIL-CLOSED PRICE VALUE, in LOCKSTEP with computeServerTotal.
-    // 🔒 The predicate here MUST stay byte-identical to menu-pricing.js's. The factura's line-gross sum
-    // has to equal the charged total, so a value that rejects in one calculator must reject in the
-    // other — otherwise you get an order that prices but cannot produce a factura, or a factura that
-    // misvalues a Void-only SAR document. Any future change to one of these rules must change both.
+    // 🔒 Both calculators now gate on the SAME shared predicate (price-valid.js), so the rule cannot
+    // drift between them — it is one function, not two copies. That matters because the factura's
+    // line-gross sum has to equal the charged total: a value that rejects in one must reject in the
+    // other, or an order prices but cannot produce a factura, or a factura misvalues a Void-only SAR
+    // document. Change the rule in price-valid.js and both move together, by construction.
     const price = menuPrices[name];
-    if (!Number.isInteger(price) || price <= 0) {
+    if (!isValidPrice(price)) {
       return { items: null, error: `invalid price for ${name}` };
     }
     let lineGrossCents = price * qty * 100;
@@ -41,7 +43,7 @@ function pricedLineItems(items, menuPrices, extraPrices) {
         return { items: null, error: `unknown extra: ${String(ename).slice(0, 40)}` };
       }
       const eprice = extraPrices[ename];                                   // 1d-1a: same rule, same lockstep
-      if (!Number.isInteger(eprice) || eprice <= 0) {
+      if (!isValidPrice(eprice)) {
         return { items: null, error: `invalid price for extra ${ename}` };
       }
       lineGrossCents += eprice * 100;

@@ -13,6 +13,7 @@
 // La Musa = any non-alcohol menu dish + the 3 acompañamientos (modifiers/alcohol rejected). Never throws.
 const crypto = require('crypto');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, resolvePriceTables } = require('./menu-pricing');
+const { isValidPrice } = require('./price-valid');   // 1d-1a EXTENSION: the ONE price-validity rule
 const { REDEMPTION_CONFIG, REDEMPTION_CONFIG_VERSION, REDEEM_POINTS_PER_LEMPIRA, isXPizzaEligible, isLaMusaEligible } = require('./rewards-redeem-config');
 
 const toCents = (lempiras) => Math.round(lempiras * 100);   // menu tables are whole-lempira; ×100 is exact
@@ -39,7 +40,11 @@ function laMusaPriceCents(itemId, tables = null) {
   if (Object.prototype.hasOwnProperty.call(menu, itemId)) p = menu[itemId];
   else if (Object.prototype.hasOwnProperty.call(extras, itemId)) p = extras[itemId];
   else return null;
-  return (Number.isFinite(p) && p > 0) ? toCents(p) : null;
+  // 1d-1a EXTENSION: tightened from Number.isFinite to the shared rule. A reward's value becomes a
+  // points DEBIT and a comped factura line, so a non-integer or corrupt price must not be valued at
+  // all. Inert today (every live price is a positive integer); integers are finite, so nothing that
+  // passed before fails now.
+  return isValidPrice(p) ? toCents(p) : null;
 }
 
 // La Musa points cost for ONE unit priced at `priceCents` — round(price_L × rate) → ~10% value-back.
@@ -54,8 +59,11 @@ function computeXPizza(redeem, tables = null) {
   if (typeof name !== 'string' || !name) return { ok: false, reason: 'bad_request' };
   if (!isXPizzaEligible(name)) return { ok: false, reason: 'ineligible_item' };   // NY / unknown / non-individual
   const unit = (resolvePriceTables('x_pizza', tables).menu || {})[name];   // PIN B asserts the tag
+  // 1d-1a EXTENSION: gate the LEMPIRA price before converting. Guarding post-conversion would accept a
+  // non-integer lempira value whose cents happen to look fine.
+  if (!isValidPrice(unit)) return { ok: false, reason: 'ineligible_item' };
   const price_cents = toCents(unit);
-  if (!(Number.isFinite(price_cents) && price_cents > 0)) return { ok: false, reason: 'ineligible_item' };
+  if (!(Number.isFinite(price_cents) && price_cents > 0)) return { ok: false, reason: 'ineligible_item' };   // belt
   const cfg = REDEMPTION_CONFIG.x_pizza;
   const canonical = { restaurant_id: 'x_pizza', model: 'add_free', type: cfg.reward,
     config_version: REDEMPTION_CONFIG_VERSION, cost: cfg.cost, discount_cents: 0, free_item_key: name };
