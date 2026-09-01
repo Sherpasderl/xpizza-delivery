@@ -119,7 +119,14 @@ async function acquireLease(db, rid) {
 
 // The ATOMIC FLIP — the only cutover moment. Rereads the lock in a transaction; flips ONLY if this call
 // still owns an UNEXPIRED lease (server time). A publisher whose lease expired (or was reclaimed) CANNOT flip.
-async function flipPointer(db, rid, token, versionId, snapshot = null) {
+// The snapshot is REQUIRED, not optional. With a default of null the "pointer N can never coexist with
+// snapshot N-1" guarantee held only by caller discipline, and in Stage 2 the snapshot BECOMES the price
+// source — so a pointer-only flip would serve stale prices. Requiring it makes the invariant structural:
+// no code path can move the pointer without moving the snapshot with it.
+async function flipPointer(db, rid, token, versionId, snapshot) {
+  if (!snapshot || snapshot.version !== versionId) {
+    throw new Error(`flip_requires_snapshot: ${rid}/${versionId} — the pointer and its snapshot must move together`);
+  }
   const nowServer = await serverNow(db, rid);
   const lockRef = lockRefOf(db, rid);
   const pointerRef = pointerRefOf(db, rid);
@@ -131,7 +138,7 @@ async function flipPointer(db, rid, token, versionId, snapshot = null) {
     tx.set(pointerRef, { version: versionId, at: FieldValue.serverTimestamp() });
     // 1b: the snapshot rides the SAME transaction — coherence by construction. If the flip aborts
     // (lease lost/expired), NEITHER the pointer nor the snapshot moves.
-    if (snapshot) tx.set(snapshotRefOf(db, rid), snapshot);
+    tx.set(snapshotRefOf(db, rid), snapshot);
   });
 }
 

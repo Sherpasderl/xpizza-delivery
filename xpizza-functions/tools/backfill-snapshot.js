@@ -12,9 +12,13 @@ try { require('dotenv').config(); } catch (_) { /* devDependency; this needs onl
 const admin = require('firebase-admin');
 const { getActiveVersionId, readVersionDocs } = require('../catalog/catalog-firestore');
 const { snapshotRefOf, snapshotOf, writeMirror, tablesFromVersionDocs } = require('../catalog/catalog-publish');
-const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
+const { makeRtdbMirror, RTDB_URL } = require('../catalog/mirror-rtdb');
 
-admin.initializeApp({ credential: admin.credential.applicationDefault() });
+admin.initializeApp({
+  credential: admin.credential.applicationDefault(),
+  databaseURL: RTDB_URL,   // 1b REVISE: ADC + GOOGLE_CLOUD_PROJECT alone do NOT resolve RTDB — without
+                           // this, admin.database() throws and the tool dies before writing anything.
+});
 const db = admin.firestore();
 const mirror = makeRtdbMirror(admin.database());
 

@@ -8,6 +8,13 @@
 //
 // Written at `/catalog_snapshot/{restaurantId}`. Server-only: no client rule grants access to that
 // subtree, so it is default-denied exactly like /rate_limits.
+// The RTDB instance URL, pinned. An owner-run CLI that inits with ADC + GOOGLE_CLOUD_PROJECT alone
+// CANNOT resolve RTDB — admin.database() throws "Can't determine Firebase Database URL" the moment it
+// is called, so a tool would crash before writing anything. index.js pins the same value for the
+// deployed functions; it is repeated (not imported) there because the additive guard for this phase
+// keeps index.js byte-unchanged.
+const RTDB_URL = 'https://xpizza-delivery-default-rtdb.firebaseio.com';
+
 function makeRtdbMirror(rtdb) {
   return async function mirrorToRtdb(restaurantId, payload) {
     await rtdb.ref(`catalog_snapshot/${restaurantId}`).set({
@@ -19,4 +26,4 @@ function makeRtdbMirror(rtdb) {
     });
   };
 }
-module.exports = { makeRtdbMirror };
+module.exports = { makeRtdbMirror, RTDB_URL };

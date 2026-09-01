@@ -94,7 +94,7 @@ const buildReader = (codeMap = null) => {
     const { versionId: v2 } = await writeVersion(db, rid, mkVersion({ A: 20 }), await serverNow(db, rid));   // written, NOT flipped
     assert.strictEqual((await read(rid)).menu.A, 10, 'mid-publish reader sees the OLD version (v2 docs written, pointer not flipped)');
     assert.strictEqual(await getActiveVersionId(db, rid), v1, 'pointer still v1 before the flip');
-    await flipPointer(db, rid, tok, v2);
+    await flipPointer(db, rid, tok, v2, { version: v2, rid, menu: {}, extras: {} });   // 1b: the pointer cannot move without its snapshot
     await releaseLease(db, rid, tok);
     assert.strictEqual((await read(rid)).menu.A, 20, 'after the atomic flip the reader sees the NEW version');
     ok('ATOMIC FLIP: version docs written before the flip; reader sees OLD until the pointer moves, NEW after');
@@ -177,7 +177,7 @@ const buildReader = (codeMap = null) => {
     const t1 = await acquireLease(db, rid);
     const nowS = await serverNow(db, rid);
     await lockRef(rid).set({ owner_token: t1, acquired_at: nowS, expires_at: Timestamp.fromMillis(nowS.toMillis() - 60000) });   // force-expire by SERVER time
-    await assert.rejects(() => flipPointer(db, rid, t1, 'anything'), /lease_expired/);
+    await assert.rejects(() => flipPointer(db, rid, t1, 'anything', { version: 'anything', rid, menu: {}, extras: {} }), /lease_expired/);
     ok('STALE-LEASE: an expired lease (server time) CANNOT flip even though owner_token matches — no client-clock bypass');
   }
 
@@ -191,8 +191,8 @@ const buildReader = (codeMap = null) => {
     const t2 = await acquireLease(db, rid);                                 // reclaim (expired) → new token
     assert.notStrictEqual(t1, t2, 'reclaim allocates a FRESH owner_token');
     const { versionId: vNew } = await writeVersion(db, rid, mkVersion({ A: 99 }), await serverNow(db, rid));
-    await flipPointer(db, rid, t2, vNew);                                   // t2 flips → the newer version is live
-    await assert.rejects(() => flipPointer(db, rid, t1, 'v_old'), /lease_lost|lease_expired/);   // stale t1 cannot revert
+    await flipPointer(db, rid, t2, vNew, { version: vNew, rid, menu: {}, extras: {} });   // t2 flips → the newer version is live
+    await assert.rejects(() => flipPointer(db, rid, t1, 'v_old', { version: 'v_old', rid, menu: {}, extras: {} }), /lease_lost|lease_expired/);   // stale t1 cannot revert
     assert.strictEqual((await read(rid)).menu.A, 99, 'the reclaimer\'s version stays live — no stale revert');
     await releaseLease(db, rid, t2);
     ok('NO REVERT: after a reclaim, the stale publisher\'s flip is rejected (owner_token changed) — no stale-snapshot revert');
@@ -409,8 +409,10 @@ const buildReader = (codeMap = null) => {
     // The check above passes whether the snapshot rides the transaction OR is written after it and
     // skipped because the tx threw — so it does NOT actually prove atomicity. Two checks that do:
     //
-    // (a) BEHAVIOURAL: serverTimestamp resolves ONCE per transaction commit, so a pointer and snapshot
-    //     written in the SAME tx carry the IDENTICAL timestamp. Two separate writes cannot.
+    // (a) BEHAVIOURAL, SECONDARY: serverTimestamp resolves once per transaction commit, so a pointer
+    //     and snapshot written in the same tx carry an identical timestamp. Suggestive, NOT definitive
+    //     — two separate writes CAN land in the same millisecond, especially on the emulator. The
+    //     structural check (b) is the load-bearing atomicity proof.
     const okRid = 'atomic_ts_shop';
     const pub = await publishVersion(db, okRid, mkVersion({ A: 1 }), { mirror: async () => {} });
     const [ptrDoc, snapDoc] = await Promise.all([
@@ -421,8 +423,8 @@ const buildReader = (codeMap = null) => {
     assert.strictEqual(snapDoc.data().at.toMillis(), ptrDoc.data().at.toMillis(),
       'pointer and snapshot must share ONE commit timestamp — they are written in the same transaction');
     ok('1b atomicity: pointer and snapshot share a single commit timestamp (same transaction, not two writes)');
-    // (b) STRUCTURAL: the snapshot set must appear INSIDE flipPointer's runTransaction callback. This
-    //     survives even if the timestamp check is ever weakened by an implementation change.
+    // (b) STRUCTURAL, PRIMARY: the snapshot must be written through `tx.set`, which exists only inside
+    //     the transaction callback. This is the definitive proof; (a) merely corroborates it.
     const SRC = require('fs').readFileSync(require('path').join(__dirname, '..', 'catalog', 'catalog-publish.js'), 'utf8');
     const flip = SRC.slice(SRC.indexOf('async function flipPointer'), SRC.indexOf('// Release ONLY if we still own it'));
     // `tx` exists ONLY inside the transaction callback, so writing the snapshot through tx.set is
@@ -433,6 +435,13 @@ const buildReader = (codeMap = null) => {
     assert.ok(!/(?<!tx\.set\()snapshotRefOf\(db, rid\)\.set\(/.test(flip),
       'flipPointer must NOT write the snapshot outside the transaction');
     ok('1b atomicity (structural): the snapshot write is inside flipPointer\'s transaction, via tx.set');
+    // Fold #1: coherence is now STRUCTURAL — flipPointer refuses to move the pointer without a
+    // matching snapshot, so no code path (present or future) can leave the snapshot behind.
+    await assert.rejects(() => flipPointer(db, okRid, 'tok', pub.versionId), /flip_requires_snapshot/,
+      'a pointer-only flip must be refused');
+    await assert.rejects(() => flipPointer(db, okRid, 'tok', pub.versionId, { version: 'other', rid: okRid, menu: {}, extras: {} }),
+      /flip_requires_snapshot/, 'a snapshot for a DIFFERENT version must be refused too');
+    ok('1b coherence is structural: flipPointer refuses a pointer-only flip AND a mismatched snapshot');
   }
   {
     // ROLLBACK re-emits BOTH — else the fallback would describe the version we rolled AWAY from.

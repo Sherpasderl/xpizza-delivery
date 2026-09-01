@@ -15,11 +15,15 @@ const admin = require('firebase-admin');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
 const { publishVersion } = require('../catalog/catalog-publish');
-const { makeRtdbMirror } = require('../catalog/mirror-rtdb');   // 1b: the RTDB disaster-fallback writer
+const { makeRtdbMirror, RTDB_URL } = require('../catalog/mirror-rtdb');   // 1b: the RTDB disaster-fallback writer
 
 const gitSha = () => { try { return execSync('git rev-parse --short HEAD', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch (_) { return 'unknown'; } };
 
-admin.initializeApp({ credential: admin.credential.applicationDefault() });
+admin.initializeApp({
+  credential: admin.credential.applicationDefault(),
+  databaseURL: RTDB_URL,   // 1b REVISE: ADC + GOOGLE_CLOUD_PROJECT alone do NOT resolve RTDB — without
+                           // this, admin.database() throws and the tool dies before writing anything.
+});
 const db = admin.firestore();
 const mirror = makeRtdbMirror(admin.database());   // 1b: injected so the publish acks the mirror under its lease
 
