@@ -122,6 +122,46 @@ const mk = (getTables) => { const seen = []; return { resolver: createPricingRes
     ok('a rejection arriving AFTER the deadline is swallowed (no unhandled rejection)');
   }
 
+  // ── 2b INERT: the ladder is RECORDED INTO but never CONSULTED. The live fallback still returns
+  //    codeFor; wiring snapshotFor in is 2c. ─────────────────────────────────────────────────────
+  {
+    const { createSnapshotFallback } = require('./snapshot-fallback');
+    let ladderCalls = 0;
+    const fb = createSnapshotFallback({ mirrorReader: async () => { ladderCalls++; return null; }, alarm: () => {} });
+    const spy = { snapshotFor: (...a) => { ladderCalls++; return fb.snapshotFor(...a); }, recordActive: fb.recordActive, recordGood: fb.recordGood, state: fb.state };
+
+    // happy path: identical result with and without the ladder attached
+    const withL = createPricingResolver({ reader: { getTables: async (r) => ({ ...clone(r), versionId: 'v-1', seq: 1 }) }, codeFor, alarm: () => {}, ladder: spy });
+    const without = createPricingResolver({ reader: { getTables: async (r) => clone(r) }, codeFor, alarm: () => {} });
+    assert.deepStrictEqual(await withL.getPricingTables('x_pizza'), await without.getPricingTables('x_pizza'),
+      'attaching the ladder must not change what the resolver returns');
+    assert.strictEqual(ladderCalls, 0, 'and it must not have been consulted');
+    ok('2b INERT: the happy path is byte-identical with the ladder attached, and the ladder is not consulted');
+
+    // failure path: STILL codeFor — not the ladder. This is what 2c changes.
+    const failing = createPricingResolver({ reader: { getTables: async () => { throw new Error('firestore down'); } }, codeFor, alarm: () => {}, ladder: spy });
+    const r = await failing.getPricingTables('x_pizza');
+    assert.deepStrictEqual(r, { restaurantId: 'x_pizza', menu: CODE.x_pizza.menu, extras: CODE.x_pizza.extras },
+      'the FAILURE path still returns codeFor — swapping in snapshotFor is Stage 2c');
+    assert.strictEqual(ladderCalls, 0, 'snapshotFor is NOT reachable from the live path in 2b');
+    ok('2b INERT: the failure path still returns codeFor — snapshotFor is unreachable live (that flip is 2c)');
+
+    // but the happy path DID feed the ladder, so 2c drops onto warm state rather than an empty one
+    assert.strictEqual(spy.state.lastGood.get('x_pizza').seq, 1, 'a successful serve recorded last-good');
+    assert.strictEqual(spy.state.lastKnownActive.get('x_pizza').seq, 1, 'and taught the active ordinal');
+    ok('2b: the happy path RECORDS last-good + the active ordinal, so 2c inherits warm state');
+
+    // a resolver with NO fallback attached behaves exactly as before (nothing became mandatory)
+    const bare = createPricingResolver({ reader: { getTables: async (r) => ({ ...clone(r), versionId: 'v', seq: 2 }) }, codeFor, alarm: () => {} });
+    assert.deepStrictEqual(await bare.getPricingTables('la_musa'), { restaurantId: 'la_musa', menu: CODE.la_musa.menu, extras: CODE.la_musa.extras });
+    ok('2b: the ladder is optional — a resolver without one is unchanged');
+    // and the surfaced version/seq never leak into what callers receive
+    const out = await withL.getPricingTables('x_pizza');
+    assert.deepStrictEqual(Object.keys(out).sort(), ['extras', 'menu', 'restaurantId'],
+      'versionId/seq must NOT leak into the resolver result (PIN B shape unchanged)');
+    ok('2b: versionId/seq stay internal — the resolver result shape is unchanged');
+  }
+
   finished = true;
   console.log(`pricing-tables: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

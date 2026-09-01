@@ -94,10 +94,12 @@ async function getRestaurantDocs(db, restaurantId) {
   const versionId = await getActiveVersionId(db, restaurantId);   // throws on malformed / read error
   if (versionId == null) {
     const flat = await readFlatDocs(db, restaurantId);            // clean-absent → flat (throws if flat also absent)
-    return { versionId: null, itemDocs: flat.itemDocs, extraDocs: flat.extraDocs };
+    return { versionId: null, seq: null, itemDocs: flat.itemDocs, extraDocs: flat.extraDocs };   // 2b: flat layout has no version/ordinal
   }
-  const { itemDocs, extraDocs } = await readVersionDocs(db, restaurantId, versionId);   // throws on version-missing / completeness fail
-  return { versionId, itemDocs, extraDocs };
+  const { itemDocs, extraDocs, seq } = await readVersionDocs(db, restaurantId, versionId);   // throws on version-missing / completeness fail
+  // 2b: `seq` rides along so the resolver can learn WHICH ordinal it served. Additive — every existing
+  // consumer destructures only itemDocs/extraDocs and is byte-unchanged.
+  return { versionId, seq, itemDocs, extraDocs };
 }
 
 module.exports = { getRestaurantDocs, getActiveVersionId, readVersionDocs, readFlatDocs, mapDocs };

@@ -11,7 +11,9 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const getRestaurantDocs = async (rid) => { calls++; return { versionId: null, itemDocs: [{ key: 'Margherita', price: 299 }], extraDocs: [] }; };
     const reader = createCatalogReader({ getRestaurantDocs, now: () => 1000 });
     const tables = await reader.getTables('x_pizza');
-    assert.deepStrictEqual(tables, { menu: { Margherita: 299 }, extras: {} });
+    // 2b: getTables additively carries the version witness + ordinal so the resolver can record which
+  // version it served. Null here because this DI'd doc source predates the surfacing.
+  assert.deepStrictEqual(tables, { menu: { Margherita: 299 }, extras: {}, versionId: null, seq: null });
     ok('getTables → {menu, extras} from injected docs (flat, no pointer probe)');
   }
 

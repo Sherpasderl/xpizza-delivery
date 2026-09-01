@@ -128,8 +128,11 @@ async function acquireLease(db, rid) {
 // source — so a pointer-only flip would serve stale prices. Requiring it makes the invariant structural:
 // no code path can move the pointer without moving the snapshot with it.
 async function flipPointer(db, rid, token, versionId, snapshot) {
-  if (!snapshot || snapshot.version !== versionId) {
-    throw new Error(`flip_requires_snapshot: ${rid}/${versionId} — the pointer and its snapshot must move together`);
+  // 2b S3 fold: the ordinal is as load-bearing as the version witness — a snapshot with a version but
+  // no `seq` would satisfy the coherence check and then be refused by the read-side ladder (which
+  // fail-closes on an absent ordinal), i.e. a fallback that exists but can never be used.
+  if (!snapshot || snapshot.version !== versionId || !Number.isInteger(snapshot.seq)) {
+    throw new Error(`flip_requires_snapshot: ${rid}/${versionId} — the pointer needs a snapshot carrying its version AND an integer seq`);
   }
   const nowServer = await serverNow(db, rid);
   const lockRef = lockRefOf(db, rid);

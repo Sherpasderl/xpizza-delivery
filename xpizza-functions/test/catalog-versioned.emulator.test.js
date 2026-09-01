@@ -402,7 +402,7 @@ const buildReader = (codeMap = null) => {
     const token = await acquireLease(db, rid);
     const { versionId: v2, menuTable } = await writeVersion(db, rid, mkVersion({ A: 2 }), await serverNow(db, rid));
     await releaseLease(db, rid, token);                       // drop the lease → the flip must fail
-    await assert.rejects(() => flipPointer(db, rid, token, v2, { version: v2, rid, menu: menuTable, extras: {} }), /lease_lost|lease_expired/);
+    await assert.rejects(() => flipPointer(db, rid, token, v2, { version: v2, seq: 2, rid, menu: menuTable, extras: {} }), /lease_lost|lease_expired/);
     assert.strictEqual(await getActiveVersionId(db, rid), first.versionId, 'the pointer did not move');
     assert.deepStrictEqual((await snapshotOfRid(rid)).version, before.version, 'and neither did the snapshot');
     ok('1b atomicity: a failed flip moves NEITHER the pointer nor the snapshot (same transaction)');

@@ -85,7 +85,10 @@ function heartbeat(restaurantId, now) {
   console.log('pricing_catalog_hit', JSON.stringify({ restaurantId }));
 }
 
-function createPricingResolver({ reader, codeFor, alarm, deadlineMs = CATALOG_READ_DEADLINE_MS, now = Date.now }) {
+// 2b: `ladder` is the snapshotFor fallback ladder. It is RECORDED INTO on the happy path but NOT consulted —
+// the failure path still returns codeFor. Stage 2c is the one-line swap that makes it load-bearing, and
+// it drops onto a ladder that has been fed real state in production for however long 2b has been live.
+function createPricingResolver({ reader, codeFor, alarm, deadlineMs = CATALOG_READ_DEADLINE_MS, now = Date.now, ladder = null }) {
   const fire = (kind, detail) => {                       // an alarm must never break pricing
     try { const r = alarm && alarm(kind, detail); if (r && typeof r.catch === 'function') r.catch(() => {}); }
     catch (_) { /* swallowed: alarming is best-effort, pricing is not */ }
@@ -93,7 +96,10 @@ function createPricingResolver({ reader, codeFor, alarm, deadlineMs = CATALOG_RE
   async function getPricingTables(restaurantId) {
     let code;
     try { code = codeFor(restaurantId); } catch (_) { code = undefined; }
-    const fallback = { restaurantId, menu: code && code.menu, extras: code && code.extras };
+    // NB: this local is the CODE-TABLE result returned on any failure. It is deliberately NOT named
+    // `fallback` any more — the 2b ladder is injected as `ladder`, and the two shadowing each other
+    // silently disabled the recorders once already.
+    const codeResult = { restaurantId, menu: code && code.menu, extras: code && code.extras };
     let cat;
     try {
       const read = reader.getTables(restaurantId);
@@ -101,22 +107,28 @@ function createPricingResolver({ reader, codeFor, alarm, deadlineMs = CATALOG_RE
       // SUCCESS is useful: the 1a reader caches on success, so the next order gets a warm hit.)
       if (read && typeof read.catch === 'function') read.catch(() => {});
       cat = await withDeadline(read, deadlineMs);
+      // Learn the active ordinal even when parity later fails — K needs it regardless of whether the
+      // tables matched the code table.
+      try { if (ladder && cat) ladder.recordActive(restaurantId, cat.versionId, cat.seq); } catch (_) {}
     } catch (e) {
       // Distinguish a HANG from an ERROR so the prod-prove window can tell them apart.
       const kind = (e && e.message === 'catalog_read_timeout') ? 'catalog_read_timeout' : 'catalog_read_failed';
       fire(kind, { restaurantId, error: (e && e.message) ? String(e.message).slice(0, 200) : 'unknown' });
-      return fallback;                                    // fail-safe: the live code table still prices the order, fast
+      return codeResult;                                  // fail-safe: the live code table still prices the order, fast
     }
     try {
       if (tablesEqual(cat, code)) {
         heartbeat(restaurantId, now());                                                  // sampled "catalog served" signal
+        // 2b (record-only): remember what we just served, so the 2c fallback has a coherent last-good
+        // and a known ordinal to check a mirror against. Never allowed to affect what is returned.
+        try { if (ladder) ladder.recordGood(restaurantId, { versionId: cat.versionId, seq: cat.seq, menu: cat.menu, extras: cat.extras }); } catch (_) {}
         return { restaurantId, menu: cat.menu, extras: cat.extras };                     // ← the cutover
       }
       fire('catalog_parity_mismatch', { restaurantId, diff: diffSummary(cat, code) });
     } catch (e) {
       fire('catalog_parity_mismatch', { restaurantId, error: (e && e.message) ? String(e.message).slice(0, 200) : 'compare failed' });
     }
-    return fallback;
+    return codeResult;
   }
   return { getPricingTables };
 }

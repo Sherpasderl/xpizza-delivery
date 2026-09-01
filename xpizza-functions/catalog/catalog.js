@@ -38,8 +38,13 @@ function createCatalogReader({ getRestaurantDocs, getActiveVersionId = null, poi
   }
 
   async function fullRead(rid) {
-    const { versionId, itemDocs, extraDocs } = await getRestaurantDocs(rid);   // throw propagates → NOTHING cached
-    const tables = buildTablesFromDocs(itemDocs, extraDocs);
+    const { versionId, seq, itemDocs, extraDocs } = await getRestaurantDocs(rid);   // throw propagates → NOTHING cached
+    // 2b: attach the version witness + ordinal to the served tables so the resolver can record which
+    // version it served. ADDITIVE — tablesEqual compares only .menu/.extras, and the resolver returns
+    // { restaurantId, menu, extras }, so these fields never reach a caller.
+    // Normalised to null (never undefined) so the shape is predictable for every caller, including a
+    // DI'd test double whose doc source predates the version/seq surfacing.
+    const tables = { ...buildTablesFromDocs(itemDocs, extraDocs), versionId: versionId === undefined ? null : versionId, seq: Number.isInteger(seq) ? seq : null };
     if (versionId == null) flatCache.set(rid, { at: now(), tables });          // flat → short-TTL entry
     else lruSet(vkey(rid, versionId), tables);                                 // version → immutable LRU
     return tables;
