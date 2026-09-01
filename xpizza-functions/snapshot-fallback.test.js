@@ -120,5 +120,57 @@ const mk = (mirrorReader, opts = {}) => { const alarms = []; return { alarms, f:
     assert.strictEqual(f.state.lastKnownActive.get('x_pizza').seq, 2, 'a good serve also teaches the active ordinal');
     ok('recorders: reject a non-integer ordinal and an incomplete serve; a good serve also teaches the ordinal');
   }
+  // ── 🔴 CORRUPT MIRROR VALUES → FAIL CLOSED, on BOTH the known-active and the cold paths ───────
+  //    The 1a guard at the calculator is the final backstop, but the ladder must not lean on it: its
+  //    contract is "never serve a price it cannot vouch for", and a table it can see is corrupt is one
+  //    it cannot vouch for. Same rule as the calculators — the shared isValidPrice.
+  const CORRUPT_TABLES = [
+    ['zero price', { A: 0 }], ['negative price', { A: -5 }], ['non-integer price', { A: 12.5 }],
+    ['NaN price', { A: NaN }], ['string price', { A: '10' }], ['null price', { A: null }],
+    ['undefined price', { A: undefined }], ['Infinity price', { A: Infinity }], ['empty key', { '': 10 }],
+  ];
+  for (const [label, badMenu] of CORRUPT_TABLES) {
+    // (a) known-active path
+    const known = mk(async () => M(5, { menu: badMenu }));
+    known.f.recordActive('x_pizza', 'v-5', 5);
+    await assert.rejects(() => known.f.snapshotFor('x_pizza'), /snapshot_fallback_unavailable/, `known-active: ${label} must FAIL CLOSED`);
+    assert.ok(known.alarms.some((a) => a[0] === 'catalog_mirror_unusable'), `${label} alarms unusable`);
+    // (b) COLD path — the disaster rung must be no more permissive than the checked one
+    const cold = mk(async () => M(5, { menu: badMenu }));
+    await assert.rejects(() => cold.f.snapshotFor('x_pizza'), /snapshot_fallback_unavailable/, `cold: ${label} must FAIL CLOSED`);
+    assert.ok(!cold.alarms.some((a) => a[0] === 'catalog_served_from_mirror_cold'), `${label} must NOT be served as a cold disaster fallback`);
+  }
+  ok(`corrupt mirror VALUES → FAIL CLOSED on both the known-active and cold paths (${CORRUPT_TABLES.length} shapes)`);
+  {
+    // extras are validated too, not just menu
+    const { f, alarms } = mk(async () => M(5, { extras: { E: 0 } }));
+    f.recordActive('x_pizza', 'v-5', 5);
+    await assert.rejects(() => f.snapshotFor('x_pizza'), /snapshot_fallback_unavailable/);
+    assert.ok(alarms.some((a) => a[0] === 'catalog_mirror_unusable'));
+    ok('corrupt EXTRAS values are refused too (both tables are validated, not just menu)');
+  }
+  {
+    // and a sound mirror still serves — the validation must not over-reject
+    const { f } = mk(async () => M(5, { menu: { A: 1, B: 299 }, extras: { E: 50 } }));
+    f.recordActive('x_pizza', 'v-5', 5);
+    const r = await f.snapshotFor('x_pizza');
+    assert.deepStrictEqual([r.source, r.menu], ['mirror', { A: 1, B: 299 }], 'a sound mirror is still served');
+    const empty = mk(async () => M(5, { extras: {} }));
+    empty.f.recordActive('x_pizza', 'v-5', 5);
+    assert.strictEqual((await empty.f.snapshotFor('x_pizza')).source, 'mirror', 'an EMPTY extras table is legitimate, not corrupt');
+    ok('the value rule does not over-reject: sound tables and a legitimately empty extras table still serve');
+  }
+  {
+    // RUNG 1 symmetry: lastGood must refuse a corrupt table, so rung 1 can never hand out something
+    // rung 2 would have rejected.
+    const { f } = mk(async () => null);
+    f.recordGood('x_pizza', { versionId: 'v-1', seq: 1, menu: { A: 0 }, extras: {} });
+    assert.strictEqual(f.state.lastGood.has('x_pizza'), false, 'a corrupt table is never recorded as last-good');
+    await assert.rejects(() => f.snapshotFor('x_pizza'), /snapshot_fallback_unavailable/, 'so rung 1 cannot serve it');
+    f.recordGood('x_pizza', { versionId: 'v-1', seq: 1, menu: { A: 5 }, extras: {} });
+    assert.strictEqual((await f.snapshotFor('x_pizza')).source, 'last_good', 'a sound table still records and serves');
+    ok('rung 1 symmetry: lastGood refuses a corrupt table (and still accepts a sound one)');
+  }
+
   console.log(`snapshot-fallback: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

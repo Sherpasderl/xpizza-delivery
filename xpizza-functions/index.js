@@ -273,6 +273,19 @@ const MENU_PRICES = MENU_BY_RESTAURANT.x_pizza; // x_pizza table — used by pri
 const { createCatalogReader } = require('./catalog/catalog');
 const { getRestaurantDocs, getActiveVersionId } = require('./catalog/catalog-firestore');
 const { createPricingResolver } = require('./catalog/pricing-tables');
+const { createSnapshotFallback, makeRtdbMirrorReader } = require('./catalog/snapshot-fallback');   // 1d 2b
+// The ladder is its own singleton so its per-instance memory (lastGood / lastKnownActive) survives
+// across requests on a warm instance — that memory IS rung 1.
+let _snapshotLadder = null;
+function snapshotLadder() {
+  if (!_snapshotLadder) {
+    _snapshotLadder = createSnapshotFallback({
+      mirrorReader: makeRtdbMirrorReader(getDatabase()),   // RTDB /catalog_snapshot — wired now, unread until 2c
+      alarm: (kind, detail) => paymentAlert(getDatabase(), kind, detail),
+    });
+  }
+  return _snapshotLadder;
+}
 let _pricingResolver = null;
 function pricingResolver() {
   if (!_pricingResolver) {
@@ -288,6 +301,12 @@ function pricingResolver() {
       }),
       codeFor: (rid) => ({ menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] }),
       alarm: (kind, detail) => paymentAlert(getDatabase(), kind, detail),                                // RTDB
+      // 1d Stage 2b — the disaster-fallback ladder, RECORDING ONLY. getPricingTables never calls
+      // snapshotFor in 2b (its failure path still returns the code tables), so the mirror reader below
+      // is wired but never read: only the in-memory recorders run. The point is that production WARMS
+      // lastGood/lastKnownActive throughout 2b, so 2c's flip is a one-line swap onto a ladder that has
+      // been fed real state — rather than one that is cold at the exact moment an outage needs it.
+      ladder: snapshotLadder(),
     });
   }
   return _pricingResolver;

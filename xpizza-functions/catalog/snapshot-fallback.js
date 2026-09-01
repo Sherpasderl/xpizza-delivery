@@ -27,6 +27,8 @@
 // perfectly fresh — the worst available default for a disaster fallback. Absent is refused.
 // ---------------------------------------------------------------------------
 
+const { isValidPrice } = require('../price-valid');   // the ONE platform price rule (1a)
+
 const DEFAULT_K = 1;
 const MIRROR_READ_DEADLINE_MS = 1500;
 
@@ -36,9 +38,17 @@ function withDeadline(promise, ms, label) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-// A mirror payload is usable only if it is fully self-describing: an ordinal plus both tables.
+// A price table is usable only if EVERY entry is a non-empty string key mapping to a positive-integer
+// price — the same rule the calculators enforce. The 1a guard at the calculator is the final backstop,
+// but the ladder must not lean on it: its own contract is "never serve a price it cannot vouch for",
+// and serving a table it knows is corrupt would break that contract even if nothing downstream is
+// mispriced. Fail closed here, first.
+const pricesOk = (t) => !!t && typeof t === 'object' && !Array.isArray(t)
+  && Object.entries(t).every(([k, v]) => typeof k === 'string' && k.length > 0 && isValidPrice(v));
+
+// A mirror payload is usable only if it is fully self-describing (an ordinal) AND its tables are sound.
 function mirrorUsable(m) {
-  return !!m && Number.isInteger(m.seq) && !!m.menu && typeof m.menu === 'object' && !!m.extras && typeof m.extras === 'object';
+  return !!m && Number.isInteger(m.seq) && pricesOk(m.menu) && pricesOk(m.extras);
 }
 
 // createSnapshotFallback({ mirrorReader, alarm, K, deadlineMs })
@@ -60,7 +70,10 @@ function createSnapshotFallback({ mirrorReader, alarm, K = DEFAULT_K, deadlineMs
   }
   // Remember a serve that actually succeeded — rung 1.
   function recordGood(rid, { versionId, seq, menu, extras }) {
-    if (!menu || !extras) return;
+    // Symmetry with the mirror rung: never remember a table the ladder would refuse to serve, so rung 1
+    // cannot hand out something rung 2 would have rejected. A served happy-path table cannot be corrupt
+    // today (the reader and the 1a guard already reject one) — the ladder simply does not depend on that.
+    if (!pricesOk(menu) || !pricesOk(extras)) return;
     lastGood.set(rid, { versionId: versionId || null, seq: Number.isInteger(seq) ? seq : null, menu, extras });
     if (Number.isInteger(seq)) recordActive(rid, versionId, seq);
   }
@@ -119,4 +132,4 @@ function makeRtdbMirrorReader(rtdb) {
   };
 }
 
-module.exports = { createSnapshotFallback, makeRtdbMirrorReader, mirrorUsable, DEFAULT_K, MIRROR_READ_DEADLINE_MS };
+module.exports = { createSnapshotFallback, makeRtdbMirrorReader, mirrorUsable, pricesOk, DEFAULT_K, MIRROR_READ_DEADLINE_MS };
