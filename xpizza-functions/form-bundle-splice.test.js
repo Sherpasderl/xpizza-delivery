@@ -133,12 +133,19 @@ ok('idempotence: re-splicing both shipped forms yields byte-identical HTML');
 // contiguous region would drag in code that uses MENU before the select declares it. This isolates
 // the decision logic, which is precisely what the always-renders guarantee rests on.
 const SELECT_NAMES = { x_pizza: ['MENU', 'PICKUP_ONLY_CATS', 'WEEKEND_ONLY_CATS'], la_musa: ['MENU', 'CATEGORIES', 'VARIANT_ITEMS', 'HAS_PHOTO'] };
+// Gather the select STATEMENTS individually. After the TDZ fix the x_pizza selects are deliberately
+// no longer contiguous — each sits beside the fallback it reads — so slicing a region would drag in
+// unrelated top-level code (and did).
+function stmt(src, decl) {
+  const at = src.indexOf(decl);
+  assert.ok(at > 0, `expected declaration in form: ${decl}`);
+  return src.slice(at, src.indexOf(';', at) + 1);
+}
 function selectBlock(src, rid) {
-  const from = src.indexOf('const _BUNDLE = ');
-  assert.ok(from > 0, 'the validated-select block must be present in the form');
-  const lastName = SELECT_NAMES[rid][SELECT_NAMES[rid].length - 1];
-  const lastDecl = src.indexOf(`const ${lastName} = `, from);
-  return src.slice(from, src.indexOf('\n', src.indexOf(';', lastDecl)));
+  const helpers = ['const _BUNDLE = ', 'const _okDishes = ', 'const _okStrArr = ']
+    .concat(rid === 'la_musa' ? ['const _okCats = ', 'const _okObj = '] : []);
+  const selects = SELECT_NAMES[rid].map((k) => `const ${k} = ${k === 'HAS_PHOTO' ? 'new Set(' : '_ok'}`);
+  return helpers.concat(selects).map((d) => stmt(src, d)).join('\n');
 }
 function runSelect(rid, bundleGlobal) {
   const src = html(rid);

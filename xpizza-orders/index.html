@@ -1464,6 +1464,20 @@ const FALLBACK_MENU = [
   { id:24, cat:'ny', name:'Pepperoni NY',         price:641, emoji:'🔴', color:'#9E2412', desc:'6 slices, pepperoni' },
   { id:23, cat:'ny', name:'Crispy Bacon NY',      price:662, emoji:'🥓', color:'#6B3020', desc:'6 slices, crispy bacon' },
 ];
+// ── Phase 1c-b3: the served menu comes from the CATALOG-GENERATED bundle spliced in above. ──
+// Each structure is validated and selected INDEPENDENTLY, so a partial or malformed bundle can never
+// leave one of them undefined — every one falls back on its own validity. The bundle lives in its own
+// <script>, so even a syntactically broken generated block fails in isolation: the browser skips that
+// one script, this script still parses, and the menu still renders from the FALLBACK_* literals.
+// Availability-first: a blank menu is zero orders, so every failure mode ends in a rendered menu.
+// PLACEMENT MATTERS: this must sit exactly where the original `const MENU` did — top-level code
+// below (qty / MENU.forEach) runs at load, and a later declaration would throw a TDZ ReferenceError
+// and blank the page. Each select stays adjacent to the fallback it reads.
+const _BUNDLE = (typeof window !== 'undefined' && window.__FORM_MENU_BUNDLE__) || {};
+const _okDishes = (a) => Array.isArray(a) && a.length > 0 && a.every((d) => d && d.id != null && d.name);
+const _okStrArr = (a) => Array.isArray(a) && a.every((s) => typeof s === 'string');
+const MENU = _okDishes(_BUNDLE.dishes) ? _BUNDLE.dishes : FALLBACK_MENU;
+
 
 const MIN_ORDER = 250;
 
@@ -1610,22 +1624,12 @@ MENU.forEach(p => qty[p.id] = 0);
 
 // 18" NY pizzas are pickup-only. Data-driven: add a category here to make it pickup-only.
 const FALLBACK_PICKUP_ONLY = ['ny'];
+const PICKUP_ONLY_CATS = _okStrArr(_BUNDLE.pickup_only_cats) ? _BUNDLE.pickup_only_cats : FALLBACK_PICKUP_ONLY;
 const isPickupOnlyItem = (p) => PICKUP_ONLY_CATS.includes(p.cat);
 const cartHasPickupOnly = () => MENU.some(p => qty[p.id] > 0 && isPickupOnlyItem(p));
 // 18" NY pizzas are a WEEKEND special (Fri/Sat/Sun) — mirrors the server X_PIZZA_WEEKEND_ONLY /
 // weekendOnlyViolation (menu-pricing.js). Data-driven membership kept in sync (both = the 'ny' cat).
 const FALLBACK_WEEKEND_ONLY = ['ny'];
-// ── Phase 1c-b3: the served menu comes from the CATALOG-GENERATED bundle spliced in above. ──
-// Each structure is validated and selected INDEPENDENTLY, so a partial or malformed bundle can never
-// leave one of them undefined — every one falls back on its own validity. The bundle lives in its own
-// <script>, so even a syntactically broken generated block fails in isolation: the browser skips that
-// one script, this script still parses, and the menu still renders from the FALLBACK_* literals.
-// Availability-first: a blank menu is zero orders, so every failure mode ends in a rendered menu.
-const _BUNDLE = (typeof window !== 'undefined' && window.__FORM_MENU_BUNDLE__) || {};
-const _okDishes = (a) => Array.isArray(a) && a.length > 0 && a.every((d) => d && d.id != null && d.name);
-const _okStrArr = (a) => Array.isArray(a) && a.every((s) => typeof s === 'string');
-const MENU = _okDishes(_BUNDLE.dishes) ? _BUNDLE.dishes : FALLBACK_MENU;
-const PICKUP_ONLY_CATS = _okStrArr(_BUNDLE.pickup_only_cats) ? _BUNDLE.pickup_only_cats : FALLBACK_PICKUP_ONLY;
 const WEEKEND_ONLY_CATS = _okStrArr(_BUNDLE.weekend_only_cats) ? _BUNDLE.weekend_only_cats : FALLBACK_WEEKEND_ONLY;
 
 const isWeekendOnlyItem = (p) => WEEKEND_ONLY_CATS.includes(p.cat);
