@@ -19,8 +19,14 @@
 //
 // The TRUST BOUNDARY (Codex) is UNCHANGED from 1a/1b: malformed data must NEVER read back as a
 // plausible success. Every doc is validated — non-string/missing key, duplicate key, and any price that
-// isn't a non-negative INTEGER are rejected (a non-integer price would reach `total += menu[key]*qty` in
+// isn't a POSITIVE INTEGER are rejected (a non-integer price would reach `total += menu[key]*qty` in
 // 1b → {total:NaN, error:null}).
+//
+// Phase 1d Stage 1a tightened `>= 0` to `> 0`: a zero price is not a free item, it is a corrupt or
+// fat-fingered one. Because this validation is shared by the flat layout AND a version's docs, and
+// readVersionDocs runs inside publishVersion's pre-flip verify, the rule ALSO blocks the version
+// pointer from ever flipping to a version containing a zero price — the guard reaches publish time
+// with no separate publish-side change.
 const { buildTablesFromDocs } = require('./catalog-transform');
 const { assertComplete } = require('./catalog-integrity');
 
@@ -30,7 +36,7 @@ function mapDocs(snap, where) {
   return snap.docs.map((d) => {
     const v = d.data() || {};
     if (typeof v.key !== 'string' || !v.key) throw new Error(`catalog_bad_doc: ${where}/${d.id} — missing/non-string key`);
-    if (!Number.isInteger(v.price) || v.price < 0) throw new Error(`catalog_bad_doc: ${where}/${v.key} — price not a non-negative integer`);
+    if (!Number.isInteger(v.price) || v.price <= 0) throw new Error(`catalog_bad_doc: ${where}/${v.key} — price not a positive integer`);
     if (seen.has(v.key)) throw new Error(`catalog_dup_key: ${where}/${v.key}`);
     seen.add(v.key);
     return { key: v.key, price: v.price };

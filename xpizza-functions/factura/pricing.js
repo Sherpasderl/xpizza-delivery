@@ -23,7 +23,16 @@ function pricedLineItems(items, menuPrices, extraPrices) {
     if (!Number.isInteger(qty) || qty < 1 || qty > 50) {
       return { items: null, error: `invalid quantity for ${name}` };
     }
-    let lineGrossCents = menuPrices[name] * qty * 100;
+    // Phase 1d Stage 1a — FAIL-CLOSED PRICE VALUE, in LOCKSTEP with computeServerTotal.
+    // 🔒 The predicate here MUST stay byte-identical to menu-pricing.js's. The factura's line-gross sum
+    // has to equal the charged total, so a value that rejects in one calculator must reject in the
+    // other — otherwise you get an order that prices but cannot produce a factura, or a factura that
+    // misvalues a Void-only SAR document. Any future change to one of these rules must change both.
+    const price = menuPrices[name];
+    if (!Number.isInteger(price) || price <= 0) {
+      return { items: null, error: `invalid price for ${name}` };
+    }
+    let lineGrossCents = price * qty * 100;
     const extras = Array.isArray(it.extras) ? it.extras : [];
     const extraNames = [];
     for (const ex of extras) {
@@ -31,7 +40,11 @@ function pricedLineItems(items, menuPrices, extraPrices) {
       if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices, ename)) {
         return { items: null, error: `unknown extra: ${String(ename).slice(0, 40)}` };
       }
-      lineGrossCents += extraPrices[ename] * 100;
+      const eprice = extraPrices[ename];                                   // 1d-1a: same rule, same lockstep
+      if (!Number.isInteger(eprice) || eprice <= 0) {
+        return { items: null, error: `invalid price for extra ${ename}` };
+      }
+      lineGrossCents += eprice * 100;
       extraNames.push(ename);
     }
     const description = extraNames.length ? `${name} (+${extraNames.join(', ')})` : name;

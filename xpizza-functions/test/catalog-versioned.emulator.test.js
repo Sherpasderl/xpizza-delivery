@@ -283,7 +283,8 @@ const buildReader = (codeMap = null) => {
   // ── (16) RETENTION — keep ≥10 (or 30d, whichever larger); never the active/protected ──
   {
     const rid = 'retention_shop';
-    for (let i = 0; i < 12; i++) await publishVersion(db, rid, mkVersion({ A: i }));
+    // 1d-1a: prices must be POSITIVE integers, so the 12 distinct versions start at 1 (was 0..11).
+    for (let i = 0; i < 12; i++) await publishVersion(db, rid, mkVersion({ A: i + 1 }));
     assert.strictEqual((await versionsCol(rid).get()).size, 12, '12 versions exist (all within 30d → nothing pruned on publish)');
     // protect the active + prune with a clock 40 days ahead so the 30-day rule keeps nothing → newest-10 by count
     const active = await getActiveVersionId(db, rid);
@@ -301,6 +302,39 @@ const buildReader = (codeMap = null) => {
     assert.strictEqual(await getActiveVersionId(db, rid), oldest, 'still active after prune');
     ok('RETENTION: keeps the newest ≥10; the active/protected version is never pruned even when oldest');
   }
+  // ── Phase 1d Stage 1a — the fail-closed PRICE-VALUE rule reaches PUBLISH time. ────────────────
+  //    catalog-firestore's per-doc validation is shared by the flat layout AND a version's docs, and
+  //    readVersionDocs runs inside publishVersion's pre-flip verify. So tightening the rule to `> 0`
+  //    also BLOCKS the pointer from ever flipping to a version containing a zero/corrupt price — with
+  //    no publish-side change. This asserts that propagation, and that the pointer did not move.
+  {
+    const rid = 'x_pizza';
+    const before = await getActiveVersionId(db, rid);
+    const priced = await read(rid);
+    const badItems = V2[rid].items.map((i, idx) => (idx === 0 ? { ...i, price: 0 } : i));
+    await assert.rejects(
+      () => publishVersion(db, rid, { items: badItems, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: 'zero-price' }),
+      /catalog_bad_doc|price not a positive integer/,
+      'a version containing a ZERO price must fail the pre-flip verify',
+    );
+    assert.strictEqual(await getActiveVersionId(db, rid), before, 'the active_version pointer must NOT have moved');
+    assert.deepStrictEqual(await read(rid), priced, 'and the served prices are unchanged — the bad version never went live');
+    ok('1d-1a: a version with a zero price fails publish verify — the pointer never flips (guard reaches publish time)');
+  }
+  {
+    // Negative and non-integer are blocked identically, and a positive integer still publishes.
+    const rid = 'x_pizza';
+    for (const [label, bad] of [['negative', -1], ['non-integer', 9.5]]) {
+      const items = V2[rid].items.map((i, idx) => (idx === 0 ? { ...i, price: bad } : i));
+      await assert.rejects(() => publishVersion(db, rid, { items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: `bad-${label}` }),
+        /catalog_bad_doc/, `${label} price must be blocked at publish`);
+    }
+    const good = await publishVersion(db, rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: 'restore-1d1a' });
+    assert.ok(good.versionId, 'a clean version still publishes normally');
+    assert.deepStrictEqual(await read(rid), { menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] }, 'served prices restored');
+    ok('1d-1a: negative and non-integer prices are blocked at publish too; a valid version still publishes');
+  }
+
 
   console.log(`catalog-versioned(emulator): OK (${n})`);
   process.exit(0);

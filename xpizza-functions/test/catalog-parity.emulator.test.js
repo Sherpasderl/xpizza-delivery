@@ -57,8 +57,17 @@ const read = async (rid) => { const d = await getRestaurantDocs(db, rid); return
   const bad = db.collection('restaurants').doc('bad_shop');
   await bad.set({ name: 'Bad' });
   await bad.collection('menu_items').doc('d1').set({ key: 'Pizza', price: 299.5 });  // non-integer price
-  await assert.rejects(() => getRestaurantDocs(db, 'bad_shop'), /price not a non-negative integer/);
+  await assert.rejects(() => getRestaurantDocs(db, 'bad_shop'), /price not a positive integer/);
   ok('non-integer price → throws (would otherwise reach total += menu[key]*qty in 1b → {total:NaN, error:null})');
+  // 1d Stage 1a tightened the rule from >= 0 to > 0: a zero price is a corrupt/fat-fingered value, not
+  // a free item, and must never reach a calculator.
+  await bad.collection('menu_items').doc('d1').set({ key: 'Pizza', price: 0 });
+  await assert.rejects(() => getRestaurantDocs(db, 'bad_shop'), /price not a positive integer/);
+  await bad.collection('menu_items').doc('d1').set({ key: 'Pizza', price: -1 });
+  await assert.rejects(() => getRestaurantDocs(db, 'bad_shop'), /price not a positive integer/);
+  await bad.collection('menu_items').doc('d1').set({ key: 'Pizza', price: 1 });
+  await assert.doesNotReject(() => getRestaurantDocs(db, 'bad_shop'), 'a positive integer price is accepted');
+  ok('1d-1a: zero and negative prices throw at the reader; a positive integer is accepted');
   await bad.collection('menu_items').doc('d1').set({ key: 'Pizza', price: 299 });
   await bad.collection('menu_items').doc('d2').set({ price: 100 });                  // missing key
   await assert.rejects(() => getRestaurantDocs(db, 'bad_shop'), /missing\/non-string key/);

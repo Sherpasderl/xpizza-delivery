@@ -157,7 +157,17 @@ function computeServerTotal(items, restaurantId = 'x_pizza', tables = null) {
     if (!Number.isInteger(qty) || qty < 1 || qty > 50) {
       return { total: NaN, error: `invalid quantity for ${key}` };
     }
-    total += menu[key] * qty;
+    // Phase 1d Stage 1a — FAIL-CLOSED PRICE VALUE. A usable price is a POSITIVE INTEGER lempira
+    // amount. Zero, negative, NaN, non-integer or undefined is a corrupt or tampered value, and the
+    // only safe response is to reject the order rather than compute a total from it. Inert on today's
+    // data (every live price is a positive integer); it exists so that when the catalog becomes
+    // authoritative a portal fat-finger REJECTS instead of silently charging a wrong or zero total.
+    // The predicate is byte-identical to the one in factura/pricing.js — see the LOCKSTEP note there.
+    const price = menu[key];
+    if (!Number.isInteger(price) || price <= 0) {
+      return { total: NaN, error: `invalid price for ${key}` };
+    }
+    total += price * qty;
     // la_musa: a non-array `extras` is malformed = tampered (the form always emits an array).
     // x_pizza stays on the silent-coerce path below — the SHARED line is untouched (byte-identical).
     if (byId && it.extras != null && !Array.isArray(it.extras)) {
@@ -179,13 +189,21 @@ function computeServerTotal(items, restaurantId = 'x_pizza', tables = null) {
         if (!Number.isInteger(eqty) || eqty < 1 || eqty > 50) {
           return { total: NaN, error: `invalid quantity for extra ${eid}` };
         }
-        total += extraPrices[eid] * eqty;  // server table only — client ex.price ignored
+        const eprice = extraPrices[eid];                                    // 1d-1a: same fail-closed value rule
+        if (!Number.isInteger(eprice) || eprice <= 0) {
+          return { total: NaN, error: `invalid price for extra ${eid}` };
+        }
+        total += eprice * eqty;            // server table only — client ex.price ignored
       } else {  // x_pizza — original name-keyed / count-once logic, verbatim
         const ename = ex && ex.name;
         if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices, ename)) {
           return { total: NaN, error: `unknown extra: ${String(ename).slice(0, 40)}` };
         }
-        total += extraPrices[ename];
+        const eprice = extraPrices[ename];                                  // 1d-1a: same fail-closed value rule
+        if (!Number.isInteger(eprice) || eprice <= 0) {
+          return { total: NaN, error: `invalid price for extra ${ename}` };
+        }
+        total += eprice;
       }
     }
   }
