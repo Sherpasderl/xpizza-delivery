@@ -465,6 +465,10 @@ const RATE_LIMIT_BUCKETS = {
                                                      // XFF, spoofable) — caps repeated phone pulls on one leaked
                                                      // link. Generous for legit retries; invalid-token probing
                                                      // is 403'd by the core + bounded by maxInstances.
+  quote_ip: { windowMs: 10 * 60 * 1000, max: 120 }, // 1d 2a quoteOrder: a checkout re-quotes on every cart
+                                                   // edit, so the ceiling is high; it exists only so a
+                                                   // free, unauthenticated pricing read can't be used as
+                                                   // an amplifier. Writes nothing, reserves nothing.
   claim_uid: { windowMs: 10 * 60 * 1000, max: 20 }  // claimOrder: throttle per verified UID — protects the
                                                     // TOKENLESS order_id-enumeration path (the per-token bucket
                                                     // can't). The uid is OTP-minted (not spoofable).
@@ -5581,6 +5585,56 @@ exports.verifyOtp = onRequest(
 // NO reserve, NO order, NO DB write. Guarantee (narrowed): the quoted discount === the discount submit applies
 // GIVEN submit reaches redemption (submit-only cart/placeability gates are not run here — the UI routes their
 // item_unavailable/closed to the existing cart error paths, never the redemption fallback).
+// quoteOrder (1d Stage 2a) — a READ-ONLY server price for a NON-redemption cart, so the customer sees
+// the number they will actually be charged BEFORE paying.
+//
+// Today the cash checkout displays a CLIENT-computed total (the sum of the bundle's prices). That is
+// invisible while catalog == code == bundle, but once 2c makes the catalog authoritative, a portal edit
+// can diverge from the still-deployed form bundle — and on a price INCREASE the customer would see the
+// old, lower number and be charged the new, higher one. This endpoint closes that gap by pricing
+// through resolvePricingTables + computeServerTotal: the SAME functions the order path uses, so the
+// quote is what the order will charge by construction, not by coincidence.
+//
+// NOT AUTHORITATIVE. It writes nothing and reserves nothing; createOrder/chargeOnlineOrder still
+// re-price at order time, and that remains the binding total. A spoofed or stale quote can only affect
+// what is DISPLAYED. Correspondingly it fails SOFT: a bad cart returns ok:false with HTTP 200 so the
+// client can silently fall back to its own total rather than blocking checkout.
+exports.quoteOrder = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  async (req, res) => {
+    try {
+      if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
+      const body = req.body || {};
+      const { restaurantId, error: ridError } = resolveRestaurantId(body.restaurant_id);
+      if (ridError) return res.status(400).json({ ok: false, error: 'bad_request', detail: ridError });
+
+      // Public + unauthenticated (a non-redemption cart's price is not user-specific), so it is
+      // rate-limited like the other public endpoints.
+      const db = getDatabase();
+      const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+      const { allowed, retryAfterSec } = await checkRateLimit(db, 'quote_ip', clientIp, RATE_LIMIT_BUCKETS.quote_ip);
+      if (!allowed) {
+        res.set('Retry-After', String(retryAfterSec));
+        return res.status(429).json({ ok: false, error: 'rate_limited' });
+      }
+
+      // The SAME resolver the order path uses — this is what makes displayed == charged.
+      const tables = await resolvePricingTables(restaurantId);
+      const { total, error } = computeServerTotal(body.items, restaurantId, tables);
+      // fail-SOFT: an unknown item or a corrupt price is a 200 + ok:false, so the client keeps its own
+      // total on screen instead of a broken checkout. The order path will reject it for real if it is
+      // genuinely bad.
+      if (error) return res.status(200).json({ ok: false, error: 'bad_cart' });
+
+      const bd = orderBreakdownCents(total, restaurantId);   // the SAME breakdown the order charges
+      return res.status(200).json({ ok: true, total_cents: bd.total_cents, subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents });
+    } catch (e) {
+      console.error('quoteOrder', e && e.message);
+      return res.status(200).json({ ok: false, error: 'error' });   // fail-soft: never block checkout
+    }
+  },
+);
+
 exports.quoteRedemption = onRequest(
   { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
   async (req, res) => {

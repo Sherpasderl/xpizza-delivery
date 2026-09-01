@@ -1642,6 +1642,7 @@ function setupScrollSpy() {
 // restaurant_id (Phase 1). ORDER_SECRET is public-by-design (the server-recomputed total + the rate
 // limiter are the real defense). No PixelPay creds here — chargeOnlineOrder returns the checkout_url.
 const CREATEORDER_URL   = 'https://us-central1-xpizza-delivery.cloudfunctions.net/createOrder';
+const QUOTEORDER_URL   = 'https://us-central1-xpizza-delivery.cloudfunctions.net/quoteOrder';   // 1d 2a: read-only server price for the checkout display
 const CHARGEORDER_URL   = 'https://us-central1-xpizza-delivery.cloudfunctions.net/chargeOnlineOrder';
 const PAYMENTSTATUS_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/paymentStatus';
 const CLAIMPREFILL_URL  = 'https://us-central1-xpizza-delivery.cloudfunctions.net/claimPrefill';   // Track A
@@ -2374,8 +2375,62 @@ function syncFreeOrderUI(){
   }catch(_){}
 }
 // REWARDS (B2 Task 4): the pay-step total honors the SERVER quote while a reward is pending (never full price).
+// ── 1d Stage 2a: the SERVER order quote (displayed == charged) ────────────────────────────────
+// The cash checkout total has always been CLIENT-computed (calcTotal over the bundle's prices). That is
+// invisible while catalog == code == bundle, but once the catalog becomes authoritative a portal edit
+// can diverge from the still-deployed bundle — and on a price INCREASE the customer would see the old,
+// lower number and be charged the new, higher one. So at the pay step we ask the server what this exact
+// cart costs, priced through the SAME resolver the order uses, and display THAT.
+//
+// FAIL-OPEN throughout: any failure, timeout, bad cart or stale response leaves the quote null and the
+// display falls back to calcTotal() — today's behaviour. A quote must never block or delay checkout,
+// and it is never authoritative: createOrder/chargeOnlineOrder re-price at order time regardless.
+var __serverQuote = { key: null, cents: null, inflight: null };
+// The cart signature. redeemCartItems() is the brand's own builder and is exactly what the ORDER sends,
+// so quoting it means the quote prices the same payload the charge will.
+function serverQuoteCartKey(){ try{ return JSON.stringify(redeemCartItems()); }catch(_){ return null; } }
+function getServerQuoteTotalCents(){
+  try{
+    // A pending redemption owns the total (its own server quote already covers displayed == charged).
+    if(window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()) return null;
+    if(__serverQuote.cents==null || __serverQuote.key==null) return null;
+    // STALE-CART GUARD: only show a total for the cart it was actually quoted for.
+    return (__serverQuote.key === serverQuoteCartKey()) ? __serverQuote.cents : null;
+  }catch(_){ return null; }
+}
+function requestServerQuote(){
+  try{
+    if(window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()) return;
+    const items = redeemCartItems();
+    if(!items || !items.length){ __serverQuote.key=null; __serverQuote.cents=null; __serverQuote.inflight=null; return; }
+    const key = JSON.stringify(items);
+    if(key===__serverQuote.key && __serverQuote.cents!=null) return;   // this exact cart is already quoted
+    if(__serverQuote.inflight===key) return;                            // one request in flight per cart
+    __serverQuote.inflight = key;
+    // NOT awaited on any tap: the client total renders immediately and reconciles when this lands.
+    fetch(QUOTEORDER_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ restaurant_id: (typeof RESTAURANT_ID!=='undefined' ? RESTAURANT_ID : undefined), items }) })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(__serverQuote.inflight!==key) return;   // superseded by a newer cart — ignore
+        __serverQuote.inflight = null;
+        if(j && j.ok===true && typeof j.total_cents==='number' && isFinite(j.total_cents)){ __serverQuote.key=key; __serverQuote.cents=j.total_cents; }
+        else { __serverQuote.key=null; __serverQuote.cents=null; }   // ok:false → fail open to calcTotal()
+        try{ if(typeof renderStage2Summary==='function') renderStage2Summary(); }catch(_){}
+      })
+      .catch(function(){ if(__serverQuote.inflight===key) __serverQuote.inflight=null; __serverQuote.key=null; __serverQuote.cents=null; });
+  }catch(_){ }
+}
 function redeemAdjustedTotal(){
-  try{ const rc=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuoteTotalCents)?window.__ACCOUNT.getRedeemQuoteTotalCents():null; return rc!=null?(rc/100):calcTotal(); }catch(_){ return calcTotal(); }
+  // Display precedence: a redemption's server quote → the server ORDER quote (2a) → the client total.
+  // Each step is server-authoritative before the client one, and every step fails open to the next.
+  try{
+    const rc=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuoteTotalCents)?window.__ACCOUNT.getRedeemQuoteTotalCents():null;
+    if(rc!=null) return rc/100;
+    const sq=getServerQuoteTotalCents();
+    if(sq!=null) return sq/100;
+    return calcTotal();
+  }catch(_){ return calcTotal(); }
 }
 // A2/#6: the success-receipt total in CENTS — SERVER-authoritative. Online-return → the persisted server
 // total (o.total_cents, from the paymentStatus summary). Same-session cash → the live quote
@@ -2456,6 +2511,7 @@ function updateCart(){
 // the reward + total from the SERVER quote (getRedeemQuote / redeemAdjustedTotal), never a client discount.
 // The cart pillbox / updateCartReviewBody are left untouched. Guest / non-redeem → items + total, no reward line.
 function renderStage2Summary(){
+  try{ requestServerQuote(); }catch(_){}   // 1d 2a: (re)quote the server total whenever the pay-step summary renders — s2 entry AND any cart/pay edit
   const box=document.getElementById('s2-summary'); if(!box) return;
   const items=MENU.filter(p=>qty[p.id]>0);
   if(!items.length){ box.innerHTML=''; return; }
