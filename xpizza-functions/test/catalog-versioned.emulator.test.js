@@ -16,6 +16,7 @@ const { createPricingResolver } = require('../catalog/pricing-tables');
 const {
   publishVersion, rollbackVersion, previewVersion, pruneRetention,
   acquireLease, flipPointer, releaseLease, serverNow, writeVersion,
+  snapshotRefOf, tablesFromVersionDocs,
 } = require('../catalog/catalog-publish');
 
 admin.initializeApp({ projectId: 'demo-xpizza' });   // FIRESTORE_EMULATOR_HOST set by emulators:exec
@@ -334,6 +335,181 @@ const buildReader = (codeMap = null) => {
     assert.deepStrictEqual(await read(rid), { menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] }, 'served prices restored');
     ok('1d-1a: negative and non-integer prices are blocked at publish too; a valid version still publishes');
   }
+  // ═══ Phase 1d Stage 1b — coherent snapshot + RTDB mirror ═══════════════════════════════════════
+  // A fake mirror stands in for RTDB: the point under test is the publish pipeline's contract with a
+  // mirror writer (acked under the lease, failure alarms but never aborts), not RTDB itself.
+  const mkMirror = () => { const w = []; return { writes: w, fn: async (rid, p) => { w.push({ rid, ...p }); } }; };
+  const snapshotOfRid = async (rid) => (await snapshotRefOf(db, rid).get()).data();
+
+  {
+    // COHERENCE — the snapshot rides the flip transaction, so it can never lag the pointer.
+    const rid = 'snap_shop';
+    const mirror = mkMirror();
+    const res = await publishVersion(db, rid, mkVersion({ A: 10, B: 20 }, { X: 5 }), { mirror: mirror.fn });
+    const snap = await snapshotOfRid(rid);
+    assert.strictEqual(snap.version, res.versionId, 'active_snapshot.version == the published version');
+    assert.strictEqual(await getActiveVersionId(db, rid), res.versionId, 'active_version == the same version');
+    assert.deepStrictEqual(snap.menu, { A: 10, B: 20 }, 'snapshot carries the version menu table');
+    assert.deepStrictEqual(snap.extras, { X: 5 }, 'snapshot carries the version extras table');
+    assert.strictEqual(snap.rid, rid, 'snapshot is self-describing (rid)');
+    ok('1b coherence: active_snapshot is written IN the flip tx — version, menu and extras match the pointer');
+    // and the same tables the READER serves
+    const served = await read(rid);
+    assert.deepStrictEqual({ menu: served.menu, extras: served.extras }, { menu: snap.menu, extras: snap.extras },
+      'the snapshot equals what the reader serves for that version');
+    ok('1b coherence: the snapshot equals the tables the reader serves for that version');
+  }
+  {
+    // MIRROR — written after the flip, AWAITED (publish does not resolve until acked), self-describing.
+    const rid = 'mirror_shop';
+    const mirror = mkMirror();
+    const res = await publishVersion(db, rid, mkVersion({ A: 7 }), { mirror: mirror.fn });
+    assert.strictEqual(mirror.writes.length, 1, 'the mirror was written exactly once');
+    assert.deepStrictEqual(mirror.writes[0], { rid, version: res.versionId, menu: { A: 7 }, extras: {} },
+      'the mirror payload carries its OWN version witness — a reader needs no Firestore to know what it holds');
+    assert.strictEqual(res.mirrored, true, 'publish reports the mirror acked');
+    ok('1b mirror: written once, awaited, self-describing (carries its own version witness)');
+  }
+  {
+    // MIRROR FAILURE IS NON-FATAL — the flip already succeeded and Firestore is coherent and serving.
+    // Aborting a good flip because a secondary copy failed would be strictly worse.
+    const rid = 'mirrorfail_shop';
+    const alarms = [];
+    const res = await publishVersion(db, rid, mkVersion({ A: 3 }),
+      { mirror: async () => { throw new Error('rtdb down'); }, alarm: (k, d) => { alarms.push([k, d]); } });
+    assert.ok(res.versionId, 'publishVersion still RESOLVES success');
+    assert.strictEqual(res.mirrored, false, 'and reports the mirror did not ack');
+    assert.strictEqual(await getActiveVersionId(db, rid), res.versionId, 'the flip STANDS — not rolled back');
+    assert.strictEqual((await snapshotOfRid(rid)).version, res.versionId, 'Firestore snapshot is coherent regardless');
+    assert.strictEqual(alarms[0][0], 'catalog_mirror_write_failed');
+    assert.strictEqual(alarms[0][1].restaurantId, rid);
+    assert.strictEqual(alarms[0][1].version, res.versionId, 'the alarm names the version whose mirror is missing');
+    ok('1b mirror failure: alarms catalog_mirror_write_failed, publish still succeeds, the flip is NOT rolled back');
+    // A HUNG mirror is bounded too — it must not hold the lease open indefinitely.
+    const t0 = Date.now();
+    const res2 = await publishVersion(db, rid, mkVersion({ A: 4 }), { mirror: () => new Promise(() => {}), alarm: () => {} });
+    assert.strictEqual(res2.mirrored, false, 'a hung mirror times out rather than hanging the publish');
+    assert.ok(Date.now() - t0 < 20000, 'and it is bounded by the deadline');
+    assert.strictEqual(await getActiveVersionId(db, rid), res2.versionId, 'the flip still stands');
+    ok('1b mirror hang: bounded by a deadline — the publish completes and the lease is released');
+  }
+  {
+    // ATOMICITY — if the flip tx fails, NEITHER the pointer NOR the snapshot moves.
+    const rid = 'atomic_shop';
+    const mirror = mkMirror();
+    const first = await publishVersion(db, rid, mkVersion({ A: 1 }), { mirror: mirror.fn });
+    const before = await snapshotOfRid(rid);
+    const token = await acquireLease(db, rid);
+    const { versionId: v2, menuTable } = await writeVersion(db, rid, mkVersion({ A: 2 }), await serverNow(db, rid));
+    await releaseLease(db, rid, token);                       // drop the lease → the flip must fail
+    await assert.rejects(() => flipPointer(db, rid, token, v2, { version: v2, rid, menu: menuTable, extras: {} }), /lease_lost|lease_expired/);
+    assert.strictEqual(await getActiveVersionId(db, rid), first.versionId, 'the pointer did not move');
+    assert.deepStrictEqual((await snapshotOfRid(rid)).version, before.version, 'and neither did the snapshot');
+    ok('1b atomicity: a failed flip moves NEITHER the pointer nor the snapshot (same transaction)');
+    // The check above passes whether the snapshot rides the transaction OR is written after it and
+    // skipped because the tx threw — so it does NOT actually prove atomicity. Two checks that do:
+    //
+    // (a) BEHAVIOURAL: serverTimestamp resolves ONCE per transaction commit, so a pointer and snapshot
+    //     written in the SAME tx carry the IDENTICAL timestamp. Two separate writes cannot.
+    const okRid = 'atomic_ts_shop';
+    const pub = await publishVersion(db, okRid, mkVersion({ A: 1 }), { mirror: async () => {} });
+    const [ptrDoc, snapDoc] = await Promise.all([
+      db.collection('restaurants').doc(okRid).collection('meta').doc('active_version').get(),
+      snapshotRefOf(db, okRid).get(),
+    ]);
+    assert.strictEqual(ptrDoc.data().version, pub.versionId);
+    assert.strictEqual(snapDoc.data().at.toMillis(), ptrDoc.data().at.toMillis(),
+      'pointer and snapshot must share ONE commit timestamp — they are written in the same transaction');
+    ok('1b atomicity: pointer and snapshot share a single commit timestamp (same transaction, not two writes)');
+    // (b) STRUCTURAL: the snapshot set must appear INSIDE flipPointer's runTransaction callback. This
+    //     survives even if the timestamp check is ever weakened by an implementation change.
+    const SRC = require('fs').readFileSync(require('path').join(__dirname, '..', 'catalog', 'catalog-publish.js'), 'utf8');
+    const flip = SRC.slice(SRC.indexOf('async function flipPointer'), SRC.indexOf('// Release ONLY if we still own it'));
+    // `tx` exists ONLY inside the transaction callback, so writing the snapshot through tx.set is
+    // itself the structural proof that it rides the transaction. A bare snapshotRefOf(...).set()
+    // anywhere in flipPointer would mean a second, non-atomic write.
+    assert.ok(/tx\.set\(snapshotRefOf\(db, rid\), snapshot\)/.test(flip),
+      'the active_snapshot write MUST go through tx.set inside flipPointer\'s transaction (coherence by construction)');
+    assert.ok(!/(?<!tx\.set\()snapshotRefOf\(db, rid\)\.set\(/.test(flip),
+      'flipPointer must NOT write the snapshot outside the transaction');
+    ok('1b atomicity (structural): the snapshot write is inside flipPointer\'s transaction, via tx.set');
+  }
+  {
+    // ROLLBACK re-emits BOTH — else the fallback would describe the version we rolled AWAY from.
+    const rid = 'rollback_snap_shop';
+    const mirror = mkMirror();
+    const v1 = await publishVersion(db, rid, mkVersion({ A: 100 }), { mirror: mirror.fn });
+    const v2 = await publishVersion(db, rid, mkVersion({ A: 200 }), { mirror: mirror.fn });
+    assert.strictEqual((await snapshotOfRid(rid)).menu.A, 200, 'snapshot follows the newest publish');
+    const rb = await rollbackVersion(db, rid, v1.versionId, { mirror: mirror.fn });
+    assert.strictEqual(rb.versionId, v1.versionId);
+    const snap = await snapshotOfRid(rid);
+    assert.strictEqual(snap.version, v1.versionId, 'active_snapshot rolled back with the pointer');
+    assert.deepStrictEqual(snap.menu, { A: 100 }, 'and carries the rolled-TO tables');
+    assert.strictEqual(await getActiveVersionId(db, rid), v1.versionId);
+    const lastMirror = mirror.writes[mirror.writes.length - 1];
+    assert.deepStrictEqual([lastMirror.version, lastMirror.menu], [v1.versionId, { A: 100 }], 'the mirror re-emitted the rolled-TO version');
+    assert.deepStrictEqual(await read(rid), { menu: { A: 100 }, extras: {} }, 'and the reader serves it');
+    ok('1b rollback: pointer, snapshot and mirror all re-emit the rolled-TO version (the fallback never lags)');
+  }
+  {
+    // SERIALIZATION is the EXISTING lease — re-asserted, plus the new property that the mirror acks
+    // under it, so the mirror is at most ONE in-flight publish behind.
+    const rid = 'serial_snap_shop';
+    await publishVersion(db, rid, mkVersion({ A: 1 }), { mirror: async () => {} });
+    const token = await acquireLease(db, rid);
+    await assert.rejects(() => publishVersion(db, rid, mkVersion({ A: 2 }), { mirror: async () => {} }), /publish_locked/,
+      'a second publish under a live lease is refused — the existing lease is the only serializer');
+    await releaseLease(db, rid, token);
+    let mirrorDone = false, leaseFreeDuringMirror = null;
+    await publishVersion(db, rid, mkVersion({ A: 3 }), { mirror: async () => {
+      leaseFreeDuringMirror = await acquireLease(db, rid).then(() => true).catch(() => false);
+      mirrorDone = true;
+    } });
+    assert.strictEqual(mirrorDone, true, 'the mirror ran');
+    assert.strictEqual(leaseFreeDuringMirror, false, 'the lease was STILL HELD while the mirror was being acked');
+    ok('1b serialization: the mirror acks under the held lease — the next publish cannot start until it lands');
+  }
+  {
+    // BACKFILL — a version published WITHOUT a snapshot (the current prod state) gets one, coherent
+    // with the CURRENT pointer, with no pointer churn. Idempotent.
+    const rid = 'backfill_shop';
+    const v = await publishVersion(db, rid, mkVersion({ A: 42 }, { E: 9 }));   // no mirror → no snapshot? (snapshot still written in-tx)
+    await snapshotRefOf(db, rid).delete();                                     // simulate the pre-1b state
+    assert.strictEqual((await snapshotRefOf(db, rid).get()).exists, false, 'pre-1b state: no snapshot');
+    const pointerBefore = await getActiveVersionId(db, rid);
+    // the backfill's core (same calls tools/backfill-snapshot.js makes)
+    const doBackfill = async () => {
+      const versionId = await getActiveVersionId(db, rid);
+      const { menuTable, extraTable } = tablesFromVersionDocs(await readVersionDocs(db, rid, versionId));
+      await snapshotRefOf(db, rid).set({ version: versionId, rid, menu: menuTable, extras: extraTable, at: Timestamp.now() });
+      return versionId;
+    };
+    await doBackfill();
+    const snap = await snapshotOfRid(rid);
+    assert.strictEqual(snap.version, v.versionId, 'the backfilled snapshot names the CURRENT active version');
+    assert.deepStrictEqual([snap.menu, snap.extras], [{ A: 42 }, { E: 9 }], 'and carries its tables');
+    assert.strictEqual(await getActiveVersionId(db, rid), pointerBefore, 'the pointer was NOT churned');
+    await doBackfill();
+    assert.deepStrictEqual((await snapshotOfRid(rid)).menu, snap.menu, 're-running is idempotent');
+    ok('1b backfill: emits a coherent snapshot for the CURRENT active version, no pointer churn, idempotent');
+  }
+  {
+    // ADDITIVE / INERT — nothing reads the snapshot or the mirror yet, so pricing is byte-unchanged.
+    const rid = 'x_pizza';
+    const before = await read(rid);
+    const mirror = mkMirror();
+    await publishVersion(db, rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: 'inert-1b' }, { mirror: mirror.fn });
+    const after = await read(rid);
+    assert.deepStrictEqual(after, before, 'the pricing read is byte-identical after a snapshot+mirror publish');
+    assert.deepStrictEqual(after.menu, MENU_BY_RESTAURANT[rid], 'and still equals the code tables');
+    // the resolver too — the money path must not have noticed any of this
+    const { resolver } = buildReader();
+    const t = await resolver.getPricingTables(rid);
+    assert.deepStrictEqual(t.menu, MENU_BY_RESTAURANT[rid], 'the guarded resolver serves identical prices');
+    ok('1b ADDITIVE: the pricing read and the guarded resolver are byte-identical — snapshot and mirror are unread');
+  }
+
 
 
   console.log(`catalog-versioned(emulator): OK (${n})`);

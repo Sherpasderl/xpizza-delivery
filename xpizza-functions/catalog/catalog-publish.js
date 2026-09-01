@@ -38,6 +38,54 @@ const BATCH = 450;                                // Firestore caps a batch at 5
 
 const lockRefOf = (db, rid) => db.collection('restaurants').doc(rid).collection('meta').doc('publish_lock');
 const pointerRefOf = (db, rid) => db.collection('restaurants').doc(rid).collection('meta').doc('active_version');
+// 1d Stage 1b — the COHERENCE ANCHOR. Written inside the pointer-flip transaction, so active_version
+// and active_snapshot move together atomically: it is impossible for the pointer to say N while the
+// snapshot still holds N-1. One small self-contained doc per restaurant (a version witness plus the
+// {key: price} tables), so the Stage 2 fallback is a single fast read.
+const snapshotRefOf = (db, rid) => db.collection('restaurants').doc(rid).collection('meta').doc('active_snapshot');
+
+// Build the snapshot payload for a version. The tables are the SAME {key: price} shape codeFor returns
+// today, so Stage 2 can drop it straight in where the code tables are read now.
+const snapshotOf = (rid, versionId, menuTable, extraTable) => ({
+  version: versionId, rid, menu: menuTable, extras: extraTable, at: FieldValue.serverTimestamp(),
+});
+
+// The RTDB mirror is the Firestore-INDEPENDENT disaster fallback, so it must be bounded: a hung write
+// would otherwise hold the publish lease open and block the next publish.
+const MIRROR_DEADLINE_MS = 5000;
+function withDeadline(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label}_timeout`)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+// Write the RTDB mirror and AWAIT the ack, still holding the publish lease.
+//
+// Why under the lease: acquireLease already serializes publishes per restaurant, so acking the mirror
+// before release means the next publish cannot begin until this one's mirror has landed — which bounds
+// the mirror to at most ONE in-flight publish behind the Firestore pointer.
+//
+// Why failure is NOT fatal: by this point the flip has already succeeded and Firestore is coherent and
+// serving. The mirror is only the disaster fallback, so a failure alarms and the publish still returns
+// SUCCESS — rolling back a good flip because a secondary copy failed would be strictly worse. The
+// consequence of a failed mirror is that it falls further behind, and the Stage 2 read-side
+// max-version-distance (K) check is the backstop that fail-closes on a too-stale mirror. K is NOT
+// built here.
+async function writeMirror(mirror, alarm, rid, payload) {
+  if (typeof mirror !== 'function') {
+    console.warn(`catalog mirror: no writer injected for ${rid} — skipping the RTDB mirror (Firestore snapshot is still coherent)`);
+    return { mirrored: false, reason: 'no_writer' };
+  }
+  try {
+    await withDeadline(Promise.resolve(mirror(rid, payload)), MIRROR_DEADLINE_MS, 'catalog_mirror_write');
+    return { mirrored: true };
+  } catch (e) {
+    const detail = { restaurantId: rid, version: payload && payload.version, error: String((e && e.message) || e).slice(0, 200) };
+    console.error('catalog_mirror_write_failed', JSON.stringify(detail));
+    try { const r = alarm && alarm('catalog_mirror_write_failed', detail); if (r && typeof r.catch === 'function') r.catch(() => {}); } catch (_) {}
+    return { mirrored: false, reason: detail.error };   // the flip STANDS
+  }
+}
 const versionsColOf = (db, rid) => db.collection('restaurants').doc(rid).collection('versions');
 
 // A trustworthy SERVER timestamp — write serverTimestamp() to an ephemeral doc and read it back. Never
@@ -71,7 +119,7 @@ async function acquireLease(db, rid) {
 
 // The ATOMIC FLIP — the only cutover moment. Rereads the lock in a transaction; flips ONLY if this call
 // still owns an UNEXPIRED lease (server time). A publisher whose lease expired (or was reclaimed) CANNOT flip.
-async function flipPointer(db, rid, token, versionId) {
+async function flipPointer(db, rid, token, versionId, snapshot = null) {
   const nowServer = await serverNow(db, rid);
   const lockRef = lockRefOf(db, rid);
   const pointerRef = pointerRefOf(db, rid);
@@ -81,6 +129,9 @@ async function flipPointer(db, rid, token, versionId) {
     if (l.owner_token !== token) throw new Error(`lease_lost: not owner (versionId=${versionId})`);
     if (!(l.expires_at && l.expires_at.toMillis() > nowServer.toMillis())) throw new Error(`lease_expired: cannot flip (versionId=${versionId})`);
     tx.set(pointerRef, { version: versionId, at: FieldValue.serverTimestamp() });
+    // 1b: the snapshot rides the SAME transaction — coherence by construction. If the flip aborts
+    // (lease lost/expired), NEITHER the pointer nor the snapshot moves.
+    if (snapshot) tx.set(snapshotRefOf(db, rid), snapshot);
   });
 }
 
@@ -149,21 +200,24 @@ async function writeVersion(db, rid, { items, structure, extras, source_sha }, n
     menu_hash: desc.menu_hash, extras_hash: desc.extras_hash,
     source_sha: source_sha || 'unknown', created_at: FieldValue.serverTimestamp(),
   });
-  return { versionId, descriptor: desc };
+  return { versionId, descriptor: desc, menuTable, extraTable };   // 1b: tables returned so the caller can build the coherent snapshot
 }
 
 // PUBLISH — acquire the lease, write+verify the version, FLIP LAST, prune retention, release.
-async function publishVersion(db, rid, input) {
+async function publishVersion(db, rid, input, { mirror, alarm } = {}) {
   const token = await acquireLease(db, rid);
   try {
     const nowServer = await serverNow(db, rid);
-    const { versionId, descriptor } = await writeVersion(db, rid, input, nowServer);
+    const { versionId, descriptor, menuTable, extraTable } = await writeVersion(db, rid, input, nowServer);
     // VERIFY by re-reading via the REAL reader path (proves counts + BOTH hashes + structure BEFORE the flip).
     await readVersionDocs(db, rid, versionId);        // throws on completeness fail (counts + both hashes)
     await verifyVersionStructure(db, rid, versionId); // throws on a broken menu_structure bijection
-    await flipPointer(db, rid, token, versionId);     // ← the atomic cutover, LAST
+    const snapshot = snapshotOf(rid, versionId, menuTable, extraTable);
+    await flipPointer(db, rid, token, versionId, snapshot);   // ← the atomic cutover (pointer + snapshot), LAST
+    // Mirror AFTER the flip and BEFORE releasing the lease — see writeMirror for why both matter.
+    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, rid, menu: menuTable, extras: extraTable });
     await pruneRetention(db, rid, { protect: [versionId] }).catch(() => {});   // never let prune fail the publish
-    return { versionId, ...descriptor };
+    return { versionId, ...descriptor, mirrored: mirrorResult.mirrored };
   } finally {
     await releaseLease(db, rid, token);
   }
@@ -183,13 +237,18 @@ async function verifyVersionStructure(db, rid, versionId) {
 }
 
 // ROLLBACK — a single atomic pointer flip to a RETAINED prior version. Verify it exists + verifies first.
-async function rollbackVersion(db, rid, targetVersionId) {
+async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm } = {}) {
   const token = await acquireLease(db, rid);
   try {
-    await readVersionDocs(db, rid, targetVersionId);   // throws version_missing / completeness fail
+    // 1b: reuse the verify read's tables to re-emit the snapshot + mirror. A rollback that moved the
+    // pointer without re-emitting would leave the fallback describing the version we just rolled AWAY
+    // from — the fallback must always describe whatever is actually live.
+    const { menuTable, extraTable } = tablesFromVersionDocs(await readVersionDocs(db, rid, targetVersionId));
     await verifyVersionStructure(db, rid, targetVersionId);
-    await flipPointer(db, rid, token, targetVersionId);
-    return { versionId: targetVersionId, rolledBack: true };
+    const snapshot = snapshotOf(rid, targetVersionId, menuTable, extraTable);
+    await flipPointer(db, rid, token, targetVersionId, snapshot);
+    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, rid, menu: menuTable, extras: extraTable });
+    return { versionId: targetVersionId, rolledBack: true, mirrored: mirrorResult.mirrored };
   } finally {
     await releaseLease(db, rid, token);
   }
@@ -242,8 +301,15 @@ async function deleteVersion(db, rid, versionId) {
   await commitOps(db, ops);
 }
 
+// {itemDocs, extraDocs} → the {key: price} tables the snapshot carries.
+function tablesFromVersionDocs({ itemDocs, extraDocs }) {
+  const toTable = (docs) => { const t = {}; for (const d of (docs || [])) t[d.key] = d.price; return t; };
+  return { menuTable: toTable(itemDocs), extraTable: toTable(extraDocs) };
+}
+
 module.exports = {
   publishVersion, rollbackVersion, previewVersion, pruneRetention,
+  snapshotRefOf, snapshotOf, writeMirror, tablesFromVersionDocs, MIRROR_DEADLINE_MS,
   acquireLease, flipPointer, releaseLease, serverNow, writeVersion, deleteVersion,
   LEASE_MS, RETENTION_MIN_COUNT, RETENTION_MIN_AGE_MS,
 };

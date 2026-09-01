@@ -15,17 +15,19 @@ const admin = require('firebase-admin');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
 const { publishVersion } = require('../catalog/catalog-publish');
+const { makeRtdbMirror } = require('../catalog/mirror-rtdb');   // 1b: the RTDB disaster-fallback writer
 
 const gitSha = () => { try { return execSync('git rev-parse --short HEAD', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch (_) { return 'unknown'; } };
 
 admin.initializeApp({ credential: admin.credential.applicationDefault() });
 const db = admin.firestore();
+const mirror = makeRtdbMirror(admin.database());   // 1b: injected so the publish acks the mirror under its lease
 
 (async () => {
   const source_sha = gitSha();
   for (const rid of ['x_pizza', 'la_musa']) {
     const { items, structure } = buildCatalogV2(rid);   // schema-v2 items (price from menu-pricing) + structure
-    const res = await publishVersion(db, rid, { items, structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, source_sha });
+    const res = await publishVersion(db, rid, { items, structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, source_sha }, { mirror });
     const codeItems = Object.keys(MENU_BY_RESTAURANT[rid]).length;
     const codeExtras = Object.keys(EXTRAS_BY_RESTAURANT[rid] || {}).length;
     if (res.item_count !== codeItems || res.extra_count !== codeExtras) {
