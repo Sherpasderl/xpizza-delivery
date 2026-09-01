@@ -83,6 +83,7 @@ const { alertsToPrune } = require('./alert-prune');   // auto-dismiss dispatcher
 const { recoverRefundingDecision } = require('./materialize-guard');   // stale-recovery for a crash mid-paid-after-close-refund  //   reservation lifecycle + confirm-settle + sweeps + [B] hold-or-alert at manual entries + paid-after-close hold release
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');  //   config version for the reservation binding
 const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
+const { notifyWithinDeadline } = require('./notify-deadline');   // cash createOrder: bound the best-effort "received" WhatsApp so a slow gateway can't hold the 200
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
 const { decideStatusMirror } = require('./status-mirror');          // P3 — status-sync trigger core (update-only-if-exists)
 const SCHED = require('./scheduled-orders');                              // Scheduled Orders — pure hours/slot/release core
@@ -883,37 +884,45 @@ createOrderApp.all('*', async (req, res) => {
   //
   // Wrapped in try/catch so a WhatsApp failure NEVER causes the order
   // creation to fail — order is already written above.
-  if (await whatsapp.isEnabledForRestaurant(db, restaurantId)) {
-    try {
-      // Pickup vs delivery have different copy. Pickup says "te avisamos
-      // cuando esté listo para recoger" instead of "en camino". Delivery
-      // template is unchanged.
-      let waBody;
-      if (orderType === 'pickup') {
-        waBody = whatsapp.tplPickupReceived({
-          customerName: String(updates[`orders/${orderId}`].customer_name || ''),
-          orderId,
-          itemsText: String(updates[`orders/${orderId}`].items_text || ''),
-          total: effectiveTotal,
-          pickupTime: String(updates[`orders/${orderId}`].pickup_time || 'standard'),
-          trackingToken,
-          restaurantId
-        });
-      } else {
-        waBody = whatsapp.tplOrderReceived({
-          customerName: String(updates[`orders/${orderId}`].customer_name || ''),
-          orderId,
-          itemsText: String(updates[`orders/${orderId}`].items_text || ''),
-          total: effectiveTotal,
-          trackingToken,
-          restaurantId
-        });
+  // Bound the best-effort "order received" WhatsApp so a slow gateway / config read can never hold the
+  // customer's confirmation past the deadline. The order is ALREADY written above; past the deadline the
+  // notification is fire-and-forget (a slow send may still land — a one-shot "received" is idempotent enough).
+  // notifyWithinDeadline RESOLVES either way, never rejects → an order that's written can never be failed by
+  // the notify. CASH ONLY — card "received" is a separate decoupled DB trigger; this does not touch it.
+  const WA_NOTIFY_DEADLINE_MS = parseInt(process.env.CREATEORDER_WA_NOTIFY_MS || '5000', 10);
+  await notifyWithinDeadline((async () => {
+    if (await whatsapp.isEnabledForRestaurant(db, restaurantId)) {
+      try {
+        // Pickup vs delivery have different copy. Pickup says "te avisamos
+        // cuando esté listo para recoger" instead of "en camino". Delivery
+        // template is unchanged.
+        let waBody;
+        if (orderType === 'pickup') {
+          waBody = whatsapp.tplPickupReceived({
+            customerName: String(updates[`orders/${orderId}`].customer_name || ''),
+            orderId,
+            itemsText: String(updates[`orders/${orderId}`].items_text || ''),
+            total: effectiveTotal,
+            pickupTime: String(updates[`orders/${orderId}`].pickup_time || 'standard'),
+            trackingToken,
+            restaurantId
+          });
+        } else {
+          waBody = whatsapp.tplOrderReceived({
+            customerName: String(updates[`orders/${orderId}`].customer_name || ''),
+            orderId,
+            itemsText: String(updates[`orders/${orderId}`].items_text || ''),
+            total: effectiveTotal,
+            trackingToken,
+            restaurantId
+          });
+        }
+        await whatsapp.sendMessage(updates[`orders/${orderId}`].customer_phone, waBody, restaurantId);
+      } catch (e) {
+        console.error('createOrder: whatsapp send failed (order still created)', e.message);
       }
-      await whatsapp.sendMessage(updates[`orders/${orderId}`].customer_phone, waBody, restaurantId);
-    } catch (e) {
-      console.error('createOrder: whatsapp send failed (order still created)', e.message);
     }
-  }
+  })(), WA_NOTIFY_DEADLINE_MS);
 
   return res.status(200).json({ ok: true, order_id: orderId, tracking_token: trackingToken });
 });
@@ -939,6 +948,7 @@ exports.createOrder = onRequest(
     cors: true,            // browser-callable — order form posts directly (no Make.com relay)
     timeoutSeconds: 30,
     memory: '256MiB',
+    minInstances: 1,       // keep one warm — the cash order path is customer-facing; avoid cold-start lag
     maxInstances: 10       // blast-radius cap: the intake secret is public, so bound
                            // how much concurrent order-spam can fan out. Tune up if
                            // real peak traffic ever approaches this.
