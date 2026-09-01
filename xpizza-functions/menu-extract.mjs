@@ -35,10 +35,16 @@ const SOURCES = {
 export const RESTAURANT_IDS = Object.keys(SOURCES);
 
 // Slice the `const MENU = [ … ]` array literal out of a form's source and eval it to the item array.
+//
+// 1c-b3: the form cutover renamed this literal to `FALLBACK_MENU` — the served menu now comes from
+// the catalog-generated bundle, and the literal remains as the render-always fallback. Both spellings
+// are accepted so this manifest guard keeps working through the expand phase. (The manifest itself is
+// already catalog-sourced as of 1c-b1; this extractor is the cross-check against the shipped form.)
 function extractMenuArray(formSrc) {
-  const marker = 'const MENU = [';
-  const declStart = formSrc.indexOf(marker);
-  if (declStart === -1) throw new Error('MENU array not found in form');
+  let marker = 'const MENU = [';
+  let declStart = formSrc.indexOf(marker);
+  if (declStart === -1) { marker = 'const FALLBACK_MENU = ['; declStart = formSrc.indexOf(marker); }
+  if (declStart === -1) throw new Error('MENU (or FALLBACK_MENU) array not found in form');
   const bracketStart = declStart + marker.length - 1; // index of the opening `[`
   const end = formSrc.indexOf('];', bracketStart);    // unique array close
   if (end === -1) throw new Error('MENU array close (];) not found in form');

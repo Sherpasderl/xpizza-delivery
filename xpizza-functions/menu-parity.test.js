@@ -16,9 +16,14 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 // Slice a top-level `const <NAME> = [ … ];` array literal out of the form source. The array's close
 // is the first `];` after the declaration (item `tags:[]` arrays never produce `];`).
+// 1c-b3: the cutover renamed the form's hard-coded literal to `FALLBACK_<NAME>` (the served menu now
+// comes from the generated bundle). This guard still checks the SHIPPED FORM's literal against the
+// server tables, so it accepts either spelling. The served bundle is checked against the server
+// directly in form-bundle-splice.test.js — this one keeps the safety-net fallback honest.
 function sliceArray(src, constName) {
-  const start = src.indexOf(`const ${constName} = [`);
-  assert.notStrictEqual(start, -1, `${constName} array not found in form`);
+  let start = src.indexOf(`const ${constName} = [`);
+  if (start === -1) start = src.indexOf(`const FALLBACK_${constName} = [`);
+  assert.notStrictEqual(start, -1, `${constName} (or FALLBACK_${constName}) array not found in form`);
   const end = src.indexOf('];', start);
   assert.notStrictEqual(end, -1, `${constName} array close not found`);
   return src.slice(start, end);

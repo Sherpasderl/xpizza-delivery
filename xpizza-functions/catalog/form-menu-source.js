@@ -57,18 +57,44 @@ function scanBalanced(src, begin, open, close, label) {
   throw new Error(`form_literal_unbalanced: ${label}`);
 }
 // `const NAME = [ … ]` / `const NAME = { … }`
+//
+// 1c-b3 COUPLING (important): the form cutover renames each hard-coded literal to `FALLBACK_<NAME>`
+// during the expand phase, because the served value now comes from the generated bundle. This
+// bootstrap reads the FORM, so it must accept either spelling or the seed itself breaks the moment
+// the forms are cut over — and re-seeding is an owner operation that runs on every menu change.
+// Both names are tried, `NAME` first (pre-cutover), then `FALLBACK_NAME` (post-cutover). When 1d makes
+// the catalog authoritative the form stops being a source at all and this lookup retires with it.
+// The cutover's fallback names are spelled out rather than derived, because two of them are not a
+// plain prefix of the original (PICKUP_ONLY_CATS → FALLBACK_PICKUP_ONLY).
+const FALLBACK_ALIAS = { PICKUP_ONLY_CATS: 'FALLBACK_PICKUP_ONLY', WEEKEND_ONLY_CATS: 'FALLBACK_WEEKEND_ONLY' };
+function literalNames(name) { return [name, FALLBACK_ALIAS[name] || `FALLBACK_${name}`]; }
+function findDecl(src, name, open) {
+  for (const candidate of literalNames(name)) {
+    const at = src.indexOf(`const ${candidate} = ${open}`);
+    if (at >= 0) return { at, candidate };
+  }
+  return null;
+}
 function sliceLiteral(src, name, open, close) {
-  const decl = src.indexOf(`const ${name} = ${open}`);
-  if (decl < 0) throw new Error(`form_literal_not_found: ${name}`);
-  return scanBalanced(src, src.indexOf(open, decl), open, close, name);
+  const found = findDecl(src, name, open);
+  if (!found) throw new Error(`form_literal_not_found: ${name} (tried ${literalNames(name).join(', ')})`);
+  return scanBalanced(src, src.indexOf(open, found.at), open, close, found.candidate);
 }
 const evalLiteral = (lit) => new Function(`return (${lit})`)();          // object/array literals only
 const readLiteral = (src, name, open = '[', close = ']') => evalLiteral(sliceLiteral(src, name, open, close));
 // `const NAME = new Set([ … ])` — slice the inner array with the same scanner.
 function readSetLiteral(src, name) {
-  const decl = src.indexOf(`const ${name} = new Set(`);
-  if (decl < 0) throw new Error(`form_literal_not_found: ${name}`);
-  return evalLiteral(scanBalanced(src, src.indexOf('[', decl), '[', ']', name));
+  // Post-1c-b3 the form keeps the plain ARRAY as `FALLBACK_<NAME>` (the Set is constructed by the
+  // validated select), so accept both the `new Set([…])` and the bare-array spellings.
+  for (const candidate of literalNames(name)) {
+    // Require `new Set([` — the literal form. After the 1c-b3 cutover the form also contains
+    // `const HAS_PHOTO = new Set(<validated select>)`, which must NOT be mistaken for the data.
+    const asSet = src.indexOf(`const ${candidate} = new Set([`);
+    if (asSet >= 0) return evalLiteral(scanBalanced(src, src.indexOf('[', asSet), '[', ']', candidate));
+    const asArr = src.indexOf(`const ${candidate} = [`);
+    if (asArr >= 0) return evalLiteral(scanBalanced(src, src.indexOf('[', asArr), '[', ']', candidate));
+  }
+  throw new Error(`form_literal_not_found: ${name} (tried ${literalNames(name).join(', ')})`);
 }
 
 function formSource(restaurantId, root) {
