@@ -40,8 +40,10 @@ const buildReader = (codeMap = null) => {
       getRestaurantDocs: (rid) => getRestaurantDocs(db, rid),
       getActiveVersionId: (rid) => getActiveVersionId(db, rid),
     }),
-    codeFor: (rid) => (codeMap && codeMap[rid]) || { menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] },
+    // 2c: no codeFor — the catalog is authoritative. A read failure falls to the LADDER, and when the
+    // ladder cannot vouch for anything the resolver throws and the caller rejects the order.
     alarm: (k, d) => alarms.push([k, d]),
+    ladder: { recordActive() {}, recordGood() {}, snapshotFor: async (rid) => { throw new Error(`snapshot_fallback_unavailable: ${rid}`); } },
   });
   return { resolver, alarms };
 };
@@ -63,17 +65,21 @@ const buildReader = (codeMap = null) => {
     ok(`MONEY-PROOF ${rid}: publishVersion v1 → reader resolves pointer → byte-identical to code (identity-proven), zero alarms`);
   }
 
-  // ── (2) MONEY-PROOF FALSIFIABILITY — a diverged VERSION → the 1b guard serves CODE + parity alarm ──
+  // ── (2) 2c THE FLIP — a diverged published version is now SERVED. This assertion is deliberately the
+  //     INVERSE of its pre-flip self: before 2c the parity guard refused a diverged version and served
+  //     the in-code table, which was right while code was the source of truth. After the flip the
+  //     catalog IS the source of truth, so refusing a divergence would silently suppress a portal edit
+  //     and keep charging the old price — the exact failure 1d exists to prevent. ──
   {
     const firstKey = Object.keys(MENU_BY_RESTAURANT.x_pizza)[0];
     const mutated = V2.x_pizza.items.map((i) => (i.key === firstKey ? { ...i, price: 99999 } : i));
     await publishVersion(db, 'x_pizza', { items: mutated, structure: V2.x_pizza.structure, extras: EXTRAS_BY_RESTAURANT.x_pizza, source_sha: 'bad' });
     const { resolver, alarms } = buildReader();
     const t = await resolver.getPricingTables('x_pizza');
-    assert.strictEqual(t.menu[firstKey], MENU_BY_RESTAURANT.x_pizza[firstKey], 'CODE price serves, never the diverged version price');
-    assert.strictEqual(t.menu, MENU_BY_RESTAURANT.x_pizza, 'on mismatch the returned menu IS the in-code table');
-    assert.strictEqual(alarms[0][0], 'catalog_parity_mismatch');
-    ok('FALSIFIABLE: a diverged published version → CODE tables + catalog_parity_mismatch (customer never mispriced)');
+    assert.strictEqual(t.menu[firstKey], 99999, 'the PUBLISHED version price serves — a portal edit takes effect');
+    assert.notStrictEqual(t.menu[firstKey], MENU_BY_RESTAURANT.x_pizza[firstKey], 'and it is NOT the retired code price');
+    assert.deepStrictEqual(alarms, [], 'NO parity alarm — divergence from the code table is expected now, not an incident');
+    ok('2c FLIP: a diverged published version is SERVED (pre-flip this fell back to code + alarmed)');
     // restore x_pizza to the good version for later
     await publishVersion(db, 'x_pizza', { items: V2.x_pizza.items, structure: V2.x_pizza.structure, extras: EXTRAS_BY_RESTAURANT.x_pizza, source_sha: 'v-restore' });
   }
@@ -144,19 +150,33 @@ const buildReader = (codeMap = null) => {
     ok('ERROR (c\'): pointer to a missing version → THROW version_missing');
   }
 
-  // ── (7) FAIL-SAFE NEVER-DROP — an ERROR state through the 1b guard serves CODE + alarm (byte-same as a
-  //        catalog-fault today). A completeness fault must NOT drop or plausible-empty ──
+  // ── (7) 2c — a torn ACTIVE version now falls to the LADDER, not to code. Asserted BOTH ways, because
+  //        which one happens is the whole safety story: a WARM instance keeps serving from its last-good
+  //        (no customer impact), and a COLD one fail-closes so the caller rejects the order rather than
+  //        charging a price nobody can vouch for. Pre-flip this served the in-code table; there is no
+  //        code net any more, by design. ──
   {
-    const CODE = { failsafe_shop: { menu: { A: 10 }, extras: {} } };
     await publishVersion(db, 'failsafe_shop', mkVersion({ A: 10 }));
     const active = await getActiveVersionId(db, 'failsafe_shop');
     const vitems = await versionsCol('failsafe_shop').doc(active).collection('menu_items').get();
     await vitems.docs[0].ref.delete();                                     // torn read on the ACTIVE version
-    const { resolver, alarms } = buildReader(CODE);
-    const t = await resolver.getPricingTables('failsafe_shop');
-    assert.deepStrictEqual(t.menu, { A: 10 }, 'completeness fault → CODE tables (never a drop, never a plausible-empty)');
-    assert.strictEqual(alarms[0][0], 'catalog_read_failed', 'the throw fail-safes to code + catalog_read_failed');
-    ok('FAIL-SAFE never-drop: a torn ACTIVE version → the 1b guard serves CODE + catalog_read_failed (no drop/empty)');
+
+    // (a) WARM: the ladder holds a last-good from an earlier successful serve → it keeps serving.
+    const warmAlarms = [];
+    const warmLadder = { recordActive() {}, recordGood() {}, snapshotFor: async () => ({ source: 'last_good', menu: { A: 10 }, extras: {} }) };
+    const warm = createPricingResolver({
+      reader: createCatalogReader({ getRestaurantDocs: (rid) => getRestaurantDocs(db, rid), getActiveVersionId: (rid) => getActiveVersionId(db, rid) }),
+      alarm: (k, d) => warmAlarms.push([k, d]), ladder: warmLadder,
+    });
+    const t = await warm.getPricingTables('failsafe_shop');
+    assert.deepStrictEqual(t.menu, { A: 10 }, 'a torn version → the LADDER serves last-good (never a drop, never a plausible-empty)');
+    assert.strictEqual(warmAlarms[0][0], 'catalog_read_failed', 'and the read failure still alarms');
+
+    // (b) COLD: nothing to vouch with → fail-closed, so the caller rejects rather than guessing.
+    const { resolver } = buildReader();
+    await assert.rejects(() => resolver.getPricingTables('failsafe_shop'), /snapshot_fallback_unavailable/,
+      'a cold ladder fail-closes — the order is rejected, never priced from a retired table');
+    ok('2c: a torn ACTIVE version → ladder serves when warm, fail-closes when cold (no code net, no drop, no guess)');
   }
 
   // ── (8) LEASE mutual exclusion (deterministic) — a live lease refuses a second acquirer; free → acquired ──

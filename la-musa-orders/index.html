@@ -2331,7 +2331,10 @@ function updateTotal(){
 function applyRedeemQuoteToTotals(q){
   if(!q){ try{ const _pend=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemPayload&&window.__ACCOUNT.getRedeemPayload()); if(!_pend) window.__resumeOrderId=null; }catch(_){} }   // D(revise 1): drop the resume ONLY on a GENUINE removal (quitar → no redeem pending). A transient/null quote while a redeem is STILL pending must NOT drop it — else buildOrder fresh-ids a still-attached redeem → DOUBLE-RESERVE
   const pa=document.getElementById('pixelpay-amount');
-  if(pa) pa.textContent = q ? ('L '+(q.total_cents/100).toFixed(2)) : ('L '+calcTotal().toFixed(2));   // online charge = the SERVER discounted total
+  // 2c: the non-redeem branch now uses redeemAdjustedTotal() so the CARD in-form amount follows the
+  // server order-quote (2a) like the summary and the cash tender already do. Pre-2c it read calcTotal()
+  // directly, so post-flip a portal edit would have left this one number showing the stale client price.
+  if(pa) pa.textContent = q ? ('L '+(q.total_cents/100).toFixed(2)) : ('L '+redeemAdjustedTotal().toFixed(2));   // online charge = the SERVER total
   syncFreeOrderUI();   // A1: a $0 (fully-comped) server quote → free-order payment availability
   try{ if(typeof renderStage2Summary==='function') renderStage2Summary(); }catch(_){}   // A6: refresh the Stage-2 summary reward line + total when the quote changes
 }
@@ -3273,6 +3276,13 @@ async function processPixelPay(){
     if(res.status===400 && cfg && cfg.error==='item_unavailable'){
       const names = (Array.isArray(cfg.blocked) && cfg.blocked.length) ? cfg.blocked.join(', ') : 'un platillo';
       return paymentFallback('Agotado — quitá '+names+' del carrito para continuar.');   // CART error → reward PRESERVED
+    }
+    // 2c: the catalog is authoritative and its fallback ladder fail-closed, so the server REFUSED to
+    // price rather than guess. This is transient and the cart is fine — so tell the customer to retry
+    // the SAME cart. Never suggest editing it, and never fall through to the generic copy, which would
+    // read as a cart problem and invite an edit that cannot help.
+    if(res.status===503 && cfg && cfg.error==='pricing_unavailable'){
+      return paymentFallback('No pudimos confirmar el precio en este momento. Volvé a intentar en unos segundos — tu pedido está intacto.');
     }
     // REWARDS (B2 Task 4): a typed REDEMPTION failure → clear the reward + revert the total; the customer's
     // next pay-tap rebuilds a FRESH order_id, full-price ("Continuar sin premio"). (item_unavailable/closed are

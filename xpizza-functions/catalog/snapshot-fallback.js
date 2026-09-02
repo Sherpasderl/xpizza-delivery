@@ -69,13 +69,30 @@ function createSnapshotFallback({ mirrorReader, alarm, K = DEFAULT_K, deadlineMs
     if (Number.isInteger(seq)) lastKnownActive.set(rid, { versionId: versionId || null, seq });
   }
   // Remember a serve that actually succeeded — rung 1.
+  // 2c RECORDS-LANDING SIGNAL. "The ladder is injected" and "the ladder is being fed" are different
+  // claims, and only the second one matters at an outage. The wiring test proves injection; this proves
+  // the records actually LAND, sampled per restaurant so it is a heartbeat and not a per-order log.
+  // It exists because a wiring bug here is silent by construction — the resolver's recorder calls are
+  // wrapped in a catch (correctly: a recording failure must never break pricing), which already hid a
+  // name collision that left the ladder permanently empty while every test passed.
+  const WARM_MS = 60000;
+  const _lastWarm = new Map();
+  function warmSignal(rid, rec) {
+    const last = _lastWarm.get(rid) || 0;
+    const t = Date.now();
+    if (t - last < WARM_MS) return;
+    _lastWarm.set(rid, t);
+    console.log('pricing_ladder_warm', JSON.stringify({ restaurantId: rid, version: rec.versionId, seq: rec.seq, items: Object.keys(rec.menu || {}).length }));
+  }
   function recordGood(rid, { versionId, seq, menu, extras }) {
     // Symmetry with the mirror rung: never remember a table the ladder would refuse to serve, so rung 1
     // cannot hand out something rung 2 would have rejected. A served happy-path table cannot be corrupt
     // today (the reader and the 1a guard already reject one) — the ladder simply does not depend on that.
     if (!pricesOk(menu) || !pricesOk(extras)) return;
-    lastGood.set(rid, { versionId: versionId || null, seq: Number.isInteger(seq) ? seq : null, menu, extras });
+    const rec = { versionId: versionId || null, seq: Number.isInteger(seq) ? seq : null, menu, extras };
+    lastGood.set(rid, rec);
     if (Number.isInteger(seq)) recordActive(rid, versionId, seq);
+    try { warmSignal(rid, rec); } catch (_) { /* observability must never break pricing */ }
   }
 
   async function snapshotFor(rid) {

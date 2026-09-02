@@ -30,7 +30,8 @@ const build = () => {
   const alarms = [];
   const resolver = createPricingResolver({
     reader: createCatalogReader({ getRestaurantDocs: (rid) => getRestaurantDocs(firestore, rid) }),
-    codeFor: (rid) => ({ menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] }),
+    // 2c: no codeFor — the catalog is authoritative; a read failure falls to the ladder.
+    ladder: { recordActive() {}, recordGood() {}, snapshotFor: async (rid) => { throw new Error(`snapshot_fallback_unavailable: ${rid}`); } },
     alarm: (kind, detail) => { alarms.push([kind, detail]); },
   });
   return { resolver, alarms };
@@ -61,30 +62,33 @@ const build = () => {
     ok(`money proof ${rid}: a real order priced off the FIRESTORE-read catalog equals the code total`);
   }
 
-  // (3) FALSIFIABLE — mutate one catalog price → mismatch → CODE tables + alarm (never the bad price).
+  // (3) 2c THE FLIP — a diverged catalog price is now SERVED, all the way through to the charge.
+  //     Deliberately the INVERSE of the pre-flip assertion: refusing a divergence would suppress the
+  //     very portal edit this program exists to enable.
   const firstKey = Object.keys(MENU_BY_RESTAURANT.x_pizza)[0];
   await seedCatalog(firestore, R({ x_pizza: { ...MENU_BY_RESTAURANT.x_pizza, [firstKey]: 99999 } }));
   {
     const { resolver, alarms } = build();
     const t = await resolver.getPricingTables('x_pizza');
-    assert.strictEqual(t.menu[firstKey], MENU_BY_RESTAURANT.x_pizza[firstKey], 'the CODE price serves, not the diverged catalog price');
-    assert.strictEqual(t.menu, MENU_BY_RESTAURANT.x_pizza, 'on mismatch the returned menu IS the in-code table');
-    assert.strictEqual(alarms.length, 1);
-    assert.strictEqual(alarms[0][0], 'catalog_parity_mismatch');
-    assert.strictEqual(alarms[0][1].diff.menu.sample[0].key, firstKey, 'the alarm names the diverged key');
+    assert.strictEqual(t.menu[firstKey], 99999, 'the CATALOG price serves — the edit takes effect');
+    assert.notStrictEqual(t.menu[firstKey], MENU_BY_RESTAURANT.x_pizza[firstKey], 'and it is NOT the retired code price');
+    assert.deepStrictEqual(alarms, [], 'NO parity alarm — divergence is now expected, not an incident');
     const priced = computeServerTotal([{ name: firstKey, qty: 1 }], 'x_pizza', t);
-    assert.strictEqual(priced.total, MENU_BY_RESTAURANT.x_pizza[firstKey], 'the customer is charged the CODE price — never mispriced');
-    ok('falsifiable: a diverged catalog price → CODE tables + catalog_parity_mismatch (customer never mispriced)');
+    assert.strictEqual(priced.total, 99999, 'and the customer is CHARGED the catalog price — end to end');
+    ok('2c FLIP: a diverged catalog price is served AND charged (pre-flip this fell back to code + alarmed)');
   }
 
   // (4) Catalog outage / unseeded restaurant → CODE tables + catalog_read_failed (fail-safe).
   {
     const { resolver, alarms } = build();
-    const t = await resolver.getPricingTables('never_seeded');
-    assert.strictEqual(t.restaurantId, 'never_seeded');
+    // 2c: an unreadable catalog falls to the LADDER. With a cold ladder that is fail-closed — the
+    // resolver throws and the caller returns a typed 503 rather than pricing from a retired table.
+    // Pre-flip this served the in-code tables; there is deliberately no code net any more.
+    await assert.rejects(() => resolver.getPricingTables('never_seeded'), /snapshot_fallback_unavailable/,
+      'an unreadable catalog + a cold ladder → FAIL CLOSED (the order is rejected, never mispriced)');
     assert.strictEqual(alarms[0][0], 'catalog_read_failed');
-    assert.ok(/restaurant_not_found/.test(alarms[0][1].error), 'the 1a reader throw reaches the alarm detail');
-    ok('fail-safe: an unreadable catalog → CODE tables + catalog_read_failed (order still prices)');
+    assert.ok(/restaurant_not_found/.test(alarms[0][1].error), 'the reader throw still reaches the alarm detail');
+    ok('2c: an unreadable catalog + cold ladder → fail-closed (no code net; the caller rejects)');
   }
 
   // (5) 1b-1b PIN E — the REDEMPTION cluster on the real Firestore-read catalog. Same discriminator:
@@ -118,9 +122,9 @@ const build = () => {
     const { resolver, alarms } = build();
     const t = await resolver.getPricingTables('x_pizza');
     const r = computeRedemption({ redeem: { type: 'free_pizza_choice', item_id: XKEY }, items: [{ name: 'Ham', qty: 1 }], restaurantId: 'x_pizza', tables: t });
-    assert.strictEqual(r.freeItems[0].price_cents, MENU_BY_RESTAURANT.x_pizza[XKEY] * 100, 'redemption prices on CODE when the catalog diverges');
-    assert.strictEqual(alarms[0][0], 'catalog_parity_mismatch');
-    ok('PIN E 1b-1b falsifiable: a diverged catalog → redemption prices on CODE + parity alarm (no split-brain)');
+    assert.strictEqual(r.freeItems[0].price_cents, 88888 * 100, 'the redemption values on the CATALOG price');
+    assert.deepStrictEqual(alarms, [], 'no parity alarm post-flip');
+    ok('2c FLIP: a diverged catalog → the redemption values on the CATALOG price (still no split-brain: one source)');
   }
 
   // (7) 1b-2 PIN E — the NON-redeem X. Pizza FACTURA off the real Firestore-read catalog. The factura is
@@ -151,9 +155,9 @@ const build = () => {
     const t = await resolver.getPricingTables('x_pizza');
     const { menu, extraPrices } = resolvePriceTables('x_pizza', t);
     const r = pricedLineItems([{ name: 'Margherita', qty: 1 }], menu, extraPrices);
-    assert.strictEqual(r.items[0].line_gross_cents, MENU_BY_RESTAURANT.x_pizza.Margherita * 100, 'the factura asserts the CODE price when the catalog diverges');
-    assert.strictEqual(alarms[0][0], 'catalog_parity_mismatch');
-    ok('PIN E 1b-2 falsifiable: a diverged catalog → the SAR document still carries the CODE value + parity alarm');
+    assert.strictEqual(r.items[0].line_gross_cents, 55555 * 100, 'the SAR document carries the CATALOG value — the fiscal doc follows the authoritative source');
+    assert.deepStrictEqual(alarms, [], 'no parity alarm post-flip');
+    ok('2c FLIP: a diverged catalog → the factura asserts the CATALOG value (fiscal follows the authoritative source)');
   }
 
   await seedCatalog(firestore, R());   // restore

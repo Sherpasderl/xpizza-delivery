@@ -172,7 +172,9 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
     assert.ok(/quoteRedemptionCore[\s\S]{0,400}?prepareRedemption\(db, \{[^)]*tables \}\)/.test(SRC),
       'quoteRedemptionCore must forward tables into prepareRedemption');
     const IDX = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
-    assert.ok(/const quoteTables = await resolvePricingTables\(restaurantId\)[\s\S]{0,300}?quoteRedemptionCore\(db, \{[^)]*tables: quoteTables/.test(IDX),
+    // 2c inserted the fail-closed guard between the resolver and the core call, widening this window.
+    // The property is unchanged: quoteRedemption resolves the guarded tables and passes THOSE along.
+    assert.ok(/const quoteTables = await resolvePricingTables\(restaurantId\)[\s\S]{0,800}?quoteRedemptionCore\(db, \{[^)]*tables: quoteTables/.test(IDX),
       'quoteRedemption must resolve the guarded tables and pass them to quoteRedemptionCore');
     ok('quote↔order parity: both quote computeServerTotal calls and the quote seam price from the guarded tables');
   }
@@ -210,16 +212,27 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
     ok('null-drop: the contract stays strict — a missed thread at the classifier still throws (not weakened)');
   }
   {
-    // Structural: resolvePricingTables must never return null, and its fallback must be shaped exactly
-    // like the resolver's own codeFor() code-serve so the two code-serves are indistinguishable downstream.
+    // 2c INVERTS this. In 1b-1b, returning null here was a latent order-DROP: the redemption seams call
+    // requireTables BEFORE their own try, so a null escaped the handler as a 500 rather than a typed
+    // response — and the fix was to hand back the code tables so the order could proceed.
+    //
+    // Post-flip the code tables are no longer the source of truth, so proceeding on them would charge
+    // from a retired source. null is now the CORRECT value — but only because Stage 2c also added a
+    // fail-closed guard as the first statement after every resolver call, which turns that null into a
+    // clean typed 503 before it can reach any seam. The two halves are one change; fail-closed-reject
+    // .test.js is what proves the second half, and this assertion is meaningless without it.
     const SRC = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
-    const fn = SRC.slice(SRC.indexOf('async function resolvePricingTables'), SRC.indexOf('async function resolvePricingTables') + 1400);
-    assert.ok(!/return null/.test(fn), 'resolvePricingTables must NEVER return null');
-    assert.ok(/return \{ restaurantId, menu: MENU_BY_RESTAURANT\[restaurantId\], extras: EXTRAS_BY_RESTAURANT\[restaurantId\] \}/.test(fn),
-      'the catastrophic fallback must be code-TAGGED and shaped exactly like codeFor(rid)');
-    assert.ok(/codeFor: \(rid\) => \(\{ menu: MENU_BY_RESTAURANT\[rid\], extras: EXTRAS_BY_RESTAURANT\[rid\] \}\)/.test(SRC),
-      'and codeFor must still have that exact shape (indistinguishable code-serves)');
-    ok('null-drop (structural): resolvePricingTables never returns null; its fallback matches codeFor exactly');
+    const fn = SRC.slice(SRC.indexOf('async function resolvePricingTables'), SRC.indexOf('function pricingUnavailable'));
+    assert.ok(/return null;/.test(fn), '2c: a genuine resolver failure returns null (no code net)');
+    assert.ok(!/MENU_BY_RESTAURANT\[restaurantId\]/.test(fn), '2c: and NEVER the retired in-code tables');
+    // the guard that makes that null safe must exist at every call site
+    assert.strictEqual((SRC.match(/if \(!pricingTables\) return pricingUnavailable\(res\);/g) || []).length, 2,
+      'both intake handlers must guard the null as their first post-resolver statement');
+    assert.strictEqual((SRC.match(/error: 'pricing_unavailable'/g) || []).length, 3,
+      'and both quote endpoints must fail soft on it (2 quotes + the typed 503 reject)');
+    assert.ok(!/codeFor:/.test(SRC),
+      '2c: codeFor is retired from the resolver construction — the catalog is the only pricing source');
+    ok('2c (structural): resolvePricingTables returns null with NO code net, and every call site guards it — the two halves that make fail-closed safe');
   }
 
   finished = true;

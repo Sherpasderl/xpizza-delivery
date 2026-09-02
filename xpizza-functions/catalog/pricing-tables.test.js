@@ -1,7 +1,7 @@
 'use strict';
 // Guarded pricing resolver — pure/DI'd tests. Run: node catalog/pricing-tables.test.js
 const assert = require('assert');
-const { createPricingResolver, tablesEqual } = require('./pricing-tables');
+const { createPricingResolver, tablesEqual, menuHash } = require('./pricing-tables');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 // A never-settling await inside the async IIFE drains the event loop and Node exits 0 having run only
 // part of the file — a HANG would read as a PASS. This turns "exited before the end" into a failure.
@@ -14,7 +14,7 @@ const CODE = { x_pizza: { menu: { Margherita: 299, Pepperoni: 307 }, extras: { M
                la_musa: { menu: { dimsum_01: 223 }, extras: { rice_white: 50 } } };
 const codeFor = (rid) => ({ menu: CODE[rid].menu, extras: CODE[rid].extras });
 const clone = (rid) => JSON.parse(JSON.stringify(CODE[rid]));
-const mk = (getTables) => { const seen = []; return { resolver: createPricingResolver({ reader: { getTables }, codeFor, alarm: async (k, d) => { seen.push([k, d]); } }), seen }; };
+const mk = (getTables, opts = {}) => { const seen = []; return { resolver: createPricingResolver({ reader: { getTables }, alarm: async (k, d) => { seen.push([k, d]); }, ...opts }), seen }; };
 
 (async () => {
   // ── PIN A: tablesEqual is STRICT — key sets + exact integer values ──
@@ -39,127 +39,134 @@ const mk = (getTables) => { const seen = []; return { resolver: createPricingRes
     ok(`parity holds ${rid} → returns catalog tables, restaurant-TAGGED, no alarm`);
   }
 
-  // ── mismatch → CODE + alarm (fail-safe), for each mismatch shape ──
-  for (const [label, mutate] of [
-    ['differing price', (c) => { c.menu.Margherita = 1; }],
-    ['missing key', (c) => { delete c.menu.Pepperoni; }],
-    ['extra key', (c) => { c.menu.Ghost = 1; }],
+  // ═══ Phase 1d Stage 2c — THE FLIP. The catalog is AUTHORITATIVE. ═══════════════════════════════
+  // These assertions are deliberately the INVERSE of the pre-flip ones. Before 2c a catalog that
+  // diverged from the code tables was REFUSED and code served; that was correct while code was the
+  // source of truth and is exactly wrong now — after a portal edit the catalog is SUPPOSED to differ,
+  // and refusing it would silently suppress the edit and keep charging the old price.
+  const mkLadder = (over = {}) => ({
+    calls: [], recordActive() {}, recordGood() {},
+    snapshotFor: async () => { throw new Error('snapshot_fallback_unavailable: x_pizza'); },
+    ...over,
+  });
+
+  // ── A DIVERGENT catalog is now SERVED (the whole point of the flip) ────────────────────────────
+  for (const [label, mutate, expect] of [
+    ['a raised price', (c) => { c.menu.Margherita = 350; }, 350],
+    ['a lowered price', (c) => { c.menu.Margherita = 199; }, 199],
   ]) {
     const { resolver, seen } = mk(async (r) => { const c = clone(r); mutate(c); return c; });
     const t = await resolver.getPricingTables('x_pizza');
-    assert.deepStrictEqual(t, { restaurantId: 'x_pizza', menu: CODE.x_pizza.menu, extras: CODE.x_pizza.extras });
-    assert.strictEqual(seen[0][0], 'catalog_parity_mismatch');
-    assert.strictEqual(seen[0][1].restaurantId, 'x_pizza', 'alarm detail names the restaurant');
-    ok(`mismatch (${label}) → CODE tables + catalog_parity_mismatch alarm`);
+    assert.strictEqual(t.menu.Margherita, expect, `${label} must be SERVED — a portal edit takes effect`);
+    assert.notStrictEqual(t.menu.Margherita, CODE.x_pizza.menu.Margherita, 'and it must differ from the retired code table');
+    assert.deepStrictEqual(seen, [], 'NO parity alarm — divergence is expected, not an incident');
+    ok(`FLIP: ${label} in the catalog is served (pre-flip this fell back to code)`);
   }
-
-  // ── reader throws → CODE + alarm (fail-safe; the 1a contract propagates the throw to here) ──
-  for (const err of ['firestore down', 'restaurant_not_found: x', 'catalog_empty: x']) {
-    const { resolver, seen } = mk(async () => { throw new Error(err); });
+  {
+    // A NEW item and a REMOVED item both take effect — the catalog defines the menu now.
+    const { resolver } = mk(async (r) => { const c = clone(r); c.menu.NewDish = 500; delete c.menu.Pepperoni; return c; });
     const t = await resolver.getPricingTables('x_pizza');
-    assert.deepStrictEqual(t, { restaurantId: 'x_pizza', menu: CODE.x_pizza.menu, extras: CODE.x_pizza.extras });
-    assert.strictEqual(seen[0][0], 'catalog_read_failed');
-    ok(`reader throws (${err.split(':')[0]}) → CODE tables + catalog_read_failed alarm`);
-  }
-
-  // ── PIN D: the resolver NEVER throws — even if the alarm sink itself throws ──
-  const boomResolver = createPricingResolver({ reader: { getTables: async () => { throw new Error('down'); } }, codeFor, alarm: () => { throw new Error('alarm sink exploded'); } });
-  const t = await boomResolver.getPricingTables('x_pizza');
-  assert.deepStrictEqual(t, { restaurantId: 'x_pizza', menu: CODE.x_pizza.menu, extras: CODE.x_pizza.extras });
-  ok('PIN D: a throwing alarm sink still yields CODE tables (resolver never throws out)');
-
-  // ── a malformed catalog shape must not crash the compare — it is simply not equal ──
-  for (const junk of [null, undefined, {}, { menu: null, extras: null }, { menu: 'nope' }]) {
-    const { resolver, seen } = mk(async () => junk);
-    const r = await resolver.getPricingTables('x_pizza');
-    assert.deepStrictEqual(r.menu, CODE.x_pizza.menu, 'malformed catalog → code tables');
-    assert.ok(seen.length === 1, 'malformed catalog alarms');
-  }
-  ok('malformed catalog shapes → CODE tables + alarm (compare never throws)');
-  // ── BOUNDED DEADLINE (codex money-grill): a HANG must land on code, fast. The fail-safe catches a
-  //    REJECT; it does not catch a read that never settles. Unbounded, the handler's `await` would block
-  //    until the 30s function timeout and DROP the order — an intake outage caused by the pricing cutover.
-  {
-    const alarms = [];
-    const hung = createPricingResolver({
-      reader: { getTables: () => new Promise(() => {}) },        // never resolves, never rejects
-      codeFor, alarm: (k, d) => { alarms.push([k, d]); }, deadlineMs: 20,
-    });
-    const t0 = Date.now();
-    const t = await hung.getPricingTables('x_pizza');
-    const elapsed = Date.now() - t0;
-    assert.deepStrictEqual(t, { restaurantId: 'x_pizza', menu: CODE.x_pizza.menu, extras: CODE.x_pizza.extras }, 'a hang falls back to CODE tables');
-    assert.ok(elapsed < 500, `must return within the deadline, not block (took ${elapsed}ms)`);
-    assert.strictEqual(alarms.length, 1);
-    assert.strictEqual(alarms[0][0], 'catalog_read_timeout', 'a HANG alarms catalog_read_timeout, NOT catalog_read_failed');
-    ok(`bounded deadline: a never-resolving catalog read → CODE tables in ${elapsed}ms + catalog_read_timeout`);
+    assert.strictEqual(t.menu.NewDish, 500, 'a catalog-only item is served');
+    assert.ok(!('Pepperoni' in t.menu), 'and a removed item is gone');
+    ok('FLIP: added and removed items take effect (the catalog defines the menu, not the code table)');
   }
   {
-    // Regression: a REJECT still reports catalog_read_failed (the two failure modes stay distinguishable
-    // so the prod-prove window can tell a hang from an error).
-    const { resolver, seen } = mk(async () => { throw new Error('boom'); });
+    // The code tables are no longer consulted at all — codeFor is not even a parameter now.
+    const resolver = createPricingResolver({ reader: { getTables: async () => ({ menu: { Only: 42 }, extras: {}, versionId: 'v', seq: 1 }) }, alarm: () => {}, ladder: mkLadder() });
+    const t = await resolver.getPricingTables('x_pizza');
+    assert.deepStrictEqual(t, { restaurantId: 'x_pizza', menu: { Only: 42 }, extras: {} }, 'served purely from the catalog');
+    ok('FLIP: the resolver takes no codeFor — the in-code tables are not consulted on the serve path');
+  }
+
+  // ── READ FAILURE now falls to the LADDER, not to code ──────────────────────────────────────────
+  {
+    let asked = null;
+    const ladder = mkLadder({ snapshotFor: async (rid) => { asked = rid; return { source: 'last_good', menu: { Margherita: 111 }, extras: { E: 1 } }; } });
+    const { resolver, seen } = mk(async () => { throw new Error('firestore down'); }, { ladder });
+    const t = await resolver.getPricingTables('x_pizza');
+    assert.strictEqual(asked, 'x_pizza', 'the ladder was consulted');
+    assert.deepStrictEqual(t, { restaurantId: 'x_pizza', menu: { Margherita: 111 }, extras: { E: 1 } }, 'and its tables served');
+    assert.notStrictEqual(t.menu.Margherita, CODE.x_pizza.menu.Margherita, 'NOT the code table — there is no code net any more');
+    assert.strictEqual(seen[0][0], 'catalog_read_failed', 'the read failure still alarms');
+    ok('FLIP: a catalog read failure falls to the LADDER (not to the code tables) + still alarms');
+  }
+  {
+    const ladder = mkLadder({ snapshotFor: async () => ({ menu: { M: 7 }, extras: {} }) });
+    const { resolver, seen } = mk(() => new Promise(() => {}), { ladder, deadlineMs: 20 });
+    const t = await resolver.getPricingTables('x_pizza');
+    assert.deepStrictEqual(t.menu, { M: 7 }, 'a HANG also falls to the ladder');
+    assert.strictEqual(seen[0][0], 'catalog_read_timeout', 'and is still distinguished from an error');
+    ok('FLIP: a catalog HANG falls to the ladder too, bounded, with the distinct timeout alarm');
+  }
+
+  // ── FAIL-CLOSED: the ladder can refuse, and that PROPAGATES (the caller turns it into a reject) ──
+  {
+    const { resolver } = mk(async () => { throw new Error('firestore down'); }, { ladder: mkLadder() });
+    await assert.rejects(() => resolver.getPricingTables('x_pizza'), /snapshot_fallback_unavailable/,
+      'when the ladder cannot vouch for anything the resolver THROWS — it must never invent a price');
+    ok('FLIP: ladder fail-closed propagates out of the resolver (no silent code-serve, no guessed price)');
+  }
+  {
+    // No ladder wired at all is also fail-closed, not a quiet code-serve.
+    const resolver = createPricingResolver({ reader: { getTables: async () => { throw new Error('down'); } }, alarm: () => {} });
+    await assert.rejects(() => resolver.getPricingTables('x_pizza'), /pricing_unavailable/);
+    ok('FLIP: with no ladder injected a read failure fail-closes (never falls back to code)');
+  }
+
+  // ── The SERVE-PATH TRIPWIRE replaces the parity alarm's visibility ─────────────────────────────
+  {
+    const logs = [];
+    const orig = console.log; console.log = (...a) => { logs.push(a.join(' ')); };
+    try {
+      // A FRESH restaurant id: the fingerprint/heartbeat throttles are module-level maps, so a rid an
+      // earlier case already stamped with a real Date.now() would suppress a synthetic-clock emit here.
+      let t = 0;
+      const resolver = createPricingResolver({ reader: { getTables: async () => ({ menu: { A: 1, B: 2 }, extras: { E: 3 }, versionId: 'v-9', seq: 4 }) },
+        alarm: () => {}, now: () => (t += 120000), ladder: mkLadder() });
+      await resolver.getPricingTables('fp_shop_a');
+      const fp = logs.find((l) => l.startsWith('catalog_serve_fingerprint'));
+      assert.ok(fp, 'a catalog serve must emit the fingerprint');
+      const d = JSON.parse(fp.slice('catalog_serve_fingerprint '.length));
+      assert.deepStrictEqual([d.restaurantId, d.version, d.seq, d.item_count, d.extra_count], ['fp_shop_a', 'v-9', 4, 2, 1]);
+      assert.strictEqual(d.menu_hash, menuHash({ A: 1, B: 2 }), 'the hash identifies WHICH menu served');
+      assert.notStrictEqual(menuHash({ A: 1, B: 2 }), menuHash({ A: 1, B: 3 }), 'and a changed price changes the hash');
+    } finally { console.log = orig; }
+    ok('FLIP: a catalog serve emits catalog_serve_fingerprint (version + menu hash + counts) — the parity alarm\'s replacement');
+  }
+  {
+    // Sampled, not per-order: a busy hour is a handful of lines, not thousands.
+    const logs = [];
+    const orig = console.log; console.log = (...a) => { logs.push(a.join(' ')); };
+    try {
+      let t = 1000;
+      const resolver = createPricingResolver({ reader: { getTables: async () => ({ menu: { A: 1 }, extras: {}, versionId: 'v', seq: 1 }) }, alarm: () => {}, now: () => t, ladder: mkLadder() });
+      for (let i = 0; i < 5; i++) await resolver.getPricingTables('fp_shop_b');
+      assert.strictEqual(logs.filter((l) => l.startsWith('catalog_serve_fingerprint')).length, 1, 'throttled within the window');
+      t += 120000;
+      await resolver.getPricingTables('fp_shop_b');
+      assert.strictEqual(logs.filter((l) => l.startsWith('catalog_serve_fingerprint')).length, 2, 'emits again after the window');
+    } finally { console.log = orig; }
+    ok('FLIP: the fingerprint is sampled per restaurant (observability, not a per-order log)');
+  }
+
+  // ── The ladder keeps WARMING on the happy path (it is load-bearing now) ────────────────────────
+  {
+    const rec = [];
+    const ladder = mkLadder({ recordGood: (rid, r) => rec.push(['good', rid, r.seq]), recordActive: (rid, v, sq) => rec.push(['active', rid, sq]) });
+    const { resolver } = mk(async (r) => ({ ...clone(r), versionId: 'v-2', seq: 2 }), { ladder });
     await resolver.getPricingTables('x_pizza');
-    assert.strictEqual(seen[0][0], 'catalog_read_failed', 'a reject is still catalog_read_failed, not timeout');
-    ok('regression: reject → catalog_read_failed (distinct from the timeout kind)');
-  }
-  {
-    // Regression: a fast reader still wins the race and the CATALOG serves (the deadline must not
-    // accidentally beat a healthy read).
-    const { resolver, seen } = mk(async (r) => clone(r));
-    const t = await resolver.getPricingTables('x_pizza');
-    assert.deepStrictEqual(t.menu, CODE.x_pizza.menu);
-    assert.deepStrictEqual(seen, [], 'a healthy read raises no alarm');
-    ok('regression: a fast reader still returns CATALOG tables (deadline does not misfire)');
-  }
-  {
-    // A late rejection after the deadline must not surface as an unhandled rejection.
-    let rejectLate; const late = new Promise((_, rej) => { rejectLate = rej; });
-    const r2 = createPricingResolver({ reader: { getTables: () => late }, codeFor, alarm: () => {}, deadlineMs: 10 });
-    const t = await r2.getPricingTables('x_pizza');
-    assert.deepStrictEqual(t.menu, CODE.x_pizza.menu);
-    rejectLate(new Error('arrived after the deadline'));
-    await new Promise((res) => setTimeout(res, 30));
-    ok('a rejection arriving AFTER the deadline is swallowed (no unhandled rejection)');
+    assert.deepStrictEqual(rec, [['active', 'x_pizza', 2], ['good', 'x_pizza', 2]], 'both recorders fire on a serve');
+    ok('FLIP: the happy path still records active + last-good — the ladder stays warm for the next outage');
   }
 
-  // ── 2b INERT: the ladder is RECORDED INTO but never CONSULTED. The live fallback still returns
-  //    codeFor; wiring snapshotFor in is 2c. ─────────────────────────────────────────────────────
+  // ── INERT AT FLIP: on a frozen menu (catalog == code) the served price is unchanged ────────────
   {
-    const { createSnapshotFallback } = require('./snapshot-fallback');
-    let ladderCalls = 0;
-    const fb = createSnapshotFallback({ mirrorReader: async () => { ladderCalls++; return null; }, alarm: () => {} });
-    const spy = { snapshotFor: (...a) => { ladderCalls++; return fb.snapshotFor(...a); }, recordActive: fb.recordActive, recordGood: fb.recordGood, state: fb.state };
-
-    // happy path: identical result with and without the ladder attached
-    const withL = createPricingResolver({ reader: { getTables: async (r) => ({ ...clone(r), versionId: 'v-1', seq: 1 }) }, codeFor, alarm: () => {}, ladder: spy });
-    const without = createPricingResolver({ reader: { getTables: async (r) => clone(r) }, codeFor, alarm: () => {} });
-    assert.deepStrictEqual(await withL.getPricingTables('x_pizza'), await without.getPricingTables('x_pizza'),
-      'attaching the ladder must not change what the resolver returns');
-    assert.strictEqual(ladderCalls, 0, 'and it must not have been consulted');
-    ok('2b INERT: the happy path is byte-identical with the ladder attached, and the ladder is not consulted');
-
-    // failure path: STILL codeFor — not the ladder. This is what 2c changes.
-    const failing = createPricingResolver({ reader: { getTables: async () => { throw new Error('firestore down'); } }, codeFor, alarm: () => {}, ladder: spy });
-    const r = await failing.getPricingTables('x_pizza');
-    assert.deepStrictEqual(r, { restaurantId: 'x_pizza', menu: CODE.x_pizza.menu, extras: CODE.x_pizza.extras },
-      'the FAILURE path still returns codeFor — swapping in snapshotFor is Stage 2c');
-    assert.strictEqual(ladderCalls, 0, 'snapshotFor is NOT reachable from the live path in 2b');
-    ok('2b INERT: the failure path still returns codeFor — snapshotFor is unreachable live (that flip is 2c)');
-
-    // but the happy path DID feed the ladder, so 2c drops onto warm state rather than an empty one
-    assert.strictEqual(spy.state.lastGood.get('x_pizza').seq, 1, 'a successful serve recorded last-good');
-    assert.strictEqual(spy.state.lastKnownActive.get('x_pizza').seq, 1, 'and taught the active ordinal');
-    ok('2b: the happy path RECORDS last-good + the active ordinal, so 2c inherits warm state');
-
-    // a resolver with NO fallback attached behaves exactly as before (nothing became mandatory)
-    const bare = createPricingResolver({ reader: { getTables: async (r) => ({ ...clone(r), versionId: 'v', seq: 2 }) }, codeFor, alarm: () => {} });
-    assert.deepStrictEqual(await bare.getPricingTables('la_musa'), { restaurantId: 'la_musa', menu: CODE.la_musa.menu, extras: CODE.la_musa.extras });
-    ok('2b: the ladder is optional — a resolver without one is unchanged');
-    // and the surfaced version/seq never leak into what callers receive
-    const out = await withL.getPricingTables('x_pizza');
-    assert.deepStrictEqual(Object.keys(out).sort(), ['extras', 'menu', 'restaurantId'],
-      'versionId/seq must NOT leak into the resolver result (PIN B shape unchanged)');
-    ok('2b: versionId/seq stay internal — the resolver result shape is unchanged');
+    const { resolver } = mk(async (r) => clone(r));
+    for (const rid of ['x_pizza', 'la_musa']) {
+      assert.deepStrictEqual(await resolver.getPricingTables(rid), { restaurantId: rid, menu: CODE[rid].menu, extras: CODE[rid].extras },
+        `${rid}: with catalog == code the flip changes nothing served`);
+    }
+    ok('INERT AT FLIP: on the frozen menu (catalog == code) the served tables are byte-identical to pre-flip');
   }
 
   finished = true;

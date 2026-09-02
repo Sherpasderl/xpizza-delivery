@@ -299,7 +299,6 @@ function pricingResolver() {
         getRestaurantDocs: (rid) => getRestaurantDocs(firestore, rid),           // FIRESTORE, full resolve+read+verify
         getActiveVersionId: (rid) => getActiveVersionId(firestore, rid),         // FIRESTORE, cheap pointer probe
       }),
-      codeFor: (rid) => ({ menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] }),
       alarm: (kind, detail) => paymentAlert(getDatabase(), kind, detail),                                // RTDB
       // 1d Stage 2b — the disaster-fallback ladder, RECORDING ONLY. getPricingTables never calls
       // snapshotFor in 2b (its failure path still returns the code tables), so the mirror reader below
@@ -330,8 +329,24 @@ async function resolvePricingTables(restaurantId) {
     // Distinct from the resolver's own catalog_read_* alarms: this is a resolver-CONSTRUCTION failure
     // (e.g. Firestore init), not a catalog read. Best-effort — alarming must never break pricing.
     try { paymentAlert(getDatabase(), 'pricing_resolver_failed', { restaurantId, error: String(e && e.message).slice(0, 200) }); } catch (_) {}
-    return { restaurantId, menu: MENU_BY_RESTAURANT[restaurantId], extras: EXTRAS_BY_RESTAURANT[restaurantId] };   // code-tagged → contract passes → order PROCEEDS on code
+    // 2c: NO code net. Before the flip this returned the in-code tables so an order could proceed; the
+    // catalog is now authoritative, so proceeding on code would charge from a source that is no longer
+    // the source of truth. Return null and let every caller REJECT — refusing an order is strictly
+    // better than charging a price the system cannot vouch for.
+    //
+    // A null here is only safe because each of the four call sites guards it as its FIRST statement.
+    // It is otherwise a latent order-DROP rather than a clean reject: the cash path's redemption seams
+    // (computeIncomingFingerprint, resolveRedemptionForOrder, prepareRedemption) all call requireTables
+    // BEFORE their own try, so a null reaching them escapes the handler as a 500 rather than a typed
+    // response. Changes 2 and 3 are one change; neither is safe alone.
+    return null;
   }
+}
+
+// 2c: the typed fail-closed reject. Distinct and RETRYABLE so the client can tell the customer to try
+// the same cart again, rather than edit it or proceed on a stale client-side total.
+function pricingUnavailable(res) {
+  return res.status(503).json({ error: 'pricing_unavailable', retryable: true });
 }
 
 // Reward-card display fields for order_tracking — earn_preview (what this order earns + welcome/goal) +
@@ -561,7 +576,16 @@ createOrderApp.all('*', async (req, res) => {
   if (ridError) return badRequest(res, ridError);
   if (!ridDefaulted) console.log(`createOrder: restaurant_id=${restaurantId}`);
   const db = getDatabase();                                            // 1b-1: hoisted above validation (the RTDB alarm sink)
-  const pricingTables = await resolvePricingTables(restaurantId);      // 1b-1: guarded catalog tables; fail-safe → null/code
+  const pricingTables = await resolvePricingTables(restaurantId);      // 2c: catalog-authoritative; null = fail-closed
+  // 2c FAIL-CLOSED GUARD — the FIRST statement after the resolver, deliberately. Everything below can
+  // reach a pricing seam: validateOrderPayload → computeServerTotal, which silently falls back to the
+  // retired code tables on a null; and the redemption seams call requireTables BEFORE their own try, so
+  // a null reaching them escapes this handler as a 500 instead of a typed response. Rejecting here, at
+  // the top, is what makes all of those safe at once — guarding them individually would not.
+  // It is also the FISCAL barrier: pricedLineItems is reached further down, and fiscal's own
+  // resolvePriceTables(null) would fall back to code — so this reject is the only thing preventing a
+  // code-priced factura. Nothing has been written and no money has moved at this point.
+  if (!pricingTables) return pricingUnavailable(res);
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
   if (errors.length > 0) {
     return badRequest(res, errors.join('; '));
@@ -1037,7 +1061,12 @@ chargeOnlineApp.all('*', async (req, res) => {
   if (ridError) return badRequest(res, ridError);
   if (!ridDefaulted) console.log(`chargeOnlineOrder: restaurant_id=${restaurantId}`);
   const db = getDatabase();                                            // 1b-1: hoisted above validation (the RTDB alarm sink)
-  const pricingTables = await resolvePricingTables(restaurantId);      // 1b-1: guarded catalog tables; fail-safe → null/code
+  const pricingTables = await resolvePricingTables(restaurantId);      // 2c: catalog-authoritative; null = fail-closed
+  // 2c FAIL-CLOSED GUARD — first statement after the resolver, ahead of pending-order assembly, the
+  // availability read, the rate-limit write, the reward reserve, acquireHostedAttempt and
+  // createHostedCharge. Placed here NO money moves and NO pending order is stranded; a guard even a
+  // little later could reach PixelPay carrying prices from the retired code tables.
+  if (!pricingTables) return pricingUnavailable(res);
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
   if (errors.length > 0) return badRequest(res, errors.join('; '));
 
@@ -5620,6 +5649,9 @@ exports.quoteOrder = onRequest(
 
       // The SAME resolver the order path uses — this is what makes displayed == charged.
       const tables = await resolvePricingTables(restaurantId);
+      // 2c: a quote is display-only, so it fails SOFT — the client keeps its own total and checkout is
+      // never blocked by a pricing outage. (The ORDER still fail-closes; only the preview degrades.)
+      if (!tables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' });
       const { total, error } = computeServerTotal(body.items, restaurantId, tables);
       // fail-SOFT: an unknown item or a corrupt price is a 200 + ok:false, so the client keeps its own
       // total on screen instead of a broken checkout. The order path will reject it for real if it is
@@ -5659,6 +5691,10 @@ exports.quoteRedemption = onRequest(
       // 1b-1b: quoteRedemption is NEW to the resolver — the quote must price on the same source as the
       // order it previews, or a customer sees one number and is charged from another.
       const quoteTables = await resolvePricingTables(restaurantId);
+      // 2c: fail SOFT, and this one MUST be guarded rather than left to throw — quoteRedemptionCore
+      // calls requireTables, which throws on a null and would surface as a 500 instead of a clean
+      // ok:false the client can degrade from.
+      if (!quoteTables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' });
       const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId, customerUid, tables: quoteTables });
       if (!q.ok) return res.status(q.status).json({ ok: false, ...q.body });   // same typed errors as intake (+ bad_cart)
       return res.status(200).json(q);   // { ok:true, discount_cents, total_cents, subtotal_cents, tax_cents, free_item:{name} }
