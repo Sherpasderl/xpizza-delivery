@@ -1392,8 +1392,16 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       // Returning complete user — arm DETERMINISTICALLY from st.snap (codex R1 FIX 1b): the reduced
       // 2-step flow activates for THIS page load with no second read.
       try { initDeliveryStep(st.snap).catch(() => {}); } catch (_) {}
+    } else if (st.status === 'ok' && profileNamed(st.snap)) {
+      // RECOGNIZED named-but-address-less → back to the order flow (never "Creá tu perfil"), the same
+      // destination the complete path uses. Arm the delivery step from st.snap; its named-recognition
+      // bypass (initDeliveryStep fall-through) shows the normal fillable pin entry with payment visible.
+      _acctData = st.snap;
+      renderChip();
+      closeSheet();
+      try { initDeliveryStep(st.snap).catch(() => {}); } catch (_) {}
     } else if (st.status === 'ok') {
-      // positively-confirmed INCOMPLETE → the full Creá tu perfil in the sheet, AND arm the checkout
+      // positively-confirmed NAMELESS → the full Creá tu perfil in the sheet, AND arm the checkout
       // hard-block underneath from st.snap DIRECTLY (codex R1 FIX 1b) so applyCreateProfileFlow sets
       // _acctCreateProfileActive=true + hides payment SYNCHRONOUSLY — a slow/failed second read can no
       // longer leave checkout payable if the user dismisses this overlay pane.
@@ -2112,11 +2120,15 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // guard (detected + numeric lat/lng + details>=3). The LIVE accountSnapshot() snap is
   // authoritative for this decision — the localStorage marker is only the instant-chip hint,
   // NEVER the gate for step-removal/reduced-flow (spec R1 #7 / non-negotiable #1).
-  function profileComplete(snap) {
+  // Recognition: a full name (>=2 words) makes a profile REAL — the customer is remembered and is NEVER
+  // forced back through "Creá tu perfil". This gates the forced create-profile + the delivery payment
+  // hard-block. profileComplete (name + a saved default address) is retained BELOW, for AUTOFILL only.
+  function profileNamed(snap) {
     if (!snap) return false;
-    const nameOk = String(snap.name || '').trim().split(/\s+/).filter(Boolean).length >= 2;
-    if (!nameOk) return false;
-    return !!pickDefaultAddress(snap);
+    return String(snap.name || '').trim().split(/\s+/).filter(Boolean).length >= 2;
+  }
+  function profileComplete(snap) {
+    return profileNamed(snap) && !!pickDefaultAddress(snap);
   }
 
   // ── Module state for the delivery step / edit flow (Tasks B4–B7). Reset on sign-out. ──
@@ -2301,7 +2313,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     // Logged-in + resolved read. snap MAY be null (empty profile). Record the confirmed-incomplete
     // signal (incl. null) BEFORE the order-type gate, so a pickup→delivery toggle can re-arm.
     _acctData = snap;
-    _acctProfileConfirmedIncomplete = !profileComplete(snap);   // null/partial → true; complete → false
+    _acctProfileConfirmedIncomplete = !profileNamed(snap);   // nameless → true (hard-block); named (incl. address-less) → false (recognized). The flag now means "confirmed NAMELESS".
 
     if (pageOrderType() !== 'delivery') { revertToNormalFillable(); refreshSaveToggle(); return; }   // pickup — out of scope (spec), leave raw fields
 
@@ -2330,7 +2342,9 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       // failed RIGHT NOW (e.g. genuinely out of the current delivery zone) — never advance/hide
       // behind an unconfirmed state. Fall through to the normal fillable flow below.
     }
-    applyCreateProfileFlow(snap);   // Task 2 — no-skip profile creation (also the fail-open destination above)
+    // Recognized named-but-address-less → normal fillable delivery entry (payment visible), NOT the hard-block
+    if (profileNamed(snap)) { bypassCreateProfileForNamed(); return; }
+    applyCreateProfileFlow(snap);   // only a NAMELESS profile reaches here — no-skip profile creation (also the fail-open destination above)
   }
 
   // ── Checkout-transition self-heal (logged-in address-autofill fail-open recovery) ──────────────
@@ -2796,7 +2810,13 @@ ${rowsHtml}`;
       _acctAddrId = null;
       const next = pickDefaultAddress(_acctData);
       if (next) refreshDeliveryUI(next);
-      else if (_acctReducedActive) applyCreateProfileFlow(_acctData);   // the only address just got deleted → profile is now INCOMPLETE: route to the fillable Creá-tu-perfil (hides payment + shows the "Guardar y continuar" CTA the submit-gate points at) — never a payable-looking-but-gate-blocked dead pay button
+      else if (_acctReducedActive) {
+        // The only address just got deleted. Named → recognized (payment visible, stays fillable); only a
+        // NAMELESS profile → the create-profile hard-block. (This site has no upstream setPaymentVisible(true),
+        // so the bypass helper's own setPaymentVisible(true) is what averts a dead pay button — codex Q6.)
+        if (profileNamed(_acctData)) bypassCreateProfileForNamed();
+        else applyCreateProfileFlow(_acctData);   // never a payable-looking-but-gate-blocked dead pay button
+      }
       // else: leave the current card/fields as-is rather than yanking the form mid-order.
     }
     try { await deleteAddress(addrId); } catch (_) { /* fail-open — the list already reflects the deletion */ }
@@ -3316,7 +3336,18 @@ ${footer}`;
       try { wrapPageHooks(); initDeliveryStep().catch(() => {}); } catch (_) {}   // reflect completeness THIS load
       return;
     }
-    // writes persisted but re-read is unavailable or still-incomplete → do NOT claim success;
+    if (st.status === 'ok' && profileNamed(st.snap)) {
+      // RECOGNIZED: the name persisted (the address was just saved above — saveAddress returned ok — but a
+      // just-written default may lag THIS re-read). Still a SUCCESS; never dump a just-completed customer to
+      // Mi Cuenta over a read race. Same success UX as the complete branch. (Task 1 recognition)
+      _acctData = st.snap;
+      renderChip();
+      toast('Perfil creado');
+      closeSheet();
+      try { wrapPageHooks(); initDeliveryStep().catch(() => {}); } catch (_) {}
+      return;
+    }
+    // writes persisted but re-read is unavailable or STILL NAMELESS → do NOT claim success;
     // fail-open to Mi Cuenta (checkout re-enforces complete-before-pay).
     _acctData = (st.status === 'ok') ? st.snap : _acctData;
     renderAccountPane(); showPane('account');
@@ -3884,6 +3915,18 @@ ${footer}`;
     } catch (_) { return false; }
   }
 
+  // Named-but-address-less RECOGNITION bypass: show the normal fillable delivery entry with payment
+  // visible so the customer can pay after dropping their pin — never the create-profile hard-block.
+  // setPaymentVisible(true) is REQUIRED and FIRST: it is the ONLY thing that clears _acctCreateProfileActive
+  // (deliverySubmitBlocked() then returns false). revertToNormalFillable/refreshSaveToggle do NOT touch that
+  // flag, so without this a bypass from a payment-hidden state (e.g. delete-last-address) would leave a
+  // payable-looking-but-gate-blocked dead pay button. (codex Q6)
+  function bypassCreateProfileForNamed() {
+    setPaymentVisible(true);
+    revertToNormalFillable();
+    refreshSaveToggle();
+  }
+
   // The fail-open reversion: restore the guest-identical fillable DOM (raw fields visible, address
   // section visible for delivery, step labels back to "de 3"), and clear the Task 3 summary mounts.
   // Safe/idempotent to call anytime — a fresh page load where nothing was ever hidden is a no-op
@@ -3946,6 +3989,8 @@ ${footer}`;
       }
     }
     _acctReducedActive = false;
+    // Recognized named-but-address-less → normal fillable (payment visible), NOT the hard-block
+    if (profileNamed(_acctData)) { bypassCreateProfileForNamed(); return; }
     applyCreateProfileFlow(_acctData);
   }
 
@@ -4157,6 +4202,10 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.newAddrId = newAddrId;
   window.__ACCOUNT.saveAddress = saveAddress;
   window.__ACCOUNT.profileComplete = profileComplete;
+  window.__ACCOUNT.profileNamed = profileNamed;   // Task 1 — recognition gate (full name >=2 words)
+  window.__ACCOUNT.setPaymentVisible = setPaymentVisible;                     // Task 1 test hook (gate state)
+  window.__ACCOUNT.bypassCreateProfileForNamed = bypassCreateProfileForNamed; // Task 1 test hook (recognition bypass)
+  window.__ACCOUNT.applyCreateProfileFlow = applyCreateProfileFlow;           // Task 1 test hook (nameless hard-block)
   window.__ACCOUNT.shouldRecoverDeliveryStep = shouldRecoverDeliveryStep;   // pure fail-open-recovery decision (diagnostic + unit-test hook)
   window.__ACCOUNT.deleteAddress = deleteAddress;
   window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;
