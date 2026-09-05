@@ -2704,9 +2704,85 @@ ${showCancel ? '<button type="button" class="acct-cancel-edit" id="acct-cancel-e
   // riding a saved, unedited address (e.g. a logged-in customer's very first delivery order, or one
   // whose in-flow save attempt failed). Hidden while the B5 edit surface (with its own explicit
   // "Guardar dirección") is open — the two affordances are never shown at once.
+  // Task 3 — a logged-in customer with NO saved address who has set a delivery location gets a first-class
+  // "¿Guardar como primaria?" opt-in (Casa default, editable, "Ahora no") instead of the subtle checkbox.
+  // Pure so the surface decision is unit-testable; the UI/save wiring lives in renderPrimarySavePrompt.
+  function shouldOfferPrimarySave(ctx) {
+    return !!ctx && ctx.loggedIn === true && ctx.orderType === 'delivery'
+      && ctx.hasSavedAddress === false && ctx.hasLocation === true && ctx.editMode === false;
+  }
+
+  // The opt-in card (approved mock): reuses the acct-lchip label picker (Casa pre-selected) + "Guardar y
+  // continuar" (saveAddress makeDefault:true — FAIL-OPEN, never blocks the order) + "Ahora no" (place the
+  // order with the location but no save). Rendered by refreshSaveToggle when shouldOfferPrimarySave is true.
+  function renderPrimarySavePrompt(addrSection) {
+    if (!addrSection || $('acct-primary-save')) return;
+    injectDeliverStylesOnce();
+    _acctEditLabel = 'Casa';
+    const wrap = document.createElement('div');
+    wrap.id = 'acct-primary-save';
+    wrap.className = 'field-group';
+    wrap.innerHTML = `
+<div class="acct-eyebrow">¿Guardar esta dirección como primaria?</div>
+<p class="acct-field-hint">Para que la próxima vez aparezca guardada — no tenés que hacerlo.</p>
+<div class="acct-lchips">
+  <button type="button" class="acct-lchip acct-on" data-label="Casa">${ICON_HOUSE}Casa</button>
+  <button type="button" class="acct-lchip" data-label="Trabajo">${ICON_WORK}Trabajo</button>
+  <button type="button" class="acct-lchip" data-label="">${ICON_TAG}Otra</button>
+</div>
+<input type="text" id="acct-primary-label-custom" class="acct-label-custom-inp" placeholder="Ponle un nombre… (ej: Casa de mis papás)" maxlength="40" style="margin-top:10px"/>
+<p class="acct-field-hint">«Casa» viene por defecto — tocá para cambiarlo.</p>
+<p class="acct-field-hint" id="acct-primary-save-err" style="display:none;color:#B23B3B"></p>
+<button type="button" class="acct-save-addr-btn" id="acct-primary-save-btn">${ICON_CHECK_BIG} Guardar y continuar</button>
+<button type="button" class="acct-cancel-edit" id="acct-primary-skip-btn">Ahora no</button>`;
+    addrSection.appendChild(wrap);
+    const custom = $('acct-primary-label-custom');
+    wrap.querySelectorAll('.acct-lchip').forEach((chip) => {
+      chip.onclick = () => {
+        wrap.querySelectorAll('.acct-lchip').forEach((c) => c.classList.remove('acct-on'));
+        chip.classList.add('acct-on');
+        const val = chip.getAttribute('data-label');
+        if (val) { _acctEditLabel = val; if (custom) custom.value = val; }
+        else { _acctEditLabel = (custom && custom.value) || ''; if (custom) { custom.value = ''; custom.focus(); } }
+      };
+    });
+    if (custom) { custom.value = 'Casa'; custom.addEventListener('input', () => { _acctEditLabel = custom.value; }); }
+    const err = $('acct-primary-save-err');
+    const saveBtn = $('acct-primary-save-btn');
+    if (saveBtn) saveBtn.onclick = async () => {
+      const detected = ($('address-detected') || {}).value || '';
+      const details = ($('address-details') || {}).value || '';
+      const { lat, lng } = pageLatLng();
+      const label = ((custom || {}).value || _acctEditLabel || '').trim() || 'Casa';
+      // A saved address needs a usable reference (details>=3, matches saveAddress) — keep them on the form to add it.
+      if (details.trim().length < 3) { const df = $('address-details'); if (df) df.focus(); if (err) { err.style.display = 'block'; err.textContent = 'Agregá una referencia — portón, color, piso…'; } return; }
+      saveBtn.disabled = true; saveBtn.textContent = 'Guardando…';
+      try {
+        const res = await saveAddress({ label, detected, details, lat, lng, makeDefault: true });   // FAIL-OPEN: a failure just shows below; the order is never blocked
+        if (res && res.ok) { _acctAddrUnsaved = false; _acctAddrId = res.addrId; wrap.remove(); toast('Dirección guardada'); return; }
+        if (err) { err.style.display = 'block'; err.textContent = (res && res.message) || 'No pudimos guardar la dirección.'; }
+      } catch (_) { if (err) { err.style.display = 'block'; err.textContent = 'No pudimos guardar la dirección.'; } }
+      saveBtn.disabled = false; saveBtn.innerHTML = ICON_CHECK_BIG + ' Guardar y continuar';
+    };
+    const skipBtn = $('acct-primary-skip-btn');
+    if (skipBtn) skipBtn.onclick = () => { _acctAddrUnsaved = true; wrap.remove(); };   // "Ahora no": order proceeds with the location, no save
+  }
+
   function refreshSaveToggle() {
     const addrSection = addrSectionEl();
     const existing = $('acct-save-toggle-wrap');
+    const promptExisting = $('acct-primary-save');
+    // Task 3: a logged-in, address-less customer WITH a delivery location → the first-class opt-in prompt
+    // INSTEAD of the subtle checkbox (address-less case only). reduced-flow / open label-picker → skip.
+    const offerPrimary = shouldOfferPrimarySave({
+      loggedIn: !!marker(),
+      orderType: pageOrderType(),
+      hasSavedAddress: !!(_acctData && _acctData.addresses && Object.keys(_acctData.addresses).length),
+      hasLocation: (function () { const p = pageLatLng(); return typeof p.lat === 'number' && typeof p.lng === 'number'; })(),
+      editMode: _acctEditMode,
+    }) && !_acctReducedActive && !$('acct-label-picker');
+    if (offerPrimary) { if (existing) existing.remove(); renderPrimarySavePrompt(addrSection); return; }
+    if (promptExisting) promptExisting.remove();
     // Never show alongside the Task 3 reduced-flow summary or the Task 2 required label picker —
     // both of those already own the "save this address" decision for their surface.
     const shouldShow = !!marker() && pageOrderType() === 'delivery' && !_acctEditMode && !_acctReducedActive
@@ -4237,6 +4313,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.bypassCreateProfileForNamed = bypassCreateProfileForNamed; // Task 1 test hook (recognition bypass)
   window.__ACCOUNT.applyCreateProfileFlow = applyCreateProfileFlow;           // Task 1 test hook (nameless hard-block)
   window.__ACCOUNT.claimAddressPayload = claimAddressPayload;   // Task 2 — claim shortcut order-address auto-save decision
+  window.__ACCOUNT.shouldOfferPrimarySave = shouldOfferPrimarySave;   // Task 3 — pin opt-in "guardar como primaria" decision
   window.__ACCOUNT.shouldRecoverDeliveryStep = shouldRecoverDeliveryStep;   // pure fail-open-recovery decision (diagnostic + unit-test hook)
   window.__ACCOUNT.deleteAddress = deleteAddress;
   window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;
