@@ -116,9 +116,17 @@ for (const [brand, dir] of Object.entries(FORMS)) {
     `${brand}: :3949 guarded`);
   assert.ok(S.includes('if (profileNamed(_acctData)) bypassCreateProfileForNamed(); else applyCreateProfileFlow(_acctData);'),
     `${brand}: :2799 delete-last-address split`);
-  // the bypass helper leads with setPaymentVisible(true)
-  assert.ok(/function bypassCreateProfileForNamed\(\) \{ setPaymentVisible\(true\);/.test(S),
-    `${brand}: bypass helper calls setPaymentVisible(true) FIRST`);
+  // codex-Q6 preserved across the seamless-entry fast-follow: bypass delegates to
+  // renderRecognizedDeliveryEntry, which opens payment (setPaymentVisible(true)) BEFORE it renders —
+  // so a bypass from a payment-hidden state never leaves a dead pay button. (The behavioral guard is
+  // check #3 above; recognized-entry.test.js asserts deliverySubmitBlocked()===false after the render.)
+  assert.ok(/function bypassCreateProfileForNamed\(\) \{ renderRecognizedDeliveryEntry\(_acctData\); \}/.test(S),
+    `${brand}: bypass delegates to renderRecognizedDeliveryEntry`);
+  const rm = src.match(/function renderRecognizedDeliveryEntry\(snap\) \{([\s\S]*?)\n  \}/);
+  assert.ok(rm, `${brand}: renderRecognizedDeliveryEntry found`);
+  const rbody = rm[1];
+  assert.ok(rbody.indexOf('setPaymentVisible(true)') >= 0 && rbody.indexOf('setPaymentVisible(true)') < rbody.indexOf("setVal('cname'"),
+    `${brand}: renderRecognizedDeliveryEntry opens payment BEFORE carrying identity (codex-Q6)`);
   // post-login routing (:1388) splits the incomplete branch: named → recognized order flow (not create)
   assert.ok(S.includes("} else if (st.status === 'ok' && profileNamed(st.snap)) {"),
     `${brand}: :1388 post-login split on profileNamed`);

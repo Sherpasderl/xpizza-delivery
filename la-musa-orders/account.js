@@ -4021,16 +4021,58 @@ ${footer}`;
     } catch (_) { return false; }
   }
 
-  // Named-but-address-less RECOGNITION bypass: show the normal fillable delivery entry with payment
-  // visible so the customer can pay after dropping their pin — never the create-profile hard-block.
-  // setPaymentVisible(true) is REQUIRED and FIRST: it is the ONLY thing that clears _acctCreateProfileActive
-  // (deliverySubmitBlocked() then returns false). revertToNormalFillable/refreshSaveToggle do NOT touch that
-  // flag, so without this a bypass from a payment-hidden state (e.g. delete-last-address) would leave a
-  // payable-looking-but-gate-blocked dead pay button. (codex Q6)
-  function bypassCreateProfileForNamed() {
-    setPaymentVisible(true);
-    revertToNormalFillable();
+  // RECOGNIZED named-but-address-less delivery entry (fast-follow): carry the KNOWN identity forward so a
+  // logged-in customer NEVER re-types name/phone, show a compact read-only "Entregar a … Verificado" header
+  // instead of the guest raw fields, reveal the pin-drop chrome, and keep payment visible. Reuses only leaf
+  // helpers — the gated applyCreateProfileFlow / deliverySubmitBlocked / setPaymentVisible / predicates / the
+  // :2304 flag are FROZEN (untouched).
+  function renderRecognizedDeliveryEntry(snap) {
+    injectDeliverStyles();
+    injectCompactSummaryStyles();   // .acct-compact/.acct-cav/.acct-ctxt for the identity header
+    setPaymentVisible(true);   // gate OPEN — clears _acctCreateProfileActive → deliverySubmitBlocked() stays false (preserves codex-Q6)
+
+    // Carry identity SILENTLY into the EXISTING submit fields (the exact idiom the complete flow uses) so the
+    // unchanged buildOrder()/validation reads back a populated name/phone — no guest re-entry.
+    const m = marker() || {};
+    const name = (snap && snap.name) || m.name || '';
+    const phone = (snap && snap.phone) || m.phone || '';
+    setVal('cname', name);
+    if (typeof window.__applyPhoneRaw === 'function') window.__applyPhoneRaw(phone); else setVal('cphone', phone);
+
+    // Hide the guest raw identity fields — the customer never re-types name/phone.
+    const rawWrap = $('raw-name-phone'); if (rawWrap) rawWrap.style.display = 'none';
+
+    // Compact READ-ONLY identity confirmation into the acct-deliver mount (no editable inputs, no address card
+    // — there's no address yet). Mirrors the form's existing acct-eyebrow/PERSON_SVG identity chrome.
+    const mount = $('acct-deliver');
+    if (mount) {
+      mount.innerHTML = `
+<div class="acct-eyebrow">Entregar a</div>
+<div class="acct-compact">
+  <span class="acct-cav">${PERSON_SVG}</span>
+  <span class="acct-ctxt">${escapeHtml(name)}${phone ? ' · ' + escapeHtml(phone) : ''}</span>
+  <span class="acct-saved">${ICON_CHECK_SM} Verificado</span>
+</div>`;
+    }
+
+    // Reveal the editable map/zone/locinfo + "Confirmar ubicación" (delivery) and the address entry, so the
+    // customer sets their destination — as the complete new-address entry does.
+    setReducedDeliveryChromeVisible(false);
+    const addrSection = addrSectionEl();
+    if (addrSection) { addrSection.style.display = ''; injectLabelPicker(addrSection); }
+
+    _acctReducedActive = false;
     refreshSaveToggle();
+  }
+
+  // Named-but-address-less RECOGNITION bypass: render the recognized seamless delivery entry (identity carried,
+  // payment visible) — never the create-profile hard-block. renderRecognizedDeliveryEntry calls
+  // setPaymentVisible(true) FIRST (the ONLY thing that clears _acctCreateProfileActive → deliverySubmitBlocked()
+  // false), so a bypass from a payment-hidden state (e.g. delete-last-address) never leaves a dead pay button
+  // (codex Q6). _acctData is the confirmed snapshot set at every call site (initDeliveryStep/refreshDeliveryUI/
+  // delete-last-address).
+  function bypassCreateProfileForNamed() {
+    renderRecognizedDeliveryEntry(_acctData);
   }
 
   // The fail-open reversion: restore the guest-identical fillable DOM (raw fields visible, address
@@ -4314,6 +4356,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.applyCreateProfileFlow = applyCreateProfileFlow;           // Task 1 test hook (nameless hard-block)
   window.__ACCOUNT.claimAddressPayload = claimAddressPayload;   // Task 2 — claim shortcut order-address auto-save decision
   window.__ACCOUNT.shouldOfferPrimarySave = shouldOfferPrimarySave;   // Task 3 — pin opt-in "guardar como primaria" decision
+  window.__ACCOUNT.renderRecognizedDeliveryEntry = renderRecognizedDeliveryEntry;   // fast-follow — recognized seamless delivery entry (identity carried, payment visible)
   window.__ACCOUNT.shouldRecoverDeliveryStep = shouldRecoverDeliveryStep;   // pure fail-open-recovery decision (diagnostic + unit-test hook)
   window.__ACCOUNT.deleteAddress = deleteAddress;
   window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;
