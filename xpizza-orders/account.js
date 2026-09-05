@@ -780,7 +780,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
           ? ((Number(env.pizzaCount) || 0) * RW.earnPerPizza)   // [display fix 2] drop the stale v1 redeemed −1 (matches the server: earns on paid pizzas, no adjustment)
           : (Math.floor(Math.max(0, Number(env.subtotalCents) || 0) / RW.perCents) * RW.ptsPer);
         const _rwUnit = RW.kind === 'punch' ? 'punch' : 'point';
-        const btn = el.querySelector('.rwcta'); if (btn) btn.onclick = () => { try { openLoginSheet({ phone: env.claimPhone, name: env.claimName, order_id: env.claimOrderId, n: _rwEarned, unit: _rwUnit }); } catch (_) {} };   // Track A soft-fill + Task 4 claim context (tokenless success)
+        const btn = el.querySelector('.rwcta'); if (btn) btn.onclick = () => { try { openLoginSheet({ phone: env.claimPhone, name: env.claimName, order_id: env.claimOrderId, n: _rwEarned, unit: _rwUnit, order_type: env.orderType, address_detected: env.addressDetected, address_details: env.addressDetails, lat: env.lat, lng: env.lng }); } catch (_) {} };   // Track A soft-fill + Task 4 claim context (tokenless success) + Task 2 order address (auto-save Casa)
       }
     } catch (_) {}
   }
@@ -854,6 +854,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   let _overlayBuilt = false;
   let _loginPhone = '';   // full E.164-ish phone captured phone-pane → otp/name panes (closure state)
   let _prefillName = '';   // Track A: name soft-filled from the just-placed order (openLoginSheet prefill → name pane)
+  let _prefillOrder = null;   // Task 2: the just-placed order's delivery address (order_type + detected/details/lat/lng), threaded from the success card → auto-saved as default "Casa" after a claim signup
 
   function injectSheetStyles() {
     if ($('acct-sheet-styles')) return;
@@ -1178,6 +1179,20 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     if (sheet) sheet.style.setProperty('--acct-kb-y', '0px');   // clear the keyboard lift (NOT style.transform — that's the stylesheet calc())
   }
 
+  // Task 2 — the claim/Track-A shortcut auto-saves the just-placed order's delivery address as the
+  // primary "Casa", so the profile is complete (name + address) with NO separate step to abandon.
+  // Returns the saveAddress payload, or null when there's nothing usable (pickup / missing / invalid).
+  // Mirrors saveAddress's own guards (detected present, details>=3, numeric finite lat/lng) so a null
+  // is exactly the case saveAddress would reject → FAIL-OPEN (a null just means "no autofill next
+  // time"; the customer is recognized by name regardless — never blocks the claim).
+  function claimAddressPayload(order) {
+    if (!order || order.order_type !== 'delivery') return null;
+    const detected = order.address_detected, details = order.address_details, lat = order.lat, lng = order.lng;
+    if (!detected || typeof details !== 'string' || details.trim().length < 3) return null;
+    if (typeof lat !== 'number' || typeof lng !== 'number' || !isFinite(lat) || !isFinite(lng)) return null;
+    return { label: 'Casa', detected, details, lat, lng, makeDefault: true };
+  }
+
   function openLoginSheet(prefill) {
     openOverlay();
     showPane('phone');
@@ -1193,6 +1208,14 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     _claimCtx = (prefill && prefill.order_id)
       ? { order_id: String(prefill.order_id), token: prefill.token ? String(prefill.token) : null, n: Number(prefill.n) || 0, unit: prefill.unit === 'punch' ? 'punch' : 'point' }
       : null;
+    // Task 2: stash the order's delivery address so the post-claim flow can auto-save it as default "Casa".
+    _prefillOrder = (prefill && prefill.order_id) ? {
+      order_type: prefill.order_type || 'delivery',
+      address_detected: prefill.address_detected || '',
+      address_details: prefill.address_details || '',
+      lat: (typeof prefill.lat === 'number') ? prefill.lat : NaN,
+      lng: (typeof prefill.lng === 'number') ? prefill.lng : NaN,
+    } : null;
     if (inp) { inp.value = digits.length === 8 ? digits.slice(0, 4) + '-' + digits.slice(4) : ''; setTimeout(() => inp.focus(), 80); }
     if (cta) cta.disabled = digits.length !== 8;
   }
@@ -1380,6 +1403,9 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     // users (claimOrder needs only the profile phone_hash, set at verify, + the fresh token). Fail-open.
     if (_claimCtx) {
       try { if (_prefillName) await saveName(_prefillName); } catch (_) {}
+      // Task 2: auto-save the just-placed order's delivery address as the primary "Casa" → the profile is
+      // complete (name + address) with no separate address step to abandon. Fail-open: never blocks the claim.
+      try { const claimAddr = claimAddressPayload(_prefillOrder); if (claimAddr) await saveAddress(claimAddr); } catch (_) {}
       try { renderChip(); } catch (_) {}
       try { initDeliveryStep(st.status === 'ok' ? st.snap : undefined).catch(() => {}); } catch (_) {}
       await runClaimConfirm();
@@ -4206,6 +4232,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.setPaymentVisible = setPaymentVisible;                     // Task 1 test hook (gate state)
   window.__ACCOUNT.bypassCreateProfileForNamed = bypassCreateProfileForNamed; // Task 1 test hook (recognition bypass)
   window.__ACCOUNT.applyCreateProfileFlow = applyCreateProfileFlow;           // Task 1 test hook (nameless hard-block)
+  window.__ACCOUNT.claimAddressPayload = claimAddressPayload;   // Task 2 — claim shortcut order-address auto-save decision
   window.__ACCOUNT.shouldRecoverDeliveryStep = shouldRecoverDeliveryStep;   // pure fail-open-recovery decision (diagnostic + unit-test hook)
   window.__ACCOUNT.deleteAddress = deleteAddress;
   window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;

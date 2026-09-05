@@ -3814,6 +3814,11 @@ function showSuccess(){
         claimPhone: o.customer_phone || '',   // Track A: soft-fill the create-profile sheet from the just-placed order
         claimName: o.customer_name || '',
         claimOrderId: o.order_id || '',   // Task 4: claim context — tokenless (success card)
+        orderType: o.order_type || '',   // Task 2: the just-placed order's delivery address → auto-saved as default "Casa" after a claim signup
+        addressDetected: o.address_detected || '',
+        addressDetails: o.address_details || '',
+        lat: (typeof o.lat === 'number') ? o.lat : NaN,
+        lng: (typeof o.lng === 'number') ? o.lng : NaN,
       });
     }
   } catch (_) {}
