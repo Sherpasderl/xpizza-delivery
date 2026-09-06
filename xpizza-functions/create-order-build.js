@@ -171,7 +171,7 @@ function attachCustomerAttribution(updates, orderId, customer_uid, meta) {
     items_text: meta.items_text,
     restaurant: meta.restaurantId,                              // P3 — client filters to its own brand
     status: orderRec.status || meta.status || null,            // P3 — order's initial status (new / scheduled), kept fresh by the status trigger
-    items: normalizeReorderItems(meta.items, meta.restaurantId), // P3 — menu-allowlisted reorder recipe (never raw client strings)
+    items: normalizeReorderItems(meta.items, meta.restaurantId, meta.tables), // P3 — menu-allowlisted reorder recipe (never raw client strings); 2a: allowlist = the CATALOG menu
   };
   return updates;
 }

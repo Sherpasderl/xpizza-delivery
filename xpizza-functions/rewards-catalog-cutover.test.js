@@ -163,7 +163,18 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
     assert.ok(classifierDeps, 'the classifier deps must receive tables: pricingTables (GRILL-FIX #1)');
     assert.ok(/resolveRedemptionForOrder\(db, \{[\s\S]{0,400}?tables: pricingTables/.test(SRC), 'the cash reserve must receive tables: pricingTables');
     assert.ok(/prepareRedemption\(db, \{ redeem: body\.redeem[\s\S]{0,300}?tables: pricingTables/.test(SRC), 'the online prepare must receive tables: pricingTables');
-    assert.strictEqual((SRC.match(/tables: pricingTables/g) || []).length, 3, 'exactly 3 seams share the ONE resolved pricingTables (classifier, cash reserve, online prepare)');
+    // The property being protected is "nothing re-resolves the tables inside a handler", not the raw
+    // count — 2a Task 7 added two legitimate NON-redemption consumers (the reorder-recipe allowlist at
+    // both attribution sites). Enumerate the known consumers instead, so a NEW unexplained one still
+    // trips this, and pin the real invariant separately below.
+    assert.strictEqual((SRC.match(/tables: pricingTables/g) || []).length, 5,
+      'the 3 redemption seams + the 2 reorder-attribution sites share the ONE resolved pricingTables');
+    assert.strictEqual((SRC.match(/attachCustomerAttribution\([^;]*?tables: pricingTables[^;]*?\);/g) || []).length, 2,
+      'and 2 of the 5 are the attribution sites (reorder recipe), not extra redemption seams');
+    // THE invariant: each order handler resolves the tables exactly once. Two resolves in one handler
+    // is the divergence this whole guard exists to prevent, whatever the consumer count happens to be.
+    assert.strictEqual((SRC.match(/await resolvePricingTables\(restaurantId\)/g) || []).length, 4,
+      'exactly 4 resolves in the file: the 2 order handlers + the 2 quote endpoints — never twice in one handler');
     ok('store==compare (structural): classifier + cash reserve + online prepare all receive the SAME pricingTables');
 
     // 2a Task 6 — ELIGIBILITY is now a second shared input to the same three seams, and it carries the

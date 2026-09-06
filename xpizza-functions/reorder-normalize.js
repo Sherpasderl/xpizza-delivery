@@ -6,13 +6,21 @@
 // the menu doesn't recognize is DROPPED, never stored. NO raw client names/prices are persisted (they
 // would be an XSS/trust vector) — only menu-recognized keys + qty. Display uses the sanitized
 // items_text; reorder re-resolves today's name/price from the menu by key. Guest/empty/malformed → [].
-const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, itemPricingKey } = require('./menu-pricing');
+const { itemPricingKey, resolvePriceTables } = require('./menu-pricing');
 
 const MAX_LINES = 100;   // bounded to a real order's line count (defensive cap)
 
-function normalizeReorderItems(bodyItems, restaurantId) {
-  const menu = MENU_BY_RESTAURANT[restaurantId];
-  const extraPrices = EXTRAS_BY_RESTAURANT[restaurantId] || {};
+// 2a Task 7 — the allowlist is the CATALOG's menu, not the in-code one. A recipe is a stored artifact
+// with a long life, so an allowlist frozen at deploy time outlives the edit that invalidated it: a dish
+// the merchant adds is silently dropped from every recipe (the customer reorders and the line is just
+// gone), and a dish they retire keeps being minted into new ones.
+//
+// `tables` are the guarded, restaurant-TAGGED catalog tables, threaded in exactly like every other
+// pricing seam; resolvePriceTables asserts the tag (PIN B). Omitted ⇒ the in-code tables, which is
+// today's exact behaviour — a reorder recipe is never worth failing an order over, and the allowlist
+// still fails CLOSED either way: an unrecognized key is dropped, never persisted.
+function normalizeReorderItems(bodyItems, restaurantId, tables = null) {
+  const { menu, extraPrices } = resolvePriceTables(restaurantId, tables);   // PIN B asserts the tag
   if (!menu || !Array.isArray(bodyItems)) return [];
   const byId = restaurantId === 'la_musa';   // la_musa extras are id-keyed/qty-aware; x_pizza name-keyed/count-once
   const out = [];
@@ -30,7 +38,7 @@ function normalizeReorderItems(bodyItems, restaurantId) {
       const seen = new Set();
       for (const ex of extras) {
         const eid = ex && ex.id;
-        if (!eid || !Object.prototype.hasOwnProperty.call(extraPrices, eid) || seen.has(eid)) continue;
+        if (!eid || !Object.prototype.hasOwnProperty.call(extraPrices || {}, eid) || seen.has(eid)) continue;
         const eqty = Number(ex && ex.qty);
         if (!Number.isInteger(eqty) || eqty < 1 || eqty > 50) continue;
         seen.add(eid);
@@ -44,7 +52,7 @@ function normalizeReorderItems(bodyItems, restaurantId) {
       const counts = {};
       for (const ex of extras) {
         const ename = ex && ex.name;
-        if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices, ename)) continue;
+        if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices || {}, ename)) continue;
         counts[ename] = (counts[ename] || 0) + 1;
       }
       opts = Object.keys(counts).map((name) => ({ name, count: Math.min(counts[name], qty) }));
