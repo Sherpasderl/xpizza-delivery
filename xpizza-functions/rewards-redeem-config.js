@@ -40,14 +40,46 @@ const X_PIZZA_REDEEM_ELIGIBLE = new Set([
 // an explicit allowlist (so no other extra ever becomes redeemable).
 const LA_MUSA_ACOMP = new Set(['rice_white', 'rice_chinese', 'papas_fritas']);
 
-function isXPizzaEligible(name) { return !!(name && X_PIZZA_REDEEM_ELIGIBLE.has(name)); }
+// ── Portal 2a Task 6 — the allowlists become CATALOG data ──────────────────────────────────────
+// `eligible` is the catalog-derived, restaurant-TAGGED { restaurantId, allow:Set } from menu-gates.
+// Threaded in exactly like `tables` (1b-1b) rather than read here, so these stay pure.
+//
+// Omitted / null ⇒ the in-code constants. That is a FALLBACK, not a second authority: the reader
+// returns null only when the catalog is unreadable or the field is unauthored, and the static answer
+// is today's exact answer. On a redemption gate BOTH errors are real — a wrongly-eligible key comps an
+// expensive item, a wrongly-rejected key refuses a legitimate redemption — and today's answer is
+// neither. An empty set would be the second error, which is why "unauthored" is null and never [].
+//
+// PIN B: the tag is asserted. x_pizza keys are NAMES and la_musa keys are IDS, so a set applied to the
+// wrong brand would not throw — it would just quietly answer "no" to everything.
+function allowSetFor(restaurantId, eligible) {
+  if (eligible == null) return null;
+  if (eligible.restaurantId !== restaurantId) {
+    throw new Error(`redeem_eligible_restaurant_mismatch: eligible=${String(eligible.restaurantId)} expected=${String(restaurantId)}`);
+  }
+  const allow = eligible.allow;
+  if (!allow || typeof allow.has !== 'function') {
+    // Malformed (a forgotten await, say). Pre-charge-adjacent: degrade to today, never throw a 500
+    // into the redemption path, never open the allowlist.
+    console.error('redeem_eligible_malformed_set', typeof allow);
+    return null;
+  }
+  return allow;
+}
+
+function isXPizzaEligible(name, eligible = null) {
+  if (!name) return false;
+  const allow = allowSetFor('x_pizza', eligible);
+  return !!(allow ? allow.has(name) : X_PIZZA_REDEEM_ELIGIBLE.has(name));
+}
 
 // 1b-1b: `tables` (guarded catalog) supplies BOTH the key set and the prices — the la_musa menu IS the
 // membership list. Omitted → the in-code table (backward compat for the legacy pure unit tests only;
 // every production seam passes tables and throws without them).
-function isLaMusaEligible(id, tables = null) {
+function isLaMusaEligible(id, tables = null, eligible = null) {
   if (!id || typeof id !== 'string') return false;
-  if (LA_MUSA_ACOMP.has(id)) return true;                                                 // acompañamientos (EXTRAS namespace)
+  const acomp = allowSetFor('la_musa', eligible) || LA_MUSA_ACOMP;                        // catalog-authored, else today's
+  if (acomp.has(id)) return true;                                                         // acompañamientos (EXTRAS namespace)
   // EXPLICITLY reject alcohol + modifiers BEFORE the MENU lookup — fail-closed, never by mere absence from MENU
   // (so a modifier that ever landed in MENU still can't be redeemed).
   if (id.startsWith('beer_') || id.startsWith('sauce_') || id.startsWith('protein_')) return false;
@@ -56,18 +88,18 @@ function isLaMusaEligible(id, tables = null) {
 }
 
 // Is `key` (x_pizza → pizza NAME, la_musa → item id) redeem-eligible for this brand? Server-authoritative.
-function isRedeemEligible(restaurantId, key, tables = null) {
-  return restaurantId === 'x_pizza' ? isXPizzaEligible(key)
-    : restaurantId === 'la_musa' ? isLaMusaEligible(key, tables)
+function isRedeemEligible(restaurantId, key, tables = null, eligible = null) {
+  return restaurantId === 'x_pizza' ? isXPizzaEligible(key, eligible)
+    : restaurantId === 'la_musa' ? isLaMusaEligible(key, tables, eligible)
       : false;
 }
 
 // The full eligible key list for a brand (for validation / a server-driven picker if ever needed).
-function eligibleKeys(restaurantId, tables = null) {
-  if (restaurantId === 'x_pizza') return Array.from(X_PIZZA_REDEEM_ELIGIBLE);
+function eligibleKeys(restaurantId, tables = null, eligible = null) {
+  if (restaurantId === 'x_pizza') return Array.from(allowSetFor('x_pizza', eligible) || X_PIZZA_REDEEM_ELIGIBLE);
   if (restaurantId === 'la_musa') {
     const menu = resolvePriceTables('la_musa', tables).menu || {};                          // PIN B asserts the tag
-    return Object.keys(menu).filter((id) => !id.startsWith('beer_')).concat(Array.from(LA_MUSA_ACOMP));
+    return Object.keys(menu).filter((id) => !id.startsWith('beer_')).concat(Array.from(allowSetFor('la_musa', eligible) || LA_MUSA_ACOMP));
   }
   return [];
 }
@@ -90,5 +122,5 @@ async function redemptionEnabled(db, uid) {
 
 module.exports = {
   REDEMPTION_CONFIG_VERSION, REDEMPTION_CONFIG, REDEEM_POINTS_PER_LEMPIRA,
-  X_PIZZA_REDEEM_ELIGIBLE, isXPizzaEligible, isLaMusaEligible, isRedeemEligible, eligibleKeys, redemptionEnabled,
+  X_PIZZA_REDEEM_ELIGIBLE, LA_MUSA_ACOMP, allowSetFor, isXPizzaEligible, isLaMusaEligible, isRedeemEligible, eligibleKeys, redemptionEnabled,
 };

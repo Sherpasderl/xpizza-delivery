@@ -611,6 +611,12 @@ createOrderApp.all('*', async (req, res) => {
   // resolvePriceTables(null) would fall back to code — so this reject is the only thing preventing a
   // code-priced factura. Nothing has been written and no money has moved at this point.
   if (!pricingTables) return pricingUnavailable(res);
+  // 2a Task 6 — the catalog-authored redemption allowlist. Deliberately BELOW the fail-closed guard:
+  // that guard must stay the first statement after the resolver, and an order that cannot be priced is
+  // rejected regardless. Resolved ONCE per request so the dedupe fingerprint and the reserve cannot see
+  // different eligibility — a divergence there flips prep.ok, changes the fingerprint, and false-409s a
+  // legit retry into a DOUBLE ORDER. null ⇒ the in-code allowlist (today's answer); never a throw.
+  const redeemEligible = await gateReader().redeemEligibleFor(restaurantId);
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
   if (errors.length > 0) {
     return badRequest(res, errors.join('; '));
@@ -654,7 +660,7 @@ createOrderApp.all('*', async (req, res) => {
   const incomingFp = await computeIncomingFingerprint(
     { orderId, restaurantId, total, itemsText: fields.items_text, items: body.items, redeem: body.redeem,
       customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType },
-    { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra: SCHED.fingerprintExtra, db, tables: pricingTables });   // 1b-1b GRILL-FIX #1: classifier prices redemption on the SAME source as the reserve
+    { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra: SCHED.fingerprintExtra, db, tables: pricingTables, eligible: redeemEligible });   // 1b-1b GRILL-FIX #1: classifier prices redemption on the SAME source as the reserve
 
   // Idempotency check — a re-submit of an EXISTING order_id returns idempotent-200 ONLY for the SAME LIVE cash
   // order (same restaurant + method + non-terminal + content match); every other state → 409 order_conflict,
@@ -825,6 +831,7 @@ createOrderApp.all('*', async (req, res) => {
       redeem: body.redeem, items: body.items, restaurantId, orderId,
       customerUid: customer_uid, itemsText: fields.items_text, totalLempiras: total, schedExtra: '', now: Date.now(),
       tables: pricingTables,                                                            // 1b-1b: same guarded tables as the order total
+      eligible: redeemEligible,                                                         // 2a: same catalog-authored allowlist as the fingerprint above
     });
     if (!rd.ok) return res.status(rd.status).json({ ...rd.body, order_id: orderId });   // ALL-OR-NOTHING: non-payable, no order
     fields.items_text = rd.itemsText;                                                   // La Musa free-item display line appended
@@ -1095,6 +1102,12 @@ chargeOnlineApp.all('*', async (req, res) => {
   // createHostedCharge. Placed here NO money moves and NO pending order is stranded; a guard even a
   // little later could reach PixelPay carrying prices from the retired code tables.
   if (!pricingTables) return pricingUnavailable(res);
+  // 2a Task 6 — the catalog-authored redemption allowlist. Deliberately BELOW the fail-closed guard:
+  // that guard must stay the first statement after the resolver, and an order that cannot be priced is
+  // rejected regardless. Resolved ONCE per request so the dedupe fingerprint and the reserve cannot see
+  // different eligibility — a divergence there flips prep.ok, changes the fingerprint, and false-409s a
+  // legit retry into a DOUBLE ORDER. null ⇒ the in-code allowlist (today's answer); never a throw.
+  const redeemEligible = await gateReader().redeemEligibleFor(restaurantId);
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
   if (errors.length > 0) return badRequest(res, errors.join('; '));
 
@@ -1147,7 +1160,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   let effTotal = total;
   if (body.redeem != null) {
     const prep = await prepareRedemption(db, { redeem: body.redeem, items: body.items, restaurantId,
-      itemsText: fields.items_text, totalLempiras: total, customerUid: customer_uid, tables: pricingTables });   // 1b-1b
+      itemsText: fields.items_text, totalLempiras: total, customerUid: customer_uid, tables: pricingTables, eligible: redeemEligible });   // 1b-1b + 2a eligibility
     if (!prep.ok) return res.status(prep.status).json({ ...prep.body, order_id: orderId });   // non-payable, nothing written, NO reserve yet
     redemptionCanonical = prep.canonical;
     redemptionPriced = prep.priced;
@@ -5726,7 +5739,10 @@ exports.quoteRedemption = onRequest(
       // calls requireTables, which throws on a null and would surface as a 500 instead of a clean
       // ok:false the client can degrade from.
       if (!quoteTables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' });
-      const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId, customerUid, tables: quoteTables });
+      // 2a: the quote must preview on the SAME allowlist the order enforces, or a customer is shown a
+      // redemption the order then refuses (or vice versa).
+      const quoteEligible = await gateReader().redeemEligibleFor(restaurantId);
+      const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId, customerUid, tables: quoteTables, eligible: quoteEligible });
       if (!q.ok) return res.status(q.status).json({ ok: false, ...q.body });   // same typed errors as intake (+ bad_cart)
       return res.status(200).json(q);   // { ok:true, discount_cents, total_cents, subtotal_cents, tax_cents, free_item:{name} }
     } catch (e) {

@@ -55,6 +55,29 @@ function pickupOnlyKeysFrom(restaurantId, built) {
   return keys;
 }
 
+// ── Portal 2a Task 6 — REDEMPTION ELIGIBILITY, derived from the same built catalog ─────────────
+// Returns a restaurant-TAGGED { restaurantId, allow:Set } (PIN B — an untagged set could be applied to
+// the wrong brand, and x_pizza keys are NAMES while la_musa keys are IDS, so a cross-brand mix-up is
+// silent). `allow` is the set of keys eligible WITHOUT a menu lookup, mirroring exactly what the two
+// code constants do today: for x_pizza it is the complete answer; for la_musa it is the acompanamiento
+// allowlist, with the non-alcohol MENU half still coming from the guarded pricing tables.
+function redeemEligibleFrom(restaurantId, built) {
+  const st = (built && built.structure) || {};
+  const allow = new Set();
+  if (restaurantId === 'la_musa') {
+    for (const k of st.redeem_eligible_extras || []) allow.add(k);
+  } else {
+    const cats = new Set(st.redeem_eligible_cats || []);
+    if (cats.size > 0) for (const it of (built && built.items) || []) {
+      if (it && it.display && cats.has(it.display.cat)) allow.add(it.key);
+    }
+  }
+  return { restaurantId, allow };
+}
+
+// Which structure field carries this brand's authored eligibility. Absent ⇒ UNAUTHORED ⇒ static.
+const REDEEM_FIELD = (rid) => (rid === 'la_musa' ? 'redeem_eligible_extras' : 'redeem_eligible_cats');
+
 function withDeadline(promise, ms, label) {
   let timer;
   const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label}_timeout`)), ms); });
@@ -77,15 +100,23 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
     } catch (e) {
       // FALLBACK TO TODAY — the static set. Not cached, so the next order retries the catalog.
       console.warn('menu_gates_read_failed', JSON.stringify({ restaurantId, versionId: versionId || null, error: String((e && e.message) || e).slice(0, 160) }));
-      return { weekend: staticWeekendFallback(restaurantId), pickup: null, fallback: true };
+      return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true };
     }
-    if (!built || !built.structure) return { weekend: staticWeekendFallback(restaurantId), pickup: null, fallback: true };
+    if (!built || !built.structure) return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true };
     if (!gateAuthored(built, 'weekend_only_cats')) {
       // Structure read fine but the gate is UNAUTHORED (a pre-2a version). Unknown → today's behaviour.
       console.warn('menu_gates_unauthored', JSON.stringify({ restaurantId, versionId: versionId || null, field: 'weekend_only_cats' }));
-      return { weekend: staticWeekendFallback(restaurantId), pickup: null, fallback: true };
+      return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true };
     }
-    const gates = { weekend: weekendOnlyKeysFrom(restaurantId, built), pickup: pickupOnlyKeysFrom(restaurantId, built), fallback: false };
+    const gates = {
+      weekend: weekendOnlyKeysFrom(restaurantId, built),
+      pickup: pickupOnlyKeysFrom(restaurantId, built),
+      // UNAUTHORED ⇒ null ⇒ the caller falls back to the static allowlist. Never an empty set: on the
+      // redemption gate an empty set means "nothing is redeemable", which wrongly REJECTS every
+      // legitimate redemption — the opposite error from the weekend gate but just as wrong.
+      redeem: gateAuthored(built, REDEEM_FIELD(restaurantId)) ? redeemEligibleFrom(restaurantId, built) : null,
+      fallback: false,
+    };
     if (cache.size >= MAX_CACHED_VERSIONS) cache.delete(cache.keys().next().value);   // bounded
     cache.set(key, gates);
     return gates;
@@ -129,6 +160,19 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
     gatesFor,
     weekendOnlyKeysFor,
     getWeekendOnlyKeys: async (rid, versionId) => (await gatesFor(rid, versionId)).weekend,
+    // NEVER THROWS. null ⇒ "use the static allowlist" — today's exact answer, which is neither
+    // over-permissive (no free NY pie) nor over-restrictive (no refused legitimate redemption).
+    redeemEligibleFor: async (restaurantId) => {
+      if (!getVersionId) return null;
+      try {
+        const versionId = await activeVersionOf(restaurantId);
+        if (versionId == null) return null;                     // flat / un-migrated → static
+        return (await gatesFor(restaurantId, versionId)).redeem;
+      } catch (e) {
+        console.warn('redeem_eligibility_read_failed', JSON.stringify({ restaurantId, error: String((e && e.message) || e).slice(0, 160) }));
+        return null;                                            // static allowlist = today
+      }
+    },
     getPickupOnlyKeys: async (rid, versionId) => (await gatesFor(rid, versionId)).pickup,
     _cache: cache,
   };
@@ -139,4 +183,4 @@ function staticWeekendFallback(restaurantId) {
   return restaurantId === 'x_pizza' ? new Set(X_PIZZA_WEEKEND_ONLY) : new Set();
 }
 
-module.exports = { createGateReader, weekendOnlyKeysFrom, pickupOnlyKeysFrom, gateAuthored, staticWeekendFallback, GATE_READ_DEADLINE_MS, POINTER_TTL_MS };
+module.exports = { createGateReader, weekendOnlyKeysFrom, pickupOnlyKeysFrom, redeemEligibleFrom, gateAuthored, staticWeekendFallback, GATE_READ_DEADLINE_MS, POINTER_TTL_MS };

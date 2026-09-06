@@ -53,11 +53,11 @@ function costPtsFor(priceCents) { return Math.round((priceCents / 100) * REDEEM_
 // X. Pizza — the customer's chosen 12" pizza, added free. redeem = { type:'free_pizza_choice', item_id:<name> }.
 // (x_pizza's menu key IS the item name.) The chosen pizza is NOT a paid line; it never enters order.items, so it
 // earns zero punches with no adjustment (design-gate refinement #7).
-function computeXPizza(redeem, tables = null) {
+function computeXPizza(redeem, tables = null, eligible = null) {
   if (!redeem || redeem.type !== REDEMPTION_CONFIG.x_pizza.reward) return { ok: false, reason: 'bad_request' };   // fail-closed: type MUST match the brand's reward
   const name = redeem && redeem.item_id;
   if (typeof name !== 'string' || !name) return { ok: false, reason: 'bad_request' };
-  if (!isXPizzaEligible(name)) return { ok: false, reason: 'ineligible_item' };   // NY / unknown / non-individual
+  if (!isXPizzaEligible(name, eligible)) return { ok: false, reason: 'ineligible_item' };   // NY / unknown / non-individual (2a: catalog-authored)
   const unit = (resolvePriceTables('x_pizza', tables).menu || {})[name];   // PIN B asserts the tag
   // 1d-1a EXTENSION: gate the LEMPIRA price before converting. Guarding post-conversion would accept a
   // non-integer lempira value whose cents happen to look fine.
@@ -74,7 +74,7 @@ function computeXPizza(redeem, tables = null) {
 // La Musa — a MULTISET of chosen non-alcohol dishes, each added free; wallet debited Σ(cost_pts × qty).
 // redeem = { type:'points_ala_carte', items:[{ id, qty }, …] }. Duplicates coalesced; ids sorted for a stable
 // fingerprint; each priced + eligibility-checked server-side.
-function computeLaMusa(redeem, tables = null) {
+function computeLaMusa(redeem, tables = null, eligible = null) {
   if (!redeem || redeem.type !== REDEMPTION_CONFIG.la_musa.reward) return { ok: false, reason: 'bad_request' };   // fail-closed: type MUST match the brand's reward
   const raw = redeem && redeem.items;
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_REDEEM_DISTINCT) return { ok: false, reason: 'bad_request' };
@@ -94,7 +94,7 @@ function computeLaMusa(redeem, tables = null) {
   const freeItems = [];
   let total_cost = 0;
   for (const id of ids) {
-    if (!isLaMusaEligible(id, tables)) return { ok: false, reason: 'ineligible_item' };   // alcohol / modifier / unknown
+    if (!isLaMusaEligible(id, tables, eligible)) return { ok: false, reason: 'ineligible_item' };   // alcohol / modifier / unknown (2a: catalog-authored)
     const price_cents = laMusaPriceCents(id, tables);
     if (price_cents === null) return { ok: false, reason: 'ineligible_item' };
     const qty = qtyById.get(id);
@@ -113,14 +113,16 @@ function computeLaMusa(redeem, tables = null) {
 // the ≥1-OTHER-PAID-item anti-abuse guard is enforced at intake, not here). Malformed → { ok:false, reason }.
 // 1b-1b: `tables` are the guarded catalog tables for THIS restaurant; they supply the redemption prices
 // AND the eligible key set. Omitted → the in-code tables (legacy pure tests only — production seams throw).
-function computeRedemption({ redeem, items, restaurantId, tables = null } = {}) {
+// 2a Task 6: `eligible` is the catalog-authored redemption allowlist, threaded the same way. Omitted /
+// null ⇒ the in-code allowlists, which is today's exact answer — see rewards-redeem-config.allowSetFor.
+function computeRedemption({ redeem, items, restaurantId, tables = null, eligible = null } = {}) {
   try {
     if (!redeem || typeof redeem !== 'object') return { ok: false, reason: 'bad_request' };
     const cfg = REDEMPTION_CONFIG[restaurantId];
     if (!cfg) return { ok: false, reason: 'bad_request' };
     if (!Array.isArray(items) || items.length === 0) return { ok: false, reason: 'bad_request' };
-    if (cfg.reward === 'free_pizza_choice') return computeXPizza(redeem, tables);
-    if (cfg.reward === 'points_ala_carte') return computeLaMusa(redeem, tables);
+    if (cfg.reward === 'free_pizza_choice') return computeXPizza(redeem, tables, eligible);
+    if (cfg.reward === 'points_ala_carte') return computeLaMusa(redeem, tables, eligible);
     return { ok: false, reason: 'bad_request' };
   } catch (e) {
     console.warn('computeRedemption: unexpected —', e && e.message);

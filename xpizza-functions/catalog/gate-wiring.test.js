@@ -96,4 +96,37 @@ const CODE = SRC.split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '')).join('\n')
   assert.ok(code.includes('weekendOnlyViolation'), 'sanity: the pure verdict function is still called (the assertion is about the SET, not the function)');
   ok('index.js never reads X_PIZZA_WEEKEND_ONLY in code — the static set survives only as menu-gates\' internal fallback');
 }
+// ── (6) TASK 6 — the redemption seams. Same class of failure: an unwired seam silently keeps the
+//        code allowlist, and no unit test can see it because the calculators still work either way.
+{
+  const gates = require('./menu-gates');
+  assert.strictEqual(typeof gates.createGateReader({}).redeemEligibleFor, 'function', 'the reader must expose redeemEligibleFor');
+  // Every consumer of the threaded `eligible` must actually forward it. A dropped forward at ANY layer
+  // silently reverts that path to the code allowlist.
+  const forwards = [
+    ['rewards-redeem.js', /computeXPizza\(redeem, tables, eligible\)/, 'computeRedemption must forward eligible to computeXPizza'],
+    ['rewards-redeem.js', /computeLaMusa\(redeem, tables, eligible\)/, 'computeRedemption must forward eligible to computeLaMusa'],
+    ['rewards-redeem.js', /isXPizzaEligible\(name, eligible\)/, 'computeXPizza must consult the threaded allowlist'],
+    ['rewards-redeem.js', /isLaMusaEligible\(id, tables, eligible\)/, 'computeLaMusa must consult the threaded allowlist'],
+    ['rewards-redeem-intake.js', /computeRedemption\(\{ redeem, items, restaurantId, tables, eligible \}\)/, 'prepareRedemption must forward eligible'],
+    ['createorder-classify.js', /db, tables, eligible = null \} = deps/, 'the classifier must accept eligible from deps'],
+  ];
+  for (const [file, re, why] of forwards) {
+    const src = readFileSync(join(__dirname, '..', file), 'utf8').split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '')).join('\n');
+    assert.ok(re.test(src), `${file}: ${why}`);
+  }
+  ok(`the threaded allowlist is forwarded at all ${forwards.length} layers (a dropped forward reverts that path to code)`);
+}
+{
+  // The QUOTE must preview on the same allowlist the order enforces, or a customer is shown a
+  // redemption the order then refuses.
+  assert.ok(/quoteRedemptionCore\(db, \{[^)]*eligible: quoteEligible/.test(CODE), 'the quote seam must pass its resolved eligibility');
+  assert.ok(/const quoteEligible = await gateReader\(\)\.redeemEligibleFor\(restaurantId\);/.test(CODE), 'and must resolve it from the same reader');
+  // No redemption seam may be left unwired: every prepareRedemption / resolveRedemptionForOrder /
+  // quoteRedemptionCore call in index.js must carry an eligible.
+  const seams = [...CODE.matchAll(/(prepareRedemption|resolveRedemptionForOrder|quoteRedemptionCore)\(db, \{[\s\S]{0,600}?\}\)/g)];
+  assert.ok(seams.length >= 3, `expected the 3 redemption seams, found ${seams.length}`);
+  for (const m of seams) assert.ok(/\beligible:/.test(m[0]), `an unwired redemption seam silently keeps the code allowlist: ${m[0].slice(0, 70)}`);
+  ok(`all ${seams.length} redemption seams in index.js pass a resolved allowlist`);
+}
 console.log(`gate-wiring: OK (${n})`);

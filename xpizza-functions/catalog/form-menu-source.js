@@ -21,7 +21,8 @@
 // ---------------------------------------------------------------------------
 const { readFileSync } = require('fs');
 const { join } = require('path');
-const { MENU_BY_RESTAURANT } = require('./../menu-pricing');
+const { attachRedeemFields } = require('./redeem-source');
+const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./../menu-pricing');
 
 // Relative to this file (xpizza-functions/catalog/) → up two, to the repo root.
 const FORM_PATH = {
@@ -167,6 +168,18 @@ function buildCatalogV2(restaurantId, opts = {}) {
     }
     structure.pickup_only_cats = fd ? fd.pickup_only_cats : readLiteral(src, 'PICKUP_ONLY_CATS');
     structure.weekend_only_cats = fd ? fd.weekend_only_cats : readLiteral(src, 'WEEKEND_ONLY_CATS');
+  }
+  // 2a Task 6 — redemption eligibility. The order forms carry no literal for this (it lives in
+  // rewards-redeem-config.js), so BOTH paths derive it from that code authority: the store path so the
+  // seed can author it, the text path so the pre-flip parity gate has something to compare against.
+  // Without it on the code side, every publish would trip the gate on a field code never emitted.
+  if (fd && (fd.redeem_eligible_cats !== undefined || fd.redeem_eligible_extras !== undefined)) {
+    // The STORE authored it → the store wins. This is the whole inversion: once a merchant edits
+    // eligibility in the portal, the code constants must stop having a vote.
+    if (fd.redeem_eligible_cats !== undefined) structure.redeem_eligible_cats = fd.redeem_eligible_cats;
+    if (fd.redeem_eligible_extras !== undefined) structure.redeem_eligible_extras = fd.redeem_eligible_extras;
+  } else {
+    attachRedeemFields(restaurantId, structure, items, opts.extrasTable || EXTRAS_BY_RESTAURANT[restaurantId]);
   }
   return { items, structure };
 }

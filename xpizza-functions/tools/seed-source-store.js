@@ -17,6 +17,7 @@
 // ---------------------------------------------------------------------------
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { formSource, readLiteral, readSetLiteral, pricingKeyOf } = require('../catalog/form-menu-source');
+const { attachRedeemFields } = require('../catalog/redeem-source');
 const { validateSource, sourceRefOf, canonicalize, extrasKeyOf } = require('../catalog/source-store');
 
 // Pure: assemble the store object for one restaurant from the current code + form sources.
@@ -68,6 +69,10 @@ function buildSourceFromCode(restaurantId) {
     structure.pickup_only_cats = readLiteral(src, 'PICKUP_ONLY_CATS');
     structure.weekend_only_cats = readLiteral(src, 'WEEKEND_ONLY_CATS');
   }
+
+  // 2a Task 6 — redemption eligibility becomes catalog data. Derived from the code allowlists through
+  // the SAME function the code-side parity build uses, so the two sides cannot disagree at cutover.
+  attachRedeemFields(restaurantId, structure, items, extrasTable);
 
   const source = { restaurant_id: restaurantId, schema_version: 1, items, extras, structure };
   validateSource(source, restaurantId);   // fail closed at assembly, not at publish time

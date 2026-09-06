@@ -48,9 +48,11 @@ function classifyExistingOrder(existing, { paymentMethod, restaurantMatches }, i
 // legit retry — the caller skips case 4 and returns 200).
 async function computeIncomingFingerprint(ctx, deps) {
   const { orderId, restaurantId, total, itemsText, items, redeem, customerUid, scheduledForRaw, orderType } = ctx;
-  const { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra, db, tables } = deps;
+  const { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra, db, tables, eligible = null } = deps;
   // GRILL-FIX #1 (1b-1b) — the dedup fingerprint MUST price a redemption on the SAME source as the reserve
-  // and the order total. If the order reserves on catalog while this prices on code, a divergence makes
+  // and the order total — which since 2a Task 6 means the same catalog-authored ELIGIBILITY too, not
+  // just the same prices: an eligibility divergence flips prep.ok and changes the fingerprint just as
+  // surely as a price would. If the order reserves on catalog while this prices on code, a divergence makes
   // store_fp != compare_fp → a false 409 → DOUBLE ORDERS, breaking the F1 store==compare invariant.
   // Hard contract (GRILL-FIX #2): a missed thread throws here rather than silently pricing on code.
   if (redeem != null) requireTables('computeIncomingFingerprint', restaurantId, tables);
@@ -62,7 +64,7 @@ async function computeIncomingFingerprint(ctx, deps) {
       return orderFingerprint(orderId, totalCents, itemsText, [schedExtra].filter(Boolean).join('|'));
     }
     // Redemption cash order — read-only prepare (NEVER resolveRedemptionForOrder, which reserves/debits).
-    const prep = await prepareRedemption(db, { redeem, items, restaurantId, itemsText, totalLempiras: total, customerUid, tables });
+    const prep = await prepareRedemption(db, { redeem, items, restaurantId, itemsText, totalLempiras: total, customerUid, tables, eligible });
     if (!prep || !prep.ok) return null;   // e.g. reward_unavailable (free item 86'd after the original) → fail-open
     const extra = [schedExtra, prep.redemptionFp ? `rf:${prep.redemptionFp}` : ''].filter(Boolean).join('|');
     return orderFingerprint(orderId, prep.priced.total_cents, prep.itemsText, extra);

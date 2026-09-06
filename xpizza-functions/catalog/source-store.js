@@ -117,6 +117,23 @@ function validateSource(source, rid) {
     if (!Array.isArray(arr)) fail(`${rid} — structure.${field} must be an array`);
     for (const c of arr) if (!catIds.has(c)) fail(`${rid} — structure.${field} references unknown category ${c}`);
   }
+  // 2a Task 6 — redemption eligibility. Same shape of guard as the availability gates: a reference to
+  // something that does not exist would make a reward silently unredeemable (or, worse, a category
+  // whose contents nobody checked). MONEY-ADJACENT, so the reference check is not optional.
+  if (st.redeem_eligible_cats !== undefined) {
+    if (!Array.isArray(st.redeem_eligible_cats)) fail(`${rid} — structure.redeem_eligible_cats must be an array`);
+    if (new Set(st.redeem_eligible_cats).size !== st.redeem_eligible_cats.length) fail(`${rid} — structure.redeem_eligible_cats has duplicates`);
+    for (const c of st.redeem_eligible_cats) if (!catIds.has(c)) fail(`${rid} — structure.redeem_eligible_cats references unknown category ${c}`);
+  }
+  if (st.redeem_eligible_extras !== undefined) {
+    if (!Array.isArray(st.redeem_eligible_extras)) fail(`${rid} — structure.redeem_eligible_extras must be an array`);
+    if (new Set(st.redeem_eligible_extras).size !== st.redeem_eligible_extras.length) fail(`${rid} — structure.redeem_eligible_extras has duplicates`);
+    const extraKeys = new Set((source.extras || []).map((e) => e && e.key));
+    for (const k of st.redeem_eligible_extras) {
+      // An unpriced allowlist entry is an entry that can never be redeemed — silent, so fail on it.
+      if (!extraKeys.has(k)) fail(`${rid} — structure.redeem_eligible_extras references unknown extra ${k}`);
+    }
+  }
   if (st.extras_by_category) {
     for (const c of Object.keys(st.extras_by_category)) if (!catIds.has(c)) fail(`${rid} — extras_by_category references unknown category ${c}`);
   }
@@ -140,7 +157,7 @@ function sourceToBuildInputs(source) {
     categories: source.structure.categories,
     has_photo: ordered.filter((i) => i.has_photo).map((i) => i.key),
   };
-  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item']) {
+  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'redeem_eligible_cats', 'redeem_eligible_extras']) {
     if (source.structure[f] !== undefined) formData[f] = source.structure[f];
   }
   if (Array.isArray(source.extras) && source.extras.some((e) => e.display)) {

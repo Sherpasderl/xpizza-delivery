@@ -156,12 +156,45 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
     // Structural: index.js must hand the SAME resolved `pricingTables` to the classifier, the cash reserve
     // and the online prepare. A future edit that resolves tables twice would reintroduce the drift.
     const SRC = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
-    const classifierDeps = /schedFingerprintExtra: SCHED\.fingerprintExtra, db, tables: pricingTables \}/.test(SRC);
+    // `[,}]` rather than a literal `}`: 2a Task 6 added an `eligible` sibling to these same option
+    // objects. The property being pinned is unchanged — the classifier gets the ONE resolved
+    // pricingTables — and the sibling gets its own identical pin below.
+    const classifierDeps = /schedFingerprintExtra: SCHED\.fingerprintExtra, db, tables: pricingTables[,}]/.test(SRC);
     assert.ok(classifierDeps, 'the classifier deps must receive tables: pricingTables (GRILL-FIX #1)');
     assert.ok(/resolveRedemptionForOrder\(db, \{[\s\S]{0,400}?tables: pricingTables/.test(SRC), 'the cash reserve must receive tables: pricingTables');
     assert.ok(/prepareRedemption\(db, \{ redeem: body\.redeem[\s\S]{0,300}?tables: pricingTables/.test(SRC), 'the online prepare must receive tables: pricingTables');
     assert.strictEqual((SRC.match(/tables: pricingTables/g) || []).length, 3, 'exactly 3 seams share the ONE resolved pricingTables (classifier, cash reserve, online prepare)');
     ok('store==compare (structural): classifier + cash reserve + online prepare all receive the SAME pricingTables');
+
+    // 2a Task 6 — ELIGIBILITY is now a second shared input to the same three seams, and it carries the
+    // same hazard: if the classifier sees a different allowlist than the reserve, prep.ok flips, the
+    // fingerprint changes, and a legit retry false-409s into a DOUBLE ORDER. So it must be resolved
+    // ONCE per request and shared, exactly like the tables.
+    assert.ok(/db, tables: pricingTables, eligible: redeemEligible \}/.test(SRC), 'the classifier deps must receive the SAME resolved eligible');
+    assert.ok(/resolveRedemptionForOrder\(db, \{[\s\S]{0,500}?eligible: redeemEligible/.test(SRC), 'the cash reserve must receive eligible: redeemEligible');
+    assert.ok(/prepareRedemption\(db, \{ redeem: body\.redeem[\s\S]{0,400}?eligible: redeemEligible/.test(SRC), 'the online prepare must receive eligible: redeemEligible');
+    assert.strictEqual((SRC.match(/eligible: redeemEligible/g) || []).length, 3, 'exactly 3 seams share the ONE resolved redeemEligible');
+    // and it must be resolved exactly twice in the file: once per order handler. A third resolve inside
+    // a handler would be a second read that could disagree with the first.
+    assert.strictEqual((SRC.match(/const redeemEligible = await gateReader\(\)\.redeemEligibleFor\(restaurantId\);/g) || []).length, 2,
+      'redeemEligible is resolved exactly once in each of the two order handlers');
+    // PLACEMENT, in code with comments stripped: resolver → fail-closed guard → eligibility, in that
+    // exact order and with nothing between. The guard must stay FIRST after the resolver (that is what
+    // makes the null-pricing reject airtight, and fail-closed-reject.test.js pins it independently), and
+    // the eligibility must land immediately after it — resolved before any seam can consume it, and not
+    // resolved at all for an order that is already being rejected.
+    const CODE = SRC.split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '')).join('\n');
+    // filter comment lines too: the resolver's own trailing comment survives the line-stripper above
+    const stmts = (from) => CODE.slice(from).split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('//'));
+    let handlers = 0;
+    for (const m of CODE.matchAll(/const pricingTables = await resolvePricingTables\(restaurantId\);/g)) {
+      const next = stmts(m.index + m[0].length);
+      assert.strictEqual(next[0], 'if (!pricingTables) return pricingUnavailable(res);', 'the fail-closed guard must remain the FIRST statement after the resolver');
+      assert.strictEqual(next[1], 'const redeemEligible = await gateReader().redeemEligibleFor(restaurantId);', 'and the eligibility resolve must be the next one — before any seam consumes it');
+      handlers++;
+    }
+    assert.strictEqual(handlers, 2, 'non-vacuity: both order handlers must have been inspected');
+    ok('store==compare (structural): the same 3 seams also share the ONE resolved redemption allowlist');
   }
 
   // ── 8. QUOTE ↔ ORDER: the quote must price on the same source as the order it previews ───────────
@@ -169,8 +202,10 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
     const SRC = require('fs').readFileSync(require('path').join(__dirname, 'rewards-redeem-intake.js'), 'utf8');
     assert.strictEqual((SRC.match(/computeServerTotal\(items, restaurantId, tables\)/g) || []).length, 2,
       'BOTH computeServerTotal calls in the intake module (prepareRedemption + quoteRedemptionCore) must pass tables');
-    assert.ok(/quoteRedemptionCore[\s\S]{0,400}?prepareRedemption\(db, \{[^)]*tables \}\)/.test(SRC),
+    assert.ok(/quoteRedemptionCore[\s\S]{0,400}?prepareRedemption\(db, \{[^)]*\btables\b[^)]*\}\)/.test(SRC),
       'quoteRedemptionCore must forward tables into prepareRedemption');
+    assert.ok(/quoteRedemptionCore[\s\S]{0,400}?prepareRedemption\(db, \{[^)]*\beligible\b[^)]*\}\)/.test(SRC),
+      'and must forward the eligibility too — a quote previewing a different allowlist than the order enforces');
     const IDX = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
     // 2c inserted the fail-closed guard between the resolver and the core call, widening this window.
     // The property is unchanged: quoteRedemption resolves the guarded tables and passes THOSE along.
