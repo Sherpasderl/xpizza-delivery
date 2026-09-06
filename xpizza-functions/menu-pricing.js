@@ -51,7 +51,15 @@ function hnDayFromMs(ms) { return new Date(ms - 6 * 3600000).getUTCDay(); }
 // never fail OPEN, so the fallback restricts exactly as before rather than allowing everything.
 function weekendOnlyViolation(items, restaurantId, fulfillmentMs, weekendOnlyKeys = null) {
   if (!Array.isArray(items)) return null;
-  const keys = weekendOnlyKeys || (restaurantId === 'x_pizza' ? X_PIZZA_WEEKEND_ONLY : null);
+  // A malformed injected set (a forgotten `await` → a Promise, say) must not become a TypeError: this
+  // runs pre-charge, inside the order handler, so a throw here is an order DROP. Unusable → ignore it
+  // and enforce the static set, which is today's behaviour. Loud in logs, never silent, never open.
+  let injected = weekendOnlyKeys;
+  if (injected != null && typeof injected.has !== 'function') {
+    console.error('weekend_gate_malformed_set', typeof injected);
+    injected = null;
+  }
+  const keys = injected || (restaurantId === 'x_pizza' ? X_PIZZA_WEEKEND_ONLY : null);
   if (!keys || keys.size === 0) return null;                                     // no gate for this restaurant
   if (WEEKEND_DAYS.has(hnDayFromMs(fulfillmentMs))) return null;                 // Fri/Sat/Sun → everything allowed
   const hit = items.find((it) => it && keys.has(it.name));

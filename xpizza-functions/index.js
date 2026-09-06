@@ -310,6 +310,31 @@ function pricingResolver() {
   }
   return _pricingResolver;
 }
+// ── Portal 2a Task 5 — the AVAILABILITY GATE reader ────────────────────────────────────────────
+// The weekend gate needs CATEGORIES, but the serving path deliberately carries only { menu, extras }
+// and the resolver above is money-path-frozen. Rather than widen the money path to carry structure,
+// the gate is its own reader: it probes active_version on the same 45s TTL and reads the pointed
+// version's menu_structure, cached by the IMMUTABLE version id. Singleton for the same reason the
+// resolver is — the caches must survive across requests on a warm instance.
+//
+// It NEVER throws and never opens: every failure (pointer, structure, timeout, un-migrated flat
+// restaurant, a pre-2a version with no authored gate) returns the static X_PIZZA_WEEKEND_ONLY set,
+// which is exactly today's behaviour. A pre-charge gate that fails OPEN would accept a weekday order
+// for a weekend-only item; being briefly stale is strictly the better failure.
+const { createGateReader } = require('./catalog/menu-gates');
+const { previewVersion } = require('./catalog/catalog-publish');
+let _gateReader = null;
+function gateReader() {
+  if (!_gateReader) {
+    const firestore = getFirestore();
+    _gateReader = createGateReader({
+      getVersionId: (rid) => getActiveVersionId(firestore, rid),                  // cheap pointer probe, TTL-cached
+      getMenu: (rid, versionId) => previewVersion(firestore, rid, versionId),     // items + menu_structure, completeness-gated
+    });
+  }
+  return _gateReader;
+}
+
 // Never throws AND never returns null — always a restaurant-TAGGED { restaurantId, menu, extras }.
 //
 // The null return this used to have was a latent ORDER DROP. The order-total path reads null as "use the
@@ -696,7 +721,10 @@ createOrderApp.all('*', async (req, res) => {
   // (the pure check is also cheaper than the rate-limit transaction). Schedule-aware; x_pizza-scoped.
   {
     const fMs = Number.isFinite(SCHED.normalizeScheduledFor(body.scheduled_for)) ? SCHED.normalizeScheduledFor(body.scheduled_for) : Date.now();
-    const weekendBad = weekendOnlyViolation(body.items, restaurantId, fMs);
+    // 2a: the weekend-only set comes from the CATALOG (weekend_only_cats × the dishes in them), so a
+    // portal edit takes effect. Falls back to the static set on any failure — never an open gate.
+    const weekendKeys = await gateReader().weekendOnlyKeysFor(restaurantId);
+    const weekendBad = weekendOnlyViolation(body.items, restaurantId, fMs, weekendKeys);
     if (weekendBad) {
       return res.status(400).json({ ok: false, error: 'weekend_only', item: weekendBad,
         message: 'Las pizzas de 18" solo están disponibles viernes, sábado y domingo.' });
@@ -1199,7 +1227,10 @@ chargeOnlineApp.all('*', async (req, res) => {
   // checkRateLimit: an availability rejection must not burn a rate-limit token. Schedule-aware; x_pizza-scoped.
   {
     const fMs = Number.isFinite(SCHED.normalizeScheduledFor(body.scheduled_for)) ? SCHED.normalizeScheduledFor(body.scheduled_for) : Date.now();
-    const weekendBad = weekendOnlyViolation(body.items, restaurantId, fMs);
+    // 2a: the weekend-only set comes from the CATALOG (weekend_only_cats × the dishes in them), so a
+    // portal edit takes effect. Falls back to the static set on any failure — never an open gate.
+    const weekendKeys = await gateReader().weekendOnlyKeysFor(restaurantId);
+    const weekendBad = weekendOnlyViolation(body.items, restaurantId, fMs, weekendKeys);
     if (weekendBad) {
       return res.status(400).json({ ok: false, error: 'weekend_only', item: weekendBad,
         message: 'Las pizzas de 18" solo están disponibles viernes, sábado y domingo.' });
