@@ -111,11 +111,19 @@ const pricingKeyOf = (restaurantId, dish) => (restaurantId === 'la_musa' ? dish.
 // and the structure doc (category order/labels, variants, gate flags, and the ITEM ORDER — Firestore
 // returns docs in hashed-id order, so the form's array order must be carried explicitly or a
 // regenerated bundle would be correct but reordered).
+// Portal 2a: `opts.formData` is the STRUCTURED input path — the same build, fed from the source store
+// instead of parsed form text. It must produce byte-identical {items, structure}: the cutover's
+// "provable no-op" claim rests entirely on these two paths being interchangeable, so the branch below
+// changes only WHERE each value comes from, never how it is assembled or validated.
+//
+// When formData is absent the text path is used unchanged, so every existing caller is untouched.
 function buildCatalogV2(restaurantId, opts = {}) {
-  const src = opts.formSource || formSource(restaurantId, opts.root);
+  const fd = opts.formData || null;
+  const src = fd ? null : (opts.formSource || formSource(restaurantId, opts.root));
   const priceTable = opts.priceTable || MENU_BY_RESTAURANT[restaurantId];
   if (!priceTable) throw new Error(`no_price_table: ${restaurantId}`);
-  const dishes = readLiteral(src, 'MENU');
+  if (fd && !Array.isArray(fd.dishes)) throw new Error(`formdata_missing_dishes: ${restaurantId}`);
+  const dishes = fd ? fd.dishes : readLiteral(src, 'MENU');
 
   const items = dishes.map((dish) => {
     const key = pricingKeyOf(restaurantId, dish);
@@ -138,17 +146,19 @@ function buildCatalogV2(restaurantId, opts = {}) {
 
   const structure = { schema_version: 2, item_order: items.map((i) => i.key) };
   if (restaurantId === 'la_musa') {
-    structure.categories = readLiteral(src, 'CATEGORIES');                  // id/name/subcats/layout, in order
-    structure.variant_items = readLiteral(src, 'VARIANT_ITEMS', '{', '}');  // launcher → variant ids
-    const hasPhoto = new Set(readSetLiteral(src, 'HAS_PHOTO'));
+    structure.categories = fd ? fd.categories : readLiteral(src, 'CATEGORIES');                 // id/name/subcats/layout, in order
+    structure.variant_items = fd ? fd.variant_items : readLiteral(src, 'VARIANT_ITEMS', '{', '}');  // launcher → variant ids
+    const hasPhoto = new Set(fd ? (fd.has_photo || []) : readSetLiteral(src, 'HAS_PHOTO'));
     for (const it of items) it.has_photo = hasPhoto.has(it.key);            // per-item; the Set regenerates from these
   } else {
     // x_pizza has no CATEGORIES literal — the category order IS the order of first appearance in MENU.
+    // Derived the same way on BOTH paths, so a store that carried a stale categories array cannot
+    // disagree with the dishes it actually holds.
     const order = [];
     for (const d of dishes) if (!order.includes(d.cat)) order.push(d.cat);
     structure.categories = order.map((id) => ({ id }));
-    structure.pickup_only_cats = readLiteral(src, 'PICKUP_ONLY_CATS');
-    structure.weekend_only_cats = readLiteral(src, 'WEEKEND_ONLY_CATS');
+    structure.pickup_only_cats = fd ? fd.pickup_only_cats : readLiteral(src, 'PICKUP_ONLY_CATS');
+    structure.weekend_only_cats = fd ? fd.weekend_only_cats : readLiteral(src, 'WEEKEND_ONLY_CATS');
   }
   return { items, structure };
 }
