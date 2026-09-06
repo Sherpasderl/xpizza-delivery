@@ -173,11 +173,11 @@ function buildCatalogV2(restaurantId, opts = {}) {
   // rewards-redeem-config.js), so BOTH paths derive it from that code authority: the store path so the
   // seed can author it, the text path so the pre-flip parity gate has something to compare against.
   // Without it on the code side, every publish would trip the gate on a field code never emitted.
-  if (fd && (fd.redeem_eligible_cats !== undefined || fd.redeem_eligible_extras !== undefined)) {
+  const REDEEM_FIELDS = ['redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras'];
+  if (fd && REDEEM_FIELDS.some((f) => fd[f] !== undefined)) {
     // The STORE authored it → the store wins. This is the whole inversion: once a merchant edits
     // eligibility in the portal, the code constants must stop having a vote.
-    if (fd.redeem_eligible_cats !== undefined) structure.redeem_eligible_cats = fd.redeem_eligible_cats;
-    if (fd.redeem_eligible_extras !== undefined) structure.redeem_eligible_extras = fd.redeem_eligible_extras;
+    for (const f of REDEEM_FIELDS) if (fd[f] !== undefined) structure[f] = fd[f];
   } else {
     attachRedeemFields(restaurantId, structure, items, opts.extrasTable || EXTRAS_BY_RESTAURANT[restaurantId]);
   }

@@ -49,6 +49,11 @@ const tablesFor = (rid) => ({ restaurantId: rid, menu: MENU_BY_RESTAURANT[rid], 
     ['la_musa', (s) => { s.structure.redeem_eligible_extras = ['rice_white', 'not_an_extra']; }, /unknown extra not_an_extra/],
     // a MENU id is not an extra: the acompañamiento allowlist lives in the extras namespace only
     ['la_musa', (s) => { s.structure.redeem_eligible_extras = ['dimsum_01']; }, /unknown extra dimsum_01/],
+    ['la_musa', (s) => { s.structure.redeem_eligible_items = 'soft_01'; }, /redeem_eligible_items must be an array/],
+    ['la_musa', (s) => { s.structure.redeem_eligible_items = ['soft_01', 'soft_01']; }, /redeem_eligible_items has duplicates/],
+    ['la_musa', (s) => { s.structure.redeem_eligible_items = ['soft_01', 'soft_99']; }, /redeem_eligible_items references unknown item soft_99/],
+    // an EXTRA belongs in redeem_eligible_extras — a key in the wrong namespace matches nothing
+    ['la_musa', (s) => { s.structure.redeem_eligible_items = ['rice_white']; }, /redeem_eligible_items references unknown item rice_white/],
   ];
   for (const [rid, mutate, re] of bad) {
     assert.throws(() => validateSource(srcFor(rid, mutate), rid), re, `validateSource must reject: ${re}`);
@@ -78,8 +83,12 @@ const tablesFor = (rid) => ({ restaurantId: rid, menu: MENU_BY_RESTAURANT[rid], 
   const x = redeemEligibleFrom('x_pizza', builtFor('x_pizza'));
   assert.deepStrictEqual([...x.allow].sort(), [...X_PIZZA_REDEEM_ELIGIBLE].sort(), 'the catalog-derived eligible set must equal the static allowlist exactly');
   assert.strictEqual(x.allow.size, 17, 'sanity: the 17 12" pizzas (non-vacuity — an empty set would trivially "match" a mutated static)');
+  // Task 6b made `allow` the COMPLETE answer for both brands (categories ∪ items ∪ extras), so
+  // la_musa's set is the whole 39, not just the 3 acompañamientos — which it must still contain.
   const l = redeemEligibleFrom('la_musa', builtFor('la_musa'));
-  assert.deepStrictEqual([...l.allow].sort(), [...LA_MUSA_ACOMP].sort(), 'la_musa acompañamientos derive exactly');
+  for (const a of LA_MUSA_ACOMP) assert.ok(l.allow.has(a), `the acompañamiento ${a} must be in the complete set`);
+  assert.strictEqual(l.allow.size, 39, 'la_musa: 36 non-alcohol menu dishes + 3 acompañamientos, exactly today');
+  assert.strictEqual([...l.allow].some((k) => k.startsWith('beer_')), false, 'and no alcohol');
   ok(`store == code: the derived eligible sets equal the static ones exactly (x_pizza ${x.allow.size}, la_musa ${l.allow.size})`);
 }
 
@@ -133,7 +142,7 @@ const tablesFor = (rid) => ({ restaurantId: rid, menu: MENU_BY_RESTAURANT[rid], 
 }
 {
   // La Musa: a merchant adds a fourth acompañamiento; and removing one revokes it.
-  const more = redeemEligibleFrom('la_musa', builtFor('la_musa', (s) => { s.structure.redeem_eligible_extras = [...LA_MUSA_ACOMP, 'sauce_aioli'].sort(); }));
+  const more = redeemEligibleFrom('la_musa', builtFor('la_musa', (s) => { s.structure.redeem_eligible_extras = [...LA_MUSA_ACOMP, 'sauce_aioli'].sort(); }));   // eslint-disable-line
   assert.strictEqual(isRedeemEligible('la_musa', 'sauce_aioli', tablesFor('la_musa'), more), true, 'an explicitly authored extra becomes redeemable');
   const fewer = redeemEligibleFrom('la_musa', builtFor('la_musa', (s) => { s.structure.redeem_eligible_extras = ['rice_white']; }));
   assert.strictEqual(isRedeemEligible('la_musa', 'papas_fritas', tablesFor('la_musa'), fewer), false, 'de-authoring an extra revokes it');
@@ -181,7 +190,7 @@ const tablesFor = (rid) => ({ restaurantId: rid, menu: MENU_BY_RESTAURANT[rid], 
   // What a version published before Task 6 actually looks like on read: no redeem field in the
   // structure at all. (Deleting it from the SOURCE would not reproduce this — buildCatalogV2 re-derives
   // from code when the store authors nothing, which is what keeps the pre-cutover parity gate honest.)
-  const legacyVersion = (rid) => { const b = builtFor(rid); delete b.structure.redeem_eligible_cats; delete b.structure.redeem_eligible_extras; return b; };
+  const legacyVersion = (rid) => { const b = builtFor(rid); delete b.structure.redeem_eligible_cats; delete b.structure.redeem_eligible_items; delete b.structure.redeem_eligible_extras; return b; };
   const cases = [
     ['pointer read throws',  { getVersionId: async () => { throw new Error('pointer down'); }, getMenu: async () => built }],
     ['structure read fails', { getVersionId: async () => 'v1', getMenu: async () => { throw new Error('down'); } }],

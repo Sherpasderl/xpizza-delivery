@@ -78,8 +78,16 @@ function isXPizzaEligible(name, eligible = null) {
 // every production seam passes tables and throws without them).
 function isLaMusaEligible(id, tables = null, eligible = null) {
   if (!id || typeof id !== 'string') return false;
-  const acomp = allowSetFor('la_musa', eligible) || LA_MUSA_ACOMP;                        // catalog-authored, else today's
-  if (acomp.has(id)) return true;                                                         // acompañamientos (EXTRAS namespace)
+  // 2a Task 6b — when the catalog answers, it answers COMPLETELY: the authored union of categories,
+  // individual items and extras. No exclude rule is consulted, deliberately. The old rule was a
+  // DENYLIST ("every dish except beer_/sauce_/protein_"), and a denylist cannot know about a namespace
+  // invented after it was written — a `wine_*` dish added in the portal would have been silently
+  // redeemable. Under an allowlist, anything the store has not authorised is simply not in the set.
+  const allow = allowSetFor('la_musa', eligible);
+  if (allow) return allow.has(id);
+  // FALLBACK = today, globs and all. Reached only when the catalog is unreadable or unauthored, where
+  // reproducing current behaviour exactly is the whole point.
+  if (LA_MUSA_ACOMP.has(id)) return true;                                                 // acompañamientos (EXTRAS namespace)
   // EXPLICITLY reject alcohol + modifiers BEFORE the MENU lookup — fail-closed, never by mere absence from MENU
   // (so a modifier that ever landed in MENU still can't be redeemed).
   if (id.startsWith('beer_') || id.startsWith('sauce_') || id.startsWith('protein_')) return false;
@@ -99,7 +107,9 @@ function eligibleKeys(restaurantId, tables = null, eligible = null) {
   if (restaurantId === 'x_pizza') return Array.from(allowSetFor('x_pizza', eligible) || X_PIZZA_REDEEM_ELIGIBLE);
   if (restaurantId === 'la_musa') {
     const menu = resolvePriceTables('la_musa', tables).menu || {};                          // PIN B asserts the tag
-    return Object.keys(menu).filter((id) => !id.startsWith('beer_')).concat(Array.from(allowSetFor('la_musa', eligible) || LA_MUSA_ACOMP));
+    const allow = allowSetFor('la_musa', eligible);
+    if (allow) return Array.from(allow);                                                    // the catalog's complete answer
+    return Object.keys(menu).filter((id) => !id.startsWith('beer_')).concat(Array.from(LA_MUSA_ACOMP));
   }
   return [];
 }

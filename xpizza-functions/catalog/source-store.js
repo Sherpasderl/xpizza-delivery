@@ -134,6 +134,13 @@ function validateSource(source, rid) {
       if (!extraKeys.has(k)) fail(`${rid} — structure.redeem_eligible_extras references unknown extra ${k}`);
     }
   }
+  if (st.redeem_eligible_items !== undefined) {
+    if (!Array.isArray(st.redeem_eligible_items)) fail(`${rid} — structure.redeem_eligible_items must be an array`);
+    if (new Set(st.redeem_eligible_items).size !== st.redeem_eligible_items.length) fail(`${rid} — structure.redeem_eligible_items has duplicates`);
+    // MENU namespace only — an extra belongs in redeem_eligible_extras, and a key in neither namespace
+    // is an allowlist entry that can never match anything.
+    for (const k of st.redeem_eligible_items) if (!seen.has(k)) fail(`${rid} — structure.redeem_eligible_items references unknown item ${k}`);
+  }
   if (st.extras_by_category) {
     for (const c of Object.keys(st.extras_by_category)) if (!catIds.has(c)) fail(`${rid} — extras_by_category references unknown category ${c}`);
   }
@@ -157,7 +164,7 @@ function sourceToBuildInputs(source) {
     categories: source.structure.categories,
     has_photo: ordered.filter((i) => i.has_photo).map((i) => i.key),
   };
-  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'redeem_eligible_cats', 'redeem_eligible_extras']) {
+  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']) {
     if (source.structure[f] !== undefined) formData[f] = source.structure[f];
   }
   if (Array.isArray(source.extras) && source.extras.some((e) => e.display)) {

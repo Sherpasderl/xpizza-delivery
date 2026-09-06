@@ -64,19 +64,25 @@ function pickupOnlyKeysFrom(restaurantId, built) {
 function redeemEligibleFrom(restaurantId, built) {
   const st = (built && built.structure) || {};
   const allow = new Set();
-  if (restaurantId === 'la_musa') {
-    for (const k of st.redeem_eligible_extras || []) allow.add(k);
-  } else {
-    const cats = new Set(st.redeem_eligible_cats || []);
-    if (cats.size > 0) for (const it of (built && built.items) || []) {
-      if (it && it.display && cats.has(it.display.cat)) allow.add(it.key);
-    }
+  // Three authored sources, unioned into ONE complete answer — the same shape for every brand:
+  //   • whole CATEGORIES        — the unit a merchant thinks in, and how x_pizza expresses all of it
+  //   • individual ITEMS        — for categories that are MIXED (la_musa's `bebidas`: 8 beers + 4 softs)
+  //   • EXTRAS                  — the acompanamientos, which live in a separate namespace
+  // Union, never subtraction. There is deliberately no exclude rule: a denylist cannot know about a
+  // namespace invented after it was written, which is exactly how a new `wine_*` dish would have become
+  // silently redeemable. Anything unauthored is simply not in the set.
+  const cats = new Set(st.redeem_eligible_cats || []);
+  if (cats.size > 0) for (const it of (built && built.items) || []) {
+    if (it && it.display && cats.has(it.display.cat)) allow.add(it.key);
   }
+  for (const k of st.redeem_eligible_items || []) allow.add(k);
+  for (const k of st.redeem_eligible_extras || []) allow.add(k);
   return { restaurantId, allow };
 }
 
 // Which structure field carries this brand's authored eligibility. Absent ⇒ UNAUTHORED ⇒ static.
-const REDEEM_FIELD = (rid) => (rid === 'la_musa' ? 'redeem_eligible_extras' : 'redeem_eligible_cats');
+const REDEEM_FIELDS = ['redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras'];
+const redeemAuthored = (built) => REDEEM_FIELDS.some((f) => gateAuthored(built, f));
 
 function withDeadline(promise, ms, label) {
   let timer;
@@ -103,19 +109,25 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
       return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true };
     }
     if (!built || !built.structure) return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true };
-    if (!gateAuthored(built, 'weekend_only_cats')) {
-      // Structure read fine but the gate is UNAUTHORED (a pre-2a version). Unknown → today's behaviour.
+    // PER-GATE authored checks. A gate the store has not authored falls back on ITS OWN and never drags
+    // the others down with it. This was a shared early-return, and it was wrong in a way no direct
+    // derivation test could see: la_musa has NO weekend categories at all, so every la_musa read
+    // short-circuited on the weekend gate and returned redeem:null — leaving la_musa's redemption
+    // eligibility permanently on the code denylist in production while every unit test passed.
+    const weekendAuthored = gateAuthored(built, 'weekend_only_cats');
+    if (!weekendAuthored && restaurantId === 'x_pizza') {
+      // Only worth reporting where a weekend gate is expected; la_musa legitimately has none.
       console.warn('menu_gates_unauthored', JSON.stringify({ restaurantId, versionId: versionId || null, field: 'weekend_only_cats' }));
-      return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true };
     }
     const gates = {
-      weekend: weekendOnlyKeysFrom(restaurantId, built),
-      pickup: pickupOnlyKeysFrom(restaurantId, built),
+      // Unknown ⇒ today's static restriction. Never an open gate.
+      weekend: weekendAuthored ? weekendOnlyKeysFrom(restaurantId, built) : staticWeekendFallback(restaurantId),
+      pickup: gateAuthored(built, 'pickup_only_cats') ? pickupOnlyKeysFrom(restaurantId, built) : null,
       // UNAUTHORED ⇒ null ⇒ the caller falls back to the static allowlist. Never an empty set: on the
       // redemption gate an empty set means "nothing is redeemable", which wrongly REJECTS every
       // legitimate redemption — the opposite error from the weekend gate but just as wrong.
-      redeem: gateAuthored(built, REDEEM_FIELD(restaurantId)) ? redeemEligibleFrom(restaurantId, built) : null,
-      fallback: false,
+      redeem: redeemAuthored(built) ? redeemEligibleFrom(restaurantId, built) : null,
+      fallback: !weekendAuthored,
     };
     if (cache.size >= MAX_CACHED_VERSIONS) cache.delete(cache.keys().next().value);   // bounded
     cache.set(key, gates);

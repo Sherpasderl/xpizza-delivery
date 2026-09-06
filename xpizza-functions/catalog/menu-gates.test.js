@@ -161,6 +161,27 @@ const builtFor = (rid, mutate) => {
     ok(`every production failure mode (${cases.length}) falls back to today's set without throwing`);
   }
 
+  // GATE INDEPENDENCE. These were coupled by a shared early-return, and the coupling was invisible to
+  // every direct-derivation test: la_musa has no weekend categories, so its every read short-circuited
+  // and returned redeem:null — silently leaving la_musa redemption on the code denylist in production.
+  {
+    const laMusa = builtFor('la_musa');
+    assert.strictEqual(Array.isArray(laMusa.structure.weekend_only_cats), false, 'premise: la_musa authors no weekend gate at all');
+    const r = createGateReader({ getVersionId: async () => 'v1', getMenu: async () => laMusa });
+    const gates = await r.gatesFor('la_musa', 'v1');
+    assert.strictEqual(gates.weekend.size, 0, 'the weekend gate falls back on its own (la_musa: empty = no restriction, as today)');
+    assert.notStrictEqual(gates.redeem, null, 'and the REDEMPTION gate must still be answered — one unauthored gate must not disable the others');
+    // and the converse: an x_pizza version with no redemption field must still answer the weekend gate
+    const noRedeem = builtFor('x_pizza'); delete noRedeem.structure.redeem_eligible_cats; delete noRedeem.structure.redeem_eligible_items;
+    const g2 = await createGateReader({ getVersionId: async () => 'v2', getMenu: async () => noRedeem }).gatesFor('x_pizza', 'v2');
+    assert.strictEqual(g2.redeem, null, 'redemption unauthored → null (static)');
+    assert.deepStrictEqual([...g2.weekend].sort(), [...X_PIZZA_WEEKEND_ONLY].sort(), 'while the weekend gate is still answered from the catalog');
+    // the pickup gate carries the same per-gate check (unwired in index.js today — symmetry helper only)
+    assert.strictEqual(gates.pickup, null, 'la_musa authors no pickup gate → null, not an empty set');
+    assert.deepStrictEqual([...g2.pickup].sort(), [...weekendOnlyKeysFrom('x_pizza', noRedeem)].sort(), 'x_pizza authors pickup_only_cats (same cats as weekend today) → derived');
+    ok('the gates are INDEPENDENT: an unauthored gate falls back alone and never disables the others');
+  }
+
   // A malformed set must degrade to today's enforcement, not throw. A throw here is a 500 on the
   // order path — an order DROP caused by the gate meant to protect the order.
   for (const bad of [Promise.resolve(new Set()), 'Margherita NY', 42, [], {}]) {
