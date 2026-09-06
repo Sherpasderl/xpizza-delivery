@@ -1,0 +1,133 @@
+'use strict';
+// Portal 2a Task 4 — the PRE-FLIP PARITY GATE. Run: node catalog/publish-parity.test.js
+//
+// THE CORNERSTONE. The cutover's entire safety claim is "publishing from the store is a provable
+// no-op". That is only true if something explicitly compares what the STORE builds against what the
+// CODE builds, and refuses the flip unless they are canonically identical.
+//
+// publishVersion's own integrity check is necessary but NOT sufficient for this: it proves the version
+// was written and read back intact — self-consistency — and a store carrying a wrong-but-positive
+// price is perfectly self-consistent. It would publish, hash cleanly, verify cleanly, and charge the
+// wrong price. The explicit code-vs-store compare is the only thing standing there.
+const assert = require('assert');
+const { catalogDescriptor, assertStoreCodeParity } = require('./publish-parity');
+const { integrityDescriptor } = require('./catalog-integrity');
+const { buildSourceFromCode } = require('../tools/seed-source-store');
+const { sourceToBuildInputs } = require('./source-store');
+const { buildCatalogV2, formSource } = require('./form-menu-source');
+const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
+let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+
+const codeBuilt = (rid) => ({
+  ...buildCatalogV2(rid, { formSource: formSource(rid), priceTable: MENU_BY_RESTAURANT[rid] }),
+  extras: EXTRAS_BY_RESTAURANT[rid],
+});
+const storeBuilt = (rid, mutate) => {
+  const source = buildSourceFromCode(rid);
+  if (mutate) mutate(source);
+  const { priceTable, formData, extras } = sourceToBuildInputs(source);
+  return { ...buildCatalogV2(rid, { formData, priceTable }), extras };
+};
+
+// ── (a) THE NO-OP PROOF: code-built descriptor == store-built descriptor, both brands ───────────
+for (const rid of ['x_pizza', 'la_musa']) {
+  const c = catalogDescriptor(rid, codeBuilt(rid));
+  const s = catalogDescriptor(rid, storeBuilt(rid));
+  assert.deepStrictEqual(s, c, `${rid}: the store-built descriptor must equal the code-built one`);
+  assert.doesNotThrow(() => assertStoreCodeParity(rid, storeBuilt(rid), codeBuilt(rid)), `${rid}: the gate passes on an unmutated store`);
+  ok(`${rid}: code-built == store-built descriptor (counts ${c.item_count}+${c.extra_count}, both full hashes, structure) — the no-op proof`);
+}
+
+// ── (b) THE GATE BLOCKS a non-identical cutover — every drift class ─────────────────────────────
+for (const [label, mutate] of [
+  ['a changed price', (s) => { s.items[0].price = s.items[0].price + 1; s.items[0].display = { ...s.items[0].display, price: s.items[0].price }; }],
+  ['an added item', (s) => { s.items.push({ key: 'Ghost', price: 100, display: { id: 999, cat: s.structure.categories[0].id, name: 'Ghost', price: 100 } }); s.structure.item_order.push('Ghost'); }],
+  ['a removed item', (s) => { const k = s.items.pop().key; s.structure.item_order = s.structure.item_order.filter((x) => x !== k); }],
+  ['a changed extra price', (s) => { s.extras[0].price += 1; s.extras[0].display = { ...s.extras[0].display, price: s.extras[0].price }; }],
+  ['a reordered menu', (s) => { s.structure.item_order = [s.structure.item_order[1], s.structure.item_order[0], ...s.structure.item_order.slice(2)]; }],
+  ['a changed display name', (s) => { s.items[0].display = { ...s.items[0].display, desc: 'edited in the portal' }; }],
+]) {
+  assert.throws(() => assertStoreCodeParity('x_pizza', storeBuilt('x_pizza', mutate), codeBuilt('x_pizza')),
+    /parity_mismatch/, `${label} MUST block the flip`);
+}
+ok('the gate THROWS parity_mismatch on every drift class: price, added/removed item, extra price, reorder, display edit');
+{
+  // and the message must NAME what diverged — an operator aborting a cutover needs to know why
+  let msg = '';
+  try { assertStoreCodeParity('x_pizza', storeBuilt('x_pizza', (s) => { s.items[0].price += 1; s.items[0].display = { ...s.items[0].display, price: s.items[0].price }; }), codeBuilt('x_pizza')); }
+  catch (e) { msg = e.message; }
+  assert.ok(/menu_hash/.test(msg), `the mismatch must name the diverging field, got: ${msg}`);
+  ok('the parity_mismatch names the diverging field (an aborting operator is told what differed)');
+}
+
+// ── (c) 🔒 WHY THE EXPLICIT GATE IS NEEDED — publishVersion's self-integrity does NOT catch this ──
+{
+  const rid = 'x_pizza';
+  const wrong = storeBuilt(rid, (s) => { s.items[0].price = 12345; s.items[0].display = { ...s.items[0].display, price: 12345 }; });
+  const wrongTables = {}; for (const i of wrong.items) wrongTables[i.key] = i.price;
+  // publishVersion verifies by recomputing the descriptor from what it WROTE and comparing to the
+  // record it wrote — self-consistent by construction. A wrong-but-positive price sails through.
+  const selfDescriptor = integrityDescriptor(wrongTables, wrong.extras);
+  assert.doesNotThrow(() => {
+    const reread = integrityDescriptor(wrongTables, wrong.extras);          // what the read-back verify computes
+    assert.deepStrictEqual(reread, selfDescriptor);                          // ...and it agrees with itself
+  }, 'self-integrity is satisfied by a wrong-but-positive price — it only proves the write round-tripped');
+  // the 1a value guard does not catch it either: 12345 is a perfectly valid positive integer
+  assert.ok(Number.isInteger(12345) && 12345 > 0, 'and the value guard sees nothing wrong with it');
+  // ONLY the explicit code-vs-store compare stops it
+  assert.throws(() => assertStoreCodeParity(rid, wrong, codeBuilt(rid)), /parity_mismatch/,
+    'the explicit gate is the ONLY thing that catches a wrong-but-positive price');
+  ok('documented: self-integrity AND the value guard both pass a wrong-but-positive price — only the explicit code-vs-store gate blocks it');
+}
+
+// ── canonical: property order must not be able to hide or fake a difference ─────────────────────
+{
+  const rid = 'la_musa';
+  const shuffled = storeBuilt(rid, (s) => {
+    s.items = s.items.map((i) => ({ display: i.display, price: i.price, key: i.key, ...(i.has_photo !== undefined ? { has_photo: i.has_photo } : {}) }));
+  });
+  assert.doesNotThrow(() => assertStoreCodeParity(rid, shuffled, codeBuilt(rid)), 'reordered object properties are the SAME content — must still pass');
+  ok('canonical: property-order differences do not fake a mismatch (content is what is compared)');
+}
+// ── 🔒 THE GATE MUST BE WIRED, and wired BEFORE the publish. A gate that exists in a module but is
+//    not called from the cutover path is decoration — and "silently not wired" has bitten this program
+//    before. publish-version.js is a CLI no test executes, so the wiring is asserted structurally.
+{
+  const { readFileSync } = require('fs');
+  const { join } = require('path');
+  const SRC = readFileSync(join(__dirname, '..', 'tools', 'publish-version.js'), 'utf8');
+  assert.ok(/require\('\.\.\/catalog\/publish-parity'\)/.test(SRC), 'publish-version must import the parity gate');
+  assert.ok(/const FROM_STORE = process\.argv\.includes\('--from-store'\)/.test(SRC), '--from-store must be a real flag');
+  const gate = SRC.indexOf('assertStoreCodeParity(rid,');
+  const publish = SRC.indexOf('await publishVersion(db, rid,');
+  assert.ok(gate > 0, 'the gate must be CALLED from the publish path, not merely imported');
+  assert.ok(gate < publish, 'and it must run BEFORE publishVersion — after the flip it would be worthless');
+  const readSrc = SRC.indexOf('await readSource(db, rid)');
+  assert.ok(readSrc > 0 && readSrc < gate, '--from-store must read the store through the fail-closed readSource');
+  ok('the gate is WIRED into the publish path and runs BEFORE publishVersion (asserted structurally — the CLI is not executable here)');
+
+  // verify-catalog must check store-vs-code too, so a drifted store is caught between cutovers
+  const VC = readFileSync(join(__dirname, '..', 'tools', 'verify-catalog.js'), 'utf8');
+  assert.ok(/assertStoreCodeParity\(rid, storeBuilt, codeBuilt\)/.test(VC), 'verify-catalog must assert store == code');
+  assert.ok(/source_missing/.test(VC), 'and must tolerate a pre-2a absent store rather than failing the whole verify');
+  ok('verify-catalog is store-aware: asserts store == code, and tolerates a pre-2a absent store');
+
+  // The bug this catches, from experience: an edit added the --from-store branch but its `require`
+  // silently no-op'd (the anchor string had changed), so the CLI referenced undefined identifiers.
+  // `node --check` passes that happily — it is a runtime ReferenceError, and these CLIs are owner-run
+  // one-shots where the first execution IS the cutover. Assert the imports resolve, statically.
+  for (const [file, ids] of [
+    ['tools/publish-version.js', ['readSource', 'sourceToBuildInputs', 'assertStoreCodeParity', 'buildCatalogV2', 'publishVersion']],
+    ['tools/verify-catalog.js', ['readSource', 'sourceToBuildInputs', 'assertStoreCodeParity', 'buildCatalogV2']],
+    ['tools/seed-source-store.js', ['validateSource', 'sourceRefOf', 'extrasKeyOf', 'readLiteral', 'pricingKeyOf']],
+  ]) {
+    const src = readFileSync(join(__dirname, '..', file), 'utf8');
+    for (const id of ids) {
+      const destructured = new RegExp(`\\{[^}]*\\b${id}\\b[^}]*\\}\\s*=\\s*require`).test(src);
+      assert.ok(destructured, `${file} uses ${id} but never imports it — node --check cannot see this`);
+    }
+  }
+  ok('import resolution: every identifier the portal-2a CLIs use is actually imported (node --check is blind to this)');
+}
+
+console.log(`publish-parity: OK (${n})`);

@@ -13,6 +13,9 @@ try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; th
 const admin = require('firebase-admin');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { getRestaurantDocs } = require('../catalog/catalog-firestore');
+const { readSource, sourceToBuildInputs } = require('../catalog/source-store');   // portal 2a
+const { buildCatalogV2 } = require('../catalog/form-menu-source');
+const { assertStoreCodeParity } = require('../catalog/publish-parity');
 const { buildTablesFromDocs } = require('../catalog/catalog-transform');
 
 admin.initializeApp({ credential: admin.credential.applicationDefault() });
@@ -38,6 +41,21 @@ const db = admin.firestore();
       if (gotN !== wantN) { bad++; console.error(`COUNT ${rid}.${label}: catalog=${gotN} code=${wantN}`); }
     }
     console.log(`${rid}: ${Object.keys(back.menu).length} items + ${Object.keys(back.extras).length} extras checked`);
+  }
+  // Portal 2a: when a source store exists, ALSO prove store-built == code-built. The loop above
+  // verifies the SERVED catalog against the code tables; this verifies the SOURCE the next publish
+  // would use — so a drifted store is caught here rather than at the next cutover.
+  for (const rid of ['x_pizza', 'la_musa']) {
+    let source = null;
+    try { source = await readSource(db, rid); } catch (e) {
+      if (/source_missing/.test(String(e && e.message))) { console.log(`${rid}: no source store yet (pre-2a) — skipping store parity`); continue; }
+      throw e;
+    }
+    const inputs = sourceToBuildInputs(source);
+    const storeBuilt = { ...buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable }), extras: inputs.extras };
+    const codeBuilt = { ...buildCatalogV2(rid), extras: EXTRAS_BY_RESTAURANT[rid] || {} };
+    try { assertStoreCodeParity(rid, storeBuilt, codeBuilt); console.log(`${rid}: source store == code (build-parity ✓)`); }
+    catch (e) { bad++; console.error(String(e && e.message)); }
   }
   if (bad) { console.error(`verify-catalog FAILED: ${bad} mismatch(es) — do NOT proceed to the rules deploy`); process.exit(1); }
   console.log('verify-catalog: production catalog == code tables ✓');

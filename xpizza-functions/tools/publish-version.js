@@ -16,6 +16,8 @@ const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
 const { publishVersion } = require('../catalog/catalog-publish');
 const { makeRtdbMirror, RTDB_URL } = require('../catalog/mirror-rtdb');   // 1b: the RTDB disaster-fallback writer
+const { readSource, sourceToBuildInputs } = require('../catalog/source-store');            // portal 2a
+const { assertStoreCodeParity } = require('../catalog/publish-parity');                    // portal 2a: the pre-flip gate
 
 const gitSha = () => { try { return execSync('git rev-parse --short HEAD', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch (_) { return 'unknown'; } };
 
@@ -27,11 +29,29 @@ admin.initializeApp({
 const db = admin.firestore();
 const mirror = makeRtdbMirror(admin.database());   // 1b: injected so the publish acks the mirror under its lease
 
+// Portal 2a: --from-store builds each version from the SOURCE STORE instead of the code tables, and
+// refuses to flip unless that build is canonically identical to what the code would have built. The
+// gate runs BEFORE publishVersion, so a mismatch aborts with nothing written and no pointer moved.
+const FROM_STORE = process.argv.includes('--from-store');
+
 (async () => {
   const source_sha = gitSha();
   for (const rid of ['x_pizza', 'la_musa']) {
-    const { items, structure } = buildCatalogV2(rid);   // schema-v2 items (price from menu-pricing) + structure
-    const res = await publishVersion(db, rid, { items, structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, source_sha }, { mirror });
+    let items, structure, extrasTable;
+    if (FROM_STORE) {
+      // Build from the STORE, then prove it equals what the CODE builds — the no-op gate.
+      const source = await readSource(db, rid);                        // fail-closed: missing/malformed throws
+      const inputs = sourceToBuildInputs(source);
+      ({ items, structure } = buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable }));
+      extrasTable = inputs.extras;
+      const codeBuilt = { ...buildCatalogV2(rid), extras: EXTRAS_BY_RESTAURANT[rid] || {} };
+      assertStoreCodeParity(rid, { items, structure, extras: extrasTable }, codeBuilt);   // THROWS → nothing written, no flip
+      console.log(`${rid}: parity gate PASSED — build-from-store is byte-identical to build-from-code`);
+    } else {
+      ({ items, structure } = buildCatalogV2(rid));   // schema-v2 items (price from menu-pricing) + structure
+      extrasTable = EXTRAS_BY_RESTAURANT[rid] || {};
+    }
+    const res = await publishVersion(db, rid, { items, structure, extras: extrasTable, source_sha }, { mirror });
     const codeItems = Object.keys(MENU_BY_RESTAURANT[rid]).length;
     const codeExtras = Object.keys(EXTRAS_BY_RESTAURANT[rid] || {}).length;
     if (res.item_count !== codeItems || res.extra_count !== codeExtras) {
