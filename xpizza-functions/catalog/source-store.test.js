@@ -45,6 +45,43 @@ const GOOD = () => ({
   assert.doesNotThrow(() => validateSource(GOOD(), 'x_pizza'), 'a well-formed source validates');
   ok('validateSource accepts a well-formed source');
 
+  // ── 🔒 EXTRAS KEYING — the landmine. x_pizza extras price by NAME while their display record ALSO
+  //    carries an `id` ('e1'); la_musa extras price by that id. A seed that keyed x_pizza extras by
+  //    'e1' would round-trip cleanly and hash stably, and price NOTHING, because no cart line would
+  //    ever match — a byte-identical no-op that quietly breaks every extra. ────────────────────────
+  {
+    const s = GOOD(); s.extras[0].key = 'e4';                                  // the form-local handle, not the price key
+    assert.throws(() => validateSource(s, 'x_pizza'), /extras key by NAME/, 'x_pizza extra keyed by its form id must THROW');
+    const lm = {
+      restaurant_id: 'la_musa', schema_version: 1,
+      items: [{ key: 'dimsum_01', price: 223, display: { id: 'dimsum_01', cat: 'dim_sum', name: 'Wonton', price: 223 } }],
+      extras: [{ key: 'Arroz Blanco', price: 50, display: { id: 'rice_white', cat: 'Acompañamientos', name: 'Arroz Blanco', price: 50 } }],
+      structure: { categories: [{ id: 'dim_sum' }], item_order: ['dimsum_01'] },
+    };
+    assert.throws(() => validateSource(lm, 'la_musa'), /does not match its display record/, 'la_musa extra keyed by NAME must THROW (it prices by id)');
+    lm.extras[0].key = 'rice_white';
+    assert.doesNotThrow(() => validateSource(lm, 'la_musa'), 'correctly keyed la_musa extra validates');
+    ok('extras keying: x_pizza must key by NAME, la_musa by id — the wrong one fails closed (the silent-no-op trap)');
+  }
+  {
+    // A display record carrying its own price must AGREE with the authoritative one, or the form shows
+    // one number while the server charges another.
+    const a = GOOD(); a.extras[0].display.price = 99;
+    assert.throws(() => validateSource(a, 'x_pizza'), /disagrees with the authoritative price/, 'extra inline-price mismatch throws');
+    const b = GOOD(); b.items[0].display.price = 99;
+    assert.throws(() => validateSource(b, 'x_pizza'), /disagrees with the authoritative price/, 'item inline-price mismatch throws');
+    ok('inline-price agreement: a display price that disagrees with the authoritative price fails closed (both items and extras)');
+  }
+  {
+    // CATEGORY SUPERSET — categories are store-authored now, so they can drift from the dishes.
+    const s = GOOD(); s.structure.categories = [{ id: 'other' }];
+    assert.throws(() => validateSource(s, 'x_pizza'), /authored categories are missing individual|references unknown category/,
+      'authored categories must cover every category a dish uses');
+    const ok2 = GOOD(); ok2.structure.categories = [{ id: 'individual' }, { id: 'ny' }];
+    assert.doesNotThrow(() => validateSource(ok2, 'x_pizza'), 'a SUPERSET is fine — an empty category is a legitimate portal state');
+    ok('category superset: authored categories must cover the dishes\' categories; a superset is allowed');
+  }
+
   // ── sourceToBuildInputs maps to exactly what buildCatalogV2 consumes ───────────────────────────
   {
     const { priceTable, formData, extras } = sourceToBuildInputs(GOOD());

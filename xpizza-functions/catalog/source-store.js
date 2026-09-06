@@ -14,6 +14,11 @@
 // ---------------------------------------------------------------------------
 const { pricingKeyOf } = require('./form-menu-source');
 
+// The EXTRAS pricing key, per brand — the mirror of pricingKeyOf for items. x_pizza extras are keyed
+// by NAME (their display `id` is a form-local handle like 'e1' that prices nothing); la_musa extras
+// are keyed by that id slug. Kept beside the item rule so the two cannot drift apart.
+const extrasKeyOf = (restaurantId, display) => (restaurantId === 'la_musa' ? (display && display.id) : (display && display.name));
+
 // The code-path literals this schema covers. The completeness test asserts every literal the code
 // path reads appears here — so a future code-only field cannot silently become uneditable in 2b.
 // EXTRAS / EXTRAS_BY_CATEGORY / EXTRAS_BY_ITEM are form-side (no server consumer today) but are
@@ -74,7 +79,32 @@ function validateSource(source, rid) {
     if (!isPositiveInt(ex.price)) fail(`${rid}/extra ${ex.key} — price is not a positive integer`);
     if (eseen.has(ex.key)) fail(`${rid}/extra ${ex.key} — duplicate extra key`);
     eseen.add(ex.key);
+    // EXTRAS CARRY THE SAME PRICING-KEY ASYMMETRY AS ITEMS, and it is easy to get wrong: x_pizza
+    // extras price by NAME while their display record ALSO has an `id` ('e1'), and la_musa extras
+    // price by that id. A seed that keyed x_pizza extras by `e1` would round-trip cleanly and hash
+    // stably — and price nothing, because no cart line would ever match. Fail closed on it.
+    if (ex.display) {
+      const derived = extrasKeyOf(rid, ex.display);
+      if (derived !== ex.key) fail(`${rid}/extra ${ex.key} — key does not match its display record (derived ${String(derived)}; x_pizza extras key by NAME, la_musa by id)`);
+      // A display record carrying its own price must AGREE with the authoritative one, or the form
+      // would render one number while the server charges another.
+      if (ex.display.price !== undefined && ex.display.price !== ex.price) {
+        fail(`${rid}/extra ${ex.key} — display price ${ex.display.price} disagrees with the authoritative price ${ex.price}`);
+      }
+    }
   }
+  // The same inline-price agreement for ITEMS: the form dish records carry `price` too.
+  for (const it of source.items) {
+    if (it.display && it.display.price !== undefined && it.display.price !== it.price) {
+      fail(`${rid}/${it.key} — display price ${it.display.price} disagrees with the authoritative price ${it.price}`);
+    }
+  }
+  // CATEGORY SUPERSET (portal ruling): the authored categories must cover every category the dishes
+  // actually use. Categories are store-authored so a merchant can rename/reorder/group them, which
+  // means they can also drift — this catches both a dropped category and a dish pointing at a ghost.
+  const usedCats = new Set(source.items.map((i) => i.display && i.display.cat).filter((c) => c != null));
+  for (const c of usedCats) if (!catIds.has(c)) fail(`${rid} — authored categories are missing ${c}, which a dish uses`);
+
   // item_order must be a BIJECTION with items — the same three-legged check the display reader uses.
   // Any two of exists/length/uniqueness can hold while the menu is still wrong.
   if (new Set(st.item_order).size !== st.item_order.length) fail(`${rid} — item_order has duplicate keys`);
@@ -129,4 +159,4 @@ async function readSource(db, rid) {
   return source;
 }
 
-module.exports = { readSource, validateSource, sourceToBuildInputs, canonicalize, sourceRefOf, isPositiveInt, SOURCE_COVERED_LITERALS };
+module.exports = { readSource, validateSource, sourceToBuildInputs, canonicalize, sourceRefOf, isPositiveInt, extrasKeyOf, SOURCE_COVERED_LITERALS };

@@ -151,12 +151,20 @@ function buildCatalogV2(restaurantId, opts = {}) {
     const hasPhoto = new Set(fd ? (fd.has_photo || []) : readSetLiteral(src, 'HAS_PHOTO'));
     for (const it of items) it.has_photo = hasPhoto.has(it.key);            // per-item; the Set regenerates from these
   } else {
-    // x_pizza has no CATEGORIES literal — the category order IS the order of first appearance in MENU.
-    // Derived the same way on BOTH paths, so a store that carried a stale categories array cannot
-    // disagree with the dishes it actually holds.
-    const order = [];
-    for (const d of dishes) if (!order.includes(d.cat)) order.push(d.cat);
-    structure.categories = order.map((id) => ({ id }));
+    // x_pizza has no CATEGORIES literal, so the TEXT path derives the category order from the order of
+    // first appearance in MENU — it has nothing else to bootstrap from. The STRUCTURED path reads the
+    // store's authored categories instead, uniformly with la_musa, so a merchant can rename, reorder
+    // and group categories in the portal rather than having them silently follow dish `cat` values.
+    // The seed authors x_pizza's categories to exactly this derived result, so the two paths agree at
+    // cutover and the parity gate enforces it; self-consistency is guarded by validateSource, which
+    // requires the authored categories to be a superset of the categories the dishes actually use.
+    if (fd) {
+      structure.categories = fd.categories;
+    } else {
+      const order = [];
+      for (const d of dishes) if (!order.includes(d.cat)) order.push(d.cat);
+      structure.categories = order.map((id) => ({ id }));
+    }
     structure.pickup_only_cats = fd ? fd.pickup_only_cats : readLiteral(src, 'PICKUP_ONLY_CATS');
     structure.weekend_only_cats = fd ? fd.weekend_only_cats : readLiteral(src, 'WEEKEND_ONLY_CATS');
   }
