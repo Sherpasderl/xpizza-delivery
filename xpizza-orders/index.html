@@ -721,6 +721,14 @@ textarea{resize:none;height:80px;line-height:1.4}
 .pickup-gate-btn{flex:1;text-align:center;border:0;border-radius:9px;padding:10px 8px;font-family:var(--sans);font-size:12.5px;font-weight:700;cursor:pointer}
 .pickup-gate-btn.primary{background:var(--red);color:#fff}
 .pickup-gate-btn.ghost{background:#fff;color:var(--charcoal);border:1px solid var(--border)}
+.pk-modal-scrim{position:fixed;inset:0;z-index:9999;background:rgba(23,19,15,.52);display:flex;align-items:center;justify-content:center;padding:22px}
+.pk-modal{background:#fff;border-radius:18px;padding:22px 20px 18px;width:100%;max-width:300px;box-shadow:0 24px 60px -12px rgba(0,0,0,.5);text-align:center;font-family:var(--sans)}
+.pk-modal-ic{width:46px;height:46px;border-radius:50%;background:#FBEAE6;border:1px solid #E7B4A8;display:flex;align-items:center;justify-content:center;margin:0 auto 13px;font-size:20px}
+.pk-modal-t{font-family:var(--display);font-size:18px;font-weight:600;color:var(--charcoal);line-height:1.25;margin-bottom:7px}
+.pk-modal-s{font-size:13px;color:#6B6255;margin-bottom:17px;line-height:1.45}
+.pk-modal-btn{display:block;width:100%;text-align:center;border:0;border-radius:11px;padding:13px;font-size:13.5px;font-weight:700;margin-top:9px;cursor:pointer;font-family:var(--sans)}
+.pk-modal-btn.primary{background:var(--red);color:#fff}
+.pk-modal-btn.ghost{background:#fff;color:var(--charcoal);border:1px solid var(--border)}
 .pickup-note{margin:12px 16px 0;border:1px solid #BFE0CC;background:var(--green-bg);border-radius:12px;padding:11px 14px;font-family:var(--sans);font-size:12.5px;color:#1f5734}
 .pickup-info{display:none}
 .pickup-store-row{
@@ -2279,6 +2287,7 @@ function goToLocation(){
     return;
   }
   err.style.display='none';
+  if(orderType==='delivery' && cartHasPickupOnly()){ showPickupConflictModal(); return; }
   showStage('s2',50);
   refreshTimeSelector();
   setTimeout(initMap, 100);
@@ -2601,11 +2610,7 @@ async function processPayment(){
   }
   // 2) pickup-only item in a delivery cart → the pickup gate.
   if(orderType==='delivery' && cartHasPickupOnly()){
-    refreshPickupGate();
-    const gate=document.getElementById('pickup-gate');
-    if(gate) gate.scrollIntoView({behavior:'smooth', block:'center'});
-    document.getElementById('err3').style.display='block';
-    document.getElementById('err3').textContent='Las NY Pizzas 18" son solo para Pickup.';
+    showPickupConflictModal();
     return;
   }
   // 2b) weekend-only (18" NY) on a non-weekend fulfillment day → the weekend gate (the server 400 is the safety net).
@@ -3874,6 +3879,37 @@ function refreshPickupGate(){
 function removePickupOnlyFromCart(){
   MENU.forEach(p => { if (isPickupOnlyItem(p) && qty[p.id] > 0) chg(p.id, -qty[p.id]); });
   refreshPickupGate();
+}
+// Pickup-only conflict — the unmissable blocking modal (config-driven via cartHasPickupOnly()).
+// Fired from goToLocation (early) + processPayment (backstop). Reuses setOrderType/removePickupOnlyFromCart.
+let _pkModalOpen = false;
+function pickupOnlyLabel(){
+  const items = MENU.filter(p => qty[p.id] > 0 && isPickupOnlyItem(p));
+  return items.length === 1 ? ('tu ' + items[0].name) : 'tus NY de 18"';
+}
+function showPickupConflictModal(){
+  if(_pkModalOpen) return;
+  _pkModalOpen = true;
+  const ov = document.createElement('div');
+  ov.className = 'pk-modal-scrim';
+  ov.id = 'pk-modal';
+  ov.innerHTML =
+    '<div class="pk-modal" role="dialog" aria-modal="true">'
+    + '<div class="pk-modal-ic">🛍️</div>'
+    + '<div class="pk-modal-t" id="pk-modal-t"></div>'
+    + '<div class="pk-modal-s">Las NY de 18" todavía no salen a domicilio. ¿Qué querés hacer?</div>'
+    + '<button type="button" class="pk-modal-btn primary" id="pk-to-pickup">Cambiar a recoger en tienda</button>'
+    + '<button type="button" class="pk-modal-btn ghost" id="pk-remove">Quitarla y seguir con delivery</button>'
+    + '</div>';
+  document.body.appendChild(ov);
+  document.getElementById('pk-modal-t').textContent = 'Por ahora ' + pickupOnlyLabel() + ' es solo para recoger en tienda';
+  document.getElementById('pk-to-pickup').onclick = () => { closePickupConflictModal(); setOrderType('pickup'); };
+  document.getElementById('pk-remove').onclick = () => { removePickupOnlyFromCart(); closePickupConflictModal(); };
+}
+function closePickupConflictModal(){
+  const ov = document.getElementById('pk-modal');
+  if(ov) ov.remove();
+  _pkModalOpen = false;
 }
 // Weekend-only (18" NY): show the gate iff the cart has a weekend-only item on a non-weekend fulfillment day.
 function refreshWeekendGate(){
