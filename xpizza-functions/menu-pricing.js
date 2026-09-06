@@ -45,10 +45,16 @@ function hnDayFromMs(ms) { return new Date(ms - 6 * 3600000).getUTCDay(); }
 
 // The first weekend-only item NOT allowed on the order's FULFILLMENT day (scheduled_for ?? now), else null.
 // PURE + restaurant-scoped (only x_pizza has weekend-only items today) → no-op for any other restaurant.
-function weekendOnlyViolation(items, restaurantId, fulfillmentMs) {
-  if (restaurantId !== 'x_pizza' || !Array.isArray(items)) return null;
+// Portal 2a: `weekendOnlyKeys` is the catalog-derived set (weekend_only_cats × the dishes in them). It
+// is passed in rather than read here so this stays pure. Omitting it falls back to the static set —
+// FALLBACK ONLY, preserving today's behaviour when the catalog cannot be read; a pre-charge gate must
+// never fail OPEN, so the fallback restricts exactly as before rather than allowing everything.
+function weekendOnlyViolation(items, restaurantId, fulfillmentMs, weekendOnlyKeys = null) {
+  if (!Array.isArray(items)) return null;
+  const keys = weekendOnlyKeys || (restaurantId === 'x_pizza' ? X_PIZZA_WEEKEND_ONLY : null);
+  if (!keys || keys.size === 0) return null;                                     // no gate for this restaurant
   if (WEEKEND_DAYS.has(hnDayFromMs(fulfillmentMs))) return null;                 // Fri/Sat/Sun → everything allowed
-  const hit = items.find((it) => it && X_PIZZA_WEEKEND_ONLY.has(it.name));
+  const hit = items.find((it) => it && keys.has(it.name));
   return hit ? hit.name : null;
 }
 
