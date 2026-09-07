@@ -34,7 +34,10 @@ admin.initializeApp({ projectId: 'demo-xpizza' });   // FIRESTORE_EMULATOR_HOST 
 const db = admin.firestore();
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
-const staff = async () => ({ ok: true, uid: 'u_e2e', role: 'dispatcher', actor: 'e2e@sherpa.hn' });
+// The auth helper has its own suite (with RTDB stubs); this run is Firestore-only, so the tier is
+// injected here. What the e2e proves is that the tier REACHES the fiscal gate against real state.
+const asRole = (role) => async () => ({ ok: true, uid: `u_${role}`, role, actor: `${role}@sherpa.hn` });
+const staff = asRole('owner');
 
 // The same live-version read index.js wires in.
 async function readActiveBuilt(rid) {
@@ -104,8 +107,23 @@ const storeBuiltOf = (src, rid) => { const i = sourceToBuildInputs(src); return 
 
     if (fiscal) {
       const noFiscal = await publishEditedCore(deps, { restaurantId: rid, token: e.body.token, acknowledgedChanges: ack }, {});
-      assert.strictEqual(noFiscal.body.error, 'fiscal_ack_required', 'x_pizza cannot publish without the owner fiscal acknowledgement');
+      assert.strictEqual(noFiscal.body.error, 'fiscal_ack_required', 'x_pizza: an owner without the acknowledgement cannot publish');
       assert.strictEqual(await getActiveVersionId(db, rid), v1.versionId, 'and the pointer did not move');
+      // ...and the acknowledgement must come from an OWNER. A dispatcher sending fiscalAck:true is
+      // manufacturing a signature nobody gave, on a document the SAR holds a person accountable for.
+      for (const role of ['dispatcher', 'staff']) {
+        const asOther = { ...deps, authorize: asRole(role) };
+        const r = await publishEditedCore(asOther, { restaurantId: rid, token: e.body.token, acknowledgedChanges: ack, fiscalAck: true }, {});
+        assert.strictEqual(r.body.error, 'not_owner', `x_pizza: a ${role} cannot manufacture an owner fiscal acknowledgement`);
+        assert.strictEqual(await getActiveVersionId(db, rid), v1.versionId, `x_pizza: and a ${role} moved no pointer`);
+      }
+    } else {
+      // la_musa owes no platform factura, so no tier is gated on it — an ordinary dispatcher publishes.
+      const probe = await publishEditedCore({ ...deps, authorize: asRole('dispatcher') }, { restaurantId: rid, token: e.body.token, acknowledgedChanges: ack }, {});
+      assert.strictEqual(probe.status, 200, 'la_musa: a dispatcher publishes without any owner tier or fiscal ack');
+      assert.notStrictEqual(await getActiveVersionId(db, rid), v1.versionId, 'la_musa: and it really published');
+      await rollbackVersion(db, rid, v1.versionId, {});   // back to v1 so the rest of the walk is unchanged
+      assert.strictEqual(await getActiveVersionId(db, rid), v1.versionId, 'la_musa: restored for the remainder of the walk');
     }
 
     // Re-saving the SAME content does not invalidate the token, and that is correct rather than lax:

@@ -30,6 +30,7 @@ function stubDb(present, { throwOn = null } = {}) {
 }
 const DISPATCHER = 'dispatchers/u_disp';
 const STAFF = 'restaurants/la_musa/kitchen_staff/u_staff';
+const OWNER = 'restaurants/x_pizza/owners/u_owner';
 const verifierFor = (decoded) => async () => decoded;
 
 (async () => {
@@ -50,6 +51,48 @@ const verifierFor = (decoded) => async () => decoded;
     assert.strictEqual(other.status, 403, 'and that is a 403, not a 401');
   }
   ok('the two ways in: a global dispatcher (either brand) and own-restaurant kitchen staff (their brand only)');
+
+  // ── (1b) THE OWNER TIER — a level ABOVE dispatcher, and it must not collapse into one ─────────
+  // Only an owner may acknowledge that a menu edit changes the SAR factura. That acknowledgement is
+  // worthless if any dispatcher can produce it, so the tiers have to stay genuinely distinct.
+  {
+    const r = await authorizeCatalogEdit({ db: stubDb([OWNER]), verifyIdToken: verifierFor({ uid: 'u_owner', email: 'o@x.hn' }) }, reqWith('Bearer tok'), 'x_pizza');
+    assert.deepStrictEqual([r.ok, r.uid, r.role], [true, 'u_owner', 'owner'], 'an owner of this restaurant is role owner');
+
+    // THE COLLAPSE. A dispatcher who is NOT in the owners node must come back as `dispatcher`. If the
+    // owner check ever read the dispatchers node — or fell back to it — every dispatcher would silently
+    // gain fiscal authority and the gate would be decorative.
+    const d = await authorizeCatalogEdit({ db: stubDb([DISPATCHER]), verifyIdToken: verifierFor({ uid: 'u_disp' }) }, reqWith('Bearer tok'), 'x_pizza');
+    assert.deepStrictEqual([d.ok, d.role], [true, 'dispatcher'], 'a dispatcher is NOT promoted to owner');
+    const st = await authorizeCatalogEdit({ db: stubDb([STAFF]), verifyIdToken: verifierFor({ uid: 'u_staff' }) }, reqWith('Bearer tok'), 'la_musa');
+    assert.strictEqual(st.role, 'staff', 'and kitchen staff are not either');
+
+    // OWNERSHIP IS PER-RESTAURANT: the x_pizza owner is not the la_musa owner. A global tier would let
+    // one merchant's owner acknowledge another merchant's fiscal document.
+    const cross = await authorizeCatalogEdit({ db: stubDb([OWNER]), verifyIdToken: verifierFor({ uid: 'u_owner' }) }, reqWith('Bearer tok'), 'la_musa');
+    assert.notStrictEqual(cross.role, 'owner', 'the x_pizza owner is not an owner of la_musa');
+
+    // OWNER SUPERSEDES: someone who is both reads as owner, so the higher tier is what the fiscal gate sees.
+    const both = await authorizeCatalogEdit({ db: stubDb([OWNER, 'dispatchers/u_owner']), verifyIdToken: verifierFor({ uid: 'u_owner' }) }, reqWith('Bearer tok'), 'x_pizza');
+    assert.strictEqual(both.role, 'owner', 'owner outranks dispatcher when a uid is both');
+
+    // ...and the owner tier grants edit access on its own, without needing a dispatcher entry too
+    assert.strictEqual(r.ok, true, 'an owner who is ONLY an owner can still edit');
+    ok('the owner tier is distinct (a dispatcher is never promoted), per-restaurant, and outranks dispatcher');
+  }
+  {
+    // The owner node must be a DIFFERENT path from dispatchers — structurally, so the two can never be
+    // wired to the same read by a later edit.
+    const src = require('fs').readFileSync(require('path').join(__dirname, 'catalog-edit-auth.js'), 'utf8')
+      .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
+    assert.ok(/restaurants\/\$\{restaurantId\}\/owners\/\$\{decoded\.uid\}/.test(src), 'the owner read must be restaurants/{rid}/owners/{uid}');
+    assert.ok(!/owners[^\n]*dispatchers|dispatchers[^\n]*owners/.test(src), 'and must not share a line — or a read — with the dispatchers path');
+    // it is checked FIRST, so a uid in both resolves to the higher tier
+    const owners = src.indexOf('/owners/');
+    const disp = src.indexOf('dispatchers/');
+    assert.ok(owners > 0 && disp > 0 && owners < disp, 'the owner check must come FIRST (highest tier wins)');
+    ok('structurally: the owner node is its own path, read first — the tiers cannot be collapsed by a later edit');
+  }
 
   // ── (2) THE CUSTOMER CLAIM — rejected BEFORE any membership lookup ───────────────────────────
   {
@@ -90,8 +133,10 @@ const verifierFor = (decoded) => async () => decoded;
   // then "not staff either" — which is indistinguishable from a real denial but for the wrong reason,
   // and the mirror-image bug (swallowing into a grant) is a total bypass.
   {
-    for (const [label, throwOn] of [['the dispatcher read', 'dispatchers/'], ['the staff read', 'kitchen_staff']]) {
+    for (const [label, throwOn] of [['the owner read', '/owners/'], ['the dispatcher read', 'dispatchers/'], ['the staff read', 'kitchen_staff']]) {
       const r = await authorizeCatalogEdit({ db: stubDb([STAFF], { throwOn }), verifyIdToken: verifierFor({ uid: 'u_staff' }) }, reqWith('Bearer tok'), 'la_musa');
+      // an owner-read failure must NOT quietly degrade the caller to a lower tier either — that would
+      // turn an outage into a silent demotion, and a demoted owner cannot publish x_pizza at all
       assert.strictEqual(r.ok, false, `${label} failing must DENY — an unreachable backend is not an authorization`);
       assert.strictEqual(r.status, 503, `${label} → 503, distinct from 403: the credentials may be fine, the lookup is not`);
       assert.ok(/unavailable/.test(r.error), 'and named as an availability failure so an outage is not misread as a permissions bug');

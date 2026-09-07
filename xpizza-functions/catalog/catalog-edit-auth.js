@@ -7,9 +7,23 @@
 // than its success case: an authorization check that answers "yes" because a backend was unreachable is
 // not an authorization check. Only an affirmative, verified membership grants; every other path denies.
 //
-// Two ways in:
+// Three tiers, owner ⊇ dispatcher ⊇ staff:
+//   • the RESTAURANT'S OWNER (`/restaurants/{rid}/owners/{uid}`) — the person legally responsible for
+//     that restaurant's SAR fiscal representation, and the ONLY tier that may acknowledge a menu edit
+//     which changes the factura
 //   • a GLOBAL dispatcher (`/dispatchers/{uid}`) — our own staff, either brand
 //   • OWN-RESTAURANT kitchen staff (`/restaurants/{rid}/kitchen_staff/{uid}`) — that brand only
+//
+// THE OWNER NODE IS DELIBERATELY NOT MODELLED ON THE OTHERS. `dispatchers/{uid}` and
+// `kitchen_staff/{uid}` are both DISPATCHER-WRITABLE in database.rules.json, so copying that pattern
+// would let any dispatcher add themselves as an owner and then sign their own fiscal acknowledgement —
+// the gate would read as enforced while being fully bypassable. `restaurants/{rid}/owners` has no rule
+// at all, which under RTDB's deny-by-default makes it server/console-write-only. That is the correct
+// state and it needs NO rules change; ADDING a rule here would be the mistake.
+//
+// It is PER-RESTAURANT, not global: a fiscal acknowledgement is a statement by the party responsible
+// for one taxpayer's documents. A platform-wide owner is not merchant #3's fiscal representative. It
+// sits beside factura_config, which is already per-restaurant and locked to {read:false, write:false}.
 //
 // DOGFOOD NOTE: per-rid staff membership is not curated yet (the seed puts all staff in both brands),
 // so for our two brands the dispatcher-global path is the operative one. The per-rid branch is written
@@ -62,6 +76,11 @@ async function authorizeCatalogEdit({ db, verifyIdToken }, req, restaurantId) {
     return !!(snap && snap.exists());
   };
   try {
+    // HIGHEST TIER FIRST, so a uid that is both an owner and a dispatcher resolves to owner — the fiscal
+    // gate must see the higher tier, not whichever was checked first by accident.
+    if (await exists(`restaurants/${restaurantId}/owners/${decoded.uid}`)) {
+      return { ok: true, uid: decoded.uid, role: 'owner', actor: decoded.email || decoded.uid };
+    }
     if (await exists(`dispatchers/${decoded.uid}`)) {
       return { ok: true, uid: decoded.uid, role: 'dispatcher', actor: decoded.email || decoded.uid };
     }

@@ -30,7 +30,8 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('publish-e
 
 const T_DRAFT = '2026-09-07T12:00:00.000000Z';
 const ACTIVE = 'v-active-7';
-const allow = async () => ({ ok: true, uid: 'u_disp', role: 'dispatcher', actor: 'd@x.hn' });
+const allow = async () => ({ ok: true, uid: 'u_owner', role: 'owner', actor: 'o@x.hn' });
+const asRole = (role) => async () => ({ ok: true, uid: `u_${role}`, role, actor: `${role}@x.hn` });
 
 const srcOf = (rid, mutate) => { const s = JSON.parse(JSON.stringify(buildSourceFromCode(rid))); if (mutate) mutate(s); return s; };
 const builtOf = (src, rid) => { const i = sourceToBuildInputs(src); return { ...buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable }), extras: i.extras }; };
@@ -209,12 +210,44 @@ const ackFor = (diff) => diff.largeChangeSet.map((l) => ({ key: l.key, surface: 
     const r = await publishEditedCore(h.deps, { restaurantId: 'x_pizza', token, fiscalAck: true }, {});
     assert.strictEqual(r.status, 200, 'with the acknowledgement it publishes');
 
+    // ── THE ACKNOWLEDGEMENT MUST COME FROM AN OWNER ──────────────────────────────────────────
+    // A boolean anyone can send is not an owner acknowledgement. The whole point of the fiscal gate is
+    // that a PERSON with legal responsibility for the SAR document signed off; if any dispatcher or
+    // kitchen-staff member can set the flag, the gate records a signature nobody gave.
+    for (const role of ['dispatcher', 'staff']) {
+      const hr = harness('x_pizza', srcOf('x_pizza', setPrice('Margherita', 320)));
+      const rr = await publishEditedCore({ ...hr.deps, authorize: asRole(role) }, { restaurantId: 'x_pizza', token: hr.tokenFor().token, fiscalAck: true }, {});
+      assert.strictEqual(rr.status, 403, `a ${role} sending fiscalAck:true → 403`);
+      assert.strictEqual(rr.body.error, 'not_owner', `a ${role} sending fiscalAck:true → not_owner, DISTINCT from fiscal_ack_required`);
+      assert.strictEqual(hr.state.publishes.length, 0, `a ${role} publishes nothing`);
+    }
+    // NEITHER CONDITION IS SUFFICIENT ALONE: an owner without the acknowledgement is still refused, and
+    // refused as a MISSING ACK rather than as a permissions problem — the two are different fixes.
+    const hNoAck = harness('x_pizza', srcOf('x_pizza', setPrice('Margherita', 320)));
+    const rNoAck = await publishEditedCore(hNoAck.deps, { restaurantId: 'x_pizza', token: hNoAck.tokenFor().token }, {});
+    assert.strictEqual(rNoAck.body.error, 'fiscal_ack_required', 'an owner without the ack is refused for the ack, not for the tier');
+    // ...and a non-owner without the ack is told the thing they can actually act on: they are not the owner
+    const hNeither = harness('x_pizza', srcOf('x_pizza', setPrice('Margherita', 320)));
+    const rNeither = await publishEditedCore({ ...hNeither.deps, authorize: asRole('dispatcher') }, { restaurantId: 'x_pizza', token: hNeither.tokenFor().token }, {});
+    assert.strictEqual(rNeither.body.error, 'not_owner', 'a non-owner with no ack is told they are not the owner (acking would not help them)');
+    // an owner of the OTHER brand is not an owner here — the tier is per-restaurant, and authorize is
+    // what enforces that, so a role of 'owner' arriving for the wrong rid can only come from a bug
+    ok('the fiscal ack must come from an OWNER: dispatcher/staff sending fiscalAck:true are refused as not_owner, and neither condition alone suffices');
+
     // la_musa issues its own fiscal documents, so it must NOT be gated — a gate that applied to every
     // brand would be paperwork nobody can satisfy for a merchant with no platform factura.
     const l = harness('la_musa', srcOf('la_musa', setPrice('dimsum_01', 250)));
     const rl = await publishEditedCore(l.deps, { restaurantId: 'la_musa', token: l.tokenFor().token }, {});
     assert.strictEqual(rl.status, 200, 'la_musa publishes with no fiscalAck');
     assert.strictEqual(l.state.publishes.length, 1, 'and really publishes');
+    // ...and la_musa is untouched by the OWNER requirement too — it has no platform factura, so an
+    // owner tier would gate a merchant on a document they do not owe. Every tier still publishes it.
+    for (const role of ['dispatcher', 'staff']) {
+      const lm = harness('la_musa', srcOf('la_musa', setPrice('dimsum_01', 250)));
+      const rm = await publishEditedCore({ ...lm.deps, authorize: asRole(role) }, { restaurantId: 'la_musa', token: lm.tokenFor().token }, {});
+      assert.strictEqual(rm.status, 200, `la_musa: a ${role} publishes normally — the owner gate is x_pizza-only`);
+      assert.strictEqual(lm.state.publishes.length, 1, `la_musa: a ${role} really publishes`);
+    }
     ok('x_pizza requires fiscalAck === true (10 falsey AND truthy-but-not-true forms refused, incl. the string "false"); la_musa, which issues its own facturas, is not gated');
   }
 
