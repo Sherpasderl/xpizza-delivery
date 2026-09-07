@@ -164,12 +164,192 @@ const TWO = {
     // publishEdited wrapper too, so the check passed against a getMyRestaurants wired to Firestore —
     // which would find nothing and show every merchant an empty portal, indistinguishable from
     // "you own no restaurants". The mutation survived on exactly that.
-    const block = CODE.slice(CODE.indexOf('exports.getMyRestaurants = onRequest('));
-    assert.ok(block.length > 100, 'non-vacuity: the wrapper block was found');
+    // BOUNDED to this handler. An unbounded slice runs to end-of-file and swallows every handler added
+    // later — which is how "getFirestore() is absent" broke the moment the next endpoint (which legitimately
+    // uses it) was appended. A block assertion needs an end as much as a start.
+    const blockOf = (name) => {
+      const start = CODE.indexOf(`exports.${name} = onRequest(`);
+      assert.ok(start > -1, `the ${name} wrapper must exist`);
+      const next = CODE.indexOf('\nexports.', start + 1);
+      return CODE.slice(start, next === -1 ? CODE.length : next);
+    };
+    const block = blockOf('getMyRestaurants');
+    assert.ok(block.length > 100, 'non-vacuity: the block was found');
+    assert.ok(!block.includes('exports.getEditableCatalog'), 'and is bounded — it must not swallow the next handler');
     assert.ok(/db: getDatabase\(\)/.test(block), 'wired to getDatabase() — the ownership index is in RTDB, not Firestore');
     assert.ok(!/getFirestore\(\)/.test(block), 'and NOT to Firestore, where the index does not exist');
     assert.ok(/verifyIdToken: \(t\) => getAuth\(\)\.verifyIdToken\(t\)/.test(block), 'and to the REAL id-token verifier, not a stub');
     ok('the index.js wrapper is exported, delegates to the tested core, and is wired to RTDB + the real verifier');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════════════════
+  // Task 3 — getEditableCatalog. The read that hands a merchant their live money data.
+  //
+  //   OWNER-ONLY, and this is the sharp edge. authorizeCatalogEdit grants a DISPATCHER any restaurant
+  //   — that is correct for internal staff tooling and wrong here: a merchant portal read that accepted
+  //   it would let internal staff pull any tenant's catalog through the tenant-facing surface.
+  //
+  //   VALIDATE ON READ, FAIL CLOSED. A malformed source must never be handed over as an editable
+  //   baseline. The merchant would edit it, and 2b-2c would hand it straight back through the CAS —
+  //   corruption laundered into a publish by way of a UI that showed it as normal.
+  //
+  //   THE CAS BASELINE MUST BE BYTE-IDENTICAL to editCatalog's, or every later save fails the
+  //   precondition — the nanosecond bug from 2b-1 Task 6, one layer up.
+  // ═══════════════════════════════════════════════════════════════════════════════════════════
+  const { getEditableCatalogCore } = require('./portal-reads');
+  const { encodeUpdateTime } = require('./edit-catalog-handler');
+
+  // A brand-neutral source that really passes validateSource.
+  //
+  // NOT one of our restaurants' sources renamed: validateSource is BRAND-AWARE. extrasKeyOf returns
+  // display.id for one brand and display.name for every other, so a document only validates under a rid
+  // whose keying convention matches — renaming one to `merch_a` makes it fail, which is how this was
+  // found. That hardcoded key strategy is the known prerequisite the relay flags for the WRITE slices;
+  // a name-keyed fixture is what any new merchant gets by default, so it is also the honest one.
+  const realSource = (rid) => ({
+    restaurant_id: rid, schema_version: 1,
+    items: [
+      { key: 'Plato Uno', price: 250, display: { id: 1, cat: 'principales', name: 'Plato Uno', price: 250, desc: 'a dish' } },
+      { key: 'Plato Dos', price: 310, display: { id: 2, cat: 'principales', name: 'Plato Dos', price: 310, desc: 'another' } },
+    ],
+    extras: [{ key: 'Queso', price: 40, display: { id: 'e1', name: 'Queso', price: 40 } }],
+    structure: { schema_version: 2, item_order: ['Plato Uno', 'Plato Dos'], categories: [{ id: 'principales' }] },
+  });
+  const TS = { seconds: 1788754374, nanoseconds: 634000000 };
+  function mkFs(source, { updateTime = TS, exists = true, throwOn = null } = {}) {
+    const refs = [];
+    return {
+      refs,
+      _sourceRefOf: (_fsdb, rid) => {
+        refs.push(rid);
+        return { get: async () => { if (throwOn) throw new Error(throwOn); return { exists, data: () => source, updateTime }; } };
+      },
+    };
+  }
+  const asOwner = async () => ({ ok: true, uid: 'uidOwner001', role: 'owner', actor: 'o@m.hn' });
+  const gReq = (rid = 'merch_a', over = {}) => ({ method: 'GET', query: { restaurantId: rid }, get: () => 'Bearer tok', ...over });
+
+  {
+    const rid = 'merch_a';
+    const src = realSource(rid);
+    const fs2 = mkFs(src);
+    const r = await getEditableCatalogCore({
+      db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v-1788754374634', ...fs2,
+    }, gReq(rid));
+    assert.strictEqual(r.status, 200, `expected 200, got ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
+    assert.deepStrictEqual(r.body.source, src, 'the owner gets the real source document');
+    assert.strictEqual(r.body.activeVersionId, 'v-1788754374634', 'and which version is currently live');
+    // THE INTEGRATION PROPERTY: byte-identical to what editCatalog expects back as baseSourceUpdateTime.
+    assert.strictEqual(r.body.sourceUpdateTime, '1788754374.634000000', 'seconds.nanoseconds, ns padded to 9');
+    assert.strictEqual(r.body.sourceUpdateTime, encodeUpdateTime(TS), 'and produced by the SAME codec 2b-1 uses — not a second one that drifts');
+    // the ref is built with the AUTHORIZED rid, not anything else the request carried
+    assert.deepStrictEqual(fs2.refs, [rid], 'the source ref is built with the authorized restaurant id');
+    ok('an OWNER gets the real source, the live version id, and a CAS baseline byte-identical to editCatalog\'s');
+  }
+  {
+    // OWNER-ONLY. A dispatcher is legitimately authorized by authorizeCatalogEdit for ANY restaurant —
+    // that is the cross-tenant internal path, and it must not open the tenant-facing read.
+    for (const role of ['dispatcher', 'staff', undefined, null, 'admin', 'OWNER']) {
+      const fs2 = mkFs(realSource('merch_a'));
+      const r = await getEditableCatalogCore({
+        db: {}, fsdb: {}, authorize: async () => ({ ok: true, uid: 'u', role }), readActiveVersionId: async () => 'v', ...fs2,
+      }, gReq('merch_a'));
+      assert.strictEqual(r.status, 403, `role ${JSON.stringify(role)} → 403`);
+      assert.strictEqual(r.body.error, 'not_owner', `role ${JSON.stringify(role)} → not_owner`);
+      assert.deepStrictEqual(fs2.refs, [], `role ${JSON.stringify(role)} → the source is never even read`);
+    }
+    ok('owner-only: dispatcher, staff and every non-owner role are refused BEFORE the source is read (case-sensitive)');
+  }
+  {
+    // authorize's own refusals pass through verbatim — including 503, which must not become a 403.
+    for (const a of [
+      { ok: false, status: 401, error: 'missing_bearer_token' },
+      { ok: false, status: 403, error: 'not_authorized' },
+      { ok: false, status: 400, error: 'bad_restaurant_id' },
+      { ok: false, status: 503, error: 'authorization_unavailable' },
+    ]) {
+      const fs2 = mkFs(realSource('merch_a'));
+      const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: async () => a, readActiveVersionId: async () => 'v', ...fs2 }, gReq());
+      assert.strictEqual(r.status, a.status, `authorize ${a.error} → ${a.status}`);
+      assert.strictEqual(r.body.error, a.error, 'with its own typed error');
+      assert.deepStrictEqual(fs2.refs, [], 'and nothing read');
+    }
+    ok('every authorize refusal passes through with its own status — an auth outage stays a 503, not a 403');
+  }
+  {
+    // VALIDATE ON READ, FAIL CLOSED. A malformed source is not a normal load: handing it over as an
+    // editable baseline means the merchant edits corruption and 2b-2c passes it back through the CAS.
+    const broken = realSource('merch_a');
+    broken.items[0].price = 0;                      // a price validateSource rejects
+    const fs2 = mkFs(broken);
+    const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v', ...fs2 }, gReq());
+    assert.strictEqual(r.status, 503, 'a malformed source is a 503, never a normal 200');
+    assert.strictEqual(r.body.error, 'source_unavailable', 'typed');
+    assert.ok(!JSON.stringify(r.body).includes('"items"'), 'and the unvalidated source is NOT returned');
+    // ...and it is the REAL validator, not a stub that always passes
+    const good = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(realSource('merch_a')) }, gReq());
+    assert.strictEqual(good.status, 200, 'non-vacuity: a VALID source still loads (the validator is not rejecting everything)');
+    ok('a malformed source fails CLOSED as 503 and is never returned — validated by the real validator, on every read');
+  }
+  {
+    // The source is validated against the AUTHORIZED rid. Validating against the document's own
+    // restaurant_id would make a mis-filed document validate happily.
+    const misfiled = realSource('merch_b');          // valid, but says merch_b while stored under merch_a
+    const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(misfiled) }, gReq('merch_a'));
+    assert.strictEqual(r.status, 503, 'a source whose restaurant_id does not match where it is stored fails closed');
+    ok('the source is validated against the AUTHORIZED rid — a mis-filed document cannot self-certify');
+  }
+  {
+    // Absent vs unreadable are different things and must not share a code.
+    const absent = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(null, { exists: false }) }, gReq());
+    assert.strictEqual(absent.status, 404, 'no source document yet → 404');
+    assert.strictEqual(absent.body.error, 'source_absent', 'typed');
+    const down = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(null, { throwOn: 'firestore down' }) }, gReq());
+    assert.strictEqual(down.status, 503, 'an unreadable source → 503');
+    const noVersion = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => { throw new Error('pointer down'); }, ...mkFs(realSource('merch_a')) }, gReq());
+    assert.strictEqual(noVersion.status, 503, 'an unreadable active-version pointer → 503');
+    assert.notStrictEqual(absent.status, down.status, 'and "not there yet" is never confused with "cannot read it"');
+    ok('absent (404), unreadable source (503) and unreadable pointer (503) are distinct — never conflated');
+  }
+  {
+    // A restaurant with no published version yet is a legitimate state, not a failure: the draft exists
+    // and can be shown. Only an actual read FAILURE is a 503.
+    const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => null, ...mkFs(realSource('merch_a')) }, gReq());
+    assert.strictEqual(r.status, 200, 'never-published is still readable');
+    assert.strictEqual(r.body.activeVersionId, null, 'and honestly reports that nothing is live');
+    ok('a restaurant with nothing published yet loads, reporting activeVersionId null rather than failing');
+  }
+  {
+    // Read-only, and non-GET is refused.
+    const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(realSource('merch_a')) }, gReq('merch_a', { method: 'POST' }));
+    assert.strictEqual(r.status, 405, 'non-GET is refused');
+    const src = require('fs').readFileSync(require('path').join(__dirname, 'portal-reads.js'), 'utf8')
+      .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
+    for (const w of ['.set(', '.update(', '.delete(', '.create(', 'publishVersion', 'batch(']) {
+      assert.ok(!src.includes(w), `portal-reads is READ-ONLY — it must not contain ${w}`);
+    }
+    ok('read-only: non-GET refused, and the module contains no write call of any kind');
+  }
+  {
+    // Wiring.
+    const CODE = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8')
+      .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
+    assert.ok(/\{[^}]*\bgetEditableCatalogCore\b[^}]*\}\s*=\s*require\('\.\/catalog\/portal-reads'\)/.test(CODE), 'index.js must import the core');
+    assert.ok(/exports\.getEditableCatalog = onRequest\(/.test(CODE), 'and export the handler');
+    const blockOf2 = (name) => {
+      const start = CODE.indexOf(`exports.${name} = onRequest(`);
+      assert.ok(start > -1, `the ${name} wrapper must exist`);
+      const next = CODE.indexOf('\nexports.', start + 1);
+      return CODE.slice(start, next === -1 ? CODE.length : next);
+    };
+    const block = blockOf2('getEditableCatalog');
+    assert.ok(block.length > 100, 'non-vacuity: the wrapper block was found');
+    assert.ok(/await getEditableCatalogCore\(\{/.test(block), 'delegating to the TESTED core');
+    // owners are in RTDB, the source doc is in Firestore — mixing them up is the whole grill finding #4
+    assert.ok(/authorizeCatalogEdit\(\{ db: getDatabase\(\)/.test(block), 'authorize must read owners from RTDB');
+    assert.ok(/fsdb: getFirestore\(\)/.test(block), 'and the source doc from Firestore');
+    assert.ok(/sourceRefOf/.test(block) || /_sourceRefOf/.test(block) === false, 'the real source ref is used in production');
+    ok('the getEditableCatalog wrapper is exported, delegates to the core, and reads owners from RTDB + the source from Firestore');
   }
 
   console.log(`portal-reads: OK (${n})`);

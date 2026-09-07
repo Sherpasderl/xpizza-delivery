@@ -5921,7 +5921,8 @@ exports.publishEdited = onRequest(
 //
 // The ownership index lives in RTDB, so `db` is getDatabase() — getFirestore() would find nothing and
 // every merchant would see an empty portal, which looks exactly like "you own no restaurants".
-const { getMyRestaurantsCore } = require('./catalog/portal-reads');
+const { getMyRestaurantsCore, getEditableCatalogCore } = require('./catalog/portal-reads');
+const { getActiveVersionId: getActiveVersionIdForPortal } = require('./catalog/catalog-firestore');
 
 exports.getMyRestaurants = onRequest(
   { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
@@ -5934,6 +5935,27 @@ exports.getMyRestaurants = onRequest(
       return res.status(out.status).json(out.body);
     } catch (e) {
       console.error('getMyRestaurants', e && e.message);
+      return res.status(500).json({ error: 'error' });
+    }
+  },
+);
+
+exports.getEditableCatalog = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 30, memory: '256MiB', maxInstances: 10 },
+  async (req, res) => {
+    try {
+      const out = await getEditableCatalogCore({
+        // Owners live in RTDB and the source document lives in Firestore. Handing either the wrong
+        // client is a silent failure: an RTDB-less authorize denies every owner, a Firestore-less
+        // source read finds nothing.
+        db: getDatabase(),
+        fsdb: getFirestore(),
+        authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
+        readActiveVersionId: (fsdb, rid) => getActiveVersionIdForPortal(fsdb, rid),
+      }, req);
+      return res.status(out.status).json(out.body);
+    } catch (e) {
+      console.error('getEditableCatalog', e && e.message);
       return res.status(500).json({ error: 'error' });
     }
   },

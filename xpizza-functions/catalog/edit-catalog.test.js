@@ -252,7 +252,19 @@ const withPrice = (delta) => {
     assert.ok(/exports\.editCatalog = onRequest\(/.test(CODE), 'editCatalog must actually be exported, or nothing can call it');
     assert.ok(/await editCatalogCore\(\{/.test(CODE), 'and it must delegate to the TESTED core rather than reimplementing the logic');
     // the auth wiring must be the real verifier + the real membership database, not a stub left behind
-    assert.ok(/authorizeCatalogEdit\(\{ db: getDatabase\(\), verifyIdToken: \(t\) => getAuth\(\)\.verifyIdToken\(t\) \}, req, rid\)/.test(CODE),
+    // BOUNDED to this handler's own block. A file-wide search was enough when this was the only
+    // handler wiring authorizeCatalogEdit; the portal slice added a second, correct occurrence, and
+    // from that moment the check passed even with THIS handler mis-wired. Adding a second right answer
+    // silently disabled the guard on the first.
+    const blockOf = (name) => {
+      const start = CODE.indexOf(`exports.${name} = onRequest(`);
+      assert.ok(start > -1, `the ${name} wrapper must exist`);
+      const next = CODE.indexOf('\nexports.', start + 1);
+      return CODE.slice(start, next === -1 ? CODE.length : next);
+    };
+    const wrapper = blockOf('editCatalog');
+    assert.ok(!/exports\./.test(wrapper.slice(20)), 'the block is bounded to one handler');
+    assert.ok(/authorizeCatalogEdit\(\{ db: getDatabase\(\), verifyIdToken: \(t\) => getAuth\(\)\.verifyIdToken\(t\) \}, req, rid\)/.test(wrapper),
       'the wrapper must inject the REAL id-token verifier and the REAL membership db');
     // the diff must be against the ACTIVE PUBLISHED version, not against the store's own draft
     const body = CODE.slice(CODE.indexOf('async function readActiveBuiltForEdit'), CODE.indexOf('exports.editCatalog'));

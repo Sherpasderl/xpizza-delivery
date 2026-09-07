@@ -317,7 +317,19 @@ const ackFor = (diff) => diff.largeChangeSet.map((l) => ({ key: l.key, surface: 
     }
     assert.ok(/exports\.publishEdited = onRequest\(/.test(CODE), 'publishEdited must actually be exported');
     assert.ok(/await publishEditedCore\(\{/.test(CODE), 'and delegate to the TESTED core');
-    assert.ok(/authorizeCatalogEdit\(\{ db: getDatabase\(\), verifyIdToken: \(t\) => getAuth\(\)\.verifyIdToken\(t\) \}, req, rid\)/.test(CODE),
+    // BOUNDED to this handler's own block. A file-wide search was enough when this was the only
+    // handler wiring authorizeCatalogEdit; the portal slice added a second, correct occurrence, and
+    // from that moment the check passed even with THIS handler mis-wired. Adding a second right answer
+    // silently disabled the guard on the first.
+    const blockOf = (name) => {
+      const start = CODE.indexOf(`exports.${name} = onRequest(`);
+      assert.ok(start > -1, `the ${name} wrapper must exist`);
+      const next = CODE.indexOf('\nexports.', start + 1);
+      return CODE.slice(start, next === -1 ? CODE.length : next);
+    };
+    const wrapper = blockOf('publishEdited');
+    assert.ok(!/exports\./.test(wrapper.slice(20)), 'the block is bounded to one handler');
+    assert.ok(/authorizeCatalogEdit\(\{ db: getDatabase\(\), verifyIdToken: \(t\) => getAuth\(\)\.verifyIdToken\(t\) \}, req, rid\)/.test(wrapper),
       'wired to the REAL verifier and membership db, not a stub');
     // the REAL publisher, so verify-before-flip actually governs in production
     assert.ok(/publishVersion: publishVersionForEdit/.test(CODE), 'wired to the REAL publishVersion (verify-before-flip + atomic flip)');
