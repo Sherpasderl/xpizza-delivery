@@ -43,7 +43,8 @@
     "test:ledger-repair": "firebase emulators:exec --only database --project demo-xpizza \"node test/reward-ledger-repair.emulator.test.js\"",
     "test:rewards:emulator": "firebase emulators:exec --only database --project demo-xpizza \"node test/rewards-rules.emulator.test.js && node test/rewards-config-rules.emulator.test.js && node test/rewards-earn.emulator.test.js && node test/rewards-reserve.emulator.test.js && node test/rewards-redeem-intake.emulator.test.js && node test/rewards-redeem-settle.emulator.test.js\"",
     "test:edit-e2e": "firebase emulators:exec --only firestore --project demo-xpizza \"node test/edit-e2e.emulator.test.js\"",
-    "test:owner-rules": "npm run sync:rules && firebase emulators:exec --only database \"node test/owner-rules.emulator.test.js\""
+    "test:owner-rules": "npm run sync:rules && firebase emulators:exec --only database \"node test/owner-rules.emulator.test.js\"",
+    "test:portal": "node --test \"../xpizza-portal/*.test.mjs\""
   },
   "engines": {
     "node": "22"

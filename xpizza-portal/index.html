@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Sherpa — Portal del comercio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700;750;800&display=swap" rel="stylesheet">
+<style>
+  /* ── NIGHT (KDS-cued, warm dark board) — default identity ── */
+  :root, :root[data-theme="dark"]{
+    --board:#0F0E0C; --board-2:#151310; --panel:#161512; --line:#2A2823; --line2:#221F1B;
+    --card:#1A1815; --card-2:#211F1B; --ink:#F2EEE7; --on-dark:#F2EEE7; --mute:#A8A197; --mute2:#726B60;
+    --accent:#5B8DEF; --accent-2:#4577DC; --accent-ink:#fff; --gold:#E3B54A; --gold-line:#4E4126;
+    --green:#4FA65A; --green-soft:#16211A; --green-line:#2C4A32;
+    --red:#CE4B3A; --red-soft:#241614; --red-line:#5A2B24;
+    --amber:#E8A23E; --amber-soft:#251C10; --amber-line:#4E3D1E;
+    --tint:rgba(91,141,239,.10); --tint2:rgba(91,141,239,.17); --rbar-bg:rgba(21,19,16,.86);
+    --shadow:0 8px 24px -18px rgba(0,0,0,.85); --shadow-lg:0 40px 90px -34px rgba(0,0,0,.9);
+    --body:'Hanken Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif; --r:14px;
+  }
+  /* ── DAY — warm cream, same craft ── */
+  :root[data-theme="light"]{
+    --board:#FFFFFF; --board-2:#F2F4F7; --panel:#FFFFFF; --line:#E6E9EE; --line2:#F0F2F5;
+    --card:#FFFFFF; --card-2:#F5F7F9; --ink:#181B20; --on-dark:#232830; --mute:#5B636E; --mute2:#97A0AD;
+    --accent:#2D5FD0; --accent-2:#244FB0; --accent-ink:#fff; --gold:#9A7714; --gold-line:#E3D2A0;
+    --green:#2E8B4F; --green-soft:#E9F3EB; --green-line:#C4E0C9;
+    --red:#C0392B; --red-soft:#FBEBE8; --red-line:#EFC9C2;
+    --amber:#A9781A; --amber-soft:#FAF1DC; --amber-line:#E7D6A2;
+    --tint:rgba(45,95,208,.06); --tint2:rgba(45,95,208,.12); --rbar-bg:rgba(247,249,251,.9);
+    --shadow:0 1px 2px rgba(20,24,31,.05),0 12px 34px -22px rgba(20,24,31,.16); --shadow-lg:0 40px 90px -34px rgba(20,24,31,.28);
+  }
+  @media(prefers-color-scheme:light){:root:not([data-theme="dark"]){
+    --board:#FFFFFF; --board-2:#F2F4F7; --panel:#FFFFFF; --line:#E6E9EE; --line2:#F0F2F5;
+    --card:#FFFFFF; --card-2:#F5F7F9; --ink:#181B20; --on-dark:#232830; --mute:#5B636E; --mute2:#97A0AD;
+    --accent:#2D5FD0; --accent-2:#244FB0; --accent-ink:#fff; --gold:#9A7714; --gold-line:#E3D2A0;
+    --green:#2E8B4F; --green-soft:#E9F3EB; --green-line:#C4E0C9;
+    --red:#C0392B; --red-soft:#FBEBE8; --red-line:#EFC9C2;
+    --amber:#A9781A; --amber-soft:#FAF1DC; --amber-line:#E7D6A2;
+    --tint:rgba(45,95,208,.06); --tint2:rgba(45,95,208,.12); --rbar-bg:rgba(247,249,251,.9);
+    --shadow:0 1px 2px rgba(20,24,31,.05),0 12px 34px -22px rgba(20,24,31,.16); --shadow-lg:0 40px 90px -34px rgba(20,24,31,.28);
+  }}
+
+  *{box-sizing:border-box;margin:0}
+  html,body{height:100%}
+  body{background:var(--board);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;transition:background .3s ease,color .3s ease}
+  input,button,textarea{font-family:inherit}
+  ::selection{background:var(--tint2)}
+  .app{display:grid;grid-template-columns:238px 1fr;min-height:100vh}
+  @media(max-width:920px){.app{grid-template-columns:1fr}.side{display:none}}
+
+  /* ── sidebar ── */
+  .side{background:var(--panel);border-right:1px solid var(--line);padding:20px 16px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh;transition:background .3s,border-color .3s}
+  .brand{display:flex;align-items:center;gap:11px;padding:2px 8px 20px}
+  .bmark{width:29px;height:29px;border-radius:9px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:var(--accent-ink);font-weight:800;font-size:15px;letter-spacing:-.02em}
+  .bname{font-weight:750;letter-spacing:-.02em;font-size:16.5px}
+  .switch{margin:2px 0 20px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);display:flex;align-items:center;gap:11px;cursor:pointer;transition:border-color .18s,background .3s}
+  .switch:hover{border-color:var(--mute2)}
+  .shop{width:30px;height:30px;border-radius:8px;background:var(--board-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--mute);flex:none}
+  .shop svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8}
+  .switch .sinfo{min-width:0;flex:1}.switch b{font-weight:700;font-size:13.5px;display:block}.switch .cv{color:var(--mute2);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+  .switch .chev{color:var(--mute2);font-size:11px}
+  .nlabel{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute2);padding:16px 8px 6px;font-weight:750}
+  .nav{display:flex;align-items:center;gap:12px;padding:9px 11px;border-radius:9px;color:var(--mute);font-weight:600;cursor:pointer;font-size:13.5px;transition:background .18s,color .18s,transform .08s}
+  .nav:hover{color:var(--ink);background:var(--card)}
+  .nav:active{transform:scale(.985)}
+  .nav.on{background:var(--tint2);color:var(--accent)}
+  .nav svg{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round}
+  .sfoot{margin-top:auto;padding-top:14px;border-top:1px solid var(--line2);display:flex;align-items:center;gap:11px}
+  .av{width:30px;height:30px;border-radius:50%;background:var(--card-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--ink);flex:none}
+
+  /* ── main ── */
+  .main{padding:26px 34px 132px;max-width:1120px}
+  .top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+  h1{font-size:27px;font-weight:750;letter-spacing:-.03em}
+  .lede{color:var(--mute);font-size:13px;margin-top:5px;max-width:56ch}
+  .topact{display:flex;gap:9px;flex:none}
+
+  .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:9px 15px;font-size:13px;font-weight:650;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:border-color .15s,background .18s,color .15s,transform .08s}
+  .btn:hover{border-color:var(--mute2);background:var(--card-2)}
+  .btn:active{transform:scale(.98)}
+  .btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .btn.accent{background:var(--ink);border-color:var(--ink);color:var(--card)}
+  .btn.accent:hover{opacity:.86}
+  .btn.ghost{background:transparent}
+  .btn:disabled{opacity:.42;cursor:not-allowed}
+  .tbtn{width:36px;height:36px;padding:0;justify-content:center;border-radius:10px}
+  .tbtn .moon{display:none}.tbtn .sun{display:block}
+  :root[data-theme="light"] .tbtn .sun{display:none}:root[data-theme="light"] .tbtn .moon{display:block}
+  @media(prefers-color-scheme:light){:root:not([data-theme="dark"]) .tbtn .sun{display:none}:root:not([data-theme="dark"]) .tbtn .moon{display:block}}
+
+  /* ── tabs + search ── */
+  .bar{display:flex;align-items:center;gap:20px;margin-top:24px;border-bottom:1px solid var(--line);padding-bottom:0}
+  .tabs{display:flex;gap:26px}
+  .tab{position:relative;padding:0 1px 13px;font-size:14.5px;font-weight:700;color:var(--mute);cursor:pointer;letter-spacing:-.01em;transition:color .18s;background:none;border:none}
+  .tab:hover{color:var(--ink)}
+  .tab.on{color:var(--ink)}
+  .tab.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--accent);border-radius:2px}
+  .search{margin-left:auto;position:relative;margin-bottom:10px}
+  .search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:15px;height:15px;stroke:var(--mute2);fill:none;stroke-width:2}
+  .search input{width:230px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px 8px 34px;font-size:13px;color:var(--ink);transition:border-color .15s,width .2s}
+  .search input:focus{outline:none;border-color:var(--accent);width:264px}
+  .search input::placeholder{color:var(--mute2)}
+
+  /* ── master / detail ── */
+  .split{display:grid;grid-template-columns:246px 1fr;gap:24px;margin-top:24px;align-items:start}
+  @media(max-width:920px){.split{grid-template-columns:1fr}}
+  .rail{display:flex;flex-direction:column;gap:4px}
+  .railitem{display:flex;align-items:center;gap:11px;padding:12px 13px;border-radius:11px;border:1px solid transparent;cursor:pointer;transition:background .16s,border-color .16s;text-align:left;background:none;width:100%;color:inherit;position:relative}
+  .railitem:hover{background:var(--card)}
+  .railitem.on{background:var(--card);border-color:var(--line)}
+  .railitem.on::before{content:"";position:absolute;left:0;top:11px;bottom:11px;width:3px;border-radius:3px;background:var(--accent)}
+  .rgrip{color:var(--mute2);display:flex;opacity:0;transition:opacity .15s}.railitem:hover .rgrip{opacity:1}
+  .rgrip svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2}
+  .rtext{flex:1;min-width:0}
+  .rtext b{font-size:13.5px;font-weight:700;display:block;letter-spacing:-.01em}
+  .rtext span{font-size:11.5px;color:var(--mute2)}
+  .rcount{font-size:11px;color:var(--mute);background:var(--board-2);border:1px solid var(--line2);min-width:22px;height:22px;padding:0 7px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-weight:650;font-variant-numeric:tabular-nums}
+  .railitem.on .rcount{color:var(--accent);border-color:var(--accent-line,transparent);background:var(--tint2)}
+
+  .detail{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);transition:background .3s,border-color .3s}
+  .dhead{display:flex;align-items:center;gap:12px;padding:18px 20px;border-bottom:1px solid var(--line2)}
+  .dtitle{font-size:16px;font-weight:750;letter-spacing:-.02em;outline:none;border-radius:5px}
+
+  /* ── login gate ─────────────────────────────────────────────────────────────────────────────
+     The app shell is not rendered at all until there is a signed-in user. This is cosmetic — the
+     server decides everything — but a portal that flashes an empty menu frame before redirecting
+     looks broken, and looking broken on a money surface costs trust. */
+  .gate{min-height:100vh;display:grid;place-items:center;padding:24px}
+  .gatecard{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:30px 28px;box-shadow:var(--shadow-lg)}
+  .gatebrand{display:flex;align-items:center;gap:11px;margin-bottom:22px}
+  .gatecard h1{font-size:20px;margin-bottom:5px}
+  .gatecard .lede{margin-bottom:22px}
+  .field{display:block;margin-bottom:13px}
+  .field span{display:block;font-size:12px;font-weight:650;color:var(--mute);margin-bottom:6px}
+  .field input{width:100%;background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px;color:var(--ink);transition:border-color .15s}
+  .field input:focus{outline:none;border-color:var(--accent)}
+  .gatecard .btn.accent{width:100%;justify-content:center;padding:12px}
+  .err{display:none;margin-top:13px;padding:10px 12px;border-radius:9px;background:var(--red-soft);border:1px solid var(--red-line);color:var(--red);font-size:12.5px}
+  .err.on{display:block}
+  .hidden{display:none !important}
+  .empty{padding:56px 20px;text-align:center;color:var(--mute)}
+  .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:6px}
+</style>
+</head>
+<body>
+
+<!-- ── LOGIN GATE ─────────────────────────────────────────────────────────────────────────── -->
+<div class="gate" id="gate">
+  <div class="gatecard">
+    <div class="gatebrand"><div class="bmark">S</div><div class="bname">Sherpa</div></div>
+    <h1>Portal del comercio</h1>
+    <p class="lede">Ingresá para ver y administrar tu menú.</p>
+    <!-- a real <form>, so Enter submits and password managers behave; the handler prevents the
+         default GET that would otherwise put the password in the URL -->
+    <form id="loginform" novalidate>
+      <label class="field"><span>Correo</span>
+        <input id="email" type="email" autocomplete="username" required autocapitalize="off" spellcheck="false"></label>
+      <label class="field"><span>Contraseña</span>
+        <input id="pass" type="password" autocomplete="current-password" required></label>
+      <button class="btn accent" id="loginbtn" type="submit">Ingresar</button>
+      <p class="err" id="loginerr" role="alert" aria-live="polite"></p>
+    </form>
+  </div>
+</div>
+
+<!-- ── APP SHELL (empty until Tasks 5-6 fill it) ──────────────────────────────────────────── -->
+<div class="app hidden" id="app">
+  <aside class="side">
+    <div class="brand"><div class="bmark">S</div><div class="bname">Sherpa</div></div>
+    <!-- the restaurant switcher; populated by getMyRestaurants in Task 5 -->
+    <button class="switch" id="switcher" type="button">
+      <div class="shop"><svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11a2 2 0 0 1-2 1.8H6.5a2 2 0 0 1-2-1.8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/></svg></div>
+      <div class="sinfo"><b id="shopname">—</b><span class="cv" id="shopsub">Cargando…</span></div>
+      <div class="chev">▾</div>
+    </button>
+    <div class="nlabel">Menú</div>
+    <div class="nav on"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Productos</div>
+    <div class="sfoot">
+      <div class="av" id="avatar">·</div>
+      <div class="sinfo"><b id="whoami" style="font-size:12.5px">—</b><span class="cv">Dueño</span></div>
+      <button class="btn ghost tbtn" id="logout" type="button" title="Cerrar sesión">
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round"><path d="M16 17l5-5-5-5M21 12H9M12 3H5v18h7"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div><h1>Productos</h1><p class="lede">Tu menú, como lo ven tus clientes.</p></div>
+    </div>
+    <div class="split">
+      <div class="rail" id="rail"></div>
+      <div class="detail" id="detail">
+        <div class="empty" id="detailempty"><b>Cargando tu menú…</b>Un momento.</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  // Task 4 is the gate only: sign in, show the shell, sign out. Loading and rendering the menu is
+  // Tasks 5-6. Nothing here decides what a merchant may see — the server does, on every request.
+  import { login, logout, watchAuth, authErrorMessage } from './auth.js';
+
+  const $ = (id) => document.getElementById(id);
+  const gate = $('gate'), app = $('app'), err = $('loginerr'), btn = $('loginbtn');
+  const showError = (msg) => { err.textContent = msg; err.classList.toggle('on', !!msg); };
+
+  $('loginform').addEventListener('submit', async (e) => {
+    e.preventDefault();                       // never let the password reach the URL
+    showError('');
+    btn.disabled = true;                      // a second submit while the first is in flight just
+    btn.textContent = 'Ingresando…';          // burns an attempt against the rate limiter
+    try {
+      await login($('email').value.trim(), $('pass').value);
+    } catch (e2) {
+      // The SDK error is mapped to one of a fixed set of sentences. The raw code never reaches the
+      // screen: it is noise to a merchant, and for credential failures it is also an enumeration hint.
+      // It IS logged, because an unmapped code is a gap in the map and the only way to see one is to
+      // have it recorded somewhere a developer looks.
+      console.warn('portal_login_failed', e2 && e2.code);
+      showError(authErrorMessage(e2 && e2.code));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Ingresar';
+    }
+  });
+
+  $('logout').addEventListener('click', () => logout());
+
+  watchAuth((user) => {
+    const inn = !!user;
+    gate.classList.toggle('hidden', inn);
+    app.classList.toggle('hidden', !inn);
+    if (inn) {
+      showError('');
+      $('pass').value = '';                   // do not leave a password sitting in the DOM
+      $('whoami').textContent = user.email || user.uid;
+      $('avatar').textContent = (user.email || '?').slice(0, 1).toUpperCase();
+      document.dispatchEvent(new CustomEvent('portal:signed-in'));   // Task 5 listens for this
+    }
+  });
+</script>
+</body>
+</html>

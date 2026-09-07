@@ -348,7 +348,15 @@ const TWO = {
     // owners are in RTDB, the source doc is in Firestore — mixing them up is the whole grill finding #4
     assert.ok(/authorizeCatalogEdit\(\{ db: getDatabase\(\)/.test(block), 'authorize must read owners from RTDB');
     assert.ok(/fsdb: getFirestore\(\)/.test(block), 'and the source doc from Firestore');
-    assert.ok(/sourceRefOf/.test(block) || /_sourceRefOf/.test(block) === false, 'the real source ref is used in production');
+    // The production wrapper must inject NO test overrides. The previous form of this line —
+    // `/sourceRefOf/.test(block) || /_sourceRefOf/.test(block) === false` — was a tautology: the
+    // right-hand side is true whenever the left is false, so it could never fail. Production was
+    // correct; the assertion simply was not guarding it. (Flagged by the codex gate.)
+    for (const override of ['_sourceRefOf', '_validateSource']) {
+      assert.ok(!block.includes(override), `the production wrapper must not inject ${override} — the real ${override.slice(1)} is the point`);
+    }
+    // non-vacuity: the detector really does fire on an injected override
+    assert.ok(`${block}\n  _sourceRefOf: () => fake,`.includes('_sourceRefOf'), 'the check can see an override when one is present');
     ok('the getEditableCatalog wrapper is exported, delegates to the core, and reads owners from RTDB + the source from Firestore');
   }
 
