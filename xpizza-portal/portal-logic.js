@@ -14,13 +14,6 @@ export function pickRid(restaurants, remembered) {
   return owned ? remembered : restaurants[0].rid;
 }
 
-function showEmpty(title, detail) {
-  $('rail').innerHTML = '';
-  $('detail').innerHTML = `<div class="empty"><b></b><span></span></div>`;
-  $('detail').querySelector('b').textContent = title;      // textContent, never innerHTML: nothing
-  $('detail').querySelector('span').textContent = detail;  // from a server response is markup
-}
-
 // A typed failure becomes a sentence a merchant can act on. Unavailable says "try again"; NotAuthorized
 // says "this account cannot see this" — conflating them sends someone to re-authenticate over an outage.
 export function messageFor(err) {
