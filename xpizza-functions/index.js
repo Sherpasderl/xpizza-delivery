@@ -5833,6 +5833,7 @@ module.exports.RATE_LIMIT_BUCKETS = RATE_LIMIT_BUCKETS;
 const { authorizeCatalogEdit } = require('./catalog/catalog-edit-auth');
 const { editCatalogCore } = require('./catalog/edit-catalog-handler');
 const { previewVersion: previewVersionForEdit } = require('./catalog/catalog-publish');
+const { sourceRefOf: sourceRefOfForEdit } = require('./catalog/source-store');
 const { readVersionDocs: readVersionDocsForEdit, getActiveVersionId: getActiveVersionIdForEdit } = require('./catalog/catalog-firestore');
 const { buildTablesFromDocs: buildTablesForEdit } = require('./catalog/catalog-transform');
 
@@ -5861,6 +5862,40 @@ exports.editCatalog = onRequest(
       return res.status(out.status).json(out.body);
     } catch (e) {
       console.error('editCatalog', e && e.message);
+      return res.status(500).json({ error: 'error' });
+    }
+  },
+);
+
+const { publishEditedCore } = require('./catalog/publish-edited-handler');
+const { publishVersion: publishVersionForEdit } = require('./catalog/catalog-publish');
+const { makeRtdbMirror: makeRtdbMirrorForEdit } = require('./catalog/mirror-rtdb');
+
+// The draft, with the updateTime the token is bound to. Read here (not inside the core) so the core
+// stays free of Firestore and therefore testable.
+async function readDraftForEdit(rid) {
+  const snap = await sourceRefOfForEdit(getFirestore(), rid).get();
+  if (!snap.exists) return { source: null, updateTime: null };
+  return { source: snap.data(), updateTime: snap.updateTime ? snap.updateTime.toDate().toISOString() : null };
+}
+
+exports.publishEdited = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 120, memory: '512MiB', maxInstances: 2 },
+  async (req, res) => {
+    try {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
+      const out = await publishEditedCore({
+        db: getFirestore(),
+        authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
+        readActiveBuilt: readActiveBuiltForEdit,
+        readDraft: readDraftForEdit,
+        publishVersion: publishVersionForEdit,
+        mirror: makeRtdbMirrorForEdit(getDatabase()),
+        alarm: (kind, detail) => paymentAlert(getDatabase(), kind, detail),
+      }, req.body || {}, req);
+      return res.status(out.status).json(out.body);
+    } catch (e) {
+      console.error('publishEdited', e && e.message);
       return res.status(500).json({ error: 'error' });
     }
   },
