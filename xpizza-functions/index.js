@@ -5588,6 +5588,25 @@ const ACCOUNT_ORIGINS = [
   'https://orders.lamusa.hn',
 ];
 
+// Portal 2b-2a — the merchant portal is a DIFFERENT origin from the two customer order sites, so it
+// needs its own CORS list. Deliberately NOT added to ACCOUNT_ORIGINS: that constant guards the OTP and
+// account endpoints, and widening it would hand the portal's origin access to surfaces it has no
+// business calling. Two lists, each as narrow as its own purpose.
+//
+// localhost is allowed for development. It is not a meaningful weakening: CORS decides which ORIGIN may
+// read a response, not who is authorized — every portal endpoint still requires a verified ID token
+// whose uid sits in restaurants/{rid}/owners, so a page served from any origin still gets 403 without
+// one. What it does allow is a developer running the portal locally against production data, which is
+// exactly how this slice is verified.
+//
+// ⚠️ THE PRODUCTION PORTAL DOMAIN IS NOT HERE YET — it does not exist until the owner creates the
+// Netlify site (Task 7). Until it is added, a deployed portal gets a CORS failure on every call, which
+// the client reports as "Unavailable" (try again) rather than anything actionable. Adding it is a
+// required deploy step, not a nice-to-have.
+const PORTAL_ORIGINS = [
+  /^http:\/\/localhost(:\d+)?$/,
+];
+
 exports.requestOtp = onRequest(
   { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
   async (req, res) => {
@@ -5925,7 +5944,7 @@ const { getMyRestaurantsCore, getEditableCatalogCore } = require('./catalog/port
 const { getActiveVersionId: getActiveVersionIdForPortal } = require('./catalog/catalog-firestore');
 
 exports.getMyRestaurants = onRequest(
-  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
   async (req, res) => {
     try {
       const out = await getMyRestaurantsCore({
@@ -5941,7 +5960,7 @@ exports.getMyRestaurants = onRequest(
 );
 
 exports.getEditableCatalog = onRequest(
-  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 30, memory: '256MiB', maxInstances: 10 },
+  { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 30, memory: '256MiB', maxInstances: 10 },
   async (req, res) => {
     try {
       const out = await getEditableCatalogCore({

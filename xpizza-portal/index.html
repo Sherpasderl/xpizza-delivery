@@ -204,6 +204,7 @@
   // Task 4 is the gate only: sign in, show the shell, sign out. Loading and rendering the menu is
   // Tasks 5-6. Nothing here decides what a merchant may see — the server does, on every request.
   import { login, logout, watchAuth, authErrorMessage } from './auth.js';
+  import './app.js';   // listens for portal:signed-in and resolves the restaurant list
 
   const $ = (id) => document.getElementById(id);
   const gate = $('gate'), app = $('app'), err = $('loginerr'), btn = $('loginbtn');

@@ -360,6 +360,32 @@ const TWO = {
     ok('the getEditableCatalog wrapper is exported, delegates to the core, and reads owners from RTDB + the source from Firestore');
   }
 
+  // ── (6) CORS: the portal is a different ORIGIN from the customer order sites ─────────────────
+  {
+    const CODE = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8')
+      .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
+    const blockOf = (name) => {
+      const start = CODE.indexOf(`exports.${name} = onRequest(`);
+      assert.ok(start > -1, `${name} must exist`);
+      const next = CODE.indexOf('\nexports.', start + 1);
+      return CODE.slice(start, next === -1 ? CODE.length : next);
+    };
+    for (const fn of ['getMyRestaurants', 'getEditableCatalog']) {
+      const b = blockOf(fn);
+      assert.ok(/cors: PORTAL_ORIGINS/.test(b), `${fn} must use the portal's own CORS list`);
+      // ...and NOT the account list. Widening ACCOUNT_ORIGINS to include the portal would hand the
+      // portal's origin access to the OTP and account endpoints, which it has no business calling.
+      assert.ok(!/cors: ACCOUNT_ORIGINS/.test(b), `${fn} must not reuse the account-endpoint CORS list`);
+    }
+    // the account endpoints keep theirs, untouched
+    assert.ok(/cors: ACCOUNT_ORIGINS/.test(blockOf('requestOtp')), 'the account endpoints still use ACCOUNT_ORIGINS');
+    assert.ok(!/PORTAL_ORIGINS/.test(blockOf('requestOtp')), 'and did not inherit the portal list');
+    // the two lists must be genuinely separate constants, not aliases
+    assert.ok(/const PORTAL_ORIGINS = \[/.test(CODE) && /const ACCOUNT_ORIGINS = \[/.test(CODE), 'two distinct lists');
+    assert.ok(!/PORTAL_ORIGINS = ACCOUNT_ORIGINS|ACCOUNT_ORIGINS\.concat/.test(CODE), 'neither derived from the other');
+    ok('the portal reads use their own narrow CORS list; the account endpoints keep theirs, unwidened');
+  }
+
   console.log(`portal-reads: OK (${n})`);
   FINISHED = true;
 })().catch((e) => { console.error(e); process.exit(1); });
