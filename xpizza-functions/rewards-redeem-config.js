@@ -1,6 +1,6 @@
 'use strict';
 
-const { MENU_BY_RESTAURANT, resolvePriceTables } = require('./menu-pricing');
+const { resolvePriceTables } = require('./menu-pricing');   // 2a Task 9: MENU_BY_RESTAURANT was imported but unused
 
 // Rewards Redemption v2 — redemption config (versioned, static module). Pure data + tiny accessors; the money
 // calculator (rewards-redeem.js) and the handlers read ONLY from here. Owner-locked (design-gate approved):

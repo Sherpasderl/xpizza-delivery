@@ -16,13 +16,13 @@
 const { orderBreakdownCents } = require('./order-money');
 const { pricedLineItems } = require('./factura/pricing');
 const { reconcileLineBases } = require('./factura/money');
-const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, resolvePriceTables } = require('./menu-pricing');
+const { resolvePriceTables } = require('./menu-pricing');   // 2a Task 9: the raw tables were imported but unused
 const { isValidPrice } = require('./price-valid');   // 1d-1a EXTENSION: the ONE price-validity rule
 
 // 1b-1b FISCAL (owner-approved): this produces the REDEEMED X. Pizza factura value (factura_items +
 // desc_rebaja_cents). Threading `tables` moves only the SOURCE — the value is byte-identical while the
-// parity guard holds. The NON-redeem factura path (index.js pricedLineItems / MENU_PRICES) stays on code
-// until 1b-2 and is deliberately untouched here.
+// parity guard holds. (That note once said the NON-redeem factura path stayed on code via index.js's
+// MENU_PRICES — stale since 2c: pricedLineItems is only ever called from here, with resolved tables.)
 function applyRedemptionToPricing({ items, restaurantId, redemption, totalLempiras, tables = null }) {
   try {
     if (!redemption || redemption.ok !== true) return { ok: false, error: 'no_redemption' };

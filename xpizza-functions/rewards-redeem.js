@@ -12,7 +12,7 @@
 // Eligibility is server-authoritative (rewards-redeem-config): X. Pizza = the individual allowlist (NY excluded);
 // La Musa = any non-alcohol menu dish + the 3 acompañamientos (modifiers/alcohol rejected). Never throws.
 const crypto = require('crypto');
-const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, resolvePriceTables } = require('./menu-pricing');
+const { resolvePriceTables } = require('./menu-pricing');   // 2a Task 9: the raw tables were imported but unused
 const { isValidPrice } = require('./price-valid');   // 1d-1a EXTENSION: the ONE price-validity rule
 const { REDEMPTION_CONFIG, REDEMPTION_CONFIG_VERSION, REDEEM_POINTS_PER_LEMPIRA, isXPizzaEligible, isLaMusaEligible } = require('./rewards-redeem-config');
 

@@ -246,17 +246,19 @@ function asNumber(v) {
 const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 
 // ---------------------------------------------------------------------------
-// Server-side price tables + total recomputation now live in ./menu-pricing
-// (pure, restaurant-keyed, unit-tested). MENU_BY_RESTAURANT holds each restaurant's
-// table; computeServerTotal(items, restaurantId) recomputes the total (x_pizza →
-// match by name, la_musa → by id). EXTRA_PRICES + the x_pizza alias below keep the
-// factura pricedLineItems call sites byte-identical until A3 makes them restaurant-aware.
+// Server-side total recomputation lives in ./menu-pricing (pure, restaurant-keyed, unit-tested).
+// computeServerTotal(items, restaurantId, tables) recomputes the total (x_pizza → match by name,
+// la_musa → by id) from the CATALOG tables this handler resolved.
+//
+// 2a Task 9 — the raw code tables are no longer imported here. MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT,
+// EXTRA_PRICES and the MENU_PRICES alias were all still imported but entirely UNUSED: every pricing path
+// had already moved to the resolved tables. Dead imports of a retired authority are exactly what a
+// future edit reaches for, so they are gone and catalog/no-code-authority.guard.test.js keeps them gone.
 // ---------------------------------------------------------------------------
-const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, EXTRA_PRICES, computeServerTotal, summaryLines, weekendOnlyViolation, resolvePriceTables } = require('./menu-pricing');
+const { computeServerTotal, summaryLines, weekendOnlyViolation, resolvePriceTables } = require('./menu-pricing');
 const { orderContentKey, isContentRetap, rateLimitKey } = require('./order-dedup');   // Layer 2 — content-aware phone rate limit; rateLimitKey shared with the F3 guard
 const CONTENT_DEDUP_WINDOW_MS = 120000;   // a same-phone same-cart resubmit within 2 min = a re-tap, not a new order
 const { checkItemAvailability } = require('./availability-gate');   // KDS 2b — server intake "86" fail-safe (fail-open)
-const MENU_PRICES = MENU_BY_RESTAURANT.x_pizza; // x_pizza table — used by pricedLineItems (factura)
 
 // ── Phase 1b-1: the GUARDED pricing resolver (order-total path only) ────────────────────────────
 // Prices are read from the Firestore catalog ONLY when it byte-equals the in-code table; on any
