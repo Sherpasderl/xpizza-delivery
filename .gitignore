@@ -19,7 +19,7 @@ run_patches.sh
 xpizza-functions/database.rules.json
 
 # ----- Node.js -----
-node_modules/
+node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
