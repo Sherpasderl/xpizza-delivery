@@ -14,12 +14,18 @@ const DEFAULT_RESTAURANT_ID = 'x_pizza';
 //   known            → itself.
 //   unknown          → { error } → the handler returns 400 (never price/persist an unknown).
 // Returns { restaurantId, error, defaulted }.
-function resolveRestaurantId(raw) {
+// 2a Task 8: `knownSet` is the live registry set (code floor ∪ the onboarded merchants), threaded in
+// like every other catalog-derived input so this stays pure and synchronous — it runs at the very top
+// of the handler, before pricing exists, so it cannot read anything itself. Omitted ⇒ the code set,
+// which is today's exact behaviour. The registry can only ever ADD to that set, never subtract, so an
+// unknown id is still fail-closed here and a registry outage can never un-know a live brand.
+function resolveRestaurantId(raw, knownSet = null) {
+  const known = (knownSet && typeof knownSet.has === 'function') ? knownSet : KNOWN_RESTAURANTS;
   const rid = String(raw == null ? '' : raw).trim();
   if (!rid) {
     return { restaurantId: DEFAULT_RESTAURANT_ID, error: null, defaulted: true };
   }
-  if (!KNOWN_RESTAURANTS.has(rid)) {
+  if (!known.has(rid)) {
     return { restaurantId: null, error: `unknown restaurant_id: ${rid.slice(0, 40)}`, defaulted: false };
   }
   return { restaurantId: rid, error: null, defaulted: false };

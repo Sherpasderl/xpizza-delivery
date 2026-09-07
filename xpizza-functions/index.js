@@ -310,6 +310,20 @@ function pricingResolver() {
   }
   return _pricingResolver;
 }
+// ── Portal 2a Task 8 — WHICH RESTAURANTS EXIST ─────────────────────────────────────────────────
+// The known-restaurant set was compiled in, so onboarding merchant #3 needed a deploy. It is now the
+// code floor UNIONED with the `restaurants` collection's document ids. Union only — the registry can
+// never remove a brand, because a Firestore hiccup that un-knows x_pizza would 400 every order.
+// Singleton: the cache is what keeps this a per-instance read rather than a per-order one.
+const { createRestaurantRegistry, makeFirestoreRegistryReader } = require('./catalog/restaurant-registry');
+let _restaurantRegistry = null;
+function restaurantRegistry() {
+  if (!_restaurantRegistry) {
+    _restaurantRegistry = createRestaurantRegistry({ listIds: makeFirestoreRegistryReader(getFirestore()) });
+  }
+  return _restaurantRegistry;
+}
+
 // ── Portal 2a Task 5 — the AVAILABILITY GATE reader ────────────────────────────────────────────
 // The weekend gate needs CATEGORIES, but the serving path deliberately carries only { menu, extras }
 // and the resolver above is money-path-frozen. Rather than widen the money path to carry structure,
@@ -597,7 +611,10 @@ createOrderApp.all('*', async (req, res) => {
   // Parse + validate. Resolve restaurant_id FIRST — it selects the menu the total is priced
   // against and gates idempotency + identity below. Missing → x_pizza; unknown → 400.
   const body = req.body || {};
-  const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id);
+  // 2a: warm the registry before resolving. A no-op once this instance has read it — the cost is one
+  // metadata call per cold start, not one per order.
+  await restaurantRegistry().ready();
+  const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
   if (ridError) return badRequest(res, ridError);
   if (!ridDefaulted) console.log(`createOrder: restaurant_id=${restaurantId}`);
   const db = getDatabase();                                            // 1b-1: hoisted above validation (the RTDB alarm sink)
@@ -1092,7 +1109,10 @@ chargeOnlineApp.all('*', async (req, res) => {
   }
 
   const body = req.body || {};
-  const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id);
+  // 2a: warm the registry before resolving. A no-op once this instance has read it — the cost is one
+  // metadata call per cold start, not one per order.
+  await restaurantRegistry().ready();
+  const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
   if (ridError) return badRequest(res, ridError);
   if (!ridDefaulted) console.log(`chargeOnlineOrder: restaurant_id=${restaurantId}`);
   const db = getDatabase();                                            // 1b-1: hoisted above validation (the RTDB alarm sink)
@@ -5575,7 +5595,7 @@ exports.requestOtp = onRequest(
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
       const { phone, restaurant_id } = req.body || {};
-      const { restaurantId } = resolveRestaurantId(restaurant_id);
+      const { restaurantId } = resolveRestaurantId(restaurant_id, restaurantRegistry().known());
       const pHash = OTP.phoneHash(phone);
       if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration
       const now = Date.now();
@@ -5634,7 +5654,7 @@ exports.verifyOtp = onRequest(
       // phone_hash is stored (server-only write) so deleteAccount/sweep can find /phone_index in O(1).
       if (!prof) await profRef.set({ phone: OTP.normalizePhone(phone), phone_hash: pHash, created_at: now2, last_login: now2 });
       else await profRef.child('last_login').set(now2);
-      const rid = resolveRestaurantId((await otpRef.child('rid').get()).val()).restaurantId;   // brand the code was requested for
+      const rid = resolveRestaurantId((await otpRef.child('rid').get()).val(), restaurantRegistry().known()).restaurantId;   // brand the code was requested for
       await otpRef.remove();   // one-time use — the code cannot be replayed
       const token = await getAuth().createCustomToken(uid, { customer: true });   // mint ONLY after verified+consumed
       // Rewards Phase A — welcome bonus, once per phone_hash per brand (reward_welcome tombstone → un-farmable,
@@ -5678,7 +5698,7 @@ exports.quoteOrder = onRequest(
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
       const body = req.body || {};
-      const { restaurantId, error: ridError } = resolveRestaurantId(body.restaurant_id);
+      const { restaurantId, error: ridError } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
       if (ridError) return res.status(400).json({ ok: false, error: 'bad_request', detail: ridError });
 
       // Public + unauthenticated (a non-redemption cart's price is not user-specific), so it is
@@ -5717,7 +5737,7 @@ exports.quoteRedemption = onRequest(
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
       const body = req.body || {};
-      const { restaurantId, error: ridError } = resolveRestaurantId(body.restaurant_id);
+      const { restaurantId, error: ridError } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
       if (ridError) return res.status(400).json({ ok: false, error: 'bad_request', detail: ridError });
       const db = getDatabase();
       // Verified non-guest uid — SAME as intake (customer:true + tombstone check); a client-supplied uid is never used.
