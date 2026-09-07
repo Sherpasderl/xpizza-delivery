@@ -3,6 +3,7 @@
 // compares counts/keys/prices to menu-pricing.js — prints a diff, exits NON-ZERO on any mismatch. The
 // emulator proves the CODE; only this proves the PRODUCTION store landed.
 // Run (owner, post-seed OR post publish-version, PRE rules-deploy): node tools/verify-catalog.js
+// After a MERCHANT EDIT (portal 2b-1), ask the post-edit question instead: node tools/verify-catalog.js --vs-active
 // This script only READS. It never writes to Firestore.
 //
 // 1c-b2: getRestaurantDocs is now POINTER-FIRST — it resolves restaurants/{rid}/meta/active_version and
@@ -15,15 +16,38 @@ const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { getRestaurantDocs } = require('../catalog/catalog-firestore');
 const { readSource, sourceToBuildInputs } = require('../catalog/source-store');   // portal 2a
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
-const { assertStoreCodeParity } = require('../catalog/publish-parity');
+const { assertStoreCodeParity, assertStoreMatchesActive } = require('../catalog/publish-parity');
 const { buildTablesFromDocs } = require('../catalog/catalog-transform');
+const { previewVersion } = require('../catalog/catalog-publish');                 // portal 2b-1
+const { getActiveVersionId, readVersionDocs } = require('../catalog/catalog-firestore');
+
+// Portal 2b-1 — WHICH QUESTION THIS TOOL ASKS.
+//
+//   default        store == CODE. The 2a cutover question. Right up to the first intended edit, and
+//                  right again after a rollback-to-code.
+//   --vs-active    store == the ACTIVE PUBLISHED VERSION. The post-2b question. Once a merchant edits
+//                  their menu, divergence from code is the POINT, so the default mode fails by design —
+//                  and a verifier that always fails is one people stop running.
+//
+// The modes are EXCLUSIVE, not additive. Running the code comparison in --vs-active mode would fail on
+// every intended edit, which is the exact uselessness this mode exists to remove.
+const VS_ACTIVE = process.argv.includes('--vs-active');
 
 admin.initializeApp({ credential: admin.credential.applicationDefault() });
 const db = admin.firestore();
 
+// The active published version, built the same way the store is, so the two are comparable.
+async function activeBuiltOf(rid) {
+  const versionId = await getActiveVersionId(db, rid);
+  if (versionId == null) throw new Error(`no_active_version: ${rid} — nothing published to compare against`);
+  const [preview, docs] = await Promise.all([previewVersion(db, rid, versionId), readVersionDocs(db, rid, versionId)]);
+  const { extras } = buildTablesFromDocs(docs.itemDocs, docs.extraDocs);
+  return { built: { items: preview.items, structure: preview.structure, extras }, versionId };
+}
+
 (async () => {
   let bad = 0;
-  for (const rid of ['x_pizza', 'la_musa']) {
+  for (const rid of (VS_ACTIVE ? [] : ['x_pizza', 'la_musa'])) {
     const d = await getRestaurantDocs(db, rid);                 // pointer-first; throws on not-found/empty/malformed/completeness
     const back = buildTablesFromDocs(d.itemDocs, d.extraDocs);
     console.log(`${rid}: serving via ${d.versionId ? `active_version ${d.versionId}` : 'the FLAT layout (not yet migrated)'}`);
@@ -53,11 +77,19 @@ const db = admin.firestore();
     }
     const inputs = sourceToBuildInputs(source);
     const storeBuilt = { ...buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable }), extras: inputs.extras };
-    const codeBuilt = { ...buildCatalogV2(rid), extras: EXTRAS_BY_RESTAURANT[rid] || {} };
-    try { assertStoreCodeParity(rid, storeBuilt, codeBuilt); console.log(`${rid}: source store == code (build-parity ✓)`); }
-    catch (e) { bad++; console.error(String(e && e.message)); }
+    if (VS_ACTIVE) {
+      try {
+        const { built, versionId } = await activeBuiltOf(rid);
+        assertStoreMatchesActive(rid, storeBuilt, built);
+        console.log(`${rid}: source store == active version ${versionId} ✓`);
+      } catch (e) { bad++; console.error(String(e && e.message)); }
+    } else {
+      const codeBuilt = { ...buildCatalogV2(rid), extras: EXTRAS_BY_RESTAURANT[rid] || {} };
+      try { assertStoreCodeParity(rid, storeBuilt, codeBuilt); console.log(`${rid}: source store == code (build-parity ✓)`); }
+      catch (e) { bad++; console.error(String(e && e.message)); }
+    }
   }
-  if (bad) { console.error(`verify-catalog FAILED: ${bad} mismatch(es) — do NOT proceed to the rules deploy`); process.exit(1); }
-  console.log('verify-catalog: production catalog == code tables ✓');
+  if (bad) { console.error(`verify-catalog FAILED: ${bad} mismatch(es)${VS_ACTIVE ? '' : ' — do NOT proceed to the rules deploy'}`); process.exit(1); }
+  console.log(VS_ACTIVE ? 'verify-catalog: the source store matches the active published version ✓' : 'verify-catalog: production catalog == code tables ✓');
   process.exit(0);
 })().catch((e) => { console.error('verify-catalog error:', e && e.message); process.exit(1); });

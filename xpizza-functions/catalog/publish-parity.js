@@ -42,20 +42,41 @@ function displayHash(items) {
   return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
 
-// Throw unless the two builds are canonically identical. Names the diverging field: an operator
-// aborting a cutover at 2am needs to know WHAT differed, not just that something did.
-function assertStoreCodeParity(restaurantId, storeBuilt, codeBuilt) {
-  const s = catalogDescriptor(restaurantId, storeBuilt);
-  const c = catalogDescriptor(restaurantId, codeBuilt);
+// The comparison itself — two builds, canonically. Shared by BOTH verifications so they cannot drift:
+// --vs-active must be exactly as rigorous as the cutover gate, and a second implementation would
+// eventually check less. Names the diverging field: an operator aborting at 2am needs to know WHAT
+// differed, not just that something did.
+function buildDiffs(restaurantId, aBuilt, bBuilt, aLabel, bLabel) {
+  const a = catalogDescriptor(restaurantId, aBuilt);
+  const b = catalogDescriptor(restaurantId, bBuilt);
   const diffs = [];
   for (const field of ['item_count', 'extra_count', 'menu_hash', 'extras_hash', 'display_hash']) {
-    if (s[field] !== c[field]) diffs.push(`${field}: store ${String(s[field]).slice(0, 16)} != code ${String(c[field]).slice(0, 16)}`);
+    if (a[field] !== b[field]) diffs.push(`${field}: ${aLabel} ${String(a[field]).slice(0, 16)} != ${bLabel} ${String(b[field]).slice(0, 16)}`);
   }
-  if (JSON.stringify(s.structure) !== JSON.stringify(c.structure)) diffs.push('structure: item_order/categories/variants/gate-cats differ');
+  if (JSON.stringify(a.structure) !== JSON.stringify(b.structure)) diffs.push('structure: item_order/categories/variants/gate-cats differ');
+  return diffs;
+}
+
+// THE CUTOVER GATE (2a). The store must equal the code, so the flip is provably a no-op.
+function assertStoreCodeParity(restaurantId, storeBuilt, codeBuilt) {
+  const diffs = buildDiffs(restaurantId, storeBuilt, codeBuilt, 'store', 'code');
   if (diffs.length) {
     throw new Error(`parity_mismatch: ${restaurantId} — build-from-store differs from build-from-code; the flip is REFUSED. ${diffs.join(' | ')}`);
   }
   return true;
 }
 
-module.exports = { catalogDescriptor, assertStoreCodeParity, displayHash };
+// THE POST-EDIT INVARIANT (2b-1). Once divergence from code is intended, the question worth asking is
+// whether the store matches what is actually PUBLISHED. That catches the states that matter now: a
+// draft saved but never published — the merchant believes their price is live and it is not — or a
+// publish that landed something other than the draft. A DIFFERENT error name, deliberately: the two
+// failures call for opposite responses (abort the cutover vs publish the draft).
+function assertStoreMatchesActive(restaurantId, storeBuilt, activeBuilt) {
+  const diffs = buildDiffs(restaurantId, storeBuilt, activeBuilt, 'store', 'active');
+  if (diffs.length) {
+    throw new Error(`store_vs_active_mismatch: ${restaurantId} — the source store differs from the ACTIVE published version (an unpublished draft, or a publish that landed something else). ${diffs.join(' | ')}`);
+  }
+  return true;
+}
+
+module.exports = { catalogDescriptor, assertStoreCodeParity, assertStoreMatchesActive, buildDiffs, displayHash };
