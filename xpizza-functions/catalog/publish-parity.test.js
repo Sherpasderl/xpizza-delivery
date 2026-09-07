@@ -119,7 +119,8 @@ ok('the gate THROWS parity_mismatch on every drift class: price, added/removed i
   for (const [file, ids] of [
     ['tools/publish-version.js', ['readSource', 'sourceToBuildInputs', 'assertStoreCodeParity', 'buildCatalogV2', 'publishVersion']],
     ['tools/verify-catalog.js', ['readSource', 'sourceToBuildInputs', 'assertStoreCodeParity', 'buildCatalogV2']],
-    ['tools/seed-source-store.js', ['validateSource', 'sourceRefOf', 'extrasKeyOf', 'readLiteral', 'pricingKeyOf']],
+    ['tools/seed-source-store.js', ['validateSource', 'sourceRefOf', 'extrasKeyOf', 'readLiteral', 'pricingKeyOf', 'attachRedeemFields']],
+    ['tools/rollback-version.js', ['rollbackVersion', 'makeRtdbMirror', 'RTDB_URL']],
   ]) {
     const src = readFileSync(join(__dirname, '..', file), 'utf8');
     for (const id of ids) {
@@ -128,6 +129,25 @@ ok('the gate THROWS parity_mismatch on every drift class: price, added/removed i
     }
   }
   ok('import resolution: every identifier the portal-2a CLIs use is actually imported (node --check is blind to this)');
+
+  // ── The ROLLBACK CLI. The runbook's recovery step is only real if the tool refuses to do the wrong
+  //    thing: the target is EXPLICIT (never inferred — "the previous version" is ambiguous exactly
+  //    when it matters), listing changes nothing, and an unknown or already-active target is refused.
+  // COMMENT-STRIPPED: a commented-out `databaseURL: RTDB_URL` satisfied the raw-text check, which is
+  // the same blindness that let a commented-out require pass the Task 5 wiring guard.
+  const RB = readFileSync(join(__dirname, '..', 'tools', 'rollback-version.js'), 'utf8')
+    .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
+  // ...and anchored to the whole statement: `arg('to') || 'previous'` still matched a substring test,
+  // which is precisely the inference this tool must never do.
+  assert.ok(/const TO = arg\('to'\);\s*$/m.test(RB), 'the target must be EXACTLY the argument — no inferred default');
+  assert.ok(/const RID = arg\('rid'\);\s*$/m.test(RB), 'and so must the restaurant');
+  assert.ok(/if \(!TO\) \{[\s\S]{0,600}?nothing changed/.test(RB), 'omitting --to must LIST and change nothing');
+  assert.ok(/refusing: \$\{TO\} is not a retained version/.test(RB), 'an unretained target must be refused, not attempted');
+  assert.ok(/refusing: \$\{TO\} is ALREADY active/.test(RB), 'rolling back to the active version must be refused (a no-op flip still burns a lease)');
+  const list = RB.indexOf('nothing changed.'), roll = RB.indexOf('await rollbackVersion(');
+  assert.ok(list > 0 && roll > 0 && list < roll, 'the read-only listing path must return BEFORE any write path');
+  assert.ok(/databaseURL: RTDB_URL/.test(RB), 'and it must pin databaseURL — admin.database() throws without it');
+  ok('the rollback CLI is explicit-target, refuses unretained/already-active targets, and lists read-only');
 }
 
 console.log(`publish-parity: OK (${n})`);

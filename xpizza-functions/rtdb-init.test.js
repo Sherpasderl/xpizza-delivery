@@ -30,13 +30,22 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
   // Regression guard: BOTH owner-run CLIs must pin it. This is the check that would have caught the
   // original bug, and it fails if anyone adds a third RTDB-touching tool without the pin.
-  for (const tool of ['tools/publish-version.js', 'tools/backfill-snapshot.js']) {
-    const src = readFileSync(join(__dirname, tool), 'utf8');
+  // Enumerated by hand once; that list silently excluded any CLI added later. Scanning the directory
+  // means a new RTDB-touching tool is covered the moment it exists.
+  const TOOLS = require('fs').readdirSync(join(__dirname, 'tools')).filter((f) => f.endsWith('.js')).map((f) => `tools/${f}`);
+  assert.ok(TOOLS.length >= 4, `non-vacuity: the scan must find the CLIs (found ${TOOLS.length})`);
+  let checked = 0;
+  for (const tool of TOOLS) {
+    // comment-stripped: a commented-out `databaseURL: RTDB_URL` must NOT satisfy this guard
+    const src = readFileSync(join(__dirname, tool), 'utf8')
+      .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
     if (!/admin\.database\(\)/.test(src)) continue;
     assert.ok(/databaseURL:\s*RTDB_URL/.test(src), `${tool} calls admin.database() so it MUST pin databaseURL`);
     assert.ok(/require\('\.\.\/catalog\/mirror-rtdb'\)/.test(src), `${tool} must take the URL from the one shared source`);
+    checked++;
   }
-  ok('regression guard: every RTDB-touching CLI pins databaseURL from the single shared constant');
+  assert.ok(checked >= 3, `non-vacuity: at least the known RTDB-touching CLIs must have been checked (checked ${checked})`);
+  ok(`regression guard: all ${checked} RTDB-touching CLIs (of ${TOOLS.length} scanned) pin databaseURL from the single shared constant`);
 
   // The pinned instance matches the one the deployed functions use (index.js pins it independently,
   // because this phase keeps index.js byte-unchanged — so assert the two agree).

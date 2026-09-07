@@ -159,4 +159,41 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
   for (const rel of KNOWN_UNWIRED) assert.ok(!ALL.includes(rel), `${rel} is wired now — remove it from KNOWN_UNWIRED`);
   ok(`every test file is referenced by an npm script (${KNOWN_UNWIRED.length} pre-existing emulator exceptions, recorded not ignored)`);
 }
+// ── THE RUNBOOK MUST STAY TRUE ─────────────────────────────────────────────────────────────────
+// The cutover runbook quotes exact counts, CLI output and log lines. A runbook is read once, under
+// pressure, by someone checking reality against it — so a drifted quote is worse than no quote. These
+// pin the claims to the code that produces them.
+{
+  const RB = join(ROOT, '..', 'docs', 'superpowers', 'runbooks', '2026-09-06-portal-2a-cutover.md');
+  const doc = readFileSync(RB, 'utf8');
+  const { buildSourceFromCode } = require('../tools/seed-source-store');
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const src = buildSourceFromCode(rid);
+    const line = `${rid}: ${src.items.length} items + ${src.extras.length} extras`;
+    assert.ok(doc.includes(line), `the runbook quotes stale counts for ${rid} — code now produces "${line}"`);
+  }
+  // A pure predicate over (doc, source), so the probe below can run the REAL logic against mismatched
+  // inputs. Written inline, this check could be mutated into `doc.includes(...)` on both sides — the doc
+  // asserting against itself, always true, proving nothing. That mutation survived until this shape.
+  const unbacked = (docText, srcText, needles, wrap) =>
+    needles.filter((x) => !docText.includes(x) || !srcText.includes(wrap ? wrap(x) : x));
+
+  const emitted = productionFiles().map((f) => readFileSync(f, 'utf8')).join('\n');
+  const TAGS = ['menu_gates_read_failed', 'menu_gates_unauthored', 'redeem_eligibility_read_failed',
+    'redeem_eligible_malformed_set', 'restaurant_registry_read_failed', 'weekend_gate_malformed_set'];
+  assert.deepStrictEqual(unbacked(doc, emitted, TAGS, (t) => `'${t}'`), [],
+    'every log line the runbook tells the owner to watch for must actually be emitted by the code');
+
+  const tools = ['tools/seed-source-store.js', 'tools/publish-version.js', 'tools/verify-catalog.js']
+    .map((f) => readFileSync(join(ROOT, f), 'utf8')).join('\n');
+  const QUOTES = ['parity gate PASSED', 'source store seeded — NOTHING published', 'no source store yet (pre-2a)', 'production catalog == code tables'];
+  assert.deepStrictEqual(unbacked(doc, tools, QUOTES), [], 'every CLI line the runbook quotes must actually be printed by a CLI');
+
+  // NON-VACUITY, both directions: a needle the doc names but nothing emits must be REPORTED, and one
+  // that is genuinely backed must not be. Without this the predicate could ignore its source argument.
+  assert.deepStrictEqual(unbacked('watch for ghost_tag', '', ['ghost_tag']), ['ghost_tag'], 'an unbacked quote must be caught');
+  assert.deepStrictEqual(unbacked('watch for ghost_tag', "console.warn('ghost_tag')", ['ghost_tag'], (t) => `'${t}'`), [], 'a backed one must pass');
+  assert.deepStrictEqual(unbacked('', "console.warn('ghost_tag')", ['ghost_tag']), ['ghost_tag'], 'and a line the runbook forgot to mention is caught too');
+  ok('the cutover runbook\'s counts, log lines and CLI output all still match the code that produces them');
+}
 console.log(`no-code-authority.guard: OK (${n})`);
