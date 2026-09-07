@@ -1,0 +1,38 @@
+# Portal 2b-2a — the merchant portal is its OWN Netlify site.
+#
+# Per the repo's deploy mechanics every folder is a separate site, so `publish = "."` with the site's
+# base directory set to this folder — the same shape as xpizza-orders and la-musa-orders. (The plan
+# said `publish = "xpizza-portal"`, which is the shape for a repo-root site; matching the sibling
+# configs instead, because that is how the sites here are actually wired.)
+#
+# ⚠️ ALWAYS pass an explicit --site on any manual deploy. The repo links to a different site by
+# default, and a portal deployed over another property is not a mistake anyone notices quickly.
+[build]
+  publish = "."
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # A strict CSP is affordable here because the shell has NO inline script or style — both were
+    # extracted for exactly this reason. A page that handles credentials should not be asking for
+    # 'unsafe-inline'.
+    #
+    #   script-src   the Firebase SDK is served from gstatic; nothing else may execute
+    #   connect-src  identitytoolkit = sign-in, securetoken = token refresh, cloudfunctions = our reads.
+    #                A stolen token is useless off-origin anyway (the server checks ownership), but this
+    #                also means a compromised dependency cannot exfiltrate one to an arbitrary host.
+    #   frame-ancestors 'none'  the portal edits prices in later slices; it must never be framed
+    #   base-uri / object-src / form-action  close the usual redirection and injection routes
+    Content-Security-Policy = "default-src 'none'; script-src 'self' https://www.gstatic.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://us-central1-xpizza-delivery.cloudfunctions.net; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    # No full URL — and no restaurant id — leaks to a cross-origin third party.
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    # This is a private tool, not a page anyone should find.
+    X-Robots-Tag = "noindex, nofollow"
+
+# Single page: anything that is not a real file resolves to the shell rather than a Netlify 404.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

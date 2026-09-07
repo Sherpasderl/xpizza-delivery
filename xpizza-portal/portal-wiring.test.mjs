@@ -36,7 +36,9 @@ test('every function a module calls is one it defines or imports', () => {
   const GLOBALS = new Set(['fetch', 'setTimeout', 'clearTimeout', 'require', 'import', 'JSON', 'Object', 'Array',
     'String', 'Number', 'Boolean', 'Promise', 'Error', 'TypeError', 'Set', 'Map', 'Date', 'console',
     'document', 'window', 'localStorage', 'CustomEvent', 'encodeURIComponent', 'super', 'if', 'for',
-    'while', 'switch', 'catch', 'return', 'typeof', 'function', 'await', 'new']);
+    'while', 'switch', 'catch', 'return', 'typeof', 'function', 'await', 'new',
+    // keywords that precede a parenthesis and are not calls
+    'async', 'else', 'do', 'try', 'yield', 'delete', 'void', 'in', 'of', 'instanceof']);
   for (const f of JS) {
     const c = codeOf(f);
     const defined = new Set([
@@ -69,10 +71,45 @@ test('every module the portal ships is reachable from index.html', () => {
   const walk = (f) => {
     if (seen.has(f)) return;
     seen.add(f);
-    for (const m of codeOf(f).matchAll(/from\s+'\.\/([\w-]+\.js)'/g)) walk(m[1]);
+    // BOTH import forms: `from './x.js'` AND the bare side-effect `import './x.js'`. Missing the
+    // second made a whole subtree look unreachable the moment the shell's boot script started using it.
+    for (const m of codeOf(f).matchAll(/(?:from\s+|import\s+)'\.\/([\w-]+\.js)'/g)) walk(m[1]);
   };
-  for (const m of html.matchAll(/import\s+(?:.*?from\s+)?'\.\/([\w-]+\.js)'/g)) walk(m[1]);
+  for (const m of html.matchAll(/(?:from\s+|import\s+|src=")\.?\/?([\w-]+\.js)"?/g)) walk(m[1]);
+  // the shell loads its boot script via <script src>, not an import
+  for (const m of html.matchAll(/<script[^>]*src="\.\/([\w-]+\.js)"/g)) walk(m[1]);
   for (const f of JS) {
     assert.ok(seen.has(f), `${f} ships but nothing imports it — dead code on a money surface, or a missing wire`);
   }
+});
+
+test('the CSP allows exactly the hosts the code actually talks to', () => {
+  // A CSP and the code it guards drift apart silently: change the functions base URL, or add an SDK
+  // host, and the page keeps working locally (no CSP in dev) while every deployed request is blocked.
+  // This ties them together. Verified once against a real sign-in — this keeps it true.
+  const toml = readFileSync(join(DIR, 'netlify.toml'), 'utf8');
+  const csp = /Content-Security-Policy = "([^"]+)"/.exec(toml);
+  assert.ok(csp, 'netlify.toml must declare a CSP');
+  const policy = csp[1];
+
+  // every absolute host the modules fetch or import from must be allowed by SOME directive
+  const hosts = new Set();
+  for (const f of JS) for (const m of codeOf(f).matchAll(/https:\/\/([a-z0-9.-]+)/g)) hosts.add(m[1]);
+  for (const h of hosts) {
+    assert.ok(policy.includes(h), `the code talks to ${h} but the CSP does not allow it — every deployed request would be blocked`);
+  }
+  assert.ok(hosts.size >= 2, `non-vacuity: the scan must find real hosts (found ${hosts.size})`);
+
+  // and the hardening that makes a strict policy worth having
+  assert.ok(!/unsafe-inline|unsafe-eval/.test(policy), "no 'unsafe-inline' / 'unsafe-eval' — the shell has no inline script or style, so it does not need them");
+  assert.ok(/frame-ancestors 'none'/.test(policy), 'frame-ancestors none — later slices edit prices from this page');
+  assert.ok(/default-src 'none'/.test(policy), "default-src 'none' — allow-list, not deny-list");
+  for (const d of ['base-uri', 'object-src', 'form-action']) assert.ok(policy.includes(d), `${d} must be closed`);
+});
+
+test('index.html carries no inline script or style — the premise of the strict CSP', () => {
+  const html = readFileSync(join(DIR, 'index.html'), 'utf8');
+  assert.ok(!/<style[\s>]/.test(html), 'styles are a file, so style-src needs no unsafe-inline');
+  const inlineScript = /<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?\S[\s\S]*?<\/script>/.test(html);
+  assert.ok(!inlineScript, 'scripts are files, so script-src needs no unsafe-inline');
 });
