@@ -72,7 +72,10 @@ netlify link --id <SITE_ID>
 netlify deploy --prod --dir . --site <SITE_ID>
 ```
 
-Record the site ID in `xpizza-portal/netlify.toml`. After the first link, git-CD handles later deploys.
+Record the site ID where this repo already tracks deployments — the deployment tracker and the local
+`netlify link` state — not in `netlify.toml`. The toml is committed and shared; a site ID pinned there
+is a value that silently disagrees with reality the moment a site is recreated. After the first link,
+git-CD handles later deploys.
 
 ---
 

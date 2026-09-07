@@ -25,4 +25,3 @@ const MESSAGES = {
 export function authErrorMessage(code) {
   return MESSAGES[code] || 'No pudimos iniciar sesión. Probá de nuevo.';
 }
-

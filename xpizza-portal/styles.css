@@ -141,5 +141,5 @@
   /* the mock scopes `display:block` to .switch .sinfo; the sidebar footer reuses .sinfo, so without
      this the email and the role label render inline and collide ("owner@x.hnDueño") */
   .sfoot .sinfo{min-width:0;flex:1}
-  .sfoot .sinfo b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sfoot .sinfo b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}
   .sfoot .sinfo .cv{display:block}

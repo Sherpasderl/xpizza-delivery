@@ -112,4 +112,17 @@ test('index.html carries no inline script or style — the premise of the strict
   assert.ok(!/<style[\s>]/.test(html), 'styles are a file, so style-src needs no unsafe-inline');
   const inlineScript = /<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?\S[\s\S]*?<\/script>/.test(html);
   assert.ok(!inlineScript, 'scripts are files, so script-src needs no unsafe-inline');
+
+  // INLINE style ATTRIBUTES count too, and this is not tidiness. style-src without 'unsafe-inline'
+  // blocks `style="…"` exactly as it blocks a <style> block — so an inline attribute does not merely
+  // offend the policy, it SILENTLY STOPS APPLYING once the policy ships. Two of them survived the first
+  // CSP verification for precisely that reason: the page looked right because the elements were styled
+  // adequately without them.
+  const inlineAttrs = [...html.matchAll(/\sstyle=/g)];
+  assert.strictEqual(inlineAttrs.length, 0,
+    `${inlineAttrs.length} inline style attribute(s) — under this CSP they are inert, so the element is not styled the way the markup claims`);
+  // non-vacuity: the detector fires on a planted attribute
+  assert.strictEqual([...'<b style="x">'.matchAll(/\sstyle=/g)].length, 1, 'the detector can see an inline style attribute');
+  // ...and does not fire on the words that merely contain it
+  assert.strictEqual([...'<link rel="stylesheet"> data-style="x"'.matchAll(/\sstyle=/g)].length, 0, 'and does not false-positive on stylesheet or data-style');
 });

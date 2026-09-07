@@ -25,4 +25,3 @@ export function messageFor(err) {
     Unavailable: ['No pudimos cargar tu menú', 'Es un problema nuestro, no tuyo. Probá de nuevo en un momento.'],
   }[kind] || ['Algo salió mal', 'Probá de nuevo en un momento.'];
 }
-
