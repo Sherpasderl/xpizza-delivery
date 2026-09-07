@@ -18,6 +18,12 @@
 //   the diff has to be against the live version — but never moves it. A save is not a price change.
 // ---------------------------------------------------------------------------
 const { validateSource, sourceRefOf, canonicalize } = require('./source-store');
+
+// The wire form of a Firestore commit time: seconds and nanoseconds, losslessly. Used for both the
+// value returned to the caller and the precondition it later presents, so the two are the same thing.
+const encodeUpdateTime = (ts) => (ts && typeof ts.seconds === 'number'
+  ? `${ts.seconds}.${String(ts.nanoseconds || 0).padStart(9, '0')}`
+  : String(ts));
 const { catalogDiff, issueEditToken, sha256 } = require('./catalog-edit');
 
 const reply = (status, body) => ({ status, body });
@@ -28,7 +34,12 @@ const reply = (status, body) => ({ status, body });
 const isPreconditionFailure = (e) =>
   !!e && (e.code === 9 || e.code === 'failed-precondition' || /FAILED_PRECONDITION|precondition/i.test(String(e.message || '')));
 
-async function editCatalogCore({ db, authorize, readActiveBuilt }, body, req) {
+// `baseSourceUpdateTime` travels over HTTP as a string but must reconstruct to the EXACT Firestore
+// Timestamp, nanoseconds included — a lossy round trip (an ISO string, say) yields a precondition that
+// can never match, so every conditional write fails and no edit is ever saveable. The encoding lives
+// with the Firestore code that produces it; the default is identity, for stubs that deal in opaque
+// strings. This is deliberately injected rather than imported: the core stays free of firebase-admin.
+async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition = (v) => v }, body, req) {
   const rid = body && body.restaurantId;
 
   // AUTH FIRST — before any read. Its typed status/error pass through verbatim so the caller can tell
@@ -74,8 +85,9 @@ async function editCatalogCore({ db, authorize, readActiveBuilt }, body, req) {
 
   let writeTime;
   try {
-    const res = await ref.update(payload, { lastUpdateTime: base });
+    const res = await ref.update(payload, { lastUpdateTime: toPrecondition(base) });
     writeTime = (res && (res.writeTime || res.updateTime)) || null;
+    if (writeTime && typeof writeTime === 'object') writeTime = encodeUpdateTime(writeTime);
   } catch (e) {
     if (isPreconditionFailure(e)) {
       // Someone else saved. Their draft stands; this edit is refused rather than merged or overwritten.
@@ -116,4 +128,4 @@ async function editCatalogCore({ db, authorize, readActiveBuilt }, body, req) {
   return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token });
 }
 
-module.exports = { editCatalogCore, isPreconditionFailure };
+module.exports = { editCatalogCore, isPreconditionFailure, encodeUpdateTime };

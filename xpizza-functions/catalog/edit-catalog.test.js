@@ -262,6 +262,31 @@ const withPrice = (delta) => {
     ok('the index.js wrapper is exported, delegates to the tested core, injects the real verifier, and diffs against the ACTIVE version');
   }
 
+  // ── (9) THE CAS VALUE MUST SURVIVE A ROUND TRIP EXACTLY ─────────────────────────────────────
+  // Firestore commit times carry NANOSECOND precision. An ISO-string round trip truncates them, so the
+  // reconstructed precondition never equals the stored updateTime — and every conditional write fails,
+  // meaning no edit is ever saveable. That was a real bug here, found only by the emulator e2e; this
+  // pins it in the fast chain so it cannot come back unnoticed.
+  {
+    const { encodeUpdateTime } = require('./edit-catalog-handler');
+    const ts = { seconds: 1789012345, nanoseconds: 123456789 };
+    const enc = encodeUpdateTime(ts);
+    assert.strictEqual(enc, '1789012345.123456789', 'the encoding keeps every nanosecond digit');
+    assert.strictEqual(encodeUpdateTime({ seconds: 5, nanoseconds: 7 }), '5.000000007', 'and pads them, so ordering and equality are stable');
+    assert.strictEqual(encodeUpdateTime({ seconds: 5, nanoseconds: 0 }), '5.000000000', 'including zero');
+    // the lossy encoding this replaced: proof the distinction is real rather than theoretical
+    assert.notStrictEqual(enc, new Date(ts.seconds * 1000).toISOString(), 'an ISO string is NOT equivalent — it cannot carry nanoseconds');
+    // and index.js must reconstruct BOTH halves
+    const CODE = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8')
+      .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
+    assert.ok(/new FirestoreTimestamp\(Number\(sec\), Number\(nanos\)\)/.test(CODE),
+      'index.js must rebuild the Timestamp from seconds AND nanoseconds');
+    assert.ok(/toPrecondition: decodeUpdateTimeForEdit/.test(CODE), 'and inject that decoder into the handler');
+    assert.ok(/updateTime: snap\.updateTime \? encodeUpdateTimeForEdit\(snap\.updateTime\)/.test(CODE),
+      'and encode with the SAME codec it decodes with — two codecs would drift');
+    ok('the CAS value round-trips losslessly (nanoseconds preserved) and index.js encodes/decodes with one codec');
+  }
+
   console.log(`edit-catalog: OK (${n})`);
   FINISHED = true;
 })().catch((e) => { console.error(e); process.exit(1); });

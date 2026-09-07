@@ -5834,6 +5834,8 @@ const { authorizeCatalogEdit } = require('./catalog/catalog-edit-auth');
 const { editCatalogCore } = require('./catalog/edit-catalog-handler');
 const { previewVersion: previewVersionForEdit } = require('./catalog/catalog-publish');
 const { sourceRefOf: sourceRefOfForEdit } = require('./catalog/source-store');
+const { encodeUpdateTime: encodeUpdateTimeForEdit } = require('./catalog/edit-catalog-handler');
+const { Timestamp: FirestoreTimestamp } = require('firebase-admin/firestore');
 const { readVersionDocs: readVersionDocsForEdit, getActiveVersionId: getActiveVersionIdForEdit } = require('./catalog/catalog-firestore');
 const { buildTablesFromDocs: buildTablesForEdit } = require('./catalog/catalog-transform');
 
@@ -5858,6 +5860,7 @@ exports.editCatalog = onRequest(
         db: getFirestore(),
         authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
         readActiveBuilt: readActiveBuiltForEdit,
+        toPrecondition: decodeUpdateTimeForEdit,
       }, req.body || {}, req);
       return res.status(out.status).json(out.body);
     } catch (e) {
@@ -5876,7 +5879,18 @@ const { makeRtdbMirror: makeRtdbMirrorForEdit } = require('./catalog/mirror-rtdb
 async function readDraftForEdit(rid) {
   const snap = await sourceRefOfForEdit(getFirestore(), rid).get();
   if (!snap.exists) return { source: null, updateTime: null };
-  return { source: snap.data(), updateTime: snap.updateTime ? snap.updateTime.toDate().toISOString() : null };
+  return { source: snap.data(), updateTime: snap.updateTime ? encodeUpdateTimeForEdit(snap.updateTime) : null };
+}
+
+// The inverse of encodeUpdateTime. Nanoseconds are preserved on both sides: an ISO round trip truncates
+// them, and a precondition built from a truncated time can never equal the stored updateTime — every
+// conditional write would fail and no edit could ever be saved. Caught by the emulator e2e, which is
+// exactly the class of bug a stub decides for itself.
+function decodeUpdateTimeForEdit(v) {
+  if (typeof v !== 'string') return v;
+  const [sec, nanos] = v.split('.');
+  if (!/^\d+$/.test(sec || '') || !/^\d+$/.test(nanos || '')) return v;
+  return new FirestoreTimestamp(Number(sec), Number(nanos));
 }
 
 exports.publishEdited = onRequest(
