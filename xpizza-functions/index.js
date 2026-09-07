@@ -5824,3 +5824,44 @@ exports.pruneInactiveAccounts = onSchedule(
 // per-token claimPrefill throttle (checkRateLimit + the claim_token bucket) directly.
 module.exports.checkRateLimit = checkRateLimit;
 module.exports.RATE_LIMIT_BUCKETS = RATE_LIMIT_BUCKETS;
+
+// ── Portal 2b-1 — the merchant catalog write path ──────────────────────────────────────────────
+// Thin wrappers only. The handler bodies live in catalog/edit-catalog-handler.js so they can be
+// TESTED: index.js cannot be imported without Firebase initialisation, and an untested handler on a
+// price-and-factura path is a handler nobody has actually read. Everything below is plumbing — the
+// decisions (auth, validate, CAS, diff, token) are all in the tested core.
+const { authorizeCatalogEdit } = require('./catalog/catalog-edit-auth');
+const { editCatalogCore } = require('./catalog/edit-catalog-handler');
+const { previewVersion: previewVersionForEdit } = require('./catalog/catalog-publish');
+const { readVersionDocs: readVersionDocsForEdit, getActiveVersionId: getActiveVersionIdForEdit } = require('./catalog/catalog-firestore');
+const { buildTablesFromDocs: buildTablesForEdit } = require('./catalog/catalog-transform');
+
+// The LIVE published version, in the shape catalogDiff consumes: items + structure + extras. The diff
+// must be against what is actually SERVING, not against the store — otherwise a merchant reviews their
+// edit against their own previous unpublished draft and the review means nothing.
+async function readActiveBuiltForEdit(rid) {
+  const fs = getFirestore();
+  const versionId = await getActiveVersionIdForEdit(fs, rid);
+  if (versionId == null) throw new Error(`no_active_version: ${rid}`);   // fail-closed: nothing to diff against
+  const [preview, docs] = await Promise.all([previewVersionForEdit(fs, rid, versionId), readVersionDocsForEdit(fs, rid, versionId)]);
+  const { extras } = buildTablesForEdit(docs.itemDocs, docs.extraDocs);
+  return { built: { items: preview.items, structure: preview.structure, extras }, versionId };
+}
+
+exports.editCatalog = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 60, memory: '512MiB', maxInstances: 4 },
+  async (req, res) => {
+    try {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
+      const out = await editCatalogCore({
+        db: getFirestore(),
+        authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
+        readActiveBuilt: readActiveBuiltForEdit,
+      }, req.body || {}, req);
+      return res.status(out.status).json(out.body);
+    } catch (e) {
+      console.error('editCatalog', e && e.message);
+      return res.status(500).json({ error: 'error' });
+    }
+  },
+);
