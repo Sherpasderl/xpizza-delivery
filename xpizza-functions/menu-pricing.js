@@ -129,9 +129,10 @@ function itemPricingKey(item, restaurantId) {
 }
 
 // Phase 1b-1 — resolve WHICH price tables price this order. Omitting `tables` keeps today's exact
-// behaviour (the in-code tables), which is what every non-order-total caller still does: the
-// redemption cluster (1b-1b) and the fiscal pricedLineItems path (1b-2) pass nothing and stay 100%
-// on code, so there is no split-brain. When the order-total path passes guarded catalog tables,
+// behaviour (the in-code tables — the frozen fallback ONLY). Post-2a EVERY money caller passes the
+// SAME guarded catalog tables: the order total, the redemption cluster (1b-1b), AND the fiscal
+// pricedLineItems path (1b-2). No caller stays "on code" as an authority, so there is no split-brain.
+// When the order-total path passes guarded catalog tables,
 // those supply the PRICES while `restaurantId` still drives itemPricingKey (an unchanged contract).
 //
 // PIN B — the tables must be TAGGED for this exact restaurant and we FAIL CLOSED otherwise. x_pizza

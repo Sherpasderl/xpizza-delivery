@@ -17,7 +17,7 @@ restaurants/{rid}/source = {
   item_order: [ <pricingKey>... ],                 // explicit — Firestore returns hashed-id order (grill C2)
   prices:  { <pricingKey> : <int lempiras> },       // = MENU_BY_RESTAURANT[rid]
   extras:  {                                        // FULL extras shape (grill C1), not just key→price:
-    prices: { <key> : <int> },                      //   = EXTRAS_BY_RESTAURANT[rid]
+    prices: { <key> : <int> },                      //   = EXTRAS_BY_RESTAURANT[rid]. KEY = extras pricing-key: x_pizza→name ('Salsa Roja'), la_musa→id ('rice_white'). NOT the form display id ('e1'). validateSource guards this (verified Task-1 handback).
     display: [ ... ],                               //   the form EXTRAS display array(s)
     by_category?: { ... },                          //   la_musa EXTRAS_BY_CATEGORY
     by_item?: { ... },                              //   la_musa EXTRAS_BY_ITEM

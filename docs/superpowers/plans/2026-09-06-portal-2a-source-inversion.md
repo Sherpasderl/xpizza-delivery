@@ -20,11 +20,13 @@
 
 ### Task 1: Store schema + reader + validator (`catalog/source-store.js`)
 
-**Files:** Create `catalog/source-store.js`, `catalog/source-store.test.js`. Reference (read current shapes): `menu-pricing.js` (`MENU_BY_RESTAURANT`/`EXTRAS_BY_RESTAURANT`, la_musa `EXTRAS_BY_CATEGORY`/`EXTRAS_BY_ITEM`), `catalog/form-menu-source.js` (`readLiteral` field set, `pricingKeyOf`), `catalog/catalog-firestore.js:38-40` (price-validity rule).
+**Files:** Create `catalog/source-store.js`, `catalog/source-store.test.js`. Reference (read current shapes): `menu-pricing.js` (`MENU_BY_RESTAURANT`, `EXTRAS_BY_RESTAURANT` = `EXTRA_PRICES` x_pizza / `LA_MUSA_EXTRAS` la_musa), `catalog/form-menu-source.js` (`readLiteral` field set, `pricingKeyOf`), `catalog/catalog-firestore.js:38-40` (price-validity rule). **Attribution correction (Task-1 handback):** `EXTRAS_BY_CATEGORY`/`EXTRAS_BY_ITEM` and the `EXTRAS` display arrays live **form-side** (`la-musa-orders`/`xpizza-orders` `index.html`), NOT `menu-pricing.js`, and no server consumer reads them today — the portal owns them in 2b, so the store schema carries them and the completeness test asserts them by name.
+
+**⚠️ EXTRAS pricing-key asymmetry (verified — a seed landmine):** extras have the SAME name-vs-id split as items. x_pizza extras price by **name** (`EXTRA_PRICES['Salsa Roja']`) while the form `EXTRAS` entry is `{id:'e1', name:'Salsa Roja', price:39}` — so `e1` is a display id, NOT the price key. la_musa extras price by **id** (`LA_MUSA_EXTRAS['rice_white']`, form id === price key). `validateSource` MUST guard the extras key the same way it guards item keys: the `extras.prices` key must equal the brand's extras pricing-key of the display record (x_pizza → `name`, la_musa → `id`) — so a mis-keyed extra is CAUGHT, never silently round-tripped. Also: the form `EXTRAS` entry's inline `price` must equal `extras.prices[key]` (an extras parity, analogous to `menu-parity` for items).
 
 **Interfaces produced:**
 - `readSource(db, rid) → source` (throws `source_missing`/`source_malformed`; never partial)
-- `validateSource(source, rid) → void` (throws on: non-positive-int price, missing required field, key↔item non-bijection, unknown-cat reference)
+- `validateSource(source, rid) → void` (throws on: non-positive-int price, missing required field, item key↔item non-bijection, **extras key ≠ extras pricing-key of its display record** [x_pizza=name / la_musa=id], **form `EXTRAS` inline price ≠ `extras.prices[key]`**, unknown-cat reference)
 - `sourceToBuildInputs(source) → { priceTable, formData, extras }` — `formData` = structured `{ dishes, item_order, categories, variant_items, pickup_only_cats, weekend_only_cats }`
 - `canonicalize(obj) → obj` (stable recursive key ordering)
 
@@ -44,7 +46,7 @@
 
 - [ ] **Step 1 — failing test:** `form-data-path.test.js`: for BOTH brands, derive `formData` from the current form (via the existing text parse), then assert `buildCatalogV2(rid,{formData,priceTable:code})` `deepStrictEqual` `buildCatalogV2(rid,{formSource:text,priceTable:code})` — identical `items` (incl. `display` verbatim + `has_photo`) AND `structure` (incl. `item_order`, categories, variant_items, gate cats).
 - [ ] **Step 2 — run, verify fail** (formData path not implemented).
-- [ ] **Step 3 — implement** the `formData` branch: when given, read dishes/categories/variants/gate-cats from the structured object rather than `readLiteral`. Preserve `item_order` and `display` verbatimness exactly.
+- [ ] **Step 3 — implement** the `formData` branch: when given, read dishes/categories/variants/gate-cats from the structured object rather than `readLiteral`. Preserve `item_order` and `display` verbatimness exactly. **RULING (Task-2 handback): categories are STORE-AUTHORED for BOTH brands** — the `formData` path reads `categories` from the store (no x_pizza derive special-case). The TEXT path keeps deriving x_pizza (it's the seed bootstrap, no `CATEGORIES` literal); the seed (Task 3) authors x_pizza's `categories` = that exact derived result (id-only, dish order) so cutover stays byte-identical (parity gate enforces). `validateSource` enforces **`categories ⊇ distinct(dishes.cat)`** (a dropped-but-referenced category throws — replaces the derive-self-consistency protection, and also catches a dangling dish).
 - [ ] **Step 4 — run, verify pass** (both brands identical).
 - [ ] **Step 5 — commit** (`feat(catalog): buildCatalogV2 structured formData path (identical to text path)`).
 
@@ -56,7 +58,9 @@
 
 **Interface:** `buildSourceFromCode(rid) → source` (pure; assembles the store object from `MENU_BY_RESTAURANT`+`EXTRAS_BY_RESTAURANT`+form literals) + a thin CLI wrapper that writes `restaurants/{rid}/source` (idempotent; diff-logs if present).
 
-- [ ] **Step 1 — failing test:** `seed-source.test.js`: `validateSource(buildSourceFromCode(rid), rid)` passes for both brands; and `sourceToBuildInputs(buildSourceFromCode(rid))` reproduces the exact `{priceTable, formData}` the code path uses (round-trip: build-from-that == build-from-code).
+- [ ] **Step 1 — failing test:** `seed-source.test.js`: `validateSource(buildSourceFromCode(rid), rid)` passes for both brands; `sourceToBuildInputs(buildSourceFromCode(rid))` reproduces the exact `{priceTable, formData, extras}` the code path uses (round-trip: build-from-that == build-from-code); **extras-key guards:** the seed keys x_pizza extras by **name** and la_musa by **id** (assert `extras.prices` keys deep-equal `EXTRA_PRICES`/`LA_MUSA_EXTRAS` keys respectively — NOT the form `id` like `e1`); and a deliberately mis-keyed x_pizza extra (keyed by `e1`) makes `validateSource` **throw** (proves the landmine is caught).
+
+**Note:** this task EXTENDS the already-delivered `validateSource` (Task 1) with the extras-key + extras-inline-price guards before the seed relies on them.
 - [ ] **Step 2 — run, verify fail.**
 - [ ] **Step 3 — implement** `buildSourceFromCode` (pure assembly) + the CLI writer (Admin SDK, `GOOGLE_CLOUD_PROJECT` pinned per the publish-version lesson).
 - [ ] **Step 4 — run, verify pass.**

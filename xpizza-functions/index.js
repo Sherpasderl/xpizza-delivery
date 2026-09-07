@@ -888,13 +888,13 @@ createOrderApp.all('*', async (req, res) => {
   // order.items = the PAID cart lines (the earn base + the non-redeemed factura source); order.factura_items =
   // paid + comped (redeemed x_pizza SAR doc — build-record reads factura_items || items). Non-platform
   // (la_musa — Soft Restaurant POS) opts out → both null → order.items/factura_items omitted.
-  // 1b-2 — the NON-redeem X. Pizza factura prices from the GUARDED catalog tables (the last code-table
-  // read on the fiscal path). Same pricingTables the order total and the redemption cluster already use,
+  // 1b-2 / 2a — the NON-redeem X. Pizza factura prices from the GUARDED catalog tables (the SAME
+  // pricingTables the order total and the redemption cluster already use — no code-table read here),
   // so one order's charged total and its SAR document can never come from two different sources.
   // PIN B: resolvePriceTables asserts the tables are tagged for THIS restaurant. Fail-safe, no drop —
-  // pricingTables is always a valid tagged object (post-1b-1b it is never null) and holds the CODE tables
-  // whenever the catalog is unavailable or diverged, so the factura still prices; this is not a
-  // hard-contract seam and must never throw on catalog trouble.
+  // pricingTables is always a valid catalog-sourced tagged object here: post-2c the createOrder null-guard
+  // rejects (pricing_unavailable) on ANY catalog failure BEFORE this line, so the fiscal path never sees
+  // null and never code-prices; this seam must never throw on catalog trouble.
   const { menu: facturaMenu, extraPrices: facturaExtras } = resolvePriceTables(restaurantId, pricingTables);
   const facturaPriced = redemptionPriced
     ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
@@ -1346,13 +1346,13 @@ chargeOnlineApp.all('*', async (req, res) => {
   // Factura inputs (FACTURA_PLAN §2) — structured priced items for the factura trigger.
   // factura_status starts 'not_due': a pending_payment order is NOT yet a Sale, so it's
   // never reconciled; the trigger only acts once it materializes (status:new + confirmed).
-  // 1b-2 — the NON-redeem X. Pizza factura prices from the GUARDED catalog tables (the last code-table
-  // read on the fiscal path). Same pricingTables the order total and the redemption cluster already use,
+  // 1b-2 / 2a — the NON-redeem X. Pizza factura prices from the GUARDED catalog tables (the SAME
+  // pricingTables the order total and the redemption cluster already use — no code-table read here),
   // so one order's charged total and its SAR document can never come from two different sources.
   // PIN B: resolvePriceTables asserts the tables are tagged for THIS restaurant. Fail-safe, no drop —
-  // pricingTables is always a valid tagged object (post-1b-1b it is never null) and holds the CODE tables
-  // whenever the catalog is unavailable or diverged, so the factura still prices; this is not a
-  // hard-contract seam and must never throw on catalog trouble.
+  // pricingTables is always a valid catalog-sourced tagged object here: post-2c the createOrder null-guard
+  // rejects (pricing_unavailable) on ANY catalog failure BEFORE this line, so the fiscal path never sees
+  // null and never code-prices; this seam must never throw on catalog trouble.
   const { menu: facturaMenu, extraPrices: facturaExtras } = resolvePriceTables(restaurantId, pricingTables);
   const facturaPriced = redemptionPriced
     ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
