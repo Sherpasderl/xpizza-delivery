@@ -5914,3 +5914,27 @@ exports.publishEdited = onRequest(
     }
   },
 );
+
+// ── Portal 2b-2a — the merchant portal's READ endpoints ────────────────────────────────────────
+// Thin wrappers; the decisions live in the tested core (index.js cannot be imported under Firebase
+// init, and an untested handler on a tenant boundary is one nobody has read carefully).
+//
+// The ownership index lives in RTDB, so `db` is getDatabase() — getFirestore() would find nothing and
+// every merchant would see an empty portal, which looks exactly like "you own no restaurants".
+const { getMyRestaurantsCore } = require('./catalog/portal-reads');
+
+exports.getMyRestaurants = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  async (req, res) => {
+    try {
+      const out = await getMyRestaurantsCore({
+        db: getDatabase(),
+        verifyIdToken: (t) => getAuth().verifyIdToken(t),
+      }, req);
+      return res.status(out.status).json(out.body);
+    } catch (e) {
+      console.error('getMyRestaurants', e && e.message);
+      return res.status(500).json({ error: 'error' });
+    }
+  },
+);
