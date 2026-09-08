@@ -5605,6 +5605,7 @@ const ACCOUNT_ORIGINS = [
 // required deploy step, not a nice-to-have.
 const PORTAL_ORIGINS = [
   /^http:\/\/localhost(:\d+)?$/,
+  'https://sherpa-portal.netlify.app',   // portal 2b-2a go-live (2026-09-08)
 ];
 
 exports.requestOtp = onRequest(
