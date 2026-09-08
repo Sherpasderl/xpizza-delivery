@@ -35,12 +35,15 @@
 <div class="app hidden" id="app">
   <aside class="side">
     <div class="brand"><div class="bmark">S</div><div class="bname">Sherpa</div></div>
-    <!-- the restaurant switcher; populated by getMyRestaurants in Task 5 -->
-    <button class="switch" id="switcher" type="button">
-      <div class="shop"><svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11a2 2 0 0 1-2 1.8H6.5a2 2 0 0 1-2-1.8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/></svg></div>
-      <div class="sinfo"><b id="shopname">—</b><span class="cv" id="shopsub">Cargando…</span></div>
-      <div class="chev">▾</div>
-    </button>
+    <!-- the restaurant switcher; populated by getMyRestaurants (Task 5), switch interaction in app.js -->
+    <div class="switchwrap">
+      <button class="switch" id="switcher" type="button">
+        <div class="shop"><svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11a2 2 0 0 1-2 1.8H6.5a2 2 0 0 1-2-1.8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/></svg></div>
+        <div class="sinfo"><b id="shopname">—</b><span class="cv" id="shopsub">Cargando…</span></div>
+        <div class="chev">▾</div>
+      </button>
+      <div class="switchmenu hidden" id="switchmenu"></div>
+    </div>
     <div class="nlabel">Menú</div>
     <div class="nav on"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Productos</div>
     <div class="sfoot">

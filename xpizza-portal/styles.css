@@ -50,7 +50,14 @@
   .shop{width:30px;height:30px;border-radius:8px;background:var(--board-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--mute);flex:none}
   .shop svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8}
   .switch .sinfo{min-width:0;flex:1}.switch b{font-weight:700;font-size:13.5px;display:block}.switch .cv{color:var(--mute2);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
-  .switch .chev{color:var(--mute2);font-size:11px}
+  .switch .chev{color:var(--mute2);font-size:11px;opacity:0;transition:opacity .15s}
+  .switch.multi .chev{opacity:1}
+  .switchwrap{position:relative;margin:2px 0 20px}
+  .switchwrap .switch{margin:0}
+  .switchmenu{position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:30;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:6px;display:flex;flex-direction:column;gap:2px}
+  .switchmenu-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;border:1px solid transparent;background:none;cursor:pointer;text-align:left;width:100%;color:inherit;font-size:13.5px;font-weight:650;transition:background .15s}
+  .switchmenu-item:hover{background:var(--board-2)}
+  .switchmenu-item.on{color:var(--accent);background:var(--tint)}
   .nlabel{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute2);padding:16px 8px 6px;font-weight:750}
   .nav{display:flex;align-items:center;gap:12px;padding:9px 11px;border-radius:9px;color:var(--mute);font-weight:600;cursor:pointer;font-size:13.5px;transition:background .18s,color .18s,transform .08s}
   .nav:hover{color:var(--ink);background:var(--card)}

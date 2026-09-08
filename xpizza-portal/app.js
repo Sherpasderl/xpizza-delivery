@@ -32,8 +32,47 @@ import { pickRid, messageFor } from './portal-logic.js';
 function renderSwitcher() {
   const cur = state.restaurants.find((r) => r.rid === state.currentRid);
   $('shopname').textContent = cur ? cur.name : '—';
-  $('shopsub').textContent = state.restaurants.length > 1
-    ? `${state.restaurants.length} locales` : (cur ? cur.rid : '');
+  const multi = state.restaurants.length > 1;
+  $('shopsub').textContent = multi ? `${state.restaurants.length} locales` : (cur ? cur.rid : '');
+  // The chevron and the click only mean something when there is more than one restaurant to choose from.
+  $('switcher').classList.toggle('multi', multi);
+  if (!multi) $('switchmenu').classList.add('hidden');
+}
+
+// Built with createElement, never an HTML string — the portal keeps its no-HTML-sink rule even here,
+// where the labels come from a server response.
+function renderSwitchMenu() {
+  const menu = $('switchmenu');
+  menu.replaceChildren();
+  for (const r of state.restaurants) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'switchmenu-item' + (r.rid === state.currentRid ? ' on' : '');
+    const nm = document.createElement('span'); nm.textContent = r.name;
+    item.append(nm);
+    item.addEventListener('click', () => switchTo(r.rid));
+    menu.append(item);
+  }
+}
+
+function openSwitch(open) {
+  const menu = $('switchmenu');
+  if (state.restaurants.length <= 1) { menu.classList.add('hidden'); return; }
+  const shouldOpen = open === undefined ? menu.classList.contains('hidden') : open;
+  if (shouldOpen) { renderSwitchMenu(); menu.classList.remove('hidden'); }
+  else menu.classList.add('hidden');
+}
+
+// Switching is client-side selection only — the server still re-checks ownership on the getEditableCatalog
+// call, so a stale or forged rid loads nothing rather than someone else's menu.
+function switchTo(rid) {
+  openSwitch(false);
+  if (!rid || rid === state.currentRid) return;
+  if (!state.restaurants.some((r) => r.rid === rid)) return;   // never one you do not own
+  state.currentRid = rid;
+  try { localStorage.setItem(REMEMBERED, rid); } catch (_) { /* private mode: not worth failing over */ }
+  renderSwitcher();
+  document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid } }));
 }
 
 export async function loadRestaurants() {
@@ -97,3 +136,5 @@ function paint() {
 
 document.addEventListener('portal:signed-in', () => { loadRestaurants(); });
 document.addEventListener('portal:restaurant', (e) => { loadMenu(e.detail && e.detail.rid); });
+$('switcher').addEventListener('click', (e) => { e.stopPropagation(); openSwitch(); });
+document.addEventListener('click', (e) => { if (!e.target.closest('.switchwrap')) openSwitch(false); });
