@@ -560,6 +560,12 @@
      <span>, which nothing can tab to. These three strip the UA chrome a button would otherwise carry
      — no visual change, and the mock's own .rowchev rules above still do all the styling. */
   .rowchev{background:none;border:0;padding:0}
+  /* The mock's row info block is `.info`; this portal renders `.iinfo` (2b-2a structure, kept per the
+     plan). So `.info.clk{cursor:pointer}` above never reaches the element that actually gets the click
+     listener, and the opener was clickable without looking clickable. Mirrored onto the real class,
+     with the hover tint the mock gives the row, so the target reads as one. */
+  .iinfo.clk{cursor:pointer}
+  .irow:hover .iinfo.clk .nm{color:var(--accent)}
   .switch.multi .chev{opacity:1}
   .switchwrap{position:relative;margin:2px 0 20px}
   .switchwrap .switch{margin:0}

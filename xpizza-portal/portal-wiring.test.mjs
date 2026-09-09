@@ -356,3 +356,85 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // and the mock's demo-outcome selector must never ship (invariant #7)
   assert.ok(!/demoOut/.test(html + app + render + editor), 'no #demoOut — publish outcomes come from the server, not a picker');
 });
+
+// ── THE CLICKABLE-CURSOR / ELEMENT-CONTRACT GUARD ────────────────────────────────────────────────
+// A recurring hazard in this slice, now five times over: the mock styles a class NAME for a different
+// element than the portal renders, so the class looks covered while the contract is not.
+//
+//   .price      mock = the edit-input wrapper;      portal = read-only price text
+//   .sinfo      mock styles `.switch .sinfo`;       portal also has `.sfoot .sinfo`
+//   .nmed       mock = the contenteditable option name; portal used it for every name
+//   .info.clk   mock = the row's info block;        portal renders `.iinfo` and adds `clk`
+//
+// Each was found by a person reading two files side by side. This turns one whole family of them into
+// a test: if the portal attaches a click listener to an element, some rule must actually give that
+// element a pointer cursor. A control that is clickable but does not look clickable is not a styling
+// nit — on a page where the click opens a price editor, it is a control the merchant never finds.
+test('every clickable element actually gets a pointer cursor', () => {
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const html = readFileSync(join(DIR, 'index.html'), 'utf8');
+
+  // Every selector that sets cursor:pointer, reduced to its LAST compound (the element the rule
+  // actually lands on), with pseudo-classes stripped so `:hover` variants still count.
+  const pointerSelectors = [];
+  for (const line of css.split('\n')) {
+    const i = line.indexOf('{');
+    if (i === -1 || !line.includes('}')) continue;
+    const decls = line.slice(i + 1, line.lastIndexOf('}'));
+    if (!/(^|;)\s*cursor\s*:\s*pointer/.test(decls)) continue;
+    for (const part of line.slice(0, i).split(',')) {
+      const bits = part.trim().split(/\s+/);
+      // SINGLE COMPOUND ONLY. Reducing a descendant selector to its last part drops the ancestor it
+      // requires, and that is not a small inaccuracy: the stylesheet's one tag-level pointer rule is
+      // `.gtype button`, so taking the last compound made the guard believe EVERY <button> on the page
+      // gets a pointer cursor. Six of the nine click targets were passing for that reason. A selector
+      // whose ancestry cannot be verified from source does not count as coverage.
+      if (bits.length !== 1) continue;
+      const only = bits[0].replace(/::?[a-z-]+(\([^)]*\))?/g, '');
+      if (only) pointerSelectors.push(only);
+    }
+  }
+  assert.ok(pointerSelectors.length > 10, `non-vacuity: the stylesheet must define pointer cursors (${pointerSelectors.length})`);
+
+  const bound = (name) => `(?<![\\w$])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w$])`;
+  const classesOf = (sel) => new Set([...sel.matchAll(/\.([A-Za-z][\w-]*)/g)].map((m) => m[1]));
+  const tagOf = (sel) => (classesOf(sel).size ? null : (sel.match(/^([a-z]+)/) || [])[1] || null);
+
+  const gaps = [];
+  let checked = 0;
+  for (const f of JS) {
+    const src = codeOf(f);
+    for (const m of src.matchAll(/([\w$]+(?:\([^)]*\))?)\.addEventListener\(\s*['"]click['"]/g)) {
+      const expr = m[1];
+      if (expr === 'document' || expr === 'window') continue;   // no cursor semantics on the page itself
+      const cls = new Set();
+      let tag = null;
+      const byId = expr.match(/^\$\('([^']+)'\)$/);
+      if (byId) {
+        // resolved through the markup: $('id') is only meaningful together with index.html
+        const seg = html.match(new RegExp(`<(\\w+)([^>]*\\bid="${byId[1]}"[^>]*)>`));
+        if (seg) { tag = seg[1]; const c = seg[2].match(/class="([^"]*)"/); if (c) c[1].split(/\s+/).forEach((x) => x && cls.add(x)); }
+      } else {
+        // el(tag, 'cls') and el(tag, `cls${…}`) — the template form is how .railitem is built
+        for (const g of src.matchAll(new RegExp(`${bound(expr)}\\s*=\\s*el\\(\\s*'(\\w+)'\\s*,\\s*(?:'([^']*)'|\`([^\`$]*))`, 'g'))) {
+          tag = g[1]; (g[2] || g[3] || '').split(/\s+/).forEach((x) => x && cls.add(x));
+        }
+        for (const g of src.matchAll(new RegExp(`${bound(expr)}\\.className\\s*=\\s*'([^']*)'`, 'g'))) g[1].split(/\s+/).forEach((x) => x && cls.add(x));
+        for (const g of src.matchAll(new RegExp(`${bound(expr)}\\.classList\\.add\\('([^']*)'\\)`, 'g'))) g[1].split(/\s+/).forEach((x) => x && cls.add(x));
+        const c = src.match(new RegExp(`${bound(expr)}\\s*=\\s*document\\.createElement\\('(\\w+)'\\)`));
+        if (c) tag = c[1];
+      }
+      // An element we cannot resolve is reported, not skipped: an unresolvable target is exactly where
+      // a mismatch would hide, and a guard that quietly ignores what it cannot read proves nothing.
+      assert.ok(cls.size > 0 || tag, `${f}: could not resolve what \`${expr}\` is — the guard must be taught this shape rather than skip it`);
+      checked++;
+      const covered = pointerSelectors.some((p) => {
+        const pc = classesOf(p);
+        return pc.size ? [...pc].every((c2) => cls.has(c2)) : tagOf(p) === tag;
+      });
+      if (!covered) gaps.push(`${f}: <${tag}${[...cls].map((c2) => `.${c2}`).join('')}> is clickable but no cursor:pointer rule reaches it`);
+    }
+  }
+  assert.ok(checked >= 7, `non-vacuity: the scan must find the portal's click handlers (${checked})`);
+  assert.deepStrictEqual(gaps, [], `clickable elements with no pointer cursor:\n  ${gaps.join('\n  ')}`);
+});
