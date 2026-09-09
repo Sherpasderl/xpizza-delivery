@@ -1003,3 +1003,31 @@ test('🔴 spent is per-REVIEW: a new review is never locked out by an older one
       assert.strictEqual(sent.length, 2, 'and nothing re-sent');
     });
 });
+
+test('🔴 an EMPTY diff attests to nothing and publishes nothing', () => {
+  // Reachable only since #7-B: the review can now be opened on a draft that turns out to equal live.
+  // The desc-only case above proves the seal must NOT be keyed to price changes — but "some change,
+  // no price change" and "no change at all" are different facts, and this is the second one.
+  //
+  // 🔴 Publishing an empty diff would mint an immutable version, flip active_version, and — on a
+  // fiscal merchant — record a SAR attestation against zero changes. A signature for nothing is the
+  // same class as a signature for someone else's changes: it makes the fiscal record say something
+  // untrue. Refused before any signature is collected.
+  const EMPTY = { added: [], removed: [], renamed: [], changed: [], largeChangeSet: [] };
+  for (const usesPlatformFactura of [true, false]) {
+    const m = attestationModel(EMPTY, { usesPlatformFactura });
+    assert.strictEqual(m.hasNothing, true, `nothing to publish (fiscal=${usesPlatformFactura})`);
+    assert.strictEqual(m.needsSeal, false, 'no seal is raised for zero changes');
+    assert.strictEqual(m.needsAck, false, 'and no acknowledgement is asked for');
+    assert.strictEqual(canPublish(m, true), false,
+      '🔴 and it cannot be published even by a merchant who checked the box');
+    assert.strictEqual(canPublish(m, false), false, 'nor by one who did not');
+  }
+
+  // NON-VACUITY: the same model with one real change is still publishable, so `hasNothing` is not
+  // simply refusing everything.
+  const one = attestationModel({ added: [], removed: [], renamed: [], largeChangeSet: [],
+    changed: [{ key: 'Pizza', surface: 'item', field: 'price', old: 299, new: 310 }] }, { usesPlatformFactura: false });
+  assert.strictEqual(one.hasNothing, false, 'one change is not nothing');
+  assert.strictEqual(canPublish(one, false), true, 'and it publishes');
+});

@@ -294,7 +294,14 @@ test('every edit affordance is wired to the draft, not merely rendered', () => {
   for (const id of ['rbar', 'rbtxt', 'discard', 'review', 'drawer']) {
     assert.ok(new RegExp(`id="${id}"`).test(html), `index.html must contain #${id}`);
   }
-  assert.ok(/\$\('rbar'\)\.classList\.toggle\('show'/.test(app), 'something must actually show/hide the review bar');
+  // 🔴 #7-B — and it must key off the DRAFT, not the pending count. editCatalog persists the draft and
+  // getEditableCatalog returns it, so a reloaded saved draft has a pending count of 0 while real
+  // unpublished work sits on the server. A bar keyed to the count hides the merchant's own saved edits
+  // behind a screen with no way back to them.
+  const barToggle = app.match(/\$\('rbar'\)\.classList\.toggle\('show',\s*([^)]+)\)/);
+  assert.ok(barToggle, 'something must actually show/hide the review bar');
+  assert.match(barToggle[1], /state\.draft/, 'the review bar is reachable whenever a DRAFT exists');
+  assert.doesNotMatch(barToggle[1], /pendingCount/, '🔴 never keyed to the pending count — that is the #7 dead end');
   assert.ok(/\$\('discard'\)\.addEventListener\('click'/.test(app), 'the discard button has a click listener');
 
   // NO INLINE HANDLERS. Under this CSP an onclick attribute is inert, so the control would look

@@ -202,6 +202,18 @@ function syncUi() {
       ? 'Hay un precio sin valor válido'
       : (PUBBTN.disabled && r ? 'Confirmá los cambios antes de publicar' : '');
   }
+  // 🔴 THE REVIEW ENTRY IS DERIVED TOO, from the same ownership. It used to be set imperatively in two
+  // places — refreshBar enabled it on validity, openReviewFlow disabled it on entry — and NOTHING
+  // re-enabled it, so open-then-close left it dead until the next keystroke. That is the failure mode
+  // this file has now hit three times: UI that REMEMBERS what an operation did instead of reading what
+  // is true. One derivation, from ownership and validity, and the close path needs no cleanup at all.
+  $('rbar').classList.toggle('show', !!state.draft);
+  const rev = $('review');
+  if (rev) {
+    const valid = !!state.draft && isPublishable(state.draft);
+    rev.disabled = owned || !state.draft || !valid;
+    rev.title = (state.draft && !valid) ? 'Hay un precio sin valor válido' : '';
+  }
   setDrawerInert(owned);
 }
 
@@ -268,13 +280,32 @@ function repaintFromDraft() {
 // is published — and never stay silent when it does not.
 function refreshBar() {
   const n = pendingCount(state.draft);
-  $('rbar').classList.toggle('show', n > 0);
-  $('rbtxt').textContent = n === 1 ? '1 cambio sin publicar' : `${n} cambios sin publicar`;
-  // A price we cannot vouch for blocks the way forward HERE, where the merchant can still see which
-  // row it is — rather than at the server, after the review and the attestation.
-  const ok = isPublishable(state.draft);
-  $('review').disabled = !ok;
-  $('review').title = ok ? '' : 'Hay un precio sin valor válido';
+  // 🔴 #7-B — REACHABLE WHENEVER A DRAFT EXISTS, not only when this session typed something.
+  //
+  // editCatalog PERSISTS the draft and getEditableCatalog returns the SAVED draft, so after a reload
+  // orig === state and the count is 0 while the merchant's unpublished work sits on the server. Keying
+  // the bar to the count made that work unreachable — a dead end on the merchant's own saved edits,
+  // with no way back to it short of re-typing a change.
+  //
+  // The client cannot answer "is there unpublished work?" — it is holding the draft, not the live
+  // version. Only editCatalog's diff knows. So the bar OFFERS the question and never answers it.
+  // Visibility is DERIVED by syncUi from the same `state.draft`, so every path that ends a world —
+  // sign-out, tenant switch — takes the bar down without knowing the bar exists. Setting it here as
+  // well would be the second opinion that just killed the review entry.
+  // ...which is why the zero case is an INVITATION, not a claim. Saying "0 cambios sin publicar" would
+  // be the client asserting something it cannot know, and it would be wrong in exactly the case this
+  // whole change exists for.
+  $('rbtxt').textContent = n === 0
+    ? 'Revisá si hay algo sin publicar'
+    : (n === 1 ? '1 cambio sin publicar' : `${n} cambios sin publicar`);
+  // Nothing typed, nothing to throw away. The review is the way forward here; discard would be a
+  // control that looks live and does nothing.
+  $('discard').classList.toggle('hidden', n === 0);
+  // A price we cannot vouch for blocks the way forward — HERE, where the merchant can still see which
+  // row it is, rather than at the server after the review and the attestation. The RULE lives here; the
+  // BUTTON is painted by syncUi, which also knows whether an operation currently owns the draft. Two
+  // opinions about one control is what made the entry die after a single use.
+  syncUi();
 }
 
 function onPrice(surface, key, value) {
@@ -539,9 +570,7 @@ async function openReviewFlow() {
   state.review = null;
   bumpGeneration();
   const gen = opGeneration;
-  syncUi();
-  const btn = $('review');
-  btn.disabled = true;
+  syncUi();       // the lock is held now, so this alone refuses re-entry — no imperative disable
   try {
     // The exact document being submitted — captured BEFORE the await, so what is reviewed, saved and
     // later committed as the baseline is one snapshot rather than whatever the draft holds by then.
@@ -828,9 +857,14 @@ function invalidateReview() {
 
 document.addEventListener('portal:auth', (e) => {
   const uid = e && e.detail ? e.detail.uid : null;
-  invalidateReview();
   // The draft belongs to the previous session too: a new person must not inherit unpublished edits
   // they never made.
+  //
+  // 🔴 CLEARED BEFORE THE REPAINT, not after. invalidateReview() ends the world AND paints it, so
+  // running it first meant the final paint of the old session still saw a draft that was about to be
+  // deleted — leaving the review bar up and its entry live over nothing. Synchronous, so there is no
+  // window between these two lines; the only thing that ever mattered was which came first.
   if (state.uid && state.uid !== uid) { state.draft = null; state.groups = []; state.currentRid = null; }
   state.uid = uid;
+  invalidateReview();
 });

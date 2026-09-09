@@ -209,15 +209,25 @@ export function attestationModel(diff, ctx = {}) {
   const isFiscal = ctx.usesPlatformFactura === true;
   const sealRows = fiscalPriceChanges(diff);
   const ackSet = ackSetFrom(diff);
+  // 🔴 NOTHING TO PUBLISH IS ITS OWN ANSWER — and only since #7-B, which made the review reachable on a
+  // draft that may turn out to equal live. It is NOT the same as "changed, but no price changed": that
+  // one still publishes and still needs the seal (see the desc-only case). This one publishes nothing.
+  //
+  // Publishing an empty diff would mint an immutable version, flip active_version, and on a fiscal
+  // merchant record a SAR attestation against zero changes. A signature for nothing makes the fiscal
+  // record say something untrue, which is the same class as a signature for someone else's changes —
+  // so no signature is collected and the gate refuses outright.
+  const hasNothing = reviewModel(diff).total === 0;
   // A price we cannot vouch for blocks the publish outright, ahead of any acknowledgement — the server
   // would refuse it anyway, and no signature should be collected for something that cannot go live.
   const hasZero = sealRows.some((r) => !(Number.isInteger(r.now) && r.now > 0));
 
   return {
     isFiscal,
-    needsSeal: isFiscal,
+    hasNothing,
+    needsSeal: isFiscal && !hasNothing,
     needsPlainAck: !isFiscal && ackSet.length > 0,
-    needsAck: isFiscal || ackSet.length > 0,
+    needsAck: !hasNothing && (isFiscal || ackSet.length > 0),
     sealRows,
     ackSet,
     hasZero,
@@ -228,7 +238,10 @@ export function attestationModel(diff, ctx = {}) {
 }
 
 // Never with a zero price, and never before the confirmation it asked for.
-export const canPublish = (model, acknowledged) => !model.hasZero && (!model.needsAck || acknowledged === true);
+// `hasNothing` first, and as its own clause rather than folded into needsAck: an unsigned review and an
+// empty one are refused for different reasons, and a merchant who checks the box must still be refused.
+export const canPublish = (model, acknowledged) =>
+  !model.hasNothing && !model.hasZero && (!model.needsAck || acknowledged === true);
 
 export function renderAttestation(root, model, onToggle) {
   root.replaceChildren();

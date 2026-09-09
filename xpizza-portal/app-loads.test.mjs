@@ -25,6 +25,7 @@ import assert from 'node:assert';
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pendingChanges } from './editor.js';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -202,6 +203,10 @@ const SOURCE = () => ({
   extras: [], structure: { schema_version: 2, item_order: ['Pizza'], categories: [{ id: 'c' }] },
 });
 const okJson = (body) => ({ ok: true, status: 200, json: async () => body });
+
+// What the merchant's own editor believes is outstanding. Zero after a reload of a SAVED draft — which
+// is the whole reason #7-B exists — so tests that turn on that state assert it as a premise.
+const pendingCountOf = (app) => pendingChanges(app.state.draft).length;
 
 // SOURCE has no extras, so its drawer renders no option rows — and an option row is the only field
 // whose handler captures its key. Tests about retained listeners need this one.
@@ -839,4 +844,143 @@ test('🔴 a publish refused at the attestation gate hands its ticket back', asy
     '🔴 the refused publish returned the ticket it took — the draft is editable, not frozen');
   await byId.get('review').listeners.click[0]();
   assert.strictEqual(saves, 2, '🔴 and a fresh review can still open');
+});
+
+// ── #7-B — A SAVED DRAFT IS REACHABLE ────────────────────────────────────────────────────────────
+// editCatalog PERSISTS the draft, and getEditableCatalog returns the saved draft — not the live menu.
+// So after a reload, orig === state === the saved source and pendingCount is 0, while the merchant's
+// unpublished work is sitting on the server. The bar keyed off pendingCount, so #review never appeared
+// and that work was unreachable: a dead end on the merchant's own saved edits.
+//
+// B surfaces the entry whenever a draft exists and lets the SERVER answer what is unpublished, which is
+// the only thing that actually knows. It rides openReviewFlow unchanged — same admission control, same
+// generation stamp, same reviewBound attestation.
+
+test('🔴 a reloaded saved draft can still reach the review at pendingCount 0', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog'
+    ? okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false })
+    : okJson({ versionId: 'v1' })));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+
+  assert.strictEqual(pendingCountOf(app), 0, 'premise: nothing has been typed this session');
+  assert.ok(byId.get('rbar').classList.contains('show'),
+    '🔴 the review bar is reachable — a draft exists, and only the server knows if it is published');
+  assert.strictEqual(byId.get('review').disabled, false, '...and the way forward is not disabled');
+
+  // 🔴 AND IT CLAIMS NOTHING. The client is holding the draft, not the live version — it cannot know
+  // whether anything is unpublished. "0 cambios sin publicar" would be an assertion it has no standing
+  // to make, and it would be WRONG in precisely the reloaded-saved-draft case B exists to rescue.
+  const txt = byId.get('rbtxt').textContent;
+  assert.doesNotMatch(txt, /\d+\s+cambios?\s+sin publicar/,
+    '🔴 the bar states no count it cannot know — it invites the question instead of answering it');
+  assert.match(txt, /Revisá/, 'and what it says is an invitation to look');
+  assert.ok(byId.get('discard').classList.contains('hidden'),
+    'and Descartar is gone — nothing was typed, so there is nothing to throw away');
+});
+
+test('🔴 the review at pendingCount 0 shows the SERVER’s unpublished delta', async () => {
+  // The whole point of B: the merchant typed nothing this session, but the saved draft is 310 against a
+  // live menu of 299. Locally that difference is invisible. The server's diff is what surfaces it.
+  const byId = installDom();
+  const calls = installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF });
+    return okJson({ versionId: 'v1' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  assert.strictEqual(pendingCountOf(app), 0, 'premise: no local edits');
+  // The shim calls listeners directly, so this test would pass on a bar nobody can see. Assert the
+  // merchant can actually GET here before asserting what they find.
+  assert.ok(byId.get('rbar').classList.contains('show'), 'premise: and the entry is on screen to press');
+  assert.strictEqual(byId.get('review').disabled, false, '...and pressable');
+
+  await byId.get('review').listeners.click[0]();
+  const save = calls.find((c) => c.fn === 'editCatalog');
+  assert.ok(save && save.body && save.body.source, 'the saved draft really was submitted for a diff');
+  assert.ok(app.state.review, '🔴 a review exists for work this session never typed');
+  const names = byId.get('mbody').querySelectorAll('.pname').map((n) => n.textContent);
+  assert.ok(names.includes('Pizza'), '🔴 and the unpublished change is on screen, named');
+  assert.strictEqual(byId.get('pubbtn').disabled, false, '...and publishable, which it was not before B');
+});
+
+test('🔴 a draft that truly equals live says so, and refuses to publish nothing', async () => {
+  // The honest other half. B makes the entry always reachable, so "there is nothing here" became a
+  // reachable answer and must be a TRUTHFUL one — not an empty panel, and not a publish.
+  //
+  // 🔴 Fiscal merchant on purpose: publishing an empty diff would mint a version and record a SAR
+  // attestation for zero changes. A signature for nothing is the same forgery class as signing for
+  // someone else's changes, so the gate refuses before any signature is collected.
+  const byId = installDom();
+  const EMPTY = { added: [], removed: [], renamed: [], changed: [], largeChangeSet: [] };
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: true });
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: EMPTY });
+    return okJson({ versionId: 'v1' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+
+  await byId.get('review').listeners.click[0]();
+  const text = byId.get('mbody').querySelectorAll('.empty').map((n) => n.textContent).join(' ');
+  assert.match(text, /No hay cambios sin publicar/, '🔴 it says plainly that there is nothing to publish');
+  assert.strictEqual(byId.get('mbody').querySelectorAll('input').filter((i) => i.type === 'checkbox').length, 0,
+    '🔴 and collects NO attestation — there is nothing to attest to');
+  assert.strictEqual(byId.get('pubbtn').disabled, true,
+    '🔴 and publish is refused: a no-op version flip with a signature attached is not a publish');
+});
+
+test('🔴 the review entry survives being used — open, close, and it is live again', async () => {
+  // Found while building #7-B, and it is why B needs it. openReviewFlow disabled #review and NOTHING
+  // re-enabled it: not closeReview, not syncUi — only refreshBar, which runs on a repaint or a
+  // keystroke. So open-then-close left the entry dead until the merchant typed something.
+  //
+  // Before B the bar was hidden at count 0 and this was hard to reach. B makes the bar permanent, which
+  // would have shipped a PERMANENTLY VISIBLE DEAD BUTTON on exactly the reloaded-saved-draft screen the
+  // whole change exists to rescue: nothing to type, so nothing to bring it back.
+  //
+  // The shim calls listeners directly, so `disabled` does not stop it here — a browser would. That is
+  // the gap this asserts against, and why the assertion is on the PROPERTY, not on the effect.
+  const byId = installDom();
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF });
+    return okJson({ versionId: 'v1' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  assert.strictEqual(byId.get('review').disabled, false, 'premise: the entry starts live');
+
+  await byId.get('review').listeners.click[0]();
+  assert.strictEqual(byId.get('review').disabled, true, 'while the review owns the draft, the entry is refused');
+
+  byId.get('pubback').listeners.click[0]();          // close it; the review hands the draft back
+  assert.strictEqual(byId.get('review').disabled, false,
+    '🔴 and the entry is LIVE again — a merchant with nothing left to type can still get back in');
+});
+
+test('🔴 signing out takes the review entry with it', async () => {
+  // "Whoever ends a world cleans its UI" — the principle that closed the stranded spinner, one control
+  // over. The auth handler called invalidateReview() (which repaints) and THEN nulled the draft, so the
+  // last paint of the old world ran while the draft still existed: bar up, entry live, draft gone.
+  // Pressing it calls draftSource(null).
+  //
+  // Pre-B the bar only ever appeared for a DIRTY draft, so this needed unpublished edits to reach. B
+  // puts the bar up for every loaded draft, which makes it the ordinary case.
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog'
+    ? okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false })
+    : okJson({ versionId: 'v1' })));
+  const app = await loadAppModule();
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'A' } }));
+  await app.loadMenu('x_pizza');
+  assert.ok(byId.get('rbar').classList.contains('show'), 'premise: A can reach the review');
+
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));   // a different person
+  assert.strictEqual(app.state.draft, null, 'premise: B does not inherit A’s draft');
+  assert.ok(!byId.get('rbar').classList.contains('show'),
+    '🔴 and the review bar went with it — no entry to a draft that no longer exists');
+  assert.strictEqual(byId.get('review').disabled, true, '🔴 and the entry itself is refused');
 });
