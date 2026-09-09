@@ -581,3 +581,25 @@ test('the attestation is gated on the server capability flag, and it gates the p
   // ...and the acknowledgement it passes is a literal boolean
   assert.ok(/acknowledged\s*=\s*v === true/.test(app), 'the acknowledgement is stored as a literal true, never a truthy');
 });
+
+test('#pubbtn actually publishes — and the gate is re-checked at click time', () => {
+  // THE DEAD-BUTTON RISK. Task 5 rendered this button, Task 6 gates it; a control that looks armed
+  // and does nothing is the worst outcome on a publish screen, because the merchant believes their
+  // prices changed. Guarded explicitly so it cannot slip between tasks again.
+  const app = codeOf('app.js');
+  assert.ok(/\$\('pubbtn'\)\.addEventListener\('click'/.test(app), '#pubbtn has a click listener');
+  assert.ok(/\bpublishEdited\(/.test(app), '...that calls publishEdited');
+  assert.ok(/publishPayload\(/.test(app), '...with the payload built by the tested pure function');
+
+  // scoped to the handler: "publishEdited appears in app.js" would be satisfied by an import alone
+  const i = app.indexOf("$('pubbtn').addEventListener('click'");
+  const handler = app.slice(i, i + 2200);
+  assert.ok(/publishEdited\(/.test(handler), 'the CALL is inside the click handler, not merely imported');
+  assert.ok(/canPublish\(/.test(handler),
+    'the gate is re-checked at click time — `disabled` is a UI state that devtools can clear, and this button changes a tax document');
+  assert.ok(/btn\.disabled = true/.test(handler), 'and the button locks during the request, so one reviewed set publishes once');
+
+  // the payload must not be assembled at the call site — that is what publishPayload is for
+  assert.ok(!/acknowledgedChanges\s*:/.test(handler), 'acknowledgedChanges is not rebuilt at the call site');
+  assert.ok(!/fiscalAck\s*:/.test(handler), '...nor fiscalAck — both come from publishPayload');
+});

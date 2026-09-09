@@ -302,3 +302,32 @@ export function renderAttestation(root, model, onToggle) {
   }
   return root;
 }
+
+// ── Task 6 Step 3b — THE PUBLISH PAYLOAD ─────────────────────────────────────────────────────────
+// 🔴🔴 What actually leaves the browser to authorize a change to a legal tax document. Pure, so it is
+// checked in node rather than only asserted about structurally: app.js hands it the review state and
+// passes the result straight to publishEdited.
+//
+// TWO FIELDS, TWO QUESTIONS, and this is the pair that keeps being conflated:
+//
+//   acknowledgedChanges  the server's largeChangeSet, BY IDENTITY. Frequently []. Answers "which
+//                        large changes did the merchant see?"
+//   fiscalAck            true only when this merchant is fiscal AND the owner actually ticked
+//                        Autorizo. Answers "did a legally responsible person sign?"
+//
+// A modest 299→310 on a fiscal merchant sends fiscalAck:true WITH acknowledgedChanges:[]. Neither
+// field can be derived from the other.
+export function publishPayload(review) {
+  const att = (review && review.attestation) || {};
+  return {
+    rid: review && review.rid,
+    editToken: review && review.editToken,
+    // the server array itself — never a copy, a map or a rebuild
+    acknowledgedChanges: Array.isArray(att.ackSet) ? att.ackSet : [],
+    // STRICT on both halves. `isFiscal` is the server's capability flag; `acknowledged` is a literal
+    // true or it is not a signature. The publish button being enabled is a UI state, not a guarantee —
+    // it can be cleared from devtools — so the payload states what was actually signed rather than
+    // what the screen looked like.
+    fiscalAck: att.isFiscal === true && review.acknowledged === true,
+  };
+}

@@ -412,3 +412,73 @@ test('ONLY a literal true is an acknowledgement — nothing truthy unlocks a sig
   assert.strictEqual(seen, false, 'un-ticking reports exactly false');
   assert.strictEqual(canPublish(m, seen), false, '...and re-locks it');
 });
+
+// ── Task 6 Step 3b — THE PUBLISH PAYLOAD, AT THE WIRE ────────────────────────────────────────────
+// The attestation exists to authorize a send. Building the payload and never verifying what leaves
+// the browser would mean the SAR authorization is asserted about but never observed.
+//
+// publishPayload is a PURE function so this can be checked in node rather than only structurally:
+// app.js hands it the review state and passes the result straight to publishEdited.
+import { publishPayload } from './review.js';
+
+const reviewState = (over = {}) => ({
+  rid: 'merch_7',
+  editToken: 'ET-1',
+  diff: MODEST(),
+  attestation: attestationModel(MODEST(), { usesPlatformFactura: true }),
+  acknowledged: true,
+  ...over,
+});
+
+test('the payload carries the edit token, the verbatim ack set, and a strict fiscalAck', () => {
+  const r = reviewState();
+  const p = publishPayload(r);
+  assert.strictEqual(p.rid, 'merch_7');
+  assert.strictEqual(p.editToken, 'ET-1', 'the REVIEW token, which the server re-matches against the diff');
+  // 🔴 the ack set travels by identity — the same array the server sent, not a copy or a rebuild
+  assert.strictEqual(p.acknowledgedChanges, r.attestation.ackSet, 'the ack set is the server array itself');
+  assert.deepStrictEqual(p.acknowledgedChanges, [], '...which for this modest edit is empty');
+  assert.strictEqual(p.fiscalAck, true, 'and a fiscal merchant who acknowledged sends fiscalAck:true');
+});
+
+test('🔴 the modest fiscal case sends fiscalAck:true WITH acknowledgedChanges:[]', () => {
+  // The codex NEW-HIGH, verified at the wire rather than in the model. These two fields answer two
+  // different questions, and this is the case where they disagree.
+  const p = publishPayload(reviewState());
+  assert.strictEqual(p.fiscalAck, true);
+  assert.deepStrictEqual(p.acknowledgedChanges, []);
+  assert.ok(Array.isArray(p.acknowledgedChanges), 'an ARRAY — ackMatches refuses a non-array outright');
+});
+
+test('a >50% change sends the flagged objects verbatim alongside fiscalAck', () => {
+  const diff = {
+    added: [], removed: [], renamed: [],
+    changed: [{ key: 'Pepperoni', surface: 'item', field: 'price', old: 349, new: 900 }],
+    largeChangeSet: [{ key: 'Pepperoni', surface: 'item', reason: 'swing_gt_50', old: 349, new: 900 }],
+  };
+  const p = publishPayload(reviewState({ diff, attestation: attestationModel(diff, { usesPlatformFactura: true }) }));
+  assert.deepStrictEqual(p.acknowledgedChanges, diff.largeChangeSet, 'the server objects, unchanged');
+  assert.strictEqual(p.acknowledgedChanges[0].reason, 'swing_gt_50', 'including fields it does not read back');
+  assert.strictEqual(p.fiscalAck, true);
+});
+
+test('a NON-fiscal merchant never sends a fiscal acknowledgement', () => {
+  // Sending fiscalAck:true here would record an attestation nobody was asked for, on a merchant that
+  // files its own documents. The server ignores it — which is exactly why the client must not send it.
+  const diff = MODEST();
+  const p = publishPayload(reviewState({ attestation: attestationModel(diff, { usesPlatformFactura: false }) }));
+  assert.strictEqual(p.fiscalAck, false, 'no attestation for a non-fiscal merchant');
+  assert.deepStrictEqual(p.acknowledgedChanges, [], 'while the ack set still travels');
+});
+
+test('fiscalAck is FALSE unless the owner actually ticked it', () => {
+  // The button is disabled until acknowledged, but a disabled attribute is a UI state, not a
+  // guarantee — it can be cleared from devtools. The payload states what was actually signed.
+  const p = publishPayload(reviewState({ acknowledged: false }));
+  assert.strictEqual(p.fiscalAck, false, 'a fiscal merchant who did not tick sends false, and the server refuses');
+  for (const truthy of ['yes', 1, {}, [], 'on']) {
+    assert.strictEqual(publishPayload(reviewState({ acknowledged: truthy })).fiscalAck, false,
+      `${JSON.stringify(String(truthy))} is truthy but is not a signature`);
+  }
+  assert.strictEqual(publishPayload(reviewState({ acknowledged: true })).fiscalAck, true, 'only a literal true signs');
+});

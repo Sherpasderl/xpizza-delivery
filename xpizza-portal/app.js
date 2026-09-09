@@ -3,10 +3,10 @@
 // Rendering the menu is Task 6; this resolves WHICH restaurant is in view and keeps that choice.
 // Nothing here decides what a merchant may see — every answer comes from the server, and the UI simply
 // shows what came back.
-import { apiFetch, editCatalog } from './api.js';
+import { apiFetch, editCatalog, publishEdited } from './api.js';
 import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, draftSource, optionGroups, groupUsage } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
-import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish } from './review.js';
+import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, publishPayload } from './review.js';
 import { token } from './auth.js';
 
 const $ = (id) => document.getElementById(id);
@@ -407,6 +407,7 @@ $('review').addEventListener('click', async () => {
     // came back with getEditableCatalog (Task 2b) and is the only thing that decides whether this
     // merchant's edit touches a SAR factura.
     const att = attestationModel(state.review.diff, { usesPlatformFactura: state.usesPlatformFactura });
+    state.review.rid = state.currentRid;
     state.review.attestation = att;
     state.review.acknowledged = false;
     const attBox = document.createElement('div');
@@ -446,3 +447,46 @@ function syncPublishButton() {
     ? 'Hay un precio sin valor válido'
     : 'Confirmá los cambios antes de publicar');
 }
+
+// ── THE PUBLISH ────────────────────────────────────────────────────────────────────────────────
+// 🔴🔴 The send the attestation exists to authorize. What leaves here is built by publishPayload —
+// the verbatim ack set and a strict fiscalAck — so what is signed is decided in one tested place
+// rather than assembled at the call site.
+$('pubbtn').addEventListener('click', async () => {
+  const r = state.review;
+  // RE-CHECK THE GATE AT CLICK TIME. `disabled` is a UI state, not a guarantee: it can be cleared
+  // from devtools, and this is the button that changes a tax document. Fail closed.
+  if (!r || !r.attestation || !canPublish(r.attestation, r.acknowledged)) return;
+
+  const btn = $('pubbtn');
+  btn.disabled = true;                       // no double-submit: two publishes of one reviewed set
+  try {
+    const res = await publishEdited({ ...publishPayload(r), token });
+    // Minimal, honest outcome. Task 7 owns the receipt and the six designed states; this says the
+    // publish landed and names the version, rather than leaving the modal looking unchanged.
+    $('mbody').replaceChildren();
+    const ok = document.createElement('div');
+    ok.className = 'empty';
+    ok.append(Object.assign(document.createElement('b'), { textContent: 'Publicado' }));
+    ok.append(Object.assign(document.createElement('span'), {
+      textContent: res && res.versionId ? `Versión ${res.versionId}` : 'Tus cambios ya están en vivo.',
+    }));
+    $('mbody').append(ok);
+    state.review = null;
+    // the draft is now what is published, so nothing is pending
+    discard(state.draft);
+    repaintFromDraft();
+  } catch (e) {
+    // Task 7 gives each server code its own designed panel. Until then, say what happened — a silent
+    // failure on this button would leave a merchant believing prices changed when they did not.
+    const [t, dsc] = messageFor(e);
+    $('mbody').replaceChildren();
+    const box = document.createElement('div');
+    box.className = 'empty';
+    box.append(Object.assign(document.createElement('b'), { textContent: t }));
+    box.append(Object.assign(document.createElement('span'), { textContent: e && e.code ? `${dsc} (${e.code})` : dsc }));
+    $('mbody').append(box);
+  } finally {
+    syncPublishButton();
+  }
+});
