@@ -278,7 +278,11 @@ function groupBlock(g) {
   const sub = document.createElement('span');
   sub.className = 'mgsub';
   const n = g.options.length;
-  const usage = g.name === null ? null : groupUsage(state.draft, g.name);
+  // groupUsage already encodes the whole null-vs-zero truth: null when the source declares no exposure
+  // at all, a real count otherwise. Short-circuiting the unnamed group to null here second-guessed it
+  // and reported "unknown" for an orphan group whose usage IS knowable — for a merchant who declares
+  // exposure, an extra that no map names is a genuine, honest 0.
+  const usage = groupUsage(state.draft, g.name);
   // "en N productos" ONLY when the source actually declares exposure. x_pizza declares none, and
   // "en 0 productos" about a group its customers order from every day would be a confident lie.
   sub.textContent = `${n} ${n === 1 ? 'opción' : 'opciones'}${usage === null ? '' : ` · en ${usage} ${usage === 1 ? 'producto' : 'productos'}`}`;

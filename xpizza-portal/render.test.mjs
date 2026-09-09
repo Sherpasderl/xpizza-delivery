@@ -88,3 +88,96 @@ test('prices are shown exactly as stored — no arithmetic, no rounding, no curr
     assert.notStrictEqual(l, 'L0', 'and must never read as free');
   }
 });
+
+// ── DOM RENDERING ────────────────────────────────────────────────────────────────────────────────
+// render.js imports NOTHING, so node can exercise it directly given a document — the CDN split that
+// keeps app.js/boot.js out of node does not apply here. Until now the render layer was covered only
+// structurally, and a structural check cannot tell which STRING landed in a cell.
+//
+// A deliberately small shim: just the surface render.js touches, so a test failure means the renderer
+// is wrong rather than the fake being incomplete.
+import { renderDetail } from './render.js';
+
+function fakeDom() {
+  const mk = (tag) => {
+    const n = {
+      tag, children: [], attrs: {}, listeners: {}, _class: '', dataset: {},
+      get className() { return n._class; },
+      set className(v) { n._class = v; },
+      classList: { add: (c) => { n._class = `${n._class} ${c}`.trim(); } },
+      append: (...cs) => n.children.push(...cs),
+      replaceChildren: (...cs) => { n.children = [...cs]; },
+      setAttribute: (k, v) => { n.attrs[k] = v; },
+      addEventListener: (ev, fn) => { (n.listeners[ev] = n.listeners[ev] || []).push(fn); },
+      textContent: undefined,
+    };
+    return n;
+  };
+  globalThis.document = { createElement: mk, createElementNS: (_ns, tag) => mk(tag) };
+  return mk('div');
+}
+const walk = (n, out = []) => { out.push(n); for (const c of n.children || []) walk(c, out); return out; };
+const byClass = (root, cls) => walk(root).filter((n) => String(n._class || '').split(/\s+/).includes(cls));
+const textsIn = (root, cls) => byClass(root, cls).map((n) => n.textContent).filter((t) => t !== undefined);
+
+test('an extra is labelled by its display NAME, never by its key', () => {
+  // 🔴 THE TWO-BRANDS TRAP, in the test layer. x_pizza keys extras BY NAME, so on that brand key and
+  // name are the same string and a value assertion cannot tell "shows the name" from "shows the key".
+  // Only an ID-KEYED fixture separates them — which is why this one is la_musa-shaped, and why the bug
+  // (extras rendering `rice_white` to a merchant whose customers read "Arroz Blanco") survived a full
+  // read-only slice unnoticed.
+  const root = fakeDom();
+  const group = { category: { id: 'c1', name: 'Dim Sum' }, items: [] };
+  const extras = [{ key: 'rice_white', price: 50, display: { id: 'rice_white', cat: 'Acompañamientos', name: 'Arroz Blanco', price: 50 } }];
+  renderDetail(root, group, extras, { editable: true, changed: () => false, onPrice: () => {}, onOpen: () => {} });
+
+  const names = textsIn(root, 'nm');
+  assert.ok(names.includes('Arroz Blanco'), `the extra is labelled by its display name (got ${JSON.stringify(names)})`);
+  assert.ok(!names.includes('rice_white'), 'and NEVER by its key — that is a slug the merchant never chose');
+
+  // the KEY is still what addresses the price cell: the label changed, the identity did not
+  const cells = byClass(root, 'price');
+  assert.strictEqual(cells.length, 1, 'one price cell for the one extra');
+  assert.strictEqual(cells[0].dataset.k, 'extra::rice_white', 'the cell is keyed by the KEY, not the name');
+  const input = cells[0].children.find((c) => c.tag === 'input');
+  assert.ok(input, 'the price is editable');
+  assert.strictEqual(input.value, '50', 'and shows the unchanged price');
+
+  // typing into it reports the KEY upward, so the edit lands on the right row
+  let got = null;
+  const root2 = fakeDom();
+  renderDetail(root2, group, extras, { editable: true, changed: () => false, onPrice: (s, k, v) => { got = [s, k, v]; }, onOpen: () => {} });
+  const inp2 = byClass(root2, 'price')[0].children.find((c) => c.tag === 'input');
+  inp2.value = '75';
+  inp2.listeners.input[0]();
+  assert.deepStrictEqual(got, ['extra', 'rice_white', '75'], 'the handler receives the key, never the display name');
+});
+
+test('an item is labelled by its display name, and falls back to the key only when there is none', () => {
+  const root = fakeDom();
+  const group = {
+    category: { id: 'c1', name: 'Dim Sum' },
+    items: [
+      { key: 'dim_01', price: 200, display: { id: 'dim_01', cat: 'c1', name: 'Dumplings' } },
+      { key: 'dim_02', price: 220, display: { id: 'dim_02', cat: 'c1' } },        // no name at all
+      { key: 'dim_03', price: 230, display: { id: 'dim_03', cat: 'c1', name: '   ' } },  // blank
+    ],
+  };
+  renderDetail(root, group, [], { editable: true, changed: () => false, onPrice: () => {}, onOpen: () => {} });
+  const names = textsIn(root, 'nm');
+  assert.ok(names.includes('Dumplings'), 'the named item shows its name');
+  assert.ok(names.includes('dim_02'), 'a nameless item falls back to its key rather than rendering blank');
+  assert.ok(names.includes('dim_03'), '...and so does a whitespace-only name — a blank row tells a merchant nothing');
+});
+
+test('the read-only render is unchanged — no inputs, no openers', () => {
+  // The 2b-2a path must survive the editor: called without opts, renderDetail still produces text.
+  const root = fakeDom();
+  const group = { category: { id: 'c1', name: 'C' }, items: [{ key: 'a', price: 10, display: { id: 'a', cat: 'c1', name: 'A' } }] };
+  renderDetail(root, group, [{ key: 'x', price: 5, display: { id: 'x', name: 'X' } }]);
+  assert.strictEqual(walk(root).filter((n) => n.tag === 'input').length, 0, 'no price inputs in the read-only render');
+  assert.strictEqual(byClass(root, 'thumb').length, 0, 'no opener thumbs');
+  assert.strictEqual(byClass(root, 'rowchev').length, 0, 'no chevrons');
+  assert.ok(textsIn(root, 'price').includes('L10'), 'prices render as text');
+  assert.ok(textsIn(root, 'price').includes('L5'), '...for extras too');
+});

@@ -299,3 +299,25 @@ test('option editing cannot add or remove options — that writes keys (2b-2c)',
   assert.deepStrictEqual(after.structure.extras_by_category, before.structure.extras_by_category, 'the exposure maps are untouched');
   assert.deepStrictEqual(after.structure.extras_by_item, before.structure.extras_by_item, '...both of them');
 });
+
+test('the UNNAMED group gets the same null-vs-zero treatment as any other', () => {
+  // The drawer used to short-circuit `name === null` to "unknown". That second-guessed groupUsage,
+  // which already encodes the whole truth — so an orphan extra on a merchant who DOES declare exposure
+  // was reported as unknowable when the honest answer is a real zero: no map names it.
+  const src = GROUPED();
+  src.extras.push({ key: 'loose', price: 10, display: { id: 'loose', name: 'Suelto', price: 10 } });
+  const d = createDraft(src);
+  assert.strictEqual(groupUsage(d, null), 0,
+    'a declared-exposure source knows the orphan group reaches nothing — that is 0, not "unknown"');
+  assert.deepStrictEqual(productsUsingGroup(d, null), [], 'and no product names it');
+
+  // ...while a source that declares NO exposure still cannot say, for the orphan group as for any other
+  const noMaps = GROUPED();
+  delete noMaps.structure.extras_by_category;
+  delete noMaps.structure.extras_by_item;
+  noMaps.extras.push({ key: 'loose', price: 10, display: { id: 'loose', name: 'Suelto', price: 10 } });
+  assert.strictEqual(groupUsage(createDraft(noMaps), null), null, 'undeclared exposure stays null for the unnamed group too');
+  // the two answers must be DIFFERENT, or the distinction the note rests on is not being made
+  assert.notStrictEqual(groupUsage(d, null), groupUsage(createDraft(noMaps), null),
+    '0 and null must stay distinguishable — the note renders for one and stays silent for the other');
+});
