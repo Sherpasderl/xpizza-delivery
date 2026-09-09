@@ -61,6 +61,18 @@ export function groupByCategory(source) {
 }
 
 // ── DOM ────────────────────────────────────────────────────────────────────────────────────────
+// SVG lives in its own namespace, so createElement would produce an inert HTMLUnknownElement that
+// renders nothing. The chevron is the row's keyboard-reachable opener, so it has to actually draw.
+const svgIcon = (d) => {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', d);
+  svg.append(path);
+  return svg;
+};
+
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
@@ -144,21 +156,38 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     const row = el('div', 'irow');
     const info = el('div', 'iinfo');
     const d = (it && it.display) || {};
-    info.append(el('div', 'nmed', typeof d.name === 'string' && d.name.trim() ? d.name : String(it.key || '')));
+    // `.nm` carries the name typography (display face, 750, 16px); `.nmed` is the mock's
+    // CONTENTEDITABLE option-name affordance and carries only a focus ring. Using .nmed here left the
+    // name in the body font AND dressed unwritable text as editable — the wrong class in both senses.
+    info.append(el('div', 'nm', typeof d.name === 'string' && d.name.trim() ? d.name : String(it.key || '')));
     if (typeof d.desc === 'string' && d.desc.trim()) info.append(el('div', 'idesc', d.desc));
     // Opening the drawer is a separate affordance from the inline field, so a merchant editing in the
     // row is never one stray click from a modal, and the row itself stays a non-interactive surface.
+    const label = typeof d.name === 'string' && d.name.trim() ? d.name : String(it.key || '');
+    const cells = [];
     if (editable && onOpen) {
-      const open = el('button', 'btn ghost', 'Editar');
-      open.type = 'button';
-      open.setAttribute('aria-label', `Editar ${typeof d.name === 'string' ? d.name : it.key}`);
-      open.addEventListener('click', () => onOpen(it.key));
-      info.append(open);
+      // The mock's own three openers, rather than an invented control: a neutral 50x50 placeholder, the
+      // info block itself, and a chevron. The placeholder stays EMPTY — the mock puts a camera there,
+      // but images are deferred in this slice and a camera would advertise an upload that does nothing.
+      const thumb = el('div', 'thumb');
+      thumb.title = 'Editar producto';
+      thumb.addEventListener('click', () => onOpen(it.key));
+      cells.push(thumb);
+      info.classList.add('clk');
+      info.addEventListener('click', () => onOpen(it.key));
+      // A real <button>, not the mock's <span>: this is the row's only keyboard-reachable way into the
+      // editor, and a merchant who cannot use a mouse still has to be able to change a price.
+      const chev = el('button', 'rowchev');
+      chev.type = 'button';
+      chev.setAttribute('aria-label', `Editar ${label}`);
+      chev.append(svgIcon('M9 6l6 6-6 6'));
+      chev.addEventListener('click', () => onOpen(it.key));
+      cells.push(chev);
     }
-    row.append(info, priceCell(it && it.price, {
+    row.append(...cells.slice(0, 1), info, priceCell(it && it.price, {
       editable, changed: changed('item', it.key), onInput: (v) => onPrice('item', it.key, v),
       surface: 'item', key: it.key,
-    }));
+    }), ...cells.slice(1));
     detailEl.append(row);
   }
 
@@ -172,7 +201,7 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     for (const k of keys.sort()) {
       const row = el('div', 'irow');
       const info = el('div', 'iinfo');
-      info.append(el('div', 'nmed', k));
+      info.append(el('div', 'nm', k));
       row.append(info, priceCell(extras[k], {
         editable, changed: changed('extra', k), onInput: (v) => onPrice('extra', k, v),
         surface: 'extra', key: k,

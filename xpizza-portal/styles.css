@@ -556,6 +556,10 @@
   .sfoot .sinfo b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}
   .switch .chev{opacity:0;transition:opacity .15s}
   .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:6px}
+  /* .rowchev ships as a real <button> so the row's opener is keyboard-reachable; the mock uses a
+     <span>, which nothing can tab to. These three strip the UA chrome a button would otherwise carry
+     — no visual change, and the mock's own .rowchev rules above still do all the styling. */
+  .rowchev{background:none;border:0;padding:0}
   .switch.multi .chev{opacity:1}
   .switchwrap{position:relative;margin:2px 0 20px}
   .switchwrap .switch{margin:0}
