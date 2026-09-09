@@ -360,10 +360,13 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // the edit state exposes price setters and nothing else that writes
   const exported = [...editor.matchAll(/export (?:function|const) ([A-Za-z_$][\w$]*)/g)].map((m) => m[1]).sort();
   assert.deepStrictEqual(exported, [
-    'createDraft', 'discard', 'draftSource', 'groupUsage', 'invalidKeys', 'isPublishable',
+    'commit', 'createDraft', 'discard', 'draftSource', 'groupUsage', 'invalidKeys', 'isPublishable',
     'optionGroups', 'parsePrice', 'pendingChanges', 'pendingCount', 'productsUsingGroup',
     'setExtraPrice', 'setItemPrice',
   ], 'the edit state exports exactly these');
+  // commit and discard are OPPOSITE operations on the same draft, and confusing them reverted a
+  // published price. Both must exist, and the publish path must use commit.
+  assert.ok(/export function commit\(/.test(editor) && /export function discard\(/.test(editor), 'both baseline operations exist');
   // The list growing is not the point — WHO WRITES is. Task 4's three additions derive option groups
   // from the extras and must only read, or "editing an option" could quietly restructure the document.
   // BALANCED extraction, not "slice to the next export". The naive version swallowed everything
@@ -636,7 +639,13 @@ test('#pubbtn actually publishes, through a real in-flight lock', () => {
 
 test('every publish state is wired — and edit_superseded re-reviews rather than retrying', () => {
   const app = codeOf('app.js');
-  assert.ok(/showOutcome\(outcomeFor\(e\)\)/.test(app), 'a thrown publish error is routed to a designed panel');
+  assert.ok(/showOutcome\(outcomeFor\(e, 'publish'\)\)/.test(app), 'a thrown publish error is routed to a designed panel, marked as a publish');
+  assert.ok(/showOutcome\(outcomeFor\(e, 'edit'\)\)/.test(app), '...and an editCatalog failure is marked as an edit');
+  // 🔴 RETRY must redo the operation that FAILED, not always the publish
+  const soIdx2 = app.indexOf('function showOutcome');
+  const retryBranch = app.slice(app.indexOf('PUBLISH_ACTIONS.RETRY', soIdx2), app.indexOf('PUBLISH_ACTIONS.RETRY', soIdx2) + 420);
+  assert.ok(/outcome\.op === 'edit'/.test(retryBranch), 'RETRY branches on which operation failed');
+  assert.ok(/openReviewFlow\(\)/.test(retryBranch), '...re-saving when the save failed');
   assert.ok(/renderOutcome\(/.test(app) && /renderReceipt\(/.test(app), 'both the panels and the receipt are rendered');
 
   // every action id the state machine can emit must be HANDLED here — an unhandled one is a button
@@ -685,8 +694,17 @@ test('every publish state is wired — and edit_superseded re-reviews rather tha
   assert.ok(/const captured = state\.review/.test(app), 'the review is captured before the draft is thrown away');
   assert.ok(/receiptFor\(out\.res, captured\)/.test(app), '...and the receipt is built from it');
   const successIdx = app.indexOf('renderReceipt(');
-  const discardIdx = app.indexOf('discard(state.draft)', successIdx);
-  assert.ok(discardIdx > successIdx, 'the receipt renders BEFORE the draft is discarded');
+  const commitIdx = app.indexOf('commit(state.draft)', successIdx);
+  assert.ok(commitIdx > successIdx, 'the receipt renders BEFORE the baseline moves');
+  // 🔴 COMMIT, NOT DISCARD. They are opposite operations, and discard() here reset the editor to the
+  // PRE-EDIT prices: it showed 299 after publishing 310, and the next unrelated edit carried 299 back
+  // into the diff and silently reverted the price that had just gone live.
+  const successPath = app.slice(successIdx, successIdx + 700);
+  assert.ok(/commit\(state\.draft\)/.test(successPath), 'the publish success path commits the new baseline');
+  assert.ok(!/discard\(state\.draft\)/.test(successPath), '...and never discards to the pre-edit prices');
+  // discard still exists — it is what the "Descartar" button legitimately does
+  assert.ok(/\$\('discard'\)\.addEventListener/.test(app) && /discard\(state\.draft\)/.test(app),
+    'discard remains wired to the Descartar button, where reverting IS the intent');
 
   // in-flight is visible, not just disabled
   // both halves, and the SET specifically: `delete btn.dataset.busy` matches a bare /dataset\.busy/,
@@ -709,7 +727,7 @@ test('no server error on the write path escapes the designed panels', () => {
   // which is the 2b-2a surface for "your menu could not be loaded".
   const writeCatches = catches.filter((c) => /outcomeFor|showEmpty/.test(c));
   assert.ok(writeCatches.length >= 3, 'every catch resolves to a designed surface');
-  const routed = catches.filter((c) => /showOutcome\(outcomeFor\(e\)\)/.test(c));
+  const routed = catches.filter((c) => /showOutcome\(outcomeFor\(e, '(edit|publish)'\)\)/.test(c));
   assert.strictEqual(routed.length, 2, 'BOTH write calls — editCatalog and publishEdited — route to the panels');
 
   // and nothing anywhere reaches for an undesigned sink
@@ -754,4 +772,51 @@ test('the mobile breakpoint covers the surfaces this slice added', () => {
     'the drawer is capped at 93vw, so it can never be wider than the screen');
   // and the shell itself reflows
   assert.ok(/\.app\s*\{/.test(block), 'the app shell reflows at the breakpoint');
+});
+
+test('an auth change invalidates the review, its acknowledgement and the latch', () => {
+  // 🔴 FISCAL MISATTRIBUTION. An acknowledgement is a person's signature. Owner A ticks Autorizo,
+  // signs out, owner B signs in on the same browser — without this, A's tick publishes under B's
+  // token and the server records B as the SAR acknowledger.
+  const app = codeOf('app.js');
+  const boot = codeOf('boot.js');
+  assert.ok(/portal:auth/.test(boot), 'boot.js emits an auth-change event');
+  assert.ok(/uid: user \? user\.uid : null/.test(boot), '...carrying who is now signed in, or nobody');
+  assert.ok(/document\.addEventListener\('portal:auth'/.test(app), 'app.js listens for it');
+
+  const h = app.slice(app.indexOf("document.addEventListener('portal:auth'"));
+  assert.ok(/invalidateReview\(\)/.test(h), 'and invalidates the review on every transition');
+  const inv = app.slice(app.indexOf('function invalidateReview'), app.indexOf('function invalidateReview') + 420);
+  assert.ok(/state\.review = null/.test(inv), 'the review — and with it the acknowledgement — is dropped');
+  assert.ok(/publisher\.reset\(\)/.test(inv), 'the publisher latch is released');
+  assert.ok(/classList\.remove\('show'\)/.test(inv), 'and the open modal is closed');
+  assert.ok(/state\.draft = null/.test(h), 'a different person does not inherit unpublished edits they never made');
+});
+
+test('a tenant switch cannot paint the previous restaurant’s data or fiscal flag', () => {
+  // Codex reproduced la_musa selected while x_pizza's source AND usesPlatformFactura were on screen.
+  // The server binding stops the bad WRITE; what this fixes is the merchant READING the wrong
+  // tenant's fiscal context — and attesting against it.
+  const app = codeOf('app.js');
+  assert.ok(/let loadGeneration = 0/.test(app), 'loads are generation-stamped');
+  const lm = app.slice(app.indexOf('export async function loadMenu'), app.indexOf('export async function loadMenu') + 1600);
+  assert.ok(/const gen = \+\+loadGeneration/.test(lm), 'each load takes the next generation');
+  assert.ok((lm.match(/gen !== loadGeneration/g) || []).length >= 2,
+    'and BOTH the success and failure paths drop a stale response — an error from the tenant you left must not paint either');
+  assert.ok(/invalidateReview\(\)/.test(lm), 'tenant-bound state is cleared immediately on switch, not after the load returns');
+  assert.ok(/state\.usesPlatformFactura = false/.test(lm), '...including the fiscal capability, which must never carry across tenants');
+  // the guard has to come BEFORE the draft is built from the response
+  assert.ok(lm.indexOf('gen !== loadGeneration') < lm.indexOf('createDraft('), 'the stale check precedes painting');
+});
+
+test('the drawer cannot overlay the fiscal attestation', () => {
+  // .drawer is z-index 26; the review scrim is 20. An open drawer therefore sits OVER the seal, and a
+  // merchant could edit the underlying draft while signing for a snapshot taken before that edit.
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const z = (sel) => { const m = css.match(new RegExp(`\\${sel}\\s*\\{[^}]*z-index\\s*:\\s*(\\d+)`)); return m ? Number(m[1]) : null; };
+  assert.ok(z('.drawer') > z('.scrim'), `premise: the drawer (${z('.drawer')}) really does stack above the review scrim (${z('.scrim')})`);
+  const app = codeOf('app.js');
+  assert.ok(/function closeDrawer\(\)/.test(app), 'closing the drawer is its own operation');
+  const open = app.slice(app.indexOf('async function openReviewFlow'), app.indexOf('async function openReviewFlow') + 2600);
+  assert.ok(/closeDrawer\(\)/.test(open), 'and the review closes it before opening');
 });

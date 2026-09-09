@@ -393,7 +393,9 @@ const PANELS = {
   stale_edit: {
     icon: 'warn',
     title: 'Tu borrador cambió',
-    detail: 'Se guardó otra edición sobre este menú mientras revisabas. Recargá para traer la última versión y volvé a aplicar tu cambio — así no pisás lo que se guardó.',
+    // No reassurance about the DRAFT here — the draft moving under the merchant is precisely what
+    // happened. What CAN be said honestly is that nothing was published.
+    detail: 'Se guardó otra edición sobre este menú mientras revisabas, así que no publicamos nada. Recargá para traer la última versión y volvé a aplicar tu cambio — así no pisás lo que se guardó.',
     action: { id: PUBLISH_ACTIONS.RELOAD, label: 'Recargar y reaplicar' },
   },
   edit_superseded: {
@@ -425,7 +427,10 @@ const PANELS = {
   store_unavailable: {
     icon: 'warn',
     title: 'No se pudo publicar',
-    detail: 'El servicio de catálogo no respondió. Tus cambios siguen guardados como borrador — nada se perdió y nada cambió en vivo. Probá de nuevo en un momento.',
+    // 🔴 NOT "nada cambió en vivo". The request left the browser; the server may have committed
+    // before the connection dropped. Asserting the live menu is untouched is a confident false
+    // statement about a merchant's prices, and the one they would act on by publishing again.
+    detail: 'El servicio de catálogo no respondió a tiempo. Tu borrador está guardado, pero no pudimos confirmar si el cambio llegó a publicarse — verificá tu menú en vivo antes de reintentar.',
     action: { id: PUBLISH_ACTIONS.RETRY, label: 'Reintentar' },
   },
 };
@@ -436,14 +441,24 @@ const PANELS = {
 const GENERIC = {
   icon: 'warn',
   title: 'No se pudo publicar',
-  detail: 'Algo falló al publicar y no pudimos completar el cambio. Tus cambios siguen guardados como borrador — nada cambió en vivo. Probá de nuevo; si sigue fallando, recargá la página.',
+  // Same reasoning as store_unavailable: an unclassified failure is INDETERMINATE. Only refusals the
+  // server makes on the way in (auth, acknowledgement, staleness) are known to be pre-commit.
+  detail: 'Algo falló y no pudimos confirmar el resultado. Tu borrador está guardado, pero puede que el cambio se haya publicado — verificá tu menú en vivo antes de reintentar.',
   action: { id: PUBLISH_ACTIONS.RETRY, label: 'Reintentar' },
 };
 
-export function outcomeFor(err) {
+// `op` is WHICH CALL FAILED — 'edit' (editCatalog) or 'publish' (publishEdited). It rides on the
+// outcome so RETRY redoes the operation that actually failed. Both calls share most of their error
+// surface, which is why routing them through the same panels is right; letting both RETRY buttons
+// mean "publish" is not. A failed SAVE retried as a PUBLISH would push a reviewed-and-acknowledged
+// set the merchant had already moved past.
+export function outcomeFor(err, op = 'publish') {
   const code = (err && typeof err.code === 'string') ? err.code : null;
   const panel = (code && Object.prototype.hasOwnProperty.call(PANELS, code)) ? PANELS[code] : null;
-  return { code, generic: !panel, ...(panel || GENERIC) };
+  const base = { code, op, generic: !panel, ...(panel || GENERIC) };
+  // An edit failure did not attempt a publish, so it must not describe one.
+  if (op === 'edit' && base.title === 'No se pudo publicar') base.title = 'No se pudo guardar el borrador';
+  return base;
 }
 
 // The receipt is built from the CAPTURED review, not the draft. On success the draft is discarded and

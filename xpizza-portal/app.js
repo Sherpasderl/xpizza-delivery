@@ -4,7 +4,7 @@
 // Nothing here decides what a merchant may see — every answer comes from the server, and the UI simply
 // shows what came back.
 import { apiFetch, editCatalog, publishEdited } from './api.js';
-import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, draftSource, optionGroups, groupUsage } from './editor.js';
+import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
 import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
@@ -106,8 +106,19 @@ export async function loadRestaurants() {
 // ── loading and rendering one restaurant's menu ────────────────────────────────────────────────
 // state.groups is what is on screen. It is replaced wholesale on every load — never merged — so a
 // failed reload can never leave half of one restaurant's menu beside half of another's.
+// A monotonically increasing token. Every async load captures it; a response whose token is stale —
+// because the merchant switched restaurants while it was in flight — is DROPPED rather than painted.
+// Codex reproduced la_musa selected while x_pizza's source and fiscal flag were on screen: the server
+// binding stops the bad WRITE, but the merchant was reading the wrong tenant's fiscal context.
+let loadGeneration = 0;
+
 export async function loadMenu(rid) {
   if (!rid) return;
+  const gen = ++loadGeneration;
+  // Tenant-bound UI is cleared IMMEDIATELY, so nothing from the previous restaurant lingers while the
+  // next one loads.
+  invalidateReview();
+  state.usesPlatformFactura = false;
   $('detail').replaceChildren();
   showEmpty('Cargando tu menú…', 'Un momento.');
   let data;
@@ -118,6 +129,7 @@ export async function loadMenu(rid) {
     // kind decides the sentence: an outage says try again, a refusal says this account cannot see it.
     state.groups = [];
     $('rail').replaceChildren();
+    if (gen !== loadGeneration) return;
     const [t, d] = messageFor(e);
     showEmpty(t, d);
     return;
@@ -126,6 +138,7 @@ export async function loadMenu(rid) {
   // response — so an edit shows up because the underlying source changed, not because a view model was
   // nudged to agree. The response is kept only for what the draft is not: the CAS baseline and the
   // fiscal capability.
+  if (gen !== loadGeneration) return;        // a newer switch won; this response is for a tenant the merchant left
   state.draft = createDraft((data && data.source) || { items: [], extras: [], structure: {} });
   state.sourceUpdateTime = (data && data.sourceUpdateTime) || null;
   state.usesPlatformFactura = (data && data.usesPlatformFactura) === true;
@@ -196,6 +209,13 @@ function paint() {
 // One editable field, deliberately. The drawer is where a name, a category or a delete button would
 // naturally go, and all three write the pricing KEY — 2b-2c, after the key strategy lands. Nothing
 // here renders them, so there is no control to accidentally enable.
+// Closing is its own operation because two different things need it: the Cerrar button, and the
+// review opening (the drawer would otherwise overlay the attestation).
+function closeDrawer() {
+  state.drawerKey = null;
+  $('drawer').classList.remove('show');
+}
+
 export function openDrawer(key) {
   state.drawerKey = key;
   state.openGroups = state.openGroups || new Set();
@@ -382,6 +402,12 @@ $('discard').addEventListener('click', () => {
 // opinion about money, and publishEdited re-checks the server's one anyway: the two disagreeing is
 // how a merchant approves a change they were never shown.
 async function openReviewFlow() {
+  // 🔴 CLEAR THE PREVIOUS REVIEW FIRST. A review carries an acknowledgement and a token bound to ONE
+  // diff. If a save fails while an older acknowledged review is still in state, an edit-retry could
+  // publish a set the merchant has already moved past. Nothing acknowledged survives re-entry.
+  state.review = null;
+  publisher.reset();
+  syncPublishButton();
   const btn = $('review');
   btn.disabled = true;
   try {
@@ -419,13 +445,17 @@ async function openReviewFlow() {
     });
     syncPublishButton();
     restorePublishFooter();
+    // The drawer is z-index 26; the review scrim is 20. An open drawer therefore sits OVER the
+    // attestation, and a merchant could edit the underlying draft while signing for a snapshot taken
+    // before that edit. Close it before the review opens.
+    closeDrawer();
     $('scrim').classList.add('show');
   } catch (e) {
       // The SAME designed panels the publish uses. editCatalog and publishEdited share most of their
       // error surface — stale_edit is an editCatalog code with its own panel — so routing this through
       // outcomeFor means every server error on the write path lands somewhere the merchant can act on,
       // whichever call produced it. The generic durable panel catches anything unmapped.
-      showOutcome(outcomeFor(e));
+      showOutcome(outcomeFor(e, 'edit'));
       $('scrim').classList.add('show');
   } finally {
     btn.disabled = !isPublishable(state.draft);
@@ -491,7 +521,7 @@ async function runPublish() {
   try {
     out = await publisher.run(state.review);
   } catch (e) {
-    showOutcome(outcomeFor(e));
+    showOutcome(outcomeFor(e, 'publish'));
     return;
   } finally {
     if (btn) delete btn.dataset.busy;
@@ -507,7 +537,14 @@ async function runPublish() {
   PUBBACK.textContent = 'Listo';
   renderReceipt($('mbody'), receiptFor(out.res, captured));
   state.review = null;
-  discard(state.draft);
+  // 🔴 COMMIT, not discard. The published prices ARE the new baseline: the stored source is exactly
+  // what went live, so ORIG moves forward to it. discard() — which shipped here — reset the editor to
+  // the PRE-EDIT prices, so it showed 299 after publishing 310 and the next unrelated edit carried 299
+  // back into the diff, silently reverting the price that had just gone live.
+  //
+  // sourceUpdateTime needs no change: publishEdited does not write the source, so the CAS baseline
+  // editCatalog established still describes the document that was published.
+  commit(state.draft);
   repaintFromDraft();
 }
 PUBBTN.addEventListener('click', runPublish);
@@ -545,6 +582,13 @@ function showOutcome(outcome) {
       return;
     }
     if (id === PUBLISH_ACTIONS.RETRY) {
+      // 🔴 REDO THE OPERATION THAT FAILED. A failed SAVE retried as a PUBLISH would push a
+      // reviewed-and-acknowledged set the merchant has already moved past; a failed PUBLISH retried as
+      // a save would silently do nothing they asked for. The outcome carries which one it was.
+      if (outcome.op === 'edit') {
+        await openReviewFlow();
+        return;
+      }
       // Nothing about the edit was wrong, so send the same reviewed payload again. Calls runPublish
       // DIRECTLY: rendering this panel detached #pubbtn, so any lookup of it here is null.
       restorePublishFooter();
@@ -555,12 +599,23 @@ function showOutcome(outcome) {
     // the state machine emits is handled above; this is the guard for one it does not emit yet.
   });
 }
-
-function showModalMessage(title, detail) {
-  $('mbody').replaceChildren();
-  const box = document.createElement('div');
-  box.className = 'empty';
-  box.append(Object.assign(document.createElement('b'), { textContent: title }));
-  box.append(Object.assign(document.createElement('span'), { textContent: detail }));
-  $('mbody').append(box);
+// 🔴 AN ACKNOWLEDGEMENT IS A PERSON'S SIGNATURE, so it cannot outlive the person. Owner A ticks
+// Autorizo, signs out, owner B signs in on the same browser — without this, A's tick publishes under
+// B's token and the server records B as the SAR acknowledger. Every auth transition drops the review,
+// its acknowledgement, the open modal and the publisher latch.
+function invalidateReview() {
+  state.review = null;
+  publisher.reset();
+  closeDrawer();
+  $('scrim').classList.remove('show');
+  syncPublishButton();
 }
+
+document.addEventListener('portal:auth', (e) => {
+  const uid = e && e.detail ? e.detail.uid : null;
+  invalidateReview();
+  // The draft belongs to the previous session too: a new person must not inherit unpublished edits
+  // they never made.
+  if (state.uid && state.uid !== uid) { state.draft = null; state.groups = []; state.currentRid = null; }
+  state.uid = uid;
+});

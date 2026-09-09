@@ -801,3 +801,91 @@ test('receipt counts EVERY surface — an added item is a change', () => {
   // malformed arrays must not throw on the success path
   assert.strictEqual(receiptFor({}, { diff: { changed: null, added: 'x' } }).count, 0, 'non-arrays count as nothing rather than throwing');
 });
+
+// ── Closing-gate #2 + #4 ─────────────────────────────────────────────────────────────────────────
+test('🔴 an outcome carries the OPERATION that failed, so RETRY redoes the right one', () => {
+  // editCatalog and publishEdited share most of their error surface. Routing both through the same
+  // panels was right; letting both RETRY buttons mean "publish" was not. A failed SAVE retried as a
+  // PUBLISH would push a reviewed-and-acknowledged set the merchant had already moved on from.
+  const e = Object.assign(new Error('store_unavailable'), { code: 'store_unavailable' });
+  assert.strictEqual(outcomeFor(e, 'edit').op, 'edit', 'an editCatalog failure is marked as an edit');
+  assert.strictEqual(outcomeFor(e, 'publish').op, 'publish', '...and a publishEdited failure as a publish');
+  assert.strictEqual(outcomeFor(e).op, 'publish', 'the default stays publish — the historical caller');
+  // the op rides on every panel, not just the retryable ones
+  for (const code of ['stale_edit', 'edit_superseded', 'not_owner', 'weird_code']) {
+    const o = outcomeFor(Object.assign(new Error(code), { code }), 'edit');
+    assert.strictEqual(o.op, 'edit', `${code} carries the operation`);
+  }
+});
+
+test('🔴 an INDETERMINATE failure must not claim nothing changed', () => {
+  // The connection dropping after the request left the browser is not evidence that the server did
+  // nothing — it may have committed. Telling a merchant "nada cambió en vivo" there is a confident
+  // false statement about their live prices, and the one they would act on by republishing.
+  const indeterminate = ['store_unavailable', 'publish_failed', 'unknown_code_2027'];
+  for (const code of indeterminate) {
+    const o = outcomeFor(Object.assign(new Error(code), { code }), 'publish');
+    assert.ok(!/nada cambió en vivo|nada se perdió y nada cambió/i.test(o.detail),
+      `${code} must not assert the live menu is untouched — the publish may have committed`);
+    assert.ok(/verific|no pudimos confirmar|puede que/i.test(o.detail),
+      `${code} must tell the merchant to VERIFY rather than assume`);
+  }
+  // ...while failures the server makes on the way IN are known pre-commit, so they must NOT send the
+  // merchant off to verify a live menu we know is untouched — that is its own false alarm, and it
+  // teaches them to distrust the panel that matters.
+  for (const code of ['not_owner', 'fiscal_ack_required', 'large_change_unconfirmed', 'stale_edit', 'edit_superseded']) {
+    const o = outcomeFor(Object.assign(new Error(code), { code }), 'publish');
+    assert.ok(!/verificá tu menú en vivo/i.test(o.detail),
+      `${code} is a KNOWN pre-commit refusal — it must not imply the live menu might have changed`);
+    assert.ok(/no publicamos|nada cambió|borrador/i.test(o.detail),
+      `${code} says plainly that nothing went live`);
+  }
+});
+
+test('an EDIT failure describes saving, not publishing', () => {
+  const o = outcomeFor(Object.assign(new Error('store_unavailable'), { code: 'store_unavailable' }), 'edit');
+  assert.strictEqual(o.op, 'edit');
+  assert.ok(!/publicar|publicamos/i.test(o.title), 'the title does not claim a publish was attempted');
+});
+
+test('🔴 WHOLE FLOW: a published price stays published, and does not ride into the next diff', async () => {
+  // The reversion defect, end to end through the real publisher. Publish 299→310, then make an
+  // UNRELATED edit and check what the next review would carry. Before the fix the draft had been
+  // reset to the pre-edit prices, so Pizza=299 rode along and the next publish silently reverted the
+  // price that had just gone live — the merchant would have had to publish twice for one change.
+  const { createDraft, setItemPrice, pendingChanges, pendingCount, commit, draftSource } = await import('./editor.js');
+  const SRC = () => ({
+    restaurant_id: 'x_pizza', schema_version: 1,
+    items: [{ key: 'Pizza', price: 299, display: { id: 1, cat: 'c', name: 'Pizza', price: 299 } },
+            { key: 'Agua', price: 20, display: { id: 2, cat: 'c', name: 'Agua', price: 20 } }],
+    extras: [], structure: { schema_version: 2, item_order: ['Pizza', 'Agua'], categories: [{ id: 'c' }] },
+  });
+  const draft = createDraft(SRC());
+  setItemPrice(draft, 'Pizza', '310');
+
+  const diff = { added: [], removed: [], renamed: [],
+    changed: [{ key: 'Pizza', surface: 'item', field: 'price', old: 299, new: 310 }], largeChangeSet: [] };
+  const review = { rid: 'x_pizza', editToken: 'ET-1', diff,
+    attestation: attestationModel(diff, { usesPlatformFactura: true }), acknowledged: true };
+
+  const f = captureFetch();
+  try {
+    const out = await realPublisher().run(review);
+    assert.strictEqual(out.ok, true, 'the publish succeeded');
+    assert.strictEqual(f.sent[0].body.fiscalAck, true);
+  } finally { f.restore(); }
+
+  // what app.js does on success
+  commit(draft);
+
+  assert.strictEqual(pendingCount(draft), 0, 'nothing pending — the publish IS the baseline');
+  assert.strictEqual(draftSource(draft).items[0].price, 310, '🔴 the editor shows the PUBLISHED price, not the old one');
+
+  // an unrelated edit later
+  setItemPrice(draft, 'Agua', '25');
+  const next = pendingChanges(draft);
+  assert.deepStrictEqual(next.map((c) => c.key), ['Agua'], 'only the new edit is pending');
+  assert.ok(!next.some((c) => c.key === 'Pizza'),
+    '🔴 Pizza is NOT in the next diff — carrying 310→299 there would revert the published price');
+  assert.strictEqual(next[0].from, 20, 'and the unrelated change measures from its own published value');
+});

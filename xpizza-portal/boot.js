@@ -34,6 +34,10 @@
 
   watchAuth((user) => {
     const inn = !!user;
+    // EVERY auth transition, sign-in and sign-out alike, carrying who (if anyone) is now signed in.
+    // app.js invalidates any in-flight review on this: an acknowledgement is a person's signature and
+    // must not survive the person changing.
+    document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: user ? user.uid : null } }));
     gate.classList.toggle('hidden', inn);
     app.classList.toggle('hidden', !inn);
     if (inn) {

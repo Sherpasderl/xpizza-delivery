@@ -29,7 +29,9 @@ export function parsePrice(raw) {
   const s = raw.trim();
   if (!/^[0-9]+$/.test(s)) return null;      // ASCII digits only — no signs, decimals, exponents, hex or non-Latin numerals
   const n = Number(s);
-  return Number.isInteger(n) && n > 0 ? n : null;
+  // isSafeInteger, not isInteger: past 2^53 a value cannot round-trip exactly, and a price that
+  // cannot be represented is not a price.
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
 }
 
 // ORIG is the yardstick every change is measured against and what discard restores; STATE is what the
@@ -42,6 +44,18 @@ export function createDraft(source) {
 
 export function discard(draft) {
   draft.state = clone(draft.orig);
+  return draft;
+}
+
+// 🔴 THE PUBLISHED STATE BECOMES THE BASELINE. The opposite of discard, and the two must never be
+// confused: after a successful publish the live menu IS the draft, so ORIG moves forward to it.
+//
+// Calling discard() there — which shipped — reset the editor to the PRE-EDIT prices: it showed 299
+// after publishing 310, and the next unrelated edit carried 299 into the diff and silently reverted
+// the price that had just gone live. A merchant would have had to publish twice for one change to
+// stick, and would never have been told why.
+export function commit(draft) {
+  draft.orig = clone(draft.state);
   return draft;
 }
 

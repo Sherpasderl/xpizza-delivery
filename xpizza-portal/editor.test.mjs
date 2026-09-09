@@ -20,7 +20,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import {
   createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount,
-  isPublishable, invalidKeys, discard, draftSource, parsePrice,
+  isPublishable, invalidKeys, discard, commit, draftSource, parsePrice,
 } from './editor.js';
 
 const SRC = () => ({
@@ -320,4 +320,44 @@ test('the UNNAMED group gets the same null-vs-zero treatment as any other', () =
   // the two answers must be DIFFERENT, or the distinction the note rests on is not being made
   assert.notStrictEqual(groupUsage(d, null), groupUsage(createDraft(noMaps), null),
     '0 and null must stay distinguishable — the note renders for one and stays silent for the other');
+});
+
+// ── Closing-gate #1 — THE PUBLISHED PRICE IS THE NEW BASELINE ────────────────────────────────────
+test('🔴 commit makes the published state the baseline; discard would revert it', () => {
+  // The defect: after a successful publish the code called discard(), which resets STATE to ORIG —
+  // the PRE-EDIT prices. So the editor showed 299 after publishing 310, and the next unrelated edit
+  // carried 299 into the diff and silently reverted the price that had just gone live.
+  //
+  // The plan said "commit STATE→ORIG". discard() is exactly the opposite operation.
+  const d = createDraft(SRC());
+  setItemPrice(d, 'Plato Uno', '310');
+  assert.strictEqual(pendingCount(d), 1, 'premise: one pending change');
+
+  commit(d);
+  assert.strictEqual(pendingCount(d), 0, 'nothing pending after the publish — it IS the baseline now');
+  assert.strictEqual(draftSource(d).items[0].price, 310, 'and the editor still shows the PUBLISHED price');
+  assert.strictEqual(draftSource(d).items[0].display.price, 310, '...on both fields');
+
+  // the next, unrelated edit must not drag the old price along
+  setItemPrice(d, 'Plato Dos', '400');
+  assert.deepStrictEqual(pendingChanges(d), [{ surface: 'item', key: 'Plato Dos', from: 310 === 310 ? 310 : 0, to: 400 }].map((c) => ({ ...c, from: 310 })).map((c) => ({ surface: 'item', key: 'Plato Dos', from: 310, to: 400 })).map((c) => c),
+    'sanity: the shape of the next change');
+  const keys = pendingChanges(d).map((c) => c.key);
+  assert.deepStrictEqual(keys, ['Plato Dos'], 'ONLY the new edit is pending');
+  assert.ok(!keys.includes('Plato Uno'), '🔴 the published price is NOT re-proposed — that would revert it');
+
+  // discard, for contrast, is what shipped and what it would have done
+  const d2 = createDraft(SRC());
+  setItemPrice(d2, 'Plato Uno', '310');
+  discard(d2);
+  assert.strictEqual(draftSource(d2).items[0].price, 250, 'discard reverts to the pre-edit price — correct for "Descartar", wrong after a publish');
+  assert.notStrictEqual(draftSource(d2).items[0].price, draftSource(d).items[0].price, 'the two operations are genuinely opposite');
+});
+
+test('parsePrice refuses values outside the safe integer range', () => {
+  // A 16-digit price is not a real risk, but Number stops being exact past 2^53 and a price that
+  // cannot round-trip is not a price. Cheap to refuse.
+  assert.strictEqual(parsePrice(String(Number.MAX_SAFE_INTEGER)), Number.MAX_SAFE_INTEGER, 'the boundary itself is fine');
+  assert.strictEqual(parsePrice('9007199254740993'), null, 'one past it cannot be represented exactly');
+  assert.strictEqual(parsePrice('99999999999999999999'), null, 'nor can a twenty-digit one');
 });
