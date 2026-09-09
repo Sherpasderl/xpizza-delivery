@@ -130,6 +130,29 @@ export async function loadRestaurants() {
 let opGeneration = 0;
 const bumpGeneration = () => { opGeneration += 1; };
 
+// ── THE SHARED-STATE CALLBACK GUARD ────────────────────────────────────────────────────────────
+// canEdit covers every writer of the DRAFT. This covers the other class: callbacks that write shared
+// state which is not the draft — the acknowledgement above all.
+//
+// A callback captures the world it was created in — the generation, and the identity of the review it
+// belongs to — and refuses to act if either has moved. A retained listener from review A dispatched
+// after review B opened is therefore inert, and so is one dispatched across an auth transition.
+//
+// 🔴 The acknowledgement is why this exists. A's checkbox listener wrote through the GLOBAL
+// state.review, so firing it later acknowledged B — a forged SAR attestation, which is the one thing
+// the fiscal gate exists to prevent. Reachable only by a retained reference and a programmatic
+// dispatch, but "unforgeable even programmatically" is the right bar for a legal document.
+function reviewBound(fn) {
+  const gen = opGeneration;
+  const token = state.review ? state.review.editToken : null;
+  return (...args) => {
+    if (gen !== opGeneration) return;                                   // a world that ended
+    const now = state.review ? state.review.editToken : null;
+    if (now !== token) return;                                          // a different review
+    return fn(...args);
+  };
+}
+
 // ── EDITING OWNERSHIP ──────────────────────────────────────────────────────────────────────────
 // The drawer must be inert for as long as SOME operation owns the draft — a save, a review, or a
 // publish — and must be released only by whoever took it.
@@ -553,10 +576,12 @@ async function openReviewFlow() {
     state.review.acknowledged = false;
     const attBox = document.createElement('div');
     $('mbody').append(attBox);
-    renderAttestation(attBox, att, (v) => {
+    // BOUND to this review and this world. Dispatching A's checkbox after B opened must acknowledge
+    // nothing — an acknowledgement identifies a person signing one specific reviewed set.
+    renderAttestation(attBox, att, reviewBound((v) => {
       state.review.acknowledged = v === true;   // a literal true, never a truthy — this unlocks a signature
-      syncPublishButton();
-    });
+      syncUi();
+    }));
     syncPublishButton();
     restorePublishFooter();
     // The drawer is z-index 26; the review scrim is 20. An open drawer therefore sits OVER the
@@ -590,6 +615,12 @@ async function openReviewFlow() {
 // The explicit return to editing. Everything that hands the draft back to the merchant goes through
 // here, so there is one place that knows the review is over.
 function closeReview() {
+  // 🔴 A LIVE REVIEW IS CLOSEABLE; AN IN-FLIGHT PUBLISH IS NOT. Closing during a publish released its
+  // lock, so the merchant could edit and start a SAVE while the publish was still pending — not a
+  // double publish (the token latch holds) but a save/publish overlap that corrupts the baseline.
+  //
+  // Failure-panel recovery still releases, because by then the operation has settled.
+  if (publisher.busy && state.publishGen === opGeneration) return;
   $('scrim').classList.remove('show');
   state.review = null;
   releaseEditLock(state.reviewLock);
@@ -648,8 +679,14 @@ async function runPublish() {
   const gen = opGeneration;               // the world this attempt belongs to
   // ITS OWN ADMISSION, rather than riding the review's lock. If a save or another publish is in
   // flight, this one is refused before anything is sent — the same contract openReviewFlow honours.
+  // 🔴 VALIDATE BEFORE ACQUIRING. Dispatching a retained publish button with no review used to
+  // ACQUIRE the edit lock, get `not_ready` back from the publisher, and return without releasing —
+  // leaving draft.canEdit() false forever and every future review refused at admission. The portal
+  // became read-only until reload.
+  if (!state.review || !state.review.attestation) return;   // nothing to publish; take nothing
   const held = state.reviewLock;
-  const lock = held !== null && held === editLockHolder ? held : takeEditLock();
+  const acquired = held !== null && held === editLockHolder ? null : takeEditLock();
+  const lock = acquired !== null ? acquired : held;
   if (lock === null) return;              // something else genuinely owns the draft right now
   state.reviewLock = lock;
   let out;
@@ -679,8 +716,12 @@ async function runPublish() {
     syncUi();
   }
   if (gen !== opGeneration) return;       // the answer arrived into a world that has moved on
-  // Refused before the network: already in flight, spent, or the gate said no. Nothing was sent.
-  if (!out || !out.ok) return;
+  // Refused before the network: already in flight, spent, or the gate said no. Nothing was sent — so
+  // hand back any ticket THIS call acquired, or the lock leaks and the portal goes read-only.
+  if (!out || !out.ok) {
+    if (acquired !== null) { releaseEditLock(acquired); state.reviewLock = null; syncUi(); }
+    return;
+  }
 
   // SUCCESS. The receipt reads from the CAPTURED review, because the next two lines throw the draft
   // away — the publish is the new baseline, and leaving edits pending would claim unpublished work

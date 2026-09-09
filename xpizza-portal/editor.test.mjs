@@ -360,6 +360,13 @@ test('parsePrice refuses values outside the safe integer range', () => {
   assert.strictEqual(parsePrice(String(Number.MAX_SAFE_INTEGER)), Number.MAX_SAFE_INTEGER, 'the boundary itself is fine');
   assert.strictEqual(parsePrice('9007199254740993'), null, 'one past it cannot be represented exactly');
   assert.strictEqual(parsePrice('99999999999999999999'), null, 'nor can a twenty-digit one');
+
+  // 🔴 THE SAME RULE ON THE NUMBER BRANCH. It read Number.isInteger, which says TRUE for 2^53+2 — so a
+  // price that arrives already typed (a source row re-parsed, a programmatic set) skipped the bound the
+  // string branch enforces, and the two branches disagreed about what a price is.
+  assert.strictEqual(parsePrice(Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER, 'the boundary is fine as a number too');
+  assert.strictEqual(parsePrice(9007199254740994), null, '🔴 and one past it is refused as a number, exactly as it is as a string');
+  assert.strictEqual(parsePrice(1e21), null, 'nor does an exponent-scale value slip through as "an integer"');
 });
 
 test('🔴 the baseline is the SUBMITTED snapshot, not whatever the draft holds when the publish lands', () => {

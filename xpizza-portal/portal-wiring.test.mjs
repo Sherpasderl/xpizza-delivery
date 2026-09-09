@@ -893,3 +893,92 @@ test('the drawer cannot overlay the fiscal attestation', () => {
   const open = app.slice(app.indexOf('async function openReviewFlow'), app.indexOf('async function openReviewFlow') + 2600);
   assert.ok(/closeDrawer\(\)/.test(open), 'and the review closes it before opening');
 });
+
+// ── THE SHARED-STATE WRITER CENSUS ───────────────────────────────────────────────────────────────
+// Six rounds of review each found one more surface that could write shared state from a stale world,
+// and each was fixed where it was found. This is the check that ends that: a frozen census of EVERY
+// writer in app.js, with a ruling for each. Add a writer, move one, delete one, and this fails until
+// the new count is entered and its ruling stated.
+//
+// It cannot see whether a ruling is TRUE — that is what the executable tests do. What it guarantees is
+// that no writer is ever added without one, which is the failure mode that actually kept recurring.
+test('🔴 every shared-state writer in app.js is enumerated and ruled on', () => {
+  const app = codeOf('app.js');
+
+  // How each field is protected. Exactly three answers are acceptable:
+  //   'canEdit'  — writes the DRAFT, refused by the state boundary in editor.js when it is not owned
+  //   'bound'    — writes non-draft shared state from a callback, wrapped in reviewBound (captures the
+  //                review identity AND the generation, refuses if either moved)
+  //   'guarded'  — writes from an async settle path that re-checks the generation before mutating
+  //   'view'     — writes state that is purely presentational; a stale write repaints, it cannot
+  //                mis-price, mis-sign or mis-publish anything
+  //   'ender'    — the code that ENDS a world (auth change, tenant switch, invalidation). It writes
+  //                unconditionally on purpose; guarding it would be guarding the guard.
+  const CENSUS = {
+    'state.draft':               [2, 'canEdit', 'created on load, cleared by the auth ender; every MUTATION goes through editor.js'],
+    'state.review':              [9, 'bound',   'built on the guarded settle path; the ack callback — the one live listener — is reviewBound'],
+    'state.publishGen':          [2, 'guarded', 'set only on genuine admission inside runPublish, cleared by the ender'],
+    'state.reviewLock':          [7, 'guarded', 'ticket bookkeeping; every write pairs with a take/release on a generation-checked path — the 7th is the release of a ticket acquired by a publish that was then refused'],
+    'state.currentRid':          [3, 'ender',   'the tenant switch and the auth handler — the two things that end a world'],
+    'state.groups':              [3, 'guarded', 'the rendered menu, written only after the generation check on both settle paths'],
+    'state.usesPlatformFactura': [2, 'guarded', '🔴 the fiscal capability — load path, behind the generation check'],
+    'state.sourceUpdateTime':    [2, 'guarded', 'the CAS baseline — load path and the save settle path, both checked'],
+    'state.uid':                 [1, 'ender',   'the auth handler itself — the identity change that ENDS the previous world'],
+    'state.extras':              [1, 'guarded', 'the flat extras list, written by the load path behind the generation check'],
+    'state.selectedCat':         [3, 'view',    'which category the rail highlights — a stale write repaints, it cannot mis-price'],
+    'state.openGroups':          [3, 'view',    'which option groups are expanded in the drawer — one assignment plus the add/delete of the toggle; presentational only'],
+    'state.drawerKey':           [3, 'view',    'which dish the drawer shows; the fields inside it are canEdit-guarded'],
+    'state.restaurants':         [1, 'guarded', 'the switcher list, written by loadRestaurants behind its generation check'],
+    'editLockHolder':            [4, 'guarded', 'the declaration, take, release, and the ender'],
+    'opGeneration':              [2, 'ender',   'the declaration and the += inside bumpGeneration — the only two, and bumping IS how a world ends'],
+  };
+
+  // Assignment, compound assignment, and mutating-method calls on the field itself.
+  const writesOf = (target) => {
+    const t = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?:^|[^\\w.])${t}(?:\\.\\w+)*\\s*(?:=[^=]|\\+=|-=|\\|\\|=|\\?\\?=)|(?:^|[^\\w.])${t}\\.(?:push|pop|splice|add|delete|clear|set|sort|shift|unshift)\\(|(?:let|const|var)\\s+${t}\\b`, 'g');
+    return (app.match(re) || []).length;
+  };
+
+  // 1. Every censused field still has exactly the number of writers it was ruled on with.
+  for (const [field, [count, ruling, why]] of Object.entries(CENSUS)) {
+    assert.ok(['canEdit', 'bound', 'guarded', 'view', 'ender'].includes(ruling), `${field}: '${ruling}' is not a ruling`);
+    assert.ok(why && why.length > 20, `${field} has a ruling but no reason — the reason is the point`);
+    assert.strictEqual(writesOf(field), count,
+      `🔴 the number of writers of ${field} changed (${writesOf(field)}, censused ${count}). ` +
+      'Enter the new count and confirm the new writer is canEdit-guarded, reviewBound, generation-checked, or view-only.');
+  }
+
+  // 2. And no WRITTEN field of `state` exists that the census has never heard of. This is the half
+  //    that catches a NEW surface, which is the one that kept getting missed.
+  //
+  //    Derived from every `state.<field>` in the file rather than from the declaration, because the
+  //    declaration lists five fields and the object carries fourteen — the rest are attached where
+  //    they are first needed. A parser trusting the literal would have vouched for nine fields it
+  //    never looked at, which is the exact shape of every miss this census exists to prevent.
+  const fields = [...new Set([...app.matchAll(/\bstate\.(\w+)/g)].map((m) => `state.${m[1]}`))];
+  assert.ok(fields.length > 10, `sanity: the parser found the fields (${fields.length})`);
+  for (const f of fields) {
+    if (writesOf(f) === 0) continue;                 // read-only: nothing to rule on
+    assert.ok(f in CENSUS, `🔴 ${f} is WRITTEN shared state with no ruling — add it to the census`);
+  }
+
+  // 3. Non-vacuity: the counter must actually be able to see a writer it is not looking at.
+  assert.ok(writesOf('state.draft') > 0 && writesOf('state.nonexistent') === 0, 'the counter discriminates');
+});
+
+test('🔴 the acknowledgement is written only through the bound callback', () => {
+  // The single most dangerous write in the portal: it is what turns an unsigned review into a signed
+  // fiscal attestation. Two writers, and both must be accounted for by name.
+  const app = codeOf('app.js');
+  const acks = [...app.matchAll(/^.*state\.review\.acknowledged\s*=.*$/gm)].map((m) => m[0]);
+  assert.strictEqual(acks.length, 2, `expected exactly two writers of the acknowledgement, found ${acks.length}`);
+  assert.ok(acks.some((l) => /=\s*false/.test(l)), 'one initialises it to false when the review is built');
+  const live = acks.find((l) => !/=\s*false/.test(l));
+  assert.ok(/v === true/.test(live), 'the live one takes a literal true, never a truthy value');
+
+  // and the callback that contains it is bound
+  const att = app.match(/renderAttestation\([^\n]*\n?/);
+  assert.ok(att && /reviewBound\(/.test(att[0]),
+    '🔴 the attestation callback must be reviewBound — an unbound one acknowledges whatever review is open');
+});

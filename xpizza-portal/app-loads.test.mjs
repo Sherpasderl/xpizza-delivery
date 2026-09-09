@@ -203,6 +203,15 @@ const SOURCE = () => ({
 });
 const okJson = (body) => ({ ok: true, status: 200, json: async () => body });
 
+// SOURCE has no extras, so its drawer renders no option rows — and an option row is the only field
+// whose handler captures its key. Tests about retained listeners need this one.
+const WITH_EXTRA = () => {
+  const s = SOURCE();
+  s.extras = [{ key: 'Queso', price: 20, display: { id: 9, cat: 'Salsas', name: 'Queso', price: 20 } }];
+  s.structure.extras_by_category = { c: ['Salsas'] };
+  return s;
+};
+
 test('🔴 a load that settles AFTER a tenant switch does not paint the tenant you left', async () => {
   const byId = installDom();
   const slow = deferred();
@@ -270,7 +279,7 @@ test('🔴 the drawer is inert for the whole SAVE, and a skipped publish does no
   const slowSave = deferred();
   let n = 0;
   installFetch((fn) => {
-    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: true });
+    if (fn === 'getEditableCatalog') return okJson({ source: WITH_EXTRA(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: true });
     if (fn === 'editCatalog') { n += 1; return n === 1 ? slowSave.promise : okJson({ token: 'ET', updateTime: 'T2', diff: { added: [], removed: [], renamed: [], changed: [], largeChangeSet: [] } }); }
     return okJson({ versionId: 'v1' });
   });
@@ -282,7 +291,17 @@ test('🔴 the drawer is inert for the whole SAVE, and a skipped publish does no
   assert.ok(drawer.querySelectorAll('input').length > 0, 'premise: the drawer really has an editable field');
   assert.ok(!drawer.querySelectorAll('input')[0].disabled, 'and it is editable before anything is in flight');
 
-  // a reference the merchant's browser could still hold after the drawer is closed
+  // 🔴 RETAIN AN OPTION'S INPUT, NOT THE ITEM'S. The item field's handler reads state.drawerKey AT FIRE
+  // TIME, and closing the drawer nulls it — so firing it late hit setItemPrice(draft, null) and was a
+  // no-op for the unknown-key reason, whether or not the boundary existed. It proved nothing: deleting
+  // canEdit from setPrice left this test green.
+  //
+  // The option field CAPTURED o.key when it was built, so it stays a live weapon pointed at a real row
+  // for as long as anything holds it. That is the listener the boundary has to stop.
+  drawer.querySelectorAll('.mgmain')[0].listeners.click[0]();      // open the group so its rows render
+  const optInput = drawer.querySelectorAll('input')
+    .find((i) => (i.attrs['aria-label'] || '').startsWith('Precio de '));
+  assert.ok(optInput, 'premise: an option price field, whose handler closed over a real key');
   const retainedInput = drawer.querySelectorAll('input')[0];
   // start the save; it stays on the wire
   const saving = byId.get('review').listeners.click[0]();
@@ -303,7 +322,14 @@ test('🔴 the drawer is inert for the whole SAVE, and a skipped publish does no
   retainedInput.value = '999';
   retainedInput.listeners.input[0]();
   assert.strictEqual(app.state.draft.state.items[0].price, priceBefore,
-    '🔴 a RETAINED listener cannot move a price while the review owns the draft');
+    'a RETAINED listener cannot move a price while the review owns the draft');
+
+  // THE DISCRIMINATING ONE: a captured key, so nothing but the boundary can refuse it.
+  const extraBefore = app.state.draft.state.extras[0].price;
+  optInput.value = '777';
+  optInput.listeners.input[0]();
+  assert.strictEqual(app.state.draft.state.extras[0].price, extraBefore,
+    '🔴 a retained OPTION listener, holding a valid key, cannot move a price mid-attestation');
 
   // released only by an EXPLICIT return to editing
   byId.get('pubback').listeners.click[0]();
@@ -567,10 +593,19 @@ test('🔴 a restaurant-lookup FAILURE after B takes over does not disturb B', a
   await app.loadMenu('x_pizza');
   const bGroups = app.state.groups.length;
   assert.ok(bGroups > 0, 'premise: B has a menu on screen');
+  // What the failure path would actually destroy is the DOM — showEmpty() empties the rail and replaces
+  // the detail. It never touches state.groups, so asserting the count alone passed on the broken code:
+  // removing the generation check left this test green while the screen went blank.
+  const rails = byId.get('rail').querySelectorAll('.railitem').length;
+  assert.ok(rails > 0, 'premise: B’s rail is painted');
+  assert.strictEqual(byId.get('detail').querySelectorAll('.nm')[0].textContent, 'Pizza', 'premise: and B’s dish is on screen');
 
   slow.reject(Object.assign(new Error('store_unavailable'), { code: 'store_unavailable', status: 503 }));
   await looking;
-  assert.strictEqual(app.state.groups.length, bGroups, '🔴 the stale lookup failure left B’s menu alone');
+  assert.strictEqual(app.state.groups.length, bGroups, 'the stale lookup failure left B’s menu alone');
+  assert.strictEqual(byId.get('rail').querySelectorAll('.railitem').length, rails, '🔴 B’s rail is still painted');
+  assert.strictEqual(byId.get('detail').querySelectorAll('.nm')[0].textContent, 'Pizza',
+    '🔴 and B’s dish is still on screen — not replaced by the stale tenant’s error panel');
 });
 
 test('🔴 a failed PUBLISH hands editing back so its recovery panel can re-enter', async () => {
@@ -633,4 +668,175 @@ test('🔴 a skipped publish in a NEW world does not light a spinner it is not w
 
   slowA.resolve(okJson({ versionId: 'vA' }));
   await a;
+});
+
+// ── THE SHARED-STATE CALLBACK GUARD, EXECUTABLY ──────────────────────────────────────────────────
+// canEdit closed the DRAFT writers. These three close the other class: callbacks and handlers that
+// write shared state which is not the draft. Each fires a retained or ill-timed handler and asserts it
+// changed nothing.
+
+const CHANGED_DIFF = { added: [], removed: [], renamed: [], changed: [{ key: 'Pizza', surface: 'item', field: 'price', old: 299, new: 310 }], largeChangeSet: [] };
+
+test('🔴 review A’s acknowledgement checkbox cannot acknowledge review B', async () => {
+  // The forgery: the callback wrote through the GLOBAL state.review, so A's retained checkbox
+  // acknowledged whatever review happened to be open. On a fiscal merchant that is a forged SAR
+  // attestation — the merchant is recorded as having signed for a set of changes they never saw.
+  const byId = installDom();
+  let saves = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: true });
+    if (fn === 'editCatalog') { saves += 1; return okJson({ token: `ET${saves}`, updateTime: 'T2', diff: CHANGED_DIFF }); }
+    return okJson({ versionId: 'v1' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+
+  await byId.get('review').listeners.click[0]();
+  const aBoxes = byId.get('mbody').querySelectorAll('input').filter((i) => i.type === 'checkbox');
+  assert.ok(aBoxes.length > 0, 'premise: review A rendered an attestation to sign');
+  const aCheckbox = aBoxes[0];                       // the reference a page could still hold
+
+  byId.get('pubback').listeners.click[0]();          // A is closed
+  await byId.get('review').listeners.click[0]();     // B opens — a different review, a different token
+  assert.strictEqual(saves, 2, 'premise: B is a genuinely new review');
+  assert.strictEqual(app.state.review.acknowledged, false, 'premise: B is unsigned');
+
+  aCheckbox.checked = true;
+  aCheckbox.listeners.change[0]();
+  assert.strictEqual(app.state.review.acknowledged, false,
+    '🔴 A’s checkbox acknowledged NOTHING — an attestation belongs to the review it was rendered for');
+  assert.strictEqual(byId.get('pubbtn').disabled, true, '...so B’s publish is still gated on a real signature');
+});
+
+test('🔴 a publish press with nothing to publish does not swallow the edit lock', async () => {
+  // It acquired the lock, asked the publisher, got `not_ready`, and returned without releasing —
+  // canEdit() false forever. The portal became read-only, and no review could ever open again.
+  const byId = installDom();
+  let saves = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') { saves += 1; return okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF }); }
+    return okJson({ versionId: 'v1' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  assert.ok(app.state.draft.canEdit(), 'premise: the draft starts editable');
+
+  await byId.get('pubbtn').listeners.click[0]();     // no review exists; the press is meaningless
+  assert.strictEqual(app.state.draft.canEdit(), true,
+    '🔴 the meaningless press took no ownership — the draft is still editable');
+
+  await byId.get('review').listeners.click[0]();     // and the portal still works
+  assert.strictEqual(saves, 1, '🔴 a review can still open — the lock was never leaked');
+});
+
+test('🔴 a review cannot be closed while its own publish is on the wire', async () => {
+  // Closing released the lock mid-publish, so the merchant could edit and start a SAVE against a
+  // baseline the pending publish was about to move. Not a double publish — a corrupted baseline.
+  const byId = installDom();
+  const slowPub = deferred();
+  let saves = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') { saves += 1; return okJson({ token: `ET${saves}`, updateTime: 'T2', diff: CHANGED_DIFF }); }
+    return slowPub.promise;
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+
+  const publishing = byId.get('pubbtn').listeners.click[0]();
+  await Promise.resolve();
+  assert.ok(app.state.review, 'premise: the publish is on the wire');
+
+  byId.get('pubback').listeners.click[0]();          // "Volver a editar", pressed mid-flight
+  assert.ok(app.state.review, '🔴 the review did not close under its own in-flight publish');
+  assert.ok('inert' in byId.get('drawer').attrs, '🔴 and editing is still refused — the draft stays owned');
+  assert.strictEqual(saves, 1, 'premise: no save slipped in');
+
+  slowPub.resolve(okJson({ versionId: 'v1' }));
+  await publishing;
+  assert.ok(!('inert' in byId.get('drawer').attrs), 'and once it settles, editing comes back');
+});
+
+test('🔴 A’s checkbox cannot acknowledge a LATER review that happens to carry the same token', async () => {
+  // Why the guard captures the GENERATION and not just the review identity. The edit token is derived
+  // from the draft and its updateTime, so re-opening a review over an unchanged draft can legitimately
+  // return the SAME token — and then "is this still my review?" answers yes for a review that belongs
+  // to a different session entirely. The generation is what knows the world ended.
+  const byId = installDom();
+  let saves = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: true });
+    if (fn === 'editCatalog') { saves += 1; return okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF }); }  // the SAME token, every time
+    return okJson({ versionId: 'v1' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+
+  await byId.get('review').listeners.click[0]();
+  const aCheckbox = byId.get('mbody').querySelectorAll('input').filter((i) => i.type === 'checkbox')[0];
+  const aToken = app.state.review.editToken;
+
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'OTHER' } }));   // a different person
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+  assert.strictEqual(app.state.review.editToken, aToken, 'premise: the tokens really are identical');
+  assert.strictEqual(app.state.review.acknowledged, false, 'premise: the new session has signed nothing');
+
+  aCheckbox.checked = true;
+  aCheckbox.listeners.change[0]();
+  assert.strictEqual(app.state.review.acknowledged, false,
+    '🔴 the previous session’s checkbox signed nothing — the token matched, the WORLD did not');
+});
+
+test('🔴 a meaningless publish press takes no ownership at the instant it is pressed', async () => {
+  // Not "the lock came back" — it never should have been taken. Releasing it afterwards leaves a window
+  // across the await in which the draft is locked for a request that was never sent, and a save started
+  // in that window is refused for no reason the merchant can see.
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog'
+    ? okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false })
+    : okJson({ versionId: 'v1' })));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+
+  const pressed = byId.get('pubbtn').listeners.click[0]();     // deliberately NOT awaited
+  assert.strictEqual(app.state.draft.canEdit(), true,
+    '🔴 synchronously after the press, the draft is STILL editable — nothing was acquired');
+  await pressed;
+  assert.strictEqual(app.state.draft.canEdit(), true, 'and it stays that way once the press unwinds');
+});
+
+test('🔴 a publish refused at the attestation gate hands its ticket back', async () => {
+  // The press that gets furthest before being refused: a real review, with a real attestation, that
+  // simply has not been signed. It clears the pre-check and IS admitted to the lock — so this is the
+  // path where a ticket genuinely gets acquired and must genuinely be returned.
+  const byId = installDom();
+  let saves = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: true });
+    if (fn === 'editCatalog') { saves += 1; return okJson({ token: `ET${saves}`, updateTime: 'T2', diff: CHANGED_DIFF }); }
+    return okJson({ versionId: 'v1' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+  assert.strictEqual(app.state.review.acknowledged, false, 'premise: unsigned, so the gate will refuse it');
+
+  const review = app.state.review;
+  byId.get('pubback').listeners.click[0]();          // back to editing; the review hands the ticket back
+  assert.ok(app.state.draft.canEdit(), 'premise: editing is available again');
+
+  // Put the review back WITHOUT its lock — the shape showOutcome leaves behind: a review still on
+  // screen, its ticket already returned because the operation has settled. A press here is the only
+  // one that both clears the pre-check AND gets refused, so it is the only one that acquires a ticket
+  // it must give back. Reconstructed rather than driven, because reaching it through the UI needs a
+  // failure panel to lose its acknowledgement — but the handler must survive it either way.
+  app.state.review = review;
+  await byId.get('pubbtn').listeners.click[0]();     // a retained press against the now-unsigned review
+  assert.strictEqual(app.state.draft.canEdit(), true,
+    '🔴 the refused publish returned the ticket it took — the draft is editable, not frozen');
+  await byId.get('review').listeners.click[0]();
+  assert.strictEqual(saves, 2, '🔴 and a fresh review can still open');
 });

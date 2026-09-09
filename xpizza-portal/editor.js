@@ -24,7 +24,9 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
 // different price from the one the merchant typed, and a wrong price is worse than a rejected one:
 // rejection is visible, truncation is not. Digits only, nothing clever.
 export function parsePrice(raw) {
-  if (typeof raw === 'number') return Number.isInteger(raw) && raw > 0 ? raw : null;
+  // isSafeInteger here too, matching the string branch: a value past 2^53 cannot round-trip, and a
+  // price that cannot be represented is not a price whichever type it arrives as.
+  if (typeof raw === 'number') return Number.isSafeInteger(raw) && raw > 0 ? raw : null;
   if (typeof raw !== 'string') return null;
   const s = raw.trim();
   if (!/^[0-9]+$/.test(s)) return null;      // ASCII digits only — no signs, decimals, exponents, hex or non-Latin numerals
