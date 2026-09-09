@@ -20,7 +20,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import {
   createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount,
-  isPublishable, invalidKeys, discard, commit, commitTo, draftSource, parsePrice,
+  isPublishable, invalidKeys, discard, commit, commitTo, draftSource, parsePrice, canEditDraft,
 } from './editor.js';
 
 const SRC = () => ({
@@ -383,4 +383,45 @@ test('🔴 the baseline is the SUBMITTED snapshot, not whatever the draft holds 
   setItemPrice(d2, 'Plato Uno', '320');
   commit(d2);
   assert.strictEqual(pendingCount(d2), 0, 'commit() marks 320 as live, which it is not');
+});
+
+test('🔴 the STATE boundary refuses mutations that the DOM cannot stop', () => {
+  // Removing a node does not remove its listeners, and neither `inert` nor `disabled` stops a
+  // programmatic dispatch. A retained reference to a drawer input could still fire and change an
+  // extra's price by its closed-over key while the merchant was signing for a snapshot without it.
+  //
+  // So the guard is not in the DOM. It is one question, asked by every mutator.
+  let owned = false;
+  const d = createDraft(SRC(), { canEdit: () => !owned });
+
+  setItemPrice(d, 'Plato Uno', '310');
+  assert.strictEqual(draftSource(d).items[0].price, 310, 'editing works while the draft is the merchant’s');
+
+  owned = true;                                  // a review/publish takes the draft
+  setItemPrice(d, 'Plato Uno', '999');
+  setExtraPrice(d, 'Queso', '99');
+  assert.strictEqual(draftSource(d).items[0].price, 310, '🔴 the item price did not move');
+  assert.strictEqual(draftSource(d).extras[0].price, 40, '🔴 nor the extra — the 20→99 case, refused at the boundary');
+  assert.strictEqual(pendingCount(d), 1, 'and nothing new became pending');
+
+  // discard is a mutation too: throwing the edits away mid-attestation would change the signed document
+  discard(d);
+  assert.strictEqual(draftSource(d).items[0].price, 310, 'discard is refused while the draft is owned');
+
+  owned = false;                                 // editing handed back
+  setItemPrice(d, 'Plato Uno', '320');
+  assert.strictEqual(draftSource(d).items[0].price, 320, 'and works again afterwards');
+  discard(d);
+  assert.strictEqual(draftSource(d).items[0].price, 250, '...as does discard');
+});
+
+test('the baseline moves even while the draft is owned — publishing is not editing', () => {
+  // commit/commitTo run DURING a publish, when the lock is held by definition. Guarding them would
+  // deadlock the success path: the publish could never record what it published.
+  let owned = true;
+  const d = createDraft(SRC(), { canEdit: () => !owned });
+  owned = false; setItemPrice(d, 'Plato Uno', '310'); owned = true;
+  const submitted = JSON.parse(JSON.stringify(draftSource(d)));
+  commitTo(d, submitted);
+  assert.strictEqual(pendingCount(d), 0, 'the baseline moved while the draft was owned');
 });

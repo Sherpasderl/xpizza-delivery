@@ -373,8 +373,13 @@ export function createPublisher({ publish }) {
   // and is free automatically, so nothing has to be un-set — and a lock with no release is a lock that
   // cannot be released at the wrong moment.
   const spentTokens = new Set();
+  // A monotonic count of requests this publisher actually ADMITTED. Callers read it either side of
+  // run() to learn whether THEIR call went on the wire — `busy` cannot answer that, because it is true
+  // whenever ANY request is in flight, including someone else's that caused this one to be refused.
+  let admissions = 0;
   return {
     get busy() { return inFlight; },
+    get admissions() { return admissions; },
     isSpent(token) { return spentTokens.has(token); },
     async run(review) {
       // The overlap lock stays GLOBAL — only one request may be on the wire at a time, whichever set
@@ -385,6 +390,7 @@ export function createPublisher({ publish }) {
         return { skipped: 'not_ready' };
       }
       inFlight = true;
+      admissions += 1;                 // synchronous, before the first await: this call is on the wire
       try {
         const res = await publish(publishPayload(review));
         if (review && review.editToken) spentTokens.add(review.editToken);   // THIS set published; others did not

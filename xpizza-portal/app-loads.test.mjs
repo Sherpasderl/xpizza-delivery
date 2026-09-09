@@ -282,6 +282,8 @@ test('🔴 the drawer is inert for the whole SAVE, and a skipped publish does no
   assert.ok(drawer.querySelectorAll('input').length > 0, 'premise: the drawer really has an editable field');
   assert.ok(!drawer.querySelectorAll('input')[0].disabled, 'and it is editable before anything is in flight');
 
+  // a reference the merchant's browser could still hold after the drawer is closed
+  const retainedInput = drawer.querySelectorAll('input')[0];
   // start the save; it stays on the wire
   const saving = byId.get('review').listeners.click[0]();
   await Promise.resolve();
@@ -294,7 +296,14 @@ test('🔴 the drawer is inert for the whole SAVE, and a skipped publish does no
   // 🔴 STILL INERT. The review owns the draft for the whole ATTESTATION, not just the save: a merchant
   // must not be able to edit the underlying document while signing for a snapshot of it.
   assert.ok('inert' in drawer.attrs, 'the drawer stays inert through the attestation');
-  assert.ok(drawer.querySelectorAll('input').every((i) => i.disabled), '...with its fields still disabled');
+  // NOT `.every(i => i.disabled)` on the emptied subtree — that is vacuously true once closeDrawer has
+  // removed the children, and it was. Assert the property that actually matters: a reference retained
+  // from BEFORE the review cannot mutate the draft, whatever the DOM now contains.
+  const priceBefore = app.state.draft && app.state.draft.state.items[0].price;
+  retainedInput.value = '999';
+  retainedInput.listeners.input[0]();
+  assert.strictEqual(app.state.draft.state.items[0].price, priceBefore,
+    '🔴 a RETAINED listener cannot move a price while the review owns the draft');
 
   // released only by an EXPLICIT return to editing
   byId.get('pubback').listeners.click[0]();
@@ -484,4 +493,144 @@ test('the drawer’s fields are blurred when the draft is taken', async () => {
   assert.ok('inert' in byId.get('drawer').attrs, 'premise: the review took the draft');
   assert.notStrictEqual(document.activeElement, input, 'focus left the field the merchant no longer owns');
   assert.ok(input.disabled, '...and the field itself is disabled');
+});
+
+test('🔴 recovery panels can re-enter — a FAILED operation does not keep the draft', async () => {
+  // Admission control over-corrected: a failed save kept the lock, so Reintentar / Revisar de nuevo /
+  // Volver a la revisión all hit a held lock and returned immediately. The Task-7 recovery panels were
+  // dead. The distinction is SETTLED vs IN-FLIGHT.
+  const byId = installDom();
+  let saves = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') {
+      saves += 1;
+      if (saves === 1) return { ok: false, status: 503, json: async () => ({ error: 'store_unavailable' }) };
+      return okJson({ token: 'ET2', updateTime: 'T3', diff: { added: [], removed: [], renamed: [], changed: [], largeChangeSet: [] } });
+    }
+    return okJson({ versionId: 'v1' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+
+  await byId.get('review').listeners.click[0]();
+  assert.strictEqual(saves, 1, 'premise: the save was attempted and failed');
+  assert.ok(!('inert' in byId.get('drawer').attrs), '🔴 the failed save handed the draft back');
+
+  // the panel's action re-enters the review
+  const btn = byId.get('mbody').querySelectorAll('button')[0];
+  assert.ok(btn, 'the outcome panel offers an action');
+  await btn.listeners.click[0]();
+  assert.strictEqual(saves, 2, '🔴 the recovery transition really re-entered — a held lock made this dead');
+});
+
+test('🔴 a publish refused as in-flight claims no spinner of its own', async () => {
+  // B pressing publish while A is on the wire used to overwrite publishGen before run() returned
+  // in_flight, so B's spinner showed and B's button disabled with no B request behind it — stuck until
+  // A settled.
+  const byId = installDom();
+  const slowA = deferred();
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: { added: [], removed: [], renamed: [], changed: [{ key: 'Pizza', surface: 'item', field: 'price', old: 299, new: 310 }], largeChangeSet: [] } });
+    return slowA.promise;
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+
+  const a = byId.get('pubbtn').listeners.click[0]();
+  await Promise.resolve();
+  const busyDuringA = byId.get('pubbtn').dataset.busy;
+  const genDuringA = app.state.publishGen;
+  assert.strictEqual(busyDuringA, '1', 'premise: A owns the spinner');
+
+  await byId.get('pubbtn').listeners.click[0]();      // refused as in-flight
+  assert.strictEqual(app.state.publishGen, genDuringA, '🔴 the skipped press claimed no world of its own');
+  assert.strictEqual(byId.get('pubbtn').dataset.busy, busyDuringA, '...and did not disturb A’s spinner');
+  assert.strictEqual(byId.get('pubbtn').disabled, true, '...while the button stays disabled for A’s request');
+
+  slowA.resolve(okJson({ versionId: 'vA' }));
+  await a;
+  assert.strictEqual(byId.get('pubbtn').dataset.busy, undefined, 'and clears once the real request settles');
+});
+
+test('🔴 a restaurant-lookup FAILURE after B takes over does not disturb B', async () => {
+  const byId = installDom();
+  const slow = deferred();
+  installFetch((fn) => (fn === 'getMyRestaurants' ? slow.promise
+    : okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false })));
+  const app = await loadAppModule();
+
+  const looking = app.loadRestaurants();
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));
+  await app.loadMenu('x_pizza');
+  const bGroups = app.state.groups.length;
+  assert.ok(bGroups > 0, 'premise: B has a menu on screen');
+
+  slow.reject(Object.assign(new Error('store_unavailable'), { code: 'store_unavailable', status: 503 }));
+  await looking;
+  assert.strictEqual(app.state.groups.length, bGroups, '🔴 the stale lookup failure left B’s menu alone');
+});
+
+test('🔴 a failed PUBLISH hands editing back so its recovery panel can re-enter', async () => {
+  // The save-failure path releases in its own finally; the PUBLISH path does not, so without
+  // showOutcome handing the draft back, "Volver a la revisión" and "Revisar de nuevo" hit a held lock
+  // and do nothing — the same dead-panel bug, one operation over.
+  const byId = installDom();
+  let saves = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') { saves += 1; return okJson({ token: `ET${saves}`, updateTime: 'T2', diff: { added: [], removed: [], renamed: [], changed: [{ key: 'Pizza', surface: 'item', field: 'price', old: 299, new: 310 }], largeChangeSet: [] } }); }
+    return { ok: false, status: 409, json: async () => ({ error: 'edit_superseded' }) };
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+  assert.strictEqual(saves, 1, 'premise: the review opened');
+
+  await byId.get('pubbtn').listeners.click[0]();       // publish fails with edit_superseded
+  assert.ok(!('inert' in byId.get('drawer').attrs), '🔴 the failed publish handed the draft back');
+
+  // "Revisar de nuevo" must re-enter openReviewFlow, which needs the lock
+  const action = byId.get('mbody').querySelectorAll('button')[0];
+  assert.ok(action, 'the panel offers its action');
+  await action.listeners.click[0]();
+  assert.strictEqual(saves, 2, '🔴 the re-review really re-entered — a held lock made this dead');
+});
+
+test('🔴 a skipped publish in a NEW world does not light a spinner it is not waiting on', async () => {
+  // The admission-timing defect, in the world where it is observable: A is still on the wire from a
+  // world the merchant has left, so this world is waiting on nothing. A press refused as in-flight
+  // must claim no world — otherwise the spinner lights with no request behind it and stays lit until
+  // someone else's request finishes.
+  const byId = installDom();
+  const slowA = deferred();
+  let saves = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') { saves += 1; return okJson({ token: `ET${saves}`, updateTime: 'T2', diff: { added: [], removed: [], renamed: [], changed: [{ key: 'Pizza', surface: 'item', field: 'price', old: 299, new: 310 }], largeChangeSet: [] } }); }
+    return slowA.promise;
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+  const a = byId.get('pubbtn').listeners.click[0]();        // A on the wire
+  await Promise.resolve();
+
+  // the world ends; this world waits on nothing
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));
+  assert.strictEqual(byId.get('pubbtn').dataset.busy, undefined, 'premise: the new world shows no spinner');
+  assert.strictEqual(app.state.publishGen, null, 'premise: and is waiting on nothing');
+
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+  await byId.get('pubbtn').listeners.click[0]();            // refused: A still holds the wire
+  assert.strictEqual(app.state.publishGen, null,
+    '🔴 the refused press claimed no world — it has no request of its own');
+  assert.strictEqual(byId.get('pubbtn').dataset.busy, undefined,
+    '🔴 so no spinner lit, and none can be stuck until A finishes');
+
+  slowA.resolve(okJson({ versionId: 'vA' }));
+  await a;
 });

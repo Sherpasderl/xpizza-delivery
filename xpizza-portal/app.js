@@ -214,7 +214,11 @@ export async function loadMenu(rid) {
   // nudged to agree. The response is kept only for what the draft is not: the CAS baseline and the
   // fiscal capability.
   if (gen !== opGeneration) return;        // a newer switch won; this response is for a tenant the merchant left
-  state.draft = createDraft((data && data.source) || { items: [], extras: [], structure: {} });
+  // The draft carries the boundary: it may be edited only while nobody owns it for a review or a
+  // publish. Every mutator asks this, so a retained or detached listener is refused at the state
+  // rather than at the DOM.
+  state.draft = createDraft((data && data.source) || { items: [], extras: [], structure: {} },
+    { canEdit: () => editLockHolder === null });
   state.sourceUpdateTime = (data && data.sourceUpdateTime) || null;
   state.usesPlatformFactura = (data && data.usesPlatformFactura) === true;
   state.selectedCat = null;
@@ -569,13 +573,17 @@ async function openReviewFlow() {
       showOutcome(outcomeFor(e, 'edit'));
       $('scrim').classList.add('show');
   } finally {
-    // 🔴 THE LOCK IS NOT RELEASED HERE. The review OWNS the draft for the whole attestation, not just
-    // for the save: a merchant must not be able to edit the underlying document while signing for a
-    // snapshot of it. It is released only by an explicit return to editing — closeReview, discard, or
-    // a completed publish — or by the world ending.
-    if (gen === opGeneration) { state.reviewLock = lock; syncUi(); }
-    else releaseEditLock(lock);              // this attempt's world is gone; hand the lock back
-    if (gen === opGeneration) btn.disabled = !isPublishable(state.draft);
+    // LIFECYCLE: the lock is held while the review is LIVE — the modal open, the merchant attesting —
+    // and released the moment the operation settles into anything else.
+    //
+    // Admission control over-corrected the first time: a FAILED save kept the lock, so Reintentar,
+    // Revisar-de-nuevo and Volver-a-la-revisión all hit a held lock and returned immediately. The
+    // Task-7 recovery panels were dead. The distinction is SETTLED vs IN-FLIGHT, not first vs second:
+    // a genuinely concurrent operation is still refused, but a recovery transition in the same session
+    // must be able to re-enter.
+    if (gen !== opGeneration || !state.review) releaseEditLock(lock);   // failed, or this world is gone
+    else { state.reviewLock = lock; syncUi(); }                        // live review: keep the draft
+    if (gen === opGeneration) syncUi();
   }
 }
 
@@ -638,14 +646,25 @@ async function runPublish() {
   syncUi();                               // publisher.busy is about to become true; render from it
   const captured = state.review;          // kept for the receipt; the baseline moves on success
   const gen = opGeneration;               // the world this attempt belongs to
+  // ITS OWN ADMISSION, rather than riding the review's lock. If a save or another publish is in
+  // flight, this one is refused before anything is sent — the same contract openReviewFlow honours.
+  const held = state.reviewLock;
+  const lock = held !== null && held === editLockHolder ? held : takeEditLock();
+  if (lock === null) return;              // something else genuinely owns the draft right now
+  state.reviewLock = lock;
   let out;
   try {
     // START, then RENDER, then await. publisher.busy only becomes true once run() is executing, so
     // painting before the call would derive from a state that has not happened yet — the spinner
     // would never appear. This is the ordering cost of deriving UI instead of setting it, and it is
     // worth paying: everything after this point reads the truth rather than remembering it.
-    state.publishGen = gen;               // this world is now waiting on a publish
+    // 🔴 ONLY ON GENUINE ADMISSION — and `busy` cannot tell us that. It is true whenever ANY request
+    // is in flight, including the one that caused THIS press to be refused, so reading it would mark
+    // the world as waiting on a request it never made: a spinner with nothing behind it, stuck until
+    // someone else's finished. The admission COUNT answers the question this call is actually asking.
+    const admittedBefore = publisher.admissions;
     const attempt = publisher.run(state.review);
+    if (publisher.admissions > admittedBefore) state.publishGen = gen;
     syncUi();
     out = await attempt;
   } catch (e) {
@@ -702,6 +721,10 @@ function restorePublishFooter() {
 // mapping from code to panel lives in review.js; what an action MEANS lives here, because only this
 // module can reload a menu or re-open a review.
 function showOutcome(outcome) {
+  // A panel is a SETTLED state: the operation is over and the merchant is deciding what to do next.
+  // Editing is theirs again, and the recovery transitions must be able to acquire the lock.
+  releaseEditLock(state.reviewLock);
+  state.reviewLock = null;
   $('revSub').textContent = '';
   $('revFoot').replaceChildren(PUBBACK);
   PUBBACK.textContent = 'Cerrar';

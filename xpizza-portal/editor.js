@@ -38,11 +38,34 @@ export function parsePrice(raw) {
 // merchant is editing. Both are deep clones, so nothing here can reach back into the object the
 // caller loaded — if an edit did, a change would compare equal to itself, the review screen would list
 // nothing, and the merchant would publish a price they were never shown.
-export function createDraft(source) {
-  return { orig: clone(source), state: clone(source) };
+// `canEdit` is THE STATE BOUNDARY. Every user-editing mutator asks it before touching anything.
+//
+// 🔴 DOM inertness is only an affordance. Removing a node does not remove its listeners, and neither
+// `inert` nor `disabled` stops a programmatic dispatch — so a retained reference to a drawer input
+// could still fire and change an extra's price by its closed-over key WHILE THE MERCHANT WAS SIGNING
+// for a snapshot that did not include it. Reproduced: an extra moving 20→99 during attestation.
+//
+// Guarding at the DOM was always going to be a game of finding every node. Guarding here is one
+// question asked in one place, and it covers every stale listener, every retained reference and every
+// handler that has not been written yet.
+//
+// Defaults to permissive so the pure tests — which own no lock and have no UI — read naturally.
+export function createDraft(source, opts = {}) {
+  return {
+    orig: clone(source),
+    state: clone(source),
+    canEdit: typeof opts.canEdit === 'function' ? opts.canEdit : () => true,
+  };
 }
 
+// One predicate, asked by every mutator below. Exported so callers can render an affordance from the
+// same answer the guard uses, rather than keeping a second opinion.
+export const canEditDraft = (draft) => !!(draft && draft.canEdit());
+
 export function discard(draft) {
+  // A user action like any other: refused while an operation owns the draft. Throwing the merchant's
+  // edits away mid-attestation would change the very document being signed for.
+  if (!canEditDraft(draft)) return draft;
   draft.state = clone(draft.orig);
   return draft;
 }
@@ -83,6 +106,9 @@ const rowsOf = (src, surface) => (surface === 'item'
   : (Array.isArray(src.extras) ? src.extras : []));
 
 function setPrice(draft, surface, key, raw) {
+  // THE BOUNDARY. A mutation arriving while the draft is not owned for editing — from a detached
+  // listener, a retained reference, a stray dispatch — is refused here, whatever the DOM looks like.
+  if (!canEditDraft(draft)) return draft;
   const row = rowsOf(draft.state, surface).find((r) => r && r.key === key);
   // An unknown key is a NO-OP, never a new row. Creating one here would be an accidental back door to
   // "add item", which writes a pricing key and belongs to 2b-2c.

@@ -360,13 +360,28 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // the edit state exposes price setters and nothing else that writes
   const exported = [...editor.matchAll(/export (?:function|const) ([A-Za-z_$][\w$]*)/g)].map((m) => m[1]).sort();
   assert.deepStrictEqual(exported, [
-    'commit', 'commitTo', 'createDraft', 'discard', 'draftSource', 'groupUsage', 'invalidKeys', 'isPublishable',
+    'canEditDraft', 'commit', 'commitTo', 'createDraft', 'discard', 'draftSource', 'groupUsage', 'invalidKeys', 'isPublishable',
     'optionGroups', 'parsePrice', 'pendingChanges', 'pendingCount', 'productsUsingGroup',
     'setExtraPrice', 'setItemPrice',
   ], 'the edit state exports exactly these');
   // commit and discard are OPPOSITE operations on the same draft, and confusing them reverted a
   // published price. Both must exist, and the publish path must use commit.
   assert.ok(/export function commit\(/.test(editor) && /export function discard\(/.test(editor), 'both baseline operations exist');
+
+  // 🔴 THE STATE BOUNDARY. Every user-editing mutator asks canEditDraft before touching anything, so a
+  // retained or detached listener is refused at the state rather than at the DOM — where removing a
+  // node does not remove its listeners and neither inert nor disabled stops a programmatic dispatch.
+  assert.ok(/export const canEditDraft/.test(editor), 'the predicate exists and is shared');
+  const setPriceBody = editor.slice(editor.indexOf('function setPrice('), editor.indexOf('function setPrice(') + 900);
+  assert.ok(/if \(!canEditDraft\(draft\)\) return draft;/.test(setPriceBody), 'setPrice refuses when the draft is not owned for editing');
+  const discardBody = editor.slice(editor.indexOf('export function discard('), editor.indexOf('export function discard(') + 400);
+  assert.ok(/if \(!canEditDraft\(draft\)\) return draft;/.test(discardBody), '...and so does discard');
+  // commit/commitTo must NOT be guarded — they run DURING a publish, when the lock is held by
+  // definition, and guarding them would stop the publish recording what it published.
+  const commitBody = editor.slice(editor.indexOf('export function commitTo('), editor.indexOf('export function commitTo(') + 300);
+  assert.ok(!/canEditDraft/.test(commitBody), 'the baseline move is not an edit and is not guarded');
+  // and app.js supplies the predicate from real ownership
+  assert.ok(/canEdit: \(\) => editLockHolder === null/.test(app), 'app.js binds it to who owns the draft');
   // The list growing is not the point — WHO WRITES is. Task 4's three additions derive option groups
   // from the extras and must only read, or "editing an option" could quietly restructure the document.
   // BALANCED extraction, not "slice to the next export". The naive version swallowed everything
