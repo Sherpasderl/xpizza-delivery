@@ -470,6 +470,13 @@ test('🔴 cleanup happens AT invalidation, not merely after the stale op comple
   await Promise.resolve();
   assert.strictEqual(byId.get('pubbtn').dataset.busy, '1', 'premise: the spinner is up while the request is on the wire');
 
+  // 🔴 A REFUSED DUPLICATE FIRST. This press sends nothing, and the assertions below only mean
+  // anything if it also SURRENDERS nothing: it rides the same reusable ticket as the live request, so
+  // an implementation keyed on the ticket lets this press clear the live one's wire ownership and the
+  // ender that follows then finds the lock free. Without this line the test passes on that bug.
+  await byId.get('pubbtn').listeners.click[0]();
+  assert.strictEqual(byId.get('pubbtn').dataset.busy, '1', 'the refused press disturbed nothing it does not own');
+
   document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));
   // 🔴 IMMEDIATELY — before the stale publish settles
   assert.strictEqual(byId.get('pubbtn').dataset.busy, undefined, 'the spinner is cleared AT invalidation');
@@ -505,6 +512,9 @@ test('🔴 a stale publish settling cannot disturb UI the NEW world already owns
   await byId.get('review').listeners.click[0]();
   const a = byId.get('pubbtn').listeners.click[0]();          // publish A, on the wire
   await Promise.resolve();
+  // ...and a duplicate press that is refused. It must leave A's ownership of the wire untouched, or
+  // everything asserted after the ender is asserted against a lock that was already handed away.
+  await byId.get('pubbtn').listeners.click[0]();
 
   // The world ends and B loads. B then tries to review — and CANNOT, which is the point: the scenario
   // this test was originally written to survive is now unreachable by construction. A's publish is
@@ -1419,4 +1429,43 @@ test('🔴 the explicit loading flag refuses admission on its own', async () => 
   await byId.get('review').listeners.click[0]();
   assert.strictEqual(calls.filter((c) => c.fn === 'editCatalog').length, 0,
     '🔴 refused on the flag alone — the document is about to be replaced');
+});
+
+test('🔴 a REFUSED duplicate publish does not hand away the live publish’s wire ownership', async () => {
+  // The hole ticket-identity leaves. runPublish reuses the review's ticket, so a second press —
+  // refused by the publisher as already in flight — called beginWrite and then endWrite with the SAME
+  // ticket the live request holds, clearing its wire ownership. The lock then looked free to the next
+  // ender, and everything the previous round built on top of it came undone.
+  //
+  // Ownership of the wire belongs to a REQUEST, not to a ticket, and a request that was never admitted
+  // owns nothing to give back.
+  const byId = installDom();
+  const slowPub = deferred();
+  let saves = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') { saves += 1; return okJson({ token: `ET${saves}`, updateTime: 'T2', diff: CHANGED_DIFF }); }
+    return slowPub.promise;
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+
+  const publishing = byId.get('pubbtn').listeners.click[0]();   // admitted; on the wire
+  await Promise.resolve();
+  await byId.get('pubbtn').listeners.click[0]();                // REFUSED as in-flight — owns nothing
+  assert.strictEqual(saves, 1, 'premise: the duplicate sent nothing');
+
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));   // an ender
+  await app.loadMenu('x_pizza');
+  const savesBefore = saves;
+  await byId.get('review').listeners.click[0]();
+  assert.strictEqual(saves, savesBefore,
+    '🔴 no second write was admitted — the live publish still owns the wire, whatever the duplicate did');
+  assert.ok('inert' in byId.get('drawer').attrs, '🔴 and the lock did not leak away with the refused press');
+
+  slowPub.resolve(okJson({ versionId: 'v1' }));
+  await publishing;
+  await byId.get('review').listeners.click[0]();
+  assert.strictEqual(saves, savesBefore + 1, 'and once the real request settles, admission returns');
 });

@@ -197,12 +197,30 @@ let editLockHolder = null;
 //
 // So a ticket that has a request in flight is NOT the enders' to reclaim. It belongs to the request
 // until the request settles, whatever has happened to the UI in the meantime.
-let pendingWrite = null;
-const beginWrite = (ticket) => { pendingWrite = ticket; };
+// 🔴 OWNERSHIP OF THE WIRE BELONGS TO A REQUEST, NOT TO A TICKET, and the two are deliberately
+// different things. A ticket is REUSABLE: runPublish publishes under the review's existing ticket, so
+// a second press carries the same number as the live request. Keying wire ownership on it meant a
+// duplicate press — refused by the publisher as already in flight, having sent nothing — still called
+// endWrite with that number and cleared the LIVE request's ownership. The lock then read as free to
+// the next ender, and every guarantee built on it came undone.
+//
+// A request id is minted once, at the moment a request is genuinely admitted, and is never reused. A
+// press that was refused never gets one, so it has nothing to give back — which is the correct answer
+// rather than a special case, because it never owned the wire in the first place.
+let writeSeq = 0;
+let pendingWrite = null;                 // { id, ticket } while a request is genuinely outstanding
+const beginWrite = (ticket) => { const id = ++writeSeq; pendingWrite = { id, ticket }; return id; };
 // Settled: the ticket goes back. If the world that sent it has ended, nobody is coming back for it —
 // this is its only chance to be released, so it releases itself here rather than leaking the lock.
-function endWrite(ticket, gen) {
-  if (pendingWrite === ticket) pendingWrite = null;
+function endWrite(id, ticket, gen) {
+  if (id === null) return;               // never admitted: it owns nothing and must clear nothing
+  // CLEAR ONLY YOUR OWN OWNERSHIP. Unreachable today — a second beginWrite needs the edit lock, and the
+  // lock is exclusive and is not returned until this line has run — so no test can distinguish this
+  // from an unconditional clear, and mutation testing reports it as a survivor. It is kept, and said
+  // out loud here, because "clear it if it is mine" is the invariant; "clear it" is the bug this whole
+  // section exists to fix, one level up. Anything that ever makes two writes concurrent must not also
+  // silently reintroduce it.
+  if (pendingWrite && pendingWrite.id === id) pendingWrite = null;
   if (gen !== opGeneration) {
     releaseEditLock(ticket);
     if (state.reviewLock === ticket) state.reviewLock = null;
@@ -656,11 +674,12 @@ async function openReviewFlow() {
   bumpGeneration();
   const gen = opGeneration;
   syncUi();       // the lock is held now, so this alone refuses re-entry — no imperative disable
+  let writeId = null;                        // set only if a request actually goes out
   try {
     // The exact document being submitted — captured BEFORE the await, so what is reviewed, saved and
     // later committed as the baseline is one snapshot rather than whatever the draft holds by then.
     const submitted = JSON.parse(JSON.stringify(draftSource(state.draft)));
-    beginWrite(lock);      // from here the ticket belongs to the request, not to the UI
+    writeId = beginWrite(lock);   // admitted by construction: the lock was taken exclusively
     const res = await editCatalog({
       // 🔴 THE RID THE SOURCE WAS LOADED FOR, never "the tenant currently selected". They differ for
       // exactly as long as a switch takes, and that is the window this write must not fall into.
@@ -715,7 +734,7 @@ async function openReviewFlow() {
       showOutcome(outcomeFor(e, 'edit'));
       $('scrim').classList.add('show');
   } finally {
-    endWrite(lock, gen);   // the request has settled; the ticket is the UI's again (or nobody's)
+    endWrite(writeId, lock, gen);   // settled; the ticket is the UI's again (or nobody's)
     // LIFECYCLE: the lock is held while the review is LIVE — the modal open, the merchant attesting —
     // and released the moment the operation settles into anything else.
     //
@@ -818,6 +837,7 @@ async function runPublish() {
   if (lock === null) return;              // something else genuinely owns the draft right now
   state.reviewLock = lock;
   let out;
+  let writeId = null;                     // null unless the publisher admitted THIS call
   try {
     // START, then RENDER, then await. publisher.busy only becomes true once run() is executing, so
     // painting before the call would derive from a state that has not happened yet — the spinner
@@ -828,9 +848,14 @@ async function runPublish() {
     // the world as waiting on a request it never made: a spinner with nothing behind it, stuck until
     // someone else's finished. The admission COUNT answers the question this call is actually asking.
     const admittedBefore = publisher.admissions;
-    beginWrite(lock);
     const attempt = publisher.run(state.review);
-    if (publisher.admissions > admittedBefore) state.publishGen = gen;
+    // 🔴 THE SAME ANSWER GOVERNS BOTH. Whether this call was admitted decides whether it owns a
+    // spinner AND whether it owns the wire — a refused press owns neither, and minting its id before
+    // asking was what let it hand back ownership it never had.
+    if (publisher.admissions > admittedBefore) {
+      writeId = beginWrite(lock);
+      state.publishGen = gen;
+    }
     syncUi();
     out = await attempt;
   } catch (e) {
@@ -838,7 +863,7 @@ async function runPublish() {
     showOutcome(outcomeFor(e, 'publish'));
     return;
   } finally {
-    endWrite(lock, gen);
+    endWrite(writeId, lock, gen);
     // NO UI IS CLEARED HERE. Every owned bit is derived by syncUi from CURRENT ownership, so calling
     // it is safe even from a stale continuation — it paints the present, not this operation's past.
     // A `finally` that cleared the spinner would be owning something that outlives its own operation,
@@ -951,7 +976,7 @@ function invalidateReview() {
   // cleared here instead, or a spinner from an abandoned publish sits on the button forever.
   // 🔴 NOT UNCONDITIONAL. A ticket whose request is on the wire keeps the lock: the UI world is over,
   // but the WRITE is not, and admission is about the write. Everything else here is UI and is cleared.
-  editLockHolder = pendingWrite;           // null unless a write is genuinely outstanding
+  editLockHolder = pendingWrite ? pendingWrite.ticket : null;   // held only by a request genuinely outstanding
   state.reviewLock = null;
   state.review = null;
   state.publishGen = null;                 // and it is not waiting on anything

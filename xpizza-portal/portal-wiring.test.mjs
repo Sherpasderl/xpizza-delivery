@@ -937,7 +937,8 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.drawerKey':           [3, 'view',    'which dish the drawer shows; the fields inside it are canEdit-guarded'],
     'state.restaurants':         [1, 'guarded', 'the switcher list, written by loadRestaurants behind its generation check'],
     'editLockHolder':            [4, 'guarded', 'the declaration, take, release, and the ender — which no longer clears it unconditionally: a ticket with a request on the wire is not the ender\u2019s to reclaim'],
-    'pendingWrite':              [3, 'guarded', '🔴 SERVER-WRITE ADMISSION. The declaration, beginWrite and endWrite — set immediately before a request goes out and cleared when THAT request settles, which is the only lifetime that matches what is actually outstanding'],
+    'writeSeq':                  [2, 'guarded', 'the monotonic source of request ids — declared once, incremented once, never reused, which is what makes a request id an identity rather than a label'],
+    'pendingWrite':              [3, 'guarded', '🔴 SERVER-WRITE ADMISSION. The declaration, beginWrite and endWrite — set when a request is genuinely ADMITTED and cleared when THAT request settles, keyed on a per-request id rather than the reusable ticket, so a refused duplicate can neither claim nor surrender ownership of the wire'],
     'state.draftRid':            [2, 'guarded', '🔴 WHICH TENANT THE DRAFT IS. Written on the load settle path behind the generation check and cleared at the start of a switch; it is what the write path names, so a review can never carry one tenant\u2019s rid with another\u2019s source'],
     'state.menuLoading':         [3, 'guarded', 'loading represented explicitly rather than inferred from a null draft: set at the start of a switch, cleared on BOTH settle paths behind the generation check, and read by review admission'],
     'opGeneration':              [2, 'ender',   'the declaration and the += inside bumpGeneration — the only two, and bumping IS how a world ends'],
@@ -946,7 +947,10 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
   // Assignment, compound assignment, and mutating-method calls on the field itself.
   const writesOf = (target) => {
     const t = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`(?:^|[^\\w.])${t}(?:\\.\\w+)*\\s*(?:=[^=]|\\+=|-=|\\|\\|=|\\?\\?=)|(?:^|[^\\w.])${t}\\.(?:push|pop|splice|add|delete|clear|set|sort|shift|unshift)\\(|(?:let|const|var)\\s+${t}\\b`, 'g');
+    // 🔴 PREFIX increment included. It was not, and `++writeSeq` therefore counted as no writer at all
+    // — the field census silently reporting one writer for a variable with two. Found by ruling a new
+    // variable and having the count disagree, which is the census doing its job on itself.
+    const re = new RegExp(`(?:^|[^\\w.])${t}(?:\\.\\w+)*\\s*(?:=[^=]|\\+=|-=|\\|\\|=|\\?\\?=|\\+\\+|--)|(?:\\+\\+|--)\\s*${t}\\b|(?:^|[^\\w.])${t}\\.(?:push|pop|splice|add|delete|clear|set|sort|shift|unshift)\\(|(?:let|const|var)\\s+${t}\\b`, 'g');
     return (app.match(re) || []).length;
   };
 
@@ -1251,24 +1255,199 @@ test('🔴 no writer sits outside the wrapper that is supposed to contain it', (
   assert.ok(checked >= 4, `sanity: writes were actually located and checked (${checked})`);
 });
 
-test('🔴 no state property is aliased into a binding that is then written through', () => {
-  // const r = state.review; r.acknowledged = true;
-  //
-  // Reads through an alias are fine and the file uses them. WRITING through one is not: it detaches
-  // the write from the name the censuses count, so the acknowledgement gains a writer and every count
-  // stays identical. Rejected outright rather than counted, because there is no reason to need it.
-  const src = readFileSync(join(DIR, 'app.js'), 'utf8');
-  const masked = maskLiterals(src);
-  // The initializer must be state.<prop> AND NOTHING MORE. `const cur = state.restaurants.find(...)`
-  // binds a RESULT, not the property, and treating it as an alias reports a write that cannot happen.
-  const aliases = [...masked.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*state\s*\.\s*(\w+)\s*(?=[;,)\n])/g)];
-  for (const a of aliases) {
-    const name = a[1];
-    const written = new RegExp(`\\b${name}\\s*(?:\\.\\s*\\w+\\s*(?:=(?!=)|\\+\\+|--)|\\[)|Object\\s*\\.\\s*assign\\s*\\(\\s*${name}\\b`);
-    assert.ok(!written.test(masked),
-      `🔴 app.js aliases state.${a[2]} as \`${name}\` and then writes through it. Write through state.${a[2]} directly, so the censuses can see it.`);
+
+// ── THE RESTRICTED GRAMMAR: DENY BY DEFAULT ──────────────────────────────────────────────────────
+// Every guard before this one asked "does the source contain a known-bad shape?" — Object.assign, a
+// bracket write, an alias, ||=. That is a blocklist, and a blocklist is a list of the bypasses someone
+// has already thought of. Each round produced one more.
+//
+// This inverts it. Every syntactic context in which `state` (or a binding aliased from it) appears is
+// classified, and the classification must be one of a short list of shapes proven safe. Anything the
+// classifier cannot place — a new operator, a new method, a new way of reaching the object — is
+// REJECTED because it was not proven safe, not because it was recognised as dangerous.
+//
+// The practical consequence: `&&=`, `??=`, `.at()`, a spread-assign, or whatever the next syntax form
+// turns out to be, fails without anyone having to anticipate it.
+
+// Redundant parentheses around a bare identifier are removed, repeatedly and length-preservingly, so
+// (r).x, ((r)).x and r.x all reduce to the one shape the classifier understands. Parenthesisation is
+// otherwise an unbounded family of spellings for the same write.
+function unparen(m) {
+  let prev;
+  do { prev = m; m = m.replace(/\(\s*([A-Za-z_$][\w$]*)\s*\)/g, (t, id) => ' '.repeat(t.length - id.length - 1) + id + ' '); } while (m !== prev);
+  return m;
+}
+const ASSIGN_OP = /^(?:\+\+|--|(?:\+|-|\*|\/|%|\*\*|\|\||&&|\?\?|&|\||\^|<<|>>|>>>)?=(?![=>]))/;
+const KEYWORDS = new Set(['if', 'while', 'for', 'switch', 'return', 'typeof', 'await', 'new', 'delete', 'void', 'of', 'in']);
+
+function classifyAt(m, i, root) {
+  let j = i + root.length;
+  const chain = [root];
+  for (;;) {
+    let k = j; while (m[k] === ' ' || m[k] === '\n') k++;
+    if (m[k] !== '.') break;
+    k++; while (m[k] === ' ' || m[k] === '\n') k++;
+    const g = /^[A-Za-z_$][\w$]*/.exec(m.slice(k));
+    if (!g) break;
+    chain.push(g[0]); j = k + g[0].length;
   }
-  // NON-VACUITY: the detector fires on the shape it is looking for.
-  const planted = 'const r = state.review; r.acknowledged = true;';
-  assert.ok(/\br\s*(?:\.\s*\w+\s*(?:=(?!=)|\+\+|--)|\[)/.test(planted), 'the alias-write detector can see one');
+  let k = j; while (m[k] === ' ' || m[k] === '\n') k++;
+  const rest = m.slice(k);
+  const before = m.slice(Math.max(0, i - 80), i);
+  if (/\b(?:const|let|var)\s*[{[][^}\]]*[}\]]\s*=\s*$/.test(before)) return { kind: 'destructure', chain };
+  if (rest.startsWith('[')) return { kind: 'computed', chain, index: rest.slice(1, rest.indexOf(']')) };
+  if (ASSIGN_OP.test(rest)) return { kind: 'write', chain, op: ASSIGN_OP.exec(rest)[0], pos: i };
+  if (rest.startsWith('(') && chain.length > 1) return { kind: 'method', chain, pos: i };
+  const decl = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*$/.exec(before);
+  if (decl && /^[;,)\n]/.test(rest)) return { kind: 'alias', chain, name: decl[1] };
+  const call = /([A-Za-z_$][\w$.]*)\s*\(\s*$/.exec(before);
+  if (call && !KEYWORDS.has(call[1])) return { kind: 'arg', chain, callee: call[1], pos: i };
+  return { kind: 'read', chain, pos: i };
+}
+const occurrencesOf = (m, root, from = 0, to = Infinity) =>
+  [...m.matchAll(new RegExp(`(?<![\\w$.])${root}(?![\\w$])`, 'g'))].map((g) => g.index).filter((i) => i >= from && i <= to);
+
+// 🔴 AN ALIAS IS SCOPED, and checking it by name across the whole file is wrong in both directions.
+// `r` is a state alias in syncUi and an ordinary lambda parameter in three other places; `draft`,
+// `held` and `captured` collide the same way. A name-global check reports those as writes through an
+// alias (they are not) and would equally miss a real one hidden behind a shadowing declaration.
+//
+// The alias's scope is the innermost block containing its declaration, derived from the brace depths
+// rather than from indentation or proximity.
+function blockAround(m, i) {
+  const d = depths(m);
+  const level = d.brace[i];
+  let start = 0;
+  for (let k = i; k >= 0; k--) if (m[k] === '{' && d.brace[k] === level) { start = k; break; }
+  let end = m.length - 1;
+  for (let k = i; k < m.length; k++) if (m[k] === '}' && d.brace[k] === level) { end = k; break; }
+  return [start, end];
+}
+
+// ── THE ALLOWLIST. Every entry is a shape someone deliberately ruled safe. ──
+// Calls that may receive `state` or a state property. Each is either a pure reader or one of the
+// editor's guarded setters, which enforce the canEdit boundary themselves.
+const ALLOWED_CONSUMERS = new Set([
+  'setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo',      // guarded setters (canEdit)
+  'draftSource', 'pendingChanges', 'pendingCount', 'isPublishable',      // pure readers of the draft
+  'optionGroups', 'groupUsage', 'canEditDraft', 'createDraft',
+  'reviewModel', 'attestationModel', 'publisher.run', 'pickRid', 'canPublish',   // pure readers of the review
+  'releaseEditLock', 'loadMenu',                                         // take an id / a rid, not the object
+]);
+// Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
+// mutating method is permitted on exactly the collection it was ruled for and nowhere else.
+const ALLOWED_METHOD_CHAINS = new Set([
+  'state.restaurants.find', 'state.restaurants.some',
+  'state.groups.find', 'state.groups.some',
+  'state.openGroups.has',
+  'state.openGroups.add', 'state.openGroups.delete',   // the group toggle; counted by the field census
+]);
+
+function grammarViolations(src) {
+  const m = unparen(maskLiterals(src));
+  const bad = [];
+  const lineOf = (i) => src.slice(0, i).split('\n').length;
+  const aliases = [];
+
+  const check = (root, isAlias, from = 0, to = Infinity) => {
+    for (const i of occurrencesOf(m, root, from, to)) {
+      // The alias's own declaration site reads as `name =`, which is a binding, not a write through
+      // the binding. Skipping it is the difference between checking the alias and checking the
+      // statement that creates it.
+      if (isAlias && /\b(?:const|let|var)\s+$/.test(m.slice(Math.max(0, i - 12), i))) continue;
+      const c = classifyAt(m, i, root);
+      const at = `app.js:${lineOf(i)}`;
+      const shown = c.chain.join('.');
+      switch (c.kind) {
+        case 'read': break;                                        // ALLOWED
+        case 'alias': {
+          if (isAlias) { bad.push(`${at}: ${shown} is aliased again as \`${c.name}\` — one hop is the limit`); break; }
+          const [bs, be] = blockAround(m, i);
+          // A second binding of the same name inside the alias's own scope would make "which `r` is
+          // this?" unanswerable without real name resolution. Rejected rather than guessed at.
+          //
+          // Only unambiguous BINDINGS count: a declaration, or a parameter list proven to be one by
+          // the `=>` that follows it. `f(x, captured)` is an argument and binds nothing — reading it
+          // as a parameter is how this check first reported a shadow that did not exist.
+          const scope = m.slice(bs, be);
+          const decls = (scope.match(new RegExp(`\\b(?:const|let|var)\\s+${c.name}\\b`, 'g')) || []).length;
+          const params = new RegExp(`\\(\\s*${c.name}\\s*(?:,[^)]*)?\\)\\s*=>`).test(scope);
+          if (decls > 1 || params) bad.push(`${at}: \`${c.name}\` is bound more than once inside the scope where it aliases ${shown} — give the alias its own name`);
+          aliases.push({ name: c.name, from: bs, to: be });         // ALLOWED, and its uses get checked too
+          break;
+        }
+        case 'arg':
+          if (!ALLOWED_CONSUMERS.has(c.callee)) bad.push(`${at}: ${shown} is passed to \`${c.callee}(\`, which is not a ruled consumer of state`);
+          break;
+        case 'method':
+          if (isAlias || !ALLOWED_METHOD_CHAINS.has(shown)) bad.push(`${at}: \`${shown}(\` is not a ruled method on state`);
+          break;
+        case 'computed':
+          // An array index is a read. A computed PROPERTY NAME is how a write hides from every guard
+          // that counts `state.<field>`, so it is never allowed.
+          if (isAlias || c.chain.length < 2 || !/^\s*\d+\s*$/.test(c.index)) bad.push(`${at}: \`${shown}[${c.index}]\` — computed access to a state property is not a ruled shape`);
+          break;
+        case 'destructure':
+          bad.push(`${at}: \`${shown}\` is destructured — the binding escapes every check that names the field`);
+          break;
+        case 'write':
+          if (isAlias) { bad.push(`${at}: written through the alias \`${root}\` — write through state.<field> directly`); break; }
+          // ONLY a plain `=`, and only onto a named property. Compound assignment is not on the list —
+          // which is what makes ||=, &&=, ??= and every future one fail without being enumerated.
+          if (c.op !== '=') bad.push(`${at}: \`${shown} ${c.op}\` — only plain assignment to a state property is a ruled shape`);
+          else if (c.chain.length < 2) { if (!/export\s+const\s+state\s*=/.test(src.slice(Math.max(0, i - 40), i + 20))) bad.push(`${at}: \`state\` itself is assigned`); }
+          else if (c.chain.length > 3) bad.push(`${at}: \`${shown} =\` reaches deeper than a state field and its property`);
+          break;
+        default: bad.push(`${at}: \`${shown}\` could not be classified, so it is not proven safe`);
+      }
+    }
+  };
+  check('state', false);
+  for (const a of aliases) check(a.name, true, a.from, a.to);
+  return bad;
+}
+
+test('🔴 every use of `state` reduces to a shape that was ruled safe', () => {
+  const bad = grammarViolations(readFileSync(join(DIR, 'app.js'), 'utf8'));
+  assert.deepStrictEqual(bad, [], `🔴 app.js contains state access the grammar cannot prove safe:\n  ${bad.join('\n  ')}`);
+});
+
+test('🔴 the grammar rejects bypasses it was never told about', () => {
+  // Both fixtures the gate named, plus the forms nobody has proposed yet. None of these appears in the
+  // guard as a pattern to look for: each fails because it is not on the allowlist.
+  const wrap = (line) => `export const state = { review: null };\nfunction f() {\n  ${line}\n}\n`;
+  const BYPASSES = [
+    ['Object.assign(state.review, { acknowledged: true });',        'not a ruled consumer'],
+    ['const r = state.review; Object.assign(r, { a: 1 });',         'not a ruled consumer'],
+    ['const r = state.review; (r).acknowledged ||= true;',          'through the alias'],
+    ['const r = state.review; ((r)).acknowledged = true;',          'through the alias'],
+    ['const r = state.review; r["acknowledged"] = true;',           'computed access'],
+    ['const { review } = state; review.acknowledged = true;',       'destructured'],
+    ['const [g] = state.groups; g.x = 1;',                          'destructured'],
+    ["state['review'].acknowledged = true;",                        'computed access'],
+    ['state.review.acknowledged ||= true;',                         'only plain assignment'],
+    ['state.review.acknowledged &&= true;',                         'only plain assignment'],
+    ['state.review.acknowledged ??= true;',                         'only plain assignment'],
+    ['state.publishGen++;',                                         'only plain assignment'],
+    ['state.groups.push(1);',                                       'not a ruled method'],
+    ['state.groups.sort();',                                        'not a ruled method'],
+    ['state.review.a.b.c = 1;',                                     'deeper than a state field'],
+    ['const r = state.review; const r2 = r; r2.acknowledged = 1;',  'aliased again'],
+    ['sneak(state.review);',                                        'not a ruled consumer'],
+  ];
+  for (const [line, expect] of BYPASSES) {
+    const bad = grammarViolations(wrap(line));
+    assert.ok(bad.length > 0, `🔴 the grammar ADMITTED a bypass: ${line}`);
+    assert.ok(bad.some((b) => b.includes(expect)), `wrong reason for "${line}": ${bad.join(' | ')}`);
+  }
+  // ...and it does not reject the ordinary shapes the portal is written in, or it would be useless.
+  for (const ok of [
+    'const r = state.review; if (r && r.editToken) return r.editToken;',
+    'state.review = null;',
+    'state.review.acknowledged = v === true;',
+    'setItemPrice(state.draft, k, v);',
+    'const g = state.groups.find((x) => x.id === state.selectedCat);',
+    'state.openGroups.add(name);',
+    'const c = state.groups[0].category;',
+  ]) assert.deepStrictEqual(grammarViolations(wrap(ok)), [], `the grammar rejected legitimate code: ${ok}`);
 });
