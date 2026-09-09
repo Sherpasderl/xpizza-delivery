@@ -82,7 +82,48 @@ export function renderRail(railEl, groups, selectedId, onSelect) {
   }
 }
 
-export function renderDetail(detailEl, group, extras) {
+// A price CELL. Read-only it is text; editable it is an input, and the two share the `.price` wrapper
+// so the column stays aligned either way.
+//
+// The input carries the raw integer, never a formatted string: a value the merchant edits must be the
+// value the server receives. `inputmode="numeric"` asks a phone for the number pad without restricting
+// what can be typed — `type="number"` was avoided deliberately, because browsers silently normalise
+// its value (accepting "1e3", localising separators), and a price the merchant did not type is exactly
+// the failure this whole slice is built to prevent. editor.parsePrice is the only thing that decides
+// what counts, and it refuses anything that is not plain digits.
+function priceCell(value, { editable, changed, onInput, surface, key }) {
+  const cell = el('div', `price${changed ? ' chg' : ''}`);
+  // The cell is addressable so the drawer and the row can stay in step without a repaint (a repaint
+  // mid-edit would steal the caret). data-*, not an id: keys are merchant text and would not survive
+  // as ids, and two surfaces can legitimately share a key.
+  if (surface && key !== undefined) cell.dataset.k = `${surface}::${key}`;
+  if (!editable) { cell.textContent = priceLabel(value); return cell; }
+  cell.append(el('span', 'cur', 'L'));
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = 'numeric';
+  input.setAttribute('aria-label', 'Precio');
+  // A value we cannot vouch for shows as an EMPTY field with the same words the read-only view uses,
+  // rather than "0" — which reads as free.
+  input.value = (Number.isInteger(value) && value > 0) ? String(value) : '';
+  input.placeholder = 'Sin precio';
+  input.addEventListener('input', () => onInput(input.value));
+  cell.append(input);
+  return cell;
+}
+
+// `opts` is how the read-only 2b-2a render becomes the 2b-2b editor without forking the file. Absent,
+// every call behaves exactly as it did before — which is what keeps the read-only paths green.
+//
+// DELIBERATELY ABSENT: any affordance that writes a pricing KEY. No name field, no contenteditable, no
+// add or delete control, no category move. Those are 2b-2c and need the per-merchant key strategy
+// first; there is no disabled button for them here, because a control that does not exist cannot be
+// re-enabled by a stray line of CSS.
+export function renderDetail(detailEl, group, extras, opts = {}) {
+  const editable = opts.editable === true;
+  const changed = opts.changed || (() => false);
+  const onPrice = opts.onPrice || (() => {});
+  const onOpen = opts.onOpen || null;
   detailEl.replaceChildren();
   if (!group) {
     const e = el('div', 'empty');
@@ -105,7 +146,19 @@ export function renderDetail(detailEl, group, extras) {
     const d = (it && it.display) || {};
     info.append(el('div', 'nmed', typeof d.name === 'string' && d.name.trim() ? d.name : String(it.key || '')));
     if (typeof d.desc === 'string' && d.desc.trim()) info.append(el('div', 'idesc', d.desc));
-    row.append(info, el('div', 'price', priceLabel(it && it.price)));
+    // Opening the drawer is a separate affordance from the inline field, so a merchant editing in the
+    // row is never one stray click from a modal, and the row itself stays a non-interactive surface.
+    if (editable && onOpen) {
+      const open = el('button', 'btn ghost', 'Editar');
+      open.type = 'button';
+      open.setAttribute('aria-label', `Editar ${typeof d.name === 'string' ? d.name : it.key}`);
+      open.addEventListener('click', () => onOpen(it.key));
+      info.append(open);
+    }
+    row.append(info, priceCell(it && it.price, {
+      editable, changed: changed('item', it.key), onInput: (v) => onPrice('item', it.key, v),
+      surface: 'item', key: it.key,
+    }));
     detailEl.append(row);
   }
 
@@ -120,7 +173,10 @@ export function renderDetail(detailEl, group, extras) {
       const row = el('div', 'irow');
       const info = el('div', 'iinfo');
       info.append(el('div', 'nmed', k));
-      row.append(info, el('div', 'price', priceLabel(extras[k])));
+      row.append(info, priceCell(extras[k], {
+        editable, changed: changed('extra', k), onInput: (v) => onPrice('extra', k, v),
+        surface: 'extra', key: k,
+      }));
       detailEl.append(row);
     }
   }

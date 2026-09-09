@@ -1,0 +1,113 @@
+// Portal 2b-2b Task 3 — THE EDIT STATE.
+//
+// 🔴 MONEY. This module holds a merchant's uncommitted price changes and produces the source document
+// that editCatalog validates and publishEdited publishes. Everything a customer is charged for a
+// changed dish passes through here first.
+//
+// THE DRAFT IS A SOURCE DOCUMENT, not a view model. The approved mock keeps {sections, groups} — a
+// shape invented for the demo. What editCatalog actually sends is `body.source`, and validateSource
+// checks THAT. Keeping a separate edit model would mean translating back at publish time, and the
+// translation is exactly where a price goes missing. So the draft IS the document, edited in place.
+//
+// Pure and DOM-free on purpose: node can import it, so every rule below is asserted directly rather
+// than through a rendered page.
+//
+// DEFERRED, and deliberately NOT IMPLEMENTED HERE (2b-2c): adding, removing or renaming an item,
+// adding or removing an option, category edits. All of those write the pricing KEY, which is the
+// per-merchant key-strategy work. There is no setter for them in this file — not a disabled one, not
+// a guarded one. A capability that does not exist cannot be reached by accident.
+
+const clone = (v) => JSON.parse(JSON.stringify(v));
+
+// The server's rule is isPositiveInt: Number.isInteger(p) && p > 0. This is the client half of it, and
+// it must REFUSE rather than repair. parseInt('12.9') is 12 and parseInt('12abc') is 12 — both are a
+// different price from the one the merchant typed, and a wrong price is worse than a rejected one:
+// rejection is visible, truncation is not. Digits only, nothing clever.
+export function parsePrice(raw) {
+  if (typeof raw === 'number') return Number.isInteger(raw) && raw > 0 ? raw : null;
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (!/^[0-9]+$/.test(s)) return null;      // ASCII digits only — no signs, decimals, exponents, hex or non-Latin numerals
+  const n = Number(s);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+// ORIG is the yardstick every change is measured against and what discard restores; STATE is what the
+// merchant is editing. Both are deep clones, so nothing here can reach back into the object the
+// caller loaded — if an edit did, a change would compare equal to itself, the review screen would list
+// nothing, and the merchant would publish a price they were never shown.
+export function createDraft(source) {
+  return { orig: clone(source), state: clone(source) };
+}
+
+export function discard(draft) {
+  draft.state = clone(draft.orig);
+  return draft;
+}
+
+// The document to send. Deliberately the live object rather than a copy: callers read it to hash,
+// diff and POST, and a copy taken here would be one more thing that can fall out of step.
+export function draftSource(draft) {
+  return draft.state;
+}
+
+const rowsOf = (src, surface) => (surface === 'item'
+  ? (Array.isArray(src.items) ? src.items : [])
+  : (Array.isArray(src.extras) ? src.extras : []));
+
+function setPrice(draft, surface, key, raw) {
+  const row = rowsOf(draft.state, surface).find((r) => r && r.key === key);
+  // An unknown key is a NO-OP, never a new row. Creating one here would be an accidental back door to
+  // "add item", which writes a pricing key and belongs to 2b-2c.
+  if (!row) return draft;
+  const next = parsePrice(raw);
+  row.price = next;
+  // price and display.price MOVE TOGETHER: validateSource fails a source whose display.price disagrees
+  // with the authoritative one, so a one-sided edit is unpublishable — and it fails at the server,
+  // after the merchant believed they were finished.
+  //
+  // Only when the row already HAS a display.price. The agreement check is conditional, so a row that
+  // never carried one is valid without it; inventing the field would change the document's shape, and
+  // the shape is what the CAS hash is taken over.
+  if (row.display && typeof row.display === 'object' && 'price' in row.display) row.display.price = next;
+  return draft;
+}
+
+export const setItemPrice = (draft, key, raw) => setPrice(draft, 'item', key, raw);
+export const setExtraPrice = (draft, key, raw) => setPrice(draft, 'extra', key, raw);
+
+// What actually differs from what was loaded — never a log of keystrokes. Typing a price back to its
+// original value is not a change, and counting it as one would tell a merchant they have unpublished
+// work when they have none, and put a no-op on the review screen.
+export function pendingChanges(draft) {
+  const out = [];
+  for (const surface of ['item', 'extra']) {
+    const origRows = rowsOf(draft.orig, surface);
+    for (const row of rowsOf(draft.state, surface)) {
+      const was = origRows.find((r) => r && r.key === row.key);
+      if (!was || was.price === row.price) continue;
+      out.push({ surface, key: row.key, from: was.price, to: row.price });
+    }
+  }
+  return out;
+}
+
+export const pendingCount = (draft) => pendingChanges(draft).length;
+
+// Rows whose current value is not a price. The value is HELD rather than discarded — a field that
+// snapped back mid-keystroke would fight the merchant — so the draft can legitimately be in this
+// state, and the publish path is what must refuse it.
+export function invalidKeys(draft) {
+  const out = [];
+  for (const surface of ['item', 'extra']) {
+    for (const row of rowsOf(draft.state, surface)) {
+      if (!(Number.isInteger(row.price) && row.price > 0)) out.push({ surface, key: row.key });
+    }
+  }
+  return out;
+}
+
+// Fail closed. The server would refuse a non-positive price anyway, but it would do so later and less
+// clearly — after the review, after the attestation, as a 400 on a screen that had said everything
+// was ready.
+export const isPublishable = (draft) => invalidKeys(draft).length === 0;

@@ -66,6 +66,21 @@
       </div>
     </div>
   </main>
+
+  <!-- THE REVIEW BAR. Appears only when the draft differs from what is published; app.js toggles
+       `.show`. No inline handlers: the CSP has no 'unsafe-inline', so an onclick here would be inert
+       and the button would look enabled while doing nothing. -->
+  <div class="rbar" id="rbar">
+    <span class="rb-dot"></span>
+    <span class="rb-t" id="rbtxt"></span>
+    <div class="rb-sp">
+      <button class="btn ghost" id="discard" type="button">Descartar</button>
+      <button class="btn accent" id="review" type="button">Revisar y publicar</button>
+    </div>
+  </div>
+
+  <!-- The item drawer (Task 3: price only). Filled by app.js; empty and inert until a row is opened. -->
+  <aside class="drawer hidden" id="drawer" aria-label="Editar producto"></aside>
 </div>
 
 <script type="module" src="./boot.js"></script>

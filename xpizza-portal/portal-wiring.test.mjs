@@ -272,3 +272,87 @@ test('functional declarations the read-only portal depends on survive a re-skin'
   // and it must not credit a DIFFERENT selector that merely contains this one as a substring
   assert.ok(!declaredOn('.sinfo', 'text-overflow'), '`.sinfo` alone is not `.sfoot .sinfo b` — selectors match exactly, not by substring');
 });
+
+// ── Portal 2b-2b Task 3 — THE EDIT AFFORDANCES ARE ACTUALLY WIRED ────────────────────────────────
+// The recurring failure class on this portal: a pure module is fully tested, every node test passes,
+// and the DOM control that should call it was never connected. The 2b-2a switcher shipped exactly that
+// way — display-only, with a working module behind it. Node cannot import the DOM files (CDN imports),
+// so these are structural, and they are the only thing standing between "the module works" and "the
+// button does something".
+test('every edit affordance is wired to the draft, not merely rendered', () => {
+  const app = codeOf('app.js');
+  const render = codeOf('render.js');
+  const html = readFileSync(join(DIR, 'index.html'), 'utf8');
+
+  // the module is imported and its setters are actually called
+  assert.ok(/from '\.\/editor\.js'/.test(app), 'app.js imports the edit state');
+  for (const fn of ['setItemPrice', 'setExtraPrice', 'pendingCount', 'isPublishable', 'discard', 'draftSource']) {
+    assert.ok(new RegExp(`\\b${fn}\\s*\\(`).test(app), `app.js must CALL ${fn} — importing it is not wiring it`);
+  }
+
+  // the review bar exists in the markup AND something toggles it AND its buttons have listeners
+  for (const id of ['rbar', 'rbtxt', 'discard', 'review', 'drawer']) {
+    assert.ok(new RegExp(`id="${id}"`).test(html), `index.html must contain #${id}`);
+  }
+  assert.ok(/\$\('rbar'\)\.classList\.toggle\('show'/.test(app), 'something must actually show/hide the review bar');
+  assert.ok(/\$\('discard'\)\.addEventListener\('click'/.test(app), 'the discard button has a click listener');
+
+  // NO INLINE HANDLERS. Under this CSP an onclick attribute is inert, so the control would look
+  // enabled and do nothing — the exact shape of the bug this test exists for.
+  assert.ok(!/\son[a-z]+=/.test(html), 'no inline event handler attributes in index.html');
+  for (const f of JS) assert.ok(!/\.setAttribute\(\s*['"]on[a-z]+['"]/.test(codeOf(f)), `${f} must not set an inline handler attribute`);
+
+  // the price inputs are wired in the RENDER, not just styled
+  assert.ok(/addEventListener\('input'/.test(render), 'render.js attaches an input listener to the price field');
+  assert.ok(/onPrice\(/.test(render), '...and routes it to the caller-supplied handler');
+  assert.ok(/dataset\.k/.test(render) && /dataset\.k|data-k/.test(app),
+    'price cells are addressable and app.js addresses them — otherwise the drawer and the row drift apart');
+
+  // SCOPED, not file-wide. "setItemPrice appears in app.js" is satisfied by the row handler alone, so
+  // a drawer that rendered an input and wrote nowhere would pass — the merchant types a price into a
+  // modal, closes it, and the change was never made. Assert against the drawer's OWN body.
+  const bodyOf = (src, name) => {
+    const i = src.search(new RegExp(`(?:export\\s+)?function\\s+${name}\\s*\\(`));
+    if (i === -1) return null;
+    const open = src.indexOf('{', src.indexOf(')', i));
+    let d = 0;
+    for (let j = open; j < src.length; j++) {
+      if (src[j] === '{') d++;
+      else if (src[j] === '}' && --d === 0) return src.slice(i, j + 1);
+    }
+    return null;
+  };
+  const drawer = bodyOf(app, 'openDrawer');
+  assert.ok(drawer, 'openDrawer must exist — it is the row/drawer pair Task 3 ships');
+  assert.ok(drawer.length > 200, `non-vacuity: the drawer body was really extracted (${drawer && drawer.length})`);
+  assert.ok(/addEventListener\('input'/.test(drawer), "the drawer's price field has an input listener");
+  assert.ok(/setItemPrice\(/.test(drawer), '...that WRITES to the draft, not just to the field');
+  assert.ok(/refreshBar\(/.test(drawer), '...and refreshes the bar, so the count follows a drawer edit');
+  assert.ok(!/setExtraPrice\(|structure|display\.name\s*=/.test(drawer), 'and the drawer edits a price and nothing else');
+});
+
+test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist', () => {
+  // Invariant #6. Renaming an item, adding or deleting one, and renaming an option all write the
+  // pricing KEY, which is the per-merchant key-strategy work. They are not disabled here; they are
+  // absent. A control that does not exist cannot be re-enabled by a stray line of CSS or a merged
+  // branch that flips a flag.
+  const app = codeOf('app.js');
+  const render = codeOf('render.js');
+  const editor = codeOf('editor.js');
+  const html = readFileSync(join(DIR, 'index.html'), 'utf8');
+
+  assert.ok(!/contenteditable/i.test(html + app + render), 'no contenteditable anywhere — that is how the mock edits names');
+  for (const banned of ['addItem', 'delRow', 'addOption', 'addSection', 'addGroup', 'setGroupType', 'toggleAvail', 'setImg']) {
+    assert.ok(!new RegExp(`\\b${banned}\\b`).test(app + render + editor),
+      `${banned} is a 2b-2c/2b-2d mutator and must not exist in the shipped portal`);
+  }
+  // the edit state exposes price setters and nothing else that writes
+  const exported = [...editor.matchAll(/export (?:function|const) ([A-Za-z_$][\w$]*)/g)].map((m) => m[1]).sort();
+  assert.deepStrictEqual(exported, [
+    'createDraft', 'discard', 'draftSource', 'invalidKeys', 'isPublishable',
+    'parsePrice', 'pendingChanges', 'pendingCount', 'setExtraPrice', 'setItemPrice',
+  ], 'the edit state exports exactly these — the only two writers are the price setters');
+
+  // and the mock's demo-outcome selector must never ship (invariant #7)
+  assert.ok(!/demoOut/.test(html + app + render + editor), 'no #demoOut — publish outcomes come from the server, not a picker');
+});
