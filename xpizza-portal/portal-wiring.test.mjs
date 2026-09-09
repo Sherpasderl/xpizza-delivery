@@ -522,3 +522,38 @@ test('the drawer is revealed by the class its own stylesheet defines', () => {
   // the app shell still uses .hidden, which is correct for IT — the two mechanisms must not be confused
   assert.ok(/id="app"[^>]*class="[^"]*hidden|class="app hidden"/.test(html), 'the app shell keeps its own display:none mechanism');
 });
+
+test('the review flow is wired to the SERVER diff, and captures the ack set at token time', () => {
+  const app = codeOf('app.js');
+  const html = readFileSync(join(DIR, 'index.html'), 'utf8');
+
+  for (const id of ['scrim', 'mbody', 'revSub', 'pubback', 'pubbtn']) {
+    assert.ok(new RegExp(`id="${id}"`).test(html), `index.html must contain #${id}`);
+  }
+  assert.ok(/\$\('review'\)\.addEventListener\('click'/.test(app), '"Revisar y publicar" has a click listener');
+  assert.ok(/\beditCatalog\(/.test(app), '...that calls editCatalog — the review is the server\'s answer, not a local guess');
+  assert.ok(/renderReview\(/.test(app) && /reviewModel\(/.test(app), '...and renders from the server diff');
+
+  // THE ACK SET IS CAPTURED FROM THE RESPONSE, at the moment the token was minted. Rebuilding it later
+  // from the rendered rows — or from the local draft — would replay something the token is not bound to.
+  assert.ok(/ackSetFrom\(\s*res/.test(app), 'the ack set comes from the editCatalog RESPONSE, not from the draft or the DOM');
+  assert.ok(!/ackSet\s*=\s*\[\s*\]/.test(app), '...and is never re-initialised to an empty literal after capture');
+
+  // the CAS baseline must move forward, or a second review of the same draft reports stale_edit
+  assert.ok(/sourceUpdateTime\s*=\s*res/.test(app), 'the new updateTime becomes the next precondition');
+
+  // the modal is revealed by ITS OWN class — the same contract mistake as the drawer
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(/\.scrim\.show|\.scrim\s*\{[^}]*display\s*:\s*none/.test(css), 'premise: .scrim has a reveal/hide rule');
+  // SCOPED TO THE SUCCESS PATH. A file-wide match is satisfied by the error branch alone — which also
+  // opens the modal — so removing the open from the success path would pass. Assert the ORDER: the
+  // render happens, and the modal opens after it.
+  const okOpen = app.indexOf('renderReview(');
+  const openAfterRender = app.indexOf("$('scrim').classList.add('show')", okOpen);
+  assert.ok(okOpen > -1, 'the success path renders the review');
+  assert.ok(openAfterRender > okOpen, 'and opens the modal AFTER rendering it — not only in the error branch');
+  assert.ok(app.slice(okOpen, openAfterRender).indexOf('catch') === -1,
+    '...with no catch between them, so the open really belongs to the success path');
+  assert.ok(/\$\('scrim'\)\.classList\.remove\('show'\)/.test(app), '...and closes it by removing the same class');
+  assert.ok(/\$\('pubback'\)\.addEventListener\('click'/.test(app), '"Volver a editar" is wired');
+});

@@ -79,6 +79,22 @@
     </div>
   </div>
 
+  <!-- THE REVIEW MODAL. Filled from the SERVER's diff by review.js — never from a client re-derive.
+       No inline handlers: the CSP has no 'unsafe-inline', so an onclick here would be inert. -->
+  <div class="scrim" id="scrim">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="revTitle">
+      <div class="mh">
+        <div class="mt" id="revTitle">Revisá tus cambios</div>
+        <div class="ms" id="revSub"></div>
+      </div>
+      <div class="mb mscroll" id="mbody"></div>
+      <div class="mf" id="revFoot">
+        <button class="btn ghost" id="pubback" type="button">Volver a editar</button>
+        <button class="btn accent" id="pubbtn" type="button">Publicar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- The item drawer (Task 3: price only). Filled by app.js; empty and inert until a row is opened. -->
   <aside class="drawer" id="drawer" aria-label="Editar producto"></aside>
 </div>

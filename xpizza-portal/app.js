@@ -3,9 +3,10 @@
 // Rendering the menu is Task 6; this resolves WHICH restaurant is in view and keeps that choice.
 // Nothing here decides what a merchant may see — every answer comes from the server, and the UI simply
 // shows what came back.
-import { apiFetch } from './api.js';
+import { apiFetch, editCatalog } from './api.js';
 import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, draftSource, optionGroups, groupUsage } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
+import { reviewModel, ackSetFrom, renderReview } from './review.js';
 import { token } from './auth.js';
 
 const $ = (id) => document.getElementById(id);
@@ -371,3 +372,52 @@ $('discard').addEventListener('click', () => {
   $('drawer').classList.remove('show');
   repaintFromDraft();
 });
+
+// ── THE REVIEW FLOW ────────────────────────────────────────────────────────────────────────────
+// "Revisar y publicar" does NOT publish. It saves the draft through editCatalog and shows what the
+// SERVER says will change — the diff, the token bound to it, and the acknowledgement set captured
+// verbatim for replay at publish time.
+//
+// The screen never re-derives the diff from the local draft. A client-side diff would be a second
+// opinion about money, and publishEdited re-checks the server's one anyway: the two disagreeing is
+// how a merchant approves a change they were never shown.
+$('review').addEventListener('click', async () => {
+  const btn = $('review');
+  btn.disabled = true;
+  try {
+    const res = await editCatalog({
+      rid: state.currentRid,
+      source: draftSource(state.draft),
+      baseSourceUpdateTime: state.sourceUpdateTime,
+      token,
+    });
+    // Everything the publish will need, kept exactly as the server sent it. The ack set is captured
+    // here — at the moment the token was minted — so what is replayed is what the token is bound to.
+    state.review = {
+      diff: res && res.diff,
+      editToken: res && res.token,
+      ackSet: ackSetFrom(res && res.diff),
+    };
+    // the CAS baseline moves forward: the draft we just wrote is the new precondition
+    if (res && res.updateTime) state.sourceUpdateTime = res.updateTime;
+    $('revSub').textContent = 'Esto es exactamente lo que cambia en tu menú en vivo.';
+    renderReview($('mbody'), reviewModel(state.review.diff));
+    $('scrim').classList.add('show');
+  } catch (e) {
+    // Task 7 gives each server code its own designed panel. Until then this states the failure
+    // honestly rather than pretending the review opened — a blank modal would read as "no changes".
+    $('revSub').textContent = '';
+    $('mbody').replaceChildren();
+    const [t, dsc] = messageFor(e);
+    const box = document.createElement('div');
+    box.className = 'empty';
+    box.append(Object.assign(document.createElement('b'), { textContent: t }));
+    box.append(Object.assign(document.createElement('span'), { textContent: dsc }));
+    $('mbody').append(box);
+    $('scrim').classList.add('show');
+  } finally {
+    btn.disabled = !isPublishable(state.draft);
+  }
+});
+
+$('pubback').addEventListener('click', () => { $('scrim').classList.remove('show'); });
