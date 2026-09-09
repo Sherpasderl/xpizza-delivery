@@ -342,10 +342,9 @@ export function publishPayload(review) {
 // The lock is a closure value instead. It is taken BEFORE the await, so there is no window between
 // deciding to send and sending; a second entry cannot get past it whatever the DOM says.
 //
-// It is released ONLY on failure. That asymmetry is the point: after a success the reviewed set is
-// published and its token spent, so a second press must not re-send — the latch holds until a new
-// review calls reset(). After a failure the merchant must be able to try again, and a permanent
-// latch would strand them on an outage.
+// Spent-ness is PER TOKEN, so a success does not latch anything shut: the set that published is
+// recorded by its own token, a failure records nothing (the merchant can retry), and a new review is
+// free because it carries a different token. There is no release path to get wrong.
 //
 // Injected `publish` rather than importing publishEdited, so node can drive the whole path — real
 // payload, real client, intercepted fetch — and assert the bytes that actually leave.
@@ -357,9 +356,7 @@ export function createPublisher({ publish }) {
   //             settling — not a new review, not an auth change. Releasing it re-opens the
   //             double-publish window T6 closed.
   //   spent     this reviewed set has already been published; its token is used, so pressing again
-  //             must not re-send. A NEW review clears this, because a new review is a new token.
-  //
-  // reset() therefore clears `spent` and never touches `inFlight`.
+  //             must not re-send. Tracked PER TOKEN, so a new review is free by construction.
   let inFlight = false;
   // 🔴 PER-REVIEW, not a global boolean. The question is "has THIS reviewed set been published?", and
   // a shared flag answered a different one: publish A on the wire, merchant opens review B (reset
@@ -372,10 +369,9 @@ export function createPublisher({ publish }) {
   // the session. A single slot was not enough: publishing review B overwrote A's entry and made A
   // re-publishable.
   //
-  // Note what this design DELETES: there is no reset(). A new review carries a new token and is free
-  // automatically, so nothing has to be un-set — which removes the exact hazard the last round fixed,
-  // where reset() could release something it should not have. The safest version of a lock is the one
-  // with no release path.
+  // Note what this design DELETES: there is no release path at all. A new review carries a new token
+  // and is free automatically, so nothing has to be un-set — and a lock with no release is a lock that
+  // cannot be released at the wrong moment.
   const spentTokens = new Set();
   return {
     get busy() { return inFlight; },

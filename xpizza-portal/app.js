@@ -152,7 +152,34 @@ function takeEditLock() {
 function releaseEditLock(ticket) {
   if (ticket === null || editLockHolder !== ticket) return;   // a skipped or stale attempt never held it
   editLockHolder = null;
-  setDrawerInert(false);
+  syncUi();
+}
+
+// ── PRINCIPLE: UI IS DERIVED FROM OWNERSHIP, NEVER CLEARED IN A `finally` ───────────────────────
+// Every bit below is a QUESTION ABOUT THE PRESENT — is a request on the wire, does anyone own the
+// draft, can this review publish — so it is answered by reading current ownership rather than by
+// whoever happens to finish last.
+//
+// That is what makes stale continuations harmless instead of dangerous: a finished operation calling
+// syncUi() paints the CURRENT truth, not its own. A `finally` that clears a UI bit owns something
+// that outlives its operation, and every symptom in this round came from one doing exactly that — a
+// skipped publish clearing the live one's spinner, a stale publish stranding busy='1', a save's
+// release un-inerting the drawer while a review was pending.
+function syncUi() {
+  const owned = editLockHolder !== null;
+  // "Is a request on the wire" is not quite the question. After an auth change or a tenant switch the
+  // request genuinely IS still in flight — but it belongs to a world the merchant has left, and this
+  // one is not waiting on it. The honest derivation is whether THIS world is waiting.
+  const waiting = publisher.busy && state.publishGen === opGeneration;
+  if (PUBBTN) {
+    if (waiting) PUBBTN.dataset.busy = '1'; else delete PUBBTN.dataset.busy;
+    const r = state.review;
+    PUBBTN.disabled = waiting || !(r && r.attestation && canPublish(r.attestation, r.acknowledged));
+    PUBBTN.title = PUBBTN.disabled && r && r.attestation && r.attestation.hasZero
+      ? 'Hay un precio sin valor válido'
+      : (PUBBTN.disabled && r ? 'Confirmá los cambios antes de publicar' : '');
+  }
+  setDrawerInert(owned);
 }
 
 export async function loadMenu(rid) {
@@ -262,7 +289,12 @@ function paint() {
 function closeDrawer() {
   state.drawerKey = null;
   $('drawer').classList.remove('show');
-  setDrawerInert(false);
+  // EMPTIED, not just hidden. Its option-price handlers close over their own key, so leaving the
+  // subtree in place keeps live listeners that would mutate the draft by that captured key — inertness
+  // stops a person reaching them, but not a stray programmatic event. Nothing left to fire.
+  $('drawer').replaceChildren();
+  // Inertness is NOT touched here: it is derived from who owns the draft, and closing the drawer is
+  // not the same event as the review handing editing back. Callers sync once their state has settled.
 }
 
 // 🔴 OFF-SCREEN IS NOT INERT. A translated panel keeps its inputs in the tab order and fully
@@ -466,17 +498,21 @@ $('discard').addEventListener('click', () => {
 // opinion about money, and publishEdited re-checks the server's one anyway: the two disagreeing is
 // how a merchant approves a change they were never shown.
 async function openReviewFlow() {
-  // 🔴 CLEAR THE PREVIOUS REVIEW FIRST. A review carries an acknowledgement and a token bound to ONE
-  // diff. If a save fails while an older acknowledged review is still in state, an edit-retry could
-  // publish a set the merchant has already moved past. Nothing acknowledged survives re-entry.
-  state.review = null;
-  bumpGeneration();                          // re-entering the review ends the previous attempt
-  const gen = opGeneration;
-  // The SAVE owns the draft for its duration. Without this the merchant can type 320 into the drawer
-  // while 310 is on the wire being reviewed, and the review they attest to describes a document that
-  // has already moved.
+  // 🔴 ADMISSION CONTROL, FIRST — before the generation is bumped and before anything is sent.
+  //
+  // An operation that cannot acquire the edit lock is REFUSED, not admitted-then-collided. Letting a
+  // re-entrant review proceed on a null ticket was the whole defect: it bumped the generation and sent
+  // its own editCatalog while save A still held the lock, and A's release then un-inerted the drawer
+  // with B still pending. Nothing to reconcile if the second one never starts.
   const lock = takeEditLock();
-  syncPublishButton();
+  if (lock === null) return;                 // a save or publish is already in flight; this one waits
+
+  // Only now does the previous world end. A review carries an acknowledgement and a token bound to ONE
+  // diff, so nothing acknowledged survives re-entry.
+  state.review = null;
+  bumpGeneration();
+  const gen = opGeneration;
+  syncUi();
   const btn = $('review');
   btn.disabled = true;
   try {
@@ -533,26 +569,33 @@ async function openReviewFlow() {
       showOutcome(outcomeFor(e, 'edit'));
       $('scrim').classList.add('show');
   } finally {
-    // Only the holder releases, and only into the world it belongs to.
-    releaseEditLock(lock);
+    // 🔴 THE LOCK IS NOT RELEASED HERE. The review OWNS the draft for the whole attestation, not just
+    // for the save: a merchant must not be able to edit the underlying document while signing for a
+    // snapshot of it. It is released only by an explicit return to editing — closeReview, discard, or
+    // a completed publish — or by the world ending.
+    if (gen === opGeneration) { state.reviewLock = lock; syncUi(); }
+    else releaseEditLock(lock);              // this attempt's world is gone; hand the lock back
     if (gen === opGeneration) btn.disabled = !isPublishable(state.draft);
   }
 }
+
+// The explicit return to editing. Everything that hands the draft back to the merchant goes through
+// here, so there is one place that knows the review is over.
+function closeReview() {
+  $('scrim').classList.remove('show');
+  state.review = null;
+  releaseEditLock(state.reviewLock);
+  state.reviewLock = null;
+  syncUi();
+}
 $('review').addEventListener('click', openReviewFlow);
 
-$('pubback').addEventListener('click', () => { $('scrim').classList.remove('show'); });
+$('pubback').addEventListener('click', closeReview);
 
 // The publish button's enabled state is derived, never toggled ad hoc: one function reads the model
 // and the acknowledgement, so the button and the gate can never drift apart.
-function syncPublishButton() {
-  const r = state.review;
-  const ok = !!(r && r.attestation) && canPublish(r.attestation, r.acknowledged);
-  PUBBTN.disabled = !ok;
-  PUBBTN.title = ok ? '' : (r && r.attestation && r.attestation.hasZero
-    ? 'Hay un precio sin valor válido'
-    : 'Confirmá los cambios antes de publicar');
-}
-
+// Kept as a name callers already use; the derivation lives in syncUi.
+const syncPublishButton = () => syncUi();
 // ── THE PUBLISH ────────────────────────────────────────────────────────────────────────────────
 // 🔴🔴 The send the attestation exists to authorize. What leaves here is built by publishPayload —
 // the verbatim ack set and a strict fiscalAck — so what is signed is decided in one tested place
@@ -592,26 +635,29 @@ async function runPublish() {
   const btn = PUBBTN;
   // In-flight is a VISIBLE state, not just a disabled button: publishing is the one action where a
   // merchant who sees nothing happen will press again.
-  if (btn) { btn.disabled = true; btn.dataset.busy = '1'; }
+  syncUi();                               // publisher.busy is about to become true; render from it
   const captured = state.review;          // kept for the receipt; the baseline moves on success
   const gen = opGeneration;               // the world this attempt belongs to
-  const lock = takeEditLock();            // this attempt owns the draft until IT settles
   let out;
   try {
-    out = await publisher.run(state.review);
+    // START, then RENDER, then await. publisher.busy only becomes true once run() is executing, so
+    // painting before the call would derive from a state that has not happened yet — the spinner
+    // would never appear. This is the ordering cost of deriving UI instead of setting it, and it is
+    // worth paying: everything after this point reads the truth rather than remembering it.
+    state.publishGen = gen;               // this world is now waiting on a publish
+    const attempt = publisher.run(state.review);
+    syncUi();
+    out = await attempt;
   } catch (e) {
     if (gen !== opGeneration) return;     // stale: auth changed or a newer review began mid-flight
     showOutcome(outcomeFor(e, 'publish'));
     return;
   } finally {
-    // 🔴 GENERATION-GUARDED UI CLEANUP. A stale publish's finally would otherwise clear the busy
-    // indicator and unlock the drawer over a world that has moved on. The publisher's own inFlight
-    // release stays unconditional — the wire really is free — but the PAINT is not.
-    releaseEditLock(lock);                // a no-op unless this attempt actually took it
-    if (gen === opGeneration) {
-      if (btn) delete btn.dataset.busy;
-      syncPublishButton();
-    }
+    // NO UI IS CLEARED HERE. Every owned bit is derived by syncUi from CURRENT ownership, so calling
+    // it is safe even from a stale continuation — it paints the present, not this operation's past.
+    // A `finally` that cleared the spinner would be owning something that outlives its own operation,
+    // which is how a skipped second publish wiped the live one's indicator.
+    syncUi();
   }
   if (gen !== opGeneration) return;       // the answer arrived into a world that has moved on
   // Refused before the network: already in flight, spent, or the gate said no. Nothing was sent.
@@ -639,6 +685,8 @@ async function runPublish() {
   // what went live, so the baseline is left alone and the changes stay pending — visible and
   // republishable, rather than quietly marked live.
   if (captured && captured.submitted) commitTo(state.draft, captured.submitted);
+  releaseEditLock(state.reviewLock);      // the publish is done; editing is handed back
+  state.reviewLock = null;
   repaintFromDraft();
 }
 PUBBTN.addEventListener('click', runPublish);
@@ -702,13 +750,16 @@ function invalidateReview() {
   // WHOEVER ENDS A WORLD CLEANS ITS UI. Stale continuations are forbidden from painting — that is the
   // whole point — so the busy indicator and the editing lock they would otherwise have cleared must be
   // cleared here instead, or a spinner from an abandoned publish sits on the button forever.
-  if (PUBBTN) delete PUBBTN.dataset.busy;
-  editLockHolder = null;
-  setDrawerInert(false);
+  editLockHolder = null;                   // the world ended; nobody owns the draft
+  state.reviewLock = null;
   state.review = null;
+  state.publishGen = null;                 // and it is not waiting on anything
   closeDrawer();
   $('scrim').classList.remove('show');
-  syncPublishButton();
+  // ONE derivation, last, after every piece of state has settled. There were three calls here (one
+  // aliased, one nested inside closeDrawer), which is worse than untidy: any one of them could be
+  // deleted and the other two masked it, so no test could tell whether this function cleaned up at all.
+  syncUi();
 }
 
 document.addEventListener('portal:auth', (e) => {

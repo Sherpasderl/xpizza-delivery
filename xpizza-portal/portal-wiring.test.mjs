@@ -583,9 +583,18 @@ test('the attestation is gated on the server capability flag, and it gates the p
     'the flag is read from getEditableCatalog, strictly === true');
 
   // the publish button is DERIVED from canPublish, in one place
-  assert.ok(/function syncPublishButton\(\)/.test(app), 'one function owns the publish button state');
-  assert.ok(/canPublish\(/.test(app), '...and it asks canPublish');
-  assert.ok(/PUBBTN\.disabled\s*=/.test(app), '...and actually sets disabled on the captured reference');
+  // ONE derivation, and it reads OWNERSHIP rather than being told. Every owned UI bit — the spinner,
+  // the disabled state, the drawer's inertness — is answered from publisher.busy and editLockHolder,
+  // so a stale continuation calling it paints the present rather than its own past.
+  assert.ok(/function syncUi\(\)/.test(app), 'one function derives the owned UI');
+  const ui = app.slice(app.indexOf('function syncUi'), app.indexOf('function syncUi') + 900);
+  assert.ok(/publisher\.busy/.test(ui), 'the spinner is derived from whether a request is on the wire');
+  assert.ok(/editLockHolder !== null/.test(ui), 'and the drawer\'s inertness from who owns the draft');
+  assert.ok(/canPublish\(/.test(ui), '...and the publish gate from the attestation');
+  assert.ok(/PUBBTN\.disabled\s*=/.test(ui), '...and it actually sets disabled');
+  // 🔴 NO `finally` MAY CLEAR AN OWNED BIT — that is owning something that outlives your operation
+  assert.ok(!/finally \{[^}]*dataset\.busy/.test(app), 'no finally clears the busy indicator');
+  assert.ok(!/finally \{[^}]*setDrawerInert/.test(app), '...nor the drawer inertness');
   // ...and the acknowledgement it passes is a literal boolean
   assert.ok(/acknowledged\s*=\s*v === true/.test(app), 'the acknowledgement is stored as a literal true, never a truthy');
 });
@@ -607,8 +616,9 @@ test('#pubbtn actually publishes, through a real in-flight lock', () => {
   // it must survive #pubbtn being DETACHED: a conflict panel replaces the footer, and RETRY re-enters
   // BOTH null-guards, specifically. A bare /if \(btn\)/ is satisfied by the `finally` clause alone,
   // so the entry path could still throw on a detached node and pass.
-  assert.ok(/if \(btn\) \{ btn\.disabled/.test(handler), 'runPublish null-guards the button on the way IN');
-  assert.ok(/if \(btn\) delete btn\.dataset\.busy/.test(handler), '...and on the way out');
+  // The button is no longer poked directly on either side: runPublish calls syncUi, which derives it.
+  assert.ok(/syncUi\(\)/.test(handler), 'runPublish renders from ownership rather than setting the button itself');
+  assert.ok(!/btn\.dataset\.busy\s*=/.test(handler), '...and never sets the spinner by hand');
 
   // the publisher is constructed with the REAL client, so the lock sits in front of the real send
   assert.ok(/createPublisher\(\s*\{\s*publish:[^}]*publishEdited\(/.test(app),
@@ -730,8 +740,13 @@ test('every publish state is wired — and edit_superseded re-reviews rather tha
   // both halves, and the SET specifically: `delete btn.dataset.busy` matches a bare /dataset\.busy/,
   // so a file-wide check passes with the flag never set. Publishing is the one action where a merchant
   // who sees nothing happen presses again.
-  assert.ok(/dataset\.busy\s*=/.test(app), 'the publish button is marked busy while the request is in flight');
-  assert.ok(/delete .*dataset\.busy/.test(app), '...and unmarked when it settles, however it settles');
+  // Set and unset by the SAME read, in one expression — so there is no state to forget to clear.
+  assert.ok(/if \(waiting\) PUBBTN\.dataset\.busy = '1'; else delete PUBBTN\.dataset\.busy;/.test(app),
+    'the spinner is derived in one expression, set and unset by the same read');
+  // and `waiting` is world-relative: a request still on the wire for a world the merchant LEFT is not
+  // something this world is waiting on.
+  assert.ok(/const waiting = publisher\.busy && state\.publishGen === opGeneration;/.test(app),
+    'the spinner asks whether THIS world is waiting, not whether anything is in flight');
 });
 
 test('no server error on the write path escapes the designed panels', () => {

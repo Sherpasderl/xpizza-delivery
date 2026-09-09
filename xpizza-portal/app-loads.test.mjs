@@ -291,7 +291,41 @@ test('🔴 the drawer is inert for the whole SAVE, and a skipped publish does no
 
   slowSave.resolve(okJson({ token: 'ET', updateTime: 'T2', diff: { added: [], removed: [], renamed: [], changed: [], largeChangeSet: [] } }));
   await saving;
-  assert.ok(!('inert' in drawer.attrs), 'and released once the save settles');
+  // 🔴 STILL INERT. The review owns the draft for the whole ATTESTATION, not just the save: a merchant
+  // must not be able to edit the underlying document while signing for a snapshot of it.
+  assert.ok('inert' in drawer.attrs, 'the drawer stays inert through the attestation');
+  assert.ok(drawer.querySelectorAll('input').every((i) => i.disabled), '...with its fields still disabled');
+
+  // released only by an EXPLICIT return to editing
+  byId.get('pubback').listeners.click[0]();
+  assert.ok(!('inert' in drawer.attrs), 'and released when the merchant goes back to editing');
+});
+
+test('🔴 a re-entrant review is REFUSED, not admitted and then collided with', async () => {
+  // Admission control. Letting review B proceed on a null ticket was the defect: it bumped the
+  // generation and sent its own editCatalog while save A still held the lock, and A's release then
+  // un-inerted the drawer with B still pending. Nothing to reconcile if B never starts.
+  const byId = installDom();
+  const slowSave = deferred();
+  let saves = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') { saves += 1; return saves === 1 ? slowSave.promise : okJson({ token: 'ET2', updateTime: 'T3', diff: { added: [], removed: [], renamed: [], changed: [], largeChangeSet: [] } }); }
+    return okJson({ versionId: 'v1' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+
+  const first = byId.get('review').listeners.click[0]();
+  await Promise.resolve();
+  assert.strictEqual(saves, 1, 'premise: the first save is on the wire');
+
+  await byId.get('review').listeners.click[0]();       // re-entry while A holds the lock
+  assert.strictEqual(saves, 1, '🔴 the re-entrant review sent NOTHING — it was refused at admission');
+
+  slowSave.resolve(okJson({ token: 'ET', updateTime: 'T2', diff: { added: [], removed: [], renamed: [], changed: [], largeChangeSet: [] } }));
+  await first;
+  assert.ok('inert' in byId.get('drawer').attrs, 'and the first review still owns the draft');
 });
 
 test('🔴 a stale publish’s cleanup does not paint over the new world', async () => {
@@ -367,4 +401,87 @@ test('🔴 a publish SKIPPED as in-flight does not unlock the drawer under the l
   slowPub.resolve(okJson({ versionId: 'v1' }));
   await first;
   assert.ok(!('inert' in drawer.attrs), 'and the holder releases it when IT settles');
+});
+
+test('🔴 cleanup happens AT invalidation, not merely after the stale op completes', async () => {
+  // The distinction the gate drew: asserting only "after the stale op settles, the UI is clean" also
+  // passes on an UNCONDITIONAL cleanup — the very thing being removed. So assert the moment: the world
+  // ends, and the UI is already right BEFORE anything settles.
+  const byId = installDom();
+  const slowPub = deferred();
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: { added: [], removed: [], renamed: [], changed: [{ key: 'Pizza', surface: 'item', field: 'price', old: 299, new: 310 }], largeChangeSet: [] } });
+    return slowPub.promise;
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+  const publishing = byId.get('pubbtn').listeners.click[0]();
+  await Promise.resolve();
+  assert.strictEqual(byId.get('pubbtn').dataset.busy, '1', 'premise: the spinner is up while the request is on the wire');
+
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));
+  // 🔴 IMMEDIATELY — before the stale publish settles
+  assert.strictEqual(byId.get('pubbtn').dataset.busy, undefined, 'the spinner is cleared AT invalidation');
+  assert.ok(!('inert' in byId.get('drawer').attrs), '...and the draft is released at the same moment');
+
+  slowPub.resolve(okJson({ versionId: 'v9' }));
+  await publishing;
+  assert.strictEqual(byId.get('pubbtn').dataset.busy, undefined, 'and the stale settle did not put it back');
+});
+
+test('🔴 a stale publish settling cannot disturb UI the NEW world already owns', async () => {
+  // Establish observable B-owned state FIRST, then let A settle into it.
+  //
+  // B cannot own a spinner while A is on the wire — the overlap lock refuses a second request, by
+  // design — so what B owns is the DRAFT: its own review holds the edit lock. That is the bit A's
+  // settle must not touch.
+  const byId = installDom();
+  const slowA = deferred();
+  let saves = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') return okJson({ token: `ET${++saves}`, updateTime: 'T2', diff: { added: [], removed: [], renamed: [], changed: [{ key: 'Pizza', surface: 'item', field: 'price', old: 299, new: 310 }], largeChangeSet: [] } });
+    return slowA.promise;
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+  const a = byId.get('pubbtn').listeners.click[0]();          // publish A, on the wire
+  await Promise.resolve();
+
+  // the world ends and a NEW review takes ownership
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+  const bToken = app.state.review && app.state.review.editToken;
+  const bInert = 'inert' in byId.get('drawer').attrs;
+  assert.ok(bToken, 'premise: B owns a review');
+  assert.ok(bInert, 'premise: B owns the draft');
+
+  slowA.resolve(okJson({ versionId: 'vA' }));                 // A settles INTO B's world
+  await a;
+  assert.strictEqual(app.state.review && app.state.review.editToken, bToken,
+    '🔴 A did not replace the review B owns');
+  assert.strictEqual('inert' in byId.get('drawer').attrs, bInert, '...nor release the draft B holds');
+  assert.strictEqual(byId.get('pubbtn').dataset.busy, undefined, '...nor leave a spinner B is not waiting on');
+});
+
+test('the drawer’s fields are blurred when the draft is taken', async () => {
+  const byId = installDom();
+  installFetch(() => okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false }));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  app.openDrawer('Pizza');
+  const input = byId.get('drawer').querySelectorAll('input')[0];
+  input.focus();
+  assert.strictEqual(document.activeElement, input, 'premise: the field really holds focus');
+
+  // TAKING the draft — opening a review — is what must move focus out. A panel that is inert but still
+  // holds focus keeps receiving keystrokes, which is the whole failure `inert` is meant to prevent.
+  await byId.get('review').listeners.click[0]();
+  assert.ok('inert' in byId.get('drawer').attrs, 'premise: the review took the draft');
+  assert.notStrictEqual(document.activeElement, input, 'focus left the field the merchant no longer owns');
+  assert.ok(input.disabled, '...and the field itself is disabled');
 });
