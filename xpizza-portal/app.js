@@ -458,6 +458,20 @@ function syncPublishButton() {
 // The publisher owns the in-flight lock and builds the payload. `disabled` still drives the button's
 // APPEARANCE, but it is not the guard: the lock is a closure value taken before the await, so a second
 // dispatched click cannot re-enter however the DOM is manipulated.
+// STABLE REFERENCES, captured once while both buttons are attached.
+//
+// 🔴 A detached node is still a valid Node and can be re-appended — but getElementById will not FIND
+// it. Restoring the footer with `$('pubbtn')` after showOutcome detached it does not throw: null is
+// stringified by replaceChildren into a TEXT NODE, so the footer renders "Volver a editarnull" and
+// the publish button is gone permanently. Verified in a browser. Every re-attach uses these.
+//
+// DECLARED HERE, ABOVE EVERY EXECUTED USE. `const` sits in the temporal dead zone until its own line,
+// so a top-level `PUBBTN.addEventListener(...)` written above this point throws
+// "Cannot access 'PUBBTN' before initialization" at module-eval — killing the whole module, not just
+// the publish path. It shipped that way once: every test passed, because node never EXECUTES app.js.
+const PUBBTN = $('pubbtn');
+const PUBBACK = $('pubback');
+
 const publisher = createPublisher({ publish: (payload) => publishEdited({ ...payload, token }) });
 
 // The publish attempt, as a NAMED function rather than a click handler body.
@@ -502,15 +516,6 @@ async function runPublish() {
   repaintFromDraft();
 }
 PUBBTN.addEventListener('click', runPublish);
-
-// STABLE REFERENCES, captured once while both buttons are attached.
-//
-// 🔴 A detached node is still a valid Node and can be re-appended — but getElementById will not FIND
-// it. Restoring the footer with `$('pubbtn')` after showOutcome detached it does not throw: null is
-// stringified by replaceChildren into a TEXT NODE, so the footer renders "Volver a editarnull" and
-// the publish button is gone permanently. Verified in a browser. Every re-attach uses these.
-const PUBBTN = $('pubbtn');
-const PUBBACK = $('pubback');
 
 // Put the publish footer back. Used when RETRY re-enters from a conflict panel, so the merchant is
 // returned to the normal publish UI rather than left looking at the panel they just dismissed.
