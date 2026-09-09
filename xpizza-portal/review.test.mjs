@@ -482,3 +482,151 @@ test('fiscalAck is FALSE unless the owner actually ticked it', () => {
   }
   assert.strictEqual(publishPayload(reviewState({ acknowledged: true })).fiscalAck, true, 'only a literal true signs');
 });
+
+// ── Task 6 BLOCK — THE IN-FLIGHT GUARD, AND THE WIRE, BOTH COMMITTED ─────────────────────────────
+// Two gaps the gate found, and they share a root: a claim that lives outside the suite does not hold
+// the line.
+//
+//   btn.disabled = true was the only double-publish guard — a UI STATE, which is precisely what the
+//   same commit argued a gate must never be. A second scripted click before the await resolves
+//   re-enters and sends the SAR publish twice.
+//
+//   "Verified at the wire" was a one-time browser check. It proved the code worked that afternoon; it
+//   could not stop app.js from later rebuilding the payload or dropping a field.
+//
+// createPublisher owns both, and is pure enough for node to drive it end to end: real publishPayload
+// → real publishEdited → intercepted fetch, asserting the bytes.
+import { createPublisher } from './review.js';
+import { publishEdited } from './api.js';
+
+function captureFetch(response = { ok: true, status: 200, json: async () => ({ versionId: 'v-42' }) }) {
+  const sent = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    sent.push({ url, method: opts.method, auth: opts.headers.Authorization, body: JSON.parse(opts.body) });
+    return typeof response === 'function' ? response(sent.length) : response;
+  };
+  return { sent, restore: () => { globalThis.fetch = real; } };
+}
+// the real send, exactly as app.js wires it
+const realPublisher = () => createPublisher({ publish: (p) => publishEdited({ ...p, token: async () => 'TK-secret' }) });
+
+const fiscalReview = (acknowledged) => {
+  const diff = MODEST();
+  return { rid: 'x_pizza', editToken: 'ET-9', diff, attestation: attestationModel(diff, { usesPlatformFactura: true }), acknowledged };
+};
+
+test('WIRE (a): a modest fiscal publish sends fiscalAck:true AND acknowledgedChanges:[]', async () => {
+  const f = captureFetch();
+  try {
+    const out = await realPublisher().run(fiscalReview(true));
+    assert.strictEqual(out.ok, true, 'the publish went through');
+    assert.strictEqual(f.sent.length, 1, 'exactly one request');
+    const b = f.sent[0].body;
+    assert.strictEqual(f.sent[0].method, 'POST');
+    assert.strictEqual(f.sent[0].auth, 'Bearer TK-secret', 'bearer in the header');
+    assert.ok(!f.sent[0].url.includes('TK-secret'), '...never in the URL');
+    assert.strictEqual(b.token, 'ET-9', 'body.token is the EDIT token');
+    assert.strictEqual(b.fiscalAck, true, '🔴 fiscalAck:true');
+    assert.deepStrictEqual(b.acknowledgedChanges, [], '🔴 WITH an empty ack set — the two answer different questions');
+    assert.ok(Array.isArray(b.acknowledgedChanges), 'and it is an array, which ackMatches requires');
+  } finally { f.restore(); }
+});
+
+test('WIRE (b): an UN-TICKED fiscal publish never leaves the browser', async () => {
+  const f = captureFetch();
+  try {
+    const out = await realPublisher().run(fiscalReview(false));
+    assert.strictEqual(out.ok, undefined, 'it did not publish');
+    assert.strictEqual(out.skipped, 'not_ready', '...and says why');
+    assert.strictEqual(f.sent.length, 0, '🔴 ZERO requests — an unsigned attestation is not sent at all');
+  } finally { f.restore(); }
+});
+
+test('WIRE (c): a non-fiscal large change sends the server objects verbatim, fiscalAck false', async () => {
+  const diff = {
+    added: [], removed: [], renamed: [],
+    changed: [{ key: 'Dumpling', surface: 'item', field: 'price', old: 100, new: 900 }],
+    largeChangeSet: [{ key: 'Dumpling', surface: 'item', reason: 'swing_gt_50', old: 100, new: 900 }],
+  };
+  const f = captureFetch();
+  try {
+    await realPublisher().run({
+      rid: 'la_musa', editToken: 'ET-7', diff,
+      attestation: attestationModel(diff, { usesPlatformFactura: false }), acknowledged: true,
+    });
+    const b = f.sent[0].body;
+    assert.strictEqual(b.fiscalAck, false, 'no fiscal attestation for a merchant that files its own documents');
+    assert.deepStrictEqual(b.acknowledgedChanges, diff.largeChangeSet, 'the server objects, unchanged');
+    assert.strictEqual(b.acknowledgedChanges[0].reason, 'swing_gt_50', 'including the field the server does not read back');
+  } finally { f.restore(); }
+});
+
+test('🔴 two synchronous clicks send exactly ONE request', async () => {
+  // The double-publish race. `disabled` is set on the element and cleared by anything that can reach
+  // the DOM; the lock is a module value that a second entry cannot get past, and it is taken BEFORE
+  // the await so there is no window between the check and the send.
+  const f = captureFetch();
+  try {
+    const p = realPublisher();
+    const r = fiscalReview(true);
+    const [a, b] = await Promise.all([p.run(r), p.run(r)]);   // both dispatched before either resolves
+    assert.strictEqual(f.sent.length, 1, 'ONE publish reached the server, not two');
+    const outcomes = [a, b].map((x) => (x.ok ? 'ok' : x.skipped));
+    assert.deepStrictEqual(outcomes.sort(), ['in_flight', 'ok'], 'one published, one was refused as already in flight');
+  } finally { f.restore(); }
+});
+
+test('a SUCCESS stays latched; a FAILURE releases so the merchant can retry', async () => {
+  // Latching after success is deliberate: the reviewed set is published, the token is spent, and a
+  // second press must not re-send. A failure is the opposite — an outage must not strand the merchant
+  // with a dead button.
+  const ok = captureFetch();
+  try {
+    const p = realPublisher();
+    await p.run(fiscalReview(true));
+    const again = await p.run(fiscalReview(true));
+    assert.strictEqual(again.skipped, 'in_flight', 'a second publish after success is refused');
+    assert.strictEqual(ok.sent.length, 1, 'and sends nothing');
+  } finally { ok.restore(); }
+
+  const bad = captureFetch({ ok: false, status: 503, json: async () => ({ error: 'store_unavailable' }) });
+  try {
+    const p = realPublisher();
+    await assert.rejects(() => p.run(fiscalReview(true)), (e) => e.code === 'store_unavailable');
+    assert.strictEqual(bad.sent.length, 1, 'the failed attempt was sent');
+    // the lock released, so a retry is possible
+    await assert.rejects(() => p.run(fiscalReview(true)), (e) => e.code === 'store_unavailable');
+    assert.strictEqual(bad.sent.length, 2, 'and the retry really went out — a failure must not strand the merchant');
+  } finally { bad.restore(); }
+
+  // reset() is what a freshly opened review calls, so the next reviewed set can publish
+  const third = captureFetch();
+  try {
+    const p = realPublisher();
+    await p.run(fiscalReview(true));
+    p.reset();
+    await p.run(fiscalReview(true));
+    assert.strictEqual(third.sent.length, 2, 'a NEW review can publish after reset');
+  } finally { third.restore(); }
+});
+
+test('the publisher refuses a review that is missing or not ready, without touching the network', async () => {
+  const f = captureFetch();
+  try {
+    const p = realPublisher();
+    for (const bad of [null, undefined, {}, { attestation: null }]) {
+      const out = await p.run(bad);
+      assert.strictEqual(out.skipped, 'not_ready', `${JSON.stringify(bad)} is refused`);
+    }
+    // a zero price blocks it even when acknowledged
+    const zero = {
+      added: [], removed: [], renamed: [],
+      changed: [{ key: 'Focaccia', surface: 'item', field: 'price', old: 120, new: 0 }],
+      largeChangeSet: [{ key: 'Focaccia', surface: 'item', reason: 'nonpositive', old: 120, new: 0 }],
+    };
+    const out = await p.run({ rid: 'x', editToken: 'E', diff: zero, attestation: attestationModel(zero, { usesPlatformFactura: true }), acknowledged: true });
+    assert.strictEqual(out.skipped, 'not_ready', 'a zero price is refused even when signed');
+    assert.strictEqual(f.sent.length, 0, 'and nothing reached the network in any of these cases');
+  } finally { f.restore(); }
+});

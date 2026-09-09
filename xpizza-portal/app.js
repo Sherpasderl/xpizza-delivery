@@ -6,7 +6,7 @@
 import { apiFetch, editCatalog, publishEdited } from './api.js';
 import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, draftSource, optionGroups, groupUsage } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
-import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, publishPayload } from './review.js';
+import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher } from './review.js';
 import { token } from './auth.js';
 
 const $ = (id) => document.getElementById(id);
@@ -410,6 +410,7 @@ $('review').addEventListener('click', async () => {
     state.review.rid = state.currentRid;
     state.review.attestation = att;
     state.review.acknowledged = false;
+    publisher.reset();   // a NEW reviewed set, with a new token — the previous latch does not apply
     const attBox = document.createElement('div');
     $('mbody').append(attBox);
     renderAttestation(attBox, att, (v) => {
@@ -452,41 +453,42 @@ function syncPublishButton() {
 // 🔴🔴 The send the attestation exists to authorize. What leaves here is built by publishPayload —
 // the verbatim ack set and a strict fiscalAck — so what is signed is decided in one tested place
 // rather than assembled at the call site.
-$('pubbtn').addEventListener('click', async () => {
-  const r = state.review;
-  // RE-CHECK THE GATE AT CLICK TIME. `disabled` is a UI state, not a guarantee: it can be cleared
-  // from devtools, and this is the button that changes a tax document. Fail closed.
-  if (!r || !r.attestation || !canPublish(r.attestation, r.acknowledged)) return;
+// The publisher owns the in-flight lock and builds the payload. `disabled` still drives the button's
+// APPEARANCE, but it is not the guard: the lock is a closure value taken before the await, so a second
+// dispatched click cannot re-enter however the DOM is manipulated.
+const publisher = createPublisher({ publish: (payload) => publishEdited({ ...payload, token }) });
 
+$('pubbtn').addEventListener('click', async () => {
   const btn = $('pubbtn');
-  btn.disabled = true;                       // no double-submit: two publishes of one reviewed set
+  btn.disabled = true;
+  let out;
   try {
-    const res = await publishEdited({ ...publishPayload(r), token });
-    // Minimal, honest outcome. Task 7 owns the receipt and the six designed states; this says the
-    // publish landed and names the version, rather than leaving the modal looking unchanged.
-    $('mbody').replaceChildren();
-    const ok = document.createElement('div');
-    ok.className = 'empty';
-    ok.append(Object.assign(document.createElement('b'), { textContent: 'Publicado' }));
-    ok.append(Object.assign(document.createElement('span'), {
-      textContent: res && res.versionId ? `Versión ${res.versionId}` : 'Tus cambios ya están en vivo.',
-    }));
-    $('mbody').append(ok);
-    state.review = null;
-    // the draft is now what is published, so nothing is pending
-    discard(state.draft);
-    repaintFromDraft();
+    out = await publisher.run(state.review);
   } catch (e) {
     // Task 7 gives each server code its own designed panel. Until then, say what happened — a silent
-    // failure on this button would leave a merchant believing prices changed when they did not.
+    // failure on the one button that changes a tax document would leave a merchant believing prices
+    // changed when they did not.
     const [t, dsc] = messageFor(e);
-    $('mbody').replaceChildren();
-    const box = document.createElement('div');
-    box.className = 'empty';
-    box.append(Object.assign(document.createElement('b'), { textContent: t }));
-    box.append(Object.assign(document.createElement('span'), { textContent: e && e.code ? `${dsc} (${e.code})` : dsc }));
-    $('mbody').append(box);
-  } finally {
+    showModalMessage(t, e && e.code ? `${dsc} (${e.code})` : dsc);
     syncPublishButton();
+    return;
   }
+  // Refused before the network: either already in flight, or the gate said no. Nothing was sent.
+  if (!out || !out.ok) { syncPublishButton(); return; }
+
+  const res = out.res;
+  showModalMessage('Publicado', res && res.versionId ? `Versión ${res.versionId}` : 'Tus cambios ya están en vivo.');
+  state.review = null;
+  // The publish IS the new baseline, so nothing is pending any more.
+  discard(state.draft);
+  repaintFromDraft();
 });
+
+function showModalMessage(title, detail) {
+  $('mbody').replaceChildren();
+  const box = document.createElement('div');
+  box.className = 'empty';
+  box.append(Object.assign(document.createElement('b'), { textContent: title }));
+  box.append(Object.assign(document.createElement('span'), { textContent: detail }));
+  $('mbody').append(box);
+}

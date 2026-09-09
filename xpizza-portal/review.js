@@ -331,3 +331,44 @@ export function publishPayload(review) {
     fiscalAck: att.isFiscal === true && review.acknowledged === true,
   };
 }
+
+// ── Task 6 BLOCK — THE PUBLISHER, WITH A REAL IN-FLIGHT GUARD ────────────────────────────────────
+// 🔴🔴 The double-publish race. The first version's only protection was `btn.disabled = true` — a UI
+// STATE, which is exactly what the same code argues a gate must never be. `disabled` lives on the
+// element: devtools clears it, a script never consults it, and a second dispatched click re-enters
+// before the await resolves while the review state is still perfectly valid. The SAR publish goes
+// twice.
+//
+// The lock is a closure value instead. It is taken BEFORE the await, so there is no window between
+// deciding to send and sending; a second entry cannot get past it whatever the DOM says.
+//
+// It is released ONLY on failure. That asymmetry is the point: after a success the reviewed set is
+// published and its token spent, so a second press must not re-send — the latch holds until a new
+// review calls reset(). After a failure the merchant must be able to try again, and a permanent
+// latch would strand them on an outage.
+//
+// Injected `publish` rather than importing publishEdited, so node can drive the whole path — real
+// payload, real client, intercepted fetch — and assert the bytes that actually leave.
+export function createPublisher({ publish }) {
+  let inFlight = false;
+  return {
+    reset() { inFlight = false; },
+    get busy() { return inFlight; },
+    async run(review) {
+      if (inFlight) return { skipped: 'in_flight' };
+      // The same gate the button shows, re-asked here. The button being enabled is a UI state; this
+      // is the decision. Fail closed on anything missing.
+      if (!review || !review.attestation || !canPublish(review.attestation, review.acknowledged)) {
+        return { skipped: 'not_ready' };
+      }
+      inFlight = true;
+      try {
+        const res = await publish(publishPayload(review));
+        return { ok: true, res };            // stays LATCHED: the token is spent
+      } catch (e) {
+        inFlight = false;                    // released so a retry is possible
+        throw e;
+      }
+    },
+  };
+}

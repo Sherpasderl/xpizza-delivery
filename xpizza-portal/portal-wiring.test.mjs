@@ -582,24 +582,40 @@ test('the attestation is gated on the server capability flag, and it gates the p
   assert.ok(/acknowledged\s*=\s*v === true/.test(app), 'the acknowledgement is stored as a literal true, never a truthy');
 });
 
-test('#pubbtn actually publishes — and the gate is re-checked at click time', () => {
-  // THE DEAD-BUTTON RISK. Task 5 rendered this button, Task 6 gates it; a control that looks armed
-  // and does nothing is the worst outcome on a publish screen, because the merchant believes their
-  // prices changed. Guarded explicitly so it cannot slip between tasks again.
+test('#pubbtn actually publishes, through a real in-flight lock', () => {
+  // THE DEAD-BUTTON RISK plus THE DOUBLE-PUBLISH RACE. Task 5 rendered this button, Task 6 gates and
+  // sends. A control that looks armed and does nothing is the worst outcome on a publish screen; a
+  // control that sends twice is worse still on a fiscal one.
   const app = codeOf('app.js');
   assert.ok(/\$\('pubbtn'\)\.addEventListener\('click'/.test(app), '#pubbtn has a click listener');
-  assert.ok(/\bpublishEdited\(/.test(app), '...that calls publishEdited');
-  assert.ok(/publishPayload\(/.test(app), '...with the payload built by the tested pure function');
 
-  // scoped to the handler: "publishEdited appears in app.js" would be satisfied by an import alone
   const i = app.indexOf("$('pubbtn').addEventListener('click'");
-  const handler = app.slice(i, i + 2200);
-  assert.ok(/publishEdited\(/.test(handler), 'the CALL is inside the click handler, not merely imported');
-  assert.ok(/canPublish\(/.test(handler),
-    'the gate is re-checked at click time — `disabled` is a UI state that devtools can clear, and this button changes a tax document');
-  assert.ok(/btn\.disabled = true/.test(handler), 'and the button locks during the request, so one reviewed set publishes once');
+  const handler = app.slice(i, i + 1800);
+  assert.ok(/publisher\.run\(/.test(handler), 'the handler runs the publisher — the send is reached, not merely imported');
+
+  // the publisher is constructed with the REAL client, so the lock sits in front of the real send
+  assert.ok(/createPublisher\(\s*\{\s*publish:[^}]*publishEdited\(/.test(app),
+    'createPublisher is wired to publishEdited');
+
+  // 🔴 THE GUARD IS NOT `disabled`. That is a UI state: devtools clears it, a dispatched click never
+  // consults it. The lock must live in the publisher, taken before the await.
+  assert.ok(!/if\s*\(\s*btn\.disabled\s*\)/.test(handler), 'the handler does not treat `disabled` as the guard');
+  const review = codeOf('review.js');
+  assert.ok(/let inFlight = false;/.test(review), 'the lock is a closure value in review.js');
+  const runBody = review.slice(review.indexOf('async run(review)'));
+  const lockAt = runBody.indexOf('inFlight = true');
+  const awaitAt = runBody.indexOf('await publish(');
+  assert.ok(lockAt > -1 && awaitAt > -1, 'both the lock and the send are present');
+  assert.ok(lockAt < awaitAt, 'the lock is taken BEFORE the await — otherwise there is a window between deciding and sending');
+  assert.ok(/if \(inFlight\) return/.test(runBody), '...and re-checked on entry');
+
+  // released ONLY on failure: a success latches until a new review resets it
+  assert.ok(/catch \(e\) \{\s*inFlight = false;/.test(runBody), 'the lock releases on failure, so a retry is possible');
+  assert.strictEqual((runBody.match(/inFlight = false/g) || []).length, 1,
+    'and ONLY there — a release in the success path or a finally would re-open the double-publish window');
+  assert.ok(/publisher\.reset\(\)/.test(app), 'a newly minted review resets the latch');
 
   // the payload must not be assembled at the call site — that is what publishPayload is for
   assert.ok(!/acknowledgedChanges\s*:/.test(handler), 'acknowledgedChanges is not rebuilt at the call site');
-  assert.ok(!/fiscalAck\s*:/.test(handler), '...nor fiscalAck — both come from publishPayload');
+  assert.ok(!/fiscalAck\s*:/.test(handler), '...nor fiscalAck');
 });
