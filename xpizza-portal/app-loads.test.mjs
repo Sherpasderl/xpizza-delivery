@@ -25,7 +25,7 @@ import assert from 'node:assert';
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { pendingChanges } from './editor.js';
+import { pendingChanges, createDraft as makeDraft } from './editor.js';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -207,6 +207,15 @@ const okJson = (body) => ({ ok: true, status: 200, json: async () => body });
 // What the merchant's own editor believes is outstanding. Zero after a reload of a SAVED draft — which
 // is the whole reason #7-B exists — so tests that turn on that state assert it as a premise.
 const pendingCountOf = (app) => pendingChanges(app.state.draft).length;
+
+// Two items, so a listener retained from one drawer can be fired while another is open — the
+// mis-target the drawerKey read at dispatch time made possible.
+const TWO_ITEMS = () => {
+  const s = WITH_EXTRA();
+  s.items.push({ key: 'Other', price: 150, display: { id: 2, cat: 'c', name: 'Other', price: 150 } });
+  s.structure.item_order = ['Pizza', 'Other'];
+  return s;
+};
 
 // SOURCE has no extras, so its drawer renders no option rows — and an option row is the only field
 // whose handler captures its key. Tests about retained listeners need this one.
@@ -983,4 +992,269 @@ test('🔴 signing out takes the review entry with it', async () => {
   assert.ok(!byId.get('rbar').classList.contains('show'),
     '🔴 and the review bar went with it — no entry to a draft that no longer exists');
   assert.strictEqual(byId.get('review').disabled, true, '🔴 and the entry itself is refused');
+});
+
+// ── PROVENANCE: A LISTENER BELONGS TO THE WORLD THAT CREATED IT ──────────────────────────────────
+// canEdit answers OWNERSHIP — is editing allowed right now. It cannot answer PROVENANCE — does this
+// particular callback belong to the draft, review and generation that are current. A retained listener
+// firing while editing is legitimately allowed passes canEdit and still writes into the wrong world.
+
+test('🔴 a retained drawer input writes ITS OWN dish, never whichever drawer is open now', async () => {
+  // The item price field read state.drawerKey at DISPATCH time. Open Pizza, keep a reference, open
+  // Other, fire the old listener: it looked up "the open drawer" and found Other. A price typed for one
+  // dish landed on a different one, with both drawers legitimately editable, so canEdit saw nothing
+  // wrong — it was not an ownership failure, it was a targeting failure.
+  const byId = installDom();
+  installFetch(() => okJson({ source: TWO_ITEMS(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false }));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+
+  app.openDrawer('Pizza');
+  const pizzaInput = byId.get('drawer').querySelectorAll('input')[0];
+  app.openDrawer('Other');                           // the merchant moves on
+  const rowOf = (k) => app.state.draft.state.items.find((i) => i.key === k);
+  assert.strictEqual(rowOf('Other').price, 150, 'premise: Other is untouched');
+
+  pizzaInput.value = '888';
+  pizzaInput.listeners.input[0]();
+  assert.strictEqual(rowOf('Other').price, 150,
+    '🔴 the retained listener did NOT reprice the dish that happens to be open');
+  assert.strictEqual(rowOf('Pizza').price, 888, 'it wrote the dish it was created for, or nothing at all');
+});
+
+test('🔴 a drawer input retained across a sign-in cannot price the new session’s menu', async () => {
+  // The option field already captured its key, so it always hit the right ROW — in the wrong DRAFT.
+  // After a different person signs in and their menu loads, the retained listener finds a fresh draft
+  // with no lock on it: canEdit says yes, and 777 lands on someone else's menu.
+  const byId = installDom();
+  installFetch(() => okJson({ source: WITH_EXTRA(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false }));
+  const app = await loadAppModule();
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'A' } }));
+  await app.loadMenu('x_pizza');
+
+  app.openDrawer('Pizza');
+  byId.get('drawer').querySelectorAll('.mgmain')[0].listeners.click[0]();
+  const optInput = byId.get('drawer').querySelectorAll('input')
+    .find((i) => (i.attrs['aria-label'] || '').startsWith('Precio de '));
+  assert.ok(optInput, 'premise: A has an option field open');
+
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));
+  await app.loadMenu('x_pizza');                     // B's menu, a brand new draft
+  assert.ok(app.state.draft.canEdit(), 'premise: B is editing freely — no lock refuses this');
+  const before = app.state.draft.state.extras[0].price;
+
+  optInput.value = '777';
+  optInput.listeners.input[0]();
+  assert.strictEqual(app.state.draft.state.extras[0].price, before,
+    '🔴 A’s field cannot price B’s menu — it belongs to a draft that no longer exists');
+});
+
+test('🔴 a retained recovery control cannot re-enter from a world that has ended', async () => {
+  // The failure panel's buttons drive real transitions — reload the draft, re-review, retry. Retained
+  // and fired later they re-enter those transitions from a dead world: a stale RELOAD calls loadMenu,
+  // which invalidates and RELEASES the edit lock — while a publish it knows nothing about is pending.
+  const byId = installDom();
+  let saves = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') { saves += 1; return okJson({ token: `ET${saves}`, updateTime: 'T2', diff: CHANGED_DIFF }); }
+    // stale_edit, so the panel offers RELOAD. That one matters most: REREVIEW and RETRY re-enter
+    // openReviewFlow, which is admission-controlled and already refuses a second entry — but RELOAD
+    // calls loadMenu, which INVALIDATES unconditionally and clears the lock holder. It is the one
+    // recovery control that can hand away a draft somebody else is holding.
+    return { ok: false, status: 409, json: async () => ({ error: 'stale_edit' }) };
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  // A real boot sets this through loadRestaurants/switchTo; loadMenu alone does not, and RELOAD reads
+  // it. Without it loadMenu(null) returns at its first line and the stale control looks harmless for a
+  // reason that has nothing to do with provenance.
+  app.state.currentRid = 'x_pizza';
+  await byId.get('review').listeners.click[0]();
+  await byId.get('pubbtn').listeners.click[0]();     // fails; the recovery panel appears
+  const staleAction = byId.get('mbody').querySelectorAll('button')[0];
+  assert.ok(staleAction, 'premise: the panel offers a recovery action');
+
+  await byId.get('review').listeners.click[0]();     // a NEW review begins; the old world is over
+  const savesNow = saves;
+  const lockedTo = app.state.reviewLock;
+  assert.ok(lockedTo !== null, 'premise: the new review owns the draft');
+
+  await staleAction.listeners.click[0]();            // the retained control fires
+  assert.strictEqual(saves, savesNow, '🔴 the stale control started nothing');
+  assert.strictEqual(app.state.reviewLock, lockedTo, '🔴 and did not hand away the live review’s draft');
+  assert.ok(!app.state.draft.canEdit(), '🔴 the live review still owns the draft it was given');
+});
+
+
+test('🔴 binding a price field to its generation does not leave it dead after a review', async () => {
+  // The cost of generation-binding, paid for deliberately. openReviewFlow BUMPS the generation, so
+  // every field built before it is refused from then on — correct while the review is open, and a dead
+  // control the moment it closes, because closeReview repainted nothing. That is the same dead-control
+  // shape as the #review button, one layer down, and it would have been introduced BY the fix.
+  //
+  // Whoever ends a world repaints it: closeReview rebuilds from the draft, so the fields come back
+  // belonging to the world that now exists.
+  const byId = installDom();
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: TWO_ITEMS(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF });
+    return okJson({ versionId: 'v1' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+
+  await byId.get('review').listeners.click[0]();     // bumps the generation
+  byId.get('pubback').listeners.click[0]();          // and closes again
+
+  app.openDrawer('Pizza');
+  const input = byId.get('drawer').querySelectorAll('input')[0];
+  input.value = '444';
+  input.listeners.input[0]();
+  assert.strictEqual(app.state.draft.state.items.find((i) => i.key === 'Pizza').price, 444,
+    '🔴 a field opened AFTER the review still edits — binding refuses stale worlds, not the current one');
+});
+
+test('🔴 an INLINE price cell retained across a sign-in cannot price the new session’s menu', async () => {
+  // The drawer fields were the obvious retained surface, so they were the ones the last rounds looked
+  // at. The inline cells in the list are the same hazard and were passed `onPrice` as a bare module
+  // reference — one function, shared by every cell ever rendered, belonging to no world at all. Binding
+  // the drawer fields and not this would have left the biggest editing surface on the screen unbound.
+  const byId = installDom();
+  installFetch(() => okJson({ source: TWO_ITEMS(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false }));
+  const app = await loadAppModule();
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'A' } }));
+  await app.loadMenu('x_pizza');
+
+  const cell = byId.get('detail').querySelectorAll('.price')
+    .flatMap((c) => c.querySelectorAll('input'))[0];
+  assert.ok(cell, 'premise: A has an editable inline price cell');
+
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));
+  await app.loadMenu('x_pizza');                     // B's menu, a brand new draft
+  assert.ok(app.state.draft.canEdit(), 'premise: B is editing freely — ownership refuses nothing here');
+  const before = app.state.draft.state.items.map((i) => i.price);
+
+  cell.value = '555';
+  cell.listeners.input[0]();
+  assert.deepStrictEqual(app.state.draft.state.items.map((i) => i.price), before,
+    '🔴 A’s cell cannot price B’s menu');
+});
+
+// ── THE THREE CAPTURES, PROVEN ONE AT A TIME ─────────────────────────────────────────────────────
+// The existing forgery tests move more than one thing at once — opening a second review changes the
+// token AND bumps the generation, so either check alone would pass them. A wrapper whose clauses are
+// never tested individually is a wrapper that can lose one in a refactor and stay green. Each test
+// below moves exactly ONE capture and holds the other two still.
+
+const openedReview = async (byId, app) => {
+  await byId.get('review').listeners.click[0]();
+  const cb = byId.get('mbody').querySelectorAll('input').filter((i) => i.type === 'checkbox')[0];
+  assert.ok(cb, 'premise: an attestation to sign');
+  return cb;
+};
+const fiscalFetch = (tok = 'ET') => installFetch((fn) => {
+  if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: true });
+  if (fn === 'editCatalog') return okJson({ token: tok, updateTime: 'T2', diff: CHANGED_DIFF });
+  return okJson({ versionId: 'v1' });
+});
+
+test('🔴 capture 2 of 3: the REVIEW TOKEN alone, generation and draft held still', async () => {
+  const byId = installDom();
+  fiscalFetch();
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const cb = await openedReview(byId, app);
+
+  const gen = app.state.publishGen;                  // nothing below touches the generation
+  const draft = app.state.draft;
+  // A different review, arrived at without ending the world — the case a token check exists for, and
+  // the only way to reach it in isolation.
+  app.state.review = { ...app.state.review, editToken: 'ET-DIFFERENT', acknowledged: false };
+
+  cb.checked = true;
+  cb.listeners.change[0]();
+  assert.strictEqual(app.state.review.acknowledged, false,
+    '🔴 the token alone refused it — this checkbox was rendered for a different review');
+  assert.strictEqual(app.state.draft, draft, 'and nothing else moved');
+  assert.strictEqual(app.state.publishGen, gen, 'the generation never changed, so it proved nothing here');
+});
+
+test('🔴 capture 3 of 3: the DRAFT alone, generation and token held still', async () => {
+  const byId = installDom();
+  installFetch(() => okJson({ source: WITH_EXTRA(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false }));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+
+  const cell = byId.get('detail').querySelectorAll('.price').flatMap((c) => c.querySelectorAll('input'))[0];
+  assert.ok(cell, 'premise: an editable inline cell');
+  const genBefore = app.state.publishGen;
+
+  // A replacement draft, swapped in without a reload — same generation, same (absent) review. In the
+  // app a new draft always arrives with a bump; that coupling is exactly what would hide the loss of
+  // this clause, so it is broken here on purpose.
+  const fresh = makeDraft(WITH_EXTRA());
+  app.state.draft = fresh;
+  assert.ok(fresh.canEdit(), 'premise: the new draft is editable — ownership refuses nothing');
+
+  cell.value = '666';
+  cell.listeners.input[0]();
+  assert.strictEqual(fresh.state.items[0].price, 299,
+    '🔴 the draft identity alone refused it — this cell was rendered against a draft that is gone');
+  assert.strictEqual(app.state.publishGen, genBefore, 'the generation never changed, so it proved nothing here');
+});
+
+const inlineCell = (byId) => byId.get('detail').querySelectorAll('.price').flatMap((c) => c.querySelectorAll('input'))[0];
+
+test('🔴 inline cells come back after a review closes — binding must not strand them', async () => {
+  // The drawer survived this because openDrawer rebuilds its own fields. The inline cells are built by
+  // paint() and nothing repaints them when a review closes, so generation-binding would have killed
+  // every price cell on the page after one visit to the review — the worst dead control in the slice,
+  // introduced by the fix for the previous one.
+  const byId = installDom();
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: TWO_ITEMS(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF });
+    return okJson({ versionId: 'v1' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+
+  await byId.get('review').listeners.click[0]();
+  byId.get('pubback').listeners.click[0]();
+
+  const cell = inlineCell(byId);                     // read AFTER the close, as a merchant would
+  cell.value = '321';
+  cell.listeners.input[0]();
+  assert.strictEqual(app.state.draft.state.items[0].price, 321,
+    '🔴 the page is editable again after a review — the world that ended repainted the one that follows');
+});
+
+test('🔴 capture 1 of 3: the GENERATION alone, draft and review held still', async () => {
+  // A re-authentication for the SAME person: the identity has not changed, so the draft is kept and no
+  // review is open — draft identity and token are both unmoved. Only the generation says the previous
+  // world is over, and a reference retained across it must still be refused. This is the one path where
+  // that clause is the only thing standing there.
+  const byId = installDom();
+  installFetch(() => okJson({ source: TWO_ITEMS(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false }));
+  const app = await loadAppModule();
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'A' } }));
+  await app.loadMenu('x_pizza');
+
+  const stale = inlineCell(byId);
+  const draft = app.state.draft;
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'A' } }));   // same person, new session
+  assert.strictEqual(app.state.draft, draft, 'premise: the draft was kept — identity cannot refuse this');
+  assert.strictEqual(app.state.review, null, 'premise: no review is open — the token cannot refuse it either');
+
+  stale.value = '999';
+  stale.listeners.input[0]();
+  assert.strictEqual(draft.state.items[0].price, 299,
+    '🔴 the generation alone refused it — the reference predates the current session');
+
+  // ...and the merchant is not stranded: the ender repainted, so the live cells work.
+  const fresh = inlineCell(byId);
+  fresh.value = '777';
+  fresh.listeners.input[0]();
+  assert.strictEqual(app.state.draft.state.items[0].price, 777, 'the rebuilt cell edits normally');
 });

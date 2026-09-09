@@ -986,6 +986,174 @@ test('🔴 the acknowledgement is written only through the bound callback', () =
 
   // and the callback that contains it is bound
   const att = app.match(/renderAttestation\([^\n]*\n?/);
-  assert.ok(att && /reviewBound\(/.test(att[0]),
-    '🔴 the attestation callback must be reviewBound — an unbound one acknowledges whatever review is open');
+  assert.ok(att && /\bbound\(/.test(att[0]),
+    '🔴 the attestation callback must be bound — an unbound one acknowledges whatever review is open');
+});
+
+// ── THE LISTENER CENSUS ──────────────────────────────────────────────────────────────────────────
+// The field census below counts WRITERS OF A FIELD. That is a genuine second layer, but it cannot
+// close this class, for two reasons it is worth being explicit about:
+//
+//   • it is bypassable. Object.assign(state.review, {acknowledged: true}) adds a writer of the
+//     acknowledgement and changes no count. So do state['review'], an alias, a destructure, and ||=.
+//   • a count says nothing about WHERE. A writer moved out from behind its guard leaves the count
+//     identical.
+//
+// So the real check is here, at the listener: every callback app.js hands to something that will
+// hold it is enumerated, and each one either goes through bound() or carries an explicit ruling that
+// names exactly which writes it is allowed to perform. A new write-listener fails the build until it
+// is bound or ruled, which is what makes this a closure rather than another round of patches.
+
+const maskLiterals = (src) => {
+  let out = '', i = 0;
+  while (i < src.length) {
+    const c = src[i], c2 = src[i + 1];
+    if (c === '/' && c2 === '/') { while (i < src.length && src[i] !== '\n') { out += ' '; i++; } continue; }
+    if (c === '/' && c2 === '*') { out += '  '; i += 2; while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) { out += src[i] === '\n' ? '\n' : ' '; i++; } out += '  '; i += 2; continue; }
+    if (c === '"' || c === "'" || c === '`') {
+      out += c; i++;
+      while (i < src.length && src[i] !== c) {
+        if (src[i] === '\\') { out += '  '; i += 2; continue; }
+        out += src[i] === '\n' ? '\n' : ' '; i++;
+      }
+      out += src[i] === undefined ? '' : c; i++; continue;
+    }
+    out += c; i++;
+  }
+  return out;
+};
+const spanFrom = (masked, open) => {
+  let d = 0;
+  for (let i = open; i < masked.length; i++) {
+    if (masked[i] === '(') d++;
+    else if (masked[i] === ')') { d--; if (d === 0) return i; }
+  }
+  return -1;
+};
+
+// Named entry points that write. Matched as BARE REFERENCES, not just calls: a callback handed over as
+// `onPrice` writes exactly as much as one that calls it, and passing the identifier is precisely how
+// the inline price cells stayed unbound while every call-shaped check looked clean.
+const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo', 'onPrice',
+                 'loadMenu', 'loadRestaurants', 'openReviewFlow', 'runPublish', 'closeReview',
+                 'invalidateReview', 'switchTo', 'bumpGeneration', 'takeEditLock', 'releaseEditLock',
+                 'openDrawer', 'closeDrawer', 'toggle'];
+function writesIn(code) {
+  const m = maskLiterals(code);
+  const found = new Set();
+  for (const fn of WRITERS) if (new RegExp(`\\b${fn}\\b`).test(m)) found.add(fn);
+  for (const g of m.matchAll(/\bstate\s*\.\s*(\w+)(?:\s*\.\s*\w+)*\s*(?:\+\+|--|(?:\+|-|\*|\/|\|\||&&|\?\?)?=(?!=))/g)) found.add(`state.${g[1]}`);
+  if (/\bstate\s*\[/.test(m)) found.add('state[computed]');                                   // bracket write
+  if (/Object\s*\.\s*assign\s*\(\s*(state|draft|\w*[Dd]raft)/.test(m)) found.add('Object.assign');
+  for (const g of m.matchAll(/\b(?:const|let|var)\s+(\w+)\s*=\s*state\b(?!\s*\.)/g)) found.add(`alias:${g[1]}`);
+  if (/\b(?:const|let|var)\s+\{[^}]*\}\s*=\s*state\b/.test(m)) found.add('destructure:state');
+  if (/\beditLockHolder\s*=(?!=)/.test(m)) found.add('editLockHolder');
+  if (/\bopGeneration\s*(?:\+\+|--|(?:\+|-)?=(?!=))/.test(m)) found.add('opGeneration');
+  return found;
+}
+function registrations(src) {
+  const m = maskLiterals(src);
+  const out = [];
+  const at = (i) => {
+    const ls = src.lastIndexOf('\n', i) + 1;
+    return { indent: src.slice(ls).match(/^\s*/)[0].length, line: src.slice(0, i).split('\n').length };
+  };
+  for (const g of m.matchAll(/\.addEventListener\s*\(/g)) {
+    const open = g.index + g[0].length - 1, end = spanFrom(m, open);
+    const recv = (src.slice(0, g.index).match(/([A-Za-z_$][\w$]*|\$\(\s*'[^']*'\s*\))\s*$/) || [, '?'])[1].replace(/\s+/g, '');
+    const raw = src.slice(open + 1, end);
+    const ev = (raw.match(/^\s*'([^']+)'/) || [, '?'])[1];
+    out.push({ key: `${recv}::${ev}`, handler: raw.replace(/^\s*'[^']+'\s*,/, ''), ...at(g.index) });
+  }
+  for (const g of m.matchAll(/\brender(Rail|Detail|Attestation|Outcome)\s*\(/g)) {
+    const open = g.index + g[0].length - 1, end = spanFrom(m, open);
+    out.push({ key: `render${g[1]}::callback`, handler: src.slice(open + 1, end), ...at(g.index) });
+  }
+  return out;
+}
+
+// ruling: 'bound'       — a per-render callback that writes; MUST go through bound()
+//         'singleton'   — registered once at module load on a node that is never re-created, so there
+//                         is only ever one and it always belongs to the current world. Protected by
+//                         canEdit and admission control instead. Enforced: must sit at column 0.
+//         'view'        — writes only presentational state; a stale one repaints, it cannot mis-price
+//         'revalidated' — re-checks its target against CURRENT state and refuses a stale one
+//         'ender'       — the code that ends a world; it writes unconditionally on purpose
+const LISTENERS = {
+  "item::click":                  ['revalidated', ['switchTo'], 'switchTo re-checks the rid against the CURRENT state.restaurants and refuses one the merchant does not own; re-selecting the current tenant is a no-op. Binding the tenant switcher to the world it was rendered in would refuse the one action whose whole purpose is to leave that world.'],
+  "close::click":                 ['view', ['state.drawerKey'], 'closes the drawer; presentational only'],
+  "input::input":                 ['bound', [], 'the item price field'],
+  "main::click":                  ['view', ['toggle'], 'expands an option group'],
+  "chev::click":                  ['view', ['toggle'], 'expands an option group'],
+  "pi::input":                    ['bound', [], 'the option price field'],
+  "document::portal:signed-in":   ['singleton', ['loadRestaurants'], 'boot'],
+  "document::portal:restaurant":  ['singleton', ['loadMenu'], 'the tenant switch, dispatched by switchTo which has already revalidated'],
+  "$('switcher')::click":         ['view', [], 'opens the tenant menu'],
+  "document::click":              ['view', [], 'closes the tenant menu on an outside click'],
+  "$('discard')::click":          ['singleton', ['discard', 'closeDrawer'], 'throws away local edits — a DRAFT write, refused by the canEdit boundary whenever an operation owns the draft'],
+  "$('review')::click":           ['singleton', ['openReviewFlow'], 'admission-controlled: it acquires the edit lock or returns'],
+  "$('pubback')::click":          ['singleton', ['closeReview'], 'closing is refused while this world has a publish in flight'],
+  "PUBBTN::click":                ['singleton', ['runPublish'], 'admission-controlled, and validates a current review before acquiring'],
+  "document::portal:auth":        ['ender', ['invalidateReview', 'state.draft', 'state.groups', 'state.currentRid', 'state.uid'], 'the identity change that ENDS a world; it clears, then repaints what follows'],
+  "renderRail::callback":         ['view', ['state.selectedCat'], 'which category the rail highlights'],
+  "renderDetail::callback":       ['bound', ['onPrice', 'openDrawer'], 'the inline price cells — onPrice is bound AT THE CALL SITE, because the function itself belongs to no world'],
+  "renderAttestation::callback":  ['bound', ['state.review'], '🔴 the acknowledgement'],
+  "renderOutcome::callback":      ['bound', ['loadMenu', 'openReviewFlow', 'runPublish'], 'the recovery controls — real transitions, not messages'],
+};
+
+test('🔴 every listener that writes is bound, or ruled — and nothing else is registered', () => {
+  const src = readFileSync(join(DIR, 'app.js'), 'utf8');
+  const regs = registrations(src);
+  assert.ok(regs.length >= 15, `sanity: the scanner found the registrations (${regs.length})`);
+
+  const seen = new Set();
+  for (const r of regs) {
+    const rule = LISTENERS[r.key];
+    assert.ok(rule, `🔴 app.js:${r.line} registers ${r.key} with no ruling. Bind it with bound(), or add it to LISTENERS naming exactly which writes it may perform.`);
+    seen.add(r.key);
+    const [ruling, allow, why] = rule;
+    assert.ok(why && why.length > 3, `${r.key}: a ruling with no reason`);
+
+    if (ruling === 'bound') {
+      assert.match(r.handler, /\bbound\s*\(/,
+        `🔴 app.js:${r.line} — ${r.key} is ruled 'bound' but does not go through bound(). A retained copy of it writes into whatever world is current when it fires.`);
+      continue;
+    }
+    // Everything else must stay inside the writes its ruling declared.
+    for (const w of writesIn(r.handler)) {
+      assert.ok(allow.includes(w),
+        `🔴 app.js:${r.line} — ${r.key} is ruled '${ruling}' but now writes ${w}, which its ruling does not allow. Bind it, or re-rule it deliberately.`);
+    }
+    if (ruling === 'singleton') {
+      assert.strictEqual(r.indent, 0,
+        `🔴 app.js:${r.line} — ${r.key} is ruled 'singleton' (registered once, on a node that is never re-created) but it is nested inside another function, so it is registered per call. It needs bound().`);
+    }
+  }
+  for (const key of Object.keys(LISTENERS)) assert.ok(seen.has(key), `${key} is ruled but no longer registered — remove the dead ruling`);
+});
+
+test('🔴 the write detector sees what the field census cannot', () => {
+  // The field census counts `state.<field> =` occurrences. Each fixture below adds a writer of the
+  // acknowledgement — the most dangerous field in the portal — without changing that count. If the
+  // detector cannot see these, the listener census inherits the same blind spot and closes nothing.
+  const BYPASSES = [
+    ['Object.assign(state.review, { acknowledged: true });', 'Object.assign'],
+    ["state['review'].acknowledged = true;",                 'state[computed]'],
+    ['const s = state; s.review.acknowledged = true;',        'alias:s'],
+    ['const { review } = state; review.acknowledged = true;', 'destructure:state'],
+    ['state.review.acknowledged ||= true;',                   'state.review'],
+    ['state.publishGen++;',                                   'state.publishGen'],
+    ['state.review.acknowledged = true;',                     'state.review'],
+    ['onPrice',                                               'onPrice'],          // a bare handoff
+    ['setExtraPrice(d, k, v)',                                'setExtraPrice'],
+    ['editLockHolder = null;',                                'editLockHolder'],
+  ];
+  for (const [code, expected] of BYPASSES) {
+    assert.ok(writesIn(code).has(expected), `🔴 the detector missed: ${code}`);
+  }
+  // ...and does NOT fire on writes that are only mentioned, which is how a comment-blind guard
+  // manufactures a false pass. Three separate guards in this slice failed exactly this way.
+  assert.strictEqual(writesIn('// state.review = null;').size, 0, 'a comment is not a write');
+  assert.strictEqual(writesIn("log('state.review = null');").size, 0, 'a string is not a write');
+  assert.strictEqual(writesIn('const x = state.review.acknowledged;').size, 0, 'a READ is not a write');
 });

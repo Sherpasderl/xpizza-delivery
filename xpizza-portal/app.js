@@ -142,11 +142,34 @@ const bumpGeneration = () => { opGeneration += 1; };
 // state.review, so firing it later acknowledged B — a forged SAR attestation, which is the one thing
 // the fiscal gate exists to prevent. Reachable only by a retained reference and a programmatic
 // dispatch, but "unforgeable even programmatically" is the right bar for a legal document.
-function reviewBound(fn) {
+// OWNERSHIP AND PROVENANCE ARE DIFFERENT QUESTIONS, and canEdit only answers the first.
+//
+//   ownership  — is editing allowed at all right now? (a lock is held, or it is not)
+//   provenance — does THIS callback belong to the draft, review and generation that are current?
+//
+// Every defect found in the last three rounds was provenance, not ownership: a listener retained from
+// an earlier world firing at a moment when editing was perfectly legal, so canEdit waved it through.
+// The acknowledgement forged for another review, an option field pricing a menu belonging to a
+// different person, a recovery button re-entering a transition after its world had ended — all of them
+// passed every ownership check there was.
+//
+// So: every listener that writes money or ownership state is created through this wrapper, which
+// captures the world at CREATION and refuses on any drift. Three captures, each closing a real one:
+//
+//   generation   — the world ended (auth change, tenant switch, a newer review began)
+//   draft object — the draft was replaced (a reload, a different tenant, a different person). Identity
+//                  by REFERENCE: a new draft is a new object, so nothing needs to be numbered.
+//   review token — a different review is open than the one this callback was rendered for
+//
+// The listener census in portal-wiring.test.mjs enforces that this is used everywhere it must be, so
+// an unbound write-listener cannot be added without failing the build.
+function bound(fn) {
   const gen = opGeneration;
+  const draft = state.draft;
   const token = state.review ? state.review.editToken : null;
   return (...args) => {
     if (gen !== opGeneration) return;                                   // a world that ended
+    if (state.draft !== draft) return;                                  // a different draft
     const now = state.review ? state.review.editToken : null;
     if (now !== token) return;                                          // a different review
     return fn(...args);
@@ -333,7 +356,13 @@ function paint() {
   renderDetail($('detail'), state.groups.find((g) => g.category.id === state.selectedCat), state.extras, {
     editable: true,
     changed: (surface, key) => changed.has(`${surface}::${key}`),
-    onPrice,
+    // 🔴 BOUND AT THE CALL SITE, not declared bound. `onPrice` is one module-level function shared by
+    // every cell ever rendered — it belongs to no world, so it can vouch for none. Binding it HERE
+    // creates one wrapper per paint, which is exactly the lifetime the cells it feeds have.
+    //
+    // This is the largest editing surface on the screen. Binding the drawer fields and leaving these
+    // unbound would have closed the two cases the review named and left the ordinary one open.
+    onPrice: bound(onPrice),
     onOpen: openDrawer,
   });
 }
@@ -412,11 +441,16 @@ function renderDrawer() {
   input.type = 'text'; input.inputMode = 'numeric'; input.setAttribute('aria-label', 'Precio');
   input.value = (Number.isInteger(it.price) && it.price > 0) ? String(it.price) : '';
   input.placeholder = 'Sin precio';
-  input.addEventListener('input', () => {
-    setItemPrice(state.draft, state.drawerKey, input.value);
+  // 🔴 THE KEY IS CAPTURED HERE. Reading state.drawerKey at dispatch time meant "whichever drawer is
+  // open NOW", so a field retained from Pizza's drawer repriced Other once Other was opened — with both
+  // dishes legitimately editable, which is why no ownership check ever saw it. A field edits the dish
+  // it was built for or it edits nothing.
+  const itemKey = it.key;
+  input.addEventListener('input', bound(() => {
+    setItemPrice(state.draft, itemKey, input.value);
     refreshBar();
-    syncRow('item', state.drawerKey, input.value);   // the row behind must follow, or it closes onto a stale number
-  });
+    syncRow('item', itemKey, input.value);   // the row behind must follow, or it closes onto a stale number
+  }));
   fld.append(label, cur, input);
   body.append(fld);
 
@@ -503,11 +537,13 @@ function groupBlock(g) {
     pi.setAttribute('aria-label', `Precio de ${(o.display && o.display.name) || o.key}`);
     pi.value = (Number.isInteger(o.price) && o.price > 0) ? String(o.price) : '';
     pi.placeholder = 'Sin precio';
-    pi.addEventListener('input', () => {
+    // This one always hit the right ROW — o.key was captured — but in whatever draft happened to be
+    // loaded. After a different person signed in, it priced THEIR menu.
+    pi.addEventListener('input', bound(() => {
       setExtraPrice(state.draft, o.key, pi.value);
       refreshBar();
       syncRow('extra', o.key, pi.value);          // the option's row in the detail list follows too
-    });
+    }));
     pr.append(mc, pi);
     row.append(name, pr);
     bodyEl.append(row);
@@ -607,7 +643,7 @@ async function openReviewFlow() {
     $('mbody').append(attBox);
     // BOUND to this review and this world. Dispatching A's checkbox after B opened must acknowledge
     // nothing — an acknowledgement identifies a person signing one specific reviewed set.
-    renderAttestation(attBox, att, reviewBound((v) => {
+    renderAttestation(attBox, att, bound((v) => {
       state.review.acknowledged = v === true;   // a literal true, never a truthy — this unlocks a signature
       syncUi();
     }));
@@ -655,6 +691,16 @@ function closeReview() {
   releaseEditLock(state.reviewLock);
   state.reviewLock = null;
   syncUi();
+  // 🔴 REPAINT, because opening the review BUMPED THE GENERATION. Every control built before it is now
+  // bound to a world that is over — correct while the review is open, and a dead page the moment it
+  // closes. The drawer hid this in testing because openDrawer rebuilds its own fields; the inline price
+  // cells are built by paint() and nothing else rebuilds them, so without this one line a single visit
+  // to the review would leave every price on the page unresponsive.
+  //
+  // Same rule as the spinner and the review button before it: whoever ends a world repaints the one
+  // that follows. Binding without repainting just moves a defect from "writes the wrong thing" to
+  // "writes nothing at all", and the second is harder to notice.
+  if (state.draft) repaintFromDraft();
 }
 $('review').addEventListener('click', openReviewFlow);
 
@@ -798,7 +844,12 @@ function showOutcome(outcome) {
   $('revSub').textContent = '';
   $('revFoot').replaceChildren(PUBBACK);
   PUBBACK.textContent = 'Cerrar';
-  renderOutcome($('mbody'), outcome, async (id) => {
+  // 🔴 THESE ARE TRANSITIONS, NOT MESSAGES. RELOAD calls loadMenu, which invalidates unconditionally
+  // and CLEARS THE LOCK HOLDER — so a retained RELOAD hands away a draft a live review is holding, and
+  // a save can start against a baseline a pending publish is about to move. REREVIEW and RETRY happen
+  // to be caught by admission control; RELOAD is not, and relying on that difference is how the next
+  // one gets missed. Bound like every other write-listener.
+  renderOutcome($('mbody'), outcome, bound(async (id) => {
     if (id === PUBLISH_ACTIONS.RELOAD) {
       // the DRAFT moved under us: refetch it and start over
       $('scrim').classList.remove('show');
@@ -832,7 +883,7 @@ function showOutcome(outcome) {
     }
     // An action id nothing handles must do NOTHING rather than fall through into a publish. Every id
     // the state machine emits is handled above; this is the guard for one it does not emit yet.
-  });
+  }));
 }
 // 🔴 AN ACKNOWLEDGEMENT IS A PERSON'S SIGNATURE, so it cannot outlive the person. Owner A ticks
 // Autorizo, signs out, owner B signs in on the same browser — without this, A's tick publishes under
@@ -866,5 +917,9 @@ document.addEventListener('portal:auth', (e) => {
   // window between these two lines; the only thing that ever mattered was which came first.
   if (state.uid && state.uid !== uid) { state.draft = null; state.groups = []; state.currentRid = null; }
   state.uid = uid;
-  invalidateReview();
+  invalidateReview();                       // bumps: whatever this event means, the old session is over
+  // A re-authentication for the SAME person keeps the draft — but the generation moved, so the controls
+  // rendered under the old session are inert. Rebuild them, or a token refresh silently freezes the
+  // editor with everything still on screen and nothing responding.
+  if (state.draft) repaintFromDraft();
 });
