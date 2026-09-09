@@ -565,6 +565,14 @@
      listener, and the opener was clickable without looking clickable. Mirrored onto the real class,
      with the hover tint the mock gives the row, so the target reads as one. */
   .iinfo.clk{cursor:pointer}
+  /* `.mopt .moname` is the mock's option-name INPUT (box, border, focus ring). Option names are not
+     editable in this slice — renaming writes a pricing key (2b-2c) — and the mock has no read-only
+     variant, so `.ro` keeps the layout slot and strips the affordance. */
+  .mopt .moname.ro{background:none;border-color:transparent;padding-left:0;cursor:default}
+  /* Item rows give up width to the leading thumb and the trailing chevron; option rows in the detail
+     list have neither, so their price cells sat wider and the column did not line up. An inert spacer
+     the width of the chevron restores the alignment without pretending the row is clickable. */
+  .irow .rowspacer{width:17px;flex:none}
   .irow:hover .iinfo.clk .nm{color:var(--accent)}
   .switch.multi .chev{opacity:1}
   .switchwrap{position:relative;margin:2px 0 20px}

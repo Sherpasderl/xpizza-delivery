@@ -193,19 +193,29 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
 
   // Extras are priced lines on the same order, so a menu that showed only dishes would be showing a
   // merchant less than their customers can actually buy.
-  const keys = Object.keys(extras || {});
-  if (keys.length) {
+  // `extras` is the source's extras ARRAY, not a {key: price} map. It has to be: an id-keyed merchant's
+  // extra key is a slug (`rice_white`), so rendering the key showed a la_musa owner "rice_white" where
+  // their customers read "Arroz Blanco". x_pizza hid it entirely — that brand keys extras BY NAME, so
+  // key and name are the same string there and the bug was invisible on half the fleet.
+  const rows = Array.isArray(extras) ? extras.filter((e) => e && typeof e.key === 'string') : [];
+  if (rows.length) {
     const h = el('div', 'dhead');
     h.append(el('div', 'dtitle', 'Opcionales'));
     detailEl.append(h);
-    for (const k of keys.sort()) {
+    for (const ex of rows) {
+      const k = ex.key;
       const row = el('div', 'irow');
       const info = el('div', 'iinfo');
-      info.append(el('div', 'nm', k));
-      row.append(info, priceCell(extras[k], {
+      const nm = (ex.display && typeof ex.display.name === 'string' && ex.display.name.trim()) ? ex.display.name : k;
+      info.append(el('div', 'nm', nm));
+      row.append(info, priceCell(ex.price, {
         editable, changed: changed('extra', k), onInput: (v) => onPrice('extra', k, v),
         surface: 'extra', key: k,
       }));
+      // Item rows give up width to a leading thumb and a trailing chevron; option rows have neither,
+      // so without this their price cells sat wider and the column did not line up. An INERT spacer,
+      // not an empty chevron: the row is not clickable and must not look as though it is.
+      if (editable) { const sp = el('div', 'rowspacer'); sp.setAttribute('aria-hidden', 'true'); row.append(sp); }
       detailEl.append(row);
     }
   }

@@ -188,3 +188,114 @@ test('only prices are editable — the draft exposes no way to change anything e
   assert.deepStrictEqual(after.items.map((i) => i.display.name), before.items.map((i) => i.display.name), 'no name changed');
   assert.strictEqual(after.restaurant_id, before.restaurant_id, 'nor the tenant');
 });
+
+// ── Task 4 — OPTION GROUPS ───────────────────────────────────────────────────────────────────────
+// The mock models options as first-class `groups` with an id and a required/optional `type`. THE REAL
+// SCHEMA HAS NEITHER. Verified against both live sources:
+//
+//   • `extras` is a FLAT priced list; a group is just the distinct `display.cat` values across it
+//     (x_pizza: "Salsas & Queso", "Carnes", "Vegetales & Hierbas" — la_musa: "Acompañamientos",
+//     "Salsas", "Proteínas").
+//   • there is no `type`, so nothing can truthfully render the mock's required-vs-optional distinction.
+//   • `structure.extras_by_category` / `extras_by_item` say WHERE a group is exposed — and la_musa
+//     declares both while x_pizza declares NEITHER.
+//
+// That last one decides the "shared group" note. For la_musa the count is real (32 products reach
+// Acompañamientos). For x_pizza the source says nothing, and "en 0 productos" would be a lie about a
+// group its customers demonstrably order from. So usage is a NUMBER or it is null, and null renders
+// nothing at all.
+import { optionGroups, groupUsage, productsUsingGroup } from './editor.js';
+
+const GROUPED = () => ({
+  restaurant_id: 'la_musa',
+  schema_version: 1,
+  items: [
+    { key: 'dim_01', price: 200, display: { id: 'dim_01', cat: 'dim_sum', name: 'Dumpling', price: 200 } },
+    { key: 'rice_03', price: 150, display: { id: 'rice_03', cat: 'arroces', name: 'Arroz Frito', price: 150 } },
+  ],
+  extras: [
+    { key: 'rice_white', price: 50, display: { id: 'rice_white', cat: 'Acompañamientos', name: 'Arroz Blanco', price: 50 } },
+    { key: 'papas', price: 60, display: { id: 'papas', cat: 'Acompañamientos', name: 'Papas', price: 60 } },
+    { key: 'sauce_chili', price: 20, display: { id: 'sauce_chili', cat: 'Salsas', name: 'Chili Oil', price: 20 } },
+  ],
+  structure: {
+    schema_version: 2,
+    item_order: ['dim_01', 'rice_03'],
+    categories: [{ id: 'dim_sum' }, { id: 'arroces' }],
+    extras_by_category: { dim_sum: ['Acompañamientos', 'Salsas'] },
+    extras_by_item: { rice_03: ['Acompañamientos'] },
+  },
+});
+
+test('option groups are DERIVED from the extras, because the schema has no group objects', () => {
+  const d = createDraft(GROUPED());
+  const gs = optionGroups(d);
+  assert.deepStrictEqual(gs.map((g) => g.name), ['Acompañamientos', 'Salsas'], 'one group per distinct display.cat');
+  assert.deepStrictEqual(gs[0].options.map((o) => o.key), ['rice_white', 'papas'], 'carrying its own options, in source order');
+  assert.deepStrictEqual(gs[0].options.map((o) => o.price), [50, 60], 'with their prices');
+  // no invented type — the mock's required/optional does not exist here and must not be faked
+  for (const g of gs) assert.ok(!('type' in g) && !('required' in g), 'no required/optional: the schema has no such field');
+});
+
+test('an ungrouped extra still appears — nothing may silently disappear', () => {
+  // The read-only render's rule holds here too: an extra whose display carries no cat is still a
+  // priced line a customer can buy, and hiding it would tell a merchant they do not sell it.
+  const src = GROUPED();
+  src.extras.push({ key: 'loose', price: 10, display: { id: 'loose', name: 'Suelto', price: 10 } });
+  const gs = optionGroups(createDraft(src));
+  const all = gs.flatMap((g) => g.options.map((o) => o.key));
+  assert.ok(all.includes('loose'), 'the ungrouped extra is still reachable through some group');
+  assert.strictEqual(gs.filter((g) => g.name === null).length, 1, 'it lands in an unnamed group rather than being dropped');
+});
+
+test('group usage counts real products, and is null when the source declares none', () => {
+  const d = createDraft(GROUPED());
+  // dim_01 is in dim_sum → exposed to both groups. rice_03 is named directly for Acompañamientos.
+  assert.deepStrictEqual(productsUsingGroup(d, 'Acompañamientos').sort(), ['dim_01', 'rice_03'],
+    'by category AND by item — both maps count');
+  assert.deepStrictEqual(productsUsingGroup(d, 'Salsas'), ['dim_01'], 'category exposure alone');
+  assert.strictEqual(groupUsage(d, 'Acompañamientos'), 2);
+  assert.strictEqual(groupUsage(d, 'Salsas'), 1);
+  assert.strictEqual(groupUsage(d, 'No Such Group'), 0, 'a declared-nowhere group in a source that DOES declare exposure is genuinely 0');
+
+  // 🔴 x_pizza declares NEITHER map. Its extras are demonstrably sold, so 0 would be a false statement
+  // about a real group; the honest answer is "this source does not say".
+  const noMaps = GROUPED();
+  delete noMaps.structure.extras_by_category;
+  delete noMaps.structure.extras_by_item;
+  const d2 = createDraft(noMaps);
+  assert.strictEqual(groupUsage(d2, 'Acompañamientos'), null,
+    'a source that declares no exposure at all reports null, never 0 — the note must stay silent rather than lie');
+  assert.ok(optionGroups(d2).length > 0, 'while the groups themselves are still listed and editable');
+});
+
+test('editing one option price is the SHARED value — every product exposing it sees the change', () => {
+  // In the mock a group is an object and editing propagates by reference. Here extras are a flat list
+  // keyed once, so there is exactly ONE price per option and sharing is structural rather than
+  // implemented. That is the property worth pinning: no per-product copy can drift.
+  const d = createDraft(GROUPED());
+  const users = productsUsingGroup(d, 'Acompañamientos');
+  assert.ok(users.length > 1, 'premise: the group really is shared by more than one product');
+  setExtraPrice(d, 'rice_white', '75');
+  const out = draftSource(d);
+  assert.strictEqual(out.extras.filter((e) => e.key === 'rice_white').length, 1, 'still exactly one row for the option');
+  assert.strictEqual(out.extras.find((e) => e.key === 'rice_white').price, 75, 'the one authoritative price moved');
+  assert.strictEqual(out.extras.find((e) => e.key === 'rice_white').display.price, 75, 'and its display.price with it');
+  // it reaches the group view every product reads from
+  const g = optionGroups(d).find((x) => x.name === 'Acompañamientos');
+  assert.strictEqual(g.options.find((o) => o.key === 'rice_white').price, 75, 'the group view shows the new price');
+  // and it is ONE diff entry, not one per product that exposes it
+  assert.deepStrictEqual(pendingChanges(d), [{ surface: 'extra', key: 'rice_white', from: 50, to: 75 }],
+    'a shared option produces ONE change, however many products expose it');
+});
+
+test('option editing cannot add or remove options — that writes keys (2b-2c)', () => {
+  const d = createDraft(GROUPED());
+  const before = draftSource(d);
+  setExtraPrice(d, 'rice_white', '75');
+  const after = draftSource(d);
+  assert.deepStrictEqual(after.extras.map((e) => e.key), before.extras.map((e) => e.key), 'no option added or removed');
+  assert.deepStrictEqual(after.extras.map((e) => e.display.cat), before.extras.map((e) => e.display.cat), 'and none moved group');
+  assert.deepStrictEqual(after.structure.extras_by_category, before.structure.extras_by_category, 'the exposure maps are untouched');
+  assert.deepStrictEqual(after.structure.extras_by_item, before.structure.extras_by_item, '...both of them');
+});

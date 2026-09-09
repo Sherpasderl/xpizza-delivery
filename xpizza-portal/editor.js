@@ -111,3 +111,62 @@ export function invalidKeys(draft) {
 // clearly — after the review, after the attestation, as a 400 on a screen that had said everything
 // was ready.
 export const isPublishable = (draft) => invalidKeys(draft).length === 0;
+
+// ── Task 4 — OPTION GROUPS ───────────────────────────────────────────────────────────────────────
+// The approved mock models options as first-class `groups` with an id and a required/optional `type`.
+// THE REAL SCHEMA HAS NEITHER, verified against both live sources:
+//
+//   • `extras` is a FLAT priced list. A "group" is just the distinct `display.cat` values across it —
+//     x_pizza has "Salsas & Queso" / "Carnes" / "Vegetales & Hierbas", la_musa has "Acompañamientos" /
+//     "Salsas" / "Proteínas".
+//   • there is no `type` field anywhere, so the mock's required-vs-optional distinction cannot be
+//     rendered truthfully and is not invented here.
+//   • `structure.extras_by_category` and `extras_by_item` say WHERE a group is exposed.
+//
+// Groups are DERIVED on read rather than stored, so there is no second model to keep in step with the
+// document — the same reason the draft is the source itself.
+export function optionGroups(draft) {
+  const out = [];
+  const byName = new Map();
+  for (const ex of (draft.state.extras || [])) {
+    if (!ex || typeof ex.key !== 'string') continue;
+    // An extra with no cat is still a priced line a customer can buy. It goes in an unnamed group
+    // rather than disappearing — the read-only render's rule (nothing silently vanishes) holds here.
+    const name = (ex.display && typeof ex.display.cat === 'string' && ex.display.cat) || null;
+    if (!byName.has(name)) { const g = { name, options: [] }; byName.set(name, g); out.push(g); }
+    byName.get(name).options.push(ex);
+  }
+  return out;
+}
+
+// Which PRODUCTS reach this group — by category exposure and by direct item exposure, both of which
+// count. Returns item keys so a caller can name them, not just count them.
+export function productsUsingGroup(draft, groupName) {
+  const st = draft.state.structure || {};
+  const byCat = st.extras_by_category || {};
+  const byItem = st.extras_by_item || {};
+  const out = [];
+  for (const it of (draft.state.items || [])) {
+    if (!it || typeof it.key !== 'string') continue;
+    const cat = it.display && it.display.cat;
+    const viaCat = Array.isArray(byCat[cat]) && byCat[cat].includes(groupName);
+    const viaItem = Array.isArray(byItem[it.key]) && byItem[it.key].includes(groupName);
+    if (viaCat || viaItem) out.push(it.key);
+  }
+  return out;
+}
+
+// 🔴 A NUMBER, OR NULL — never a misleading zero.
+//
+// x_pizza declares NEITHER exposure map, while its extras are demonstrably sold. Reporting "en 0
+// productos" for a group customers order from every day would be a confident false statement about a
+// merchant's own menu, and the note exists to build trust in the editor. When the source says nothing
+// about exposure, the honest answer is that it says nothing, and the note stays silent.
+//
+// A source that DOES declare exposure and simply never names this group is a real zero, and says so.
+export function groupUsage(draft, groupName) {
+  const st = draft.state.structure || {};
+  const declares = st.extras_by_category !== undefined || st.extras_by_item !== undefined;
+  if (!declares) return null;
+  return productsUsingGroup(draft, groupName).length;
+}

@@ -4,7 +4,7 @@
 // Nothing here decides what a merchant may see — every answer comes from the server, and the UI simply
 // shows what came back.
 import { apiFetch } from './api.js';
-import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, draftSource } from './editor.js';
+import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, draftSource, optionGroups, groupUsage } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
 import { token } from './auth.js';
 
@@ -138,10 +138,8 @@ export async function loadMenu(rid) {
 function repaintFromDraft() {
   const src = draftSource(state.draft);
   state.groups = groupByCategory(src);
-  state.extras = (src.extras || []).reduce((m, e) => {
-    if (e && typeof e.key === 'string') m[e.key] = e.price;
-    return m;
-  }, {});
+  // the extras ARRAY, not a {key: price} map — the rows need their display records to show a name
+  state.extras = Array.isArray(src.extras) ? src.extras : [];
   if (!state.groups.some((g) => g.category.id === state.selectedCat)) {
     state.selectedCat = (state.groups[0] && state.groups[0].category.id) || null;
   }
@@ -198,13 +196,24 @@ function paint() {
 // naturally go, and all three write the pricing KEY — 2b-2c, after the key strategy lands. Nothing
 // here renders them, so there is no control to accidentally enable.
 export function openDrawer(key) {
-  const src = draftSource(state.draft);
-  const it = (src.items || []).find((i) => i && i.key === key);
+  state.drawerKey = key;
+  state.openGroups = state.openGroups || new Set();
+  renderDrawer();
+}
+
+// Re-rendered on every group toggle, so it PRESERVES the body's scroll position. Without that, opening
+// a group three down the list snaps the drawer back to the top and the merchant loses the row they
+// were reading — on a menu with a dozen option groups that makes the panel unusable.
+function renderDrawer() {
   const d = $('drawer');
+  const scroller = d.querySelector('.dwb');
+  const keepScroll = scroller ? scroller.scrollTop : 0;
+
+  const src = draftSource(state.draft);
+  const it = (src.items || []).find((i) => i && i.key === state.drawerKey);
   d.replaceChildren();
-  if (!it) { d.classList.add('hidden'); return; }
-  // The mock's own drawer vocabulary — .dwh head, .dwt title, .dwx close, .dwb body — rather than new
-  // class names, so the ported stylesheet already dresses it.
+  if (!it) { d.classList.remove('show'); return; }
+
   const head = document.createElement('div');
   head.className = 'dwh';
   const title = document.createElement('div');
@@ -212,11 +221,12 @@ export function openDrawer(key) {
   title.textContent = (it.display && it.display.name) || it.key;   // textContent: a dish name is data
   const close = document.createElement('button');
   close.type = 'button'; close.className = 'dwx'; close.textContent = 'Cerrar';
-  close.addEventListener('click', () => d.classList.add('hidden'));
+  close.addEventListener('click', () => { state.drawerKey = null; d.classList.remove('show'); });
   head.append(title, close);
 
   const body = document.createElement('div');
   body.className = 'dwb';
+
   const fld = document.createElement('div');
   fld.className = 'fld pr';
   const label = document.createElement('label');
@@ -228,15 +238,113 @@ export function openDrawer(key) {
   input.value = (Number.isInteger(it.price) && it.price > 0) ? String(it.price) : '';
   input.placeholder = 'Sin precio';
   input.addEventListener('input', () => {
-    setItemPrice(state.draft, key, input.value);
+    setItemPrice(state.draft, state.drawerKey, input.value);
     refreshBar();
-    // The ROW behind the drawer must follow, or the merchant closes it onto a stale number.
-    syncRow('item', key, input.value);
+    syncRow('item', state.drawerKey, input.value);   // the row behind must follow, or it closes onto a stale number
   });
   fld.append(label, cur, input);
   body.append(fld);
+
+  for (const g of optionGroups(state.draft)) body.append(groupBlock(g));
+
   d.append(head, body);
-  d.classList.remove('hidden');
+  // `.show` is what REVEALS the drawer: `.drawer` parks at translateX(102%) and `.drawer.show` brings
+  // it in. `.hidden` (display:none) is the APP SHELL's mechanism, not this panel's — toggling it here
+  // left the drawer permanently off-canvas while every structural check still passed, because the
+  // listeners were all correctly attached to a panel nobody could see.
+  d.classList.add('show');
+  body.scrollTop = keepScroll;
+}
+
+// One option group: a header that toggles, and — when open — its options with editable prices.
+//
+// DELIBERATELY ABSENT (the mock has all four): the option NAME input (.moname), add option (.mgadd),
+// remove option (.model) and the 86 toggle (.motog). The first three write pricing keys and are
+// 2b-2c; the last is 2b-2d. The option name renders as TEXT, not in .moname — that class is styled as
+// an input box, and dressing unwritable text as a field is the same hazard that has bitten this slice
+// five times already.
+function groupBlock(g) {
+  const wrap = document.createElement('div');
+  const isOpen = state.openGroups.has(g.name);
+  wrap.className = `modgrp${isOpen ? ' open' : ''}`;
+
+  const h = document.createElement('div');
+  h.className = 'modgrp-h';
+  const main = document.createElement('button');
+  main.type = 'button'; main.className = 'mgmain';
+  const nm = document.createElement('span');
+  nm.className = 'mgname';
+  nm.textContent = g.name || 'Sin grupo';        // the unnamed group is still shown, never dropped
+  const sub = document.createElement('span');
+  sub.className = 'mgsub';
+  const n = g.options.length;
+  const usage = g.name === null ? null : groupUsage(state.draft, g.name);
+  // "en N productos" ONLY when the source actually declares exposure. x_pizza declares none, and
+  // "en 0 productos" about a group its customers order from every day would be a confident lie.
+  sub.textContent = `${n} ${n === 1 ? 'opción' : 'opciones'}${usage === null ? '' : ` · en ${usage} ${usage === 1 ? 'producto' : 'productos'}`}`;
+  main.append(nm, sub);
+  const toggle = () => {
+    if (state.openGroups.has(g.name)) state.openGroups.delete(g.name); else state.openGroups.add(g.name);
+    renderDrawer();
+  };
+  main.addEventListener('click', toggle);
+  const chev = document.createElement('button');
+  chev.type = 'button'; chev.className = 'mgchev';
+  chev.setAttribute('aria-label', 'Ver opciones');
+  chev.setAttribute('aria-expanded', String(isOpen));
+  chev.append(svgChevron());
+  chev.addEventListener('click', toggle);
+  h.append(main, chev);
+  wrap.append(h);
+
+  if (!isOpen) return wrap;
+
+  const bodyEl = document.createElement('div');
+  bodyEl.className = 'mgbody';
+  // The shared-group warning, only when it is TRUE: more than one product reaches this group, so a
+  // price typed here changes what every one of them costs. Silent when the source cannot say.
+  if (usage !== null && usage > 1) {
+    const note = document.createElement('div');
+    note.className = 'mgshared';
+    note.textContent = `Es un grupo compartido — editar una opción cambia el precio en ${usage} productos.`;
+    bodyEl.append(note);
+  }
+  for (const o of g.options) {
+    const row = document.createElement('div');
+    row.className = 'mopt';
+    const name = document.createElement('span');
+    name.className = 'moname ro';                 // .ro strips the input chrome: this text is not editable
+    name.textContent = (o.display && o.display.name) || o.key;
+    const pr = document.createElement('span');
+    pr.className = 'mopr';
+    const mc = document.createElement('span');
+    mc.className = 'mc'; mc.textContent = 'L';
+    const pi = document.createElement('input');
+    pi.type = 'text'; pi.inputMode = 'numeric';
+    pi.setAttribute('aria-label', `Precio de ${(o.display && o.display.name) || o.key}`);
+    pi.value = (Number.isInteger(o.price) && o.price > 0) ? String(o.price) : '';
+    pi.placeholder = 'Sin precio';
+    pi.addEventListener('input', () => {
+      setExtraPrice(state.draft, o.key, pi.value);
+      refreshBar();
+      syncRow('extra', o.key, pi.value);          // the option's row in the detail list follows too
+    });
+    pr.append(mc, pi);
+    row.append(name, pr);
+    bodyEl.append(row);
+  }
+  wrap.append(bodyEl);
+  return wrap;
+}
+
+function svgChevron() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', 'M9 6l6 6-6 6');
+  svg.append(path);
+  return svg;
 }
 
 // Keep the row's own field in step with the drawer without a full repaint (which would close it).
@@ -256,6 +364,6 @@ document.addEventListener('click', (e) => { if (!e.target.closest('.switchwrap')
 // onclick attribute would be inert and the button would look enabled while doing nothing.
 $('discard').addEventListener('click', () => {
   discard(state.draft);
-  $('drawer').classList.add('hidden');
+  $('drawer').classList.remove('show');
   repaintFromDraft();
 });

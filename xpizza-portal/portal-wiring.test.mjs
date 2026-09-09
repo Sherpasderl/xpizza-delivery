@@ -322,13 +322,24 @@ test('every edit affordance is wired to the draft, not merely rendered', () => {
     }
     return null;
   };
-  const drawer = bodyOf(app, 'openDrawer');
-  assert.ok(drawer, 'openDrawer must exist — it is the row/drawer pair Task 3 ships');
+  // openDrawer became a thin entry point in Task 4 (the panel re-renders on every group toggle), so
+  // the assertions follow the delegation rather than the name. Both are pinned: the entry point must
+  // exist and must hand off, and the renderer must carry the actual wiring.
+  const entry = bodyOf(app, 'openDrawer');
+  assert.ok(entry, 'openDrawer must exist — it is the row/drawer pair Task 3 ships');
+  assert.ok(/renderDrawer\(/.test(entry), 'openDrawer delegates to the renderer');
+  const drawer = bodyOf(app, 'renderDrawer');
+  assert.ok(drawer, 'renderDrawer must exist — it is where the drawer is actually built');
   assert.ok(drawer.length > 200, `non-vacuity: the drawer body was really extracted (${drawer && drawer.length})`);
+  // and it must preserve the scroll position across those re-renders
+  assert.ok(/scrollTop/.test(drawer), 'renderDrawer preserves .dwb scrollTop — a toggle must not snap the panel to the top');
   assert.ok(/addEventListener\('input'/.test(drawer), "the drawer's price field has an input listener");
   assert.ok(/setItemPrice\(/.test(drawer), '...that WRITES to the draft, not just to the field');
   assert.ok(/refreshBar\(/.test(drawer), '...and refreshes the bar, so the count follows a drawer edit');
-  assert.ok(!/setExtraPrice\(|structure|display\.name\s*=/.test(drawer), 'and the drawer edits a price and nothing else');
+  // Task 4 added option prices to the drawer, so setExtraPrice belongs here now. What must still be
+  // absent is anything that writes a KEY or the structure.
+  assert.ok(!/structure\s*[.[]|display\.name\s*=(?!=)|\.key\s*=(?!=)/.test(drawer),
+    'the drawer edits prices and nothing else — no key, no name, no structure write');
 });
 
 test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist', () => {
@@ -349,9 +360,53 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // the edit state exposes price setters and nothing else that writes
   const exported = [...editor.matchAll(/export (?:function|const) ([A-Za-z_$][\w$]*)/g)].map((m) => m[1]).sort();
   assert.deepStrictEqual(exported, [
-    'createDraft', 'discard', 'draftSource', 'invalidKeys', 'isPublishable',
-    'parsePrice', 'pendingChanges', 'pendingCount', 'setExtraPrice', 'setItemPrice',
-  ], 'the edit state exports exactly these — the only two writers are the price setters');
+    'createDraft', 'discard', 'draftSource', 'groupUsage', 'invalidKeys', 'isPublishable',
+    'optionGroups', 'parsePrice', 'pendingChanges', 'pendingCount', 'productsUsingGroup',
+    'setExtraPrice', 'setItemPrice',
+  ], 'the edit state exports exactly these');
+  // The list growing is not the point — WHO WRITES is. Task 4's three additions derive option groups
+  // from the extras and must only read, or "editing an option" could quietly restructure the document.
+  // BALANCED extraction, not "slice to the next export". The naive version swallowed everything
+  // between draftSource and the next `export` — including the NON-exported setPrice, which of course
+  // assigns row.price — and reported the pure reader as a mutator. Unbounded slices pick up whatever
+  // happens to follow them.
+  const bodyIn = (name) => {
+    const m = editor.match(new RegExp(`export (?:function|const) ${name}\\b`));
+    if (!m) return '';
+    const i = editor.indexOf(m[0]);
+    const isFn = m[0].includes('function');
+    if (isFn) {
+      const pOpen = editor.indexOf('(', i);
+      let pd = 0, pEnd = pOpen;
+      for (; pEnd < editor.length; pEnd++) {
+        if (editor[pEnd] === '(') pd++;
+        else if (editor[pEnd] === ')' && --pd === 0) break;
+      }
+      const open = editor.indexOf('{', pEnd);
+      let d = 0;
+      for (let j = open; j < editor.length; j++) {
+        if (editor[j] === '{') d++;
+        else if (editor[j] === '}' && --d === 0) return editor.slice(i, j + 1);
+      }
+      return '';
+    }
+    let d = 0;
+    for (let j = i; j < editor.length; j++) {
+      const c = editor[j];
+      if ('([{'.includes(c)) d++;
+      else if (')]}'.includes(c)) d--;
+      else if (c === ';' && d === 0) return editor.slice(i, j + 1);
+    }
+    return '';
+  };
+  for (const reader of ['optionGroups', 'groupUsage', 'productsUsingGroup', 'pendingChanges', 'invalidKeys', 'draftSource']) {
+    const b = bodyIn(reader);
+    assert.ok(b.length > 20 && b.includes(reader), `non-vacuity: ${reader}'s own body was extracted (${b.length} chars)`);
+    // `=(?!=)` is load-bearing: without it `was.price === row.price` reads as an assignment and every
+    // pure reader fails. A guard that cannot tell a comparison from a write flags reads as writes.
+    assert.ok(!/\.price\s*=(?!=)|\.state\s*=(?!=)|\.orig\s*=(?!=)|splice\(/.test(b),
+      `${reader} must READ the draft, never write it — a derivation that mutates is a hidden edit`);
+  }
 
   // and the mock's demo-outcome selector must never ship (invariant #7)
   assert.ok(!/demoOut/.test(html + app + render + editor), 'no #demoOut — publish outcomes come from the server, not a picker');
@@ -437,4 +492,33 @@ test('every clickable element actually gets a pointer cursor', () => {
   }
   assert.ok(checked >= 7, `non-vacuity: the scan must find the portal's click handlers (${checked})`);
   assert.deepStrictEqual(gaps, [], `clickable elements with no pointer cursor:\n  ${gaps.join('\n  ')}`);
+});
+
+test('the drawer is revealed by the class its own stylesheet defines', () => {
+  // Sixth instance of the class-element-contract hazard, and the most expensive so far: `.drawer` parks
+  // itself at translateX(102%) and `.drawer.show` brings it in, but app.js toggled `.hidden` — the app
+  // SHELL's mechanism. Every structural check passed (the listeners were all correctly attached) while
+  // the panel stayed permanently off-canvas. Wiring a control to a panel nobody can see is invisible to
+  // any assertion about wiring.
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const app = codeOf('app.js');
+  const html = readFileSync(join(DIR, 'index.html'), 'utf8');
+
+  // what the stylesheet says reveals it
+  assert.ok(/\.drawer\s*\{[^}]*transform\s*:\s*translateX/.test(css), 'premise: .drawer is parked off-canvas by a transform');
+  assert.ok(/\.drawer\.show\s*\{[^}]*transform\s*:\s*none/.test(css), 'premise: .drawer.show is what brings it back');
+
+  // ...and that the code uses THAT class, on the drawer
+  assert.ok(/\$\('drawer'\)|\bd\b/.test(app), 'app.js addresses the drawer');
+  assert.ok(/classList\.add\('show'\)/.test(app), "app.js reveals the drawer with .show, not with some other class");
+  assert.ok(/classList\.remove\('show'\)/.test(app), '...and hides it by removing the same one');
+
+  // the markup must not ship `hidden` on the drawer: display:none would beat the transform entirely,
+  // so the panel would stay invisible no matter what .show did
+  const tag = html.match(/<aside[^>]*id="drawer"[^>]*>/);
+  assert.ok(tag, 'the drawer element exists in the markup');
+  assert.ok(!/\bhidden\b/.test(tag[0]), 'the drawer must not carry .hidden — display:none would override the reveal transform');
+
+  // the app shell still uses .hidden, which is correct for IT — the two mechanisms must not be confused
+  assert.ok(/id="app"[^>]*class="[^"]*hidden|class="app hidden"/.test(html), 'the app shell keeps its own display:none mechanism');
 });
