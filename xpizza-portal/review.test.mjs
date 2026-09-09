@@ -603,14 +603,14 @@ test('a SUCCESS stays latched; a FAILURE releases so the merchant can retry', as
     assert.strictEqual(bad.sent.length, 2, 'and the retry really went out — a failure must not strand the merchant');
   } finally { bad.restore(); }
 
-  // reset() is what a freshly opened review calls, so the next reviewed set can publish
+  // A NEW reviewed set publishes with no reset call at all — its token is what makes it new. That is
+  // the point of the per-token design: there is no release path to get wrong.
   const third = captureFetch();
   try {
     const p = realPublisher();
     await p.run(fiscalReview(true));
-    p.reset();
-    await p.run(fiscalReview(true));
-    assert.strictEqual(third.sent.length, 2, 'a NEW review can publish after reset');
+    await p.run({ ...fiscalReview(true), editToken: 'ET-NEXT' });
+    assert.strictEqual(third.sent.length, 2, 'a new reviewed set publishes without any reset');
   } finally { third.restore(); }
 });
 
@@ -918,8 +918,7 @@ test('🔴 reset() clears the SPENT latch but never releases a request on the wi
 
   const first = p.run(review());
   assert.strictEqual(sent.length, 1, 'one request went out');
-  p.reset();                                  // a new review, or an auth change, MID-FLIGHT
-  const second = p.run(review());
+  const second = p.run(review());             // a second press while the first is on the wire
   await Promise.resolve();                    // let a synchronous refusal settle
   assert.strictEqual(sent.length, 1, '🔴 nothing second reached the wire — reset must not release a live request');
   const outcome = await Promise.race([second, new Promise((r) => setTimeout(() => r({ skipped: 'HUNG' }), 50))]);
@@ -927,10 +926,10 @@ test('🔴 reset() clears the SPENT latch but never releases a request on the wi
 
   release({ versionId: 'v1' });
   await first;
-  // once it has settled, reset() legitimately allows the NEXT reviewed set
-  p.reset();
-  const third = await p.run(review());
-  assert.strictEqual(third.ok, true, 'a new review after settling can publish');
+  // once it has settled, a DIFFERENT reviewed set publishes — no reset required, because the token
+  // is what makes it different
+  const third = await p.run({ ...review(), editToken: 'ET-OTHER' });
+  assert.strictEqual(third.ok, true, 'a new reviewed set publishes after the first settles');
   assert.strictEqual(sent.length, 2, 'and it really went out');
 });
 
@@ -969,4 +968,38 @@ test('🔴 copy branches on (operation) x (did the server ANSWER?)', () => {
     assert.ok(!/public|publicar|en vivo/i.test(o.detail), 'an edit failure never mentions publishing — it never attempted one');
     assert.ok(!/verific/i.test(o.detail), '...and never sends the merchant to verify a live menu it did not touch');
   }
+});
+
+test('🔴 spent is per-REVIEW: a new review is never locked out by an older one settling', () => {
+  // Availability on the money path. `spent` was a global boolean: publish A goes on the wire, the
+  // merchant opens review B (reset clears the flag), then A settles and sets it again — and B, which
+  // never published anything, is refused as 'spent'. The merchant cannot publish at all until they
+  // reload.
+  //
+  // Binding it to the TOKEN makes the question answerable: "has THIS reviewed set been published?"
+  let releaseA;
+  const sent = [];
+  const p = createPublisher({ publish: (payload) => {
+    sent.push(payload);
+    if (sent.length === 1) return new Promise((r) => { releaseA = r; });
+    return Promise.resolve({ versionId: `v${sent.length}` });
+  } });
+  const mk = (editToken) => ({ rid: 'r', editToken, diff: MODEST(),
+    attestation: attestationModel(MODEST(), { usesPlatformFactura: true }), acknowledged: true });
+
+  const a = p.run(mk('ET-A'));                 // on the wire
+  // no reset needed: review B carries a different token and is free by construction
+  return Promise.resolve().then(() => releaseA({ versionId: 'vA' }))
+    .then(() => a)
+    .then(() => p.run(mk('ET-B')))              // a genuinely different reviewed set
+    .then((out) => {
+      assert.strictEqual(out.ok, true, '🔴 review B publishes — it was never published before');
+      assert.strictEqual(sent.length, 2, 'and it really went out');
+      // ...while re-pressing A's own set is still refused
+      return p.run(mk('ET-A'));
+    })
+    .then((again) => {
+      assert.strictEqual(again.skipped, 'spent', "A's own token stays spent — that set really did publish");
+      assert.strictEqual(sent.length, 2, 'and nothing re-sent');
+    });
 });

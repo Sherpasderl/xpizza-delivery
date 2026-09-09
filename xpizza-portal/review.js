@@ -361,21 +361,37 @@ export function createPublisher({ publish }) {
   //
   // reset() therefore clears `spent` and never touches `inFlight`.
   let inFlight = false;
-  let spent = false;
+  // 🔴 PER-REVIEW, not a global boolean. The question is "has THIS reviewed set been published?", and
+  // a shared flag answered a different one: publish A on the wire, merchant opens review B (reset
+  // clears the flag), A settles and sets it again — and B, which never published, is refused as
+  // 'spent'. The merchant could not publish at all until reloading.
+  //
+  // The token identifies the set: it is what the server binds the diff to, so two reviews can never
+  // share one.
+  // A SET, and it is never cleared. Once a token has published, it has published — for the life of
+  // the session. A single slot was not enough: publishing review B overwrote A's entry and made A
+  // re-publishable.
+  //
+  // Note what this design DELETES: there is no reset(). A new review carries a new token and is free
+  // automatically, so nothing has to be un-set — which removes the exact hazard the last round fixed,
+  // where reset() could release something it should not have. The safest version of a lock is the one
+  // with no release path.
+  const spentTokens = new Set();
   return {
-    reset() { spent = false; },
     get busy() { return inFlight; },
-    get isSpent() { return spent; },
+    isSpent(token) { return spentTokens.has(token); },
     async run(review) {
+      // The overlap lock stays GLOBAL — only one request may be on the wire at a time, whichever set
+      // it belongs to.
       if (inFlight) return { skipped: 'in_flight' };
-      if (spent) return { skipped: 'spent' };
+      if (review && review.editToken && spentTokens.has(review.editToken)) return { skipped: 'spent' };
       if (!review || !review.attestation || !canPublish(review.attestation, review.acknowledged)) {
         return { skipped: 'not_ready' };
       }
       inFlight = true;
       try {
         const res = await publish(publishPayload(review));
-        spent = true;                  // the token is used; only a NEW review clears this
+        if (review && review.editToken) spentTokens.add(review.editToken);   // THIS set published; others did not
         return { ok: true, res };
       } finally {
         inFlight = false;              // the wire is free either way; a failure leaves `spent` false so a retry works

@@ -51,10 +51,26 @@ function installDom() {
       setAttribute: (k, v) => { n.attrs[k] = v; },
       removeAttribute: (k) => { delete n.attrs[k]; },
       addEventListener: (ev, fn) => { (n.listeners[ev] = n.listeners[ev] || []).push(fn); },
-      querySelector: () => null,
-      querySelectorAll: () => [],
+      // REAL descendant queries and focus. The previous shim returned no descendants and modelled no
+      // focus, so it could not see whether the drawer's inputs were disabled or blurred — which is
+      // precisely what the inert-ownership fixes are about. A shim that cannot observe the thing under
+      // test makes every assertion about it vacuous.
+      querySelectorAll: (sel) => {
+        const want = String(sel).split(',').map((x) => x.trim());
+        const out = [];
+        (function walkDown(node) {
+          for (const c of node.children || []) {
+            if (want.includes(c.tag) || want.some((w) => w.startsWith('.') && String(c._class).split(/\s+/).includes(w.slice(1)))) out.push(c);
+            walkDown(c);
+          }
+        })(n);
+        return out;
+      },
+      querySelector: (sel) => n.querySelectorAll(sel)[0] || null,
+      contains: (el) => { let found = false; (function walkDown(node) { for (const c of node.children || []) { if (c === el) found = true; walkDown(c); } })(n); return found; },
       closest: () => null,
-      focus: () => {},
+      focus: () => { globalThis.document.activeElement = n; },
+      blur: () => { if (globalThis.document.activeElement === n) globalThis.document.activeElement = null; },
     };
     return n;
   };
@@ -73,6 +89,7 @@ function installDom() {
     addEventListener: (ev, fn) => { (globalThis.document._listeners[ev] = globalThis.document._listeners[ev] || []).push(fn); },
     dispatchEvent: (evt) => { for (const fn of (globalThis.document._listeners[evt.type] || [])) fn(evt); return true; },
     documentElement: mk('html', null),
+    activeElement: null,
   };
   globalThis.window = { matchMedia: () => ({ matches: false }) };
   globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
@@ -243,4 +260,111 @@ test('🔴 an auth change mid-flight drops the continuation and the acknowledgem
   assert.strictEqual(app.state.usesPlatformFactura, false,
     '🔴 the stale load did not repopulate a fiscal capability for the new person');
   assert.strictEqual(app.state.uid, 'B', 'and the session is the new one');
+});
+
+// ── DRAWER OWNERSHIP, EXECUTABLY ─────────────────────────────────────────────────────────────────
+test('🔴 the drawer is inert for the whole SAVE, and a skipped publish does not unlock it', async () => {
+  // Two defects the structural guards could not see, because they can only check that a call is
+  // written — not who owns the lock when several attempts overlap.
+  const byId = installDom();
+  const slowSave = deferred();
+  let n = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: true });
+    if (fn === 'editCatalog') { n += 1; return n === 1 ? slowSave.promise : okJson({ token: 'ET', updateTime: 'T2', diff: { added: [], removed: [], renamed: [], changed: [], largeChangeSet: [] } }); }
+    return okJson({ versionId: 'v1' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+
+  const drawer = byId.get('drawer');
+  app.openDrawer('Pizza');
+  assert.ok(drawer.querySelectorAll('input').length > 0, 'premise: the drawer really has an editable field');
+  assert.ok(!drawer.querySelectorAll('input')[0].disabled, 'and it is editable before anything is in flight');
+
+  // start the save; it stays on the wire
+  const saving = byId.get('review').listeners.click[0]();
+  await Promise.resolve();
+  assert.ok('inert' in drawer.attrs, '🔴 the drawer is inert while the save is on the wire');
+  assert.ok(drawer.querySelectorAll('input').every((i) => i.disabled),
+    '...and its inputs are disabled, not merely translated off-screen where a keyboard still reaches them');
+
+  slowSave.resolve(okJson({ token: 'ET', updateTime: 'T2', diff: { added: [], removed: [], renamed: [], changed: [], largeChangeSet: [] } }));
+  await saving;
+  assert.ok(!('inert' in drawer.attrs), 'and released once the save settles');
+});
+
+test('🔴 a stale publish’s cleanup does not paint over the new world', async () => {
+  const byId = installDom();
+  const slowPub = deferred();
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: { added: [], removed: [], renamed: [], changed: [{ key: 'Pizza', surface: 'item', field: 'price', old: 299, new: 310 }], largeChangeSet: [] } });
+    return slowPub.promise;
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();          // opens the review; non-fiscal so no ack needed
+  const publishing = byId.get('pubbtn').listeners.click[0]();
+  await Promise.resolve();
+  const drawer = byId.get('drawer');
+  assert.ok('inert' in drawer.attrs, 'the publish owns the draft while it is on the wire');
+
+  // the world moves on mid-flight
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));
+  slowPub.resolve(okJson({ versionId: 'v9' }));
+  await publishing;
+
+  assert.strictEqual(app.state.review, null, 'the stale publish did not repopulate a review');
+  assert.strictEqual(byId.get('pubbtn').dataset.busy, undefined, 'and left no busy indicator behind');
+});
+
+test('🔴 loadRestaurants that settles after an auth change does not replace the new session', async () => {
+  // The last settle-path outside the spine. A's restaurant lookup returning after auth flipped to B
+  // would replace B's selection AND dispatch a loadMenu for A's restaurant — invalidating B's own
+  // load in the process.
+  const byId = installDom();
+  const slow = deferred();
+  installFetch((fn) => (fn === 'getMyRestaurants' ? slow.promise : okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false })));
+  const app = await loadAppModule();
+
+  const looking = app.loadRestaurants();
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));
+  const ridAfterAuthChange = app.state.currentRid;
+
+  slow.resolve(okJson({ restaurants: [{ rid: 'x_pizza', name: 'X. Pizza' }] }));
+  await looking;
+  assert.strictEqual(app.state.currentRid, ridAfterAuthChange,
+    '🔴 the stale lookup did not select a restaurant for the new session');
+  assert.strictEqual((app.state.restaurants || []).length, 0, 'nor repopulate the list it belongs to');
+});
+
+test('🔴 a publish SKIPPED as in-flight does not unlock the drawer under the live one', async () => {
+  // Ownership, not a boolean. The second attempt is refused before the network — but it still runs its
+  // own finally, and a shared flag would let it release the editing lock while the FIRST request is
+  // still outstanding, re-opening the draft mid-publish.
+  const byId = installDom();
+  const slowPub = deferred();
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: { added: [], removed: [], renamed: [], changed: [{ key: 'Pizza', surface: 'item', field: 'price', old: 299, new: 310 }], largeChangeSet: [] } });
+    return slowPub.promise;
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+
+  const drawer = byId.get('drawer');
+  const first = byId.get('pubbtn').listeners.click[0]();      // on the wire
+  await Promise.resolve();
+  assert.ok('inert' in drawer.attrs, 'premise: the first publish owns the draft');
+
+  const second = byId.get('pubbtn').listeners.click[0]();     // refused as in_flight
+  await second;
+  assert.ok('inert' in drawer.attrs,
+    '🔴 STILL inert — the skipped attempt never held the lock, so it must not release it');
+
+  slowPub.resolve(okJson({ versionId: 'v1' }));
+  await first;
+  assert.ok(!('inert' in drawer.attrs), 'and the holder releases it when IT settles');
 });

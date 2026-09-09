@@ -78,16 +78,24 @@ function switchTo(rid) {
 }
 
 export async function loadRestaurants() {
+  // In the spine like every other async op: A's restaurant lookup settling after auth flipped to B
+  // would otherwise replace B's selection AND dispatch a fresh loadMenu for A's restaurant, and an
+  // old failure would erase B's rail.
+  const gen = opGeneration;
   let data;
   try {
     data = await apiFetch('getMyRestaurants', { token });
   } catch (e) {
+    // The check precedes ANY mutation, exactly as in loadMenu: a stale failure must not erase the
+    // rail or the name of the restaurant the merchant is actually on.
+    if (gen !== opGeneration) return;
     const [t, d] = messageFor(e);
     $('shopname').textContent = '—';
     $('shopsub').textContent = '';
     showEmpty(t, d);
     return;
   }
+  if (gen !== opGeneration) return;   // a newer auth change or switch won; this answer is for a world that ended
   state.restaurants = (data && data.restaurants) || [];
   if (state.restaurants.length === 0) {
     // Owning nothing is a real state, not an error — an owner whose grant has not been applied yet, or
@@ -121,6 +129,31 @@ export async function loadRestaurants() {
 // world can change while the continuation is running.
 let opGeneration = 0;
 const bumpGeneration = () => { opGeneration += 1; };
+
+// ── EDITING OWNERSHIP ──────────────────────────────────────────────────────────────────────────
+// The drawer must be inert for as long as SOME operation owns the draft — a save, a review, or a
+// publish — and must be released only by whoever took it.
+//
+// A ticket rather than a boolean, for the same reason `spent` became per-token: a second publish that
+// is SKIPPED as in-flight still runs its own `finally`, and a boolean would let it unlock the drawer
+// while the first request is still outstanding. Only the holder releases.
+let editLockTicket = 0;
+let editLockHolder = null;
+function takeEditLock() {
+  // EXCLUSIVE. If someone already holds it, the caller does NOT become the holder — it gets null and
+  // its release is a no-op. Taking it unconditionally was the bug: a second publish, refused before
+  // the network as in-flight, still became the holder and then released the drawer in its own
+  // `finally` while the FIRST request was still outstanding, re-opening the draft mid-publish.
+  if (editLockHolder !== null) return null;
+  editLockHolder = ++editLockTicket;
+  setDrawerInert(true);
+  return editLockHolder;
+}
+function releaseEditLock(ticket) {
+  if (ticket === null || editLockHolder !== ticket) return;   // a skipped or stale attempt never held it
+  editLockHolder = null;
+  setDrawerInert(false);
+}
 
 export async function loadMenu(rid) {
   if (!rid) return;
@@ -437,9 +470,12 @@ async function openReviewFlow() {
   // diff. If a save fails while an older acknowledged review is still in state, an edit-retry could
   // publish a set the merchant has already moved past. Nothing acknowledged survives re-entry.
   state.review = null;
-  publisher.reset();
   bumpGeneration();                          // re-entering the review ends the previous attempt
   const gen = opGeneration;
+  // The SAVE owns the draft for its duration. Without this the merchant can type 320 into the drawer
+  // while 310 is on the wire being reviewed, and the review they attest to describes a document that
+  // has already moved.
+  const lock = takeEditLock();
   syncPublishButton();
   const btn = $('review');
   btn.disabled = true;
@@ -475,7 +511,6 @@ async function openReviewFlow() {
     state.review.rid = state.currentRid;
     state.review.attestation = att;
     state.review.acknowledged = false;
-    publisher.reset();   // a NEW reviewed set, with a new token — the previous latch does not apply
     const attBox = document.createElement('div');
     $('mbody').append(attBox);
     renderAttestation(attBox, att, (v) => {
@@ -498,6 +533,8 @@ async function openReviewFlow() {
       showOutcome(outcomeFor(e, 'edit'));
       $('scrim').classList.add('show');
   } finally {
+    // Only the holder releases, and only into the world it belongs to.
+    releaseEditLock(lock);
     if (gen === opGeneration) btn.disabled = !isPublishable(state.draft);
   }
 }
@@ -558,7 +595,7 @@ async function runPublish() {
   if (btn) { btn.disabled = true; btn.dataset.busy = '1'; }
   const captured = state.review;          // kept for the receipt; the baseline moves on success
   const gen = opGeneration;               // the world this attempt belongs to
-  setDrawerInert(true);                   // no editing the draft while it is being published
+  const lock = takeEditLock();            // this attempt owns the draft until IT settles
   let out;
   try {
     out = await publisher.run(state.review);
@@ -567,9 +604,14 @@ async function runPublish() {
     showOutcome(outcomeFor(e, 'publish'));
     return;
   } finally {
-    setDrawerInert(false);
-    if (btn) delete btn.dataset.busy;
-    if (gen === opGeneration) syncPublishButton();
+    // 🔴 GENERATION-GUARDED UI CLEANUP. A stale publish's finally would otherwise clear the busy
+    // indicator and unlock the drawer over a world that has moved on. The publisher's own inFlight
+    // release stays unconditional — the wire really is free — but the PAINT is not.
+    releaseEditLock(lock);                // a no-op unless this attempt actually took it
+    if (gen === opGeneration) {
+      if (btn) delete btn.dataset.busy;
+      syncPublishButton();
+    }
   }
   if (gen !== opGeneration) return;       // the answer arrived into a world that has moved on
   // Refused before the network: already in flight, spent, or the gate said no. Nothing was sent.
@@ -592,7 +634,11 @@ async function runPublish() {
   // 🔴 The SUBMITTED snapshot, not the live draft. If the merchant kept editing after opening the
   // review, what went live is what was reviewed — and the later edit must stay pending rather than be
   // marked live.
-  commitTo(state.draft, (captured && captured.submitted) || draftSource(state.draft));
+  // FAIL CLOSED. The fallback here used to be the LIVE draft, which would silently commit whatever
+  // the merchant had typed since as though it had published. If the snapshot is missing we do not know
+  // what went live, so the baseline is left alone and the changes stay pending — visible and
+  // republishable, rather than quietly marked live.
+  if (captured && captured.submitted) commitTo(state.draft, captured.submitted);
   repaintFromDraft();
 }
 PUBBTN.addEventListener('click', runPublish);
@@ -653,8 +699,13 @@ function showOutcome(outcome) {
 // its acknowledgement, the open modal and the publisher latch.
 function invalidateReview() {
   bumpGeneration();          // every continuation still in flight now belongs to a world that ended
+  // WHOEVER ENDS A WORLD CLEANS ITS UI. Stale continuations are forbidden from painting — that is the
+  // whole point — so the busy indicator and the editing lock they would otherwise have cleared must be
+  // cleared here instead, or a spinner from an abandoned publish sits on the button forever.
+  if (PUBBTN) delete PUBBTN.dataset.busy;
+  editLockHolder = null;
+  setDrawerInert(false);
   state.review = null;
-  publisher.reset();
   closeDrawer();
   $('scrim').classList.remove('show');
   syncPublishButton();

@@ -630,22 +630,21 @@ test('#pubbtn actually publishes, through a real in-flight lock', () => {
   // the wire really is free once it settles, however it settled. `spent` says this reviewed set's
   // TOKEN is used and is set only on success. Collapsing them into one boolean was the T6 regression:
   // reset() then released a live request, re-opening the double-publish window.
-  assert.ok(/let inFlight = false/.test(review) && /let spent = false/.test(review), 'the two states are separate values');
+  assert.ok(/let inFlight = false/.test(review), 'the overlap lock is a single global flag — one request on the wire at a time');
+  assert.ok(/const spentTokens = new Set\(\)/.test(review),
+    'and spent-ness is PER TOKEN — a shared boolean locked a NEW review out when an older publish settled');
   assert.ok(/finally \{\s*inFlight = false;/.test(runBody), 'the wire is freed in finally, whichever way the request settled');
   assert.strictEqual((runBody.match(/inFlight = false/g) || []).length, 1, 'and in exactly one place');
-  assert.ok(/spent = true;/.test(runBody), 'a SUCCESS marks the reviewed set spent');
-  assert.strictEqual((runBody.match(/spent = true/g) || []).length, 1, '...only on the success path, so a failure can be retried');
-  assert.ok(/if \(spent\) return \{ skipped: 'spent' \}/.test(runBody), 'and a spent set is refused by name');
-  // 🔴 reset() must clear ONLY the latch — never a live request
-  // Bounded to the method's own braces. A fixed-width window overruns into the very next member —
-  // `get busy() { return inFlight; }` — and reports the reset as touching inFlight when it does not.
-  // Fixed windows pick up whatever happens to follow them; that is the same trap as the unbounded
-  // slices in Tasks 4 and 7.
-  const rIdx = review.indexOf('reset()');
-  const resetBody = review.slice(rIdx, review.indexOf('}', rIdx) + 1);
-  assert.ok(/spent = false/.test(resetBody), 'reset clears the spent latch');
-  assert.ok(!/inFlight/.test(resetBody), '...and never touches inFlight — a new review must not release a request on the wire');
-  assert.ok(/publisher\.reset\(\)/.test(app), 'a newly minted review resets the latch');
+  assert.ok(/spentTokens\.add\(/.test(runBody), 'a SUCCESS marks THAT set published');
+  assert.strictEqual((runBody.match(/spentTokens\.add\(/g) || []).length, 1, '...only on the success path, so a failure can be retried');
+  assert.ok(/spentTokens\.has\(review\.editToken\)/.test(runBody), 'and a spent set is refused by its own token');
+  // 🔴 NO RESET PATH AT ALL. A new review carries a new token and is free by construction, so there is
+  // nothing to un-set — which removes the hazard of a release firing at the wrong moment.
+  assert.ok(!/\breset\s*\(\s*\)\s*\{/.test(review), 'the publisher exposes no reset — the safest lock is one with no release path');
+  assert.ok(!/publisher\.reset\(/.test(app), '...and nothing calls one');
+  // No latch to reset: a newly minted review carries a NEW token, and the per-token set answers
+  // "has this set published?" without anything having to be cleared.
+  assert.ok(/editToken: res && res\.token/.test(app), 'a newly minted review takes the server\'s new token');
 
   // the payload must not be assembled at the call site — that is what publishPayload is for
   assert.ok(!/acknowledgedChanges\s*:/.test(handler), 'acknowledgedChanges is not rebuilt at the call site');
@@ -717,8 +716,10 @@ test('every publish state is wired — and edit_superseded re-reviews rather tha
   const successPath = app.slice(successIdx, successIdx + 900);
   // 🔴 commitTo(SUBMITTED), not commit(live draft): if the merchant kept editing after opening the
   // review, what went live is what was REVIEWED, and the later edit must stay pending.
-  assert.ok(/commitTo\(state\.draft, \(captured && captured\.submitted\)/.test(successPath),
+  assert.ok(/if \(captured && captured\.submitted\) commitTo\(state\.draft, captured\.submitted\)/.test(successPath),
     'the baseline becomes the SUBMITTED snapshot');
+  // FAIL CLOSED: no fallback to the live draft, which would silently mark later edits as published
+  assert.ok(!/commitTo\([^)]*\|\|/.test(successPath), 'and a missing snapshot leaves the baseline alone rather than guessing');
   assert.ok(!/\bcommit\(state\.draft\)/.test(successPath), '...not the live draft');
   assert.ok(!/discard\(state\.draft\)/.test(successPath), '...and never the pre-edit prices');
   // discard still exists — it is what the "Descartar" button legitimately does
@@ -807,7 +808,7 @@ test('an auth change invalidates the review, its acknowledgement and the latch',
   assert.ok(/invalidateReview\(\)/.test(h), 'and invalidates the review on every transition');
   const inv = app.slice(app.indexOf('function invalidateReview'), app.indexOf('function invalidateReview') + 420);
   assert.ok(/state\.review = null/.test(inv), 'the review — and with it the acknowledgement — is dropped');
-  assert.ok(/publisher\.reset\(\)/.test(inv), 'the publisher latch is released');
+  assert.ok(!/publisher\.reset\(\)/.test(inv), 'no reset call survives — the per-token design removed the need for one');
   assert.ok(/classList\.remove\('show'\)/.test(inv), 'and the open modal is closed');
   assert.ok(/state\.draft = null/.test(h), 'a different person does not inherit unpublished edits they never made');
 });
