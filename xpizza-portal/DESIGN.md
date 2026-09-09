@@ -1,46 +1,48 @@
 ---
 name: Sherpa Merchant Portal
-description: A KDS-cued, sober operator's console for merchants — warm-dark by default, crisp near-white by day, precise in sapphire.
+description: A bold-editorial merchant OS — stark white, oversized display type, and a decisive green; confident and consumer-grade, with a black dark variant. Frontmatter carries the light default.
 colors:
-  board: "#0F0E0C"
-  board-2: "#151310"
-  panel: "#161512"
-  card: "#1A1815"
-  card-2: "#211F1B"
-  line: "#2A2823"
-  line-2: "#221F1B"
-  ink: "#F2EEE7"
-  mute: "#A8A197"
-  mute-2: "#726B60"
-  accent: "#5B8DEF"
-  accent-2: "#4577DC"
+  board: "#FFFFFF"
+  board-2: "#F6F6F2"
+  panel: "#FFFFFF"
+  card: "#FFFFFF"
+  card-2: "#F6F6F2"
+  line: "#E7E7E1"
+  line-2: "#F0F0EB"
+  ink: "#0A0A0B"
+  mute: "#6C6C70"
+  mute-2: "#6E6E72"
+  accent: "#0A6E3E"
+  accent-2: "#095C34"
   accent-ink: "#FFFFFF"
-  gold: "#E3B54A"
-  green: "#4FA65A"
-  red: "#CE4B3A"
-  amber: "#E8A23E"
+  accent-line: "#BEE6CE"
+  gold: "#8A6A12"
+  gold-soft: "#FBF4E1"
+  green: "#0E9F5B"
+  red: "#D23425"
+  amber: "#8A5200"
 typography:
   display:
-    fontFamily: "Hanken Grotesk, system-ui, -apple-system, Segoe UI, sans-serif"
-    fontSize: "27px"
-    fontWeight: 750
-    lineHeight: 1.15
-    letterSpacing: "-0.03em"
+    fontFamily: "Archivo, Söhne, Helvetica Neue, system-ui, sans-serif"
+    fontSize: "44px"
+    fontWeight: 800
+    lineHeight: 1.02
+    letterSpacing: "-0.045em"
   title:
-    fontFamily: "Hanken Grotesk, system-ui, sans-serif"
-    fontSize: "16px"
-    fontWeight: 750
-    letterSpacing: "-0.02em"
+    fontFamily: "Archivo, Söhne, Helvetica Neue, system-ui, sans-serif"
+    fontSize: "18px"
+    fontWeight: 800
+    letterSpacing: "-0.03em"
   body:
-    fontFamily: "Hanken Grotesk, system-ui, sans-serif"
+    fontFamily: "Söhne, Helvetica Neue, system-ui, -apple-system, Segoe UI, sans-serif"
     fontSize: "14px"
     fontWeight: 400
-    lineHeight: 1.45
+    lineHeight: 1.5
   label:
-    fontFamily: "Hanken Grotesk, system-ui, sans-serif"
+    fontFamily: "Söhne, Helvetica Neue, system-ui, sans-serif"
     fontSize: "11px"
-    fontWeight: 750
-    letterSpacing: "0.12em"
+    fontWeight: 800
+    letterSpacing: "0.15em"
 rounded:
   sm: "9px"
   md: "12px"
@@ -91,11 +93,13 @@ components:
 
 ## Overview
 
-**North Star — "Basecamp Console."** A calm, precise instrument panel where a merchant runs their menu — the warmth of a kitchen pass with the trust of financial software. It reads as an operator's tool, not a marketing page: money-adjacent, so it must feel dependable before it feels expressive. The identity is **KDS-cued** — a warm near-black board with white/cream content on it — carried into a **sober** software register (neutral-forward, restraint over flourish). Brand lives in precise details, not decoration.
+**North Star — "Bold Editorial."** A confident, consumer-grade merchant OS: a stark white ground, oversized editorial display type, and a decisive green. The boldness lives in **typography, contrast, and space — never in heavy black boxes.** Big display headings, heavy tab labels with a thick green active underline, generous rhythm, hairline structure, food treated as first-class imagery. It should feel like a product a merchant is proud to run their business on — closer to UberEats-Merchant confidence than a bank dashboard. **Owner directive (2026-09-08): explicitly NOT financial-software sober — "make it look like a billion dollars."** (This replaces the earlier "Basecamp Console / sober console" North Star, which the owner found read as financial software.)
 
-**Voice:** confident, quiet, exact. Spanish (es-HN). Elegance is a requirement, not a finish — but never at the cost of legibility or task speed.
+**Voice:** confident, direct, decisive. Spanish (es-HN). Elegance is as important as functionality — carried by the type and the white space, not decoration.
 
-**Anti-references:** generic AI-SaaS (purple-blue gradients, one acid-pop, everything centered, `rounded-lg` everywhere, side-stripe accent rails). Cream/editorial warmth in day mode (the day theme is deliberately *cool* near-white, not cozy cream).
+**Two themes, same world:** light is the default (stark white, near-black ink `#0A0A0B`, decisive green `#0E9F5B`). The dark variant is a true black base (`board #0B0B0C`) with white type and a *luminous* green (`#3FD98A`) — UberEats-Merchant-black energy, same bold-editorial DNA.
+
+**Anti-references:** financial-software sobriety (dense neutral greys, timid hairlines, a cool blue/sapphire accent, small type — the register this design deliberately left behind); generic AI-SaaS (purple-blue gradients, one acid-pop, everything centered); and **big black slabs** — solid-black bars/fills standing in for structure. Confidence comes from type and green, not black boxes.
 
 ## Colors
 
@@ -154,4 +158,26 @@ Rounded, calm corners: `sm 9px` (buttons, inputs, nav), `md 12px` (switcher, dro
 - No hairline-border *and* wide diffuse shadow on the same surface — pick one.
 - No functional text under 11px; no `L0`/`LNaN` — an unpriced value reads "Sin precio".
 - No purple-blue gradients, no acid-pop accents, no everything-centered generic-SaaS defaults.
-- No `unsafe-inline` styles/scripts (strict CSP); no inline `style=` attributes (they're blocked and won't apply).
+- No `unsafe-inline` styles/scripts (strict CSP); no inline `style=` attributes (they're blocked and won't apply). This includes `style="background:${…}"` on thumbnails/avatars — bind fills through a class map or a CSP-nonce'd rule, never inline.
+
+## Editor write path — the money moment
+
+Editing a price publishes to a live catalog that charges real customers through a SAR factura, so the review-and-publish flow is the most consequential surface in the portal and is designed with the most care.
+
+- **Review is a diff, read as before → after.** Each price change is one row: item name + section, the *was* price struck through in `mute`, an arrow, and the *now* price in `ink` at a heavier weight — all `tabular-nums`. A delta chip (`+%` amber / `−%` green) sits under the name. Never a names-blob; never a count.
+- **A large change looks large.** A price swing over 50% (or a zero/new-priced value) carries the **amber** `-soft`/`-line` frame and a "Cambio grande" flag with an alert glyph. Amber is reserved for this — new/removed rows use green/red, never amber. The one row that most needs attention must never render as an ordinary row.
+- **The acknowledgement echoes an exact set.** The confirmation replays the precise `{key, surface}` set the server flagged — the same objects, not a re-derived list, not a boolean. It is captured from the server response and sent back verbatim.
+- **Fiscal is a per-merchant gold seal, conditional.** For a platform-factura merchant (X. Pizza only), a real fiscal price change raises the **SAR attestation seal**: the gold badge, a plain-language statement, each price listed old→new, and one "Autorizo" checkbox that attests to *that exact set* on the tax document. It gates publish and doubles as the large-change acknowledgement. It never appears for a non-fiscal merchant, and never on a change that touches no fiscal price (a pure "86" toggle is instant and out of this flow).
+- **Publish has real states, not an optimistic toast.** In-flight (spinner + "Publicando…"), then one of: a **durable success receipt** (green check, the new version id, a route into Historial with rollback — it stays until dismissed), or a **first-class conflict panel** for `stale_edit` (draft moved), `edit_superseded` (reviewed against stale state), and `store_unavailable` (retryable) — each an icon + a named problem + a recovery action, never a generic error.
+- **Owner-only today.** Only owners reach the portal, so `not_owner` is a server-side belt, not a designed screen. If a can-edit-can't-publish role is introduced later, it earns its own disabled-publish-with-reason state then.
+- **A zero price cannot publish.** `≤ 0` renders "Sin precio", flags the row, and disables publish.
+
+## Folded craft floor (the corrected bar, above the first mock)
+
+These were drifts in the first editor mock, now corrected and normative:
+
+- **The shell never vanishes on mobile.** Below 920px the desktop sidebar hides but a sticky top bar keeps the restaurant switcher, view nav, and account/theme reachable; no horizontal overflow; touch targets ≥ 44px. (The original mock's media query preceded its base rule and silently lost the cascade — order matters.)
+- **Visible focus everywhere.** A `:focus-visible` ring (`--focus`: a 2px offset accent halo) on every interactive element; nav items and toggles are real focusable controls, not `div onclick`.
+- **Themed browser surfaces.** Scrollbar, `::selection`, and `caret-color` are drawn from the palette — the cheap tell that a page was built, not assembled.
+- **Motion respects `prefers-reduced-motion`** and never animates layout properties (width/height/max-height); depth is one edge treatment per surface, not border + wide shadow.
+- **All functional text ≥ 11px**; `mute-2` on white is corrected to clear WCAG AA.

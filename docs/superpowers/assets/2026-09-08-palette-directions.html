@@ -1,0 +1,134 @@
+<title>Sherpa — Aesthetic Directions</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#191919;color:#e7e7e7;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;padding:44px 24px 80px;min-height:100vh}
+  .pgh{max-width:1160px;margin:0 auto 40px}
+  .pgh h1{font-size:24px;font-weight:750;letter-spacing:-.03em}
+  .pgh p{color:#9a9a9a;font-size:14px;margin-top:8px;max-width:64ch;line-height:1.55}
+  .grid{max-width:1160px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:28px;align-items:start}
+  @media(max-width:940px){.grid{grid-template-columns:1fr;max-width:380px}}
+  .col{display:flex;flex-direction:column;gap:16px}
+  .dirname{font-size:12px;font-weight:750;letter-spacing:.14em;text-transform:uppercase;color:#a3a3a3}
+  .dirname b{color:#f0f0f0;display:block;font-size:15px;letter-spacing:-.01em;text-transform:none;margin-top:5px;font-weight:700}
+  .dirname i{display:block;font-style:normal;color:#a0a0a0;font-size:12px;font-weight:500;letter-spacing:0;text-transform:none;margin-top:3px;line-height:1.45}
+  .sw{display:flex;gap:6px;margin-top:12px}
+  .sw span{width:26px;height:26px;border-radius:7px;border:1px solid rgba(255,255,255,.12)}
+
+  /* ═══════════ D1 · WARM DARK-LUXURY ═══════════ */
+  .lux{--bg:#141009;--surf:#1B160D;--ink:#F4ECDB;--gold:#E7BC57;--serif:'Iowan Old Style','Palatino Linotype','Palatino',Georgia,'Times New Roman',serif}
+  .lux{position:relative;background:
+      radial-gradient(120% 90% at 82% -8%, rgba(231,188,87,.14), transparent 55%),
+      linear-gradient(180deg,var(--surf),var(--bg));
+    border:1px solid #35291A;border-radius:18px;padding:24px 24px 22px;color:var(--ink);
+    box-shadow:0 30px 70px -40px rgba(0,0,0,.9),inset 0 1px 0 rgba(231,188,87,.09)}
+  .lux .brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+  .lux .bm{width:30px;height:30px;border-radius:8px;background:linear-gradient(150deg,#F0CE78,#C99A31);color:#241A06;display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:700;font-size:17px;box-shadow:0 2px 10px rgba(231,188,87,.25)}
+  .lux .bn{font-family:var(--serif);font-size:16px;letter-spacing:.01em}
+  .lux .eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#B79A5E;font-weight:600}
+  .lux h2{font-family:var(--serif);font-weight:600;font-size:27px;letter-spacing:-.01em;line-height:1.1;margin:9px 0 3px}
+  .lux .sub{color:#9E9074;font-size:12.5px;line-height:1.5}
+  .lux .prow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:22px 0 8px;padding-bottom:16px;border-bottom:1px solid #2C2214}
+  .lux .pn{font-size:14px;color:#D9CDB4}
+  .lux .pv{font-family:var(--serif);font-variant-numeric:tabular-nums}
+  .lux .was{color:#7C7053;text-decoration:line-through;font-size:15px;margin-right:8px}
+  .lux .now{color:var(--gold);font-size:23px;font-weight:600}
+  .lux .btn{width:100%;margin-top:16px;padding:13px;border-radius:11px;border:0;cursor:pointer;font-family:inherit;
+    background:linear-gradient(150deg,#F0CE78,#CFA23C);color:#241A06;font-weight:700;font-size:14px;letter-spacing:.01em;
+    box-shadow:0 8px 22px -10px rgba(231,188,87,.5)}
+  .lux .ghost{margin-top:9px;width:100%;padding:11px;border-radius:11px;background:transparent;border:1px solid #3A2E1B;color:#B4A681;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+
+  /* ═══════════ D2 · COOLER ELECTRIC ═══════════ */
+  .sig{--bg:#0B0C10;--surf:#111318;--ink:#EDEFF4;--mute:#828B9C;--el1:#6E7BFF;--el2:#9A6CFF;--mono:ui-monospace,'SF Mono','Roboto Mono',Menlo,monospace}
+  .sig{position:relative;background:
+      radial-gradient(120% 80% at 15% -10%, rgba(110,123,255,.16), transparent 55%),
+      linear-gradient(180deg,var(--surf),var(--bg));
+    border:1px solid #1E2230;border-radius:18px;padding:24px 24px 22px;color:var(--ink);
+    box-shadow:0 30px 70px -40px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.04)}
+  .sig .brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+  .sig .bm{width:30px;height:30px;border-radius:9px;background:linear-gradient(140deg,#6E7BFF,#9A6CFF);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;letter-spacing:-.02em;box-shadow:0 0 22px -4px rgba(110,123,255,.6)}
+  .sig .bn{font-size:16px;font-weight:700;letter-spacing:-.02em}
+  .sig .eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#8C93FF;font-weight:700}
+  .sig h2{font-weight:750;font-size:25px;letter-spacing:-.03em;line-height:1.12;margin:9px 0 3px}
+  .sig .sub{color:#7E8798;font-size:12.5px;line-height:1.5}
+  .sig .prow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:22px 0 8px;padding-bottom:16px;border-bottom:1px solid #1B1F2B}
+  .sig .pn{font-size:14px;color:#C3C8D4}
+  .sig .pv{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .sig .was{color:#5B6472;text-decoration:line-through;font-size:14px;margin-right:8px}
+  .sig .now{font-size:22px;font-weight:600;background:linear-gradient(120deg,#8C93FF,#B79CFF);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sig .btn{width:100%;margin-top:16px;padding:13px;border-radius:11px;border:0;cursor:pointer;font-family:inherit;
+    background:linear-gradient(120deg,#6E7BFF,#8B5CF6);color:#fff;font-weight:650;font-size:14px;letter-spacing:-.01em;
+    box-shadow:0 8px 26px -8px rgba(110,123,255,.6)}
+  .sig .ghost{margin-top:9px;width:100%;padding:11px;border-radius:11px;background:#151824;border:1px solid #242A3A;color:#AEB6C6;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+
+  /* ═══════════ D3 · BOLD EDITORIAL ═══════════ */
+  .bold{--ink:#0B0B0C;--mute:#6A6A6E;--acc:#0E9F5B;--grot:'Archivo','Helvetica Neue',system-ui,sans-serif}
+  .bold{background:#FBFBF9;border:1px solid #E7E7E2;border-radius:18px;padding:24px 24px 22px;color:var(--ink);
+    box-shadow:0 30px 70px -44px rgba(0,0,0,.5)}
+  .bold .brand{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+  .bold .bm{width:30px;height:30px;border-radius:8px;background:#0B0B0C;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;letter-spacing:-.03em}
+  .bold .bn{font-size:16px;font-weight:800;letter-spacing:-.03em}
+  .bold .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);font-weight:800}
+  .bold h2{font-family:var(--grot);font-weight:800;font-size:33px;letter-spacing:-.045em;line-height:.98;margin:8px 0 4px;text-transform:uppercase}
+  .bold .sub{color:#66666B;font-size:12.5px;line-height:1.5;font-weight:500}
+  .bold .prow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:22px 0 8px;padding-bottom:16px;border-bottom:2px solid #0B0B0C}
+  .bold .pn{font-size:14px;color:#2A2A2C;font-weight:650}
+  .bold .pv{font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+  .bold .was{color:#A3A3A6;text-decoration:line-through;font-size:15px;margin-right:8px;font-weight:600}
+  .bold .now{font-size:26px;font-weight:800;color:var(--acc)}
+  .bold .btn{width:100%;margin-top:16px;padding:14px;border-radius:11px;border:0;cursor:pointer;font-family:inherit;
+    background:#0B0B0C;color:#fff;font-weight:750;font-size:14px;letter-spacing:-.01em}
+  .bold .ghost{margin-top:9px;width:100%;padding:11px;border-radius:11px;background:transparent;border:1.5px solid #E0E0DA;color:#0B0B0C;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+</style>
+
+<div class="pgh">
+  <h1>Tres direcciones para el portal — la esencia de cada paleta</h1>
+  <p>El mismo momento (revisar y publicar un cambio de precio), en tres mundos visuales. Fijate en cuál se siente “mil millones”: la base, el color de marca, la voz tipográfica y cómo se lee un precio. Elegí uno y lo llevo a todo el portal.</p>
+</div>
+
+<div class="grid">
+  <!-- D1 -->
+  <div class="col">
+    <div class="dirname">Dirección A<b>Lujo oscuro cálido</b><i>Base negra cálida · oro como marca · display serif · hospitalidad premium (registro Michelin-app).</i>
+      <div class="sw"><span style="background:#141009"></span><span style="background:#E7BC57"></span><span style="background:#F4ECDB"></span><span style="background:#988A6E"></span></div>
+    </div>
+    <div class="lux">
+      <div class="brand"><span class="bm">S</span><span class="bn">Sherpa</span></div>
+      <div class="eyebrow">Revisar y publicar</div>
+      <h2>Autorizá el cambio</h2>
+      <div class="sub">X. Pizza · aparece en la factura fiscal</div>
+      <div class="prow"><span class="pn">Margherita</span><span class="pv"><span class="was">L 299</span><span class="now">L 340</span></span></div>
+      <button class="btn">Autorizar y publicar</button>
+      <button class="ghost">Volver a editar</button>
+    </div>
+  </div>
+  <!-- D2 -->
+  <div class="col">
+    <div class="dirname">Dirección B<b>Eléctrico frío</b><i>Base grafito frío · zafiro intensificado con violeta · grotesca nítida + números mono · premium tipo Linear / Vercel.</i>
+      <div class="sw"><span style="background:#0B0C10"></span><span style="background:#6E7BFF"></span><span style="background:#9A6CFF"></span><span style="background:#EDEFF4"></span></div>
+    </div>
+    <div class="sig">
+      <div class="brand"><span class="bm">S</span><span class="bn">Sherpa</span></div>
+      <div class="eyebrow">Revisar y publicar</div>
+      <h2>Autorizá el cambio</h2>
+      <div class="sub">X. Pizza · aparece en la factura fiscal</div>
+      <div class="prow"><span class="pn">Margherita</span><span class="pv"><span class="was">L 299</span><span class="now">L 340</span></span></div>
+      <button class="btn">Autorizar y publicar</button>
+      <button class="ghost">Volver a editar</button>
+    </div>
+  </div>
+  <!-- D3 -->
+  <div class="col">
+    <div class="dirname">Dirección C<b>Editorial audaz</b><i>Base blanca nítida · tipografía enorme y pesada · un acento decisivo · confianza tipo UberEats Merchant.</i>
+      <div class="sw"><span style="background:#FBFBF9"></span><span style="background:#0B0B0C"></span><span style="background:#0E9F5B"></span><span style="background:#6A6A6E"></span></div>
+    </div>
+    <div class="bold">
+      <div class="brand"><span class="bm">S</span><span class="bn">Sherpa</span></div>
+      <div class="eyebrow">Revisar y publicar</div>
+      <h2>Autorizá el cambio</h2>
+      <div class="sub">X. Pizza · aparece en la factura fiscal</div>
+      <div class="prow"><span class="pn">Margherita</span><span class="pv"><span class="was">L 299</span><span class="now">L 340</span></span></div>
+      <button class="btn">Autorizar y publicar</button>
+      <button class="ghost">Volver a editar</button>
+    </div>
+  </div>
+</div>
