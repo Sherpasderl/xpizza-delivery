@@ -372,3 +372,150 @@ export function createPublisher({ publish }) {
     },
   };
 }
+
+// ── Task 7 — THE PUBLISH STATE MACHINE ───────────────────────────────────────────────────────────
+// Every way a publish can end has to land somewhere the merchant can act on. The failure this guards
+// against is not a wrong panel — it is NO panel: an unhandled code falling through to a toast, or to
+// nothing at all, on the screen that decides whether their prices changed.
+
+// What a panel's button MEANS. The caller decides how to carry it out; the panel only says which.
+export const PUBLISH_ACTIONS = {
+  RELOAD: 'reload',       // the DRAFT moved — fetch it again and re-apply
+  REREVIEW: 'rereview',   // the LIVE version moved — call editCatalog for a fresh diff + token
+  BACK: 'back',           // something on the review was not confirmed — return and tick it
+  RETRY: 'retry',         // nothing about the edit was wrong — send the same payload again
+};
+
+// The six first-class states, each with its own explanation and its own way forward. The copy says
+// what happened, what it means for the merchant's data, and what to do — in that order, because the
+// first question anyone has after a failed publish is "did I lose my changes?".
+const PANELS = {
+  stale_edit: {
+    icon: 'warn',
+    title: 'Tu borrador cambió',
+    detail: 'Se guardó otra edición sobre este menú mientras revisabas. Recargá para traer la última versión y volvé a aplicar tu cambio — así no pisás lo que se guardó.',
+    action: { id: PUBLISH_ACTIONS.RELOAD, label: 'Recargar y reaplicar' },
+  },
+  edit_superseded: {
+    icon: 'info',
+    title: 'Se revisó contra una versión vieja',
+    // 🔴 REREVIEW, never RETRY. The token is bound to a diff that no longer describes reality;
+    // retrying the publish would either fail again or succeed against state nobody reviewed.
+    detail: 'El menú en vivo cambió desde que abriste esta revisión. Por seguridad no publicamos: revisá de nuevo los cambios contra la versión actual antes de confirmar.',
+    action: { id: PUBLISH_ACTIONS.REREVIEW, label: 'Revisar de nuevo' },
+  },
+  large_change_unconfirmed: {
+    icon: 'warn',
+    title: 'Falta confirmar los cambios grandes',
+    detail: 'Hay cambios de precio importantes que necesitan tu confirmación explícita. Tus cambios siguen guardados como borrador — volvé a la revisión y confirmá exactamente los que aparecen marcados.',
+    action: { id: PUBLISH_ACTIONS.BACK, label: 'Volver a la revisión' },
+  },
+  not_owner: {
+    icon: 'warn',
+    title: 'Solo el propietario puede publicar un cambio fiscal',
+    detail: 'Esta edición afecta la factura fiscal, y ese documento lo autoriza el propietario del local. Tus cambios quedan guardados como borrador: pedile al propietario que ingrese y los publique.',
+    action: { id: PUBLISH_ACTIONS.BACK, label: 'Entendido' },
+  },
+  fiscal_ack_required: {
+    icon: 'warn',
+    title: 'Falta la autorización fiscal',
+    detail: 'Para publicar precios que se imprimen en la factura fiscal hay que autorizarlos explícitamente. Nada cambió en vivo — volvé a la revisión y marcá "Autorizo".',
+    action: { id: PUBLISH_ACTIONS.BACK, label: 'Volver a autorizar' },
+  },
+  store_unavailable: {
+    icon: 'warn',
+    title: 'No se pudo publicar',
+    detail: 'El servicio de catálogo no respondió. Tus cambios siguen guardados como borrador — nada se perdió y nada cambió en vivo. Probá de nuevo en un momento.',
+    action: { id: PUBLISH_ACTIONS.RETRY, label: 'Reintentar' },
+  },
+};
+
+// THE DEFAULT BRANCH, and it is the point of this function. Every other server code, every untyped
+// throw, every shape that is not an error at all — all of them land here rather than nowhere. A
+// merchant who cannot tell whether their prices changed is worse off than one reading a plain error.
+const GENERIC = {
+  icon: 'warn',
+  title: 'No se pudo publicar',
+  detail: 'Algo falló al publicar y no pudimos completar el cambio. Tus cambios siguen guardados como borrador — nada cambió en vivo. Probá de nuevo; si sigue fallando, recargá la página.',
+  action: { id: PUBLISH_ACTIONS.RETRY, label: 'Reintentar' },
+};
+
+export function outcomeFor(err) {
+  const code = (err && typeof err.code === 'string') ? err.code : null;
+  const panel = (code && Object.prototype.hasOwnProperty.call(PANELS, code)) ? PANELS[code] : null;
+  return { code, generic: !panel, ...(panel || GENERIC) };
+}
+
+// The receipt is built from the CAPTURED review, not the draft. On success the draft is discarded and
+// the screen repaints — the publish IS the new baseline — so by the time this renders there is nothing
+// pending left to read. Reading the draft would report zero changes on a successful publish.
+export function receiptFor(res, captured) {
+  const diff = (captured && captured.diff) || {};
+  const rows = Array.isArray(diff.changed) ? diff.changed : [];
+  return {
+    versionId: (res && typeof res.versionId === 'string' && res.versionId) ? res.versionId : null,
+    count: rows.length,
+    rows,
+  };
+}
+
+// SVG needs createElementNS — createElement would make an inert HTMLUnknownElement that draws nothing.
+// The stylesheet animates `.rcheck svg` with a stroke-dasharray draw-in, so an absent icon is not just
+// a missing tick: it is an empty circle where a confirmation should be.
+function icon(paths) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  for (const d of paths.split('|')) {
+    const p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', d);
+    svg.append(p);
+  }
+  return svg;
+}
+const ICONS = {
+  check: 'M20 6L9 17l-5-5',
+  warn: 'M12 3l9 16H3z|M12 10v4|M12 17.5v.01',
+  info: 'M21 12a9 9 0 11-6.2-8.5|M12 7v5l3 2',
+};
+
+export function renderReceipt(root, receipt) {
+  root.replaceChildren();
+  const r = el('div', 'receipt');
+  const ck = el('div', 'rcheck');
+  ck.append(icon(ICONS.check));
+  r.append(ck);
+  r.append(el('h3', null, 'Publicado'));
+  r.append(el('p', null, receipt.count === 1
+    ? 'Tu menú en vivo ya muestra este precio. Los clientes que ordenen ahora verán la nueva versión.'
+    : `Tu menú en vivo ya muestra estos ${receipt.count} cambios. Los clientes que ordenen ahora verán la nueva versión.`));
+  // The version id, when the server gave one. No "Ver en Historial" button: neither a Historial view
+  // nor a rollback endpoint exists, and a control that does nothing is the failure this slice has been
+  // guarding against since the 2b-2a switcher shipped display-only.
+  if (receipt.versionId) {
+    const vp = el('div', 'vpill');
+    vp.append(el('span', null, 'Versión '));
+    vp.append(el('b', null, receipt.versionId));
+    r.append(vp);
+  }
+  root.append(r);
+  return root;
+}
+
+export function renderOutcome(root, outcome, onAction) {
+  root.replaceChildren();
+  const box = el('div', 'conflict');
+  const ic = el('div', `cicon ${outcome.icon}`);
+  ic.append(icon(ICONS[outcome.icon] || ICONS.warn));
+  box.append(ic);
+  box.append(el('h3', null, outcome.title));      // textContent: even a hostile code is only ever text
+  box.append(el('p', null, outcome.detail));
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn accent';
+  b.textContent = outcome.action.label;
+  b.addEventListener('click', () => onAction(outcome.action.id));
+  box.append(b);
+  root.append(box);
+  return root;
+}

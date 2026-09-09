@@ -619,3 +619,38 @@ test('#pubbtn actually publishes, through a real in-flight lock', () => {
   assert.ok(!/acknowledgedChanges\s*:/.test(handler), 'acknowledgedChanges is not rebuilt at the call site');
   assert.ok(!/fiscalAck\s*:/.test(handler), '...nor fiscalAck');
 });
+
+test('every publish state is wired — and edit_superseded re-reviews rather than retrying', () => {
+  const app = codeOf('app.js');
+  assert.ok(/showOutcome\(outcomeFor\(e\)\)/.test(app), 'a thrown publish error is routed to a designed panel');
+  assert.ok(/renderOutcome\(/.test(app) && /renderReceipt\(/.test(app), 'both the panels and the receipt are rendered');
+
+  // every action id the state machine can emit must be HANDLED here — an unhandled one is a button
+  // that does nothing, on the screen a merchant reaches only after something already went wrong.
+  const handler = app.slice(app.indexOf('function showOutcome'));
+  for (const a of ['RELOAD', 'REREVIEW', 'BACK']) {
+    assert.ok(new RegExp(`PUBLISH_ACTIONS\\.${a}`).test(handler), `${a} is handled`);
+  }
+  assert.ok(/\$\('pubbtn'\)\.click\(\)/.test(handler), 'RETRY re-sends the same reviewed payload');
+
+  // 🔴 REREVIEW must go through the review flow (which calls editCatalog), NOT re-publish
+  const rer = handler.slice(handler.indexOf('PUBLISH_ACTIONS.REREVIEW'));
+  const nextBranch = rer.indexOf('PUBLISH_ACTIONS.BACK');
+  const body = rer.slice(0, nextBranch === -1 ? 400 : nextBranch);
+  assert.ok(/openReviewFlow\(\)/.test(body), 'edit_superseded re-opens the review, which re-calls editCatalog for a fresh token');
+  assert.ok(!/publisher\.run|publishEdited/.test(body), '...and never re-sends the publish with the stale token');
+
+  // the receipt reads the CAPTURED review, because the draft is discarded on success
+  assert.ok(/const captured = state\.review/.test(app), 'the review is captured before the draft is thrown away');
+  assert.ok(/receiptFor\(out\.res, captured\)/.test(app), '...and the receipt is built from it');
+  const successIdx = app.indexOf('renderReceipt(');
+  const discardIdx = app.indexOf('discard(state.draft)', successIdx);
+  assert.ok(discardIdx > successIdx, 'the receipt renders BEFORE the draft is discarded');
+
+  // in-flight is visible, not just disabled
+  // both halves, and the SET specifically: `delete btn.dataset.busy` matches a bare /dataset\.busy/,
+  // so a file-wide check passes with the flag never set. Publishing is the one action where a merchant
+  // who sees nothing happen presses again.
+  assert.ok(/dataset\.busy\s*=/.test(app), 'the publish button is marked busy while the request is in flight');
+  assert.ok(/delete .*dataset\.busy/.test(app), '...and unmarked when it settles, however it settles');
+});

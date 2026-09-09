@@ -630,3 +630,155 @@ test('the publisher refuses a review that is missing or not ready, without touch
     assert.strictEqual(f.sent.length, 0, 'and nothing reached the network in any of these cases');
   } finally { f.restore(); }
 });
+
+// ── Task 7 — THE PUBLISH STATE MACHINE ───────────────────────────────────────────────────────────
+// Every way a publish can end has to land somewhere a merchant can act on. The failure this guards
+// against is not a wrong panel — it is NO panel: an unhandled code falling through to a toast, or to
+// nothing, on the screen that decides whether their prices changed.
+import { outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
+
+const SIX = ['stale_edit', 'edit_superseded', 'large_change_unconfirmed', 'not_owner', 'fiscal_ack_required', 'store_unavailable'];
+const err = (code, status = 400) => Object.assign(new Error(code), { code, status });
+
+test('each of the six primary codes gets its OWN designed panel', () => {
+  const outs = SIX.map((c) => outcomeFor(err(c)));
+  for (const [i, o] of outs.entries()) {
+    assert.strictEqual(o.code, SIX[i], `${SIX[i]} keeps its code`);
+    assert.ok(o.title && o.title.length > 3, `${SIX[i]} has a title`);
+    assert.ok(o.detail && o.detail.length > 30, `${SIX[i]} explains what happened and what to do`);
+    assert.ok(o.action && o.action.label, `${SIX[i]} offers an action`);
+    assert.strictEqual(o.generic, false, `${SIX[i]} is FIRST-CLASS, not the fallback`);
+  }
+  // genuinely distinct, not six labels on one panel
+  assert.strictEqual(new Set(outs.map((o) => o.title)).size, 6, 'six distinct titles');
+  assert.strictEqual(new Set(outs.map((o) => o.detail)).size, 6, 'six distinct explanations');
+
+  // not_owner is a DESIGNED screen, not the generic one wearing a code
+  const owner = outcomeFor(err('not_owner', 403));
+  const generic = outcomeFor(err('publish_failed', 500));
+  assert.notStrictEqual(owner.title, generic.title, 'not_owner is not the generic panel');
+  assert.ok(/propietario|dueñ/i.test(owner.title + owner.detail), '...and says who can publish a fiscal change');
+});
+
+test('🔴 EVERY other server error lands on the generic durable panel — never nothing', () => {
+  // codex #1. The list is the rest of the handler's response surface, plus shapes that are not codes
+  // at all. None may fall through.
+  const others = ['bad_source', 'bad_request', 'invalid_source', 'source_missing', 'live_version_unavailable',
+    'draft_build_failed', 'publish_failed', 'not_authorized', 'error', 'something_new_next_year'];
+  for (const c of others) {
+    const o = outcomeFor(err(c));
+    assert.ok(o, `${c} produces a panel`);
+    assert.strictEqual(o.generic, true, `${c} routes to the generic durable panel`);
+    assert.ok(o.title && o.detail, `${c} still says something`);
+    assert.ok(o.action && o.action.label, `${c} still offers a way forward`);
+  }
+  // and the shapes that are not typed errors at all
+  for (const weird of [new Error('boom'), { code: null }, {}, null, undefined, 'a string', 0]) {
+    const o = outcomeFor(weird);
+    assert.ok(o && o.title && o.action, `${JSON.stringify(String(weird))} still yields a durable panel`);
+    assert.strictEqual(o.generic, true);
+  }
+  // the durable panel must offer retry AND reload — "durable" means the merchant is never stuck
+  const g = outcomeFor(err('publish_failed'));
+  assert.ok(['retry', 'reload'].includes(g.action.id), 'the generic action is actionable, not a dead end');
+});
+
+test('🔴 edit_superseded re-reviews — it must NEVER retry publishEdited with the stale token', () => {
+  // codex #6. The token is bound to a diff that no longer describes reality. Retrying the publish
+  // would either fail again or, worse, succeed against state nobody reviewed.
+  const o = outcomeFor(err('edit_superseded', 409));
+  assert.strictEqual(o.action.id, PUBLISH_ACTIONS.REREVIEW, 'the action is to review again');
+  assert.notStrictEqual(o.action.id, PUBLISH_ACTIONS.RETRY, '...and explicitly NOT a retry');
+  assert.ok(/revis/i.test(o.action.label), 'the button says so');
+  // no other panel may claim rereview by accident, and none of the six may offer a bare publish retry
+  const rereviewers = SIX.filter((c) => outcomeFor(err(c)).action.id === PUBLISH_ACTIONS.REREVIEW);
+  assert.deepStrictEqual(rereviewers, ['edit_superseded'], 'exactly one code re-reviews');
+  // stale_edit is the sibling trap: the DRAFT moved, so it reloads rather than re-reviewing
+  assert.strictEqual(outcomeFor(err('stale_edit')).action.id, PUBLISH_ACTIONS.RELOAD,
+    'stale_edit reloads the draft — a different failure with a different fix');
+});
+
+test('the two acknowledgement codes send the merchant back to the review, not to a retry', () => {
+  // large_change_unconfirmed and fiscal_ack_required both mean "something on the review screen was
+  // not ticked". Retrying the same payload would repeat the same refusal.
+  for (const c of ['large_change_unconfirmed', 'fiscal_ack_required']) {
+    const o = outcomeFor(err(c, 403));
+    assert.strictEqual(o.action.id, PUBLISH_ACTIONS.BACK, `${c} returns to the review to confirm`);
+    assert.notStrictEqual(o.action.id, PUBLISH_ACTIONS.RETRY, `${c} does not blindly retry`);
+  }
+  // store_unavailable is the one that legitimately retries the same payload
+  assert.strictEqual(outcomeFor(err('store_unavailable', 503)).action.id, PUBLISH_ACTIONS.RETRY,
+    'an outage retries — nothing about the edit was wrong');
+});
+
+test('the receipt is built from the CAPTURED review, because the draft is already discarded', () => {
+  // The forward note from Task 6: on success app.js discards the draft and repaints, so by the time
+  // the receipt renders there is nothing pending to read. Reading the draft would show zero changes.
+  const captured = { diff: SERVER_DIFF() };
+  const r = receiptFor({ versionId: 'v-9a1e88301' }, captured);
+  assert.strictEqual(r.versionId, 'v-9a1e88301', 'the new version id');
+  assert.strictEqual(r.count, 3, 'and how many changes went live, from the captured diff');
+  assert.deepStrictEqual(r.rows.map((x) => x.key).sort(), ['Pizza Margherita', 'Pizza Pepperoni', 'Queso extra']);
+  // a response with no version id is still a successful publish — say so without inventing one
+  const r2 = receiptFor({}, captured);
+  assert.strictEqual(r2.versionId, null, 'no id is null, never a fabricated string');
+  assert.strictEqual(r2.count, 3, 'and the count still comes from what was published');
+  // and a missing capture does not throw on the success path
+  const r3 = receiptFor({ versionId: 'v1' }, null);
+  assert.strictEqual(r3.count, 0);
+  assert.deepStrictEqual(r3.rows, []);
+});
+
+test('the receipt and the panels render as text, with an action the merchant can press', () => {
+  const root = fakeDom();
+  renderReceipt(root, receiptFor({ versionId: 'v-42' }, { diff: SERVER_DIFF() }));
+  assert.strictEqual(byClass(root, 'receipt').length, 1, 'the durable receipt');
+  assert.strictEqual(byClass(root, 'rcheck').length, 1, '...with its confirmation mark');
+  const t = textOf(root);
+  assert.ok(t.includes('v-42'), 'naming the version that went live');
+  assert.ok(/3/.test(t), '...and how many changes it carried');
+
+  const root2 = fakeDom();
+  let fired = null;
+  renderOutcome(root2, outcomeFor(err('store_unavailable', 503)), (id) => { fired = id; });
+  assert.strictEqual(byClass(root2, 'conflict').length, 1, 'a conflict panel');
+  assert.ok(byClass(root2, 'cicon').length === 1, '...with an icon slot');
+  const btn = walk(root2).find((n) => n.tag === 'button');
+  assert.ok(btn, 'and a real button');
+  btn.listeners.click[0]();
+  assert.strictEqual(fired, PUBLISH_ACTIONS.RETRY, 'pressing it reports the action id — the caller decides what that means');
+
+  // no server string is ever markup
+  const root3 = fakeDom();
+  renderOutcome(root3, outcomeFor(err('<img src=x onerror=alert(1)>')), () => {});
+  assert.strictEqual(walk(root3).filter((n) => n.tag === 'img').length, 0, 'a hostile code creates no element');
+});
+
+test('no Historial button ships — there is no such screen and no rollback endpoint', () => {
+  // The mock offers "Ver en Historial" wired to alert(). Neither a Historial view nor an exported
+  // rollback endpoint exists, so shipping the button would be a dead control on the receipt — the
+  // exact class this slice has been guarding against since the 2b-2a switcher.
+  const root = fakeDom();
+  renderReceipt(root, receiptFor({ versionId: 'v-42' }, { diff: SERVER_DIFF() }));
+  assert.ok(!/historial/i.test(textOf(root)), 'the receipt does not offer a screen that does not exist');
+});
+
+test('the receipt and the panels actually draw their icons', () => {
+  // `.rcheck svg` is animated with a stroke-dasharray draw-in, and `.cicon svg` is the panel's tone.
+  // Without the SVG both render as an empty circle — a confirmation mark that confirms nothing. And
+  // createElement would silently produce an inert HTMLUnknownElement, so this asserts the namespaced
+  // element and a real path.
+  const root = fakeDom();
+  renderReceipt(root, receiptFor({ versionId: 'v1' }, { diff: SERVER_DIFF() }));
+  const tick = byClass(root, 'rcheck')[0];
+  const svg = walk(tick).find((n) => n.tag === 'svg');
+  assert.ok(svg, 'the confirmation mark has an svg');
+  assert.ok(walk(svg).some((n) => n.tag === 'path' && n.attrs.d), '...with a real path');
+
+  for (const code of ['store_unavailable', 'edit_superseded', 'publish_failed']) {
+    const r2 = fakeDom();
+    renderOutcome(r2, outcomeFor(err(code)), () => {});
+    const ic = byClass(r2, 'cicon')[0];
+    assert.ok(walk(ic).some((n) => n.tag === 'svg'), `${code}'s panel draws its icon`);
+  }
+});

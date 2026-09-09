@@ -6,7 +6,7 @@
 import { apiFetch, editCatalog, publishEdited } from './api.js';
 import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, draftSource, optionGroups, groupUsage } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
-import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher } from './review.js';
+import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
 
 const $ = (id) => document.getElementById(id);
@@ -381,7 +381,7 @@ $('discard').addEventListener('click', () => {
 // The screen never re-derives the diff from the local draft. A client-side diff would be a second
 // opinion about money, and publishEdited re-checks the server's one anyway: the two disagreeing is
 // how a merchant approves a change they were never shown.
-$('review').addEventListener('click', async () => {
+async function openReviewFlow() {
   const btn = $('review');
   btn.disabled = true;
   try {
@@ -418,6 +418,8 @@ $('review').addEventListener('click', async () => {
       syncPublishButton();
     });
     syncPublishButton();
+    $('revFoot').replaceChildren($('pubback'), $('pubbtn'));
+    $('pubback').textContent = 'Volver a editar';
     $('scrim').classList.add('show');
   } catch (e) {
     // Task 7 gives each server code its own designed panel. Until then this states the failure
@@ -434,7 +436,8 @@ $('review').addEventListener('click', async () => {
   } finally {
     btn.disabled = !isPublishable(state.draft);
   }
-});
+}
+$('review').addEventListener('click', openReviewFlow);
 
 $('pubback').addEventListener('click', () => { $('scrim').classList.remove('show'); });
 
@@ -460,29 +463,64 @@ const publisher = createPublisher({ publish: (payload) => publishEdited({ ...pay
 
 $('pubbtn').addEventListener('click', async () => {
   const btn = $('pubbtn');
+  // In-flight is a VISIBLE state, not just a disabled button: publishing is the one action where a
+  // merchant who sees nothing happen will press again.
   btn.disabled = true;
+  btn.dataset.busy = '1';
+  const captured = state.review;          // kept for the receipt — the draft is discarded on success
   let out;
   try {
     out = await publisher.run(state.review);
   } catch (e) {
-    // Task 7 gives each server code its own designed panel. Until then, say what happened — a silent
-    // failure on the one button that changes a tax document would leave a merchant believing prices
-    // changed when they did not.
-    const [t, dsc] = messageFor(e);
-    showModalMessage(t, e && e.code ? `${dsc} (${e.code})` : dsc);
-    syncPublishButton();
+    showOutcome(outcomeFor(e));
     return;
+  } finally {
+    delete btn.dataset.busy;
+    syncPublishButton();
   }
-  // Refused before the network: either already in flight, or the gate said no. Nothing was sent.
-  if (!out || !out.ok) { syncPublishButton(); return; }
+  // Refused before the network: already in flight, or the gate said no. Nothing was sent.
+  if (!out || !out.ok) return;
 
-  const res = out.res;
-  showModalMessage('Publicado', res && res.versionId ? `Versión ${res.versionId}` : 'Tus cambios ya están en vivo.');
+  // SUCCESS. The receipt reads from the CAPTURED review, because the next two lines throw the draft
+  // away — the publish is the new baseline, and leaving edits pending would claim unpublished work
+  // the merchant no longer has.
+  $('revFoot').replaceChildren($('pubback'));
+  $('pubback').textContent = 'Listo';
+  renderReceipt($('mbody'), receiptFor(out.res, captured));
   state.review = null;
-  // The publish IS the new baseline, so nothing is pending any more.
   discard(state.draft);
   repaintFromDraft();
 });
+
+// Every publish failure lands on a designed panel, and the panel's action is carried out here. The
+// mapping from code to panel lives in review.js; what an action MEANS lives here, because only this
+// module can reload a menu or re-open a review.
+function showOutcome(outcome) {
+  $('revSub').textContent = '';
+  $('revFoot').replaceChildren($('pubback'));
+  $('pubback').textContent = 'Cerrar';
+  renderOutcome($('mbody'), outcome, async (id) => {
+    if (id === PUBLISH_ACTIONS.RELOAD) {
+      // the DRAFT moved under us: refetch it and start over
+      $('scrim').classList.remove('show');
+      await loadMenu(state.currentRid);
+      return;
+    }
+    if (id === PUBLISH_ACTIONS.REREVIEW) {
+      // 🔴 the LIVE version moved. Re-call editCatalog for a FRESH diff and token — never retry
+      // publishEdited with the stale one, which is bound to a diff that no longer describes reality.
+      await openReviewFlow();
+      return;
+    }
+    if (id === PUBLISH_ACTIONS.BACK) {
+      // something on the review was not confirmed; go back and let them tick it
+      await openReviewFlow();
+      return;
+    }
+    // RETRY: nothing about the edit was wrong, so send the same reviewed payload again.
+    $('pubbtn').click();
+  });
+}
 
 function showModalMessage(title, detail) {
   $('mbody').replaceChildren();
