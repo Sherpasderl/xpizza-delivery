@@ -922,21 +922,24 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
   //   'ender'    — the code that ENDS a world (auth change, tenant switch, invalidation). It writes
   //                unconditionally on purpose; guarding it would be guarding the guard.
   const CENSUS = {
-    'state.draft':               [2, 'canEdit', 'created on load, cleared by the auth ender; every MUTATION goes through editor.js'],
+    'state.draft':               [3, 'canEdit', 'created on load, cleared by the auth ender AND at the start of a tenant switch; every MUTATION goes through editor.js'],
     'state.review':              [9, 'bound',   'built on the guarded settle path; the ack callback — the one live listener — is reviewBound'],
     'state.publishGen':          [2, 'guarded', 'set only on genuine admission inside runPublish, cleared by the ender'],
-    'state.reviewLock':          [7, 'guarded', 'ticket bookkeeping; every write pairs with a take/release on a generation-checked path — the 7th is the release of a ticket acquired by a publish that was then refused'],
+    'state.reviewLock':          [8, 'guarded', 'ticket bookkeeping; every write pairs with a take/release on a generation-checked path — the 7th releases a ticket acquired by a publish that was then refused, the 8th is endWrite handing back a ticket whose request settled into a world that had ended'],
     'state.currentRid':          [3, 'ender',   'the tenant switch and the auth handler — the two things that end a world'],
     'state.groups':              [3, 'guarded', 'the rendered menu, written only after the generation check on both settle paths'],
     'state.usesPlatformFactura': [2, 'guarded', '🔴 the fiscal capability — load path, behind the generation check'],
-    'state.sourceUpdateTime':    [2, 'guarded', 'the CAS baseline — load path and the save settle path, both checked'],
+    'state.sourceUpdateTime':    [3, 'guarded', '🔴 the CAS baseline — load path and the save settle path, both generation-checked, plus the tenant-switch clear that stops one tenant\u2019s baseline being used to write another\u2019s document'],
     'state.uid':                 [1, 'ender',   'the auth handler itself — the identity change that ENDS the previous world'],
     'state.extras':              [1, 'guarded', 'the flat extras list, written by the load path behind the generation check'],
     'state.selectedCat':         [3, 'view',    'which category the rail highlights — a stale write repaints, it cannot mis-price'],
     'state.openGroups':          [3, 'view',    'which option groups are expanded in the drawer — one assignment plus the add/delete of the toggle; presentational only'],
     'state.drawerKey':           [3, 'view',    'which dish the drawer shows; the fields inside it are canEdit-guarded'],
     'state.restaurants':         [1, 'guarded', 'the switcher list, written by loadRestaurants behind its generation check'],
-    'editLockHolder':            [4, 'guarded', 'the declaration, take, release, and the ender'],
+    'editLockHolder':            [4, 'guarded', 'the declaration, take, release, and the ender — which no longer clears it unconditionally: a ticket with a request on the wire is not the ender\u2019s to reclaim'],
+    'pendingWrite':              [3, 'guarded', '🔴 SERVER-WRITE ADMISSION. The declaration, beginWrite and endWrite — set immediately before a request goes out and cleared when THAT request settles, which is the only lifetime that matches what is actually outstanding'],
+    'state.draftRid':            [2, 'guarded', '🔴 WHICH TENANT THE DRAFT IS. Written on the load settle path behind the generation check and cleared at the start of a switch; it is what the write path names, so a review can never carry one tenant\u2019s rid with another\u2019s source'],
+    'state.menuLoading':         [3, 'guarded', 'loading represented explicitly rather than inferred from a null draft: set at the start of a switch, cleared on BOTH settle paths behind the generation check, and read by review admission'],
     'opGeneration':              [2, 'ender',   'the declaration and the += inside bumpGeneration — the only two, and bumping IS how a world ends'],
   };
 
@@ -1054,20 +1057,22 @@ function writesIn(code) {
 function registrations(src) {
   const m = maskLiterals(src);
   const out = [];
-  const at = (i) => {
-    const ls = src.lastIndexOf('\n', i) + 1;
-    return { indent: src.slice(ls).match(/^\s*/)[0].length, line: src.slice(0, i).split('\n').length };
-  };
+  // 🔴 STRUCTURAL depth, not indentation. Column 0 is a formatting fact and says nothing about scope:
+  // a registration nested inside a function can be written flush-left and a module-level one indented,
+  // and either way the reader — and the guard — would be told the wrong thing.
+  const d = depths(m);
+  const at = (i) => ({ brace: d.brace[i], line: src.slice(0, i).split('\n').length });
   for (const g of m.matchAll(/\.addEventListener\s*\(/g)) {
     const open = g.index + g[0].length - 1, end = spanFrom(m, open);
     const recv = (src.slice(0, g.index).match(/([A-Za-z_$][\w$]*|\$\(\s*'[^']*'\s*\))\s*$/) || [, '?'])[1].replace(/\s+/g, '');
     const raw = src.slice(open + 1, end);
     const ev = (raw.match(/^\s*'([^']+)'/) || [, '?'])[1];
-    out.push({ key: `${recv}::${ev}`, handler: raw.replace(/^\s*'[^']+'\s*,/, ''), ...at(g.index) });
+    const head = raw.match(/^\s*'[^']+'\s*,/);
+    out.push({ key: `${recv}::${ev}`, handler: raw.replace(/^\s*'[^']+'\s*,/, ''), start: open + 1 + (head ? head[0].length : 0), ...at(g.index) });
   }
   for (const g of m.matchAll(/\brender(Rail|Detail|Attestation|Outcome)\s*\(/g)) {
     const open = g.index + g[0].length - 1, end = spanFrom(m, open);
-    out.push({ key: `render${g[1]}::callback`, handler: src.slice(open + 1, end), ...at(g.index) });
+    out.push({ key: `render${g[1]}::callback`, handler: src.slice(open + 1, end), start: open + 1, ...at(g.index) });
   }
   return out;
 }
@@ -1096,9 +1101,9 @@ const LISTENERS = {
   "PUBBTN::click":                ['singleton', ['runPublish'], 'admission-controlled, and validates a current review before acquiring'],
   "document::portal:auth":        ['ender', ['invalidateReview', 'state.draft', 'state.groups', 'state.currentRid', 'state.uid'], 'the identity change that ENDS a world; it clears, then repaints what follows'],
   "renderRail::callback":         ['view', ['state.selectedCat'], 'which category the rail highlights'],
-  "renderDetail::callback":       ['bound', ['onPrice', 'openDrawer'], 'the inline price cells — onPrice is bound AT THE CALL SITE, because the function itself belongs to no world'],
-  "renderAttestation::callback":  ['bound', ['state.review'], '🔴 the acknowledgement'],
-  "renderOutcome::callback":      ['bound', ['loadMenu', 'openReviewFlow', 'runPublish'], 'the recovery controls — real transitions, not messages'],
+  "renderDetail::callback":       ['bound', ['openDrawer'], 'the inline price cells. onPrice is bound AT THE CALL SITE — the function itself belongs to no world — and is deliberately NOT listed here, so the lexical check requires it to sit inside the wrapper. openDrawer is listed: it writes only which dish the drawer shows.'],
+  "renderAttestation::callback":  ['bound', [], '🔴 the acknowledgement — nothing here is allowed outside the wrapper'],
+  "renderOutcome::callback":      ['bound', [], 'the recovery controls — real transitions, not messages, and every one of them inside the wrapper'],
 };
 
 test('🔴 every listener that writes is bound, or ruled — and nothing else is registered', () => {
@@ -1125,8 +1130,8 @@ test('🔴 every listener that writes is bound, or ruled — and nothing else is
         `🔴 app.js:${r.line} — ${r.key} is ruled '${ruling}' but now writes ${w}, which its ruling does not allow. Bind it, or re-rule it deliberately.`);
     }
     if (ruling === 'singleton') {
-      assert.strictEqual(r.indent, 0,
-        `🔴 app.js:${r.line} — ${r.key} is ruled 'singleton' (registered once, on a node that is never re-created) but it is nested inside another function, so it is registered per call. It needs bound().`);
+      assert.strictEqual(r.brace, 0,
+        `🔴 app.js:${r.line} — ${r.key} is ruled 'singleton' (registered once, on a node that is never re-created) but it sits at brace depth ${r.brace}, i.e. inside a function body, so it is registered once PER CALL. It needs bound().`);
     }
   }
   for (const key of Object.keys(LISTENERS)) assert.ok(seen.has(key), `${key} is ruled but no longer registered — remove the dead ruling`);
@@ -1156,4 +1161,114 @@ test('🔴 the write detector sees what the field census cannot', () => {
   assert.strictEqual(writesIn('// state.review = null;').size, 0, 'a comment is not a write');
   assert.strictEqual(writesIn("log('state.review = null');").size, 0, 'a string is not a write');
   assert.strictEqual(writesIn('const x = state.review.acknowledged;').size, 0, 'a READ is not a write');
+});
+
+// ── LEXICAL ENFORCEMENT ──────────────────────────────────────────────────────────────────────────
+// The listener census above asks whether `bound(` APPEARS in a registration. That is not the same
+// question as whether the WRITER IS INSIDE IT, and the difference is a real hole: bind a no-op, leave
+// the write next to it, and the text still contains `bound(`.
+//
+// These three checks close it structurally. They work on a masked copy of the source — strings and
+// comments blanked, structure preserved — and the first thing asserted is that the masking is sound,
+// because every claim below rests on it.
+
+// Depth of nesting at each index, computed once. Structural, not textual: this is what makes "inside
+// the wrapper" and "at module scope" answerable rather than guessed at from indentation.
+function depths(masked) {
+  const paren = new Int32Array(masked.length);
+  const brace = new Int32Array(masked.length);
+  let p = 0, b = 0;
+  for (let i = 0; i < masked.length; i++) {
+    const c = masked[i];
+    if (c === '(') p++; else if (c === '{') b++;
+    paren[i] = p; brace[i] = b;
+    if (c === ')') p--; else if (c === '}') b--;
+  }
+  return { paren, brace, endParen: p, endBrace: b };
+}
+// Every [start,end) span covered by a bound( ... ) argument list.
+function boundSpans(masked) {
+  const spans = [];
+  for (const g of masked.matchAll(/\bbound\s*\(/g)) {
+    const open = g.index + g[0].length - 1;
+    const end = spanFrom(masked, open);
+    if (end > open) spans.push([open, end]);
+  }
+  return spans;
+}
+// Where a protected write happens, not merely whether one does.
+function writePositions(masked) {
+  const out = [];
+  const add = (re, name) => { for (const g of masked.matchAll(re)) out.push({ pos: g.index, token: name || g[0].trim() }); };
+  // `onPrice:` as an object KEY is a handoff site, not a write — and `bound(onPrice)` sits right
+  // beside it, so counting the key would report the wrapper's own argument as being outside itself.
+  for (const fn of WRITERS) {
+    for (const g of masked.matchAll(new RegExp(`\\b${fn}\\b(?!\\s*:)`, 'g'))) out.push({ pos: g.index, token: fn });
+  }
+  add(/\bstate\s*\.\s*\w+(?:\s*\.\s*\w+)*\s*(?:\+\+|--|(?:\+|-|\*|\/|\|\||&&|\?\?)?=(?!=))/g, 'state-write');
+  add(/\bstate\s*\[/g, 'state[computed]');
+  add(/Object\s*\.\s*assign\s*\(\s*(?:state|draft)/g, 'Object.assign');
+  add(/\beditLockHolder\s*=(?!=)/g, 'editLockHolder');
+  add(/\bpendingWrite\s*=(?!=)/g, 'pendingWrite');
+  return out;
+}
+
+test('🔴 the masking is sound — every structural claim below depends on it', () => {
+  const masked = maskLiterals(readFileSync(join(DIR, 'app.js'), 'utf8'));
+  const d = depths(masked);
+  // If a quote, comment or brace were mis-tokenised, the depths would not return to zero. This is the
+  // cheapest possible proof that the scanner is reading the file the way JavaScript does.
+  assert.strictEqual(d.endParen, 0, 'parentheses balance across the masked file');
+  assert.strictEqual(d.endBrace, 0, 'braces balance across the masked file');
+  // ...and it really did blank the literals, rather than getting lucky on a file with none.
+  assert.ok(!/Cargando tu men/.test(masked), 'string CONTENTS are masked');
+  assert.ok(/showEmpty\('/.test(masked), 'while the code around them is not');
+});
+
+test('🔴 no writer sits outside the wrapper that is supposed to contain it', () => {
+  // The check the registration-text version could not make. For every listener ruled 'bound', every
+  // protected write in its handler must be lexically INSIDE a bound( ... ) span — so binding a no-op
+  // and leaving the write beside it fails, which is precisely how this guard would otherwise be
+  // satisfied without protecting anything.
+  const src = readFileSync(join(DIR, 'app.js'), 'utf8');
+  const masked = maskLiterals(src);
+  const spans = boundSpans(masked);
+  assert.ok(spans.length >= 4, `sanity: the scanner found the wrappers (${spans.length})`);
+  const inside = (pos) => spans.some(([a, b]) => pos > a && pos < b);
+
+  let checked = 0;
+  for (const r of registrations(src)) {
+    const rule = LISTENERS[r.key];
+    if (!rule || rule[0] !== 'bound') continue;
+    const start = r.start;
+    for (const w of writePositions(masked.slice(start, start + r.handler.length))) {
+      const abs = start + w.pos;
+      assert.ok(inside(abs) || rule[1].includes(w.token),
+        `🔴 ${r.key} is ruled 'bound', but its write of ${w.token} at app.js:${src.slice(0, abs).split('\n').length} is OUTSIDE the bound() wrapper and its ruling does not name it. A wrapper the writer is not inside protects nothing.`);
+      checked++;
+    }
+  }
+  assert.ok(checked >= 4, `sanity: writes were actually located and checked (${checked})`);
+});
+
+test('🔴 no state property is aliased into a binding that is then written through', () => {
+  // const r = state.review; r.acknowledged = true;
+  //
+  // Reads through an alias are fine and the file uses them. WRITING through one is not: it detaches
+  // the write from the name the censuses count, so the acknowledgement gains a writer and every count
+  // stays identical. Rejected outright rather than counted, because there is no reason to need it.
+  const src = readFileSync(join(DIR, 'app.js'), 'utf8');
+  const masked = maskLiterals(src);
+  // The initializer must be state.<prop> AND NOTHING MORE. `const cur = state.restaurants.find(...)`
+  // binds a RESULT, not the property, and treating it as an alias reports a write that cannot happen.
+  const aliases = [...masked.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*state\s*\.\s*(\w+)\s*(?=[;,)\n])/g)];
+  for (const a of aliases) {
+    const name = a[1];
+    const written = new RegExp(`\\b${name}\\s*(?:\\.\\s*\\w+\\s*(?:=(?!=)|\\+\\+|--)|\\[)|Object\\s*\\.\\s*assign\\s*\\(\\s*${name}\\b`);
+    assert.ok(!written.test(masked),
+      `🔴 app.js aliases state.${a[2]} as \`${name}\` and then writes through it. Write through state.${a[2]} directly, so the censuses can see it.`);
+  }
+  // NON-VACUITY: the detector fires on the shape it is looking for.
+  const planted = 'const r = state.review; r.acknowledged = true;';
+  assert.ok(/\br\s*(?:\.\s*\w+\s*(?:=(?!=)|\+\+|--)|\[)/.test(planted), 'the alias-write detector can see one');
 });

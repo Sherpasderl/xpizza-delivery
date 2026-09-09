@@ -185,6 +185,31 @@ function bound(fn) {
 // while the first request is still outstanding. Only the holder releases.
 let editLockTicket = 0;
 let editLockHolder = null;
+// ── THE THIRD LEG: SERVER-WRITE ADMISSION ────────────────────────────────────────────────────────
+// The generation spine stops a stale answer from PAINTING. bound() stops a stale listener from WRITING
+// LOCALLY. Neither governs what is allowed to LEAVE THE BROWSER, and that is a separate question,
+// because a world ending does not un-send a request that is already on the wire.
+//
+// The enders released the edit lock as though it did: switch tenants during a save and editLockHolder
+// went to null while editCatalog was still outstanding, so the next review was admitted alongside it.
+// Two writes against the same document, neither aware of the other, and the CAS baseline decided by
+// whichever landed second.
+//
+// So a ticket that has a request in flight is NOT the enders' to reclaim. It belongs to the request
+// until the request settles, whatever has happened to the UI in the meantime.
+let pendingWrite = null;
+const beginWrite = (ticket) => { pendingWrite = ticket; };
+// Settled: the ticket goes back. If the world that sent it has ended, nobody is coming back for it —
+// this is its only chance to be released, so it releases itself here rather than leaking the lock.
+function endWrite(ticket, gen) {
+  if (pendingWrite === ticket) pendingWrite = null;
+  if (gen !== opGeneration) {
+    releaseEditLock(ticket);
+    if (state.reviewLock === ticket) state.reviewLock = null;
+    syncUi();
+  }
+}
+
 function takeEditLock() {
   // EXCLUSIVE. If someone already holds it, the caller does NOT become the holder — it gets null and
   // its release is a no-op. Taking it unconditionally was the bug: a second publish, refused before
@@ -234,7 +259,7 @@ function syncUi() {
   const rev = $('review');
   if (rev) {
     const valid = !!state.draft && isPublishable(state.draft);
-    rev.disabled = owned || !state.draft || !valid;
+    rev.disabled = owned || state.menuLoading === true || !state.draft || !valid;
     rev.title = (state.draft && !valid) ? 'Hay un precio sin valor válido' : '';
   }
   setDrawerInert(owned);
@@ -246,9 +271,20 @@ export async function loadMenu(rid) {
   // invalidateReview()'s own bump lands after the capture and instantly invalidates the load that
   // just started. (It did: every load returned before building a draft, and only an executable
   // interleaving test showed it.)
+  // 🔴 THE PREVIOUS TENANT'S DRAFT AND CAS BASELINE GO NOW, at the start of the transition rather
+  // than on arrival. Leaving them in place is what made "B's rid with A's source" reachable: for the
+  // whole duration of the fetch the screen held one tenant's document while another was current.
+  //
+  // Loading is represented EXPLICITLY rather than inferred from a null draft, because "no draft" and
+  // "a draft is coming" want different answers from the review entry, and inferring one from the
+  // other is how a transient state becomes a permanent-looking one.
+  state.draft = null;
+  state.draftRid = null;
+  state.sourceUpdateTime = null;
+  state.menuLoading = true;
+  state.usesPlatformFactura = false;
   invalidateReview();                        // clears tenant-bound state AND bumps the generation
   const gen = opGeneration;
-  state.usesPlatformFactura = false;
   $('detail').replaceChildren();
   showEmpty('Cargando tu menú…', 'Un momento.');
   let data;
@@ -258,13 +294,15 @@ export async function loadMenu(rid) {
       // THE CHECK COMES FIRST, before ANY mutation. It sat BELOW the two lines that follow, so a slow
       // failure from the tenant the merchant had already left blanked the menu of the tenant they were
       // on — the current rail erased by an error about a different restaurant.
-      if (gen !== opGeneration) return;
-      // Degrade to a message, never to an empty menu that reads as "you have no products". The typed
-      // kind decides the sentence: an outage says try again, a refusal says this account cannot see it.
-      state.groups = [];
-      $('rail').replaceChildren();
+    if (gen !== opGeneration) return;
+    // Degrade to a message, never to an empty menu that reads as "you have no products". The typed
+    // kind decides the sentence: an outage says try again, a refusal says this account cannot see it.
+    state.menuLoading = false;               // it is not coming; the entry must stop saying "wait"
+    state.groups = [];
+    $('rail').replaceChildren();
     const [t, d] = messageFor(e);
     showEmpty(t, d);
+    syncUi();
     return;
   }
   // THE DRAFT IS THE DOCUMENT. Everything on screen from here is rendered from the draft, not from the
@@ -279,6 +317,10 @@ export async function loadMenu(rid) {
     { canEdit: () => editLockHolder === null });
   state.sourceUpdateTime = (data && data.sourceUpdateTime) || null;
   state.usesPlatformFactura = (data && data.usesPlatformFactura) === true;
+  // WHICH TENANT THIS DRAFT IS. Recorded with the draft, from the rid the request was made for — so
+  // the write path names the restaurant it actually loaded rather than the one currently selected.
+  state.draftRid = rid;
+  state.menuLoading = false;
   state.selectedCat = null;
   repaintFromDraft();
 }
@@ -598,6 +640,13 @@ async function openReviewFlow() {
   // re-entrant review proceed on a null ticket was the whole defect: it bumped the generation and sent
   // its own editCatalog while save A still held the lock, and A's release then un-inerted the drawer
   // with B still pending. Nothing to reconcile if the second one never starts.
+  // 🔴 ADMISSION BEFORE ANYTHING, and the draft's readiness is part of it. During a tenant switch the
+  // OLD draft is still in memory while the NEW rid is already current, so a review admitted here sends
+  // one tenant's rid with the other tenant's source — a write that is internally consistent, passes
+  // every client check, and prices the wrong restaurant.
+  if (state.menuLoading) return;                                        // the draft on screen is being replaced
+  if (!state.draft || !state.draftRid) return;                          // nothing loaded to write
+  if (state.currentRid && state.currentRid !== state.draftRid) return;  // loaded, but not for this tenant
   const lock = takeEditLock();
   if (lock === null) return;                 // a save or publish is already in flight; this one waits
 
@@ -611,8 +660,11 @@ async function openReviewFlow() {
     // The exact document being submitted — captured BEFORE the await, so what is reviewed, saved and
     // later committed as the baseline is one snapshot rather than whatever the draft holds by then.
     const submitted = JSON.parse(JSON.stringify(draftSource(state.draft)));
+    beginWrite(lock);      // from here the ticket belongs to the request, not to the UI
     const res = await editCatalog({
-      rid: state.currentRid,
+      // 🔴 THE RID THE SOURCE WAS LOADED FOR, never "the tenant currently selected". They differ for
+      // exactly as long as a switch takes, and that is the window this write must not fall into.
+      rid: state.draftRid,
       source: submitted,
       baseSourceUpdateTime: state.sourceUpdateTime,
       token,
@@ -636,7 +688,7 @@ async function openReviewFlow() {
     // came back with getEditableCatalog (Task 2b) and is the only thing that decides whether this
     // merchant's edit touches a SAR factura.
     const att = attestationModel(state.review.diff, { usesPlatformFactura: state.usesPlatformFactura });
-    state.review.rid = state.currentRid;
+    state.review.rid = state.draftRid;
     state.review.attestation = att;
     state.review.acknowledged = false;
     const attBox = document.createElement('div');
@@ -663,6 +715,7 @@ async function openReviewFlow() {
       showOutcome(outcomeFor(e, 'edit'));
       $('scrim').classList.add('show');
   } finally {
+    endWrite(lock, gen);   // the request has settled; the ticket is the UI's again (or nobody's)
     // LIFECYCLE: the lock is held while the review is LIVE — the modal open, the merchant attesting —
     // and released the moment the operation settles into anything else.
     //
@@ -775,6 +828,7 @@ async function runPublish() {
     // the world as waiting on a request it never made: a spinner with nothing behind it, stuck until
     // someone else's finished. The admission COUNT answers the question this call is actually asking.
     const admittedBefore = publisher.admissions;
+    beginWrite(lock);
     const attempt = publisher.run(state.review);
     if (publisher.admissions > admittedBefore) state.publishGen = gen;
     syncUi();
@@ -784,6 +838,7 @@ async function runPublish() {
     showOutcome(outcomeFor(e, 'publish'));
     return;
   } finally {
+    endWrite(lock, gen);
     // NO UI IS CLEARED HERE. Every owned bit is derived by syncUi from CURRENT ownership, so calling
     // it is safe even from a stale continuation — it paints the present, not this operation's past.
     // A `finally` that cleared the spinner would be owning something that outlives its own operation,
@@ -894,7 +949,9 @@ function invalidateReview() {
   // WHOEVER ENDS A WORLD CLEANS ITS UI. Stale continuations are forbidden from painting — that is the
   // whole point — so the busy indicator and the editing lock they would otherwise have cleared must be
   // cleared here instead, or a spinner from an abandoned publish sits on the button forever.
-  editLockHolder = null;                   // the world ended; nobody owns the draft
+  // 🔴 NOT UNCONDITIONAL. A ticket whose request is on the wire keeps the lock: the UI world is over,
+  // but the WRITE is not, and admission is about the write. Everything else here is UI and is cleared.
+  editLockHolder = pendingWrite;           // null unless a write is genuinely outstanding
   state.reviewLock = null;
   state.review = null;
   state.publishGen = null;                 // and it is not waiting on anything

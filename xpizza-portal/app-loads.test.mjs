@@ -473,11 +473,17 @@ test('🔴 cleanup happens AT invalidation, not merely after the stale op comple
   document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));
   // 🔴 IMMEDIATELY — before the stale publish settles
   assert.strictEqual(byId.get('pubbtn').dataset.busy, undefined, 'the spinner is cleared AT invalidation');
-  assert.ok(!('inert' in byId.get('drawer').attrs), '...and the draft is released at the same moment');
+  // 🔴 THE DRAFT IS NOT RELEASED HERE, and this line used to assert the opposite. The UI world has
+  // ended, but the PUBLISH HAS NOT — it is on the wire, and ending a world does not un-send it. The
+  // spinner is UI and goes; the write lock is admission and stays with the request that holds it.
+  // Releasing it here is exactly what let a second write be admitted alongside an outstanding one.
+  assert.ok('inert' in byId.get('drawer').attrs, 'but the draft stays owned — its publish is still outstanding');
 
   slowPub.resolve(okJson({ versionId: 'v9' }));
   await publishing;
   assert.strictEqual(byId.get('pubbtn').dataset.busy, undefined, 'and the stale settle did not put it back');
+  assert.ok(!('inert' in byId.get('drawer').attrs),
+    '🔴 the ticket comes back when its REQUEST settles — the one moment it is free to');
 });
 
 test('🔴 a stale publish settling cannot disturb UI the NEW world already owns', async () => {
@@ -500,21 +506,26 @@ test('🔴 a stale publish settling cannot disturb UI the NEW world already owns
   const a = byId.get('pubbtn').listeners.click[0]();          // publish A, on the wire
   await Promise.resolve();
 
-  // the world ends and a NEW review takes ownership
+  // The world ends and B loads. B then tries to review — and CANNOT, which is the point: the scenario
+  // this test was originally written to survive is now unreachable by construction. A's publish is
+  // still outstanding, so no second write is admitted, whoever is asking.
   document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));
   await app.loadMenu('x_pizza');
+  const savesBefore = saves;
   await byId.get('review').listeners.click[0]();
-  const bToken = app.state.review && app.state.review.editToken;
-  const bInert = 'inert' in byId.get('drawer').attrs;
-  assert.ok(bToken, 'premise: B owns a review');
-  assert.ok(bInert, 'premise: B owns the draft');
+  assert.strictEqual(saves, savesBefore,
+    '🔴 B is refused while A’s publish is on the wire — admission outlives the world that opened it');
+  assert.strictEqual(app.state.review, null, 'so B holds no review to be disturbed');
 
-  slowA.resolve(okJson({ versionId: 'vA' }));                 // A settles INTO B's world
+  slowA.resolve(okJson({ versionId: 'vA' }));                 // A settles into a world that has ended
   await a;
-  assert.strictEqual(app.state.review && app.state.review.editToken, bToken,
-    '🔴 A did not replace the review B owns');
-  assert.strictEqual('inert' in byId.get('drawer').attrs, bInert, '...nor release the draft B holds');
-  assert.strictEqual(byId.get('pubbtn').dataset.busy, undefined, '...nor leave a spinner B is not waiting on');
+  assert.strictEqual(app.state.review, null, '🔴 A’s settle created nothing in B’s world');
+  assert.strictEqual(byId.get('pubbtn').dataset.busy, undefined, '...nor left a spinner B is not waiting on');
+
+  // ...and now that A has settled, B gets its turn. The lock was held, not lost.
+  await byId.get('review').listeners.click[0]();
+  assert.strictEqual(saves, savesBefore + 1, '🔴 B can review once the outstanding write has settled');
+  assert.ok('inert' in byId.get('drawer').attrs, 'and B owns the draft, cleanly');
 });
 
 test('the drawer’s fields are blurred when the draft is taken', async () => {
@@ -1257,4 +1268,155 @@ test('🔴 capture 1 of 3: the GENERATION alone, draft and review held still', a
   fresh.value = '777';
   fresh.listeners.input[0]();
   assert.strictEqual(app.state.draft.state.items[0].price, 777, 'the rebuilt cell edits normally');
+});
+
+// ── SERVER-WRITE ADMISSION ACROSS WORLD-TRANSITIONS ──────────────────────────────────────────────
+// The third leg. The generation spine stops a stale answer from PAINTING; bound() stops a stale
+// listener from WRITING LOCALLY. Neither governs what is allowed to leave the browser. A world ending
+// does not un-send a request that is already on the wire — but the enders released the edit lock as
+// though it did, so the next operation was admitted alongside an outstanding one.
+
+test('🔴 a tenant switch does not release a lock whose editCatalog is still on the wire', async () => {
+  const byId = installDom();
+  const slowSave = deferred();
+  let saves = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+    if (fn === 'editCatalog') { saves += 1; return saves === 1 ? slowSave.promise : okJson({ token: 'ET2', updateTime: 'T3', diff: CHANGED_DIFF }); }
+    return okJson({ versionId: 'v1' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+
+  const saving = byId.get('review').listeners.click[0]();     // editCatalog goes out and stays out
+  await Promise.resolve();
+  assert.strictEqual(saves, 1, 'premise: a write is on the wire');
+
+  await app.loadMenu('la_musa');                              // the merchant switches tenants
+  await byId.get('review').listeners.click[0]();              // and tries to review the new one
+  assert.strictEqual(saves, 1,
+    '🔴 no second write was admitted — the first one is still outstanding, and a world ending does not un-send it');
+
+  slowSave.resolve(okJson({ token: 'ET1', updateTime: 'T2', diff: CHANGED_DIFF }));
+  await saving;
+  await byId.get('review').listeners.click[0]();
+  assert.strictEqual(saves, 2, '🔴 and once it settles, admission is available again');
+});
+
+test('🔴 a review cannot be opened while the tenant’s draft is still loading', async () => {
+  // The money case. During a switch the OLD draft is still in memory and the NEW rid is already
+  // current, so a review admitted here sends one tenant's rid with the other tenant's source — a write
+  // that is internally consistent, passes every client check, and prices the wrong restaurant.
+  const byId = installDom();
+  const slowLoad = deferred();
+  let n = 0, sent = null;
+  const calls = installFetch((fn) => {
+    if (fn === 'getEditableCatalog') { n += 1; return n === 1
+      ? okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false })
+      : slowLoad.promise; }
+    return okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  app.state.currentRid = 'x_pizza';
+
+  const switching = app.loadMenu('la_musa');                  // in flight; la_musa is now current
+  app.state.currentRid = 'la_musa';
+  await Promise.resolve();
+
+  await byId.get('review').listeners.click[0]();
+  assert.strictEqual(calls.filter((c) => c.fn === 'editCatalog').length, 0,
+    '🔴 nothing was written while the draft on screen belonged to the tenant being left');
+
+  slowLoad.resolve(okJson({ source: SOURCE(), sourceUpdateTime: 'T9', activeVersionId: 'v9', usesPlatformFactura: false }));
+  await switching;
+  await byId.get('review').listeners.click[0]();
+  const save = calls.find((c) => c.fn === 'editCatalog');
+  assert.ok(save, '🔴 and once the draft is in, the review works normally');
+  assert.strictEqual(save.body.restaurantId, 'la_musa', 'writing the tenant it actually loaded');
+  assert.strictEqual(save.body.baseSourceUpdateTime, 'T9', '🔴 against THAT tenant’s CAS baseline, not the one left behind');
+});
+
+test('🔴 the write names the tenant the DRAFT was loaded for, even before a tenant is selected', async () => {
+  // A real state, not a contrived one: state.currentRid is set by loadRestaurants/switchTo, so between
+  // a direct load and that handshake the draft exists and no tenant is "selected". Reading
+  // state.currentRid for the write would name nothing at all; the draft always knows what it is.
+  const byId = installDom();
+  const calls = installFetch((fn) => (fn === 'getEditableCatalog'
+    ? okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false })
+    : okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF })));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  assert.strictEqual(app.state.currentRid, null, 'premise: no tenant selected yet');
+
+  await byId.get('review').listeners.click[0]();
+  const save = calls.find((c) => c.fn === 'editCatalog');
+  assert.ok(save, 'premise: the review was admitted');
+  assert.strictEqual(save.body.restaurantId, 'x_pizza',
+    '🔴 the write names the rid the source was LOADED for, never the selection');
+});
+
+test('🔴 a draft belonging to another tenant is refused admission outright', async () => {
+  // Defence in depth against the two falling out of step for ANY reason. Reconstructed rather than
+  // driven — a normal switch clears the draft, so the pairing cannot legitimately diverge — but this
+  // is the check that makes "a review can never carry B's rid with A's source" true by inspection
+  // rather than by tracing every path that sets them.
+  const byId = installDom();
+  const calls = installFetch((fn) => (fn === 'getEditableCatalog'
+    ? okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false })
+    : okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF })));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  assert.strictEqual(app.state.draftRid, 'x_pizza', 'premise: the draft knows whose it is');
+
+  app.state.currentRid = 'la_musa';                  // selection and draft out of step
+  await byId.get('review').listeners.click[0]();
+  assert.strictEqual(calls.filter((c) => c.fn === 'editCatalog').length, 0,
+    '🔴 refused — the draft on screen is not this tenant’s, so nothing may be written for either');
+});
+
+test('🔴 a review is refused after a load FAILED, with no draft to write', async () => {
+  // menuLoading is false here — the load settled — so this is the case only the draft-readiness check
+  // refuses. The two admission clauses are deliberately redundant (a transition clears the draft AND
+  // raises the flag), and this is the path that tells them apart.
+  const byId = installDom();
+  const calls = installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return Promise.reject(Object.assign(new Error('store_unavailable'), { code: 'store_unavailable', status: 503 }));
+    return okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  assert.strictEqual(app.state.draft, null, 'premise: the load failed, so there is no draft');
+  assert.strictEqual(app.state.menuLoading, false, 'premise: and it is NOT still loading — it settled');
+
+  await byId.get('review').listeners.click[0]();
+  assert.strictEqual(calls.filter((c) => c.fn === 'editCatalog').length, 0,
+    'nothing was written — there is no document to write');
+  // 🔴 REFUSED, not ATTEMPTED-AND-FAILED. Without the readiness check the flow takes the lock, calls
+  // draftSource(null), throws, and lands in the failure panel — no write leaves either way, so
+  // "no editCatalog" alone proved nothing. What separates them is whether the merchant is shown an
+  // error for an operation they could not have started.
+  assert.ok(!byId.get('scrim').classList.contains('show'),
+    '🔴 no failure panel — the press was refused at admission, not crashed through');
+  assert.strictEqual(byId.get('review').disabled, true, 'and the entry says so');
+  assert.strictEqual(app.state.reviewLock, null, '🔴 and it took no ownership on the way');
+});
+
+test('🔴 the explicit loading flag refuses admission on its own', async () => {
+  // Constructed. A transition clears the draft AND raises this flag, so in the running app the two
+  // always agree and either would refuse alone — which is exactly why this clause could be deleted
+  // without a single test noticing. It is pinned here as its own contract: "a load is outstanding"
+  // refuses a write by itself, whatever else happens to be true.
+  const byId = installDom();
+  const calls = installFetch((fn) => (fn === 'getEditableCatalog'
+    ? okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false })
+    : okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF })));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  assert.ok(app.state.draft && app.state.draftRid, 'premise: a perfectly good draft is loaded');
+
+  app.state.menuLoading = true;                      // ...and a load is outstanding
+  await byId.get('review').listeners.click[0]();
+  assert.strictEqual(calls.filter((c) => c.fn === 'editCatalog').length, 0,
+    '🔴 refused on the flag alone — the document is about to be replaced');
 });
