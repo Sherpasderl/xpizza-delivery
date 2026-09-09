@@ -1,0 +1,8 @@
+{
+  "name": "xpizza-portal-tests",
+  "private": true,
+  "type": "module",
+  "description": "Test-harness manifest ONLY. The portal itself has no build step and ships plain ES modules to the browser; nothing here is served. acorn exists so the wiring guards can read app.js as a syntax tree instead of as text.",
+  "scripts": { "test": "node --test --test-timeout=20000" },
+  "devDependencies": { "acorn": "^8.14.0", "acorn-walk": "^8.3.4" }
+}

@@ -11,6 +11,7 @@ import assert from 'node:assert';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stateViolations, writerFunctions } from './wiring-ast.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const JS = readdirSync(DIR).filter((f) => f.endsWith('.js'));
@@ -1044,7 +1045,12 @@ const spanFrom = (masked, open) => {
 const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo', 'onPrice',
                  'loadMenu', 'loadRestaurants', 'openReviewFlow', 'runPublish', 'closeReview',
                  'invalidateReview', 'switchTo', 'bumpGeneration', 'takeEditLock', 'releaseEditLock',
-                 'openDrawer', 'closeDrawer', 'toggle'];
+                 'openDrawer', 'closeDrawer', 'toggle',
+                 // 🔴 Added because the tree said so, not because anyone noticed. endWrite,
+                 // repaintFromDraft and showOutcome all write state — endWrite and showOutcome by
+                 // calling releaseEditLock and openReviewFlow — and a hand-maintained list had simply
+                 // never caught up. That is the drift the cross-check below exists to end.
+                 'endWrite', 'repaintFromDraft', 'showOutcome'];
 function writesIn(code) {
   const m = maskLiterals(code);
   const found = new Set();
@@ -1099,11 +1105,11 @@ const LISTENERS = {
   "document::portal:restaurant":  ['singleton', ['loadMenu'], 'the tenant switch, dispatched by switchTo which has already revalidated'],
   "$('switcher')::click":         ['view', [], 'opens the tenant menu'],
   "document::click":              ['view', [], 'closes the tenant menu on an outside click'],
-  "$('discard')::click":          ['singleton', ['discard', 'closeDrawer'], 'throws away local edits — a DRAFT write, refused by the canEdit boundary whenever an operation owns the draft'],
+  "$('discard')::click":          ['singleton', ['discard', 'closeDrawer', 'repaintFromDraft'], 'throws away local edits — a DRAFT write, refused by the canEdit boundary whenever an operation owns the draft'],
   "$('review')::click":           ['singleton', ['openReviewFlow'], 'admission-controlled: it acquires the edit lock or returns'],
   "$('pubback')::click":          ['singleton', ['closeReview'], 'closing is refused while this world has a publish in flight'],
   "PUBBTN::click":                ['singleton', ['runPublish'], 'admission-controlled, and validates a current review before acquiring'],
-  "document::portal:auth":        ['ender', ['invalidateReview', 'state.draft', 'state.groups', 'state.currentRid', 'state.uid'], 'the identity change that ENDS a world; it clears, then repaints what follows'],
+  "document::portal:auth":        ['ender', ['invalidateReview', 'repaintFromDraft', 'state.draft', 'state.groups', 'state.currentRid', 'state.uid'], 'the identity change that ENDS a world; it clears, then repaints what follows'],
   "renderRail::callback":         ['view', ['state.selectedCat'], 'which category the rail highlights'],
   "renderDetail::callback":       ['bound', ['openDrawer'], 'the inline price cells. onPrice is bound AT THE CALL SITE — the function itself belongs to no world — and is deliberately NOT listed here, so the lexical check requires it to sit inside the wrapper. openDrawer is listed: it writes only which dish the drawer shows.'],
   "renderAttestation::callback":  ['bound', [], '🔴 the acknowledgement — nothing here is allowed outside the wrapper'],
@@ -1407,47 +1413,133 @@ function grammarViolations(src) {
   return bad;
 }
 
-test('🔴 every use of `state` reduces to a shape that was ruled safe', () => {
-  const bad = grammarViolations(readFileSync(join(DIR, 'app.js'), 'utf8'));
-  assert.deepStrictEqual(bad, [], `🔴 app.js contains state access the grammar cannot prove safe:\n  ${bad.join('\n  ')}`);
+
+
+// ── THE AST GUARD ────────────────────────────────────────────────────────────────────────────────
+// A text scanner cannot be deny-by-default. To reject the unrecognised it must first recognise
+// everything, so "a context I could not parse" necessarily falls through to safe — and three separate
+// bypasses got in exactly there, each a syntax form the previous version had not been told about.
+//
+// wiring-ast.mjs reads app.js as a syntax tree with real lexical binding resolution, classifies every
+// reference to `state` (and to anything aliased from it) by its position in the tree, and ends its
+// switch in a REJECT. There is no fall-through to safe, so there is no next syntax form.
+
+test('🔴 every reference to `state` in app.js reduces to a proven-safe shape', () => {
+  const bad = stateViolations(readFileSync(join(DIR, 'app.js'), 'utf8'));
+  assert.deepStrictEqual(bad, [], `🔴 app.js reaches state in ways the analysis cannot prove safe:\n  ${bad.join('\n  ')}`);
 });
 
-test('🔴 the grammar rejects bypasses it was never told about', () => {
-  // Both fixtures the gate named, plus the forms nobody has proposed yet. None of these appears in the
-  // guard as a pattern to look for: each fails because it is not on the allowlist.
-  const wrap = (line) => `export const state = { review: null };\nfunction f() {\n  ${line}\n}\n`;
-  const BYPASSES = [
-    ['Object.assign(state.review, { acknowledged: true });',        'not a ruled consumer'],
-    ['const r = state.review; Object.assign(r, { a: 1 });',         'not a ruled consumer'],
-    ['const r = state.review; (r).acknowledged ||= true;',          'through the alias'],
-    ['const r = state.review; ((r)).acknowledged = true;',          'through the alias'],
-    ['const r = state.review; r["acknowledged"] = true;',           'computed access'],
-    ['const { review } = state; review.acknowledged = true;',       'destructured'],
-    ['const [g] = state.groups; g.x = 1;',                          'destructured'],
-    ["state['review'].acknowledged = true;",                        'computed access'],
-    ['state.review.acknowledged ||= true;',                         'only plain assignment'],
-    ['state.review.acknowledged &&= true;',                         'only plain assignment'],
-    ['state.review.acknowledged ??= true;',                         'only plain assignment'],
-    ['state.publishGen++;',                                         'only plain assignment'],
-    ['state.groups.push(1);',                                       'not a ruled method'],
-    ['state.groups.sort();',                                        'not a ruled method'],
-    ['state.review.a.b.c = 1;',                                     'deeper than a state field'],
-    ['const r = state.review; const r2 = r; r2.acknowledged = 1;',  'aliased again'],
-    ['sneak(state.review);',                                        'not a ruled consumer'],
+test('🔴 the AST guard rejects constructs nobody told it about', () => {
+  const mod = (body) => `export const state = { review: null, groups: [], publishGen: 0 };\nfunction f(obj) {\n  ${body}\n}\n`;
+  const REJECTED = [
+    // ── the whole-gate reproduction: a reference parked in a container, reached by computed key ──
+    ['const box = { r: state.review }; box["r"].acknowledged = true;',   'escapes into a container'],
+    ['const box = [state.review]; box[0].acknowledged = true;',          'escapes its scope'],
+    // ── the three that defeated the regex, kept as regression fixtures ──
+    ['Object.assign(state.review, { acknowledged: true });',             'not a ruled consumer'],
+    ['const r = state.review; Object.assign(r, { a: 1 });',              'not a ruled consumer'],
+    ['const r = state.review; (r).acknowledged ||= true;',               'through the alias'],
+    // ── complete assignment targets, including destructuring ──
+    ['({ acknowledged: state.review.acknowledged } = obj);',             'state'],
+    ['[state.publishGen] = [1];',                                        'state'],
+    ['const { review } = state; review.acknowledged = true;',            'destructured'],
+    ['const [g] = state.groups; g.x = 1;',                               'destructured'],
+    ['({ ...state.review } = obj);',                                     'state'],
+    // ── prefix AND postfix updates ──
+    ['state.publishGen++;',                                              'only plain assignment'],
+    ['++state.publishGen;',                                              'only plain assignment'],
+    ['state.publishGen--;',                                              'only plain assignment'],
+    // ── every compound operator, named and unnamed ──
+    ['state.review.acknowledged ||= true;',                              'only plain assignment'],
+    ['state.review.acknowledged &&= true;',                              'only plain assignment'],
+    ['state.review.acknowledged ??= true;',                              'only plain assignment'],
+    ['state.publishGen += 1;',                                           'only plain assignment'],
+    ['state.publishGen >>>= 1;',                                         'only plain assignment'],
+    // ── computed member chains ──
+    ['state["review"].acknowledged = true;',                             'computed access'],
+    ['const k = "review"; state[k].acknowledged = true;',                'computed access'],
+    ['state.groups[0].price = 1;',                                       'computed access'],
+    // ── template interpolation, plain and tagged ──
+    ['const s = `${state.review.acknowledged = true}`; void s;',         'stand alone as a statement'],
+    ['const s = tag`${state.review}`; void s;',                          'not a ruled context'],   // a TAGGED template hands the value to the tag
+    // ── every call argument, not just the first; and the comma operator ──
+    ['sneak(1, 2, state.review);',                                       'not a ruled consumer'],
+    ['sneak((0, state.review));',                                        'not a ruled consumer'],
+    ['(state.review.acknowledged = true, 0);',                           'stand alone as a statement'],
+    ['sneak(true ? state.review : null);',                               'not a ruled consumer'],
+    ['sneak(state.review ?? null);',                                     'not a ruled consumer'],
+    ['sneak(obj || state.review);',                                      'not a ruled consumer'],
+    // ── accessors and returned-reference escapes ──
+    ['return state.review;',                                             'escapes its scope'],
+    ['const get = () => state.review; get().acknowledged = true;',       'escapes its scope'],
+    ['const o = { get r() { return state.review; } }; void o;',          'escapes its scope'],
+    ['Object.defineProperty(state, "review", { value: 1 });',            'not a ruled consumer'],
+    ['const p = new Proxy(state, {}); p.review = 1;',                    'not a ruled consumer'],
+    // ── reference escapes into containers and calls ──
+    ['sneak({ ...state.review });',                                      'escapes its scope'],
+    ['const arr = [state.review]; void arr;',                            'escapes its scope'],
+    ['state.groups.push(1);',                                            'not a ruled method'],
+    ['state.groups.sort();',                                             'not a ruled method'],
+    // ── depth, second-hop aliases, and the root itself ──
+    ['state.review.a.b.c = 1;',                                          'reaches deeper'],
+    ['const r = state.review; const r2 = r; r2.acknowledged = 1;',       'through the alias'],
+    ['const s2 = state; s2.review = null;',                              'through the alias'],
   ];
-  for (const [line, expect] of BYPASSES) {
-    const bad = grammarViolations(wrap(line));
-    assert.ok(bad.length > 0, `🔴 the grammar ADMITTED a bypass: ${line}`);
-    assert.ok(bad.some((b) => b.includes(expect)), `wrong reason for "${line}": ${bad.join(' | ')}`);
+  for (const [body, expect] of REJECTED) {
+    const bad = stateViolations(mod(body), 'fixture');
+    assert.ok(bad.length > 0, `🔴 the AST guard ADMITTED: ${body}`);
+    assert.ok(bad.some((b) => b.includes(expect)), `wrong reason for "${body}": ${bad.join(' | ')}`);
   }
-  // ...and it does not reject the ordinary shapes the portal is written in, or it would be useless.
+
+  // ...and it accepts the shapes the portal is actually written in, or it would be useless.
   for (const ok of [
-    'const r = state.review; if (r && r.editToken) return r.editToken;',
     'state.review = null;',
-    'state.review.acknowledged = v === true;',
-    'setItemPrice(state.draft, k, v);',
-    'const g = state.groups.find((x) => x.id === state.selectedCat);',
-    'state.openGroups.add(name);',
-    'const c = state.groups[0].category;',
-  ]) assert.deepStrictEqual(grammarViolations(wrap(ok)), [], `the grammar rejected legitimate code: ${ok}`);
+    'state.review.acknowledged = true;',
+    'const r = state.review; if (r && r.editToken) return r.editToken;',
+    'setItemPrice(state.review, 1, 2);',
+    'const g = state.groups.find((x) => x.id === 1); void g;',
+    'if (state.review) return 1;',
+    'const n = `${state.publishGen}`; void n;',
+    'const c = state.groups[0].id; void c;',
+    'state.groups = state.groups || [];',
+  ]) assert.deepStrictEqual(stateViolations(mod(ok), 'fixture'), [], `the guard rejected legitimate code: ${ok}`);
+});
+
+test('🔴 the hand-written writer list matches what the tree actually says', () => {
+  // WRITERS drives the listener census. It was maintained by hand, so it described the code only for
+  // as long as nobody renamed a function or added one — and "does this write?" is an effect, not a
+  // name. The tree computes the answer transitively; the list must contain it.
+  const computed = writerFunctions(readFileSync(join(DIR, 'app.js'), 'utf8')).names;
+  assert.ok(computed.size >= 8, `sanity: the analysis found the writers (${computed.size})`);
+  const missing = [...computed].filter((n) => !WRITERS.includes(n));
+  assert.deepStrictEqual(missing, [],
+    `🔴 these functions write state (directly or by calling something that does) but are not in WRITERS, so a listener could call one and the census would not notice: ${missing.join(', ')}`);
+});
+
+test('🔴 the parser is test-only — nothing it needs can reach the browser', () => {
+  // The portal has no build step: index.html loads plain ES modules from this directory, so a
+  // dependency is only safe while nothing served can reach it. acorn exists for the guards above and
+  // must stay on that side of the line.
+  const html = readFileSync(join(DIR, 'index.html'), 'utf8');
+  assert.ok(!/node_modules|acorn|wiring-ast/.test(html), 'index.html references nothing from the test harness');
+  for (const f of JS) {
+    const c = codeOf(f);
+    assert.ok(!/from\s+'acorn|require\(\s*'acorn|node_modules/.test(c), `${f} must not import the parser — it is not served`);
+    assert.ok(!/wiring-ast/.test(c), `${f} must not import the guard harness`);
+  }
+  // and the manifest exists only to carry devDependencies
+  const pkg = JSON.parse(readFileSync(join(DIR, 'package.json'), 'utf8'));
+  assert.deepStrictEqual(pkg.dependencies, undefined, '🔴 the portal has no RUNTIME dependencies, and must not acquire one');
+});
+
+test('🔴 the view modules cannot reach state — which is what licenses handing them references', () => {
+  // renderRail, renderDetail and the rest are on the AST guard's consumer allowlist, meaning a live
+  // state reference may be passed to them. That is only sound because they cannot write through it:
+  // these files do not reference `state` at all, and never import it. Asserted, not assumed — the
+  // allowlist entry is worth exactly as much as this check.
+  for (const f of ['render.js', 'review.js', 'portal-logic.js']) {
+    const c = codeOf(f);
+    assert.ok(!/\bstate\b/.test(c), `🔴 ${f} now references \`state\` — it is a view module and the AST guard trusts it not to`);
+    assert.ok(!/from\s+'\.\/app\.js'/.test(c), `${f} must not import the app module`);
+  }
 });
