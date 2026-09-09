@@ -221,3 +221,54 @@ test('every class the shipped DOM applies is styled — a re-skin cannot silentl
   // non-vacuity: the detector fires on a class that really is absent
   assert.ok(!new RegExp('\\.no-such-class-anywhere(?![a-zA-Z0-9_-])').test(css), 'the detector reports an absent class as absent');
 });
+
+// The class-level check above is necessary and NOT sufficient. A re-skin can keep a class NAME while
+// dropping the declarations the markup depends on — which is exactly what happened here, because the
+// mock styles some of these names for a DIFFERENT element than the portal renders: `.price` is the
+// edit-input wrapper there and read-only price text here; `.sinfo` is styled under `.switch`, not
+// under the account footer's `.sfoot`. Both classes "existed" while the portal's behaviour was gone.
+//
+// So this pins the DECLARATIONS, per selector. Each entry is a functional property — one whose loss
+// changes layout or legibility, not one that is taste.
+test('functional declarations the read-only portal depends on survive a re-skin', () => {
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+
+  // selector → declarations that must reach it, with the failure each one prevents
+  const CONTRACT = [
+    ['.price', 'font-variant-numeric', 'tabular figures — prices in a column must align digit-for-digit'],
+    ['.price', 'white-space', 'no-wrap — "Sin precio" must not break across lines mid-row'],
+    ['.price', 'color', 'the read-only price is ink, not the wrapper default'],
+    ['.sfoot .sinfo', 'min-width', 'min-width:0 — without it a flex child refuses to shrink and cannot ellipsize'],
+    ['.sfoot .sinfo', 'flex', 'the account block takes the free space between avatar and logout'],
+    ['.sfoot .sinfo b', 'text-overflow', 'ellipsis — a long merchant email otherwise overruns the logout button'],
+    ['.sfoot .sinfo b', 'overflow', 'hidden, or text-overflow has nothing to clip'],
+    ['.switch .chev', 'opacity', 'the base state the carried `.switch.multi .chev{opacity:1}` overrides — without it the chevron shows for single-restaurant accounts'],
+    ['.empty b', 'display', 'block — the empty-state heading and its body otherwise run together on one line'],
+  ];
+
+  // A declaration counts as reaching a selector only when THAT selector carries it. A property on a
+  // different selector that happens to match some other element is not the same rule.
+  const declaredOn = (sel, prop) => {
+    for (const line of css.split('\n')) {
+      const i = line.indexOf('{');
+      if (i === -1 || !line.includes('}')) continue;
+      const selectors = line.slice(0, i).split(',').map((s) => s.trim());
+      if (!selectors.includes(sel)) continue;
+      const decls = line.slice(i + 1, line.lastIndexOf('}'));
+      if (new RegExp(`(^|;)\\s*${prop}\\s*:`).test(decls)) return true;
+    }
+    return false;
+  };
+
+  for (const [sel, prop, why] of CONTRACT) {
+    assert.ok(declaredOn(sel, prop),
+      `${sel} lost its ${prop} declaration — ${why}. The class may still exist; the behaviour does not.`);
+  }
+
+  // non-vacuity, both directions: the matcher finds a property that IS there and misses one that is not
+  assert.ok(declaredOn('.price', 'font-weight'), 'the matcher can see a declaration that is present');
+  assert.ok(!declaredOn('.price', 'border-collapse'), 'the matcher does not report an absent declaration as present');
+  assert.ok(!declaredOn('.no-such-selector', 'color'), '...nor find declarations on a selector that does not exist');
+  // and it must not credit a DIFFERENT selector that merely contains this one as a substring
+  assert.ok(!declaredOn('.sinfo', 'text-overflow'), '`.sinfo` alone is not `.sfoot .sinfo b` — selectors match exactly, not by substring');
+});

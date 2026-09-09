@@ -525,6 +525,37 @@
    Every token these reference is defined above, so they take Bold-Editorial values
    unchanged. No rewriting was needed and none was done.
    ───────────────────────────────────────────────────────────────────────────── */
+
+/* DECLARATION-LEVEL CARRY (codex REVISE). The rule above selects by CLASS — "a class the mock's
+   stylesheet never styles" — and that is not sufficient. The mock styles some of these class NAMES
+   for a DIFFERENT element than the portal renders, so the class looked covered while the
+   declarations the portal's markup depends on were gone:
+
+     .price          mock = the edit-input WRAPPER (position:relative). Portal = the read-only
+                     price TEXT (render.js:30 renders "L…" / "Sin precio"). The wrapper rule carries
+                     no type treatment, so the read-only price lost tabular figures and its
+                     no-wrap. Merged back onto .price, which does not disturb `.price input` — the
+                     input sets its own family/size/weight and keeps the wrapper's position:relative.
+     .sfoot .sinfo   mock styles `.switch .sinfo`, a different ancestor. The account footer
+                     (index.html:51, render.js:51) needs its own min-width:0/flex:1, and the <b>
+                     needs the ellipsis, or a long email overruns the role line and the logout button.
+     .switch .chev   the mock's .chev rule has no opacity, so the carried `.switch.multi .chev
+                     {opacity:1}` had no base state to override — the chevron showed for single-
+                     restaurant accounts too. A carried rule whose counterpart is missing is worse
+                     than carrying neither.
+     .empty b        the empty-state heading (render.js:88,98 append <b> + <span>); with no
+                     display:block the heading and its body text run together on one line.
+
+   NOT restored, deliberately — these are the new design, not losses: `.railitem.on::before` (the
+   left accent bar; Bold Editorial marks the active row with border-color + accent text instead) and
+   `.detail`'s box-shadow (the editorial surface is flat). `.tbtn .sun/.moon` needed nothing: the
+   mock carries its own, inverted for the light default.
+   ───────────────────────────────────────────────────────────────────────────── */
+  .price{font-variant-numeric:tabular-nums;font-weight:650;color:var(--ink);white-space:nowrap}
+  .sfoot .sinfo{min-width:0;flex:1}
+  .sfoot .sinfo b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}
+  .switch .chev{opacity:0;transition:opacity .15s}
+  .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:6px}
   .switch.multi .chev{opacity:1}
   .switchwrap{position:relative;margin:2px 0 20px}
   .switchwrap .switch{margin:0}
