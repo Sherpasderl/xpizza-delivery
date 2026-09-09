@@ -695,3 +695,63 @@ test('every publish state is wired — and edit_superseded re-reviews rather tha
   assert.ok(/dataset\.busy\s*=/.test(app), 'the publish button is marked busy while the request is in flight');
   assert.ok(/delete .*dataset\.busy/.test(app), '...and unmarked when it settles, however it settles');
 });
+
+test('no server error on the write path escapes the designed panels', () => {
+  // codex #1, structurally. The behavioural half lives in review.test.mjs (every code, plus shapes
+  // that are not codes, yields a panel). This half asserts the WRITE PATH routes into it: both calls
+  // that can fail — editCatalog and publishEdited — hand their error to outcomeFor rather than to a
+  // bespoke message box, an alert, or nothing.
+  const app = codeOf('app.js');
+  const catches = [...app.matchAll(/\}\s*catch\s*\(e\)\s*\{([\s\S]{0,400}?)\n\s{0,6}\}/g)].map((m) => m[1]);
+  assert.ok(catches.length >= 3, `non-vacuity: the scan must find the catch blocks (${catches.length})`);
+
+  // the two WRITE catches must route to the panels; the READ catches legitimately use showEmpty,
+  // which is the 2b-2a surface for "your menu could not be loaded".
+  const writeCatches = catches.filter((c) => /outcomeFor|showEmpty/.test(c));
+  assert.ok(writeCatches.length >= 3, 'every catch resolves to a designed surface');
+  const routed = catches.filter((c) => /showOutcome\(outcomeFor\(e\)\)/.test(c));
+  assert.strictEqual(routed.length, 2, 'BOTH write calls — editCatalog and publishEdited — route to the panels');
+
+  // and nothing anywhere reaches for an undesigned sink
+  for (const f of JS) {
+    const c = codeOf(f);
+    assert.ok(!/\balert\s*\(/.test(c), `${f} must not use alert() — the mock does, for its Historial stub`);
+    assert.ok(!/\bconfirm\s*\(/.test(c), `${f} must not use confirm() — a browser dialog is not a designed state`);
+    assert.ok(!/\btoast\s*\(/.test(c), `${f} has no toast fallback — every state is a panel`);
+  }
+});
+
+test('the mobile breakpoint covers the surfaces this slice added', () => {
+  // Verified STATICALLY, and the reason is worth recording: the automation harness pins the layout
+  // viewport at 1440 regardless of window size, so a real narrow-viewport render could not be forced
+  // from here. Desktop light and dark WERE verified in a real browser; mobile layout is the one thing
+  // in this smoke that rests on reading the rules rather than seeing them, and it is the owner's
+  // device check at deploy.
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  // EVERY 920px block, not the first. The stylesheet has several — one is a 56-character one-liner
+  // (`@media(max-width:920px){.rbar{left:0}}`) that a first-match scan lands on and then fails its own
+  // non-vacuity floor on. Same "the first occurrence is not the one you want" trap as the mutation
+  // harnesses in Tasks 4 and 7.
+  const blocks = [];
+  const re = /@media\s*\(\s*max-width\s*:\s*920px\s*\)/g;
+  for (let m = re.exec(css); m; m = re.exec(css)) {
+    let d = 0, end = m.index;
+    for (let j = css.indexOf('{', m.index); j < css.length; j++) {
+      if (css[j] === '{') d++;
+      else if (css[j] === '}' && --d === 0) { end = j; break; }
+    }
+    blocks.push(css.slice(m.index, end + 1));
+  }
+  assert.ok(blocks.length >= 1, 'the mobile breakpoint exists');
+  const block = blocks.join('\n');
+  assert.ok(block.length > 200, `non-vacuity: the blocks were extracted (${blocks.length} blocks, ${block.length} chars)`);
+
+  // the two surfaces THIS slice added that are position-fixed and would otherwise sit off a narrow
+  // screen: the review bar is offset by the sidebar width, and the drawer is a fixed-width panel.
+  assert.ok(/\.rbar\s*\{[^}]*left\s*:\s*0/.test(block),
+    'the review bar goes full-width on mobile — it is offset by the sidebar on desktop and would hang off otherwise');
+  assert.ok(/max-width\s*:\s*93vw/.test(css),
+    'the drawer is capped at 93vw, so it can never be wider than the screen');
+  // and the shell itself reflows
+  assert.ok(/\.app\s*\{/.test(block), 'the app shell reflows at the breakpoint');
+});

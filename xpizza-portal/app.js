@@ -421,17 +421,12 @@ async function openReviewFlow() {
     restorePublishFooter();
     $('scrim').classList.add('show');
   } catch (e) {
-    // Task 7 gives each server code its own designed panel. Until then this states the failure
-    // honestly rather than pretending the review opened — a blank modal would read as "no changes".
-    $('revSub').textContent = '';
-    $('mbody').replaceChildren();
-    const [t, dsc] = messageFor(e);
-    const box = document.createElement('div');
-    box.className = 'empty';
-    box.append(Object.assign(document.createElement('b'), { textContent: t }));
-    box.append(Object.assign(document.createElement('span'), { textContent: dsc }));
-    $('mbody').append(box);
-    $('scrim').classList.add('show');
+      // The SAME designed panels the publish uses. editCatalog and publishEdited share most of their
+      // error surface — stale_edit is an editCatalog code with its own panel — so routing this through
+      // outcomeFor means every server error on the write path lands somewhere the merchant can act on,
+      // whichever call produced it. The generic durable panel catches anything unmapped.
+      showOutcome(outcomeFor(e));
+      $('scrim').classList.add('show');
   } finally {
     btn.disabled = !isPublishable(state.draft);
   }
