@@ -20,6 +20,7 @@
 // ---------------------------------------------------------------------------
 const { readOwnerRestaurants } = require('./owner-index');
 const { sourceRefOf, validateSource } = require('./source-store');
+const { usesPlatformFactura } = require('../factura/eligibility');   // 2b-2b: the fiscal capability, server-owned
 // The EXISTING codec from the 2b-1 write path, imported rather than reimplemented. `sourceUpdateTime`
 // is what a later slice hands straight back to editCatalog as `baseSourceUpdateTime`, and Firestore
 // evaluates that as a nanosecond-precise precondition. A second codec that drifted by even one digit
@@ -139,6 +140,14 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     sourceUpdateTime: doc.updateTime ? encodeUpdateTime(doc.updateTime) : null,
     // null is an honest answer: a restaurant can have a draft and nothing published yet.
     activeVersionId: activeVersionId == null ? null : activeVersionId,
+    // THE FISCAL CAPABILITY, so the portal never has to ask `rid === 'x_pizza'`. Whether an edit
+    // touches a SAR factura is a fact this system already owns (factura/eligibility.js), and a browser
+    // is the worst place to keep a second copy of it: a brand literal shipped to a client is wrong the
+    // day a third merchant joins the platform factura, and cannot be corrected without a redeploy.
+    //
+    // Reported for every restaurant, always a boolean — an absent field would make the UI guess, and
+    // the safe guess and the correct guess are not the same for a merchant who does owe a factura.
+    usesPlatformFactura: usesPlatformFactura(rid),
   });
 }
 

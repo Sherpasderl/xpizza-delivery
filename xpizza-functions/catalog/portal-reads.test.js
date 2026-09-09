@@ -386,6 +386,128 @@ const TWO = {
     ok('the portal reads use their own narrow CORS list; the account endpoints keep theirs, unwidened');
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════════════════════
+  // 2b-2b Task 2b — THE FISCAL CAPABILITY FLAG, and the CORS the write path needs.
+  // ═══════════════════════════════════════════════════════════════════════════════════════════
+  {
+    // The portal must decide whether to show the SAR attestation. It must NOT decide that from the
+    // restaurant id: `rid === 'x_pizza'` in a browser is a brand literal in the one place it cannot be
+    // corrected without a redeploy, and it is wrong the day a third merchant joins the platform
+    // factura. The server already owns this fact (factura/eligibility.js), so it says it.
+    const asOwner2 = async () => ({ ok: true, uid: 'u1', role: 'owner', actor: 'o@m.hn' });
+    const gReq2 = (rid) => ({ method: 'GET', query: { restaurantId: rid }, get: () => 'Bearer tok' });
+    const nameKeyed = (rid) => ({
+      restaurant_id: rid, schema_version: 1,
+      items: [{ key: 'Plato Uno', price: 250, display: { id: 1, cat: 'principales', name: 'Plato Uno', price: 250 } }],
+      extras: [{ key: 'Queso', price: 40, display: { id: 'e1', name: 'Queso', price: 40 } }],
+      structure: { schema_version: 2, item_order: ['Plato Uno'], categories: [{ id: 'principales' }] },
+    });
+    // la_musa keys by id, so its fixture must too — otherwise validateSource rejects it and this would
+    // be measuring the validator rather than the flag.
+    const idKeyed = (rid) => ({
+      restaurant_id: rid, schema_version: 1,
+      items: [{ key: 'plato_01', price: 250, display: { id: 'plato_01', cat: 'principales', name: 'Plato Uno', price: 250 } }],
+      extras: [{ key: 'queso', price: 40, display: { id: 'queso', name: 'Queso', price: 40 } }],
+      structure: { schema_version: 2, item_order: ['plato_01'], categories: [{ id: 'principales' }] },
+    });
+    const srcFor = (rid) => (rid === 'la_musa' ? idKeyed(rid) : nameKeyed(rid));
+
+    for (const [rid, expected, why] of [
+      ['x_pizza', true,  'issues the SAR factura through this platform'],
+      ['la_musa', false, 'files through its own Soft Restaurant POS'],
+      ['merch_3', false, 'a config-only merchant is not on the platform factura'],
+    ]) {
+      const r = await getEditableCatalogCore({
+        db: {}, fsdb: {}, authorize: asOwner2, readActiveVersionId: async () => 'v-1', ...mkFs(srcFor(rid)),
+      }, gReq2(rid));
+      assert.strictEqual(r.status, 200, `${rid}: expected 200, got ${r.status} ${JSON.stringify(r.body).slice(0, 160)}`);
+      assert.strictEqual(r.body.usesPlatformFactura, expected, `${rid} — ${why}`);
+      assert.strictEqual(typeof r.body.usesPlatformFactura, 'boolean', `${rid}: a boolean, never undefined — the UI must not have to guess`);
+    }
+    // It must be the SERVER's fact, not a second copy of the rule living in this test.
+    const { usesPlatformFactura } = require('../factura/eligibility');
+    for (const rid of ['x_pizza', 'la_musa', 'merch_3']) {
+      const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner2, readActiveVersionId: async () => 'v-1', ...mkFs(srcFor(rid)) }, gReq2(rid));
+      assert.strictEqual(r.body.usesPlatformFactura, usesPlatformFactura(rid),
+        `${rid}: the response must agree with factura/eligibility, not with a duplicate rule`);
+    }
+    // 🔴 THE DISCRIMINATOR. Everything above passes just as well against a hardcoded `rid === 'x_pizza'`
+    // — the literal and the server's set agree on every restaurant that exists today, which is exactly
+    // why a brand literal here would survive review and every test. So MOVE the server's fact and
+    // require the response to move with it. A literal cannot follow.
+    {
+      const { FACTURA_PLATFORM_RESTAURANTS } = require('../factura/eligibility');
+      FACTURA_PLATFORM_RESTAURANTS.add('merch_3');
+      try {
+        const r = await getEditableCatalogCore({
+          db: {}, fsdb: {}, authorize: asOwner2, readActiveVersionId: async () => 'v-1', ...mkFs(srcFor('merch_3')),
+        }, gReq2('merch_3'));
+        assert.strictEqual(r.body.usesPlatformFactura, true,
+          'a merchant ADDED to the platform-factura set must report true — a `rid === \'x_pizza\'` literal reports false here');
+      } finally { FACTURA_PLATFORM_RESTAURANTS.delete('merch_3'); }
+      // ...and it moves back, so the flag tracks the set rather than latching
+      const back = await getEditableCatalogCore({
+        db: {}, fsdb: {}, authorize: asOwner2, readActiveVersionId: async () => 'v-1', ...mkFs(srcFor('merch_3')),
+      }, gReq2('merch_3'));
+      assert.strictEqual(back.body.usesPlatformFactura, false, 'and false again once removed — the fixture cleaned up after itself');
+    }
+    ok('getEditableCatalog reports usesPlatformFactura from the server\'s own eligibility set — both brands, a config-only merchant, and one moved in and out of the set');
+  }
+
+  {
+    // ADDITIVE ONLY. The existing fields carry the CAS baseline the write path depends on; a new field
+    // must not disturb them, and must not appear on a refusal either — a 403 body that leaked a
+    // capability flag would answer a question the caller was not allowed to ask.
+    const asOwner2 = async () => ({ ok: true, uid: 'u1', role: 'owner', actor: 'o@m.hn' });
+    const src = realSource('x_pizza');
+    const gq = { method: 'GET', query: { restaurantId: 'x_pizza' }, get: () => 'Bearer tok' };
+    const r = await getEditableCatalogCore({
+      db: {}, fsdb: {}, authorize: asOwner2, readActiveVersionId: async () => 'v-9', ...mkFs(src),
+    }, gq);
+    assert.deepStrictEqual(Object.keys(r.body).sort(), ['activeVersionId', 'source', 'sourceUpdateTime', 'usesPlatformFactura'],
+      'exactly the three existing fields plus the one new one — nothing else appeared');
+    assert.deepStrictEqual(r.body.source, src, 'the source is untouched');
+    assert.strictEqual(r.body.sourceUpdateTime, '1788754374.634000000', 'the CAS baseline is byte-identical to before');
+    assert.strictEqual(r.body.activeVersionId, 'v-9', 'and the live version id');
+
+    const denied = await getEditableCatalogCore({
+      db: {}, fsdb: {}, authorize: async () => ({ ok: true, uid: 'u2', role: 'dispatcher' }), readActiveVersionId: async () => 'v', ...mkFs(src),
+    }, gq);
+    assert.strictEqual(denied.status, 403, 'a dispatcher is still refused by the tenant-facing read');
+    assert.ok(!('usesPlatformFactura' in denied.body), 'and the refusal leaks no capability flag');
+    ok('the new field is purely additive: the three existing fields are byte-identical and a refusal carries nothing new');
+  }
+
+  {
+    // THE CORS FIX. editCatalog and publishEdited shipped with 2b-1 on 09-07, a day before
+    // PORTAL_ORIGINS existed, so they took the then-default ACCOUNT_ORIGINS — the two CUSTOMER order
+    // sites. The merchant portal could not call either: every request died at the preflight, and no
+    // unit test would ever notice, because they all mock fetch.
+    //
+    // They move to PORTAL_ORIGINS *instead of*, not *in addition to*. The portal is their only browser
+    // caller (verified across the tree), so this is strictly NARROWER — it also removes two money-write
+    // endpoints from the reach of the customer order sites, where they never belonged.
+    const CODE = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8');
+    const blockOf2 = (name) => {
+      const start = CODE.indexOf(`exports.${name} = onRequest(`);
+      assert.ok(start > -1, `the ${name} wrapper must exist`);
+      const next = CODE.indexOf('\nexports.', start + 1);
+      return CODE.slice(start, next === -1 ? CODE.length : next);
+    };
+    for (const fn of ['editCatalog', 'publishEdited']) {
+      const b = blockOf2(fn);
+      assert.ok(b.length > 100, `non-vacuity: the ${fn} block was found`);
+      assert.ok((b.match(/= onRequest\(/g) || []).length === 1, `the ${fn} block is bounded — it must not swallow the next handler`);
+      assert.ok(/cors: PORTAL_ORIGINS/.test(b), `${fn} must accept the PORTAL origin — the portal is its only browser caller`);
+      assert.ok(!/cors: ACCOUNT_ORIGINS/.test(b), `${fn} must NOT stay on the customer order sites' list`);
+    }
+    // and the account list is not widened to compensate — the point is that the two stay separate
+    assert.ok(!/PORTAL_ORIGINS/.test(blockOf2('requestOtp')), 'the account endpoints did not inherit the portal list');
+    assert.ok(/const ACCOUNT_ORIGINS = \[\s*'https:\/\/orders\.xpizza\.hn',\s*'https:\/\/orders\.lamusa\.hn',\s*\];/.test(CODE),
+      'ACCOUNT_ORIGINS is unchanged — exactly the two customer order sites, never widened to reach the portal');
+    ok('the two write endpoints accept the portal origin and only it; ACCOUNT_ORIGINS is untouched');
+  }
+
   console.log(`portal-reads: OK (${n})`);
   FINISHED = true;
 })().catch((e) => { console.error(e); process.exit(1); });

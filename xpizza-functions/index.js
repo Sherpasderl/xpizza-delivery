@@ -5872,7 +5872,7 @@ async function readActiveBuiltForEdit(rid) {
 }
 
 exports.editCatalog = onRequest(
-  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 60, memory: '512MiB', maxInstances: 4 },
+  { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 60, memory: '512MiB', maxInstances: 4 },
   async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
@@ -5914,7 +5914,7 @@ function decodeUpdateTimeForEdit(v) {
 }
 
 exports.publishEdited = onRequest(
-  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 120, memory: '512MiB', maxInstances: 2 },
+  { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 120, memory: '512MiB', maxInstances: 2 },
   async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
