@@ -66,7 +66,12 @@ function installDom() {
     createElementNS: (_ns, t) => mk(t, null),
     querySelector: () => null,
     querySelectorAll: () => [],
-    addEventListener: () => {},
+    // A REAL listener registry, not a no-op. app.js's document-level wiring — portal:auth,
+    // portal:signed-in, portal:restaurant — is exactly the surface these interleaving tests drive, and
+    // a shim that swallowed listeners would make every one of them pass without running anything.
+    _listeners: {},
+    addEventListener: (ev, fn) => { (globalThis.document._listeners[ev] = globalThis.document._listeners[ev] || []).push(fn); },
+    dispatchEvent: (evt) => { for (const fn of (globalThis.document._listeners[evt.type] || [])) fn(evt); return true; },
     documentElement: mk('html', null),
   };
   globalThis.window = { matchMedia: () => ({ matches: false }) };
@@ -155,4 +160,87 @@ test('every capture is declared before every top-level use', async () => {
         `${name} is used at top level on line ${i + 1} but declared on line ${declLine + 1} — a temporal-dead-zone throw at module load`);
     });
   }
+});
+
+// ── ASYNC INTERLEAVING ───────────────────────────────────────────────────────────────────────────
+// The structural guards can see that a generation check is WRITTEN; they cannot see whether a stale
+// continuation is actually dropped. These launch a real operation, change the world mid-flight, then
+// let the stale one settle — the async sibling of the load-execution test above.
+//
+// The app module is driven for real; only auth and fetch are stubbed.
+function deferred() { let resolve, reject; const promise = new Promise((res, rej) => { resolve = res; reject = rej; }); return { promise, resolve, reject }; }
+
+function installFetch(handler) {
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    const fn = String(url).split('/').pop().split('?')[0];
+    calls.push({ fn, body: opts && opts.body ? JSON.parse(opts.body) : null });
+    return handler(fn, calls.length);
+  };
+  return calls;
+}
+const SOURCE = () => ({
+  restaurant_id: 'x_pizza', schema_version: 1,
+  items: [{ key: 'Pizza', price: 299, display: { id: 1, cat: 'c', name: 'Pizza', price: 299 } }],
+  extras: [], structure: { schema_version: 2, item_order: ['Pizza'], categories: [{ id: 'c' }] },
+});
+const okJson = (body) => ({ ok: true, status: 200, json: async () => body });
+
+test('🔴 a load that settles AFTER a tenant switch does not paint the tenant you left', async () => {
+  const byId = installDom();
+  const slow = deferred();
+  installFetch((fn, n) => (fn === 'getEditableCatalog' && n === 1
+    ? slow.promise                                  // x_pizza: never settles until we say so
+    : okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false })));
+  const app = await loadAppModule();
+
+  const first = app.loadMenu('x_pizza');            // in flight
+  const second = app.loadMenu('la_musa');           // the merchant switches; this one wins
+  await second;
+  const fiscalAfterSwitch = app.state.usesPlatformFactura;
+
+  slow.resolve(okJson({ source: SOURCE(), sourceUpdateTime: 'T1', activeVersionId: 'v1', usesPlatformFactura: true }));
+  await first;
+  assert.strictEqual(app.state.usesPlatformFactura, fiscalAfterSwitch,
+    '🔴 the stale response did NOT overwrite the current tenant’s fiscal capability');
+  assert.strictEqual(app.state.usesPlatformFactura, false, 'which is la_musa’s, the tenant actually selected');
+});
+
+test('🔴 a load that FAILS after a tenant switch does not erase the current tenant', async () => {
+  // The failure path is the one that shipped uncovered: it cleared groups and the rail BEFORE
+  // checking the generation, so a slow error from the tenant you left blanked the one you are on.
+  const byId = installDom();
+  const slow = deferred();
+  installFetch((fn, n) => (n === 1 ? slow.promise
+    : okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false })));
+  const app = await loadAppModule();
+
+  const first = app.loadMenu('x_pizza');
+  await app.loadMenu('la_musa');
+  const groupsAfterSwitch = app.state.groups.length;
+  assert.ok(groupsAfterSwitch > 0, 'premise: la_musa rendered something');
+
+  slow.reject(Object.assign(new Error('store_unavailable'), { code: 'store_unavailable', status: 503, kind: 'Unavailable' }));
+  await first;
+  assert.strictEqual(app.state.groups.length, groupsAfterSwitch,
+    '🔴 the stale FAILURE left the current tenant’s menu alone');
+});
+
+test('🔴 an auth change mid-flight drops the continuation and the acknowledgement', async () => {
+  const byId = installDom();
+  const slow = deferred();
+  installFetch((fn, n) => (fn === 'getEditableCatalog' && n === 1 ? slow.promise : okJson({})));
+  const app = await loadAppModule();
+
+  const load = app.loadMenu('x_pizza');
+  // owner A signs out, owner B signs in, while that load is still on the wire
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'A' } }));
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));
+  slow.resolve(okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: true }));
+  await load;
+
+  assert.strictEqual(app.state.review, null, 'no review survived the auth change');
+  assert.strictEqual(app.state.usesPlatformFactura, false,
+    '🔴 the stale load did not repopulate a fiscal capability for the new person');
+  assert.strictEqual(app.state.uid, 'B', 'and the session is the new one');
 });

@@ -59,6 +59,19 @@ export function commit(draft) {
   return draft;
 }
 
+// 🔴 COMMIT THE SNAPSHOT THAT WAS PUBLISHED, not whatever the draft holds now.
+//
+// The two differ whenever the merchant kept editing after opening the review: edit to 310 → review →
+// edit again to 320 → publish. What went live is the 310 that was REVIEWED and saved; commit(draft)
+// would move the baseline to 320, marking a price that never published as live — invisible in the
+// pending count and, with the saved-draft dead end, unpublishable.
+//
+// Committing the submitted snapshot instead leaves 320 correctly pending.
+export function commitTo(draft, publishedSource) {
+  draft.orig = clone(publishedSource);
+  return draft;
+}
+
 // The document to send. Deliberately the live object rather than a copy: callers read it to hash,
 // diff and POST, and a copy taken here would be one more thing that can fall out of step.
 export function draftSource(draft) {

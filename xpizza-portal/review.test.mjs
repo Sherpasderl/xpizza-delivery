@@ -586,7 +586,10 @@ test('a SUCCESS stays latched; a FAILURE releases so the merchant can retry', as
     const p = realPublisher();
     await p.run(fiscalReview(true));
     const again = await p.run(fiscalReview(true));
-    assert.strictEqual(again.skipped, 'in_flight', 'a second publish after success is refused');
+    // 'spent', not 'in_flight' — the request settled, so the wire is free; what refuses the second
+    // press is that this reviewed set's TOKEN is used. Splitting those two states is what stopped
+    // reset() from releasing a live request.
+    assert.strictEqual(again.skipped, 'spent', 'a second publish of the same reviewed set is refused');
     assert.strictEqual(ok.sent.length, 1, 'and sends nothing');
   } finally { ok.restore(); }
 
@@ -638,6 +641,9 @@ test('the publisher refuses a review that is missing or not ready, without touch
 import { outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 
 const SIX = ['stale_edit', 'edit_superseded', 'large_change_unconfirmed', 'not_owner', 'fiscal_ack_required', 'store_unavailable'];
+// STATUS IS PART OF THE SHAPE. api.js always sets one, and outcomeFor now uses it to tell a server
+// ANSWER (pre-commit) from a lost connection (uncertain). A fixture without it models a request that
+// never got a reply — which is a different case, not a simpler one.
 const err = (code, status = 400) => Object.assign(new Error(code), { code, status });
 
 test('each of the six primary codes gets its OWN designed panel', () => {
@@ -813,37 +819,36 @@ test('🔴 an outcome carries the OPERATION that failed, so RETRY redoes the rig
   assert.strictEqual(outcomeFor(e).op, 'publish', 'the default stays publish — the historical caller');
   // the op rides on every panel, not just the retryable ones
   for (const code of ['stale_edit', 'edit_superseded', 'not_owner', 'weird_code']) {
-    const o = outcomeFor(Object.assign(new Error(code), { code }), 'edit');
+    const o = outcomeFor(Object.assign(new Error(code), { code, status: 503 }), 'edit');
     assert.strictEqual(o.op, 'edit', `${code} carries the operation`);
   }
 });
 
-test('🔴 an INDETERMINATE failure must not claim nothing changed', () => {
-  // The connection dropping after the request left the browser is not evidence that the server did
-  // nothing — it may have committed. Telling a merchant "nada cambió en vivo" there is a confident
-  // false statement about their live prices, and the one they would act on by republishing.
-  const indeterminate = ['store_unavailable', 'publish_failed', 'unknown_code_2027'];
-  for (const code of indeterminate) {
-    const o = outcomeFor(Object.assign(new Error(code), { code }), 'publish');
-    assert.ok(!/nada cambió en vivo|nada se perdió y nada cambió/i.test(o.detail),
-      `${code} must not assert the live menu is untouched — the publish may have committed`);
-    assert.ok(/verific|no pudimos confirmar|puede que/i.test(o.detail),
-      `${code} must tell the merchant to VERIFY rather than assume`);
-  }
-  // ...while failures the server makes on the way IN are known pre-commit, so they must NOT send the
-  // merchant off to verify a live menu we know is untouched — that is its own false alarm, and it
-  // teaches them to distrust the panel that matters.
-  for (const code of ['not_owner', 'fiscal_ack_required', 'large_change_unconfirmed', 'stale_edit', 'edit_superseded']) {
-    const o = outcomeFor(Object.assign(new Error(code), { code }), 'publish');
-    assert.ok(!/verificá tu menú en vivo/i.test(o.detail),
-      `${code} is a KNOWN pre-commit refusal — it must not imply the live menu might have changed`);
-    assert.ok(/no publicamos|nada cambió|borrador/i.test(o.detail),
-      `${code} says plainly that nothing went live`);
+test('🔴 uncertainty is about TRANSPORT, not about the error code', () => {
+  // Refined by the closing gate, and the refinement matters. My first version of this rule keyed on
+  // the CODE — so a coded 503 store_unavailable got "verify your live menu". But that code is the
+  // server's ANSWER: it read the store, failed, and refused before writing anything. Sending a
+  // merchant to verify a menu we know is untouched is its own false alarm.
+  //
+  // The discriminator is whether an answer arrived at all.
+  const answered = (code, status) => Object.assign(new Error(code), { code, status });
+  const lost = () => Object.assign(new Error('Unavailable'), { code: null, status: 0, kind: 'Unavailable' });
+
+  const u = outcomeFor(lost(), 'publish');
+  assert.ok(/verific/i.test(u.detail), 'a publish whose answer never arrived says the result is unknown');
+  assert.ok(/no sabemos|no pudimos confirmar/i.test(u.detail), '...in those words, not as a guess either way');
+
+  for (const [code, status] of [['store_unavailable', 503], ['publish_failed', 500], ['bad_request', 400],
+                                 ['not_owner', 403], ['fiscal_ack_required', 403], ['stale_edit', 409]]) {
+    const o = outcomeFor(answered(code, status), 'publish');
+    assert.ok(!/verific/i.test(o.detail),
+      `${code} (${status}) is a server ANSWER — it refused pre-commit, so no verify prompt`);
+    assert.ok(/no publicamos|nada cambió|borrador/i.test(o.detail), `${code} says plainly that nothing went live`);
   }
 });
 
 test('an EDIT failure describes saving, not publishing', () => {
-  const o = outcomeFor(Object.assign(new Error('store_unavailable'), { code: 'store_unavailable' }), 'edit');
+  const o = outcomeFor(Object.assign(new Error('store_unavailable'), { code: 'store_unavailable', status: 503 }), 'edit');
   assert.strictEqual(o.op, 'edit');
   assert.ok(!/publicar|publicamos/i.test(o.title), 'the title does not claim a publish was attempted');
 });
@@ -888,4 +893,80 @@ test('🔴 WHOLE FLOW: a published price stays published, and does not ride into
   assert.ok(!next.some((c) => c.key === 'Pizza'),
     '🔴 Pizza is NOT in the next diff — carrying 310→299 there would revert the published price');
   assert.strictEqual(next[0].from, 20, 'and the unrelated change measures from its own published value');
+});
+
+// ── Closing re-gate: the four targeted fixes ─────────────────────────────────────────────────────
+test('🔴 reset() clears the SPENT latch but never releases a request on the wire', async () => {
+  // The T6 regression. ONE boolean was doing two jobs — "a request is in flight" and "this reviewed
+  // set has been published" — and reset() cleared both. So an auth change or a re-review mid-flight
+  // re-opened the double-publish window T6 closed.
+  //
+  // Asserted on SYNCHRONOUS evidence (how many requests reached the wire) rather than by awaiting the
+  // second call: on the broken code that call never settles, and the test would HANG instead of
+  // failing. A test that hangs reports nothing.
+  let release;
+  const sent = [];
+  // Only the FIRST call is held open; later ones resolve immediately, or awaiting the third would
+  // hang on a promise nothing ever settles — a test that hangs reports nothing.
+  const p = createPublisher({ publish: (payload) => {
+    sent.push(payload);
+    if (sent.length === 1) return new Promise((r) => { release = r; });
+    return Promise.resolve({ versionId: `v${sent.length}` });
+  } });
+  const review = () => ({ rid: 'r', editToken: 'E', diff: MODEST(),
+    attestation: attestationModel(MODEST(), { usesPlatformFactura: true }), acknowledged: true });
+
+  const first = p.run(review());
+  assert.strictEqual(sent.length, 1, 'one request went out');
+  p.reset();                                  // a new review, or an auth change, MID-FLIGHT
+  const second = p.run(review());
+  await Promise.resolve();                    // let a synchronous refusal settle
+  assert.strictEqual(sent.length, 1, '🔴 nothing second reached the wire — reset must not release a live request');
+  const outcome = await Promise.race([second, new Promise((r) => setTimeout(() => r({ skipped: 'HUNG' }), 50))]);
+  assert.strictEqual(outcome.skipped, 'in_flight', 'the second attempt is refused as in-flight');
+
+  release({ versionId: 'v1' });
+  await first;
+  // once it has settled, reset() legitimately allows the NEXT reviewed set
+  p.reset();
+  const third = await p.run(review());
+  assert.strictEqual(third.ok, true, 'a new review after settling can publish');
+  assert.strictEqual(sent.length, 2, 'and it really went out');
+});
+
+test('a spent review stays spent without reset, even after settling', () => {
+  const p = createPublisher({ publish: async () => ({ versionId: 'v1' }) });
+  const review = () => ({ rid: 'r', editToken: 'E', diff: MODEST(),
+    attestation: attestationModel(MODEST(), { usesPlatformFactura: true }), acknowledged: true });
+  return p.run(review()).then((a) => {
+    assert.strictEqual(a.ok, true);
+    return p.run(review());
+  }).then((b) => {
+    assert.strictEqual(b.skipped, 'spent', 'the same reviewed set cannot be published twice');
+  });
+});
+
+test('🔴 copy branches on (operation) x (did the server ANSWER?)', () => {
+  // Only a PUBLISH whose transport was uncertain may say the change might have gone live. A server
+  // that ANSWERED — even with 503 store_unavailable, which it returns after failing to read the store —
+  // has refused pre-commit, and saying "verify your live menu" there is a false alarm. An EDIT never
+  // publishes, so it can never claim one might have.
+  const answered = (code, status) => Object.assign(new Error(code), { code, status });
+  const transport = () => Object.assign(new Error('Unavailable'), { code: null, status: 0, kind: 'Unavailable' });
+
+  // publish + transport uncertainty → the only case that may say "verify"
+  const u = outcomeFor(transport(), 'publish');
+  assert.ok(/verific/i.test(u.detail), 'a publish whose answer never arrived tells the merchant to verify');
+
+  // publish + the server ANSWERED → pre-commit, must NOT send them to verify
+  for (const [code, status] of [['store_unavailable', 503], ['bad_request', 400], ['publish_failed', 500]]) {
+    const o = outcomeFor(answered(code, status), 'publish');
+    assert.ok(!/verific/i.test(o.detail), `${code} (${status}) is a server ANSWER — nothing committed, so no verify prompt`);
+  }
+  // edit, either way → never claims a publish
+  for (const e of [transport(), answered('store_unavailable', 503), answered('bad_request', 400)]) {
+    const o = outcomeFor(e, 'edit');
+    assert.ok(!/public|publicar|en vivo/i.test(o.detail), 'an edit failure never mentions publishing — it never attempted one');
+    assert.ok(!/verific/i.test(o.detail), '...and never sends the merchant to verify a live menu it did not touch');
+  }
 });

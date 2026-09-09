@@ -4,7 +4,7 @@
 // Nothing here decides what a merchant may see — every answer comes from the server, and the UI simply
 // shows what came back.
 import { apiFetch, editCatalog, publishEdited } from './api.js';
-import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage } from './editor.js';
+import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, commitTo, draftSource, optionGroups, groupUsage } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
 import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
@@ -106,18 +106,30 @@ export async function loadRestaurants() {
 // ── loading and rendering one restaurant's menu ────────────────────────────────────────────────
 // state.groups is what is on screen. It is replaced wholesale on every load — never merged — so a
 // failed reload can never leave half of one restaurant's menu beside half of another's.
-// A monotonically increasing token. Every async load captures it; a response whose token is stale —
-// because the merchant switched restaurants while it was in flight — is DROPPED rather than painted.
-// Codex reproduced la_musa selected while x_pizza's source and fiscal flag were on screen: the server
-// binding stops the bad WRITE, but the merchant was reading the wrong tenant's fiscal context.
-let loadGeneration = 0;
+// ── THE OPERATION GENERATION ───────────────────────────────────────────────────────────────────
+// 🔴 ONE MECHANISM for a defect that wore six hats. Every async operation — loadMenu, editCatalog,
+// publishEdited — captures this at LAUNCH and re-checks it before ANY state mutation or paint when it
+// settles, on the success path AND the failure path. A continuation whose generation is stale belongs
+// to a world the merchant has left, and is dropped silently.
+//
+// It is bumped whenever that world changes: an auth transition, a tenant switch, or re-entering the
+// review. Without it: a slow save settles after sign-out and repopulates state for the next person; a
+// slow failure from the tenant you left erases the rail of the tenant you are on; an older save
+// overwrites a newer review's CAS baseline.
+//
+// The check must come before EVERY write, not once at the top — the point of interleaving is that the
+// world can change while the continuation is running.
+let opGeneration = 0;
+const bumpGeneration = () => { opGeneration += 1; };
 
 export async function loadMenu(rid) {
   if (!rid) return;
-  const gen = ++loadGeneration;
-  // Tenant-bound UI is cleared IMMEDIATELY, so nothing from the previous restaurant lingers while the
-  // next one loads.
-  invalidateReview();
+  // ORDER MATTERS. End the previous world FIRST, then take this operation's generation — otherwise
+  // invalidateReview()'s own bump lands after the capture and instantly invalidates the load that
+  // just started. (It did: every load returned before building a draft, and only an executable
+  // interleaving test showed it.)
+  invalidateReview();                        // clears tenant-bound state AND bumps the generation
+  const gen = opGeneration;
   state.usesPlatformFactura = false;
   $('detail').replaceChildren();
   showEmpty('Cargando tu menú…', 'Un momento.');
@@ -125,11 +137,14 @@ export async function loadMenu(rid) {
   try {
     data = await apiFetch('getEditableCatalog', { rid, token });
   } catch (e) {
-    // Degrade to a message, never to an empty menu that reads as "you have no products". The typed
-    // kind decides the sentence: an outage says try again, a refusal says this account cannot see it.
-    state.groups = [];
-    $('rail').replaceChildren();
-    if (gen !== loadGeneration) return;
+      // THE CHECK COMES FIRST, before ANY mutation. It sat BELOW the two lines that follow, so a slow
+      // failure from the tenant the merchant had already left blanked the menu of the tenant they were
+      // on — the current rail erased by an error about a different restaurant.
+      if (gen !== opGeneration) return;
+      // Degrade to a message, never to an empty menu that reads as "you have no products". The typed
+      // kind decides the sentence: an outage says try again, a refusal says this account cannot see it.
+      state.groups = [];
+      $('rail').replaceChildren();
     const [t, d] = messageFor(e);
     showEmpty(t, d);
     return;
@@ -138,7 +153,7 @@ export async function loadMenu(rid) {
   // response — so an edit shows up because the underlying source changed, not because a view model was
   // nudged to agree. The response is kept only for what the draft is not: the CAS baseline and the
   // fiscal capability.
-  if (gen !== loadGeneration) return;        // a newer switch won; this response is for a tenant the merchant left
+  if (gen !== opGeneration) return;        // a newer switch won; this response is for a tenant the merchant left
   state.draft = createDraft((data && data.source) || { items: [], extras: [], structure: {} });
   state.sourceUpdateTime = (data && data.sourceUpdateTime) || null;
   state.usesPlatformFactura = (data && data.usesPlatformFactura) === true;
@@ -214,6 +229,22 @@ function paint() {
 function closeDrawer() {
   state.drawerKey = null;
   $('drawer').classList.remove('show');
+  setDrawerInert(false);
+}
+
+// 🔴 OFF-SCREEN IS NOT INERT. A translated panel keeps its inputs in the tab order and fully
+// editable, so a merchant could keep typing into the draft — by keyboard — while the review is open
+// or while a save is on the wire. That is what lets an older save overwrite a newer review.
+//
+// `inert` removes the subtree from focus and interaction entirely; the attribute is set on the
+// element AND its inputs are disabled, because inert is not supported everywhere and a fallback that
+// silently does nothing is the same failure again.
+function setDrawerInert(on) {
+  const d = $('drawer');
+  if (!d) return;
+  if (on) d.setAttribute('inert', ''); else d.removeAttribute('inert');
+  for (const el of d.querySelectorAll('input, button')) el.disabled = on === true;
+  if (on && document.activeElement && d.contains(document.activeElement)) document.activeElement.blur();
 }
 
 export function openDrawer(key) {
@@ -407,22 +438,30 @@ async function openReviewFlow() {
   // publish a set the merchant has already moved past. Nothing acknowledged survives re-entry.
   state.review = null;
   publisher.reset();
+  bumpGeneration();                          // re-entering the review ends the previous attempt
+  const gen = opGeneration;
   syncPublishButton();
   const btn = $('review');
   btn.disabled = true;
   try {
+    // The exact document being submitted — captured BEFORE the await, so what is reviewed, saved and
+    // later committed as the baseline is one snapshot rather than whatever the draft holds by then.
+    const submitted = JSON.parse(JSON.stringify(draftSource(state.draft)));
     const res = await editCatalog({
       rid: state.currentRid,
-      source: draftSource(state.draft),
+      source: submitted,
       baseSourceUpdateTime: state.sourceUpdateTime,
       token,
     });
+    if (gen !== opGeneration) return;        // auth changed, tenant switched, or a newer review began
     // Everything the publish will need, kept exactly as the server sent it. The ack set is captured
     // here — at the moment the token was minted — so what is replayed is what the token is bound to.
     state.review = {
       diff: res && res.diff,
       editToken: res && res.token,
       ackSet: ackSetFrom(res && res.diff),
+      submitted,                              // what publish will commit as the new baseline
+      gen,                                    // the world this review belongs to
     };
     // the CAS baseline moves forward: the draft we just wrote is the new precondition
     if (res && res.updateTime) state.sourceUpdateTime = res.updateTime;
@@ -448,17 +487,18 @@ async function openReviewFlow() {
     // The drawer is z-index 26; the review scrim is 20. An open drawer therefore sits OVER the
     // attestation, and a merchant could edit the underlying draft while signing for a snapshot taken
     // before that edit. Close it before the review opens.
-    closeDrawer();
+    closeDrawer();          // and inert with it: off-screen alone leaves its inputs keyboard-reachable
     $('scrim').classList.add('show');
   } catch (e) {
       // The SAME designed panels the publish uses. editCatalog and publishEdited share most of their
       // error surface — stale_edit is an editCatalog code with its own panel — so routing this through
       // outcomeFor means every server error on the write path lands somewhere the merchant can act on,
       // whichever call produced it. The generic durable panel catches anything unmapped.
+      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world
       showOutcome(outcomeFor(e, 'edit'));
       $('scrim').classList.add('show');
   } finally {
-    btn.disabled = !isPublishable(state.draft);
+    if (gen === opGeneration) btn.disabled = !isPublishable(state.draft);
   }
 }
 $('review').addEventListener('click', openReviewFlow);
@@ -516,18 +556,23 @@ async function runPublish() {
   // In-flight is a VISIBLE state, not just a disabled button: publishing is the one action where a
   // merchant who sees nothing happen will press again.
   if (btn) { btn.disabled = true; btn.dataset.busy = '1'; }
-  const captured = state.review;          // kept for the receipt — the draft is discarded on success
+  const captured = state.review;          // kept for the receipt; the baseline moves on success
+  const gen = opGeneration;               // the world this attempt belongs to
+  setDrawerInert(true);                   // no editing the draft while it is being published
   let out;
   try {
     out = await publisher.run(state.review);
   } catch (e) {
+    if (gen !== opGeneration) return;     // stale: auth changed or a newer review began mid-flight
     showOutcome(outcomeFor(e, 'publish'));
     return;
   } finally {
+    setDrawerInert(false);
     if (btn) delete btn.dataset.busy;
-    syncPublishButton();
+    if (gen === opGeneration) syncPublishButton();
   }
-  // Refused before the network: already in flight, or the gate said no. Nothing was sent.
+  if (gen !== opGeneration) return;       // the answer arrived into a world that has moved on
+  // Refused before the network: already in flight, spent, or the gate said no. Nothing was sent.
   if (!out || !out.ok) return;
 
   // SUCCESS. The receipt reads from the CAPTURED review, because the next two lines throw the draft
@@ -544,7 +589,10 @@ async function runPublish() {
   //
   // sourceUpdateTime needs no change: publishEdited does not write the source, so the CAS baseline
   // editCatalog established still describes the document that was published.
-  commit(state.draft);
+  // 🔴 The SUBMITTED snapshot, not the live draft. If the merchant kept editing after opening the
+  // review, what went live is what was reviewed — and the later edit must stay pending rather than be
+  // marked live.
+  commitTo(state.draft, (captured && captured.submitted) || draftSource(state.draft));
   repaintFromDraft();
 }
 PUBBTN.addEventListener('click', runPublish);
@@ -604,6 +652,7 @@ function showOutcome(outcome) {
 // B's token and the server records B as the SAR acknowledger. Every auth transition drops the review,
 // its acknowledgement, the open modal and the publisher latch.
 function invalidateReview() {
+  bumpGeneration();          // every continuation still in flight now belongs to a world that ended
   state.review = null;
   publisher.reset();
   closeDrawer();

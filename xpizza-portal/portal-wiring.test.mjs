@@ -360,7 +360,7 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // the edit state exposes price setters and nothing else that writes
   const exported = [...editor.matchAll(/export (?:function|const) ([A-Za-z_$][\w$]*)/g)].map((m) => m[1]).sort();
   assert.deepStrictEqual(exported, [
-    'commit', 'createDraft', 'discard', 'draftSource', 'groupUsage', 'invalidKeys', 'isPublishable',
+    'commit', 'commitTo', 'createDraft', 'discard', 'draftSource', 'groupUsage', 'invalidKeys', 'isPublishable',
     'optionGroups', 'parsePrice', 'pendingChanges', 'pendingCount', 'productsUsingGroup',
     'setExtraPrice', 'setItemPrice',
   ], 'the edit state exports exactly these');
@@ -626,10 +626,25 @@ test('#pubbtn actually publishes, through a real in-flight lock', () => {
   assert.ok(lockAt < awaitAt, 'the lock is taken BEFORE the await — otherwise there is a window between deciding and sending');
   assert.ok(/if \(inFlight\) return/.test(runBody), '...and re-checked on entry');
 
-  // released ONLY on failure: a success latches until a new review resets it
-  assert.ok(/catch \(e\) \{\s*inFlight = false;/.test(runBody), 'the lock releases on failure, so a retry is possible');
-  assert.strictEqual((runBody.match(/inFlight = false/g) || []).length, 1,
-    'and ONLY there — a release in the success path or a finally would re-open the double-publish window');
+  // TWO FLAGS, two jobs. `inFlight` says a request is on the wire and is released in `finally` —
+  // the wire really is free once it settles, however it settled. `spent` says this reviewed set's
+  // TOKEN is used and is set only on success. Collapsing them into one boolean was the T6 regression:
+  // reset() then released a live request, re-opening the double-publish window.
+  assert.ok(/let inFlight = false/.test(review) && /let spent = false/.test(review), 'the two states are separate values');
+  assert.ok(/finally \{\s*inFlight = false;/.test(runBody), 'the wire is freed in finally, whichever way the request settled');
+  assert.strictEqual((runBody.match(/inFlight = false/g) || []).length, 1, 'and in exactly one place');
+  assert.ok(/spent = true;/.test(runBody), 'a SUCCESS marks the reviewed set spent');
+  assert.strictEqual((runBody.match(/spent = true/g) || []).length, 1, '...only on the success path, so a failure can be retried');
+  assert.ok(/if \(spent\) return \{ skipped: 'spent' \}/.test(runBody), 'and a spent set is refused by name');
+  // 🔴 reset() must clear ONLY the latch — never a live request
+  // Bounded to the method's own braces. A fixed-width window overruns into the very next member —
+  // `get busy() { return inFlight; }` — and reports the reset as touching inFlight when it does not.
+  // Fixed windows pick up whatever happens to follow them; that is the same trap as the unbounded
+  // slices in Tasks 4 and 7.
+  const rIdx = review.indexOf('reset()');
+  const resetBody = review.slice(rIdx, review.indexOf('}', rIdx) + 1);
+  assert.ok(/spent = false/.test(resetBody), 'reset clears the spent latch');
+  assert.ok(!/inFlight/.test(resetBody), '...and never touches inFlight — a new review must not release a request on the wire');
   assert.ok(/publisher\.reset\(\)/.test(app), 'a newly minted review resets the latch');
 
   // the payload must not be assembled at the call site — that is what publishPayload is for
@@ -694,14 +709,18 @@ test('every publish state is wired — and edit_superseded re-reviews rather tha
   assert.ok(/const captured = state\.review/.test(app), 'the review is captured before the draft is thrown away');
   assert.ok(/receiptFor\(out\.res, captured\)/.test(app), '...and the receipt is built from it');
   const successIdx = app.indexOf('renderReceipt(');
-  const commitIdx = app.indexOf('commit(state.draft)', successIdx);
+  const commitIdx = app.indexOf('commitTo(state.draft', successIdx);
   assert.ok(commitIdx > successIdx, 'the receipt renders BEFORE the baseline moves');
   // 🔴 COMMIT, NOT DISCARD. They are opposite operations, and discard() here reset the editor to the
   // PRE-EDIT prices: it showed 299 after publishing 310, and the next unrelated edit carried 299 back
   // into the diff and silently reverted the price that had just gone live.
-  const successPath = app.slice(successIdx, successIdx + 700);
-  assert.ok(/commit\(state\.draft\)/.test(successPath), 'the publish success path commits the new baseline');
-  assert.ok(!/discard\(state\.draft\)/.test(successPath), '...and never discards to the pre-edit prices');
+  const successPath = app.slice(successIdx, successIdx + 900);
+  // 🔴 commitTo(SUBMITTED), not commit(live draft): if the merchant kept editing after opening the
+  // review, what went live is what was REVIEWED, and the later edit must stay pending.
+  assert.ok(/commitTo\(state\.draft, \(captured && captured\.submitted\)/.test(successPath),
+    'the baseline becomes the SUBMITTED snapshot');
+  assert.ok(!/\bcommit\(state\.draft\)/.test(successPath), '...not the live draft');
+  assert.ok(!/discard\(state\.draft\)/.test(successPath), '...and never the pre-edit prices');
   // discard still exists — it is what the "Descartar" button legitimately does
   assert.ok(/\$\('discard'\)\.addEventListener/.test(app) && /discard\(state\.draft\)/.test(app),
     'discard remains wired to the Descartar button, where reverting IS the intent');
@@ -798,10 +817,33 @@ test('a tenant switch cannot paint the previous restaurant’s data or fiscal fl
   // The server binding stops the bad WRITE; what this fixes is the merchant READING the wrong
   // tenant's fiscal context — and attesting against it.
   const app = codeOf('app.js');
-  assert.ok(/let loadGeneration = 0/.test(app), 'loads are generation-stamped');
+  // ONE generation for every async operation, not a load-only one: the same staleness afflicts
+  // editCatalog and publishEdited, and three separate counters would drift.
+  assert.ok(/let opGeneration = 0/.test(app), 'a single operation generation exists');
+  assert.ok(/const bumpGeneration =/.test(app), '...with one place that advances it');
+  // Anchored on the DEFINITION, not the first mention: `invalidateReview` appears as a CALL inside
+  // loadMenu long before it is defined, and a first-match slice lands there and finds nothing.
+  // Each operation ends the previous world before taking its own generation. loadMenu does it THROUGH
+  // invalidateReview (which bumps and also clears tenant-bound state), so the chain is asserted rather
+  // than the literal call — and invalidateReview's own bump is asserted separately below.
+  const endsWorld = { 'function invalidateReview': /bumpGeneration\(\)/, 'export async function loadMenu': /invalidateReview\(\)/, 'async function openReviewFlow': /bumpGeneration\(\)/ };
+  for (const [decl, pattern] of Object.entries(endsWorld)) {
+    const at = app.indexOf(decl);
+    assert.ok(at > -1, `${decl} exists`);
+    const b = app.slice(at, at + 700);
+    assert.ok(pattern.test(b), `${decl} ends the previous world before starting a new one`);
+  }
+  // ORDER: the world must end BEFORE the generation is captured, or the bump invalidates the very
+  // operation that just started. It did exactly that, and only an executable test showed it.
+  const lmAt = app.indexOf('export async function loadMenu');
+  const lmHead = app.slice(lmAt, lmAt + 700);
+  assert.ok(lmHead.indexOf('invalidateReview()') < lmHead.indexOf('const gen = opGeneration'),
+    'loadMenu ends the previous world BEFORE capturing its own generation');
+  assert.ok((app.match(/gen !== opGeneration/g) || []).length >= 5,
+    'every async settle re-checks it — success AND failure paths, on all three operations');
   const lm = app.slice(app.indexOf('export async function loadMenu'), app.indexOf('export async function loadMenu') + 1600);
-  assert.ok(/const gen = \+\+loadGeneration/.test(lm), 'each load takes the next generation');
-  assert.ok((lm.match(/gen !== loadGeneration/g) || []).length >= 2,
+  assert.ok(/const gen = opGeneration/.test(lm), 'each load captures the generation at launch');
+  assert.ok((lm.match(/gen !== opGeneration/g) || []).length >= 2,
     'and BOTH the success and failure paths drop a stale response — an error from the tenant you left must not paint either');
   assert.ok(/invalidateReview\(\)/.test(lm), 'tenant-bound state is cleared immediately on switch, not after the load returns');
   assert.ok(/state\.usesPlatformFactura = false/.test(lm), '...including the fiscal capability, which must never carry across tenants');

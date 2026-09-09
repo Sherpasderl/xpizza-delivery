@@ -350,24 +350,35 @@ export function publishPayload(review) {
 // Injected `publish` rather than importing publishEdited, so node can drive the whole path — real
 // payload, real client, intercepted fetch — and assert the bytes that actually leave.
 export function createPublisher({ publish }) {
+  // TWO FLAGS, because they answer two different questions — and one boolean doing both was the T6
+  // regression:
+  //
+  //   inFlight  a request is ON THE WIRE right now. Nothing may release this but the request
+  //             settling — not a new review, not an auth change. Releasing it re-opens the
+  //             double-publish window T6 closed.
+  //   spent     this reviewed set has already been published; its token is used, so pressing again
+  //             must not re-send. A NEW review clears this, because a new review is a new token.
+  //
+  // reset() therefore clears `spent` and never touches `inFlight`.
   let inFlight = false;
+  let spent = false;
   return {
-    reset() { inFlight = false; },
+    reset() { spent = false; },
     get busy() { return inFlight; },
+    get isSpent() { return spent; },
     async run(review) {
       if (inFlight) return { skipped: 'in_flight' };
-      // The same gate the button shows, re-asked here. The button being enabled is a UI state; this
-      // is the decision. Fail closed on anything missing.
+      if (spent) return { skipped: 'spent' };
       if (!review || !review.attestation || !canPublish(review.attestation, review.acknowledged)) {
         return { skipped: 'not_ready' };
       }
       inFlight = true;
       try {
         const res = await publish(publishPayload(review));
-        return { ok: true, res };            // stays LATCHED: the token is spent
-      } catch (e) {
-        inFlight = false;                    // released so a retry is possible
-        throw e;
+        spent = true;                  // the token is used; only a NEW review clears this
+        return { ok: true, res };
+      } finally {
+        inFlight = false;              // the wire is free either way; a failure leaves `spent` false so a retry works
       }
     },
   };
@@ -427,10 +438,11 @@ const PANELS = {
   store_unavailable: {
     icon: 'warn',
     title: 'No se pudo publicar',
-    // 🔴 NOT "nada cambió en vivo". The request left the browser; the server may have committed
-    // before the connection dropped. Asserting the live menu is untouched is a confident false
-    // statement about a merchant's prices, and the one they would act on by publishing again.
-    detail: 'El servicio de catálogo no respondió a tiempo. Tu borrador está guardado, pero no pudimos confirmar si el cambio llegó a publicarse — verificá tu menú en vivo antes de reintentar.',
+    // This is a coded ANSWER: the handler returns it after failing to READ the store, before writing
+    // anything. So the reassurance is true and belongs here. Genuine uncertainty — the answer never
+    // arriving — is a different case, handled by the transport branch in outcomeFor rather than by
+    // rewording a panel that describes a refusal.
+    detail: 'El servicio de catálogo no respondió. Tus cambios siguen guardados como borrador — nada se perdió y nada cambió en vivo. Probá de nuevo en un momento.',
     action: { id: PUBLISH_ACTIONS.RETRY, label: 'Reintentar' },
   },
 };
@@ -441,9 +453,9 @@ const PANELS = {
 const GENERIC = {
   icon: 'warn',
   title: 'No se pudo publicar',
-  // Same reasoning as store_unavailable: an unclassified failure is INDETERMINATE. Only refusals the
-  // server makes on the way in (auth, acknowledgement, staleness) are known to be pre-commit.
-  detail: 'Algo falló y no pudimos confirmar el resultado. Tu borrador está guardado, pero puede que el cambio se haya publicado — verificá tu menú en vivo antes de reintentar.',
+  // The generic panel is reached with a coded answer OR with nothing at all; outcomeFor rewrites the
+  // detail per (operation x answered?), so this is the neutral base rather than a claim either way.
+  detail: 'Algo falló y no pudimos completar el cambio. Tu borrador está guardado. Probá de nuevo; si sigue fallando, recargá la página.',
   action: { id: PUBLISH_ACTIONS.RETRY, label: 'Reintentar' },
 };
 
@@ -452,12 +464,45 @@ const GENERIC = {
 // surface, which is why routing them through the same panels is right; letting both RETRY buttons
 // mean "publish" is not. A failed SAVE retried as a PUBLISH would push a reviewed-and-acknowledged
 // set the merchant had already moved past.
+// DID THE SERVER ANSWER? That is the whole discriminator for whether anything could have committed.
+//
+// A coded response — even 503 store_unavailable, which the handler returns after failing to READ the
+// store — is an ANSWER: the server refused on its way in and wrote nothing. Only a request whose
+// answer never arrived (api.js raises Unavailable with status 0 for a network or CORS failure) leaves
+// the outcome genuinely unknown.
+//
+// Sending a merchant to verify a live menu we KNOW is untouched is its own false alarm, and it teaches
+// them to distrust the one panel that will someday be telling the truth.
+const serverAnswered = (err) => !!(err && typeof err.status === 'number' && err.status > 0);
+
 export function outcomeFor(err, op = 'publish') {
   const code = (err && typeof err.code === 'string') ? err.code : null;
   const panel = (code && Object.prototype.hasOwnProperty.call(PANELS, code)) ? PANELS[code] : null;
   const base = { code, op, generic: !panel, ...(panel || GENERIC) };
-  // An edit failure did not attempt a publish, so it must not describe one.
-  if (op === 'edit' && base.title === 'No se pudo publicar') base.title = 'No se pudo guardar el borrador';
+
+  // (operation) x (did the server answer?) — the only cell that may claim uncertainty is a PUBLISH
+  // whose answer never arrived.
+  if (op === 'publish' && !serverAnswered(err)) {
+    base.title = 'No pudimos confirmar el resultado';
+    base.detail = 'Se perdió la conexión antes de recibir la respuesta, así que no sabemos si el cambio llegó a publicarse. Tu borrador está guardado — verificá tu menú en vivo antes de reintentar.';
+    base.action = { id: PUBLISH_ACTIONS.RETRY, label: 'Reintentar' };
+    return base;
+  }
+  if (op === 'edit') {
+    // An edit never publishes, so it may never mention publishing NOR send anyone to verify a live
+    // menu it did not touch. The panels are written for the publish path; restate for this one.
+    // ANY publish-flavoured title, not just the generic one: `store_unavailable`'s panel says
+    // "No se pudo publicar", which is simply untrue of a save.
+    if (base.generic || /public/i.test(base.title)) base.title = 'No se pudo guardar el borrador';
+    if (base.generic || /verific|en vivo|public/i.test(base.detail)) {
+      base.detail = 'No pudimos guardar tu borrador. Tus cambios siguen en pantalla — probá de nuevo; si sigue fallando, recargá la página.';
+    }
+    return base;
+  }
+  // a publish the server ANSWERED: pre-commit, so nothing went live and the panel says so
+  if (base.generic) {
+    base.detail = 'El servidor rechazó el cambio y no publicamos nada. Tu borrador está guardado — probá de nuevo; si sigue fallando, recargá la página.';
+  }
   return base;
 }
 

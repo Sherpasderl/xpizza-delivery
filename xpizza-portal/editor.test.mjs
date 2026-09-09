@@ -20,7 +20,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import {
   createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount,
-  isPublishable, invalidKeys, discard, commit, draftSource, parsePrice,
+  isPublishable, invalidKeys, discard, commit, commitTo, draftSource, parsePrice,
 } from './editor.js';
 
 const SRC = () => ({
@@ -360,4 +360,27 @@ test('parsePrice refuses values outside the safe integer range', () => {
   assert.strictEqual(parsePrice(String(Number.MAX_SAFE_INTEGER)), Number.MAX_SAFE_INTEGER, 'the boundary itself is fine');
   assert.strictEqual(parsePrice('9007199254740993'), null, 'one past it cannot be represented exactly');
   assert.strictEqual(parsePrice('99999999999999999999'), null, 'nor can a twenty-digit one');
+});
+
+test('🔴 the baseline is the SUBMITTED snapshot, not whatever the draft holds when the publish lands', () => {
+  // edit 310 → review (that snapshot is what gets saved and published) → edit again to 320 → publish.
+  // What went live is 310. commit(draft) would move the baseline to 320 — marking a price that never
+  // published as live, invisible in the pending count and unpublishable afterwards.
+  const d = createDraft(SRC());
+  setItemPrice(d, 'Plato Uno', '310');
+  const submitted = JSON.parse(JSON.stringify(draftSource(d)));   // captured at review time
+  setItemPrice(d, 'Plato Uno', '320');                            // kept editing while reviewing
+
+  commitTo(d, submitted);
+  assert.strictEqual(pendingCount(d), 1, '🔴 the later edit is STILL pending — it never published');
+  assert.deepStrictEqual(pendingChanges(d), [{ surface: 'item', key: 'Plato Uno', from: 310, to: 320 }],
+    'and it measures from the price that DID publish');
+  assert.strictEqual(draftSource(d).items[0].price, 320, 'the editor still shows what the merchant typed');
+
+  // for contrast: commit(draft) would swallow it
+  const d2 = createDraft(SRC());
+  setItemPrice(d2, 'Plato Uno', '310');
+  setItemPrice(d2, 'Plato Uno', '320');
+  commit(d2);
+  assert.strictEqual(pendingCount(d2), 0, 'commit() marks 320 as live, which it is not');
 });
