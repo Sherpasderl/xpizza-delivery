@@ -126,3 +126,98 @@ test('index.html carries no inline script or style — the premise of the strict
   // ...and does not fire on the words that merely contain it
   assert.strictEqual([...'<link rel="stylesheet"> data-style="x"'.matchAll(/\sstyle=/g)].length, 0, 'and does not false-positive on stylesheet or data-style');
 });
+
+// ── Portal 2b-2b Task 1 — THE BOLD-EDITORIAL SKIN ────────────────────────────────────────────────
+// The re-skin is not decoration here: this portal is about to grow a WRITE path, and the visual
+// language is how a merchant tells a saved draft from a published price. The identity has to actually
+// land, and the one it replaces has to actually leave — a half-swapped palette reads as a rendering
+// bug, which is the worst thing a page that charges customers money can look like.
+//
+// Asserted from styles.css rather than from a rendered page because node cannot load the DOM modules
+// (they import the Firebase SDK from a CDN URL). Same reason the rest of this file works the way it does.
+test('styles.css carries the Bold-Editorial identity, and the sapphire one is gone', () => {
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
+
+  // The identity tokens. --disp is the display face: Bold Editorial is a TYPE direction before it is a
+  // colour one, so a palette swap that left the body face everywhere would not be this design.
+  for (const [tok, why] of [
+    ['--ink:#0A0A0B', 'near-black ink, not the old blue-grey'],
+    ['--green:#0E9F5B', 'the luminous green that replaces sapphire as the accent'],
+    ['--disp:', 'the display type scale — Bold Editorial is a type direction, not just a palette'],
+  ]) {
+    assert.ok(css.replace(/\s+/g, '').includes(tok.replace(/\s+/g, '')), `styles.css must define ${tok} — ${why}`);
+  }
+
+  // The OLD identity must be gone, not merely overridden further down. A leftover sapphire still wins
+  // wherever it is defined last, and the failure is a page that is green in some components and blue in
+  // others — which reads as breakage rather than as a design.
+  for (const dead of ['#5B8DEF', '#2D5FD0', '#4577DC', '#244FB0']) {
+    assert.ok(!css.toUpperCase().includes(dead), `sapphire ${dead} must be gone from styles.css, not overridden`);
+  }
+
+  // LIGHT IS THE DEFAULT now — the old skin was dark-default, so this is an inversion, not an edit.
+  // Bare :root must carry the light palette; both dark selectors must exist, or the three theme states
+  // (explicit light / explicit dark / system) do not all resolve.
+  const rootBlock = css.slice(css.indexOf(':root'), css.indexOf('}', css.indexOf(':root')) + 1);
+  assert.ok(/--ink:\s*#0A0A0B/i.test(rootBlock), 'bare :root must carry the LIGHT palette — light is the default in Bold Editorial');
+  assert.ok(/:root\[data-theme="dark"\]/.test(css), 'an explicit dark override must exist so the toggle wins');
+  assert.ok(/prefers-color-scheme:\s*dark/.test(css), '...and a system-preference dark block, for the default "system" state');
+  assert.ok(/:root:not\(\[data-theme="light"\]\)/.test(css), '...guarded, so an explicit light choice still beats the system preference');
+
+  // non-vacuity: the detectors fire on planted content, so a green pass is about the file, not the regex
+  assert.ok('--ink:#0A0A0B;'.replace(/\s+/g, '').includes('--ink:#0A0A0B'), 'the token detector can see a token');
+  assert.ok('#5B8DEF'.toUpperCase().includes('#5B8DEF'), 'the dead-colour detector can see a dead colour');
+});
+
+// Every class the SHIPPED DOM applies must have a rule. A re-skin ports the stylesheet of a mock, and
+// a mock only draws the surfaces it depicts — this one has no login screen and no restaurant switcher,
+// so its CSS styles neither. Porting it verbatim silently unstyles whatever the mock left out, and the
+// page still renders, which is what makes it easy to ship.
+//
+// `.hidden` is why this is a wiring test and not a taste one: index.html and app.js use it to show ONE
+// of the gate and the app shell. Lose the rule and both render at once.
+//
+// Written as a sweep because the hand-written version of this list missed five classes — `.multi` (the
+// switcher chevron, applied via classList.toggle, which the first extraction regex did not match) and
+// `.irow`/`.iinfo`/`.idesc`/`.cv`, the menu rows that are the portal's main content.
+test('every class the shipped DOM applies is styled — a re-skin cannot silently drop a surface', () => {
+  // Comments STRIPPED. The comment above the carried block names `.switch.multi .chev` to explain why
+  // it is carried — and an unstripped scan matched that prose and reported the class as styled after the
+  // rule itself was deleted. A guard that reads its own documentation as evidence proves nothing.
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const html = readFileSync(join(DIR, 'index.html'), 'utf8');
+  const js = JS.map(codeOf).join('\n');
+
+  const used = new Set();
+  for (const m of html.matchAll(/class="([^"]*)"/g)) m[1].split(/\s+/).filter(Boolean).forEach((c) => used.add(c));
+  for (const m of js.matchAll(/className\s*=\s*['"]([^'"]*)['"]/g)) m[1].split(/\s+/).filter(Boolean).forEach((c) => used.add(c));
+  // add / toggle / remove — toggle is how `.multi` is applied
+  for (const m of js.matchAll(/classList\.(?:add|toggle|remove)\(([^)]*)\)/g)) {
+    for (const s of m[1].matchAll(/['"]([^'"]+)['"]/g)) used.add(s[1]);
+  }
+  // el(tag, cls, text) — render.js's helper, and the DOMINANT idiom here: 17 of the portal's rows and
+  // labels get their class this way, never through className or classList. Missing it is what let a
+  // removal of .irow/.iinfo/.idesc — the menu rows, the portal's main content — pass this test.
+  for (const m of js.matchAll(/\bel\(\s*['"][a-z0-9]+['"]\s*,\s*['"]([^'"]+)['"]/g)) {
+    m[1].split(/\s+/).filter(Boolean).forEach((c) => used.add(c));
+  }
+  assert.ok(used.size >= 30, `non-vacuity: the scan must find the portal's classes (found ${used.size})`);
+
+  // NON-VACUITY PER IDIOM. A floor on the total is not enough: the markup alone clears 30, so an
+  // extractor that silently stopped understanding one of the JS idioms would still pass. Pin one
+  // representative of each of the three, so losing a path fails here instead of going quiet.
+  for (const [cls, idiom] of [['gate', 'class="…" in index.html'], ['multi', "classList.toggle(…)"], ['irow', "el(tag, 'cls')"]]) {
+    assert.ok(used.has(cls), `the extractor must still see classes applied via ${idiom} (missing .${cls})`);
+  }
+
+  const unstyled = [...used].filter((c) => !new RegExp(`\\.${c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-zA-Z0-9_-])`).test(css)).sort();
+  assert.deepStrictEqual(unstyled, [],
+    `these classes are applied by the DOM but styled nowhere — a ported stylesheet dropped them: ${unstyled.join(', ')}`);
+
+  // the specific rule whose loss is FUNCTIONAL, pinned by name so it cannot quietly go again
+  assert.ok(/\.hidden\s*\{[^}]*display\s*:\s*none/.test(css),
+    '.hidden must still collapse the element — without it the login gate and the app shell render together');
+
+  // non-vacuity: the detector fires on a class that really is absent
+  assert.ok(!new RegExp('\\.no-such-class-anywhere(?![a-zA-Z0-9_-])').test(css), 'the detector reports an absent class as absent');
+});
