@@ -105,7 +105,10 @@ function fakeDom() {
       get className() { return n._class; },
       set className(v) { n._class = v; },
       classList: { add: (c) => { n._class = `${n._class} ${c}`.trim(); } },
-      append: (...cs) => n.children.push(...cs),
+      // append(string) creates a TEXT NODE in a real DOM. Modelling it as one keeps the shim honest:
+      // without this, text appended as a raw string is invisible to the assertions and a string that
+      // never rendered would pass unnoticed.
+      append: (...cs) => n.children.push(...cs.map((c) => (typeof c === 'string' ? { tag: '#text', children: [], textContent: c, _class: '' } : c))),
       replaceChildren: (...cs) => { n.children = [...cs]; },
       setAttribute: (k, v) => { n.attrs[k] = v; },
       addEventListener: (ev, fn) => { (n.listeners[ev] = n.listeners[ev] || []).push(fn); },

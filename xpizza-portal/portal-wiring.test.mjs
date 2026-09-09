@@ -557,3 +557,27 @@ test('the review flow is wired to the SERVER diff, and captures the ack set at t
   assert.ok(/\$\('scrim'\)\.classList\.remove\('show'\)/.test(app), '...and closes it by removing the same class');
   assert.ok(/\$\('pubback'\)\.addEventListener\('click'/.test(app), '"Volver a editar" is wired');
 });
+
+test('the attestation is gated on the server capability flag, and it gates the publish button', () => {
+  const app = codeOf('app.js');
+  // 🔴 THE BRAND LITERAL, in the one place it would be accidentally correct. `rid === 'x_pizza'` is
+  // true for exactly the restaurant that is fiscal today, so it would pass every functional test and
+  // be wrong the day a third merchant joins the platform factura — in a browser, where it cannot be
+  // corrected without a redeploy.
+  assert.ok(/usesPlatformFactura:\s*state\.usesPlatformFactura/.test(app),
+    'the attestation is given the SERVER flag');
+  assert.ok(!/rid\s*===\s*['"]x_pizza['"]|['"]x_pizza['"]\s*===/.test(app),
+    'and app.js contains no x_pizza literal deciding anything');
+  assert.ok(!/BRAND\.fiscal/.test(app), "nor the mock's hard-coded BRAND.fiscal");
+
+  // the flag must come from the catalog response, not be invented client-side
+  assert.ok(/state\.usesPlatformFactura\s*=\s*\(data && data\.usesPlatformFactura\) === true/.test(app),
+    'the flag is read from getEditableCatalog, strictly === true');
+
+  // the publish button is DERIVED from canPublish, in one place
+  assert.ok(/function syncPublishButton\(\)/.test(app), 'one function owns the publish button state');
+  assert.ok(/canPublish\(/.test(app), '...and it asks canPublish');
+  assert.ok(/\$\('pubbtn'\)\.disabled\s*=/.test(app), '...and actually sets disabled');
+  // ...and the acknowledgement it passes is a literal boolean
+  assert.ok(/acknowledged\s*=\s*v === true/.test(app), 'the acknowledgement is stored as a literal true, never a truthy');
+});

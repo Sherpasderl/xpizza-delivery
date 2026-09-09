@@ -6,7 +6,7 @@
 import { apiFetch, editCatalog } from './api.js';
 import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, draftSource, optionGroups, groupUsage } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
-import { reviewModel, ackSetFrom, renderReview } from './review.js';
+import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish } from './review.js';
 import { token } from './auth.js';
 
 const $ = (id) => document.getElementById(id);
@@ -402,6 +402,20 @@ $('review').addEventListener('click', async () => {
     if (res && res.updateTime) state.sourceUpdateTime = res.updateTime;
     $('revSub').textContent = 'Esto es exactamente lo que cambia en tu menú en vivo.';
     renderReview($('mbody'), reviewModel(state.review.diff));
+
+    // THE ATTESTATION, gated on the SERVER's capability flag — never on the rid. usesPlatformFactura
+    // came back with getEditableCatalog (Task 2b) and is the only thing that decides whether this
+    // merchant's edit touches a SAR factura.
+    const att = attestationModel(state.review.diff, { usesPlatformFactura: state.usesPlatformFactura });
+    state.review.attestation = att;
+    state.review.acknowledged = false;
+    const attBox = document.createElement('div');
+    $('mbody').append(attBox);
+    renderAttestation(attBox, att, (v) => {
+      state.review.acknowledged = v === true;   // a literal true, never a truthy — this unlocks a signature
+      syncPublishButton();
+    });
+    syncPublishButton();
     $('scrim').classList.add('show');
   } catch (e) {
     // Task 7 gives each server code its own designed panel. Until then this states the failure
@@ -421,3 +435,14 @@ $('review').addEventListener('click', async () => {
 });
 
 $('pubback').addEventListener('click', () => { $('scrim').classList.remove('show'); });
+
+// The publish button's enabled state is derived, never toggled ad hoc: one function reads the model
+// and the acknowledgement, so the button and the gate can never drift apart.
+function syncPublishButton() {
+  const r = state.review;
+  const ok = !!(r && r.attestation) && canPublish(r.attestation, r.acknowledged);
+  $('pubbtn').disabled = !ok;
+  $('pubbtn').title = ok ? '' : (r && r.attestation && r.attestation.hasZero
+    ? 'Hay un precio sin valor válido'
+    : 'Confirmá los cambios antes de publicar');
+}

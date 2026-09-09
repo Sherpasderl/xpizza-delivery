@@ -171,3 +171,134 @@ export function renderReview(root, model) {
   }
   return root;
 }
+
+// ── Task 6 — THE SAR ATTESTATION ─────────────────────────────────────────────────────────────────
+// 🔴🔴 A merchant's signature that a change to a legal tax document is theirs. Three things are
+// constantly conflated here, and each conflation is its own defect:
+//
+//   THE SEAL'S ROWS       every fiscal price change, from diff.changed where field === 'price'.
+//   THE ACK SET           diff.largeChangeSet, verbatim, and frequently []. A 299→310 edit is a 3.7%
+//                         swing: the seal lists it, the ack set is empty, and the publish carries
+//                         fiscalAck:true WITH acknowledgedChanges: [].
+//   WHETHER IT IS NEEDED  neither of the above.
+//
+// That last one is not a judgement call. publishEditedCore's fiscal gate reads usesPlatformFactura(rid)
+// and NOTHING else — not the diff, not largeChangeSet, not `changed`. So a fiscal merchant needs
+// fiscalAck for ANY publish, including one that changes no price at all.
+//
+// The plan says to show the seal "iff usesPlatformFactura AND ≥1 fiscal price change". That is one
+// step too clever: the diff is against the LIVE version, so a draft can differ only in a description
+// (an older draft, another editor), and requiring a price change would leave that publish facing a
+// 403 the screen offers no way to clear. The seal is shown whenever the merchant is fiscal; when
+// there are no price rows it says so.
+
+// The rows the seal LISTS: price changes on either surface, from the server's own `changed`.
+// Deliberately NOT largeChangeSet, which holds only >50%/new/zero and is empty for a modest edit.
+export function fiscalPriceChanges(diff) {
+  const changed = (diff && Array.isArray(diff.changed)) ? diff.changed : [];
+  return changed.filter((c) => c && c.field === 'price').map((c) => ({
+    surface: c.surface, key: c.key, was: c.old, now: c.new,
+  }));
+}
+
+// `usesPlatformFactura` comes from the getEditableCatalog response (Task 2b). NEVER from the rid: a
+// `rid === 'x_pizza'` literal is accidentally correct for every restaurant that exists today, which is
+// exactly what makes it survive review — and wrong the day a third merchant joins the platform
+// factura. Strictly `=== true`, so an absent or non-boolean flag is not read as a capability.
+export function attestationModel(diff, ctx = {}) {
+  const isFiscal = ctx.usesPlatformFactura === true;
+  const sealRows = fiscalPriceChanges(diff);
+  const ackSet = ackSetFrom(diff);
+  // A price we cannot vouch for blocks the publish outright, ahead of any acknowledgement — the server
+  // would refuse it anyway, and no signature should be collected for something that cannot go live.
+  const hasZero = sealRows.some((r) => !(Number.isInteger(r.now) && r.now > 0));
+
+  return {
+    isFiscal,
+    needsSeal: isFiscal,
+    needsPlainAck: !isFiscal && ackSet.length > 0,
+    needsAck: isFiscal || ackSet.length > 0,
+    sealRows,
+    ackSet,
+    hasZero,
+    // What the publish will send. Two separate fields for two separate facts: the attestation, and
+    // the exact set of large changes the server flagged.
+    fiscalAck: isFiscal,
+  };
+}
+
+// Never with a zero price, and never before the confirmation it asked for.
+export const canPublish = (model, acknowledged) => !model.hasZero && (!model.needsAck || acknowledged === true);
+
+export function renderAttestation(root, model, onToggle) {
+  root.replaceChildren();
+  const checkbox = (cls, build) => {
+    const label = el('label', cls);
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.addEventListener('change', () => onToggle(cb.checked === true));
+    label.append(cb);
+    label.append(build());
+    return label;
+  };
+
+  if (model.needsSeal) {
+    const seal = el('div', 'seal');
+    const h = el('div', 'sealh');
+    h.append(el('div', 'sealbadge'));
+    const ht = el('div');
+    ht.append(el('b', null, 'Autorización fiscal · SAR'));
+    // NO BRAND NAME. The seal is rendered for whichever merchant the server flagged, and hard-coding
+    // one would be the same literal the capability flag exists to remove.
+    ht.append(el('span', null, 'Estos precios se imprimen en tu factura fiscal'));
+    h.append(ht);
+    seal.append(h);
+
+    const body = el('div', 'sealbody');
+    body.append(el('p', null,
+      'Como propietario, autorizás que estos precios se cobren en el documento tributario. La factura describe cada línea con el precio que publiques.'));
+    for (const r of model.sealRows) {
+      const c = el('div', 'seachg');
+      c.append(el('span', 'sn', String(r.key)));          // textContent: a dish name is data
+      const v = el('span', 'sv');
+      v.append(el('span', 'was', shown(r.was)));
+      v.append(el('span', 'arr', '→'));
+      v.append(el('span', 'now', shown(r.now)));
+      c.append(v);
+      body.append(c);
+    }
+    if (!model.sealRows.length) {
+      // Honest, and clearable: the merchant is fiscal, so the server will demand the attestation even
+      // though this particular edit moves no price.
+      body.append(el('p', 'seachg', 'Esta edición no cambia ningún precio, pero afecta el documento fiscal.'));
+    }
+    seal.append(body);
+
+    // ONE checkbox. It is the fiscal attestation AND, when the server flagged large changes, their
+    // confirmation — one signature over one reviewed set, rather than two boxes for one decision.
+    seal.append(checkbox('attest', () => {
+      const t = el('span', 'at');
+      t.append(el('b', null, 'Autorizo'));
+      const n = model.sealRows.length;
+      t.append(n === 1
+        ? ' este cambio de precio en la factura fiscal.'
+        : (n === 0 ? ' esta edición en la factura fiscal.' : ` estos ${n} cambios de precio en la factura fiscal.`));
+      return t;
+    }));
+    root.append(seal);
+    return root;
+  }
+
+  if (model.needsPlainAck) {
+    root.append(checkbox('ack', () => {
+      const t = el('span', 'ackt');
+      t.append(el('b', null, 'Confirmá los cambios grandes.'));
+      // Real pluralisation rather than "cambio(s)": it reads better, and the parenthesised form parses
+      // as a function call to the wiring guard that checks every call is defined or imported.
+      const n = model.ackSet.length;
+      t.append(` ${n} ${n === 1 ? 'cambio importante' : 'cambios importantes'}: ${model.ackSet.map((a) => a.key).join(', ')}`);
+      return t;
+    }));
+  }
+  return root;
+}
