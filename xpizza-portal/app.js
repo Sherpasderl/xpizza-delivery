@@ -418,8 +418,7 @@ async function openReviewFlow() {
       syncPublishButton();
     });
     syncPublishButton();
-    $('revFoot').replaceChildren($('pubback'), $('pubbtn'));
-    $('pubback').textContent = 'Volver a editar';
+    restorePublishFooter();
     $('scrim').classList.add('show');
   } catch (e) {
     // Task 7 gives each server code its own designed panel. Until then this states the failure
@@ -446,8 +445,8 @@ $('pubback').addEventListener('click', () => { $('scrim').classList.remove('show
 function syncPublishButton() {
   const r = state.review;
   const ok = !!(r && r.attestation) && canPublish(r.attestation, r.acknowledged);
-  $('pubbtn').disabled = !ok;
-  $('pubbtn').title = ok ? '' : (r && r.attestation && r.attestation.hasZero
+  PUBBTN.disabled = !ok;
+  PUBBTN.title = ok ? '' : (r && r.attestation && r.attestation.hasZero
     ? 'Hay un precio sin valor válido'
     : 'Confirmá los cambios antes de publicar');
 }
@@ -461,12 +460,23 @@ function syncPublishButton() {
 // dispatched click cannot re-enter however the DOM is manipulated.
 const publisher = createPublisher({ publish: (payload) => publishEdited({ ...payload, token }) });
 
-$('pubbtn').addEventListener('click', async () => {
-  const btn = $('pubbtn');
+// The publish attempt, as a NAMED function rather than a click handler body.
+//
+// 🔴 RETRY used to re-enter by calling $('pubbtn').click(). But showOutcome replaces #revFoot's
+// children to render a panel, which DETACHES #pubbtn from the document — and getElementById does not
+// find a detached node. So `$('pubbtn')` was null and RETRY threw a TypeError instead of resending.
+// That fired on store_unavailable, the single most likely real failure: the merchant got the
+// "Reintentar" button the state machine promised, pressed it, and nothing happened.
+//
+// The structural guard asserted the STRING `$('pubbtn').click()` was present, which proved it was
+// written, not that it worked. Calling the function directly removes the DOM lookup entirely.
+async function runPublish() {
+  // The captured reference, not a lookup: it stays valid even while the button is detached by a
+  // conflict panel, which is exactly when RETRY re-enters.
+  const btn = PUBBTN;
   // In-flight is a VISIBLE state, not just a disabled button: publishing is the one action where a
   // merchant who sees nothing happen will press again.
-  btn.disabled = true;
-  btn.dataset.busy = '1';
+  if (btn) { btn.disabled = true; btn.dataset.busy = '1'; }
   const captured = state.review;          // kept for the receipt — the draft is discarded on success
   let out;
   try {
@@ -475,7 +485,7 @@ $('pubbtn').addEventListener('click', async () => {
     showOutcome(outcomeFor(e));
     return;
   } finally {
-    delete btn.dataset.busy;
+    if (btn) delete btn.dataset.busy;
     syncPublishButton();
   }
   // Refused before the network: already in flight, or the gate said no. Nothing was sent.
@@ -484,21 +494,38 @@ $('pubbtn').addEventListener('click', async () => {
   // SUCCESS. The receipt reads from the CAPTURED review, because the next two lines throw the draft
   // away — the publish is the new baseline, and leaving edits pending would claim unpublished work
   // the merchant no longer has.
-  $('revFoot').replaceChildren($('pubback'));
-  $('pubback').textContent = 'Listo';
+  $('revFoot').replaceChildren(PUBBACK);
+  PUBBACK.textContent = 'Listo';
   renderReceipt($('mbody'), receiptFor(out.res, captured));
   state.review = null;
   discard(state.draft);
   repaintFromDraft();
-});
+}
+PUBBTN.addEventListener('click', runPublish);
+
+// STABLE REFERENCES, captured once while both buttons are attached.
+//
+// 🔴 A detached node is still a valid Node and can be re-appended — but getElementById will not FIND
+// it. Restoring the footer with `$('pubbtn')` after showOutcome detached it does not throw: null is
+// stringified by replaceChildren into a TEXT NODE, so the footer renders "Volver a editarnull" and
+// the publish button is gone permanently. Verified in a browser. Every re-attach uses these.
+const PUBBTN = $('pubbtn');
+const PUBBACK = $('pubback');
+
+// Put the publish footer back. Used when RETRY re-enters from a conflict panel, so the merchant is
+// returned to the normal publish UI rather than left looking at the panel they just dismissed.
+function restorePublishFooter() {
+  $('revFoot').replaceChildren(PUBBACK, PUBBTN);
+  PUBBACK.textContent = 'Volver a editar';
+}
 
 // Every publish failure lands on a designed panel, and the panel's action is carried out here. The
 // mapping from code to panel lives in review.js; what an action MEANS lives here, because only this
 // module can reload a menu or re-open a review.
 function showOutcome(outcome) {
   $('revSub').textContent = '';
-  $('revFoot').replaceChildren($('pubback'));
-  $('pubback').textContent = 'Cerrar';
+  $('revFoot').replaceChildren(PUBBACK);
+  PUBBACK.textContent = 'Cerrar';
   renderOutcome($('mbody'), outcome, async (id) => {
     if (id === PUBLISH_ACTIONS.RELOAD) {
       // the DRAFT moved under us: refetch it and start over
@@ -517,8 +544,15 @@ function showOutcome(outcome) {
       await openReviewFlow();
       return;
     }
-    // RETRY: nothing about the edit was wrong, so send the same reviewed payload again.
-    $('pubbtn').click();
+    if (id === PUBLISH_ACTIONS.RETRY) {
+      // Nothing about the edit was wrong, so send the same reviewed payload again. Calls runPublish
+      // DIRECTLY: rendering this panel detached #pubbtn, so any lookup of it here is null.
+      restorePublishFooter();
+      await runPublish();
+      return;
+    }
+    // An action id nothing handles must do NOTHING rather than fall through into a publish. Every id
+    // the state machine emits is handled above; this is the guard for one it does not emit yet.
   });
 }
 

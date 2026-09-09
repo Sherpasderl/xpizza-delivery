@@ -782,3 +782,22 @@ test('the receipt and the panels actually draw their icons', () => {
     assert.ok(walk(ic).some((n) => n.tag === 'svg'), `${code}'s panel draws its icon`);
   }
 });
+
+test('receipt counts EVERY surface — an added item is a change', () => {
+  // Not reachable while the editor is price-only, which is exactly why it would ship silently: a
+  // future add/remove slice would render "estos 0 cambios" on a real publish.
+  const addOnly = { changed: [], added: [{ key: 'Nueva Pizza', surface: 'item', price: 500 }], removed: [], renamed: [] };
+  const r = receiptFor({ versionId: 'v1' }, { diff: addOnly });
+  assert.strictEqual(r.count, 1, 'an addition alone counts as a change');
+  assert.ok(r.count >= 1, '...so the receipt never says zero on a real publish');
+
+  const mixed = {
+    changed: [{ key: 'a', surface: 'item', field: 'price', old: 1, new: 2 }],
+    added: [{ key: 'b', surface: 'item', price: 5 }],
+    removed: [{ key: 'c', surface: 'item', price: 9 }],
+    renamed: [{ from: 'd', to: 'e', surface: 'item' }],
+  };
+  assert.strictEqual(receiptFor({}, { diff: mixed }).count, 4, 'every surface is counted');
+  // malformed arrays must not throw on the success path
+  assert.strictEqual(receiptFor({}, { diff: { changed: null, added: 'x' } }).count, 0, 'non-arrays count as nothing rather than throwing');
+});

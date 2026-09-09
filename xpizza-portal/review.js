@@ -451,10 +451,15 @@ export function outcomeFor(err) {
 // pending left to read. Reading the draft would report zero changes on a successful publish.
 export function receiptFor(res, captured) {
   const diff = (captured && captured.diff) || {};
-  const rows = Array.isArray(diff.changed) ? diff.changed : [];
+  const arr = (v) => (Array.isArray(v) ? v : []);
+  const rows = arr(diff.changed);
   return {
     versionId: (res && typeof res.versionId === 'string' && res.versionId) ? res.versionId : null,
-    count: rows.length,
+    // EVERY surface, not just `changed`. An added or removed item is genuinely a change, and a
+    // receipt that counted only `changed` would read "estos 0 cambios" on a real publish the moment
+    // an add/remove slice lands. Not reachable while the editor is price-only — which is exactly why
+    // it would ship silently — so it is counted correctly now rather than left as a trap.
+    count: rows.length + arr(diff.added).length + arr(diff.removed).length + arr(diff.renamed).length,
     rows,
   };
 }

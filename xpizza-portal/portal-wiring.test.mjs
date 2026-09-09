@@ -464,7 +464,12 @@ test('every clickable element actually gets a pointer cursor', () => {
       if (expr === 'document' || expr === 'window') continue;   // no cursor semantics on the page itself
       const cls = new Set();
       let tag = null;
-      const byId = expr.match(/^\$\('([^']+)'\)$/);
+      // `const NAME = $('id')` — a captured reference. app.js holds these for buttons a panel render
+      // detaches, since getElementById cannot find a detached node afterwards.
+      let idExpr = expr;
+      const alias = src.match(new RegExp(`const ${bound(expr)}\\s*=\\s*\\$\\('([^']+)'\\)`));
+      if (alias) idExpr = `$('${alias[1]}')`;
+      const byId = idExpr.match(/^\$\('([^']+)'\)$/);
       if (byId) {
         // resolved through the markup: $('id') is only meaningful together with index.html
         const seg = html.match(new RegExp(`<(\\w+)([^>]*\\bid="${byId[1]}"[^>]*)>`));
@@ -577,7 +582,7 @@ test('the attestation is gated on the server capability flag, and it gates the p
   // the publish button is DERIVED from canPublish, in one place
   assert.ok(/function syncPublishButton\(\)/.test(app), 'one function owns the publish button state');
   assert.ok(/canPublish\(/.test(app), '...and it asks canPublish');
-  assert.ok(/\$\('pubbtn'\)\.disabled\s*=/.test(app), '...and actually sets disabled');
+  assert.ok(/PUBBTN\.disabled\s*=/.test(app), '...and actually sets disabled on the captured reference');
   // ...and the acknowledgement it passes is a literal boolean
   assert.ok(/acknowledged\s*=\s*v === true/.test(app), 'the acknowledgement is stored as a literal true, never a truthy');
 });
@@ -587,11 +592,20 @@ test('#pubbtn actually publishes, through a real in-flight lock', () => {
   // sends. A control that looks armed and does nothing is the worst outcome on a publish screen; a
   // control that sends twice is worse still on a fiscal one.
   const app = codeOf('app.js');
-  assert.ok(/\$\('pubbtn'\)\.addEventListener\('click'/.test(app), '#pubbtn has a click listener');
+  assert.ok(/PUBBTN\.addEventListener\('click'/.test(app), '#pubbtn has a click listener, bound to the captured reference');
 
-  const i = app.indexOf("$('pubbtn').addEventListener('click'");
+  // The click handler delegates to runPublish, so the assertions follow the delegation rather than
+  // the name — the same correction the drawer needed when openDrawer became an entry point.
+  assert.ok(/PUBBTN\.addEventListener\('click', runPublish\)/.test(app), 'the click handler IS the publish attempt');
+  const i = app.indexOf('async function runPublish()');
+  assert.ok(i > -1, 'runPublish exists as a named function, callable without a DOM lookup');
   const handler = app.slice(i, i + 1800);
-  assert.ok(/publisher\.run\(/.test(handler), 'the handler runs the publisher — the send is reached, not merely imported');
+  assert.ok(/publisher\.run\(/.test(handler), 'runPublish runs the publisher — the send is reached, not merely imported');
+  // it must survive #pubbtn being DETACHED: a conflict panel replaces the footer, and RETRY re-enters
+  // BOTH null-guards, specifically. A bare /if \(btn\)/ is satisfied by the `finally` clause alone,
+  // so the entry path could still throw on a detached node and pass.
+  assert.ok(/if \(btn\) \{ btn\.disabled/.test(handler), 'runPublish null-guards the button on the way IN');
+  assert.ok(/if \(btn\) delete btn\.dataset\.busy/.test(handler), '...and on the way out');
 
   // the publisher is constructed with the REAL client, so the lock sits in front of the real send
   assert.ok(/createPublisher\(\s*\{\s*publish:[^}]*publishEdited\(/.test(app),
@@ -631,7 +645,34 @@ test('every publish state is wired — and edit_superseded re-reviews rather tha
   for (const a of ['RELOAD', 'REREVIEW', 'BACK']) {
     assert.ok(new RegExp(`PUBLISH_ACTIONS\\.${a}`).test(handler), `${a} is handled`);
   }
-  assert.ok(/\$\('pubbtn'\)\.click\(\)/.test(handler), 'RETRY re-sends the same reviewed payload');
+  // 🔴 RETRY MUST NOT LOOK THE BUTTON UP. showOutcome replaces #revFoot's children to render the
+  // panel, which DETACHES #pubbtn — getElementById does not find a detached node, so
+  // `$('pubbtn').click()` was null.click() and RETRY threw instead of resending. The previous
+  // assertion matched that exact string and passed: it proved the line was written, not that it ran.
+  // the RETRY branch lives in showOutcome's action dispatch, not in runPublish
+  const soIdx = app.indexOf('function showOutcome');
+  assert.ok(soIdx > -1, 'showOutcome exists');
+  const showBody = app.slice(soIdx, soIdx + 2000);
+  const retryIdx = showBody.indexOf('PUBLISH_ACTIONS.RETRY');
+  // An EXPLICIT branch, not a fall-through labelled by a comment: codeOf strips comments, so a
+  // comment-only marker would make this assertion depend on prose rather than on code.
+  assert.ok(retryIdx > -1, 'RETRY is an explicit branch in the action dispatch');
+  const retryBody = showBody.slice(retryIdx);
+  assert.ok(/runPublish\(\)/.test(retryBody), 'RETRY calls runPublish directly');
+  assert.ok(!/\$\('pubbtn'\)/.test(retryBody),
+    'and never looks up #pubbtn — the panel render detached it, so any lookup there is null');
+  // 🔴 AND NEITHER DOES THE RESTORE. `replaceChildren(pubback, null)` does not throw: it STRINGIFIES
+  // null into a text node, so the footer renders "Volver a editarnull" and the publish button is gone
+  // for good. Verified in a browser. Every re-attach must use the captured reference.
+  const restore = app.slice(app.indexOf('function restorePublishFooter'), app.indexOf('function restorePublishFooter') + 300);
+  assert.ok(/replaceChildren\(PUBBACK, PUBBTN\)/.test(restore), 'the footer is restored from captured references');
+  assert.ok(!/\$\('pubbtn'\)|\$\('pubback'\)/.test(restore), '...and never re-looks them up');
+  // EXACTLY ONE lookup — the capture itself, which necessarily happens while the button is attached.
+  // Every later use goes through the reference. "Zero lookups" would be wrong: the reference has to
+  // come from somewhere.
+  assert.strictEqual((app.match(/\$\('pubbtn'\)/g) || []).length, 1, 'exactly one lookup of #pubbtn in app.js');
+  assert.ok(/const PUBBTN = \$\('pubbtn'\);/.test(app), '...and it is the capture, taken once at load');
+  assert.ok(/restorePublishFooter\(\)/.test(retryBody), '...and puts the publish footer back first, so the merchant sees the normal UI');
 
   // 🔴 REREVIEW must go through the review flow (which calls editCatalog), NOT re-publish
   const rer = handler.slice(handler.indexOf('PUBLISH_ACTIONS.REREVIEW'));
