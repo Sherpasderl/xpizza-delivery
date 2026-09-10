@@ -273,7 +273,7 @@ const GOOD = () => ({
     // launcher's choice is a lie. Caught before the parent check, because "claimed twice" describes
     // the graph better than "one of the two parents disagrees".
     rejects('la_musa: one variant claimed by TWO launchers',
-      broken(rid, (s) => { s.structure.variant_items.rice_01 = { label: 'X', basePrice: 307, variantIds: ['noodle_01_sin'] }; }), rid, /claimed by both/);
+      broken(rid, (s) => { s.structure.variant_items.rice_01 = { label: 'X', variantIds: ['noodle_01_sin'] }; }), rid, /claimed by both/);
     rejects('la_musa: a variant nobody lists (missing coverage)',
       // Drop a NON-cheapest variant, so the derived-basePrice rule stays satisfied and coverage is the
       // only thing that can fire. Removing the cheapest would also move "desde" and reject for that.
@@ -296,19 +296,23 @@ const GOOD = () => ({
   rejects('la_musa: an item with no subcat in a category that GROUPS by subcats',
     broken('la_musa', (s) => { const it = s.items.find((i) => i.display.subcat); delete it.display.subcat; }),
     'la_musa', /groups by subcategory/);
-  // the census plants markup in basePrice, which the NUMERIC type catches — a wrong NUMBER does not
-  // trip that at all, and "desde" being wrong is the whole point of deriving it
-  rejects('la_musa: a numeric basePrice that is not the cheapest selectable variant',
-    broken('la_musa', (s) => { s.structure.variant_items.noodle_01.basePrice = 999; }), 'la_musa', /cheapest selectable variant/);
+  // 🔴 SUPERSEDED BY TASK 3, and worth saying why rather than just deleting. This asserted that an
+  // authored basePrice of 999 was refused for not equalling the cheapest variant. There is no authored
+  // basePrice any more: "desde" is derived at emission, so the source stores no copy for anything to
+  // disagree with, and authoring one at all is refused — including the CORRECT value, since being
+  // right today was never the property. The derivation itself is covered in desde-derivation.test.js.
+  rejects('la_musa: authoring a basePrice at all (even the right one)',
+    broken('la_musa', (s) => { s.structure.variant_items.noodle_01.basePrice = 307; }), 'la_musa', /must not be stored/);
+  rejects('la_musa: authoring a WRONG basePrice',
+    broken('la_musa', (s) => { s.structure.variant_items.noodle_01.basePrice = 999; }), 'la_musa', /must not be stored/);
   {
-    // ...and the launcher's own higher price is NOT the desde. Pinning this stops a "fix" that
-    // equates them: Pad Thai launches at L414 and starts from L307, and both facts are load-bearing.
+    // The launcher's own higher price is NOT the desde. Pinning this stops a "fix" that equates them:
+    // Pad Thai launches at L414 and starts from L307, and both facts are load-bearing.
     const s = buildSourceFromCode('la_musa');
-    const launcherPrice = s.items.find((i) => i.key === 'noodle_01').price;
-    assert.strictEqual(s.structure.variant_items.noodle_01.basePrice, 307, 'desde is the cheapest variant');
-    assert.strictEqual(launcherPrice, 414, 'and the launcher keeps its own, higher, authoritative price');
+    assert.strictEqual(s.items.find((i) => i.key === 'noodle_01').price, 414, 'the launcher keeps its own authoritative price');
+    assert.strictEqual(s.structure.variant_items.noodle_01.basePrice, undefined, 'and the source stores no starting price');
     assert.doesNotThrow(() => validateSource(s, 'la_musa'), 'the two coexist — they are different facts');
-    ok('la_musa: "desde" is the min selectable variant and is NOT equated with the launcher price');
+    ok('la_musa: the launcher price is authoritative and the desde is not stored beside it');
   }
   // A two-node cycle has no self-edge, so the self-reference check never sees it — this is the case
   // the gate reported as passing. It is now refused.
@@ -484,10 +488,9 @@ const GOOD = () => ({
     'structure.extra_categories[]':   { absent: NA('an element cannot be absent'), invalid: (s) => { s.structure.extra_categories[0] = '   '; }, refs: (s) => { s.structure.extra_categories = [...s.structure.extra_categories, 'GhostCat']; } },
     'structure.item_order':     { invalid: (s) => { s.structure.item_order.pop(); }, refs: (s) => { s.structure.item_order[0] = 'ghost_item'; } },
     'structure.item_order[]':   { absent: NA('an element cannot be absent; a short list is the invalid case above'), invalid: (s) => { s.structure.item_order[0] = '   '; }, refs: (s) => { s.structure.item_order[0] = 'ghost_item'; } },
-    'structure.variant_items':  { absent: NA('optional — a menu may have no variant dishes at all'), invalid: NA('covered by the per-member paths enumerated beneath this one'), refs: (s) => { s.structure.variant_items = { ghost_launcher: { label: 'X', basePrice: 1, variantIds: ['noodle_01_sin'] } }; } },
+    'structure.variant_items':  { absent: NA('optional — a menu may have no variant dishes at all'), invalid: NA('covered by the per-member paths enumerated beneath this one'), refs: (s) => { s.structure.variant_items = { ghost_launcher: { label: 'X', variantIds: ['noodle_01_sin'] } }; } },
     'structure.variant_items.*':          { absent: NA('removing a launcher is covered by variant coverage, which then reports its orphans'), invalid: NA('covered by the per-member paths enumerated beneath this one'), refs: NA('the launcher key is covered by the map-level refs plant') },
     'structure.variant_items.*.label':    { invalid: (s) => { spec(s).label = '   '; }, refs: NA('this value is content, not a reference to another catalog entity'), unsafe: (s) => { spec(s).label = XSS; } },
-    'structure.variant_items.*.basePrice':{ invalid: (s) => { spec(s).basePrice = 999; }, refs: NA('this value is content, not a reference to another catalog entity') },
     'structure.variant_items.*.variantIds':   { invalid: (s) => { spec(s).variantIds = []; }, refs: (s) => { spec(s).variantIds.push('no_such_variant'); } },
     'structure.variant_items.*.variantIds[]': { absent: NA('an element cannot be absent; an empty list is the invalid case above'), invalid: (s) => { spec(s).variantIds[0] = '   '; }, refs: (s) => { spec(s).variantIds[0] = 'no_such_variant'; } },
     'structure.badges':         { absent: NA('optional — a brand with no badge system declares none'), invalid: NA('covered by the per-definition paths enumerated beneath this one'), refs: NA('the collection names nothing; tags reference INTO it') },
@@ -637,7 +640,7 @@ const GOOD = () => ({
     // choosing a record that carries the field, removes coverage without failing anything — the
     // census would simply do less and still report success. Pinning the counts makes any reduction a
     // build failure, and any genuine addition a deliberate edit.
-    const EXPECTED = { x_pizza: { paths: 36, planted: 163, exempt: 94 }, la_musa: { paths: 61, planted: 265, exempt: 174 } }[rid];
+    const EXPECTED = { x_pizza: { paths: 36, planted: 163, exempt: 94 }, la_musa: { paths: 60, planted: 260, exempt: 172 } }[rid];
     assert.strictEqual(paths.length, EXPECTED.paths, `${rid} — path count moved; the walker or the seed changed`);
     assert.strictEqual(planted, EXPECTED.planted, `${rid} — plant count moved (got ${planted}); coverage was added or removed`);
     // The EXEMPTION count is pinned too. Only the plants were, so an exemption could be added — turning
@@ -782,9 +785,8 @@ const GOOD = () => ({
     ['validateSource :: spec', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
     ['validateSource :: !Array.isArray(ids) || ids.length === 0', 'shape', 'this predicate IS the type test'],
     ['validateSource :: spec #2', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
-    ['validateSource :: i', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
-    ['validateSource :: prices.length', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
-    ['validateSource :: min == null || spec.basePrice !== min', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+            ['validateSource :: spec && spec.basePrice !== undefined', 'not-a-presence-test', 'asks whether a DERIVED value has been authored — its presence IS the defect being reported, not a gate on validating it'],
+    ['validateSource :: desde == null', 'post-type', 'the derivation result, after every variant has been typed — a launcher with no derivable starting price'],
     ["validateSource :: typeof v !== 'string' && typeof v !== 'number'", 'shape', 'this predicate IS the type test'],
     ['validateSource :: Array.isArray(v)', 'shape', 'this predicate IS the type test'],
     ['validateSource :: String(v) === String(launcherId)', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
@@ -837,7 +839,7 @@ const GOOD = () => ({
   const RULED = new Map(RULINGS.map(([k, kind, why]) => [k, { kind, why }]));
 
   const preds = enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8'));
-  assert.strictEqual(preds.length, 131, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
+  assert.strictEqual(preds.length, 130, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
 
   const unruled = preds.filter((p) => !RULED.has(p.key)).map((p) => `${p.line}: ${p.key}`);
   assert.deepStrictEqual(unruled, [],
@@ -851,7 +853,7 @@ const GOOD = () => ({
   }
   const counts = {};
   for (const p of preds) counts[RULED.get(p.key).kind] = (counts[RULED.get(p.key).kind] || 0) + 1;
-  assert.deepStrictEqual(counts, { requiredness: 17, 'post-type': 59, shape: 41, 'not-a-presence-test': 14 },
+  assert.deepStrictEqual(counts, { requiredness: 17, 'post-type': 58, shape: 41, 'not-a-presence-test': 14 },
     'the mix of rulings moved — a predicate changed meaning, which is a thing to look at rather than re-pin');
   ok(`all ${preds.length} control predicates ruled (${counts.requiredness} requiredness, ${counts['post-type']} post-type, ${counts.shape} shape, ${counts['not-a-presence-test']} not-a-presence-test)`);
 

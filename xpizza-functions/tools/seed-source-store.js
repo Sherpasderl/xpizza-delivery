@@ -56,7 +56,17 @@ function buildSourceFromCode(restaurantId) {
   const structure = { schema_version: 1, item_order: items.map((i) => i.key) };
   if (restaurantId === 'la_musa') {
     structure.categories = readLiteral(src, 'CATEGORIES');
-    structure.variant_items = readLiteral(src, 'VARIANT_ITEMS', '{', '}');
+    // The form literal carries a basePrice alongside the variant ids. It is STRIPPED: "desde" is
+    // DERIVED at emission from the variants themselves, and an authored copy is only a second number
+    // that can disagree with them — silently, because nothing about a stale "desde L 307" looks wrong.
+    const authoredVariants = readLiteral(src, 'VARIANT_ITEMS', '{', '}');
+    if (authoredVariants) {
+      structure.variant_items = {};
+      for (const [k, spec] of Object.entries(authoredVariants)) {
+        const { basePrice, ...rest } = spec;      // eslint-disable-line no-unused-vars
+        structure.variant_items[k] = rest;
+      }
+    }
     structure.extras_by_category = readLiteral(src, 'EXTRAS_BY_CATEGORY', '{', '}');
     structure.extras_by_item = readLiteral(src, 'EXTRAS_BY_ITEM', '{', '}');
   } else {

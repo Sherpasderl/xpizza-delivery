@@ -12,7 +12,7 @@
 // to EXTRAS as well as items. x_pizza keys both by NAME; la_musa keys both by ID. The store carries
 // `key` explicitly and validates it against the display record, so the two can never drift apart.
 // ---------------------------------------------------------------------------
-const { pricingKeyOf } = require('./form-menu-source');
+const { pricingKeyOf, deriveStartingPrice } = require('./form-menu-source');
 const { assertDisplaySafe, checkValue: assertFieldSafe } = require('./display-safety');
 
 // The COMPLETE display schema. A source stamped with this validates as a full customer-display
@@ -400,22 +400,25 @@ function validateSource(source, rid) {
       // what closes the injection: a number cannot be markup. It must also be the real minimum
       // SELECTABLE variant price — the launcher keeps its own, higher, authoritative price (Pad Thai
       // launches at L414 and starts from L307), so the two are deliberately NOT equated.
-      // 🔴 UNCONDITIONAL. Guarded by `!== undefined`, DELETING basePrice was accepted and the menu then
-      // read "desde L undefined" — the identical conditional-guard mistake the dish price rule had.
-      // A rule that only applies when the field is present cannot enforce that the field is present.
       const VARIANT_RULES = {
         label: { required: true, type: 'string', nonEmpty: true, sink: 'body' },
-        // `required: true` is subsumed by the `!== min` check below (undefined !== 307), and mutation
-        // testing says so — deleting it breaks no test. Kept because the gate asked for both facts
-        // stated, and because "a number" and "the right number" are different things to a reader.
-        basePrice: { required: true, type: 'number' },
         variantIds: { required: true, type: 'array' },
       };
       for (const [f, rule] of Object.entries(VARIANT_RULES)) checkField(spec && spec[f], rule, `${rid}/variant ${launcherId}`, f);
-      const prices = ids.map((v) => { const i = byUiId.get(String(v)); return i ? i.price : null; }).filter((p) => p != null);
-      const min = prices.length ? Math.min(...prices) : null;
-      if (min == null || spec.basePrice !== min) {
-        fail(`${rid} — variant launcher ${launcherId} declares basePrice ${String(spec.basePrice)} but the cheapest selectable variant is ${String(min)} ("desde" is derived, never authored)`);
+
+      // 🔴 "DESDE" IS DERIVED, SO IT MUST NOT BE AUTHORED. Task 2 required an authored basePrice and
+      // checked it equalled the cheapest selectable variant — which caught a drifted copy. Not storing
+      // one at all is stronger: there is no second number for the variants to disagree with, so the
+      // form's "desde" is a fact about the variants by construction rather than a claim checked after
+      // the fact. Refused even when the authored value is CORRECT, because being right today is not
+      // the property being protected.
+      if (spec && spec.basePrice !== undefined) {
+        fail(`${rid} — variant launcher ${launcherId} authors a basePrice; "desde" is derived from the variants at emission and must not be stored (an authored copy is a number that can drift from what it summarises)`);
+      }
+      // ...and one must be DERIVABLE, or the form renders a launcher with no starting price at all.
+      const desde = deriveStartingPrice(byUiId.get(String(launcherId)), ids.map((v) => byUiId.get(String(v))).filter(Boolean));
+      if (desde == null) {
+        fail(`${rid} — variant launcher ${launcherId} has no variant carrying a usable price, so no starting price could be derived for it`);
       }
       for (const v of ids) {
         // The renderer matches STRICTLY (`p.id === vid`), so a non-primitive reference silently

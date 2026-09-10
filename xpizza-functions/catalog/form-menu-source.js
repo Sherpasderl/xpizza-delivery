@@ -148,7 +148,16 @@ function buildCatalogV2(restaurantId, opts = {}) {
   const structure = { schema_version: 2, item_order: items.map((i) => i.key) };
   if (restaurantId === 'la_musa') {
     structure.categories = fd ? fd.categories : readLiteral(src, 'CATEGORIES');                 // id/name/subcats/layout, in order
-    structure.variant_items = fd ? fd.variant_items : readLiteral(src, 'VARIANT_ITEMS', '{', '}');  // launcher → variant ids
+    // launcher → variant ids. The form literal also carries a basePrice; it is STRIPPED here, because
+    // "desde" is derived at emission and an authored copy is only something to drift.
+    const authoredVariants = fd ? fd.variant_items : readLiteral(src, 'VARIANT_ITEMS', '{', '}');
+    if (authoredVariants) {
+      structure.variant_items = {};
+      for (const [k, spec] of Object.entries(authoredVariants)) {
+        const { basePrice, ...rest } = spec;      // eslint-disable-line no-unused-vars
+        structure.variant_items[k] = rest;
+      }
+    }
     const hasPhoto = new Set(fd ? (fd.has_photo || []) : readSetLiteral(src, 'HAS_PHOTO'));
     for (const it of items) it.has_photo = hasPhoto.has(it.key);            // per-item; the Set regenerates from these
   } else {
@@ -184,6 +193,25 @@ function buildCatalogV2(restaurantId, opts = {}) {
   return { items, structure };
 }
 
+// 🔴 "DESDE" IS DERIVED, EVERY TIME. The launcher keeps its own authoritative price — a bare launcher
+// id is orderable and costs that (menu-pricing.js:83) — while the customer is shown the cheapest thing
+// they can actually pick. Two different facts about the same dish: Pad Thai launches at L414 and
+// starts from L307.
+//
+// Derived rather than authored because an authored copy is a number that can disagree with the
+// variants it claims to summarise, and nothing about it would look wrong. Nobody notices "desde L 307"
+// over a menu whose cheapest protein is now L280 until a customer does.
+//
+// Returns null rather than a guess when no variant carries a usable price: a starting price that is
+// not a real variant's price is worse than none, because the form would render it.
+function deriveStartingPrice(launcher, variants) {
+  void launcher;                       // the launcher's own price is deliberately NOT an input
+  const prices = (variants || [])
+    .map((v) => v && v.price)
+    .filter((p) => Number.isInteger(p) && p > 0);
+  return prices.length ? Math.min(...prices) : null;
+}
+
 // The inverse — reconstruct the form's dish array + aux structures from schema-v2 records. 1c-b will
 // render a bundle from this; 1c-a uses it to PROVE the round-trip is lossless.
 function rebuildFormMenu(restaurantId, items, structure) {
@@ -197,7 +225,25 @@ function rebuildFormMenu(restaurantId, items, structure) {
   const out = { dishes };
   if (restaurantId === 'la_musa') {
     out.categories = structure.categories;
-    out.variant_items = structure.variant_items;
+    // THE COMPAT ALIAS. 1A ships before 1B, and the live form reads variant_items[...].basePrice for
+    // its "desde" and its per-choice delta maths (la-musa-orders/index.html:1974, 2165, 4136, 4144).
+    // Emitting only a new field would render "desde L undefined" and wrong deltas on a form nobody has
+    // updated yet — so the bundle still carries basePrice, now DERIVED here rather than authored
+    // upstream. It is an output of the variants, computed at emission, and there is no stored copy of
+    // it anywhere for the two to drift apart.
+    if (structure.variant_items) {
+      const byUiId = new Map(items.map((i) => [String(i.display.id), i]));
+      out.variant_items = {};
+      for (const [launcherId, spec] of Object.entries(structure.variant_items)) {
+        const variants = (spec.variantIds || []).map((id) => byUiId.get(String(id))).filter(Boolean);
+        // Emitted in the shape the form literal had — label, basePrice, variantIds — so the served
+        // artifact is BYTE-IDENTICAL to what ships today. The value was always 307; making the key
+        // order match too means the regenerated bundle produces no diff at all, and "nothing the
+        // customer sees changed" is something a reader can check rather than take on trust.
+        const { label, variantIds, ...others } = spec;    // eslint-disable-line no-unused-vars
+        out.variant_items[launcherId] = { label, basePrice: deriveStartingPrice(byUiId.get(String(launcherId)), variants), variantIds, ...others };
+      }
+    }
     out.has_photo = order.filter((k) => byKey.get(k).has_photo).sort();
   } else {
     out.categories = structure.categories;
@@ -207,4 +253,4 @@ function rebuildFormMenu(restaurantId, items, structure) {
   return out;
 }
 
-module.exports = { buildCatalogV2, rebuildFormMenu, formSource, readLiteral, readSetLiteral, pricingKeyOf };
+module.exports = { buildCatalogV2, rebuildFormMenu, deriveStartingPrice, formSource, readLiteral, readSetLiteral, pricingKeyOf };
