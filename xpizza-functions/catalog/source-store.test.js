@@ -637,9 +637,13 @@ const GOOD = () => ({
     // choosing a record that carries the field, removes coverage without failing anything — the
     // census would simply do less and still report success. Pinning the counts makes any reduction a
     // build failure, and any genuine addition a deliberate edit.
-    const EXPECTED = { x_pizza: { paths: 36, planted: 163 }, la_musa: { paths: 61, planted: 265 } }[rid];
+    const EXPECTED = { x_pizza: { paths: 36, planted: 163, exempt: 94 }, la_musa: { paths: 61, planted: 265, exempt: 174 } }[rid];
     assert.strictEqual(paths.length, EXPECTED.paths, `${rid} — path count moved; the walker or the seed changed`);
     assert.strictEqual(planted, EXPECTED.planted, `${rid} — plant count moved (got ${planted}); coverage was added or removed`);
+    // The EXEMPTION count is pinned too. Only the plants were, so an exemption could be added — turning
+    // a tested mode into a stated one — and the plant count would fall by exactly as much as the
+    // exemption count rose, with only one of the two numbers being watched.
+    assert.strictEqual(exempt, EXPECTED.exempt, `${rid} — exemption count moved (got ${exempt}); a mode was excused or un-excused`);
     ok(`${rid}: ${paths.length} paths, ${planted} plants all refused, ${exempt} stated exemptions`);
   }
 

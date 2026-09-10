@@ -12,7 +12,7 @@
 // to EXTRAS as well as items. x_pizza keys both by NAME; la_musa keys both by ID. The store carries
 // `key` explicitly and validates it against the display record, so the two can never drift apart.
 // ---------------------------------------------------------------------------
-const { pricingKeyOf, formSource, readLiteral } = require('./form-menu-source');
+const { pricingKeyOf } = require('./form-menu-source');
 const { assertDisplaySafe, checkValue: assertFieldSafe } = require('./display-safety');
 
 // The COMPLETE display schema. A source stamped with this validates as a full customer-display
@@ -65,34 +65,38 @@ function fail(msg) { throw new Error(`source_malformed: ${msg}`); }
 // Derived per brand from that brand's own shipped form, so there is no new restaurant literal here:
 // a brand whose form has no CATEGORIES literal renders id-only categories and legitimately carries no
 // names; a brand with no badge literal has no badge system to reference.
-const CONTRACTS = new Map();
+// 🔴 READ FROM THE COMMITTED ARTIFACT, NOT FROM THE FORM. Deriving this at request time by reading
+// the shipped form worked locally and was a hole in production: the forms are not in the functions
+// deploy bundle, so the read threw, the throw was caught, and the contract quietly constrained
+// nothing — precisely where the constraint mattered. tools/generate-renderer-contract.js bakes it
+// into the package and a parity test regenerates and compares, so it cannot drift.
+//
+// FAIL CLOSED. A missing or unparseable artifact is a broken deployment, not a licence to validate
+// less. Everything stops.
+let CONTRACT_TABLE = null;
+function contractTable() {
+  if (CONTRACT_TABLE) return CONTRACT_TABLE;
+  let table;
+  try { table = require('./renderer-contract.generated'); } catch (e) {
+    throw new Error(`source_malformed: the renderer contract artifact is missing or unreadable (${e.message}); refusing to validate against an unknown renderer`);
+  }
+  if (!table || typeof table !== 'object' || Array.isArray(table)) {
+    throw new Error('source_malformed: the renderer contract artifact is not a table; refusing to validate against an unknown renderer');
+  }
+  CONTRACT_TABLE = table;
+  return table;
+}
+
 function rendererContract(rid) {
-  if (CONTRACTS.has(rid)) return CONTRACTS.get(rid);
-  let categoriesNamed = false;
-  let badges = null;
-  try {
-    const src = formSource(rid);
-    try {
-      const cats = readLiteral(src, 'CATEGORIES');
-      categoriesNamed = Array.isArray(cats) && cats.length > 0 && cats.every((c) => typeof c.name === 'string' && c.name);
-    } catch (_) { categoriesNamed = false; }         // no CATEGORIES literal: id-only categories
-    try {
-      // The SELECTABLE set is the priority list intersected with the definitions — badgeHtmlFor walks
-      // TAG_PRIORITY and looks each entry up, so a definition the priority list omits is never chosen.
-      const defs = readLiteral(src, 'TAG_BADGES', '{', '}') || {};
-      const priority = readLiteral(src, 'TAG_PRIORITY') || [];
-      const defined = new Set(Object.keys(defs));
-      // Intersected, because badgeHtmlFor walks TAG_PRIORITY and looks each entry up — a definition
-      // the priority list omits is never selected. Today the two lists match exactly, so dropping the
-      // filter changes nothing and mutation reports it as a survivor; it is the accurate statement of
-      // what the renderer can actually choose, and the day someone adds a definition without a
-      // priority entry is the day it starts mattering.
-      badges = new Set(priority.filter((t) => defined.has(t)));
-    } catch (_) { badges = null; }                   // no badge system in this renderer
-  } catch (_) { /* no form for this brand: the contract constrains nothing */ }
-  const contract = { categoriesNamed, badges };
-  CONTRACTS.set(rid, contract);
-  return contract;
+  const entry = contractTable()[rid];
+  // A brand the artifact does not describe has no bespoke renderer to honour. Its badge set is EMPTY
+  // — never the keys the submission itself declares, which would be the document deciding its own
+  // rules again — and its categories are not required to carry labels, because nothing prints them.
+  if (!entry) return { categoriesNamed: false, badges: new Set() };
+  if (typeof entry.categoriesNamed !== 'boolean' || !Array.isArray(entry.badges)) {
+    throw new Error(`source_malformed: the renderer contract for ${rid} is malformed; refusing to validate against an unknown renderer`);
+  }
+  return { categoriesNamed: entry.categoriesNamed, badges: new Set(entry.badges) };
 }
 
 // THREE SEPARATE QUESTIONS PER FIELD: is it required, what TYPE must it be, and is its content safe.
@@ -365,7 +369,14 @@ function validateSource(source, rid) {
   //  block, the exposure maps in theirs, the gate and redemption arrays in theirs — so a present-null
   //  one is a clean rejection at that point rather than a TypeError. The extra pass was a duplicate no
   //  test could distinguish, which is the shape of a guard that quietly stops meaning anything.)
-  const vi = (st.variant_items && typeof st.variant_items === 'object') ? st.variant_items : {};
+  // Typed BEFORE traversal. Substituting {} for anything non-object meant a null or a string where the
+  // variant map belongs simply became "this menu has no variants" — the launcher's own dishes then
+  // validated as ordinary items and the required choice vanished.
+  checkField(st.variant_items, { required: false, type: 'object' }, `${rid}`, 'structure.variant_items');
+  // Subsumed by the type check above (a present-but-wrong map is already rejected), so restoring the
+  // old `typeof === 'object' ? x : {}` breaks no test. Kept because "absent means none" and "anything
+  // I cannot read means none" are different statements, and only one of them is true.
+  const vi = st.variant_items === undefined ? {} : st.variant_items;
   {
     const byUiId = new Map(source.items.map((i) => [String(i.display.id), i]));
     const claimed = new Map();
@@ -448,15 +459,18 @@ function validateSource(source, rid) {
   }
   // The definitions a source may declare are the ones its renderer can actually select. A definition
   // outside that set renders nothing however well-formed it is.
-  if (st.badges !== undefined && st.badges !== null && contract.badges) {
+  if (st.badges !== undefined && st.badges !== null) {
     for (const k of Object.keys(st.badges)) {
-      if (!contract.badges.has(k)) fail(`${rid} — badge ${k} is not one the renderer can select (its badge set is fixed by the form, not by this document)`);
+      if (!contract.badges.has(k)) fail(`${rid} — badge ${k} is not one the renderer can select (the badge set is fixed by the shipped form, not by this document)`);
     }
   }
-  // `contract.badges` first — though with definitions bound to the renderer set above, the source's
-  // own keys are necessarily a subset, so the two agree today and mutation testing reports this as a
-  // survivor. Kept as the direct statement of the rule: tags reference what the RENDERER can select.
-  const badgeKeys = contract.badges || new Set(Object.keys(st.badges || {}));
+  // ALWAYS the contract's set — never the source's own keys. A brand with no badge renderer has an
+  // EMPTY set, so any tag on it is refused; falling back to what the document declares would hand the
+  // decision back to the document.
+  // Mutation reports a source-keys fallback here as a survivor, and structurally it is: definitions are
+  // bound to the contract set above, so the source's keys are necessarily a subset and the two agree.
+  // This stays the direct statement of the rule — tags reference what the RENDERER can select.
+  const badgeKeys = contract.badges;
   for (const it of source.items) {
     for (const t of (Array.isArray(it.display.tags) ? it.display.tags : [])) {
       if (!badgeKeys.has(t)) fail(`${rid}/${it.key} — tag ${t} is not a badge the renderer can select, so it would render nothing`);
