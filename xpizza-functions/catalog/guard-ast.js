@@ -10,6 +10,31 @@
 // was not classified as safe, it was never seen at all. A whitelist of recognised shapes fails open on
 // everything outside it, which is the very defect the audit exists to prevent, one level up.
 //
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// 🔴 WHAT THIS IS, AND WHAT IT IS NOT. This is a STRONG LINT over predicate nodes. It is not a proof
+// that no validation is gated on presence, and it should not be mistaken for one.
+//
+// It sees every control predicate — if / ternary / while / for tests, and standalone && || ?? — and
+// forces each to be classified. What it does NOT see is validation gated through something that is
+// not a predicate at all:
+//
+//     [x].filter(Boolean).forEach(validate)     gating via a collection operation
+//     void (x && f(x))                          the guard swallowed by an expression
+//     x &&= f(x)                                a logical ASSIGNMENT, not a logical expression
+//     switch (Boolean(x)) { case true: ... }    a switch discriminant rather than a test
+//
+// Those are out of scope BY DESIGN. Chasing them is an arms race with no end state — every form
+// closed suggests another — and the thing that actually protects a customer is the validator itself,
+// which is exhaustively covered elsewhere: the FIELD CENSUS plants absent / wrong-type / null /
+// invalid / dangling-reference / duplicate / collection-absent values into every field of the REAL
+// SEED and requires each to be refused. That census tests BEHAVIOUR and does not care how a rule is
+// spelled, so helper-mediated gating shows up there as an accepted bad value.
+//
+// This lint's job is narrower and worth having: it stops the ordinary `if (x !== undefined) {
+// validate(x) }` from being written without someone thinking about it, which is the shape that
+// actually occurred, twice. Read it as that, and do not reopen the arms race on the strength of it.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+//
 // So NOTHING here decides that a predicate is uninteresting. Every predicate acorn yields is
 // enumerated and a human rules it — including as `not-a-presence-test`. A novel spelling is still a
 // predicate, so it still has to be ruled, so it cannot slip.
@@ -99,27 +124,61 @@ function enumeratePredicates(src) {
 
 // Every module the runtime can reach from an entrypoint, followed transitively. A parser that no
 // deployed file requires DIRECTLY can still arrive through something one of them requires.
+//
+// Two bugs this replaces, both of which made the walk quietly incomplete:
+//   • the require sites were found by a regex that demanded `require(` with no space, so
+//     `require ('acorn')` was invisible. Imports are now discovered from the SYNTAX TREE.
+//   • resolution accepted a bare directory path, then failed to read it as a file and returned —
+//     so `require('./somedir')` terminated that branch of the walk silently. Resolution is now
+//     Node's own, and an edge that cannot be resolved FAILS rather than ending the walk.
 function runtimeImportGraph(entryFiles, resolveDir) {
-  const { readFileSync, existsSync } = require('fs');
-  const { join, dirname, resolve } = require('path');
-  const seenFiles = new Set();
+  const { readFileSync } = require('fs');
+  const { dirname, resolve } = require('path');
+  const files = new Set();
   const externals = new Set();
-  const walk = (file) => {
-    if (seenFiles.has(file) || !existsSync(file)) return;
-    seenFiles.add(file);
-    let code;
-    try { code = readFileSync(file, 'utf8'); } catch (_) { return; }
-    for (const m of code.matchAll(/require\(\s*['"]([^'"]+)['"]\s*\)/g)) {
-      const spec = m[1];
-      if (!spec.startsWith('.')) { externals.add(spec.split('/')[0]); continue; }
-      const base = resolve(dirname(file), spec);
-      for (const candidate of [base, `${base}.js`, join(base, 'index.js')]) {
-        if (existsSync(candidate) && !candidate.endsWith('/')) { walk(candidate); break; }
+  const unresolved = [];
+  const dynamic = [];
+
+  const requiresIn = (code, file) => {
+    const specs = [];
+    let ast;
+    try { ast = parse(code, { ecmaVersion: 'latest', sourceType: 'script', locations: true }); }
+    catch (e) { unresolved.push(`${file}: unparseable (${e.message})`); return specs; }
+    const walkNode = (node) => {
+      if (node.type === 'CallExpression' && node.callee.type === 'Identifier' && node.callee.name === 'require') {
+        const arg = node.arguments[0];
+        if (arg && arg.type === 'Literal' && typeof arg.value === 'string') specs.push(arg.value);
+        // A computed specifier cannot be followed, so it is REPORTED rather than skipped — an
+        // unfollowable edge is exactly where something unexpected would hide.
+        else dynamic.push(`${file}:${node.loc.start.line}`);
       }
+      for (const c of childrenOf(node)) walkNode(c);
+    };
+    walkNode(ast);
+    return specs;
+  };
+
+  const walk = (file) => {
+    if (files.has(file)) return;
+    files.add(file);
+    let code;
+    try { code = readFileSync(file, 'utf8'); } catch (e) { unresolved.push(`${file}: unreadable`); return; }
+    for (const spec of requiresIn(code, file)) {
+      if (!spec.startsWith('.')) { externals.add(spec.split('/')[0]); continue; }
+      let target;
+      // Node's OWN resolution — directories, index.js, package.json "main", extensions and all.
+      try { target = require.resolve(spec, { paths: [dirname(file)] }); }
+      catch (e) { unresolved.push(`${file} -> ${spec}`); continue; }
+      walk(target);
     }
   };
-  for (const f of entryFiles) walk(resolve(resolveDir, f));
-  return { files: [...seenFiles], externals: [...externals] };
+  for (const f of entryFiles) {
+    let entry;
+    try { entry = require.resolve(resolve(resolveDir, f)); }
+    catch (e) { unresolved.push(`entry ${f}`); continue; }
+    walk(entry);
+  }
+  return { files: [...files], externals: [...externals], unresolved, dynamic };
 }
 
 module.exports = { enumeratePredicates, calleeName, runtimeImportGraph };

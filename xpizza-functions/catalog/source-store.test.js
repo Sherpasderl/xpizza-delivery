@@ -685,8 +685,17 @@ const GOOD = () => ({
 //     shape               IS the type test
 //     not-a-presence-test an ordinary value or business comparison
 //
-// A predicate with no ruling fails the build. A novel spelling is still a predicate, so it still has
-// to be ruled, so it cannot slip. That is the completeness guarantee the first two versions lacked.
+// A predicate with no ruling fails the build, so an ordinary presence guard cannot be written without
+// someone classifying it.
+//
+// 🔴 AND THAT IS WHERE THIS STOPS. It is a strong LINT over predicate nodes, not a proof that no
+// validation is gated on presence. Gating through something that is not a predicate —
+// `[x].filter(Boolean).forEach(validate)`, `void (x && f(x))`, `x &&= f(x)`,
+// `switch (Boolean(x))` — is out of scope by design, because closing each form only suggests the
+// next one. The residual is covered where it actually matters: the FIELD CENSUS above plants seven
+// kinds of wrong value into every field of the real seed and requires each to be refused, which
+// tests behaviour and does not care how a rule is spelled. Read this as a lint. Do not mistake it
+// for a guarantee and reopen the chase.
 {
   const { readFileSync } = require('fs');
   const { join } = require('path');
@@ -918,5 +927,39 @@ const GOOD = () => ({
     `🔴 acorn is reachable from the deployed entrypoint through: ${graph.files.filter((f) => /guard-ast/.test(f)).join(', ') || 'a transitive require'}`);
   assert.ok(!graph.files.some((f) => /guard-ast/.test(f)),
     '🔴 the guard harness itself is reachable from the runtime — it requires acorn');
-  ok(`acorn is test-only across the whole runtime import graph (${graph.files.length} modules followed, ${graph.externals.length} externals)`);
+  // 🔴 AN EDGE THAT CANNOT BE FOLLOWED IS A FAILURE, NOT AN ENDING. Resolution used to accept a bare
+  // directory path, fail to read it as a file, and return — so `require('./somedir')` terminated that
+  // branch of the walk in silence, and anything beyond it was "not reachable" only because nobody
+  // looked. An unfollowable edge is exactly where something unexpected would hide.
+  assert.deepStrictEqual(graph.unresolved, [], `🔴 import edges the walk could not follow:\n    ${graph.unresolved.join('\n    ')}`);
+  assert.deepStrictEqual(graph.dynamic, [], `🔴 computed require() calls the walk cannot follow:\n    ${graph.dynamic.join('\n    ')}`);
+  ok(`acorn is test-only across the whole runtime import graph (${graph.files.length} modules followed, ${graph.externals.length} externals, 0 unfollowable edges)`);
+
+  // ── the two discovery bugs, as regressions ────────────────────────────────────────────────────
+  {
+    const { mkdtempSync, writeFileSync, mkdirSync } = require('fs');
+    const { tmpdir } = require('os');
+    const dir = mkdtempSync(join(tmpdir(), 'graph-'));
+    // 1. `require ('acorn')` — a space before the paren. The old regex demanded `require(` and so
+    //    could not see this at all; imports are read from the syntax tree now.
+    writeFileSync(join(dir, 'spaced.js'), "const a = require ('acorn');\nmodule.exports = a;\n");
+    const spaced = runtimeImportGraph(['spaced.js'], dir);
+    assert.ok(spaced.externals.includes('acorn'), '🔴 `require (\'acorn\')` with a space is discovered');
+    // 2. a require of a DIRECTORY. The old resolution accepted the directory path, failed to read it
+    //    as a file, and returned — swallowing everything beyond it.
+    mkdirSync(join(dir, 'sub'));
+    writeFileSync(join(dir, 'sub', 'index.js'), "module.exports = require('acorn');\n");
+    writeFileSync(join(dir, 'viaDir.js'), "module.exports = require('./sub');\n");
+    const viaDir = runtimeImportGraph(['viaDir.js'], dir);
+    assert.ok(viaDir.externals.includes('acorn'), '🔴 a require of a DIRECTORY is followed into its index.js');
+    assert.deepStrictEqual(viaDir.unresolved, [], 'and it resolves cleanly rather than being swallowed');
+    // 3. an edge that genuinely cannot resolve must FAIL, not end the walk quietly.
+    writeFileSync(join(dir, 'broken.js'), "module.exports = require('./does-not-exist');\n");
+    const broken = runtimeImportGraph(['broken.js'], dir);
+    assert.strictEqual(broken.unresolved.length, 1, '🔴 an unresolvable edge is REPORTED, not swallowed');
+    // 4. a computed specifier cannot be followed, so it is reported too.
+    writeFileSync(join(dir, 'dyn.js'), "const n = 'acorn';\nmodule.exports = require(n);\n");
+    assert.strictEqual(runtimeImportGraph(['dyn.js'], dir).dynamic.length, 1, '🔴 a computed require is REPORTED');
+    ok('the import walk sees spaced requires, follows directory requires, and refuses to swallow an edge it cannot resolve');
+  }
 }
