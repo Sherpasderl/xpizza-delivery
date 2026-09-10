@@ -666,144 +666,257 @@ const GOOD = () => ({
   ok('both real menus still PASS with the complete rule set');
 }
 
-// ═══ THE GUARD AUDIT, AST-COMPLETE ══════════════════════════════════════════════════════════════
-// Two rounds running, the same shape got through: a check that asks whether a value is PRESENT, or
-// non-empty, or needed, and then uses that answer to decide whether the value is VALIDATED. A falsy
-// contract entry read as "brand not described"; an empty extras list read as "no namespace to check".
+// ═══ THE PREDICATE CENSUS — deny by default ═════════════════════════════════════════════════════
+// The rule: a presence / emptiness test may gate REQUIREDNESS only. A present value is always
+// type-validated.
 //
-// The rule: a presence / emptiness / conditional test may gate REQUIREDNESS only. A present value is
-// always type-validated. Every guard of that shape is ruled below — and they are enumerated from the
-// SYNTAX TREE, because a regex could not enumerate them: it missed truthiness (`if (x)`,
-// `if (x.length)`), formatting (`if(x!==undefined)`), multi-line tests, and guards that are not `if`
-// statements at all (`x ? validate(x) : y`, `x && validate(x)`). Anything the scanner cannot see is
-// silently unruled, which is this very fail-open shape one level up.
+// 🔴 THREE ATTEMPTS AT ENUMERATING THE THINGS TO CLASSIFY, and the first two failed the same way. A
+// regex could not see truthiness, spacing, multi-line tests or non-`if` guards. An AST scanner that
+// recorded only predicates matching RECOGNISED presence shapes was no better: a spelling the list did
+// not anticipate — `!!x`, `Boolean(x)`, `x?.y`, `x.length > 0`, `return x && f(x)`, a comma compound —
+// was not judged safe, it was never seen. A whitelist of recognised shapes fails open on everything
+// outside it, which is the very defect this audit exists to prevent, one level up.
+//
+// So the scanner decides NOTHING. Every control predicate acorn yields — every if / ternary / while /
+// for test, and every standalone && || ?? — is enumerated, and a human rules each one:
+//
+//     requiredness        gates only whether a value must be there
+//     post-type           runs after the value has been type-validated
+//     shape               IS the type test
+//     not-a-presence-test an ordinary value or business comparison
+//
+// A predicate with no ruling fails the build. A novel spelling is still a predicate, so it still has
+// to be ruled, so it cannot slip. That is the completeness guarantee the first two versions lacked.
 {
   const { readFileSync } = require('fs');
   const { join } = require('path');
-  const { enumerateGuards, isPresenceTest } = require('./guard-ast');
+  const { enumeratePredicates, calleeName, runtimeImportGraph } = require('./guard-ast');
 
-  // requiredness — decides only whether a value must be there; a present one is typed elsewhere
-  // post-type    — runs AFTER the value has been type-validated, so it cannot fail open
-  // shape        — IS the type test
-  const RULED = {
-    'canonicalize :: Array.isArray(value)': ['shape', 'recursion dispatch: an array is copied element-wise, an object key-wise'],
-    "canonicalize :: value && typeof value === 'object'": ['shape', 'the same dispatch for the object branch of the canonical serialiser'],
-    'contractTable :: CONTRACT_TABLE': ['post-type', 'a memo of an already-validated table; the shape check below ran before it was cached'],
-    "contractTable :: !table || typeof table !== 'object' || Array.isArray(table)": ['shape', 'the artifact table itself must be a plain object before any brand is looked up'],
-    "rendererContract :: !entry || typeof entry !== 'object' || Array.isArray(entry) || typeof entry.categoriesNamed !== 'boolean' || !Array.isArray(entry.badges)": ['shape', 'every PRESENT entry is shape-checked, however falsy it happens to be'],
-    "<module> :: v && typeof v === 'object' && !Array.isArray(v)": ['shape', 'the object type predicate itself'],
-    '<module> :: Array.isArray(v)': ['shape', 'the array type predicate itself'],
-    "<module> :: Array.isArray(v) && v.every((x) => typeof x === 'string')": ['shape', 'the string-array type predicate itself'],
-    'checkField :: value === undefined': ['requiredness', 'THE mechanism: undefined is absent, everything else is typed below — null included'],
-    'checkField :: rule.required': ['requiredness', 'reads the field rule to decide whether absence is an error'],
-    'checkField :: typeReason': ['post-type', 'reports the result of the type check that just ran'],
-    "checkField :: rule.nonEmpty && typeof value === 'string' && !value.trim()": ['post-type', 'blankness, applied after the value is known to be a string'],
-    'checkField :: rule.enum && !rule.enum.includes(value)': ['post-type', 'membership, applied after the type check inside checkField'],
-    'checkField :: rule.unique && Array.isArray(value) && new Set(value).size !== value.length': ['post-type', 'uniqueness, applied after the type check inside checkField'],
-    'checkField :: rule.sink': ['post-type', 'whether this field reaches a renderer sink, asked after it is typed'],
-    'checkField :: unsafe': ['post-type', 'reports the result of the content-safety check that just ran'],
-    "validateSource :: !source || typeof source !== 'object'": ['shape', 'the source document itself must be an object before anything reads it'],
-    "validateSource :: !st || typeof st !== 'object'": ['shape', 'the structure must be an object before anything reads it'],
-    'validateSource :: Array.isArray(c.subcats)': ['post-type', 'defensive iteration in the safety pass; a non-array subcats is rejected outright by CATEGORY_RULES'],
-    'validateSource :: unsafe': ['post-type', 'reports the result of the content-safety check that just ran'],
-    "validateSource :: !it || typeof it !== 'object'": ['shape', 'each item must be an object before its fields are read'],
-    "validateSource :: typeof it.key !== 'string' || !it.key": ['shape', 'the pricing key must be a non-empty string before it identifies anything'],
-    "validateSource :: !it.display || typeof it.display !== 'object'": ['shape', 'each display record must be an object before its fields are read'],
-    'validateSource :: it.display.cat != null && !catIds.has(it.display.cat)': ['post-type', 'category membership, after cat is required and typed by DISPLAY_RULES'],
-    "validateSource :: !ex || typeof ex.key !== 'string' || !ex.key": ['shape', 'each extra and its pricing key must be well formed'],
-    'validateSource :: ex.display': ['requiredness', 'gates only the key-vs-display agreement check; a missing display record is separately REQUIRED by EXTRA_RULES, so absence still rejects'],
-    "validateSource :: d.variantOf != null && (typeof d.choice !== 'string' || !d.choice.trim())": ['requiredness', 'being a variant is what makes a choice label required; the label itself is typed by DISPLAY_RULES'],
-    'validateSource :: Array.isArray(c && c.subcats)': ['post-type', 'builds the grouping lookup; a non-array is rejected by CATEGORY_RULES'],
-    'validateSource :: declared && declared.length': ['requiredness', 'whether the category GROUPS decides whether a subcat is required; subcats is typed by CATEGORY_RULES'],
-    'validateSource :: sub == null': ['requiredness', 'a grouping category is what makes a subcat required; subcat itself is typed by DISPLAY_RULES'],
-    'validateSource :: sub != null': ['requiredness', 'the mirror case — a subcat on a category that groups by none; the value is typed already'],
-    'validateSource :: Array.isArray(extraCats)': ['post-type', 'blank-entry sweep, after extra_categories is type-validated unconditionally above'],
-    'validateSource :: Array.isArray(extraCats) #2': ['post-type', 'the same sweep, after the same unconditional type check'],
-    'validateSource :: Array.isArray(extraCats) #3': ['post-type', 'reverse-coverage iteration, after the same unconditional type check'],
-    'validateSource :: map === undefined': ['requiredness', 'undefined only; a present map (null included) reaches the type check on the next line'],
-    'validateSource :: st.variant_items === undefined': ['requiredness', 'undefined only; a present map was type-checked on the line above'],
-    'validateSource :: i': ['post-type', 'a lookup result while collecting variant prices; a dangling id is refused by its own rule'],
-    'validateSource :: prices.length': ['post-type', 'guards Math.min over an already-validated list'],
-    'validateSource :: min == null || spec.basePrice !== min': ['post-type', 'basePrice is required and typed by VARIANT_RULES before this compares it'],
-    'validateSource :: Array.isArray(v)': ['shape', 'a variant reference must be a primitive, and this names the array case in the message'],
-    'validateSource :: !item': ['post-type', 'a dangling variant reference, after the element type has been checked'],
-    'validateSource :: parent == null': ['requiredness', 'only a variant has a parent to check; variantOf is typed by DISPLAY_RULES'],
-    'validateSource :: st.badges !== undefined': ['requiredness', 'undefined only; a present map reaches checkField immediately inside'],
-    'validateSource :: st.badges !== undefined #2': ['requiredness', 'undefined only; the definitions were type-checked in the block above'],
-    'validateSource :: Array.isArray(it.display.tags)': ['post-type', 'tag iteration, after tags is typed by DISPLAY_RULES'],
-    'validateSource :: arr === undefined': ['requiredness', 'undefined only; a present array reaches checkField on the next line'],
-    'validateSource :: st.redeem_eligible_cats !== undefined': ['requiredness', 'undefined only; the next line type-checks whatever is present'],
-    'validateSource :: st.redeem_eligible_extras !== undefined': ['requiredness', 'undefined only; the next line type-checks whatever is present'],
-    'validateSource :: st.redeem_eligible_items !== undefined': ['requiredness', 'undefined only; the next line type-checks whatever is present'],
-    'validateSource :: st.extras_by_category': ['post-type', 'the key sweep; the map itself was type-checked in the exposure pass above'],
-    'validateSource :: st.extras_by_item': ['post-type', 'the key sweep; the map itself was type-checked in the exposure pass above'],
-    'sourceToBuildInputs :: source.structure[f] !== undefined': ['post-type', 'sourceToBuildInputs runs on an ALREADY VALIDATED source; it maps, it does not check'],
-    'sourceToBuildInputs :: Array.isArray(source.extras) && source.extras.some((e) => e.display)': ['post-type', 'the same: mapping an already-validated source into build inputs'],
-    'readSource :: !snap || !snap.exists': ['shape', 'the Firestore snapshot itself, before its data is read'],
-  };
+  const RULINGS = [
+    ["<module> :: restaurantId === 'la_musa'", 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ['<module> :: display', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['<module> :: display #2', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['canonicalize :: Array.isArray(value)', 'shape', 'this predicate IS the type test'],
+    ["canonicalize :: value && typeof value === 'object'", 'shape', 'this predicate IS the type test'],
+    ['<module> :: Number.isInteger(p)', 'shape', 'this predicate IS the type test'],
+    ['contractTable :: CONTRACT_TABLE', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ["contractTable :: !table || typeof table !== 'object' || Array.isArray(table)", 'shape', 'this predicate IS the type test'],
+    ['rendererContract :: !Object.prototype.hasOwnProperty.call(table, rid)', 'requiredness', 'own-property membership separates undescribed from present-but-broken'],
+    ["rendererContract :: !entry || typeof entry !== 'object' || Array.isArray(entry) || typeof entry.categoriesNamed !== 'boolean' || !Array.isArray(entry.badges)", 'shape', 'this predicate IS the type test'],
+    ["<module> :: typeof v === 'string'", 'shape', 'this predicate IS the type test'],
+    ["<module> :: typeof v === 'number' && Number.isFinite(v)", 'shape', 'this predicate IS the type test'],
+    ['<module> :: isPositiveInt(v)', 'shape', 'this predicate IS the type test'],
+    ["<module> :: typeof v === 'boolean'", 'shape', 'this predicate IS the type test'],
+    ["<module> :: v && typeof v === 'object' && !Array.isArray(v)", 'shape', 'this predicate IS the type test'],
+    ['<module> :: Array.isArray(v)', 'shape', 'this predicate IS the type test'],
+    ["<module> :: Array.isArray(v) && v.every((x) => typeof x === 'string')", 'shape', 'this predicate IS the type test'],
+    ["<module> :: typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v))", 'shape', 'this predicate IS the type test'],
+    ['checkField :: value === undefined', 'requiredness', 'THE mechanism: undefined is absent, everything else is typed below — null included'],
+    ['checkField :: rule.required', 'requiredness', 'reads the field rule to decide whether absence is an error'],
+    ['checkField :: typeReason', 'post-type', 'reports or dispatches on a check that has already run'],
+    ["checkField :: rule.nonEmpty && typeof value === 'string' && !value.trim()", 'shape', 'this predicate IS the type test'],
+    ['checkField :: rule.enum && !rule.enum.includes(value)', 'post-type', 'membership, asked after the value has been typed'],
+    ['checkField :: rule.unique && Array.isArray(value) && new Set(value).size !== value.length', 'shape', 'this predicate IS the type test'],
+    ['checkField :: rule.sink', 'post-type', 'reports or dispatches on a check that has already run'],
+    ['checkField :: unsafe', 'post-type', 'reports or dispatches on a check that has already run'],
+    ['<module> :: pricingKeyOf(rid, { id: ID_S, name: NAME_S }) === ID_S', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ["validateSource :: !source || typeof source !== 'object'", 'shape', 'this predicate IS the type test'],
+    ['validateSource :: source.restaurant_id !== rid', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ['validateSource :: !Array.isArray(source.items) || source.items.length === 0', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: !Array.isArray(source.extras)', 'shape', 'this predicate IS the type test'],
+    ["validateSource :: !st || typeof st !== 'object'", 'shape', 'this predicate IS the type test'],
+    ['validateSource :: !Array.isArray(st.categories) || st.categories.length === 0', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: !Array.isArray(st.item_order)', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: c', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: catIds.size !== st.categories.length', 'post-type', 'a count over an already-typed collection'],
+    ['validateSource :: c #2', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: c #3', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: Array.isArray(c.subcats)', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: unsafe', 'post-type', 'reports or dispatches on a check that has already run'],
+    ["validateSource :: !it || typeof it !== 'object'", 'shape', 'this predicate IS the type test'],
+    ["validateSource :: typeof it.key !== 'string' || !it.key", 'shape', 'this predicate IS the type test'],
+    ['validateSource :: !isPositiveInt(it.price)', 'shape', 'this predicate IS the type test'],
+    ["validateSource :: !it.display || typeof it.display !== 'object'", 'shape', 'this predicate IS the type test'],
+    ['validateSource :: derived !== it.key', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ['validateSource :: seen.has(it.key)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: it.display.cat != null && !catIds.has(it.display.cat)', 'post-type', 'membership, asked after the value has been typed'],
+    ["validateSource :: !ex || typeof ex.key !== 'string' || !ex.key", 'shape', 'this predicate IS the type test'],
+    ['validateSource :: !isPositiveInt(ex.price)', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: eseen.has(ex.key)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: ex.display', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: derived !== ex.key', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ['validateSource :: i.display', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: !catIds.has(c)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: source.schema_version !== SCHEMA_VERSION', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ['validateSource :: d.price !== it.price', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ["validateSource :: d.variantOf != null && (typeof d.choice !== 'string' || !d.choice.trim())", 'requiredness', 'being a variant is what makes a choice label required'],
+    ['validateSource :: uiIds.has(uid)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: c #4', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: Array.isArray(c && c.subcats)', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: c #5', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: declared && declared.length', 'requiredness', 'whether the category GROUPS decides whether a subcat is required'],
+    ['validateSource :: sub == null', 'requiredness', 'absence decides whether a dependent field is required; the value itself is typed by its record rules'],
+    ['validateSource :: !declared.includes(sub)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: sub != null', 'requiredness', 'absence decides whether a dependent field is required; the value itself is typed by its record rules'],
+    ['validateSource :: Array.isArray(extraCats)', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: !c.trim()', 'post-type', 'blankness, asked after the value is known to be a string'],
+    ['validateSource :: source.extras.length > 0 && extraCats.length === 0', 'requiredness', 'emptiness decides only that the namespace must be non-empty; the value is typed unconditionally above'],
+    ['validateSource :: Array.isArray(extraCats) #2', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: ex.display.price !== ex.price', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: !extraCatSet.has(ex.display.cat)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: extraUiIds.has(euid)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: extraCatSet.has(v)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: map === undefined', 'requiredness', 'undefined only; a present value (null included) reaches its type check'],
+    ['validateSource :: !legalExposureValue(v)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: st.variant_items === undefined', 'requiredness', 'undefined only; a present value (null included) reaches its type check'],
+    ['validateSource :: !byUiId.has(String(launcherId))', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: spec', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: !Array.isArray(ids) || ids.length === 0', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: spec #2', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: i', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: prices.length', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: min == null || spec.basePrice !== min', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ["validateSource :: typeof v !== 'string' && typeof v !== 'number'", 'shape', 'this predicate IS the type test'],
+    ['validateSource :: Array.isArray(v)', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: String(v) === String(launcherId)', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ['validateSource :: !item', 'post-type', 'a negated check over an already-typed value'],
+    ['validateSource :: claimed.has(String(v))', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: String(parent) !== String(launcherId)', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ['validateSource :: parent == null', 'requiredness', 'absence decides whether a dependent field is required; the value itself is typed by its record rules'],
+    ['validateSource :: !claimed.has(String(it.display.id))', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: cur && cur.display.variantOf != null', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: seenPath.has(id)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: st.badges !== undefined', 'requiredness', 'undefined only; a present value (null included) reaches its type check'],
+    ['validateSource :: st.badges !== undefined #2', 'requiredness', 'undefined only; a present value (null included) reaches its type check'],
+    ['validateSource :: !contract.badges.has(k)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: Array.isArray(it.display.tags)', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: !badgeKeys.has(t)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: e.display', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: Array.isArray(extraCats) #3', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: !usedExtraCats.has(c)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: !usedCatIds.has(c.id)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: !Array.isArray(c.subcats)', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: !usedSubs.has(sc)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: c #6', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: new Set(st.item_order).size !== st.item_order.length', 'post-type', 'a count over an already-typed collection'],
+    ['validateSource :: !seen.has(k)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: st.item_order.length !== source.items.length', 'post-type', 'a count over an already-typed collection'],
+    ['validateSource :: arr === undefined', 'requiredness', 'undefined only; a present value (null included) reaches its type check'],
+    ['validateSource :: !catIds.has(c) #2', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: st.redeem_eligible_cats !== undefined', 'requiredness', 'undefined only; a present value (null included) reaches its type check'],
+    ['validateSource :: !Array.isArray(st.redeem_eligible_cats)', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: new Set(st.redeem_eligible_cats).size !== st.redeem_eligible_cats.length', 'post-type', 'a count over an already-typed collection'],
+    ['validateSource :: !catIds.has(c) #3', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: st.redeem_eligible_extras !== undefined', 'requiredness', 'undefined only; a present value (null included) reaches its type check'],
+    ['validateSource :: !Array.isArray(st.redeem_eligible_extras)', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: new Set(st.redeem_eligible_extras).size !== st.redeem_eligible_extras.length', 'post-type', 'a count over an already-typed collection'],
+    ['validateSource :: source.extras', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ['validateSource :: e', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ['validateSource :: !extraKeys.has(k)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: st.redeem_eligible_items !== undefined', 'requiredness', 'undefined only; a present value (null included) reaches its type check'],
+    ['validateSource :: !Array.isArray(st.redeem_eligible_items)', 'shape', 'this predicate IS the type test'],
+    ['validateSource :: new Set(st.redeem_eligible_items).size !== st.redeem_eligible_items.length', 'post-type', 'a count over an already-typed collection'],
+    ['validateSource :: !seen.has(k) #2', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: st.extras_by_category', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ['validateSource :: !catIds.has(c) #4', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: st.extras_by_item', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ['validateSource :: !seen.has(k) #3', 'post-type', 'membership, asked after the value has been typed'],
+    ['sourceToBuildInputs :: source.structure[f] !== undefined', 'post-type', 'sourceToBuildInputs runs on an ALREADY VALIDATED source; it maps, it does not check'],
+    ['sourceToBuildInputs :: Array.isArray(source.extras) && source.extras.some((e) => e.display)', 'shape', 'this predicate IS the type test'],
+    ['readSource :: !snap || !snap.exists', 'post-type', 'a negated check over an already-typed value'],
+  ];
+  const RULED = new Map(RULINGS.map(([k, kind, why]) => [k, { kind, why }]));
 
-  const guards = enumerateGuards(readFileSync(join(__dirname, 'source-store.js'), 'utf8'));
-  assert.strictEqual(guards.length, 54, `guard count moved (got ${guards.length}); a presence guard was added or removed`);
+  const preds = enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8'));
+  assert.strictEqual(preds.length, 131, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
 
-  const unruled = guards.filter((g) => !Object.prototype.hasOwnProperty.call(RULED, g.key)).map((g) => `${g.line}: ${g.key}`);
+  const unruled = preds.filter((p) => !RULED.has(p.key)).map((p) => `${p.line}: ${p.key}`);
   assert.deepStrictEqual(unruled, [],
-    `🔴 presence/emptiness guards with no ruling — each must gate REQUIREDNESS only, never whether a present value is validated:\n    ${unruled.join('\n    ')}`);
-  const dead = Object.keys(RULED).filter((k) => !guards.some((g) => g.key === k));
-  assert.deepStrictEqual(dead, [], `rulings for guards that no longer exist:\n    ${dead.join('\n    ')}`);
-  for (const [g, [kind, why]] of Object.entries(RULED)) {
-    assert.ok(['requiredness', 'post-type', 'shape'].includes(kind), `${g}: unknown ruling ${kind}`);
-    assert.ok(why && why.length > 25, `${g}: a ruling needs a reason`);
+    `🔴 control predicates with no ruling. Every one must be classified — requiredness / post-type / shape / not-a-presence-test — because a predicate nobody rules is a presence guard nobody checked:\n    ${unruled.join('\n    ')}`);
+  const dead = [...RULED.keys()].filter((k) => !preds.some((p) => p.key === k));
+  assert.deepStrictEqual(dead, [], `rulings for predicates that no longer exist:\n    ${dead.join('\n    ')}`);
+  const KINDS = ['requiredness', 'post-type', 'shape', 'not-a-presence-test'];
+  for (const [k, { kind, why }] of RULED) {
+    assert.ok(KINDS.includes(kind), `${k}: unknown ruling ${kind}`);
+    assert.ok(why && why.length > 25, `${k}: a ruling needs a reason`);
   }
-  const kinds = {};
-  for (const g of guards) kinds[RULED[g.key][0]] = (kinds[RULED[g.key][0]] || 0) + 1;
-  ok(`all ${guards.length} presence guards ruled from the syntax tree (${kinds.requiredness} requiredness, ${kinds['post-type']} post-type, ${kinds.shape} shape)`);
+  const counts = {};
+  for (const p of preds) counts[RULED.get(p.key).kind] = (counts[RULED.get(p.key).kind] || 0) + 1;
+  assert.deepStrictEqual(counts, { requiredness: 17, 'post-type': 59, shape: 41, 'not-a-presence-test': 14 },
+    'the mix of rulings moved — a predicate changed meaning, which is a thing to look at rather than re-pin');
+  ok(`all ${preds.length} control predicates ruled (${counts.requiredness} requiredness, ${counts['post-type']} post-type, ${counts.shape} shape, ${counts['not-a-presence-test']} not-a-presence-test)`);
 
-  // ── THE SCANNER MUST SEE EVERY VARIANT, or an unseen guard is an unruled one ──────────────────
+  // ── THE SIX BYPASS SPELLINGS, each planted as a validation-gating guard ───────────────────────
   {
-    const variants = {
-      'truthiness on a member': 'function f(x){ if (x.length) { validate(x); } }',
-      'bare truthiness':        'function f(x){ if (x) { validate(x); } }',
-      'no spacing':             'function f(x){ if(x!==undefined){ validate(x); } }',
-      'multiline test':         'function f(x){ if (\n  x !==\n  undefined\n) { validate(x); } }',
-      'ternary guard':          'function f(x){ const y = x ? validate(x) : null; return y; }',
-      'short-circuit &&':       'function f(x){ x && validate(x); }',
-      'short-circuit ||':       'function f(x){ x || fail("missing"); }',
-      'null comparison':        'function f(x){ if (x == null) { return; } validate(x); }',
-      'hasOwnProperty':         'function f(o,k){ if (Object.prototype.hasOwnProperty.call(o,k)) { validate(o[k]); } }',
-      'nested in a callback':   'function f(a){ a.forEach(function (x) { if (x.length) { validate(x); } }); }',
+    const BYPASSES = {
+      'length comparison':   'function f(x){ if (x.length > 0) { validate(x); } }',
+      'double negation':     'function f(x){ if (!!x) { validate(x); } }',
+      'Boolean() coercion':  'function f(x){ if (Boolean(x)) { validate(x); } }',
+      'optional chaining':   'function f(x){ if (x?.y) { validate(x); } }',
+      'return short-circuit':'function f(x){ return x && validate(x); }',
+      'comma compound':      'function f(x){ if ((log(x), x !== undefined)) { validate(x); } }',
+      // and the ones the regex could not see, kept as regressions
+      'bare truthiness':     'function f(x){ if (x) { validate(x); } }',
+      'no spacing':          'function f(x){ if(x!==undefined){ validate(x); } }',
+      'multiline test':      'function f(x){ if (\n  x !==\n  undefined\n) { validate(x); } }',
+      'ternary guard':       'function f(x){ const y = x ? validate(x) : null; return y; }',
+      'nested in a callback':'function f(a){ a.forEach(function (x) { if (x.length) { validate(x); } }); }',
     };
-    for (const [label, code] of Object.entries(variants)) {
-      const found = enumerateGuards(code);
-      assert.ok(found.length >= 1, `🔴 the AST scanner missed a ${label} guard — an unseen guard is an unruled one`);
+    for (const [label, code] of Object.entries(BYPASSES)) {
+      const found = enumeratePredicates(code);
+      assert.ok(found.length >= 1, `🔴 the scanner missed a ${label} guard — an unseen predicate is an unruled one`);
+      assert.ok(found.every((g) => !RULED.has(g.key)),
+        `🔴 a planted ${label} guard is not accidentally covered by an existing ruling — it would fail the build, as it must`);
     }
-    // ...and the planted fail-open shape is reported as UNRULED against the real table.
-    const planted = enumerateGuards('function f(x){ if (x.length) { validate(x); } }');
-    assert.ok(planted.every((g) => !Object.prototype.hasOwnProperty.call(RULED, g.key)),
-      'a newly planted presence guard is not accidentally covered by an existing ruling');
-    // a value comparison is NOT a presence test, so the audit stays about the thing it is about
-    assert.strictEqual(isPresenceTest({ type: 'BinaryExpression', operator: '>', left: {}, right: {} }), false,
-      'an ordinary value comparison is not a presence guard');
-    ok(`the scanner catches all ${Object.keys(variants).length} guard spellings, including the ones a regex could not see`);
+    ok(`all ${Object.keys(BYPASSES).length} bypass spellings are seen by the scanner and would fail the build unruled`);
+  }
+
+  // ── CALLEES RESOLVED EXACTLY, not by substring ────────────────────────────────────────────────
+  {
+    const nameOf = (code) => {
+      const { parse } = require('acorn');
+      let out = null;
+      const walk = (n) => { if (n.type === 'CallExpression' && !out) out = calleeName(n); for (const k of Object.keys(n)) { const v = n[k]; if (Array.isArray(v)) v.forEach((c) => c && c.type && walk(c)); else if (v && v.type) walk(v); } };
+      walk(parse(code, { ecmaVersion: 'latest' }));
+      return out;
+    };
+    assert.strictEqual(nameOf('Array.isArray(x)'), 'Array.isArray', 'the real callee resolves whole');
+    assert.strictEqual(nameOf('isArrayOfValidPrices(x)'), 'isArrayOfValidPrices',
+      '🔴 a DIFFERENT function whose name merely contains "isArray" resolves as itself, not as Array.isArray');
+    assert.strictEqual(nameOf('Object.prototype.hasOwnProperty.call(o, k)'), 'Object.prototype.hasOwnProperty.call', 'dotted callees resolve in full');
+    assert.strictEqual(nameOf('o[k]()'), null, 'a computed callee has no static name, and is not guessed at');
+    ok('callees resolve exactly — a substring match would have read isArrayOfValidPrices as Array.isArray');
   }
 }
 
-// ═══ acorn IS TEST-ONLY ══════════════════════════════════════════════════════════════════════════
+// ═══ acorn IS TEST-ONLY, ACROSS THE WHOLE RUNTIME IMPORT GRAPH ═══════════════════════════════════
 {
   // Firebase deploys production dependencies only, so a parser in `dependencies` would ship to every
-  // function invocation for no runtime purpose — and one in neither list would break CI. It belongs in
-  // devDependencies and nowhere the runtime can reach it.
-  const pkg = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'package.json'), 'utf8'));
+  // function invocation for no runtime purpose. Checking the immediate catalog files was not enough:
+  // a module the runtime loads could reach acorn through something IT requires, several hops away.
+  const { readFileSync } = require('fs');
+  const { join } = require('path');
+  const { runtimeImportGraph } = require('./guard-ast');
+  const root = join(__dirname, '..');
+  const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+
   assert.ok(!Object.prototype.hasOwnProperty.call(pkg.dependencies || {}, 'acorn'),
     '🔴 acorn must NOT be a runtime dependency — it would ship to every deployed function');
   assert.ok(Object.prototype.hasOwnProperty.call(pkg.devDependencies || {}, 'acorn'),
     'acorn is a devDependency, so CI can parse and the runtime never sees it');
-  // ...and nothing the runtime loads may require it, directly or through the guard harness.
-  const { readdirSync, readFileSync } = require('fs');
-  const { join } = require('path');
-  for (const f of readdirSync(__dirname).filter((x) => x.endsWith('.js') && !x.endsWith('.test.js') && x !== 'guard-ast.js')) {
-    const code = readFileSync(join(__dirname, f), 'utf8');
-    assert.ok(!/require\(['"]acorn['"]\)/.test(code), `🔴 ${f} requires acorn — that is a test-harness dependency`);
-    assert.ok(!/require\(['"]\.\/guard-ast['"]\)/.test(code), `🔴 ${f} requires the guard harness, which requires acorn`);
+
+  // Follow every require from the deployed entrypoint, transitively.
+  const graph = runtimeImportGraph(['index.js'], root);
+  assert.ok(graph.files.length > 20, `sanity: the import graph was actually walked (${graph.files.length} modules)`);
+  // 🔴 NON-VACUITY. "acorn is not in the externals list" passes trivially if the walk never collects
+  // externals at all — mutation testing found exactly that. The list must be shown to contain the
+  // packages the runtime genuinely uses before its NOT containing acorn means anything.
+  for (const known of Object.keys(pkg.dependencies || {})) {
+    assert.ok(graph.externals.includes(known), `the import graph really collects externals — it must see ${known}`);
   }
-  ok('acorn is test-only: not a runtime dependency, and no shipped module reaches it');
+  assert.ok(!graph.externals.includes('acorn'),
+    `🔴 acorn is reachable from the deployed entrypoint through: ${graph.files.filter((f) => /guard-ast/.test(f)).join(', ') || 'a transitive require'}`);
+  assert.ok(!graph.files.some((f) => /guard-ast/.test(f)),
+    '🔴 the guard harness itself is reachable from the runtime — it requires acorn');
+  ok(`acorn is test-only across the whole runtime import graph (${graph.files.length} modules followed, ${graph.externals.length} externals)`);
 }
