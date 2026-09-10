@@ -666,81 +666,144 @@ const GOOD = () => ({
   ok('both real menus still PASS with the complete rule set');
 }
 
-// ═══ THE GUARD AUDIT — the fail-open class, closed by construction ═══════════════════════════════
+// ═══ THE GUARD AUDIT, AST-COMPLETE ══════════════════════════════════════════════════════════════
 // Two rounds running, the same shape got through: a check that asks whether a value is PRESENT, or
 // non-empty, or needed, and then uses that answer to decide whether the value is VALIDATED. A falsy
 // contract entry read as "brand not described"; an empty extras list read as "no namespace to check".
-// Both fail OPEN, and both were found one site at a time.
 //
-// The rule that ends that: a presence / emptiness / conditional test may gate REQUIREDNESS only. A
-// present value is always type-validated. Every guard of that shape is enumerated below with which
-// of the two it does — a new one fails this test until someone says.
+// The rule: a presence / emptiness / conditional test may gate REQUIREDNESS only. A present value is
+// always type-validated. Every guard of that shape is ruled below — and they are enumerated from the
+// SYNTAX TREE, because a regex could not enumerate them: it missed truthiness (`if (x)`,
+// `if (x.length)`), formatting (`if(x!==undefined)`), multi-line tests, and guards that are not `if`
+// statements at all (`x ? validate(x) : y`, `x && validate(x)`). Anything the scanner cannot see is
+// silently unruled, which is this very fail-open shape one level up.
 {
   const { readFileSync } = require('fs');
-  const code = readFileSync(require('path').join(__dirname, 'source-store.js'), 'utf8')
-    .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, ''));
+  const { join } = require('path');
+  const { enumerateGuards, isPresenceTest } = require('./guard-ast');
 
-  // 'requiredness' — decides only whether a value must be there; a present one is typed elsewhere.
-  // 'post-type'    — runs AFTER the value has already been type-validated, so it cannot fail open.
-  // 'shape'        — is itself the type check.
+  // requiredness — decides only whether a value must be there; a present one is typed elsewhere
+  // post-type    — runs AFTER the value has been type-validated, so it cannot fail open
+  // shape        — IS the type test
   const RULED = {
-    "if (!table || typeof table !== 'object' || Array.isArray(table)) {": ['shape', 'the artifact table itself must be a plain object before any brand is looked up'],
-    "if (!Object.prototype.hasOwnProperty.call(table, rid)) {": ['requiredness', 'own-property membership: absent means undescribed, which is legitimate; a PRESENT entry falls through to the shape check below'],
-    "if (!entry || typeof entry !== 'object' || Array.isArray(entry)": ['shape', 'every PRESENT entry is shape-checked, however falsy it happens to be'],
-    'if (value === undefined) {': ['requiredness', 'THE mechanism: undefined is absent, everything else is typed below — null included'],
-    "if (rule.nonEmpty && typeof value === 'string' && !value.trim()) fail(": ['post-type', 'runs after the type check inside checkField'],
-    'if (rule.enum && !rule.enum.includes(value)) fail(': ['post-type', 'runs after the type check inside checkField'],
-    'if (rule.unique && Array.isArray(value) && new Set(value).size !== value.length) fail(': ['post-type', 'runs after the type check inside checkField'],
-    'if (it.display.cat != null && !catIds.has(it.display.cat)) fail(': ['post-type', 'cat is required and typed by DISPLAY_RULES before this'],
-    "if (d.variantOf != null && (typeof d.choice !== 'string' || !d.choice.trim())) {": ['requiredness', 'being a variant is what makes a choice label required; the label itself is typed by DISPLAY_RULES'],
-    'if (declared && declared.length) {': ['requiredness', 'whether the category GROUPS decides whether a subcat is required; subcats is typed by CATEGORY_RULES'],
-    'if (source.extras.length > 0 && extraCats.length === 0) {': ['requiredness', 'emptiness decides only that the namespace must be non-empty — the value is type-validated unconditionally above'],
-    'if (map === undefined) continue;': ['requiredness', 'undefined only; a present map (null included) reaches the type check on the next line'],
-    'if (st.badges !== undefined) {': ['requiredness', 'undefined only; a present map reaches checkField immediately inside'],
-    'if (!Array.isArray(c.subcats)) continue;': ['post-type', 'subcats is typed by CATEGORY_RULES before the reverse-coverage pass'],
-    'if (arr === undefined) continue;': ['requiredness', 'undefined only; a present array reaches checkField on the next line'],
-    'if (st.redeem_eligible_cats !== undefined) {': ['requiredness', 'undefined only; the next line type-checks whatever is present'],
-    'if (st.redeem_eligible_extras !== undefined) {': ['requiredness', 'undefined only; the next line type-checks whatever is present'],
-    'if (st.redeem_eligible_items !== undefined) {': ['requiredness', 'undefined only; the next line type-checks whatever is present'],
-    'if (source.structure[f] !== undefined) formData[f] = source.structure[f];': ['post-type', 'sourceToBuildInputs runs on an ALREADY VALIDATED source; it maps, it does not check'],
-    // ── shape checks: these ARE the type test, so they cannot fail open ──
-    "if (!source || typeof source !== 'object') fail(": ['shape', 'the source document itself must be an object before anything reads it'],
-    "if (!st || typeof st !== 'object') fail(": ['shape', 'the structure must be an object before anything reads it'],
-    "if (!it || typeof it !== 'object') fail(": ['shape', 'each item must be an object before its fields are read'],
-    "if (!it.display || typeof it.display !== 'object') fail(": ['shape', 'each display record must be an object before its fields are read'],
-    "if (typeof it.key !== 'string' || !it.key) fail(": ['shape', 'the pricing key must be a non-empty string before it identifies anything'],
-    "if (!ex || typeof ex.key !== 'string' || !ex.key) fail(": ['shape', 'each extra and its pricing key must be well formed'],
-    // ── post-type: the value was typed before these ran ──
-    'if (sub == null) fail(': ['requiredness', 'a grouping category is what makes a subcat required; subcat itself is typed by DISPLAY_RULES'],
-    '} else if (sub != null) {': ['requiredness', 'the mirror case — a subcat on a category that groups by none; the value is typed already'],
-    'if (!declared.includes(sub)) fail(': ['post-type', 'membership, after both subcat and subcats have been typed'],
-    'if (parent == null) continue;': ['requiredness', 'only a variant has a parent to check; variantOf is typed by DISPLAY_RULES'],
-    'if (min == null || spec.basePrice !== min) {': ['post-type', 'basePrice is required and typed by VARIANT_RULES before this compares it'],
+    'canonicalize :: Array.isArray(value)': ['shape', 'recursion dispatch: an array is copied element-wise, an object key-wise'],
+    "canonicalize :: value && typeof value === 'object'": ['shape', 'the same dispatch for the object branch of the canonical serialiser'],
+    'contractTable :: CONTRACT_TABLE': ['post-type', 'a memo of an already-validated table; the shape check below ran before it was cached'],
+    "contractTable :: !table || typeof table !== 'object' || Array.isArray(table)": ['shape', 'the artifact table itself must be a plain object before any brand is looked up'],
+    "rendererContract :: !entry || typeof entry !== 'object' || Array.isArray(entry) || typeof entry.categoriesNamed !== 'boolean' || !Array.isArray(entry.badges)": ['shape', 'every PRESENT entry is shape-checked, however falsy it happens to be'],
+    "<module> :: v && typeof v === 'object' && !Array.isArray(v)": ['shape', 'the object type predicate itself'],
+    '<module> :: Array.isArray(v)': ['shape', 'the array type predicate itself'],
+    "<module> :: Array.isArray(v) && v.every((x) => typeof x === 'string')": ['shape', 'the string-array type predicate itself'],
+    'checkField :: value === undefined': ['requiredness', 'THE mechanism: undefined is absent, everything else is typed below — null included'],
+    'checkField :: rule.required': ['requiredness', 'reads the field rule to decide whether absence is an error'],
+    'checkField :: typeReason': ['post-type', 'reports the result of the type check that just ran'],
+    "checkField :: rule.nonEmpty && typeof value === 'string' && !value.trim()": ['post-type', 'blankness, applied after the value is known to be a string'],
+    'checkField :: rule.enum && !rule.enum.includes(value)': ['post-type', 'membership, applied after the type check inside checkField'],
+    'checkField :: rule.unique && Array.isArray(value) && new Set(value).size !== value.length': ['post-type', 'uniqueness, applied after the type check inside checkField'],
+    'checkField :: rule.sink': ['post-type', 'whether this field reaches a renderer sink, asked after it is typed'],
+    'checkField :: unsafe': ['post-type', 'reports the result of the content-safety check that just ran'],
+    "validateSource :: !source || typeof source !== 'object'": ['shape', 'the source document itself must be an object before anything reads it'],
+    "validateSource :: !st || typeof st !== 'object'": ['shape', 'the structure must be an object before anything reads it'],
+    'validateSource :: Array.isArray(c.subcats)': ['post-type', 'defensive iteration in the safety pass; a non-array subcats is rejected outright by CATEGORY_RULES'],
+    'validateSource :: unsafe': ['post-type', 'reports the result of the content-safety check that just ran'],
+    "validateSource :: !it || typeof it !== 'object'": ['shape', 'each item must be an object before its fields are read'],
+    "validateSource :: typeof it.key !== 'string' || !it.key": ['shape', 'the pricing key must be a non-empty string before it identifies anything'],
+    "validateSource :: !it.display || typeof it.display !== 'object'": ['shape', 'each display record must be an object before its fields are read'],
+    'validateSource :: it.display.cat != null && !catIds.has(it.display.cat)': ['post-type', 'category membership, after cat is required and typed by DISPLAY_RULES'],
+    "validateSource :: !ex || typeof ex.key !== 'string' || !ex.key": ['shape', 'each extra and its pricing key must be well formed'],
+    'validateSource :: ex.display': ['requiredness', 'gates only the key-vs-display agreement check; a missing display record is separately REQUIRED by EXTRA_RULES, so absence still rejects'],
+    "validateSource :: d.variantOf != null && (typeof d.choice !== 'string' || !d.choice.trim())": ['requiredness', 'being a variant is what makes a choice label required; the label itself is typed by DISPLAY_RULES'],
+    'validateSource :: Array.isArray(c && c.subcats)': ['post-type', 'builds the grouping lookup; a non-array is rejected by CATEGORY_RULES'],
+    'validateSource :: declared && declared.length': ['requiredness', 'whether the category GROUPS decides whether a subcat is required; subcats is typed by CATEGORY_RULES'],
+    'validateSource :: sub == null': ['requiredness', 'a grouping category is what makes a subcat required; subcat itself is typed by DISPLAY_RULES'],
+    'validateSource :: sub != null': ['requiredness', 'the mirror case — a subcat on a category that groups by none; the value is typed already'],
+    'validateSource :: Array.isArray(extraCats)': ['post-type', 'blank-entry sweep, after extra_categories is type-validated unconditionally above'],
+    'validateSource :: Array.isArray(extraCats) #2': ['post-type', 'the same sweep, after the same unconditional type check'],
+    'validateSource :: Array.isArray(extraCats) #3': ['post-type', 'reverse-coverage iteration, after the same unconditional type check'],
+    'validateSource :: map === undefined': ['requiredness', 'undefined only; a present map (null included) reaches the type check on the next line'],
+    'validateSource :: st.variant_items === undefined': ['requiredness', 'undefined only; a present map was type-checked on the line above'],
+    'validateSource :: i': ['post-type', 'a lookup result while collecting variant prices; a dangling id is refused by its own rule'],
+    'validateSource :: prices.length': ['post-type', 'guards Math.min over an already-validated list'],
+    'validateSource :: min == null || spec.basePrice !== min': ['post-type', 'basePrice is required and typed by VARIANT_RULES before this compares it'],
+    'validateSource :: Array.isArray(v)': ['shape', 'a variant reference must be a primitive, and this names the array case in the message'],
+    'validateSource :: !item': ['post-type', 'a dangling variant reference, after the element type has been checked'],
+    'validateSource :: parent == null': ['requiredness', 'only a variant has a parent to check; variantOf is typed by DISPLAY_RULES'],
+    'validateSource :: st.badges !== undefined': ['requiredness', 'undefined only; a present map reaches checkField immediately inside'],
+    'validateSource :: st.badges !== undefined #2': ['requiredness', 'undefined only; the definitions were type-checked in the block above'],
+    'validateSource :: Array.isArray(it.display.tags)': ['post-type', 'tag iteration, after tags is typed by DISPLAY_RULES'],
+    'validateSource :: arr === undefined': ['requiredness', 'undefined only; a present array reaches checkField on the next line'],
+    'validateSource :: st.redeem_eligible_cats !== undefined': ['requiredness', 'undefined only; the next line type-checks whatever is present'],
+    'validateSource :: st.redeem_eligible_extras !== undefined': ['requiredness', 'undefined only; the next line type-checks whatever is present'],
+    'validateSource :: st.redeem_eligible_items !== undefined': ['requiredness', 'undefined only; the next line type-checks whatever is present'],
+    'validateSource :: st.extras_by_category': ['post-type', 'the key sweep; the map itself was type-checked in the exposure pass above'],
+    'validateSource :: st.extras_by_item': ['post-type', 'the key sweep; the map itself was type-checked in the exposure pass above'],
+    'sourceToBuildInputs :: source.structure[f] !== undefined': ['post-type', 'sourceToBuildInputs runs on an ALREADY VALIDATED source; it maps, it does not check'],
+    'sourceToBuildInputs :: Array.isArray(source.extras) && source.extras.some((e) => e.display)': ['post-type', 'the same: mapping an already-validated source into build inputs'],
+    'readSource :: !snap || !snap.exists': ['shape', 'the Firestore snapshot itself, before its data is read'],
   };
 
-  // Every guard of the shape, in the validator and the contract load.
-  const SHAPE = /if\s*\([^)]*(?:!==\s*undefined|===\s*undefined|!=\s*null|==\s*null|!==\s*null|\.length\s*[><=]|hasOwnProperty|!\s*(?:table|entry|map|arr|declared|it|ex|source|st)\b)/;
-  const found = [];
-  for (const l of code) {
-    const t = l.trim();
-    if (!t.includes('if (')) continue;
-    if (!SHAPE.test(t)) continue;
-    found.push(t);
-  }
-  assert.ok(found.length >= 15, `sanity: the scanner found the guards (${found.length})`);
+  const guards = enumerateGuards(readFileSync(join(__dirname, 'source-store.js'), 'utf8'));
+  assert.strictEqual(guards.length, 54, `guard count moved (got ${guards.length}); a presence guard was added or removed`);
 
-  const unruled = found.filter((t) => !Object.keys(RULED).some((k) => t.startsWith(k))).sort();
+  const unruled = guards.filter((g) => !Object.prototype.hasOwnProperty.call(RULED, g.key)).map((g) => `${g.line}: ${g.key}`);
   assert.deepStrictEqual(unruled, [],
     `🔴 presence/emptiness guards with no ruling — each must gate REQUIREDNESS only, never whether a present value is validated:\n    ${unruled.join('\n    ')}`);
+  const dead = Object.keys(RULED).filter((k) => !guards.some((g) => g.key === k));
+  assert.deepStrictEqual(dead, [], `rulings for guards that no longer exist:\n    ${dead.join('\n    ')}`);
   for (const [g, [kind, why]] of Object.entries(RULED)) {
     assert.ok(['requiredness', 'post-type', 'shape'].includes(kind), `${g}: unknown ruling ${kind}`);
     assert.ok(why && why.length > 25, `${g}: a ruling needs a reason`);
   }
-  ok(`every presence/emptiness guard is ruled: it gates requiredness, or runs after the type check (${found.length} guards)`);
+  const kinds = {};
+  for (const g of guards) kinds[RULED[g.key][0]] = (kinds[RULED[g.key][0]] || 0) + 1;
+  ok(`all ${guards.length} presence guards ruled from the syntax tree (${kinds.requiredness} requiredness, ${kinds['post-type']} post-type, ${kinds.shape} shape)`);
 
-  // NON-VACUITY: the scanner must see a guard nobody has ruled.
-  const planted = ["if (st.something !== undefined) { doTheValidation(); }"];
-  assert.ok(planted.every((t) => SHAPE.test(t) && !Object.keys(RULED).some((k) => t.startsWith(k))),
-    'the scanner would catch a new unruled presence guard');
-  ok('...and the audit would catch a new one');
+  // ── THE SCANNER MUST SEE EVERY VARIANT, or an unseen guard is an unruled one ──────────────────
+  {
+    const variants = {
+      'truthiness on a member': 'function f(x){ if (x.length) { validate(x); } }',
+      'bare truthiness':        'function f(x){ if (x) { validate(x); } }',
+      'no spacing':             'function f(x){ if(x!==undefined){ validate(x); } }',
+      'multiline test':         'function f(x){ if (\n  x !==\n  undefined\n) { validate(x); } }',
+      'ternary guard':          'function f(x){ const y = x ? validate(x) : null; return y; }',
+      'short-circuit &&':       'function f(x){ x && validate(x); }',
+      'short-circuit ||':       'function f(x){ x || fail("missing"); }',
+      'null comparison':        'function f(x){ if (x == null) { return; } validate(x); }',
+      'hasOwnProperty':         'function f(o,k){ if (Object.prototype.hasOwnProperty.call(o,k)) { validate(o[k]); } }',
+      'nested in a callback':   'function f(a){ a.forEach(function (x) { if (x.length) { validate(x); } }); }',
+    };
+    for (const [label, code] of Object.entries(variants)) {
+      const found = enumerateGuards(code);
+      assert.ok(found.length >= 1, `🔴 the AST scanner missed a ${label} guard — an unseen guard is an unruled one`);
+    }
+    // ...and the planted fail-open shape is reported as UNRULED against the real table.
+    const planted = enumerateGuards('function f(x){ if (x.length) { validate(x); } }');
+    assert.ok(planted.every((g) => !Object.prototype.hasOwnProperty.call(RULED, g.key)),
+      'a newly planted presence guard is not accidentally covered by an existing ruling');
+    // a value comparison is NOT a presence test, so the audit stays about the thing it is about
+    assert.strictEqual(isPresenceTest({ type: 'BinaryExpression', operator: '>', left: {}, right: {} }), false,
+      'an ordinary value comparison is not a presence guard');
+    ok(`the scanner catches all ${Object.keys(variants).length} guard spellings, including the ones a regex could not see`);
+  }
+}
+
+// ═══ acorn IS TEST-ONLY ══════════════════════════════════════════════════════════════════════════
+{
+  // Firebase deploys production dependencies only, so a parser in `dependencies` would ship to every
+  // function invocation for no runtime purpose — and one in neither list would break CI. It belongs in
+  // devDependencies and nowhere the runtime can reach it.
+  const pkg = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'package.json'), 'utf8'));
+  assert.ok(!Object.prototype.hasOwnProperty.call(pkg.dependencies || {}, 'acorn'),
+    '🔴 acorn must NOT be a runtime dependency — it would ship to every deployed function');
+  assert.ok(Object.prototype.hasOwnProperty.call(pkg.devDependencies || {}, 'acorn'),
+    'acorn is a devDependency, so CI can parse and the runtime never sees it');
+  // ...and nothing the runtime loads may require it, directly or through the guard harness.
+  const { readdirSync, readFileSync } = require('fs');
+  const { join } = require('path');
+  for (const f of readdirSync(__dirname).filter((x) => x.endsWith('.js') && !x.endsWith('.test.js') && x !== 'guard-ast.js')) {
+    const code = readFileSync(join(__dirname, f), 'utf8');
+    assert.ok(!/require\(['"]acorn['"]\)/.test(code), `🔴 ${f} requires acorn — that is a test-harness dependency`);
+    assert.ok(!/require\(['"]\.\/guard-ast['"]\)/.test(code), `🔴 ${f} requires the guard harness, which requires acorn`);
+  }
+  ok('acorn is test-only: not a runtime dependency, and no shipped module reaches it');
 }
