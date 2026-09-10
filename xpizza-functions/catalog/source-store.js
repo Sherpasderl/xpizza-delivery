@@ -88,13 +88,21 @@ function contractTable() {
 }
 
 function rendererContract(rid) {
-  const entry = contractTable()[rid];
-  // A brand the artifact does not describe has no bespoke renderer to honour. Its badge set is EMPTY
-  // — never the keys the submission itself declares, which would be the document deciding its own
-  // rules again — and its categories are not required to carry labels, because nothing prints them.
-  if (!entry) return { categoriesNamed: false, badges: new Set() };
-  if (typeof entry.categoriesNamed !== 'boolean' || !Array.isArray(entry.badges)) {
-    throw new Error(`source_malformed: the renderer contract for ${rid} is malformed; refusing to validate against an unknown renderer`);
+  const table = contractTable();
+  // 🔴 ABSENT AND FALSY ARE DIFFERENT ANSWERS. `if (!entry)` read null, false, 0 and "" as "this brand
+  // is not in the table" — so a corrupted entry for la_musa re-opened exactly the fail-open hole the
+  // artifact was baked to close, for that brand only and silently. Own-property membership separates
+  // "nobody described this brand" from "this brand's description is broken".
+  if (!Object.prototype.hasOwnProperty.call(table, rid)) {
+    // No bespoke renderer to honour. The badge set is EMPTY — never the keys the submission declares,
+    // which would be the document deciding its own rules again — and categories need no labels,
+    // because nothing prints them.
+    return { categoriesNamed: false, badges: new Set() };
+  }
+  const entry = table[rid];
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)
+    || typeof entry.categoriesNamed !== 'boolean' || !Array.isArray(entry.badges)) {
+    throw new Error(`source_malformed: the renderer contract for ${rid} is present but malformed; refusing to validate against a renderer it does not describe`);
   }
   return { categoriesNamed: entry.categoriesNamed, badges: new Set(entry.badges) };
 }
@@ -303,13 +311,17 @@ function validateSource(source, rid) {
   // ── EXTRAS AS FIRST-CLASS DISPLAY RECORDS ────────────────────────────────────────────────────
   // The extra-category namespace is SEPARATE from structure.categories: "Salsas & Queso" is not a
   // dish category and never was, so requiring membership there would reject every real extra.
+  // 🔴 TYPE-VALIDATED WHENEVER PRESENT; REQUIRED only when extras exist. The whole block used to sit
+  // inside `if (extras.length > 0)`, so a menu that sells no add-ons could carry
+  // `extra_categories: null` / 7 / "broken" / {} and nothing looked at it. An emptiness test may
+  // decide whether a value is NEEDED; it must never decide whether a present value is CHECKED.
   const extraCats = st.extra_categories;
-  if (source.extras.length > 0) {
-    if (!Array.isArray(extraCats) || extraCats.length === 0) {
-      fail(`${rid} — structure.extra_categories (the ordered extra-category namespace) is required when extras exist`);
-    }
-    if (new Set(extraCats).size !== extraCats.length) fail(`${rid} — structure.extra_categories has duplicates`);
-    for (const c of extraCats) if (typeof c !== 'string' || !c) fail(`${rid} — structure.extra_categories holds a non-string entry`);
+  checkField(extraCats, { required: source.extras.length > 0, type: 'string_array', unique: true }, `${rid}`, 'structure.extra_categories');
+  if (Array.isArray(extraCats)) {
+    for (const c of extraCats) if (!c.trim()) fail(`${rid} — structure.extra_categories holds a blank entry`);
+  }
+  if (source.extras.length > 0 && extraCats.length === 0) {
+    fail(`${rid} — structure.extra_categories (the ordered extra-category namespace) must be non-empty when extras exist`);
   }
   const extraCatSet = new Set(Array.isArray(extraCats) ? extraCats : []);
   // 🔴 A THIRD NAMESPACE. Extras are selected by UI id — `EXTRAS.find(e => e.id === id)` — so two
@@ -459,7 +471,7 @@ function validateSource(source, rid) {
   }
   // The definitions a source may declare are the ones its renderer can actually select. A definition
   // outside that set renders nothing however well-formed it is.
-  if (st.badges !== undefined && st.badges !== null) {
+  if (st.badges !== undefined) {                 // a null map was already rejected as a wrong type above
     for (const k of Object.keys(st.badges)) {
       if (!contract.badges.has(k)) fail(`${rid} — badge ${k} is not one the renderer can select (the badge set is fixed by the shipped form, not by this document)`);
     }

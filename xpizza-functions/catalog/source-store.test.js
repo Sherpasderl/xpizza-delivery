@@ -665,3 +665,82 @@ const GOOD = () => ({
   }
   ok('both real menus still PASS with the complete rule set');
 }
+
+// ═══ THE GUARD AUDIT — the fail-open class, closed by construction ═══════════════════════════════
+// Two rounds running, the same shape got through: a check that asks whether a value is PRESENT, or
+// non-empty, or needed, and then uses that answer to decide whether the value is VALIDATED. A falsy
+// contract entry read as "brand not described"; an empty extras list read as "no namespace to check".
+// Both fail OPEN, and both were found one site at a time.
+//
+// The rule that ends that: a presence / emptiness / conditional test may gate REQUIREDNESS only. A
+// present value is always type-validated. Every guard of that shape is enumerated below with which
+// of the two it does — a new one fails this test until someone says.
+{
+  const { readFileSync } = require('fs');
+  const code = readFileSync(require('path').join(__dirname, 'source-store.js'), 'utf8')
+    .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, ''));
+
+  // 'requiredness' — decides only whether a value must be there; a present one is typed elsewhere.
+  // 'post-type'    — runs AFTER the value has already been type-validated, so it cannot fail open.
+  // 'shape'        — is itself the type check.
+  const RULED = {
+    "if (!table || typeof table !== 'object' || Array.isArray(table)) {": ['shape', 'the artifact table itself must be a plain object before any brand is looked up'],
+    "if (!Object.prototype.hasOwnProperty.call(table, rid)) {": ['requiredness', 'own-property membership: absent means undescribed, which is legitimate; a PRESENT entry falls through to the shape check below'],
+    "if (!entry || typeof entry !== 'object' || Array.isArray(entry)": ['shape', 'every PRESENT entry is shape-checked, however falsy it happens to be'],
+    'if (value === undefined) {': ['requiredness', 'THE mechanism: undefined is absent, everything else is typed below — null included'],
+    "if (rule.nonEmpty && typeof value === 'string' && !value.trim()) fail(": ['post-type', 'runs after the type check inside checkField'],
+    'if (rule.enum && !rule.enum.includes(value)) fail(': ['post-type', 'runs after the type check inside checkField'],
+    'if (rule.unique && Array.isArray(value) && new Set(value).size !== value.length) fail(': ['post-type', 'runs after the type check inside checkField'],
+    'if (it.display.cat != null && !catIds.has(it.display.cat)) fail(': ['post-type', 'cat is required and typed by DISPLAY_RULES before this'],
+    "if (d.variantOf != null && (typeof d.choice !== 'string' || !d.choice.trim())) {": ['requiredness', 'being a variant is what makes a choice label required; the label itself is typed by DISPLAY_RULES'],
+    'if (declared && declared.length) {': ['requiredness', 'whether the category GROUPS decides whether a subcat is required; subcats is typed by CATEGORY_RULES'],
+    'if (source.extras.length > 0 && extraCats.length === 0) {': ['requiredness', 'emptiness decides only that the namespace must be non-empty — the value is type-validated unconditionally above'],
+    'if (map === undefined) continue;': ['requiredness', 'undefined only; a present map (null included) reaches the type check on the next line'],
+    'if (st.badges !== undefined) {': ['requiredness', 'undefined only; a present map reaches checkField immediately inside'],
+    'if (!Array.isArray(c.subcats)) continue;': ['post-type', 'subcats is typed by CATEGORY_RULES before the reverse-coverage pass'],
+    'if (arr === undefined) continue;': ['requiredness', 'undefined only; a present array reaches checkField on the next line'],
+    'if (st.redeem_eligible_cats !== undefined) {': ['requiredness', 'undefined only; the next line type-checks whatever is present'],
+    'if (st.redeem_eligible_extras !== undefined) {': ['requiredness', 'undefined only; the next line type-checks whatever is present'],
+    'if (st.redeem_eligible_items !== undefined) {': ['requiredness', 'undefined only; the next line type-checks whatever is present'],
+    'if (source.structure[f] !== undefined) formData[f] = source.structure[f];': ['post-type', 'sourceToBuildInputs runs on an ALREADY VALIDATED source; it maps, it does not check'],
+    // ── shape checks: these ARE the type test, so they cannot fail open ──
+    "if (!source || typeof source !== 'object') fail(": ['shape', 'the source document itself must be an object before anything reads it'],
+    "if (!st || typeof st !== 'object') fail(": ['shape', 'the structure must be an object before anything reads it'],
+    "if (!it || typeof it !== 'object') fail(": ['shape', 'each item must be an object before its fields are read'],
+    "if (!it.display || typeof it.display !== 'object') fail(": ['shape', 'each display record must be an object before its fields are read'],
+    "if (typeof it.key !== 'string' || !it.key) fail(": ['shape', 'the pricing key must be a non-empty string before it identifies anything'],
+    "if (!ex || typeof ex.key !== 'string' || !ex.key) fail(": ['shape', 'each extra and its pricing key must be well formed'],
+    // ── post-type: the value was typed before these ran ──
+    'if (sub == null) fail(': ['requiredness', 'a grouping category is what makes a subcat required; subcat itself is typed by DISPLAY_RULES'],
+    '} else if (sub != null) {': ['requiredness', 'the mirror case — a subcat on a category that groups by none; the value is typed already'],
+    'if (!declared.includes(sub)) fail(': ['post-type', 'membership, after both subcat and subcats have been typed'],
+    'if (parent == null) continue;': ['requiredness', 'only a variant has a parent to check; variantOf is typed by DISPLAY_RULES'],
+    'if (min == null || spec.basePrice !== min) {': ['post-type', 'basePrice is required and typed by VARIANT_RULES before this compares it'],
+  };
+
+  // Every guard of the shape, in the validator and the contract load.
+  const SHAPE = /if\s*\([^)]*(?:!==\s*undefined|===\s*undefined|!=\s*null|==\s*null|!==\s*null|\.length\s*[><=]|hasOwnProperty|!\s*(?:table|entry|map|arr|declared|it|ex|source|st)\b)/;
+  const found = [];
+  for (const l of code) {
+    const t = l.trim();
+    if (!t.includes('if (')) continue;
+    if (!SHAPE.test(t)) continue;
+    found.push(t);
+  }
+  assert.ok(found.length >= 15, `sanity: the scanner found the guards (${found.length})`);
+
+  const unruled = found.filter((t) => !Object.keys(RULED).some((k) => t.startsWith(k))).sort();
+  assert.deepStrictEqual(unruled, [],
+    `🔴 presence/emptiness guards with no ruling — each must gate REQUIREDNESS only, never whether a present value is validated:\n    ${unruled.join('\n    ')}`);
+  for (const [g, [kind, why]] of Object.entries(RULED)) {
+    assert.ok(['requiredness', 'post-type', 'shape'].includes(kind), `${g}: unknown ruling ${kind}`);
+    assert.ok(why && why.length > 25, `${g}: a ruling needs a reason`);
+  }
+  ok(`every presence/emptiness guard is ruled: it gates requiredness, or runs after the type check (${found.length} guards)`);
+
+  // NON-VACUITY: the scanner must see a guard nobody has ruled.
+  const planted = ["if (st.something !== undefined) { doTheValidation(); }"];
+  assert.ok(planted.every((t) => SHAPE.test(t) && !Object.keys(RULED).some((k) => t.startsWith(k))),
+    'the scanner would catch a new unruled presence guard');
+  ok('...and the audit would catch a new one');
+}

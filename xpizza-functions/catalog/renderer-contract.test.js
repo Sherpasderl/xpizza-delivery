@@ -133,4 +133,76 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   ok('an undescribed brand validates normally but supports no badges at all');
 }
 
+// ── A PRESENT-BUT-FALSY ENTRY IS MALFORMED, NOT ABSENT ───────────────────────────────────────────
+{
+  // The leak: `if (!entry)` read null, false, 0 and "" as "this brand is not in the table" — so a
+  // corrupted entry for ONE brand quietly restored the fail-open behaviour for that brand alone.
+  // Absent (nobody described it) and present-but-broken (somebody described it wrongly) are
+  // different facts and only one of them is safe.
+  const Module = require('module');
+  const realLoad = Module._load;
+  const fresh = require.resolve('./source-store');
+  const withTable = (table, expectThrow, why, src) => {
+    delete require.cache[fresh];
+    Module._load = function (request, ...rest) {
+      if (request === './renderer-contract.generated') return table;
+      return realLoad.call(this, request, ...rest);
+    };
+    try {
+      const { validateSource: v } = require('./source-store');
+      const run = () => v(src ? src() : buildSourceFromCode('la_musa'), 'la_musa');
+      if (expectThrow) assert.throws(run, /renderer contract/, why); else assert.doesNotThrow(run, why);
+    } finally { Module._load = realLoad; delete require.cache[fresh]; require('./source-store'); }
+  };
+  for (const falsy of [null, false, 0, '', NaN]) {
+    withTable({ ...committed, la_musa: falsy }, true, `🔴 la_musa: ${String(falsy)} is MALFORMED, not absent`);
+  }
+  for (const wrong of [[], 'x', 7, {}, { categoriesNamed: true }, { badges: [] }, { categoriesNamed: 'yes', badges: [] }]) {
+    withTable({ ...committed, la_musa: wrong }, true, `🔴 la_musa: ${JSON.stringify(wrong)} is refused`);
+  }
+  // ...while a brand genuinely absent from the table is still legitimate.
+  // ...while a brand genuinely absent from the table is still legitimate — for a document that asks
+  // nothing of a renderer nobody described. Its badges and tags go, because an undescribed brand
+  // supports none; that is the empty-set rule doing its job, not a contradiction of this one.
+  const { la_musa, ...withoutLaMusa } = committed;   // eslint-disable-line no-unused-vars
+  const badgeFree = () => {
+    const s = buildSourceFromCode('la_musa');
+    delete s.structure.badges;
+    for (const i of s.items) delete i.display.tags;
+    return s;
+  };
+  withTable(withoutLaMusa, false, 'a brand simply not in the table constrains nothing and still validates', badgeFree);
+  ok('a present-but-falsy or malformed contract entry fails closed; a genuinely absent one does not');
+}
+
+// ── extra_categories WHEN THERE ARE NO EXTRAS ────────────────────────────────────────────────────
+{
+  // The leak: the whole block sat inside `if (extras.length > 0)`, so a menu selling no add-ons could
+  // carry any garbage at all in the namespace and nothing looked. Emptiness may decide whether a
+  // value is NEEDED; it must never decide whether a present value is CHECKED.
+  const noExtras = () => {
+    const s = buildSourceFromCode('x_pizza');
+    s.extras = [];
+    delete s.structure.extras_by_category;
+    delete s.structure.extras_by_item;
+    delete s.structure.redeem_eligible_extras;
+    delete s.structure.extra_categories;
+    return s;
+  };
+  assert.doesNotThrow(() => validateSource(noExtras(), 'x_pizza'), 'a menu with no extras and no namespace is valid');
+  for (const bad of [null, 7, 'broken', {}, [1], ['ok', 'ok'], ['  ']]) {
+    const s = noExtras();
+    s.structure.extra_categories = bad;
+    assert.throws(() => validateSource(s, 'x_pizza'), /extra_categories/,
+      `🔴 with extras: [], extra_categories = ${JSON.stringify(bad)} is still type-validated`);
+  }
+  // an EMPTY namespace is fine with no extras, and refused once extras exist
+  const empty = noExtras(); empty.structure.extra_categories = [];
+  assert.doesNotThrow(() => validateSource(empty, 'x_pizza'), 'an empty namespace is legitimate when nothing needs it');
+  const withExtras = buildSourceFromCode('x_pizza'); withExtras.structure.extra_categories = [];
+  assert.throws(() => validateSource(withExtras, 'x_pizza'), /must be non-empty when extras exist/,
+    '🔴 and required to be non-empty as soon as an extra exists');
+  ok('extra_categories is type-validated whenever present, required only when extras exist');
+}
+
 console.log(`renderer-contract: OK (${n})`);
