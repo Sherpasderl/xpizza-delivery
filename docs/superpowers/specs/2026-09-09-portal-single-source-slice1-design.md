@@ -1,4 +1,18 @@
-# Portal Single-Source — Slice 1: Customer Single-Source (form live-sources the catalog; charge == confirmed quote)
+# Portal Single-Source — Initiative Overview (decomposed into 1A–1D)
+
+**Status:** SUPERSEDED as a single slice. The codex design-grill (2026-09-09, 14 findings, BLOCK) showed this is a multi-part initiative, not one slice. It is now decomposed; this document is the initiative overview. Build order (each its own spec → grill → plan → build → money-gate → deploy; portal stays PAUSED for real edits until they ship):
+- **1A — Catalog = complete, valid, safe display source** (schema + strict validation + reader + re-seed; pricing values byte-unchanged). Spec: `2026-09-09-portal-single-source-1a-catalog-display-schema-design.md`.
+- **1B — Serve it safely** — `getPublicMenu` (dishes AND extras), form live-sources with async-init/fallback contract, safe DOM rendering, cache/CDN contract.
+- **1C — Charge == confirmed NET quote** (hardest, hard money-gate) — both `createOrder` AND `chargeOnlineOrder`, net-not-gross, retry/idempotency-safe, checkout confirmation state machine, staged client migration.
+- **1D — Compatibility** — KDS structural-change handling + generator/CI parity.
+
+**Reframed core invariant** (grill finding 9): NOT "tile == charge per line, live" (caches + outage ladder make that false) but **"the customer is charged exactly the net total they confirmed"** — tiles are best-effort live display; the confirmed-quote gate (1C) is the money guarantee.
+
+The original single-slice design text is retained below for history.
+
+---
+
+# (HISTORICAL) Slice 1: Customer Single-Source (form live-sources the catalog; charge == confirmed quote)
 
 **Status:** DESIGN — awaiting owner review, then design-grill (codex), then plan → executor build → codex money-gate → owner deploy.
 **Date:** 2026-09-09
