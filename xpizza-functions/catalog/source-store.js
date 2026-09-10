@@ -13,6 +13,12 @@
 // `key` explicitly and validates it against the display record, so the two can never drift apart.
 // ---------------------------------------------------------------------------
 const { pricingKeyOf } = require('./form-menu-source');
+const { assertDisplaySafe } = require('./display-safety');
+
+// The COMPLETE display schema. A source stamped with this validates as a full customer-display
+// payload — every dish priced and described, every extra a first-class record, exposure resolvable,
+// the variant graph closed, and nothing in it able to carry an XSS payload to today's renderers.
+const SCHEMA_VERSION = 2;
 
 // The EXTRAS pricing key, per brand — the mirror of pricingKeyOf for items. x_pizza extras are keyed
 // by NAME (their display `id` is a form-local handle like 'e1' that prices nothing); la_musa extras
@@ -105,6 +111,127 @@ function validateSource(source, rid) {
   const usedCats = new Set(source.items.map((i) => i.display && i.display.cat).filter((c) => c != null));
   for (const c of usedCats) if (!catIds.has(c)) fail(`${rid} — authored categories are missing ${c}, which a dish uses`);
 
+  // ═══ THE COMPLETE DISPLAY PAYLOAD (1A Task 2) ══════════════════════════════════════════════════
+  // Everything below exists because 1A makes this source the ONE thing the customer form is built
+  // from. "Valid" therefore has to mean "a customer can be shown this", not just "the prices add up".
+  if (source.schema_version !== SCHEMA_VERSION) {
+    fail(`${rid} — schema_version must be ${SCHEMA_VERSION} (the complete display schema); got ${String(source.schema_version)}`);
+  }
+
+  // ── DISHES: display price MANDATORY, not "checked when present" ───────────────────────────────
+  // The old rule only compared display.price when it happened to exist, so a dish with no display
+  // price passed validation and then rendered blank or fell back to a literal. Mandatory closes it.
+  const uiIds = new Map();
+  for (const it of source.items) {
+    const d = it.display;
+    // MANDATORY AND EQUAL IN ONE RULE. `undefined !== 340`, so strict equality already rejects a
+    // missing display price — a separate presence check would be a second line that can only ever
+    // fire when this one would have. The old rule's mistake was the opposite: it skipped the
+    // comparison when the field was absent, which is exactly the case that renders a blank price.
+    if (d.price !== it.price) fail(`${rid}/${it.key} — display price ${String(d.price)} must be present and equal to the authoritative price ${it.price}`);
+    if (d.cat == null) fail(`${rid}/${it.key} — missing a category`);
+    // UI ids reach the DOM as strings, so two ids that differ only by type collide there.
+    const uid = String(d.id);
+    if (d.id === undefined || d.id === null || uid === '') fail(`${rid}/${it.key} — missing a UI id`);
+    if (uiIds.has(uid)) fail(`${rid}/${it.key} — duplicate UI id ${uid} (also ${uiIds.get(uid)}); ids collide as DOM strings`);
+    uiIds.set(uid, it.key);
+  }
+
+  // ── SUBCATEGORY COVERAGE ─────────────────────────────────────────────────────────────────────
+  // An item whose subcat its category never declares DISAPPEARS: the renderer groups by the declared
+  // subcats and silently drops the rest. A vanished dish is indistinguishable from a deleted one.
+  const subcatsByCat = new Map(st.categories.map((c) => [c && c.id, Array.isArray(c && c.subcats) ? c.subcats : null]));
+  for (const it of source.items) {
+    const sub = it.display.subcat;
+    if (sub == null) continue;
+    const declared = subcatsByCat.get(it.display.cat);
+    if (!declared || !declared.includes(sub)) {
+      fail(`${rid}/${it.key} — subcat ${sub} is not declared by category ${it.display.cat}, so the item would not render at all`);
+    }
+  }
+
+  // ── EXTRAS AS FIRST-CLASS DISPLAY RECORDS ────────────────────────────────────────────────────
+  // The extra-category namespace is SEPARATE from structure.categories: "Salsas & Queso" is not a
+  // dish category and never was, so requiring membership there would reject every real extra.
+  const extraCats = st.extra_categories;
+  if (source.extras.length > 0) {
+    if (!Array.isArray(extraCats) || extraCats.length === 0) {
+      fail(`${rid} — structure.extra_categories (the ordered extra-category namespace) is required when extras exist`);
+    }
+    if (new Set(extraCats).size !== extraCats.length) fail(`${rid} — structure.extra_categories has duplicates`);
+    for (const c of extraCats) if (typeof c !== 'string' || !c) fail(`${rid} — structure.extra_categories holds a non-string entry`);
+  }
+  const extraCatSet = new Set(Array.isArray(extraCats) ? extraCats : []);
+  for (const ex of source.extras) {
+    if (!ex.display || typeof ex.display !== 'object') fail(`${rid}/extra ${ex.key} — missing its display record (every extra is a first-class display record)`);
+    for (const field of ['id', 'cat', 'name']) {
+      if (ex.display[field] === undefined || ex.display[field] === null || ex.display[field] === '') {
+        fail(`${rid}/extra ${ex.key} — display record missing ${field}`);
+      }
+    }
+    if (ex.display.price !== ex.price) fail(`${rid}/extra ${ex.key} — display price ${String(ex.display.price)} must be present and equal to the authoritative price ${ex.price}`);
+    if (!extraCatSet.has(ex.display.cat)) {
+      fail(`${rid}/extra ${ex.key} — cat ${ex.display.cat} is not in the declared extra-category namespace (it is a separate namespace from the dish categories)`);
+    }
+  }
+
+  // ── EXPOSURE MAP VALUES ──────────────────────────────────────────────────────────────────────
+  // The keys were already checked; the VALUES were not, so a map could expose a category that does
+  // not exist and simply offer nothing — invisible, and exactly the kind of silence 1A removes.
+  // A value may name an extra-CATEGORY or an individual extra KEY (the resolver's key-level add).
+  const extraKeys = new Set(source.extras.map((e) => e.key));
+  const legalExposureValue = (v) => extraCatSet.has(v) || extraKeys.has(v);
+  for (const field of ['extras_by_category', 'extras_by_item']) {
+    const map = st[field];
+    if (!map) continue;
+    for (const [k, vals] of Object.entries(map)) {
+      if (!Array.isArray(vals)) fail(`${rid} — structure.${field}.${k} must be an array`);
+      for (const v of vals) {
+        if (!legalExposureValue(v)) fail(`${rid} — structure.${field}.${k} references ${v}, which is neither a declared extra-category nor a known extra`);
+      }
+    }
+  }
+
+  // ── VARIANT GRAPH ────────────────────────────────────────────────────────────────────────────
+  // A launcher offers a required choice between real variants. Every way that graph can be open —
+  // an orphan, a dangling id, an empty choice, a cycle, a variant claimed by two launchers, a
+  // variant nobody lists — ends as a dish a customer can reach and cannot order.
+  const vi = st.variant_items;
+  if (vi && typeof vi === 'object') {
+    const byUiId = new Map(source.items.map((i) => [String(i.display.id), i]));
+    const claimed = new Map();
+    for (const [launcherId, spec] of Object.entries(vi)) {
+      if (!byUiId.has(String(launcherId))) fail(`${rid} — variant launcher ${launcherId} is not a real item (orphan)`);
+      const ids = spec && spec.variantIds;
+      if (!Array.isArray(ids) || ids.length === 0) fail(`${rid} — variant launcher ${launcherId} offers an empty choice list`);
+      for (const v of ids) {
+        if (String(v) === String(launcherId)) fail(`${rid} — variant launcher ${launcherId} lists itself as a variant (cycle)`);
+        const item = byUiId.get(String(v));
+        if (!item) fail(`${rid} — variant launcher ${launcherId} lists ${v}, which is not a real item`);
+        if (claimed.has(String(v))) fail(`${rid} — variant ${v} is claimed by both ${claimed.get(String(v))} and ${launcherId}`);
+        claimed.set(String(v), String(launcherId));
+        const parent = item.display.variantOf;
+        if (String(parent) !== String(launcherId)) {
+          fail(`${rid} — variant ${v} points at launcher ${String(parent)} but is listed by ${launcherId} (bad parent)`);
+        }
+      }
+    }
+    // ...and the other direction: a variant nobody lists is unreachable through its launcher.
+    for (const it of source.items) {
+      const parent = it.display.variantOf;
+      if (parent == null) continue;
+      if (!claimed.has(String(it.display.id))) fail(`${rid}/${it.key} — declares variantOf ${parent} but no launcher lists it (missing coverage)`);
+    }
+  }
+
+  // ── RENDERING SAFETY, LAST ───────────────────────────────────────────────────────────────────
+  // Structure first, then content: an unsafe value in a record that is also malformed should name the
+  // malformation. 1B replaces the unsafe renderers; until then this is the only thing standing
+  // between an authored value and an executable one.
+  for (const it of source.items) assertDisplaySafe(it.display, 'item', `${rid}/${it.key}`);
+  for (const ex of source.extras) assertDisplaySafe(ex.display, 'extra', `${rid}/extra/${ex.key}`);
+  for (const c of st.categories) assertDisplaySafe(c, 'category', `${rid}/cat/${c && c.id}`);
+
   // item_order must be a BIJECTION with items — the same three-legged check the display reader uses.
   // Any two of exists/length/uniqueness can hold while the menu is still wrong.
   if (new Set(st.item_order).size !== st.item_order.length) fail(`${rid} — item_order has duplicate keys`);
@@ -183,4 +310,4 @@ async function readSource(db, rid) {
   return source;
 }
 
-module.exports = { readSource, validateSource, sourceToBuildInputs, canonicalize, sourceRefOf, isPositiveInt, extrasKeyOf, SOURCE_COVERED_LITERALS };
+module.exports = { SCHEMA_VERSION, readSource, validateSource, sourceToBuildInputs, canonicalize, sourceRefOf, isPositiveInt, extrasKeyOf, SOURCE_COVERED_LITERALS };

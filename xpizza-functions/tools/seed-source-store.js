@@ -74,7 +74,18 @@ function buildSourceFromCode(restaurantId) {
   // the SAME function the code-side parity build uses, so the two sides cannot disagree at cutover.
   attachRedeemFields(restaurantId, structure, items, extrasTable);
 
-  const source = { restaurant_id: restaurantId, schema_version: 1, items, extras, structure };
+  // 🔴 THE EXTRA-CATEGORY NAMESPACE, declared rather than inferred. Both shipped forms derive it by
+  // first appearance in EXTRAS, which silently couples the ORDER options are offered in to the order
+  // rows happen to sit in the array — reorder the array and the menu reorders. Declaring it makes the
+  // ordering a published fact, and gives exposure values something to be validated against.
+  const extraCategories = [];
+  for (const e of extras) {
+    const c = e.display && e.display.cat;
+    if (typeof c === 'string' && c && !extraCategories.includes(c)) extraCategories.push(c);
+  }
+  if (extraCategories.length) structure.extra_categories = extraCategories;
+
+  const source = { restaurant_id: restaurantId, schema_version: 2, items, extras, structure };
   validateSource(source, restaurantId);   // fail closed at assembly, not at publish time
   return source;
 }

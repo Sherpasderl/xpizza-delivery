@@ -12,11 +12,18 @@ const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 // A minimal well-formed x_pizza-shaped source (x_pizza keys items AND extras by NAME).
+// Updated for the 1A complete schema (Task 2): schema_version 2, and the ordered extra-category
+// namespace the extras are validated against. The record shapes were already complete — the fixture
+// carried display prices and full extra records all along — so nothing here had to be invented.
 const GOOD = () => ({
-  restaurant_id: 'x_pizza', schema_version: 1,
+  restaurant_id: 'x_pizza', schema_version: 2,
   items: [{ key: 'Margherita', price: 299, display: { id: 8, cat: 'individual', name: 'Margherita', price: 299 } }],
   extras: [{ key: 'Mozzarella', price: 50, display: { id: 'e4', cat: 'Salsas & Queso', name: 'Mozzarella', price: 50 } }],
-  structure: { categories: [{ id: 'individual' }], item_order: ['Margherita'], pickup_only_cats: [], weekend_only_cats: [] },
+  structure: {
+    categories: [{ id: 'individual' }], item_order: ['Margherita'],
+    extra_categories: ['Salsas & Queso'],
+    pickup_only_cats: [], weekend_only_cats: [],
+  },
 });
 
 (async () => {
@@ -53,10 +60,10 @@ const GOOD = () => ({
     const s = GOOD(); s.extras[0].key = 'e4';                                  // the form-local handle, not the price key
     assert.throws(() => validateSource(s, 'x_pizza'), /extras key by NAME/, 'x_pizza extra keyed by its form id must THROW');
     const lm = {
-      restaurant_id: 'la_musa', schema_version: 1,
+      restaurant_id: 'la_musa', schema_version: 2,
       items: [{ key: 'dimsum_01', price: 223, display: { id: 'dimsum_01', cat: 'dim_sum', name: 'Wonton', price: 223 } }],
       extras: [{ key: 'Arroz Blanco', price: 50, display: { id: 'rice_white', cat: 'Acompañamientos', name: 'Arroz Blanco', price: 50 } }],
-      structure: { categories: [{ id: 'dim_sum' }], item_order: ['dimsum_01'] },
+      structure: { categories: [{ id: 'dim_sum' }], item_order: ['dimsum_01'], extra_categories: ['Acompañamientos'] },
     };
     assert.throws(() => validateSource(lm, 'la_musa'), /does not match its display record/, 'la_musa extra keyed by NAME must THROW (it prices by id)');
     lm.extras[0].key = 'rice_white';
@@ -132,3 +139,162 @@ const GOOD = () => ({
   }
   console.log(`source-store: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });
+
+// ═══ Task 2 — THE COMPLETE DISPLAY-PAYLOAD VALIDATOR ═════════════════════════════════════════════
+// 1A makes the catalog the single source the customer form is built from, so "valid" stops meaning
+// "prices are sane" and starts meaning "everything a customer sees is present, consistent, and safe
+// to render". Every rule below is its own case, both brands, and rejects rather than repairs: a
+// publish that cannot fully describe the menu must not happen.
+{
+  const { buildSourceFromCode } = require('../tools/seed-source-store');
+  const { extrasKeyOf } = require('./source-store');
+  const rejects = (label, source, rid, match) => {
+    let threw = null;
+    try { validateSource(source, rid); } catch (e) { threw = e; }
+    assert.ok(threw, `EXPECTED REJECTION: ${label}`);
+    if (match) assert.ok(match.test(threw.message), `${label} — wrong reason: ${threw.message}`);
+    ok(label);
+  };
+  // Start from the REAL seed and break exactly one thing, so every case is grounded in live data and
+  // the diff between valid and invalid is the rule under test.
+  const broken = (rid, mutate) => { const s = buildSourceFromCode(rid); mutate(s); return s; };
+
+  // ── the baseline: today's real menus must PASS, or the validator is an outage ──
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const s = buildSourceFromCode(rid);
+    assert.doesNotThrow(() => validateSource(s, rid), `real ${rid} source must validate`);
+    assert.strictEqual(s.schema_version, 2, `${rid} — the complete schema is stamped`);
+    ok(`${rid}: the real complete source validates and is stamped schema_version 2`);
+  }
+
+  // ── PRICES: display price is mandatory now, not "checked when present" ──
+  for (const rid of ['x_pizza', 'la_musa']) {
+    rejects(`${rid}: a dish with NO display.price`, broken(rid, (s) => { delete s.items[0].display.price; }), rid, /display price/i);
+    rejects(`${rid}: a dish whose display.price disagrees`, broken(rid, (s) => { s.items[0].display.price = s.items[0].price + 1; }), rid, /disagrees/);
+    rejects(`${rid}: an extra with NO display record`, broken(rid, (s) => { delete s.extras[0].display; }), rid, /display record/);
+    rejects(`${rid}: an extra with NO display.price`, broken(rid, (s) => { delete s.extras[0].display.price; }), rid, /display price/i);
+    rejects(`${rid}: an extra whose display price disagrees`, broken(rid, (s) => { s.extras[0].display.price = s.extras[0].price + 1; }), rid, /disagrees/);
+  }
+
+  // ── EXTRAS: record shape, bijection, and the SEPARATE category namespace ──
+  for (const rid of ['x_pizza', 'la_musa']) {
+    for (const field of ['id', 'cat', 'name']) {
+      // The PRICING KEY is derived from the display record and differs per brand — x_pizza extras key
+      // by name, la_musa by id — so removing the keying field is caught as a key mismatch rather than
+      // as a missing field. Either is a correct rejection; what matters is that it cannot pass.
+      rejects(`${rid}: an extra display missing ${field}`,
+        broken(rid, (s) => { delete s.extras[0].display[field]; }), rid, new RegExp(`${field}|key does not match`));
+    }
+    // 🔴 The extra-category namespace is NOT structure.categories. Requiring membership there would
+    // reject every real extra — "Salsas & Queso" is not a dish category and never was.
+    rejects(`${rid}: an extra in an undeclared extra-category`,
+      broken(rid, (s) => { s.extras[0].display.cat = 'Not A Real Extra Category'; }), rid, /extra-category/);
+    rejects(`${rid}: the extra-category namespace missing entirely`,
+      broken(rid, (s) => { delete s.structure.extra_categories; }), rid, /extra_categories/);
+    // a dish category is not an extra category, and vice versa — the two namespaces stay apart
+    rejects(`${rid}: an extra borrowing a DISH category`,
+      broken(rid, (s) => { s.extras[0].display.cat = s.structure.categories[0].id; }), rid, /extra-category/);
+  }
+  // 🔴 THE PEPPERONI CASE: x_pizza has a dish AND an extra named Pepperoni, and they price from
+  // different tables. A validator that indexed display records by name alone would fuse them.
+  {
+    const s = buildSourceFromCode('x_pizza');
+    const dish = s.items.find((i) => i.key === 'Pepperoni');
+    const extra = s.extras.find((e) => e.key === 'Pepperoni');
+    assert.ok(dish && extra, 'premise: x_pizza really does have both a Pepperoni dish and a Pepperoni extra');
+    assert.notStrictEqual(dish.price, extra.price, 'premise: and they cost different amounts');
+    assert.doesNotThrow(() => validateSource(s, 'x_pizza'), 'the two coexist without conflating');
+    ok('x_pizza: the Pepperoni dish and the Pepperoni extra stay in separate namespaces');
+  }
+
+  // ── EXPOSURE-MAP VALUES (today only the keys were checked) ──
+  {
+    const rid = 'la_musa';
+    rejects('la_musa: extras_by_category VALUE naming an unknown extra-category',
+      broken(rid, (s) => { s.structure.extras_by_category.rice = ['Ghost Category']; }), rid, /extras_by_category/);
+    rejects('la_musa: extras_by_item VALUE naming an unknown extra-category',
+      broken(rid, (s) => { s.structure.extras_by_item.rice_03 = ['Ghost Category']; }), rid, /extras_by_item/);
+    // a value MAY name an individual extra (Task 1's key-level add) — but only a real one
+    rejects('la_musa: extras_by_item VALUE naming an unknown extra KEY',
+      broken(rid, (s) => { s.structure.extras_by_item.rice_03 = ['no_such_extra']; }), rid, /extras_by_item/);
+    const okAdd = broken(rid, (s) => { s.structure.extras_by_item.rice_03 = [s.extras[0].key]; });
+    assert.doesNotThrow(() => validateSource(okAdd, rid), 'a value naming a REAL extra key is accepted');
+    ok('la_musa: exposure values are validated, and a real extra key is a legal value');
+  }
+
+  // ── STRUCTURE: ids, categories, subcategories ──
+  for (const rid of ['x_pizza', 'la_musa']) {
+    // For la_musa the UI id IS the pricing key, so a duplicate is caught by the key check that already
+    // existed; for x_pizza the id is a separate numeric handle and only the new UI-id rule sees it.
+    // Both must reject — which rule fires is a property of the brand's keying, not of the menu.
+    rejects(`${rid}: two dishes sharing a UI id`,
+      broken(rid, (s) => { s.items[1].display.id = s.items[0].display.id; }), rid, /duplicate ui id|duplicate item key|key does not match/i);
+    rejects(`${rid}: a dish with no category at all`,
+      broken(rid, (s) => { delete s.items[0].display.cat; }), rid, /category/);
+  }
+  // 🔴 An item whose subcat is not declared by its category VANISHES from the menu — the renderer
+  // groups by the declared subcats and drops everything else. Silent, so it must reject.
+  rejects('la_musa: an item whose subcat its category never declares',
+    broken('la_musa', (s) => {
+      const it = s.items.find((i) => i.display.subcat);
+      it.display.subcat = 'Undeclared Subcat';
+    }), 'la_musa', /subcat/);
+  {
+    const s = buildSourceFromCode('la_musa');
+    assert.ok(s.items.some((i) => i.display.subcat), 'premise: la_musa really does use subcategories');
+    ok('la_musa: subcategory coverage is a real rule on real data');
+  }
+
+  // ── VARIANT GRAPH ──
+  {
+    const rid = 'la_musa';
+    rejects('la_musa: a variant whose launcher does not exist (orphan)',
+      broken(rid, (s) => { s.structure.variant_items = { ghost_launcher: { variantIds: ['noodle_01_sin'] } }; }), rid, /orphan/);
+    rejects('la_musa: a launcher listing a variant that does not exist',
+      broken(rid, (s) => { s.structure.variant_items.noodle_01.variantIds.push('no_such_variant'); }), rid, /not a real item/);
+    rejects('la_musa: a launcher with an EMPTY choice list',
+      broken(rid, (s) => { s.structure.variant_items.noodle_01.variantIds = []; }), rid, /empty choice/);
+    rejects('la_musa: a launcher that is its own variant (cycle)',
+      broken(rid, (s) => { s.structure.variant_items.noodle_01.variantIds.push('noodle_01'); }), rid, /cycle/);
+    rejects('la_musa: a variant pointing at a different launcher than the one listing it',
+      broken(rid, (s) => { s.items.find((i) => i.key === 'noodle_01_sin').display.variantOf = 'rice_01'; }), rid, /bad parent/);
+    // Two launchers offering the same variant: whichever the customer arrives through, the other
+    // launcher's choice is a lie. Caught before the parent check, because "claimed twice" describes
+    // the graph better than "one of the two parents disagrees".
+    rejects('la_musa: one variant claimed by TWO launchers',
+      broken(rid, (s) => { s.structure.variant_items.rice_01 = { label: 'X', variantIds: ['noodle_01_sin'] }; }), rid, /claimed by both/);
+    rejects('la_musa: a variant nobody lists (missing coverage)',
+      broken(rid, (s) => { s.structure.variant_items.noodle_01.variantIds = s.structure.variant_items.noodle_01.variantIds.filter((v) => v !== 'noodle_01_sin'); }), rid, /missing coverage/);
+  }
+
+  // ── SCHEMA VERSION ───────────────────────────────────────────────────────────────────────────
+  // Nothing pinned this: every fixture already carried the new version, so the check could be deleted
+  // with the whole suite green. A source on the OLD schema is one the strict reader cannot serve.
+  for (const rid of ['x_pizza', 'la_musa']) {
+    rejects(`${rid}: a source still on the old schema_version`,
+      broken(rid, (s) => { s.schema_version = 1; }), rid, /schema_version/);
+  }
+
+  // ── RENDERING SAFETY: both sinks, rejected BEFORE activation ──
+  for (const rid of ['x_pizza', 'la_musa']) {
+    // x_pizza keys items BY NAME, so a hostile name must be planted WITH its key re-derived — else the
+    // key check rejects first and the safety rule is never reached. The payload has to arrive the way
+    // a real merchant edit would: as a renamed dish, consistently keyed.
+    const rename = (s, value) => { s.items[0].display.name = value; s.items[0].key = pricingKeyOf(rid, s.items[0].display); s.structure.item_order[0] = s.items[0].key; };
+    rejects(`${rid}: a BODY-context name carrying markup (La Musa innerHTML)`,
+      broken(rid, (s) => rename(s, '<img src=x onerror=alert(1)>')), rid, /display_unsafe/);
+    // 🔴 no angle brackets at all — the case a markup filter passes and the alt= sink executes
+    rejects(`${rid}: an ATTRIBUTE-breaking name (X.Pizza alt="\${p.name}")`,
+      broken(rid, (s) => rename(s, '" onmouseover="alert(1)')), rid, /display_unsafe/);
+    rejects(`${rid}: a handler-breaking category id (La Musa inline onclick)`,
+      broken(rid, (s) => { const c = s.structure.categories[0].id; s.structure.categories[0].id = "x');alert(1);//"; for (const i of s.items) if (i.display.cat === c) i.display.cat = "x');alert(1);//"; }), rid, /display_unsafe/);
+    rejects(`${rid}: an unsafe extra id reaching toggleDetailExtra('<id>')`,
+      broken(rid, (s) => { s.extras[0].display.id = "e1');alert(1);//"; s.extras[0].key = extrasKeyOf(rid, s.extras[0].display); }), rid, /display_unsafe/);
+    // A category whose NAME is unsafe — no item carries that field, so only the category-level safety
+    // pass can see it. Without this the category check was covered by the item check and could go.
+    rejects(`${rid}: a category NAME carrying markup`,
+      broken(rid, (s) => { s.structure.categories[0].name = '<img src=x onerror=alert(1)>'; }), rid, /display_unsafe.*name/);
+    rejects(`${rid}: an image path with a javascript: scheme`,
+      broken(rid, (s) => { s.items[0].display.img = 'javascript:alert(1)'; }), rid, /display_unsafe/);
+  }
+}
