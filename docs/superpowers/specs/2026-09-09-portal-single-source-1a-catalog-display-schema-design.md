@@ -1,60 +1,100 @@
 # Portal Single-Source — 1A: Catalog is the complete, valid, safe customer-display source
 
-**Status:** DESIGN — awaiting owner review, then design-grill (codex), then plan → executor build → money-gate → owner-run gated cutover.
+**Status:** DESIGN (rev 2, folds 9 design-grill findings) — awaiting re-grill, then owner review → plan → build → money-gate → owner-run gated cutover.
 **Date:** 2026-09-09
-**Part of:** the single-source initiative (`2026-09-09-portal-single-source-slice1-design.md`, overview). 1A is the foundation 1B (serve) and 1C (charge) read.
-**Base:** `origin/main` (e202e62). Backend/schema + a re-seed cutover; no form or portal-editor changes here.
+**Part of:** single-source initiative (`2026-09-09-portal-single-source-slice1-design.md` overview). 1A is the foundation 1B (serve) and 1C (charge) read.
+**Base:** `origin/main` (e202e62). Backend/schema + a re-seed cutover; no form or portal-editor changes here (form-literal removal is 1B).
 
 ## Goal
-Make the live catalog carry the **complete, internally-consistent, safe-to-serve customer-display dataset**, validated strictly, so it can be the single source that 1B serves to customers and 1C charges against — **without changing any price that is currently charged or served.** Today the catalog is authoritative for *charging dishes* but is missing or only-conditionally-validating most of what a customer *sees*: extras have no display records, La Musa's "desde" price and variants are independently authored, and display prices are validated only when present.
+Make the live catalog carry the **complete, internally-consistent, safe-to-serve customer-display dataset**, validated strictly on every publish path, so it is the single source 1B serves and 1C charges against — **without changing any price currently charged or served, and without reverting any live merchant edit.**
 
 ## Core principle
-Everything a customer will see or be charged for must live in the catalog source, be **derivable from it alone** (never from the mutable `meta/source` draft or from code literals), and be **validated complete + internally consistent** before it can publish. Anything a publish cannot fully and safely describe must be rejected, not served.
+Everything a customer sees or is charged for must live in the catalog version, be **derivable from that immutable version alone** (never from the mutable `meta/source` draft, never from a code literal), and be **validated complete + internally consistent** before it can publish or be read. Anything a publish cannot fully and safely describe is rejected, not served.
 
-## In scope (1A)
-1. **Dish display prices — mandatory + strictly equal (grill #7).** `validateSource` currently checks `price == display.price` only *when `display.price` is present* (`source-store.js:68–99`); a missing display price is accepted for both brands. Change: **every dish must carry `display.price`, and it must strictly equal the authoritative `price`** — no conditional. Reject on missing or unequal.
-2. **Extras become a first-class display source (grill #5).** Published extras carry only `{key, price}` today (`catalog-publish.js:208`); `getRestaurantMenu` returns none; forms hold `EXTRAS` literals. Add **extras display records** to the catalog source + published version: `{key, price, display:{name, category}, exposure}`, with the **per-brand exposure/keying model preserved**: X.Pizza name-keyed, count-once (0/1 toggle); La Musa id-keyed, quantity-aware/standalone. `getRestaurantMenu` returns them. Validate: every served extra has a display record with `price == display price`, a valid category, and correct keying for its brand.
-3. **La Musa "desde"/variants derived, not authored (grill #8).** The launcher "desde" price is independently authored (`variant_items.*.basePrice`) and can advertise a stale/unavailable start. Change: **derive "desde" from the valid selectable variants** at build time; validate that every launcher references existing variants, every referenced variant exists, and choice sets are complete. Retain `variant_items` and `has_photo` in the display shape.
-4. **Structural field validation (grill #6 data half, #7).** Validate the fields that will later reach the DOM so the data can't carry malformed attributes: **unique UI IDs** (safe pattern), **category membership** (every item's category exists in `structure.categories`), **display-identity agreement** (the display record maps to exactly the pricing key — no tile→wrong-key mapping), and format checks on image path / color. (The DOM-render *safety* itself is 1B; 1A guarantees the data is well-formed.)
-5. **`getRestaurantMenu` returns the complete display set (grill #7):** dishes (with mandatory display price), extras (with display records + exposure), variants/"desde", categories — and **re-checks identity/price agreement on read** (`catalog-menu.js:30–36` does not today), fail-closed on any mismatch. This is the reader 1B's `getPublicMenu` will wrap.
-6. **Generator emits the complete shape:** `rebuildFormMenu`/`generateFormBundle` (`form-menu-source.js:189–212`) emit **extras and variants**, not just dishes, so the generated artifact is a full display source (used by 1B's fail-safe bundle and the manifest).
-7. **Re-seed cutover:** re-seed the live catalog to the complete schema (populate extras display records, derived "desde", mandatory display prices), with a **byte-identical serving + charging proof** (2a discipline): the migration adds display data only — **no charged value and no served dish price changes**. Owner-run, gated, with rollback.
+---
 
-## Out of scope (later slices)
-- `getPublicMenu` + form live-sourcing + async-init/fallback + cache/CDN (**1B**).
-- Safe DOM rendering of authored strings (**1B**).
-- `charge == confirmed net quote`, both payment handlers, checkout state machine, client migration (**1C**).
-- KDS structural-change compatibility + CI/generator-parity contract (**1D**).
-- Portal *editing* of the new fields (extras names, categories, variants) — a later portal slice; 1A only makes the fields exist, valid, and served.
+## Component A — Complete published-payload validator on EVERY path (grill #2, #7)
+Today validation is uneven: `validateSource` runs on some paths; `publish-version.js:50–54` bypasses it; `catalog-publish.js:178–229` checks pricing/structure but not a display schema; `previewVersion` and portal publish (`publish-edited-handler.js:143–148`) omit extras entirely. A version that the new strict reader would reject can therefore be activated.
+
+- **One shared validator** for the complete published payload, invoked (a) before any publish AND (b) against the persisted candidate records before the pointer flips, on **all** paths: direct `publish-version`, store publish, portal `publishEdited`, bootstrap/seed, and **rollback**.
+- **Schema version** stamped on every version; the reader accepts its known versions.
+- **Staged enforcement:** migrate/re-seed the complete schema BEFORE the strict reader is deployed, and ensure the **rollback target is strict-reader-compatible** — deploying strict reads while old versions lack display records would fail closed on a rollback.
+- Tests must **deliberately bypass `validateSource`** and still prove the pointer cannot move to an invalid version.
+
+## Component B — Full source→build→persist→preview→read→generate contract (grill #7)
+`sourceToBuildInputs` already produces `extras_display` + exposure maps (`source-store.js:167–171`), but `buildCatalogV2` drops them, `catalogDocsForRestaurant` emits price-only extras (`seed-catalog-core.js:11–21`), portal publish passes only the price table, and `previewVersion` omits extras (`catalog-publish.js:276–285`). Updating only the named reader/publisher leaves other paths incomplete.
+- Thread the complete display dataset through **every** stage and update **every caller**: `buildCatalogV2`, both seed tools, both publish modes, portal publish, preview, the display reader, and the generator.
+- **Preserve the numeric extras pricing table used for charging** unchanged; carry display metadata **alongside** it (charging namespace and display namespace stay distinct — grill #3).
+- **All serving fields come from the selected immutable version**, never `meta/source`.
+
+## Component C — Dish display prices: mandatory + strictly equal (grill #1, #7)
+`validateSource` checks `price == display.price` only when `display.price` is present (`source-store.js:68–99`). Change: **every dish carries `display.price`, strictly `==` the authoritative `price`**, no conditional. Local check found no missing/unequal display prices in the committed bundles for either brand — but **production Firestore was not inspected**; the migration (Component G) must inventory live data and handle any real gap.
+
+## Component D — Extras as first-class display records (grill #3, #4)
+- **Exact record shape:** `{ id, cat, name, price, exposure }` — mirroring the form literals (`{id, cat, name, price}`) plus exposure. `price` mandatory numeric; **complete extra-display ↔ extra-price bijection**.
+- **Separate extra-category namespace** (ordered) — `Carnes`, `Proteínas`, etc. are NOT dish `structure.categories`; do **not** require membership there (that would reject today's valid extras). Validate each extra's `cat` against the extra-category namespace, and validate **exposure-map VALUES** against extra categories (`source-store.js:144–148` checks only keys).
+- **Separate pricing namespaces:** a dish and an extra may share a name (X.Pizza has a dish AND an extra "Pepperoni") — never conflate them.
+- **Per-brand arithmetic preserved exactly** (`menu-pricing.js:186–222`, `la-musa-orders/index.html:1895–1954`): X.Pizza adds each submitted extra occurrence **once** (no name-dedup, no ×dish-quantity), toggled per pizza instance; La Musa adds `price × qty` independent of dish quantity and **rejects duplicate IDs**.
+- **Exposure encodes today's rules exactly**, including item/category exclusions (Nutella excludes extras — `xpizza-orders/index.html:3615,3647`) and additions (`rice_03` protein). Exposure is **display/eligibility only, separate from pricing** — 1A must **not** introduce a new charging restriction as a side effect of display validation.
+
+## Component E — Variants / "desde" derived, launcher price preserved (grill #5)
+- **Keep the launcher's authoritative price** (Pad Thai launcher = L414, retained for bare-ID compatibility — `menu-pricing.js:83`). Do **not** overwrite `display.price` with the min variant.
+- **Derive a SEPARATE starting-price field** ("desde") = the minimum **selectable** variant price (L307 today), for the launcher's display only.
+- **Validate the variant graph:** nonempty **unique** choices; reciprocal `variantOf` ↔ launcher membership; valid parent identity; no cycles/orphans; complete selectable coverage; required single selection where applicable; **option prices derived from the authoritative variant prices**.
+- **Normalization order made explicit:** authored `basePrice` is **removed** (the launcher keeps its own price; "desde" is derived) — the derived starting price is not stored as an authored value that could drift.
+
+## Component F — Field/consumer inventory: bring all menu content into the catalog (grill #6)
+"Every customer-visible field" is scoped to **menu content**, and each field gets a documented requiredness + format. Inventory (source of truth = catalog, not literals):
+- **Category labels + layout + subcategories** (published categories are `{id}` only today — "12 Inch Pies", `NY Slice · 18"` are HTML literals; La Musa subcategories).
+- **Gates:** `pickup_only_cats`, `weekend_only_cats` — **required, validated** (optional today permits silent omission).
+- **Ordering:** item order and extra order.
+- **Per-item:** name, description, tags, emoji, color, image path, `has_photo` (typed), category membership, **unique UI IDs** (preserve X.Pizza numeric IDs; uniqueness after DOM string conversion), variant photo inheritance.
+- **Photo-path construction** (La Musa builds paths from literal templates — `la-musa-orders/index.html:2143,4036`): classify explicitly as either a supported *rendering convention* (stays a 1B render detail) or *published metadata* (comes into the catalog). Recommendation: published `image` path when present, `has_photo` typed boolean; the convention is a documented fallback.
+- **Removal of the form literals themselves is 1B** — 1A makes the fields exist, valid, and served.
+
+## Component G — Migration built from the captured ACTIVE VERSION, byte-identical, edit-preserving (grill #1)
+🔴 The re-seed must **NOT** rebuild from code literals. `seed-source-store.js` + `publish-version.js` rebuild from code and compare against code — both agree even when the live published price differs from code, silently reverting a merchant's edit.
+- **Capture the current active version** (its real pricing tables, served prices, existing display fields, exposure, ordering) and build the migrated version by **adding display data to that captured version** — preserving every live value.
+- **Preserve unpublished drafts** (`meta/source`) — do not clobber them.
+- **Gate before flip:** compare **old vs new** charged tables, served prices, exposure, and ordering; **bind the comparison to the active version id AND draft revision** so a concurrent edit invalidates it (CAS).
+- **Inventory missing/unequal live `display.price`:** fill a *missing* value only after proving the served value agrees; an actual *disagreement* requires a documented data correction or an explicit, owner-approved revised "no-change" claim — never a silent overwrite.
+- Owner-run, gated, with a **strict-reader-compatible rollback target**.
+
+## Component H — Deterministic offline generation + committed-artifact parity (grill #8)
+Adding extras to the generated bundle changes serialized output and immediately fails committed-artifact equality (`catalog-form-bundle.test.js:54–59`). Variants already flow through `rebuildFormMenu` (treat as derivation/validation, not a new emitted field).
+- Include **deterministic offline input** support and **regenerate the committed bundles/manifests**, with full reader↔generator parity tests, in 1A.
+- Keep runtime generation **free of draft reads and production credentials** (offline CI stays offline). Broader KDS structural compatibility remains 1D; existing KDS parity must stay intact.
+
+## Component I — Version-identity contract for 1B/1C (grill #9)
+`getRestaurantMenu` returns `{items, structure}` with no version identity, so a display read from version A and a later charge from version B (or a fallback) can't be detected.
+- The complete snapshot contract includes **restaurant id, schema version, version id/sequence, and content identity**, and 1A provides the **version-specific read path** 1B/1C need.
+- **Boundary:** 1A supplies *versioned menu + extras pricing inputs and the identity*; **1C owns** quote binding, discounts/redemption, other net-total adjustments, and stale-version policy. Settle the **interface** here to avoid a 1C redesign; keep the net-quote implementation in 1C.
+
+---
 
 ## Key invariants
-- **Display price mandatory and strictly `==` the charged price**, per brand, for **dishes and extras**. No conditional, no coercion.
-- **"desde" is derived** from selectable variants; never independently authored.
-- Every customer-visible field is **derivable from the catalog alone** — never `meta/source`, never a code literal.
-- **Unique UI IDs; every item's category exists; display record ↔ pricing key is 1:1** (no tile mapped to the wrong price).
-- **The migration changes zero charged/served values** — additive display data only, proven byte-identical.
-- Brand-agnostic: extras keying is X.Pizza-name / La Musa-id via the existing key resolver; no `rid==='x_pizza'` literal in the new validation/reader.
-
-## Data flow (1A)
-Merchant/seed source → `validateSource` (complete + strict) → published version stores dishes+extras-display+variants → `getRestaurantMenu` returns the complete, re-checked display set → (1B will serve it; 1C will charge from the same version).
-
-## Error handling
-- Any incompleteness or inconsistency (missing display price, unequal price, missing extra display record, stale/underivable "desde", dup ID, unknown category, display↔key mismatch) → `validateSource`/publish **rejects**; nothing partial is served.
-- `getRestaurantMenu` re-checks on read and **fails closed** (never returns a display set it can't vouch for) — consistent with the pricing resolver's rule.
+- Display price mandatory + strictly `==` charged price, per brand, **dishes and extras**; charging namespace ≠ display namespace; dish namespace ≠ extra namespace.
+- "desde" is a **derived, separate** starting price; the launcher keeps its authoritative price.
+- Every customer-visible field derivable from the **immutable version** alone; never `meta/source`, never a literal.
+- The migration changes **zero charged/served value** and **reverts no live edit** (built from the captured active version, CAS-bound).
+- One complete validator on **every** publish path; the pointer cannot move to a version the strict reader would reject; rollback targets stay compatible.
+- Per-brand extra arithmetic + exposure preserved **exactly**; no new charging restriction introduced.
+- Brand-agnostic (extras keying X.Pizza-name/La Musa-id via the existing resolver; no `rid==='x_pizza'` literal in new validation/reader).
 
 ## Testing
-- **Strict validation rejects** (each its own case, mutation-proven): missing `display.price`; `price != display.price`; extra with no display record; extra display price ≠ charged; stale/underivable "desde"; duplicate UI ID; item in an unknown category; display record mapping to a different pricing key. Each must reject for **both brands**.
-- **Migration byte-identical:** the re-seeded complete catalog serves and charges **identical** dish and extra prices to today for both brands (originate the comparison from the real serving reader + `computeServerTotal`, not hand-built fixtures; move-the-fact: change a source price → both display and charge follow; change the cheapest variant → "desde" follows).
-- **Reader completeness:** `getRestaurantMenu` returns dishes+extras+variants+categories with display records; extras exposure/keying correct per brand.
-- **Generator completeness:** `generateFormBundle` emits extras + variants; parity with the reader for a seeded version.
-- **No-regression:** serving resolver / `computeServerTotal` / `publishEdited` pricing behavior unchanged except the additive display data; the current parity/CI suites still pass (offline).
+- **Strict validation rejects** (each own case, mutation-proven, BOTH brands, and on paths that bypass `validateSource`): missing/unequal dish `display.price`; extra without a display record; extra display price ≠ charged; extra `cat` not in the extra namespace; exposure-map value referencing an unknown extra category; duplicate UI ID; item in unknown dish category; display record ↔ pricing key not 1:1; underivable/incomplete variant graph (orphan, cycle, empty choice, missing coverage); missing required gate array.
+- **Migration byte-identical + edit-preserving:** re-seed built from a captured active version that **includes a live price differing from code** serves and charges **identically** afterward (dishes + extras, both brands) — proven from the real serving reader + `computeServerTotal` over **serialized carts** (multi-pizza instances, repeated X.Pizza extra occurrences, La Musa quantity extras, malformed inputs), not hand-built fixtures. Move-the-fact: change a captured price → display and charge follow; change cheapest variant → "desde" follows; launcher price unchanged.
+- **Caller completeness:** `buildCatalogV2`, both seed tools, both publish modes, portal publish, preview, reader, generator all carry extras+exposure+variants+identity; `publish-parity` extended to hash extras + exposure (dish-display-only today).
+- **Reader/generator parity + offline determinism:** committed bundles regenerated; reader == generator for a seeded version; runtime generation credential-free.
+- **Version identity:** the snapshot carries rid + schema version + version id/seq; a read exposes it so 1B/1C can bind.
 
 ## Money-gate focus (closing codex gate)
-- The re-seed migration changes **no charged value** — prove it (serving + `computeServerTotal` byte-identical pre/post, both brands, dishes + extras).
-- Strict validation **cannot be bypassed** to publish an incomplete/inconsistent display source.
-- Display↔pricing-key is 1:1 (a tile can never be mapped to a different item's price), both brands, including the extras name/id keying asymmetry and La Musa variants.
-- No customer-visible field is sourced from `meta/source` (the mutable draft) or a code literal.
+- Migration changes **no charged value** and reverts **no live edit** — proven over serialized carts, both brands, dishes + extras, incl. a live-≠-code case.
+- Strict validation **cannot be bypassed** on any publish path; pointer never moves to an invalid version.
+- Display ↔ pricing key is 1:1 (a tile can never map to another item's price), incl. extras name/id asymmetry and variants; dish/extra namespaces never conflate.
+- No customer-visible field sourced from `meta/source` or a literal; exposure introduces no new charging restriction.
 
 ## Open questions for review
-- **Extras `category` / display metadata source:** the forms' `EXTRAS` literals carry categories ("Salsas & Queso", "Carnes", …). 1A must move these into the catalog. Confirm the current form categories are the intended authoritative set to seed from (they will become catalog data).
-- **Cutover shape:** same as 2a (seed → parity suite → publish-from-store → verify → prod behavior check), owner-run? Assumed yes.
+- **Extra-category namespace source:** seed the ordered extra categories from today's form `EXTRAS` `cat` values (Salsas & Queso / Carnes / Vegetales & Hierbas / … ; La Musa Proteínas / …) — confirm these become the authoritative set.
+- **Photo path:** publish `image` metadata vs keep the template convention as a 1B render detail (recommendation: publish when present + typed `has_photo`, convention as fallback).
+- **Cutover shape:** 2a-style owner-run (capture active → seed → parity suite over serialized carts → publish-from-store → verify → prod behavior check), CAS-bound to the active version. Assumed yes.
