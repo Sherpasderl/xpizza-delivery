@@ -189,11 +189,30 @@ const bumpGeneration = () => { opGeneration += 1; };
 // when the merchant looked at them.
 const mintedReviews = new WeakSet();
 
+// 🔴 A REVIEW IS EVIDENCE OF WHAT A PERSON WAS SHOWN BEFORE THEY SIGNED. Making the record's own
+// properties read-only stopped the record being re-pointed; it did nothing about the objects hanging
+// off it. `review.submitted.items[0].price = 999` reached straight through a non-writable property
+// into a live, shared object — and `submitted` is precisely what publish commits as the new baseline,
+// so that one line changes what the merchant is recorded as having published.
+//
+// CLONE, THEN FREEZE, ALL THE WAY DOWN. Cloning makes the snapshot independent of anything that still
+// holds a reference to the original; freezing makes it independent of anything that finds this one.
+// In strict mode a write anywhere inside it throws.
+function frozenCopy(value) {
+  if (value === null || typeof value !== 'object') return value;
+  const copy = Array.isArray(value)
+    ? value.map(frozenCopy)
+    : Object.fromEntries(Object.entries(value).map(([k, v]) => [k, frozenCopy(v)]));
+  return Object.freeze(copy);
+}
+
 function mintReview(fields, gen) {
   let acknowledged = false;
   const review = {};
   for (const k of Object.keys(fields)) {
-    Object.defineProperty(review, k, { value: fields[k], enumerable: true, writable: false, configurable: false });
+    // Frozen deeply, not just held non-writably: the diff, the reviewed set, the attestation and the
+    // submitted snapshot are all the evidence, and evidence that can be edited afterwards is not.
+    Object.defineProperty(review, k, { value: frozenCopy(fields[k]), enumerable: true, writable: false, configurable: false });
   }
   Object.defineProperty(review, 'acknowledged', { get: () => acknowledged, enumerable: true, configurable: false });
   Object.preventExtensions(review);
@@ -762,7 +781,10 @@ async function openReviewFlow() {
     // the CAS baseline moves forward: the draft we just wrote is the new precondition
     if (res && res.updateTime) state.sourceUpdateTime = res.updateTime;
     $('revSub').textContent = 'Esto es exactamente lo que cambia en tu menú en vivo.';
-    renderReview($('mbody'), reviewModel(diff));
+    // 🔴 RENDERED FROM THE MINTED RECORD, not from the locals it was built out of. What the merchant
+    // reads must be the same object the publish will send — rendering from the pre-freeze originals
+    // would leave a second, mutable copy of the evidence alive for as long as this scope is.
+    renderReview($('mbody'), reviewModel(state.review.diff));
     const attBox = document.createElement('div');
     $('mbody').append(attBox);
     // BOUND to this review and this world. Dispatching A's checkbox after B opened must acknowledge
@@ -770,7 +792,7 @@ async function openReviewFlow() {
     // Bound AS WELL as runtime-closed. The wrapper stops a stale callback from reaching the setter at
     // all; the closure stops anything that reaches it anyway from signing for the wrong world. Neither
     // depends on the other being correct.
-    renderAttestation(attBox, att, bound((v) => {
+    renderAttestation(attBox, state.review.attestation, bound((v) => {
       minted.acknowledge(v);
       syncUi();
     }));

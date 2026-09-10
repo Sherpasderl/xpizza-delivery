@@ -1549,3 +1549,41 @@ test('🔴 a hand-built review cannot publish, however convincing it looks', asy
   // true is that the refused press took nothing MORE, which is the ticket-leak property one layer down.
   assert.strictEqual(app.state.reviewLock, lockBefore, '...and the refused press acquired nothing of its own');
 });
+
+test('🔴 the evidence a review carries cannot be edited after it is minted', async () => {
+  // Making the record's own properties read-only stopped it being re-pointed and did nothing about the
+  // objects hanging off it. `review.submitted.items[0].price = 999` reaches straight through a
+  // non-writable property into a live object — and `submitted` is exactly what publish commits as the
+  // new baseline, so that one line changes what the merchant is recorded as having published.
+  const byId = installDom();
+  fiscalFetch();
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+  const review = app.state.review;
+
+  const tampering = [
+    ['a price inside the submitted snapshot', () => { review.submitted.items[0].price = 999; }],
+    ['the display price beside it',           () => { review.submitted.items[0].display.price = 999; }],
+    ['a new item in the snapshot',            () => { review.submitted.items.push({ key: 'X', price: 1 }); }],
+    ['the snapshot’s items array',       () => { review.submitted.items.length = 0; }],
+    ['a changed row in the diff',             () => { review.diff.changed[0].new = 999; }],
+    ['the diff’s changed list',          () => { review.diff.changed.push({ key: 'X' }); }],
+    ['the acknowledged set',                  () => { review.ackSet.push({ key: 'X' }); }],
+    ['the attestation model',                 () => { review.attestation.needsSeal = false; }],
+    ['the attestation’s seal rows',      () => { review.attestation.sealRows.push({ key: 'X' }); }],
+  ];
+  for (const [what, attempt] of tampering) {
+    assert.throws(attempt, TypeError, `🔴 tampering with ${what} must THROW`);
+  }
+  // 299 is what SOURCE() holds and what was submitted; 310 is what the fixture diff reports. They are
+  // deliberately different numbers here, so an assertion cannot pass by coincidence.
+  assert.strictEqual(review.submitted.items[0].price, 299, '🔴 the snapshot still says what was submitted');
+  assert.strictEqual(review.diff.changed[0].new, 310, '...and the diff still says what the server reported');
+
+  // INDEPENDENT as well as immutable: the record is a clone, so a later edit to the live draft cannot
+  // reach back into what was reviewed. Freezing a shared object would only have moved the problem.
+  app.state.draft.state.items[0].price = 777;
+  assert.strictEqual(review.submitted.items[0].price, 299,
+    '🔴 editing the live draft does not rewrite the evidence — the snapshot was copied, not referenced');
+});

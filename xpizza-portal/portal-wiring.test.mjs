@@ -1571,8 +1571,8 @@ test('🔴 the analyser closes the soundness holes it was shown', () => {
     ['delete state.review;',                                             'may not be deleted'],
     ['const r = state.review; delete r.acknowledged;',                    'may not be deleted'],
     // a consumer authorised by NAME rather than by resolved binding
-    ['const setItemPrice = (x) => { x.acknowledged = true; }; setItemPrice(state.review);', 'not the module-level function'],
-    ['const draftSource = obj; draftSource(state.review);',               'not the module-level function'],
+    ['const setItemPrice = (x) => { x.acknowledged = true; }; setItemPrice(state.review);', 'not the module-level'],
+    ['const draftSource = obj; draftSource(state.review);',               'not the module-level'],
     // real scopes: var hoists out of its block, a catch param binds, a named function expression
     // binds its own name
     ['{ var r = state.review; } r.acknowledged = true;',                  'through the alias'],
@@ -1590,4 +1590,40 @@ test('🔴 the analyser closes the soundness holes it was shown', () => {
   // and the analyses converge rather than silently truncating
   assert.doesNotThrow(() => stateViolations(readFileSync(join(DIR, 'app.js'), 'utf8')), 'taint reaches a fixed point');
   assert.doesNotThrow(() => writerFunctions(readFileSync(join(DIR, 'app.js'), 'utf8')), 'the writer set reaches a fixed point');
+});
+
+test('🔴 a shadowing consumer cannot inherit the allowlist, however it is declared', () => {
+  // Defence in depth now — the fiscal evidence is runtime-frozen, so this no longer stands between a
+  // forger and the tax document. It is fixed because it was a real, named hole: the check accepted any
+  // binding of kind 'function', so a function DECLARED INSIDE another function inherited a ruling
+  // written for the module-level import of the same name.
+  const mod = (body) => `import { setItemPrice } from './editor.js';\nexport const state = { review: null };\nfunction f(obj) {\n  ${body}\n}\n`;
+  for (const shadow of [
+    'function setItemPrice(x) { x.acknowledged = true; } setItemPrice(state.review);',   // declaration
+    'const setItemPrice = (x) => { x.acknowledged = true; }; setItemPrice(state.review);', // const
+    'let setItemPrice = obj; setItemPrice(state.review);',                                 // let
+    'var setItemPrice = obj; setItemPrice(state.review);',                                 // var, hoisted
+  ]) {
+    const bad = stateViolations(mod(shadow), 'fx');
+    assert.ok(bad.some((b) => b.includes('not the module-level setItemPrice')),
+      `🔴 a shadowing consumer was authorised: ${shadow} -> ${bad.join(' | ') || '(no violation)'}`);
+  }
+  // ...and the genuine module-level import is still authorised, or nothing would pass.
+  assert.deepStrictEqual(stateViolations(mod('setItemPrice(state.review, 1, 2);'), 'fx'), [],
+    'the real imported setter is still a ruled consumer');
+});
+
+test('🔴 the evidence has ONE home — nothing renders from the pre-mint locals', () => {
+  // mintReview clones and freezes what it is given, so the locals it was built from are still live,
+  // mutable copies of the same evidence. Reading from them behaves identically today, which is exactly
+  // why only a structural check can hold the line: the point is that no second copy is in use, so a
+  // later edit to one of those locals cannot make the screen and the record disagree.
+  const app = codeOf('app.js');
+  assert.match(app, /renderReview\(\$\('mbody'\), reviewModel\(state\.review\.diff\)\)/,
+    '🔴 the review renders from the MINTED diff');
+  assert.match(app, /renderAttestation\(attBox, state\.review\.attestation,/,
+    '🔴 the attestation renders from the MINTED attestation, not the local it was computed into');
+  // and the frozen copy is what the record holds, rather than the caller's object
+  assert.match(app, /value: frozenCopy\(fields\[k\]\)/, 'every field is stored as a frozen copy');
+  assert.match(app, /return Object\.freeze\(copy\)/, '...and the freeze is applied to the COPY, all the way down');
 });

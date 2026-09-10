@@ -362,8 +362,13 @@ export function stateViolations(src, label = 'app.js') {
         if (!rootId) { bad.push(`${at(id)}: \`${shown}\` is passed to a computed callee, which cannot be authorised`); return; }
         const cb = scopeOf.get(parent.callee) && scopeOf.get(parent.callee).lookup(rootId.name);
         if (!cb) { bad.push(`${at(id)}: \`${shown}\` is passed to \`${rootId.name}(\`, which resolves to no binding in this module`); return; }
-        if (cb.kind !== 'import' && cb.kind !== 'function' && !(cb.kind === 'const' && root.bindings.get(rootId.name) === cb)) {
-          bad.push(`${at(id)}: \`${shown}\` is passed to \`${rootId.name}(\`, which resolves to a ${cb.kind} binding, not the module-level function the ruling authorises`);
+        // 🔴 IDENTITY, NOT KIND. Accepting any binding of kind 'function' let a function DECLARED INSIDE
+        // another function inherit the ruling — `function setItemPrice(...) {}` nested in a handler is
+        // a different function with different effects and the allowlist never meant it. The authorised
+        // thing is the module-level binding itself, so compare against exactly that object.
+        const authorized = root.bindings.get(rootId.name);
+        if (!authorized || authorized !== cb) {
+          bad.push(`${at(id)}: \`${shown}\` is passed to \`${rootId.name}(\`, which resolves to a local ${cb.kind} binding, not the module-level ${rootId.name} the ruling authorises`);
           return;
         }
         return;                                                    // ALLOWED: a ruled consumer
