@@ -2,7 +2,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-09-portal-single-source-1a-catalog-display-schema-design.md` (rev 5, design-grill APPROVED after 4 rounds — read it fully).
 **Plan:** `docs/superpowers/plans/2026-09-09-portal-single-source-1a-catalog-display-schema.md` (9 tasks).
-**Branch:** off `origin/main` (e202e62), backend-only + a re-seed cutover. LOCAL-ONLY; nothing pushed. Build task-by-task; after each, hand back for advisor source-audit + codex money-gate before the next.
+**Branch:** off `origin/main` = **`4d6697c`** (the deployed 2b-2b slice — "an acknowledgement is not a bearer instrument"), backend-only + a re-seed cutover. NOTE: 2b-2b **is merged + pushed + deployed** (owner did it during the smoke; `origin/main` is `4d6697c`, **not** e202e62 — that was the 2b-2b *base*, 31 commits back). The advisor's earlier "off e202e62 / nothing pushed" was a stale-ref error, corrected here. Only the 1A **design/plan/relay docs** (dfcaa91→69bc04b, docs-only) are unpushed. Build task-by-task LOCAL-ONLY; after each, hand back for advisor source-audit + codex money-gate before the next.
 
 ## Why this exists
 The portal edits the live catalog (what the SERVER charges), but the customer form displays a static bundle generated from the CODE bootstrap — so a portal price edit changed the charge, not the display (Carnívora 340-shown/350-charged). 1A makes the live catalog the ONE complete display source. 1A is the foundation; 1B serves it, 1C guarantees charge==confirmed. **Portal stays PAUSED for real edits until the customer slices ship.**
