@@ -85,6 +85,14 @@ function buildSourceFromCode(restaurantId) {
   }
   if (extraCategories.length) structure.extra_categories = extraCategories;
 
+  // BADGE DEFINITIONS become catalog data. `tags` are lookup keys into TAG_BADGES, and a tag that
+  // names no definition renders nothing at all — silently, which is the failure mode this whole slice
+  // exists to remove. Carrying the definitions makes the tag validatable against something real.
+  try {
+    const badges = readLiteral(src, 'TAG_BADGES', '{', '}');
+    if (badges && Object.keys(badges).length) structure.badges = badges;
+  } catch (_) { /* a brand with no badge literal simply declares none */ }
+
   const source = { restaurant_id: restaurantId, schema_version: 2, items, extras, structure };
   validateSource(source, restaurantId);   // fail closed at assembly, not at publish time
   return source;

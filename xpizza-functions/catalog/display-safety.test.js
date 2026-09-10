@@ -121,3 +121,21 @@ test('🔴 every real display record of BOTH brands passes — the constraint is
     if (rid === 'la_musa') for (const c of readLiteral(src, 'CATEGORIES')) assertDisplaySafe(c, 'category', `${rid}/cat/${c.id}`);
   }
 });
+
+test('🔴 safety NEVER stringifies — the wrong type is not a safe value', () => {
+  // The validator's type phase catches these first, which is the right order and also means these
+  // rules cannot be killed through it. Asserted here directly, because the whole class of bugs was
+  // String(value) turning `{}` into "[object Object]" — a value that passes every content rule and
+  // renders as "[object Object]" on a menu.
+  for (const context of ['body', 'attribute', 'identifier', 'url', 'color']) {
+    assert.match(checkValue({}, context) || '', /must be a string/, `🔴 ${context}: an object is not a safe string`);
+    assert.match(checkValue([], context) || '', /must be a string/, `🔴 ${context}: an array is not a safe string`);
+    assert.match(checkValue(true, context) || '', /must be a string/, `🔴 ${context}: a boolean is not a safe string`);
+  }
+  // ...while a finite number IS safe anywhere: x_pizza interpolates a numeric dish id bare into an
+  // inline handler, and a number can neither carry markup nor close a quote.
+  assert.strictEqual(checkValue(2, 'identifier'), null, 'a finite number is safe');
+  assert.ok(checkValue(NaN, 'identifier'), 'but NaN is not a number anything should render');
+  // list entries are typed too — [7] must not become ["7"]
+  assert.match(checkValue([7], 'identifier_list') || '', /non-string entry/, '🔴 a non-string list entry is refused as such');
+});

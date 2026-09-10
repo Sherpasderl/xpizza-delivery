@@ -13,7 +13,7 @@
 // `key` explicitly and validates it against the display record, so the two can never drift apart.
 // ---------------------------------------------------------------------------
 const { pricingKeyOf } = require('./form-menu-source');
-const { assertDisplaySafe } = require('./display-safety');
+const { assertDisplaySafe, checkValue: assertFieldSafe } = require('./display-safety');
 
 // The COMPLETE display schema. A source stamped with this validates as a full customer-display
 // payload — every dish priced and described, every extra a first-class record, exposure resolvable,
@@ -52,6 +52,50 @@ const isPositiveInt = (p) => Number.isInteger(p) && p > 0;   // same rule as the
 
 function fail(msg) { throw new Error(`source_malformed: ${msg}`); }
 
+// THREE SEPARATE QUESTIONS PER FIELD: is it required, what TYPE must it be, and is its content safe.
+// Answering them with one check is how wrong-typed values got through — `desc: {}` stringified to
+// "[object Object]", a perfectly safe-looking string, so the only rule that looked at it passed. Each
+// field now declares all three and they are evaluated in that order: a missing field is not a type
+// error, and a wrong-typed one is not an injection.
+const TYPES = {
+  string: (v) => (typeof v === 'string' ? null : 'must be a string'),
+  number: (v) => (typeof v === 'number' && Number.isFinite(v) ? null : 'must be a finite number'),
+  int_positive: (v) => (isPositiveInt(v) ? null : 'must be a positive integer'),
+  boolean: (v) => (typeof v === 'boolean' ? null : 'must be a boolean'),
+  object: (v) => (v && typeof v === 'object' && !Array.isArray(v) ? null : 'must be an object'),
+  array: (v) => (Array.isArray(v) ? null : 'must be an array'),
+  string_array: (v) => (Array.isArray(v) && v.every((x) => typeof x === 'string') ? null : 'must be an array of strings'),
+  id_ref: (v) => (typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v)) ? null : 'must be a string or a number'),
+};
+
+// Evaluate one field against its rule. The ORDER is the point: required, then type, then value, then
+// content safety.
+function checkField(value, rule, label, field) {
+  if (value === undefined || value === null) {
+    if (rule.required) fail(`${label} — ${field} is required`);
+    return;
+  }
+  const typeReason = TYPES[rule.type](value);
+  if (typeReason) fail(`${label} — ${field} ${typeReason} (got ${typeof value})`);
+  if (rule.nonEmpty && typeof value === 'string' && !value.trim()) fail(`${label} — ${field} must not be blank`);
+  if (rule.enum && !rule.enum.includes(value)) fail(`${label} — ${field} must be one of ${rule.enum.join(', ')} (got ${String(value)})`);
+  if (rule.unique && Array.isArray(value) && new Set(value).size !== value.length) fail(`${label} — ${field} has duplicate entries`);
+  if (rule.sink) {
+    const unsafe = assertFieldSafe(value, rule.sink);
+    if (unsafe) fail(`display_unsafe: ${label} — ${field} ${unsafe} [${rule.sink} sink]`);
+  }
+}
+
+// THE ID TYPE FOLLOWS THE RENDERER, AND THE RENDERER FOLLOWS THE KEYING CONVENTION — so it is derived
+// from the one place that convention already lives rather than from a second brand literal. A brand
+// that prices items BY ID renders `chg('<id>',1)` and its ids are string slugs; a brand that prices BY
+// NAME renders `openDetailModal(<id>)` bare, and its ids are numeric DOM handles. Getting this wrong
+// is silent: 'ghost' and '2' both validated as x_pizza dish ids and neither one works.
+const ID_S = 'sentinel_id';
+const NAME_S = 'sentinel_name';
+const dishIdTypeFor = (rid) => (pricingKeyOf(rid, { id: ID_S, name: NAME_S }) === ID_S ? 'string' : 'number');
+
+
 // Reject anything that could produce a wrong or partial build. Ordering of checks is deliberate:
 // identity → shape → values → bijection → structural coverage, so the error names the first real problem.
 function validateSource(source, rid) {
@@ -68,11 +112,28 @@ function validateSource(source, rid) {
   // Duplicate category ids become duplicate DOM ids (`id="cat-<id>"`), so the second section is
   // unreachable and every lookup finds the first.
   if (catIds.size !== st.categories.length) fail(`${rid} — structure.categories has duplicate ids`);
-  // `layout` selects a template by equality (`c.layout === 'list'`), so an unrecognised value is not
-  // an error anywhere — it silently renders the other template.
+  // 🔴 CATEGORY NAME IS ALL-OR-NOTHING, stated as ONE rule. A brand whose renderer prints category
+  // labels must supply one for every category — dropping a single name leaves a blank tab. It is a
+  // requiredness that DEPENDS ON THE DATA rather than an unconditional one, because a brand whose
+  // categories are ids only (its labels still HTML literals until 1B) is a coherent state, while a
+  // partially named set never is.
+  //
+  // An aggregate "n of m are named" check said exactly the same thing from the other direction, and
+  // the two covered each other so completely that neither could be killed on its own. One rule.
+  const namedCats = st.categories.filter((c) => c && c.name !== undefined && c.name !== null).length;
+  const CATEGORY_RULES = {
+    id: { required: true, type: 'string', nonEmpty: true, sink: 'identifier' },
+    name: { required: namedCats > 0, type: 'string', nonEmpty: true, sink: 'body' },
+    subcats: { required: false, type: 'string_array', unique: true },
+    layout: { required: false, type: 'string', enum: ['list', 'grid'] },
+  };
   for (const c of st.categories) {
-    if (c && c.layout !== undefined && !['list', 'grid'].includes(c.layout)) {
-      fail(`${rid} — category ${c.id} declares layout ${String(c.layout)}, which no renderer knows (it would silently fall back)`);
+    for (const [f, rule] of Object.entries(CATEGORY_RULES)) checkField(c && c[f], rule, `${rid}/cat ${c && c.id}`, f);
+    // Each declared subcategory becomes its own grid; declaring one twice renders every dish in it
+    // twice, which reads as a duplicated menu rather than as a mistake.
+    for (const sc of (Array.isArray(c.subcats) ? c.subcats : [])) {
+      const unsafe = assertFieldSafe(sc, 'body');
+      if (unsafe) fail(`display_unsafe: ${rid}/cat ${c.id} — subcats entry ${unsafe} [body sink]`);
     }
   }
   const seen = new Set();
@@ -123,28 +184,48 @@ function validateSource(source, rid) {
   // ── DISHES: display price MANDATORY, not "checked when present" ───────────────────────────────
   // The old rule only compared display.price when it happened to exist, so a dish with no display
   // price passed validation and then rendered blank or fell back to a literal. Mandatory closes it.
+  // Every dish field, declared once: what must be there, what type it must be, and which sink it
+  // reaches. Ad-hoc checks were how `desc: {}` and a string dish id got through — each was written
+  // for the one failure someone had in mind at the time.
+  // The STRUCTURE carries its own version, distinct from the source's. It was ruled exempt and so was
+  // never checked at all — the census refuses an exemption, which is how this surfaced.
+  checkField(st.schema_version, { required: false, type: 'int_positive' }, `${rid}`, 'structure.schema_version');
+  const dishIdType = dishIdTypeFor(rid);
+  const ITEM_RULES = {
+    key: { required: true, type: 'string', nonEmpty: true },
+    price: { required: true, type: 'int_positive' },
+    display: { required: true, type: 'object' },
+    has_photo: { required: false, type: 'boolean' },
+  };
+  const DISPLAY_RULES = {
+    id: { required: true, type: dishIdType, sink: 'identifier' },
+    cat: { required: true, type: 'string', nonEmpty: true, sink: 'identifier' },
+    name: { required: true, type: 'string', nonEmpty: true, sink: 'attribute' },
+    price: { required: true, type: 'int_positive' },
+    desc: { required: false, type: 'string', sink: 'body' },
+    subcat: { required: false, type: 'string', nonEmpty: true, sink: 'body' },
+    emoji: { required: false, type: 'string', sink: 'body' },
+    color: { required: false, type: 'string', sink: 'color' },
+    img: { required: false, type: 'string', sink: 'url' },
+    tags: { required: false, type: 'string_array', sink: 'identifier_list' },
+    variantOf: { required: false, type: 'id_ref' },
+    choice: { required: false, type: 'string', nonEmpty: true, sink: 'body' },
+  };
   const uiIds = new Map();
   for (const it of source.items) {
+    for (const [f, rule] of Object.entries(ITEM_RULES)) checkField(it[f], rule, `${rid}/${it.key}`, f);
     const d = it.display;
-    // MANDATORY AND EQUAL IN ONE RULE. `undefined !== 340`, so strict equality already rejects a
-    // missing display price — a separate presence check would be a second line that can only ever
-    // fire when this one would have. The old rule's mistake was the opposite: it skipped the
-    // comparison when the field was absent, which is exactly the case that renders a blank price.
+    for (const [f, rule] of Object.entries(DISPLAY_RULES)) checkField(d[f], rule, `${rid}/${it.key}`, `display.${f}`);
+    // Present AND equal in one rule: `undefined !== 340`, so strict equality already rejects a missing
+    // display price. The old rule's mistake was the opposite — it skipped the comparison when the
+    // field was absent, which is exactly the case that renders a blank price.
     if (d.price !== it.price) fail(`${rid}/${it.key} — display price ${String(d.price)} must be present and equal to the authoritative price ${it.price}`);
-    if (d.cat == null) fail(`${rid}/${it.key} — missing a category`);
-    // A dish with no name renders as an empty card. It survived before because la_musa's pricing
-    // identity is its id, so nothing else had any reason to look at the name.
-    if (typeof d.name !== 'string' || !d.name.trim()) fail(`${rid}/${it.key} — missing a display name`);
-    // Typed, because the reader and the renderer both branch on it: a truthy string would render a
-    // photo slot for a dish with no photo, and `false` and "false" are different answers.
-    if (it.has_photo !== undefined && typeof it.has_photo !== 'boolean') fail(`${rid}/${it.key} — has_photo must be a boolean`);
     // A variant with no choice label renders a blank row in a REQUIRED selection list.
     if (d.variantOf != null && (typeof d.choice !== 'string' || !d.choice.trim())) {
       fail(`${rid}/${it.key} — is a variant but carries no choice label, so its row in the required selection would be blank`);
     }
-    // UI ids reach the DOM as strings, so two ids that differ only by type collide there.
+    // UI ids reach the DOM as strings, so two that differ only by type collide there.
     const uid = String(d.id);
-    if (d.id === undefined || d.id === null || uid === '') fail(`${rid}/${it.key} — missing a UI id`);
     if (uiIds.has(uid)) fail(`${rid}/${it.key} — duplicate UI id ${uid} (also ${uiIds.get(uid)}); ids collide as DOM strings`);
     uiIds.set(uid, it.key);
   }
@@ -185,12 +266,17 @@ function validateSource(source, rid) {
   // ids are form-local handles, so uniqueness there is not implied by anything already checked.
   const extraUiIds = new Map();
   for (const ex of source.extras) {
-    if (!ex.display || typeof ex.display !== 'object') fail(`${rid}/extra ${ex.key} — missing its display record (every extra is a first-class display record)`);
-    for (const field of ['id', 'cat', 'name']) {
-      if (ex.display[field] === undefined || ex.display[field] === null || ex.display[field] === '') {
-        fail(`${rid}/extra ${ex.key} — display record missing ${field}`);
-      }
-    }
+    checkField(ex.display, { required: true, type: 'object' }, `${rid}/extra ${ex.key}`, 'display');
+    // An extra is SELECTED by a STRING id — `EXTRAS.find(e => e.id === id)` compares against the id
+    // that came back out of the DOM, so a numeric one never matches and the extra becomes
+    // unselectable. The dish id follows its brand's convention; this one is a string in both.
+    const EXTRA_RULES = {
+      id: { required: true, type: 'string', nonEmpty: true, sink: 'identifier' },
+      cat: { required: true, type: 'string', nonEmpty: true, sink: 'body' },
+      name: { required: true, type: 'string', nonEmpty: true, sink: 'body' },
+      price: { required: true, type: 'int_positive' },
+    };
+    for (const [f, rule] of Object.entries(EXTRA_RULES)) checkField(ex.display[f], rule, `${rid}/extra ${ex.key}`, `display.${f}`);
     if (ex.display.price !== ex.price) fail(`${rid}/extra ${ex.key} — display price ${String(ex.display.price)} must be present and equal to the authoritative price ${ex.price}`);
     if (!extraCatSet.has(ex.display.cat)) {
       fail(`${rid}/extra ${ex.key} — cat ${ex.display.cat} is not in the declared extra-category namespace (it is a separate namespace from the dish categories)`);
@@ -233,13 +319,22 @@ function validateSource(source, rid) {
       // what closes the injection: a number cannot be markup. It must also be the real minimum
       // SELECTABLE variant price — the launcher keeps its own, higher, authoritative price (Pad Thai
       // launches at L414 and starts from L307), so the two are deliberately NOT equated.
-      assertDisplaySafe(spec, 'variant', `${rid}/variant/${launcherId}`);
-      if (spec.basePrice !== undefined) {
-        const prices = ids.map((v) => { const i = byUiId.get(String(v)); return i ? i.price : null; }).filter((p) => p != null);
-        const min = prices.length ? Math.min(...prices) : null;
-        if (min == null || spec.basePrice !== min) {
-          fail(`${rid} — variant launcher ${launcherId} declares basePrice ${String(spec.basePrice)} but the cheapest selectable variant is ${String(min)} ("desde" is derived, never authored)`);
-        }
+      // 🔴 UNCONDITIONAL. Guarded by `!== undefined`, DELETING basePrice was accepted and the menu then
+      // read "desde L undefined" — the identical conditional-guard mistake the dish price rule had.
+      // A rule that only applies when the field is present cannot enforce that the field is present.
+      const VARIANT_RULES = {
+        label: { required: true, type: 'string', nonEmpty: true, sink: 'body' },
+        // `required: true` is subsumed by the `!== min` check below (undefined !== 307), and mutation
+        // testing says so — deleting it breaks no test. Kept because the gate asked for both facts
+        // stated, and because "a number" and "the right number" are different things to a reader.
+        basePrice: { required: true, type: 'number' },
+        variantIds: { required: true, type: 'array' },
+      };
+      for (const [f, rule] of Object.entries(VARIANT_RULES)) checkField(spec && spec[f], rule, `${rid}/variant ${launcherId}`, f);
+      const prices = ids.map((v) => { const i = byUiId.get(String(v)); return i ? i.price : null; }).filter((p) => p != null);
+      const min = prices.length ? Math.min(...prices) : null;
+      if (min == null || spec.basePrice !== min) {
+        fail(`${rid} — variant launcher ${launcherId} declares basePrice ${String(spec.basePrice)} but the cheapest selectable variant is ${String(min)} ("desde" is derived, never authored)`);
       }
       for (const v of ids) {
         if (String(v) === String(launcherId)) fail(`${rid} — variant launcher ${launcherId} lists itself as a variant (cycle)`);
@@ -272,6 +367,32 @@ function validateSource(source, rid) {
         seenPath.add(id);
         cur = byUiId.get(String(cur.display.variantOf));
       }
+    }
+  }
+
+  // ── BADGES ───────────────────────────────────────────────────────────────────────────────────
+  // A tag is a lookup key into the badge definitions. One that names no definition renders no badge —
+  // the merchant sees their "Chef's pick" simply not appear, with nothing to explain it.
+  const badgeKeys = new Set(Object.keys(st.badges || {}));
+  for (const it of source.items) {
+    for (const t of (Array.isArray(it.display.tags) ? it.display.tags : [])) {
+      if (!badgeKeys.has(t)) fail(`${rid}/${it.key} — tag ${t} names no badge definition, so it would render nothing`);
+    }
+  }
+
+  // ── REVERSE MEMBERSHIP: NOTHING DECLARED AND UNUSED ──────────────────────────────────────────
+  // The forward direction (every used category is declared) was already checked. 1A means COMPLETE
+  // AND CONSISTENT, so the reverse holds too: a declared category nothing is in renders an empty
+  // section, and a declared subcategory nothing is in renders an empty heading. Both are far more
+  // likely a rename that half-landed than an intention. Refused now; if pre-creating empty categories
+  // is ever wanted, that is a deliberate relaxation rather than a gap nobody noticed.
+  const usedCatIds = new Set(source.items.map((i) => i.display.cat));
+  for (const c of st.categories) {
+    if (!usedCatIds.has(c.id)) fail(`${rid} — category ${c.id} is declared but no dish is in it (it would render an empty section)`);
+    if (!Array.isArray(c.subcats)) continue;
+    const usedSubs = new Set(source.items.filter((i) => i.display.cat === c.id).map((i) => i.display.subcat));
+    for (const sc of c.subcats) {
+      if (!usedSubs.has(sc)) fail(`${rid} — category ${c.id} declares subcategory ${sc} but no dish is in it (it would render an empty heading)`);
     }
   }
 

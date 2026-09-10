@@ -61,7 +61,9 @@ const CHECKS = {
   },
   // Interpolated into a style attribute, where a stray `;` or `url(` starts something else.
   color(v) {
-    if (!/^#[0-9A-Fa-f]{3,8}$/.test(v)) return 'is not a #rgb/#rrggbb/#rrggbbaa colour';
+    // EXACTLY 3, 4, 6 or 8 hex digits. `{3,8}` accepted #12345, which is not a colour any renderer
+    // understands — it is simply painted as nothing, silently.
+    if (!/^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/.test(v)) return 'is not a #rgb/#rgba/#rrggbb/#rrggbbaa colour';
     return null;
   },
 };
@@ -84,7 +86,8 @@ const TYPED = {
   identifier_list(value) {
     if (!Array.isArray(value)) return 'must be an array';
     for (const entry of value) {
-      const reason = CHECKS.identifier(String(entry));
+      if (typeof entry !== 'string') return 'contains a non-string entry';
+      const reason = CHECKS.identifier(entry);
       if (reason) return `contains an entry that ${reason}`;
     }
     return null;
@@ -97,7 +100,18 @@ function checkValue(value, context) {
   if (typed) return typed(value);                              // typed contexts inspect the VALUE, not its text
   const check = CHECKS[context];
   if (!check) return `unknown sink context ${context}`;
-  const v = String(value);
+  // 🔴 NO STRINGIFICATION. This used to be String(value), which meant `{}` became "[object Object]" —
+  // a perfectly safe-looking string that passed every content rule and then rendered as
+  // "[object Object]" on a menu. Safety answers ONE question: does this string carry an injection.
+  // Whether it should have been a string at all is the type rule's job, and conflating the two let a
+  // whole class of wrong-typed values through the only check that looked at them.
+  // A FINITE NUMBER IS SAFE ANYWHERE. x_pizza interpolates a numeric dish id bare into
+  // `openDetailModal(${p.id})`, and a number cannot carry markup or close a quote — so safety has
+  // nothing to say about it. WHICH type a field must be is the validator's business, not this
+  // module's; conflating the two is what this split exists to stop.
+  if (typeof value === 'number') return Number.isFinite(value) ? null : 'must be a finite number';
+  if (typeof value !== 'string') return 'must be a string (it reaches a text sink; stringifying it would hide the wrong type behind a safe-looking value)';
+  const v = value;
   if (v === '' && context === 'identifier') return 'is empty, and reaches an inline event handler';
   return check(v);
 }
