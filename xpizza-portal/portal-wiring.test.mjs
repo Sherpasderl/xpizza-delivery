@@ -848,7 +848,9 @@ test('an auth change invalidates the review, its acknowledgement and the latch',
   const h = app.slice(app.indexOf("document.addEventListener('portal:auth'"));
   assert.ok(/invalidateReview\(\)/.test(h), 'and invalidates the review on every transition');
   const inv = app.slice(app.indexOf('function invalidateReview'), app.indexOf('function invalidateReview') + 420);
-  assert.ok(/state\.review = null/.test(inv), 'the review — and with it the acknowledgement — is dropped');
+  // Routed through clearReview() now: clearing the review and retiring it as the LIVE one are the same
+  // event, and four call sites each doing half of it is how one ends up doing only half.
+  assert.ok(/clearReview\(\)/.test(inv), 'the review — and with it the acknowledgement — is dropped');
   assert.ok(!/publisher\.reset\(\)/.test(inv), 'no reset call survives — the per-token design removed the need for one');
   assert.ok(/classList\.remove\('show'\)/.test(inv), 'and the open modal is closed');
   assert.ok(/state\.draft = null/.test(h), 'a different person does not inherit unpublished edits they never made');
@@ -927,7 +929,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
   //                unconditionally on purpose; guarding it would be guarding the guard.
   const CENSUS = {
     'state.draft':               [3, 'canEdit', 'created on load, cleared by the auth ender AND at the start of a tenant switch; every MUTATION goes through editor.js'],
-    'state.review':              [5, 'guarded', '🔴 DOWN FROM 9. The record is now minted in one call and is IMMUTABLE afterwards — the four writes that assembled it field by field (rid, attestation, acknowledged twice) are gone, and `acknowledged` is an accessor with no setter, so it cannot be written at all. What remains are whole-record assignments on generation-checked paths: one mint and four clears.'],
+    'state.review':              [2, 'guarded', '🔴 DOWN FROM 9, THEN FROM 5. The record is now minted in one call and is IMMUTABLE afterwards — the four writes that assembled it field by field (rid, attestation, acknowledged twice) are gone, and `acknowledged` is an accessor with no setter, so it cannot be written at all. What remains is ONE mint and ONE clear: every path that drops a review goes through clearReview(), which also retires it as the live one — so a retained record cannot be reinstalled and replayed. 🔴 RESIDUAL #4 IS CLOSED: whole-record replacement — including restoring a genuine prior minted record — is refused at publish admission, so no fiscal path leans on the analyzer.'],
     'state.publishGen':          [2, 'guarded', 'set only on genuine admission inside runPublish, cleared by the ender'],
     'state.reviewLock':          [8, 'guarded', 'ticket bookkeeping; every write pairs with a take/release on a generation-checked path — the 7th releases a ticket acquired by a publish that was then refused, the 8th is endWrite handing back a ticket whose request settled into a world that had ended'],
     'state.currentRid':          [3, 'ender',   'the tenant switch and the auth handler — the two things that end a world'],
@@ -1058,7 +1060,9 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo
                  // repaintFromDraft and showOutcome all write state — endWrite and showOutcome by
                  // calling releaseEditLock and openReviewFlow — and a hand-maintained list had simply
                  // never caught up. That is the drift the cross-check below exists to end.
-                 'endWrite', 'repaintFromDraft', 'showOutcome'];
+                 'endWrite', 'repaintFromDraft', 'showOutcome',
+                 // again found by the tree, not by hand — clearReview writes state.review
+                 'clearReview'];
 function writesIn(code) {
   const m = maskLiterals(code);
   const found = new Set();

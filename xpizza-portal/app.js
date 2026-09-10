@@ -188,6 +188,25 @@ const bumpGeneration = () => { opGeneration += 1; };
 // person, so the token, the submitted snapshot and the acknowledged set must be exactly what they were
 // when the merchant looked at them.
 const mintedReviews = new WeakSet();
+// 🔴 THE BRAND SAYS "WE MINTED THIS". IT DOES NOT SAY "THIS IS STILL THE OPEN REVIEW."
+//
+// A minted, acknowledged record stays branded and stays acknowledged forever — the closure variable
+// does not reset when the review closes. So a retained reference, reinstalled as state.review after
+// the review was closed, was a SIGNED INSTRUMENT THAT COULD BE REPLAYED: brand check passes,
+// acknowledged reads true, publish proceeds. The merchant signed once and could be made to publish
+// twice, or to publish a set they had already walked away from.
+//
+// Generation alone does not close it, because closing a review does NOT end the world — closeReview
+// nulls state.review and bumps nothing, so a close-and-reinstall happens entirely inside one
+// generation. Liveness is therefore tracked directly: there is at most one live minted review, and it
+// is retired the moment it stops being open, whatever the reason.
+let liveReview = null;
+// The ONE place state.review is cleared. Retiring and clearing are the same event, and splitting them
+// across four call sites is how one of them ends up doing only half of it.
+function clearReview() {
+  state.review = null;
+  liveReview = null;
+}
 
 // 🔴 A REVIEW IS EVIDENCE OF WHAT A PERSON WAS SHOWN BEFORE THEY SIGNED. Making the record's own
 // properties read-only stopped the record being re-pointed; it did nothing about the objects hanging
@@ -738,7 +757,7 @@ async function openReviewFlow() {
 
   // Only now does the previous world end. A review carries an acknowledgement and a token bound to ONE
   // diff, so nothing acknowledged survives re-entry.
-  state.review = null;
+  clearReview();
   bumpGeneration();
   const gen = opGeneration;
   syncUi();       // the lock is held now, so this alone refuses re-entry — no imperative disable
@@ -778,6 +797,7 @@ async function openReviewFlow() {
       attestation: att,
     }, gen);
     state.review = minted.review;
+    liveReview = minted.review;                 // this one, and only until it closes
     // the CAS baseline moves forward: the draft we just wrote is the new precondition
     if (res && res.updateTime) state.sourceUpdateTime = res.updateTime;
     $('revSub').textContent = 'Esto es exactamente lo que cambia en tu menú en vivo.';
@@ -837,7 +857,7 @@ function closeReview() {
   // Failure-panel recovery still releases, because by then the operation has settled.
   if (publisher.busy && state.publishGen === opGeneration) return;
   $('scrim').classList.remove('show');
-  state.review = null;
+  clearReview();
   releaseEditLock(state.reviewLock);
   state.reviewLock = null;
   syncUi();
@@ -920,6 +940,25 @@ async function runPublish() {
   // attestation because it is built in one call with one. Narrowing the runtime surface narrowed the
   // checks too, which is the point rather than a side effect.
   if (!mintedReviews.has(state.review)) return;
+  // 🔴 ...AND IT MUST BELONG TO NOW. Three separate facts, because they fail in three different ways:
+  //
+  //   liveReview  — it is still the OPEN review. A closed one was reinstalled from a retained
+  //                 reference; closing bumps no generation, so nothing else would have noticed.
+  //   gen         — it belongs to THIS world. An auth change or a tenant switch ends the world while a
+  //                 signed review is still reachable in a closure somewhere.
+  //   rid         — it belongs to the tenant currently loaded, so a review minted for one restaurant
+  //                 can never publish against another.
+  //
+  // An acknowledgement is a person's signature on one specific set at one specific moment. Replaying
+  // it is forging a second signature they never gave.
+  if (state.review !== liveReview) return;
+  // These two are DEFENCE IN DEPTH, and mutation testing says so: removing either alone breaks no
+  // test, because every path that ends a world or switches tenant goes through clearReview() and so
+  // retires the live review first. They are kept as independent assertions of the two facts liveness
+  // currently implies — a bump path added later that forgets to retire would be caught here rather
+  // than silently re-opening the replay. Reported as survivors, not carried quietly.
+  if (state.review.gen !== opGeneration) return;
+  if (state.review.rid !== state.draftRid) return;
   const held = state.reviewLock;
   const acquired = held !== null && held === editLockHolder ? null : takeEditLock();
   const lock = acquired !== null ? acquired : held;
@@ -973,7 +1012,7 @@ async function runPublish() {
   $('revFoot').replaceChildren(PUBBACK);
   PUBBACK.textContent = 'Listo';
   renderReceipt($('mbody'), receiptFor(out.res, captured));
-  state.review = null;
+  clearReview();
   // 🔴 COMMIT, not discard. The published prices ARE the new baseline: the stored source is exactly
   // what went live, so ORIG moves forward to it. discard() — which shipped here — reset the editor to
   // the PRE-EDIT prices, so it showed 299 after publishing 310 and the next unrelated edit carried 299
@@ -1067,7 +1106,7 @@ function invalidateReview() {
   // but the WRITE is not, and admission is about the write. Everything else here is UI and is cleared.
   editLockHolder = pendingWrite ? pendingWrite.ticket : null;   // held only by a request genuinely outstanding
   state.reviewLock = null;
-  state.review = null;
+  clearReview();
   state.publishGen = null;                 // and it is not waiting on anything
   closeDrawer();
   $('scrim').classList.remove('show');

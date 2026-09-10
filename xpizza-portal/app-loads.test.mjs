@@ -1587,3 +1587,90 @@ test('🔴 the evidence a review carries cannot be edited after it is minted', a
   assert.strictEqual(review.submitted.items[0].price, 299,
     '🔴 editing the live draft does not rewrite the evidence — the snapshot was copied, not referenced');
 });
+
+// ── AN ACKNOWLEDGEMENT IS NOT A BEARER INSTRUMENT ────────────────────────────────────────────────
+// The brand answers "did we mint this". It does not answer "is this still the open review", and a
+// minted record stays branded and stays acknowledged forever — the closure variable does not reset
+// when the review closes. So a retained reference, reinstalled later, was a signature that could be
+// spent twice: the merchant signs once, and is made to publish again against a set they walked away
+// from. These prove it is refused, and that the legitimate publish still goes through.
+
+const signedReview = async (byId, app) => {
+  await byId.get('review').listeners.click[0]();
+  const cb = byId.get('mbody').querySelectorAll('input').filter((i) => i.type === 'checkbox')[0];
+  cb.checked = true;
+  cb.listeners.change[0]();
+  assert.strictEqual(app.state.review.acknowledged, true, 'premise: a genuinely signed review');
+  return app.state.review;
+};
+
+test('🔴 a signed review, closed and reinstalled, cannot publish — same world', async () => {
+  // The case a generation check alone would MISS: closing a review ends no world. closeReview nulls
+  // state.review and bumps nothing, so the reinstall happens entirely inside one generation and the
+  // record's own gen still matches. Only liveness knows the difference.
+  const byId = installDom();
+  const calls = fiscalFetch();
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const signed = await signedReview(byId, app);
+
+  byId.get('pubback').listeners.click[0]();          // closed, never published
+  assert.strictEqual(app.state.review, null, 'premise: the review is gone');
+  const before = calls.length;
+
+  app.state.review = signed;                         // the retained, still-branded, still-signed record
+  assert.strictEqual(app.state.review.acknowledged, true, 'premise: it still reads as signed');
+  await byId.get('pubbtn').listeners.click[0]();
+  assert.strictEqual(calls.length, before,
+    '🔴 ZERO requests — a closed review is not the open one, whatever it still says about itself');
+});
+
+test('🔴 a signed review retained across an auth change cannot publish', async () => {
+  const byId = installDom();
+  const calls = fiscalFetch();
+  const app = await loadAppModule();
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'A' } }));
+  await app.loadMenu('x_pizza');
+  const signed = await signedReview(byId, app);
+
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'B' } }));   // a different person
+  await app.loadMenu('x_pizza');
+  const before = calls.length;
+
+  app.state.review = signed;                         // A's signature, reinstalled in B's session
+  await byId.get('pubbtn').listeners.click[0]();
+  assert.strictEqual(calls.length, before,
+    '🔴 ZERO requests — A signed for A’s world, and that world is over');
+});
+
+test('🔴 a signed review cannot publish against a different tenant', async () => {
+  const byId = installDom();
+  const calls = fiscalFetch();
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const signed = await signedReview(byId, app);
+  byId.get('pubback').listeners.click[0]();
+
+  await app.loadMenu('la_musa');                     // a different restaurant is loaded
+  const before = calls.length;
+  app.state.review = signed;
+  await byId.get('pubbtn').listeners.click[0]();
+  assert.strictEqual(calls.length, before,
+    '🔴 ZERO requests — the signature names x_pizza and the draft on screen is la_musa');
+});
+
+test('a normal same-world publish is still admitted — the checks refuse staleness, not everything', async () => {
+  // The other half, and the one that would catch an over-strict fix: the legitimate path must still
+  // work. A world transition would have invalidated the review anyway, so a live review's generation
+  // always matches at publish time.
+  const byId = installDom();
+  const calls = fiscalFetch();
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await signedReview(byId, app);
+
+  await byId.get('pubbtn').listeners.click[0]();
+  assert.strictEqual(calls.filter((c) => c.fn === 'publishEdited').length, 1,
+    '🔴 the genuine publish went through');
+  assert.strictEqual(app.state.review, null, 'and the review retires on success, so it cannot be replayed either');
+});
