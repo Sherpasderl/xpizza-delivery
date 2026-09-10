@@ -168,7 +168,7 @@ const withPrice = (delta) => {
       ['a non-positive price', (s) => { const i = s.items.find((x) => x.key === 'Margherita'); i.price = 0; i.display.price = 0; }, /price/i],
       ['a float price', (s) => { const i = s.items.find((x) => x.key === 'Margherita'); i.price = 12.5; i.display.price = 12.5; }, /price/i],
       // the mirror disagreeing IS itself a rejection — the contract, asserted
-      ['display.price disagreeing with the authoritative price', (s) => { s.items.find((x) => x.key === 'Margherita').display.price = 1; }, /disagrees/i],
+      ['display.price disagreeing with the authoritative price', (s) => { s.items.find((x) => x.key === 'Margherita').display.price = 1; }, /must be present and equal/i],   // 1A Task 2: the rule is now presence AND equality in one check
       ['a dangling category', (s) => { s.items.find((i) => i.key === 'Margherita').display.cat = 'ghost'; }, /categor/i],
       ['a duplicate key', (s) => { s.items.push({ ...s.items[0] }); }, /duplicate|item_order/i],
       ['a mis-keyed extra', (s) => { s.extras[0].key = 'not-the-name'; }, /extra|key/i],

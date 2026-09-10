@@ -80,7 +80,7 @@ test('🔴 the sink map is enumerated from the REAL renderers, with provenance',
   // file and line it was read from, and every field the constraint covers must have one.
   for (const [kind, fields] of Object.entries(FIELD_SINKS)) {
     for (const [field, ctx] of Object.entries(fields)) {
-      assert.ok(['body', 'attribute', 'identifier', 'url', 'color'].includes(ctx), `${kind}.${field}: unknown context ${ctx}`);
+      assert.ok(['body', 'attribute', 'identifier', 'url', 'color', 'numeric', 'boolean', 'identifier_list'].includes(ctx), `${kind}.${field}: unknown context ${ctx}`);
       const prov = SINK_PROVENANCE[`${kind}.${field}`];
       assert.ok(prov && /index\.html:\d+/.test(prov), `🔴 ${kind}.${field} has no sink provenance — where does this value actually land?`);
     }
@@ -90,6 +90,15 @@ test('🔴 the sink map is enumerated from the REAL renderers, with provenance',
   assert.strictEqual(FIELD_SINKS.item.desc, 'body', '🔴 a description reaches innerHTML — body context');
   assert.strictEqual(FIELD_SINKS.item.id, 'identifier', '🔴 an item id reaches an inline handler');
   assert.strictEqual(FIELD_SINKS.category.id, 'identifier', '🔴 a category id reaches an inline handler');
+  // 🔴 The one the first cut missed entirely: a variant spec was not enumerated at all, and its
+  // basePrice reaches TWO unescaped body sinks. Typed as a number, because that is what it is —
+  // and a number cannot carry markup, which closes the injection by construction rather than by
+  // filtering characters out of a string that should never have been one.
+  assert.strictEqual(FIELD_SINKS.variant.basePrice, 'numeric', '🔴 variant basePrice is a NUMBER');
+  assert.ok(checkValue('<img src=x onerror=alert(1)>', 'numeric'), '🔴 markup in a numeric field is refused');
+  assert.ok(checkValue('307', 'numeric'), '...and so is a numeric STRING — the sink concatenates, it does not coerce safely');
+  assert.strictEqual(checkValue(307, 'numeric'), null, 'a real number passes');
+  assert.ok(/UNESCAPED/.test(SINK_PROVENANCE['variant.basePrice']), 'and its provenance records why it matters');
 });
 
 test('🔴 assertDisplaySafe rejects a record, naming the field and the sink', () => {

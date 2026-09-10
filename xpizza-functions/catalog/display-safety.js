@@ -66,10 +66,37 @@ const CHECKS = {
   },
 };
 
+// 🔴 TYPE AS THE SAFETY MECHANISM. Some values reach an unescaped body sink and are only ever
+// meaningful as a number — `'desde L ' + VARIANT_ITEMS[p.id].basePrice`. Constraining the CHARACTERS
+// would be the wrong tool: the right statement is that this is a number, and a number cannot carry
+// markup at all. Checked before the string contexts, because these are not strings.
+const TYPED = {
+  numeric(value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return 'must be a finite number (it reaches an unescaped sink, and a number cannot carry markup)';
+    return null;
+  },
+  boolean(value) {
+    if (typeof value !== 'boolean') return 'must be a boolean';
+    return null;
+  },
+  // A list of lookup keys — each selects a badge definition. An entry that is not an identifier
+  // matches no definition and renders nothing, silently.
+  identifier_list(value) {
+    if (!Array.isArray(value)) return 'must be an array';
+    for (const entry of value) {
+      const reason = CHECKS.identifier(String(entry));
+      if (reason) return `contains an entry that ${reason}`;
+    }
+    return null;
+  },
+};
+
 function checkValue(value, context) {
+  if (value === undefined || value === null) return null;      // absence is the schema's business, not safety's
+  const typed = TYPED[context];
+  if (typed) return typed(value);                              // typed contexts inspect the VALUE, not its text
   const check = CHECKS[context];
   if (!check) return `unknown sink context ${context}`;
-  if (value === undefined || value === null) return null;      // absence is the schema's business, not safety's
   const v = String(value);
   if (v === '' && context === 'identifier') return 'is empty, and reaches an inline event handler';
   return check(v);
@@ -80,9 +107,18 @@ function checkValue(value, context) {
 // below names the file and line it was read from — a sink map nobody can trace to shipped code is a
 // guess, and a guess here is an XSS.
 const FIELD_SINKS = {
-  item: { id: 'identifier', cat: 'identifier', name: 'attribute', desc: 'body', subcat: 'body', emoji: 'body', img: 'url', color: 'color' },
+  item: {
+    id: 'identifier', cat: 'identifier', name: 'attribute', desc: 'body', subcat: 'body',
+    emoji: 'body', img: 'url', color: 'color',
+    choice: 'body',            // the variant's own label, shown in the required-choice list
+    tags: 'identifier_list',   // badge lookup keys
+  },
   extra: { id: 'identifier', cat: 'body', name: 'body' },
-  category: { id: 'identifier', name: 'body' },
+  category: { id: 'identifier', name: 'body', layout: 'identifier' },
+  // 🔴 VARIANT SPECS WERE NOT ENUMERATED AT ALL, and basePrice reaches TWO unescaped body sinks.
+  // A sink map can be traced, field by field, and still be INCOMPLETE — provenance proves each entry
+  // is real, never that the set is whole. That is what the field census in the tests exists for.
+  variant: { label: 'body', basePrice: 'numeric' },
 };
 const SINK_PROVENANCE = {
   'item.id': 'la-musa-orders/index.html:2158 onclick="chg(\'<id>\',1)"; xpizza-orders/index.html:1728 onclick="openDetailModal(<id>)" (BARE)',
@@ -98,6 +134,11 @@ const SINK_PROVENANCE = {
   'extra.name': 'xpizza-orders/index.html:3661 <span class="detail-extras-name"> (body)',
   'category.id': 'la-musa-orders/index.html:2119 onclick="switchCat(\'<id>\',this)" + id="cat-<id>"',
   'category.name': 'la-musa-orders/index.html:2121 innerHTML (body)',
+  'category.layout': 'la-musa-orders/index.html:2204 c.layout === \'list\' — selects the list vs grid template',
+  'item.choice': 'la-musa-orders/index.html:4148 <span class="detail-extras-name">${escapeHtml(v.choice)}</span> (escaped today; constrained anyway)',
+  'item.tags': 'la-musa-orders/index.html:1800 tags.includes(t) → TAG_BADGES lookup; an unknown tag silently renders no badge',
+  'variant.label': 'la-musa-orders/index.html:4140 ${escapeHtml(cfg.label)} (escaped today; constrained anyway)',
+  'variant.basePrice': '🔴 la-musa-orders/index.html:2165 \'desde L \' + VARIANT_ITEMS[p.id].basePrice AND :4136 `desde L ${cfg.basePrice}` — BOTH UNESCAPED',
 };
 
 // Throw if any field of a display record would be unsafe in the sink it actually reaches.

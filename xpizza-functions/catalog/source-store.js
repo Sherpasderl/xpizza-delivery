@@ -65,6 +65,16 @@ function validateSource(source, rid) {
   if (!Array.isArray(st.item_order)) fail(`${rid} — structure.item_order must be an array`);
 
   const catIds = new Set(st.categories.map((c) => c && c.id));
+  // Duplicate category ids become duplicate DOM ids (`id="cat-<id>"`), so the second section is
+  // unreachable and every lookup finds the first.
+  if (catIds.size !== st.categories.length) fail(`${rid} — structure.categories has duplicate ids`);
+  // `layout` selects a template by equality (`c.layout === 'list'`), so an unrecognised value is not
+  // an error anywhere — it silently renders the other template.
+  for (const c of st.categories) {
+    if (c && c.layout !== undefined && !['list', 'grid'].includes(c.layout)) {
+      fail(`${rid} — category ${c.id} declares layout ${String(c.layout)}, which no renderer knows (it would silently fall back)`);
+    }
+  }
   const seen = new Set();
   for (const it of source.items) {
     if (!it || typeof it !== 'object') fail(`${rid} — a non-object item`);
@@ -92,19 +102,11 @@ function validateSource(source, rid) {
     if (ex.display) {
       const derived = extrasKeyOf(rid, ex.display);
       if (derived !== ex.key) fail(`${rid}/extra ${ex.key} — key does not match its display record (derived ${String(derived)}; x_pizza extras key by NAME, la_musa by id)`);
-      // A display record carrying its own price must AGREE with the authoritative one, or the form
-      // would render one number while the server charges another.
-      if (ex.display.price !== undefined && ex.display.price !== ex.price) {
-        fail(`${rid}/extra ${ex.key} — display price ${ex.display.price} disagrees with the authoritative price ${ex.price}`);
-      }
     }
   }
-  // The same inline-price agreement for ITEMS: the form dish records carry `price` too.
-  for (const it of source.items) {
-    if (it.display && it.display.price !== undefined && it.display.price !== it.price) {
-      fail(`${rid}/${it.key} — display price ${it.display.price} disagrees with the authoritative price ${it.price}`);
-    }
-  }
+  // (The old conditional display-price checks lived here. They only compared when the field happened
+  // to be present — the case that renders a blank price was the one they skipped — and the strict
+  // rules below subsume them entirely. A redundant guard no test can distinguish is how drift returns.)
   // CATEGORY SUPERSET (portal ruling): the authored categories must cover every category the dishes
   // actually use. Categories are store-authored so a merchant can rename/reorder/group them, which
   // means they can also drift — this catches both a dropped category and a dish pointing at a ghost.
@@ -130,6 +132,16 @@ function validateSource(source, rid) {
     // comparison when the field was absent, which is exactly the case that renders a blank price.
     if (d.price !== it.price) fail(`${rid}/${it.key} — display price ${String(d.price)} must be present and equal to the authoritative price ${it.price}`);
     if (d.cat == null) fail(`${rid}/${it.key} — missing a category`);
+    // A dish with no name renders as an empty card. It survived before because la_musa's pricing
+    // identity is its id, so nothing else had any reason to look at the name.
+    if (typeof d.name !== 'string' || !d.name.trim()) fail(`${rid}/${it.key} — missing a display name`);
+    // Typed, because the reader and the renderer both branch on it: a truthy string would render a
+    // photo slot for a dish with no photo, and `false` and "false" are different answers.
+    if (it.has_photo !== undefined && typeof it.has_photo !== 'boolean') fail(`${rid}/${it.key} — has_photo must be a boolean`);
+    // A variant with no choice label renders a blank row in a REQUIRED selection list.
+    if (d.variantOf != null && (typeof d.choice !== 'string' || !d.choice.trim())) {
+      fail(`${rid}/${it.key} — is a variant but carries no choice label, so its row in the required selection would be blank`);
+    }
     // UI ids reach the DOM as strings, so two ids that differ only by type collide there.
     const uid = String(d.id);
     if (d.id === undefined || d.id === null || uid === '') fail(`${rid}/${it.key} — missing a UI id`);
@@ -143,10 +155,15 @@ function validateSource(source, rid) {
   const subcatsByCat = new Map(st.categories.map((c) => [c && c.id, Array.isArray(c && c.subcats) ? c.subcats : null]));
   for (const it of source.items) {
     const sub = it.display.subcat;
-    if (sub == null) continue;
     const declared = subcatsByCat.get(it.display.cat);
-    if (!declared || !declared.includes(sub)) {
-      fail(`${rid}/${it.key} — subcat ${sub} is not declared by category ${it.display.cat}, so the item would not render at all`);
+    // BOTH directions vanish. If the category groups by subcats, the renderer builds one grid per
+    // declared subcat and an item with NO subcat is in none of them — so "absent" is as fatal as
+    // "wrong", and only checking the value when it happened to exist missed exactly half of it.
+    if (declared && declared.length) {
+      if (sub == null) fail(`${rid}/${it.key} — category ${it.display.cat} groups by subcategory, so an item without a subcat would not render at all`);
+      if (!declared.includes(sub)) fail(`${rid}/${it.key} — subcat ${sub} is not declared by category ${it.display.cat}, so the item would not render at all`);
+    } else if (sub != null) {
+      fail(`${rid}/${it.key} — declares subcat ${sub} but category ${it.display.cat} declares no subcategories`);
     }
   }
 
@@ -162,6 +179,11 @@ function validateSource(source, rid) {
     for (const c of extraCats) if (typeof c !== 'string' || !c) fail(`${rid} — structure.extra_categories holds a non-string entry`);
   }
   const extraCatSet = new Set(Array.isArray(extraCats) ? extraCats : []);
+  // 🔴 A THIRD NAMESPACE. Extras are selected by UI id — `EXTRAS.find(e => e.id === id)` — so two
+  // extras sharing one resolve to the FIRST and the second can never be chosen, whatever the customer
+  // taps. Independent of the dish ids and of the pricing keys: x_pizza extras key by NAME and their
+  // ids are form-local handles, so uniqueness there is not implied by anything already checked.
+  const extraUiIds = new Map();
   for (const ex of source.extras) {
     if (!ex.display || typeof ex.display !== 'object') fail(`${rid}/extra ${ex.key} — missing its display record (every extra is a first-class display record)`);
     for (const field of ['id', 'cat', 'name']) {
@@ -173,6 +195,9 @@ function validateSource(source, rid) {
     if (!extraCatSet.has(ex.display.cat)) {
       fail(`${rid}/extra ${ex.key} — cat ${ex.display.cat} is not in the declared extra-category namespace (it is a separate namespace from the dish categories)`);
     }
+    const euid = String(ex.display.id);
+    if (extraUiIds.has(euid)) fail(`${rid}/extra ${ex.key} — duplicate extra UI id ${euid} (also ${extraUiIds.get(euid)}); selection resolves to the first and the second is unreachable`);
+    extraUiIds.set(euid, ex.key);
   }
 
   // ── EXPOSURE MAP VALUES ──────────────────────────────────────────────────────────────────────
@@ -196,14 +221,26 @@ function validateSource(source, rid) {
   // A launcher offers a required choice between real variants. Every way that graph can be open —
   // an orphan, a dangling id, an empty choice, a cycle, a variant claimed by two launchers, a
   // variant nobody lists — ends as a dish a customer can reach and cannot order.
-  const vi = st.variant_items;
-  if (vi && typeof vi === 'object') {
+  const vi = (st.variant_items && typeof st.variant_items === 'object') ? st.variant_items : {};
+  {
     const byUiId = new Map(source.items.map((i) => [String(i.display.id), i]));
     const claimed = new Map();
     for (const [launcherId, spec] of Object.entries(vi)) {
       if (!byUiId.has(String(launcherId))) fail(`${rid} — variant launcher ${launcherId} is not a real item (orphan)`);
       const ids = spec && spec.variantIds;
       if (!Array.isArray(ids) || ids.length === 0) fail(`${rid} — variant launcher ${launcherId} offers an empty choice list`);
+      // 🔴 basePrice IS THE "desde" AND IT REACHES UNESCAPED HTML TWICE. Typed as a number, which is
+      // what closes the injection: a number cannot be markup. It must also be the real minimum
+      // SELECTABLE variant price — the launcher keeps its own, higher, authoritative price (Pad Thai
+      // launches at L414 and starts from L307), so the two are deliberately NOT equated.
+      assertDisplaySafe(spec, 'variant', `${rid}/variant/${launcherId}`);
+      if (spec.basePrice !== undefined) {
+        const prices = ids.map((v) => { const i = byUiId.get(String(v)); return i ? i.price : null; }).filter((p) => p != null);
+        const min = prices.length ? Math.min(...prices) : null;
+        if (min == null || spec.basePrice !== min) {
+          fail(`${rid} — variant launcher ${launcherId} declares basePrice ${String(spec.basePrice)} but the cheapest selectable variant is ${String(min)} ("desde" is derived, never authored)`);
+        }
+      }
       for (const v of ids) {
         if (String(v) === String(launcherId)) fail(`${rid} — variant launcher ${launcherId} lists itself as a variant (cycle)`);
         const item = byUiId.get(String(v));
@@ -216,11 +253,25 @@ function validateSource(source, rid) {
         }
       }
     }
-    // ...and the other direction: a variant nobody lists is unreachable through its launcher.
+    // ...and the other direction, checked UNCONDITIONALLY. This used to sit inside `if (variant_items)`,
+    // so deleting the whole map made every variant in the menu orphaned and validated cleanly.
     for (const it of source.items) {
       const parent = it.display.variantOf;
       if (parent == null) continue;
       if (!claimed.has(String(it.display.id))) fail(`${rid}/${it.key} — declares variantOf ${parent} but no launcher lists it (missing coverage)`);
+    }
+    // 🔴 CYCLES IN GENERAL, not just self-reference. `a.variantOf = b; b.variantOf = a` has no
+    // self-edge and no launcher, and walking upward from either never terminates — the old check only
+    // compared a launcher against its own id, which is one shape of one case.
+    for (const it of source.items) {
+      const seenPath = new Set();
+      let cur = it;
+      while (cur && cur.display.variantOf != null) {
+        const id = String(cur.display.id);
+        if (seenPath.has(id)) fail(`${rid}/${it.key} — variantOf forms a cycle (${[...seenPath].join(' → ')} → ${id})`);
+        seenPath.add(id);
+        cur = byUiId.get(String(cur.display.variantOf));
+      }
     }
   }
 

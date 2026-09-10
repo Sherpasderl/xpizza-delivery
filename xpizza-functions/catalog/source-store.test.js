@@ -74,9 +74,11 @@ const GOOD = () => ({
     // A display record carrying its own price must AGREE with the authoritative one, or the form shows
     // one number while the server charges another.
     const a = GOOD(); a.extras[0].display.price = 99;
-    assert.throws(() => validateSource(a, 'x_pizza'), /disagrees with the authoritative price/, 'extra inline-price mismatch throws');
+    // The rule is now "present AND equal" in one check — the conditional version it replaced skipped
+    // the case where the field was absent, which is the one that renders a blank price.
+    assert.throws(() => validateSource(a, 'x_pizza'), /must be present and equal to the authoritative price/, 'extra inline-price mismatch throws');
     const b = GOOD(); b.items[0].display.price = 99;
-    assert.throws(() => validateSource(b, 'x_pizza'), /disagrees with the authoritative price/, 'item inline-price mismatch throws');
+    assert.throws(() => validateSource(b, 'x_pizza'), /must be present and equal to the authoritative price/, 'item inline-price mismatch throws');
     ok('inline-price agreement: a display price that disagrees with the authoritative price fails closed (both items and extras)');
   }
   {
@@ -148,6 +150,7 @@ const GOOD = () => ({
 {
   const { buildSourceFromCode } = require('../tools/seed-source-store');
   const { extrasKeyOf } = require('./source-store');
+  const { pricingKeyOf: pkeyOf } = require('./form-menu-source');
   const rejects = (label, source, rid, match) => {
     let threw = null;
     try { validateSource(source, rid); } catch (e) { threw = e; }
@@ -170,10 +173,10 @@ const GOOD = () => ({
   // ── PRICES: display price is mandatory now, not "checked when present" ──
   for (const rid of ['x_pizza', 'la_musa']) {
     rejects(`${rid}: a dish with NO display.price`, broken(rid, (s) => { delete s.items[0].display.price; }), rid, /display price/i);
-    rejects(`${rid}: a dish whose display.price disagrees`, broken(rid, (s) => { s.items[0].display.price = s.items[0].price + 1; }), rid, /disagrees/);
+    rejects(`${rid}: a dish whose display.price disagrees`, broken(rid, (s) => { s.items[0].display.price = s.items[0].price + 1; }), rid, /must be present and equal/);
     rejects(`${rid}: an extra with NO display record`, broken(rid, (s) => { delete s.extras[0].display; }), rid, /display record/);
     rejects(`${rid}: an extra with NO display.price`, broken(rid, (s) => { delete s.extras[0].display.price; }), rid, /display price/i);
-    rejects(`${rid}: an extra whose display price disagrees`, broken(rid, (s) => { s.extras[0].display.price = s.extras[0].price + 1; }), rid, /disagrees/);
+    rejects(`${rid}: an extra whose display price disagrees`, broken(rid, (s) => { s.extras[0].display.price = s.extras[0].price + 1; }), rid, /must be present and equal/);
   }
 
   // ── EXTRAS: record shape, bijection, and the SEPARATE category namespace ──
@@ -264,8 +267,57 @@ const GOOD = () => ({
     rejects('la_musa: one variant claimed by TWO launchers',
       broken(rid, (s) => { s.structure.variant_items.rice_01 = { label: 'X', variantIds: ['noodle_01_sin'] }; }), rid, /claimed by both/);
     rejects('la_musa: a variant nobody lists (missing coverage)',
-      broken(rid, (s) => { s.structure.variant_items.noodle_01.variantIds = s.structure.variant_items.noodle_01.variantIds.filter((v) => v !== 'noodle_01_sin'); }), rid, /missing coverage/);
+      // Drop a NON-cheapest variant, so the derived-basePrice rule stays satisfied and coverage is the
+      // only thing that can fire. Removing the cheapest would also move "desde" and reject for that.
+      broken(rid, (s) => { s.structure.variant_items.noodle_01.variantIds = s.structure.variant_items.noodle_01.variantIds.filter((v) => v !== 'noodle_01_camaron'); }), rid, /missing coverage/);
   }
+
+  // ── the four rules the census plants could not isolate ───────────────────────────────────────
+  // Each of these survived mutation at first: the census plants ONE bad value per field, and for
+  // these fields a different bad value is caught by a different rule. A field can be covered and a
+  // RULE still be untested.
+  for (const rid of ['x_pizza', 'la_musa']) {
+    // the census plants markup in the name; nothing planted its ABSENCE
+    rejects(`${rid}: a dish with no name at all`,
+      broken(rid, (s) => { delete s.items[0].display.name; s.items[0].key = pkeyOf(rid, s.items[0].display); s.structure.item_order[0] = s.items[0].key; }),
+      // x_pizza's pricing key IS the name, so deleting it also destroys the key — either rejection is
+      // correct, and which one fires is a property of the brand's keying rather than of the menu.
+      rid, /display name|key does not match|missing a string key/);
+  }
+  // the census plants an UNDECLARED subcat; the renderer drops an item with NO subcat just as surely
+  rejects('la_musa: an item with no subcat in a category that GROUPS by subcats',
+    broken('la_musa', (s) => { const it = s.items.find((i) => i.display.subcat); delete it.display.subcat; }),
+    'la_musa', /groups by subcategory/);
+  // the census plants markup in basePrice, which the NUMERIC type catches — a wrong NUMBER does not
+  // trip that at all, and "desde" being wrong is the whole point of deriving it
+  rejects('la_musa: a numeric basePrice that is not the cheapest selectable variant',
+    broken('la_musa', (s) => { s.structure.variant_items.noodle_01.basePrice = 999; }), 'la_musa', /cheapest selectable variant/);
+  {
+    // ...and the launcher's own higher price is NOT the desde. Pinning this stops a "fix" that
+    // equates them: Pad Thai launches at L414 and starts from L307, and both facts are load-bearing.
+    const s = buildSourceFromCode('la_musa');
+    const launcherPrice = s.items.find((i) => i.key === 'noodle_01').price;
+    assert.strictEqual(s.structure.variant_items.noodle_01.basePrice, 307, 'desde is the cheapest variant');
+    assert.strictEqual(launcherPrice, 414, 'and the launcher keeps its own, higher, authoritative price');
+    assert.doesNotThrow(() => validateSource(s, 'la_musa'), 'the two coexist — they are different facts');
+    ok('la_musa: "desde" is the min selectable variant and is NOT equated with the launcher price');
+  }
+  // A two-node cycle has no self-edge, so the self-reference check never sees it — this is the case
+  // the gate reported as passing. It is now refused.
+  //
+  // Worth being exact about WHICH rule catches it: making variant coverage unconditional means every
+  // node in a cycle is a variant no launcher lists, so coverage fires first. The general cycle walk
+  // is therefore a backstop rather than the thing standing here today, and it is reported as a
+  // mutation survivor rather than claimed as load-bearing. It is kept because coverage is a statement
+  // about launcher LISTS while the walk is a statement about the parent chain TERMINATING, and the
+  // day those two stop implying each other is not a day anyone will be watching for it.
+  rejects('la_musa: a variantOf CYCLE between two items (no self-reference)',
+    broken('la_musa', (s) => {
+      const a = s.items.find((i) => i.key === 'rice_01');
+      const b = s.items.find((i) => i.key === 'rice_02');
+      a.display.variantOf = b.display.id; a.display.choice = 'A';
+      b.display.variantOf = a.display.id; b.display.choice = 'B';
+    }), 'la_musa', /cycle|missing coverage/);
 
   // ── SCHEMA VERSION ───────────────────────────────────────────────────────────────────────────
   // Nothing pinned this: every fixture already carried the new version, so the check could be deleted
@@ -297,4 +349,105 @@ const GOOD = () => ({
     rejects(`${rid}: an image path with a javascript: scheme`,
       broken(rid, (s) => { s.items[0].display.img = 'javascript:alert(1)'; }), rid, /display_unsafe/);
   }
+}
+
+// ═══ FIELD COMPLETENESS — the check the provenance guard cannot make ═════════════════════════════
+// A sink map with provenance proves every entry IS real. It cannot prove the SET is whole, and the
+// first cut of this validator was complete by that standard while `variant.basePrice` — a value that
+// reaches unescaped HTML twice — was not enumerated at all.
+//
+// So completeness is proven the only way it can be: every field the REAL SEED produces must appear
+// below with a value that must be REFUSED. A new field in the seed fails this test until someone
+// decides what a bad one looks like; a field whose planted value is accepted fails it too.
+{
+  const { buildSourceFromCode } = require('../tools/seed-source-store');
+  const { pricingKeyOf: pkey } = require('./form-menu-source');
+  const { extrasKeyOf } = require('./source-store');
+  const XSS = '<img src=x onerror=alert(1)>';
+  const item0 = (s) => s.items[0];
+  const variantItem = (s) => s.items.find((i) => i.display.variantOf != null);
+  const launcher = (s) => Object.keys(s.structure.variant_items || {})[0];
+
+  // field → a value that MUST be refused, and why that value is dangerous or incomplete.
+  // `null` means the field is inert: nothing renders it and nothing branches on it.
+  const CONTRACT = {
+    'item.key':                 (s) => { item0(s).key = 'not_the_derived_key'; },
+    'item.price':               (s) => { item0(s).price = 0; },
+    'item.has_photo':           (s) => { item0(s).has_photo = 'yes'; },
+    'item.display':             (s) => { delete item0(s).display; },
+    'item.display.id':          (s) => { item0(s).display.id = "x');alert(1);//"; },
+    'item.display.cat':         (s) => { delete item0(s).display.cat; },
+    'item.display.name':        (s) => { item0(s).display.name = XSS; item0(s).key = pkey(s.restaurant_id, item0(s).display); s.structure.item_order[0] = item0(s).key; },
+    'item.display.price':       (s) => { delete item0(s).display.price; },
+    'item.display.desc':        (s) => { item0(s).display.desc = XSS; },
+    'item.display.emoji':       (s) => { item0(s).display.emoji = XSS; },
+    'item.display.color':       (s) => { item0(s).display.color = 'red; background:url(javascript:alert(1))'; },
+    'item.display.img':         (s) => { item0(s).display.img = 'javascript:alert(1)'; },
+    'item.display.tags':        (s) => { item0(s).display.tags = ['<script>']; },
+    'item.display.subcat':      (s) => { const it = s.items.find((i) => i.display.subcat); it.display.subcat = 'Undeclared'; },
+    'item.display.variantOf':   (s) => { variantItem(s).display.variantOf = 'no_such_launcher'; },
+    'item.display.choice':      (s) => { delete variantItem(s).display.choice; },
+    'extra.key':                (s) => { s.extras[0].key = 'not_the_derived_key'; },
+    'extra.price':              (s) => { s.extras[0].price = 0; },
+    'extra.display':            (s) => { delete s.extras[0].display; },
+    'extra.display.id':         (s) => { s.extras[1].display.id = s.extras[0].display.id; },
+    'extra.display.cat':        (s) => { s.extras[0].display.cat = 'Ghost'; },
+    'extra.display.name':       (s) => { s.extras[0].display.name = XSS; s.extras[0].key = extrasKeyOf(s.restaurant_id, s.extras[0].display); },
+    'extra.display.price':      (s) => { delete s.extras[0].display.price; },
+    'category.id':              (s) => { s.structure.categories.push({ ...s.structure.categories[0] }); },
+    'category.name':            (s) => { s.structure.categories[0].name = XSS; },
+    'category.subcats':         (s) => { const c = s.structure.categories.find((x) => x.subcats); c.subcats = [XSS]; },
+    'category.layout':          (s) => { s.structure.categories[0].layout = 'masonry'; },
+    'variant_spec.label':       (s) => { s.structure.variant_items[launcher(s)].label = XSS; },
+    'variant_spec.basePrice':   (s) => { s.structure.variant_items[launcher(s)].basePrice = XSS; },
+    'variant_spec.variantIds':  (s) => { s.structure.variant_items[launcher(s)].variantIds = []; },
+    'structure.categories':     (s) => { s.structure.categories = []; },
+    'structure.extra_categories': (s) => { delete s.structure.extra_categories; },
+    'structure.item_order':     (s) => { s.structure.item_order.pop(); },
+    'structure.extras_by_category': (s) => { s.structure.extras_by_category = { [s.structure.categories[0].id]: ['Ghost'] }; },
+    'structure.extras_by_item': (s) => { s.structure.extras_by_item = { [s.items[0].key]: ['Ghost'] }; },
+    'structure.variant_items':  (s) => { delete s.structure.variant_items; },
+    'structure.schema_version': null,   // inert: the STRUCTURE's own version is not read by any consumer 1A touches
+    'structure.pickup_only_cats':   (s) => { s.structure.pickup_only_cats = ['ghost_cat']; },
+    'structure.weekend_only_cats':  (s) => { s.structure.weekend_only_cats = ['ghost_cat']; },
+    'structure.redeem_eligible_cats':   (s) => { s.structure.redeem_eligible_cats = ['ghost_cat']; },
+    'structure.redeem_eligible_items':  (s) => { s.structure.redeem_eligible_items = ['ghost_item']; },
+    'structure.redeem_eligible_extras': (s) => { s.structure.redeem_eligible_extras = ['ghost_extra']; },
+  };
+
+  for (const rid of ['x_pizza', 'la_musa']) {
+    // 1. Enumerate what the seed ACTUALLY produces — the census is driven by the data, not by memory.
+    const seed = buildSourceFromCode(rid);
+    const present = new Set();
+    const add = (prefix, obj) => { for (const f of Object.keys(obj || {})) present.add(`${prefix}.${f}`); };
+    for (const i of seed.items) { add('item', i); add('item.display', i.display); }
+    for (const e of seed.extras) { add('extra', e); add('extra.display', e.display); }
+    for (const c of seed.structure.categories) add('category', c);
+    for (const v of Object.values(seed.structure.variant_items || {})) add('variant_spec', v);
+    add('structure', seed.structure);
+
+    // 2. Every field must be ruled on.
+    const unruled = [...present].filter((f) => !(f in CONTRACT)).sort();
+    assert.deepStrictEqual(unruled, [],
+      `${rid} — these fields exist in the real seed but nothing says what a BAD one looks like:\n    ${unruled.join('\n    ')}`);
+
+    // 3. And every ruled field's bad value must actually be refused.
+    for (const [field, plant] of Object.entries(CONTRACT)) {
+      if (!plant) continue;                       // declared inert
+      if (!present.has(field)) continue;          // that brand does not use this field
+      const s = buildSourceFromCode(rid);
+      plant(s);
+      let threw = null;
+      try { validateSource(s, rid); } catch (e) { threw = e; }
+      assert.ok(threw, `🔴 ${rid} — a dangerous/incomplete value in ${field} was ACCEPTED`);
+    }
+    ok(`${rid}: every field the real seed produces is ruled on, and its bad value is refused (${present.size} fields)`);
+  }
+
+  // 4. ...and the unmutated menus still validate. The whole point is a rule set that is satisfiable
+  //    by the live data — the non-vacuity half of all of the above.
+  for (const rid of ['x_pizza', 'la_musa']) {
+    assert.doesNotThrow(() => validateSource(buildSourceFromCode(rid), rid), `${rid} still validates after every rule added`);
+  }
+  ok('both real menus still PASS with the complete rule set');
 }
