@@ -169,3 +169,32 @@ test('🔴 a PARTIAL deny removes exactly what it names, and beats an add of the
   assert.deepStrictEqual(resolveExposure({ key: 'rice_04', cat: 'rice' }, ctx), [...acc, ...sal],
     '🔴 a contradictory override resolves to NOT offered');
 });
+
+test('🔴 a denied CATEGORY suppresses even an individually-added extra inside it', () => {
+  // The hole in the first cut: `add` could name a single extra key while `deny` named its category,
+  // and the two never met — deny was applied by exact match before emission, so it deleted the
+  // category from the allow-set (where it already wasn't) and left the individually-added KEY intact.
+  // The extra was offered by an item whose exposure explicitly denies its whole category.
+  //
+  // The formula is (allow ∪ add) − deny with deny applied LAST, at emission, against BOTH the key and
+  // its category. Today's data exercises neither half of this — nothing uses a key-level add, and the
+  // only deny is deny=ALL — so it took stating the contract to find it.
+  const data = real('la_musa');
+  const ctx = authoredFor('la_musa', data);
+  const acc = data.extras.filter((e) => e.cat === 'Acompañamientos').map((e) => e.id);
+  const sal = data.extras.filter((e) => e.cat === 'Salsas').map((e) => e.id);
+  const chicken = data.extras.find((e) => e.id === 'protein_chicken');
+  assert.ok(chicken && chicken.cat === 'Proteínas', 'premise: protein_chicken is a real Proteínas extra');
+
+  ctx.itemOverrides = { ...ctx.itemOverrides, rice_01: { add: ['protein_chicken'], deny: ['Proteínas'] } };
+  const got = resolveExposure({ key: 'rice_01', cat: 'rice' }, ctx);
+  assert.ok(!got.includes('protein_chicken'),
+    '🔴 the denied category wins over the individual add — deny is applied last, to key AND category');
+  assert.deepStrictEqual(got, [...acc, ...sal], 'and the rest of the exposure is untouched');
+
+  // ...and the same add WITHOUT the category deny does offer it, or the assertion above would pass
+  // for the wrong reason — an add that never worked at all.
+  ctx.itemOverrides.rice_01 = { add: ['protein_chicken'] };
+  assert.deepStrictEqual(resolveExposure({ key: 'rice_01', cat: 'rice' }, ctx), [...acc, ...sal, 'protein_chicken'],
+    'non-vacuous: a key-level add on its own IS offered, in canonical order');
+});

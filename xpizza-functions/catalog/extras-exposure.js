@@ -14,7 +14,12 @@
 // Neither is data the catalog owns, so a merchant cannot change either, and the two cannot be reasoned
 // about together. This is the ONE representation both reduce to:
 //
-//     exposed(item) = (its category's allow-list) − (item deny) + (item add)
+//     exposed(item) = ((its category's allow-list) ∪ (item add)) − (item deny)
+//
+// DENY IS APPLIED LAST, and against both an extra's key AND its category. Written as
+// `allow − deny + add` the deny lands in the middle, and an `add` naming a single extra key slips
+// past a `deny` naming that extra's whole category: the two never compare. An item would then be
+// offered an option whose category its own exposure denies.
 //
 // ordered by (extra-category order, then extras order within that category).
 //
@@ -55,26 +60,18 @@ function resolveExposure(item, ctx) {
   const ov = overridesFor(item, itemOverrides, itemsByKey);
   const deny = asArray(ov.deny);
   if (deny.includes(ALL)) return [];                       // offered nothing, and nothing else to compute
+  const denied = new Set(deny);
 
-  // Start from the item's dish-category allow-list. An unlisted category exposes nothing, which is
-  // how la_musa's unmapped categories behave today.
+  // ALLOW ∪ ADD. The item's dish-category allow-list, plus whatever the override adds. An unlisted
+  // dish category exposes nothing, which is how la_musa's unmapped categories behave today.
   const allowedCats = new Set(asArray(categoryAllow[item.cat]));
   const allowedKeys = new Set();
-
   // ADD may name an extra-category or an individual extra, so a single option can be exposed without
   // dragging its whole category along.
   for (const a of asArray(ov.add)) {
     if (extraCategories.includes(a)) allowedCats.add(a);
     else allowedKeys.add(a);
   }
-  // DENY removes either, and is applied AFTER add so that an explicit removal always wins — an
-  // override that both adds and denies the same thing resolves to "not offered", which is the
-  // fail-closed reading.
-  for (const d of deny) {
-    allowedCats.delete(d);
-    allowedKeys.delete(d);
-  }
-  const denied = new Set(deny);
 
   // ORDER: extra-category order first, then extras order within the category. Both shipped renderers
   // produce this today — x_pizza by construction (it loops categories, then filters extras within
@@ -82,17 +79,17 @@ function resolveExposure(item, ctx) {
   // NOT the same rule, and this one is the grouped one; see the handback note.
   const out = [];
   const seen = new Set();
-  const emit = (e) => {
-    const key = e.id !== undefined ? String(e.id) : String(e.key);
-    if (seen.has(key) || denied.has(key)) return;
-    seen.add(key);
-    out.push(key);
-  };
   for (const cat of extraCategories) {
     for (const e of extras) {
       if (e.cat !== cat) continue;
       const key = e.id !== undefined ? String(e.id) : String(e.key);
-      if (allowedCats.has(cat) || allowedKeys.has(key)) emit(e);
+      if (!(allowedCats.has(cat) || allowedKeys.has(key))) continue;   // ALLOW ∪ ADD
+      // − DENY, last, against the key AND its category. Checking only the key is what let an
+      // individually-added extra survive a deny of the category it belongs to.
+      if (denied.has(key) || denied.has(cat)) continue;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(key);
     }
   }
   return out;
