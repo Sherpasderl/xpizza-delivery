@@ -1,6 +1,6 @@
 # Portal Single-Source — 1A: Catalog is the complete, valid, safe customer-display source
 
-**Status:** DESIGN (rev 4, folds grill R1 [9] + R2 [5] + R3 [3]) — awaiting re-grill, then owner review → plan → build → money-gate → owner-run gated cutover.
+**Status:** DESIGN (rev 5, folds grill R1 [9] + R2 [5] + R3 [3] + R4 [1]) — awaiting re-grill, then owner review → plan → build → money-gate → owner-run gated cutover.
 **Date:** 2026-09-09
 **Part of:** single-source initiative (`2026-09-09-portal-single-source-slice1-design.md` overview). 1A is the foundation 1B (serve) and 1C (charge) read.
 **Base:** `origin/main` (e202e62). Backend/schema + a re-seed cutover; no form or portal-editor changes here (form-literal removal is 1B).
@@ -52,8 +52,8 @@ Today validation is uneven: `validateSource` runs on some paths; `publish-versio
 - **Identifiers** (item/category/extra ids) — strict safe pattern (no chars that break out of an inline handler/attribute).
 - **URLs / image paths** — allowed scheme/host/shape only.
 - **Colors** — validated format.
-- **Free text** (names, descriptions, badge labels) that today reaches `innerHTML` — **reject markup-bearing values** (no `<`/`>`/entities that execute). If arbitrary plain text must be supported instead, the necessary escaping change is pulled **into 1A scope** (not deferred) so no unsafe value can be activated.
-- Tests exercise hostile/malformed authored values **through the current consumers**. (The proper render-layer switch to text nodes / event listeners is still 1B; 1A guarantees the *data* can never carry an XSS payload to today's renderer.)
+- **Free text is SINK-SPECIFIC — both HTML-body AND attribute context (grill R4 #1).** The same field reaches different sinks per brand: La Musa interpolates names/descriptions into `innerHTML` (body context — reject `<`/`>`/executing entities), and X.Pizza interpolates `p.name` into `alt="${p.name}"` (`xpizza-orders/index.html:1731` — **attribute context**), where a value like `" onmouseover="alert(1)` has NO angle brackets yet breaks out of the attribute into an executable handler. So the constraint must reject **attribute-breaking characters (quotes, etc.) in any field that reaches an attribute sink**, in addition to markup in body-sink fields — enumerated per the actual current consumers of each brand. If arbitrary plain text must be supported instead of rejected, the necessary **context-aware escaping (body AND attribute)** is pulled **into 1A scope** (not deferred), so no unsafe value can be activated.
+- Tests exercise hostile/malformed authored values **through the current consumers of BOTH brands**, pinning at least: a body-context markup name (La Musa) and an **attribute-breaking name** (X.Pizza `alt="…"`) — both rejected before activation. (The proper render-layer switch to text nodes / event listeners is still 1B; 1A guarantees the *data* can never carry an XSS payload to today's renderer, in either sink.)
 
 ## Component F — Field/consumer inventory: bring all menu content into the catalog (grill #6)
 "Every customer-visible field" is scoped to **menu content**, and each field gets a documented requiredness + format. Inventory (source of truth = catalog, not literals):
