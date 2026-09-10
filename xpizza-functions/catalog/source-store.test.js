@@ -361,129 +361,253 @@ const GOOD = () => ({
   }
 }
 
-// ═══ FIELD COMPLETENESS — the check the provenance guard cannot make ═════════════════════════════
-// A sink map with provenance proves every ENTRY is real. It cannot prove the SET is whole, and the
-// first cut was complete by that standard while `variant.basePrice` — which reaches unescaped HTML
-// twice — was not enumerated at all.
+// ═══ THE FIELD CENSUS — exhaustive by construction ═══════════════════════════════════════════════
+// A sink map with provenance proves every ENTRY is real; it can never prove the SET is whole. One bad
+// value per field is not enough either — basePrice was "covered" by a markup plant while DELETING it
+// was accepted, and desc was covered while `{}` sailed through.
 //
-// So completeness is proven the only way it can be: every field the REAL SEED produces is enumerated
-// here with the ways it can be wrong, and each must be REFUSED. One bad value per field is not
-// enough either — `basePrice` was covered by a markup plant while DELETING it was accepted, and
-// `desc` was covered by a markup plant while `{}` sailed through. The four are separate questions:
+// So: the seed is walked RECURSIVELY (nested maps, reference arrays and their elements included), and
+// every path must have an explicit outcome for all FIVE ways a field can be wrong:
 //
-//     absent      — the field is gone
-//     wrongType   — present, wrong JS type (the class stringification used to hide)
-//     invalid     — right type, meaningless value
-//     refs        — right type and shape, pointing at something that does not exist
+//     absent     — the field is gone
+//     wrongType  — present, wrong JS type
+//     invalid    — right type, meaningless value
+//     refs       — right type and shape, naming something that does not exist
+//     duplicate  — a collection carrying the same entry twice
 //
-// A field declares the ones that apply to it. A new field in the seed fails until someone decides
-// what wrong looks like; a declared plant that is ACCEPTED fails too.
+// absent / wrongType / duplicate are planted GENERICALLY, so they cannot be forgotten. `invalid` and
+// `refs` need to know what the field means, so each path declares either a plant or a stated reason
+// why the mode does not apply. A path with no entry fails; a mode with neither fails; a plant that is
+// ACCEPTED fails. A new field in the seed cannot pass until someone has thought about all five.
 {
   const { buildSourceFromCode } = require('../tools/seed-source-store');
   const { extrasKeyOf } = require('./source-store');
   const { pricingKeyOf: pkeyOf } = require('./form-menu-source');
   const XSS = '<img src=x onerror=alert(1)>';
-  const it0 = (s) => s.items[0];
-  const withSub = (s) => s.items.find((i) => i.display.subcat);
-  const variantItem = (s) => s.items.find((i) => i.display.variantOf != null);
-  const launcher = (s) => Object.keys(s.structure.variant_items || {})[0];
-  const cat0 = (s) => s.structure.categories[0];
-  const rekey = (s) => { it0(s).key = pkeyOf(s.restaurant_id, it0(s).display); s.structure.item_order[0] = it0(s).key; };
+  const MAPS = new Set(['structure.badges', 'structure.extras_by_category', 'structure.extras_by_item', 'structure.variant_items']);
 
-  const CONTRACT = {
-    // ── source root ──
-    'restaurant_id': { absent: (s) => { delete s.restaurant_id; }, wrongType: (s) => { s.restaurant_id = 7; }, invalid: (s) => { s.restaurant_id = 'someone_else'; } },
-    'schema_version': { absent: (s) => { delete s.schema_version; }, wrongType: (s) => { s.schema_version = '2'; }, invalid: (s) => { s.schema_version = 1; } },
-    'items': { absent: (s) => { delete s.items; }, wrongType: (s) => { s.items = {}; }, invalid: (s) => { s.items = []; } },
-    'extras': { absent: (s) => { delete s.extras; }, wrongType: (s) => { s.extras = {}; } },
-    'structure': { absent: (s) => { delete s.structure; }, wrongType: (s) => { s.structure = []; } },
-    // ── item ──
-    'item.key': { absent: (s) => { delete it0(s).key; }, wrongType: (s) => { it0(s).key = 12; }, invalid: (s) => { it0(s).key = ''; }, refs: (s) => { it0(s).key = 'not_the_derived_key'; } },
-    'item.price': { absent: (s) => { delete it0(s).price; }, wrongType: (s) => { it0(s).price = '340'; }, invalid: (s) => { it0(s).price = 0; } },
-    'item.display': { absent: (s) => { delete it0(s).display; }, wrongType: (s) => { it0(s).display = []; } },
-    'item.has_photo': { wrongType: (s) => { it0(s).has_photo = 'yes'; } },
-    // ── item.display ──
-    'item.display.id': { absent: (s) => { delete it0(s).display.id; }, wrongType: (s) => { it0(s).display.id = { n: 1 }; }, invalid: (s) => { it0(s).display.id = it0(s).display.id === undefined ? 'x' : (typeof it0(s).display.id === 'number' ? 'ghost' : ''); } },
-    'item.display.cat': { absent: (s) => { delete it0(s).display.cat; }, wrongType: (s) => { it0(s).display.cat = 5; }, refs: (s) => { it0(s).display.cat = 'ghost_category'; } },
-    'item.display.name': { absent: (s) => { delete it0(s).display.name; rekey(s); }, wrongType: (s) => { it0(s).display.name = {}; rekey(s); }, invalid: (s) => { it0(s).display.name = '   '; rekey(s); }, unsafe: (s) => { it0(s).display.name = XSS; rekey(s); }, unsafeAttr: (s) => { it0(s).display.name = '" onmouseover="alert(1)'; rekey(s); } },
-    'item.display.price': { absent: (s) => { delete it0(s).display.price; }, wrongType: (s) => { it0(s).display.price = '340'; }, invalid: (s) => { it0(s).display.price = it0(s).price + 1; } },
-    'item.display.desc': { wrongType: (s) => { it0(s).display.desc = {}; }, unsafe: (s) => { it0(s).display.desc = XSS; } },
-    'item.display.subcat': { wrongType: (s) => { withSub(s).display.subcat = 3; }, invalid: (s) => { withSub(s).display.subcat = 'Undeclared'; }, absent: (s) => { delete withSub(s).display.subcat; } },
-    'item.display.emoji': { wrongType: (s) => { it0(s).display.emoji = {}; }, unsafe: (s) => { it0(s).display.emoji = XSS; } },
-    'item.display.color': { wrongType: (s) => { it0(s).display.color = 0xC8321A; }, invalid: (s) => { it0(s).display.color = '#12345'; } },
-    'item.display.img': { wrongType: (s) => { it0(s).display.img = 1; }, invalid: (s) => { it0(s).display.img = 'javascript:alert(1)'; } },
-    'item.display.tags': { wrongType: (s) => { it0(s).display.tags = 'chefs_pick'; }, invalid: (s) => { it0(s).display.tags = [7]; }, refs: (s) => { it0(s).display.tags = ['ghost_badge']; } },
-    'item.display.variantOf': { wrongType: (s) => { variantItem(s).display.variantOf = {}; }, refs: (s) => { variantItem(s).display.variantOf = 'no_such_launcher'; } },
-    'item.display.choice': { absent: (s) => { delete variantItem(s).display.choice; }, wrongType: (s) => { variantItem(s).display.choice = 4; }, invalid: (s) => { variantItem(s).display.choice = '  '; } },
-    // ── extra ──
-    'extra.key': { absent: (s) => { delete s.extras[0].key; }, wrongType: (s) => { s.extras[0].key = 9; }, refs: (s) => { s.extras[0].key = 'not_the_derived_key'; } },
-    'extra.price': { absent: (s) => { delete s.extras[0].price; }, wrongType: (s) => { s.extras[0].price = '39'; }, invalid: (s) => { s.extras[0].price = -1; } },
-    'extra.display': { absent: (s) => { delete s.extras[0].display; }, wrongType: (s) => { s.extras[0].display = 'x'; } },
-    'extra.display.id': { absent: (s) => { delete s.extras[0].display.id; }, wrongType: (s) => { s.extras[0].display.id = 123; }, invalid: (s) => { s.extras[1].display.id = s.extras[0].display.id; } },
-    'extra.display.cat': { absent: (s) => { delete s.extras[0].display.cat; }, wrongType: (s) => { s.extras[0].display.cat = 2; }, refs: (s) => { s.extras[0].display.cat = 'Ghost'; } },
-    'extra.display.name': { absent: (s) => { delete s.extras[0].display.name; s.extras[0].key = extrasKeyOf(s.restaurant_id, s.extras[0].display); }, wrongType: (s) => { s.extras[0].display.name = {}; s.extras[0].key = extrasKeyOf(s.restaurant_id, s.extras[0].display); }, unsafe: (s) => { s.extras[0].display.name = XSS; s.extras[0].key = extrasKeyOf(s.restaurant_id, s.extras[0].display); } },
-    'extra.display.price': { absent: (s) => { delete s.extras[0].display.price; }, wrongType: (s) => { s.extras[0].display.price = '39'; }, invalid: (s) => { s.extras[0].display.price = s.extras[0].price + 1; } },
-    // ── category ──
-    'category.id': { absent: (s) => { delete cat0(s).id; }, wrongType: (s) => { cat0(s).id = 1; }, invalid: (s) => { s.structure.categories.push({ ...cat0(s) }); } },
-    'category.name': { absent: (s) => { s.structure.categories.forEach((c, i) => { c.name = `Cat ${i}`; }); delete cat0(s).name; }, wrongType: (s) => { s.structure.categories.forEach((c, i) => { c.name = `Cat ${i}`; }); cat0(s).name = 5; }, unsafe: (s) => { s.structure.categories.forEach((c, i) => { c.name = i === 0 ? XSS : `Cat ${i}`; }); } },
-    'category.subcats': { wrongType: (s) => { s.structure.categories.find((c) => c.subcats).subcats = 'Sodas'; }, invalid: (s) => { const c = s.structure.categories.find((x) => x.subcats); c.subcats = [...c.subcats, c.subcats[0]]; }, refs: (s) => { const c = s.structure.categories.find((x) => x.subcats); c.subcats = [...c.subcats, 'NeverUsed']; } },
-    'category.layout': { wrongType: (s) => { cat0(s).layout = 2; }, invalid: (s) => { cat0(s).layout = 'masonry'; } },
-    // ── variant spec ──
-    'variant_spec.label': { absent: (s) => { delete s.structure.variant_items[launcher(s)].label; }, wrongType: (s) => { s.structure.variant_items[launcher(s)].label = 9; }, invalid: (s) => { s.structure.variant_items[launcher(s)].label = ' '; }, unsafe: (s) => { s.structure.variant_items[launcher(s)].label = XSS; } },
-    'variant_spec.basePrice': { absent: (s) => { delete s.structure.variant_items[launcher(s)].basePrice; }, wrongType: (s) => { s.structure.variant_items[launcher(s)].basePrice = '307'; }, unsafe: (s) => { s.structure.variant_items[launcher(s)].basePrice = XSS; }, invalid: (s) => { s.structure.variant_items[launcher(s)].basePrice = 999; } },
-    'variant_spec.variantIds': { absent: (s) => { delete s.structure.variant_items[launcher(s)].variantIds; }, wrongType: (s) => { s.structure.variant_items[launcher(s)].variantIds = 'noodle_01_sin'; }, invalid: (s) => { s.structure.variant_items[launcher(s)].variantIds = []; }, refs: (s) => { s.structure.variant_items[launcher(s)].variantIds.push('no_such_variant'); } },
-    // ── structure ──
-    'structure.schema_version': { wrongType: (s) => { s.structure.schema_version = {}; } },
-    'structure.categories': { absent: (s) => { delete s.structure.categories; }, wrongType: (s) => { s.structure.categories = {}; }, invalid: (s) => { s.structure.categories = []; }, refs: (s) => { s.structure.categories.push({ id: 'never_used_cat', ...(s.structure.categories[0].name !== undefined ? { name: 'Never Used' } : {}) }); } },
-    'structure.item_order': { absent: (s) => { delete s.structure.item_order; }, wrongType: (s) => { s.structure.item_order = {}; }, invalid: (s) => { s.structure.item_order.pop(); }, refs: (s) => { s.structure.item_order[0] = 'ghost_item'; } },
-    'structure.extra_categories': { absent: (s) => { delete s.structure.extra_categories; }, wrongType: (s) => { s.structure.extra_categories = 'Salsas'; }, invalid: (s) => { s.structure.extra_categories = [...s.structure.extra_categories, s.structure.extra_categories[0]]; } },
-    'structure.extras_by_category': { wrongType: (s) => { s.structure.extras_by_category = { [cat0(s).id]: 'Ghost' }; }, refs: (s) => { s.structure.extras_by_category = { [cat0(s).id]: ['Ghost'] }; } },
-    'structure.extras_by_item': { wrongType: (s) => { s.structure.extras_by_item = { [it0(s).key]: 'Ghost' }; }, refs: (s) => { s.structure.extras_by_item = { [it0(s).key]: ['Ghost'] }; } },
-    'structure.variant_items': { absent: (s) => { delete s.structure.variant_items; }, refs: (s) => { s.structure.variant_items = { ghost_launcher: { label: 'X', basePrice: 1, variantIds: ['noodle_01_sin'] } }; } },
-    'structure.badges': { wrongType: (s) => { s.structure.badges = ['chefs_pick']; }, absent: (s) => { delete s.structure.badges; } },
-    'structure.pickup_only_cats': { wrongType: (s) => { s.structure.pickup_only_cats = 'individual'; }, refs: (s) => { s.structure.pickup_only_cats = ['ghost_cat']; } },
-    'structure.weekend_only_cats': { wrongType: (s) => { s.structure.weekend_only_cats = 'individual'; }, refs: (s) => { s.structure.weekend_only_cats = ['ghost_cat']; } },
-    'structure.redeem_eligible_cats': { wrongType: (s) => { s.structure.redeem_eligible_cats = 'individual'; }, refs: (s) => { s.structure.redeem_eligible_cats = ['ghost_cat']; } },
-    'structure.redeem_eligible_items': { wrongType: (s) => { s.structure.redeem_eligible_items = 'x'; }, refs: (s) => { s.structure.redeem_eligible_items = ['ghost_item']; } },
-    'structure.redeem_eligible_extras': { wrongType: (s) => { s.structure.redeem_eligible_extras = 'x'; }, refs: (s) => { s.structure.redeem_eligible_extras = ['ghost_extra']; } },
+  const walk = (value, prefix, out) => {
+    if (Array.isArray(value)) { for (const v of value) walk(v, `${prefix}[]`, out); return; }
+    if (value && typeof value === 'object') {
+      const isMap = MAPS.has(prefix);
+      for (const k of Object.keys(value)) {
+        const path = prefix ? `${prefix}.${isMap ? '*' : k}` : k;
+        out.add(path); walk(value[k], path, out);
+      }
+      return;
+    }
+    if (prefix.endsWith('[]')) out.add(prefix);
   };
 
-  const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  // Resolve a concrete node the path names, so a generic plant can act on it.
+  //
+  // 🔴 It must choose an element that ACTUALLY CARRIES the field. `items[].display.choice` resolved to
+  // items[0], which is not a variant and has no choice — so the generic wrong-type plant wrote a
+  // harmless value onto a record the rule does not govern, and the census reported the field as
+  // accepted when nothing had really been tried. Optional fields live on SOME records, and a plant
+  // aimed at the wrong one proves nothing.
+  const resolve = (source, path, pick) => {
+    let parent = null; let key = null; let node = source;
+    for (const seg of path.split('.')) {
+      const m = /^([^[]*)((?:\[\])*)$/.exec(seg);
+      const name = m[1]; const arrays = m[2].length / 2;
+      if (name === '*') { const k = Object.keys(node)[0]; parent = node; key = k; node = node[k]; }
+      else if (name) { parent = node; key = name; node = node[name]; }
+      for (let i = 0; i < arrays; i++) { parent = node; key = pick(node, path); node = node[key]; }
+      if (node === undefined && name) return { parent, key, value: undefined };
+    }
+    return { parent, key, value: node };
+  };
+  // The remaining path after this array, so an element can be scored on whether it has the leaf.
+  const locate = (source, path) => {
+    const segs = path.split('.');
+    const pick = (arr, full) => {
+      const idx = arr.findIndex((el) => {
+        let cur = el;
+        // walk whatever of the path comes AFTER the array we are choosing in
+        const after = full.slice(full.indexOf('[]') + 2).split('.').filter(Boolean);
+        for (const seg of after) { if (cur == null) return false; cur = cur[seg.replace(/\[\]$/, '')]; }
+        return cur !== undefined;
+      });
+      return idx === -1 ? 0 : idx;
+    };
+    void segs;
+    return resolve(source, path, pick);
+  };
+  // A wrong type for an OBJECT is a scalar — 7, not a string. `Object.entries('some string')` yields
+  // index/char pairs, so a string stands in for a map well enough to trip the NEXT check instead of
+  // the type check, and the type check then looks redundant when it is the only thing standing there.
+  const WRONG = (v) => (typeof v === 'string' ? {} : typeof v === 'number' ? String(v) : typeof v === 'boolean' ? 'yes'
+    : Array.isArray(v) ? { nope: true } : 7);
+
+  const NA = (reason) => ({ exempt: reason });
+  // Paths whose `invalid` / `refs` / `absent` outcome needs to know what the field MEANS.
+  const CONTRACT = {
+    'restaurant_id':            { invalid: (s) => { s.restaurant_id = 'someone_else'; }, refs: NA('the rid is the identity, not a reference') },
+    'schema_version':           { invalid: (s) => { s.schema_version = 1; }, refs: NA('a version number is a value, not a reference to another entity') },
+    'items':                    { invalid: (s) => { s.items = []; }, refs: NA('the collection itself names nothing') },
+    'extras':                   { invalid: NA('an empty extras list is legitimate — a menu may sell no add-ons'), refs: NA('this value is content, not a reference to another catalog entity') },
+    'structure':                { invalid: NA('an empty structure fails its required members, which are covered per field'), refs: NA('this value is content, not a reference to another catalog entity') },
+    'items[].key':              { invalid: (s) => { s.items[0].key = '   '; }, refs: (s) => { s.items[0].key = 'not_the_derived_key'; } },
+    'items[].price':            { invalid: (s) => { s.items[0].price = 0; }, refs: NA('a price is a value, not a reference to another catalog entity') },
+    'items[].display':          { invalid: NA('an empty display fails its required members, covered per field'), refs: NA('this value is content, not a reference to another catalog entity') },
+    'items[].has_photo':        { absent: NA('optional — a dish with no photo simply omits it'), invalid: NA('a boolean has exactly two values and both are meaningful'), refs: NA('this value is content, not a reference to another catalog entity') },
+    'items[].display.id':       { invalid: (s) => { const d = s.items[0].display; d.id = typeof d.id === 'number' ? -0.5 : '   '; }, refs: NA('a UI id names nothing; its uniqueness is its own rule') },
+    'items[].display.cat':      { invalid: (s) => { s.items[0].display.cat = '   '; }, refs: (s) => { s.items[0].display.cat = 'ghost_category'; } },
+    'items[].display.name':     { invalid: (s) => { s.items[0].display.name = '   '; rekey(s); }, refs: NA('a display name is content, not a reference to another entity'), unsafeBody: (s) => { s.items[0].display.name = XSS; rekey(s); }, unsafeAttr: (s) => { s.items[0].display.name = '" onmouseover="alert(1)'; rekey(s); } },
+    'items[].display.price':    { invalid: (s) => { s.items[0].display.price = s.items[0].price + 1; }, refs: NA('this value is content, not a reference to another catalog entity') },
+    'items[].display.desc':     { absent: NA('optional by renderer contract — beverages ship with a blank description and variants carry none'), invalid: NA('any string is a description; blankness is legitimate for beverages'), refs: NA('this value is content, not a reference to another catalog entity'), unsafe: (s) => { s.items[0].display.desc = XSS; } },
+    'items[].display.subcat':   { absent: NA('optional — only categories that GROUP by subcategory require one, which is its own rule'), invalid: (s) => { withSub(s).display.subcat = 'Undeclared'; }, refs: NA('covered by invalid: a subcat that its category never declares') },
+    'items[].display.emoji':    { absent: NA('optional — a dish may render its photo or colour instead'), invalid: NA('any string renders as a label'), refs: NA('this value is content, not a reference to another catalog entity'), unsafe: (s) => { s.items[0].display.emoji = XSS; } },
+    'items[].display.color':    { absent: NA('optional — the renderer falls back to its own default'), invalid: (s) => { s.items[0].display.color = '#12345'; }, refs: NA('this value is content, not a reference to another catalog entity') },
+    'items[].display.img':      { absent: NA('optional — a dish without a photo renders emoji+colour'), invalid: (s) => { s.items[0].display.img = 'javascript:alert(1)'; }, refs: NA('an image path points at a file, not at another catalog entity') },
+    'items[].display.tags':     { absent: NA('optional — most dishes carry no badge'), invalid: NA('covered by refs: an entry that names no definition'), refs: (s) => { s.items[0].display.tags = ['ghost_badge']; } },
+    'items[].display.tags[]':   { absent: NA('an element cannot be absent; an empty list is the absent case'), invalid: (s) => { s.items[0].display.tags = ['not an identifier']; }, refs: (s) => { s.items[0].display.tags = ['ghost_badge']; } },
+    'items[].display.variantOf':{ absent: NA('optional — most dishes are not variants'), invalid: NA('covered by refs: a parent that does not exist'), refs: (s) => { variantItem(s).display.variantOf = 'no_such_launcher'; } },
+    'items[].display.choice':   { absent: NA('optional — only a variant needs one, which is its own rule'), invalid: (s) => { variantItem(s).display.choice = '   '; }, refs: NA('this value is content, not a reference to another catalog entity') },
+    'extras[].key':             { invalid: (s) => { s.extras[0].key = '   '; }, refs: (s) => { s.extras[0].key = 'not_the_derived_key'; } },
+    'extras[].price':           { invalid: (s) => { s.extras[0].price = -1; }, refs: NA('this value is content, not a reference to another catalog entity') },
+    'extras[].display':         { invalid: NA('an empty display fails its required members, covered per field'), refs: NA('this value is content, not a reference to another catalog entity') },
+    'extras[].display.id':      { invalid: (s) => { s.extras[1].display.id = s.extras[0].display.id; }, refs: NA('a selection id names nothing outside the extras list') },
+    'extras[].display.cat':     { invalid: (s) => { s.extras[0].display.cat = '   '; }, refs: (s) => { s.extras[0].display.cat = 'Ghost'; } },
+    'extras[].display.name':    { invalid: (s) => { s.extras[0].display.name = '   '; s.extras[0].key = extrasKeyOf(s.restaurant_id, s.extras[0].display); }, refs: NA('this value is content, not a reference to another catalog entity'), unsafe: (s) => { s.extras[0].display.name = XSS; s.extras[0].key = extrasKeyOf(s.restaurant_id, s.extras[0].display); } },
+    'extras[].display.price':   { invalid: (s) => { s.extras[0].display.price = s.extras[0].price + 1; }, refs: NA('this value is content, not a reference to another catalog entity') },
+    'structure.schema_version': { absent: NA('optional — the SOURCE version is the one consumers read'), invalid: (s) => { s.structure.schema_version = 0; }, refs: NA('this value is content, not a reference to another catalog entity') },
+    'structure.categories':     { invalid: (s) => { s.structure.categories = []; }, refs: NA('the collection names nothing; its members do') },
+    'structure.categories[].id':      { invalid: (s) => { cat0(s).id = '   '; }, refs: NA('a category id is the identity dishes reference') },
+    'structure.categories[].name':    { invalid: (s) => { cat0(s).name = '   '; }, refs: NA('this value is content, not a reference to another catalog entity'), unsafe: (s) => { cat0(s).name = XSS; } },
+    'structure.categories[].layout':  { absent: NA('optional — absence means the default grid'), invalid: (s) => { cat0(s).layout = 'masonry'; }, refs: NA('this value is content, not a reference to another catalog entity') },
+    'structure.categories[].subcats': { absent: NA('optional — most categories do not group'), invalid: NA('covered by refs and duplicate'), refs: (s) => { const c = subCat(s); c.subcats = [...c.subcats, 'NeverUsed']; } },
+    'structure.categories[].subcats[]': { absent: NA('an element cannot be absent'), invalid: (s) => { subCat(s).subcats[0] = '   '; }, refs: (s) => { const c = subCat(s); c.subcats = [...c.subcats, 'NeverUsed']; } },
+    'structure.extra_categories':     { invalid: NA('covered per element and by duplicate'), refs: (s) => { s.structure.extra_categories = [...s.structure.extra_categories, 'GhostCat']; } },
+    'structure.extra_categories[]':   { absent: NA('an element cannot be absent'), invalid: (s) => { s.structure.extra_categories[0] = '   '; }, refs: (s) => { s.structure.extra_categories = [...s.structure.extra_categories, 'GhostCat']; } },
+    'structure.item_order':     { invalid: (s) => { s.structure.item_order.pop(); }, refs: (s) => { s.structure.item_order[0] = 'ghost_item'; } },
+    'structure.item_order[]':   { absent: NA('an element cannot be absent; a short list is the invalid case above'), invalid: (s) => { s.structure.item_order[0] = '   '; }, refs: (s) => { s.structure.item_order[0] = 'ghost_item'; } },
+    'structure.variant_items':  { absent: NA('optional — a menu may have no variant dishes at all'), invalid: NA('covered by the per-member paths enumerated beneath this one'), refs: (s) => { s.structure.variant_items = { ghost_launcher: { label: 'X', basePrice: 1, variantIds: ['noodle_01_sin'] } }; } },
+    'structure.variant_items.*':          { absent: NA('removing a launcher is covered by variant coverage, which then reports its orphans'), invalid: NA('covered by the per-member paths enumerated beneath this one'), refs: NA('the launcher key is covered by the map-level refs plant') },
+    'structure.variant_items.*.label':    { invalid: (s) => { spec(s).label = '   '; }, refs: NA('this value is content, not a reference to another catalog entity'), unsafe: (s) => { spec(s).label = XSS; } },
+    'structure.variant_items.*.basePrice':{ invalid: (s) => { spec(s).basePrice = 999; }, refs: NA('this value is content, not a reference to another catalog entity') },
+    'structure.variant_items.*.variantIds':   { invalid: (s) => { spec(s).variantIds = []; }, refs: (s) => { spec(s).variantIds.push('no_such_variant'); } },
+    'structure.variant_items.*.variantIds[]': { absent: NA('an element cannot be absent; an empty list is the invalid case above'), invalid: (s) => { spec(s).variantIds[0] = '   '; }, refs: (s) => { spec(s).variantIds[0] = 'no_such_variant'; } },
+    'structure.badges':         { absent: NA('optional — a brand with no badge system declares none'), invalid: NA('covered by the per-definition paths enumerated beneath this one'), refs: NA('the collection names nothing; tags reference INTO it') },
+    'structure.badges.*':       { absent: NA('a brand may define fewer badges; removing one only matters if a tag names it'), invalid: (s) => { s.structure.badges.ghost_badge = {}; s.items[0].display.tags = ['ghost_badge']; }, refs: NA('a badge definition is content; tags reference INTO it, not out') },
+    'structure.badges.*.label': { invalid: (s) => { badge(s).label = '   '; }, refs: NA('this value is content, not a reference to another catalog entity'), unsafe: (s) => { badge(s).label = XSS; } },
+    'structure.badges.*.cls':   { invalid: (s) => { badge(s).cls = 'x"onload="alert(1)'; }, refs: NA('this value is content, not a reference to another catalog entity') },
+    'structure.extras_by_category':     { absent: NA('optional — a brand may expose extras without a category map'), invalid: NA('covered by the per-entry paths enumerated beneath this one'), refs: (s) => { s.structure.extras_by_category = { ghost_cat: [s.structure.extra_categories[0]] }; } },
+    'structure.extras_by_category.*':   { absent: NA('a category exposing no extras is legitimate — unmapped categories expose nothing today'), invalid: NA('covered per element and by duplicate'), refs: (s) => { s.structure.extras_by_category[cat0(s).id] = ['Ghost']; } },
+    'structure.extras_by_category.*[]': { absent: NA('an element cannot be absent'), invalid: (s) => { s.structure.extras_by_category[Object.keys(s.structure.extras_by_category)[0]] = ['   ']; }, refs: (s) => { s.structure.extras_by_category[Object.keys(s.structure.extras_by_category)[0]] = ['Ghost']; } },
+    'structure.extras_by_item':         { absent: NA('optional — per-item exposure overrides are rare'), invalid: NA('covered by the per-entry paths enumerated beneath this one'), refs: (s) => { s.structure.extras_by_item = { ghost_item: [s.structure.extra_categories[0]] }; } },
+    'structure.extras_by_item.*':       { absent: NA('an item with no per-item override is the ordinary case, not an error'), invalid: NA('covered per element and by duplicate'), refs: (s) => { s.structure.extras_by_item[Object.keys(s.structure.extras_by_item)[0]] = ['Ghost']; } },
+    'structure.extras_by_item.*[]':     { absent: NA('an element cannot be absent'), invalid: (s) => { s.structure.extras_by_item[Object.keys(s.structure.extras_by_item)[0]] = ['   ']; }, refs: (s) => { s.structure.extras_by_item[Object.keys(s.structure.extras_by_item)[0]] = ['Ghost']; } },
+  };
+  for (const f of ['pickup_only_cats', 'weekend_only_cats', 'redeem_eligible_cats']) {
+    CONTRACT[`structure.${f}`] = { absent: NA('optional — a brand may gate nothing'), invalid: NA('covered per element and by duplicate'), refs: (s) => { s.structure[f] = ['ghost_cat']; } };
+    CONTRACT[`structure.${f}[]`] = { absent: NA('an element cannot be absent'), invalid: (s) => { s.structure[f] = ['   ']; }, refs: (s) => { s.structure[f] = ['ghost_cat']; } };
+  }
+  CONTRACT['structure.redeem_eligible_items'] = { absent: NA('optional — a brand may declare no redemption allowlist at all'), invalid: NA('covered per element'), refs: (s) => { s.structure.redeem_eligible_items = ['ghost_item']; } };
+  CONTRACT['structure.redeem_eligible_items[]'] = { absent: NA('an element cannot be absent'), invalid: (s) => { s.structure.redeem_eligible_items = ['   ']; }, refs: (s) => { s.structure.redeem_eligible_items = ['ghost_item']; } };
+  CONTRACT['structure.redeem_eligible_extras'] = { absent: NA('optional — a brand may declare no redemption allowlist at all'), invalid: NA('covered per element'), refs: (s) => { s.structure.redeem_eligible_extras = ['ghost_extra']; } };
+  CONTRACT['structure.redeem_eligible_extras[]'] = { absent: NA('an element cannot be absent'), invalid: (s) => { s.structure.redeem_eligible_extras = ['   ']; }, refs: (s) => { s.structure.redeem_eligible_extras = ['ghost_extra']; } };
+
+  const rekey = (s) => { s.items[0].key = pkeyOf(s.restaurant_id, s.items[0].display); s.structure.item_order[0] = s.items[0].key; };
+  const withSub = (s) => s.items.find((i) => i.display.subcat);
+  const variantItem = (s) => s.items.find((i) => i.display.variantOf != null);
+  const cat0 = (s) => s.structure.categories[0];
+  const subCat = (s) => s.structure.categories.find((c) => Array.isArray(c.subcats) && c.subcats.length);
+  const spec = (s) => s.structure.variant_items[Object.keys(s.structure.variant_items)[0]];
+  const badge = (s) => s.structure.badges[Object.keys(s.structure.badges)[0]];
+
+  // Two forms that ONLY their own rule refuses. Both were reported by the gate, and both survived
+  // mutation while every other plant for the same field was caught by a neighbouring rule.
+  CONTRACT['structure.variant_items.*.variantIds[]'].wrapped = (s) => {
+    // `[id]` stringifies to exactly the same text as `id`, so any String()-based comparison accepts
+    // it — while the renderer matches strictly (`p.id === vid`) and drops the choice silently.
+    const sp = s.structure.variant_items[Object.keys(s.structure.variant_items)[0]];
+    sp.variantIds[0] = [sp.variantIds[0]];
+  };
+  CONTRACT['structure.badges.*'].nullDefinition = (s) => {
+    // A null definition used to reach `def.label` and crash rather than reject. A validator that
+    // throws a TypeError has still failed closed, but it has stopped explaining itself.
+    s.structure.badges[Object.keys(s.structure.badges)[0]] = null;
+  };
+
+  const MODES = ['absent', 'wrongType', 'invalid', 'refs', 'duplicate'];
   for (const rid of ['x_pizza', 'la_musa']) {
     const seed = buildSourceFromCode(rid);
-    // Enumerate what the seed ACTUALLY produces — driven by the data, including the ROOT, which the
-    // first census skipped entirely.
-    const present = new Set(Object.keys(seed));
-    const add = (prefix, obj) => { for (const f of Object.keys(obj || {})) present.add(`${prefix}.${f}`); };
-    for (const i of seed.items) { add('item', i); add('item.display', i.display); }
-    for (const e of seed.extras) { add('extra', e); add('extra.display', e.display); }
-    for (const c of seed.structure.categories) add('category', c);
-    for (const v of Object.values(seed.structure.variant_items || {})) add('variant_spec', v);
-    add('structure', seed.structure);
+    const found = new Set(); walk(seed, '', found);
+    const paths = [...found].sort();
 
-    const unruled = [...present].filter((f) => !has(CONTRACT, f)).sort();
-    assert.deepStrictEqual(unruled, [],
-      `${rid} — these fields exist in the real seed but nothing says what a BAD one looks like:\n    ${unruled.join('\n    ')}`);
+    const unruled = paths.filter((p) => !Object.prototype.hasOwnProperty.call(CONTRACT, p));
+    assert.deepStrictEqual(unruled, [], `${rid} — paths in the real seed with no contract entry:\n    ${unruled.join('\n    ')}`);
 
-    let plants = 0;
-    for (const field of Object.keys(CONTRACT)) {
-      if (!present.has(field)) continue;                  // that brand does not use this field
-      const kinds = CONTRACT[field];
-      assert.ok(Object.keys(kinds).length > 0, `${rid} — ${field} declares no way of being wrong`);
-      for (const [kind, plant] of Object.entries(kinds)) {
+    let planted = 0; let exempt = 0;
+    for (const path of paths) {
+      const entry = CONTRACT[path];
+      for (const mode of MODES) {
+        let plant = entry[mode];
+        // GENERIC plants, so the three mechanical modes can never be forgotten.
+        if (plant === undefined) {
+          if (mode === 'absent') plant = (s) => { const l = locate(s, path); delete l.parent[l.key]; };
+          else if (mode === 'wrongType') plant = (s) => { const l = locate(s, path); l.parent[l.key] = WRONG(l.value); };
+          else if (mode === 'duplicate') {
+            // Only an ARRAY can carry the same entry twice. Object keys are unique by construction, so
+            // for a map this mode is not an exemption anyone chose — it is not expressible.
+            if (!Array.isArray(locate(seed, path).value)) { exempt++; continue; }
+            plant = (s) => { const l = locate(s, path); l.parent[l.key] = [...l.value, l.value[0]]; };
+          }
+        }
+        if (plant && plant.exempt) { assert.ok(plant.exempt.length > 15, `${rid} — ${path}/${mode}: exemption needs a reason`); exempt++; continue; }
+        assert.ok(typeof plant === 'function', `🔴 ${rid} — ${path} declares no outcome for '${mode}' (plant it, or state why it cannot apply)`);
         const s = buildSourceFromCode(rid);
-        try { plant(s); } catch (e) { assert.fail(`${rid} — plant ${field}/${kind} could not be applied: ${e.message}`); }
+        try { plant(s); } catch (e) { assert.fail(`${rid} — plant ${path}/${mode} could not be applied: ${e.message}`); }
         let threw = null;
         try { validateSource(s, rid); } catch (e) { threw = e; }
-        assert.ok(threw, `🔴 ${rid} — ${field} with a ${kind} value was ACCEPTED`);
-        plants++;
+        assert.ok(threw, `🔴 ${rid} — ${path} with a ${mode} value was ACCEPTED`);
+        // 🔴 AND IT MUST REJECT CLEANLY. A TypeError from reading a property off null is still a
+        // closed door, but it has stopped saying what is wrong — and it hid a missing rule, because
+        // "it threw" was all the census asked for.
+        assert.match(threw.message, /source_malformed|display_unsafe/,
+          `🔴 ${rid} — ${path}/${mode} CRASHED instead of rejecting: ${threw.message}`);
+        planted++;
+      }
+      // any extra named plants (unsafe*, etc.) run too
+      for (const [k, plant] of Object.entries(entry)) {
+        if (MODES.includes(k) || typeof plant !== 'function') continue;
+        const s = buildSourceFromCode(rid);
+        plant(s);
+        let threw = null;
+        try { validateSource(s, rid); } catch (e) { threw = e; }
+        assert.ok(threw, `🔴 ${rid} — ${path} with a ${k} value was ACCEPTED`);
+        assert.match(threw.message, /source_malformed|display_unsafe/,
+          `🔴 ${rid} — ${path}/${k} CRASHED instead of rejecting: ${threw.message}`);
+        planted++;
       }
     }
-    ok(`${rid}: every seed field ruled; ${plants} separate wrong-value plants all refused (${present.size} fields)`);
+    // 🔴 THE CENSUS MUST NOTICE ITS OWN WEAKENING. Deleting a generic plant, or making `locate` stop
+    // choosing a record that carries the field, removes coverage without failing anything — the
+    // census would simply do less and still report success. Pinning the counts makes any reduction a
+    // build failure, and any genuine addition a deliberate edit.
+    const EXPECTED = { x_pizza: { paths: 36, planted: 112 }, la_musa: { paths: 61, planted: 181 } }[rid];
+    assert.strictEqual(paths.length, EXPECTED.paths, `${rid} — path count moved; the walker or the seed changed`);
+    assert.strictEqual(planted, EXPECTED.planted, `${rid} — plant count moved (got ${planted}); coverage was added or removed`);
+    ok(`${rid}: ${paths.length} paths, ${planted} plants all refused, ${exempt} stated exemptions`);
+  }
+
+  // The unruled-path check is the census's own backstop, and nothing proved it fires. A comparison of
+  // two empty arrays passes forever.
+  {
+    const seed = buildSourceFromCode('la_musa');
+    seed.items[0].display.someNewField = 'x';
+    seed.structure.badges.some_new_badge = { label: 'L', cls: 'c', extraField: 1 };
+    const found = new Set(); walk(seed, '', found);
+    const unruled = [...found].filter((p) => !Object.prototype.hasOwnProperty.call(CONTRACT, p)).sort();
+    assert.deepStrictEqual(unruled, ['items[].display.someNewField', 'structure.badges.*.extraField'],
+      'the unruled-path detector finds a new field at any depth, including inside a nested map');
+    ok('the census detects an unruled path — including a nested one');
   }
 
   for (const rid of ['x_pizza', 'la_musa']) {
-    assert.doesNotThrow(() => validateSource(buildSourceFromCode(rid), rid), `${rid} still validates after every rule added`);
+    assert.doesNotThrow(() => validateSource(buildSourceFromCode(rid), rid), `${rid} still validates`);
   }
   ok('both real menus still PASS with the complete rule set');
 }

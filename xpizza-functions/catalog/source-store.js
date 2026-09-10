@@ -93,7 +93,9 @@ function checkField(value, rule, label, field) {
 // is silent: 'ghost' and '2' both validated as x_pizza dish ids and neither one works.
 const ID_S = 'sentinel_id';
 const NAME_S = 'sentinel_name';
-const dishIdTypeFor = (rid) => (pricingKeyOf(rid, { id: ID_S, name: NAME_S }) === ID_S ? 'string' : 'number');
+// A numeric UI id is a DOM handle and an argument to an inline handler — it must be a positive
+// integer, not merely a number. -0.5 was accepted and would produce `openDetailModal(-0.5)`.
+const dishIdTypeFor = (rid) => (pricingKeyOf(rid, { id: ID_S, name: NAME_S }) === ID_S ? 'string' : 'int_positive');
 
 
 // Reject anything that could produce a wrong or partial build. Ordering of checks is deliberate:
@@ -207,7 +209,7 @@ function validateSource(source, rid) {
     emoji: { required: false, type: 'string', sink: 'body' },
     color: { required: false, type: 'string', sink: 'color' },
     img: { required: false, type: 'string', sink: 'url' },
-    tags: { required: false, type: 'string_array', sink: 'identifier_list' },
+    tags: { required: false, type: 'string_array', unique: true, sink: 'identifier_list' },
     variantOf: { required: false, type: 'id_ref' },
     choice: { required: false, type: 'string', nonEmpty: true, sink: 'body' },
   };
@@ -294,9 +296,14 @@ function validateSource(source, rid) {
   const legalExposureValue = (v) => extraCatSet.has(v) || extraKeys.has(v);
   for (const field of ['extras_by_category', 'extras_by_item']) {
     const map = st[field];
-    if (!map) continue;
+    if (map === undefined) continue;
+    // A plain object BEFORE traversal: `extras_by_item = 7` walked straight past Object.entries(7),
+    // which yields nothing, so a scalar where a map belongs was silently an empty map.
+    checkField(map, { required: false, type: 'object' }, `${rid}`, `structure.${field}`);
     for (const [k, vals] of Object.entries(map)) {
-      if (!Array.isArray(vals)) fail(`${rid} — structure.${field}.${k} must be an array`);
+      // (the map's KEYS are already checked against the category/item namespaces further up; a second
+      //  copy here was redundant and could not be killed on its own)
+      checkField(vals, { required: true, type: 'string_array', unique: true }, `${rid}`, `structure.${field}.${k}`);
       for (const v of vals) {
         if (!legalExposureValue(v)) fail(`${rid} — structure.${field}.${k} references ${v}, which is neither a declared extra-category nor a known extra`);
       }
@@ -337,6 +344,10 @@ function validateSource(source, rid) {
         fail(`${rid} — variant launcher ${launcherId} declares basePrice ${String(spec.basePrice)} but the cheapest selectable variant is ${String(min)} ("desde" is derived, never authored)`);
       }
       for (const v of ids) {
+        // The renderer matches STRICTLY (`p.id === vid`), so a non-primitive reference silently
+        // matches nothing and the choice vanishes from a REQUIRED selection. `[id]` stringifies to
+        // the same text as `id`, which is exactly how it got through a String()-based comparison.
+        if (typeof v !== 'string' && typeof v !== 'number') fail(`${rid} — variant launcher ${launcherId} lists a ${Array.isArray(v) ? 'array' : typeof v} where a variant id belongs; the renderer matches strictly and would drop it`);
         if (String(v) === String(launcherId)) fail(`${rid} — variant launcher ${launcherId} lists itself as a variant (cycle)`);
         const item = byUiId.get(String(v));
         if (!item) fail(`${rid} — variant launcher ${launcherId} lists ${v}, which is not a real item`);
@@ -373,6 +384,17 @@ function validateSource(source, rid) {
   // ── BADGES ───────────────────────────────────────────────────────────────────────────────────
   // A tag is a lookup key into the badge definitions. One that names no definition renders no badge —
   // the merchant sees their "Chef's pick" simply not appear, with nothing to explain it.
+  // Badge DEFINITIONS are records too, and `badges.ghost = {}` was accepted — then a tag naming it
+  // rendered nothing, which is the same silence the tag rule was written to stop. `cls` reaches a
+  // class attribute, so it is constrained like any other attribute-context value.
+  if (st.badges !== undefined) {
+    checkField(st.badges, { required: false, type: 'object' }, `${rid}`, 'structure.badges');
+    for (const [k, def] of Object.entries(st.badges)) {
+      checkField(def, { required: true, type: 'object' }, `${rid}/badge ${k}`, 'definition');
+      checkField(def.label, { required: true, type: 'string', nonEmpty: true, sink: 'body' }, `${rid}/badge ${k}`, 'label');
+      checkField(def.cls, { required: true, type: 'string', nonEmpty: true, sink: 'attribute' }, `${rid}/badge ${k}`, 'cls');
+    }
+  }
   const badgeKeys = new Set(Object.keys(st.badges || {}));
   for (const it of source.items) {
     for (const t of (Array.isArray(it.display.tags) ? it.display.tags : [])) {
@@ -386,6 +408,12 @@ function validateSource(source, rid) {
   // section, and a declared subcategory nothing is in renders an empty heading. Both are far more
   // likely a rename that half-landed than an intention. Refused now; if pre-creating empty categories
   // is ever wanted, that is a deliberate relaxation rather than a gap nobody noticed.
+  // The same rule for the EXTRA-category namespace: a declared extra-category no extra is in renders
+  // an empty option group. Reverse coverage was written for dish categories only.
+  const usedExtraCats = new Set(source.extras.map((e) => e.display && e.display.cat));
+  for (const c of (Array.isArray(extraCats) ? extraCats : [])) {
+    if (!usedExtraCats.has(c)) fail(`${rid} — extra-category ${c} is declared but no extra is in it (it would render an empty option group)`);
+  }
   const usedCatIds = new Set(source.items.map((i) => i.display.cat));
   for (const c of st.categories) {
     if (!usedCatIds.has(c.id)) fail(`${rid} — category ${c.id} is declared but no dish is in it (it would render an empty section)`);
@@ -413,7 +441,9 @@ function validateSource(source, rid) {
   for (const field of ['pickup_only_cats', 'weekend_only_cats']) {
     const arr = st[field];
     if (arr === undefined) continue;
-    if (!Array.isArray(arr)) fail(`${rid} — structure.${field} must be an array`);
+    // Unique, like every other reference array: gating the same category twice is not an error the
+    // renderer reports, it is simply a list that says one thing twice.
+    checkField(arr, { required: false, type: 'string_array', unique: true }, `${rid}`, `structure.${field}`);
     for (const c of arr) if (!catIds.has(c)) fail(`${rid} — structure.${field} references unknown category ${c}`);
   }
   // 2a Task 6 — redemption eligibility. Same shape of guard as the availability gates: a reference to
