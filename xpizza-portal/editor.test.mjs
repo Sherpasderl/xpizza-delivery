@@ -432,3 +432,30 @@ test('the baseline moves even while the draft is owned — publishing is not edi
   commitTo(d, submitted);
   assert.strictEqual(pendingCount(d), 0, 'the baseline moved while the draft was owned');
 });
+
+test('🔴 the boundary itself cannot be switched off', () => {
+  // canEdit IS the boundary — every mutator asks it. As a plain property it was one assignment away
+  // from being replaced by `() => true`, which would disable the whole thing at runtime with no diff
+  // to the mutators and nothing for a static check to notice at the call site.
+  //
+  // The draft is SEALED and canEdit is non-writable: the boundary is fixed at construction. The
+  // document stays mutable, because the setters must keep working — the granularity is deliberate.
+  const src = { items: [{ key: 'Pizza', price: 299, display: { id: 1, cat: 'c', name: 'Pizza', price: 299 } }], extras: [], structure: {} };
+  let locked = true;
+  const draft = createDraft(src, { canEdit: () => !locked });
+
+  assert.throws(() => { draft.canEdit = () => true; }, TypeError, '🔴 the boundary cannot be replaced');
+  assert.throws(() => { delete draft.canEdit; }, TypeError, '🔴 nor deleted');
+  assert.throws(() => { Object.defineProperty(draft, 'canEdit', { value: () => true }); }, TypeError, '🔴 nor redefined');
+  assert.throws(() => { draft.smuggled = 1; }, TypeError, 'and no new property can be added to it');
+
+  setItemPrice(draft, 'Pizza', '999');
+  assert.strictEqual(draft.state.items[0].price, 299, 'so a locked draft is still refused');
+
+  // ...and the document itself remains editable, or the editor would not work at all.
+  locked = false;
+  setItemPrice(draft, 'Pizza', '310');
+  assert.strictEqual(draft.state.items[0].price, 310, 'an unlocked draft still edits');
+  discard(draft);
+  assert.strictEqual(draft.state.items[0].price, 299, 'and discard still restores — it assigns draft.state');
+});

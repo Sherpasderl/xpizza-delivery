@@ -42,6 +42,7 @@ export function analyse(src) {
   const scopeOf = new Map();
   const fnOf = new Map();
   const root = new Scope(null, ast);
+  root.isFunctionScope = true;
 
   const children = (n) => {
     const out = [];
@@ -61,13 +62,26 @@ export function analyse(src) {
     let inner = scope, innerFn = fn;
     if (FUNCTION_TYPES.has(node.type)) {
       inner = new Scope(scope, node); innerFn = node;
+      inner.isFunctionScope = true;
       for (const p of node.params) for (const nm of patternNames(p)) inner.declare(nm, { kind: 'param', node: p });
       if (node.type === 'FunctionDeclaration' && node.id) scope.declare(node.id.name, { kind: 'function', node });
+      // A NAMED FUNCTION EXPRESSION binds its own name inside itself. Missing it made that name resolve
+      // to whatever was outside — so `const f = function state() {...}` had `state` resolving to the
+      // module's state object inside f.
+      if (node.type === 'FunctionExpression' && node.id) inner.declare(node.id.name, { kind: 'self', node });
     } else if (node.type === 'BlockStatement' || node.type === 'ForStatement' || node.type === 'ForOfStatement' || node.type === 'ForInStatement') {
       inner = new Scope(scope, node);
+    } else if (node.type === 'CatchClause') {
+      // A catch parameter is a binding like any other; without this it resolved outward.
+      inner = new Scope(scope, node);
+      for (const nm of patternNames(node.param)) inner.declare(nm, { kind: 'catch', node });
     }
     if (node.type === 'VariableDeclaration') {
-      for (const d of node.declarations) for (const nm of patternNames(d.id)) scope.declare(nm, { kind: node.kind, node: d });
+      // `var` hoists to the nearest FUNCTION scope, not the block it is written in. Declaring it in the
+      // block meant a var-declared alias was invisible to every reference outside that block.
+      let target = scope;
+      if (node.kind === 'var') { while (target.parent && !target.isFunctionScope) target = target.parent; }
+      for (const d of node.declarations) for (const nm of patternNames(d.id)) target.declare(nm, { kind: node.kind, node: d });
     }
     if (node.type === 'ImportDeclaration') {
       for (const sp of node.specifiers) scope.declare(sp.local.name, { kind: 'import', node: sp, from: node.source.value });
@@ -95,6 +109,8 @@ export const ALLOWED_CONSUMERS = new Set([
   // The view modules. Licensed by an executable guard below: render.js, review.js and portal-logic.js
   // contain no reference to `state` at all, so a reference handed to them cannot be written through.
   'renderRail', 'renderDetail', 'renderReview', 'renderAttestation', 'renderOutcome', 'receiptFor',
+  // A WeakSet membership test. It cannot reach the object's properties, let alone write one.
+  'mintedReviews.has',
 ]);
 // Method calls on a state property, by FULL CHAIN — so a mutating method is permitted on exactly the
 // collection it was ruled for and nowhere else.
@@ -113,13 +129,13 @@ export const ALLOWED_METHOD_CHAINS = new Set([
 export const PRIMITIVE_PROPS = new Set([
   'currentRid', 'draftRid', 'sourceUpdateTime', 'usesPlatformFactura', 'menuLoading',
   'selectedCat', 'drawerKey', 'uid', 'publishGen', 'reviewLock',
-  'editToken', 'acknowledged', 'rid', 'length', 'id',
+  'editToken', 'acknowledged', 'rid', 'length', 'id', 'name',
 ]);
 
 // Parent contexts in which a state reference is being READ and cannot escape: the value is consumed to
 // produce a decision or a primitive, not handed to anything that could retain or mutate it.
 const READ_CONTEXTS = new Set([
-  'BinaryExpression', 'LogicalExpression', 'UnaryExpression', 'ConditionalExpression',
+  'BinaryExpression', 'LogicalExpression', 'ConditionalExpression',
   'IfStatement', 'WhileStatement', 'DoWhileStatement', 'SwitchStatement', 'SwitchCase',
   'ExpressionStatement', 'ForOfStatement',
 ]);
@@ -151,24 +167,66 @@ export function stateViolations(src, label = 'app.js') {
   // alias is reached on the next pass. Escapes are NOT propagated through — they are rejected, so
   // there is nothing to follow.
   const tainted = new Set([stateBinding]);
+
+  // 🔴 ONE VALUE-FLOW RULE, used by BOTH taint and classification. They disagreed: classification
+  // followed conditionals, logicals and comma sequences (so `f(c ? state.review : x)` was caught as an
+  // escape), while taint followed only member chains — so `const r = c ? state.review : x` bound a live
+  // reference that the analysis then treated as an ordinary local. An escape rule and a taint rule that
+  // describe different languages leave exactly the gap between them.
+  //
+  // Methods that hand back an ELEMENT of a state collection propagate too: `state.groups.find(...)`
+  // returns the group itself, not a copy of it.
+  const REFERENCE_RETURNING = new Set(['find', 'at', 'pop', 'shift', 'get']);
   const reaches = (node, scope) => {
-    let n = node;
-    while (n && n.type === 'MemberExpression') n = n.object;
-    if (!n || n.type !== 'Identifier') return false;
-    const b = scope.lookup(n.name);
-    return !!b && tainted.has(b);
+    if (!node) return false;
+    switch (node.type) {
+      case 'Identifier': { const b = scope && scope.lookup(node.name); return !!b && tainted.has(b); }
+      case 'MemberExpression':
+        // A chain ending in a ruled PRIMITIVE yields a value, not a reference — `const held =
+        // state.reviewLock` binds a number. Propagating taint through it would report every ticket
+        // variable in the file as a live handle on state.
+        if (!node.computed && PRIMITIVE_PROPS.has(node.property.name)) return false;
+        return reaches(node.object, scope);
+      case 'ChainExpression': return reaches(node.expression, scope);
+      case 'ConditionalExpression': return reaches(node.consequent, scope) || reaches(node.alternate, scope);
+      case 'LogicalExpression': return reaches(node.left, scope) || reaches(node.right, scope);
+      case 'SequenceExpression': return reaches(node.expressions[node.expressions.length - 1], scope);
+      case 'AssignmentExpression': return reaches(node.right, scope);
+      case 'TSNonNullExpression': return reaches(node.expression, scope);
+      case 'CallExpression':
+        return node.callee.type === 'MemberExpression' && !node.callee.computed
+          && REFERENCE_RETURNING.has(node.callee.property.name) && reaches(node.callee.object, scope);
+      default: return false;
+    }
   };
-  for (let pass = 0; pass < 8; pass++) {
+  // A REAL FIXED POINT. The previous version capped the passes at an arbitrary number, so a long alias
+  // chain would simply stop being followed — silently, with no signal that the answer was partial.
+  // The set only ever grows and is bounded by the number of bindings, so this terminates; the cap that
+  // remains is a loop-safety backstop that ASSERTS rather than shrugs.
+  let passes = 0;
+  for (;;) {
     let grew = false;
     const scan = (node) => {
+      const sc = scopeOf.get(node);
       if (node.type === 'VariableDeclarator' && node.init && node.id.type === 'Identifier') {
-        const b = scopeOf.get(node) && scopeOf.get(node).lookup(node.id.name);
+        const b = sc && sc.lookup(node.id.name);
         if (b && !tainted.has(b) && reaches(node.init, scopeOf.get(node.init))) { tainted.add(b); grew = true; }
+      }
+      // ITERATION HANDS OUT ELEMENT REFERENCES. `for (const g of state.groups) g.price = 1` writes
+      // straight through the state object, and the loop variable is the only place to notice.
+      if ((node.type === 'ForOfStatement' || node.type === 'ForInStatement') && node.left) {
+        const decl = node.left.type === 'VariableDeclaration' ? node.left.declarations[0] : null;
+        const nm = decl && decl.id.type === 'Identifier' ? decl.id.name : (node.left.type === 'Identifier' ? node.left.name : null);
+        if (nm && node.type === 'ForOfStatement' && reaches(node.right, scopeOf.get(node.right))) {
+          const b = scopeOf.get(node.body) && scopeOf.get(node.body).lookup(nm);
+          if (b && !tainted.has(b)) { tainted.add(b); grew = true; }
+        }
       }
       for (const c of children(node)) scan(c);
     };
     scan(ast);
     if (!grew) break;
+    if (++passes > 500) throw new Error('taint analysis did not converge — the guard cannot vouch for this file');
   }
 
   // ── CLASSIFY every identifier that resolves to a tainted binding.
@@ -295,6 +353,19 @@ export function stateViolations(src, label = 'app.js') {
           bad.push(`${at(id)}: \`${shown}\` is passed to \`${name || '<expression>'}(\`, which is not a ruled consumer of state`);
           return;
         }
+        // 🔴 THE NAME IS NOT THE FUNCTION. `setItemPrice` on the allowlist authorises the imported
+        // guarded setter — not a local of the same name, which is a different function with different
+        // effects and would have inherited the authorisation for free. Resolve the binding and require
+        // it to be the module-level import or declaration the ruling actually meant.
+        const rootId = parent.callee.type === 'Identifier' ? parent.callee
+          : (parent.callee.type === 'MemberExpression' && parent.callee.object.type === 'Identifier' ? parent.callee.object : null);
+        if (!rootId) { bad.push(`${at(id)}: \`${shown}\` is passed to a computed callee, which cannot be authorised`); return; }
+        const cb = scopeOf.get(parent.callee) && scopeOf.get(parent.callee).lookup(rootId.name);
+        if (!cb) { bad.push(`${at(id)}: \`${shown}\` is passed to \`${rootId.name}(\`, which resolves to no binding in this module`); return; }
+        if (cb.kind !== 'import' && cb.kind !== 'function' && !(cb.kind === 'const' && root.bindings.get(rootId.name) === cb)) {
+          bad.push(`${at(id)}: \`${shown}\` is passed to \`${rootId.name}(\`, which resolves to a ${cb.kind} binding, not the module-level function the ruling authorises`);
+          return;
+        }
         return;                                                    // ALLOWED: a ruled consumer
       }
       case 'UpdateExpression':
@@ -313,6 +384,11 @@ export function stateViolations(src, label = 'app.js') {
         if (isPrimitiveRead) return;                               // ALLOWED: a copied primitive
         bad.push(`${at(id)}: \`${shown}\` escapes its scope (${parent.type}) — a state reference must not be handed out`);
         return;
+      case 'UnaryExpression':
+        // `delete state.review` removes the field outright — and on the minted review record it would
+        // be an attempt to strip the accessor that locks the acknowledgement.
+        if (parent.operator === 'delete') { bad.push(`${at(id)}: \`delete ${shown}\` — state properties may not be deleted`); return; }
+        return;                                                    // ALLOWED: !x, typeof x, void x
       case 'MemberExpression':
         if (parent.property === node) return;                      // ALLOWED: used as a key, a read
         bad.push(`${at(id)}: \`${shown}\` in an unrecognised member position`);
@@ -374,14 +450,18 @@ export function writerFunctions(src) {
   };
   scan(ast);
 
-  // close under "calls a writer"
-  for (let pass = 0; pass < 32; pass++) {
+  // Close under "calls a writer", to a REAL fixed point. The previous cap of 32 passes would have
+  // silently stopped following a deeper call chain and returned a partial writer set — which reads
+  // exactly like a complete one.
+  let rounds = 0;
+  for (;;) {
     let grew = false;
     for (const [fn, targets] of calls) {
       if (writes.has(fn)) continue;
       for (const t of targets) if (writes.has(t)) { writes.add(fn); grew = true; break; }
     }
     if (!grew) break;
+    if (++rounds > 1000) throw new Error('writer analysis did not converge — the guard cannot vouch for this file');
   }
   const names = new Set();
   for (const fn of writes) if (nameOf.has(fn)) names.add(nameOf.get(fn));

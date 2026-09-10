@@ -39,7 +39,7 @@ test('every function a module calls is one it defines or imports', () => {
     'document', 'window', 'localStorage', 'CustomEvent', 'encodeURIComponent', 'super', 'if', 'for',
     'while', 'switch', 'catch', 'return', 'typeof', 'function', 'await', 'new',
     // keywords that precede a parenthesis and are not calls
-    'async', 'else', 'do', 'try', 'yield', 'delete', 'void', 'in', 'of', 'instanceof']);
+    'async', 'else', 'do', 'try', 'yield', 'delete', 'void', 'in', 'of', 'instanceof', 'WeakSet']);
   for (const f of JS) {
     const c = codeOf(f);
     const defined = new Set([
@@ -567,7 +567,10 @@ test('the review flow is wired to the SERVER diff, and captures the ack set at t
 
   // THE ACK SET IS CAPTURED FROM THE RESPONSE, at the moment the token was minted. Rebuilding it later
   // from the rendered rows — or from the local draft — would replay something the token is not bound to.
-  assert.ok(/ackSetFrom\(\s*res/.test(app), 'the ack set comes from the editCatalog RESPONSE, not from the draft or the DOM');
+  // `const diff = res && res.diff` then ackSetFrom(diff): still the RESPONSE, named once because the
+  // review record is now minted in a single call rather than assembled field by field.
+  assert.ok(/const diff = res && res\.diff/.test(app) && /ackSetFrom\(\s*diff\s*\)/.test(app),
+    'the ack set comes from the editCatalog RESPONSE, not from the draft or the DOM');
   assert.ok(!/ackSet\s*=\s*\[\s*\]/.test(app), '...and is never re-initialised to an empty literal after capture');
 
   // the CAS baseline must move forward, or a second review of the same draft reports stale_edit
@@ -924,7 +927,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
   //                unconditionally on purpose; guarding it would be guarding the guard.
   const CENSUS = {
     'state.draft':               [3, 'canEdit', 'created on load, cleared by the auth ender AND at the start of a tenant switch; every MUTATION goes through editor.js'],
-    'state.review':              [9, 'bound',   'built on the guarded settle path; the ack callback — the one live listener — is reviewBound'],
+    'state.review':              [5, 'guarded', '🔴 DOWN FROM 9. The record is now minted in one call and is IMMUTABLE afterwards — the four writes that assembled it field by field (rid, attestation, acknowledged twice) are gone, and `acknowledged` is an accessor with no setter, so it cannot be written at all. What remains are whole-record assignments on generation-checked paths: one mint and four clears.'],
     'state.publishGen':          [2, 'guarded', 'set only on genuine admission inside runPublish, cleared by the ender'],
     'state.reviewLock':          [8, 'guarded', 'ticket bookkeeping; every write pairs with a take/release on a generation-checked path — the 7th releases a ticket acquired by a publish that was then refused, the 8th is endWrite handing back a ticket whose request settled into a world that had ended'],
     'state.currentRid':          [3, 'ender',   'the tenant switch and the auth handler — the two things that end a world'],
@@ -982,20 +985,25 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
   assert.ok(writesOf('state.draft') > 0 && writesOf('state.nonexistent') === 0, 'the counter discriminates');
 });
 
-test('🔴 the acknowledgement is written only through the bound callback', () => {
-  // The single most dangerous write in the portal: it is what turns an unsigned review into a signed
-  // fiscal attestation. Two writers, and both must be accounted for by name.
+test('🔴 the acknowledgement cannot be written at all — it is an accessor with no setter', () => {
+  // This guard used to count the RAW WRITES of state.review.acknowledged and check their shape. There
+  // are now none to count: the field is a getter over a closure variable, and the only way in is a
+  // function the minting call hands to exactly one bound callback.
+  //
+  // What is asserted here is therefore the construction, not the spelling — and the executable test in
+  // app-loads proves the runtime behaviour, which is what actually protects the tax document.
   const app = codeOf('app.js');
-  const acks = [...app.matchAll(/^.*state\.review\.acknowledged\s*=.*$/gm)].map((m) => m[0]);
-  assert.strictEqual(acks.length, 2, `expected exactly two writers of the acknowledgement, found ${acks.length}`);
-  assert.ok(acks.some((l) => /=\s*false/.test(l)), 'one initialises it to false when the review is built');
-  const live = acks.find((l) => !/=\s*false/.test(l));
-  assert.ok(/v === true/.test(live), 'the live one takes a literal true, never a truthy value');
-
-  // and the callback that contains it is bound
-  const att = app.match(/renderAttestation\([^\n]*\n?/);
-  assert.ok(att && /\bbound\(/.test(att[0]),
-    '🔴 the attestation callback must be bound — an unbound one acknowledges whatever review is open');
+  assert.strictEqual([...app.matchAll(/state\.review\.acknowledged\s*=(?!=)/g)].length, 0,
+    '🔴 nothing writes the acknowledgement directly — if this fires, the lock has been routed around');
+  assert.match(app, /Object\.defineProperty\(review, 'acknowledged', \{ get: \(\) => acknowledged/,
+    '🔴 it is defined as a GETTER with no setter, so every form of assignment throws in strict mode');
+  assert.match(app, /configurable: false/, '...and non-configurable, so it cannot be redefined or deleted');
+  assert.match(app, /acknowledged = v === true/, 'the one writer stores a literal true, never a truthy');
+  // the setter re-verifies provenance itself rather than trusting its caller to be bound
+  const ack = app.slice(app.indexOf('const acknowledge = (v)'));
+  assert.match(ack.slice(0, 300), /gen !== opGeneration/, 'and re-checks the generation at the moment of the write');
+  assert.match(ack.slice(0, 300), /state\.review !== review/, '...and that this is still the open review');
+  assert.match(app, /renderAttestation\([^\n]*bound\(/, 'the callback that holds it is still bound');
 });
 
 // ── THE LISTENER CENSUS ──────────────────────────────────────────────────────────────────────────
@@ -1430,7 +1438,7 @@ test('🔴 every reference to `state` in app.js reduces to a proven-safe shape',
 });
 
 test('🔴 the AST guard rejects constructs nobody told it about', () => {
-  const mod = (body) => `export const state = { review: null, groups: [], publishGen: 0 };\nfunction f(obj) {\n  ${body}\n}\n`;
+  const mod = (body) => `import { setItemPrice, draftSource } from './editor.js';\nexport const state = { review: null, groups: [], publishGen: 0 };\nfunction f(obj) {\n  ${body}\n}\n`;   // the imports make a RESOLVED consumer available, so a local of the same name shadows it
   const REJECTED = [
     // ── the whole-gate reproduction: a reference parked in a container, reached by computed key ──
     ['const box = { r: state.review }; box["r"].acknowledged = true;',   'escapes into a container'],
@@ -1542,4 +1550,44 @@ test('🔴 the view modules cannot reach state — which is what licenses handin
     assert.ok(!/\bstate\b/.test(c), `🔴 ${f} now references \`state\` — it is a view module and the AST guard trusts it not to`);
     assert.ok(!/from\s+'\.\/app\.js'/.test(c), `${f} must not import the app module`);
   }
+});
+
+test('🔴 the analyser closes the soundness holes it was shown', () => {
+  // Each of these is a bounded, real hole — not adversarial exotica. Every one was ADMITTED before the
+  // fix, which is the only reason to keep them as fixtures.
+  const mod = (body) => `import { setItemPrice, draftSource } from './editor.js';\nexport const state = { review: null, groups: [], publishGen: 0 };\nfunction f(obj) {\n  ${body}\n}\n`;   // the imports make a RESOLVED consumer available, so a local of the same name shadows it
+  const HOLES = [
+    // value-flow: taint followed only member chains while classification followed conditionals and
+    // logicals, so a reference bound through one of them stopped being tracked at the binding
+    ['const r = obj ? state.review : obj; r.acknowledged = true;',        'through the alias'],
+    ['const r = obj || state.review; r.acknowledged = true;',             'through the alias'],
+    ['const r = (0, state.review); r.acknowledged = true;',               'through the alias'],
+    ['const r = state?.review; r.acknowledged = true;',                   'through the alias'],
+    // element references handed out by iteration and by reference-returning methods
+    ['for (const g of state.groups) { g.price = 1; }',                    'through the alias'],
+    ['const g = state.groups.find((x) => x); g.price = 1;',               'through the alias'],
+    ['const g = state.groups.at(0); g.price = 1;',                        'through the alias'],
+    // delete
+    ['delete state.review;',                                             'may not be deleted'],
+    ['const r = state.review; delete r.acknowledged;',                    'may not be deleted'],
+    // a consumer authorised by NAME rather than by resolved binding
+    ['const setItemPrice = (x) => { x.acknowledged = true; }; setItemPrice(state.review);', 'not the module-level function'],
+    ['const draftSource = obj; draftSource(state.review);',               'not the module-level function'],
+    // real scopes: var hoists out of its block, a catch param binds, a named function expression
+    // binds its own name
+    ['{ var r = state.review; } r.acknowledged = true;',                  'through the alias'],
+    ['try { obj(); } catch (state) { state.review = 1; }',                'no violation'],
+  ];
+  for (const [body, expect] of HOLES) {
+    const bad = stateViolations(mod(body), 'fx');
+    if (expect === 'no violation') {
+      assert.deepStrictEqual(bad, [], `a shadowing binding is NOT the module state: ${body}`);
+      continue;
+    }
+    assert.ok(bad.length > 0, `🔴 still ADMITTED: ${body}`);
+    assert.ok(bad.some((b) => b.includes(expect)), `wrong reason for "${body}": ${bad.join(' | ')}`);
+  }
+  // and the analyses converge rather than silently truncating
+  assert.doesNotThrow(() => stateViolations(readFileSync(join(DIR, 'app.js'), 'utf8')), 'taint reaches a fixed point');
+  assert.doesNotThrow(() => writerFunctions(readFileSync(join(DIR, 'app.js'), 'utf8')), 'the writer set reaches a fixed point');
 });

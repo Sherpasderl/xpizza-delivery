@@ -53,11 +53,19 @@ export function parsePrice(raw) {
 //
 // Defaults to permissive so the pure tests — which own no lock and have no UI — read naturally.
 export function createDraft(source, opts = {}) {
-  return {
-    orig: clone(source),
-    state: clone(source),
-    canEdit: typeof opts.canEdit === 'function' ? opts.canEdit : () => true,
-  };
+  const draft = { orig: clone(source), state: clone(source) };
+  // 🔴 THE BOUNDARY IS FIXED AT CONSTRUCTION. canEdit is what every mutator asks, so as a plain
+  // property it was one assignment away from `() => true` — the entire boundary disabled at runtime,
+  // with no change to any mutator and nothing at the call site for a reader or a checker to notice.
+  // Non-writable and non-configurable: it cannot be replaced, redefined or deleted.
+  Object.defineProperty(draft, 'canEdit', {
+    value: typeof opts.canEdit === 'function' ? opts.canEdit : () => true,
+    writable: false, configurable: false, enumerable: true,
+  });
+  // Sealed, not frozen, and the difference is the point: no property may be ADDED or REMOVED, so the
+  // draft's shape is fixed — but `orig` and `state` stay writable, because discard() and commit()
+  // assign them and the document has to remain editable through the guarded setters.
+  return Object.seal(draft);
 }
 
 // One predicate, asked by every mutator below. Exported so callers can render an affordance from the

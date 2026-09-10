@@ -1180,7 +1180,11 @@ const fiscalFetch = (tok = 'ET') => installFetch((fn) => {
   return okJson({ versionId: 'v1' });
 });
 
-test('🔴 capture 2 of 3: the REVIEW TOKEN alone, generation and draft held still', async () => {
+// NOTE: since the acknowledgement became runtime-closed, THIS test passes because the minted record's
+// own closure refuses (`state.review !== review`), not because of bound()'s token clause — deleting
+// that clause now breaks nothing. The check below is still the right one to make: it asserts that a
+// checkbox rendered for one review cannot sign another, whichever layer refuses it.
+test('🔴 capture 2 of 3: a checkbox cannot sign a review other than the one it was rendered for', async () => {
   const byId = installDom();
   fiscalFetch();
   const app = await loadAppModule();
@@ -1468,4 +1472,80 @@ test('🔴 a REFUSED duplicate publish does not hand away the live publish’s w
   await publishing;
   await byId.get('review').listeners.click[0]();
   assert.strictEqual(saves, savesBefore + 1, 'and once the real request settles, admission returns');
+});
+
+// ── THE ATTESTATION IS RUNTIME-CLOSED ────────────────────────────────────────────────────────────
+// Every earlier guard proved that no code path in app.js forges the acknowledgement — a proof about
+// the SOURCE, which has to be re-established whenever the source changes or a new syntax turns up.
+// These prove the OBJECT refuses, which needs re-establishing never.
+
+test('🔴 the acknowledgement physically cannot be forged, however it is spelled', async () => {
+  const byId = installDom();
+  fiscalFetch();
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+  const review = app.state.review;
+  assert.strictEqual(review.acknowledged, false, 'premise: an open, unsigned fiscal review');
+
+  // Each of these is a spelling that defeated, or was invented to defeat, some earlier static guard.
+  // Not one of them needs to be RECOGNISED now: the property has a getter and no setter, module code
+  // is strict, so every form of assignment throws where it stands.
+  const forgeries = [
+    ['direct write',            () => { review.acknowledged = true; }],
+    ['computed key',            () => { review['acknowledged'] = true; }],
+    ['Object.assign',           () => { Object.assign(review, { acknowledged: true }); }],
+    ['through an alias',        () => { const r = review; r.acknowledged = true; }],
+    ['destructuring target',    () => { ({ acknowledged: review.acknowledged } = { acknowledged: true }); }],
+    ['logical assignment',      () => { review.acknowledged ||= true; }],
+    ['delete then redefine',    () => { delete review.acknowledged; }],
+    ['redefine the property',   () => { Object.defineProperty(review, 'acknowledged', { value: true }); }],
+    ['write through a container', () => { const box = { r: review }; box['r'].acknowledged = true; }],
+    ['write through an array',  () => { const arr = [review]; arr[0].acknowledged = true; }],
+    ['add a new property',      () => { review.forged = true; }],
+  ];
+  for (const [name, attempt] of forgeries) {
+    assert.throws(attempt, TypeError, `🔴 ${name} must THROW, not quietly succeed`);
+    assert.strictEqual(review.acknowledged, false, `🔴 ...and ${name} left the attestation unsigned`);
+  }
+
+  // The record itself is evidence and is immutable too: the token, the reviewed set and the snapshot
+  // must be exactly what the merchant was shown.
+  for (const field of ['editToken', 'ackSet', 'submitted', 'attestation', 'rid']) {
+    assert.throws(() => { review[field] = 'tampered'; }, TypeError, `🔴 ${field} cannot be rewritten after minting`);
+  }
+
+  // ...and the one legitimate path still works.
+  const cb = byId.get('mbody').querySelectorAll('input').filter((i) => i.type === 'checkbox')[0];
+  cb.checked = true;
+  cb.listeners.change[0]();
+  assert.strictEqual(app.state.review.acknowledged, true, '🔴 the bound callback signs it, because it holds the closure');
+  assert.strictEqual(byId.get('pubbtn').disabled, false, 'and the publish gate opens');
+});
+
+test('🔴 a hand-built review cannot publish, however convincing it looks', async () => {
+  // The lock lives on the minted record, not on the field name — so a forger's next move is to build a
+  // whole object with `acknowledged: true` as an ordinary property and assign it to state.review. That
+  // is a plain data property no runtime check refuses, so the PUBLISH path demands the brand instead.
+  const byId = installDom();
+  const calls = fiscalFetch();
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await byId.get('review').listeners.click[0]();
+  const real = app.state.review;
+
+  app.state.review = {
+    diff: real.diff, editToken: real.editToken, ackSet: real.ackSet, submitted: real.submitted,
+    gen: real.gen, rid: real.rid, attestation: real.attestation,
+    acknowledged: true,                       // an ordinary property; nothing at runtime refuses it
+  };
+  assert.strictEqual(app.state.review.acknowledged, true, 'premise: the forgery looks signed');
+
+  const lockBefore = app.state.reviewLock;
+  await byId.get('pubbtn').listeners.click[0]();
+  assert.strictEqual(calls.filter((c) => c.fn === 'publishEdited').length, 0,
+    '🔴 nothing was published — the record was never minted here, so it is not a review');
+  // The draft is legitimately still owned: the REVIEW that opened normally is holding it. What must be
+  // true is that the refused press took nothing MORE, which is the ticket-leak property one layer down.
+  assert.strictEqual(app.state.reviewLock, lockBefore, '...and the refused press acquired nothing of its own');
 });

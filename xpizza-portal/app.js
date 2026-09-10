@@ -163,6 +163,51 @@ const bumpGeneration = () => { opGeneration += 1; };
 //
 // The listener census in portal-wiring.test.mjs enforces that this is used everywhere it must be, so
 // an unbound write-listener cannot be added without failing the build.
+// ── THE ATTESTATION IS RUNTIME-CLOSED ────────────────────────────────────────────────────────────
+// 🔴 THIS IS THE WRITE THAT STAMPS A TAX DOCUMENT. Every guard before this one proved that no code
+// path in app.js forges it — a proof about the source, which has to be re-established every time the
+// source changes and every time someone finds a syntax the analysis had not considered.
+//
+// This makes the object refuse instead. `acknowledged` is an accessor with a getter and NO setter,
+// backed by a variable that exists only inside this closure. In a module (always strict) every way of
+// writing it THROWS at runtime rather than silently succeeding:
+//
+//     review.acknowledged = true                 → TypeError, no setter
+//     review['acknowledged'] = true              → TypeError, same property
+//     Object.assign(review, {acknowledged:true}) → TypeError, [[Set]] on an accessor
+//     ({acknowledged: review.acknowledged} = x)  → TypeError, same
+//     const r = review; r.acknowledged = true    → TypeError, it is the same object
+//     delete review.acknowledged                 → TypeError, non-configurable
+//
+// Retained, aliased, forwarded, destructured, deleted — none of it matters, because none of them is a
+// spelling the analyzer has to recognise any more. There is exactly one way in, it re-verifies the
+// world it belongs to at the moment of the write, and the analyzer no longer has to prove anything
+// about this field at all.
+//
+// The rest of the record is frozen for the same reason: a review is EVIDENCE of what was shown to a
+// person, so the token, the submitted snapshot and the acknowledged set must be exactly what they were
+// when the merchant looked at them.
+const mintedReviews = new WeakSet();
+
+function mintReview(fields, gen) {
+  let acknowledged = false;
+  const review = {};
+  for (const k of Object.keys(fields)) {
+    Object.defineProperty(review, k, { value: fields[k], enumerable: true, writable: false, configurable: false });
+  }
+  Object.defineProperty(review, 'acknowledged', { get: () => acknowledged, enumerable: true, configurable: false });
+  Object.preventExtensions(review);
+  mintedReviews.add(review);
+  // The only way in. It re-checks provenance ITSELF rather than trusting its caller to be bound — so
+  // even a caller that somehow reached this function outside the wrapper cannot sign for another world.
+  const acknowledge = (v) => {
+    if (gen !== opGeneration) return;        // a world that ended
+    if (state.review !== review) return;     // a different review is open
+    acknowledged = v === true;               // a literal true, never a truthy — this unlocks a signature
+  };
+  return { review, acknowledge };
+}
+
 function bound(fn) {
   const gen = opGeneration;
   const draft = state.draft;
@@ -170,6 +215,10 @@ function bound(fn) {
   return (...args) => {
     if (gen !== opGeneration) return;                                   // a world that ended
     if (state.draft !== draft) return;                                  // a different draft
+    // The review token. NOW BELT-AND-BRACES: the acknowledgement — the only review-scoped write there
+    // is — re-verifies identity inside its own closure, so removing this clause breaks no test. It is
+    // kept for the next review-scoped callback, which will not have a runtime lock of its own on the
+    // day it is written. Reported as a mutation survivor rather than quietly carried.
     const now = state.review ? state.review.editToken : null;
     if (now !== token) return;                                          // a different review
     return fn(...args);
@@ -691,31 +740,38 @@ async function openReviewFlow() {
     if (gen !== opGeneration) return;        // auth changed, tenant switched, or a newer review began
     // Everything the publish will need, kept exactly as the server sent it. The ack set is captured
     // here — at the moment the token was minted — so what is replayed is what the token is bound to.
-    state.review = {
-      diff: res && res.diff,
-      editToken: res && res.token,
-      ackSet: ackSetFrom(res && res.diff),
-      submitted,                              // what publish will commit as the new baseline
-      gen,                                    // the world this review belongs to
-    };
-    // the CAS baseline moves forward: the draft we just wrote is the new precondition
-    if (res && res.updateTime) state.sourceUpdateTime = res.updateTime;
-    $('revSub').textContent = 'Esto es exactamente lo que cambia en tu menú en vivo.';
-    renderReview($('mbody'), reviewModel(state.review.diff));
-
+    const diff = res && res.diff;
     // THE ATTESTATION, gated on the SERVER's capability flag — never on the rid. usesPlatformFactura
     // came back with getEditableCatalog (Task 2b) and is the only thing that decides whether this
     // merchant's edit touches a SAR factura.
-    const att = attestationModel(state.review.diff, { usesPlatformFactura: state.usesPlatformFactura });
-    state.review.rid = state.draftRid;
-    state.review.attestation = att;
-    state.review.acknowledged = false;
+    //
+    // Computed BEFORE the record is minted, because the record is immutable once it exists — the whole
+    // evidence set is fixed at the moment it is created, rather than assembled field by field
+    // afterwards where anything could join in.
+    const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura });
+    const minted = mintReview({
+      diff,
+      editToken: res && res.token,
+      ackSet: ackSetFrom(diff),
+      submitted,                              // what publish will commit as the new baseline
+      gen,                                    // the world this review belongs to
+      rid: state.draftRid,
+      attestation: att,
+    }, gen);
+    state.review = minted.review;
+    // the CAS baseline moves forward: the draft we just wrote is the new precondition
+    if (res && res.updateTime) state.sourceUpdateTime = res.updateTime;
+    $('revSub').textContent = 'Esto es exactamente lo que cambia en tu menú en vivo.';
+    renderReview($('mbody'), reviewModel(diff));
     const attBox = document.createElement('div');
     $('mbody').append(attBox);
     // BOUND to this review and this world. Dispatching A's checkbox after B opened must acknowledge
     // nothing — an acknowledgement identifies a person signing one specific reviewed set.
+    // Bound AS WELL as runtime-closed. The wrapper stops a stale callback from reaching the setter at
+    // all; the closure stops anything that reaches it anyway from signing for the wrong world. Neither
+    // depends on the other being correct.
     renderAttestation(attBox, att, bound((v) => {
-      state.review.acknowledged = v === true;   // a literal true, never a truthy — this unlocks a signature
+      minted.acknowledge(v);
       syncUi();
     }));
     syncPublishButton();
@@ -830,7 +886,18 @@ async function runPublish() {
   // ACQUIRE the edit lock, get `not_ready` back from the publisher, and return without releasing —
   // leaving draft.canEdit() false forever and every future review refused at admission. The portal
   // became read-only until reload.
-  if (!state.review || !state.review.attestation) return;   // nothing to publish; take nothing
+  // 🔴 IT MUST BE A REVIEW WE MINTED — one check, and it is now the only one needed.
+  //
+  // A hand-built object with `acknowledged: true` on it is an ordinary data property that no runtime
+  // check refuses, because the lock lives on the minted record rather than on the field name. Requiring
+  // the brand means forging an attestation takes forging the whole record, and the record cannot be
+  // forged: this WeakSet is module-private and nothing adds to it but mintReview.
+  //
+  // It replaces the two checks that used to stand here — "is there a review" and "does it have an
+  // attestation". Both are now implied: has() is false for null, and a minted record always carries an
+  // attestation because it is built in one call with one. Narrowing the runtime surface narrowed the
+  // checks too, which is the point rather than a side effect.
+  if (!mintedReviews.has(state.review)) return;
   const held = state.reviewLock;
   const acquired = held !== null && held === editLockHolder ? null : takeEditLock();
   const lock = acquired !== null ? acquired : held;
