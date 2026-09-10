@@ -408,7 +408,7 @@ const TWO = {
       restaurant_id: rid, schema_version: 2,   // 1A Task 2: the complete display schema
       items: [{ key: 'plato_01', price: 250, display: { id: 'plato_01', cat: 'principales', name: 'Plato Uno', price: 250 } }],
       extras: [{ key: 'queso', price: 40, display: { id: 'queso', cat: 'Quesos', name: 'Queso', price: 40 } }],
-      structure: { schema_version: 2, item_order: ['plato_01'], categories: [{ id: 'principales' }], extra_categories: ['Quesos'] },
+      structure: { schema_version: 2, item_order: ['plato_01'], categories: [{ id: 'principales', name: 'Principales' }], extra_categories: ['Quesos'] },
     });
     const srcFor = (rid) => (rid === 'la_musa' ? idKeyed(rid) : nameKeyed(rid));
 

@@ -12,7 +12,7 @@
 // to EXTRAS as well as items. x_pizza keys both by NAME; la_musa keys both by ID. The store carries
 // `key` explicitly and validates it against the display record, so the two can never drift apart.
 // ---------------------------------------------------------------------------
-const { pricingKeyOf } = require('./form-menu-source');
+const { pricingKeyOf, formSource, readLiteral } = require('./form-menu-source');
 const { assertDisplaySafe, checkValue: assertFieldSafe } = require('./display-safety');
 
 // The COMPLETE display schema. A source stamped with this validates as a full customer-display
@@ -52,6 +52,49 @@ const isPositiveInt = (p) => Number.isInteger(p) && p > 0;   // same rule as the
 
 function fail(msg) { throw new Error(`source_malformed: ${msg}`); }
 
+// ═══ THE RENDERER CONTRACT ═══════════════════════════════════════════════════════════════════════
+// 🔴 SOME FACTS ARE NOT THE SUBMISSION'S TO DECIDE. Whether a category label is printed, and which
+// badges exist at all, are properties of the SHIPPED RENDERER — so they must be read from the
+// renderer, not inferred from the document being validated.
+//
+// Inferring them from the submission is a validator that can be talked out of its own rules. Requiring
+// a category name only when "some names remain" means deleting EVERY name satisfies it. Checking tags
+// against the badges the SOURCE declares means a source can define a ghost badge and reference it —
+// and the renderer, which selects from its own list, silently shows nothing.
+//
+// Derived per brand from that brand's own shipped form, so there is no new restaurant literal here:
+// a brand whose form has no CATEGORIES literal renders id-only categories and legitimately carries no
+// names; a brand with no badge literal has no badge system to reference.
+const CONTRACTS = new Map();
+function rendererContract(rid) {
+  if (CONTRACTS.has(rid)) return CONTRACTS.get(rid);
+  let categoriesNamed = false;
+  let badges = null;
+  try {
+    const src = formSource(rid);
+    try {
+      const cats = readLiteral(src, 'CATEGORIES');
+      categoriesNamed = Array.isArray(cats) && cats.length > 0 && cats.every((c) => typeof c.name === 'string' && c.name);
+    } catch (_) { categoriesNamed = false; }         // no CATEGORIES literal: id-only categories
+    try {
+      // The SELECTABLE set is the priority list intersected with the definitions — badgeHtmlFor walks
+      // TAG_PRIORITY and looks each entry up, so a definition the priority list omits is never chosen.
+      const defs = readLiteral(src, 'TAG_BADGES', '{', '}') || {};
+      const priority = readLiteral(src, 'TAG_PRIORITY') || [];
+      const defined = new Set(Object.keys(defs));
+      // Intersected, because badgeHtmlFor walks TAG_PRIORITY and looks each entry up — a definition
+      // the priority list omits is never selected. Today the two lists match exactly, so dropping the
+      // filter changes nothing and mutation reports it as a survivor; it is the accurate statement of
+      // what the renderer can actually choose, and the day someone adds a definition without a
+      // priority entry is the day it starts mattering.
+      badges = new Set(priority.filter((t) => defined.has(t)));
+    } catch (_) { badges = null; }                   // no badge system in this renderer
+  } catch (_) { /* no form for this brand: the contract constrains nothing */ }
+  const contract = { categoriesNamed, badges };
+  CONTRACTS.set(rid, contract);
+  return contract;
+}
+
 // THREE SEPARATE QUESTIONS PER FIELD: is it required, what TYPE must it be, and is its content safe.
 // Answering them with one check is how wrong-typed values got through — `desc: {}` stringified to
 // "[object Object]", a perfectly safe-looking string, so the only rule that looked at it passed. Each
@@ -71,7 +114,10 @@ const TYPES = {
 // Evaluate one field against its rule. The ORDER is the point: required, then type, then value, then
 // content safety.
 function checkField(value, rule, label, field) {
-  if (value === undefined || value === null) {
+  // 🔴 NULL IS PRESENT, NOT ABSENT. Treating them the same let `structure.badges = null` pass the type
+  // gate as "not there" and then crash on Object.entries(null) further down — a TypeError instead of
+  // a rejection. Absent means the field was never written; null means it was written as nothing.
+  if (value === undefined) {
     if (rule.required) fail(`${label} — ${field} is required`);
     return;
   }
@@ -122,10 +168,10 @@ function validateSource(source, rid) {
   //
   // An aggregate "n of m are named" check said exactly the same thing from the other direction, and
   // the two covered each other so completely that neither could be killed on its own. One rule.
-  const namedCats = st.categories.filter((c) => c && c.name !== undefined && c.name !== null).length;
+  const contract = rendererContract(rid);
   const CATEGORY_RULES = {
     id: { required: true, type: 'string', nonEmpty: true, sink: 'identifier' },
-    name: { required: namedCats > 0, type: 'string', nonEmpty: true, sink: 'body' },
+    name: { required: contract.categoriesNamed, type: 'string', nonEmpty: true, sink: 'body' },
     subcats: { required: false, type: 'string_array', unique: true },
     layout: { required: false, type: 'string', enum: ['list', 'grid'] },
   };
@@ -314,6 +360,11 @@ function validateSource(source, rid) {
   // A launcher offers a required choice between real variants. Every way that graph can be open —
   // an orphan, a dangling id, an empty choice, a cycle, a variant claimed by two launchers, a
   // variant nobody lists — ends as a dish a customer can reach and cannot order.
+  // (A pre-traversal typing pass over every collection lived here. Once `null` counts as PRESENT
+  //  rather than absent, each collection is already typed where it is used — badges in the badge
+  //  block, the exposure maps in theirs, the gate and redemption arrays in theirs — so a present-null
+  //  one is a clean rejection at that point rather than a TypeError. The extra pass was a duplicate no
+  //  test could distinguish, which is the shape of a guard that quietly stops meaning anything.)
   const vi = (st.variant_items && typeof st.variant_items === 'object') ? st.variant_items : {};
   {
     const byUiId = new Map(source.items.map((i) => [String(i.display.id), i]));
@@ -395,10 +446,20 @@ function validateSource(source, rid) {
       checkField(def.cls, { required: true, type: 'string', nonEmpty: true, sink: 'attribute' }, `${rid}/badge ${k}`, 'cls');
     }
   }
-  const badgeKeys = new Set(Object.keys(st.badges || {}));
+  // The definitions a source may declare are the ones its renderer can actually select. A definition
+  // outside that set renders nothing however well-formed it is.
+  if (st.badges !== undefined && st.badges !== null && contract.badges) {
+    for (const k of Object.keys(st.badges)) {
+      if (!contract.badges.has(k)) fail(`${rid} — badge ${k} is not one the renderer can select (its badge set is fixed by the form, not by this document)`);
+    }
+  }
+  // `contract.badges` first — though with definitions bound to the renderer set above, the source's
+  // own keys are necessarily a subset, so the two agree today and mutation testing reports this as a
+  // survivor. Kept as the direct statement of the rule: tags reference what the RENDERER can select.
+  const badgeKeys = contract.badges || new Set(Object.keys(st.badges || {}));
   for (const it of source.items) {
     for (const t of (Array.isArray(it.display.tags) ? it.display.tags : [])) {
-      if (!badgeKeys.has(t)) fail(`${rid}/${it.key} — tag ${t} names no badge definition, so it would render nothing`);
+      if (!badgeKeys.has(t)) fail(`${rid}/${it.key} — tag ${t} is not a badge the renderer can select, so it would render nothing`);
     }
   }
 

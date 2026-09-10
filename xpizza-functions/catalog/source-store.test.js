@@ -63,7 +63,8 @@ const GOOD = () => ({
       restaurant_id: 'la_musa', schema_version: 2,
       items: [{ key: 'dimsum_01', price: 223, display: { id: 'dimsum_01', cat: 'dim_sum', name: 'Wonton', price: 223 } }],
       extras: [{ key: 'Arroz Blanco', price: 50, display: { id: 'rice_white', cat: 'Acompañamientos', name: 'Arroz Blanco', price: 50 } }],
-      structure: { categories: [{ id: 'dim_sum' }], item_order: ['dimsum_01'], extra_categories: ['Acompañamientos'] },
+      // la_musa's renderer prints category labels, so the contract requires every category to carry one.
+      structure: { categories: [{ id: 'dim_sum', name: 'Dim Sum' }], item_order: ['dimsum_01'], extra_categories: ['Acompañamientos'] },
     };
     assert.throws(() => validateSource(lm, 'la_musa'), /does not match its display record/, 'la_musa extra keyed by NAME must THROW (it prices by id)');
     lm.extras[0].key = 'rice_white';
@@ -451,20 +452,20 @@ const GOOD = () => ({
     'items[].key':              { invalid: (s) => { s.items[0].key = '   '; }, refs: (s) => { s.items[0].key = 'not_the_derived_key'; } },
     'items[].price':            { invalid: (s) => { s.items[0].price = 0; }, refs: NA('a price is a value, not a reference to another catalog entity') },
     'items[].display':          { invalid: NA('an empty display fails its required members, covered per field'), refs: NA('this value is content, not a reference to another catalog entity') },
-    'items[].has_photo':        { absent: NA('optional — a dish with no photo simply omits it'), invalid: NA('a boolean has exactly two values and both are meaningful'), refs: NA('this value is content, not a reference to another catalog entity') },
+    'items[].has_photo':        { collectionAbsent: NA('a menu whose dishes all lack photos is legitimate'), absent: NA('optional — a dish with no photo simply omits it'), invalid: NA('a boolean has exactly two values and both are meaningful'), refs: NA('this value is content, not a reference to another catalog entity') },
     'items[].display.id':       { invalid: (s) => { const d = s.items[0].display; d.id = typeof d.id === 'number' ? -0.5 : '   '; }, refs: NA('a UI id names nothing; its uniqueness is its own rule') },
     'items[].display.cat':      { invalid: (s) => { s.items[0].display.cat = '   '; }, refs: (s) => { s.items[0].display.cat = 'ghost_category'; } },
     'items[].display.name':     { invalid: (s) => { s.items[0].display.name = '   '; rekey(s); }, refs: NA('a display name is content, not a reference to another entity'), unsafeBody: (s) => { s.items[0].display.name = XSS; rekey(s); }, unsafeAttr: (s) => { s.items[0].display.name = '" onmouseover="alert(1)'; rekey(s); } },
     'items[].display.price':    { invalid: (s) => { s.items[0].display.price = s.items[0].price + 1; }, refs: NA('this value is content, not a reference to another catalog entity') },
-    'items[].display.desc':     { absent: NA('optional by renderer contract — beverages ship with a blank description and variants carry none'), invalid: NA('any string is a description; blankness is legitimate for beverages'), refs: NA('this value is content, not a reference to another catalog entity'), unsafe: (s) => { s.items[0].display.desc = XSS; } },
-    'items[].display.subcat':   { absent: NA('optional — only categories that GROUP by subcategory require one, which is its own rule'), invalid: (s) => { withSub(s).display.subcat = 'Undeclared'; }, refs: NA('covered by invalid: a subcat that its category never declares') },
-    'items[].display.emoji':    { absent: NA('optional — a dish may render its photo or colour instead'), invalid: NA('any string renders as a label'), refs: NA('this value is content, not a reference to another catalog entity'), unsafe: (s) => { s.items[0].display.emoji = XSS; } },
-    'items[].display.color':    { absent: NA('optional — the renderer falls back to its own default'), invalid: (s) => { s.items[0].display.color = '#12345'; }, refs: NA('this value is content, not a reference to another catalog entity') },
-    'items[].display.img':      { absent: NA('optional — a dish without a photo renders emoji+colour'), invalid: (s) => { s.items[0].display.img = 'javascript:alert(1)'; }, refs: NA('an image path points at a file, not at another catalog entity') },
-    'items[].display.tags':     { absent: NA('optional — most dishes carry no badge'), invalid: NA('covered by refs: an entry that names no definition'), refs: (s) => { s.items[0].display.tags = ['ghost_badge']; } },
+    'items[].display.desc':     { collectionAbsent: NA('a menu with no descriptions at all is legitimate — beverages already ship blank'), absent: NA('optional by renderer contract — beverages ship with a blank description and variants carry none'), invalid: NA('any string is a description; blankness is legitimate for beverages'), refs: NA('this value is content, not a reference to another catalog entity'), unsafe: (s) => { s.items[0].display.desc = XSS; } },
+    'items[].display.subcat':   { collectionAbsent: NA('only categories that GROUP by subcategory need one, which is its own rule'), absent: NA('optional — only categories that GROUP by subcategory require one, which is its own rule'), invalid: (s) => { withSub(s).display.subcat = 'Undeclared'; }, refs: NA('covered by invalid: a subcat that its category never declares') },
+    'items[].display.emoji':    { collectionAbsent: NA('a menu that renders photos and colours instead of emoji is legitimate'), absent: NA('optional — a dish may render its photo or colour instead'), invalid: NA('any string renders as a label'), refs: NA('this value is content, not a reference to another catalog entity'), unsafe: (s) => { s.items[0].display.emoji = XSS; } },
+    'items[].display.color':    { collectionAbsent: NA('the renderer has its own default colour for every card'), absent: NA('optional — the renderer falls back to its own default'), invalid: (s) => { s.items[0].display.color = '#12345'; }, refs: NA('this value is content, not a reference to another catalog entity') },
+    'items[].display.img':      { collectionAbsent: NA('a menu with no photos at all is legitimate'), absent: NA('optional — a dish without a photo renders emoji+colour'), invalid: (s) => { s.items[0].display.img = 'javascript:alert(1)'; }, refs: NA('an image path points at a file, not at another catalog entity') },
+    'items[].display.tags':     { collectionAbsent: NA('a menu with no badges on any dish is the ordinary case'), absent: NA('optional — most dishes carry no badge'), invalid: NA('covered by refs: an entry that names no definition'), refs: (s) => { s.items[0].display.tags = ['ghost_badge']; } },
     'items[].display.tags[]':   { absent: NA('an element cannot be absent; an empty list is the absent case'), invalid: (s) => { s.items[0].display.tags = ['not an identifier']; }, refs: (s) => { s.items[0].display.tags = ['ghost_badge']; } },
-    'items[].display.variantOf':{ absent: NA('optional — most dishes are not variants'), invalid: NA('covered by refs: a parent that does not exist'), refs: (s) => { variantItem(s).display.variantOf = 'no_such_launcher'; } },
-    'items[].display.choice':   { absent: NA('optional — only a variant needs one, which is its own rule'), invalid: (s) => { variantItem(s).display.choice = '   '; }, refs: NA('this value is content, not a reference to another catalog entity') },
+    'items[].display.variantOf':{ collectionAbsent: NA('a menu with no variant dishes at all is legitimate'), absent: NA('optional — most dishes are not variants'), invalid: NA('covered by refs: a parent that does not exist'), refs: (s) => { variantItem(s).display.variantOf = 'no_such_launcher'; } },
+    'items[].display.choice':   { collectionAbsent: NA('without variants there are no choice labels to carry'), absent: NA('optional — only a variant needs one, which is its own rule'), invalid: (s) => { variantItem(s).display.choice = '   '; }, refs: NA('this value is content, not a reference to another catalog entity') },
     'extras[].key':             { invalid: (s) => { s.extras[0].key = '   '; }, refs: (s) => { s.extras[0].key = 'not_the_derived_key'; } },
     'extras[].price':           { invalid: (s) => { s.extras[0].price = -1; }, refs: NA('this value is content, not a reference to another catalog entity') },
     'extras[].display':         { invalid: NA('an empty display fails its required members, covered per field'), refs: NA('this value is content, not a reference to another catalog entity') },
@@ -476,8 +477,8 @@ const GOOD = () => ({
     'structure.categories':     { invalid: (s) => { s.structure.categories = []; }, refs: NA('the collection names nothing; its members do') },
     'structure.categories[].id':      { invalid: (s) => { cat0(s).id = '   '; }, refs: NA('a category id is the identity dishes reference') },
     'structure.categories[].name':    { invalid: (s) => { cat0(s).name = '   '; }, refs: NA('this value is content, not a reference to another catalog entity'), unsafe: (s) => { cat0(s).name = XSS; } },
-    'structure.categories[].layout':  { absent: NA('optional — absence means the default grid'), invalid: (s) => { cat0(s).layout = 'masonry'; }, refs: NA('this value is content, not a reference to another catalog entity') },
-    'structure.categories[].subcats': { absent: NA('optional — most categories do not group'), invalid: NA('covered by refs and duplicate'), refs: (s) => { const c = subCat(s); c.subcats = [...c.subcats, 'NeverUsed']; } },
+    'structure.categories[].layout':  { collectionAbsent: NA('every category defaulting to the grid is legitimate'), absent: NA('optional — absence means the default grid'), invalid: (s) => { cat0(s).layout = 'masonry'; }, refs: NA('this value is content, not a reference to another catalog entity') },
+    'structure.categories[].subcats': { collectionAbsent: NA('a menu where no category groups by subcategory is legitimate'), absent: NA('optional — most categories do not group'), invalid: NA('covered by refs and duplicate'), refs: (s) => { const c = subCat(s); c.subcats = [...c.subcats, 'NeverUsed']; } },
     'structure.categories[].subcats[]': { absent: NA('an element cannot be absent'), invalid: (s) => { subCat(s).subcats[0] = '   '; }, refs: (s) => { const c = subCat(s); c.subcats = [...c.subcats, 'NeverUsed']; } },
     'structure.extra_categories':     { invalid: NA('covered per element and by duplicate'), refs: (s) => { s.structure.extra_categories = [...s.structure.extra_categories, 'GhostCat']; } },
     'structure.extra_categories[]':   { absent: NA('an element cannot be absent'), invalid: (s) => { s.structure.extra_categories[0] = '   '; }, refs: (s) => { s.structure.extra_categories = [...s.structure.extra_categories, 'GhostCat']; } },
@@ -525,13 +526,55 @@ const GOOD = () => ({
     const sp = s.structure.variant_items[Object.keys(s.structure.variant_items)[0]];
     sp.variantIds[0] = [sp.variantIds[0]];
   };
+  CONTRACT['structure.badges.*'].definedButUnselectable = (s) => {
+    // A well-formed ghost definition that NOTHING tags. Only the definition-set rule can refuse it —
+    // the tag rule has nothing to look at — so this is what separates the two.
+    s.structure.badges.ghost_badge = { label: 'Ghost', cls: 'menu-badge--jade' };
+  };
+  CONTRACT['structure.badges.*'].notRendererSelectable = (s) => {
+    // A WELL-FORMED definition the renderer can never select. Every other badge plant is malformed,
+    // so it is caught by the record rules and the contract rule is never the thing standing there —
+    // this one has a real label and class and is still refused, because the badge set is the
+    // renderer's to decide and not this document's.
+    s.structure.badges.ghost_badge = { label: 'Ghost', cls: 'menu-badge--jade' };
+    s.items[0].display.tags = ['ghost_badge'];
+  };
   CONTRACT['structure.badges.*'].nullDefinition = (s) => {
     // A null definition used to reach `def.label` and crash rather than reject. A validator that
     // throws a TypeError has still failed closed, but it has stopped explaining itself.
     s.structure.badges[Object.keys(s.structure.badges)[0]] = null;
   };
 
-  const MODES = ['absent', 'wrongType', 'invalid', 'refs', 'duplicate'];
+  // 🔴 TWO MODES THE FIRST CENSUS COULD NOT EXPRESS, and the class each one catches:
+  //
+  //   nullValue        — present, but written as null. Absent and null were treated as the same thing,
+  //                      so a present-null collection passed the type gate and crashed on traversal.
+  //   collectionAbsent — the field deleted from EVERY record of its type, not just the first. This is
+  //                      the whole-collection gap: a rule that infers requiredness from what the
+  //                      submission still has is satisfied by removing all of it. Deleting one La Musa
+  //                      category name was refused; deleting them all was accepted.
+  const MODES = ['absent', 'wrongType', 'nullValue', 'invalid', 'refs', 'duplicate', 'collectionAbsent'];
+
+  // Delete the leaf from every element of the collection the path names, not just the located one.
+  const stripAll = (source, path) => {
+    const cut = path.lastIndexOf('.');
+    if (cut === -1) return false;
+    const container = path.slice(0, cut);
+    const leaf = path.slice(cut + 1);
+    if (leaf.endsWith('[]') || !/\[\]|\.\*/.test(container)) return false;   // not a per-record field
+    const each = (node, segs) => {
+      if (segs.length === 0) { if (node && typeof node === 'object') delete node[leaf]; return; }
+      const [seg, ...rest] = segs;
+      const m = /^([^[]*)((?:\[\])*)$/.exec(seg);
+      let cur = m[1] === '*' ? node : (m[1] ? node[m[1]] : node);
+      if (m[1] === '*') { for (const k of Object.keys(node)) each(node[k], rest); return; }
+      if (cur == null) return;
+      if (m[2]) { for (const el of cur) each(el, rest); return; }
+      each(cur, rest);
+    };
+    each(source, container.split('.'));
+    return true;
+  };
   for (const rid of ['x_pizza', 'la_musa']) {
     const seed = buildSourceFromCode(rid);
     const found = new Set(); walk(seed, '', found);
@@ -549,6 +592,13 @@ const GOOD = () => ({
         if (plant === undefined) {
           if (mode === 'absent') plant = (s) => { const l = locate(s, path); delete l.parent[l.key]; };
           else if (mode === 'wrongType') plant = (s) => { const l = locate(s, path); l.parent[l.key] = WRONG(l.value); };
+          else if (mode === 'nullValue') plant = (s) => { const l = locate(s, path); l.parent[l.key] = null; };
+          else if (mode === 'collectionAbsent') {
+            // Only meaningful for a field that lives on every record of a collection.
+            const probe = buildSourceFromCode(rid);
+            if (!stripAll(probe, path)) { exempt++; continue; }
+            plant = (s) => { stripAll(s, path); };
+          }
           else if (mode === 'duplicate') {
             // Only an ARRAY can carry the same entry twice. Object keys are unique by construction, so
             // for a map this mode is not an exemption anyone chose — it is not expressible.
@@ -587,7 +637,7 @@ const GOOD = () => ({
     // choosing a record that carries the field, removes coverage without failing anything — the
     // census would simply do less and still report success. Pinning the counts makes any reduction a
     // build failure, and any genuine addition a deliberate edit.
-    const EXPECTED = { x_pizza: { paths: 36, planted: 112 }, la_musa: { paths: 61, planted: 181 } }[rid];
+    const EXPECTED = { x_pizza: { paths: 36, planted: 163 }, la_musa: { paths: 61, planted: 265 } }[rid];
     assert.strictEqual(paths.length, EXPECTED.paths, `${rid} — path count moved; the walker or the seed changed`);
     assert.strictEqual(planted, EXPECTED.planted, `${rid} — plant count moved (got ${planted}); coverage was added or removed`);
     ok(`${rid}: ${paths.length} paths, ${planted} plants all refused, ${exempt} stated exemptions`);
