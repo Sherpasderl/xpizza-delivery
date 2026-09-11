@@ -470,6 +470,92 @@
       "subcat": "Sodas"
     }
   ],
+  "extras": [
+    {
+      "id": "rice_white",
+      "cat": "Acompañamientos",
+      "name": "Arroz Blanco",
+      "price": 50
+    },
+    {
+      "id": "rice_chinese",
+      "cat": "Acompañamientos",
+      "name": "Arroz Chino",
+      "price": 85
+    },
+    {
+      "id": "papas_fritas",
+      "cat": "Acompañamientos",
+      "name": "Papas Fritas",
+      "price": 75
+    },
+    {
+      "id": "sauce_chili_oil",
+      "cat": "Salsas",
+      "name": "Aceite Hot Chili",
+      "price": 30
+    },
+    {
+      "id": "sauce_aioli",
+      "cat": "Salsas",
+      "name": "Salsa Aioli",
+      "price": 30
+    },
+    {
+      "id": "sauce_chipotle",
+      "cat": "Salsas",
+      "name": "Salsa Chipotle",
+      "price": 30
+    },
+    {
+      "id": "sauce_dumpling",
+      "cat": "Salsas",
+      "name": "Salsa Dumplings",
+      "price": 30
+    },
+    {
+      "id": "sauce_wonton",
+      "cat": "Salsas",
+      "name": "Salsa Wontons",
+      "price": 30
+    },
+    {
+      "id": "sauce_pad_thai",
+      "cat": "Salsas",
+      "name": "Salsa Pad Thai",
+      "price": 30
+    },
+    {
+      "id": "sauce_spicy_mayo",
+      "cat": "Salsas",
+      "name": "Salsa Spicy Mayo",
+      "price": 30
+    },
+    {
+      "id": "sauce_tuna_tartar",
+      "cat": "Salsas",
+      "name": "Salsa Tuna Tartar",
+      "price": 30
+    },
+    {
+      "id": "protein_chicken",
+      "cat": "Proteínas",
+      "name": "Extra Pollo",
+      "price": 65
+    },
+    {
+      "id": "protein_beef",
+      "cat": "Proteínas",
+      "name": "Extra Filete Res",
+      "price": 155
+    },
+    {
+      "id": "protein_shrimp",
+      "cat": "Proteínas",
+      "name": "Extra Camaron",
+      "price": 135
+    }
+  ],
   "categories": [
     {
       "id": "dim_sum",

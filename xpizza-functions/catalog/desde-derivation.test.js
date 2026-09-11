@@ -77,10 +77,10 @@ const variants = (...prices) => prices.map((p, i) => ({ key: `v${i}`, price: p, 
 
   // ...and even if such a source reached emission, the derived alias must win.
   const s = authoredUndefined();
-  const spec = rebuildFormMenu('la_musa', s.items, s.structure).variant_items.noodle_01;
+  const spec = rebuildFormMenu('la_musa', s.items, s.structure, s.extras).variant_items.noodle_01;
   assert.strictEqual(spec.basePrice, 307, '🔴 the DERIVED value is emitted — a stale key cannot clobber it');
   assert.strictEqual(`desde L ${spec.basePrice}`, 'desde L 307', '...so the form never renders "desde L undefined"');
-  const byId = new Map(rebuildFormMenu('la_musa', s.items, s.structure).dishes.map((d) => [d.id, d]));
+  const byId = new Map(rebuildFormMenu('la_musa', s.items, s.structure, s.extras).dishes.map((d) => [d.id, d]));
   assert.ok(spec.variantIds.every((id) => Number.isFinite(byId.get(id).price - spec.basePrice)), 'and no delta is NaN');
   ok('a basePrice key set to undefined is refused, and could not clobber the derived alias even if it were not');
 }
@@ -88,7 +88,7 @@ const variants = (...prices) => prices.map((p, i) => ({ key: `v${i}`, price: p, 
 // ── THE BUNDLE CARRIES THE DERIVED ONE (the pre-1B compat alias) ────────────────────────────────
 {
   const src = buildSourceFromCode('la_musa');
-  const bundle = rebuildFormMenu('la_musa', src.items, src.structure);
+  const bundle = rebuildFormMenu('la_musa', src.items, src.structure, src.extras);
   const spec = bundle.variant_items.noodle_01;
   assert.strictEqual(spec.basePrice, 307,
     '🔴 the generated bundle DOES carry basePrice — the live form reads it for "desde" and its delta maths');
@@ -106,7 +106,7 @@ const variants = (...prices) => prices.map((p, i) => ({ key: `v${i}`, price: p, 
   // Transcribed here, because "the bundle has a field" is not the claim — the claim is that the form
   // renders a price and computes deltas that are right.
   const src = buildSourceFromCode('la_musa');
-  const bundle = rebuildFormMenu('la_musa', src.items, src.structure);
+  const bundle = rebuildFormMenu('la_musa', src.items, src.structure, src.extras);
   const cfg = bundle.variant_items.noodle_01;
   const rendered = `desde L ${cfg.basePrice}`;
   assert.strictEqual(rendered, 'desde L 307', `🔴 the form renders "${rendered}" — never "desde L undefined"`);
@@ -123,7 +123,7 @@ const variants = (...prices) => prices.map((p, i) => ({ key: `v${i}`, price: p, 
   const src = buildSourceFromCode('la_musa');
   const cheapest = src.items.find((i) => i.display.id === 'noodle_01_sin');
   cheapest.price = 250; cheapest.display.price = 250;               // lower the cheapest protein
-  const bundle = rebuildFormMenu('la_musa', src.items, src.structure);
+  const bundle = rebuildFormMenu('la_musa', src.items, src.structure, src.extras);
   assert.strictEqual(bundle.variant_items.noodle_01.basePrice, 250, '🔴 desde FOLLOWS the cheapest variant');
   assert.strictEqual(src.items.find((i) => i.key === 'noodle_01').price, 414, '🔴 while the launcher price does not move');
   assert.doesNotThrow(() => validateSource(src, 'la_musa'), 'and the source is still valid — nothing authored had to be updated in step');
@@ -132,7 +132,7 @@ const variants = (...prices) => prices.map((p, i) => ({ key: `v${i}`, price: p, 
   const src2 = buildSourceFromCode('la_musa');
   const sin = src2.items.find((i) => i.display.id === 'noodle_01_sin');
   sin.price = 999; sin.display.price = 999;
-  const b2 = rebuildFormMenu('la_musa', src2.items, src2.structure);
+  const b2 = rebuildFormMenu('la_musa', src2.items, src2.structure, src2.extras);
   assert.strictEqual(b2.variant_items.noodle_01.basePrice, 342, 'desde becomes the next-cheapest, not a remembered 307');
   ok('move-the-fact: the desde tracks the variants in both directions; the launcher price never moves');
 }
@@ -140,7 +140,7 @@ const variants = (...prices) => prices.map((p, i) => ({ key: `v${i}`, price: p, 
 // ── x_pizza HAS NO VARIANTS ─────────────────────────────────────────────────────────────────────
 {
   const src = buildSourceFromCode('x_pizza');
-  const bundle = rebuildFormMenu('x_pizza', src.items, src.structure);
+  const bundle = rebuildFormMenu('x_pizza', src.items, src.structure, src.extras);
   assert.strictEqual(bundle.variant_items, undefined, 'a menu with no variant dishes emits no variant map');
   ok('x_pizza: no variants, nothing derived, nothing emitted');
 }

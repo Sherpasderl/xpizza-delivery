@@ -55,6 +55,9 @@ async function readDraft(rid) {
 const toPrecondition = (v) => { const [s2, ns] = String(v).split('.'); return new Timestamp(Number(s2), Number(ns)); };
 const deps = { db, authorize: staff, readActiveBuilt, readDraft, publishVersion, toPrecondition };
 const storeBuiltOf = (src, rid) => { const i = sourceToBuildInputs(src); return { ...buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable }), extras: i.extras }; };
+// The EXTRAS DISPLAY RECORDS, kept apart from `extras` (the numeric table the parity gate compares).
+// 1A Task 5: a published version has to name its options, and storeBuiltOf overwrites them.
+const storeExtraRecordsOf = (src, rid) => { const i = sourceToBuildInputs(src); return buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable }).extras; };
 
 (async () => {
   for (const [rid, key, fiscal] of [['la_musa', 'dimsum_01', false], ['x_pizza', 'Margherita', true]]) {
@@ -62,7 +65,7 @@ const storeBuiltOf = (src, rid) => { const i = sourceToBuildInputs(src); return 
     const seeded = buildSourceFromCode(rid);
     await sourceRefOf(db, rid).set(canonicalize(seeded));
     const built0 = storeBuiltOf(seeded, rid);
-    const v1 = await publishVersion(db, rid, { items: built0.items, structure: built0.structure, extras: built0.extras, source_sha: 'e2e-seed' }, {});
+    const v1 = await publishVersion(db, rid, { items: built0.items, structure: built0.structure, extras: built0.extras, extraRecords: storeExtraRecordsOf(seeded, rid), source_sha: 'e2e-seed' }, {});
     assert.strictEqual(await getActiveVersionId(db, rid), v1.versionId, `${rid}: v1 is live`);
     // the 2a invariant holds at the starting state, on real data
     assertStoreCodeParity(rid, storeBuiltOf(seeded, rid), { ...buildCatalogV2(rid), extras: EXTRAS_BY_RESTAURANT[rid] || {} });

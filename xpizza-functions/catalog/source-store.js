@@ -42,15 +42,11 @@ const sourceRefOf = (db, rid) => db.collection('restaurants').doc(rid).collectio
 
 // Stable RECURSIVE key ordering. Arrays are left alone: their order is CONTENT here (item_order,
 // categories, variant lists), and sorting them would silently rewrite the menu.
-function canonicalize(value) {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value && typeof value === 'object') {
-    const out = {};
-    for (const k of Object.keys(value).sort()) out[k] = canonicalize(value[k]);
-    return out;
-  }
-  return value;
-}
+//
+// 1A Task 5: the definition MOVED to canonical-json.js and is re-exported here, because the version
+// content hash needs the same bytes and two copies of a canonicalizer are a hash that agrees until
+// someone edits one of them. Importers are unchanged.
+const { canonicalize } = require('./canonical-json');
 
 const isPositiveInt = (p) => Number.isInteger(p) && p > 0;   // same rule as the reader + the calculators
 

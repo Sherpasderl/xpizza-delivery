@@ -37,21 +37,21 @@ const FROM_STORE = process.argv.includes('--from-store');
 (async () => {
   const source_sha = gitSha();
   for (const rid of ['x_pizza', 'la_musa']) {
-    let items, structure, extrasTable;
+    let items, structure, extrasTable, extraRecords;
     if (FROM_STORE) {
       // Build from the STORE, then prove it equals what the CODE builds — the no-op gate.
       const source = await readSource(db, rid);                        // fail-closed: missing/malformed throws
       const inputs = sourceToBuildInputs(source);
-      ({ items, structure } = buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable }));
+      ({ items, structure, extras: extraRecords } = buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable }));
       extrasTable = inputs.extras;
       const codeBuilt = { ...buildCatalogV2(rid), extras: EXTRAS_BY_RESTAURANT[rid] || {} };
       assertStoreCodeParity(rid, { items, structure, extras: extrasTable }, codeBuilt);   // THROWS → nothing written, no flip
       console.log(`${rid}: parity gate PASSED — build-from-store is byte-identical to build-from-code`);
     } else {
-      ({ items, structure } = buildCatalogV2(rid));   // schema-v2 items (price from menu-pricing) + structure
+      ({ items, structure, extras: extraRecords } = buildCatalogV2(rid));   // schema-v2 items + EXTRAS display records + structure
       extrasTable = EXTRAS_BY_RESTAURANT[rid] || {};
     }
-    const res = await publishVersion(db, rid, { items, structure, extras: extrasTable, source_sha }, { mirror });
+    const res = await publishVersion(db, rid, { items, structure, extras: extrasTable, extraRecords, source_sha }, { mirror });
     const codeItems = Object.keys(MENU_BY_RESTAURANT[rid]).length;
     const codeExtras = Object.keys(EXTRAS_BY_RESTAURANT[rid] || {}).length;
     if (res.item_count !== codeItems || res.extra_count !== codeExtras) {

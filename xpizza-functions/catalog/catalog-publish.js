@@ -30,6 +30,8 @@ const { FieldValue, Timestamp } = require('firebase-admin/firestore');
 const { catalogDocsForRestaurant } = require('./seed-catalog-core');
 const { integrityDescriptor } = require('./catalog-integrity');
 const { readVersionDocs } = require('./catalog-firestore');
+const { contentHash } = require('./content-hash');
+const { readVersionMenu } = require('./catalog-menu');
 
 const LEASE_MS = 120000;                          // 2-minute bounded lease (publish is seconds; generous headroom)
 const RETENTION_MIN_COUNT = 10;                   // keep ≥10 versions ...
@@ -173,24 +175,36 @@ function newVersionId(nowServer) {
   return `v-${nowServer.toMillis()}-${crypto.randomBytes(6).toString('hex')}`;
 }
 
-// Normalize the caller's inputs → the menu table + extras table + the schema-v2 item map.
-function normalizeInputs({ items, extras }) {
+// Normalize the caller's inputs → the menu table + extras table + the schema-v2 display maps.
+//
+// 1A Task 5: `extraRecords` ([{key, price, display}], what buildCatalogV2 emits) is the extras half
+// of what `items` has always carried. Without it a published version wrote {key, price} extra docs —
+// the catalog could charge for an option it could not name — which is the same gap the SEED had, one
+// writer further along.
+function normalizeInputs({ items, extras, extraRecords }) {
   const list = Array.isArray(items) ? items : [];
   const menuTable = {};
   for (const it of list) { if (it && typeof it.key === 'string') menuTable[it.key] = it.price; }
   const extraTable = (extras && typeof extras === 'object') ? extras : {};
   const v2ByKey = new Map(list.filter((i) => i && i.display).map((i) => [i.key, i]));
-  return { menuTable, extraTable, v2ByKey };
+  const v2ExtrasByKey = new Map((Array.isArray(extraRecords) ? extraRecords : [])
+    .filter((e) => e && typeof e.key === 'string' && e.display).map((e) => [e.key, e]));
+  return { menuTable, extraTable, v2ByKey, v2ExtrasByKey };
 }
 
 // WRITE (not-exists) the version docs + record — NO pointer flip. The reservation marker is the version
 // record; every doc is `create`d so nothing overwrites an immutable version. Returns { versionId, descriptor }.
-async function writeVersion(db, rid, { items, structure, extras, source_sha }, nowServer) {
-  const { menuTable, extraTable, v2ByKey } = normalizeInputs({ items, extras });
+async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha }, nowServer) {
+  const { menuTable, extraTable, v2ByKey, v2ExtrasByKey } = normalizeInputs({ items, extras, extraRecords });
   const desc = integrityDescriptor(menuTable, extraTable);
   if (desc.item_count === 0) throw new Error(`publish_refused_empty: ${rid} — a version must have ≥1 item`);
   if (!structure || !Array.isArray(structure.item_order) || structure.item_order.length !== desc.item_count) {
     throw new Error(`publish_refused_structure: ${rid} — structure.item_order must cover all ${desc.item_count} items`);
+  }
+  // The same demand for extras, and for the same reason: an ordering that is not written down is an
+  // ordering that comes back in whatever order Firestore hashed the doc ids into.
+  if (desc.extra_count > 0 && (!Array.isArray(structure.extra_order) || structure.extra_order.length !== desc.extra_count)) {
+    throw new Error(`publish_refused_structure: ${rid} — structure.extra_order must cover all ${desc.extra_count} extras`);
   }
   // next seq (informational ordering) — read under the lease, so serial per restaurant
   const existing = await versionsColOf(db, rid).get();
@@ -198,21 +212,37 @@ async function writeVersion(db, rid, { items, structure, extras, source_sha }, n
   const seq = maxSeq + 1;   // 2b-pre: named once — written into the record AND returned for the snapshot/mirror
   const versionId = newVersionId(nowServer);
   const vref = versionsColOf(db, rid).doc(versionId);
-  const { itemDocs, extraDocs } = catalogDocsForRestaurant(menuTable, extraTable, v2ByKey);
+  const { itemDocs, extraDocs } = catalogDocsForRestaurant(menuTable, extraTable, v2ByKey, v2ExtrasByKey);
   const ops = [];
   for (const d of itemDocs) ops.push((b) => b.create(vref.collection('menu_items').doc(d.id), {
     key: d.key, price: d.price,
     ...(d.display !== undefined ? { display: d.display } : {}),
     ...(d.has_photo !== undefined ? { has_photo: d.has_photo } : {}),
   }));
-  for (const d of extraDocs) ops.push((b) => b.create(vref.collection('extras').doc(d.id), { key: d.key, price: d.price }));
+  for (const d of extraDocs) ops.push((b) => b.create(vref.collection('extras').doc(d.id), {
+    key: d.key, price: d.price,
+    ...(d.display !== undefined ? { display: d.display } : {}),
+  }));
   ops.push((b) => b.create(vref.collection('meta').doc('menu_structure'), structure));
   await commitOps(db, ops);
+  // 🔴 HASHED OVER WHAT WAS WRITTEN, IN SERVED ORDER — not over the caller's inputs. The reader
+  // recomputes this from the docs it reads BACK, so the two only agree if what landed in Firestore is
+  // what was meant to. Hashing the inputs instead would certify the publisher's intent, which is
+  // precisely the thing that is never in doubt.
+  const byItem = new Map(itemDocs.map((d) => [d.key, d]));
+  const byExtra = new Map(extraDocs.map((d) => [d.key, d]));
+  const content_hash = contentHash({
+    rid, schema_version: 2,
+    items: structure.item_order.map((k) => byItem.get(k)),
+    extras: (desc.extra_count > 0 ? structure.extra_order : []).map((k) => byExtra.get(k)),
+    structure,
+  });
   // the version RECORD (reservation marker) LAST among the version's docs — create-not-exists.
   await vref.create({
     version: versionId, schema_version: 2, seq,
     item_count: desc.item_count, extra_count: desc.extra_count,
     menu_hash: desc.menu_hash, extras_hash: desc.extras_hash,
+    content_hash,
     source_sha: source_sha || 'unknown', created_at: FieldValue.serverTimestamp(),
   });
   return { versionId, descriptor: desc, seq, menuTable, extraTable };   // 1b: tables for the coherent snapshot; 2b-pre: + the ordinal
@@ -238,17 +268,19 @@ async function publishVersion(db, rid, input, { mirror, alarm } = {}) {
   }
 }
 
-// Confirm the version's menu_structure round-trips (bijection with the items). Read the version subtree
-// directly — the pointer isn't flipped yet, so we cannot go through the pointer-based display reader.
+// Confirm the version reads back COMPLETE before the pointer can reach it.
+//
+// 1A Task 5 replaced a hand-rolled item_order bijection here with the real display reader. The
+// hand-rolled version checked the one rule it knew about, so it certified as publishable a version
+// with unnamed extras, a lost option ordering, a display price disagreeing with the charged one, or
+// an identity that did not match its own docs. Verifying with the READER means the question asked
+// before the flip is exactly the question asked at serve time — one rule set, no second opinion that
+// can be laxer than the one that matters.
+//
+// readVersionMenu reads the version subtree DIRECTLY by id, never through the active pointer, which
+// is what makes it usable here: the pointer has not been flipped yet.
 async function verifyVersionStructure(db, rid, versionId) {
-  const vref = versionsColOf(db, rid).doc(versionId);
-  const [items, structureSnap] = await Promise.all([vref.collection('menu_items').get(), vref.collection('meta').doc('menu_structure').get()]);
-  if (items.empty) throw new Error(`publish_verify_empty: ${rid}/${versionId}`);
-  if (!structureSnap.exists) throw new Error(`publish_verify_structure_missing: ${rid}/${versionId}`);
-  const order = (structureSnap.data() || {}).item_order || [];
-  const keys = new Set(items.docs.map((d) => (d.data() || {}).key));
-  if (new Set(order).size !== order.length || order.length !== keys.size) throw new Error(`publish_verify_structure_mismatch: ${rid}/${versionId}`);
-  for (const k of order) if (!keys.has(k)) throw new Error(`publish_verify_structure_missing_item: ${rid}/${versionId}/${k}`);
+  await readVersionMenu(db, rid, versionId);
 }
 
 // ROLLBACK — a single atomic pointer flip to a RETAINED prior version. Verify it exists + verifies first.
@@ -275,14 +307,17 @@ async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm } = {})
 // never touches active_version. The portal generates artifacts from this before publishing/rolling.
 async function previewVersion(db, rid, versionId) {
   const vref = versionsColOf(db, rid).doc(versionId);
-  const [recSnap, items, structureSnap] = await Promise.all([
-    vref.get(), vref.collection('menu_items').get(), vref.collection('meta').doc('menu_structure').get(),
-  ]);
+  // 1A Task 5: the preview IS the read. It used to re-implement the item projection and the
+  // item_order ordering, which meant a version could preview cleanly and then be refused by the
+  // reader that has to serve it — the merchant would be shown a menu that cannot go live. Now there
+  // is one reader, and preview differs from serving only in which version it is pointed at.
+  const [recSnap, menu] = await Promise.all([vref.get(), readVersionMenu(db, rid, versionId)]);
   if (!recSnap.exists) throw new Error(`version_missing: ${rid}/${versionId}`);
-  await readVersionDocs(db, rid, versionId);   // completeness gate
-  const structure = structureSnap.data() || {};
-  const byKey = new Map(items.docs.map((d) => { const v = d.data() || {}; return [v.key, { key: v.key, price: v.price, display: v.display, ...(v.has_photo !== undefined ? { has_photo: v.has_photo } : {}) }]; }));
-  return { items: (structure.item_order || []).map((k) => byKey.get(k)), structure, record: recSnap.data() || {} };
+  await readVersionDocs(db, rid, versionId);   // money completeness gate (counts + both price hashes)
+  return {
+    items: menu.items, extras: menu.extras, variants: menu.variants,
+    structure: menu.structure, identity: menu.identity, record: recSnap.data() || {},
+  };
 }
 
 // RETENTION — keep the newest RETENTION_MIN_COUNT OR anything within RETENTION_MIN_AGE_MS (whichever is

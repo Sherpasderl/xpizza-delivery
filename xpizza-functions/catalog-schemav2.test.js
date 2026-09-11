@@ -19,15 +19,15 @@ const V2 = { x_pizza: buildCatalogV2('x_pizza'), la_musa: buildCatalogV2('la_mus
 for (const rid of ['x_pizza', 'la_musa']) {
   const src = formSource(rid);
   const formDishes = readLiteral(src, 'MENU');
-  const { items, structure } = V2[rid];
-  const rebuilt = rebuildFormMenu(rid, items, structure);
+  const { items, extras, structure } = V2[rid];
+  const rebuilt = rebuildFormMenu(rid, items, structure, extras);
   assert.deepStrictEqual(rebuilt.dishes, formDishes, `${rid}: the rebuilt dish array must equal the form's, field for field AND in order`);
   ok(`display round-trip ${rid}: ${formDishes.length} dishes reconstructed byte-identical (fields + order)`);
 }
 {
   const src = formSource('la_musa');
-  const { items, structure } = V2.la_musa;
-  const rebuilt = rebuildFormMenu('la_musa', items, structure);
+  const { items, extras, structure } = V2.la_musa;
+  const rebuilt = rebuildFormMenu('la_musa', items, structure, extras);
   assert.deepStrictEqual(rebuilt.categories, readLiteral(src, 'CATEGORIES'), 'la_musa categories (order, labels, subcats, layout)');
   assert.deepStrictEqual(rebuilt.variant_items, readLiteral(src, 'VARIANT_ITEMS', '{', '}'), 'la_musa VARIANT_ITEMS');
   assert.deepStrictEqual(rebuilt.has_photo, readSetLiteral(src, 'HAS_PHOTO').slice().sort(), 'la_musa HAS_PHOTO set');
@@ -35,7 +35,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
 }
 {
   const src = formSource('x_pizza');
-  const rebuilt = rebuildFormMenu('x_pizza', V2.x_pizza.items, V2.x_pizza.structure);
+  const rebuilt = rebuildFormMenu('x_pizza', V2.x_pizza.items, V2.x_pizza.structure, V2.x_pizza.extras);
   assert.deepStrictEqual(rebuilt.pickup_only_cats, readLiteral(src, 'PICKUP_ONLY_CATS'), 'x_pizza PICKUP_ONLY_CATS carried as data');
   assert.deepStrictEqual(rebuilt.weekend_only_cats, readLiteral(src, 'WEEKEND_ONLY_CATS'), 'x_pizza WEEKEND_ONLY_CATS carried as data');
   const catOrder = []; for (const d of readLiteral(src, 'MENU')) if (!catOrder.includes(d.cat)) catOrder.push(d.cat);
@@ -48,7 +48,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
   const { items, structure } = V2.la_musa;
   const mutated = items.map((i) => (i.key === structure.item_order[0]
     ? { ...i, display: { ...i.display, name: 'SENTINEL DISH', desc: 'catalog-only text', emoji: '🛰️' } } : i));
-  const rebuilt = rebuildFormMenu('la_musa', mutated, structure);
+  const rebuilt = rebuildFormMenu('la_musa', mutated, structure, V2.la_musa.extras);
   assert.strictEqual(rebuilt.dishes[0].name, 'SENTINEL DISH', 'a catalog-only display value must surface in the rebuild');
   assert.strictEqual(rebuilt.dishes[0].emoji, '🛰️');
   assert.notStrictEqual(rebuilt.dishes[0].name, readLiteral(formSource('la_musa'), 'MENU')[0].name);
@@ -58,7 +58,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
   // Order is data too: permuting item_order must permute the rebuilt array.
   const { items, structure } = V2.x_pizza;
   const flipped = { ...structure, item_order: [structure.item_order[1], structure.item_order[0], ...structure.item_order.slice(2)] };
-  const rebuilt = rebuildFormMenu('x_pizza', items, flipped);
+  const rebuilt = rebuildFormMenu('x_pizza', items, flipped, V2.x_pizza.extras);
   assert.strictEqual(rebuilt.dishes[0].name, structure.item_order[1], 'item_order drives the emitted order');
   ok('non-vacuity: item_order actually drives dish order (Firestore returns docs in hashed-id order)');
 }
@@ -66,7 +66,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
   // has_photo is catalog data, not a form re-read.
   const { items, structure } = V2.la_musa;
   const none = items.map((i) => ({ ...i, has_photo: false }));
-  assert.deepStrictEqual(rebuildFormMenu('la_musa', none, structure).has_photo, [], 'has_photo comes from the catalog records');
+  assert.deepStrictEqual(rebuildFormMenu('la_musa', none, structure, V2.la_musa.extras).has_photo, [], 'has_photo comes from the catalog records');
   ok('non-vacuity: the photo set is rebuilt from catalog data');
 }
 
@@ -123,7 +123,7 @@ ok('PIN 1: adding the schema-v2 payload leaves doc id / key / price byte-identic
 //    The round-trip above WOULD catch a dropped field, but "would" is not a test. These assert the
 //    comparison actually FAILS when a display field goes missing — so losslessness is falsifiable.
 for (const rid of ['x_pizza', 'la_musa']) {
-  const { items, structure } = buildCatalogV2(rid);
+  const { items, extras, structure } = buildCatalogV2(rid);
   const formDishes = readLiteral(formSource(rid), 'MENU');
   for (const field of ['desc', 'name', 'cat', 'emoji', 'color']) {
     const lossy = items.map((i, idx) => {
@@ -131,24 +131,24 @@ for (const rid of ['x_pizza', 'la_musa']) {
       const { [field]: _dropped, ...rest } = i.display;
       return { ...i, display: rest };
     });
-    assert.throws(() => assert.deepStrictEqual(rebuildFormMenu(rid, lossy, structure).dishes, formDishes),
+    assert.throws(() => assert.deepStrictEqual(rebuildFormMenu(rid, lossy, structure, extras).dishes, formDishes),
       `${rid}: dropping display.${field} MUST fail the round-trip`);
   }
   // and a changed value, not just a missing key
   const altered = items.map((i, idx) => (idx === 0 ? { ...i, display: { ...i.display, desc: 'CHANGED' } } : i));
-  assert.throws(() => assert.deepStrictEqual(rebuildFormMenu(rid, altered, structure).dishes, formDishes),
+  assert.throws(() => assert.deepStrictEqual(rebuildFormMenu(rid, altered, structure, extras).dishes, formDishes),
     `${rid}: altering a display value MUST fail the round-trip`);
   ok(`mutation-proven ${rid}: dropping any of 5 display fields — or altering one — fails the round-trip`);
 }
 {
   // Structure loss must fail too: a dropped la_musa subcat / variant / photo flag.
-  const { items, structure } = buildCatalogV2('la_musa');
+  const { items, extras, structure } = buildCatalogV2('la_musa');
   const src = formSource('la_musa');
   const noVariants = { ...structure, variant_items: {} };
-  assert.throws(() => assert.deepStrictEqual(rebuildFormMenu('la_musa', items, noVariants).variant_items, readLiteral(src, 'VARIANT_ITEMS', '{', '}')),
+  assert.throws(() => assert.deepStrictEqual(rebuildFormMenu('la_musa', items, noVariants, extras).variant_items, readLiteral(src, 'VARIANT_ITEMS', '{', '}')),
     'dropping VARIANT_ITEMS must fail');
   const noSubcats = { ...structure, categories: structure.categories.map((c) => ({ id: c.id, name: c.name })) };
-  assert.throws(() => assert.deepStrictEqual(rebuildFormMenu('la_musa', items, noSubcats).categories, readLiteral(src, 'CATEGORIES')),
+  assert.throws(() => assert.deepStrictEqual(rebuildFormMenu('la_musa', items, noSubcats, extras).categories, readLiteral(src, 'CATEGORIES')),
     'dropping the subcats/layout must fail');
   ok('mutation-proven: dropping the variant map or the category subcats/layout fails the round-trip');
 }

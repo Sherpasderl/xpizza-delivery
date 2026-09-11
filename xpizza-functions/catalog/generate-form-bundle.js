@@ -30,16 +30,29 @@ const { buildCatalogV2, rebuildFormMenu } = require('./form-menu-source');
 // structure.item_order (sorted EXPLICITLY here so the in-memory and Firestore snapshots are
 // order-identical by contract, not by the accident that buildCatalogV2 already emits item_order order).
 function catalogSnapshot(restaurantId, opts) {
-  const { items, structure } = buildCatalogV2(restaurantId, opts || {});
+  const { items, extras, structure } = buildCatalogV2(restaurantId, opts || {});
   const byKey = new Map(items.map((i) => [i.key, i]));
-  return { items: structure.item_order.map((k) => byKey.get(k)), structure };
+  const byExtraKey = new Map(extras.map((e) => [e.key, e]));
+  // Both collections ordered EXPLICITLY from the structure, so the in-memory and the Firestore
+  // snapshots are order-identical by CONTRACT rather than by the accident that buildCatalogV2 already
+  // emits them in that order. Stated as a known limit: because buildCatalogV2 derives item_order and
+  // extra_order FROM these same arrays, no input can distinguish this line from `items`/`extras`
+  // passed straight through — deleting it is an equivalent mutation and no test can kill it. It stays
+  // because the Firestore snapshot (where the orders genuinely differ) is ordered this way, and the
+  // two snapshots must be built by the same rule.
+  return {
+    items: structure.item_order.map((k) => byKey.get(k)),
+    extras: structure.extra_order.map((k) => byExtraKey.get(k)),
+    structure,
+  };
 }
 
-// The form served-menu BUNDLE: exactly rebuildFormMenu's output (the dish array in item_order + the aux
+// The form served-menu BUNDLE: exactly rebuildFormMenu's output (the dish array in item_order, the
+// EXTRAS display records in extra_order, + the aux
 // structures — categories/subcats, VARIANT_ITEMS, HAS_PHOTO, PICKUP_ONLY/WEEKEND_ONLY cats). One
 // inverse, reused — no second implementation to drift from.
 function generateFormBundle(restaurantId, catalog) {
-  return rebuildFormMenu(restaurantId, catalog.items, catalog.structure);
+  return rebuildFormMenu(restaurantId, catalog.items, catalog.structure, catalog.extras);
 }
 
 // The KDS MANIFEST [{ key, label, category }] derived from the SAME catalog records the bundle uses, so

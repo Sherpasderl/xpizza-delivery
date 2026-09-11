@@ -27,10 +27,18 @@ const versionsCol = (rid) => db.collection('restaurants').doc(rid).collection('v
 const pointerRef = (rid) => db.collection('restaurants').doc(rid).collection('meta').doc('active_version');
 const lockRef = (rid) => db.collection('restaurants').doc(rid).collection('meta').doc('publish_lock');
 const read = async (rid) => { const d = await getRestaurantDocs(db, rid); return buildTablesFromDocs(d.itemDocs, d.extraDocs); };
-// A synthetic version (no display) — exercises the PRICING path (getRestaurantDocs) + structure bijection.
+// A synthetic version — exercises the PRICING path (getRestaurantDocs) + the structure bijection.
+// 1A Task 5: it carries display records and an extra_order, because a version without them is one the
+// display reader refuses, and publishVersion now verifies with that reader before it flips.
 const mkVersion = (menu, extras = {}) => {
-  const items = Object.entries(menu).map(([key, price]) => ({ key, price }));
-  return { items, structure: { schema_version: 2, item_order: items.map((i) => i.key) }, extras, source_sha: 'test' };
+  const rec = ([key, price]) => ({ key, price, display: { id: key, name: key, price } });
+  const items = Object.entries(menu).map(rec);
+  const extraRecords = Object.entries(extras).map(rec);
+  return {
+    items,
+    structure: { schema_version: 2, item_order: items.map((i) => i.key), extra_order: extraRecords.map((e) => e.key) },
+    extras, extraRecords, source_sha: 'test',
+  };
 };
 // The REAL guarded resolver over the REAL version-aware reader — exactly index.js's wiring.
 const buildReader = (codeMap = null) => {
@@ -54,7 +62,7 @@ const buildReader = (codeMap = null) => {
   // ── (1) MONEY-PROOF (PIN-E extension) — publish v1 from code → the REAL reader resolves the pointer →
   //        byte-identical to code, both brands; identity-proven it came from Firestore; zero alarms ──
   for (const rid of ['x_pizza', 'la_musa']) {
-    const r = await publishVersion(db, rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: 'v1' });
+    const r = await publishVersion(db, rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: 'v1' });
     assert.ok(r.versionId && r.item_count === Object.keys(MENU_BY_RESTAURANT[rid]).length, 'publish returns versionId + counts');
     const { resolver, alarms } = buildReader();
     const t = await resolver.getPricingTables(rid);
@@ -73,7 +81,7 @@ const buildReader = (codeMap = null) => {
   {
     const firstKey = Object.keys(MENU_BY_RESTAURANT.x_pizza)[0];
     const mutated = V2.x_pizza.items.map((i) => (i.key === firstKey ? { ...i, price: 99999 } : i));
-    await publishVersion(db, 'x_pizza', { items: mutated, structure: V2.x_pizza.structure, extras: EXTRAS_BY_RESTAURANT.x_pizza, source_sha: 'bad' });
+    await publishVersion(db, 'x_pizza', { items: mutated, structure: V2.x_pizza.structure, extras: EXTRAS_BY_RESTAURANT.x_pizza, extraRecords: V2.x_pizza.extras, source_sha: 'bad' });
     const { resolver, alarms } = buildReader();
     const t = await resolver.getPricingTables('x_pizza');
     assert.strictEqual(t.menu[firstKey], 99999, 'the PUBLISHED version price serves — a portal edit takes effect');
@@ -81,7 +89,7 @@ const buildReader = (codeMap = null) => {
     assert.deepStrictEqual(alarms, [], 'NO parity alarm — divergence from the code table is expected now, not an incident');
     ok('2c FLIP: a diverged published version is SERVED (pre-flip this fell back to code + alarmed)');
     // restore x_pizza to the good version for later
-    await publishVersion(db, 'x_pizza', { items: V2.x_pizza.items, structure: V2.x_pizza.structure, extras: EXTRAS_BY_RESTAURANT.x_pizza, source_sha: 'v-restore' });
+    await publishVersion(db, 'x_pizza', { items: V2.x_pizza.items, structure: V2.x_pizza.structure, extras: EXTRAS_BY_RESTAURANT.x_pizza, extraRecords: V2.x_pizza.extras, source_sha: 'v-restore' });
   }
 
   // ── (3) DISPLAY reader via the pointer — the version's items + structure round-trip ──
@@ -334,7 +342,7 @@ const buildReader = (codeMap = null) => {
     const priced = await read(rid);
     const badItems = V2[rid].items.map((i, idx) => (idx === 0 ? { ...i, price: 0 } : i));
     await assert.rejects(
-      () => publishVersion(db, rid, { items: badItems, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: 'zero-price' }),
+      () => publishVersion(db, rid, { items: badItems, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: 'zero-price' }),
       /catalog_bad_doc|price not a positive integer/,
       'a version containing a ZERO price must fail the pre-flip verify',
     );
@@ -347,10 +355,10 @@ const buildReader = (codeMap = null) => {
     const rid = 'x_pizza';
     for (const [label, bad] of [['negative', -1], ['non-integer', 9.5]]) {
       const items = V2[rid].items.map((i, idx) => (idx === 0 ? { ...i, price: bad } : i));
-      await assert.rejects(() => publishVersion(db, rid, { items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: `bad-${label}` }),
+      await assert.rejects(() => publishVersion(db, rid, { items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: `bad-${label}` }),
         /catalog_bad_doc/, `${label} price must be blocked at publish`);
     }
-    const good = await publishVersion(db, rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: 'restore-1d1a' });
+    const good = await publishVersion(db, rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: 'restore-1d1a' });
     assert.ok(good.versionId, 'a clean version still publishes normally');
     assert.deepStrictEqual(await read(rid), { menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] }, 'served prices restored');
     ok('1d-1a: negative and non-integer prices are blocked at publish too; a valid version still publishes');

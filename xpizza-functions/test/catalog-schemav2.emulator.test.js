@@ -10,7 +10,7 @@ const admin = require('firebase-admin');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { seedCatalog } = require('../catalog/seed-catalog-core');
 const { getRestaurantDocs } = require('../catalog/catalog-firestore');       // PRICING reader (unchanged)
-const { getRestaurantMenu } = require('../catalog/catalog-menu');            // DISPLAY reader (new, dormant)
+const { getRestaurantMenu, readFlatMenu } = require('../catalog/catalog-menu');   // DISPLAY reader (new, dormant)
 const { buildTablesFromDocs } = require('../catalog/catalog-transform');
 const { buildCatalogV2, rebuildFormMenu, formSource, readLiteral, readSetLiteral } = require('../catalog/form-menu-source');
 
@@ -20,9 +20,9 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const V2 = { x_pizza: buildCatalogV2('x_pizza'), la_musa: buildCatalogV2('la_musa') };
 const R = (over = {}) => ({
   x_pizza: { profile: { name: 'X. Pizza', tier: 'flagship', schema_version: 2 }, menu: MENU_BY_RESTAURANT.x_pizza, extras: EXTRAS_BY_RESTAURANT.x_pizza,
-             v2Items: over.x_pizza_items || V2.x_pizza.items, structure: over.x_pizza_structure || V2.x_pizza.structure },
+             v2Items: over.x_pizza_items || V2.x_pizza.items, v2Extras: V2.x_pizza.extras, structure: over.x_pizza_structure || V2.x_pizza.structure },
   la_musa: { profile: { name: 'La Musa', tier: 'flagship', schema_version: 2 }, menu: MENU_BY_RESTAURANT.la_musa, extras: EXTRAS_BY_RESTAURANT.la_musa,
-             v2Items: V2.la_musa.items, structure: V2.la_musa.structure },
+             v2Items: V2.la_musa.items, v2Extras: V2.la_musa.extras, structure: V2.la_musa.structure },
 });
 
 (async () => {
@@ -40,15 +40,15 @@ const R = (over = {}) => ({
 
   // (2) DISPLAY round-trip through the REAL reader → the form arrays, byte-identical.
   for (const rid of ['x_pizza', 'la_musa']) {
-    const { items, structure } = await getRestaurantMenu(db, rid);
+    const { items, extras, structure } = await readFlatMenu(db, rid);
     assert.notStrictEqual(items, V2[rid].items, 'the records really came from Firestore');
-    const rebuilt = rebuildFormMenu(rid, items, structure);
+    const rebuilt = rebuildFormMenu(rid, items, structure, extras);
     assert.deepStrictEqual(rebuilt.dishes, readLiteral(formSource(rid), 'MENU'), `${rid}: form dish array reconstructed byte-identical from the REAL catalog`);
     ok(`display parity ${rid}: ${rebuilt.dishes.length} dishes reconstructed byte-identical off the REAL Firestore read`);
   }
   {
-    const { items, structure } = await getRestaurantMenu(db, 'la_musa');
-    const rebuilt = rebuildFormMenu('la_musa', items, structure);
+    const { items, extras, structure } = await readFlatMenu(db, 'la_musa');
+    const rebuilt = rebuildFormMenu('la_musa', items, structure, extras);
     const src = formSource('la_musa');
     assert.deepStrictEqual(rebuilt.categories, readLiteral(src, 'CATEGORIES'));
     assert.deepStrictEqual(rebuilt.variant_items, readLiteral(src, 'VARIANT_ITEMS', '{', '}'));
@@ -62,7 +62,7 @@ const R = (over = {}) => ({
     const items = V2.x_pizza.items.map((i, idx) => (idx === 0
       ? { ...i, display: { ...i.display, name: i.display.name, desc: 'SENTINEL-ONLY-IN-CATALOG' } } : i));
     await seedCatalog(db, R({ x_pizza_items: items }));
-    const got = await getRestaurantMenu(db, 'x_pizza');
+    const got = await readFlatMenu(db, 'x_pizza');
     const first = got.items.find((r) => r.key === V2.x_pizza.items[0].key);
     assert.strictEqual(first.display.desc, 'SENTINEL-ONLY-IN-CATALOG', 'the catalog-only description must round-trip through the real reader');
     assert.notStrictEqual(readLiteral(formSource('x_pizza'), 'MENU')[0].desc, 'SENTINEL-ONLY-IN-CATALOG');
@@ -71,23 +71,23 @@ const R = (over = {}) => ({
   }
 
   // (4) TRUST BOUNDARY — a half-migrated or structurally broken menu must throw, never render empty.
-  await assert.rejects(() => getRestaurantMenu(db, 'never_seeded'), /restaurant_not_found/);
+  await assert.rejects(() => readFlatMenu(db, 'never_seeded'), /restaurant_not_found/);
   ok('trust boundary: an unseeded restaurant throws (never a plausible-empty menu)');
   {
     const rref = db.collection('restaurants').doc('v1_shop');
     await rref.collection('menu_items').doc('d1').set({ key: 'Legacy', price: 100 });   // v1 doc: no display
     await rref.collection('meta').doc('menu_structure').set({ schema_version: 2, item_order: ['Legacy'] });
     await rref.set({ name: 'V1' });
-    await assert.rejects(() => getRestaurantMenu(db, 'v1_shop'), /catalog_missing_display/);
+    await assert.rejects(() => readFlatMenu(db, 'v1_shop'), /catalog_missing_display/);
     ok('trust boundary: a v1 doc with no display record throws (a half-migrated menu must not render)');
   }
   {
     const rref = db.collection('restaurants').doc('noorder_shop');
-    await rref.collection('menu_items').doc('d1').set({ key: 'A', price: 1, display: { id: 'A' } });
+    await rref.collection('menu_items').doc('d1').set({ key: 'A', price: 1, display: { id: 'A', price: 1 } });
     await rref.set({ name: 'NO' });
-    await assert.rejects(() => getRestaurantMenu(db, 'noorder_shop'), /menu_structure_missing/);
+    await assert.rejects(() => readFlatMenu(db, 'noorder_shop'), /menu_structure_missing/);
     await rref.collection('meta').doc('menu_structure').set({ schema_version: 2, item_order: ['A', 'GHOST'] });
-    await assert.rejects(() => getRestaurantMenu(db, 'noorder_shop'), /item_order references missing item GHOST/);
+    await assert.rejects(() => readFlatMenu(db, 'noorder_shop'), /item_order references missing record GHOST/);
     ok('trust boundary: a missing or inconsistent menu_structure throws (no silently dropped/reordered dish)');
   }
   // (5) BIJECTION — item_order must cover each record EXACTLY once. Existence + equal-length alone are
@@ -96,17 +96,31 @@ const R = (over = {}) => ({
   //     promises it cannot return, so uniqueness is the third load-bearing check.
   {
     const rref = db.collection('restaurants').doc('dup_shop');
-    await rref.collection('menu_items').doc('d1').set({ key: 'A', price: 1, display: { id: 'A' } });
-    await rref.collection('menu_items').doc('d2').set({ key: 'B', price: 2, display: { id: 'B' } });
+    await rref.collection('menu_items').doc('d1').set({ key: 'A', price: 1, display: { id: 'A', price: 1 } });
+    await rref.collection('menu_items').doc('d2').set({ key: 'B', price: 2, display: { id: 'B', price: 2 } });
     await rref.set({ name: 'DUP' });
     await rref.collection('meta').doc('menu_structure').set({ schema_version: 2, item_order: ['A', 'A'] });
-    await assert.rejects(() => getRestaurantMenu(db, 'dup_shop'), /item_order has duplicate keys/,
+    await assert.rejects(() => readFlatMenu(db, 'dup_shop'), /item_order has duplicate keys/,
       'a duplicated item_order must THROW, not return [A,A] and silently drop B');
     // and the honest ordering still works once the duplicate is removed
     await rref.collection('meta').doc('menu_structure').set({ schema_version: 2, item_order: ['B', 'A'] });
-    const got = await getRestaurantMenu(db, 'dup_shop');
+    const got = await readFlatMenu(db, 'dup_shop');
     assert.deepStrictEqual(got.items.map((r) => r.key), ['B', 'A'], 'a valid permutation is still honoured');
     ok('bijection: a duplicated item_order throws (no silent partial menu); a valid permutation is honoured');
+  }
+
+  // (6) 1A — NO FALLBACK. The flat layout above is complete and readable BY NAME; the pointer-
+  //     resolving reader still refuses it, because a flat read has no version, no ordinal and no
+  //     pinned hash to state a provenance with. This is the emulator half of catalog-menu.test.js.
+  {
+    const flatOk = await readFlatMenu(db, 'x_pizza');
+    assert.strictEqual(flatOk.items.length, Object.keys(MENU_BY_RESTAURANT.x_pizza).length, 'premise: the flat menu is complete');
+    assert.strictEqual(flatOk.identity, undefined, 'a flat read carries no identity');
+    await assert.rejects(() => getRestaurantMenu(db, 'x_pizza'), (e) => {
+      assert.strictEqual(e.code, 'active_version_absent');
+      return true;
+    }, 'an absent active_version pointer must NOT fall back to the flat layout');
+    ok('no fallback: a complete flat menu is readable by name and still refused by the pointer-resolving reader');
   }
 
   console.log(`catalog-schemav2(emulator): OK (${n})`);

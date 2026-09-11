@@ -705,7 +705,7 @@ const GOOD = () => ({
   const { enumeratePredicates, calleeName, runtimeImportGraph } = require('./guard-ast');
 
   const RULINGS = [
-                ['canonicalize :: Array.isArray(value)', 'shape', 'this predicate IS the type test'],
+    ['canonicalize :: Array.isArray(value)', 'shape', 'this predicate IS the type test'],
     ["canonicalize :: value && typeof value === 'object'", 'shape', 'this predicate IS the type test'],
     ['<module> :: Number.isInteger(p)', 'shape', 'this predicate IS the type test'],
     ['contractTable :: CONTRACT_TABLE', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
@@ -835,7 +835,14 @@ const GOOD = () => ({
   ];
   const RULED = new Map(RULINGS.map(([k, kind, why]) => [k, { kind, why }]));
 
-  const preds = enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8'));
+  // canonicalize MOVED to canonical-json.js (one definition, shared with the version content hash).
+  // The census follows it rather than shrinking: a predicate that leaves this file has not stopped
+  // being part of the validator's control flow, and a census that quietly covers less than it did is
+  // the same failure as a census that never covered it.
+  const preds = [
+    ...enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8')),
+    ...enumeratePredicates(readFileSync(join(__dirname, 'canonical-json.js'), 'utf8')),
+  ];
   assert.strictEqual(preds.length, 127, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
 
   const unruled = preds.filter((p) => !RULED.has(p.key)).map((p) => `${p.line}: ${p.key}`);

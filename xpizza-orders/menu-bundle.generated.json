@@ -233,6 +233,92 @@
       "desc": "6 slices, crispy bacon"
     }
   ],
+  "extras": [
+    {
+      "id": "e1",
+      "cat": "Salsas & Queso",
+      "name": "Salsa Roja",
+      "price": 39
+    },
+    {
+      "id": "e2",
+      "cat": "Salsas & Queso",
+      "name": "Salsa Blanca",
+      "price": 39
+    },
+    {
+      "id": "e3",
+      "cat": "Salsas & Queso",
+      "name": "Salsa Calabrian Chili",
+      "price": 49
+    },
+    {
+      "id": "e4",
+      "cat": "Salsas & Queso",
+      "name": "Mozzarella",
+      "price": 50
+    },
+    {
+      "id": "e5",
+      "cat": "Salsas & Queso",
+      "name": "Whipped Ricotta",
+      "price": 65
+    },
+    {
+      "id": "e6",
+      "cat": "Carnes",
+      "name": "Salchicha Italiana",
+      "price": 50
+    },
+    {
+      "id": "e7",
+      "cat": "Carnes",
+      "name": "Pepperoni",
+      "price": 50
+    },
+    {
+      "id": "e8",
+      "cat": "Carnes",
+      "name": "Jamón",
+      "price": 39
+    },
+    {
+      "id": "e9",
+      "cat": "Carnes",
+      "name": "Prosciutto",
+      "price": 94
+    },
+    {
+      "id": "e10",
+      "cat": "Carnes",
+      "name": "Mortadella",
+      "price": 85
+    },
+    {
+      "id": "e11",
+      "cat": "Vegetales & Hierbas",
+      "name": "Espinaca",
+      "price": 33
+    },
+    {
+      "id": "e12",
+      "cat": "Vegetales & Hierbas",
+      "name": "Maíz",
+      "price": 45
+    },
+    {
+      "id": "e13",
+      "cat": "Vegetales & Hierbas",
+      "name": "Hongos",
+      "price": 61
+    },
+    {
+      "id": "e14",
+      "cat": "Vegetales & Hierbas",
+      "name": "Basil Pesto",
+      "price": 33
+    }
+  ],
   "categories": [
     {
       "id": "individual"

@@ -177,7 +177,13 @@ function buildCatalogV2(restaurantId, opts = {}) {
   for (const key of Object.keys(extrasTable)) {
     if (!byKey.has(key)) throw new Error(`bootstrap_missing_extra_display_record: ${restaurantId}/${key}`);
   }
-  const structure = { schema_version: 2, item_order: items.map((i) => i.key) };
+  // 🔴 EXTRA_ORDER IS THE MIRROR OF ITEM_ORDER, and it exists for the same reason: Firestore hands
+  // docs back in hashed-id order, so an ordering that is not carried explicitly is an ordering that
+  // is lost. Items have had this since 1c-a; extras never did, because nothing read them back. Once
+  // the reader returns extras, "which option comes first in the group" is a customer-visible fact
+  // with no other home — it cannot be derived from the category namespace (that orders the GROUPS)
+  // and it cannot be derived from the keys (sorting them would reorder the menu).
+  const structure = { schema_version: 2, item_order: items.map((i) => i.key), extra_order: extras.map((e) => e.key) };
   // 1A Task 4 — the display structures the build used to drop. Each comes from the STORE when the
   // store authored it (the portal owns these once a merchant has edited them) and from the form
   // literal otherwise, which is the same source the seed bootstraps from — so the two paths agree at
@@ -276,7 +282,29 @@ function deriveStartingPrice(launcher, variants) {
 
 // The inverse — reconstruct the form's dish array + aux structures from schema-v2 records. 1c-b will
 // render a bundle from this; 1c-a uses it to PROVE the round-trip is lossless.
-function rebuildFormMenu(restaurantId, items, structure) {
+// The LAUNCHER MAP as it is SERVED: label + variant ids as authored, and a "desde" DERIVED at
+// emission from the variants those ids name. Shared by the bundle generator and the catalog reader —
+// one definition, so a version cannot generate one starting price and read back another.
+//
+// The shape is the one the form literal had (label, basePrice, variantIds, then anything else), so
+// the regenerated bundle is byte-identical to what ships today. `basePrice` is destructured OUT
+// explicitly: without that it lands in `...others`, and the spread comes last — a stale authored
+// copy would overwrite the value just derived, which is the one thing this emission exists to
+// prevent.
+function resolveVariants(items, structure) {
+  const out = {};
+  const spec_map = (structure && structure.variant_items) || null;
+  if (!spec_map || typeof spec_map !== 'object') return out;
+  const byUiId = new Map(items.map((i) => [String(i.display && i.display.id), i]));
+  for (const [launcherId, spec] of Object.entries(spec_map)) {
+    const variants = (spec.variantIds || []).map((id) => byUiId.get(String(id))).filter(Boolean);
+    const { label, basePrice: _authored, variantIds, ...others } = spec;    // eslint-disable-line no-unused-vars
+    out[launcherId] = { label, basePrice: deriveStartingPrice(byUiId.get(String(launcherId)), variants), variantIds, ...others };
+  }
+  return out;
+}
+
+function rebuildFormMenu(restaurantId, items, structure, extras) {
   const byKey = new Map(items.map((i) => [i.key, i]));
   const order = (structure && structure.item_order) || items.map((i) => i.key);
   const dishes = order.map((k) => {
@@ -284,7 +312,22 @@ function rebuildFormMenu(restaurantId, items, structure) {
     if (!rec) throw new Error(`rebuild_missing_item: ${restaurantId}/${k}`);
     return rec.display;
   });
-  const out = { dishes };
+  // 🔴 EXTRAS ARE REQUIRED, not optional. Emitting them "when supplied" would mean a caller that
+  // forgot produces a bundle with no options on it and no error — a menu whose every dish silently
+  // loses its add-ons. The one thing this task exists to fix must not be skippable by omission.
+  if (!Array.isArray(extras)) {
+    throw new Error(`rebuild_missing_extras: ${restaurantId} — the bundle must carry the extras display records`);
+  }
+  const byExtraKey = new Map(extras.map((e) => [e.key, e]));
+  const extraOrder = (structure && structure.extra_order) || extras.map((e) => e.key);
+  const out = {
+    dishes,
+    extras: extraOrder.map((k) => {
+      const rec = byExtraKey.get(k);
+      if (!rec) throw new Error(`rebuild_missing_extra: ${restaurantId}/${k}`);
+      return rec.display;
+    }),
+  };
   if (restaurantId === 'la_musa') {
     out.categories = structure.categories;
     // THE COMPAT ALIAS. 1A ships before 1B, and the live form reads variant_items[...].basePrice for
@@ -293,21 +336,11 @@ function rebuildFormMenu(restaurantId, items, structure) {
     // updated yet — so the bundle still carries basePrice, now DERIVED here rather than authored
     // upstream. It is an output of the variants, computed at emission, and there is no stored copy of
     // it anywhere for the two to drift apart.
-    if (structure.variant_items) {
-      const byUiId = new Map(items.map((i) => [String(i.display.id), i]));
-      out.variant_items = {};
-      for (const [launcherId, spec] of Object.entries(structure.variant_items)) {
-        const variants = (spec.variantIds || []).map((id) => byUiId.get(String(id))).filter(Boolean);
-        // Emitted in the shape the form literal had — label, basePrice, variantIds — so the served
-        // artifact is BYTE-IDENTICAL to what ships today. The value was always 307; making the key
-        // order match too means the regenerated bundle produces no diff at all, and "nothing the
-        // customer sees changed" is something a reader can check rather than take on trust.
-        // basePrice is destructured OUT explicitly. Without that it lands in `...others`, and the
-        // spread comes last — so a stale key would overwrite the value just derived, which is the one
-        // thing this emission exists to prevent.
-        const { label, basePrice: _authored, variantIds, ...others } = spec;    // eslint-disable-line no-unused-vars
-        out.variant_items[launcherId] = { label, basePrice: deriveStartingPrice(byUiId.get(String(launcherId)), variants), variantIds, ...others };
-      }
+    // Emitted by the SAME resolver the READER uses, so the bundle's variants and the reader's
+    // variants cannot say different things about the same version — the parity gate compares two
+    // outputs of one function rather than two implementations that happen to agree today.
+    if (Object.prototype.hasOwnProperty.call(structure, 'variant_items') && structure.variant_items) {
+      out.variant_items = resolveVariants(items, structure);
     }
     out.has_photo = order.filter((k) => byKey.get(k).has_photo).sort();
   } else {
@@ -318,4 +351,4 @@ function rebuildFormMenu(restaurantId, items, structure) {
   return out;
 }
 
-module.exports = { buildCatalogV2, rebuildFormMenu, deriveStartingPrice, formSource, readLiteral, readSetLiteral, pricingKeyOf, extrasKeyOf };
+module.exports = { buildCatalogV2, rebuildFormMenu, resolveVariants, deriveStartingPrice, formSource, readLiteral, readSetLiteral, pricingKeyOf, extrasKeyOf };

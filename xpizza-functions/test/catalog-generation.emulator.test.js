@@ -14,7 +14,7 @@ const { join } = require('path');
 const admin = require('firebase-admin');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { seedCatalog } = require('../catalog/seed-catalog-core');
-const { getRestaurantMenu } = require('../catalog/catalog-menu');
+const { readFlatMenu } = require('../catalog/catalog-menu');   // 1A: the FLAT layout is read by name; getRestaurantMenu serves versions only
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
 const { generateFormBundle, generateKdsManifest, serialize } = require('../catalog/generate-form-bundle');
 
@@ -32,9 +32,9 @@ const MENUS_DIR = join(REPO_ROOT, 'menus');
 const V2 = { x_pizza: buildCatalogV2('x_pizza'), la_musa: buildCatalogV2('la_musa') };
 const R = (over = {}) => ({
   x_pizza: { profile: { name: 'X. Pizza', tier: 'flagship', schema_version: 2 }, menu: MENU_BY_RESTAURANT.x_pizza, extras: EXTRAS_BY_RESTAURANT.x_pizza,
-             v2Items: over.x_pizza_items || V2.x_pizza.items, structure: V2.x_pizza.structure },
+             v2Items: over.x_pizza_items || V2.x_pizza.items, v2Extras: V2.x_pizza.extras, structure: V2.x_pizza.structure },
   la_musa: { profile: { name: 'La Musa', tier: 'flagship', schema_version: 2 }, menu: MENU_BY_RESTAURANT.la_musa, extras: EXTRAS_BY_RESTAURANT.la_musa,
-             v2Items: over.la_musa_items || V2.la_musa.items, structure: V2.la_musa.structure },
+             v2Items: over.la_musa_items || V2.la_musa.items, v2Extras: V2.la_musa.extras, structure: V2.la_musa.structure },
 });
 
 (async () => {
@@ -42,7 +42,7 @@ const R = (over = {}) => ({
 
   // (1) FORM BUNDLE — generated from the REAL Firestore read == the committed artifact, both brands.
   for (const rid of ['x_pizza', 'la_musa']) {
-    const snap = await getRestaurantMenu(db, rid);
+    const snap = await readFlatMenu(db, rid);
     assert.notStrictEqual(snap.items, V2[rid].items, 'the records really came from Firestore');
     const fresh = serialize(generateFormBundle(rid, snap));
     assert.strictEqual(fresh, readFileSync(BUNDLE_PATH[rid], 'utf8'),
@@ -52,7 +52,7 @@ const R = (over = {}) => ({
 
   // (2) KDS MANIFEST — generated from the REAL read == the committed menus/{rid}.json, both brands.
   for (const rid of ['x_pizza', 'la_musa']) {
-    const snap = await getRestaurantMenu(db, rid);
+    const snap = await readFlatMenu(db, rid);
     const fresh = `${JSON.stringify(generateKdsManifest(rid, snap), null, 2)}\n`;
     assert.strictEqual(fresh, readFileSync(join(MENUS_DIR, `${rid}.json`), 'utf8'),
       `${rid}: KDS manifest generated off the REAL catalog read == the committed menus/${rid}.json`);
@@ -65,7 +65,7 @@ const R = (over = {}) => ({
     const items = V2.la_musa.items.map((i, idx) => (idx === 0
       ? { ...i, display: { ...i.display, name: 'SENTINEL-ONLY-IN-CATALOG' } } : i));
     await seedCatalog(db, R({ la_musa_items: items }));
-    const snap = await getRestaurantMenu(db, 'la_musa');
+    const snap = await readFlatMenu(db, 'la_musa');
     const bundle = generateFormBundle('la_musa', snap);
     const manifest = generateKdsManifest('la_musa', snap);
     const firstKey = V2.la_musa.structure.item_order[0];
