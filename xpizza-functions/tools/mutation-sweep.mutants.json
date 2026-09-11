@@ -901,5 +901,109 @@
       "run",
       "test:public-menu"
     ]
+  },
+  {
+    "id": "b3-01",
+    "slice": "b3",
+    "label": "a stale response is applied on top of a newer one",
+    "file": "../xpizza-orders/form-live-menu.js",
+    "from": "    if (mine !== issued) return state();\n\n    if (res && res.status === 304) {",
+    "to": "    if (res && res.status === 304) {"
+  },
+  {
+    "id": "b3-02",
+    "slice": "b3",
+    "label": "a stale FAILURE downgrades a live menu to retained",
+    "file": "../xpizza-orders/form-live-menu.js",
+    "from": "      if (mine !== issued) return state();              // a stale failure must not move anything\n      return fail(",
+    "to": "      return fail("
+  },
+  {
+    "id": "b3-03",
+    "slice": "b3",
+    "label": "a stale body arriving after json() wins",
+    "file": "../xpizza-orders/form-live-menu.js",
+    "from": "    if (mine !== issued) return state();\n\n    // ATOMIC.",
+    "to": "    // ATOMIC."
+  },
+  {
+    "id": "b3-04",
+    "slice": "b3",
+    "label": "a refused snapshot is applied anyway",
+    "file": "../xpizza-orders/form-live-menu.js",
+    "from": "    if (!snapshot) return fail('snapshot refused by the adapter');",
+    "to": "    if (!snapshot) snapshot = raw && raw.menu;"
+  },
+  {
+    "id": "b3-05",
+    "slice": "b3",
+    "label": "an adapter that throws is treated as a valid snapshot",
+    "file": "../xpizza-orders/form-live-menu.js",
+    "from": "      return fail(`snapshot refused: ${String((e && e.message) || e).slice(0, 120)}`);",
+    "to": "      snapshot = raw && raw.menu;"
+  },
+  {
+    "id": "b3-06",
+    "slice": "b3",
+    "label": "a failure reverts the customer to the bundle",
+    "file": "../xpizza-orders/form-live-menu.js",
+    "from": "  function fail(reason) {\n    lastError = reason;",
+    "to": "  function fail(reason) {\n    applied = { source: 'bundle', snapshot: null, etag: null, at: null };\n    lastError = reason;"
+  },
+  {
+    "id": "b3-07",
+    "slice": "b3",
+    "label": "a refused body leaves its validator behind",
+    "file": "../xpizza-orders/form-live-menu.js",
+    "from": "    let snapshot = null;\n    try {",
+    "to": "    applied = { ...applied, etag: (res.headers && res.headers.get('etag')) || applied.etag };\n    let snapshot = null;\n    try {"
+  },
+  {
+    "id": "b3-08",
+    "slice": "b3",
+    "label": "an unexpected 304 is treated as success (the blank-menu shape)",
+    "file": "../xpizza-orders/form-live-menu.js",
+    "from": "      return fail('304 for a representation this client has never applied');",
+    "to": "      phase = 'live'; return state();"
+  },
+  {
+    "id": "b3-09",
+    "slice": "b3",
+    "label": "If-None-Match is sent even with no applied body",
+    "file": "../xpizza-orders/form-live-menu.js",
+    "from": "    if (applied.source === 'live' && applied.etag) headers['If-None-Match'] = applied.etag;",
+    "to": "    if (applied.etag) headers['If-None-Match'] = applied.etag;"
+  },
+  {
+    "id": "b3-10",
+    "slice": "b3",
+    "label": "a non-2xx is applied as if it were a menu",
+    "file": "../xpizza-orders/form-live-menu.js",
+    "from": "    if (!res || !res.ok) return fail(`status ${res ? res.status : 'none'}`);",
+    "to": "    if (false) return fail('x');"
+  },
+  {
+    "id": "b3-11",
+    "slice": "b3",
+    "label": "the adapter becomes optional, so responses apply unchecked",
+    "file": "../xpizza-orders/form-live-menu.js",
+    "from": "  if (!adapter) throw new Error('createLiveMenu: an adapter is required",
+    "to": "  if (false) throw new Error('createLiveMenu: an adapter is required"
+  },
+  {
+    "id": "b3-12",
+    "slice": "b3",
+    "label": "an adapter with no validateSnapshot is accepted",
+    "file": "../xpizza-orders/form-live-menu.js",
+    "from": "  if (typeof adapter.validateSnapshot !== 'function') throw new Error('createLiveMenu: the adapter must provide validateSnapshot');",
+    "to": "  void adapter;"
+  },
+  {
+    "id": "b3-13",
+    "slice": "b3",
+    "label": "a throwing onApply wedges the coordinator in fetching",
+    "file": "../xpizza-orders/form-live-menu.js",
+    "from": "    applied = { source: 'live', snapshot, etag: etag || null, at: clock() };\n    phase = 'live';\n    lastError = null;\n    try {\n      if (typeof onApply === 'function') onApply(snapshot, diff);\n    } catch (e) {",
+    "to": "    if (typeof onApply === 'function') onApply(snapshot, diff);\n    applied = { source: 'live', snapshot, etag: etag || null, at: clock() };\n    phase = 'live';\n    lastError = null;\n    try {\n      if (false) onApply(snapshot, diff);\n    } catch (e) {"
   }
 ]
