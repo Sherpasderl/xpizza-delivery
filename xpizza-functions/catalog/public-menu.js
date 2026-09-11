@@ -184,4 +184,27 @@ async function buildPublicMenu(db, rid, deps = {}) {
   return { rid: restaurantId, seq: menu.identity.seq, representation_version: representationVersion, body, etag };
 }
 
-module.exports = { buildPublicMenu, defaultIsActive, assertWholeBody, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };
+// HOW A FAILURE BECOMES AN HTTP RESPONSE. Pure, and here rather than in index.js, because the
+// unexpected branch is otherwise unreachable from a test: nothing in the endpoint can be made to
+// throw an untyped error on demand, so the one path that decides what an UNKNOWN failure looks like
+// would be the only one nobody had ever seen run. A guard with no reachable test is a guard nobody
+// has watched work.
+//
+// Every branch is no-store. The two typed ones differ in what a cached copy would cost — a cached
+// 400 outlives a fixed link; a cached 503 keeps a restaurant dark for the TTL after it recovers —
+// and the unknown one is no-store because "we do not know what went wrong" is never cacheable.
+function publicMenuErrorResponse(e) {
+  const code = e && e.code;
+  if (code === 'public_menu_bad_rid') {
+    return { status: 400, log: null, payload: { error: code, detail: String((e && e.message) || e).slice(0, 200) } };
+  }
+  if (code === 'public_menu_unavailable') {
+    // Retryable, and logged: a menu that cannot be served is an incident even though the customer
+    // only sees a form that did not refresh.
+    return { status: 503, log: 'public_menu_unavailable', payload: { error: code, retryable: true } };
+  }
+  // An untyped failure says nothing to a customer and everything to a log.
+  return { status: 500, log: 'public_menu_failed', payload: { error: 'error' } };
+}
+
+module.exports = { buildPublicMenu, defaultIsActive, assertWholeBody, publicMenuErrorResponse, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };

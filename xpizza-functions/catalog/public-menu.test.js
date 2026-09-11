@@ -290,6 +290,34 @@ async function seeded(rid, over = {}) {
     ok('etag covers the PROJECTION too: bumping the representation version changes it, even with an identical catalog');
   }
 
+  {
+    // 🔴 THE UNKNOWN BRANCH. Nothing in the endpoint can be made to throw an untyped error on demand,
+    // so the path that decides what an unrecognised failure looks like would otherwise be the only
+    // one never executed — and it is the one that runs on the day something genuinely unexpected
+    // happens. Pure and here, so it can be.
+    const { publicMenuErrorResponse } = require('./public-menu');
+    const err = (code) => Object.assign(new Error('detail text'), code ? { code } : {});
+    assert.deepStrictEqual(publicMenuErrorResponse(err('public_menu_bad_rid')),
+      { status: 400, log: null, payload: { error: 'public_menu_bad_rid', detail: 'detail text' } });
+    const un = publicMenuErrorResponse(err('public_menu_unavailable'));
+    assert.strictEqual(un.status, 503);
+    assert.strictEqual(un.payload.retryable, true, 'the client is told it is worth trying again');
+    assert.ok(un.log, 'an outage is logged');
+    assert.strictEqual(un.payload.detail, undefined, 'an outage leaks no internals to a customer');
+    for (const [label, thrown] of [
+      ['an untyped Error', err(null)],
+      ['a foreign code', err('ECONNRESET')],
+      ['a thrown string', 'boom'],
+      ['a thrown null', null],
+    ]) {
+      const r = publicMenuErrorResponse(thrown);
+      assert.strictEqual(r.status, 500, `${label}: an unrecognised failure is a 500`);
+      assert.deepStrictEqual(r.payload, { error: 'error' }, `${label}: and says nothing else`);
+      assert.ok(r.log, `${label}: but IS logged`);
+    }
+    ok('the error mapping covers all three classes — including the unrecognised one, which HTTP cannot reach');
+  }
+
   FINISHED = true;
   console.log(`public-menu: OK (${n})`);
 })().catch((e) => { console.error('public-menu FAILED:', (e && e.stack) || e); process.exit(1); });

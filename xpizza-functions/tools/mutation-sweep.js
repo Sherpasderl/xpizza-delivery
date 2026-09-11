@@ -66,7 +66,7 @@ if (!selected.length) {
 }
 
 if (process.argv.includes('--list')) {
-  for (const m of selected) console.log(`${m.slice.padEnd(8)} ${m.id.padEnd(4)} ${m.label}${EQUIVALENT.has(m.id) ? '   [equivalent]' : ''}`);
+  for (const m of selected) console.log(`${m.slice.padEnd(8)} ${m.id.padEnd(9)} ${m.label}${m.command ? `   [via ${m.command.slice(1).join(' ')}]` : ''}${EQUIVALENT.has(m.id) ? '   [equivalent]' : ''}`);
   console.log(`\n${selected.length} mutants${slice ? ` in slice ${slice}` : ''}`);
   process.exit(0);
 }
@@ -94,9 +94,16 @@ process.on('exit', restoreAll);
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { restoreAll(); process.exit(130); });
 process.on('uncaughtException', (e) => { restoreAll(); console.error(e); process.exit(1); });
 
-const runSuite = () => {
+// 🔴 A MUTANT MUST BE RUN AGAINST A SUITE THAT CAN SEE IT. Some live in code only an EMULATOR suite
+// exercises (the HTTP endpoint), and `npm test` cannot reach them — so sweeping them with the default
+// command would report SURVIVED for every one, and the honest reading of that is not "the code is
+// weak" but "the measurement was pointed at the wrong thing". A mutant may name its own command;
+// omitting those mutants instead would be worse, because then the count silently covers less than it
+// appears to.
+const runSuite = (command) => {
+  const [cmd, ...args] = command || ['npm', 'test'];
   try {
-    execFileSync('npm', ['test'], { cwd: ROOT, stdio: 'ignore' });
+    execFileSync(cmd, args, { cwd: ROOT, stdio: 'ignore', env: { ...process.env, PATH: `/opt/homebrew/opt/openjdk/bin:${process.env.PATH}` } });
     return 0;
   } catch (_) { return 1; }
 };
@@ -113,7 +120,7 @@ for (const m of selected) {
   copyFileSync(target, `${target}.bak`);
   restore.push(target);
   writeFileSync(target, src.replace(m.from, m.to));
-  const rc = runSuite();
+  const rc = runSuite(m.command);
   restoreAll();
   if (rc !== 0) { killed++; console.log(`  KILLED   ${m.id}: ${m.label}`); }
   else if (EQUIVALENT.has(m.id)) { console.log(`  EQUIVALENT ${m.id}: ${m.label} — ${m.why}`); }

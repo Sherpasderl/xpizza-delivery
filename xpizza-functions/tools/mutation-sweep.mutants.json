@@ -752,5 +752,154 @@
     "file": "catalog/public-menu.js",
     "from": "  assertWholeBody(restaurantId, body, menu);",
     "to": "  void assertWholeBody;"
+  },
+  {
+    "id": "b2-01",
+    "slice": "b2",
+    "label": "the error mapping sends a bad rid as a 503",
+    "file": "catalog/public-menu.js",
+    "from": "  if (code === 'public_menu_bad_rid') {\n    return { status: 400,",
+    "to": "  if (code === 'public_menu_bad_rid') {\n    return { status: 503,"
+  },
+  {
+    "id": "b2-02",
+    "slice": "b2",
+    "label": "an outage is reported as a permanent 400",
+    "file": "catalog/public-menu.js",
+    "from": "    return { status: 503, log: 'public_menu_unavailable', payload: { error: code, retryable: true } };",
+    "to": "    return { status: 400, log: 'public_menu_unavailable', payload: { error: code, retryable: true } };"
+  },
+  {
+    "id": "b2-03",
+    "slice": "b2",
+    "label": "an outage stops telling the client to retry",
+    "file": "catalog/public-menu.js",
+    "from": "payload: { error: code, retryable: true } };",
+    "to": "payload: { error: code } };"
+  },
+  {
+    "id": "b2-04",
+    "slice": "b2",
+    "label": "an unrecognised failure is reported as a bad request",
+    "file": "catalog/public-menu.js",
+    "from": "  return { status: 500, log: 'public_menu_failed', payload: { error: 'error' } };",
+    "to": "  return { status: 400, log: 'public_menu_failed', payload: { error: 'error' } };"
+  },
+  {
+    "id": "b2-05",
+    "slice": "b2",
+    "label": "an unrecognised failure leaks its detail to the customer",
+    "file": "catalog/public-menu.js",
+    "from": "  return { status: 500, log: 'public_menu_failed', payload: { error: 'error' } };",
+    "to": "  return { status: 500, log: 'public_menu_failed', payload: { error: 'error', detail: String((e && e.message) || e) } };"
+  },
+  {
+    "id": "b2-06",
+    "slice": "b2",
+    "label": "an outage leaks its detail to the customer",
+    "file": "catalog/public-menu.js",
+    "from": "    return { status: 503, log: 'public_menu_unavailable', payload: { error: code, retryable: true } };",
+    "to": "    return { status: 503, log: 'public_menu_unavailable', payload: { error: code, retryable: true, detail: String(e.message) } };"
+  },
+  {
+    "id": "b2-07",
+    "slice": "b2",
+    "label": "an outage stops being logged",
+    "file": "catalog/public-menu.js",
+    "from": "    return { status: 503, log: 'public_menu_unavailable',",
+    "to": "    return { status: 503, log: null,"
+  },
+  {
+    "id": "b2-08",
+    "slice": "b2",
+    "label": "the rid is read from the QUERY instead of the path (Vary cannot isolate that)",
+    "file": "index.js",
+    "from": "    const rid = ridFromPath(req.path);",
+    "to": "    const rid = (req.query && req.query.rid) || ridFromPath(req.path);",
+    "command": [
+      "npm",
+      "run",
+      "test:public-menu"
+    ]
+  },
+  {
+    "id": "b2-09",
+    "slice": "b2",
+    "label": "errors become cacheable (no-store dropped)",
+    "file": "index.js",
+    "from": "      res.set('Cache-Control', 'no-store');\n      res.removeHeader('ETag');",
+    "to": "      res.removeHeader('ETag');",
+    "command": [
+      "npm",
+      "run",
+      "test:public-menu"
+    ]
+  },
+  {
+    "id": "b2-10",
+    "slice": "b2",
+    "label": "a 304 loses the freshness headers, so the client revalidates forever",
+    "file": "index.js",
+    "from": "      res.set('Cache-Control', 'public, max-age=30, s-maxage=120');\n      if (matchesEtag(",
+    "to": "      if (matchesEtag(",
+    "command": [
+      "npm",
+      "run",
+      "test:public-menu"
+    ]
+  },
+  {
+    "id": "b2-11",
+    "slice": "b2",
+    "label": "the 503 goes back through res.json(), leaking a payload-hash ETag on an outage",
+    "file": "index.js",
+    "from": "      return sendJson(res, out.status, out.payload);",
+    "to": "      if (out.status === 503) return res.status(503).json(out.payload);\n      return sendJson(res, out.status, out.payload);",
+    "command": [
+      "npm",
+      "run",
+      "test:public-menu"
+    ]
+  },
+  {
+    "id": "b2-12",
+    "slice": "b2",
+    "label": "the 200 goes back through res.json() (EQUIVALENT — our ETag is already set)",
+    "file": "index.js",
+    "from": "      return sendJson(res, 200, {",
+    "to": "      return res.status(200).json({",
+    "command": [
+      "npm",
+      "run",
+      "test:public-menu"
+    ],
+    "equivalent": true,
+    "why": "installed Express supplies an ETag only when the response does not already carry one, and the 200 path sets ours before sending — so res.json() and res.end() emit identical headers here. This mutant encodes the belief the original comment got wrong; kept, declared, and explained rather than deleted, so nobody re-adds it as a real one. The hazard res.end() actually closes is on the ERROR responses, where we set no ETag — that is b2-11, and it is killed."
+  },
+  {
+    "id": "b2-13",
+    "slice": "b2",
+    "label": "a weak or listed If-None-Match no longer matches",
+    "file": "index.js",
+    "from": "  return candidates.some((c) => bare(c) === bare(etag));",
+    "to": "  return candidates.length === 1 && candidates[0] === etag;",
+    "command": [
+      "npm",
+      "run",
+      "test:public-menu"
+    ]
+  },
+  {
+    "id": "b2-14",
+    "slice": "b2",
+    "label": "any If-None-Match is treated as a match (the wildcard swallows everything)",
+    "file": "index.js",
+    "from": "  if (candidates.includes('*')) return true;",
+    "to": "  return true;",
+    "command": [
+      "npm",
+      "run",
+      "test:public-menu"
+    ]
   }
 ]

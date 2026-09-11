@@ -5627,7 +5627,7 @@ const PUBLIC_MENU_ORIGINS = [
   'https://orders.lamusa.hn',
 ];
 
-const { buildPublicMenu, defaultIsActive } = require('./catalog/public-menu');
+const { buildPublicMenu, defaultIsActive, publicMenuErrorResponse } = require('./catalog/public-menu');
 
 // The last two path segments must be `menu/<rid>`. Written to accept both the deployed shape
 // (/menu/<rid> via a Hosting rewrite) and the direct function URL (/getPublicMenu/menu/<rid>) without
@@ -5654,11 +5654,17 @@ function matchesEtag(header, etag) {
   return candidates.some((c) => bare(c) === bare(etag));
 }
 
-// 🔴 THE VALIDATOR IS OURS, NEVER EXPRESS'S. res.json() sets an ETag of its own — a hash of the
-// payload — so an ERROR response came back carrying a validator, and the 200's validator would be
-// whatever Express computed rather than the representation etag the cache contract is built on.
-// Writing the body with res.end() bypasses that entirely: the only ETag on any response here is the
-// one this endpoint decided to put there.
+// 🔴 THE ONLY ETag ON ANY RESPONSE IS THE ONE THIS ENDPOINT CHOSE.
+//
+// res.json() attaches an ETag of its own — a hash of the payload — when the response does not
+// already carry one. It does NOT overwrite ours, so the 200 was never at risk; the hazard is the
+// responses where we deliberately set none. Every ERROR came back carrying a payload-hash validator,
+// which is a cache-validity claim about a failure: paired with no-store it is inert, but a cache that
+// honoured the validator and not the directive could revalidate an outage into a 304.
+//
+// res.end() emits no validator of its own, so the header is ours or absent — never Express's.
+// (Scoped to this endpoint on purpose. Retrofitting it into the neighbouring live handlers would
+// change their error serialization, which is a separate change and belongs in its own gate.)
 const sendJson = (res, status, payload) => {
   res.set('Content-Type', 'application/json; charset=utf-8');
   return res.status(status).end(JSON.stringify(payload));
@@ -5703,23 +5709,14 @@ exports.getPublicMenu = onRequest(
         menu: menu.body,
       });
     } catch (e) {
-      const code = e && e.code;
       // 🔴 ERRORS ARE NEVER CACHED. A bad rid is permanent and a catalog outage is transient, but
       // caching either is wrong in its own way: a cached 400 outlives a fixed link, and a cached 503
       // keeps a restaurant dark for the length of the TTL after it has recovered.
       res.set('Cache-Control', 'no-store');
       res.removeHeader('ETag');
-      if (code === 'public_menu_bad_rid') {
-        return sendJson(res, 400, { error: code, detail: String(e.message).slice(0, 200) });
-      }
-      if (code === 'public_menu_unavailable') {
-        // Retryable, and logged: a menu that cannot be served is an incident even though the customer
-        // only sees a form that did not refresh.
-        console.error('public_menu_unavailable', JSON.stringify({ rid, detail: String(e.message).slice(0, 200) }));
-        return sendJson(res, 503, { error: code, retryable: true });
-      }
-      console.error('public_menu_failed', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 200) }));
-      return sendJson(res, 500, { error: 'error' });
+      const out = publicMenuErrorResponse(e);
+      if (out.log) console.error(out.log, JSON.stringify({ rid, detail: String((e && e.message) || e).slice(0, 200) }));
+      return sendJson(res, out.status, out.payload);
     }
   },
 );
@@ -6001,7 +5998,7 @@ exports.editCatalog = onRequest(
       return res.status(out.status).json(out.body);
     } catch (e) {
       console.error('editCatalog', e && e.message);
-      return sendJson(res, 500, { error: 'error' });
+      return res.status(500).json({ error: 'error' });
     }
   },
 );
@@ -6046,7 +6043,7 @@ exports.publishEdited = onRequest(
       return res.status(out.status).json(out.body);
     } catch (e) {
       console.error('publishEdited', e && e.message);
-      return sendJson(res, 500, { error: 'error' });
+      return res.status(500).json({ error: 'error' });
     }
   },
 );
@@ -6071,7 +6068,7 @@ exports.getMyRestaurants = onRequest(
       return res.status(out.status).json(out.body);
     } catch (e) {
       console.error('getMyRestaurants', e && e.message);
-      return sendJson(res, 500, { error: 'error' });
+      return res.status(500).json({ error: 'error' });
     }
   },
 );
@@ -6092,7 +6089,7 @@ exports.getEditableCatalog = onRequest(
       return res.status(out.status).json(out.body);
     } catch (e) {
       console.error('getEditableCatalog', e && e.message);
-      return sendJson(res, 500, { error: 'error' });
+      return res.status(500).json({ error: 'error' });
     }
   },
 );

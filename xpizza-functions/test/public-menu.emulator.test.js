@@ -107,6 +107,27 @@ const identityFor = (rid, active) => ({
     assert.strictEqual(spoof.headers.get('etag'), seen.x_pizza.etag, '...and the validator is still x_pizza\'s');
     // and no header claims to key on the rid — that would be the unsafe design this replaced
     assert.ok(!/rid/i.test(spoof.headers.get('vary') || ''), '🔴 Vary must not claim to key on the rid; it cannot');
+    // CONDITIONAL-REQUEST SPELLINGS. A client, a CDN and a proxy do not all send If-None-Match the
+    // same way: a list of validators, a weak marker, or `*`. Reading only the exact-match case leaves
+    // the rest to chance, and the two directions fail differently — too lenient serves a 304 for a
+    // menu the client does not have (a blank page), too strict just costs a re-download.
+    const E = seen.x_pizza.etag;
+    for (const [label, header, want] of [
+      ['the exact validator', E, 304],
+      ['a LIST containing it', `"0000", ${E}, "ffff"`, 304],
+      ['the WEAK form of it', `W/${E}`, 304],
+      ['the wildcard', '*', 304],
+      ['a list of others', '"0000", "ffff"', 200],
+      ['one character different', `${E.slice(0, -2)}0"`, 200],
+      ['an empty header', '', 200],
+    ]) {
+      const r = await get('/menu/x_pizza', header === '' ? {} : { 'If-None-Match': header });
+      assert.strictEqual(r.status, want, `If-None-Match ${label}: expected ${want}, got ${r.status}`);
+      if (want === 304) assert.strictEqual((await r.text()).length, 0, `${label}: a 304 carries no body`);
+    }
+    ok(`conditional requests: 7 If-None-Match spellings resolve correctly (list, weak, wildcard, near-miss)`);
+  }
+  {
     ok('brand isolation: distinct validators, a cross-brand If-None-Match is NOT a 304, a matching one is, and the query string cannot change the brand');
   }
 
@@ -136,6 +157,7 @@ const identityFor = (rid, active) => ({
     const post = await fetch(`${base}/menu/x_pizza`, { method: 'POST' });
     assert.strictEqual(post.status, 405);
     assert.strictEqual(post.headers.get('cache-control'), 'no-store');
+    assert.strictEqual(post.headers.get('etag'), null, '🔴 a 405 must carry no validator either');
     ok('errors: 6 bad-request shapes + an inactive restaurant + a POST, each typed, each no-store, none carrying a validator');
   }
 
@@ -156,6 +178,10 @@ const identityFor = (rid, active) => ({
     assert.strictEqual(body.error, 'public_menu_unavailable');
     assert.strictEqual(body.retryable, true, 'the client is told it is worth trying again');
     assert.strictEqual(body.menu, undefined, '🔴 a failure must carry no partial menu');
+    // 🔴 AND NO VALIDATOR. A 503 that slipped back to res.json() would carry a payload-hash ETag —
+    // a cache-validity claim about an OUTAGE. no-store makes it inert, but the two protections are
+    // independent and only one of them was asserted for this status.
+    assert.strictEqual(r.headers.get('etag'), null, '🔴 a 503 must carry no validator');
 
     await d.ref.set(original);                                   // and it recovers
     const back = await get('/menu/x_pizza');
