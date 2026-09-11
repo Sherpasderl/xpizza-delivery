@@ -544,10 +544,15 @@ const publishFresh = async (db, rid, over = {}) => publishVersion(db, rid, input
     // wrappers called THEMSELVES — infinite recursion, scan green. A lint that checks the argument
     // and not the callee is not checking the call.
     //
-    // 🔴 WHAT THIS CANNOT DO IS RUN THEM. The emulator suites need a live Firestore, nothing in this
-    // loop executes them, and every defect they have carried this slice was one that only running
-    // them would have surfaced. They are an OWNER-RUN gate before the cutover — run GREEN, not
-    // merely committed — and no amount of scanning here substitutes for that:
+    // 🔴 WHAT THIS CANNOT DO IS RUN THEM — but they ARE runnable, and were all along. Every defect
+    // these suites carried through 1A was one only running them would have surfaced, and each time I
+    // reported them as un-runnable here. They are not: the JDK the npm scripts name in their own PATH
+    // prefix is installed, and all four go green. The lesson is not about the emulator — it is that
+    // "I cannot verify this" deserves one attempt before it becomes a standing caveat.
+    //
+    // This suite still cannot run them (it is the offline chain), so the scans below stay as
+    // defense in depth, and the suites remain an OWNER-RUN gate before the cutover — run GREEN, not
+    // merely committed:
     //
     //   PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:catalog-versioned
     //   PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:catalog-schemav2

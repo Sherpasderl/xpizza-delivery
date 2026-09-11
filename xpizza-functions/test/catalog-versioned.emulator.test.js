@@ -91,7 +91,11 @@ const buildReader = (codeMap = null) => {
   //     and keep charging the old price — the exact failure 1d exists to prevent. ──
   {
     const firstKey = Object.keys(MENU_BY_RESTAURANT.x_pizza)[0];
-    const mutated = V2.x_pizza.items.map((i) => (i.key === firstKey ? { ...i, price: 99999 } : i));
+    // display.price MOVES WITH price. Task 7's validator refuses a source whose shown price disagrees
+    // with its charged one, so a half-edited fixture is now rejected before the publish it is trying
+    // to make — and this test is about a DIVERGED-FROM-CODE version being SERVED, not about validation.
+    // (migration-parity.test.js edits the same way, for the same reason.)
+    const mutated = V2.x_pizza.items.map((i) => (i.key === firstKey ? { ...i, price: 99999, display: { ...i.display, price: 99999 } } : i));
     await publishAt('x_pizza', { items: mutated, structure: V2.x_pizza.structure, extras: EXTRAS_BY_RESTAURANT.x_pizza, extraRecords: V2.x_pizza.extras, source_sha: 'bad' });
     const { resolver, alarms } = buildReader();
     const t = await resolver.getPricingTables('x_pizza');
@@ -358,23 +362,30 @@ const buildReader = (codeMap = null) => {
     const rid = 'x_pizza';
     const before = await getActiveVersionId(db, rid);
     const priced = await read(rid);
-    const badItems = V2[rid].items.map((i, idx) => (idx === 0 ? { ...i, price: 0 } : i));
+    // display.price synced deliberately: with it stale, the refusal would come from the
+    // shown-vs-charged rule and this test would pass without the price rule ever being consulted.
+    // The only defect here is the zero.
+    const badItems = V2[rid].items.map((i, idx) => (idx === 0 ? { ...i, price: 0, display: { ...i.display, price: 0 } } : i));
     await assert.rejects(
       () => publishAt(rid, { items: badItems, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: 'zero-price' }),
-      /catalog_bad_doc|price not a positive integer/,
-      'a version containing a ZERO price must fail the pre-flip verify',
+      // Task 7 put the complete validator AHEAD of the pre-flip re-read, so the refusal now arrives
+      // from the validator ("price is not a positive integer") rather than from the reader
+      // ("price not a positive integer"). Matched on the part both state, because what this asserts
+      // is that a zero price cannot move the pointer — not which of the two guards got there first.
+      /not a positive integer/,
+      'a version containing a ZERO price must fail before the pointer can move',
     );
     assert.strictEqual(await getActiveVersionId(db, rid), before, 'the active_version pointer must NOT have moved');
     assert.deepStrictEqual(await read(rid), priced, 'and the served prices are unchanged — the bad version never went live');
-    ok('1d-1a: a version with a zero price fails publish verify — the pointer never flips (guard reaches publish time)');
+    ok('1d-1a: a version with a zero price is refused before the flip — the pointer never moves (now by the complete validator, ahead of the reader\'s own rule)');
   }
   {
     // Negative and non-integer are blocked identically, and a positive integer still publishes.
     const rid = 'x_pizza';
     for (const [label, bad] of [['negative', -1], ['non-integer', 9.5]]) {
-      const items = V2[rid].items.map((i, idx) => (idx === 0 ? { ...i, price: bad } : i));
+      const items = V2[rid].items.map((i, idx) => (idx === 0 ? { ...i, price: bad, display: { ...i.display, price: bad } } : i));
       await assert.rejects(() => publishAt(rid, { items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: `bad-${label}` }),
-        /catalog_bad_doc/, `${label} price must be blocked at publish`);
+        /not a positive integer/, `${label} price must be blocked at publish`);
     }
     const good = await publishAt(rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: 'restore-1d1a' });
     assert.ok(good.versionId, 'a clean version still publishes normally');
