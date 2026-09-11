@@ -5608,6 +5608,122 @@ const PORTAL_ORIGINS = [
   'https://sherpa-portal.netlify.app',   // portal 2b-2a go-live (2026-09-08)
 ];
 
+// ── Portal 1B Task 2 — getPublicMenu: the live catalog, served to the customer forms ───────────
+//
+// 🔴 THE rid IS IN THE PATH, NOT THE QUERY. Cache isolation between brands is the whole safety
+// property here, and `Vary: rid` cannot provide it: Vary keys on REQUEST HEADERS, so a query
+// parameter is invisible to it and a shared cache would happily hand one brand's menu to the other
+// under a single key. A path segment is part of the URL, which every cache in the chain — browser,
+// CDN, any proxy — already keys on without being asked. The query string is never read for the rid;
+// a request for /menu/x_pizza?rid=la_musa serves x_pizza.
+//
+// ITS OWN ORIGIN LIST. This is a PUBLIC, unauthenticated read — the only such endpoint here. Every
+// other surface in this file requires a verified token, and ACCOUNT_ORIGINS/PORTAL_ORIGINS guard the
+// OTP, account and portal endpoints. Reusing either would hand this endpoint's audience to those
+// surfaces for no reason beyond saving a constant.
+const PUBLIC_MENU_ORIGINS = [
+  /^http:\/\/localhost(:\d+)?$/,          // local development against production data
+  'https://orders.xpizza.hn',
+  'https://orders.lamusa.hn',
+];
+
+const { buildPublicMenu, defaultIsActive } = require('./catalog/public-menu');
+
+// The last two path segments must be `menu/<rid>`. Written to accept both the deployed shape
+// (/menu/<rid> via a Hosting rewrite) and the direct function URL (/getPublicMenu/menu/<rid>) without
+// guessing: whatever precedes `menu` is ignored, and anything AFTER the rid makes the path invalid
+// rather than being silently trimmed.
+function ridFromPath(path) {
+  const segs = String(path || '').split('/').filter(Boolean);
+  if (segs.length < 2 || segs[segs.length - 2] !== 'menu') return null;
+  try {
+    return decodeURIComponent(segs[segs.length - 1]);
+  } catch (_) {
+    return null;                                  // a malformed %-escape is not a restaurant
+  }
+}
+
+// An If-None-Match may carry a list, and any of them may be weak. `*` matches anything the server
+// holds. Getting this wrong in the lenient direction serves a 304 for a menu the client does not
+// have, which is a blank screen; in the strict direction it just costs a re-download.
+function matchesEtag(header, etag) {
+  if (!header) return false;
+  const candidates = String(header).split(',').map((s) => s.trim()).filter(Boolean);
+  if (candidates.includes('*')) return true;
+  const bare = (v) => v.replace(/^W\//, '');
+  return candidates.some((c) => bare(c) === bare(etag));
+}
+
+// 🔴 THE VALIDATOR IS OURS, NEVER EXPRESS'S. res.json() sets an ETag of its own — a hash of the
+// payload — so an ERROR response came back carrying a validator, and the 200's validator would be
+// whatever Express computed rather than the representation etag the cache contract is built on.
+// Writing the body with res.end() bypasses that entirely: the only ETag on any response here is the
+// one this endpoint decided to put there.
+const sendJson = (res, status, payload) => {
+  res.set('Content-Type', 'application/json; charset=utf-8');
+  return res.status(status).end(JSON.stringify(payload));
+};
+
+exports.getPublicMenu = onRequest(
+  { region: 'us-central1', cors: PUBLIC_MENU_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 20 },
+  async (req, res) => {
+    // Two headers on EVERY response, including the failures: a cache that varies by origin must be
+    // told so even when the answer is an error, and a browser cannot read the validator it is
+    // supposed to send back unless the header is exposed to it.
+    res.set('Vary', 'Origin');
+    res.set('Access-Control-Expose-Headers', 'ETag');
+
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.set('Cache-Control', 'no-store');
+      return sendJson(res, 405, { error: 'method_not_allowed' });
+    }
+
+    const rid = ridFromPath(req.path);
+    try {
+      const menu = await buildPublicMenu(getFirestore(), rid, {
+        known: () => restaurantRegistry().known(),
+        isActive: defaultIsActive(getDatabase()),
+      });
+
+      // The validator FIRST: a 304 must carry the same cache headers as the 200 it stands in for, or
+      // the client revalidates on every request and the cache is decorative.
+      res.set('ETag', menu.etag);
+      res.set('Cache-Control', 'public, max-age=30, s-maxage=120');
+      if (matchesEtag(req.get('If-None-Match'), menu.etag)) return res.status(304).end();
+
+      // `rid` is echoed so a client can prove the menu it got is the menu it asked for — the one
+      // assertion that catches a cache or routing mix-up from the outside.
+      //
+      // `seq` is deliberately ABSENT. It moves on every publish, including ones that change nothing a
+      // customer sees, and it is not in the etag — so a response carrying it would let a cache serve
+      // a stale seq behind a still-valid validator. The representation is exactly what the etag covers.
+      return sendJson(res, 200, {
+        rid: menu.rid,
+        representation_version: menu.representation_version,
+        menu: menu.body,
+      });
+    } catch (e) {
+      const code = e && e.code;
+      // 🔴 ERRORS ARE NEVER CACHED. A bad rid is permanent and a catalog outage is transient, but
+      // caching either is wrong in its own way: a cached 400 outlives a fixed link, and a cached 503
+      // keeps a restaurant dark for the length of the TTL after it has recovered.
+      res.set('Cache-Control', 'no-store');
+      res.removeHeader('ETag');
+      if (code === 'public_menu_bad_rid') {
+        return sendJson(res, 400, { error: code, detail: String(e.message).slice(0, 200) });
+      }
+      if (code === 'public_menu_unavailable') {
+        // Retryable, and logged: a menu that cannot be served is an incident even though the customer
+        // only sees a form that did not refresh.
+        console.error('public_menu_unavailable', JSON.stringify({ rid, detail: String(e.message).slice(0, 200) }));
+        return sendJson(res, 503, { error: code, retryable: true });
+      }
+      console.error('public_menu_failed', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 200) }));
+      return sendJson(res, 500, { error: 'error' });
+    }
+  },
+);
+
 exports.requestOtp = onRequest(
   { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
   async (req, res) => {
@@ -5885,7 +6001,7 @@ exports.editCatalog = onRequest(
       return res.status(out.status).json(out.body);
     } catch (e) {
       console.error('editCatalog', e && e.message);
-      return res.status(500).json({ error: 'error' });
+      return sendJson(res, 500, { error: 'error' });
     }
   },
 );
@@ -5930,7 +6046,7 @@ exports.publishEdited = onRequest(
       return res.status(out.status).json(out.body);
     } catch (e) {
       console.error('publishEdited', e && e.message);
-      return res.status(500).json({ error: 'error' });
+      return sendJson(res, 500, { error: 'error' });
     }
   },
 );
@@ -5955,7 +6071,7 @@ exports.getMyRestaurants = onRequest(
       return res.status(out.status).json(out.body);
     } catch (e) {
       console.error('getMyRestaurants', e && e.message);
-      return res.status(500).json({ error: 'error' });
+      return sendJson(res, 500, { error: 'error' });
     }
   },
 );
@@ -5976,7 +6092,7 @@ exports.getEditableCatalog = onRequest(
       return res.status(out.status).json(out.body);
     } catch (e) {
       console.error('getEditableCatalog', e && e.message);
-      return res.status(500).json({ error: 'error' });
+      return sendJson(res, 500, { error: 'error' });
     }
   },
 );
