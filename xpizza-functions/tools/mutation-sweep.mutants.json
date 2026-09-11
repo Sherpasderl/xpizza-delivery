@@ -694,8 +694,8 @@
     "slice": "b1",
     "label": "an undeclared served field is allowed through",
     "file": "catalog/public-menu.js",
-    "from": "  if (undeclared.length) {",
-    "to": "  if (false) {"
+    "from": "  for (const f of undeclared) problems.push(`${f} is served but undeclared`);",
+    "to": "  void undeclared;"
   },
   {
     "id": "b1-13",
@@ -704,5 +704,53 @@
     "file": "catalog/public-menu.js",
     "from": "    fail('public_menu_unavailable', `${restaurantId}: ${String((e && e.message) || e).slice(0, 160)}`);",
     "to": "    fail('public_menu_bad_rid', `${restaurantId}: ${String((e && e.message) || e).slice(0, 160)}`);"
+  },
+  {
+    "id": "b1-14",
+    "slice": "b1",
+    "label": "a body missing a REQUIRED collection is served (the omission half)",
+    "file": "catalog/public-menu.js",
+    "from": "      if (needed) problems.push(`${field} is missing${rule.required ? '' : ' although the catalog carries it'}`);",
+    "to": "      void needed;"
+  },
+  {
+    "id": "b1-15",
+    "slice": "b1",
+    "label": "a collection the CATALOG carries may be dropped from the body",
+    "file": "catalog/public-menu.js",
+    "from": "    const needed = rule.required || (rule.fromSource && rule.fromSource(menu));",
+    "to": "    const needed = rule.required;"
+  },
+  {
+    "id": "b1-16",
+    "slice": "b1",
+    "label": "a mistyped collection is served (object where a list belongs)",
+    "file": "catalog/public-menu.js",
+    "from": "    if (!isType(body[field], rule.type)) problems.push(`${field} is not ${rule.type === 'array' ? 'an array' : 'an object'}`);",
+    "to": "    if (false) problems.push(`${field} is not ${rule.type === 'array' ? 'an array' : 'an object'}`);"
+  },
+  {
+    "id": "b1-17",
+    "slice": "b1",
+    "label": "an EMPTY dish list counts as a menu",
+    "file": "catalog/public-menu.js",
+    "from": "    else if (rule.nonEmpty && body[field].length === 0) problems.push(`${field} is empty`);",
+    "to": "    else void rule.nonEmpty;"
+  },
+  {
+    "id": "b1-18",
+    "slice": "b1",
+    "label": "presence is by value, so a collection set to undefined reads as present",
+    "file": "catalog/public-menu.js",
+    "from": "    const present = Object.prototype.hasOwnProperty.call(body, field) && body[field] !== undefined;",
+    "to": "    const present = Object.prototype.hasOwnProperty.call(body, field);"
+  },
+  {
+    "id": "b1-19",
+    "slice": "b1",
+    "label": "the whole-body check is skipped entirely",
+    "file": "catalog/public-menu.js",
+    "from": "  assertWholeBody(restaurantId, body, menu);",
+    "to": "  void assertWholeBody;"
   }
 ]

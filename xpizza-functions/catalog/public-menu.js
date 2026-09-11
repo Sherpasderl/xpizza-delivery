@@ -36,14 +36,59 @@ const { canonicalJson } = require('./canonical-json');
 // the old key until their TTL expired, for a change that was supposed to be immediate.
 const REPRESENTATION_VERSION = '1b.1';
 
-// EVERY field this endpoint serves, declared. A field that reaches the body without being listed is
-// one nobody decided to serve, and the etag would start moving for reasons no one chose.
-const PUBLIC_MENU_BODY_FIELDS = Object.freeze([
-  'dishes', 'extras', 'categories',
-  'variant_items', 'has_photo',                 // la_musa
-  'pickup_only_cats', 'weekend_only_cats',      // x_pizza
-  'extras_by_category', 'extras_by_item', 'badges',
-]);
+// EVERY field this endpoint serves, and what has to be true of it. One table, because the list of
+// what may appear and the rules for what must appear are the same fact — kept apart they drift, and
+// the drift is invisible until a body is served with a collection missing.
+//
+// 🔴 BOTH DIRECTIONS. The first version checked only that nothing UNDECLARED appeared, and a
+// projection returning a body with `extras` deleted sailed through with a valid etag — the
+// "half-menu renders as a menu" outcome this module's own comment warns about. Asking "is anything
+// here that shouldn't be" is half a question.
+//
+//   required     — every catalog has these. dishes and categories must be non-empty (a version
+//                  cannot have zero items, and a dish's category must be declared), extras may be
+//                  legitimately empty: a restaurant that sells no add-ons is a restaurant.
+//   fromSource   — required IF THE CATALOG HAS IT, which is stronger than "optional" and needs no
+//                  brand literal. Only la_musa has variant launchers and only x_pizza has gate
+//                  categories today, but the rule is not about the brand: it is that a collection
+//                  the catalog carries must reach the body. A generator that quietly drops la_musa's
+//                  variant_items would otherwise pass, and every launcher would vanish from the form.
+const BODY_CONTRACT = Object.freeze({
+  dishes: { required: true, type: 'array', nonEmpty: true },
+  extras: { required: true, type: 'array' },
+  categories: { required: true, type: 'array', nonEmpty: true },
+  variant_items: { type: 'object', fromSource: (menu) => menu.structure.variant_items !== undefined },
+  has_photo: { type: 'array', fromSource: (menu) => menu.items.some((i) => i.has_photo !== undefined) },
+  pickup_only_cats: { type: 'array', fromSource: (menu) => menu.structure.pickup_only_cats !== undefined },
+  weekend_only_cats: { type: 'array', fromSource: (menu) => menu.structure.weekend_only_cats !== undefined },
+  extras_by_category: { type: 'object', fromSource: (menu) => menu.structure.extras_by_category !== undefined },
+  extras_by_item: { type: 'object', fromSource: (menu) => menu.structure.extras_by_item !== undefined },
+  badges: { type: 'object', fromSource: (menu) => menu.structure.badges !== undefined },
+});
+const PUBLIC_MENU_BODY_FIELDS = Object.freeze(Object.keys(BODY_CONTRACT));
+
+const isType = (v, t) => (t === 'array' ? Array.isArray(v) : (!!v && typeof v === 'object' && !Array.isArray(v)));
+
+// The body is whole, or it is not served. Presence is by KEY: a collection explicitly set to
+// undefined is absent, and reading it as "no opinion" is how a missing menu becomes a rendered one.
+function assertWholeBody(restaurantId, body, menu) {
+  const problems = [];
+  for (const [field, rule] of Object.entries(BODY_CONTRACT)) {
+    const present = Object.prototype.hasOwnProperty.call(body, field) && body[field] !== undefined;
+    const needed = rule.required || (rule.fromSource && rule.fromSource(menu));
+    if (!present) {
+      if (needed) problems.push(`${field} is missing${rule.required ? '' : ' although the catalog carries it'}`);
+      continue;
+    }
+    if (!isType(body[field], rule.type)) problems.push(`${field} is not ${rule.type === 'array' ? 'an array' : 'an object'}`);
+    else if (rule.nonEmpty && body[field].length === 0) problems.push(`${field} is empty`);
+  }
+  const undeclared = Object.keys(body).filter((f) => !PUBLIC_MENU_BODY_FIELDS.includes(f));
+  for (const f of undeclared) problems.push(`${f} is served but undeclared`);
+  if (problems.length) {
+    fail('public_menu_unavailable', `${restaurantId}: the projection is not a whole menu — ${problems.join('; ')}`);
+  }
+}
 
 // Carried from `structure` — the fields the generator leaves there. Order fixed so the body's own
 // key order is stable across builds (the etag is over canonical JSON, but a stable body is easier to
@@ -123,10 +168,7 @@ async function buildPublicMenu(db, rid, deps = {}) {
     fail('public_menu_unavailable', `${restaurantId}: the live catalog does not project to a servable menu — ${String((e && e.message) || e).slice(0, 160)}`);
   }
 
-  const undeclared = Object.keys(body).filter((f) => !PUBLIC_MENU_BODY_FIELDS.includes(f));
-  if (undeclared.length) {
-    fail('public_menu_unavailable', `${restaurantId}: the projection produced undeclared fields (${undeclared.join(', ')})`);
-  }
+  assertWholeBody(restaurantId, body, menu);
 
   // THE ETAG IS OVER THE REPRESENTATION — this rid, this projection version, this body. Not 1A's
   // content_hash: that identifies the VERSION, and what a cache holds is this module's projection of
@@ -142,4 +184,4 @@ async function buildPublicMenu(db, rid, deps = {}) {
   return { rid: restaurantId, seq: menu.identity.seq, representation_version: representationVersion, body, etag };
 }
 
-module.exports = { buildPublicMenu, defaultIsActive, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS };
+module.exports = { buildPublicMenu, defaultIsActive, assertWholeBody, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };

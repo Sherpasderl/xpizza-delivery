@@ -176,12 +176,68 @@ async function seeded(rid, over = {}) {
     const smuggler = (rid, menu) => ({ ...generateFormBundle(rid, menu), item_order: menu.structure.item_order });
     await assert.rejects(() => buildPublicMenu(db, 'x_pizza', { known, ...active, generate: smuggler }), (e) => {
       assert.strictEqual(e.code, 'public_menu_unavailable', `got ${e.code}`);
-      assert.match(e.message, /undeclared fields \(item_order\)/);
+      assert.match(e.message, /item_order is served but undeclared/);
       return true;
     }, '🔴 a field nobody declared reached the served body');
     // ...and the real generator still passes, so the guard is not simply refusing everything.
     assert.ok((await buildPublicMenu(db, 'x_pizza', { known, ...active })).body.dishes.length > 0);
     ok('the served-field declaration is enforced: a projection smuggling an extra field is refused whole');
+  }
+
+  {
+    // 🔴 THE OTHER HALF OF THE SAME QUESTION. Checking that nothing UNDECLARED appears says nothing
+    // about whether everything REQUIRED did: a projection returning a body with `extras` deleted
+    // passed that check and produced a valid etag for a menu with no options — the "half-menu renders
+    // as a menu" outcome this module's own comment warns about, reached by the guard that was
+    // supposed to prevent it. Present-but-shouldn't-be and absent-but-must-be are one class, and I
+    // had closed one side of it.
+    const db = await seeded('x_pizza');
+    const lmDb = await seeded('la_musa');
+    const omit = (field) => (rid, menu) => { const b = generateFormBundle(rid, menu); delete b[field]; return b; };
+    const blank = (field, value) => (rid, menu) => ({ ...generateFormBundle(rid, menu), [field]: value });
+
+    const refusesBody = async (label, database, rid, generate, because) => {
+      let returned = null;
+      await assert.rejects(async () => { returned = await buildPublicMenu(database, rid, { known, ...active, generate }); }, (e) => {
+        assert.strictEqual(e.code, 'public_menu_unavailable', `${label}: got ${e.code}`);
+        assert.match(e.message, because, `${label}: wrong reason — ${e.message}`);
+        return true;
+      }, `🔴 ${label} was SERVED`);
+      assert.strictEqual(returned, null, `🔴 ${label}: something was RETURNED`);
+    };
+
+    // the three every catalog has
+    await refusesBody('a menu with no dishes collection', db, 'x_pizza', omit('dishes'), /dishes is missing/);
+    await refusesBody('a menu with no options collection', db, 'x_pizza', omit('extras'), /extras is missing/);
+    await refusesBody('a menu with no categories collection', db, 'x_pizza', omit('categories'), /categories is missing/);
+    await refusesBody('a menu with ZERO dishes', db, 'x_pizza', blank('dishes', []), /dishes is empty/);
+    await refusesBody('a menu with zero categories', db, 'x_pizza', blank('categories', []), /categories is empty/);
+    await refusesBody('a dishes collection that is not a list', db, 'x_pizza', blank('dishes', { 0: 'x' }), /dishes is not an array/);
+    // 🔴 SET-TO-UNDEFINED IS ABSENT, NOT MISTYPED. Both refuse, so the menu is safe either way — but
+    // the REASON is the rule being tested, and without pinning it the by-key reading passes: the type
+    // check catches undefined and reports "not an array", so the presence rule could be deleted and
+    // nothing would notice. The same presence-by-value trap this programme has now hit five times,
+    // and the same cure: assert which rule fired, not merely that one did.
+    await refusesBody('a collection explicitly set to undefined', db, 'x_pizza', blank('extras', undefined), /extras is missing/);
+    await refusesBody('a source-carried collection set to undefined', lmDb, 'la_musa', blank('variant_items', undefined), /variant_items is missing although the catalog carries it/);
+
+    // ...and the ones required BECAUSE THE CATALOG CARRIES THEM. Not "optional": only la_musa has
+    // variant launchers today, but the rule is about the source, not the brand — so it needs no brand
+    // literal and still catches a generator quietly dropping every launcher from the form.
+    await refusesBody('la_musa losing its variant launchers', lmDb, 'la_musa', omit('variant_items'), /variant_items is missing although the catalog carries it/);
+    await refusesBody('la_musa losing its photo set', lmDb, 'la_musa', omit('has_photo'), /has_photo is missing although the catalog carries it/);
+    await refusesBody('x_pizza losing its pickup gate', db, 'x_pizza', omit('pickup_only_cats'), /pickup_only_cats is missing although the catalog carries it/);
+    await refusesBody('x_pizza losing its weekend gate', db, 'x_pizza', omit('weekend_only_cats'), /weekend_only_cats is missing although the catalog carries it/);
+    await refusesBody('a variant map that is not a map', lmDb, 'la_musa', blank('variant_items', []), /variant_items is not an object/);
+
+    // NON-VACUITY, and the reason the rule is source-conditional rather than universal: x_pizza has
+    // no variant launchers at all, and a menu without them is a perfectly good menu.
+    const xp = await buildPublicMenu(db, 'x_pizza', { known, ...active });
+    assert.strictEqual(xp.body.variant_items, undefined, 'premise: x_pizza legitimately has no variant launchers');
+    assert.strictEqual(xp.body.has_photo, undefined, '...and no photo set');
+    const lm = await buildPublicMenu(lmDb, 'la_musa', { known, ...active });
+    assert.strictEqual(lm.body.pickup_only_cats, undefined, 'premise: la_musa legitimately has no gate categories');
+    ok('the body is whole in BOTH directions: 13 omissions/mistypes refused (set-to-undefined reported as ABSENT, not mistyped), while a brand that legitimately lacks a collection still serves');
   }
 
   // ══ 5. THE ETAG IDENTIFIES THE REPRESENTATION ═════════════════════════════════════════════════
