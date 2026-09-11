@@ -4312,8 +4312,10 @@ function renderOrderDetailModal(order) {
   const pickup = allTasks[`${order.order_id}_pickup`];
   const delivery = allTasks[`${order.order_id}_delivery`];
   const driver = allDrivers[delivery?.assigned_driver_id || pickup?.assigned_driver_id];
+  const isPickup = order.order_type === 'pickup';
+  const isCash = isCashPayment(order.payment_method);
 
-  // Header — order ID + status pill
+  // Header — order ID + status pill + type
   const isCancelled = order.status === 'cancelled';
   const statusPill = isCancelled
     ? '<span class="od-status-pill cancelled">Cancelado</span>'
@@ -4326,71 +4328,69 @@ function renderOrderDetailModal(order) {
     <span>${escapeHtml(order.customer_name || 'Cliente sin nombre')}</span>
     ${statusPill}
     <span class="order-id">${escapeHtml(displayOrderLabel(order))}</span>
+    <span class="order-id">${isPickup ? 'Recoger' : 'Delivery'}</span>
   `;
 
   // Body sections
   const sections = [];
   if (order.scheduled_for) sections.push(scheduledBadge(order));
 
-  // 1) Customer info
-  const customerRows = [];
-  customerRows.push(`<div class="od-row">
-    <span class="od-label">Código</span>
-    <span class="od-value" style="font-family:'IBM Plex Mono',monospace; letter-spacing:0.02em;">${escapeHtml(orderCode(order))}</span>
-  </div>`);
-  if (order.customer_phone) {
-    customerRows.push(`<div class="od-row">
-      <span class="od-label">Teléfono</span>
-      <span class="od-value"><a href="tel:${escapeHtml(order.customer_phone)}">${escapeHtml(order.customer_phone)}</a></span>
-    </div>`);
-  }
-  if (order.address_detected || order.destination_address) {
-    customerRows.push(`<div class="od-row">
-      <span class="od-label">Dirección</span>
-      <span class="od-value">${escapeHtml(order.address_detected || order.destination_address)}</span>
-    </div>`);
-  }
-  if (order.address_details) {
-    customerRows.push(`<div class="od-row">
-      <span class="od-label">Notas</span>
-      <span class="od-value">"${escapeHtml(order.address_details)}"</span>
-    </div>`);
-  }
-  if (customerRows.length) {
-    sections.push(`<div class="od-section">
-      <div class="od-section-title">Cliente</div>
-      ${customerRows.join('')}
-    </div>`);
+  // Read-only, complete, grouped. EVERY customer-supplied field is escapeHtml'd (body + attribute sinks).
+  const odRow = (label, valueHtml) => `<div class="od-row"><span class="od-label">${label}</span><span class="od-value">${valueHtml}</span></div>`;
+
+  // 1) Cliente
+  const clienteRows = [];
+  clienteRows.push(odRow('Código', `<span style="font-family:'IBM Plex Mono',monospace; letter-spacing:0.02em;">${escapeHtml(orderCode(order))}</span>`));
+  if (order.customer_phone) clienteRows.push(odRow('Teléfono', `<a href="tel:${escapeHtml(order.customer_phone)}">${escapeHtml(order.customer_phone)}</a>`));
+  if (order.customer_email) clienteRows.push(odRow('Email', escapeHtml(String(order.customer_email))));
+  sections.push(`<div class="od-section"><div class="od-section-title">Cliente</div>${clienteRows.join('')}</div>`);
+
+  // 2) Entrega — delivery only (a pickup order has no delivery address). Address TEXT only: the dispatcher
+  //    uses the Torre map; external nav links (Maps/Waze) are driver-facing — and dropping them removes the
+  //    href sink entirely (no URL-scheme XSS, no 0,0-coords link).
+  if (!isPickup) {
+    const entregaRows = [];
+    const addr = order.address_detected || order.destination_address;
+    if (addr) entregaRows.push(odRow('Dirección', escapeHtml(String(addr))));
+    if (order.address_details) entregaRows.push(odRow('Referencia', `"${escapeHtml(String(order.address_details))}"`));
+    if (entregaRows.length) sections.push(`<div class="od-section"><div class="od-section-title">Entrega</div>${entregaRows.join('')}</div>`);
   }
 
-  // 2) Order contents
-  const orderRows = [];
-  if (order.payment_method) {
-    orderRows.push(`<div class="od-row">
-      <span class="od-label">Pago</span>
-      <span class="od-value">${escapeHtml(order.payment_method)}</span>
-    </div>`);
+  // 3) Pedido
+  const pedidoRows = [];
+  if (order.items_text) pedidoRows.push(odRow('Items', `<div class="od-items">${String(order.items_text).split(',').map(s => `<div>${escapeHtml(s.trim())}</div>`).join('')}</div>`));
+  if (order.notes) pedidoRows.push(odRow('Notas', `"${escapeHtml(String(order.notes))}"`));
+  if (pedidoRows.length) sections.push(`<div class="od-section"><div class="od-section-title">Pedido</div>${pedidoRows.join('')}</div>`);
+
+  // 4) Pago — method via the existing isCashPayment; cash tendered + change when present.
+  const pagoRows = [];
+  // Distinguish the real methods; unknown/missing → "Sin especificar" (never a defaulted "Pago en línea").
+  const payLabel = isCash ? 'Efectivo'
+    : order.payment_method === 'card_delivery' ? 'Tarjeta contra entrega'
+    : order.payment_method === 'online' ? 'Pago en línea'
+    : 'Sin especificar';
+  pagoRows.push(odRow('Método', escapeHtml(payLabel)));
+  if (order.payment_status) pagoRows.push(odRow('Estado', escapeHtml(String(order.payment_status))));
+  if (order.total != null) pagoRows.push(odRow('Total', `L ${escapeHtml(String(order.total))}`));
+  if (isCash && Number.isFinite(Number(order.cash_tendered_cents)) && Number(order.cash_tendered_cents) > 0) {
+    const tendered = Number(order.cash_tendered_cents) / 100;
+    pagoRows.push(odRow('Paga con', `L ${escapeHtml(String(tendered))}`));
+    // Change only when total is genuinely present + finite + non-negative (missing total → Number(null)=0
+    // would otherwise show the full tendered as "change"); and tendered covers it.
+    const totalNum = Number(order.total);
+    if (order.total != null && Number.isFinite(totalNum) && totalNum >= 0 && tendered >= totalNum) {
+      pagoRows.push(odRow('Vuelto', `L ${escapeHtml(String(Math.round((tendered - totalNum) * 100) / 100))}`));
+    }
   }
-  if (order.total != null) {
-    orderRows.push(`<div class="od-row">
-      <span class="od-label">Total</span>
-      <span class="od-value">L ${escapeHtml(String(order.total))}</span>
-    </div>`);
-  }
-  if (order.items_text) {
-    orderRows.push(`<div class="od-row">
-      <span class="od-label">Pedido</span>
-      <span class="od-value">
-        <div class="od-items">${order.items_text.split(',').map(s =>
-          `<div>${escapeHtml(s.trim())}</div>`).join('')}</div>
-      </span>
-    </div>`);
-  }
-  if (orderRows.length) {
-    sections.push(`<div class="od-section">
-      <div class="od-section-title">Pedido</div>
-      ${orderRows.join('')}
-    </div>`);
+  sections.push(`<div class="od-section"><div class="od-section-title">Pago</div>${pagoRows.join('')}</div>`);
+
+  // 5) Factura · RTN — shown ONLY when an RTN is present; brand-agnostic (keys off rtn_cliente, not a
+  //    restaurant_id literal — both X.Pizza and La Musa forms capture it). Customer-supplied → escaped.
+  if (order.rtn_cliente) {
+    const facturaRows = [];
+    if (order.razon_social) facturaRows.push(odRow('Razón social', escapeHtml(String(order.razon_social))));
+    facturaRows.push(odRow('RTN', `<span style="font-family:'IBM Plex Mono',monospace; letter-spacing:0.02em;">${escapeHtml(String(order.rtn_cliente))}</span>`));
+    sections.push(`<div class="od-section"><div class="od-section-title">Factura · RTN</div>${facturaRows.join('')}</div>`);
   }
 
   // 3) Timeline — chronological events that actually happened
@@ -4445,13 +4445,13 @@ function renderOrderDetailModal(order) {
       </div>`);
     }
     sections.push(`<div class="od-section">
-      <div class="od-section-title">Driver</div>
+      <div class="od-section-title">Repartidor</div>
       ${driverRows.join('')}
     </div>`);
   } else if (isCancelled) {
     // No driver was ever assigned — say so explicitly rather than leaving blank
     sections.push(`<div class="od-section">
-      <div class="od-section-title">Driver</div>
+      <div class="od-section-title">Repartidor</div>
       <div class="od-row"><span class="od-value" style="color:var(--text-dim)">Sin driver asignado al cancelar</span></div>
     </div>`);
   }
