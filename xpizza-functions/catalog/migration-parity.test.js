@@ -436,53 +436,109 @@ const tablesOf = (rid, menu) => {
     ok(`unknown structure fields are stripped before persistence (${KNOWN_STRUCTURE_FIELDS.length} known), and the known list covers everything the real seed authors`);
   }
 
-  // ══ 6d. THE WHOLE CHAIN, THROUGH THE REAL CAPTURE WRITER ══════════════════════════════════════
+  // ══ 6d. THE CAPSTONE: A LIVE EDIT, THROUGH THE REAL CAPTURE WRITER, STILL CHARGED ════════════
   {
-    // 🔴 EVERY OTHER CASE HERE FEEDS A RECONSTRUCTED CAPTURE. That reconstruction is faithful as far
-    // as I know how to make it — but "as far as I know" is exactly the gap: a hand-built capture can
-    // differ from what captureActiveVersion actually emits (doc-id ordering, field shapes, what a
-    // record does and does not carry), and then the reconstruction agrees while the real path
-    // diverges. This is the real-writer rule, and it has caught three defects in this slice already.
+    // 🔴 EVERY OTHER CASE HERE FEEDS A RECONSTRUCTED CAPTURE. That reconstruction is as faithful as I
+    // know how to make it — and "as I know how" is the gap: a hand-built capture can differ from what
+    // captureActiveVersion actually emits (doc-id ordering, field shapes, what a record carries), and
+    // then the reconstruction agrees while the real path diverges. The real-writer rule has caught
+    // three defects in this slice already.
     //
-    // So: an owner edit published on top of the live catalog, captured by the REAL reader, migrated,
-    // published, read back, and CHARGED.
-    for (const rid of BRANDS) {
-      const db = makeDb();
-      const seed = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: 'live' });
-      const v1 = await publishVersion(db, rid, seed.input, { expected: seed.expected });
+    // AND THE EDITED ITEM IS IN THE CART. An earlier version of this test edited a dish the cart did
+    // not contain, so the edit's survival was asserted against the candidate's own price while the
+    // TOTAL was computed over untouched lines. The two halves of the slice's central claim — "a live
+    // edit survives the migration" and "the cart charges the same" — were both true and never met.
+    // Here the edit moves the total, and the total is what is compared.
+    const SCENARIOS = [
+      { label: 'an untouched catalog', edits: null },
+      {
+        label: 'a live edit on a dish AND an option the cart charges for',
+        edits: {
+          x_pizza: { item: 'Carnivora', extra: 'Pepperoni' },
+          la_musa: { item: 'dimsum_01', extra: 'protein_chicken' },
+        },
+      },
+    ];
 
-      // the owner publishes a price the code tables do not have
-      const KEY = Object.keys(MENU_BY_RESTAURANT[rid])[0];
-      const EDITED = MENU_BY_RESTAURANT[rid][KEY] + 9;
-      const edited = { ...seed.input, items: seed.input.items.map((i) => (i.key === KEY ? { ...i, price: EDITED, display: { ...i.display, price: EDITED } } : i)) };
-      await publishVersion(db, rid, edited, { expected: { activeVersionId: v1.versionId } });
+    for (const scenario of SCENARIOS) {
+      for (const rid of BRANDS) {
+        const db = makeDb();
+        const seed = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: 'live' });
+        const v1 = await publishVersion(db, rid, seed.input, { expected: seed.expected });
 
-      const before = await getRestaurantMenu(db, rid);
-      assert.strictEqual(before.items.find((i) => i.key === KEY).price, EDITED, 'premise: the owner edit is live');
-      const pricedBefore = computeServerTotal(CARTS[rid], rid, tablesOf(rid, before));
-      assert.ok(pricedBefore.total > 0, `premise: the ${rid} cart prices at all`);
+        const baseline = computeServerTotal(CARTS[rid], rid, tablesOf(rid, await getRestaurantMenu(db, rid)));
+        assert.ok(baseline.total > 0, `premise: the ${rid} cart prices at all`);
 
-      // THE REAL CAPTURE — collections come back in doc-id order, which is where the ordering bug hid
-      const captured = await captureActiveVersion(db, rid);
-      assert.notDeepStrictEqual(captured.extras.map((e) => e.key), ART[rid].extras.map((e) => extrasKeyOf(rid, e)),
-        'premise: the real capture really does come back in a different order than the deployed one');
-      assert.ok(captured.extras.every((e) => e.display === undefined || e.display),
-        'premise: the capture is whatever the store actually holds');
+        let live = v1;
+        const edit = scenario.edits && scenario.edits[rid];
+        if (edit) {
+          // the edited lines must be ones the cart actually pays for, or the total cannot see them
+          const cartItems = new Set(CARTS[rid].map((l) => (rid === 'la_musa' ? l.id : l.name)));
+          const cartExtras = new Set(CARTS[rid].flatMap((l) => l.extras.map((e) => (rid === 'la_musa' ? e.id : e.name))));
+          assert.ok(cartItems.has(edit.item), `premise: the cart must charge for ${edit.item}`);
+          assert.ok(cartExtras.has(edit.extra), `premise: the cart must charge for the ${edit.extra} option`);
 
-      const cand = buildMigrationCandidate(rid, captured, ART[rid]);
-      await publishVersion(db, rid, cand.input, { expected: cand.expected });
-      const after = await getRestaurantMenu(db, rid);
+          const itemPrice = MENU_BY_RESTAURANT[rid][edit.item] + 9;
+          const extraPrice = EXTRAS_BY_RESTAURANT[rid][edit.extra] + 6;
+          const edited = {
+            ...seed.input,
+            items: seed.input.items.map((i) => (i.key === edit.item ? { ...i, price: itemPrice, display: { ...i.display, price: itemPrice } } : i)),
+            extras: { ...seed.input.extras, [edit.extra]: extraPrice },
+            extraRecords: seed.input.extraRecords.map((e) => (e.key === edit.extra ? { ...e, price: extraPrice, display: { ...e.display, price: extraPrice } } : e)),
+          };
+          live = await publishVersion(db, rid, edited, { expected: { activeVersionId: v1.versionId } });
+        }
 
-      assert.deepStrictEqual(tablesOf(rid, after).menu, tablesOf(rid, before).menu, `🔴 ${rid}: an item price moved`);
-      assert.deepStrictEqual(tablesOf(rid, after).extras, tablesOf(rid, before).extras, `🔴 ${rid}: an extra price moved`);
-      assert.strictEqual(after.items.find((i) => i.key === KEY).price, EDITED, `🔴 ${rid}: THE OWNER EDIT WAS REVERTED`);
-      assert.deepStrictEqual(computeServerTotal(CARTS[rid], rid, tablesOf(rid, after)), pricedBefore,
-        `🔴 ${rid}: the cart total moved through a real capture→migrate→publish→read cycle`);
-      assert.deepStrictEqual(after.extras.map((e) => e.display), readLiteral(formSource(rid), 'EXTRAS'),
-        `🔴 ${rid}: the SERVED option order is not the deployed one, off a REAL capture`);
-      assert.strictEqual(after.items.length, before.items.length, `🔴 ${rid}: a dish went missing`);
-      assert.strictEqual(after.extras.length, before.extras.length, `🔴 ${rid}: an option went missing`);
-      ok(`${rid}: REAL chain — owner edit → publish → captureActiveVersion → migrate → publish → read → charge: ${KEY} held at L ${EDITED}, cart L ${pricedBefore.total} unchanged, ${after.extras.length} options in the deployed order`);
+        const before = await getRestaurantMenu(db, rid);
+        const pricedBefore = computeServerTotal(CARTS[rid], rid, tablesOf(rid, before));
+        if (edit) {
+          // NON-VACUITY: the edit has to be worth money, or "the total is preserved" proves nothing.
+          assert.notStrictEqual(pricedBefore.total, baseline.total,
+            `premise: the ${rid} edit must MOVE the cart total, or preserving it says nothing`);
+        } else {
+          assert.strictEqual(pricedBefore.total, baseline.total, 'premise: an untouched catalog prices at the code total');
+        }
+
+        // ── THE REAL CAPTURE. Collections come back in doc-id order — where the ordering bug hid.
+        const captured = await captureActiveVersion(db, rid);
+        assert.strictEqual(captured.versionId, live.versionId, 'the capture is bound to what is live');
+        assert.notDeepStrictEqual(captured.extras.map((e) => e.key), ART[rid].extras.map((e) => extrasKeyOf(rid, e)),
+          'premise: the real capture really does come back in a different order than the deployed artifact');
+
+        const cand = buildMigrationCandidate(rid, captured, ART[rid]);
+        await publishVersion(db, rid, cand.input, { expected: cand.expected });
+        const after = await getRestaurantMenu(db, rid);
+
+        // ── AND THE CART IS CHARGED AGAIN.
+        const pricedAfter = computeServerTotal(CARTS[rid], rid, tablesOf(rid, after));
+        assert.deepStrictEqual(pricedAfter, pricedBefore,
+          `🔴 ${rid} (${scenario.label}): the cart total moved through a REAL capture→migrate→publish→read→charge cycle`);
+        assert.deepStrictEqual(tablesOf(rid, after).menu, tablesOf(rid, before).menu, `🔴 ${rid}: an item price moved`);
+        assert.deepStrictEqual(tablesOf(rid, after).extras, tablesOf(rid, before).extras, `🔴 ${rid}: an option price moved`);
+        assert.strictEqual(after.items.length, before.items.length, `🔴 ${rid}: a dish went missing`);
+        assert.strictEqual(after.extras.length, before.extras.length, `🔴 ${rid}: an option went missing`);
+        // ORDER is the invariant that must hold whatever was edited; field-for-field equality with the
+        // deployed artifact only holds when nothing was. Asserting the stronger one unconditionally
+        // would have made a legitimate price edit look like a migration failure.
+        assert.deepStrictEqual(after.extras.map((e) => e.display.id), readLiteral(formSource(rid), 'EXTRAS').map((e) => e.id),
+          `🔴 ${rid}: the SERVED option order is not the deployed one, off a REAL capture`);
+        if (!edit) {
+          assert.deepStrictEqual(after.extras.map((e) => e.display), readLiteral(formSource(rid), 'EXTRAS'),
+            `🔴 ${rid}: an untouched catalog must serve the deployed option records field for field`);
+        }
+        for (const i of after.items) assert.strictEqual(i.display.price, i.price, `🔴 ${rid}/${i.key}: shown ≠ charged`);
+        for (const e of after.extras) assert.strictEqual(e.display.price, e.price, `🔴 ${rid}/${e.key}: shown ≠ charged`);
+
+        if (edit) {
+          assert.strictEqual(after.items.find((i) => i.key === edit.item).price, MENU_BY_RESTAURANT[rid][edit.item] + 9,
+            `🔴 ${rid}: THE LIVE DISH EDIT WAS REVERTED`);
+          assert.strictEqual(after.extras.find((e) => e.key === edit.extra).price, EXTRAS_BY_RESTAURANT[rid][edit.extra] + 6,
+            `🔴 ${rid}: THE LIVE OPTION EDIT WAS REVERTED`);
+          ok(`${rid} REAL CHAIN — live edit (${edit.item} +9, ${edit.extra} +6) → publish → captureActiveVersion → migrate → publish → read → CHARGE: the cart pays L ${pricedAfter.total}, not the L ${baseline.total} the code tables would have`);
+        } else {
+          ok(`${rid} REAL CHAIN — untouched catalog → captureActiveVersion → migrate → publish → read → CHARGE: cart L ${pricedAfter.total} unchanged, ${after.items.length} dishes + ${after.extras.length} options intact`);
+        }
+      }
     }
   }
 

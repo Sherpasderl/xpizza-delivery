@@ -504,5 +504,13 @@
     "file": "tools/migrate-catalog-display.js",
     "from": "  const artifactOrder = new Map([...extraByKey.keys()].map((k, i) => [k, i]));",
     "to": "  const artifactOrder = new Map();"
+  },
+  {
+    "id": "task8-23",
+    "slice": "task8",
+    "label": "an OPTION's price is taken from the deployed artifact instead of the capture",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "    const out = { key: ex.key, price: ex.price };\n    note(`extras.${ex.key}.price`, 'captured');",
+    "to": "    const out = { key: ex.key, price: (extraByKey.get(ex.key) || {}).price };"
   }
 ]
