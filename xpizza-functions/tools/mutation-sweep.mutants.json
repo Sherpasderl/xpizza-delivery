@@ -512,5 +512,61 @@
     "file": "tools/migrate-catalog-display.js",
     "from": "    const out = { key: ex.key, price: ex.price };\n    note(`extras.${ex.key}.price`, 'captured');",
     "to": "    const out = { key: ex.key, price: (extraByKey.get(ex.key) || {}).price };"
+  },
+  {
+    "id": "guard-01",
+    "slice": "guard",
+    "label": "the project is inferred from the ambient gcloud default again (no projectId passed)",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "projectId: PROJECT_ID, databaseURL: RTDB_URL });",
+    "to": "databaseURL: RTDB_URL });"
+  },
+  {
+    "id": "guard-02",
+    "slice": "guard",
+    "label": "an unstated project helpfully defaults to the .firebaserc value (nobody looks at the database)",
+    "file": "tools/require-project.js",
+    "from": "  const stated = statedProject({ argv, env });",
+    "to": "  const stated = statedProject({ argv, env }) || expected;"
+  },
+  {
+    "id": "guard-03",
+    "slice": "guard",
+    "label": "a mismatched project is accepted",
+    "file": "tools/require-project.js",
+    "from": "  if (stated !== expected) {",
+    "to": "  if (false) {"
+  },
+  {
+    "id": "guard-04",
+    "slice": "guard",
+    "label": "a flag and an environment that disagree resolve by precedence instead of refusing",
+    "file": "tools/require-project.js",
+    "from": "  if (fromArgv && fromEnv && fromArgv !== fromEnv) {",
+    "to": "  if (false) {"
+  },
+  {
+    "id": "guard-05",
+    "slice": "guard",
+    "label": "the expected project becomes a hardcoded literal instead of .firebaserc",
+    "file": "tools/require-project.js",
+    "from": "  const def = parsed && parsed.projects && parsed.projects.default;",
+    "to": "  const def = 'xpizza-delivery'; void parsed;"
+  },
+  {
+    "id": "guard-06",
+    "slice": "guard",
+    "label": "the refusal exits 0, so a wrapping script carries on",
+    "file": "tools/require-project.js",
+    "from": "    process.exit(2);",
+    "to": "    process.exit(0);"
+  },
+  {
+    "id": "guard-07",
+    "slice": "guard",
+    "label": "the guard runs but its result is not passed to initializeApp",
+    "file": "tools/publish-version.js",
+    "from": "  projectId: PROJECT_ID,",
+    "to": "  projectId: undefined,"
   }
 ]

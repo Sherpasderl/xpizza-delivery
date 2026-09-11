@@ -143,8 +143,12 @@ async function seedSourceStore(db, restaurantIds = ['x_pizza', 'la_musa']) {
 if (require.main === module) {
   try { require('dotenv').config(); } catch (_) { /* devDependency */ }
   const admin = require('firebase-admin');
+  const { requireProject } = require('./require-project');
   const { RTDB_URL } = require('../catalog/mirror-rtdb');
-  admin.initializeApp({ credential: admin.credential.applicationDefault(), databaseURL: RTDB_URL });
+    // THE PROJECT GUARD, before anything resolves a credential or constructs a client: a refusal
+  // here cannot have read or written a byte. See tools/require-project.js.
+  const PROJECT_ID = requireProject();
+admin.initializeApp({ credential: admin.credential.applicationDefault(), projectId: PROJECT_ID, databaseURL: RTDB_URL });
   seedSourceStore(admin.firestore())
     .then((r) => {
       for (const [rid, x] of Object.entries(r)) {

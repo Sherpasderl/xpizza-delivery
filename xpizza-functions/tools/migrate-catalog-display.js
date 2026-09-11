@@ -332,13 +332,17 @@ if (require.main !== module) return;
 
 try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency */ }
 const admin = require('firebase-admin');
+const { requireProject } = require('./require-project');
 const { publishVersion } = require('../catalog/catalog-publish');
 const { makeRtdbMirror, RTDB_URL } = require('../catalog/mirror-rtdb');
 
 const APPLY = process.argv.includes('--apply');
 const RIDS = ['x_pizza', 'la_musa'];
 
-admin.initializeApp({ credential: admin.credential.applicationDefault(), databaseURL: RTDB_URL });
+// THE PROJECT GUARD, before anything resolves a credential or constructs a client: a refusal
+// here cannot have read or written a byte. See tools/require-project.js.
+const PROJECT_ID = requireProject();
+admin.initializeApp({ credential: admin.credential.applicationDefault(), projectId: PROJECT_ID, databaseURL: RTDB_URL });
 const db = admin.firestore();
 
 (async () => {

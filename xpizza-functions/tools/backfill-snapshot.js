@@ -10,12 +10,18 @@
 // Then verify:             node tools/verify-catalog.js   (pricing must still be identical — inert)
 try { require('dotenv').config(); } catch (_) { /* devDependency; this needs only ADC */ }
 const admin = require('firebase-admin');
+const { requireProject } = require('./require-project');
 const { getActiveVersionId, readVersionDocs } = require('../catalog/catalog-firestore');
 const { snapshotRefOf, snapshotOf, writeMirror, tablesFromVersionDocs } = require('../catalog/catalog-publish');
 const { makeRtdbMirror, RTDB_URL } = require('../catalog/mirror-rtdb');
 
+// THE PROJECT GUARD, before anything resolves a credential or constructs a client: a refusal
+// here cannot have read or written a byte. See tools/require-project.js.
+const PROJECT_ID = requireProject();
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
+  projectId: PROJECT_ID,   // NEVER the ambient gcloud default — that is what nearly wrote a catalog into another project
+
   databaseURL: RTDB_URL,   // 1b REVISE: ADC + GOOGLE_CLOUD_PROJECT alone do NOT resolve RTDB — without
                            // this, admin.database() throws and the tool dies before writing anything.
 });

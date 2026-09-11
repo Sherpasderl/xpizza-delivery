@@ -18,6 +18,7 @@
 // you are trying to escape.
 try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; this needs only ADC */ }
 const admin = require('firebase-admin');
+const { requireProject } = require('./require-project');
 const { rollbackVersion } = require('../catalog/catalog-publish');
 const { makeRtdbMirror, RTDB_URL } = require('../catalog/mirror-rtdb');
 
@@ -29,8 +30,13 @@ const RID = arg('rid');
 const TO = arg('to');
 const KNOWN = ['x_pizza', 'la_musa'];
 
+// THE PROJECT GUARD, before anything resolves a credential or constructs a client: a refusal
+// here cannot have read or written a byte. See tools/require-project.js.
+const PROJECT_ID = requireProject();
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
+  projectId: PROJECT_ID,   // NEVER the ambient gcloud default — that is what nearly wrote a catalog into another project
+
   databaseURL: RTDB_URL,   // without this admin.database() throws and the tool dies before writing anything
 });
 const db = admin.firestore();

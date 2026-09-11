@@ -22,6 +22,7 @@
 // with not_owner. Which brands those are is a config lookup (factura/eligibility.js), not a name here.
 try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; this needs only ADC */ }
 const admin = require('firebase-admin');
+const { requireProject } = require('./require-project');
 const { ownerGrantPaths, readOwnerRestaurants, RID_RE, UID_RE } = require('../catalog/owner-index');
 const { RTDB_URL } = require('../catalog/mirror-rtdb');
 
@@ -33,8 +34,13 @@ const RID = arg('rid');
 const UID = arg('uid');
 const REVOKE = process.argv.includes('--revoke');
 
+// THE PROJECT GUARD, before anything resolves a credential or constructs a client: a refusal
+// here cannot have read or written a byte. See tools/require-project.js.
+const PROJECT_ID = requireProject();
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
+  projectId: PROJECT_ID,   // NEVER the ambient gcloud default — that is what nearly wrote a catalog into another project
+
   databaseURL: RTDB_URL,   // without this admin.database() throws before writing anything
 });
 const db = admin.database();

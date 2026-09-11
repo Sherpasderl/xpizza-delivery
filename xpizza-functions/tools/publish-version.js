@@ -11,6 +11,7 @@
 // reader serves version 1 via the pointer; the 1b guard still serves CODE + alarms on any divergence.
 const { execSync } = require('child_process');
 const admin = require('firebase-admin');
+const { requireProject } = require('./require-project');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
 const { publishVersion } = require('../catalog/catalog-publish');
@@ -70,8 +71,13 @@ module.exports = { readPublishBaseline, buildPublishCandidate };
 if (require.main !== module) return;   // imported for its pure parts — no credentials, no writes
 
 try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; publish needs only ADC */ }
+// THE PROJECT GUARD, before anything resolves a credential or constructs a client: a refusal
+// here cannot have read or written a byte. See tools/require-project.js.
+const PROJECT_ID = requireProject();
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
+  projectId: PROJECT_ID,   // NEVER the ambient gcloud default — that is what nearly wrote a catalog into another project
+
   databaseURL: RTDB_URL,   // 1b REVISE: ADC + GOOGLE_CLOUD_PROJECT alone do NOT resolve RTDB — without
                            // this, admin.database() throws and the tool dies before writing anything.
 });

@@ -54,6 +54,17 @@ const arg = (name) => {
 const slice = arg('slice');
 const selected = MUTANTS.filter((m) => !slice || m.slice === slice);
 
+// 🔴 AN EMPTY SELECTION IS NOT A PASS. A --slice that matches nothing reported "0/0 killed" and
+// exited 0 — so a sweep that measured NOTHING read as a sweep that found nothing wrong. That happened:
+// the script adding a slice failed with a syntax error, wrote no mutants, and the run that followed
+// looked clean. Same class as ANCHOR MISSING: a measurement that measured nothing must never be
+// reported as evidence.
+if (!selected.length) {
+  console.error(`mutation-sweep: no mutants matched${slice ? ` --slice=${slice}` : ''} — nothing was measured.`);
+  console.error(`  known slices: ${[...new Set(MUTANTS.map((m) => m.slice))].join(', ') || '(none)'}`);
+  process.exit(2);
+}
+
 if (process.argv.includes('--list')) {
   for (const m of selected) console.log(`${m.slice.padEnd(8)} ${m.id.padEnd(4)} ${m.label}${EQUIVALENT.has(m.id) ? '   [equivalent]' : ''}`);
   console.log(`\n${selected.length} mutants${slice ? ` in slice ${slice}` : ''}`);

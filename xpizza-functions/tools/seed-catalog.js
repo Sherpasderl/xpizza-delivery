@@ -6,6 +6,7 @@ try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; th
 const crypto = require('crypto');
 const { execSync } = require('child_process');
 const admin = require('firebase-admin');
+const { requireProject } = require('./require-project');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { seedCatalog } = require('../catalog/seed-catalog-core');
 const { buildCatalogV2 } = require('../catalog/form-menu-source');   // 1c-a: schema-v2 bootstrap (display from the forms, price from menu-pricing)
@@ -45,7 +46,10 @@ module.exports = { seedPayload };
 // production credentials.
 if (require.main !== module) return;
 
-admin.initializeApp({ credential: admin.credential.applicationDefault() });
+// THE PROJECT GUARD, before anything resolves a credential or constructs a client: a refusal
+// here cannot have read or written a byte. See tools/require-project.js.
+const PROJECT_ID = requireProject();
+admin.initializeApp({ credential: admin.credential.applicationDefault(), projectId: PROJECT_ID });
 const RESTAURANTS = seedPayload();
 seedCatalog(admin.firestore(), RESTAURANTS)
   .then((report) => {

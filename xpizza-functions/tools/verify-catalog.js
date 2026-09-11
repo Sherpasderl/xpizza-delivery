@@ -12,6 +12,7 @@
 // catalog is migrated, and prints which versionId served (null = still on the flat layout).
 try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; this needs only ADC */ }
 const admin = require('firebase-admin');
+const { requireProject } = require('./require-project');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { getRestaurantDocs } = require('../catalog/catalog-firestore');
 const { readSource, sourceToBuildInputs } = require('../catalog/source-store');   // portal 2a
@@ -33,7 +34,10 @@ const { getActiveVersionId, readVersionDocs } = require('../catalog/catalog-fire
 // every intended edit, which is the exact uselessness this mode exists to remove.
 const VS_ACTIVE = process.argv.includes('--vs-active');
 
-admin.initializeApp({ credential: admin.credential.applicationDefault() });
+// THE PROJECT GUARD, before anything resolves a credential or constructs a client: a refusal
+// here cannot have read or written a byte. See tools/require-project.js.
+const PROJECT_ID = requireProject();
+admin.initializeApp({ credential: admin.credential.applicationDefault(), projectId: PROJECT_ID });
 const db = admin.firestore();
 
 // The active published version, built the same way the store is, so the two are comparable.
