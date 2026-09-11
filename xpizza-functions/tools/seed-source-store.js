@@ -18,6 +18,7 @@
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { formSource, readLiteral, readSetLiteral, pricingKeyOf } = require('../catalog/form-menu-source');
 const { attachRedeemFields } = require('../catalog/redeem-source');
+const { attachExposure } = require('../catalog/exposure-source');
 const { validateSource, sourceRefOf, canonicalize, extrasKeyOf } = require('../catalog/source-store');
 
 // Pure: assemble the store object for one restaurant from the current code + form sources.
@@ -67,8 +68,6 @@ function buildSourceFromCode(restaurantId) {
         structure.variant_items[k] = rest;
       }
     }
-    structure.extras_by_category = readLiteral(src, 'EXTRAS_BY_CATEGORY', '{', '}');
-    structure.extras_by_item = readLiteral(src, 'EXTRAS_BY_ITEM', '{', '}');
   } else {
     // x_pizza has no CATEGORIES literal, so the store is AUTHORED to exactly what the text path
     // derives (first appearance in MENU). From here the portal owns them; at cutover the two agree,
@@ -82,6 +81,8 @@ function buildSourceFromCode(restaurantId) {
 
   // 2a Task 6 — redemption eligibility becomes catalog data. Derived from the code allowlists through
   // the SAME function the code-side parity build uses, so the two sides cannot disagree at cutover.
+  // A form literal a brand may simply not declare — x_pizza has no exposure maps at all.
+  const safeLiteral = (name) => { try { return readLiteral(src, name, '{', '}'); } catch (_) { return null; } };
   attachRedeemFields(restaurantId, structure, items, extrasTable);
 
   // 🔴 THE EXTRA-CATEGORY NAMESPACE, declared rather than inferred. Both shipped forms derive it by
@@ -102,6 +103,18 @@ function buildSourceFromCode(restaurantId) {
     const badges = readLiteral(src, 'TAG_BADGES', '{', '}');
     if (badges && Object.keys(badges).length) structure.badges = badges;
   } catch (_) { /* a brand with no badge literal simply declares none */ }
+
+  // 🔴 EXPOSURE — which options each dish is offered — through the SAME derivation the code-side
+  // parity build uses, and the LEGACY maps derived from it rather than copied beside it. The maps
+  // cannot express a deny (the shape is purely additive), so carrying them as the source made
+  // x_pizza's "Nutella is offered nothing" unrepresentable — the exclusion stayed a name comparison
+  // inside a renderer, where no merchant could ever see or change it.
+  //
+  // After extra_categories, deliberately: an authored allow-all is a list OF those categories.
+  attachExposure(restaurantId, structure, items, {
+    byCategory: safeLiteral('EXTRAS_BY_CATEGORY'),
+    byItem: safeLiteral('EXTRAS_BY_ITEM'),
+  });
 
   const source = { restaurant_id: restaurantId, schema_version: 2, items, extras, structure };
   validateSource(source, restaurantId);   // fail closed at assembly, not at publish time

@@ -22,6 +22,7 @@
 const { readFileSync } = require('fs');
 const { join } = require('path');
 const { attachRedeemFields } = require('./redeem-source');
+const { attachExposure } = require('./exposure-source');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./../menu-pricing');
 
 // Relative to this file (xpizza-functions/catalog/) → up two, to the repo root.
@@ -188,6 +189,8 @@ function buildCatalogV2(restaurantId, opts = {}) {
   // store authored it (the portal owns these once a merchant has edited them) and from the form
   // literal otherwise, which is the same source the seed bootstraps from — so the two paths agree at
   // cutover and the parity gate can prove it.
+  // A form literal this brand may simply not declare — x_pizza has no exposure maps at all.
+  const safeLiteral = (name) => { try { return readLiteral(src, name, '{', '}'); } catch (_) { return null; } };
   const carryStructure = (field, fromLiteral) => {
     if (fd) { if (fd[field] !== undefined) structure[field] = fd[field]; return; }
     try { const v = fromLiteral(); if (v !== undefined && v !== null) structure[field] = v; } catch (_) { /* this brand's form declares none */ }
@@ -231,8 +234,6 @@ function buildCatalogV2(restaurantId, opts = {}) {
   // The option-group namespace and the badge definitions — display structures the build used to drop.
   // The namespace is DERIVED from the extras' own categories when the form is the source, exactly as
   // the seed derives it, so both bootstrap paths produce the same ordering.
-  carryStructure('extras_by_category', () => readLiteral(src, 'EXTRAS_BY_CATEGORY', '{', '}'));
-  carryStructure('extras_by_item', () => readLiteral(src, 'EXTRAS_BY_ITEM', '{', '}'));
   carryStructure('badges', () => readLiteral(src, 'TAG_BADGES', '{', '}'));
   // 🔴 THE STORE WINS ONCE IT HAS AUTHORED ONE. This read `structure.extra_categories === undefined`
   // without ever COPYING fd.extra_categories, so the check always fell through and a merchant who
@@ -249,6 +250,21 @@ function buildCatalogV2(restaurantId, opts = {}) {
     }
     if (cats.length) structure.extra_categories = cats;
   }
+
+  // 🔴 EXPOSURE — which options each dish is offered — and the LEGACY maps DERIVED from it.
+  //
+  // The maps used to be carried straight from the form literal, which made them a second authored
+  // source for a fact the exposure model already owns, and one that cannot express a deny: the shape
+  // is purely additive, so x_pizza's "Nutella is offered nothing" is not representable in it at all.
+  // They are output now, re-derived on every build. The store's own exposure wins once it has one;
+  // otherwise it is extracted from the brand's maps (la_musa) or authored from its renderer (x_pizza).
+  //
+  // After extra_categories, deliberately: an authored allow-all is a list OF those categories.
+  carryStructure('exposure', () => undefined);
+  attachExposure(restaurantId, structure, items, {
+    byCategory: fd ? fd.extras_by_category : safeLiteral('EXTRAS_BY_CATEGORY'),
+    byItem: fd ? fd.extras_by_item : safeLiteral('EXTRAS_BY_ITEM'),
+  });
 
   const REDEEM_FIELDS = ['redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras'];
   if (fd && REDEEM_FIELDS.some((f) => fd[f] !== undefined)) {

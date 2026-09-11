@@ -22,6 +22,9 @@ const GOOD = () => ({
   structure: {
     categories: [{ id: 'individual' }], item_order: ['Margherita'],
     extra_categories: ['Salsas & Queso'],
+    // 1A Task 8: a menu that sells options must say who is offered them. The legacy maps are derived
+    // output now, not a second authored source, and they cannot express a deny at all.
+    exposure: { category_allow: { individual: ['Salsas & Queso'] }, item_overrides: {} },
     pickup_only_cats: [], weekend_only_cats: [],
   },
 });
@@ -44,11 +47,16 @@ const GOOD = () => ({
     ['item_order duplicate', (s) => { s.structure.item_order = ['Margherita', 'Margherita']; }],
     ['item_order references a ghost', (s) => { s.structure.item_order = ['Ghost']; }],
     ['wrong restaurant_id', (s) => { s.restaurant_id = 'la_musa'; }],
+    ['a menu that sells options and says nothing about who is offered them', (s) => { delete s.structure.exposure; }],
+    ['an exposure allowing a category that does not exist', (s) => { s.structure.exposure.category_allow.individual = ['Ghost']; }],
+    ['an exposure denying for a dish that does not exist', (s) => { s.structure.exposure.item_overrides = { Ghost: { deny: ['*'] } }; }],
+    ['an override that neither denies nor adds', (s) => { s.structure.exposure.item_overrides = { Margherita: {} }; }],
+    ['the deny-everything sentinel used as an ADD', (s) => { s.structure.exposure.item_overrides = { Margherita: { add: ['*'] } }; }],
   ]) {
     const s = GOOD(); mutate(s);
     assert.throws(() => validateSource(s, 'x_pizza'), /source_malformed|source_invalid/, `${label} must THROW`);
   }
-  ok(`validateSource fails closed on 15 corruption classes (price, shape, bijection, ordering, identity)`);
+  ok(`validateSource fails closed on 20 corruption classes (price, shape, bijection, ordering, identity, exposure)`);
   assert.doesNotThrow(() => validateSource(GOOD(), 'x_pizza'), 'a well-formed source validates');
   ok('validateSource accepts a well-formed source');
 
@@ -64,7 +72,10 @@ const GOOD = () => ({
       items: [{ key: 'dimsum_01', price: 223, display: { id: 'dimsum_01', cat: 'dim_sum', name: 'Wonton', price: 223 } }],
       extras: [{ key: 'Arroz Blanco', price: 50, display: { id: 'rice_white', cat: 'Acompañamientos', name: 'Arroz Blanco', price: 50 } }],
       // la_musa's renderer prints category labels, so the contract requires every category to carry one.
-      structure: { categories: [{ id: 'dim_sum', name: 'Dim Sum' }], item_order: ['dimsum_01'], extra_categories: ['Acompañamientos'] },
+      structure: {
+        categories: [{ id: 'dim_sum', name: 'Dim Sum' }], item_order: ['dimsum_01'], extra_categories: ['Acompañamientos'],
+        exposure: { category_allow: { dim_sum: ['Acompañamientos'] }, item_overrides: {} },
+      },
     };
     assert.throws(() => validateSource(lm, 'la_musa'), /does not match its display record/, 'la_musa extra keyed by NAME must THROW (it prices by id)');
     lm.extras[0].key = 'rice_white';
@@ -389,7 +400,10 @@ const GOOD = () => ({
   const { extrasKeyOf } = require('./source-store');
   const { pricingKeyOf: pkeyOf } = require('./form-menu-source');
   const XSS = '<img src=x onerror=alert(1)>';
-  const MAPS = new Set(['structure.badges', 'structure.extras_by_category', 'structure.extras_by_item', 'structure.variant_items']);
+  // the one dish that overrides its category's exposure — Nutella for x_pizza, rice_03 for la_musa
+  const ovKey = (s) => Object.keys(s.structure.exposure.item_overrides)[0];
+  const MAPS = new Set(['structure.badges', 'structure.extras_by_category', 'structure.extras_by_item', 'structure.variant_items',
+    'structure.exposure.category_allow', 'structure.exposure.item_overrides']);
 
   const walk = (value, prefix, out) => {
     if (Array.isArray(value)) { for (const v of value) walk(v, `${prefix}[]`, out); return; }
@@ -497,6 +511,19 @@ const GOOD = () => ({
     'structure.badges.*':       { absent: NA('a brand may define fewer badges; removing one only matters if a tag names it'), invalid: (s) => { s.structure.badges.ghost_badge = {}; s.items[0].display.tags = ['ghost_badge']; }, refs: NA('a badge definition is content; tags reference INTO it, not out') },
     'structure.badges.*.label': { invalid: (s) => { badge(s).label = '   '; }, refs: NA('this value is content, not a reference to another catalog entity'), unsafe: (s) => { badge(s).label = XSS; } },
     'structure.badges.*.cls':   { invalid: (s) => { badge(s).cls = 'x"onload="alert(1)'; }, refs: NA('this value is content, not a reference to another catalog entity') },
+    // ── EXPOSURE, the authority the legacy maps are derived FROM ──────────────────────────────
+    // Its absent-case is not NA: a menu that sells options and says nothing about who is offered them
+    // renders an empty options panel rather than an error, which is the exact silence 1A removes.
+    'structure.exposure':                        { invalid: (s) => { s.structure.exposure = 7; }, refs: NA('the collection names nothing; its two halves below do') },
+    'structure.exposure.category_allow':         { invalid: (s) => { s.structure.exposure.category_allow = 7; }, refs: (s) => { s.structure.exposure.category_allow = { ghost_cat: [s.structure.extra_categories[0]] }; } },
+    'structure.exposure.category_allow.*':       { absent: NA('a dish category offered nothing is legitimate — la_musa\'s bebidas is exactly that today'), invalid: (s) => { s.structure.exposure.category_allow[cat0(s).id] = 'Salsas'; }, refs: (s) => { s.structure.exposure.category_allow[cat0(s).id] = ['Ghost']; } },
+    'structure.exposure.category_allow.*[]':     { absent: NA('an element cannot be absent; an empty allow-list is the legitimate case above'), invalid: (s) => { s.structure.exposure.category_allow[Object.keys(s.structure.exposure.category_allow)[0]] = ['   ']; }, refs: (s) => { s.structure.exposure.category_allow[Object.keys(s.structure.exposure.category_allow)[0]] = ['Ghost']; } },
+    'structure.exposure.item_overrides':         { absent: NA('a menu where no dish overrides its category is legitimate'), invalid: (s) => { s.structure.exposure.item_overrides = 7; }, refs: (s) => { s.structure.exposure.item_overrides = { no_such_dish: { deny: ['*'] } }; } },
+    'structure.exposure.item_overrides.*':       { absent: NA('a dish that does not override is simply absent from the map'), invalid: (s) => { s.structure.exposure.item_overrides[ovKey(s)] = {}; }, refs: NA('the KEY is the reference, ruled one path up') },
+    'structure.exposure.item_overrides.*.deny':  { absent: NA('an override may add without denying'), invalid: (s) => { s.structure.exposure.item_overrides[ovKey(s)].deny = []; }, refs: (s) => { s.structure.exposure.item_overrides[ovKey(s)].deny = ['Ghost']; } },
+    'structure.exposure.item_overrides.*.deny[]': { absent: NA('an element cannot be absent; an empty list is the invalid case above'), invalid: (s) => { s.structure.exposure.item_overrides[ovKey(s)].deny = ['   ']; }, refs: (s) => { s.structure.exposure.item_overrides[ovKey(s)].deny = ['Ghost']; } },
+    'structure.exposure.item_overrides.*.add':   { absent: NA('an override may deny without adding'), invalid: (s) => { s.structure.exposure.item_overrides[ovKey(s)].add = []; }, refs: (s) => { s.structure.exposure.item_overrides[ovKey(s)].add = ['Ghost']; } },
+    'structure.exposure.item_overrides.*.add[]': { absent: NA('an element cannot be absent; an empty list is the invalid case above'), invalid: (s) => { s.structure.exposure.item_overrides[ovKey(s)].add = ['*']; }, refs: (s) => { s.structure.exposure.item_overrides[ovKey(s)].add = ['Ghost']; } },
     'structure.extras_by_category':     { absent: NA('optional — a brand may expose extras without a category map'), invalid: NA('covered by the per-entry paths enumerated beneath this one'), refs: (s) => { s.structure.extras_by_category = { ghost_cat: [s.structure.extra_categories[0]] }; } },
     'structure.extras_by_category.*':   { absent: NA('a category exposing no extras is legitimate — unmapped categories expose nothing today'), invalid: NA('covered per element and by duplicate'), refs: (s) => { s.structure.extras_by_category[cat0(s).id] = ['Ghost']; } },
     'structure.extras_by_category.*[]': { absent: NA('an element cannot be absent'), invalid: (s) => { s.structure.extras_by_category[Object.keys(s.structure.extras_by_category)[0]] = ['   ']; }, refs: (s) => { s.structure.extras_by_category[Object.keys(s.structure.extras_by_category)[0]] = ['Ghost']; } },
@@ -640,7 +667,7 @@ const GOOD = () => ({
     // choosing a record that carries the field, removes coverage without failing anything — the
     // census would simply do less and still report success. Pinning the counts makes any reduction a
     // build failure, and any genuine addition a deliberate edit.
-    const EXPECTED = { x_pizza: { paths: 36, planted: 163, exempt: 94 }, la_musa: { paths: 60, planted: 260, exempt: 172 } }[rid];
+    const EXPECTED = { x_pizza: { paths: 47, planted: 209, exempt: 125 }, la_musa: { paths: 68, planted: 295, exempt: 193 } }[rid];
     assert.strictEqual(paths.length, EXPECTED.paths, `${rid} — path count moved; the walker or the seed changed`);
     assert.strictEqual(planted, EXPECTED.planted, `${rid} — plant count moved (got ${planted}); coverage was added or removed`);
     // The EXEMPTION count is pinned too. Only the plants were, so an exemption could be added — turning
@@ -868,6 +895,20 @@ const GOOD = () => ({
     ['validateSource :: !seen.has(k) #3', 'post-type', 'membership, asked after the value has been typed'],
     ['sourceToBuildInputs :: source.structure[f] !== undefined', 'post-type', 'sourceToBuildInputs runs on an ALREADY VALIDATED source; it maps, it does not check'],
     ['sourceToBuildInputs :: Array.isArray(source.extras) && source.extras.some((e) => e.display)', 'shape', 'this predicate IS the type test'],
+    ['checkField :: rule.nonEmpty && Array.isArray(value) && value.length === 0', 'post-type', 'a count over an already-typed collection'],
+    // ── exposure: the authority the legacy maps derive from ──
+    ["validateSource :: exposure !== undefined && exposure !== null && typeof exposure === 'object' && !Array.isArray(exposure)", 'shape', 'this predicate IS the type test'],
+    ['validateSource :: exposure.category_allow', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: !catIds.has(cat)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: !extraCatSet.has(v)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: exposure.item_overrides', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: !seen.has(key)', 'post-type', 'membership, asked after the value has been typed'],
+    ["validateSource :: ov && typeof ov === 'object' && !Array.isArray(ov) && !Object.prototype.hasOwnProperty.call(ov, 'deny') && !Object.prototype.hasOwnProperty.call(ov, 'add')", 'shape', 'this predicate IS the type test'],
+    ['validateSource :: ov', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
+    ['validateSource :: list === undefined', 'requiredness', 'undefined only; a present value (null included) reaches its type check'],
+    ['validateSource :: v === EXPOSURE_ALL', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ["validateSource :: side === 'deny'", 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ['validateSource :: !extraCatSet.has(v) && !extraKeys.has(v)', 'post-type', 'membership, asked after the value has been typed'],
     ['readSource :: !snap || !snap.exists', 'post-type', 'a negated check over an already-typed value'],
   ];
   const RULED = new Map(RULINGS.map(([k, kind, why]) => [k, { kind, why }]));
@@ -880,7 +921,7 @@ const GOOD = () => ({
     ...enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8')),
     ...enumeratePredicates(readFileSync(join(__dirname, 'canonical-json.js'), 'utf8')),
   ];
-  assert.strictEqual(preds.length, 129, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
+  assert.strictEqual(preds.length, 142, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
 
   const unruled = preds.filter((p) => !RULED.has(p.key)).map((p) => `${p.line}: ${p.key}`);
   assert.deepStrictEqual(unruled, [],
@@ -894,7 +935,7 @@ const GOOD = () => ({
   }
   const counts = {};
   for (const p of preds) counts[RULED.get(p.key).kind] = (counts[RULED.get(p.key).kind] || 0) + 1;
-  assert.deepStrictEqual(counts, { requiredness: 17, 'post-type': 56, shape: 42, 'not-a-presence-test': 14 },
+  assert.deepStrictEqual(counts, { requiredness: 18, 'post-type': 64, shape: 44, 'not-a-presence-test': 16 },
     'the mix of rulings moved — a predicate changed meaning, which is a thing to look at rather than re-pin');
   ok(`all ${preds.length} control predicates ruled (${counts.requiredness} requiredness, ${counts['post-type']} post-type, ${counts.shape} shape, ${counts['not-a-presence-test']} not-a-presence-test)`);
 

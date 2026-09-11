@@ -24,6 +24,7 @@ const SCHEMA_VERSION = 2;
 // comment always claimed, while the two sat in different modules. Re-exported here so every existing
 // importer keeps working and there is still exactly one definition.
 const { extrasKeyOf } = require('./form-menu-source');
+const { ALL: EXPOSURE_ALL } = require('./extras-exposure');
 
 // The code-path literals this schema covers. The completeness test asserts every literal the code
 // path reads appears here — so a future code-only field cannot silently become uneditable in 2b.
@@ -145,6 +146,9 @@ function checkField(value, rule, label, field) {
   const typeReason = TYPES[rule.type](value);
   if (typeReason) fail(`${label} — ${field} ${typeReason} (got ${typeof value})`);
   if (rule.nonEmpty && typeof value === 'string' && !value.trim()) fail(`${label} — ${field} must not be blank`);
+  // ...and an EMPTY LIST is not non-empty either. `nonEmpty` meant "not a blank string" and silently
+  // said nothing about arrays, so a rule asking for a non-empty list got no check at all.
+  if (rule.nonEmpty && Array.isArray(value) && value.length === 0) fail(`${label} — ${field} must not be empty`);
   if (rule.enum && !rule.enum.includes(value)) fail(`${label} — ${field} must be one of ${rule.enum.join(', ')} (got ${String(value)})`);
   if (rule.unique && Array.isArray(value) && new Set(value).size !== value.length) fail(`${label} — ${field} has duplicate entries`);
   if (rule.sink) {
@@ -381,6 +385,56 @@ function validateSource(source, rid) {
     }
   }
 
+  // ── EXPOSURE: THE AUTHORITY ──────────────────────────────────────────────────────────────────
+  // 🔴 THE MAPS ABOVE CANNOT SAY NO. Their shape is purely additive, so "this dish is offered nothing
+  // at all" — x_pizza's Nutella — is not expressible in them; it lived as a name comparison inside a
+  // renderer, where no merchant could see it, edit it, or publish it. `structure.exposure` is the
+  // shape that can, and the maps are re-derived from it as output for pre-1B consumers.
+  //
+  // REQUIRED once the menu sells options. A menu with extras and no exposure is a menu whose options
+  // nobody is offered — which renders as an empty options panel, not as an error, and is precisely the
+  // silence this slice exists to remove.
+  const exposure = st.exposure;
+  checkField(exposure, { required: source.extras.length > 0, type: 'object' }, `${rid}`, 'structure.exposure');
+  if (exposure !== undefined && exposure !== null && typeof exposure === 'object' && !Array.isArray(exposure)) {
+    checkField(exposure.category_allow, { required: true, type: 'object' }, `${rid}`, 'structure.exposure.category_allow');
+    checkField(exposure.item_overrides, { required: true, type: 'object' }, `${rid}`, 'structure.exposure.item_overrides');
+    for (const [cat, allow] of Object.entries(exposure.category_allow || {})) {
+      if (!catIds.has(cat)) fail(`${rid} — structure.exposure.category_allow references unknown category ${cat}`);
+      checkField(allow, { required: true, type: 'string_array', unique: true }, `${rid}`, `structure.exposure.category_allow.${cat}`);
+      for (const v of allow) {
+        if (!extraCatSet.has(v)) fail(`${rid} — structure.exposure.category_allow.${cat} references ${v}, which is not a declared extra-category`);
+      }
+    }
+    for (const [key, ov] of Object.entries(exposure.item_overrides || {})) {
+      if (!seen.has(key)) fail(`${rid} — structure.exposure.item_overrides references unknown item ${key}`);
+      checkField(ov, { required: true, type: 'object' }, `${rid}/${key}`, 'exposure override');
+      // An override that says nothing is a no-op someone believed was doing something.
+      if (ov && typeof ov === 'object' && !Array.isArray(ov)
+        && !Object.prototype.hasOwnProperty.call(ov, 'deny') && !Object.prototype.hasOwnProperty.call(ov, 'add')) {
+        fail(`${rid}/${key} — an exposure override must deny or add something`);
+      }
+      for (const side of ['deny', 'add']) {
+        const list = ov && ov[side];
+        if (list === undefined) continue;
+        // nonEmpty: an override carrying `deny: []` says nothing — the dish should simply not be in
+        // the map. A rule that is present and empty reads as "considered and decided" when nobody did.
+        checkField(list, { required: true, type: 'string_array', unique: true, nonEmpty: true }, `${rid}/${key}`, `exposure ${side}`);
+        for (const v of list) {
+          // The deny-everything sentinel is legal ONLY as a deny: "add everything" is not a rule this
+          // resolver has, and accepting it would be accepting an instruction nothing carries out.
+          if (v === EXPOSURE_ALL) {
+            if (side === 'deny') continue;
+            fail(`${rid}/${key} — ${EXPOSURE_ALL} is a deny-everything sentinel and has no meaning as an add`);
+          }
+          if (!extraCatSet.has(v) && !extraKeys.has(v)) {
+            fail(`${rid}/${key} — exposure ${side} references ${v}, which is neither a declared extra-category nor a known extra`);
+          }
+        }
+      }
+    }
+  }
+
   // ── VARIANT GRAPH ────────────────────────────────────────────────────────────────────────────
   // A launcher offers a required choice between real variants. Every way that graph can be open —
   // an orphan, a dangling id, an empty choice, a cycle, a variant claimed by two launchers, a
@@ -602,7 +656,7 @@ function sourceToBuildInputs(source) {
   // 1A Task 4: extra_categories (the ordered option-group namespace) and badges (the definitions a tag
   // resolves against) join the list. Both are display data the build was silently dropping, so a
   // catalog built from a source could not group its options or render a badge.
-  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'extra_categories', 'badges', 'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']) {
+  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'exposure', 'extra_categories', 'badges', 'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']) {
     if (source.structure[f] !== undefined) formData[f] = source.structure[f];
   }
   if (Array.isArray(source.extras) && source.extras.some((e) => e.display)) {

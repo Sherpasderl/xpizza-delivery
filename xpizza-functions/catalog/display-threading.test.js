@@ -144,7 +144,15 @@ for (const rid of BRANDS) {
     const fd = { dishes: readLiteral(src, 'MENU'), extras_display: readLiteral(src, 'EXTRAS'), categories: null };
     const order = []; for (const d of fd.dishes) if (!order.includes(d.cat)) order.push(d.cat);
     fd.categories = rid === 'la_musa' ? readLiteral(src, 'CATEGORIES') : order.map((id) => ({ id }));
-    if (rid === 'la_musa') { fd.variant_items = readLiteral(src, 'VARIANT_ITEMS', '{', '}'); fd.badges = readLiteral(src, 'TAG_BADGES', '{', '}'); }
+    if (rid === 'la_musa') {
+      fd.variant_items = readLiteral(src, 'VARIANT_ITEMS', '{', '}');
+      fd.badges = readLiteral(src, 'TAG_BADGES', '{', '}');
+      // 1A Task 8: la_musa's exposure is EXTRACTED from these, so a draft without them is one whose
+      // exposure cannot be derived — the build refuses rather than inventing an allow-list. A real
+      // la_musa draft always carries them; this synthetic one has to as well.
+      fd.extras_by_category = readLiteral(src, 'EXTRAS_BY_CATEGORY', '{', '}');
+      fd.extras_by_item = readLiteral(src, 'EXTRAS_BY_ITEM', '{', '}');
+    }
     if (mutate) mutate(fd);
     return fd;
   };

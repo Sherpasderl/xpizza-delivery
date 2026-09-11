@@ -213,7 +213,8 @@ const TWO = {
       { key: 'Plato Dos', price: 310, display: { id: 2, cat: 'principales', name: 'Plato Dos', price: 310, desc: 'another' } },
     ],
     extras: [{ key: 'Queso', price: 40, display: { id: 'e1', cat: 'Quesos', name: 'Queso', price: 40 } }],
-    structure: { schema_version: 2, item_order: ['Plato Uno', 'Plato Dos'], categories: [{ id: 'principales' }], extra_categories: ['Quesos'] },
+    structure: { schema_version: 2, item_order: ['Plato Uno', 'Plato Dos'], categories: [{ id: 'principales' }], extra_categories: ['Quesos'],
+      exposure: { category_allow: { principales: ['Quesos'] }, item_overrides: {} } },
   });
   const TS = { seconds: 1788754374, nanoseconds: 634000000 };
   function mkFs(source, { updateTime = TS, exists = true, throwOn = null } = {}) {
@@ -400,7 +401,8 @@ const TWO = {
       restaurant_id: rid, schema_version: 2,   // 1A Task 2: the complete display schema
       items: [{ key: 'Plato Uno', price: 250, display: { id: 1, cat: 'principales', name: 'Plato Uno', price: 250 } }],
       extras: [{ key: 'Queso', price: 40, display: { id: 'e1', cat: 'Quesos', name: 'Queso', price: 40 } }],
-      structure: { schema_version: 2, item_order: ['Plato Uno'], categories: [{ id: 'principales' }], extra_categories: ['Quesos'] },
+      structure: { schema_version: 2, item_order: ['Plato Uno'], categories: [{ id: 'principales' }], extra_categories: ['Quesos'],
+        exposure: { category_allow: { principales: ['Quesos'] }, item_overrides: {} } },
     });
     // la_musa keys by id, so its fixture must too — otherwise validateSource rejects it and this would
     // be measuring the validator rather than the flag.
@@ -408,7 +410,8 @@ const TWO = {
       restaurant_id: rid, schema_version: 2,   // 1A Task 2: the complete display schema
       items: [{ key: 'plato_01', price: 250, display: { id: 'plato_01', cat: 'principales', name: 'Plato Uno', price: 250 } }],
       extras: [{ key: 'queso', price: 40, display: { id: 'queso', cat: 'Quesos', name: 'Queso', price: 40 } }],
-      structure: { schema_version: 2, item_order: ['plato_01'], categories: [{ id: 'principales', name: 'Principales' }], extra_categories: ['Quesos'] },
+      structure: { schema_version: 2, item_order: ['plato_01'], categories: [{ id: 'principales', name: 'Principales' }], extra_categories: ['Quesos'],
+        exposure: { category_allow: { principales: ['Quesos'] }, item_overrides: {} } },
     });
     const srcFor = (rid) => (rid === 'la_musa' ? idKeyed(rid) : nameKeyed(rid));
 

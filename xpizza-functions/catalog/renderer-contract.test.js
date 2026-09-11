@@ -187,9 +187,19 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     delete s.structure.extras_by_item;
     delete s.structure.redeem_eligible_extras;
     delete s.structure.extra_categories;
+    delete s.structure.exposure;              // no options to offer, so nothing to say about offering them
     return s;
   };
   assert.doesNotThrow(() => validateSource(noExtras(), 'x_pizza'), 'a menu with no extras and no namespace is valid');
+  // ...and the same rule for the exposure: emptiness may decide whether it is NEEDED, never whether a
+  // present one is CHECKED. A menu with no options that still claims to offer some is malformed.
+  for (const [what, mutate] of [
+    ['a garbage exposure', (s) => { s.structure.exposure = 7; }],
+    ['an exposure allowing a category that no longer exists', (s) => { s.structure.exposure = { category_allow: { individual: ['Carnes'] }, item_overrides: {} }; }],
+  ]) {
+    const s = noExtras(); mutate(s);
+    assert.throws(() => validateSource(s, 'x_pizza'), /source_malformed/, `${what} must be refused even with no extras`);
+  }
   for (const bad of [null, 7, 'broken', {}, [1], ['ok', 'ok'], ['  ']]) {
     const s = noExtras();
     s.structure.extra_categories = bad;

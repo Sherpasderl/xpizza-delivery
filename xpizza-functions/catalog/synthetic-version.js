@@ -29,7 +29,11 @@ function mkVersion(menu, extras = {}) {
       item_order: items.map((i) => i.key),
       extra_order: extraRecords.map((e) => e.key),
       categories: [{ id: 'main' }],
-      ...(extraRecords.length ? { extra_categories: ['Extras'] } : {}),
+      ...(extraRecords.length ? {
+        extra_categories: ['Extras'],
+        // 1A Task 8: a menu that sells options must say who is offered them.
+        exposure: { category_allow: { main: ['Extras'] }, item_overrides: {} },
+      } : {}),
     },
     extras,
     extraRecords,
