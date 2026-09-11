@@ -15,7 +15,9 @@ const { buildCatalogV2, formSource, readLiteral } = require('./form-menu-source'
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, computeServerTotal } = require('../menu-pricing');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { sourceRefOf, validateSource, canonicalize } = require('./source-store');
+const { extrasKeyOf } = require('./form-menu-source');
 const { publishVersion } = require('./catalog-publish');
+const { buildPublishCandidate } = require('../tools/publish-version');
 const { getRestaurantMenu } = require('./catalog-menu');
 const { resolveExposure } = require('./extras-exposure');
 const { docId } = require('./seed-catalog-core');
@@ -222,6 +224,9 @@ const tablesOf = (rid, menu) => {
         (a) => { a.extras = [...a.extras, { id: 'e99', cat: 'Carnes', name: 'Ghost Topping', price: 10 }]; }, null, /migration_refused_unpriced/],
       'a priced option the artifact does not describe': [
         (a) => { a.extras = a.extras.slice(1); }, null, /migration_refused_undescribed/],
+      'a dish the artifact offers and the catalog does not price': [
+        (a) => { a.dishes = [...a.dishes, { id: 99, cat: 'individual', name: 'Ghost Dish', price: 100, desc: 'x', emoji: '👻', color: '#000' }]; },
+        null, /migration_refused_unpriced/],
       'a priced dish nothing describes': [
         (a) => { a.dishes = a.dishes.slice(1); },
         (c) => { delete c.items[0].display; },   // and the capture cannot describe it either
@@ -400,6 +405,85 @@ const tablesOf = (rid, menu) => {
       /exposure_source_missing/, '🔴 an extracted brand must not invent exposure when it has no map');
     assert.ok(deriveExposure('some_new_brand', {}) === null, 'a brand with no shipped renderer simply has no exposure to migrate');
     ok('the exposure authority is tied to the renderer: a second exclusion, a vanished one, a missing dish and a missing map are each refused');
+  }
+
+  // ══ 5b. AN UNKNOWN STRUCTURE FIELD CANNOT RIDE INTO A PERSISTED DOCUMENT ══════════════════════
+  {
+    // The publish path drops one in the builder; the DRAFT is persisted verbatim, so the draft is
+    // where a stray field actually survives — and from there into the next published version's
+    // structure hash, where it reads as "the menu changed". A pre-existing marker (from an earlier
+    // tool, a debug stamp, someone's provenance annotation) is exactly that case, and it is not
+    // covered by "the migration does not write one".
+    const { KNOWN_STRUCTURE_FIELDS } = require('./source-store');
+    const rid = 'la_musa';
+    const capture = preOneACapture(rid, { mutate: (c) => {
+      c.structure.provenance = { 'items.dimsum_01.price': 'captured' };
+      c.structure._debug_marker = 'left by some earlier tool';
+    } });
+    const { source } = buildMigrationCandidate(rid, capture, ART[rid]);
+    const persisted = JSON.stringify(source.structure);
+    for (const word of ['provenance', '_debug_marker']) {
+      assert.ok(!persisted.includes(word), `🔴 a pre-existing "${word}" survived into the document that gets persisted verbatim`);
+    }
+    // ...and the field list cannot fall behind the schema: whatever the real seed authors must be in
+    // it, or the migration would DROP a field it was supposed to carry.
+    for (const brand of BRANDS) {
+      const unknown = Object.keys(buildSourceFromCode(brand).structure).filter((f) => !KNOWN_STRUCTURE_FIELDS.includes(f));
+      assert.deepStrictEqual(unknown, [], `🔴 ${brand}: the seed authors structure fields the migration would silently drop: ${unknown.join(', ')}`);
+    }
+    assert.ok(KNOWN_STRUCTURE_FIELDS.includes('exposure') && !KNOWN_STRUCTURE_FIELDS.includes('provenance'),
+      'non-vacuity: the list really distinguishes a schema field from a stray one');
+    ok(`unknown structure fields are stripped before persistence (${KNOWN_STRUCTURE_FIELDS.length} known), and the known list covers everything the real seed authors`);
+  }
+
+  // ══ 6d. THE WHOLE CHAIN, THROUGH THE REAL CAPTURE WRITER ══════════════════════════════════════
+  {
+    // 🔴 EVERY OTHER CASE HERE FEEDS A RECONSTRUCTED CAPTURE. That reconstruction is faithful as far
+    // as I know how to make it — but "as far as I know" is exactly the gap: a hand-built capture can
+    // differ from what captureActiveVersion actually emits (doc-id ordering, field shapes, what a
+    // record does and does not carry), and then the reconstruction agrees while the real path
+    // diverges. This is the real-writer rule, and it has caught three defects in this slice already.
+    //
+    // So: an owner edit published on top of the live catalog, captured by the REAL reader, migrated,
+    // published, read back, and CHARGED.
+    for (const rid of BRANDS) {
+      const db = makeDb();
+      const seed = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: 'live' });
+      const v1 = await publishVersion(db, rid, seed.input, { expected: seed.expected });
+
+      // the owner publishes a price the code tables do not have
+      const KEY = Object.keys(MENU_BY_RESTAURANT[rid])[0];
+      const EDITED = MENU_BY_RESTAURANT[rid][KEY] + 9;
+      const edited = { ...seed.input, items: seed.input.items.map((i) => (i.key === KEY ? { ...i, price: EDITED, display: { ...i.display, price: EDITED } } : i)) };
+      await publishVersion(db, rid, edited, { expected: { activeVersionId: v1.versionId } });
+
+      const before = await getRestaurantMenu(db, rid);
+      assert.strictEqual(before.items.find((i) => i.key === KEY).price, EDITED, 'premise: the owner edit is live');
+      const pricedBefore = computeServerTotal(CARTS[rid], rid, tablesOf(rid, before));
+      assert.ok(pricedBefore.total > 0, `premise: the ${rid} cart prices at all`);
+
+      // THE REAL CAPTURE — collections come back in doc-id order, which is where the ordering bug hid
+      const captured = await captureActiveVersion(db, rid);
+      assert.notDeepStrictEqual(captured.extras.map((e) => e.key), ART[rid].extras.map((e) => extrasKeyOf(rid, e)),
+        'premise: the real capture really does come back in a different order than the deployed one');
+      assert.ok(captured.extras.every((e) => e.display === undefined || e.display),
+        'premise: the capture is whatever the store actually holds');
+
+      const cand = buildMigrationCandidate(rid, captured, ART[rid]);
+      await publishVersion(db, rid, cand.input, { expected: cand.expected });
+      const after = await getRestaurantMenu(db, rid);
+
+      assert.deepStrictEqual(tablesOf(rid, after).menu, tablesOf(rid, before).menu, `🔴 ${rid}: an item price moved`);
+      assert.deepStrictEqual(tablesOf(rid, after).extras, tablesOf(rid, before).extras, `🔴 ${rid}: an extra price moved`);
+      assert.strictEqual(after.items.find((i) => i.key === KEY).price, EDITED, `🔴 ${rid}: THE OWNER EDIT WAS REVERTED`);
+      assert.deepStrictEqual(computeServerTotal(CARTS[rid], rid, tablesOf(rid, after)), pricedBefore,
+        `🔴 ${rid}: the cart total moved through a real capture→migrate→publish→read cycle`);
+      assert.deepStrictEqual(after.extras.map((e) => e.display), readLiteral(formSource(rid), 'EXTRAS'),
+        `🔴 ${rid}: the SERVED option order is not the deployed one, off a REAL capture`);
+      assert.strictEqual(after.items.length, before.items.length, `🔴 ${rid}: a dish went missing`);
+      assert.strictEqual(after.extras.length, before.extras.length, `🔴 ${rid}: an option went missing`);
+      ok(`${rid}: REAL chain — owner edit → publish → captureActiveVersion → migrate → publish → read → charge: ${KEY} held at L ${EDITED}, cart L ${pricedBefore.total} unchanged, ${after.extras.length} options in the deployed order`);
+    }
   }
 
   // ══ 7. CAS-BOUND — a concurrent publish invalidates the migration ═════════════════════════════

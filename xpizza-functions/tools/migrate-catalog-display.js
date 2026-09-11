@@ -31,7 +31,7 @@
 // the rules that already govern a publish, and a migration that met different ones would be a
 // migration whose output nothing else could accept.
 // ---------------------------------------------------------------------------
-const { SCHEMA_VERSION, validateSource, sourceToBuildInputs, sourceRefOf, encodeUpdateTime, canonicalize, extrasKeyOf } = require('../catalog/source-store');
+const { SCHEMA_VERSION, KNOWN_STRUCTURE_FIELDS, validateSource, sourceToBuildInputs, sourceRefOf, encodeUpdateTime, canonicalize, extrasKeyOf } = require('../catalog/source-store');
 const { buildCatalogV2, pricingKeyOf, formSource, readLiteral, readSetLiteral } = require('../catalog/form-menu-source');
 const { attachExposure, assertExposureMatchesToday } = require('../catalog/exposure-source');
 const { attachRedeemFields } = require('../catalog/redeem-source');
@@ -119,6 +119,19 @@ function upgradeDocument(restaurantId, captured, artifact) {
     return out;
   });
 
+  // ...and the SAME reverse walk for dishes. A per-item loop only ever sees what is PRICED, so a dish
+  // the deployed form offers and the catalog does not price is invisible to it — the candidate builds
+  // cleanly and the dish is simply gone. That is a dish a customer can order today disappearing at
+  // cutover, which is the loudest possible version of "ambiguity is refused, never guessed".
+  //
+  // It was enforced for extras and not for items. Same principle, one collection, unwritten.
+  const pricedItems = new Set(items.map((i) => i.key));
+  for (const [key] of dishByKey) {
+    if (!pricedItems.has(key)) {
+      refuse('unpriced', `${restaurantId}/${key} — the deployed artifact offers a dish the catalog does not price; migrating would silently drop a dish customers can order today`);
+    }
+  }
+
   // EXTRAS — the half the catalog never carried. Price captured, description from the artifact.
   //
   // 🔴 IN THE DEPLOYED ORDER, and this is not cosmetic. A capture comes back in Firestore's DOC-ID
@@ -167,6 +180,19 @@ function upgradeDocument(restaurantId, captured, artifact) {
 
   // STRUCTURE — the capture's, with the gaps filled and the authored "desde" stripped.
   const structure = JSON.parse(JSON.stringify(captured.structure || {}));
+  // 🔴 ANYTHING THE SCHEMA DOES NOT KNOW ABOUT IS DROPPED HERE. The structure is deep-copied from the
+  // capture, and the upgraded DRAFT is persisted verbatim — no builder in between to discard an
+  // unknown key, unlike the publish path. So a stray field already sitting on a captured structure
+  // (a debug stamp, a marker from some earlier tool, a provenance annotation someone added) would
+  // ride into the draft and from there into the next published version's structure hash, where it
+  // reads as "the menu changed".
+  //
+  // This is what makes "provenance can never reach a persisted document" unconditional rather than
+  // true-of-what-this-file-writes. The field list lives in source-store beside the schema it
+  // describes, and the seed's own keys are asserted to be a subset of it.
+  for (const f of Object.keys(structure)) {
+    if (!KNOWN_STRUCTURE_FIELDS.includes(f)) { delete structure[f]; note(`structure.${f}`, 'dropped-unknown'); }
+  }
   structure.schema_version = SCHEMA_VERSION;
   for (const f of Object.keys(structure)) note(`structure.${f}`, 'captured');
 

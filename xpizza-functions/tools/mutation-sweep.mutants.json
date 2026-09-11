@@ -480,5 +480,29 @@
     "file": "tools/migrate-catalog-display.js",
     "from": "    if (out.display.price !== out.price) {\n      out.display = { ...out.display, price: out.price };\n      note(`extras.${ex.key}.display.price`, 'captured');\n    }",
     "to": "    void 0;"
+  },
+  {
+    "id": "task8-20",
+    "slice": "task8",
+    "label": "an artifact dish the catalog does not price is silently dropped",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "    if (!pricedItems.has(key)) {\n      refuse('unpriced',",
+    "to": "    if (false) {\n      refuse('unpriced',"
+  },
+  {
+    "id": "task8-21",
+    "slice": "task8",
+    "label": "an unknown structure field rides into the persisted draft",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "    if (!KNOWN_STRUCTURE_FIELDS.includes(f)) { delete structure[f]; note(`structure.${f}`, 'dropped-unknown'); }",
+    "to": "    void f;"
+  },
+  {
+    "id": "task8-22",
+    "slice": "task8",
+    "label": "the real capture returns extras in whatever order it likes (ordering not restored)",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "  const artifactOrder = new Map([...extraByKey.keys()].map((k, i) => [k, i]));",
+    "to": "  const artifactOrder = new Map();"
   }
 ]

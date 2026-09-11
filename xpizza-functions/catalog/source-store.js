@@ -41,6 +41,17 @@ const SOURCE_COVERED_LITERALS = [
 
 const sourceRefOf = (db, rid) => db.collection('restaurants').doc(rid).collection('meta').doc('source');
 
+// EVERY field the structure schema knows about. One list, because two would drift: the migration
+// strips anything not here before persisting a draft, and the completeness test asserts the real
+// seed's own keys are a subset of it — so a field added to the schema and not to this list fails the
+// build rather than being silently dropped by the migration that was meant to carry it.
+const KNOWN_STRUCTURE_FIELDS = Object.freeze([
+  'schema_version', 'item_order', 'extra_order', 'categories', 'extra_categories',
+  'variant_items', 'badges', 'exposure', 'extras_by_category', 'extras_by_item',
+  'pickup_only_cats', 'weekend_only_cats',
+  'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras',
+]);
+
 // The draft's REVISION, as a comparable string. Nanoseconds are preserved on purpose: an ISO round
 // trip truncates them, and a revision built from a truncated time can never equal the stored one.
 // It lives here, beside sourceRefOf, because two things now compare draft revisions — the edit
@@ -683,4 +694,4 @@ async function readSource(db, rid) {
   return { source, revision: encodeUpdateTime(snap.updateTime) };
 }
 
-module.exports = { SCHEMA_VERSION, readSource, validateSource, encodeUpdateTime, sourceToBuildInputs, canonicalize, sourceRefOf, isPositiveInt, extrasKeyOf, SOURCE_COVERED_LITERALS };
+module.exports = { SCHEMA_VERSION, KNOWN_STRUCTURE_FIELDS, readSource, validateSource, encodeUpdateTime, sourceToBuildInputs, canonicalize, sourceRefOf, isPositiveInt, extrasKeyOf, SOURCE_COVERED_LITERALS };
