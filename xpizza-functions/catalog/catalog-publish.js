@@ -219,9 +219,14 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
     ...(d.display !== undefined ? { display: d.display } : {}),
     ...(d.has_photo !== undefined ? { has_photo: d.has_photo } : {}),
   }));
+  // has_photo travels for extras too. catalogDocsForRestaurant attaches it to BOTH collections
+  // through one shared projection and the seed persists it; writing it for items only would mean the
+  // seed and the publisher disagreed about what a record is — the same asymmetry that left published
+  // extras unnamed, one field smaller.
   for (const d of extraDocs) ops.push((b) => b.create(vref.collection('extras').doc(d.id), {
     key: d.key, price: d.price,
     ...(d.display !== undefined ? { display: d.display } : {}),
+    ...(d.has_photo !== undefined ? { has_photo: d.has_photo } : {}),
   }));
   ops.push((b) => b.create(vref.collection('meta').doc('menu_structure'), structure));
   await commitOps(db, ops);

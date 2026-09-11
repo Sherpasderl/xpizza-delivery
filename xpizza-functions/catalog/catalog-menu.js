@@ -39,10 +39,57 @@ const SCHEMA_VERSION = 2;
 // TYPED failures. The message still carries the detail a human needs, but `code` is what a caller
 // branches on — a resolver deciding between "serve the fallback" and "alarm" must not have to
 // pattern-match prose that any edit to this file could reword.
+//
+// `reader: true` MARKS the error as one this module typed. That marker, not the presence of a
+// `code`, is what `coded()` below tests — because plenty of errors arrive already carrying a `code`
+// that means something else entirely (a Firestore rejection has one), and treating those as
+// already-typed would hand the caller a foreign vocabulary while looking exactly like success.
 function fail(code, detail) {
   const e = new Error(`${code}: ${detail}`);
   e.code = code;
+  e.reader = true;
   throw e;
+}
+
+// 🔴 EVERY FAILURE THAT LEAVES THIS MODULE CARRIES ONE OF OUR CODES.
+//
+// The fail() calls below are only the failures this module authors. The rest come from places that
+// are deliberately NOT ours to change: assertComplete is shared with the money reader and must stay
+// byte-identical for it, getActiveVersionId is the one pointer definition both readers use, and a
+// dropped connection comes from the SDK. Those threw plain Errors, so `no fallback, and here is
+// why` quietly became `no fallback, and here is a sentence` — a count mismatch arrived with
+// code === undefined.
+//
+// So the typing happens at THIS boundary, over whole calls, rather than being bolted onto the two
+// spots that happened to be noticed. Deny-by-default: anything not marked as ours is re-tagged,
+// whatever it already carried, with the foreign code kept as `cause_code` for the log.
+async function coded(code, fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e && typeof e === 'object' && e.reader) throw e;        // already typed by us — keep the specific code
+    const foreign = (e && typeof e === 'object') ? e.code : undefined;
+    // Tag in place when we can, and VERIFY the tag took. A frozen or sealed error refuses the
+    // assignment, and a thrown string or number has nowhere to put it — both would otherwise leave
+    // untyped through the one path built to guarantee everything is typed. So the tag is read back,
+    // and anything that could not carry it is replaced by an error that can.
+    let tagged = false;
+    if (e && typeof e === 'object') {
+      try {
+        if (foreign !== undefined) e.cause_code = foreign;
+        e.code = code;
+        e.reader = true;
+        tagged = e.code === code && e.reader === true;
+      } catch (_) { tagged = false; }
+    }
+    if (tagged) throw e;
+    const wrapped = new Error(`${code}: ${String((e && e.message) || e)}`);
+    wrapped.code = code;
+    wrapped.reader = true;
+    wrapped.cause = e;
+    if (foreign !== undefined) wrapped.cause_code = foreign;
+    throw wrapped;
+  }
 }
 
 // ONE bijection rule, asked twice. item_order and extra_order make the same promise — every record
@@ -115,24 +162,27 @@ function buildMenu(items, extras, structureSnap, where) {
 // Asking for version V means version V or an error. Substituting anything else would answer a
 // question about provenance with data that has none.
 async function readVersionMenu(db, restaurantId, versionId) {
-  if (typeof versionId !== 'string' || !versionId) fail('version_id_required', `${restaurantId}`);
-  const vref = db.collection('restaurants').doc(restaurantId).collection('versions').doc(versionId);
-  const [recSnap, items, structureSnap, extras] = await Promise.all([
-    vref.get(), vref.collection('menu_items').get(), vref.collection('meta').doc('menu_structure').get(), vref.collection('extras').get(),
-  ]);
-  if (!recSnap.exists) fail('version_missing', `${restaurantId}/${versionId}`);
-  const where = `${restaurantId}/versions/${versionId}`;
-  const record = recSnap.data() || {};
-  const built = buildMenu(items, extras, structureSnap, where);
+  return coded('catalog_read_failed', async () => {
+    if (typeof versionId !== 'string' || !versionId) fail('version_id_required', `${restaurantId}`);
+    const vref = db.collection('restaurants').doc(restaurantId).collection('versions').doc(versionId);
+    const [recSnap, items, structureSnap, extras] = await Promise.all([
+      vref.get(), vref.collection('menu_items').get(), vref.collection('meta').doc('menu_structure').get(), vref.collection('extras').get(),
+    ]);
+    if (!recSnap.exists) fail('version_missing', `${restaurantId}/${versionId}`);
+    const where = `${restaurantId}/versions/${versionId}`;
+    const record = recSnap.data() || {};
+    const built = buildMenu(items, extras, structureSnap, where);
 
-  // Completeness-on-read for the MONEY fields (counts + both full price hashes) — the same descriptor
-  // the pricing reader verifies, shared so the two can never drift.
-  const menuTable = {}; for (const r of built.records) menuTable[r.key] = r.price;
-  const { extras: extraTable } = buildTablesFromDocs([], built.extraRecords.map((r) => ({ key: r.key, price: r.price })));
-  assertComplete(record, menuTable, extraTable, where);
+    // Completeness-on-read for the MONEY fields (counts + both full price hashes) — the same
+    // descriptor the pricing reader verifies, shared so the two can never drift. Its errors are
+    // re-tagged rather than rewritten: the money path depends on those exact messages.
+    const menuTable = {}; for (const r of built.records) menuTable[r.key] = r.price;
+    const { extras: extraTable } = buildTablesFromDocs([], built.extraRecords.map((r) => ({ key: r.key, price: r.price })));
+    await coded('catalog_incomplete', () => assertComplete(record, menuTable, extraTable, where));
 
-  const identity = versionIdentity(restaurantId, versionId, record, built);
-  return { items: built.items, extras: built.extras, variants: built.variants, structure: built.structure, identity };
+    const identity = versionIdentity(restaurantId, versionId, record, built);
+    return { items: built.items, extras: built.extras, variants: built.variants, structure: built.structure, identity };
+  });
 }
 
 // The version's own account of itself, checked against the version it was read from. Each field is
@@ -171,18 +221,23 @@ function versionIdentity(restaurantId, versionId, record, built) {
 // id, no ordinal and no pinned hash, so any identity offered for it would be invented. Callers that
 // need provenance must read a version; callers that only need the records can call this by name.
 async function readFlatMenu(db, restaurantId) {
-  const rref = db.collection('restaurants').doc(restaurantId);
-  const [profile, items, structureSnap, extras] = await Promise.all([
-    rref.get(), rref.collection('menu_items').get(), rref.collection('meta').doc('menu_structure').get(), rref.collection('extras').get(),
-  ]);
-  if (!profile.exists) fail('restaurant_not_found', restaurantId);
-  const built = buildMenu(items, extras, structureSnap, restaurantId);
-  return { items: built.items, extras: built.extras, variants: built.variants, structure: built.structure };
+  return coded('catalog_read_failed', async () => {
+    const rref = db.collection('restaurants').doc(restaurantId);
+    const [profile, items, structureSnap, extras] = await Promise.all([
+      rref.get(), rref.collection('menu_items').get(), rref.collection('meta').doc('menu_structure').get(), rref.collection('extras').get(),
+    ]);
+    if (!profile.exists) fail('restaurant_not_found', restaurantId);
+    const built = buildMenu(items, extras, structureSnap, restaurantId);
+    return { items: built.items, extras: built.extras, variants: built.variants, structure: built.structure };
+  });
 }
 
 // THE reader. Resolves the active pointer and reads THAT version — or fails closed.
 async function getRestaurantMenu(db, restaurantId) {
-  const versionId = await getActiveVersionId(db, restaurantId);   // throws on malformed / read error
+  // A malformed pointer and a failed pointer read are ONE answer to the caller — this restaurant
+  // cannot be served — and neither arrives typed from the shared resolver, so both are tagged here.
+  // The distinction that matters for alarming survives verbatim in the message.
+  const versionId = await coded('active_version_unreadable', () => getActiveVersionId(db, restaurantId));
   if (versionId == null) {
     // 🔴 NO FLAT FALLBACK. This used to fall through to the flat layout on a clean pointer-absent,
     // which meant an un-migrated (or mid-migration, or accidentally-deleted-pointer) restaurant

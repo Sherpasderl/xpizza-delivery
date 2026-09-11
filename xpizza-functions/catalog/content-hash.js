@@ -28,16 +28,25 @@ const { canonicalJson } = require('./canonical-json');
 // document: an unrelated field landing on a doc (a migration marker, a debug stamp) must not change
 // the fingerprint of a menu nobody edited.
 function servedPayload({ rid, schema_version, items, extras, structure }) {
-  const item = (i) => {
-    const out = { key: i.key, price: i.price, display: i.display };
-    if (i.has_photo !== undefined) out.has_photo = i.has_photo;
+  // 🔴 ONE PROJECTION FOR BOTH COLLECTIONS. Items and extras were projected by two separate
+  // expressions and the extras one omitted has_photo — which the reader DOES return, because the
+  // reader maps both collections with one shared function. So a served field escaped the
+  // fingerprint: flipping an extra's has_photo changed what the reader handed back while the hash
+  // stayed identical, and two versions differing in a served field collided. Exactly the skew this
+  // exists to detect.
+  //
+  // The fix is not to add the missing field, it is to stop having two lists. The served set and the
+  // hashed set are now the same expression, so the next field to join a record joins both or neither.
+  const record = (r) => {
+    const out = { key: r.key, price: r.price, display: r.display };
+    if (r.has_photo !== undefined) out.has_photo = r.has_photo;
     return out;
   };
   return {
     rid,
     schema_version,
-    items: (items || []).map(item),
-    extras: (extras || []).map((e) => ({ key: e.key, price: e.price, display: e.display })),
+    items: (items || []).map(record),
+    extras: (extras || []).map(record),
     structure: structure || {},
   };
 }

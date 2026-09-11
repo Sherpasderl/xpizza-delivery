@@ -182,6 +182,10 @@ const inputsFor = (rid, over = {}) => {
       'a renamed OPTION': { extraRecords: base.extras.map((e, idx) => (idx === 0 ? { ...e, display: { ...e.display, name: `${e.display.name} ` } } : e)) },
       'a changed option EXPOSURE': { structure: { ...base.structure, extras_by_category: { individual: ['Carnes'] } } },
       'a reordered option list': { structure: { ...base.structure, extra_order: [base.structure.extra_order[1], base.structure.extra_order[0], ...base.structure.extra_order.slice(2)] } },
+      // has_photo is SERVED for extras (the reader maps both collections with one function) and was
+      // hashed for items only, so this one collided: the reader handed back a different menu and the
+      // fingerprint said nothing had changed.
+      'a photo flag on an option': { extraRecords: base.extras.map((e, idx) => (idx === 0 ? { ...e, has_photo: true } : e)) },
     };
     for (const [what, over] of Object.entries(skews)) {
       const vid = (await publishVersion(db, rid, { ...inputsFor('x_pizza'), ...over })).versionId;
@@ -191,7 +195,22 @@ const inputsFor = (rid, over = {}) => {
       assert.notStrictEqual((await readVersionMenu(db, rid, vid)).identity.content_hash, controlHash,
         `🔴 ${what} produced the SAME content hash — a version skew 1B/1C could not see`);
     }
-    ok('identity DISCRIMINATES: a renamed dish, a renamed option, a changed exposure and a reordered option list each move content_hash while BOTH money hashes collide');
+    ok('identity DISCRIMINATES: a renamed dish, a renamed option, a changed exposure, a reordered option list and a photo flag on an option each move content_hash while BOTH money hashes collide');
+  }
+  {
+    // ...and the field really is SERVED, not just hashed — the two sets have to be the same set, and
+    // the way they came apart last time was one of them growing a field the other did not.
+    const rid = 'photo_extra_shop';
+    const base = buildCatalogV2('x_pizza');
+    await publishVersion(db, rid, {
+      ...inputsFor('x_pizza'),
+      extraRecords: base.extras.map((e, idx) => (idx === 0 ? { ...e, has_photo: true } : e)),
+    });
+    const menu = await getRestaurantMenu(db, rid);
+    const first = menu.extras.find((e) => e.key === base.extras[0].key);
+    assert.strictEqual(first.has_photo, true, '🔴 a served extra field must survive the write+read round trip');
+    assert.ok(menu.extras.filter((e) => e.has_photo !== undefined).length === 1, 'and only the one that carries it');
+    ok('served == hashed: an extra\'s has_photo is persisted, returned by the reader AND covered by the fingerprint');
   }
   {
     // ...and it is not merely "any two versions differ": the same payload hashes the same.
@@ -234,6 +253,7 @@ const inputsFor = (rid, over = {}) => {
       await mutate(rid, versionId);
       await assert.rejects(() => getRestaurantMenu(db, rid), (e) => {
         assert.strictEqual(e.code, code, `${label}: expected code ${code}, got ${e.code} (${e.message})`);
+        assert.strictEqual(e.reader, true, `${label}: the failure must be marked as one this reader typed`);
         return true;
       }, `🔴 ${label} was SERVED`);
     };
@@ -250,6 +270,36 @@ const inputsFor = (rid, over = {}) => {
       const { price: _gone, ...rest } = d.data().display;
       await d.ref.set({ ...d.data(), display: rest });
     }, 'catalog_display_price_missing');
+
+    // 🔴 BOTH FAILURE TYPES ON BOTH COLLECTIONS. The shown price and the charged price live in
+    // different namespaces with nothing structural keeping them equal, and the rule has two halves —
+    // the field must be THERE, and it must AGREE. Covering one half per collection would have left
+    // either half deletable for the collection it was not covered on.
+    await plant('an ITEM display record with no price key', async (rid, vid) => {
+      const d = await firstItem(rid, vid);
+      const { price: _gone, ...rest } = d.data().display;
+      await d.ref.set({ ...d.data(), display: rest });
+    }, 'catalog_display_price_missing');
+
+    await plant('an EXTRA shown at a price it is not charged', async (rid, vid) => {
+      const d = await firstExtra(rid, vid);
+      await d.ref.set({ ...d.data(), display: { ...d.data().display, price: d.data().price + 1 } });
+    }, 'catalog_price_disagreement');
+
+    // PRESENT-BUT-UNDEFINED, on both. The key is THERE, so requiredness is satisfied and the value
+    // has to answer to the equality rule — `undefined !== 39` — rather than being read as "no
+    // opinion". This is the presence-by-value trap that has cost this slice three rounds already.
+    // (Firestore itself refuses to store undefined; the rule under test is the READER's, which must
+    // not depend on the store having refused it first.)
+    await plant('an ITEM display price present but undefined', async (rid, vid) => {
+      const d = await firstItem(rid, vid);
+      await d.ref.set({ ...d.data(), display: { ...d.data().display, price: undefined } });
+    }, 'catalog_price_disagreement');
+
+    await plant('an EXTRA display price present but undefined', async (rid, vid) => {
+      const d = await firstExtra(rid, vid);
+      await d.ref.set({ ...d.data(), display: { ...d.data().display, price: undefined } });
+    }, 'catalog_price_disagreement');
 
     await plant('an extra stripped of its display record', async (rid, vid) => {
       const d = await firstExtra(rid, vid);
@@ -288,7 +338,7 @@ const inputsFor = (rid, over = {}) => {
       await r.ref.set({ ...r.data(), schema_version: 3 });
     }, 'version_schema_unsupported');
 
-    ok('fail-closed on read: 9 distinct plants each refused with its OWN typed code — none served');
+    ok('fail-closed on read: 13 distinct plants each refused with its OWN typed code — none served');
   }
   {
     // The display tamper above is the one the MONEY descriptor cannot see. Stated as its own claim,
@@ -342,6 +392,95 @@ const inputsFor = (rid, over = {}) => {
     const live = await getRestaurantMenu(db, 'x_pizza');
     assert.strictEqual(live.identity.version_id, published.x_pizza, 'premise: there WAS a live version to wrongly fall back to');
     ok('a version-specific read answers about that version or fails — it never substitutes the active one');
+  }
+
+  // ══ 3b. FAILURES THAT ARE NOT OURS STILL LEAVE TYPED ══════════════════════════════════════════
+  {
+    // The codes above all come from this module's own fail(). The interesting ones are the failures
+    // it does NOT author: the shared completeness descriptor (the money reader depends on its exact
+    // messages, so it must not change), the shared pointer resolver, and the SDK. Those threw plain
+    // Errors — "fail closed and tell the caller why" quietly became "fail closed and hand them a
+    // sentence", and a count mismatch arrived with code === undefined.
+    const rid = 'untyped_shop';
+    const { versionId } = await publishVersion(db, rid, inputsFor('x_pizza'));
+    const vref = db.collection('restaurants').doc(rid).collection('versions').doc(versionId);
+    const rec = await vref.get();
+    await rec.ref.set({ ...rec.data(), extra_count: rec.data().extra_count + 1 });   // the record describes more than came back
+    await assert.rejects(() => getRestaurantMenu(db, rid), (e) => {
+      assert.strictEqual(e.code, 'catalog_incomplete', `a torn read must be branchable, got ${e.code}`);
+      assert.match(e.message, /catalog_incomplete_extra_count/, 'and the shared descriptor\'s own message survives verbatim for the log');
+      return true;
+    });
+
+    const rid2 = 'badpointer_shop';
+    await publishVersion(db, rid2, inputsFor('x_pizza'));
+    await db.collection('restaurants').doc(rid2).collection('meta').doc('active_version').set({ version: 7 });
+    await assert.rejects(() => getRestaurantMenu(db, rid2), (e) => {
+      assert.strictEqual(e.code, 'active_version_unreadable', `a malformed pointer must be branchable, got ${e.code}`);
+      assert.match(e.message, /active_version_malformed/, 'with the specific reason kept for the alarm');
+      return true;
+    });
+
+    // 🔴 AND A FOREIGN CODE IS NOT A TYPED ONE. A Firestore rejection arrives carrying `code` already
+    // — 14 for UNAVAILABLE — so "does it have a code?" is the wrong question and would have passed
+    // the SDK's vocabulary straight through to a caller branching on ours. The marker, not the
+    // presence of a code, decides; the foreign one is kept as cause_code.
+    const flaky = makeDb();
+    flaky.collection = () => { throw Object.assign(new Error('UNAVAILABLE: connection closed'), { code: 14 }); };
+    await assert.rejects(() => getRestaurantMenu(flaky, 'anything'), (e) => {
+      assert.strictEqual(e.code, 'active_version_unreadable', `got ${e.code}`);
+      assert.strictEqual(e.cause_code, 14, 'the SDK code is preserved, not lost');
+      return true;
+    });
+    await assert.rejects(() => readVersionMenu(flaky, 'anything', 'v-1'), (e) => {
+      assert.strictEqual(e.code, 'catalog_read_failed', `got ${e.code}`);
+      assert.strictEqual(e.cause_code, 14);
+      return true;
+    });
+    await assert.rejects(() => readFlatMenu(flaky, 'anything'), (e) => {
+      assert.strictEqual(e.code, 'catalog_read_failed', `got ${e.code}`);
+      return true;
+    });
+
+    // ...and neither is an error that CANNOT be tagged. A frozen error refuses the assignment and a
+    // thrown string has nowhere to put it — both would otherwise leave untyped through the one path
+    // whose entire job is that nothing leaves untyped.
+    for (const [label, thrown] of [
+      ['a frozen error', Object.freeze(Object.assign(new Error('frozen and foreign'), { code: 'PERMISSION_DENIED' }))],
+      ['a thrown string', 'not even an error'],
+    ]) {
+      const hostile = makeDb();
+      hostile.collection = () => { throw thrown; };
+      await assert.rejects(() => getRestaurantMenu(hostile, 'anything'), (e) => {
+        assert.strictEqual(e.code, 'active_version_unreadable', `${label}: got ${e.code}`);
+        assert.strictEqual(e.reader, true, `${label}: must be marked as ours`);
+        assert.match(e.message, /frozen and foreign|not even an error/, `${label}: and must still say what happened`);
+        return true;
+      }, `🔴 ${label} escaped untyped`);
+    }
+    ok('typed at the boundary: a torn read, a malformed pointer, an SDK outage, a FROZEN error and a thrown string all leave with OUR code — a foreign code is re-tagged, never passed through');
+  }
+
+  // ══ 3c. A MENU WITH NO OPTIONS IS A MENU, NOT A DEGRADED ONE ══════════════════════════════════
+  {
+    // Every completeness rule for extras is conditional on there being extras, and the failure mode
+    // for a rule like that runs both ways: it can skip a check it should have made, or refuse a
+    // restaurant that legitimately sells no add-ons.
+    const items = [{ key: 'Solo', price: 100, display: { id: 'Solo', name: 'Solo', cat: 'c', price: 100 } }];
+    const bare = { items, extras: {}, extraRecords: [], source_sha: 'no-extras' };
+    for (const [label, structure] of [
+      ['an empty extra_order', { schema_version: 2, item_order: ['Solo'], extra_order: [] }],
+      ['no extra_order at all', { schema_version: 2, item_order: ['Solo'] }],
+    ]) {
+      const rid = `noextras_${label.replace(/\W+/g, '_')}`;
+      await publishVersion(db, rid, { ...bare, structure });
+      const menu = await getRestaurantMenu(db, rid);
+      assert.deepStrictEqual(menu.extras, [], `${label}: no extras is an empty list`);
+      assert.deepStrictEqual(menu.variants, {}, `${label}: and no variants`);
+      assert.strictEqual(menu.items.length, 1, `${label}: the dish still serves`);
+      assert.ok(/^[0-9a-f]{64}$/.test(menu.identity.content_hash), `${label}: and it still has an identity`);
+    }
+    ok('a menu with no options serves normally, with or without an empty extra_order — and still gets a full identity');
   }
 
   // ══ 4b. A CANDIDATE THE READER WOULD REFUSE NEVER REACHES THE POINTER ═════════════════════════

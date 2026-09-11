@@ -669,6 +669,41 @@ const GOOD = () => ({
   ok('both real menus still PASS with the complete rule set');
 }
 
+// ── A TAG ANSWERS TO THE RENDERER, NOT TO THE DOCUMENT ────────────────────────────────────────────
+// 🔴 THE ACCEPTANCE HALF of the badge rule, and the reason it needs its own fixture: every other
+// badge test asserts a REJECTION, and a rule that only ever rejects is satisfied by a rule that
+// rejects more.
+//
+// Swapping `contract.badges` for the source's own keys survives every rejection test, because the
+// declared definitions are bound to the contract set — which makes the source's keys a SUBSET, not
+// an equal. The two answers only come apart on a tag naming a badge the renderer CAN select that
+// this document never declared, and that case is legal: the badge set is a fact about the shipped
+// form, so a merchant who deletes a definition has not deleted the renderer's ability to show it.
+//
+// This was written down in-source as an "equivalent mutant" for a round. It is not equivalent; it
+// is killable, and this is the fixture that kills it.
+{
+  const { buildSourceFromCode } = require('../tools/seed-source-store');
+  const source = buildSourceFromCode('la_musa');
+  const tagged = source.items.filter((i) => Array.isArray(i.display.tags) && i.display.tags.length);
+  assert.ok(tagged.length > 0, 'premise: the real menu actually uses tags');
+  const declared = Object.keys(source.structure.badges || {});
+  assert.ok(tagged.some((i) => i.display.tags.some((t) => declared.includes(t))),
+    'premise: and the tags it uses ARE declared today — so undeclaring them is the discriminating move');
+
+  const undeclared = JSON.parse(JSON.stringify(source));
+  undeclared.structure.badges = {};                      // the merchant deleted every definition...
+  assert.doesNotThrow(() => validateSource(undeclared, 'la_musa'),
+    '🔴 a tag naming a badge the SHIPPED RENDERER can select must be accepted even when this document declares none of them');
+
+  // ...and the rejection half still holds, so the rule did not simply get looser.
+  const ghost = JSON.parse(JSON.stringify(source));
+  ghost.items.find((i) => i.key === tagged[0].key).display.tags = ['not_a_real_badge'];
+  assert.throws(() => validateSource(ghost, 'la_musa'), /is not a badge the renderer can select/,
+    'a tag the renderer cannot select is still refused');
+  ok('badge tags answer to the RENDERER contract: an undeclared-but-selectable badge is accepted, an unselectable one is refused');
+}
+
 // ═══ THE PREDICATE CENSUS — deny by default ═════════════════════════════════════════════════════
 // The rule: a presence / emptiness test may gate REQUIREDNESS only. A present value is always
 // type-validated.

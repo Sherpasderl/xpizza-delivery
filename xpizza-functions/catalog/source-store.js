@@ -486,9 +486,12 @@ function validateSource(source, rid) {
   // ALWAYS the contract's set — never the source's own keys. A brand with no badge renderer has an
   // EMPTY set, so any tag on it is refused; falling back to what the document declares would hand the
   // decision back to the document.
-  // Mutation reports a source-keys fallback here as a survivor, and structurally it is: definitions are
-  // bound to the contract set above, so the source's keys are necessarily a subset and the two agree.
-  // This stays the direct statement of the rule — tags reference what the RENDERER can select.
+  // 🔴 A SOURCE-KEYS FALLBACK HERE IS KILLABLE, NOT EQUIVALENT — and this comment used to claim the
+  // opposite. The definitions above are bound to the contract set, which makes the source's keys a
+  // SUBSET of it, not equal to it: a tag naming a badge the renderer CAN select but that this
+  // document never declared is accepted by the rule as written and rejected by the fallback. Subset
+  // is not agreement, and reading it as agreement is how an untested branch gets written down as
+  // proven. Covered deliberately by the acceptance fixture in source-store.test.js.
   const badgeKeys = contract.badges;
   for (const it of source.items) {
     for (const t of (Array.isArray(it.display.tags) ? it.display.tags : [])) {
