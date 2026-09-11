@@ -600,5 +600,109 @@
     "file": "tools/require-project.js",
     "from": "    if (env[name]) found.push({ source: name, value: env[name] });",
     "to": "    if (env[name] !== undefined) found.push({ source: name, value: env[name] });"
+  },
+  {
+    "id": "b1-01",
+    "slice": "b1",
+    "label": "a blank rid inherits order-intake's default brand",
+    "file": "catalog/public-menu.js",
+    "from": "  if (!trimmed) fail('public_menu_bad_rid', 'no restaurant was named');",
+    "to": "  if (!trimmed) return require('../restaurant-id').DEFAULT_RESTAURANT_ID;"
+  },
+  {
+    "id": "b1-02",
+    "slice": "b1",
+    "label": "a duplicated rid is coerced to a string instead of refused",
+    "file": "catalog/public-menu.js",
+    "from": "  if (Array.isArray(rid)) fail('public_menu_bad_rid', 'the restaurant was stated more than once');",
+    "to": "  if (Array.isArray(rid)) rid = rid[0];"
+  },
+  {
+    "id": "b1-03",
+    "slice": "b1",
+    "label": "an unknown restaurant is served",
+    "file": "catalog/public-menu.js",
+    "from": "  if (!set || typeof set.has !== 'function' || !set.has(trimmed)) {",
+    "to": "  if (false) {"
+  },
+  {
+    "id": "b1-04",
+    "slice": "b1",
+    "label": "an INACTIVE restaurant is served",
+    "file": "catalog/public-menu.js",
+    "from": "  if (!live) fail('public_menu_bad_rid', `${trimmed} is not currently serving`);",
+    "to": "  void live;"
+  },
+  {
+    "id": "b1-05",
+    "slice": "b1",
+    "label": "an identity read that fails is treated as active",
+    "file": "catalog/public-menu.js",
+    "from": "    fail('public_menu_bad_rid', `cannot confirm ${trimmed} is active: ${String((e && e.message) || e).slice(0, 80)}`);",
+    "to": "    live = true;"
+  },
+  {
+    "id": "b1-06",
+    "slice": "b1",
+    "label": "the etag drops the projection version (a redeploy serves stale bodies)",
+    "file": "catalog/public-menu.js",
+    "from": "    .update(`${restaurantId} ${representationVersion} ${canonicalJson(body)}`)",
+    "to": "    .update(`${restaurantId} ${canonicalJson(body)}`)"
+  },
+  {
+    "id": "b1-07",
+    "slice": "b1",
+    "label": "the etag drops the rid (two brands collide on one cache key)",
+    "file": "catalog/public-menu.js",
+    "from": "    .update(`${restaurantId} ${representationVersion} ${canonicalJson(body)}`)",
+    "to": "    .update(`${representationVersion} ${canonicalJson(body)}`)"
+  },
+  {
+    "id": "b1-08",
+    "slice": "b1",
+    "label": "the etag is 1A's content hash instead of the representation",
+    "file": "catalog/public-menu.js",
+    "from": "  const etag = `\"${crypto.createHash('sha256')",
+    "to": "  const etag = `\"${menu.identity.content_hash}\"`; const _unused = `\"${crypto.createHash('sha256')"
+  },
+  {
+    "id": "b1-09",
+    "slice": "b1",
+    "label": "seq is folded into the body (every publish busts every cache)",
+    "file": "catalog/public-menu.js",
+    "from": "  const undeclared = Object.keys(body).filter((f) => !PUBLIC_MENU_BODY_FIELDS.includes(f));",
+    "to": "  body.seq = menu.identity.seq;\n  const undeclared = Object.keys(body).filter((f) => !PUBLIC_MENU_BODY_FIELDS.includes(f));"
+  },
+  {
+    "id": "b1-10",
+    "slice": "b1",
+    "label": "the exposure maps and badges are not carried",
+    "file": "catalog/public-menu.js",
+    "from": "      if (menu.structure[f] !== undefined) body[f] = menu.structure[f];",
+    "to": "      void f;"
+  },
+  {
+    "id": "b1-11",
+    "slice": "b1",
+    "label": "a projection failure returns a partial body instead of throwing",
+    "file": "catalog/public-menu.js",
+    "from": "    fail('public_menu_unavailable', `${restaurantId}: the live catalog does not project to a servable menu",
+    "to": "    body = {}; if (false) fail('public_menu_unavailable', `${restaurantId}: the live catalog does not project to a servable menu"
+  },
+  {
+    "id": "b1-12",
+    "slice": "b1",
+    "label": "an undeclared served field is allowed through",
+    "file": "catalog/public-menu.js",
+    "from": "  if (undeclared.length) {",
+    "to": "  if (false) {"
+  },
+  {
+    "id": "b1-13",
+    "slice": "b1",
+    "label": "a reader failure surfaces as a bad request instead of unavailable",
+    "file": "catalog/public-menu.js",
+    "from": "    fail('public_menu_unavailable', `${restaurantId}: ${String((e && e.message) || e).slice(0, 160)}`);",
+    "to": "    fail('public_menu_bad_rid', `${restaurantId}: ${String((e && e.message) || e).slice(0, 160)}`);"
   }
 ]
