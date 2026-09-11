@@ -4345,20 +4345,14 @@ function renderOrderDetailModal(order) {
   if (order.customer_email) clienteRows.push(odRow('Email', escapeHtml(String(order.customer_email))));
   sections.push(`<div class="od-section"><div class="od-section-title">Cliente</div>${clienteRows.join('')}</div>`);
 
-  // 2) Entrega — delivery only (a pickup order has no delivery address)
+  // 2) Entrega — delivery only (a pickup order has no delivery address). Address TEXT only: the dispatcher
+  //    uses the Torre map; external nav links (Maps/Waze) are driver-facing — and dropping them removes the
+  //    href sink entirely (no URL-scheme XSS, no 0,0-coords link).
   if (!isPickup) {
     const entregaRows = [];
     const addr = order.address_detected || order.destination_address;
     if (addr) entregaRows.push(odRow('Dirección', escapeHtml(String(addr))));
     if (order.address_details) entregaRows.push(odRow('Referencia', `"${escapeHtml(String(order.address_details))}"`));
-    const lat = Number(order.lat), lng = Number(order.lng);
-    const hasLL = Number.isFinite(lat) && Number.isFinite(lng);
-    const links = [];
-    const mapsUrl = order.maps_link || (hasLL ? `https://www.google.com/maps?q=${lat},${lng}` : null);
-    if (mapsUrl) links.push(`<a href="${escapeHtml(String(mapsUrl))}" target="_blank" rel="noopener">Google Maps</a>`);
-    const wazeUrl = order.waze_link || (hasLL ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes` : null);
-    if (wazeUrl) links.push(`<a href="${escapeHtml(String(wazeUrl))}" target="_blank" rel="noopener">Waze</a>`);
-    if (links.length) entregaRows.push(odRow('Mapa', links.join(' · ')));
     if (entregaRows.length) sections.push(`<div class="od-section"><div class="od-section-title">Entrega</div>${entregaRows.join('')}</div>`);
   }
 
@@ -4370,14 +4364,23 @@ function renderOrderDetailModal(order) {
 
   // 4) Pago — method via the existing isCashPayment; cash tendered + change when present.
   const pagoRows = [];
-  pagoRows.push(odRow('Método', isCash ? 'Efectivo' : 'Pago en línea'));
+  // Distinguish the real methods; unknown/missing → "Sin especificar" (never a defaulted "Pago en línea").
+  const payLabel = isCash ? 'Efectivo'
+    : order.payment_method === 'card_delivery' ? 'Tarjeta contra entrega'
+    : order.payment_method === 'online' ? 'Pago en línea'
+    : 'Sin especificar';
+  pagoRows.push(odRow('Método', escapeHtml(payLabel)));
   if (order.payment_status) pagoRows.push(odRow('Estado', escapeHtml(String(order.payment_status))));
   if (order.total != null) pagoRows.push(odRow('Total', `L ${escapeHtml(String(order.total))}`));
   if (isCash && Number.isFinite(Number(order.cash_tendered_cents)) && Number(order.cash_tendered_cents) > 0) {
     const tendered = Number(order.cash_tendered_cents) / 100;
     pagoRows.push(odRow('Paga con', `L ${escapeHtml(String(tendered))}`));
+    // Change only when total is genuinely present + finite + non-negative (missing total → Number(null)=0
+    // would otherwise show the full tendered as "change"); and tendered covers it.
     const totalNum = Number(order.total);
-    if (Number.isFinite(totalNum) && tendered >= totalNum) pagoRows.push(odRow('Vuelto', `L ${escapeHtml(String(Math.round((tendered - totalNum) * 100) / 100))}`));
+    if (order.total != null && Number.isFinite(totalNum) && totalNum >= 0 && tendered >= totalNum) {
+      pagoRows.push(odRow('Vuelto', `L ${escapeHtml(String(Math.round((tendered - totalNum) * 100) / 100))}`));
+    }
   }
   sections.push(`<div class="od-section"><div class="od-section-title">Pago</div>${pagoRows.join('')}</div>`);
 
