@@ -40,10 +40,14 @@ const pointerVersionOf = async (rid) => {
   const s = await pointerRef(rid).get();
   return s.exists ? ((s.data() || {}).version || null) : null;
 };
+// 🔴 These call the REAL publisher. They were written calling publishVersion/rollbackVersion and a
+// blanket text substitution — meant to route the suite's CALL SITES through them — rewrote the
+// wrapper BODIES too, so each called itself. Stack overflow on the first publish, in the one suite
+// nothing in the build loop can execute.
 const publishAt = async (rid, input, opts = {}) =>
-  publishAt(rid, input, { ...opts, expected: { activeVersionId: await pointerVersionOf(rid) } });
+  publishVersion(db, rid, input, { ...opts, expected: { activeVersionId: await pointerVersionOf(rid) } });
 const rollbackAt = async (rid, target, opts = {}) =>
-  rollbackAt(rid, target, { ...opts, expected: { activeVersionId: await pointerVersionOf(rid) } });
+  rollbackVersion(db, rid, target, { ...opts, expected: { activeVersionId: await pointerVersionOf(rid) } });
 const flipAt = async (rid, token, versionId, snapshot) =>
   flipPointer(db, rid, token, versionId, snapshot, { activeVersionId: await pointerVersionOf(rid) });
 
@@ -550,7 +554,7 @@ const buildReader = (codeMap = null) => {
     const rid = 'x_pizza';
     const before = await read(rid);
     const mirror = mkMirror();
-    await publishAt(rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: 'inert-1b' }, { mirror: mirror.fn });
+    await publishAt(rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: 'inert-1b' }, { mirror: mirror.fn });
     const after = await read(rid);
     assert.deepStrictEqual(after, before, 'the pricing read is byte-identical after a snapshot+mirror publish');
     assert.deepStrictEqual(after.menu, MENU_BY_RESTAURANT[rid], 'and still equals the code tables');
@@ -625,7 +629,7 @@ const buildReader = (codeMap = null) => {
     // INERT — the ordinal is written and read by NOTHING. Pricing is byte-unchanged.
     const rid = 'x_pizza';
     const before = await read(rid);
-    await publishAt(rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: 'inert-2bpre' }, { mirror: async () => {} });
+    await publishAt(rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: 'inert-2bpre' }, { mirror: async () => {} });
     assert.deepStrictEqual(await read(rid), before, 'the pricing read is byte-identical after a seq-carrying publish');
     const { resolver } = buildReader();
     assert.deepStrictEqual((await resolver.getPricingTables(rid)).menu, MENU_BY_RESTAURANT[rid], 'the guarded resolver is unchanged');

@@ -517,10 +517,54 @@ const publishFresh = async (db, rid, over = {}) => publishVersion(db, rid, input
     await rollbackVersion(db, rid, v1, { expected: { activeVersionId: v2id } });
     assert.strictEqual((await getRestaurantMenu(db, rid)).identity.version_id, v1, 'and rolls back');
 
-    // ...and the emulator files themselves state an expectation everywhere they move a pointer.
+    // The two detectors, named so the non-vacuity probe below plants against the SAME code the real
+    // check runs — a detector proved only against the files it passes on is a detector nobody has
+    // seen fire.
+    const selfCalling = (code) => [...code.matchAll(/const\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>\s*([\s\S]{0,400}?);\n/g)]
+      .filter(([, name, body]) => new RegExp(`\\b${name}\\s*\\(`).test(body))
+      .map(([, name]) => name);
+    const WRAPPERS = [['publishAt', 'publishVersion'], ['rollbackAt', 'rollbackVersion'], ['flipAt', 'flipPointer']];
+    const undelegated = (code) => WRAPPERS.filter(([wrapper, real]) => {
+      const at = code.indexOf(`const ${wrapper} =`);
+      return at !== -1 && !new RegExp(`\\b${real}\\(db,`).test(code.slice(at, at + 400));
+    }).map(([wrapper]) => wrapper);
+    {
+      // NON-VACUITY: the exact defect that shipped, planted, must be seen by both detectors.
+      const broken = 'const publishAt = async (rid, input, opts = {}) =>\n  publishAt(rid, input, { ...opts, expected: { activeVersionId: 1 } });\n';
+      assert.deepStrictEqual(selfCalling(broken), ['publishAt'], 'the self-call detector must catch the wrapper that shipped broken');
+      assert.deepStrictEqual(undelegated(broken), ['publishAt'], 'and so must the delegation detector');
+      const fixed = 'const publishAt = async (rid, input, opts = {}) =>\n  publishVersion(db, rid, input, { ...opts, expected: { activeVersionId: 1 } });\n';
+      assert.deepStrictEqual(selfCalling(fixed), [], 'and neither may fire on the fixed one');
+      assert.deepStrictEqual(undelegated(fixed), []);
+    }
+
+    // ...and the emulator files themselves are inspected for the two things that CAN be checked from
+    // here. Stated with its limit, because the first version of this scan gave false confidence: it
+    // asserted the calls state an expectation, the suite's own wrappers DID state one, and the
+    // wrappers called THEMSELVES — infinite recursion, scan green. A lint that checks the argument
+    // and not the callee is not checking the call.
+    //
+    // 🔴 WHAT THIS CANNOT DO IS RUN THEM. The emulator suites need a live Firestore, nothing in this
+    // loop executes them, and every defect they have carried this slice was one that only running
+    // them would have surfaced. They are an OWNER-RUN gate before the cutover — run GREEN, not
+    // merely committed — and no amount of scanning here substitutes for that:
+    //
+    //   PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:catalog-versioned
+    //   PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:catalog-schemav2
+    //   PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:catalog-generation
     const EMU = ['test/catalog-versioned.emulator.test.js', 'test/edit-e2e.emulator.test.js'];
     for (const rel of EMU) {
       const code = stripComments(readFileSync(join(ROOT, rel), 'utf8'));
+
+      // (i) NO HELPER MAY CALL ITSELF, and (ii) each pointer-moving wrapper reaches the REAL
+      // function it stands in for. Both are run through the same detectors the non-vacuity check
+      // below plants against, so a detector that stopped detecting fails here rather than passing
+      // quietly — which is the failure mode the previous version of this scan actually had.
+      assert.deepStrictEqual(selfCalling(code), [],
+        `🔴 ${rel}: helper(s) that call themselves — they never reach the real API and overflow the stack on first use`);
+      assert.deepStrictEqual(undelegated(code), [],
+        `🔴 ${rel}: wrapper(s) that do not reach the real function they stand in for — a wrapper that never publishes tests nothing`);
+
       for (const fn of ['publishVersion', 'rollbackVersion', 'flipPointer']) {
         let i = code.indexOf(`${fn}(db,`);
         while (i !== -1) {
@@ -536,7 +580,7 @@ const publishFresh = async (db, rid, over = {}) => publishVersion(db, rid, input
         }
       }
     }
-    ok(`emulator gate: the synthetic fixtures publish, read back and roll back through the real publisher; every pointer-moving call in ${EMU.length} emulator suites states its expectation`);
+    ok(`emulator gate (INSPECTION ONLY — the suites are owner-run before the cutover): synthetic fixtures publish/read/roll back through the real publisher here; in ${EMU.length} emulator suites no helper calls itself, each wrapper reaches the real function, and every pointer-moving call states its expectation`);
   }
 
   FINISHED = true;
