@@ -159,20 +159,23 @@ function buildCatalogV2(restaurantId, opts = {}) {
   const extrasTable = opts.extrasTable || EXTRAS_BY_RESTAURANT[restaurantId] || {};
   const extrasDisplay = fd ? (fd.extras_display || null) : readLiteral(src, 'EXTRAS');
   const extras = [];
-  if (extrasDisplay) {
-    const byKey = new Set();
-    for (const display of extrasDisplay) {
-      const key = extrasKeyOf(restaurantId, display);
-      if (typeof key !== 'string' || !key) throw new Error(`bootstrap_bad_extra_key: ${restaurantId}`);
-      if (byKey.has(key)) throw new Error(`bootstrap_duplicate_extra_key: ${restaurantId}/${key}`);
-      if (!Object.prototype.hasOwnProperty.call(extrasTable, key)) throw new Error(`bootstrap_unpriced_extra: ${restaurantId}/${key}`);
-      byKey.add(key);
-      extras.push({ key, price: extrasTable[key], display });   // the AUTHORITY prices it, never the display record
-    }
-    // the mirror of the item rule: every priced extra needs exactly one display record
-    for (const key of Object.keys(extrasTable)) {
-      if (!byKey.has(key)) throw new Error(`bootstrap_missing_extra_display_record: ${restaurantId}/${key}`);
-    }
+  const byKey = new Set();
+  for (const display of (extrasDisplay || [])) {
+    const key = extrasKeyOf(restaurantId, display);
+    if (typeof key !== 'string' || !key) throw new Error(`bootstrap_bad_extra_key: ${restaurantId}`);
+    if (byKey.has(key)) throw new Error(`bootstrap_duplicate_extra_key: ${restaurantId}/${key}`);
+    if (!Object.prototype.hasOwnProperty.call(extrasTable, key)) throw new Error(`bootstrap_unpriced_extra: ${restaurantId}/${key}`);
+    byKey.add(key);
+    extras.push({ key, price: extrasTable[key], display });   // the AUTHORITY prices it, never the display record
+  }
+  // 🔴 OUTSIDE THE GUARD. This completeness check sat inside `if (extrasDisplay)`, so a MISSING display
+  // collection skipped it entirely: 14 priced extras, zero display records, and no error — a catalog
+  // that charges for options it cannot name. Presence of the collection decided whether the collection
+  // was checked, which is the fail-open shape again, one call frame out from where it was last found.
+  //
+  // Every priced key needs exactly one display record, whether or not any were supplied at all.
+  for (const key of Object.keys(extrasTable)) {
+    if (!byKey.has(key)) throw new Error(`bootstrap_missing_extra_display_record: ${restaurantId}/${key}`);
   }
   const structure = { schema_version: 2, item_order: items.map((i) => i.key) };
   // 1A Task 4 — the display structures the build used to drop. Each comes from the STORE when the
@@ -225,6 +228,13 @@ function buildCatalogV2(restaurantId, opts = {}) {
   carryStructure('extras_by_category', () => readLiteral(src, 'EXTRAS_BY_CATEGORY', '{', '}'));
   carryStructure('extras_by_item', () => readLiteral(src, 'EXTRAS_BY_ITEM', '{', '}'));
   carryStructure('badges', () => readLiteral(src, 'TAG_BADGES', '{', '}'));
+  // 🔴 THE STORE WINS ONCE IT HAS AUTHORED ONE. This read `structure.extra_categories === undefined`
+  // without ever COPYING fd.extra_categories, so the check always fell through and a merchant who
+  // reordered their option groups had that order silently replaced by first-appearance .cat order.
+  // Source-inversion is the point of the whole slice: derivation is the BOOTSTRAP, not the authority.
+  //
+  // Invisible to the parity gate, because at bootstrap the authored order IS the derived order.
+  carryStructure('extra_categories', () => undefined);
   if (structure.extra_categories === undefined) {
     const cats = [];
     for (const e of extras) {

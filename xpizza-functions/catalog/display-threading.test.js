@@ -186,12 +186,90 @@ for (const rid of BRANDS) {
   }
 }
 
-// ── THE SEED WRITER THREADS IT ALL THE WAY TO THE DOCS ──────────────────────────────────────────
+// ── AN ABSENT DISPLAY COLLECTION IS NOT AN EMPTY ONE ────────────────────────────────────────────
 {
-  // catalogDocsForRestaurant being right is not the same as the seed CALLING it right — the display
-  // payload has to be handed over, and a caller that forgets writes price-only docs that pass every
-  // unit test above.
+  // The bijection used to live inside `if (extrasDisplay)`, so supplying NO display records skipped
+  // the completeness check entirely: 14 priced extras, zero named, and a clean build. Presence of the
+  // collection decided whether the collection was checked.
+  const { formSource, readLiteral } = require('./form-menu-source');
+  const bareFd = (rid, extrasDisplay) => {
+    const src = formSource(rid);
+    const dishes = readLiteral(src, 'MENU');
+    const order = []; for (const d of dishes) if (!order.includes(d.cat)) order.push(d.cat);
+    const fd = { dishes, categories: rid === 'la_musa' ? readLiteral(src, 'CATEGORIES') : order.map((id) => ({ id })) };
+    if (rid === 'la_musa') fd.variant_items = readLiteral(src, 'VARIANT_ITEMS', '{', '}');
+    if (extrasDisplay !== undefined) fd.extras_display = extrasDisplay;
+    return fd;
+  };
+  for (const rid of BRANDS) {
+    for (const [label, value] of [['absent', undefined], ['null', null], ['false', false], ['empty', []]]) {
+      assert.throws(
+        () => buildCatalogV2(rid, { formData: bareFd(rid, value), priceTable: MENU_BY_RESTAURANT[rid], extrasTable: EXTRAS_BY_RESTAURANT[rid] }),
+        /bootstrap_missing_extra_display_record/,
+        `🔴 ${rid}: a ${label} display collection must still fail the priced-key bijection, not build 0 extras quietly`);
+    }
+    ok(`${rid}: an absent, null, false or empty display collection is refused — 14 priced extras must be 14 named ones`);
+  }
+  // A display record with no usable pricing key is refused AS SUCH. Pinning the reason matters here:
+  // every unusable key also fails the priced-key lookup, so accepting either message left the
+  // bad-key rule deletable with the suite green — the error would still fire, but it would tell a
+  // merchant their extra is "unpriced" when what is actually wrong is that it has no name.
+  const buildWithExtras = (list) => buildCatalogV2('x_pizza', { formData: bareFd('x_pizza', list), priceTable: MENU_BY_RESTAURANT.x_pizza, extrasTable: EXTRAS_BY_RESTAURANT.x_pizza });
+  for (const bad of [{ id: 'x', cat: 'Carnes', name: 7 }, { id: 'x', cat: 'Carnes' }, { id: 'x', cat: 'Carnes', name: '' }]) {
+    assert.throws(() => buildWithExtras([bad]), /bootstrap_bad_extra_key/,
+      `🔴 a record with no usable pricing key is refused AS a bad key: ${JSON.stringify(bad)}`);
+  }
+  // ...while a well-formed key nobody prices is a different fault, and says so
+  assert.throws(() => buildWithExtras([{ id: 'e99', cat: 'Carnes', name: 'Ghost Extra' }]), /bootstrap_unpriced_extra/,
+    'a well-formed key nobody prices reports THAT, not a malformed key');
+  ok('an extra with no usable pricing key is refused as such, distinctly from one nobody prices');
+}
+
+// ── THE MERCHANT'S OPTION-GROUP ORDER SURVIVES THE BUILD ────────────────────────────────────────
+{
+  // 🔴 SOURCE-INVERSION, which is the point of the slice. fd.extra_categories was never copied, so the
+  // build always fell through to deriving first-appearance `.cat` order — a merchant who reordered
+  // their option groups had that order thrown away. Invisible to the parity gate, because at bootstrap
+  // the authored order IS the derived order; only a source that DIFFERS from the derivation shows it.
+  const source = buildSourceFromCode('la_musa');
+  const derived = source.structure.extra_categories;
+  assert.ok(derived.length > 2, `premise: la_musa has several option groups (${derived.join(', ')})`);
+
+  const reordered = [...derived].reverse();
+  const inputs = sourceToBuildInputs({ ...source, structure: { ...source.structure, extra_categories: reordered } });
+  const built = buildCatalogV2('la_musa', { formData: inputs.formData, priceTable: inputs.priceTable, extrasTable: inputs.extras });
+  assert.deepStrictEqual(built.structure.extra_categories, reordered,
+    '🔴 the merchant\'s authored order is honoured, not re-derived');
+  assert.notDeepStrictEqual(built.structure.extra_categories, derived, 'non-vacuity: it really differs from the derivation');
+
+  // ...and the derivation is still the BOOTSTRAP path when nothing is authored
+  const { extra_categories: _dropped, ...withoutNamespace } = source.structure;   // eslint-disable-line no-unused-vars
+  const bootstrapInputs = sourceToBuildInputs({ ...source, structure: withoutNamespace });
+  const bootstrapped = buildCatalogV2('la_musa', { formData: bootstrapInputs.formData, priceTable: bootstrapInputs.priceTable, extrasTable: bootstrapInputs.extras });
+  assert.deepStrictEqual(bootstrapped.structure.extra_categories, derived,
+    'with nothing authored, the namespace is derived — the fallback, not the authority');
+  ok('la_musa: an authored option-group order wins; derivation is only the bootstrap');
+}
+
+// ── THE REAL CUTOVER CALLER, not a payload a test handed over ───────────────────────────────────
+{
+  // 🔴 THE SEAM THIS ROUND EXPOSED. The previous version of this test hand-built the payload —
+  // including v2Extras — and proved the WRITER threads what it is given. It could never have caught
+  // the actual bug, which was that tools/seed-catalog.js never gave it: production would have written
+  // 14 price-only extra docs per brand and the whole task would have been a no-op where it counts.
+  //
+  // So the payload comes from the real CLI now, and the count is EXACT: "more than zero" is what a
+  // partially-threaded seed also looks like.
   const { seedCatalog } = require('./seed-catalog-core');
+  const { seedPayload } = require('../tools/seed-catalog');
+
+  const payload = seedPayload();
+  for (const rid of BRANDS) {
+    assert.ok(Array.isArray(payload[rid].v2Extras), `🔴 the real seed payload carries no v2Extras for ${rid}`);
+    assert.strictEqual(payload[rid].v2Extras.length, Object.keys(EXTRAS_BY_RESTAURANT[rid]).length,
+      `🔴 ${rid}: the payload must carry a display record for EVERY priced extra`);
+  }
+
   const written = [];
   const mkCol = (base) => ({
     doc: (id) => ({
@@ -210,21 +288,24 @@ for (const rid of BRANDS) {
     }),
   };
 
-  const source = buildSourceFromCode('la_musa');
-  return seedCatalog(db, {
-    la_musa: {
-      menu: MENU_BY_RESTAURANT.la_musa, extras: EXTRAS_BY_RESTAURANT.la_musa,
-      v2Items: source.items, v2Extras: source.extras,
-      profile: { name: 'La Musa', active: true },
-    },
-  }).then(() => {
-    const extraDocs = written.filter((w) => w.path.includes('/extras/'));
-    assert.ok(extraDocs.length > 0, `premise: the seed wrote extras (${written.length} docs total)`);
-    for (const w of extraDocs) {
-      assert.ok(w.data.display, `🔴 the seed wrote extra ${w.data.key} with no display record`);
-      assert.strictEqual(w.data.display.price, w.data.price, `🔴 ${w.data.key}: written display price disagrees with the written price`);
+  return seedCatalog(db, payload).then(() => {
+    for (const rid of BRANDS) {
+      const expected = Object.keys(EXTRAS_BY_RESTAURANT[rid]).length;
+      const docs = written.filter((w) => w.path.startsWith(`restaurants/${rid}/extras/`));
+      assert.strictEqual(docs.length, expected, `🔴 ${rid}: expected ${expected} extra docs, got ${docs.length}`);
+      const withDisplay = docs.filter((w) => w.data.display);
+      assert.strictEqual(withDisplay.length, expected,
+        `🔴 ${rid}: only ${withDisplay.length}/${expected} extra docs carry a display record — the cutover would still write price-only docs`);
+      for (const w of docs) {
+        assert.strictEqual(w.data.display.price, w.data.price, `🔴 ${rid}/${w.data.key}: written display price disagrees with the written price`);
+        for (const f of ['id', 'cat', 'name']) assert.ok(w.data.display[f] !== undefined, `🔴 ${rid}/${w.data.key}: display missing ${f}`);
+      }
+      // ...and the items half did not regress while we were looking at extras
+      const items = written.filter((w) => w.path.startsWith(`restaurants/${rid}/menu_items/`));
+      assert.strictEqual(items.length, Object.keys(MENU_BY_RESTAURANT[rid]).length, `${rid}: item docs unchanged in number`);
+      assert.ok(items.every((w) => w.data.display), `${rid}: every item doc still carries its display record`);
+      ok(`${rid}: the REAL cutover payload writes ${expected}/${expected} extra docs with complete display records`);
     }
-    ok(`the seed writer carries display records all the way to the persisted extras (${extraDocs.length} docs)`);
     console.log(`display-threading: OK (${n})`);
   });
 }
