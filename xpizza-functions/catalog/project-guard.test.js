@@ -34,20 +34,41 @@ const stripComments = (src) => src.split('\n')
   assert.strictEqual(EXPECTED, JSON.parse(readFileSync(FIREBASERC, 'utf8')).projects.default,
     'the guard must read the repo\'s own .firebaserc, not a literal of its own');
 
-  const refuses = (label, opts) => assert.throws(() => resolveProject(opts), (e) => {
+  // THE REASON IS PART OF THE CONTRACT, not decoration. An operator who stated the project in four
+  // places and is told "no project was stated" will go and state it a fifth time; what they need is
+  // WHICH of the four is stale. It is also what makes these cases falsifiable: without pinning the
+  // reason, deleting the disagreement rule still "refuses" — two distinct values collapse to null and
+  // fall into the nothing-stated branch — so the test passes while the rule it names is gone. That is
+  // exactly how the first version of this suite let a precedence bug through.
+  const refuses = (label, opts, because) => assert.throws(() => resolveProject(opts), (e) => {
     assert.strictEqual(e.code, 'project_guard_refused', `${label}: got ${e.code}`);
+    if (because) assert.match(e.message, because, `${label}: refused for the WRONG reason — ${e.message}`);
     return true;
   }, `🔴 ${label} was ACCEPTED`);
+  const DISAGREE = /stated more than once and the statements disagree/;
+  const NOT_STATED = /no project was stated/;
+  const WRONG = /refusing to run against/;
 
-  refuses('no project stated at all', { argv: ['node', 'x'], env: {} });
-  refuses('a different project by flag', { argv: ['node', 'x', '--project', 'lamusa-social'], env: {} });
-  refuses('a different project by environment', { argv: ['node', 'x'], env: { GOOGLE_CLOUD_PROJECT: 'lamusa-social' } });
-  refuses('a different project by the OTHER environment name', { argv: ['node', 'x'], env: { GCLOUD_PROJECT: 'lamusa-social' } });
+  refuses('no project stated at all', { argv: ['node', 'x'], env: {} }, NOT_STATED);
+  refuses('a different project by flag', { argv: ['node', 'x', '--project', 'lamusa-social'], env: {} }, WRONG);
+  refuses('a different project by environment', { argv: ['node', 'x'], env: { GOOGLE_CLOUD_PROJECT: 'lamusa-social' } }, WRONG);
+  refuses('a different project by the OTHER environment name', { argv: ['node', 'x'], env: { GCLOUD_PROJECT: 'lamusa-social' } }, WRONG);
   refuses('--project with no value', { argv: ['node', 'x', '--project'], env: {} });
   refuses('--project= with no value', { argv: ['node', 'x', '--project='], env: {} });
-  // 🔴 AMBIGUITY IS A REFUSAL, NOT A PRECEDENCE PUZZLE. A flag and an environment that disagree is
-  // exactly the situation that produced this bug: two sources for one fact, one of them invisible.
-  refuses('a flag and an environment that disagree', { argv: ['node', 'x', '--project', EXPECTED], env: { GOOGLE_CLOUD_PROJECT: 'lamusa-social' } });
+  // 🔴 AMBIGUITY IS A REFUSAL, NOT A PRECEDENCE PUZZLE — and this claim was FALSE when first written.
+  // The guard read the LAST --project and `GOOGLE_CLOUD_PROJECT || GCLOUD_PROJECT`, so a repeated flag
+  // silently took the later one and a stale GCLOUD_PROJECT disagreeing with GOOGLE_CLOUD_PROJECT was
+  // never compared at all. Both happened to resolve to the right project, which is the worst way to be
+  // correct: the advertised property was absent, and only the precedence order was keeping it true.
+  //
+  // A guard against untrustworthy ambient values must not have a rule for which one wins. Every
+  // spelling of disagreement, including the two that used to pass:
+  refuses('a flag and an environment that disagree', { argv: ['node', 'x', '--project', EXPECTED], env: { GOOGLE_CLOUD_PROJECT: 'lamusa-social' } }, DISAGREE);
+  refuses('a flag and the OTHER environment alias that disagree', { argv: ['node', 'x', '--project', EXPECTED], env: { GCLOUD_PROJECT: 'lamusa-social' } }, DISAGREE);
+  refuses('two environment aliases that disagree with each other', { argv: ['node', 'x'], env: { GOOGLE_CLOUD_PROJECT: EXPECTED, GCLOUD_PROJECT: 'lamusa-social' } }, DISAGREE);
+  refuses('a repeated --project whose later value is the right one', { argv: ['node', 'x', '--project', 'lamusa-social', '--project', EXPECTED], env: {} }, DISAGREE);
+  refuses('a repeated --project whose later value is the wrong one', { argv: ['node', 'x', '--project', EXPECTED, '--project', 'lamusa-social'], env: {} }, DISAGREE);
+  refuses('a flag and an = flag that disagree', { argv: ['node', 'x', '--project', EXPECTED, '--project=lamusa-social'], env: {} }, DISAGREE);
 
   // NON-VACUITY: the correct project must REACH THE WORK, in every spelling an operator would use.
   for (const [label, opts] of [
@@ -55,6 +76,10 @@ const stripComments = (src) => src.split('\n')
     ['--project=<id>', { argv: ['node', 'x', `--project=${EXPECTED}`], env: {} }],
     ['GOOGLE_CLOUD_PROJECT', { argv: ['node', 'x'], env: { GOOGLE_CLOUD_PROJECT: EXPECTED } }],
     ['both, agreeing', { argv: ['node', 'x', '--project', EXPECTED], env: { GOOGLE_CLOUD_PROJECT: EXPECTED } }],
+    // REPETITION IS NOT DISAGREEMENT. Refusing every repeat would make the guard unusable in a script
+    // that exports the variable AND passes the flag — which is what a careful operator does.
+    ['all four sources, agreeing', { argv: ['node', 'x', '--project', EXPECTED, `--project=${EXPECTED}`], env: { GOOGLE_CLOUD_PROJECT: EXPECTED, GCLOUD_PROJECT: EXPECTED } }],
+    ['an EMPTY environment variable is not a declaration', { argv: ['node', 'x', '--project', EXPECTED], env: { GOOGLE_CLOUD_PROJECT: '', GCLOUD_PROJECT: '' } }],
   ]) {
     assert.strictEqual(resolveProject(opts), EXPECTED, `🔴 the correct project must pass: ${label}`);
   }
@@ -67,12 +92,26 @@ const stripComments = (src) => src.split('\n')
   refuses('a .firebaserc declaring no default', { argv: ['node', 'x', '--project', EXPECTED], env: {}, rcPath: join(tmp, 'empty.json') });
   writeFileSync(join(tmp, 'bad.json'), 'not json');
   refuses('an unparseable .firebaserc', { argv: ['node', 'x', '--project', EXPECTED], env: {}, rcPath: join(tmp, 'bad.json') });
-  ok(`the guard refuses 9 ways to not-state ${EXPECTED}, and accepts it in all 4 spellings an operator would use`);
+  ok(`the guard refuses 14 ways to not-state ${EXPECTED} — including every spelling of disagreement — and accepts it in all 6 an operator would use`);
 }
 
-// ── 2. EVERY CLI THAT OPENS A CONNECTION IS GUARDED ─────────────────────────────────────────────
-// Deny-by-default over the whole tools directory rather than a list: the gap was in SEVEN tools and
-// the report named four, so a list is exactly what must not be trusted here.
+// ── 2. A LINT OVER THE CURRENT INIT SPELLING — NOT A PROOF THAT NOTHING ELSE CONNECTS ───────────
+//
+// 🔴 WHAT CARRIES THE GUARANTEE IS THE EIGHT GUARDED TOOLS, not this scan. Stated plainly because the
+// scan reads like more than it is:
+//
+//   • it matches the literal text `admin.initializeApp(` in immediate tools/*.js files, so an aliased
+//     or destructured init, a modular `initializeApp` import, a getFirestore() on an app someone else
+//     created, a direct GCP/REST client, a spawned `gcloud`, a .mjs/.cjs tool or a nested script all
+//     walk past it;
+//   • for a file that DOES match it checks the first occurrence and accepts `projectId: PROJECT_ID`
+//     anywhere in the file, so it cannot prove execution order or that the RIGHT init is the guarded
+//     one — only that both strings are present, in that order, in the text.
+//
+// It earns its place anyway: it fails when a NINTH tool is added with today's spelling and no guard,
+// which is the realistic regression. That is defense in depth, and it is the same census-as-lint
+// boundary this repo has settled on repeatedly — the code is the airtight part, the scan is a strong
+// lint that a different spelling can evade.
 {
   const opensAConnection = [];
   for (const f of readdirSync(TOOLS).filter((x) => x.endsWith('.js'))) {
@@ -81,7 +120,7 @@ const stripComments = (src) => src.split('\n')
     opensAConnection.push(f);
     const guard = code.indexOf('requireProject()');
     const init = code.indexOf('admin.initializeApp(');
-    assert.ok(guard > 0, `🔴 ${f} opens a Firebase connection and never states which project`);
+    assert.ok(guard > 0, `🔴 ${f} opens a Firebase connection (in today's spelling) and never states which project`);
     assert.ok(guard < init, `🔴 ${f} resolves its project AFTER initializeApp — too late to refuse`);
     assert.ok(/projectId:\s*PROJECT_ID/.test(code),
       `🔴 ${f} must pass projectId explicitly; without it firebase-admin falls back to the ambient gcloud default`);
@@ -90,7 +129,7 @@ const stripComments = (src) => src.split('\n')
   }
   assert.ok(opensAConnection.length >= 8,
     `non-vacuity: the sweep must find the tools that connect (found ${opensAConnection.length})`);
-  ok(`${opensAConnection.length} tools open a Firebase connection; every one states its project BEFORE the connection exists`);
+  ok(`lint (bounded — the literal \`admin.initializeApp(\` in tools/*.js, order by text position): all ${opensAConnection.length} matches state their project first; the GUARANTEE is those ${opensAConnection.length} guarded tools, not this scan`);
 }
 
 // ── 3. THE CLIs ACTUALLY REFUSE — spawned, not reasoned about ───────────────────────────────────

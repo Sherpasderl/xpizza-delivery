@@ -540,9 +540,9 @@
   {
     "id": "guard-04",
     "slice": "guard",
-    "label": "a flag and an environment that disagree resolve by precedence instead of refusing",
+    "label": "disagreement between sources resolves by precedence instead of refusing",
     "file": "tools/require-project.js",
-    "from": "  if (fromArgv && fromEnv && fromArgv !== fromEnv) {",
+    "from": "  if (distinct.length > 1) {",
     "to": "  if (false) {"
   },
   {
@@ -568,5 +568,37 @@
     "file": "tools/publish-version.js",
     "from": "  projectId: PROJECT_ID,",
     "to": "  projectId: undefined,"
+  },
+  {
+    "id": "guard-08",
+    "slice": "guard",
+    "label": "only the LAST --project is read, so a repeated flag silently picks a winner",
+    "file": "tools/require-project.js",
+    "from": "      found.push({ source: '--project', value: next });",
+    "to": "      found.length = 0; found.push({ source: '--project', value: next });"
+  },
+  {
+    "id": "guard-09",
+    "slice": "guard",
+    "label": "GCLOUD_PROJECT is ignored, so a stale alias is never compared",
+    "file": "tools/require-project.js",
+    "from": "  for (const name of ['GOOGLE_CLOUD_PROJECT', 'GCLOUD_PROJECT']) {",
+    "to": "  for (const name of ['GOOGLE_CLOUD_PROJECT']) {"
+  },
+  {
+    "id": "guard-10",
+    "slice": "guard",
+    "label": "the environment aliases resolve by precedence instead of both being declared",
+    "file": "tools/require-project.js",
+    "from": "    if (env[name]) found.push({ source: name, value: env[name] });",
+    "to": "    if (env[name] && !found.some((f) => f.source.startsWith('GO') || f.source.startsWith('GC'))) found.push({ source: name, value: env[name] });"
+  },
+  {
+    "id": "guard-11",
+    "slice": "guard",
+    "label": "an empty environment variable counts as a declaration",
+    "file": "tools/require-project.js",
+    "from": "    if (env[name]) found.push({ source: name, value: env[name] });",
+    "to": "    if (env[name] !== undefined) found.push({ source: name, value: env[name] });"
   }
 ]

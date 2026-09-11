@@ -47,28 +47,51 @@ function expectedProject(rcPath = FIREBASERC) {
   return def;
 }
 
-// `--project <id>` / `--project=<id>`, then the environment. Both are read so that a CI runner and a
-// human at a terminal can each say it the way they already do — and if they BOTH say it and
-// disagree, that is an ambiguity to stop on, not to resolve by precedence.
-function statedProject({ argv = process.argv, env = process.env } = {}) {
-  let fromArgv = null;
+// EVERY DECLARED SOURCE, COLLECTED — not resolved between.
+//
+// 🔴 THIS USED TO PICK A WINNER, AND CALLED THAT "REFUSING AMBIGUITY". It read the last --project on
+// the line and `GOOGLE_CLOUD_PROJECT || GCLOUD_PROJECT`, then compared those two. So
+// `--project a --project b` silently took b, and a stale GCLOUD_PROJECT disagreeing with
+// GOOGLE_CLOUD_PROJECT was never looked at at all. It happened to resolve to the right project in
+// both cases — which is the worst way to be correct, because the property being advertised was
+// simply not there, and the next refactor of the precedence order would have removed it silently.
+//
+// A guard against untrustworthy ambient values must not itself have a rule for which untrustworthy
+// ambient value wins. So: gather them all, and let DISAGREEMENT be the answer rather than an input to
+// one. Each is reported with the name it was given under, because an operator staring at a refusal
+// needs to know which of the four to go and fix.
+//
+// An empty environment variable is NOT a declaration — that is how a shell says "unset".
+function declaredProjects({ argv = process.argv, env = process.env } = {}) {
+  const found = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--project') {
       const next = argv[i + 1];
       if (!next || next.startsWith('-')) refuse('--project was given with no value');
-      fromArgv = next;
+      found.push({ source: '--project', value: next });
     } else if (a.startsWith('--project=')) {
       const v = a.slice('--project='.length);
       if (!v) refuse('--project= was given with no value');
-      fromArgv = v;
+      found.push({ source: '--project=', value: v });
     }
   }
-  const fromEnv = env.GOOGLE_CLOUD_PROJECT || env.GCLOUD_PROJECT || null;
-  if (fromArgv && fromEnv && fromArgv !== fromEnv) {
-    refuse(`--project ${fromArgv} and the environment's ${fromEnv} disagree; state one`);
+  for (const name of ['GOOGLE_CLOUD_PROJECT', 'GCLOUD_PROJECT']) {
+    if (env[name]) found.push({ source: name, value: env[name] });
   }
-  return fromArgv || fromEnv || null;
+  return found;
+}
+
+// One agreed value, or a refusal. Never a winner.
+function statedProject(opts = {}) {
+  const found = declaredProjects(opts);
+  const distinct = [...new Set(found.map((f) => f.value))];
+  if (distinct.length > 1) {
+    const where = found.map((f) => `${f.source}=${f.value}`).join(', ');
+    refuse(`the project is stated more than once and the statements disagree (${where}); `
+      + 'state it once, or clear the one that is stale');
+  }
+  return distinct.length === 1 ? distinct[0] : null;
 }
 
 // THE GUARD. Returns the project id, or throws. Never returns a project it was not given.
@@ -108,4 +131,4 @@ function requireProject(opts = {}) {
   return projectId;
 }
 
-module.exports = { requireProject, resolveProject, expectedProject, statedProject, FIREBASERC };
+module.exports = { requireProject, resolveProject, expectedProject, statedProject, declaredProjects, FIREBASERC };
