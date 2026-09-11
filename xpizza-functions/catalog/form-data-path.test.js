@@ -17,10 +17,17 @@ function formDataFromText(rid) {
   const src = formSource(rid);
   const dishes = readLiteral(src, 'MENU');
   const fd = { dishes, item_order: null, categories: null };
+  // 1A Task 4 — the build now carries the extras' display records and the structures that describe
+  // them, so the formData path must be given them too or it is comparing a complete catalog against
+  // an incomplete one. Read from the SAME form, which is what keeps this a real-data comparison.
+  fd.extras_display = readLiteral(src, 'EXTRAS');
   if (rid === 'la_musa') {
     fd.categories = readLiteral(src, 'CATEGORIES');
     fd.variant_items = readLiteral(src, 'VARIANT_ITEMS', '{', '}');
     fd.has_photo = readSetLiteral(src, 'HAS_PHOTO');
+    fd.extras_by_category = readLiteral(src, 'EXTRAS_BY_CATEGORY', '{', '}');
+    fd.extras_by_item = readLiteral(src, 'EXTRAS_BY_ITEM', '{', '}');
+    fd.badges = readLiteral(src, 'TAG_BADGES', '{', '}');
   } else {
     const order = []; for (const d of dishes) if (!order.includes(d.cat)) order.push(d.cat);
     fd.categories = order.map((id) => ({ id }));

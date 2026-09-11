@@ -108,6 +108,14 @@ function formSource(restaurantId, root) {
 // key === name there (guarded by a test); la_musa prices by the id slug.
 const pricingKeyOf = (restaurantId, dish) => (restaurantId === 'la_musa' ? dish.id : dish.name);
 
+// The EXTRAS pricing key — the mirror of the rule above, carrying the same per-brand asymmetry:
+// x_pizza extras price by NAME (their display `id` is a form-local handle like 'e1' that prices
+// nothing), la_musa extras by that id slug.
+//
+// It lived in source-store.js under a comment saying it was "kept beside the item rule so the two
+// cannot drift apart" — while sitting in a different module from it. Moved here, where that is true.
+const extrasKeyOf = (restaurantId, display) => (restaurantId === 'la_musa' ? (display && display.id) : (display && display.name));
+
 // Build the schema-v2 records for one restaurant: items (key + authoritative price + verbatim display)
 // and the structure doc (category order/labels, variants, gate flags, and the ITEM ORDER — Firestore
 // returns docs in hashed-id order, so the form's array order must be carried explicitly or a
@@ -145,7 +153,36 @@ function buildCatalogV2(restaurantId, opts = {}) {
     if (!seen.has(key)) throw new Error(`bootstrap_missing_display_record: ${restaurantId}/${key}`);
   }
 
+  // 🔴 EXTRAS TRAVEL WITH THE BUILD. sourceToBuildInputs has produced extras_display all along and
+  // this function dropped it on the floor, so a built catalog could PRICE an extra and not NAME it.
+  // The numeric table is untouched — the display record is carried ALONGSIDE it, never inside it.
+  const extrasTable = opts.extrasTable || EXTRAS_BY_RESTAURANT[restaurantId] || {};
+  const extrasDisplay = fd ? (fd.extras_display || null) : readLiteral(src, 'EXTRAS');
+  const extras = [];
+  if (extrasDisplay) {
+    const byKey = new Set();
+    for (const display of extrasDisplay) {
+      const key = extrasKeyOf(restaurantId, display);
+      if (typeof key !== 'string' || !key) throw new Error(`bootstrap_bad_extra_key: ${restaurantId}`);
+      if (byKey.has(key)) throw new Error(`bootstrap_duplicate_extra_key: ${restaurantId}/${key}`);
+      if (!Object.prototype.hasOwnProperty.call(extrasTable, key)) throw new Error(`bootstrap_unpriced_extra: ${restaurantId}/${key}`);
+      byKey.add(key);
+      extras.push({ key, price: extrasTable[key], display });   // the AUTHORITY prices it, never the display record
+    }
+    // the mirror of the item rule: every priced extra needs exactly one display record
+    for (const key of Object.keys(extrasTable)) {
+      if (!byKey.has(key)) throw new Error(`bootstrap_missing_extra_display_record: ${restaurantId}/${key}`);
+    }
+  }
   const structure = { schema_version: 2, item_order: items.map((i) => i.key) };
+  // 1A Task 4 — the display structures the build used to drop. Each comes from the STORE when the
+  // store authored it (the portal owns these once a merchant has edited them) and from the form
+  // literal otherwise, which is the same source the seed bootstraps from — so the two paths agree at
+  // cutover and the parity gate can prove it.
+  const carryStructure = (field, fromLiteral) => {
+    if (fd) { if (fd[field] !== undefined) structure[field] = fd[field]; return; }
+    try { const v = fromLiteral(); if (v !== undefined && v !== null) structure[field] = v; } catch (_) { /* this brand's form declares none */ }
+  };
   if (restaurantId === 'la_musa') {
     structure.categories = fd ? fd.categories : readLiteral(src, 'CATEGORIES');                 // id/name/subcats/layout, in order
     // launcher → variant ids. The form literal also carries a basePrice; it is STRIPPED here, because
@@ -182,6 +219,21 @@ function buildCatalogV2(restaurantId, opts = {}) {
   // rewards-redeem-config.js), so BOTH paths derive it from that code authority: the store path so the
   // seed can author it, the text path so the pre-flip parity gate has something to compare against.
   // Without it on the code side, every publish would trip the gate on a field code never emitted.
+  // The option-group namespace and the badge definitions — display structures the build used to drop.
+  // The namespace is DERIVED from the extras' own categories when the form is the source, exactly as
+  // the seed derives it, so both bootstrap paths produce the same ordering.
+  carryStructure('extras_by_category', () => readLiteral(src, 'EXTRAS_BY_CATEGORY', '{', '}'));
+  carryStructure('extras_by_item', () => readLiteral(src, 'EXTRAS_BY_ITEM', '{', '}'));
+  carryStructure('badges', () => readLiteral(src, 'TAG_BADGES', '{', '}'));
+  if (structure.extra_categories === undefined) {
+    const cats = [];
+    for (const e of extras) {
+      const c = e.display && e.display.cat;
+      if (typeof c === 'string' && c && !cats.includes(c)) cats.push(c);
+    }
+    if (cats.length) structure.extra_categories = cats;
+  }
+
   const REDEEM_FIELDS = ['redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras'];
   if (fd && REDEEM_FIELDS.some((f) => fd[f] !== undefined)) {
     // The STORE authored it → the store wins. This is the whole inversion: once a merchant edits
@@ -190,7 +242,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   } else {
     attachRedeemFields(restaurantId, structure, items, opts.extrasTable || EXTRAS_BY_RESTAURANT[restaurantId]);
   }
-  return { items, structure };
+  return { items, extras, structure };
 }
 
 // 🔴 "DESDE" IS DERIVED, EVERY TIME. The launcher keeps its own authoritative price — a bare launcher
@@ -256,4 +308,4 @@ function rebuildFormMenu(restaurantId, items, structure) {
   return out;
 }
 
-module.exports = { buildCatalogV2, rebuildFormMenu, deriveStartingPrice, formSource, readLiteral, readSetLiteral, pricingKeyOf };
+module.exports = { buildCatalogV2, rebuildFormMenu, deriveStartingPrice, formSource, readLiteral, readSetLiteral, pricingKeyOf, extrasKeyOf };

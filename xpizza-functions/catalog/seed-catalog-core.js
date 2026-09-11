@@ -8,17 +8,25 @@ const docId = (key) => crypto.createHash('sha1').update(String(key)).digest('hex
 // 1c-a: `v2ByKey` optionally supplies each item's schema-v2 payload (the verbatim form display record
 // + has_photo). `key` and `price` are produced EXACTLY as before — the 1b pricing reader reads only
 // those two and is untouched by the new fields (PIN 1). Extras stay {key, price}.
-function catalogDocsForRestaurant(menuTable, extraTable, v2ByKey = null) {
+// 1A Task 4: `v2ExtrasByKey` supplies each EXTRA's display record, the mirror of what v2ByKey has
+// done for items. Extras persisted as {key, price} only, so the catalog could CHARGE for an extra and
+// not name it, categorise it, or place it in an option group — the form had to keep its own literal.
+//
+// 🔴 THE CHARGING PROJECTION IS PRODUCED EXACTLY AS BEFORE. `key` and `price` come from
+// codeTablesToCatalogDocs untouched and the display record is attached ALONGSIDE. The pricing reader
+// consumes only those two fields, so naming an extra cannot move a price — asserted byte-for-byte,
+// both brands, in display-threading.test.js.
+function catalogDocsForRestaurant(menuTable, extraTable, v2ByKey = null, v2ExtrasByKey = null) {
   const { itemDocs, extraDocs } = codeTablesToCatalogDocs(menuTable, extraTable || {});
   const withId = (docs) => docs.map((d) => ({ id: docId(d.key), key: d.key, price: d.price }));
-  const items = withId(itemDocs).map((d) => {
-    const v2 = v2ByKey && v2ByKey.get(d.key);
-    if (!v2) return d;
+  const attach = (docs, byKey) => withId(docs).map((d) => {
+    const v2 = byKey && byKey.get(d.key);
+    if (!v2 || !v2.display) return d;
     const out = { ...d, display: v2.display };
     if (v2.has_photo !== undefined) out.has_photo = v2.has_photo;
     return out;
   });
-  return { itemDocs: items, extraDocs: withId(extraDocs) };
+  return { itemDocs: attach(itemDocs, v2ByKey), extraDocs: attach(extraDocs, v2ExtrasByKey) };
 }
 // Codex: the profile doc is PUBLIC-read + the Admin SDK BYPASSES Firestore rules → an allowlist here is
 // the ONLY thing that keeps private/payout data off the public profile. Reject any non-allowlisted field.
@@ -34,7 +42,8 @@ async function seedCatalog(db, restaurants) {
     const bad = Object.keys(meta.profile || {}).filter((k) => !PROFILE_FIELDS.has(k));
     if (bad.length) throw new Error(`profile field not allowlisted for ${rid}: ${bad.join(',')}`);   // no private data on the public doc
     const v2ByKey = meta.v2Items ? new Map(meta.v2Items.map((i) => [i.key, i])) : null;   // 1c-a schema-v2 payload
-    const { itemDocs, extraDocs } = catalogDocsForRestaurant(meta.menu, meta.extras, v2ByKey);
+    const v2ExtrasByKey = meta.v2Extras ? new Map(meta.v2Extras.map((e) => [e.key, e])) : null;   // 1A T4 display records
+    const { itemDocs, extraDocs } = catalogDocsForRestaurant(meta.menu, meta.extras, v2ByKey, v2ExtrasByKey);
     const rref = db.collection('restaurants').doc(rid);
     let reconciled = 0;
     for (const [sub, docs] of [['menu_items', itemDocs], ['extras', extraDocs]]) {   // subcollections FIRST

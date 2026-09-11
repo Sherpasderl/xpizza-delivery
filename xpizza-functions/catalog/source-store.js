@@ -20,10 +20,10 @@ const { assertDisplaySafe, checkValue: assertFieldSafe } = require('./display-sa
 // the variant graph closed, and nothing in it able to carry an XSS payload to today's renderers.
 const SCHEMA_VERSION = 2;
 
-// The EXTRAS pricing key, per brand — the mirror of pricingKeyOf for items. x_pizza extras are keyed
-// by NAME (their display `id` is a form-local handle like 'e1' that prices nothing); la_musa extras
-// are keyed by that id slug. Kept beside the item rule so the two cannot drift apart.
-const extrasKeyOf = (restaurantId, display) => (restaurantId === 'la_musa' ? (display && display.id) : (display && display.name));
+// The EXTRAS pricing key now lives BESIDE the item rule in form-menu-source.js — which is what its
+// comment always claimed, while the two sat in different modules. Re-exported here so every existing
+// importer keeps working and there is still exactly one definition.
+const { extrasKeyOf } = require('./form-menu-source');
 
 // The code-path literals this schema covers. The completeness test asserts every literal the code
 // path reads appears here — so a future code-only field cannot silently become uneditable in 2b.
@@ -32,6 +32,10 @@ const extrasKeyOf = (restaurantId, display) => (restaurantId === 'la_musa' ? (di
 const SOURCE_COVERED_LITERALS = [
   'MENU', 'CATEGORIES', 'VARIANT_ITEMS', 'HAS_PHOTO', 'PICKUP_ONLY_CATS', 'WEEKEND_ONLY_CATS',
   'EXTRAS', 'EXTRAS_BY_CATEGORY', 'EXTRAS_BY_ITEM',
+  // 1A Task 4 — badge DEFINITIONS become store data, so a merchant can rename a badge. TAG_PRIORITY
+  // (the order they are chosen in) is deliberately NOT here yet: the source carries no priority list,
+  // so badge ORDER remains a code literal. Flagged rather than smuggled in — it is Component F work.
+  'TAG_BADGES',
 ];
 
 const sourceRefOf = (db, rid) => db.collection('restaurants').doc(rid).collection('meta').doc('source');
@@ -587,7 +591,10 @@ function sourceToBuildInputs(source) {
     categories: source.structure.categories,
     has_photo: ordered.filter((i) => i.has_photo).map((i) => i.key),
   };
-  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']) {
+  // 1A Task 4: extra_categories (the ordered option-group namespace) and badges (the definitions a tag
+  // resolves against) join the list. Both are display data the build was silently dropping, so a
+  // catalog built from a source could not group its options or render a badge.
+  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'extra_categories', 'badges', 'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']) {
     if (source.structure[f] !== undefined) formData[f] = source.structure[f];
   }
   if (Array.isArray(source.extras) && source.extras.some((e) => e.display)) {
