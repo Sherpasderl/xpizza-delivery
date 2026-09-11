@@ -16,6 +16,12 @@
 // genuinely equivalent mutation, and the difference between those two is a judgement someone has to
 // make and write down (see EQUIVALENT below).
 //
+// ⚠️ WHILE THIS RUNS, THE WORKING TREE IS MUTATED. Do not edit a file or run the suite alongside it:
+// you will read a mutant as if it were the code, and — worse — an edit made while a backup is
+// outstanding is silently reverted when that mutant restores. Both happened. The `.bak` on disk is
+// the signal in BOTH directions: this harness refuses to start when it finds one, and you should
+// refuse to touch the tree when you see one.
+//
 // An ANCHOR MISSING result is not a pass. It means the code moved out from under the mutant and the
 // mutant tested nothing — re-point it at the current source before believing any count.
 // ---------------------------------------------------------------------------

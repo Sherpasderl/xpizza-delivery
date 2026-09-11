@@ -49,7 +49,22 @@ function makeDb() {
       id: path.split('/').pop(),
       collection: (sub) => colRef(`${path}/${sub}`),
       get: async () => snapOf(path),
-      set: async (data) => { put(path, data); },
+      // `lastUpdateTime` is a real Firestore PRECONDITION and is modelled, not ignored: the draft
+      // upgrade writes under one so a merchant saving between the read and the write is refused
+      // rather than overwritten. A fake that accepted every write would make that guard untestable,
+      // which is the same as not having it.
+      set: async (data, opts) => {
+        if (opts && opts.lastUpdateTime) {
+          const held = docs.get(path);
+          const at = held ? held.updateTime : undefined;
+          if (!at || at.toMillis() !== opts.lastUpdateTime.toMillis()) {
+            const e = new Error(`FAILED_PRECONDITION: the document was modified (${path})`);
+            e.code = 9;
+            throw e;
+          }
+        }
+        put(path, data);
+      },
       create: async (data) => {
         if (docs.has(path)) throw new Error(`already_exists: ${path}`);
         put(path, data);

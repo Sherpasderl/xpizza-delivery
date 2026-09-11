@@ -328,5 +328,157 @@
     "file": "catalog/source-store.js",
     "from": "  return { source, revision: encodeUpdateTime(snap.updateTime) };",
     "to": "  return { source, revision: null };"
+  },
+  {
+    "id": "task8-01",
+    "slice": "task8",
+    "label": "prices are rebuilt from the code tables instead of the capture",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "    const out = { key: it.key, price: it.price };\n    note(`items.${it.key}.price`, 'captured');",
+    "to": "    const out = { key: it.key, price: require('../menu-pricing').MENU_BY_RESTAURANT[restaurantId][it.key] };"
+  },
+  {
+    "id": "task8-02",
+    "slice": "task8",
+    "label": "the shown price keeps the artifact's value instead of following the charged one",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "    if (out.display.price !== out.price) {\n      out.display = { ...out.display, price: out.price };\n      note(`items.${it.key}.display.price`, 'captured');\n    }",
+    "to": "    void 0;"
+  },
+  {
+    "id": "task8-03",
+    "slice": "task8",
+    "label": "the authored basePrice is left in place",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "        const { basePrice, ...rest } = spec;      // eslint-disable-line no-unused-vars\n        structure.variant_items[launcher] = rest;",
+    "to": "        void spec;"
+  },
+  {
+    "id": "task8-04",
+    "slice": "task8",
+    "label": "provenance is written into the persisted structure",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "  const source = { restaurant_id: restaurantId, schema_version: SCHEMA_VERSION, items, extras, structure };\n  // Fail closed at ASSEMBLY",
+    "to": "  structure.provenance = provenance;\n  const source = { restaurant_id: restaurantId, schema_version: SCHEMA_VERSION, items, extras, structure };\n  // Fail closed at ASSEMBLY"
+  },
+  {
+    "id": "task8-05",
+    "slice": "task8",
+    "label": "two artifact records resolving to one key are accepted",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "    if (byKey.has(key)) {\n      refuse('ambiguous',",
+    "to": "    if (false) {\n      refuse('ambiguous',"
+  },
+  {
+    "id": "task8-06",
+    "slice": "task8",
+    "label": "an unkeyable artifact record is accepted",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "    if (typeof key !== 'string' || !key) {\n      refuse('unkeyable',",
+    "to": "    if (false) {\n      refuse('unkeyable',"
+  },
+  {
+    "id": "task8-07",
+    "slice": "task8",
+    "label": "an option the artifact offers and nothing prices is ignored",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "    if (!pricedExtras.has(key)) {\n      refuse('unpriced',",
+    "to": "    if (false) {\n      refuse('unpriced',"
+  },
+  {
+    "id": "task8-08",
+    "slice": "task8",
+    "label": "a priced option nothing describes is dropped instead of refused",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "      if (!fromArtifact) {\n        refuse('undescribed', `${restaurantId}/${ex.key} — an option is charged for and described nowhere",
+    "to": "      if (false) {\n        refuse('undescribed', `${restaurantId}/${ex.key} — an option is charged for and described nowhere"
+  },
+  {
+    "id": "task8-09",
+    "slice": "task8",
+    "label": "the candidate binds its CAS to a fresh read instead of the capture",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "    expected: { activeVersionId: captured.versionId === undefined ? null : captured.versionId },",
+    "to": "    expected: { activeVersionId: null },"
+  },
+  {
+    "id": "task8-10",
+    "slice": "task8",
+    "label": "exposure is not carried into the candidate",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "  attachExposure(restaurantId, structure, items, { byCategory: artifact.extras_by_category, byItem: artifact.extras_by_item });",
+    "to": "  void attachExposure;"
+  },
+  {
+    "id": "task8-11",
+    "slice": "task8",
+    "label": "option order stays as the capture returned it (Firestore doc-id order)",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "    return ai - bi;\n  });",
+    "to": "    return 0 * (ai - bi);\n  });"
+  },
+  {
+    "id": "task8-12",
+    "slice": "task8",
+    "label": "the draft upgrade writes unconditionally",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "await sourceRefOf(db, restaurantId).set(canonicalize(source), { lastUpdateTime: snap.updateTime });",
+    "to": "await sourceRefOf(db, restaurantId).set(canonicalize(source));"
+  },
+  {
+    "id": "task8-13",
+    "slice": "task8",
+    "label": "the exposure guard stops reading the shipped renderer",
+    "file": "catalog/exposure-source.js",
+    "from": "  const found = new Set([...String(formText).matchAll(/\\.name\\s*[!=]==\\s*'([^']+)'/g)].map((m) => m[1]));",
+    "to": "  const found = new Set(spec.noExtras);"
+  },
+  {
+    "id": "task8-14",
+    "slice": "task8",
+    "label": "a dish the exclusion names but the menu lacks is ignored",
+    "file": "catalog/exposure-source.js",
+    "from": "    if (!keys.has(key)) {\n      throw new Error(`exposure_source_missing_item:",
+    "to": "    if (false) {\n      throw new Error(`exposure_source_missing_item:"
+  },
+  {
+    "id": "task8-15",
+    "slice": "task8",
+    "label": "an extracted brand invents an allow-list when it has no map",
+    "file": "catalog/exposure-source.js",
+    "from": "    if (!byCategory || typeof byCategory !== 'object') {\n      throw new Error(`exposure_source_missing:",
+    "to": "    if (false) {\n      throw new Error(`exposure_source_missing:"
+  },
+  {
+    "id": "task8-16",
+    "slice": "task8",
+    "label": "the legacy maps go back to being carried beside the exposure",
+    "file": "catalog/form-menu-source.js",
+    "from": "  attachExposure(restaurantId, structure, items, {\n    byCategory: fd ? fd.extras_by_category : safeLiteral('EXTRAS_BY_CATEGORY'),\n    byItem: fd ? fd.extras_by_item : safeLiteral('EXTRAS_BY_ITEM'),\n  });",
+    "to": "  carryStructure('extras_by_category', () => safeLiteral('EXTRAS_BY_CATEGORY'));\n  carryStructure('extras_by_item', () => safeLiteral('EXTRAS_BY_ITEM'));"
+  },
+  {
+    "id": "task8-17",
+    "slice": "task8",
+    "label": "an empty override list is accepted as a rule",
+    "file": "catalog/source-store.js",
+    "from": "  if (rule.nonEmpty && Array.isArray(value) && value.length === 0) fail(`${label} — ${field} must not be empty`);",
+    "to": "  void 0;"
+  },
+  {
+    "id": "task8-18",
+    "slice": "task8",
+    "label": "exposure becomes optional on a menu that sells options",
+    "file": "catalog/source-store.js",
+    "from": "  checkField(exposure, { required: source.extras.length > 0, type: 'object' }, `${rid}`, 'structure.exposure');",
+    "to": "  checkField(exposure, { required: false, type: 'object' }, `${rid}`, 'structure.exposure');"
+  },
+  {
+    "id": "task8-19",
+    "slice": "task8",
+    "label": "an OPTION's shown price keeps the artifact's value instead of following the charged one",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "    if (out.display.price !== out.price) {\n      out.display = { ...out.display, price: out.price };\n      note(`extras.${ex.key}.display.price`, 'captured');\n    }",
+    "to": "    void 0;"
   }
 ]
