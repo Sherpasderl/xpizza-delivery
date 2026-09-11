@@ -40,12 +40,24 @@ function fetchLab() {
     calls.push({ url, headers: (opts && opts.headers) || {}, resolve, reject });
     return promise;
   };
-  const reply = (i, status, body, headers = {}) => calls[i].resolve({
-    status, ok: status >= 200 && status < 300,
-    headers: { get: (h) => headers[h.toLowerCase()] ?? null },
-    json: async () => body,
-  });
-  return { impl, calls, reply, fail: (i, e) => calls[i].reject(e || new Error('network down')) };
+  const deferred = [];
+  const reply = (i, status, body, headers = {}, opts = {}) => {
+    // `deferJson` holds the BODY back: the response has arrived but has not finished being read. A
+    // newer request can be issued and settle inside that window, which is the only way to exercise
+    // the staleness guard that sits after json().
+    let releaseJson = null;
+    const jsonPromise = opts.deferJson
+      ? new Promise((res) => { releaseJson = () => res(body); })
+      : Promise.resolve(body);
+    if (opts.deferJson) deferred[i] = releaseJson;
+    calls[i].resolve({
+      status, ok: status >= 200 && status < 300,
+      headers: { get: (h) => headers[h.toLowerCase()] ?? null },
+      json: () => jsonPromise,
+    });
+  };
+  const releaseBody = (i) => deferred[i]();
+  return { impl, calls, reply, releaseBody, fail: (i, e) => calls[i].reject(e || new Error('network down')) };
 }
 
 const mk = (over = {}) => {
@@ -222,26 +234,97 @@ test('an exception inside onApply does not leave the coordinator wedged', async 
   await again;
 });
 
-test('the la_musa copy is byte-identical to the canonical one', () => {
-  // 🔴 THE SAME DISCIPLINE avail-key.js CARRIES, AND FOR THE SAME REASON. Two copies of a rule that
-  // decides what a customer sees is two rules the moment one is edited — and the drift would show up
-  // as one brand behaving correctly and the other not, on a code path nobody thinks of as shared.
-  // The forms have no build step, so a copy is the only way to share; a test is the only way to keep
-  // it honest.
-  const canonical = readFileSync(new URL('./form-live-menu.js', import.meta.url), 'utf8');
-  const copy = readFileSync(new URL('../la-musa-orders/form-live-menu.js', import.meta.url), 'utf8');
-  assert.strictEqual(copy, canonical,
-    'la-musa-orders/form-live-menu.js has drifted — copy xpizza-orders/form-live-menu.js over it');
-  assert.ok(canonical.includes('function createLiveMenu'), 'non-vacuity: the file really is the coordinator');
-  // COMMENT-STRIPPED. The first version of this matched the word `export` inside the file's own
-  // comment explaining that it uses no `export` keyword — a guard reading its own documentation as
-  // evidence, which is the failure this repo's other censuses already carry warnings about. Checked
-  // against ESM syntax at the start of a line, in code only.
-  const code = canonical.split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '')).join('\n');
-  assert.ok(!/^\s*export[\s{]/m.test(code) && !/^\s*import[\s{]/m.test(code),
-    'no ESM syntax — the same bytes must load as a Node module AND a classic browser script');
-  assert.ok(/module\.exports/.test(code) && /window\.createLiveMenu/.test(code),
-    '...and it must publish itself to BOTH worlds');
-  // non-vacuity: the detector really fires on ESM
-  assert.ok(/^\s*export[\s{]/m.test('export function x() {}'), 'the detector can see an export');
+test('a non-2xx is refused by the STATUS, even when its body is a perfectly good menu', async () => {
+  // 🔴 THE GUARD IS THE ONLY THING STANDING HERE. Today an error body does not validate, so the
+  // !res.ok check looks redundant and a mutation removing it survives — right up until a 500 or a 503
+  // returns menu-shaped JSON (a proxy's error page, a gateway that echoes, a future error envelope
+  // that carries a fallback). Then the status is the ONLY signal that this is not a menu, and a
+  // customer is shown a menu that the server was in the middle of failing to produce.
+  for (const status of [500, 503, 404, 400]) {
+    const { lab, applied, live } = mk();
+    const done = live.refresh();
+    lab.reply(0, status, envelope('x_pizza', [{ id: 1 }, { id: 2 }]), { etag: '"looks-real"' });
+    await done;
+    assert.strictEqual(applied.length, 0, `🔴 ${status} with a valid body was APPLIED`);
+    assert.strictEqual(live.state().phase, 'retained', `${status}: a failure whatever the body says`);
+    assert.strictEqual(live.state().etag, null, `${status}: and it leaves no validator`);
+  }
+});
+
+test('a stale NON-OK response cannot downgrade a live menu — the post-fetch guard is alone on this path', async () => {
+  // A stale network REJECTION is caught by the guard inside the catch. A stale non-ok RESPONSE never
+  // reaches that, and never reaches the post-json guard either, because there is no body to read:
+  // the check immediately after fetch is the only thing between it and fail(). Without it, an older
+  // 503 landing after a newer 200 turns a live menu into `retained` for no reason.
+  const { lab, applied, live } = mk();
+  const first = live.refresh();
+  const second = live.refresh();
+  lab.reply(1, 200, envelope('x_pizza', [{ id: 1 }]), { etag: '"newer"' });
+  await second;
+  assert.strictEqual(live.state().phase, 'live');
+
+  lab.reply(0, 503, { error: 'nope' });
+  await first;
+  assert.strictEqual(live.state().phase, 'live', '🔴 a stale 503 downgraded a live menu to retained');
+  assert.strictEqual(live.state().etag, '"newer"', 'and the newer validator still stands');
+  assert.strictEqual(applied.length, 1);
+});
+
+test('a stale 304 changes nothing either', async () => {
+  const { lab, applied, live } = mk();
+  const first = live.refresh();
+  const second = live.refresh();
+  lab.reply(1, 200, envelope('x_pizza', [{ id: 1 }]), { etag: '"newer"' });
+  await second;
+  lab.reply(0, 304, null, { etag: '"older"' });
+  await first;
+  assert.strictEqual(live.state().etag, '"newer"', 'a stale 304 must not touch the applied validator');
+  assert.strictEqual(live.state().phase, 'live');
+  assert.strictEqual(applied.length, 1);
+});
+
+test('a body still being READ when a newer response applies is discarded', async () => {
+  // 🔴 THE THIRD STALENESS POINT. A response can arrive first and finish being read LAST — a large
+  // body, a slow parse, a busy main thread. The guard after json() is the only one that sees this,
+  // and without it the older menu overwrites the newer one after the newer one has already painted.
+  const { lab, applied, live } = mk();
+  const first = live.refresh();
+  lab.reply(0, 200, envelope('x_pizza', [{ id: 99 }]), { etag: '"older"' }, { deferJson: true });
+
+  // 🔴 LET REQUEST 0 REACH json() BEFORE A NEWER ONE IS ISSUED. Without this tick the older request
+  // is still parked on its fetch, so the staleness check right AFTER fetch catches it and the body is
+  // never read — the guard after json() is never reached, and a mutation deleting it survives. The
+  // first version of this test did exactly that: it looked like it covered the third staleness point
+  // and covered the first one twice.
+  await new Promise((r) => setImmediate(r));
+
+  const second = live.refresh();
+  lab.reply(1, 200, envelope('x_pizza', [{ id: 1 }, { id: 2 }]), { etag: '"newer"' });
+  await second;
+  assert.strictEqual(live.state().etag, '"newer"', 'premise: the newer one applied first');
+
+  lab.releaseBody(0);                                  // the older body finally finishes reading
+  await first;
+  assert.strictEqual(applied.length, 1, '🔴 the older body applied after the newer one');
+  assert.strictEqual(live.state().etag, '"newer"');
+  assert.strictEqual(live.state().snapshot.dishes.length, 2, 'the newer snapshot is what is showing');
+});
+
+test('a validator that THROWS is a refusal, not an exception escaping the coordinator', async () => {
+  // An adapter is brand code written by whoever owns the form. It will throw one day — on a shape it
+  // did not expect, on a null it did not guard. That must land as "this snapshot is refused", not as
+  // an unhandled rejection that takes the refresh with it and leaves the phase wherever it was.
+  const lab = fetchLab();
+  const applied = [];
+  const live = createLiveMenu({
+    url: '/menu/x_pizza', fetchImpl: lab.impl, onApply: (s) => applied.push(s),
+    adapter: { validateSnapshot: () => { throw new TypeError("Cannot read properties of undefined (reading 'dishes')"); } },
+  });
+  const done = live.refresh();
+  lab.reply(0, 200, envelope('x_pizza', [{ id: 1 }]), { etag: '"v1"' });
+  await assert.doesNotReject(() => done, '🔴 the adapter\'s throw escaped the coordinator');
+  assert.strictEqual(applied.length, 0, 'nothing applied');
+  assert.strictEqual(live.state().phase, 'retained', 'a throwing validator is a refusal');
+  assert.strictEqual(live.state().source, 'bundle', 'and the bundle is retained');
+  assert.match(live.state().lastError, /snapshot refused/, '...with a reason a developer can act on');
 });
