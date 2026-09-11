@@ -59,6 +59,32 @@ const variants = (...prices) => prices.map((p, i) => ({ key: `v${i}`, price: p, 
   ok('an authored basePrice is refused; there is nothing for the derivation to disagree with');
 }
 
+// ── basePrice PRESENT AS A KEY, SET TO undefined ────────────────────────────────────────────────
+{
+  // The same root as two earlier findings: asking whether a VALUE is undefined instead of whether the
+  // KEY is there. `{ basePrice: undefined }` is an own property — the validator read it as absent and
+  // let it through, and the emission's trailing spread then put it back, clobbering the derived alias.
+  // The live form would render "desde L undefined" with NaN deltas, off a source that validated.
+  const authoredUndefined = () => {
+    const s = buildSourceFromCode('la_musa');
+    s.structure.variant_items.noodle_01.basePrice = undefined;     // the KEY exists; the value does not
+    return s;
+  };
+  assert.ok(Object.prototype.hasOwnProperty.call(authoredUndefined().structure.variant_items.noodle_01, 'basePrice'),
+    'premise: the key really is an own property');
+  assert.throws(() => validateSource(authoredUndefined(), 'la_musa'), /must not be stored/,
+    '🔴 an authored basePrice is refused by the KEY being there, whatever its value');
+
+  // ...and even if such a source reached emission, the derived alias must win.
+  const s = authoredUndefined();
+  const spec = rebuildFormMenu('la_musa', s.items, s.structure).variant_items.noodle_01;
+  assert.strictEqual(spec.basePrice, 307, '🔴 the DERIVED value is emitted — a stale key cannot clobber it');
+  assert.strictEqual(`desde L ${spec.basePrice}`, 'desde L 307', '...so the form never renders "desde L undefined"');
+  const byId = new Map(rebuildFormMenu('la_musa', s.items, s.structure).dishes.map((d) => [d.id, d]));
+  assert.ok(spec.variantIds.every((id) => Number.isFinite(byId.get(id).price - spec.basePrice)), 'and no delta is NaN');
+  ok('a basePrice key set to undefined is refused, and could not clobber the derived alias even if it were not');
+}
+
 // ── THE BUNDLE CARRIES THE DERIVED ONE (the pre-1B compat alias) ────────────────────────────────
 {
   const src = buildSourceFromCode('la_musa');

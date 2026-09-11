@@ -240,7 +240,10 @@ function rebuildFormMenu(restaurantId, items, structure) {
         // artifact is BYTE-IDENTICAL to what ships today. The value was always 307; making the key
         // order match too means the regenerated bundle produces no diff at all, and "nothing the
         // customer sees changed" is something a reader can check rather than take on trust.
-        const { label, variantIds, ...others } = spec;    // eslint-disable-line no-unused-vars
+        // basePrice is destructured OUT explicitly. Without that it lands in `...others`, and the
+        // spread comes last — so a stale key would overwrite the value just derived, which is the one
+        // thing this emission exists to prevent.
+        const { label, basePrice: _authored, variantIds, ...others } = spec;    // eslint-disable-line no-unused-vars
         out.variant_items[launcherId] = { label, basePrice: deriveStartingPrice(byUiId.get(String(launcherId)), variants), variantIds, ...others };
       }
     }

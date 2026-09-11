@@ -412,7 +412,11 @@ function validateSource(source, rid) {
       // form's "desde" is a fact about the variants by construction rather than a claim checked after
       // the fact. Refused even when the authored value is CORRECT, because being right today is not
       // the property being protected.
-      if (spec && spec.basePrice !== undefined) {
+      // 🔴 THE KEY, NOT THE VALUE. `spec.basePrice !== undefined` reads `{ basePrice: undefined }` —
+      // an own property that is very much authored — as absent. The third time this exact confusion
+      // has produced a hole here, and the answer is the same each time: ask whether the field was
+      // WRITTEN, not what it was written as.
+      if (spec && Object.prototype.hasOwnProperty.call(spec, 'basePrice')) {
         fail(`${rid} — variant launcher ${launcherId} authors a basePrice; "desde" is derived from the variants at emission and must not be stored (an authored copy is a number that can drift from what it summarises)`);
       }
       // ...and one must be DERIVABLE, or the form renders a launcher with no starting price at all.

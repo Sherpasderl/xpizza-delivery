@@ -785,7 +785,7 @@ const GOOD = () => ({
     ['validateSource :: spec', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
     ['validateSource :: !Array.isArray(ids) || ids.length === 0', 'shape', 'this predicate IS the type test'],
     ['validateSource :: spec #2', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
-            ['validateSource :: spec && spec.basePrice !== undefined', 'not-a-presence-test', 'asks whether a DERIVED value has been authored — its presence IS the defect being reported, not a gate on validating it'],
+            ["validateSource :: spec && Object.prototype.hasOwnProperty.call(spec, 'basePrice')", 'not-a-presence-test', 'asks whether a DERIVED value has been authored AT ALL — the key\u2019s presence IS the defect being reported, not a gate on validating anything'],
     ['validateSource :: desde == null', 'post-type', 'the derivation result, after every variant has been typed — a launcher with no derivable starting price'],
     ["validateSource :: typeof v !== 'string' && typeof v !== 'number'", 'shape', 'this predicate IS the type test'],
     ['validateSource :: Array.isArray(v)', 'shape', 'this predicate IS the type test'],
