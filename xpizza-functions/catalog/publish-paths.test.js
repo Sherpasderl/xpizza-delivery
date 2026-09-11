@@ -3,12 +3,18 @@
 //
 // Two claims, and the first one is what makes the second worth anything:
 //
-//   COMPLETENESS IS STRUCTURAL, NOT A CHECKLIST. "Every publish path validates" is only as good as
-//   the list of paths, and a list is a thing that goes out of date silently. So the list is not
-//   trusted: the pointer doc has exactly ONE writer (flipPointer), flipPointer has exactly TWO
-//   callers (publishVersion, rollbackVersion), and both validate and both CAS. That is proved by
-//   scanning the production tree here, so a sixth path added next year either goes through the
-//   chokepoint or fails this file.
+//   THE GUARANTEE IS IN THE CODE, AT THE WRITE POINT. flipPointer — the thing that actually moves
+//   the pointer — validates the candidate itself before it opens the transaction. Not its callers:
+//   ITSELF. An earlier round put the validation in publishVersion and rollbackVersion and proved
+//   "those are the only two callers" by scanning the source, which is a lint wearing a proof's
+//   clothes — flipPointer is exported, and called directly it would happily point a restaurant at a
+//   version that does not exist. A runtime invariant cannot be established by reading source.
+//
+//   THE CENSUS BELOW IS DEFENSE IN DEPTH, AND IS LABELLED AS SUCH. It still earns its place: it
+//   catches a second pointer writer appearing, which is a design regression worth failing on even
+//   though it can no longer be a correctness hole. But it is a strong lint over source patterns, and
+//   an alternate spelling can walk past it — which is exactly why it is no longer what the guarantee
+//   rests on.
 //
 //   🔴 THE SCAN READS FILES, IT DOES NOT GREP THEM. catalog/publish-edited-handler.js contains a
 //   literal NUL byte (a security sentinel, '\0invalid'). git calls the file binary and grep drops it
@@ -29,7 +35,8 @@ const { getRestaurantMenu } = require('./catalog-menu');
 const { contentHash } = require('./content-hash');
 const { sourceRefOf } = require('./source-store');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
-const { buildPublishInput, readExpectation } = require('../tools/publish-version');
+const { mkVersion } = require('./synthetic-version');
+const { readPublishBaseline, buildPublishCandidate } = require('../tools/publish-version');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -73,15 +80,20 @@ const publishFresh = async (db, rid, over = {}) => publishVersion(db, rid, input
       '🔴 the scanner must SEE the NUL-bearing publish path; a grep-based sweep drops it silently and reports four of five paths wired');
     assert.ok(files.length > 40, `non-vacuity: the sweep must really walk the tree (found ${files.length})`);
 
-    // (a) ONE WRITER of the pointer doc.
+    // (a) ONE WRITER of the pointer doc. Anchored on the SEGMENT NAME, not on one way of spelling
+    // the path: `db.doc('restaurants/x/meta/active_version').set(...)` reaches the same document as
+    // `...collection('meta').doc('active_version').set(...)`, and a lint that only knew the second
+    // spelling was walked past by the first. What it still cannot see is a path assembled at runtime
+    // from pieces — which is the honest limit of any source scan, and the reason flipPointer now
+    // validates rather than trusting this.
     const writers = [];
     for (const full of files) {
       const code = stripComments(readFileSync(full, 'utf8'));
-      let i = code.indexOf("doc('active_version')");
+      let i = code.indexOf('active_version');
       while (i !== -1) {
         const after = code.slice(i, i + 160);
-        if (/\.(set|create|update|delete)\s*\(/.test(after)) writers.push(relative(ROOT, full));
-        i = code.indexOf("doc('active_version')", i + 1);
+        if (/\.(set|create|update|delete)\s*\(/.test(after)) writers.push(`${relative(ROOT, full)} @${i}`);
+        i = code.indexOf('active_version', i + 1);
       }
       // pointerRefOf is the same reference by another name — it must not escape its own module.
       if (/\bpointerRefOf\b/.test(code) && relative(ROOT, full) !== 'catalog/catalog-publish.js') {
@@ -111,7 +123,7 @@ const publishFresh = async (db, rid, over = {}) => publishVersion(db, rid, input
         `${fn} must validate the candidate before it can reach the flip`);
       assert.ok(/flipPointer\([^)]*expected\)/.test(body), `${fn} must pass its CAS expectation to the flip`);
     }
-    ok(`chokepoint: ${files.length} production files READ (incl. the NUL-bearing portal path) — one pointer writer, two flip callers, both validating and both CAS-bound`);
+    ok(`chokepoint lint (defense in depth): ${files.length} production files READ (incl. the NUL-bearing portal path) — one pointer writer, two flip callers, both validating and both CAS-bound`);
   }
 
   // ══ 2. AN INVALID CANDIDATE MOVES NO POINTER — on every path ══════════════════════════════════
@@ -185,14 +197,60 @@ const publishFresh = async (db, rid, over = {}) => publishVersion(db, rid, input
     ok('pre-flip: a version the reader accepts can still be an invalid menu — the validator catches it, which is why both checks exist');
   }
 
+  // ══ 3b. THE WRITE POINT IS AIRTIGHT, WITHOUT ANY HELP FROM ITS CALLERS ════════════════════════
+  {
+    // Called DIRECTLY, bypassing publishVersion and rollbackVersion entirely, with a lease it really
+    // holds, a well-formed snapshot and an expectation that matches reality — everything the flip
+    // used to ask for. Under the previous design this moved the pointer to a version that does not
+    // exist, because the validation lived in the callers and there was nothing to stop a sixth
+    // caller (or a direct one) from simply not being them.
+    const db = makeDb();
+    const rid = 'x_pizza';
+    const good = (await publishFresh(db, rid)).versionId;
+
+    const attempt = async (targetVersionId) => {
+      const token = await acquireLease(db, rid);
+      try {
+        await flipPointer(db, rid, token, targetVersionId, snapshotOf(rid, targetVersionId, 99, {}, {}),
+          { activeVersionId: good });
+      } finally { await releaseLease(db, rid, token); }
+    };
+
+    await assert.rejects(() => attempt('v-does-not-exist'), (e) => {
+      assert.strictEqual(e.code, 'version_missing', `got ${e.code}: ${e.message}`);
+      return true;
+    }, '🔴 the pointer moved to a version that does not exist');
+    assert.strictEqual(await pointerOf(db, rid), good, 'and the pointer did not move');
+
+    // ...and a version that EXISTS but is not servable is refused at the same place.
+    const { versionId: broken } = await publishFresh(db, rid);
+    await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').set({ version: good });
+    const e1 = (await db.collection('restaurants').doc(rid).collection('versions').doc(broken).collection('extras').get()).docs[0];
+    await e1.ref.set({ key: e1.data().key, price: e1.data().price });        // strip its display record
+    await assert.rejects(() => attempt(broken), (e) => {
+      assert.ok(/catalog_missing_display|publish_refused_invalid|catalog_content_mismatch/.test(e.code), `got ${e.code}`);
+      return true;
+    }, '🔴 the pointer moved to a version the reader could not serve');
+    assert.strictEqual(await pointerOf(db, rid), good, 'and the pointer did not move');
+
+    // ...and a healthy target still flips, so the gate is not simply refusing everything.
+    const { versionId: healthy } = await publishFresh(db, rid);
+    await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').set({ version: good });
+    await assert.doesNotReject(() => attempt(healthy), 'a servable version still flips');
+    assert.strictEqual(await pointerOf(db, rid), healthy, 'and the pointer moved to it');
+    ok('the WRITE POINT validates: flipPointer called directly — right lease, right snapshot, matching expectation — still refuses a nonexistent and an unservable version, and still accepts a healthy one');
+  }
+
   // ══ 4. THE CUTOVER CLI — the real input builder, not a reconstruction ═════════════════════════
   {
     for (const rid of ['x_pizza', 'la_musa']) {
-      const input = buildPublishInput(rid, { source_sha: 'cli' });
+      const { input, expected } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: 'cli' });
       assert.ok(Array.isArray(input.extraRecords) && input.extraRecords.length === Object.keys(EXTRAS_BY_RESTAURANT[rid]).length,
         `${rid}: the CLI must carry a display record for every priced extra`);
+      assert.deepStrictEqual(Object.keys(expected), ['activeVersionId'],
+        `${rid}: a code-built cutover reads no draft, so it must make no claim about one`);
       const db = makeDb();
-      const res = await publishVersion(db, rid, input, { expected: { activeVersionId: null } });
+      const res = await publishVersion(db, rid, input, { expected });
       assert.ok(res.versionId, `${rid}: the CLI's own input publishes`);
       const menu = await getRestaurantMenu(db, rid);
       assert.strictEqual(menu.extras.length, input.extraRecords.length, `${rid}: and reads back complete`);
@@ -202,13 +260,127 @@ const publishFresh = async (db, rid, over = {}) => publishVersion(db, rid, input
     const drifted = JSON.parse(JSON.stringify(buildSourceFromCode('la_musa')));
     const target = drifted.items.find((i) => i.key === 'dimsum_01');
     target.price += 7; target.display.price = target.price;
-    assert.throws(() => buildPublishInput('la_musa', { source: drifted }), /parity_mismatch/,
+    assert.throws(() => buildPublishCandidate('la_musa', { activeVersionId: null, source: drifted, revision: 'r1' }), /parity_mismatch/,
       '🔴 --from-store published a store that no longer matches code');
     // ...and an UNCHANGED store builds an input identical to the code path.
-    const fromStore = buildPublishInput('la_musa', { source: buildSourceFromCode('la_musa'), source_sha: 'cli' });
-    assert.deepStrictEqual(fromStore, buildPublishInput('la_musa', { source_sha: 'cli' }),
+    const fromStore = buildPublishCandidate('la_musa', { activeVersionId: null, source: buildSourceFromCode('la_musa'), revision: 'r1' }, { source_sha: 'cli' });
+    assert.deepStrictEqual(fromStore.input, buildPublishCandidate('la_musa', { activeVersionId: null }, { source_sha: 'cli' }).input,
       '--from-store and the code path must produce the same input for an unchanged store');
-    ok('cutover CLI: both brands publish off buildPublishInput() itself; a drifted store is refused inside the builder, before any write');
+    assert.strictEqual(fromStore.expected.draftRevision, 'r1',
+      'and --from-store must claim the revision it BUILT FROM');
+    ok('cutover CLI: both brands publish off buildPublishCandidate() itself; a drifted store is refused inside the builder, before any write');
+  }
+
+  // ══ 4b. 🔴 THE CLI'S BASELINE IS THE MOMENT IT READ, NOT THE MOMENT IT PUBLISHED ══════════════
+  {
+    // THE MONEY CASE. The CLI used to read the source, build a candidate from it, and then SEPARATELY
+    // re-read the draft to state which revision it was publishing against. A merchant editing and
+    // publishing in between was therefore captured as the CLI's OWN expectation: the CAS compared
+    // that fresh revision against itself, passed, and the stale candidate went live — reverting the
+    // merchant's price with every guard green. This is that sequence, end to end.
+    const db = makeDb();
+    const rid = 'la_musa';
+    const KEY = 'dimsum_01';
+    const codePrice = buildSourceFromCode(rid).items.find((i) => i.key === KEY).price;
+
+    const writeDraft = async (price) => {
+      const src = JSON.parse(JSON.stringify(buildSourceFromCode(rid)));
+      const it = src.items.find((i) => i.key === KEY);
+      it.price = price; it.display.price = price;
+      await sourceRefOf(db, rid).set(src);
+      return src;
+    };
+
+    await writeDraft(codePrice);
+    const v1 = (await publishVersion(db, rid, inputFor(rid), { expected: { activeVersionId: null } })).versionId;
+
+    // (1) A reads its baseline — pointer, then the draft it will build from.
+    const baselineA = await readPublishBaseline(db, rid, { fromStore: true });
+    assert.strictEqual(baselineA.source.items.find((i) => i.key === KEY).price, codePrice, 'premise: A built from the OLD draft');
+
+    // (2) THE MERCHANT edits and publishes. A price a customer now pays.
+    const edited = await writeDraft(codePrice + 7);
+    const inputsB = require('./source-store').sourceToBuildInputs(edited);
+    const builtB = buildCatalogV2(rid, { formData: inputsB.formData, priceTable: inputsB.priceTable });
+    const v2id = (await publishVersion(db, rid, {
+      items: builtB.items, structure: builtB.structure, extras: inputsB.extras, extraRecords: builtB.extras, source_sha: 'merchant',
+    }, { expected: { activeVersionId: v1 } })).versionId;
+    assert.strictEqual((await getRestaurantMenu(db, rid)).items.find((i) => i.key === KEY).price, codePrice + 7,
+      'premise: the merchant\'s new price is LIVE');
+
+    // (3) A now publishes the candidate it built in step 1. It must not land.
+    const { input, expected } = buildPublishCandidate(rid, baselineA, { source_sha: 'stale-cli' });
+    assert.strictEqual(expected.activeVersionId, v1, '🔴 A must claim the version it read, not the one that is live now');
+    assert.strictEqual(expected.draftRevision, baselineA.revision, '🔴 A must claim the revision it BUILT FROM, not a fresher one');
+    await assert.rejects(() => publishVersion(db, rid, input, { expected }), /flip_cas_stale|flip_cas_draft_stale/,
+      '🔴 a candidate built from a superseded draft was published');
+
+    const live = await getRestaurantMenu(db, rid);
+    assert.strictEqual(live.identity.version_id, v2id, '🔴 the merchant\'s published version was replaced');
+    assert.strictEqual(live.items.find((i) => i.key === KEY).price, codePrice + 7,
+      `🔴 THE PRICE REVERTED: ${codePrice + 7} → ${live.items.find((i) => i.key === KEY).price}`);
+    ok(`CLI baseline: a candidate built from an older draft cannot land after a merchant publishes — the ${KEY} price stays at the edited ${codePrice + 7}, never reverting to ${codePrice}`);
+  }
+  {
+    // ...and the ORDER of the baseline reads is itself the correctness, so it is caught by MOVING
+    // the pointer while the source is being read rather than by inspecting the order of the reads.
+    //
+    // An order-of-reads assertion was the first version of this and it was too weak: a baseline that
+    // reads the pointer both before AND after the source satisfies "pointer read first" while still
+    // returning the later value. What has to be true is not the order of the calls, it is WHICH VALUE
+    // comes back — so a competing publish lands mid-read and the baseline must not have noticed it.
+    const spy = makeDb();
+    const spyRid = 'la_musa';
+    await sourceRefOf(spy, spyRid).set(buildSourceFromCode(spyRid));
+    const ptr = spy.collection('restaurants').doc(spyRid).collection('meta').doc('active_version');
+    await ptr.set({ version: 'v-before' });
+    const wrap = (ref) => new Proxy(ref, {
+      get(t, k) {
+        if (k === 'get') {
+          return async () => {
+            const snap = await t.get();
+            // the competitor publishes the instant the draft is read
+            if (t.path.endsWith('/source')) await ptr.set({ version: 'v-competitor' });
+            return snap;
+          };
+        }
+        if (k === 'collection') return (sub) => wrapCol(t.collection(sub));
+        return typeof t[k] === 'function' ? t[k].bind(t) : t[k];
+      },
+    });
+    const wrapCol = (col) => new Proxy(col, { get(t, k) { return k === 'doc' ? (id) => wrap(t.doc(id)) : (typeof t[k] === 'function' ? t[k].bind(t) : t[k]); } });
+    const spied = { ...spy, collection: (c) => wrapCol(spy.collection(c)) };
+    const raced = await readPublishBaseline(spied, spyRid, { fromStore: true });
+    assert.strictEqual((await ptr.get()).data().version, 'v-competitor', 'premise: the competitor really did publish mid-read');
+    assert.strictEqual(raced.activeVersionId, 'v-before',
+      '🔴 the baseline captured a publish that landed while it was reading — the CAS would then compare that fresh value against itself and wave a stale candidate through');
+    ok('CLI baseline ORDER: a publish landing mid-read is NOT captured as this publish\'s own expectation — it loses the CAS instead');
+  }
+
+  // ══ 4c. THE CLI CHAIN, END TO END, ON A DRAFT NOBODY TOUCHED ══════════════════════════════════
+  {
+    // Every other --from-store assertion here is a REFUSAL, and a chain that only ever refuses is
+    // satisfied by a chain that refuses everything. This one has to LAND: baseline → candidate →
+    // publish, through the real functions, against a draft that has not moved.
+    //
+    // It is also the assertion that catches a baseline whose draft revision is wrong-but-consistent.
+    // A readSource that returned `revision: null` passed every refusal test above — the active-version
+    // CAS fired first in each of them — and would have shipped the money fix disabled. Here it fails
+    // loudly: null is a claim about a draft that exists, and the flip refuses it.
+    const db = makeDb();
+    const rid = 'la_musa';
+    await sourceRefOf(db, rid).set(buildSourceFromCode(rid));
+    const baseline = await readPublishBaseline(db, rid, { fromStore: true });
+    assert.ok(typeof baseline.revision === 'string' && baseline.revision.length > 0,
+      `🔴 the baseline must carry the revision it read (got ${JSON.stringify(baseline.revision)})`);
+    const { input, expected } = buildPublishCandidate(rid, baseline, { source_sha: 'cutover' });
+    assert.strictEqual(expected.draftRevision, baseline.revision, 'and publish under exactly that revision');
+    const res = await publishVersion(db, rid, input, { expected });
+    assert.ok(res.versionId, '🔴 the cutover chain must actually land on an untouched draft');
+    const live = await getRestaurantMenu(db, rid);
+    assert.strictEqual(live.identity.version_id, res.versionId, 'and the pointer moves to it');
+    assert.strictEqual(live.items.length, input.items.length, 'serving the whole menu');
+    ok('cutover chain: readPublishBaseline → buildPublishCandidate → publishVersion LANDS on an untouched draft, under the revision it read');
   }
 
   // ══ 5. THE CAS — a stale publish never overwrites a newer one ═════════════════════════════════
@@ -326,6 +498,45 @@ const publishFresh = async (db, rid, over = {}) => publishVersion(db, rid, input
     assert.strictEqual(db._raw.size, before.size, 'preview wrote no document');
     for (const [k, v] of db._raw) assert.strictEqual(v.updateTime, before.get(k).updateTime, `preview touched ${k}`);
     ok('preview: reads a specific version, writes not one byte, and cannot reach the pointer at all');
+  }
+
+  // ══ 10. THE EMULATOR SUITE'S OWN FIXTURES, EXERCISED HERE ═════════════════════════════════════
+  {
+    // The emulator suites are the pre-cutover gate, and they cannot run in this process. So the two
+    // things that CAN be checked here are: their fixtures really publish through the real publisher,
+    // and every publish/rollback/flip in them states a CAS expectation. This is the answer to a real
+    // finding — after the validator landed, those suites were updated but would have FAILED if run,
+    // and nothing here could tell.
+    const db = makeDb();
+    const rid = 'flip_shop';
+    const v1 = (await publishVersion(db, rid, mkVersion({ A: 10 }), { expected: { activeVersionId: null } })).versionId;
+    const v2id = (await publishVersion(db, rid, mkVersion({ A: 10, B: 20 }, { X: 5 }), { expected: { activeVersionId: v1 } })).versionId;
+    const menu = await getRestaurantMenu(db, rid);
+    assert.strictEqual(menu.items.length, 2, 'the synthetic fixture publishes and reads back');
+    assert.strictEqual(menu.extras.length, 1, 'including its extras');
+    await rollbackVersion(db, rid, v1, { expected: { activeVersionId: v2id } });
+    assert.strictEqual((await getRestaurantMenu(db, rid)).identity.version_id, v1, 'and rolls back');
+
+    // ...and the emulator files themselves state an expectation everywhere they move a pointer.
+    const EMU = ['test/catalog-versioned.emulator.test.js', 'test/edit-e2e.emulator.test.js'];
+    for (const rel of EMU) {
+      const code = stripComments(readFileSync(join(ROOT, rel), 'utf8'));
+      for (const fn of ['publishVersion', 'rollbackVersion', 'flipPointer']) {
+        let i = code.indexOf(`${fn}(db,`);
+        while (i !== -1) {
+          const call = code.slice(i, i + 400);
+          const end = call.indexOf(');');
+          const text = call.slice(0, end === -1 ? 400 : end + 2);
+          // Either it states an expectation (by name or by the expectation's own field), or it is a
+          // deliberate negative for a check that fires BEFORE the CAS — the snapshot and expectation
+          // preconditions, which are precisely the calls that must pass neither.
+          assert.ok(/expected|activeVersionId|flip_requires_/.test(text),
+            `🔴 ${rel}: a ${fn}(db, …) call states no CAS expectation — the suite would fail closed if it were run:\n    ${text.slice(0, 160)}`);
+          i = code.indexOf(`${fn}(db,`, i + 1);
+        }
+      }
+    }
+    ok(`emulator gate: the synthetic fixtures publish, read back and roll back through the real publisher; every pointer-moving call in ${EMU.length} emulator suites states its expectation`);
   }
 
   FINISHED = true;

@@ -27,19 +27,26 @@ const versionsCol = (rid) => db.collection('restaurants').doc(rid).collection('v
 const pointerRef = (rid) => db.collection('restaurants').doc(rid).collection('meta').doc('active_version');
 const lockRef = (rid) => db.collection('restaurants').doc(rid).collection('meta').doc('publish_lock');
 const read = async (rid) => { const d = await getRestaurantDocs(db, rid); return buildTablesFromDocs(d.itemDocs, d.extraDocs); };
-// A synthetic version — exercises the PRICING path (getRestaurantDocs) + the structure bijection.
-// 1A Task 5: it carries display records and an extra_order, because a version without them is one the
-// display reader refuses, and publishVersion now verifies with that reader before it flips.
-const mkVersion = (menu, extras = {}) => {
-  const rec = ([key, price]) => ({ key, price, display: { id: key, name: key, price } });
-  const items = Object.entries(menu).map(rec);
-  const extraRecords = Object.entries(extras).map(rec);
-  return {
-    items,
-    structure: { schema_version: 2, item_order: items.map((i) => i.key), extra_order: extraRecords.map((e) => e.key) },
-    extras, extraRecords, source_sha: 'test',
-  };
+// The synthetic version fixtures live in catalog/synthetic-version.js so the OFFLINE publish-path
+// suite publishes and rolls back these exact shapes on every `npm test`. A copy here would be a copy
+// that rots in the suite nobody can run without an emulator — which is how this file ended up
+// "updated but failing if run" after the validator landed.
+const { mkVersion } = require('../catalog/synthetic-version');
+
+// 1A Task 7 — the pointer flip is a compare-and-set, so every publish states which active version it
+// was validated against. These helpers state the truth (whatever is live right now); the RACE cases
+// below deliberately state something stale instead.
+const pointerVersionOf = async (rid) => {
+  const s = await pointerRef(rid).get();
+  return s.exists ? ((s.data() || {}).version || null) : null;
 };
+const publishAt = async (rid, input, opts = {}) =>
+  publishAt(rid, input, { ...opts, expected: { activeVersionId: await pointerVersionOf(rid) } });
+const rollbackAt = async (rid, target, opts = {}) =>
+  rollbackAt(rid, target, { ...opts, expected: { activeVersionId: await pointerVersionOf(rid) } });
+const flipAt = async (rid, token, versionId, snapshot) =>
+  flipPointer(db, rid, token, versionId, snapshot, { activeVersionId: await pointerVersionOf(rid) });
+
 // The REAL guarded resolver over the REAL version-aware reader — exactly index.js's wiring.
 const buildReader = (codeMap = null) => {
   const alarms = [];
@@ -62,7 +69,7 @@ const buildReader = (codeMap = null) => {
   // ── (1) MONEY-PROOF (PIN-E extension) — publish v1 from code → the REAL reader resolves the pointer →
   //        byte-identical to code, both brands; identity-proven it came from Firestore; zero alarms ──
   for (const rid of ['x_pizza', 'la_musa']) {
-    const r = await publishVersion(db, rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: 'v1' });
+    const r = await publishAt(rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: 'v1' });
     assert.ok(r.versionId && r.item_count === Object.keys(MENU_BY_RESTAURANT[rid]).length, 'publish returns versionId + counts');
     const { resolver, alarms } = buildReader();
     const t = await resolver.getPricingTables(rid);
@@ -81,7 +88,7 @@ const buildReader = (codeMap = null) => {
   {
     const firstKey = Object.keys(MENU_BY_RESTAURANT.x_pizza)[0];
     const mutated = V2.x_pizza.items.map((i) => (i.key === firstKey ? { ...i, price: 99999 } : i));
-    await publishVersion(db, 'x_pizza', { items: mutated, structure: V2.x_pizza.structure, extras: EXTRAS_BY_RESTAURANT.x_pizza, extraRecords: V2.x_pizza.extras, source_sha: 'bad' });
+    await publishAt('x_pizza', { items: mutated, structure: V2.x_pizza.structure, extras: EXTRAS_BY_RESTAURANT.x_pizza, extraRecords: V2.x_pizza.extras, source_sha: 'bad' });
     const { resolver, alarms } = buildReader();
     const t = await resolver.getPricingTables('x_pizza');
     assert.strictEqual(t.menu[firstKey], 99999, 'the PUBLISHED version price serves — a portal edit takes effect');
@@ -89,7 +96,7 @@ const buildReader = (codeMap = null) => {
     assert.deepStrictEqual(alarms, [], 'NO parity alarm — divergence from the code table is expected now, not an incident');
     ok('2c FLIP: a diverged published version is SERVED (pre-flip this fell back to code + alarmed)');
     // restore x_pizza to the good version for later
-    await publishVersion(db, 'x_pizza', { items: V2.x_pizza.items, structure: V2.x_pizza.structure, extras: EXTRAS_BY_RESTAURANT.x_pizza, extraRecords: V2.x_pizza.extras, source_sha: 'v-restore' });
+    await publishAt('x_pizza', { items: V2.x_pizza.items, structure: V2.x_pizza.structure, extras: EXTRAS_BY_RESTAURANT.x_pizza, extraRecords: V2.x_pizza.extras, source_sha: 'v-restore' });
   }
 
   // ── (3) DISPLAY reader via the pointer — the version's items + structure round-trip ──
@@ -103,12 +110,12 @@ const buildReader = (codeMap = null) => {
   // ── (4) ATOMIC FLIP — docs written BEFORE the flip; a mid-publish reader sees the OLD version ──
   {
     const rid = 'flip_shop';
-    const v1 = (await publishVersion(db, rid, mkVersion({ A: 10 }))).versionId;
+    const v1 = (await publishAt(rid, mkVersion({ A: 10 }))).versionId;
     const tok = await acquireLease(db, rid);
     const { versionId: v2 } = await writeVersion(db, rid, mkVersion({ A: 20 }), await serverNow(db, rid));   // written, NOT flipped
     assert.strictEqual((await read(rid)).menu.A, 10, 'mid-publish reader sees the OLD version (v2 docs written, pointer not flipped)');
     assert.strictEqual(await getActiveVersionId(db, rid), v1, 'pointer still v1 before the flip');
-    await flipPointer(db, rid, tok, v2, { version: v2, seq: 1, rid, menu: {}, extras: {} });   // 1b: the pointer cannot move without its snapshot
+    await flipAt(rid, tok, v2, { version: v2, seq: 1, rid, menu: {}, extras: {} });   // 1b: the pointer cannot move without its snapshot
     await releaseLease(db, rid, tok);
     assert.strictEqual((await read(rid)).menu.A, 20, 'after the atomic flip the reader sees the NEW version');
     ok('ATOMIC FLIP: version docs written before the flip; reader sees OLD until the pointer moves, NEW after');
@@ -117,7 +124,7 @@ const buildReader = (codeMap = null) => {
   // ── (5) COMPLETENESS-ON-READ — torn menu / torn extras / tampered price each THROW (separate hashes) ──
   {
     const rid = 'complete_shop';
-    await publishVersion(db, rid, mkVersion({ A: 10, B: 20 }, { X: 5 }));
+    await publishAt(rid, mkVersion({ A: 10, B: 20 }, { X: 5 }));
     const active = await getActiveVersionId(db, rid);
     const vref = versionsCol(rid).doc(active);
     const items = await vref.collection('menu_items').get();
@@ -164,7 +171,7 @@ const buildReader = (codeMap = null) => {
   //        charging a price nobody can vouch for. Pre-flip this served the in-code table; there is no
   //        code net any more, by design. ──
   {
-    await publishVersion(db, 'failsafe_shop', mkVersion({ A: 10 }));
+    await publishAt('failsafe_shop', mkVersion({ A: 10 }));
     const active = await getActiveVersionId(db, 'failsafe_shop');
     const vitems = await versionsCol('failsafe_shop').doc(active).collection('menu_items').get();
     await vitems.docs[0].ref.delete();                                     // torn read on the ACTIVE version
@@ -202,10 +209,16 @@ const buildReader = (codeMap = null) => {
   // ── (9) STALE-LEASE-CANNOT-FLIP (server time) — an EXPIRED lease cannot flip even though it OWNS the token ──
   {
     const rid = 'stale_shop';
+    const t0 = await acquireLease(db, rid);
+    // A REAL, servable target: 1A Task 7 made flipPointer validate the candidate before it opens the
+    // transaction, so a made-up version id would now be refused for being missing and this test would
+    // pass without ever reaching the lease check it exists to prove.
+    const { versionId: target } = await writeVersion(db, rid, mkVersion({ A: 1 }), await serverNow(db, rid));
+    await releaseLease(db, rid, t0);
     const t1 = await acquireLease(db, rid);
     const nowS = await serverNow(db, rid);
     await lockRef(rid).set({ owner_token: t1, acquired_at: nowS, expires_at: Timestamp.fromMillis(nowS.toMillis() - 60000) });   // force-expire by SERVER time
-    await assert.rejects(() => flipPointer(db, rid, t1, 'anything', { version: 'anything', seq: 1, rid, menu: {}, extras: {} }), /lease_expired/);
+    await assert.rejects(() => flipPointer(db, rid, t1, target, { version: target, seq: 1, rid, menu: {}, extras: {} }, { activeVersionId: null }), /lease_expired/);
     ok('STALE-LEASE: an expired lease (server time) CANNOT flip even though owner_token matches — no client-clock bypass');
   }
 
@@ -218,9 +231,10 @@ const buildReader = (codeMap = null) => {
     await lockRef(rid).set({ owner_token: t1, acquired_at: nowS, expires_at: Timestamp.fromMillis(nowS.toMillis() - 60000) });   // t1's lease expired
     const t2 = await acquireLease(db, rid);                                 // reclaim (expired) → new token
     assert.notStrictEqual(t1, t2, 'reclaim allocates a FRESH owner_token');
+    const { versionId: vOld } = await writeVersion(db, rid, mkVersion({ A: 1 }), await serverNow(db, rid));   // a real prior version to try to revert TO
     const { versionId: vNew } = await writeVersion(db, rid, mkVersion({ A: 99 }), await serverNow(db, rid));
-    await flipPointer(db, rid, t2, vNew, { version: vNew, seq: 2, rid, menu: {}, extras: {} });   // t2 flips → the newer version is live
-    await assert.rejects(() => flipPointer(db, rid, t1, 'v_old', { version: 'v_old', seq: 1, rid, menu: {}, extras: {} }), /lease_lost|lease_expired/);   // stale t1 cannot revert
+    await flipAt(rid, t2, vNew, { version: vNew, seq: 2, rid, menu: {}, extras: {} });   // t2 flips → the newer version is live
+    await assert.rejects(() => flipPointer(db, rid, t1, vOld, { version: vOld, seq: 1, rid, menu: {}, extras: {} }, { activeVersionId: vNew }), /lease_lost|lease_expired/);   // stale t1 cannot revert
     assert.strictEqual((await read(rid)).menu.A, 99, 'the reclaimer\'s version stays live — no stale revert');
     await releaseLease(db, rid, t2);
     ok('NO REVERT: after a reclaim, the stale publisher\'s flip is rejected (owner_token changed) — no stale-snapshot revert');
@@ -234,7 +248,7 @@ const buildReader = (codeMap = null) => {
     const { versionId: orphan } = await writeVersion(db, rid, mkVersion({ A: 1 }), await serverNow(db, rid));   // wrote docs, then crash (no flip, no release)
     const nowS = await serverNow(db, rid);
     await lockRef(rid).set({ owner_token: t1, acquired_at: nowS, expires_at: Timestamp.fromMillis(nowS.toMillis() - 1) });        // lease expires
-    const res = await publishVersion(db, rid, mkVersion({ A: 2 }));         // reclaim + complete, fresh id
+    const res = await publishAt(rid, mkVersion({ A: 2 }));         // reclaim + complete, fresh id
     assert.notStrictEqual(res.versionId, orphan, 'the recovering publish uses a FRESH id');
     assert.strictEqual(await getActiveVersionId(db, rid), res.versionId, 'the pointer points to the recovered version');
     assert.strictEqual((await read(rid)).menu.A, 2, 'the recovered version is live; the orphan was never pointed to');
@@ -247,8 +261,8 @@ const buildReader = (codeMap = null) => {
   {
     const rid = 'concurrent_shop';
     const results = await Promise.allSettled([
-      publishVersion(db, rid, mkVersion({ A: 1 })),
-      publishVersion(db, rid, mkVersion({ A: 2 })),
+      publishAt(rid, mkVersion({ A: 1 })),
+      publishAt(rid, mkVersion({ A: 2 })),
     ]);
     const fulfilled = results.filter((r) => r.status === 'fulfilled');
     assert.ok(fulfilled.length >= 1, 'at least one concurrent publish succeeds');
@@ -274,9 +288,9 @@ const buildReader = (codeMap = null) => {
       getActiveVersionId: (r) => getActiveVersionId(db, r),
       pointerTtlMs: 1000, now: () => clock,
     });
-    await publishVersion(db, rid, mkVersion({ A: 10 }));
+    await publishAt(rid, mkVersion({ A: 10 }));
     assert.strictEqual((await reader.getTables(rid)).menu.A, 10, 'serves v1');
-    await publishVersion(db, rid, mkVersion({ A: 20 }));                    // flip to v2
+    await publishAt(rid, mkVersion({ A: 20 }));                    // flip to v2
     assert.strictEqual((await reader.getTables(rid)).menu.A, 10, 'within the pointer TTL still v1 (bounded staleness)');
     clock += 1001;
     assert.strictEqual((await reader.getTables(rid)).menu.A, 20, 'after the pointer TTL the flip is picked up → v2');
@@ -286,20 +300,20 @@ const buildReader = (codeMap = null) => {
   // ── (14) ROLLBACK — a single atomic flip to a retained prior version; target verified first ──
   {
     const rid = 'rollback_shop';
-    const v1 = (await publishVersion(db, rid, mkVersion({ A: 10 }))).versionId;
-    await publishVersion(db, rid, mkVersion({ A: 20 }));
+    const v1 = (await publishAt(rid, mkVersion({ A: 10 }))).versionId;
+    await publishAt(rid, mkVersion({ A: 20 }));
     assert.strictEqual((await read(rid)).menu.A, 20, 'active is v2');
-    await rollbackVersion(db, rid, v1);
+    await rollbackAt(rid, v1);
     assert.strictEqual((await read(rid)).menu.A, 10, 'rollback flips the pointer back to v1');
-    await assert.rejects(() => rollbackVersion(db, rid, 'nope'), /version_missing/);   // verify-before-flip
+    await assert.rejects(() => rollbackAt(rid, 'nope'), /version_missing/);   // verify-before-flip
     ok('ROLLBACK: atomic pointer flip to a retained prior version; a missing target is rejected before any flip');
   }
 
   // ── (15) PREVIEW — read a NON-active version's snapshot; writes nothing, pointer unchanged ──
   {
     const rid = 'preview_shop';
-    const v1 = (await publishVersion(db, rid, mkVersion({ A: 10 }))).versionId;
-    const v2 = (await publishVersion(db, rid, mkVersion({ A: 20 }))).versionId;
+    const v1 = (await publishAt(rid, mkVersion({ A: 10 }))).versionId;
+    const v2 = (await publishAt(rid, mkVersion({ A: 20 }))).versionId;
     const before = await getActiveVersionId(db, rid);
     const snap = await previewVersion(db, rid, v1);
     assert.strictEqual(snap.items.find((i) => i.key === 'A').price, 10, 'preview reads the staged (non-active) v1');
@@ -313,7 +327,7 @@ const buildReader = (codeMap = null) => {
   {
     const rid = 'retention_shop';
     // 1d-1a: prices must be POSITIVE integers, so the 12 distinct versions start at 1 (was 0..11).
-    for (let i = 0; i < 12; i++) await publishVersion(db, rid, mkVersion({ A: i + 1 }));
+    for (let i = 0; i < 12; i++) await publishAt(rid, mkVersion({ A: i + 1 }));
     assert.strictEqual((await versionsCol(rid).get()).size, 12, '12 versions exist (all within 30d → nothing pruned on publish)');
     // protect the active + prune with a clock 40 days ahead so the 30-day rule keeps nothing → newest-10 by count
     const active = await getActiveVersionId(db, rid);
@@ -325,7 +339,7 @@ const buildReader = (codeMap = null) => {
     // protect-the-active even when it is the OLDEST: rollback to the oldest survivor, prune → it survives
     const all = (await versionsCol(rid).get()).docs.map((d) => ({ id: d.id, c: d.data().created_at.toMillis() })).sort((a, b) => a.c - b.c);
     const oldest = all[0].id;
-    await rollbackVersion(db, rid, oldest);
+    await rollbackAt(rid, oldest);
     await pruneRetention(db, rid, { protect: [oldest], now: future });
     assert.ok((await versionsCol(rid).doc(oldest).get()).exists, 'the active (now oldest) version is PROTECTED from prune');
     assert.strictEqual(await getActiveVersionId(db, rid), oldest, 'still active after prune');
@@ -342,7 +356,7 @@ const buildReader = (codeMap = null) => {
     const priced = await read(rid);
     const badItems = V2[rid].items.map((i, idx) => (idx === 0 ? { ...i, price: 0 } : i));
     await assert.rejects(
-      () => publishVersion(db, rid, { items: badItems, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: 'zero-price' }),
+      () => publishAt(rid, { items: badItems, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: 'zero-price' }),
       /catalog_bad_doc|price not a positive integer/,
       'a version containing a ZERO price must fail the pre-flip verify',
     );
@@ -355,10 +369,10 @@ const buildReader = (codeMap = null) => {
     const rid = 'x_pizza';
     for (const [label, bad] of [['negative', -1], ['non-integer', 9.5]]) {
       const items = V2[rid].items.map((i, idx) => (idx === 0 ? { ...i, price: bad } : i));
-      await assert.rejects(() => publishVersion(db, rid, { items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: `bad-${label}` }),
+      await assert.rejects(() => publishAt(rid, { items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: `bad-${label}` }),
         /catalog_bad_doc/, `${label} price must be blocked at publish`);
     }
-    const good = await publishVersion(db, rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: 'restore-1d1a' });
+    const good = await publishAt(rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: 'restore-1d1a' });
     assert.ok(good.versionId, 'a clean version still publishes normally');
     assert.deepStrictEqual(await read(rid), { menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] }, 'served prices restored');
     ok('1d-1a: negative and non-integer prices are blocked at publish too; a valid version still publishes');
@@ -373,7 +387,7 @@ const buildReader = (codeMap = null) => {
     // COHERENCE — the snapshot rides the flip transaction, so it can never lag the pointer.
     const rid = 'snap_shop';
     const mirror = mkMirror();
-    const res = await publishVersion(db, rid, mkVersion({ A: 10, B: 20 }, { X: 5 }), { mirror: mirror.fn });
+    const res = await publishAt(rid, mkVersion({ A: 10, B: 20 }, { X: 5 }), { mirror: mirror.fn });
     const snap = await snapshotOfRid(rid);
     assert.strictEqual(snap.version, res.versionId, 'active_snapshot.version == the published version');
     assert.strictEqual(await getActiveVersionId(db, rid), res.versionId, 'active_version == the same version');
@@ -391,7 +405,7 @@ const buildReader = (codeMap = null) => {
     // MIRROR — written after the flip, AWAITED (publish does not resolve until acked), self-describing.
     const rid = 'mirror_shop';
     const mirror = mkMirror();
-    const res = await publishVersion(db, rid, mkVersion({ A: 7 }), { mirror: mirror.fn });
+    const res = await publishAt(rid, mkVersion({ A: 7 }), { mirror: mirror.fn });
     assert.strictEqual(mirror.writes.length, 1, 'the mirror was written exactly once');
     assert.deepStrictEqual(mirror.writes[0], { rid, version: res.versionId, seq: 1, menu: { A: 7 }, extras: {} },
       'the mirror payload is fully self-describing — version witness AND ordinal, so a reader needs no Firestore');
@@ -403,7 +417,7 @@ const buildReader = (codeMap = null) => {
     // Aborting a good flip because a secondary copy failed would be strictly worse.
     const rid = 'mirrorfail_shop';
     const alarms = [];
-    const res = await publishVersion(db, rid, mkVersion({ A: 3 }),
+    const res = await publishAt(rid, mkVersion({ A: 3 }),
       { mirror: async () => { throw new Error('rtdb down'); }, alarm: (k, d) => { alarms.push([k, d]); } });
     assert.ok(res.versionId, 'publishVersion still RESOLVES success');
     assert.strictEqual(res.mirrored, false, 'and reports the mirror did not ack');
@@ -415,7 +429,7 @@ const buildReader = (codeMap = null) => {
     ok('1b mirror failure: alarms catalog_mirror_write_failed, publish still succeeds, the flip is NOT rolled back');
     // A HUNG mirror is bounded too — it must not hold the lease open indefinitely.
     const t0 = Date.now();
-    const res2 = await publishVersion(db, rid, mkVersion({ A: 4 }), { mirror: () => new Promise(() => {}), alarm: () => {} });
+    const res2 = await publishAt(rid, mkVersion({ A: 4 }), { mirror: () => new Promise(() => {}), alarm: () => {} });
     assert.strictEqual(res2.mirrored, false, 'a hung mirror times out rather than hanging the publish');
     assert.ok(Date.now() - t0 < 20000, 'and it is bounded by the deadline');
     assert.strictEqual(await getActiveVersionId(db, rid), res2.versionId, 'the flip still stands');
@@ -425,12 +439,12 @@ const buildReader = (codeMap = null) => {
     // ATOMICITY — if the flip tx fails, NEITHER the pointer NOR the snapshot moves.
     const rid = 'atomic_shop';
     const mirror = mkMirror();
-    const first = await publishVersion(db, rid, mkVersion({ A: 1 }), { mirror: mirror.fn });
+    const first = await publishAt(rid, mkVersion({ A: 1 }), { mirror: mirror.fn });
     const before = await snapshotOfRid(rid);
     const token = await acquireLease(db, rid);
     const { versionId: v2, menuTable } = await writeVersion(db, rid, mkVersion({ A: 2 }), await serverNow(db, rid));
     await releaseLease(db, rid, token);                       // drop the lease → the flip must fail
-    await assert.rejects(() => flipPointer(db, rid, token, v2, { version: v2, seq: 2, rid, menu: menuTable, extras: {} }), /lease_lost|lease_expired/);
+    await assert.rejects(() => flipPointer(db, rid, token, v2, { version: v2, seq: 2, rid, menu: menuTable, extras: {} }, { activeVersionId: first.versionId }), /lease_lost|lease_expired/);
     assert.strictEqual(await getActiveVersionId(db, rid), first.versionId, 'the pointer did not move');
     assert.deepStrictEqual((await snapshotOfRid(rid)).version, before.version, 'and neither did the snapshot');
     ok('1b atomicity: a failed flip moves NEITHER the pointer nor the snapshot (same transaction)');
@@ -442,7 +456,7 @@ const buildReader = (codeMap = null) => {
     //     — two separate writes CAN land in the same millisecond, especially on the emulator. The
     //     structural check (b) is the load-bearing atomicity proof.
     const okRid = 'atomic_ts_shop';
-    const pub = await publishVersion(db, okRid, mkVersion({ A: 1 }), { mirror: async () => {} });
+    const pub = await publishAt(okRid, mkVersion({ A: 1 }), { mirror: async () => {} });
     const [ptrDoc, snapDoc] = await Promise.all([
       db.collection('restaurants').doc(okRid).collection('meta').doc('active_version').get(),
       snapshotRefOf(db, okRid).get(),
@@ -475,10 +489,10 @@ const buildReader = (codeMap = null) => {
     // ROLLBACK re-emits BOTH — else the fallback would describe the version we rolled AWAY from.
     const rid = 'rollback_snap_shop';
     const mirror = mkMirror();
-    const v1 = await publishVersion(db, rid, mkVersion({ A: 100 }), { mirror: mirror.fn });
-    const v2 = await publishVersion(db, rid, mkVersion({ A: 200 }), { mirror: mirror.fn });
+    const v1 = await publishAt(rid, mkVersion({ A: 100 }), { mirror: mirror.fn });
+    const v2 = await publishAt(rid, mkVersion({ A: 200 }), { mirror: mirror.fn });
     assert.strictEqual((await snapshotOfRid(rid)).menu.A, 200, 'snapshot follows the newest publish');
-    const rb = await rollbackVersion(db, rid, v1.versionId, { mirror: mirror.fn });
+    const rb = await rollbackAt(rid, v1.versionId, { mirror: mirror.fn });
     assert.strictEqual(rb.versionId, v1.versionId);
     const snap = await snapshotOfRid(rid);
     assert.strictEqual(snap.version, v1.versionId, 'active_snapshot rolled back with the pointer');
@@ -493,13 +507,13 @@ const buildReader = (codeMap = null) => {
     // SERIALIZATION is the EXISTING lease — re-asserted, plus the new property that the mirror acks
     // under it, so the mirror is at most ONE in-flight publish behind.
     const rid = 'serial_snap_shop';
-    await publishVersion(db, rid, mkVersion({ A: 1 }), { mirror: async () => {} });
+    await publishAt(rid, mkVersion({ A: 1 }), { mirror: async () => {} });
     const token = await acquireLease(db, rid);
-    await assert.rejects(() => publishVersion(db, rid, mkVersion({ A: 2 }), { mirror: async () => {} }), /publish_locked/,
+    await assert.rejects(() => publishAt(rid, mkVersion({ A: 2 }), { mirror: async () => {} }), /publish_locked/,
       'a second publish under a live lease is refused — the existing lease is the only serializer');
     await releaseLease(db, rid, token);
     let mirrorDone = false, leaseFreeDuringMirror = null;
-    await publishVersion(db, rid, mkVersion({ A: 3 }), { mirror: async () => {
+    await publishAt(rid, mkVersion({ A: 3 }), { mirror: async () => {
       leaseFreeDuringMirror = await acquireLease(db, rid).then(() => true).catch(() => false);
       mirrorDone = true;
     } });
@@ -511,7 +525,7 @@ const buildReader = (codeMap = null) => {
     // BACKFILL — a version published WITHOUT a snapshot (the current prod state) gets one, coherent
     // with the CURRENT pointer, with no pointer churn. Idempotent.
     const rid = 'backfill_shop';
-    const v = await publishVersion(db, rid, mkVersion({ A: 42 }, { E: 9 }));   // no mirror → no snapshot? (snapshot still written in-tx)
+    const v = await publishAt(rid, mkVersion({ A: 42 }, { E: 9 }));   // no mirror → no snapshot? (snapshot still written in-tx)
     await snapshotRefOf(db, rid).delete();                                     // simulate the pre-1b state
     assert.strictEqual((await snapshotRefOf(db, rid).get()).exists, false, 'pre-1b state: no snapshot');
     const pointerBefore = await getActiveVersionId(db, rid);
@@ -536,7 +550,7 @@ const buildReader = (codeMap = null) => {
     const rid = 'x_pizza';
     const before = await read(rid);
     const mirror = mkMirror();
-    await publishVersion(db, rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: 'inert-1b' }, { mirror: mirror.fn });
+    await publishAt(rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: 'inert-1b' }, { mirror: mirror.fn });
     const after = await read(rid);
     assert.deepStrictEqual(after, before, 'the pricing read is byte-identical after a snapshot+mirror publish');
     assert.deepStrictEqual(after.menu, MENU_BY_RESTAURANT[rid], 'and still equals the code tables');
@@ -553,8 +567,8 @@ const buildReader = (codeMap = null) => {
   {
     const rid = 'seq_shop';
     const mirror = mkMirror();
-    const a = await publishVersion(db, rid, mkVersion({ A: 1 }), { mirror: mirror.fn });
-    const b = await publishVersion(db, rid, mkVersion({ A: 2 }), { mirror: mirror.fn });
+    const a = await publishAt(rid, mkVersion({ A: 1 }), { mirror: mirror.fn });
+    const b = await publishAt(rid, mkVersion({ A: 2 }), { mirror: mirror.fn });
     const rec = async (v) => (await versionsCol(rid).doc(v).get()).data();
     assert.strictEqual((await rec(a.versionId)).seq, 1, 'first publish is seq 1');
     assert.strictEqual((await rec(b.versionId)).seq, 2, 'second publish is seq 2 (monotonic)');
@@ -570,10 +584,10 @@ const buildReader = (codeMap = null) => {
     // exactly the path where a coherent fallback matters most.
     const rid = 'seq_rollback_shop';
     const mirror = mkMirror();
-    const v1 = await publishVersion(db, rid, mkVersion({ A: 10 }), { mirror: mirror.fn });
-    const v2 = await publishVersion(db, rid, mkVersion({ A: 20 }), { mirror: mirror.fn });
+    const v1 = await publishAt(rid, mkVersion({ A: 10 }), { mirror: mirror.fn });
+    const v2 = await publishAt(rid, mkVersion({ A: 20 }), { mirror: mirror.fn });
     assert.strictEqual((await snapshotRefOf(db, rid).get()).data().seq, 2, 'live at seq 2 before the rollback');
-    await rollbackVersion(db, rid, v1.versionId, { mirror: mirror.fn });
+    await rollbackAt(rid, v1.versionId, { mirror: mirror.fn });
     const snap = (await snapshotRefOf(db, rid).get()).data();
     assert.strictEqual(snap.seq, 1, 'the snapshot carries the ROLLED-TO ordinal, not the rolled-away one');
     assert.strictEqual(snap.version, v1.versionId, 'and the matching version witness');
@@ -585,7 +599,7 @@ const buildReader = (codeMap = null) => {
   {
     // readVersionDocs is the ordinal source for rollback and for any snapshot rebuild (the backfill).
     const rid = 'seq_read_shop';
-    const p1 = await publishVersion(db, rid, mkVersion({ A: 5 }), { mirror: async () => {} });
+    const p1 = await publishAt(rid, mkVersion({ A: 5 }), { mirror: async () => {} });
     const docs = await readVersionDocs(db, rid, p1.versionId);
     assert.strictEqual(docs.seq, 1, 'readVersionDocs surfaces the record seq');
     assert.ok(Array.isArray(docs.itemDocs), 'and still returns the docs it always did');
@@ -595,7 +609,7 @@ const buildReader = (codeMap = null) => {
     // BACKFILL writes the ordinal, and REFUSES a version with no seq rather than emitting an
     // ordinal-less fallback that 2b would have to reject anyway.
     const rid = 'seq_backfill_shop';
-    const p1 = await publishVersion(db, rid, mkVersion({ A: 77 }), { mirror: async () => {} });
+    const p1 = await publishAt(rid, mkVersion({ A: 77 }), { mirror: async () => {} });
     await snapshotRefOf(db, rid).delete();
     const docs = await readVersionDocs(db, rid, p1.versionId);
     const mirror = mkMirror();
@@ -611,7 +625,7 @@ const buildReader = (codeMap = null) => {
     // INERT — the ordinal is written and read by NOTHING. Pricing is byte-unchanged.
     const rid = 'x_pizza';
     const before = await read(rid);
-    await publishVersion(db, rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: 'inert-2bpre' }, { mirror: async () => {} });
+    await publishAt(rid, { items: V2[rid].items, structure: V2[rid].structure, extras: EXTRAS_BY_RESTAURANT[rid], source_sha: 'inert-2bpre' }, { mirror: async () => {} });
     assert.deepStrictEqual(await read(rid), before, 'the pricing read is byte-identical after a seq-carrying publish');
     const { resolver } = buildReader();
     assert.deepStrictEqual((await resolver.getPricingTables(rid)).menu, MENU_BY_RESTAURANT[rid], 'the guarded resolver is unchanged');

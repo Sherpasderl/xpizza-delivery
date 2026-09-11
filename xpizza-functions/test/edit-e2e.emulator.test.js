@@ -65,7 +65,7 @@ const storeExtraRecordsOf = (src, rid) => { const i = sourceToBuildInputs(src); 
     const seeded = buildSourceFromCode(rid);
     await sourceRefOf(db, rid).set(canonicalize(seeded));
     const built0 = storeBuiltOf(seeded, rid);
-    const v1 = await publishVersion(db, rid, { items: built0.items, structure: built0.structure, extras: built0.extras, extraRecords: storeExtraRecordsOf(seeded, rid), source_sha: 'e2e-seed' }, {});
+    const v1 = await publishVersion(db, rid, { items: built0.items, structure: built0.structure, extras: built0.extras, extraRecords: storeExtraRecordsOf(seeded, rid), source_sha: 'e2e-seed' }, { expected: { activeVersionId: null } });
     assert.strictEqual(await getActiveVersionId(db, rid), v1.versionId, `${rid}: v1 is live`);
     // the 2a invariant holds at the starting state, on real data
     assertStoreCodeParity(rid, storeBuiltOf(seeded, rid), { ...buildCatalogV2(rid), extras: EXTRAS_BY_RESTAURANT[rid] || {} });
@@ -125,7 +125,7 @@ const storeExtraRecordsOf = (src, rid) => { const i = sourceToBuildInputs(src); 
       const probe = await publishEditedCore({ ...deps, authorize: asRole('dispatcher') }, { restaurantId: rid, token: e.body.token, acknowledgedChanges: ack }, {});
       assert.strictEqual(probe.status, 200, 'la_musa: a dispatcher publishes without any owner tier or fiscal ack');
       assert.notStrictEqual(await getActiveVersionId(db, rid), v1.versionId, 'la_musa: and it really published');
-      await rollbackVersion(db, rid, v1.versionId, {});   // back to v1 so the rest of the walk is unchanged
+      await rollbackVersion(db, rid, v1.versionId, { expected: { activeVersionId: await getActiveVersionId(db, rid) } });   // back to v1 so the rest of the walk is unchanged
       assert.strictEqual(await getActiveVersionId(db, rid), v1.versionId, 'la_musa: restored for the remainder of the walk');
     }
 
@@ -175,7 +175,7 @@ const storeExtraRecordsOf = (src, rid) => { const i = sourceToBuildInputs(src); 
     ok(`${rid}: verify → store == active, and the spent token cannot be replayed (the pointer moved)`);
 
     // ── ROLLBACK: the escape hatch, exercised rather than assumed ──────────────────────────────
-    await rollbackVersion(db, rid, v1.versionId, {});
+    await rollbackVersion(db, rid, v1.versionId, { expected: { activeVersionId: await getActiveVersionId(db, rid) } });
     assert.strictEqual(await getActiveVersionId(db, rid), v1.versionId, `${rid}: rolled back to v1`);
     const rolledDocs = await readVersionDocs(db, rid, v1.versionId);
     assert.strictEqual(buildTablesFromDocs(rolledDocs.itemDocs, rolledDocs.extraDocs).menu[key], oldPrice,

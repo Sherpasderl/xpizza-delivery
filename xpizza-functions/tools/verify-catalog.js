@@ -71,7 +71,7 @@ async function activeBuiltOf(rid) {
   // would use — so a drifted store is caught here rather than at the next cutover.
   for (const rid of ['x_pizza', 'la_musa']) {
     let source = null;
-    try { source = await readSource(db, rid); } catch (e) {
+    try { ({ source } = await readSource(db, rid)); } catch (e) {
       if (/source_missing/.test(String(e && e.message))) { console.log(`${rid}: no source store yet (pre-2a) — skipping store parity`); continue; }
       throw e;
     }

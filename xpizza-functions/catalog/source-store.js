@@ -613,12 +613,20 @@ function sourceToBuildInputs(source) {
 
 // Read + validate in one step. There is deliberately no "read without validating" export: every
 // consumer of the source gets a validated one or an exception.
+//
+// 🔴 IT RETURNS THE REVISION IT READ, and the two travel together because they are one fact: THIS
+// document, AS OF this revision. The cutover CLI used to read the source, build a candidate from it,
+// and then separately re-read the draft to state which revision it had published against — so a
+// merchant editing and publishing in between was captured as the CLI's OWN baseline, the CAS
+// compared that fresh revision against itself, passed, and the stale candidate reverted the edit.
+// A price went 230 → 223 with every guard green. Handing the revision back with the document is what
+// makes "the revision I built from" the only revision a caller has.
 async function readSource(db, rid) {
   const snap = await sourceRefOf(db, rid).get();
   if (!snap || !snap.exists) throw new Error(`source_missing: ${rid}`);
   const source = snap.data();
   validateSource(source, rid);
-  return source;
+  return { source, revision: encodeUpdateTime(snap.updateTime) };
 }
 
 module.exports = { SCHEMA_VERSION, readSource, validateSource, encodeUpdateTime, sourceToBuildInputs, canonicalize, sourceRefOf, isPositiveInt, extrasKeyOf, SOURCE_COVERED_LITERALS };

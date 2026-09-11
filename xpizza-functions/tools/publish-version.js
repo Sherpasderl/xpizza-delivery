@@ -15,48 +15,57 @@ const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
 const { publishVersion } = require('../catalog/catalog-publish');
 const { makeRtdbMirror, RTDB_URL } = require('../catalog/mirror-rtdb');   // 1b: the RTDB disaster-fallback writer
-const { readSource, sourceToBuildInputs, sourceRefOf, encodeUpdateTime } = require('../catalog/source-store');   // portal 2a
+const { readSource, sourceToBuildInputs } = require('../catalog/source-store');   // portal 2a
 const { assertStoreCodeParity } = require('../catalog/publish-parity');                    // portal 2a: the pre-flip gate
 
 const gitSha = () => { try { return execSync('git rev-parse --short HEAD', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch (_) { return 'unknown'; } };
 
-// ── THE PUBLISH INPUT, as a pure function of a restaurant (+ optionally its draft) ────────────────
+// ── THE BASELINE, then THE CANDIDATE — read in that order, and paired for life ───────────────────
+//
+// 🔴 THE ORDER IS THE CORRECTNESS. The pointer is read FIRST, before the source: anything that
+// publishes after this moment must lose the compare-and-set. Reading it afterwards — which is what
+// this file did — captured whatever a competing publish had just installed as the CLI's own
+// expectation, so the CAS compared a fresh value against itself and waved through a candidate built
+// from a draft that was already superseded. A dish reverted 230 → 223 with every guard green.
+//
+// The revision comes back FROM readSource, not from a second read, for the same reason: "the draft I
+// built this from" and "the draft I am claiming to be current" must be the same sentence.
+async function readPublishBaseline(db, rid, { fromStore }) {
+  const pointer = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();
+  const activeVersionId = pointer.exists ? ((pointer.data() || {}).version || null) : null;
+  if (!fromStore) return { activeVersionId, source: null, revision: null };
+  const { source, revision } = await readSource(db, rid);   // fail-closed: missing/malformed throws
+  return { activeVersionId, source, revision };
+}
+
+// THE CANDIDATE AND ITS EXPECTATION, PRODUCED TOGETHER. Returning them as one value is deliberate:
+// the bug this closes was a caller pairing a candidate with a baseline read at a different moment,
+// and a function that hands back both leaves nothing to pair up by hand.
+//
 // Exported so a test drives the REAL thing. The previous shape of this file was untestable — the
 // input was assembled inline between an admin.initializeApp() and a live Firestore write — so what
 // the cutover would actually publish could only be checked by running the cutover. The one bug that
 // matters here is exactly the one an in-test reconstruction cannot find: a field the CLI does not
-// pass. That has now happened twice in this slice (v2Extras in the seed, extraRecords in the
-// version), both times with a test that hand-built the payload and passed.
-//
-// `source` is the STORE draft for --from-store, and null for the code-built cutover.
-function buildPublishInput(rid, { source = null, source_sha = 'unknown' } = {}) {
+// pass, or a baseline it binds at the wrong moment. Both have now happened in this slice.
+function buildPublishCandidate(rid, baseline, { source_sha = 'unknown' } = {}) {
+  const { activeVersionId, source, revision } = baseline || {};
+  const expected = { activeVersionId: activeVersionId === undefined ? null : activeVersionId };
   if (source) {
     // Build from the STORE, then prove it equals what the CODE builds — the no-op gate.
     const inputs = sourceToBuildInputs(source);
     const built = buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable });
     const codeBuilt = { ...buildCatalogV2(rid), extras: EXTRAS_BY_RESTAURANT[rid] || {} };
     assertStoreCodeParity(rid, { items: built.items, structure: built.structure, extras: inputs.extras }, codeBuilt);   // THROWS → nothing written, no flip
-    return { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha };
+    // The draft expectation is the revision the candidate was BUILT FROM. Present by KEY, so
+    // "no draft" and "a draft I did not look at" can never be the same statement.
+    expected.draftRevision = revision === undefined ? null : revision;
+    return { input: { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha }, expected };
   }
   const built = buildCatalogV2(rid);   // schema-v2 items + EXTRAS display records + structure
-  return { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, extraRecords: built.extras, source_sha };
+  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, extraRecords: built.extras, source_sha }, expected };
 }
 
-// The EXPECTATION this publish is validated under, read fresh from the store. For the cutover the
-// window is small and the CAS still matters: `activeVersionId: null` on a first publish is the
-// explicit claim "nothing is published yet", and a version appearing since must abort rather than be
-// overwritten. --from-store additionally binds the DRAFT revision it built from.
-async function readExpectation(db, rid, { withDraft }) {
-  const pointer = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();
-  const expected = { activeVersionId: pointer.exists ? ((pointer.data() || {}).version || null) : null };
-  if (withDraft) {
-    const draft = await sourceRefOf(db, rid).get();
-    expected.draftRevision = draft.exists ? encodeUpdateTime(draft.updateTime) : null;
-  }
-  return expected;
-}
-
-module.exports = { buildPublishInput, readExpectation };
+module.exports = { readPublishBaseline, buildPublishCandidate };
 
 if (require.main !== module) return;   // imported for its pure parts — no credentials, no writes
 
@@ -77,10 +86,9 @@ const FROM_STORE = process.argv.includes('--from-store');
 (async () => {
   const source_sha = gitSha();
   for (const rid of ['x_pizza', 'la_musa']) {
-    const source = FROM_STORE ? await readSource(db, rid) : null;      // fail-closed: missing/malformed throws
-    const input = buildPublishInput(rid, { source, source_sha });      // parity gate runs inside, BEFORE anything is written
+    const baseline = await readPublishBaseline(db, rid, { fromStore: FROM_STORE });   // pointer FIRST, then the source + its revision
+    const { input, expected } = buildPublishCandidate(rid, baseline, { source_sha });  // parity gate runs inside, BEFORE anything is written
     if (FROM_STORE) console.log(`${rid}: parity gate PASSED — build-from-store is byte-identical to build-from-code`);
-    const expected = await readExpectation(db, rid, { withDraft: FROM_STORE });
     const res = await publishVersion(db, rid, input, { mirror, expected });
     const codeItems = Object.keys(MENU_BY_RESTAURANT[rid]).length;
     const codeExtras = Object.keys(EXTRAS_BY_RESTAURANT[rid] || {}).length;

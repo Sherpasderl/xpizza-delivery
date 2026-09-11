@@ -103,24 +103,26 @@ ok('the gate THROWS parity_mismatch on every drift class: price, added/removed i
   // function) and the CALL ORDER is checked in the CLI body. Text-order alone stopped being the right
   // question the moment the code was factored properly; what still has to be true is that the store is
   // read fail-closed, the candidate is built through the gated builder, and the publish comes last.
-  const builder = SRC.slice(SRC.indexOf('function buildPublishInput'), SRC.indexOf('async function readExpectation'));
-  assert.ok(builder.length > 200 && builder.includes('sourceToBuildInputs'), 'non-vacuity: the slice really is buildPublishInput');
+  const builder = SRC.slice(SRC.indexOf('function buildPublishCandidate'), SRC.indexOf('module.exports'));
+  assert.ok(builder.length > 200 && builder.includes('sourceToBuildInputs'), 'non-vacuity: the slice really is buildPublishCandidate');
   assert.ok(builder.includes('assertStoreCodeParity(rid,'), 'the gate must be CALLED from the builder, not merely imported');
   assert.ok(builder.indexOf('assertStoreCodeParity(rid,') < builder.indexOf('return {'),
     'and it must run BEFORE the input is returned — a gate after the build is decoration');
   const body = SRC.slice(SRC.indexOf('const source_sha = gitSha()'));
-  const readSrc = body.indexOf('await readSource(db, rid)');
-  const build = body.indexOf('buildPublishInput(rid, { source, source_sha })');
-  const publish = body.indexOf('await publishVersion(db, rid,');
-  assert.ok(readSrc > 0 && build > 0 && publish > 0, 'the CLI must read the store, build the candidate and publish');
-  assert.ok(readSrc < build && build < publish,
-    '--from-store must read through the fail-closed readSource, then build through the gated builder, and publish LAST');
-  // 1A Task 7: the flip is a compare-and-set, so the CLI has to state what it validated against.
-  assert.ok(/await readExpectation\(db, rid, \{ withDraft: FROM_STORE \}\)/.test(body),
-    'the CLI must read the expectation it publishes under');
-  assert.ok(/await publishVersion\(db, rid, input, \{ mirror, expected \}\)/.test(body),
-    'and pass it to publishVersion — without it the flip would overwrite whatever landed in between');
-  ok('the gate is WIRED inside the builder; the CLI reads the store, builds, reads its CAS expectation, and publishes LAST');
+  const baseline = body.indexOf('await readPublishBaseline(db, rid, { fromStore: FROM_STORE })');
+  const build = body.indexOf('buildPublishCandidate(rid, baseline, { source_sha })');
+  const publish = body.indexOf('await publishVersion(db, rid, input, { mirror, expected })');
+  assert.ok(baseline > 0 && build > 0 && publish > 0, 'the CLI must read its baseline, build the candidate from it, and publish');
+  assert.ok(baseline < build && build < publish,
+    'the baseline is read FIRST, the candidate is built FROM it, and the publish comes LAST');
+  // 🔴 THE CANDIDATE AND ITS EXPECTATION COME FROM ONE CALL. Reading the expectation separately is
+  // the bug this replaced: the CLI captured a competing publish's revision as its own baseline, the
+  // CAS compared it against itself, and a stale candidate reverted a live price.
+  assert.ok(/const \{ input, expected \} = buildPublishCandidate\(/.test(body),
+    'the candidate and the expectation must be produced together — pairing them by hand is what allowed a stale baseline');
+  assert.ok(!/readExpectation|await readSource\(db, rid\)/.test(body),
+    'the CLI must not read the source or the expectation on its own — both come from readPublishBaseline, in one order');
+  ok('the gate is WIRED inside the builder; the CLI reads its baseline FIRST, builds the candidate and its expectation together, and publishes LAST');
 
   // verify-catalog must check store-vs-code too, so a drifted store is caught between cutovers
   const VC = readFileSync(join(__dirname, '..', 'tools', 'verify-catalog.js'), 'utf8');
@@ -133,7 +135,7 @@ ok('the gate THROWS parity_mismatch on every drift class: price, added/removed i
   // `node --check` passes that happily — it is a runtime ReferenceError, and these CLIs are owner-run
   // one-shots where the first execution IS the cutover. Assert the imports resolve, statically.
   for (const [file, ids] of [
-    ['tools/publish-version.js', ['readSource', 'sourceToBuildInputs', 'assertStoreCodeParity', 'buildCatalogV2', 'publishVersion', 'sourceRefOf', 'encodeUpdateTime']],
+    ['tools/publish-version.js', ['readSource', 'sourceToBuildInputs', 'assertStoreCodeParity', 'buildCatalogV2', 'publishVersion']],
     ['tools/verify-catalog.js', ['readSource', 'sourceToBuildInputs', 'assertStoreCodeParity', 'buildCatalogV2']],
     ['tools/seed-source-store.js', ['validateSource', 'sourceRefOf', 'extrasKeyOf', 'readLiteral', 'pricingKeyOf', 'attachRedeemFields']],
     ['tools/rollback-version.js', ['rollbackVersion', 'makeRtdbMirror', 'RTDB_URL']],

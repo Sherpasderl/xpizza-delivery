@@ -1,0 +1,332 @@
+[
+  {
+    "id": "t56-01",
+    "slice": "t56",
+    "label": "reader serves extras in doc-id order, not extra_order",
+    "file": "catalog/catalog-menu.js",
+    "from": "    extras: extraRecords.length > 0 ? structure.extra_order.map((k) => byExtra.get(k)) : [],",
+    "to": "    extras: extraRecords,"
+  },
+  {
+    "id": "t56-02",
+    "slice": "t56",
+    "label": "reader stops checking shown price vs charged price",
+    "file": "catalog/catalog-menu.js",
+    "from": "    if (v.display.price !== v.price) {",
+    "to": "    if (false) {"
+  },
+  {
+    "id": "t56-03",
+    "slice": "t56",
+    "label": "reader accepts a version record with no content hash",
+    "file": "catalog/catalog-menu.js",
+    "from": "  if (typeof record.content_hash !== 'string' || !record.content_hash) {\n    fail('version_content_hash_missing', `${where} — the version record pins no content hash`);\n  }\n  if (got !== record.content_hash) {",
+    "to": "  if (record.content_hash && got !== record.content_hash) {"
+  },
+  {
+    "id": "t56-04",
+    "slice": "t56",
+    "label": "reader falls back to flat on an absent pointer",
+    "file": "catalog/catalog-menu.js",
+    "from": "    fail('active_version_absent', `${restaurantId} — the display reader serves immutable versions only; there is no flat fallback`);",
+    "to": "    return readFlatMenu(db, restaurantId);"
+  },
+  {
+    "id": "t56-05",
+    "slice": "t56",
+    "label": "a version-specific read falls back to the active version",
+    "file": "catalog/catalog-menu.js",
+    "from": "  if (!recSnap.exists) fail('version_missing', `${restaurantId}/${versionId}`);",
+    "to": "  if (!recSnap.exists) return getRestaurantMenu(db, restaurantId);"
+  },
+  {
+    "id": "t56-06",
+    "slice": "t56",
+    "label": "content hash ignores the structure (exposure + ordering + categories)",
+    "file": "catalog/content-hash.js",
+    "from": "    structure: structure || {},",
+    "to": "    structure: {},"
+  },
+  {
+    "id": "t56-07",
+    "slice": "t56",
+    "label": "content hash ignores display records",
+    "file": "catalog/content-hash.js",
+    "from": "    const out = { key: r.key, price: r.price, display: r.display };",
+    "to": "    const out = { key: r.key, price: r.price };"
+  },
+  {
+    "id": "t56-08",
+    "slice": "t56",
+    "label": "content hash ignores extras entirely",
+    "file": "catalog/content-hash.js",
+    "from": "    extras: (extras || []).map(record),",
+    "to": "    extras: [],"
+  },
+  {
+    "id": "t56-09",
+    "slice": "t56",
+    "label": "the publisher stops persisting extras display records",
+    "file": "catalog/catalog-publish.js",
+    "from": "  const { itemDocs, extraDocs } = catalogDocsForRestaurant(menuTable, extraTable, v2ByKey, v2ExtrasByKey);",
+    "to": "  const { itemDocs, extraDocs } = catalogDocsForRestaurant(menuTable, extraTable, v2ByKey);"
+  },
+  {
+    "id": "t56-10",
+    "slice": "t56",
+    "label": "the publisher hashes its INPUTS instead of what it wrote",
+    "file": "catalog/catalog-publish.js",
+    "from": "    items: structure.item_order.map((k) => byItem.get(k)),",
+    "to": "    items: (Array.isArray(items) ? items : []),"
+  },
+  {
+    "id": "t56-11",
+    "slice": "t56",
+    "label": "the publisher drops the extra_order requirement",
+    "file": "catalog/catalog-publish.js",
+    "from": "  if (desc.extra_count > 0 && (!Array.isArray(structure.extra_order) || structure.extra_order.length !== desc.extra_count)) {",
+    "to": "  if (false) {"
+  },
+  {
+    "id": "t56-12",
+    "slice": "t56",
+    "label": "the pre-flip verify goes back to the item_order-only check",
+    "file": "tools/publish-version.js",
+    "from": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, extraRecords: built.extras, source_sha }, expected };",
+    "to": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, source_sha }, expected };"
+  },
+  {
+    "id": "t56-13",
+    "slice": "t56",
+    "label": "the build stops carrying extra_order",
+    "file": "catalog/form-menu-source.js",
+    "from": "  const structure = { schema_version: 2, item_order: items.map((i) => i.key), extra_order: extras.map((e) => e.key) };",
+    "to": "  const structure = { schema_version: 2, item_order: items.map((i) => i.key) };"
+  },
+  {
+    "id": "t56-14",
+    "slice": "t56",
+    "label": "the bundle emits extras sorted by key instead of authored order",
+    "file": "catalog/form-menu-source.js",
+    "from": "  const extraOrder = (structure && structure.extra_order) || extras.map((e) => e.key);",
+    "to": "  const extraOrder = extras.map((e) => e.key).slice().sort();"
+  },
+  {
+    "id": "t56-15",
+    "slice": "t56",
+    "label": "the desde is the launcher's own price",
+    "file": "catalog/form-menu-source.js",
+    "from": "  void launcher;                       // the launcher's own price is deliberately NOT an input",
+    "to": "  if (launcher) return launcher.price;"
+  },
+  {
+    "id": "t56-16",
+    "slice": "t56",
+    "label": "the snapshot stops ordering extras explicitly",
+    "file": "catalog/generate-form-bundle.js",
+    "from": "    extras: structure.extra_order.map((k) => byExtraKey.get(k)),",
+    "to": "    extras,",
+    "equivalent": true,
+    "why": "buildCatalogV2 derives extra_order FROM the same array catalogSnapshot orders by, so no input can make the two differ"
+  },
+  {
+    "id": "t56-17",
+    "slice": "t56",
+    "label": "the content hash drops has_photo from extras (the two-list shape)",
+    "file": "catalog/content-hash.js",
+    "from": "    extras: (extras || []).map(record),",
+    "to": "    extras: (extras || []).map((e) => ({ key: e.key, price: e.price, display: e.display })),"
+  },
+  {
+    "id": "t56-18",
+    "slice": "t56",
+    "label": "the publisher stops persisting has_photo on extras",
+    "file": "catalog/catalog-publish.js",
+    "from": "    ...(d.has_photo !== undefined ? { has_photo: d.has_photo } : {}),\n  }));\n  ops.push((b) => b.create(vref.collection('meta').doc('menu_structure'), structure));",
+    "to": "  }));\n  ops.push((b) => b.create(vref.collection('meta').doc('menu_structure'), structure));"
+  },
+  {
+    "id": "t56-19",
+    "slice": "t56",
+    "label": "a foreign code counts as already-typed",
+    "file": "catalog/catalog-menu.js",
+    "from": "    if (e && typeof e === 'object' && e.reader) throw e;        // already typed by us",
+    "to": "    if (e && typeof e === 'object' && e.code !== undefined) throw e;        // already typed by us"
+  },
+  {
+    "id": "t56-20",
+    "slice": "t56",
+    "label": "an untaggable error is rethrown as-is",
+    "file": "catalog/catalog-menu.js",
+    "from": "    if (tagged) throw e;",
+    "to": "    throw e;"
+  },
+  {
+    "id": "t56-21",
+    "slice": "t56",
+    "label": "the shared completeness descriptor is left untyped",
+    "file": "catalog/catalog-menu.js",
+    "from": "    await coded('catalog_incomplete', () => assertComplete(record, menuTable, extraTable, where));",
+    "to": "    assertComplete(record, menuTable, extraTable, where);"
+  },
+  {
+    "id": "t56-22",
+    "slice": "t56",
+    "label": "the pointer resolver is left untyped",
+    "file": "catalog/catalog-menu.js",
+    "from": "  const versionId = await coded('active_version_unreadable', () => getActiveVersionId(db, restaurantId));",
+    "to": "  const versionId = await getActiveVersionId(db, restaurantId);"
+  },
+  {
+    "id": "t56-23",
+    "slice": "t56",
+    "label": "the typing boundary is a pass-through",
+    "file": "catalog/catalog-menu.js",
+    "from": "async function coded(code, fn) {\n  try {",
+    "to": "async function coded(code, fn) {\n  if (code) return fn();\n  try {"
+  },
+  {
+    "id": "t56-24",
+    "slice": "t56",
+    "label": "badge tags answer to the DOCUMENT instead of the renderer",
+    "file": "catalog/source-store.js",
+    "from": "  const badgeKeys = contract.badges;",
+    "to": "  const badgeKeys = new Set(Object.keys(st.badges || {}));"
+  },
+  {
+    "id": "task7-01",
+    "slice": "task7",
+    "label": "publishVersion stops validating the candidate pre-publish",
+    "file": "catalog/catalog-publish.js",
+    "from": "  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure }), `${rid} (pre-publish)`);",
+    "to": "  void assertCandidateValid;"
+  },
+  {
+    "id": "task7-02",
+    "slice": "task7",
+    "label": "the pre-flip gate drops the validator and only re-reads",
+    "file": "catalog/catalog-publish.js",
+    "from": "  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure }),\n    `${rid}/versions/${versionId} (pre-flip)`);",
+    "to": "  void candidateSource;"
+  },
+  {
+    "id": "task7-03",
+    "slice": "task7",
+    "label": "the flip stops comparing the active version",
+    "file": "catalog/catalog-publish.js",
+    "from": "    if (liveActive !== expected.activeVersionId) {",
+    "to": "    if (false) {"
+  },
+  {
+    "id": "task7-04",
+    "slice": "task7",
+    "label": "the flip stops comparing the draft revision",
+    "file": "catalog/catalog-publish.js",
+    "from": "      if (liveRevision !== expected.draftRevision) {",
+    "to": "      if (false) {"
+  },
+  {
+    "id": "task7-05",
+    "slice": "task7",
+    "label": "the expectation becomes optional (defaults instead of refusing)",
+    "file": "catalog/catalog-publish.js",
+    "from": "  if (!expected || typeof expected !== 'object' || Array.isArray(expected)\n    || !Object.prototype.hasOwnProperty.call(expected, 'activeVersionId')) {",
+    "to": "  if (false) {"
+  },
+  {
+    "id": "task7-06",
+    "slice": "task7",
+    "label": "the draft CAS is keyed by VALUE, so an absent revision skips it",
+    "file": "catalog/catalog-publish.js",
+    "from": "  const wantsDraftCas = Object.prototype.hasOwnProperty.call(expected, 'draftRevision');",
+    "to": "  const wantsDraftCas = !!(expected && expected.draftRevision);"
+  },
+  {
+    "id": "task7-07",
+    "slice": "task7",
+    "label": "publishVersion stops passing its expectation to the flip",
+    "file": "catalog/catalog-publish.js",
+    "from": "    await flipPointer(db, rid, token, versionId, snapshot, expected);   // ← the atomic cutover",
+    "to": "    await flipPointer(db, rid, token, versionId, snapshot, { activeVersionId: await pointerRefOf(db, rid).get().then((s) => (s.exists ? (s.data() || {}).version : null)) });   // ← the atomic cutover"
+  },
+  {
+    "id": "task7-08",
+    "slice": "task7",
+    "label": "rollbackVersion stops passing its expectation to the flip",
+    "file": "catalog/catalog-publish.js",
+    "from": "    await flipPointer(db, rid, token, targetVersionId, snapshot, expected);",
+    "to": "    await flipPointer(db, rid, token, targetVersionId, snapshot, { activeVersionId: await pointerRefOf(db, rid).get().then((s) => (s.exists ? (s.data() || {}).version : null)) });"
+  },
+  {
+    "id": "task7-09",
+    "slice": "task7",
+    "label": "the portal sends a freshly-read expectation instead of the token's",
+    "file": "catalog/publish-edited-handler.js",
+    "from": "}, { mirror, alarm, expected: { activeVersionId: baseActiveVersionId, draftRevision: sourceUpdateTime } });",
+    "to": "}, { mirror, alarm, expected: { activeVersionId: baseActiveVersionId } });"
+  },
+  {
+    "id": "task7-10",
+    "slice": "task7",
+    "label": "a lost race is reported as a retryable fault",
+    "file": "catalog/publish-edited-handler.js",
+    "from": "    if (/^flip_cas_(stale|draft_stale):/.test(detail)) {",
+    "to": "    if (false) {"
+  },
+  {
+    "id": "task7-11",
+    "slice": "task7",
+    "label": "the cutover CLI drops the parity gate from the builder",
+    "file": "tools/publish-version.js",
+    "from": "    assertStoreCodeParity(rid, { items: built.items, structure: built.structure, extras: inputs.extras }, codeBuilt);",
+    "to": "    void assertStoreCodeParity;"
+  },
+  {
+    "id": "task7-12",
+    "slice": "task7",
+    "label": "the cutover CLI stops carrying extras display records",
+    "file": "tools/publish-version.js",
+    "from": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, extraRecords: built.extras, source_sha }, expected };",
+    "to": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, source_sha }, expected };"
+  },
+  {
+    "id": "task7-13",
+    "slice": "task7",
+    "label": "the rollback CLI stops stating what it rolled back from",
+    "file": "tools/rollback-version.js",
+    "from": "{ mirror: makeRtdbMirror(admin.database()), expected: { activeVersionId: active } }",
+    "to": "{ mirror: makeRtdbMirror(admin.database()) }"
+  },
+  {
+    "id": "task7-14",
+    "slice": "task7",
+    "label": "the candidate validator accepts anything",
+    "file": "catalog/candidate-validate.js",
+    "from": "    validateSource(candidate, restaurantId);",
+    "to": "    void validateSource;"
+  },
+  {
+    "id": "task7-15",
+    "slice": "task7",
+    "label": "the write point stops validating (back to trusting its callers)",
+    "file": "catalog/catalog-publish.js",
+    "from": "  await verifyVersionStructure(db, rid, versionId);\n  const wantsDraftCas",
+    "to": "  const wantsDraftCas"
+  },
+  {
+    "id": "task7-16",
+    "slice": "task7",
+    "label": "the CLI reads the pointer AFTER the source (the interleave window reopens)",
+    "file": "tools/publish-version.js",
+    "from": "  const pointer = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();\n  const activeVersionId = pointer.exists ? ((pointer.data() || {}).version || null) : null;\n  if (!fromStore) return { activeVersionId, source: null, revision: null };\n  const { source, revision } = await readSource(db, rid);   // fail-closed: missing/malformed throws\n  return { activeVersionId, source, revision };",
+    "to": "  const pre = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();\n  if (!fromStore) return { activeVersionId: pre.exists ? ((pre.data() || {}).version || null) : null, source: null, revision: null };\n  const { source, revision } = await readSource(db, rid);\n  const pointer = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();\n  const activeVersionId = pointer.exists ? ((pointer.data() || {}).version || null) : null;\n  return { activeVersionId, source, revision };"
+  },
+  {
+    "id": "task7-17",
+    "slice": "task7",
+    "label": "readSource stops returning the revision it read",
+    "file": "catalog/source-store.js",
+    "from": "  return { source, revision: encodeUpdateTime(snap.updateTime) };",
+    "to": "  return { source, revision: null };"
+  }
+]

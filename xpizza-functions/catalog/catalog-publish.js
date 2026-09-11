@@ -162,6 +162,25 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected) {
     || !Object.prototype.hasOwnProperty.call(expected, 'activeVersionId')) {
     throw new Error(`flip_requires_expectation: ${rid}/${versionId} — the caller must state which active version it validated against (null for a first publish)`);
   }
+  // 🔴 THE CANDIDATE IS VALIDATED HERE, AT THE WRITE POINT — not by whoever called us.
+  //
+  // publishVersion and rollbackVersion both validate before they get here, and that was the whole
+  // guarantee: one chokepoint, two disciplined callers, and a test that scanned the source for a
+  // third. It does not hold. flipPointer is exported, and called directly with a matching
+  // expectation and snapshot it would happily point a restaurant at a version that does not exist —
+  // the invariant rested on caller discipline plus a source-pattern census, and a census is a lint
+  // that any alternate spelling walks past. Same lesson as the 2b-2b analyzer rounds: a runtime
+  // invariant cannot be proved by reading source.
+  //
+  // So the thing that MOVES the pointer is the thing that checks. The version must exist, read back
+  // complete through the reader that will serve it, and validate as a menu — and only then does the
+  // transaction open. There is now no path, present or future, direct or forgotten, that can point a
+  // restaurant at a version it could not serve.
+  //
+  // Before the transaction deliberately: a transaction body can be retried, and these reads are not
+  // part of the compare-and-set. What the CAS protects is the pointer's own movement; what this
+  // protects is where it is allowed to move to.
+  await verifyVersionStructure(db, rid, versionId);
   const wantsDraftCas = Object.prototype.hasOwnProperty.call(expected, 'draftRevision');
   const nowServer = await serverNow(db, rid);
   const lockRef = lockRefOf(db, rid);
