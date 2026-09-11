@@ -742,6 +742,8 @@ const GOOD = () => ({
   const RULINGS = [
     ['canonicalize :: Array.isArray(value)', 'shape', 'this predicate IS the type test'],
     ["canonicalize :: value && typeof value === 'object'", 'shape', 'this predicate IS the type test'],
+    ["<module> :: ts && typeof ts.seconds === 'number'", 'shape', 'this predicate IS the type test'],
+    ['<module> :: ts.nanoseconds', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
     ['<module> :: Number.isInteger(p)', 'shape', 'this predicate IS the type test'],
     ['contractTable :: CONTRACT_TABLE', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
     ["contractTable :: !table || typeof table !== 'object' || Array.isArray(table)", 'shape', 'this predicate IS the type test'],
@@ -878,7 +880,7 @@ const GOOD = () => ({
     ...enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8')),
     ...enumeratePredicates(readFileSync(join(__dirname, 'canonical-json.js'), 'utf8')),
   ];
-  assert.strictEqual(preds.length, 127, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
+  assert.strictEqual(preds.length, 129, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
 
   const unruled = preds.filter((p) => !RULED.has(p.key)).map((p) => `${p.line}: ${p.key}`);
   assert.deepStrictEqual(unruled, [],
@@ -892,7 +894,7 @@ const GOOD = () => ({
   }
   const counts = {};
   for (const p of preds) counts[RULED.get(p.key).kind] = (counts[RULED.get(p.key).kind] || 0) + 1;
-  assert.deepStrictEqual(counts, { requiredness: 17, 'post-type': 56, shape: 41, 'not-a-presence-test': 13 },
+  assert.deepStrictEqual(counts, { requiredness: 17, 'post-type': 56, shape: 42, 'not-a-presence-test': 14 },
     'the mix of rulings moved — a predicate changed meaning, which is a thing to look at rather than re-pin');
   ok(`all ${preds.length} control predicates ruled (${counts.requiredness} requiredness, ${counts['post-type']} post-type, ${counts.shape} shape, ${counts['not-a-presence-test']} not-a-presence-test)`);
 

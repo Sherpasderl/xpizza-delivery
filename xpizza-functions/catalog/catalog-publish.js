@@ -32,6 +32,8 @@ const { integrityDescriptor } = require('./catalog-integrity');
 const { readVersionDocs } = require('./catalog-firestore');
 const { contentHash } = require('./content-hash');
 const { readVersionMenu } = require('./catalog-menu');
+const { candidateSource, assertCandidateValid } = require('./candidate-validate');
+const { sourceRefOf, encodeUpdateTime } = require('./source-store');
 
 const LEASE_MS = 120000;                          // 2-minute bounded lease (publish is seconds; generous headroom)
 const RETENTION_MIN_COUNT = 10;                   // keep ≥10 versions ...
@@ -129,24 +131,62 @@ async function acquireLease(db, rid) {
 // snapshot N-1" guarantee held only by caller discipline, and in Stage 2 the snapshot BECOMES the price
 // source — so a pointer-only flip would serve stale prices. Requiring it makes the invariant structural:
 // no code path can move the pointer without moving the snapshot with it.
-async function flipPointer(db, rid, token, versionId, snapshot) {
+// 🔴 THE CAS (1A Task 7). The lease serializes two publishes that OVERLAP; it does nothing about two
+// that merely INTERLEAVE. The portal decides a publish is fresh well before the lease is taken — it
+// re-reads live state, binds an edit token to {base active version, draft revision}, shows the
+// merchant a diff against that — and then hands the whole thing to a publish that flipped the
+// pointer unconditionally. Between the freshness check and the flip, another publish could land and
+// be silently overwritten, and the merchant who reviewed against it never saw it.
+//
+// So the expectation the freshness check was made under is carried INTO the flip transaction and
+// re-asserted there. Not "is the pointer where I last looked" (that is another read, with another
+// window after it) — the comparison happens inside the transaction that moves it, so there is no
+// window left.
+//
+// `expected` is REQUIRED, like the snapshot and for the same reason: with a default, the invariant
+// would hold only as far as caller discipline, and a path that forgot would look exactly like a path
+// that had nothing to expect. `activeVersionId: null` is the explicit statement "nothing is
+// published yet" and is checked as such — a first publish onto a pointer that has since appeared is
+// just as stale as any other.
+//
+// `draftRevision` is present ONLY for draft-derived publishes, by key: a publish built from code has
+// no draft to be stale against, and a publish built from a draft must never be able to omit it.
+async function flipPointer(db, rid, token, versionId, snapshot, expected) {
   // 2b S3 fold: the ordinal is as load-bearing as the version witness — a snapshot with a version but
   // no `seq` would satisfy the coherence check and then be refused by the read-side ladder (which
   // fail-closes on an absent ordinal), i.e. a fallback that exists but can never be used.
   if (!snapshot || snapshot.version !== versionId || !Number.isInteger(snapshot.seq)) {
     throw new Error(`flip_requires_snapshot: ${rid}/${versionId} — the pointer needs a snapshot carrying its version AND an integer seq`);
   }
+  if (!expected || typeof expected !== 'object' || Array.isArray(expected)
+    || !Object.prototype.hasOwnProperty.call(expected, 'activeVersionId')) {
+    throw new Error(`flip_requires_expectation: ${rid}/${versionId} — the caller must state which active version it validated against (null for a first publish)`);
+  }
+  const wantsDraftCas = Object.prototype.hasOwnProperty.call(expected, 'draftRevision');
   const nowServer = await serverNow(db, rid);
   const lockRef = lockRefOf(db, rid);
   const pointerRef = pointerRefOf(db, rid);
   await db.runTransaction(async (tx) => {
+    // Every read first — a Firestore transaction refuses a read after a write.
     const snap = await tx.get(lockRef);
+    const pointerSnap = await tx.get(pointerRef);
+    const draftSnap = wantsDraftCas ? await tx.get(sourceRefOf(db, rid)) : null;
     const l = snap.exists ? (snap.data() || {}) : {};
     if (l.owner_token !== token) throw new Error(`lease_lost: not owner (versionId=${versionId})`);
     if (!(l.expires_at && l.expires_at.toMillis() > nowServer.toMillis())) throw new Error(`lease_expired: cannot flip (versionId=${versionId})`);
+    const liveActive = pointerSnap.exists ? ((pointerSnap.data() || {}).version || null) : null;
+    if (liveActive !== expected.activeVersionId) {
+      throw new Error(`flip_cas_stale: ${rid} — validated against active ${JSON.stringify(expected.activeVersionId)} but ${JSON.stringify(liveActive)} is live; this publish would overwrite a newer one`);
+    }
+    if (wantsDraftCas) {
+      const liveRevision = draftSnap.exists ? encodeUpdateTime(draftSnap.updateTime) : null;
+      if (liveRevision !== expected.draftRevision) {
+        throw new Error(`flip_cas_draft_stale: ${rid} — the draft moved from ${JSON.stringify(expected.draftRevision)} to ${JSON.stringify(liveRevision)} since this edit was reviewed`);
+      }
+    }
     tx.set(pointerRef, { version: versionId, at: FieldValue.serverTimestamp() });
     // 1b: the snapshot rides the SAME transaction — coherence by construction. If the flip aborts
-    // (lease lost/expired), NEITHER the pointer nor the snapshot moves.
+    // (lease lost/expired/stale), NEITHER the pointer nor the snapshot moves.
     tx.set(snapshotRefOf(db, rid), snapshot);
   });
 }
@@ -254,7 +294,13 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
 }
 
 // PUBLISH — acquire the lease, write+verify the version, FLIP LAST, prune retention, release.
-async function publishVersion(db, rid, input, { mirror, alarm } = {}) {
+async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) {
+  // PRE-PUBLISH, before the lease and before a single write: an invalid candidate must not become an
+  // immutable version at all. Doing it here rather than in each caller is the point — publishVersion
+  // and rollbackVersion are the only two functions that reach flipPointer, and flipPointer is the
+  // only thing that moves the pointer, so validating here covers every path that exists AND every
+  // path anyone adds later.
+  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure }), `${rid} (pre-publish)`);
   const token = await acquireLease(db, rid);
   try {
     const nowServer = await serverNow(db, rid);
@@ -263,7 +309,7 @@ async function publishVersion(db, rid, input, { mirror, alarm } = {}) {
     await readVersionDocs(db, rid, versionId);        // throws on completeness fail (counts + both hashes)
     await verifyVersionStructure(db, rid, versionId); // throws on a broken menu_structure bijection
     const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable);
-    await flipPointer(db, rid, token, versionId, snapshot);   // ← the atomic cutover (pointer + snapshot), LAST
+    await flipPointer(db, rid, token, versionId, snapshot, expected);   // ← the atomic cutover (pointer + snapshot), LAST
     // Mirror AFTER the flip and BEFORE releasing the lease — see writeMirror for why both matter.
     const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable });
     await pruneRetention(db, rid, { protect: [versionId] }).catch(() => {});   // never let prune fail the publish
@@ -285,11 +331,18 @@ async function publishVersion(db, rid, input, { mirror, alarm } = {}) {
 // readVersionMenu reads the version subtree DIRECTLY by id, never through the active pointer, which
 // is what makes it usable here: the pointer has not been flipped yet.
 async function verifyVersionStructure(db, rid, versionId) {
-  await readVersionMenu(db, rid, versionId);
+  // (1) It reads back COMPLETE, through the reader that will have to serve it.
+  const served = await readVersionMenu(db, rid, versionId);
+  // (2) ...and what was PERSISTED is a valid candidate, not merely a readable one. The pre-publish
+  // check validated the publisher's intention; this validates the fact. They are not the same claim,
+  // and only the second one describes what customers would get.
+  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure }),
+    `${rid}/versions/${versionId} (pre-flip)`);
+  return served;
 }
 
 // ROLLBACK — a single atomic pointer flip to a RETAINED prior version. Verify it exists + verifies first.
-async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm } = {}) {
+async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm, expected } = {}) {
   const token = await acquireLease(db, rid);
   try {
     // 1b: reuse the verify read's tables to re-emit the snapshot + mirror. A rollback that moved the
@@ -300,7 +353,7 @@ async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm } = {})
     const seq = targetDocs.seq;   // 2b-pre: the ROLLED-TO version's ordinal — never the one we rolled away from
     await verifyVersionStructure(db, rid, targetVersionId);
     const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable);
-    await flipPointer(db, rid, token, targetVersionId, snapshot);
+    await flipPointer(db, rid, token, targetVersionId, snapshot, expected);
     const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable });
     return { versionId: targetVersionId, rolledBack: true, mirrored: mirrorResult.mirrored };
   } finally {
@@ -367,6 +420,6 @@ function tablesFromVersionDocs({ itemDocs, extraDocs }) {
 module.exports = {
   publishVersion, rollbackVersion, previewVersion, pruneRetention,
   snapshotRefOf, snapshotOf, writeMirror, tablesFromVersionDocs, MIRROR_DEADLINE_MS,
-  acquireLease, flipPointer, releaseLease, serverNow, writeVersion, deleteVersion,
+  acquireLease, flipPointer, releaseLease, serverNow, writeVersion, deleteVersion, verifyVersionStructure,
   LEASE_MS, RETENTION_MIN_COUNT, RETENTION_MIN_AGE_MS,
 };

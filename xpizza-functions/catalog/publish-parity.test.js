@@ -98,13 +98,29 @@ ok('the gate THROWS parity_mismatch on every drift class: price, added/removed i
   const SRC = readFileSync(join(__dirname, '..', 'tools', 'publish-version.js'), 'utf8');
   assert.ok(/require\('\.\.\/catalog\/publish-parity'\)/.test(SRC), 'publish-version must import the parity gate');
   assert.ok(/const FROM_STORE = process\.argv\.includes\('--from-store'\)/.test(SRC), '--from-store must be a real flag');
-  const gate = SRC.indexOf('assertStoreCodeParity(rid,');
-  const publish = SRC.indexOf('await publishVersion(db, rid,');
-  assert.ok(gate > 0, 'the gate must be CALLED from the publish path, not merely imported');
-  assert.ok(gate < publish, 'and it must run BEFORE publishVersion — after the flip it would be worthless');
-  const readSrc = SRC.indexOf('await readSource(db, rid)');
-  assert.ok(readSrc > 0 && readSrc < gate, '--from-store must read the store through the fail-closed readSource');
-  ok('the gate is WIRED into the publish path and runs BEFORE publishVersion (asserted structurally — the CLI is not executable here)');
+  // 1A Task 7 moved the input assembly into an exported, pure buildPublishInput() so a test can drive
+  // the REAL thing — so the gate's position is now checked where it actually lives (inside that
+  // function) and the CALL ORDER is checked in the CLI body. Text-order alone stopped being the right
+  // question the moment the code was factored properly; what still has to be true is that the store is
+  // read fail-closed, the candidate is built through the gated builder, and the publish comes last.
+  const builder = SRC.slice(SRC.indexOf('function buildPublishInput'), SRC.indexOf('async function readExpectation'));
+  assert.ok(builder.length > 200 && builder.includes('sourceToBuildInputs'), 'non-vacuity: the slice really is buildPublishInput');
+  assert.ok(builder.includes('assertStoreCodeParity(rid,'), 'the gate must be CALLED from the builder, not merely imported');
+  assert.ok(builder.indexOf('assertStoreCodeParity(rid,') < builder.indexOf('return {'),
+    'and it must run BEFORE the input is returned — a gate after the build is decoration');
+  const body = SRC.slice(SRC.indexOf('const source_sha = gitSha()'));
+  const readSrc = body.indexOf('await readSource(db, rid)');
+  const build = body.indexOf('buildPublishInput(rid, { source, source_sha })');
+  const publish = body.indexOf('await publishVersion(db, rid,');
+  assert.ok(readSrc > 0 && build > 0 && publish > 0, 'the CLI must read the store, build the candidate and publish');
+  assert.ok(readSrc < build && build < publish,
+    '--from-store must read through the fail-closed readSource, then build through the gated builder, and publish LAST');
+  // 1A Task 7: the flip is a compare-and-set, so the CLI has to state what it validated against.
+  assert.ok(/await readExpectation\(db, rid, \{ withDraft: FROM_STORE \}\)/.test(body),
+    'the CLI must read the expectation it publishes under');
+  assert.ok(/await publishVersion\(db, rid, input, \{ mirror, expected \}\)/.test(body),
+    'and pass it to publishVersion — without it the flip would overwrite whatever landed in between');
+  ok('the gate is WIRED inside the builder; the CLI reads the store, builds, reads its CAS expectation, and publishes LAST');
 
   // verify-catalog must check store-vs-code too, so a drifted store is caught between cutovers
   const VC = readFileSync(join(__dirname, '..', 'tools', 'verify-catalog.js'), 'utf8');
@@ -117,7 +133,7 @@ ok('the gate THROWS parity_mismatch on every drift class: price, added/removed i
   // `node --check` passes that happily — it is a runtime ReferenceError, and these CLIs are owner-run
   // one-shots where the first execution IS the cutover. Assert the imports resolve, statically.
   for (const [file, ids] of [
-    ['tools/publish-version.js', ['readSource', 'sourceToBuildInputs', 'assertStoreCodeParity', 'buildCatalogV2', 'publishVersion']],
+    ['tools/publish-version.js', ['readSource', 'sourceToBuildInputs', 'assertStoreCodeParity', 'buildCatalogV2', 'publishVersion', 'sourceRefOf', 'encodeUpdateTime']],
     ['tools/verify-catalog.js', ['readSource', 'sourceToBuildInputs', 'assertStoreCodeParity', 'buildCatalogV2']],
     ['tools/seed-source-store.js', ['validateSource', 'sourceRefOf', 'extrasKeyOf', 'readLiteral', 'pricingKeyOf', 'attachRedeemFields']],
     ['tools/rollback-version.js', ['rollbackVersion', 'makeRtdbMirror', 'RTDB_URL']],
@@ -147,7 +163,17 @@ ok('the gate THROWS parity_mismatch on every drift class: price, added/removed i
   const list = RB.indexOf('nothing changed.'), roll = RB.indexOf('await rollbackVersion(');
   assert.ok(list > 0 && roll > 0 && list < roll, 'the read-only listing path must return BEFORE any write path');
   assert.ok(/databaseURL: RTDB_URL/.test(RB), 'and it must pin databaseURL — admin.database() throws without it');
-  ok('the rollback CLI is explicit-target, refuses unretained/already-active targets, and lists read-only');
+  // 1A Task 7: the rollback is a compare-and-set too. An operator picks a target from a list they
+  // read a moment ago; if a publish lands in between, an unconditional flip buries a version nobody
+  // ever saw. The CLI must roll back FROM the pointer it actually read, not from whatever is live by
+  // the time the transaction runs. (Asserted structurally — this CLI is argv-driven and owner-run.)
+  assert.ok(/const active = pointer\.exists \? \(pointer\.data\(\) \|\| \{\}\)\.version : null;/.test(RB),
+    'the rollback CLI must read the live pointer');
+  assert.ok(/expected: \{ activeVersionId: active \}/.test(RB),
+    'and must roll back FROM that exact pointer — an unconditional flip buries whatever landed in between');
+  assert.ok(RB.indexOf('const active =') < RB.indexOf('await rollbackVersion('),
+    'and it must read it BEFORE the rollback, not after');
+  ok('the rollback CLI is explicit-target, CAS-bound to the pointer it read, refuses unretained/already-active targets, and lists read-only');
 }
 
 console.log(`publish-parity: OK (${n})`);

@@ -48,8 +48,8 @@ function harness(rid, draftSrc, { activeVersionId = ACTIVE, draftUpdateTime = T_
       authorize: allow,
       readActiveBuilt: async () => ({ built: builtOf(liveSrc, rid), versionId: state.activeVersionId }),
       readDraft: async () => ({ source: state.draft, updateTime: state.draftUpdateTime }),
-      publishVersion: async (_db, r, input) => {
-        state.publishes.push({ rid: r, input });
+      publishVersion: async (_db, r, input, opts) => {
+        state.publishes.push({ rid: r, input, opts });
         if (publishImpl) return publishImpl(input);
         return { versionId: 'v-new-8', item_count: input.items.length, extra_count: Object.keys(input.extras).length };
       },
@@ -341,6 +341,36 @@ const ackFor = (diff) => diff.largeChangeSet.map((l) => ({ key: l.key, surface: 
     ok('the index.js wrapper is exported, delegates to the tested core, and injects the real verifier, publisher and mirror');
   }
 
-  console.log(`publish-edited: OK (${n})`);
+  // ── (11) 1A Task 7 — THE TOKEN'S PROMISE, CARRIED INTO THE FLIP ────────────────────────────────
+  // verifyEditToken proves freshness against {base active version, draft revision} at a MOMENT. The
+  // flip happens later — after the lease, after the write — and until now it moved the pointer
+  // unconditionally. Anything that landed in between was silently overwritten, and the merchant who
+  // reviewed a diff against it never saw the change they buried. The same two facts now travel into
+  // the flip transaction, where there is no window left after them.
+  {
+    const h = harness('la_musa', srcOf('la_musa', setPrice('dimsum_01', 250)));
+    const { token, diff } = h.tokenFor();
+    const out = await publishEditedCore(h.deps, { restaurantId: 'la_musa', token, acknowledgedChanges: ackFor(diff) }, {});
+    assert.strictEqual(out.status, 200, JSON.stringify(out.body));
+    const { opts } = h.state.publishes[0];
+    assert.deepStrictEqual(opts.expected, { activeVersionId: ACTIVE, draftRevision: T_DRAFT },
+      '🔴 the publish must carry the EXACT pair the token was verified against — a re-read here would just be a newer window');
+    ok('the CAS expectation is the token\'s own binding: {base active version, draft revision} travel into the flip');
+  }
+  {
+    // ...and losing that race is not a fault. A 500 invites a retry, and retrying is the one thing
+    // that must not happen: the diff the merchant approved was against a version that is now gone.
+    const h = harness('la_musa', srcOf('la_musa', setPrice('dimsum_01', 250)), {
+      publishImpl: () => { throw new Error('flip_cas_stale: la_musa — validated against active v-active-7 but "v-other-9" is live; this publish would overwrite a newer one'); },
+    });
+    const { token, diff } = h.tokenFor();
+    const out = await publishEditedCore(h.deps, { restaurantId: 'la_musa', token, acknowledgedChanges: ackFor(diff) }, {});
+    assert.strictEqual(out.status, 409, `a lost race must report as superseded, got ${out.status}`);
+    assert.strictEqual(out.body.error, 'edit_superseded');
+    assert.match(out.body.detail, /reload and review again/, 'and must tell the caller to re-review, not to retry');
+    ok('a CAS abort reports 409 edit_superseded — a retryable-looking 500 would invite re-publishing a diff nobody approved');
+  }
+
   FINISHED = true;
+  console.log(`publish-edited: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

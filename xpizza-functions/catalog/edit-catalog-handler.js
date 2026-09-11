@@ -21,9 +21,10 @@ const { validateSource, sourceRefOf, canonicalize } = require('./source-store');
 
 // The wire form of a Firestore commit time: seconds and nanoseconds, losslessly. Used for both the
 // value returned to the caller and the precondition it later presents, so the two are the same thing.
-const encodeUpdateTime = (ts) => (ts && typeof ts.seconds === 'number'
-  ? `${ts.seconds}.${String(ts.nanoseconds || 0).padStart(9, '0')}`
-  : String(ts));
+// MOVED to source-store.js beside sourceRefOf — the pointer-flip CAS compares draft revisions too,
+// and two spellings of "which draft is this" is a comparison that agrees until someone edits one.
+// Re-exported here so every existing importer is unchanged.
+const { encodeUpdateTime } = require('./source-store');
 const { catalogDiff, issueEditToken, sha256 } = require('./catalog-edit');
 
 const reply = (status, body) => ({ status, body });

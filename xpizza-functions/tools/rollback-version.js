@@ -67,7 +67,12 @@ const db = admin.firestore();
     process.exit(1);
   }
   console.log(`rolling ${RID} back: ${active || '(none)'} → ${TO}`);
-  const res = await rollbackVersion(db, RID, TO, { mirror: makeRtdbMirror(admin.database()) });
+  // The pointer this rollback was DECIDED against — read above, re-asserted inside the flip. A
+  // rollback is chosen by a human reading the list a moment ago; if a publish lands in between, the
+  // rollback would silently bury it, and the operator would have rolled back past something they
+  // never saw. No draftRevision: a rollback is not derived from the draft, and claiming it was would
+  // be a check that means nothing.
+  const res = await rollbackVersion(db, RID, TO, { mirror: makeRtdbMirror(admin.database()), expected: { activeVersionId: active } });
   console.log(`  done — active_version=${res.versionId}, mirrored=${res.mirrored}`);
   console.log('now run: node tools/verify-catalog.js');
   process.exit(0);

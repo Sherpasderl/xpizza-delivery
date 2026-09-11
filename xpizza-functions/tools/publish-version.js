@@ -9,18 +9,58 @@
 //
 // 🔒 Value-identity: version 1 == the flat catalog == code (the emulator money-proof gates this). The
 // reader serves version 1 via the pointer; the 1b guard still serves CODE + alarms on any divergence.
-try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; publish needs only ADC */ }
 const { execSync } = require('child_process');
 const admin = require('firebase-admin');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
 const { publishVersion } = require('../catalog/catalog-publish');
 const { makeRtdbMirror, RTDB_URL } = require('../catalog/mirror-rtdb');   // 1b: the RTDB disaster-fallback writer
-const { readSource, sourceToBuildInputs } = require('../catalog/source-store');            // portal 2a
+const { readSource, sourceToBuildInputs, sourceRefOf, encodeUpdateTime } = require('../catalog/source-store');   // portal 2a
 const { assertStoreCodeParity } = require('../catalog/publish-parity');                    // portal 2a: the pre-flip gate
 
 const gitSha = () => { try { return execSync('git rev-parse --short HEAD', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch (_) { return 'unknown'; } };
 
+// ── THE PUBLISH INPUT, as a pure function of a restaurant (+ optionally its draft) ────────────────
+// Exported so a test drives the REAL thing. The previous shape of this file was untestable — the
+// input was assembled inline between an admin.initializeApp() and a live Firestore write — so what
+// the cutover would actually publish could only be checked by running the cutover. The one bug that
+// matters here is exactly the one an in-test reconstruction cannot find: a field the CLI does not
+// pass. That has now happened twice in this slice (v2Extras in the seed, extraRecords in the
+// version), both times with a test that hand-built the payload and passed.
+//
+// `source` is the STORE draft for --from-store, and null for the code-built cutover.
+function buildPublishInput(rid, { source = null, source_sha = 'unknown' } = {}) {
+  if (source) {
+    // Build from the STORE, then prove it equals what the CODE builds — the no-op gate.
+    const inputs = sourceToBuildInputs(source);
+    const built = buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable });
+    const codeBuilt = { ...buildCatalogV2(rid), extras: EXTRAS_BY_RESTAURANT[rid] || {} };
+    assertStoreCodeParity(rid, { items: built.items, structure: built.structure, extras: inputs.extras }, codeBuilt);   // THROWS → nothing written, no flip
+    return { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha };
+  }
+  const built = buildCatalogV2(rid);   // schema-v2 items + EXTRAS display records + structure
+  return { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, extraRecords: built.extras, source_sha };
+}
+
+// The EXPECTATION this publish is validated under, read fresh from the store. For the cutover the
+// window is small and the CAS still matters: `activeVersionId: null` on a first publish is the
+// explicit claim "nothing is published yet", and a version appearing since must abort rather than be
+// overwritten. --from-store additionally binds the DRAFT revision it built from.
+async function readExpectation(db, rid, { withDraft }) {
+  const pointer = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();
+  const expected = { activeVersionId: pointer.exists ? ((pointer.data() || {}).version || null) : null };
+  if (withDraft) {
+    const draft = await sourceRefOf(db, rid).get();
+    expected.draftRevision = draft.exists ? encodeUpdateTime(draft.updateTime) : null;
+  }
+  return expected;
+}
+
+module.exports = { buildPublishInput, readExpectation };
+
+if (require.main !== module) return;   // imported for its pure parts — no credentials, no writes
+
+try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; publish needs only ADC */ }
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
   databaseURL: RTDB_URL,   // 1b REVISE: ADC + GOOGLE_CLOUD_PROJECT alone do NOT resolve RTDB — without
@@ -37,21 +77,11 @@ const FROM_STORE = process.argv.includes('--from-store');
 (async () => {
   const source_sha = gitSha();
   for (const rid of ['x_pizza', 'la_musa']) {
-    let items, structure, extrasTable, extraRecords;
-    if (FROM_STORE) {
-      // Build from the STORE, then prove it equals what the CODE builds — the no-op gate.
-      const source = await readSource(db, rid);                        // fail-closed: missing/malformed throws
-      const inputs = sourceToBuildInputs(source);
-      ({ items, structure, extras: extraRecords } = buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable }));
-      extrasTable = inputs.extras;
-      const codeBuilt = { ...buildCatalogV2(rid), extras: EXTRAS_BY_RESTAURANT[rid] || {} };
-      assertStoreCodeParity(rid, { items, structure, extras: extrasTable }, codeBuilt);   // THROWS → nothing written, no flip
-      console.log(`${rid}: parity gate PASSED — build-from-store is byte-identical to build-from-code`);
-    } else {
-      ({ items, structure, extras: extraRecords } = buildCatalogV2(rid));   // schema-v2 items + EXTRAS display records + structure
-      extrasTable = EXTRAS_BY_RESTAURANT[rid] || {};
-    }
-    const res = await publishVersion(db, rid, { items, structure, extras: extrasTable, extraRecords, source_sha }, { mirror });
+    const source = FROM_STORE ? await readSource(db, rid) : null;      // fail-closed: missing/malformed throws
+    const input = buildPublishInput(rid, { source, source_sha });      // parity gate runs inside, BEFORE anything is written
+    if (FROM_STORE) console.log(`${rid}: parity gate PASSED — build-from-store is byte-identical to build-from-code`);
+    const expected = await readExpectation(db, rid, { withDraft: FROM_STORE });
+    const res = await publishVersion(db, rid, input, { mirror, expected });
     const codeItems = Object.keys(MENU_BY_RESTAURANT[rid]).length;
     const codeExtras = Object.keys(EXTRAS_BY_RESTAURANT[rid] || {}).length;
     if (res.item_count !== codeItems || res.extra_count !== codeExtras) {

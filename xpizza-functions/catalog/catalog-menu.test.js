@@ -16,7 +16,6 @@
 const assert = require('assert');
 const { readFileSync } = require('fs');
 const { join } = require('path');
-const { FieldValue, Timestamp } = require('firebase-admin/firestore');
 const { buildCatalogV2, formSource, readLiteral } = require('./form-menu-source');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { publishVersion } = require('./catalog-publish');
@@ -24,6 +23,7 @@ const { getRestaurantMenu, readVersionMenu, readFlatMenu } = require('./catalog-
 const { seedCatalog } = require('./seed-catalog-core');
 const { catalogSnapshot, generateFormBundle, generateKdsManifest, serialize } = require('./generate-form-bundle');
 const { contentHash } = require('./content-hash');
+const { makeDb } = require('./firestore-fake');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const BRANDS = ['x_pizza', 'la_musa'];
@@ -33,75 +33,26 @@ const BUNDLE_PATH = {
   la_musa: join(REPO_ROOT, 'la-musa-orders', 'menu-bundle.generated.json'),
 };
 
-// ── An in-memory Firestore: enough of the API for the REAL publish + read paths ──────────────────
-function makeDb() {
-  const docs = new Map();
-  let clock = 1757000000000;
-  let autoId = 0;
-  const serverTime = () => Timestamp.fromMillis((clock += 1000));
-  // serverTimestamp() sentinels are resolved on write, exactly as the server does — publishVersion's
-  // lease depends on reading one back as a real Timestamp.
-  const resolve = (v) => {
-    if (v instanceof FieldValue) return serverTime();
-    if (v instanceof Timestamp) return v;
-    if (Array.isArray(v)) return v.map(resolve);
-    if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = resolve(v[k]); return o; }
-    return v;
-  };
-  const snapOf = (path) => {
-    const data = docs.get(path);
-    return {
-      exists: data !== undefined, id: path.split('/').pop(), ref: docRef(path),
-      data: () => data, get: (f) => (data ? data[f] : undefined),
-    };
-  };
-  function docRef(path) {
-    return {
-      path, id: path.split('/').pop(),
-      collection: (sub) => colRef(`${path}/${sub}`),
-      get: async () => snapOf(path),
-      set: async (data) => { docs.set(path, resolve(data)); },
-      create: async (data) => {
-        if (docs.has(path)) throw new Error(`already_exists: ${path}`);
-        docs.set(path, resolve(data));
-      },
-      delete: async () => { docs.delete(path); },
-    };
-  }
-  function colRef(path) {
-    return {
-      doc: (id) => docRef(`${path}/${id === undefined ? `auto${++autoId}` : id}`),
-      get: async () => {
-        const out = [];
-        for (const p of docs.keys()) {
-          if (!p.startsWith(`${path}/`)) continue;
-          if (p.slice(path.length + 1).includes('/')) continue;    // direct children only
-          out.push(snapOf(p));
-        }
-        out.sort((a, b) => (a.id < b.id ? -1 : 1));                // DOC-ID order, like the real one
-        return { docs: out, empty: out.length === 0, forEach: (f) => out.forEach(f) };
-      },
-    };
-  }
-  return {
-    collection: (c) => colRef(c),
-    batch: () => {
-      const ops = [];
-      return {
-        set: (ref, d) => ops.push(() => ref.set(d)),
-        create: (ref, d) => ops.push(() => ref.create(d)),
-        delete: (ref) => ops.push(() => ref.delete()),
-        commit: async () => { for (const op of ops) await op(); },
-      };
-    },
-    runTransaction: async (fn) => fn({
-      get: (ref) => ref.get(),
-      set: (ref, d) => { docs.set(ref.path, resolve(d)); },
-      delete: (ref) => { docs.delete(ref.path); },
-    }),
-    _raw: docs,
-  };
-}
+// Task 7 made the pointer-flip CAS non-skippable, so a publish must state which active version it
+// was validated against. This suite is about the READER, so it states the truth — whatever is live
+// right now. The CAS itself is exercised in publish-paths.test.js, where losing the race is the point.
+const publishAt = async (database, rid, input) => {
+  const p = await database.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();
+  return publishVersion(database, rid, input, { expected: { activeVersionId: p.exists ? ((p.data() || {}).version || null) : null } });
+};
+
+// 🔴 EVERY FIXTURE PUBLISHES UNDER A REAL BRAND ID, into its own empty store.
+//
+// The keying rule is `rid === 'la_musa' ? id : name`, so a synthetic rid does not behave like the
+// brand whose data it is carrying: la_musa records under `sentinel_shop` key by name while their
+// keys are ids, and the validator (rightly) refuses them. Inventing a restaurant to isolate a
+// fixture invents a restaurant with different rules — cheaper and truer to hand each fixture its own
+// empty Firestore.
+const freshShop = async (rid, over = {}) => {
+  const database = makeDb();
+  const { versionId } = await publishAt(database, rid, { ...inputsFor(rid), ...over });
+  return { db: database, rid, versionId };
+};
 
 const inputsFor = (rid, over = {}) => {
   const v2 = buildCatalogV2(rid);
@@ -119,7 +70,7 @@ const inputsFor = (rid, over = {}) => {
   const db = makeDb();
   const published = {};
   for (const rid of BRANDS) {
-    published[rid] = (await publishVersion(db, rid, inputsFor(rid))).versionId;
+    published[rid] = (await publishAt(db, rid, inputsFor(rid))).versionId;
     const menu = await getRestaurantMenu(db, rid);
     assert.deepStrictEqual(Object.keys(menu).sort(), ['extras', 'identity', 'items', 'structure', 'variants'],
       `${rid}: the reader must return the complete set`);
@@ -164,22 +115,28 @@ const inputsFor = (rid, over = {}) => {
     ok(`identity: {rid, schema_version, version_id, seq, content_hash} — ${identity.version_id} seq 1`);
   }
   {
-    // 🔴 THE DISCRIMINATING CASE. Four versions OF THE SAME RESTAURANT, each differing from the
+    // 🔴 THE DISCRIMINATING CASE. Five versions OF THE SAME RESTAURANT, each differing from the
     // control in ONE thing a customer sees and NOTHING a customer pays.
     //
     // Same restaurant deliberately: `rid` is part of the fingerprint, so comparing two brands' hashes
     // comes out different no matter what the hash covered. The first version of this test did exactly
     // that, and passed while the hash ignored the entire structure — found by mutation, not by review.
-    const rid = 'skew_shop';
-    const base = buildCatalogV2('x_pizza');
-    const control = (await publishVersion(db, rid, inputsFor('x_pizza'))).versionId;
-    const recordOf = async (vid) => (await db.collection('restaurants').doc(rid).collection('versions').doc(vid).get()).data();
+    //
+    // And the skews change fields that are NOT the pricing key. Under x_pizza's rule the key IS the
+    // dish name, so "rename a dish" is not a display-only change at all — it is a different dish, and
+    // Task 7's validator says so. `desc` and an extra's form-local `id` are the real display-only
+    // fields here.
+    const skewDb = makeDb();
+    const rid = 'x_pizza';
+    const base = buildCatalogV2(rid);
+    const control = (await publishAt(skewDb, rid, inputsFor(rid))).versionId;
+    const recordOf = async (vid) => (await skewDb.collection('restaurants').doc(rid).collection('versions').doc(vid).get()).data();
     const controlRec = await recordOf(control);
-    const controlHash = (await readVersionMenu(db, rid, control)).identity.content_hash;
+    const controlHash = (await readVersionMenu(skewDb, rid, control)).identity.content_hash;
 
     const skews = {
-      'a renamed dish': { items: base.items.map((i, idx) => (idx === 0 ? { ...i, display: { ...i.display, name: `${i.display.name} ` } } : i)) },
-      'a renamed OPTION': { extraRecords: base.extras.map((e, idx) => (idx === 0 ? { ...e, display: { ...e.display, name: `${e.display.name} ` } } : e)) },
+      'a reworded dish description': { items: base.items.map((i, idx) => (idx === 0 ? { ...i, display: { ...i.display, desc: `${i.display.desc} (new)` } } : i)) },
+      'a re-handled option id': { extraRecords: base.extras.map((e, idx) => (idx === 0 ? { ...e, display: { ...e.display, id: 'e99' } } : e)) },
       'a changed option EXPOSURE': { structure: { ...base.structure, extras_by_category: { individual: ['Carnes'] } } },
       'a reordered option list': { structure: { ...base.structure, extra_order: [base.structure.extra_order[1], base.structure.extra_order[0], ...base.structure.extra_order.slice(2)] } },
       // has_photo is SERVED for extras (the reader maps both collections with one function) and was
@@ -188,25 +145,21 @@ const inputsFor = (rid, over = {}) => {
       'a photo flag on an option': { extraRecords: base.extras.map((e, idx) => (idx === 0 ? { ...e, has_photo: true } : e)) },
     };
     for (const [what, over] of Object.entries(skews)) {
-      const vid = (await publishVersion(db, rid, { ...inputsFor('x_pizza'), ...over })).versionId;
+      const vid = (await publishAt(skewDb, rid, { ...inputsFor(rid), ...over })).versionId;
       const rec = await recordOf(vid);
       assert.strictEqual(rec.menu_hash, controlRec.menu_hash, `premise: ${what} moves no item price`);
       assert.strictEqual(rec.extras_hash, controlRec.extras_hash, `premise: ${what} moves no extra price`);
-      assert.notStrictEqual((await readVersionMenu(db, rid, vid)).identity.content_hash, controlHash,
+      assert.notStrictEqual((await readVersionMenu(skewDb, rid, vid)).identity.content_hash, controlHash,
         `🔴 ${what} produced the SAME content hash — a version skew 1B/1C could not see`);
     }
-    ok('identity DISCRIMINATES: a renamed dish, a renamed option, a changed exposure, a reordered option list and a photo flag on an option each move content_hash while BOTH money hashes collide');
+    ok('identity DISCRIMINATES: a reworded description, a re-handled option id, a changed exposure, a reordered option list and a photo flag on an option each move content_hash while BOTH money hashes collide');
   }
   {
     // ...and the field really is SERVED, not just hashed — the two sets have to be the same set, and
     // the way they came apart last time was one of them growing a field the other did not.
-    const rid = 'photo_extra_shop';
     const base = buildCatalogV2('x_pizza');
-    await publishVersion(db, rid, {
-      ...inputsFor('x_pizza'),
-      extraRecords: base.extras.map((e, idx) => (idx === 0 ? { ...e, has_photo: true } : e)),
-    });
-    const menu = await getRestaurantMenu(db, rid);
+    const shop = await freshShop('x_pizza', { extraRecords: base.extras.map((e, idx) => (idx === 0 ? { ...e, has_photo: true } : e)) });
+    const menu = await getRestaurantMenu(shop.db, shop.rid);
     const first = menu.extras.find((e) => e.key === base.extras[0].key);
     assert.strictEqual(first.has_photo, true, '🔴 a served extra field must survive the write+read round trip');
     assert.ok(menu.extras.filter((e) => e.has_photo !== undefined).length === 1, 'and only the one that carries it');
@@ -227,16 +180,17 @@ const inputsFor = (rid, over = {}) => {
     // meaning — item_order does — so handing the same menu in a different order must produce the SAME
     // fingerprint. A publisher that hashed its own inputs would pin a value the reader (which reads
     // back in served order) could never reproduce, and every read of that version would fail closed.
-    const rid = 'order_agnostic_shop';
     const v2 = buildCatalogV2('x_pizza');
-    const canonical = (await publishVersion(db, rid, inputsFor('x_pizza'))).versionId;
-    const shuffled = (await publishVersion(db, rid, {
-      ...inputsFor('x_pizza'),
+    const orderDb = makeDb();
+    const rid = 'x_pizza';
+    const canonical = (await publishAt(orderDb, rid, inputsFor(rid))).versionId;
+    const shuffled = (await publishAt(orderDb, rid, {
+      ...inputsFor(rid),
       items: v2.items.slice().reverse(),
       extraRecords: v2.extras.slice().reverse(),
     })).versionId;
-    const A = await readVersionMenu(db, rid, canonical);
-    const B = await readVersionMenu(db, rid, shuffled);
+    const A = await readVersionMenu(orderDb, rid, canonical);
+    const B = await readVersionMenu(orderDb, rid, shuffled);
     assert.deepStrictEqual(B.items.map((i) => i.key), A.items.map((i) => i.key), 'both serve in item_order regardless of input order');
     assert.strictEqual(B.identity.content_hash, A.identity.content_hash,
       '🔴 the same menu passed in a different order fingerprinted differently');
@@ -245,13 +199,14 @@ const inputsFor = (rid, over = {}) => {
 
   // ══ 3. RE-CHECK ON READ — every plant fails CLOSED, with its own code ═════════════════════════
   {
-    const vpath = (rid, vid) => db.collection('restaurants').doc(rid).collection('versions').doc(vid);
+    let plantDb = null;
+    const vpath = (rid, vid) => plantDb.collection('restaurants').doc(rid).collection('versions').doc(vid);
     const plant = async (label, mutate, code) => {
-      const rid = `plant_${label.replace(/\W+/g, '_')}`;
-      const { versionId } = await publishVersion(db, rid, inputsFor('x_pizza'));
-      assert.ok(await getRestaurantMenu(db, rid), 'premise: it reads cleanly BEFORE the plant');
-      await mutate(rid, versionId);
-      await assert.rejects(() => getRestaurantMenu(db, rid), (e) => {
+      const { db: pdb, rid, versionId } = await freshShop('x_pizza');
+      plantDb = pdb;
+      assert.ok(await getRestaurantMenu(pdb, rid), 'premise: it reads cleanly BEFORE the plant');
+      await mutate(rid, versionId, pdb);
+      await assert.rejects(() => getRestaurantMenu(pdb, rid), (e) => {
         assert.strictEqual(e.code, code, `${label}: expected code ${code}, got ${e.code} (${e.message})`);
         assert.strictEqual(e.reader, true, `${label}: the failure must be marked as one this reader typed`);
         return true;
@@ -343,14 +298,17 @@ const inputsFor = (rid, over = {}) => {
   {
     // The display tamper above is the one the MONEY descriptor cannot see. Stated as its own claim,
     // because "the reader threw" is not the point — the point is which check caught it.
-    const rid = 'plant_a_dish_renamed_in_place';
-    const vid = (await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get()).data().version;
-    const rec = (await db.collection('restaurants').doc(rid).collection('versions').doc(vid).get()).data();
+    const { db: tdb, rid, versionId } = await freshShop('x_pizza');
+    const d = (await tdb.collection('restaurants').doc(rid).collection('versions').doc(versionId).collection('menu_items').get()).docs[0];
+    await d.ref.set({ ...d.data(), display: { ...d.data().display, desc: 'TAMPERED COPY' } });
     const { readVersionDocs } = require('./catalog-firestore');
-    await assert.doesNotReject(() => readVersionDocs(db, rid, vid),
-      'premise: the MONEY reader is perfectly happy with a renamed dish — prices did not move');
-    assert.ok(rec.menu_hash && rec.content_hash !== undefined);
-    ok('the renamed-dish tamper passes every money check and is caught ONLY by content_hash — which is why it exists');
+    await assert.doesNotReject(() => readVersionDocs(tdb, rid, versionId),
+      'premise: the MONEY reader is perfectly happy with a reworded dish — prices did not move');
+    await assert.rejects(() => getRestaurantMenu(tdb, rid), (e) => {
+      assert.strictEqual(e.code, 'catalog_content_mismatch');
+      return true;
+    }, '🔴 a display-only tamper was served');
+    ok('a display-only tamper passes every money check and is caught ONLY by content_hash — which is why it exists');
   }
 
   // ══ 4. NO FALLBACK EVER SUBSTITUTES FOR IMMUTABLE IDENTITY ════════════════════════════════════
@@ -401,21 +359,18 @@ const inputsFor = (rid, over = {}) => {
     // messages, so it must not change), the shared pointer resolver, and the SDK. Those threw plain
     // Errors — "fail closed and tell the caller why" quietly became "fail closed and hand them a
     // sentence", and a count mismatch arrived with code === undefined.
-    const rid = 'untyped_shop';
-    const { versionId } = await publishVersion(db, rid, inputsFor('x_pizza'));
-    const vref = db.collection('restaurants').doc(rid).collection('versions').doc(versionId);
-    const rec = await vref.get();
+    const { db: udb, rid, versionId } = await freshShop('x_pizza');
+    const rec = await udb.collection('restaurants').doc(rid).collection('versions').doc(versionId).get();
     await rec.ref.set({ ...rec.data(), extra_count: rec.data().extra_count + 1 });   // the record describes more than came back
-    await assert.rejects(() => getRestaurantMenu(db, rid), (e) => {
+    await assert.rejects(() => getRestaurantMenu(udb, rid), (e) => {
       assert.strictEqual(e.code, 'catalog_incomplete', `a torn read must be branchable, got ${e.code}`);
       assert.match(e.message, /catalog_incomplete_extra_count/, 'and the shared descriptor\'s own message survives verbatim for the log');
       return true;
     });
 
-    const rid2 = 'badpointer_shop';
-    await publishVersion(db, rid2, inputsFor('x_pizza'));
-    await db.collection('restaurants').doc(rid2).collection('meta').doc('active_version').set({ version: 7 });
-    await assert.rejects(() => getRestaurantMenu(db, rid2), (e) => {
+    const { db: bdb, rid: rid2 } = await freshShop('x_pizza');
+    await bdb.collection('restaurants').doc(rid2).collection('meta').doc('active_version').set({ version: 7 });
+    await assert.rejects(() => getRestaurantMenu(bdb, rid2), (e) => {
       assert.strictEqual(e.code, 'active_version_unreadable', `a malformed pointer must be branchable, got ${e.code}`);
       assert.match(e.message, /active_version_malformed/, 'with the specific reason kept for the alarm');
       return true;
@@ -466,15 +421,17 @@ const inputsFor = (rid, over = {}) => {
     // Every completeness rule for extras is conditional on there being extras, and the failure mode
     // for a rule like that runs both ways: it can skip a check it should have made, or refuse a
     // restaurant that legitimately sells no add-ons.
-    const items = [{ key: 'Solo', price: 100, display: { id: 'Solo', name: 'Solo', cat: 'c', price: 100 } }];
+    const items = [{ key: 'Solo', price: 100, display: { id: 1, name: 'Solo', cat: 'individual', price: 100, desc: 'one', emoji: '🍕', color: '#fff' } }];
     const bare = { items, extras: {}, extraRecords: [], source_sha: 'no-extras' };
+    const cats = [{ id: 'individual' }];
     for (const [label, structure] of [
-      ['an empty extra_order', { schema_version: 2, item_order: ['Solo'], extra_order: [] }],
-      ['no extra_order at all', { schema_version: 2, item_order: ['Solo'] }],
+      ['an empty extra_order', { schema_version: 2, item_order: ['Solo'], extra_order: [], categories: cats }],
+      ['no extra_order at all', { schema_version: 2, item_order: ['Solo'], categories: cats }],
     ]) {
-      const rid = `noextras_${label.replace(/\W+/g, '_')}`;
-      await publishVersion(db, rid, { ...bare, structure });
-      const menu = await getRestaurantMenu(db, rid);
+      const noExtrasDb = makeDb();
+      const rid = 'x_pizza';
+      await publishAt(noExtrasDb, rid, { ...bare, structure });
+      const menu = await getRestaurantMenu(noExtrasDb, rid);
       assert.deepStrictEqual(menu.extras, [], `${label}: no extras is an empty list`);
       assert.deepStrictEqual(menu.variants, {}, `${label}: and no variants`);
       assert.strictEqual(menu.items.length, 1, `${label}: the dish still serves`);
@@ -489,18 +446,17 @@ const inputsFor = (rid, over = {}) => {
     // the hand-rolled one knew about exactly one rule: it would have certified as publishable a
     // version with unnamed options or a lost option ordering, and the first anyone would know is a
     // menu serving no add-ons. One rule set, asked before the flip and again at serve time.
-    const rid = 'refuse_shop';
-    const good = (await publishVersion(db, rid, inputsFor('x_pizza'))).versionId;
-    const pointer = async () => (await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get()).data().version;
+    const { db: rdb, rid, versionId: good } = await freshShop('x_pizza');
+    const pointer = async () => (await rdb.collection('restaurants').doc(rid).collection('meta').doc('active_version').get()).data().version;
     assert.strictEqual(await pointer(), good, 'premise: there is a good version live to be overwritten');
 
     const { extra_order: _dropped, ...noExtraOrder } = buildCatalogV2('x_pizza').structure;
-    await assert.rejects(() => publishVersion(db, rid, { ...inputsFor('x_pizza'), structure: noExtraOrder }),
+    await assert.rejects(() => publishAt(rdb, rid, { ...inputsFor('x_pizza'), structure: noExtraOrder }),
       /publish_refused_structure/, '🔴 a structure that lost its option ordering was accepted');
     assert.strictEqual(await pointer(), good, '...and the pointer stayed on the good version');
 
-    await assert.rejects(() => publishVersion(db, rid, { ...inputsFor('x_pizza'), extraRecords: [] }),
-      (e) => { assert.strictEqual(e.code, 'catalog_missing_display', `got ${e.code}: ${e.message}`); return true; },
+    await assert.rejects(() => publishAt(rdb, rid, { ...inputsFor('x_pizza'), extraRecords: [] }),
+      (e) => { assert.ok(/publish_refused_invalid|catalog_missing_display/.test(e.code), `got ${e.code}: ${e.message}`); return true; },
       '🔴 a version whose options have no display records reached the flip');
     assert.strictEqual(await pointer(), good, '...and the pointer stayed on the good version');
     ok('publish fail-closed: a lost option ordering and unnamed options are each refused BEFORE the flip; the live version is untouched');
@@ -526,11 +482,10 @@ const inputsFor = (rid, over = {}) => {
   {
     // NON-VACUITY: a value that exists ONLY in the published version must reach the artifact. If the
     // generator were quietly re-reading the form, every assertion above would still pass.
-    const rid = 'sentinel_shop';
     const v2 = buildCatalogV2('la_musa');
     const items = v2.items.map((i, idx) => (idx === 0 ? { ...i, display: { ...i.display, name: 'ONLY-IN-THE-VERSION' } } : i));
-    await publishVersion(db, rid, { ...inputsFor('la_musa'), items });
-    const snap = await getRestaurantMenu(db, rid);
+    const shop = await freshShop('la_musa', { items });
+    const snap = await getRestaurantMenu(shop.db, shop.rid);
     const bundle = generateFormBundle('la_musa', snap);
     const firstKey = v2.structure.item_order[0];
     assert.strictEqual(bundle.dishes[0].name, 'ONLY-IN-THE-VERSION', 'the version-only name reaches the bundle');
@@ -543,13 +498,14 @@ const inputsFor = (rid, over = {}) => {
   {
     // An extras-only sentinel, separately: extras are the collection this task added, and the dish
     // sentinel above would pass even if extras were being read from somewhere else entirely.
-    const rid = 'sentinel_extras';
-    const v2 = buildCatalogV2('x_pizza');
+    // la_musa, because its extras key by their id slug — so an option's NAME is display-only there,
+    // while under x_pizza's rule the name IS the pricing key and renaming one is a different option.
+    const v2 = buildCatalogV2('la_musa');
     const extraRecords = v2.extras.map((e, idx) => (idx === 0 ? { ...e, display: { ...e.display, name: 'OPTION-ONLY-IN-THE-VERSION' } } : e));
-    await publishVersion(db, rid, { ...inputsFor('x_pizza'), extraRecords });
-    const snap = await getRestaurantMenu(db, rid);
-    assert.strictEqual(generateFormBundle('x_pizza', snap).extras[0].name, 'OPTION-ONLY-IN-THE-VERSION');
-    assert.notStrictEqual(readLiteral(formSource('x_pizza'), 'EXTRAS')[0].name, 'OPTION-ONLY-IN-THE-VERSION',
+    const shop = await freshShop('la_musa', { extraRecords });
+    const snap = await getRestaurantMenu(shop.db, shop.rid);
+    assert.strictEqual(generateFormBundle('la_musa', snap).extras[0].name, 'OPTION-ONLY-IN-THE-VERSION');
+    assert.notStrictEqual(readLiteral(formSource('la_musa'), 'EXTRAS')[0].name, 'OPTION-ONLY-IN-THE-VERSION',
       'the form does not carry it — the extras really came from the version');
     ok('non-vacuity: an EXTRA named only in the published version flows into the bundle');
   }

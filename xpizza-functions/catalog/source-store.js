@@ -40,6 +40,15 @@ const SOURCE_COVERED_LITERALS = [
 
 const sourceRefOf = (db, rid) => db.collection('restaurants').doc(rid).collection('meta').doc('source');
 
+// The draft's REVISION, as a comparable string. Nanoseconds are preserved on purpose: an ISO round
+// trip truncates them, and a revision built from a truncated time can never equal the stored one.
+// It lives here, beside sourceRefOf, because two things now compare draft revisions — the edit
+// token's binding and the pointer-flip CAS — and a second spelling of "which draft is this" is a
+// comparison that agrees until someone edits one of them.
+const encodeUpdateTime = (ts) => (ts && typeof ts.seconds === 'number'
+  ? `${ts.seconds}.${String(ts.nanoseconds || 0).padStart(9, '0')}`
+  : String(ts));
+
 // Stable RECURSIVE key ordering. Arrays are left alone: their order is CONTENT here (item_order,
 // categories, variant lists), and sorting them would silently rewrite the menu.
 //
@@ -612,4 +621,4 @@ async function readSource(db, rid) {
   return source;
 }
 
-module.exports = { SCHEMA_VERSION, readSource, validateSource, sourceToBuildInputs, canonicalize, sourceRefOf, isPositiveInt, extrasKeyOf, SOURCE_COVERED_LITERALS };
+module.exports = { SCHEMA_VERSION, readSource, validateSource, encodeUpdateTime, sourceToBuildInputs, canonicalize, sourceRefOf, isPositiveInt, extrasKeyOf, SOURCE_COVERED_LITERALS };

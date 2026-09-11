@@ -66,16 +66,24 @@ const GATE = 'assertStoreCodeParity';
   assert.ok(pubBody.length > 200 && pubBody.includes('acquireLease'), 'non-vacuity: the slice really is publishVersion');
   for (const [needle, why] of [
     ['await readVersionDocs(db, rid, versionId)', 'verify-before-flip: the version is re-read before the pointer moves'],
-    ['await verifyVersionStructure(db, rid, versionId)', 'the structure bijection is re-verified before the flip'],
-    ['await flipPointer(db, rid, token, versionId, snapshot)', 'the flip is still the last step, under a lease'],
+    ['await verifyVersionStructure(db, rid, versionId)', 'the persisted candidate is re-read AND re-validated before the flip'],
+    ['await flipPointer(db, rid, token, versionId, snapshot, expected)', 'the flip is still the last step, under a lease, and under a CAS'],
+    // 1A Task 7: the validator runs BEFORE anything is written, so an invalid candidate never becomes
+    // an immutable version at all. Pinned inside publishVersion's own body for the reason the comment
+    // above gives — a file-wide search finds the identical call in rollbackVersion.
+    ['assertCandidateValid(rid, candidateSource(rid,', 'the candidate is validated pre-publish, before the lease and before any write'],
   ]) {
     assert.ok(pubBody.includes(needle), `${why} — must still be present INSIDE publishVersion`);
   }
+  // and the pre-publish validation must precede the WRITE, not merely precede the flip — a version
+  // that should never have existed is still a version someone can roll back to.
+  assert.ok(pubBody.indexOf('assertCandidateValid(rid, candidateSource(rid,') < pubBody.indexOf('await writeVersion('),
+    'the candidate must be validated BEFORE writeVersion — validating a version already written leaves the bad one behind');
   // and the verification must precede the flip, not merely coexist with it
   assert.ok(pubBody.indexOf('await readVersionDocs(db, rid, versionId)') < pubBody.indexOf('await flipPointer('),
     'the re-read must come BEFORE the flip — verifying after the pointer moved proves nothing');
   assert.ok(pubBody.indexOf('await verifyVersionStructure(db, rid, versionId)') < pubBody.indexOf('await flipPointer('),
-    'and so must the structure check');
+    'and so must the persisted-candidate check');
   const resolver = codeOf('catalog/pricing-tables.js');
   assert.ok(!new RegExp(`\\b${GATE}\\b`).test(resolver), 'the serving resolver must stay parity-free (2c made the catalog authoritative)');
   assert.ok(/heartbeat\(restaurantId, now\(\)\)/.test(resolver) && /serveFingerprint\(restaurantId, cat/.test(resolver),
