@@ -169,36 +169,11 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: a snapshot that fails preparation leaves the bundle exactly as it was`);
   }
 
-  // ── 5. 🔴 ATOMIC — A THROW MID-RENDER ROLLS THE WHOLE APPLY BACK ──
-  // The carry-forward: the coordinator commits `applied` BEFORE onApply so a throwing render cannot
-  // wedge it, which puts the half-a-menu risk on the SCREEN. renderMenu is made to throw after the
-  // globals have already been swapped — the exact moment that would otherwise leave new dishes priced
-  // by an old table.
-  {
-    const w = loadForm(dir);
-    const before = painted(w), menuBefore = w.liveMenuGlobalGet('MENU');
-    const realRender = w.renderMenu;
-    let swappedDuringRender = null;
-    w.renderMenu = function () {
-      swappedDuringRender = w.liveMenuGlobalGet('MENU')[0].name;   // prove the globals HAD moved
-      // 🔴 WRITE FIRST, THEN THROW. A render that throws before touching the DOM leaves nothing to roll
-      // back, so asserting "the DOM is unchanged" would hold even with the rollback deleted. A real
-      // partial render damages the page, and that is what this has to reproduce.
-      const first = w.document.getElementById(containersOf(w)[0]);
-      if (first) first.innerHTML = '<div id="half-rendered">HALF</div>';
-      throw new Error('render exploded');
-    };
-    const m = B.menu(w);
-    m.dishes[0] = { ...m.dishes[0], name: 'Half Rendered' };
-    await serve(w, envelope(B.rid, m));
-    w.renderMenu = realRender;
-    assert.strictEqual(swappedDuringRender, 'Half Rendered', `${dir}: non-vacuity — the commit really was mid-flight`);
-    assert.ok(!painted(w).includes('half-rendered'), `${dir}: 🔴 the half-written container was put back`);
-    assert.strictEqual(w.liveMenuGlobalGet('MENU'), menuBefore, `${dir}: 🔴 MENU is back to the identical prior array`);
-    assert.strictEqual(painted(w), before, `${dir}: 🔴 and the screen is the prior render, not half of each`);
-    assert.strictEqual(w.__liveMenu.applier.state().lastError.message, 'render exploded', `${dir}: the failure is recorded, not swallowed`);
-    ok(`${dir}: a throw MID-RENDER rolls back globals and DOM — never new dishes at old prices`);
-  }
+  /* (The old "a throw mid-render rolls back globals and DOM" case lived here. It asserted a DOM-undo
+     contract the design no longer has — and should not have: undoing the markup of the regions that
+     hold the menu would also undo the markup of the customer's input fields inside them. What replaced
+     it is checks 19-21 below: a mid-commit throw REDRAWS the last good menu, typed input survives, and
+     a renderer that cannot draw the old menu either is reported fatal rather than papered over.) */
 
   // ── 6. THE FEED IS NOT WEDGED BY THAT FAILURE ──
   {
@@ -436,91 +411,85 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: an in-cart item's card state survives the re-render`);
   }
 
-  // ── 19. 🔴 THE ROLLBACK COVERS THE DERIVED UI AND THE QUOTE, NOT JUST THE MENU ──
-  // The commit does not stop at the menu: it clears the cached quote, then drives the totals, the cart
-  // pill and the tender chips. A rollback that restored only the containers left those writes standing —
-  // a page whose totals and chips agree with a menu that is no longer on it.
-  //
-  // Note what could NOT be used to show this: repricing a dish in the cart does not move the displayed
-  // total, because Task 4 holds the line at the price the customer agreed to. An earlier version of this
-  // test tried exactly that and asserted a total that was never going to change, which is why a mutation
-  // deleting the derived rollback survived it. The chips are genuinely rewritten by the commit, so they
-  // are what the assertion uses — and the throw is placed at the step AFTER them.
+  // ── 19. 🔴 A MID-COMMIT THROW REDRAWS THE LAST GOOD MENU ──
+  // The commit does not try to undo itself. prepare has already refused anything unusable, so a throw
+  // here means a renderer bug — and the recovery is a clean redraw of the menu that was standing, which
+  // is coherent whatever the half-finished one left behind. The throw is placed at a step AFTER the
+  // menu has rendered, which is exactly the case where a half-applied screen would otherwise persist.
   {
     const w = loadForm(dir);
-    const chipsBefore = w.document.getElementById('change-chips').innerHTML;
-    w.__serverQuote.key = 'quote-for-the-menu-on-screen';
-    w.__serverQuote.cents = 123400;
+    const before = painted(w);
+    /* 🔴 THE FAILURE IS DATA-DEPENDENT, and it has to be for this to mean anything. The recovery
+       redraws by running the SAME paint over the old menu, so a renderer that throws unconditionally
+       throws again during recovery — that case is check 21, and it ends fatal. What the redraw is FOR
+       is the realistic failure: a snapshot that is valid but trips a renderer, where the menu that was
+       standing does not. This stub throws only while the new data is installed. */
     const realTender = w.onCashTenderedInput;
-    w.onCashTenderedInput = () => { throw new Error('tender hint exploded'); };   // runs after chips + quote clear
-    await serve(w, envelope(B.rid, B.menu(w)));
-    w.onCashTenderedInput = realTender;
-
-    assert.strictEqual(w.__liveMenu.applier.state().lastError.message, 'tender hint exploded',
-      `${dir}: non-vacuity — the commit really failed at the step after the derived renders`);
-    assert.notStrictEqual(chipsBefore, undefined);
-    assert.strictEqual(w.document.getElementById('change-chips').innerHTML, chipsBefore,
-      `${dir}: 🔴 the tender chips are back to the ones matching the menu on screen`);
-    assert.strictEqual(w.__serverQuote.key, 'quote-for-the-menu-on-screen',
-      `${dir}: 🔴 and the quote the commit cleared is restored — the menu it was valid for still stands`);
-    assert.strictEqual(w.__serverQuote.cents, 123400, `${dir}: …with its amount`);
-    ok(`${dir}: a mid-commit throw rolls back the derived UI and the cached quote, not only the menu`);
-  }
-
-  // ── 20. 🔴 …INCLUDING #s2-summary, THE ELEMENT THE THIRD ENUMERATION MISSED ──
-  // renderStage2Summary() runs inside updateTotal(), which the commit drives — so the Stage-2 summary
-  // is rewritten by every apply. Under the enumerated capture it was not on the list and survived a
-  // rollback. It is inside #s2, so the region capture covers it without anyone having to notice it.
-  {
-    const w = loadForm(dir);
-    w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
-    const summary = w.document.getElementById('s2-summary');
-    assert.ok(summary, `${dir}: the Stage-2 summary element exists`);
-    summary.innerHTML = '<div id="summary-sentinel">the summary that matches the menu on screen</div>';
-    const realTender = w.onCashTenderedInput;
-    w.onCashTenderedInput = () => { throw new Error('tender hint exploded'); };   // after updateTotal
-    await serve(w, envelope(B.rid, B.menu(w)));
-    w.onCashTenderedInput = realTender;
-    assert.strictEqual(w.__liveMenu.applier.state().lastError.message, 'tender hint exploded',
-      `${dir}: non-vacuity — the commit failed after the summary had been rewritten`);
-    assert.ok(w.document.getElementById('summary-sentinel'),
-      `${dir}: 🔴 the Stage-2 summary was rolled back with everything else`);
-    ok(`${dir}: a mid-commit throw restores #s2-summary — the element the enumerated capture missed`);
-  }
-
-  // ── 21. 🔴 THE CAPTURE IS CLOSED BY CONSTRUCTION — PROVEN, NOT ARGUED ──
-  // The point of capturing whole top-level regions rather than a list of ids is that nothing a renderer
-  // writes can fall outside it. That is a claim about the page, so it is checked against the page: every
-  // node a real apply mutates must lie inside a region the capture holds. A renderer added later that
-  // wrote somewhere new would fail HERE, rather than silently surviving the next rollback.
-  {
-    const w = loadForm(dir);
-    w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
-    const regions = w.liveMenuRegions();
-    assert.ok(regions.length > 3, `${dir}: non-vacuity — the capture holds real regions`);
-    const touched = [];
-    /* Observed over the BODY subtree, which is exactly where the regions are: they ARE body's element
-       children, so "inside the body" and "inside some region" are the same set, and the assertion below
-       is a real closure claim rather than a filtered one. <head> is excluded by SCOPE rather than by a
-       whitelist, and covered structurally instead — form-cart.copy.test.mjs asserts the forms contain no
-       document.head write at all, so no renderer can put anything there to begin with. (Watching the
-       whole documentElement picked up unrelated async page init appending a <style> to head during the
-       window, which is page start-up rather than anything the apply did.) */
-    const obs = new w.MutationObserver((records) => records.forEach((r) => touched.push(r.target)));
-    obs.observe(w.document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+    w.onCashTenderedInput = function () {
+      if (w.liveMenuGlobalGet('MENU')[0].name === 'Should Not Survive') throw new Error('tender hint exploded');
+      return realTender.apply(this, arguments);
+    };
     const m = B.menu(w);
-    m.dishes[0] = { ...m.dishes[0], name: 'Observed Apply' };
+    m.dishes[0] = { ...m.dishes[0], name: 'Should Not Survive', price: m.dishes[0].price + 40 };
     await serve(w, envelope(B.rid, m));
-    obs.disconnect();
+    w.onCashTenderedInput = realTender;
 
-    assert.ok(touched.length > 0, `${dir}: non-vacuity — the apply really did mutate the page`);
-    const covered = (node) => regions.some((r) => r === node || r.contains(node))
-      || node === w.document.body || node === w.document.documentElement;
-    const escaped = [...new Set(touched)].filter((n) => !covered(n));
-    const describe = (n) => (n.id ? '#' + n.id : (n.nodeName + (n.parentElement && n.parentElement.id ? ' in #' + n.parentElement.id : '')));
-    assert.deepStrictEqual(escaped.map(describe), [],
-      `${dir}: 🔴 every node the apply touched must be inside a captured region — these were not: ${escaped.map(describe).join(', ')}`);
-    ok(`${dir}: every node a real apply mutates is inside the capture (${[...new Set(touched)].length} nodes checked)`);
+    assert.strictEqual(w.__liveMenu.applier.state().lastError.message, 'tender hint exploded',
+      `${dir}: non-vacuity — the commit really failed after the menu had been drawn`);
+    assert.ok(!painted(w).includes('Should Not Survive'),
+      `${dir}: 🔴 the half-applied menu is gone`);
+    assert.strictEqual(painted(w), before, `${dir}: and what stands is the prior menu, drawn whole`);
+    assert.strictEqual(w.liveMenuGlobalGet('MENU')[0].name, B.menu(w).dishes[0].name,
+      `${dir}: the globals agree with what is on screen`);
+    assert.ok(w.__jsdomErrors.length === 0, `${dir}: and the page raised nothing uncaught`);
+    ok(`${dir}: a mid-commit throw redraws the last good menu — no half-applied screen`);
+  }
+
+  // ── 20. 🔴 …AND THE CUSTOMER'S TYPED INPUT SURVIVES IT ──
+  // The reason the recovery is a redraw rather than a DOM undo. Restoring the markup of the regions
+  // that hold the menu would also restore the markup of the fields inside them — wiping a name, a
+  // phone number, a cash-tendered amount, to fix a cosmetic glitch. A redraw cannot: it writes the
+  // menu containers and the totals, and never touches an input the customer has filled in.
+  {
+    const w = loadForm(dir);
+    const name = w.document.getElementById('cname');
+    const tendered = w.document.getElementById('cash-tendered');
+    assert.ok(name && tendered, `${dir}: the typed fields exist`);
+    name.value = 'Ana Martínez';
+    tendered.value = '500';
+    w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
+
+    const realTender = w.onCashTenderedInput;
+    w.onCashTenderedInput = function () {
+      if (w.liveMenuGlobalGet('MENU')[0].name === 'Should Not Survive') throw new Error('tender hint exploded');
+      return realTender.apply(this, arguments);
+    };
+    const m = B.menu(w);
+    m.dishes[0] = { ...m.dishes[0], name: 'Should Not Survive' };
+    await serve(w, envelope(B.rid, m));
+    w.onCashTenderedInput = realTender;
+
+    assert.strictEqual(w.document.getElementById('cname').value, 'Ana Martínez',
+      `${dir}: 🔴 the name the customer typed is untouched by the recovery`);
+    assert.strictEqual(w.document.getElementById('cash-tendered').value, '500',
+      `${dir}: 🔴 …and so is the amount they were paying with`);
+    assert.strictEqual(w.cartItemCount(), 1, `${dir}: and their cart is intact`);
+    ok(`${dir}: recovery never clears the customer's typed input`);
+  }
+
+  // ── 21. A RENDERER THAT CANNOT DRAW AT ALL IS REPORTED, NOT PAPERED OVER ──
+  // If the redraw itself throws — the renderer is broken for the OLD menu too — there is nothing left
+  // to fall back to. The applier says so rather than reporting success over an unknown screen.
+  {
+    const w = loadForm(dir);
+    const realRender = w.renderMenu;
+    w.renderMenu = () => { throw new Error('renderer is broken'); };
+    await serve(w, envelope(B.rid, B.menu(w)));
+    w.renderMenu = realRender;
+    const st = w.__liveMenu.applier.state();
+    assert.ok(st.fatal, `${dir}: 🔴 an unrecoverable render is reported as fatal, not as a refusal`);
+    assert.match(st.fatal.message, /renderer is broken/, `${dir}: with the reason`);
+    ok(`${dir}: a renderer that cannot draw the old menu either is reported fatal`);
   }
 
   // ── 22. A CATEGORY THE UPGRADE REMOVES LEAVES THE SCREEN ──

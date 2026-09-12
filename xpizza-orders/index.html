@@ -1908,72 +1908,47 @@ function liveMenuUiRestore(ui){
    capture is what makes that a guarantee rather than an assumption.
    The arrays are held BY REFERENCE on purpose — commit replaces them rather than mutating them, so the
    old reference is exactly what putting the old menu back requires. */
-/* 🔴 THE RESTORE POINT IS CLOSED BY CONSTRUCTION, NOT ENUMERATED.
-   Three rounds of this were a hand-written list of element ids, and each round missed one: first
-   everything outside the menu containers, then the quote, then #s2-summary. The list was never the
-   problem — LISTING was. Whether a rollback is complete cannot depend on somebody remembering every
-   element every renderer in the commit's call-graph happens to write, because the next renderer added
-   will be missed exactly the same way, and the failure is silent: a page that rolled back some of
-   itself and reports success.
-   So the set is defined structurally: EVERY TOP-LEVEL ELEMENT OF THE PAGE. Every node in the document
-   is a descendant of one of body's element children, so nothing any renderer writes — today's or
-   tomorrow's — can fall outside it. There is no judgement left to get wrong.
-   (Same move as Task 4's send gate: guard at the level every path converges on, rather than listing the
-   paths. live-apply.test.mjs proves the closure empirically with a MutationObserver, so it stays true
-   rather than merely being argued here.)
-   Regions are held by REFERENCE — body's element children are not replaced by any of this — and are
-   written back only where they actually differ, so a failed apply disturbs nothing it did not touch. */
-function liveMenuRegions(){
-  return Array.prototype.filter.call(document.body.children, (el) => {
-    const t = el.tagName;
-    return t !== 'SCRIPT' && t !== 'TEMPLATE' && t !== 'STYLE' && t !== 'LINK';
-  });
+/* 🔴 RECOVERY IS A CLEAN REDRAW OF THE LAST GOOD MENU — NOT AN ATTEMPT TO UNDO THE DOM.
+   Three versions of this tried to undo: first a list of element ids, then a longer list, then whole
+   page regions. Undo kept being wrong in a new way each time, and the last version was wrong in a way
+   that mattered more than the ones before it — restoring #s1/#s2 markup would have DESTROYED THE
+   CUSTOMER'S TYPED INPUT, because the name, phone and cash-tendered fields live inside those regions.
+   A rollback that clears the form to fix a menu glitch is a worse outcome than the glitch.
+
+   So the commit does not try to reverse itself. prepare has already validated the snapshot completely
+   (it is the adapter's acceptance test, so an unusable snapshot never reaches commit at all), and if a
+   renderer throws anyway, the recovery is to REDRAW THE LAST GOOD MENU from scratch. That is complete
+   by construction in the way undo never was: a full redraw produces a coherent menu whatever state the
+   half-finished one left behind, and it touches only what the menu render touches — never the fields
+   the customer has typed into, never anything inserted elsewhere on the page.
+
+   What this deliberately does NOT promise: pixel-perfect reversal. A genuine renderer bug leaves a
+   brief visual glitch until the redraw lands. That is cosmetic and rare, the money is unaffected (the
+   send gate refuses a cart whose captured prices no longer agree with the menu), and it is logged. */
+
+/* THE MENU CURRENTLY STANDING — read at capture time, with no bookkeeping behind it. An earlier version
+   tracked a LAST_GOOD alongside the bundle's boot values, and mutation testing showed the tracking could
+   not matter: the globals change only inside liveMenuPaint, which runs from the commit and from the
+   recovery, so at the moment capture() is called they already ARE the last menu that rendered whole.
+   Two variables that can only ever agree with the thing they shadow are two variables that can drift
+   from it, and one of them had an ordering hazard (recording the new menu before proving it renders).
+   Reading the live values instead is the same answer with nothing to keep in step. */
+function liveMenuSnapshotGlobals(){
+  const out = {};
+  LIVE_MENU_GLOBALS.forEach((name) => { out[name] = liveMenuGlobalGet(name); });
+  return out;
 }
-function liveMenuCapture(){
-  const globals = {};
-  LIVE_MENU_GLOBALS.forEach((name) => { globals[name] = liveMenuGlobalGet(name); });
-  // innerHTML covers every descendant; class and inline style cover the region element itself, which a
-  // renderer can toggle without touching anything inside it.
-  const regions = liveMenuRegions().map((el) => ({
-    el, html: el.innerHTML, cls: el.className, css: (el.style ? el.style.cssText : ''),
-  }));
-  return {
-    regions,
-    bodyCls: document.body.className,
-    bodyCss: document.body.style ? document.body.style.cssText : '',
-    qty: Object.assign({}, qty),
-    globals,
-    // The cached quote is state the commit deliberately clears, so it is state the rollback must put
-    // back — otherwise a failed apply still discards a quote that was valid for the menu that stands.
-    quote: (typeof __serverQuote === 'object' && __serverQuote)
-      ? { key: __serverQuote.key, cents: __serverQuote.cents, inflight: __serverQuote.inflight } : null,
-    ui: liveMenuUiCapture(),
-  };
-}
+function liveMenuCapture(){ return { good: liveMenuSnapshotGlobals() }; }
 function liveMenuRestore(point){
-  LIVE_MENU_GLOBALS.forEach((name) => { liveMenuGlobalSet(name, point.globals[name]); });
-  point.regions.forEach((r) => {
-    if (r.el.innerHTML !== r.html) r.el.innerHTML = r.html;
-    if (r.el.className !== r.cls) r.el.className = r.cls;
-    if (r.el.style && r.el.style.cssText !== r.css) r.el.style.cssText = r.css;
-  });
-  if (document.body.className !== point.bodyCls) document.body.className = point.bodyCls;
-  if (document.body.style && document.body.style.cssText !== point.bodyCss) document.body.style.cssText = point.bodyCss;
-  Object.keys(qty).forEach((k) => { delete qty[k]; });
-  Object.assign(qty, point.qty);
-  if (point.quote && typeof __serverQuote === 'object' && __serverQuote) {
-    __serverQuote.key = point.quote.key;
-    __serverQuote.cents = point.quote.cents;
-    __serverQuote.inflight = point.quote.inflight;
-  }
-  liveMenuUiRestore(point.ui);
+  // A full redraw of a menu that is known to be whole. If THIS throws the page is genuinely beyond
+  // recovery from here, and the applier reports 'broken' rather than pretending otherwise.
+  liveMenuPaint(point.good);
+  console.warn('menu_apply_recovered', JSON.stringify({ redrew: 'last_good' }));
 }
 
-/* COMMIT. Assign, render, re-sync, recompute, then put the customer back where they were. Nothing here
-   decides whether the snapshot is acceptable — prepare already did that, completely — so the only
-   failures left are unforeseen ones, and those are what the restore point exists for. */
-function liveMenuCommit(prepared){
-  const ui = liveMenuUiCapture();
+/* PAINT — everything a menu change implies, in one place, used by BOTH the commit and the recovery.
+   One routine rather than two means the recovery cannot drift out of step with what an apply does. */
+function liveMenuPaint(prepared){
   LIVE_MENU_GLOBALS.forEach((name) => { liveMenuGlobalSet(name, prepared[name]); });
   // A dish the upgrade INTRODUCED has no quantity entry, and the card template reads one. Initialise it
   // to 0 — never leave it undefined, which renders as "undefined" and makes the next chg() produce NaN.
@@ -1996,6 +1971,13 @@ function liveMenuCommit(prepared){
   if (typeof renderChangeChips === 'function') renderChangeChips();      // tender chips follow the new total
   if (typeof onCashTenderedInput === 'function' && document.getElementById('cash-tendered')) onCashTenderedInput();
   if (typeof refreshPickupGate === 'function') refreshPickupGate();
+}
+
+/* COMMIT. Paint, then put the customer back where they were. Nothing is recorded afterwards: the menu
+   that is standing is the menu in the globals, which is what capture() reads. */
+function liveMenuCommit(prepared){
+  const ui = liveMenuUiCapture();
+  liveMenuPaint(prepared);
   liveMenuUiRestore(ui);
 }
 
