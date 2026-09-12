@@ -1388,18 +1388,6 @@
     ]
   },
   {
-    "id": "b4-28",
-    "slice": "b4",
-    "label": "processPixelPay’s own gate is gone (the retry re-entry is ungated)",
-    "file": "../xpizza-orders/index.html",
-    "from": "  const _payConflicts = cartConflicts();\n  if(_payConflicts.length){ announceCartConflicts(_payConflicts); return; }\n  orderSubmitting=true;",
-    "to": "  orderSubmitting=true;",
-    "command": [
-      "node",
-      "../cart-decoupling.test.mjs"
-    ]
-  },
-  {
     "id": "b4-29",
     "slice": "b4",
     "label": "la_musa: the chokepoint gate in buildOrder is gone",
@@ -1496,18 +1484,6 @@
     ]
   },
   {
-    "id": "b4-37",
-    "slice": "b4",
-    "label": "la_musa: processPixelPay’s own gate is gone (the retry re-entry is ungated)",
-    "file": "../la-musa-orders/index.html",
-    "from": "  const _payConflicts = cartConflicts();\n  if(_payConflicts.length){ announceCartConflicts(_payConflicts); return; }\n  orderSubmitting=true;",
-    "to": "  orderSubmitting=true;",
-    "command": [
-      "node",
-      "../cart-decoupling.test.mjs"
-    ]
-  },
-  {
     "id": "b4-38",
     "slice": "b4",
     "label": "la_musa: the captured records do not travel in the payment stash",
@@ -1526,6 +1502,126 @@
     "file": "../la-musa-orders/index.html",
     "from": "  CART.keys().forEach((k) => { qty[k] = CART.qtyOf(k); });",
     "to": "  ;",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-40",
+    "slice": "b4",
+    "label": "the createOrder SEND gate is gone",
+    "file": "../xpizza-orders/index.html",
+    "from": "      if(refuseConflictedSend('createOrder')){ orderSubmitting=false; return; }\n      const res = await fetch(CREATEORDER_URL,{",
+    "to": "      const res = await fetch(CREATEORDER_URL,{",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-41",
+    "slice": "b4",
+    "label": "the chargeOnlineOrder SEND gate is gone",
+    "file": "../xpizza-orders/index.html",
+    "from": "    if(refuseConflictedSend('chargeOnlineOrder')) return paymentFallback('Tu carrito cambió mientras iniciábamos el pago.');\n    const res = await fetch(CHARGEORDER_URL, {",
+    "to": "    const res = await fetch(CHARGEORDER_URL, {",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-42",
+    "slice": "b4",
+    "label": "the send gate only guards the FIRST attempt (gate-at-entry — the bypass that got through twice)",
+    "file": "../xpizza-orders/index.html",
+    "from": "      if(refuseConflictedSend('createOrder')){ orderSubmitting=false; return; }",
+    "to": "      if(attempt===1 && refuseConflictedSend('createOrder')){ orderSubmitting=false; return; }",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-43",
+    "slice": "b4",
+    "label": "restoration falls back to rebuilding from the live menu (a partial restore)",
+    "file": "../xpizza-orders/index.html",
+    "from": "    if (undescribable.length) {",
+    "to": "    if (false) {",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-44",
+    "slice": "b4",
+    "label": "la_musa: the createOrder SEND gate is gone",
+    "file": "../la-musa-orders/index.html",
+    "from": "      if(refuseConflictedSend('createOrder')){ orderSubmitting=false; return; }\n      const res = await fetch(CREATEORDER_URL,{",
+    "to": "      const res = await fetch(CREATEORDER_URL,{",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-45",
+    "slice": "b4",
+    "label": "la_musa: the chargeOnlineOrder SEND gate is gone",
+    "file": "../la-musa-orders/index.html",
+    "from": "    if(refuseConflictedSend('chargeOnlineOrder')) return paymentFallback('Tu carrito cambió mientras iniciábamos el pago.');\n    const res = await fetch(CHARGEORDER_URL, {",
+    "to": "    const res = await fetch(CHARGEORDER_URL, {",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-46",
+    "slice": "b4",
+    "label": "la_musa: the send gate only guards the FIRST attempt (gate-at-entry — the bypass that got through twice)",
+    "file": "../la-musa-orders/index.html",
+    "from": "      if(refuseConflictedSend('createOrder')){ orderSubmitting=false; return; }",
+    "to": "      if(attempt===1 && refuseConflictedSend('createOrder')){ orderSubmitting=false; return; }",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-47",
+    "slice": "b4",
+    "label": "la_musa: restoration falls back to rebuilding from the live menu (a partial restore)",
+    "file": "../la-musa-orders/index.html",
+    "from": "    if (undescribable.length) {",
+    "to": "    if (false) {",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-48",
+    "slice": "b4",
+    "label": "the send gate stops refusing an empty cart",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if(!conflicts.length && !empty) return false;",
+    "to": "  if(!conflicts.length) return false;",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-49",
+    "slice": "b4",
+    "label": "the send gate reports a conflict but sends anyway",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if(conflicts.length) announceCartConflicts(conflicts);\n  return true;",
+    "to": "  if(conflicts.length) announceCartConflicts(conflicts);\n  return false;",
     "command": [
       "node",
       "../cart-decoupling.test.mjs"

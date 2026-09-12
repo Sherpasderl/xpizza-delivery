@@ -46,3 +46,38 @@ test('both forms load the cart model, and neither still filters the cart out of 
       'non-vacuity: the census can see the old expression');
   }
 });
+
+test('the conflict gate sits at every path to a charge — structural census, both forms', () => {
+  // 🔴 THIS LIVES HERE, NOT IN THE BEHAVIOURAL SUITE, and it is the Task 3 drift-mask correction again.
+  // The mutation sweep runs cart-decoupling.test.mjs; a textual "the gate is present" check sitting in
+  // that file would kill every gate-removal mutant by TEXT, so the kill count would say nothing about
+  // whether any behaviour noticed. Behaviour proves the gates work; this proves they are where the
+  // argument says they are — two different claims, kept in two different files.
+  for (const dir of ['xpizza-orders', 'la-musa-orders']) {
+    const html = readFileSync(new URL(`../${dir}/index.html`, import.meta.url), 'utf8');
+
+    // Exactly five sites: the definition, the SEND gate, and the three entry gates.
+    assert.strictEqual((html.match(/cartConflicts\(\)/g) || []).length, 4,
+      `${dir}: expected 4 cartConflicts() sites — definition, refuseConflictedSend, buildOrder, submitOrder`);
+
+    // 🔴 THE SEND GATE, INSIDE THE RETRY LOOP, with nothing between the check and the fetch. The retry
+    // re-sends createOrder without rebuilding the order, so a gate before the loop does not cover it.
+    assert.ok(/for\(let attempt=1; attempt<=MAX_TRIES; attempt\+\+\)\{\n    try \{\n(?:[^\n]*\n){0,4}?      if\(refuseConflictedSend\('createOrder'\)\)\{ orderSubmitting=false; return; \}\n      const res = await fetch\(CREATEORDER_URL,\{/.test(html),
+      `${dir}: the createOrder send gate must sit INSIDE the retry loop, immediately before the fetch`);
+    assert.ok(/if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n    const res = await fetch\(CHARGEORDER_URL, \{/.test(html),
+      `${dir}: the chargeOnlineOrder send gate must sit immediately before the fetch`);
+
+    // Neither charge send may be reached by any route that skips the gate: there are exactly two
+    // fetches that ask for money, and each is immediately preceded by one.
+    const sends = (html.match(/await fetch\((CREATEORDER_URL|CHARGEORDER_URL)/g) || []);
+    assert.strictEqual(sends.length, 2, `${dir}: expected exactly 2 charge sends, found ${sends.length}`);
+
+    // The dispatch must honour buildOrder()'s refusal BEFORE it branches to cash or online.
+    assert.ok(/\n  if\(!buildOrder\(\)\) return;   \/\/ 1B Task 4[^\n]*\n  if\(isFreeOrder\)\{[\s\S]{0,900}?if\(selectedPayment==='online'\)\{\n    await processPixelPay\(\);/.test(html),
+      `${dir}: processPayment must honour buildOrder()'s refusal before branching`);
+
+    // non-vacuity: the send-site detector really fires on the shipped expression
+    assert.strictEqual(('const res = await fetch(CREATEORDER_URL,{'.match(/await fetch\((CREATEORDER_URL|CHARGEORDER_URL)/g) || []).length, 1,
+      'non-vacuity: the send-site census can see a charge send');
+  }
+});

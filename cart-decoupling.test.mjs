@@ -110,31 +110,24 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
   // The guard itself, verbatim — and separately, proof of WHERE it sits. A gate that ran after
   // orderSubmitting was set, or after the payload was built, would pass a "it refused" assertion while
   // leaving the form wedged; the bounded match below is what pins it to the top of submitOrder.
-  const guard = grab(html, /const _conflicts = cartConflicts\(\);\n\s*if\(_conflicts\.length\)\{ announceCartConflicts\(_conflicts\); return; \}/, "submitOrder's cart gate");
-  assert.ok(
-    /async function submitOrder\(paymentStatus\)\{\n  if\(orderSubmitting\) return;\n(?:[^\n]*\n){0,6}?  const _conflicts = cartConflicts\(\);\n  if\(_conflicts\.length\)\{ announceCartConflicts\(_conflicts\); return; \}\n  orderSubmitting = true;/.test(html),
-    'the cart gate must sit at the top of submitOrder, before orderSubmitting is set');
-  // 🔴 THE REAL PATHS TO A CHARGE. The first version of this suite tested an extracted submitOrder
-  // FRAGMENT — which is the CASH path only. The online dispatch, the option controls and the
-  // payment-return restoration were therefore untested, and all three shipped broken. These are the
-  // real functions, lifted whole.
+  /* 🔴 EVERY SOURCE-LEVEL ASSERTION HAS MOVED to form-cart.copy.test.mjs, and this is the same
+     correction as the Task 3 drift-mask. The mutation sweep runs THIS file; while a textual check
+     for "the gate is present" lived here, a mutant that deleted a gate was killed by the TEXT and
+     never had to reach a behavioural assertion — so a count of kills said nothing about whether
+     any behaviour noticed. What remains below is extraction only: if an anchor stops matching the
+     harness fails loudly as unsound, which is not a kill. The structural census still runs in
+     npm test, where catching a hand-edit is exactly its job. */
   const buildFn   = grab(html, /\nfunction buildOrder\(\)\{[\s\S]*?\n\}\n/, 'buildOrder()');
+  const submitFn  = grab(html, /\nasync function submitOrder\(paymentStatus\)\{[\s\S]*?\n\}\n/, 'submitOrder()');
+  // The REAL dispatch. Everything above it is reachable directly; this is the function the button calls,
+  // and it is the only way to prove the cash/online branch itself honours a refusal.
+  const dispatchFn = grab(html, /\nasync function processPayment\(\)\{[\s\S]*?\n\}\n/, 'processPayment()');
   const payFn     = grab(html, /\nasync function processPixelPay\(\)\{[\s\S]*?\n\}\n/, 'processPixelPay()');
   const snapFn    = grab(html, /\nfunction snapshotForm\(\)\{[\s\S]*?\n\}\n/, 'snapshotForm()');
   const restoreFn = grab(html, /\nfunction restoreOrderForm\(\)\{[\s\S]*?\n\}\n/, 'restoreOrderForm()');
   const optFn     = dir === 'xpizza-orders'
     ? grab(html, /\nfunction toggleDetailExtra\(extraId, pizzaId, instance\) \{[\s\S]*?\n\}\n/, 'toggleDetailExtra()')
     : grab(html, /\nfunction chgDetailExtra\(extraId, pizzaId, delta\) \{[\s\S]*?\n\}\n/, 'chgDetailExtra()');
-  // THE DISPATCH ORDERING, pinned at the source. processPayment() validates, calls buildOrder(), then
-  // branches to cash or online — so the refusal must be honoured BEFORE the branch, or the online path
-  // proceeds on a stale currentOrder. Bounded, so it cannot drift into agreeing with anything.
-  assert.ok(
-    /\n  if\(!buildOrder\(\)\) return;   \/\/ 1B Task 4[^\n]*\n  if\(isFreeOrder\)\{[\s\S]{0,900}?if\(selectedPayment==='online'\)\{\n    await processPixelPay\(\);/.test(html),
-    `${dir}: processPayment must honour buildOrder()'s refusal BEFORE it branches to cash or online`);
-  // …and each of the three gates is textually distinct, so a mutant can name exactly one of them.
-  // While they shared wording, a mutation aimed at the cash gate silently rewrote the online one.
-  assert.strictEqual((html.match(/cartConflicts\(\)/g) || []).length, 4,
-    `${dir}: expected exactly 4 cartConflicts() sites — definition, buildOrder, submitOrder, processPixelPay`);
   MENU.forEach(p => { qty[p.id] = 0; });
   // A persistent fake-element cache. The DOM is not what is under test — the cart is — but the real
   // buildOrder()/snapshotForm() read a dozen fields, and the notice assertions need the SAME object back.
@@ -143,8 +136,9 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
   const errEl = el('err3');
   const win = { createCart, __ACCOUNT: null, __onCartConflict: null, __scheduledFor: null, __timeMode: 'standard' };
   const doc = { getElementById: el, querySelector: () => null, querySelectorAll: () => [] };
-  const notices = [], fetchCalls = [];
+  const notices = [], fetchCalls = [], plan = [], stages = [];
   let stash = null;
+  const ctlRef = {};
   const api = new Function('ctx', `
     let MENU = ctx.MENU, EXTRAS = ctx.EXTRAS;
     const pizzaExtras = ctx.pizzaExtras, qty = ctx.qty;
@@ -157,18 +151,42 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     // is about which paths the cart gate covers, not about rendering or networking.
     const orderIdForThisCart = () => 'ord_test_1', redeemAdjustedTotal = () => calcTotal();
     const rtnIsValid = () => true, phoneCC = '504', ICON_CHECK_CIRCLE = '';
-    const showStage = () => {}, setSending = () => {}, renderMenu = () => {}, selectPay = () => {};
+    // Recorded, not inert: honouring buildOrder()'s refusal is now an EARLY-FEEDBACK rule rather than a
+    // money rule (the send gate is the money rule), and the difference it makes is visible exactly here —
+    // the customer is never shown the "sending your order" stage for an order that will be refused.
+    const showStage = (st) => ctx.stages.push(st);
+    const setSending = () => {}, renderMenu = () => {}, selectPay = () => {};
     const setOrderType = () => {}, initMap = () => {}, showPayReturn = () => {}, toggleRtn = () => {};
     const renderRedeemUI = () => {}, applyRedeemQuoteToTotals = () => {}, setCashTendered = () => {};
     const paymentFallback = () => {}, showSuccess = () => {}, setPayError = () => {};
+    const ICON_X_CIRCLE = '', ORDER_SECRET = 'test-secret';
+    // processPayment's own validation chain. Pickup orders skip the delivery checks (map, zone, address
+    // detail), leaving the payment/RTN gates — satisfied so the dispatch reaches the cart gate, which is
+    // what is under test. A validation that refused earlier would make every assertion below vacuous.
+    const isOpen = () => true, weekendOnlyBlocked = () => false;
+    let isWithinDeliveryZone = true;
     let __restorePos = null, currentOrder = {};
     const RESTAURANT_ID = ctx.rid, MIN_ORDER = 0, LA_MUSA_FALLBACK_EMAIL = 'pedidos@lamusa.test';
     const CREATEORDER_URL = 'http://test/createOrder', CHARGEORDER_URL = 'http://test/chargeOnlineOrder';
     const location = { href: '' };
     const localStorage = { getItem: () => (ctx.getStash() ? JSON.stringify(ctx.getStash()) : null), setItem: () => {}, removeItem: () => {} };
-    // 🔴 THE PROOF FOR THE ONLINE PATH. Every network call is recorded, and none is permitted:
-    // "chargeOnlineOrder was never called" is the assertion that means the charge is unreachable.
-    const fetch = (...a) => { ctx.fetchCalls.push(a[0]); throw new Error('fetch must not be reached with an unresolved line'); };
+    /* 🔴 THE NETWORK IS RECORDED, NOT FORBIDDEN — and that is the difference between this suite and
+       the one that let two bypasses through. A stub that throws on any call makes "no request was
+       sent" indistinguishable from "the code crashed on the way there", so a deleted gate survives.
+       Recording instead lets every negative assertion be paired with a POSITIVE CONTROL that proves
+       the harness can reach the send at all. ctx.plan scripts the responses (a 500 drives the real
+       retry loop); ctx.onFetch lets a test change the menu mid-flight, which is exactly how a
+       merchant's publish lands between attempt 1 and attempt 2. */
+    const fetch = async (url) => {
+      ctx.fetchCalls.push(String(url));
+      if (ctx.onFetch) ctx.onFetch(ctx.fetchCalls.length);
+      const step = ctx.plan.shift();
+      if (step === 'throw') throw new Error('network blip');
+      const status = step && step.status ? step.status : 200;
+      return { ok: status < 400, status, json: async () => (step && step.body) || {} };
+    };
+    // The real retry backs off 1.5s then 3s. The gate, not the wait, is under test.
+    const setTimeout = (fn) => { fn(); return 0; };
     let currentDetailPizzaId = null, orderSubmitting = false;
     // The order-context fields cartSig hashes alongside the items. Held constant across a comparison so
     // that when two sigs differ, the CART is the only thing that could have made them differ.
@@ -180,7 +198,18 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     ${calcFn}
     ${redeemFn}
     ${sigFn}
-    function submitGate(){ ${guard} return 'PROCEEDED'; }
+    ${submitFn}
+    ${dispatchFn}
+    /* 🔴 "BLOCKED" NOW MEANS "createOrder WAS NEVER CALLED", not "an extracted fragment returned
+       early". The previous definition ran a lifted copy of submitOrder's guard — which is precisely
+       why the cash RETRY bypass was invisible: the fragment had no retry loop in it. This runs the
+       real function, all three attempts, and reports what reached the network. */
+    async function submitGate(){
+      const before = ctx.fetchCalls.length;
+      await submitOrder('confirmed');
+      const sent = ctx.fetchCalls.slice(before).filter((u) => u.includes('createOrder'));
+      return sent.length ? 'PROCEEDED' : undefined;
+    }
     ${buildFn}
     ${payFn}
     ${snapFn}
@@ -189,13 +218,16 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     return { chg, calcTotal, redeemCartItems, cartSig, submitGate, cartConflicts, cartLines, cartItems, cartCount, CART,
              noteExtra: (r) => CART.noteExtra(r), qtyOf: (id) => qty[id],
              buildOrder, processPixelPay, snapshotForm, restoreOrderForm, currentOrder: () => currentOrder,
-             fetchCalls: ctx.fetchCalls, setStash: ctx.setStash,
+             fetchCalls: ctx.fetchCalls, setStash: ctx.setStash, submitOrder, processPayment,
+             asPickup: () => { orderType = 'pickup'; }, paySelect: (m) => { selectedPayment = m; },
              optionControl: ${dir === 'xpizza-orders' ? '(eid, pid) => toggleDetailExtra(eid, pid, 0)' : '(eid, pid, d) => chgDetailExtra(eid, pid, d === undefined ? 1 : d)'},
              liveMenu: () => MENU, setMenu: (m, e) => { MENU = m; if (e) EXTRAS = e; } };
   `)({ MENU, EXTRAS, pizzaExtras, qty, window: win, document: doc, notices, fetchCalls,
-       rid: dir === 'xpizza-orders' ? 'x_pizza' : 'la_musa',
+       rid: dir === 'xpizza-orders' ? 'x_pizza' : 'la_musa', plan, stages,
+       get onFetch() { return ctlRef.onFetch; },
        getStash: () => stash, setStash: (v) => { stash = v; } });
-  return { ...api, errEl, notices, win, fetchCalls };
+  const ctl = { plan, setPlan: (p) => { plan.length = 0; plan.push(...p); }, onFetch: (fn) => { ctlRef.onFetch = fn; } };
+  return { ...api, errEl, notices, win, fetchCalls, stages, ...ctl };
 }
 
 // Add an option the way each brand's stepper does, INCLUDING the capture the form performs.
@@ -217,7 +249,7 @@ for (const dir of Object.keys(BRANDS)) {
     assert.deepStrictEqual(f.redeemCartItems(), B.oldSerialize(MENU, EXTRAS, qty, pizzaExtras),
       `${dir}: no-conflict serialization must equal the shipped MENU-derived expression`);
     assert.strictEqual(f.calcTotal(), B.oldTotal(MENU, EXTRAS, qty, pizzaExtras), `${dir}: no-conflict total must be unchanged`);
-    assert.strictEqual(f.submitGate(), 'PROCEEDED', `${dir}: a clean cart must submit`);
+    assert.strictEqual(await f.submitGate(), 'PROCEEDED', `${dir}: a clean cart must submit`);
     ok(`${dir}: NO REGRESSION — clean cart serializes + totals byte-identically to the shipped expression`);
   }
 
@@ -259,9 +291,9 @@ for (const dir of Object.keys(BRANDS)) {
   {
     const { f, MENU } = setup(dir);
     f.chg(MENU[1].id, 1);
-    assert.strictEqual(f.submitGate(), 'PROCEEDED', `${dir}: control — it submits before the change`);
+    assert.strictEqual(await f.submitGate(), 'PROCEEDED', `${dir}: control — it submits before the change`);
     f.setMenu(MENU.filter(p => p.id !== MENU[1].id));
-    assert.strictEqual(f.submitGate(), undefined, `${dir}: submit must be refused while a line is unresolved`);
+    assert.strictEqual(await f.submitGate(), undefined, `${dir}: submit must be refused while a line is unresolved`);
     assert.strictEqual(f.cartConflicts()[0].unresolved, 'removed', `${dir}: and the reason must be 'removed', not merely "it refused"`);
     assert.match(f.errEl.textContent, new RegExp(MENU[1].name), `${dir}: the customer must be told which line changed`);
     assert.strictEqual(f.notices.length, 1, `${dir}: and it must be logged`);
@@ -275,7 +307,7 @@ for (const dir of Object.keys(BRANDS)) {
     f.setMenu(MENU.map(p => (p.id === MENU[0].id ? { ...p, price: p.price + 90 } : p)));
     assert.strictEqual(f.redeemCartItems()[0].price, MENU[0].price, `${dir}: the line must NOT adopt the new price silently`);
     assert.strictEqual(f.cartConflicts()[0].unresolved, 'repriced', `${dir}: pinned reason — repriced`);
-    assert.strictEqual(f.submitGate(), undefined, `${dir}: and it must block submit`);
+    assert.strictEqual(await f.submitGate(), undefined, `${dir}: and it must block submit`);
     ok(`${dir}: a re-priced dish keeps its agreed price and blocks submit (never silently re-priced)`);
   }
 
@@ -294,7 +326,7 @@ for (const dir of Object.keys(BRANDS)) {
     assert.strictEqual(f.cartConflicts().length, 1, `${dir}: the line must be blocked BY ITS OPTION`);
     assert.strictEqual(f.cartConflicts()[0].unresolved, null, `${dir}: …and not because the dish is unresolved — it isn't`);
     assert.strictEqual(f.cartConflicts()[0].extras.find(x => x.unresolved).unresolved, 'removed', `${dir}: pinned reason on the option`);
-    assert.strictEqual(f.submitGate(), undefined, `${dir}: a clean dish with a vanished option still blocks submit`);
+    assert.strictEqual(await f.submitGate(), undefined, `${dir}: a clean dish with a vanished option still blocks submit`);
     ok(`${dir}: a vanished OPTION is retained, counted, and blocks submit even though its dish is fine`);
   }
 
@@ -306,7 +338,7 @@ for (const dir of Object.keys(BRANDS)) {
     f.setMenu(f.liveMenu(), EXTRAS.map(e => (e.id === EXTRAS[0].id ? { ...e, price: e.price + 55 } : e)));
     assert.strictEqual(f.redeemCartItems()[0].extras[0].price, EXTRAS[0].price, `${dir}: the option keeps its agreed price`);
     assert.strictEqual(f.cartConflicts()[0].extras.find(x => x.unresolved).unresolved, 'repriced', `${dir}: pinned reason`);
-    assert.strictEqual(f.submitGate(), undefined, `${dir}: and blocks submit`);
+    assert.strictEqual(await f.submitGate(), undefined, `${dir}: and blocks submit`);
     ok(`${dir}: a re-priced OPTION keeps its agreed price and blocks submit`);
   }
 
@@ -315,11 +347,11 @@ for (const dir of Object.keys(BRANDS)) {
     const { f, MENU } = setup(dir);
     f.chg(MENU[0].id, 1); f.chg(MENU[1].id, 1);
     f.setMenu(MENU.filter(p => p.id !== MENU[1].id));
-    assert.strictEqual(f.submitGate(), undefined, `${dir}: blocked while the removed dish is in the cart`);
+    assert.strictEqual(await f.submitGate(), undefined, `${dir}: blocked while the removed dish is in the cart`);
     f.chg(MENU[1].id, -1);                              // the customer takes it out — the real path
     assert.strictEqual(f.cartConflicts().length, 0, `${dir}: removing the line resolves the conflict`);
     assert.strictEqual(f.redeemCartItems().length, 1, `${dir}: and the rest of the cart is intact`);
-    assert.strictEqual(f.submitGate(), 'PROCEEDED', `${dir}: the cart submits again`);
+    assert.strictEqual(await f.submitGate(), 'PROCEEDED', `${dir}: the cart submits again`);
     ok(`${dir}: an unresolved line can still be removed through the real chg() path, unblocking the cart`);
   }
 
@@ -346,14 +378,14 @@ for (const dir of Object.keys(BRANDS)) {
       // x_pizza is priced BY NAME — a renamed dish is a different product to createOrder, so it must stop.
       assert.strictEqual(f.cartConflicts()[0].unresolved, 'renamed', 'x_pizza: a rename must be pinned as renamed');
       assert.strictEqual(f.redeemCartItems()[0].name, MENU[0].name, 'x_pizza: the line keeps the name it was added under');
-      assert.strictEqual(f.submitGate(), undefined, 'x_pizza: and it blocks submit');
+      assert.strictEqual(await f.submitGate(), undefined, 'x_pizza: and it blocks submit');
       ok(`${dir}: a RENAMED dish is unresolved and blocks submit (priced by name)`);
     } else {
       // la_musa is priced BY ID, so a rename changes nothing about the charge. Pinned as a deliberate
       // decision rather than left as an untested silence — Task 5 owns whether display identity should
       // also stop a customer, and it will change THIS assertion if it decides so.
       assert.strictEqual(f.cartConflicts().length, 0, 'la_musa: a rename is not a money event — priced by id');
-      assert.strictEqual(f.submitGate(), 'PROCEEDED', 'la_musa: so it does not block');
+      assert.strictEqual(await f.submitGate(), 'PROCEEDED', 'la_musa: so it does not block');
       assert.strictEqual(f.redeemCartItems()[0].price, MENU[0].price, 'la_musa: and the price is untouched');
       ok(`${dir}: a RENAMED dish does NOT block (priced by id) — the deferral to Task 5, pinned`);
     }
@@ -370,7 +402,7 @@ for (const dir of Object.keys(BRANDS)) {
     assert.strictEqual(f.redeemCartItems()[0].qty, 2, `${dir}: the quantity change still applies`);
     assert.strictEqual(f.redeemCartItems()[0].price, MENU[0].price, `${dir}: but the agreed price is NOT refreshed`);
     assert.strictEqual(f.cartConflicts()[0].unresolved, 'repriced', `${dir}: the conflict survives being touched`);
-    assert.strictEqual(f.submitGate(), undefined, `${dir}: and submit stays blocked`);
+    assert.strictEqual(await f.submitGate(), undefined, `${dir}: and submit stays blocked`);
     ok(`${dir}: changing the quantity of a re-priced line does not launder it to the new price`);
   }
 
@@ -386,8 +418,129 @@ for (const dir of Object.keys(BRANDS)) {
     assert.strictEqual(f.redeemCartItems().length, 0, `${dir}: and nothing serializes`);
     assert.strictEqual(f.calcTotal(), 0, `${dir}: and the total is 0`);
     assert.strictEqual(f.qtyOf(MENU[0].id), 0, `${dir}: 🔴 and qty must NOT dangle at 1 — the card would lie`);
-    assert.strictEqual(f.submitGate(), 'PROCEEDED', `${dir}: an empty cart is not "in conflict"`);
+    assert.strictEqual(f.cartConflicts().length, 0, `${dir}: an empty cart has no CONFLICTS…`);
+    assert.strictEqual(await f.submitGate(), undefined,
+      `${dir}: …but the send gate still refuses it — a request for money with no items is not an order`);
     ok(`${dir}: a stale control cannot add a dish the live menu dropped, and qty does not dangle`);
+  }
+
+  // ── 14. 🔴 THE TWO CHARGE SENDS ARE GATED — WITH POSITIVE CONTROLS ──
+  // The guarantee lives immediately before the only two fetches that ask for money. Each "it was not
+  // sent" assertion is paired with a control proving the harness CAN reach that send — without one,
+  // a negative passes for any reason at all, which is how the first two bypasses survived a green suite.
+  {
+    // CONTROL A — the cash send is reachable.
+    const c = setup(dir);
+    c.f.chg(c.MENU[0].id, 1);
+    assert.strictEqual(c.f.buildOrder(), true);
+    await c.f.submitOrder('confirmed');
+    assert.ok(c.f.fetchCalls.some((u) => u.includes('createOrder')),
+      `${dir}: control — a clean cart DOES reach createOrder (otherwise every negative below is vacuous)`);
+
+    // CONTROL B — the online send is reachable.
+    const d = setup(dir);
+    d.f.chg(d.MENU[0].id, 1);
+    d.f.buildOrder();
+    try { await d.f.processPixelPay(); } catch (_) {}
+    assert.ok(d.f.fetchCalls.some((u) => u.includes('chargeOnlineOrder')),
+      `${dir}: control — a clean cart DOES reach chargeOnlineOrder`);
+    ok(`${dir}: CONTROL — both charge sends are reachable from this harness`);
+  }
+
+  {
+    // …and neither is reachable with a conflicted cart.
+    const { f, MENU } = setup(dir);
+    f.chg(MENU[0].id, 1);
+    f.setMenu(MENU.map(p => (p.id === MENU[0].id ? { ...p, price: p.price + 90 } : p)));
+    assert.strictEqual(f.buildOrder(), false, `${dir}: buildOrder refuses (early feedback)`);
+    assert.strictEqual(await f.submitGate(), undefined, `${dir}: createOrder is never called`);
+    try { await f.processPixelPay(); } catch (_) {}
+    assert.deepStrictEqual(f.fetchCalls.filter((u) => u.includes('chargeOnlineOrder')), [],
+      `${dir}: 🔴 chargeOnlineOrder is never called with an unresolved line`);
+    ok(`${dir}: a conflicted cart reaches NEITHER charge send`);
+  }
+
+  // ── 15. 🔴 THE CASH RETRY LOOP RE-CHECKS BEFORE IT RE-SENDS ──
+  // The bypass the caller-gates could not close: submitOrder gates at ENTRY, then retries createOrder
+  // on a 500 without rebuilding anything. If the merchant publishes during the backoff, attempt 2 sends
+  // the stale cart. The menu is repriced from inside the first request, which is exactly when it happens.
+  {
+    const { f, MENU } = setup(dir);
+    f.chg(MENU[0].id, 1);
+    assert.strictEqual(f.buildOrder(), true, `${dir}: the cart was clean when it was sent`);
+    f.setPlan([{ status: 500 }, { status: 200 }]);            // attempt 1 fails, attempt 2 would succeed
+    f.onFetch((n) => { if (n === 1) f.setMenu(MENU.map(p => (p.id === MENU[0].id ? { ...p, price: p.price + 90 } : p))); });
+    await f.submitOrder('confirmed');
+    const sends = f.fetchCalls.filter((u) => u.includes('createOrder'));
+    assert.strictEqual(sends.length, 1,
+      `${dir}: 🔴 the RETRY must not re-send a cart that was repriced during the backoff (sent ${sends.length}×)`);
+    assert.ok(f.notices.some((n) => String(n[0]).includes('cart_conflict_blocked_send')),
+      `${dir}: and the refusal is logged AT THE SEND, pinning where it stopped`);
+    ok(`${dir}: the cash retry re-checks before re-sending — a mid-backoff reprice is never charged`);
+  }
+
+  // ── 16. 🔴 AN UNREADABLE STASH IS NEVER PARTIALLY RESTORED ──
+  // "Rebuild from the live menu" silently omits a dish the menu no longer carries — a smaller cart than
+  // the customer left, with no error: the silent drop wearing error-handling's clothes. Reproduced at
+  // 3 units across 2 dishes, one since removed, restoring as 1 unit with zero conflicts.
+  {
+    const a = setup(dir);
+    a.f.chg(a.MENU[0].id, 2); a.f.chg(a.MENU[1].id, 1);
+    const stash = JSON.parse(JSON.stringify({ form: a.f.snapshotForm(), ts: Date.now(), order_id: 'o1' }));
+    delete stash.form.cart.lines[0].added;                    // the stash can no longer be read whole
+
+    const b = setup(dir);
+    b.f.setMenu(b.MENU.filter(p => p.id !== b.MENU[1].id));   // …and one of the dishes is gone from the menu
+    b.f.setStash(stash);
+    b.f.restoreOrderForm();
+    assert.strictEqual(b.f.cartCount(), 0,
+      `${dir}: 🔴 restoration must be ALL or NOTHING — never the 2 units it could still describe`);
+    assert.strictEqual(await b.f.submitGate(), undefined, `${dir}: and nothing is sent`);
+    assert.ok(b.f.notices.some((n) => String(n[0]).includes('cart_restore_refused')),
+      `${dir}: the refusal is explicit, not an empty cart nobody explained`);
+    assert.match(b.f.errEl.textContent, /recuperar tu pedido/, `${dir}: and the customer is told`);
+    ok(`${dir}: an unreadable stash whose menu also moved restores NOTHING, visibly — never partially`);
+  }
+
+  // ── 17. 🔴 THE REAL DISPATCH HONOURS THE REFUSAL — BOTH BRANCHES ──
+  // Every other test calls buildOrder / submitOrder / processPixelPay directly. This drives the actual
+  // function the pay button calls, so the cash-vs-online branch itself is under test rather than assumed.
+  for (const method of ['cash', 'online']) {
+    const c = setup(dir);                                     // CONTROL: the dispatch reaches the send
+    c.f.asPickup(); c.f.paySelect(method);
+    c.f.chg(c.MENU[0].id, 1);
+    try { await c.f.processPayment(); } catch (_) {}
+    const wanted = method === 'cash' ? 'createOrder' : 'chargeOnlineOrder';
+    assert.ok(c.f.fetchCalls.some((u) => u.includes(wanted)),
+      `${dir}/${method}: control — the real dispatch reaches ${wanted}`);
+    assert.ok(c.f.stages.includes('s4'), `${dir}/${method}: control — a clean order DOES advance to the sending stage`);
+
+    const { f, MENU } = setup(dir);
+    f.asPickup(); f.paySelect(method);
+    f.chg(MENU[0].id, 1);
+    f.setMenu(MENU.map(p => (p.id === MENU[0].id ? { ...p, price: p.price + 90 } : p)));
+    try { await f.processPayment(); } catch (_) {}
+    assert.deepStrictEqual(f.fetchCalls, [],
+      `${dir}/${method}: 🔴 the real dispatch must send nothing with an unresolved line`);
+    assert.ok(!f.stages.includes('s4'),
+      `${dir}/${method}: and must stop AT the dispatch — never show "sending your order" for an order it will refuse`);
+    ok(`${dir}: the REAL dispatch (${method}) refuses a conflicted cart and sends nothing`);
+  }
+
+  // ── 18. 🔴 THE ONLINE RETRY RE-CHECKS TOO ──
+  // processPixelPay is re-entered by its own retry paths without rebuilding the order. The mirror of the
+  // cash-retry case, and the reason the guarantee is at the send rather than at any entry.
+  {
+    const { f, MENU } = setup(dir);
+    f.chg(MENU[0].id, 1);
+    assert.strictEqual(f.buildOrder(), true, `${dir}: clean when first sent`);
+    f.onFetch((n) => { if (n === 1) f.setMenu(MENU.map(p => (p.id === MENU[0].id ? { ...p, price: p.price + 90 } : p))); });
+    try { await f.processPixelPay(); } catch (_) {}      // attempt 1 goes out, and reprices mid-flight
+    try { await f.processPixelPay(); } catch (_) {}      // the retry re-enters WITHOUT rebuilding
+    const sends = f.fetchCalls.filter((u) => u.includes('chargeOnlineOrder'));
+    assert.strictEqual(sends.length, 1,
+      `${dir}: 🔴 the online retry must not re-send a cart repriced mid-flight (sent ${sends.length}×)`);
+    ok(`${dir}: the online retry re-checks before re-sending`);
   }
 
   // ── 14. 🔴 THE ONLINE PAYMENT PATH IS GATED TOO ──
@@ -410,7 +563,7 @@ for (const dir of Object.keys(BRANDS)) {
     try { await f.processPixelPay(); } catch (e) { threw = e; }
     assert.strictEqual(threw, null, `${dir}: processPixelPay must RETURN at its gate, not run on (${threw && threw.message})`);
     assert.deepStrictEqual(f.fetchCalls, [], `${dir}: 🔴 chargeOnlineOrder must NOT be reached with an unresolved line`);
-    assert.strictEqual(f.submitGate(), undefined, `${dir}: and the cash path stays blocked too`);
+    assert.strictEqual(await f.submitGate(), undefined, `${dir}: and the cash path stays blocked too`);
     ok(`${dir}: the ONLINE charge path is gated — buildOrder refuses and chargeOnlineOrder is never called`);
   }
 
@@ -427,7 +580,7 @@ for (const dir of Object.keys(BRANDS)) {
     assert.strictEqual(conflicts.length, 1, `${dir}: the line must be blocked, not silently clean`);
     assert.strictEqual(conflicts[0].extras.find(x => x.unresolved).unresolved, 'uncaptured',
       `${dir}: pinned reason — an option with a quantity and no capture is unresolved`);
-    assert.strictEqual(f.submitGate(), undefined, `${dir}: the cash path is blocked`);
+    assert.strictEqual(await f.submitGate(), undefined, `${dir}: the cash path is blocked`);
     assert.strictEqual(f.buildOrder(), false, `${dir}: and so is every path to a charge`);
     ok(`${dir}: a stale option control cannot drop an option silently — it blocks instead`);
   }
@@ -510,7 +663,7 @@ for (const dir of Object.keys(BRANDS)) {
     addOption(dir, f, pizzaExtras, MENU[0].id, { ...EXTRAS[0], price: 999 });   // re-selected after the change
     assert.strictEqual(f.redeemCartItems()[0].extras[0].price, EXTRAS[0].price,
       `${dir}: re-selecting must not adopt the new price — capture is idempotent by key`);
-    assert.strictEqual(f.submitGate(), undefined, `${dir}: and it stays blocked`);
+    assert.strictEqual(await f.submitGate(), undefined, `${dir}: and it stays blocked`);
     ok(`${dir}: re-selecting an option does not silently re-capture it at a changed price`);
   }
 }
@@ -543,7 +696,7 @@ for (const dir of Object.keys(BRANDS)) {
     `${dir}: the REAL bundle must serialize byte-identically to the shipped expression`);
   assert.strictEqual(f.calcTotal(), B.oldTotal(MENU, EXTRAS, qty, pizzaExtras), `${dir}: …and total identically`);
   assert.strictEqual(f.cartCount(), 6, `${dir}: …and count identically`);
-  assert.strictEqual(f.submitGate(), 'PROCEEDED', `${dir}: …and submit`);
+  assert.strictEqual(await f.submitGate(), 'PROCEEDED', `${dir}: …and submit`);
   if (dir === 'la-musa-orders') assert.ok(variant, 'la_musa: a variant item must exist in the real bundle for this to mean anything');
   ok(`${dir}: NO REGRESSION on the REAL shipped bundle${variant ? ' (including a variant line)' : ''}`);
 }
