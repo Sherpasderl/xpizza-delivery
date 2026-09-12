@@ -70,10 +70,19 @@ function scanBalanced(src, begin, open, close, label) {
 // plain prefix of the original (PICKUP_ONLY_CATS → FALLBACK_PICKUP_ONLY).
 const FALLBACK_ALIAS = { PICKUP_ONLY_CATS: 'FALLBACK_PICKUP_ONLY', WEEKEND_ONLY_CATS: 'FALLBACK_WEEKEND_ONLY' };
 function literalNames(name) { return [name, FALLBACK_ALIAS[name] || `FALLBACK_${name}`]; }
+/* 🔴 `const` OR `let`, AND THE KEYWORD IS NOT THE POINT. Portal 1B Task 6 made the globals that the
+   live apply REPLACES reassignable, so the form now declares `let MENU = [` and `let EXTRAS = [`. This
+   reader is about the LITERAL's contents — the prices the catalog is built from — and matching on the
+   declaration keyword made it refuse a form that had merely changed how the binding is declared.
+   It failed closed and loudly (form_literal_not_found) rather than silently reading nothing, which is
+   the behaviour that made this a five-minute fix instead of a wrong catalog. */
+const DECLARATORS = ['const', 'let'];
 function findDecl(src, name, open) {
   for (const candidate of literalNames(name)) {
-    const at = src.indexOf(`const ${candidate} = ${open}`);
-    if (at >= 0) return { at, candidate };
+    for (const kw of DECLARATORS) {
+      const at = src.indexOf(`${kw} ${candidate} = ${open}`);
+      if (at >= 0) return { at, candidate };
+    }
   }
   return null;
 }

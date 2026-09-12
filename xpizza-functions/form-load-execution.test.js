@@ -90,7 +90,9 @@ for (const rid of ['x_pizza', 'la_musa']) {
   // Pin the ordering directly too, so the intent survives a future edit even if the sandbox drifts:
   // every top-level `MENU`-consuming statement must appear AFTER the select that declares it.
   const src = readFileSync(FORM.x_pizza, 'utf8');
-  const decl = src.indexOf('const MENU = _okDishes(');
+  // `const` or `let` — 1B Task 6 made MENU reassignable so the live apply can replace it. What this
+  // guard pins is the ORDERING, which is unaffected by the keyword and is what TDZ actually turns on.
+  const decl = Math.max(src.indexOf('const MENU = _okDishes('), src.indexOf('let MENU = _okDishes('));
   const firstUse = src.indexOf('MENU.forEach(');
   assert.ok(decl > 0 && firstUse > decl,
     'the MENU select must be declared BEFORE the first top-level use (qty / MENU.forEach) — TDZ otherwise');

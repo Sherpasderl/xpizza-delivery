@@ -1858,5 +1858,237 @@
       "node",
       "../cart-decoupling.test.mjs"
     ]
+  },
+  {
+    "id": "b6-01",
+    "slice": "b6",
+    "label": "the commit has no restore point — a throw mid-render leaves half a menu on screen",
+    "file": "../xpizza-orders/form-apply.js",
+    "from": "      try {\n        restore(point);\n      } catch (re) {",
+    "to": "      try {\n        if (false) restore(point);\n      } catch (re) {",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-02",
+    "slice": "b6",
+    "label": "the capture is taken AFTER prepare, so a preparation that mutates is not undone",
+    "file": "../xpizza-orders/form-apply.js",
+    "from": "    const point = capture();\n    try {\n      const prepared = prepare(snapshot);",
+    "to": "    let point = null;\n    try {\n      const prepared = prepare(snapshot);\n      point = capture();",
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-orders/form-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-03",
+    "slice": "b6",
+    "label": "a busy form is applied to anyway — the menu moves under an open modal",
+    "file": "../xpizza-orders/form-apply.js",
+    "from": "    if (busy()) {",
+    "to": "    if (false) {",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-04",
+    "slice": "b6",
+    "label": "a completed order is not terminal — the receipt gets redrawn",
+    "file": "../xpizza-orders/form-apply.js",
+    "from": "    if (terminal()) { pending = null; return 'ignored'; }\n    if (busy()) {",
+    "to": "    if (false) { pending = null; return 'ignored'; }\n    if (busy()) {",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-05",
+    "slice": "b6",
+    "label": "a deferred snapshot is dropped instead of held",
+    "file": "../xpizza-orders/form-apply.js",
+    "from": "      pending = snapshot; deferred += 1;",
+    "to": "      deferred += 1;",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-06",
+    "slice": "b6",
+    "label": "flush ignores the terminal state and resurrects a held snapshot",
+    "file": "../xpizza-orders/form-apply.js",
+    "from": "    if (terminal()) { pending = null; return 'ignored'; }\n    if (busy()) return 'deferred';",
+    "to": "    if (busy()) return 'deferred';",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-07",
+    "slice": "b6",
+    "label": "prepare returning nothing is accepted as a successful apply",
+    "file": "../xpizza-orders/form-apply.js",
+    "from": "      if (!prepared) throw new Error('apply_prepare_empty');",
+    "to": "      if (false) throw new Error('apply_prepare_empty');",
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-orders/form-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-08",
+    "slice": "b6",
+    "label": "a non-positive price is accepted into the live menu",
+    "file": "../xpizza-orders/index.html",
+    "from": "    && typeof r.price === 'number' && isFinite(r.price) && r.price > 0;",
+    "to": "    && (r.price === undefined || typeof r.price === 'number');",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-09",
+    "slice": "b6",
+    "label": "two dishes sharing an id are accepted — one silently wins every lookup",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if (new Set(dishes.map((d) => String(d.id))).size !== dishes.length) throw new Error('apply_dish_duplicate');",
+    "to": ";",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-10",
+    "slice": "b6",
+    "label": "the snapshot’s rid is not checked against this form’s brand",
+    "file": "../xpizza-orders/index.html",
+    "from": "    if (raw.rid !== liveMenuRid()) return null;",
+    "to": ";",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-11",
+    "slice": "b6",
+    "label": "a dish the upgrade introduced is left without a quantity entry",
+    "file": "../xpizza-orders/index.html",
+    "from": "  MENU.forEach((p) => { if (qty[p.id] === undefined) qty[p.id] = 0; });",
+    "to": ";",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "equivalent": true,
+    "why": "No input can distinguish it TODAY, for two reasons that both have to hold: the card template writes a literal 0 into the quantity element rather than reading qty[p.id], and chg() reads (qty[id]||0), so an absent entry neither renders as 'undefined' nor produces NaN. The line is kept as the belt to those braces — it is the Task 4 contract that a dish introduced by a live upgrade starts at 0 — and it stops being equivalent the moment the template renders the real quantity, which is exactly when it would be needed. Unlike the redundant gates removed earlier in 1B, this one hides nothing: it cannot mask another rule's failure."
+  },
+  {
+    "id": "b6-12",
+    "slice": "b6",
+    "label": "the in-cart cards are not re-synced after the re-render",
+    "file": "../xpizza-orders/index.html",
+    "from": "  cartLines().forEach((l) => { try { chg(l.key, 0); } catch(_){} });",
+    "to": ";",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-13",
+    "slice": "b6",
+    "label": "the stale server quote survives a menu change",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; }",
+    "to": ";",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-14",
+    "slice": "b6",
+    "label": "focus is not restored after the container holding it is re-rendered",
+    "file": "../xpizza-orders/index.html",
+    "from": "  liveMenuUiRestore(ui);\n}",
+    "to": "  if (false) liveMenuUiRestore(ui);\n}",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-15",
+    "slice": "b6",
+    "label": "the DOM is not rolled back, only the globals",
+    "file": "../xpizza-orders/index.html",
+    "from": "  point.dom.forEach((d) => {\n    if (d.html === null) return;",
+    "to": "  point.dom.forEach((d) => {\n    if (true) return;",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-20",
+    "slice": "b6",
+    "label": "la_musa: a dish in a category that does not exist is accepted (sellable and invisible)",
+    "file": "../la-musa-orders/index.html",
+    "from": "  dishes.forEach((d, i) => { if (!catIds.has(d.cat)) throw new Error('apply_dish_orphan@' + i); });",
+    "to": ";",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-21",
+    "slice": "b6",
+    "label": "la_musa: two dishes sharing an id are accepted",
+    "file": "../la-musa-orders/index.html",
+    "from": "  if (new Set(dishes.map((d) => String(d.id))).size !== dishes.length) throw new Error('apply_dish_duplicate');",
+    "to": ";",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-22",
+    "slice": "b6",
+    "label": "la_musa: the snapshot’s rid is not checked against this form’s brand",
+    "file": "../la-musa-orders/index.html",
+    "from": "    if (raw.rid !== liveMenuRid()) return null;",
+    "to": ";",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-23",
+    "slice": "b6",
+    "label": "la_musa: the in-cart cards are not re-synced after the re-render",
+    "file": "../la-musa-orders/index.html",
+    "from": "  cartLines().forEach((l) => { try { chg(l.key, 0); } catch(_){} });",
+    "to": ";",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
   }
 ]

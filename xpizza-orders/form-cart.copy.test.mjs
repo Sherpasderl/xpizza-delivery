@@ -54,17 +54,27 @@ test('the conflict gate sits at every path to a charge — structural census, bo
   // whether any behaviour noticed. Behaviour proves the gates work; this proves they are where the
   // argument says they are — two different claims, kept in two different files.
   for (const dir of ['xpizza-orders', 'la-musa-orders']) {
-    const html = readFileSync(new URL(`../${dir}/index.html`, import.meta.url), 'utf8');
+    const raw = readFileSync(new URL(`../${dir}/index.html`, import.meta.url), 'utf8');
+    /* 🔴 COMMENTS STRIPPED BEFORE COUNTING — and this is the SECOND census in this file to need it.
+       The first counted the old MENU-derived cart expression that the code's own header quotes while
+       explaining what was wrong with it. This one counted a comment in the Task 6 apply block that
+       mentions cartConflicts() while describing what reconciles the cart, and reported five gates where
+       there are four. A census that reads its own documentation as evidence can be "fixed" by deleting
+       the explanation, which is the wrong repair and the reason this is stripped rather than reworded. */
+    const html = raw.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
-    // Exactly five sites: the definition, the SEND gate, and the three entry gates.
+    // COUNTS use the comment-stripped source; PLACEMENT assertions below read `raw`, because where a
+    // gate sits is a fact about the code as written — and two of those patterns deliberately anchor on
+    // the comment that marks the gate.
+    // Exactly four sites: the definition, the SEND gate, and the two entry gates.
     assert.strictEqual((html.match(/cartConflicts\(\)/g) || []).length, 4,
       `${dir}: expected 4 cartConflicts() sites — definition, refuseConflictedSend, buildOrder, submitOrder`);
 
     // 🔴 THE SEND GATE, INSIDE THE RETRY LOOP, with nothing between the check and the fetch. The retry
     // re-sends createOrder without rebuilding the order, so a gate before the loop does not cover it.
-    assert.ok(/for\(let attempt=1; attempt<=MAX_TRIES; attempt\+\+\)\{\n    try \{\n(?:[^\n]*\n){0,4}?      if\(refuseConflictedSend\('createOrder'\)\)\{ orderSubmitting=false; return; \}\n      const res = await fetch\(CREATEORDER_URL,\{/.test(html),
+    assert.ok(/for\(let attempt=1; attempt<=MAX_TRIES; attempt\+\+\)\{\n    try \{\n(?:[^\n]*\n){0,4}?      if\(refuseConflictedSend\('createOrder'\)\)\{ orderSubmitting=false; return; \}\n      const res = await fetch\(CREATEORDER_URL,\{/.test(raw),
       `${dir}: the createOrder send gate must sit INSIDE the retry loop, immediately before the fetch`);
-    assert.ok(/if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n    const res = await fetch\(CHARGEORDER_URL, \{/.test(html),
+    assert.ok(/if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n    const res = await fetch\(CHARGEORDER_URL, \{/.test(raw),
       `${dir}: the chargeOnlineOrder send gate must sit immediately before the fetch`);
 
     /* 🔴 A DOCUMENTED LINT, NOT A PROOF — and saying so is the point. The guarantee is that the two
@@ -103,11 +113,45 @@ test('the conflict gate sits at every path to a charge — structural census, bo
       'the send-site lint must not match a non-charge request');
 
     // The dispatch must honour buildOrder()'s refusal BEFORE it branches to cash or online.
-    assert.ok(/\n  if\(!buildOrder\(\)\) return;   \/\/ 1B Task 4[^\n]*\n  if\(isFreeOrder\)\{[\s\S]{0,900}?if\(selectedPayment==='online'\)\{\n    await processPixelPay\(\);/.test(html),
+    assert.ok(/\n  if\(!buildOrder\(\)\) return;   \/\/ 1B Task 4[^\n]*\n  if\(isFreeOrder\)\{[\s\S]{0,900}?if\(selectedPayment==='online'\)\{\n    await processPixelPay\(\);/.test(raw),
       `${dir}: processPayment must honour buildOrder()'s refusal before branching`);
 
+    // non-vacuity: stripping comments must not have eaten the code the census counts
+    assert.ok(html.includes('function cartConflicts()'), `${dir}: the comment-strip left the code intact`);
+    assert.strictEqual(('a(); // cartConflicts()\n/* cartConflicts() */\ncartConflicts();'
+      .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n')
+      .match(/cartConflicts\(\)/g) || []).length, 1, 'non-vacuity: the strip removes both comment forms and keeps the call');
     // non-vacuity: the send-site detector really fires on the shipped expression
     assert.strictEqual(('const res = await fetch(CREATEORDER_URL,{'.match(/await fetch\((CREATEORDER_URL|CHARGEORDER_URL)/g) || []).length, 1,
       'non-vacuity: the send-site census can see a charge send');
+  }
+});
+
+test('the la_musa copy of the applier is byte-identical to the canonical one', () => {
+  const canonical = readFileSync(new URL('./form-apply.js', import.meta.url), 'utf8');
+  const copy = readFileSync(new URL('../la-musa-orders/form-apply.js', import.meta.url), 'utf8');
+  assert.strictEqual(copy, canonical,
+    'la-musa-orders/form-apply.js has drifted — copy xpizza-orders/form-apply.js over it');
+  assert.ok(canonical.includes('function createMenuApplier'), 'non-vacuity: the file really is the applier');
+  const code = canonical.split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '')).join('\n');
+  assert.ok(!/^\s*export[\s{]/m.test(code) && !/^\s*import[\s{]/m.test(code), 'no ESM syntax');
+  assert.ok(/module\.exports/.test(code) && /window\.createMenuApplier/.test(code), '…and it publishes to both worlds');
+});
+
+test('both forms load all three shared modules and boot the live feed', () => {
+  for (const dir of ['xpizza-orders', 'la-musa-orders']) {
+    const html = readFileSync(new URL(`../${dir}/index.html`, import.meta.url), 'utf8');
+    for (const mod of ['form-cart.js', 'form-live-menu.js', 'form-apply.js']) {
+      assert.ok(html.includes(`<script src="${mod}"></script>`), `${dir}: ${mod} is not loaded`);
+    }
+    // 🔴 THE BRAND'S OWN rid, READ AT CALL TIME. Bound eagerly this sat above the constant it reads and
+    // threw a temporal-dead-zone ReferenceError that took the whole form script down — a page with no
+    // menu, no cart and no checkout. Pinned so it cannot quietly become a const again.
+    assert.ok(/function liveMenuRid\(\)\{ return (AVAIL_RID|RESTAURANT_ID); \}/.test(html),
+      `${dir}: the rid must be read at call time, not bound above its declaration`);
+    // The coordinator is given a fetch rather than closing over one — a missing injection used to look
+    // exactly like being offline.
+    assert.ok(/fetchImpl: function \(u, o\) \{ return window\.fetch\(u, o\); \}/.test(html),
+      `${dir}: the live feed must be given a fetch implementation`);
   }
 });

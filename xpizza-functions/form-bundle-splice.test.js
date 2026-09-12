@@ -136,10 +136,18 @@ const SELECT_NAMES = { x_pizza: ['MENU', 'PICKUP_ONLY_CATS', 'WEEKEND_ONLY_CATS'
 // Gather the select STATEMENTS individually. After the TDZ fix the x_pizza selects are deliberately
 // no longer contiguous — each sits beside the fallback it reads — so slicing a region would drag in
 // unrelated top-level code (and did).
+/* 🔴 `const` OR `let`. Portal 1B Task 6 made the globals the live apply REPLACES reassignable, so the
+   selects the form ships are now `let MENU = _okDishes(...)`. This harness lifts those statements and
+   re-runs them, and it cares about the SELECT — which bundle field is used and what it falls back to —
+   not about the keyword in front of it. Both spellings are accepted, and an absent declaration is still
+   a loud failure rather than an empty block that would quietly assert nothing. */
 function stmt(src, decl) {
-  const at = src.indexOf(decl);
-  assert.ok(at > 0, `expected declaration in form: ${decl}`);
-  return src.slice(at, src.indexOf(';', at) + 1);
+  const candidates = decl.startsWith('const ') ? [decl, 'let ' + decl.slice(6)] : [decl];
+  for (const c of candidates) {
+    const at = src.indexOf(c);
+    if (at > 0) return src.slice(at, src.indexOf(';', at) + 1);
+  }
+  assert.fail(`expected declaration in form (tried ${candidates.join(' / ')})`);
 }
 function selectBlock(src, rid) {
   const helpers = ['const _BUNDLE = ', 'const _okDishes = ', 'const _okStrArr = ']

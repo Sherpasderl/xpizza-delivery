@@ -92,7 +92,15 @@ function assertExposureMatchesToday(restaurantId, formText) {
   // Every `X.name === '…'` / `X.name !== '…'` comparison the renderer makes against a dish name. That
   // is the construct the exclusion is written in, so a SECOND one appearing is exactly the drift this
   // catches.
-  const found = new Set([...String(formText).matchAll(/\.name\s*[!=]==\s*'([^']+)'/g)].map((m) => m[1]));
+  /* 🔴 NOT `typeof X.name === 'string'`. The construct being hunted is a comparison against a dish's
+     NAME — the thing an exclusion is written as. A typeof guard is a comparison against a TYPE that
+     merely happens to contain `.name === '…'`, and counting it reported the form as excluding a dish
+     called "string". Portal 1B Task 6 added exactly such a guard while validating live snapshots, and
+     this drift check failed closed on it — correctly refusing to proceed, but for a reason that was
+     not drift. Excluded by looking at what precedes the property access. */
+  const found = new Set([...String(formText).matchAll(/(typeof\s+)?[A-Za-z_$][\w$]*\.name\s*[!=]==\s*'([^']+)'/g)]
+    .filter((m) => !m[1])
+    .map((m) => m[2]));
   const authored = new Set(spec.noExtras);
   const missing = [...authored].filter((k) => !found.has(k));
   const extra = [...found].filter((k) => !authored.has(k));

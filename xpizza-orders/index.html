@@ -1414,6 +1414,8 @@ textarea{resize:none;height:80px;line-height:1.4}
 <!-- KDS Phase 2b · availKey — canonical availability-key encoder (window.availKey); shared byte-identical across KDS/forms/server -->
 <script src="avail-key.js"></script>
 <script src="form-cart.js"></script>
+<script src="form-live-menu.js"></script>
+<script src="form-apply.js"></script>
 <script src="account.js"></script>
 <!-- FORM-MENU-BUNDLE:BEGIN -->
 <script id="form-menu-bundle">window.__FORM_MENU_BUNDLE__ = {"dishes":[{"id":2,"cat":"individual","name":"Carnivora","price":340,"emoji":"🥩","color":"#7A2515","desc":"Mixed meats, rich tomato sauce","img":"images/02-carnivora.jpg"},{"id":3,"cat":"individual","name":"Crispy Bacon","price":337,"emoji":"🥓","color":"#6B3020","desc":"Crispy bacon, mozzarella","img":"images/03-crispy-bacon.jpg"},{"id":4,"cat":"individual","name":"Sweet Corn & Calabrian Chili","price":314,"emoji":"🌽","color":"#B8860B","desc":"Sweet corn, spicy calabrian chili","img":"images/04-sweet-corn.jpg"},{"id":5,"cat":"individual","name":"Mushroom","price":323,"emoji":"🍄","color":"#5A4A3A","desc":"Wild mushrooms, garlic, herbs","img":"images/05-mushroom.jpg"},{"id":6,"cat":"individual","name":"Spinach","price":307,"emoji":"🌿","color":"#2D5A27","desc":"Fresh spinach, ricotta, garlic","img":"images/06-spinach.jpg"},{"id":7,"cat":"individual","name":"Pancetta Vodka Sauce","price":328,"emoji":"🍅","color":"#A0321A","desc":"Pancetta, creamy vodka tomato sauce","img":"images/07-pancetta-vodka.jpg"},{"id":8,"cat":"individual","name":"Margherita","price":299,"emoji":"🍅","color":"#C8321A","desc":"San Marzano tomato, fresh mozzarella","img":"images/08-margherita.jpg"},{"id":9,"cat":"individual","name":"Pepperoni","price":307,"emoji":"🔴","color":"#9E2412","desc":"Classic pepperoni, mozzarella","img":"images/09-pepperoni.jpg"},{"id":10,"cat":"individual","name":"Anchovies","price":418,"emoji":"🐟","color":"#3A5A7A","desc":"Salted anchovies, capers, olives","img":"images/10-anchovies.jpg"},{"id":11,"cat":"individual","name":"Shrimp Scampi","price":412,"emoji":"🍤","color":"#C87A3A","desc":"Garlic shrimp, lemon, white wine","img":"images/11-shrimp-scampi.jpg"},{"id":12,"cat":"individual","name":"Pistaccio Mortadella","price":409,"emoji":"💚","color":"#3A6A2A","desc":"Pistachio cream, mortadella, stracciatella","img":"images/12-pistaccio-mortadella.jpg"},{"id":13,"cat":"individual","name":"Prosciutto","price":402,"emoji":"🥩","color":"#8A3A2A","desc":"Prosciutto crudo, arugula, parmesan","img":"images/13-prosciutto.jpg"},{"id":14,"cat":"individual","name":"Potato & Dill Sausage","price":299,"emoji":"🥔","color":"#7A6A3A","desc":"Roasted potato, dill, house sausage","img":"images/14-potato-sausage.jpg"},{"id":15,"cat":"individual","name":"Cacio e Pepe","price":297,"emoji":"🧀","color":"#8A7A5A","desc":"Pecorino, black pepper, olive oil","img":"images/15-cacio-pepe.jpg"},{"id":16,"cat":"individual","name":"Ham","price":282,"emoji":"🐷","color":"#C87A8A","desc":"Classic ham, mozzarella","img":"images/16-ham.jpg"},{"id":1,"cat":"individual","name":"Sopressatta Chili Honey","price":385,"emoji":"🍕","color":"#8B3A1A","desc":"Sopressatta, chili, honey drizzle"},{"id":17,"cat":"individual","name":"Nutella","price":251,"emoji":"🍫","color":"#5A3A20","desc":"Nutella, powdered sugar, banana option","img":"images/17-nutella.jpg"},{"id":18,"cat":"ny","name":"Carnivora NY","price":685,"emoji":"🥩","color":"#7A2515","desc":"6 massive slices, mixed meats"},{"id":19,"cat":"ny","name":"Margherita NY","price":624,"emoji":"🍅","color":"#C8321A","desc":"6 slices, classic tomato & mozzarella"},{"id":20,"cat":"ny","name":"Cacio e Pepe NY","price":641,"emoji":"🧀","color":"#8A7A5A","desc":"6 slices, pecorino & black pepper"},{"id":21,"cat":"ny","name":"Mushroom NY","price":702,"emoji":"🍄","color":"#5A4A3A","desc":"6 slices, wild mushrooms & herbs"},{"id":22,"cat":"ny","name":"Jamon NY","price":641,"emoji":"🍖","color":"#9E2412","desc":"6 slices, ham"},{"id":24,"cat":"ny","name":"Pepperoni NY","price":641,"emoji":"🔴","color":"#9E2412","desc":"6 slices, pepperoni"},{"id":23,"cat":"ny","name":"Crispy Bacon NY","price":662,"emoji":"🥓","color":"#6B3020","desc":"6 slices, crispy bacon"}],"extras":[{"id":"e1","cat":"Salsas & Queso","name":"Salsa Roja","price":39},{"id":"e2","cat":"Salsas & Queso","name":"Salsa Blanca","price":39},{"id":"e3","cat":"Salsas & Queso","name":"Salsa Calabrian Chili","price":49},{"id":"e4","cat":"Salsas & Queso","name":"Mozzarella","price":50},{"id":"e5","cat":"Salsas & Queso","name":"Whipped Ricotta","price":65},{"id":"e6","cat":"Carnes","name":"Salchicha Italiana","price":50},{"id":"e7","cat":"Carnes","name":"Pepperoni","price":50},{"id":"e8","cat":"Carnes","name":"Jamón","price":39},{"id":"e9","cat":"Carnes","name":"Prosciutto","price":94},{"id":"e10","cat":"Carnes","name":"Mortadella","price":85},{"id":"e11","cat":"Vegetales & Hierbas","name":"Espinaca","price":33},{"id":"e12","cat":"Vegetales & Hierbas","name":"Maíz","price":45},{"id":"e13","cat":"Vegetales & Hierbas","name":"Hongos","price":61},{"id":"e14","cat":"Vegetales & Hierbas","name":"Basil Pesto","price":33}],"categories":[{"id":"individual"},{"id":"ny"}],"pickup_only_cats":["ny"],"weekend_only_cats":["ny"]};</script>
@@ -1433,6 +1435,8 @@ function switchCat(cat, btn) {
    CONFIGURATION — edit these before deploying
    ═══════════════════════════════════════════════════ */
 const CREATEORDER_URL  = 'https://us-central1-xpizza-delivery.cloudfunctions.net/createOrder';
+// 1B — the live catalog. Cache isolation is by rid IN THE PATH, never a Vary header.
+const PUBLICMENU_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/getPublicMenu';
 const QUOTEORDER_URL   = 'https://us-central1-xpizza-delivery.cloudfunctions.net/quoteOrder';   // 1d 2a: read-only server price for the checkout display
 const CHARGEORDER_URL  = 'https://us-central1-xpizza-delivery.cloudfunctions.net/chargeOnlineOrder';
 const PAYMENTSTATUS_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/paymentStatus';
@@ -1486,7 +1490,7 @@ const FALLBACK_MENU = [
 const _BUNDLE = (typeof window !== 'undefined' && window.__FORM_MENU_BUNDLE__) || {};
 const _okDishes = (a) => Array.isArray(a) && a.length > 0 && a.every((d) => d && d.id != null && d.name);
 const _okStrArr = (a) => Array.isArray(a) && a.every((s) => typeof s === 'string');
-const MENU = _okDishes(_BUNDLE.dishes) ? _BUNDLE.dishes : FALLBACK_MENU;
+let MENU = _okDishes(_BUNDLE.dishes) ? _BUNDLE.dishes : FALLBACK_MENU;
 
 
 const MIN_ORDER = 250;
@@ -1556,7 +1560,7 @@ function getNextOpenText() {
   return 'Con gusto los atendemos pronto';
 }
 
-const EXTRAS = [
+let EXTRAS = [
   { id:'e1',  cat:'Salsas & Queso',    name:'Salsa Roja',          price:39  },
   { id:'e2',  cat:'Salsas & Queso',    name:'Salsa Blanca',        price:39  },
   { id:'e3',  cat:'Salsas & Queso',    name:'Salsa Calabrian Chili', price:49 },
@@ -1704,7 +1708,14 @@ function lineExtra(line, eid){
   const x = line.extras.find(e => e.key === eid);
   return x ? x.record : (findMenuExtra(eid) || CART.extraAddedRecord(eid));
 }
-function cartCount(){ return cartLines().reduce((s, l) => s + l.qty, 0); }
+/* 🔴 NOT `cartCount` — updateCart() declares `const cartCount = document.getElementById('cart-count')`
+   locally, and a global of that name is SHADOWED there by a binding declared further down the function.
+   The Task-4 edit that introduced the call put it five lines ABOVE that declaration, so every call to
+   updateCart() threw a temporal-dead-zone ReferenceError: the cart pill stopped updating entirely. It
+   survived five gate rounds because the extraction harness stubbed updateCart() as a no-op and so never
+   ran it; loading the real page is what found it. Renamed rather than reordered — the collision is the
+   hazard, and the next person to add a local named cartCount should not be able to recreate it. */
+function cartItemCount(){ return cartLines().reduce((s, l) => s + l.qty, 0); }
 /* 🔴 RESTORATION IS THE OTHER WRITER OF qty, AND IT HAD NOT GOT THE MEMO. Online payment leaves this
    page for a hosted checkout and comes back to a FRESH one, where restoreOrderForm() rehydrates qty and
    pizzaExtras straight from localStorage. Setting quantities without rebuilding the cart re-creates the
@@ -1792,15 +1803,222 @@ function announceCartConflicts(conflicts){
   if (typeof window.__onCartConflict === 'function') { try { window.__onCartConflict(conflicts); } catch(_){} }
 }
 
+// ── Brand wiring for the live apply (x_pizza) ──
+/* 🔴 A FUNCTION, NOT A CONST, AND THE REASON IS NOT STYLE. This block sits above the declaration of
+   the brand's rid constant, so binding it eagerly was a temporal-dead-zone reference — which does not
+   fail quietly: it threw at parse time and took the ENTIRE form script with it, leaving a page with no
+   menu, no cart and no checkout. Read at CALL time instead, by which point the constant exists. (This
+   project has been bitten by TDZ before — see HANDOFF-phase1cb3-REVISE-tdz.md.) */
+function liveMenuRid(){ return AVAIL_RID; }
+const LIVE_MENU_REPRESENTATION = '1b.1';
+const LIVE_MENU_GLOBALS = ['MENU', 'EXTRAS', 'PICKUP_ONLY_CATS', 'WEEKEND_ONLY_CATS'];
+function liveMenuGlobalGet(n){
+  return n === 'MENU' ? MENU : n === 'EXTRAS' ? EXTRAS : n === 'PICKUP_ONLY_CATS' ? PICKUP_ONLY_CATS : WEEKEND_ONLY_CATS;
+}
+function liveMenuGlobalSet(n, v){
+  if (n === 'MENU') MENU = v;
+  else if (n === 'EXTRAS') EXTRAS = v;
+  else if (n === 'PICKUP_ONLY_CATS') PICKUP_ONLY_CATS = v;
+  else WEEKEND_ONLY_CATS = v;
+}
+function liveMenuContainers(){ return ['menu-individual', 'menu-ny']; }
+
+/* PREPARE — COMPLETE, AND PURE. Everything that can reject a snapshot happens here, before anything is
+   touched, so a rejected snapshot costs nothing and the prior menu simply stands. It is also the
+   adapter's acceptance test, so "would apply cleanly" and "is accepted" are the same question asked
+   once. Throws with a typed reason; never returns a partial projection. */
+function liveMenuPrepare(body){
+  if (!body || typeof body !== 'object') throw new Error('apply_body_missing');
+  const dishes = body.dishes, extras = body.extras;
+  if (!Array.isArray(dishes) || !dishes.length) throw new Error('apply_dishes_missing');
+  if (!Array.isArray(extras)) throw new Error('apply_extras_missing');
+  const okRecord = (r) => r && typeof r === 'object'
+    && r.id !== undefined && r.id !== null && typeof r.name === 'string' && r.name !== ''
+    && typeof r.price === 'number' && isFinite(r.price) && r.price > 0;
+  dishes.forEach((d, i) => { if (!okRecord(d)) throw new Error('apply_dish_malformed@' + i); });
+  extras.forEach((e, i) => { if (!okRecord(e)) throw new Error('apply_extra_malformed@' + i); });
+  // 🔴 THE SET-LEVEL CHECK, the same one hydrate() had to learn: every record being well-formed is not
+  // the same as the collection being well-formed. Two dishes sharing an id means one silently wins
+  // every lookup — cart reconciliation, pricing, availability — and which one is an accident of order.
+  if (new Set(dishes.map((d) => String(d.id))).size !== dishes.length) throw new Error('apply_dish_duplicate');
+  if (new Set(extras.map((e) => String(e.id))).size !== extras.length) throw new Error('apply_extra_duplicate');
+  return {
+    MENU: dishes,
+    EXTRAS: extras,
+    // Absent structure keeps what is already in force rather than becoming empty: an omitted
+    // pickup-only list must not silently OPEN a gate that is currently closed.
+    PICKUP_ONLY_CATS: Array.isArray(body.pickup_only_cats) ? body.pickup_only_cats : PICKUP_ONLY_CATS,
+    WEEKEND_ONLY_CATS: Array.isArray(body.weekend_only_cats) ? body.weekend_only_cats : WEEKEND_ONLY_CATS,
+  };
+}
+
+/* ── Portal 1B Task 6 — APPLYING A LIVE MENU ────────────────────────────────────────────────────
+   The bundle spliced into this page painted synchronously and is already on screen; everything below
+   is an UPGRADE on it. See form-apply.js for why an apply is all-or-nothing and when it must not run
+   at all — the short version is that the coordinator commits `applied` BEFORE calling onApply (so a
+   throwing render cannot wedge it), which moves the half-a-menu risk out of memory and onto the SCREEN. */
+
+// Which stage the customer is on. Read from the DOM rather than a variable because showStage is what
+// moves it, and reading the same thing showStage writes cannot fall out of step with it.
+function activeStageId(){ const el = document.querySelector('.stage.active'); return el ? el.id : 's1'; }
+
+/* 🔴 TERMINAL. s5 is the receipt: that cart is a completed order, a menu update has nothing to say
+   about it, and redrawing prices under a receipt would be actively wrong. Nothing re-opens this. */
+function liveMenuTerminal(){ return activeStageId() === 's5'; }
+
+/* DEFER — not refuse. Each of these is a moment when replacing the menu would move something the
+   customer is reading, or race something already in flight. None of them lasts, so the snapshot is
+   held and applied when the form goes idle. */
+function liveMenuBusy(){
+  if (orderSubmitting || window.__paySubmitting) return true;              // a submit is in flight
+  if (activeStageId() !== 's1') return true;                              // checkout is open
+  if (currentDetailPizzaId !== null) return true;                         // a dish modal is open
+  const ov = document.getElementById('cart-overlay');
+  if (ov && ov.classList && ov.classList.contains('open')) return true;   // the cart review is open
+  return false;
+}
+
+// Focus, caret and scroll, so a re-render does not throw the customer to the top of the page or out of
+// the field they were typing in.
+function liveMenuUiCapture(){
+  const a = document.activeElement;
+  return {
+    focusId: a && a.id ? a.id : null,
+    caret: a && typeof a.selectionStart === 'number' ? a.selectionStart : null,
+    scrollY: (typeof window.scrollY === 'number' ? window.scrollY : 0),
+  };
+}
+function liveMenuUiRestore(ui){
+  if (!ui) return;
+  if (ui.focusId) {
+    const el = document.getElementById(ui.focusId);
+    if (el && typeof el.focus === 'function') {
+      el.focus();
+      if (ui.caret !== null && typeof el.setSelectionRange === 'function') { try { el.setSelectionRange(ui.caret, ui.caret); } catch(_){} }
+    }
+  }
+  if (typeof window.scrollTo === 'function') { try { window.scrollTo(0, ui.scrollY); } catch(_){} }
+}
+
+/* THE RESTORE POINT — every global the commit assigns, the markup of every container it rewrites, and
+   the quantity map. Taken before PREPARE, not before commit: prepare is meant to be pure, and one cheap
+   capture is what makes that a guarantee rather than an assumption.
+   The arrays are held BY REFERENCE on purpose — commit replaces them rather than mutating them, so the
+   old reference is exactly what putting the old menu back requires. */
+function liveMenuCapture(){
+  const globals = {};
+  LIVE_MENU_GLOBALS.forEach((name) => { globals[name] = liveMenuGlobalGet(name); });
+  const dom = liveMenuContainers().map((id) => {
+    const el = document.getElementById(id);
+    return { id, html: el ? el.innerHTML : null };
+  });
+  return { globals, dom, qty: Object.assign({}, qty), ui: liveMenuUiCapture() };
+}
+function liveMenuRestore(point){
+  LIVE_MENU_GLOBALS.forEach((name) => { liveMenuGlobalSet(name, point.globals[name]); });
+  point.dom.forEach((d) => {
+    if (d.html === null) return;
+    const el = document.getElementById(d.id);
+    if (el) el.innerHTML = d.html;
+  });
+  Object.keys(qty).forEach((k) => { delete qty[k]; });
+  Object.assign(qty, point.qty);
+  liveMenuUiRestore(point.ui);
+}
+
+/* COMMIT. Assign, render, re-sync, recompute, then put the customer back where they were. Nothing here
+   decides whether the snapshot is acceptable — prepare already did that, completely — so the only
+   failures left are unforeseen ones, and those are what the restore point exists for. */
+function liveMenuCommit(prepared){
+  const ui = liveMenuUiCapture();
+  LIVE_MENU_GLOBALS.forEach((name) => { liveMenuGlobalSet(name, prepared[name]); });
+  // A dish the upgrade INTRODUCED has no quantity entry, and the card template reads one. Initialise it
+  // to 0 — never leave it undefined, which renders as "undefined" and makes the next chg() produce NaN.
+  MENU.forEach((p) => { if (qty[p.id] === undefined) qty[p.id] = 0; });
+  renderMenu();
+  if (typeof applyAvailability === 'function') applyAvailability();
+  /* RE-SYNC THE CARDS THAT ARE IN THE CART. renderMenu draws every card from the template, which shows
+     the collapsed "+" affordance; the stepper/badge state of an item already in the cart is applied by
+     chg() at runtime and is therefore erased by a re-render. chg(id, 0) re-applies it WITHOUT changing
+     the quantity. The cart itself is reconciled by cartItems()/cartConflicts(), not here — a line whose
+     dish the upgrade removed keeps its quantity and stays blocking. */
+  cartLines().forEach((l) => { try { chg(l.key, 0); } catch(_){} });
+  /* THE CACHED SERVER QUOTE IS STALE. It was computed against prices that may have moved, and a
+     displayed estimate that silently survives a price change is the display-side version of the silent
+     adoption the cart refuses. Dropped, so the form falls back to calcTotal() — today's behaviour —
+     until a fresh quote arrives. No charge depends on it: the server re-prices regardless. */
+  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; }
+  if (typeof updateTotal === 'function') updateTotal();
+  if (typeof updateCart === 'function') updateCart();
+  if (typeof renderChangeChips === 'function') renderChangeChips();      // tender chips follow the new total
+  if (typeof onCashTenderedInput === 'function' && document.getElementById('cash-tendered')) onCashTenderedInput();
+  if (typeof refreshPickupGate === 'function') refreshPickupGate();
+  liveMenuUiRestore(ui);
+}
+
+/* THE ADAPTER the coordinator validates through. A snapshot is accepted WHOLE or not at all: the same
+   liveMenuPrepare that the apply runs is used as the acceptance test, so there is no second, laxer
+   opinion about what a usable menu is — a snapshot that would fail to apply never becomes `applied`,
+   and the coordinator retains the last good one. */
+const LIVE_MENU_ADAPTER = {
+  validateSnapshot: function (raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    // 🔴 THE rid IS CHECKED HERE, against this form's own brand, and never defaulted. A menu for the
+    // other restaurant is not a degraded menu, it is someone else's prices.
+    if (raw.rid !== liveMenuRid()) return null;
+    if (raw.representation_version !== LIVE_MENU_REPRESENTATION) return null;
+    const menu = raw.menu;
+    if (!menu || typeof menu !== 'object') return null;
+    try { liveMenuPrepare(menu); } catch (_) { return null; }
+    return menu;
+  },
+  diff: function (prev, next) { return { dishes: next.dishes.length, extras: next.extras.length }; },
+};
+
+let LIVE_APPLIER = null, LIVE_MENU_FEED = null;
+
+// Called wherever the form becomes idle again — a modal or the cart review closes, a stage changes, a
+// submit finishes. Cheap and safe to call when nothing is pending.
+function liveMenuFlush(){ try { if (LIVE_APPLIER) LIVE_APPLIER.flush(); } catch(_){} }
+
+function bootLiveMenu(){
+  if (typeof window.createMenuApplier !== 'function' || typeof window.createLiveMenu !== 'function') return null;
+  LIVE_APPLIER = window.createMenuApplier({
+    prepare: liveMenuPrepare,
+    commit: liveMenuCommit,
+    capture: liveMenuCapture,
+    restore: liveMenuRestore,
+    isBusy: liveMenuBusy,
+    isTerminal: liveMenuTerminal,
+    log: function (event, detail) { try { console.log(event, JSON.stringify(detail)); } catch(_){} },
+  });
+  LIVE_MENU_FEED = window.createLiveMenu({
+    url: PUBLICMENU_URL + '/menu/' + liveMenuRid(),
+    // Injected rather than closed over, matching the coordinator's own discipline: the tests drive the
+    // real chain through a stub installed here, and production gets the real thing.
+    fetchImpl: function (u, o) { return window.fetch(u, o); },
+    adapter: LIVE_MENU_ADAPTER,
+    onApply: function (snapshot) { LIVE_APPLIER.apply(snapshot); },
+  });
+  /* The coordinator and the applier are module-lexical (`let`), so nothing outside this script can
+     reach them. Published here so the integration can be driven and inspected from the outside — by
+     the Task 6 tests, which exercise the REAL fetch → coordinator → adapter → applier chain rather
+     than poking at its parts, and by anyone debugging a live page. Read-only by convention; nothing
+     in the form reads it back. */
+  try { window.__liveMenu = { feed: LIVE_MENU_FEED, applier: LIVE_APPLIER, flush: liveMenuFlush }; } catch(_){}
+  return LIVE_MENU_FEED;
+}
+
+
 // 18" NY pizzas are pickup-only. Data-driven: add a category here to make it pickup-only.
 const FALLBACK_PICKUP_ONLY = ['ny'];
-const PICKUP_ONLY_CATS = _okStrArr(_BUNDLE.pickup_only_cats) ? _BUNDLE.pickup_only_cats : FALLBACK_PICKUP_ONLY;
+let PICKUP_ONLY_CATS = _okStrArr(_BUNDLE.pickup_only_cats) ? _BUNDLE.pickup_only_cats : FALLBACK_PICKUP_ONLY;
 const isPickupOnlyItem = (p) => PICKUP_ONLY_CATS.includes(p.cat);
 const cartHasPickupOnly = () => cartItems().some(p => isPickupOnlyItem(p));
 // 18" NY pizzas are a WEEKEND special (Fri/Sat/Sun) — mirrors the server X_PIZZA_WEEKEND_ONLY /
 // weekendOnlyViolation (menu-pricing.js). Data-driven membership kept in sync (both = the 'ny' cat).
 const FALLBACK_WEEKEND_ONLY = ['ny'];
-const WEEKEND_ONLY_CATS = _okStrArr(_BUNDLE.weekend_only_cats) ? _BUNDLE.weekend_only_cats : FALLBACK_WEEKEND_ONLY;
+let WEEKEND_ONLY_CATS = _okStrArr(_BUNDLE.weekend_only_cats) ? _BUNDLE.weekend_only_cats : FALLBACK_WEEKEND_ONLY;
 
 const isWeekendOnlyItem = (p) => WEEKEND_ONLY_CATS.includes(p.cat);
 const cartHasWeekendOnly = () => cartItems().some(p => isWeekendOnlyItem(p));
@@ -2046,7 +2264,7 @@ function renderRedeemUI(){
       if(box) window.__ACCOUNT.renderRedeem({
         container: box,
         items: redeemCartItems(),
-        pizzaCount: cartCount(),
+        pizzaCount: cartItemCount(),
         itemName: (id)=>{ const p=(MENU.find(x=>x.id===id))||(typeof EXTRAS!=='undefined'&&EXTRAS.find(x=>x.id===id)); return p?p.name:id; },
         catalog: buildRedeemCatalog(),   // v2 picker catalog — brand-specific, defined OUTSIDE this parity block
         onQuoted: applyRedeemQuoteToTotals,
@@ -2174,7 +2392,7 @@ function calcTotal(){
 }
 
 function updateCart(){
-  const count=cartCount();
+  const count=cartItemCount();
   const total=calcTotal();
 
   // Cart total and count
@@ -2275,7 +2493,7 @@ function toggleReview(){
 }
 
 function toggleCartReview(){
-  const count=cartCount();
+  const count=cartItemCount();
   if(count===0) return;
   openCartReview();
 }
@@ -2306,6 +2524,7 @@ function chgFromCart(id, d){
 }
 
 function closeCartReview(){
+  setTimeout(liveMenuFlush, 0);   // 1B Task 6 — a snapshot deferred while this was open
   document.getElementById('cart-overlay').classList.remove('open');
   document.getElementById('cart-review-sheet').classList.remove('open');
   // Only unlock body scroll if no other modal is still open underneath.
@@ -2410,6 +2629,7 @@ function showStage(id,pct){
   setTimeout(_go, 170);   // fallback if transitionend never fires
 }
 function _showStageSwap(id,pct,_t){
+  setTimeout(liveMenuFlush, 0);   // 1B Task 6 — a stage change can make the form idle again
   document.querySelectorAll('.stage').forEach(s=>s.classList.remove('active','stage-out','stage-in'));
   _t.classList.add('active');
   document.body.classList.toggle('s1-active', id==='s1');   // pin the account chip only on paso 1
@@ -3722,6 +3942,7 @@ function openDetailModal(pizzaId) {
 }
 
 function closeDetailModal() {
+  setTimeout(liveMenuFlush, 0);   // 1B Task 6 — a snapshot deferred while this was open
   document.getElementById('detail-overlay').classList.remove('open');
   const modal = document.getElementById('detail-modal');
   modal.classList.remove('open');
@@ -4409,6 +4630,15 @@ handleProfileClaim();
 // KDS 2b: read item availability once on load, then re-poll every 60s (fail-open; the server
 // intake gate is the authoritative backstop). Pure read — never touches the cart/payload/submit.
 loadAvailability();
+
+/* 1B Task 6 — BUNDLE FIRST, THEN THE UPGRADE. renderMenu() above has already painted the spliced
+   bundle synchronously, so the customer sees a complete menu before this line runs and would still see
+   one if the fetch never returned. Everything from here is an improvement on a page that is already
+   correct — which is why every failure mode below simply leaves the bundle in place. */
+try {
+  const _feed = bootLiveMenu();
+  if (_feed) _feed.refresh();
+} catch (_) { /* the bundle stands */ }
 setInterval(loadAvailability, 60000);
 
 

@@ -27,6 +27,12 @@ function createLiveMenu(options) {
   const { url, fetchImpl, onApply, adapter, now } = options || {};
   if (!adapter) throw new Error('createLiveMenu: an adapter is required — without one, every response would be applied unchecked');
   if (typeof adapter.validateSnapshot !== 'function') throw new Error('createLiveMenu: the adapter must provide validateSnapshot');
+  /* 🔴 A MISSING fetchImpl USED TO LOOK EXACTLY LIKE BEING OFFLINE. Calling `undefined` throws, the
+     throw is caught by the network handler, and the feed reports `network: ...` forever — a wiring
+     mistake wearing the costume of a transient outage, which is the most expensive kind to diagnose
+     because every symptom says "retry". It cost a full debugging pass during the Task 6 integration.
+     Stated as a contract instead, like the adapter above: absent means refused, loudly, at construction. */
+  if (typeof fetchImpl !== 'function') throw new Error('createLiveMenu: fetchImpl is required — without one every attempt reports a network failure that never happened');
   const clock = typeof now === 'function' ? now : () => Date.now();
 
   // WHAT THE CUSTOMER IS CURRENTLY LOOKING AT. `etag` lives HERE, beside the snapshot it validates,

@@ -21,9 +21,17 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 // server tables, so it accepts either spelling. The served bundle is checked against the server
 // directly in form-bundle-splice.test.js — this one keeps the safety-net fallback honest.
 function sliceArray(src, constName) {
-  let start = src.indexOf(`const ${constName} = [`);
-  if (start === -1) start = src.indexOf(`const FALLBACK_${constName} = [`);
-  assert.notStrictEqual(start, -1, `${constName} (or FALLBACK_${constName}) array not found in form`);
+  // 1B Task 6: the globals the live apply REPLACES had to become reassignable, so `const EXTRAS = [`
+  // is now `let EXTRAS = [`. This guard is about the LITERAL's contents, not the keyword in front of
+  // it — and it failed loudly rather than skipping, which is why the change was caught immediately
+  // instead of leaving a money-parity check quietly matching nothing.
+  const declarations = [
+    `const ${constName} = [`, `let ${constName} = [`,
+    `const FALLBACK_${constName} = [`, `let FALLBACK_${constName} = [`,
+  ];
+  let start = -1;
+  for (const d of declarations) { start = src.indexOf(d); if (start !== -1) break; }
+  assert.notStrictEqual(start, -1, `${constName} (or FALLBACK_${constName}) array not found in form — checked const and let`);
   const end = src.indexOf('];', start);
   assert.notStrictEqual(end, -1, `${constName} array close not found`);
   return src.slice(start, end);

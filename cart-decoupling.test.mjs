@@ -241,7 +241,7 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     ${snapFn}
     ${restoreFn}
     ${optFn}
-    return { chg, calcTotal, redeemCartItems, cartSig, submitGate, cartConflicts, cartLines, cartItems, cartCount, CART,
+    return { chg, calcTotal, redeemCartItems, cartSig, submitGate, cartConflicts, cartLines, cartItems, cartItemCount, CART,
              noteExtra: (r) => CART.noteExtra(r), qtyOf: (id) => qty[id],
              buildOrder, processPixelPay, snapshotForm, restoreOrderForm, currentOrder: () => currentOrder,
              orderIdForThisCart, pendingSig: () => (window.__pendingOrder ? window.__pendingOrder.sig : null),
@@ -310,7 +310,7 @@ for (const dir of Object.keys(BRANDS)) {
     const before = f.calcTotal();
     f.setMenu(MENU.filter(p => p.id !== MENU[1].id));
     assert.strictEqual(f.calcTotal(), before, `${dir}: the total must not shrink when the menu drops a dish`);
-    assert.strictEqual(f.cartCount(), 2, `${dir}: the cart badge must not silently decrement`);
+    assert.strictEqual(f.cartItemCount(), 2, `${dir}: the cart badge must not silently decrement`);
     ok(`${dir}: the displayed total and count do not quietly shrink when a dish leaves the menu`);
   }
 
@@ -441,7 +441,7 @@ for (const dir of Object.keys(BRANDS)) {
     const { f, MENU } = setup(dir);
     f.setMenu(MENU.filter(p => p.id !== MENU[0].id));   // removed while its control is still on screen
     f.chg(MENU[0].id, 1);                               // the customer taps "+"
-    assert.strictEqual(f.cartCount(), 0, `${dir}: nothing was added`);
+    assert.strictEqual(f.cartItemCount(), 0, `${dir}: nothing was added`);
     assert.strictEqual(f.redeemCartItems().length, 0, `${dir}: and nothing serializes`);
     assert.strictEqual(f.calcTotal(), 0, `${dir}: and the total is 0`);
     assert.strictEqual(f.qtyOf(MENU[0].id), 0, `${dir}: 🔴 and qty must NOT dangle at 1 — the card would lie`);
@@ -520,7 +520,7 @@ for (const dir of Object.keys(BRANDS)) {
     b.f.setMenu(b.MENU.filter(p => p.id !== b.MENU[1].id));   // …and one of the dishes is gone from the menu
     b.f.setStash(stash);
     b.f.restoreOrderForm();
-    assert.strictEqual(b.f.cartCount(), 0,
+    assert.strictEqual(b.f.cartItemCount(), 0,
       `${dir}: 🔴 restoration must be ALL or NOTHING — never the 2 units it could still describe`);
     assert.strictEqual(await b.f.submitGate(), undefined, `${dir}: and nothing is sent`);
     assert.ok(b.f.notices.some((n) => String(n[0]).includes('cart_restore_refused')),
@@ -642,7 +642,7 @@ for (const dir of Object.keys(BRANDS)) {
     const b = setup(dir);                                    // the fresh page after the redirect back
     b.f.setStash(stash);
     b.f.restoreOrderForm();
-    assert.strictEqual(b.f.cartCount(), 3, `${dir}: 🔴 the restored cart must not be empty`);
+    assert.strictEqual(b.f.cartItemCount(), 3, `${dir}: 🔴 the restored cart must not be empty`);
     assert.deepStrictEqual(b.f.redeemCartItems(), expected, `${dir}: and must serialize exactly as before the redirect`);
     assert.strictEqual(b.f.buildOrder(), true, `${dir}: and be chargeable again`);
     assert.strictEqual(b.f.qtyOf(a.MENU[0].id), 2, `${dir}: quantities restored`);
@@ -689,7 +689,7 @@ for (const dir of Object.keys(BRANDS)) {
     b.f.setMenu(b.MENU.map(p => (p.id === b.MENU[0].id ? { ...p, price: agreed + 90 } : p)));
     b.f.setStash(stash);
     b.f.restoreOrderForm();
-    assert.strictEqual(b.f.cartCount(), 0,
+    assert.strictEqual(b.f.cartItemCount(), 0,
       `${dir}: 🔴 nothing is rebuilt — a line rebuilt from live would carry ${agreed + 90} as "agreed"`);
     assert.strictEqual(await b.f.submitGate(), undefined, `${dir}: and nothing is sent`);
     assert.deepStrictEqual(b.f.fetchCalls, [], `${dir}: neither charge send is reached`);
@@ -717,7 +717,7 @@ for (const dir of Object.keys(BRANDS)) {
     b.f.setMenu(b.MENU.map(p => (p.id === b.MENU[0].id ? { ...p, price: agreed + 90 } : p)));
     b.f.setStash(stash);
     b.f.restoreOrderForm();
-    assert.strictEqual(b.f.cartCount(), 0,
+    assert.strictEqual(b.f.cartItemCount(), 0,
       `${dir}: 🔴 a duplicate-key snapshot is malformed — it must restore nothing, not the last entry`);
     assert.strictEqual(await b.f.submitGate(), undefined, `${dir}: createOrder is never reached`);
     assert.deepStrictEqual(b.f.fetchCalls, [], `${dir}: and neither is chargeOnlineOrder`);
@@ -744,7 +744,7 @@ for (const dir of Object.keys(BRANDS)) {
     b.f.setMenu(b.MENU, b.EXTRAS.map(e => (e.id === b.EXTRAS[0].id ? { ...e, price: agreed + 55 } : e)));
     b.f.setStash(stash);
     b.f.restoreOrderForm();
-    assert.strictEqual(b.f.cartCount(), 0,
+    assert.strictEqual(b.f.cartItemCount(), 0,
       `${dir}: 🔴 a duplicate OPTION key is malformed too — restore nothing`);
     assert.strictEqual(await b.f.submitGate(), undefined, `${dir}: createOrder is never reached`);
     assert.deepStrictEqual(b.f.fetchCalls, [], `${dir}: and neither is chargeOnlineOrder`);
@@ -924,7 +924,7 @@ for (const dir of Object.keys(BRANDS)) {
     const b = setup(dir);
     b.f.setStash(stash);
     b.f.restoreOrderForm();
-    assert.strictEqual(b.f.cartCount(), 3, `${dir}: control — a readable stash restores in full`);
+    assert.strictEqual(b.f.cartItemCount(), 3, `${dir}: control — a readable stash restores in full`);
     assert.deepStrictEqual(b.f.redeemCartItems(), expected, `${dir}: …identically`);
     assert.strictEqual(b.f.buildOrder(), true, `${dir}: …and is chargeable`);
     ok(`${dir}: CONTROL — a readable stash still restores fully (the refusal is not blanket)`);
@@ -982,7 +982,7 @@ for (const dir of Object.keys(BRANDS)) {
   assert.deepStrictEqual(f.redeemCartItems(), B.oldSerialize(MENU, EXTRAS, qty, pizzaExtras),
     `${dir}: the REAL bundle must serialize byte-identically to the shipped expression`);
   assert.strictEqual(f.calcTotal(), B.oldTotal(MENU, EXTRAS, qty, pizzaExtras), `${dir}: …and total identically`);
-  assert.strictEqual(f.cartCount(), 6, `${dir}: …and count identically`);
+  assert.strictEqual(f.cartItemCount(), 6, `${dir}: …and count identically`);
   assert.strictEqual(await f.submitGate(), 'PROCEEDED', `${dir}: …and submit`);
   if (dir === 'la-musa-orders') assert.ok(variant, 'la_musa: a variant item must exist in the real bundle for this to mean anything');
   ok(`${dir}: NO REGRESSION on the REAL shipped bundle${variant ? ' (including a variant line)' : ''}`);
