@@ -436,7 +436,57 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: an in-cart item's card state survives the re-render`);
   }
 
-  // ── 19. A SNAPSHOT FOR THE OTHER BRAND IS NOT A DEGRADED MENU ──
+  // ── 19. 🔴 THE ROLLBACK COVERS THE DERIVED UI AND THE QUOTE, NOT JUST THE MENU ──
+  // The commit does not stop at the menu: it clears the cached quote, then drives the totals, the cart
+  // pill and the tender chips. A rollback that restored only the containers left those writes standing —
+  // a page whose totals and chips agree with a menu that is no longer on it.
+  //
+  // Note what could NOT be used to show this: repricing a dish in the cart does not move the displayed
+  // total, because Task 4 holds the line at the price the customer agreed to. An earlier version of this
+  // test tried exactly that and asserted a total that was never going to change, which is why a mutation
+  // deleting the derived rollback survived it. The chips are genuinely rewritten by the commit, so they
+  // are what the assertion uses — and the throw is placed at the step AFTER them.
+  {
+    const w = loadForm(dir);
+    const chipsBefore = w.document.getElementById('change-chips').innerHTML;
+    w.__serverQuote.key = 'quote-for-the-menu-on-screen';
+    w.__serverQuote.cents = 123400;
+    const realTender = w.onCashTenderedInput;
+    w.onCashTenderedInput = () => { throw new Error('tender hint exploded'); };   // runs after chips + quote clear
+    await serve(w, envelope(B.rid, B.menu(w)));
+    w.onCashTenderedInput = realTender;
+
+    assert.strictEqual(w.__liveMenu.applier.state().lastError.message, 'tender hint exploded',
+      `${dir}: non-vacuity — the commit really failed at the step after the derived renders`);
+    assert.notStrictEqual(chipsBefore, undefined);
+    assert.strictEqual(w.document.getElementById('change-chips').innerHTML, chipsBefore,
+      `${dir}: 🔴 the tender chips are back to the ones matching the menu on screen`);
+    assert.strictEqual(w.__serverQuote.key, 'quote-for-the-menu-on-screen',
+      `${dir}: 🔴 and the quote the commit cleared is restored — the menu it was valid for still stands`);
+    assert.strictEqual(w.__serverQuote.cents, 123400, `${dir}: …with its amount`);
+    ok(`${dir}: a mid-commit throw rolls back the derived UI and the cached quote, not only the menu`);
+  }
+
+  // ── 20. A CATEGORY THE UPGRADE REMOVES LEAVES THE SCREEN ──
+  // renderMenu only fills the categories in the CURRENT set, so a dropped one used to keep its old
+  // cards: an apply reporting success while showing dishes the catalog no longer sells.
+  if (dir === 'la-musa-orders') {
+    const w = loadForm(dir);
+    const cats = w.liveMenuGlobalGet('CATEGORIES');
+    const doomed = cats[0];
+    const stillThere = w.liveMenuGlobalGet('MENU').filter((d) => d.cat === doomed.id)[0];
+    assert.ok(stillThere && painted(w).includes(stillThere.name), `${dir}: non-vacuity — its dishes are on screen now`);
+    const m = B.menu(w);
+    m.categories = m.categories.filter((c) => c.id !== doomed.id);
+    m.dishes = m.dishes.filter((d) => d.cat !== doomed.id);
+    await serve(w, envelope(B.rid, m));
+    assert.ok(!painted(w).includes(stillThere.name),
+      `${dir}: 🔴 the removed category's cards are gone — not new-plus-stale`);
+    assert.ok(!w.document.getElementById('menu-' + doomed.id), `${dir}: and its section is gone entirely`);
+    ok(`${dir}: a category the upgrade removes leaves the screen with its dishes`);
+  }
+
+  // ── 21. A SNAPSHOT FOR THE OTHER BRAND IS NOT A DEGRADED MENU ──
   {
     const w = loadForm(dir);
     const before = painted(w), menuBefore = w.liveMenuGlobalGet('MENU');

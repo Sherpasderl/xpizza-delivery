@@ -2090,5 +2090,66 @@
       "node",
       "../live-apply.test.mjs"
     ]
+  },
+  {
+    "id": "b6-30",
+    "slice": "b6",
+    "label": "an applying snapshot does not supersede an older held one — the older menu wins a later flush",
+    "file": "../xpizza-orders/form-apply.js",
+    "from": "    pending = null;\n    return attempt(snapshot);",
+    "to": "    return attempt(snapshot);",
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-orders/form-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-31",
+    "slice": "b6",
+    "label": "the rollback skips the derived UI — the new total survives under the old menu",
+    "file": "../xpizza-orders/index.html",
+    "from": "  point.derived.forEach((d) => {\n    const el = document.getElementById(d.id);\n    if (el) liveMenuElRestore(el, d.state);\n  });",
+    "to": ";",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-32",
+    "slice": "b6",
+    "label": "the rollback does not put the cached quote back",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if (point.quote && typeof __serverQuote === 'object' && __serverQuote) {",
+    "to": "  if (false) {",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-33",
+    "slice": "b6",
+    "label": "la_musa: the rollback skips the derived UI",
+    "file": "../la-musa-orders/index.html",
+    "from": "  point.derived.forEach((d) => {\n    const el = document.getElementById(d.id);\n    if (el) liveMenuElRestore(el, d.state);\n  });",
+    "to": ";",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-34",
+    "slice": "b6",
+    "label": "la_musa: the category shell is not rebuilt — a removed category keeps its cards",
+    "file": "../la-musa-orders/index.html",
+    "from": "function liveMenuRenderAll(){ renderCategoryShell(); renderMenu(); }",
+    "to": "function liveMenuRenderAll(){ renderMenu(); }",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
   }
 ]

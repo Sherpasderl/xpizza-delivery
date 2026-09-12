@@ -88,3 +88,28 @@ test('the required collaborators are contract, not convention', () => {
     assert.throws(() => createMenuApplier(opts), new RegExp(missing), `${missing} must be required`);
   }
 });
+
+test('a snapshot that APPLIES supersedes an older held one — never-backward across both paths', () => {
+  // The latest-only rule covers two snapshots arriving while busy. This is the other path: A is held
+  // during a modal, the modal closes, B arrives and applies — and a later flush must not replay A.
+  let busy = true;
+  const h = harness({ isBusy: () => busy });
+  h.a.apply({ menu: 'A' });                 // held
+  assert.ok(h.a.hasPending(), 'A is held');
+  busy = false;
+  assert.strictEqual(h.a.apply({ menu: 'B' }), 'applied');
+  assert.ok(!h.a.hasPending(), '🔴 applying B dropped the older A');
+  assert.strictEqual(h.a.flush(), 'idle', 'so a later flush has nothing to replay');
+  assert.strictEqual(h.world.menu, 'B', 'and the newer menu is the one standing');
+});
+
+test('…and a REFUSED newer snapshot still supersedes the older held one', () => {
+  // Cleared before the attempt, so a refusal cannot leave the stale snapshot waiting behind it.
+  let busy = true, fail = false;
+  const h = harness({ isBusy: () => busy, prepare: (x) => { if (fail) throw new Error('nope'); return x; } });
+  h.a.apply({ menu: 'A' });
+  busy = false; fail = true;
+  assert.strictEqual(h.a.apply({ menu: 'B' }), 'refused');
+  assert.ok(!h.a.hasPending(), 'A is not resurrected by B failing');
+  assert.strictEqual(h.world.menu, 'bundle', 'and the bundle stands — not the stale A');
+});

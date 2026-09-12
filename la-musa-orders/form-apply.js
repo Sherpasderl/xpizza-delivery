@@ -90,6 +90,13 @@ function createMenuApplier(options) {
       note('menu_apply_deferred', { deferred });
       return 'deferred';
     }
+    /* 🔴 AND A SNAPSHOT THAT APPLIES SUPERSEDES ANY HELD ONE TOO. The latest-only rule above covers
+       two snapshots arriving while BUSY; it did not cover one arriving while idle on top of an older
+       one already held. The sequence that broke it: A arrives during a modal (held) → the modal closes
+       → B arrives and applies → a later flush replays A over B, and the customer ends up looking at the
+       OLDER menu. Never-backward has to hold across both paths, not just the one where both snapshots
+       are deferred. Cleared before the attempt, so even a refusal cannot leave A waiting behind. */
+    pending = null;
     return attempt(snapshot);
   }
 

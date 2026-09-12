@@ -1822,6 +1822,9 @@ function liveMenuGlobalSet(n, v){
   else WEEKEND_ONLY_CATS = v;
 }
 function liveMenuContainers(){ return ['menu-individual', 'menu-ny']; }
+// x_pizza's two containers are static markup, so there is no shell to rebuild — the hook exists so the
+// commit below is the same text in both forms.
+function liveMenuRenderAll(){ renderMenu(); }
 
 /* PREPARE — COMPLETE, AND PURE. Everything that can reject a snapshot happens here, before anything is
    touched, so a rejected snapshot costs nothing and the prior menu simply stands. It is also the
@@ -1905,6 +1908,37 @@ function liveMenuUiRestore(ui){
    capture is what makes that a guarantee rather than an assumption.
    The arrays are held BY REFERENCE on purpose — commit replaces them rather than mutating them, so the
    old reference is exactly what putting the old menu back requires. */
+/* 🔴 EVERY ELEMENT THE COMMIT WRITES, NOT JUST THE MENU CONTAINERS. The commit does not stop at
+   re-rendering the menu: it drives updateTotal, updateCart, renderChangeChips, onCashTenderedInput and
+   the pickup gate, and those write the cart pill, the totals, the review sheet, the tender chips and
+   the change hint — all OUTSIDE the containers. The first version of this captured only the containers,
+   so a commit that had already written the cart total and then threw from renderChangeChips left that
+   total on screen after a "successful" rollback: a page showing the new total under the old menu.
+   A rollback is only as complete as its capture, and a capture that covers the obvious subset is the
+   same failure this slice keeps finding one layer down. The list below is the union across both brands;
+   ids a form does not have are simply absent and skipped. */
+function liveMenuDerivedIds(){
+  return ['btn-continuar', 'btnConfirm', 'cart-badge', 'cart-count', 'cart-pill-text', 'cart-review-body',
+          'cart-review-checkout', 'cart-review-sheet', 'cart-review-total', 'cart-total', 'cash-change-panel',
+          'cash-tendered', 'change-chips', 'change-hint', 'pickup-gate', 'pickup-note', 'pixelpay-amount',
+          'total-display'];
+}
+// Snapshot everything those renderers can change about an element, rather than guessing which property
+// each one writes — markup, classes, inline style, value and disabled state.
+function liveMenuElState(el){
+  return {
+    html: el.innerHTML, cls: el.className, css: (el.style ? el.style.cssText : ''),
+    value: ('value' in el ? el.value : undefined),
+    disabled: ('disabled' in el ? el.disabled : undefined),
+  };
+}
+function liveMenuElRestore(el, s){
+  el.innerHTML = s.html;
+  el.className = s.cls;
+  if (el.style) el.style.cssText = s.css;
+  if (s.value !== undefined) el.value = s.value;
+  if (s.disabled !== undefined) el.disabled = s.disabled;
+}
 function liveMenuCapture(){
   const globals = {};
   LIVE_MENU_GLOBALS.forEach((name) => { globals[name] = liveMenuGlobalGet(name); });
@@ -1912,7 +1946,20 @@ function liveMenuCapture(){
     const el = document.getElementById(id);
     return { id, html: el ? el.innerHTML : null };
   });
-  return { globals, dom, qty: Object.assign({}, qty), ui: liveMenuUiCapture() };
+  const derived = [];
+  liveMenuDerivedIds().forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) derived.push({ id, state: liveMenuElState(el) });
+  });
+  return {
+    globals, dom, derived,
+    qty: Object.assign({}, qty),
+    // The cached quote is state the commit deliberately clears, so it is state the rollback must put
+    // back — otherwise a failed apply still throws away a quote that was valid for the menu that stands.
+    quote: (typeof __serverQuote === 'object' && __serverQuote)
+      ? { key: __serverQuote.key, cents: __serverQuote.cents, inflight: __serverQuote.inflight } : null,
+    ui: liveMenuUiCapture(),
+  };
 }
 function liveMenuRestore(point){
   LIVE_MENU_GLOBALS.forEach((name) => { liveMenuGlobalSet(name, point.globals[name]); });
@@ -1921,8 +1968,17 @@ function liveMenuRestore(point){
     const el = document.getElementById(d.id);
     if (el) el.innerHTML = d.html;
   });
+  point.derived.forEach((d) => {
+    const el = document.getElementById(d.id);
+    if (el) liveMenuElRestore(el, d.state);
+  });
   Object.keys(qty).forEach((k) => { delete qty[k]; });
   Object.assign(qty, point.qty);
+  if (point.quote && typeof __serverQuote === 'object' && __serverQuote) {
+    __serverQuote.key = point.quote.key;
+    __serverQuote.cents = point.quote.cents;
+    __serverQuote.inflight = point.quote.inflight;
+  }
   liveMenuUiRestore(point.ui);
 }
 
@@ -1935,7 +1991,7 @@ function liveMenuCommit(prepared){
   // A dish the upgrade INTRODUCED has no quantity entry, and the card template reads one. Initialise it
   // to 0 — never leave it undefined, which renders as "undefined" and makes the next chg() produce NaN.
   MENU.forEach((p) => { if (qty[p.id] === undefined) qty[p.id] = 0; });
-  renderMenu();
+  liveMenuRenderAll();
   if (typeof applyAvailability === 'function') applyAvailability();
   /* RE-SYNC THE CARDS THAT ARE IN THE CART. renderMenu draws every card from the template, which shows
      the collapsed "+" affordance; the stepper/badge state of an item already in the cart is applied by
@@ -2005,6 +2061,16 @@ function bootLiveMenu(){
      the Task 6 tests, which exercise the REAL fetch → coordinator → adapter → applier chain rather
      than poking at its parts, and by anyone debugging a live page. Read-only by convention; nothing
      in the form reads it back. */
+  /* A DISPLAY-MUTATION AND DEBUG SEAM — and worth naming accurately rather than flatteringly. The
+     coordinator and applier are module-lexical (`let`), so nothing outside this script can reach them;
+     published here so the integration can be driven and inspected from the outside, by the Task 6 tests
+     (which exercise the real fetch → coordinator → adapter → applier chain rather than poking at its
+     parts) and by anyone debugging a live page.
+     What it CAN do: applier.apply() replaces the displayed menu, which includes displayed prices. It is
+     "read-only by convention" only — nothing enforces that. What it CANNOT do: reach a charge. It
+     exposes no order construction and no send, the server re-prices every order regardless of anything
+     displayed, and the send gate refuses a cart whose captured prices no longer agree with the menu —
+     which is precisely the state a display mutation would create. No money path runs through it. */
   try { window.__liveMenu = { feed: LIVE_MENU_FEED, applier: LIVE_APPLIER, flush: liveMenuFlush }; } catch(_){}
   return LIVE_MENU_FEED;
 }
@@ -3067,6 +3133,10 @@ async function processPayment(){
   }
   } finally {
     window.__paySubmitting = false;
+    // 1B Task 6 — the submit-complete hook. A snapshot deferred while the submission was in flight has
+    // no stage change to ride back in on when the submission ENDS without one (a retry exhausted, a
+    // 4xx that leaves the customer on the sending screen), and would otherwise sit stranded.
+    setTimeout(liveMenuFlush, 0);
     if(_payCta) _payCta.disabled = false;        // online has navigated away by here; on error/return the CTA re-enables
   }
 }
