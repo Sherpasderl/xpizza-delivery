@@ -131,8 +131,33 @@ ok('fail-soft: 5 bad-cart shapes → { ok:false } with NO total (the client keep
        the SAME cart indistinguishable, so an orphan left behind by a failed live-menu apply matched the
        restored marker and overwrote the quote — in either settlement order. A monotonic token cannot
        collide, which closes both directions by construction rather than by guarding each site. */
-    assert.ok(/const token = \+\+__quoteSeq;\s*\n\s*__serverQuote\.inflight = token;/.test(block),
+    assert.ok(/const token = \+\+__quoteSeq;[^\n]*\n\s*__serverQuote\.inflight = token;/.test(block),
       `${rid}: each request must take a unique token, not the cart key`);
+    /* 🔴 EVERY CART TRANSITION SUPERSEDES WHAT WAS OUTSTANDING — INCLUDING THE ONES THAT FIRE NOTHING.
+       requestServerQuote has four ways out, and the rule is not uniform across them, which is exactly
+       why it is asserted rather than left to be re-derived by the next reader:
+         redemption-owns-the-total → supersede   (returns without firing)
+         empty cart               → supersede   (returns without firing)
+         cart already quoted      → supersede   (returns without firing)  ← the one that was missing
+         request already in flight for THIS cart → do NOT supersede: that reply is the one being awaited,
+                                                   and orphaning it leaves the cart permanently unquoted.
+       The count is pinned too, so a future edit cannot add a fifth return that quietly fires nothing and
+       supersedes nothing. */
+    // Scoped to requestServerQuote itself — the parity block holds several functions, and counting
+    // returns across all of them would measure something nobody is claiming.
+    const rsq = block.slice(block.indexOf('function requestServerQuote'), block.indexOf('\n}', block.indexOf('function requestServerQuote')));
+    assert.ok(rsq.length > 200, `${rid}: non-vacuity — requestServerQuote was actually sliced out`);
+    assert.strictEqual((rsq.match(/supersedeQuoteRequests\(\);/g) || []).length, 3,
+      `${rid}: exactly the three no-fire returns may supersede`);
+    assert.ok(/if\(__serverQuote\.inflightKey===key\) return;/.test(rsq),
+      `${rid}: …and the same-cart dedupe returns WITHOUT superseding the reply it is waiting for`);
+    /* Counted at the FUNCTION's own indentation: a bare `return;` count also picks up the two guards
+       inside the promise handlers, which are not ways out of requestServerQuote at all. Asserting 6 and
+       explaining it away would have been a count that measured something nobody is claiming. */
+    assert.strictEqual((rsq.match(/\n    \S[^\n]*\breturn;/g) || []).length, 4,
+      `${rid}: requestServerQuote still has exactly four ways out — a new one needs its own decision`);
+    assert.strictEqual((rsq.match(/\n        \S[^\n]*\breturn;/g) || []).length, 2,
+      `${rid}: …and the two handler guards (success + rejection) are both still there`);
     assert.ok(!/__serverQuote\.inflight\s*===?\s*key\b/.test(block),
       `${rid}: nothing may compare the in-flight marker against a cart key any more`);
     assert.ok(/if\(__serverQuote\.inflightKey===key\) return;/.test(block),

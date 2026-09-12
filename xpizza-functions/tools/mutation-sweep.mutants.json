@@ -2329,7 +2329,7 @@
       "../live-apply.test.mjs"
     ],
     "label": "a request is identified by its CART KEY again — two same-cart requests become indistinguishable",
-    "from": "    const token = ++__quoteSeq;\n    __serverQuote.inflight = token;\n    __serverQuote.inflightKey = key;",
+    "from": "    const token = ++__quoteSeq;      //  5. …and firing a request supersedes by taking the next token\n    __serverQuote.inflight = token;\n    __serverQuote.inflightKey = key;",
     "to": "    const token = key;\n    __serverQuote.inflight = token;\n    __serverQuote.inflightKey = key;"
   },
   {
@@ -2353,7 +2353,7 @@
       "../live-apply.test.mjs"
     ],
     "label": "la_musa: a request is identified by its CART KEY again — two same-cart requests become indistinguishable",
-    "from": "    const token = ++__quoteSeq;\n    __serverQuote.inflight = token;\n    __serverQuote.inflightKey = key;",
+    "from": "    const token = ++__quoteSeq;      //  5. …and firing a request supersedes by taking the next token\n    __serverQuote.inflight = token;\n    __serverQuote.inflightKey = key;",
     "to": "    const token = key;\n    __serverQuote.inflight = token;\n    __serverQuote.inflightKey = key;"
   },
   {
@@ -2367,5 +2367,77 @@
     "label": "la_musa: the recovery RESTORES the old token instead of advancing it — the original request is re-armed",
     "from": "  __serverQuote.inflight = ++__quoteSeq;\n  __serverQuote.inflightKey = null;",
     "to": "  __serverQuote.inflight = q.inflight;\n  __serverQuote.inflightKey = q.inflightKey;"
+  },
+  {
+    "id": "b6-70",
+    "slice": "b6",
+    "file": "../xpizza-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "returning to an already-quoted cart supersedes nothing — the request left behind clobbers the cache",
+    "from": "    if(key===__serverQuote.key && __serverQuote.cents!=null){ supersedeQuoteRequests(); return; }",
+    "to": "    if(key===__serverQuote.key && __serverQuote.cents!=null) return;"
+  },
+  {
+    "id": "b6-71",
+    "slice": "b6",
+    "file": "../xpizza-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "a redemption taking over the total supersedes nothing",
+    "from": "    if(window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()){ supersedeQuoteRequests(); return; }",
+    "to": "    if(window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()) return;"
+  },
+  {
+    "id": "b6-72",
+    "slice": "b6",
+    "file": "../xpizza-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "the same-cart dedupe ALSO supersedes — orphaning the very reply this call waits for",
+    "from": "    if(__serverQuote.inflightKey===key) return;",
+    "to": "    if(__serverQuote.inflightKey===key){ supersedeQuoteRequests(); return; }"
+  },
+  {
+    "id": "b6-73",
+    "slice": "b6",
+    "file": "../la-musa-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "la_musa: returning to an already-quoted cart supersedes nothing — the request left behind clobbers the cache",
+    "from": "    if(key===__serverQuote.key && __serverQuote.cents!=null){ supersedeQuoteRequests(); return; }",
+    "to": "    if(key===__serverQuote.key && __serverQuote.cents!=null) return;"
+  },
+  {
+    "id": "b6-74",
+    "slice": "b6",
+    "file": "../la-musa-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "la_musa: a redemption taking over the total supersedes nothing",
+    "from": "    if(window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()){ supersedeQuoteRequests(); return; }",
+    "to": "    if(window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()) return;"
+  },
+  {
+    "id": "b6-75",
+    "slice": "b6",
+    "file": "../la-musa-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "la_musa: the same-cart dedupe ALSO supersedes — orphaning the very reply this call waits for",
+    "from": "    if(__serverQuote.inflightKey===key) return;",
+    "to": "    if(__serverQuote.inflightKey===key){ supersedeQuoteRequests(); return; }"
   }
 ]

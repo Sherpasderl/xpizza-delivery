@@ -2376,8 +2376,7 @@ function liveMenuQuoteSet(q){
      whichever way it settles. Advancing is what makes that true by construction rather than by
      reasoning about which one is "really" current.
      inflightKey is cleared so a genuinely new request can still be issued for this cart. */
-  __serverQuote.inflight = ++__quoteSeq;
-  __serverQuote.inflightKey = null;
+  supersedeQuoteRequests();
 }
 /* 🔴 …AND SO DOES EVERYTHING ELSE THE PAINT CAN CHANGE THAT BELONGS TO THE CUSTOMER. This is the
    invariant, and it is stated that way deliberately, because the previous two rounds were a LIST:
@@ -2898,6 +2897,15 @@ function syncFreeOrderUI(){
 var __serverQuote = { key: null, cents: null, inflight: null, inflightKey: null };
 // Monotonic, so no two quote requests can ever share an identity — see requestServerQuote below.
 var __quoteSeq = 0;
+/* 🔴 THE INVARIANT: EVERY CART TRANSITION SUPERSEDES WHATEVER WAS OUTSTANDING — INCLUDING THE
+   TRANSITIONS THAT FIRE NO REQUEST. Advancing the token to an epoch no request holds orphans every
+   reply still in flight, whichever way each settles. Used by every path that leaves the cart in a
+   state the outstanding requests were not asked about, so the rule is one line in four places rather
+   than four different judgements. */
+function supersedeQuoteRequests(){
+  __serverQuote.inflight = ++__quoteSeq;
+  __serverQuote.inflightKey = null;
+}
 // The cart signature. redeemCartItems() is the brand's own builder and is exactly what the ORDER sends,
 // so quoting it means the quote prices the same payload the charge will.
 function serverQuoteCartKey(){ try{ return JSON.stringify(redeemCartItems()); }catch(_){ return null; } }
@@ -2912,12 +2920,32 @@ function getServerQuoteTotalCents(){
 }
 function requestServerQuote(){
   try{
-    if(window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()) return;
+    /* THE FOUR WAYS OUT OF THIS FUNCTION, and why each either supersedes or must not. Written out
+       because "every transition supersedes" is only worth saying if it can be checked against the
+       returns, and the one that was missed looked innocuous precisely because it fires nothing.
+
+       1. A REDEMPTION OWNS THE TOTAL → supersede. The quote is not displayed while a redemption is
+          active, but a reply landing now still OVERWRITES the cached one for the cart on screen — and
+          when the reward is removed the display falls open to calcTotal, taking an exact-mode tender
+          with it. (Not named in the gate; included because it is the same defect through another door,
+          and leaving a known-reachable instance because it was not named is the mistake this whole
+          round exists to stop repeating.) */
+    if(window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()){ supersedeQuoteRequests(); return; }
     const items = redeemCartItems();
-    if(!items || !items.length){ __serverQuote.key=null; __serverQuote.cents=null; __serverQuote.inflight=null; __serverQuote.inflightKey=null; return; }
+    //  2. THE CART IS EMPTY → supersede, and drop the cache with it. (Already did.)
+    if(!items || !items.length){ __serverQuote.key=null; __serverQuote.cents=null; supersedeQuoteRequests(); return; }
     const key = JSON.stringify(items);
-    if(key===__serverQuote.key && __serverQuote.cents!=null) return;   // this exact cart is already quoted
-    if(__serverQuote.inflightKey===key) return;                         // one request in flight per cart
+    /*  3. THIS CART IS ALREADY QUOTED → supersede, then return. THE ONE THAT WAS MISSING. Returning to
+           a cart that is already cached fires nothing, so it looked like a no-op — but it is still a
+           transition, and a request issued for the cart we just left is still outstanding. It lands,
+           passes the guard because nothing superseded it, and clears the cache of the cart actually on
+           screen; the next exact-mode updateTotal then lowers the customer's tender (350 → 340 /
+           233 → 223). Reproduced: quote A, add an item, remove it again. */
+    if(key===__serverQuote.key && __serverQuote.cents!=null){ supersedeQuoteRequests(); return; }
+    /*  4. A REQUEST FOR THIS EXACT CART IS ALREADY IN FLIGHT → do NOT supersede. That request is the
+           current cart's and is the one to wait for; superseding here would orphan the very reply this
+           call wants and leave the cart permanently unquoted. */
+    if(__serverQuote.inflightKey===key) return;
     /* 🔴 A REQUEST IS IDENTIFIED BY ITSELF, NOT BY THE CART IT ASKED ABOUT. `inflight` used to hold the
        cart key, which made two requests FOR THE SAME CART indistinguishable — and the live-menu recovery
        creates exactly that pair: a failed apply's paint fires a second quote for the unchanged cart, the
@@ -2929,7 +2957,7 @@ function requestServerQuote(){
        orphaned request never matches the current token, whatever cart it asked about and whichever way
        it settles. `inflightKey` keeps the separate, unrelated job the cart key was doing — not issuing a
        second request for a cart already being quoted. */
-    const token = ++__quoteSeq;
+    const token = ++__quoteSeq;      //  5. …and firing a request supersedes by taking the next token
     __serverQuote.inflight = token;
     __serverQuote.inflightKey = key;
     // NOT awaited on any tap: the client total renders immediately and reconciles when this lands.

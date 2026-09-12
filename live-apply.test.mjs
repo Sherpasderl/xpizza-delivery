@@ -709,6 +709,7 @@ for (const dir of Object.keys(BRAND)) {
   for (const mode of ['exact', 'custom']) {
   for (const fault of ['single', 'double']) {
   for (const settleAs of ['resolve', 'reject']) {
+  for (const order of ['duplicate-first', 'original-first']) {
     const w = loadForm(dir);
     w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
     w.selectPay('cash');
@@ -728,7 +729,7 @@ for (const dir of Object.keys(BRAND)) {
     const menuBody = envelope(B.rid, (() => { const m = B.menu(w); m.dishes[0] = { ...m.dishes[0], name: 'Should Not Survive' }; return m; })());
     w.__serverQuote.inflight = null; w.__serverQuote.inflightKey = null;
     w.updateTotal();                                   // issues the original request
-    assert.ok(w.__serverQuote.inflightKey, `${dir}/${mode}/${fault}/${settleAs}: non-vacuity — an original request is outstanding`);
+    assert.ok(w.__serverQuote.inflightKey, `${dir}/${mode}/${fault}/${settleAs}/${order}: non-vacuity — an original request is outstanding`);
 
     // The customer's state, set AFTER the original went out.
     w.__serverQuote.key = w.serverQuoteCartKey();
@@ -757,34 +758,41 @@ for (const dir of Object.keys(BRAND)) {
     w.onCashTenderedInput = realTender;
 
     const st = w.__liveMenu.applier.state();
-    assert.ok(st.lastError || st.fatal, `${dir}/${mode}/${fault}/${settleAs}: non-vacuity — the apply failed`);
+    assert.ok(st.lastError || st.fatal, `${dir}/${mode}/${fault}/${settleAs}/${order}: non-vacuity — the apply failed`);
     if (fault === 'double') assert.ok(st.fatal, `${dir}/${mode}/${fault}: non-vacuity — the recovery failed too`);
     assert.ok(w.__calls.filter((u) => /quote/i.test(u)).length > quoteCallsBefore,
-      `${dir}/${mode}/${fault}/${settleAs}: non-vacuity — a DUPLICATE same-cart request really was started`);
+      `${dir}/${mode}/${fault}/${settleAs}/${order}: non-vacuity — a DUPLICATE same-cart request really was started`);
 
     // Both outstanding requests settle, the orphan-under-test first.
     const good = { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ ok: true, total_cents: quotedCents - 5000 }) };
-    if (settleAs === 'resolve') { settleDuplicate.resolve(good); await settle(); settleOriginal.resolve(good); }
-    else { settleDuplicate.reject(new Error('quote failed')); await settle(); settleOriginal.reject(new Error('quote failed')); }
+    const fire = (d, how) => (how === 'resolve' ? d.resolve(good) : d.reject(new Error('quote failed')));
+    /* Both ORDERS and MIXED outcomes. The committed matrix always settled the duplicate first with the
+       two replies agreeing, which leaves "the original settles first" and "one succeeds while the other
+       fails" unexercised — and those are the interleavings an orphan guard is most likely to get wrong.
+       `settleAs` names what the FIRST reply does; the second does the opposite. */
+    const [firstD, secondD] = (order === 'duplicate-first') ? [settleDuplicate, settleOriginal] : [settleOriginal, settleDuplicate];
+    fire(firstD, settleAs);
+    await settle();
+    fire(secondD, settleAs === 'resolve' ? 'reject' : 'resolve');
     await settle();
 
     assert.strictEqual(w.__serverQuote.cents, quotedCents,
-      `${dir}/${mode}/${fault}/${settleAs}: 🔴 no orphaned request may overwrite the restored quote`);
+      `${dir}/${mode}/${fault}/${settleAs}/${order}: 🔴 no orphaned request may overwrite the restored quote`);
     w.updateTotal();
     assert.strictEqual(box().value, tenderBefore,
-      `${dir}/${mode}/${fault}/${settleAs}: 🔴 …so the customer still pays what they chose`);
+      `${dir}/${mode}/${fault}/${settleAs}/${order}: 🔴 …so the customer still pays what they chose`);
     // …and the MODE came through: move the total and see which way the tender goes.
     w.__serverQuote.cents = quotedCents - 500;
     w.updateTotal();
     if (mode === 'exact') {
       assert.strictEqual(Number(box().value), (quotedCents - 500) / 100,
-        `${dir}/exact/${fault}/${settleAs}: an exact tender still follows the total`);
+        `${dir}/exact/${fault}/${settleAs}/${order}: an exact tender still follows the total`);
     } else {
       assert.strictEqual(box().value, tenderBefore,
-        `${dir}/custom/${fault}/${settleAs}: a custom tender still does not follow the total`);
+        `${dir}/custom/${fault}/${settleAs}/${order}: a custom tender still does not follow the total`);
     }
-  } } }
-  ok(`${dir}: orphaned quote requests never touch the restored quote — 8 combinations (mode × fault × settlement)`);
+  } } } }
+  ok(`${dir}: orphaned quote requests never touch the restored quote — 16 combinations (mode × fault × settlement × order, mixed outcomes)`);
 
   // ── 26. 🔴 TWO REQUESTS FOR THE SAME CART ARE DIFFERENT REQUESTS (A → B → A) ──
   //
@@ -828,7 +836,124 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: two requests for the same cart are told apart (A → B → A, stale reply first)`);
   }
 
-  // ── 27. 🔴 THE SAVED MODE IS LOAD-BEARING — THE STALE TENDER/FLAG PAIR ──
+  // ── 27. 🔴 RETURNING TO AN ALREADY-QUOTED CART SUPERSEDES TOO ──
+  //
+  // The transition that fires NO request, which is why it looked like a no-op. Quote cart A and set an
+  // exact tender from it; add an item (request for B goes out); remove it again. The cached-cart
+  // short-circuit returns early — and B is still outstanding. When it settles it passes the guard,
+  // clears the cache of the cart actually on screen, and the next exact-mode updateTotal lowers the
+  // tender. Nothing to do with a failed apply: this is the live forms as they ship.
+  for (const outcome of ['rejects', 'succeeds']) {
+    const w = loadForm(dir);
+    const deferreds = [];
+    w.__respond = (url) => {
+      if (!/quote/i.test(url)) return new Promise(() => {});
+      let d; const pr = new Promise((resolve, reject) => { d = { resolve, reject }; });
+      pr.catch(() => {}); deferreds.push(d); return pr;
+    };
+    const dish = w.liveMenuGlobalGet('MENU')[0], other = w.liveMenuGlobalGet('MENU')[1];
+    w.selectPay('cash');
+    const panel = w.document.getElementById('cash-change-panel');
+    if (panel) panel.style.display = 'block';
+    const box = () => w.document.getElementById('cash-tendered');
+
+    w.chg(dish.id, 1);                                  // cart A → request 1
+    const reply = (cents) => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ ok: true, total_cents: cents }) });
+    deferreds[0].resolve(reply(35000));                 // A is quoted and CACHED
+    await settle();
+    assert.strictEqual(w.__serverQuote.cents, 35000, `${dir}/${outcome}: non-vacuity — cart A is cached`);
+    w.setCashTendered(w.redeemAdjustedTotal());         // exact tender, on A's quote
+    const tenderBefore = box().value;
+
+    w.chg(other.id, 1);                                 // cart B → request 2 goes out
+    const before = deferreds.length;
+    w.chg(other.id, -1);                                // …and straight back to cart A — fires NOTHING
+    assert.strictEqual(deferreds.length, before,
+      `${dir}/${outcome}: non-vacuity — returning to the cached cart really does fire no request`);
+
+    // B settles, long after the customer went back to A.
+    if (outcome === 'rejects') deferreds[1].reject(new Error('quote failed'));
+    else deferreds[1].resolve(reply(9900));
+    await settle();
+
+    assert.strictEqual(w.__serverQuote.cents, 35000,
+      `${dir}/${outcome}: 🔴 a request for the cart the customer LEFT must not touch the cached quote`);
+    w.updateTotal();
+    assert.strictEqual(box().value, tenderBefore,
+      `${dir}/${outcome}: 🔴 …so the exact tender is still what they chose`);
+    ok(`${dir}: returning to an already-quoted cart supersedes the request left behind (B ${outcome})`);
+  }
+
+  // ── 28. …BUT THE SAME-CART DEDUPE MUST *NOT* SUPERSEDE ──
+  //
+  // The over-correction, and it is a real one: "every return supersedes" is nearly the rule but not
+  // quite. A second call for the cart ALREADY being quoted must leave that request alone — it is the
+  // reply this very call wants. Superseding there orphans it, so the reply is ignored when it lands and
+  // the cart is never quoted at all: the display falls open to calcTotal and stays there until the cart
+  // changes. Asserted so a future tidy-up cannot make the four returns uniform and call it a
+  // simplification.
+  {
+    const w = loadForm(dir);
+    const deferreds = [];
+    w.__respond = (url) => {
+      if (!/quote/i.test(url)) return new Promise(() => {});
+      let d; const pr = new Promise((resolve, reject) => { d = { resolve, reject }; });
+      pr.catch(() => {}); deferreds.push(d); return pr;
+    };
+    w.selectPay('cash');
+    w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);        // cart A → one request goes out
+    assert.strictEqual(deferreds.length, 1, `${dir}: non-vacuity — exactly one request so far`);
+    w.updateTotal();                                    // same cart again → the dedupe path
+    w.updateTotal();
+    assert.strictEqual(deferreds.length, 1,
+      `${dir}: non-vacuity — the dedupe really did prevent a second request`);
+
+    deferreds[0].resolve({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ ok: true, total_cents: 41000 }) });
+    await settle();
+    assert.strictEqual(w.__serverQuote.cents, 41000,
+      `${dir}: 🔴 the reply the deduped calls were waiting for must still be accepted`);
+    ok(`${dir}: the same-cart dedupe does NOT orphan the request it is waiting for`);
+  }
+
+  // ── 29. …AND SO DOES A REDEMPTION TAKING OVER THE TOTAL ──
+  // The same defect through the other door that returns without firing. Not named in the gate; included
+  // because leaving a known-reachable instance because nobody pointed at it is the exact habit these
+  // rounds have been about.
+  {
+    const w = loadForm(dir);
+    const deferreds = [];
+    w.__respond = (url) => {
+      if (!/quote/i.test(url)) return new Promise(() => {});
+      let d; const pr = new Promise((resolve, reject) => { d = { resolve, reject }; });
+      pr.catch(() => {}); deferreds.push(d); return pr;
+    };
+    const dish = w.liveMenuGlobalGet('MENU')[0], other = w.liveMenuGlobalGet('MENU')[1];
+    w.selectPay('cash');
+    const panel = w.document.getElementById('cash-change-panel');
+    if (panel) panel.style.display = 'block';
+    const reply = (cents) => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ ok: true, total_cents: cents }) });
+
+    w.chg(dish.id, 1);
+    deferreds[0].resolve(reply(35000));
+    await settle();
+    assert.strictEqual(w.__serverQuote.cents, 35000, `${dir}: non-vacuity — cart A is cached`);
+
+    w.chg(other.id, 1);                                 // request for cart B goes out
+    assert.ok(deferreds.length >= 2, `${dir}: non-vacuity — B's request is outstanding`);
+    // A reward takes over the total: requestServerQuote now returns without firing…
+    w.__ACCOUNT = { getRedeemPayload: () => ({ reward_id: 'r1' }), getRedeemQuoteTotalCents: () => 30000,
+                    getRedeemQuote: () => ({ total_cents: 30000 }), customerIdToken: async () => null,
+                    classifyRedeemError: () => null, restoreRedeem: () => {}, setRestoring: () => {} };
+    w.chg(other.id, -1);                                // …back to cart A, through the redemption return
+    deferreds[1].resolve(reply(9900));                  // B lands
+    await settle();
+    w.__ACCOUNT = null;                                 // the customer removes the reward
+    assert.strictEqual(w.__serverQuote.cents, 35000,
+      `${dir}: 🔴 a reply for a cart left behind must not clobber the cache through the redemption path`);
+    ok(`${dir}: a redemption taking over the total also supersedes what was outstanding`);
+  }
+
+  // ── 30. 🔴 THE SAVED MODE IS LOAD-BEARING — THE STALE TENDER/FLAG PAIR ──
   //
   // Found by the gate, and it is the case that justifies assigning the mode rather than re-deriving it.
   // A quote lands while the customer sits in exact mode: the success handler updates key/cents and
