@@ -1072,5 +1072,295 @@
       "--test",
       "../xpizza-orders/form-live-menu.test.mjs"
     ]
+  },
+  {
+    "id": "b4-01",
+    "slice": "b4",
+    "label": "a dish that left the menu is no longer reported as removed",
+    "file": "../xpizza-orders/form-cart.js",
+    "from": "    if (!live) return 'removed';\n    if (adapter.pricingKey(live) !== line.added.pricingKey) return 'renamed';",
+    "to": "    if (!live) return null;\n    if (adapter.pricingKey(live) !== line.added.pricingKey) return 'renamed';",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-02",
+    "slice": "b4",
+    "label": "the dish price comparison is dropped — a re-price is adopted silently",
+    "file": "../xpizza-orders/form-cart.js",
+    "from": "    if (live.price !== line.added.price) return 'repriced';",
+    "to": "    if (false) return 'repriced';",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-03",
+    "slice": "b4",
+    "label": "the dish pricing-key comparison is dropped — a rename passes",
+    "file": "../xpizza-orders/form-cart.js",
+    "from": "    if (adapter.pricingKey(live) !== line.added.pricingKey) return 'renamed';",
+    "to": "    if (false) return 'renamed';",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-04",
+    "slice": "b4",
+    "label": "the captured record is refreshed on every quantity change",
+    "file": "../xpizza-orders/form-cart.js",
+    "from": "    lines.set(key, { key, qty, added: existing ? existing.added : snapshotOf(record) });",
+    "to": "    lines.set(key, { key, qty, added: snapshotOf(record) });",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-05",
+    "slice": "b4",
+    "label": "a line is blocked by its DISH only — an unresolved option slips through",
+    "file": "../xpizza-orders/form-cart.js",
+    "from": "        blocked: !!unresolved || extras.some((x) => !!x.unresolved),",
+    "to": "        blocked: !!unresolved,",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-06",
+    "slice": "b4",
+    "label": "an unresolved line serializes from the LIVE record instead of what it was added as",
+    "file": "../xpizza-orders/form-cart.js",
+    "from": "        record: unresolved ? line.added.record : live,",
+    "to": "        record: live || line.added.record,",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-07",
+    "slice": "b4",
+    "label": "option capture is no longer idempotent — re-selecting adopts the new price",
+    "file": "../xpizza-orders/form-cart.js",
+    "from": "    if (!chosenExtras.has(key)) {",
+    "to": "    if (true) {",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-08",
+    "slice": "b4",
+    "label": "setQtyByKey CREATES a line it has no record for",
+    "file": "../xpizza-orders/form-cart.js",
+    "from": "    if (!lines.has(key)) return false;",
+    "to": "    if (!lines.has(key)) { lines.set(key, { key, qty: 0, added: { key, pricingKey: key, name: key, price: 0, record: { id: key, name: key, price: 0 } } }); }",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-09",
+    "slice": "b4",
+    "label": "an option that left the menu is no longer reported as removed",
+    "file": "../xpizza-orders/form-cart.js",
+    "from": "    if (!live) return 'removed';\n    if (adapter.extraPricingKey(live) !== added.pricingKey) return 'renamed';",
+    "to": "    if (!live) return null;\n    if (adapter.extraPricingKey(live) !== added.pricingKey) return 'renamed';",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-10",
+    "slice": "b4",
+    "label": "the option price comparison is dropped — a re-priced option is adopted silently",
+    "file": "../xpizza-orders/form-cart.js",
+    "from": "    if (live.price !== added.price) return 'repriced';",
+    "to": "    if (false) return 'repriced';",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-12",
+    "slice": "b4",
+    "label": "cart lines serialize in insertion order rather than MENU order",
+    "file": "../xpizza-orders/index.html",
+    "from": "    .sort((a, b) => a.r - b.r).map((x) => x.l);",
+    "to": "    .map((x) => x.l);",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-13",
+    "slice": "b4",
+    "label": "the serializer goes back to filtering the cart out of MENU",
+    "file": "../xpizza-orders/index.html",
+    "from": "  return cartLines().map(line=>{\n    const p = line.record;\n    const instances = pizzaExtras[line.key] || {};",
+    "to": "  return MENU.filter(p=>qty[p.id]>0).map(p=>{\n    const line = { key: String(p.id), qty: qty[p.id], extras: [] };\n    const instances = pizzaExtras[line.key] || {};",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-14",
+    "slice": "b4",
+    "label": "option resolution prefers the LIVE record over the line’s own",
+    "file": "../xpizza-orders/index.html",
+    "from": "function lineExtra(line, eid){\n  const x = line.extras.find(e => e.key === eid);\n  return x ? x.record : (findMenuExtra(eid) || CART.extraAddedRecord(eid));",
+    "to": "function lineExtra(line, eid){\n  return (findMenuExtra(eid) || CART.extraAddedRecord(eid));",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-15",
+    "slice": "b4",
+    "label": "the submit gate is gone",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if(_conflicts.length){ announceCartConflicts(_conflicts); return; }",
+    "to": "  if(false){ announceCartConflicts(_conflicts); return; }",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-16",
+    "slice": "b4",
+    "label": "chg drops the NaN guard on a dish the live menu introduced",
+    "file": "../xpizza-orders/index.html",
+    "from": "  qty[id]=Math.max(0,(qty[id]||0)+d);",
+    "to": "  qty[id]=Math.max(0,qty[id]+d);",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-17",
+    "slice": "b4",
+    "label": "the cart signature goes back to being menu-derived",
+    "file": "../xpizza-orders/index.html",
+    "from": "  const items = cartLines().map(l=>[l.key, l.qty, JSON.stringify(pizzaExtras[l.key]||{})]).sort();",
+    "to": "  const items = MENU.filter(p=>qty[p.id]>0).map(p=>[p.id, qty[p.id], JSON.stringify(pizzaExtras[p.id]||{})]).sort();",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-18",
+    "slice": "b4",
+    "label": "removing a line whose dish is gone silently does nothing",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if (n > 0 && rec) CART.setQty(rec, n); else CART.setQtyByKey(String(id), n);",
+    "to": "  if (n > 0 && rec) CART.setQty(rec, n);",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-19",
+    "slice": "b4",
+    "label": "the total skips a line the live menu no longer carries",
+    "file": "../xpizza-orders/index.html",
+    "from": "  cartLines().forEach(line=>{\n    const p = line.record;\n    total += p.price * line.qty;",
+    "to": "  cartLines().forEach(line=>{\n    const p = line.record;\n    if(line.unresolved) return;\n    total += p.price * line.qty;",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-20",
+    "slice": "b4",
+    "label": "the option is captured even when it was just switched off",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if (q > 0) { const _ex = findMenuExtra(extraId); if (_ex) CART.noteExtra(_ex); }",
+    "to": "  { const _ex = findMenuExtra(extraId); if (_ex) CART.noteExtra(_ex); }",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ],
+    "equivalent": true,
+    "why": "chosenExtras is only ever READ for keys extraKeysFor() returns, and that list is the options at qty>0. Capturing an option as it is switched OFF therefore adds an entry nothing resolves against. Capture is idempotent by key, so the entry a later switch-ON would have written is the same one — and an option cannot be switched off before it has been switched on. No input distinguishes the two."
+  },
+  {
+    "id": "b4-21",
+    "slice": "b4",
+    "label": "la_musa: the submit gate is gone",
+    "file": "../la-musa-orders/index.html",
+    "from": "  if(_conflicts.length){ announceCartConflicts(_conflicts); return; }",
+    "to": "  if(false){ announceCartConflicts(_conflicts); return; }",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-22",
+    "slice": "b4",
+    "label": "la_musa: option resolution prefers the LIVE record over the line’s own",
+    "file": "../la-musa-orders/index.html",
+    "from": "function lineExtra(line, eid){\n  const x = line.extras.find(e => e.key === eid);\n  return x ? x.record : (findMenuExtra(eid) || CART.extraAddedRecord(eid));",
+    "to": "function lineExtra(line, eid){\n  return (findMenuExtra(eid) || CART.extraAddedRecord(eid));",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-23",
+    "slice": "b4",
+    "label": "la_musa: the serializer goes back to filtering the cart out of MENU",
+    "file": "../la-musa-orders/index.html",
+    "from": "  return cartLines().map(line=>{\n    const p = line.record;\n    const itemExtras = pizzaExtras[line.key] || {};",
+    "to": "  return MENU.filter(p=>qty[p.id]>0).map(p=>{\n    const line = { key: String(p.id), qty: qty[p.id], extras: [] };\n    const itemExtras = pizzaExtras[line.key] || {};",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-24",
+    "slice": "b4",
+    "label": "la_musa: cart lines serialize in insertion order rather than MENU order",
+    "file": "../la-musa-orders/index.html",
+    "from": "    .sort((a, b) => a.r - b.r).map((x) => x.l);",
+    "to": "    .map((x) => x.l);",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-25",
+    "slice": "b4",
+    "label": "la_musa: chg drops the NaN guard on a dish the live menu introduced",
+    "file": "../la-musa-orders/index.html",
+    "from": "  qty[id]=Math.max(0,(qty[id]||0)+d);",
+    "to": "  qty[id]=Math.max(0,qty[id]+d);",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
   }
 ]
