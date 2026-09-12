@@ -567,8 +567,14 @@ for (const dir of Object.keys(BRAND)) {
       `${dir}/${mode}: 🔴 the customer is still paying the amount they chose`);
     assert.strictEqual(w.__serverQuote.cents, Math.round((localTotal - 10) * 100),
       `${dir}/${mode}: and the quote a failed apply cleared is restored — amount…`);
-    assert.strictEqual(w.__serverQuote.key, quoteKeyBefore, `${dir}/${mode}: …key…`);
-    assert.strictEqual(w.__serverQuote.inflight, quoteInflightBefore, `${dir}/${mode}: …and in-flight marker`);
+    assert.strictEqual(w.__serverQuote.key, quoteKeyBefore, `${dir}/${mode}: …and key`);
+    /* The in-flight marker is deliberately NOT restored verbatim: the recovery advances it to a fresh
+       epoch so that every request outstanding across the failed apply is orphaned. Restoring the old
+       token would re-arm the original request, which is no longer something to listen to. */
+    assert.notStrictEqual(w.__serverQuote.inflight, quoteInflightBefore,
+      `${dir}/${mode}: the in-flight token is advanced, not restored — outstanding requests are orphaned`);
+    assert.strictEqual(w.__serverQuote.inflightKey, null,
+      `${dir}/${mode}: …and the per-cart dedupe is cleared so a genuinely new request can still be made`);
 
     /* 🔴 THE MODE, DISTINGUISHED BY MOVING THE TOTAL. The previous version called updateTotal() at the
        UNCHANGED total and asserted the tender had not moved — which is true in BOTH modes, because an
@@ -687,18 +693,22 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: a double fault still leaves the tender and mode exactly as the customer had them`);
   }
 
-  // ── 25. 🔴 A QUOTE FETCH THAT REJECTS *AFTER* THE RECOVERY MUST NOT LOWER THE TENDER ──
+  // ── 25. 🔴 THE ORPHANED-QUOTE MATRIX: mode × fault × settlement direction ──
   //
-  // The async door on the same invariant, and it opens from the recovery path. A failed apply's paint
-  // clears the quote, which makes the next updateTotal start a REPLACEMENT quote fetch. The recovery
-  // then puts the original quote back — and that orphaned fetch is still in flight. When it rejects, its
-  // handler nulls key and cents, clobbering the quote the recovery just restored; the next exact-mode
-  // updateTotal then spends the lost quote and drops the tender (350 → 340 / 233 → 223).
+  // THE ROOT, and why the two previous rounds each closed only a site. `inflight` held the CART KEY, so
+  // two requests for the SAME cart were indistinguishable — and a failed apply creates exactly that
+  // pair: the commit's invalidation clears the in-flight marker (which is also the per-cart dedupe), so
+  // the paint starts a duplicate while the original is still outstanding. Whichever settled first
+  // matched the restored marker, was treated as current, and overwrote the quote the recovery had put
+  // back; the next exact-mode updateTotal then spent it and lowered the tender.
   //
-  // The success path already ignored a superseded response; the rejection path did not — and could not,
-  // because its guard was written `if(cond) a; b; c;` and so covered only the first statement. Run for
-  // BOTH fault shapes: the commit alone failing, and the recovery failing too.
+  // Guarding the rejection path (round 4) fixed one settlement direction of one of the two requests.
+  // Identity is now per-REQUEST, and the recovery ADVANCES the token, so both outstanding requests are
+  // orphaned whichever way each settles. This matrix is the class, not another instance:
+  //   {exact, custom} × {single fault, double fault} × {orphan resolves, orphan rejects}
+  for (const mode of ['exact', 'custom']) {
   for (const fault of ['single', 'double']) {
+  for (const settleAs of ['resolve', 'reject']) {
     const w = loadForm(dir);
     w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
     w.selectPay('cash');
@@ -707,36 +717,33 @@ for (const dir of Object.keys(BRAND)) {
     const box = () => w.document.getElementById('cash-tendered');
 
     const localTotal = w.calcTotal();
+    const quotedCents = Math.round((localTotal - 10) * 100);
+
+    // THE ORIGINAL request: genuinely outstanding across the apply, holding the current token.
+    let settleOriginal = null;
+    const original = new Promise((resolve, reject) => { settleOriginal = { resolve, reject }; });
+    original.catch(() => {});
+    let quoteHandler = () => original;
+    w.__respond = (url) => (url.includes('/menu/') ? res(menuBody) : /quote/i.test(url) ? quoteHandler() : new Promise(() => {}));
+    const menuBody = envelope(B.rid, (() => { const m = B.menu(w); m.dishes[0] = { ...m.dishes[0], name: 'Should Not Survive' }; return m; })());
+    w.__serverQuote.inflight = null; w.__serverQuote.inflightKey = null;
+    w.updateTotal();                                   // issues the original request
+    assert.ok(w.__serverQuote.inflightKey, `${dir}/${mode}/${fault}/${settleAs}: non-vacuity — an original request is outstanding`);
+
+    // The customer's state, set AFTER the original went out.
     w.__serverQuote.key = w.serverQuoteCartKey();
-    w.__serverQuote.cents = Math.round((localTotal - 10) * 100);
-    /* 🔴 inflight CLEARED, and this is what the first version of this test got wrong. Adding to the cart
-       starts a quote request, and with the default never-settling responder it stays "in flight"
-       forever — so refreshServerQuote early-returns and the failed apply never starts the REPLACEMENT
-       request the race depends on. The test then rejected a promise nothing was consuming and passed
-       with the bug fully present. Clearing it models that setup request having already landed. */
-    w.__serverQuote.inflight = null;
-    const quotedCents = w.__serverQuote.cents;
-    w.setCashTendered(w.redeemAdjustedTotal());       // EXACT mode, sitting on the quoted total
+    w.__serverQuote.cents = quotedCents;
+    if (mode === 'exact') w.setCashTendered(w.redeemAdjustedTotal());
+    else { box().value = String(localTotal); w.onCashTenderedInput(); }
     const tenderBefore = box().value;
     const quoteCallsBefore = w.__calls.filter((u) => /quote/i.test(u)).length;
 
-    // The replacement quote fetch the failed apply will start: held open, rejected AFTER the recovery.
-    let rejectQuote = null;
-    const pending = new Promise((_, rej) => { rejectQuote = rej; });
-    // The page attaches its own .catch when it consumes this; the no-op keeps Node from treating the
-    // rejection as unhandled in the window before the fetch is issued, and never masks a real assertion.
-    pending.catch(() => {});
-    const menuBody = envelope(B.rid, (() => { const m = B.menu(w); m.dishes[0] = { ...m.dishes[0], name: 'Should Not Survive' }; return m; })());
-    w.__respond = (url) => (url.includes('/menu/') ? res(menuBody)
-                          : /quote/i.test(url) ? pending
-                          : new Promise(() => {}));
+    // THE DUPLICATE the failed apply's paint will start, once the invalidation clears the dedupe.
+    let settleDuplicate = null;
+    const duplicate = new Promise((resolve, reject) => { settleDuplicate = { resolve, reject }; });
+    duplicate.catch(() => {});
+    quoteHandler = () => duplicate;
 
-    /* 🔴 THE THROW MUST LAND *AFTER* THE REPLACEMENT REQUEST GOES OUT, which is the whole premise of
-       this race — and getting that wrong is why the first version of this test never reproduced it.
-       requestServerQuote is reached through renderStage2Summary, which updateTotal calls AFTER the
-       tender step; throwing from the tender step aborted updateTotal before the request was ever
-       issued. Gated on the request having actually been recorded instead of on a step name, so the
-       ordering is asserted by construction rather than assumed from reading the source. */
     let thrown = 0;
     const realTender = w.onCashTenderedInput;
     w.onCashTenderedInput = function () {
@@ -750,24 +757,132 @@ for (const dir of Object.keys(BRAND)) {
     w.onCashTenderedInput = realTender;
 
     const st = w.__liveMenu.applier.state();
-    assert.ok(st.lastError || st.fatal, `${dir}/${fault}: non-vacuity — the apply really did fail`);
-    if (fault === 'double') assert.ok(st.fatal, `${dir}/double: non-vacuity — the recovery failed too`);
-    assert.strictEqual(box().value, tenderBefore, `${dir}/${fault}: the tender survives the failure itself`);
+    assert.ok(st.lastError || st.fatal, `${dir}/${mode}/${fault}/${settleAs}: non-vacuity — the apply failed`);
+    if (fault === 'double') assert.ok(st.fatal, `${dir}/${mode}/${fault}: non-vacuity — the recovery failed too`);
     assert.ok(w.__calls.filter((u) => /quote/i.test(u)).length > quoteCallsBefore,
-      `${dir}/${fault}: non-vacuity — the failed apply really did start a REPLACEMENT quote request`);
+      `${dir}/${mode}/${fault}/${settleAs}: non-vacuity — a DUPLICATE same-cart request really was started`);
 
-    // …and now the orphaned request rejects, long after anything was waiting for it.
-    rejectQuote(new Error('quote request failed'));
+    // Both outstanding requests settle, the orphan-under-test first.
+    const good = { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ ok: true, total_cents: quotedCents - 5000 }) };
+    if (settleAs === 'resolve') { settleDuplicate.resolve(good); await settle(); settleOriginal.resolve(good); }
+    else { settleDuplicate.reject(new Error('quote failed')); await settle(); settleOriginal.reject(new Error('quote failed')); }
     await settle();
+
     assert.strictEqual(w.__serverQuote.cents, quotedCents,
-      `${dir}/${fault}: 🔴 a superseded rejection must not clear the quote the recovery restored`);
+      `${dir}/${mode}/${fault}/${settleAs}: 🔴 no orphaned request may overwrite the restored quote`);
     w.updateTotal();
     assert.strictEqual(box().value, tenderBefore,
-      `${dir}/${fault}: 🔴 …so the customer is still paying the amount they chose`);
-    ok(`${dir}: a quote request rejecting after the recovery cannot lower the tender (${fault} fault)`);
+      `${dir}/${mode}/${fault}/${settleAs}: 🔴 …so the customer still pays what they chose`);
+    // …and the MODE came through: move the total and see which way the tender goes.
+    w.__serverQuote.cents = quotedCents - 500;
+    w.updateTotal();
+    if (mode === 'exact') {
+      assert.strictEqual(Number(box().value), (quotedCents - 500) / 100,
+        `${dir}/exact/${fault}/${settleAs}: an exact tender still follows the total`);
+    } else {
+      assert.strictEqual(box().value, tenderBefore,
+        `${dir}/custom/${fault}/${settleAs}: a custom tender still does not follow the total`);
+    }
+  } } }
+  ok(`${dir}: orphaned quote requests never touch the restored quote — 8 combinations (mode × fault × settlement)`);
+
+  // ── 26. 🔴 TWO REQUESTS FOR THE SAME CART ARE DIFFERENT REQUESTS (A → B → A) ──
+  //
+  // This is where per-request identity earns its keep, and it needs no live-menu apply at all: it is a
+  // property of the quote layer that the recovery merely exposed. Marking the in-flight request by CART
+  // KEY makes two requests for the same cart indistinguishable, and the cart can return to a previous
+  // state by ordinary use — add an item, remove it again. Then the FIRST request for cart A settles
+  // while the THIRD (also for cart A) is the one being awaited: under cart-key identity the stale reply
+  // matches, is accepted as current, and clears the marker — so the reply anyone was actually waiting
+  // for is discarded in its turn. The customer's displayed total comes from a request that was
+  // superseded twice over.
+  {
+    const w = loadForm(dir);
+    const deferreds = [];
+    w.__respond = (url) => {
+      if (url.includes('/menu/')) return new Promise(() => {});
+      if (!/quote/i.test(url)) return new Promise(() => {});
+      let d; const pr = new Promise((resolve, reject) => { d = { resolve, reject }; });
+      pr.catch(() => {}); deferreds.push(d); return pr;
+    };
+    const dish = w.liveMenuGlobalGet('MENU')[0], other = w.liveMenuGlobalGet('MENU')[1];
+    w.selectPay('cash');
+
+    w.chg(dish.id, 1);          // cart A  → request 1
+    w.chg(other.id, 1);         // cart B  → request 2
+    w.chg(other.id, -1);        // cart A again → request 3
+    assert.ok(deferreds.length >= 3,
+      `${dir}: non-vacuity — three separate quote requests went out (${deferreds.length})`);
+
+    const reply = (cents) => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ ok: true, total_cents: cents }) });
+    // The FIRST cart-A request settles while the THIRD is the one being awaited.
+    deferreds[0].resolve(reply(111100));
+    await settle();
+    assert.notStrictEqual(w.__serverQuote.cents, 111100,
+      `${dir}: 🔴 a superseded request for the SAME cart must not be accepted as the current one`);
+    // …and the reply that was actually being awaited still lands.
+    deferreds[2].resolve(reply(222200));
+    await settle();
+    assert.strictEqual(w.__serverQuote.cents, 222200,
+      `${dir}: 🔴 …and the request being awaited is not discarded by the stale one having matched first`);
+    ok(`${dir}: two requests for the same cart are told apart (A → B → A, stale reply first)`);
   }
 
-  // ── 25. …WHILE A SUCCESSFUL APPLY STILL DROPS THE STALE QUOTE ──
+  // ── 27. 🔴 THE SAVED MODE IS LOAD-BEARING — THE STALE TENDER/FLAG PAIR ──
+  //
+  // Found by the gate, and it is the case that justifies assigning the mode rather than re-deriving it.
+  // A quote lands while the customer sits in exact mode: the success handler updates key/cents and
+  // refreshes ONLY the summary — it does not run updateTotal — so the tender keeps the OLD total while
+  // the quote now says a different one. The pair on screen is (old tender, exact=true), which is stale
+  // but is what the customer has. A failed apply captures that pair; re-deriving would compute
+  // |old tender - new total| > 0.005 → custom, silently converting them to a mode they never chose and
+  // stopping their tender from tracking the total. The saved value restores what was actually there.
+  {
+    const w = loadForm(dir);
+    w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
+    w.selectPay('cash');
+    const panel = w.document.getElementById('cash-change-panel');
+    if (panel) panel.style.display = 'block';
+    const box = () => w.document.getElementById('cash-tendered');
+
+    const localTotal = w.calcTotal();
+    w.__serverQuote.key = w.serverQuoteCartKey();
+    w.__serverQuote.cents = Math.round(localTotal * 100);
+    w.__serverQuote.inflight = null; w.__serverQuote.inflightKey = null;
+    w.setCashTendered(w.redeemAdjustedTotal());          // exact, on the quote that is current NOW
+    const tenderBefore = box().value;
+
+    // A newer quote lands with a DIFFERENT total. Only the summary refreshes, so the tender stays put
+    // and the exact flag stays true — the stale pair.
+    w.__serverQuote.cents = Math.round((localTotal - 30) * 100);
+    const staleTotal = w.redeemAdjustedTotal();
+    assert.notStrictEqual(Number(tenderBefore), staleTotal,
+      `${dir}: non-vacuity — the tender and the current total genuinely disagree now`);
+
+    const realTender = w.onCashTenderedInput;
+    w.onCashTenderedInput = function () {
+      const out = realTender.apply(this, arguments);
+      if (w.liveMenuGlobalGet('MENU')[0].name === 'Should Not Survive') throw new Error('tender hint exploded');
+      return out;
+    };
+    const m = B.menu(w);
+    m.dishes[0] = { ...m.dishes[0], name: 'Should Not Survive' };
+    await serve(w, envelope(B.rid, m));
+    w.onCashTenderedInput = realTender;
+
+    assert.strictEqual(w.__liveMenu.applier.state().lastError.message, 'tender hint exploded',
+      `${dir}: non-vacuity — the apply failed`);
+    assert.strictEqual(box().value, tenderBefore, `${dir}: the tender is unchanged`);
+    // 🔴 Still EXACT: move the total and the tender must follow. Re-derived, the mode would have become
+    // custom and the tender would sit still.
+    w.__serverQuote.cents = Math.round((localTotal - 45) * 100);
+    w.updateTotal();
+    assert.strictEqual(Number(box().value), (localTotal - 45),
+      `${dir}: 🔴 the mode the customer had (exact) is restored, not re-derived from the stale pair`);
+    ok(`${dir}: a stale tender/flag pair is restored as it was — the saved mode is load-bearing`);
+  }
+
+  // ── 27. …WHILE A SUCCESSFUL APPLY STILL DROPS THE STALE QUOTE ──
   // The other half: invalidation moved to the commit, so it must still happen when the menu really
   // changes — a quoted total that outlived the prices it was quoted for is the display-side version of
   // the silent adoption the cart refuses.

@@ -123,10 +123,23 @@ ok('fail-soft: 5 bad-cart shapes → { ok:false } with NO total (the client keep
        was waiting for any more wipe the current quote, which the live-menu recovery turns into a lowered
        cash tender. Both guards are now asserted, and the count is asserted too so a future edit cannot
        quietly drop one of them and still match. */
-    assert.strictEqual((block.match(/if\(__serverQuote\.inflight!==key\) return;/g) || []).length, 2,
-      `${rid}: BOTH the success and the rejection path must ignore a superseded response`);
-    assert.ok(/\.catch\(function\(\)\{\s*\n\s*if\(__serverQuote\.inflight!==key\) return;/.test(block),
+    assert.strictEqual((block.match(/if\(__serverQuote\.inflight!==token\) return;/g) || []).length, 2,
+      `${rid}: BOTH the success and the rejection path must ignore a request that is no longer current`);
+    assert.ok(/\.catch\(function\(\)\{\s*\n\s*if\(__serverQuote\.inflight!==token\) return;/.test(block),
       `${rid}: the rejection path's guard must come FIRST, before anything is cleared`);
+    /* 🔴 IDENTITY IS PER-REQUEST, NOT PER-CART. Holding the cart key in `inflight` made two requests for
+       the SAME cart indistinguishable, so an orphan left behind by a failed live-menu apply matched the
+       restored marker and overwrote the quote — in either settlement order. A monotonic token cannot
+       collide, which closes both directions by construction rather than by guarding each site. */
+    assert.ok(/const token = \+\+__quoteSeq;\s*\n\s*__serverQuote\.inflight = token;/.test(block),
+      `${rid}: each request must take a unique token, not the cart key`);
+    assert.ok(!/__serverQuote\.inflight\s*===?\s*key\b/.test(block),
+      `${rid}: nothing may compare the in-flight marker against a cart key any more`);
+    assert.ok(/if\(__serverQuote\.inflightKey===key\) return;/.test(block),
+      `${rid}: …while the per-cart dedupe keeps its own field`);
+    // non-vacuity: the detector really fires on the shape it forbids
+    assert.ok(/__serverQuote\.inflight\s*===?\s*key\b/.test('if(__serverQuote.inflight===key) return;'),
+      'non-vacuity: the cart-key-identity detector works');
     assert.ok(src.includes("const QUOTEORDER_URL"), `${rid}: the endpoint URL is defined`);
     assert.ok(/function renderStage2Summary\(\)\{\n  try\{ requestServerQuote\(\); \}catch\(_\)\{\}/.test(src), `${rid}: the quote is requested wherever the pay-step summary renders`);
   }

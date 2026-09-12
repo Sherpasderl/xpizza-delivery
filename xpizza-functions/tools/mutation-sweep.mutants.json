@@ -2012,8 +2012,8 @@
     "slice": "b6",
     "label": "the stale server quote survives a menu change",
     "file": "../xpizza-orders/index.html",
-    "from": "  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; }",
-    "to": ";",
+    "from": "  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; }\n",
+    "to": ";\n",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2024,8 +2024,8 @@
     "slice": "b6",
     "label": "focus is not restored after the container holding it is re-rendered",
     "file": "../xpizza-orders/index.html",
-    "from": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; }\n  liveMenuPaint(prepared);\n  liveMenuUiRestore(ui);\n}",
-    "to": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; }\n  liveMenuPaint(prepared);\n}",
+    "from": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; }\n  liveMenuPaint(prepared);\n  liveMenuUiRestore(ui);\n}",
+    "to": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; }\n  liveMenuPaint(prepared);\n}",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2143,10 +2143,10 @@
   {
     "id": "b6-45",
     "slice": "b6",
-    "label": "a successful apply stops invalidating the stale quote",
+    "label": "a successful apply invalidates the quote but leaves the in-flight markers, so the duplicate is never started",
     "file": "../xpizza-orders/index.html",
-    "from": "  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; }\n  liveMenuPaint(prepared);",
-    "to": "  liveMenuPaint(prepared);",
+    "from": "  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; }\n",
+    "to": "  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; }\n",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2198,9 +2198,7 @@
     "command": [
       "node",
       "../live-apply.test.mjs"
-    ],
-    "equivalent": true,
-    "why": "ONE EQUIVALENCE CLASS (b6-47/b6-48/b6-55): DELETING the mode assignment, or replacing it with a re-derivation, changes nothing observable. liveMenuCustomerRestore refreshes the change hint by calling onCashTenderedInput AFTER restoring the tender and BEFORE assigning the mode — and that call derives cashExactMode as |tender - total| < 0.005 from the restored tender and the restored quote, which is exactly the value the assignment then writes. THE GATE EXPECTED THE DELAYED-SETTLEMENT TESTS TO MAKE THIS LOAD-BEARING; MEASURED, THEY DO NOT — b6-60/b6-61 (the superseded-rejection guard) die there, but the mode is re-derived correctly on that path too, because the guard keeps the quote intact and so keeps the derivation's inputs right. Reported rather than argued around. WHAT IS NOT EQUIVALENT AND DOES DIE: b6-56/b6-57 set the mode to a WRONG value instead of removing it — the saved mode governs, not whatever the redraw implies, which is the property that was asked for. The assignment is kept because this equivalence leans on every input to the total being restored, and that chain is what broke on three previous rounds."
+    ]
   },
   {
     "id": "b6-48",
@@ -2212,9 +2210,7 @@
     "command": [
       "node",
       "../live-apply.test.mjs"
-    ],
-    "equivalent": true,
-    "why": "ONE EQUIVALENCE CLASS (b6-47/b6-48/b6-55): DELETING the mode assignment, or replacing it with a re-derivation, changes nothing observable. liveMenuCustomerRestore refreshes the change hint by calling onCashTenderedInput AFTER restoring the tender and BEFORE assigning the mode — and that call derives cashExactMode as |tender - total| < 0.005 from the restored tender and the restored quote, which is exactly the value the assignment then writes. THE GATE EXPECTED THE DELAYED-SETTLEMENT TESTS TO MAKE THIS LOAD-BEARING; MEASURED, THEY DO NOT — b6-60/b6-61 (the superseded-rejection guard) die there, but the mode is re-derived correctly on that path too, because the guard keeps the quote intact and so keeps the derivation's inputs right. Reported rather than argued around. WHAT IS NOT EQUIVALENT AND DOES DIE: b6-56/b6-57 set the mode to a WRONG value instead of removing it — the saved mode governs, not whatever the redraw implies, which is the property that was asked for. The assignment is kept because this equivalence leans on every input to the total being restored, and that chain is what broke on three previous rounds."
+    ]
   },
   {
     "id": "b6-49",
@@ -2250,9 +2246,7 @@
     "command": [
       "node",
       "../live-apply.test.mjs"
-    ],
-    "equivalent": true,
-    "why": "ONE EQUIVALENCE CLASS (b6-47/b6-48/b6-55): DELETING the mode assignment, or replacing it with a re-derivation, changes nothing observable. liveMenuCustomerRestore refreshes the change hint by calling onCashTenderedInput AFTER restoring the tender and BEFORE assigning the mode — and that call derives cashExactMode as |tender - total| < 0.005 from the restored tender and the restored quote, which is exactly the value the assignment then writes. THE GATE EXPECTED THE DELAYED-SETTLEMENT TESTS TO MAKE THIS LOAD-BEARING; MEASURED, THEY DO NOT — b6-60/b6-61 (the superseded-rejection guard) die there, but the mode is re-derived correctly on that path too, because the guard keeps the quote intact and so keeps the derivation's inputs right. Reported rather than argued around. WHAT IS NOT EQUIVALENT AND DOES DIE: b6-56/b6-57 set the mode to a WRONG value instead of removing it — the saved mode governs, not whatever the redraw implies, which is the property that was asked for. The assignment is kept because this equivalence leans on every input to the total being restored, and that chain is what broke on three previous rounds."
+    ]
   },
   {
     "id": "b6-56",
@@ -2311,8 +2305,8 @@
       "../live-apply.test.mjs"
     ],
     "label": "a superseded quote REJECTION clears the quote anyway (the guard covers only the first statement)",
-    "from": "        if(__serverQuote.inflight!==key) return;   // superseded by a newer cart — ignore, exactly as the success path does\n        __serverQuote.inflight=null; __serverQuote.key=null; __serverQuote.cents=null;",
-    "to": "        if(__serverQuote.inflight===key) __serverQuote.inflight=null; __serverQuote.key=null; __serverQuote.cents=null;"
+    "from": "        if(__serverQuote.inflight!==token) return;   // a different request is current — ignore, exactly as the success path does\n        __serverQuote.inflight=null; __serverQuote.inflightKey=null; __serverQuote.key=null; __serverQuote.cents=null;",
+    "to": "        if(__serverQuote.inflight===token) __serverQuote.inflight=null; __serverQuote.key=null; __serverQuote.cents=null;"
   },
   {
     "id": "b6-61",
@@ -2323,7 +2317,55 @@
       "../live-apply.test.mjs"
     ],
     "label": "la_musa: a superseded quote REJECTION clears the quote anyway",
-    "from": "        if(__serverQuote.inflight!==key) return;   // superseded by a newer cart — ignore, exactly as the success path does\n        __serverQuote.inflight=null; __serverQuote.key=null; __serverQuote.cents=null;",
-    "to": "        if(__serverQuote.inflight===key) __serverQuote.inflight=null; __serverQuote.key=null; __serverQuote.cents=null;"
+    "from": "        if(__serverQuote.inflight!==token) return;   // a different request is current — ignore, exactly as the success path does\n        __serverQuote.inflight=null; __serverQuote.inflightKey=null; __serverQuote.key=null; __serverQuote.cents=null;",
+    "to": "        if(__serverQuote.inflight===token) __serverQuote.inflight=null; __serverQuote.key=null; __serverQuote.cents=null;"
+  },
+  {
+    "id": "b6-62",
+    "slice": "b6",
+    "file": "../xpizza-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "a request is identified by its CART KEY again — two same-cart requests become indistinguishable",
+    "from": "    const token = ++__quoteSeq;\n    __serverQuote.inflight = token;\n    __serverQuote.inflightKey = key;",
+    "to": "    const token = key;\n    __serverQuote.inflight = token;\n    __serverQuote.inflightKey = key;"
+  },
+  {
+    "id": "b6-63",
+    "slice": "b6",
+    "file": "../xpizza-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "the recovery RESTORES the old token instead of advancing it — the original request is re-armed",
+    "from": "  __serverQuote.inflight = ++__quoteSeq;\n  __serverQuote.inflightKey = null;",
+    "to": "  __serverQuote.inflight = q.inflight;\n  __serverQuote.inflightKey = q.inflightKey;"
+  },
+  {
+    "id": "b6-64",
+    "slice": "b6",
+    "file": "../la-musa-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "la_musa: a request is identified by its CART KEY again — two same-cart requests become indistinguishable",
+    "from": "    const token = ++__quoteSeq;\n    __serverQuote.inflight = token;\n    __serverQuote.inflightKey = key;",
+    "to": "    const token = key;\n    __serverQuote.inflight = token;\n    __serverQuote.inflightKey = key;"
+  },
+  {
+    "id": "b6-65",
+    "slice": "b6",
+    "file": "../la-musa-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "la_musa: the recovery RESTORES the old token instead of advancing it — the original request is re-armed",
+    "from": "  __serverQuote.inflight = ++__quoteSeq;\n  __serverQuote.inflightKey = null;",
+    "to": "  __serverQuote.inflight = q.inflight;\n  __serverQuote.inflightKey = q.inflightKey;"
   }
 ]

@@ -2362,11 +2362,22 @@ function liveMenuSnapshotGlobals(){
    the customer is paying with. It is part of the last-good state and is restored with the menu. */
 function liveMenuQuoteSnapshot(){
   return (typeof __serverQuote === 'object' && __serverQuote)
-    ? { key: __serverQuote.key, cents: __serverQuote.cents, inflight: __serverQuote.inflight } : null;
+    ? { key: __serverQuote.key, cents: __serverQuote.cents, inflight: __serverQuote.inflight, inflightKey: __serverQuote.inflightKey } : null;
 }
 function liveMenuQuoteSet(q){
   if (!q || typeof __serverQuote !== 'object' || !__serverQuote) return;
-  __serverQuote.key = q.key; __serverQuote.cents = q.cents; __serverQuote.inflight = q.inflight;
+  __serverQuote.key = q.key; __serverQuote.cents = q.cents;
+  /* 🔴 THE TOKEN IS ADVANCED, NOT RESTORED — a fresh epoch that no outstanding request holds. Restoring
+     the OLD token would re-arm the request that was current when the apply began, and that request is
+     no longer something to listen to: it was issued against a quote this recovery has just put back by
+     hand, and if it lands with a different total the exact-mode tender follows it down. Two requests can
+     be outstanding here — the original, and the duplicate the failed commit's paint started once the
+     invalidation cleared the in-flight marker — and BOTH must be orphaned, whichever settles first and
+     whichever way it settles. Advancing is what makes that true by construction rather than by
+     reasoning about which one is "really" current.
+     inflightKey is cleared so a genuinely new request can still be issued for this cart. */
+  __serverQuote.inflight = ++__quoteSeq;
+  __serverQuote.inflightKey = null;
 }
 /* 🔴 …AND SO DOES EVERYTHING ELSE THE PAINT CAN CHANGE THAT BELONGS TO THE CUSTOMER. This is the
    invariant, and it is stated that way deliberately, because the previous two rounds were a LIST:
@@ -2465,7 +2476,7 @@ function liveMenuPaint(prepared){
    what the customer was paying with. Invalidating here keeps it a side-effect of succeeding. */
 function liveMenuCommit(prepared){
   const ui = liveMenuUiCapture();
-  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; }
+  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; }
   liveMenuPaint(prepared);
   liveMenuUiRestore(ui);
 }
@@ -2884,7 +2895,9 @@ function syncFreeOrderUI(){
 // FAIL-OPEN throughout: any failure, timeout, bad cart or stale response leaves the quote null and the
 // display falls back to calcTotal() — today's behaviour. A quote must never block or delay checkout,
 // and it is never authoritative: createOrder/chargeOnlineOrder re-price at order time regardless.
-var __serverQuote = { key: null, cents: null, inflight: null };
+var __serverQuote = { key: null, cents: null, inflight: null, inflightKey: null };
+// Monotonic, so no two quote requests can ever share an identity — see requestServerQuote below.
+var __quoteSeq = 0;
 // The cart signature. redeemCartItems() is the brand's own builder and is exactly what the ORDER sends,
 // so quoting it means the quote prices the same payload the charge will.
 function serverQuoteCartKey(){ try{ return JSON.stringify(redeemCartItems()); }catch(_){ return null; } }
@@ -2901,18 +2914,31 @@ function requestServerQuote(){
   try{
     if(window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()) return;
     const items = redeemCartItems();
-    if(!items || !items.length){ __serverQuote.key=null; __serverQuote.cents=null; __serverQuote.inflight=null; return; }
+    if(!items || !items.length){ __serverQuote.key=null; __serverQuote.cents=null; __serverQuote.inflight=null; __serverQuote.inflightKey=null; return; }
     const key = JSON.stringify(items);
     if(key===__serverQuote.key && __serverQuote.cents!=null) return;   // this exact cart is already quoted
-    if(__serverQuote.inflight===key) return;                            // one request in flight per cart
-    __serverQuote.inflight = key;
+    if(__serverQuote.inflightKey===key) return;                         // one request in flight per cart
+    /* 🔴 A REQUEST IS IDENTIFIED BY ITSELF, NOT BY THE CART IT ASKED ABOUT. `inflight` used to hold the
+       cart key, which made two requests FOR THE SAME CART indistinguishable — and the live-menu recovery
+       creates exactly that pair: a failed apply's paint fires a second quote for the unchanged cart, the
+       recovery restores the coarse cart-key marker, and then whichever request settles first matches it
+       and is treated as current. Either settlement order overwrites the restored quote, and the next
+       exact-mode updateTotal spends it and lowers the customer's tender.
+       Guarding the previous round's REJECTION path closed one site; the class stayed open because the
+       identity itself was too coarse. A monotonic token per fetch closes both directions at once: an
+       orphaned request never matches the current token, whatever cart it asked about and whichever way
+       it settles. `inflightKey` keeps the separate, unrelated job the cart key was doing — not issuing a
+       second request for a cart already being quoted. */
+    const token = ++__quoteSeq;
+    __serverQuote.inflight = token;
+    __serverQuote.inflightKey = key;
     // NOT awaited on any tap: the client total renders immediately and reconciles when this lands.
     fetch(QUOTEORDER_URL, { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ restaurant_id: (typeof RESTAURANT_ID!=='undefined' ? RESTAURANT_ID : undefined), items }) })
       .then(function(r){ return r.json(); })
       .then(function(j){
-        if(__serverQuote.inflight!==key) return;   // superseded by a newer cart — ignore
-        __serverQuote.inflight = null;
+        if(__serverQuote.inflight!==token) return;   // a different request is current — ignore
+        __serverQuote.inflight = null; __serverQuote.inflightKey = null;
         if(j && j.ok===true && typeof j.total_cents==='number' && isFinite(j.total_cents)){ __serverQuote.key=key; __serverQuote.cents=j.total_cents; }
         else { __serverQuote.key=null; __serverQuote.cents=null; }   // ok:false → fail open to calcTotal()
         try{ if(typeof renderStage2Summary==='function') renderStage2Summary(); }catch(_){}
@@ -2927,8 +2953,8 @@ function requestServerQuote(){
          customer's tender (350 → 340 / 233 → 223). A genuine failure of the CURRENT request still
          fails open to calcTotal(), which is all this was ever meant to do. */
       .catch(function(){
-        if(__serverQuote.inflight!==key) return;   // superseded by a newer cart — ignore, exactly as the success path does
-        __serverQuote.inflight=null; __serverQuote.key=null; __serverQuote.cents=null;
+        if(__serverQuote.inflight!==token) return;   // a different request is current — ignore, exactly as the success path does
+        __serverQuote.inflight=null; __serverQuote.inflightKey=null; __serverQuote.key=null; __serverQuote.cents=null;
       });
   }catch(_){ }
 }
