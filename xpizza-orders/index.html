@@ -1908,54 +1908,43 @@ function liveMenuUiRestore(ui){
    capture is what makes that a guarantee rather than an assumption.
    The arrays are held BY REFERENCE on purpose — commit replaces them rather than mutating them, so the
    old reference is exactly what putting the old menu back requires. */
-/* 🔴 EVERY ELEMENT THE COMMIT WRITES, NOT JUST THE MENU CONTAINERS. The commit does not stop at
-   re-rendering the menu: it drives updateTotal, updateCart, renderChangeChips, onCashTenderedInput and
-   the pickup gate, and those write the cart pill, the totals, the review sheet, the tender chips and
-   the change hint — all OUTSIDE the containers. The first version of this captured only the containers,
-   so a commit that had already written the cart total and then threw from renderChangeChips left that
-   total on screen after a "successful" rollback: a page showing the new total under the old menu.
-   A rollback is only as complete as its capture, and a capture that covers the obvious subset is the
-   same failure this slice keeps finding one layer down. The list below is the union across both brands;
-   ids a form does not have are simply absent and skipped. */
-function liveMenuDerivedIds(){
-  return ['btn-continuar', 'btnConfirm', 'cart-badge', 'cart-count', 'cart-pill-text', 'cart-review-body',
-          'cart-review-checkout', 'cart-review-sheet', 'cart-review-total', 'cart-total', 'cash-change-panel',
-          'cash-tendered', 'change-chips', 'change-hint', 'pickup-gate', 'pickup-note', 'pixelpay-amount',
-          'total-display'];
-}
-// Snapshot everything those renderers can change about an element, rather than guessing which property
-// each one writes — markup, classes, inline style, value and disabled state.
-function liveMenuElState(el){
-  return {
-    html: el.innerHTML, cls: el.className, css: (el.style ? el.style.cssText : ''),
-    value: ('value' in el ? el.value : undefined),
-    disabled: ('disabled' in el ? el.disabled : undefined),
-  };
-}
-function liveMenuElRestore(el, s){
-  el.innerHTML = s.html;
-  el.className = s.cls;
-  if (el.style) el.style.cssText = s.css;
-  if (s.value !== undefined) el.value = s.value;
-  if (s.disabled !== undefined) el.disabled = s.disabled;
+/* 🔴 THE RESTORE POINT IS CLOSED BY CONSTRUCTION, NOT ENUMERATED.
+   Three rounds of this were a hand-written list of element ids, and each round missed one: first
+   everything outside the menu containers, then the quote, then #s2-summary. The list was never the
+   problem — LISTING was. Whether a rollback is complete cannot depend on somebody remembering every
+   element every renderer in the commit's call-graph happens to write, because the next renderer added
+   will be missed exactly the same way, and the failure is silent: a page that rolled back some of
+   itself and reports success.
+   So the set is defined structurally: EVERY TOP-LEVEL ELEMENT OF THE PAGE. Every node in the document
+   is a descendant of one of body's element children, so nothing any renderer writes — today's or
+   tomorrow's — can fall outside it. There is no judgement left to get wrong.
+   (Same move as Task 4's send gate: guard at the level every path converges on, rather than listing the
+   paths. live-apply.test.mjs proves the closure empirically with a MutationObserver, so it stays true
+   rather than merely being argued here.)
+   Regions are held by REFERENCE — body's element children are not replaced by any of this — and are
+   written back only where they actually differ, so a failed apply disturbs nothing it did not touch. */
+function liveMenuRegions(){
+  return Array.prototype.filter.call(document.body.children, (el) => {
+    const t = el.tagName;
+    return t !== 'SCRIPT' && t !== 'TEMPLATE' && t !== 'STYLE' && t !== 'LINK';
+  });
 }
 function liveMenuCapture(){
   const globals = {};
   LIVE_MENU_GLOBALS.forEach((name) => { globals[name] = liveMenuGlobalGet(name); });
-  const dom = liveMenuContainers().map((id) => {
-    const el = document.getElementById(id);
-    return { id, html: el ? el.innerHTML : null };
-  });
-  const derived = [];
-  liveMenuDerivedIds().forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) derived.push({ id, state: liveMenuElState(el) });
-  });
+  // innerHTML covers every descendant; class and inline style cover the region element itself, which a
+  // renderer can toggle without touching anything inside it.
+  const regions = liveMenuRegions().map((el) => ({
+    el, html: el.innerHTML, cls: el.className, css: (el.style ? el.style.cssText : ''),
+  }));
   return {
-    globals, dom, derived,
+    regions,
+    bodyCls: document.body.className,
+    bodyCss: document.body.style ? document.body.style.cssText : '',
     qty: Object.assign({}, qty),
+    globals,
     // The cached quote is state the commit deliberately clears, so it is state the rollback must put
-    // back — otherwise a failed apply still throws away a quote that was valid for the menu that stands.
+    // back — otherwise a failed apply still discards a quote that was valid for the menu that stands.
     quote: (typeof __serverQuote === 'object' && __serverQuote)
       ? { key: __serverQuote.key, cents: __serverQuote.cents, inflight: __serverQuote.inflight } : null,
     ui: liveMenuUiCapture(),
@@ -1963,15 +1952,13 @@ function liveMenuCapture(){
 }
 function liveMenuRestore(point){
   LIVE_MENU_GLOBALS.forEach((name) => { liveMenuGlobalSet(name, point.globals[name]); });
-  point.dom.forEach((d) => {
-    if (d.html === null) return;
-    const el = document.getElementById(d.id);
-    if (el) el.innerHTML = d.html;
+  point.regions.forEach((r) => {
+    if (r.el.innerHTML !== r.html) r.el.innerHTML = r.html;
+    if (r.el.className !== r.cls) r.el.className = r.cls;
+    if (r.el.style && r.el.style.cssText !== r.css) r.el.style.cssText = r.css;
   });
-  point.derived.forEach((d) => {
-    const el = document.getElementById(d.id);
-    if (el) liveMenuElRestore(el, d.state);
-  });
+  if (document.body.className !== point.bodyCls) document.body.className = point.bodyCls;
+  if (document.body.style && document.body.style.cssText !== point.bodyCss) document.body.style.cssText = point.bodyCss;
   Object.keys(qty).forEach((k) => { delete qty[k]; });
   Object.assign(qty, point.qty);
   if (point.quote && typeof __serverQuote === 'object' && __serverQuote) {

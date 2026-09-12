@@ -116,6 +116,18 @@ test('the conflict gate sits at every path to a charge — structural census, bo
     assert.ok(/\n  if\(!buildOrder\(\)\) return;   \/\/ 1B Task 4[^\n]*\n  if\(isFreeOrder\)\{[\s\S]{0,900}?if\(selectedPayment==='online'\)\{\n    await processPixelPay\(\);/.test(raw),
       `${dir}: processPayment must honour buildOrder()'s refusal before branching`);
 
+    /* 🔴 NOTHING OUTSIDE THE BODY. The live apply's rollback captures whole top-level regions — body's
+       element children — which is closed by construction for everything inside the body, and says
+       nothing about <head>. That is sound only while no renderer writes there, so that is asserted
+       rather than assumed: a style or script injected into <head> by a render would be unrollbackable
+       and would leave a failed apply's styling behind. Checked on the comment-stripped source so a
+       mention in prose does not count. */
+    assert.ok(!/document\.head/.test(html), `${dir}: no code may write to <head> — the apply's rollback cannot reach it`);
+    assert.ok(!/createElement\(\s*['"](?:style|link|script)['"]\s*\)/.test(html),
+      `${dir}: no stylesheet/script injection — same reason`);
+    // non-vacuity: the detectors fire on the shapes they claim to catch
+    assert.ok(/document\.head/.test('document.head.appendChild(x)'), 'non-vacuity: head-write detector works');
+    assert.ok(/createElement\(\s*['"](?:style|link|script)['"]\s*\)/.test("createElement('style')"), 'non-vacuity: injection detector works');
     // non-vacuity: stripping comments must not have eaten the code the census counts
     assert.ok(html.includes('function cartConflicts()'), `${dir}: the comment-strip left the code intact`);
     assert.strictEqual(('a(); // cartConflicts()\n/* cartConflicts() */\ncartConflicts();'

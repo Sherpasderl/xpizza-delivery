@@ -467,7 +467,63 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: a mid-commit throw rolls back the derived UI and the cached quote, not only the menu`);
   }
 
-  // ── 20. A CATEGORY THE UPGRADE REMOVES LEAVES THE SCREEN ──
+  // ── 20. 🔴 …INCLUDING #s2-summary, THE ELEMENT THE THIRD ENUMERATION MISSED ──
+  // renderStage2Summary() runs inside updateTotal(), which the commit drives — so the Stage-2 summary
+  // is rewritten by every apply. Under the enumerated capture it was not on the list and survived a
+  // rollback. It is inside #s2, so the region capture covers it without anyone having to notice it.
+  {
+    const w = loadForm(dir);
+    w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
+    const summary = w.document.getElementById('s2-summary');
+    assert.ok(summary, `${dir}: the Stage-2 summary element exists`);
+    summary.innerHTML = '<div id="summary-sentinel">the summary that matches the menu on screen</div>';
+    const realTender = w.onCashTenderedInput;
+    w.onCashTenderedInput = () => { throw new Error('tender hint exploded'); };   // after updateTotal
+    await serve(w, envelope(B.rid, B.menu(w)));
+    w.onCashTenderedInput = realTender;
+    assert.strictEqual(w.__liveMenu.applier.state().lastError.message, 'tender hint exploded',
+      `${dir}: non-vacuity — the commit failed after the summary had been rewritten`);
+    assert.ok(w.document.getElementById('summary-sentinel'),
+      `${dir}: 🔴 the Stage-2 summary was rolled back with everything else`);
+    ok(`${dir}: a mid-commit throw restores #s2-summary — the element the enumerated capture missed`);
+  }
+
+  // ── 21. 🔴 THE CAPTURE IS CLOSED BY CONSTRUCTION — PROVEN, NOT ARGUED ──
+  // The point of capturing whole top-level regions rather than a list of ids is that nothing a renderer
+  // writes can fall outside it. That is a claim about the page, so it is checked against the page: every
+  // node a real apply mutates must lie inside a region the capture holds. A renderer added later that
+  // wrote somewhere new would fail HERE, rather than silently surviving the next rollback.
+  {
+    const w = loadForm(dir);
+    w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
+    const regions = w.liveMenuRegions();
+    assert.ok(regions.length > 3, `${dir}: non-vacuity — the capture holds real regions`);
+    const touched = [];
+    /* Observed over the BODY subtree, which is exactly where the regions are: they ARE body's element
+       children, so "inside the body" and "inside some region" are the same set, and the assertion below
+       is a real closure claim rather than a filtered one. <head> is excluded by SCOPE rather than by a
+       whitelist, and covered structurally instead — form-cart.copy.test.mjs asserts the forms contain no
+       document.head write at all, so no renderer can put anything there to begin with. (Watching the
+       whole documentElement picked up unrelated async page init appending a <style> to head during the
+       window, which is page start-up rather than anything the apply did.) */
+    const obs = new w.MutationObserver((records) => records.forEach((r) => touched.push(r.target)));
+    obs.observe(w.document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+    const m = B.menu(w);
+    m.dishes[0] = { ...m.dishes[0], name: 'Observed Apply' };
+    await serve(w, envelope(B.rid, m));
+    obs.disconnect();
+
+    assert.ok(touched.length > 0, `${dir}: non-vacuity — the apply really did mutate the page`);
+    const covered = (node) => regions.some((r) => r === node || r.contains(node))
+      || node === w.document.body || node === w.document.documentElement;
+    const escaped = [...new Set(touched)].filter((n) => !covered(n));
+    const describe = (n) => (n.id ? '#' + n.id : (n.nodeName + (n.parentElement && n.parentElement.id ? ' in #' + n.parentElement.id : '')));
+    assert.deepStrictEqual(escaped.map(describe), [],
+      `${dir}: 🔴 every node the apply touched must be inside a captured region — these were not: ${escaped.map(describe).join(', ')}`);
+    ok(`${dir}: every node a real apply mutates is inside the capture (${[...new Set(touched)].length} nodes checked)`);
+  }
+
+  // ── 22. A CATEGORY THE UPGRADE REMOVES LEAVES THE SCREEN ──
   // renderMenu only fills the categories in the CURRENT set, so a dropped one used to keep its old
   // cards: an apply reporting success while showing dishes the catalog no longer sells.
   if (dir === 'la-musa-orders') {
@@ -486,7 +542,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: a category the upgrade removes leaves the screen with its dishes`);
   }
 
-  // ── 21. A SNAPSHOT FOR THE OTHER BRAND IS NOT A DEGRADED MENU ──
+  // ── 23. A SNAPSHOT FOR THE OTHER BRAND IS NOT A DEGRADED MENU ──
   {
     const w = loadForm(dir);
     const before = painted(w), menuBefore = w.liveMenuGlobalGet('MENU');

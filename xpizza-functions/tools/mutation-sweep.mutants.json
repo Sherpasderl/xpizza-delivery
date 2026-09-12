@@ -2034,14 +2034,16 @@
   {
     "id": "b6-15",
     "slice": "b6",
-    "label": "the DOM is not rolled back, only the globals",
+    "label": "the region rollback restores markup but not the region elements own class/style",
     "file": "../xpizza-orders/index.html",
-    "from": "  point.dom.forEach((d) => {\n    if (d.html === null) return;",
-    "to": "  point.dom.forEach((d) => {\n    if (true) return;",
+    "from": "  point.regions.forEach((r) => {\n    if (r.el.innerHTML !== r.html) r.el.innerHTML = r.html;\n    if (r.el.className !== r.cls) r.el.className = r.cls;\n    if (r.el.style && r.el.style.cssText !== r.css) r.el.style.cssText = r.css;\n  });",
+    "to": "  point.regions.forEach((r) => {\n    if (r.el.innerHTML !== r.html) r.el.innerHTML = r.html;\n  });",
     "command": [
       "node",
       "../live-apply.test.mjs"
-    ]
+    ],
+    "equivalent": true,
+    "why": "No renderer in the commit's call-graph changes a REGION ELEMENT'S OWN class or inline style today — they write inside the regions, and the one place that touches a region's own style (#cart-bar's display) is _showStageSwap, which the commit never calls. So no input distinguishes restoring those two properties from not restoring them. They are captured anyway, and deleting them to make the mutant killable would be backwards: the whole point of capturing whole regions is that a renderer added LATER cannot escape the rollback, and a renderer that toggles a region's own class is exactly such a case. b6-31/b6-33 (the region rollback skipped entirely) and b6-35/b6-36 (the capture narrowed back to the menu containers) both die, so the mechanism itself is pinned."
   },
   {
     "id": "b6-20",
@@ -2107,9 +2109,9 @@
   {
     "id": "b6-31",
     "slice": "b6",
-    "label": "the rollback skips the derived UI — the new total survives under the old menu",
+    "label": "the rollback skips the page regions entirely",
     "file": "../xpizza-orders/index.html",
-    "from": "  point.derived.forEach((d) => {\n    const el = document.getElementById(d.id);\n    if (el) liveMenuElRestore(el, d.state);\n  });",
+    "from": "  point.regions.forEach((r) => {\n    if (r.el.innerHTML !== r.html) r.el.innerHTML = r.html;\n    if (r.el.className !== r.cls) r.el.className = r.cls;\n    if (r.el.style && r.el.style.cssText !== r.css) r.el.style.cssText = r.css;\n  });",
     "to": ";",
     "command": [
       "node",
@@ -2131,9 +2133,9 @@
   {
     "id": "b6-33",
     "slice": "b6",
-    "label": "la_musa: the rollback skips the derived UI",
+    "label": "la_musa: the rollback skips the page regions entirely",
     "file": "../la-musa-orders/index.html",
-    "from": "  point.derived.forEach((d) => {\n    const el = document.getElementById(d.id);\n    if (el) liveMenuElRestore(el, d.state);\n  });",
+    "from": "  point.regions.forEach((r) => {\n    if (r.el.innerHTML !== r.html) r.el.innerHTML = r.html;\n    if (r.el.className !== r.cls) r.el.className = r.cls;\n    if (r.el.style && r.el.style.cssText !== r.css) r.el.style.cssText = r.css;\n  });",
     "to": ";",
     "command": [
       "node",
@@ -2151,5 +2153,29 @@
       "node",
       "../live-apply.test.mjs"
     ]
+  },
+  {
+    "id": "b6-35",
+    "slice": "b6",
+    "file": "../xpizza-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "the capture is narrowed from whole page regions back to the menu containers",
+    "from": "function liveMenuRegions(){\n  return Array.prototype.filter.call(document.body.children, (el) => {\n    const t = el.tagName;\n    return t !== 'SCRIPT' && t !== 'TEMPLATE' && t !== 'STYLE' && t !== 'LINK';\n  });\n}",
+    "to": "function liveMenuRegions(){\n  return liveMenuContainers().map((id) => document.getElementById(id)).filter(Boolean);\n}"
+  },
+  {
+    "id": "b6-36",
+    "slice": "b6",
+    "file": "../la-musa-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "la_musa: the capture is narrowed from whole page regions back to the menu containers",
+    "from": "function liveMenuRegions(){\n  return Array.prototype.filter.call(document.body.children, (el) => {\n    const t = el.tagName;\n    return t !== 'SCRIPT' && t !== 'TEMPLATE' && t !== 'STYLE' && t !== 'LINK';\n  });\n}",
+    "to": "function liveMenuRegions(){\n  return liveMenuContainers().map((id) => document.getElementById(id)).filter(Boolean);\n}"
   }
 ]
