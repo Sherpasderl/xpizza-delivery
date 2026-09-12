@@ -87,10 +87,15 @@ test('the conflict gate sits at every path to a charge — structural census, bo
     // A probe for EVERY shape the pattern claims to recognise. Widening a regex and then proving only
     // the shapes it already caught leaves the new branches unexercised — the pattern would claim XHR
     // and sendBeacon coverage it had never been shown to have.
+    // Each transport is probed in BOTH forms it can take — against a URL constant and against a literal
+    // URL — because those exercise different alternatives of the pattern. Proving only the constant form
+    // would leave the literal branch unexercised for that transport, which is the same gap this list was
+    // widened to close.
     for (const probe of ['fetch(CREATEORDER_URL,{', 'window.fetch(CHARGEORDER_URL, {',
                          "fetch('https://x/createOrder', {", "xhr.open('POST', CHARGEORDER_URL)",
                          "navigator.sendBeacon(CREATEORDER_URL, body)",
-                         "xhr.open('POST', 'https://x/chargeOnlineOrder')"]) {
+                         "xhr.open('POST', 'https://x/chargeOnlineOrder')",
+                         "navigator.sendBeacon('https://x/createOrder', body)"]) {
       assert.ok(new RegExp(sendRe.source).test(probe), `non-vacuity: the send-site lint can see ${probe}`);
     }
     // …and that it does NOT fire on an unrelated request, or the count above would be noise.
