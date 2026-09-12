@@ -114,11 +114,37 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
   assert.ok(
     /async function submitOrder\(paymentStatus\)\{\n  if\(orderSubmitting\) return;\n(?:[^\n]*\n){0,6}?  const _conflicts = cartConflicts\(\);\n  if\(_conflicts\.length\)\{ announceCartConflicts\(_conflicts\); return; \}\n  orderSubmitting = true;/.test(html),
     'the cart gate must sit at the top of submitOrder, before orderSubmitting is set');
+  // 🔴 THE REAL PATHS TO A CHARGE. The first version of this suite tested an extracted submitOrder
+  // FRAGMENT — which is the CASH path only. The online dispatch, the option controls and the
+  // payment-return restoration were therefore untested, and all three shipped broken. These are the
+  // real functions, lifted whole.
+  const buildFn   = grab(html, /\nfunction buildOrder\(\)\{[\s\S]*?\n\}\n/, 'buildOrder()');
+  const payFn     = grab(html, /\nasync function processPixelPay\(\)\{[\s\S]*?\n\}\n/, 'processPixelPay()');
+  const snapFn    = grab(html, /\nfunction snapshotForm\(\)\{[\s\S]*?\n\}\n/, 'snapshotForm()');
+  const restoreFn = grab(html, /\nfunction restoreOrderForm\(\)\{[\s\S]*?\n\}\n/, 'restoreOrderForm()');
+  const optFn     = dir === 'xpizza-orders'
+    ? grab(html, /\nfunction toggleDetailExtra\(extraId, pizzaId, instance\) \{[\s\S]*?\n\}\n/, 'toggleDetailExtra()')
+    : grab(html, /\nfunction chgDetailExtra\(extraId, pizzaId, delta\) \{[\s\S]*?\n\}\n/, 'chgDetailExtra()');
+  // THE DISPATCH ORDERING, pinned at the source. processPayment() validates, calls buildOrder(), then
+  // branches to cash or online — so the refusal must be honoured BEFORE the branch, or the online path
+  // proceeds on a stale currentOrder. Bounded, so it cannot drift into agreeing with anything.
+  assert.ok(
+    /\n  if\(!buildOrder\(\)\) return;   \/\/ 1B Task 4[^\n]*\n  if\(isFreeOrder\)\{[\s\S]{0,900}?if\(selectedPayment==='online'\)\{\n    await processPixelPay\(\);/.test(html),
+    `${dir}: processPayment must honour buildOrder()'s refusal BEFORE it branches to cash or online`);
+  // …and each of the three gates is textually distinct, so a mutant can name exactly one of them.
+  // While they shared wording, a mutation aimed at the cash gate silently rewrote the online one.
+  assert.strictEqual((html.match(/cartConflicts\(\)/g) || []).length, 4,
+    `${dir}: expected exactly 4 cartConflicts() sites — definition, buildOrder, submitOrder, processPixelPay`);
   MENU.forEach(p => { qty[p.id] = 0; });
-  const errEl = { textContent: '', style: {} };
-  const win = { createCart, __ACCOUNT: null, __onCartConflict: null };
-  const doc = { getElementById: (id) => (id === 'err3' || id === 'err1' ? errEl : null) };
-  const notices = [];
+  // A persistent fake-element cache. The DOM is not what is under test — the cart is — but the real
+  // buildOrder()/snapshotForm() read a dozen fields, and the notice assertions need the SAME object back.
+  const els = new Map();
+  const el = (id) => { if (!els.has(id)) els.set(id, { value: '', textContent: '', checked: false, style: {}, classList: { add(){}, remove(){}, toggle(){} }, focus(){}, remove(){}, scrollIntoView(){} }); return els.get(id); };
+  const errEl = el('err3');
+  const win = { createCart, __ACCOUNT: null, __onCartConflict: null, __scheduledFor: null, __timeMode: 'standard' };
+  const doc = { getElementById: el, querySelector: () => null, querySelectorAll: () => [] };
+  const notices = [], fetchCalls = [];
+  let stash = null;
   const api = new Function('ctx', `
     let MENU = ctx.MENU, EXTRAS = ctx.EXTRAS;
     const pizzaExtras = ctx.pizzaExtras, qty = ctx.qty;
@@ -127,6 +153,22 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     const soldOutById = () => false, registerOutsideClick = () => {}, refreshCardExtrasIndicator = () => {};
     const updateDetailModal = () => {}, updateDetailCta = () => {}, updateTotal = () => {}, updateCart = () => {};
     const refreshPickupGate = () => {}, itemIsLauncher = () => false;
+    // Collaborators the REAL buildOrder / processPixelPay / restoreOrderForm call. All inert: this suite
+    // is about which paths the cart gate covers, not about rendering or networking.
+    const orderIdForThisCart = () => 'ord_test_1', redeemAdjustedTotal = () => calcTotal();
+    const rtnIsValid = () => true, phoneCC = '504', ICON_CHECK_CIRCLE = '';
+    const showStage = () => {}, setSending = () => {}, renderMenu = () => {}, selectPay = () => {};
+    const setOrderType = () => {}, initMap = () => {}, showPayReturn = () => {}, toggleRtn = () => {};
+    const renderRedeemUI = () => {}, applyRedeemQuoteToTotals = () => {}, setCashTendered = () => {};
+    const paymentFallback = () => {}, showSuccess = () => {}, setPayError = () => {};
+    let __restorePos = null, currentOrder = {};
+    const RESTAURANT_ID = ctx.rid, MIN_ORDER = 0, LA_MUSA_FALLBACK_EMAIL = 'pedidos@lamusa.test';
+    const CREATEORDER_URL = 'http://test/createOrder', CHARGEORDER_URL = 'http://test/chargeOnlineOrder';
+    const location = { href: '' };
+    const localStorage = { getItem: () => (ctx.getStash() ? JSON.stringify(ctx.getStash()) : null), setItem: () => {}, removeItem: () => {} };
+    // 🔴 THE PROOF FOR THE ONLINE PATH. Every network call is recorded, and none is permitted:
+    // "chargeOnlineOrder was never called" is the assertion that means the charge is unreachable.
+    const fetch = (...a) => { ctx.fetchCalls.push(a[0]); throw new Error('fetch must not be reached with an unresolved line'); };
     let currentDetailPizzaId = null, orderSubmitting = false;
     // The order-context fields cartSig hashes alongside the items. Held constant across a comparison so
     // that when two sigs differ, the CART is the only thing that could have made them differ.
@@ -139,11 +181,21 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     ${redeemFn}
     ${sigFn}
     function submitGate(){ ${guard} return 'PROCEEDED'; }
+    ${buildFn}
+    ${payFn}
+    ${snapFn}
+    ${restoreFn}
+    ${optFn}
     return { chg, calcTotal, redeemCartItems, cartSig, submitGate, cartConflicts, cartLines, cartItems, cartCount, CART,
              noteExtra: (r) => CART.noteExtra(r), qtyOf: (id) => qty[id],
+             buildOrder, processPixelPay, snapshotForm, restoreOrderForm, currentOrder: () => currentOrder,
+             fetchCalls: ctx.fetchCalls, setStash: ctx.setStash,
+             optionControl: ${dir === 'xpizza-orders' ? '(eid, pid) => toggleDetailExtra(eid, pid, 0)' : '(eid, pid, d) => chgDetailExtra(eid, pid, d === undefined ? 1 : d)'},
              liveMenu: () => MENU, setMenu: (m, e) => { MENU = m; if (e) EXTRAS = e; } };
-  `)({ MENU, EXTRAS, pizzaExtras, qty, window: win, document: doc, notices });
-  return { ...api, errEl, notices, win };
+  `)({ MENU, EXTRAS, pizzaExtras, qty, window: win, document: doc, notices, fetchCalls,
+       rid: dir === 'xpizza-orders' ? 'x_pizza' : 'la_musa',
+       getStash: () => stash, setStash: (v) => { stash = v; } });
+  return { ...api, errEl, notices, win, fetchCalls };
 }
 
 // Add an option the way each brand's stepper does, INCLUDING the capture the form performs.
@@ -338,7 +390,107 @@ for (const dir of Object.keys(BRANDS)) {
     ok(`${dir}: a stale control cannot add a dish the live menu dropped, and qty does not dangle`);
   }
 
-  // ── 14. THE CART SIGNATURE FOLLOWS THE CART, NOT THE MENU ──
+  // ── 14. 🔴 THE ONLINE PAYMENT PATH IS GATED TOO ──
+  // The gate lived only in submitOrder(), which is the CASH path. processPayment() → buildOrder() →
+  // processPixelPay() → chargeOnlineOrder never touched it, so a repriced line could be charged without
+  // consent. Driven through the REAL buildOrder and the REAL processPixelPay.
+  {
+    const { f, MENU } = setup(dir);
+    f.chg(MENU[0].id, 1);
+    assert.strictEqual(f.buildOrder(), true, `${dir}: control — a clean cart builds`);
+    f.setMenu(MENU.map(p => (p.id === MENU[0].id ? { ...p, price: p.price + 90 } : p)));
+
+    assert.strictEqual(f.buildOrder(), false, `${dir}: buildOrder must REFUSE a conflicted cart`);
+    // 🔴 THE ASSERTION IS "IT RETURNED AT THE GATE", NOT "NOTHING WAS OBSERVED". An earlier version
+    // swallowed whatever processPixelPay threw and then checked fetch had not been called — so a run
+    // that crashed on the way to fetch was indistinguishable from one the gate stopped, and a mutant
+    // deleting the gate outright survived. Absence of evidence rendered as evidence. It must now
+    // complete cleanly (proving it RETURNED) and must not have reached the network.
+    let threw = null;
+    try { await f.processPixelPay(); } catch (e) { threw = e; }
+    assert.strictEqual(threw, null, `${dir}: processPixelPay must RETURN at its gate, not run on (${threw && threw.message})`);
+    assert.deepStrictEqual(f.fetchCalls, [], `${dir}: 🔴 chargeOnlineOrder must NOT be reached with an unresolved line`);
+    assert.strictEqual(f.submitGate(), undefined, `${dir}: and the cash path stays blocked too`);
+    ok(`${dir}: the ONLINE charge path is gated — buildOrder refuses and chargeOnlineOrder is never called`);
+  }
+
+  // ── 15. 🔴 A STALE OPTION CONTROL CANNOT DROP AN OPTION SILENTLY ──
+  // The dish-level dangling-qty defect, one level down: the real option handler writes a positive
+  // quantity, the capture cannot happen (the option is not in the live list to capture from), and an
+  // uncaptured option used to classify as resolved — no conflict, no record, no entry in the order.
+  {
+    const { f, MENU, EXTRAS } = setup(dir);
+    f.chg(MENU[0].id, 1);
+    f.setMenu(f.liveMenu(), EXTRAS.filter(e => e.id !== EXTRAS[0].id));   // pulled while its control is on screen
+    f.optionControl(EXTRAS[0].id, MENU[0].id);                            // the customer taps it
+    const conflicts = f.cartConflicts();
+    assert.strictEqual(conflicts.length, 1, `${dir}: the line must be blocked, not silently clean`);
+    assert.strictEqual(conflicts[0].extras.find(x => x.unresolved).unresolved, 'uncaptured',
+      `${dir}: pinned reason — an option with a quantity and no capture is unresolved`);
+    assert.strictEqual(f.submitGate(), undefined, `${dir}: the cash path is blocked`);
+    assert.strictEqual(f.buildOrder(), false, `${dir}: and so is every path to a charge`);
+    ok(`${dir}: a stale option control cannot drop an option silently — it blocks instead`);
+  }
+
+  // ── 16. 🔴 RETURNING FROM ONLINE PAYMENT KEEPS THE CART ──
+  // restoreOrderForm() rehydrated qty and pizzaExtras but not CART, so a customer coming back from the
+  // hosted checkout saw their cart and serialized []. Driven through the REAL snapshotForm → JSON
+  // round-trip → restoreOrderForm, on a FRESH form instance, as the real return actually happens.
+  {
+    const a = setup(dir);
+    a.f.chg(a.MENU[0].id, 2); a.f.chg(a.MENU[2].id, 1);
+    addOption(dir, a.f, a.pizzaExtras, a.MENU[0].id, a.EXTRAS[0]);
+    const expected = a.f.redeemCartItems();
+    const stash = JSON.parse(JSON.stringify({ form: a.f.snapshotForm(), ts: Date.now(), order_id: 'o1' }));
+
+    const b = setup(dir);                                    // the fresh page after the redirect back
+    b.f.setStash(stash);
+    b.f.restoreOrderForm();
+    assert.strictEqual(b.f.cartCount(), 3, `${dir}: 🔴 the restored cart must not be empty`);
+    assert.deepStrictEqual(b.f.redeemCartItems(), expected, `${dir}: and must serialize exactly as before the redirect`);
+    assert.strictEqual(b.f.buildOrder(), true, `${dir}: and be chargeable again`);
+    assert.strictEqual(b.f.qtyOf(a.MENU[0].id), 2, `${dir}: quantities restored`);
+    ok(`${dir}: a payment-return restores the CART, not just the quantities — serialization survives`);
+  }
+
+  // ── 17. …AND A PRICE PUBLISHED DURING THE HOSTED CHECKOUT STILL BLOCKS ──
+  // The reason the captured records travel in the stash: the merchant can publish while the customer is
+  // on PixelPay's page. The restored line must keep the price they agreed to, and stop.
+  {
+    const a = setup(dir);
+    a.f.chg(a.MENU[0].id, 1);
+    const stash = JSON.parse(JSON.stringify({ form: a.f.snapshotForm(), ts: Date.now(), order_id: 'o1' }));
+
+    const b = setup(dir);
+    b.f.setMenu(b.MENU.map(p => (p.id === b.MENU[0].id ? { ...p, price: p.price + 90 } : p)));  // published mid-checkout
+    b.f.setStash(stash);
+    b.f.restoreOrderForm();
+    assert.strictEqual(b.f.redeemCartItems()[0].price, a.MENU[0].price, `${dir}: the restored line keeps its agreed price`);
+    assert.strictEqual(b.f.cartConflicts()[0].unresolved, 'repriced', `${dir}: pinned reason`);
+    assert.strictEqual(b.f.buildOrder(), false, `${dir}: and it blocks every path to a charge`);
+    ok(`${dir}: a price published DURING the hosted checkout blocks the restored cart (records travel in the stash)`);
+  }
+
+  // ── 18. A STASH THAT CANNOT BE READ WHOLE IS REFUSED WHOLE ──
+  // Found by a surviving mutant that made hydrate FILTER the unreadable lines instead of refusing. A
+  // partially-restored cart is a cart with lines missing — the same silent drop, arriving by a route
+  // that looks like error handling. Refused whole, then rebuilt from the live menu.
+  {
+    const a = setup(dir);
+    a.f.chg(a.MENU[0].id, 2); a.f.chg(a.MENU[2].id, 1);
+    const stash = JSON.parse(JSON.stringify({ form: a.f.snapshotForm(), ts: Date.now(), order_id: 'o1' }));
+    delete stash.form.cart.lines[0].added;                   // one line arrives unreadable
+
+    const b = setup(dir);
+    b.f.setStash(stash);
+    b.f.restoreOrderForm();
+    assert.strictEqual(b.f.cartCount(), 3, `${dir}: 🔴 BOTH lines come back — not just the readable one`);
+    assert.strictEqual(b.f.redeemCartItems().length, 2, `${dir}: and both serialize`);
+    assert.strictEqual(b.f.buildOrder(), true, `${dir}: rebuilt against the live menu, so it is chargeable`);
+    ok(`${dir}: a stash that cannot be read whole is refused whole and rebuilt — never partially restored`);
+  }
+
+  // ── 19. THE CART SIGNATURE FOLLOWS THE CART, NOT THE MENU ──
   {
     const a = setup(dir), b = setup(dir);
     a.f.chg(a.MENU[0].id, 1); a.f.chg(a.MENU[1].id, 1);
@@ -349,7 +501,7 @@ for (const dir of Object.keys(BRANDS)) {
     ok(`${dir}: cartSig distinguishes "line dropped from the menu" from "line never added" (no idempotent-return reuse)`);
   }
 
-  // ── 15. TOGGLING AN OPTION OFF AND ON DOES NOT RE-CAPTURE IT AT A NEW PRICE ──
+  // ── 20. TOGGLING AN OPTION OFF AND ON DOES NOT RE-CAPTURE IT AT A NEW PRICE ──
   {
     const { f, MENU, EXTRAS, pizzaExtras } = setup(dir);
     f.chg(MENU[0].id, 1);
@@ -363,7 +515,7 @@ for (const dir of Object.keys(BRANDS)) {
   }
 }
 
-// ── 16-17. NO REGRESSION AGAINST THE REAL SHIPPED BUNDLE ────────────────────────────────────────
+// ── 21-22. NO REGRESSION AGAINST THE REAL SHIPPED BUNDLE ────────────────────────────────────────
 // The fixtures above are deliberately synthetic, so an assertion cannot be satisfied by the same data
 // the code derives from. But "no regression" is a claim about the MENU customers actually see, so it is
 // also checked against each form's real spliced bundle — including la_musa's variant items, whose

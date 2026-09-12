@@ -1652,16 +1652,19 @@ const CART = window.createCart({ adapter: {
   pricingKey:      (r) => r.name,     // x_pizza is priced server-side BY NAME — a rename is a different product
   extraKey:        (r) => r.id,
   extraPricingKey: (r) => r.name,     // ditto for options: createOrder re-prices them by name
-  // x_pizza nests options per PIZZA INSTANCE ({pid: {0: {eid: 1}}}); flatten to the distinct set in use.
-  extraKeysFor: (key) => {
-    const out = [];
-    Object.values(pizzaExtras[key] || {}).forEach((extras) => {
-      if (!extras || typeof extras !== 'object') return;
-      Object.entries(extras).forEach(([eid, q]) => { if (q > 0 && out.indexOf(eid) === -1) out.push(eid); });
-    });
-    return out;
-  },
+  extraKeysFor: (key) => extraKeysForItem(key),
 } });
+// x_pizza nests options per PIZZA INSTANCE ({pid: {0: {eid: 1}}}); flatten to the distinct set in use.
+// Named rather than inlined in the adapter because restoration needs the same answer, and two readings
+// of one brand-specific shape is exactly how the two halves drift apart.
+function extraKeysForItem(key){
+  const out = [];
+  Object.values(pizzaExtras[key] || {}).forEach((extras) => {
+    if (!extras || typeof extras !== 'object') return;
+    Object.entries(extras).forEach(([eid, q]) => { if (q > 0 && out.indexOf(eid) === -1) out.push(eid); });
+  });
+  return out;
+}
 const findMenuItem  = (k) => MENU.find(p => String(p.id) === String(k)) || null;
 const findMenuExtra = (k) => EXTRAS.find(e => e.id === k) || null;
 // Mirror one item's quantity into CART. Adding captures the record; removing needs none — which is what
@@ -1702,6 +1705,35 @@ function lineExtra(line, eid){
   return x ? x.record : (findMenuExtra(eid) || CART.extraAddedRecord(eid));
 }
 function cartCount(){ return cartLines().reduce((s, l) => s + l.qty, 0); }
+/* 🔴 RESTORATION IS THE OTHER WRITER OF qty, AND IT HAD NOT GOT THE MEMO. Online payment leaves this
+   page for a hosted checkout and comes back to a FRESH one, where restoreOrderForm() rehydrates qty and
+   pizzaExtras straight from localStorage. Setting quantities without rebuilding the cart re-creates the
+   exact split this task closes — the numbers come back, the lines do not — so a customer returning from
+   payment had a visible cart that serialized to []. Reproduced before the fix.
+
+   The captured records travel in the stash, so a restored line keeps the price it was ADDED at even if
+   the merchant published a change while the customer was on PixelPay's page. A stash from before this
+   change (or one that cannot be read whole) falls back to rebuilding against the live menu — correct
+   whenever the dish still exists, and anything that does not resolve stays a visible, blocking line
+   rather than disappearing. */
+function cartRestore(stashedCart){
+  CART.clear();
+  if (!CART.hydrate(stashedCart)) {
+    Object.keys(qty).forEach((id) => {
+      const rec = findMenuItem(id);
+      if ((qty[id] || 0) > 0 && rec) CART.setQty(rec, qty[id]);
+    });
+    CART.keys().forEach((k) => extraKeysForItem(k).forEach((eid) => {
+      const ex = findMenuExtra(eid); if (ex) CART.noteExtra(ex);
+    }));
+  }
+  // qty follows the cart here too — one rule, every writer. Rebuilt from MENU first so every rendered
+  // card has an entry, then overlaid with what the cart actually holds (including a line whose dish the
+  // menu no longer carries, which must stay visible and blocking rather than silently vanish).
+  Object.keys(qty).forEach((k) => { delete qty[k]; });
+  MENU.forEach((pp) => { qty[pp.id] = 0; });
+  CART.keys().forEach((k) => { qty[k] = CART.qtyOf(k); });
+}
 // 🔴 THE SUBMIT GATE — every line whose dish OR any of whose options stopped resolving.
 function cartConflicts(){ return cartLines().filter(l => l.blocked); }
 // Tasks 6/7 own the rendered conflict UI. What must be true HERE is that a blocked submit is never
@@ -2756,7 +2788,7 @@ async function processPayment(){
     document.getElementById('rtn-cliente').focus();
     return;
   }
-  buildOrder();
+  if(!buildOrder()) return;   // 1B Task 4 — a conflicted cart never becomes an order, on ANY path
   if(isFreeOrder){
     // A1: the free path reuses the cash lifecycle. Server RE-PRICES via the redeem payload + rejects a stale
     // free claim (free_order_stale) → the forms would re-enable payment; here it confirms a $0 order.
@@ -2832,7 +2864,19 @@ function orderIdForThisCart(){
   if (window.__pendingOrder && window.__pendingOrder.sig === sig) return window.__pendingOrder.id;
   const id = genOrderId(); window.__pendingOrder = { id, sig }; return id;
 }
+/* 🔴 THE MONEY GATE LIVES HERE, AT THE CHOKEPOINT BOTH PAYMENT PATHS SHARE. It used to live only in
+   submitOrder(), which is the CASH/free path — so an unresolved line reached the ONLINE charge
+   untouched: processPayment() → buildOrder() → processPixelPay() → chargeOnlineOrder never passed
+   through it. A repriced or removed line could be charged without the customer's consent. Same class as
+   1A Task 7's every-publish-path chokepoint: the guarantee has to sit where the paths MEET, not on the
+   one that was written first.
+   buildOrder() is the meeting point — every path to a charge constructs its payload here — so a
+   conflicted cart cannot even be turned into an order. Returns false and leaves currentOrder untouched;
+   submitOrder() and processPixelPay() keep their own gates for the retry paths that re-enter them
+   directly without rebuilding. */
 function buildOrder(){
+  const _conflicts = cartConflicts();
+  if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }
   const items=cartItems();
   const total=calcTotal();
   const orderId = orderIdForThisCart();   // Layer 1: reuse the id while the cart is unchanged; folds __resumeOrderId; content change / completion mints fresh
@@ -2880,6 +2924,7 @@ function buildOrder(){
   }
   // REWARDS (B2 Task 4): attach the pending redeem (logged-in + reward selected). Guest → null → no field → byte-identical.
   try{ const __rd=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemPayload)?window.__ACCOUNT.getRedeemPayload():null; if(__rd) currentOrder.redeem=__rd; }catch(_){}
+  return true;
 }
 
 /* ── PixelPay online card payment (HOSTED redirect) ──
@@ -2896,6 +2941,11 @@ function setSending(msg){ const el=document.getElementById('sending-msg'); if(el
 
 async function processPixelPay(){
   if(orderSubmitting) return;
+  // 1B Task 4 — this function is re-entered directly by its own retry paths, which do NOT rebuild the
+  // order, so the buildOrder() chokepoint alone would not cover them. Nothing reaches chargeOnlineOrder
+  // with an unresolved line.
+  const _payConflicts = cartConflicts();
+  if(_payConflicts.length){ announceCartConflicts(_payConflicts); return; }
   orderSubmitting=true;
   showStage('s4',90);
   setSending('Iniciando pago seguro…');
@@ -3108,6 +3158,7 @@ function snapshotForm(){
   const v = id => { const el=document.getElementById(id); return el?el.value:''; };
   return {
     qty, extras: pizzaExtras, orderType, pickupTimeType, pickupScheduledTime,
+    cart: CART.snapshot(),   // 1B Task 4 — the captured records travel too, or restoration re-splits the cart
     scheduledFor: window.__scheduledFor, timeMode: window.__timeMode,
     lat, lng, payment: selectedPayment,
     // D (retry-resume): capture the selected redeem + its server quote so restore re-renders the golden ticket and the resumed order re-attaches the SAME redeem (server reuses the ONE reservation — no double-reserve).
@@ -3132,6 +3183,7 @@ function restoreOrderForm(){
     // qty/pizzaExtras are const objects — mutate in place (can't reassign).
     Object.keys(qty).forEach(k=>delete qty[k]); Object.assign(qty, snap.qty||{});
     Object.keys(pizzaExtras).forEach(k=>delete pizzaExtras[k]); Object.assign(pizzaExtras, snap.extras||{});
+    cartRestore(snap.cart);   // 1B Task 4 — rebuild the CART, not just the quantities
     const setV = (id,val)=>{ const el=document.getElementById(id); if(el) el.value = val||''; };
     setV('cname',snap.fields.cname);
     const _savedPhone = snap.fields.cphoneCC ? ('+'+snap.fields.cphoneCC+' '+(snap.fields.cphone||'')) : (snap.fields.cphone||'');

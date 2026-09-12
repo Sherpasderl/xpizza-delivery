@@ -1362,5 +1362,173 @@
       "node",
       "../cart-decoupling.test.mjs"
     ]
+  },
+  {
+    "id": "b4-26",
+    "slice": "b4",
+    "label": "the chokepoint gate in buildOrder is gone — the online path is ungated again",
+    "file": "../xpizza-orders/index.html",
+    "from": "  const _conflicts = cartConflicts();\n  if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }\n  const items=cartItems();",
+    "to": "  const items=cartItems();",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-27",
+    "slice": "b4",
+    "label": "the dispatch ignores buildOrder’s refusal",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if(!buildOrder()) return;   // 1B Task 4",
+    "to": "  buildOrder(); if(false) return;   // 1B Task 4",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-28",
+    "slice": "b4",
+    "label": "processPixelPay’s own gate is gone (the retry re-entry is ungated)",
+    "file": "../xpizza-orders/index.html",
+    "from": "  const _payConflicts = cartConflicts();\n  if(_payConflicts.length){ announceCartConflicts(_payConflicts); return; }\n  orderSubmitting=true;",
+    "to": "  orderSubmitting=true;",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-29",
+    "slice": "b4",
+    "label": "la_musa: the chokepoint gate in buildOrder is gone",
+    "file": "../la-musa-orders/index.html",
+    "from": "  const _conflicts = cartConflicts();\n  if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }\n  const items=cartItems();",
+    "to": "  const items=cartItems();",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-30",
+    "slice": "b4",
+    "label": "la_musa: the dispatch ignores buildOrder’s refusal",
+    "file": "../la-musa-orders/index.html",
+    "from": "  if(!buildOrder()) return;   // 1B Task 4",
+    "to": "  buildOrder(); if(false) return;   // 1B Task 4",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-31",
+    "slice": "b4",
+    "label": "an option with a quantity and no capture counts as resolved again",
+    "file": "../xpizza-orders/form-cart.js",
+    "from": "    if (!added) return 'uncaptured';",
+    "to": "    if (!added) return null;",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-32",
+    "slice": "b4",
+    "label": "restoration sets the quantities but does not rebuild the cart",
+    "file": "../xpizza-orders/index.html",
+    "from": "    cartRestore(snap.cart);   // 1B Task 4",
+    "to": "    if(false) cartRestore(snap.cart);   // 1B Task 4",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-33",
+    "slice": "b4",
+    "label": "la_musa: restoration sets the quantities but does not rebuild the cart",
+    "file": "../la-musa-orders/index.html",
+    "from": "    cartRestore(snap.cart);   // 1B Task 4",
+    "to": "    if(false) cartRestore(snap.cart);   // 1B Task 4",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-34",
+    "slice": "b4",
+    "label": "the captured records do not travel in the payment stash",
+    "file": "../xpizza-orders/index.html",
+    "from": "    cart: CART.snapshot(),   // 1B Task 4",
+    "to": "    cart: null,   // 1B Task 4",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-35",
+    "slice": "b4",
+    "label": "hydrate accepts a stash it cannot read whole",
+    "file": "../xpizza-orders/form-cart.js",
+    "from": "    if (!snap.lines.every(okLine) || !snap.extras.every(okExtra)) return false;",
+    "to": "    snap = { lines: snap.lines.filter(okLine), extras: snap.extras.filter(okExtra) };",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-36",
+    "slice": "b4",
+    "label": "restoration leaves qty out of step with the cart",
+    "file": "../xpizza-orders/index.html",
+    "from": "  CART.keys().forEach((k) => { qty[k] = CART.qtyOf(k); });",
+    "to": "  ;",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-37",
+    "slice": "b4",
+    "label": "la_musa: processPixelPay’s own gate is gone (the retry re-entry is ungated)",
+    "file": "../la-musa-orders/index.html",
+    "from": "  const _payConflicts = cartConflicts();\n  if(_payConflicts.length){ announceCartConflicts(_payConflicts); return; }\n  orderSubmitting=true;",
+    "to": "  orderSubmitting=true;",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-38",
+    "slice": "b4",
+    "label": "la_musa: the captured records do not travel in the payment stash",
+    "file": "../la-musa-orders/index.html",
+    "from": "    cart: CART.snapshot(),   // 1B Task 4",
+    "to": "    cart: null,   // 1B Task 4",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-39",
+    "slice": "b4",
+    "label": "la_musa: restoration leaves qty out of step with the cart",
+    "file": "../la-musa-orders/index.html",
+    "from": "  CART.keys().forEach((k) => { qty[k] = CART.qtyOf(k); });",
+    "to": "  ;",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
   }
 ]

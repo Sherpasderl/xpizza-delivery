@@ -86,7 +86,14 @@ function createCart(options) {
 
   function classifyExtra(key, live) {
     const added = chosenExtras.get(key);
-    if (!added) return null;                                        // never captured — nothing to compare
+    // 🔴 NO CAPTURE IS NOT "NOTHING TO COMPARE", IT IS THE WORST CASE. This returned null, and null
+    // meant resolved: an option the form had selected but never captured produced no conflict, no
+    // record, and therefore no entry in the serialized order — the silent drop, one level below the
+    // dish. It is reachable exactly the way the dish version was: a control left on screen across a
+    // live upgrade is tapped, the write succeeds, the capture cannot (the option is not in the live
+    // list to capture FROM). Having no record of what the customer agreed to pay is precisely when a
+    // line must stop, not when it may pass.
+    if (!added) return 'uncaptured';
     if (!live) return 'removed';
     if (adapter.extraPricingKey(live) !== added.pricingKey) return 'renamed';
     if (live.price !== added.price) return 'repriced';
@@ -147,7 +154,10 @@ function createCart(options) {
       const extras = adapter.extraKeysFor(key).map((ek) => {
         const liveExtra = lookupExtra(ek) || null;
         const problem = classifyExtra(ek, liveExtra);
-        return { key: ek, unresolved: problem, record: problem ? extraAddedRecord(ek) : (liveExtra || extraAddedRecord(ek)), live: liveExtra };
+        // An uncaptured option has no captured record by definition, so fall through to the live one
+        // if there is one — it is still blocked either way, but it can at least be NAMED on screen.
+        const captured = extraAddedRecord(ek);
+        return { key: ek, unresolved: problem, record: problem ? (captured || liveExtra) : (liveExtra || captured), live: liveExtra };
       });
       return {
         key,
@@ -189,12 +199,40 @@ function createCart(options) {
     return true;
   }
 
+  // 🔴 THE CART MUST SURVIVE LEAVING THE PAGE. Online payment sends the customer to a hosted checkout
+  // and back onto a FRESH page, where the form restores its state from localStorage. Restoring qty
+  // without the cart re-creates the very split this module closes — the quantities come back and the
+  // lines do not — so the captured records travel with them. Plain JSON: no Maps, no undefined.
+  function snapshot() {
+    return {
+      v: 1,
+      lines: keys().map((k) => { const l = lines.get(k); return { key: k, qty: l.qty, added: l.added }; }),
+      extras: [...chosenExtras.values()],
+    };
+  }
+
+  // Rebuild from a snapshot. Deliberately strict about shape rather than forgiving: a half-understood
+  // stash restored as a partial cart is a cart with lines missing, which is the failure being prevented.
+  // A stash that cannot be read whole is refused whole, and the caller falls back to rebuilding from the
+  // live menu — the same atomic-or-nothing rule the live snapshot itself follows.
+  function hydrate(snap) {
+    if (!snap || typeof snap !== 'object' || !Array.isArray(snap.lines) || !Array.isArray(snap.extras)) return false;
+    const okLine = (l) => l && typeof l === 'object' && typeof l.key === 'string' && Number(l.qty) > 0
+      && l.added && typeof l.added === 'object' && l.added.record;
+    const okExtra = (e) => e && typeof e === 'object' && typeof e.key === 'string' && e.record;
+    if (!snap.lines.every(okLine) || !snap.extras.every(okExtra)) return false;
+    lines.clear(); chosenExtras.clear();
+    snap.lines.forEach((l) => lines.set(l.key, { key: l.key, qty: Number(l.qty), added: l.added }));
+    snap.extras.forEach((e) => chosenExtras.set(e.key, e));
+    return true;
+  }
+
   const remove = (key) => lines.delete(key);
 
   return {
     setQty, setQtyByKey, qtyOf, has, keys, clear, remove,
     noteExtra, extraAddedRecord, classifyExtra, acceptExtra,
-    resolve, accept, classify,
+    resolve, accept, classify, snapshot, hydrate,
   };
 }
 
