@@ -1719,27 +1719,30 @@ function cartCount(){ return cartLines().reduce((s, l) => s + l.qty, 0); }
 function cartRestore(stashedCart){
   CART.clear();
   if (!CART.hydrate(stashedCart)) {
-    /* 🔴 REBUILDING FROM THE LIVE MENU IS A PARTIAL RESTORE, AND A PARTIAL RESTORE IS THE SILENT DROP
-       WEARING ERROR-HANDLING'S CLOTHES. A stashed line whose dish has since left the menu has no
-       record anywhere — not in the unreadable stash, not in MENU — so there is no name and no price
-       to restore it with, and rebuilding simply omits it: the customer comes back to a smaller cart
-       than they left, with no error. Reproduced: 3 units across 2 dishes, one of them gone, restored
-       as 1 unit with zero conflicts.
-       So it is all or nothing, the same atomic rule the live snapshot itself follows. If every
-       stashed line can be described by the live menu, rebuild; if even one cannot, restore NOTHING
-       and say so. An empty cart is visible and is refused at the send; a quietly smaller one is not. */
-    const stashedKeys = Object.keys(qty).filter((k) => (qty[k] || 0) > 0);
-    const undescribable = stashedKeys.filter((k) => !findMenuItem(k));
-    if (undescribable.length) {
-      console.warn('cart_restore_refused', JSON.stringify({ reason: 'stash_unreadable_and_menu_moved', keys: undescribable }));
-      const err = document.getElementById('err3') || document.getElementById('err1');
-      if (err) { err.textContent = 'No pudimos recuperar tu pedido anterior. Armalo de nuevo, por favor.'; err.style.display = 'block'; }
-    } else {
-      stashedKeys.forEach((id) => { CART.setQty(findMenuItem(id), qty[id]); });
-      CART.keys().forEach((k) => extraKeysForItem(k).forEach((eid) => {
-        const ex = findMenuExtra(eid); if (ex) CART.noteExtra(ex);
-      }));
-    }
+    /* 🔴 AN UNREADABLE STASH MEANS THE AGREED PRICES ARE UNKNOWN — FOR EVERY LINE. There is no
+       rebuild-from-the-live-menu path here, and the reason is worth stating exactly, because the
+       version that had one looked careful and was not.
+
+       `added` IS the record of what the customer agreed to pay; it is the only thing the whole task
+       rests on. Rebuilding a line from the live menu captures TODAY's price AS the agreed price — so
+       a dish repriced while the customer was on the hosted checkout comes back with added == live,
+       classify() sees no disagreement, the send gate is handed a cart it has no reason to stop, and
+       the customer is charged the new price without ever accepting it. Reproduced on both forms
+       (250→340, 180→270).
+
+       The earlier version refused only when a line could not be DESCRIBED by the live menu. That
+       caught a removed dish and missed a repriced one, because a repriced dish is still perfectly
+       describable — the wrong question. The right question is whether the agreed price can be
+       certified, and when the stash cannot be read, the answer is no for everything in it.
+
+       So: all or nothing, the same atomic rule the live snapshot follows. An empty cart is visible,
+       is explained, and is refused at the send; a cart quietly rebuilt at today's prices is none of
+       those things. (Task 7's alternative — restore every line as price-unverifiable and make the
+       customer re-confirm — is friendlier and needs the conflict UI; this is the minimal safe rule.) */
+    console.warn('cart_restore_refused', JSON.stringify({
+      reason: 'stash_unreadable_agreed_prices_unverifiable', keys: Object.keys(qty).filter((k) => (qty[k] || 0) > 0) }));
+    const err = document.getElementById('err3') || document.getElementById('err1');
+    if (err) { err.textContent = 'No pudimos recuperar tu pedido anterior. Armalo de nuevo, por favor.'; err.style.display = 'block'; }
   }
   // qty follows the cart here too — one rule, every writer. Rebuilt from MENU first so every rendered
   // card has an entry, then overlaid with what the cart actually holds (including a line whose dish the

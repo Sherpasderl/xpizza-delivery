@@ -1546,10 +1546,10 @@
   {
     "id": "b4-43",
     "slice": "b4",
-    "label": "restoration falls back to rebuilding from the live menu (a partial restore)",
+    "label": "an unreadable stash rebuilds from the live menu — a repriced line comes back \"agreed\" at today's price",
     "file": "../xpizza-orders/index.html",
-    "from": "    if (undescribable.length) {",
-    "to": "    if (false) {",
+    "from": "    console.warn('cart_restore_refused', JSON.stringify({\n      reason: 'stash_unreadable_agreed_prices_unverifiable', keys: Object.keys(qty).filter((k) => (qty[k] || 0) > 0) }));",
+    "to": "    Object.keys(qty).filter((k) => (qty[k] || 0) > 0).forEach((id) => { const r = findMenuItem(id); if (r) CART.setQty(r, qty[id]); });\n    console.warn('cart_restore_refused', JSON.stringify({\n      reason: 'stash_unreadable_agreed_prices_unverifiable', keys: Object.keys(qty).filter((k) => (qty[k] || 0) > 0) }));",
     "command": [
       "node",
       "../cart-decoupling.test.mjs"
@@ -1594,10 +1594,10 @@
   {
     "id": "b4-47",
     "slice": "b4",
-    "label": "la_musa: restoration falls back to rebuilding from the live menu (a partial restore)",
+    "label": "la_musa: an unreadable stash rebuilds from the live menu — a repriced line comes back \"agreed\" at today's price",
     "file": "../la-musa-orders/index.html",
-    "from": "    if (undescribable.length) {",
-    "to": "    if (false) {",
+    "from": "    console.warn('cart_restore_refused', JSON.stringify({\n      reason: 'stash_unreadable_agreed_prices_unverifiable', keys: Object.keys(qty).filter((k) => (qty[k] || 0) > 0) }));",
+    "to": "    Object.keys(qty).filter((k) => (qty[k] || 0) > 0).forEach((id) => { const r = findMenuItem(id); if (r) CART.setQty(r, qty[id]); });\n    console.warn('cart_restore_refused', JSON.stringify({\n      reason: 'stash_unreadable_agreed_prices_unverifiable', keys: Object.keys(qty).filter((k) => (qty[k] || 0) > 0) }));",
     "command": [
       "node",
       "../cart-decoupling.test.mjs"
@@ -1622,6 +1622,18 @@
     "file": "../xpizza-orders/index.html",
     "from": "  if(conflicts.length) announceCartConflicts(conflicts);\n  return true;",
     "to": "  if(conflicts.length) announceCartConflicts(conflicts);\n  return false;",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-50",
+    "slice": "b4",
+    "label": "the 202 retry never releases the submit lock — so the LOCK, not the send gate, would be stopping the retry",
+    "file": "../xpizza-orders/index.html",
+    "from": "      orderSubmitting=false; setSending('Preparando tu pago…');",
+    "to": "      setSending('Preparando tu pago…');",
     "command": [
       "node",
       "../cart-decoupling.test.mjs"

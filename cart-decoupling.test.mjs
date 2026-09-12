@@ -24,6 +24,9 @@ const require = createRequire(import.meta.url);
 
 let n = 0, failures = 0;
 const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+// The real 202-in_progress retry re-enters processPixelPay through setTimeout (immediate here), so the
+// continuation runs on a later turn than the call that scheduled it. Drain before asserting.
+const drain = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setImmediate(r)); };
 const grab = (html, re, what) => { const m = html.match(re); assert.ok(m, `${what} not found in form — the harness would be unsound`); return m[0]; };
 
 // Lift the real code out of the form and run it in a scope where MENU is swappable. Everything the
@@ -122,6 +125,11 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
   // The REAL dispatch. Everything above it is reachable directly; this is the function the button calls,
   // and it is the only way to prove the cash/online branch itself honours a refusal.
   const dispatchFn = grab(html, /\nasync function processPayment\(\)\{[\s\S]*?\n\}\n/, 'processPayment()');
+  // 🔴 THE REAL paymentFallback, not a stub. It sets orderSubmitting=false, and the committed
+  // online-retry test depended on that WITHOUT it being true: an inert stub left the lock held, so the
+  // re-entry stopped at `if(orderSubmitting) return` and never reached the send gate. A rule above the
+  // one under test, masking it — the same shape as the entry gate that hid the send gate.
+  const fallbackFn = grab(html, /\nfunction paymentFallback\(msg\)\{[\s\S]*?\n\}\n/, 'paymentFallback()');
   const payFn     = grab(html, /\nasync function processPixelPay\(\)\{[\s\S]*?\n\}\n/, 'processPixelPay()');
   const snapFn    = grab(html, /\nfunction snapshotForm\(\)\{[\s\S]*?\n\}\n/, 'snapshotForm()');
   const restoreFn = grab(html, /\nfunction restoreOrderForm\(\)\{[\s\S]*?\n\}\n/, 'restoreOrderForm()');
@@ -134,7 +142,7 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
   const els = new Map();
   const el = (id) => { if (!els.has(id)) els.set(id, { value: '', textContent: '', checked: false, style: {}, classList: { add(){}, remove(){}, toggle(){} }, focus(){}, remove(){}, scrollIntoView(){} }); return els.get(id); };
   const errEl = el('err3');
-  const win = { createCart, __ACCOUNT: null, __onCartConflict: null, __scheduledFor: null, __timeMode: 'standard' };
+  const win = { createCart, __ACCOUNT: null, __onCartConflict: null, __scheduledFor: null, __timeMode: 'standard', location: { href: '' } };
   const doc = { getElementById: el, querySelector: () => null, querySelectorAll: () => [] };
   const notices = [], fetchCalls = [], plan = [], stages = [];
   let stash = null;
@@ -158,7 +166,7 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     const setSending = () => {}, renderMenu = () => {}, selectPay = () => {};
     const setOrderType = () => {}, initMap = () => {}, showPayReturn = () => {}, toggleRtn = () => {};
     const renderRedeemUI = () => {}, applyRedeemQuoteToTotals = () => {}, setCashTendered = () => {};
-    const paymentFallback = () => {}, showSuccess = () => {}, setPayError = () => {};
+    const showSuccess = () => {}, setPayError = () => {};
     const ICON_X_CIRCLE = '', ORDER_SECRET = 'test-secret';
     // processPayment's own validation chain. Pickup orders skip the delivery checks (map, zone, address
     // detail), leaving the payment/RTN gates — satisfied so the dispatch reaches the cart gate, which is
@@ -200,6 +208,7 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     ${sigFn}
     ${submitFn}
     ${dispatchFn}
+    ${fallbackFn}
     /* 🔴 "BLOCKED" NOW MEANS "createOrder WAS NEVER CALLED", not "an extracted fragment returned
        early". The previous definition ran a lifted copy of submitOrder's guard — which is precisely
        why the cash RETRY bypass was invisible: the fragment had no retry loop in it. This runs the
@@ -527,20 +536,36 @@ for (const dir of Object.keys(BRANDS)) {
     ok(`${dir}: the REAL dispatch (${method}) refuses a conflicted cart and sends nothing`);
   }
 
-  // ── 18. 🔴 THE ONLINE RETRY RE-CHECKS TOO ──
-  // processPixelPay is re-entered by its own retry paths without rebuilding the order. The mirror of the
-  // cash-retry case, and the reason the guarantee is at the send rather than at any entry.
+  // ── 18. 🔴 THE ONLINE RETRY RE-CHECKS TOO — THROUGH THE REAL RETRY PATH ──
+  // processPixelPay's actual retry is the 202 in_progress branch: it releases the submit lock and
+  // re-enters itself via setTimeout. An earlier version of this test invoked the function twice by hand
+  // with the lock still held, so the second call stopped at `if(orderSubmitting) return` — the LOCK was
+  // proving the retry safe, not the send gate. Driven through the real 202 path now, with a positive
+  // control proving the retry does go out again when the cart has not changed.
   {
+    // CONTROL — the retry really does re-send when nothing changed.
+    const c = setup(dir);
+    c.f.chg(c.MENU[0].id, 1);
+    c.f.buildOrder();
+    c.f.setPlan([{ status: 202, body: { status: 'in_progress' } }, { status: 200, body: { checkout_url: 'http://pay/x' } }]);
+    try { await c.f.processPixelPay(); } catch (_) {}
+    await drain();
+    assert.strictEqual(c.f.fetchCalls.filter((u) => u.includes('chargeOnlineOrder')).length, 2,
+      `${dir}: control — an unchanged cart DOES retry (otherwise the negative below is vacuous)`);
+
     const { f, MENU } = setup(dir);
     f.chg(MENU[0].id, 1);
     assert.strictEqual(f.buildOrder(), true, `${dir}: clean when first sent`);
+    f.setPlan([{ status: 202, body: { status: 'in_progress' } }, { status: 200, body: { checkout_url: 'http://pay/x' } }]);
     f.onFetch((n) => { if (n === 1) f.setMenu(MENU.map(p => (p.id === MENU[0].id ? { ...p, price: p.price + 90 } : p))); });
-    try { await f.processPixelPay(); } catch (_) {}      // attempt 1 goes out, and reprices mid-flight
-    try { await f.processPixelPay(); } catch (_) {}      // the retry re-enters WITHOUT rebuilding
+    try { await f.processPixelPay(); } catch (_) {}
+    await drain();
     const sends = f.fetchCalls.filter((u) => u.includes('chargeOnlineOrder'));
     assert.strictEqual(sends.length, 1,
       `${dir}: 🔴 the online retry must not re-send a cart repriced mid-flight (sent ${sends.length}×)`);
-    ok(`${dir}: the online retry re-checks before re-sending`);
+    assert.ok(f.notices.some((n) => String(n[0]).includes('cart_conflict_blocked_send')),
+      `${dir}: and it is the SEND gate that stopped it — logged at the send`);
+    ok(`${dir}: the online retry re-checks at the send (real 202 path, lock released)`);
   }
 
   // ── 14. 🔴 THE ONLINE PAYMENT PATH IS GATED TOO ──
@@ -624,23 +649,50 @@ for (const dir of Object.keys(BRANDS)) {
     ok(`${dir}: a price published DURING the hosted checkout blocks the restored cart (records travel in the stash)`);
   }
 
-  // ── 18. A STASH THAT CANNOT BE READ WHOLE IS REFUSED WHOLE ──
-  // Found by a surviving mutant that made hydrate FILTER the unreadable lines instead of refusing. A
-  // partially-restored cart is a cart with lines missing — the same silent drop, arriving by a route
-  // that looks like error handling. Refused whole, then rebuilt from the live menu.
+  // ── 18. 🔴 AN UNREADABLE STASH NEVER REBUILDS A REPRICED LINE AT TODAY'S PRICE ──
+  // The last place the agreed price could be lost, and the subtlest. `added` IS the record of what the
+  // customer agreed to pay. Rebuilding a line from the live menu captures TODAY's price AS the agreed
+  // price, so a dish repriced during the hosted checkout came back with added == live, classify() saw
+  // no disagreement, and the send gate was handed a cart it had no reason to stop.
+  //
+  // The earlier rule refused only when a line could not be DESCRIBED by the live menu — which catches a
+  // removed dish and misses a repriced one, because a repriced dish is still perfectly describable. The
+  // question is not "can I name it", it is "can I certify what was agreed", and an unreadable stash
+  // answers no for everything in it.
   {
     const a = setup(dir);
-    a.f.chg(a.MENU[0].id, 2); a.f.chg(a.MENU[2].id, 1);
+    a.f.chg(a.MENU[0].id, 1);
+    const agreed = a.MENU[0].price;
     const stash = JSON.parse(JSON.stringify({ form: a.f.snapshotForm(), ts: Date.now(), order_id: 'o1' }));
-    delete stash.form.cart.lines[0].added;                   // one line arrives unreadable
+    delete stash.form.cart.lines[0].added;                    // the stash can no longer be read whole
 
+    const b = setup(dir);
+    // …and the dish is still perfectly describable — it was merely REPRICED while the customer was away.
+    b.f.setMenu(b.MENU.map(p => (p.id === b.MENU[0].id ? { ...p, price: agreed + 90 } : p)));
+    b.f.setStash(stash);
+    b.f.restoreOrderForm();
+    assert.strictEqual(b.f.cartCount(), 0,
+      `${dir}: 🔴 nothing is rebuilt — a line rebuilt from live would carry ${agreed + 90} as "agreed"`);
+    assert.strictEqual(await b.f.submitGate(), undefined, `${dir}: and nothing is sent`);
+    assert.deepStrictEqual(b.f.fetchCalls, [], `${dir}: neither charge send is reached`);
+    assert.ok(b.f.notices.some((n) => String(n[0]).includes('cart_restore_refused')),
+      `${dir}: the refusal is explicit, not an empty cart nobody explained`);
+    ok(`${dir}: an unreadable stash never silently re-agrees a repriced line at today's price`);
+  }
+
+  // ── 19. …AND A READABLE STASH STILL RESTORES (the rule above is not "always refuse") ──
+  {
+    const a = setup(dir);
+    a.f.chg(a.MENU[0].id, 2); a.f.chg(a.MENU[1].id, 1);
+    const expected = a.f.redeemCartItems();
+    const stash = JSON.parse(JSON.stringify({ form: a.f.snapshotForm(), ts: Date.now(), order_id: 'o1' }));
     const b = setup(dir);
     b.f.setStash(stash);
     b.f.restoreOrderForm();
-    assert.strictEqual(b.f.cartCount(), 3, `${dir}: 🔴 BOTH lines come back — not just the readable one`);
-    assert.strictEqual(b.f.redeemCartItems().length, 2, `${dir}: and both serialize`);
-    assert.strictEqual(b.f.buildOrder(), true, `${dir}: rebuilt against the live menu, so it is chargeable`);
-    ok(`${dir}: a stash that cannot be read whole is refused whole and rebuilt — never partially restored`);
+    assert.strictEqual(b.f.cartCount(), 3, `${dir}: control — a readable stash restores in full`);
+    assert.deepStrictEqual(b.f.redeemCartItems(), expected, `${dir}: …identically`);
+    assert.strictEqual(b.f.buildOrder(), true, `${dir}: …and is chargeable`);
+    ok(`${dir}: CONTROL — a readable stash still restores fully (the refusal is not blanket)`);
   }
 
   // ── 19. THE CART SIGNATURE FOLLOWS THE CART, NOT THE MENU ──

@@ -67,10 +67,26 @@ test('the conflict gate sits at every path to a charge — structural census, bo
     assert.ok(/if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n    const res = await fetch\(CHARGEORDER_URL, \{/.test(html),
       `${dir}: the chargeOnlineOrder send gate must sit immediately before the fetch`);
 
-    // Neither charge send may be reached by any route that skips the gate: there are exactly two
-    // fetches that ask for money, and each is immediately preceded by one.
-    const sends = (html.match(/await fetch\((CREATEORDER_URL|CHARGEORDER_URL)/g) || []);
-    assert.strictEqual(sends.length, 2, `${dir}: expected exactly 2 charge sends, found ${sends.length}`);
+    /* 🔴 A DOCUMENTED LINT, NOT A PROOF — and saying so is the point. The guarantee is that the two
+       sends which exist are each gated, asserted structurally above and behaviourally in
+       cart-decoupling.test.mjs. THIS check is a tripwire for a future third send, and a tripwire is
+       only as good as its pattern: the first version matched `await fetch(CONSTANT` alone, so an
+       un-awaited fetch, a `window.fetch`, an XHR, a sendBeacon, or a literal URL would all have walked
+       past it while it reported "exactly 2 charge sends" with total confidence. Widened below — but it
+       still cannot see a URL assembled at runtime, and no regex can. It is a lint. If a third send is
+       ever added, gate it; do not expect this to be what tells you. */
+    const chargeRef = String.raw`(CREATEORDER_URL|CHARGEORDER_URL|['"\`][^'"\`]*(createOrder|chargeOnlineOrder)[^'"\`]*['"\`])`;
+    const sendRe = new RegExp(String.raw`(?:fetch|sendBeacon|\.open)\s*\(\s*(?:['"\`]?(?:POST|GET)['"\`]?\s*,\s*)?` + chargeRef, 'g');
+    const sends = html.match(sendRe) || [];
+    assert.strictEqual(sends.length, 2,
+      `${dir}: expected exactly 2 charge-send call sites, found ${sends.length} — a new one needs its own gate: ${sends.join(' | ')}`);
+    // …and no XHR or beacon anywhere near a charge URL, which the count above would not distinguish.
+    assert.ok(!/XMLHttpRequest[\s\S]{0,400}?(CREATEORDER_URL|CHARGEORDER_URL)/.test(html),
+      `${dir}: a charge sent over XHR would bypass the fetch-shaped gate entirely`);
+    // non-vacuity: each shape the widened pattern claims to catch really is caught
+    for (const probe of ['fetch(CREATEORDER_URL,{', 'window.fetch(CHARGEORDER_URL, {', "fetch('https://x/createOrder', {"]) {
+      assert.ok(new RegExp(sendRe.source).test(probe), `non-vacuity: the send-site lint can see ${probe}`);
+    }
 
     // The dispatch must honour buildOrder()'s refusal BEFORE it branches to cash or online.
     assert.ok(/\n  if\(!buildOrder\(\)\) return;   \/\/ 1B Task 4[^\n]*\n  if\(isFreeOrder\)\{[\s\S]{0,900}?if\(selectedPayment==='online'\)\{\n    await processPixelPay\(\);/.test(html),
