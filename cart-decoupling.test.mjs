@@ -733,7 +733,140 @@ for (const dir of Object.keys(BRANDS)) {
     ok(`${dir}: a snapshot with the same OPTION twice at conflicting agreed prices is refused whole`);
   }
 
-  // ── 21. …AND A READABLE STASH STILL RESTORES (the rule above is not "always refuse") ──
+  /* ══ 1B TASK 5 — PRICING IDENTITY ═══════════════════════════════════════════════════════════════
+     THE CONSENT BOUNDARY, stated once: block iff the CHARGE could differ — a pricing-key change or a
+     price change — and never on a display-only change. The two brands land on opposite sides of the
+     same rename because they are priced differently, and that is the policy working, not an
+     inconsistency: x_pizza is priced BY NAME, so renaming a dish changes the product the server would
+     price; la_musa is priced BY ID, so renaming one is cosmetic and the charge is identical to the
+     cent. Blocking a la_musa customer over a name would be friction against a change that cannot
+     reach them. */
+
+  // ── 22. A RENAME NEVER SILENTLY SWAPS WHICH CATALOG KEY IS PRICED ──
+  {
+    const { f, MENU } = setup(dir);
+    f.chg(MENU[0].id, 1);
+    const was = MENU[0].name;
+    f.setMenu(MENU.map(p => (p.id === MENU[0].id ? { ...p, name: was + ' Especial' } : p)));
+    const line = f.redeemCartItems()[0];
+    if (dir === 'xpizza-orders') {
+      assert.strictEqual(f.cartConflicts()[0].unresolved, 'renamed', 'x_pizza: the charge could differ → blocked');
+      assert.strictEqual(line.name, was,
+        '🔴 x_pizza: the order must still name the product that was AGREED — the new name is a different pricing key');
+      assert.strictEqual(await f.submitGate(), undefined, 'x_pizza: and nothing is sent');
+      assert.deepStrictEqual(f.fetchCalls, [], 'x_pizza: neither charge endpoint is reached');
+      ok(`${dir}: a rename changes the pricing key → blocked, and the ORIGINAL key is what stays in the order`);
+    } else {
+      assert.strictEqual(f.cartConflicts().length, 0, 'la_musa: priced by id — the charge is identical');
+      assert.strictEqual(line.id, MENU[0].id, '🔴 la_musa: the priced key is unchanged…');
+      assert.strictEqual(line.price, MENU[0].price, '…and so is the price…');
+      assert.strictEqual(line.name, was + ' Especial', '…while the DISPLAY follows the live menu');
+      assert.strictEqual(await f.submitGate(), 'PROCEEDED', 'la_musa: and it still checks out');
+      ok(`${dir}: a rename is cosmetic (priced by id) → display updates, priced key and price unchanged, no block`);
+    }
+  }
+
+  // ── 23. THE SAME RULE ONE LEVEL DOWN — AN OPTION RENAME ──
+  // Closing the class in both directions: options are priced by the same per-brand key as dishes.
+  {
+    const { f, MENU, EXTRAS, pizzaExtras } = setup(dir);
+    f.chg(MENU[0].id, 1);
+    addOption(dir, f, pizzaExtras, MENU[0].id, EXTRAS[0]);
+    const was = EXTRAS[0].name;
+    f.setMenu(f.liveMenu(), EXTRAS.map(e => (e.id === EXTRAS[0].id ? { ...e, name: was + ' XL' } : e)));
+    const opt = f.redeemCartItems()[0].extras[0];
+    if (dir === 'xpizza-orders') {
+      assert.strictEqual(f.cartConflicts()[0].extras.find(x => x.unresolved).unresolved, 'renamed',
+        'x_pizza: an option is priced by name too → blocked');
+      assert.strictEqual(opt.name, was, '🔴 x_pizza: the order keeps the option key that was agreed');
+      assert.strictEqual(await f.submitGate(), undefined, 'x_pizza: and nothing is sent');
+      ok(`${dir}: an OPTION rename changes its pricing key → blocked, original key retained`);
+    } else {
+      assert.strictEqual(f.cartConflicts().length, 0, 'la_musa: options priced by id — cosmetic');
+      assert.strictEqual(opt.id, EXTRAS[0].id, 'la_musa: the priced option key is unchanged…');
+      assert.strictEqual(opt.price, EXTRAS[0].price, '…and so is its price');
+      assert.strictEqual(await f.submitGate(), 'PROCEEDED', 'la_musa: and it still checks out');
+      ok(`${dir}: an OPTION rename is cosmetic (priced by id) → no block, priced key and price unchanged`);
+    }
+  }
+
+  // ── 24. 🔴 THE RETRY SIGNATURE CARRIES THE AGREED PRICE ──
+  // createOrder's idempotent-return and chargeOnlineOrder's acquireHostedAttempt reuse hand back an
+  // EXISTING order without re-checking its content, and orderIdForThisCart reuses an id whenever the
+  // signature matches. The signature carried which lines existed and how many — not what they cost — so
+  // the same cart at a different agreed price reused the id, and the retry could be answered with an
+  // order recorded at a price this cart no longer means.
+  {
+    const { f, MENU } = setup(dir);
+    f.chg(MENU[0].id, 1);
+    const before = f.cartSig();
+    // The merchant republishes, and the customer explicitly accepts the new price (the Task 6 gesture —
+    // the only way an agreed price legitimately moves). Same lines, same quantities, different money.
+    const repriced = { ...MENU[0], price: MENU[0].price + 90 };
+    f.setMenu(MENU.map(p => (p.id === MENU[0].id ? repriced : p)));
+    f.CART.accept(String(MENU[0].id), repriced);
+    assert.strictEqual(f.cartConflicts().length, 0, `${dir}: accepted, so the cart is clean again`);
+    assert.notStrictEqual(f.cartSig(), before,
+      `${dir}: 🔴 the same lines at a different AGREED price must not reuse the order id`);
+    ok(`${dir}: the retry signature changes when the agreed price changes (no stale idempotent-return)`);
+  }
+
+  // ── 25. …AND IT DENOTES WHAT WAS AGREED, NOT WHAT THE MENU SAYS TODAY ──
+  // The signature identifies an ORDER, and an order is what the customer agreed to. A merchant's
+  // publish is not the customer changing their mind, so on its own it must not re-identify the cart —
+  // only the customer's acceptance does. Read from the live menu instead, the signature would move
+  // under a cart nobody touched, and the id it controls would follow.
+  {
+    const { f, MENU } = setup(dir);
+    f.chg(MENU[0].id, 1);
+    const agreed = f.cartSig();
+    const repriced = { ...MENU[0], price: MENU[0].price + 90 };
+    f.setMenu(MENU.map(p => (p.id === MENU[0].id ? repriced : p)));
+    assert.strictEqual(f.cartSig(), agreed,
+      `${dir}: a publish the customer has not accepted must NOT change the order's identity`);
+    f.CART.accept(String(MENU[0].id), repriced);            // …and their acceptance must
+    assert.notStrictEqual(f.cartSig(), agreed, `${dir}: accepting it does`);
+    ok(`${dir}: the signature follows the AGREED price — a merchant's publish alone never re-identifies the cart`);
+  }
+
+  // ── 26. …AND THE PRICING KEY, WHICH IS NOT THE CART KEY ──
+  // x_pizza's cart key is the dish id but its PRICING key is the name, so a rename changes what the
+  // server prices while leaving the cart key untouched. For la_musa the two coincide, so the same
+  // rename is genuinely the same order — asserted rather than left as an unexamined difference.
+  {
+    const { f, MENU } = setup(dir);
+    f.chg(MENU[0].id, 1);
+    const before = f.cartSig();
+    const renamed = { ...MENU[0], name: MENU[0].name + ' Especial' };
+    f.setMenu(MENU.map(p => (p.id === MENU[0].id ? renamed : p)));
+    f.CART.accept(String(MENU[0].id), renamed);
+    if (dir === 'xpizza-orders') {
+      assert.notStrictEqual(f.cartSig(), before,
+        '🔴 x_pizza: the priced product changed, so the signature must change');
+      ok(`${dir}: the retry signature changes when the PRICING KEY changes (name ≠ cart key)`);
+    } else {
+      assert.strictEqual(f.cartSig(), before,
+        'la_musa: same id, same price — genuinely the same order, so the id may be reused');
+      ok(`${dir}: a cosmetic rename leaves the retry signature alone (same id, same price, same order)`);
+    }
+  }
+
+  // ── 27. …AND AN OPTION'S AGREED PRICE TOO ──
+  {
+    const { f, MENU, EXTRAS, pizzaExtras } = setup(dir);
+    f.chg(MENU[0].id, 1);
+    addOption(dir, f, pizzaExtras, MENU[0].id, EXTRAS[0]);
+    const before = f.cartSig();
+    const dearer = { ...EXTRAS[0], price: EXTRAS[0].price + 55 };
+    f.setMenu(f.liveMenu(), EXTRAS.map(e => (e.id === EXTRAS[0].id ? dearer : e)));
+    f.CART.acceptExtra(EXTRAS[0].id, dearer);
+    assert.strictEqual(f.cartConflicts().length, 0, `${dir}: accepted`);
+    assert.notStrictEqual(f.cartSig(), before,
+      `${dir}: 🔴 an option's agreed price is part of what the order costs, so it is part of its identity`);
+    ok(`${dir}: the retry signature changes when an OPTION's agreed price changes`);
+  }
+
+  // ── 28. …AND A READABLE STASH STILL RESTORES (the rule above is not "always refuse") ──
   {
     const a = setup(dir);
     a.f.chg(a.MENU[0].id, 2); a.f.chg(a.MENU[1].id, 1);

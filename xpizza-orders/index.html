@@ -2880,9 +2880,29 @@ function cartSig(){
   // SAME cart + re-tapping returns the STALE order (createOrder idempotent-return / chargeOnlineOrder
   // acquireHostedAttempt reuse do NOT re-check content) → wrong delivery / name / phone / RTN factura / cash.
   // Raw input accessors (not the derived/fallback values) → identical across both forms.
-  // 1B Task 4 — over CART. Left menu-derived, a live upgrade that dropped a line would make a DIFFERENT
-  // cart hash the SAME, and createOrder's idempotent-return would hand back the older order's id.
-  const items = cartLines().map(l=>[l.key, l.qty, JSON.stringify(pizzaExtras[l.key]||{})]).sort();
+  /* 1B Task 4 — over CART. Left menu-derived, a live upgrade that dropped a line would make a DIFFERENT
+     cart hash the SAME, and createOrder's idempotent-return would hand back the older order's id.
+
+     🔴 1B Task 5 — AND IT MUST CARRY WHAT IS BEING PRICED, NOT MERELY WHICH LINES EXIST. Two things
+     were missing, and both let a MATERIALLY different order reuse an existing order_id:
+
+       • THE PRICING KEY. `l.key` is the cart key — p.id on both brands — but x_pizza is priced
+         server-side BY NAME. A renamed dish keeps its id, so the signature was unchanged while the
+         product the server would price had changed. The pricing key is the thing the charge is
+         computed from, so it is the thing the signature has to carry.
+       • THE AGREED PRICE, for the dish and for every option. The server's own fingerprint covers the
+         amount and items_text; ours covered neither, so the same lines at a different price hashed
+         identically — and createOrder's idempotent-return hands back an existing order WITHOUT
+         re-checking content, as does chargeOnlineOrder's acquireHostedAttempt reuse. A retry could
+         therefore be answered with an order recorded at a price this cart no longer means.
+
+     Taken from the cart's CAPTURED record (`added`), not from the live menu: the signature must
+     identify what the customer agreed to, which is the same value the send gate enforces. */
+  const items = cartLines().map(l=>[
+    l.key, l.qty, l.added.pricingKey, l.added.price,
+    JSON.stringify(pizzaExtras[l.key]||{}),
+    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),
+  ]).sort();
   const g = id => (document.getElementById(id)?.value ?? '');
   let redeem = '';
   try { const r = window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload(); redeem = r ? JSON.stringify(r) : ''; } catch(_){}
