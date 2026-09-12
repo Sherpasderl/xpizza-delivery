@@ -528,6 +528,7 @@ for (const dir of Object.keys(BRAND)) {
     if (mode === 'exact') w.setCashTendered(quotedTotal);
     else { box().value = String(localTotal); w.onCashTenderedInput(); }
     const tenderBefore = box().value;
+    const quoteKeyBefore = w.__serverQuote.key, quoteInflightBefore = w.__serverQuote.inflight;
 
     // DEMONSTRATE THE HAZARD, so the assertions below cannot pass vacuously: with the quote gone the
     // total jumps to the local one, and a custom tender equal to it is re-derived as exact — after
@@ -565,11 +566,25 @@ for (const dir of Object.keys(BRAND)) {
     assert.strictEqual(box().value, tenderBefore,
       `${dir}/${mode}: 🔴 the customer is still paying the amount they chose`);
     assert.strictEqual(w.__serverQuote.cents, Math.round((localTotal - 10) * 100),
-      `${dir}/${mode}: and the quote a failed apply cleared is restored`);
-    // The mode, behaviourally: if it were stuck on exact, this would rewrite the tender.
+      `${dir}/${mode}: and the quote a failed apply cleared is restored — amount…`);
+    assert.strictEqual(w.__serverQuote.key, quoteKeyBefore, `${dir}/${mode}: …key…`);
+    assert.strictEqual(w.__serverQuote.inflight, quoteInflightBefore, `${dir}/${mode}: …and in-flight marker`);
+
+    /* 🔴 THE MODE, DISTINGUISHED BY MOVING THE TOTAL. The previous version called updateTotal() at the
+       UNCHANGED total and asserted the tender had not moved — which is true in BOTH modes, because an
+       exact tender at an unchanged total is rewritten to the same number it already held. It proved
+       nothing, and replacing the restore with `cashExactMode = false` passed it. The two modes are only
+       distinguishable when the total MOVES: an exact tender follows it, a custom one does not. */
+    const movedCents = Math.round((quotedTotal - 5) * 100);
+    w.__serverQuote.cents = movedCents;
     w.updateTotal();
-    assert.strictEqual(box().value, tenderBefore,
-      `${dir}/${mode}: 🔴 …and the exact/custom mode came through unchanged too`);
+    if (mode === 'exact') {
+      assert.strictEqual(Number(box().value), movedCents / 100,
+        `${dir}/exact: 🔴 an exact tender must still FOLLOW a changed total — the mode came through`);
+    } else {
+      assert.strictEqual(box().value, tenderBefore,
+        `${dir}/custom: 🔴 a custom tender must still NOT follow the total — the mode came through`);
+    }
     ok(`${dir}: a failed apply leaves the tender and the mode byte-identical (${mode} mode)`);
   }
 
@@ -584,10 +599,11 @@ for (const dir of Object.keys(BRAND)) {
     const panel = w.document.getElementById('cash-change-panel');
     if (panel) panel.style.display = 'block';
     const box = () => w.document.getElementById('cash-tendered');
+    let redeemCents = Math.round((w.calcTotal() - 25) * 100);
     w.__ACCOUNT = {
       getRedeemPayload: () => ({ reward_id: 'r1' }),
-      getRedeemQuote: () => ({ total_cents: Math.round((w.calcTotal() - 25) * 100) }),
-      getRedeemQuoteTotalCents: () => Math.round((w.calcTotal() - 25) * 100),
+      getRedeemQuote: () => ({ total_cents: redeemCents }),
+      getRedeemQuoteTotalCents: () => redeemCents,
       customerIdToken: async () => null,
       classifyRedeemError: () => null,
       restoreRedeem: () => {}, setRestoring: () => {},
@@ -616,10 +632,61 @@ for (const dir of Object.keys(BRAND)) {
       `${dir}: non-vacuity — the apply failed with a redemption active`);
     assert.strictEqual(box().value, tenderBefore,
       `${dir}: 🔴 a redemption-active custom tender survives a failed apply too`);
-    ok(`${dir}: the invariant holds with a redemption active — the total's origin does not matter`);
+    /* And the MODE, by the same moving-total test. Worth stating what is NOT being claimed here: with a
+       redemption active the custom→exact flip is not reachable at all, because redeemAdjustedTotal
+       takes the redemption quote in preference to the server one and the apply never clears the
+       redemption quote — so the total does not move during the commit. This checks the invariant holds
+       on that path, not that the flip was reproduced on it. */
+    redeemCents -= 500;                       // move the total the redemption dictates
+    w.updateTotal();
+    assert.strictEqual(box().value, tenderBefore,
+      `${dir}: 🔴 …and it is still a CUSTOM tender — it does not follow the redemption total`);
+    ok(`${dir}: the invariant holds with a redemption active (flip unreachable there — precedence, not luck)`);
   }
 
-  // ── 22. …WHILE A SUCCESSFUL APPLY STILL DROPS THE STALE QUOTE ──
+  // ── 23. 🔴 THE DOUBLE FAULT — THE COMMIT THROWS AND THE RECOVERY THROWS TOO ──
+  // The invariant said "whatever they were" but was written on the happy path: the customer-restore was
+  // a statement AFTER the redraw, so when the redraw itself threw it never ran — while that redraw had
+  // already flipped the mode and lowered the tender. A try/finally makes it unconditional, and the
+  // throw still propagates so the page is still reported unrecoverable. Both properties, not a choice
+  // between them.
+  {
+    const w = loadForm(dir);
+    w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
+    w.selectPay('cash');
+    const panel = w.document.getElementById('cash-change-panel');
+    if (panel) panel.style.display = 'block';
+    const box = () => w.document.getElementById('cash-tendered');
+    const localTotal = w.calcTotal();
+    w.__serverQuote.key = w.serverQuoteCartKey();
+    w.__serverQuote.cents = Math.round((localTotal - 10) * 100);
+    const quotedTotal = w.redeemAdjustedTotal();
+    box().value = String(localTotal);                 // a CUSTOM tender equal to the local total
+    w.onCashTenderedInput();
+    const tenderBefore = box().value;
+
+    // Throws on EVERY paint — the commit's and the recovery's — after letting the real body run, so the
+    // mode really does flip before each failure.
+    const realTender = w.onCashTenderedInput;
+    w.onCashTenderedInput = function () {
+      const out = realTender.apply(this, arguments);
+      throw new Error('tender hint exploded');
+    };
+    await serve(w, envelope(B.rid, B.menu(w)));
+    w.onCashTenderedInput = realTender;
+
+    const st = w.__liveMenu.applier.state();
+    assert.ok(st.fatal, `${dir}: non-vacuity — this really is a double fault; the recovery failed too`);
+    assert.strictEqual(box().value, tenderBefore,
+      `${dir}: 🔴 the customer's tender survives a failed recovery, not just a failed commit`);
+    w.__serverQuote.cents = Math.round((quotedTotal - 5) * 100);
+    w.updateTotal();
+    assert.strictEqual(box().value, tenderBefore,
+      `${dir}: 🔴 …and it is still CUSTOM — the flipped mode did not survive either`);
+    ok(`${dir}: a double fault still leaves the tender and mode exactly as the customer had them`);
+  }
+
+  // ── 24. …WHILE A SUCCESSFUL APPLY STILL DROPS THE STALE QUOTE ──
   // The other half: invalidation moved to the commit, so it must still happen when the menu really
   // changes — a quoted total that outlived the prices it was quoted for is the display-side version of
   // the silent adoption the cart refuses.

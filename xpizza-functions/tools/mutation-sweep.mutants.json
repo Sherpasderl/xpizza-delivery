@@ -2109,8 +2109,8 @@
     "slice": "b6",
     "label": "a failed apply is not redrawn — the half-applied menu stays on screen",
     "file": "../xpizza-orders/index.html",
-    "from": "  liveMenuQuoteSet(point.quote);\n  liveMenuPaint(point.good);",
-    "to": "  ;",
+    "from": "  liveMenuQuoteSet(point.quote);\n  /* 🔴 finally, NOT a following statement — because \"whatever they were\" has to survive the DOUBLE\n     FAULT as well: the commit threw, and now the redraw throws too. Written as a plain line after the\n     paint, the customer-restore simply never ran in that case — while the paint that had just run had\n     already flipped the mode and lowered the tender. The invariant said \"always\" and was written on the\n     happy path, which made it conditional. The throw still propagates, so the applier still reports\n     'broken': recovering the customer's money state and admitting the page is unrecoverable are not\n     alternatives.\n     Restoring LAST within the try is still required for the ordinary case: the redraw itself rewrites\n     the tender and re-derives the mode, so the customer's values go back on top of it. */\n  try {\n    liveMenuPaint(point.good);\n  } finally {\n    liveMenuCustomerRestore(point.customer);\n  }\n  console.warn('menu_apply_recovered'",
+    "to": "  console.warn('menu_apply_recovered'",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2121,8 +2121,8 @@
     "slice": "b6",
     "label": "la_musa: a failed apply is not redrawn — the half-applied menu stays on screen",
     "file": "../la-musa-orders/index.html",
-    "from": "  liveMenuQuoteSet(point.quote);\n  liveMenuPaint(point.good);",
-    "to": "  ;",
+    "from": "  liveMenuQuoteSet(point.quote);\n  /* 🔴 finally, NOT a following statement — because \"whatever they were\" has to survive the DOUBLE\n     FAULT as well: the commit threw, and now the redraw throws too. Written as a plain line after the\n     paint, the customer-restore simply never ran in that case — while the paint that had just run had\n     already flipped the mode and lowered the tender. The invariant said \"always\" and was written on the\n     happy path, which made it conditional. The throw still propagates, so the applier still reports\n     'broken': recovering the customer's money state and admitting the page is unrecoverable are not\n     alternatives.\n     Restoring LAST within the try is still required for the ordinary case: the redraw itself rewrites\n     the tender and re-derives the mode, so the customer's values go back on top of it. */\n  try {\n    liveMenuPaint(point.good);\n  } finally {\n    liveMenuCustomerRestore(point.customer);\n  }\n  console.warn('menu_apply_recovered'",
+    "to": "  console.warn('menu_apply_recovered'",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2157,8 +2157,8 @@
     "slice": "b6",
     "label": "the recovery redraws without putting the quote back — the exact-mode tender is rewritten",
     "file": "../xpizza-orders/index.html",
-    "from": "  liveMenuQuoteSet(point.quote);\n  liveMenuPaint(point.good);",
-    "to": "  liveMenuPaint(point.good);",
+    "from": "  liveMenuQuoteSet(point.quote);\n",
+    "to": "  ;\n",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2169,8 +2169,8 @@
     "slice": "b6",
     "label": "la_musa: the recovery redraws without putting the quote back",
     "file": "../la-musa-orders/index.html",
-    "from": "  liveMenuQuoteSet(point.quote);\n  liveMenuPaint(point.good);",
-    "to": "  liveMenuPaint(point.good);",
+    "from": "  liveMenuQuoteSet(point.quote);\n",
+    "to": "  ;\n",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2181,8 +2181,8 @@
     "slice": "b6",
     "label": "the recovery does not restore the customer payment state at all",
     "file": "../xpizza-orders/index.html",
-    "from": "  liveMenuCustomerRestore(point.customer);",
-    "to": "  ;",
+    "from": "  try {\n    liveMenuPaint(point.good);\n  } finally {\n    liveMenuCustomerRestore(point.customer);\n  }\n",
+    "to": "  liveMenuPaint(point.good);\n",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2200,7 +2200,7 @@
       "../live-apply.test.mjs"
     ],
     "equivalent": true,
-    "why": "ONE EQUIVALENCE CLASS, shared with b6-47/b6-48/b6-55: cashExactMode is a pure function of (tender, total) — onCashTenderedInput derives it as |tender - total| < 0.005 — and the recovery restores BOTH inputs: the tender by value, and the total by putting the quote back before the redraw. The hint refresh in liveMenuCustomerRestore therefore re-derives the same value the explicit assignment writes, and no input separates them. THE ASSIGNMENT IS KEPT ON PURPOSE. The equivalence LEANS ON ANOTHER RULE holding — that every input to the total is restored — and that chain is exactly what broke twice: first the quote was not restored, then the mode was derived from a total that had moved. An authoritative write of what the customer actually had cannot be wrong if a future total source is added and not restored; a derivation can. b6-46/b6-54 (nothing restored) and b6-49 (tender not restored) both die, so the mechanism itself is pinned — these mutants only say that two routes to the same value currently agree."
+    "why": "ONE EQUIVALENCE CLASS (b6-47/b6-48/b6-55): DELETING the assignment, or replacing it with a re-derivation, changes nothing. cashExactMode is a pure function of (tender, total) — |tender - total| < 0.005 — and the recovery restores BOTH: the tender by value, the total by putting the quote back before the redraw. liveMenuCustomerRestore also refreshes the change hint through onCashTenderedInput, which re-derives exactly the value the assignment writes. WHAT IS NOT EQUIVALENT, AND IS TESTED: b6-56/b6-57 set the mode to a WRONG value rather than removing it, and both die — the saved mode governs, not whatever the redraw implies. That is the property the gate asked for. The assignment is kept because this equivalence leans on every input to the total being restored, and that chain is what broke on the previous two rounds: first the quote was not restored, then the mode was derived from a total that had moved."
   },
   {
     "id": "b6-48",
@@ -2214,7 +2214,7 @@
       "../live-apply.test.mjs"
     ],
     "equivalent": true,
-    "why": "ONE EQUIVALENCE CLASS, shared with b6-47/b6-48/b6-55: cashExactMode is a pure function of (tender, total) — onCashTenderedInput derives it as |tender - total| < 0.005 — and the recovery restores BOTH inputs: the tender by value, and the total by putting the quote back before the redraw. The hint refresh in liveMenuCustomerRestore therefore re-derives the same value the explicit assignment writes, and no input separates them. THE ASSIGNMENT IS KEPT ON PURPOSE. The equivalence LEANS ON ANOTHER RULE holding — that every input to the total is restored — and that chain is exactly what broke twice: first the quote was not restored, then the mode was derived from a total that had moved. An authoritative write of what the customer actually had cannot be wrong if a future total source is added and not restored; a derivation can. b6-46/b6-54 (nothing restored) and b6-49 (tender not restored) both die, so the mechanism itself is pinned — these mutants only say that two routes to the same value currently agree."
+    "why": "ONE EQUIVALENCE CLASS (b6-47/b6-48/b6-55): DELETING the assignment, or replacing it with a re-derivation, changes nothing. cashExactMode is a pure function of (tender, total) — |tender - total| < 0.005 — and the recovery restores BOTH: the tender by value, the total by putting the quote back before the redraw. liveMenuCustomerRestore also refreshes the change hint through onCashTenderedInput, which re-derives exactly the value the assignment writes. WHAT IS NOT EQUIVALENT, AND IS TESTED: b6-56/b6-57 set the mode to a WRONG value rather than removing it, and both die — the saved mode governs, not whatever the redraw implies. That is the property the gate asked for. The assignment is kept because this equivalence leans on every input to the total being restored, and that chain is what broke on the previous two rounds: first the quote was not restored, then the mode was derived from a total that had moved."
   },
   {
     "id": "b6-49",
@@ -2233,8 +2233,8 @@
     "slice": "b6",
     "label": "la_musa: the recovery does not restore the customer payment state at all",
     "file": "../la-musa-orders/index.html",
-    "from": "  liveMenuCustomerRestore(point.customer);",
-    "to": "  ;",
+    "from": "  try {\n    liveMenuPaint(point.good);\n  } finally {\n    liveMenuCustomerRestore(point.customer);\n  }\n",
+    "to": "  liveMenuPaint(point.good);\n",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2252,6 +2252,54 @@
       "../live-apply.test.mjs"
     ],
     "equivalent": true,
-    "why": "ONE EQUIVALENCE CLASS, shared with b6-47/b6-48/b6-55: cashExactMode is a pure function of (tender, total) — onCashTenderedInput derives it as |tender - total| < 0.005 — and the recovery restores BOTH inputs: the tender by value, and the total by putting the quote back before the redraw. The hint refresh in liveMenuCustomerRestore therefore re-derives the same value the explicit assignment writes, and no input separates them. THE ASSIGNMENT IS KEPT ON PURPOSE. The equivalence LEANS ON ANOTHER RULE holding — that every input to the total is restored — and that chain is exactly what broke twice: first the quote was not restored, then the mode was derived from a total that had moved. An authoritative write of what the customer actually had cannot be wrong if a future total source is added and not restored; a derivation can. b6-46/b6-54 (nothing restored) and b6-49 (tender not restored) both die, so the mechanism itself is pinned — these mutants only say that two routes to the same value currently agree."
+    "why": "ONE EQUIVALENCE CLASS (b6-47/b6-48/b6-55): DELETING the assignment, or replacing it with a re-derivation, changes nothing. cashExactMode is a pure function of (tender, total) — |tender - total| < 0.005 — and the recovery restores BOTH: the tender by value, the total by putting the quote back before the redraw. liveMenuCustomerRestore also refreshes the change hint through onCashTenderedInput, which re-derives exactly the value the assignment writes. WHAT IS NOT EQUIVALENT, AND IS TESTED: b6-56/b6-57 set the mode to a WRONG value rather than removing it, and both die — the saved mode governs, not whatever the redraw implies. That is the property the gate asked for. The assignment is kept because this equivalence leans on every input to the total being restored, and that chain is what broke on the previous two rounds: first the quote was not restored, then the mode was derived from a total that had moved."
+  },
+  {
+    "id": "b6-56",
+    "slice": "b6",
+    "file": "../xpizza-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "the restored mode is a FIXED value instead of the customer's — an exact tender stops following the total",
+    "from": "  cashExactMode = saved.exact;",
+    "to": "  cashExactMode = false;"
+  },
+  {
+    "id": "b6-57",
+    "slice": "b6",
+    "file": "../la-musa-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "la_musa: the restored mode is a FIXED value instead of the customer's",
+    "from": "  cashExactMode = saved.exact;",
+    "to": "  cashExactMode = false;"
+  },
+  {
+    "id": "b6-58",
+    "slice": "b6",
+    "file": "../xpizza-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "the customer restore is a plain statement after the paint, not a finally — a DOUBLE FAULT skips it",
+    "from": "  try {\n    liveMenuPaint(point.good);\n  } finally {\n    liveMenuCustomerRestore(point.customer);\n  }\n",
+    "to": "  liveMenuPaint(point.good);\n  liveMenuCustomerRestore(point.customer);\n"
+  },
+  {
+    "id": "b6-59",
+    "slice": "b6",
+    "file": "../la-musa-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "la_musa: the customer restore is a plain statement after the paint, not a finally",
+    "from": "  try {\n    liveMenuPaint(point.good);\n  } finally {\n    liveMenuCustomerRestore(point.customer);\n  }\n",
+    "to": "  liveMenuPaint(point.good);\n  liveMenuCustomerRestore(point.customer);\n"
   }
 ]

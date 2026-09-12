@@ -1992,10 +1992,20 @@ function liveMenuRestore(point){
      If THIS throws, the page is genuinely beyond recovery from here and the applier reports 'broken'
      rather than pretending otherwise. */
   liveMenuQuoteSet(point.quote);
-  liveMenuPaint(point.good);
-  // LAST, and it has to be last: the redraw itself rewrites the tender and re-derives the mode, so the
-  // customer's own values go back on top of it rather than being protected from it.
-  liveMenuCustomerRestore(point.customer);
+  /* 🔴 finally, NOT a following statement — because "whatever they were" has to survive the DOUBLE
+     FAULT as well: the commit threw, and now the redraw throws too. Written as a plain line after the
+     paint, the customer-restore simply never ran in that case — while the paint that had just run had
+     already flipped the mode and lowered the tender. The invariant said "always" and was written on the
+     happy path, which made it conditional. The throw still propagates, so the applier still reports
+     'broken': recovering the customer's money state and admitting the page is unrecoverable are not
+     alternatives.
+     Restoring LAST within the try is still required for the ordinary case: the redraw itself rewrites
+     the tender and re-derives the mode, so the customer's values go back on top of it. */
+  try {
+    liveMenuPaint(point.good);
+  } finally {
+    liveMenuCustomerRestore(point.customer);
+  }
   console.warn('menu_apply_recovered', JSON.stringify({ redrew: 'last_good' }));
 }
 
