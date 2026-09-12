@@ -2883,25 +2883,35 @@ function cartSig(){
   /* 1B Task 4 — over CART. Left menu-derived, a live upgrade that dropped a line would make a DIFFERENT
      cart hash the SAME, and createOrder's idempotent-return would hand back the older order's id.
 
-     🔴 1B Task 5 — AND IT MUST CARRY WHAT IS BEING PRICED, NOT MERELY WHICH LINES EXIST. Two things
-     were missing, and both let a MATERIALLY different order reuse an existing order_id:
+     🔴 1B Task 5 — AND IT MUST CARRY WHAT IS BEING PRICED, NOT MERELY WHICH LINES EXIST. The
+     signature is the client's answer to "is this the same order?", and orderIdForThisCart hands back
+     an existing order_id whenever it matches. It carried which lines existed and how many — not what
+     they cost, and not which catalog key they are priced by.
 
-       • THE PRICING KEY. `l.key` is the cart key — p.id on both brands — but x_pizza is priced
-         server-side BY NAME. A renamed dish keeps its id, so the signature was unchanged while the
-         product the server would price had changed. The pricing key is the thing the charge is
-         computed from, so it is the thing the signature has to carry.
-       • THE AGREED PRICE, for the dish and for every option. The server's own fingerprint covers the
-         amount and items_text; ours covered neither, so the same lines at a different price hashed
-         identically — and createOrder's idempotent-return hands back an existing order WITHOUT
-         re-checking content, as does chargeOnlineOrder's acquireHostedAttempt reuse. A retry could
-         therefore be answered with an order recorded at a price this cart no longer means.
+       • THE PRICING KEY, for the dish AND for every option. `l.key` and `x.key` are CART keys — the
+         dish id and the option id on both brands — but x_pizza is priced server-side BY NAME. A
+         renamed dish or option keeps its id, so the signature was unchanged while the thing the
+         server would price had changed. The pricing key is what the charge is computed from, so it is
+         what the signature has to carry; the cart key is not a substitute for it. (The dish half of
+         this was fixed first and the option half was left on the cart key — the same one-direction
+         miss this programme keeps producing, caught on the option side by the gate.)
+       • THE AGREED PRICE, likewise for both. The same lines at a different price hashed identically.
 
-     Taken from the cart's CAPTURED record (`added`), not from the live menu: the signature must
-     identify what the customer agreed to, which is the same value the send gate enforces. */
+     ON SEVERITY, stated accurately: the server is NOT defenceless here. createOrder's
+     classifyExistingOrder and chargeOnlineOrder's hosted-attempt reuse each compare a stored
+     payment_fingerprint against the incoming one when both are present, and refuse a mismatch
+     (409 'cart' / conflict). So what this closes is the CLIENT handing back an id standing for a cart
+     it no longer means — which the server would then reject — rather than a silent charge at a stale
+     price. The value is a complete client-side order identity that AGREES with the server's
+     fingerprint, instead of depending on it to catch us.
+
+     Taken from the cart's CAPTURED values (`added` / extraAgreed), not from the live menu: the
+     signature must denote what the customer agreed to, which is the same value the send gate
+     enforces. A merchant's publish the customer has not accepted must not re-identify the cart. */
   const items = cartLines().map(l=>[
     l.key, l.qty, l.added.pricingKey, l.added.price,
     JSON.stringify(pizzaExtras[l.key]||{}),
-    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),
+    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),
   ]).sort();
   const g = id => (document.getElementById(id)?.value ?? '');
   let redeem = '';

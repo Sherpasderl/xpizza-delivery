@@ -26,6 +26,15 @@ let n = 0, failures = 0;
 const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 // The real 202-in_progress retry re-enters processPixelPay through setTimeout (immediate here), so the
 // continuation runs on a later turn than the call that scheduled it. Drain before asserting.
+/* 🔴 WHAT "A FRESH ORDER ID" CAN BE ASSERTED ON, PER BRAND. x_pizza's genOrderId appends 8 CSPRNG
+   characters — its own comment says this is because order_id is the payment idempotency anchor and two
+   orders in the same second must not collide. la_musa's genOrderId is a timestamp to the SECOND with no
+   suffix, so two ids minted in the same second are byte-identical and `id2 !== id1` cannot express
+   "it was re-minted" there. (That asymmetry is pre-existing and outside Task 5 — reported, not changed.)
+   What both brands can be held to is the property Task 5 actually owns: the allocator took the MINT
+   branch rather than the reuse branch, which is visible as the stored signature changing. The id
+   assertion is kept as well wherever the generator has the entropy to carry it. */
+const HAS_ID_ENTROPY = { 'xpizza-orders': true, 'la-musa-orders': false };
 const drain = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setImmediate(r)); };
 const grab = (html, re, what) => { const m = html.match(re); assert.ok(m, `${what} not found in form — the harness would be unsound`); return m[0]; };
 
@@ -130,6 +139,12 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
   // re-entry stopped at `if(orderSubmitting) return` and never reached the send gate. A rule above the
   // one under test, masking it — the same shape as the entry gate that hid the send gate.
   const fallbackFn = grab(html, /\nfunction paymentFallback\(msg\)\{[\s\S]*?\n\}\n/, 'paymentFallback()');
+  // 🔴 THE REAL ORDER-ID ALLOCATOR. It was stubbed as `() => 'ord_test_1'`, and that is exactly why a
+  // signature gap went unseen: with a constant id, "the same id came back" is true by construction and
+  // "a fresh one was minted" is unobservable. The signature's whole job is deciding between those two,
+  // so the thing that decides has to be the real one. (The real-writer rule, again.)
+  const allocFn   = grab(html, /\nfunction orderIdForThisCart\(\)\{[\s\S]*?\n\}\n/, 'orderIdForThisCart()');
+  const genIdFn   = grab(html, /\nfunction genOrderId\(\)\{[\s\S]*?\n\}\n/, 'genOrderId()');
   const payFn     = grab(html, /\nasync function processPixelPay\(\)\{[\s\S]*?\n\}\n/, 'processPixelPay()');
   const snapFn    = grab(html, /\nfunction snapshotForm\(\)\{[\s\S]*?\n\}\n/, 'snapshotForm()');
   const restoreFn = grab(html, /\nfunction restoreOrderForm\(\)\{[\s\S]*?\n\}\n/, 'restoreOrderForm()');
@@ -157,7 +172,7 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     const refreshPickupGate = () => {}, itemIsLauncher = () => false;
     // Collaborators the REAL buildOrder / processPixelPay / restoreOrderForm call. All inert: this suite
     // is about which paths the cart gate covers, not about rendering or networking.
-    const orderIdForThisCart = () => 'ord_test_1', redeemAdjustedTotal = () => calcTotal();
+    const redeemAdjustedTotal = () => calcTotal();
     const rtnIsValid = () => true, phoneCC = '504', ICON_CHECK_CIRCLE = '';
     // Recorded, not inert: honouring buildOrder()'s refusal is now an EARLY-FEEDBACK rule rather than a
     // money rule (the send gate is the money rule), and the difference it makes is visible exactly here —
@@ -209,6 +224,8 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     ${submitFn}
     ${dispatchFn}
     ${fallbackFn}
+    ${allocFn}
+    ${genIdFn}
     /* 🔴 "BLOCKED" NOW MEANS "createOrder WAS NEVER CALLED", not "an extracted fragment returned
        early". The previous definition ran a lifted copy of submitOrder's guard — which is precisely
        why the cash RETRY bypass was invisible: the fragment had no retry loop in it. This runs the
@@ -227,6 +244,7 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     return { chg, calcTotal, redeemCartItems, cartSig, submitGate, cartConflicts, cartLines, cartItems, cartCount, CART,
              noteExtra: (r) => CART.noteExtra(r), qtyOf: (id) => qty[id],
              buildOrder, processPixelPay, snapshotForm, restoreOrderForm, currentOrder: () => currentOrder,
+             orderIdForThisCart, pendingSig: () => (window.__pendingOrder ? window.__pendingOrder.sig : null),
              fetchCalls: ctx.fetchCalls, setStash: ctx.setStash, submitOrder, processPayment,
              asPickup: () => { orderType = 'pickup'; }, paySelect: (m) => { selectedPayment = m; },
              optionControl: ${dir === 'xpizza-orders' ? '(eid, pid) => toggleDetailExtra(eid, pid, 0)' : '(eid, pid, d) => chgDetailExtra(eid, pid, d === undefined ? 1 : d)'},
@@ -790,83 +808,114 @@ for (const dir of Object.keys(BRANDS)) {
     }
   }
 
-  // ── 24. 🔴 THE RETRY SIGNATURE CARRIES THE AGREED PRICE ──
-  // createOrder's idempotent-return and chargeOnlineOrder's acquireHostedAttempt reuse hand back an
-  // EXISTING order without re-checking its content, and orderIdForThisCart reuses an id whenever the
-  // signature matches. The signature carried which lines existed and how many — not what they cost — so
-  // the same cart at a different agreed price reused the id, and the retry could be answered with an
-  // order recorded at a price this cart no longer means.
+  // ── 24. 🔴 THE ORDER ID IS RE-MINTED WHEN THE AGREED PRICE CHANGES ──
+  // Asserted through the REAL orderIdForThisCart, not a stubbed one. createOrder's idempotent-return
+  // and chargeOnlineOrder's hosted-attempt reuse answer on order_id; the client decides when that id
+  // still stands for the same order. (The server compares payment_fingerprint too and refuses a
+  // mismatch — so what this protects is the client not handing back an id for a cart it no longer
+  // means, rather than a silent charge at a stale price.)
   {
     const { f, MENU } = setup(dir);
     f.chg(MENU[0].id, 1);
-    const before = f.cartSig();
-    // The merchant republishes, and the customer explicitly accepts the new price (the Task 6 gesture —
-    // the only way an agreed price legitimately moves). Same lines, same quantities, different money.
+    const id1 = f.orderIdForThisCart();
+    assert.strictEqual(f.orderIdForThisCart(), id1, `${dir}: control — an untouched cart keeps its id`);
     const repriced = { ...MENU[0], price: MENU[0].price + 90 };
     f.setMenu(MENU.map(p => (p.id === MENU[0].id ? repriced : p)));
-    f.CART.accept(String(MENU[0].id), repriced);
+    f.CART.accept(String(MENU[0].id), repriced);          // the customer accepts — the only way agreed moves
     assert.strictEqual(f.cartConflicts().length, 0, `${dir}: accepted, so the cart is clean again`);
-    assert.notStrictEqual(f.cartSig(), before,
-      `${dir}: 🔴 the same lines at a different AGREED price must not reuse the order id`);
-    ok(`${dir}: the retry signature changes when the agreed price changes (no stale idempotent-return)`);
+    const sig1 = f.pendingSig();
+    f.orderIdForThisCart();
+    assert.notStrictEqual(f.pendingSig(), sig1,
+      `${dir}: 🔴 the same lines at a different AGREED price must mint a fresh order_id, not reuse one`);
+    if (HAS_ID_ENTROPY[dir]) assert.notStrictEqual(f.orderIdForThisCart(), id1, `${dir}: and the id itself differs`);
+    ok(`${dir}: accepting a new price mints a fresh order_id (real allocator)`);
   }
 
   // ── 25. …AND IT DENOTES WHAT WAS AGREED, NOT WHAT THE MENU SAYS TODAY ──
-  // The signature identifies an ORDER, and an order is what the customer agreed to. A merchant's
-  // publish is not the customer changing their mind, so on its own it must not re-identify the cart —
-  // only the customer's acceptance does. Read from the live menu instead, the signature would move
-  // under a cart nobody touched, and the id it controls would follow.
+  // A merchant's publish is not the customer changing their mind, so on its own it must not
+  // re-identify the cart — only their acceptance does.
   {
     const { f, MENU } = setup(dir);
     f.chg(MENU[0].id, 1);
-    const agreed = f.cartSig();
+    const id1 = f.orderIdForThisCart();
     const repriced = { ...MENU[0], price: MENU[0].price + 90 };
     f.setMenu(MENU.map(p => (p.id === MENU[0].id ? repriced : p)));
-    assert.strictEqual(f.cartSig(), agreed,
-      `${dir}: a publish the customer has not accepted must NOT change the order's identity`);
-    f.CART.accept(String(MENU[0].id), repriced);            // …and their acceptance must
-    assert.notStrictEqual(f.cartSig(), agreed, `${dir}: accepting it does`);
-    ok(`${dir}: the signature follows the AGREED price — a merchant's publish alone never re-identifies the cart`);
+    assert.strictEqual(f.orderIdForThisCart(), id1,
+      `${dir}: a publish the customer has not accepted must NOT re-identify the order`);
+    const sig1 = f.pendingSig();
+    f.CART.accept(String(MENU[0].id), repriced);
+    f.orderIdForThisCart();
+    assert.notStrictEqual(f.pendingSig(), sig1, `${dir}: accepting it does`);
+    ok(`${dir}: identity follows the AGREED price — a merchant's publish alone never re-mints the id`);
   }
 
   // ── 26. …AND THE PRICING KEY, WHICH IS NOT THE CART KEY ──
-  // x_pizza's cart key is the dish id but its PRICING key is the name, so a rename changes what the
-  // server prices while leaving the cart key untouched. For la_musa the two coincide, so the same
-  // rename is genuinely the same order — asserted rather than left as an unexamined difference.
   {
     const { f, MENU } = setup(dir);
     f.chg(MENU[0].id, 1);
-    const before = f.cartSig();
+    const id1 = f.orderIdForThisCart();
     const renamed = { ...MENU[0], name: MENU[0].name + ' Especial' };
     f.setMenu(MENU.map(p => (p.id === MENU[0].id ? renamed : p)));
     f.CART.accept(String(MENU[0].id), renamed);
     if (dir === 'xpizza-orders') {
-      assert.notStrictEqual(f.cartSig(), before,
-        '🔴 x_pizza: the priced product changed, so the signature must change');
-      ok(`${dir}: the retry signature changes when the PRICING KEY changes (name ≠ cart key)`);
+      const sig1 = f.pendingSig(); f.orderIdForThisCart();
+      assert.notStrictEqual(f.pendingSig(), sig1, '🔴 x_pizza: the priced product changed, so the order id must be re-minted');
+      assert.notStrictEqual(f.orderIdForThisCart(), id1, 'x_pizza: and the id itself differs');
+      ok(`${dir}: a DISH rename re-mints the order id (priced by name — cart key would have missed it)`);
     } else {
-      assert.strictEqual(f.cartSig(), before,
+      assert.strictEqual(f.orderIdForThisCart(), id1,
         'la_musa: same id, same price — genuinely the same order, so the id may be reused');
-      ok(`${dir}: a cosmetic rename leaves the retry signature alone (same id, same price, same order)`);
+      ok(`${dir}: a cosmetic DISH rename keeps the order id (same priced key, same price)`);
     }
   }
 
-  // ── 27. …AND AN OPTION'S AGREED PRICE TOO ──
+  // ── 27. 🔴 …AND THE SAME FOR AN OPTION'S PRICING KEY ──
+  // The symmetric half, and it was missing: the dish carried added.pricingKey while options contributed
+  // the option ID — the CART key, not x_pizza's pricing name. So an accepted option rename
+  // (Chorizo → Chorizo XL, same id, same L45) changed what the server would price and left the identity
+  // untouched. Exactly the both-directions miss the dish fix was supposed to teach.
   {
     const { f, MENU, EXTRAS, pizzaExtras } = setup(dir);
     f.chg(MENU[0].id, 1);
     addOption(dir, f, pizzaExtras, MENU[0].id, EXTRAS[0]);
-    const before = f.cartSig();
+    const id1 = f.orderIdForThisCart();
+    // A rename ONLY — same option id, same price — so nothing but the pricing key can distinguish it.
+    const renamed = { ...EXTRAS[0], name: EXTRAS[0].name + ' XL' };
+    f.setMenu(f.liveMenu(), EXTRAS.map(e => (e.id === EXTRAS[0].id ? renamed : e)));
+    f.CART.acceptExtra(EXTRAS[0].id, renamed);
+    assert.strictEqual(f.cartConflicts().length, 0, `${dir}: accepted, so the cart is clean`);
+    assert.strictEqual(f.redeemCartItems()[0].extras[0].price, EXTRAS[0].price,
+      `${dir}: non-vacuity — the price really is unchanged, so only the KEY differs`);
+    if (dir === 'xpizza-orders') {
+      const sig1 = f.pendingSig(); f.orderIdForThisCart();
+      assert.notStrictEqual(f.pendingSig(), sig1, '🔴 x_pizza: an option is priced by NAME too — a renamed option must re-mint the id');
+      assert.notStrictEqual(f.orderIdForThisCart(), id1, 'x_pizza: and the id itself differs');
+      ok(`${dir}: an OPTION rename re-mints the order id (option pricing key, not option cart key)`);
+    } else {
+      assert.strictEqual(f.orderIdForThisCart(), id1,
+        'la_musa: options priced by id — the order is genuinely unchanged');
+      ok(`${dir}: a cosmetic OPTION rename keeps the order id (priced by id)`);
+    }
+  }
+
+  // ── 28. …AND AN OPTION'S AGREED PRICE TOO ──
+  {
+    const { f, MENU, EXTRAS, pizzaExtras } = setup(dir);
+    f.chg(MENU[0].id, 1);
+    addOption(dir, f, pizzaExtras, MENU[0].id, EXTRAS[0]);
+    const id1 = f.orderIdForThisCart();
     const dearer = { ...EXTRAS[0], price: EXTRAS[0].price + 55 };
     f.setMenu(f.liveMenu(), EXTRAS.map(e => (e.id === EXTRAS[0].id ? dearer : e)));
     f.CART.acceptExtra(EXTRAS[0].id, dearer);
     assert.strictEqual(f.cartConflicts().length, 0, `${dir}: accepted`);
-    assert.notStrictEqual(f.cartSig(), before,
+    const sig1 = f.pendingSig(); f.orderIdForThisCart();
+    assert.notStrictEqual(f.pendingSig(), sig1,
       `${dir}: 🔴 an option's agreed price is part of what the order costs, so it is part of its identity`);
-    ok(`${dir}: the retry signature changes when an OPTION's agreed price changes`);
+    if (HAS_ID_ENTROPY[dir]) assert.notStrictEqual(f.orderIdForThisCart(), id1, `${dir}: and the id itself differs`);
+    ok(`${dir}: an OPTION's agreed price change re-mints the order id`);
   }
 
-  // ── 28. …AND A READABLE STASH STILL RESTORES (the rule above is not "always refuse") ──
+  // ── 29. …AND A READABLE STASH STILL RESTORES (the rule above is not "always refuse") ──
   {
     const a = setup(dir);
     a.f.chg(a.MENU[0].id, 2); a.f.chg(a.MENU[1].id, 1);

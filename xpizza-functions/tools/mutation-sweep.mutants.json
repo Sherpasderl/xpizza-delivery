@@ -1258,7 +1258,7 @@
     "slice": "b4",
     "label": "the cart signature goes back to being menu-derived",
     "file": "../xpizza-orders/index.html",
-    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
     "to": "  const items = MENU.filter(p=>qty[p.id]>0).map(p=>[p.id, qty[p.id], JSON.stringify(pizzaExtras[p.id]||{})]).sort();",
     "command": [
       "node",
@@ -1664,104 +1664,6 @@
     ]
   },
   {
-    "id": "b5-1",
-    "slice": "b5",
-    "label": "the retry signature drops the agreed PRICE — the same lines at a new price reuse the order id",
-    "file": "../xpizza-orders/index.html",
-    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
-    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
-    "command": [
-      "node",
-      "../cart-decoupling.test.mjs"
-    ]
-  },
-  {
-    "id": "b5-2",
-    "slice": "b5",
-    "label": "the retry signature drops the PRICING KEY — a renamed product reuses the order id",
-    "file": "../xpizza-orders/index.html",
-    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
-    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
-    "command": [
-      "node",
-      "../cart-decoupling.test.mjs"
-    ]
-  },
-  {
-    "id": "b5-3",
-    "slice": "b5",
-    "label": "the retry signature ignores the options’ agreed prices",
-    "file": "../xpizza-orders/index.html",
-    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
-    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n  ]).sort();",
-    "command": [
-      "node",
-      "../cart-decoupling.test.mjs"
-    ]
-  },
-  {
-    "id": "b5-4",
-    "slice": "b5",
-    "label": "the signature reads TODAY’s price instead of the agreed one",
-    "file": "../xpizza-orders/index.html",
-    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
-    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, (l.live?l.live.price:l.added.price),\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
-    "command": [
-      "node",
-      "../cart-decoupling.test.mjs"
-    ]
-  },
-  {
-    "id": "b5-10",
-    "slice": "b5",
-    "label": "la_musa: the retry signature drops the agreed PRICE — the same lines at a new price reuse the order id",
-    "file": "../la-musa-orders/index.html",
-    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
-    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
-    "command": [
-      "node",
-      "../cart-decoupling.test.mjs"
-    ]
-  },
-  {
-    "id": "b5-11",
-    "slice": "b5",
-    "label": "la_musa: the retry signature drops the PRICING KEY — a renamed product reuses the order id",
-    "file": "../la-musa-orders/index.html",
-    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
-    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
-    "command": [
-      "node",
-      "../cart-decoupling.test.mjs"
-    ],
-    "equivalent": true,
-    "why": "la_musa's PRICING key IS its cart key — pricingKey is r.id and itemKey is String(r.id), and every la_musa id is a string, so the two render identically in the signature array. Carrying the pricing key there adds nothing FOR THIS BRAND, and no input can make the two differ. It is carried anyway because the expression is shared with x_pizza, where name and cart key diverge and b5-2 kills the same mutation. If la_musa's key strategy ever changed, this would stop being equivalent — b5-22 is the mutant that guards that direction."
-  },
-  {
-    "id": "b5-12",
-    "slice": "b5",
-    "label": "la_musa: the retry signature ignores the options’ agreed prices",
-    "file": "../la-musa-orders/index.html",
-    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
-    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n  ]).sort();",
-    "command": [
-      "node",
-      "../cart-decoupling.test.mjs"
-    ]
-  },
-  {
-    "id": "b5-13",
-    "slice": "b5",
-    "label": "la_musa: the signature reads TODAY’s price instead of the agreed one",
-    "file": "../la-musa-orders/index.html",
-    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
-    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, (l.live?l.live.price:l.added.price),\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAddedRecord(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
-    "command": [
-      "node",
-      "../cart-decoupling.test.mjs"
-    ]
-  },
-  {
     "id": "b5-20",
     "slice": "b5",
     "label": "x_pizza stops pricing by name — a rename would no longer block",
@@ -1804,6 +1706,154 @@
     "file": "../la-musa-orders/index.html",
     "from": "  extraPricingKey: (r) => r.id,",
     "to": "  extraPricingKey: (r) => String(r.id) + '\\\\u0000' + r.name,",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b5-1",
+    "slice": "b5",
+    "label": "the signature drops the dish’s agreed PRICE",
+    "file": "../xpizza-orders/index.html",
+    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b5-2",
+    "slice": "b5",
+    "label": "the signature drops the dish’s PRICING KEY",
+    "file": "../xpizza-orders/index.html",
+    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b5-3",
+    "slice": "b5",
+    "label": "the signature drops the options entirely",
+    "file": "../xpizza-orders/index.html",
+    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n  ]).sort();",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b5-4",
+    "slice": "b5",
+    "label": "the signature reads TODAY’s dish price instead of the agreed one",
+    "file": "../xpizza-orders/index.html",
+    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, (l.live?l.live.price:l.added.price),\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b5-5",
+    "slice": "b5",
+    "label": "an option contributes its CART key instead of its PRICING key (the symmetric gap)",
+    "file": "../xpizza-orders/index.html",
+    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b5-6",
+    "slice": "b5",
+    "label": "the signature drops the options’ agreed PRICE",
+    "file": "../xpizza-orders/index.html",
+    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null]; }).sort()),\n  ]).sort();",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b5-10",
+    "slice": "b5",
+    "label": "la_musa: the signature drops the dish’s agreed PRICE",
+    "file": "../la-musa-orders/index.html",
+    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b5-11",
+    "slice": "b5",
+    "label": "la_musa: the signature drops the dish’s PRICING KEY",
+    "file": "../la-musa-orders/index.html",
+    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ],
+    "equivalent": true,
+    "why": "la_musa's PRICING key IS its CART key at this level, so the signature already carries the value the mutation removes and no input can make the two differ. It is carried anyway because the expression is shared with x_pizza, where the pricing key is the NAME and the cart key is the id — there the same mutation is killed (b5-2). If la_musa's key strategy ever changed this would stop being equivalent, and b5-22 is the mutant that guards that direction. (dish level: pricingKey is r.id, itemKey is String(r.id), and every la_musa dish id is a string.)"
+  },
+  {
+    "id": "b5-12",
+    "slice": "b5",
+    "label": "la_musa: the signature drops the options entirely",
+    "file": "../la-musa-orders/index.html",
+    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n  ]).sort();",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b5-13",
+    "slice": "b5",
+    "label": "la_musa: the signature reads TODAY’s dish price instead of the agreed one",
+    "file": "../la-musa-orders/index.html",
+    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, (l.live?l.live.price:l.added.price),\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b5-14",
+    "slice": "b5",
+    "label": "la_musa: an option contributes its CART key instead of its PRICING key (the symmetric gap)",
+    "file": "../la-musa-orders/index.html",
+    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ],
+    "equivalent": true,
+    "why": "la_musa's PRICING key IS its CART key at this level, so the signature already carries the value the mutation removes and no input can make the two differ. It is carried anyway because the expression is shared with x_pizza, where the pricing key is the NAME and the cart key is the id — there the same mutation is killed (b5-5). If la_musa's key strategy ever changed this would stop being equivalent, and b5-23 is the mutant that guards that direction. (option level: extraPricingKey and extraKey are both r.id.)"
+  },
+  {
+    "id": "b5-15",
+    "slice": "b5",
+    "label": "la_musa: the signature drops the options’ agreed PRICE",
+    "file": "../la-musa-orders/index.html",
+    "from": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null, a?a.price:null]; }).sort()),\n  ]).sort();",
+    "to": "  const items = cartLines().map(l=>[\n    l.key, l.qty, l.added.pricingKey, l.added.price,\n    JSON.stringify(pizzaExtras[l.key]||{}),\n    JSON.stringify(l.extras.map(x=>{ const a=CART.extraAgreed(x.key); return [x.key, a?a.pricingKey:null]; }).sort()),\n  ]).sort();",
     "command": [
       "node",
       "../cart-decoupling.test.mjs"

@@ -83,6 +83,13 @@ function createCart(options) {
   }
 
   const extraAddedRecord = (key) => (chosenExtras.has(key) ? chosenExtras.get(key).record : null);
+  // What was AGREED about an option — its pricing key and its price. The pricing key is derived here,
+  // once, by the adapter (name for x_pizza, id for la_musa), so a caller cannot accidentally substitute
+  // the cart key for it: those two differ on x_pizza, which is exactly the substitution that made a
+  // renamed option invisible to the order signature.
+  const extraAgreed = (key) => (chosenExtras.has(key)
+    ? { key, pricingKey: chosenExtras.get(key).pricingKey, price: chosenExtras.get(key).price }
+    : null);
 
   function classifyExtra(key, live) {
     const added = chosenExtras.get(key);
@@ -240,7 +247,7 @@ function createCart(options) {
 
   return {
     setQty, setQtyByKey, qtyOf, has, keys, clear, remove,
-    noteExtra, extraAddedRecord, classifyExtra, acceptExtra,
+    noteExtra, extraAddedRecord, extraAgreed, classifyExtra, acceptExtra,
     resolve, accept, classify, snapshot, hydrate,
   };
 }
