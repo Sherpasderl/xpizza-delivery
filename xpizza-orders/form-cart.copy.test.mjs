@@ -84,9 +84,18 @@ test('the conflict gate sits at every path to a charge — structural census, bo
     assert.ok(!/XMLHttpRequest[\s\S]{0,400}?(CREATEORDER_URL|CHARGEORDER_URL)/.test(html),
       `${dir}: a charge sent over XHR would bypass the fetch-shaped gate entirely`);
     // non-vacuity: each shape the widened pattern claims to catch really is caught
-    for (const probe of ['fetch(CREATEORDER_URL,{', 'window.fetch(CHARGEORDER_URL, {', "fetch('https://x/createOrder', {"]) {
+    // A probe for EVERY shape the pattern claims to recognise. Widening a regex and then proving only
+    // the shapes it already caught leaves the new branches unexercised — the pattern would claim XHR
+    // and sendBeacon coverage it had never been shown to have.
+    for (const probe of ['fetch(CREATEORDER_URL,{', 'window.fetch(CHARGEORDER_URL, {',
+                         "fetch('https://x/createOrder', {", "xhr.open('POST', CHARGEORDER_URL)",
+                         "navigator.sendBeacon(CREATEORDER_URL, body)",
+                         "xhr.open('POST', 'https://x/chargeOnlineOrder')"]) {
       assert.ok(new RegExp(sendRe.source).test(probe), `non-vacuity: the send-site lint can see ${probe}`);
     }
+    // …and that it does NOT fire on an unrelated request, or the count above would be noise.
+    assert.ok(!new RegExp(sendRe.source).test("fetch(AVAIL_URL, { cache:'no-store' })"),
+      'the send-site lint must not match a non-charge request');
 
     // The dispatch must honour buildOrder()'s refusal BEFORE it branches to cash or online.
     assert.ok(/\n  if\(!buildOrder\(\)\) return;   \/\/ 1B Task 4[^\n]*\n  if\(isFreeOrder\)\{[\s\S]{0,900}?if\(selectedPayment==='online'\)\{\n    await processPixelPay\(\);/.test(html),

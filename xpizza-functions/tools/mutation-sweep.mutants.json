@@ -1638,5 +1638,29 @@
       "node",
       "../cart-decoupling.test.mjs"
     ]
+  },
+  {
+    "id": "b4-51",
+    "slice": "b4",
+    "label": "hydrate checks each entry but not the SET — duplicate keys silently overwrite",
+    "file": "../xpizza-orders/form-cart.js",
+    "from": "    if (!unique(snap.lines) || !unique(snap.extras)) return false;",
+    "to": "    ;",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
+  },
+  {
+    "id": "b4-52",
+    "slice": "b4",
+    "label": "hydrate enforces uniqueness on lines only, not on options",
+    "file": "../xpizza-orders/form-cart.js",
+    "from": "    if (!unique(snap.lines) || !unique(snap.extras)) return false;",
+    "to": "    if (!unique(snap.lines)) return false;",
+    "command": [
+      "node",
+      "../cart-decoupling.test.mjs"
+    ]
   }
 ]

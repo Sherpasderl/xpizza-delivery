@@ -680,7 +680,60 @@ for (const dir of Object.keys(BRANDS)) {
     ok(`${dir}: an unreadable stash never silently re-agrees a repriced line at today's price`);
   }
 
-  // ── 19. …AND A READABLE STASH STILL RESTORES (the rule above is not "always refuse") ──
+  // ── 19. 🔴 A SNAPSHOT CARRYING THE SAME LINE TWICE IS MALFORMED ──
+  // Every element well-formed is not the same as the SET being well-formed. These are keyed maps, so
+  // two entries sharing a key is not a duplicate, it is a silent overwrite — and if the surviving entry
+  // is the one at today's price, the agreed price is erased and the reprice disagrees with nothing.
+  {
+    const a = setup(dir);
+    a.f.chg(a.MENU[0].id, 1);
+    const agreed = a.MENU[0].price;
+    const stash = JSON.parse(JSON.stringify({ form: a.f.snapshotForm(), ts: Date.now(), order_id: 'o1' }));
+    // A second entry for the SAME line, at the price the merchant has since published. Each entry on its
+    // own passes every element-wise check there is.
+    const dup = JSON.parse(JSON.stringify(stash.form.cart.lines[0]));
+    dup.added.price = agreed + 90; dup.added.record.price = agreed + 90;
+    stash.form.cart.lines.push(dup);
+
+    const b = setup(dir);
+    b.f.setMenu(b.MENU.map(p => (p.id === b.MENU[0].id ? { ...p, price: agreed + 90 } : p)));
+    b.f.setStash(stash);
+    b.f.restoreOrderForm();
+    assert.strictEqual(b.f.cartCount(), 0,
+      `${dir}: 🔴 a duplicate-key snapshot is malformed — it must restore nothing, not the last entry`);
+    assert.strictEqual(await b.f.submitGate(), undefined, `${dir}: createOrder is never reached`);
+    assert.deepStrictEqual(b.f.fetchCalls, [], `${dir}: and neither is chargeOnlineOrder`);
+    assert.ok(b.f.notices.some((n) => String(n[0]).includes('cart_restore_refused')),
+      `${dir}: refused explicitly`);
+    ok(`${dir}: a snapshot with the same line twice at conflicting agreed prices is refused whole`);
+  }
+
+  // ── 20. 🔴 …AND THE SAME FOR AN OPTION CARRIED TWICE ──
+  // Closing the class in both directions. A duplicate OPTION key overwrites a captured option's agreed
+  // price exactly as a duplicate line key overwrites a dish's — the uniqueness rule has to cover both
+  // maps, and a test that only exercised lines let a mutant enforcing it on lines alone survive.
+  {
+    const a = setup(dir);
+    a.f.chg(a.MENU[0].id, 1);
+    addOption(dir, a.f, a.pizzaExtras, a.MENU[0].id, a.EXTRAS[0]);
+    const agreed = a.EXTRAS[0].price;
+    const stash = JSON.parse(JSON.stringify({ form: a.f.snapshotForm(), ts: Date.now(), order_id: 'o1' }));
+    const dup = JSON.parse(JSON.stringify(stash.form.cart.extras[0]));
+    dup.price = agreed + 55; dup.record.price = agreed + 55;
+    stash.form.cart.extras.push(dup);
+
+    const b = setup(dir);
+    b.f.setMenu(b.MENU, b.EXTRAS.map(e => (e.id === b.EXTRAS[0].id ? { ...e, price: agreed + 55 } : e)));
+    b.f.setStash(stash);
+    b.f.restoreOrderForm();
+    assert.strictEqual(b.f.cartCount(), 0,
+      `${dir}: 🔴 a duplicate OPTION key is malformed too — restore nothing`);
+    assert.strictEqual(await b.f.submitGate(), undefined, `${dir}: createOrder is never reached`);
+    assert.deepStrictEqual(b.f.fetchCalls, [], `${dir}: and neither is chargeOnlineOrder`);
+    ok(`${dir}: a snapshot with the same OPTION twice at conflicting agreed prices is refused whole`);
+  }
+
+  // ── 21. …AND A READABLE STASH STILL RESTORES (the rule above is not "always refuse") ──
   {
     const a = setup(dir);
     a.f.chg(a.MENU[0].id, 2); a.f.chg(a.MENU[1].id, 1);

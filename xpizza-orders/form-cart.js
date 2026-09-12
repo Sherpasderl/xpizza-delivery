@@ -211,16 +211,25 @@ function createCart(options) {
     };
   }
 
-  // Rebuild from a snapshot. Deliberately strict about shape rather than forgiving: a half-understood
-  // stash restored as a partial cart is a cart with lines missing, which is the failure being prevented.
-  // A stash that cannot be read whole is refused whole, and the caller falls back to rebuilding from the
-  // live menu — the same atomic-or-nothing rule the live snapshot itself follows.
+  // Rebuild from a snapshot. Deliberately strict rather than forgiving: this is the ONLY way a captured
+  // agreed price survives the trip to a hosted checkout and back, so a stash that cannot be read whole
+  // is refused whole and the caller restores nothing at all. (There is no rebuild-from-the-live-menu
+  // fallback — that would capture today's price AS the agreed one; see cartRestore() in both forms.)
   function hydrate(snap) {
     if (!snap || typeof snap !== 'object' || !Array.isArray(snap.lines) || !Array.isArray(snap.extras)) return false;
     const okLine = (l) => l && typeof l === 'object' && typeof l.key === 'string' && Number(l.qty) > 0
       && l.added && typeof l.added === 'object' && l.added.record;
     const okExtra = (e) => e && typeof e === 'object' && typeof e.key === 'string' && e.record;
     if (!snap.lines.every(okLine) || !snap.extras.every(okExtra)) return false;
+    // 🔴 EVERY ELEMENT BEING WELL-FORMED IS NOT THE SAME AS THE SET BEING WELL-FORMED, and the gap is
+    // not cosmetic. These maps are keyed, so two entries sharing a key is not a duplicate — it is a
+    // SILENT OVERWRITE: the second Map.set erases the first. A snapshot carrying the same line twice at
+    // two different agreed prices therefore hydrated cleanly with whichever came last, and if that was
+    // today's price the reprice disagreed with nothing and the cart reached a charge endpoint.
+    // Uniqueness is an invariant OF THE SET, so it has to be checked on the set — element-wise validation
+    // cannot see it however strict each element's check is.
+    const unique = (arr) => new Set(arr.map((x) => x.key)).size === arr.length;
+    if (!unique(snap.lines) || !unique(snap.extras)) return false;
     lines.clear(); chosenExtras.clear();
     snap.lines.forEach((l) => lines.set(l.key, { key: l.key, qty: Number(l.qty), added: l.added }));
     snap.extras.forEach((e) => chosenExtras.set(e.key, e));

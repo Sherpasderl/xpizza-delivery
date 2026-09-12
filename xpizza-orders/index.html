@@ -1712,10 +1712,10 @@ function cartCount(){ return cartLines().reduce((s, l) => s + l.qty, 0); }
    payment had a visible cart that serialized to []. Reproduced before the fix.
 
    The captured records travel in the stash, so a restored line keeps the price it was ADDED at even if
-   the merchant published a change while the customer was on PixelPay's page. A stash from before this
-   change (or one that cannot be read whole) falls back to rebuilding against the live menu — correct
-   whenever the dish still exists, and anything that does not resolve stays a visible, blocking line
-   rather than disappearing. */
+   the merchant published a change while the customer was on PixelPay's page — that stashed record is
+   the ONLY evidence of what was agreed, which is why a stash that cannot be read whole restores
+   nothing at all rather than falling back to the live menu. (An earlier version did fall back; the
+   reasoning against it is at the refusal below.) */
 function cartRestore(stashedCart){
   CART.clear();
   if (!CART.hydrate(stashedCart)) {
