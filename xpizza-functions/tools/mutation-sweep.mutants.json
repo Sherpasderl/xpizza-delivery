@@ -2200,7 +2200,7 @@
       "../live-apply.test.mjs"
     ],
     "equivalent": true,
-    "why": "ONE EQUIVALENCE CLASS (b6-47/b6-48/b6-55): DELETING the assignment, or replacing it with a re-derivation, changes nothing. cashExactMode is a pure function of (tender, total) — |tender - total| < 0.005 — and the recovery restores BOTH: the tender by value, the total by putting the quote back before the redraw. liveMenuCustomerRestore also refreshes the change hint through onCashTenderedInput, which re-derives exactly the value the assignment writes. WHAT IS NOT EQUIVALENT, AND IS TESTED: b6-56/b6-57 set the mode to a WRONG value rather than removing it, and both die — the saved mode governs, not whatever the redraw implies. That is the property the gate asked for. The assignment is kept because this equivalence leans on every input to the total being restored, and that chain is what broke on the previous two rounds: first the quote was not restored, then the mode was derived from a total that had moved."
+    "why": "ONE EQUIVALENCE CLASS (b6-47/b6-48/b6-55): DELETING the mode assignment, or replacing it with a re-derivation, changes nothing observable. liveMenuCustomerRestore refreshes the change hint by calling onCashTenderedInput AFTER restoring the tender and BEFORE assigning the mode — and that call derives cashExactMode as |tender - total| < 0.005 from the restored tender and the restored quote, which is exactly the value the assignment then writes. THE GATE EXPECTED THE DELAYED-SETTLEMENT TESTS TO MAKE THIS LOAD-BEARING; MEASURED, THEY DO NOT — b6-60/b6-61 (the superseded-rejection guard) die there, but the mode is re-derived correctly on that path too, because the guard keeps the quote intact and so keeps the derivation's inputs right. Reported rather than argued around. WHAT IS NOT EQUIVALENT AND DOES DIE: b6-56/b6-57 set the mode to a WRONG value instead of removing it — the saved mode governs, not whatever the redraw implies, which is the property that was asked for. The assignment is kept because this equivalence leans on every input to the total being restored, and that chain is what broke on three previous rounds."
   },
   {
     "id": "b6-48",
@@ -2214,7 +2214,7 @@
       "../live-apply.test.mjs"
     ],
     "equivalent": true,
-    "why": "ONE EQUIVALENCE CLASS (b6-47/b6-48/b6-55): DELETING the assignment, or replacing it with a re-derivation, changes nothing. cashExactMode is a pure function of (tender, total) — |tender - total| < 0.005 — and the recovery restores BOTH: the tender by value, the total by putting the quote back before the redraw. liveMenuCustomerRestore also refreshes the change hint through onCashTenderedInput, which re-derives exactly the value the assignment writes. WHAT IS NOT EQUIVALENT, AND IS TESTED: b6-56/b6-57 set the mode to a WRONG value rather than removing it, and both die — the saved mode governs, not whatever the redraw implies. That is the property the gate asked for. The assignment is kept because this equivalence leans on every input to the total being restored, and that chain is what broke on the previous two rounds: first the quote was not restored, then the mode was derived from a total that had moved."
+    "why": "ONE EQUIVALENCE CLASS (b6-47/b6-48/b6-55): DELETING the mode assignment, or replacing it with a re-derivation, changes nothing observable. liveMenuCustomerRestore refreshes the change hint by calling onCashTenderedInput AFTER restoring the tender and BEFORE assigning the mode — and that call derives cashExactMode as |tender - total| < 0.005 from the restored tender and the restored quote, which is exactly the value the assignment then writes. THE GATE EXPECTED THE DELAYED-SETTLEMENT TESTS TO MAKE THIS LOAD-BEARING; MEASURED, THEY DO NOT — b6-60/b6-61 (the superseded-rejection guard) die there, but the mode is re-derived correctly on that path too, because the guard keeps the quote intact and so keeps the derivation's inputs right. Reported rather than argued around. WHAT IS NOT EQUIVALENT AND DOES DIE: b6-56/b6-57 set the mode to a WRONG value instead of removing it — the saved mode governs, not whatever the redraw implies, which is the property that was asked for. The assignment is kept because this equivalence leans on every input to the total being restored, and that chain is what broke on three previous rounds."
   },
   {
     "id": "b6-49",
@@ -2252,7 +2252,7 @@
       "../live-apply.test.mjs"
     ],
     "equivalent": true,
-    "why": "ONE EQUIVALENCE CLASS (b6-47/b6-48/b6-55): DELETING the assignment, or replacing it with a re-derivation, changes nothing. cashExactMode is a pure function of (tender, total) — |tender - total| < 0.005 — and the recovery restores BOTH: the tender by value, the total by putting the quote back before the redraw. liveMenuCustomerRestore also refreshes the change hint through onCashTenderedInput, which re-derives exactly the value the assignment writes. WHAT IS NOT EQUIVALENT, AND IS TESTED: b6-56/b6-57 set the mode to a WRONG value rather than removing it, and both die — the saved mode governs, not whatever the redraw implies. That is the property the gate asked for. The assignment is kept because this equivalence leans on every input to the total being restored, and that chain is what broke on the previous two rounds: first the quote was not restored, then the mode was derived from a total that had moved."
+    "why": "ONE EQUIVALENCE CLASS (b6-47/b6-48/b6-55): DELETING the mode assignment, or replacing it with a re-derivation, changes nothing observable. liveMenuCustomerRestore refreshes the change hint by calling onCashTenderedInput AFTER restoring the tender and BEFORE assigning the mode — and that call derives cashExactMode as |tender - total| < 0.005 from the restored tender and the restored quote, which is exactly the value the assignment then writes. THE GATE EXPECTED THE DELAYED-SETTLEMENT TESTS TO MAKE THIS LOAD-BEARING; MEASURED, THEY DO NOT — b6-60/b6-61 (the superseded-rejection guard) die there, but the mode is re-derived correctly on that path too, because the guard keeps the quote intact and so keeps the derivation's inputs right. Reported rather than argued around. WHAT IS NOT EQUIVALENT AND DOES DIE: b6-56/b6-57 set the mode to a WRONG value instead of removing it — the saved mode governs, not whatever the redraw implies, which is the property that was asked for. The assignment is kept because this equivalence leans on every input to the total being restored, and that chain is what broke on three previous rounds."
   },
   {
     "id": "b6-56",
@@ -2301,5 +2301,29 @@
     "label": "la_musa: the customer restore is a plain statement after the paint, not a finally",
     "from": "  try {\n    liveMenuPaint(point.good);\n  } finally {\n    liveMenuCustomerRestore(point.customer);\n  }\n",
     "to": "  liveMenuPaint(point.good);\n  liveMenuCustomerRestore(point.customer);\n"
+  },
+  {
+    "id": "b6-60",
+    "slice": "b6",
+    "file": "../xpizza-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "a superseded quote REJECTION clears the quote anyway (the guard covers only the first statement)",
+    "from": "        if(__serverQuote.inflight!==key) return;   // superseded by a newer cart — ignore, exactly as the success path does\n        __serverQuote.inflight=null; __serverQuote.key=null; __serverQuote.cents=null;",
+    "to": "        if(__serverQuote.inflight===key) __serverQuote.inflight=null; __serverQuote.key=null; __serverQuote.cents=null;"
+  },
+  {
+    "id": "b6-61",
+    "slice": "b6",
+    "file": "../la-musa-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "la_musa: a superseded quote REJECTION clears the quote anyway",
+    "from": "        if(__serverQuote.inflight!==key) return;   // superseded by a newer cart — ignore, exactly as the success path does\n        __serverQuote.inflight=null; __serverQuote.key=null; __serverQuote.cents=null;",
+    "to": "        if(__serverQuote.inflight===key) __serverQuote.inflight=null; __serverQuote.key=null; __serverQuote.cents=null;"
   }
 ]

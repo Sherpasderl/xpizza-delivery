@@ -613,11 +613,12 @@ for (const dir of Object.keys(BRAND)) {
     const tenderBefore = box().value;
 
     const realTender = w.onCashTenderedInput;
-    /* 🔴 THE REAL BODY RUNS FIRST, THEN IT THROWS — and that ordering is the whole test. The previous
-       version threw INSTEAD of running, which meant onCashTenderedInput never re-derived cashExactMode
-       from the cleared-quote total, so the mode never flipped and the bug this is here to catch never
-       occurred. It passed because nothing went wrong. Running the real body reproduces the flip and
-       then fails the commit, which is the actual sequence. */
+    /* The real body runs before the throw, as in the checks above. NOTE what is different here, and it
+       is stated at the assertion below too: this setup does NOT reproduce the custom→exact flip — with a
+       redemption active the total does not move when the apply clears the server quote, because
+       redeemAdjustedTotal prefers the redemption quote. The comment this replaced was copied from the
+       flip tests and claimed otherwise; a test that overstates what it exercises is worth less than one
+       that says plainly what it does not. */
     w.onCashTenderedInput = function () {
       const out = realTender.apply(this, arguments);
       if (w.liveMenuGlobalGet('MENU')[0].name === 'Should Not Survive') throw new Error('tender hint exploded');
@@ -686,7 +687,87 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: a double fault still leaves the tender and mode exactly as the customer had them`);
   }
 
-  // ── 24. …WHILE A SUCCESSFUL APPLY STILL DROPS THE STALE QUOTE ──
+  // ── 25. 🔴 A QUOTE FETCH THAT REJECTS *AFTER* THE RECOVERY MUST NOT LOWER THE TENDER ──
+  //
+  // The async door on the same invariant, and it opens from the recovery path. A failed apply's paint
+  // clears the quote, which makes the next updateTotal start a REPLACEMENT quote fetch. The recovery
+  // then puts the original quote back — and that orphaned fetch is still in flight. When it rejects, its
+  // handler nulls key and cents, clobbering the quote the recovery just restored; the next exact-mode
+  // updateTotal then spends the lost quote and drops the tender (350 → 340 / 233 → 223).
+  //
+  // The success path already ignored a superseded response; the rejection path did not — and could not,
+  // because its guard was written `if(cond) a; b; c;` and so covered only the first statement. Run for
+  // BOTH fault shapes: the commit alone failing, and the recovery failing too.
+  for (const fault of ['single', 'double']) {
+    const w = loadForm(dir);
+    w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
+    w.selectPay('cash');
+    const panel = w.document.getElementById('cash-change-panel');
+    if (panel) panel.style.display = 'block';
+    const box = () => w.document.getElementById('cash-tendered');
+
+    const localTotal = w.calcTotal();
+    w.__serverQuote.key = w.serverQuoteCartKey();
+    w.__serverQuote.cents = Math.round((localTotal - 10) * 100);
+    /* 🔴 inflight CLEARED, and this is what the first version of this test got wrong. Adding to the cart
+       starts a quote request, and with the default never-settling responder it stays "in flight"
+       forever — so refreshServerQuote early-returns and the failed apply never starts the REPLACEMENT
+       request the race depends on. The test then rejected a promise nothing was consuming and passed
+       with the bug fully present. Clearing it models that setup request having already landed. */
+    w.__serverQuote.inflight = null;
+    const quotedCents = w.__serverQuote.cents;
+    w.setCashTendered(w.redeemAdjustedTotal());       // EXACT mode, sitting on the quoted total
+    const tenderBefore = box().value;
+    const quoteCallsBefore = w.__calls.filter((u) => /quote/i.test(u)).length;
+
+    // The replacement quote fetch the failed apply will start: held open, rejected AFTER the recovery.
+    let rejectQuote = null;
+    const pending = new Promise((_, rej) => { rejectQuote = rej; });
+    // The page attaches its own .catch when it consumes this; the no-op keeps Node from treating the
+    // rejection as unhandled in the window before the fetch is issued, and never masks a real assertion.
+    pending.catch(() => {});
+    const menuBody = envelope(B.rid, (() => { const m = B.menu(w); m.dishes[0] = { ...m.dishes[0], name: 'Should Not Survive' }; return m; })());
+    w.__respond = (url) => (url.includes('/menu/') ? res(menuBody)
+                          : /quote/i.test(url) ? pending
+                          : new Promise(() => {}));
+
+    /* 🔴 THE THROW MUST LAND *AFTER* THE REPLACEMENT REQUEST GOES OUT, which is the whole premise of
+       this race — and getting that wrong is why the first version of this test never reproduced it.
+       requestServerQuote is reached through renderStage2Summary, which updateTotal calls AFTER the
+       tender step; throwing from the tender step aborted updateTotal before the request was ever
+       issued. Gated on the request having actually been recorded instead of on a step name, so the
+       ordering is asserted by construction rather than assumed from reading the source. */
+    let thrown = 0;
+    const realTender = w.onCashTenderedInput;
+    w.onCashTenderedInput = function () {
+      const out = realTender.apply(this, arguments);
+      const started = w.__calls.filter((u) => /quote/i.test(u)).length > quoteCallsBefore;
+      if (started && (fault === 'double' || thrown === 0)) { thrown += 1; throw new Error('tender hint exploded'); }
+      return out;
+    };
+    await w.__liveMenu.feed.refresh();
+    await settle();
+    w.onCashTenderedInput = realTender;
+
+    const st = w.__liveMenu.applier.state();
+    assert.ok(st.lastError || st.fatal, `${dir}/${fault}: non-vacuity — the apply really did fail`);
+    if (fault === 'double') assert.ok(st.fatal, `${dir}/double: non-vacuity — the recovery failed too`);
+    assert.strictEqual(box().value, tenderBefore, `${dir}/${fault}: the tender survives the failure itself`);
+    assert.ok(w.__calls.filter((u) => /quote/i.test(u)).length > quoteCallsBefore,
+      `${dir}/${fault}: non-vacuity — the failed apply really did start a REPLACEMENT quote request`);
+
+    // …and now the orphaned request rejects, long after anything was waiting for it.
+    rejectQuote(new Error('quote request failed'));
+    await settle();
+    assert.strictEqual(w.__serverQuote.cents, quotedCents,
+      `${dir}/${fault}: 🔴 a superseded rejection must not clear the quote the recovery restored`);
+    w.updateTotal();
+    assert.strictEqual(box().value, tenderBefore,
+      `${dir}/${fault}: 🔴 …so the customer is still paying the amount they chose`);
+    ok(`${dir}: a quote request rejecting after the recovery cannot lower the tender (${fault} fault)`);
+  }
+
+  // ── 25. …WHILE A SUCCESSFUL APPLY STILL DROPS THE STALE QUOTE ──
   // The other half: invalidation moved to the commit, so it must still happen when the menu really
   // changes — a quoted total that outlived the prices it was quoted for is the display-side version of
   // the silent adoption the cart refuses.

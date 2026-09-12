@@ -116,8 +116,17 @@ ok('fail-soft: 5 bad-cart shapes → { ok:false } with NO total (the client keep
       `${rid}: precedence must be redemption quote → server quote → calcTotal`);
     assert.ok(/__serverQuote\.key === serverQuoteCartKey\(\)/.test(block), `${rid}: stale-cart guard — only show a total for the cart it priced`);
     assert.ok(/getRedeemPayload\(\)\) return null/.test(block), `${rid}: a pending redemption owns the total`);
-    assert.ok(/\.catch\(function\(\)\{[\s\S]{0,160}__serverQuote\.cents=null/.test(block), `${rid}: a network failure fails OPEN to calcTotal`);
-    assert.ok(/if\(__serverQuote\.inflight!==key\) return;/.test(block), `${rid}: a superseded response is ignored`);
+    assert.ok(/\.catch\(function\(\)\{[\s\S]{0,320}__serverQuote\.cents=null/.test(block), `${rid}: a network failure fails OPEN to calcTotal`);
+    /* 🔴 BOTH DIRECTIONS. The success path ignored a superseded response from the start; the REJECTION
+       path did not — its guard was written `if(cond) a; b; c;` so it covered only the first statement,
+       and key/cents were cleared unconditionally. That let a rejection belonging to a request nobody
+       was waiting for any more wipe the current quote, which the live-menu recovery turns into a lowered
+       cash tender. Both guards are now asserted, and the count is asserted too so a future edit cannot
+       quietly drop one of them and still match. */
+    assert.strictEqual((block.match(/if\(__serverQuote\.inflight!==key\) return;/g) || []).length, 2,
+      `${rid}: BOTH the success and the rejection path must ignore a superseded response`);
+    assert.ok(/\.catch\(function\(\)\{\s*\n\s*if\(__serverQuote\.inflight!==key\) return;/.test(block),
+      `${rid}: the rejection path's guard must come FIRST, before anything is cleared`);
     assert.ok(src.includes("const QUOTEORDER_URL"), `${rid}: the endpoint URL is defined`);
     assert.ok(/function renderStage2Summary\(\)\{\n  try\{ requestServerQuote\(\); \}catch\(_\)\{\}/.test(src), `${rid}: the quote is requested wherever the pay-step summary renders`);
   }

@@ -2441,7 +2441,19 @@ function requestServerQuote(){
         else { __serverQuote.key=null; __serverQuote.cents=null; }   // ok:false → fail open to calcTotal()
         try{ if(typeof renderStage2Summary==='function') renderStage2Summary(); }catch(_){}
       })
-      .catch(function(){ if(__serverQuote.inflight===key) __serverQuote.inflight=null; __serverQuote.key=null; __serverQuote.cents=null; });
+      /* 🔴 A SUPERSEDED REJECTION MUST NOT TOUCH THE QUOTE — the same guard the success path above
+         already makes, which is the half that was missing. Written as `if(cond) a; b; c;` the guard
+         covered only the first statement: key and cents were nulled unconditionally, so a rejection
+         belonging to a request nobody is waiting for any more still wiped whatever quote was current.
+         That is reachable from the live-menu recovery: a failed apply's paint starts a replacement
+         quote fetch, the recovery puts the original quote back, and then the orphaned fetch rejects and
+         clobbers it — after which the next exact-mode updateTotal spends the lost quote and lowers the
+         customer's tender (350 → 340 / 233 → 223). A genuine failure of the CURRENT request still
+         fails open to calcTotal(), which is all this was ever meant to do. */
+      .catch(function(){
+        if(__serverQuote.inflight!==key) return;   // superseded by a newer cart — ignore, exactly as the success path does
+        __serverQuote.inflight=null; __serverQuote.key=null; __serverQuote.cents=null;
+      });
   }catch(_){ }
 }
 function redeemAdjustedTotal(){
