@@ -1945,7 +1945,45 @@ function liveMenuQuoteSet(q){
   if (!q || typeof __serverQuote !== 'object' || !__serverQuote) return;
   __serverQuote.key = q.key; __serverQuote.cents = q.cents; __serverQuote.inflight = q.inflight;
 }
-function liveMenuCapture(){ return { good: liveMenuSnapshotGlobals(), quote: liveMenuQuoteSnapshot() }; }
+/* 🔴 …AND SO DOES EVERYTHING ELSE THE PAINT CAN CHANGE THAT BELONGS TO THE CUSTOMER. This is the
+   invariant, and it is stated that way deliberately, because the previous two rounds were a LIST:
+   first the menu, then the quote — and the quote was simply the next item on it.
+
+   THE RULE: a failed apply leaves the customer's cash tender and their exact/custom mode exactly as
+   they were, whatever they were. Not "the exact-mode case", not "the quote": the pair, for any starting
+   value and either mode.
+
+   Why the quote alone was not enough. onCashTenderedInput recomputes cashExactMode from whatever total
+   is current at the time — so a commit that clears the quote makes the total jump to the local one, and
+   a CUSTOM tender that happens to equal that temporary total flips the mode to exact. Nothing flips it
+   back, so when the recovery redraws, updateTotal sees exact mode and rewrites the tender down to the
+   restored quote's total. Reproduced at L340 → L330 and L223 → L213, with the quote restored correctly
+   the whole time. The mode was never captured, so restoring the quote fixed the total and the mode
+   spent it.
+
+   Note this is NOT what liveMenuUiCapture covers — that is focus, caret and scroll. The tender is not a
+   UI detail, it is the amount the customer is paying with. */
+function liveMenuCustomerCapture(){
+  const el = document.getElementById('cash-tendered');
+  return { tender: el ? el.value : null, exact: cashExactMode };
+}
+function liveMenuCustomerRestore(saved){
+  if (!saved) return;
+  const el = document.getElementById('cash-tendered');
+  if (el && saved.tender !== null) el.value = saved.tender;
+  // The change hint and the chip highlight were computed by the redraw against the tender IT produced,
+  // not the one being put back — so they are re-derived for the restored value. Cosmetic, but a hint
+  // describing a tender the customer is not paying is its own small lie.
+  if (el && typeof onCashTenderedInput === 'function') { try { onCashTenderedInput(); } catch(_){} }
+  // 🔴 THE MODE IS ASSIGNED, NOT RE-DERIVED, and it is assigned LAST. cashExactMode is derived from the
+  // tender and the total, and deriving it from whatever total the redraw produced is exactly the
+  // mechanism that broke this: a total that moved for a moment turned a custom tender into an "exact"
+  // one, and nothing turned it back. What the customer had is restored, not recomputed.
+  cashExactMode = saved.exact;
+}
+function liveMenuCapture(){
+  return { good: liveMenuSnapshotGlobals(), quote: liveMenuQuoteSnapshot(), customer: liveMenuCustomerCapture() };
+}
 function liveMenuRestore(point){
   /* A full redraw of a menu that is known to be whole. The quote goes back FIRST, so the redraw's
      updateTotal computes the same total it computed before the failed apply — and therefore leaves the
@@ -1955,6 +1993,9 @@ function liveMenuRestore(point){
      rather than pretending otherwise. */
   liveMenuQuoteSet(point.quote);
   liveMenuPaint(point.good);
+  // LAST, and it has to be last: the redraw itself rewrites the tender and re-derives the mode, so the
+  // customer's own values go back on top of it rather than being protected from it.
+  liveMenuCustomerRestore(point.customer);
   console.warn('menu_apply_recovered', JSON.stringify({ redrew: 'last_good' }));
 }
 

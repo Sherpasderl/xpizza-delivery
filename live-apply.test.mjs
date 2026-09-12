@@ -425,9 +425,15 @@ for (const dir of Object.keys(BRAND)) {
        is the realistic failure: a snapshot that is valid but trips a renderer, where the menu that was
        standing does not. This stub throws only while the new data is installed. */
     const realTender = w.onCashTenderedInput;
+    /* 🔴 THE REAL BODY RUNS FIRST, THEN IT THROWS — and that ordering is the whole test. The previous
+       version threw INSTEAD of running, which meant onCashTenderedInput never re-derived cashExactMode
+       from the cleared-quote total, so the mode never flipped and the bug this is here to catch never
+       occurred. It passed because nothing went wrong. Running the real body reproduces the flip and
+       then fails the commit, which is the actual sequence. */
     w.onCashTenderedInput = function () {
+      const out = realTender.apply(this, arguments);
       if (w.liveMenuGlobalGet('MENU')[0].name === 'Should Not Survive') throw new Error('tender hint exploded');
-      return realTender.apply(this, arguments);
+      return out;
     };
     const m = B.menu(w);
     m.dishes[0] = { ...m.dishes[0], name: 'Should Not Survive', price: m.dishes[0].price + 40 };
@@ -463,9 +469,15 @@ for (const dir of Object.keys(BRAND)) {
     w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
 
     const realTender = w.onCashTenderedInput;
+    /* 🔴 THE REAL BODY RUNS FIRST, THEN IT THROWS — and that ordering is the whole test. The previous
+       version threw INSTEAD of running, which meant onCashTenderedInput never re-derived cashExactMode
+       from the cleared-quote total, so the mode never flipped and the bug this is here to catch never
+       occurred. It passed because nothing went wrong. Running the real body reproduces the flip and
+       then fails the commit, which is the actual sequence. */
     w.onCashTenderedInput = function () {
+      const out = realTender.apply(this, arguments);
       if (w.liveMenuGlobalGet('MENU')[0].name === 'Should Not Survive') throw new Error('tender hint exploded');
-      return realTender.apply(this, arguments);
+      return out;
     };
     const m = B.menu(w);
     m.dishes[0] = { ...m.dishes[0], name: 'Should Not Survive' };
@@ -482,43 +494,66 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: recovery never clears the customer's typed input`);
   }
 
-  // ── 21. 🔴 A FAILED APPLY DOES NOT REWRITE THE CUSTOMER'S TENDER ──
-  // The subtlest of these, and the reason "the redraw only touches the menu" was not true. updateTotal
-  // is part of the reconcile, and in "Pago exacto" mode it REWRITES the cash tender from
-  // redeemAdjustedTotal() — which reads the cached server quote. Invalidating that quote inside the
-  // shared paint meant a FAILED apply discarded it too, so the recovery recomputed the total locally and
-  // replaced the customer's tender with the smaller figure. A failure to change the menu quietly changed
-  // what they were paying with. The invalidation now belongs to the commit; the quote is restored with
-  // the menu.
-  {
+  // ── 21. 🔴 THE INVARIANT: A FAILED APPLY LEAVES THE TENDER AND THE MODE EXACTLY AS THEY WERE ──
+  //
+  // Stated as an invariant over BOTH modes rather than as cases, and that is the point. Two earlier
+  // rounds of this were a list — first the menu, then the quote — and each time the next item on the
+  // list was the one that leaked. The exact-mode case was fixed by restoring the quote; the CUSTOM case
+  // then fell through it, because onCashTenderedInput re-derives cashExactMode from whatever total is
+  // current, so a commit that clears the quote can flip a custom tender to "exact" and nothing flips it
+  // back. The recovery then rewrites the tender down to the restored quote's total.
+  //
+  // So: for every starting mode, the tender VALUE and the MODE must come out of a failed apply
+  // byte-identical. The mode is not readable from out here (it is a lexical `let`), so it is asserted
+  // behaviourally — a later updateTotal must not move the tender either, which it would if the mode
+  // were stuck on exact.
+  for (const mode of ['exact', 'custom']) {
     const w = loadForm(dir);
     w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
     w.selectPay('cash');
     const panel = w.document.getElementById('cash-change-panel');
     if (panel) panel.style.display = 'block';
-    // A server quote the customer's tender was computed from — deliberately unlike the local total.
+    const box = () => w.document.getElementById('cash-tendered');
+
+    // A server quote BELOW the local total: the gap is what the bug spends.
+    const localTotal = w.calcTotal();
     w.__serverQuote.key = w.serverQuoteCartKey();
-    w.__serverQuote.cents = 123400;
-    w.setCashTendered(w.redeemAdjustedTotal());
-    const tenderBefore = w.document.getElementById('cash-tendered').value;
-    assert.strictEqual(Number(tenderBefore), 1234, `${dir}: non-vacuity — the tender follows the QUOTE, not the local total`);
-    /* NON-VACUITY, DEMONSTRATED RATHER THAN ASSERTED. cashExactMode is a lexical `let` and not readable
-       from out here, so the hazard is shown instead of the flag: drop the quote, run the real
-       updateTotal, and watch the tender be rewritten to the local total. That is exactly what a failed
-       apply used to do — and it is put back before the test proper begins. */
-    w.__serverQuote.key = null; w.__serverQuote.cents = null;
-    w.updateTotal();
-    assert.notStrictEqual(w.document.getElementById('cash-tendered').value, tenderBefore,
-      `${dir}: non-vacuity — losing the quote really does rewrite the tender`);
-    w.__serverQuote.key = w.serverQuoteCartKey(); w.__serverQuote.cents = 123400;
-    w.updateTotal();
-    assert.strictEqual(w.document.getElementById('cash-tendered').value, tenderBefore,
-      `${dir}: …and restoring it puts the tender back, which is what the recovery must do`);
+    w.__serverQuote.cents = Math.round((localTotal - 10) * 100);
+    const quotedTotal = w.redeemAdjustedTotal();
+    assert.ok(quotedTotal < localTotal, `${dir}/${mode}: non-vacuity — the quote really is lower than the local total`);
+
+    // EXACT: the tender equals the quoted total. CUSTOM: it equals the LOCAL total — a number the
+    // customer chose, which the temporary total during a failed commit happens to match. That
+    // coincidence is what flips the mode.
+    if (mode === 'exact') w.setCashTendered(quotedTotal);
+    else { box().value = String(localTotal); w.onCashTenderedInput(); }
+    const tenderBefore = box().value;
+
+    // DEMONSTRATE THE HAZARD, so the assertions below cannot pass vacuously: with the quote gone the
+    // total jumps to the local one, and a custom tender equal to it is re-derived as exact — after
+    // which restoring the quote drags the tender down.
+    if (mode === 'custom') {
+      const q = { key: w.__serverQuote.key, cents: w.__serverQuote.cents };
+      w.__serverQuote.key = null; w.__serverQuote.cents = null;
+      w.updateTotal();                                   // the flip
+      w.__serverQuote.key = q.key; w.__serverQuote.cents = q.cents;
+      w.updateTotal();                                   // …and the fall
+      assert.notStrictEqual(box().value, tenderBefore,
+        `${dir}/custom: non-vacuity — this sequence really does lower the tender (${tenderBefore} → ${box().value})`);
+      box().value = tenderBefore; w.onCashTenderedInput();   // put the customer back before the real test
+      assert.strictEqual(box().value, tenderBefore);
+    }
 
     const realTender = w.onCashTenderedInput;
+    /* 🔴 THE REAL BODY RUNS FIRST, THEN IT THROWS — and that ordering is the whole test. The previous
+       version threw INSTEAD of running, which meant onCashTenderedInput never re-derived cashExactMode
+       from the cleared-quote total, so the mode never flipped and the bug this is here to catch never
+       occurred. It passed because nothing went wrong. Running the real body reproduces the flip and
+       then fails the commit, which is the actual sequence. */
     w.onCashTenderedInput = function () {
+      const out = realTender.apply(this, arguments);
       if (w.liveMenuGlobalGet('MENU')[0].name === 'Should Not Survive') throw new Error('tender hint exploded');
-      return realTender.apply(this, arguments);
+      return out;
     };
     const m = B.menu(w);
     m.dishes[0] = { ...m.dishes[0], name: 'Should Not Survive' };
@@ -526,12 +561,62 @@ for (const dir of Object.keys(BRAND)) {
     w.onCashTenderedInput = realTender;
 
     assert.strictEqual(w.__liveMenu.applier.state().lastError.message, 'tender hint exploded',
-      `${dir}: non-vacuity — the apply really did fail`);
-    assert.strictEqual(w.__serverQuote.cents, 123400,
-      `${dir}: 🔴 the quote a failed apply cleared is restored with the menu it describes`);
-    assert.strictEqual(w.document.getElementById('cash-tendered').value, tenderBefore,
-      `${dir}: 🔴 and the customer is still paying the amount they chose`);
-    ok(`${dir}: a failed apply leaves the exact-mode tender and the quote exactly as they were`);
+      `${dir}/${mode}: non-vacuity — the apply really did fail`);
+    assert.strictEqual(box().value, tenderBefore,
+      `${dir}/${mode}: 🔴 the customer is still paying the amount they chose`);
+    assert.strictEqual(w.__serverQuote.cents, Math.round((localTotal - 10) * 100),
+      `${dir}/${mode}: and the quote a failed apply cleared is restored`);
+    // The mode, behaviourally: if it were stuck on exact, this would rewrite the tender.
+    w.updateTotal();
+    assert.strictEqual(box().value, tenderBefore,
+      `${dir}/${mode}: 🔴 …and the exact/custom mode came through unchanged too`);
+    ok(`${dir}: a failed apply leaves the tender and the mode byte-identical (${mode} mode)`);
+  }
+
+  // ── 21b. …INCLUDING WITH A REDEMPTION ACTIVE ──
+  // The total can also come from a redemption quote held by __ACCOUNT, which the snapshot does not
+  // cover. It does not need to: the tender and the mode are restored by VALUE, so it makes no
+  // difference where the total the redraw computed came from. Asserted rather than assumed.
+  {
+    const w = loadForm(dir);
+    w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
+    w.selectPay('cash');
+    const panel = w.document.getElementById('cash-change-panel');
+    if (panel) panel.style.display = 'block';
+    const box = () => w.document.getElementById('cash-tendered');
+    w.__ACCOUNT = {
+      getRedeemPayload: () => ({ reward_id: 'r1' }),
+      getRedeemQuote: () => ({ total_cents: Math.round((w.calcTotal() - 25) * 100) }),
+      getRedeemQuoteTotalCents: () => Math.round((w.calcTotal() - 25) * 100),
+      customerIdToken: async () => null,
+      classifyRedeemError: () => null,
+      restoreRedeem: () => {}, setRestoring: () => {},
+    };
+    box().value = String(w.calcTotal());              // a custom tender, chosen against the undiscounted total
+    w.onCashTenderedInput();
+    const tenderBefore = box().value;
+
+    const realTender = w.onCashTenderedInput;
+    /* 🔴 THE REAL BODY RUNS FIRST, THEN IT THROWS — and that ordering is the whole test. The previous
+       version threw INSTEAD of running, which meant onCashTenderedInput never re-derived cashExactMode
+       from the cleared-quote total, so the mode never flipped and the bug this is here to catch never
+       occurred. It passed because nothing went wrong. Running the real body reproduces the flip and
+       then fails the commit, which is the actual sequence. */
+    w.onCashTenderedInput = function () {
+      const out = realTender.apply(this, arguments);
+      if (w.liveMenuGlobalGet('MENU')[0].name === 'Should Not Survive') throw new Error('tender hint exploded');
+      return out;
+    };
+    const m = B.menu(w);
+    m.dishes[0] = { ...m.dishes[0], name: 'Should Not Survive' };
+    await serve(w, envelope(B.rid, m));
+    w.onCashTenderedInput = realTender;
+
+    assert.strictEqual(w.__liveMenu.applier.state().lastError.message, 'tender hint exploded',
+      `${dir}: non-vacuity — the apply failed with a redemption active`);
+    assert.strictEqual(box().value, tenderBefore,
+      `${dir}: 🔴 a redemption-active custom tender survives a failed apply too`);
+    ok(`${dir}: the invariant holds with a redemption active — the total's origin does not matter`);
   }
 
   // ── 22. …WHILE A SUCCESSFUL APPLY STILL DROPS THE STALE QUOTE ──
