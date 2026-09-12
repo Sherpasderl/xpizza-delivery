@@ -2024,8 +2024,8 @@
     "slice": "b6",
     "label": "focus is not restored after the container holding it is re-rendered",
     "file": "../xpizza-orders/index.html",
-    "from": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  liveMenuPaint(prepared);\n  liveMenuUiRestore(ui);\n}",
-    "to": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  liveMenuPaint(prepared);\n}",
+    "from": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; }\n  liveMenuPaint(prepared);\n  liveMenuUiRestore(ui);\n}",
+    "to": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; }\n  liveMenuPaint(prepared);\n}",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2109,8 +2109,8 @@
     "slice": "b6",
     "label": "a failed apply is not redrawn — the half-applied menu stays on screen",
     "file": "../xpizza-orders/index.html",
-    "from": "function liveMenuRestore(point){\n  // A full redraw of a menu that is known to be whole. If THIS throws the page is genuinely beyond\n  // recovery from here, and the applier reports 'broken' rather than pretending otherwise.\n  liveMenuPaint(point.good);\n  console.warn('menu_apply_recovered', JSON.stringify({ redrew: 'last_good' }));\n}",
-    "to": "function liveMenuRestore(point){\n  // A full redraw of a menu that is known to be whole. If THIS throws the page is genuinely beyond\n  // recovery from here, and the applier reports 'broken' rather than pretending otherwise.\n  ;\n  console.warn('menu_apply_recovered', JSON.stringify({ redrew: 'last_good' }));\n}",
+    "from": "  liveMenuQuoteSet(point.quote);\n  liveMenuPaint(point.good);",
+    "to": "  ;",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2121,8 +2121,56 @@
     "slice": "b6",
     "label": "la_musa: a failed apply is not redrawn — the half-applied menu stays on screen",
     "file": "../la-musa-orders/index.html",
-    "from": "function liveMenuRestore(point){\n  // A full redraw of a menu that is known to be whole. If THIS throws the page is genuinely beyond\n  // recovery from here, and the applier reports 'broken' rather than pretending otherwise.\n  liveMenuPaint(point.good);\n  console.warn('menu_apply_recovered', JSON.stringify({ redrew: 'last_good' }));\n}",
-    "to": "function liveMenuRestore(point){\n  // A full redraw of a menu that is known to be whole. If THIS throws the page is genuinely beyond\n  // recovery from here, and the applier reports 'broken' rather than pretending otherwise.\n  ;\n  console.warn('menu_apply_recovered', JSON.stringify({ redrew: 'last_good' }));\n}",
+    "from": "  liveMenuQuoteSet(point.quote);\n  liveMenuPaint(point.good);",
+    "to": "  ;",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-43",
+    "slice": "b6",
+    "label": "the quote invalidation moves INTO the shared paint, so the recovery discards it again",
+    "file": "../xpizza-orders/index.html",
+    "from": "function liveMenuPaint(prepared){\n  LIVE_MENU_GLOBALS.forEach((name) => { liveMenuGlobalSet(name, prepared[name]); });",
+    "to": "function liveMenuPaint(prepared){\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; }\n  LIVE_MENU_GLOBALS.forEach((name) => { liveMenuGlobalSet(name, prepared[name]); });",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-45",
+    "slice": "b6",
+    "label": "a successful apply stops invalidating the stale quote",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; }\n  liveMenuPaint(prepared);",
+    "to": "  liveMenuPaint(prepared);",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-44",
+    "slice": "b6",
+    "label": "the recovery redraws without putting the quote back — the exact-mode tender is rewritten",
+    "file": "../xpizza-orders/index.html",
+    "from": "  liveMenuQuoteSet(point.quote);\n  liveMenuPaint(point.good);",
+    "to": "  liveMenuPaint(point.good);",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b6-53",
+    "slice": "b6",
+    "label": "la_musa: the recovery redraws without putting the quote back",
+    "file": "../la-musa-orders/index.html",
+    "from": "  liveMenuQuoteSet(point.quote);\n  liveMenuPaint(point.good);",
+    "to": "  liveMenuPaint(point.good);",
     "command": [
       "node",
       "../live-apply.test.mjs"

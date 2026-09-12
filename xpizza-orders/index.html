@@ -1903,11 +1903,6 @@ function liveMenuUiRestore(ui){
   if (typeof window.scrollTo === 'function') { try { window.scrollTo(0, ui.scrollY); } catch(_){} }
 }
 
-/* THE RESTORE POINT — every global the commit assigns, the markup of every container it rewrites, and
-   the quantity map. Taken before PREPARE, not before commit: prepare is meant to be pure, and one cheap
-   capture is what makes that a guarantee rather than an assumption.
-   The arrays are held BY REFERENCE on purpose — commit replaces them rather than mutating them, so the
-   old reference is exactly what putting the old menu back requires. */
 /* 🔴 RECOVERY IS A CLEAN REDRAW OF THE LAST GOOD MENU — NOT AN ATTEMPT TO UNDO THE DOM.
    Three versions of this tried to undo: first a list of element ids, then a longer list, then whole
    page regions. Undo kept being wrong in a new way each time, and the last version was wrong in a way
@@ -1938,10 +1933,27 @@ function liveMenuSnapshotGlobals(){
   LIVE_MENU_GLOBALS.forEach((name) => { out[name] = liveMenuGlobalGet(name); });
   return out;
 }
-function liveMenuCapture(){ return { good: liveMenuSnapshotGlobals() }; }
+/* …AND THE CACHED QUOTE TRAVELS WITH IT. The quote is not decoration: redeemAdjustedTotal() reads it,
+   updateTotal() reads THAT, and in "Pago exacto" mode updateTotal REWRITES THE CUSTOMER'S TENDER from
+   it. So a quote cleared by a failed apply does not stay a display detail — it leaks into the amount
+   the customer is paying with. It is part of the last-good state and is restored with the menu. */
+function liveMenuQuoteSnapshot(){
+  return (typeof __serverQuote === 'object' && __serverQuote)
+    ? { key: __serverQuote.key, cents: __serverQuote.cents, inflight: __serverQuote.inflight } : null;
+}
+function liveMenuQuoteSet(q){
+  if (!q || typeof __serverQuote !== 'object' || !__serverQuote) return;
+  __serverQuote.key = q.key; __serverQuote.cents = q.cents; __serverQuote.inflight = q.inflight;
+}
+function liveMenuCapture(){ return { good: liveMenuSnapshotGlobals(), quote: liveMenuQuoteSnapshot() }; }
 function liveMenuRestore(point){
-  // A full redraw of a menu that is known to be whole. If THIS throws the page is genuinely beyond
-  // recovery from here, and the applier reports 'broken' rather than pretending otherwise.
+  /* A full redraw of a menu that is known to be whole. The quote goes back FIRST, so the redraw's
+     updateTotal computes the same total it computed before the failed apply — and therefore leaves the
+     exact-mode tender at the amount the customer chose, instead of replacing it with one derived from a
+     quote that a failure threw away.
+     If THIS throws, the page is genuinely beyond recovery from here and the applier reports 'broken'
+     rather than pretending otherwise. */
+  liveMenuQuoteSet(point.quote);
   liveMenuPaint(point.good);
   console.warn('menu_apply_recovered', JSON.stringify({ redrew: 'last_good' }));
 }
@@ -1961,11 +1973,6 @@ function liveMenuPaint(prepared){
      the quantity. The cart itself is reconciled by cartItems()/cartConflicts(), not here — a line whose
      dish the upgrade removed keeps its quantity and stays blocking. */
   cartLines().forEach((l) => { try { chg(l.key, 0); } catch(_){} });
-  /* THE CACHED SERVER QUOTE IS STALE. It was computed against prices that may have moved, and a
-     displayed estimate that silently survives a price change is the display-side version of the silent
-     adoption the cart refuses. Dropped, so the form falls back to calcTotal() — today's behaviour —
-     until a fresh quote arrives. No charge depends on it: the server re-prices regardless. */
-  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; }
   if (typeof updateTotal === 'function') updateTotal();
   if (typeof updateCart === 'function') updateCart();
   if (typeof renderChangeChips === 'function') renderChangeChips();      // tender chips follow the new total
@@ -1973,10 +1980,18 @@ function liveMenuPaint(prepared){
   if (typeof refreshPickupGate === 'function') refreshPickupGate();
 }
 
-/* COMMIT. Paint, then put the customer back where they were. Nothing is recorded afterwards: the menu
-   that is standing is the menu in the globals, which is what capture() reads. */
+/* COMMIT. Invalidate the quote, paint, then put the customer back where they were. Nothing is recorded
+   afterwards: the menu that is standing is the menu in the globals, which is what capture() reads.
+
+   🔴 THE INVALIDATION BELONGS TO THE COMMIT, NOT TO THE PAINT, and the difference is the customer's
+   money. The cached quote was computed against prices that may have moved, so a menu that really
+   changes must drop it — but the paint is ALSO what the recovery runs, and clearing it there meant a
+   FAILED apply threw the quote away too. The recovery then recomputed the total locally and, in "Pago
+   exacto" mode, rewrote the tender to that lower figure: a failure to change the menu quietly changed
+   what the customer was paying with. Invalidating here keeps it a side-effect of succeeding. */
 function liveMenuCommit(prepared){
   const ui = liveMenuUiCapture();
+  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; }
   liveMenuPaint(prepared);
   liveMenuUiRestore(ui);
 }

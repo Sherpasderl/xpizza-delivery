@@ -10,21 +10,29 @@
 // New dishes at old prices is the DOM-level version of exactly the outcome this whole slice exists to
 // prevent.
 //
-// SO THE APPLY IS ALL-OR-NOTHING, and it is worth being precise about where that guarantee comes from,
-// because "prepare everything first, then commit" is only half of it:
+// SO A FAILED APPLY MUST LEAVE A COHERENT PAGE, and that comes from two things:
 //
 //   1. PREPARE IS COMPLETE AND PURE. Everything that can REJECT a snapshot — shape, completeness,
 //      cross-references — happens before anything is touched, and produces the new values without
-//      installing them. A rejected snapshot therefore costs nothing: the prior menu simply stands.
+//      installing them. It is also the adapter's acceptance test, so an unusable snapshot never
+//      reaches the commit at all: a rejected one costs nothing and the prior menu simply stands.
 //
-//   2. THE COMMIT HAS A RESTORE POINT. Preparation cannot make the commit infallible: it assigns
-//      several globals, drives the form's own renderers, and reconciles the cart, and any of those can
-//      throw for reasons no validation predicted. So the state that commit will touch is captured
-//      FIRST, and any failure puts all of it back. The guarantee is rollback, not optimism.
+//   2. A FAILED COMMIT IS FOLLOWED BY RECOVERY. Preparation cannot make the commit infallible: it
+//      assigns globals, drives the form's renderers and reconciles the cart, and any of those can throw
+//      for reasons no validation predicted. So capture() is called first and restore() on failure.
 //
-//   The capture is taken before PREPARE, not before commit. Prepare is supposed to be pure, but
-//   "supposed to be" is not a guarantee, and one capture is cheap insurance against a preparation step
-//   that mutates something on its way to throwing.
+//   🔴 WHAT capture/restore MEAN IS THE FORM'S CHOICE, AND THIS MODULE DOES NOT ASSUME IT IS AN UNDO.
+//   Both forms recover by REDRAWING the menu that was standing, rather than trying to reverse the DOM
+//   writes the commit made. That distinction is load-bearing and was learned expensively: reversing the
+//   markup of the regions that hold the menu also reverses the markup of the customer's input fields
+//   inside them, and a recovery that clears someone's name, phone and cash tender to fix a menu glitch
+//   is worse than the glitch. A redraw is coherent by construction and touches only what a render
+//   touches. The price is that a failed apply is not pixel-reversed — there may be a brief glitch until
+//   the redraw lands — which is cosmetic, logged, and cannot reach money.
+//
+//   capture() is called before PREPARE, not before commit. Prepare is supposed to be pure, but
+//   "supposed to be" is not a guarantee, and one cheap capture covers a preparation step that mutates
+//   something on its way to throwing.
 //
 // AND THE APPLY DOES NOT ALWAYS RUN. Two states where replacing the menu would be wrong rather than
 // merely awkward:
@@ -51,12 +59,13 @@ function createMenuApplier(options) {
 
   let pending = null;       // the newest snapshot that could not be applied yet
   let lastError = null;
-  let fatal = null;         // a rollback that itself failed — the one state this cannot recover from
+  let fatal = null;         // recovery that itself failed — the one state this cannot come back from
   let applied = 0, deferred = 0, refused = 0;
 
   function attempt(snapshot) {
-    // 🔴 CAPTURED BEFORE PREPARE. See the header: prepare is meant to be pure, and the capture is what
-    // makes that a guarantee rather than an assumption.
+    // 🔴 CAPTURED BEFORE PREPARE. See the header: prepare is meant to be pure, and capturing first is
+    // what makes that a guarantee rather than an assumption. What the point CONTAINS is the form's
+    // business — for both order forms it is the menu currently standing, to be redrawn.
     const point = capture();
     try {
       const prepared = prepare(snapshot);
@@ -69,10 +78,10 @@ function createMenuApplier(options) {
       try {
         restore(point);
       } catch (re) {
-        // Rollback failed. The screen may now agree with nothing, and pretending otherwise would be
+        // Recovery failed too. The screen may now agree with nothing, and pretending otherwise would be
         // worse than saying so — a caller can reload rather than keep serving an unknown page.
         fatal = re;
-        note('menu_apply_rollback_failed', { error: String((re && re.message) || re) });
+        note('menu_apply_recovery_failed', { error: String((re && re.message) || re) });
         return 'broken';
       }
       lastError = e; refused += 1;

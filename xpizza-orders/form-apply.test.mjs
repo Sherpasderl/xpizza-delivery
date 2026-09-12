@@ -48,15 +48,15 @@ test('a prepare that returns nothing is a refusal, not a successful apply', () =
   assert.match(h.a.state().lastError.message, /apply_prepare_empty/, 'the reason is pinned, not generic');
 });
 
-test('a rollback that itself fails is reported as broken rather than silently ignored', () => {
+test('a recovery that itself fails is reported as broken rather than silently ignored', () => {
   // The one state this cannot recover from. Saying so lets a caller reload; pretending otherwise
   // leaves an unknown page on screen claiming to be fine.
   const h = harness({
     commit: () => { throw new Error('render exploded'); },
-    restore: () => { throw new Error('rollback exploded'); },
+    restore: () => { throw new Error('recovery exploded'); },
   });
   assert.strictEqual(h.a.apply({ menu: 'next' }), 'broken');
-  assert.match(h.a.state().fatal.message, /rollback exploded/);
+  assert.match(h.a.state().fatal.message, /recovery exploded/);
 });
 
 test('only the LATEST deferred snapshot is held', () => {

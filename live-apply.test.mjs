@@ -455,7 +455,10 @@ for (const dir of Object.keys(BRAND)) {
     const name = w.document.getElementById('cname');
     const tendered = w.document.getElementById('cash-tendered');
     assert.ok(name && tendered, `${dir}: the typed fields exist`);
+    const phone = w.document.getElementById('cphone');
+    assert.ok(phone, `${dir}: the phone field exists`);
     name.value = 'Ana Martínez';
+    phone.value = '9876 5432';
     tendered.value = '500';
     w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
 
@@ -473,11 +476,80 @@ for (const dir of Object.keys(BRAND)) {
       `${dir}: 🔴 the name the customer typed is untouched by the recovery`);
     assert.strictEqual(w.document.getElementById('cash-tendered').value, '500',
       `${dir}: 🔴 …and so is the amount they were paying with`);
+    assert.strictEqual(w.document.getElementById('cphone').value, '9876 5432',
+      `${dir}: …and the phone number — omitted from the first version of this check, which is what hid the tender bug`);
     assert.strictEqual(w.cartItemCount(), 1, `${dir}: and their cart is intact`);
     ok(`${dir}: recovery never clears the customer's typed input`);
   }
 
-  // ── 21. A RENDERER THAT CANNOT DRAW AT ALL IS REPORTED, NOT PAPERED OVER ──
+  // ── 21. 🔴 A FAILED APPLY DOES NOT REWRITE THE CUSTOMER'S TENDER ──
+  // The subtlest of these, and the reason "the redraw only touches the menu" was not true. updateTotal
+  // is part of the reconcile, and in "Pago exacto" mode it REWRITES the cash tender from
+  // redeemAdjustedTotal() — which reads the cached server quote. Invalidating that quote inside the
+  // shared paint meant a FAILED apply discarded it too, so the recovery recomputed the total locally and
+  // replaced the customer's tender with the smaller figure. A failure to change the menu quietly changed
+  // what they were paying with. The invalidation now belongs to the commit; the quote is restored with
+  // the menu.
+  {
+    const w = loadForm(dir);
+    w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
+    w.selectPay('cash');
+    const panel = w.document.getElementById('cash-change-panel');
+    if (panel) panel.style.display = 'block';
+    // A server quote the customer's tender was computed from — deliberately unlike the local total.
+    w.__serverQuote.key = w.serverQuoteCartKey();
+    w.__serverQuote.cents = 123400;
+    w.setCashTendered(w.redeemAdjustedTotal());
+    const tenderBefore = w.document.getElementById('cash-tendered').value;
+    assert.strictEqual(Number(tenderBefore), 1234, `${dir}: non-vacuity — the tender follows the QUOTE, not the local total`);
+    /* NON-VACUITY, DEMONSTRATED RATHER THAN ASSERTED. cashExactMode is a lexical `let` and not readable
+       from out here, so the hazard is shown instead of the flag: drop the quote, run the real
+       updateTotal, and watch the tender be rewritten to the local total. That is exactly what a failed
+       apply used to do — and it is put back before the test proper begins. */
+    w.__serverQuote.key = null; w.__serverQuote.cents = null;
+    w.updateTotal();
+    assert.notStrictEqual(w.document.getElementById('cash-tendered').value, tenderBefore,
+      `${dir}: non-vacuity — losing the quote really does rewrite the tender`);
+    w.__serverQuote.key = w.serverQuoteCartKey(); w.__serverQuote.cents = 123400;
+    w.updateTotal();
+    assert.strictEqual(w.document.getElementById('cash-tendered').value, tenderBefore,
+      `${dir}: …and restoring it puts the tender back, which is what the recovery must do`);
+
+    const realTender = w.onCashTenderedInput;
+    w.onCashTenderedInput = function () {
+      if (w.liveMenuGlobalGet('MENU')[0].name === 'Should Not Survive') throw new Error('tender hint exploded');
+      return realTender.apply(this, arguments);
+    };
+    const m = B.menu(w);
+    m.dishes[0] = { ...m.dishes[0], name: 'Should Not Survive' };
+    await serve(w, envelope(B.rid, m));
+    w.onCashTenderedInput = realTender;
+
+    assert.strictEqual(w.__liveMenu.applier.state().lastError.message, 'tender hint exploded',
+      `${dir}: non-vacuity — the apply really did fail`);
+    assert.strictEqual(w.__serverQuote.cents, 123400,
+      `${dir}: 🔴 the quote a failed apply cleared is restored with the menu it describes`);
+    assert.strictEqual(w.document.getElementById('cash-tendered').value, tenderBefore,
+      `${dir}: 🔴 and the customer is still paying the amount they chose`);
+    ok(`${dir}: a failed apply leaves the exact-mode tender and the quote exactly as they were`);
+  }
+
+  // ── 22. …WHILE A SUCCESSFUL APPLY STILL DROPS THE STALE QUOTE ──
+  // The other half: invalidation moved to the commit, so it must still happen when the menu really
+  // changes — a quoted total that outlived the prices it was quoted for is the display-side version of
+  // the silent adoption the cart refuses.
+  {
+    const w = loadForm(dir);
+    w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
+    w.__serverQuote.key = w.serverQuoteCartKey();
+    w.__serverQuote.cents = 123400;
+    await serve(w, envelope(B.rid, B.menu(w)));
+    assert.strictEqual(w.__liveMenu.applier.state().lastError, null, `${dir}: non-vacuity — this apply succeeded`);
+    assert.strictEqual(w.__serverQuote.cents, null, `${dir}: 🔴 the stale quote is dropped on success`);
+    ok(`${dir}: a successful apply still invalidates the cached quote`);
+  }
+
+  // ── 23. A RENDERER THAT CANNOT DRAW AT ALL IS REPORTED, NOT PAPERED OVER ──
   // If the redraw itself throws — the renderer is broken for the OLD menu too — there is nothing left
   // to fall back to. The applier says so rather than reporting success over an unknown screen.
   {
