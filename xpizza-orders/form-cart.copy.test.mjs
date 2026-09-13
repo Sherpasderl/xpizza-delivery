@@ -155,3 +155,88 @@ test('both forms load all three shared modules and boot the live feed', () => {
       `${dir}: the live feed must be given a fetch implementation`);
   }
 });
+
+test('the la_musa copy of the safe renderer is byte-identical to the canonical one', () => {
+  const canonical = readFileSync(new URL('./form-safe-render.js', import.meta.url), 'utf8');
+  const copy = readFileSync(new URL('../la-musa-orders/form-safe-render.js', import.meta.url), 'utf8');
+  assert.strictEqual(copy, canonical,
+    'la-musa-orders/form-safe-render.js has drifted — copy xpizza-orders/form-safe-render.js over it');
+  assert.ok(canonical.includes('function safeImgUrl'), 'non-vacuity: the file really is the renderer');
+  const code = canonical.split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '')).join('\n');
+  assert.ok(!/^\s*export[\s{]/m.test(code) && !/^\s*import[\s{]/m.test(code), 'no ESM syntax');
+  assert.ok(/module\.exports/.test(code) && /window\.safeText/.test(code), '…and it publishes to both worlds');
+});
+
+test('1B Task 8 — the authored-field census (A DOCUMENTED LINT, NOT A PROOF)', () => {
+  /* 🔴 WHAT THIS IS. A tripwire over the render paths, listing the contexts that were converted so a
+     new one is noticed. It is NOT the guarantee, and the distinction matters: the guarantee is 1A's
+     publish-time validation plus the reviewed renderers in form-safe-render.js. A regex census cannot
+     see a template nobody has written yet, cannot follow a value through a helper, and cannot know
+     which context a new interpolation lands in. Read it as "nothing known regressed", never as
+     "nothing can get through".
+
+     CONVERTED SITES, by context:
+       body text   card name/desc/emoji/price, bev-row name/price, cart-review name/qty,
+                   category titles, detail name/desc/price, option names/prices
+       attribute   every element id and data- attribute built from an authored id; img alt
+       URL         card photo, detail hero photo (both brands) — safeImgUrl policy
+       CSS         card and hero background colour — safeColor grammar
+       identifier  every click that used to be onclick="fn(<authored id>)" — now data-act/data-id
+                   resolved through MENU/EXTRAS by one delegated listener per form */
+  for (const dir of ['xpizza-orders', 'la-musa-orders']) {
+    const raw = readFileSync(new URL(`../${dir}/index.html`, import.meta.url), 'utf8');
+    // Comment-stripped: this file's own prose quotes the old onclick shape to explain what was wrong
+    // with it, and a census that counted its own documentation would report a violation forever.
+    const html = raw.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+
+    assert.ok(raw.includes('<script src="form-safe-render.js"></script>'), `${dir}: the renderer is not loaded`);
+
+    /* 🔴 NO HANDLER MAY BE BUILT FROM AUTHORED DATA — the whole identifier class, as one check.
+       TWO PRECISE PATTERNS, not one line-scoped heuristic. A handler can be assembled two ways: inside a
+       template literal (onclick="fn(${id})") or by CONCATENATION ('onclick="fn(\'' + id + '\')"'). An
+       earlier version anchored on `on…="` and matched forward, which cannot span the second shape at
+       all — it would have missed la_musa's original templates entirely, a lint blind to the very form it
+       was written for. A line-scoped version saw both but also flagged three lines whose interpolation
+       fed a `src`, not a handler; it did find a real unconverted hero photo among them, which is the
+       argument for having it at all, and the argument for making it precise enough to keep. Both
+       patterns stop at the closing quote of the handler's own value, so an interpolation elsewhere on
+       the line is not its business. */
+    const TEMPLATE_HANDLER = /\bon[a-z]+\s*=\s*"[^"]*\$\{/;
+    const CONCAT_HANDLER   = /\bon[a-z]+\s*=\s*"[^"]*'\s*\+/;
+    const handlerLines = html.split('\n').filter((l) => TEMPLATE_HANDLER.test(l) || CONCAT_HANDLER.test(l));
+    assert.deepStrictEqual(handlerLines.map((l) => l.trim().slice(0, 90)), [],
+      `${dir}: an event attribute is built from authored data on these lines`);
+
+    /* 🔴 AND THE URL CONTEXT, which the handler census above cannot see — it is not a handler. This is
+       the line that would have caught the la_musa detail hero photo, whose src was still built straight
+       from an authored id after the first conversion pass: every `src=` assembled from data must go
+       through safeImgUrl. `logoSrc` is excluded by name and for a stated reason — it is read from the
+       page's own DOM (.logo-img), not from the catalog, so it is not authored input. */
+    const unpolicedSrc = (html.match(/src="[^"]*\$\{[^}]*\}[^"]*"/g) || [])
+      .filter((m) => !/safeImgUrl/.test(m) && !/logoSrc/.test(m));
+    assert.deepStrictEqual(unpolicedSrc, [],
+      `${dir}: a src is built from data without the URL policy: ${unpolicedSrc.join(' | ')}`);
+    // non-vacuity: the src census sees the shape it is looking for, and passes the policed one
+    assert.strictEqual(('src="images/${p.id}-hero.webp"'.match(/src="[^"]*\$\{[^}]*\}[^"]*"/g) || []).length, 1,
+      'non-vacuity: the unpoliced-src detector works');
+    assert.strictEqual((['src="${safeImgUrl(u)}"'].filter((m) => !/safeImgUrl/.test(m))).length, 0,
+      'non-vacuity: …and a policed src is not a finding');
+
+    // Every form has exactly one delegate, wired once at boot.
+    assert.strictEqual((html.match(/function wireMenuDelegate\(\)/g) || []).length, 1, `${dir}: one delegate`);
+    assert.ok(/\nwireMenuDelegate\(\);\nrenderMenu\(\);/.test(html), `${dir}: …wired before the first render`);
+
+    // non-vacuity: both hostile shapes must trip, and the three shapes that are NOT handlers must not
+    const trips = (l) => TEMPLATE_HANDLER.test(l) || CONCAT_HANDLER.test(l);
+    assert.ok(trips('const card = p => `<div onclick="chg(${p.id},1)">x</div>`;'),
+      'non-vacuity: a template-literal handler trips it');
+    assert.ok(trips(String.raw`'<button onclick="chg(\'' + p.id + '\',1)">+</button>'`),
+      'non-vacuity: …and a concatenated one, which an earlier version could not see');
+    assert.ok(!trips(String.raw`'<img alt="" src="' + safeImgUrl(u) + '" onerror="this.remove()">'`),
+      'non-vacuity: an interpolation feeding a src is not a handler');
+    assert.ok(!trips('`<button onclick="detailQtyChange(-1)">${qty}</button>`'),
+      'non-vacuity: a constant handler beside an unrelated interpolation is not a finding');
+    assert.ok(!trips('<button class="change-chip" data-act="tender">x</button>'),
+      'non-vacuity: a delegated control is not a finding');
+  }
+});

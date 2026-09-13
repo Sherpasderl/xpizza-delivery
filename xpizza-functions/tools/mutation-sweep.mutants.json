@@ -2573,8 +2573,8 @@
       "../live-apply.test.mjs"
     ],
     "label": "la_musa: the launcher CTA ignores the selected variant's availability — a sold-out protein shows a priced Agregar",
-    "from": "    if (v && typeof isSoldOut === 'function' && isSoldOut(v)) {\n      cta.className = 'detail-cta';\n      cta.style.opacity = '.5';\n      cta.style.pointerEvents = 'none';\n      cta.innerHTML = '<span>Agotado</span>';\n      return;\n    }",
-    "to": "    ;"
+    "from": "    if (v && typeof isSoldOut === 'function' && isSoldOut(v)) {\n      cta.className = 'detail-cta';\n      cta.style.opacity = '.5';\n      cta.style.pointerEvents = 'none'; cta.disabled = true;\n      cta.innerHTML = '<span>Agotado</span>';\n      return;\n    }\n",
+    "to": "    ;\n"
   },
   {
     "id": "b7-21",
@@ -2611,5 +2611,137 @@
     "label": "la_musa: an open modal's CTA does not follow a poll that flips availability",
     "from": "    if (typeof currentDetailPizzaId !== 'undefined' && currentDetailPizzaId !== null\n        && typeof updateDetailCta === 'function') updateDetailCta();",
     "to": "    ;"
+  },
+  {
+    "id": "b8-01",
+    "slice": "b8",
+    "label": "safeText stops escaping angle brackets — authored markup becomes elements",
+    "file": "../xpizza-orders/form-safe-render.js",
+    "from": ".replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\")",
+    "to": ".replace(/&/g, \"&amp;\")",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b8-02",
+    "slice": "b8",
+    "label": "safeImgUrl becomes a pass-through — javascript: reaches the src attribute",
+    "file": "../xpizza-orders/form-safe-render.js",
+    "from": "  if (/[\\x00-\\x20\"'<>\\\\`]/.test(s)) return \"\";",
+    "to": "  return s;",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b8-03",
+    "slice": "b8",
+    "label": "safeImgUrl allows any scheme, not just https",
+    "file": "../xpizza-orders/form-safe-render.js",
+    "from": "  if (/^https:\\/\\/[A-Za-z0-9._~\\-]+(:\\d+)?(\\/[A-Za-z0-9._~\\-%!$&()*+,;=:@\\/]*)?(\\?[A-Za-z0-9._~\\-%!$&()*+,;=:@\\/?]*)?$/.test(s)) return s;",
+    "to": "  if (/^[a-z]+:/i.test(s)) return s;",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b8-04",
+    "slice": "b8",
+    "label": "safeColor returns the raw value instead of a constrained one",
+    "file": "../xpizza-orders/form-safe-render.js",
+    "from": "  if (/^[A-Za-z]{3,20}$/.test(s)) return s;\n  return fb;",
+    "to": "  return s;",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b8-05",
+    "slice": "b8",
+    "label": "the delegate resolves nothing and calls the handler with the RAW attribute value",
+    "file": "../xpizza-orders/index.html",
+    "from": "    const dish = MENU.find(function(x){ return String(x.id) === String(raw); });\n    if (!dish) return;                       // an id nothing matches is inert, which is the safe outcome",
+    "to": "    const dish = { id: raw };",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b8-06",
+    "slice": "b8",
+    "label": "la_musa: the delegate ignores the stop wrapper — the overlay opens the modal",
+    "file": "../la-musa-orders/index.html",
+    "from": "    if (stopEl && stopEl !== actEl && actEl.contains(stopEl)) return;",
+    "to": "    ;",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b8-07",
+    "slice": "b8",
+    "label": "the delegate ignores the stop wrapper — the overlay opens the modal",
+    "file": "../xpizza-orders/index.html",
+    "from": "    if (stopEl && stopEl !== actEl && actEl.contains(stopEl)) return;",
+    "to": "    ;",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b8-08",
+    "slice": "b8",
+    "label": "the card name is rendered unescaped again",
+    "file": "../xpizza-orders/index.html",
+    "from": "<div class=\"pizza-card-name\">${safeText(p.name)}</div>",
+    "to": "<div class=\"pizza-card-name\">${p.name}</div>",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b8-09",
+    "slice": "b8",
+    "label": "la_musa: the card name is rendered unescaped again",
+    "file": "../la-musa-orders/index.html",
+    "from": "'<div class=\"pizza-card-name\">' + safeText(p.name) + '</div>' +",
+    "to": "'<div class=\"pizza-card-name\">' + p.name + '</div>' +",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b8-10",
+    "slice": "b8",
+    "label": "the card photo colour is taken raw",
+    "file": "../xpizza-orders/index.html",
+    "from": "style=\"background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}\"",
+    "to": "style=\"background:${safeImgUrl(p.img) ? '#000' : (p.color||'#C8321A')}\"",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b8-11",
+    "slice": "b8",
+    "label": "la_musa: the card photo colour is taken raw",
+    "file": "../la-musa-orders/index.html",
+    "from": "+ safeColor(p.color, '#13100E') + '\">' +",
+    "to": "+ (p.color || '#13100E') + '\">' +",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
   }
 ]

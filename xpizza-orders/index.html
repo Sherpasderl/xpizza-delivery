@@ -1413,6 +1413,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAuzSLAELV_MaK2xeXrNjS6_lhNXmD_Y0A&libraries=places&callback=googleMapsReady" async defer></script>
 <!-- KDS Phase 2b · availKey — canonical availability-key encoder (window.availKey); shared byte-identical across KDS/forms/server -->
 <script src="avail-key.js"></script>
+<script src="form-safe-render.js"></script>
 <script src="form-cart.js"></script>
 <script src="form-live-menu.js"></script>
 <script src="form-apply.js"></script>
@@ -2264,35 +2265,93 @@ function genOrderId(){
   return ts+'-'+r;
 }
 
+/* ── Portal 1B Task 8 — ONE DELEGATED LISTENER INSTEAD OF AUTHORED-ID HANDLERS ───────────────────
+   🔴 WHY DELEGATION RATHER THAN ESCAPING. The templates used to build `onclick="chg(${p.id},1)"` from
+   an authored id — data inside a script context, which no escape makes safe in general. Escaping each
+   site would also have to be remembered at every site written afterwards. Delegation removes the class:
+   the id lives in a `data-` attribute (inert), and the only code that ever runs is this switch.
+   Two further properties fall out of it, both of which matter for 1B: a re-render can never leave a
+   tile un-wired, because there is nothing per-tile to wire; and the id is RESOLVED BACK THROUGH MENU
+   rather than coerced, so `chg` still receives the canonical value with its original type (x_pizza's
+   ids are numbers, and `'7' === 7` is false in the lookups downstream).
+   Attached once, at boot, to the document. */
+function wireMenuDelegate(){
+  if (window.__menuDelegateWired) return;
+  window.__menuDelegateWired = true;
+  document.addEventListener('click', function(ev){
+    const actEl = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
+    if (!actEl) return;
+    /* Reproduces the old `onclick="event.stopPropagation()"` on the qty overlay: a click inside a
+       stop-marked wrapper must not reach an action that ENCLOSES that wrapper. Without this, clicking
+       the empty space beside the +/− buttons would open the detail modal, which it never used to. */
+    const stopEl = ev.target.closest('[data-stop]');
+    if (stopEl && stopEl !== actEl && actEl.contains(stopEl)) return;
+    const act = actEl.getAttribute('data-act');
+    if (act === 'tender') {
+      const amt = parseFloat(actEl.getAttribute('data-amt'));
+      if (isFinite(amt)) setCashTendered(amt);
+      return;
+    }
+    const raw = actEl.getAttribute('data-id');
+    const dish = MENU.find(function(x){ return String(x.id) === String(raw); });
+    if (!dish) return;                       // an id nothing matches is inert, which is the safe outcome
+    if (act === 'open') { openDetailModal(dish.id); return; }
+    if (act === 'inc')  { chg(dish.id, 1);  return; }
+    if (act === 'dec')  { chg(dish.id, -1); return; }
+    if (act === 'badge'){ toggleControls(dish.id); return; }
+    if (act === 'review-open') { openDetailModal(dish.id); closeCartReview(); return; }
+    if (act === 'review-inc')  { chgFromCart(dish.id, 1);  return; }
+    if (act === 'review-dec')  { chgFromCart(dish.id, -1); return; }
+  });
+  /* The modal's option rows carry an OPTION id as well as a dish id, so they resolve through EXTRAS the
+     same way — by lookup, never by concatenation. A separate listener rather than a branch above, so the
+     dish-only actions keep one obvious shape. */
+  document.addEventListener('click', function(ev){
+    const row = ev.target && ev.target.closest ? ev.target.closest('[data-act="extra"]') : null;
+    if (!row) return;
+    const ex = EXTRAS.find(function(x){ return String(x.id) === String(row.getAttribute('data-eid')); });
+    const dish = MENU.find(function(x){ return String(x.id) === String(row.getAttribute('data-pid')); });
+    const inst = parseInt(row.getAttribute('data-inst'), 10);
+    if (!ex || !dish || !isFinite(inst)) return;
+    toggleDetailExtra(ex.id, dish.id, inst);
+  });
+}
+
 /* ── Menu rendering ── */
 function renderMenu(){
   const indiv = MENU.filter(p=>p.cat==='individual');
   const ny    = MENU.filter(p=>p.cat==='ny');
+  /* 🔴 EVERY AUTHORED FIELD GOES THROUGH THE RENDERER FOR ITS OWN CONTEXT — see form-safe-render.js.
+     The id appears only in `id=` and `data-` attributes, never inside a handler: the click is delegated
+     and resolves the id back through MENU (see wireMenuDelegate). safeText is correct for an attribute
+     as well as for body text, and because HTML attribute values are DECODED on parse, escaping here
+     changes the serialization only — getElementById('card-' + p.id) still finds the element it always
+     found, so this is safe AND behaviour-preserving. */
   const card = p => `
-    <div class="pizza-card" id="card-${p.id}" onclick="openDetailModal(${p.id})">
-      <div class="pizza-photo" style="background:${p.img ? '#000' : (p.color||'#C8321A')}">
-        ${p.img
-          ? `<img class="pizza-photo-img" src="${p.img}" alt="${p.name}" loading="lazy" style="display:block">`
-          : `<div class="pizza-photo-label">${p.emoji||'🍕'}</div>`
+    <div class="pizza-card" id="card-${safeText(p.id)}" data-act="open" data-id="${safeText(p.id)}">
+      <div class="pizza-photo" style="background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}">
+        ${safeImgUrl(p.img)
+          ? `<img class="pizza-photo-img" src="${safeImgUrl(p.img)}" alt="${safeText(p.name)}" loading="lazy" style="display:block">`
+          : `<div class="pizza-photo-label">${safeText(p.emoji||'🍕')}</div>`
         }
-        <div class="qty-overlay" onclick="event.stopPropagation()">
-          <div class="qty-controls" id="qty-controls-${p.id}">
-            <button class="qty-ctrl-btn" onclick="chg(${p.id},-1)" id="minus-${p.id}">−</button>
-            <span class="qty-ctrl-num" id="qty-${p.id}">0</span>
-            <button class="qty-ctrl-btn" onclick="chg(${p.id},1)">+</button>
+        <div class="qty-overlay" data-stop="1">
+          <div class="qty-controls" id="qty-controls-${safeText(p.id)}">
+            <button class="qty-ctrl-btn" data-act="dec" data-id="${safeText(p.id)}" id="minus-${safeText(p.id)}">−</button>
+            <span class="qty-ctrl-num" id="qty-${safeText(p.id)}">0</span>
+            <button class="qty-ctrl-btn" data-act="inc" data-id="${safeText(p.id)}">+</button>
           </div>
-          <div class="qty-badge" id="qty-badge-${p.id}" style="display:none" onclick="toggleControls(${p.id})">
-            <span id="qty-badge-num-${p.id}">1</span>
+          <div class="qty-badge" id="qty-badge-${safeText(p.id)}" style="display:none" data-act="badge" data-id="${safeText(p.id)}">
+            <span id="qty-badge-num-${safeText(p.id)}">1</span>
           </div>
-          <button class="qty-add-btn" id="qty-add-${p.id}" onclick="chg(${p.id},1)">+</button>
+          <button class="qty-add-btn" id="qty-add-${safeText(p.id)}" data-act="inc" data-id="${safeText(p.id)}">+</button>
         </div>
       </div>
       <div class="pizza-card-body">
-        <div class="pizza-card-name">${p.name}</div>
-        <div class="pizza-card-desc">${p.desc||''}</div>
+        <div class="pizza-card-name">${safeText(p.name)}</div>
+        <div class="pizza-card-desc">${safeText(p.desc||'')}</div>
         <div class="pizza-card-footer">
-          <span class="pizza-card-price">L ${p.price}</span>
-          <span class="card-extras-indicator" id="extras-indicator-${p.id}" style="display:none">✓ Extras</span>
+          <span class="pizza-card-price">L ${safeText(p.price)}</span>
+          <span class="card-extras-indicator" id="extras-indicator-${safeText(p.id)}" style="display:none">✓ Extras</span>
         </div>
       </div>
     </div>`;
@@ -2837,15 +2896,15 @@ function updateCartReviewBody(){
       ?'<svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 3h12M5 3V2h4v1M2 3l1 9h6l1-9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
       :'−';
     return '<div class="cart-review-item">'
-      +'<div class="cart-review-item-left" onclick="openDetailModal('+p.id+');closeCartReview()">'
-      +'<div class="cart-review-item-name">'+p.name+'</div>'
+      +'<div class="cart-review-item-left" data-act="review-open" data-id="'+safeText(p.id)+'">'
+      +'<div class="cart-review-item-name">'+safeText(p.name)+'</div>'
       +(perPizzaLines.length?perPizzaLines.map(l=>'<div class="cart-review-item-extras">+ '+l+'</div>').join(''):'')
       +'</div>'
       +'<div class="cart-item-right">'
       +'<div class="cart-qty-controls">'
-      +'<button class="cart-qty-btn" onclick="chgFromCart('+p.id+',-1)">'+minIcon+'</button>'
-      +'<span class="cart-qty-num">'+qty[p.id]+'</span>'
-      +'<button class="cart-qty-btn" onclick="chgFromCart('+p.id+',1)">+</button>'
+      +'<button class="cart-qty-btn" data-act="review-dec" data-id="'+safeText(p.id)+'">'+minIcon+'</button>'
+      +'<span class="cart-qty-num">'+safeText(qty[p.id])+'</span>'
+      +'<button class="cart-qty-btn" data-act="review-inc" data-id="'+safeText(p.id)+'">+</button>'
       +'</div>'
       +'<div class="cart-review-item-price">L '+subtotal.toFixed(0)+'</div>'
       +'</div>'
@@ -3192,7 +3251,10 @@ function renderChangeChips(){
   let base=Math.ceil(total/500)*500; if(base<=total) base+=500;
   const amounts=[base];
   const chips=[{label:'Pago exacto',val:total}, ...amounts.map(a=>({label:'L'+a.toLocaleString('en-US'),val:a}))];
-  box.innerHTML=chips.map(c=>`<button type="button" class="change-chip" data-amt="${c.val}" onclick="setCashTendered(${c.val})">${c.label}</button>`).join('');
+  /* 1B Task 8 — delegated like every other control. `c.val` is a computed number, not authored data,
+     so this was never a risk; it is converted so the census rule can be absolute — "no event attribute
+     contains an interpolation" — rather than carrying an allowlist that the next reader has to trust. */
+  box.innerHTML=chips.map(c=>`<button type="button" class="change-chip" data-amt="${c.val}" data-act="tender">${c.label}</button>`).join('');
 }
 function setCashTendered(v){
   document.getElementById('cash-tendered').value=v;
@@ -4310,7 +4372,7 @@ function renderDetailModal() {
   document.getElementById('detail-header-title').textContent = pizza.name;
 
   const pizzaQty = qty[pizzaId] || 0;
-  const photoColor = pizza.color || '#C8321A';
+  const photoColor = safeColor(pizza.color, '#C8321A');   // 1B Task 8 — constrained grammar, not an escape
   const emoji = pizza.emoji || '🍕';
   const desc = pizza.desc || '';
   const isNutella = pizza.name === 'Nutella';
@@ -4318,10 +4380,15 @@ function renderDetailModal() {
   let html = '';
 
   // Hero photo
-  html += `<div class="detail-photo" style="background:${pizza.img ? '#000' : photoColor}">
-    ${pizza.img
-      ? `<img class="detail-photo-img" src="${pizza.img}" alt="${escapeHtml(pizza.name)}">`
-      : `<span class="detail-photo-label">${emoji}</span>`
+  /* The BACKGROUND decides on the policed URL, not the raw one. Deciding on the raw value meant a photo
+     the policy REJECTED still turned the tile black — it took the "there is a photo" branch while the
+     <img> took the "there is not" branch, so the two disagreed about the same field. The colour was
+     then never used, which is also why a mutation that removed its constraint survived: the test could
+     not reach the code it was aiming at. */
+  html += `<div class="detail-photo" style="background:${safeImgUrl(pizza.img) ? '#000' : photoColor}">
+    ${safeImgUrl(pizza.img)
+      ? `<img class="detail-photo-img" src="${safeImgUrl(pizza.img)}" alt="${safeText(pizza.name)}">`
+      : `<span class="detail-photo-label">${safeText(emoji)}</span>`
     }
   </div>`;
 
@@ -4357,13 +4424,13 @@ function renderDetailModal() {
         EXTRAS.filter(e => e.cat === cat).forEach(e => {
           const instExtras = (pizzaExtras[pizzaId] && pizzaExtras[pizzaId][inst]) || {};
           const selected = (instExtras[e.id] || 0) > 0;
-          html += `<div class="detail-extras-row" onclick="toggleDetailExtra('${e.id}',${pizzaId},${inst})">
+          html += `<div class="detail-extras-row" data-act="extra" data-eid="${safeText(e.id)}" data-pid="${safeText(pizzaId)}" data-inst="${inst}">
             <div>
               <span class="detail-extras-name">${escapeHtml(e.name)}</span>
-              <span class="detail-extras-price">+L ${e.price}</span>
+              <span class="detail-extras-price">+L ${safeText(e.price)}</span>
             </div>
             <div class="detail-extras-toggle ${selected ? 'selected' : ''}"
-                 id="detail-tog-${pizzaId}-${inst}-${e.id}">✓</div>
+                 id="detail-tog-${safeText(pizzaId)}-${inst}-${safeText(e.id)}">✓</div>
           </div>`;
         });
         html += `</div>`;
@@ -4387,7 +4454,7 @@ function updateDetailCta() {
   if (!pizza) return;
   const pizzaQty = qty[pizzaId] || 0;
   cta.style.opacity = '1';
-  cta.style.pointerEvents = 'auto';
+  cta.style.pointerEvents = 'auto'; cta.disabled = false;
 
   // KDS 2b: sold-out + not yet in cart → disable the "Agregar" CTA (chg() already freezes
   // the add; this is the matching visual). qty>0 falls through to the normal cart pill so an
@@ -4395,7 +4462,12 @@ function updateDetailCta() {
   if (pizzaQty === 0 && typeof soldOutById === 'function' && soldOutById(pizzaId)) {
     cta.className = 'detail-cta';
     cta.style.opacity = '.5';
-    cta.style.pointerEvents = 'none';
+  /* 🔴 THE REAL `disabled` ATTRIBUTE, not only pointer-events. pointer-events:none stops a mouse and
+     nothing else — keyboard activation and a programmatic .click() both still reach the handler. The
+     handler is guarded (chg refuses an 86'd add), so this was never a money question; it is that a
+     control which looks unavailable should BE unavailable by the same mechanism assistive technology
+     and the keyboard use. Set on a real <button>, so `disabled` is honoured natively. */
+    cta.style.pointerEvents = 'none'; cta.disabled = true;
     cta.innerHTML = '<span>Agotado</span>';
     return;
   }
@@ -4842,6 +4914,7 @@ document.getElementById('closed-overlay').addEventListener('click', function(e){
   tapTimer = setTimeout(()=>{ tapCount = 0; }, 2000);
 });
 
+wireMenuDelegate();
 renderMenu();
 updateTotal();
 updateCart();

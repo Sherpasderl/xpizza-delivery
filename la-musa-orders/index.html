@@ -1566,6 +1566,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAuzSLAELV_MaK2xeXrNjS6_lhNXmD_Y0A&libraries=places&callback=googleMapsReady" async defer></script>
 <!-- KDS Phase 2b · availKey — canonical availability-key encoder (window.availKey); shared byte-identical across KDS/forms/server -->
 <script src="avail-key.js"></script>
+<script src="form-safe-render.js"></script>
 <script src="form-cart.js"></script>
 <script src="form-live-menu.js"></script>
 <script src="form-apply.js"></script>
@@ -2675,53 +2676,113 @@ function renderCategoryShell() {
   if (!tabsEl || !sectionsEl) return;
   tabsEl.innerHTML = CATEGORIES.map((c, i) => (
     '<button class="cat-tab' + (i === 0 ? ' active' : '') +
-    '" data-cat="' + c.id + '" onclick="switchCat(\'' + c.id +
-    '\',this)">' + c.name + '</button>'
+    '" data-cat="' + safeText(c.id) + '" data-act="cat" data-id="' + safeText(c.id) + '">' + safeText(c.name) + '</button>'
   )).join('');
   // Each section: <h2> title + a host div renderMenu fills with grids.
   sectionsEl.innerHTML = CATEGORIES.map(c => (
-    '<section class="menu-section" id="cat-' + c.id + '" data-cat="' + c.id + '">' +
-    '<h2 class="menu-section-title">' + c.name + '</h2>' +
-    '<div class="menu-section-host" id="menu-' + c.id + '"></div>' +
+    '<section class="menu-section" id="cat-' + safeText(c.id) + '" data-cat="' + safeText(c.id) + '">' +
+    '<h2 class="menu-section-title">' + safeText(c.name) + '</h2>' +
+    '<div class="menu-section-host" id="menu-' + safeText(c.id) + '"></div>' +
     '</section>'
   )).join('');
+}
+
+/* ── Portal 1B Task 8 — ONE DELEGATED LISTENER INSTEAD OF AUTHORED-ID HANDLERS ───────────────────
+   🔴 WHY DELEGATION RATHER THAN ESCAPING. The templates used to concatenate an authored id straight
+   into an onclick attribute — data inside a script context, which no escape makes safe in general, and
+   which every future template would have to remember to escape. Delegation removes the class: the id
+   lives in a `data-` attribute (inert), and the only code that runs is this switch. Two further
+   properties fall out, both of which matter for 1B: a re-render can never leave a tile un-wired, and
+   every id is RESOLVED BACK through MENU/EXTRAS rather than coerced, so the handlers still receive the
+   canonical value with its original type.
+   Attached once, at boot, to the document. */
+function wireMenuDelegate(){
+  if (window.__menuDelegateWired) return;
+  window.__menuDelegateWired = true;
+  document.addEventListener('click', function(ev){
+    const t = ev.target;
+    if (!t || !t.closest) return;
+    const actEl = t.closest('[data-act]');
+    if (!actEl) return;
+    /* Reproduces the old `onclick="event.stopPropagation()"` on the qty overlay: a click inside a
+       stop-marked wrapper must not reach an action that ENCLOSES that wrapper. */
+    const stopEl = t.closest('[data-stop]');
+    if (stopEl && stopEl !== actEl && actEl.contains(stopEl)) return;
+    const act = actEl.getAttribute('data-act');
+    if (act === 'tender') {
+      const amt = parseFloat(actEl.getAttribute('data-amt'));
+      if (isFinite(amt)) setCashTendered(amt);
+      return;
+    }
+    const byId = function(list, raw){ return list.find(function(x){ return String(x.id) === String(raw); }); };
+
+    if (act === 'cat') { switchCat(actEl.getAttribute('data-id'), actEl); return; }
+
+    if (act === 'extra' || act === 'staged') {
+      const ex = byId(EXTRAS, actEl.getAttribute('data-eid'));
+      if (!ex) return;                       // an option nothing matches is inert — the safe outcome
+      const delta = parseInt(actEl.getAttribute('data-delta'), 10);
+      if (!isFinite(delta)) return;
+      if (act === 'staged') { chgStagedExtra(ex.id, delta); return; }
+      const dish = byId(MENU, actEl.getAttribute('data-pid'));
+      if (!dish) return;
+      chgDetailExtra(ex.id, dish.id, delta);
+      return;
+    }
+
+    const dish = byId(MENU, actEl.getAttribute('data-id'));
+    if (!dish) return;
+    if (act === 'variant') { selectVariant(dish.id); return; }
+    if (act === 'open')    { openDetailModal(dish.id); return; }
+    if (act === 'inc')     { chg(dish.id, 1);  return; }
+    if (act === 'dec')     { chg(dish.id, -1); return; }
+    if (act === 'badge')   { toggleControls(dish.id); return; }
+    if (act === 'review-open') { openDetailModal(dish.id); closeCartReview(); return; }
+    if (act === 'review-inc')  { chgFromCart(dish.id, 1);  return; }
+    if (act === 'review-dec')  { chgFromCart(dish.id, -1); return; }
+  });
 }
 
 function renderMenu() {
   // Card template — chunk 1 omitted the photo onclick; chunk 3 re-added
   // it conditionally for items with extras.
   const card = p => (
-    '<div class="pizza-card" id="card-' + p.id + '">' +
+    '<div class="pizza-card" id="card-' + safeText(p.id) + '">' +
+      /* 🔴 1B Task 8 — every authored field through its own renderer; the id only ever lands in a
+         `data-` attribute, never inside a handler. See form-safe-render.js and wireMenuDelegate. */
       '<div class="pizza-photo" '
-       + (itemHasExtras(p) ? 'onclick="openDetailModal(\'' + p.id + '\')" style="cursor:pointer;background:' : 'style="background:')
-       + (p.color || '#13100E') + '">' +
+       + (itemHasExtras(p) ? 'data-act="open" data-id="' + safeText(p.id) + '" style="cursor:pointer;background:' : 'style="background:')
+       + safeColor(p.color, '#13100E') + '">' +
         // LA_MUSA_CARD_IMG_FIX: emoji only renders when the
         // dish has no real photo (graceful fallback).
-        (HAS_PHOTO.has(p.id) ? '' : '<div class="pizza-photo-label">' + (p.emoji || '•') + '</div>') +
-        (HAS_PHOTO.has(p.id) ? '<img class="pizza-photo-img" loading="lazy" decoding="async" alt="" src="images/' + p.id + '-card.webp" onerror="this.remove()">' : '') +
+        (HAS_PHOTO.has(p.id) ? '' : '<div class="pizza-photo-label">' + safeText(p.emoji || '•') + '</div>') +
+        /* The photo path is BUILT from the id rather than authored, so the policy is applied to the
+           assembled URL: an id carrying a quote or a scheme cannot produce a src attribute at all. */
+        (HAS_PHOTO.has(p.id) && safeImgUrl('images/' + p.id + '-card.webp')
+          ? '<img class="pizza-photo-img" loading="lazy" decoding="async" alt="" src="' + safeImgUrl('images/' + p.id + '-card.webp') + '" onerror="this.remove()">' : '') +
         (itemIsLauncher(p)
-          ? '<div class="qty-overlay" onclick="event.stopPropagation()">' +
-              '<button class="qty-add-btn" aria-label="Personalizar" onclick="openDetailModal(\'' + p.id + '\')">+</button>' +
+          ? '<div class="qty-overlay" data-stop="1">' +
+              '<button class="qty-add-btn" aria-label="Personalizar" data-act="open" data-id="' + safeText(p.id) + '">+</button>' +
             '</div>'
-          : '<div class="qty-overlay" onclick="event.stopPropagation()">' +
-              '<div class="qty-controls" id="qty-controls-' + p.id + '">' +
-                '<button class="qty-ctrl-btn" onclick="chg(\'' + p.id + '\',-1)" id="minus-' + p.id + '">−</button>' +
-                '<span class="qty-ctrl-num" id="qty-' + p.id + '">0</span>' +
-                '<button class="qty-ctrl-btn" onclick="chg(\'' + p.id + '\',1)">+</button>' +
+          : '<div class="qty-overlay" data-stop="1">' +
+              '<div class="qty-controls" id="qty-controls-' + safeText(p.id) + '">' +
+                '<button class="qty-ctrl-btn" data-act="dec" data-id="' + safeText(p.id) + '" id="minus-' + safeText(p.id) + '">−</button>' +
+                '<span class="qty-ctrl-num" id="qty-' + safeText(p.id) + '">0</span>' +
+                '<button class="qty-ctrl-btn" data-act="inc" data-id="' + safeText(p.id) + '">+</button>' +
               '</div>' +
-              '<div class="qty-badge" id="qty-badge-' + p.id + '" style="display:none" onclick="toggleControls(\'' + p.id + '\')">' +
-                '<span id="qty-badge-num-' + p.id + '">1</span>' +
+              '<div class="qty-badge" id="qty-badge-' + safeText(p.id) + '" style="display:none" data-act="badge" data-id="' + safeText(p.id) + '">' +
+                '<span id="qty-badge-num-' + safeText(p.id) + '">1</span>' +
               '</div>' +
-              '<button class="qty-add-btn" id="qty-add-' + p.id + '" onclick="chg(\'' + p.id + '\',1)">+</button>' +
+              '<button class="qty-add-btn" id="qty-add-' + safeText(p.id) + '" data-act="inc" data-id="' + safeText(p.id) + '">+</button>' +
             '</div>') +
       '</div>' +
       '<div class="pizza-card-body">' +
         badgeHtmlFor(p) +
-        '<div class="pizza-card-name">' + p.name + '</div>' +
-        '<div class="pizza-card-desc">' + (p.desc || '') + '</div>' +
+        '<div class="pizza-card-name">' + safeText(p.name) + '</div>' +
+        '<div class="pizza-card-desc">' + safeText(p.desc || '') + '</div>' +
         '<div class="pizza-card-footer">' +
-          /* LA_MUSA_CURRENCY_PREFIX */ '<span class="pizza-card-price">' + (itemIsLauncher(p) ? 'desde L ' + VARIANT_ITEMS[p.id].basePrice : (p.price > 0 ? 'L ' + p.price : '—')) + '</span>' +
-          '<span class="card-extras-indicator" id="extras-indicator-' + p.id + '" style="display:none">✓ Extras</span>' +
+          /* LA_MUSA_CURRENCY_PREFIX */ '<span class="pizza-card-price">' + (itemIsLauncher(p) ? 'desde L ' + safeText(VARIANT_ITEMS[p.id].basePrice) : (p.price > 0 ? 'L ' + safeText(p.price) : '—')) + '</span>' +
+          '<span class="card-extras-indicator" id="extras-indicator-' + safeText(p.id) + '" style="display:none">✓ Extras</span>' +
           /* LA_MUSA_POLISH_V1: removed dead 'Extras →' hint (modal opens via photo tap) */
         '</div>' +
       '</div>' +
@@ -2738,18 +2799,18 @@ function renderMenu() {
     const isPending = !(p.price > 0);
     const meta = isPending
       ? '<span class="bev-row-pending">Próximamente</span>'
-      : '<span class="bev-row-price">L ' + p.price + '</span>' +
+      : '<span class="bev-row-price">L ' + safeText(p.price) + '</span>' +
         '<span class="bev-row-actions">' +
-          '<button class="qty-add-btn" id="qty-add-' + p.id + '" onclick="chg(\'' + p.id + '\',1)">+</button>' +
-          '<span class="qty-controls" id="qty-controls-' + p.id + '">' +
-            '<button class="qty-ctrl-btn" onclick="chg(\'' + p.id + '\',-1)" id="minus-' + p.id + '">−</button>' +
-            '<span class="qty-ctrl-num" id="qty-' + p.id + '">0</span>' +
-            '<button class="qty-ctrl-btn" onclick="chg(\'' + p.id + '\',1)">+</button>' +
+          '<button class="qty-add-btn" id="qty-add-' + safeText(p.id) + '" data-act="inc" data-id="' + safeText(p.id) + '">+</button>' +
+          '<span class="qty-controls" id="qty-controls-' + safeText(p.id) + '">' +
+            '<button class="qty-ctrl-btn" data-act="dec" data-id="' + safeText(p.id) + '" id="minus-' + safeText(p.id) + '">−</button>' +
+            '<span class="qty-ctrl-num" id="qty-' + safeText(p.id) + '">0</span>' +
+            '<button class="qty-ctrl-btn" data-act="inc" data-id="' + safeText(p.id) + '">+</button>' +
           '</span>' +
         '</span>';
     return (
-      '<div class="bev-row" id="card-' + p.id + '">' +
-        '<span class="bev-row-name">' + p.name + '</span>' +
+      '<div class="bev-row" id="card-' + safeText(p.id) + '">' +
+        '<span class="bev-row-name">' + safeText(p.name) + '</span>' +
         '<span class="bev-row-meta">' + meta + '</span>' +
       '</div>'
     );
@@ -3302,15 +3363,15 @@ function updateCartReviewBody(){
       ?'<svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 3h12M5 3V2h4v1M2 3l1 9h6l1-9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
       :'−';
     return '<div class="cart-review-item">'
-      +'<div class="cart-review-item-left" onclick="openDetailModal(\''+p.id+'\');closeCartReview()">'
-      +'<div class="cart-review-item-name">'+p.name+'</div>'
+      +'<div class="cart-review-item-left" data-act="review-open" data-id="'+safeText(p.id)+'">'
+      +'<div class="cart-review-item-name">'+safeText(p.name)+'</div>'
       +(perPizzaLines.length?perPizzaLines.map(l=>'<div class="cart-review-item-extras">+ '+l+'</div>').join(''):'')
       +'</div>'
       +'<div class="cart-item-right">'
       +'<div class="cart-qty-controls">'
-      +'<button class="cart-qty-btn" onclick="chgFromCart(\''+p.id+'\',-1)">'+minIcon+'</button>'
-      +'<span class="cart-qty-num">'+qty[p.id]+'</span>'
-      +'<button class="cart-qty-btn" onclick="chgFromCart(\''+p.id+'\',1)">+</button>'
+      +'<button class="cart-qty-btn" data-act="review-dec" data-id="'+safeText(p.id)+'">'+minIcon+'</button>'
+      +'<span class="cart-qty-num">'+safeText(qty[p.id])+'</span>'
+      +'<button class="cart-qty-btn" data-act="review-inc" data-id="'+safeText(p.id)+'">+</button>'
       +'</div>'
       +'<div class="cart-review-item-price">L '+subtotal.toFixed(0)+'</div>'
       +'</div>'
@@ -4334,7 +4395,10 @@ function renderChangeChips(){
   let base=Math.ceil(total/500)*500; if(base<=total) base+=500;
   const amounts=[base];
   const chips=[{label:'Pago exacto',val:total}, ...amounts.map(a=>({label:'L'+a.toLocaleString('en-US'),val:a}))];
-  box.innerHTML=chips.map(c=>`<button type="button" class="change-chip" data-amt="${c.val}" onclick="setCashTendered(${c.val})">${c.label}</button>`).join('');
+  /* 1B Task 8 — delegated like every other control. `c.val` is a computed number, not authored data,
+     so this was never a risk; it is converted so the census rule can be absolute — "no event attribute
+     contains an interpolation" — rather than carrying an allowlist that the next reader has to trust. */
+  box.innerHTML=chips.map(c=>`<button type="button" class="change-chip" data-amt="${c.val}" data-act="tender">${c.label}</button>`).join('');
 }
 function setCashTendered(v){
   document.getElementById('cash-tendered').value=v;
@@ -4748,7 +4812,7 @@ function renderDetailModal() {
   // Variants (e.g. Pad Thai - Pollo) borrow the launcher dish's photo via variantOf.
   const photoId = pizza.variantOf || pizzaId;
   const heroImg = HAS_PHOTO.has(photoId)
-    ? `<img class="detail-photo-img" loading="eager" decoding="async" alt="" src="images/${photoId}-hero.webp" onerror="this.remove()">`
+    ? `<img class="detail-photo-img" loading="eager" decoding="async" alt="" src="${safeImgUrl('images/' + photoId + '-hero.webp')}" onerror="this.remove()">`
     : '';
   // LA_MUSA_CARD_IMG_FIX: emoji only renders when no photo exists.
   const detailEmojiHtml = HAS_PHOTO.has(photoId)
@@ -4817,11 +4881,11 @@ function renderDetailModal() {
           </div>
           <div class="detail-extras-stepper-wrap">
             ${currentQty === 0
-              ? `<button class="qty-add-btn detail-extras-add-btn" onclick="chgDetailExtra('${e.id}','${pizzaId}',1)">+</button>`
+              ? `<button class="qty-add-btn detail-extras-add-btn" data-act="extra" data-eid="${safeText(e.id)}" data-pid="${safeText(pizzaId)}" data-delta="1">+</button>`
               : `<div class="qty-controls visible detail-extras-pill">
-                   <button class="qty-ctrl-btn" onclick="chgDetailExtra('${e.id}','${pizzaId}',-1)">${extrasMinus}</button>
+                   <button class="qty-ctrl-btn" data-act="extra" data-eid="${safeText(e.id)}" data-pid="${safeText(pizzaId)}" data-delta="-1">${extrasMinus}</button>
                    <span class="qty-ctrl-num" id="detail-extra-num-${pizzaId}-${e.id}">${currentQty}</span>
-                   <button class="qty-ctrl-btn" onclick="chgDetailExtra('${e.id}','${pizzaId}',1)">+</button>
+                   <button class="qty-ctrl-btn" data-act="extra" data-eid="${safeText(e.id)}" data-pid="${safeText(pizzaId)}" data-delta="1">+</button>
                  </div>`
             }
           </div>
@@ -4842,7 +4906,7 @@ function renderLauncherModal(pizza) {
   const cfg = VARIANT_ITEMS[pizza.id];
   const photoColor = pizza.color || '#C8321A';
   const heroImg = HAS_PHOTO.has(pizza.id)
-    ? `<img class="detail-photo-img" loading="eager" decoding="async" alt="" src="images/${pizza.id}-hero.webp" onerror="this.remove()">` : '';
+    ? `<img class="detail-photo-img" loading="eager" decoding="async" alt="" src="${safeImgUrl('images/' + pizza.id + '-hero.webp')}" onerror="this.remove()">` : '';
   const emojiHtml = HAS_PHOTO.has(pizza.id) ? '' : `<span class="detail-photo-label">${pizza.emoji || '🍜'}</span>`;
   let html = `<div class="detail-photo" style="background:${photoColor}">${emojiHtml}${heroImg}</div>`;
   html += `<div class="detail-body">
@@ -4859,7 +4923,7 @@ function renderLauncherModal(pizza) {
     const delta = v.price - cfg.basePrice;
     const priceLabel = delta > 0 ? `+L ${delta}` : `L ${v.price}`;
     const sel = stagedVariantId === vid;
-    html += `<div class="detail-variant-row${sel ? ' sel' : ''}" onclick="selectVariant('${vid}')">
+    html += `<div class="detail-variant-row${sel ? ' sel' : ''}" data-act="variant" data-id="${safeText(vid)}">
       <div><span class="detail-extras-name">${escapeHtml(v.choice)}</span>
       <span class="detail-extras-price">${priceLabel}</span></div>
       <span class="detail-variant-radio"></span>
@@ -4878,8 +4942,8 @@ function renderLauncherModal(pizza) {
         <span class="detail-extras-price">+L ${e.price}</span></div>
         <div class="detail-extras-stepper-wrap">${
           q === 0
-            ? `<button class="qty-add-btn detail-extras-add-btn" onclick="chgStagedExtra('${e.id}',1)">+</button>`
-            : `<div class="qty-controls visible detail-extras-pill"><button class="qty-ctrl-btn" onclick="chgStagedExtra('${e.id}',-1)">−</button><span class="qty-ctrl-num">${q}</span><button class="qty-ctrl-btn" onclick="chgStagedExtra('${e.id}',1)">+</button></div>`
+            ? `<button class="qty-add-btn detail-extras-add-btn" data-act="staged" data-eid="${safeText(e.id)}" data-delta="1">+</button>`
+            : `<div class="qty-controls visible detail-extras-pill"><button class="qty-ctrl-btn" data-act="staged" data-eid="${safeText(e.id)}" data-delta="-1">−</button><span class="qty-ctrl-num">${q}</span><button class="qty-ctrl-btn" data-act="staged" data-eid="${safeText(e.id)}" data-delta="1">+</button></div>`
         }</div></div>`;
     });
     html += `</div>`;
@@ -4914,10 +4978,15 @@ function updateDetailCta() {
   const pizza = MENU.find(p => p.id === pizzaId);
   if (!pizza) return;
   if (itemIsLauncher(pizza)) {
-    cta.style.opacity = '1'; cta.style.pointerEvents = 'auto';
+    cta.style.opacity = '1'; cta.style.pointerEvents = 'auto'; cta.disabled = false;
     if (!stagedVariantId) {
       cta.className = 'detail-cta';
-      cta.style.opacity = '.5'; cta.style.pointerEvents = 'none';
+  /* 🔴 THE REAL `disabled` ATTRIBUTE, not only pointer-events. pointer-events:none stops a mouse and
+     nothing else — keyboard activation and a programmatic .click() both still reach the handler. The
+     handler is guarded (chg refuses an 86'd add), so this was never a money question; it is that a
+     control which looks unavailable should BE unavailable by the same mechanism assistive technology
+     and the keyboard use. Set on a real <button>, so `disabled` is honoured natively. */
+      cta.style.opacity = '.5'; cta.style.pointerEvents = 'none'; cta.disabled = true;
       cta.innerHTML = '<span>Elegí una proteína</span>';
       return;
     }
@@ -4932,7 +5001,7 @@ function updateDetailCta() {
     if (v && typeof isSoldOut === 'function' && isSoldOut(v)) {
       cta.className = 'detail-cta';
       cta.style.opacity = '.5';
-      cta.style.pointerEvents = 'none';
+      cta.style.pointerEvents = 'none'; cta.disabled = true;
       cta.innerHTML = '<span>Agotado</span>';
       return;
     }
@@ -4948,7 +5017,7 @@ function updateDetailCta() {
   }
   const pizzaQty = qty[pizzaId] || 0;
   cta.style.opacity = '1';
-  cta.style.pointerEvents = 'auto';
+  cta.style.pointerEvents = 'auto'; cta.disabled = false;
 
   // KDS 2b: sold-out + not yet in cart → disable the "Agregar" CTA (chg() already freezes
   // the add; this is the matching visual). qty>0 falls through to the normal cart pill so an
@@ -4956,7 +5025,7 @@ function updateDetailCta() {
   if (pizzaQty === 0 && typeof soldOutById === 'function' && soldOutById(pizzaId)) {
     cta.className = 'detail-cta';
     cta.style.opacity = '.5';
-    cta.style.pointerEvents = 'none';
+    cta.style.pointerEvents = 'none'; cta.disabled = true;
     cta.innerHTML = '<span>Agotado</span>';
     return;
   }
@@ -5363,6 +5432,7 @@ document.getElementById('closed-overlay').addEventListener('click', function(e){
 });
 
 renderCategoryShell();
+wireMenuDelegate();
 renderMenu();
 handlePaymentReturn();   // if we arrived back from the hosted checkout (?pay=…), show the outcome
 

@@ -1234,7 +1234,124 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: an open modal's CTA follows a poll that flips availability`);
   }
 
-  // ── 39. 🔴 THE SAVED MODE IS LOAD-BEARING — THE STALE TENDER/FLAG PAIR ──
+  /* ══ 1B TASK 8 — AUTHORED STRINGS ARE RENDERED BY CONTEXT ══════════════════════════════════════
+     1A validates and publishes the catalog and is the primary control. These checks are the second
+     line: they assume something got through it, and assert that a hostile authored value is INERT in
+     every context the forms render into — not merely escaped for body text, which is the usual way a
+     page that "escapes everything" still executes. */
+
+  // ── 39. 🔴 A HOSTILE CATALOG IS INERT IN EVERY CONTEXT ──
+  {
+    const w = loadForm(dir);
+    const m = B.menu(w);
+    const first = m.dishes[0];
+    m.dishes[0] = {
+      ...first,
+      name: '<img src=x onerror="window.__XSS=1">',                    // body text + alt attribute
+      desc: '</div><script>window.__XSS=1</script>',                   // body text, tag-closing
+      color: 'red;background:url(javascript:alert(1))',                // CSS context
+      img: 'javascript:window.__XSS=1',                                // URL context
+      emoji: '<b onclick="window.__XSS=1">x</b>',                      // body text
+    };
+    await serve(w, envelope(B.rid, m));
+    assert.strictEqual(w.liveMenuGlobalGet('MENU')[0].name, first.name === undefined ? undefined : m.dishes[0].name,
+      `${dir}: non-vacuity — the hostile snapshot was ACCEPTED (validation is not an XSS filter)`);
+
+    const card = w.document.getElementById('card-' + first.id);
+    assert.ok(card, `${dir}: the tile rendered`);
+    assert.strictEqual(w.__XSS, undefined, `${dir}: 🔴 nothing executed`);
+    // TEXT: the payload is present as text, and produced no elements.
+    assert.ok(card.textContent.includes('onerror'), `${dir}: the hostile name is shown as TEXT…`);
+    /* la_musa's own photo <img> legitimately carries onerror="this.remove()", so "is there an img with
+       an onerror" matches a real element and says nothing. The question is whether the PAYLOAD produced
+       one — asked by looking for its fingerprint. */
+    assert.deepStrictEqual([...card.querySelectorAll('img')].filter((im) => /__XSS/.test(im.getAttribute('onerror') || '')), [],
+      `${dir}: …and created no img element of its own`);
+    assert.strictEqual(card.querySelector('script'), null, `${dir}: the desc payload created no script element`);
+    assert.strictEqual(card.querySelector('b[onclick]'), null, `${dir}: the emoji payload created no element`);
+    // URL: a javascript: src must not reach the DOM at all.
+    const imgs = [...card.querySelectorAll('img')];
+    imgs.forEach((im) => assert.ok(!/javascript:/i.test(im.getAttribute('src') || ''),
+      `${dir}: 🔴 no img carries a javascript: URL`));
+    // CSS: the injected declaration must not survive into the style attribute.
+    const photo = card.querySelector('.pizza-photo');
+    assert.ok(!/javascript:/i.test(photo.getAttribute('style') || ''),
+      `${dir}: 🔴 the hostile colour did not reach the style attribute`);
+    ok(`${dir}: a hostile catalog renders inert in text, attribute, URL and CSS contexts`);
+  }
+
+  // ── 40. 🔴 …INCLUDING AN IDENTIFIER THAT USED TO REACH A HANDLER ──
+  // The id was concatenated into onclick="chg(<id>,1)". No escape makes that generally safe, so the
+  // class was removed: ids live in data- attributes and one delegated listener resolves them by lookup.
+  {
+    const w = loadForm(dir);
+    const m = B.menu(w);
+    const hostileId = dir === 'xpizza-orders' ? '9\" onmouseover=\"window.__XSS=1' : 'x\" onmouseover=\"window.__XSS=1';
+    m.dishes = m.dishes.concat([{ ...m.dishes[0], id: hostileId, name: 'Hostil' }]);
+    await serve(w, envelope(B.rid, m));
+    assert.ok(w.liveMenuGlobalGet('MENU').some((d) => d.id === hostileId),
+      `${dir}: non-vacuity — the hostile id was accepted into MENU`);
+
+    /* 🔴 ASSERTED ON THE DOM, NOT ON THE SERIALIZED STRING. innerHTML round-trips the ESCAPED value, so
+       `data-id="9&quot; onmouseover=…"` contains the literal text `onmouseover=` while being nothing but
+       an attribute value — a string search reports an injection that does not exist. What matters is
+       whether an element actually HAS such an attribute, so that is what is checked. */
+    const all = containersOf(w).flatMap((id) => {
+      const el = w.document.getElementById(id);
+      return el ? [...el.querySelectorAll('*')] : [];
+    });
+    assert.ok(all.length > 5, `${dir}: non-vacuity — there are elements to inspect`);
+    const eventAttrs = all.flatMap((el) => [...el.attributes].filter((a) => /^on/i.test(a.name)));
+    const describe = (a) => `${a.ownerElement.tagName}.${a.ownerElement.className}[${a.name}="${a.value.slice(0, 60)}"]`;
+    const injected = eventAttrs.filter((a) => a.value.includes('__XSS') || a.value.includes(hostileId));
+    assert.strictEqual(injected.length, 0,
+      `${dir}: 🔴 no element may carry an event attribute built from authored data — found: ${injected.map(describe).join(' | ')}`);
+    assert.strictEqual(w.__XSS, undefined, `${dir}: nothing executed`);
+    ok(`${dir}: an authored identifier cannot reach an event handler`);
+  }
+
+  // ── 41. THE DELEGATED LISTENER STILL DOES THE JOB — clicked, not called ──
+  // Removing the inline handlers is only safe if the controls still work, and the tests everywhere else
+  // call chg()/openDetailModal() directly, so they would not notice. These click.
+  {
+    const w = loadForm(dir);
+    const dish = w.liveMenuGlobalGet('MENU').find((d) => !w.document.getElementById('qty-add-' + d.id) === false);
+    const addBtn = w.document.getElementById('qty-add-' + dish.id);
+    assert.ok(addBtn, `${dir}: the add control exists`);
+    addBtn.click();
+    assert.strictEqual(w.cartItemCount(), 1, `${dir}: 🔴 clicking + adds through the delegate`);
+    addBtn.click();
+    assert.strictEqual(w.cartItemCount(), 2, `${dir}: …and again`);
+    const minus = w.document.getElementById('minus-' + dish.id);
+    if (minus) { minus.click(); assert.strictEqual(w.cartItemCount(), 1, `${dir}: and − removes`); }
+
+    // The card opens the modal…
+    const w2 = loadForm(dir);
+    const d2 = w2.liveMenuGlobalGet('MENU')[0];
+    const card2 = w2.document.getElementById('card-' + d2.id);
+    const target = dir === 'xpizza-orders' ? card2 : card2.querySelector('.pizza-photo[data-act="open"]') || card2;
+    target.click();
+    assert.ok(w2.document.getElementById('detail-modal').className.includes('open'),
+      `${dir}: clicking the tile opens the detail modal`);
+    /* …ON THE RIGHT DISH. "It opened" is too weak: openDetailModal adds the open class BEFORE it
+       resolves the id, so a delegate that passed the raw attribute string (x_pizza's ids are numbers,
+       and '2' === 2 is false) still opened an EMPTY modal and passed. The title is what proves the id
+       was resolved back to a real dish. */
+    assert.strictEqual(w2.document.getElementById('detail-header-title').textContent, d2.name,
+      `${dir}: 🔴 …and on the dish that was clicked — the id was resolved, not passed through raw`);
+
+    // …but a click on the quantity overlay's own space does not, exactly as stopPropagation did.
+    const w3 = loadForm(dir);
+    const d3 = w3.liveMenuGlobalGet('MENU')[0];
+    const overlay = w3.document.getElementById('card-' + d3.id).querySelector('.qty-overlay');
+    assert.ok(overlay, `${dir}: the overlay exists`);
+    overlay.click();
+    assert.ok(!w3.document.getElementById('detail-modal').className.includes('open'),
+      `${dir}: 🔴 a click on the overlay itself still does NOT open the modal (stopPropagation preserved)`);
+    ok(`${dir}: the delegated listener drives add, remove, open — and preserves stopPropagation`);
+  }
+
+  // ── 42. 🔴 THE SAVED MODE IS LOAD-BEARING — THE STALE TENDER/FLAG PAIR ──
   //
   // Found by the gate, and it is the case that justifies assigning the mode rather than re-deriving it.
   // A quote lands while the customer sits in exact mode: the success handler updates key/cents and
