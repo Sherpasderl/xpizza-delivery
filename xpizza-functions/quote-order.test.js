@@ -147,15 +147,21 @@ ok('fail-soft: 5 bad-cart shapes → { ok:false } with NO total (the client keep
     // returns across all of them would measure something nobody is claiming.
     const rsq = block.slice(block.indexOf('function requestServerQuote'), block.indexOf('\n}', block.indexOf('function requestServerQuote')));
     assert.ok(rsq.length > 200, `${rid}: non-vacuity — requestServerQuote was actually sliced out`);
-    assert.strictEqual((rsq.match(/supersedeQuoteRequests\(\);/g) || []).length, 3,
-      `${rid}: exactly the three no-fire returns may supersede`);
+    assert.strictEqual((rsq.match(/supersedeQuoteRequests\(\);/g) || []).length, 4,
+      `${rid}: the three no-fire returns AND the outer catch supersede`);
+    /* 🔴 THE EXCEPTIONAL EXIT COUNTS AS A WAY OUT. The counts below cover NORMAL completion only, and
+       saying "all ways out" while measuring just the returns was the gap: a throw before the token is
+       taken leaves the previous request's token current, and the swallowed error hid it. Asserted
+       separately because it is reached by a different mechanism and a return-count can never see it. */
+    assert.ok(/\}catch\(_\)\{[\s\S]{0,1800}supersedeQuoteRequests\(\);\s*\n\s*\}/.test(rsq),
+      `${rid}: the outer catch must supersede — a synchronous failure leaves the state indeterminate`);
     assert.ok(/if\(__serverQuote\.inflightKey===key\) return;/.test(rsq),
       `${rid}: …and the same-cart dedupe returns WITHOUT superseding the reply it is waiting for`);
     /* Counted at the FUNCTION's own indentation: a bare `return;` count also picks up the two guards
        inside the promise handlers, which are not ways out of requestServerQuote at all. Asserting 6 and
        explaining it away would have been a count that measured something nobody is claiming. */
     assert.strictEqual((rsq.match(/\n    \S[^\n]*\breturn;/g) || []).length, 4,
-      `${rid}: requestServerQuote still has exactly four ways out — a new one needs its own decision`);
+      `${rid}: requestServerQuote still has exactly four NORMAL ways out — a new one needs its own decision`);
     assert.strictEqual((rsq.match(/\n        \S[^\n]*\breturn;/g) || []).length, 2,
       `${rid}: …and the two handler guards (success + rejection) are both still there`);
     assert.ok(!/__serverQuote\.inflight\s*===?\s*key\b/.test(block),

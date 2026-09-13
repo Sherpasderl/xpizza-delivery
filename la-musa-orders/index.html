@@ -2920,9 +2920,10 @@ function getServerQuoteTotalCents(){
 }
 function requestServerQuote(){
   try{
-    /* THE FOUR WAYS OUT OF THIS FUNCTION, and why each either supersedes or must not. Written out
-       because "every transition supersedes" is only worth saying if it can be checked against the
-       returns, and the one that was missed looked innocuous precisely because it fires nothing.
+    /* THE WAYS OUT OF THIS FUNCTION, and why each either supersedes or must not. Written out because
+       "every transition supersedes" is only worth saying if it can be checked against them, and the one
+       that was missed looked innocuous precisely because it fires nothing. FIVE, not four: the outer
+       catch below is an exit too, and an exit that leaves the quote state indeterminate.
 
        1. A REDEMPTION OWNS THE TOTAL → supersede. The quote is not displayed while a redemption is
           active, but a reply landing now still OVERWRITES the cached one for the cart on screen — and
@@ -2984,7 +2985,24 @@ function requestServerQuote(){
         if(__serverQuote.inflight!==token) return;   // a different request is current — ignore, exactly as the success path does
         __serverQuote.inflight=null; __serverQuote.inflightKey=null; __serverQuote.key=null; __serverQuote.cents=null;
       });
-  }catch(_){ }
+  }catch(_){
+    /* 🔴 THE EXCEPTIONAL EXIT SUPERSEDES TOO — the floor under "no path leaves a stale request live".
+       If anything above throws BEFORE the token is taken (building the cart items, say), this swallowed
+       the error and left the PREVIOUS request's token current; that request then settled, passed the
+       guard, cleared the cache of the cart on screen, and the next exact-mode updateTotal lowered the
+       tender. Not reachable with valid cart data today, which is exactly why it belongs here rather
+       than in a scenario: the guarantee should hold on every control-flow path, not on the ones anyone
+       thought to enumerate.
+       Superseding is the safe outcome in an indeterminate state — the cost is at worst a lost advisory
+       quote (the display falls open to calcTotal, and the server re-prices every order regardless),
+       never a wrong charge.
+       It cannot orphan a request that is genuinely in flight: the token is taken immediately before
+       fetch(), and the .then/.catch are attached in the same expression with nothing after it — so a
+       throw reaching here either happened before issuance, or is fetch() itself failing to issue.
+       Case 4 (a request already in flight for this cart) returns normally and never reaches here, so
+       its deliberate abstention is untouched. */
+    supersedeQuoteRequests();
+  }
 }
 function redeemAdjustedTotal(){
   // Display precedence: a redemption's server quote → the server ORDER quote (2a) → the client total.

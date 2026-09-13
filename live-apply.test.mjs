@@ -710,6 +710,7 @@ for (const dir of Object.keys(BRAND)) {
   for (const fault of ['single', 'double']) {
   for (const settleAs of ['resolve', 'reject']) {
   for (const order of ['duplicate-first', 'original-first']) {
+  for (const pairing of ['agree', 'mixed']) {
     const w = loadForm(dir);
     w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);
     w.selectPay('cash');
@@ -729,7 +730,7 @@ for (const dir of Object.keys(BRAND)) {
     const menuBody = envelope(B.rid, (() => { const m = B.menu(w); m.dishes[0] = { ...m.dishes[0], name: 'Should Not Survive' }; return m; })());
     w.__serverQuote.inflight = null; w.__serverQuote.inflightKey = null;
     w.updateTotal();                                   // issues the original request
-    assert.ok(w.__serverQuote.inflightKey, `${dir}/${mode}/${fault}/${settleAs}/${order}: non-vacuity — an original request is outstanding`);
+    assert.ok(w.__serverQuote.inflightKey, `${dir}/${mode}/${fault}/${settleAs}/${order}/${pairing}: non-vacuity — an original request is outstanding`);
 
     // The customer's state, set AFTER the original went out.
     w.__serverQuote.key = w.serverQuoteCartKey();
@@ -758,41 +759,42 @@ for (const dir of Object.keys(BRAND)) {
     w.onCashTenderedInput = realTender;
 
     const st = w.__liveMenu.applier.state();
-    assert.ok(st.lastError || st.fatal, `${dir}/${mode}/${fault}/${settleAs}/${order}: non-vacuity — the apply failed`);
+    assert.ok(st.lastError || st.fatal, `${dir}/${mode}/${fault}/${settleAs}/${order}/${pairing}: non-vacuity — the apply failed`);
     if (fault === 'double') assert.ok(st.fatal, `${dir}/${mode}/${fault}: non-vacuity — the recovery failed too`);
     assert.ok(w.__calls.filter((u) => /quote/i.test(u)).length > quoteCallsBefore,
-      `${dir}/${mode}/${fault}/${settleAs}/${order}: non-vacuity — a DUPLICATE same-cart request really was started`);
+      `${dir}/${mode}/${fault}/${settleAs}/${order}/${pairing}: non-vacuity — a DUPLICATE same-cart request really was started`);
 
     // Both outstanding requests settle, the orphan-under-test first.
     const good = { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ ok: true, total_cents: quotedCents - 5000 }) };
     const fire = (d, how) => (how === 'resolve' ? d.resolve(good) : d.reject(new Error('quote failed')));
-    /* Both ORDERS and MIXED outcomes. The committed matrix always settled the duplicate first with the
-       two replies agreeing, which leaves "the original settles first" and "one succeeds while the other
-       fails" unexercised — and those are the interleavings an orphan guard is most likely to get wrong.
-       `settleAs` names what the FIRST reply does; the second does the opposite. */
+    /* Both ORDERS and both PAIRINGS. The first committed matrix always settled the duplicate first with
+       the replies agreeing; widening it to mixed outcomes REPLACED those cases rather than adding to
+       them, which narrowed coverage while the count went up. `pairing` keeps both: 'agree' is the
+       original combination, 'mixed' the one that exercises a guard seeing a success and a failure for
+       the same cart. `settleAs` names what the FIRST reply does. */
     const [firstD, secondD] = (order === 'duplicate-first') ? [settleDuplicate, settleOriginal] : [settleOriginal, settleDuplicate];
     fire(firstD, settleAs);
     await settle();
-    fire(secondD, settleAs === 'resolve' ? 'reject' : 'resolve');
+    fire(secondD, pairing === 'agree' ? settleAs : (settleAs === 'resolve' ? 'reject' : 'resolve'));
     await settle();
 
     assert.strictEqual(w.__serverQuote.cents, quotedCents,
-      `${dir}/${mode}/${fault}/${settleAs}/${order}: 🔴 no orphaned request may overwrite the restored quote`);
+      `${dir}/${mode}/${fault}/${settleAs}/${order}/${pairing}: 🔴 no orphaned request may overwrite the restored quote`);
     w.updateTotal();
     assert.strictEqual(box().value, tenderBefore,
-      `${dir}/${mode}/${fault}/${settleAs}/${order}: 🔴 …so the customer still pays what they chose`);
+      `${dir}/${mode}/${fault}/${settleAs}/${order}/${pairing}: 🔴 …so the customer still pays what they chose`);
     // …and the MODE came through: move the total and see which way the tender goes.
     w.__serverQuote.cents = quotedCents - 500;
     w.updateTotal();
     if (mode === 'exact') {
       assert.strictEqual(Number(box().value), (quotedCents - 500) / 100,
-        `${dir}/exact/${fault}/${settleAs}/${order}: an exact tender still follows the total`);
+        `${dir}/exact/${fault}/${settleAs}/${order}/${pairing}: an exact tender still follows the total`);
     } else {
       assert.strictEqual(box().value, tenderBefore,
-        `${dir}/custom/${fault}/${settleAs}/${order}: a custom tender still does not follow the total`);
+        `${dir}/custom/${fault}/${settleAs}/${order}/${pairing}: a custom tender still does not follow the total`);
     }
-  } } } }
-  ok(`${dir}: orphaned quote requests never touch the restored quote — 16 combinations (mode × fault × settlement × order, mixed outcomes)`);
+  } } } } }
+  ok(`${dir}: orphaned quote requests never touch the restored quote — 32 combinations (mode × fault × settlement × order × agreeing/mixed outcomes)`);
 
   // ── 26. 🔴 TWO REQUESTS FOR THE SAME CART ARE DIFFERENT REQUESTS (A → B → A) ──
   //
@@ -915,7 +917,62 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: the same-cart dedupe does NOT orphan the request it is waiting for`);
   }
 
-  // ── 29. …AND SO DOES A REDEMPTION TAKING OVER THE TOTAL ──
+  // ── 29. 🔴 A SYNCHRONOUS FAILURE MID-TRANSITION SUPERSEDES TOO — THE FLOOR ──
+  //
+  // The last control-flow path. requestServerQuote wraps its body in try/catch, and if anything throws
+  // BEFORE the token is taken — building the cart items, say — the error was swallowed and the PREVIOUS
+  // request's token stayed current. That request then settled, passed the guard, cleared the cache of
+  // the cart on screen, and the next exact-mode updateTotal lowered the tender.
+  //
+  // Not reachable with valid cart data today, which is the point: the guarantee should hold on every
+  // path, not on the ones anyone thought to enumerate. The failure is injected the way the gate injected
+  // it — by making the cart-items builder throw across the transition back to a cached cart.
+  for (const outcome of ['rejects', 'succeeds']) {
+    const w = loadForm(dir);
+    const deferreds = [];
+    w.__respond = (url) => {
+      if (!/quote/i.test(url)) return new Promise(() => {});
+      let d; const pr = new Promise((resolve, reject) => { d = { resolve, reject }; });
+      pr.catch(() => {}); deferreds.push(d); return pr;
+    };
+    const dish = w.liveMenuGlobalGet('MENU')[0], other = w.liveMenuGlobalGet('MENU')[1];
+    w.selectPay('cash');
+    const panel = w.document.getElementById('cash-change-panel');
+    if (panel) panel.style.display = 'block';
+    const box = () => w.document.getElementById('cash-tendered');
+    const reply = (cents) => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ ok: true, total_cents: cents }) });
+
+    w.chg(dish.id, 1);                                  // cart A → request 1
+    deferreds[0].resolve(reply(35000));
+    await settle();
+    assert.strictEqual(w.__serverQuote.cents, 35000, `${dir}/${outcome}: non-vacuity — cart A is cached`);
+    w.setCashTendered(w.redeemAdjustedTotal());
+    const tenderBefore = box().value;
+
+    w.chg(other.id, 1);                                 // cart B → request 2 goes out
+    assert.ok(deferreds.length >= 2, `${dir}/${outcome}: non-vacuity — B's request is outstanding`);
+
+    // …and the transition back to A happens while the items builder is broken, so requestServerQuote
+    // throws before it can take a token. Everything downstream of it is guarded already, so the only
+    // thing under test is what the catch leaves behind.
+    const realBuilder = w.redeemCartItems;
+    w.redeemCartItems = () => { throw new Error('cart builder exploded'); };
+    try { w.chg(other.id, -1); } catch (_) { /* the transition itself may surface it; the state is what matters */ }
+    w.redeemCartItems = realBuilder;
+
+    if (outcome === 'rejects') deferreds[1].reject(new Error('quote failed'));
+    else deferreds[1].resolve(reply(9900));
+    await settle();
+
+    assert.strictEqual(w.__serverQuote.cents, 35000,
+      `${dir}/${outcome}: 🔴 a request left live by a synchronous failure must not clobber the cache`);
+    w.updateTotal();
+    assert.strictEqual(box().value, tenderBefore,
+      `${dir}/${outcome}: 🔴 …so the exact tender is still what the customer chose`);
+    ok(`${dir}: a synchronous failure mid-transition still supersedes (stale request ${outcome})`);
+  }
+
+  // ── 30. …AND SO DOES A REDEMPTION TAKING OVER THE TOTAL ──
   // The same defect through the other door that returns without firing. Not named in the gate; included
   // because leaving a known-reachable instance because nobody pointed at it is the exact habit these
   // rounds have been about.
@@ -953,7 +1010,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: a redemption taking over the total also supersedes what was outstanding`);
   }
 
-  // ── 30. 🔴 THE SAVED MODE IS LOAD-BEARING — THE STALE TENDER/FLAG PAIR ──
+  // ── 31. 🔴 THE SAVED MODE IS LOAD-BEARING — THE STALE TENDER/FLAG PAIR ──
   //
   // Found by the gate, and it is the case that justifies assigning the mode rather than re-deriving it.
   // A quote lands while the customer sits in exact mode: the success handler updates key/cents and

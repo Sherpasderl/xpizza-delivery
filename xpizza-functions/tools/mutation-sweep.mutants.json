@@ -2439,5 +2439,29 @@
     "label": "la_musa: the same-cart dedupe ALSO supersedes — orphaning the very reply this call waits for",
     "from": "    if(__serverQuote.inflightKey===key) return;",
     "to": "    if(__serverQuote.inflightKey===key){ supersedeQuoteRequests(); return; }"
+  },
+  {
+    "id": "b6-80",
+    "slice": "b6",
+    "file": "../xpizza-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "a synchronous failure swallows the error and leaves the previous request's token live",
+    "from": "  }catch(_){\n    /* 🔴 THE EXCEPTIONAL EXIT SUPERSEDES TOO — the floor under \"no path leaves a stale request live\".\n       If anything above throws BEFORE the token is taken (building the cart items, say), this swallowed\n       the error and left the PREVIOUS request's token current; that request then settled, passed the\n       guard, cleared the cache of the cart on screen, and the next exact-mode updateTotal lowered the\n       tender. Not reachable with valid cart data today, which is exactly why it belongs here rather\n       than in a scenario: the guarantee should hold on every control-flow path, not on the ones anyone\n       thought to enumerate.\n       Superseding is the safe outcome in an indeterminate state — the cost is at worst a lost advisory\n       quote (the display falls open to calcTotal, and the server re-prices every order regardless),\n       never a wrong charge.\n       It cannot orphan a request that is genuinely in flight: the token is taken immediately before\n       fetch(), and the .then/.catch are attached in the same expression with nothing after it — so a\n       throw reaching here either happened before issuance, or is fetch() itself failing to issue.\n       Case 4 (a request already in flight for this cart) returns normally and never reaches here, so\n       its deliberate abstention is untouched. */\n    supersedeQuoteRequests();\n  }",
+    "to": "  }catch(_){ }"
+  },
+  {
+    "id": "b6-81",
+    "slice": "b6",
+    "file": "../la-musa-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "la_musa: a synchronous failure swallows the error and leaves the previous request's token live",
+    "from": "  }catch(_){\n    /* 🔴 THE EXCEPTIONAL EXIT SUPERSEDES TOO — the floor under \"no path leaves a stale request live\".\n       If anything above throws BEFORE the token is taken (building the cart items, say), this swallowed\n       the error and left the PREVIOUS request's token current; that request then settled, passed the\n       guard, cleared the cache of the cart on screen, and the next exact-mode updateTotal lowered the\n       tender. Not reachable with valid cart data today, which is exactly why it belongs here rather\n       than in a scenario: the guarantee should hold on every control-flow path, not on the ones anyone\n       thought to enumerate.\n       Superseding is the safe outcome in an indeterminate state — the cost is at worst a lost advisory\n       quote (the display falls open to calcTotal, and the server re-prices every order regardless),\n       never a wrong charge.\n       It cannot orphan a request that is genuinely in flight: the token is taken immediately before\n       fetch(), and the .then/.catch are attached in the same expression with nothing after it — so a\n       throw reaching here either happened before issuance, or is fetch() itself failing to issue.\n       Case 4 (a request already in flight for this cart) returns normally and never reaches here, so\n       its deliberate abstention is untouched. */\n    supersedeQuoteRequests();\n  }",
+    "to": "  }catch(_){ }"
   }
 ]
