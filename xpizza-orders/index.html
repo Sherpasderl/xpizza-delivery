@@ -2153,12 +2153,49 @@ const AVAIL_RID = 'x_pizza';
 const AVAIL_URL = 'https://xpizza-delivery-default-rtdb.firebaseio.com/restaurants/' + AVAIL_RID + '/item_availability.json';
 let itemAvail = {};   // raw availKey → { available, updated_at }; empty ⇒ all available (fail-open)
 let availSeq = 0;   // monotonic poll guard — only the LATEST loadAvailability() mutates state (drops stale/overlapping polls)
+/* ── Portal 1B Task 7 — AVAILABILITY SURVIVES A LIVE MENU REPLACEMENT ────────────────────────────
+   🔴 THE HAZARD. The overlay is keyed by the item's PRICING IDENTITY — the name for x_pizza, the id for
+   la_musa — and the KDS writes an "Agotado" flag under whatever that identity was when the item was
+   86'd. A live catalog upgrade can change it. Rename an x_pizza dish and the lookup misses: the item
+   the kitchen marked unavailable comes back onto the menu, enabled and orderable, because the catalog
+   quietly moved the key out from under the flag. A CATALOG UPDATE MUST NEVER RE-ENABLE SOMETHING THE
+   KITCHEN DISABLED.
+
+   So availability is resolved against every identity this dish has been known by on this page, not just
+   its current one. The dish's id is stable across a rename, so the history is keyed by id and an
+   explicit `available:false` under ANY of its keys blocks it.
+
+   THE ASYMMETRY IS DELIBERATE: only an explicit false blocks, and a stale `true` never unblocks. The
+   residual risk is over-blocking — if a dish is renamed and its old name is later taken by a DIFFERENT
+   dish that is 86'd, this one blocks too. That is not selling something that was available, which is
+   the safe direction of a rare mistake; the opposite is selling something the kitchen does not have.
+
+   🔴 AND THE HONEST LIMIT, which this does NOT close and 1B does not attempt: availability is a
+   POLLED OVERLAY. A read outage fails open (every item available), the poll has a period, and a payment
+   already in flight is not re-checked. So a menu can be stale and an 86'd item can still be ordered
+   through a window this code cannot see. What is guaranteed here is narrower and worth stating exactly:
+   a catalog REPLACEMENT never resurrects an item the overlay has already disabled. */
+const availKeyHistory = Object.create(null);
+function availIdentityOf(item){ return AVAIL_IDENTITY(item); }
+function availKeysFor(item){
+  const id = String(item.id);
+  const seen = availKeyHistory[id] || (availKeyHistory[id] = []);
+  const current = window.availKey(availIdentityOf(item));
+  if (seen.indexOf(current) === -1) seen.push(current);
+  return seen;
+}
+// x_pizza is priced — and therefore 86'd — by NAME.
+function AVAIL_IDENTITY(item){ return item.name; }
 function isSoldOut(item){
   try {
     if(!item || typeof window.availKey !== 'function') return false;
-    const node = itemAvail[window.availKey(item.name)];   // x_pizza keys by NAME
-    return !!(node && node.available === false);           // ONLY an explicit false blocks
-  } catch(_){ return false; }                              // any doubt ⇒ available
+    const keys = availKeysFor(item);
+    for(let i=0;i<keys.length;i++){
+      const node = itemAvail[keys[i]];
+      if(node && node.available === false) return true;     // ONLY an explicit false blocks — under ANY key it has had
+    }
+    return false;
+  } catch(_){ return false; }                               // any doubt ⇒ available
 }
 function soldOutById(id){ return isSoldOut(MENU.find(p => p.id === id)); }
 function applyAvailability(){

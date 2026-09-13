@@ -2463,5 +2463,105 @@
     "label": "la_musa: a synchronous failure swallows the error and leaves the previous request's token live",
     "from": "  }catch(_){\n    /* 🔴 THE EXCEPTIONAL EXIT SUPERSEDES TOO — the floor under \"no path leaves a stale request live\".\n       If anything above throws BEFORE the token is taken (building the cart items, say), this swallowed\n       the error and left the PREVIOUS request's token current; that request then settled, passed the\n       guard, cleared the cache of the cart on screen, and the next exact-mode updateTotal lowered the\n       tender. Not reachable with valid cart data today, which is exactly why it belongs here rather\n       than in a scenario: the guarantee should hold on every control-flow path, not on the ones anyone\n       thought to enumerate.\n       Superseding is the safe outcome in an indeterminate state — the cost is at worst a lost advisory\n       quote (the display falls open to calcTotal, and the server re-prices every order regardless),\n       never a wrong charge.\n       It cannot orphan a request that is genuinely in flight: the token is taken immediately before\n       fetch(), and the .then/.catch are attached in the same expression with nothing after it — so a\n       throw reaching here either happened before issuance, or is fetch() itself failing to issue.\n       Case 4 (a request already in flight for this cart) returns normally and never reaches here, so\n       its deliberate abstention is untouched. */\n    supersedeQuoteRequests();\n  }",
     "to": "  }catch(_){ }"
+  },
+  {
+    "id": "b7-1",
+    "slice": "b7",
+    "label": "availability is resolved against the CURRENT key only — a rename un-86s the item",
+    "file": "../xpizza-orders/index.html",
+    "from": "    const keys = availKeysFor(item);\n    for(let i=0;i<keys.length;i++){\n      const node = itemAvail[keys[i]];\n      if(node && node.available === false) return true;     // ONLY an explicit false blocks — under ANY key it has had\n    }\n    return false;",
+    "to": "    const node = itemAvail[window.availKey(availIdentityOf(item))];\n    return !!(node && node.available === false);",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b7-2",
+    "slice": "b7",
+    "label": "the key history is never accumulated, so only the newest key is ever consulted",
+    "file": "../xpizza-orders/index.html",
+    "from": "  const current = window.availKey(availIdentityOf(item));\n  if (seen.indexOf(current) === -1) seen.push(current);\n  return seen;",
+    "to": "  const current = window.availKey(availIdentityOf(item));\n  return [current];",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b7-3",
+    "slice": "b7",
+    "label": "an explicit available:true BLOCKS — fail-open inverted",
+    "file": "../xpizza-orders/index.html",
+    "from": "    const keys = availKeysFor(item);\n    for(let i=0;i<keys.length;i++){\n      const node = itemAvail[keys[i]];\n      if(node && node.available === false) return true;     // ONLY an explicit false blocks — under ANY key it has had\n    }\n    return false;",
+    "to": "    const keys = availKeysFor(item);\n    for(let i=0;i<keys.length;i++){\n      const node = itemAvail[keys[i]];\n      if(node) return node.available === false || node.available === true;     // ONLY an explicit false blocks — under ANY key it has had\n    }\n    return false;",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b7-4",
+    "slice": "b7",
+    "label": "a re-render does not reapply the overlay",
+    "file": "../xpizza-orders/index.html",
+    "from": "  applyAvailability();   // KDS 2b: re-apply sold-out overlay after any (re)render (no-op when availability absent)",
+    "to": "  ;",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b7-10",
+    "slice": "b7",
+    "label": "la_musa: availability is resolved against the CURRENT key only — a rename un-86s the item",
+    "file": "../la-musa-orders/index.html",
+    "from": "    const keys = availKeysFor(item);\n    for(let i=0;i<keys.length;i++){\n      const node = itemAvail[keys[i]];\n      if(node && node.available === false) return true;     // ONLY an explicit false blocks — under ANY key it has had\n    }\n    return false;",
+    "to": "    const node = itemAvail[window.availKey(availIdentityOf(item))];\n    return !!(node && node.available === false);",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "equivalent": true,
+    "why": "ONE EQUIVALENCE CLASS (b7-10/b7-11): la_musa is 86'd BY ID, and a catalog rename does not change an id — so the key history for that brand can only ever hold one entry, and consulting 'every key this dish has had' is identical to consulting the current one. No input distinguishes them. The code is shared-shaped anyway because the hazard is real on the other brand: b7-1/b7-2 are the same mutations on x_pizza, which IS 86'd by name, and both die. b7-12 (fail-open inverted) dies here too, so la_musa's own availability rule is pinned — it is only the RENAME-awareness that is vacuous for it, and it stops being vacuous the moment la_musa's key strategy changes, which is exactly when it would be needed."
+  },
+  {
+    "id": "b7-11",
+    "slice": "b7",
+    "label": "la_musa: the key history is never accumulated, so only the newest key is ever consulted",
+    "file": "../la-musa-orders/index.html",
+    "from": "  const current = window.availKey(availIdentityOf(item));\n  if (seen.indexOf(current) === -1) seen.push(current);\n  return seen;",
+    "to": "  const current = window.availKey(availIdentityOf(item));\n  return [current];",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "equivalent": true,
+    "why": "ONE EQUIVALENCE CLASS (b7-10/b7-11): la_musa is 86'd BY ID, and a catalog rename does not change an id — so the key history for that brand can only ever hold one entry, and consulting 'every key this dish has had' is identical to consulting the current one. No input distinguishes them. The code is shared-shaped anyway because the hazard is real on the other brand: b7-1/b7-2 are the same mutations on x_pizza, which IS 86'd by name, and both die. b7-12 (fail-open inverted) dies here too, so la_musa's own availability rule is pinned — it is only the RENAME-awareness that is vacuous for it, and it stops being vacuous the moment la_musa's key strategy changes, which is exactly when it would be needed."
+  },
+  {
+    "id": "b7-12",
+    "slice": "b7",
+    "label": "la_musa: an explicit available:true BLOCKS — fail-open inverted",
+    "file": "../la-musa-orders/index.html",
+    "from": "    const keys = availKeysFor(item);\n    for(let i=0;i<keys.length;i++){\n      const node = itemAvail[keys[i]];\n      if(node && node.available === false) return true;     // ONLY an explicit false blocks — under ANY key it has had\n    }\n    return false;",
+    "to": "    const keys = availKeysFor(item);\n    for(let i=0;i<keys.length;i++){\n      const node = itemAvail[keys[i]];\n      if(node) return node.available === false || node.available === true;     // ONLY an explicit false blocks — under ANY key it has had\n    }\n    return false;",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b7-13",
+    "slice": "b7",
+    "label": "la_musa: a re-render does not reapply the overlay",
+    "file": "../la-musa-orders/index.html",
+    "from": "  applyAvailability();   // KDS 2b: re-apply sold-out overlay after any (re)render (no-op when availability absent)",
+    "to": "  ;",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
   }
 ]

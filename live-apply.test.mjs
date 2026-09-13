@@ -92,6 +92,16 @@ async function serve(w, body, opts = {}) {
   await settle();
 }
 
+/* Availability is installed by running the form's OWN loadAvailability against a stubbed poll — not by
+   assigning itemAvail, which is module-lexical and unreachable from here anyway. Driving the real poll
+   also means these tests exercise the same path the KDS feed does, including its fail-open handling. */
+const loadAvail = async (w, map) => {
+  const prev = w.__respond;
+  w.__respond = (url) => (/item_availability/.test(url) ? res(map) : prev(url));
+  await w.loadAvailability();
+  await settle();
+};
+
 const BRAND = {
   'xpizza-orders': {
     rid: 'x_pizza',
@@ -1010,7 +1020,134 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: a redemption taking over the total also supersedes what was outstanding`);
   }
 
-  // ── 31. 🔴 THE SAVED MODE IS LOAD-BEARING — THE STALE TENDER/FLAG PAIR ──
+  /* ══ 1B TASK 7 — AVAILABILITY SURVIVES A LIVE MENU REPLACEMENT ═════════════════════════════════
+     The overlay is a separate feed from the catalog, and the catalog can move the key the overlay was
+     written against. What must hold: a catalog replacement never resurrects an item the kitchen has
+     already disabled. */
+
+  // ── 31. A REPLACED TILE COMES BACK DISABLED ──
+  {
+    const w = loadForm(dir);
+    const dish = w.liveMenuGlobalGet('MENU')[0];
+    const key = w.availKey(dir === 'xpizza-orders' ? dish.name : dish.id);
+    await loadAvail(w, { [key]: { available: false } });
+    assert.ok(w.document.getElementById('card-' + dish.id).className.includes('sold-out'),
+      `${dir}: non-vacuity — the tile is disabled to begin with`);
+
+    await serve(w, envelope(B.rid, B.menu(w)));           // a live upgrade rebuilds every tile
+    const card = w.document.getElementById('card-' + dish.id);
+    assert.ok(card.className.includes('sold-out'),
+      `${dir}: 🔴 the replaced tile is still marked sold out`);
+    const addBtn = w.document.getElementById('qty-add-' + dish.id);
+    if (addBtn) assert.strictEqual(addBtn.disabled, true, `${dir}: …and its add control is still disabled`);
+    assert.ok(card.querySelector('.agotado-pill'), `${dir}: …and still carries the Agotado pill`);
+    ok(`${dir}: a tile replaced by a live upgrade comes back with the availability overlay applied`);
+  }
+
+  // ── 32. …AND THE CATALOG CANNOT ADD IT TO THE CART ──
+  // The overlay is not just paint: chg() consults it. A replaced tile must be non-orderable, not merely
+  // greyed — the two come apart if the reapply touches only the markup.
+  {
+    const w = loadForm(dir);
+    const dish = w.liveMenuGlobalGet('MENU')[0];
+    await loadAvail(w, { [w.availKey(dir === 'xpizza-orders' ? dish.name : dish.id)]: { available: false } });
+    await serve(w, envelope(B.rid, B.menu(w)));
+    w.chg(dish.id, 1);
+    assert.strictEqual(w.cartItemCount(), 0,
+      `${dir}: 🔴 an 86'd item cannot be added after the catalog replaced its tile`);
+    ok(`${dir}: a replaced 86'd tile is non-orderable, not merely greyed`);
+  }
+
+  // ── 33. 🔴 A RENAME MUST NOT MOVE THE KEY OUT FROM UNDER THE FLAG ──
+  // x_pizza is 86'd BY NAME, so a catalog rename changes the key the overlay was written against and the
+  // lookup misses — the kitchen's flag silently stops applying and the item is orderable again. la_musa
+  // is 86'd by id, which a rename does not touch; asserted on both so the difference is pinned rather
+  // than assumed, and so a future change to either key strategy has to face this test.
+  {
+    const w = loadForm(dir);
+    const dish = w.liveMenuGlobalGet('MENU')[0];
+    const wasName = dish.name;
+    await loadAvail(w, { [w.availKey(dir === 'xpizza-orders' ? wasName : dish.id)]: { available: false } });
+    assert.ok(w.document.getElementById('card-' + dish.id).className.includes('sold-out'),
+      `${dir}: non-vacuity — 86'd under the identity it had`);
+
+    const m = B.menu(w);
+    m.dishes[0] = { ...m.dishes[0], name: wasName + ' Especial' };   // the catalog renames it
+    await serve(w, envelope(B.rid, m));
+    assert.strictEqual(w.liveMenuGlobalGet('MENU')[0].name, wasName + ' Especial',
+      `${dir}: non-vacuity — the rename really landed`);
+
+    const card = w.document.getElementById('card-' + dish.id);
+    assert.ok(card.className.includes('sold-out'),
+      `${dir}: 🔴 a renamed dish is STILL sold out — the catalog cannot un-86 it`);
+    w.chg(dish.id, 1);
+    assert.strictEqual(w.cartItemCount(), 0, `${dir}: 🔴 …and still cannot be ordered`);
+    ok(`${dir}: a catalog rename cannot move the availability key out from under the kitchen's flag`);
+  }
+
+  // ── 34. FAIL-OPEN IS PRESERVED — the overlay only ever blocks on an explicit false ──
+  // The rename-awareness widens what is CONSULTED, so it must not widen what BLOCKS: an absent entry, or
+  // a stale `true` under an old key, must still leave the item sellable.
+  {
+    const w = loadForm(dir);
+    const dish = w.liveMenuGlobalGet('MENU')[0];
+    const wasName = dish.name;
+    await loadAvail(w, { [w.availKey(dir === 'xpizza-orders' ? wasName : dish.id)]: { available: true } });
+    const m = B.menu(w);
+    m.dishes[0] = { ...m.dishes[0], name: wasName + ' Especial' };
+    await serve(w, envelope(B.rid, m));
+    assert.ok(!w.document.getElementById('card-' + dish.id).className.includes('sold-out'),
+      `${dir}: an explicit true under the old key does not block`);
+    w.chg(dish.id, 1);
+    assert.strictEqual(w.cartItemCount(), 1, `${dir}: …and it is orderable`);
+
+    const w2 = loadForm(dir);
+    const d2 = w2.liveMenuGlobalGet('MENU')[0];
+    await loadAvail(w2, {});                                   // no data at all — the outage case
+    await serve(w2, envelope(B.rid, B.menu(w2)));
+    assert.ok(!w2.document.getElementById('card-' + d2.id).className.includes('sold-out'),
+      `${dir}: an empty overlay leaves everything available (fail-open)`);
+    ok(`${dir}: fail-open survives — only an explicit false blocks, under any key`);
+  }
+
+  // ── 35. …AND ON A RENDER THAT IS NOT AN APPLY ──
+  // The live apply reapplies the overlay itself, so the reapply inside renderMenu is redundant THERE —
+  // which is exactly why removing it survived a test that only exercised an apply. renderMenu is called
+  // by other paths that do not reapply anything: a payment-return restoration is one, and it rebuilds
+  // every tile. Without renderMenu's own reapply, a customer coming back from the hosted checkout sees
+  // 86'd items as available and orderable.
+  {
+    const a = loadForm(dir);
+    a.chg(a.liveMenuGlobalGet('MENU')[2].id, 1);
+    const stash = JSON.parse(JSON.stringify({ form: a.snapshotForm(), ts: Date.now(), order_id: 'o1' }));
+
+    const w = loadForm(dir);
+    const dish = w.liveMenuGlobalGet('MENU')[0];
+    await loadAvail(w, { [w.availKey(dir === 'xpizza-orders' ? dish.name : dish.id)]: { available: false } });
+    assert.ok(w.document.getElementById('card-' + dish.id).className.includes('sold-out'),
+      `${dir}: non-vacuity — 86'd before the restore`);
+
+    // Written through the REAL storage API under the key the form actually reads; stubbing getItem
+    // silently did nothing and the restore bailed out, which made the whole check vacuous.
+    w.localStorage.setItem(dir === 'xpizza-orders' ? 'xpizza_pending_pay' : 'lamusa_pending_pay', JSON.stringify(stash));
+    const cardBefore = w.document.getElementById('card-' + dish.id);
+    w.restoreOrderForm();                                  // rebuilds every tile, applies no overlay of its own
+    await settle();
+    /* NON-VACUITY, and it is the whole test: if the restore bailed out (a rejected stash, say) the tile
+       would still be carrying the class from the earlier poll and the assertion below would hold with
+       the reapply deleted. Proving the node was REPLACED is what makes it a test of the re-render. */
+    assert.notStrictEqual(w.document.getElementById('card-' + dish.id), cardBefore,
+      `${dir}: non-vacuity — the restore really did rebuild the tiles`);
+    assert.strictEqual(w.cartItemCount(), 1, `${dir}: non-vacuity — and the stashed cart came back`);
+    assert.ok(w.document.getElementById('card-' + dish.id).className.includes('sold-out'),
+      `${dir}: 🔴 a restoration-driven re-render still carries the overlay`);
+    w.chg(dish.id, 1);
+    assert.ok(!w.cartItems().some((x) => String(x.id) === String(dish.id)),
+      `${dir}: 🔴 …and the 86'd item is still not orderable after a restore`);
+    ok(`${dir}: a re-render that is not a live apply reapplies the overlay too`);
+  }
+
+  // ── 36. 🔴 THE SAVED MODE IS LOAD-BEARING — THE STALE TENDER/FLAG PAIR ──
   //
   // Found by the gate, and it is the case that justifies assigning the mode rather than re-deriving it.
   // A quote lands while the customer sits in exact mode: the success handler updates key/cents and
