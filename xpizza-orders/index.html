@@ -2165,16 +2165,23 @@ let availSeq = 0;   // monotonic poll guard — only the LATEST loadAvailability
    its current one. The dish's id is stable across a rename, so the history is keyed by id and an
    explicit `available:false` under ANY of its keys blocks it.
 
-   THE ASYMMETRY IS DELIBERATE: only an explicit false blocks, and a stale `true` never unblocks. The
-   residual risk is over-blocking — if a dish is renamed and its old name is later taken by a DIFFERENT
-   dish that is 86'd, this one blocks too. That is not selling something that was available, which is
-   the safe direction of a rare mistake; the opposite is selling something the kitchen does not have.
+   THE ASYMMETRY IS DELIBERATE: an explicit `available:false` under ANY key this dish has had blocks it,
+   and a `true` under any key never unblocks it — a `true` is not evidence about the other keys, only
+   about its own. The residual risk is over-blocking: if a dish is renamed and its old name is later
+   taken by a DIFFERENT dish that is 86'd, this one blocks too. That is refusing to sell something that
+   was available — the safe direction of a rare mistake; the opposite is selling what the kitchen does
+   not have.
 
-   🔴 AND THE HONEST LIMIT, which this does NOT close and 1B does not attempt: availability is a
-   POLLED OVERLAY. A read outage fails open (every item available), the poll has a period, and a payment
-   already in flight is not re-checked. So a menu can be stale and an 86'd item can still be ordered
-   through a window this code cannot see. What is guaranteed here is narrower and worth stating exactly:
-   a catalog REPLACEMENT never resurrects an item the overlay has already disabled. */
+   🔴 THE LIMITS, stated so nothing here is read as more than it is. This guarantee is CLIENT-DISPLAY
+   SCOPED, and the server does NOT back it up for a rename: the server's availability gate checks the
+   SUBMITTED pricing key only, so an order for a renamed item looks up the new key, finds no flag —
+   the kitchen's 86 is filed under the old one — and is accepted. Closing that needs the server to key
+   availability by a stable id, which is 1D's stable-key work, not this task's.
+   Availability is also a POLLED overlay: a read outage fails open (every item available), the poll has
+   a period, and a payment already in flight is not re-checked. So an 86'd item can still be ordered
+   through a window neither this code nor the server currently sees.
+   What IS guaranteed here is narrow and exact: a catalog replacement never resurrects, in this page's
+   display or its add-guard, an item the overlay has already disabled. */
 const availKeyHistory = Object.create(null);
 function availIdentityOf(item){ return AVAIL_IDENTITY(item); }
 function availKeysFor(item){
@@ -2211,6 +2218,16 @@ function applyAvailability(){
       if(so && !pill){ pill = document.createElement('span'); pill.className = 'agotado-pill'; pill.textContent = 'Agotado'; el.appendChild(pill); }
       else if(!so && pill){ pill.remove(); }
     });
+    /* 🔴 AN OPEN MODAL FOLLOWS THE POLL — but only its CTA. If availability flips while a customer is
+       looking at a dish, the button they are about to press must stop saying "Agregar"; leaving it
+       enabled until they close and reopen is the same misleading-affordance problem one level up.
+       DELIBERATELY NOT the whole modal body: re-rendering it mid-open would move the option steppers
+       and the variant list under the customer's finger, which is a worse outcome than a stale row. So
+       the guarantee here is bounded and worth stating exactly — the CTA follows availability while the
+       modal is open; the rest of the body does not, and chg() remains the thing that actually refuses
+       the add. */
+    if (typeof currentDetailPizzaId !== 'undefined' && currentDetailPizzaId !== null
+        && typeof updateDetailCta === 'function') updateDetailCta();
   } catch(_){ /* fail-open: never let the overlay break the menu */ }
 }
 async function loadAvailability(){

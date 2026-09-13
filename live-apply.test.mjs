@@ -1147,7 +1147,94 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: a re-render that is not a live apply reapplies the overlay too`);
   }
 
-  // ── 36. 🔴 THE SAVED MODE IS LOAD-BEARING — THE STALE TENDER/FLAG PAIR ──
+  // ── 36. 🔴 AN EXPLICIT false UNDER *ANY* KEY WINS OVER A true UNDER ANOTHER ──
+  // The previous fail-open check only ever placed a `true`, so it proved the overlay does not block on
+  // one — not that a `false` still WINS when an older key says available. Those are different claims,
+  // and the second is the one the rename-history exists for: the kitchen's 86 is filed under the name
+  // the item had, while the catalog has since moved it to a name that may carry a stale `true`.
+  {
+    const w = loadForm(dir);
+    const dish = w.liveMenuGlobalGet('MENU')[0];
+    const wasName = dish.name;
+    const oldKey = w.availKey(dir === 'xpizza-orders' ? wasName : dish.id);
+    const newName = wasName + ' Especial';
+    const newKey = w.availKey(dir === 'xpizza-orders' ? newName : dish.id);
+
+    /* The mixed-key case only EXISTS where a rename can move the key, i.e. x_pizza. For la_musa both
+       keys are the id, so `{[oldKey]:false, [newKey]:true}` collapses to one entry and the pair would
+       be testing object-literal precedence rather than the availability rule. Its single-key semantics
+       are asserted instead — said plainly rather than looping twice over the same key and calling it
+       coverage. */
+    const cases = (oldKey === newKey)
+      ? [['single key false', { [oldKey]: { available: false } }]]
+      : [['old false / new true', { [oldKey]: { available: false }, [newKey]: { available: true } }],
+         ['old true / new false', { [oldKey]: { available: true }, [newKey]: { available: false } }]];
+    assert.strictEqual(oldKey === newKey, dir === 'la-musa-orders',
+      `${dir}: non-vacuity — only the brand keyed by id collapses the two keys`);
+    for (const [which, map] of cases) {
+      const v = loadForm(dir);
+      const d = v.liveMenuGlobalGet('MENU')[0];
+      await loadAvail(v, map);
+      const m = B.menu(v);
+      m.dishes[0] = { ...m.dishes[0], name: newName };
+      await serve(v, envelope(B.rid, m));
+      assert.ok(v.document.getElementById('card-' + d.id).className.includes('sold-out'),
+        `${dir}/${which}: 🔴 an explicit false wins wherever it sits`);
+      v.chg(d.id, 1);
+      assert.strictEqual(v.cartItemCount(), 0, `${dir}/${which}: …and it stays unorderable`);
+    }
+    ok(`${dir}: ${oldKey === newKey ? 'an explicit false blocks (single key — a rename cannot move it)' : 'a false under any key beats a true under another — both orderings'}`);
+  }
+
+  // ── 37. la_musa ONLY — THE VARIANT LAUNCHER'S CTA FOLLOWS THE SELECTED VARIANT ──
+  // A launcher is 86'd per VARIANT: the kitchen marks "Pad Thai - Pollo", not "Pad Thai". The CTA asked
+  // about the launcher and so showed an enabled, priced "Agregar al carrito" for a sold-out protein. The
+  // tap was already refused by chg(), so no money was at risk — but an enabled button that silently does
+  // nothing is a worse answer than a disabled one.
+  if (dir === 'la-musa-orders') {
+    const w = loadForm(dir);
+    const launcher = w.liveMenuGlobalGet('MENU').find((d) => w.itemIsLauncher(d));
+    assert.ok(launcher, `${dir}: non-vacuity — the real bundle has a variant launcher`);
+    const variants = w.liveMenuGlobalGet('VARIANT_ITEMS')[launcher.id].variantIds;
+    const soldOutVariant = variants[1], okVariant = variants[0];
+    await loadAvail(w, { [w.availKey(soldOutVariant)]: { available: false } });
+
+    w.openDetailModal(launcher.id);
+    const cta = () => w.document.getElementById('detail-cta');
+    w.selectVariant(okVariant);
+    assert.ok(cta().innerHTML.includes('Agregar'), `${dir}: non-vacuity — an available variant offers the CTA`);
+    assert.notStrictEqual(cta().style.pointerEvents, 'none', `${dir}: …and it is tappable`);
+
+    w.selectVariant(soldOutVariant);
+    assert.ok(cta().innerHTML.includes('Agotado'),
+      `${dir}: 🔴 a sold-out variant shows Agotado, not a priced Agregar`);
+    assert.strictEqual(cta().style.pointerEvents, 'none', `${dir}: …and the CTA is not tappable`);
+
+    w.selectVariant(okVariant);                            // and it comes back when the choice changes
+    assert.ok(cta().innerHTML.includes('Agregar'), `${dir}: the CTA is re-evaluated on every selection change`);
+    ok(`${dir}: the variant launcher's CTA follows the SELECTED variant's availability`);
+  }
+
+  // ── 38. AN OPEN MODAL'S CTA FOLLOWS A POLL THAT FLIPS AVAILABILITY ──
+  // Bounded on purpose: the CTA follows, the modal body does not (re-rendering it mid-open would move
+  // the option steppers under the customer's finger). chg() remains what actually refuses the add.
+  {
+    const w = loadForm(dir);
+    const dish = w.liveMenuGlobalGet('MENU')[0];
+    w.openDetailModal(dish.id);
+    const cta = () => w.document.getElementById('detail-cta');
+    assert.ok(cta() && !cta().innerHTML.includes('Agotado'),
+      `${dir}: non-vacuity — the CTA is live before the poll`);
+
+    await loadAvail(w, { [w.availKey(dir === 'xpizza-orders' ? dish.name : dish.id)]: { available: false } });
+    assert.ok(cta().innerHTML.includes('Agotado'),
+      `${dir}: 🔴 a poll that 86's the open dish updates the button the customer is about to press`);
+    w.chg(dish.id, 1);
+    assert.strictEqual(w.cartItemCount(), 0, `${dir}: …and the add is refused regardless`);
+    ok(`${dir}: an open modal's CTA follows a poll that flips availability`);
+  }
+
+  // ── 39. 🔴 THE SAVED MODE IS LOAD-BEARING — THE STALE TENDER/FLAG PAIR ──
   //
   // Found by the gate, and it is the case that justifies assigning the mode rather than re-deriving it.
   // A quote lands while the customer sits in exact mode: the success handler updates key/cents and

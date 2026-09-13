@@ -2563,5 +2563,53 @@
       "node",
       "../live-apply.test.mjs"
     ]
+  },
+  {
+    "id": "b7-20",
+    "slice": "b7",
+    "file": "../la-musa-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "la_musa: the launcher CTA ignores the selected variant's availability — a sold-out protein shows a priced Agregar",
+    "from": "    if (v && typeof isSoldOut === 'function' && isSoldOut(v)) {\n      cta.className = 'detail-cta';\n      cta.style.opacity = '.5';\n      cta.style.pointerEvents = 'none';\n      cta.innerHTML = '<span>Agotado</span>';\n      return;\n    }",
+    "to": "    ;"
+  },
+  {
+    "id": "b7-21",
+    "slice": "b7",
+    "file": "../la-musa-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "la_musa: the launcher CTA asks about the LAUNCHER instead of the selected variant",
+    "from": "    if (v && typeof isSoldOut === 'function' && isSoldOut(v)) {",
+    "to": "    if (v && typeof isSoldOut === 'function' && isSoldOut(pizza)) {"
+  },
+  {
+    "id": "b7-22",
+    "slice": "b7",
+    "file": "../xpizza-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "an open modal's CTA does not follow a poll that flips availability",
+    "from": "    if (typeof currentDetailPizzaId !== 'undefined' && currentDetailPizzaId !== null\n        && typeof updateDetailCta === 'function') updateDetailCta();",
+    "to": "    ;"
+  },
+  {
+    "id": "b7-23",
+    "slice": "b7",
+    "file": "../la-musa-orders/index.html",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ],
+    "label": "la_musa: an open modal's CTA does not follow a poll that flips availability",
+    "from": "    if (typeof currentDetailPizzaId !== 'undefined' && currentDetailPizzaId !== null\n        && typeof updateDetailCta === 'function') updateDetailCta();",
+    "to": "    ;"
   }
 ]
