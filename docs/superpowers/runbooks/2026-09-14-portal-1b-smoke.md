@@ -111,8 +111,25 @@ This is the point of the whole slice. Place **one real order on each form** and 
 | 6.4 | Repeat with an **online card** order | The PixelPay amount equals the order's `total_cents`. The browser never sets this amount; it is read from the order record, which was written from the server recompute. |
 | 6.5 | Check the order's `order_id` | Ends in an 8-character suffix (e.g. `PZX-260914-193055-K3M7Q2XB`). Both brands. Without it, two orders placed in the same second collide on the payment idempotency anchor and the second sale is silently absorbed into the first. |
 
-**If 6.3 or 6.4 disagree, stop and roll back.** A displayed-vs-charged mismatch is the one failure in
-this slice that costs real money, in whichever direction it goes.
+**If 6.3 or 6.4 disagree, record it — but read the next paragraph before treating it as a 1B defect.**
+
+🔴 **What 1B does and does not guarantee about displayed-vs-charged.** 1B makes the *display* live and
+proves the live menu never *determines* a charge. It does not guarantee the two are equal, and that is
+deliberate: pricing caches and the deliberate checkout-hold make live tile-to-charge parity impossible,
+so the invariant was reframed during the design grill to "the customer is charged exactly the net total
+they confirmed" — and **enforcing that equality is 1C's confirmed-quote gate**, not this slice.
+
+The residual window is narrow and known: a merchant publishes while a customer is already at checkout,
+where the new snapshot is deliberately HELD so the menu does not move under them. The cached quote then
+still holds the previous total while the server charges the current one. Reproduced and measured in
+`whole-flow.test.mjs` cell 12 (confirmed 34000, charged 38000), left unasserted there on purpose, and
+carried as the entry point to 1C.
+
+**1B narrows this window everywhere else.** Before 1B the form showed a static committed bundle while
+the server charged the live catalog — the same mismatch, with no upper bound on how stale the display
+could be (that is the 2b-2b bug, shown 340 / charged 350, which started this work). A live display
+catches up to a merchant edit within one poll. So this step is a *record-and-report*, not a rollback
+trigger, unless the gap is large or does not resolve on a reload.
 
 ---
 
@@ -143,3 +160,17 @@ stop upgrading and fall back to their bundles, which is the same outcome with mo
 | `cart_conflict_blocked_send` | A customer was stopped at the send with a conflicted cart. | The rate is more than occasional — a publish during peak hours will produce a burst of these, which is the system working. |
 | `cart_blocked_send_menu_broken` | A charge was blocked because the page admitted it was broken. | Ever. Same as above. |
 | Rate-limit hits on the **`quote_ip`** bucket | Checkouts are re-quoting more than expected. | Any sustained spike. Until T9 a failed quote re-requested forever (reply → summary render → request → reply), hammering `quoteOrder` from a customer already mid-checkout; that loop is closed, and this bucket is where its return would show first. |
+
+---
+
+## 9. Known and deliberately out of scope
+
+Recorded here rather than only in a handback, so whoever runs this months from now sees the same list.
+
+| # | What | Status |
+|---|---|---|
+| **Confirmed-total enforcement** | The customer is charged the server's current price, which can differ from the total they confirmed if the catalog moved and the form had not caught up — most reachably, a publish while they are at checkout. Measured in `whole-flow.test.mjs` cell 12: confirmed 34000, charged 38000. | **1C.** The design grill's finding #9 reframed the invariant to "charged == the net total CONFIRMED" and assigned enforcement to 1C's confirmed-quote gate; pricing caches plus the deliberate checkout-hold make live tile-to-charge parity impossible. 1B narrows the window everywhere else — before 1B the display was a static bundle with no bound on staleness. |
+| **Availability-gate key coarseness on rename** | The server's 86 gate keys the way the brand prices — x_pizza by NAME — so renaming a dish leaves an 86 keyed to the old name. The client display is correct (Task 7 reapplies availability after every menu change, and an 86'd in-cart line now blocks the send), but the SERVER's gate can miss a renamed dish. | **1D.** Needs stable-id 86 keys on the server, which is 1D's surface. Scoped there deliberately; not a 1B regression — the coarseness predates this slice. |
+| **"Render-only" is not literal** | 1B was described as a rendering slice. It is not: `liveMenuPrepare` now validates `variant_items` and rejects empty ids, so 1B changes which snapshots are ACCEPTED, not only how they are drawn. | **Documented.** Anything reasoning about 1B's blast radius must treat it as a prepare/validation change too — a snapshot that published fine before 1B can be refused whole after it, which is the intended behaviour but not a rendering-only one. |
+| **A refused snapshot is now diagnosable** | `menu_snapshot_refused` logs the typed cause (`apply_dish_malformed@1`, `apply_variant_id_type@…`). | **Closed in T9.** Before this, a refused snapshot was indistinguishable from a network miss. If the table in §8 shows refusals, this is the line that says why. |
+

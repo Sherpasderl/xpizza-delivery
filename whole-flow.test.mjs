@@ -421,16 +421,28 @@ for (const dir of Object.keys(BRAND)) {
       `${dir}/sync-throw: 🔴 nothing was applied — the screen is the one the customer was already reading`);
     assert.ok(!ctx.w.__liveMenu.applier.state().fatal,
       `${dir}/sync-throw: the applier is not FATAL — it never got far enough to break anything`);
-    /* 🔴 FINDING — NOT ASSERTED AS CORRECT, BECAUSE IT IS NOT. Sending here charges the CURRENT
-       catalog price while the screen and the cached quote still hold the previous one: confirmed 340,
-       charged 380. The mismatch is not specific to a capture throw — it is what happens whenever the
-       catalog has moved and the form has not caught up, because a FAILED apply does not invalidate the
-       quote (by design: nothing on screen changed, so the quote still matches the screen — it just no
-       longer matches the SERVER).
-       Deliberately left unasserted rather than encoded either way: asserting the current behaviour
-       would pin a displayed-vs-charged mismatch as correct, and asserting the opposite would fail a
-       suite over a decision that is the advisor's to make. The no-op properties above ARE asserted,
-       because they are true and worth keeping whichever way the decision goes. */
+    /* 🔴 THE 1C ENTRY POINT — MEASURED HERE, DELIBERATELY NOT ASSERTED EITHER WAY.
+       Sending at this moment charges the CURRENT catalog price while the screen and the cached quote
+       still hold the previous one: confirmed 34000, charged 38000. The mismatch is not specific to a
+       capture throw — it is what happens whenever the catalog has moved and the form has not caught up,
+       because a failed or DEFERRED apply does not invalidate the quote. That is by design: nothing on
+       screen changed, so the quote still matches the SCREEN. It just no longer matches the SERVER.
+
+       THIS IS 1C's GUARANTEE, NOT A 1B DEFECT, and the distinction is the design grill's, not a
+       convenience. Finding #9 reframed the invariant precisely because pricing caches and the
+       deliberate checkout-hold make live tile-to-charge parity impossible: the rule is not "tile ==
+       charge, live" but "the customer is charged exactly the net total they CONFIRMED", and enforcing
+       that equality is 1C's confirmed-quote gate. 1B's job was to make the display live and safe and to
+       prove the live menu never DETERMINES a charge — both of which the other 23 checks here do.
+
+       The most reachable trigger is a publish while the customer is at checkout, where cell 6 asserts
+       the snapshot is HELD so the menu does not move under them. That hold is correct; the gap is that
+       nothing re-validates the quote at the send.
+
+       Unasserted on purpose. Asserting the current behaviour would pin a displayed-vs-charged mismatch
+       as correct; asserting the opposite would fail this suite over a decision that belongs to 1C's
+       design. The no-op properties above ARE asserted, because they hold whichever way 1C goes. When
+       1C's expected-total gate lands, THIS is the cell that turns into its regression test. */
     assert.strictEqual(ctx.w.getServerQuoteTotalCents(), confirmed,
       `${dir}/sync-throw: the cached quote is untouched by a failed apply — this is the input to the finding`);
     ok(`${dir}: a synchronous capture failure applies NOTHING and leaves the screen intact (see the stale-quote finding)`);
