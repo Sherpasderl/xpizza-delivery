@@ -1673,7 +1673,32 @@ for (const dir of Object.keys(BRAND)) {
     const st = w.__liveMenu.applier.state();
     assert.ok(st.fatal, `${dir}: 🔴 an unrecoverable render is reported as fatal, not as a refusal`);
     assert.match(st.fatal.message, /renderer is broken/, `${dir}: with the reason`);
-    ok(`${dir}: a renderer that cannot draw the old menu either is reported fatal`);
+
+    /* 🔴 1B Task 9 — AND A PAGE IN THAT STATE DOES NOT ASK FOR MONEY. Reporting 'broken' was the whole
+       of the old behaviour: it was recorded, and the form would still take the order. The amount was
+       never the exposure (the server re-prices) — what the customer could do is confirm an order
+       against a menu the page can no longer vouch for. Driven through the REAL send path, not by
+       calling the gate, so what is proved is that no charge leaves: submitOrder() reaches its fetch
+       only past refuseConflictedSend, and the same gate guards chargeOnlineOrder. */
+    /* Copied into THIS realm with a spread: w.__calls is a jsdom Array, and deepStrictEqual compares
+       prototypes, so a cross-realm empty array is not deepStrictEqual to [] — it reports `actual: []`
+       against `expected: []` and throws anyway. Cost an hour once already in this project. */
+    const chargeUrls = (c) => [...c].filter((u) => /createOrder|chargeOnlineOrder/.test(u));
+    assert.deepStrictEqual(chargeUrls(w.__calls), [],
+      `${dir}: premise — nothing had charged before this point`);
+    w.chg(w.liveMenuGlobalGet('MENU')[0].id, 1);           // the REAL quantity writer, not poked state
+    assert.ok(w.cartLines().length > 0, `${dir}: non-vacuity — the cart really holds a line to send`);
+    assert.strictEqual([...w.cartConflicts()].length, 0,
+      `${dir}: non-vacuity — and that line is NOT conflicted, so only the broken state can refuse it`);
+    assert.strictEqual(w.refuseConflictedSend('t9'), true,
+      `${dir}: 🔴 the send gate refuses while the applier reports fatal`);
+    try { await w.submitOrder('cash'); } catch (_) { /* the form may bail in its own way; the fetch is the assertion */ }
+    assert.deepStrictEqual(chargeUrls(w.__calls), [],
+      `${dir}: 🔴 …and the real submit path reached NO charge endpoint (${JSON.stringify(chargeUrls(w.__calls))})`);
+    const err = w.document.getElementById('err3') || w.document.getElementById('err1');
+    assert.match((err && err.textContent) || '', /[Rr]ecarg/,
+      `${dir}: 🔴 …and the customer is told to reload rather than left guessing`);
+    ok(`${dir}: a renderer that cannot draw the old menu either is reported fatal — and blocks the charge`);
   }
 
   // ── 22. A CATEGORY THE UPGRADE REMOVES LEAVES THE SCREEN ──
@@ -1727,6 +1752,33 @@ for (const dir of Object.keys(BRAND)) {
     assert.strictEqual(w.liveMenuGlobalGet('MENU'), menuBefore, `${dir}: 🔴 refused — MENU is the identical prior array`);
     assert.strictEqual(painted(w), before, `${dir}: and nothing rendered`);
     ok(`${dir}: a dish referencing a category that does not exist is refused whole`);
+  }
+
+  /* ── 🔴 THE ORDER ID IS THE PAYMENT IDEMPOTENCY ANCHOR, SO IT MUST NOT COLLIDE ────────────────
+     Asserted for BOTH brands from one loop, because the defect was an ASYMMETRY: x_pizza carried a
+     CSPRNG suffix and la_musa did not, so two la_musa orders in the same second produced the same id
+     and the second was absorbed into the first as a retry — a lost sale, not a double charge. Both
+     forms also emit the same 'PZX-' prefix into a shared id space, so the collision was never confined
+     to one restaurant. A per-brand test would have passed on x_pizza and never been written for the
+     brand that needed it. */
+  {
+    const w = loadForm(dir);
+    await serve(w, envelope(B.rid, B.menu(w)));
+    const ids = new Set();
+    for (let i = 0; i < 400; i++) ids.add(w.genOrderId());
+    assert.strictEqual(ids.size, 400,
+      `${dir}: 🔴 400 order ids generated in the same second are all distinct (got ${ids.size})`);
+    const one = [...ids][0];
+    assert.match(one, /^[A-Za-z0-9_-]{1,64}$/,
+      `${dir}: 🔴 …and the id still satisfies the server's order_id allowlist (${one})`);
+    assert.match(one, /-[0-9A-HJKMNP-TV-Z]{8}$/,
+      `${dir}: 🔴 …via an 8-character high-entropy suffix, not a longer timestamp (${one})`);
+    // NON-VACUITY: the timestamp prefix really is shared across the batch, so the distinctness above is
+    // the SUFFIX doing the work and not the clock ticking during the loop.
+    const prefixes = new Set([...ids].map((x) => x.slice(0, x.lastIndexOf('-'))));
+    assert.ok(prefixes.size <= 2,
+      `${dir}: non-vacuity — the batch shares its timestamp, so entropy is what separates the ids (${prefixes.size} prefixes)`);
+    ok(`${dir}: the order id carries CSPRNG entropy — same-second orders cannot collide on the idempotency anchor`);
   }
 
   // ── 🔴 AN EMPTY ID IS NOT AN ID, AND THE DISH VALIDATOR IS WHERE THAT IS DECIDED ─────────────

@@ -2172,7 +2172,45 @@ function cartRestore(stashedCart){
 
    Same resolution as 1A Task 7, where the chokepoint turned out to be flipPointer — the write itself —
    rather than any of its callers, and as 2b-2b: make the bad state impossible AT THE WRITE POINT. */
+/* The customer is TOLD, and told the one thing that actually helps: reload. A blocked submit must never
+   be silent — the same rule the conflict announcement follows, for the same reason. */
+function announceMenuBroken(){
+  const err = document.getElementById('err3') || document.getElementById('err1');
+  if (err) {
+    err.textContent = 'No pudimos actualizar el menú. Recargá la página para continuar con tu pedido.';
+    err.style.display = 'block';
+  }
+}
+
 function refuseConflictedSend(where){
+  /* 🔴 1B Task 9 — A PAGE THAT ADMITS IT IS BROKEN DOES NOT ASK FOR MONEY.
+     When a live apply fails AND its recovery also fails, the applier reports 'broken' and records the
+     cause in state().fatal. Until now that was recorded and nothing more: the screen may agree with
+     nothing, and the form would still take the order.
+     The amount was never the exposure — the server re-prices, so the customer could not be overcharged
+     by a stale screen. What they COULD do is confirm an order against a menu the page can no longer
+     vouch for. "Money-safe" is not the same as "honest", and this is the last point where the
+     difference can still be acted on. Asked HERE, with the conflict check, because this is the one
+     place every charge path converges — the same reason the conflict gate lives here rather than in
+     the five callers that reach it. Fails CLOSED: if reading the state throws, that is not evidence
+     the page is healthy. */
+  /* ABSENT IS NOT BROKEN, and the distinction has to be made carefully. A form with no live-menu
+     subsystem at all — still booting, feed disabled, or an extraction harness that never built one —
+     has nothing to be broken ABOUT, and treating that as a failure would refuse every order on a page
+     whose menu is simply the one it shipped with. But an applier that EXISTS and cannot answer for
+     itself is a different thing, and that still fails closed. */
+  let fatal = null;
+  const applier = (typeof LIVE_APPLIER === 'undefined') ? null : LIVE_APPLIER;
+  if (applier) {
+    try { fatal = applier.state().fatal || null; }
+    catch (e) { fatal = e; }
+  }
+  if (fatal) {
+    console.warn('cart_blocked_send_menu_broken', JSON.stringify({
+      at: where, error: String((fatal && fatal.message) || fatal).slice(0, 200) }));
+    announceMenuBroken();
+    return true;
+  }
   const conflicts = cartConflicts();
   const empty = cartLines().length === 0;
   // An EMPTY cart is refused here too. It is not a conflict, but it is not a chargeable order either —
@@ -2711,12 +2749,25 @@ let cashExactMode=false;   // true while the cash "pay-with" equals the exact to
 
 function genOrderId(){
   const d=new Date();
-  return 'PZX-'+d.getFullYear().toString().slice(-2)+
+  const ts='PZX-'+d.getFullYear().toString().slice(-2)+
     String(d.getMonth()+1).padStart(2,'0')+
     String(d.getDate()).padStart(2,'0')+'-'+
     String(d.getHours()).padStart(2,'0')+
     String(d.getMinutes()).padStart(2,'0')+
     String(d.getSeconds()).padStart(2,'0');
+  /* 🔴 1B Task 9 — HIGH-ENTROPY SUFFIX (CSPRNG). This id was SECOND-RESOLUTION ONLY, and order_id is
+     the payment idempotency anchor: two orders placed in the same second produced the same id, and the
+     second one is then indistinguishable from a retry of the first. That is not a duplicate charge — it
+     is the opposite, and worse for the merchant: the second sale is silently absorbed into the first and
+     never made. Both brands also emit the SAME 'PZX-' prefix into a shared id space, so the collision
+     was never even confined to one restaurant.
+     x_pizza has carried this suffix since order_id became the idempotency anchor; la_musa did not, and
+     nothing in either form made that asymmetry visible. Identical charset and length, deliberately:
+     [0-9A-Z] minus I/L/O/U, inside the server's /^[A-Za-z0-9_-]{1,64}$/ allowlist. */
+  const A='0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  const b=new Uint8Array(8); crypto.getRandomValues(b);
+  let r=''; for(const x of b) r+=A[x % 32];
+  return ts+'-'+r;
 }
 
 /* ── Menu rendering ── */
