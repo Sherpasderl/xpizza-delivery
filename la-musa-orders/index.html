@@ -2090,7 +2090,10 @@ function cartSync(id){
 // Cart lines IN MENU ORDER, so with no live conflict the serialization is byte-identical to before.
 function cartLines(){
   const pos = new Map(MENU.map((p, i) => [String(p.id), i]));
-  return CART.resolve(findMenuItem, findMenuExtra)
+  /* The availability predicate is the form's OWN isSoldOut — the same one the tiles and the add-guard
+     use, so a line cannot be blocked on screen and orderable in the cart, or the reverse. Passed rather
+     than imported: form-cart.js has no business knowing there is an availability feed. */
+  return CART.resolve(findMenuItem, findMenuExtra, (rec) => { try { return isSoldOut(rec); } catch (_) { return false; } })
     .map((l, i) => ({ l, r: pos.has(l.key) ? pos.get(l.key) : MENU.length + i }))
     .sort((a, b) => a.r - b.r).map((x) => x.l);
 }
@@ -2225,10 +2228,18 @@ function refuseConflictedSend(where){
 function cartConflicts(){ return cartLines().filter(l => l.blocked); }
 function announceCartConflicts(conflicts){
   const names = conflicts.map(l => (l.record && l.record.name) || l.key);
-  console.warn('cart_conflict_blocked_submit', JSON.stringify({ lines: names }));
+  console.warn('cart_conflict_blocked_submit', JSON.stringify({
+    lines: names, reasons: conflicts.map(l => l.unresolved || 'option') }));
   const err = document.getElementById('err3') || document.getElementById('err1');
   if (err) {
-    err.textContent = 'Algunos productos de tu carrito cambiaron: ' + names.join(', ') + '. Revisalos antes de continuar.';
+    /* 🔴 "AGOTADO" IS ITS OWN SENTENCE. A dish the kitchen ran out of has NOT "changed" — telling the
+       customer to review it sends them to look for a difference that is not there, and the only action
+       that helps is removing it. Split only when EVERY blocked line is sold out; a mixed cart keeps the
+       general wording rather than asserting a reason that is wrong for some of the lines. */
+    const soldOut = conflicts.filter(l => l.unresolved === 'unavailable');
+    err.textContent = (soldOut.length === conflicts.length && soldOut.length)
+      ? 'Agotado: ' + names.join(', ') + '. Quitá ' + (names.length > 1 ? 'esos productos' : 'ese producto') + ' para continuar.'
+      : 'Algunos productos de tu carrito cambiaron: ' + names.join(', ') + '. Revisalos antes de continuar.';
     err.style.display = 'block';
   }
   if (typeof window.__onCartConflict === 'function') { try { window.__onCartConflict(conflicts); } catch(_){} }

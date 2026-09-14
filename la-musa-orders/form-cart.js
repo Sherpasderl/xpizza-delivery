@@ -137,10 +137,22 @@ function createCart(options) {
   //             Adopting the new price silently is the one behaviour nobody would defend.
   //
   // A line that matches is resolved and serializes exactly as before.
+  //   unavailable  the record exists, unchanged, and the kitchen has 86'd it since it was added.
+  //             🔴 THE FOURTH STATE, ADDED IN 1B TASK 9, AND IT EXISTED ONLY IN THE GAP BETWEEN TWO
+  //             TASKS THAT BOTH PASSED. Availability blocks ADDING a dish (Task 7) and the cart blocks
+  //             removed/renamed/repriced lines (Task 4) — and neither ever asked what happens to a line
+  //             ALREADY in the cart when the kitchen runs out. It is still on the menu, same name, same
+  //             price, so all three checks above returned resolved and the order went to the charge with
+  //             a dish nobody can cook. The server's availability gate rejects it, so this was never a
+  //             money defect — but letting a customer complete a checkout the server will refuse is the
+  //             same "money-safe is not honest" line drawn for a broken apply, and the customer learns
+  //             about it later and with less to act on.
+  let unavailable = () => false;
   function classify(line, live) {
     if (!live) return 'removed';
     if (adapter.pricingKey(live) !== line.added.pricingKey) return 'renamed';
     if (live.price !== line.added.price) return 'repriced';
+    if (unavailable(live)) return 'unavailable';
     return null;
   }
 
@@ -150,8 +162,14 @@ function createCart(options) {
   // The LIVE record is what a resolved line serializes from, so a resolved line is always current.
   // An unresolved line serializes from what it was ADDED as, because that is the only thing that is
   // true about it — and it blocks submit, so it never reaches a charge.
-  function resolve(findRecord, findExtra) {
+  /* `isUnavailable` is OPTIONAL and defaults to "everything is available". This module knows nothing
+     about the availability feed and should not: it is handed a predicate the way it is handed the two
+     lookups. Defaulting to false keeps every existing caller and test meaning exactly what it meant —
+     a default that silently blocked would have been a far worse way to find out who had not been
+     updated. */
+  function resolve(findRecord, findExtra, isUnavailable) {
     const lookupExtra = findExtra || (() => null);
+    unavailable = typeof isUnavailable === 'function' ? isUnavailable : () => false;
     return keys().map((key) => {
       const line = lines.get(key);
       const live = findRecord(key) || null;

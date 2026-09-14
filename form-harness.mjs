@@ -100,7 +100,13 @@ export async function serve(w, body, opts = {}) {
    also means these tests exercise the same path the KDS feed does, including its fail-open handling. */
 export const loadAvail = async (w, map) => {
   const prev = w.__respond;
-  w.__respond = (url) => (/item_availability/.test(url) ? res(map) : prev(url));
+  /* 🔴 init IS FORWARDED. This wrapper took only `url` and called prev(url), so every request made
+     AFTER an availability load reached the previous responder with no init — no method, no headers, no
+     BODY. A suite that only asks "was this URL called" never notices; the whole-flow matrix, which
+     asserts on what the charge actually SENT, saw createOrder arrive with an empty body and looked for
+     a full turn like a silent-drop defect in the form. The rig was lying, not the code. Any wrapper
+     here must pass the whole call through. */
+  w.__respond = (url, init) => (/item_availability/.test(url) ? res(map) : prev(url, init));
   await w.loadAvailability();
   await settle();
 };

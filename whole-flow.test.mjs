@@ -27,8 +27,6 @@ import { counter, settle, stageSettle, envelope, loadForm, res, loadAvail, BRAND
          closeAll, containersOfFor, paintedFor } from './form-harness.mjs';
 
 const { ok, count } = counter();
-let __cell = 0;
-const CELL_MARK = () => console.error('[CELL]', ++__cell);
 const CHARGE_RE = /createOrder|chargeOnlineOrder/;
 
 /* THE SERVER'S PRICE, computed the way the server computes it: from the menu in force, keyed the way
@@ -147,7 +145,7 @@ for (const dir of Object.keys(BRAND)) {
   const plainDish = (w) => w.liveMenuGlobalGet('MENU').find((d) =>
     d.price > 0 && !d.variantOf && !(w.itemIsLauncher && w.itemIsLauncher(d)));
 
-  CELL_MARK('next'); // ── CELL 1: REPRICE ──────────────────────────────────────────────────────────────────────────
+  // ── CELL 1: REPRICE ──────────────────────────────────────────────────────────────────────────
   // The one the whole task exists for: a price moves under a quoted cart.
   {
     const ctx = await boot(dir);
@@ -187,7 +185,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: reprice — the line blocks rather than charging either price, and re-adding charges the new one`);
   }
 
-  CELL_MARK('next'); // ── CELL 2: REPRICE WITH NO RE-QUOTE ─────────────────────────────────────────────────────────
+  // ── CELL 2: REPRICE WITH NO RE-QUOTE ─────────────────────────────────────────────────────────
   // The dangerous half of the same cell: the price moves and nothing asks for a new quote. The stale
   // total must NOT be displayed — an invalidated quote is what stands between the old number and the
   // customer's eyes.
@@ -218,7 +216,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: reprice with no re-quote — the pre-change total is never left standing`);
   }
 
-  CELL_MARK('next'); // ── CELL 3: REMOVAL ──────────────────────────────────────────────────────────────────────────
+  // ── CELL 3: REMOVAL ──────────────────────────────────────────────────────────────────────────
   {
     const ctx = await boot(dir);
     await publish(ctx, baseMenu(ctx.w));
@@ -233,7 +231,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: removal — an unresolved line blocks the charge entirely`);
   }
 
-  CELL_MARK('next'); // ── CELL 4: NEW ITEM ─────────────────────────────────────────────────────────────────────────
+  // ── CELL 4: NEW ITEM ─────────────────────────────────────────────────────────────────────────
   // A dish appearing must not disturb a quoted cart — the total is the cart's, not the menu's.
   {
     const ctx = await boot(dir);
@@ -254,7 +252,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: new item — the quoted cart is untouched and charged as confirmed`);
   }
 
-  CELL_MARK('next'); // ── CELL 5: MODAL OPEN ───────────────────────────────────────────────────────────────────────
+  // ── CELL 5: MODAL OPEN ───────────────────────────────────────────────────────────────────────
   {
     const ctx = await boot(dir);
     await publish(ctx, baseMenu(ctx.w));
@@ -275,7 +273,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: modal open — the apply defers under the modal and lands intact on close`);
   }
 
-  CELL_MARK('next'); // ── CELL 6: CHECKOUT OPEN ────────────────────────────────────────────────────────────────────
+  // ── CELL 6: CHECKOUT OPEN ────────────────────────────────────────────────────────────────────
   {
     const ctx = await boot(dir);
     await publish(ctx, baseMenu(ctx.w));
@@ -293,7 +291,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: checkout open — the snapshot is held while the customer is paying`);
   }
 
-  CELL_MARK('next'); // ── CELL 7: POST-SUBMIT ──────────────────────────────────────────────────────────────────────
+  // ── CELL 7: POST-SUBMIT ──────────────────────────────────────────────────────────────────────
   // The order is placed. What the menu does afterwards is not this customer's business.
   {
     const ctx = await boot(dir);
@@ -315,7 +313,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: post-submit — the apply is ignored and nothing is held`);
   }
 
-  CELL_MARK('next'); // ── CELL 8: OVERLAPPING FETCH ────────────────────────────────────────────────────────────────
+  // ── CELL 8: OVERLAPPING FETCH ────────────────────────────────────────────────────────────────
   // Two snapshots in flight: the LATEST must win, and no cart may be priced against a blend.
   {
     const ctx = await boot(dir);
@@ -343,7 +341,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: overlapping fetch — the latest snapshot wins and prices the cart by itself`);
   }
 
-  CELL_MARK('next'); // ── CELL 9: 304 NOT MODIFIED ─────────────────────────────────────────────────────────────────
+  // ── CELL 9: 304 NOT MODIFIED ─────────────────────────────────────────────────────────────────
   // Nothing changed, so nothing may move — including the quote, whose invalidation would silently
   // withdraw the total the customer is looking at.
   {
@@ -368,7 +366,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: 304 — nothing applies, nothing repaints, and the quote is not withdrawn`);
   }
 
-  CELL_MARK('next'); // ── CELL 10: AVAILABILITY REAPPLY ────────────────────────────────────────────────────────────
+  // ── CELL 10: AVAILABILITY REAPPLY ────────────────────────────────────────────────────────────
   // A dish 86'd by the kitchen must block the send even though the MENU still carries it — the two
   // feeds are independent and the cart has to answer to both.
   {
@@ -383,10 +381,17 @@ for (const dir of Object.keys(BRAND)) {
     const r = await sendAndJudge(ctx, dir, 'availability');
     assert.strictEqual(r.outcome, 'refused',
       `${dir}/availability: 🔴 an 86'd line blocks the charge even though the menu still lists it`);
-    ok(`${dir}: availability reapply — a sold-out line blocks the charge`);
+    // …and the customer is told the RIGHT thing. "Review it" sends them looking for a change that is
+    // not there; the only action that helps is removing it.
+    const err = ctx.w.document.getElementById('err3') || ctx.w.document.getElementById('err1');
+    assert.match((err && err.textContent) || '', /Agotado/,
+      `${dir}/availability: 🔴 …and it is named as SOLD OUT, not as "changed"`);
+    assert.match((err && err.textContent) || '', new RegExp(d.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+      `${dir}/availability: 🔴 …with the line named, so the customer knows which one`);
+    ok(`${dir}: availability reapply — a sold-out line blocks the charge and is named as agotado`);
   }
 
-  CELL_MARK('next'); // ── CELL 11: RENAME ──────────────────────────────────────────────────────────────────────────
+  // ── CELL 11: RENAME ──────────────────────────────────────────────────────────────────────────
   // The brands diverge here BY DESIGN and the matrix must say so rather than assert one answer:
   // x_pizza prices by NAME, so a rename is a different product and the line cannot be charged;
   // la_musa prices by ID, so the same dish keeps its identity and is simply relabelled.
