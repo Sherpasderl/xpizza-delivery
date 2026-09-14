@@ -40,42 +40,131 @@ function safeText(raw) {
     .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-/* URL — A POLICY. Escaping is the wrong tool: javascript:alert(1) contains no HTML metacharacter, so an
-   escaped page still executes it. Only two shapes pass, and everything else becomes the empty string so
-   the caller falls back to its placeholder:
-     • an absolute https:// URL
-     • a same-origin relative path
-   Rejected on purpose, each for its own reason: http:// (mixed content on an https checkout),
-   protocol-relative //host (inherits the page scheme, different origin), data: (can carry an SVG that
-   scripts), blob:, and every other scheme. Control characters, spaces, quotes, angle brackets and
-   backslashes are refused outright — they are how a value escapes the attribute it sits in, and a tab
-   inside "java<TAB>script:" is how a scheme hides from a naive prefix check. */
+/* URL — A POLICY, APPLIED TO A PARSED URL RATHER THAN TO ITS TEXT. Escaping is the wrong tool:
+   javascript:alert(1) contains no HTML metacharacter, so an escaped page still executes it. Only two
+   shapes pass — an absolute https:// URL, or a same-origin relative path — and everything else becomes
+   the empty string so the caller falls back to its placeholder.
+
+   🔴 THE FIRST VERSION MATCHED SUBSTRINGS AND PREFIXES, AND THAT IS WRONG IN BOTH DIRECTIONS:
+     • `indexOf("..") === -1` is a text search, so it rejected the ordinary filename `pizza..jpg` while
+       missing `%2e%2e` entirely — the encoded spelling of the same climb — and it never ran on the
+       https branch at all, which returned earlier.
+     • "a colon before the first slash is a scheme" read the colon in `photo.png?next=https://…` as a
+       scheme and refused a perfectly ordinary query.
+   Both are the same mistake: asking a question about the characters instead of about the URL. So the
+   string is SPLIT first — fragment, then query, then path — and each part is judged as what it is. A
+   climb is a path SEGMENT that decodes to "..", whatever spelling arrived; a scheme is a colon in the
+   PATH part before any slash, which a query can no longer counterfeit.
+
+   Over-rejection is a real failure, not a safe default: a policy that turns a merchant's photo into a
+   placeholder is a silent outage of the thing they are watching, and it fails in the direction nobody
+   notices — the tile still renders. Rejected on purpose, each for its own reason: http:// (mixed
+   content on an https checkout), protocol-relative //host (inherits the page scheme, different origin),
+   data: (can carry an SVG that scripts), blob:, userinfo (user@host reads as a different host), and
+   every other scheme. Control characters, spaces, quotes, angle brackets, backticks and backslashes are
+   refused outright — they are how a value escapes the attribute it sits in, and a tab inside
+   "java<TAB>script:" is how a scheme hides from a naive prefix check. */
+var SAFE_URL_SEG = /^[A-Za-z0-9._~\-%!$&()*+,;=:@]*$/;          // one path segment
+var SAFE_URL_TAIL = /^[A-Za-z0-9._~\-%!$&()*+,;=:@\/?#]*$/;     // a query or fragment, taken whole
+
+// A segment that cannot be decoded is refused: a malformed percent escape is not a filename, and
+// guessing what it meant is how the two spellings drift apart again.
+function safeUrlSegmentOk(seg) {
+  if (!SAFE_URL_SEG.test(seg)) return false;
+  var decoded;
+  try { decoded = decodeURIComponent(seg); } catch (e) { return false; }
+  if (decoded === "..") return false;                 // the climb, however it was spelled
+  // A segment that decodes to something containing a separator is a segment pretending not to be one.
+  if (decoded.indexOf("/") !== -1 || decoded.indexOf("\\") !== -1) return false;
+  return true;
+}
+
+function safeUrlPathOk(path) {
+  var segs = path.split("/");
+  for (var i = 0; i < segs.length; i++) if (!safeUrlSegmentOk(segs[i])) return false;
+  return true;
+}
+
+// A real IPv6 literal, so `[::1]` and `[::ffff:192.0.2.1]` load and `[:::]` does not. Written out
+// rather than approximated by a character class, because "looks like hex and colons" accepts nonsense.
+function safeUrlIPv6Ok(t) {
+  if (!/^[0-9A-Fa-f:.]+$/.test(t)) return false;
+  if (t.indexOf(":::") !== -1) return false;
+  var parts = t.split("::");
+  if (parts.length > 2) return false;
+  var head = parts[0] === "" ? [] : parts[0].split(":");
+  var tail = parts.length === 2 ? (parts[1] === "" ? [] : parts[1].split(":")) : [];
+  var groups = head.concat(tail);
+  var need = 8;
+  var last = groups[groups.length - 1];
+  if (last !== undefined && last.indexOf(".") !== -1) {   // a trailing IPv4 literal fills two groups
+    if (!/^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/.test(last)) return false;
+    groups = groups.slice(0, -1);
+    need = 6;
+  }
+  for (var i = 0; i < groups.length; i++) if (!/^[0-9A-Fa-f]{1,4}$/.test(groups[i])) return false;
+  // "::" stands for AT LEAST one omitted group, so a compressed address must be short of the full count.
+  return parts.length === 2 ? groups.length <= need - 1 : groups.length === need;
+}
+
+function safeUrlAuthorityOk(authority) {
+  var host = authority, port = "";
+  if (authority.charAt(0) === "[") {
+    var close = authority.indexOf("]");
+    if (close === -1) return false;
+    host = authority.slice(0, close + 1);
+    var after = authority.slice(close + 1);
+    if (after) { if (after.charAt(0) !== ":") return false; port = after.slice(1); }
+    if (!safeUrlIPv6Ok(host.slice(1, -1))) return false;
+  } else {
+    var c = authority.lastIndexOf(":");
+    if (c !== -1) { host = authority.slice(0, c); port = authority.slice(c + 1); }
+    // No userinfo, no empty host: `evil.test@cdn.test` is a different origin than it reads as.
+    if (!/^[A-Za-z0-9._~\-]+$/.test(host)) return false;
+  }
+  if (port !== "") {
+    if (!/^\d{1,5}$/.test(port)) return false;
+    if (Number(port) > 65535) return false;
+  }
+  return true;
+}
+
 function safeImgUrl(raw) {
   if (raw == null) return "";
-  const s = String(raw);
+  var s = String(raw);
   if (/[\x00-\x20"'<>\\`]/.test(s)) return "";
-  /* 🔴 OVER-REJECTION IS A REAL FAILURE TOO, not a safe default. A policy that turns a legitimate
-     merchant photo into a placeholder is a silent outage of the thing the merchant is paying attention
-     to, and it fails in the direction nobody notices — the tile still renders. The first version
-     refused percent-encoded paths (images/a%20b.png), a bare trailing slash, and an uppercase scheme,
-     all of which are ordinary. Widened to accept them while the REJECTIONS below stay exactly as they
-     were: a scheme other than https, a protocol-relative host, and any of the characters above. */
-  const lower = s.toLowerCase();
-  if (lower.indexOf("https://") === 0) {
-    // Host, optional port, then any path/query/fragment made of URL-legal characters.
-    if (/^https:\/\/(?:[A-Za-z0-9._~\-]+|\[[0-9A-Fa-f:]+\])(:\d{1,5})?(\/[A-Za-z0-9._~\-%!$&()*+,;=:@\/]*)?(\?[A-Za-z0-9._~\-%!$&()*+,;=:@\/?]*)?(#[A-Za-z0-9._~\-%!$&()*+,;=:@\/?]*)?$/i.test(s)) return s;
-    return "";
+
+  // SPLIT FIRST — fragment, then query, then path. Every question below is asked of the right piece.
+  var hashAt = s.indexOf("#");
+  var beforeHash = hashAt === -1 ? s : s.slice(0, hashAt);
+  var fragment = hashAt === -1 ? "" : s.slice(hashAt + 1);
+  var qAt = beforeHash.indexOf("?");
+  var pathPart = qAt === -1 ? beforeHash : beforeHash.slice(0, qAt);
+  var query = qAt === -1 ? "" : beforeHash.slice(qAt + 1);
+  if (!SAFE_URL_TAIL.test(query) || !SAFE_URL_TAIL.test(fragment)) return "";
+
+  // A SCHEME is a colon in the PATH part before any slash. The query cannot counterfeit one, because
+  // it is no longer part of what is being read.
+  var slashAt = pathPart.indexOf("/");
+  var colonAt = pathPart.indexOf(":");
+  var hasScheme = colonAt !== -1 && (slashAt === -1 || colonAt < slashAt);
+
+  if (hasScheme) {
+    if (pathPart.slice(0, colonAt).toLowerCase() !== "https") return "";
+    var rest = pathPart.slice(colonAt + 1);
+    if (rest.indexOf("//") !== 0) return "";              // https:evil — a scheme with no authority
+    rest = rest.slice(2);
+    var pSlash = rest.indexOf("/");
+    var authority = pSlash === -1 ? rest : rest.slice(0, pSlash);
+    var path = pSlash === -1 ? "" : rest.slice(pSlash);
+    if (!safeUrlAuthorityOk(authority)) return "";
+    if (path && !safeUrlPathOk(path)) return "";          // the climb check runs HERE too
+    return s;
   }
-  // Any other scheme is refused outright — a colon before the first slash is a scheme.
-  const firstSlash = s.indexOf("/");
-  const firstColon = s.indexOf(":");
-  if (firstColon !== -1 && (firstSlash === -1 || firstColon < firstSlash)) return "";
-  if (s.indexOf("//") === 0) return "";                    // protocol-relative: a different origin
-  // Relative: path segments of URL-legal characters, optional query and fragment. A trailing slash and
-  // percent-encoding are both ordinary and allowed; ".." is not, so a path cannot climb out.
-  if (/^\/?([A-Za-z0-9._~\-%!$&()*+,;=@]+\/)*[A-Za-z0-9._~\-%!$&()*+,;=@]*(\?[A-Za-z0-9._~\-%!$&()*+,;=:@\/?]*)?(#[A-Za-z0-9._~\-%!$&()*+,;=:@\/?]*)?$/.test(s)
-      && s.indexOf("..") === -1) return s;
-  return "";
+
+  if (pathPart.indexOf("//") === 0) return "";            // protocol-relative: a different origin
+  if (!safeUrlPathOk(pathPart)) return "";
+  return s;
 }
 
 /* CSS — A CONSTRAINED GRAMMAR. The value lands in style="background:…", where a semicolon starts a new

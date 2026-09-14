@@ -2243,6 +2243,12 @@ function liveMenuRenderAll(){ renderCategoryShell(); renderMenu(); }
    touched, so a rejected snapshot costs nothing and the prior menu simply stands. It is also the
    adapter's acceptance test, so "would apply cleanly" and "is accepted" are the same question asked
    once. Throws with a typed reason; never returns a partial projection. */
+/* 🔴 ONE DISH-IDENTITY COMPARISON, ASKED EVERYWHERE. la_musa keys prices, 86s and variants BY ID, so
+   "is this the same dish" is the question the whole brand turns on — and it was being asked two ways.
+   Requiring a string on both sides is deliberate: every la_musa dish id is a string, and coercion is
+   what let a validator and a renderer disagree while both looked correct in isolation. */
+function sameDishId(a, b) { return typeof a === 'string' && typeof b === 'string' && a === b; }
+
 function liveMenuPrepare(body){
   if (!body || typeof body !== 'object') throw new Error('apply_body_missing');
   const dishes = body.dishes, extras = body.extras;
@@ -2277,14 +2283,25 @@ function liveMenuPrepare(body){
   if (body.variant_items !== undefined) {
     const vi = body.variant_items;
     if (!vi || typeof vi !== 'object' || Array.isArray(vi)) throw new Error('apply_variant_items_malformed');
-    const dishIds = new Set(dishes.map((d) => String(d.id)));
+    /* 🔴 VALIDATION MUST ASK THE QUESTION THE RENDERER ASKS. This resolved with String(vid) while the
+       renderer resolves with `p.id === vid` and silently `return`s when it finds nothing — so a
+       variantId of 123 against a dish id of '123' PASSED validation and then drew a launcher with zero
+       choices: a required single-select group offering nothing, reached from the menu, with no error
+       anywhere. A looser validator is not a safer one; it admits exactly the states the strict consumer
+       cannot render. Both sides now call sameDishId, so the two cannot drift apart again, and the id
+       TYPE is pinned rather than coerced — coercion is what hid the mismatch in the first place. */
     Object.keys(vi).forEach((k) => {
       const cfg = vi[k];
       if (!cfg || typeof cfg !== 'object') throw new Error('apply_variant_cfg_malformed@' + k);
       if (!(typeof cfg.basePrice === 'number' && isFinite(cfg.basePrice) && cfg.basePrice > 0)) throw new Error('apply_variant_basePrice@' + k);
       if (!Array.isArray(cfg.variantIds) || !cfg.variantIds.length) throw new Error('apply_variant_ids_missing@' + k);
-      cfg.variantIds.forEach((vid) => { if (!dishIds.has(String(vid))) throw new Error('apply_variant_id_orphan@' + k + ':' + vid); });
-      if (!dishIds.has(String(k))) throw new Error('apply_variant_launcher_orphan@' + k);
+      cfg.variantIds.forEach((vid) => {
+        if (typeof vid !== 'string' || !vid) throw new Error('apply_variant_id_type@' + k + ':' + String(vid));
+        if (!dishes.some((d) => sameDishId(d.id, vid))) throw new Error('apply_variant_id_orphan@' + k + ':' + vid);
+      });
+      // The launcher key is an OBJECT key, so it is a string by construction and VARIANT_ITEMS[p.id]
+      // coerces on lookup — the dish's own id is therefore what has to be a string here.
+      if (!dishes.some((d) => sameDishId(d.id, k))) throw new Error('apply_variant_launcher_orphan@' + k);
     });
     variantItems = vi;
   }
@@ -3268,46 +3285,14 @@ function renderStage2Summary(){
   }catch(_){}
   box.innerHTML='<div class="s2-summary-head">Resumen del pedido</div>'+rows+envio+reward+'<div class="review-total"><span>Total</span><span>L '+redeemAdjustedTotal().toFixed(0)+'</span></div>';
 }
-function updateReview(){
-  const body=document.getElementById('review-body');
-  if(!body) return;
-  const items=cartItems();
-  if(!items.length){ body.innerHTML=''; return; }
-  body.innerHTML=items.map(p=>{
-    const extras = pizzaExtras[p.id] || {};
-    const extrasArr = Object.entries(extras).filter(([,q]) => q > 0)
-      .map(([eid,q]) => {
-        const ex = EXTRAS.find(e => e.id === eid);
-        return ex ? (q > 1 ? q + 'x ' : '') + ex.name : null;
-      }).filter(Boolean);
-    const extrasSum = Object.entries(extras).reduce((s,[eid,q]) => {
-      const ex = EXTRAS.find(e => e.id === eid);
-      return s + (ex ? ex.price * q : 0);
-    }, 0);
-    // Extras are standalone — added to the line, not scaled by qty.
-    const subtotal = p.price * qty[p.id] + extrasSum;
-    return '<div class="review-item">'
-      +'<div class="review-item-left">'
-      +'<div class="review-item-name">'+qty[p.id]+'x '+p.name+'</div>'
-      +(extrasArr.length?'<div class="review-item-extras">+ '+extrasArr.join(', ')+'</div>':'')
-      +'</div>'
-      +'<div class="review-item-price">L '+subtotal.toFixed(0)+'</div>'
-      +'</div>';
-  }).join('')+'<div class="review-total"><span>Total</span><span>L '+calcTotal().toFixed(0)+'</span></div>';
-  // Also update cart sheet if open
-  if(document.getElementById('cart-review-sheet')&&document.getElementById('cart-review-sheet').classList.contains('open')){
-    updateCartReviewBody();
-  }
-}
-
-function toggleReview(){
-  const body=document.getElementById('review-body');
-  const arrow=document.getElementById('review-arrow');
-  if(!body) return;
-  const open=body.style.display==='block';
-  body.style.display=open?'none':'block';
-  if(arrow) arrow.classList.toggle('open',!open);
-}
+/* 🔴 REMOVED — updateReview()/toggleReview(), 1B Task 8.
+   They rendered cart lines into #review-body, an element that exists in NEITHER form: no markup
+   declares it, nothing called either function, and the CSS rule beside it is the only trace left.
+   They were carrying UNENCODED p.name and option names — the exact sinks this task closed everywhere
+   else — so the choice was to encode dead code or remove it. Removed: an unreachable sink that gets
+   escaped is still a template someone can wire up later, and the encoding would be the first thing
+   dropped when it was adapted. The live cart sheet (#cart-review-body, updateCartReviewBody) and the
+   pay-step summary (#s2-summary, renderStage2Summary) are unrelated and untouched. */
 
 function toggleCartReview(){
   const count=cartItemCount();
@@ -4958,7 +4943,9 @@ function renderLauncherModal(pizza) {
   html += `<div class="detail-cat-label">${escapeHtml(cfg.label)} <span class="detail-req">· Requerido</span></div>`;
   html += `<div class="detail-extras-list">`;
   cfg.variantIds.forEach(vid => {
-    const v = MENU.find(p => p.id === vid); if (!v) return;
+    // Same comparison as liveMenuPrepare — see sameDishId. Unreachable now that a launcher whose ids do
+    // not resolve is refused whole, and kept as the floor rather than as the only guard.
+    const v = MENU.find(p => sameDishId(p.id, vid)); if (!v) return;
     const delta = v.price - cfg.basePrice;
     const priceLabel = delta > 0 ? `+L ${delta}` : `L ${v.price}`;
     const sel = stagedVariantId === vid;

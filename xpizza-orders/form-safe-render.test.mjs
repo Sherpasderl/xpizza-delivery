@@ -56,6 +56,42 @@ test('safeImgUrl — REJECTS to the empty string, so every caller falls back to 
   for (const u of [null, undefined, '']) assert.strictEqual(safeImgUrl(u), '', 'absent is empty');
 });
 
+test('safeImgUrl — the path is PARSED, so a climb is a segment and a query is not a scheme', () => {
+  /* 🔴 THE SUBSTRING VERSION GOT ALL SIX OF THESE WRONG, three in each direction. Kept as one table so
+     the two failure modes sit together: silently rejecting a real photo is as much a defect as
+     accepting a climb, and a policy that only ever tightens will quietly blank a merchant's menu. */
+  const climbs = [
+    'images/%2e%2e/%2e%2e/secret.png',        // the climb, percent-encoded
+    'images/%2E%2E/secret.png',               // …and in upper case
+    'https://cdn.test/a/../secret.png',       // the https branch used to return before the check ran
+    'https://cdn.test/a/%2e%2e/secret.png',
+    '../secret.png',
+    'images/a%2fb.png',                       // a separator smuggled in as one segment
+    'images/%zz/a.png',                       // a malformed escape is not a filename
+  ];
+  for (const u of climbs) assert.strictEqual(safeImgUrl(u), '', `🔴 a path climb is refused: ${u}`);
+
+  const ordinary = [
+    'images/pizza..jpg',                      // '..' INSIDE a name is not a climb
+    'photo.png?next=https://cdn.test/a.png',  // a colon in the QUERY is not a scheme
+    'photo.png?a=1&b=2#frag',
+    'images/a%20b.png',
+    '/',
+    'images/',
+    'https://[::1]/a.png',
+    'https://[::ffff:192.0.2.1]/a.png',
+    'https://cdn.test:8443/a.png',
+  ];
+  for (const u of ordinary) assert.strictEqual(safeImgUrl(u), u, `🔴 an ordinary URL still loads: ${u}`);
+
+  // Malformed authorities stay refused — the widening is in the path, not in who may serve it.
+  for (const u of ['https://[:::]/a.png', 'https://[12345::x]/a.png', 'https://cdn.test:99999/a.png',
+                   'https://cdn.test:-1/a.png', 'https://evil.test@cdn.test/a.png', 'https:///a.png',
+                   'https:/cdn.test/a.png', 'https:cdn.test/a.png']) {
+    assert.strictEqual(safeImgUrl(u), '', `🔴 a malformed or disguised authority is refused: ${u}`);
+  }
+});
+
 test('safeColor — accepts a constrained grammar, falls back otherwise', () => {
   const fb = '#C8321A';
   for (const c of ['#fff', '#C8321A', '#12345678', 'rgb(1,2,3)', 'rgba(1,2,3,0.5)', 'red', 'darkslateblue'])

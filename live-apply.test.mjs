@@ -1273,7 +1273,29 @@ for (const dir of Object.keys(BRAND)) {
        Emptying has_photo puts every dish on the emoji branch, and poisoning every dish means whichever
        one a surface happens to render is hostile. The photo branch is not lost — check 40 owns it. */
     m.has_photo = [];
-    m.dishes = m.dishes.map((d, i) => (i === 0 ? d : { ...d, emoji: payload('emoji') }));
+    /* Colour too, not only the emoji: the launcher modal takes its colour from the LAUNCHER dish, and
+       poisoning dishes[0] alone left that filter removable with this check still passing. */
+    const HOSTILE_COLOR = 'red;background:url(javascript:alert(1))';
+    /* EVERY dish, every authored display field. Names are made unique per index so a brand that refuses
+       duplicate keys still ACCEPTS this snapshot — a fixture the form rejects proves nothing. `choice`
+       is carried because the variant rows render it, and beverages are dishes like any other, so the
+       list-layout row template is covered by the same sweep rather than by a special case. */
+    m.dishes = m.dishes.map((d, i) => (i === 0
+      ? { ...d, choice: d.choice === undefined ? undefined : payload('choice') }
+      : { ...d, name: payload('name' + i), emoji: payload('emoji'), color: HOSTILE_COLOR,
+          choice: d.choice === undefined ? undefined : payload('choice') }));
+    // An option whose ID is hostile, not just its name — the id lands in data- attributes and in the
+    // quoted id= of the option row, which is a different context from the body text beside it.
+    m.extras = m.extras.concat([{ ...m.extras[0], id: payload('eid'), name: payload('extraname') }]);
+    /* The launcher's LABEL is authored too ("Proteína"), and it only arrives with a served
+       variant_items block — which nothing in this walk used to send, so the label was rendered from the
+       page's own literal and its filter was never exercised. The ids stay valid: this check is about
+       what the renderer does with hostile TEXT, and a block refused by validation renders nothing. */
+    if (dir === 'la-musa-orders') {
+      const vi = w.liveMenuGlobalGet('VARIANT_ITEMS');
+      const lk = Object.keys(vi)[0];
+      m.variant_items = { [lk]: { ...vi[lk], label: payload('label') } };
+    }
     await serve(w, envelope(B.rid, m));
     assert.strictEqual(w.liveMenuGlobalGet('MENU')[0].name, m.dishes[0].name,
       `${dir}: non-vacuity — the hostile snapshot was ACCEPTED (validation is not an XSS filter)`);
@@ -1336,14 +1358,30 @@ for (const dir of Object.keys(BRAND)) {
     w.openCartReview();
     visit(w.document.getElementById('cart-review-body'), 'cart-review', 'extra');
     w.closeCartReview();
-    // 4. the receipt
+    // 4. the PAY-STEP summary — a separate template from the cart sheet, and the one the customer is
+    //    looking at while they enter a card. It was not on this walk at all.
+    w.renderStage2Summary();
+    visit(w.document.getElementById('s2-summary'), 'stage2-summary', 'name');
+    // 5. the category tabs, where the authored CATEGORY name lands.
+    const tabs = w.document.getElementById('cat-tabs');
+    if (tabs) visit(tabs, 'category-tabs', 'cat');
+    // 6. the receipt
     w.buildOrder();
     w.showSuccess();
     visit(w.document.getElementById('s5'), 'receipt', 'name');
-    // 5. la_musa's launcher modal and its subcategory headings
+    // 7. la_musa's launcher modal and its subcategory headings
     if (dir === 'la-musa-orders') {
       const launcher = w.liveMenuGlobalGet('MENU').find((d) => w.itemIsLauncher(d));
-      if (launcher) { w.openDetailModal(launcher.id); visit(w.document.getElementById('detail-scroll'), 'launcher-modal', 'emoji'); w.closeDetailModal(); }
+      if (launcher) {
+        w.openDetailModal(launcher.id);
+        const lm = w.document.getElementById('detail-scroll');
+        visit(lm, 'launcher-modal', 'emoji');
+        assert.ok(lm.textContent.includes(MARK + 'label'),
+          `${dir}/launcher-modal: non-vacuity — the served variant LABEL was rendered here, as text`);
+        assert.ok(lm.textContent.includes(MARK + 'choice'),
+          `${dir}/launcher-modal: non-vacuity — and each variant's CHOICE was rendered here, as text`);
+        w.closeDetailModal();
+      }
       visit(w.document.getElementById('menu-sections'), 'subcategory-headings', 'subcat');
     }
     assert.ok(reached.length >= 5, `${dir}: non-vacuity — every surface was actually visited (${reached.join(', ')})`);
@@ -1373,8 +1411,21 @@ for (const dir of Object.keys(BRAND)) {
       // x_pizza renders the authored img directly, so the ACCEPT half is observable there.
       const goodCard = w.document.getElementById('card-' + m.dishes[1].id);
       const good = [...goodCard.querySelectorAll('img')].map((i) => i.getAttribute('src'));
-      assert.ok(good.includes('https://cdn.test/real-photo.png?v=1&amp;w=2') || good.includes('https://cdn.test/real-photo.png?v=1&w=2'),
+      assert.deepStrictEqual(good, ['https://cdn.test/real-photo.png?v=1&w=2'],
         `${dir}: 🔴 a legitimate https photo — ampersand and all — still renders (got ${JSON.stringify(good)})`);
+
+      /* 🔴 AND THE ATTRIBUTE ENCODING IS PINNED BY A ROUND-TRIP, not by "one of these two spellings".
+         `?v=1&w=2` cannot tell the two apart: `&w` is not an entity, so the parser hands back the same
+         string whether or not the & was encoded, and the encoding could be deleted with this check
+         still green. A literal `&amp;` in the URL is the case that separates them — encoded it decodes
+         back to `&amp;`, unencoded it decodes to `&`, a URL pointing somewhere else. */
+      const ampUrl = 'https://cdn.test/a&amp;b.png?x=&lt;y';
+      const m2 = B.menu(w);
+      m2.dishes[2] = { ...m2.dishes[2], img: ampUrl };
+      await serve(w, envelope(B.rid, m2));
+      const ampGot = [...w.document.getElementById('card-' + m2.dishes[2].id).querySelectorAll('img')].map((i) => i.getAttribute('src'));
+      assert.deepStrictEqual(ampGot, [ampUrl],
+        `${dir}: 🔴 an approved URL survives the quoted attribute byte-for-byte (got ${JSON.stringify(ampGot)})`);
     } else {
       /* 🔴 la_musa's card NEVER RENDERS THE AUTHORED `img` FIELD — its photo path is composed from the
          dish id and has_photo. So the merchant-controlled input to the URL on this brand is the ID, and
@@ -1672,6 +1723,13 @@ for (const dir of Object.keys(BRAND)) {
       'a missing basePrice': (() => { const c = { ...cfg }; delete c.basePrice; return c; })(),
       'an empty variantIds': { ...cfg, variantIds: [] },
       'a variantId naming no dish': { ...cfg, variantIds: [...cfg.variantIds, 'no_such_dish'] },
+      /* 🔴 THE TYPE-MISMATCH COUNTEREXAMPLE. This is the shape that used to PASS validation and then
+         render nothing: the validator asked String(vid) while the renderer asks p.id === vid, so a
+         numeric id matched one and not the other, and the customer got a required choice group with no
+         choices in it. Both sides now ask sameDishId. */
+      'a variantId of the wrong TYPE (validates loosely, renders nothing)': { ...cfg, variantIds: cfg.variantIds.map((v) => Number(v.replace(/\D/g, '')) || 1) },
+      'a variantId that is null': { ...cfg, variantIds: [...cfg.variantIds, null] },
+      'a variantId that is an empty string': { ...cfg, variantIds: [...cfg.variantIds, ''] },
     };
     for (const [label, bad] of Object.entries(corrupt)) {
       const before = painted(w);
@@ -1682,6 +1740,31 @@ for (const dir of Object.keys(BRAND)) {
       assert.strictEqual(w.liveMenuGlobalGet('MENU'), menuBefore, `${dir}: 🔴 ${label} is refused — MENU is the identical prior array`);
       assert.strictEqual(painted(w), before, `${dir}: 🔴 ${label} is refused — nothing rendered`);
     }
+    /* 🔴 THE DISCRIMINATING CASE: A DISH WHOSE ID IS NOT A STRING. Every corrupt shape above is refused
+       by whichever guard happens to see it first, so they could not tell the guards apart — all three
+       mutants survived a table that looked thorough. What separates them is a dish id that COERCES
+       equal without BEING equal: 'x' vs the number that stringifies to it. Under a coercing validator
+       the snapshot is accepted and the renderer, which compares strictly, then draws a launcher with no
+       choices — the exact reachable state the gate reported. */
+    for (const [label, build] of Object.entries({
+      'a variantId that only matches after coercion': (m, numericId) => {
+        m.dishes = m.dishes.concat([{ ...m.dishes[0], id: numericId, name: 'Numerico' }]);
+        m.variant_items = { [launcherKey]: { ...cfg, variantIds: [String(numericId)] } };
+      },
+      'a launcher KEY that only matches its dish after coercion': (m, numericId) => {
+        m.dishes = m.dishes.concat([{ ...m.dishes[0], id: numericId, name: 'Numerico' }]);
+        m.variant_items = { [String(numericId)]: { ...cfg } };
+      },
+    })) {
+      const before = painted(w);
+      const menuBefore = w.liveMenuGlobalGet('MENU');
+      const m = B.menu(w);
+      build(m, 7);
+      await serve(w, envelope(B.rid, m));
+      assert.strictEqual(w.liveMenuGlobalGet('MENU'), menuBefore, `${dir}: 🔴 ${label} is refused — MENU is the identical prior array`);
+      assert.strictEqual(painted(w), before, `${dir}: 🔴 ${label} is refused — nothing rendered`);
+    }
+
     // A launcher key naming no dish at all — the same rule from the other direction.
     {
       const before = painted(w);
@@ -1692,14 +1775,28 @@ for (const dir of Object.keys(BRAND)) {
     }
     // NON-VACUITY: the untouched block still applies, so the refusals above are the corruption talking
     // and not a snapshot this form rejects for some unrelated reason.
+    /* 🔴 NON-VACUITY THAT PROVES THE SUPPLIED BLOCK LANDED. Asserting VARIANT_ITEMS[launcherKey] merely
+       exists proved nothing: the page ships that key as a literal, so the check passed whether the
+       served block applied or was dropped on the floor. The supplied block therefore carries a value
+       the literal does not have, and that value is what is read back — and read back off the SCREEN as
+       well, because a global nobody renders is not evidence the customer saw a working launcher. */
     {
       const m = B.menu(w);
-      m.variant_items = { [launcherKey]: cfg };
+      const distinct = cfg.basePrice + 7;
+      m.variant_items = { [launcherKey]: { ...cfg, basePrice: distinct } };
       await serve(w, envelope(B.rid, m));
-      assert.ok(w.liveMenuGlobalGet('VARIANT_ITEMS')[launcherKey],
-        `${dir}: non-vacuity — an intact variant_items block is still ACCEPTED`);
+      assert.strictEqual(w.liveMenuGlobalGet('VARIANT_ITEMS')[launcherKey].basePrice, distinct,
+        `${dir}: non-vacuity — the SUPPLIED block applied, not the page's own literal`);
+      w.openDetailModal(launcherKey);
+      const modal = w.document.getElementById('detail-scroll');
+      assert.ok(modal.textContent.includes('desde L ' + distinct),
+        `${dir}: non-vacuity — and the applied basePrice is what the launcher shows`);
+      const rows = modal.querySelectorAll('.detail-variant-row');
+      assert.strictEqual(rows.length, cfg.variantIds.length,
+        `${dir}: 🔴 the launcher renders one row per variant — never a required group with no choices (got ${rows.length})`);
+      w.closeDetailModal();
     }
-    ok(`${dir}: a launcher's variant_items is validated — 7 corrupt shapes refused whole, the intact one applied`);
+    ok(`${dir}: a launcher's variant_items is validated — 12 corrupt shapes refused whole, including the two that only differ under coercion, the intact one applied`);
   }
 }
 

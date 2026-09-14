@@ -2641,11 +2641,11 @@
   "slice": "b8",
   "label": "safeImgUrl allows any scheme, not just https",
   "file": "../xpizza-orders/form-safe-render.js",
-  "from": "  if (lower.indexOf(\"https://\") === 0) {",
-  "to": "  if (/^[a-z]+:/i.test(s)) return s;\n  if (lower.indexOf(\"https://\") === 0) {",
+  "from": "    if (pathPart.slice(0, colonAt).toLowerCase() !== \"https\") return \"\";",
+  "to": "    if (false) return \"\";",
   "command": [
    "node",
-   "../live-apply.test.mjs"
+   "../xpizza-orders/form-safe-render.test.mjs"
   ]
  },
  {
@@ -2925,5 +2925,115 @@
    "node",
    "../xpizza-orders/form-safe-render.test.mjs"
   ]
+ },
+ {
+  "id": "b8-27",
+  "slice": "b8",
+  "label": "the climb check reads the raw spelling again, so %2e%2e walks past it",
+  "file": "../xpizza-orders/form-safe-render.js",
+  "from": "  if (decoded === \"..\") return false;                 // the climb, however it was spelled",
+  "to": "  if (seg === \"..\") return false;",
+  "command": [
+   "node",
+   "../xpizza-orders/form-safe-render.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-28",
+  "slice": "b8",
+  "label": "the https branch stops checking its path for a climb",
+  "file": "../xpizza-orders/form-safe-render.js",
+  "from": "    if (path && !safeUrlPathOk(path)) return \"\";          // the climb check runs HERE too",
+  "to": "    if (false) return \"\";",
+  "command": [
+   "node",
+   "../xpizza-orders/form-safe-render.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-29",
+  "slice": "b8",
+  "label": "a colon anywhere counts as a scheme, so a query URL is refused",
+  "file": "../xpizza-orders/form-safe-render.js",
+  "from": "  var hasScheme = colonAt !== -1 && (slashAt === -1 || colonAt < slashAt);",
+  "to": "  var hasScheme = s.indexOf(\":\") !== -1 && (s.indexOf(\"/\") === -1 || s.indexOf(\":\") < s.indexOf(\"/\"));",
+  "command": [
+   "node",
+   "../xpizza-orders/form-safe-render.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-30",
+  "slice": "b8",
+  "label": "an IPv6 literal is accepted by character class instead of parsed",
+  "file": "../xpizza-orders/form-safe-render.js",
+  "from": "    if (!safeUrlIPv6Ok(host.slice(1, -1))) return false;",
+  "to": "    if (!/^[0-9A-Fa-f:.]+$/.test(host.slice(1, -1))) return false;",
+  "command": [
+   "node",
+   "../xpizza-orders/form-safe-render.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-31",
+  "slice": "b8",
+  "label": "the port bound is dropped",
+  "file": "../xpizza-orders/form-safe-render.js",
+  "from": "    if (Number(port) > 65535) return false;",
+  "to": "    if (false) return false;",
+  "command": [
+   "node",
+   "../xpizza-orders/form-safe-render.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-32",
+  "slice": "b8",
+  "label": "a segment that decodes to a separator is accepted",
+  "file": "../xpizza-orders/form-safe-render.js",
+  "from": "  if (decoded.indexOf(\"/\") !== -1 || decoded.indexOf(\"\\\\\") !== -1) return false;",
+  "to": "  if (false) return false;",
+  "command": [
+   "node",
+   "../xpizza-orders/form-safe-render.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-33",
+  "slice": "b8",
+  "label": "la_musa: variantId validation goes back to coercing, so it admits what the renderer cannot draw",
+  "file": "../la-musa-orders/index.html",
+  "from": "        if (!dishes.some((d) => sameDishId(d.id, vid))) throw new Error('apply_variant_id_orphan@' + k + ':' + vid);",
+  "to": "        if (!dishes.some((d) => String(d.id) === String(vid))) throw new Error('apply_variant_id_orphan@' + k + ':' + vid);",
+  "command": [
+   "node",
+   "../live-apply.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-34",
+  "slice": "b8",
+  "label": "la_musa: the shared dish-identity comparison stops pinning the type",
+  "file": "../la-musa-orders/index.html",
+  "from": "function sameDishId(a, b) { return typeof a === 'string' && typeof b === 'string' && a === b; }",
+  "to": "function sameDishId(a, b) { return String(a) === String(b); }",
+  "command": [
+   "node",
+   "../live-apply.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-35",
+  "slice": "b8",
+  "label": "la_musa: a variantId of the wrong type is accepted",
+  "file": "../la-musa-orders/index.html",
+  "from": "        if (typeof vid !== 'string' || !vid) throw new Error('apply_variant_id_type@' + k + ':' + String(vid));",
+  "to": "        if (false) throw new Error('apply_variant_id_type@' + k + ':' + String(vid));",
+  "command": [
+   "node",
+   "../live-apply.test.mjs"
+  ],
+  "equivalent": true,
+  "why": "sameDishId already requires a string on BOTH sides, so every non-string variantId fails resolution and is refused as an orphan whether or not this check runs. The only difference is the REASON reported — apply_variant_id_type rather than apply_variant_id_orphan — and validateSnapshot currently swallows it (`catch (_) { return null; }`), so no caller can observe which one was thrown. The check is kept because a refusal that names the wrong cause is a debugging trap the moment that catch starts reporting; making the reason observable is carried to T9 with the other apply-diagnostics items. If sameDishId's type requirement is ever relaxed, this stops being equivalent and becomes the only guard."
  }
 ]

@@ -2760,39 +2760,14 @@ function renderStage2Summary(){
   }catch(_){}
   box.innerHTML='<div class="s2-summary-head">Resumen del pedido</div>'+rows+envio+reward+'<div class="review-total"><span>Total</span><span>L '+redeemAdjustedTotal().toFixed(0)+'</span></div>';
 }
-function updateReview(){
-  const body=document.getElementById('review-body');
-  if(!body) return;
-  const items=cartItems();
-  if(!items.length){ body.innerHTML=''; return; }
-  body.innerHTML=items.map(p=>{
-    const extras=pizzaExtras[p.id]||{};
-    const extrasArr=Object.entries(extras).filter(([,q])=>q>0)
-      .map(([eid,q])=>{ const ex=EXTRAS.find(e=>e.id===eid); return ex?(q>1?q+'x ':'')+ex.name:null; }).filter(Boolean);
-    const extrasTotal=Object.entries(extras).reduce((s,[eid,q])=>{ const ex=EXTRAS.find(e=>e.id===eid); return s+(ex?ex.price*q:0); },0);
-    const subtotal=p.price*qty[p.id]+extrasTotal;
-    return '<div class="review-item">'
-      +'<div class="review-item-left">'
-      +'<div class="review-item-name">'+qty[p.id]+'x '+p.name+'</div>'
-      +(extrasArr.length?'<div class="review-item-extras">+ '+extrasArr.join(', ')+'</div>':'')
-      +'</div>'
-      +'<div class="review-item-price">L '+subtotal.toFixed(0)+'</div>'
-      +'</div>';
-  }).join('')+'<div class="review-total"><span>Total</span><span>L '+calcTotal().toFixed(0)+'</span></div>';
-  // Also update cart sheet if open
-  if(document.getElementById('cart-review-sheet')&&document.getElementById('cart-review-sheet').classList.contains('open')){
-    updateCartReviewBody();
-  }
-}
-
-function toggleReview(){
-  const body=document.getElementById('review-body');
-  const arrow=document.getElementById('review-arrow');
-  if(!body) return;
-  const open=body.style.display==='block';
-  body.style.display=open?'none':'block';
-  if(arrow) arrow.classList.toggle('open',!open);
-}
+/* 🔴 REMOVED — updateReview()/toggleReview(), 1B Task 8.
+   They rendered cart lines into #review-body, an element that exists in NEITHER form: no markup
+   declares it, nothing called either function, and the CSS rule beside it is the only trace left.
+   They were carrying UNENCODED p.name and option names — the exact sinks this task closed everywhere
+   else — so the choice was to encode dead code or remove it. Removed: an unreachable sink that gets
+   escaped is still a template someone can wire up later, and the encoding would be the first thing
+   dropped when it was adapted. The live cart sheet (#cart-review-body, updateCartReviewBody) and the
+   pay-step summary (#s2-summary, renderStage2Summary) are unrelated and untouched. */
 
 function toggleCartReview(){
   const count=cartItemCount();
