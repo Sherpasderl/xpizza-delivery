@@ -134,21 +134,36 @@ ok('fail-soft: 5 bad-cart shapes → { ok:false } with NO total (the client keep
     assert.ok(/const token = \+\+__quoteSeq;[^\n]*\n\s*__serverQuote\.inflight = token;/.test(block),
       `${rid}: each request must take a unique token, not the cart key`);
     /* 🔴 EVERY CART TRANSITION SUPERSEDES WHAT WAS OUTSTANDING — INCLUDING THE ONES THAT FIRE NOTHING.
-       requestServerQuote has four ways out, and the rule is not uniform across them, which is exactly
+       requestServerQuote has five ways out, and the rule is not uniform across them, which is exactly
        why it is asserted rather than left to be re-derived by the next reader:
          redemption-owns-the-total → supersede   (returns without firing)
          empty cart               → supersede   (returns without firing)
          cart already quoted      → supersede   (returns without firing)  ← the one that was missing
+         cart already FAILED to quote → supersede (returns without firing) ← 1B Task 9, see below
          request already in flight for THIS cart → do NOT supersede: that reply is the one being awaited,
                                                    and orphaning it leaves the cart permanently unquoted.
-       The count is pinned too, so a future edit cannot add a fifth return that quietly fires nothing and
-       supersedes nothing. */
+       The count is pinned too, so a future edit cannot add a sixth return that quietly fires nothing and
+       supersedes nothing.
+
+       🔴 THE FAILED-CART EXIT IS 1B TASK 9, AND IT CLOSED A HOT LOOP. Every quote reply calls
+       renderStage2Summary(), which calls requestServerQuote(). On success the already-quoted guard
+       breaks the cycle because cents is non-null. On FAILURE cents stays null, so the cycle closed:
+       reply → render → request → reply, as fast as the network allows, against the endpoint that
+       prices money — and the customer it hit was one already mid-checkout. The whole-flow matrix hung
+       on it. Superseding here is required for the same reason the other no-fire returns do: the cart
+       has moved on from whatever is outstanding. */
     // Scoped to requestServerQuote itself — the parity block holds several functions, and counting
     // returns across all of them would measure something nobody is claiming.
     const rsq = block.slice(block.indexOf('function requestServerQuote'), block.indexOf('\n}', block.indexOf('function requestServerQuote')));
     assert.ok(rsq.length > 200, `${rid}: non-vacuity — requestServerQuote was actually sliced out`);
-    assert.strictEqual((rsq.match(/supersedeQuoteRequests\(\);/g) || []).length, 4,
-      `${rid}: the three no-fire returns AND the outer catch supersede`);
+    assert.strictEqual((rsq.match(/supersedeQuoteRequests\(\);/g) || []).length, 5,
+      `${rid}: the four no-fire returns AND the outer catch supersede`);
+    // …and the new one is REACHABLE rather than merely present: it must be guarded on failedKey, which
+    // is the only thing that distinguishes it from the already-quoted return directly above it.
+    assert.ok(/if\(key===__serverQuote\.failedKey\)\{\s*supersedeQuoteRequests\(\); return; \}/.test(rsq),
+      `${rid}: the failed-cart exit is keyed on failedKey — the guard that stops the re-request loop`);
+    assert.ok(/__serverQuote\.failedKey\s*=\s*key/.test(block),
+      `${rid}: …and something actually RECORDS a failed cart, or the guard can never fire`);
     /* 🔴 THE EXCEPTIONAL EXIT COUNTS AS A WAY OUT. The counts below cover NORMAL completion only, and
        saying "all ways out" while measuring just the returns was the gap: a throw before the token is
        taken leaves the previous request's token current, and the swallowed error hid it. Asserted
@@ -160,8 +175,8 @@ ok('fail-soft: 5 bad-cart shapes → { ok:false } with NO total (the client keep
     /* Counted at the FUNCTION's own indentation: a bare `return;` count also picks up the two guards
        inside the promise handlers, which are not ways out of requestServerQuote at all. Asserting 6 and
        explaining it away would have been a count that measured something nobody is claiming. */
-    assert.strictEqual((rsq.match(/\n    \S[^\n]*\breturn;/g) || []).length, 4,
-      `${rid}: requestServerQuote still has exactly four NORMAL ways out — a new one needs its own decision`);
+    assert.strictEqual((rsq.match(/\n    \S[^\n]*\breturn;/g) || []).length, 5,
+      `${rid}: requestServerQuote still has exactly five NORMAL ways out — a new one needs its own decision`);
     assert.strictEqual((rsq.match(/\n        \S[^\n]*\breturn;/g) || []).length, 2,
       `${rid}: …and the two handler guards (success + rejection) are both still there`);
     assert.ok(!/__serverQuote\.inflight\s*===?\s*key\b/.test(block),

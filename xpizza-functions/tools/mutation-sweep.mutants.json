@@ -2012,7 +2012,7 @@
   "slice": "b6",
   "label": "the stale server quote survives a menu change",
   "file": "../xpizza-orders/index.html",
-  "from": "  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; }\n",
+  "from": "  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; __serverQuote.failedKey = null; }\n",
   "to": ";\n",
   "command": [
    "node",
@@ -2024,8 +2024,8 @@
   "slice": "b6",
   "label": "focus is not restored after the container holding it is re-rendered",
   "file": "../xpizza-orders/index.html",
-  "from": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; }\n  liveMenuPaint(prepared);\n  liveMenuUiRestore(ui);\n}",
-  "to": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; }\n  liveMenuPaint(prepared);\n}",
+  "from": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; __serverQuote.failedKey = null; }\n  liveMenuPaint(prepared);\n  liveMenuUiRestore(ui);\n}",
+  "to": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; __serverQuote.failedKey = null; }\n  liveMenuPaint(prepared);\n}",
   "command": [
    "node",
    "../live-apply.test.mjs"
@@ -2145,7 +2145,7 @@
   "slice": "b6",
   "label": "a successful apply invalidates the quote but leaves the in-flight markers, so the duplicate is never started",
   "file": "../xpizza-orders/index.html",
-  "from": "  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; }\n",
+  "from": "  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; __serverQuote.failedKey = null; }\n",
   "to": "  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; }\n",
   "command": [
    "node",

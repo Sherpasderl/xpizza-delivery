@@ -2097,7 +2097,7 @@ function liveMenuPaint(prepared){
    what the customer was paying with. Invalidating here keeps it a side-effect of succeeding. */
 function liveMenuCommit(prepared){
   const ui = liveMenuUiCapture();
-  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; }
+  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; __serverQuote.failedKey = null; }
   liveMenuPaint(prepared);
   liveMenuUiRestore(ui);
 }
@@ -2579,7 +2579,9 @@ function syncFreeOrderUI(){
 // FAIL-OPEN throughout: any failure, timeout, bad cart or stale response leaves the quote null and the
 // display falls back to calcTotal() — today's behaviour. A quote must never block or delay checkout,
 // and it is never authoritative: createOrder/chargeOnlineOrder re-price at order time regardless.
-var __serverQuote = { key: null, cents: null, inflight: null, inflightKey: null };
+/* `failedKey` — the cart whose quote the server could not answer. See requestServerQuote: without it
+   a failed quote re-requests forever. */
+var __serverQuote = { key: null, cents: null, inflight: null, inflightKey: null, failedKey: null };
 // Monotonic, so no two quote requests can ever share an identity — see requestServerQuote below.
 var __quoteSeq = 0;
 /* 🔴 THE INVARIANT: EVERY CART TRANSITION SUPERSEDES WHATEVER WAS OUTSTANDING — INCLUDING THE
@@ -2619,7 +2621,7 @@ function requestServerQuote(){
     if(window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()){ supersedeQuoteRequests(); return; }
     const items = redeemCartItems();
     //  2. THE CART IS EMPTY → supersede, and drop the cache with it. (Already did.)
-    if(!items || !items.length){ __serverQuote.key=null; __serverQuote.cents=null; supersedeQuoteRequests(); return; }
+    if(!items || !items.length){ __serverQuote.key=null; __serverQuote.cents=null; __serverQuote.failedKey=null; supersedeQuoteRequests(); return; }
     const key = JSON.stringify(items);
     /*  3. THIS CART IS ALREADY QUOTED → supersede, then return. THE ONE THAT WAS MISSING. Returning to
            a cart that is already cached fires nothing, so it looked like a no-op — but it is still a
@@ -2628,6 +2630,17 @@ function requestServerQuote(){
            screen; the next exact-mode updateTotal then lowers the customer's tender (350 → 340 /
            233 → 223). Reproduced: quote A, add an item, remove it again. */
     if(key===__serverQuote.key && __serverQuote.cents!=null){ supersedeQuoteRequests(); return; }
+    /* 🔴 3b. THIS CART ALREADY FAILED TO QUOTE → supersede, then return. WITHOUT THIS THE PAIR BELOW IS A
+           HOT LOOP, and it is not hypothetical — the whole-flow matrix hung on it. Every quote reply
+           calls renderStage2Summary(), and renderStage2Summary() calls requestServerQuote(). On a
+           SUCCESSFUL quote guard 3 above breaks the cycle, because cents is then non-null. On a failure
+           cents stays null, so the cycle closes: reply → render → request → reply, as fast as the
+           network allows, against the endpoint that prices money. Reachable whenever the server cannot
+           price the cart — which is exactly what a removed dish produces — and the customer it hits is
+           one already mid-checkout, who would be rate-limited out of ordering by their own form.
+           Cleared on any cart change (the key differs), on a successful quote, and on a live-menu
+           apply, so a transient failure retries at the next thing that happens rather than never. */
+    if(key===__serverQuote.failedKey){ supersedeQuoteRequests(); return; }
     /*  4. A REQUEST FOR THIS EXACT CART IS ALREADY IN FLIGHT → do NOT supersede. That request is the
            current cart's and is the one to wait for; superseding here would orphan the very reply this
            call wants and leave the cart permanently unquoted. */
@@ -2653,8 +2666,8 @@ function requestServerQuote(){
       .then(function(j){
         if(__serverQuote.inflight!==token) return;   // a different request is current — ignore
         __serverQuote.inflight = null; __serverQuote.inflightKey = null;
-        if(j && j.ok===true && typeof j.total_cents==='number' && isFinite(j.total_cents)){ __serverQuote.key=key; __serverQuote.cents=j.total_cents; }
-        else { __serverQuote.key=null; __serverQuote.cents=null; }   // ok:false → fail open to calcTotal()
+        if(j && j.ok===true && typeof j.total_cents==='number' && isFinite(j.total_cents)){ __serverQuote.key=key; __serverQuote.cents=j.total_cents; __serverQuote.failedKey=null; }
+        else { __serverQuote.key=null; __serverQuote.cents=null; __serverQuote.failedKey=key; }   // ok:false → fail open to calcTotal(), and do not ask again for THIS cart
         try{ if(typeof renderStage2Summary==='function') renderStage2Summary(); }catch(_){}
       })
       /* 🔴 A SUPERSEDED REJECTION MUST NOT TOUCH THE QUOTE — the same guard the success path above
@@ -2668,7 +2681,7 @@ function requestServerQuote(){
          fails open to calcTotal(), which is all this was ever meant to do. */
       .catch(function(){
         if(__serverQuote.inflight!==token) return;   // a different request is current — ignore, exactly as the success path does
-        __serverQuote.inflight=null; __serverQuote.inflightKey=null; __serverQuote.key=null; __serverQuote.cents=null;
+        __serverQuote.inflight=null; __serverQuote.inflightKey=null; __serverQuote.key=null; __serverQuote.cents=null; __serverQuote.failedKey=key;
       });
   }catch(_){
     /* 🔴 THE EXCEPTIONAL EXIT SUPERSEDES TOO — the floor under "no path leaves a stale request live".
