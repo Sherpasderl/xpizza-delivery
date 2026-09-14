@@ -103,10 +103,41 @@ process.on('uncaughtException', (e) => { restoreAll(); console.error(e); process
 const runSuite = (command) => {
   const [cmd, ...args] = command || ['npm', 'test'];
   try {
-    execFileSync(cmd, args, { cwd: ROOT, stdio: 'ignore', env: { ...process.env, PATH: `/opt/homebrew/opt/openjdk/bin:${process.env.PATH}` } });
+    /* 🔴 MUTATION_SWEEP TELLS THE SUITE THE TREE IS DELIBERATELY WRONG. The anchor guard reads every
+       mutant's `from` out of the source, so while a mutant is applied its own anchor is — correctly —
+       missing, and the guard fails. Under the default `npm test` command that failure is a NONZERO
+       EXIT, which this harness reads as "the suite noticed", and 101 mutants would have been scored
+       KILLED by the guard rather than by any behavioural test. A measurement that reports success
+       because of the measuring instrument is worse than no measurement: it is indistinguishable from a
+       real kill in the output. The guard still runs — on the pristine tree, below, before any mutant
+       is applied — so nothing is lost by silencing it here. */
+    execFileSync(cmd, args, { cwd: ROOT, stdio: 'ignore', env: { ...process.env, MUTATION_SWEEP: '1', PATH: `/opt/homebrew/opt/openjdk/bin:${process.env.PATH}` } });
     return 0;
   } catch (_) { return 1; }
 };
+
+/* 🔴 EVERY ANCHOR, CHECKED ONCE, AGAINST THE PRISTINE TREE — BEFORE A SINGLE MUTANT IS APPLIED.
+   The per-mutant ANCHOR MISSING report below only ever sees the slice being run, which is how one
+   mutant sat stale across several tasks of green sweeps. This runs over the WHOLE catalogue regardless
+   of slice, and refuses to start rather than reporting counts that a stale anchor has already made
+   meaningless. It is also what makes silencing the guard inside the per-mutant run safe. */
+{
+  const seen = new Map();
+  const bad = [];
+  for (const m of MUTANTS) {
+    const f = m.file;
+    if (!seen.has(f)) seen.set(f, readFileSync(join(ROOT, f), 'utf8'));
+    const n = seen.get(f).split(m.from).length - 1;
+    if (n !== 1) bad.push(`${m.id} (${m.slice}) anchors ${n}x in ${f} — ${m.label}`);
+  }
+  if (bad.length) {
+    console.error(`mutation-sweep: ${bad.length} mutant(s) do not anchor live code exactly once:`);
+    for (const b of bad) console.error(`  ${b}`);
+    console.error('re-point them before trusting any count from this harness.');
+    process.exit(2);
+  }
+  console.log(`anchors: all ${MUTANTS.length} mutants anchor live code exactly once (pristine tree)`);
+}
 
 let killed = 0; let survived = 0; let missing = 0;
 for (const m of selected) {

@@ -2254,8 +2254,14 @@ function liveMenuPrepare(body){
   const dishes = body.dishes, extras = body.extras;
   if (!Array.isArray(dishes) || !dishes.length) throw new Error('apply_dishes_missing');
   if (!Array.isArray(extras)) throw new Error('apply_extras_missing');
+  /* 🔴 AN EMPTY ID IS NOT AN ID. `r.id !== undefined && r.id !== null` let '' through, and an empty id
+     is a latent trap rather than a harmless oddity: it keys prices, 86s and cart lines, it renders as
+     id="card-", and it resolves against ITSELF — sameDishId('', '') is true — so it satisfies every
+     cross-reference check while naming nothing. A mutant on the variant type-check is what exposed it,
+     which is the argument for mutating validators and not only behaviour. */
   const okRecord = (r) => r && typeof r === 'object'
-    && r.id !== undefined && r.id !== null && typeof r.name === 'string' && r.name !== ''
+    && r.id !== undefined && r.id !== null && String(r.id) !== ''
+    && typeof r.name === 'string' && r.name !== ''
     && typeof r.price === 'number' && isFinite(r.price) && r.price > 0;
   dishes.forEach((d, i) => { if (!okRecord(d)) throw new Error('apply_dish_malformed@' + i); });
   extras.forEach((e, i) => { if (!okRecord(e)) throw new Error('apply_extra_malformed@' + i); });

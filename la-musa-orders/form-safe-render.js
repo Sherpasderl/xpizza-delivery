@@ -138,9 +138,24 @@ function safeUrlAuthorityOk(authority) {
     var c = authority.lastIndexOf(":");
     if (c !== -1) { host = authority.slice(0, c); port = authority.slice(c + 1); }
     // No userinfo, no empty host: `evil.test@cdn.test` is a different origin than it reads as.
-    /* An all-numeric DOTTED host is an IPv4 address, not a name, and has to be a valid one: the bare
-       character class accepted 999.999.999.999, which no browser will ever resolve. A host with no dot
-       (`localhost`, or a bare `123`) is still a name and keeps the hostname rule. */
+    /* 🔴 THE HOST POLICY, STATED SO IT STOPS BEING RE-LITIGATED.
+       safeImgUrl is an INTENTIONAL RESTRICTIVE SAFETY ALLOWLIST, not a WHATWG URL parser. Accepted
+       hosts: standard dotted-quad IPv4 (octets 0-255), bracketed IPv6, and dotted or dotless
+       hostnames. Exotic host forms — hex (0x7f.1), integer (2130706433), octal, abbreviated (127.1),
+       trailing-dot (cdn.test.), IDNA — are OUT OF SCOPE BY DESIGN.
+
+       Both directions of the residual mismatch with `new URL()` are safe, and that is why chasing
+       parity here is not worth it:
+         • an over-rejected exotic host fails safe — the caller falls back to its placeholder;
+         • an accepted-but-invalid host is inert — it simply will not resolve;
+         • no attribute breakout is reachable either way, because every caller passes the result
+           through safeText before it lands between quotes.
+       Do not chase `new URL()` parity in this function. Widening it to match a browser parser trades a
+       bounded, readable allowlist for an unbounded one, and the thing being defended is an <img src>.
+
+       An all-numeric DOTTED host is an IPv4 address rather than a name, and has to be a valid one: the
+       bare character class accepted 999.999.999.999. A host with no dot (`localhost`, a bare `123`)
+       is still a name and keeps the hostname rule. */
     if (/^[0-9]+(?:\.[0-9]+)+$/.test(host)) { if (!SAFE_URL_IPV4.test(host)) return false; }
     else if (!/^[A-Za-z0-9._~\-]+$/.test(host)) return false;
   }

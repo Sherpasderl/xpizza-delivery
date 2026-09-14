@@ -1729,6 +1729,28 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: a dish referencing a category that does not exist is refused whole`);
   }
 
+  // ── 🔴 AN EMPTY ID IS NOT AN ID, AND THE DISH VALIDATOR IS WHERE THAT IS DECIDED ─────────────
+  // Independent of any variant block, because that is where the guarantee has to live: '' keys prices,
+  // 86s and cart lines, renders as id="card-", and resolves against itself. Both brands.
+  {
+    const w = loadForm(dir);
+    await serve(w, envelope(B.rid, B.menu(w)));
+    const before = painted(w);
+    const menuBefore = w.liveMenuGlobalGet('MENU');
+    const m = B.menu(w);
+    m.dishes = m.dishes.concat([{ ...m.dishes[0], id: '', name: 'Sin Id' }]);
+    await serve(w, envelope(B.rid, m));
+    assert.strictEqual(w.liveMenuGlobalGet('MENU'), menuBefore,
+      `${dir}: 🔴 a dish with an EMPTY id is refused whole — MENU is the identical prior array`);
+    assert.strictEqual(painted(w), before, `${dir}: 🔴 …and nothing rendered`);
+    // The same rule for an OPTION, which shares the record validator and the same consequences.
+    const m2 = B.menu(w);
+    m2.extras = m2.extras.concat([{ ...m2.extras[0], id: '', name: 'Sin Id' }]);
+    await serve(w, envelope(B.rid, m2));
+    assert.strictEqual(painted(w), before, `${dir}: 🔴 an OPTION with an empty id is refused whole too`);
+    ok(`${dir}: a record with an empty id is refused whole — dishes and options alike`);
+  }
+
   // ── 🔴 A LAUNCHER'S variant_items IS VALIDATED, NOT ASSUMED ──────────────────────────────────
   // la_musa only — x_pizza has no variant launchers. The block was accepted as "an object" and never
   // looked inside, so an authored basePrice could be a string, a NaN, or absent and it would be priced
@@ -1761,6 +1783,24 @@ for (const dir of Object.keys(BRAND)) {
       'a variantId that is null': { ...cfg, variantIds: [...cfg.variantIds, null] },
       'a variantId that is an empty string': { ...cfg, variantIds: [...cfg.variantIds, ''] },
     };
+    /* 🔴 THE EMPTY-ID SHAPE, which is the ONE the vid type/empty check refuses alone. Every other
+       corrupt shape is caught by whichever guard sees it first, so none of them could tell that check
+       apart from sameDishId — and I wrongly wrote it off as equivalent on that basis. It is not:
+       sameDishId('', '') is TRUE, so a dish carrying an empty id and a launcher pointing at it satisfy
+       the resolution check and are refused only because an empty string is not a usable id. Absence of
+       a distinguishing case is not proof that none exists, which is exactly the failure class this
+       project keeps banking. */
+    {
+      const before = painted(w);
+      const menuBefore = w.liveMenuGlobalGet('MENU');
+      const m = B.menu(w);
+      m.dishes = m.dishes.concat([{ ...m.dishes[0], id: '', name: 'Sin Id' }]);
+      m.variant_items = { '': { ...cfg, variantIds: [''] } };
+      await serve(w, envelope(B.rid, m));
+      assert.strictEqual(w.liveMenuGlobalGet('MENU'), menuBefore,
+        `${dir}: 🔴 an EMPTY dish id, which resolves against itself, is refused — MENU is the identical prior array`);
+      assert.strictEqual(painted(w), before, `${dir}: 🔴 …and nothing rendered`);
+    }
     for (const [label, bad] of Object.entries(corrupt)) {
       const before = painted(w);
       const menuBefore = w.liveMenuGlobalGet('MENU');

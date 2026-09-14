@@ -3034,7 +3034,7 @@
    "../live-apply.test.mjs"
   ],
   "equivalent": true,
-  "why": "sameDishId already requires a string on BOTH sides, so every non-string variantId fails resolution and is refused as an orphan whether or not this check runs. The only difference is the REASON reported — apply_variant_id_type rather than apply_variant_id_orphan — and validateSnapshot currently swallows it (`catch (_) { return null; }`), so no caller can observe which one was thrown. The check is kept because a refusal that names the wrong cause is a debugging trap the moment that catch starts reporting; making the reason observable is carried to T9 with the other apply-diagnostics items. If sameDishId's type requirement is ever relaxed, this stops being equivalent and becomes the only guard."
+  "why": "MEASURED BOTH WAYS. Against the code as the gate found it this mutant DIES — the empty-id shape (a dish with id '' and variantIds ['']) is refused by this check alone, because sameDishId('','') is TRUE and every other guard lets it through. My earlier exemption was simply wrong and the gate was right. What changed is the OTHER half of the same instruction: rejecting an empty id at record validation removes the only id that could distinguish this line, so after that fix it survives again. Every behaviour it still provides is now pinned elsewhere — the string requirement by b8-34 (sameDishId), the empty-string rejection by b8-43/b8-44 (the record validator, both brands). It is kept as a boundary check that names its own reason, and it becomes load-bearing again the moment either of those is relaxed. Flagged for the advisor: keeping the redundancy is a judgement call, not a measurement."
  },
  {
   "id": "b8-36",
@@ -3118,6 +3118,30 @@
   "command": [
    "node",
    "../xpizza-orders/form-safe-render.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-43",
+  "slice": "b8",
+  "label": "la_musa: an empty record id is accepted again",
+  "file": "../la-musa-orders/index.html",
+  "from": "    && r.id !== undefined && r.id !== null && String(r.id) !== ''",
+  "to": "    && r.id !== undefined && r.id !== null",
+  "command": [
+   "node",
+   "../live-apply.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-44",
+  "slice": "b8",
+  "label": "x_pizza: an empty record id is accepted again",
+  "file": "../xpizza-orders/index.html",
+  "from": "    && r.id !== undefined && r.id !== null && String(r.id) !== ''",
+  "to": "    && r.id !== undefined && r.id !== null",
+  "command": [
+   "node",
+   "../live-apply.test.mjs"
   ]
  }
 ]
