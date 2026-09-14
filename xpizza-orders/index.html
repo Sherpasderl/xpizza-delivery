@@ -2331,7 +2331,11 @@ function renderMenu(){
     <div class="pizza-card" id="card-${safeText(p.id)}" data-act="open" data-id="${safeText(p.id)}">
       <div class="pizza-photo" style="background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}">
         ${safeImgUrl(p.img)
-          ? `<img class="pizza-photo-img" src="${safeImgUrl(p.img)}" alt="${safeText(p.name)}" loading="lazy" style="display:block">`
+          /* 🔴 THE APPROVED URL IS STILL ATTRIBUTE-ENCODED. safeImgUrl answers "may this URL be used";
+             it does not answer "is this safe to drop between quotes" — a legitimate & in a query string
+             is HTML-parsed inside the attribute, so the policy and the encoding are two different jobs
+             and the value needs both. */
+          ? `<img class="pizza-photo-img" src="${safeText(safeImgUrl(p.img))}" alt="${safeText(p.name)}" loading="lazy" style="display:block">`
           : `<div class="pizza-photo-label">${safeText(p.emoji||'🍕')}</div>`
         }
         <div class="qty-overlay" data-stop="1">
@@ -2898,7 +2902,10 @@ function updateCartReviewBody(){
     return '<div class="cart-review-item">'
       +'<div class="cart-review-item-left" data-act="review-open" data-id="'+safeText(p.id)+'">'
       +'<div class="cart-review-item-name">'+safeText(p.name)+'</div>'
-      +(perPizzaLines.length?perPizzaLines.map(l=>'<div class="cart-review-item-extras">+ '+l+'</div>').join(''):'')
+      /* Escaped at the SINK rather than per name: the line is composed from authored option names plus a
+         literal "Pizza N: " prefix, and encoding the assembled string covers every part of it — including
+         whatever a future edit adds to the composition. */
+      +(perPizzaLines.length?perPizzaLines.map(l=>'<div class="cart-review-item-extras">+ '+safeText(l)+'</div>').join(''):'')
       +'</div>'
       +'<div class="cart-item-right">'
       +'<div class="cart-qty-controls">'
@@ -4123,7 +4130,7 @@ function showSuccess(){
   document.getElementById('receipt-items').innerHTML=
     o.items.map(i=>`
       <div class="receipt-row">
-        <span class="receipt-label">${i.qty}× ${i.name}</span>
+        <span class="receipt-label">${i.qty}× ${safeText(i.name)}</span>
         <span>L ${i.subtotal.toFixed(2)}</span>
       </div>`).join('')+
     // [display fix 3] the FREE redeemed item(s) are never in o.items (v2 add-free) → the receipt omitted them.
@@ -4387,7 +4394,7 @@ function renderDetailModal() {
      not reach the code it was aiming at. */
   html += `<div class="detail-photo" style="background:${safeImgUrl(pizza.img) ? '#000' : photoColor}">
     ${safeImgUrl(pizza.img)
-      ? `<img class="detail-photo-img" src="${safeImgUrl(pizza.img)}" alt="${safeText(pizza.name)}">`
+      ? `<img class="detail-photo-img" src="${safeText(safeImgUrl(pizza.img))}" alt="${safeText(pizza.name)}">`
       : `<span class="detail-photo-label">${safeText(emoji)}</span>`
     }
   </div>`;

@@ -54,9 +54,27 @@ function safeImgUrl(raw) {
   if (raw == null) return "";
   const s = String(raw);
   if (/[\x00-\x20"'<>\\`]/.test(s)) return "";
-  if (/^https:\/\/[A-Za-z0-9._~\-]+(:\d+)?(\/[A-Za-z0-9._~\-%!$&()*+,;=:@\/]*)?(\?[A-Za-z0-9._~\-%!$&()*+,;=:@\/?]*)?$/.test(s)) return s;
-  // Relative: must begin with a path segment or a single slash — never "//", and never "scheme:".
-  if (/^\/?[A-Za-z0-9._~\-]+(\/[A-Za-z0-9._~\-]+)*(\?[A-Za-z0-9._~\-%=&]*)?$/.test(s)) return s;
+  /* 🔴 OVER-REJECTION IS A REAL FAILURE TOO, not a safe default. A policy that turns a legitimate
+     merchant photo into a placeholder is a silent outage of the thing the merchant is paying attention
+     to, and it fails in the direction nobody notices — the tile still renders. The first version
+     refused percent-encoded paths (images/a%20b.png), a bare trailing slash, and an uppercase scheme,
+     all of which are ordinary. Widened to accept them while the REJECTIONS below stay exactly as they
+     were: a scheme other than https, a protocol-relative host, and any of the characters above. */
+  const lower = s.toLowerCase();
+  if (lower.indexOf("https://") === 0) {
+    // Host, optional port, then any path/query/fragment made of URL-legal characters.
+    if (/^https:\/\/(?:[A-Za-z0-9._~\-]+|\[[0-9A-Fa-f:]+\])(:\d{1,5})?(\/[A-Za-z0-9._~\-%!$&()*+,;=:@\/]*)?(\?[A-Za-z0-9._~\-%!$&()*+,;=:@\/?]*)?(#[A-Za-z0-9._~\-%!$&()*+,;=:@\/?]*)?$/i.test(s)) return s;
+    return "";
+  }
+  // Any other scheme is refused outright — a colon before the first slash is a scheme.
+  const firstSlash = s.indexOf("/");
+  const firstColon = s.indexOf(":");
+  if (firstColon !== -1 && (firstSlash === -1 || firstColon < firstSlash)) return "";
+  if (s.indexOf("//") === 0) return "";                    // protocol-relative: a different origin
+  // Relative: path segments of URL-legal characters, optional query and fragment. A trailing slash and
+  // percent-encoding are both ordinary and allowed; ".." is not, so a path cannot climb out.
+  if (/^\/?([A-Za-z0-9._~\-%!$&()*+,;=@]+\/)*[A-Za-z0-9._~\-%!$&()*+,;=@]*(\?[A-Za-z0-9._~\-%!$&()*+,;=:@\/?]*)?(#[A-Za-z0-9._~\-%!$&()*+,;=:@\/?]*)?$/.test(s)
+      && s.indexOf("..") === -1) return s;
   return "";
 }
 

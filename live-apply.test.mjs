@@ -1240,47 +1240,202 @@ for (const dir of Object.keys(BRAND)) {
      every context the forms render into — not merely escaped for body text, which is the usual way a
      page that "escapes everything" still executes. */
 
-  // ── 39. 🔴 A HOSTILE CATALOG IS INERT IN EVERY CONTEXT ──
+  // ── 39. 🔴 A HOSTILE CATALOG IS INERT ON EVERY RENDER PATH, NOT JUST THE CARD ──
+  //
+  // THE FIXTURE USED TO STOP AT THE CARD, and that is precisely why seven unencoded sinks survived the
+  // first pass: the detail modal, the launcher modal, the cart-review extras, the receipt, the
+  // subcategory heading. Each is a different template, and a template nobody rendered is a template
+  // nobody checked. So one hostile catalog is now walked across every surface a customer can reach, with
+  // the SAME assertions applied to each — the payload must appear as text and must have produced no
+  // element, no event attribute, and no script-bearing URL anywhere in that surface.
   {
     const w = loadForm(dir);
     const m = B.menu(w);
     const first = m.dishes[0];
+    const MARK = 'XSSMARK';
+    const payload = (ctx) => `<img src=x onerror="window.__XSS='${MARK}${ctx}'">`;
     m.dishes[0] = {
       ...first,
-      name: '<img src=x onerror="window.__XSS=1">',                    // body text + alt attribute
-      desc: '</div><script>window.__XSS=1</script>',                   // body text, tag-closing
-      color: 'red;background:url(javascript:alert(1))',                // CSS context
-      img: 'javascript:window.__XSS=1',                                // URL context
-      emoji: '<b onclick="window.__XSS=1">x</b>',                      // body text
+      name: payload('name'),
+      desc: `</div><script>window.__XSS='${MARK}desc'</script>`,
+      color: 'red;background:url(javascript:alert(1))',
+      img: 'javascript:window.__XSS=1',
+      emoji: payload('emoji'),
+      subcat: payload('subcat'),
     };
+    m.extras = m.extras.map((e, i) => (i === 0 ? { ...e, name: payload('extra') } : e));
+    if (m.categories) m.categories = m.categories.map((c, i) => (i === 0 ? { ...c, name: payload('cat'), subcats: [payload('subcat')] } : c));
+    /* 🔴 POISON EVERY DISH'S EMOJI, AND TAKE THE PHOTOS AWAY. Two coverage holes the b8 sweep found,
+       both of the same shape — a surface was visited but the SINK on it was unreachable:
+         • the emoji only renders when the dish has no usable photo, and the poisoned dish is in
+           has_photo, so walking the modal never rendered an authored emoji at all;
+         • the launcher modal shows the LAUNCHER's emoji, and only dishes[0] was poisoned.
+       Emptying has_photo puts every dish on the emoji branch, and poisoning every dish means whichever
+       one a surface happens to render is hostile. The photo branch is not lost — check 40 owns it. */
+    m.has_photo = [];
+    m.dishes = m.dishes.map((d, i) => (i === 0 ? d : { ...d, emoji: payload('emoji') }));
     await serve(w, envelope(B.rid, m));
-    assert.strictEqual(w.liveMenuGlobalGet('MENU')[0].name, first.name === undefined ? undefined : m.dishes[0].name,
+    assert.strictEqual(w.liveMenuGlobalGet('MENU')[0].name, m.dishes[0].name,
       `${dir}: non-vacuity — the hostile snapshot was ACCEPTED (validation is not an XSS filter)`);
 
-    const card = w.document.getElementById('card-' + first.id);
-    assert.ok(card, `${dir}: the tile rendered`);
-    assert.strictEqual(w.__XSS, undefined, `${dir}: 🔴 nothing executed`);
-    // TEXT: the payload is present as text, and produced no elements.
-    assert.ok(card.textContent.includes('onerror'), `${dir}: the hostile name is shown as TEXT…`);
-    /* la_musa's own photo <img> legitimately carries onerror="this.remove()", so "is there an img with
-       an onerror" matches a real element and says nothing. The question is whether the PAYLOAD produced
-       one — asked by looking for its fingerprint. */
-    assert.deepStrictEqual([...card.querySelectorAll('img')].filter((im) => /__XSS/.test(im.getAttribute('onerror') || '')), [],
-      `${dir}: …and created no img element of its own`);
-    assert.strictEqual(card.querySelector('script'), null, `${dir}: the desc payload created no script element`);
-    assert.strictEqual(card.querySelector('b[onclick]'), null, `${dir}: the emoji payload created no element`);
-    // URL: a javascript: src must not reach the DOM at all.
-    const imgs = [...card.querySelectorAll('img')];
-    imgs.forEach((im) => assert.ok(!/javascript:/i.test(im.getAttribute('src') || ''),
-      `${dir}: 🔴 no img carries a javascript: URL`));
-    // CSS: the injected declaration must not survive into the style attribute.
-    const photo = card.querySelector('.pizza-photo');
-    assert.ok(!/javascript:/i.test(photo.getAttribute('style') || ''),
-      `${dir}: 🔴 the hostile colour did not reach the style attribute`);
-    ok(`${dir}: a hostile catalog renders inert in text, attribute, URL and CSS contexts`);
+    /* ONE ASSERTION SET, APPLIED PER SURFACE. Written once so a surface added later is one line to
+       cover, rather than a new set of ad-hoc checks that may or may not match the others. */
+    const assertInert = (root, surface) => {
+      assert.ok(root, `${dir}/${surface}: the surface rendered`);
+      const els = [...root.querySelectorAll('*')];
+      assert.deepStrictEqual([...root.querySelectorAll('script')].map((x) => x.tagName), [],
+        `${dir}/${surface}: 🔴 the payload created no script element`);
+      const evil = els.flatMap((el) => [...el.attributes])
+        .filter((a) => /^on/i.test(a.name) && a.value.includes(MARK));
+      assert.deepStrictEqual(evil.map((a) => `${a.ownerElement.tagName}[${a.name}]`), [],
+        `${dir}/${surface}: 🔴 no element carries an event attribute from the payload`);
+      els.filter((el) => el.hasAttribute && el.hasAttribute('src')).forEach((el) =>
+        assert.ok(!/javascript:/i.test(el.getAttribute('src')), `${dir}/${surface}: 🔴 no javascript: src`));
+      els.filter((el) => el.hasAttribute && el.hasAttribute('style')).forEach((el) =>
+        assert.ok(!/javascript:|expression\(/i.test(el.getAttribute('style')), `${dir}/${surface}: 🔴 no script-bearing style`));
+      assert.strictEqual(w.__XSS, undefined, `${dir}/${surface}: 🔴 nothing executed`);
+    };
+    const reached = [];
+    /* `mustShow` takes the CONTEXT the payload must have come from, not just `true`. Every payload
+       carries its own context marker, and the dish NAME is on almost every surface — so "some marker is
+       present" was satisfied by the name alone, and a surface whose own sink rendered nothing still
+       passed. Asking for XSSMARKextra on the cart sheet is what makes the extras line load-bearing. */
+    const visit = (root, surface, mustShow) => {
+      assertInert(root, surface);
+      if (mustShow) {
+        assert.ok(root.textContent.includes(MARK + mustShow),
+          `${dir}/${surface}: non-vacuity — the ${mustShow} payload really was rendered here, as text`);
+      }
+      reached.push(surface);
+    };
+
+    // 1. the card grid
+    /* Inertness is asserted on EVERY grid; the name payload is required across their UNION, because
+       which grid holds the poisoned dish is a function of its category and is not this check's business.
+       Requiring it on grid #0 pinned the test to a menu layout instead of to the payload. */
+    const grids = containersOf(w).map((id) => w.document.getElementById(id));
+    grids.forEach((g, i) => visit(g, 'card-grid#' + i, null));
+    assert.ok(grids.some((g) => g && g.textContent.includes(MARK + 'name')),
+      `${dir}: non-vacuity — the hostile dish NAME was rendered on one of the card grids`);
+    // 2. the ordinary detail modal
+    w.openDetailModal(first.id);
+    visit(w.document.getElementById('detail-scroll'), 'detail-modal', 'emoji');
+    w.chg(first.id, 1);                       // qty>0 renders the option rows, which carry option names
+    w.openDetailModal(first.id);
+    visit(w.document.getElementById('detail-scroll'), 'detail-modal+options', 'extra');
+    w.closeDetailModal();
+    // 3. the cart review sheet, including the per-item extras line
+    /* 🔴 AN OPTION MUST ACTUALLY BE ON THE ITEM. The extras line is built from the SELECTED options, so
+       with none chosen the sheet rendered an empty list and the sink was never exercised — the mutant
+       that prints those names raw survived a check that claimed to cover the cart. Driven through the
+       real writer (the form's own toggle) rather than by poking state, so what is proved is what the
+       page does. The two brands key options differently: x_pizza per pizza INSTANCE, la_musa by id. */
+    const hostileExtraId = m.extras[0].id;
+    if (dir === 'xpizza-orders') w.toggleDetailExtra(hostileExtraId, first.id, 0);
+    else w.chgDetailExtra(hostileExtraId, first.id, 1);
+    w.openCartReview();
+    visit(w.document.getElementById('cart-review-body'), 'cart-review', 'extra');
+    w.closeCartReview();
+    // 4. the receipt
+    w.buildOrder();
+    w.showSuccess();
+    visit(w.document.getElementById('s5'), 'receipt', 'name');
+    // 5. la_musa's launcher modal and its subcategory headings
+    if (dir === 'la-musa-orders') {
+      const launcher = w.liveMenuGlobalGet('MENU').find((d) => w.itemIsLauncher(d));
+      if (launcher) { w.openDetailModal(launcher.id); visit(w.document.getElementById('detail-scroll'), 'launcher-modal', 'emoji'); w.closeDetailModal(); }
+      visit(w.document.getElementById('menu-sections'), 'subcategory-headings', 'subcat');
+    }
+    assert.ok(reached.length >= 5, `${dir}: non-vacuity — every surface was actually visited (${reached.join(', ')})`);
+    ok(`${dir}: a hostile catalog is inert on ${reached.length} render paths (${reached.join(', ')})`);
   }
 
-  // ── 40. 🔴 …INCLUDING AN IDENTIFIER THAT USED TO REACH A HANDLER ──
+  // ── 40. 🔴 A MERCHANT-SUPPLIED IMAGE IS REJECTED, AND THE TILE FALLS BACK ──
+  // The URL policy is only meaningfully tested against a value the MERCHANT supplies. la_musa's photo
+  // path is derived from the dish id, so the only URLs it builds are ones the form composed itself —
+  // that test passed with the policy reverted to the identity function. The `img` field is the authored
+  // one, and this asserts both halves: the hostile URL never reaches the DOM, and a LEGITIMATE one still
+  // does, because an over-rejecting policy hides real photos and nothing complains.
+  {
+    const w = loadForm(dir);
+    const m = B.menu(w);
+    m.dishes[0] = { ...m.dishes[0], img: 'javascript:window.__XSS=1' };
+    m.dishes[1] = { ...m.dishes[1], img: 'https://cdn.test/real-photo.png?v=1&w=2' };
+    await serve(w, envelope(B.rid, m));
+
+    const hostileCard = w.document.getElementById('card-' + m.dishes[0].id);
+    [...hostileCard.querySelectorAll('img')].forEach((i) =>
+      assert.ok(!/javascript:/i.test(i.getAttribute('src') || ''), `${dir}: 🔴 a javascript: image never reaches src`));
+
+    if (dir === 'xpizza-orders') {
+      assert.ok(hostileCard.querySelector('.pizza-photo-label'),
+        `${dir}: 🔴 …and the tile falls back to its placeholder rather than to a broken image`);
+      // x_pizza renders the authored img directly, so the ACCEPT half is observable there.
+      const goodCard = w.document.getElementById('card-' + m.dishes[1].id);
+      const good = [...goodCard.querySelectorAll('img')].map((i) => i.getAttribute('src'));
+      assert.ok(good.includes('https://cdn.test/real-photo.png?v=1&amp;w=2') || good.includes('https://cdn.test/real-photo.png?v=1&w=2'),
+        `${dir}: 🔴 a legitimate https photo — ampersand and all — still renders (got ${JSON.stringify(good)})`);
+    } else {
+      /* 🔴 la_musa's card NEVER RENDERS THE AUTHORED `img` FIELD — its photo path is composed from the
+         dish id and has_photo. So the merchant-controlled input to the URL on this brand is the ID, and
+         that is what has to be exercised: an id that would break out of the src attribute must produce
+         no img at all, and the tile must fall back. Asserting the `img` field here would have been
+         testing a surface this form does not have. */
+      const evilId = 'x" onerror="window.__XSS=1';
+      const m2 = B.menu(w);
+      m2.dishes = m2.dishes.concat([{ ...m2.dishes[0], id: evilId, name: 'Hostil', img: undefined }]);
+      m2.has_photo = [evilId];
+      await serve(w, envelope(B.rid, m2));
+      const evilCard = w.document.getElementById('card-' + evilId);
+      assert.ok(evilCard, 'la_musa: non-vacuity — the hostile-id dish rendered a tile');
+      assert.deepStrictEqual([...evilCard.querySelectorAll('img')].map((i) => i.getAttribute('src')), [],
+        'la_musa: 🔴 an id that cannot form a safe URL produces no img at all');
+      assert.ok(evilCard.querySelector('.pizza-photo-label'),
+        'la_musa: 🔴 …and the tile falls back to its placeholder');
+      const evilAttrs = [...evilCard.querySelectorAll('*')].flatMap((el) => [...el.attributes])
+        .filter((a) => /^on/i.test(a.name) && a.value.includes('__XSS'));
+      assert.deepStrictEqual(evilAttrs.map((a) => a.name), [], 'la_musa: 🔴 and it created no event attribute');
+
+      /* 🔴 THE MODAL MAKES THE SAME DECISION, and it is a SEPARATE template. The card was fixed and the
+         modal was not, and no test could tell: both branch on "does this dish have a photo", and when
+         the image branch asks the URL policy while the placeholder branch asks has_photo, a REJECTED
+         photo satisfies neither and the hero renders empty. Only reachable when the two disagree, which
+         is exactly what a hostile id produces. */
+      w.openDetailModal(evilId);
+      const evilModal = w.document.getElementById('detail-scroll');
+      assert.deepStrictEqual([...evilModal.querySelectorAll('img')].map((i) => i.getAttribute('src')), [],
+        'la_musa: 🔴 the detail hero emits no img for an id that cannot form a safe URL');
+      assert.ok(evilModal.querySelector('.detail-photo-label'),
+        'la_musa: 🔴 …and the detail hero falls back to its placeholder, not to an empty box');
+      w.closeDetailModal();
+
+      /* 🔴 AND AN APPROVED URL SURVIVES THE ATTRIBUTE BYTE-FOR-BYTE. Passing the URL policy and being
+         safe to drop between quotes are different questions: the policy rejects quotes and angle
+         brackets but ALLOWS `&`, and an unencoded `&` is decoded by the HTML parser — `&amp;` in the
+         path comes back out as `&`, a URL that silently points somewhere else. Nothing about that is an
+         injection, which is why only a round-trip assertion catches it. */
+      const ampId = 'a&amp;b';
+      const m3 = B.menu(w);
+      m3.dishes = m3.dishes.concat([{ ...m3.dishes[0], id: ampId, name: 'Ampersand', img: undefined }]);
+      m3.has_photo = [ampId];
+      await serve(w, envelope(B.rid, m3));
+      /* BOTH TEMPLATES, because they are two different lines and each encodes on its own. Asserting
+         only the card left the modal's hero free to drop the encoding: the mutant that does exactly
+         that survived a check that read as though it covered the URL context. */
+      const ampSrc = [...w.document.getElementById('card-' + ampId).querySelectorAll('img')].map((i) => i.getAttribute('src'));
+      assert.deepStrictEqual(ampSrc, ['images/' + ampId + '-card.webp'],
+        `la_musa: 🔴 an approved CARD url reaches the DOM unchanged — no entity decoding (got ${JSON.stringify(ampSrc)})`);
+      w.openDetailModal(ampId);
+      const ampHero = [...w.document.getElementById('detail-scroll').querySelectorAll('img')].map((i) => i.getAttribute('src'));
+      assert.deepStrictEqual(ampHero, ['images/' + ampId + '-hero.webp'],
+        `la_musa: 🔴 …and so does the HERO url (got ${JSON.stringify(ampHero)})`);
+      w.closeDetailModal();
+    }
+    assert.strictEqual(w.__XSS, undefined, `${dir}: nothing executed`);
+    ok(`${dir}: a merchant-supplied image URL is policed — hostile rejected, legitimate kept`);
+  }
+
+  // ── 41. 🔴 …INCLUDING AN IDENTIFIER THAT USED TO REACH A HANDLER ──
   // The id was concatenated into onclick="chg(<id>,1)". No escape makes that generally safe, so the
   // class was removed: ids live in data- attributes and one delegated listener resolves them by lookup.
   {
@@ -1327,7 +1482,12 @@ for (const dir of Object.keys(BRAND)) {
 
     // The card opens the modal…
     const w2 = loadForm(dir);
-    const d2 = w2.liveMenuGlobalGet('MENU')[0];
+    /* 🔴 NOT THE FIRST DISH. A delegate that ignored its data-id and always resolved MENU[0] would pass
+       a first-dish test perfectly — the assertion would be true for the wrong reason. Picking one
+       further down is what makes "it resolved the id" mean anything. */
+    const menu2 = w2.liveMenuGlobalGet('MENU');
+    const d2 = menu2.find((d, i) => i > 0 && w2.document.getElementById('card-' + d.id)) || menu2[2];
+    assert.notStrictEqual(String(d2.id), String(menu2[0].id), `${dir}: non-vacuity — a NON-first dish was chosen`);
     const card2 = w2.document.getElementById('card-' + d2.id);
     const target = dir === 'xpizza-orders' ? card2 : card2.querySelector('.pizza-photo[data-act="open"]') || card2;
     target.click();
@@ -1486,6 +1646,60 @@ for (const dir of Object.keys(BRAND)) {
     assert.strictEqual(w.liveMenuGlobalGet('MENU'), menuBefore, `${dir}: 🔴 refused — MENU is the identical prior array`);
     assert.strictEqual(painted(w), before, `${dir}: and nothing rendered`);
     ok(`${dir}: a dish referencing a category that does not exist is refused whole`);
+  }
+
+  // ── 🔴 A LAUNCHER'S variant_items IS VALIDATED, NOT ASSUMED ──────────────────────────────────
+  // la_musa only — x_pizza has no variant launchers. The block was accepted as "an object" and never
+  // looked inside, so an authored basePrice could be a string, a NaN, or absent and it would be priced
+  // with and printed as whatever arrived. Each shape below is refused WHOLE: the launcher is what the
+  // customer taps to see prices, so a half-applied one is a menu that quotes from a value nobody set.
+  if (dir === 'la-musa-orders') {
+    const w = loadForm(dir);
+    await serve(w, envelope(B.rid, B.menu(w)));
+    /* The shared fixture does not carry variant_items — worth stating plainly, because it means every
+       other check in this file serves a snapshot WITHOUT one, and the launcher surfaces they walk are
+       the page's own literal rather than anything served. This check is the only place a launcher block
+       arrives over the wire, so it builds one from the live global and corrupts that. */
+    const liveVI = w.liveMenuGlobalGet('VARIANT_ITEMS');
+    const launcherKey = Object.keys(liveVI)[0];
+    assert.ok(launcherKey, 'non-vacuity: the form really does carry a launcher to corrupt');
+    const cfg = { ...liveVI[launcherKey] };
+
+    const corrupt = {
+      'a basePrice that is a string': { ...cfg, basePrice: '307' },
+      'a basePrice that is NaN': { ...cfg, basePrice: NaN },
+      'a basePrice of zero': { ...cfg, basePrice: 0 },
+      'a missing basePrice': (() => { const c = { ...cfg }; delete c.basePrice; return c; })(),
+      'an empty variantIds': { ...cfg, variantIds: [] },
+      'a variantId naming no dish': { ...cfg, variantIds: [...cfg.variantIds, 'no_such_dish'] },
+    };
+    for (const [label, bad] of Object.entries(corrupt)) {
+      const before = painted(w);
+      const menuBefore = w.liveMenuGlobalGet('MENU');
+      const m = B.menu(w);
+      m.variant_items = { [launcherKey]: bad };
+      await serve(w, envelope(B.rid, m));
+      assert.strictEqual(w.liveMenuGlobalGet('MENU'), menuBefore, `${dir}: 🔴 ${label} is refused — MENU is the identical prior array`);
+      assert.strictEqual(painted(w), before, `${dir}: 🔴 ${label} is refused — nothing rendered`);
+    }
+    // A launcher key naming no dish at all — the same rule from the other direction.
+    {
+      const before = painted(w);
+      const m = B.menu(w);
+      m.variant_items = { no_such_launcher: cfg };
+      await serve(w, envelope(B.rid, m));
+      assert.strictEqual(painted(w), before, `${dir}: 🔴 a launcher key naming no dish is refused`);
+    }
+    // NON-VACUITY: the untouched block still applies, so the refusals above are the corruption talking
+    // and not a snapshot this form rejects for some unrelated reason.
+    {
+      const m = B.menu(w);
+      m.variant_items = { [launcherKey]: cfg };
+      await serve(w, envelope(B.rid, m));
+      assert.ok(w.liveMenuGlobalGet('VARIANT_ITEMS')[launcherKey],
+        `${dir}: non-vacuity — an intact variant_items block is still ACCEPTED`);
+    }
+    ok(`${dir}: a launcher's variant_items is validated — 7 corrupt shapes refused whole, the intact one applied`);
   }
 }
 

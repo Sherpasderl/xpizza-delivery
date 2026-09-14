@@ -2267,12 +2267,33 @@ function liveMenuPrepare(body){
   // priced, and invisible.
   const catIds = new Set(cats.map((c) => c.id));
   dishes.forEach((d, i) => { if (!catIds.has(d.cat)) throw new Error('apply_dish_orphan@' + i); });
+  /* 🔴 THE NESTED VALUES GET THE SAME CHECK THE TOP-LEVEL PRICES GET. variant_items was accepted as
+     "an object" and never looked inside — so a launcher's basePrice could be anything at all while every
+     ordinary price had to be a positive integer, and that price is rendered ("desde L …") and used to
+     compute the CTA total. A validation that stops at the outer shape is not validation of the thing it
+     is guarding; the same rule applies wherever a price lives. variantIds must also name dishes that
+     exist, or the launcher offers a choice that resolves to nothing. */
+  let variantItems = VARIANT_ITEMS;
+  if (body.variant_items !== undefined) {
+    const vi = body.variant_items;
+    if (!vi || typeof vi !== 'object' || Array.isArray(vi)) throw new Error('apply_variant_items_malformed');
+    const dishIds = new Set(dishes.map((d) => String(d.id)));
+    Object.keys(vi).forEach((k) => {
+      const cfg = vi[k];
+      if (!cfg || typeof cfg !== 'object') throw new Error('apply_variant_cfg_malformed@' + k);
+      if (!(typeof cfg.basePrice === 'number' && isFinite(cfg.basePrice) && cfg.basePrice > 0)) throw new Error('apply_variant_basePrice@' + k);
+      if (!Array.isArray(cfg.variantIds) || !cfg.variantIds.length) throw new Error('apply_variant_ids_missing@' + k);
+      cfg.variantIds.forEach((vid) => { if (!dishIds.has(String(vid))) throw new Error('apply_variant_id_orphan@' + k + ':' + vid); });
+      if (!dishIds.has(String(k))) throw new Error('apply_variant_launcher_orphan@' + k);
+    });
+    variantItems = vi;
+  }
   return {
     MENU: dishes,
     EXTRAS: extras,
     CATEGORIES: cats,
     // Absent structure keeps what is already in force rather than becoming empty.
-    VARIANT_ITEMS: (body.variant_items && typeof body.variant_items === 'object') ? body.variant_items : VARIANT_ITEMS,
+    VARIANT_ITEMS: variantItems,
     HAS_PHOTO: Array.isArray(body.has_photo) ? new Set(body.has_photo) : HAS_PHOTO,
     EXTRAS_BY_CATEGORY: (body.extras_by_category && typeof body.extras_by_category === 'object') ? body.extras_by_category : EXTRAS_BY_CATEGORY,
     EXTRAS_BY_ITEM: (body.extras_by_item && typeof body.extras_by_item === 'object') ? body.extras_by_item : EXTRAS_BY_ITEM,
@@ -2746,7 +2767,9 @@ function wireMenuDelegate(){
 function renderMenu() {
   // Card template — chunk 1 omitted the photo onclick; chunk 3 re-added
   // it conditionally for items with extras.
-  const card = p => (
+  const card = p => {
+    const cardUrl = HAS_PHOTO.has(p.id) ? safeImgUrl('images/' + p.id + '-card.webp') : '';
+    return (
     '<div class="pizza-card" id="card-' + safeText(p.id) + '">' +
       /* 🔴 1B Task 8 — every authored field through its own renderer; the id only ever lands in a
          `data-` attribute, never inside a handler. See form-safe-render.js and wireMenuDelegate. */
@@ -2755,11 +2778,14 @@ function renderMenu() {
        + safeColor(p.color, '#13100E') + '">' +
         // LA_MUSA_CARD_IMG_FIX: emoji only renders when the
         // dish has no real photo (graceful fallback).
-        (HAS_PHOTO.has(p.id) ? '' : '<div class="pizza-photo-label">' + safeText(p.emoji || '•') + '</div>') +
-        /* The photo path is BUILT from the id rather than authored, so the policy is applied to the
-           assembled URL: an id carrying a quote or a scheme cannot produce a src attribute at all. */
-        (HAS_PHOTO.has(p.id) && safeImgUrl('images/' + p.id + '-card.webp')
-          ? '<img class="pizza-photo-img" loading="lazy" decoding="async" alt="" src="' + safeImgUrl('images/' + p.id + '-card.webp') + '" onerror="this.remove()">' : '') +
+        /* 🔴 BOTH BRANCHES DECIDE ON THE POLICED URL. The photo path is BUILT from the id rather than
+           authored, so the policy is applied to the assembled URL — an id carrying a quote or a scheme
+           cannot produce a src at all. And the EMOJI branch asks the same question: deciding the label
+           on HAS_PHOTO while deciding the image on the policed URL meant a rejected photo produced
+           neither, leaving an empty tile. The same disagreement existed on the hero photo; found here by
+           the merchant-image test rather than by reading, which is the argument for having it. */
+        (cardUrl ? '' : '<div class="pizza-photo-label">' + safeText(p.emoji || '•') + '</div>') +
+        (cardUrl ? '<img class="pizza-photo-img" loading="lazy" decoding="async" alt="" src="' + safeText(cardUrl) + '" onerror="this.remove()">' : '') +
         (itemIsLauncher(p)
           ? '<div class="qty-overlay" data-stop="1">' +
               '<button class="qty-add-btn" aria-label="Personalizar" data-act="open" data-id="' + safeText(p.id) + '">+</button>' +
@@ -2787,7 +2813,8 @@ function renderMenu() {
         '</div>' +
       '</div>' +
     '</div>'
-  );
+    );
+  };
 
   // Compact list-row template — used by categories flagged layout:'list'
   // (Bebidas). No photo, no description, no badges, no extras hint —
@@ -2830,7 +2857,7 @@ function renderMenu() {
       host.innerHTML = c.subcats.map(sub => {
         const subItems = items.filter(p => p.subcat === sub);
         if (!subItems.length) return '';
-        return '<h3 class="menu-subsection-title">' + sub + '</h3>' +
+        return '<h3 class="menu-subsection-title">' + safeText(sub) + '</h3>' +
                wrap(subItems.map(tpl).join(''));
       }).join('');
     } else {
@@ -3365,7 +3392,10 @@ function updateCartReviewBody(){
     return '<div class="cart-review-item">'
       +'<div class="cart-review-item-left" data-act="review-open" data-id="'+safeText(p.id)+'">'
       +'<div class="cart-review-item-name">'+safeText(p.name)+'</div>'
-      +(perPizzaLines.length?perPizzaLines.map(l=>'<div class="cart-review-item-extras">+ '+l+'</div>').join(''):'')
+      /* Escaped at the SINK rather than per name: the line is composed from authored option names plus a
+         literal "Pizza N: " prefix, and encoding the assembled string covers every part of it — including
+         whatever a future edit adds to the composition. */
+      +(perPizzaLines.length?perPizzaLines.map(l=>'<div class="cart-review-item-extras">+ '+safeText(l)+'</div>').join(''):'')
       +'</div>'
       +'<div class="cart-item-right">'
       +'<div class="cart-qty-controls">'
@@ -4528,7 +4558,7 @@ function showSuccess(){
   document.getElementById('receipt-items').innerHTML=
     o.items.map(i=>`
       <div class="receipt-row">
-        <span class="receipt-label">${i.qty}× ${i.name}</span>
+        <span class="receipt-label">${i.qty}× ${safeText(i.name)}</span>
         <span>L ${i.subtotal.toFixed(2)}</span>
       </div>`).join('')+
     // [display fix 3] the FREE redeemed item(s) are never in o.items (v2 add-free) → the receipt omitted them.
@@ -4800,7 +4830,7 @@ function renderDetailModal() {
 
   /* LA_MUSA_PURE_XP_MODAL — read live cart state. */
   const pizzaQty = qty[pizzaId] || 0;
-  const photoColor = pizza.color || '#C8321A';
+  const photoColor = safeColor(pizza.color, '#C8321A');   // 1B Task 8 — constrained grammar
   const emoji = pizza.emoji || '🍕';
   const desc = pizza.desc || '';
   // (chunk 3 removed isNutella gate; itemHasExtras() handles gating)
@@ -4811,13 +4841,18 @@ function renderDetailModal() {
   // photo exists for this id; emoji+color sits behind as the fallback.
   // Variants (e.g. Pad Thai - Pollo) borrow the launcher dish's photo via variantOf.
   const photoId = pizza.variantOf || pizzaId;
-  const heroImg = HAS_PHOTO.has(photoId)
-    ? `<img class="detail-photo-img" loading="eager" decoding="async" alt="" src="${safeImgUrl('images/' + photoId + '-hero.webp')}" onerror="this.remove()">`
+  /* 🔴 THE POLICED URL DECIDES BOTH BRANCHES — see the card template for why. HAS_PHOTO answering the
+     emoji while the helper answered the image left a rejected photo with neither. And the approved URL
+     still goes through safeText: it is landing inside a quoted attribute, and passing the URL policy
+     is not the same question as being safe to interpolate there. */
+  const heroUrl = HAS_PHOTO.has(photoId) ? safeImgUrl('images/' + photoId + '-hero.webp') : '';
+  const heroImg = heroUrl
+    ? `<img class="detail-photo-img" loading="eager" decoding="async" alt="" src="${safeText(heroUrl)}" onerror="this.remove()">`
     : '';
   // LA_MUSA_CARD_IMG_FIX: emoji only renders when no photo exists.
-  const detailEmojiHtml = HAS_PHOTO.has(photoId)
+  const detailEmojiHtml = heroUrl
     ? ''
-    : `<span class="detail-photo-label">${emoji}</span>`;
+    : `<span class="detail-photo-label">${safeText(emoji)}</span>`;
   html += `<div class="detail-photo" style="background:${photoColor}">
     ${detailEmojiHtml}
     ${heroImg}
@@ -4874,7 +4909,7 @@ function renderDetailModal() {
           ? '<svg width="12" height="12" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 3h12M5 3V2h4v1M2 3l1 9h6l1-9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
           : '−';
         html += `<div class="detail-extras-row${currentQty > 0 ? ' has-qty' : ''}"
-                 id="detail-extra-row-${pizzaId}-${e.id}">
+                 id="detail-extra-row-${safeText(pizzaId)}-${safeText(e.id)}">
           <div>
             <span class="detail-extras-name">${escapeHtml(e.name)}</span>
             <span class="detail-extras-price">+L ${e.price}</span>
@@ -4884,7 +4919,7 @@ function renderDetailModal() {
               ? `<button class="qty-add-btn detail-extras-add-btn" data-act="extra" data-eid="${safeText(e.id)}" data-pid="${safeText(pizzaId)}" data-delta="1">+</button>`
               : `<div class="qty-controls visible detail-extras-pill">
                    <button class="qty-ctrl-btn" data-act="extra" data-eid="${safeText(e.id)}" data-pid="${safeText(pizzaId)}" data-delta="-1">${extrasMinus}</button>
-                   <span class="qty-ctrl-num" id="detail-extra-num-${pizzaId}-${e.id}">${currentQty}</span>
+                   <span class="qty-ctrl-num" id="detail-extra-num-${safeText(pizzaId)}-${safeText(e.id)}">${currentQty}</span>
                    <button class="qty-ctrl-btn" data-act="extra" data-eid="${safeText(e.id)}" data-pid="${safeText(pizzaId)}" data-delta="1">+</button>
                  </div>`
             }
@@ -4904,15 +4939,19 @@ function renderDetailModal() {
 
 function renderLauncherModal(pizza) {
   const cfg = VARIANT_ITEMS[pizza.id];
-  const photoColor = pizza.color || '#C8321A';
-  const heroImg = HAS_PHOTO.has(pizza.id)
-    ? `<img class="detail-photo-img" loading="eager" decoding="async" alt="" src="${safeImgUrl('images/' + pizza.id + '-hero.webp')}" onerror="this.remove()">` : '';
-  const emojiHtml = HAS_PHOTO.has(pizza.id) ? '' : `<span class="detail-photo-label">${pizza.emoji || '🍜'}</span>`;
+  const photoColor = safeColor(pizza.color, '#C8321A');   // 1B Task 8 — constrained grammar
+  /* 🔴 THE HELPER DECIDES, NOT HAS_PHOTO. Branching on HAS_PHOTO and then emitting the policed value
+     meant a REJECTED url still produced <img src="">, so the "every rejected image falls back to the
+     placeholder" claim was false for this path — the emoji branch was skipped and nothing replaced it. */
+  const heroUrl = HAS_PHOTO.has(pizza.id) ? safeImgUrl('images/' + pizza.id + '-hero.webp') : '';
+  const heroImg = heroUrl
+    ? `<img class="detail-photo-img" loading="eager" decoding="async" alt="" src="${safeText(heroUrl)}" onerror="this.remove()">` : '';
+  const emojiHtml = heroUrl ? '' : `<span class="detail-photo-label">${safeText(pizza.emoji || '🍜')}</span>`;
   let html = `<div class="detail-photo" style="background:${photoColor}">${emojiHtml}${heroImg}</div>`;
   html += `<div class="detail-body">
     <div class="detail-name">${escapeHtml(pizza.name)}</div>
     ${pizza.desc ? `<div class="detail-desc">${escapeHtml(pizza.desc)}</div>` : ''}
-    <div class="detail-price">desde L ${cfg.basePrice}</div>
+    <div class="detail-price">desde L ${safeText(cfg.basePrice)}</div>
   </div>`;
 
   // Required single-select protein group

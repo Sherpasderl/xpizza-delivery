@@ -212,10 +212,47 @@ test('1B Task 8 — the authored-field census (A DOCUMENTED LINT, NOT A PROOF)',
        from an authored id after the first conversion pass: every `src=` assembled from data must go
        through safeImgUrl. `logoSrc` is excluded by name and for a stated reason — it is read from the
        page's own DOM (.logo-img), not from the catalog, so it is not authored input. */
+    /* A sink may ALSO satisfy the policy through a named binding — `const heroUrl = HAS_PHOTO.has(id)
+       ? safeImgUrl(...) : ''` then `src="${safeText(heroUrl)}"`. That indirection is not evasion, it is
+       the fix for a real bug: when the image branch asked the helper and the placeholder branch asked
+       HAS_PHOTO, a rejected photo produced neither and left an empty tile. Both branches now ask the
+       one binding. So the census RESOLVES the identifier rather than trusting it — the name must be
+       bound in this file from safeImgUrl. A bare `src="${safeText(p.img)}"` still fails, because
+       `p.img` is no such binding. */
+    const policedBindings = new Set(
+      [...html.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=[^;\n]*safeImgUrl\s*\(/g)].map((m) => m[1])
+    );
     const unpolicedSrc = (html.match(/src="[^"]*\$\{[^}]*\}[^"]*"/g) || [])
-      .filter((m) => !/safeImgUrl/.test(m) && !/logoSrc/.test(m));
+      .filter((m) => !/safeImgUrl/.test(m) && !/logoSrc/.test(m))
+      .filter((m) => {
+        const via = m.match(/\$\{\s*safeText\(\s*([A-Za-z_$][\w$]*)\s*\)\s*\}/);
+        return !(via && policedBindings.has(via[1]));
+      });
     assert.deepStrictEqual(unpolicedSrc, [],
       `${dir}: a src is built from data without the URL policy: ${unpolicedSrc.join(' | ')}`);
+
+    /* 🔴 AND THE BINDING BRANCH IS NOT A LOOPHOLE. Widening a lint is exactly where one stops biting, so
+       the widened census is run against hostile shapes it MUST still flag, and against the shipped shape
+       it must accept. Without this, `src="${safeText(anything)}"` would have become a free pass. */
+    const censor = (src) => {
+      const bound = new Set([...src.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=[^;\n]*safeImgUrl\s*\(/g)].map((m) => m[1]));
+      return (src.match(/src="[^"]*\$\{[^}]*\}[^"]*"/g) || [])
+        .filter((m) => !/safeImgUrl/.test(m) && !/logoSrc/.test(m))
+        .filter((m) => {
+          const via = m.match(/\$\{\s*safeText\(\s*([A-Za-z_$][\w$]*)\s*\)\s*\}/);
+          return !(via && bound.has(via[1]));
+        });
+    };
+    for (const hostile of [
+      'x = `<img src="${safeText(p.img)}">`',                              // escaped, never policed
+      'const u = p.img;\nx = `<img src="${safeText(u)}">`',                // bound, but not from the helper
+      'x = `<img src="${p.img}">`',                                        // raw
+      'const heroUrl = pickUrl(p);\nx = `<img src="${safeText(heroUrl)}">`', // right NAME, wrong source
+    ]) assert.strictEqual(censor(hostile).length, 1, `non-vacuity: the src census still flags ${JSON.stringify(hostile)}`);
+    for (const ok of [
+      'const heroUrl = HAS.has(i) ? safeImgUrl(p.img) : "";\nx = `<img src="${safeText(heroUrl)}">`',
+      'x = `<img src="${safeText(safeImgUrl(p.img))}">`',
+    ]) assert.deepStrictEqual(censor(ok), [], `the src census accepts the policed shape ${JSON.stringify(ok)}`);
     // non-vacuity: the src census sees the shape it is looking for, and passes the policed one
     assert.strictEqual(('src="images/${p.id}-hero.webp"'.match(/src="[^"]*\$\{[^}]*\}[^"]*"/g) || []).length, 1,
       'non-vacuity: the unpoliced-src detector works');
