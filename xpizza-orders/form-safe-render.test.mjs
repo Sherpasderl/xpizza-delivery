@@ -92,6 +92,91 @@ test('safeImgUrl — the path is PARSED, so a climb is a segment and a query is 
   }
 });
 
+test('safeImgUrl — THE WHOLE TABLE, as exact outputs: every row pinned, not just fixed', () => {
+  /* 🔴 ONE TABLE, BOTH DIRECTIONS, EXACT OUTPUTS. Each row was a real counterexample at some point in
+     this task, and several were introduced BY a previous round's fix — tightening the climb check
+     rejected ordinary filenames, and widening the port text rejected zero-padded ports. Kept together
+     so the next change to this function has to answer all of them at once, and written as exact values
+     so "rejected" cannot quietly become "rejected for a different reason". */
+  const TABLE = [
+    // ── accepted: ordinary shapes a merchant photo really takes ──────────────────────────────────
+    ['images/pizza..jpg',                        'images/pizza..jpg'],          // '..' inside a NAME
+    ['photo.png?next=https://cdn.test/a.png',    'photo.png?next=https://cdn.test/a.png'], // query colon
+    ['photo.png?a=1&b=2#frag',                   'photo.png?a=1&b=2#frag'],
+    ['images/a%20b.png',                         'images/a%20b.png'],
+    ['/',                                        '/'],
+    ['images/',                                  'images/'],
+    ['https://cdn.test/a.png',                   'https://cdn.test/a.png'],
+    ['https://CDN.test/A.PNG?v=1&w=2#f',         'https://CDN.test/A.PNG?v=1&w=2#f'],
+    ['https://cdn.test:8443/a.png',              'https://cdn.test:8443/a.png'],
+    ['https://cdn.test:000443/a.png',            'https://cdn.test:000443/a.png'], // port 443, zero-padded
+    ['https://[::1]/a.png',                      'https://[::1]/a.png'],
+    ['https://[::ffff:192.0.2.1]/a.png',         'https://[::ffff:192.0.2.1]/a.png'],
+    ['https://192.0.2.1/a.png',                  'https://192.0.2.1/a.png'],      // a REAL IPv4 host
+    ['https://localhost/a.png',                  'https://localhost/a.png'],
+    ['https://123/a.png',                        'https://123/a.png'],            // no dot: still a name
+
+    // ── rejected: scheme and origin ──────────────────────────────────────────────────────────────
+    ['javascript:alert(1)',                      ''],
+    ['JaVaScRiPt:alert(1)',                      ''],
+    ['data:image/svg+xml,<svg onload=alert(1)>', ''],
+    ['blob:https://cdn.test/x',                  ''],
+    ['vbscript:msgbox(1)',                       ''],
+    ['file:///etc/passwd',                       ''],
+    ['http://cdn.test/a.png',                    ''],
+    ['//evil.test/a.png',                        ''],
+    ['https:/cdn.test/a.png',                    ''],
+    ['https:cdn.test/a.png',                     ''],
+    ['https:///a.png',                           ''],
+    ['https://evil.test@cdn.test/a.png',         ''],     // userinfo reads as a different host
+
+    // ── rejected: path climbs, however spelled ───────────────────────────────────────────────────
+    ['../secret.png',                            ''],
+    ['images/../secret.png',                     ''],
+    ['images/%2e%2e/%2e%2e/secret.png',          ''],
+    ['images/%2E%2E/secret.png',                 ''],
+    ['https://cdn.test/a/../secret.png',         ''],
+    ['https://cdn.test/a/%2e%2e/secret.png',     ''],
+    ['images/a%2fb.png',                         ''],     // a separator smuggled into one segment
+
+    // ── rejected: malformed percent escapes, in EVERY part ───────────────────────────────────────
+    ['images/%zz/a.png',                         ''],
+    ['photo.png?x=%ZZ',                          ''],
+    ['photo.png#%2',                             ''],
+    ['photo.png?ok=1&bad=%',                     ''],
+
+    // ── rejected: hosts that cannot resolve ──────────────────────────────────────────────────────
+    ['https://999.999.999.999/a.png',            ''],     // all-numeric dotted: judged as IPv4
+    ['https://1.2.3.4.5/a.png',                  ''],
+    ['https://[:::]/a.png',                      ''],
+    ['https://[12345::x]/a.png',                 ''],
+    ['https://[192.0.2.1::]/a.png',              ''],     // IPv4 must be the FINAL component
+    ['https://[::ffff:999.0.2.1]/a.png',         ''],
+    ['https://cdn.test:99999/a.png',             ''],     // the bound is on the VALUE
+    ['https://cdn.test:0000099999/a.png',        ''],
+    ['https://cdn.test:-1/a.png',                ''],
+    ['https://cdn.test:44a/a.png',               ''],
+
+    // ── rejected: characters that escape the attribute ───────────────────────────────────────────
+    ['images/a"onerror="x.png',                  ''],
+    ["images/a'b.png",                           ''],
+    ['images/a`b.png',                           ''],
+    ['images/a\\b.png',                          ''],
+    ['images/a<b>.png',                          ''],
+    ['java\tscript:alert(1)',                    ''],
+    ['  https://cdn.test/a.png',                 ''],
+    [null,                                       ''],
+    [undefined,                                  ''],
+  ];
+  const wrong = TABLE.filter(([input, want]) => safeImgUrl(input) !== want)
+    .map(([input, want]) => `${JSON.stringify(input)} → ${JSON.stringify(safeImgUrl(input))} (want ${JSON.stringify(want)})`);
+  assert.deepStrictEqual(wrong, [], `🔴 ${wrong.length} of ${TABLE.length} URL-policy rows disagree`);
+  // Non-vacuity: the table really does exercise both directions, so a helper stubbed to "" or to
+  // identity fails rather than passing half of it by accident.
+  assert.ok(TABLE.filter(([, w]) => w !== '').length >= 15, 'the table accepts at least 15 real URLs');
+  assert.ok(TABLE.filter(([, w]) => w === '').length >= 30, 'the table rejects at least 30 hostile URLs');
+});
+
 test('safeColor — accepts a constrained grammar, falls back otherwise', () => {
   const fb = '#C8321A';
   for (const c of ['#fff', '#C8321A', '#12345678', 'rgb(1,2,3)', 'rgba(1,2,3,0.5)', 'red', 'darkslateblue'])

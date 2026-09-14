@@ -66,6 +66,19 @@ function safeText(raw) {
    "java<TAB>script:" is how a scheme hides from a naive prefix check. */
 var SAFE_URL_SEG = /^[A-Za-z0-9._~\-%!$&()*+,;=:@]*$/;          // one path segment
 var SAFE_URL_TAIL = /^[A-Za-z0-9._~\-%!$&()*+,;=:@\/?#]*$/;     // a query or fragment, taken whole
+var SAFE_URL_IPV4 = /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+
+/* A query or fragment gets the SAME decode-or-refuse treatment a path segment gets. The character
+   class admits `%` but says nothing about what follows it, so `?x=%ZZ` and `#%2` — truncated and
+   malformed escapes — sailed through a check that looked like it covered them. A percent sign is a
+   promise about the next two characters; validating the character and not the promise is not
+   validation. Taken whole rather than per-parameter: the question is whether the text can be decoded
+   at all, and splitting on & first would just move the same hole into the pieces. */
+function safeUrlTailOk(t) {
+  if (!SAFE_URL_TAIL.test(t)) return false;
+  try { decodeURIComponent(t); } catch (e) { return false; }
+  return true;
+}
 
 // A segment that cannot be decoded is refused: a malformed percent escape is not a filename, and
 // guessing what it meant is how the two spellings drift apart again.
@@ -94,14 +107,19 @@ function safeUrlIPv6Ok(t) {
   if (parts.length > 2) return false;
   var head = parts[0] === "" ? [] : parts[0].split(":");
   var tail = parts.length === 2 ? (parts[1] === "" ? [] : parts[1].split(":")) : [];
-  var groups = head.concat(tail);
   var need = 8;
-  var last = groups[groups.length - 1];
-  if (last !== undefined && last.indexOf(".") !== -1) {   // a trailing IPv4 literal fills two groups
-    if (!/^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/.test(last)) return false;
-    groups = groups.slice(0, -1);
+  /* 🔴 AN EMBEDDED IPv4 IS ONLY LEGAL AS THE FINAL COMPONENT OF THE ADDRESS. Concatenating head and
+     tail before looking for it threw away WHERE it sat: in `192.0.2.1::` the IPv4 is last in the
+     concatenation while the address itself ends in compression, and that was accepted. So the search
+     happens in the list that actually ends the address — the tail when there is a `::`, the head when
+     there is not — and an address ending in `::` has no final component to be an IPv4 at all. */
+  var lastList = parts.length === 2 ? tail : head;
+  if (lastList.length && lastList[lastList.length - 1].indexOf(".") !== -1) {
+    if (!SAFE_URL_IPV4.test(lastList[lastList.length - 1])) return false;
+    lastList.pop();                                       // a trailing IPv4 literal fills two groups
     need = 6;
   }
+  var groups = head.concat(tail);
   for (var i = 0; i < groups.length; i++) if (!/^[0-9A-Fa-f]{1,4}$/.test(groups[i])) return false;
   // "::" stands for AT LEAST one omitted group, so a compressed address must be short of the full count.
   return parts.length === 2 ? groups.length <= need - 1 : groups.length === need;
@@ -120,10 +138,17 @@ function safeUrlAuthorityOk(authority) {
     var c = authority.lastIndexOf(":");
     if (c !== -1) { host = authority.slice(0, c); port = authority.slice(c + 1); }
     // No userinfo, no empty host: `evil.test@cdn.test` is a different origin than it reads as.
-    if (!/^[A-Za-z0-9._~\-]+$/.test(host)) return false;
+    /* An all-numeric DOTTED host is an IPv4 address, not a name, and has to be a valid one: the bare
+       character class accepted 999.999.999.999, which no browser will ever resolve. A host with no dot
+       (`localhost`, or a bare `123`) is still a name and keeps the hostname rule. */
+    if (/^[0-9]+(?:\.[0-9]+)+$/.test(host)) { if (!SAFE_URL_IPV4.test(host)) return false; }
+    else if (!/^[A-Za-z0-9._~\-]+$/.test(host)) return false;
   }
   if (port !== "") {
-    if (!/^\d{1,5}$/.test(port)) return false;
+    /* The bound is on the VALUE. Capping the text at five characters rejected `:000443`, which is port
+       443 written with leading zeros — a real URL, refused for its spelling. The digit cap stays only
+       so an absurdly long run of digits is not parsed at all. */
+    if (!/^\d{1,7}$/.test(port)) return false;
     if (Number(port) > 65535) return false;
   }
   return true;
@@ -141,7 +166,7 @@ function safeImgUrl(raw) {
   var qAt = beforeHash.indexOf("?");
   var pathPart = qAt === -1 ? beforeHash : beforeHash.slice(0, qAt);
   var query = qAt === -1 ? "" : beforeHash.slice(qAt + 1);
-  if (!SAFE_URL_TAIL.test(query) || !SAFE_URL_TAIL.test(fragment)) return "";
+  if (!safeUrlTailOk(query) || !safeUrlTailOk(fragment)) return "";
 
   // A SCHEME is a colon in the PATH part before any slash. The query cannot counterfeit one, because
   // it is no longer part of what is being read.

@@ -430,7 +430,7 @@
   "slice": "task8",
   "label": "the exposure guard stops reading the shipped renderer",
   "file": "catalog/exposure-source.js",
-  "from": "  const found = new Set([...String(formText).matchAll(/\\.name\\s*[!=]==\\s*'([^']+)'/g)].map((m) => m[1]));",
+  "from": "  const found = new Set([...String(formText).matchAll(/(typeof\\s+)?[A-Za-z_$][\\w$]*\\.name\\s*[!=]==\\s*'([^']+)'/g)]\n    .filter((m) => !m[1])\n    .map((m) => m[2]));",
   "to": "  const found = new Set(spec.noExtras);"
  },
  {
@@ -2895,8 +2895,8 @@
   "slice": "b8",
   "label": "la_musa: a launcher's basePrice is accepted without being checked as a number",
   "file": "../la-musa-orders/index.html",
-  "from": "      if (!(typeof cfg.basePrice === 'number' && isFinite(cfg.basePrice) && cfg.basePrice > 0)) throw new Error('apply_variant_basePrice@' + k);",
-  "to": "      if (false) throw new Error('apply_variant_basePrice@' + k);",
+  "from": "      if (!(typeof cfg.basePrice === 'number' && isFinite(cfg.basePrice) && cfg.basePrice > 0)) throw new Error('apply_variant_basePrice@' + origin + ':' + k);",
+  "to": "      if (false) throw new Error('apply_variant_basePrice@' + origin + ':' + k);",
   "command": [
    "node",
    "../live-apply.test.mjs"
@@ -3003,8 +3003,8 @@
   "slice": "b8",
   "label": "la_musa: variantId validation goes back to coercing, so it admits what the renderer cannot draw",
   "file": "../la-musa-orders/index.html",
-  "from": "        if (!dishes.some((d) => sameDishId(d.id, vid))) throw new Error('apply_variant_id_orphan@' + k + ':' + vid);",
-  "to": "        if (!dishes.some((d) => String(d.id) === String(vid))) throw new Error('apply_variant_id_orphan@' + k + ':' + vid);",
+  "from": "        if (!dishes.some((d) => sameDishId(d.id, vid))) throw new Error('apply_variant_id_orphan@' + origin + ':' + k + ':' + vid);",
+  "to": "        if (!dishes.some((d) => String(d.id) === String(vid))) throw new Error('apply_variant_id_orphan@' + origin + ':' + k + ':' + vid);",
   "command": [
    "node",
    "../live-apply.test.mjs"
@@ -3027,13 +3027,97 @@
   "slice": "b8",
   "label": "la_musa: a variantId of the wrong type is accepted",
   "file": "../la-musa-orders/index.html",
-  "from": "        if (typeof vid !== 'string' || !vid) throw new Error('apply_variant_id_type@' + k + ':' + String(vid));",
-  "to": "        if (false) throw new Error('apply_variant_id_type@' + k + ':' + String(vid));",
+  "from": "        if (typeof vid !== 'string' || !vid) throw new Error('apply_variant_id_type@' + origin + ':' + k + ':' + String(vid));",
+  "to": "        if (false) throw new Error('apply_variant_id_type@' + origin + ':' + k + ':' + String(vid));",
   "command": [
    "node",
    "../live-apply.test.mjs"
   ],
   "equivalent": true,
   "why": "sameDishId already requires a string on BOTH sides, so every non-string variantId fails resolution and is refused as an orphan whether or not this check runs. The only difference is the REASON reported — apply_variant_id_type rather than apply_variant_id_orphan — and validateSnapshot currently swallows it (`catch (_) { return null; }`), so no caller can observe which one was thrown. The check is kept because a refusal that names the wrong cause is a debugging trap the moment that catch starts reporting; making the reason observable is carried to T9 with the other apply-diagnostics items. If sameDishId's type requirement is ever relaxed, this stops being equivalent and becomes the only guard."
+ },
+ {
+  "id": "b8-36",
+  "slice": "b8",
+  "label": "la_musa: a RETAINED variant block is trusted instead of re-checked against the arriving dishes",
+  "file": "../la-musa-orders/index.html",
+  "from": "  } else if (variantItems && Object.keys(variantItems).length) {\n    validateVariantBlock(variantItems, 'retained');\n  }",
+  "to": "  }",
+  "command": [
+   "node",
+   "../live-apply.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-37",
+  "slice": "b8",
+  "label": "la_musa: the variant renderer dereferences a miss instead of skipping it",
+  "file": "../la-musa-orders/index.html",
+  "from": "    const v = MENU.find(p => sameDishId(p.id, vid)); if (!v) return;",
+  "to": "    const v = MENU.find(p => sameDishId(p.id, vid));",
+  "command": [
+   "node",
+   "../live-apply.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-38",
+  "slice": "b8",
+  "label": "la_musa: the variant renderer's comparison coerces, disagreeing with the validator",
+  "file": "../la-musa-orders/index.html",
+  "from": "    const v = MENU.find(p => sameDishId(p.id, vid)); if (!v) return;",
+  "to": "    const v = MENU.find(p => String(p.id) === String(vid)); if (!v) return;",
+  "command": [
+   "node",
+   "../live-apply.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-39",
+  "slice": "b8",
+  "label": "the query/fragment stops validating its percent escapes",
+  "file": "../xpizza-orders/form-safe-render.js",
+  "from": "  try { decodeURIComponent(t); } catch (e) { return false; }\n  return true;\n}",
+  "to": "  return true;\n}",
+  "command": [
+   "node",
+   "../xpizza-orders/form-safe-render.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-40",
+  "slice": "b8",
+  "label": "an all-numeric dotted host is accepted without being a valid IPv4 address",
+  "file": "../xpizza-orders/form-safe-render.js",
+  "from": "    if (/^[0-9]+(?:\\.[0-9]+)+$/.test(host)) { if (!SAFE_URL_IPV4.test(host)) return false; }\n    else if (!/^[A-Za-z0-9._~\\-]+$/.test(host)) return false;",
+  "to": "    if (!/^[A-Za-z0-9._~\\-]+$/.test(host)) return false;",
+  "command": [
+   "node",
+   "../xpizza-orders/form-safe-render.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-41",
+  "slice": "b8",
+  "label": "the IPv6 IPv4-suffix is located in the concatenation instead of at the end of the address",
+  "file": "../xpizza-orders/form-safe-render.js",
+  "from": "  var lastList = parts.length === 2 ? tail : head;",
+  "to": "  var lastList = head.concat(tail);",
+  "command": [
+   "node",
+   "../xpizza-orders/form-safe-render.test.mjs"
+  ]
+ },
+ {
+  "id": "b8-42",
+  "slice": "b8",
+  "label": "the port is bounded by its text length instead of its value",
+  "file": "../xpizza-orders/form-safe-render.js",
+  "from": "    if (!/^\\d{1,7}$/.test(port)) return false;\n    if (Number(port) > 65535) return false;",
+  "to": "    if (!/^\\d{1,5}$/.test(port)) return false;",
+  "command": [
+   "node",
+   "../xpizza-orders/form-safe-render.test.mjs"
+  ]
  }
 ]

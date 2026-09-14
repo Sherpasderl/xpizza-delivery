@@ -1425,7 +1425,14 @@ for (const dir of Object.keys(BRAND)) {
       await serve(w, envelope(B.rid, m2));
       const ampGot = [...w.document.getElementById('card-' + m2.dishes[2].id).querySelectorAll('img')].map((i) => i.getAttribute('src'));
       assert.deepStrictEqual(ampGot, [ampUrl],
-        `${dir}: 🔴 an approved URL survives the quoted attribute byte-for-byte (got ${JSON.stringify(ampGot)})`);
+        `${dir}: 🔴 an approved CARD url survives the quoted attribute byte-for-byte (got ${JSON.stringify(ampGot)})`);
+      // …and the DETAIL MODAL, which is a separate template with its own interpolation. Dropping the
+      // encoding there passed every check until this line existed.
+      w.openDetailModal(m2.dishes[2].id);
+      const ampDetail = [...w.document.getElementById('detail-scroll').querySelectorAll('img')].map((i) => i.getAttribute('src'));
+      assert.deepStrictEqual(ampDetail, [ampUrl],
+        `${dir}: 🔴 …and so does the DETAIL hero (got ${JSON.stringify(ampDetail)})`);
+      w.closeDetailModal();
     } else {
       /* 🔴 la_musa's card NEVER RENDERS THE AUTHORED `img` FIELD — its photo path is composed from the
          dish id and has_photo. So the merchant-controlled input to the URL on this brand is the ID, and
@@ -1480,6 +1487,29 @@ for (const dir of Object.keys(BRAND)) {
       const ampHero = [...w.document.getElementById('detail-scroll').querySelectorAll('img')].map((i) => i.getAttribute('src'));
       assert.deepStrictEqual(ampHero, ['images/' + ampId + '-hero.webp'],
         `la_musa: 🔴 …and so does the HERO url (got ${JSON.stringify(ampHero)})`);
+      w.closeDetailModal();
+
+      /* 🔴 AND THE LAUNCHER MODAL, the fifth template and the last one unpinned. It is a DIFFERENT
+         hero from the ordinary detail modal's, built in its own template, so it needed its own
+         round-trip — dropping the encoding there passed everything else. The launcher id carries the
+         ampersand, which means building a real launcher: a dish with that id, a photo for it, and a
+         variant block pointing at variant dishes that genuinely resolve. */
+      const lId = 'lnch&amp;x';
+      const m4 = B.menu(w);
+      const liveVI = w.liveMenuGlobalGet('VARIANT_ITEMS');
+      const srcKey = Object.keys(liveVI)[0];
+      m4.dishes = m4.dishes.concat([{ ...m4.dishes[0], id: lId, name: 'Launcher Amp', img: undefined }]);
+      m4.has_photo = [lId];
+      m4.variant_items = { [lId]: { ...liveVI[srcKey] } };
+      await serve(w, envelope(B.rid, m4));
+      assert.ok(w.liveMenuGlobalGet('VARIANT_ITEMS')[lId], 'la_musa: non-vacuity — the ampersand launcher applied');
+      w.openDetailModal(lId);
+      const lModal = w.document.getElementById('detail-scroll');
+      assert.strictEqual(lModal.querySelectorAll('.detail-variant-row').length, liveVI[srcKey].variantIds.length,
+        'la_musa: non-vacuity — it really rendered as a LAUNCHER, not as an ordinary dish');
+      const lHero = [...lModal.querySelectorAll('img')].map((i) => i.getAttribute('src'));
+      assert.deepStrictEqual(lHero, ['images/' + lId + '-hero.webp'],
+        `la_musa: 🔴 …and the LAUNCHER hero url survives the attribute byte-for-byte (got ${JSON.stringify(lHero)})`);
       w.closeDetailModal();
     }
     assert.strictEqual(w.__XSS, undefined, `${dir}: nothing executed`);
@@ -1796,7 +1826,76 @@ for (const dir of Object.keys(BRAND)) {
         `${dir}: 🔴 the launcher renders one row per variant — never a required group with no choices (got ${rows.length})`);
       w.closeDetailModal();
     }
+    /* 🔴 THE RETAINED BLOCK, VALIDATED AGAINST THE DISHES THAT ARE ARRIVING. A snapshot that OMITS
+       variant_items keeps the one in force — and nothing re-checked it against the new dish list, so
+       dropping the variant dishes in an ordinary menu update left a launcher referencing dishes that no
+       longer exist. The card still priced it, the modal still opened, and the required choice group was
+       empty: an unorderable dish, with no error anywhere. Every other check in this file serves a
+       snapshot with variant_items ABSENT, which is exactly why none of them noticed. */
+    {
+      const before = painted(w);
+      const menuBefore = w.liveMenuGlobalGet('MENU');
+      const m = B.menu(w);
+      assert.strictEqual(m.variant_items, undefined, 'premise: the shared fixture omits variant_items');
+      const retained = w.liveMenuGlobalGet('VARIANT_ITEMS')[launcherKey];
+      const dropped = new Set(retained.variantIds);
+      m.dishes = m.dishes.filter((d) => !dropped.has(d.id));
+      assert.ok(m.dishes.length < menuBefore.length, 'non-vacuity: the update really does drop the variant dishes');
+      await serve(w, envelope(B.rid, m));
+      assert.strictEqual(w.liveMenuGlobalGet('MENU'), menuBefore,
+        `${dir}: 🔴 a snapshot that strands the RETAINED launcher is refused whole — MENU is the identical prior array`);
+      assert.strictEqual(painted(w), before, `${dir}: 🔴 …and nothing rendered`);
+    }
+    // …and dropping the LAUNCHER dish itself, the same rule from the other side.
+    {
+      const before = painted(w);
+      const m = B.menu(w);
+      m.dishes = m.dishes.filter((d) => d.id !== launcherKey);
+      await serve(w, envelope(B.rid, m));
+      assert.strictEqual(painted(w), before, `${dir}: 🔴 a snapshot that strands the retained launcher KEY is refused whole`);
+    }
     ok(`${dir}: a launcher's variant_items is validated — 12 corrupt shapes refused whole, including the two that only differ under coercion, the intact one applied`);
+  }
+
+  /* ── 🔴 THE RENDERER IS STRICT, AND DEGRADES CLEANLY RATHER THAN CRASHING ──────────────────────
+     Validation now guarantees every variantId resolves, which makes the renderer's own comparison and
+     its miss-guard unreachable from the feed — and therefore unpinned: loosening `sameDishId` in the
+     renderer, or deleting the `if (!v) return`, changed nothing any test could see. Unreachable is not
+     the same as unimportant: these two lines are the floor under a validator that someone will
+     eventually relax, and a floor nobody tests is a floor nobody notices giving way.
+     So MENU is corrupted DIRECTLY — the one way to put the renderer in the state its guards exist for —
+     and both properties are asserted at once: the strict comparison does not match a type-mismatched
+     id, and an unresolvable id is skipped rather than dereferenced. */
+  if (dir === 'la-musa-orders') {
+    const w = loadForm(dir);
+    const m = B.menu(w);
+    const launcherKey = Object.keys(w.liveMenuGlobalGet('VARIANT_ITEMS'))[0];
+    const cfg = { ...w.liveMenuGlobalGet('VARIANT_ITEMS')[launcherKey] };
+    m.variant_items = { [launcherKey]: cfg };
+    await serve(w, envelope(B.rid, m));
+
+    w.openDetailModal(launcherKey);
+    const healthy = w.document.getElementById('detail-scroll').querySelectorAll('.detail-variant-row').length;
+    assert.strictEqual(healthy, cfg.variantIds.length,
+      `${dir}: non-vacuity — a healthy launcher renders one row per variant (got ${healthy})`);
+    w.closeDetailModal();
+
+    // Retype ONE variant dish's id in the live MENU: '…_sin' becomes a Number-typed id that no longer
+    // matches strictly. Nothing in the feed can produce this — that is the point of doing it by hand.
+    const live = w.liveMenuGlobalGet('MENU');
+    const victim = live.find((d) => d.id === cfg.variantIds[0]);
+    assert.ok(victim, 'non-vacuity: the variant dish to retype was found in the live MENU');
+    victim.id = { toString: () => cfg.variantIds[0] };   // stringifies to the id, is not the id
+
+    let threw = null;
+    try { w.openDetailModal(launcherKey); } catch (e) { threw = e; }
+    assert.strictEqual(threw, null,
+      `${dir}: 🔴 an unresolvable variant is SKIPPED, never dereferenced — the modal must not throw (${threw && threw.message})`);
+    const degraded = w.document.getElementById('detail-scroll').querySelectorAll('.detail-variant-row').length;
+    assert.strictEqual(degraded, cfg.variantIds.length - 1,
+      `${dir}: 🔴 the renderer's comparison is STRICT — an id that only coerces equal resolves to nothing (got ${degraded} rows, expected ${cfg.variantIds.length - 1})`);
+    w.closeDetailModal();
+    ok(`${dir}: the variant renderer is strict and skips what it cannot resolve — it never dereferences a miss`);
   }
 }
 

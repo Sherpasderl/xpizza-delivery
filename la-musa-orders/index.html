@@ -2279,31 +2279,43 @@ function liveMenuPrepare(body){
      compute the CTA total. A validation that stops at the outer shape is not validation of the thing it
      is guarding; the same rule applies wherever a price lives. variantIds must also name dishes that
      exist, or the launcher offers a choice that resolves to nothing. */
-  let variantItems = VARIANT_ITEMS;
-  if (body.variant_items !== undefined) {
-    const vi = body.variant_items;
-    if (!vi || typeof vi !== 'object' || Array.isArray(vi)) throw new Error('apply_variant_items_malformed');
-    /* 🔴 VALIDATION MUST ASK THE QUESTION THE RENDERER ASKS. This resolved with String(vid) while the
-       renderer resolves with `p.id === vid` and silently `return`s when it finds nothing — so a
-       variantId of 123 against a dish id of '123' PASSED validation and then drew a launcher with zero
-       choices: a required single-select group offering nothing, reached from the menu, with no error
-       anywhere. A looser validator is not a safer one; it admits exactly the states the strict consumer
-       cannot render. Both sides now call sameDishId, so the two cannot drift apart again, and the id
-       TYPE is pinned rather than coerced — coercion is what hid the mismatch in the first place. */
+  /* 🔴 THE RETAINED BLOCK IS VALIDATED TOO, AGAINST THE DISHES THAT ARE ARRIVING. "Absent means keep
+     what is in force" is right for structure, but a variant block is not self-contained — it is a set
+     of REFERENCES into the dish list, and the dish list is exactly what this snapshot replaces. So a
+     snapshot that simply omits variant_items while dropping or renaming the variant dishes left a
+     launcher pointing at dishes that no longer exist: the card still says "desde L …", the modal still
+     opens, and the required single-select group inside it has NOTHING in it. Unorderable, and silent.
+     Validating only the SUPPLIED block checked the one case that came with its own evidence and
+     skipped the one that did not. The origin is carried into the error so the two are distinguishable
+     once a caller starts reporting them. */
+  const validateVariantBlock = (vi, origin) => {
+    if (!vi || typeof vi !== 'object' || Array.isArray(vi)) throw new Error('apply_variant_items_malformed@' + origin);
     Object.keys(vi).forEach((k) => {
       const cfg = vi[k];
-      if (!cfg || typeof cfg !== 'object') throw new Error('apply_variant_cfg_malformed@' + k);
-      if (!(typeof cfg.basePrice === 'number' && isFinite(cfg.basePrice) && cfg.basePrice > 0)) throw new Error('apply_variant_basePrice@' + k);
-      if (!Array.isArray(cfg.variantIds) || !cfg.variantIds.length) throw new Error('apply_variant_ids_missing@' + k);
+      if (!cfg || typeof cfg !== 'object') throw new Error('apply_variant_cfg_malformed@' + origin + ':' + k);
+      if (!(typeof cfg.basePrice === 'number' && isFinite(cfg.basePrice) && cfg.basePrice > 0)) throw new Error('apply_variant_basePrice@' + origin + ':' + k);
+      if (!Array.isArray(cfg.variantIds) || !cfg.variantIds.length) throw new Error('apply_variant_ids_missing@' + origin + ':' + k);
+      /* VALIDATION ASKS THE QUESTION THE RENDERER ASKS. This once resolved with String(vid) while the
+         renderer resolves with `p.id === vid` and silently returns when it finds nothing — so a
+         variantId of 123 against a dish id of '123' passed here and then drew a launcher with zero
+         choices. A looser validator is not a safer one: it admits exactly the states the strict
+         consumer cannot render. Both sides call sameDishId, and the TYPE is pinned rather than
+         coerced, because coercion is what hid the mismatch. */
       cfg.variantIds.forEach((vid) => {
-        if (typeof vid !== 'string' || !vid) throw new Error('apply_variant_id_type@' + k + ':' + String(vid));
-        if (!dishes.some((d) => sameDishId(d.id, vid))) throw new Error('apply_variant_id_orphan@' + k + ':' + vid);
+        if (typeof vid !== 'string' || !vid) throw new Error('apply_variant_id_type@' + origin + ':' + k + ':' + String(vid));
+        if (!dishes.some((d) => sameDishId(d.id, vid))) throw new Error('apply_variant_id_orphan@' + origin + ':' + k + ':' + vid);
       });
       // The launcher key is an OBJECT key, so it is a string by construction and VARIANT_ITEMS[p.id]
       // coerces on lookup — the dish's own id is therefore what has to be a string here.
-      if (!dishes.some((d) => sameDishId(d.id, k))) throw new Error('apply_variant_launcher_orphan@' + k);
+      if (!dishes.some((d) => sameDishId(d.id, k))) throw new Error('apply_variant_launcher_orphan@' + origin + ':' + k);
     });
-    variantItems = vi;
+  };
+  let variantItems = VARIANT_ITEMS;
+  if (body.variant_items !== undefined) {
+    validateVariantBlock(body.variant_items, 'supplied');
+    variantItems = body.variant_items;
+  } else if (variantItems && Object.keys(variantItems).length) {
+    validateVariantBlock(variantItems, 'retained');
   }
   return {
     MENU: dishes,
