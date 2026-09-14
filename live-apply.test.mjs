@@ -1650,6 +1650,37 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: a dish referencing a category that does not exist is refused whole`);
   }
 
+  /* ── 🔴 A REFUSED SNAPSHOT SAYS WHY ───────────────────────────────────────────────────────────
+     liveMenuPrepare raises TYPED errors naming exactly what was wrong, and validateSnapshot used to
+     discard every one of them with `catch (_) { return null; }`. The refusal was right; the silence was
+     not — a refused snapshot was indistinguishable from a network miss, so a merchant publishing
+     something the forms will not accept produced no signal anywhere. Carried into T9 as a
+     diagnostics-only item and closed here because a deploy-watch with nothing to watch is not a watch. */
+  {
+    const w = loadForm(dir);
+    await serve(w, envelope(B.rid, B.menu(w)));
+    const warned = [];
+    const realWarn = w.console.warn;
+    w.console.warn = (...a) => { warned.push(a.join(' ')); };
+    const m = B.menu(w);
+    m.dishes[1] = { ...m.dishes[1], price: 0 };     // a typed, specific failure both brands reject
+    await serve(w, envelope(B.rid, m));
+    w.console.warn = realWarn;
+    const refusals = warned.filter((l) => l.includes('menu_snapshot_refused'));
+    assert.strictEqual(refusals.length, 1,
+      `${dir}: 🔴 a refused snapshot reports exactly once (got ${refusals.length})`);
+    assert.match(refusals[0], /apply_dish_malformed/,
+      `${dir}: 🔴 …and names the TYPED cause, not just "it failed" (${refusals[0]})`);
+    // NON-VACUITY: an ACCEPTED snapshot says nothing, or the signal is noise.
+    const quiet = [];
+    w.console.warn = (...a) => { quiet.push(a.join(' ')); };
+    await serve(w, envelope(B.rid, B.menu(w)));
+    w.console.warn = realWarn;
+    assert.strictEqual([...quiet].filter((l) => l.includes('menu_snapshot_refused')).length, 0,
+      `${dir}: non-vacuity — a snapshot that applies cleanly reports no refusal`);
+    ok(`${dir}: a refused snapshot logs its typed cause — the refusal is diagnosable, not silent`);
+  }
+
   /* ── 🔴 THE ORDER ID IS THE PAYMENT IDEMPOTENCY ANCHOR, SO IT MUST NOT COLLIDE ────────────────
      Asserted for BOTH brands from one loop, because the defect was an ASYMMETRY: x_pizza carried a
      CSPRNG suffix and la_musa did not, so two la_musa orders in the same second produced the same id

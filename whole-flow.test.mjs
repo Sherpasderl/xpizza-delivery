@@ -391,6 +391,51 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: availability reapply — a sold-out line blocks the charge and is named as agotado`);
   }
 
+  /* ── CELL 12: A SYNCHRONOUS FAILURE IN THE APPLY PATH ITSELF ─────────────────────────────────
+     Carried into T9 as a known limitation: `capture()` runs OUTSIDE the applier's try, so if it throws
+     the applier never gets to attempt or recover, and the coordinator records the throw as a feed error
+     instead of a fatal. Item 1's broken-blocks-the-charge fix therefore does NOT cover this path, which
+     is exactly why it needed its own look rather than being assumed covered.
+     What is asserted is that the failure is a NO-OP: capture throwing means nothing was applied, so the
+     screen still shows the menu the customer has been looking at and the total they confirmed is still
+     the total for what is in their cart. A display that is merely UNCHANGED is not a stale display —
+     nothing moved to become stale. That is the difference between this and the broken case, and it is
+     why blocking the charge here would be wrong rather than cautious. */
+  {
+    const ctx = await boot(dir);
+    await publish(ctx, baseMenu(ctx.w));
+    const d = plainDish(ctx.w);
+    await addToCart(ctx, d);
+    const before = painted(ctx.w);
+    const confirmed = ctx.w.getServerQuoteTotalCents();
+    assert.ok(confirmed > 0, `${dir}/sync-throw: premise — a total is confirmed`);
+
+    const realSnap = ctx.w.liveMenuQuoteSnapshot;
+    ctx.w.liveMenuQuoteSnapshot = () => { throw new Error('capture exploded'); };
+    const up = baseMenu(ctx.w);
+    up.dishes = up.dishes.map((x) => (String(x.id) === String(d.id) ? { ...x, price: x.price + 40 } : x));
+    await publish(ctx, up);
+    ctx.w.liveMenuQuoteSnapshot = realSnap;
+
+    assert.strictEqual(painted(ctx.w), before,
+      `${dir}/sync-throw: 🔴 nothing was applied — the screen is the one the customer was already reading`);
+    assert.ok(!ctx.w.__liveMenu.applier.state().fatal,
+      `${dir}/sync-throw: the applier is not FATAL — it never got far enough to break anything`);
+    /* 🔴 FINDING — NOT ASSERTED AS CORRECT, BECAUSE IT IS NOT. Sending here charges the CURRENT
+       catalog price while the screen and the cached quote still hold the previous one: confirmed 340,
+       charged 380. The mismatch is not specific to a capture throw — it is what happens whenever the
+       catalog has moved and the form has not caught up, because a FAILED apply does not invalidate the
+       quote (by design: nothing on screen changed, so the quote still matches the screen — it just no
+       longer matches the SERVER).
+       Deliberately left unasserted rather than encoded either way: asserting the current behaviour
+       would pin a displayed-vs-charged mismatch as correct, and asserting the opposite would fail a
+       suite over a decision that is the advisor's to make. The no-op properties above ARE asserted,
+       because they are true and worth keeping whichever way the decision goes. */
+    assert.strictEqual(ctx.w.getServerQuoteTotalCents(), confirmed,
+      `${dir}/sync-throw: the cached quote is untouched by a failed apply — this is the input to the finding`);
+    ok(`${dir}: a synchronous capture failure applies NOTHING and leaves the screen intact (see the stale-quote finding)`);
+  }
+
   // ── CELL 11: RENAME ──────────────────────────────────────────────────────────────────────────
   // The brands diverge here BY DESIGN and the matrix must say so rather than assert one answer:
   // x_pizza prices by NAME, so a rename is a different product and the line cannot be charged;
