@@ -346,6 +346,24 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   function getRedeemQuoteTotalCents() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote.total_cents : null; }
   function getRedeemQuote() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote : null; }   // v2: full server quote {total_cents, free_items[], savings_cents, total_cost, remaining} for the Stage-2 order summary
   function clearRedeem() { _redeemPending = null; _redeemQuote = null; }
+  /* 🔴 1B Task 9 — RE-QUOTE THE REWARD AFTER A LIVE MENU CHANGE.
+     redeemAdjustedTotal() prefers the REWARD quote over the order quote, and the live apply only ever
+     invalidated the order quote — so a reprice landing under an active reward left the reward's total
+     standing, and the customer confirmed a discounted figure computed against prices that had moved.
+     That is a displayed-vs-charged window OUTSIDE the checkout-hold, which is why it belongs to 1B
+     rather than to 1C: nothing is being held, the form simply had a stale number it never refreshed.
+     Re-quoted rather than cleared: dropping the reward would take away something the customer earned
+     because a merchant edited an unrelated dish. On a quote the server will not answer, the QUOTE is
+     dropped and the pending reward is kept — and the send gate refuses while a reward is pending
+     without a price, because a reward we cannot price is one we cannot show a total for. */
+  async function requoteRedeem(items) {
+    if (!_redeemPending) return null;
+    const q = await redeemQuoteFetch(items, _redeemPending);
+    _redeemQuote = (q && q.ok) ? q : null;
+    try { if (_rkEnv && _rkEnv.onQuoted) _rkEnv.onQuoted(_redeemQuote); } catch (_) {}
+    return _redeemQuote;
+  }
+
   // D (retry-resume): restore the selected redeem + its server quote after a PixelPay redirect/reload, so the
   // golden ticket re-renders and the RESUMED order re-attaches the SAME redeem (same canonical → the server
   // reuses the ONE existing reservation, never a second). The quote is display-only (the server re-prices on
@@ -4362,6 +4380,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.getRedeemQuoteTotalCents = getRedeemQuoteTotalCents;   //   pay-step display uses the SERVER quote total while a reward is pending
   window.__ACCOUNT.getRedeemQuote = getRedeemQuote;   // A6 — Stage-2 order-summary reward line (server quote)
   window.__ACCOUNT.clearRedeem = clearRedeem;             //   fresh-resubmit fallback clears the pending reward
+  window.__ACCOUNT.requoteRedeem = requoteRedeem;   // 1B T9 — a live menu change must re-price an active reward, not leave its total standing
   window.__ACCOUNT.restoreRedeem = restoreRedeem;         //   D — restore redeem+quote after a PixelPay reload (golden ticket re-renders; resumed order reuses the reservation)
   window.__ACCOUNT.classifyRedeemError = classifyRedeemError;   //   'redemption' | 'other' → two-error-class submit handling
   window.__ACCOUNT.renderSuccessRewards = renderSuccessRewards;   // B2 Task 5 — post-order earn badge + guest profile-claim card

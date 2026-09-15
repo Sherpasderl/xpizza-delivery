@@ -2214,6 +2214,21 @@ function refuseConflictedSend(where){
     announceMenuBroken();
     return true;
   }
+  /* 🔴 A REWARD WE CANNOT PRICE IS A TOTAL WE CANNOT SHOW. A pending reward whose server quote is
+     missing — the re-quote after a live apply failed, or it never landed — means redeemAdjustedTotal()
+     has fallen through to an UNDISCOUNTED figure while the server will still apply the reward. The
+     charge is safe either way (the server re-prices the redemption at intake); what is not safe is
+     asking the customer to confirm a number that is not what they will pay. */
+  try {
+    const pend = (window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload) ? window.__ACCOUNT.getRedeemPayload() : null;
+    const priced = (window.__ACCOUNT && window.__ACCOUNT.getRedeemQuoteTotalCents) ? window.__ACCOUNT.getRedeemQuoteTotalCents() : null;
+    if (pend && priced == null) {
+      console.warn('cart_blocked_send_reward_unpriced', JSON.stringify({ at: where }));
+      const err = document.getElementById('err3') || document.getElementById('err1');
+      if (err) { err.textContent = 'Estamos actualizando tu premio. Esperá un momento y volvé a intentar.'; err.style.display = 'block'; }
+      return true;
+    }
+  } catch (_) {}
   const conflicts = cartConflicts();
   const empty = cartLines().length === 0;
   // An EMPTY cart is refused here too. It is not a conflict, but it is not a chargeable order either —
@@ -2582,6 +2597,16 @@ function liveMenuPaint(prepared){
 function liveMenuCommit(prepared){
   const ui = liveMenuUiCapture();
   if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; __serverQuote.failedKey = null; }
+  /* 🔴 AND THE REWARD QUOTE, which redeemAdjustedTotal() prefers over the one above. Invalidating only
+     __serverQuote left the reward's total standing across a reprice — a displayed-vs-charged window
+     that is NOT the checkout-hold and therefore 1B's to close. Re-requested rather than dropped; the
+     send gate refuses while a reward is pending without a price. */
+  try {
+    if (window.__ACCOUNT && typeof window.__ACCOUNT.requoteRedeem === 'function'
+        && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()) {
+      Promise.resolve(window.__ACCOUNT.requoteRedeem(redeemCartItems())).catch(function(){});
+    }
+  } catch (_) {}
   liveMenuPaint(prepared);
   liveMenuUiRestore(ui);
 }
@@ -3204,8 +3229,12 @@ function requestServerQuote(){
            network allows, against the endpoint that prices money. Reachable whenever the server cannot
            price the cart — which is exactly what a removed dish produces — and the customer it hits is
            one already mid-checkout, who would be rate-limited out of ordering by their own form.
-           Cleared on any cart change (the key differs), on a successful quote, and on a live-menu
-           apply, so a transient failure retries at the next thing that happens rather than never. */
+           THE SUPPRESSION IS PER-CART-SIGNATURE, and saying it is "cleared on any cart change" was
+           wrong: a different cart simply has a different key, which lets THAT cart be quoted — it does
+           not un-suppress the failed one. Returning to a cart whose quote failed stays suppressed
+           (A fails → B → back to A is still suppressed) until one of three things actually clears the
+           marker: a SUCCESSFUL quote, an EMPTIED cart, or a live-menu apply. The display falls open to
+           calcTotal meanwhile, which is the documented failure-open behaviour, not a silent stop. */
     if(key===__serverQuote.failedKey){ supersedeQuoteRequests(); return; }
     /*  4. A REQUEST FOR THIS EXACT CART IS ALREADY IN FLIGHT → do NOT supersede. That request is the
            current cart's and is the one to wait for; superseding here would orphan the very reply this

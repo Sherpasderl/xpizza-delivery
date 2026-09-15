@@ -17,11 +17,17 @@
 // trusting the price the payload carries. Then "charged == confirmed" is a comparison of two numbers
 // this suite computed independently, not a restatement of one of them.
 //
-// Every cell ends in one of exactly two acceptable outcomes, and says which:
-//   • the send is REFUSED (the cart no longer resolves), or
-//   • the send happens and the server-priced amount EQUALS the confirmed total.
-// "A total was displayed" is never an outcome. Neither is "the gate returned true" — the assertions
-// are made against the payload that actually reached a charge endpoint.
+// TWO KINDS OF CELL, LABELLED, because claiming one kind for both would overstate what is proved:
+//
+//   CHARGE-OUTCOME cells run a real submit and end in exactly one of two acceptable outcomes — the send
+//   is REFUSED, or it happens and the server-priced amount EQUALS the confirmed total. "A total was
+//   displayed" is never an outcome, and neither is "the gate returned true": the assertions are made
+//   against the payload that actually reached a charge endpoint.
+//
+//   INVARIANT cells do not submit at all. They assert a hold, a no-op, or a non-withdrawal — which is
+//   the right test for what they cover, and is NOT evidence about any charge. They are marked
+//   [invariant] in their header so a reader counting "charge proofs" cannot count them by mistake.
+//   An earlier version of this comment claimed every cell ended in a charge outcome; six did not.
 import assert from 'node:assert';
 import { counter, settle, stageSettle, envelope, loadForm, res, loadAvail, BRAND,
          closeAll, containersOfFor, paintedFor } from './form-harness.mjs';
@@ -38,7 +44,22 @@ function serverPrice(dir, menu, item) {
     ? dishes.find((d) => String(d.id) === String(item.id))
     : dishes.find((d) => d.name === item.name);
   if (!rec) return null;
-  const extras = Number(item.extrasTotal) || 0;
+  /* 🔴 EVERY EXTRA IS PRICED INDEPENDENTLY, NOT TAKEN FROM item.extrasTotal. Adding the payload's own
+     extras subtotal was a hole straight through this suite's premise: the fake quote and the fake
+     charge both consumed the SAME client-supplied number, so a wrong extras subtotal contaminated both
+     sides equally and "charged == confirmed" passed against the wrong figure. An oracle that trusts a
+     field the code under test produced is not an oracle. Keyed the way each brand keys — x_pizza's
+     options are name-keyed and count once, la_musa's are id-keyed and qty-aware — because getting THAT
+     wrong would silently re-introduce the same class one level down. */
+  const opts = menu.extras || [];
+  let extras = 0;
+  for (const e of item.extras || []) {
+    const er = dir === 'la-musa-orders'
+      ? opts.find((x) => String(x.id) === String(e.id))
+      : opts.find((x) => x.name === e.name);
+    if (!er) return null;                          // an option the menu cannot price refuses the line
+    extras += er.price * (dir === 'la-musa-orders' ? (Number(e.qty) || 0) : 1);
+  }
   return rec.price * (Number(item.qty) || 0) + extras;
 }
 function serverTotalCents(dir, menu, items) {
@@ -185,7 +206,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: reprice — the line blocks rather than charging either price, and re-adding charges the new one`);
   }
 
-  // ── CELL 2: REPRICE WITH NO RE-QUOTE ─────────────────────────────────────────────────────────
+  // ── CELL 2: REPRICE WITH NO RE-QUOTE [invariant] ────────────────────────────────────────────────────────────────────────────
   // The dangerous half of the same cell: the price moves and nothing asks for a new quote. The stale
   // total must NOT be displayed — an invalidated quote is what stands between the old number and the
   // customer's eyes.
@@ -252,7 +273,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: new item — the quoted cart is untouched and charged as confirmed`);
   }
 
-  // ── CELL 5: MODAL OPEN ───────────────────────────────────────────────────────────────────────
+  // ── CELL 5: MODAL OPEN [invariant] ──────────────────────────────────────────────────────────────────────────────────────────
   {
     const ctx = await boot(dir);
     await publish(ctx, baseMenu(ctx.w));
@@ -273,7 +294,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: modal open — the apply defers under the modal and lands intact on close`);
   }
 
-  // ── CELL 6: CHECKOUT OPEN ────────────────────────────────────────────────────────────────────
+  // ── CELL 6: CHECKOUT OPEN [invariant] ───────────────────────────────────────────────────────────────────────────────────────
   {
     const ctx = await boot(dir);
     await publish(ctx, baseMenu(ctx.w));
@@ -291,7 +312,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: checkout open — the snapshot is held while the customer is paying`);
   }
 
-  // ── CELL 7: POST-SUBMIT ──────────────────────────────────────────────────────────────────────
+  // ── CELL 7: POST-SUBMIT [invariant] ─────────────────────────────────────────────────────────────────────────────────────────
   // The order is placed. What the menu does afterwards is not this customer's business.
   {
     const ctx = await boot(dir);
@@ -324,8 +345,28 @@ for (const dir of Object.keys(BRAND)) {
     a.dishes = a.dishes.map((x) => (String(x.id) === String(d.id) ? { ...x, price: 111 } : x));
     const b = baseMenu(ctx.w);
     b.dishes = b.dishes.map((x) => (String(x.id) === String(d.id) ? { ...x, price: 222 } : x));
-    await publish(ctx, a);
-    await publish(ctx, b);
+    /* 🔴 ACTUALLY OVERLAPPING. The previous version awaited A before publishing B, which is two
+       sequential fetches — it could not have observed an out-of-order application because there was
+       never more than one request in flight. A's response is held until B has been ISSUED and then
+       released, so A lands LAST while B is the newer snapshot: the exact ordering the coordinator has
+       to refuse, and the one a sequential test can never produce. */
+    let releaseA;
+    const heldA = new Promise((r) => { releaseA = r; });
+    const realRespond = ctx.w.__respond;
+    let first = true;
+    ctx.w.__respond = (url, init) => {
+      if (url.includes('/menu/') && first) { first = false; return heldA.then(() => res(envelope(B.rid, a))); }
+      return realRespond(url, init);
+    };
+    ctx.st.menuNow = a;
+    const pA = ctx.w.__liveMenu.feed.refresh();     // in flight, unresolved
+    ctx.st.menuNow = b;
+    const pB = ctx.w.__liveMenu.feed.refresh();     // issued while A is still outstanding
+    await settle();
+    releaseA();                                      // …and now A answers, LAST
+    await Promise.all([pA, pB]);
+    await settle();
+    ctx.w.__respond = realRespond;
     ctx.w.requestServerQuote();
     await settle();
     const live = ctx.w.liveMenuGlobalGet('MENU').find((x) => String(x.id) === String(d.id));
@@ -341,7 +382,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: overlapping fetch — the latest snapshot wins and prices the cart by itself`);
   }
 
-  // ── CELL 9: 304 NOT MODIFIED ─────────────────────────────────────────────────────────────────
+  // ── CELL 9: 304 NOT MODIFIED [invariant] ────────────────────────────────────────────────────────────────────────────────────
   // Nothing changed, so nothing may move — including the quote, whose invalidation would silently
   // withdraw the total the customer is looking at.
   {
@@ -391,7 +432,7 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: availability reapply — a sold-out line blocks the charge and is named as agotado`);
   }
 
-  /* ── CELL 12: A SYNCHRONOUS FAILURE IN THE APPLY PATH ITSELF ─────────────────────────────────
+  /* ── CELL 12: A SYNCHRONOUS FAILURE IN THE APPLY PATH ITSELF [invariant] ─────────────────────────────────
      Carried into T9 as a known limitation: `capture()` runs OUTSIDE the applier's try, so if it throws
      the applier never gets to attempt or recover, and the coordinator records the throw as a feed error
      instead of a fatal. Item 1's broken-blocks-the-charge fix therefore does NOT cover this path, which
@@ -446,6 +487,131 @@ for (const dir of Object.keys(BRAND)) {
     assert.strictEqual(ctx.w.getServerQuoteTotalCents(), confirmed,
       `${dir}/sync-throw: the cached quote is untouched by a failed apply — this is the input to the finding`);
     ok(`${dir}: a synchronous capture failure applies NOTHING and leaves the screen intact (see the stale-quote finding)`);
+  }
+
+  /* ── CELL 13: AN 86'd OPTION ───────────────────────────────────────────────────────────────────
+     The cell-10 fix one level down, and the more dangerous half: the server's availability gate
+     iterates TOP-LEVEL ITEMS only, so unlike an 86'd dish there is no server backstop underneath an
+     86'd extra. Fixing the dish and leaving the option would have been the containment-in-one-direction
+     failure this project keeps producing — the dish is fine, the chorizo is off, the line submits WITH
+     it and the kitchen cannot make it. */
+  {
+    const ctx = await boot(dir);
+    await publish(ctx, baseMenu(ctx.w));
+    const d = plainDish(ctx.w);
+    await addToCart(ctx, d);
+    const ex = ctx.w.liveMenuGlobalGet('EXTRAS')[0];
+    if (dir === 'xpizza-orders') ctx.w.toggleDetailExtra(ex.id, d.id, 0);
+    else ctx.w.chgDetailExtra(ex.id, d.id, 1);
+    ctx.w.requestServerQuote();
+    await settle();
+    const withExtra = await sendAndJudge(ctx, dir, 'extra-ok');
+    assert.strictEqual(withExtra.outcome, 'charged',
+      `${dir}/extra-86: non-vacuity — the line with the option is orderable BEFORE the option is 86'd`);
+
+    // …now the kitchen runs out of the OPTION, and the dish is untouched.
+    const ctx2 = await boot(dir);
+    await publish(ctx2, baseMenu(ctx2.w));
+    const d2 = plainDish(ctx2.w);
+    await addToCart(ctx2, d2);
+    const ex2 = ctx2.w.liveMenuGlobalGet('EXTRAS')[0];
+    if (dir === 'xpizza-orders') ctx2.w.toggleDetailExtra(ex2.id, d2.id, 0);
+    else ctx2.w.chgDetailExtra(ex2.id, d2.id, 1);
+    ctx2.w.requestServerQuote();
+    await settle();
+    await loadAvail(ctx2.w, { [ctx2.w.availKey(dir === 'xpizza-orders' ? ex2.name : ex2.id)]: { available: false } });
+    assert.ok(ctx2.w.isSoldOut(ex2), `${dir}/extra-86: non-vacuity — the OPTION really is 86'd`);
+    assert.ok(!ctx2.w.isSoldOut(d2), `${dir}/extra-86: non-vacuity — and the DISH is not`);
+    const r = await sendAndJudge(ctx2, dir, 'extra-86');
+    assert.strictEqual(r.outcome, 'refused',
+      `${dir}/extra-86: 🔴 an 86'd OPTION blocks the line it sits on — there is no server backstop here`);
+    ok(`${dir}: an 86'd option blocks the charge on the line that carries it`);
+  }
+
+  /* ── CELL 14: AN ACTIVE REWARD IS RE-PRICED BY A LIVE APPLY ────────────────────────────────────
+     redeemAdjustedTotal() prefers the REWARD quote over the order quote, and the live apply invalidated
+     only the order quote. So a reprice landing under an active reward left the reward's total standing
+     and the customer confirmed a discounted figure computed against prices that had moved — a
+     displayed-vs-charged window with NO held apply anywhere in it, which is why it is 1B's and not
+     1C's. Two properties, because either alone is insufficient: the apply must ASK for a new reward
+     price, and until one exists the send must refuse rather than show an undiscounted figure as though
+     it were the reward total. */
+  {
+    const ctx = await boot(dir);
+    await publish(ctx, baseMenu(ctx.w));
+    const d = plainDish(ctx.w);
+    await addToCart(ctx, d);
+
+    // A reward that is ACTIVE and priced. Stubbed at the account boundary on purpose: what is under
+    // test is the form's reaction to a live apply, not the rewards module's own quoting.
+    let requoted = 0, priced = 5000;
+    ctx.w.__ACCOUNT = Object.assign({}, ctx.w.__ACCOUNT, {
+      getRedeemPayload: () => ({ type: 'points_ala_carte', items: [] }),
+      getRedeemQuoteTotalCents: () => priced,
+      requoteRedeem: (items) => { requoted += 1; priced = null; return Promise.resolve(null); },
+    });
+    assert.strictEqual(ctx.w.redeemAdjustedTotal(), 50,
+      `${dir}/reward: premise — the REWARD total is what the customer is shown (${ctx.w.redeemAdjustedTotal()})`);
+
+    const up = baseMenu(ctx.w);
+    up.dishes = up.dishes.map((x) => (String(x.id) === String(d.id) ? { ...x, price: x.price + 70 } : x));
+    await publish(ctx, up);
+
+    assert.strictEqual(requoted, 1,
+      `${dir}/reward: 🔴 the live apply RE-REQUESTS the reward price — invalidating only the order quote left it standing`);
+    const r = await sendAndJudge(ctx, dir, 'reward-unpriced');
+    assert.strictEqual(r.outcome, 'refused',
+      `${dir}/reward: 🔴 …and while the reward has no price the send refuses, rather than confirming an undiscounted total`);
+    const err = ctx.w.document.getElementById('err3') || ctx.w.document.getElementById('err1');
+    assert.match((err && err.textContent) || '', /premio/i,
+      `${dir}/reward: 🔴 …and says so in terms of the reward, not a generic conflict`);
+    ok(`${dir}: a live apply re-prices an active reward, and an unpriced reward blocks the charge`);
+  }
+
+  /* ── CELL 15: A PUBLISH LANDS MID-SUBMIT ───────────────────────────────────────────────────────
+     The matrix named a mid-submit cell and did not have one. The charge is held in flight while a new
+     snapshot arrives, which is the narrowest and worst-timed window there is: the payload is already
+     composed and gone, and anything that changed it now would change an order the customer has already
+     authorised. What must hold is that the request in flight is untouched and no second charge is
+     produced — the retry loop re-asks refuseConflictedSend precisely so a menu change between attempts
+     cannot be charged, and that guard must not turn one order into two either. */
+  {
+    const ctx = await boot(dir);
+    await publish(ctx, baseMenu(ctx.w));
+    const d = plainDish(ctx.w);
+    await addToCart(ctx, d);
+    const confirmed = ctx.w.getServerQuoteTotalCents();
+
+    let releaseCharge;
+    const heldCharge = new Promise((r) => { releaseCharge = r; });
+    const realRespond = ctx.w.__respond;
+    ctx.w.__respond = (url, init) => {
+      if (CHARGE_RE.test(url)) { ctx.st.charges.push({ url, ...JSON.parse((init && init.body) || '{}') });
+        return heldCharge.then(() => res({ ok: true })); }
+      return realRespond(url, init);
+    };
+    assert.ok(ctx.w.buildOrder(), `${dir}/mid-submit: the order composes`);
+    const submitting = ctx.w.submitOrder('confirmed');
+    await settle();
+    assert.strictEqual(ctx.st.charges.length, 1, `${dir}/mid-submit: non-vacuity — a charge really is in flight`);
+    const sentAtDispatch = JSON.stringify(ctx.st.charges[0].items);
+
+    const up = baseMenu(ctx.w);
+    up.dishes = up.dishes.map((x) => (String(x.id) === String(d.id) ? { ...x, price: x.price + 90 } : x));
+    await publish(ctx, up);                          // the merchant publishes WHILE the charge is out
+
+    assert.strictEqual(JSON.stringify(ctx.st.charges[0].items), sentAtDispatch,
+      `${dir}/mid-submit: 🔴 the payload already in flight is untouched by a snapshot landing behind it`);
+    releaseCharge();
+    await submitting.catch(() => {});
+    await settle();
+    assert.strictEqual(ctx.st.charges.length, 1,
+      `${dir}/mid-submit: 🔴 …and exactly ONE charge was made — the in-flight publish produced no second order`);
+    const charged = serverTotalCents(dir, ctx.st.menuNow, ctx.st.charges[0].items);
+    assert.ok(charged !== confirmed,
+      `${dir}/mid-submit: the server would price this at the NEW catalog — recorded, and 1C's gate is what closes it`);
+    ctx.w.__respond = realRespond;
+    ok(`${dir}: a publish mid-submit leaves the in-flight payload alone and produces exactly one charge`);
   }
 
   // ── CELL 11: RENAME ──────────────────────────────────────────────────────────────────────────

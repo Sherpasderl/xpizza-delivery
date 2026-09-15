@@ -104,6 +104,14 @@ function createCart(options) {
     if (!live) return 'removed';
     if (adapter.extraPricingKey(live) !== added.pricingKey) return 'renamed';
     if (live.price !== added.price) return 'repriced';
+    /* 🔴 THE SAME FOURTH STATE AS THE DISH, ONE LEVEL DOWN. Adding `unavailable` to the dish check and
+       not here left the identical hole for OPTIONS: an extra 86'd after it is on a line is still in the
+       list, same name, same price, so all four checks above said resolved and it went to the charge.
+       The server's availability gate iterates TOP-LEVEL ITEMS only, so unlike the dish case there is no
+       backstop underneath this one — an 86'd extra is charged and then cannot be made. Fixing the dish
+       and leaving the option is exactly the containment-in-one-direction failure this file already
+       carries a note about; it is fixed in both directions this time. */
+    if (unavailable(live)) return 'unavailable';
     return null;
   }
 

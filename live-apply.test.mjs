@@ -1588,7 +1588,13 @@ for (const dir of Object.keys(BRAND)) {
       `${dir}: non-vacuity — and that line is NOT conflicted, so only the broken state can refuse it`);
     assert.strictEqual(w.refuseConflictedSend('t9'), true,
       `${dir}: 🔴 the send gate refuses while the applier reports fatal`);
-    try { await w.submitOrder('cash'); } catch (_) { /* the form may bail in its own way; the fetch is the assertion */ }
+    /* 🔴 DRIVEN THROUGH buildOrder() → submitOrder(), NOT submitOrder ALONE. submitOrder bails without a
+       composed order, so calling it by itself made "no charge endpoint was reached" true for a reason
+       that has nothing to do with the gate — the swallowed exception WAS the pass. The composition is
+       asserted first so the path really is open right up to the gate. */
+    assert.strictEqual(w.buildOrder(), true,
+      `${dir}: non-vacuity — the cart is clean, so the order COMPOSES; only the broken state can refuse it`);
+    await w.submitOrder('confirmed');
     assert.deepStrictEqual(chargeUrls(w.__calls), [],
       `${dir}: 🔴 …and the real submit path reached NO charge endpoint (${JSON.stringify(chargeUrls(w.__calls))})`);
     const err = w.document.getElementById('err3') || w.document.getElementById('err1');

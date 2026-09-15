@@ -33,7 +33,7 @@ Confirm these four lines appear. They are the 1B-specific ones, and a green run 
 something is not being executed:
 
 ```
-22 whole-flow checks passed across both forms.      # the 11-cell matrix, both brands
+30 whole-flow checks passed across both forms.      # the 15-cell matrix, both brands
 11 charge-boundary checks passed.                   # the money proof
 103 checks passed across both forms.                # live-apply (jsdom load-execution)
 mutation anchors: OK (292 mutants, ...)             # no mutant is testing nothing
@@ -119,11 +119,24 @@ deliberate: pricing caches and the deliberate checkout-hold make live tile-to-ch
 so the invariant was reframed during the design grill to "the customer is charged exactly the net total
 they confirmed" — and **enforcing that equality is 1C's confirmed-quote gate**, not this slice.
 
-The residual window is narrow and known: a merchant publishes while a customer is already at checkout,
-where the new snapshot is deliberately HELD so the menu does not move under them. The cached quote then
-still holds the previous total while the server charges the current one. Reproduced and measured in
-`whole-flow.test.mjs` cell 12 (confirmed 34000, charged 38000), left unasserted there on purpose, and
-carried as the entry point to 1C.
+**The residual windows — all of them, not just the best-known one.** An earlier draft named only the
+checkout-hold, which understated it:
+
+| Window | Why the display can lag the catalog |
+|---|---|
+| **Checkout-hold** | A publish while the customer is at checkout is deliberately HELD so the menu does not move under them. |
+| **Modal-hold / retry-hold** | The same deferral while a dish modal is open, or between createOrder retry attempts. |
+| **Capture failure** | A synchronous failure in the apply path applies nothing (whole-flow cell 12) — the screen is intact but the catalog has moved. |
+| **Failed quote** | When the server cannot price a cart the display falls open to client-side arithmetic over captured prices. |
+
+`whole-flow.test.mjs` cell 12 **documents** this window and asserts the surrounding no-op properties; it
+deliberately does **not** execute the mismatch as an assertion, because doing so would pin a
+displayed-vs-charged difference as correct. The figures quoted there (confirmed 34000, charged 38000)
+come from a measurement taken while investigating it, not from an assertion the suite runs.
+
+A window that is **closed**, and was not before T9: an active **reward** used to keep its own quote
+across a live apply, so a reprice left the discounted total standing with no hold involved at all. The
+apply now re-prices the reward, and an unpriced reward blocks the send.
 
 **1B narrows this window everywhere else.** Before 1B the form showed a static committed bundle while
 the server charged the live catalog — the same mismatch, with no upper bound on how stale the display
@@ -173,4 +186,19 @@ Recorded here rather than only in a handback, so whoever runs this months from n
 | **Availability-gate key coarseness on rename** | The server's 86 gate keys the way the brand prices — x_pizza by NAME — so renaming a dish leaves an 86 keyed to the old name. The client display is correct (Task 7 reapplies availability after every menu change, and an 86'd in-cart line now blocks the send), but the SERVER's gate can miss a renamed dish. | **1D.** Needs stable-id 86 keys on the server, which is 1D's surface. Scoped there deliberately; not a 1B regression — the coarseness predates this slice. |
 | **"Render-only" is not literal** | 1B was described as a rendering slice. It is not: `liveMenuPrepare` now validates `variant_items` and rejects empty ids, so 1B changes which snapshots are ACCEPTED, not only how they are drawn. | **Documented.** Anything reasoning about 1B's blast radius must treat it as a prepare/validation change too — a snapshot that published fine before 1B can be refused whole after it, which is the intended behaviour but not a rendering-only one. |
 | **A refused snapshot is now diagnosable** | `menu_snapshot_refused` logs the typed cause (`apply_dish_malformed@1`, `apply_variant_id_type@…`). | **Closed in T9.** Before this, a refused snapshot was indistinguishable from a network miss. If the table in §8 shows refusals, this is the line that says why. |
+
+---
+
+## 10. Paths examined and NOT covered by a test — and why that is the right answer
+
+The whole-flow gate asked about four more paths. Each was traced rather than tested, because a test
+would assert a branch that cannot be reached or a guarantee that is not this layer's to make. Recorded
+so the reasoning is auditable and so nobody adds a test that passes for the wrong reason.
+
+| Path | Finding |
+|---|---|
+| **A redemption zeroing the order total** | **Unreachable via a valid v2 redemption.** Redemption intake requires a positive PAID cart, so a v2 reward cannot take the total to zero — the `free_order` branch exists for the comped-line case, not for a zero order. Documented as unreachable rather than covered: a test driving it would have to fabricate a redemption the intake path refuses, and a green result would then be evidence about the fixture, not the code. The client flag remains refuse-only (see `charge-boundary.test.mjs`). |
+| **Scheduled order + menu change between scheduling and fulfilment** | **Money-safe by construction.** The server re-prices at intake, so the amount never comes from whatever the form was showing when the slot was chosen. No client state survives to influence it. |
+| **Pickup-only / weekend toggles moving under a live menu change** | **Money-safe by construction** — the toggles gate FULFILMENT, not price, and the server re-validates both at intake. ⚠️ Worth stating explicitly: this is an *amount* guarantee, not a *policy* one. A fulfilment-policy change landing under a customer mid-checkout is re-validated server-side and can REJECT the order, which is correct but is a rejection the customer sees late. Not a 1B regression — the same is true today — and outside this slice's scope. |
+| **Hosted-checkout return** | **Money-safe by construction.** The hosted amount is server-fixed at charge creation and the return path reads the persisted order, so a menu change while the customer is on PixelPay's page cannot alter what is being paid. |
 
