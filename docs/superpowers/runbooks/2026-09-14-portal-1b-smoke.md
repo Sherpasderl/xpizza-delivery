@@ -33,9 +33,9 @@ Confirm these four lines appear. They are the 1B-specific ones, and a green run 
 something is not being executed:
 
 ```
-32 whole-flow checks passed across both forms.      # the 16-cell matrix, both brands
+36 whole-flow checks passed across both forms.      # the 18-cell matrix, both brands
 11 charge-boundary checks passed.                   # the money proof
-103 checks passed across both forms.                # live-apply (jsdom load-execution)
+105 checks passed across both forms.                # live-apply (jsdom load-execution)
 mutation anchors: OK (292 mutants, ...)             # no mutant is testing nothing
 ```
 

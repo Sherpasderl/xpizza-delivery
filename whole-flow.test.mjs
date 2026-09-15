@@ -587,6 +587,82 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: a reward quote is only good for the cart it was priced for — a stale one blocks the charge`);
   }
 
+  /* ── CELL 14c: THE REPRICE-THEN-ROLLBACK ESCAPE ────────────────────────────────────────────────
+     The reproduction that defeated the first signature. A reprice followed by a rollback leaves the
+     CART byte-identical — same dish, same quantity, same reward — while the PRICES moved and came back.
+     Hashing (items + reward) matched throughout, so a quote computed against the intermediate menu
+     passed as fresh. Hashing the priced-menu VERSION is what makes it mismatch, and this cell is the
+     proof: the signature must differ at v2 and the send must refuse there.
+     Note it also asserts the RETURN to v1 matches again — a version digest that never re-matched would
+     block every order forever and would pass a test that only checked the mismatch. */
+  {
+    const ctx = await boot(dir);
+    await publish(ctx, baseMenu(ctx.w));
+    const d = plainDish(ctx.w);
+    await addToCart(ctx, d);
+    const reward = { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] };
+    const quote = { ok: true, total_cents: 5000, savings_cents: 1000, free_items: [], remaining: 0, total_cost: 0 };
+    const itemsAt1 = ctx.w.redeemCartItems();
+    ctx.w.__ACCOUNT.restoreRedeem(reward, quote, itemsAt1);
+    const v1 = ctx.w.liveMenuPriceVersion();
+    assert.ok(v1, `${dir}/rollback: premise — the priced-menu version is computable`);
+    assert.strictEqual(ctx.w.__ACCOUNT.redeemQuoteMatches(ctx.w.redeemCartItems()), true,
+      `${dir}/rollback: premise — the reward quote matches at v1`);
+
+    /* The price is moved DIRECTLY on the live MENU record rather than through a publish, and that is
+       deliberate. A live apply re-renders the redeem affordance, which CLEARS the reward — so an
+       apply-driven version of this cell would dispose of the very state under test and then pass
+       because no reward was left to be stale. Mutating the record changes exactly one thing, the
+       priced-menu version, which is the variable this cell exists to isolate. The apply path is
+       covered by cell 14; what is proved here is that the VERSION is in the signature at all. */
+    const rec = ctx.w.liveMenuGlobalGet('MENU').find((x) => String(x.id) === String(d.id));
+    const priceAt1 = rec.price;
+    assert.deepStrictEqual(
+      ctx.w.redeemCartItems().map((i) => [i.name, i.qty]), itemsAt1.map((i) => [i.name, i.qty]),
+      `${dir}/rollback: non-vacuity — the CART is unchanged, which is why an items-only signature matched`);
+
+    rec.price = priceAt1 + 70;                       // v2 — the merchant reprices; the cart is untouched
+    assert.notStrictEqual(ctx.w.liveMenuPriceVersion(), v1,
+      `${dir}/rollback: 🔴 the priced-menu version MOVED with the reprice`);
+    assert.strictEqual(ctx.w.__ACCOUNT.redeemQuoteMatches(ctx.w.redeemCartItems()), false,
+      `${dir}/rollback: 🔴 …so the reward quote no longer matches, and cannot reach a charge`);
+    assert.strictEqual(ctx.w.refuseConflictedSend('rollback-v2'), true,
+      `${dir}/rollback: 🔴 …and the send gate refuses at v2`);
+
+    rec.price = priceAt1;                            // …rolled back: the CART never changed at any point
+    assert.strictEqual(ctx.w.liveMenuPriceVersion(), v1,
+      `${dir}/rollback: the version returns to v1 on rollback`);
+    assert.strictEqual(ctx.w.__ACCOUNT.redeemQuoteMatches(ctx.w.redeemCartItems()), true,
+      `${dir}/rollback: 🔴 …and the v1-stamped quote matches again — the digest is not a one-way latch`);
+    ok(`${dir}: reprice-then-rollback — the priced-menu version is what makes a stale reward quote mismatch`);
+  }
+
+  /* ── CELL 14d: THE GATE FAILS CLOSED ───────────────────────────────────────────────────────────
+     Both directions that were open: a MISSING matcher defaulted to "fresh", and an exception inside
+     the reward check was swallowed and the send proceeded. Neither is evidence a total is current. */
+  {
+    const ctx = await boot(dir);
+    await publish(ctx, baseMenu(ctx.w));
+    const d = plainDish(ctx.w);
+    await addToCart(ctx, d);
+    const reward = { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] };
+    const quote = { ok: true, total_cents: 5000, savings_cents: 1000, free_items: [], remaining: 0, total_cost: 0 };
+    ctx.w.__ACCOUNT.restoreRedeem(reward, quote, ctx.w.redeemCartItems());
+    assert.strictEqual(ctx.w.refuseConflictedSend('probe'), false, `${dir}/fail-closed: premise — fresh, allowed`);
+
+    const realMatch = ctx.w.__ACCOUNT.redeemQuoteMatches;
+    delete ctx.w.__ACCOUNT.redeemQuoteMatches;       // an older account module than this form
+    assert.strictEqual(ctx.w.refuseConflictedSend('no-matcher'), true,
+      `${dir}/fail-closed: 🔴 a priced reward with NO matcher blocks — it used to default to fresh`);
+    ctx.w.__ACCOUNT.redeemQuoteMatches = () => { throw new Error('boom'); };
+    assert.strictEqual(ctx.w.refuseConflictedSend('matcher-throws'), true,
+      `${dir}/fail-closed: 🔴 an exception in the reward check blocks — it used to be swallowed`);
+    ctx.w.__ACCOUNT.redeemQuoteMatches = realMatch;
+    assert.strictEqual(ctx.w.refuseConflictedSend('restored'), false,
+      `${dir}/fail-closed: non-vacuity — with the matcher back, the same cart is allowed again`);
+    ok(`${dir}: the reward check fails CLOSED — a missing matcher and a throwing one both block`);
+  }
+
   /* ── CELL 14b: AND THE HAPPY PATH STILL CHARGES ──────────────────────────────────────────────
      A gate that refuses everything would pass the cell above. Re-stamping for the CURRENT cart — what
      a completed re-quote does — must let the order through again, or A-minimal would have closed the

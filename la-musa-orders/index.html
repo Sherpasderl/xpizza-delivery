@@ -2219,6 +2219,12 @@ function refuseConflictedSend(where){
      has fallen through to an UNDISCOUNTED figure while the server will still apply the reward. The
      charge is safe either way (the server re-prices the redemption at intake); what is not safe is
      asking the customer to confirm a number that is not what they will pay. */
+  /* 🔴 FAIL CLOSED, IN BOTH DIRECTIONS THAT WERE OPEN. `rewardFresh` defaulted to TRUE when the matcher
+     was missing, and this whole block sat in a try/catch that swallowed and PROCEEDED — so a reward
+     with a standing price sailed through whenever the account module was older than this form or
+     anything in here threw. Neither is evidence the total is current. A pending reward with a price
+     now requires a matcher that says yes; anything else refuses. */
+  let rewardBlocked = false;
   try {
     const pend = (window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload) ? window.__ACCOUNT.getRedeemPayload() : null;
     const priced = (window.__ACCOUNT && window.__ACCOUNT.getRedeemQuoteTotalCents) ? window.__ACCOUNT.getRedeemQuoteTotalCents() : null;
@@ -2227,16 +2233,21 @@ function refuseConflictedSend(where){
        reproduction — L340 shown, L410 charged. Same question the ordinary quote answers with
        serverQuoteCartKey, asked of the reward. Fails closed: if the comparison cannot be made, it is
        not evidence the total is current. */
-    const rewardFresh = (window.__ACCOUNT && typeof window.__ACCOUNT.redeemQuoteMatches === 'function')
-      ? (function(){ try { return window.__ACCOUNT.redeemQuoteMatches(redeemCartItems()); } catch (_) { return false; } })()
-      : true;
+    const hasMatcher = !!(window.__ACCOUNT && typeof window.__ACCOUNT.redeemQuoteMatches === 'function');
+    const rewardFresh = hasMatcher
+      && (function(){ try { return window.__ACCOUNT.redeemQuoteMatches(redeemCartItems()); } catch (_) { return false; } })();
     if (pend && (priced == null || !rewardFresh)) {
       console.warn('cart_blocked_send_reward_unpriced', JSON.stringify({ at: where }));
       const err = document.getElementById('err3') || document.getElementById('err1');
       if (err) { err.textContent = 'Estamos actualizando tu premio. Esperá un momento y volvé a intentar.'; err.style.display = 'block'; }
-      return true;
+      rewardBlocked = true;
     }
-  } catch (_) {}
+  } catch (_) {
+    // An exception while deciding whether the reward total is current is not a reason to charge.
+    rewardBlocked = true;
+    console.warn('cart_blocked_send_reward_check_threw', JSON.stringify({ at: where }));
+  }
+  if (rewardBlocked) return true;
   const conflicts = cartConflicts();
   const empty = cartLines().length === 0;
   // An EMPTY cart is refused here too. It is not a conflict, but it is not a chargeable order either —
@@ -2276,6 +2287,26 @@ function announceCartConflicts(conflicts){
    project has been bitten by TDZ before — see HANDOFF-phase1cb3-REVISE-tdz.md.) */
 function liveMenuRid(){ return RESTAURANT_ID; }
 const LIVE_MENU_REPRESENTATION = '1b.1';
+/* 🔴 THE PRICED-MENU VERSION — what a reward quote was actually computed against.
+   The gate asked for representation_version in the reward signature. That field is the FORMAT marker
+   above ('1b.1'); it is constant across publishes, so including it would have changed nothing and the
+   reprice-then-rollback reproduction would still have matched. What determines a reward-adjusted price
+   is the PRICES, so the prices are what the signature carries: a digest over every dish and option id
+   with its current price. A reprice changes it, a rollback changes it back to a value that no longer
+   equals the one the standing quote was stamped with, and the bundle (which has no etag at all) is
+   covered for free — none of which is true of a server-supplied version string.
+   Returns null if it cannot be computed, and null NEVER matches: the caller treats an unknown version
+   as "cannot vouch for this quote", which is the direction that fails safe. */
+function liveMenuPriceVersion(){
+  try {
+    let h = 5381;
+    const push = (s) => { for (let i = 0; i < s.length; i++) h = (((h * 33) ^ s.charCodeAt(i)) >>> 0); };
+    (Array.isArray(MENU) ? MENU : []).forEach((p) => push(String(p && p.id) + ':' + String(p && p.price) + ';'));
+    (Array.isArray(EXTRAS) ? EXTRAS : []).forEach((e) => push(String(e && e.id) + ':' + String(e && e.price) + ';'));
+    return 'pv' + h;
+  } catch (_) { return null; }
+}
+try { window.__LIVE_MENU_PRICE_VERSION = liveMenuPriceVersion; } catch (_) {}
 const LIVE_MENU_GLOBALS = ['MENU', 'EXTRAS', 'CATEGORIES', 'VARIANT_ITEMS', 'HAS_PHOTO', 'EXTRAS_BY_CATEGORY', 'EXTRAS_BY_ITEM'];
 function liveMenuGlobalGet(n){
   switch (n) {

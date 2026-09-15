@@ -346,8 +346,24 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
      This is deliberately a STAMP AND A COMPARISON, not inflight tokens or supersede machinery. Making
      the reward total always FRESH is 1C's job; making a stale one unable to reach a charge is this. */
   let _redeemQuoteSig = null;
-  const redeemSig = (items, pending) => {
-    try { return JSON.stringify({ i: items || null, p: pending || null }); } catch (_) { return null; }
+  /* 🔴 THE VERSION IS PART OF THE SIGNATURE, and it is the half that was missing. Hashing only
+     (items + reward) left the reproduction open: a reprice followed by a rollback leaves the CART
+     untouched while the PRICES moved, so the old signature still matched and a quote computed against
+     the previous menu passed as fresh. With the priced-menu version in it, any quote priced against a
+     different menu mismatches BY CONSTRUCTION — rollback, a late response, an overlap, an apply
+     crossing the request — all collapse into the same answer without needing inflight tokens.
+     A null version yields a NULL SIGNATURE, and a null signature never matches anything: if the menu
+     version cannot be computed, that is not evidence the quote is current. */
+  const menuVer = () => {
+    try {
+      return (typeof window !== 'undefined' && typeof window.__LIVE_MENU_PRICE_VERSION === 'function')
+        ? window.__LIVE_MENU_PRICE_VERSION() : null;
+    } catch (_) { return null; }
+  };
+  const redeemSig = (items, pending, ver) => {
+    const v = (ver === undefined) ? menuVer() : ver;
+    if (v == null) return null;                 // unknown menu version → no usable signature
+    try { return JSON.stringify({ i: items || null, p: pending || null, v: v }); } catch (_) { return null; }
   };
 
   async function redeemReadLiveFlag() {
@@ -371,7 +387,9 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   function redeemQuoteMatches(items) {
     if (!_redeemPending) return true;            // no reward in play — nothing for this to guard
     if (!_redeemQuote || !_redeemQuoteSig) return false;
-    return _redeemQuoteSig === redeemSig(items, _redeemPending);
+    const now = redeemSig(items, _redeemPending);
+    if (now == null) return false;               // unknown version → cannot vouch for the quote
+    return _redeemQuoteSig === now;
   }
 
   /* 🔴 1B Task 9 — RE-QUOTE THE REWARD AFTER A LIVE MENU CHANGE.
@@ -386,9 +404,17 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
      without a price, because a reward we cannot price is one we cannot show a total for. */
   async function requoteRedeem(items) {
     if (!_redeemPending) return null;
-    const q = await redeemQuoteFetch(items, _redeemPending);
+    /* 🔴 STAMPED WITH WHAT THE REQUEST ASKED ABOUT, not with the globals as they stand when the answer
+       arrives. Reading _redeemPending and the menu version at RESPONSE time meant a late reply for
+       reward R1 was stamped as though it had priced the current R2 — and then matched. The request's
+       own inputs are captured here, before the await, so a stale answer describes itself honestly and
+       fails the comparison. */
+    const askedItems = items;
+    const askedPending = _redeemPending;
+    const askedVer = menuVer();
+    const q = await redeemQuoteFetch(askedItems, askedPending);
     _redeemQuote = (q && q.ok) ? q : null;
-    _redeemQuoteSig = _redeemQuote ? redeemSig(items, _redeemPending) : null;
+    _redeemQuoteSig = _redeemQuote ? redeemSig(askedItems, askedPending, askedVer) : null;
     try { if (_rkEnv && _rkEnv.onQuoted) _rkEnv.onQuoted(_redeemQuote); } catch (_) {}
     return _redeemQuote;
   }
@@ -596,6 +622,10 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       : { type: 'points_ala_carte', items: Object.keys(_rkQty).map((k) => { const it = rkItem(k); return { id: k, qty: _rkQty[k], name: it ? it.name : k }; }) };
     const box = env.container;
     box.innerHTML = '<div class="rk-msg">Aplicando premio…</div>';
+    // Captured BEFORE the await, for the same reason requoteRedeem captures its inputs: a menu change
+    // landing while this request is out must make the answer fail the comparison, not inherit the new
+    // version and pass.
+    const askedVer = menuVer();
     const q = await redeemQuoteFetch(env.items, pending);
     if (!q || !q.ok) {
       _redeemQuote = null; _redeemQuoteSig = null; _redeemPending = null; _rkPick = null; _rkQty = {};
@@ -608,7 +638,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       return;
     }
     _redeemPending = pending; _redeemQuote = q;   // D(revise 1b): set the global pending ONLY now that the quote landed
-    _redeemQuoteSig = redeemSig(env.items, pending);   // …stamped with exactly what it was priced for
+    _redeemQuoteSig = redeemSig(env.items, pending, askedVer);   // …stamped with exactly what it was priced for
     if (env.onQuoted) env.onQuoted(q);   // index.html syncs the checkout total (unchanged for add-free) + the Stage-2 summary
     box.innerHTML = rkTicketHtml(); rkWireTicket(env);
   }
