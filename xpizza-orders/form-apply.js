@@ -95,7 +95,7 @@ function createMenuApplier(options) {
     if (busy()) {
       // LATEST ONLY. A queue here would replay a stale menu after a newer one, which is the same
       // out-of-order application the coordinator already refuses one layer up.
-      deferred += 1;
+      pending = snapshot; deferred += 1;
       note('menu_apply_deferred', { deferred });
       return 'deferred';
     }
