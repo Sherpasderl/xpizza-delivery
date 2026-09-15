@@ -33,7 +33,7 @@ Confirm these four lines appear. They are the 1B-specific ones, and a green run 
 something is not being executed:
 
 ```
-30 whole-flow checks passed across both forms.      # the 15-cell matrix, both brands
+32 whole-flow checks passed across both forms.      # the 16-cell matrix, both brands
 11 charge-boundary checks passed.                   # the money proof
 103 checks passed across both forms.                # live-apply (jsdom load-execution)
 mutation anchors: OK (292 mutants, ...)             # no mutant is testing nothing
@@ -131,12 +131,17 @@ checkout-hold, which understated it:
 
 `whole-flow.test.mjs` cell 12 **documents** this window and asserts the surrounding no-op properties; it
 deliberately does **not** execute the mismatch as an assertion, because doing so would pin a
-displayed-vs-charged difference as correct. The figures quoted there (confirmed 34000, charged 38000)
-come from a measurement taken while investigating it, not from an assertion the suite runs.
+displayed-vs-charged difference as correct. The figures quoted there come from a measurement taken while
+investigating it, not from an assertion the suite runs.
 
-A window that is **closed**, and was not before T9: an active **reward** used to keep its own quote
-across a live apply, so a reprice left the discounted total standing with no hold involved at all. The
-apply now re-prices the reward, and an unpriced reward blocks the send.
+**Rewards — made SAFE in T9, freshness deferred to 1C.** An active reward used to keep its own quote
+across a live apply, so a reprice left the discounted total standing with no hold involved at all
+(reproduced at L340 shown / L410 charged). Two things changed, and the distinction matters: the apply
+now re-**quotes** the reward, which NARROWS the window; and the reward quote is now **stamped with the
+cart and reward it was priced for**, so a quote that no longer matches cannot reach a charge — the send
+refuses instead. That makes the window SAFE, not closed. A customer can still be stopped and asked to
+wait a moment while the reward re-prices; making that seamless is 1C's job, with the same
+confirmed-total gate.
 
 **1B narrows this window everywhere else.** Before 1B the form showed a static committed bundle while
 the server charged the live catalog — the same mismatch, with no upper bound on how stale the display

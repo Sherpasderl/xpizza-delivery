@@ -334,6 +334,21 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   let _redeemLiveFlag = false, _redeemLiveRead = false;   // config/rewards_public/redemption_live (cached); canary is read-own via _rwState
   let _redeemPending = null;   // v2: null | { type:'free_pizza_choice', item_id, name } (X. Pizza) | { type:'points_ala_carte', items:[{id,qty,name}] } (La Musa)
   let _redeemQuote = null;     // v2 SERVER quote { ok, total_cents, discount_cents:0, free_items:[{item_id,qty,name,price_cents}], savings_cents, total_cost, remaining } | null
+  /* 🔴 1B Task 9 (A-minimal) — THE SIGNATURE THE REWARD QUOTE WAS PRICED FOR.
+     The ordinary order quote has carried a stale-cart guard since 1d: it is only displayed for the cart
+     it was actually quoted for (serverQuoteCartKey). The REWARD quote had no such guard, so once a
+     reward was active its total was shown whatever the cart had since become — and a reprice landing
+     underneath produced exactly the reproduction the gate found: L340 on screen, L410 charged.
+     Re-quoting on apply (added earlier this task) narrows that window; it does not CLOSE it, because a
+     re-quote is asynchronous and a stale answer can still be standing when the customer taps. The
+     signature closes it by construction: if the quote was not priced for the cart and reward in front
+     of the customer right now, it does not count, and the send gate refuses.
+     This is deliberately a STAMP AND A COMPARISON, not inflight tokens or supersede machinery. Making
+     the reward total always FRESH is 1C's job; making a stale one unable to reach a charge is this. */
+  let _redeemQuoteSig = null;
+  const redeemSig = (items, pending) => {
+    try { return JSON.stringify({ i: items || null, p: pending || null }); } catch (_) { return null; }
+  };
 
   async function redeemReadLiveFlag() {
     if (_redeemLiveRead) return;
@@ -349,7 +364,16 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // never client calcTotal(), so the customer never sees full price while a discount is applied. null = none.
   function getRedeemQuoteTotalCents() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote.total_cents : null; }
   function getRedeemQuote() { return (_redeemPending && _redeemQuote && _redeemQuote.ok) ? _redeemQuote : null; }   // v2: full server quote {total_cents, free_items[], savings_cents, total_cost, remaining} for the Stage-2 order summary
-  function clearRedeem() { _redeemPending = null; _redeemQuote = null; }
+  function clearRedeem() { _redeemPending = null; _redeemQuote = null; _redeemQuoteSig = null; }
+  // TRUE only when the standing reward quote was priced for THIS cart and THIS reward. Null-safe and
+  // fail-CLOSED: no quote, no stamp, or a changed cart all answer false, and the send gate treats false
+  // as "do not charge".
+  function redeemQuoteMatches(items) {
+    if (!_redeemPending) return true;            // no reward in play — nothing for this to guard
+    if (!_redeemQuote || !_redeemQuoteSig) return false;
+    return _redeemQuoteSig === redeemSig(items, _redeemPending);
+  }
+
   /* 🔴 1B Task 9 — RE-QUOTE THE REWARD AFTER A LIVE MENU CHANGE.
      redeemAdjustedTotal() prefers the REWARD quote over the order quote, and the live apply only ever
      invalidated the order quote — so a reprice landing under an active reward left the reward's total
@@ -364,6 +388,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     if (!_redeemPending) return null;
     const q = await redeemQuoteFetch(items, _redeemPending);
     _redeemQuote = (q && q.ok) ? q : null;
+    _redeemQuoteSig = _redeemQuote ? redeemSig(items, _redeemPending) : null;
     try { if (_rkEnv && _rkEnv.onQuoted) _rkEnv.onQuoted(_redeemQuote); } catch (_) {}
     return _redeemQuote;
   }
@@ -372,10 +397,14 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // golden ticket re-renders and the RESUMED order re-attaches the SAME redeem (same canonical → the server
   // reuses the ONE existing reservation, never a second). The quote is display-only (the server re-prices on
   // submit); require .ok so the applied-ticket predicate (rkApplied) matches. No payload → no-op (guest / non-redeemed retry).
-  function restoreRedeem(payload, quote) {
+  function restoreRedeem(payload, quote, items) {
     if (!payload) return;
     _redeemPending = payload;
     _redeemQuote = (quote && quote.ok) ? quote : null;
+    // Stamped from the cart being restored ALONGSIDE it. Without the stamp a restored quote would fail
+    // the gate and a resumed payment could never be completed; with a stamp taken from anything other
+    // than the restored cart it would pass while meaning nothing.
+    _redeemQuoteSig = _redeemQuote ? redeemSig(items || null, payload) : null;
     // Rebuild the picker state so rkTicketHtml() renders the APPLIED ticket (pizza name / premio count), not the
     // offer — the applied punch ticket reads _rkPick.name; the applied points ticket reads rkUnits() from _rkQty.
     if (payload.type === 'free_pizza_choice') { _rkPick = { key: payload.item_id, name: payload.name }; _rkQty = {}; }
@@ -569,7 +598,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     box.innerHTML = '<div class="rk-msg">Aplicando premio…</div>';
     const q = await redeemQuoteFetch(env.items, pending);
     if (!q || !q.ok) {
-      _redeemQuote = null; _redeemPending = null; _rkPick = null; _rkQty = {};
+      _redeemQuote = null; _redeemQuoteSig = null; _redeemPending = null; _rkPick = null; _rkQty = {};
       if (env.onQuoted) env.onQuoted(null);
       const msg = (q && q.error === 'reward_unavailable') ? 'Ese premio no está disponible ahora'
         : (q && q.error === 'needs_paid_item') ? 'Agregá algo más para usar tu premio'
@@ -579,6 +608,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       return;
     }
     _redeemPending = pending; _redeemQuote = q;   // D(revise 1b): set the global pending ONLY now that the quote landed
+    _redeemQuoteSig = redeemSig(env.items, pending);   // …stamped with exactly what it was priced for
     if (env.onQuoted) env.onQuoted(q);   // index.html syncs the checkout total (unchanged for add-free) + the Stage-2 summary
     box.innerHTML = rkTicketHtml(); rkWireTicket(env);
   }
@@ -4385,6 +4415,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.getRedeemQuote = getRedeemQuote;   // A6 — Stage-2 order-summary reward line (server quote)
   window.__ACCOUNT.clearRedeem = clearRedeem;             //   fresh-resubmit fallback clears the pending reward
   window.__ACCOUNT.requoteRedeem = requoteRedeem;   // 1B T9 — a live menu change must re-price an active reward, not leave its total standing
+  window.__ACCOUNT.redeemQuoteMatches = redeemQuoteMatches;   // 1B T9 A-minimal — the send gate refuses a reward quote priced for a different cart
   window.__ACCOUNT.restoreRedeem = restoreRedeem;         //   D — restore redeem+quote after a PixelPay reload (golden ticket re-renders; resumed order reuses the reservation)
   window.__ACCOUNT.classifyRedeemError = classifyRedeemError;   //   'redemption' | 'other' → two-error-class submit handling
   window.__ACCOUNT.renderSuccessRewards = renderSuccessRewards;   // B2 Task 5 — post-order earn badge + guest profile-claim card

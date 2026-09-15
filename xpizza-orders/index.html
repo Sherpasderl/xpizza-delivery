@@ -1827,7 +1827,15 @@ function refuseConflictedSend(where){
   try {
     const pend = (window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload) ? window.__ACCOUNT.getRedeemPayload() : null;
     const priced = (window.__ACCOUNT && window.__ACCOUNT.getRedeemQuoteTotalCents) ? window.__ACCOUNT.getRedeemQuoteTotalCents() : null;
-    if (pend && priced == null) {
+    /* 🔴 AND THE QUOTE MUST HAVE BEEN PRICED FOR THIS CART. Refusing only when the reward is UNPRICED
+       left the worse half open: a reward quote that is PRESENT but stale passed the gate, which is the
+       reproduction — L340 shown, L410 charged. Same question the ordinary quote answers with
+       serverQuoteCartKey, asked of the reward. Fails closed: if the comparison cannot be made, it is
+       not evidence the total is current. */
+    const rewardFresh = (window.__ACCOUNT && typeof window.__ACCOUNT.redeemQuoteMatches === 'function')
+      ? (function(){ try { return window.__ACCOUNT.redeemQuoteMatches(redeemCartItems()); } catch (_) { return false; } })()
+      : true;
+    if (pend && (priced == null || !rewardFresh)) {
       console.warn('cart_blocked_send_reward_unpriced', JSON.stringify({ at: where }));
       const err = document.getElementById('err3') || document.getElementById('err1');
       if (err) { err.textContent = 'Estamos actualizando tu premio. Esperá un momento y volvé a intentar.'; err.style.display = 'block'; }
@@ -3890,7 +3898,7 @@ function restoreOrderForm(){
     }
     renderMenu(); updateCart(); updateTotal();
     // D: restore the selected redeem → re-render the golden ticket + sync the discounted total/summary; the resumed order re-attaches the SAME redeem.
-    try{ if(snap.redeem && window.__ACCOUNT && window.__ACCOUNT.restoreRedeem){ window.__ACCOUNT.restoreRedeem(snap.redeem, snap.redeemQuote); if(typeof renderRedeemUI==='function') renderRedeemUI(); try{ const _q=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuote)?window.__ACCOUNT.getRedeemQuote():null; if(typeof applyRedeemQuoteToTotals==='function') applyRedeemQuoteToTotals(_q); }catch(_){} } }catch(_){}
+    try{ if(snap.redeem && window.__ACCOUNT && window.__ACCOUNT.restoreRedeem){ window.__ACCOUNT.restoreRedeem(snap.redeem, snap.redeemQuote, (function(){ try { return redeemCartItems(); } catch(_) { return null; } })()); if(typeof renderRedeemUI==='function') renderRedeemUI(); try{ const _q=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuote)?window.__ACCOUNT.getRedeemQuote():null; if(typeof applyRedeemQuoteToTotals==='function') applyRedeemQuoteToTotals(_q); }catch(_){} } }catch(_){}
     showStage('s2', 50);
     window.__scheduledFor = snap.scheduledFor || null;
     window.__timeMode = snap.timeMode || 'standard';

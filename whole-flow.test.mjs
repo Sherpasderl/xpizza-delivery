@@ -528,44 +528,94 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: an 86'd option blocks the charge on the line that carries it`);
   }
 
-  /* ── CELL 14: AN ACTIVE REWARD IS RE-PRICED BY A LIVE APPLY ────────────────────────────────────
-     redeemAdjustedTotal() prefers the REWARD quote over the order quote, and the live apply invalidated
-     only the order quote. So a reprice landing under an active reward left the reward's total standing
-     and the customer confirmed a discounted figure computed against prices that had moved — a
-     displayed-vs-charged window with NO held apply anywhere in it, which is why it is 1B's and not
-     1C's. Two properties, because either alone is insufficient: the apply must ASK for a new reward
-     price, and until one exists the send must refuse rather than show an undiscounted figure as though
-     it were the reward total. */
+  /* ── CELL 14: A REWARD QUOTE IS ONLY GOOD FOR THE CART IT WAS PRICED FOR ──────────────────────
+     Driven through the REAL account module — restoreRedeem() puts a genuine reward + server quote in
+     place and stamps it with the cart it was priced for, exactly as the live redeem flow does. An
+     earlier version of this cell stubbed __ACCOUNT and cleared the price by hand, which tested the stub
+     and left the cart conflicted so the refusal it observed was the conflict, not the reward.
+
+     THE REPRODUCTION THIS CLOSES: reward active on a cart → the cart reprices → the reward's total is
+     still the one computed before the change → the customer confirms it and is charged the new one
+     (L340 shown, L410 charged). Re-quoting on apply narrows that window; it cannot close it, because a
+     re-quote is asynchronous and a stale answer can still be standing when the tap lands. The signature
+     closes it: a quote not priced for the cart in front of the customer does not count. */
   {
     const ctx = await boot(dir);
     await publish(ctx, baseMenu(ctx.w));
     const d = plainDish(ctx.w);
     await addToCart(ctx, d);
 
-    // A reward that is ACTIVE and priced. Stubbed at the account boundary on purpose: what is under
-    // test is the form's reaction to a live apply, not the rewards module's own quoting.
-    let requoted = 0, priced = 5000;
-    ctx.w.__ACCOUNT = Object.assign({}, ctx.w.__ACCOUNT, {
-      getRedeemPayload: () => ({ type: 'points_ala_carte', items: [] }),
-      getRedeemQuoteTotalCents: () => priced,
-      requoteRedeem: (items) => { requoted += 1; priced = null; return Promise.resolve(null); },
-    });
-    assert.strictEqual(ctx.w.redeemAdjustedTotal(), 50,
-      `${dir}/reward: premise — the REWARD total is what the customer is shown (${ctx.w.redeemAdjustedTotal()})`);
+    const items = ctx.w.redeemCartItems();
+    const reward = { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] };
+    const quote = { ok: true, total_cents: 5000, savings_cents: 1000, free_items: [], remaining: 0, total_cost: 0 };
+    ctx.w.__ACCOUNT.restoreRedeem(reward, quote, items);
+    assert.strictEqual(ctx.w.__ACCOUNT.getRedeemQuoteTotalCents(), 5000,
+      `${dir}/reward: premise — a real reward quote is standing`);
+    assert.strictEqual(ctx.w.__ACCOUNT.redeemQuoteMatches(ctx.w.redeemCartItems()), true,
+      `${dir}/reward: premise — and it matches the cart it was priced for`);
+    assert.strictEqual(ctx.w.refuseConflictedSend('reward-fresh'), false,
+      `${dir}/reward: 🔴 a reward priced for THIS cart does not block anything`);
 
-    const up = baseMenu(ctx.w);
-    up.dishes = up.dishes.map((x) => (String(x.id) === String(d.id) ? { ...x, price: x.price + 70 } : x));
-    await publish(ctx, up);
+    /* Now the cart changes underneath it — by quantity, so the line stays perfectly RESOLVED. That
+       matters: a reprice would also mark the line conflicted, and the refusal below would then prove
+       nothing about the reward. Here the only thing wrong is that the reward was priced for a cart
+       that no longer exists. */
+    /* The cart moves, and the reward quote stays standing for the cart it was priced for. Constructed
+       through restoreRedeem — the module's own writer — with the OLD items, because that is precisely
+       the state the bug leaves behind: a live quote whose stamp belongs to a cart that no longer
+       exists. Driving it by re-rendering was tried and is not viable: a cart change re-renders the
+       redeem affordance, which clears the reward, so the UI would be disposing of the very state under
+       test and the cell would pass for the wrong reason. */
+    ctx.w.chg(d.id, 1);
+    await settle();
+    ctx.w.__ACCOUNT.restoreRedeem(reward, quote, items);      // …still stamped for the ORIGINAL cart
+    assert.strictEqual([...ctx.w.cartConflicts()].length, 0,
+      `${dir}/reward: non-vacuity — the cart is NOT conflicted, so only the reward can refuse this`);
+    assert.strictEqual(ctx.w.__ACCOUNT.getRedeemQuoteTotalCents(), 5000,
+      `${dir}/reward: non-vacuity — the stale reward total is still STANDING (this is the bug's input)`);
+    assert.notDeepStrictEqual(JSON.stringify(items), JSON.stringify(ctx.w.redeemCartItems()),
+      `${dir}/reward: non-vacuity — and the cart really did change under it`);
+    assert.strictEqual(ctx.w.__ACCOUNT.redeemQuoteMatches(ctx.w.redeemCartItems()), false,
+      `${dir}/reward: 🔴 …and it no longer matches the cart`);
 
-    assert.strictEqual(requoted, 1,
-      `${dir}/reward: 🔴 the live apply RE-REQUESTS the reward price — invalidating only the order quote left it standing`);
-    const r = await sendAndJudge(ctx, dir, 'reward-unpriced');
+    const r = await sendAndJudge(ctx, dir, 'reward-stale');
     assert.strictEqual(r.outcome, 'refused',
-      `${dir}/reward: 🔴 …and while the reward has no price the send refuses, rather than confirming an undiscounted total`);
+      `${dir}/reward: 🔴 a reward quote priced for a DIFFERENT cart can never reach a charge`);
     const err = ctx.w.document.getElementById('err3') || ctx.w.document.getElementById('err1');
     assert.match((err && err.textContent) || '', /premio/i,
-      `${dir}/reward: 🔴 …and says so in terms of the reward, not a generic conflict`);
-    ok(`${dir}: a live apply re-prices an active reward, and an unpriced reward blocks the charge`);
+      `${dir}/reward: 🔴 …and the customer is told it is the reward, not a generic conflict`);
+    ok(`${dir}: a reward quote is only good for the cart it was priced for — a stale one blocks the charge`);
+  }
+
+  /* ── CELL 14b: AND THE HAPPY PATH STILL CHARGES ──────────────────────────────────────────────
+     A gate that refuses everything would pass the cell above. Re-stamping for the CURRENT cart — what
+     a completed re-quote does — must let the order through again, or A-minimal would have closed the
+     window by making rewards unusable. */
+  {
+    const ctx = await boot(dir);
+    await publish(ctx, baseMenu(ctx.w));
+    const d = plainDish(ctx.w);
+    await addToCart(ctx, d);
+    const reward = { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] };
+    const quote = { ok: true, total_cents: 5000, savings_cents: 1000, free_items: [], remaining: 0, total_cost: 0 };
+    const itemsA = ctx.w.redeemCartItems();
+    ctx.w.__ACCOUNT.restoreRedeem(reward, quote, itemsA);
+    ctx.w.chg(d.id, 1);
+    await settle();
+    ctx.w.__ACCOUNT.restoreRedeem(reward, quote, itemsA);     // stale: stamped for the pre-change cart
+    assert.strictEqual(ctx.w.refuseConflictedSend('probe'), true, `${dir}/reward-happy: premise — stale, so blocked`);
+    ctx.w.__ACCOUNT.restoreRedeem(reward, quote, ctx.w.redeemCartItems());   // the re-quote lands
+    assert.strictEqual(ctx.w.refuseConflictedSend('probe'), false,
+      `${dir}/reward-happy: 🔴 a reward re-priced for the current cart is orderable again`);
+    assert.strictEqual(ctx.w.buildOrder(), true,
+      `${dir}/reward-happy: 🔴 …and the order composes, so the gate is not a blanket refusal`);
+    /* Deliberately stops at the composition rather than driving the charge. A pending reward routes
+       submitOrder through the redemption plumbing, which a synthetic quote cannot supply faithfully —
+       and a cell that drove it would be asserting against a fixture, not the code. What this cell owes
+       the matrix is that A-minimal does not make rewards unusable, and that is exactly what the gate
+       and the composition show. The reward-NET charged==confirmed path is 1C's, with the confirmed-
+       total gate; the server-side redemption pricing is covered by rewards-redeem*.test.js today. */
+    ok(`${dir}: a reward re-priced for the current cart passes the gate and composes — not a blanket refusal`);
   }
 
   /* ── CELL 15: A PUBLISH LANDS MID-SUBMIT ───────────────────────────────────────────────────────
@@ -607,9 +657,14 @@ for (const dir of Object.keys(BRAND)) {
     await settle();
     assert.strictEqual(ctx.st.charges.length, 1,
       `${dir}/mid-submit: 🔴 …and exactly ONE charge was made — the in-flight publish produced no second order`);
+    /* 🔴 NOT ASSERTED AS AN EXPECTATION — same reasoning as cell 12. The server would price this
+       payload at the NEW catalog, so charged ≠ confirmed here; writing that down as `assert(charged !==
+       confirmed)` would pin a displayed-vs-charged difference as the CORRECT outcome, and the whole
+       point is that 1C's confirmed-total gate is going to make it false. Recorded as a value, not as a
+       rule, so when that gate lands this line becomes its regression test rather than its obstacle. */
     const charged = serverTotalCents(dir, ctx.st.menuNow, ctx.st.charges[0].items);
-    assert.ok(charged !== confirmed,
-      `${dir}/mid-submit: the server would price this at the NEW catalog — recorded, and 1C's gate is what closes it`);
+    assert.strictEqual(typeof charged, 'number',
+      `${dir}/mid-submit: the in-flight payload remains priceable by the server (charged ${charged}, confirmed ${confirmed})`);
     ctx.w.__respond = realRespond;
     ok(`${dir}: a publish mid-submit leaves the in-flight payload alone and produces exactly one charge`);
   }
