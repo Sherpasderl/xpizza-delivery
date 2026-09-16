@@ -441,6 +441,7 @@ function sanitizePhone(v) {
 // ---------------------------------------------------------------------------
 const { orderBreakdownCents } = require('./order-money');
 const { issueQuote } = require('./quote-issue');   // 1C Task 3 — the ONE quote issuer, shared with the redemption quote
+const { gateConfirmedNet } = require('./token-gate');   // 1C Task 4 — the ONE confirmed-net decision, shared with the card path
 
 function validateOrderPayload(body, restaurantId, tables = null) {
   const errors = [];
@@ -844,6 +845,8 @@ createOrderApp.all('*', async (req, res) => {
   let redemptionReserved = null;     // { uid, rid, orderId } ONLY if THIS call owns the hold → release on write failure
   let redemptionFreeName = null;     // first added-free display name (back-compat)
   let redemptionFreeItems = null;    // v2: the full [{item_id,qty,price_cents,name,cost_pts?}] set → summary_lines footing
+  let redemptionResolved = null;     // 1C T4: the RESOLVED redemption the quote's token was issued over — the gate must bind this exact object, not a reconstruction
+  let quoteProvenance = null;        // 1C T4: {quote_id, confirmed_net_cents} stamped on a GATED order — absent on a grace order, which is how the two are told apart afterwards
   if (body.redeem != null) {
     // cash has no scheduled fingerprint extra at this point (order_id + discounted total + items_text bind the
     // hold); the completion state consumes, cancel releases. See rewards-redeem-intake.resolveRedemptionForOrder.
@@ -859,6 +862,7 @@ createOrderApp.all('*', async (req, res) => {
     redemptionPriced = rd.priced;
     redemptionFreeName = rd.freeName || null;
     redemptionFreeItems = rd.freeItems || null;
+    redemptionResolved = rd.redemption || null;   // 1C T4 — same computeRedemption output the issuer fingerprinted
     if (rd.ownsHold) redemptionReserved = { uid: customer_uid, rid: restaurantId, orderId };
   }
   const effectiveTotal = redemptionPriced ? redemptionPriced.total_lempiras : total;   // discounted total (== total when no redeem)
@@ -881,6 +885,54 @@ createOrderApp.all('*', async (req, res) => {
   // release the hold) so the forms re-enable a payment method — we never silently place a payable order the
   // customer never paid for. When free, `free_order:true` is stamped onto the order + driver tasks so cash
   // surfaces show nothing to collect and accounting/factura (A-F) treat it as a comp.
+  /* ── 🔴 1C TASK 4 — THE CONFIRMED-NET GATE ───────────────────────────────────────────────────
+     Placed HERE for three reasons, each load-bearing:
+       • AFTER the idempotency check, so an idempotent re-submit of an order that already exists
+         returns its existing id without re-gating and without re-charging anything;
+       • AFTER resolveRedemptionForOrder, so the reward the gate binds is the RESOLVED object the
+         quote's token was issued over — a reconstruction here would be the second source of truth
+         Task 1 showed the net cannot arbitrate;
+       • BEFORE anything is written, so a refusal leaves no order behind.
+
+     🔴 THE APPROVED AMOUNT IS THE RECORDED AMOUNT. priceBreakdown.total_cents is what this handler
+     stores, what the driver collects and what the factura shows. computeServerNet must produce that
+     same number for the same inputs — Task 1 proves it for real carts — and if it ever does not, the
+     right answer is to refuse rather than to record a number the gate did not approve. Asserting it
+     here makes "checked", "stored" and "collected" provably one number rather than three that agree.
+
+     A refusal after the redemption was reserved MUST release the hold, exactly as free_order_stale
+     does below: an order that never exists must not strand a customer's reward. */
+  {
+    const gateResult = gateConfirmedNet({
+      token: body.quote_token, submittedCart: body.items, reward: redemptionResolved,
+      rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,
+      enforce: false,                              // T6 flips this; both branches are built and tested
+      nowMs: Date.now(),
+    });
+    const releaseHold = async () => {
+      if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});
+    };
+    if (gateResult.action === 'refuse_increase') {
+      await releaseHold();
+      console.warn('quote_gate_price_increased', JSON.stringify({ orderId, rid: restaurantId, quote_id: gateResult.quoteId, net_total_cents: gateResult.chargeNet }));
+      return res.status(409).json({ error: 'price_increased', net_total_cents: gateResult.chargeNet, order_id: orderId });
+    }
+    if (gateResult.action === 'refuse_invalid' || gateResult.action === 'refuse_no_token') {
+      await releaseHold();
+      console.warn('quote_gate_refused', JSON.stringify({ orderId, rid: restaurantId, action: gateResult.action, reason: gateResult.reason }));
+      return res.status(409).json({ error: gateResult.action === 'refuse_no_token' ? 'quote_required' : 'quote_invalid', order_id: orderId });
+    }
+    if (gateResult.chargeNet !== null) {
+      // A gated order: the number the gate approved must be the number this handler is about to store.
+      if (gateResult.chargeNet !== priceBreakdown.total_cents) {
+        await releaseHold();
+        console.error('quote_gate_net_divergence', JSON.stringify({ orderId, rid: restaurantId, gated: gateResult.chargeNet, recorded: priceBreakdown.total_cents }));
+        return res.status(409).json({ error: 'quote_invalid', order_id: orderId });
+      }
+      quoteProvenance = { quote_id: gateResult.quoteId, confirmed_net_cents: gateResult.chargeNet };
+    }
+  }
+
   const freeOrder = !!redemptionPriced && priceBreakdown.total_cents === 0;
   if (body.free_order === true && !freeOrder) {
     if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});
@@ -939,6 +991,11 @@ createOrderApp.all('*', async (req, res) => {
     });
     attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
     if (redemptionCanonical) heldUpdates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until release→completion)
+    /* 1C T4 — PROVENANCE. Stamped only on a GATED order, which is how a gated one is told from a
+       grace one afterwards: absent means no token was presented, present means this exact net was
+       confirmed under this quote id. Deliberately alongside the redemption stamp — same shape, same
+       reason: bind what the order was agreed against to the order itself. */
+    if (quoteProvenance) heldUpdates[`orders/${orderId}`].quote = quoteProvenance;
     try {
       await db.ref().update(heldUpdates);
       console.log(`createOrder: HELD scheduled ${orderType} order ${orderId} for ${scheduledForRaw} (release ${releaseAt})`);
@@ -968,6 +1025,11 @@ createOrderApp.all('*', async (req, res) => {
   // so stamp has_profile from the resolved server customer_uid. Guest → omitted → order_tracking byte-identical.
   if (customer_uid && updates[`order_tracking/${trackingToken}`]) updates[`order_tracking/${trackingToken}`].has_profile = true;
   if (redemptionCanonical) updates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until completion consumes)
+  /* 1C T4 — PROVENANCE. Stamped only on a GATED order, which is how a gated one is told from a
+     grace one afterwards: absent means no token was presented, present means this exact net was
+     confirmed under this quote id. Deliberately alongside the redemption stamp — same shape, same
+     reason: bind what the order was agreed against to the order itself. */
+  if (quoteProvenance) updates[`orders/${orderId}`].quote = quoteProvenance;
 
   try {
     await db.ref().update(updates);

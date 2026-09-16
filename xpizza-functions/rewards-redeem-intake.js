@@ -97,7 +97,12 @@ async function resolveRedemptionForOrder(db, { redeem, items, restaurantId, orde
     canonical: prep.canonical, orderFingerprint: fp, configVersion: REDEMPTION_CONFIG_VERSION, now });   // atomic Σ-cost debit, idempotent
   if (!rr.ok) return { ok: false, status: 409, body: { error: 'redemption_reserve_failed', reason: rr.reason } };
 
+  /* `redemption` and `redemptionFp` are surfaced for 1C's charge gate: the token was issued over the
+     resolved redemption the QUOTE path produced (prep.redemption), so the gate must bind the identical
+     object here or the fingerprints cannot match. Both already exist on prep — this returns the fact
+     rather than letting the charge side reconstruct a second copy of it. */
   return { ok: true, canonical: prep.canonical, priced: prep.priced, itemsText: prep.itemsText,
+    redemption: prep.redemption, redemptionFp: prep.redemptionFp,
     ownsHold: (rr.action === 'created' || rr.action === 're_reserved'), freeName: prep.freeName, freeItems: prep.freeItems };
 }
 

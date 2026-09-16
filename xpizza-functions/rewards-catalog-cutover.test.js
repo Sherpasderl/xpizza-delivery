@@ -167,8 +167,14 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
     // count — 2a Task 7 added two legitimate NON-redemption consumers (the reorder-recipe allowlist at
     // both attribution sites). Enumerate the known consumers instead, so a NEW unexplained one still
     // trips this, and pin the real invariant separately below.
-    assert.strictEqual((SRC.match(/tables: pricingTables/g) || []).length, 5,
-      'the 3 redemption seams + the 2 reorder-attribution sites share the ONE resolved pricingTables');
+    /* 1C Task 4 added a SIXTH legitimate consumer: the confirmed-net gate, which recomputes the server
+       net at the charge and must price it from the same resolved tables the order does — pricing the
+       gate's recompute from anything else would be the split-brain this census exists to prevent, so
+       the right response to it was to enumerate it, not to relax the count. */
+    assert.ok(/gateConfirmedNet\(\{[\s\S]{0,400}?tables: pricingTables/.test(SRC),
+      'the confirmed-net gate must receive tables: pricingTables (1C T4)');
+    assert.strictEqual((SRC.match(/tables: pricingTables/g) || []).length, 6,
+      'the 3 redemption seams + the 2 reorder-attribution sites + the 1C confirmed-net gate share the ONE resolved pricingTables');
     assert.strictEqual((SRC.match(/attachCustomerAttribution\([^;]*?tables: pricingTables[^;]*?\);/g) || []).length, 2,
       'and 2 of the 5 are the attribution sites (reorder recipe), not extra redemption seams');
     // THE invariant: each order handler resolves the tables exactly once. Two resolves in one handler

@@ -3627,5 +3627,125 @@
    "node",
    "quote-issue.test.js"
   ]
+ },
+ {
+  "id": "c4-01",
+  "slice": "c4",
+  "label": "the charge takes the amount FROM THE TOKEN instead of the server's recompute",
+  "file": "token-gate.js",
+  "from": "  return { action: 'charge', chargeNet: net.net_total_cents, reason: 'confirmed', quoteId: payload.quote_id || null };",
+  "to": "  return { action: 'charge', chargeNet: confirmed, reason: 'confirmed', quoteId: payload.quote_id || null };",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-02",
+  "slice": "c4",
+  "label": "a price INCREASE is charged instead of refused",
+  "file": "token-gate.js",
+  "from": "  if (net.net_total_cents > confirmed) {",
+  "to": "  if (false) {",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-03",
+  "slice": "c4",
+  "label": "a price DROP is charged at the CONFIRMED amount — the customer overpays",
+  "file": "token-gate.js",
+  "from": "  if (net.net_total_cents > confirmed) {",
+  "to": "  if (net.net_total_cents !== confirmed) {",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-04",
+  "slice": "c4",
+  "label": "the cart fingerprint is not compared — a token authorises any cart under the ceiling",
+  "file": "token-gate.js",
+  "from": "  if (cartFingerprint(norm, reward) !== payload.cart_fingerprint) {",
+  "to": "  if (false) {",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-05",
+  "slice": "c4",
+  "label": "the fingerprint ignores the reward at the charge — a reward token passes without the reward",
+  "file": "token-gate.js",
+  "from": "  if (cartFingerprint(norm, reward) !== payload.cart_fingerprint) {",
+  "to": "  if (cartFingerprint(norm, null) !== payload.cart_fingerprint) {",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-06",
+  "slice": "c4",
+  "label": "a token for the OTHER restaurant is accepted",
+  "file": "token-gate.js",
+  "from": "  if (payload.rid !== rid) {",
+  "to": "  if (false) {",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-07",
+  "slice": "c4",
+  "label": "grace SUPPLIES a number instead of deferring, so a no-token order stops being byte-identical",
+  "file": "token-gate.js",
+  "from": "      : { action: 'charge', chargeNet: null, reason: 'grace_no_token', quoteId: null };",
+  "to": "      : { action: 'charge', chargeNet: 0, reason: 'grace_no_token', quoteId: null };",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-08",
+  "slice": "c4",
+  "label": "a FORGED token is tolerated under grace, so the one signal of tampering is ignored",
+  "file": "token-gate.js",
+  "from": "    if (v.reason === 'bad_signature' || v.reason === 'bad_format') {\n      return { action: 'refuse_invalid', chargeNet: null, reason: v.reason, quoteId: null };\n    }",
+  "to": "",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-09",
+  "slice": "c4",
+  "label": "an unpriceable cart at the charge is priced instead of refused",
+  "file": "token-gate.js",
+  "from": "  if (net.error) {\n    return { action: 'refuse_invalid', chargeNet: null, reason: 'bad_cart', quoteId: payload.quote_id || null };\n  }",
+  "to": "  if (net.error) { net.net_total_cents = 0; }",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-10",
+  "slice": "c4",
+  "label": "enforcement is ignored — a missing token always passes",
+  "file": "token-gate.js",
+  "from": "    return enforce\n      ? { action: 'refuse_no_token', chargeNet: null, reason: 'no_token', quoteId: null }",
+  "to": "    return false\n      ? { action: 'refuse_no_token', chargeNet: null, reason: 'no_token', quoteId: null }",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
  }
 ]
