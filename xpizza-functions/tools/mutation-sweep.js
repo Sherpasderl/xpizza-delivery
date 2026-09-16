@@ -111,9 +111,20 @@ const runSuite = (command) => {
        because of the measuring instrument is worse than no measurement: it is indistinguishable from a
        real kill in the output. The guard still runs — on the pristine tree, below, before any mutant
        is applied — so nothing is lost by silencing it here. */
-    execFileSync(cmd, args, { cwd: ROOT, stdio: 'ignore', env: { ...process.env, MUTATION_SWEEP: '1', PATH: `/opt/homebrew/opt/openjdk/bin:${process.env.PATH}` } });
-    return 0;
-  } catch (_) { return 1; }
+    /* maxBuffer explicitly, because the default is 1MB and this suite's output is ~216KB and grows with
+       every task. Overflowing it throws ENOBUFS, which the catch below would read as "the suite
+       noticed" and score a KILL — the measuring instrument manufacturing the result, the same failure
+       the MUTATION_SWEEP note above exists to prevent. 64MB is far past any plausible growth. */
+    execFileSync(cmd, args, { cwd: ROOT, stdio: 'pipe', maxBuffer: 64 * 1024 * 1024, env: { ...process.env, MUTATION_SWEEP: '1', PATH: `/opt/homebrew/opt/openjdk/bin:${process.env.PATH}` } });
+    return { rc: 0, out: '' };
+  } catch (e) {
+    if (e && e.code === 'ENOBUFS') {
+      console.error('mutation-sweep: suite output exceeded maxBuffer — raise it; refusing to score this run');
+      process.exit(2);          // never let a harness failure masquerade as a kill
+    }
+    // The failing suite's own output is the evidence for WHICH assertion noticed — see kills_with.
+    return { rc: 1, out: `${(e && e.stdout) || ''}${(e && e.stderr) || ''}` };
+  }
 };
 
 /* 🔴 EVERY ANCHOR, CHECKED ONCE, AGAINST THE PRISTINE TREE — BEFORE A SINGLE MUTANT IS APPLIED.
@@ -139,7 +150,7 @@ const runSuite = (command) => {
   console.log(`anchors: all ${MUTANTS.length} mutants anchor live code exactly once (pristine tree)`);
 }
 
-let killed = 0; let survived = 0; let missing = 0;
+let killed = 0, drifted = 0; let survived = 0; let missing = 0;
 for (const m of selected) {
   const target = join(ROOT, m.file);
   const src = readFileSync(target, 'utf8');
@@ -151,14 +162,38 @@ for (const m of selected) {
   copyFileSync(target, `${target}.bak`);
   restore.push(target);
   writeFileSync(target, src.replace(m.from, m.to));
-  const rc = runSuite(m.command);
+  const { rc, out } = runSuite(m.command);
   restoreAll();
-  if (rc !== 0) { killed++; console.log(`  KILLED   ${m.id}: ${m.label}`); }
+  if (rc !== 0) {
+    /* 🔴 KILLED IS NOT ENOUGH — IT MUST BE KILLED BY THE RIGHT ASSERTION. A mutant whose anchor moves
+       during a refactor can land somewhere adjacent, still die, and keep scoring as a kill while the
+       property it was written to defend has quietly lost its guard. That is worse than a missing
+       mutant: a gap reads as a gap, but a drifted mutant reads as coverage. It happened here — three
+       c4 mutants were re-pointed during T6 and two of them ended up testing a different property.
+       `kills_with` records a distinctive fragment of the assertion the mutant is SUPPOSED to trip. The
+       anchor guard can only see "missing"; this sees "drifted". Optional per mutant, so it can be
+       adopted where it matters most without re-annotating the whole catalogue at once. */
+    /* kills_with may be an ARRAY when the property is genuinely guarded in more than one place — then
+       ANY of them tripping is a faithful kill. c4-15 is the real case: "confirmed_net_cents records the
+       ceiling, not the charge" is asserted for a signed drop AND for the T6 unsigned ceiling, and which
+       one fires first is an ordering detail, not a semantic one. Listing both keeps the check honest in
+       both directions: it still fails if the mutant starts dying somewhere unrelated, and it does not
+       raise a false alarm when one of two real guards is the one that happens to run first. */
+    const want = m.kills_with ? [].concat(m.kills_with) : [];
+    if (want.length && !want.some((w) => out.includes(w))) {
+      drifted++;
+      console.log(`  DRIFTED  ${m.id}: ${m.label}`);
+      console.log(`           died, but NOT on any recorded assertion: ${JSON.stringify(want)}   <-- 🔴`);
+    } else {
+      killed++; console.log(`  KILLED   ${m.id}: ${m.label}`);
+    }
+  }
   else if (EQUIVALENT.has(m.id)) { console.log(`  EQUIVALENT ${m.id}: ${m.label} — ${m.why}`); }
   else { survived++; console.log(`  SURVIVED ${m.id}: ${m.label}   <-- 🔴`); }
 }
 const equivalents = selected.filter((m) => EQUIVALENT.has(m.id)).length;
 console.log(`\n${killed}/${selected.length - equivalents} killed` +
   (equivalents ? ` (+${equivalents} documented equivalent)` : '') +
-  (missing ? `  🔴 ${missing} ANCHOR MISSING — re-point before trusting this count` : ''));
-process.exit(survived || missing ? 1 : 0);
+  (missing ? `  🔴 ${missing} ANCHOR MISSING — re-point before trusting this count` : '') +
+  (drifted ? `  🔴 ${drifted} DRIFTED — died on the wrong assertion; the property is no longer guarded` : ''));
+process.exit(survived || missing || drifted ? 1 : 0);

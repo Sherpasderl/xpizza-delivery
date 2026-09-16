@@ -3638,7 +3638,8 @@
     "command": [
       "node",
       "token-gate.test.js"
-    ]
+    ],
+    "kills_with": "at the LOWER server net, never the confirmed one"
   },
   {
     "id": "c4-02",
@@ -3710,7 +3711,8 @@
     "command": [
       "node",
       "token-gate.test.js"
-    ]
+    ],
+    "kills_with": "the gate supplies NO number"
   },
   {
     "id": "c4-08",
@@ -3722,7 +3724,8 @@
     "command": [
       "node",
       "token-gate.test.js"
-    ]
+    ],
+    "kills_with": "a token signed by another secret is refused"
   },
   {
     "id": "c4-09",
@@ -3730,11 +3733,12 @@
     "label": "an unpriceable cart at the charge is priced instead of refused",
     "file": "token-gate.js",
     "from": "  if (net.error) {\n    return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'bad_cart', quoteId: payload.quote_id || null, degraded: false };\n  }",
-    "to": "  if (false) {\n    return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'bad_cart', quoteId: payload.quote_id || null, degraded: false };\n  }",
+    "to": "  if (net.error) {\n    net.net_total_cents = 0;\n  }",
     "command": [
       "node",
       "token-gate.test.js"
-    ]
+    ],
+    "kills_with": "now unpriceable, is refused rather than charged at zero"
   },
   {
     "id": "c4-10",
@@ -3746,7 +3750,8 @@
     "command": [
       "node",
       "token-gate.test.js"
-    ]
+    ],
+    "kills_with": "under enforcement, no token is refused"
   },
   {
     "id": "c4-11",
@@ -3789,12 +3794,13 @@
     "slice": "c4",
     "label": "the CHARGE path releases the hold — a live order hands the points back",
     "file": "token-gate.js",
-    "from": "  if (result.chargeNet === null) {\n    try { log.log('quote_gate_confirmed', JSON.stringify({ orderId, rid: gateInput.rid, confirmation: 'none', reason: result.reason })); } catch (_) {}\n    return { refuse: null, provenance: null, result };\n  }",
-    "to": "  if (result.chargeNet === null) {\n    await releaseHold();\n    return { refuse: null, provenance: null, result };\n  }",
+    "from": "  return {\n    refuse: null,",
+    "to": "  await releaseHold();\n  return {\n    refuse: null,",
     "command": [
       "node",
       "token-gate.test.js"
-    ]
+    ],
+    "kills_with": "does NOT release the hold"
   },
   {
     "id": "c4-15",
@@ -3806,6 +3812,10 @@
     "command": [
       "node",
       "token-gate.test.js"
+    ],
+    "kills_with": [
+      "confirmed_net_cents is the CEILING the customer accepted",
+      "while recording the ceiling offered"
     ]
   },
   {
@@ -3813,12 +3823,13 @@
     "slice": "c4",
     "label": "a grace order is stamped with provenance, so grace and gated orders become indistinguishable",
     "file": "token-gate.js",
-    "from": "  if (result.chargeNet === null) {\n    try { log.log('quote_gate_confirmed', JSON.stringify({ orderId, rid: gateInput.rid, confirmation: 'none', reason: result.reason })); } catch (_) {}\n    return { refuse: null, provenance: null, result };\n  }",
-    "to": "  if (false) {\n    return { refuse: null, provenance: null, result };\n  }",
+    "from": "    return { refuse: null, provenance: null, result };",
+    "to": "    return { refuse: null, provenance: { quote_id: result.quoteId, confirmed_net_cents: result.confirmedNet, charged_net_cents: result.chargeNet, confirmation: 'signed' }, result };",
     "command": [
       "node",
       "token-gate.test.js"
-    ]
+    ],
+    "kills_with": "stamping NO provenance"
   },
   {
     "id": "c5-01",
@@ -3854,7 +3865,8 @@
     "command": [
       "node",
       "charge-gate-placement.test.js"
-    ]
+    ],
+    "kills_with": "binds the RESOLVED redemption the issuer fingerprinted"
   },
   {
     "id": "c5-04",
