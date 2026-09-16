@@ -3143,5 +3143,79 @@
    "node",
    "../live-apply.test.mjs"
   ]
+ },
+ {
+  "id": "c1-01",
+  "slice": "c1",
+  "label": "the net returns LEMPIRA while calling itself cents",
+  "file": "compute-server-net.js",
+  "from": "  const base_cents = baseBreakdown.total_cents;",
+  "to": "  const base_cents = base.total;",
+  "command": [
+   "node",
+   "compute-server-net.test.js"
+  ]
+ },
+ {
+  "id": "c1-02",
+  "slice": "c1",
+  "label": "tax-inclusive fiscal is ADDED on top — double-charging ISV on every x_pizza order",
+  "file": "compute-server-net.js",
+  "from": "  const net_total_cents = netAfterReward + delivery_cents;",
+  "to": "  const net_total_cents = netAfterReward + delivery_cents + fiscal_cents;",
+  "command": [
+   "node",
+   "compute-server-net.test.js"
+  ]
+ },
+ {
+  "id": "c1-03",
+  "slice": "c1",
+  "label": "an unpriceable cart returns a total instead of an error",
+  "file": "compute-server-net.js",
+  "from": "  if (base.error) return { error: base.error };",
+  "to": "  if (base.error) return { net_total_cents: 0, components: { base_cents: 0, reward_discount_cents: 0, delivery_cents: 0, fiscal_cents: 0 } };",
+  "command": [
+   "node",
+   "compute-server-net.test.js"
+  ]
+ },
+ {
+  "id": "c1-04",
+  "slice": "c1",
+  "label": "a reward the reward path REFUSES is charged at full price instead of erroring",
+  "file": "compute-server-net.js",
+  "from": "    if (!priced || priced.ok !== true) return { error: (priced && priced.error) || 'reward_unpriceable' };",
+  "to": "    if (!priced || priced.ok !== true) return { net_total_cents: base_cents, components: { base_cents, reward_discount_cents: 0, delivery_cents: 0, fiscal_cents } };",
+  "command": [
+   "node",
+   "compute-server-net.test.js"
+  ]
+ },
+ {
+  "id": "c1-05",
+  "slice": "c1",
+  "label": "the delivery fee is taken from the CLIENT's context instead of computed",
+  "file": "compute-server-net.js",
+  "from": "  if (!deliveryContext) return 0;\n  return 0;",
+  "to": "  if (!deliveryContext) return 0;\n  return Number(deliveryContext.fee) || 0;",
+  "command": [
+   "node",
+   "compute-server-net.test.js"
+  ]
+ },
+ {
+  "id": "c1-06",
+  "slice": "c1",
+  "label": "a non-finite base total is accepted",
+  "file": "compute-server-net.js",
+  "from": "  if (!Number.isFinite(Number(base.total))) return { error: 'bad_total' };",
+  "to": "  if (false) return { error: 'bad_total' };",
+  "command": [
+   "node",
+   "compute-server-net.test.js"
+  ],
+  "equivalent": true,
+  "why": "computeServerTotal sets an `error` on EVERY path that yields a non-finite total (menu-pricing.js returns {total: NaN, error} for unknown items, bad quantities, invalid prices and malformed extras), and the guard above this one returns on error — so no input can reach this line with a non-finite total. It is kept as the floor under an assumption about ANOTHER module: if computeServerTotal ever returns NaN without an error, this is what stops a NaN from becoming a charge, and NaN*100 rounds to 0 — a free order. Cheap insurance at the money core; the exemption is measured, not assumed."
  }
 ]
