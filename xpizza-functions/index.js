@@ -441,7 +441,7 @@ function sanitizePhone(v) {
 // ---------------------------------------------------------------------------
 const { orderBreakdownCents } = require('./order-money');
 const { issueQuote } = require('./quote-issue');   // 1C Task 3 — the ONE quote issuer, shared with the redemption quote
-const { gateConfirmedNet } = require('./token-gate');   // 1C Task 4 — the ONE confirmed-net decision, shared with the card path
+const { applyConfirmedNetGate } = require('./token-gate');   // 1C Task 4 — the ONE confirmed-net decision AND its consequences, shared with the card path
 
 function validateOrderPayload(body, restaurantId, tables = null) {
   const errors = [];
@@ -903,34 +903,21 @@ createOrderApp.all('*', async (req, res) => {
      A refusal after the redemption was reserved MUST release the hold, exactly as free_order_stale
      does below: an order that never exists must not strand a customer's reward. */
   {
-    const gateResult = gateConfirmedNet({
-      token: body.quote_token, submittedCart: body.items, reward: redemptionResolved,
-      rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,
-      enforce: false,                              // T6 flips this; both branches are built and tested
-      nowMs: Date.now(),
+    const applied = await applyConfirmedNetGate({
+      gateInput: {
+        token: body.quote_token, submittedCart: body.items, reward: redemptionResolved,
+        rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,
+        enforce: false,                            // T6 flips this; both branches are built and tested
+        nowMs: Date.now(),
+      },
+      recordedTotalCents: priceBreakdown.total_cents,   // what this handler is about to store and collect
+      releaseHold: async () => {
+        if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});
+      },
+      orderId,
     });
-    const releaseHold = async () => {
-      if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});
-    };
-    if (gateResult.action === 'refuse_increase') {
-      await releaseHold();
-      console.warn('quote_gate_price_increased', JSON.stringify({ orderId, rid: restaurantId, quote_id: gateResult.quoteId, net_total_cents: gateResult.chargeNet }));
-      return res.status(409).json({ error: 'price_increased', net_total_cents: gateResult.chargeNet, order_id: orderId });
-    }
-    if (gateResult.action === 'refuse_invalid' || gateResult.action === 'refuse_no_token') {
-      await releaseHold();
-      console.warn('quote_gate_refused', JSON.stringify({ orderId, rid: restaurantId, action: gateResult.action, reason: gateResult.reason }));
-      return res.status(409).json({ error: gateResult.action === 'refuse_no_token' ? 'quote_required' : 'quote_invalid', order_id: orderId });
-    }
-    if (gateResult.chargeNet !== null) {
-      // A gated order: the number the gate approved must be the number this handler is about to store.
-      if (gateResult.chargeNet !== priceBreakdown.total_cents) {
-        await releaseHold();
-        console.error('quote_gate_net_divergence', JSON.stringify({ orderId, rid: restaurantId, gated: gateResult.chargeNet, recorded: priceBreakdown.total_cents }));
-        return res.status(409).json({ error: 'quote_invalid', order_id: orderId });
-      }
-      quoteProvenance = { quote_id: gateResult.quoteId, confirmed_net_cents: gateResult.chargeNet };
-    }
+    if (applied.refuse) return res.status(applied.refuse.status).json(applied.refuse.body);
+    quoteProvenance = applied.provenance;
   }
 
   const freeOrder = !!redemptionPriced && priceBreakdown.total_cents === 0;

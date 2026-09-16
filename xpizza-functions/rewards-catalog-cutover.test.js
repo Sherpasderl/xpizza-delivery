@@ -171,7 +171,7 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
        net at the charge and must price it from the same resolved tables the order does — pricing the
        gate's recompute from anything else would be the split-brain this census exists to prevent, so
        the right response to it was to enumerate it, not to relax the count. */
-    assert.ok(/gateConfirmedNet\(\{[\s\S]{0,400}?tables: pricingTables/.test(SRC),
+    assert.ok(/applyConfirmedNetGate\(\{[\s\S]{0,600}?tables: pricingTables/.test(SRC),
       'the confirmed-net gate must receive tables: pricingTables (1C T4)');
     assert.strictEqual((SRC.match(/tables: pricingTables/g) || []).length, 6,
       'the 3 redemption seams + the 2 reorder-attribution sites + the 1C confirmed-net gate share the ONE resolved pricingTables');

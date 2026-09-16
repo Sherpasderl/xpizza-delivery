@@ -3633,8 +3633,8 @@
   "slice": "c4",
   "label": "the charge takes the amount FROM THE TOKEN instead of the server's recompute",
   "file": "token-gate.js",
-  "from": "  return { action: 'charge', chargeNet: net.net_total_cents, reason: 'confirmed', quoteId: payload.quote_id || null };",
-  "to": "  return { action: 'charge', chargeNet: confirmed, reason: 'confirmed', quoteId: payload.quote_id || null };",
+  "from": "  return { action: 'charge', chargeNet: net.net_total_cents, confirmedNet: confirmed, reason: 'confirmed', quoteId: payload.quote_id || null };",
+  "to": "  return { action: 'charge', chargeNet: confirmed, confirmedNet: confirmed, reason: 'confirmed', quoteId: payload.quote_id || null };",
   "command": [
    "node",
    "token-gate.test.js"
@@ -3705,8 +3705,8 @@
   "slice": "c4",
   "label": "grace SUPPLIES a number instead of deferring, so a no-token order stops being byte-identical",
   "file": "token-gate.js",
-  "from": "      : { action: 'charge', chargeNet: null, reason: 'grace_no_token', quoteId: null };",
-  "to": "      : { action: 'charge', chargeNet: 0, reason: 'grace_no_token', quoteId: null };",
+  "from": "      : { action: 'charge', chargeNet: null, confirmedNet: null, reason: 'grace_no_token', quoteId: null };",
+  "to": "      : { action: 'charge', chargeNet: 0, confirmedNet: null, reason: 'grace_no_token', quoteId: null };",
   "command": [
    "node",
    "token-gate.test.js"
@@ -3717,7 +3717,7 @@
   "slice": "c4",
   "label": "a FORGED token is tolerated under grace, so the one signal of tampering is ignored",
   "file": "token-gate.js",
-  "from": "    if (v.reason === 'bad_signature' || v.reason === 'bad_format') {\n      return { action: 'refuse_invalid', chargeNet: null, reason: v.reason, quoteId: null };\n    }",
+  "from": "    if (v.reason === 'bad_signature' || v.reason === 'bad_format') {\n      return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: v.reason, quoteId: null };\n    }",
   "to": "",
   "command": [
    "node",
@@ -3729,7 +3729,7 @@
   "slice": "c4",
   "label": "an unpriceable cart at the charge is priced instead of refused",
   "file": "token-gate.js",
-  "from": "  if (net.error) {\n    return { action: 'refuse_invalid', chargeNet: null, reason: 'bad_cart', quoteId: payload.quote_id || null };\n  }",
+  "from": "  if (net.error) {\n    return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'bad_cart', quoteId: payload.quote_id || null };\n  }",
   "to": "  if (net.error) { net.net_total_cents = 0; }",
   "command": [
    "node",
@@ -3741,8 +3741,80 @@
   "slice": "c4",
   "label": "enforcement is ignored — a missing token always passes",
   "file": "token-gate.js",
-  "from": "    return enforce\n      ? { action: 'refuse_no_token', chargeNet: null, reason: 'no_token', quoteId: null }",
-  "to": "    return false\n      ? { action: 'refuse_no_token', chargeNet: null, reason: 'no_token', quoteId: null }",
+  "from": "    return enforce\n      ? { action: 'refuse_no_token', chargeNet: null, confirmedNet: null, reason: 'no_token', quoteId: null }",
+  "to": "    return false\n      ? { action: 'refuse_no_token', chargeNet: null, confirmedNet: null, reason: 'no_token', quoteId: null }",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-11",
+  "slice": "c4",
+  "label": "the approved==recorded divergence check is removed — an unapproved amount is recorded",
+  "file": "token-gate.js",
+  "from": "  if (result.chargeNet !== recordedTotalCents) {",
+  "to": "  if (false) {",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-12",
+  "slice": "c4",
+  "label": "a refusal does NOT release the reward hold — a refused order strands the customer's points",
+  "file": "token-gate.js",
+  "from": "  const refuse = async (status, body, event, detail) => {\n    await releaseHold();",
+  "to": "  const refuse = async (status, body, event, detail) => {",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-13",
+  "slice": "c4",
+  "label": "the divergence refusal skips the release, stranding points on the one path that detects a bug",
+  "file": "token-gate.js",
+  "from": "  if (result.chargeNet !== recordedTotalCents) {\n    await releaseHold();",
+  "to": "  if (result.chargeNet !== recordedTotalCents) {",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-14",
+  "slice": "c4",
+  "label": "the CHARGE path releases the hold — a live order hands the points back",
+  "file": "token-gate.js",
+  "from": "  if (result.chargeNet === null) return { refuse: null, provenance: null, result };",
+  "to": "  if (result.chargeNet === null) return { refuse: null, provenance: null, result };\n  await releaseHold();",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-15",
+  "slice": "c4",
+  "label": "provenance records the CHARGED amount as the confirmed ceiling — the token's whole purpose lost",
+  "file": "token-gate.js",
+  "from": "    provenance: { quote_id: result.quoteId, confirmed_net_cents: result.confirmedNet, charged_net_cents: result.chargeNet },",
+  "to": "    provenance: { quote_id: result.quoteId, confirmed_net_cents: result.chargeNet, charged_net_cents: result.chargeNet },",
+  "command": [
+   "node",
+   "token-gate.test.js"
+  ]
+ },
+ {
+  "id": "c4-16",
+  "slice": "c4",
+  "label": "a grace order is stamped with provenance, so grace and gated orders become indistinguishable",
+  "file": "token-gate.js",
+  "from": "  if (result.chargeNet === null) return { refuse: null, provenance: null, result };",
+  "to": "  if (result.chargeNet === null) return { refuse: null, provenance: { quote_id: null, confirmed_net_cents: 0, charged_net_cents: 0 }, result };",
   "command": [
    "node",
    "token-gate.test.js"

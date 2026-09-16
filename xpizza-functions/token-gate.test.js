@@ -6,7 +6,7 @@
 // gate agree" IS the guarantee. So issueQuote() mints every token below, and the gate is then asked
 // about the same cart, a different cart, or a moved price.
 const assert = require('node:assert');
-const { gateConfirmedNet } = require('./token-gate');
+const { gateConfirmedNet, applyConfirmedNetGate } = require('./token-gate');
 const { issueQuote } = require('./quote-issue');
 const { computeServerNet } = require('./compute-server-net');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./menu-pricing');
@@ -210,4 +210,119 @@ const gate = (o) => gateConfirmedNet({ secret: SEC, nowMs: 1_000_100, ...o });
   ok('an unpriceable cart at the charge is refused, never priced — including a dish delisted mid-checkout');
 }
 
+/* Section 8 uses await, and this file is CommonJS — top-level await is not available here, so the
+   async sections run inside an IIFE and the summary prints when they resolve. */
+(async () => {
+// ── 8. 🔴 THE CONSEQUENCES — RELEASE, DIVERGENCE, RETENTION, PROVENANCE ────────────────────────
+// These lived inline in the request handler, where no unit test could reach them: deleting the
+// hold-release or defeating the divergence check made NOTHING fail. Correct and unasserted, on a live
+// money endpoint. They are behind an injected effect now, so "was the hold released" is an assertion.
+{
+  const rid = 'x_pizza', tables = T(rid), items = [{ name: 'Margherita', qty: 2 }];
+  const base = MENU_BY_RESTAURANT[rid].Margherita;
+  const at = (p) => T(rid, { menu: { Margherita: p } });
+  const netAt = (p) => computeServerNet({ items, rid, tables: at(p) }).net_total_cents;
+
+  const run = async (over = {}) => {
+    const released = [];
+    const applied = await applyConfirmedNetGate({
+      gateInput: { token: mint(items, rid, tables), submittedCart: items, rid, tables,
+        secret: SEC, enforce: false, nowMs: 1_000_100, ...(over.gateInput || {}) },
+      recordedTotalCents: over.recordedTotalCents !== undefined ? over.recordedTotalCents : netAt(base),
+      releaseHold: async () => { released.push(1); },
+      orderId: 'PZX-TEST', log: { warn() {}, error() {} },
+    });
+    return { applied, releases: released.length };
+  };
+
+  // (a) 🔴 A GATE/RECORD DIVERGENCE REFUSES AND RELEASES. One centavo is enough — the point is that
+  //     the two numbers must be the SAME number, not merely close.
+  {
+    const { applied, releases } = await run({ recordedTotalCents: netAt(base) + 1 });
+    assert.ok(applied.refuse, '🔴 a 1-cent divergence between gated and recorded REFUSES');
+    assert.strictEqual(applied.refuse.status, 409, '…with a 409');
+    assert.strictEqual(applied.refuse.body.error, 'quote_invalid', '…typed quote_invalid');
+    assert.strictEqual(applied.provenance, null, '…and stamps no provenance');
+    assert.strictEqual(releases, 1, '🔴 …and RELEASES the reward hold');
+  }
+
+  // (b) 🔴 EVERY REFUSAL BRANCH RELEASES. An order that never exists must not strand loyalty points.
+  {
+    const branches = {
+      increase:  { gateInput: { tables: at(base + 50) } },                                  // price rose
+      invalid:   { gateInput: { submittedCart: [{ name: 'Pepperoni', qty: 1 }] } },          // cart mismatch
+      forged:    { gateInput: { secret: 'other-secret' } },                                  // bad signature
+      no_token:  { gateInput: { token: null, enforce: true } },                              // enforcement
+      divergence:{ recordedTotalCents: netAt(base) + 1 },                                    // approved != recorded
+    };
+    for (const [label, over] of Object.entries(branches)) {
+      const { applied, releases } = await run(over);
+      assert.ok(applied.refuse, `🔴 ${label}: refuses`);
+      assert.strictEqual(releases, 1, `🔴 ${label}: releases the owned hold exactly once`);
+      assert.strictEqual(applied.provenance, null, `${label}: stamps nothing`);
+    }
+  }
+
+  // (c) 🔴 THE CHARGE PATH RETAINS THE HOLD — the opposite mistake, and just as expensive. Completion
+  //     is what consumes a reservation; releasing it here would hand the points back on a live order.
+  {
+    const { applied, releases } = await run();
+    assert.strictEqual(applied.refuse, null, 'a clean gated order proceeds');
+    assert.strictEqual(releases, 0, '🔴 …and does NOT release the hold');
+    assert.ok(applied.provenance, '…and stamps provenance');
+  }
+
+  // (d) 🔴 PROVENANCE RECORDS THE CEILING AND THE CHARGE AS TWO FACTS. On a price DROP they differ,
+  //     and that difference is the whole point of a signed token: what was OFFERED and ACCEPTED, not
+  //     merely what was billed.
+  {
+    const dropped = netAt(base - 50);
+    const { applied } = await run({ gateInput: { tables: at(base - 50) }, recordedTotalCents: dropped });
+    assert.strictEqual(applied.refuse, null, 'a price drop still charges');
+    assert.strictEqual(applied.provenance.charged_net_cents, dropped, '🔴 charged_net_cents is the LOWER amount');
+    assert.strictEqual(applied.provenance.confirmed_net_cents, netAt(base),
+      '🔴 confirmed_net_cents is the CEILING the customer accepted — not the amount billed');
+    assert.ok(applied.provenance.confirmed_net_cents > applied.provenance.charged_net_cents,
+      'non-vacuity: on a drop the two genuinely differ, which is what makes this provenance');
+    assert.ok(applied.provenance.quote_id, 'and the quote it honoured is identified');
+
+    // On an unchanged price they agree — so the difference above is the drop, not a sign error.
+    const { applied: same } = await run();
+    assert.strictEqual(same.provenance.confirmed_net_cents, same.provenance.charged_net_cents,
+      'non-vacuity: with no drop the ceiling and the charge are the same number');
+  }
+
+  // (e) GRACE STAMPS NOTHING AND RELEASES NOTHING — which is how a grace order stays byte-identical.
+  {
+    const { applied, releases } = await run({ gateInput: { token: null, enforce: false }, recordedTotalCents: netAt(base) });
+    assert.strictEqual(applied.refuse, null, 'grace proceeds');
+    assert.strictEqual(applied.provenance, null, '🔴 …stamping NO provenance, which is how it is told from a gated order');
+    assert.strictEqual(releases, 0, '…and releasing nothing');
+  }
+  ok('the consequences are asserted: release on every refusal, retain on charge, refuse on divergence, two-fact provenance');
+}
+
+// ── 9. THE REWARD COMES FROM THE REAL prepare→intake SEAM ──────────────────────────────────────
+// Everything above uses a hand-assembled resolved reward. This proves the binding the handler actually
+// relies on: the object prepareRedemption produces is the object the issuer fingerprints AND the object
+// the gate re-fingerprints. A fixture that happened to have the right shape would prove neither.
+{
+  const { computeRedemption } = require('./rewards-redeem');
+  const rid = 'la_musa', tables = T(rid);
+  const items = [{ id: 'dimsum_01', qty: 2 }];
+  const resolved = computeRedemption({ redeem: { type: 'points_ala_carte', items: [{ id: 'dimsum_01', qty: 1 }] },
+    items, restaurantId: rid, tables, eligible: null });
+  assert.strictEqual(resolved.ok, true, `premise: the REAL resolver produced a redemption (${resolved.reason})`);
+  assert.strictEqual(resolved.model, 'add_free', 'premise: …of the model the pricing consumes');
+
+  const token = mint(items, rid, tables, resolved, 'fp-real');
+  assert.strictEqual(gate({ token, submittedCart: items, reward: resolved, rid, tables }).action, 'charge',
+    '🔴 a token issued over the REAL resolved reward gates cleanly at the charge');
+  assert.strictEqual(gate({ token, submittedCart: items, reward: null, rid, tables }).action, 'refuse_invalid',
+    '🔴 …and the same cart without it is refused, on the brand where the NET cannot tell');
+  ok('the prepare→issue→gate reward binding is proven with the real resolver, not a fixture');
+}
+
+
 console.log(`\ntoken-gate: OK (${n})`);
+})().catch((e) => { console.error(e); process.exit(1); });
