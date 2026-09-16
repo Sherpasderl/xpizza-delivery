@@ -3525,8 +3525,8 @@
   "slice": "c3",
   "label": "an unfingerprintable cart is signed anyway",
   "file": "quote-issue.js",
-  "from": "  if (!norm) return result;                      // unfingerprintable → price without a token",
-  "to": "  if (!norm) { /* sign anyway */ }",
+  "from": "    if (!norm) return result;                    // unfingerprintable → price without a token",
+  "to": "    if (!norm) { /* sign anyway */ }",
   "command": [
    "node",
    "quote-issue.test.js"
@@ -3563,6 +3563,42 @@
   "file": "quote-issue.js",
   "from": "      quote_id: crypto.randomUUID(),             // a nonce, so two identical quotes are still two quotes",
   "to": "      quote_id: 'fixed',",
+  "command": [
+   "node",
+   "quote-issue.test.js"
+  ]
+ },
+ {
+  "id": "c3-09",
+  "slice": "c3",
+  "label": "the fingerprint keys id-preferred again, so x_pizza's name swap is invisible",
+  "file": "quote-token.js",
+  "from": "      const raw = itemPricingKey(o, rid);",
+  "to": "      const raw = (o && o.id !== undefined && o.id !== null) ? o.id : (o && o.name);",
+  "command": [
+   "node",
+   "quote-issue.test.js"
+  ]
+ },
+ {
+  "id": "c3-10",
+  "slice": "c3",
+  "label": "the normalization body is unguarded again — a throwing accessor escapes",
+  "file": "quote-token.js",
+  "from": "  } catch (_) {\n    return null;                        // a throwing accessor anywhere above is an unfingerprintable cart\n  }",
+  "to": "  } catch (_) {\n    throw _;\n  }",
+  "command": [
+   "node",
+   "quote-issue.test.js"
+  ]
+ },
+ {
+  "id": "c3-11",
+  "slice": "c3",
+  "label": "the issuer is not guarded, so a quote 500s on a hostile cart shape",
+  "file": "quote-issue.js",
+  "from": "  try { return issueQuoteInner(args); }\n  catch (e) {",
+  "to": "  try { return issueQuoteInner(args); }\n  catch (e) { throw e; }\n  /* eslint-disable */ function _dead(e) {",
   "command": [
    "node",
    "quote-issue.test.js"

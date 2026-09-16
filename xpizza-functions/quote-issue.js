@@ -46,7 +46,21 @@ function quoteSecret() {
  *   builds. Passed in rather than recomputed here: reconstructing the reward's identity independently
  *   would be a second source of the one fact Task 1 showed the net cannot carry.
  */
-function issueQuote({ items, reward = null, redemptionRef = null, rid, tables = null, customerId = null, nowMs = Date.now() }) {
+function issueQuote(args) {
+  /* 🔴 THE ISSUER ITSELF NEVER THROWS. Guarding the normalization was not enough: the first thing this
+     function does is PRICE the cart, and computeServerTotal reads `it.qty` directly — a throwing
+     property accessor escapes from there, before any of this module's own guards are reached. Both
+     callers are request handlers, so an exception is a 500 on a quote; a quote is a display and must
+     degrade to a typed refusal instead. (A cart that throws on being read cannot be priced at all, so
+     "return the price anyway" is not available here — what is available is not crashing.) */
+  try { return issueQuoteInner(args); }
+  catch (e) {
+    console.warn('quote_issue_failed', JSON.stringify({ error: String((e && e.message) || e).slice(0, 200) }));
+    return { ok: false, error: 'error' };
+  }
+}
+
+function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tables = null, customerId = null, nowMs = Date.now() }) {
   const net = computeServerNet({ items, reward, rid, tables });
   if (net.error) return { ok: false, error: net.error };
 
@@ -55,13 +69,14 @@ function issueQuote({ items, reward = null, redemptionRef = null, rid, tables = 
   // 🔴 THE FINGERPRINT BINDS THE REWARD — Task 1 proved the net cannot. A la_musa reward is
   // net-invariant, so a token whose fingerprint ignored the reward would verify for the cart WITHOUT
   // it. The reward's identity comes from the resolved object, the same one the charge path resolves.
-  const norm = normalizeCartForFingerprint(items);
-  if (!norm) return result;                      // unfingerprintable → price without a token
-
   const secret = quoteSecret();
   if (!secret) return result;                    // unprovisioned → price without a token
 
   try {
+    // Inside the try: normalization promises not to throw, and this is the belt for that braces — a
+    // residual throw here must still return the PRICE without a token, never a 500 on a quote.
+    const norm = normalizeCartForFingerprint(items, rid);
+    if (!norm) return result;                    // unfingerprintable → price without a token
     const payload = {
       rid,
       customer_id: customerId || null,           // guests quote too; null is a value, not a gap

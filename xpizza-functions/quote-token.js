@@ -16,6 +16,8 @@
 // process. A token is not a capability the client may mint — it is one the server hands out.
 // ---------------------------------------------------------------------------
 const crypto = require('node:crypto');
+/* The brand's authoritative pricing key — imported, never reimplemented. See normalizeCartForFingerprint. */
+const { itemPricingKey } = require('./menu-pricing');
 
 const b64u = (buf) => Buffer.from(buf).toString('base64url');
 
@@ -56,10 +58,21 @@ const b64u = (buf) => Buffer.from(buf).toString('base64url');
  * still served, and the client falls back to the unsigned floor. Refusing to fingerprint garbage is
  * not the same as refusing the customer.
  */
-function normalizeCartForFingerprint(items) {
+function normalizeCartForFingerprint(items, rid) {
+  /* 🔴 THE IDENTITY IS THE BRAND'S PRICING KEY, TAKEN FROM THE PRICING ITSELF.
+     This used to prefer `id` and fall back to `name`, which is not what either brand does: x_pizza
+     prices by NAME and la_musa by ID (itemPricingKey, menu-pricing.js). For x_pizza that made the
+     fingerprint blind to exactly what it exists to catch — a crafted request carrying a stable `id`
+     with a swapped `name` fingerprints identically while pricing as a different dish, and a swap
+     between two same-priced items or options leaves no net signal either, so nothing at all would
+     notice. The fingerprint is the only witness there, and it was looking at the wrong field.
+     itemPricingKey is IMPORTED rather than reimplemented: the brand keying is one fact, it already
+     lives in the pricing module, and a second copy of it here is how the two silently diverge the next
+     time a brand's strategy changes. It reads .id or .name off whatever record it is given, so the
+     same call serves options — which key the same way their brand's items do. */
   const key = (o) => {
     try {
-      const raw = (o && o.id !== undefined && o.id !== null) ? o.id : (o && o.name);
+      const raw = itemPricingKey(o, rid);
       if (raw === undefined || raw === null) return null;
       const k = String(raw);
       return k === '' ? null : k;
@@ -71,27 +84,37 @@ function normalizeCartForFingerprint(items) {
       return Number.isFinite(n) ? n : null;
     } catch (_) { return null; }        // Number({toString:null}) throws
   };
-  if (!Array.isArray(items) || items.length === 0) return null;
 
-  const out = [];
-  for (const it of items) {
-    const k = key(it);
-    const q = qty(it && it.qty);
-    if (k === null || q === null) return null;
-    const rawExtras = (it && Array.isArray(it.extras)) ? it.extras : [];
-    const extras = [];
-    for (const e of rawExtras) {
-      const ek = key(e);
-      // An option with no explicit qty means one of it — x_pizza's options are a 0/1 toggle and carry
-      // no qty at all, so defaulting HERE (where the shape is known) is right, while defaulting inside
-      // cartFingerprint (where it is not) was the collision T2 removed.
-      const eq = (e && e.qty === undefined) ? 1 : qty(e && e.qty);
-      if (ek === null || eq === null) return null;
-      extras.push({ id: ek, qty: eq });
+  /* 🔴 THE WHOLE BODY IS GUARDED, not just the helpers. The guarantee this seam offers T4/T5 is
+     "returns null, never throws" — and it did not hold: a property ACCESSOR that throws
+     (`get qty(){ throw }`) escaped, because reading `e.qty` to test it against undefined happened
+     outside any try. Not reachable from plain JSON, but a guarantee with an exception is not a
+     guarantee, and both charge verifiers are about to rely on this one. */
+  try {
+    if (!Array.isArray(items) || items.length === 0) return null;
+
+    const out = [];
+    for (const it of items) {
+      const k = key(it);
+      const q = qty(it && it.qty);
+      if (k === null || q === null) return null;
+      const rawExtras = (it && Array.isArray(it.extras)) ? it.extras : [];
+      const extras = [];
+      for (const e of rawExtras) {
+        const ek = key(e);
+        // An option with no explicit qty means one of it — x_pizza's options are a 0/1 toggle and carry
+        // no qty at all, so defaulting HERE (where the shape is known) is right, while defaulting inside
+        // cartFingerprint (where it is not) was the collision T2 removed.
+        const eq = (e && e.qty === undefined) ? 1 : qty(e && e.qty);
+        if (ek === null || eq === null) return null;
+        extras.push({ id: ek, qty: eq });
+      }
+      out.push({ id: k, qty: q, extras });
     }
-    out.push({ id: k, qty: q, extras });
+    return out;
+  } catch (_) {
+    return null;                        // a throwing accessor anywhere above is an unfingerprintable cart
   }
-  return out;
 }
 
 function cartFingerprint(normItems, reward) {

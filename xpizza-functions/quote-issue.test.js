@@ -44,7 +44,7 @@ const withSecret = (fn) => {
           `${rid}: 🔴 …and the SIGNED net is the same number`);
         assert.deepStrictEqual(v.payload.components, expected.components, `${rid}: components are carried`);
         assert.strictEqual(v.payload.rid, rid, `${rid}: the token names its restaurant`);
-        assert.strictEqual(v.payload.cart_fingerprint, cartFingerprint(normalizeCartForFingerprint(items), null),
+        assert.strictEqual(v.payload.cart_fingerprint, cartFingerprint(normalizeCartForFingerprint(items, rid), null),
           `${rid}: 🔴 the fingerprint is over the SHARED normalization`);
         assert.strictEqual(v.payload.expires_at, 1_000_000 + EXPIRY_MS, `${rid}: expiry is issued_at + EXPIRY_MS`);
         assert.ok(v.payload.quote_id && v.payload.quote_id.length >= 16, `${rid}: a nonce is present`);
@@ -169,7 +169,7 @@ const withSecret = (fn) => {
     const pu = issueQuote({ items: priceableUnfingerprintable, rid: 'x_pizza', tables: T('x_pizza'), nowMs: 1e6 });
     assert.strictEqual(pu.ok, true, 'premise — this cart PRICES');
     assert.ok(pu.net_total_cents > 0, 'premise — …to a real number the customer should see');
-    assert.strictEqual(normalizeCartForFingerprint(priceableUnfingerprintable), null,
+    assert.strictEqual(normalizeCartForFingerprint(priceableUnfingerprintable, 'x_pizza'), null,
       'premise — …and yet it cannot be normalized');
     assert.strictEqual(pu.quote_token, null,
       '🔴 so the price is served UNSIGNED — never signed over a fingerprint that means nothing');
@@ -179,10 +179,10 @@ const withSecret = (fn) => {
     assert.ok(v.ok === false || v.quote_token === null,
       'a cart that cannot be normalized never produces a token, and never throws');
     // The normalization itself is the guarantee — asserted directly, since it is the shared seam.
-    assert.strictEqual(normalizeCartForFingerprint(hostile), null, '🔴 an unstringifiable key does not throw, it refuses');
-    assert.strictEqual(normalizeCartForFingerprint([{ id: 'a', qty: { toString: null } }]), null, '🔴 nor does an unnumberable qty');
-    assert.strictEqual(normalizeCartForFingerprint([{ id: 'a', qty: NaN }]), null, 'a NaN qty refuses rather than hashing as null');
-    assert.strictEqual(normalizeCartForFingerprint([]), null, 'an empty cart has nothing to fingerprint');
+    assert.strictEqual(normalizeCartForFingerprint(hostile, 'x_pizza'), null, '🔴 an unstringifiable key does not throw, it refuses');
+    assert.strictEqual(normalizeCartForFingerprint([{ id: 'a', qty: { toString: null } }], 'la_musa'), null, '🔴 nor does an unnumberable qty');
+    assert.strictEqual(normalizeCartForFingerprint([{ id: 'a', qty: NaN }], 'la_musa'), null, 'a NaN qty refuses rather than hashing as null');
+    assert.strictEqual(normalizeCartForFingerprint([], 'x_pizza'), null, 'an empty cart has nothing to fingerprint');
   });
   ok('unpriceable errors, unfingerprintable degrades — and neither throws');
 }
@@ -207,6 +207,75 @@ const withSecret = (fn) => {
     }
   });
   ok('the redemption quote signs the reward path\'s own total, both brands');
+}
+
+// ── 8. 🔴 THE FINGERPRINT KEYS BY THE BRAND'S PRICING KEY — THE CASE WITH NO NET SIGNAL ────────
+// x_pizza prices by NAME, la_musa by ID. An id-preferred fingerprint made x_pizza blind to exactly
+// what it exists to witness: a crafted request with a stable id and a swapped name prices as a
+// different dish while fingerprinting identically. When the two dishes cost the SAME, the amount
+// carries no signal either — the fingerprint is the only witness, and it was looking at the wrong
+// field. The prices below come from the real menu, so "same price" is a fact rather than an assertion.
+{
+  const menu = MENU_BY_RESTAURANT.x_pizza;
+  const pairs = Object.keys(menu).filter((a, i, all) => all.some((b) => b !== a && menu[b] === menu[a]));
+  const [d1, d2] = [pairs[0], pairs.find((x) => x !== pairs[0] && menu[x] === menu[pairs[0]])];
+  assert.ok(d1 && d2 && menu[d1] === menu[d2], `premise: two DIFFERENT x_pizza dishes at the same price (${d1}/${d2} @ ${menu[d1]})`);
+
+  const fp = (items, rid) => cartFingerprint(normalizeCartForFingerprint(items, rid), null);
+  // The crafted shape: same id, different name. x_pizza prices the NAME.
+  assert.notStrictEqual(fp([{ id: 'stable', name: d1, qty: 1 }], 'x_pizza'),
+                        fp([{ id: 'stable', name: d2, qty: 1 }], 'x_pizza'),
+    '🔴 x_pizza: a same-id NAME swap between two same-price dishes fingerprints differently');
+  // …and their nets really are identical, so nothing else could have caught it.
+  const netOf = (items) => computeServerNet({ items, rid: 'x_pizza', tables: T('x_pizza') }).net_total_cents;
+  assert.strictEqual(netOf([{ name: d1, qty: 1 }]), netOf([{ name: d2, qty: 1 }]),
+    'premise: the two carts are NET-IDENTICAL — only the fingerprint can distinguish them');
+
+  // The same hazard one level down: options key the same way their brand's items do.
+  const ex = EXTRAS_BY_RESTAURANT.x_pizza;
+  const exPairs = Object.keys(ex).filter((a, i, all) => all.some((b) => b !== a && ex[b] === ex[a]));
+  if (exPairs.length >= 2) {
+    const [e1, e2] = [exPairs[0], exPairs.find((x) => x !== exPairs[0] && ex[x] === ex[exPairs[0]])];
+    assert.notStrictEqual(fp([{ name: d1, qty: 1, extras: [{ id: 'same', name: e1 }] }], 'x_pizza'),
+                          fp([{ name: d1, qty: 1, extras: [{ id: 'same', name: e2 }] }], 'x_pizza'),
+      `🔴 x_pizza: a same-id OPTION swap (${e1}↔${e2}, both ${ex[e1]}) fingerprints differently`);
+  }
+
+  // la_musa still keys by ID — a swapped NAME on a stable id is the SAME dish there, and must not
+  // change the fingerprint, or the gate would refuse honest la_musa carts whose display name moved.
+  assert.strictEqual(fp([{ id: 'dimsum_01', name: 'Whatever', qty: 1 }], 'la_musa'),
+                     fp([{ id: 'dimsum_01', name: 'Renamed Since', qty: 1 }], 'la_musa'),
+    '🔴 la_musa: keyed by ID, so a display-name change is the same cart');
+  assert.notStrictEqual(fp([{ id: 'dimsum_01', qty: 1 }], 'la_musa'), fp([{ id: 'noodle_02', qty: 1 }], 'la_musa'),
+    'la_musa: …and a different id is a different cart');
+
+  // The brands disagree ON PURPOSE, and the normalization proves it reads the pricing key.
+  assert.strictEqual(normalizeCartForFingerprint([{ id: 'i', name: 'n', qty: 1 }], 'x_pizza')[0].id, 'n', 'x_pizza → name');
+  assert.strictEqual(normalizeCartForFingerprint([{ id: 'i', name: 'n', qty: 1 }], 'la_musa')[0].id, 'i', 'la_musa → id');
+  ok('the fingerprint keys by each brand\'s PRICING key — same-price swaps are caught where the net is silent');
+}
+
+// ── 9. NORMALIZATION NEVER THROWS, AND A QUOTE NEVER 500s BECAUSE OF IT ────────────────────────
+// The seam guarantee T4/T5 will lean on, asserted rather than claimed. A throwing property ACCESSOR
+// is the shape that escaped: the helpers were guarded, the property READ was not.
+{
+  const throwingQty = [{ name: 'Margherita', get qty() { throw new Error('boom'); } }];
+  const throwingExtraQty = [{ name: 'Margherita', qty: 1, extras: [{ name: 'Mozzarella', get qty() { throw new Error('boom'); } }] }];
+  const throwingName = [{ get name() { throw new Error('boom'); }, qty: 1 }];
+  for (const [label, cart] of [['a throwing qty getter', throwingQty], ['a throwing extra-qty getter', throwingExtraQty], ['a throwing name getter', throwingName]]) {
+    assert.strictEqual(normalizeCartForFingerprint(cart, 'x_pizza'), null, `🔴 ${label} returns null, never throws`);
+    withSecret(() => {
+      let issued;
+      assert.doesNotThrow(() => { issued = issueQuote({ items: cart, rid: 'x_pizza', tables: T('x_pizza'), nowMs: 1e6 }); },
+        `🔴 ${label}: issueQuote does not throw — a quote must never 500 on a cart shape`);
+      /* A cart that throws on being READ cannot be priced, so there is no price to serve — what the
+         guarantee buys is a typed refusal instead of a 500. When it CAN be priced, it must still be
+         token-less rather than signed over a fingerprint that means nothing. */
+      assert.ok(issued.ok === false || issued.quote_token === null,
+        `${label}: …refuses in a typed way, or prices without a token — never a signed meaningless token`);
+    });
+  }
+  ok('a throwing property accessor yields null and a token-less quote — never an exception');
 }
 
 console.log(`\nquote-issue: OK (${n})`);
