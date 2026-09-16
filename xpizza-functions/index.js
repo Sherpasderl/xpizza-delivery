@@ -440,6 +440,7 @@ function sanitizePhone(v) {
 // (subtotal == total, tax_cents:0). subtotal_cents + tax_cents === total_cents always.
 // ---------------------------------------------------------------------------
 const { orderBreakdownCents } = require('./order-money');
+const { issueQuote } = require('./quote-issue');   // 1C Task 3 — the ONE quote issuer, shared with the redemption quote
 
 function validateOrderPayload(body, restaurantId, tables = null) {
   const errors = [];
@@ -5858,7 +5859,17 @@ exports.quoteOrder = onRequest(
       if (error) return res.status(200).json({ ok: false, error: 'bad_cart' });
 
       const bd = orderBreakdownCents(total, restaurantId);   // the SAME breakdown the order charges
-      return res.status(200).json({ ok: true, total_cents: bd.total_cents, subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents });
+      /* 1C Task 3 — issue a SIGNED quote alongside the displayed price. The displayed fields are
+         unchanged (byte-identical response for every existing client); the token and net_total_cents
+         are additive. Issued through the shared issuer so this endpoint and the redemption quote
+         cannot develop divergent issuance math — the thing 1C exists to prevent, one layer up. */
+      const issued = issueQuote({ items: body.items, reward: null, rid: restaurantId, tables,
+        customerId: null, nowMs: Date.now() });
+      return res.status(200).json({
+        ok: true, total_cents: bd.total_cents, subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents,
+        ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}),
+        ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}),
+      });
     } catch (e) {
       console.error('quoteOrder', e && e.message);
       return res.status(200).json({ ok: false, error: 'error' });   // fail-soft: never block checkout

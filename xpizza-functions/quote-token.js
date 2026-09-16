@@ -37,6 +37,63 @@ const b64u = (buf) => Buffer.from(buf).toString('base64url');
  * assembled in a different order is the same cart — and a fingerprint that disagreed would refuse
  * honest customers at the charge, which is the failure nobody reports as a bug.
  */
+/* 🔴 THE ONE CART NORMALISATION — the seam between issuing a token and honouring it.
+ *
+ * The issuer (Task 3) and the charge verifiers (Tasks 4/5) see the same cart through DIFFERENT
+ * endpoint shapes, and they must arrive at the same fingerprint or an honest customer is refused at
+ * the charge. That agreement cannot come from two functions that "do the same thing" — it has to be
+ * one function, called from both, which is why this lives beside cartFingerprint rather than at either
+ * call site.
+ *
+ * It also keeps raw client edges away from the hash. cartFingerprint takes what it is given faithfully
+ * (T2 removed its defaults, because repairing a value is how two carts become one hash) — which means
+ * something upstream has to guarantee the values are sane. This is that something:
+ *   • a qty that is not a finite number makes the whole cart unfingerprintable, rather than hashing as
+ *     NaN → null and quietly colliding with every other invalid qty;
+ *   • a key that cannot be stringified — `{ toString: null }` throws on String() — is caught here
+ *     rather than thrown at an endpoint holding whatever the client sent.
+ * Returns null for a cart it cannot normalise, and null means "do not issue a token": the price is
+ * still served, and the client falls back to the unsigned floor. Refusing to fingerprint garbage is
+ * not the same as refusing the customer.
+ */
+function normalizeCartForFingerprint(items) {
+  const key = (o) => {
+    try {
+      const raw = (o && o.id !== undefined && o.id !== null) ? o.id : (o && o.name);
+      if (raw === undefined || raw === null) return null;
+      const k = String(raw);
+      return k === '' ? null : k;
+    } catch (_) { return null; }        // a value whose String() throws is not an identifier
+  };
+  const qty = (v) => {
+    try {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    } catch (_) { return null; }        // Number({toString:null}) throws
+  };
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  const out = [];
+  for (const it of items) {
+    const k = key(it);
+    const q = qty(it && it.qty);
+    if (k === null || q === null) return null;
+    const rawExtras = (it && Array.isArray(it.extras)) ? it.extras : [];
+    const extras = [];
+    for (const e of rawExtras) {
+      const ek = key(e);
+      // An option with no explicit qty means one of it — x_pizza's options are a 0/1 toggle and carry
+      // no qty at all, so defaulting HERE (where the shape is known) is right, while defaulting inside
+      // cartFingerprint (where it is not) was the collision T2 removed.
+      const eq = (e && e.qty === undefined) ? 1 : qty(e && e.qty);
+      if (ek === null || eq === null) return null;
+      extras.push({ id: ek, qty: eq });
+    }
+    out.push({ id: k, qty: q, extras });
+  }
+  return out;
+}
+
 function cartFingerprint(normItems, reward) {
   const keyOf = (o) => (o && o.id !== undefined && o.id !== null ? String(o.id) : String(o && o.name));
 
@@ -150,4 +207,4 @@ function verifyQuoteToken(token, secret, nowMs) {
   }
 }
 
-module.exports = { cartFingerprint, signQuoteToken, verifyQuoteToken };
+module.exports = { cartFingerprint, normalizeCartForFingerprint, signQuoteToken, verifyQuoteToken };

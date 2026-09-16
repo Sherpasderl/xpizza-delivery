@@ -3469,5 +3469,103 @@
    "node",
    "quote-token.test.js"
   ]
+ },
+ {
+  "id": "c3-01",
+  "slice": "c3",
+  "label": "the token's fingerprint ignores the reward — a reward-active cart passes as its plain twin",
+  "file": "quote-issue.js",
+  "from": "      cart_fingerprint: cartFingerprint(norm, reward),",
+  "to": "      cart_fingerprint: cartFingerprint(norm, null),",
+  "command": [
+   "node",
+   "quote-issue.test.js"
+  ]
+ },
+ {
+  "id": "c3-02",
+  "slice": "c3",
+  "label": "the signed net is recomputed instead of taken from computeServerNet",
+  "file": "quote-issue.js",
+  "from": "      net_total_cents: net.net_total_cents,",
+  "to": "      net_total_cents: net.components.base_cents,",
+  "command": [
+   "node",
+   "quote-issue.test.js"
+  ],
+  "equivalent": true,
+  "why": "net_total_cents === components.base_cents for EVERY cart that exists today, and the two reasons are Task 1 findings rather than accidents: delivery_cents is 0 (delivery is free) and add_free does not discount the charged total, so nothing in the current system separates the net from its base. No input can distinguish the two expressions. It becomes KILLABLE the moment either changes — a non-zero delivery slot or a discounting redemption model — and the existing footing assertion in compute-server-net.test.js would fail first. Kept as written because reading the NET is what the payload means; reading base_cents would be correct today by coincidence."
+ },
+ {
+  "id": "c3-03",
+  "slice": "c3",
+  "label": "the cart is fingerprinted RAW, bypassing the shared normalization",
+  "file": "quote-issue.js",
+  "from": "cart_fingerprint: cartFingerprint(norm, reward),",
+  "to": "cart_fingerprint: cartFingerprint(items, reward),",
+  "command": [
+   "node",
+   "quote-issue.test.js"
+  ]
+ },
+ {
+  "id": "c3-04",
+  "slice": "c3",
+  "label": "an absent secret throws instead of degrading — the quote endpoint breaks",
+  "file": "quote-issue.js",
+  "from": "  if (!secret) return result;                    // unprovisioned → price without a token",
+  "to": "  if (!secret) throw new Error('no secret');",
+  "command": [
+   "node",
+   "quote-issue.test.js"
+  ]
+ },
+ {
+  "id": "c3-05",
+  "slice": "c3",
+  "label": "an unfingerprintable cart is signed anyway",
+  "file": "quote-issue.js",
+  "from": "  if (!norm) return result;                      // unfingerprintable → price without a token",
+  "to": "  if (!norm) { /* sign anyway */ }",
+  "command": [
+   "node",
+   "quote-issue.test.js"
+  ]
+ },
+ {
+  "id": "c3-06",
+  "slice": "c3",
+  "label": "the redemption reference is dropped from the payload",
+  "file": "quote-issue.js",
+  "from": "      redemption_ref: redemptionRef || null,",
+  "to": "      redemption_ref: null,",
+  "command": [
+   "node",
+   "quote-issue.test.js"
+  ]
+ },
+ {
+  "id": "c3-07",
+  "slice": "c3",
+  "label": "the token never expires",
+  "file": "quote-issue.js",
+  "from": "      expires_at: nowMs + EXPIRY_MS,",
+  "to": "      expires_at: nowMs + 1e15,",
+  "command": [
+   "node",
+   "quote-issue.test.js"
+  ]
+ },
+ {
+  "id": "c3-08",
+  "slice": "c3",
+  "label": "the quote_id nonce is constant, so two quotes are one quote",
+  "file": "quote-issue.js",
+  "from": "      quote_id: crypto.randomUUID(),             // a nonce, so two identical quotes are still two quotes",
+  "to": "      quote_id: 'fixed',",
+  "command": [
+   "node",
+   "quote-issue.test.js"
+  ]
  }
 ]

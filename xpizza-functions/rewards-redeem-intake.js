@@ -16,6 +16,7 @@
 const { computeRedemption, redemptionFingerprint } = require('./rewards-redeem');
 const { requireTables } = require('./catalog/pricing-tables');   // 1b-1b GRILL-FIX #2 — the hard contract
 const { applyRedemptionToPricing } = require('./rewards-redeem-pricing');
+const { issueQuote } = require('./quote-issue');   // 1C Task 3 — the ONE quote issuer, shared with quoteOrder
 const { reserveRedemption } = require('./rewards-reserve');
 const { REDEMPTION_CONFIG_VERSION, redemptionEnabled } = require('./rewards-redeem-config');
 const { checkItemAvailability } = require('./availability-gate');
@@ -116,10 +117,23 @@ async function quoteRedemptionCore(db, { redeem, items, restaurantId, customerUi
   if (available < cost) return { ok: false, status: 409, body: { error: 'redemption_reserve_failed', reason: 'insufficient' } };
   const p = prep.priced;
   const savings_cents = prep.freeItems.reduce((s, fi) => s + (Number(fi.price_cents) || 0) * (Number(fi.qty) || 1), 0);
+  /* 1C Task 3 — the SIGNED quote for a reward-active cart, issued through the SAME issuer the
+     non-redemption quote uses, so the net signed here is byte-identical to the one Tasks 4/5 will
+     recompute at the charge.
+     🔴 THE REWARD'S PROVENANCE COMES FROM THE RESOLVED REDEMPTION, NOT FROM THE NET. Task 1 measured
+     that a la_musa reward is net-invariant — add_free adds a free line rather than discounting, and
+     la_musa has no ISV split — so the amount cannot distinguish a reward-active cart from its plain
+     twin. prep.redemption is the object the CHARGE path resolves too, and prep.redemptionFp is its
+     stable reference; both go into the token so issuer and verifier bind the identical reward. */
+  const issued = issueQuote({ items, reward: prep.redemption, redemptionRef: prep.redemptionFp,
+    rid: restaurantId, tables, customerId: customerUid, nowMs: Date.now() });
+
   return { ok: true, discount_cents: p.discount_cents, total_cents: p.total_cents, subtotal_cents: p.subtotal_cents, tax_cents: p.tax_cents,
     free_items: prep.freeItems.map((fi) => ({ item_id: fi.item_id, qty: fi.qty, name: fi.name, price_cents: fi.price_cents })),
     free_item: { name: prep.freeName || null },   // back-compat singular (first item)
-    total_cost: cost, remaining: available - cost, savings_cents };
+    total_cost: cost, remaining: available - cost, savings_cents,
+    ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}),
+    ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}) };
 }
 
 module.exports = { prepareRedemption, resolveRedemptionForOrder, quoteRedemptionCore, fingerprintExtra };
