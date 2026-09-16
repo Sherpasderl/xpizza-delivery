@@ -426,11 +426,18 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   function restoreRedeem(payload, quote, items) {
     if (!payload) return;
     _redeemPending = payload;
-    _redeemQuote = (quote && quote.ok) ? quote : null;
-    // Stamped from the cart being restored ALONGSIDE it. Without the stamp a restored quote would fail
-    // the gate and a resumed payment could never be completed; with a stamp taken from anything other
-    // than the restored cart it would pass while meaning nothing.
-    _redeemQuoteSig = _redeemQuote ? redeemSig(items || null, payload) : null;
+    /* 🔴 A RESTORED QUOTE IS DROPPED, NOT RE-CERTIFIED. An earlier version stamped the SAVED quote with
+       the CURRENT cart and menu version, which is a false "fresh": the snapshot came out of storage
+       after an unknown interval and across a payment redirect, and nothing about it says the prices it
+       was computed from are still the prices now. Stamping it with today's version asserted exactly the
+       thing that could not be known — and it was the one false-certification a client could reach.
+       The reward itself is KEPT (the customer has not lost it) and the quote is dropped, so the send
+       gate refuses until a re-quote lands. The caller re-quotes immediately on restore; until it
+       answers, a resumed payment is blocked rather than completed at a price nobody verified.
+       `quote` and `items` are still accepted so the call sites and the saved snapshot shape are
+       unchanged — the quote is deliberately not trusted, which is the whole point. */
+    _redeemQuote = null;
+    _redeemQuoteSig = null;
     // Rebuild the picker state so rkTicketHtml() renders the APPLIED ticket (pizza name / premio count), not the
     // offer — the applied punch ticket reads _rkPick.name; the applied points ticket reads rkUnits() from _rkQty.
     if (payload.type === 'free_pizza_choice') { _rkPick = { key: payload.item_id, name: payload.name }; _rkQty = {}; }

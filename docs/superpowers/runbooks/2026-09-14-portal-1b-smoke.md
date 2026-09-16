@@ -128,20 +128,27 @@ checkout-hold, which understated it:
 | **Modal-hold / retry-hold** | The same deferral while a dish modal is open, or between createOrder retry attempts. |
 | **Capture failure** | A synchronous failure in the apply path applies nothing (whole-flow cell 12) — the screen is intact but the catalog has moved. |
 | **Failed quote** | When the server cannot price a cart the display falls open to client-side arithmetic over captured prices. |
+| **Reward browser/server skew** | A reward quote is stamped with what the BROWSER has observed. If the server's catalog has moved and the browser has not seen it yet, the stamp is self-consistent and the reward total can still differ from the charge. The client gate cannot close this — only a server-side comparison can, which is 1C's confirmed-total gate. |
 
 `whole-flow.test.mjs` cell 12 **documents** this window and asserts the surrounding no-op properties; it
 deliberately does **not** execute the mismatch as an assertion, because doing so would pin a
 displayed-vs-charged difference as correct. The figures quoted there come from a measurement taken while
 investigating it, not from an assertion the suite runs.
 
-**Rewards — made SAFE in T9, freshness deferred to 1C.** An active reward used to keep its own quote
+**Rewards — NARROWED in T9, the residual closed by 1C.** An active reward used to keep its own quote
 across a live apply, so a reprice left the discounted total standing with no hold involved at all
 (reproduced at L340 shown / L410 charged). Two things changed, and the distinction matters: the apply
 now re-**quotes** the reward, which NARROWS the window; and the reward quote is now **stamped with the
 cart and reward it was priced for**, so a quote that no longer matches cannot reach a charge — the send
-refuses instead. That makes the window SAFE, not closed. A customer can still be stopped and asked to
-wait a moment while the reward re-prices; making that seamless is 1C's job, with the same
-confirmed-total gate.
+refuses instead. That NARROWS the window; it does not close it. What the client gate can see, it blocks — a reprice or
+rollback the browser observed, a late reply for a superseded reward, a missing or throwing matcher, an
+uncomputable menu version, and a restored payment snapshot (whose saved quote is now dropped rather
+than re-certified). What it cannot see, it cannot block: if the SERVER's catalog has moved and the
+browser has not yet observed it, the browser's stamp is self-consistent and the reward total can still
+differ from what the server charges. That **browser/server pricing skew is a documented 1C window**, in
+the same class as cell 12, and 1C's confirmed-total gate closes it server-side where the comparison can
+actually be made. A customer can also be stopped and asked to wait while the reward re-prices; making
+that seamless is 1C's too.
 
 **1B narrows this window everywhere else.** Before 1B the form showed a static committed bundle while
 the server charged the live catalog — the same mismatch, with no upper bound on how stale the display

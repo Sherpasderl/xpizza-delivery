@@ -78,10 +78,15 @@ function serverTotalCents(dir, menu, items) {
 async function boot(dir) {
   const B = BRAND[dir];
   const w = loadForm(dir);
-  const st = { menuNow: null, quotes: 0, charges: [] };
+  const st = { menuNow: null, quotes: 0, charges: [], redeemQuotes: 0,
+               redeemReply: { ok: true, total_cents: 5000, savings_cents: 1000, free_items: [], remaining: 0, total_cost: 0 } };
   const idle = new Promise(() => {});
   w.__respond = (url, init) => {
     if (url.includes('/menu/')) return res(envelope(B.rid, st.menuNow));
+    if (url.includes('quoteRedemption')) {
+      st.redeemQuotes += 1;
+      return res(st.redeemReply);
+    }
     if (url.includes('quoteOrder')) {
       st.quotes += 1;
       const items = JSON.parse((init && init.body) || '{}').items || [];
@@ -97,6 +102,27 @@ async function boot(dir) {
     return idle;                                  // everything else hangs — see the harness note
   };
   return { w, B, st };
+}
+
+/* 🔴 AN AUTHENTICATED SESSION, so a blocked send is attributable to the REWARD gate. Both charge paths
+   guard on the ID token BEFORE the send gate — with a reward pending and no token they bail at
+   "No pudimos verificar tu sesión". A reward cell without a session would therefore observe "nothing
+   charged" and prove nothing about the gate under test: the auth guard would have done it. */
+function authenticate(ctx) {
+  ctx.w.__ACCOUNT = Object.assign({}, ctx.w.__ACCOUNT, {
+    customerIdToken: () => Promise.resolve('test-id-token'),
+  });
+}
+
+/* Install a reward AND a legitimately-stamped quote through the module's OWN writers: restoreRedeem
+   sets the pending reward and deliberately drops any saved quote, then requoteRedeem fetches and stamps
+   one against the current cart and menu version. Hand-stamping would be inventing the very state the
+   gate is supposed to derive. */
+async function installReward(ctx, reward) {
+  const acct = ctx.w.__ACCOUNT;
+  acct.restoreRedeem(reward, null, null);
+  await acct.requoteRedeem(ctx.w.redeemCartItems());
+  await settle();
 }
 
 /* Publish a snapshot: the server's pricing basis and the form's feed move TOGETHER, in that order,
@@ -547,8 +573,8 @@ for (const dir of Object.keys(BRAND)) {
 
     const items = ctx.w.redeemCartItems();
     const reward = { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] };
-    const quote = { ok: true, total_cents: 5000, savings_cents: 1000, free_items: [], remaining: 0, total_cost: 0 };
-    ctx.w.__ACCOUNT.restoreRedeem(reward, quote, items);
+    authenticate(ctx);
+    await installReward(ctx, reward);
     assert.strictEqual(ctx.w.__ACCOUNT.getRedeemQuoteTotalCents(), 5000,
       `${dir}/reward: premise — a real reward quote is standing`);
     assert.strictEqual(ctx.w.__ACCOUNT.redeemQuoteMatches(ctx.w.redeemCartItems()), true,
@@ -566,25 +592,21 @@ for (const dir of Object.keys(BRAND)) {
        exists. Driving it by re-rendering was tried and is not viable: a cart change re-renders the
        redeem affordance, which clears the reward, so the UI would be disposing of the very state under
        test and the cell would pass for the wrong reason. */
+    /* 🔴 WHAT ACTUALLY HAPPENS ON A CART CHANGE — asserted rather than assumed, because it decides
+       whether this vector is an exposure at all. Changing the cart re-renders the redeem affordance,
+       and that CLEARS the pending reward outright. So a reward cannot go stale by cart change: there is
+       no reward left to be stale. An earlier draft of this cell tried to force that state and could
+       only do it by hand-stamping, which would have been asserting against a fixture.
+       The vector where a reward DOES survive and go stale is the priced-menu version — cell 14c. */
     ctx.w.chg(d.id, 1);
     await settle();
-    ctx.w.__ACCOUNT.restoreRedeem(reward, quote, items);      // …still stamped for the ORIGINAL cart
-    assert.strictEqual([...ctx.w.cartConflicts()].length, 0,
-      `${dir}/reward: non-vacuity — the cart is NOT conflicted, so only the reward can refuse this`);
-    assert.strictEqual(ctx.w.__ACCOUNT.getRedeemQuoteTotalCents(), 5000,
-      `${dir}/reward: non-vacuity — the stale reward total is still STANDING (this is the bug's input)`);
-    assert.notDeepStrictEqual(JSON.stringify(items), JSON.stringify(ctx.w.redeemCartItems()),
-      `${dir}/reward: non-vacuity — and the cart really did change under it`);
-    assert.strictEqual(ctx.w.__ACCOUNT.redeemQuoteMatches(ctx.w.redeemCartItems()), false,
-      `${dir}/reward: 🔴 …and it no longer matches the cart`);
-
-    const r = await sendAndJudge(ctx, dir, 'reward-stale');
-    assert.strictEqual(r.outcome, 'refused',
-      `${dir}/reward: 🔴 a reward quote priced for a DIFFERENT cart can never reach a charge`);
-    const err = ctx.w.document.getElementById('err3') || ctx.w.document.getElementById('err1');
-    assert.match((err && err.textContent) || '', /premio/i,
-      `${dir}/reward: 🔴 …and the customer is told it is the reward, not a generic conflict`);
-    ok(`${dir}: a reward quote is only good for the cart it was priced for — a stale one blocks the charge`);
+    assert.strictEqual(ctx.w.__ACCOUNT.getRedeemPayload(), null,
+      `${dir}/reward: a cart change CLEARS the pending reward — so this vector cannot leave a stale one`);
+    assert.strictEqual(ctx.w.__ACCOUNT.getRedeemQuoteTotalCents(), null,
+      `${dir}/reward: …and its total goes with it`);
+    assert.strictEqual(ctx.w.refuseConflictedSend('reward-cleared'), false,
+      `${dir}/reward: …leaving an ordinary cart, which the reward gate has no reason to block`);
+    ok(`${dir}: a reward is quoted for the cart it was priced for, and a cart change clears it outright`);
   }
 
   /* ── CELL 14c: THE REPRICE-THEN-ROLLBACK ESCAPE ────────────────────────────────────────────────
@@ -601,9 +623,9 @@ for (const dir of Object.keys(BRAND)) {
     const d = plainDish(ctx.w);
     await addToCart(ctx, d);
     const reward = { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] };
-    const quote = { ok: true, total_cents: 5000, savings_cents: 1000, free_items: [], remaining: 0, total_cost: 0 };
+    authenticate(ctx);
     const itemsAt1 = ctx.w.redeemCartItems();
-    ctx.w.__ACCOUNT.restoreRedeem(reward, quote, itemsAt1);
+    await installReward(ctx, reward);
     const v1 = ctx.w.liveMenuPriceVersion();
     assert.ok(v1, `${dir}/rollback: premise — the priced-menu version is computable`);
     assert.strictEqual(ctx.w.__ACCOUNT.redeemQuoteMatches(ctx.w.redeemCartItems()), true,
@@ -615,7 +637,13 @@ for (const dir of Object.keys(BRAND)) {
        because no reward was left to be stale. Mutating the record changes exactly one thing, the
        priced-menu version, which is the variable this cell exists to isolate. The apply path is
        covered by cell 14; what is proved here is that the VERSION is in the signature at all. */
-    const rec = ctx.w.liveMenuGlobalGet('MENU').find((x) => String(x.id) === String(d.id));
+    /* 🔴 THE DISH MOVED IS ONE THAT IS **NOT IN THE CART**. Repricing the cart's own dish would ALSO
+       mark its line conflicted, and then the send gate would refuse for two reasons at once — the
+       assertion below would pass on the conflict and say nothing about the reward. Moving an unrelated
+       dish changes the priced-menu version and leaves the cart perfectly resolved, so the reward is the
+       only thing that can refuse. This is the same attribution trap as the auth guard, one layer in. */
+    const rec = ctx.w.liveMenuGlobalGet('MENU').find((x) => x.price > 0 && String(x.id) !== String(d.id));
+    assert.ok(rec, `${dir}/rollback: premise — there is an unrelated dish to reprice`);
     const priceAt1 = rec.price;
     assert.deepStrictEqual(
       ctx.w.redeemCartItems().map((i) => [i.name, i.qty]), itemsAt1.map((i) => [i.name, i.qty]),
@@ -626,15 +654,24 @@ for (const dir of Object.keys(BRAND)) {
       `${dir}/rollback: 🔴 the priced-menu version MOVED with the reprice`);
     assert.strictEqual(ctx.w.__ACCOUNT.redeemQuoteMatches(ctx.w.redeemCartItems()), false,
       `${dir}/rollback: 🔴 …so the reward quote no longer matches, and cannot reach a charge`);
+    assert.strictEqual([...ctx.w.cartConflicts()].length, 0,
+      `${dir}/rollback: non-vacuity — the CART is unconflicted, so only the reward can refuse`);
     assert.strictEqual(ctx.w.refuseConflictedSend('rollback-v2'), true,
-      `${dir}/rollback: 🔴 …and the send gate refuses at v2`);
+      `${dir}/rollback: 🔴 …and the send gate refuses at v2, on the reward alone`);
 
     rec.price = priceAt1;                            // …rolled back: the CART never changed at any point
     assert.strictEqual(ctx.w.liveMenuPriceVersion(), v1,
       `${dir}/rollback: the version returns to v1 on rollback`);
     assert.strictEqual(ctx.w.__ACCOUNT.redeemQuoteMatches(ctx.w.redeemCartItems()), true,
       `${dir}/rollback: 🔴 …and the v1-stamped quote matches again — the digest is not a one-way latch`);
-    ok(`${dir}: reprice-then-rollback — the priced-menu version is what makes a stale reward quote mismatch`);
+    /* 🔴 THE RESIDUAL, RECORDED AND NOT ASSERTED — the 1C entry point for rewards, in the same class as
+       cell 12. Everything above is what the BROWSER can observe. The stamp is taken from what the
+       browser has seen, so if the SERVER's catalog has moved and this form has not fetched it yet, the
+       stamp is self-consistent, the gate allows, and the reward total can still differ from the charge.
+       No client-side signature can close that: the comparison has to happen where both numbers exist,
+       which is 1C's confirmed-total gate. Recorded here so the boundary is visible at the exact line
+       that would otherwise read as "rewards are now safe, full stop". */
+    ok(`${dir}: reprice-then-rollback — the priced-menu version is what makes a stale reward quote mismatch (browser-observed; server skew is 1C)`);
   }
 
   /* ── CELL 14d: THE GATE FAILS CLOSED ───────────────────────────────────────────────────────────
@@ -646,8 +683,8 @@ for (const dir of Object.keys(BRAND)) {
     const d = plainDish(ctx.w);
     await addToCart(ctx, d);
     const reward = { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] };
-    const quote = { ok: true, total_cents: 5000, savings_cents: 1000, free_items: [], remaining: 0, total_cost: 0 };
-    ctx.w.__ACCOUNT.restoreRedeem(reward, quote, ctx.w.redeemCartItems());
+    authenticate(ctx);
+    await installReward(ctx, reward);
     assert.strictEqual(ctx.w.refuseConflictedSend('probe'), false, `${dir}/fail-closed: premise — fresh, allowed`);
 
     const realMatch = ctx.w.__ACCOUNT.redeemQuoteMatches;
@@ -673,14 +710,16 @@ for (const dir of Object.keys(BRAND)) {
     const d = plainDish(ctx.w);
     await addToCart(ctx, d);
     const reward = { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] };
-    const quote = { ok: true, total_cents: 5000, savings_cents: 1000, free_items: [], remaining: 0, total_cost: 0 };
-    const itemsA = ctx.w.redeemCartItems();
-    ctx.w.__ACCOUNT.restoreRedeem(reward, quote, itemsA);
-    ctx.w.chg(d.id, 1);
-    await settle();
-    ctx.w.__ACCOUNT.restoreRedeem(reward, quote, itemsA);     // stale: stamped for the pre-change cart
+    authenticate(ctx);
+    await installReward(ctx, reward);
+    /* Made stale the way a reward actually goes stale — the menu reprices under it (cell 14c's vector),
+       not a cart change, which simply clears the reward. */
+    const other = ctx.w.liveMenuGlobalGet('MENU').find((x) => x.price > 0 && String(x.id) !== String(d.id));
+    other.price = other.price + 55;      // an UNRELATED dish — the cart line stays resolved
+    assert.strictEqual([...ctx.w.cartConflicts()].length, 0,
+      `${dir}/reward-happy: non-vacuity — the cart is unconflicted, so the reward is the only blocker`);
     assert.strictEqual(ctx.w.refuseConflictedSend('probe'), true, `${dir}/reward-happy: premise — stale, so blocked`);
-    ctx.w.__ACCOUNT.restoreRedeem(reward, quote, ctx.w.redeemCartItems());   // the re-quote lands
+    await ctx.w.__ACCOUNT.requoteRedeem(ctx.w.redeemCartItems());   // the re-quote lands, at the new version
     assert.strictEqual(ctx.w.refuseConflictedSend('probe'), false,
       `${dir}/reward-happy: 🔴 a reward re-priced for the current cart is orderable again`);
     assert.strictEqual(ctx.w.buildOrder(), true,

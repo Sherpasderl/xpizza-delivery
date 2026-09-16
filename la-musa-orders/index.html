@@ -4409,7 +4409,10 @@ function restoreOrderForm(){
     }
     renderMenu(); updateCart(); updateTotal();
     // D: restore the selected redeem → re-render the golden ticket + sync the discounted total/summary; the resumed order re-attaches the SAME redeem.
-    try{ if(snap.redeem && window.__ACCOUNT && window.__ACCOUNT.restoreRedeem){ window.__ACCOUNT.restoreRedeem(snap.redeem, snap.redeemQuote, (function(){ try { return redeemCartItems(); } catch(_) { return null; } })()); if(typeof renderRedeemUI==='function') renderRedeemUI(); try{ const _q=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuote)?window.__ACCOUNT.getRedeemQuote():null; if(typeof applyRedeemQuoteToTotals==='function') applyRedeemQuoteToTotals(_q); }catch(_){} } }catch(_){}
+    try{ if(snap.redeem && window.__ACCOUNT && window.__ACCOUNT.restoreRedeem){ window.__ACCOUNT.restoreRedeem(snap.redeem, snap.redeemQuote, null);
+            /* …and re-quote at once. restoreRedeem deliberately drops the saved quote rather than
+               re-certifying it, so without this the resumed payment would stay blocked. */
+            try { if (typeof window.__ACCOUNT.requoteRedeem === 'function') Promise.resolve(window.__ACCOUNT.requoteRedeem(redeemCartItems())).catch(function(){}); } catch(_){} if(typeof renderRedeemUI==='function') renderRedeemUI(); try{ const _q=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuote)?window.__ACCOUNT.getRedeemQuote():null; if(typeof applyRedeemQuoteToTotals==='function') applyRedeemQuoteToTotals(_q); }catch(_){} } }catch(_){}
     showStage('s2', 50);
     window.__scheduledFor = snap.scheduledFor || null;
     window.__timeMode = snap.timeMode || 'standard';
