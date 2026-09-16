@@ -171,10 +171,13 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
        net at the charge and must price it from the same resolved tables the order does — pricing the
        gate's recompute from anything else would be the split-brain this census exists to prevent, so
        the right response to it was to enumerate it, not to relax the count. */
-    assert.ok(/applyConfirmedNetGate\(\{[\s\S]{0,600}?tables: pricingTables/.test(SRC),
-      'the confirmed-net gate must receive tables: pricingTables (1C T4)');
-    assert.strictEqual((SRC.match(/tables: pricingTables/g) || []).length, 6,
-      'the 3 redemption seams + the 2 reorder-attribution sites + the 1C confirmed-net gate share the ONE resolved pricingTables');
+    /* Both charge endpoints gate now (1C T4 cash, T5 card), and each recompute must price from the one
+       resolved table set its handler already resolved — pricing a gate's recompute from anything else
+       is precisely the split-brain this census exists to prevent. Enumerated, not relaxed. */
+    assert.strictEqual((SRC.match(/applyConfirmedNetGate\(\{[\s\S]{0,700}?tables: pricingTables/g) || []).length, 2,
+      'BOTH confirmed-net gates (cash + card) must receive tables: pricingTables (1C T4/T5)');
+    assert.strictEqual((SRC.match(/tables: pricingTables/g) || []).length, 7,
+      'the 3 redemption seams + the 2 reorder-attribution sites + the 2 confirmed-net gates share the ONE resolved pricingTables');
     assert.strictEqual((SRC.match(/attachCustomerAttribution\([^;]*?tables: pricingTables[^;]*?\);/g) || []).length, 2,
       'and 2 of the 5 are the attribution sites (reorder recipe), not extra redemption seams');
     // THE invariant: each order handler resolves the tables exactly once. Two resolves in one handler

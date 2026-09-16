@@ -1229,6 +1229,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // 409/401, no attempt/URL). No `redeem` → byte-identical online path (effTotal===total, items_text unchanged).
   let redemptionCanonical = null, redemptionPriced = null, redemptionCost = 0, redemptionFreeName = null;
   let redemptionFreeItems = null, redemptionFp = '';   // v2: full free-item set (summary) + canonical-set hash (fingerprint fold-in)
+  let redemptionResolved = null;   // 1C T5: the RESOLVED redemption the quote's token was issued over — the gate must bind this exact object (the cash path captures the same thing)
   let effTotal = total;
   if (body.redeem != null) {
     const prep = await prepareRedemption(db, { redeem: body.redeem, items: body.items, restaurantId,
@@ -1240,6 +1241,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     redemptionFreeName = prep.freeName || null;
     redemptionFreeItems = prep.freeItems || null;
     redemptionFp = prep.redemptionFp || '';
+    redemptionResolved = prep.redemption || null;   // 1C T5 — same computeRedemption output the issuer fingerprinted
     effTotal = prep.priced.total_lempiras;
     fields.items_text = prep.itemsText;   // free-item display line → flows into BOTH fingerprints + the pending order
   }
@@ -1584,6 +1586,39 @@ chargeOnlineApp.all('*', async (req, res) => {
   if (acq.outcome !== 'claimed') {
     await releaseHoldIfOwned();   // abandoned: no fresh attempt minted
     return res.status(503).json({ error: 'Could not start payment', detail: 'please retry', order_id: orderId });
+  }
+
+  /* ── 🔴 1C TASK 5 — THE CONFIRMED-NET GATE, ON A FRESH MINT ONLY ─────────────────────────────
+     Placement is the whole subtlety here, and every one of the early returns above is load-bearing for
+     it. `reuse` (200, hands back the SAME checkout_url) and `in_progress` (202) return before this
+     point, which is what makes a customer RESUMING from PixelPay immune to a price that moved while
+     they were on the payment page — they are never re-gated, and the live checkout they are returning
+     to keeps the amount it was minted with. That is not a happy accident of ordering: re-gating a
+     resume would refuse a payment already in flight, which is the worst possible moment to introduce
+     friction.
+     Two further properties fall out of sitting here: payment_fingerprint already binds the amount, so
+     a resume whose total changed becomes a `conflict` 409 rather than a silent re-charge; and this is
+     BEFORE createHostedCharge, so a refusal creates no PixelPay checkout at all.
+     A refusal does leave a claimed attempt on a pending_payment order. That is the same shape as every
+     abandoned-outcome bailout above — no money moved, no URL exists, and the sweep reaps it. */
+  {
+    const applied = await applyConfirmedNetGate({
+      gateInput: {
+        token: body.quote_token, submittedCart: body.items, reward: redemptionResolved,
+        rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,
+        enforce: false,                          // T6 flips this; both branches are built and tested
+        nowMs: Date.now(),
+      },
+      recordedTotalCents: effBreakdown.total_cents,   // === total_cents === the amount handed to createHostedCharge
+      releaseHold: releaseHoldIfOwned,                // the card path's OWN release: it frees only a debit we own, so a reused/in-progress hold is preserved
+      orderId,
+    });
+    if (applied.refuse) return res.status(applied.refuse.status).json(applied.refuse.body);
+    if (applied.provenance) {
+      // Stamped on the pending order, which already exists by now — the same two facts the cash path
+      // records: the ceiling the customer accepted and the amount about to be charged.
+      await db.ref(`orders/${orderId}/quote`).set(applied.provenance).catch(() => {});
+    }
   }
 
   // Claimed a FRESH attempt → bind it to the reservation (attempt_id + hosted_expires_at) for the sweep +

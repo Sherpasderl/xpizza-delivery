@@ -3819,5 +3819,53 @@
    "node",
    "token-gate.test.js"
   ]
+ },
+ {
+  "id": "c5-01",
+  "slice": "c5",
+  "label": "the card gate checks a number that is not the one charged",
+  "file": "index.js",
+  "from": "      recordedTotalCents: effBreakdown.total_cents,   // === total_cents === the amount handed to createHostedCharge",
+  "to": "      recordedTotalCents: 0,",
+  "command": [
+   "node",
+   "charge-gate-placement.test.js"
+  ]
+ },
+ {
+  "id": "c5-02",
+  "slice": "c5",
+  "label": "the card path open-codes a release instead of the owned-only one, over-releasing a shared hold",
+  "file": "index.js",
+  "from": "      releaseHold: releaseHoldIfOwned,                // the card path's OWN release: it frees only a debit we own, so a reused/in-progress hold is preserved",
+  "to": "      releaseHold: async () => { await releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }).catch(() => {}); },",
+  "command": [
+   "node",
+   "charge-gate-placement.test.js"
+  ]
+ },
+ {
+  "id": "c5-03",
+  "slice": "c5",
+  "label": "the card gate stops binding the resolved reward",
+  "file": "index.js",
+  "from": "        token: body.quote_token, submittedCart: body.items, reward: redemptionResolved,\n        rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,\n        enforce: false,                          // T6 flips this; both branches are built and tested",
+  "to": "        token: body.quote_token, submittedCart: body.items, reward: null,\n        rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,\n        enforce: false,",
+  "command": [
+   "node",
+   "charge-gate-placement.test.js"
+  ]
+ },
+ {
+  "id": "c5-04",
+  "slice": "c5",
+  "label": "the card path never captures the resolved reward from prep",
+  "file": "index.js",
+  "from": "    redemptionResolved = prep.redemption || null;   // 1C T5 — same computeRedemption output the issuer fingerprinted",
+  "to": "    redemptionResolved = null;",
+  "command": [
+   "node",
+   "charge-gate-placement.test.js"
+  ]
  }
 ]
