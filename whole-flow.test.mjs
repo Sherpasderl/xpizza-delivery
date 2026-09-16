@@ -108,7 +108,15 @@ async function boot(dir) {
    guard on the ID token BEFORE the send gate — with a reward pending and no token they bail at
    "No pudimos verificar tu sesión". A reward cell without a session would therefore observe "nothing
    charged" and prove nothing about the gate under test: the auth guard would have done it. */
-function authenticate(ctx) {
+const ACCT_MARKER = { 'xpizza-orders': 'xpizza_acct', 'la-musa-orders': 'lamusa_acct' };
+function authenticate(ctx, dir) {
+  /* 🔴 THE LOCAL MARKER, NOT JUST A TOKEN. account.js decides guest-vs-customer from the localStorage
+     marker — `if (!m || !m.name)` clears any pending reward outright — so a fixture with only an ID
+     token is still a GUEST to the redeem code. Cell 14 previously observed a reward clearing on a cart
+     change and reported it as general behaviour; it was the guest branch, and the cell was describing
+     the fixture rather than the form. The token is still installed because both charge paths check it
+     BEFORE the send gate, and without it a reward send bails at the session guard instead. */
+  try { ctx.w.localStorage.setItem(ACCT_MARKER[dir], JSON.stringify({ uid: 'u-test', name: 'Cliente Prueba' })); } catch (_) {}
   ctx.w.__ACCOUNT = Object.assign({}, ctx.w.__ACCOUNT, {
     customerIdToken: () => Promise.resolve('test-id-token'),
   });
@@ -573,7 +581,7 @@ for (const dir of Object.keys(BRAND)) {
 
     const items = ctx.w.redeemCartItems();
     const reward = { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] };
-    authenticate(ctx);
+    authenticate(ctx, dir);
     await installReward(ctx, reward);
     assert.strictEqual(ctx.w.__ACCOUNT.getRedeemQuoteTotalCents(), 5000,
       `${dir}/reward: premise — a real reward quote is standing`);
@@ -592,21 +600,35 @@ for (const dir of Object.keys(BRAND)) {
        exists. Driving it by re-rendering was tried and is not viable: a cart change re-renders the
        redeem affordance, which clears the reward, so the UI would be disposing of the very state under
        test and the cell would pass for the wrong reason. */
-    /* 🔴 WHAT ACTUALLY HAPPENS ON A CART CHANGE — asserted rather than assumed, because it decides
-       whether this vector is an exposure at all. Changing the cart re-renders the redeem affordance,
-       and that CLEARS the pending reward outright. So a reward cannot go stale by cart change: there is
-       no reward left to be stale. An earlier draft of this cell tried to force that state and could
-       only do it by hand-stamping, which would have been asserting against a fixture.
-       The vector where a reward DOES survive and go stale is the priced-menu version — cell 14c. */
+    /* 🔴 WHAT AN AUTHENTICATED CUSTOMER'S CART CHANGE ACTUALLY DOES — and the earlier version of this
+       cell got it wrong in a way worth recording. It asserted that a cart change CLEARS the pending
+       reward, so "there is nothing left to go stale". That is the GUEST branch: account.js decides from
+       the localStorage marker, and the fixture installed only an ID token, so the redeem code treated
+       the session as a guest and cleared the reward. The cell was describing its own fixture.
+       With a real marker the reward SURVIVES the cart change — which is the case that matters, since a
+       reward only exists for a signed-in customer. The quote is then stale by CART, and the gate
+       refuses it. So the gate's coverage is BROADER than the old cell claimed, not narrower: it handles
+       the survivor rather than relying on the reward having been cleared. */
     ctx.w.chg(d.id, 1);
     await settle();
-    assert.strictEqual(ctx.w.__ACCOUNT.getRedeemPayload(), null,
-      `${dir}/reward: a cart change CLEARS the pending reward — so this vector cannot leave a stale one`);
-    assert.strictEqual(ctx.w.__ACCOUNT.getRedeemQuoteTotalCents(), null,
-      `${dir}/reward: …and its total goes with it`);
-    assert.strictEqual(ctx.w.refuseConflictedSend('reward-cleared'), false,
-      `${dir}/reward: …leaving an ordinary cart, which the reward gate has no reason to block`);
-    ok(`${dir}: a reward is quoted for the cart it was priced for, and a cart change clears it outright`);
+    assert.ok(ctx.w.__ACCOUNT.getRedeemPayload(),
+      `${dir}/reward: an AUTHENTICATED customer's reward SURVIVES a cart change — it is not cleared`);
+    assert.strictEqual(ctx.w.__ACCOUNT.getRedeemQuoteTotalCents(), 5000,
+      `${dir}/reward: …and its total is still standing, priced for the cart before the change`);
+    assert.notDeepStrictEqual(items.map((i) => [i.name, i.qty]),
+      ctx.w.redeemCartItems().map((i) => [i.name, i.qty]),
+      `${dir}/reward: non-vacuity — the cart really did change under it`);
+    assert.strictEqual([...ctx.w.cartConflicts()].length, 0,
+      `${dir}/reward: non-vacuity — the cart is UNCONFLICTED, so only the reward can refuse the send`);
+    assert.strictEqual(ctx.w.__ACCOUNT.redeemQuoteMatches(ctx.w.redeemCartItems()), false,
+      `${dir}/reward: 🔴 the surviving quote no longer matches the cart it was priced for`);
+    const r = await sendAndJudge(ctx, dir, 'reward-stale-cart');
+    assert.strictEqual(r.outcome, 'refused',
+      `${dir}/reward: 🔴 …and the send is refused — the gate handles the SURVIVOR, it does not rely on a clear`);
+    const err = ctx.w.document.getElementById('err3') || ctx.w.document.getElementById('err1');
+    assert.match((err && err.textContent) || '', /premio/i,
+      `${dir}/reward: 🔴 …naming the reward, not a generic conflict`);
+    ok(`${dir}: an authenticated customer's reward SURVIVES a cart change and the gate refuses the stale quote`);
   }
 
   /* ── CELL 14c: THE REPRICE-THEN-ROLLBACK ESCAPE ────────────────────────────────────────────────
@@ -623,7 +645,7 @@ for (const dir of Object.keys(BRAND)) {
     const d = plainDish(ctx.w);
     await addToCart(ctx, d);
     const reward = { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] };
-    authenticate(ctx);
+    authenticate(ctx, dir);
     const itemsAt1 = ctx.w.redeemCartItems();
     await installReward(ctx, reward);
     const v1 = ctx.w.liveMenuPriceVersion();
@@ -683,7 +705,7 @@ for (const dir of Object.keys(BRAND)) {
     const d = plainDish(ctx.w);
     await addToCart(ctx, d);
     const reward = { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] };
-    authenticate(ctx);
+    authenticate(ctx, dir);
     await installReward(ctx, reward);
     assert.strictEqual(ctx.w.refuseConflictedSend('probe'), false, `${dir}/fail-closed: premise — fresh, allowed`);
 
@@ -710,7 +732,7 @@ for (const dir of Object.keys(BRAND)) {
     const d = plainDish(ctx.w);
     await addToCart(ctx, d);
     const reward = { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] };
-    authenticate(ctx);
+    authenticate(ctx, dir);
     await installReward(ctx, reward);
     /* Made stale the way a reward actually goes stale — the menu reprices under it (cell 14c's vector),
        not a cart change, which simply clears the reward. */
@@ -731,6 +753,64 @@ for (const dir of Object.keys(BRAND)) {
        and the composition show. The reward-NET charged==confirmed path is 1C's, with the confirmed-
        total gate; the server-side redemption pricing is covered by rewards-redeem*.test.js today. */
     ok(`${dir}: a reward re-priced for the current cart passes the gate and composes — not a blanket refusal`);
+  }
+
+  /* ── CELL 14e: THE REWARD GATE AT THE SUBMIT, WITH A POSITIVE DISPATCH CONTROL ─────────────────
+     Every reward cell above stops at the gate or at the composition. That leaves submit-level
+     attribution unestablished: "nothing charged" is also what an auth bail, an empty cart or a
+     conflicted line produce, so a refusal observed at the send proves nothing on its own.
+     This cell pairs the two halves. A FRESH reward must actually DISPATCH — the control, without which
+     every negative here is vacuous and a blanket refusal would pass — and then the same cart, with the
+     reward made stale by an unrelated reprice, must NOT. Same window, same session, same cart, one
+     variable changed: the freshness of the reward quote. */
+  {
+    const ctx = await boot(dir);
+    await publish(ctx, baseMenu(ctx.w));
+    const d = plainDish(ctx.w);
+    await addToCart(ctx, d);
+    authenticate(ctx, dir);
+    await installReward(ctx, { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] });
+    assert.ok(ctx.w.__ACCOUNT.getRedeemPayload(), `${dir}/reward-submit: premise — a reward is active`);
+
+    // ── CONTROL: a FRESH reward dispatches through the real send path.
+    const before = ctx.st.charges.length;
+    assert.strictEqual(ctx.w.buildOrder(), true, `${dir}/reward-submit: the order composes with a reward`);
+    await ctx.w.submitOrder('confirmed');
+    await settle();
+    const dispatched = ctx.st.charges.slice(before);
+    assert.strictEqual(dispatched.length, 1,
+      `${dir}/reward-submit: 🔴 CONTROL — a fresh reward DISPATCHES; without this every refusal below is vacuous`);
+    assert.ok(dispatched[0].redeem, `${dir}/reward-submit: …and the charge actually carries the redemption`);
+
+    // ── And the same order with a STALE reward does not, for the reward's reason and no other.
+    const ctx2 = await boot(dir);
+    await publish(ctx2, baseMenu(ctx2.w));
+    const d2 = plainDish(ctx2.w);
+    await addToCart(ctx2, d2);
+    authenticate(ctx2, dir);
+    await installReward(ctx2, { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] });
+    const other = ctx2.w.liveMenuGlobalGet('MENU').find((x) => x.price > 0 && String(x.id) !== String(d2.id));
+    other.price = other.price + 33;                    // UNRELATED dish → the cart line stays resolved
+    assert.strictEqual([...ctx2.w.cartConflicts()].length, 0,
+      `${dir}/reward-submit: non-vacuity — the cart is unconflicted`);
+    assert.ok(ctx2.w.__ACCOUNT.getRedeemPayload(), `${dir}/reward-submit: non-vacuity — the reward is still active`);
+    assert.strictEqual(ctx2.w.__ACCOUNT.redeemQuoteMatches(ctx2.w.redeemCartItems()), false,
+      `${dir}/reward-submit: non-vacuity — and its quote is stale`);
+    const before2 = ctx2.st.charges.length;
+    ctx2.w.buildOrder();
+    await ctx2.w.submitOrder('confirmed');
+    await settle();
+    assert.strictEqual(ctx2.st.charges.length, before2,
+      `${dir}/reward-submit: 🔴 a stale reward reaches NO charge endpoint through the real submit path`);
+
+    /* …INCLUDING THE CASH RETRY. The loop re-sends createOrder without rebuilding, which is the path
+       that defeated two earlier caller-side gates — a reward going stale between attempt 1 and attempt 2
+       must not be charged on attempt 2 either. */
+    await ctx2.w.submitOrder('confirmed');
+    await settle();
+    assert.strictEqual(ctx2.st.charges.length, before2,
+      `${dir}/reward-submit: 🔴 …and a second attempt through the retry path is refused too`);
+    ok(`${dir}: at the SUBMIT — a fresh reward dispatches, a stale one never does, retry included`);
   }
 
   /* ── CELL 15: A PUBLISH LANDS MID-SUBMIT ───────────────────────────────────────────────────────
