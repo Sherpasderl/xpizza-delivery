@@ -3253,5 +3253,125 @@
   "label": "the reward path is applied only for x_pizza — la_musa silently skips its redemption",
   "from": "  if (reward) {",
   "to": "  if (reward && rid === 'x_pizza') {"
+ },
+ {
+  "id": "c2-01",
+  "slice": "c2",
+  "label": "the fingerprint ignores the reward — a reward-active cart passes as its no-reward twin",
+  "file": "quote-token.js",
+  "from": "  return crypto.createHash('sha256').update(JSON.stringify({ i: items, r })).digest('hex');",
+  "to": "  return crypto.createHash('sha256').update(JSON.stringify({ i: items })).digest('hex');",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-02",
+  "slice": "c2",
+  "label": "the reward's item QUANTITY is dropped from the fingerprint",
+  "file": "quote-token.js",
+  "from": "      .map((fi) => ({ k: String(fi && fi.item_id), q: Number(fi && fi.qty) || 1, p: Number(fi && fi.price_cents) || 0 }))",
+  "to": "      .map((fi) => ({ k: String(fi && fi.item_id), p: Number(fi && fi.price_cents) || 0 }))",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-03",
+  "slice": "c2",
+  "label": "the signature compare is === instead of constant-time",
+  "file": "quote-token.js",
+  "from": "    if (!crypto.timingSafeEqual(given, expected)) return bad('bad_signature');",
+  "to": "    if (given.toString('hex') !== expected.toString('hex')) return bad('bad_signature');",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-04",
+  "slice": "c2",
+  "label": "expiry is checked BEFORE the signature — an untrusted field decides whether to trust the token",
+  "file": "quote-token.js",
+  "from": "    if (given.length !== expected.length) return bad('bad_signature');",
+  "to": "    if (JSON.parse(body.toString('utf8')).expires_at <= Number(nowMs)) return { ok: false, reason: 'expired', payload: null };\n    if (given.length !== expected.length) return bad('bad_signature');",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-05",
+  "slice": "c2",
+  "label": "expiry is not enforced at all",
+  "file": "quote-token.js",
+  "from": "    if (!Number.isFinite(Number(payload.expires_at)) || Number(nowMs) >= Number(payload.expires_at)) {",
+  "to": "    if (false) {",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-06",
+  "slice": "c2",
+  "label": "a token expiring exactly now is still accepted",
+  "file": "quote-token.js",
+  "from": "Number(nowMs) >= Number(payload.expires_at)",
+  "to": "Number(nowMs) > Number(payload.expires_at)",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-07",
+  "slice": "c2",
+  "label": "the fingerprint is order-DEPENDENT — the same cart in another order refuses at the charge",
+  "file": "quote-token.js",
+  "from": "  })).sort(cmp);",
+  "to": "  }));",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-08",
+  "slice": "c2",
+  "label": "extras are dropped from the fingerprint",
+  "file": "quote-token.js",
+  "from": "    x: (Array.isArray(it && it.extras) ? it.extras : [])",
+  "to": "    x: ([])\n      .concat(Array.isArray(it && it.extras) ? [] : [])",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-09",
+  "slice": "c2",
+  "label": "the digest is truncated to 8 bytes",
+  "file": "quote-token.js",
+  "from": "  const sig = crypto.createHmac('sha256', secret).update(body).digest();",
+  "to": "  const sig = crypto.createHmac('sha256', secret).update(body).digest().subarray(0, 8);",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-10",
+  "slice": "c2",
+  "label": "the HMAC signs a RE-SERIALISED payload rather than the transmitted bytes",
+  "file": "quote-token.js",
+  "from": "    const expected = crypto.createHmac('sha256', secret).update(body).digest();",
+  "to": "    const expected = crypto.createHmac('sha256', secret).update(Buffer.from(JSON.stringify(JSON.parse(body.toString('utf8'))))).digest();",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
  }
 ]
