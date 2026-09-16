@@ -12,14 +12,10 @@ const { orderBreakdownCents } = require('./order-money');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 const T = (rid, over = {}) => ({ restaurantId: rid, menu: { ...MENU_BY_RESTAURANT[rid], ...(over.menu || {}) }, extras: { ...EXTRAS_BY_RESTAURANT[rid], ...(over.extras || {}) } });
-// SHARED FIXTURES — the same carts drive both the quote composition and the order composition.
-const CARTS = {
-  x_pizza: [[{ name: 'Margherita', qty: 1 }], [{ name: 'Pepperoni', qty: 3 }],
-            [{ name: 'Margherita', qty: 2, extras: [{ name: 'Mozzarella' }, { name: 'Basil Pesto' }] }],
-            [{ name: 'Carnivora NY', qty: 1 }], [{ name: 'Nutella', qty: 50 }]],
-  la_musa: [[{ id: 'dimsum_01', qty: 1 }], [{ id: 'noodle_02', qty: 4 }],
-            [{ id: 'dimsum_01', qty: 2, extras: [{ id: 'rice_white', qty: 3 }] }]],
-};
+// SHARED FIXTURES — the same carts drive both the quote composition and the order composition, AND
+// compute-server-net.test.js's parity assertions. Imported rather than copied: two copies agree with
+// each other for as long as nobody edits one, which is not the same as agreeing with production.
+const { CARTS } = require('./parity-carts.fixture');
 // The two compositions, written out separately so a divergence would actually show.
 const quoteComposition = (items, rid, tables) => {
   const { total, error } = computeServerTotal(items, rid, tables);

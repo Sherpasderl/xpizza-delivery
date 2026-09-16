@@ -3205,17 +3205,41 @@
   ]
  },
  {
-  "id": "c1-06",
+  "id": "c1-07",
   "slice": "c1",
-  "label": "a non-finite base total is accepted",
+  "label": "a non-finite or unround-trippable net is allowed to propagate",
   "file": "compute-server-net.js",
-  "from": "  if (!Number.isFinite(Number(base.total))) return { error: 'bad_total' };",
-  "to": "  if (false) return { error: 'bad_total' };",
+  "from": "    if (!Number.isSafeInteger(out[k])) return { error: `non_finite_${k}` };",
+  "to": "    if (false) return { error: `non_finite_${k}` };",
+  "command": [
+   "node",
+   "compute-server-net.test.js"
+  ]
+ },
+ {
+  "id": "c1-08",
+  "slice": "c1",
+  "label": "only the net is checked, not the components, so a NaN breakdown reaches the token",
+  "file": "compute-server-net.js",
+  "from": "  const out = { net_total_cents, base_cents, reward_discount_cents, delivery_cents, fiscal_cents };",
+  "to": "  const out = { net_total_cents };",
   "command": [
    "node",
    "compute-server-net.test.js"
   ],
   "equivalent": true,
-  "why": "computeServerTotal sets an `error` on EVERY path that yields a non-finite total (menu-pricing.js returns {total: NaN, error} for unknown items, bad quantities, invalid prices and malformed extras), and the guard above this one returns on error — so no input can reach this line with a non-finite total. It is kept as the floor under an assumption about ANOTHER module: if computeServerTotal ever returns NaN without an error, this is what stops a NaN from becoming a charge, and NaN*100 rounds to 0 — a free order. Cheap insurance at the money core; the exemption is measured, not assumed."
+  "why": "MEASURED, not assumed: I could not construct an input where a COMPONENT is non-safe while net_total_cents is safe. Every component is derived from the same lempira->centavos conversion as the net (base_cents from orderBreakdownCents, fiscal_cents its tax split, reward_discount_cents their difference, delivery_cents a literal 0), so a magnitude that corrupts one corrupts the net first — which c1-07 and c1-09 already kill. The component check is KEPT because the token carries the components as provenance: a NaN there would be a number nobody could later verify, and 'I could not build one' is weaker than 'none exists'. Revisit if a component ever gains its own arithmetic."
+ },
+ {
+  "id": "c1-09",
+  "slice": "c1",
+  "label": "the guard settles for FINITE, so 1e308 centavos pass as money",
+  "file": "compute-server-net.js",
+  "from": "    if (!Number.isSafeInteger(out[k])) return { error: `non_finite_${k}` };",
+  "to": "    if (!Number.isFinite(out[k])) return { error: `non_finite_${k}` };",
+  "command": [
+   "node",
+   "compute-server-net.test.js"
+  ]
  }
 ]

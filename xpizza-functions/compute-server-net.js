@@ -55,7 +55,11 @@ function computeServerNet({ items, reward = null, deliveryContext = null, rid, t
   // cheapest possible attack, which is the 1B charge-boundary lesson.
   const base = computeServerTotal(items, rid, tables);
   if (base.error) return { error: base.error };
-  if (!Number.isFinite(Number(base.total))) return { error: 'bad_total' };
+  /* (There was a Number.isFinite check on base.total here. It is gone because the safe-integer sweep
+     below strictly subsumes it: an Infinity total converts to Infinity centavos and is rejected there,
+     with a more specific error. Keeping it would have meant carrying a mutant nothing can distinguish —
+     and a documented-equivalent that is actually redundant is a trap this project has already been
+     caught by once. One guard, in the place that catches every route to a bad number.) */
 
   const baseBreakdown = orderBreakdownCents(base.total, rid);
   const base_cents = baseBreakdown.total_cents;
@@ -80,6 +84,25 @@ function computeServerNet({ items, reward = null, deliveryContext = null, rid, t
      computeServerTotal returns one total and does not separate them, so a split would have to be
      recomputed here — a second arithmetic path over the same money, which is exactly what this
      function exists to remove. base_cents is the honest granularity. */
+  /* 🔴 NOTHING LEAVES HERE THAT IS NOT A SAFE INTEGER NUMBER OF CENTAVOS.
+     A corrupt catalog — not a live price, but a portal fat-finger or a bad publish — can put an absurd
+     price in the table, and the failure is quiet: computeServerTotal reports {total: 1e308, error:
+     null} because 1e308 is a perfectly finite number, so the base-total guard above never fires. The
+     damage happens one line later, at the CENTS conversion: 1e308 * 100 overflows to Infinity, and the
+     tax split (total - total/1.15) then evaluates to NaN. A net of Infinity or NaN must never reach a
+     quote token or a charge comparison — Infinity compares equal to nothing and NaN compares equal to
+     NOTHING INCLUDING ITSELF, so a downstream "does the charge match the quote?" check would silently
+     answer no, or a token would carry a value no arithmetic can verify.
+     SAFE INTEGER rather than merely finite, deliberately: 1e306 lempira converts to 1e308 centavos,
+     which IS finite and would pass a Number.isFinite guard while being unusable — past 2^53 a value
+     cannot round-trip, and money that cannot round-trip is not money. Every component is checked, not
+     just the net, because the components go into the token's provenance breakdown and a NaN there is
+     a fact nobody can later verify. */
+  const out = { net_total_cents, base_cents, reward_discount_cents, delivery_cents, fiscal_cents };
+  for (const k of Object.keys(out)) {
+    if (!Number.isSafeInteger(out[k])) return { error: `non_finite_${k}` };
+  }
+
   return {
     net_total_cents,
     components: { base_cents, reward_discount_cents, delivery_cents, fiscal_cents },

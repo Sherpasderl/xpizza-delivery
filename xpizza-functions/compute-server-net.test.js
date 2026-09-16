@@ -8,8 +8,10 @@
 // shared fixture through the CURRENT compositions and compare, the same discipline quote-order.test.js
 // uses for displayed-vs-charged.
 //
-// The fixtures are the SAME real carts quote-order.test.js drives, deliberately: a second, private set
-// of carts would let the two files agree with each other while both drifting from production.
+// The fixtures are IMPORTED from parity-carts.fixture.js, the same module quote-order.test.js uses.
+// They were once a private copy in each file — identical, so every assertion passed, and nothing would
+// have stopped them drifting apart or drifting together away from production while still agreeing with
+// each other. A parity test whose fixtures can rot passes vacuously.
 const assert = require('assert');
 const { computeServerNet } = require('./compute-server-net');
 const { computeServerTotal, MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./menu-pricing');
@@ -18,13 +20,7 @@ const { applyRedemptionToPricing } = require('./rewards-redeem-pricing');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 const T = (rid) => ({ restaurantId: rid, menu: { ...MENU_BY_RESTAURANT[rid] }, extras: { ...EXTRAS_BY_RESTAURANT[rid] } });
-const CARTS = {
-  x_pizza: [[{ name: 'Margherita', qty: 1 }], [{ name: 'Pepperoni', qty: 3 }],
-            [{ name: 'Margherita', qty: 2, extras: [{ name: 'Mozzarella' }, { name: 'Basil Pesto' }] }],
-            [{ name: 'Carnivora NY', qty: 1 }], [{ name: 'Nutella', qty: 50 }]],
-  la_musa: [[{ id: 'dimsum_01', qty: 1 }], [{ id: 'noodle_02', qty: 4 }],
-            [{ id: 'dimsum_01', qty: 2, extras: [{ id: 'rice_white', qty: 3 }] }]],
-};
+const { CARTS } = require('./parity-carts.fixture');
 
 // What the order path charges today, written out separately so a divergence would actually show.
 const todaysCharge = (items, rid, tables) => {
@@ -160,6 +156,40 @@ const todaysCharge = (items, rid, tables) => {
   const net = computeServerNet({ items, reward: { ok: true, model: 'add_free', freeItems: [{ item_id: 'Not A Dish', qty: 1 }] }, rid, tables });
   assert.ok(net.error, `🔴 an unpriceable reward errors rather than quietly charging full price (${JSON.stringify(net)})`);
   ok(`a reward the reward path refuses is an error, not a silent full-price charge`);
+}
+
+// ── 8. 🔴 A CORRUPT CATALOG NEVER PRODUCES A NON-FINITE OR UNROUND-TRIPPABLE NET ───────────────
+// Not a live price — a portal fat-finger or a bad publish. The failure is QUIET, which is why it needs
+// a test rather than a comment: computeServerTotal reports {total: 1e308, error: null} because 1e308
+// is perfectly finite, so nothing upstream objects. The damage lands at the cents conversion.
+//
+// Each row below was MEASURED against the real functions before being written down, because the first
+// version of this reasoning was wrong in both directions — it claimed the guard was unreachable (it is
+// reachable, row 1) and that Math.round(NaN*100) is 0 (it is NaN). A reachability claim and an
+// arithmetic claim are both things to run, not things to assert.
+{
+  const corrupt = (price) => ({ restaurantId: 'x_pizza', menu: { Margherita: price }, extras: {} });
+  const rows = [
+    // price,  qty, what breaks, and WHERE
+    [1e308, 2, 'the base total itself overflows to Infinity — computeServerTotal returns {total: Infinity, error: null}'],
+    [1e308, 1, 'the base total is FINITE (1e308) and the CENTS conversion overflows; the tax split then evaluates to NaN'],
+    [1e306, 1, 'everything stays finite — 1e308 centavos — but is past 2^53, so it cannot round-trip'],
+  ];
+  for (const [price, qty, why] of rows) {
+    const net = computeServerNet({ items: [{ name: 'Margherita', qty }], rid: 'x_pizza', tables: corrupt(price) });
+    assert.ok(net.error, `🔴 price ${price} x${qty}: ${why} → must ERROR (got ${JSON.stringify(net)})`);
+    assert.strictEqual(net.net_total_cents, undefined, `🔴 price ${price} x${qty}: …and carry no total`);
+  }
+  // NON-VACUITY, both directions: the arithmetic these rows depend on really does behave this way, and
+  // an ORDINARY price through the very same corrupt-table shape still prices cleanly — so the guard is
+  // rejecting the magnitude, not the fixture.
+  assert.ok(Number.isNaN(Math.round(NaN * 100)), 'non-vacuity: Math.round(NaN*100) is NaN — not 0');
+  assert.strictEqual(Math.round(Infinity * 100), Infinity, 'non-vacuity: Infinity*100 stays Infinity');
+  assert.ok(Number.isFinite(1e308) && !Number.isSafeInteger(1e308),
+    'non-vacuity: 1e308 is FINITE but not a safe integer — which is why the guard is isSafeInteger, not isFinite');
+  const sane = computeServerNet({ items: [{ name: 'Margherita', qty: 2 }], rid: 'x_pizza', tables: corrupt(299) });
+  assert.strictEqual(sane.net_total_cents, 59800, 'non-vacuity: an ordinary price through the same table shape prices normally');
+  ok(`a corrupt catalog errors at every overflow point — Infinity total, Infinity cents, and finite-but-unround-trippable`);
 }
 
 console.log(`\ncompute-server-net: OK (${n})`);
