@@ -275,7 +275,30 @@ const withSecret = (fn) => {
         `${label}: …refuses in a typed way, or prices without a token — never a signed meaningless token`);
     });
   }
-  ok('a throwing property accessor yields null and a token-less quote — never an exception');
+  /* 🔴 AND AN EXOTIC THROWN VALUE — the hole was inside the catch that exists to uphold the guarantee.
+     `String(e)` raises TypeError on a value with no prototype (Object.create(null) has no toString),
+     so the handler that was supposed to convert a failure into {ok:false} became the thing that
+     crashed. Ordinary Error objects never exercise that path, which is why the earlier getter tests
+     passed over it. Every shape a `throw` can carry is covered, because "what can be thrown" is not
+     limited to what is usually thrown. */
+  for (const [label, value] of [
+    ['a no-prototype object', Object.create(null)],
+    ['a bare string', 'boom'],
+    ['a number', 42],
+    ['null', null],
+    ['undefined', undefined],
+    ['an object whose toString is not callable', { toString: null }],
+  ]) {
+    const cart = [{ name: 'Margherita', get qty() { throw value; } }];
+    assert.strictEqual(normalizeCartForFingerprint(cart, 'x_pizza'), null, `${label}: normalization still returns null`);
+    withSecret(() => {
+      let issued;
+      assert.doesNotThrow(() => { issued = issueQuote({ items: cart, rid: 'x_pizza', tables: T('x_pizza'), nowMs: 1e6 }); },
+        `🔴 throwing ${label}: the issuer's own catch must not throw`);
+      assert.strictEqual(issued.ok, false, `${label}: …and reports a typed refusal`);
+    });
+  }
+  ok('a throwing property accessor yields null and a token-less quote — never an exception, whatever is thrown');
 }
 
 console.log(`\nquote-issue: OK (${n})`);

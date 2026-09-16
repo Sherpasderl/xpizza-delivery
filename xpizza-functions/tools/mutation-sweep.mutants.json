@@ -3603,5 +3603,17 @@
    "node",
    "quote-issue.test.js"
   ]
+ },
+ {
+  "id": "c3-12",
+  "slice": "c3",
+  "file": "quote-issue.js",
+  "label": "the catch-path stringify can itself throw — the guard becomes the crash",
+  "from": "    if (e && typeof e.message === 'string' && e.message) return e.message.slice(0, 200);\n    return String(e).slice(0, 200);\n  } catch (_) {\n    return 'unstringifiable';\n  }",
+  "to": "    return String((e && e.message) || e).slice(0, 200);\n  } catch (_) {\n    throw _;\n  }",
+  "command": [
+   "node",
+   "quote-issue.test.js"
+  ]
  }
 ]

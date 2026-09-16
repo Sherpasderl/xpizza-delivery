@@ -25,6 +25,23 @@ const { cartFingerprint, normalizeCartForFingerprint, signQuoteToken } = require
    customer must never meet it, which is the hard rule this number is chosen against. */
 const EXPIRY_MS = 15 * 60 * 1000;
 
+/* 🔴 A STRINGIFY THAT CANNOT ITSELF THROW — and this is not hypothetical pedantry: it was a hole in
+   the "the issuer never throws" guarantee, inside the very catch that exists to uphold it. `String(e)`
+   raises TypeError on a value with no prototype (`Object.create(null)` has no toString), so a thrown
+   object of that shape turned a handled failure into an unhandled one — the catch block became the
+   thing that crashed the quote.
+   Used at EVERY catch-path log in this module rather than only where it was found: the next catch
+   someone adds here will reach for the same coercion, and a fix applied to one site is a fix that has
+   to be remembered at the others. */
+function describeError(e) {
+  try {
+    if (e && typeof e.message === 'string' && e.message) return e.message.slice(0, 200);
+    return String(e).slice(0, 200);
+  } catch (_) {
+    return 'unstringifiable';
+  }
+}
+
 let warnedNoSecret = false;
 function quoteSecret() {
   const s = process.env.QUOTE_TOKEN_SECRET;
@@ -55,7 +72,7 @@ function issueQuote(args) {
      "return the price anyway" is not available here — what is available is not crashing.) */
   try { return issueQuoteInner(args); }
   catch (e) {
-    console.warn('quote_issue_failed', JSON.stringify({ error: String((e && e.message) || e).slice(0, 200) }));
+    console.warn('quote_issue_failed', JSON.stringify({ error: describeError(e) }));
     return { ok: false, error: 'error' };
   }
 }
@@ -90,7 +107,7 @@ function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tabl
     };
     result.quote_token = signQuoteToken(payload, secret);
   } catch (e) {
-    console.warn('quote_token_sign_failed', JSON.stringify({ error: String((e && e.message) || e).slice(0, 200) }));
+    console.warn('quote_token_sign_failed', JSON.stringify({ error: describeError(e) }));
   }
   return result;
 }
