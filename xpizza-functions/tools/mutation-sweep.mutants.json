@@ -3433,5 +3433,41 @@
    "node",
    "quote-token.test.js"
   ]
+ },
+ {
+  "id": "c2-16",
+  "slice": "c2",
+  "label": "the reward's free items are NOT sorted — the same reward in another order refuses at the charge",
+  "file": "quote-token.js",
+  "from": "      .map((fi) => ({ k: String(fi && fi.item_id), q: Number(fi && fi.qty), p: Number(fi && fi.price_cents) }))\n      .sort(bySerial),",
+  "to": "      .map((fi) => ({ k: String(fi && fi.item_id), q: Number(fi && fi.qty), p: Number(fi && fi.price_cents) })),",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-17",
+  "slice": "c2",
+  "label": "the reward's PRICE is dropped from the fingerprint — a reward priced against a different menu matches",
+  "file": "quote-token.js",
+  "from": "      .map((fi) => ({ k: String(fi && fi.item_id), q: Number(fi && fi.qty), p: Number(fi && fi.price_cents) }))\n      .sort(bySerial),",
+  "to": "      .map((fi) => ({ k: String(fi && fi.item_id), q: Number(fi && fi.qty) }))\n      .sort(bySerial),",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-18",
+  "slice": "c2",
+  "label": "the signature length precheck is removed — timingSafeEqual throws and a forgery reports bad_format",
+  "file": "quote-token.js",
+  "from": "    if (given.length !== expected.length) return bad('bad_signature');\n",
+  "to": "",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
  }
 ]

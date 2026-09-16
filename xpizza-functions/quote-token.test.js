@@ -261,4 +261,47 @@ const PAYLOAD = {
   ok('sig-before-expiry and HMAC-over-transmitted-bytes each have their own discriminating case');
 }
 
+// ── 13. 🔴 THE THREE PROPERTIES THE SUITE RELIED ON BUT DID NOT PIN ────────────────────────────
+// Each of these was CORRECT in the module and un-asserted in the tests — the gate found them by
+// mutating the code and watching nothing fail. A property nothing can distinguish is a property the
+// next edit can remove for free, which on a money-security module is how a guarantee quietly leaves.
+{
+  const items = [{ id: 'dimsum_01', qty: 2 }];
+  const A = { item_id: 'dimsum_01', qty: 1, price_cents: 22300 };
+  const B = { item_id: 'noodle_02', qty: 2, price_cents: 49200 };
+  const rw = (freeItems) => cartFingerprint(items, { model: 'add_free', freeItems });
+
+  // (a) The reward's free items are SORTED, so the same reward listed in either order is one reward.
+  //     Without this the gate would refuse a customer whose redemption arrived in a different order —
+  //     the same honest-refusal direction as the cart-line tie fixed earlier.
+  assert.strictEqual(rw([A, B]), rw([B, A]),
+    '🔴 a reward with two free items fingerprints the same whatever order they arrive in');
+  // NON-VACUITY: that equality is the SORT working, not every reward collapsing to one hash.
+  assert.notStrictEqual(rw([A, B]), rw([A, { ...B, item_id: 'rice_white' }]),
+    'non-vacuity: a genuinely different free item still fingerprints differently');
+
+  // (b) 🔴 THE REWARD'S PRICE IS BOUND — money-adjacent. The reward path validates a redemption's
+  //     price_cents against the LIVE menu, so the same item at a different price is a reward priced
+  //     against a different menu. If the fingerprint ignored the price, a token issued when the item
+  //     was worth L223 would still verify after a republish moved it — the customer collects a comp
+  //     the quote valued at something else, and the fiscal rebaja is wrong with it.
+  assert.notStrictEqual(rw([{ item_id: 'f', qty: 1, price_cents: 100 }]),
+                        rw([{ item_id: 'f', qty: 1, price_cents: 200 }]),
+    '🔴 the same free item at a DIFFERENT price is a different reward');
+
+  // (c) A signature of the wrong LENGTH is a bad signature, not a bad format. The precheck exists
+  //     because timingSafeEqual throws on a length mismatch; remove it and the throw is swallowed by
+  //     the outer catch and reported as bad_format — which tells the caller the token was malformed
+  //     when in fact it was a forgery attempt, and loses that distinction in the logs.
+  const t = signQuoteToken(PAYLOAD, SEC);
+  const body = t.split('.')[0];
+  for (const shortSig of [Buffer.alloc(8).toString('base64url'), Buffer.alloc(31).toString('base64url'),
+                          Buffer.alloc(33).toString('base64url'), Buffer.alloc(64).toString('base64url')]) {
+    const v = verifyQuoteToken(body + '.' + shortSig, SEC, 5000);
+    assert.strictEqual(v.reason, 'bad_signature',
+      `🔴 a ${Buffer.from(shortSig, 'base64url').length}-byte signature is bad_SIGNATURE, not bad_format`);
+  }
+  ok('reward free-item ordering, reward price binding, and wrong-length signatures are each pinned');
+}
+
 console.log(`\nquote-token: OK (${n})`);
