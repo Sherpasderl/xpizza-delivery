@@ -39,15 +39,32 @@ const b64u = (buf) => Buffer.from(buf).toString('base64url');
  */
 function cartFingerprint(normItems, reward) {
   const keyOf = (o) => (o && o.id !== undefined && o.id !== null ? String(o.id) : String(o && o.name));
-  const cmp = (a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : a.q - b.q);
 
+  /* 🔴 SORTED ON THE COMPLETE NORMALISED ENTRY, not on a chosen prefix of it. The first version
+     compared key then quantity, which leaves two lines of the SAME dish at the SAME quantity tied —
+     and that is an ordinary x_pizza cart: two Carnívoras, one with extra cheese, one with pepperoni.
+     Array.prototype.sort is stable, so a tie preserves input order, so the two orderings of that cart
+     produced two different hashes. The module claimed order-independence "by construction" while the
+     comparator had a hole in it.
+     The failure direction matters: it REFUSES AN HONEST CUSTOMER at the charge — the cart is the cart
+     they were quoted, and the gate says no. That is the kind of defect nobody reports as a bug; they
+     just fail to order.
+     Sorting on the serialised entry cannot tie unless the entries are genuinely identical, in which
+     case their order is immaterial by definition. */
+  const bySerial = (a, b) => { const x = JSON.stringify(a), y = JSON.stringify(b); return x < y ? -1 : x > y ? 1 : 0; };
+
+  /* 🔴 NO `|| 1` / `|| 0` DEFAULT ON QUANTITY. A default made 0 fingerprint identically to 1, so a cart
+     claiming zero of something matched a token issued for one of it. Quantities are validated upstream
+     (computeServerTotal rejects anything that is not an integer in 1..50 before a net exists to sign),
+     so the fingerprint's job is to record what it was given FAITHFULLY, not to repair it — repairing it
+     is precisely how two different carts become one hash. */
   const items = (Array.isArray(normItems) ? normItems : []).map((it) => ({
     k: keyOf(it),
-    q: Number(it && it.qty) || 0,
+    q: Number(it && it.qty),
     x: (Array.isArray(it && it.extras) ? it.extras : [])
-      .map((e) => ({ k: keyOf(e), q: Number(e && e.qty) || 1 }))
-      .sort(cmp),
-  })).sort(cmp);
+      .map((e) => ({ k: keyOf(e), q: Number(e && e.qty) }))
+      .sort(bySerial),
+  })).sort(bySerial);
 
   // The reward's IDENTITY, not its value: which model, which items, how many of each. The price is
   // included because the reward path validates it against the live menu, so a reward priced against a
@@ -55,8 +72,8 @@ function cartFingerprint(normItems, reward) {
   const r = reward ? {
     m: String(reward.model || ''),
     f: (Array.isArray(reward.freeItems) ? reward.freeItems : [])
-      .map((fi) => ({ k: String(fi && fi.item_id), q: Number(fi && fi.qty) || 1, p: Number(fi && fi.price_cents) || 0 }))
-      .sort(cmp),
+      .map((fi) => ({ k: String(fi && fi.item_id), q: Number(fi && fi.qty), p: Number(fi && fi.price_cents) }))
+      .sort(bySerial),
   } : null;
 
   return crypto.createHash('sha256').update(JSON.stringify({ i: items, r })).digest('hex');
@@ -73,7 +90,12 @@ function signQuoteToken(payload, secret) {
   return `${b64u(body)}.${b64u(sig)}`;
 }
 
-/* VERIFY — { ok, reason, payload }, reason ∈ {ok, bad_format, bad_signature, expired}.
+/* VERIFY — { ok, reason, payload }, reason ∈ {ok, bad_format, bad_signature, expired, bad_clock}.
+ *
+ * ⚠️ `bad_clock` EXTENDS the reason enum the plan specified, deliberately and additively. The
+ * alternative was reporting a broken clock as `expired`, which would tell a caller something false
+ * about the token; callers switching on the documented four still fall through to their refusal
+ * branch, because ok is false. Flagged for the gate rather than slipped in.
  *
  * 🔴 THE ORDER OF THE CHECKS IS THE SECURITY PROPERTY. `expires_at` lives INSIDE the payload, which
  * means it is the attacker's field right up until the signature is verified. Checking expiry first
@@ -108,9 +130,18 @@ function verifyQuoteToken(token, secret, nowMs) {
     try { payload = JSON.parse(body.toString('utf8')); } catch (_) { return bad('bad_format'); }
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return bad('bad_format');
 
+    /* 🔴 THE CLOCK IS VALIDATED BEFORE IT IS USED TO JUDGE FRESHNESS, and the failure was FAIL-OPEN.
+       `NaN >= expires_at` is false, so an undefined, NaN or non-numeric clock read as "not expired"
+       and an expired token verified OK. A clock we cannot trust is not evidence a token is fresh — it
+       is the absence of evidence, and the safe reading of that at a charge boundary is refusal.
+       Checked with a strict type test rather than Number(): Number(null) is 0, which is perfectly
+       finite and would have sailed through a coercing guard while meaning "no clock was supplied". */
+    if (typeof nowMs !== 'number' || !Number.isFinite(nowMs)) {
+      return { ok: false, reason: 'bad_clock', payload: null };
+    }
     // Signed, therefore believable — and only now is expires_at worth reading. `>=` so a token is dead
     // AT its expiry rather than one millisecond later: the boundary belongs to the closed side.
-    if (!Number.isFinite(Number(payload.expires_at)) || Number(nowMs) >= Number(payload.expires_at)) {
+    if (!Number.isFinite(Number(payload.expires_at)) || nowMs >= Number(payload.expires_at)) {
       return { ok: false, reason: 'expired', payload: null };
     }
     return { ok: true, reason: 'ok', payload };

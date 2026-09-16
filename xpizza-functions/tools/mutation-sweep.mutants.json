@@ -3271,8 +3271,8 @@
   "slice": "c2",
   "label": "the reward's item QUANTITY is dropped from the fingerprint",
   "file": "quote-token.js",
-  "from": "      .map((fi) => ({ k: String(fi && fi.item_id), q: Number(fi && fi.qty) || 1, p: Number(fi && fi.price_cents) || 0 }))",
-  "to": "      .map((fi) => ({ k: String(fi && fi.item_id), p: Number(fi && fi.price_cents) || 0 }))",
+  "from": "      .map((fi) => ({ k: String(fi && fi.item_id), q: Number(fi && fi.qty), p: Number(fi && fi.price_cents) }))",
+  "to": "      .map((fi) => ({ k: String(fi && fi.item_id), p: Number(fi && fi.price_cents) }))",
   "command": [
    "node",
    "quote-token.test.js"
@@ -3307,7 +3307,7 @@
   "slice": "c2",
   "label": "expiry is not enforced at all",
   "file": "quote-token.js",
-  "from": "    if (!Number.isFinite(Number(payload.expires_at)) || Number(nowMs) >= Number(payload.expires_at)) {",
+  "from": "    if (!Number.isFinite(Number(payload.expires_at)) || nowMs >= Number(payload.expires_at)) {",
   "to": "    if (false) {",
   "command": [
    "node",
@@ -3319,8 +3319,8 @@
   "slice": "c2",
   "label": "a token expiring exactly now is still accepted",
   "file": "quote-token.js",
-  "from": "Number(nowMs) >= Number(payload.expires_at)",
-  "to": "Number(nowMs) > Number(payload.expires_at)",
+  "from": "nowMs >= Number(payload.expires_at)",
+  "to": "nowMs > Number(payload.expires_at)",
   "command": [
    "node",
    "quote-token.test.js"
@@ -3331,7 +3331,7 @@
   "slice": "c2",
   "label": "the fingerprint is order-DEPENDENT — the same cart in another order refuses at the charge",
   "file": "quote-token.js",
-  "from": "  })).sort(cmp);",
+  "from": "  })).sort(bySerial);",
   "to": "  }));",
   "command": [
    "node",
@@ -3369,6 +3369,66 @@
   "file": "quote-token.js",
   "from": "    const expected = crypto.createHmac('sha256', secret).update(body).digest();",
   "to": "    const expected = crypto.createHmac('sha256', secret).update(Buffer.from(JSON.stringify(JSON.parse(body.toString('utf8'))))).digest();",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-11",
+  "slice": "c2",
+  "label": "the sort ties on key+qty again, so same-dish/same-qty lines with different extras reorder",
+  "file": "quote-token.js",
+  "from": "  const bySerial = (a, b) => { const x = JSON.stringify(a), y = JSON.stringify(b); return x < y ? -1 : x > y ? 1 : 0; };",
+  "to": "  const bySerial = (a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : a.q - b.q);",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-12",
+  "slice": "c2",
+  "label": "a non-finite clock is accepted, so an invalid clock bypasses expiry (fail-open)",
+  "file": "quote-token.js",
+  "from": "    if (typeof nowMs !== 'number' || !Number.isFinite(nowMs)) {\n      return { ok: false, reason: 'bad_clock', payload: null };\n    }",
+  "to": "    if (false) {\n      return { ok: false, reason: 'bad_clock', payload: null };\n    }",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-13",
+  "slice": "c2",
+  "label": "the clock guard coerces, so null (Number(null)===0) passes as a real clock",
+  "file": "quote-token.js",
+  "from": "    if (typeof nowMs !== 'number' || !Number.isFinite(nowMs)) {",
+  "to": "    if (!Number.isFinite(Number(nowMs))) {",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-14",
+  "slice": "c2",
+  "label": "the item quantity default returns, colliding 0 with 1",
+  "file": "quote-token.js",
+  "from": "    q: Number(it && it.qty),\n    x:",
+  "to": "    q: Number(it && it.qty) || 1,\n    x:",
+  "command": [
+   "node",
+   "quote-token.test.js"
+  ]
+ },
+ {
+  "id": "c2-15",
+  "slice": "c2",
+  "label": "the reward quantity default returns, colliding a 0-qty reward with a 1-qty reward",
+  "file": "quote-token.js",
+  "from": "      .map((fi) => ({ k: String(fi && fi.item_id), q: Number(fi && fi.qty), p: Number(fi && fi.price_cents) }))",
+  "to": "      .map((fi) => ({ k: String(fi && fi.item_id), q: Number(fi && fi.qty) || 1, p: Number(fi && fi.price_cents) }))",
   "command": [
    "node",
    "quote-token.test.js"
