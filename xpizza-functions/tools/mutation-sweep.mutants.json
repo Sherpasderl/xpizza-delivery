@@ -1512,24 +1512,26 @@
     "slice": "b4",
     "label": "the createOrder SEND gate is gone",
     "file": "../xpizza-orders/index.html",
-    "from": "      if(refuseConflictedSend('createOrder')){ orderSubmitting=false; return; }\n      const res = await fetch(CREATEORDER_URL,{",
-    "to": "      const res = await fetch(CREATEORDER_URL,{",
+    "from": "      if(refuseConflictedSend('createOrder')){ orderSubmitting=false; return; }\n",
+    "to": "",
     "command": [
       "node",
       "../cart-decoupling.test.mjs"
-    ]
+    ],
+    "kills_with": "the send gate still refuses it"
   },
   {
     "id": "b4-41",
     "slice": "b4",
     "label": "the chargeOnlineOrder SEND gate is gone",
     "file": "../xpizza-orders/index.html",
-    "from": "    if(refuseConflictedSend('chargeOnlineOrder')) return paymentFallback('Tu carrito cambió mientras iniciábamos el pago.');\n    const res = await fetch(CHARGEORDER_URL, {",
-    "to": "    const res = await fetch(CHARGEORDER_URL, {",
+    "from": "    if(refuseConflictedSend('chargeOnlineOrder')) return paymentFallback('Tu carrito cambió mientras iniciábamos el pago.');\n",
+    "to": "",
     "command": [
       "node",
       "../cart-decoupling.test.mjs"
-    ]
+    ],
+    "kills_with": "chargeOnlineOrder is never called with an unresolved line"
   },
   {
     "id": "b4-42",
@@ -1560,24 +1562,26 @@
     "slice": "b4",
     "label": "la_musa: the createOrder SEND gate is gone",
     "file": "../la-musa-orders/index.html",
-    "from": "      if(refuseConflictedSend('createOrder')){ orderSubmitting=false; return; }\n      const res = await fetch(CREATEORDER_URL,{",
-    "to": "      const res = await fetch(CREATEORDER_URL,{",
+    "from": "      if(refuseConflictedSend('createOrder')){ orderSubmitting=false; return; }\n",
+    "to": "",
     "command": [
       "node",
       "../cart-decoupling.test.mjs"
-    ]
+    ],
+    "kills_with": "the send gate still refuses it"
   },
   {
     "id": "b4-45",
     "slice": "b4",
     "label": "la_musa: the chargeOnlineOrder SEND gate is gone",
     "file": "../la-musa-orders/index.html",
-    "from": "    if(refuseConflictedSend('chargeOnlineOrder')) return paymentFallback('Tu carrito cambió mientras iniciábamos el pago.');\n    const res = await fetch(CHARGEORDER_URL, {",
-    "to": "    const res = await fetch(CHARGEORDER_URL, {",
+    "from": "    if(refuseConflictedSend('chargeOnlineOrder')) return paymentFallback('Tu carrito cambió mientras iniciábamos el pago.');\n",
+    "to": "",
     "command": [
       "node",
       "../cart-decoupling.test.mjs"
-    ]
+    ],
+    "kills_with": "chargeOnlineOrder is never called with an unresolved line"
   },
   {
     "id": "b4-46",

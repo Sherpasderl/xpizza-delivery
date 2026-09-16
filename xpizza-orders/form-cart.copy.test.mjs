@@ -72,10 +72,21 @@ test('the conflict gate sits at every path to a charge — structural census, bo
 
     // 🔴 THE SEND GATE, INSIDE THE RETRY LOOP, with nothing between the check and the fetch. The retry
     // re-sends createOrder without rebuilding the order, so a gate before the loop does not cover it.
-    assert.ok(/for\(let attempt=1; attempt<=MAX_TRIES; attempt\+\+\)\{\n    try \{\n(?:[^\n]*\n){0,4}?      if\(refuseConflictedSend\('createOrder'\)\)\{ orderSubmitting=false; return; \}\n      const res = await fetch\(CREATEORDER_URL,\{/.test(raw),
+    /* 🔴 THE GATE, THEN AT MOST THE 1C TOKEN ATTACH, THEN THE FETCH — and nothing else. 1C Task 7 adds
+       one line between the gate and each send (it must attach at the send, for the same reason the gate
+       is there: anything earlier binds to a cart the customer can still edit). So the adjacency is
+       widened by exactly that one statement, spelled out in full rather than replaced by a wildcard —
+       a `[\s\S]*?` here would let any future statement slip between the conflict check and the fetch,
+       which is the precise thing this assertion exists to forbid. */
+    const ATTACH = String.raw`(?:\s*/\*[\s\S]*?\*/\n)?(?:\s*try\{ if\(__confirmQuote\) __confirmQuote\.attach\(currentOrder, confirmQuoteCartSig\(\)\); \}catch\(_\)\{\}\n)?`;
+    assert.ok(new RegExp(String.raw`for\(let attempt=1; attempt<=MAX_TRIES; attempt\+\+\)\{\n    try \{\n(?:[^\n]*\n){0,4}?      if\(refuseConflictedSend\('createOrder'\)\)\{ orderSubmitting=false; return; \}\n` + ATTACH + String.raw`      const res = await fetch\(CREATEORDER_URL,\{`).test(raw),
       `${dir}: the createOrder send gate must sit INSIDE the retry loop, immediately before the fetch`);
-    assert.ok(/if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n    const res = await fetch\(CHARGEORDER_URL, \{/.test(raw),
+    assert.ok(new RegExp(String.raw`if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n` + ATTACH + String.raw`    const res = await fetch\(CHARGEORDER_URL, \{`).test(raw),
       `${dir}: the chargeOnlineOrder send gate must sit immediately before the fetch`);
+    // non-vacuity: the widened pattern must still REFUSE an unrelated statement wedged in between.
+    assert.ok(!new RegExp(String.raw`if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n` + ATTACH + String.raw`    const res = await fetch\(CHARGEORDER_URL, \{`)
+      .test("if(refuseConflictedSend('chargeOnlineOrder')) return paymentFallback('x');\n    mutateCart();\n    const res = await fetch(CHARGEORDER_URL, {"),
+      'non-vacuity: the widened adjacency still rejects an arbitrary statement between the gate and the fetch');
 
     /* 🔴 A DOCUMENTED LINT, NOT A PROOF — and saying so is the point. The guarantee is that the two
        sends which exist are each gated, asserted structurally above and behaviourally in
