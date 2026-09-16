@@ -73,13 +73,24 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   before(body, 'prepareRedemption(', 'reserveRedemption(', 'B1: prepare (compute/price) before the reserve (debit)');
   before(body, 'reserveRedemption(', 'acquireHostedAttempt(', 'B1: reserve before the CAS acquire');
   before(body, 'acquireHostedAttempt(', 'attachAttempt(', 'B1: attach the claimed attempt AFTER the acquire');
-  // every truly-abandoned branch releases the owned hold: acquire-throw, item_unavailable, already_paid,
-  // conflict, closed, !claimed, hosted-create throw, hosted-create !ok, hosted-create persist-fail [C/#30] = 9 call-sites.
+  /* Every truly-abandoned branch releases the owned hold. 1C T5 CHANGED THE COMPOSITION of this set
+     without changing its size, which is exactly the way a count-only guard goes quietly wrong: the
+     `!claimed` release moved into hosted-charge-flow.js (it is passed in as releaseHold), and the new
+     gated-vs-outgoing amount check took its place. So the branches are enumerated, not just counted.
+     IN THE HANDLER (9): acquire-throw, item_unavailable, already_paid, conflict, closed,
+     outgoing-amount-mismatch, hosted-create throw, hosted-create !ok, hosted-create persist-fail [C/#30].
+     IN THE FLOW MODULE (2, via the injected releaseHold): !claimed, and every gate refusal. */
   const releaseCount = (body.match(/releaseHoldIfOwned\(\)/g) || []).length;
-  assert.strictEqual(releaseCount, 9, `expected releaseHoldIfOwned() on all 9 abandoned branches, got ${releaseCount}`);
-  // in_progress + reuse must PRESERVE the hold (no release) — they back a creating/live checkout.
-  const preserveSpan = body.slice(body.indexOf("outcome === 'in_progress'"), body.indexOf("outcome !== 'claimed'"));
-  assert.ok(preserveSpan.length > 0 && !/releaseHoldIfOwned/.test(preserveSpan), 'in_progress + reuse branches must PRESERVE the hold (no release)');
+  assert.strictEqual(releaseCount, 9, `expected releaseHoldIfOwned() on all 9 abandoned handler branches, got ${releaseCount}`);
+  assert.ok(/gatedCents !== total_cents/.test(body), 'the outgoing-amount mismatch is one of those 9 — if it is gone, the count above is measuring a different set');
+  assert.ok(/releaseHold: releaseHoldIfOwned/.test(body), 'and the flow module gets the SAME owned-only release, not an open-coded one');
+  /* in_progress + reuse must PRESERVE the hold — they back a creating/live checkout. That property is
+     now RUN in hosted-charge-flow.test.js (both branches assert release === 0); this reads the module
+     they moved to so the structural guard does not silently pass by looking at a file they left. */
+  const FLOW = fs.readFileSync(require.resolve('./hosted-charge-flow.js'), 'utf8');
+  const preserveSpan = FLOW.slice(FLOW.indexOf("outcome === 'in_progress'"), FLOW.indexOf("outcome !== 'claimed'"));
+  assert.ok(preserveSpan.length > 0, 'non-vacuity: the preserve span really was found in the flow module');
+  assert.ok(!/releaseHold\(\)/.test(preserveSpan), 'in_progress + reuse branches must PRESERVE the hold (no release)');
   ok('chargeOnlineOrder: prepare → fingerprints → placeability → reserve → acquire → (release abandoned | preserve in_progress/reuse | attach claimed)');
 }
 
