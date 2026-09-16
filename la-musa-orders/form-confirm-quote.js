@@ -26,8 +26,15 @@
     var now = typeof opts.now === 'function' ? opts.now : function () { return Date.now(); };
     // Well under the 15-minute issuance window. Not derived from the token: see the header.
     var REFRESH_MS = typeof opts.refreshMs === 'number' && opts.refreshMs > 0 ? opts.refreshMs : 10 * 60 * 1000;
-    var setTimer = opts.setInterval || (typeof setInterval === 'function' ? setInterval : null);
-    var clearTimer = opts.clearInterval || (typeof clearInterval === 'function' ? clearInterval : null);
+    // Resolved at CALL time, not construction: the store is built while the form script is still
+    // loading, and binding the host's timer functions then makes them unobservable afterwards — which
+    // also made the refresh untestable through the real wiring, where the defect actually lived.
+    function timerFns() {
+      return {
+        set: opts.setInterval || (typeof setInterval === 'function' ? setInterval : null),
+        clear: opts.clearInterval || (typeof clearInterval === 'function' ? clearInterval : null),
+      };
+    }
 
     var stored = null;        // { token, cart_sig, net, at }
     var needsRefresh = false;
@@ -81,13 +88,14 @@
        they cannot — a customer who reaches checkout and simply waits. Idempotent: calling it twice does
        not stack timers, which matters because the pay step re-renders on every edit. */
     function scheduleRefresh() {
-      if (timer !== null || !setTimer) return false;
-      timer = setTimer(function () { try { requote(); } catch (_) {} }, REFRESH_MS);
+      var fns = timerFns();
+      if (timer !== null || !fns.set) return false;
+      timer = fns.set(function () { try { requote(); } catch (_) {} }, REFRESH_MS);
       return true;
     }
     function stopRefresh() {
       if (timer === null) return false;
-      try { if (clearTimer) clearTimer(timer); } catch (_) {}
+      try { var c = timerFns().clear; if (c) c(timer); } catch (_) {}
       timer = null;
       return true;
     }

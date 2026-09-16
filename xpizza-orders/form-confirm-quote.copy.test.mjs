@@ -50,9 +50,9 @@ test('both forms load the store and wire it at every seam — identically', () =
        composing the order would bind a token to a cart the customer can still edit before the fetch,
        which is the one thing this module exists to prevent. Anchored on `raw` because where a call
        sits is a fact about the code as written. */
-    assert.ok(/if\(refuseConflictedSend\('createOrder'\)\)\{ orderSubmitting=false; return; \}\n(?:[^\n]*\n){0,10}?      try\{ if\(__confirmQuote\) __confirmQuote\.attach\(currentOrder, confirmQuoteCartSig\(\)\); \}catch\(_\)\{\}\n      const res = await fetch\(CREATEORDER_URL,\{/.test(raw),
+    assert.ok(/if\(refuseConflictedSend\('createOrder'\)\)\{ orderSubmitting=false; return; \}\n(?:[^\n]*\n){0,10}?      try\{ if\(__confirmQuote\) __confirmQuote\.attach\(currentOrder, __orderSigAtBuild\); \}catch\(_\)\{\}\n      const res = await fetch\(CREATEORDER_URL,\{/.test(raw),
       `${dir}: the createOrder attach must sit between the conflict gate and the fetch`);
-    assert.ok(/if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n(?:[^\n]*\n){0,10}?    try\{ if\(__confirmQuote\) __confirmQuote\.attach\(currentOrder, confirmQuoteCartSig\(\)\); \}catch\(_\)\{\}\n    const res = await fetch\(CHARGEORDER_URL, \{/.test(raw),
+    assert.ok(/if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n(?:[^\n]*\n){0,10}?    try\{ if\(__confirmQuote\) __confirmQuote\.attach\(currentOrder, __orderSigAtBuild\); \}catch\(_\)\{\}\n    const res = await fetch\(CHARGEORDER_URL, \{/.test(raw),
       `${dir}: the chargeOnlineOrder attach must sit between the conflict gate and the fetch`);
 
     /* 🔴 THE SIGNATURE MUST FOLD IN THE REWARD. redeemCartItems() serializes the cart only, so without
@@ -61,6 +61,19 @@ test('both forms load the store and wire it at every seam — identically', () =
        simplification back to `JSON.stringify(redeemCartItems())` fails the build. */
     assert.ok(/function confirmQuoteCartSig\(\)\{[\s\S]{0,700}?getRedeemPayload[\s\S]{0,400}?reward:/.test(html),
       `${dir}: the token signature must include the applied reward, not just the cart`);
+
+    /* 🔴 THE ATTACH TAKES THE BUILD-TIME STAMP, NOT A LIVE READ. currentOrder is composed at
+       buildOrder() and sent later, behind an auth await and a retry loop; reading the signature at the
+       send binds the token to whatever the cart is by THEN, so an edit in that window ships one cart's
+       body carrying another cart's token — refused by the server's fingerprint even under grace.
+       Proven behaviourally in confirm-quote-wiring.test.mjs; pinned here because the difference between
+       the two is a single argument and reads as cosmetic. */
+    assert.strictEqual((html.match(/__confirmQuote\.attach\(currentOrder, __orderSigAtBuild\)/g) || []).length, 2,
+      `${dir}: both attaches must use the build-time signature`);
+    assert.ok(!/__confirmQuote\.attach\(currentOrder, confirmQuoteCartSig\(\)\)/.test(html),
+      `${dir}: …and neither may re-read the signature from live state at the send`);
+    assert.strictEqual((html.match(/__orderSigAtBuild = confirmQuoteCartSig\(\);/g) || []).length, 1,
+      `${dir}: the stamp is taken exactly once, where the body is composed`);
     // …and it must NOT have become an alias for the 1B display key, whose semantics it deliberately
     // does not share.
     assert.ok(!/function confirmQuoteCartSig\(\)\{ ?return serverQuoteCartKey\(\)/.test(html),

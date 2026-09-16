@@ -2613,7 +2613,18 @@ function applyRedeemQuoteToTotals(q){
      own staleness (_redeemQuoteSig) before calling back — by this point the quote has already been
      accepted as current for the reward that is pending. A null q (reward removed or quote failed)
      clears the token, which is correct: the cart's reward state just changed. */
-  try{ if(__confirmQuote) __confirmQuote.store(q, confirmQuoteCartSig()); }catch(_){}
+  /* 🔴 …and ONLY while that quote is genuinely the current one. A reward-active quote can resolve after
+     the reward was removed: the callback still fires, and read live the signature is now the reward-OFF
+     one — so a reward-active token would be stored against a reward-off cart and the next send would
+     meet the server's fingerprint. redeemQuoteMatches() is the account module's own fail-closed answer
+     to "was this quote priced for the cart and reward in play right now", so it is asked rather than
+     re-derived here; a removed reward means no pending payload, which stores nothing and clears any
+     token already held. */
+  try{
+    var _pend = (window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload) ? window.__ACCOUNT.getRedeemPayload() : null;
+    var _live = !!(q && _pend) && (function(){ try{ return window.__ACCOUNT.redeemQuoteMatches(redeemCartItems()); }catch(_){ return false; } })();
+    if(__confirmQuote) __confirmQuote.store(_live ? q : null, confirmQuoteCartSig());
+  }catch(_){}
   if(!q){ try{ const _pend=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemPayload&&window.__ACCOUNT.getRedeemPayload()); if(!_pend) window.__resumeOrderId=null; }catch(_){} }   // D(revise 1): drop the resume ONLY on a GENUINE removal (quitar → no redeem pending). A transient/null quote while a redeem is STILL pending must NOT drop it — else buildOrder fresh-ids a still-attached redeem → DOUBLE-RESERVE
   const pa=document.getElementById('pixelpay-amount');
   // 2c: the non-redeem branch now uses redeemAdjustedTotal() so the CARD in-form amount follows the
@@ -2713,7 +2724,9 @@ var __confirmQuote = (typeof createConfirmQuote === 'function') ? createConfirmQ
       var pend = (window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload) ? window.__ACCOUNT.getRedeemPayload() : null;
       if(pend && window.__ACCOUNT && typeof window.__ACCOUNT.requoteRedeem==='function'){ Promise.resolve(window.__ACCOUNT.requoteRedeem(redeemCartItems())).catch(function(){}); return; }   // same call shape as the other two requote sites
     }catch(_){}
-    try{ requestServerQuote(); }catch(_){}
+    // FORCED: an unchanged cart is the whole point of a refresh, and requestServerQuote's
+    // already-quoted short-circuits would otherwise make this call do nothing at all.
+    try{ requestServerQuote(true); }catch(_){}
   }
 }) : null;
 function getServerQuoteTotalCents(){
@@ -2725,7 +2738,13 @@ function getServerQuoteTotalCents(){
     return (__serverQuote.key === serverQuoteCartKey()) ? __serverQuote.cents : null;
   }catch(_){ return null; }
 }
-function requestServerQuote(){
+/* 1C T7 revise — `force` skips the ALREADY-QUOTED short-circuits below. Those exist so an unchanged
+   cart is not re-asked on every render, which is right for the display's purposes and exactly wrong for
+   the token's: the customer the silent refresh exists for is the one who reaches checkout and waits, and
+   their cart is unchanged BY DEFINITION. Left unforced the refresh issued nothing, the token expired
+   under them, and the pay-tap produced the 409 the refresh was built to remove. `force` does NOT skip
+   the in-flight check — re-asking about a request already outstanding is still pointless. */
+function requestServerQuote(force){
   try{
     /* THE WAYS OUT OF THIS FUNCTION, and why each either supersedes or must not. Written out because
        "every transition supersedes" is only worth saying if it can be checked against them, and the one
@@ -2749,7 +2768,7 @@ function requestServerQuote(){
            passes the guard because nothing superseded it, and clears the cache of the cart actually on
            screen; the next exact-mode updateTotal then lowers the customer's tender (350 → 340 /
            233 → 223). Reproduced: quote A, add an item, remove it again. */
-    if(key===__serverQuote.key && __serverQuote.cents!=null){ supersedeQuoteRequests(); return; }
+    if(!force && key===__serverQuote.key && __serverQuote.cents!=null){ supersedeQuoteRequests(); return; }
     /* 🔴 3b. THIS CART ALREADY FAILED TO QUOTE → supersede, then return. WITHOUT THIS THE PAIR BELOW IS A
            HOT LOOP, and it is not hypothetical — the whole-flow matrix hung on it. Every quote reply
            calls renderStage2Summary(), and renderStage2Summary() calls requestServerQuote(). On a
@@ -2764,7 +2783,7 @@ function requestServerQuote(){
            (A fails → B → back to A is still suppressed) until one of three things actually clears the
            marker: a SUCCESSFUL quote, an EMPTIED cart, or a live-menu apply. The display falls open to
            calcTotal meanwhile, which is the documented failure-open behaviour, not a silent stop. */
-    if(key===__serverQuote.failedKey){ supersedeQuoteRequests(); return; }
+    if(!force && key===__serverQuote.failedKey){ supersedeQuoteRequests(); return; }   // a refresh DOES retry a cart whose quote failed — 10 minutes later is a different network
     /*  4. A REQUEST FOR THIS EXACT CART IS ALREADY IN FLIGHT → do NOT supersede. That request is the
            current cart's and is the one to wait for; superseding here would orphan the very reply this
            call wants and leave the cart permanently unquoted. */
@@ -2937,7 +2956,14 @@ function renderStage2Summary(){
      turn a pay-tap into a refusal. Idempotent, so re-rendering on every edit does not stack timers.
      The cadence is a fixed sub-window interval: the token's expiry is never decoded, so a change to
      the token's internal format cannot silently break this. */
-  try{ if(__confirmQuote) __confirmQuote.scheduleRefresh(); }catch(_){}
+  /* …but ONLY while the pay step is actually showing. renderStage2Summary() also runs on ordinary cart
+     and pay edits, so an unconditional start re-arms the timer from step 1 — a page the customer has
+     left, re-quoting forever. The stage is read from the DOM rather than tracked separately so it
+     cannot disagree with what is on screen. */
+  try{
+    var _onPay = !!(document.querySelector('.stage.active') && document.querySelector('.stage.active').id === 's2');
+    if(__confirmQuote && _onPay) __confirmQuote.scheduleRefresh();
+  }catch(_){}
   const box=document.getElementById('s2-summary'); if(!box) return;
   const items=cartItems();
   if(!items.length){ box.innerHTML=''; return; }
@@ -3659,9 +3685,20 @@ function orderIdForThisCart(){
    conflicted cart cannot even be turned into an order. Returns false and leaves currentOrder untouched;
    submitOrder() and processPixelPay() keep their own gates for the retry paths that re-enter them
    directly without rebuilding. */
+/* 1C T7 revise — THE SIGNATURE OF THE BODY, captured where the body is composed. currentOrder is built
+   here and sent later, behind an auth await and a retry loop; reading the signature at the SEND binds
+   the token to whatever the cart is by then, so an edit in that window ships cart A's body carrying
+   cart B's token — a cart_mismatch the server refuses even under grace, on an order the customer never
+   touched after confirming. Captured here, the token always describes the bytes it rides with, and a
+   body whose cart has moved on simply goes token-less (grace / the unsigned floor), which is the safe
+   direction and the one this module's hard rule already demands. */
+var __orderSigAtBuild = null;
 function buildOrder(){
   const _conflicts = cartConflicts();
   if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }
+  // Guarded like every other call into this module: a signature that cannot be computed means the
+  // body simply travels token-less (grace / the unsigned floor), which is the safe direction.
+  try{ __orderSigAtBuild = confirmQuoteCartSig(); }catch(_){ __orderSigAtBuild = null; }   // 1C T7 revise — stamped with THIS body's cart+reward
   const items=cartItems();
   const total=calcTotal();
   const orderId = orderIdForThisCart();   // Layer 1: reuse the id while the cart is unchanged; folds __resumeOrderId; content change / completion mints fresh
@@ -3765,7 +3802,7 @@ async function processPixelPay(){
        send is byte-identical to the one that shipped before 1C, which is the whole premise of the
        grace deploy. Attaching a stale-for-cart token would be worse than attaching none: the server
        would 409 on its fingerprint, turning an order that was never in doubt into a refusal. */
-    try{ if(__confirmQuote) __confirmQuote.attach(currentOrder, confirmQuoteCartSig()); }catch(_){}
+    try{ if(__confirmQuote) __confirmQuote.attach(currentOrder, __orderSigAtBuild); }catch(_){}
     const res = await fetch(CHARGEORDER_URL, {
       method:'POST',
       headers: Object.assign(
@@ -4118,7 +4155,7 @@ async function submitOrder(paymentStatus){
          send is byte-identical to the one that shipped before 1C, which is the whole premise of the
          grace deploy. Attaching a stale-for-cart token would be worse than attaching none: the server
          would 409 on its fingerprint, turning an order that was never in doubt into a refusal. */
-      try{ if(__confirmQuote) __confirmQuote.attach(currentOrder, confirmQuoteCartSig()); }catch(_){}
+      try{ if(__confirmQuote) __confirmQuote.attach(currentOrder, __orderSigAtBuild); }catch(_){}
       const res = await fetch(CREATEORDER_URL,{
         method:'POST',
         headers: Object.assign(

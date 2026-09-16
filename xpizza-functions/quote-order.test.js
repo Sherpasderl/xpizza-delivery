@@ -156,8 +156,15 @@ ok('fail-soft: 5 bad-cart shapes → { ok:false } with NO total (the client keep
       `${rid}: the four no-fire returns AND the outer catch supersede`);
     // …and the new one is REACHABLE rather than merely present: it must be guarded on failedKey, which
     // is the only thing that distinguishes it from the already-quoted return directly above it.
-    assert.ok(/if\(key===__serverQuote\.failedKey\)\{\s*supersedeQuoteRequests\(\); return; \}/.test(rsq),
+    /* 1C T7 revise allows an optional `!force &&` prefix here. The refresh cadence forces a re-quote,
+       and a cart whose quote failed ten minutes ago deserves another try — a different network by then.
+       The GUARD ITSELF is what this asserts and it is unchanged: the exit is still keyed on failedKey,
+       which is the only thing distinguishing it from the already-quoted return above. The prefix is
+       spelled out rather than wildcarded, so a guard keyed on anything else still fails. */
+    assert.ok(/if\((?:!force && )?key===__serverQuote\.failedKey\)\{\s*supersedeQuoteRequests\(\); return; \}/.test(rsq),
       `${rid}: the failed-cart exit is keyed on failedKey — the guard that stops the re-request loop`);
+    assert.ok(!/if\((?:!force && )?key===__serverQuote\.somethingElse\)\{\s*supersedeQuoteRequests\(\); return; \}/.test(rsq),
+      'non-vacuity: the widened pattern still requires the failedKey guard specifically');
     assert.ok(/__serverQuote\.failedKey\s*=\s*key/.test(block),
       `${rid}: …and something actually RECORDS a failed cart, or the guard can never fire`);
     /* 🔴 THE EXCEPTIONAL EXIT COUNTS AS A WAY OUT. The counts below cover NORMAL completion only, and

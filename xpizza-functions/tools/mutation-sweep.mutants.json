@@ -1368,12 +1368,13 @@
     "slice": "b4",
     "label": "the chokepoint gate in buildOrder is gone — the online path is ungated again",
     "file": "../xpizza-orders/index.html",
-    "from": "  const _conflicts = cartConflicts();\n  if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }\n  const items=cartItems();",
-    "to": "  const items=cartItems();",
+    "from": "  const _conflicts = cartConflicts();\n  if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }\n",
+    "to": "",
     "command": [
       "node",
       "../cart-decoupling.test.mjs"
-    ]
+    ],
+    "kills_with": "buildOrder"
   },
   {
     "id": "b4-27",
@@ -1392,12 +1393,13 @@
     "slice": "b4",
     "label": "la_musa: the chokepoint gate in buildOrder is gone",
     "file": "../la-musa-orders/index.html",
-    "from": "  const _conflicts = cartConflicts();\n  if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }\n  const items=cartItems();",
-    "to": "  const items=cartItems();",
+    "from": "  const _conflicts = cartConflicts();\n  if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }\n",
+    "to": "",
     "command": [
       "node",
       "../cart-decoupling.test.mjs"
-    ]
+    ],
+    "kills_with": "buildOrder"
   },
   {
     "id": "b4-30",
@@ -2381,8 +2383,8 @@
       "../live-apply.test.mjs"
     ],
     "label": "returning to an already-quoted cart supersedes nothing — the request left behind clobbers the cache",
-    "from": "    if(key===__serverQuote.key && __serverQuote.cents!=null){ supersedeQuoteRequests(); return; }",
-    "to": "    if(key===__serverQuote.key && __serverQuote.cents!=null) return;"
+    "from": "    if(!force && key===__serverQuote.key && __serverQuote.cents!=null){ supersedeQuoteRequests(); return; }",
+    "to": "    if(!force && key===__serverQuote.key && __serverQuote.cents!=null) return;"
   },
   {
     "id": "b6-71",
@@ -2417,8 +2419,8 @@
       "../live-apply.test.mjs"
     ],
     "label": "la_musa: returning to an already-quoted cart supersedes nothing — the request left behind clobbers the cache",
-    "from": "    if(key===__serverQuote.key && __serverQuote.cents!=null){ supersedeQuoteRequests(); return; }",
-    "to": "    if(key===__serverQuote.key && __serverQuote.cents!=null) return;"
+    "from": "    if(!force && key===__serverQuote.key && __serverQuote.cents!=null){ supersedeQuoteRequests(); return; }",
+    "to": "    if(!force && key===__serverQuote.key && __serverQuote.cents!=null) return;"
   },
   {
     "id": "b6-74",
@@ -4207,5 +4209,109 @@
       "node",
       "charge-gate-placement.test.js"
     ]
+  },
+  {
+    "id": "c7-x1",
+    "slice": "c7",
+    "label": "the silent refresh is not forced, so a waiting customer's token expires under them",
+    "file": "../xpizza-orders/index.html",
+    "from": "    try{ requestServerQuote(true); }catch(_){}",
+    "to": "    try{ requestServerQuote(); }catch(_){}",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "each refresh must issue a NEW quote on an unchanged cart"
+  },
+  {
+    "id": "c7-x2",
+    "slice": "c7",
+    "label": "the refresh re-arms off the pay step, re-quoting a page the customer left",
+    "file": "../xpizza-orders/index.html",
+    "from": "    if(__confirmQuote && _onPay) __confirmQuote.scheduleRefresh();",
+    "to": "    if(__confirmQuote) __confirmQuote.scheduleRefresh();",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "a cart edit off the pay step must not restart the refresh timer"
+  },
+  {
+    "id": "c7-x3",
+    "slice": "c7",
+    "label": "a late reward quote is stored against whatever the cart is now, not what it priced",
+    "file": "../xpizza-orders/index.html",
+    "from": "    if(__confirmQuote) __confirmQuote.store(_live ? q : null, confirmQuoteCartSig());",
+    "to": "    if(__confirmQuote) __confirmQuote.store(q, confirmQuoteCartSig());",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "a reward-active token must not be attached to a reward-off cart"
+  },
+  {
+    "id": "c7-x4",
+    "slice": "c7",
+    "label": "the createOrder attach re-reads the signature live, so an edit mid-send ships the wrong cart's token",
+    "file": "../xpizza-orders/index.html",
+    "from": "      try{ if(__confirmQuote) __confirmQuote.attach(currentOrder, __orderSigAtBuild); }catch(_){}",
+    "to": "      try{ if(__confirmQuote) __confirmQuote.attach(currentOrder, confirmQuoteCartSig()); }catch(_){}",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "the body describes cart A"
+  },
+  {
+    "id": "c7-m1",
+    "slice": "c7",
+    "label": "la_musa: the silent refresh is not forced, so a waiting customer's token expires under them",
+    "file": "../la-musa-orders/index.html",
+    "from": "    try{ requestServerQuote(true); }catch(_){}",
+    "to": "    try{ requestServerQuote(); }catch(_){}",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "each refresh must issue a NEW quote on an unchanged cart"
+  },
+  {
+    "id": "c7-m2",
+    "slice": "c7",
+    "label": "la_musa: the refresh re-arms off the pay step, re-quoting a page the customer left",
+    "file": "../la-musa-orders/index.html",
+    "from": "    if(__confirmQuote && _onPay) __confirmQuote.scheduleRefresh();",
+    "to": "    if(__confirmQuote) __confirmQuote.scheduleRefresh();",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "a cart edit off the pay step must not restart the refresh timer"
+  },
+  {
+    "id": "c7-m3",
+    "slice": "c7",
+    "label": "la_musa: a late reward quote is stored against whatever the cart is now, not what it priced",
+    "file": "../la-musa-orders/index.html",
+    "from": "    if(__confirmQuote) __confirmQuote.store(_live ? q : null, confirmQuoteCartSig());",
+    "to": "    if(__confirmQuote) __confirmQuote.store(q, confirmQuoteCartSig());",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "a reward-active token must not be attached to a reward-off cart"
+  },
+  {
+    "id": "c7-m4",
+    "slice": "c7",
+    "label": "la_musa: the createOrder attach re-reads the signature live, so an edit mid-send ships the wrong cart's token",
+    "file": "../la-musa-orders/index.html",
+    "from": "      try{ if(__confirmQuote) __confirmQuote.attach(currentOrder, __orderSigAtBuild); }catch(_){}",
+    "to": "      try{ if(__confirmQuote) __confirmQuote.attach(currentOrder, confirmQuoteCartSig()); }catch(_){}",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "the body describes cart A"
   }
 ]

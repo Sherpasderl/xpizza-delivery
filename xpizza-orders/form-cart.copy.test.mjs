@@ -78,7 +78,7 @@ test('the conflict gate sits at every path to a charge — structural census, bo
        widened by exactly that one statement, spelled out in full rather than replaced by a wildcard —
        a `[\s\S]*?` here would let any future statement slip between the conflict check and the fetch,
        which is the precise thing this assertion exists to forbid. */
-    const ATTACH = String.raw`(?:\s*/\*[\s\S]*?\*/\n)?(?:\s*try\{ if\(__confirmQuote\) __confirmQuote\.attach\(currentOrder, confirmQuoteCartSig\(\)\); \}catch\(_\)\{\}\n)?`;
+    const ATTACH = String.raw`(?:\s*/\*[\s\S]*?\*/\n)?(?:\s*try\{ if\(__confirmQuote\) __confirmQuote\.attach\(currentOrder, __orderSigAtBuild\); \}catch\(_\)\{\}\n)?`;
     assert.ok(new RegExp(String.raw`for\(let attempt=1; attempt<=MAX_TRIES; attempt\+\+\)\{\n    try \{\n(?:[^\n]*\n){0,4}?      if\(refuseConflictedSend\('createOrder'\)\)\{ orderSubmitting=false; return; \}\n` + ATTACH + String.raw`      const res = await fetch\(CREATEORDER_URL,\{`).test(raw),
       `${dir}: the createOrder send gate must sit INSIDE the retry loop, immediately before the fetch`);
     assert.ok(new RegExp(String.raw`if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n` + ATTACH + String.raw`    const res = await fetch\(CHARGEORDER_URL, \{`).test(raw),
