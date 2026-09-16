@@ -1606,13 +1606,13 @@ chargeOnlineApp.all('*', async (req, res) => {
     // Stamped on the pending order, which already exists by now — the same two facts the cash path
     // records. Best-effort: an audit write must not cost the customer a checkout they are entitled to.
     stampProvenance: (prov) => db.ref(`orders/${orderId}/quote`).set(prov).catch(() => {}),
+    /* Bind the claimed attempt to the reservation (attempt_id + hosted_expires_at) for the sweep +
+       Task-7 consume/hold at confirm. Idempotent; only when this order carries a reward. The flow
+       invokes it ONLY on an accepted fresh claim — a resume must never rewrite a live hold's expiry. */
+    attachReservation: redemptionCanonical
+      ? ({ attemptId: aid, hostedExpiresAt }) => attachAttempt(db, { uid: customer_uid, rid: restaurantId, orderId, attemptId: aid, hostedExpiresAt, now: nowTs }).catch(() => {})
+      : null,
   };
-
-  // Claimed a FRESH attempt → bind it to the reservation (attempt_id + hosted_expires_at) for the sweep +
-  // Task-7 consume/hold at confirm. Idempotent; only when this order carries a reward.
-  if (redemptionCanonical) {
-    await attachAttempt(db, { uid: customer_uid, rid: restaurantId, orderId, attemptId: acq.attempt_id, hostedExpiresAt: acq.expires_at, now: nowTs }).catch(() => {});
-  }
 
   // We own a FRESH attempt in hosted_state:'creating' (hosted_order_id already persisted by the
   // claim, so a racing paid callback can still bind/recover — I7). Create the hosted checkout with

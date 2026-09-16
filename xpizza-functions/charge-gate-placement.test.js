@@ -105,6 +105,16 @@ const before = (hay, a, b, msg) => {
     '…and does NOT open-code releaseRedemption, which would strand or over-release a shared hold');
   assert.ok(/retireAttempt: \(aid, reason\) => retireUnissuedAttempt\(db/.test(call),
     '🔴 and passes a real retirement, so a refused attempt cannot strand');
+  /* 🔴 THE ATTACH IS THE FLOW'S TO CALL, NOT THE HANDLER'S. attachAttempt binds attempt_id and
+     hosted_expires_at onto the reward hold and is only correct for an ACCEPTED FRESH CLAIM. It used to
+     sit inline, protected by the resume returns above it; when issuance moved into the flow the
+     invocation landed below it and a resume silently nulled a live hold's expiry. It is an injected
+     effect now — so if a bare attachAttempt( call ever reappears in this handler, that protection has
+     been lost again. */
+  assert.ok(/attachReservation: redemptionCanonical/.test(call),
+    '🔴 the reservation attach is injected into the gated flow, which calls it only on an accepted fresh claim');
+  assert.strictEqual((card.match(/await attachAttempt\(/g) || []).length, 0,
+    '🔴 the handler must not attach on its own — that is what let a resume rewrite a live hold');
   assert.ok(/reward: redemptionResolved/.test(call),
     '🔴 the gate binds the RESOLVED redemption the issuer fingerprinted, not a reconstruction');
   assert.ok(/token: body\.quote_token/.test(call), 'the token comes from the request');

@@ -4035,5 +4035,41 @@
       "node",
       "charge-gate-placement.test.js"
     ]
+  },
+  {
+    "id": "c5-20",
+    "slice": "c5",
+    "label": "a resume rebinds the live reward hold, nulling the expiry the sweep classifies it by",
+    "file": "hosted-charge-flow.js",
+    "from": "  if (opts.attachReservation) {\n    await opts.attachReservation({ attemptId: opts.acq.attempt_id, hostedExpiresAt: opts.acq.expires_at });\n  }",
+    "to": "  if (opts.attachReservation) {\n    await opts.attachReservation({ attemptId: opts.acq.attempt_id, hostedExpiresAt: undefined });\n  }",
+    "command": [
+      "node",
+      "hosted-charge-flow.test.js"
+    ]
+  },
+  {
+    "id": "c5-21",
+    "slice": "c5",
+    "label": "the reservation is bound before the gate decides, so a refusal leaves it bound-then-released",
+    "file": "hosted-charge-flow.js",
+    "from": "  if (decision.respond) return { respond: decision.respond };",
+    "to": "  if (decision.respond) { if (opts.attachReservation) await opts.attachReservation({ attemptId: opts.acq.attempt_id, hostedExpiresAt: opts.acq.expires_at }); return { respond: decision.respond }; }",
+    "command": [
+      "node",
+      "hosted-charge-flow.test.js"
+    ]
+  },
+  {
+    "id": "c5-22",
+    "slice": "c5",
+    "label": "the card path stops binding the claimed attempt to the reward hold entirely",
+    "file": "index.js",
+    "from": "    attachReservation: redemptionCanonical",
+    "to": "    attachReservation: false && redemptionCanonical",
+    "command": [
+      "node",
+      "charge-gate-placement.test.js"
+    ]
   }
 ]

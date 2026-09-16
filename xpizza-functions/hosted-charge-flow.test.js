@@ -186,8 +186,8 @@ function rig({ acq, gate, totalCents }) {
   // on the gateway itself, so "a refusal creates no checkout" and "the gateway got the gated amount"
   // are executed rather than read off the source.
   const centsToLempiras = (c) => (c / 100).toFixed(2);
-  function fullRig({ acq, gate, totalCents, checkout = { ok: true, url: 'https://pay/new' }, persistThrows = false }) {
-    const calls = { gate: 0, release: 0, retire: [], checkout: [], stamped: [], persisted: [] };
+  function fullRig({ acq, gate, totalCents, checkout = { ok: true, url: 'https://pay/new' }, persistThrows = false, attachReservation }) {
+    const calls = { gate: 0, release: 0, retire: [], checkout: [], stamped: [], persisted: [], attached: [] };
     const run = () => resolveAndIssueHostedCheckout({
       acq, orderId: 'ORD-1', log: QUIET, attemptId: acq.attempt_id,
       totalCents, toLempiras: centsToLempiras,
@@ -195,6 +195,7 @@ function rig({ acq, gate, totalCents }) {
       releaseHold: async () => { calls.release += 1; },
       retireAttempt: async (id, reason) => { calls.retire.push({ id, reason }); },
       stampProvenance: async (prov) => { calls.stamped.push(prov); },
+      attachReservation: attachReservation !== undefined ? attachReservation : async (a) => { calls.attached.push(a); },
       createCheckout: async (req) => {
         calls.checkout.push(req);
         if (checkout instanceof Error) throw checkout;
@@ -310,6 +311,82 @@ function rig({ acq, gate, totalCents }) {
       else assert.deepStrictEqual(r.calls.retire, [], `${label}: the attempt WAS issued, so it is not retired — only the hold is freed`);
     }
     ok('each post-claim bailout (network / rejected / no-url / persist-fail) releases the owned hold');
+  }
+
+  // ── 10. 🔴 ONLY AN ACCEPTED FRESH CLAIM BINDS THE RESERVATION ──────────────────────────────────
+  // A regression I introduced and codex caught: when issuance moved into this unit, its invocation
+  // landed BELOW the handler's attachAttempt block, so a resume ran the attach with
+  // acq.expires_at === undefined and attachAttempt coerced the live hold's hosted_expires_at to null —
+  // the field the sweep classifies the hold by. It survived every test because a resume answers
+  // 200/202 with zero gateway calls and nothing watched the reservation.
+  {
+    for (const acq of [
+      { outcome: 'reuse', attempt_id: 'A9', checkout_url: 'https://pay/x' },
+      { outcome: 'in_progress' },
+      { outcome: 'failed' },
+    ]) {
+      const r = fullRig({ acq, gate: goodGate, totalCents: net });
+      await r.run();
+      assert.deepStrictEqual(r.calls.attached, [], `🔴 ${acq.outcome} must not touch the reservation`);
+    }
+    // …and a REFUSED fresh claim must not bind one either: the hold is being released, not bound.
+    const up = { ...tables, menu: { ...tables.menu } };
+    const k0 = Object.keys(up.menu)[0]; up.menu[k0] = up.menu[k0] * 3 + 7;
+    const rf = fullRig({ acq: { outcome: 'claimed', attempt_id: 'A3', expires_at: 77 }, gate: { ...goodGate, tables: up }, totalCents: 999_999_99 });
+    const outf = await rf.run();
+    assert.strictEqual(outf.respond.status, 409);
+    assert.deepStrictEqual(rf.calls.attached, [], '🔴 a refused claim must not bind the reservation');
+    // …and an ACCEPT binds exactly once, with the FRESH attempt's own expiry.
+    const ra = fullRig({ acq: { outcome: 'claimed', attempt_id: 'A1', expires_at: 4242 }, gate: goodGate, totalCents: net });
+    await ra.run();
+    assert.deepStrictEqual(ra.calls.attached, [{ attemptId: 'A1', hostedExpiresAt: 4242 }],
+      '🔴 an accept binds once, with acq.expires_at — not undefined');
+    ok('only an accepted fresh claim binds the reservation; resume / failed / refused bind nothing');
+  }
+
+  // ── 11. 🔴 THE SAME, AGAINST THE REAL RESERVATION — THE HOLD ITSELF IS UNCHANGED ───────────────
+  // The spy above proves attach is not CALLED. This proves what that protects: a resume leaves the live
+  // hold's hosted_expires_at intact. Run through the real reserveRedemption/attachAttempt transactions.
+  {
+    const { reserveRedemption, attachAttempt } = require('./rewards-reserve');
+    const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');
+    const mk = () => {
+      const store = { user_rewards: { U1: { x_pizza: { balance: 500, reserved: 0 } } } };
+      const at = (path) => path.split('/').reduce((o, k) => (o == null ? undefined : o[k]), store);
+      const commit = (nx) => { store.user_rewards.U1.x_pizza = nx; return { committed: true, snapshot: { val: () => nx } }; };
+      return { store, ref: (path) => ({
+        get: async () => ({ val: () => { const v = at(path); return v === undefined ? null : v; } }),
+        transaction: async (fn) => { const cur = at(path); const nx = fn(cur === undefined ? null : cur);
+          if (nx === undefined) return { committed: false };
+          if (nx === null) { const a = fn(cur === undefined ? null : cur); return a == null ? { committed: false } : commit(a); }
+          return commit(nx); },
+      }) };
+    };
+    const EXP = 1_000_000 + 900_000;
+    const seed = async (db) => reserveRedemption(db, { uid: 'U1', rid: 'x_pizza', orderId: 'ORD-1', cost: 100,
+      canonical: 'free_pizza', orderFingerprint: 'FP', configVersion: REDEMPTION_CONFIG_VERSION, now: 1_000_000, hostedExpiresAt: EXP });
+    const hold = (db) => db.store.user_rewards.U1.x_pizza.reservations['ORD-1'];
+    const realAttach = (db) => ({ attemptId, hostedExpiresAt }) =>
+      attachAttempt(db, { uid: 'U1', rid: 'x_pizza', orderId: 'ORD-1', attemptId, hostedExpiresAt, now: 2_000_000 }).catch(() => {});
+
+    for (const acq of [{ outcome: 'reuse', attempt_id: 'A9', checkout_url: 'https://pay/x' }, { outcome: 'in_progress' }]) {
+      const db = mk(); await seed(db);
+      assert.strictEqual(hold(db).hosted_expires_at, EXP, 'non-vacuity: the hold starts with a real expiry');
+      const r = fullRig({ acq, gate: goodGate, totalCents: net, attachReservation: realAttach(db) });
+      await r.run();
+      assert.strictEqual(hold(db).hosted_expires_at, EXP,
+        `🔴 ${acq.outcome}: the live hold's expiry must survive a resume — nulling it makes the sweep misclassify it`);
+      assert.strictEqual(hold(db).state, 'reserved', 'and the hold is still reserved');
+    }
+    // An accept DOES bind, and binds the fresh attempt's expiry.
+    {
+      const db = mk(); await seed(db);
+      const r = fullRig({ acq: { outcome: 'claimed', attempt_id: 'A1', expires_at: 5_555_555 }, gate: goodGate, totalCents: net, attachReservation: realAttach(db) });
+      await r.run();
+      assert.strictEqual(hold(db).attempt_id, 'A1', 'an accept binds the attempt');
+      assert.strictEqual(hold(db).hosted_expires_at, 5_555_555, 'with the fresh attempt\'s expiry');
+    }
+    ok('against the real reservation: a resume leaves hosted_expires_at intact; an accept rebinds it');
   }
 
   console.log(`\nhosted-charge-flow: ${n} checks passed`);

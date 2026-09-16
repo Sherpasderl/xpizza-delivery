@@ -145,6 +145,20 @@ async function resolveAndIssueHostedCheckout(opts) {
   const decision = await resolveHostedAttemptAction(opts);
   if (decision.respond) return { respond: decision.respond };
   if (decision.provenance) await opts.stampProvenance(decision.provenance);
+
+  /* 🔴 ONLY AN ACCEPTED FRESH CLAIM BINDS THE RESERVATION. attachAttempt writes attempt_id and
+     hosted_expires_at onto the reward hold, and it was written for a fresh claim — its parent used to
+     return on reuse/in_progress long before reaching it. When issuance moved down here, that protection
+     was lost: a RESUME ran the attach with acq.expires_at === undefined, and attachAttempt coerces a
+     missing expiry to null, so the live hold lost the expiry the sweep classifies it by. Nothing caught
+     it because a resume answers 200/202 with zero gateway calls, and the tests spied the gateway but
+     not the reservation around it.
+     It lives inside the unit now, after the gate accepts, so "a resume or a refusal causes no
+     attachment" is a property of the shape — the same move that closed the refusal short-circuit. */
+  if (opts.attachReservation) {
+    await opts.attachReservation({ attemptId: opts.acq.attempt_id, hostedExpiresAt: opts.acq.expires_at });
+  }
+
   return issueHostedCheckout({ ...opts, gatedCents: decision.chargedCents != null ? decision.chargedCents : null });
 }
 
