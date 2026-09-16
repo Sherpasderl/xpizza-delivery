@@ -45,10 +45,12 @@ ok('typed reject: 503 { error: pricing_unavailable, retryable: true }');
   const guard = at('if (!pricingTables) return pricingUnavailable(res);', call);
   const between = SRC.slice(call + 'const pricingTables = await resolvePricingTables(restaurantId);'.length, guard).replace(/\/\/[^\n]*/g, '');
   assert.ok(!/[a-zA-Z]\w*\s*\(/.test(between), 'nothing may execute between the resolver and the guard');
-  for (const seam of ['validateOrderPayload(body, restaurantId, pricingTables)', 'prepareRedemption(', 'acquireHostedAttempt(', 'createHostedCharge(', 'pricedLineItems(']) {
+  for (const seam of ['validateOrderPayload(body, restaurantId, pricingTables)', 'prepareRedemption(', 'acquireHostedAttempt(', 'createCheckout: createHostedCharge', 'pricedLineItems(']) {
     assert.ok(at(seam, call) > guard, `chargeOnlineOrder: the guard must precede ${seam}`);
   }
-  ok('chargeOnlineOrder: guard precedes validate / prepareRedemption / acquireHostedAttempt / createHostedCharge / factura — no money moves, no pending stranded');
+  // 1C T5: the gateway is injected into hosted-charge-flow rather than called here, so the seam is
+  // the injection site — still the point past which money can move.
+  ok('chargeOnlineOrder: guard precedes validate / prepareRedemption / acquireHostedAttempt / the gateway injection / factura — no money moves, no pending stranded');
 }
 
 // ── 🔒 THE FISCAL BARRIER. fiscal's own resolvePriceTables(null) falls back to CODE, so the ONLY

@@ -3823,10 +3823,10 @@
   {
     "id": "c5-01",
     "slice": "c5",
-    "label": "the card gate checks a number that is not the one charged",
+    "label": "the card gate checks a hardcoded number instead of the total being charged",
     "file": "index.js",
-    "from": "        recordedTotalCents: effBreakdown.total_cents,   // === total_cents === the amount handed to createHostedCharge",
-    "to": "        recordedTotalCents: 0,",
+    "from": "      recordedTotalCents,                        // === totalCents === the amount handed to createHostedCharge",
+    "to": "      recordedTotalCents: 0,",
     "command": [
       "node",
       "charge-gate-placement.test.js"
@@ -3837,8 +3837,8 @@
     "slice": "c5",
     "label": "the card path open-codes a release instead of the owned-only one, over-releasing a shared hold",
     "file": "index.js",
-    "from": "      releaseHold: releaseHoldIfOwned,            // owned-only: a reused / in-progress hold is preserved",
-    "to": "      releaseHold: async () => { await releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }).catch(() => {}); },",
+    "from": "    releaseHold: releaseHoldIfOwned,            // owned-only: a reused / in-progress hold is preserved",
+    "to": "    releaseHold: async () => { await releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }).catch(() => {}); },",
     "command": [
       "node",
       "charge-gate-placement.test.js"
@@ -3849,8 +3849,8 @@
     "slice": "c5",
     "label": "the card gate stops binding the resolved reward",
     "file": "index.js",
-    "from": "          token: body.quote_token, submittedCart: body.items, reward: redemptionResolved,\n          rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,\n          enforce: false,                          // T6 flips this; both branches are built and tested",
-    "to": "          token: body.quote_token, submittedCart: body.items, reward: null,\n          rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,\n          enforce: false,",
+    "from": "        token: body.quote_token, submittedCart: body.items, reward: redemptionResolved,\n        rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,\n        enforce: false,                          // T6 flips this; both branches are built and tested",
+    "to": "        token: body.quote_token, submittedCart: body.items, reward: null,\n        rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,\n        enforce: false,",
     "command": [
       "node",
       "charge-gate-placement.test.js"
@@ -3917,18 +3917,6 @@
     ]
   },
   {
-    "id": "c5-09",
-    "slice": "c5",
-    "label": "the amount handed to the gateway is no longer bound to the amount the gate approved",
-    "file": "index.js",
-    "from": "  if (gatedCents !== null && gatedCents !== total_cents) {",
-    "to": "  if (false) {",
-    "command": [
-      "node",
-      "charge-gate-placement.test.js"
-    ]
-  },
-  {
     "id": "c5-10",
     "slice": "c5",
     "label": "provenance records the charged amount as the confirmed ceiling (the accepted number is erased)",
@@ -3962,6 +3950,90 @@
     "command": [
       "node",
       "hosted-charge-flow.test.js"
+    ]
+  },
+  {
+    "id": "c5-13",
+    "slice": "c5",
+    "label": "the gateway is handed an amount one lempira above the gated one",
+    "file": "hosted-charge-flow.js",
+    "from": "  const amountLempiras = toLempiras(totalCents);",
+    "to": "  const amountLempiras = String(Number(toLempiras(totalCents)) + 1);",
+    "command": [
+      "node",
+      "hosted-charge-flow.test.js"
+    ]
+  },
+  {
+    "id": "c5-14",
+    "slice": "c5",
+    "label": "a refusal falls through and a checkout is minted anyway",
+    "file": "hosted-charge-flow.js",
+    "from": "  if (decision.respond) return { respond: decision.respond };",
+    "to": "  if (false) return { respond: decision.respond };",
+    "command": [
+      "node",
+      "hosted-charge-flow.test.js"
+    ]
+  },
+  {
+    "id": "c5-15",
+    "slice": "c5",
+    "label": "a network gateway failure leaves the owned hold reserved",
+    "file": "hosted-charge-flow.js",
+    "from": "    await releaseHold();          // hosted-create failed after claim → abandoned → release our hold",
+    "to": "    // (release removed)",
+    "command": [
+      "node",
+      "hosted-charge-flow.test.js"
+    ]
+  },
+  {
+    "id": "c5-16",
+    "slice": "c5",
+    "label": "a gateway-rejected create leaves the owned hold reserved",
+    "file": "hosted-charge-flow.js",
+    "from": "    await releaseHold();          // hosted-create rejected after claim → abandoned → release our hold",
+    "to": "    // (release removed)",
+    "command": [
+      "node",
+      "hosted-charge-flow.test.js"
+    ]
+  },
+  {
+    "id": "c5-17",
+    "slice": "c5",
+    "label": "a failed URL persist leaves a hold behind a checkout the customer never receives",
+    "file": "hosted-charge-flow.js",
+    "from": "    await releaseHold();          // [C/#30] never leave a reserved hold behind a checkout the customer can't reach",
+    "to": "    // (release removed)",
+    "command": [
+      "node",
+      "hosted-charge-flow.test.js"
+    ]
+  },
+  {
+    "id": "c5-18",
+    "slice": "c5",
+    "label": "a gateway that returns no url is treated as a success",
+    "file": "hosted-charge-flow.js",
+    "from": "  if (!hosted || !hosted.ok || !hosted.url) {",
+    "to": "  if (!hosted || !hosted.ok) {",
+    "command": [
+      "node",
+      "hosted-charge-flow.test.js"
+    ]
+  },
+  {
+    "id": "c5-19",
+    "slice": "c5",
+    "label": "the handler hands the flow a total that is not the server's",
+    "file": "index.js",
+    "from": "    totalCents: effBreakdown.total_cents,   // the SERVER total: gated against, and charged — one value, named once",
+    "to": "    totalCents: effBreakdown.total_cents + 1,",
+    "command": [
+      "node",
+      "charge-gate-placement.test.js"
     ]
   }
 ]

@@ -442,7 +442,7 @@ function sanitizePhone(v) {
 const { orderBreakdownCents } = require('./order-money');
 const { issueQuote } = require('./quote-issue');   // 1C Task 3 — the ONE quote issuer, shared with the redemption quote
 const { applyConfirmedNetGate } = require('./token-gate');   // 1C Task 4 — the ONE confirmed-net decision AND its consequences, shared with the card path
-const { resolveHostedAttemptAction, retireUnissuedAttempt } = require('./hosted-charge-flow');   // 1C T5 — resume-safe fresh-only gating, extracted so its effects can be run
+const { resolveAndIssueHostedCheckout, retireUnissuedAttempt } = require('./hosted-charge-flow');   // 1C T5 — resume-safe fresh-only gating, extracted so its effects can be run
 
 function validateOrderPayload(body, restaurantId, tables = null) {
   const errors = [];
@@ -1573,44 +1573,40 @@ chargeOnlineApp.all('*', async (req, res) => {
     await releaseHoldIfOwned();   // abandoned: order is in a terminal-closed state
     return res.status(409).json({ error: 'Order closed', detail: `order is ${acq.reason}; please start a new order`, order_id: orderId });
   }
-  /* ── 1C TASK 5 — RESUME-SAFE, FRESH-ONLY GATING ──────────────────────────────────────────────
-     Placement is the whole subtlety, and the early returns are load-bearing for it: `reuse` (200, the
-     SAME checkout_url) and `in_progress` (202) return BEFORE the gate, which is what makes a customer
-     RESUMING from PixelPay immune to a price that moved while they were on the payment page. That is
-     not a happy accident of ordering — re-gating a payment already in flight is the worst possible
-     moment to introduce friction. Two further properties fall out: payment_fingerprint already binds
-     the amount, so a resume whose total changed is a `conflict` 409 rather than a silent re-charge;
-     and the gate runs BEFORE createHostedCharge, so a refusal creates no PixelPay checkout at all.
-     The decision moved into hosted-charge-flow.js behind INJECTED effects so those guarantees can be
-     RUN — "no checkout was created", "the hold was released", "the attempt was retired" — instead of
-     being inferred from where the code sits, which is a thing source-order tests cannot see. */
-  let gatedCents = null;
-  {
-    const decision = await resolveHostedAttemptAction({
-      acq, orderId,
-      releaseHold: releaseHoldIfOwned,            // owned-only: a reused / in-progress hold is preserved
-      retireAttempt: (attemptId, reason) => retireUnissuedAttempt(db, attemptId, reason, Date.now()),
-      runGate: () => applyConfirmedNetGate({
-        gateInput: {
-          token: body.quote_token, submittedCart: body.items, reward: redemptionResolved,
-          rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,
-          enforce: false,                          // T6 flips this; both branches are built and tested
-          nowMs: Date.now(),
-        },
-        recordedTotalCents: effBreakdown.total_cents,   // === total_cents === the amount handed to createHostedCharge
-        releaseHold: releaseHoldIfOwned,
-        orderId,
-      }),
-    });
-    if (decision.respond) return res.status(decision.respond.status).json(decision.respond.body);
-    if (decision.provenance) {
-      // Stamped on the pending order, which already exists by now — the same two facts the cash path
-      // records: the ceiling the customer accepted and the amount about to be charged. Best-effort:
-      // an audit write must not cost the customer a checkout they are entitled to.
-      await db.ref(`orders/${orderId}/quote`).set(decision.provenance).catch(() => {});
-    }
-    gatedCents = decision.chargedCents != null ? decision.chargedCents : null;
-  }
+  /* ── 1C TASK 5 — THE CARD-PATH MONEY DECISION, AS ONE RUNNABLE UNIT ─────────────────────────
+     resolveAndIssueHostedCheckout owns: what to do about the acquire outcome, the confirmed-net gate,
+     the gated-vs-outgoing amount binding, the gateway call, and every post-claim bailout. It is built
+     here and invoked below, once the request fields exist.
+     Placement is still the subtlety: `reuse` (200, the SAME checkout_url) and `in_progress` (202)
+     answer BEFORE the gate, which is what makes a customer RESUMING from PixelPay immune to a price
+     that moved while they were on the payment page — re-gating a payment already in flight is the
+     worst possible moment for friction. payment_fingerprint independently binds the amount, so a
+     resume whose total changed is a `conflict` 409, never a silent re-charge.
+     All of it lives behind INJECTED effects so the guarantees can be RUN — "no checkout was created",
+     "the hold was released", "the attempt was retired", "the gateway got exactly the gated amount" —
+     instead of inferred from where the code sits, which is a thing source-order tests cannot see. */
+  const hostedFlowOpts = {
+    acq, orderId, log: console,
+    totalCents: effBreakdown.total_cents,   // the SERVER total: gated against, and charged — one value, named once
+    releaseHold: releaseHoldIfOwned,            // owned-only: a reused / in-progress hold is preserved
+    retireAttempt: (aid, reason) => retireUnissuedAttempt(db, aid, reason, Date.now()),
+    // 🔴 ONE number. The module passes back the very total it will charge, so the gate cannot be
+    // checking a different figure from the one that travels to PixelPay.
+    runGate: (recordedTotalCents) => applyConfirmedNetGate({
+      gateInput: {
+        token: body.quote_token, submittedCart: body.items, reward: redemptionResolved,
+        rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,
+        enforce: false,                          // T6 flips this; both branches are built and tested
+        nowMs: Date.now(),
+      },
+      recordedTotalCents,                        // === totalCents === the amount handed to createHostedCharge
+      releaseHold: releaseHoldIfOwned,
+      orderId,
+    }),
+    // Stamped on the pending order, which already exists by now — the same two facts the cash path
+    // records. Best-effort: an audit write must not cost the customer a checkout they are entitled to.
+    stampProvenance: (prov) => db.ref(`orders/${orderId}/quote`).set(prov).catch(() => {}),
+  };
 
   // Claimed a FRESH attempt → bind it to the reservation (attempt_id + hosted_expires_at) for the sweep +
   // Task-7 consume/hold at confirm. Idempotent; only when this order carries a reward.
@@ -1624,19 +1620,6 @@ chargeOnlineApp.all('*', async (req, res) => {
   const attemptId = acq.attempt_id;
   const pixelpayOrderId = acq.hosted_order_id;            // `${orderId}-${attemptId}`
   const pollToken = acq.poll_token;
-  /* 🔴 THE GATED NUMBER IS THE NUMBER THAT LEAVES. The gate approved a net against
-     effBreakdown.total_cents; `total_cents` is destructured from that same object, so this should be a
-     tautology — which is exactly why it is worth asserting. The failure it catches is a future edit
-     that recomputes, rounds, or re-reads the amount between the gate and the gateway: the charge would
-     then be a number no gate ever approved, and it would be discovered in a settlement rather than
-     here. Refusing costs a retry; charging the wrong amount costs a refund and a fiscal correction. */
-  if (gatedCents !== null && gatedCents !== total_cents) {
-    console.error('quote_gate_outgoing_mismatch', JSON.stringify({ orderId, gated: gatedCents, outgoing: total_cents }));
-    await retireUnissuedAttempt(db, attemptId, 'outgoing_amount_mismatch', Date.now());
-    await releaseHoldIfOwned();
-    return res.status(409).json({ error: 'quote_invalid', order_id: orderId });
-  }
-  const amountStr = centsToLempiras(total_cents);          // real server total (NOT the sandbox 1-14 map) so the callback amount-check holds
 
   // PixelPay requires first+last name (each ≥3 chars) and a valid email. Pad short parts with
   // dots so a short / single-word name never blocks checkout (the real name is on the order record).
@@ -1666,39 +1649,24 @@ chargeOnlineApp.all('*', async (req, res) => {
   if (!wsecret) console.warn('chargeOnlineOrder: PIXELPAY_WEBHOOK_SECRET not set — hosted callback will be unauthenticated');
   const callbackUrl = pixelPayCallbackUrl() + (wsecret ? `?secret=${encodeURIComponent(wsecret)}` : '');
 
-  let hosted;
-  try {
-    hosted = await createHostedCharge({
-      pixelpayOrderId, amountLempiras: amountStr,
-      firstName, lastName, email,
+  /* 🔴 ONE CALL DECIDES AND CHARGES. A refusal cannot reach the gateway because there is no path
+     from one to the other — not because a `return` is watched. The amount is formatted INSIDE, from
+     the same total the gate approved, and asserted equal to it before it travels. */
+  const flow = await resolveAndIssueHostedCheckout({
+    ...hostedFlowOpts,
+    attemptId, toLempiras: centsToLempiras,
+    chargeRequest: {
+      pixelpayOrderId, firstName, lastName, email,
       completeUrl, cancelUrl, callbackUrl,
-      expiresAt: formatPixelPayExpiry(acq.expires_at)
-    });
-  } catch (e) {
-    console.error(`chargeOnlineOrder: hosted create threw for ${pixelpayOrderId}`, e.message);
-    await retireUnissuedAttempt(db, attemptId, 'network', now);   // 1C T5 — ONE retirement for every claimed-but-unissued attempt
-    await releaseHoldIfOwned();   // hosted-create failed after claim → abandoned → release our hold
-    return res.status(502).json({ error: 'Payment gateway error', detail: 'could not create checkout; please retry', order_id: orderId });
-  }
+      expiresAt: formatPixelPayExpiry(acq.expires_at),
+    },
+    createCheckout: createHostedCharge,
+    persistCreated: (url) => db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'created', hosted_checkout_url: url, updated_at: now }),
+  });
+  if (flow.respond) return res.status(flow.respond.status).json(flow.respond.body);
+  const hosted = flow.hosted;
 
-  if (!hosted.ok || !hosted.url) {
-    console.error(`chargeOnlineOrder: hosted create rejected for ${pixelpayOrderId}`, JSON.stringify(hosted.errors || hosted.raw || {}).slice(0, 400));
-    await retireUnissuedAttempt(db, attemptId, JSON.stringify(hosted.errors || {}).slice(0, 300), now);   // 1C T5 — ONE retirement for every claimed-but-unissued attempt
-    await releaseHoldIfOwned();   // hosted-create rejected after claim → abandoned → release our hold
-    return res.status(502).json({ error: 'Payment gateway error', detail: 'checkout not created; please retry', order_id: orderId });
-  }
-
-  // Persist the live checkout URL + mark 'created' (payable until expires_at). [C/#30] wrap it: if this write
-  // fails the customer never receives the URL (the order can't proceed) → release our hold, never strand it.
-  try {
-    await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'created', hosted_checkout_url: hosted.url, updated_at: now });
-  } catch (e) {
-    console.error(`chargeOnlineOrder: persist 'created' failed for ${pixelpayOrderId}`, e && e.message);
-    await releaseHoldIfOwned();   // [C/#30] never leave a reserved hold behind a checkout the customer can't reach
-    return res.status(500).json({ error: 'Payment gateway error', detail: 'checkout not persisted; please retry', order_id: orderId });
-  }
-
-  console.log(`chargeOnlineOrder: created hosted checkout ${pixelpayOrderId} (mode=${pp.mode}, ${amountStr} HNL)`);
+  console.log(`chargeOnlineOrder: created hosted checkout ${pixelpayOrderId} (mode=${pp.mode}, ${flow.amountLempiras} HNL)`);
   return res.status(200).json({
     ok: true,
     order_id: orderId,

@@ -73,24 +73,31 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   before(body, 'prepareRedemption(', 'reserveRedemption(', 'B1: prepare (compute/price) before the reserve (debit)');
   before(body, 'reserveRedemption(', 'acquireHostedAttempt(', 'B1: reserve before the CAS acquire');
   before(body, 'acquireHostedAttempt(', 'attachAttempt(', 'B1: attach the claimed attempt AFTER the acquire');
-  /* Every truly-abandoned branch releases the owned hold. 1C T5 CHANGED THE COMPOSITION of this set
-     without changing its size, which is exactly the way a count-only guard goes quietly wrong: the
-     `!claimed` release moved into hosted-charge-flow.js (it is passed in as releaseHold), and the new
-     gated-vs-outgoing amount check took its place. So the branches are enumerated, not just counted.
-     IN THE HANDLER (9): acquire-throw, item_unavailable, already_paid, conflict, closed,
-     outgoing-amount-mismatch, hosted-create throw, hosted-create !ok, hosted-create persist-fail [C/#30].
-     IN THE FLOW MODULE (2, via the injected releaseHold): !claimed, and every gate refusal. */
-  const releaseCount = (body.match(/releaseHoldIfOwned\(\)/g) || []).length;
-  assert.strictEqual(releaseCount, 9, `expected releaseHoldIfOwned() on all 9 abandoned handler branches, got ${releaseCount}`);
-  assert.ok(/gatedCents !== total_cents/.test(body), 'the outgoing-amount mismatch is one of those 9 — if it is gone, the count above is measuring a different set');
+  /* 🔴 EVERY ABANDONED BRANCH RELEASES THE OWNED HOLD — AND THIS GUARD NO LONGER COUNTS TEXT.
+     It used to assert `(body.match(/releaseHoldIfOwned\(\)/g)).length === 9`. That regex matches a
+     COMMENTED-OUT call, so commenting out the network bailout's release kept the count at 9 and the
+     guard passed while a real gateway failure stranded a real customer's points. I described that
+     guard as "enumerated, not counted" in a handback; it was still counted, and the claim did not
+     land. Two changes: comments are stripped before counting, and — far more importantly — the four
+     post-claim bailouts moved into hosted-charge-flow.js where hosted-charge-flow.test.js RUNS them
+     and asserts the release per branch with a spy. Deleting any one of them now fails by execution.
+     WHAT REMAINS HERE (5, all pre-claim acquire outcomes, still inline in the handler):
+       acquire-throw, item_unavailable, already_paid, conflict, closed.
+     WHAT MOVED (and is executed): !claimed, every gate refusal, the amount mismatch, hosted-create
+     throw, hosted-create rejected, persist-fail. */
+  const codeOnly = body
+    .replace(/\/\*[\s\S]*?\*\//g, '')          // block comments
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');     // line comments (the [^:] keeps https:// intact)
+  const releaseCount = (codeOnly.match(/releaseHoldIfOwned\(\)/g) || []).length;
+  assert.strictEqual(releaseCount, 5, `expected releaseHoldIfOwned() on all 5 pre-claim abandoned branches, got ${releaseCount}`);
+  // Non-vacuity for the comment-stripping itself: a commented-out release must NOT be counted.
+  const poisoned = body.replace('await releaseHoldIfOwned();   // abandoned: order is in a terminal-closed state',
+                                '// await releaseHoldIfOwned();   // abandoned: order is in a terminal-closed state');
+  const poisonedCount = (poisoned.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1').match(/releaseHoldIfOwned\(\)/g) || []).length;
+  assert.strictEqual(poisonedCount, 4, '🔴 the stripper must not count a commented-out release — that bug is what let a deleted release pass');
+  // …and the post-claim bailouts really did move somewhere that executes them.
+  assert.ok(/createCheckout: createHostedCharge/.test(body), 'the gateway call is injected into the flow module, where the bailouts are run');
   assert.ok(/releaseHold: releaseHoldIfOwned/.test(body), 'and the flow module gets the SAME owned-only release, not an open-coded one');
-  /* in_progress + reuse must PRESERVE the hold — they back a creating/live checkout. That property is
-     now RUN in hosted-charge-flow.test.js (both branches assert release === 0); this reads the module
-     they moved to so the structural guard does not silently pass by looking at a file they left. */
-  const FLOW = fs.readFileSync(require.resolve('./hosted-charge-flow.js'), 'utf8');
-  const preserveSpan = FLOW.slice(FLOW.indexOf("outcome === 'in_progress'"), FLOW.indexOf("outcome !== 'claimed'"));
-  assert.ok(preserveSpan.length > 0, 'non-vacuity: the preserve span really was found in the flow module');
-  assert.ok(!/releaseHold\(\)/.test(preserveSpan), 'in_progress + reuse branches must PRESERVE the hold (no release)');
   ok('chargeOnlineOrder: prepare → fingerprints → placeability → reserve → acquire → (release abandoned | preserve in_progress/reuse | attach claimed)');
 }
 

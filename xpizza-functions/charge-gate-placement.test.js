@@ -46,19 +46,23 @@ const before = (hay, a, b, msg) => {
   const card = slice('const chargeOnlineApp = express();', 'chargeOnlineApp.use((err, req, res, next)');
 
   // The terminal outcomes still return in the handler, above the decision.
-  before(card, "acq.outcome === 'already_paid'", 'resolveHostedAttemptAction(', 'an already-paid order must return before the decision');
-  before(card, "acq.outcome === 'conflict'", 'resolveHostedAttemptAction(', 'a conflicting order must return before the decision');
-  before(card, "acq.outcome === 'closed'", 'resolveHostedAttemptAction(', 'a closed order must return before the decision');
+  before(card, "acq.outcome === 'already_paid'", 'resolveAndIssueHostedCheckout(', 'an already-paid order must return before the decision');
+  before(card, "acq.outcome === 'conflict'", 'resolveAndIssueHostedCheckout(', 'a conflicting order must return before the decision');
+  before(card, "acq.outcome === 'closed'", 'resolveAndIssueHostedCheckout(', 'a closed order must return before the decision');
 
-  // …and no hosted checkout can be created before the decision has spoken.
-  before(card, 'resolveHostedAttemptAction(', 'await createHostedCharge(', 'the decision must run BEFORE createHostedCharge — a refusal creates no PixelPay checkout');
-  assert.strictEqual((card.match(/resolveHostedAttemptAction\(/g) || []).length, 1,
+  /* 🔴 THE HANDLER MUST NOT BE ABLE TO CHARGE ON ITS OWN. createHostedCharge is no longer CALLED in
+     index.js at all — it is passed into the flow module as an injected effect, which is what makes
+     "a refusal creates no checkout" a property of the shape rather than of a watched `return`. If a
+     direct call ever reappears here, there would be a charge path no runtime test covers. */
+  assert.strictEqual((card.match(/await createHostedCharge\(/g) || []).length, 0,
+    '🔴 the handler must not call the gateway directly — it injects it into the gated flow');
+  assert.strictEqual((card.match(/createCheckout: createHostedCharge/g) || []).length, 1,
+    'the gateway is handed to the flow exactly once');
+  assert.strictEqual((card.match(/resolveAndIssueHostedCheckout\(/g) || []).length, 1,
     'exactly ONE decision on the card path — a second would be a second chance to charge');
   assert.strictEqual((card.match(/applyConfirmedNetGate\(/g) || []).length, 1,
     'and exactly ONE gate call, inside that decision — no inline gate may reappear beside it');
-  assert.strictEqual((card.match(/await createHostedCharge\(/g) || []).length, 1,
-    'and exactly one createHostedCharge, so "before" is unambiguous');
-  ok('card: the decision is reached on the fresh path and runs before createHostedCharge');
+  ok('card: the handler routes through the gated flow and never calls the gateway itself');
 }
 
 // ── 2. THE DECISION MODULE KEEPS THE RESUME RETURNS ABOVE THE GATE ─────────────────────────────
@@ -67,9 +71,9 @@ const before = (hay, a, b, msg) => {
 // by hosted-charge-flow.test.js too — this is the belt to that's braces, and it costs nothing.
 {
   const FLOW = fs.readFileSync(require.resolve('./hosted-charge-flow.js'), 'utf8');
-  before(FLOW, "acq.outcome === 'in_progress'", 'await runGate()', 'an IN_PROGRESS must return before the gate');
-  before(FLOW, "acq.outcome === 'reuse'", 'await runGate()', 'a REUSE must return before the gate — a resumed payment is never re-gated');
-  before(FLOW, "acq.outcome !== 'claimed'", 'await runGate()', 'only a CLAIMED fresh attempt reaches the gate');
+  before(FLOW, "acq.outcome === 'in_progress'", 'await runGate(totalCents)', 'an IN_PROGRESS must return before the gate');
+  before(FLOW, "acq.outcome === 'reuse'", 'await runGate(totalCents)', 'a REUSE must return before the gate — a resumed payment is never re-gated');
+  before(FLOW, "acq.outcome !== 'claimed'", 'await runGate(totalCents)', 'only a CLAIMED fresh attempt reaches the gate');
   assert.ok(/await retireAttempt\(acq\.attempt_id, 'quote_gate_refused'\)/.test(FLOW),
     '🔴 a refusal must retire the attempt it claimed — otherwise it strands in hosted_state creating, which reads as in_progress with no expiry');
   ok('flow: every resume returns above the gate, and a refusal retires its attempt');
@@ -78,16 +82,28 @@ const before = (hay, a, b, msg) => {
 // ── 2b. THE CARD GATE IS WIRED TO THE CHARGED AMOUNT AND THE CARD'S OWN RELEASE ────────────────
 {
   const card = slice('const chargeOnlineApp = express();', 'chargeOnlineApp.use((err, req, res, next)');
-  const i = card.indexOf('resolveHostedAttemptAction(');
+  // The gate wiring lives in hostedFlowOpts, built above the call so issuance can use the request
+  // fields; slice from there rather than from the invocation.
+  const i = card.indexOf('const hostedFlowOpts = {');
+  assert.ok(i !== -1, 'non-vacuity: the flow options block was found');
   const call = card.slice(i, i + 2000);
 
-  assert.ok(/recordedTotalCents: effBreakdown\.total_cents/.test(call),
-    '🔴 the gate checks the amount that is actually charged (effBreakdown.total_cents === total_cents === the createHostedCharge amount)');
+  /* 🔴 ONE SERVER TOTAL, NAMED ONCE. effBreakdown.total_cents is handed to the flow as `totalCents`,
+     and the flow passes that same value back into the gate as recordedTotalCents — so "the number the
+     gate approved" and "the number PixelPay is asked for" are the same binding, not two expressions
+     that happen to agree today. The bare shorthand is the assertion: a literal here (`: 0`, or a
+     recomputation) would mean the gate is checking something other than what travels. */
+  assert.ok(/totalCents: effBreakdown\.total_cents,/.test(call),
+    '🔴 the flow is handed the SERVER total, named once');
+  assert.ok(/^\s*recordedTotalCents,\s*\/\//m.test(call),
+    '🔴 and the gate is given exactly that total back — not a literal and not a second expression');
+  assert.ok(!/recordedTotalCents:/.test(call),
+    '…so no separate number can be introduced for the gate to check');
   assert.ok(/releaseHold: releaseHoldIfOwned/.test(call),
     '🔴 the card path passes its OWN release — releaseHoldIfOwned frees only a debit this call owns, so a reused or in-progress hold is preserved');
   assert.ok(!/releaseRedemption\(db/.test(call),
     '…and does NOT open-code releaseRedemption, which would strand or over-release a shared hold');
-  assert.ok(/retireAttempt: \(attemptId, reason\) => retireUnissuedAttempt\(db/.test(call),
+  assert.ok(/retireAttempt: \(aid, reason\) => retireUnissuedAttempt\(db/.test(call),
     '🔴 and passes a real retirement, so a refused attempt cannot strand');
   assert.ok(/reward: redemptionResolved/.test(call),
     '🔴 the gate binds the RESOLVED redemption the issuer fingerprinted, not a reconstruction');
@@ -98,15 +114,17 @@ const before = (hay, a, b, msg) => {
 }
 
 // ── 2c. 🔴 THE AMOUNT THAT LEAVES IS THE AMOUNT THAT WAS GATED ─────────────────────────────────
+// The binding itself is RUN in hosted-charge-flow.test.js (the spy reads the argument the gateway
+// actually received, on both an equal-price and a price-drop accept). What is asserted here is only
+// that the handler hands the flow the right total and formatter — a source fact, since the handler
+// itself is not executed.
 {
   const card = slice('const chargeOnlineApp = express();', 'chargeOnlineApp.use((err, req, res, next)');
-  before(card, 'gatedCents !== total_cents', 'const amountStr = centsToLempiras(total_cents)',
-    'the gated/outgoing equality must be checked BEFORE the amount is formatted for the gateway');
-  before(card, 'const amountStr = centsToLempiras(total_cents)', 'await createHostedCharge(',
-    'and that formatted amount is what travels');
-  assert.ok(/amount: amountStr/.test(card) || /amountStr/.test(card.slice(card.indexOf('await createHostedCharge('), card.indexOf('await createHostedCharge(') + 600)),
-    '🔴 createHostedCharge is handed the amount derived from total_cents, not a recomputation');
-  ok('card: the outgoing gateway amount is bound to the gated cents');
+  const i = card.indexOf('resolveAndIssueHostedCheckout(');
+  const call = card.slice(i, i + 1200);
+  assert.ok(/toLempiras: centsToLempiras/.test(call), 'the flow formats the amount with the real formatter');
+  assert.ok(!/amountLempiras:/.test(card), '🔴 the handler must not format the gateway amount itself — the flow does, from the gated total');
+  ok('card: the flow is handed the recorded total and the real formatter');
 }
 
 // ── 3. THE CARD PATH CAPTURES THE RESOLVED REWARD ──────────────────────────────────────────────
