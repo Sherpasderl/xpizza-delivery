@@ -119,7 +119,15 @@ const before = (hay, a, b, msg) => {
     '🔴 the gate binds the RESOLVED redemption the issuer fingerprinted, not a reconstruction');
   assert.ok(/token: body\.quote_token/.test(call), 'the token comes from the request');
   assert.ok(/submittedCart: body\.items/.test(call), 'the cart gated is the cart submitted');
-  assert.ok(/enforce: false/.test(call), 'T5 ships in grace; T6 flips this');
+  /* 🔴 T6: THE FLAG IS READ, NOT HARDCODED. A literal `false` here would pin the card path to grace
+     forever — the flip would land in config, the owner would see the flag go true, and card orders
+     would still never enforce. That is a silent no-op, which is the worst kind: it looks shipped.
+     The flag itself fails safe to grace (tokenEnforceEnabled), so reading it is never the risky half. */
+  assert.ok(/enforce: tokenEnforce\b/.test(call),
+    '🔴 the card gate must READ the enforce flag — a hardcoded value makes the rollout flip a no-op');
+  assert.ok(!/enforce: (false|true)\b/.test(call), '…and must not hardcode either direction');
+  assert.ok(/expectedNetCents: body\.expected_net_cents/.test(call),
+    '🔴 and passes the client ceiling, or a degraded client silently falls back to grace');
   ok('card: the gate is wired to the charged amount, the card\'s own release, the retirement, and the resolved reward');
 }
 
@@ -156,6 +164,11 @@ const before = (hay, a, b, msg) => {
   before(cash, 'returning idempotent', 'applyConfirmedNetGate(', 'an idempotent re-submit must return before the gate — it must not re-gate or re-charge');
   before(cash, 'resolveRedemptionForOrder(db, {', 'applyConfirmedNetGate(', 'the reward must be resolved before the gate binds it');
   before(cash, 'applyConfirmedNetGate(', 'db.ref().update(', 'the gate must run BEFORE anything is written — a refusal leaves no order behind');
+  // T6: the cash gate is the OTHER flip point — same no-op hazard, same guard.
+  assert.ok(/enforce: tokenEnforce\b/.test(cash), '🔴 the cash gate must READ the enforce flag too');
+  assert.ok(/expectedNetCents: body\.expected_net_cents/.test(cash), 'and pass the client ceiling');
+  assert.strictEqual((cash.match(/const tokenEnforce = await tokenEnforceEnabled\(db\)/g) || []).length, 1,
+    'read exactly once per request — a second read could answer differently about the same order');
   assert.ok(/recordedTotalCents: priceBreakdown\.total_cents/.test(cash),
     'cash: the gate checks the amount the order records and the driver collects');
   assert.strictEqual((cash.match(/applyConfirmedNetGate\(/g) || []).length, 1, 'exactly one gate call on the cash path');

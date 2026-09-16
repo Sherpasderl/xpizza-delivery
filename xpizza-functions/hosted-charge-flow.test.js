@@ -226,7 +226,8 @@ function rig({ acq, gate, totalCents }) {
     assert.strictEqual(out.hosted.url, 'https://pay/new');
     assert.deepStrictEqual(r.calls.persisted, ['https://pay/new'], 'the live URL is persisted');
     assert.strictEqual(r.calls.release, 0);
-    assert.deepStrictEqual(r.calls.stamped, [{ quote_id: r.calls.stamped[0].quote_id, confirmed_net_cents: net, charged_net_cents: net }]);
+    assert.deepStrictEqual(r.calls.stamped, [{ quote_id: r.calls.stamped[0].quote_id, confirmed_net_cents: net, charged_net_cents: net, confirmation: 'signed' }],
+      'the stamped provenance carries both numbers AND which kind of confirmation backed them (T6)');
     ok(`an accept calls the gateway once at the gated amount (${centsToLempiras(net)})`);
   }
   // …and on a DROP the gateway gets the LOWER number, not the confirmed ceiling.

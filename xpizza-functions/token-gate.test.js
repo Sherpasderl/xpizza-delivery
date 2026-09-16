@@ -6,7 +6,7 @@
 // gate agree" IS the guarantee. So issueQuote() mints every token below, and the gate is then asked
 // about the same cart, a different cart, or a moved price.
 const assert = require('node:assert');
-const { gateConfirmedNet, applyConfirmedNetGate } = require('./token-gate');
+const { gateConfirmedNet, applyConfirmedNetGate, tokenEnforceEnabled } = require('./token-gate');
 const { issueQuote } = require('./quote-issue');
 const { computeServerNet } = require('./compute-server-net');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./menu-pricing');
@@ -326,3 +326,105 @@ const gate = (o) => gateConfirmedNet({ secret: SEC, nowMs: 1_000_100, ...o });
 
 console.log(`\ntoken-gate: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });
+
+// ── 🔴 T6: THE DEGRADED (UNSIGNED) FLOOR ────────────────────────────────────────────────────────
+// The single money question: can a client-supplied expected_net_cents ever become the charge? It
+// cannot — it is only ever compared as a ceiling, and the server's own recompute is what is charged.
+// These rows check both directions of that, for both brands, on the real fixture carts.
+{
+  let rows = 0;
+  for (const rid of ['x_pizza', 'la_musa']) {
+    for (const items of CARTS[rid]) {
+      const tables = T(rid);
+      const server = computeServerNet({ items, rid, tables }).net_total_cents;
+      const g = (expectedNetCents, over = {}) => gateConfirmedNet({ expectedNetCents, submittedCart: items, rid, tables, secret: SEC, ...over });
+
+      // A ceiling BELOW the server's number refuses. This is the row that makes an undercharge
+      // impossible: the cheapest thing a liar can claim just loses them the sale.
+      const low = g(server - 1);
+      assert.strictEqual(low.action, 'refuse_increase', `${rid}: an expected under the server net must refuse`);
+      assert.strictEqual(low.chargeNet, server, `${rid}: and reports the server's number, not the client's`);
+      assert.strictEqual(low.degraded, true, `${rid}: marked degraded`);
+
+      // A ceiling AT the server's number charges the server's number.
+      const eq = g(server);
+      assert.strictEqual(eq.action, 'charge');
+      assert.strictEqual(eq.chargeNet, server, `${rid}: charges the server recompute`);
+      assert.strictEqual(eq.confirmedNet, server);
+
+      // 🔴 A ceiling ABOVE it charges the SERVER net — never the inflated client figure.
+      const high = g(server + 10_000);
+      assert.strictEqual(high.action, 'charge');
+      assert.strictEqual(high.chargeNet, server, `${rid}: 🔴 an inflated expected must NOT raise the charge`);
+      assert.strictEqual(high.confirmedNet, server + 10_000, `${rid}: the ceiling is recorded as offered, distinct from the charge`);
+      assert.notStrictEqual(high.chargeNet, high.confirmedNet, `${rid}: non-vacuity — the two numbers really differ here`);
+      assert.strictEqual(high.degraded, true);
+      rows += 1;
+    }
+  }
+  assert.ok(rows >= 4, `non-vacuity: the degraded matrix ran on real carts (${rows})`);
+  ok(`the unsigned floor charges the SERVER net on every real cart — a ceiling can refuse a sale, never move the price (${rows} carts)`);
+}
+
+// Junk is treated as ABSENT, not as a third outcome: a malformed field must not be more consequential
+// than a missing one.
+{
+  const rid = 'x_pizza', tables = T(rid), items = CARTS[rid][0];
+  for (const junk of [null, undefined, '', 'abc', NaN, Infinity, -1, 1.5, '100', {}, [], true]) {
+    const gr = gateConfirmedNet({ expectedNetCents: junk, submittedCart: items, rid, tables, secret: SEC, enforce: false });
+    assert.strictEqual(gr.action, 'charge', `junk ${String(junk)}: grace charges`);
+    assert.strictEqual(gr.chargeNet, null, `junk ${String(junk)}: the gate declines to have an opinion`);
+    assert.strictEqual(gr.reason, 'grace_no_token');
+    const en = gateConfirmedNet({ expectedNetCents: junk, submittedCart: items, rid, tables, secret: SEC, enforce: true });
+    assert.strictEqual(en.action, 'refuse_no_token', `junk ${String(junk)}: enforce refuses as token-less`);
+  }
+  ok('a junk / absent expected falls to the no-token row in BOTH grace and enforce — never its own outcome');
+}
+
+// A SIGNED token still takes the full gate, and is never downgraded to the floor by sending both.
+{
+  const rid = 'x_pizza', tables = T(rid), items = CARTS[rid][0];
+  const server = computeServerNet({ items, rid, tables }).net_total_cents;
+  const tok = mint(items, rid, tables);
+  const both = gate({ token: tok, expectedNetCents: server + 50_000, submittedCart: items, rid, tables });
+  assert.strictEqual(both.action, 'charge');
+  assert.strictEqual(both.chargeNet, server);
+  assert.strictEqual(both.confirmedNet, server, '🔴 the SIGNED ceiling wins — an unsigned field cannot raise it');
+  assert.strictEqual(both.degraded, false, 'and the confirmation is signed, not degraded');
+  // A tampered token is refused even with a generous expected alongside it: the floor is for clients
+  // that sent NO token, never a fallback for one that failed its signature.
+  const bad = gate({ token: tok.slice(0, -3) + 'aaa', expectedNetCents: server, submittedCart: items, rid, tables });
+  assert.strictEqual(bad.action, 'refuse_invalid', '🔴 a bad signature must not fall back to the unsigned floor');
+  ok('a signed token keeps the full gate; a tampered one refuses rather than degrading');
+}
+
+// The stamped provenance distinguishes the two confirmations.
+(async () => {
+  const rid = 'x_pizza', tables = T(rid), items = CARTS[rid][0];
+  const server = computeServerNet({ items, rid, tables }).net_total_cents;
+  const run = (gi) => applyConfirmedNetGate({ gateInput: { rid, tables, submittedCart: items, secret: SEC, nowMs: 1_000_100, ...gi },
+    recordedTotalCents: server, releaseHold: async () => {}, orderId: 'O1', log: { log() {}, warn() {}, error() {} } });
+
+  const signed = await run({ token: mint(items, rid, tables) });
+  assert.strictEqual(signed.provenance.confirmation, 'signed');
+  const unsigned = await run({ expectedNetCents: server + 500 });
+  assert.strictEqual(unsigned.provenance.confirmation, 'unsigned', '🔴 an unsigned confirmation is stamped as such');
+  assert.strictEqual(unsigned.provenance.charged_net_cents, server, 'and charges the server net');
+  assert.strictEqual(unsigned.provenance.confirmed_net_cents, server + 500, 'while recording the ceiling offered');
+  assert.notStrictEqual(signed.provenance.confirmation, unsigned.provenance.confirmation,
+    'non-vacuity: settlement can actually tell them apart');
+  ok('provenance marks signed vs unsigned confirmations distinctly');
+
+  // ── 🔴 THE ENFORCE FLAG FAILS SAFE TO GRACE ──────────────────────────────────────────────────
+  // The direction matters more than the mechanism: false means "behave exactly as before the gate
+  // existed". A read error that defaulted the other way would 409 every order in both restaurants.
+  const db = (val) => ({ ref: () => ({ get: async () => { if (val instanceof Error) throw val; return { val: () => val }; } }) });
+  assert.strictEqual(await tokenEnforceEnabled(db(true)), true, 'an explicit true enforces');
+  for (const v of [false, null, undefined, 0, 1, 'true', {}]) {
+    assert.strictEqual(await tokenEnforceEnabled(db(v)), false, `${String(v)} is not the boolean true → grace`);
+  }
+  assert.strictEqual(await tokenEnforceEnabled(db(new Error('rtdb down'))), false, '🔴 a read ERROR must fail safe to grace');
+  assert.strictEqual(await tokenEnforceEnabled({ ref: () => { throw new Error('no db'); } }), false, 'and so must a throwing db handle');
+  ok('tokenEnforceEnabled: only an explicit true enforces; absent, non-true, and unreadable all mean grace');
+  // No summary here — this file's own trailing block reports the total once, after every async cell.
+})().catch((e) => { console.error('token-gate FAILED:', e && e.message); process.exit(1); });

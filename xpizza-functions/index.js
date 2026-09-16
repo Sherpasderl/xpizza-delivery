@@ -441,7 +441,7 @@ function sanitizePhone(v) {
 // ---------------------------------------------------------------------------
 const { orderBreakdownCents } = require('./order-money');
 const { issueQuote } = require('./quote-issue');   // 1C Task 3 — the ONE quote issuer, shared with the redemption quote
-const { applyConfirmedNetGate } = require('./token-gate');   // 1C Task 4 — the ONE confirmed-net decision AND its consequences, shared with the card path
+const { applyConfirmedNetGate, tokenEnforceEnabled } = require('./token-gate');   // 1C Task 4 — the ONE confirmed-net decision AND its consequences, shared with the card path
 const { resolveAndIssueHostedCheckout, retireUnissuedAttempt } = require('./hosted-charge-flow');   // 1C T5 — resume-safe fresh-only gating, extracted so its effects can be run
 
 function validateOrderPayload(body, restaurantId, tables = null) {
@@ -639,6 +639,14 @@ createOrderApp.all('*', async (req, res) => {
   // different eligibility — a divergence there flips prep.ok, changes the fingerprint, and false-409s a
   // legit retry into a DOUBLE ORDER. null ⇒ the in-code allowlist (today's answer); never a throw.
   const redeemEligible = await gateReader().redeemEligibleFor(restaurantId);
+  // 🔴 ONE READ PER REQUEST. tokenEnforceEnabled fails safe to GRACE, so a config outage degrades the
+  // gate to pre-1C behaviour rather than refusing every order in both restaurants. Read once here and
+  // passed down — a flag re-read between gates could answer differently about the same order. Sits
+  // AFTER the resolver → fail-closed guard → eligibility chain, which is pinned contiguous elsewhere.
+  // T6 ships the READING only; the flip to true is an owner action once the client has shipped and the
+  // no-token rate has reached ~0 (server and client must both be live before enforcing).
+  const tokenEnforce = await tokenEnforceEnabled(db);
+
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
   if (errors.length > 0) {
     return badRequest(res, errors.join('; '));
@@ -906,9 +914,10 @@ createOrderApp.all('*', async (req, res) => {
   {
     const applied = await applyConfirmedNetGate({
       gateInput: {
-        token: body.quote_token, submittedCart: body.items, reward: redemptionResolved,
+        token: body.quote_token, expectedNetCents: body.expected_net_cents,   // signed proof, else the unsigned CEILING (never the charge)
+        submittedCart: body.items, reward: redemptionResolved,
         rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,
-        enforce: false,                            // T6 flips this; both branches are built and tested
+        enforce: tokenEnforce,                     // read once per request; fail-safe GRACE
         nowMs: Date.now(),
       },
       recordedTotalCents: priceBreakdown.total_cents,   // what this handler is about to store and collect
@@ -1181,6 +1190,14 @@ chargeOnlineApp.all('*', async (req, res) => {
   // different eligibility — a divergence there flips prep.ok, changes the fingerprint, and false-409s a
   // legit retry into a DOUBLE ORDER. null ⇒ the in-code allowlist (today's answer); never a throw.
   const redeemEligible = await gateReader().redeemEligibleFor(restaurantId);
+  // 🔴 ONE READ PER REQUEST. tokenEnforceEnabled fails safe to GRACE, so a config outage degrades the
+  // gate to pre-1C behaviour rather than refusing every order in both restaurants. Read once here and
+  // passed down — a flag re-read between gates could answer differently about the same order. Sits
+  // AFTER the resolver → fail-closed guard → eligibility chain, which is pinned contiguous elsewhere.
+  // T6 ships the READING only; the flip to true is an owner action once the client has shipped and the
+  // no-token rate has reached ~0 (server and client must both be live before enforcing).
+  const tokenEnforce = await tokenEnforceEnabled(db);
+
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
   if (errors.length > 0) return badRequest(res, errors.join('; '));
 
@@ -1594,9 +1611,10 @@ chargeOnlineApp.all('*', async (req, res) => {
     // checking a different figure from the one that travels to PixelPay.
     runGate: (recordedTotalCents) => applyConfirmedNetGate({
       gateInput: {
-        token: body.quote_token, submittedCart: body.items, reward: redemptionResolved,
+        token: body.quote_token, expectedNetCents: body.expected_net_cents,   // signed proof, else the unsigned CEILING (never the charge)
+        submittedCart: body.items, reward: redemptionResolved,
         rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,
-        enforce: false,                          // T6 flips this; both branches are built and tested
+        enforce: tokenEnforce,                   // read once per request; fail-safe GRACE
         nowMs: Date.now(),
       },
       recordedTotalCents,                        // === totalCents === the amount handed to createHostedCharge
