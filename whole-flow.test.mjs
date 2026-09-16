@@ -594,12 +594,6 @@ for (const dir of Object.keys(BRAND)) {
        matters: a reprice would also mark the line conflicted, and the refusal below would then prove
        nothing about the reward. Here the only thing wrong is that the reward was priced for a cart
        that no longer exists. */
-    /* The cart moves, and the reward quote stays standing for the cart it was priced for. Constructed
-       through restoreRedeem — the module's own writer — with the OLD items, because that is precisely
-       the state the bug leaves behind: a live quote whose stamp belongs to a cart that no longer
-       exists. Driving it by re-rendering was tried and is not viable: a cart change re-renders the
-       redeem affordance, which clears the reward, so the UI would be disposing of the very state under
-       test and the cell would pass for the wrong reason. */
     /* 🔴 WHAT AN AUTHENTICATED CUSTOMER'S CART CHANGE ACTUALLY DOES — and the earlier version of this
        cell got it wrong in a way worth recording. It asserted that a cart change CLEARS the pending
        reward, so "there is nothing left to go stale". That is the GUEST branch: account.js decides from
@@ -654,11 +648,12 @@ for (const dir of Object.keys(BRAND)) {
       `${dir}/rollback: premise — the reward quote matches at v1`);
 
     /* The price is moved DIRECTLY on the live MENU record rather than through a publish, and that is
-       deliberate. A live apply re-renders the redeem affordance, which CLEARS the reward — so an
-       apply-driven version of this cell would dispose of the very state under test and then pass
-       because no reward was left to be stale. Mutating the record changes exactly one thing, the
-       priced-menu version, which is the variable this cell exists to isolate. The apply path is
-       covered by cell 14; what is proved here is that the VERSION is in the signature at all. */
+       deliberate: it changes exactly one thing — the priced-menu version — which is the variable this
+       cell exists to isolate. A publish would also re-render the menu and, if it touched the cart's own
+       dish, conflict that line, so the refusal could no longer be attributed to the reward.
+       (An earlier note here said an apply CLEARS the reward. That was observed against a guest fixture
+       and is not true of the authenticated path this file now tests — the reward survives. The reason
+       for mutating directly is isolation, not preservation.) */
     /* 🔴 THE DISH MOVED IS ONE THAT IS **NOT IN THE CART**. Repricing the cart's own dish would ALSO
        mark its line conflicted, and then the send gate would refuse for two reasons at once — the
        assertion below would pass on the conflict and say nothing about the reward. Moving an unrelated
@@ -734,8 +729,8 @@ for (const dir of Object.keys(BRAND)) {
     const reward = { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] };
     authenticate(ctx, dir);
     await installReward(ctx, reward);
-    /* Made stale the way a reward actually goes stale — the menu reprices under it (cell 14c's vector),
-       not a cart change, which simply clears the reward. */
+    /* Made stale by a reprice of an UNRELATED dish: that moves the priced-menu version while leaving the
+       cart line resolved, so the reward is provably the only thing that can refuse the send. */
     const other = ctx.w.liveMenuGlobalGet('MENU').find((x) => x.price > 0 && String(x.id) !== String(d.id));
     other.price = other.price + 55;      // an UNRELATED dish — the cart line stays resolved
     assert.strictEqual([...ctx.w.cartConflicts()].length, 0,
@@ -803,13 +798,62 @@ for (const dir of Object.keys(BRAND)) {
     assert.strictEqual(ctx2.st.charges.length, before2,
       `${dir}/reward-submit: 🔴 a stale reward reaches NO charge endpoint through the real submit path`);
 
-    /* …INCLUDING THE CASH RETRY. The loop re-sends createOrder without rebuilding, which is the path
-       that defeated two earlier caller-side gates — a reward going stale between attempt 1 and attempt 2
-       must not be charged on attempt 2 either. */
-    await ctx2.w.submitOrder('confirmed');
+    /* 🔴 …AND A GENUINE INTERNAL RETRY, which is the only version of this that proves anything.
+       Calling submitOrder twice does NOT exercise the loop: each call starts at attempt 1 and returns
+       on refusal, so a gate accidentally hoisted OUT of the loop would still pass. The loop re-sends
+       createOrder WITHOUT rebuilding the order, and that is precisely the bypass that defeated two
+       earlier caller-side gates in T4 — first request 5xx, the merchant republishes during the backoff,
+       the retry sends the stale cart. So: the first request really fails, the reward really goes stale
+       during the real 1500ms backoff, and attempt 2 must be refused by the gate INSIDE the loop. */
+    const ctx3 = await boot(dir);
+    await publish(ctx3, baseMenu(ctx3.w));
+    const d3 = plainDish(ctx3.w);
+    await addToCart(ctx3, d3);
+    authenticate(ctx3, dir);
+    await installReward(ctx3, { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] });
+
+    let attempts = 0;
+    const passthru = ctx3.w.__respond;
+    ctx3.w.__respond = (url, init) => {
+      if (CHARGE_RE.test(url)) {
+        attempts += 1;
+        ctx3.st.charges.push({ url, ...JSON.parse((init && init.body) || '{}') });
+        // Attempt 1 fails with a RETRYABLE 5xx, so the loop backs off and comes round again.
+        if (attempts === 1) return Promise.resolve({ ok: false, status: 500, headers: { get: () => null }, json: () => Promise.resolve({}) });
+        return res({ ok: true });
+      }
+      return passthru(url, init);
+    };
+    /* The gate logs where it refused. Capturing that is what distinguishes "attempt 2 was refused by the
+       gate inside the loop" from "the loop never came round at all" — without it, a loop that exited
+       early for an unrelated reason would satisfy the attempt-count assertion just as well. */
+    const warned = [];
+    const realWarn = ctx3.w.console.warn;
+    ctx3.w.console.warn = (...a) => { warned.push(a.join(' ')); };
+    assert.strictEqual(ctx3.w.buildOrder(), true, `${dir}/reward-retry: the order composes`);
+    const inflight = ctx3.w.submitOrder('confirmed');
     await settle();
-    assert.strictEqual(ctx2.st.charges.length, before2,
-      `${dir}/reward-submit: 🔴 …and a second attempt through the retry path is refused too`);
+    assert.strictEqual(attempts, 1,
+      `${dir}/reward-retry: non-vacuity — attempt 1 really was dispatched and really failed`);
+
+    // The merchant republishes DURING the backoff: an unrelated dish, so the cart line stays resolved
+    // and the reward quote — not a cart conflict — is the only thing that has gone stale.
+    const other3 = ctx3.w.liveMenuGlobalGet('MENU').find((x) => x.price > 0 && String(x.id) !== String(d3.id));
+    other3.price = other3.price + 41;
+    assert.strictEqual([...ctx3.w.cartConflicts()].length, 0,
+      `${dir}/reward-retry: non-vacuity — the cart is unconflicted during the backoff`);
+    assert.strictEqual(ctx3.w.__ACCOUNT.redeemQuoteMatches(ctx3.w.redeemCartItems()), false,
+      `${dir}/reward-retry: non-vacuity — the reward quote is stale by the time attempt 2 is due`);
+
+    await new Promise((r) => setTimeout(r, 1800));   // outlast the real attempt*1500 backoff
+    await settle();
+    await inflight.catch(() => {});
+    ctx3.w.console.warn = realWarn;
+    assert.strictEqual(attempts, 1,
+      `${dir}/reward-retry: 🔴 attempt 2 was REFUSED INSIDE THE LOOP — the retry never re-sent the stale reward`);
+    const atCreate = warned.filter((l) => l.includes('cart_blocked_send_reward_unpriced') && l.includes('createOrder'));
+    assert.ok(atCreate.length >= 1,
+      `${dir}/reward-retry: 🔴 …and the refusal was logged AT createOrder, proving the loop came round and the gate inside it fired (saw ${JSON.stringify(warned.slice(-3))})`);
     ok(`${dir}: at the SUBMIT — a fresh reward dispatches, a stale one never does, retry included`);
   }
 
