@@ -155,7 +155,22 @@ const todaysCharge = (items, rid, tables) => {
   const items = [{ name: 'Margherita', qty: 1 }];
   const net = computeServerNet({ items, reward: { ok: true, model: 'add_free', freeItems: [{ item_id: 'Not A Dish', qty: 1 }] }, rid, tables });
   assert.ok(net.error, `🔴 an unpriceable reward errors rather than quietly charging full price (${JSON.stringify(net)})`);
-  ok(`a reward the reward path refuses is an error, not a silent full-price charge`);
+
+  /* 🔴 AND THE SAME FOR la_musa — which is the ONLY way to prove the reward path is entered for that
+     brand at all. An add_free reward does not discount, and la_musa has no ISV split, so a la_musa
+     redemption contributes NOTHING distinguishable to the net: skipping it entirely produces the same
+     net_total_cents and the same fiscal_cents. A refused reward is the one observable difference —
+     if the path is entered it errors, if it is skipped the cart prices normally. Without this, a
+     brand-conditional bypass of the reward path would be invisible (mutant c1-10). */
+  const lm = computeServerNet({ items: CARTS.la_musa[0], rid: 'la_musa', tables: T('la_musa'),
+    reward: { ok: true, model: 'add_free', freeItems: [] } });                 // no free item → refused
+  assert.ok(lm.error, `🔴 la_musa: a reward the reward path refuses errors here too (${JSON.stringify(lm)})`);
+  // NON-VACUITY: the same cart with a GOOD la_musa reward prices, so the error is the reward's shape
+  // and not the brand or the cart.
+  const lmOk = computeServerNet({ items: CARTS.la_musa[0], rid: 'la_musa', tables: T('la_musa'),
+    reward: { ok: true, model: 'add_free', freeItems: [{ item_id: 'dimsum_01', qty: 1, price_cents: MENU_BY_RESTAURANT.la_musa.dimsum_01 * 100, added: true }] } });
+  assert.strictEqual(lmOk.error, undefined, `la_musa: non-vacuity — a valid reward on the same cart prices (${lmOk.error})`);
+  ok(`a reward the reward path refuses is an error on BOTH brands — which is what proves the path is entered`);
 }
 
 // ── 8. 🔴 A CORRUPT CATALOG NEVER PRODUCES A NON-FINITE OR UNROUND-TRIPPABLE NET ───────────────
@@ -190,6 +205,63 @@ const todaysCharge = (items, rid, tables) => {
   const sane = computeServerNet({ items: [{ name: 'Margherita', qty: 2 }], rid: 'x_pizza', tables: corrupt(299) });
   assert.strictEqual(sane.net_total_cents, 59800, 'non-vacuity: an ordinary price through the same table shape prices normally');
   ok(`a corrupt catalog errors at every overflow point — Infinity total, Infinity cents, and finite-but-unround-trippable`);
+}
+
+// ── 9. 🔴 REWARD-ACTIVE PARITY, BOTH BRANDS, ON THE SHARED CARTS ───────────────────────────────
+// The reward-active assertion above is x_pizza-only, and the shared parity loop supplies no reward at
+// all — so la_musa's reward path had no committed regression coverage even though it routes through
+// the same applyRedemptionToPricing. Both brands are driven here, each with ITS OWN real redemption
+// shape (both resolve to model 'add_free', with freeItems carrying a table-derived price_cents), and
+// each free item is sourced from the live menu rather than hardcoded — a literal would pass today and
+// start failing the moment a price is edited, for a reason unrelated to this function.
+{
+  const FREE = { x_pizza: 'Margherita', la_musa: 'dimsum_01' };
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const tables = T(rid);
+    const items = CARTS[rid][2];                       // the extras-bearing cart — the harder shape
+    const freeName = FREE[rid];
+    const unitCents = MENU_BY_RESTAURANT[rid][freeName] * 100;
+    assert.ok(unitCents > 0, `${rid}: premise — the free item has a real menu price`);
+    const redemption = { ok: true, model: 'add_free', discount_cents: 0,
+      freeItems: [{ item_id: freeName, qty: 1, price_cents: unitCents, added: true }] };
+
+    const { total } = computeServerTotal(items, rid, tables);
+    const priced = applyRedemptionToPricing({ items, restaurantId: rid, redemption, totalLempiras: total, tables });
+    assert.strictEqual(priced.ok, true, `${rid}: premise — the reward path prices this cart (${priced.error})`);
+
+    const net = computeServerNet({ items, reward: redemption, rid, tables });
+    assert.strictEqual(net.error, undefined, `${rid}: the reward-active cart prices (${net.error})`);
+    assert.strictEqual(net.net_total_cents, priced.total_cents,
+      `${rid}: 🔴 the reward-active net IS the reward path's own total_cents`);
+
+    /* NON-VACUITY — the reward must have actually APPLIED, not been silently ignored. add_free does not
+       discount the charged total, so an equal number proves nothing on its own: a no-op reward would
+       produce the same figure. What proves it ran is the free line it attaches, and on x_pizza the
+       fiscal rebaja it values from the server menu. */
+    assert.ok(Array.isArray(priced.free_lines) && priced.free_lines.length >= 1,
+      `${rid}: non-vacuity — the redemption attached a free line, so it was not a no-op`);
+    assert.strictEqual(priced.free_lines[0].item_id, freeName,
+      `${rid}: non-vacuity — and it is the item the redemption named`);
+    if (rid === 'x_pizza') {
+      assert.ok(priced.desc_rebaja_cents > 0,
+        `${rid}: non-vacuity — the comp carries a fiscal rebaja valued from the server menu`);
+      // …and the reward's IDENTITY is load-bearing: a different free item values differently.
+      const other = 'Pepperoni';
+      const alt = applyRedemptionToPricing({ items, restaurantId: rid, totalLempiras: total, tables,
+        redemption: { ok: true, model: 'add_free', discount_cents: 0,
+          freeItems: [{ item_id: other, qty: 1, price_cents: MENU_BY_RESTAURANT[rid][other] * 100, added: true }] } });
+      assert.strictEqual(alt.ok, true, `${rid}: premise — the alternate reward prices`);
+      assert.notStrictEqual(alt.desc_rebaja_cents, priced.desc_rebaja_cents,
+        `${rid}: 🔴 non-vacuity — a DIFFERENT free item values differently, so the reward is really read`);
+    }
+    // The charged total is unchanged by an add-free reward — stated explicitly so the model's behaviour
+    // is pinned rather than inferred from two numbers happening to match.
+    const noReward = computeServerNet({ items, rid, tables });
+    assert.strictEqual(net.net_total_cents, noReward.net_total_cents,
+      `${rid}: add_free does not discount the charged total — the comp is a free line, not a price cut`);
+    assert.strictEqual(net.components.reward_discount_cents, 0, `${rid}: …so the discount component is 0`);
+  }
+  ok(`reward-active parity on the shared carts, BOTH brands — net === the reward path's total_cents`);
 }
 
 console.log(`\ncompute-server-net: OK (${n})`);

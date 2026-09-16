@@ -3241,5 +3241,17 @@
    "node",
    "compute-server-net.test.js"
   ]
+ },
+ {
+  "id": "c1-10",
+  "slice": "c1",
+  "file": "compute-server-net.js",
+  "command": [
+   "node",
+   "compute-server-net.test.js"
+  ],
+  "label": "the reward path is applied only for x_pizza — la_musa silently skips its redemption",
+  "from": "  if (reward) {",
+  "to": "  if (reward && rid === 'x_pizza') {"
  }
 ]
