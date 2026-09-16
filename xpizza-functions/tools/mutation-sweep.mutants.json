@@ -3609,8 +3609,20 @@
   "slice": "c3",
   "file": "quote-issue.js",
   "label": "the catch-path stringify can itself throw — the guard becomes the crash",
-  "from": "    if (e && typeof e.message === 'string' && e.message) return e.message.slice(0, 200);\n    return String(e).slice(0, 200);\n  } catch (_) {\n    return 'unstringifiable';\n  }",
-  "to": "    return String((e && e.message) || e).slice(0, 200);\n  } catch (_) {\n    throw _;\n  }",
+  "from": "    const m = e && e.message;\n    if (typeof m === 'string' && m) return m.slice(0, 200);\n    return String(e).slice(0, 200);\n  } catch (_) {\n    return 'unstringifiable';\n  }",
+  "to": "    const m = e && e.message;\n    if (typeof m === 'string' && m) return m.slice(0, 200);\n    return String(e).slice(0, 200);\n  } catch (_) {\n    throw _;\n  }",
+  "command": [
+   "node",
+   "quote-issue.test.js"
+  ]
+ },
+ {
+  "id": "c3-13",
+  "slice": "c3",
+  "file": "quote-issue.js",
+  "label": "describeError re-reads e.message, so a mutating getter makes it return a non-string",
+  "from": "    const m = e && e.message;\n    if (typeof m === 'string' && m) return m.slice(0, 200);",
+  "to": "    if (e && typeof e.message === 'string' && e.message) return e.message.slice(0, 200);",
   "command": [
    "node",
    "quote-issue.test.js"

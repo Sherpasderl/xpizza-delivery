@@ -35,7 +35,16 @@ const EXPIRY_MS = 15 * 60 * 1000;
    to be remembered at the others. */
 function describeError(e) {
   try {
-    if (e && typeof e.message === 'string' && e.message) return e.message.slice(0, 200);
+    /* 🔴 READ ONCE. Reading `e.message` three times — to test it, to truthiness-check it, to slice it —
+       let a GETTER return a different type on each read: a string on the first, an object with a
+       `slice` returning a BigInt on a later one, and describeError returned that BigInt. The throw then
+       landed at the CALL SITE, in JSON.stringify, outside this helper's guard entirely.
+       With one read into a local, this function provably always returns a string: the message branch
+       slices a value already proven to be a primitive string, String(e) is inside the try, and the
+       fallback is a constant. That is what makes this the LAST fix of the class rather than one more
+       instance of it — there is no remaining path by which a thrown value can make the logging throw. */
+    const m = e && e.message;
+    if (typeof m === 'string' && m) return m.slice(0, 200);
     return String(e).slice(0, 200);
   } catch (_) {
     return 'unstringifiable';

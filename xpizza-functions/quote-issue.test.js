@@ -298,7 +298,28 @@ const withSecret = (fn) => {
       assert.strictEqual(issued.ok, false, `${label}: …and reports a typed refusal`);
     });
   }
-  ok('a throwing property accessor yields null and a token-less quote — never an exception, whatever is thrown');
+  /* 🔴 AND A THROWN VALUE WHOSE `message` CHANGES BETWEEN READS. describeError read e.message three
+     times — to test it, to truthiness-check it, to slice it — so a getter could return a string on the
+     first read and something else on a later one, making the helper return a NON-STRING. The throw
+     then landed at the CALL SITE, inside JSON.stringify, outside the helper's guard entirely.
+     Reading once makes describeError provably return a string, which is why this is the last case of
+     the class rather than one more instance: with the value read once there is no remaining path by
+     which a thrown object can make the logging throw. */
+  for (const [label, make] of [
+    ['message: string then a BigInt-returning slice', () => { let n = 0; return { get message() { n += 1; return n === 1 ? 'boom' : { slice: () => 1n }; } }; }],
+    ['message: string then a plain object', () => { let n = 0; return { get message() { n += 1; return n === 1 ? 'boom' : {}; } }; }],
+    ['message: string then a number', () => { let n = 0; return { get message() { n += 1; return n === 1 ? 'boom' : 7; } }; }],
+    ['message: throws on the second read', () => { let n = 0; return { get message() { n += 1; if (n > 1) throw Object.create(null); return 'boom'; } }; }],
+  ]) {
+    const cart = [{ name: 'Margherita', get qty() { throw make(); } }];
+    withSecret(() => {
+      let issued;
+      assert.doesNotThrow(() => { issued = issueQuote({ items: cart, rid: 'x_pizza', tables: T('x_pizza'), nowMs: 1e6 }); },
+        `🔴 ${label}: neither the catch nor its logging may throw`);
+      assert.strictEqual(issued.ok, false, `${label}: …and a typed refusal comes back`);
+    });
+  }
+  ok('a throwing property accessor yields null and a token-less quote — never an exception, whatever is thrown or however it mutates');
 }
 
 console.log(`\nquote-issue: OK (${n})`);
