@@ -4366,43 +4366,26 @@ async function processPixelPay(){
     // F4 self-heal (online): chargeOnlineOrder refused this order_id — a different cart/total on a reused id
     // ("Order conflict"), or the order was cancelled/closed ("Order closed"). No NEW charge was created, so clear
     // the ids, mint a fresh one, and retry ONCE (guarded) instead of dead-ending on the generic "Revisá tus datos".
-    /* ── 1C TASK 8 — THE ONLY VISIBLE FRICTION, AND EVERYTHING THAT MUST STAY INVISIBLE ────────
-       price_increased is the one answer worth interrupting someone for: the number moved UP and
-       they have not agreed to the new one. A DROP never lands here at all — the server charges the
-       lower amount and returns 200 — so the silence on a drop is not code, it is the absence of
-       this branch, and that is deliberate.
-       quote_invalid / quote_required mean a bookkeeping mismatch, not a price change: the
-       fingerprint no longer lines up, or a token was missing under enforcement. Nothing to tell
-       the customer, so it re-quotes and resends ONCE, guarded against looping.
-       A REWARD-BEARING ORDER CANNOT RETRY ITS OWN order_id after an increase: the server's hold is
-       bound to a fingerprint that includes the amount, so the same id answers reservation_conflict
-       and fails closed. The recovery is a NEW order — the same self-heal the order_conflict branch
-       above performs, for the same reason: a 409 proves nothing was created. */
-    var __cqKind = null;
-    try{ __cqKind = __confirmQuote ? __confirmQuote.classify(cfg) : null; }catch(_){ __cqKind = null; }
-    if(__cqKind === 'stale_quote'){
-      if(!window.__cqRequoted){
-        window.__cqRequoted = true;
-        try{ requestServerQuote(true); }catch(_){}
-        orderSubmitting = false;
-        return processPixelPay();              // silent: no sheet, no fallback banner
+    /* ── 1C TASK 8 — the SAME recovery as the cash path, from the same module. See its header. */
+    var __rec = null;
+    try{
+      __rec = __confirmQuote ? await __confirmQuote.handleRejection({
+        err: cfg, body: currentOrder, shownCents: __orderNetAtBuild,
+        hasReward: !!(currentOrder && currentOrder.redeem), retried: !!window.__cqRequoted,
+        sheet: function(o){ return confirmPriceSheet(o); },
+      }) : null;
+    }catch(_){ __rec = null; }
+    if(__rec && __rec.handled){
+      if(!__rec.resend) return paymentFallback('Cancelaste el cambio de precio.');
+      if(typeof __rec.expectedNetCents === 'number') __orderNetAtBuild = __rec.expectedNetCents;   // the body now stands behind THIS number
+      if(__rec.silent) window.__cqRequoted = true;
+      if(__rec.mintNewOrderId){
+        window.__pendingOrder = null; window.__resumeOrderId = null;
+        currentOrder.order_id = genOrderId();
       }
-    }
-    if(__cqKind === 'price_increase'){
-      var __newNet = (cfg && typeof cfg.net_total_cents === 'number') ? cfg.net_total_cents : null;
-      var __oldNet = __orderNetAtBuild;
-      if(__newNet !== null && __oldNet !== null && typeof confirmPriceSheet === 'function'){
-        orderSubmitting = false;
-        return confirmPriceSheet({ oldCents: __oldNet, newCents: __newNet }).then(function(okNew){
-          if(!okNew){ return paymentFallback('Cancelaste el cambio de precio.'); }
-          try{ requestServerQuote(true); }catch(_){}
-          if(currentOrder && currentOrder.redeem){
-            window.__pendingOrder = null; window.__resumeOrderId = null;
-            currentOrder.order_id = genOrderId();
-          }
-          return processPixelPay();
-        });
-      }
+      try{ requestServerQuote(true); }catch(_){}
+      orderSubmitting = false;
+      return processPixelPay();
     }
     if(res.status===409 && cfg && (cfg.error==='Order conflict' || cfg.error==='Order closed')){
       if(!window.__conflictHealed){
@@ -4693,42 +4676,30 @@ async function submitOrder(paymentStatus){
         // e.g. a cash re-submit landing on an abandoned ONLINE order_id). A 409 proves NOTHING was created for that
         // id, so clear the ids, mint a FRESH one, and resubmit ONCE (never a loop — __conflictHealed guards it).
         /* ── 1C TASK 8 — THE ONLY VISIBLE FRICTION, AND EVERYTHING THAT MUST STAY INVISIBLE ────────
-           price_increased is the one answer worth interrupting someone for: the number moved UP and
-           they have not agreed to the new one. A DROP never lands here at all — the server charges the
-           lower amount and returns 200 — so the silence on a drop is not code, it is the absence of
-           this branch, and that is deliberate.
-           quote_invalid / quote_required mean a bookkeeping mismatch, not a price change: the
-           fingerprint no longer lines up, or a token was missing under enforcement. Nothing to tell
-           the customer, so it re-quotes and resends ONCE, guarded against looping.
-           A REWARD-BEARING ORDER CANNOT RETRY ITS OWN order_id after an increase: the server's hold is
-           bound to a fingerprint that includes the amount, so the same id answers reservation_conflict
-           and fails closed. The recovery is a NEW order — the same self-heal the order_conflict branch
-           above performs, for the same reason: a 409 proves nothing was created. */
-        var __cqKind = null;
-        try{ __cqKind = __confirmQuote ? __confirmQuote.classify(err) : null; }catch(_){ __cqKind = null; }
-        if(__cqKind === 'stale_quote'){
-          if(!window.__cqRequoted){
-            window.__cqRequoted = true;
-            try{ requestServerQuote(true); }catch(_){}
-            orderSubmitting = false;
-            return submitOrder(paymentStatus);                            // silent: no sheet, no message
+           The whole decision lives in the shared module (handleRejection): classify the answer, raise
+           the sheet only for a genuine increase, and prepare the body so the resend SUCCEEDS on its own
+           degraded ceiling rather than waiting on a re-quote that returns nothing awaitable. This site
+           only acts on the answer — which is the point: the same code now runs on both charge paths,
+           so a defect cannot hide on the one the tests drive less. */
+        var __rec = null;
+        try{
+          __rec = __confirmQuote ? await __confirmQuote.handleRejection({
+            err: err, body: currentOrder, shownCents: __orderNetAtBuild,
+            hasReward: !!(currentOrder && currentOrder.redeem), retried: !!window.__cqRequoted,
+            sheet: function(o){ return confirmPriceSheet(o); },
+          }) : null;
+        }catch(_){ __rec = null; }
+        if(__rec && __rec.handled){
+          if(!__rec.resend) return;                                  // declined — the cart is untouched
+          if(typeof __rec.expectedNetCents === 'number') __orderNetAtBuild = __rec.expectedNetCents;   // the body now stands behind THIS number
+          if(__rec.silent) window.__cqRequoted = true;               // the silent retry happens ONCE
+          if(__rec.mintNewOrderId){                                  // reward: the server's hold refuses this id
+            window.__pendingOrder = null; window.__resumeOrderId = null;
+            currentOrder.order_id = genOrderId();
           }
-        }
-        if(__cqKind === 'price_increase'){
-          var __newNet = (err && typeof err.net_total_cents === 'number') ? err.net_total_cents : null;
-          var __oldNet = __orderNetAtBuild;
-          if(__newNet !== null && __oldNet !== null && typeof confirmPriceSheet === 'function'){
-            orderSubmitting = false;
-            return confirmPriceSheet({ oldCents: __oldNet, newCents: __newNet }).then(function(okNew){
-              if(!okNew){ return; }                                        // declined — the cart is untouched
-              try{ requestServerQuote(true); }catch(_){}                   // a fresh token for the NEW price
-              if(currentOrder && currentOrder.redeem){                     // reward → the server cannot reuse this id
-                window.__pendingOrder = null; window.__resumeOrderId = null;
-                currentOrder.order_id = genOrderId();
-              }
-              return submitOrder(paymentStatus);
-            });
-          }
+          try{ requestServerQuote(true); }catch(_){}                 // best-effort: restores signing next time
+          orderSubmitting = false;
+          return submitOrder(paymentStatus);
         }
         if(err && err.error === 'order_conflict'){
           if(!window.__conflictHealed){

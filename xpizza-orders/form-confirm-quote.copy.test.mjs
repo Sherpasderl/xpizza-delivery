@@ -91,37 +91,26 @@ test('both forms load the store and wire it at every seam — identically', () =
        A census, not a proof: it says the branches are present and wired to the shared classifier, not
        that the online flow behaves. That behaviour is asserted for cash at runtime, and the two share
        one implementation — which is the argument for putting it in a shared module. */
-    assert.strictEqual((html.match(/__confirmQuote\.classify\(/g) || []).length, 2,
-      `${dir}: both sends must consult the shared classifier — one is a payment method with no guard`);
-    assert.ok(/\n        if\(__cqKind === 'price_increase'\)\{/.test(html), `${dir}: the CASH send handles a price increase`);
-    assert.ok(/\n    if\(__cqKind === 'price_increase'\)\{/.test(html),
-      `${dir}: both sends must handle a price increase — the card path is missing its branch`);
-    assert.strictEqual((html.match(/confirmPriceSheet\(\{ oldCents:/g) || []).length, 2, `${dir}: …and both raise the SAME sheet`);
-    assert.strictEqual((html.match(/__cqKind === 'stale_quote'/g) || []).length, 2, `${dir}: both sends recover a stale quote silently`);
-
-    /* 🔴 THE SHEET IS THE ONLY THING THE CUSTOMER SEES. A second visible affordance on any other
-       outcome would break the rule this slice exists for, so the sheet must not be reachable from
-       anywhere but the price-increase branch. */
-    const sheetSites = [...html.matchAll(/confirmPriceSheet\(/g)];
-    assert.strictEqual(sheetSites.length, 2, `${dir}: exactly two sheet call sites`);
-    for (const m of sheetSites) {
-      /* Nearest-guard, not a fixed window: the two call sites sit ~300 and ~320 chars below their
-         branch, so any constant is a coin flip that silently passes or fails on reformatting. Asking
-         which guard is CLOSEST is the question actually being asked — "is this sheet raised by the
-         price-increase branch, or by something nearer to it?" */
-      const back = html.slice(0, m.index);
-      const lastIncrease = back.lastIndexOf('price_increase');
-      const lastStale = back.lastIndexOf('stale_quote');
-      assert.ok(lastIncrease !== -1 && lastIncrease > lastStale,
-        `${dir}: 🔴 the sheet is raised outside the price-increase branch — that is new friction`);
-    }
-    // non-vacuity: the nearest-guard test really can tell the two branches apart
-    {
-      const probe = "if(k==='stale_quote'){ x(); }\nconfirmPriceSheet({";
-      const i = probe.indexOf('confirmPriceSheet(');
-      assert.ok(!(probe.slice(0, i).lastIndexOf('price_increase') > probe.slice(0, i).lastIndexOf('stale_quote')),
-        'non-vacuity: a sheet raised from the stale-quote branch would be caught');
-    }
+    /* ── 1C T8 REVISE — BOTH SENDS RUN THE SAME RECOVERY ────────────────────────────────────────
+       The recovery used to be written out inline at each send with only classify() and the sheet
+       shared, so the cash copy was exercised and the card copy was merely present — which is exactly
+       how a defect on the online path survived every test. It is one function now
+       (handleRejection: classify → sheet-or-silent → prepare the resend), and these assert that both
+       sends actually route through it and act on the same answer. The online path's BEHAVIOUR is
+       asserted at runtime now too (confirm-quote-wiring.test.mjs drives processPixelPay), so this is a
+       wiring census rather than the only thing standing behind that payment method. */
+    assert.strictEqual((html.match(/__confirmQuote\.handleRejection\(/g) || []).length, 2,
+      `${dir}: both sends must route rejections through the ONE shared recovery`);
+    assert.strictEqual((html.match(/__rec && __rec\.handled/g) || []).length, 2,
+      `${dir}: …and both act on its answer`);
+    assert.strictEqual((html.match(/__rec\.mintNewOrderId/g) || []).length, 2,
+      `${dir}: both honour the reward's fresh-order_id recovery`);
+    assert.strictEqual((html.match(/__orderNetAtBuild = __rec\.expectedNetCents/g) || []).length, 2,
+      `${dir}: 🔴 both record what the resend now stands behind — without it the resend re-asserts the number the customer rejected`);
+    assert.ok(!/__cqKind/.test(html),
+      `${dir}: the old inline recovery must be gone — two copies of this decision is how the card path went unguarded`);
+    assert.strictEqual((html.match(/confirmPriceSheet\(/g) || []).length, 2,
+      `${dir}: the sheet is raised from exactly two places, one per send`);
 
     // The reward recovery mints a fresh id on BOTH paths: the server's hold binds the amount, so the
     // same id fails closed and the customer's points strand.

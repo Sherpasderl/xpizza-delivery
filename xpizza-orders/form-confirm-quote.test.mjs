@@ -45,6 +45,32 @@ test('🔴 a cart change makes the token stale, and a stale token is NEVER attac
   assert.strictEqual(q.attach({ }, 'CART-A'), true);
 });
 
+test('🔴 a REUSED body never carries a token from an earlier send', () => {
+  /* Bodies are reused: submitOrder's retry loop resends the same object, and a recovery resends it
+     again. A token left on it from an earlier send survives into one that has no right to it, and
+     because the server's SIGNED gate takes precedence over the unsigned ceiling, such a body is judged
+     on a token nobody vouches for any more — refused, and refused identically on every resend.
+     Asserted here because the recovery path clears the token too, so a defect in send() alone is
+     invisible through the form: exactly the kind of guard that rots unwatched. */
+  const { q } = mk();
+  const body = { items: [1] };
+  q.store({ quote_token: 'TOK-A' }, 'CART-A');
+  assert.strictEqual(q.send(body, 'CART-A', 900), 'signed');
+  assert.strictEqual(body.quote_token, 'TOK-A');
+
+  // the cart moves on — the same body is now sent for a signature the token does not cover
+  assert.strictEqual(q.send(body, 'CART-B', 900), 'degraded');
+  assert.ok(!('quote_token' in body), '🔴 the stale token must be GONE, not merely unattached');
+  assert.strictEqual(body.expected_net_cents, 900, 'and the ceiling stands in its place');
+
+  // …and with nothing to stand behind either, the body goes out clean rather than stale-signed
+  const b2 = { items: [2] };
+  q.store({ quote_token: 'TOK-C' }, 'CART-C');
+  q.send(b2, 'CART-C', 900);
+  assert.strictEqual(q.send(b2, 'CART-D', null), 'bare');
+  assert.ok(!('quote_token' in b2), 'a bare send carries no token either');
+});
+
 test('a response with no quote_token stores nothing — that is grace, not an error', () => {
   const { q } = mk();
   // The pre-1C server shape, and the shape whenever QUOTE_TOKEN_SECRET is unset.

@@ -4364,23 +4364,27 @@
   {
     "id": "c8-x1",
     "slice": "c8",
-    "label": "cash: a price increase is swallowed silently — the customer is charged more than they agreed",
+    "label": "cash: rejections are never handled — a price increase is charged silently",
     "file": "../xpizza-orders/index.html",
-    "from": "\n        if(__cqKind === 'price_increase'){",
+    "from": "\n        if(__rec && __rec.handled){",
     "to": "\n        if(false){",
     "command": [
       "node",
       "../confirm-quote-wiring.test.mjs"
     ],
-    "kills_with": "a price increase MUST be shown"
+    "kills_with": [
+      "confirming must actually resend the order",
+      "a price increase MUST be shown",
+      "it re-quotes and resends by itself"
+    ]
   },
   {
     "id": "c8-x2",
     "slice": "c8",
     "label": "a reward order retries its own id, which the server's hold refuses — the points strand",
     "file": "../xpizza-orders/index.html",
-    "from": "              if(currentOrder && currentOrder.redeem){",
-    "to": "              if(false){",
+    "from": "\n          if(__rec.mintNewOrderId){",
+    "to": "\n          if(false){",
     "command": [
       "node",
       "../confirm-quote-wiring.test.mjs"
@@ -4390,23 +4394,27 @@
   {
     "id": "c8-m1",
     "slice": "c8",
-    "label": "la_musa: cash: a price increase is swallowed silently — the customer is charged more than they agreed",
+    "label": "la_musa: cash: rejections are never handled — a price increase is charged silently",
     "file": "../la-musa-orders/index.html",
-    "from": "\n        if(__cqKind === 'price_increase'){",
+    "from": "\n        if(__rec && __rec.handled){",
     "to": "\n        if(false){",
     "command": [
       "node",
       "../confirm-quote-wiring.test.mjs"
     ],
-    "kills_with": "a price increase MUST be shown"
+    "kills_with": [
+      "confirming must actually resend the order",
+      "a price increase MUST be shown",
+      "it re-quotes and resends by itself"
+    ]
   },
   {
     "id": "c8-m2",
     "slice": "c8",
     "label": "la_musa: a reward order retries its own id, which the server's hold refuses — the points strand",
     "file": "../la-musa-orders/index.html",
-    "from": "              if(currentOrder && currentOrder.redeem){",
-    "to": "              if(false){",
+    "from": "\n          if(__rec.mintNewOrderId){",
+    "to": "\n          if(false){",
     "command": [
       "node",
       "../confirm-quote-wiring.test.mjs"
@@ -4469,29 +4477,115 @@
   {
     "id": "c8-x3",
     "slice": "c8",
-    "label": "card: a price increase is swallowed silently on the ONLINE path",
+    "label": "card: rejections are never handled on the ONLINE path",
     "file": "../xpizza-orders/index.html",
-    "from": "\n    if(__cqKind === 'price_increase'){",
+    "from": "\n    if(__rec && __rec.handled){",
     "to": "\n    if(false){",
     "command": [
       "node",
-      "--test",
-      "../xpizza-orders/form-confirm-quote.copy.test.mjs"
+      "../confirm-quote-wiring.test.mjs"
     ],
-    "kills_with": "both sends must handle a price increase"
+    "kills_with": [
+      "the card resend happened",
+      "the ONLINE path must show the increase sheet too"
+    ]
   },
   {
     "id": "c8-m3",
     "slice": "c8",
-    "label": "la_musa: card: a price increase is swallowed silently on the ONLINE path",
+    "label": "la_musa: card: rejections are never handled on the ONLINE path",
     "file": "../la-musa-orders/index.html",
-    "from": "\n    if(__cqKind === 'price_increase'){",
+    "from": "\n    if(__rec && __rec.handled){",
     "to": "\n    if(false){",
     "command": [
       "node",
-      "--test",
-      "../xpizza-orders/form-confirm-quote.copy.test.mjs"
+      "../confirm-quote-wiring.test.mjs"
     ],
-    "kills_with": "both sends must handle a price increase"
+    "kills_with": [
+      "the card resend happened",
+      "the ONLINE path must show the increase sheet too"
+    ]
+  },
+  {
+    "id": "c9-01",
+    "slice": "c9",
+    "label": "a reused body keeps a token from an earlier send, so the signed gate judges it on a rejected token",
+    "file": "../xpizza-orders/form-confirm-quote.js",
+    "from": "      try { delete body.quote_token; } catch (_) { body.quote_token = undefined; }\n      if (attach(body, cartSig)) return 'signed';",
+    "to": "      if (attach(body, cartSig)) return 'signed';",
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-orders/form-confirm-quote.test.mjs"
+    ],
+    "kills_with": "the stale token must be GONE"
+  },
+  {
+    "id": "c9-03",
+    "slice": "c9",
+    "label": "the rejected token stays in the store and is attached again on the next send",
+    "file": "../xpizza-orders/form-confirm-quote.js",
+    "from": "      stored = null;                       // the server rejected it; it must never be attached again",
+    "to": "      needsRefresh = true;",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "the customer must agree ONCE"
+  },
+  {
+    "id": "c9-05",
+    "slice": "c9",
+    "label": "a stale quote consumes its retry silently but never actually recovers",
+    "file": "../xpizza-orders/form-confirm-quote.js",
+    "from": "        if (!degradeTo(o.shownCents)) return Promise.resolve({ handled: false });",
+    "to": "        return Promise.resolve({ handled: true, resend: true, mintNewOrderId: false, silent: true, expectedNetCents: o.shownCents });",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "without the token that was just rejected"
+  },
+  {
+    "id": "c9-06",
+    "slice": "c9",
+    "label": "the customer's agreement is ignored — the resend stands behind the OLD number",
+    "file": "../xpizza-orders/form-confirm-quote.js",
+    "from": "        return { handled: true, resend: true, mintNewOrderId: !!o.hasReward, silent: false, expectedNetCents: newCents };",
+    "to": "        return { handled: true, resend: true, mintNewOrderId: !!o.hasReward, silent: false, expectedNetCents: o.shownCents };",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": [
+      "the customer must agree ONCE",
+      "must stand behind the number the customer just agreed to"
+    ]
+  },
+  {
+    "id": "c9-07",
+    "slice": "c9",
+    "label": "cash: the agreed price is not recorded, so the resend re-asserts the number the customer rejected",
+    "file": "../xpizza-orders/index.html",
+    "from": "\n          if(typeof __rec.expectedNetCents === 'number') __orderNetAtBuild = __rec.expectedNetCents;",
+    "to": "\n          if(false){}",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "the customer must agree ONCE"
+  },
+  {
+    "id": "c9-08",
+    "slice": "c9",
+    "label": "la_musa: cash: the agreed price is not recorded, so the resend re-asserts the number the customer rejected",
+    "file": "../la-musa-orders/index.html",
+    "from": "\n          if(typeof __rec.expectedNetCents === 'number') __orderNetAtBuild = __rec.expectedNetCents;",
+    "to": "\n          if(false){}",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "the customer must agree ONCE"
   }
 ]

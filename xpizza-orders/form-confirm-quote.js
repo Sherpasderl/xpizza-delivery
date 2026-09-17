@@ -135,6 +135,14 @@
        the header. */
     function send(body, cartSig, expectedNetCents) {
       if (!body || typeof body !== 'object') return 'bare';
+      /* 🔴 CLEAR ANY TOKEN ALREADY ON THE BODY FIRST. A body is reused across a retry — the retry loop
+         resends it, and a recovery resends it — so a token left from an earlier send survives into a
+         send that has no right to it. The server's SIGNED gate takes precedence over the unsigned
+         ceiling, so such a body is judged on a token nobody vouched for any more: it is refused, the
+         resend is refused identically, and the customer sees the same sheet forever. Deleting before
+         deciding makes "this body carries exactly what THIS send vouches for" true by construction
+         rather than by every caller remembering. */
+      try { delete body.quote_token; } catch (_) { body.quote_token = undefined; }
       if (attach(body, cartSig)) return 'signed';
       if (typeof expectedNetCents === 'number' && Number.isFinite(expectedNetCents)
           && Math.floor(expectedNetCents) === expectedNetCents && expectedNetCents >= 0) {
@@ -142,6 +150,65 @@
         return 'degraded';
       }
       return 'bare';
+    }
+
+    /* ── T8 REVISE: A RECOVERY MUST SUCCEED ON ITS OWN ───────────────────────────────────────────
+       Both recoveries used to resend and hope the fire-and-forget re-quote had landed. It does not:
+       requestServerQuote returns nothing awaitable, and on a reward-active cart it returns without
+       issuing at all. So the resend carried the SAME rejected token and was refused identically — the
+       increase sheet reappeared without end, and the silent stale-quote recovery spent its one retry
+       and surfaced a generic error banner. Suppressing the sheet is not silence; the recovery has to
+       actually go through.
+       It goes through on the DEGRADED CEILING, which needs nothing asynchronous: drop the token the
+       server just rejected and state the number this send stands behind. For an increase that number
+       is the one the customer has just agreed to, so the server's recompute equals it and the order
+       charges first try. The re-quote still fires, in the background, to restore signing for next time
+       — but nothing waits on it.
+       The returned expectedNetCents is what the body now STANDS BEHIND, and the caller must record it
+       as its build-time net. Without that the very next send() reasserts the ORIGINAL figure and
+       silently undoes the agreement the customer just gave — the recovery would loop on a number they
+       had already rejected. */
+    /* It drops the TOKEN and nothing else. An earlier version also wrote the ceiling onto the body,
+       which felt thorough and was in fact dead: every resend goes back out through send(), which
+       clears the token and re-derives expected_net_cents from the caller's build-time net, overwriting
+       whatever was put here. Three mutations of that body-writing code could not be killed by any
+       test, because nothing downstream could observe it — an unkillable line is not belt-and-braces,
+       it is a second place to have to keep correct for no gain. What actually carries the recovery is
+       the returned expectedNetCents, which the caller records; that is asserted at runtime. */
+    function degradeTo(cents) {
+      stored = null;                       // the server rejected it; it must never be attached again
+      needsRefresh = true;
+      return typeof cents === 'number' && Number.isFinite(cents) && Math.floor(cents) === cents && cents >= 0;
+    }
+
+    /* The whole rejection→recovery decision, in one place. It used to be written out inline at all
+       four send sites with only classify() and the sheet shared, which is why a defect on the card
+       path could survive every test: the cash copy was exercised and the card copy was merely
+       present. One implementation, tested once, with the sends reduced to acting on the answer. */
+    function handleRejection(o) {
+      o = o || {};
+      var kind = classify(o.err);
+      if (!kind) return Promise.resolve({ handled: false });
+
+      if (kind === 'stale_quote') {
+        // A fingerprint mismatch says nothing about the price, so nothing is shown. One attempt only.
+        if (o.retried) return Promise.resolve({ handled: false });
+        if (!degradeTo(o.shownCents)) return Promise.resolve({ handled: false });
+        return Promise.resolve({ handled: true, resend: true, mintNewOrderId: false, silent: true, expectedNetCents: o.shownCents });
+      }
+
+      var newCents = (o.err && typeof o.err.net_total_cents === 'number') ? o.err.net_total_cents : null;
+      if (newCents === null || typeof o.shownCents !== 'number') return Promise.resolve({ handled: false });
+      var ask = typeof o.sheet === 'function' ? o.sheet : function () { return Promise.resolve(false); };
+      return Promise.resolve(ask({ oldCents: o.shownCents, newCents: newCents })).then(function (agreed) {
+        if (!agreed) return { handled: true, resend: false, declined: true };
+        /* The customer agreed to newCents, so THAT is what this send stands behind — not the number
+           they were shown before. A reward order must also mint a fresh order_id: the server's hold
+           binds a fingerprint that includes the amount, so the same id fails closed and strands the
+           points. */
+        if (!degradeTo(newCents)) return { handled: true, resend: false, declined: false };
+        return { handled: true, resend: true, mintNewOrderId: !!o.hasReward, silent: false, expectedNetCents: newCents };
+      });
     }
 
     /* The server's answer, reduced to the only distinction the customer can feel. `price_increase` is
@@ -157,6 +224,7 @@
 
     return {
       store: store, current: current, attach: attach, send: send, classify: classify,
+      degradeTo: degradeTo, handleRejection: handleRejection,
       scheduleRefresh: scheduleRefresh, stopRefresh: stopRefresh,
       state: state, reset: reset,
     };

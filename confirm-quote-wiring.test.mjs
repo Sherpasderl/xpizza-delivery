@@ -531,6 +531,144 @@ for (const dir of Object.keys(BRAND)) {
       `${dir}: 🔴 a reward order MUST resend on a FRESH order_id — the server's hold binds the amount, so the same id fails closed and strands the points`);
     ok(`${dir}: a reward increase resends on a NEW order_id, not the one the hold refuses`);
   }
+
+  // ── 🔴 CONFIRMING SUCCEEDS ON THE FIRST TRY — THE RECOVERY DOES NOT RACE A RE-QUOTE ────────────
+  // The resend used to carry the SAME token the server had just rejected (a body is reused, and the
+  // token from the first send survived on it), so the server refused identically and the sheet came
+  // back — forever. The re-quote it was implicitly relying on returns nothing awaitable and, on a
+  // reward cart, does not even fire. The recovery now stands on its own degraded ceiling.
+  {
+    const w = loadForm(dir);
+    const sent = []; const idle = new Promise(() => {});
+    const NEW = 31900;
+    w.__respond = (url, init) => {
+      if (url.includes('/menu/')) return res(envelope(B.rid, { dishes: [], extras: [] }));
+      // The re-quote NEVER lands — the recovery must not depend on it.
+      if (url.includes('quoteOrder')) return sent.length === 0
+        ? res({ ok: true, total_cents: 1, net_total_cents: 1, quote_token: TOKEN }) : idle;
+      if (CHARGE_RE.test(url)) {
+        const b = JSON.parse((init && init.body) || '{}');
+        sent.push(b);
+        // A raw server gate: it accepts only a body that stands behind the NEW number and carries no
+        // token it has already rejected.
+        return (b.expected_net_cents === NEW && !b.quote_token) ? res({ ok: true })
+          : rej({ error: 'price_increased', net_total_cents: NEW });
+      }
+      return idle;
+    };
+    await settle();
+    const live = w.liveMenuGlobalGet('MENU');
+    const dish = live.find((d) => d.price > 0 && !d.variantOf && !(w.itemIsLauncher && w.itemIsLauncher(d)));
+    w.chg(dish.id, 1);
+    w.requestServerQuote(); await settle();
+    assert.ok(w.buildOrder(), `${dir}: premise — the cart composes`);
+    const p = w.submitOrder('confirmed'); if (p && p.catch) p.catch(() => {});
+    await settle();
+    let confirmations = 0;
+    for (let i = 0; i < 4; i++) {
+      const sheet = w.document.querySelector('.cq-sheet');
+      if (!sheet) break;
+      const bs = [...sheet.querySelectorAll('button')]; bs[bs.length - 1].click();
+      confirmations += 1;
+      await settle(); await settle();
+    }
+    assert.strictEqual(confirmations, 1,
+      `${dir}: 🔴 the customer must agree ONCE — a repeating sheet is the defect this recovery exists to avoid`);
+    assert.strictEqual(sent.length, 2, `${dir}: one original send and one successful resend`);
+    assert.ok(!('quote_token' in sent[1]),
+      `${dir}: 🔴 the resend must not carry the token the server just rejected — the signed gate takes precedence over the ceiling`);
+    assert.strictEqual(sent[1].expected_net_cents, NEW,
+      `${dir}: 🔴 …and must stand behind the number the customer just agreed to`);
+    assert.ok(!w.document.querySelector('.cq-sheet'), `${dir}: nothing is left on screen`);
+    ok(`${dir}: confirming an increase succeeds on the first resend, with no re-quote landing`);
+  }
+
+  // ── 🔴 A SLOW REFRESH DOES NOT MAKE THE SILENT RECOVERY VISIBLE ────────────────────────────────
+  // Same root: the stale-quote resend carried the rejected token, was refused again, spent its single
+  // retry and dead-ended on the generic error banner — silence broken by a message the customer can do
+  // nothing with.
+  {
+    const w = loadForm(dir);
+    const sent = []; const idle = new Promise(() => {});
+    w.__respond = (url, init) => {
+      if (url.includes('/menu/')) return res(envelope(B.rid, { dishes: [], extras: [] }));
+      if (url.includes('quoteOrder')) return sent.length === 0
+        ? res({ ok: true, total_cents: 1, net_total_cents: 1, quote_token: TOKEN }) : idle;   // never lands
+      if (CHARGE_RE.test(url)) {
+        const b = JSON.parse((init && init.body) || '{}');
+        sent.push(b);
+        return b.quote_token ? rej({ error: 'quote_invalid' }) : res({ ok: true });
+      }
+      return idle;
+    };
+    await settle();
+    const live = w.liveMenuGlobalGet('MENU');
+    const dish = live.find((d) => d.price > 0 && !d.variantOf && !(w.itemIsLauncher && w.itemIsLauncher(d)));
+    w.chg(dish.id, 1);
+    w.requestServerQuote(); await settle();
+    assert.ok(w.buildOrder(), `${dir}: premise — the cart composes`);
+    const p = w.submitOrder('confirmed'); if (p && p.catch) p.catch(() => {});
+    await settle(); await settle();
+    assert.strictEqual(sent.length, 2, `${dir}: it resends once`);
+    assert.ok(!('quote_token' in sent[1]), `${dir}: 🔴 …without the token that was just rejected`);
+    assert.ok(!w.document.querySelector('.cq-sheet'), `${dir}: and shows no sheet`);
+    const msg = (w.document.getElementById('sending-msg') || {}).textContent || '';
+    assert.ok(!/No pudimos/i.test(msg),
+      `${dir}: 🔴 suppressing the sheet is not silence — the recovery must SUCCEED, not surface an error (${msg.slice(0, 60)})`);
+    ok(`${dir}: a stale quote recovers silently even when the re-quote never lands`);
+  }
+
+  // ── 🔴 THE CARD PATH, AT RUNTIME ───────────────────────────────────────────────────────────────
+  // Previously the online branches were guarded by a census only, so a defect there survived every
+  // test. Driven through processPixelPay with a real reward.
+  for (const withReward of [false, true]) {
+    const w = loadForm(dir);
+    const sent = []; const idle = new Promise(() => {});
+    const NEW = 31900;
+    w.__respond = (url, init) => {
+      if (url.includes('/menu/')) return res(envelope(B.rid, { dishes: [], extras: [] }));
+      if (url.includes('quoteOrder')) return res({ ok: true, total_cents: 1, net_total_cents: 1, quote_token: TOKEN });
+      if (url.includes('chargeOnlineOrder')) {
+        const b = JSON.parse((init && init.body) || '{}');
+        sent.push(b);
+        return (b.expected_net_cents === NEW && !b.quote_token)
+          ? res({ ok: true, checkout_url: 'https://pay/x', order_id: b.order_id })
+          : rej({ error: 'price_increased', net_total_cents: NEW });
+      }
+      return idle;
+    };
+    await settle();
+    const live = w.liveMenuGlobalGet('MENU');
+    const dish = live.find((d) => d.price > 0 && !d.variantOf && !(w.itemIsLauncher && w.itemIsLauncher(d)));
+    w.chg(dish.id, 1);
+    w.__ACCOUNT = w.__ACCOUNT || {};
+    if (withReward) {
+      w.__ACCOUNT.getRedeemPayload = () => ({ type: 'free_pizza_choice', item_id: 'x', name: 'X' });
+      w.__ACCOUNT.customerIdToken = () => Promise.resolve('id-token-for-test');
+      w.__ACCOUNT.getRedeemQuoteTotalCents = () => 29900;
+      w.__ACCOUNT.redeemQuoteMatches = () => true;
+    }
+    w.requestServerQuote(); await settle();
+    assert.ok(w.buildOrder(), `${dir}: premise — the cart composes (reward=${withReward})`);
+    const p = w.processPixelPay(); if (p && p.catch) p.catch(() => {});
+    await settle(); await settle();
+    const sheet = w.document.querySelector('.cq-sheet');
+    assert.ok(sheet, `${dir}: 🔴 the ONLINE path must show the increase sheet too (reward=${withReward})`);
+    const firstId = sent[0].order_id;
+    const bs = [...sheet.querySelectorAll('button')]; bs[bs.length - 1].click();
+    await settle(); await settle();
+    assert.strictEqual(sent.length, 2, `${dir}: the card resend happened (reward=${withReward})`);
+    assert.strictEqual(sent[1].expected_net_cents, NEW, `${dir}: …standing behind the agreed number`);
+    assert.ok(!('quote_token' in sent[1]), `${dir}: …and not the rejected token`);
+    if (withReward) {
+      assert.ok(sent[0].redeem, `${dir}: premise — the card order carried a reward`);
+      assert.notStrictEqual(sent[1].order_id, firstId,
+        `${dir}: 🔴 a reward CARD order must resend on a FRESH order_id — the hold refuses the old one`);
+    } else {
+      assert.strictEqual(sent[1].order_id, firstId, `${dir}: a non-reward card order reuses its id`);
+    }
+    ok(`${dir}: the card path shows the sheet and resends correctly (reward=${withReward})`);
+  }
 }
 
 closeAll();
