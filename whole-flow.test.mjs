@@ -51,6 +51,7 @@ const { signQuoteToken, verifyQuoteToken, cartFingerprint, normalizeCartForFinge
    computeRedemption, so the fake hashes what production hashes. */
 const { computeRedemption } = require('./rewards-redeem');
 const { computeServerNet } = require('./compute-server-net');
+const { gateConfirmedNet, gateInputFromRequest } = require('./token-gate');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./menu-pricing');
 function resolveReward(redeem, items, rid) {
   if (!redeem) return null;
@@ -999,16 +1000,29 @@ for (const dir of Object.keys(BRAND)) {
 
     // A token issued for the reward-bearing cart, presented for the same cart WITHOUT the reward.
     const tok = signQuoteToken({
-      quote_id: 'ni1', rid: BRAND[dir].rid, net_total_cents: withR, cart_fingerprint: fpWith,
+      quote_id: 'ni1', rid: BRAND[dir].rid, customer_id: null, net_total_cents: withR,
+      cart_fingerprint: fpWith, components: {}, redemption_ref: null,
       issued_at: Date.now(), expires_at: Date.now() + 900000,
     }, T9_SECRET);
-    const judged = judgeToken({ quote_token: tok, items }, BRAND[dir].rid, null);
-    assert.ok(judged.refuse && judged.refuse.reason === 'cart_mismatch',
-      `${dir}/net-invariant: 🔴 a reward-bound token must NOT authorise the reward-free cart — refused on the fingerprint, since the amount is identical`);
-    // …and the converse: presented WITH the reward it is honoured.
-    const okJudged = judgeToken({ quote_token: tok, items }, BRAND[dir].rid, resolved);
-    assert.ok(!okJudged.refuse && okJudged.signed,
+    /* 🔴 THROUGH THE REAL COMPOSED PATH, not this file's judgeToken. judgeToken exists to MODEL the
+       server for the cells that move a synthetic menu around; using it here would have this assertion
+       check the model rather than the thing being shipped — and the fingerprint's reward binding is
+       precisely the mechanism a model can get wrong without anyone noticing. The real adapter and the
+       real gate, over the real pricing tables. */
+    const realGateInput = (reward) => gateInputFromRequest(
+      { items, quote_token: tok, expected_net_cents: withR },
+      { reward, rid: BRAND[dir].rid, tables: realTables, secret: T9_SECRET, enforce: false, nowMs: Date.now() });
+    const refused = gateConfirmedNet(realGateInput(null));
+    assert.strictEqual(refused.action, 'refuse_invalid',
+      `${dir}/net-invariant: 🔴 a reward-bound token must NOT authorise the reward-free cart (got ${refused.action})`);
+    assert.strictEqual(refused.reason, 'cart_mismatch',
+      `${dir}/net-invariant: 🔴 …refused on the FINGERPRINT, since the amount is identical either way`);
+    // …and the converse, so the refusal is not just "this token never works".
+    const honoured = gateConfirmedNet(realGateInput(resolved));
+    assert.strictEqual(honoured.action, 'charge',
       `${dir}/net-invariant: non-vacuity — the same token IS honoured for the cart it describes`);
+    assert.strictEqual(honoured.degraded, false,
+      `${dir}/net-invariant: …through the SIGNED path, not the unsigned floor`);
     ok(`${dir}: 🔴 a net-invariant reward is distinguished by the FINGERPRINT alone — the amount cannot see it`);
   }
 

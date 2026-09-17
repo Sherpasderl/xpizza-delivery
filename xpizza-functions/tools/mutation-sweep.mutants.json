@@ -4715,6 +4715,7 @@
       "../composition.test.mjs"
     ],
     "kills_with": [
+      "the gate declined on a request that DID state a ceiling",
       "the ceiling must be on the body under the name the adapter reads",
       "an expired token with a ceiling must refuse"
     ]
@@ -4730,7 +4731,10 @@
       "node",
       "../composition.test.mjs"
     ],
-    "kills_with": "a forgery refuses in both modes"
+    "kills_with": [
+      "must be answered by the SIGNED gate, not the unsigned floor",
+      "a forgery refuses in both modes"
+    ]
   },
   {
     "id": "b9-11",
@@ -4755,6 +4759,46 @@
     "command": [
       "node",
       "../composition.test.mjs"
-    ]
+    ],
+    "kills_with": "THE OVERCHARGE ROW"
+  },
+  {
+    "id": "b9-13",
+    "slice": "b9",
+    "label": "the adapter drops the resolved reward — a reward-bound token passes for a reward-free cart",
+    "file": "../xpizza-functions/token-gate.js",
+    "from": "    reward: ctx.reward,",
+    "to": "    reward: null,",
+    "command": [
+      "node",
+      "../composition.test.mjs"
+    ],
+    "kills_with": "the reward carried through"
+  },
+  {
+    "id": "b9-14",
+    "slice": "b9",
+    "label": "the adapter drops the enforce flag — the owner's flip never takes effect",
+    "file": "../xpizza-functions/token-gate.js",
+    "from": "    enforce: ctx.enforce,",
+    "to": "    enforce: false,",
+    "command": [
+      "node",
+      "../composition.test.mjs"
+    ],
+    "kills_with": "enforcement must refuse it"
+  },
+  {
+    "id": "b9-15",
+    "slice": "b9",
+    "label": "the adapter drops the clock the token is judged against",
+    "file": "../xpizza-functions/token-gate.js",
+    "from": "    nowMs: ctx.nowMs,",
+    "to": "    nowMs: undefined,",
+    "command": [
+      "node",
+      "../composition.test.mjs"
+    ],
+    "kills_with": "judged inside its window the token is"
   }
 ]

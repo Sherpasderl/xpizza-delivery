@@ -305,11 +305,30 @@ for (const dir of Object.keys(BRAND)) {
       assert.strictEqual(gateCard(qtyBumped).action, 'refuse_invalid',
         `${dir}/card: 🔴 a changed QUANTITY is refused even with a valid, generous token`);
 
-      const renamed = JSON.parse(JSON.stringify(cardItems));
-      if (renamed[0].name) renamed[0].name = String(renamed[0].name) + ' (otra)';
-      if (renamed[0].id !== undefined) renamed[0].id = String(renamed[0].id) + '-x';
-      assert.strictEqual(gateCard(renamed).action, 'refuse_invalid',
+      /* 🔴 SUBSTITUTED FOR A REAL DISH, NOT A MADE-UP ONE. Appending "(otra)" makes the item
+         UNPRICEABLE, so the gate refuses at bad_cart and never reaches the fingerprint — the check
+         passed while testing a different rule entirely. Swapping in a genuinely priceable dish is what
+         forces the identity comparison to be the thing that objects. */
+      const swapped = JSON.parse(JSON.stringify(cardItems));
+      const keys = Object.keys(tables.menu);
+      if (swapped[0].id !== undefined) {
+        const other = keys.find((k) => String(k) !== String(swapped[0].id));
+        assert.ok(other, `${dir}/card: premise — the menu has a second dish to swap to`);
+        swapped[0].id = other;
+        if (swapped[0].name) swapped[0].name = String(other);
+      } else {
+        const other = keys.find((k) => k !== swapped[0].name);
+        assert.ok(other, `${dir}/card: premise — the menu has a second dish to swap to`);
+        swapped[0].name = other;
+      }
+      const swappedNet = computeServerNet({ items: swapped, rid: B.rid, tables });
+      assert.ok(!swappedNet.error,
+        `${dir}/card: 🔴 premise — the substitute must be PRICEABLE, or the gate refuses at bad_cart and the fingerprint is never consulted`);
+      const swapRes = gateCard(swapped);
+      assert.strictEqual(swapRes.action, 'refuse_invalid',
         `${dir}/card: 🔴 a changed ITEM IDENTITY is refused — x_pizza prices by name, la_musa by id`);
+      assert.strictEqual(swapRes.reason, 'cart_mismatch',
+        `${dir}/card: 🔴 …on the FINGERPRINT, not because the cart stopped pricing`);
 
       /* 🔴 AND A REWARD SWAPPED IN UNDER A REWARD-FREE TOKEN. On both brands the reward is
          net-invariant (add_free, discount 0), so the amount is identical and only the fingerprint can
@@ -319,14 +338,46 @@ for (const dir of Object.keys(BRAND)) {
         ? { type: 'points_ala_carte', items: [{ id: 'dimsum_01', qty: 1 }] }
         : { type: 'free_pizza_choice', item_id: cardItems[0].name };
       const rr = computeRedemption({ redeem: raw, items: cardItems, restaurantId: B.rid });
-      if (rr && rr.ok) {
+      /* ASSERTED, NOT CONDITIONAL. `if (rr && rr.ok)` silently skipped this whole check whenever the
+         fixture stopped resolving — the cell would keep passing while testing nothing. */
+      assert.ok(rr && rr.ok, `${dir}/card: premise — the reward resolves (${rr && rr.reason})`);
+      {
         const netWithReward = computeServerNet({ items: cardItems, reward: rr, rid: B.rid, tables }).net_total_cents;
         assert.strictEqual(netWithReward, cardNet,
           `${dir}/card: premise — the reward is net-invariant, so the amount cannot distinguish it`);
         assert.strictEqual(gateCard(cardItems, rr).action, 'refuse_invalid',
           `${dir}/card: 🔴 a reward added under a reward-free token is refused on the FINGERPRINT — the net is identical`);
       }
-      ok(`${dir}: the CARD payload — a valid token does not license a changed cart, quantity, or reward`);
+      /* 🔴 AND A REFUSAL MINTS NO CHECKOUT. The gate answers are the rule; this is the consequence the
+         customer would actually feel — a PixelPay checkout created for an amount the gate just
+         refused. Driven through the composed flow with the gateway injected, so "no checkout" is
+         observed rather than inferred from the gate's return value. */
+      {
+        const { resolveAndIssueHostedCheckout } = require('./hosted-charge-flow');
+        const { applyConfirmedNetGate, gateInputFromRequest } = require('./token-gate');
+        const created = [];
+        const out = await resolveAndIssueHostedCheckout({
+          acq: { outcome: 'claimed', attempt_id: 'CB-A', expires_at: 1 },
+          orderId: 'CB-1', totalCents: cardNet, toLempiras: (c) => (c / 100).toFixed(2),
+          chargeRequest: { pixelpayOrderId: 'CB-1-A' },
+          log: { log() {}, warn() {}, error() {} },
+          releaseHold: async () => {}, retireAttempt: async () => {},
+          stampProvenance: async () => {}, attachReservation: null,
+          createCheckout: async (req) => { created.push(req); return { ok: true, url: 'https://pay/x' }; },
+          persistCreated: async () => {},
+          runGate: (recorded) => applyConfirmedNetGate({
+            gateInput: gateInputFromRequest({ items: swapped, quote_token: cardTok(cardItems), expected_net_cents: cardNet },
+              { reward: null, rid: B.rid, tables, secret: SECRET, enforce: false, nowMs: Date.now() }),
+            recordedTotalCents: recorded, releaseHold: async () => {}, orderId: 'CB-1',
+            log: { log() {}, warn() {}, error() {} },
+          }),
+        });
+        assert.ok(out.respond && out.respond.status === 409,
+          `${dir}/card: the refused cart answers 409 (got ${out.respond && out.respond.status})`);
+        assert.strictEqual(created.length, 0,
+          `${dir}/card: 🔴 a refused card order must create NO PixelPay checkout — a checkout at a refused amount is the charge itself`);
+      }
+      ok(`${dir}: the CARD payload — a valid token does not license a changed cart, quantity, or reward, and mints no checkout`);
     }
     ok(`${dir}: the confirmed-quote token is a CEILING — it can refuse a sale, it can never set the price`);
   }
