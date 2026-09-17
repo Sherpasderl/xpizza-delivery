@@ -441,7 +441,7 @@ function sanitizePhone(v) {
 // ---------------------------------------------------------------------------
 const { orderBreakdownCents } = require('./order-money');
 const { issueQuote } = require('./quote-issue');   // 1C Task 3 — the ONE quote issuer, shared with the redemption quote
-const { applyConfirmedNetGate, tokenEnforceEnabled } = require('./token-gate');   // 1C Task 4 — the ONE confirmed-net decision AND its consequences, shared with the card path
+const { applyConfirmedNetGate, tokenEnforceEnabled, gateInputFromRequest } = require('./token-gate');   // 1C Task 4 — the ONE confirmed-net decision AND its consequences, shared with the card path
 const { resolveAndIssueHostedCheckout, retireUnissuedAttempt } = require('./hosted-charge-flow');   // 1C T5 — resume-safe fresh-only gating, extracted so its effects can be run
 
 function validateOrderPayload(body, restaurantId, tables = null) {
@@ -913,13 +913,10 @@ createOrderApp.all('*', async (req, res) => {
      does below: an order that never exists must not strand a customer's reward. */
   {
     const applied = await applyConfirmedNetGate({
-      gateInput: {
-        token: body.quote_token, expectedNetCents: body.expected_net_cents,   // signed proof, else the unsigned CEILING (never the charge)
-        submittedCart: body.items, reward: redemptionResolved,
-        rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,
-        enforce: tokenEnforce,                     // read once per request; fail-safe GRACE
-        nowMs: Date.now(),
-      },
+      // The request→gate mapping lives in ONE place (token-gate.js) and is driven end-to-end by
+      // composition.test.mjs — a renamed field here used to survive the whole suite.
+      gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,
+        tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: tokenEnforce, nowMs: Date.now() }),
       recordedTotalCents: priceBreakdown.total_cents,   // what this handler is about to store and collect
       releaseHold: async () => {
         if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});
@@ -1610,13 +1607,8 @@ chargeOnlineApp.all('*', async (req, res) => {
     // 🔴 ONE number. The module passes back the very total it will charge, so the gate cannot be
     // checking a different figure from the one that travels to PixelPay.
     runGate: (recordedTotalCents) => applyConfirmedNetGate({
-      gateInput: {
-        token: body.quote_token, expectedNetCents: body.expected_net_cents,   // signed proof, else the unsigned CEILING (never the charge)
-        submittedCart: body.items, reward: redemptionResolved,
-        rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,
-        enforce: tokenEnforce,                   // read once per request; fail-safe GRACE
-        nowMs: Date.now(),
-      },
+      gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,
+        tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: tokenEnforce, nowMs: Date.now() }),
       recordedTotalCents,                        // === totalCents === the amount handed to createHostedCharge
       releaseHold: releaseHoldIfOwned,
       orderId,

@@ -23,6 +23,29 @@
 const { computeServerNet } = require('./compute-server-net');
 const { verifyQuoteToken, cartFingerprint, normalizeCartForFingerprint } = require('./quote-token');
 
+/* 🔴 THE REQUEST→GATE MAPPING, IN ONE PLACE. This is nothing but field names, which is exactly why it
+   needed extracting: the closing gate demonstrated that renaming body.expected_net_cents at the two
+   call sites survived the ENTIRE suite — client tests green, gate tests green — while reopening a real
+   overcharge. Nothing tested the seam BETWEEN the client's emitted field and the server's consumed
+   one, and two of this initiative's defects have now lived there (iat/exp on the token payload, and
+   the token-XOR-ceiling shape).
+   Both charge handlers call this, so the mapping exists once and can be driven by a test that feeds it
+   the real client's real output. A typo here now fails composition.test.mjs instead of shipping. */
+function gateInputFromRequest(body, ctx) {
+  body = body || {};
+  return {
+    token: body.quote_token,                     // the signed proof, when the client has one
+    expectedNetCents: body.expected_net_cents,   // …and the unsigned CEILING, which rides alongside it
+    submittedCart: body.items,
+    reward: ctx.reward,
+    rid: ctx.rid,
+    tables: ctx.tables,
+    secret: ctx.secret,
+    enforce: ctx.enforce,
+    nowMs: ctx.nowMs,
+  };
+}
+
 /* THE UNSIGNED FLOOR, factored out because TWO paths need it: a request that never had a token, and
    one whose token is merely STALE. Both are "the client told us what it showed and cannot prove it",
    and both must be answered the same way — the server charges its own recompute, only ever up to the
@@ -247,5 +270,5 @@ async function tokenEnforceEnabled(db) {
   }
 }
 
-module.exports = { gateConfirmedNet, applyConfirmedNetGate, tokenEnforceEnabled };
+module.exports = { gateConfirmedNet, applyConfirmedNetGate, tokenEnforceEnabled, gateInputFromRequest };
 

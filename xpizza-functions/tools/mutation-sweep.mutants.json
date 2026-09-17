@@ -3868,8 +3868,8 @@
     "slice": "c5",
     "label": "the card gate stops binding the resolved reward",
     "file": "index.js",
-    "from": "        token: body.quote_token, expectedNetCents: body.expected_net_cents,   // signed proof, else the unsigned CEILING (never the charge)\n        submittedCart: body.items, reward: redemptionResolved,\n        rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,\n        enforce: tokenEnforce,                   // read once per request; fail-safe GRACE",
-    "to": "        token: body.quote_token, expectedNetCents: body.expected_net_cents,\n        submittedCart: body.items, reward: null,\n        rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,\n        enforce: tokenEnforce,",
+    "from": "      gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,\n        tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: tokenEnforce, nowMs: Date.now() }),\n      recordedTotalCents,",
+    "to": "      gateInput: gateInputFromRequest(body, { reward: null, rid: restaurantId,\n        tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: tokenEnforce, nowMs: Date.now() }),\n      recordedTotalCents,",
     "command": [
       "node",
       "charge-gate-placement.test.js"
@@ -4181,8 +4181,8 @@
     "slice": "c6",
     "label": "the cash gate stops reading the enforce flag and is pinned to grace forever",
     "file": "index.js",
-    "from": "        enforce: tokenEnforce,                     // read once per request; fail-safe GRACE",
-    "to": "        enforce: false,",
+    "from": "      gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,\n        tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: tokenEnforce, nowMs: Date.now() }),\n      recordedTotalCents: priceBreakdown.total_cents,",
+    "to": "      gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,\n        tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: false, nowMs: Date.now() }),\n      recordedTotalCents: priceBreakdown.total_cents,",
     "command": [
       "node",
       "charge-gate-placement.test.js"
@@ -4193,8 +4193,8 @@
     "slice": "c6",
     "label": "the card gate stops reading the enforce flag and is pinned to grace forever",
     "file": "index.js",
-    "from": "        enforce: tokenEnforce,                   // read once per request; fail-safe GRACE",
-    "to": "        enforce: false,",
+    "from": "      gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,\n        tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: tokenEnforce, nowMs: Date.now() }),\n      recordedTotalCents,",
+    "to": "      gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,\n        tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: false, nowMs: Date.now() }),\n      recordedTotalCents,",
     "command": [
       "node",
       "charge-gate-placement.test.js"
@@ -4203,14 +4203,15 @@
   {
     "id": "c6-10",
     "slice": "c6",
-    "label": "the card gate stops passing the client ceiling, so a degraded client silently gets grace",
-    "file": "index.js",
-    "from": "        token: body.quote_token, expectedNetCents: body.expected_net_cents,   // signed proof, else the unsigned CEILING (never the charge)\n        submittedCart: body.items, reward: redemptionResolved,\n        rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,\n        enforce: tokenEnforce,                   // read once per request; fail-safe GRACE",
-    "to": "        token: body.quote_token,\n        submittedCart: body.items, reward: redemptionResolved,\n        rid: restaurantId, tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET,\n        enforce: tokenEnforce,",
+    "label": "the adapter stops passing the client ceiling, so a degraded client silently gets grace",
+    "file": "../xpizza-functions/token-gate.js",
+    "from": "    expectedNetCents: body.expected_net_cents,   // …and the unsigned CEILING, which rides alongside it",
+    "to": "    expectedNetCents: undefined,",
     "command": [
       "node",
-      "charge-gate-placement.test.js"
-    ]
+      "../composition.test.mjs"
+    ],
+    "kills_with": "an expired token with a ceiling must refuse"
   },
   {
     "id": "c7-x1",
@@ -4697,6 +4698,63 @@
       "node",
       "../whole-flow.test.mjs"
     ],
-    "kills_with": "the send must carry its ceiling alongside the token"
+    "kills_with": [
+      "CHARGED",
+      "the send must carry its ceiling alongside the token"
+    ]
+  },
+  {
+    "id": "b9-09",
+    "slice": "b9",
+    "label": "🔴 the adapter reads a ceiling field the client never writes — the rename that survived the whole suite",
+    "file": "../xpizza-functions/token-gate.js",
+    "from": "    expectedNetCents: body.expected_net_cents,   // …and the unsigned CEILING, which rides alongside it",
+    "to": "    expectedNetCents: body.expected_net_cents_typo,",
+    "command": [
+      "node",
+      "../composition.test.mjs"
+    ],
+    "kills_with": [
+      "the ceiling must be on the body under the name the adapter reads",
+      "an expired token with a ceiling must refuse"
+    ]
+  },
+  {
+    "id": "b9-10",
+    "slice": "b9",
+    "label": "the adapter reads a token field the client never writes",
+    "file": "../xpizza-functions/token-gate.js",
+    "from": "    token: body.quote_token,                     // the signed proof, when the client has one",
+    "to": "    token: body.quote_token_typo,",
+    "command": [
+      "node",
+      "../composition.test.mjs"
+    ],
+    "kills_with": "a forgery refuses in both modes"
+  },
+  {
+    "id": "b9-11",
+    "slice": "b9",
+    "label": "the client emits the ceiling under a name the adapter does not read — the same seam, other side",
+    "file": "../xpizza-orders/form-confirm-quote.js",
+    "from": "      if (haveCeiling) body.expected_net_cents = expectedNetCents;",
+    "to": "      if (haveCeiling) body.expectedNetCents = expectedNetCents;",
+    "command": [
+      "node",
+      "../composition.test.mjs"
+    ],
+    "kills_with": "the ceiling must be on the body under the name the adapter reads"
+  },
+  {
+    "id": "b9-12",
+    "slice": "b9",
+    "label": "the adapter sends the gate a cart the client never submitted",
+    "file": "../xpizza-functions/token-gate.js",
+    "from": "    submittedCart: body.items,",
+    "to": "    submittedCart: [],",
+    "command": [
+      "node",
+      "../composition.test.mjs"
+    ]
   }
 ]

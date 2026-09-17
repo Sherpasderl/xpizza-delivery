@@ -28,7 +28,7 @@ const { ok, count } = counter();
 const CHARGE_RE = /createOrder|chargeOnlineOrder/;
 
 // Boot a form, put a real line in the cart, and capture the payload IT sends — not one we composed.
-async function realPayload(dir, { failQuote = false } = {}) {
+async function realPayload(dir, { failQuote = false, card = false } = {}) {
   const B = BRAND[dir];
   const w = loadForm(dir);
   const sent = [];
@@ -47,7 +47,12 @@ async function realPayload(dir, { failQuote = false } = {}) {
   w.requestServerQuote();
   await settle();
   assert.ok(w.buildOrder(), `${dir}: premise — a clean cart composes an order`);
-  try { await w.submitOrder('confirmed'); } catch (_) {}
+  /* 🔴 WHICH SERIALIZER. selectedPayment is a LEXICAL binding inside the form script, so assigning
+     window.selectedPayment changes nothing the form reads — selectPay() is its own setter. The two
+     endpoints do not send the same body, and until this revise every payload here came from the cash
+     one while the file claimed to cover both charge paths. */
+  if (card) { w.selectPay('online'); const p = w.processPixelPay(); if (p && p.catch) p.catch(() => {}); }
+  else { try { await w.submitOrder('confirmed'); } catch (_) {} }
   await settle();
   assert.strictEqual(sent.length, 1, `${dir}: premise — the form really sent ONE charge request`);
   return { w, B, dish, body: sent[0] };
@@ -265,6 +270,63 @@ for (const dir of Object.keys(BRAND)) {
         rid: B.rid, tables, secret: SECRET, nowMs: Date.now() });
       assert.ok(g.action === 'refuse_invalid' || g.chargeNet === honest,
         `${dir}: 🔴 repriced client money fields cannot move the charge even with a valid token (${g.action}/${g.chargeNet})`);
+    }
+    /* 🔴 THE CARD PAYLOAD, TAMPERED WHILE HOLDING A VALID TOKEN. Everything above ran on the CASH
+       serializer's payload, and the two endpoints do not send the same shape — chargeOnlineOrder was
+       the path 1C T5 found a real defect on, and the one the whole-flow matrix was silently skipping
+       until this revise. So the card body is composed by the form and tampered afterwards, exactly as
+       the cash one is, and the identity checks are made against it. */
+    {
+      const card = await realPayload(dir, { card: true });
+      const cardItems = card.body.items;
+      assert.ok(Array.isArray(cardItems) && cardItems.length > 0,
+        `${dir}: premise — the card serializer produced a payload with items`);
+      const cardNet = computeServerNet({ items: cardItems, rid: B.rid, tables }).net_total_cents;
+      assert.ok(cardNet > 0, `${dir}: premise — the card payload prices to a real net (${cardNet})`);
+      const cardTok = (cart, reward = null) => signQuoteToken({
+        quote_id: 'cb-card', rid: B.rid, net_total_cents: cardNet + 50_000,
+        cart_fingerprint: cartFingerprint(normalizeCartForFingerprint(cart, B.rid), reward),
+        issued_at: Date.now(), expires_at: Date.now() + 900000,
+      }, SECRET);
+
+      const gateCard = (cart, reward = null, token = cardTok(cardItems)) => gateConfirmedNet({
+        token, submittedCart: cart, reward, rid: B.rid, tables, secret: SECRET, nowMs: Date.now(),
+      });
+
+      // the honest card payload still charges the server's net, not the generous ceiling
+      const honestCard = gateCard(cardItems);
+      assert.strictEqual(honestCard.action, 'charge', `${dir}/card: premise — the untampered card body charges`);
+      assert.strictEqual(honestCard.chargeNet, cardNet,
+        `${dir}/card: 🔴 the card charge is the SERVER's net, not the token's ${cardNet + 50_000}`);
+
+      // …and each identity edit is refused on the fingerprint
+      const qtyBumped = JSON.parse(JSON.stringify(cardItems));
+      qtyBumped[0].qty = (qtyBumped[0].qty || 1) + 1;
+      assert.strictEqual(gateCard(qtyBumped).action, 'refuse_invalid',
+        `${dir}/card: 🔴 a changed QUANTITY is refused even with a valid, generous token`);
+
+      const renamed = JSON.parse(JSON.stringify(cardItems));
+      if (renamed[0].name) renamed[0].name = String(renamed[0].name) + ' (otra)';
+      if (renamed[0].id !== undefined) renamed[0].id = String(renamed[0].id) + '-x';
+      assert.strictEqual(gateCard(renamed).action, 'refuse_invalid',
+        `${dir}/card: 🔴 a changed ITEM IDENTITY is refused — x_pizza prices by name, la_musa by id`);
+
+      /* 🔴 AND A REWARD SWAPPED IN UNDER A REWARD-FREE TOKEN. On both brands the reward is
+         net-invariant (add_free, discount 0), so the amount is identical and only the fingerprint can
+         object — which is precisely why it hashes the resolved reward. */
+      const { computeRedemption } = require('./rewards-redeem');
+      const raw = dir === 'la-musa-orders'
+        ? { type: 'points_ala_carte', items: [{ id: 'dimsum_01', qty: 1 }] }
+        : { type: 'free_pizza_choice', item_id: cardItems[0].name };
+      const rr = computeRedemption({ redeem: raw, items: cardItems, restaurantId: B.rid });
+      if (rr && rr.ok) {
+        const netWithReward = computeServerNet({ items: cardItems, reward: rr, rid: B.rid, tables }).net_total_cents;
+        assert.strictEqual(netWithReward, cardNet,
+          `${dir}/card: premise — the reward is net-invariant, so the amount cannot distinguish it`);
+        assert.strictEqual(gateCard(cardItems, rr).action, 'refuse_invalid',
+          `${dir}/card: 🔴 a reward added under a reward-free token is refused on the FINGERPRINT — the net is identical`);
+      }
+      ok(`${dir}: the CARD payload — a valid token does not license a changed cart, quantity, or reward`);
     }
     ok(`${dir}: the confirmed-quote token is a CEILING — it can refuse a sale, it can never set the price`);
   }

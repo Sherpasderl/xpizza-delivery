@@ -50,6 +50,8 @@ const { signQuoteToken, verifyQuoteToken, cartFingerprint, normalizeCartForFinge
    which is precisely the distinction the fingerprint exists to make. Resolved through the real
    computeRedemption, so the fake hashes what production hashes. */
 const { computeRedemption } = require('./rewards-redeem');
+const { computeServerNet } = require('./compute-server-net');
+const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./menu-pricing');
 function resolveReward(redeem, items, rid) {
   if (!redeem) return null;
   try {
@@ -182,7 +184,10 @@ async function boot(dir) {
       const token = norm ? signQuoteToken({
         quote_id: 'q' + (st.quotes), rid: B.rid, net_total_cents: cents,
         cart_fingerprint: cartFingerprint(norm, null),
-        issued_at: Date.now(), expires_at: Date.now() + 15 * 60 * 1000,   // the REAL field names — iat/exp fail verification and fall to grace
+        // st.tokenTtlMs, not a constant: the expired cells quote through THIS endpoint, and with a
+        // hardcoded 15 minutes their tokens verified as ok — the cells passed without ever exercising
+        // expiry, which is the whole thing they were written to exercise.
+        issued_at: Date.now(), expires_at: Date.now() + st.tokenTtlMs,
       }, T9_SECRET) : null;
       return res({ ok: true, total_cents: cents, net_total_cents: cents,
         ...(token ? { quote_token: token } : {}) });
@@ -926,6 +931,12 @@ for (const dir of Object.keys(BRAND)) {
     const wire = ctx.st.charges[ctx.st.charges.length - 1];
     assert.ok(wire && wire.url.includes(method === 'card' ? 'chargeOnlineOrder' : 'createOrder'),
       `${dir}/expired-${method}: the ${method} endpoint answered`);
+    /* 🔴 NON-VACUITY: the token that actually travelled must verify as EXPIRED. An earlier version of
+       this cell set a TTL that only reached the reward issuer, so the dispatched token verified as ok
+       and the cell asserted the expired path while never taking it. */
+    assert.ok(wire.quote_token, `${dir}/expired-${method}: premise — a token was dispatched`);
+    assert.strictEqual(verifyQuoteToken(wire.quote_token, T9_SECRET, Date.now()).reason, 'expired',
+      `${dir}/expired-${method}: 🔴 the dispatched token must genuinely be EXPIRED, not merely intended to be`);
     /* 🔴 THE CEILING MUST BE ON THE WIRE ALONGSIDE THE TOKEN. It is what the server falls back to when
        the token turns out to be stale, and without it there is nothing to fall back TO. */
     assert.strictEqual(typeof wire.expected_net_cents, 'number',
@@ -963,9 +974,23 @@ for (const dir of Object.keys(BRAND)) {
     /* 🔴 THE PREMISE THAT MAKES THIS CELL MEAN ANYTHING: with and without the reward, the money is
        identical. If these ever differ the amount could distinguish them and the fingerprint would not
        be the only witness — so it is asserted, not assumed. */
-    const withR = rewardNetCents(dir, ctx.st.menuNow, items);
-    const withoutR = rewardNetCents(dir, ctx.st.menuNow, items);
-    assert.strictEqual(withR, withoutR, `${dir}/net-invariant: premise — the net is the same either way`);
+    /* 🔴 THE PREMISE, COMPUTED THROUGH REAL PRICING WITH AND WITHOUT THE REWARD. The first version of
+       this called the same helper twice with the same arguments and compared the results — trivially
+       equal, and equal for a reason that had nothing to do with the reward. That is a tautology
+       wearing the clothes of a premise: it would have held just as well if the reward halved the bill.
+       Priced through the real computeServerNet, once with the RESOLVED reward and once without, so the
+       equality is a fact about add_free and not about my arithmetic. */
+    const realTables = { restaurantId: BRAND[dir].rid,
+      menu: MENU_BY_RESTAURANT[BRAND[dir].rid], extras: EXTRAS_BY_RESTAURANT[BRAND[dir].rid] };
+    const netWithReward = computeServerNet({ items, reward: resolved, rid: BRAND[dir].rid, tables: realTables });
+    const netWithout = computeServerNet({ items, reward: null, rid: BRAND[dir].rid, tables: realTables });
+    assert.ok(!netWithReward.error && !netWithout.error,
+      `${dir}/net-invariant: premise — both price cleanly (${netWithReward.error || netWithout.error})`);
+    assert.strictEqual(netWithReward.net_total_cents, netWithout.net_total_cents,
+      `${dir}/net-invariant: 🔴 premise — the reward is NET-INVARIANT: ${netWithReward.net_total_cents} with it, ${netWithout.net_total_cents} without`);
+    assert.strictEqual(netWithReward.components.reward_discount_cents, 0,
+      `${dir}/net-invariant: …because add_free discounts nothing — it adds a free line and a rebaja`);
+    const withR = netWithReward.net_total_cents;
 
     const fpWith = cartFingerprint(norm, resolved);
     const fpWithout = cartFingerprint(norm, null);

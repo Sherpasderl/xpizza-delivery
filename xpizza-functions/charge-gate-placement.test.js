@@ -22,6 +22,7 @@
  * intake-gate-placement.test.js. It locks the wiring; it does not execute the handler.
  */
 const fs = require('fs');
+const { readFileSync } = fs;
 const assert = require('assert');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
@@ -117,8 +118,18 @@ const before = (hay, a, b, msg) => {
     '🔴 the handler must not attach on its own — that is what let a resume rewrite a live hold');
   assert.ok(/reward: redemptionResolved/.test(call),
     '🔴 the gate binds the RESOLVED redemption the issuer fingerprinted, not a reconstruction');
-  assert.ok(/token: body\.quote_token/.test(call), 'the token comes from the request');
-  assert.ok(/submittedCart: body\.items/.test(call), 'the cart gated is the cart submitted');
+  /* 🔴 THE REQUEST→GATE MAPPING MOVED, AND THAT IS THE POINT. These used to assert the field names
+     inline at each call site — which is exactly the check that could not catch a rename, because it
+     read the same literal the handler did. The mapping now lives in ONE function (gateInputFromRequest)
+     and is driven end-to-end by composition.test.mjs: the real client's body → the real adapter → the
+     real gate. What is asserted here is only that the handler routes through it rather than rebuilding
+     the mapping locally, which is what would put the names back in two places. */
+  assert.ok(/gateInput: gateInputFromRequest\(body,/.test(call),
+    '🔴 the card gate must build its input through the ONE shared request→gate mapping');
+  assert.ok(!/token: body\.quote_token/.test(card),
+    '…and must not re-inline the field mapping — two copies is how a rename survives the suite');
+  assert.ok(/submittedCart: body\.items/.test(readFileSync(require.resolve('./token-gate.js'), 'utf8')),
+    'non-vacuity: the shared mapping really is the thing that reads the cart off the request');
   /* 🔴 T6: THE FLAG IS READ, NOT HARDCODED. A literal `false` here would pin the card path to grace
      forever — the flip would land in config, the owner would see the flag go true, and card orders
      would still never enforce. That is a silent no-op, which is the worst kind: it looks shipped.
@@ -126,8 +137,10 @@ const before = (hay, a, b, msg) => {
   assert.ok(/enforce: tokenEnforce\b/.test(call),
     '🔴 the card gate must READ the enforce flag — a hardcoded value makes the rollout flip a no-op');
   assert.ok(!/enforce: (false|true)\b/.test(call), '…and must not hardcode either direction');
-  assert.ok(/expectedNetCents: body\.expected_net_cents/.test(call),
-    '🔴 and passes the client ceiling, or a degraded client silently falls back to grace');
+  // The ceiling now travels through the shared mapping, asserted end-to-end in composition.test.mjs.
+  // Re-asserting the literal here would restore the two-copies problem the extraction removed.
+  assert.ok(/gateInputFromRequest\(body,/.test(call),
+    '🔴 the client ceiling reaches the gate through the shared mapping, not a local copy of it');
   ok('card: the gate is wired to the charged amount, the card\'s own release, the retirement, and the resolved reward');
 }
 
@@ -166,7 +179,7 @@ const before = (hay, a, b, msg) => {
   before(cash, 'applyConfirmedNetGate(', 'db.ref().update(', 'the gate must run BEFORE anything is written — a refusal leaves no order behind');
   // T6: the cash gate is the OTHER flip point — same no-op hazard, same guard.
   assert.ok(/enforce: tokenEnforce\b/.test(cash), '🔴 the cash gate must READ the enforce flag too');
-  assert.ok(/expectedNetCents: body\.expected_net_cents/.test(cash), 'and pass the client ceiling');
+  assert.ok(/gateInputFromRequest\(body,/.test(cash), 'and build its gate input through the shared mapping');
   assert.strictEqual((cash.match(/const tokenEnforce = await tokenEnforceEnabled\(db\)/g) || []).length, 1,
     'read exactly once per request — a second read could answer differently about the same order');
   assert.ok(/recordedTotalCents: priceBreakdown\.total_cents/.test(cash),
