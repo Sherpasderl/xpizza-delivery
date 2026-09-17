@@ -47,6 +47,18 @@ const { signQuoteToken, verifyQuoteToken, cartFingerprint, normalizeCartForFinge
 const { ok, count } = counter();
 const CHARGE_RE = /createOrder|chargeOnlineOrder/;
 const T9_SECRET = 'whole-flow-1c-secret';
+/* 🔴 THE REWARD'S PRICE, AS A RULE THIS SUITE OWNS. The reward quote and the charge both apply the
+   SAME rule — cart price minus a fixed discount — but at different moments, over whatever menu is in
+   force then. That is what keeps the oracle independent: the two numbers are not copied from one
+   another, they are the same function of two different inputs, which is exactly the relationship the
+   real server has between a quote and the charge that follows it. A fake that echoed the quoted total
+   back at charge time would agree with itself no matter what the menu did, and the reward skew this
+   cell exists to catch is precisely a menu that moved in between. */
+const T9_REWARD_DISCOUNT = 4000;
+function rewardNetCents(dir, menu, items) {
+  const base = serverTotalCents(dir, menu, items);
+  return base === null ? null : Math.max(0, base - T9_REWARD_DISCOUNT);
+}
 // The shared harness's res() is 200-only; the 1C gate answers 409, so the fake needs its own.
 const rej = (body, status = 409) => Promise.resolve({
   ok: false, status, headers: { get: () => null }, json: () => Promise.resolve(body),
@@ -95,14 +107,30 @@ function serverTotalCents(dir, menu, items) {
 async function boot(dir) {
   const B = BRAND[dir];
   const w = loadForm(dir);
-  const st = { menuNow: null, quotes: 0, charges: [], gated: [], redeemQuotes: 0,
+  const st = { menuNow: null, quotes: 0, charges: [], gated: [], redeemQuotes: 0, redeemLive: false, rewardPayload: null,
                redeemReply: { ok: true, total_cents: 5000, savings_cents: 1000, free_items: [], remaining: 0, total_cost: 0 } };
   const idle = new Promise(() => {});
   w.__respond = (url, init) => {
     if (url.includes('/menu/')) return res(envelope(B.rid, st.menuNow));
     if (url.includes('quoteRedemption')) {
       st.redeemQuotes += 1;
-      return res(st.redeemReply);
+      if (!st.redeemLive) return res(st.redeemReply);        // the fixed fixture, for the cells that want it
+      /* 1C: price the reward from the menu IN FORCE and sign a token bound to the cart AND the reward.
+         cartFingerprint takes the reward, so a token issued for a reward-bearing cart cannot authorise
+         the same cart without it — the one thing the amount alone can never witness, since a la_musa
+         add_free reward is net-invariant. */
+      const body = JSON.parse((init && init.body) || '{}');
+      const items = body.items || [];
+      const cents = rewardNetCents(dir, st.menuNow, items);
+      if (cents === null) return res({ ok: false, error: 'reward_unavailable' });
+      const norm = normalizeCartForFingerprint(items, B.rid);
+      const token = norm ? signQuoteToken({
+        quote_id: 'rq' + st.redeemQuotes, rid: B.rid, net_total_cents: cents,
+        cart_fingerprint: cartFingerprint(norm, body.redeem || st.rewardPayload || null),
+        iat: Date.now(), exp: Date.now() + 15 * 60 * 1000,
+      }, T9_SECRET) : null;
+      return res({ ...st.redeemReply, ok: true, total_cents: cents, net_total_cents: cents,
+        ...(token ? { quote_token: token } : {}) });
     }
     if (url.includes('quoteOrder')) {
       st.quotes += 1;
@@ -137,8 +165,33 @@ async function boot(dir) {
          reward order: a fake disagreeing with itself, dressed up as a finding. The reward's own
          confirmed-net path is covered where it can be computed honestly — token-gate.test.js and
          compute-server-net.test.js, over the real tables. */
-      if (body.redeem) { st.gated.push({ signed: !!body.quote_token, ceiling: null, charged: nowCents, reward: true });
-        return res({ ok: true, order_id: 'T9' }); }
+      if (body.redeem) {
+        /* 🔴 A REWARD ORDER IS GATED TOO, on the reward-inclusive net — the same rule the reward quote
+           applied, over the menu in force NOW. Without this the reward path would be the one place a
+           displayed-vs-charged skew could still pass through this suite unremarked, which is exactly
+           the residual recorded below. Cells that use the fixed fixture reply (st.redeemLive false)
+           opt out, because that reply is a constant and gating a constant against a live oracle would
+           report an increase on every order for a reason that has nothing to do with the code. */
+        if (!st.redeemLive) { st.gated.push({ signed: !!body.quote_token, ceiling: null, charged: nowCents, reward: true });
+          return res({ ok: true, order_id: 'T9' }); }
+        const rewardNow = rewardNetCents(dir, st.menuNow, body.items || []);
+        if (rewardNow === null) return rej({ error: 'bad_cart' });
+        let rCeil = null;
+        if (body.quote_token) {
+          const v = verifyQuoteToken(body.quote_token, T9_SECRET, Date.now());
+          if (!v.ok) return rej({ error: 'quote_invalid', reason: v.reason });
+          const norm = normalizeCartForFingerprint(body.items || [], B.rid);
+          if (!norm || cartFingerprint(norm, body.redeem) !== v.payload.cart_fingerprint) {
+            return rej({ error: 'quote_invalid', reason: 'cart_mismatch' });
+          }
+          rCeil = v.payload.net_total_cents;
+        } else if (typeof body.expected_net_cents === 'number') {
+          rCeil = body.expected_net_cents;
+        }
+        if (rCeil !== null && rewardNow > rCeil) return rej({ error: 'price_increased', net_total_cents: rewardNow });
+        st.gated.push({ signed: !!body.quote_token, ceiling: rCeil, charged: rewardNow, reward: true });
+        return res({ ok: true, order_id: 'T9', charged_cents: rewardNow });
+      }
       let ceiling = null, signed = false;
       if (body.quote_token) {
         const v = verifyQuoteToken(body.quote_token, T9_SECRET, Date.now());
@@ -261,8 +314,20 @@ async function sendAndJudge(ctx, dir, label) {
     `${dir}/${label}: 🔴 every line the form sent must be priceable by the server`);
   assert.notStrictEqual(confirmed, null,
     `${dir}/${label}: 🔴 a charge went out with NO confirmed total on screen — the customer agreed to nothing`);
-  assert.strictEqual(charged, confirmed,
-    `${dir}/${label}: 🔴 CHARGED ${charged} !== CONFIRMED ${confirmed} — ${paid.url} sent ${JSON.stringify(paid.items)}`);
+  /* 🔴 1C REFINES THIS INVARIANT, and the refinement is in the customer's favour. 1B asserted
+     charged == confirmed, which was right when nothing could move the price between the two. 1C
+     reprices at the send: a DROP is passed on, so the customer pays LESS than they confirmed, and
+     asserting equality here would fail the suite for the one outcome nobody could object to. What must
+     never happen is the other direction. So: never more than confirmed, and exactly the server's own
+     recompute — two assertions where there was one, because "charged == confirmed" was doing both jobs
+     and only one of them survives repricing. */
+  assert.ok(charged <= confirmed,
+    `${dir}/${label}: 🔴 CHARGED ${charged} > CONFIRMED ${confirmed} — ${paid.url} sent ${JSON.stringify(paid.items)}`);
+  const accepted = ctx.st.gated[ctx.st.gated.length - 1];
+  if (accepted && !accepted.reward) {
+    assert.strictEqual(accepted.charged, charged,
+      `${dir}/${label}: 🔴 the amount accepted by the gate is the server's own recompute, not the payload's`);
+  }
   return { outcome: 'charged', confirmed, charged };
 }
 
@@ -777,14 +842,132 @@ for (const dir of Object.keys(BRAND)) {
       `${dir}/rollback: the version returns to v1 on rollback`);
     assert.strictEqual(ctx.w.__ACCOUNT.redeemQuoteMatches(ctx.w.redeemCartItems()), true,
       `${dir}/rollback: 🔴 …and the v1-stamped quote matches again — the digest is not a one-way latch`);
-    /* 🔴 THE RESIDUAL, RECORDED AND NOT ASSERTED — the 1C entry point for rewards, in the same class as
-       cell 12. Everything above is what the BROWSER can observe. The stamp is taken from what the
-       browser has seen, so if the SERVER's catalog has moved and this form has not fetched it yet, the
-       stamp is self-consistent, the gate allows, and the reward total can still differ from the charge.
-       No client-side signature can close that: the comparison has to happen where both numbers exist,
-       which is 1C's confirmed-total gate. Recorded here so the boundary is visible at the exact line
-       that would otherwise read as "rewards are now safe, full stop". */
-    ok(`${dir}: reprice-then-rollback — the priced-menu version is what makes a stale reward quote mismatch (browser-observed; server skew is 1C)`);
+    /* ── 🔴 THE REWARD RESIDUAL, NOW CLOSED ────────────────────────────────────────────────────
+       Everything above is what the BROWSER can observe, and 1B closed all of it. What it could not
+       close is stated exactly: the client stamp is taken from what the browser has seen, so when the
+       SERVER's catalog has moved and this form has not fetched it yet, the stamp is self-consistent,
+       the client gate allows, and the reward total can still differ from the charge. No client-side
+       signature can close that — the comparison has to happen where both numbers exist.
+       1C puts it there. The reward quote is SIGNED over the cart AND the reward (cartFingerprint takes
+       the reward, which is the only witness that survives a la_musa add_free reward being
+       net-invariant), and the server reprices the reward-inclusive net at the charge. A confirmation
+       that no longer describes what the server would charge is refused.
+       THIS CELL CARRIES THE REWARD PATH'S WHOLE-FLOW WEIGHT, deliberately: the synthetic gate excludes
+       reward orders priced from the fixed fixture reply, so without a live-priced reward cell the
+       reward path would be the one place a displayed-vs-charged skew could cross this suite unremarked.
+       Here the reward is priced live, by the same rule, over two different menus. */
+    ok(`${dir}: reprice-then-rollback — the priced-menu version is what makes a stale reward quote mismatch (browser-observed)`);
+  }
+
+  /* ── CELL 14f: THE CONFIRMED-NET MATRIX, ON BOTH MONEY ENDPOINTS ──────────────────────────────
+     The three answers 1C can give, asserted on each charge path rather than on one and assumed for the
+     other. Cash and card are DIFFERENT handlers with different bailouts — 1C T5 found a real defect on
+     the card path that the cash path did not have — so "both endpoints" is a claim that has to be made
+     twice, not once. */
+  for (const method of ['cash', 'card']) {
+    for (const [label, delta, expect] of [
+      ['equal',    0,   'charged'],
+      ['drop',    -50,  'charged'],
+      ['increase', +60, 'increase_sheet'],
+    ]) {
+      const ctx = await boot(dir);
+      await publish(ctx, baseMenu(ctx.w));
+      const d = plainDish(ctx.w);
+      await addToCart(ctx, d);
+      const confirmed = ctx.w.getServerQuoteTotalCents();
+      assert.ok(confirmed > 0, `${dir}/${method}-${label}: premise — a total is confirmed on screen`);
+
+      /* The SERVER's catalog moves; the form is deliberately not refreshed, so the confirmation the
+         customer is holding is the one from before. delta 0 leaves it equal. */
+      if (delta !== 0) {
+        const up = baseMenu(ctx.w);
+        up.dishes = up.dishes.map((x) => (String(x.id) === String(d.id) ? { ...x, price: x.price + delta } : x));
+        ctx.st.menuNow = up;
+      }
+      const serverNow = serverTotalCents(dir, ctx.st.menuNow, ctx.w.redeemCartItems());
+      if (delta > 0) assert.ok(serverNow > confirmed, `${dir}/${method}-${label}: premise — the server is now dearer`);
+      if (delta < 0) assert.ok(serverNow < confirmed, `${dir}/${method}-${label}: premise — the server is now cheaper`);
+
+      const gatedBefore = ctx.st.gated.length;
+      assert.strictEqual(ctx.w.buildOrder(), true, `${dir}/${method}-${label}: the order composes`);
+      if (method === 'card') { ctx.w.selectedPayment = 'online'; }
+      const out = await sendAndJudge(ctx, dir, `${method}-${label}`);
+      assert.strictEqual(out.outcome, expect,
+        `${dir}/${method}-${label}: 🔴 expected ${expect}, got ${out.outcome}`);
+
+      if (expect === 'charged') {
+        const acc = ctx.st.gated.slice(gatedBefore);
+        assert.strictEqual(acc.length, 1, `${dir}/${method}-${label}: exactly one accepted charge`);
+        assert.strictEqual(acc[0].charged, serverNow,
+          `${dir}/${method}-${label}: 🔴 the SERVER's own recompute is what is charged`);
+        assert.ok(acc[0].ceiling === null || acc[0].charged <= acc[0].ceiling,
+          `${dir}/${method}-${label}: 🔴 …and never above what the customer confirmed (${acc[0].charged} vs ${acc[0].ceiling})`);
+        if (delta < 0) assert.ok(acc[0].charged < confirmed,
+          `${dir}/${method}-${label}: 🔴 a DROP is passed on — the customer pays the lower number, silently`);
+      } else {
+        assert.strictEqual(ctx.st.gated.length, gatedBefore, `${dir}/${method}-${label}: 🔴 an increase charges NOTHING`);
+        assert.ok(out.shown.includes((serverNow / 100).toFixed(2)),
+          `${dir}/${method}-${label}: …and names the new price (${out.shown})`);
+      }
+    }
+  }
+  ok(`${dir}: confirmed-net on BOTH money endpoints — equal and drop charge the server net, an increase refuses`);
+
+  /* ── CELL 14e: SERVER-SIDE REWARD SKEW — the 1C closure ────────────────────────────────────────*/
+  {
+    const ctx = await boot(dir);
+    await publish(ctx, baseMenu(ctx.w));           // the server's pricing basis — boot leaves it unset
+    ctx.st.redeemLive = true;                      // price the reward from the menu in force, and sign it
+    const d = plainDish(ctx.w);
+    await addToCart(ctx, d);
+    authenticate(ctx, dir);
+    const reward = { type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] };
+    ctx.st.rewardPayload = reward;
+    await installReward(ctx, reward);
+    assert.ok(ctx.w.__ACCOUNT.getRedeemPayload(), `${dir}/reward-skew: premise — a reward is active`);
+
+    const confirmedReward = ctx.w.__ACCOUNT.getRedeemQuoteTotalCents();
+    assert.ok(typeof confirmedReward === 'number' && confirmedReward > 0,
+      `${dir}/reward-skew: premise — the customer has a priced reward total on screen (${confirmedReward})`);
+    assert.strictEqual(confirmedReward, rewardNetCents(dir, ctx.st.menuNow, ctx.w.redeemCartItems()),
+      `${dir}/reward-skew: premise — and it is the reward-inclusive net for the menu in force`);
+
+    /* 🔴 THE SERVER'S CATALOG MOVES AND THE FORM NEVER HEARS ABOUT IT. Exactly the residual: the feed
+       is not refreshed, so every client-side signature still matches — same cart, same reward, same
+       menu version as far as the browser knows. Only the server knows the price changed. */
+    const up = baseMenu(ctx.w);
+    up.dishes = up.dishes.map((x) => (String(x.id) === String(d.id) ? { ...x, price: x.price + 60 } : x));
+    ctx.st.menuNow = up;                           // server-side only — deliberately NOT published to the feed
+    assert.strictEqual(ctx.w.__ACCOUNT.redeemQuoteMatches(ctx.w.redeemCartItems()), true,
+      `${dir}/reward-skew: 🔴 premise — every CLIENT check still says fresh; this skew is invisible to the browser`);
+    const serverRewardNow = rewardNetCents(dir, ctx.st.menuNow, ctx.w.redeemCartItems());
+    assert.ok(serverRewardNow > confirmedReward,
+      `${dir}/reward-skew: premise — the server's reward net has moved above the confirmed one (${serverRewardNow} vs ${confirmedReward})`);
+
+    const chargedBefore = ctx.st.gated.length;
+    assert.strictEqual(ctx.w.buildOrder(), true, `${dir}/reward-skew: the order composes`);
+    const out = await sendAndJudge(ctx, dir, 'reward-skew');
+    assert.strictEqual(out.outcome, 'increase_sheet',
+      `${dir}/reward-skew: 🔴 THE 1B REWARD RESIDUAL, CLOSED — a reward confirmation the server would no longer honour is refused, not charged`);
+    assert.strictEqual(ctx.st.gated.length, chargedBefore,
+      `${dir}/reward-skew: 🔴 …and nothing was charged`);
+    const lastSent = ctx.st.charges[ctx.st.charges.length - 1];
+    assert.ok(lastSent && lastSent.redeem, `${dir}/reward-skew: non-vacuity — the refused send really carried the reward`);
+    assert.ok(lastSent.quote_token || typeof lastSent.expected_net_cents === 'number',
+      `${dir}/reward-skew: 🔴 the send stated what was confirmed — by signature or ceiling`);
+    /* 🔴 WHAT THIS CELL ADDS, STATED HONESTLY. It is closed by the SAME mechanism as cell 12 — the
+       send states what was confirmed — and I could not construct a mutation that only this cell
+       catches: removing the token alone falls to the ceiling, removing the ceiling alone falls to the
+       token, and removing both is caught by cell 12 first because it runs earlier. That shared
+       mechanism is an architectural result, not a gap, and pretending otherwise would be the
+       over-claim this suite's own header warns about.
+       What this cell independently establishes is that the mechanism holds where the CONFIRMED NUMBER
+       IS A REWARD NET — a figure the cart alone cannot produce, carried by a token whose fingerprint
+       binds the reward (the only witness that survives a la_musa add_free reward being net-invariant)
+       — and where the skew is invisible to every client-side check, which the premises above assert
+       rather than assume: redeemQuoteMatches still answers true, and the server's reward net has
+       genuinely moved above the confirmed one. */
+    ok(`${dir}: 🔴 1C CLOSES THE REWARD RESIDUAL — a server-side reward skew the browser cannot see is refused at the send`);
   }
 
   /* ── CELL 14d: THE GATE FAILS CLOSED ───────────────────────────────────────────────────────────
