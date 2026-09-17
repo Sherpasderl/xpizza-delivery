@@ -4097,8 +4097,8 @@
     "slice": "c6",
     "label": "🔴 the unsigned ceiling becomes the charge — a client can name its own price",
     "file": "token-gate.js",
-    "from": "      return { action: 'charge', chargeNet: net.net_total_cents, confirmedNet: expected, reason: 'confirmed_unsigned', quoteId: null, degraded: true };",
-    "to": "      return { action: 'charge', chargeNet: expected, confirmedNet: expected, reason: 'confirmed_unsigned', quoteId: null, degraded: true };",
+    "from": "  return { action: 'charge', chargeNet: net.net_total_cents, confirmedNet: expected, reason: 'confirmed_unsigned', quoteId: null, degraded: true };",
+    "to": "  return { action: 'charge', chargeNet: expected, confirmedNet: expected, reason: 'confirmed_unsigned', quoteId: null, degraded: true };",
     "command": [
       "node",
       "token-gate.test.js"
@@ -4109,8 +4109,8 @@
     "slice": "c6",
     "label": "an expected BELOW the server net is accepted — the undercharge the floor exists to stop",
     "file": "token-gate.js",
-    "from": "      if (net.net_total_cents > expected) {",
-    "to": "      if (false) {",
+    "from": "  if (net.net_total_cents > expected) {",
+    "to": "  if (false) {",
     "command": [
       "node",
       "token-gate.test.js"
@@ -4133,8 +4133,8 @@
     "slice": "c6",
     "label": "the unsigned floor accepts coerced junk as a price ceiling",
     "file": "token-gate.js",
-    "from": "    const haveExpected = typeof expected === 'number' && Number.isSafeInteger(expected) && expected >= 0;",
-    "to": "    const haveExpected = expected != null && Number.isSafeInteger(Number(expected));",
+    "from": "  if (!(typeof expected === 'number' && Number.isSafeInteger(expected) && expected >= 0)) return null;",
+    "to": "  if (expected == null || !Number.isSafeInteger(Number(expected))) return null;",
     "command": [
       "node",
       "token-gate.test.js"
@@ -4424,8 +4424,8 @@
     "slice": "c8",
     "label": "a quote outage sends a bare order instead of the unsigned ceiling",
     "file": "../xpizza-orders/form-confirm-quote.js",
-    "from": "        body.expected_net_cents = expectedNetCents;\n        return 'degraded';",
-    "to": "        return 'bare';",
+    "from": "      if (haveCeiling) body.expected_net_cents = expectedNetCents;",
+    "to": "      if (false) body.expected_net_cents = expectedNetCents;",
     "command": [
       "node",
       "../confirm-quote-wiring.test.mjs"
@@ -4512,8 +4512,8 @@
     "slice": "c9",
     "label": "a reused body keeps a token from an earlier send, so the signed gate judges it on a rejected token",
     "file": "../xpizza-orders/form-confirm-quote.js",
-    "from": "      try { delete body.quote_token; } catch (_) { body.quote_token = undefined; }\n      if (attach(body, cartSig)) return 'signed';",
-    "to": "      if (attach(body, cartSig)) return 'signed';",
+    "from": "      try { delete body.quote_token; } catch (_) { body.quote_token = undefined; }\n      try { delete body.expected_net_cents; } catch (_) { body.expected_net_cents = undefined; }",
+    "to": "      // a reused body keeps whatever an earlier send left on it",
     "command": [
       "node",
       "--test",
@@ -4607,8 +4607,8 @@
     "slice": "b9",
     "label": "the unsigned ceiling becomes the charge on the whole-flow path",
     "file": "../xpizza-functions/token-gate.js",
-    "from": "      return { action: 'charge', chargeNet: net.net_total_cents, confirmedNet: expected, reason: 'confirmed_unsigned', quoteId: null, degraded: true };",
-    "to": "      return { action: 'charge', chargeNet: expected, confirmedNet: expected, reason: 'confirmed_unsigned', quoteId: null, degraded: true };",
+    "from": "  return { action: 'charge', chargeNet: net.net_total_cents, confirmedNet: expected, reason: 'confirmed_unsigned', quoteId: null, degraded: true };",
+    "to": "  return { action: 'charge', chargeNet: expected, confirmedNet: expected, reason: 'confirmed_unsigned', quoteId: null, degraded: true };",
     "command": [
       "node",
       "../charge-boundary.test.mjs"
@@ -4633,8 +4633,8 @@
     "slice": "b9",
     "label": "the send states NEITHER a token nor a ceiling — the 1B residual (34000 confirmed / 38000 charged) returns",
     "file": "../xpizza-orders/form-confirm-quote.js",
-    "from": "      if (attach(body, cartSig)) return 'signed';\n      if (typeof expectedNetCents === 'number' && Number.isFinite(expectedNetCents)\n          && Math.floor(expectedNetCents) === expectedNetCents && expectedNetCents >= 0) {\n        body.expected_net_cents = expectedNetCents;\n        return 'degraded';\n      }",
-    "to": "      // the send states nothing at all",
+    "from": "      const haveCeiling = typeof expectedNetCents === 'number' && Number.isFinite(expectedNetCents)\n        && Math.floor(expectedNetCents) === expectedNetCents && expectedNetCents >= 0;\n      if (haveCeiling) body.expected_net_cents = expectedNetCents;\n\n      if (attach(body, cartSig)) return 'signed';\n      return haveCeiling ? 'degraded' : 'bare';",
+    "to": "      return 'bare';                      // the send states nothing at all",
     "command": [
       "node",
       "../whole-flow.test.mjs"
@@ -4656,5 +4656,47 @@
       "../charge-boundary.test.mjs"
     ],
     "kills_with": "a token below the server net refuses"
+  },
+  {
+    "id": "b9-06",
+    "slice": "b9",
+    "label": "🔴 an expired token throws away the confirmation again — the grace-window overcharge returns",
+    "file": "../xpizza-functions/token-gate.js",
+    "from": "    const stale = unsignedFloor(expectedNetCents, { submittedCart, reward, deliveryContext, rid, tables });\n    if (stale) return { ...stale, reason: `${stale.reason}_stale_token` };",
+    "to": "",
+    "command": [
+      "node",
+      "token-gate.test.js"
+    ],
+    "kills_with": "an expired token with a ceiling under the server net must REFUSE"
+  },
+  {
+    "id": "b9-07",
+    "slice": "b9",
+    "label": "a forged token is rescued by a ceiling — the one signal of tampering is ignored",
+    "file": "../xpizza-functions/token-gate.js",
+    "from": "    if (v.reason === 'bad_signature' || v.reason === 'bad_format') {",
+    "to": "    if (false) {",
+    "command": [
+      "node",
+      "token-gate.test.js"
+    ],
+    "kills_with": [
+      "a token signed by another secret is refused",
+      "a forged token refuses even with a valid ceiling"
+    ]
+  },
+  {
+    "id": "b9-08",
+    "slice": "b9",
+    "label": "the ceiling no longer rides with the token, so an expired one has nothing to fall back to",
+    "file": "../xpizza-orders/form-confirm-quote.js",
+    "from": "      if (haveCeiling) body.expected_net_cents = expectedNetCents;\n\n      if (attach(body, cartSig)) return 'signed';",
+    "to": "      if (attach(body, cartSig)) return 'signed';\n      if (haveCeiling) body.expected_net_cents = expectedNetCents;",
+    "command": [
+      "node",
+      "../whole-flow.test.mjs"
+    ],
+    "kills_with": "the send must carry its ceiling alongside the token"
   }
 ]

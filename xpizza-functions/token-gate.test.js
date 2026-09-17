@@ -8,6 +8,7 @@
 const assert = require('node:assert');
 const { gateConfirmedNet, applyConfirmedNetGate, tokenEnforceEnabled } = require('./token-gate');
 const { issueQuote } = require('./quote-issue');
+const { signQuoteToken, cartFingerprint, normalizeCartForFingerprint } = require('./quote-token');
 const { computeServerNet } = require('./compute-server-net');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./menu-pricing');
 const { CARTS } = require('./parity-carts.fixture');
@@ -326,6 +327,60 @@ const gate = (o) => gateConfirmedNet({ secret: SEC, nowMs: 1_000_100, ...o });
 
 console.log(`\ntoken-gate: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });
+
+// ── 🔴 T9: AN EXPIRED TOKEN MUST NOT THROW AWAY THE CONFIRMATION ────────────────────────────────
+// The closing whole-flow gate found this and it is a real overcharge: under GRACE an expired token
+// returned "no opinion", so the caller charged whatever the catalog said NOW. Confirmed 340, sat at
+// checkout past the window, price moved to 380, charged 380 — the founding displayed-vs-charged bug,
+// reachable for the whole grace period, which is the state this ships in.
+// Expiry is ORDINARY and says nothing about what the customer was shown, so a stale token falls back
+// to exactly what a token-less request with the same ceiling gets. A FORGED signature is a different
+// thing and still refuses. Asserted on real carts, both brands.
+{
+  let rows = 0;
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const tables = T(rid);
+    for (const items of CARTS[rid]) {
+      const server = computeServerNet({ items, rid, tables }).net_total_cents;
+      const norm = normalizeCartForFingerprint(items, rid);
+      const expiredTok = signQuoteToken({
+        rid, customer_id: null, cart_fingerprint: cartFingerprint(norm, null),
+        net_total_cents: server, components: {}, redemption_ref: null,
+        issued_at: 1, expires_at: 2, quote_id: 'expired',
+      }, SEC);
+      const g = (over) => gateConfirmedNet({ token: expiredTok, submittedCart: items, rid, tables, secret: SEC, nowMs: Date.now(), ...over });
+
+      // 🔴 THE OVERCHARGE ROW: the ceiling is BELOW what the server now wants.
+      const low = g({ expectedNetCents: server - 1, enforce: false });
+      assert.strictEqual(low.action, 'refuse_increase',
+        `${rid}: 🔴 an expired token with a ceiling under the server net must REFUSE — this row is the overcharge`);
+      assert.strictEqual(low.chargeNet, server, `${rid}: …reporting the server's number`);
+      assert.ok(/stale_token/.test(low.reason), `${rid}: …and saying it was a stale token (${low.reason})`);
+
+      // A ceiling at or above the server net charges the SERVER's number, never the ceiling.
+      const okRow = g({ expectedNetCents: server + 5000, enforce: false });
+      assert.strictEqual(okRow.action, 'charge', `${rid}: an expired token under its ceiling still charges`);
+      assert.strictEqual(okRow.chargeNet, server, `${rid}: 🔴 …the SERVER's net, not the ceiling`);
+      assert.strictEqual(okRow.degraded, true, `${rid}: …marked degraded — it is not a signed confirmation`);
+
+      // Enforcement agrees: a stated ceiling is honoured whether or not the token is stale.
+      assert.strictEqual(g({ expectedNetCents: server, enforce: true }).action, 'charge',
+        `${rid}: under enforcement an expired token WITH a ceiling is still answerable`);
+
+      // With NO ceiling there is genuinely nothing to compare: grace defers, enforcement refuses.
+      assert.strictEqual(g({ enforce: false }).chargeNet, null, `${rid}: no ceiling, grace → the gate declines`);
+      assert.strictEqual(g({ enforce: true }).action, 'refuse_invalid', `${rid}: no ceiling, enforce → refuse`);
+
+      // 🔴 AND A FORGERY IS NOT RESCUED BY A CEILING. Expiry is ordinary; a bad signature is an attack.
+      const forged = g({ token: expiredTok.slice(0, -3) + 'aaa', expectedNetCents: server });
+      assert.strictEqual(forged.action, 'refuse_invalid', `${rid}: 🔴 a forged token refuses even with a valid ceiling`);
+      assert.strictEqual(forged.reason, 'bad_signature', `${rid}: …on the signature`);
+      rows += 1;
+    }
+  }
+  assert.ok(rows >= 4, `non-vacuity: the expired matrix ran on real carts (${rows})`);
+  ok(`an EXPIRED token falls back to the stated ceiling instead of discarding it — a forgery still refuses (${rows} carts)`);
+}
 
 // ── 🔴 T6: THE DEGRADED (UNSIGNED) FLOOR ────────────────────────────────────────────────────────
 // The single money question: can a client-supplied expected_net_cents ever become the charge? It

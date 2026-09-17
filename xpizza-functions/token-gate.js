@@ -23,6 +23,24 @@
 const { computeServerNet } = require('./compute-server-net');
 const { verifyQuoteToken, cartFingerprint, normalizeCartForFingerprint } = require('./quote-token');
 
+/* THE UNSIGNED FLOOR, factored out because TWO paths need it: a request that never had a token, and
+   one whose token is merely STALE. Both are "the client told us what it showed and cannot prove it",
+   and both must be answered the same way — the server charges its own recompute, only ever up to the
+   stated ceiling. Returns null when there is no usable ceiling, so the caller can fall through to its
+   own no-ceiling behaviour. */
+function unsignedFloor(expectedNetCents, { submittedCart, reward, deliveryContext, rid, tables }) {
+  const expected = expectedNetCents;
+  if (!(typeof expected === 'number' && Number.isSafeInteger(expected) && expected >= 0)) return null;
+  const net = computeServerNet({ items: submittedCart, reward, deliveryContext, rid, tables });
+  if (net.error) {
+    return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'bad_cart', quoteId: null, degraded: true };
+  }
+  if (net.net_total_cents > expected) {
+    return { action: 'refuse_increase', chargeNet: net.net_total_cents, confirmedNet: expected, reason: 'price_increased_unsigned', quoteId: null, degraded: true };
+  }
+  return { action: 'charge', chargeNet: net.net_total_cents, confirmedNet: expected, reason: 'confirmed_unsigned', quoteId: null, degraded: true };
+}
+
 function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, reward = null, deliveryContext = null, rid, tables = null, secret, enforce = false, nowMs = Date.now() }) {
   // ── NO TOKEN ────────────────────────────────────────────────────────────────────────────────
   if (!token) {
@@ -46,19 +64,8 @@ function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, rewar
        Each of those would become a CEILING of one lempira or zero and refuse a legitimate order. The
        strict type is also the money-safe direction — the worst case is falling to the no-token row,
        which under grace is exactly today's behaviour. */
-    const expected = expectedNetCents;
-    const haveExpected = typeof expected === 'number' && Number.isSafeInteger(expected) && expected >= 0;
-
-    if (haveExpected) {
-      const net = computeServerNet({ items: submittedCart, reward, deliveryContext, rid, tables });
-      if (net.error) {
-        return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'bad_cart', quoteId: null, degraded: true };
-      }
-      if (net.net_total_cents > expected) {
-        return { action: 'refuse_increase', chargeNet: net.net_total_cents, confirmedNet: expected, reason: 'price_increased_unsigned', quoteId: null, degraded: true };
-      }
-      return { action: 'charge', chargeNet: net.net_total_cents, confirmedNet: expected, reason: 'confirmed_unsigned', quoteId: null, degraded: true };
-    }
+    const floor = unsignedFloor(expectedNetCents, { submittedCart, reward, deliveryContext, rid, tables });
+    if (floor) return floor;
 
     /* Junk falls through to here ON PURPOSE rather than refusing: a non-integer, negative, or absent
        expected is indistinguishable from a client that never sent one, and inventing a third outcome
@@ -85,6 +92,20 @@ function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, rewar
     if (v.reason === 'bad_signature' || v.reason === 'bad_format') {
       return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: v.reason, quoteId: null, degraded: false };
     }
+    /* 🔴 AN EXPIRED TOKEN MUST NOT THROW AWAY THE CONFIRMATION. This branch used to return
+       chargeNet:null under grace — "the gate declines to have an opinion" — which is correct when
+       there is nothing else to go on and an OVERCHARGE when there is. The customer confirmed 340, the
+       catalog moved to 380, their token expired while they sat at checkout, and the order charged 380:
+       the founding displayed-vs-charged bug, reachable throughout the grace window, which is the
+       state this ships in.
+       Expiry is ORDINARY — a customer left checkout open, or a clock is off — and it says nothing
+       about what they were shown. So a stale token falls back to exactly what a token-less request
+       with the same ceiling would get: the server's own recompute, never above the stated number. A
+       forged signature is handled above and is a different thing entirely; that still refuses.
+       With no ceiling to fall back to there is genuinely nothing to compare, and the old behaviour is
+       the only honest one: grace defers, enforcement refuses. */
+    const stale = unsignedFloor(expectedNetCents, { submittedCart, reward, deliveryContext, rid, tables });
+    if (stale) return { ...stale, reason: `${stale.reason}_stale_token` };
     if (enforce) return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: v.reason, quoteId: null, degraded: false };
     return { action: 'charge', chargeNet: null, confirmedNet: null, reason: `grace_${v.reason}`, quoteId: null, degraded: false };
   }

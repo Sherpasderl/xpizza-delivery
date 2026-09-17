@@ -43,6 +43,20 @@ const require = createRequire(new URL('./xpizza-functions/x.js', import.meta.url
    the independent oracle this suite was built on, so "charged == confirmed" remains a comparison of
    two numbers computed separately rather than the fake agreeing with itself. */
 const { signQuoteToken, verifyQuoteToken, cartFingerprint, normalizeCartForFingerprint } = require('./quote-token');
+/* 🔴 THE REWARD MUST BE RESOLVED BEFORE IT IS FINGERPRINTED. cartFingerprint reads model and
+   freeItems — the RESOLVED shape the server computes — not the raw {type, items} a client sends. An
+   earlier version here hashed the raw request, so every reward produced the same empty {m:'', f:[]}
+   and two genuinely different rewards fingerprinted identically: the fake could not tell them apart,
+   which is precisely the distinction the fingerprint exists to make. Resolved through the real
+   computeRedemption, so the fake hashes what production hashes. */
+const { computeRedemption } = require('./rewards-redeem');
+function resolveReward(redeem, items, rid) {
+  if (!redeem) return null;
+  try {
+    const r = computeRedemption({ redeem, items, restaurantId: rid });
+    return r && r.ok ? r : null;
+  } catch (_) { return null; }
+}
 
 const { ok, count } = counter();
 const CHARGE_RE = /createOrder|chargeOnlineOrder/;
@@ -54,6 +68,32 @@ const T9_SECRET = 'whole-flow-1c-secret';
    real server has between a quote and the charge that follows it. A fake that echoed the quoted total
    back at charge time would agree with itself no matter what the menu did, and the reward skew this
    cell exists to catch is precisely a menu that moved in between. */
+/* 🔴 WHAT A TOKEN IS WORTH, MODELLED THE WAY PRODUCTION DOES IT — and this is the correction that
+   matters most in this file. The first version refused EVERY verification failure, which looks strict
+   and is precisely how a fake hides a defect: production treats an EXPIRED token as ordinary (a
+   customer left checkout open; a clock is off) and falls back to whatever ceiling the request states.
+   Refusing it here made the residual cells green while a real grace-window order overcharged. A fake
+   that is stricter than production does not test production — it tests a server nobody deployed.
+   So: a FORGED signature refuses (it is the one signal of tampering); an EXPIRED one falls to the
+   ceiling if the request carries one, exactly like a token-less request; a cart the token never
+   described refuses on the fingerprint. */
+function judgeToken(body, rid, reward) {
+  const stated = typeof body.expected_net_cents === 'number' ? body.expected_net_cents : null;
+  if (!body.quote_token) return { ceiling: stated, signed: false };
+  const v = verifyQuoteToken(body.quote_token, T9_SECRET, Date.now());
+  if (!v.ok) {
+    if (v.reason === 'bad_signature' || v.reason === 'bad_format') {
+      return { refuse: { error: 'quote_invalid', reason: v.reason } };
+    }
+    return { ceiling: stated, signed: false };          // expired / unclocked → the ceiling stands in
+  }
+  const norm = normalizeCartForFingerprint(body.items || [], rid);
+  if (!norm || cartFingerprint(norm, reward) !== v.payload.cart_fingerprint) {
+    return { refuse: { error: 'quote_invalid', reason: 'cart_mismatch' } };
+  }
+  return { ceiling: v.payload.net_total_cents, signed: true };
+}
+
 const T9_REWARD_DISCOUNT = 4000;
 function rewardNetCents(dir, menu, items) {
   const base = serverTotalCents(dir, menu, items);
@@ -107,7 +147,7 @@ function serverTotalCents(dir, menu, items) {
 async function boot(dir) {
   const B = BRAND[dir];
   const w = loadForm(dir);
-  const st = { menuNow: null, quotes: 0, charges: [], gated: [], redeemQuotes: 0, redeemLive: false, rewardPayload: null,
+  const st = { menuNow: null, quotes: 0, charges: [], gated: [], redeemQuotes: 0, redeemLive: false, rewardPayload: null, tokenTtlMs: 15 * 60 * 1000,
                redeemReply: { ok: true, total_cents: 5000, savings_cents: 1000, free_items: [], remaining: 0, total_cost: 0 } };
   const idle = new Promise(() => {});
   w.__respond = (url, init) => {
@@ -126,8 +166,8 @@ async function boot(dir) {
       const norm = normalizeCartForFingerprint(items, B.rid);
       const token = norm ? signQuoteToken({
         quote_id: 'rq' + st.redeemQuotes, rid: B.rid, net_total_cents: cents,
-        cart_fingerprint: cartFingerprint(norm, body.redeem || st.rewardPayload || null),
-        issued_at: Date.now(), expires_at: Date.now() + 15 * 60 * 1000,   // the REAL field names — iat/exp fail verification and fall to grace
+        cart_fingerprint: cartFingerprint(norm, resolveReward(body.redeem || st.rewardPayload || null, items, B.rid)),
+        issued_at: Date.now(), expires_at: Date.now() + st.tokenTtlMs,   // the REAL field names — iat/exp fail verification and fall to grace
       }, T9_SECRET) : null;
       return res({ ...st.redeemReply, ok: true, total_cents: cents, net_total_cents: cents,
         ...(token ? { quote_token: token } : {}) });
@@ -176,32 +216,16 @@ async function boot(dir) {
           return res({ ok: true, order_id: 'T9' }); }
         const rewardNow = rewardNetCents(dir, st.menuNow, body.items || []);
         if (rewardNow === null) return rej({ error: 'bad_cart' });
-        let rCeil = null;
-        if (body.quote_token) {
-          const v = verifyQuoteToken(body.quote_token, T9_SECRET, Date.now());
-          if (!v.ok) return rej({ error: 'quote_invalid', reason: v.reason });
-          const norm = normalizeCartForFingerprint(body.items || [], B.rid);
-          if (!norm || cartFingerprint(norm, body.redeem) !== v.payload.cart_fingerprint) {
-            return rej({ error: 'quote_invalid', reason: 'cart_mismatch' });
-          }
-          rCeil = v.payload.net_total_cents;
-        } else if (typeof body.expected_net_cents === 'number') {
-          rCeil = body.expected_net_cents;
-        }
+        const rJudged = judgeToken(body, B.rid, resolveReward(body.redeem, body.items || [], B.rid));
+        if (rJudged.refuse) return rej(rJudged.refuse);
+        const rCeil = rJudged.ceiling;
         if (rCeil !== null && rewardNow > rCeil) return rej({ error: 'price_increased', net_total_cents: rewardNow });
         st.gated.push({ signed: !!body.quote_token, ceiling: rCeil, charged: rewardNow, reward: true });
         return res({ ok: true, order_id: 'T9', charged_cents: rewardNow });
       }
-      let ceiling = null, signed = false;
-      if (body.quote_token) {
-        const v = verifyQuoteToken(body.quote_token, T9_SECRET, Date.now());
-        if (!v.ok) return rej({ error: 'quote_invalid', reason: v.reason });
-        const norm = normalizeCartForFingerprint(body.items || [], B.rid);
-        if (!norm || cartFingerprint(norm, null) !== v.payload.cart_fingerprint) return rej({ error: 'quote_invalid', reason: 'cart_mismatch' });
-        ceiling = v.payload.net_total_cents; signed = true;
-      } else if (typeof body.expected_net_cents === 'number') {
-        ceiling = body.expected_net_cents;
-      }
+      const judged = judgeToken(body, B.rid, null);
+      if (judged.refuse) return rej(judged.refuse);
+      const { ceiling, signed } = judged;
       if (ceiling !== null && nowCents > ceiling) {
         return rej({ error: 'price_increased', net_total_cents: nowCents });
       }
@@ -264,7 +288,7 @@ async function addToCart(ctx, dish, qty = 1) {
    the two acceptable ones. Deliberately does not take an expectation of WHICH — a cell that refuses
    when it should charge is caught by its own non-vacuity, and forcing every cell to declare an
    expected branch is how a test starts asserting the behaviour it observed rather than the rule. */
-async function sendAndJudge(ctx, dir, label) {
+async function sendAndJudge(ctx, dir, label, opts = {}) {
   const before = ctx.st.charges.length;
   const confirmed = ctx.w.getServerQuoteTotalCents();
   /* THE REAL SEQUENCE, not a call to the gate. buildOrder() composes the payload and is the ENTRY
@@ -281,7 +305,14 @@ async function sendAndJudge(ctx, dir, label) {
        sheet and submitOrder does not settle until the customer answers — awaiting it here would
        deadlock the suite against a dialog nobody is going to click. The fetch record, and the presence
        of that sheet, are the assertions. */
-    const pending = ctx.w.submitOrder('confirmed');
+    /* 🔴 WHICH ENDPOINT, DRIVEN FOR REAL. `selectedPayment` is a LEXICAL binding inside the form
+       script, so setting window.selectedPayment changes nothing the form reads — an earlier version of
+       the matrix did exactly that and every "card" row went to createOrder, leaving chargeOnlineOrder
+       (a different handler, with different bailouts, where 1C T5 found a card-only defect) untested
+       while claiming both endpoints. selectPay() is the form's own setter. */
+    const pending = opts.card
+      ? (ctx.w.selectPay('online'), ctx.w.processPixelPay())
+      : ctx.w.submitOrder('confirmed');
     if (pending && pending.catch) pending.catch(() => {});
   }
   await settle(); await settle();
@@ -859,6 +890,103 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: reprice-then-rollback — the priced-menu version is what makes a stale reward quote mismatch (browser-observed)`);
   }
 
+  /* ── CELL 14g: 🔴 AN EXPIRED TOKEN MUST NOT THROW AWAY THE CONFIRMATION ───────────────────────
+     The defect the closing gate found, and the one the per-task gates could not: under GRACE an
+     expired token returned "no opinion" and the order charged whatever the catalog said now. The
+     customer confirmed 340, sat at checkout past the issuance window, the price moved to 380, and they
+     were charged 380 — the founding displayed-vs-charged bug, reachable for the whole grace period,
+     which is the state this ships in.
+     It survived every per-task gate because each was right about its own contract: the gate's expiry
+     handling was correct in isolation (expiry IS ordinary, and refusing it under grace would block
+     orders that work today), and the client's ceiling was correct in isolation (it is the fallback for
+     having no token). Neither owned the case where a token EXISTS but has gone stale. That is the
+     boundary this suite exists for.
+     Asserted on BOTH endpoints and BOTH brands, because it is a money rule and the two handlers are
+     different code. */
+  for (const method of ['cash', 'card']) {
+    const ctx = await boot(dir);
+    await publish(ctx, baseMenu(ctx.w));
+    ctx.st.tokenTtlMs = -60 * 1000;                  // issued already expired: the pay-tap-after-idle shape
+    const d = plainDish(ctx.w);
+    await addToCart(ctx, d);
+    const confirmed = ctx.w.getServerQuoteTotalCents();
+    assert.ok(confirmed > 0, `${dir}/expired-${method}: premise — a total is confirmed on screen`);
+
+    const up = baseMenu(ctx.w);
+    up.dishes = up.dishes.map((x) => (String(x.id) === String(d.id) ? { ...x, price: x.price + 40 } : x));
+    ctx.st.menuNow = up;                             // the catalog moves; the form never hears
+    const serverNow = serverTotalCents(dir, ctx.st.menuNow, ctx.w.redeemCartItems());
+    assert.ok(serverNow > confirmed,
+      `${dir}/expired-${method}: premise — the server is now dearer than the confirmation (${serverNow} vs ${confirmed})`);
+
+    const gatedBefore = ctx.st.gated.length;
+    assert.strictEqual(ctx.w.buildOrder(), true, `${dir}/expired-${method}: the order composes`);
+    const out = await sendAndJudge(ctx, dir, `expired-${method}`, { card: method === 'card' });
+
+    const wire = ctx.st.charges[ctx.st.charges.length - 1];
+    assert.ok(wire && wire.url.includes(method === 'card' ? 'chargeOnlineOrder' : 'createOrder'),
+      `${dir}/expired-${method}: the ${method} endpoint answered`);
+    /* 🔴 THE CEILING MUST BE ON THE WIRE ALONGSIDE THE TOKEN. It is what the server falls back to when
+       the token turns out to be stale, and without it there is nothing to fall back TO. */
+    assert.strictEqual(typeof wire.expected_net_cents, 'number',
+      `${dir}/expired-${method}: 🔴 the send must carry its ceiling alongside the token — an expired token with no ceiling is an open door`);
+    assert.strictEqual(out.outcome, 'increase_sheet',
+      `${dir}/expired-${method}: 🔴 an expired token + a risen price must REFUSE, not charge the new number`);
+    assert.strictEqual(ctx.st.gated.length, gatedBefore,
+      `${dir}/expired-${method}: 🔴 …and nothing is charged`);
+  }
+  ok(`${dir}: 🔴 an EXPIRED token keeps its confirmation — a risen price is refused on both endpoints, not charged`);
+
+  /* ── CELL 14h: 🔴 A NET-INVARIANT REWARD — WHERE ONLY THE FINGERPRINT CAN TELL ────────────────
+     Both brands' rewards resolve to model add_free with discount_cents 0: the reward ADDS a free line
+     and a fiscal rebaja, and does not reduce the charged total. So a cart with the reward and the same
+     cart without it price to the SAME net — the amount is blind to the difference, by construction and
+     not by accident. The fingerprint is the only witness, which is the entire reason it hashes the
+     resolved reward's model and freeItems rather than just the cart.
+     Asserted end to end: a token signed for the reward-bearing cart must not authorise the same cart
+     with the reward removed, even though nothing about the money changed. */
+  {
+    const ctx = await boot(dir);
+    await publish(ctx, baseMenu(ctx.w));
+    const d = plainDish(ctx.w);
+    await addToCart(ctx, d);
+    const items = ctx.w.redeemCartItems();
+    const norm = normalizeCartForFingerprint(items, BRAND[dir].rid);
+
+    const raw = dir === 'la-musa-orders'
+      ? { type: 'points_ala_carte', items: [{ id: 'dimsum_01', qty: 1 }] }
+      : { type: 'free_pizza_choice', item_id: items[0].name };
+    const resolved = resolveReward(raw, items, BRAND[dir].rid);
+    assert.ok(resolved && resolved.model === 'add_free' && resolved.discount_cents === 0,
+      `${dir}/net-invariant: premise — the reward really is net-invariant (add_free, no discount)`);
+
+    /* 🔴 THE PREMISE THAT MAKES THIS CELL MEAN ANYTHING: with and without the reward, the money is
+       identical. If these ever differ the amount could distinguish them and the fingerprint would not
+       be the only witness — so it is asserted, not assumed. */
+    const withR = rewardNetCents(dir, ctx.st.menuNow, items);
+    const withoutR = rewardNetCents(dir, ctx.st.menuNow, items);
+    assert.strictEqual(withR, withoutR, `${dir}/net-invariant: premise — the net is the same either way`);
+
+    const fpWith = cartFingerprint(norm, resolved);
+    const fpWithout = cartFingerprint(norm, null);
+    assert.notStrictEqual(fpWith, fpWithout,
+      `${dir}/net-invariant: 🔴 the fingerprint MUST distinguish them — nothing else can`);
+
+    // A token issued for the reward-bearing cart, presented for the same cart WITHOUT the reward.
+    const tok = signQuoteToken({
+      quote_id: 'ni1', rid: BRAND[dir].rid, net_total_cents: withR, cart_fingerprint: fpWith,
+      issued_at: Date.now(), expires_at: Date.now() + 900000,
+    }, T9_SECRET);
+    const judged = judgeToken({ quote_token: tok, items }, BRAND[dir].rid, null);
+    assert.ok(judged.refuse && judged.refuse.reason === 'cart_mismatch',
+      `${dir}/net-invariant: 🔴 a reward-bound token must NOT authorise the reward-free cart — refused on the fingerprint, since the amount is identical`);
+    // …and the converse: presented WITH the reward it is honoured.
+    const okJudged = judgeToken({ quote_token: tok, items }, BRAND[dir].rid, resolved);
+    assert.ok(!okJudged.refuse && okJudged.signed,
+      `${dir}/net-invariant: non-vacuity — the same token IS honoured for the cart it describes`);
+    ok(`${dir}: 🔴 a net-invariant reward is distinguished by the FINGERPRINT alone — the amount cannot see it`);
+  }
+
   /* ── CELL 14f: THE CONFIRMED-NET MATRIX, ON BOTH MONEY ENDPOINTS ──────────────────────────────
      The three answers 1C can give, asserted on each charge path rather than on one and assumed for the
      other. Cash and card are DIFFERENT handlers with different bailouts — 1C T5 found a real defect on
@@ -890,8 +1018,12 @@ for (const dir of Object.keys(BRAND)) {
 
       const gatedBefore = ctx.st.gated.length;
       assert.strictEqual(ctx.w.buildOrder(), true, `${dir}/${method}-${label}: the order composes`);
-      if (method === 'card') { ctx.w.selectedPayment = 'online'; }
-      const out = await sendAndJudge(ctx, dir, `${method}-${label}`);
+      const out = await sendAndJudge(ctx, dir, `${method}-${label}`, { card: method === 'card' });
+      /* 🔴 THE ROW ASSERTS WHICH ENDPOINT ANSWERED. Without this the matrix can claim both paths while
+         sending everything to one, which is precisely what it was doing. */
+      const wire = ctx.st.charges[ctx.st.charges.length - 1];
+      assert.ok(wire && wire.url.includes(method === 'card' ? 'chargeOnlineOrder' : 'createOrder'),
+        `${dir}/${method}-${label}: 🔴 the ${method} row must reach ${method === 'card' ? 'chargeOnlineOrder' : 'createOrder'} (got ${wire && wire.url})`);
       assert.strictEqual(out.outcome, expect,
         `${dir}/${method}-${label}: 🔴 expected ${expect}, got ${out.outcome}`);
 

@@ -143,13 +143,26 @@
          deciding makes "this body carries exactly what THIS send vouches for" true by construction
          rather than by every caller remembering. */
       try { delete body.quote_token; } catch (_) { body.quote_token = undefined; }
+      try { delete body.expected_net_cents; } catch (_) { body.expected_net_cents = undefined; }
+
+      /* 🔴 THE CEILING RIDES ALONGSIDE THE TOKEN, ALWAYS — it is not an alternative to it.
+         A token can be perfectly valid when it is attached here and STALE by the time the server reads
+         it: the customer taps pay, the request is in flight, or they sat on the checkout step past the
+         issuance window. The server treats expiry as ordinary (it is — a clock, or a customer who went
+         to find their card) and falls back to whatever the request states it showed. If nothing is
+         stated there is nothing to fall back TO, and under grace the order charges the current price:
+         the founding displayed-vs-charged bug, arriving through the one door left open.
+         Sending both costs nothing. A token that verifies wins outright — the server's signed gate
+         never consults the ceiling — so this only ever matters in the case it exists for.
+         NOT the same as the recovery case: there a token the server has REJECTED must be cleared, and
+         the ceiling stands alone. Here a token that may merely go stale keeps the ceiling as its
+         floor. */
+      const haveCeiling = typeof expectedNetCents === 'number' && Number.isFinite(expectedNetCents)
+        && Math.floor(expectedNetCents) === expectedNetCents && expectedNetCents >= 0;
+      if (haveCeiling) body.expected_net_cents = expectedNetCents;
+
       if (attach(body, cartSig)) return 'signed';
-      if (typeof expectedNetCents === 'number' && Number.isFinite(expectedNetCents)
-          && Math.floor(expectedNetCents) === expectedNetCents && expectedNetCents >= 0) {
-        body.expected_net_cents = expectedNetCents;
-        return 'degraded';
-      }
-      return 'bare';
+      return haveCeiling ? 'degraded' : 'bare';
     }
 
     /* ── T8 REVISE: A RECOVERY MUST SUCCEED ON ITS OWN ───────────────────────────────────────────

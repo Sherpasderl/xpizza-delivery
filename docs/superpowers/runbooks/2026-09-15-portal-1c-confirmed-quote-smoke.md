@@ -13,7 +13,21 @@ the customer confirmed is refused instead of charged.
 | flag | where | effect |
 |---|---|---|
 | `QUOTE_TOKEN_SECRET` | functions env | absent ⇒ every quote issues **token-less**. Not an error — the client falls to the unsigned ceiling or to grace. |
-| `config/token_enforce` | RTDB, top-level | absent/false ⇒ **grace**: a token-less order behaves exactly as it does today. `true` ⇒ a token-less order is refused. |
+| `config/token_enforce` | RTDB, top-level | absent/false ⇒ **grace**: an order carrying no proof at all behaves exactly as it does today. `true` ⇒ an order carrying **neither** proof is refused. |
+
+**What enforce actually refuses, precisely.** It is not "orders without a token". An order may state
+what it showed in two ways, and either is answerable under enforcement:
+
+- a **signed token** — the server verifies it, checks the cart fingerprint, and charges its own
+  recompute up to that ceiling;
+- an **unsigned `expected_net_cents`** — no proof of issuance, but still a stated ceiling; the server
+  charges its own recompute up to it. An unsigned ceiling equal to the server's net is accepted under
+  enforcement, not refused.
+
+Enforce refuses only an order that states **neither** — nothing to compare the charge against. An
+**expired** token is not a refusal on its own either: expiry is ordinary (a customer left checkout
+open, a clock is off), so the order falls back to its stated ceiling exactly as a token-less one does.
+A **forged** signature is different and refuses in both modes; that is the one signal of tampering.
 
 `token_enforce` fails safe to **grace** on any read error, so a config outage degrades to pre-1C
 behaviour rather than refusing orders in both restaurants.
@@ -34,8 +48,10 @@ behaviour rather than refusing orders in both restaurants.
 
 4. **Watch, do not flip.** The functions log emits `quote_gate_confirmed` per accepted order with
    `confirmation: signed | unsigned | none`, and `quote_gate_price_increased` on a refusal.
-   - `none` is the number that must fall to ~0. It counts orders arriving with neither a token nor a
-     ceiling — i.e. clients that have not picked up step 3, plus any in-flight checkout from before it.
+   - `none` is the number that must fall to ~0. It counts orders arriving with **neither** proof —
+     clients that have not picked up step 3, in-flight checkouts from before it, and (until this ships)
+     any order whose token had expired with no ceiling behind it. These are exactly the orders
+     enforcement would refuse, which is why the flip waits on this number and not on a date.
    - `unsigned` settling above ~0 means quotes are issuing token-less: check `QUOTE_TOKEN_SECRET`.
    - `price_increased` is expected to be rare and is not a fault: it is a customer being asked to
      confirm a genuine increase. A sustained rate means the catalog is moving during checkouts.
@@ -52,8 +68,12 @@ behaviour rather than refusing orders in both restaurants.
    - for card, confirm the checkout page opens at that same amount.
 
 6. **Rollback** is the flag, not a redeploy: set `config/token_enforce` back to `false`. Instant, and
-   it returns the server to grace with the client unchanged. No function or form redeploy is needed to
-   recover.
+   no function or form redeploy is needed.
+
+   Be precise about what it restores: it makes a **neither-proof** order eligible to charge again, as
+   it does today. It does **not** disable the gates. A signed token is still verified, a stated ceiling
+   is still honoured, and a charge above either is still refused in grace — that is the whole point of
+   deploying in grace first. Rollback widens what is accepted; it does not switch off the protection.
 
 ## The money check
 
