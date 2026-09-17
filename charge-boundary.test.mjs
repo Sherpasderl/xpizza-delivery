@@ -183,5 +183,92 @@ for (const dir of Object.keys(BRAND)) {
   ok('the charge handlers read NO client-supplied money field — the total is recomputed, never accepted');
 }
 
+/* ══ 1C: THE TOKEN IS A CEILING, NEVER THE CHARGE ══════════════════════════════════════════════════
+   1B proved the server never takes a price FROM the client. 1C adds a field that looks, to a casual
+   reader, like exactly the thing 1B forbids: the client now sends a number (expected_net_cents) and a
+   signed token carrying another (net_total_cents). The whole money argument for 1C rests on those two
+   being CEILINGS — compared against, never charged — so this file, which exists to prove client
+   numbers cannot become money, is where that has to be shown.
+   Same discipline as everything above it: the payload comes out of a booted form's own serializer and
+   is tampered with afterwards, so what is proved is that the REAL payload's fields cannot move the
+   charge — not that a hand-built one happens not to. */
+{
+  const { gateConfirmedNet } = require('./token-gate');
+  const { signQuoteToken, cartFingerprint, normalizeCartForFingerprint } = require('./quote-token');
+  const { computeServerNet } = require('./compute-server-net');
+  const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./menu-pricing');
+  const SECRET = 'charge-boundary-1c';
+
+  for (const dir of Object.keys(BRAND)) {
+    const B = BRAND[dir];
+    const base = await realPayload(dir);
+    const tables = { restaurantId: B.rid, menu: MENU_BY_RESTAURANT[B.rid], extras: EXTRAS_BY_RESTAURANT[B.rid] };
+    const items = base.body.items;
+    const honest = computeServerNet({ items, rid: B.rid, tables }).net_total_cents;
+    assert.ok(honest > 0, `${dir}: premise — the real payload prices to a real net (${honest})`);
+
+    const mint = (netCents, cart = items, reward = null) => {
+      const norm = normalizeCartForFingerprint(cart, B.rid);
+      return signQuoteToken({
+        quote_id: 'cb1', rid: B.rid, net_total_cents: netCents,
+        cart_fingerprint: cartFingerprint(norm, reward),
+        issued_at: Date.now(), expires_at: Date.now() + 900000,
+      }, SECRET);
+    };
+    const gate = (over = {}) => gateConfirmedNet({
+      submittedCart: items, reward: null, rid: B.rid, tables, secret: SECRET, nowMs: Date.now(), ...over,
+    });
+
+    /* 🔴 A VALID TOKEN CLAIMING A HIGHER NUMBER DOES NOT RAISE THE CHARGE. This is the one that would
+       matter if the gate had been written the obvious way — "charge what was confirmed" — because a
+       token is client-held and a customer could keep an old, dearer one. The charge is the server's
+       recompute; the token only ever says how high it may go. */
+    {
+      const g = gate({ token: mint(honest + 50_000) });
+      assert.strictEqual(g.action, 'charge', `${dir}: a token above the server net still charges`);
+      assert.strictEqual(g.chargeNet, honest,
+        `${dir}: 🔴 a signed token claiming ${honest + 50_000} must NOT raise the charge above the server's ${honest}`);
+      assert.strictEqual(g.confirmedNet, honest + 50_000, `${dir}: …the ceiling is recorded, distinct from the charge`);
+    }
+    // …and one claiming a LOWER number cannot undercharge either: it refuses the sale instead.
+    {
+      const g = gate({ token: mint(honest - 1) });
+      assert.strictEqual(g.action, 'refuse_increase', `${dir}: 🔴 a token below the server net refuses — it never undercharges`);
+      assert.strictEqual(g.chargeNet, honest, `${dir}: …and reports the server's number`);
+    }
+    // The unsigned ceiling behaves identically in both directions.
+    for (const [label, expected, action] of [
+      ['an inflated unsigned ceiling', honest + 50_000, 'charge'],
+      ['a deflated unsigned ceiling', honest - 1, 'refuse_increase'],
+    ]) {
+      const g = gate({ expectedNetCents: expected });
+      assert.strictEqual(g.action, action, `${dir}: ${label} → ${action}`);
+      assert.strictEqual(g.chargeNet, honest, `${dir}: 🔴 ${label} must not move the charge off ${honest}`);
+    }
+
+    /* 🔴 TAMPERING WITH THE CART WHILE HOLDING A VALID TOKEN. The token is real and its ceiling is
+       generous; only the cart is edited. The fingerprint is what notices — and on la_musa a reward is
+       net-invariant, so the amount alone never could. */
+    {
+      const dearer = JSON.parse(JSON.stringify(items));
+      dearer.push(JSON.parse(JSON.stringify(items[0])));           // a second line the token never saw
+      const g = gateConfirmedNet({ token: mint(honest + 50_000), submittedCart: dearer, reward: null,
+        rid: B.rid, tables, secret: SECRET, nowMs: Date.now() });
+      assert.strictEqual(g.action, 'refuse_invalid', `${dir}: 🔴 a cart the token never described is refused`);
+      assert.strictEqual(g.reason, 'cart_mismatch', `${dir}: …on the fingerprint, not the amount`);
+    }
+    // …and the client's own money fields still cannot move it, token or no token.
+    {
+      const tampered = JSON.parse(JSON.stringify(items));
+      tampered.forEach((i) => { i.price = 1; i.subtotal = 1; i.extrasTotal = -9999; });
+      const g = gateConfirmedNet({ token: mint(honest + 50_000), submittedCart: tampered, reward: null,
+        rid: B.rid, tables, secret: SECRET, nowMs: Date.now() });
+      assert.ok(g.action === 'refuse_invalid' || g.chargeNet === honest,
+        `${dir}: 🔴 repriced client money fields cannot move the charge even with a valid token (${g.action}/${g.chargeNet})`);
+    }
+    ok(`${dir}: the confirmed-quote token is a CEILING — it can refuse a sale, it can never set the price`);
+  }
+}
+
 closeAll();
 console.log(`\n${count()} charge-boundary checks passed.`);

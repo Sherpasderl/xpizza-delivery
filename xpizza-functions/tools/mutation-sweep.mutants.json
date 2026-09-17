@@ -4588,5 +4588,73 @@
       "../confirm-quote-wiring.test.mjs"
     ],
     "kills_with": "the customer must agree ONCE"
+  },
+  {
+    "id": "b9-01",
+    "slice": "b9",
+    "label": "the gate charges the CONFIRMED ceiling instead of the server's recompute — a stale dear token overcharges",
+    "file": "../xpizza-functions/token-gate.js",
+    "from": "  return { action: 'charge', chargeNet: net.net_total_cents, confirmedNet: confirmed, reason: 'confirmed', quoteId: payload.quote_id || null, degraded: false };",
+    "to": "  return { action: 'charge', chargeNet: confirmed, confirmedNet: confirmed, reason: 'confirmed', quoteId: payload.quote_id || null, degraded: false };",
+    "command": [
+      "node",
+      "../charge-boundary.test.mjs"
+    ],
+    "kills_with": "must NOT raise the charge above the server's"
+  },
+  {
+    "id": "b9-02",
+    "slice": "b9",
+    "label": "the unsigned ceiling becomes the charge on the whole-flow path",
+    "file": "../xpizza-functions/token-gate.js",
+    "from": "      return { action: 'charge', chargeNet: net.net_total_cents, confirmedNet: expected, reason: 'confirmed_unsigned', quoteId: null, degraded: true };",
+    "to": "      return { action: 'charge', chargeNet: expected, confirmedNet: expected, reason: 'confirmed_unsigned', quoteId: null, degraded: true };",
+    "command": [
+      "node",
+      "../charge-boundary.test.mjs"
+    ],
+    "kills_with": "must not move the charge off"
+  },
+  {
+    "id": "b9-03",
+    "slice": "b9",
+    "label": "the cart fingerprint is not compared, so a token authorises a cart it never described",
+    "file": "../xpizza-functions/token-gate.js",
+    "from": "  if (cartFingerprint(norm, reward) !== payload.cart_fingerprint) {",
+    "to": "  if (false) {",
+    "command": [
+      "node",
+      "../charge-boundary.test.mjs"
+    ],
+    "kills_with": "a cart the token never described is refused"
+  },
+  {
+    "id": "b9-04",
+    "slice": "b9",
+    "label": "the send states NEITHER a token nor a ceiling — the 1B residual (34000 confirmed / 38000 charged) returns",
+    "file": "../xpizza-orders/form-confirm-quote.js",
+    "from": "      if (attach(body, cartSig)) return 'signed';\n      if (typeof expectedNetCents === 'number' && Number.isFinite(expectedNetCents)\n          && Math.floor(expectedNetCents) === expectedNetCents && expectedNetCents >= 0) {\n        body.expected_net_cents = expectedNetCents;\n        return 'degraded';\n      }",
+    "to": "      // the send states nothing at all",
+    "command": [
+      "node",
+      "../whole-flow.test.mjs"
+    ],
+    "kills_with": [
+      "CHARGED",
+      "the send must STATE what was confirmed"
+    ]
+  },
+  {
+    "id": "b9-05",
+    "slice": "b9",
+    "label": "a price increase is charged instead of refused — the residual, reopened at the gate",
+    "file": "../xpizza-functions/token-gate.js",
+    "from": "  if (net.net_total_cents > confirmed) {",
+    "to": "  if (false) {",
+    "command": [
+      "node",
+      "../charge-boundary.test.mjs"
+    ],
+    "kills_with": "a token below the server net refuses"
   }
 ]

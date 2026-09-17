@@ -127,7 +127,7 @@ async function boot(dir) {
       const token = norm ? signQuoteToken({
         quote_id: 'rq' + st.redeemQuotes, rid: B.rid, net_total_cents: cents,
         cart_fingerprint: cartFingerprint(norm, body.redeem || st.rewardPayload || null),
-        iat: Date.now(), exp: Date.now() + 15 * 60 * 1000,
+        issued_at: Date.now(), expires_at: Date.now() + 15 * 60 * 1000,   // the REAL field names — iat/exp fail verification and fall to grace
       }, T9_SECRET) : null;
       return res({ ...st.redeemReply, ok: true, total_cents: cents, net_total_cents: cents,
         ...(token ? { quote_token: token } : {}) });
@@ -142,7 +142,7 @@ async function boot(dir) {
       const token = norm ? signQuoteToken({
         quote_id: 'q' + (st.quotes), rid: B.rid, net_total_cents: cents,
         cart_fingerprint: cartFingerprint(norm, null),
-        iat: Date.now(), exp: Date.now() + 15 * 60 * 1000,
+        issued_at: Date.now(), expires_at: Date.now() + 15 * 60 * 1000,   // the REAL field names — iat/exp fail verification and fall to grace
       }, T9_SECRET) : null;
       return res({ ok: true, total_cents: cents, net_total_cents: cents,
         ...(token ? { quote_token: token } : {}) });
