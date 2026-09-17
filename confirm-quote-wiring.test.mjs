@@ -574,7 +574,8 @@ for (const dir of Object.keys(BRAND)) {
     }
     assert.strictEqual(confirmations, 1,
       `${dir}: 🔴 the customer must agree ONCE — a repeating sheet is the defect this recovery exists to avoid`);
-    assert.strictEqual(sent.length, 2, `${dir}: one original send and one successful resend`);
+    assert.strictEqual(sent.length, 2,
+      `${dir}: 🔴 one original send and one successful resend — a recovery that never resends dead-ends the customer`);
     assert.ok(!('quote_token' in sent[1]),
       `${dir}: 🔴 the resend must not carry the token the server just rejected — the signed gate takes precedence over the ceiling`);
     assert.strictEqual(sent[1].expected_net_cents, NEW,
@@ -609,7 +610,8 @@ for (const dir of Object.keys(BRAND)) {
     assert.ok(w.buildOrder(), `${dir}: premise — the cart composes`);
     const p = w.submitOrder('confirmed'); if (p && p.catch) p.catch(() => {});
     await settle(); await settle();
-    assert.strictEqual(sent.length, 2, `${dir}: it resends once`);
+    assert.strictEqual(sent.length, 2,
+      `${dir}: 🔴 it re-quotes and resends by itself — a misclassified stale quote loses this recovery entirely`);
     assert.ok(!('quote_token' in sent[1]), `${dir}: 🔴 …without the token that was just rejected`);
     assert.ok(!w.document.querySelector('.cq-sheet'), `${dir}: and shows no sheet`);
     const msg = (w.document.getElementById('sending-msg') || {}).textContent || '';
@@ -668,6 +670,87 @@ for (const dir of Object.keys(BRAND)) {
       assert.strictEqual(sent[1].order_id, firstId, `${dir}: a non-reward card order reuses its id`);
     }
     ok(`${dir}: the card path shows the sheet and resends correctly (reward=${withReward})`);
+  }
+
+  // ── 🔴 THE CARD PATH WITH A RE-QUOTE THAT NEVER LANDS ──────────────────────────────────────────
+  // This is the exact shape the P1 bug had, on the payment method that had no runtime coverage at all
+  // when it was written. The cells above resolve card quotes immediately, which quietly hides the
+  // thing being claimed: that the recovery stands on its own ceiling rather than on a refresh landing
+  // in time. Here every quote after the first HANGS, so if the resend needed one it can never succeed.
+  for (const withReward of [false, true]) {
+    const w = loadForm(dir);
+    const sent = []; const idle = new Promise(() => {});
+    const OLD = 29900, NEW = 31900;
+    let quotes = 0;
+    w.__respond = (url, init) => {
+      if (url.includes('/menu/')) return res(envelope(B.rid, { dishes: [], extras: [] }));
+      if (url.includes('quoteOrder')) {
+        quotes += 1;
+        // the FIRST quote signs the order; every later one is held open forever
+        return quotes === 1 ? res({ ok: true, total_cents: OLD, net_total_cents: OLD, quote_token: TOKEN }) : idle;
+      }
+      if (url.includes('chargeOnlineOrder')) {
+        const b = JSON.parse((init && init.body) || '{}');
+        sent.push(b);
+        return (b.expected_net_cents === NEW && !b.quote_token)
+          ? res({ ok: true, checkout_url: 'https://pay/x', order_id: b.order_id })
+          : rej({ error: 'price_increased', net_total_cents: NEW });
+      }
+      return idle;
+    };
+    await settle();
+    const live = w.liveMenuGlobalGet('MENU');
+    const dish = live.find((d) => d.price > 0 && !d.variantOf && !(w.itemIsLauncher && w.itemIsLauncher(d)));
+    w.chg(dish.id, 1);
+    w.__ACCOUNT = w.__ACCOUNT || {};
+    if (withReward) {
+      w.__ACCOUNT.getRedeemPayload = () => ({ type: 'free_pizza_choice', item_id: 'x', name: 'X' });
+      w.__ACCOUNT.customerIdToken = () => Promise.resolve('id-token-for-test');
+      w.__ACCOUNT.getRedeemQuoteTotalCents = () => OLD;
+      w.__ACCOUNT.redeemQuoteMatches = () => true;
+    }
+    w.requestServerQuote(); await settle();
+    assert.ok(w.buildOrder(), `${dir}: premise — the cart composes (held re-quote, reward=${withReward})`);
+    const p = w.processPixelPay(); if (p && p.catch) p.catch(() => {});
+    await settle(); await settle();
+
+    const sheet = w.document.querySelector('.cq-sheet');
+    assert.ok(sheet, `${dir}: premise — the increase sheet appeared (held re-quote, reward=${withReward})`);
+    const firstId = sent[0].order_id;
+    const quotesBefore = quotes;
+    const bs = [...sheet.querySelectorAll('button')]; bs[bs.length - 1].click();
+    await settle(); await settle();
+
+    /* 🔴 THE PREMISE, AND A DOCUMENTED GAP. On a plain cart the recovery's background re-quote is
+       issued and left hanging — exactly the race the P1 bug lost. On a REWARD cart it is not issued at
+       all: requestServerQuote returns early whenever a redemption owns the total, so the reward
+       refresh does not force. That is a real hole in the refresh path (flagged to the advisor, not
+       fixed here) and it makes this cell stronger rather than weaker: the reward recovery below
+       succeeds with no re-quote even attempted, which is the whole claim — the resend stands on its
+       own ceiling. Asserted per case so neither behaviour can change silently. */
+    if (withReward) {
+      assert.strictEqual(quotes, quotesBefore,
+        `${dir}: a reward-active cart issues NO re-quote (requestServerQuote returns early) — recorded, not endorsed`);
+    } else {
+      assert.ok(quotes > quotesBefore, `${dir}: a re-quote WAS attempted, and it is still hanging`);
+    }
+    assert.strictEqual(sent.length, 2,
+      `${dir}: 🔴 the resend must go out without waiting on a re-quote that never lands (reward=${withReward})`);
+    assert.strictEqual(sent[1].expected_net_cents, NEW, `${dir}: standing behind the agreed number`);
+    assert.ok(!('quote_token' in sent[1]), `${dir}: and not the token the server just rejected`);
+    assert.ok(!w.document.querySelector('.cq-sheet'),
+      `${dir}: 🔴 ONE confirmation — a second sheet here is the loop this revise exists to close`);
+    const msg = ((w.document.getElementById('pay-msg') || w.document.getElementById('sending-msg') || {}).textContent) || '';
+    assert.ok(!/No pudimos|Cancelaste/i.test(msg),
+      `${dir}: …and no fallback banner (${msg.slice(0, 50)})`);
+    if (withReward) {
+      assert.ok(sent[0].redeem, `${dir}: premise — the order carried a reward`);
+      assert.notStrictEqual(sent[1].order_id, firstId,
+        `${dir}: 🔴 a reward card order mints a FRESH order_id — the hold refuses the old one`);
+    } else {
+      assert.strictEqual(sent[1].order_id, firstId, `${dir}: a non-reward card order reuses its id`);
+    }
+    ok(`${dir}: the card recovery succeeds with the re-quote held open (reward=${withReward})`);
   }
 }
 

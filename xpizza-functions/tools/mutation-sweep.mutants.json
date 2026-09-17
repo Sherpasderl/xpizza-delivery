@@ -4364,7 +4364,7 @@
   {
     "id": "c8-x1",
     "slice": "c8",
-    "label": "cash: rejections are never handled — a price increase is charged silently",
+    "label": "cash: a rejection is never recovered — the resend never happens and the customer is dead-ended",
     "file": "../xpizza-orders/index.html",
     "from": "\n        if(__rec && __rec.handled){",
     "to": "\n        if(false){",
@@ -4374,8 +4374,7 @@
     ],
     "kills_with": [
       "confirming must actually resend the order",
-      "a price increase MUST be shown",
-      "it re-quotes and resends by itself"
+      "one original send and one successful resend"
     ]
   },
   {
@@ -4394,7 +4393,7 @@
   {
     "id": "c8-m1",
     "slice": "c8",
-    "label": "la_musa: cash: rejections are never handled — a price increase is charged silently",
+    "label": "la_musa: cash: a rejection is never recovered — the resend never happens and the customer is dead-ended",
     "file": "../la-musa-orders/index.html",
     "from": "\n        if(__rec && __rec.handled){",
     "to": "\n        if(false){",
@@ -4404,8 +4403,7 @@
     ],
     "kills_with": [
       "confirming must actually resend the order",
-      "a price increase MUST be shown",
-      "it re-quotes and resends by itself"
+      "one original send and one successful resend"
     ]
   },
   {
@@ -4437,7 +4435,7 @@
   {
     "id": "c8-s2",
     "slice": "c8",
-    "label": "a stale fingerprint is shown to the customer as a price change",
+    "label": "a stale quote is misclassified as an increase, so its silent recovery never happens",
     "file": "../xpizza-orders/form-confirm-quote.js",
     "from": "      if (err.error === 'quote_required' || err.error === 'quote_invalid') return 'stale_quote';",
     "to": "      if (err.error === 'quote_required' || err.error === 'quote_invalid') return 'price_increase';",
@@ -4445,7 +4443,10 @@
       "node",
       "../confirm-quote-wiring.test.mjs"
     ],
-    "kills_with": "it re-quotes and resends by itself"
+    "kills_with": [
+      "it re-quotes and resends by itself",
+      "without the token that was just rejected"
+    ]
   },
   {
     "id": "c8-s3",
