@@ -3502,6 +3502,7 @@ async function processPayment(){
   if(window.__paySubmitting) return;            // Layer 1: ignore rapid re-taps while a submit is in flight
   window.__paySubmitting = true;
   window.__conflictHealed = false;              // F4: this user-initiated submit gets exactly ONE auto-heal on a 409 order_conflict
+  window.__cqRequoted = false;                  // 1C T8: …and exactly ONE silent re-quote+resend on a stale quote
   const _payCta = document.getElementById('btn-pay'); if(_payCta) _payCta.disabled = true;
   try {
   // Logged-in profile-first gate (User Profiles) — block a logged-in DELIVERY submit until the profile is
@@ -3705,12 +3706,18 @@ function orderIdForThisCart(){
    body whose cart has moved on simply goes token-less (grace / the unsigned floor), which is the safe
    direction and the one this module's hard rule already demands. */
 var __orderSigAtBuild = null;
+var __orderNetAtBuild = null;   // 1C T8 — the displayed net that backs a degraded send
 function buildOrder(){
   const _conflicts = cartConflicts();
   if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }
   // Guarded like every other call into this module: a signature that cannot be computed means the
   // body simply travels token-less (grace / the unsigned floor), which is the safe direction.
   try{ __orderSigAtBuild = confirmQuoteCartSig(); }catch(_){ __orderSigAtBuild = null; }   // 1C T7 revise — stamped with THIS body's cart+reward
+  /* 1C T8 — and the net the customer is LOOKING AT as they confirm, in cents, captured at the same
+     moment and for the same reason. If the token turns out to be stale at the send, this travels as an
+     unsigned ceiling (T6's degraded floor) so the order still goes through immediately instead of
+     blocking on a re-quote. Read at the send it would describe a cart the body is not. */
+  try{ __orderNetAtBuild = Math.round(redeemAdjustedTotal() * 100); }catch(_){ __orderNetAtBuild = null; }
   const items=cartItems();
   const total=calcTotal();
   const orderId = orderIdForThisCart();   // Layer 1: reuse the id while the cart is unchanged; folds __resumeOrderId; content change / completion mints fresh
@@ -3814,7 +3821,7 @@ async function processPixelPay(){
        send is byte-identical to the one that shipped before 1C, which is the whole premise of the
        grace deploy. Attaching a stale-for-cart token would be worse than attaching none: the server
        would 409 on its fingerprint, turning an order that was never in doubt into a refusal. */
-    try{ if(__confirmQuote) __confirmQuote.attach(currentOrder, __orderSigAtBuild); }catch(_){}
+    try{ if(__confirmQuote) __confirmQuote.send(currentOrder, __orderSigAtBuild, __orderNetAtBuild); }catch(_){}
     const res = await fetch(CHARGEORDER_URL, {
       method:'POST',
       headers: Object.assign(
@@ -3862,6 +3869,44 @@ async function processPixelPay(){
     // F4 self-heal (online): chargeOnlineOrder refused this order_id — a different cart/total on a reused id
     // ("Order conflict"), or the order was cancelled/closed ("Order closed"). No NEW charge was created, so clear
     // the ids, mint a fresh one, and retry ONCE (guarded) instead of dead-ending on the generic "Revisá tus datos".
+    /* ── 1C TASK 8 — THE ONLY VISIBLE FRICTION, AND EVERYTHING THAT MUST STAY INVISIBLE ────────
+       price_increased is the one answer worth interrupting someone for: the number moved UP and
+       they have not agreed to the new one. A DROP never lands here at all — the server charges the
+       lower amount and returns 200 — so the silence on a drop is not code, it is the absence of
+       this branch, and that is deliberate.
+       quote_invalid / quote_required mean a bookkeeping mismatch, not a price change: the
+       fingerprint no longer lines up, or a token was missing under enforcement. Nothing to tell
+       the customer, so it re-quotes and resends ONCE, guarded against looping.
+       A REWARD-BEARING ORDER CANNOT RETRY ITS OWN order_id after an increase: the server's hold is
+       bound to a fingerprint that includes the amount, so the same id answers reservation_conflict
+       and fails closed. The recovery is a NEW order — the same self-heal the order_conflict branch
+       above performs, for the same reason: a 409 proves nothing was created. */
+    var __cqKind = null;
+    try{ __cqKind = __confirmQuote ? __confirmQuote.classify(cfg) : null; }catch(_){ __cqKind = null; }
+    if(__cqKind === 'stale_quote'){
+      if(!window.__cqRequoted){
+        window.__cqRequoted = true;
+        try{ requestServerQuote(true); }catch(_){}
+        orderSubmitting = false;
+        return processPixelPay();              // silent: no sheet, no fallback banner
+      }
+    }
+    if(__cqKind === 'price_increase'){
+      var __newNet = (cfg && typeof cfg.net_total_cents === 'number') ? cfg.net_total_cents : null;
+      var __oldNet = __orderNetAtBuild;
+      if(__newNet !== null && __oldNet !== null && typeof confirmPriceSheet === 'function'){
+        orderSubmitting = false;
+        return confirmPriceSheet({ oldCents: __oldNet, newCents: __newNet }).then(function(okNew){
+          if(!okNew){ return paymentFallback('Cancelaste el cambio de precio.'); }
+          try{ requestServerQuote(true); }catch(_){}
+          if(currentOrder && currentOrder.redeem){
+            window.__pendingOrder = null; window.__resumeOrderId = null;
+            currentOrder.order_id = genOrderId();
+          }
+          return processPixelPay();
+        });
+      }
+    }
     if(res.status===409 && cfg && (cfg.error==='Order conflict' || cfg.error==='Order closed')){
       if(!window.__conflictHealed){
         window.__conflictHealed = true;
@@ -4167,7 +4212,7 @@ async function submitOrder(paymentStatus){
          send is byte-identical to the one that shipped before 1C, which is the whole premise of the
          grace deploy. Attaching a stale-for-cart token would be worse than attaching none: the server
          would 409 on its fingerprint, turning an order that was never in doubt into a refusal. */
-      try{ if(__confirmQuote) __confirmQuote.attach(currentOrder, __orderSigAtBuild); }catch(_){}
+      try{ if(__confirmQuote) __confirmQuote.send(currentOrder, __orderSigAtBuild, __orderNetAtBuild); }catch(_){}
       const res = await fetch(CREATEORDER_URL,{
         method:'POST',
         headers: Object.assign(
@@ -4203,6 +4248,44 @@ async function submitOrder(paymentStatus){
         // F1/F4 self-heal: the server refused to idempotent-return this order_id (method/state/content conflict —
         // e.g. a cash re-submit landing on an abandoned ONLINE order_id). A 409 proves NOTHING was created for that
         // id, so clear the ids, mint a FRESH one, and resubmit ONCE (never a loop — __conflictHealed guards it).
+        /* ── 1C TASK 8 — THE ONLY VISIBLE FRICTION, AND EVERYTHING THAT MUST STAY INVISIBLE ────────
+           price_increased is the one answer worth interrupting someone for: the number moved UP and
+           they have not agreed to the new one. A DROP never lands here at all — the server charges the
+           lower amount and returns 200 — so the silence on a drop is not code, it is the absence of
+           this branch, and that is deliberate.
+           quote_invalid / quote_required mean a bookkeeping mismatch, not a price change: the
+           fingerprint no longer lines up, or a token was missing under enforcement. Nothing to tell
+           the customer, so it re-quotes and resends ONCE, guarded against looping.
+           A REWARD-BEARING ORDER CANNOT RETRY ITS OWN order_id after an increase: the server's hold is
+           bound to a fingerprint that includes the amount, so the same id answers reservation_conflict
+           and fails closed. The recovery is a NEW order — the same self-heal the order_conflict branch
+           above performs, for the same reason: a 409 proves nothing was created. */
+        var __cqKind = null;
+        try{ __cqKind = __confirmQuote ? __confirmQuote.classify(err) : null; }catch(_){ __cqKind = null; }
+        if(__cqKind === 'stale_quote'){
+          if(!window.__cqRequoted){
+            window.__cqRequoted = true;
+            try{ requestServerQuote(true); }catch(_){}
+            orderSubmitting = false;
+            return submitOrder(paymentStatus);                            // silent: no sheet, no message
+          }
+        }
+        if(__cqKind === 'price_increase'){
+          var __newNet = (err && typeof err.net_total_cents === 'number') ? err.net_total_cents : null;
+          var __oldNet = __orderNetAtBuild;
+          if(__newNet !== null && __oldNet !== null && typeof confirmPriceSheet === 'function'){
+            orderSubmitting = false;
+            return confirmPriceSheet({ oldCents: __oldNet, newCents: __newNet }).then(function(okNew){
+              if(!okNew){ return; }                                        // declined — the cart is untouched
+              try{ requestServerQuote(true); }catch(_){}                   // a fresh token for the NEW price
+              if(currentOrder && currentOrder.redeem){                     // reward → the server cannot reuse this id
+                window.__pendingOrder = null; window.__resumeOrderId = null;
+                currentOrder.order_id = genOrderId();
+              }
+              return submitOrder(paymentStatus);
+            });
+          }
+        }
         if(err && err.error === 'order_conflict'){
           if(!window.__conflictHealed){
             window.__conflictHealed = true;

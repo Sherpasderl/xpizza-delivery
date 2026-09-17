@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
-const { createConfirmQuote } = createRequire(import.meta.url)('./form-confirm-quote.js');
+const { createConfirmQuote, confirmPriceSheet } = createRequire(import.meta.url)('./form-confirm-quote.js');
+const { JSDOM } = createRequire(import.meta.url)('/Users/xavierlacayo/Downloads/xpizza-1b/xpizza-functions/node_modules/jsdom');
 
 const mk = (over = {}) => {
   const calls = { requote: 0, set: 0, clear: 0 };
@@ -126,4 +127,41 @@ test('reset drops the token and the timer together', () => {
   q.reset();
   assert.strictEqual(q.state('CART-A').hasToken, false);
   assert.strictEqual(calls.clear, 1);
+});
+
+test('🔴 the sheet never parses its input as markup, whatever it is handed', () => {
+  /* The amounts reaching this sheet today are numbers the caller has already type-checked, so an
+     innerHTML version would look identical in every real flow — which is exactly why this is asserted
+     at the MODULE boundary instead of through the form. The guarantee belongs here: a sheet that is
+     safe only because its callers are careful is one refactor away from not being safe. */
+  const dom = new JSDOM('<body></body>');
+  const doc = dom.window.document;
+  const hostile = '<img src=x onerror="window.__pwned=1">';
+  confirmPriceSheet({ document: doc, oldCents: 1, newCents: 2, formatMoney: () => hostile });
+  const sheet = doc.querySelector('.cq-sheet');
+  assert.ok(sheet, 'premise — the sheet rendered');
+  assert.strictEqual(doc.querySelectorAll('img').length, 0, '🔴 the hostile string became an element');
+  assert.strictEqual(dom.window.__pwned, undefined, '…and nothing ran');
+  assert.ok(sheet.textContent.includes(hostile), 'it is shown as literal text, which is the correct outcome');
+});
+
+test('the sheet resolves once, whichever way it is dismissed', async () => {
+  const dom = new JSDOM('<body></body>');
+  const doc = dom.window.document;
+  // A double-tap on Confirmar must not resend twice — the second click is ignored.
+  const p = confirmPriceSheet({ document: doc, oldCents: 29900, newCents: 31900 });
+  const buttons = [...doc.querySelectorAll('.cq-sheet button')];
+  buttons[buttons.length - 1].click();
+  buttons[buttons.length - 1].click();
+  assert.strictEqual(await p, true);
+  assert.ok(!doc.querySelector('.cq-sheet'), 'and it removes itself');
+
+  const p2 = confirmPriceSheet({ document: doc, oldCents: 1, newCents: 2 });
+  doc.querySelectorAll('.cq-sheet button')[0].click();
+  assert.strictEqual(await p2, false, 'Cancelar resolves false');
+});
+
+test('the sheet degrades to "not confirmed" when there is no document to draw on', async () => {
+  assert.strictEqual(await confirmPriceSheet({ document: null }), false,
+    'no DOM must mean no silent confirmation of a higher price');
 });

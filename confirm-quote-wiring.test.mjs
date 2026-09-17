@@ -323,5 +323,215 @@ for (const dir of Object.keys(BRAND)) {
   }
 }
 
+// The shared harness's res() is 200-only; the T8 paths are all driven by 4xx answers, so a local
+// rejecting response is needed. Same shape, different status.
+const rej = (body, status = 409) => Promise.resolve({
+  ok: false, status,
+  headers: { get: () => null },
+  json: () => Promise.resolve(body),
+});
+
+// ══ T8 — THE VISIBLE LAYER ═══════════════════════════════════════════════════════════════════════
+// The hard rule in one sentence: a genuine price increase is the ONLY thing the customer ever sees.
+// Drops, expiry, quote outages and stale fingerprints are all recovered without a pixel changing, so
+// most of what follows asserts that NOTHING appeared.
+for (const dir of Object.keys(BRAND)) {
+  console.log(`\n══ ${dir} (T8) ══`);
+  const B = BRAND[dir];
+
+  // Boot, seed a cart, and answer the charge however the case needs. Returns every body sent.
+  async function order(over = {}) {
+    const { reply, token = TOKEN, quoteOk = true } = over;
+    const w = loadForm(dir);
+    const sent = []; const idle = new Promise(() => {});
+    let nth = 0;
+    w.__respond = (url, init) => {
+      if (url.includes('/menu/')) return res(envelope(B.rid, { dishes: [], extras: [] }));
+      if (url.includes('quoteOrder')) {
+        nth += 1;
+        if (!quoteOk) return res({ ok: false });
+        return res({ ok: true, total_cents: 1, net_total_cents: 1, ...(token ? { quote_token: token + '-' + nth } : {}) });
+      }
+      if (CHARGE_RE.test(url)) { sent.push(JSON.parse((init && init.body) || '{}')); return reply(sent.length); }
+      return idle;
+    };
+    await settle();
+    const live = w.liveMenuGlobalGet('MENU');
+    const dish = live.find((d) => d.price > 0 && !d.variantOf && !(w.itemIsLauncher && w.itemIsLauncher(d)));
+    w.chg(dish.id, 1);
+    w.requestServerQuote(); await settle();
+    assert.ok(w.buildOrder(), `${dir}: premise — the cart composes`);
+    return { w, sent, dish };
+  }
+  const sheetOf = (w) => w.document.querySelector('.cq-sheet');
+  const ok200 = () => res({ ok: true });
+
+  // ── 🔴 A GENUINE INCREASE IS THE ONE THING THE CUSTOMER SEES ───────────────────────────────────
+  {
+    const NEW = 31900;
+    const { w, sent } = await order({ reply: (n) => n === 1
+      ? rej({ error: 'price_increased', net_total_cents: NEW })
+      : ok200() });
+    // NOT awaited: while a sheet is open submitOrder is waiting on the customer, so awaiting it
+    // here would deadlock the test against its own click.
+    const pending = w.submitOrder('confirmed'); if (pending && pending.catch) pending.catch(() => {});
+    await settle();
+    const sheet = sheetOf(w);
+    assert.ok(sheet, `${dir}: 🔴 a price increase MUST be shown — silently charging more is the one thing this cannot do`);
+    const copy = sheet.textContent.replace(/\s+/g, ' ');
+    assert.ok(copy.includes('319.00'), `${dir}: …naming the NEW price from the server (${copy})`);
+    assert.ok(/precio/i.test(copy), `${dir}: …in words the customer can act on`);
+    assert.ok(!/<|&lt;script/i.test(sheet.innerHTML.replace(/<\/?(div|span|button|svg|path)[^>]*>/g, '')),
+      `${dir}: the sheet carries no markup beyond its own chrome`);
+    assert.strictEqual(sent.length, 1, `${dir}: nothing is re-sent until the customer agrees`);
+
+    // …and a second tap resends, successfully.
+    const buttons = [...sheet.querySelectorAll('button')];
+    buttons[buttons.length - 1].click();
+    await settle(); await settle();
+    assert.strictEqual(sent.length, 2, `${dir}: 🔴 confirming must actually resend the order`);
+    assert.ok(!sheetOf(w), `${dir}: …and the sheet is gone`);
+    ok(`${dir}: a price increase shows the sheet with the new price, and confirming resends`);
+  }
+
+  // ── 🔴 DECLINING CHANGES NOTHING ───────────────────────────────────────────────────────────────
+  {
+    const { w, sent } = await order({ reply: () => rej({ error: 'price_increased', net_total_cents: 31900 }) });
+    // NOT awaited: while a sheet is open submitOrder is waiting on the customer, so awaiting it
+    // here would deadlock the test against its own click.
+    const pending = w.submitOrder('confirmed'); if (pending && pending.catch) pending.catch(() => {});
+    await settle();
+    const sheet = sheetOf(w);
+    assert.ok(sheet, `${dir}: premise — the sheet appeared`);
+    sheet.querySelectorAll('button')[0].click();          // Cancelar
+    await settle(); await settle();
+    assert.strictEqual(sent.length, 1, `${dir}: declining must not send anything`);
+    assert.ok(!sheetOf(w), `${dir}: …and dismisses the sheet`);
+    assert.ok(w.cartItems().length > 0, `${dir}: …leaving the cart intact so they can decide again`);
+    ok(`${dir}: declining the new price sends nothing and keeps the cart`);
+  }
+
+  // ── 🔴 A PRICE DROP IS SILENT ──────────────────────────────────────────────────────────────────
+  // The server charges the lower amount and answers 200; the silence is the absence of any branch.
+  {
+    const { w, sent } = await order({ reply: () => ok200() });
+    // NOT awaited: while a sheet is open submitOrder is waiting on the customer, so awaiting it
+    // here would deadlock the test against its own click.
+    const pending = w.submitOrder('confirmed'); if (pending && pending.catch) pending.catch(() => {});
+    await settle();
+    assert.ok(!sheetOf(w), `${dir}: 🔴 a drop must never interrupt anyone`);
+    assert.strictEqual(sent.length, 1, `${dir}: …and is charged on the first send`);
+    ok(`${dir}: a price drop completes silently — no sheet, one send`);
+  }
+
+  // ── 🔴 A STALE FINGERPRINT RECOVERS SILENTLY, ONCE ─────────────────────────────────────────────
+  {
+    const { w, sent } = await order({ reply: (n) => n === 1 ? rej({ error: 'quote_invalid' }) : ok200() });
+    // NOT awaited: while a sheet is open submitOrder is waiting on the customer, so awaiting it
+    // here would deadlock the test against its own click.
+    const pending = w.submitOrder('confirmed'); if (pending && pending.catch) pending.catch(() => {});
+    await settle(); await settle();
+    assert.ok(!sheetOf(w), `${dir}: 🔴 a bookkeeping mismatch is not the customer's problem — no sheet`);
+    assert.strictEqual(sent.length, 2, `${dir}: …it re-quotes and resends by itself`);
+    ok(`${dir}: a stale quote recovers silently with one resend`);
+  }
+  // …and exactly once: a server that keeps refusing must not loop.
+  {
+    const { w, sent } = await order({ reply: () => rej({ error: 'quote_invalid' }) });
+    // NOT awaited: while a sheet is open submitOrder is waiting on the customer, so awaiting it
+    // here would deadlock the test against its own click.
+    const pending = w.submitOrder('confirmed'); if (pending && pending.catch) pending.catch(() => {});
+    await settle(); await settle(); await settle();
+    assert.strictEqual(sent.length, 2, `${dir}: 🔴 the silent retry must fire ONCE, never loop`);
+    ok(`${dir}: a persistently stale quote retries exactly once`);
+  }
+
+  // ── 🔴 A QUOTE OUTAGE SENDS THE DEGRADED FLOOR, NEVER BLOCKS ───────────────────────────────────
+  // No token to be had. The body carries the net the customer was shown as an unsigned CEILING — T6
+  // charges its own recompute against it, so this number can refuse a sale but never set a price.
+  {
+    const { w, sent } = await order({ reply: () => ok200(), quoteOk: false });
+    // NOT awaited: while a sheet is open submitOrder is waiting on the customer, so awaiting it
+    // here would deadlock the test against its own click.
+    const pending = w.submitOrder('confirmed'); if (pending && pending.catch) pending.catch(() => {});
+    await settle();
+    assert.strictEqual(sent.length, 1, `${dir}: 🔴 a quote outage must not block the order`);
+    assert.ok(!('quote_token' in sent[0]), `${dir}: …there is no token to send`);
+    assert.strictEqual(typeof sent[0].expected_net_cents, 'number',
+      `${dir}: 🔴 …so the displayed net travels as the unsigned ceiling instead`);
+    assert.ok(sent[0].expected_net_cents > 0, `${dir}: …and it is a real figure`);
+    assert.ok(!sheetOf(w), `${dir}: …with nothing shown to the customer`);
+    ok(`${dir}: a quote outage sends expected_net_cents immediately and shows nothing (${sent[0].expected_net_cents})`);
+  }
+
+  // ── 🔴 A REWARD ORDER RECOVERS VIA A NEW order_id ──────────────────────────────────────────────
+  // The server's reward hold binds a fingerprint that includes the amount, so the same id answers
+  // reservation_conflict and fails closed. Retrying the same id would strand the customer's points.
+  {
+    const { w, sent } = await order({ reply: (n) => n === 1
+      ? rej({ error: 'price_increased', net_total_cents: 31900 })
+      : ok200() });
+    // NOT awaited: while a sheet is open submitOrder is waiting on the customer, so awaiting it
+    // here would deadlock the test against its own click.
+    const pending = w.submitOrder('confirmed'); if (pending && pending.catch) pending.catch(() => {});
+    await settle();
+    const sheet = sheetOf(w);
+    assert.ok(sheet, `${dir}: premise — the increase sheet appeared`);
+    const firstId = sent[0].order_id;
+    const bs = [...sheet.querySelectorAll('button')]; bs[bs.length - 1].click();
+    await settle(); await settle();
+    assert.strictEqual(sent.length, 2, `${dir}: premise — it resent`);
+    // Without a reward the id is REUSED (the server idempotent-returns it); the reward case is below.
+    assert.strictEqual(sent[1].order_id, firstId,
+      `${dir}: a non-reward order reuses its id — the server idempotent-returns it`);
+    ok(`${dir}: a non-reward increase resends on the SAME order_id`);
+  }
+
+  // ── 🔴 …BUT A REWARD ORDER MUST MINT A FRESH ONE ───────────────────────────────────────────────
+  // Driven through the real __ACCOUNT seam buildOrder reads, so currentOrder.redeem is set the way a
+  // real reward sets it — not by reaching into the form's internals.
+  {
+    const w = loadForm(dir);
+    const sent = []; const idle = new Promise(() => {});
+    w.__respond = (url, init) => {
+      if (url.includes('/menu/')) return res(envelope(B.rid, { dishes: [], extras: [] }));
+      if (url.includes('quoteOrder')) return res({ ok: true, total_cents: 1, net_total_cents: 1, quote_token: TOKEN });
+      if (CHARGE_RE.test(url)) {
+        sent.push(JSON.parse((init && init.body) || '{}'));
+        return sent.length === 1 ? rej({ error: 'price_increased', net_total_cents: 31900 }) : res({ ok: true });
+      }
+      return idle;
+    };
+    await settle();
+    const live = w.liveMenuGlobalGet('MENU');
+    const dish = live.find((d) => d.price > 0 && !d.variantOf && !(w.itemIsLauncher && w.itemIsLauncher(d)));
+    w.chg(dish.id, 1);
+    w.__ACCOUNT = w.__ACCOUNT || {};
+    w.__ACCOUNT.getRedeemPayload = () => ({ type: 'free_pizza_choice', item_id: 'x', name: 'X' });
+    // A reward order is refused before the send without a verified session (the form will not submit a
+    // logged-in reward as a guest). Stubbed at the seam the form itself reads.
+    w.__ACCOUNT.customerIdToken = () => Promise.resolve('id-token-for-test');
+    /* 1B's send gate refuses a reward order whose reward is unpriced or whose quote is stale (it fails
+       CLOSED, deliberately). Both seams are stubbed so the order actually reaches the wire — this cell
+       is about what happens to the order_id AFTER the server answers, not about that gate. */
+    w.__ACCOUNT.getRedeemQuoteTotalCents = () => 29900;
+    w.__ACCOUNT.redeemQuoteMatches = () => true;
+    w.requestServerQuote(); await settle();
+    assert.ok(w.buildOrder(), `${dir}: premise — a reward cart composes`);
+    const p2 = w.submitOrder('confirmed'); if (p2 && p2.catch) p2.catch(() => {});
+    await settle();
+    const sheet = sheetOf(w);
+    assert.ok(sheet, `${dir}: premise — the increase sheet appeared for a reward order`);
+    assert.ok(sent[0].redeem, `${dir}: premise — the order really carried a reward`);
+    const firstId = sent[0].order_id;
+    const bs = [...sheet.querySelectorAll('button')]; bs[bs.length - 1].click();
+    await settle(); await settle();
+    assert.strictEqual(sent.length, 2, `${dir}: premise — it resent`);
+    assert.notStrictEqual(sent[1].order_id, firstId,
+      `${dir}: 🔴 a reward order MUST resend on a FRESH order_id — the server's hold binds the amount, so the same id fails closed and strands the points`);
+    ok(`${dir}: a reward increase resends on a NEW order_id, not the one the hold refuses`);
+  }
+}
+
 closeAll();
 console.log(`\n${count()} confirm-quote wiring checks passed across both forms.`);

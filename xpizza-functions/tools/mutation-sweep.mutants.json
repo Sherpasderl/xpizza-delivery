@@ -4217,8 +4217,8 @@
     "slice": "c7",
     "label": "the silent refresh is not forced, so a waiting customer's token expires under them",
     "file": "../xpizza-orders/index.html",
-    "from": "    try{ requestServerQuote(true); }catch(_){}",
-    "to": "    try{ requestServerQuote(); }catch(_){}",
+    "from": "    // FORCED: an unchanged cart is the whole point of a refresh, and requestServerQuote's\n    // already-quoted short-circuits would otherwise make this call do nothing at all.\n    try{ requestServerQuote(true); }catch(_){}",
+    "to": "    // FORCED: an unchanged cart is the whole point of a refresh, and requestServerQuote's\n    // already-quoted short-circuits would otherwise make this call do nothing at all.\n    try{ requestServerQuote(); }catch(_){}",
     "command": [
       "node",
       "../confirm-quote-wiring.test.mjs"
@@ -4259,8 +4259,8 @@
     "slice": "c7",
     "label": "the createOrder attach re-reads the signature live, so an edit mid-send ships the wrong cart's token",
     "file": "../xpizza-orders/index.html",
-    "from": "      try{ if(__confirmQuote) __confirmQuote.attach(currentOrder, __orderSigAtBuild); }catch(_){}",
-    "to": "      try{ if(__confirmQuote) __confirmQuote.attach(currentOrder, confirmQuoteCartSig()); }catch(_){}",
+    "from": "      try{ if(__confirmQuote) __confirmQuote.send(currentOrder, __orderSigAtBuild, __orderNetAtBuild); }catch(_){}",
+    "to": "      try{ if(__confirmQuote) __confirmQuote.send(currentOrder, confirmQuoteCartSig(), __orderNetAtBuild); }catch(_){}",
     "command": [
       "node",
       "../confirm-quote-wiring.test.mjs"
@@ -4272,8 +4272,8 @@
     "slice": "c7",
     "label": "la_musa: the silent refresh is not forced, so a waiting customer's token expires under them",
     "file": "../la-musa-orders/index.html",
-    "from": "    try{ requestServerQuote(true); }catch(_){}",
-    "to": "    try{ requestServerQuote(); }catch(_){}",
+    "from": "    // FORCED: an unchanged cart is the whole point of a refresh, and requestServerQuote's\n    // already-quoted short-circuits would otherwise make this call do nothing at all.\n    try{ requestServerQuote(true); }catch(_){}",
+    "to": "    // FORCED: an unchanged cart is the whole point of a refresh, and requestServerQuote's\n    // already-quoted short-circuits would otherwise make this call do nothing at all.\n    try{ requestServerQuote(); }catch(_){}",
     "command": [
       "node",
       "../confirm-quote-wiring.test.mjs"
@@ -4314,8 +4314,8 @@
     "slice": "c7",
     "label": "la_musa: the createOrder attach re-reads the signature live, so an edit mid-send ships the wrong cart's token",
     "file": "../la-musa-orders/index.html",
-    "from": "      try{ if(__confirmQuote) __confirmQuote.attach(currentOrder, __orderSigAtBuild); }catch(_){}",
-    "to": "      try{ if(__confirmQuote) __confirmQuote.attach(currentOrder, confirmQuoteCartSig()); }catch(_){}",
+    "from": "      try{ if(__confirmQuote) __confirmQuote.send(currentOrder, __orderSigAtBuild, __orderNetAtBuild); }catch(_){}",
+    "to": "      try{ if(__confirmQuote) __confirmQuote.send(currentOrder, confirmQuoteCartSig(), __orderNetAtBuild); }catch(_){}",
     "command": [
       "node",
       "../confirm-quote-wiring.test.mjs"
@@ -4360,5 +4360,138 @@
       "../confirm-quote-wiring.test.mjs"
     ],
     "kills_with": "entering checkout must issue a fresh quote"
+  },
+  {
+    "id": "c8-x1",
+    "slice": "c8",
+    "label": "cash: a price increase is swallowed silently — the customer is charged more than they agreed",
+    "file": "../xpizza-orders/index.html",
+    "from": "\n        if(__cqKind === 'price_increase'){",
+    "to": "\n        if(false){",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "a price increase MUST be shown"
+  },
+  {
+    "id": "c8-x2",
+    "slice": "c8",
+    "label": "a reward order retries its own id, which the server's hold refuses — the points strand",
+    "file": "../xpizza-orders/index.html",
+    "from": "              if(currentOrder && currentOrder.redeem){",
+    "to": "              if(false){",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "a reward order MUST resend on a FRESH order_id"
+  },
+  {
+    "id": "c8-m1",
+    "slice": "c8",
+    "label": "la_musa: cash: a price increase is swallowed silently — the customer is charged more than they agreed",
+    "file": "../la-musa-orders/index.html",
+    "from": "\n        if(__cqKind === 'price_increase'){",
+    "to": "\n        if(false){",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "a price increase MUST be shown"
+  },
+  {
+    "id": "c8-m2",
+    "slice": "c8",
+    "label": "la_musa: a reward order retries its own id, which the server's hold refuses — the points strand",
+    "file": "../la-musa-orders/index.html",
+    "from": "              if(currentOrder && currentOrder.redeem){",
+    "to": "              if(false){",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "a reward order MUST resend on a FRESH order_id"
+  },
+  {
+    "id": "c8-s1",
+    "slice": "c8",
+    "label": "a quote outage sends a bare order instead of the unsigned ceiling",
+    "file": "../xpizza-orders/form-confirm-quote.js",
+    "from": "        body.expected_net_cents = expectedNetCents;\n        return 'degraded';",
+    "to": "        return 'bare';",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "the displayed net travels as the unsigned ceiling"
+  },
+  {
+    "id": "c8-s2",
+    "slice": "c8",
+    "label": "a stale fingerprint is shown to the customer as a price change",
+    "file": "../xpizza-orders/form-confirm-quote.js",
+    "from": "      if (err.error === 'quote_required' || err.error === 'quote_invalid') return 'stale_quote';",
+    "to": "      if (err.error === 'quote_required' || err.error === 'quote_invalid') return 'price_increase';",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "it re-quotes and resends by itself"
+  },
+  {
+    "id": "c8-s3",
+    "slice": "c8",
+    "label": "the sheet builds its copy with innerHTML, so a server-supplied amount is parsed as markup",
+    "file": "../xpizza-orders/form-confirm-quote.js",
+    "from": "    body.textContent = fmt(opts.oldCents) + ' \\u2192 ' + fmt(opts.newCents)",
+    "to": "    body.innerHTML = fmt(opts.oldCents) + ' \\u2192 ' + fmt(opts.newCents)",
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-orders/form-confirm-quote.test.mjs"
+    ],
+    "kills_with": "the hostile string became an element"
+  },
+  {
+    "id": "c8-s4",
+    "slice": "c8",
+    "label": "confirming the new price does not actually resend",
+    "file": "../xpizza-orders/form-confirm-quote.js",
+    "from": "      confirm.addEventListener('click', function () { finish(true); });",
+    "to": "      confirm.addEventListener('click', function () { finish(false); });",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "confirming must actually resend the order"
+  },
+  {
+    "id": "c8-x3",
+    "slice": "c8",
+    "label": "card: a price increase is swallowed silently on the ONLINE path",
+    "file": "../xpizza-orders/index.html",
+    "from": "\n    if(__cqKind === 'price_increase'){",
+    "to": "\n    if(false){",
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-orders/form-confirm-quote.copy.test.mjs"
+    ],
+    "kills_with": "both sends must handle a price increase"
+  },
+  {
+    "id": "c8-m3",
+    "slice": "c8",
+    "label": "la_musa: card: a price increase is swallowed silently on the ONLINE path",
+    "file": "../la-musa-orders/index.html",
+    "from": "\n    if(__cqKind === 'price_increase'){",
+    "to": "\n    if(false){",
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-orders/form-confirm-quote.copy.test.mjs"
+    ],
+    "kills_with": "both sends must handle a price increase"
   }
 ]
