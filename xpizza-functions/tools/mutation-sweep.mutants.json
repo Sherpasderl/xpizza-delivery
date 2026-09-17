@@ -4217,8 +4217,8 @@
     "slice": "c7",
     "label": "the silent refresh is not forced, so a waiting customer's token expires under them",
     "file": "../xpizza-orders/index.html",
-    "from": "    // FORCED: an unchanged cart is the whole point of a refresh, and requestServerQuote's\n    // already-quoted short-circuits would otherwise make this call do nothing at all.\n    try{ requestServerQuote(true); }catch(_){}",
-    "to": "    // FORCED: an unchanged cart is the whole point of a refresh, and requestServerQuote's\n    // already-quoted short-circuits would otherwise make this call do nothing at all.\n    try{ requestServerQuote(); }catch(_){}",
+    "from": "  try{ requestServerQuote(true); }catch(_){}\n}",
+    "to": "  try{ requestServerQuote(); }catch(_){}\n}",
     "command": [
       "node",
       "../confirm-quote-wiring.test.mjs"
@@ -4272,8 +4272,8 @@
     "slice": "c7",
     "label": "la_musa: the silent refresh is not forced, so a waiting customer's token expires under them",
     "file": "../la-musa-orders/index.html",
-    "from": "    // FORCED: an unchanged cart is the whole point of a refresh, and requestServerQuote's\n    // already-quoted short-circuits would otherwise make this call do nothing at all.\n    try{ requestServerQuote(true); }catch(_){}",
-    "to": "    // FORCED: an unchanged cart is the whole point of a refresh, and requestServerQuote's\n    // already-quoted short-circuits would otherwise make this call do nothing at all.\n    try{ requestServerQuote(); }catch(_){}",
+    "from": "  try{ requestServerQuote(true); }catch(_){}\n}",
+    "to": "  try{ requestServerQuote(); }catch(_){}\n}",
     "command": [
       "node",
       "../confirm-quote-wiring.test.mjs"

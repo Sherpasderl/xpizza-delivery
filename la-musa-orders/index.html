@@ -3260,18 +3260,28 @@ function confirmQuoteCartSig(){
     return JSON.stringify({ items: redeemCartItems(), reward: pend || null });
   }catch(_){ return null; }
 }
-// The one token store for both quote paths. requote() re-runs whichever quote applies to the current
-// cart: a reward-active cart re-quotes through the account module, everything else through quoteOrder.
+/* 🔴 THE ONE FORCED RE-QUOTE, ROUTED BY WHO OWNS THE PRICE. A reward-active cart's price belongs to
+   the redemption quote, and requestServerQuote returns immediately whenever a redemption owns the
+   total — so calling it directly on such a cart does nothing at all. Correct for the DISPLAY, and
+   wrong for anything that needs a fresh token, which is why this routing lives in ONE place: the
+   refresh cadence and the post-rejection recovery both need it, and the recovery was calling
+   requestServerQuote directly — silently re-quoting nothing on every reward order.
+   FORCED on the order path, because an unchanged cart is the whole point of a refresh and the
+   already-quoted short-circuits would otherwise make the call a no-op. requoteRedeem has no such
+   cache — it always asks — so the reward branch needs no force. */
+function forceRequote(){
+  try{
+    var pend = (window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload) ? window.__ACCOUNT.getRedeemPayload() : null;
+    if(pend && window.__ACCOUNT && typeof window.__ACCOUNT.requoteRedeem==='function'){
+      Promise.resolve(window.__ACCOUNT.requoteRedeem(redeemCartItems())).catch(function(){});
+      return;
+    }
+  }catch(_){}
+  try{ requestServerQuote(true); }catch(_){}
+}
+// The one token store for both quote paths, refreshed through the routing above.
 var __confirmQuote = (typeof createConfirmQuote === 'function') ? createConfirmQuote({
-  requote: function(){
-    try{
-      var pend = (window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload) ? window.__ACCOUNT.getRedeemPayload() : null;
-      if(pend && window.__ACCOUNT && typeof window.__ACCOUNT.requoteRedeem==='function'){ Promise.resolve(window.__ACCOUNT.requoteRedeem(redeemCartItems())).catch(function(){}); return; }   // same call shape as the other two requote sites
-    }catch(_){}
-    // FORCED: an unchanged cart is the whole point of a refresh, and requestServerQuote's
-    // already-quoted short-circuits would otherwise make this call do nothing at all.
-    try{ requestServerQuote(true); }catch(_){}
-  }
+  requote: forceRequote,
 }) : null;
 function getServerQuoteTotalCents(){
   try{
@@ -4383,7 +4393,7 @@ async function processPixelPay(){
         window.__pendingOrder = null; window.__resumeOrderId = null;
         currentOrder.order_id = genOrderId();
       }
-      try{ requestServerQuote(true); }catch(_){}
+      try{ forceRequote(); }catch(_){}
       orderSubmitting = false;
       return processPixelPay();
     }
@@ -4697,7 +4707,7 @@ async function submitOrder(paymentStatus){
             window.__pendingOrder = null; window.__resumeOrderId = null;
             currentOrder.order_id = genOrderId();
           }
-          try{ requestServerQuote(true); }catch(_){}                 // best-effort: restores signing next time
+          try{ forceRequote(); }catch(_){}                 // best-effort: restores signing next time
           orderSubmitting = false;
           return submitOrder(paymentStatus);
         }

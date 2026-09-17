@@ -677,7 +677,7 @@ for (const dir of Object.keys(BRAND)) {
   // when it was written. The cells above resolve card quotes immediately, which quietly hides the
   // thing being claimed: that the recovery stands on its own ceiling rather than on a refresh landing
   // in time. Here every quote after the first HANGS, so if the resend needed one it can never succeed.
-  for (const withReward of [false, true]) {
+  for (const withReward of [false]) {
     const w = loadForm(dir);
     const sent = []; const idle = new Promise(() => {});
     const OLD = 29900, NEW = 31900;
@@ -689,6 +689,7 @@ for (const dir of Object.keys(BRAND)) {
         // the FIRST quote signs the order; every later one is held open forever
         return quotes === 1 ? res({ ok: true, total_cents: OLD, net_total_cents: OLD, quote_token: TOKEN }) : idle;
       }
+      if (/quoteRedemption|redeem/i.test(url)) { quotes += 1; return idle; }   // the reward re-quote is held too
       if (url.includes('chargeOnlineOrder')) {
         const b = JSON.parse((init && init.body) || '{}');
         sent.push(b);
@@ -703,39 +704,21 @@ for (const dir of Object.keys(BRAND)) {
     const dish = live.find((d) => d.price > 0 && !d.variantOf && !(w.itemIsLauncher && w.itemIsLauncher(d)));
     w.chg(dish.id, 1);
     w.__ACCOUNT = w.__ACCOUNT || {};
-    if (withReward) {
-      w.__ACCOUNT.getRedeemPayload = () => ({ type: 'free_pizza_choice', item_id: 'x', name: 'X' });
-      w.__ACCOUNT.customerIdToken = () => Promise.resolve('id-token-for-test');
-      w.__ACCOUNT.getRedeemQuoteTotalCents = () => OLD;
-      w.__ACCOUNT.redeemQuoteMatches = () => true;
-    }
     w.requestServerQuote(); await settle();
-    assert.ok(w.buildOrder(), `${dir}: premise — the cart composes (held re-quote, reward=${withReward})`);
+    assert.ok(w.buildOrder(), `${dir}: premise — the cart composes (held re-quote)`);
     const p = w.processPixelPay(); if (p && p.catch) p.catch(() => {});
     await settle(); await settle();
 
     const sheet = w.document.querySelector('.cq-sheet');
-    assert.ok(sheet, `${dir}: premise — the increase sheet appeared (held re-quote, reward=${withReward})`);
+    assert.ok(sheet, `${dir}: premise — the increase sheet appeared (held re-quote)`);
     const firstId = sent[0].order_id;
     const quotesBefore = quotes;
     const bs = [...sheet.querySelectorAll('button')]; bs[bs.length - 1].click();
     await settle(); await settle();
 
-    /* 🔴 THE PREMISE, AND A DOCUMENTED GAP. On a plain cart the recovery's background re-quote is
-       issued and left hanging — exactly the race the P1 bug lost. On a REWARD cart it is not issued at
-       all: requestServerQuote returns early whenever a redemption owns the total, so the reward
-       refresh does not force. That is a real hole in the refresh path (flagged to the advisor, not
-       fixed here) and it makes this cell stronger rather than weaker: the reward recovery below
-       succeeds with no re-quote even attempted, which is the whole claim — the resend stands on its
-       own ceiling. Asserted per case so neither behaviour can change silently. */
-    if (withReward) {
-      assert.strictEqual(quotes, quotesBefore,
-        `${dir}: a reward-active cart issues NO re-quote (requestServerQuote returns early) — recorded, not endorsed`);
-    } else {
-      assert.ok(quotes > quotesBefore, `${dir}: a re-quote WAS attempted, and it is still hanging`);
-    }
+    assert.ok(quotes > quotesBefore, `${dir}: a re-quote WAS attempted, and it is still hanging`);
     assert.strictEqual(sent.length, 2,
-      `${dir}: 🔴 the resend must go out without waiting on a re-quote that never lands (reward=${withReward})`);
+      `${dir}: 🔴 the resend must go out without waiting on a re-quote that never lands`);
     assert.strictEqual(sent[1].expected_net_cents, NEW, `${dir}: standing behind the agreed number`);
     assert.ok(!('quote_token' in sent[1]), `${dir}: and not the token the server just rejected`);
     assert.ok(!w.document.querySelector('.cq-sheet'),
@@ -743,14 +726,62 @@ for (const dir of Object.keys(BRAND)) {
     const msg = ((w.document.getElementById('pay-msg') || w.document.getElementById('sending-msg') || {}).textContent) || '';
     assert.ok(!/No pudimos|Cancelaste/i.test(msg),
       `${dir}: …and no fallback banner (${msg.slice(0, 50)})`);
-    if (withReward) {
-      assert.ok(sent[0].redeem, `${dir}: premise — the order carried a reward`);
-      assert.notStrictEqual(sent[1].order_id, firstId,
-        `${dir}: 🔴 a reward card order mints a FRESH order_id — the hold refuses the old one`);
-    } else {
-      assert.strictEqual(sent[1].order_id, firstId, `${dir}: a non-reward card order reuses its id`);
-    }
-    ok(`${dir}: the card recovery succeeds with the re-quote held open (reward=${withReward})`);
+    assert.strictEqual(sent[1].order_id, firstId, `${dir}: a non-reward card order reuses its id`);
+    /* NON-REWARD ONLY, and stated rather than quietly scoped: a reward order cannot be driven through
+       this harness authentically — restoreRedeem leaves the module in a state where buildOrder does
+       not attach the reward, and stubbing around that would make the cell assert its own fixture. The
+       reward order_id behaviour IS asserted, on the immediate-quote card cell above; what is proven
+       here is the held-refresh property, which is brand- and reward-independent. */
+    ok(`${dir}: the card recovery succeeds with the re-quote held open`);
+  }
+
+  // ── 🔴 THE FORCED RE-QUOTE ROUTES BY WHO OWNS THE PRICE ────────────────────────────────────────
+  /* A CORRECTION TO AN EARLIER FINDING OF MINE. I reported that a reward-active cart issues no
+     re-quote at all, and recorded that as accepted behaviour — an assertion documenting a defect that
+     did not exist, which is worse than no assertion. The cause was this suite's own stubbing: setting
+     __ACCOUNT.getRedeemPayload on the window while account.js's internal _redeemPending stayed null,
+     so requoteRedeem returned early and issued nothing.
+     Driven through restoreRedeem, which sets the module's REAL state, the truth is that a reward cart
+     re-quotes through the REDEMPTION endpoint — correct, because a reward cart's price is the
+     redemption quote's to give, and requestServerQuote deliberately returns early whenever a
+     redemption owns the total.
+     What WAS real: the post-rejection recovery called requestServerQuote directly, so on a reward cart
+     its background refresh did nothing. Both now go through forceRequote, and this asserts the
+     routing rather than trusting each call site to remember it. */
+  {
+    const w = loadForm(dir);
+    const urls = []; const idle = new Promise(() => {});
+    w.__respond = (url) => {
+      if (url.includes('/menu/')) return res(envelope(B.rid, { dishes: [], extras: [] }));
+      urls.push(url.replace(/^https?:\/\/[^/]+/, '').split('?')[0]);
+      if (url.includes('quoteOrder')) return res({ ok: true, total_cents: 29900, net_total_cents: 29900, quote_token: 'ORDER-TOK' });
+      if (/quoteRedemption/i.test(url)) return res({ ok: true, total_cents: 29900, net_total_cents: 29900, quote_token: 'REWARD-TOK' });
+      return idle;
+    };
+    await settle();
+    const live = w.liveMenuGlobalGet('MENU');
+    const dish = live.find((d) => d.price > 0 && !d.variantOf && !(w.itemIsLauncher && w.itemIsLauncher(d)));
+    w.chg(dish.id, 1); await settle();
+
+    // plain cart → the ORDER quote
+    urls.length = 0;
+    w.forceRequote(); await settle();
+    assert.deepStrictEqual(urls, ['/quoteOrder'], `${dir}: a plain cart re-quotes through quoteOrder`);
+
+    // …reward cart → the REDEMPTION quote, and the token stored is the reward one
+    w.__ACCOUNT.restoreRedeem({ type: 'free_pizza_choice', item_id: 'x', name: 'X' },
+      { ok: true, total_cents: 29900, net_total_cents: 29900 }, w.redeemCartItems());
+    await settle();
+    assert.ok(w.__ACCOUNT.getRedeemPayload(), `${dir}: premise — the module really holds a pending reward`);
+    w.__confirmQuote.reset();
+    urls.length = 0;
+    w.forceRequote(); await settle();
+    assert.deepStrictEqual(urls, ['/quoteRedemption'],
+      `${dir}: 🔴 a reward cart must re-quote through the REDEMPTION endpoint — requestServerQuote returns early when a redemption owns the total, so a direct call re-quotes nothing`);
+    const cur = w.__confirmQuote.current(w.confirmQuoteCartSig());
+    assert.ok(cur && cur.token === 'REWARD-TOK',
+      `${dir}: 🔴 …and the token held for the reward signature is the REWARD quote's, not the order quote's`);
+    ok(`${dir}: the forced re-quote routes by who owns the price, and a reward cart keeps a signed reward token`);
   }
 }
 

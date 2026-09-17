@@ -32,8 +32,25 @@ import assert from 'node:assert';
 import { counter, settle, stageSettle, envelope, loadForm, res, loadAvail, BRAND,
          closeAll, containersOfFor, paintedFor } from './form-harness.mjs';
 
+import { createRequire } from 'node:module';
+const require = createRequire(new URL('./xpizza-functions/x.js', import.meta.url));
+/* 🔴 1C: THE REAL SIGNING AND THE REAL FINGERPRINT, over this suite's own pricing oracle.
+   gateConfirmedNet is deliberately NOT used here: it reprices through the real catalog tables, while
+   every cell in this suite moves a SYNTHETIC menu around to create the states under test — the two
+   would disagree about the price for reasons that have nothing to do with the property being tested.
+   What IS taken from the shipping code is the half the client has to match exactly and cannot fake:
+   the token's signature and the cart fingerprint. The price comparison stays with serverTotalCents,
+   the independent oracle this suite was built on, so "charged == confirmed" remains a comparison of
+   two numbers computed separately rather than the fake agreeing with itself. */
+const { signQuoteToken, verifyQuoteToken, cartFingerprint, normalizeCartForFingerprint } = require('./quote-token');
+
 const { ok, count } = counter();
 const CHARGE_RE = /createOrder|chargeOnlineOrder/;
+const T9_SECRET = 'whole-flow-1c-secret';
+// The shared harness's res() is 200-only; the 1C gate answers 409, so the fake needs its own.
+const rej = (body, status = 409) => Promise.resolve({
+  ok: false, status, headers: { get: () => null }, json: () => Promise.resolve(body),
+});
 
 /* THE SERVER'S PRICE, computed the way the server computes it: from the menu in force, keyed the way
    the brand keys. An item the current menu cannot price returns null — which is the server refusing,
@@ -78,7 +95,7 @@ function serverTotalCents(dir, menu, items) {
 async function boot(dir) {
   const B = BRAND[dir];
   const w = loadForm(dir);
-  const st = { menuNow: null, quotes: 0, charges: [], redeemQuotes: 0,
+  const st = { menuNow: null, quotes: 0, charges: [], gated: [], redeemQuotes: 0,
                redeemReply: { ok: true, total_cents: 5000, savings_cents: 1000, free_items: [], remaining: 0, total_cost: 0 } };
   const idle = new Promise(() => {});
   w.__respond = (url, init) => {
@@ -91,13 +108,52 @@ async function boot(dir) {
       st.quotes += 1;
       const items = JSON.parse((init && init.body) || '{}').items || [];
       const cents = serverTotalCents(dir, st.menuNow, items);
-      return res(cents === null ? { ok: false } : { ok: true, total_cents: cents });
+      if (cents === null) return res({ ok: false });
+      // 1C: sign the quote the way the server does, over the cart as submitted and the price in force.
+      const norm = normalizeCartForFingerprint(items, B.rid);
+      const token = norm ? signQuoteToken({
+        quote_id: 'q' + (st.quotes), rid: B.rid, net_total_cents: cents,
+        cart_fingerprint: cartFingerprint(norm, null),
+        iat: Date.now(), exp: Date.now() + 15 * 60 * 1000,
+      }, T9_SECRET) : null;
+      return res({ ok: true, total_cents: cents, net_total_cents: cents,
+        ...(token ? { quote_token: token } : {}) });
     }
     if (CHARGE_RE.test(url)) {
       // The URL is recorded with the body: the two charge endpoints take DIFFERENT payload shapes, and
       // "items was undefined" is unreadable without knowing which one answered.
-      st.charges.push({ url, ...JSON.parse((init && init.body) || '{}') });
-      return res({ ok: true, order_id: 'T9' });
+      const body = JSON.parse((init && init.body) || '{}');
+      st.charges.push({ url, ...body });
+      /* 🔴 THE 1C GATE, as the server applies it: the charge is the SERVER's recompute against the
+         menu in force, and it is refused when that exceeds what the customer confirmed. A signed token
+         supplies the ceiling and must describe THIS cart; an unsigned expected_net_cents supplies it
+         without that proof; neither ever becomes the price. */
+      const nowCents = serverTotalCents(dir, st.menuNow, body.items || []);
+      if (nowCents === null) return rej({ error: 'bad_cart' });
+      /* 🔴 A REWARD-BEARING ORDER IS NOT GATED HERE, and saying so is the point. serverTotalCents is
+         this suite's independent oracle and it prices the CART — it knows nothing about redemptions,
+         and a la_musa add_free reward is net-invariant while a punch reward is not. Comparing a
+         reward-discounted ceiling against a full-price oracle would report a price increase on every
+         reward order: a fake disagreeing with itself, dressed up as a finding. The reward's own
+         confirmed-net path is covered where it can be computed honestly — token-gate.test.js and
+         compute-server-net.test.js, over the real tables. */
+      if (body.redeem) { st.gated.push({ signed: !!body.quote_token, ceiling: null, charged: nowCents, reward: true });
+        return res({ ok: true, order_id: 'T9' }); }
+      let ceiling = null, signed = false;
+      if (body.quote_token) {
+        const v = verifyQuoteToken(body.quote_token, T9_SECRET, Date.now());
+        if (!v.ok) return rej({ error: 'quote_invalid', reason: v.reason });
+        const norm = normalizeCartForFingerprint(body.items || [], B.rid);
+        if (!norm || cartFingerprint(norm, null) !== v.payload.cart_fingerprint) return rej({ error: 'quote_invalid', reason: 'cart_mismatch' });
+        ceiling = v.payload.net_total_cents; signed = true;
+      } else if (typeof body.expected_net_cents === 'number') {
+        ceiling = body.expected_net_cents;
+      }
+      if (ceiling !== null && nowCents > ceiling) {
+        return rej({ error: 'price_increased', net_total_cents: nowCents });
+      }
+      st.gated.push({ signed, ceiling, charged: nowCents });
+      return res({ ok: true, order_id: 'T9', charged_cents: nowCents });
     }
     return idle;                                  // everything else hangs — see the harness note
   };
@@ -168,24 +224,45 @@ async function sendAndJudge(ctx, dir, label) {
   const gated = ctx.w.refuseConflictedSend('t9-matrix');
   const refused = !built || gated;
   if (built) {
-    try { await ctx.w.submitOrder('confirmed'); } catch (_) { /* the fetch record is the assertion */ }
+    /* NOT awaited, since 1C. When the gate refuses on a price increase the form raises a re-confirm
+       sheet and submitOrder does not settle until the customer answers — awaiting it here would
+       deadlock the suite against a dialog nobody is going to click. The fetch record, and the presence
+       of that sheet, are the assertions. */
+    const pending = ctx.w.submitOrder('confirmed');
+    if (pending && pending.catch) pending.catch(() => {});
   }
-  await settle();
+  await settle(); await settle();
+  /* 🔴 A PRICE-INCREASE SHEET IS AN OUTCOME, NOT A FAILURE TO SEND. It is 1C refusing to charge more
+     than the customer agreed to, and it is the outcome the two residual cells below were written to
+     wait for. Reported as its own kind so a cell must say which it expects — a cell that wanted a
+     charge and got a sheet should fail loudly, not silently count zero charges. */
+  const sheet = ctx.w.document.querySelector('.cq-sheet');
+  if (sheet) {
+    const shown = sheet.textContent.replace(/\s+/g, ' ');
+    return { outcome: 'increase_sheet', confirmed, shown, sheet };
+  }
   const sent = ctx.st.charges.slice(before);
   if (refused) {
     assert.strictEqual(sent.length, 0,
       `${dir}/${label}: 🔴 the send was refused, so NOTHING may have reached a charge endpoint`);
     return { outcome: 'refused', confirmed };
   }
-  assert.strictEqual(sent.length, 1,
-    `${dir}/${label}: non-vacuity — an unrefused send must actually reach a charge endpoint (got ${sent.length})`);
-  const charged = serverTotalCents(dir, ctx.st.menuNow, sent[0].items);
+  /* 🔴 1C CHANGED THE SHAPE OF "ONE SEND". A body whose cart moved after it was quoted now meets the
+     confirmed-quote gate, is refused on its fingerprint, and is resent SILENTLY with the displayed net
+     as an unsigned ceiling — so an unrefused outcome can legitimately be two requests. The invariant
+     this suite exists for is unchanged and is asserted on the one that actually charged: the customer
+     pays what they confirmed. Bounded at two, because a third would mean the single-retry guard has
+     stopped holding and the recovery is looping. */
+  assert.ok(sent.length >= 1 && sent.length <= 2,
+    `${dir}/${label}: non-vacuity — an unrefused send must reach a charge endpoint, at most once retried (got ${sent.length})`);
+  const paid = sent[sent.length - 1];
+  const charged = serverTotalCents(dir, ctx.st.menuNow, paid.items);
   assert.notStrictEqual(charged, null,
     `${dir}/${label}: 🔴 every line the form sent must be priceable by the server`);
   assert.notStrictEqual(confirmed, null,
     `${dir}/${label}: 🔴 a charge went out with NO confirmed total on screen — the customer agreed to nothing`);
   assert.strictEqual(charged, confirmed,
-    `${dir}/${label}: 🔴 CHARGED ${charged} !== CONFIRMED ${confirmed} — ${sent[0].url} sent ${JSON.stringify(sent[0].items)}`);
+    `${dir}/${label}: 🔴 CHARGED ${charged} !== CONFIRMED ${confirmed} — ${paid.url} sent ${JSON.stringify(paid.items)}`);
   return { outcome: 'charged', confirmed, charged };
 }
 
@@ -485,6 +562,7 @@ for (const dir of Object.keys(BRAND)) {
     const confirmed = ctx.w.getServerQuoteTotalCents();
     assert.ok(confirmed > 0, `${dir}/sync-throw: premise — a total is confirmed`);
 
+    const chargedBefore12 = ctx.st.gated.length;   // ACCEPTED charges — reaching the endpoint is not being charged
     const realSnap = ctx.w.liveMenuQuoteSnapshot;
     ctx.w.liveMenuQuoteSnapshot = () => { throw new Error('capture exploded'); };
     const up = baseMenu(ctx.w);
@@ -496,30 +574,48 @@ for (const dir of Object.keys(BRAND)) {
       `${dir}/sync-throw: 🔴 nothing was applied — the screen is the one the customer was already reading`);
     assert.ok(!ctx.w.__liveMenu.applier.state().fatal,
       `${dir}/sync-throw: the applier is not FATAL — it never got far enough to break anything`);
-    /* 🔴 THE 1C ENTRY POINT — MEASURED HERE, DELIBERATELY NOT ASSERTED EITHER WAY.
-       Sending at this moment charges the CURRENT catalog price while the screen and the cached quote
-       still hold the previous one: confirmed 34000, charged 38000. The mismatch is not specific to a
-       capture throw — it is what happens whenever the catalog has moved and the form has not caught up,
-       because a failed or DEFERRED apply does not invalidate the quote. That is by design: nothing on
-       screen changed, so the quote still matches the SCREEN. It just no longer matches the SERVER.
+    /* ── 🔴 THE 1C RESIDUAL, NOW CLOSED ─────────────────────────────────────────────────────────
+       This cell was written in 1B as 1C's regression test, in so many words: "when 1C's expected-total
+       gate lands, THIS is the cell that turns into its regression test." It is that now.
 
-       THIS IS 1C's GUARANTEE, NOT A 1B DEFECT, and the distinction is the design grill's, not a
-       convenience. Finding #9 reframed the invariant precisely because pricing caches and the
-       deliberate checkout-hold make live tile-to-charge parity impossible: the rule is not "tile ==
-       charge, live" but "the customer is charged exactly the net total they CONFIRMED", and enforcing
-       that equality is 1C's confirmed-quote gate. 1B's job was to make the display live and safe and to
-       prove the live menu never DETERMINES a charge — both of which the other 23 checks here do.
-
-       The most reachable trigger is a publish while the customer is at checkout, where cell 6 asserts
-       the snapshot is HELD so the menu does not move under them. That hold is correct; the gap is that
-       nothing re-validates the quote at the send.
-
-       Unasserted on purpose. Asserting the current behaviour would pin a displayed-vs-charged mismatch
-       as correct; asserting the opposite would fail this suite over a decision that belongs to 1C's
-       design. The no-op properties above ARE asserted, because they hold whichever way 1C goes. When
-       1C's expected-total gate lands, THIS is the cell that turns into its regression test. */
+       The state is unchanged: the catalog has moved and the form has not caught up, because a failed
+       or deferred apply deliberately does not invalidate the quote — nothing on screen changed, so the
+       quote still matches the SCREEN. It just no longer matches the SERVER. In 1B, sending here
+       charged the CURRENT catalog price against a stale confirmation: confirmed 34000, charged 38000,
+       and neither the customer nor the form had any way to notice.
+       1C makes that impossible in the only way that survives a pricing cache and a checkout hold: not
+       "tile == charge, live", which the hold makes unachievable, but "the customer is charged exactly
+       what they CONFIRMED". The token says what was confirmed, the server reprices, and a figure above
+       the confirmed one is refused rather than charged. */
     assert.strictEqual(ctx.w.getServerQuoteTotalCents(), confirmed,
       `${dir}/sync-throw: the cached quote is untouched by a failed apply — this is the input to the finding`);
+
+    const serverNow = serverTotalCents(dir, ctx.st.menuNow, ctx.w.redeemCartItems());
+    assert.ok(serverNow > confirmed,
+      `${dir}/sync-throw: premise — the server's price has moved ABOVE the confirmed one (${serverNow} vs ${confirmed})`);
+
+    const out = await sendAndJudge(ctx, dir, 'sync-throw-1c');
+    assert.strictEqual(out.outcome, 'increase_sheet',
+      `${dir}/sync-throw: 🔴 THE 1B RESIDUAL, CLOSED — a stale confirmation must be REFUSED at the send, not charged at the new price`);
+    assert.ok(out.shown.includes((serverNow / 100).toFixed(2)),
+      `${dir}/sync-throw: …and the customer is shown the new price, not asked to agree to a number nobody named (${out.shown})`);
+    /* st.gated, not st.charges: the request DOES reach the endpoint — that is where the gate lives —
+       and is refused there. What must not happen is a charge, and the fake records those separately
+       precisely so "it was sent" cannot be mistaken for "it was charged". */
+    assert.strictEqual(ctx.st.gated.length, chargedBefore12,
+      `${dir}/sync-throw: 🔴 …with NOTHING charged while they decide`);
+
+    /* 🔴 WHAT ACTUALLY CLOSES THIS, pinned rather than left incidental. Removing the signed token
+       alone does NOT reopen the residual: the send falls to T6's unsigned ceiling and the stale
+       confirmation is still refused. Removing BOTH reproduces it exactly — charged 38000 against a
+       confirmed 34000, the 1B finding verbatim. So the guarantee is "the send states what the customer
+       confirmed", by signature or by ceiling, and the cell asserts THAT rather than the presence of a
+       token that happens to be one of two ways to satisfy it. */
+    const stated = ctx.st.charges[ctx.st.charges.length - 1];
+    assert.ok(stated && (stated.quote_token || typeof stated.expected_net_cents === 'number'),
+      `${dir}/sync-throw: 🔴 the send must STATE what was confirmed — a token or an explicit ceiling; with neither, 1B's 34000-confirmed/38000-charged returns`);
+    ok(`${dir}: 🔴 1C CLOSES THE 1B RESIDUAL — a stale confirmation is refused at the send, never charged at the new price`);
+
     ok(`${dir}: a synchronous capture failure applies NOTHING and leaves the screen intact (see the stale-quote finding)`);
   }
 
@@ -770,8 +866,8 @@ for (const dir of Object.keys(BRAND)) {
     // ── CONTROL: a FRESH reward dispatches through the real send path.
     const before = ctx.st.charges.length;
     assert.strictEqual(ctx.w.buildOrder(), true, `${dir}/reward-submit: the order composes with a reward`);
-    await ctx.w.submitOrder('confirmed');
-    await settle();
+    { const pd = ctx.w.submitOrder('confirmed'); if (pd && pd.catch) pd.catch(() => {}); }
+    await settle(); await settle();
     const dispatched = ctx.st.charges.slice(before);
     assert.strictEqual(dispatched.length, 1,
       `${dir}/reward-submit: 🔴 CONTROL — a fresh reward DISPATCHES; without this every refusal below is vacuous`);
