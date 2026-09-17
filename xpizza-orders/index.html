@@ -2768,7 +2768,19 @@ function requestServerQuote(force){
            passes the guard because nothing superseded it, and clears the cache of the cart actually on
            screen; the next exact-mode updateTotal then lowers the customer's tender (350 → 340 /
            233 → 223). Reproduced: quote A, add an item, remove it again. */
-    if(!force && key===__serverQuote.key && __serverQuote.cents!=null){ supersedeQuoteRequests(); return; }
+    if(!force && key===__serverQuote.key && __serverQuote.cents!=null){
+      /* 🔴 …BUT DO NOT SUPERSEDE A REQUEST ALREADY IN FLIGHT FOR THIS SAME CART. Superseding bumps the
+         sequence, so the outstanding reply fails its own `inflight!==token` guard and is discarded.
+         That is right for a request about a DIFFERENT cart — it is stale by definition — and wrong for
+         one about this one, which is exactly what case 4 below already promises to leave alone.
+         The victim is the forced refresh: it fires, and before the reply lands any routine
+         renderStage2Summary() takes this exit and orphans it. Renders are frequent on the pay step, so
+         the refresh was being cancelled over and over and the token never actually renewed — the
+         "expiry is invisible" property quietly lost while every test still passed.
+         The display's own supersede behaviour is untouched for every other case. */
+      if(!(__serverQuote.inflight && __serverQuote.inflightKey===key)) supersedeQuoteRequests();
+      return;
+    }
     /* 🔴 3b. THIS CART ALREADY FAILED TO QUOTE → supersede, then return. WITHOUT THIS THE PAIR BELOW IS A
            HOT LOOP, and it is not hypothetical — the whole-flow matrix hung on it. Every quote reply
            calls renderStage2Summary(), and renderStage2Summary() calls requestServerQuote(). On a

@@ -87,10 +87,17 @@
        pay-step render) already re-quote on the events that CHANGE the cart; this covers the one case
        they cannot — a customer who reaches checkout and simply waits. Idempotent: calling it twice does
        not stack timers, which matters because the pay step re-renders on every edit. */
+    /* Arming also RE-QUOTES IMMEDIATELY, which is the difference between "a fresh token from now on"
+       and "a fresh token ten minutes from now". A customer can sit on the menu step well past the
+       issuance window and then walk into checkout: entry renders from cache, issues nothing, and the
+       first tick is a full interval away — so the token at the pay-tap is already expired, which is
+       precisely the friction this exists to prevent. Arming happens once per entry (idempotent below),
+       so the immediate tick is once per entry too, not once per render. */
     function scheduleRefresh() {
       var fns = timerFns();
       if (timer !== null || !fns.set) return false;
       timer = fns.set(function () { try { requote(); } catch (_) {} }, REFRESH_MS);
+      try { requote(); } catch (_) {}
       return true;
     }
     function stopRefresh() {

@@ -2383,8 +2383,9 @@
       "../live-apply.test.mjs"
     ],
     "label": "returning to an already-quoted cart supersedes nothing — the request left behind clobbers the cache",
-    "from": "    if(!force && key===__serverQuote.key && __serverQuote.cents!=null){ supersedeQuoteRequests(); return; }",
-    "to": "    if(!force && key===__serverQuote.key && __serverQuote.cents!=null) return;"
+    "from": "      if(!(__serverQuote.inflight && __serverQuote.inflightKey===key)) supersedeQuoteRequests();",
+    "to": "      /* supersede removed */",
+    "kills_with": "a request for the cart the customer LEFT must not touch the cached quote"
   },
   {
     "id": "b6-71",
@@ -2419,8 +2420,9 @@
       "../live-apply.test.mjs"
     ],
     "label": "la_musa: returning to an already-quoted cart supersedes nothing — the request left behind clobbers the cache",
-    "from": "    if(!force && key===__serverQuote.key && __serverQuote.cents!=null){ supersedeQuoteRequests(); return; }",
-    "to": "    if(!force && key===__serverQuote.key && __serverQuote.cents!=null) return;"
+    "from": "      if(!(__serverQuote.inflight && __serverQuote.inflightKey===key)) supersedeQuoteRequests();",
+    "to": "      /* supersede removed */",
+    "kills_with": "a request for the cart the customer LEFT must not touch the cached quote"
   },
   {
     "id": "b6-74",
@@ -4234,7 +4236,10 @@
       "node",
       "../confirm-quote-wiring.test.mjs"
     ],
-    "kills_with": "a cart edit off the pay step must not restart the refresh timer"
+    "kills_with": [
+      "a cart edit off the pay step must not restart the refresh timer",
+      "entering checkout must issue a fresh quote"
+    ]
   },
   {
     "id": "c7-x3",
@@ -4286,7 +4291,10 @@
       "node",
       "../confirm-quote-wiring.test.mjs"
     ],
-    "kills_with": "a cart edit off the pay step must not restart the refresh timer"
+    "kills_with": [
+      "a cart edit off the pay step must not restart the refresh timer",
+      "entering checkout must issue a fresh quote"
+    ]
   },
   {
     "id": "c7-m3",
@@ -4313,5 +4321,44 @@
       "../confirm-quote-wiring.test.mjs"
     ],
     "kills_with": "the body describes cart A"
+  },
+  {
+    "id": "c7-x5",
+    "slice": "c7",
+    "label": "an ordinary render orphans the in-flight refresh, so the token never actually renews",
+    "file": "../xpizza-orders/index.html",
+    "from": "      if(!(__serverQuote.inflight && __serverQuote.inflightKey===key)) supersedeQuoteRequests();",
+    "to": "      supersedeQuoteRequests();",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "a same-cart render must not orphan the in-flight refresh"
+  },
+  {
+    "id": "c7-m5",
+    "slice": "c7",
+    "label": "la_musa: an ordinary render orphans the in-flight refresh, so the token never actually renews",
+    "file": "../la-musa-orders/index.html",
+    "from": "      if(!(__serverQuote.inflight && __serverQuote.inflightKey===key)) supersedeQuoteRequests();",
+    "to": "      supersedeQuoteRequests();",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "a same-cart render must not orphan the in-flight refresh"
+  },
+  {
+    "id": "c7-x6",
+    "slice": "c7",
+    "label": "arming the refresh does not re-quote, so checkout entry carries an already-expired token",
+    "file": "../xpizza-orders/form-confirm-quote.js",
+    "from": "      timer = fns.set(function () { try { requote(); } catch (_) {} }, REFRESH_MS);\n      try { requote(); } catch (_) {}",
+    "to": "      timer = fns.set(function () { try { requote(); } catch (_) {} }, REFRESH_MS);",
+    "command": [
+      "node",
+      "../confirm-quote-wiring.test.mjs"
+    ],
+    "kills_with": "entering checkout must issue a fresh quote"
   }
 ]

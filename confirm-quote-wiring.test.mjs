@@ -163,6 +163,9 @@ for (const dir of Object.keys(BRAND)) {
     w.setInterval = (fn) => { tick = fn; return 1; };
     w.renderStage2Summary();
     assert.strictEqual(typeof tick, 'function', `${dir}: premise — the refresh cadence was captured`);
+    // Arming re-quotes immediately; let that land before counting, or the first tick is correctly
+    // suppressed by the in-flight guard and the count is short by one.
+    await settle();
     const before = quotes.length;
     for (let i = 0; i < 3; i++) { tick(); await settle(); }
     assert.strictEqual(quotes.length, before + 3,
@@ -234,6 +237,75 @@ for (const dir of Object.keys(BRAND)) {
     assert.strictEqual(body.quote_token, undefined,
       `${dir}: 🔴 a reward-active token must not be attached to a reward-off cart`);
     ok(`${dir}: a reward quote resolving after the reward was removed is not stored against the reward-off cart`);
+  }
+
+  // ── 10. 🔴 A ROUTINE RENDER MUST NOT ORPHAN AN IN-FLIGHT REFRESH ───────────────────────────────
+  // The refresh fires a forced quote; before the reply lands, any ordinary renderStage2Summary() takes
+  // the already-quoted exit, which superseded unconditionally — bumping the sequence so the refresh's
+  // own reply failed its `inflight!==token` guard and was thrown away. Renders are frequent on the pay
+  // step, so the refresh was cancelled over and over and the token never renewed.
+  {
+    const B = BRAND[dir];
+    const w = loadForm(dir);
+    const idle = new Promise(() => {});
+    let nth = 0, release = null;
+    w.__respond = (url) => {
+      if (url.includes('/menu/')) return res(envelope(B.rid, { dishes: [], extras: [] }));
+      if (url.includes('quoteOrder')) {
+        nth += 1;
+        const body = { ok: true, total_cents: 1, net_total_cents: 1, quote_token: 'TOK-' + nth };
+        if (nth === 1) return res(body);
+        return new Promise((r) => { release = () => r(res(body).then ? res(body) : res(body)); });
+      }
+      return idle;
+    };
+    await settle();
+    const live = w.liveMenuGlobalGet('MENU');
+    const dish = live.find((d) => d.price > 0 && !d.variantOf && !(w.itemIsLauncher && w.itemIsLauncher(d)));
+    w.chg(dish.id, 1);
+    w.requestServerQuote(); await settle();
+    const sig = w.confirmQuoteCartSig();
+    assert.strictEqual(w.__confirmQuote.current(sig).token, 'TOK-1', `${dir}: premise — token A is held`);
+
+    w.requestServerQuote(true);                 // the refresh fires; its reply is deferred
+    await settle();
+    w.renderStage2Summary();                    // …and an ordinary render lands on the same cart
+    await settle();
+    assert.ok(release, `${dir}: premise — the forced refresh really was issued and is outstanding`);
+    release(); await settle();
+    assert.strictEqual(w.__confirmQuote.current(sig).token, 'TOK-2',
+      `${dir}: 🔴 a same-cart render must not orphan the in-flight refresh — the token never renews`);
+    ok(`${dir}: an ordinary render does not cancel an in-flight refresh for the same cart`);
+  }
+
+  // ── 11. 🔴 ENTERING CHECKOUT ISSUES A FRESH QUOTE, NOT ONE INTERVAL LATER ──────────────────────
+  // A customer can idle on the menu step well past the issuance window. Entry renders from cache and
+  // issues nothing, so without an arm-time re-quote the token at the pay-tap is already expired.
+  {
+    const B = BRAND[dir];
+    const w = loadForm(dir);
+    const quotes = []; const idle = new Promise(() => {});
+    w.__respond = (url) => {
+      if (url.includes('/menu/')) return res(envelope(B.rid, { dishes: [], extras: [] }));
+      if (url.includes('quoteOrder')) { quotes.push(1); return res({ ok: true, total_cents: 1, net_total_cents: 1, quote_token: 'TOK-' + quotes.length }); }
+      return idle;
+    };
+    await settle();
+    const live = w.liveMenuGlobalGet('MENU');
+    const dish = live.find((d) => d.price > 0 && !d.variantOf && !(w.itemIsLauncher && w.itemIsLauncher(d)));
+    w.chg(dish.id, 1);
+    w.requestServerQuote(); await settle();      // quoted on s1; the customer then idles
+    const onS1 = quotes.length;
+    const tokenOnS1 = w.__confirmQuote.current(w.confirmQuoteCartSig()).token;
+
+    await stage(w, 's2');                        // …and walks into checkout
+    w.renderStage2Summary();
+    await settle();
+    assert.ok(quotes.length > onS1,
+      `${dir}: 🔴 entering checkout must issue a fresh quote, not wait a full interval`);
+    assert.notStrictEqual(w.__confirmQuote.current(w.confirmQuoteCartSig()).token, tokenOnS1,
+      `${dir}: …and the token actually held at the pay-tap must be the new one`);
+    ok(`${dir}: entering checkout forces a fresh quote on arrival`);
   }
 
   // ── 10. 🔴 THE REFRESH RUNS ONLY WHILE ON THE PAY STEP ─────────────────────────────────────────

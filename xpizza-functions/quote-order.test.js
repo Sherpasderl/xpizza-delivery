@@ -178,8 +178,26 @@ ok('fail-soft: 5 bad-cart shapes → { ok:false } with NO total (the client keep
     /* Counted at the FUNCTION's own indentation: a bare `return;` count also picks up the two guards
        inside the promise handlers, which are not ways out of requestServerQuote at all. Asserting 6 and
        explaining it away would have been a count that measured something nobody is claiming. */
-    assert.strictEqual((rsq.match(/\n    \S[^\n]*\breturn;/g) || []).length, 5,
+    /* 1C T7 revise turned the already-quoted exit from a one-liner into a BLOCK (it now defers to an
+       in-flight request for the same cart before superseding), so its `return;` sits one indent deeper.
+       The exit is the same exit — counting only 4-space returns would have reported four ways out and
+       invited someone to "fix" the count rather than notice the shape changed. 4 or 6 spaces, which
+       still excludes the two guards inside the promise handlers at 8: those are not ways out of
+       requestServerQuote at all. */
+    const WAY_OUT = /\n {4}(?: {2})?(?=\S)[^\n]*\breturn;/g;   // the lookahead is load-bearing: see below
+    assert.strictEqual((rsq.match(WAY_OUT) || []).length, 5,
       `${rid}: requestServerQuote still has exactly five NORMAL ways out — a new one needs its own decision`);
+    assert.strictEqual((rsq.match(/\n {8}(?=\S)[^\n]*\breturn;/g) || []).length, 2,
+      `${rid}: non-vacuity — the two promise-handler guards exist and are excluded from that count`);
+    /* Non-vacuity for the pattern itself, both directions. The first version demanded a non-space
+       BEFORE the return (`\S[^\n]*\breturn;`), which silently stopped matching the moment the
+       already-quoted exit became a block with `return;` alone on its line — it reported four ways out
+       where there are five. The lookahead form matches a bare return AND still refuses the deeper
+       promise-handler guards, which is the whole point of counting by indentation. */
+    assert.strictEqual(('\n      return;'.match(new RegExp(WAY_OUT.source, 'g')) || []).length, 1,
+      'non-vacuity: the way-out census can see a bare return on its own line');
+    assert.strictEqual(('\n        if(x) return;'.match(new RegExp(WAY_OUT.source, 'g')) || []).length, 0,
+      'non-vacuity: …and still does not count a guard inside a promise handler');
     assert.strictEqual((rsq.match(/\n        \S[^\n]*\breturn;/g) || []).length, 2,
       `${rid}: …and the two handler guards (success + rejection) are both still there`);
     assert.ok(!/__serverQuote\.inflight\s*===?\s*key\b/.test(block),

@@ -85,10 +85,14 @@ test('a null cart signature never matches — an unsignable cart gets no token',
 test('the silent refresh re-quotes on a cadence, does not stack, and stops on leaving checkout', () => {
   const { q, calls, fire } = mk();
   assert.strictEqual(q.scheduleRefresh(), true);
+  // 🔴 ARMING RE-QUOTES IMMEDIATELY. Otherwise a customer who idled past the issuance window before
+  // reaching checkout carries an already-expired token until the first tick, a full interval later.
+  assert.strictEqual(calls.requote, 1, 'arming re-quotes at once, not one interval later');
   assert.strictEqual(q.scheduleRefresh(), false, 'idempotent — the pay step re-renders on every edit');
+  assert.strictEqual(calls.requote, 1, '…and that idempotence covers the immediate re-quote too — once per entry, not per render');
   assert.strictEqual(calls.set, 1, 'exactly one timer');
   fire();
-  assert.strictEqual(calls.requote, 1, 'the cadence re-quotes');
+  assert.strictEqual(calls.requote, 2, 'the cadence re-quotes');
   assert.strictEqual(q.state('X').refreshing, true);
   assert.strictEqual(q.stopRefresh(), true);
   assert.strictEqual(calls.clear, 1, 'leaving checkout clears the timer');
@@ -110,8 +114,8 @@ test('the refresh cadence sits well under the 15-minute issuance window', () => 
 
 test('a requote that throws cannot take the timer down with it', () => {
   const { q, fire } = mk({ requote: () => { throw new Error('offline'); } });
-  q.scheduleRefresh();
-  fire();                       // must not throw
+  q.scheduleRefresh();          // the arm-time re-quote throws too — must not take the timer down
+  fire();                       // …nor must the cadence's
   assert.strictEqual(q.state('X').refreshing, true, 'the cadence survives a failed re-quote');
 });
 
