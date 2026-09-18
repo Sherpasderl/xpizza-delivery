@@ -169,5 +169,36 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     ok('the backfill keys through the pricing resolver — by NAME on x_pizza, by ID on la_musa, both kinds');
   }
 
+  // ── 9. 🔴 THE FIXTURE ITSELF IS AS STRICT AS FIRESTORE ───────────────────────────────────────
+  /* Three times in this build a stub turned out to be LAXER than the thing it stood in for — a
+     registry that ignored kind, an RTDB stub offering .get() where the gate calls .once('value') so
+     the gate failed open, and this transaction stub permitting a read after a write. Each one made a
+     passing test prove nothing, which is worse than a missing test because it reads as coverage.
+     So the fixture's own constraints are now asserted. A fake that silently permits what production
+     forbids is not a fake of production, and the only way that stays true is if someone checks. */
+  {
+    const db = memFirestore();
+    let threw = null;
+    try {
+      await db.runTransaction(async (tx) => {
+        const ref = db.collection('restaurants').doc('x').collection('identity').doc('dish');
+        tx.set(ref, { a: 1 });
+        await tx.get(ref);                    // ← Firestore refuses this; so must the stub
+      });
+    } catch (e) { threw = (e && e.message) || String(e); }
+    assert.ok(threw && /read_after_write/.test(threw),
+      `🔴 the fixture must refuse a read after a write, as Firestore does — otherwise "every read first" is unenforced (got ${threw})`);
+
+    // …and the ordinary shape — all reads, then all writes — still works, so the rule is not a blanket ban.
+    const okOut = await db.runTransaction(async (tx) => {
+      const ref = db.collection('restaurants').doc('x').collection('identity').doc('dish');
+      const snap = await tx.get(ref);
+      tx.set(ref, { seen: snap.exists });
+      return 'committed';
+    });
+    assert.strictEqual(okOut, 'committed', 'non-vacuity: reads-then-writes is still permitted');
+    ok('the transaction fixture enforces Firestore\'s read-before-write rule, and only that');
+  }
+
   console.log(`\nidentity-registry: ${n} checks passed`);
 })().catch((e) => { console.error('identity-registry FAILED:', e && e.message); process.exit(1); });

@@ -23,23 +23,34 @@ const tablesOf = (rid) => ({ restaurantId: rid, menu: MENU_BY_RESTAURANT[rid], e
 /* A registry stub that resolves every key — the WORST case for a no-op claim, because it is the state
    in which identity is most present. Testing the no-op against an empty registry would prove only that
    absent ids change nothing, which is trivially true and not the claim. */
-function fullRegistry(bodyByRid) {
+function fullRegistry(expectRid) {
+  /* 🔴 rid-AWARE, because production is. Every registry path is scoped to one restaurant, and a stub
+     that resolves any rid would make a cross-brand lookup — the overlay asking la_musa's registry for
+     an x_pizza key — resolve cleanly and look correct. That is the same dropped-constraint class as
+     the kind-blind stub and the .get()/.once() one: the fake permitting what production forbids.
+     Resolves every KEY (which is the point — the worst case for a no-op claim) but only for the rid it
+     was told to expect. */
   return {
     collection: (c) => ({
-      doc: (rid) => ({
-        collection: (c2) => ({
-          doc: (kind) => ({
-            collection: (c3) => ({
-              doc: (encodedKey) => ({
-                get: async () => {
-                  const key = Buffer.from(encodedKey, 'base64url').toString('utf8');
-                  return { exists: true, data: () => ({ canonical_id: `ID_${kind}_${key}` }) };
-                },
+      doc: (rid) => {
+        if (expectRid !== undefined && rid !== expectRid) {
+          throw new Error(`registry_wrong_restaurant: asked ${rid}, scoped to ${expectRid}`);
+        }
+        return {
+          collection: (c2) => ({
+            doc: (kind) => ({
+              collection: (c3) => ({
+                doc: (encodedKey) => ({
+                  get: async () => {
+                    const key = Buffer.from(encodedKey, 'base64url').toString('utf8');
+                    return { exists: true, data: () => ({ canonical_id: `ID_${kind}_${key}` }) };
+                  },
+                }),
               }),
             }),
           }),
-        }),
-      }),
+        };
+      },
     }),
   };
 }
@@ -60,7 +71,7 @@ function cartFrom(rid, body, withIds) {
 (async () => {
   for (const rid of RIDS) {
     const plain = generateFormBundle(rid, catalogSnapshot(rid));
-    const enriched = (await applyIdentityToServedBody(fullRegistry(), rid, plain)).body;
+    const enriched = (await applyIdentityToServedBody(fullRegistry(rid), rid, plain)).body;
 
     // ── 0. NON-VACUITY: identity really is present on the enriched side ─────────────────────────
     assert.ok(enriched.dishes.every((d) => typeof d.dish_id === 'string' && d.dish_id),
@@ -97,7 +108,14 @@ function cartFrom(rid, body, withIds) {
       // .once('value'), which is what the gate actually calls — a stub offering .get() would
       // return undefined, the gate would fail OPEN, and the comparison below would pass against two
       // empty results that prove nothing.
-      const db = { ref: () => ({ once: async () => ({ val: () => node }) }) };
+      /* Path-checked as well as .once()-shaped: the gate reads
+         `restaurants/{rid}/item_availability`, and a stub answering ANY path would return this node
+         for the other brand's read too — a cross-brand 86 bug would look like a pass. */
+      const wantPath = `restaurants/${rid}/item_availability`;
+      const db = { ref: (path) => {
+        assert.strictEqual(path, wantPath, `${rid}: the 86 gate must read ITS OWN availability node (asked ${path})`);
+        return { once: async () => ({ val: () => node }) };
+      } };
 
       const withIds = await checkItemAvailability(db, cartFrom(rid, enriched, true), rid);
       const without = await checkItemAvailability(db, cartFrom(rid, plain, false), rid);
@@ -249,7 +267,7 @@ function cartFrom(rid, body, withIds) {
     // ── 6. 🔴 IDENTITY NEVER ENTERS A NUMERIC TABLE ────────────────────────────────────────────
     {
       const tables = tablesOf(rid);
-      await applyIdentityToServedBody(fullRegistry(), rid, plain);
+      await applyIdentityToServedBody(fullRegistry(rid), rid, plain);
       for (const [label, table] of [['menu', tables.menu], ['extras', tables.extras]]) {
         assert.ok(Object.values(table).every((v) => typeof v === 'number'),
           `${rid}: 🔴 the ${label} price table must stay numbers only — identity is metadata, never money data`);
@@ -329,7 +347,7 @@ function cartFrom(rid, body, withIds) {
          such a reader effectively does. */
       {
         const { stripIdentity } = require('../../xpizza-orders/form-identity-strip');
-        const enrichedFull = (await applyIdentityToServedBody(fullRegistry(), rid, plain)).body;
+        const enrichedFull = (await applyIdentityToServedBody(fullRegistry(rid), rid, plain)).body;
         assert.deepStrictEqual(stripIdentity(enrichedFull.dishes), plain.dishes,
           `${rid}/mixed-readers: 🔴 an old reader must see exactly the pre-D1 dishes`);
         assert.deepStrictEqual(stripIdentity(enrichedFull.extras), plain.extras,

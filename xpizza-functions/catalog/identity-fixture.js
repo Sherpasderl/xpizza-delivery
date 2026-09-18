@@ -33,10 +33,21 @@ function memFirestore() {
       for (let i = 0; i < attempts; i += 1) {
         const readVersions = new Map();
         const writes = [];
+        /* 🔴 FIRESTORE REFUSES A READ AFTER A WRITE INSIDE A TRANSACTION, and this stub now refuses it
+           too. It did not before — which made the stub LAXER than production in a second way, on top
+           of the kind-blindness already found: identity-registry.js states "every read first" in a
+           comment and relies on it, and a future edit that read after writing would have passed every
+           test here and thrown in production, where the failure is a publish that cannot commit.
+           A fake that silently permits what the real thing forbids is not a fake of that thing. */
+        let wrote = false;
         const tx = {
-          get: async (r) => { readVersions.set(r.path, docs.has(r.path) ? JSON.stringify(docs.get(r.path)) : null); return r.get(); },
-          set: (r, v) => writes.push(() => r._set(v)),
-          delete: (r) => writes.push(() => r._delete()),
+          get: async (r) => {
+            if (wrote) throw new Error('firestore_read_after_write: a transaction must do all reads before any write');
+            readVersions.set(r.path, docs.has(r.path) ? JSON.stringify(docs.get(r.path)) : null);
+            return r.get();
+          },
+          set: (r, v) => { wrote = true; writes.push(() => r._set(v)); },
+          delete: (r) => { wrote = true; writes.push(() => r._delete()); },
         };
         const out = await fn(tx);
         // conflict check: did anything we READ change under us?
