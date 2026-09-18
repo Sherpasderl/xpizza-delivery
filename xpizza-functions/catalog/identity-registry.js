@@ -96,7 +96,7 @@ function proposeId(rid, kind, legacyKey) {
 /* Assign an id to ONE legacy object, exactly once, whatever else is happening concurrently.
    Returns { canonical_id, created } — created:false means it was already there, which is the ordinary
    case on every re-run and every ordinary write. */
-async function ensureIdentity(db, { rid, kind, legacyKey, now = null }) {
+async function ensureIdentity(db, { rid, kind, legacyKey, now = null, shouldStop = null }) {
   assertKind(kind);
   const keyRef = keysColOf(db, rid, kind).doc(encodeKey(legacyKey));
   const stamp = now || new Date().toISOString();
@@ -142,6 +142,19 @@ async function ensureIdentity(db, { rid, kind, legacyKey, now = null }) {
       }
     }
     if (canonicalId === null) throw new Error(`identity_mint_exhausted: ${rid}/${kind}/${legacyKey}`);
+
+    /* 🔴 THE LAST INSTANT BEFORE A WRITE, AND THE ONLY PLACE ABANDONMENT CAN ACTUALLY HAPPEN. The
+       caller's deadline previously stopped the LOOP from starting new transactions, which left the one
+       already in flight to finish and write whenever its store came back — so a publish could report
+       identity_preserve_timeout and then land rows anyway, minutes later. Checking before the loop is
+       not enough: by then this transaction has already begun.
+       Here, after every read and before the first write, abandonment is genuinely free — throwing
+       aborts the transaction and Firestore commits nothing, so the deadline means exactly what the
+       publish hook says it means: after it fires, no registry row appears. The object simply stays
+       unregistered and the next publish or backfill picks it up, which is the designed fallback. */
+    if (typeof shouldStop === 'function' && shouldStop()) {
+      throw new Error(`identity_abandoned: ${rid}/${kind}/${legacyKey} — the caller's deadline passed before this transaction wrote`);
+    }
 
     tx.set(idsColOf(db, rid, kind).doc(canonicalId), {
       legacy_key: legacyKey, status: STATUS_LIVE, created_at: stamp, kind,

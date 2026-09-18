@@ -107,7 +107,17 @@ async function ensureIdentitiesForKeys(db, rid, keysByKind, { now = null, should
          most the one already in flight completes, which is bounded by Firestore's own transaction
          limit rather than by nothing at all. */
       if (typeof shouldStop === 'function' && shouldStop()) { report.stopped = true; return report; }
-      const r = await ensureIdentity(db, { rid, kind, legacyKey, now });
+      /* …and the signal is handed DOWN, because this check only covers transactions not yet started.
+         The one already in flight when the deadline fires is the one that used to write late; it now
+         re-checks after its reads and aborts, which surfaces here as identity_abandoned. That is a
+         clean stop, not a failure: the object stays unregistered exactly as a timed-out one does. */
+      let r;
+      try {
+        r = await ensureIdentity(db, { rid, kind, legacyKey, now, shouldStop });
+      } catch (e) {
+        if (e && /^identity_abandoned:/.test(String(e.message || ''))) { report.stopped = true; return report; }
+        throw e;
+      }
       report[kind].total += 1;
       report[kind][r.created ? 'created' : 'preserved'] += 1;
     }

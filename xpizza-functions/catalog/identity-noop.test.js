@@ -18,6 +18,21 @@ const { cartFingerprint, normalizeCartForFingerprint } = require('../quote-token
 const { fullRegistry, partialRegistry, registryStub, availabilityStub } = require('./identity-fixture');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+
+/* ── DID THE COMPARISON ACTUALLY RUN? ──────────────────────────────────────────────────────────
+   🔴 THE DOMINANT FAILURE CLASS IN THIS BUILD, IN ITS THIRD FORM. First it was fakes laxer than
+   production; then comparisons whose two sides were not actually different; now comparisons that never
+   executed. The factura no-op was guarded by `if (!usesPlatformFactura(rid))` — flip that predicate to
+   true for x_pizza and the fiscal comparison is skipped entirely while all 34 checks still report
+   green. Pinning the predicate's ANSWER does not help: the answer being right does not prove the
+   branch was taken.
+   So every comparison below marks that it ran, and the audit at the end asserts the exact expected
+   count for each. A comparison that is skipped, short-circuited, or quietly dropped in a refactor now
+   fails loudly instead of disappearing into a passing suite. */
+const RAN = Object.create(null);
+const ran = (what) => { RAN[what] = (RAN[what] || 0) + 1; };
+const ranCount = (what) => RAN[what] || 0;
+
 const RIDS = ['x_pizza', 'la_musa'];
 const tablesOf = (rid) => ({ restaurantId: rid, menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] });
 
@@ -97,6 +112,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
       assert.ok(!without.error, `${rid}: premise — the id-less cart prices cleanly (${without.error})`);
       assert.deepStrictEqual(withIds, without, `${rid}: 🔴 identity changed the PRICE`);
       assert.ok(without.total > 0, `${rid}: …of a real amount (${without.total})`);
+      ran(`pricing:${rid}`);
       ok(`${rid}: pricing is byte-identical with and without identity (${without.total})`);
     }
 
@@ -121,6 +137,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
       assert.deepStrictEqual(withIds, without, `${rid}: 🔴 identity changed which lines the 86 gate BLOCKS`);
       assert.deepStrictEqual(without.blocked.length ? true : false, true,
         `${rid}: non-vacuity — the gate really did block something (${JSON.stringify(without.blocked)})`);
+      ran(`86:${rid}`);
       ok(`${rid}: the 86 gate blocks exactly the same lines with and without identity`);
     }
 
@@ -153,6 +170,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
       assert.ok(Array.isArray(without.items) && without.items.length > 0, `${rid}: …and there are lines to compare`);
       assert.deepStrictEqual(withIds, without, `${rid}: 🔴 identity changed the FACTURA lines`);
       assert.ok(!JSON.stringify(withIds).includes('ID_'), `${rid}: 🔴 …and no id reached a fiscal line`);
+      ran(`factura:${rid}`);   // 🔴 INSIDE the branch — the whole point of the counter
       ok(`${rid}: the factura lines are identical with and without identity (${without.items.length} lines)`);
       }
     }
@@ -165,6 +183,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
         assert.strictEqual(itemPricingKey(d, rid), itemPricingKey(plainRec, rid),
           `${rid}: 🔴 the id changed which key a served dish resolves to`);
       }
+      ran(`key:${rid}`);
       ok(`${rid}: every served record still resolves to the same pricing key`);
     }
 
@@ -184,6 +203,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
          reward reserve under two different fingerprints. */
       assert.deepStrictEqual(a.canonical, b.canonical, `${rid}: 🔴 the redemption CANONICAL gained identity`);
       assert.ok(!JSON.stringify(a.canonical).includes('ID_'), `${rid}: …no id reached it`);
+      ran(`reward:${rid}`);
       ok(`${rid}: the reward and its canonical are identical with and without identity`);
     }
 
@@ -196,6 +216,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
       assert.ok(withIds && without, `${rid}: premise — both carts fingerprint`);
       assert.strictEqual(cartFingerprint(withIds, null), cartFingerprint(without, null),
         `${rid}: 🔴 identity changed the QUOTE FINGERPRINT`);
+      ran(`fingerprint:${rid}`);
       ok(`${rid}: the quote fingerprint is unchanged by identity`);
     }
 
@@ -263,6 +284,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
         assert.deepStrictEqual(failed, ok5Baseline,
           `${rid}/${label}: 🔴 a failed enrichment changed a business answer — price, 86, reward or factura`);
 
+        ran(`failure:${rid}`);
         const failed86 = await checkItemAvailability5(out.body, false);
         assert.deepStrictEqual(failed86, ok5Blocked,
           `${rid}/${label}: 🔴 a failed enrichment changed which lines the 86 gate blocks`);
@@ -305,6 +327,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
         computeServerTotal(cartFrom(rid, enriched, true), rid, { restaurantId: rid, menu: served.menu, extras: served.extras }),
         computeServerTotal(cartFrom(rid, plain, false), rid, tables),
         `${rid}/fallback: 🔴 an identity-bearing cart priced off the fallback differs from an id-less one off the live tables`);
+      ran(`fallback:${rid}`);
       ok(`${rid}: the fallback serve carries no identity and prices identically (source: ${served.source})`);
     }
 
@@ -333,7 +356,8 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
       const { publishVersion } = require('./catalog-publish');
       const { buildPublishCandidate } = require('../tools/publish-version');
       const { buildPublicMenu } = require('./public-menu');
-      const { backfillIdentities } = require('./identity-backfill');
+      const { backfillIdentities, liveKeys: liveKeysOf } = require('./identity-backfill');
+      const { lookupByLegacyKeys } = require('./identity-registry');
       const known = new Set(RIDS);
       const active = { isActive: async () => true };
 
@@ -357,6 +381,31 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
         },
       };
 
+      /* 🔴 THE "EMPTY" SIDE WAS NEVER EMPTY. publishVersion's own preserve-on-write registers every
+         published key, so by the time the first capture ran the registry already held 24/14 on
+         x_pizza and 44/14 on la_musa — and the backfill that followed created ZERO rows, preserving
+         what the publish had already written. Both captures were therefore identity-PRESENT, and the
+         comparison could not have failed for an identity reason no matter what identity did.
+         So the registry is cleared after the publish and its emptiness ASSERTED, not assumed; and the
+         backfill afterwards must CREATE every row, not merely find them. A precondition that is only
+         believed is the same bug as a fake that is only trusted. */
+      const liveFor = (r) => liveKeysOf(r, catalogSnapshot(r));
+      const resolvable = async (db, r) => {
+        const k = liveFor(r);
+        const d = await lookupByLegacyKeys(db, { rid: r, kind: 'dish', legacyKeys: k.dish });
+        const e = await lookupByLegacyKeys(db, { rid: r, kind: 'extra', legacyKeys: k.extra });
+        return d.size + e.size;
+      };
+      const clearRegistry = async (db, r) => {
+        for (const kind of ['dish', 'extra']) {
+          for (const leaf of ['keys', 'ids']) {
+            const col = db.collection('restaurants').doc(r).collection('identity').doc(kind).collection(leaf);
+            const snap = await col.get();
+            for (const d of snap.docs) await d.ref.delete();
+          }
+        }
+      };
+
       for (const [label, breaker] of Object.entries(breakers)) {
         const db = makeDb();
         const { input, expected } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: '1d' });
@@ -366,15 +415,29 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
         // a reason that has nothing to do with the break.
         assert.strictEqual((await capture(db)).served, true, `${rid}/${label}: premise — intact, it serves`);
 
+        // Non-vacuity of the clear itself: the publish really did register things, so "0 after" is
+        // the clear working rather than the lookup being broken.
+        const seeded = await resolvable(db, rid);
+        assert.ok(seeded > 0, `${rid}/${label}: premise — publish's preserve-on-write registered ${seeded} objects, which is why the clear below is necessary`);
+        await clearRegistry(db, rid);
+        assert.strictEqual(await resolvable(db, rid), 0,
+          `${rid}/${label}: 🔴 the identity-ABSENT side must actually be absent — this is the precondition that silently was not true`);
+
         await breaker(db);
-        const idAbsent = await capture(db);                       // registry empty
+        const idAbsent = await capture(db);                       // registry genuinely empty, asserted
         const report = await backfillIdentities(db, rid, catalogSnapshot(rid));
-        assert.ok(report.dish.total > 0, `${rid}/${label}: premise — the registry really was populated`);
+        assert.strictEqual(report.dish.created, report.dish.total,
+          `${rid}/${label}: 🔴 the identity-PRESENT side must be freshly CREATED, not preserved from a registry that was never cleared (created ${report.dish.created} of ${report.dish.total})`);
+        assert.strictEqual(report.extra.created, report.extra.total, `${rid}/${label}: …extras too`);
+        assert.ok(report.dish.total > 0, `${rid}/${label}: premise — there was something to register`);
+        assert.strictEqual(await resolvable(db, rid), report.dish.total + report.extra.total,
+          `${rid}/${label}: …and every one of them now resolves`);
         const idPresent = await capture(db);                      // every object registered
 
         assert.strictEqual(idAbsent.served, false, `${rid}/${label}: premise — the break really closes the serve`);
         assert.strictEqual(idAbsent.code, 'public_menu_unavailable', `${rid}/${label}: it fails with the reader's code (${idAbsent.code})`);
         assert.strictEqual(idAbsent.hasBody, false, `${rid}/${label}: 🔴 a failure carries no partial body`);
+        ran(`readerfail:${rid}`);
         assert.deepStrictEqual(idPresent, idAbsent,
           `${rid}/${label}: 🔴 a populated registry changed HOW the reader fails — identity must not reach a closed serve at all`);
       }
@@ -422,6 +485,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
         `${rid}/stale-mirror: a mirror too far behind must be refused, not decorated and served`);
       assert.ok(staleAlarms.includes('catalog_mirror_too_stale'),
         `${rid}/stale-mirror: premise — it was refused for STALENESS (${staleAlarms.join(',')})`);
+      ran(`pricingtimeout:${rid}`);
       ok(`${rid}: a pricing-reader timeout prices an identity-bearing cart at the live amount, and a mirror past K is refused`);
     }
   }
@@ -462,6 +526,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
           computeServerTotal(cartFrom(rid, out.body, true), rid, tables),
           computeServerTotal(cartFrom(rid, plain, false), rid, tables),
           `${rid}/interrupted: 🔴 a half-finished migration changed the price`);
+        ran(`interrupted:${rid}`);
         ok(`${rid}: an interrupted backfill decorates per-record and prices identically (${withId.length} of ${dishKeys.length})`);
       }
 
@@ -485,6 +550,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
         const idsAfter = await lookupByLegacyKeys(db, { rid, kind: 'dish', legacyKeys: dishKeys });
         assert.deepStrictEqual([...idsAfter.entries()].sort(), [...idsBefore.entries()].sort(),
           `${rid}/rollback: 🔴 an id moved across a rollback+republish`);
+        ran(`rollback:${rid}`);
         ok(`${rid}: rollback then republish preserves every id and mints none (${idsAfter.size} objects)`);
       }
 
@@ -495,7 +561,21 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
          such a reader effectively does. */
       {
         const { stripIdentity } = require('../../xpizza-orders/form-identity-strip');
-        const enrichedFull = (await applyIdentityToServedBody(fullRegistry(rid), rid, plain)).body;
+        const applied = await applyIdentityToServedBody(fullRegistry(rid), rid, plain);
+        const enrichedFull = applied.body;
+        /* 🔴 THE PRECONDITION, ASSERTED. This whole row is "strip the field back off and you get the
+           pre-D1 menu" — which is trivially true if the field was never applied. An overlay that
+           silently enriched nothing would make stripIdentity a no-op comparing plain against plain,
+           and the row would pass while testing nothing. Same shape as the empty-vs-backfilled defect:
+           the two sides have to actually differ before their equality means anything. */
+        assert.strictEqual(applied.applied, true, `${rid}/mixed-readers: premise — the overlay reports it applied`);
+        const decorated = enrichedFull.dishes.filter((d) => d.dish_id).length
+          + enrichedFull.extras.filter((e) => e.extra_id).length;
+        assert.strictEqual(decorated, enrichedFull.dishes.length + enrichedFull.extras.length,
+          `${rid}/mixed-readers: premise — every record really carries an id before it is stripped (${decorated})`);
+        assert.notDeepStrictEqual(enrichedFull.dishes, plain.dishes,
+          `${rid}/mixed-readers: 🔴 …so the two sides genuinely differ — otherwise stripping proves nothing`);
+
         assert.deepStrictEqual(stripIdentity(enrichedFull.dishes), plain.dishes,
           `${rid}/mixed-readers: 🔴 an old reader must see exactly the pre-D1 dishes`);
         assert.deepStrictEqual(stripIdentity(enrichedFull.extras), plain.extras,
@@ -505,6 +585,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
           computeServerTotal(cartFrom(rid, enrichedFull, true), rid, tables),
           computeServerTotal(cartFrom(rid, plain, false), rid, tables),
           `${rid}/mixed-readers: 🔴 old and new readers disagree about the price`);
+        ran(`mixedreaders:${rid}`);
         ok(`${rid}: an old reader sees exactly the pre-D1 menu, and both price the same`);
       }
 
@@ -534,6 +615,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
           `${rid}/stale-portal: 🔴 an echoed id belonging to another object is reported as a swap`);
         assert.strictEqual((await validateClaim(db, { rid, kind: 'dish', legacyKey: k0, claimedId: id0 })).ok, true,
           `${rid}/stale-portal: non-vacuity — the honest claim still passes`);
+        ran(`staleportal:${rid}`);
         ok(`${rid}: a stale portal submission cannot move an identity — the write re-derives, it never adopts`);
       }
     }
@@ -557,19 +639,26 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
     const expectedRows = (keys.dish.length + keys.extra.length) * 2;   // an id row and a key row each
     assert.ok(expectedRows > 20, `premise — there is a substantial key set to abandon (${expectedRows} rows)`);
 
-    // A store whose FIRST transaction hangs until released; everything after runs normally.
+    /* 🔴 THE BLOCK IS MID-TRANSACTION, NOT BEFORE IT. The first version of this gate held the call
+       back BEFORE runTransaction ever started, which is the easy case: nothing had begun, so nothing
+       had to be abandoned. The state that actually loses the race is a transaction already INSIDE its
+       reads when the deadline fires — that one used to finish and write whenever its store came back.
+       So the gate now blocks on the first tx.get, exactly where a slow registry stalls, and the wrapped
+       tx delegates to the real one so the fixture's read-before-write rule still applies. */
     const gated = () => {
       const base = memFirestore();
       let release; const blocked = new Promise((r) => { release = r; });
-      let seen = 0;
+      let reads = 0;
+      let started = 0;
       const db = {
         _docs: base._docs,
+        started: () => started,
         collection: (c) => base.collection(c),
-        runTransaction: async (fn, opts) => {
-          seen += 1;
-          if (seen === 1) await blocked;
-          return base.runTransaction(fn, opts);
-        },
+        runTransaction: (fn, opts) => (started += 1, base.runTransaction(async (tx) => fn({
+          get: async (ref) => { reads += 1; if (reads === 1) await blocked; return tx.get(ref); },
+          set: (ref, v) => tx.set(ref, v),
+          delete: (ref) => tx.delete(ref),
+        }), opts)),
       };
       return { db, base, release: () => release() };
     };
@@ -586,26 +675,133 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
       } catch (e) { threw = (e && e.message) || String(e); }
       const atTimeout = base._docs.size;
       release();
-      // Every chance to land: the abandoned loop is now completely unobstructed.
+      // Every chance to land: the blocked transaction is now completely unobstructed.
       for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r));
       await new Promise((r) => setTimeout(r, 50));
-      return { threw, atTimeout, after: base._docs.size };
+      return { threw, atTimeout, after: base._docs.size, started: db.started() };
     };
 
     const stopped = await run(true);
     assert.strictEqual(stopped.threw, 'identity_preserve_timeout', 'premise — the deadline fired');
     assert.strictEqual(stopped.atTimeout, 0, 'premise — nothing had been written when it fired');
-    assert.ok(stopped.after <= 2,
-      `🔴 after the deadline the hook must start NO further registry write — at most the one already in flight completes (landed ${stopped.after} rows)`);
+    assert.strictEqual(stopped.after, 0,
+      `🔴 ZERO rows after the deadline — including from the transaction that was already mid-read when it fired. Permitting "at most the one in flight" was the earlier, weaker contract: it let a publish report identity_preserve_timeout and then land rows anyway once its store came back (landed ${stopped.after})`);
+
+    /* 🔴 AND IT STOPS STARTING TRANSACTIONS, not merely stops committing them. The in-transaction
+       abandonment above makes every late write impossible, but on its own it would let the loop open a
+       transaction for all 38 remaining keys and abort each one — 38 pointless round trips aimed at a
+       registry that is already struggling, which is how a slow dependency becomes a failing one. The
+       loop's own check is what prevents that, and this is the assertion that makes it load-bearing
+       rather than belt-and-braces nobody would notice losing. */
+    assert.ok(stopped.started <= 2,
+      `🔴 after the deadline the loop must stop OPENING transactions too — ${stopped.started} were started against a registry that had already timed out`);
+
+    /* 🔴 THE PRESERVE-ONLY RUN, WHICH THE IN-TRANSACTION CHECK CANNOT BOUND AT ALL. ensureIdentity
+       returns as soon as it finds an existing key row — before it ever reaches the abandonment check,
+       because there is nothing to write and nothing to abandon. That is the ORDINARY case: almost
+       every publish preserves rather than mints. So on a normal publish the in-transaction check is
+       never consulted, and the loop's own check is the only thing that stops the run at all. Without
+       it a timed-out preserve-on-write keeps reading every remaining key, one round trip each, against
+       a registry that has already failed its deadline.
+       This is the case the mutation sweep found unguarded: disabling the loop check changed nothing
+       any test could see, because every existing test minted. */
+    {
+      const base = memFirestore();
+      let started = 0;
+      const db = {
+        _docs: base._docs,
+        collection: (c) => base.collection(c),
+        runTransaction: (fn, opts) => (started += 1, base.runTransaction(fn, opts)),
+      };
+      // Pre-register everything, so the run below is pure preservation — the normal publish.
+      await ensureIdentitiesForKeys(db, rid, keys);
+      const preRegistered = started;
+      assert.ok(preRegistered >= keys.dish.length, `premise — the first pass really registered (${preRegistered} transactions)`);
+
+      // The deadline fires after the first key of the second pass.
+      let seen = 0;
+      const second = await ensureIdentitiesForKeys(db, rid, keys, { shouldStop: () => seen++ >= 1 });
+      const usedAfter = started - preRegistered;
+
+      /* The substantive assertion FIRST, so that when this breaks the failure names the property
+         rather than the bookkeeping. `stopped` is a flag a mutant could set while still reading
+         everything; the transaction count is the behaviour itself. */
+      assert.ok(usedAfter <= 2,
+        `🔴 a timed-out PRESERVE run must stop reading too — it opened ${usedAfter} transactions against a registry that had already missed its deadline, and the in-transaction check never fires on this path because a preserved key writes nothing`);
+      assert.ok(second.dish.total < keys.dish.length,
+        `🔴 …and it must not have walked the whole key set (${second.dish.total} of ${keys.dish.length})`);
+      assert.strictEqual(second.stopped, true, 'the preserve-only run reports that it stopped');
+      ok(`a preserve-only run stops at the deadline after ${usedAfter} transactions, not ${keys.dish.length + keys.extra.length}`);
+    }
 
     /* NON-VACUITY, and the reproduction of the original defect in the same breath: the identical
        setup WITHOUT the stop signal writes the whole key set after the deadline. Without this the
        assertion above could be passing because the fixture never writes anything. */
     const unstopped = await run(false);
     assert.strictEqual(unstopped.threw, 'identity_preserve_timeout', 'the unbounded run times out identically');
+    assert.ok(unstopped.started > 20,
+      `non-vacuity: with no stop signal the loop really does open a transaction per key (${unstopped.started})`);
     assert.strictEqual(unstopped.after, expectedRows,
       `🔴 non-vacuity: with no stop signal the abandoned loop lands ALL ${expectedRows} rows after the deadline — the defect this fixes (got ${unstopped.after})`);
-    ok(`the preserve-hook deadline abandons: ${stopped.after} rows land after timeout where an unbounded loop lands ${unstopped.after}`);
+    ok(`the preserve-hook deadline abandons mid-transaction: ${stopped.after} rows land after timeout where an unbounded loop lands ${unstopped.after}`);
+  }
+
+  // ══ …AND THROUGH THE REAL PUBLISHER, WHICH IS WHERE THE DEADLINE ACTUALLY LIVES ══════════════
+  /* The block above drives ensureIdentitiesForKeys directly. This drives publishVersion — the real
+     caller, its real 5s deadline, its real finally — because that is where the late write was
+     observed: the publish returned, logged identity_preserve_timeout, and rows appeared afterwards
+     when the registry came back. The gate blocks the first read on an /identity/ path specifically, so
+     the publish's own transactions (lease, version docs, pointer flip) run untouched and only the
+     registry stalls, which is the real outage shape.
+     Note this fake writes through immediately rather than buffering to a commit, so "no rows" here is
+     not resting on rollback: the abandonment check runs before the transaction's first write, so there
+     is no write to roll back. The buffered-commit case is covered by the memFirestore block above and
+     by the real engine in test/identity-registry.emulator.test.js. */
+  {
+    const { makeDb } = require('./firestore-fake');
+    const { publishVersion } = require('./catalog-publish');
+    const { buildPublishCandidate } = require('../tools/publish-version');
+    const rid = 'x_pizza';
+
+    const base = makeDb();
+    let release; const blocked = new Promise((r) => { release = r; });
+    let identityReads = 0;
+    const db = {
+      ...base,
+      collection: (c) => base.collection(c),
+      runTransaction: (fn) => base.runTransaction(async (tx) => fn({
+        get: async (ref) => {
+          if (ref && typeof ref.path === 'string' && ref.path.includes('/identity/')) {
+            identityReads += 1;
+            if (identityReads === 1) await blocked;      // the registry stalls; the publish does not
+          }
+          return tx.get(ref);
+        },
+        set: (ref, v) => tx.set(ref, v),
+        delete: (ref) => tx.delete(ref),
+      })),
+    };
+
+    const idRows = () => [...base._raw.keys()].filter((k) => k.includes('/identity/')).length;
+
+    const { input, expected } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: '1d' });
+    const t0 = Date.now();
+    const out = await publishVersion(db, rid, input, { expected });
+    const elapsed = Date.now() - t0;
+
+    assert.ok(out && out.versionId, 'premise — the publish itself succeeded; only the registry was stalled');
+    assert.ok(identityReads >= 1, 'premise — the registry read really was reached, and really was blocked');
+    assert.ok(elapsed >= 4000,
+      `premise — the publish waited out the identity deadline rather than skipping it (${elapsed}ms)`);
+    assert.strictEqual(idRows(), 0, `🔴 no identity row may exist when the publish returns (found ${idRows()})`);
+
+    release();
+    for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setTimeout(r, 100));
+
+    assert.strictEqual(idRows(), 0,
+      `🔴 THE LATE WRITE: the stalled transaction resumed after the publish had already reported the keys unregistered, and wrote ${idRows()} rows anyway. After the deadline fires, nothing lands.`);
+    ok(`the real publisher's identity deadline abandons mid-transaction: 0 rows at return (${elapsed}ms) and 0 after the registry recovers`);
   }
 
   // ── 7. 🔴 THE SHADOW PROOF — grep + runtime ───────────────────────────────────────────────────
@@ -645,6 +841,46 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
     assert.ok(BUSINESS.filter((r) => fs.existsSync(path.join(ROOT, r))).length >= 10,
       `non-vacuity: the census actually inspected the business modules`);
     ok(`shadow: none of ${BUSINESS.length} business-deciding modules reads dish_id/extra_id`);
+  }
+
+  // ══ THE AUDIT: EVERY COMPARISON ABOVE ACTUALLY EXECUTED ══════════════════════════════════════
+  /* 🔴 THE LAST GAP IN A NO-OP PROOF IS A COMPARISON THAT NEVER RAN. Everything above can be correct,
+     falsifiable and non-vacuous and still prove nothing if the branch holding it was skipped — which is
+     exactly what happened to the factura check: `if (!usesPlatformFactura(rid))` flipped to true
+     printed "no platform factura to compare" and the suite reported all green, one fiscal comparison
+     lighter. Asserting the predicate's ANSWER did not catch it, because the answer being right is not
+     the same claim as the branch being taken.
+     These are exact counts, not minimums. A comparison that stops running fails here; so does one that
+     silently starts running twice, which usually means a loop boundary moved. */
+  {
+    const expected = {
+      'pricing:x_pizza': 1, 'pricing:la_musa': 1,
+      '86:x_pizza': 1, '86:la_musa': 1,
+      'key:x_pizza': 1, 'key:la_musa': 1,
+      'reward:x_pizza': 1, 'reward:la_musa': 1,
+      'fingerprint:x_pizza': 1, 'fingerprint:la_musa': 1,
+      'fallback:x_pizza': 1, 'fallback:la_musa': 1,
+      'pricingtimeout:x_pizza': 1, 'pricingtimeout:la_musa': 1,
+      'failure:x_pizza': 4, 'failure:la_musa': 4,          // four forced enrichment failures each
+      'readerfail:x_pizza': 2, 'readerfail:la_musa': 2,    // content-hash mismatch + torn read
+      /* 🔴 THE ONE THE GATE FOUND. x_pizza is the only brand the platform issues factura for, so this
+         comparison must run EXACTLY ONCE overall — and la_musa's absence is asserted too, so a
+         predicate that started returning true there would also be caught rather than quietly adding a
+         comparison that cannot work (pricedLineItems keys by NAME, which la_musa does not use). */
+      'factura:x_pizza': 1, 'factura:la_musa': 0,
+      // …and the §7 operational-state rows, which are comparisons like any other.
+      'interrupted:x_pizza': 1, 'interrupted:la_musa': 1,
+      'rollback:x_pizza': 1, 'rollback:la_musa': 1,
+      'mixedreaders:x_pizza': 1, 'mixedreaders:la_musa': 1,
+      'staleportal:x_pizza': 1, 'staleportal:la_musa': 1,
+    };
+    for (const [what, want] of Object.entries(expected)) {
+      assert.strictEqual(ranCount(what), want,
+        `🔴 the "${what}" comparison ran ${ranCount(what)} times, expected ${want} — a no-op comparison that does not execute is not a proof, it is a printed line`);
+    }
+    // Non-vacuity of the audit itself: the counter can tell a run from a skip.
+    assert.strictEqual(ranCount('never:registered'), 0, 'non-vacuity: an unrun comparison counts zero');
+    ok(`${Object.keys(expected).length} no-op comparisons each executed exactly the expected number of times`);
   }
 
   console.log(`\nidentity-noop: ${n} checks passed across both brands`);

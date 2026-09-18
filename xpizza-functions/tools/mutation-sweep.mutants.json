@@ -4979,7 +4979,7 @@
   {
     "id": "d1-14",
     "slice": "d1",
-    "label": "the preserve-hook deadline stops waiting but not writing — abandoned work lands anyway",
+    "label": "the loop keeps calling the registry after the deadline — a timed-out PRESERVE run reads every remaining key",
     "file": "catalog/identity-backfill.js",
     "from": "      if (typeof shouldStop === 'function' && shouldStop()) { report.stopped = true; return report; }",
     "to": "      if (false) { report.stopped = true; return report; }",
@@ -4987,7 +4987,7 @@
       "node",
       "catalog/identity-noop.test.js"
     ],
-    "kills_with": "must start NO further registry write"
+    "kills_with": "must stop reading too"
   },
   {
     "id": "d1-15",
@@ -5028,5 +5028,18 @@
       "catalog/identity-registry.test.js"
     ],
     "kills_with": "the registry fake must refuse"
+  },
+  {
+    "id": "d1-18",
+    "slice": "d1",
+    "label": "🔴 the in-flight transaction never re-checks the deadline — a late write lands after the publish reported none",
+    "file": "catalog/identity-registry.js",
+    "from": "    if (typeof shouldStop === 'function' && shouldStop()) {\n      throw new Error(`identity_abandoned: ${rid}/${kind}/${legacyKey} — the caller's deadline passed before this transaction wrote`);",
+    "to": "    if (false) {\n      throw new Error(`identity_abandoned: ${rid}/${kind}/${legacyKey} — the caller's deadline passed before this transaction wrote`);",
+    "command": [
+      "node",
+      "catalog/identity-noop.test.js"
+    ],
+    "kills_with": "ZERO rows after the deadline"
   }
 ]

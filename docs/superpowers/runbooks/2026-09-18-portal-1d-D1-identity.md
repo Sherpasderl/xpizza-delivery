@@ -34,7 +34,7 @@ Both must be green before deploy. What each one covers:
 | `test:public-menu` | the served endpoint against real Firestore, with D1's overlay step in the path | anything about identity — its "identity" fixtures are the RTDB **routing** config the isActive gate reads, unrelated to the catalog registry |
 | `test:identity-registry` | concurrent `ensureIdentity` on one object against Firestore's own transaction engine: one id, one id row, one key row, retries genuinely forced | the no-op claim, which is node-side |
 
-`npm test` (no Java needed) carries the rest: 2238 checks, including the no-op matrix across both
+`npm test` (no Java needed) carries the rest: 2241 checks, including the no-op matrix across both
 brands and every forced failure path.
 
 ## Sequence
@@ -81,7 +81,12 @@ reward or factura selector read an id. All of that is D4/D5.
 
 ## Known gap, carried forward
 
-`ensureIdentitiesForKeys` runs after the publish lease is released, bounded at 5s and abandoning
-cleanly — but a publish that introduces a NEW object while the registry is slow leaves that object
+`ensureIdentitiesForKeys` runs after the publish lease is released, bounded at 5s. The bound is a real
+abandonment, in both directions: once it fires the loop starts no further registry transaction, and the
+one already mid-flight re-checks before writing and aborts, so **no row appears after the deadline** —
+not "at most one", zero. Verified through the real publisher (0 rows at return after 5007ms, 0 after
+the registry recovers).
+
+What remains: a publish that introduces a NEW object while the registry is slow leaves that object
 unregistered until the next publish or a backfill re-run. It serves id-less in the meantime, which is
 inert in D1. It stops being inert at D4.
