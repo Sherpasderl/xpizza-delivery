@@ -65,6 +65,27 @@ async function pageWithCart(dir, identity) {
   return { w, dish, extra };
 }
 
+/* ── THE FROZEN GOLDEN FOR THE EMITTED CART ──────────────────────────────────────────────────
+   🔴 SAME REASON AS THE ORDER SUITE'S. Asserting that the id-bearing cart equals the id-less one is
+   vacuous per field: both come from the same emitter, so zeroing extrasTotal — or any other money
+   field — leaves them equal and every assertion green. Frozen as a literal captured from a real run,
+   so a constant or zeroed field fails against a real value, including fields nobody has enumerated.
+   Brittle to catalog changes by design: it is 1× the first priced dish plus its first option. */
+const EMIT_GOLDEN = {
+  'xpizza-orders': [{ name: 'Carnivora', qty: 1, price: 340, subtotal: 340,
+    extras: [{ instance: 0, name: 'Salsa Roja', price: 39 }], extrasTotal: 39 }],
+  'la-musa-orders': [{ id: 'dimsum_01', name: 'Sichuan Spicy Wonton', cat: 'dim_sum', qty: 1, price: 223, subtotal: 273,
+    extras: [{ id: 'rice_white', name: 'Arroz Blanco', price: 50, qty: 1 }], extrasTotal: 50 }],
+};
+/* 🔴 ROUND-TRIPPED THROUGH JSON, because these objects come out of the jsdom window and carry THAT
+   realm's prototypes — deepStrictEqual compares prototypes, so a cross-realm array fails against an
+   identical literal with a diff showing two things that look the same. The order suite did not hit
+   this only because its payload arrives via JSON.parse already. */
+const withoutIdentity = (items) => JSON.parse(JSON.stringify((items || []).map((l) => {
+  const { dish_id, extras, ...rest } = l;
+  return { ...rest, extras: (extras || []).map(({ extra_id, ...e }) => e) };
+})));
+
 const sigsOf = (w) => ({
   B: w.confirmQuoteCartSig(),
   C: w.__ACCOUNT.redeemSig(w.redeemCartItems(), null, 'v1'),
@@ -82,7 +103,12 @@ const sigsOf = (w) => ({
     assert.ok(emitted[0].dish_id, `${dir}: 🔴 the emitted line carries dish_id — this is what D2 is for`);
     assert.ok(emitted[0].extras.length > 0, `${dir}: premise — the line has an option on it`);
     assert.ok(emitted[0].extras[0].extra_id, `${dir}: 🔴 …and the NESTED option carries extra_id`);
-    ok(`${dir}: the emitted cart carries dish_id AND a nested extra_id`);
+    /* …and every money field on that line matches the frozen id-less golden. This is what the
+       with-vs-without comparison cannot do: a zeroed extrasTotal or a wrong subtotal survives an
+       equality between two runs of the same emitter, and fails here. */
+    assert.deepStrictEqual(withoutIdentity(emitted), EMIT_GOLDEN[dir],
+      `${dir}: 🔴 the emitted cart does not match the frozen id-less golden`);
+    ok(`${dir}: the emitted cart carries dish_id AND a nested extra_id, and matches the frozen golden field for field`);
 
     // ── 2. THE CORE — B/C/D ARE BYTE-IDENTICAL WITH AND WITHOUT IDENTITY ───────────────────────
     const none = await pageWithCart(dir, { dishIds: false, extraIds: false });

@@ -73,6 +73,46 @@ async function submitted(dir, { withIds, card = false }) {
   return { w, sent, dish, prepared };
 }
 
+/* ── THE FROZEN GOLDEN ───────────────────────────────────────────────────────────────────────
+   🔴 WHY A LITERAL AND NOT A RECOMPUTATION. Every "order(with id) == order(without id)" in this file
+   is vacuous PER FIELD: both sides run the same code, so making any single field constant leaves the
+   two sides equal and the assertion green. Patching that field by field is why each gate round found
+   the next uncovered one — items_text, then the canonical, then total and phone, then the net, then
+   extrasTotal. The defect is the SHAPE of the comparison, not the coverage of the list.
+   So the id-less artifact is frozen here as a LITERAL, captured once from a real run. A constant
+   items_text, a zeroed extrasTotal, a constant total, phone, net or canonical now fails against a real
+   value in a single assertion, and it covers fields nobody has thought to enumerate yet.
+   THE TRADEOFF, stated: this is brittle to legitimate catalog changes. That is the price of a golden
+   and it is deliberate — a golden that recomputes itself is not a golden. Scoped to the
+   money-and-identity-critical fields rather than the whole body, so an unrelated field gaining a
+   property does not break it. If the catalog moves and these fail, re-capture: the values are exactly
+   what a cart of 2× the first priced dish plus its first option emits. */
+const GOLDEN = {
+  'xpizza-orders': {
+    items: [{ name: 'Carnivora', qty: 2, price: 340, subtotal: 680,
+      extras: [{ instance: 0, name: 'Salsa Roja', price: 39 }], extrasTotal: 39 }],
+    items_text: '2x Carnivora (L340) [Pizza 1: Salsa Roja]',
+    total: 719, phone: '+504 9876-5432', net: 71900,
+    canonical: { restaurant_id: 'x_pizza', model: 'add_free', type: 'free_pizza_choice',
+      config_version: 2, cost: 8, discount_cents: 0, free_item_key: 'Carnivora' },
+  },
+  'la-musa-orders': {
+    items: [{ id: 'dimsum_01', name: 'Sichuan Spicy Wonton', cat: 'dim_sum', qty: 2, price: 223, subtotal: 496,
+      extras: [{ id: 'rice_white', name: 'Arroz Blanco', price: 50, qty: 1 }], extrasTotal: 50 }],
+    items_text: '2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]',
+    total: 496, phone: '+504 9876-5432', net: 49600,
+    canonical: { restaurant_id: 'la_musa', model: 'add_free', type: 'points_ala_carte',
+      config_version: 2, discount_cents: 0, total_cost: 743,
+      items: [{ free_item_key: 'dimsum_01', cost: 743, qty: 1, price_cents: 22300 }] },
+  },
+};
+
+// The identity fields removed, so an id-bearing order can be compared to the id-less golden.
+const withoutIdentity = (items) => (items || []).map((l) => {
+  const { dish_id, extras, ...rest } = l;
+  return { ...rest, extras: (extras || []).map(({ extra_id, ...e }) => e) };
+});
+
 const payload = (s) => s.sent.createOrder || s.sent.charge;
 
 (async () => {
@@ -143,6 +183,8 @@ const payload = (s) => s.sent.createOrder || s.sent.charge;
         const ra = computeRedemption({ redeem: raw, items: a.items, restaurantId: rid });
         const rb = computeRedemption({ redeem: raw, items: b.items, restaurantId: rid });
         assert.ok(rb && rb.ok, `${dir}/${method}: premise — the reward resolves (${rb && rb.reason})`);
+        assert.deepStrictEqual(ra.canonical, GOLDEN[dir].canonical,
+          `${dir}/${method}: 🔴 the redemption CANONICAL does not match the frozen golden — a constant canonical fails here, where comparing it to itself could not`);
         assert.strictEqual(redemptionFingerprint(ra.canonical), redemptionFingerprint(rb.canonical),
           `${dir}/${method}: 🔴 identity moved the REDEMPTION fingerprint`);
         /* 🔴 THE RESERVATION BINDING, ASSERTED THROUGH ITS INPUTS — AND WHY. bindingFp is not exported
@@ -195,7 +237,28 @@ const payload = (s) => s.sent.createOrder || s.sent.charge;
         }) });
       assert.strictEqual(strip(a), strip(b),
         `${dir}/${method}: 🔴 the two orders differ by more than the identity fields`);
-      ok(`${dir}/${method}: the order carries both ids, items_text carries neither by value, and the rest is byte-identical`);
+      /* ── AGAINST THE FROZEN GOLDEN ─────────────────────────────────────────────────────────
+         The assertion the per-field equalities could not make. Each of these fails if its value is
+         constant, zeroed or broken, because the other side is a literal rather than the same code
+         run twice. */
+      const G = GOLDEN[dir];
+      assert.deepStrictEqual(withoutIdentity(a.items), G.items,
+        `${dir}/${method}: 🔴 the emitted cart does not match the frozen id-less golden — every money field on the line is in here`);
+      assert.strictEqual(a.items_text, G.items_text,
+        `${dir}/${method}: 🔴 items_text does not match the golden — a constant or mis-built string fails here, where comparing it to itself could not`);
+      assert.strictEqual(a.total, G.total, `${dir}/${method}: 🔴 the order total does not match the golden`);
+      assert.strictEqual(a.customer_phone, G.phone, `${dir}/${method}: 🔴 the customer phone does not match the golden`);
+      assert.strictEqual(computeServerNet({ items: a.items, reward: null, rid,
+        tables: { restaurantId: rid, menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] } }).net_total_cents, G.net,
+        `${dir}/${method}: 🔴 the server net does not match the golden`);
+
+      /* 🔴 AND order_id IS A REAL NONCE. It cannot be frozen — it embeds a timestamp and a random
+         suffix — so it gets the sensitivity control instead: two independently composed orders must
+         carry DIFFERENT ids. A constant producer would satisfy every "the resume reused the id"
+         assertion in this file, because the saved and the resent order would share the constant. */
+      assert.notStrictEqual(a.order_id, b.order_id,
+        `${dir}/${method}: 🔴 two separate orders share an order_id — the producer is constant, and every id-reuse assertion here would pass on it`);
+      ok(`${dir}/${method}: the order matches the frozen id-less golden field for field, carries both ids, and its order_id is a real nonce`);
     }
 
     // ── A PRE-BACKFILL TOKEN STILL VERIFIES AFTER THE IDS APPEAR ────────────────────────────

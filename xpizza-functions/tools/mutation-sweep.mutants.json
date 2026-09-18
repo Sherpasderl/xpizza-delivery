@@ -5304,5 +5304,70 @@
       "the restored cart is not the saved cart",
       "the restore took TODAY's price"
     ]
+  },
+  {
+    "id": "d2-20",
+    "slice": "d2",
+    "label": "🔴 items_text is a CONSTANT - the KDS ticket and two server hashes describe the wrong order",
+    "file": "../xpizza-orders/index.html",
+    "from": "    items_text: items.map(p=>{",
+    "to": "    items_text: 'CONSTANT',\n    __unused_it: items.map(p=>{",
+    "command": [
+      "node",
+      "../cart-identity-order.test.mjs"
+    ],
+    "kills_with": "items_text does not match the golden"
+  },
+  {
+    "id": "d2-21",
+    "slice": "d2",
+    "label": "🔴 customer_phone is a CONSTANT - every order is delivered to the same number",
+    "file": "../xpizza-orders/index.html",
+    "from": "    customer_phone: fullPhone(),",
+    "to": "    customer_phone: '00000000',",
+    "command": [
+      "node",
+      "../cart-identity-order.test.mjs"
+    ],
+    "kills_with": "the customer phone does not match the golden"
+  },
+  {
+    "id": "d2-22",
+    "slice": "d2",
+    "label": "🔴 the emitted extrasTotal is ZERO - options are charged as free",
+    "file": "../xpizza-orders/index.html",
+    "from": "    const extrasTotal = extrasArr.reduce((s,e)=>s+e.price,0);",
+    "to": "    const extrasTotal = 0;",
+    "command": [
+      "node",
+      "../cart-identity.test.mjs"
+    ],
+    "kills_with": "the emitted cart does not match the frozen id-less golden"
+  },
+  {
+    "id": "d2-23",
+    "slice": "d2",
+    "label": "🔴 orderIdForThisCart returns a CONSTANT - every order shares one id, and every id-reuse assertion passes on it",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if (window.__resumeOrderId){ const id = window.__resumeOrderId;",
+    "to": "  if (true) return 'CONSTANT-ORDER-ID';\n  if (window.__resumeOrderId){ const id = window.__resumeOrderId;",
+    "command": [
+      "node",
+      "../cart-identity-order.test.mjs"
+    ],
+    "kills_with": "two separate orders share an order_id"
+  },
+  {
+    "id": "d2-24",
+    "slice": "d2",
+    "label": "🔴 computeServerNet returns a CONSTANT - the price-neutrality premise goes vacuous with it",
+    "file": "compute-server-net.js",
+    "from": "function computeServerNet({ items, reward = null, deliveryContext = null, rid, tables = null }) {",
+    "to": "function computeServerNet({ items, reward = null, deliveryContext = null, rid, tables = null }) {\n  if (true) return { net_total_cents: 1000, components: {} };",
+    "command": [
+      "node",
+      "../cart-identity-order.test.mjs"
+    ],
+    "kills_with": "the server net does not match the golden"
   }
 ]
