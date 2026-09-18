@@ -81,6 +81,59 @@ function cartFrom(rid, body, withIds) {
       ok(`${rid}: pricing is byte-identical with and without identity (${without.total})`);
     }
 
+    // ── 1b. 🔴 THE 86 GATE BLOCKS THE SAME LINES ───────────────────────────────────────────────
+    /* Availability resolves a line through the SAME key resolver pricing does, deliberately, so the
+       two can never disagree about which object a line is. That makes it the second place an identity
+       mistake would show up — and the first place a customer would feel one, as a dish that cannot be
+       ordered or an 86'd dish that can. */
+    {
+      const { checkItemAvailability } = require('../availability-gate');
+      /* An RTDB stub that 86s ONE real dish. A gate asked about an empty 86 list would answer
+         "nothing blocked" for any input at all, including a broken one — so something is genuinely
+         unavailable here, and the assertion is that the SAME line is blocked either way. */
+      const blockedKey = itemPricingKey(plain.dishes.find((d) => d.price > 0), rid);
+      const { availKey } = require('../avail-key');
+      const node = { [availKey(blockedKey)]: { available: false } };
+      // .once('value'), which is what the gate actually calls — a stub offering .get() would
+      // return undefined, the gate would fail OPEN, and the comparison below would pass against two
+      // empty results that prove nothing.
+      const db = { ref: () => ({ once: async () => ({ val: () => node }) }) };
+
+      const withIds = await checkItemAvailability(db, cartFrom(rid, enriched, true), rid);
+      const without = await checkItemAvailability(db, cartFrom(rid, plain, false), rid);
+      assert.deepStrictEqual(withIds, without, `${rid}: 🔴 identity changed which lines the 86 gate BLOCKS`);
+      assert.deepStrictEqual(without.blocked.length ? true : false, true,
+        `${rid}: non-vacuity — the gate really did block something (${JSON.stringify(without.blocked)})`);
+      ok(`${rid}: the 86 gate blocks exactly the same lines with and without identity`);
+    }
+
+    // ── 1c. 🔴 THE FACTURA LINES ARE THE SAME LINES ────────────────────────────────────────────
+    /* The SAR factura is the one output with a legal consequence attached, and it is priced from the
+       same tables by the same keys. An identity field leaking into a fiscal line would be a document
+       that no longer matches the order it describes. */
+    {
+      const { pricedLineItems } = require('../factura/pricing');
+      const { usesPlatformFactura } = require('../factura/eligibility');
+      /* 🔴 ONLY WHERE THE PLATFORM ISSUES THE FACTURA, and asserted rather than assumed. la_musa
+         issues its own fiscal documents through its POS, so there is no platform factura to compare —
+         and pricedLineItems keys by NAME, which la_musa does not use. Running it there would fail for
+         a reason that has nothing to do with identity; SKIPPING it silently would be worse, because
+         the day la_musa is onboarded to platform factura this comparison would quietly not exist. So
+         the eligibility is read from the real predicate and the skip is explicit. */
+      if (!usesPlatformFactura(rid)) {
+        ok(`${rid}: no platform factura to compare — this brand issues its own (asserted, not assumed)`);
+      } else {
+      const tables = tablesOf(rid);
+      const withIds = pricedLineItems(cartFrom(rid, enriched, true), tables.menu, tables.extras);
+      const without = pricedLineItems(cartFrom(rid, plain, false), tables.menu, tables.extras);
+      assert.ok(!without.error, `${rid}: premise — the id-less cart produces fiscal lines (${without.error})`);
+      assert.ok(Array.isArray(without.items) && without.items.length > 0, `${rid}: …and there are lines to compare`);
+      assert.deepStrictEqual(withIds, without, `${rid}: 🔴 identity changed the FACTURA lines`);
+      assert.ok(!JSON.stringify(withIds).includes('ID_'), `${rid}: 🔴 …and no id reached a fiscal line`);
+      ok(`${rid}: the factura lines are identical with and without identity (${without.items.length} lines)`);
+      }
+    }
+
     // ── 2. 🔴 THE PRICING KEY IS UNMOVED ───────────────────────────────────────────────────────
     // The one thing that would break every downstream consumer at once.
     {
@@ -164,6 +217,33 @@ function cartFrom(rid, body, withIds) {
         assert.ok(!priced.error && priced.total > 0, `${rid}/${label}: 🔴 the menu still prices (${priced.error})`);
       }
       ok(`${rid}: ${Object.keys(failures).length} forced enrichment failures each serve the original body and still price`);
+    }
+
+    // ── 5b. 🔴 THE FALLBACK SERVE IS IDENTITY-FREE BY CONSTRUCTION — ASSERTED, NOT ARGUED ─────
+    /* The fallback ladder returns the NUMERIC price tables, not display records, so identity cannot
+       reach it: the overlay decorates a projection the ladder never produces. That is a structural
+       argument, and this turns it into an observation — because "cannot by construction" is exactly
+       the kind of claim that stops being true when someone later enriches one more thing. */
+    {
+      const { createSnapshotFallback } = require('./snapshot-fallback');
+      const tables = tablesOf(rid);
+      const mirror = { version: 'v9', seq: 9, rid, menu: tables.menu, extras: tables.extras };
+      const fb = createSnapshotFallback({ mirrorReader: async () => mirror, alarm: () => {} });
+      fb.recordActive(rid, { versionId: 'v9', seq: 9 });
+      const served = await fb.snapshotFor(rid);
+      assert.ok(served && served.menu, `${rid}/fallback: premise — the ladder served something (${served && served.source})`);
+
+      const flat = JSON.stringify({ menu: served.menu, extras: served.extras });
+      assert.ok(!/dish_id|extra_id|ID_dish|ID_extra/.test(flat),
+        `${rid}/fallback: 🔴 identity reached the FALLBACK serve — it must return numeric tables only`);
+      assert.ok(Object.values(served.menu).every((v) => typeof v === 'number'),
+        `${rid}/fallback: the served menu is still a numeric table`);
+      // …and an order priced off the fallback tables is the same order.
+      assert.deepStrictEqual(
+        computeServerTotal(cartFrom(rid, plain, false), rid, { restaurantId: rid, menu: served.menu, extras: served.extras }),
+        computeServerTotal(cartFrom(rid, plain, false), rid, tables),
+        `${rid}/fallback: 🔴 pricing off the fallback differs from pricing off the live tables`);
+      ok(`${rid}: the fallback serve carries no identity and prices identically (source: ${served.source})`);
     }
 
     // ── 6. 🔴 IDENTITY NEVER ENTERS A NUMERIC TABLE ────────────────────────────────────────────

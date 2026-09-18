@@ -33,6 +33,10 @@ const { readVersionDocs } = require('./catalog-firestore');
 const { contentHash } = require('./content-hash');
 const { readVersionMenu } = require('./catalog-menu');
 const { ensureIdentitiesForKeys } = require('./identity-backfill');
+/* Identity is not part of the publish transaction, so it gets its own bound rather than sharing the
+   publish's. Generous — this is a per-publish migration step, not a serving path — but finite, so a
+   registry outage cannot hold a publish response open. */
+const IDENTITY_PRESERVE_TIMEOUT_MS = 5000;
 const { candidateSource, assertCandidateValid } = require('./candidate-validate');
 const { sourceRefOf, encodeUpdateTime } = require('./source-store');
 
@@ -322,6 +326,8 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
   // path anyone adds later.
   assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure }), `${rid} (pre-publish)`);
   const token = await acquireLease(db, rid);
+  // Captured inside the lease, USED outside it — see the preserve-on-write note in the finally below.
+  let identityKeys = null, identityVersionId = null;
   try {
     const nowServer = await serverNow(db, rid);
     const { versionId, descriptor, seq, menuTable, extraTable } = await writeVersion(db, rid, input, nowServer);
@@ -334,32 +340,38 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
     const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable });
     await pruneRetention(db, rid, { protect: [versionId] }).catch(() => {});   // never let prune fail the publish
 
-    /* ── 1D D1 — PRESERVE-ON-WRITE ────────────────────────────────────────────────────────────────
-       An ordinary publish already preserves identity by doing nothing: ids live in the registry, not
-       in the version payload, so a republish of the same objects cannot disturb them. What a publish
-       CAN introduce is a new object, and an object with no registry entry is one the served overlay
-       silently cannot resolve — indistinguishable from "not backfilled yet".
-       So the live key set is ensured after every publish. ensureIdentity is conditional on the key
-       row, which makes this preserve-or-mint rather than mint: an unchanged object keeps the id it
-       has, and only genuinely new keys get one.
-       🔴 KEYED FROM THE PUBLISHED TABLES, NOT FROM AN ECHOED FIELD. The edit handler replaces the
-       source arrays wholesale and the seed reconstructs docs, so any id a caller hands back is at best
-       a copy and at worst stale or swapped. menuTable/extraTable are keyed by the legacy key the money
-       path itself uses, computed here from what was actually written — the one description of this
-       publish that cannot have been round-tripped through a browser.
-       AFTER the flip and non-fatally, exactly like pruneRetention above: a version is already live and
-       serving by this point, and a registry hiccup must not turn a completed publish into a failed
-       one. A missing entry degrades to an id-less served record, which is inert in D1. */
-    await ensureIdentitiesForKeys(db, rid, {
-      dish: Object.keys(menuTable || {}),
-      extra: Object.keys(extraTable || {}),
-    }).catch((e) => {
-      try { console.warn('identity_preserve_failed', JSON.stringify({ rid, versionId, error: String((e && e.message) || e).slice(0, 160) })); } catch (_) {}
-    });
-
+    identityKeys = { dish: Object.keys(menuTable || {}), extra: Object.keys(extraTable || {}) };
+    identityVersionId = versionId;
     return { versionId, ...descriptor, mirrored: mirrorResult.mirrored };
   } finally {
     await releaseLease(db, rid, token);
+    /* ── 1D D1 — PRESERVE-ON-WRITE, OUTSIDE THE LEASE ─────────────────────────────────────────────
+       An ordinary publish already preserves identity by doing nothing: ids live in the registry, not
+       in the version payload, so a republish of the same objects cannot disturb them. What a publish
+       CAN introduce is a NEW object, and an object with no registry entry is one the served overlay
+       silently cannot resolve — indistinguishable from "not backfilled yet".
+       🔴 AFTER releaseLease, DELIBERATELY. The first version of this sat inside the try, awaited,
+       alongside pruneRetention — which meant a slow or hanging registry extended the hold on the
+       per-restaurant publish lease. Nothing would have been corrupted, but the next publish would
+       queue behind a registry that has no business blocking it, and in the worst case the hold could
+       outlive the lease's own expiry. Identity is not part of the publish transaction and must not
+       borrow its serialization.
+       Bounded as well as non-fatal: a registry that hangs must not hold the publish RESPONSE open
+       either. On timeout or error the keys simply go unregistered, the overlay serves those records
+       id-less, and the next publish (or the backfill) picks them up.
+       🔴 KEYED FROM THE PUBLISHED TABLES, NOT FROM AN ECHOED FIELD. The edit handler replaces the
+       source arrays wholesale and the seed reconstructs docs, so any id a caller hands back is at best
+       a copy and at worst stale or swapped. menuTable/extraTable are keyed by the legacy key the money
+       path itself uses, computed from what was actually written — the one description of this publish
+       that cannot have been round-tripped through a browser. */
+    if (identityKeys) {
+      await Promise.race([
+        ensureIdentitiesForKeys(db, rid, identityKeys),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('identity_preserve_timeout')), IDENTITY_PRESERVE_TIMEOUT_MS)),
+      ]).catch((e) => {
+        try { console.warn('identity_preserve_failed', JSON.stringify({ rid, versionId: identityVersionId, error: String((e && e.message) || e).slice(0, 160) })); } catch (_) {}
+      });
+    }
   }
 }
 

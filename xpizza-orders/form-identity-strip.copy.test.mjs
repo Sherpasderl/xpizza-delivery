@@ -70,5 +70,23 @@ test('both forms load the strip and apply it at BOTH boundaries', () => {
       `${dir}: 🔴 …or extras`);
     assert.strictEqual((html.match(/stripIdentity\(/g) || []).length, 3,
       `${dir}: exactly three applications — the initial dishes, and the refresh's dishes and extras`);
+
+    /* 🔴 THE INITIAL *EXTRAS* BOUNDARY DOES NOT EXIST — PINNED SO IT CANNOT APPEAR UNGUARDED.
+       The gate asked why the initial boundary strips dishes but not extras. The answer is that neither
+       form reads _BUNDLE.extras at all: initial EXTRAS is a hardcoded literal, and options only ever
+       arrive through the live refresh, which IS stripped. So there is nothing to strip there today.
+       "Today" is the problem. If someone later wires the spliced bundle into EXTRAS — an obvious
+       tidy-up, since the bundle already carries them — the id would reach the cart through a boundary
+       nobody re-examined. This asserts the absence, so that change has to come with its strip. */
+    const bundleExtrasReads = (html.match(/_BUNDLE\.extras/g) || []);
+    if (bundleExtrasReads.length > 0) {
+      assert.ok(/stripIdentity\(_BUNDLE\.extras\)/.test(html),
+        `${dir}: 🔴 the initial bundle's EXTRAS are now read — they must be stripped, like the dishes are`);
+    } else {
+      assert.ok(/let EXTRAS = \[/.test(html),
+        `${dir}: initial EXTRAS is a literal and the bundle's extras are unread — if that changed, the branch above applies`);
+    }
+    // non-vacuity: the detector can see the read it is guarding against
+    assert.ok(/_BUNDLE\.extras/.test('let E = _BUNDLE.extras;'), 'non-vacuity: the bundle-extras detector works');
   }
 });
