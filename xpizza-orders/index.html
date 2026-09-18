@@ -1415,6 +1415,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 <script src="avail-key.js"></script>
 <script src="form-safe-render.js"></script>
 <script src="form-confirm-quote.js"></script>
+<script src="form-identity-strip.js"></script>
 <script src="form-cart.js"></script>
 <script src="form-live-menu.js"></script>
 <script src="form-apply.js"></script>
@@ -1492,7 +1493,14 @@ const FALLBACK_MENU = [
 const _BUNDLE = (typeof window !== 'undefined' && window.__FORM_MENU_BUNDLE__) || {};
 const _okDishes = (a) => Array.isArray(a) && a.length > 0 && a.every((d) => d && d.id != null && d.name);
 const _okStrArr = (a) => Array.isArray(a) && a.every((s) => typeof s === 'string');
-let MENU = _okDishes(_BUNDLE.dishes) ? _BUNDLE.dishes : FALLBACK_MENU;
+/* 1D D1 — the catalog id is stripped where served records become BROWSER records. Both boundaries
+   are covered (this one and liveMenuPrepare below) rather than only the one that carries ids today:
+   the spliced bundle is built offline and so has none, but "which boundary happens to be id-less
+   right now" is not a property worth depending on — the cart takes whole records and serializes them
+   into the order, so an id that slips through here reaches the order payload, the redemption
+   canonical and the quote fingerprint, and a field inside a fingerprint is not shadow. It enters the
+   cart at D2, with the code that knows what to do with it. */
+let MENU = _okDishes(_BUNDLE.dishes) ? (typeof stripIdentity === 'function' ? stripIdentity(_BUNDLE.dishes) : _BUNDLE.dishes) : FALLBACK_MENU;
 
 
 const MIN_ORDER = 250;
@@ -1957,8 +1965,10 @@ function liveMenuPrepare(body){
   if (new Set(dishes.map((d) => String(d.id))).size !== dishes.length) throw new Error('apply_dish_duplicate');
   if (new Set(extras.map((e) => String(e.id))).size !== extras.length) throw new Error('apply_extra_duplicate');
   return {
-    MENU: dishes,
-    EXTRAS: extras,
+    // 1D D1 — the SECOND boundary: the live refresh. This one really does carry ids (the served body
+    // is overlaid), and it is the path that replaces MENU/EXTRAS under a running form.
+    MENU: (typeof stripIdentity === 'function' ? stripIdentity(dishes) : dishes),
+    EXTRAS: (typeof stripIdentity === 'function' ? stripIdentity(extras) : extras),
     // Absent structure keeps what is already in force rather than becoming empty: an omitted
     // pickup-only list must not silently OPEN a gate that is currently closed.
     PICKUP_ONLY_CATS: Array.isArray(body.pickup_only_cats) ? body.pickup_only_cats : PICKUP_ONLY_CATS,

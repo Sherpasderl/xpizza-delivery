@@ -29,12 +29,16 @@ const crypto = require('crypto');
 const { getRestaurantMenu } = require('./catalog-menu');
 const { generateFormBundle } = require('./generate-form-bundle');
 const { canonicalJson } = require('./canonical-json');
+const { applyIdentityToServedBody } = require('./identity-overlay');
 
 // Bumped whenever THIS module's projection changes — a field added, a shape altered, a generator
 // change that moves the bundle. It is inside the etag, so a redeploy that changes the body also
 // changes every cache key; without it, browsers and the CDN would keep serving the old body under
 // the old key until their TTL expired, for a change that was supposed to be immediate.
-const REPRESENTATION_VERSION = '1b.1';
+/* 1D D1: bumped because the served body can now carry dish_id/extra_id. The marker is inside the
+   etag, so without the bump a cache would keep serving the id-less body under the old key — and a
+   change that is supposed to be additive-and-immediate would instead be invisible for a TTL. */
+const REPRESENTATION_VERSION = '1d.1';
 
 // EVERY field this endpoint serves, and what has to be true of it. One table, because the list of
 // what may appear and the rules for what must appear are the same fact — kept apart they drift, and
@@ -169,6 +173,24 @@ async function buildPublicMenu(db, rid, deps = {}) {
   }
 
   assertWholeBody(restaurantId, body, menu);
+
+  /* ── 1D D1 — IDENTITY, APPLIED LAST AND ABLE TO FAIL ALONE ──────────────────────────────────────
+     The body is already whole and already correct at this point: the version's hash was verified by
+     the reader, the projection succeeded, and assertWholeBody has passed. Only now are ids laid on
+     top, by registry lookup, on the customer-serving projection only.
+     Placed HERE rather than inside the reader on purpose. The reader is shared with the gate read
+     (previewVersion → gateReader), and enrichment trouble there could flip authored weekend or reward
+     eligibility to a static fallback — a business answer changed by a decoration. Down here it cannot
+     reach that path at all.
+     applyIdentityToServedBody never throws and never blocks: on a registry error or a slow read it
+     returns the body it was given, unchanged, and the customer is served a menu with no ids — which is
+     exactly the menu served today, because in D1 nothing reads them. */
+  const enriched = await applyIdentityToServedBody(db, restaurantId, body);
+  body = enriched.body;
+  if (!enriched.applied) {
+    // A diagnostic, never a decision — no caller branches on it and no response changes shape.
+    console.warn('public_menu_identity_absent', JSON.stringify({ rid: restaurantId, reason: enriched.reason }));
+  }
 
   // THE ETAG IS OVER THE REPRESENTATION — this rid, this projection version, this body. Not 1A's
   // content_hash: that identifies the VERSION, and what a cache holds is this module's projection of
