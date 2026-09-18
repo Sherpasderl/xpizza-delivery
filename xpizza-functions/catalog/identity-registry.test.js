@@ -6,9 +6,19 @@
  * CONCURRENCY and PERMANENCE — one id per object under simultaneous seeds, a retired id never handed
  * out again, a swap detected rather than adopted. Those are properties of the transaction shape, not
  * of Firestore, so they are provable against a store that models the one behaviour that matters: a
- * transaction that observed a document which then changed must re-run. The emulator test covers the
- * real driver; this covers the reasoning, and it covers it on every run rather than when Java is
- * installed.
+ * transaction that observed a document which then changed must re-run.
+ *
+ * 🔴 THAT IS A CONDITIONAL PROOF, AND THE CONDITION IS NAMED SOMEWHERE THAT RUNS. "One id" follows
+ * only IF Firestore serializes concurrent transactions on a contended document the way memFirestore
+ * models it — and this build has caught a fake diverging from production six times, so that is not an
+ * assumption to leave resting on a comment. An earlier version of this header claimed "the emulator
+ * test covers the real driver" while no emulator test touched the registry at all: a comment asserting
+ * coverage that did not exist, which is worse than no comment because it reads as a discharged
+ * obligation. It is now true, and by name:
+ *     test/identity-registry.emulator.test.js
+ * runs concurrent first-assignment against the REAL transaction engine and asserts one id, one id row,
+ * one key row, and that the engine genuinely forced retries. This file covers the reasoning, on every
+ * run rather than only where Java is installed; that one covers the driver.
  */
 const assert = require('assert');
 const { ensureIdentity, lookupByLegacyKeys, retireIdentity, validateClaim, encodeKey, ALPHABET, ID_LEN } = require('./identity-registry');
