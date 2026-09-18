@@ -5316,7 +5316,7 @@
       "node",
       "../cart-identity-order.test.mjs"
     ],
-    "kills_with": "items_text does not match the golden"
+    "kills_with": "does not match the COMPLETE frozen golden"
   },
   {
     "id": "d2-21",
@@ -5329,7 +5329,7 @@
       "node",
       "../cart-identity-order.test.mjs"
     ],
-    "kills_with": "the customer phone does not match the golden"
+    "kills_with": "does not match the COMPLETE frozen golden"
   },
   {
     "id": "d2-22",
@@ -5369,5 +5369,18 @@
       "../cart-identity-order.test.mjs"
     ],
     "kills_with": "the server net does not match the golden"
+  },
+  {
+    "id": "d2-25",
+    "slice": "d2",
+    "label": "🔴 customer_email is a CONSTANT - a field outside any selected golden, caught only by the COMPLETE one",
+    "file": "../xpizza-orders/index.html",
+    "from": "    customer_email: document.getElementById('cemail').value.trim(),",
+    "to": "    customer_email: 'constant@example.com',",
+    "command": [
+      "node",
+      "../cart-identity-order.test.mjs"
+    ],
+    "kills_with": "does not match the COMPLETE frozen golden"
   }
 ]

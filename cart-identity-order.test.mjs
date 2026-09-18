@@ -107,6 +107,199 @@ const GOLDEN = {
   },
 };
 
+/* ── THE COMPLETE ORDER GOLDEN ───────────────────────────────────────────────────────────────
+   🔴 THE SELECTED-FIELD GOLDEN LEFT A HOLE, AND THE HOLE WAS THE WHOLE-ORDER CLAIM. The assertion
+   said "the two orders differ by ONLY the identity fields", but what backed it was a golden over
+   chosen fields plus an a-vs-b equality — and a-vs-b cannot fail for a field both sides get wrong.
+   A constant customer_email passed both suites.
+   So the golden is now the COMPLETE sent order, frozen as a literal per brand and per payment method
+   (payment_status differs: confirmed for cash, pending for card). Every field is pinned against a real
+   value whether or not anyone thought to enumerate it.
+
+   🔴 EXACTLY TWO FIELDS ARE NORMALIZED, AND BOTH ARE MEASURED NONCES, NOT ASSUMED ONES. Each of the
+   four brand×method payloads was captured TWICE and diffed; order_id and timestamp were the only
+   fields that varied, so they are the only ones frozen to a placeholder. A normalized field is a
+   documented exception — order_id embeds a timestamp and a random suffix, `timestamp` is the wall
+   clock — and both are asserted PRESENT before being replaced, so normalizing cannot hide a field
+   that vanished. Everything else, customer_email included, is compared for real.
+
+   Brittle to legitimate order-shape changes by design. Re-capture recipe: a cart of 2× the first
+   priced dish plus its first option, name "Cliente Prueba", phone 98765432, email cliente@test.hn. */
+const ORDER_GOLDEN = {
+  "xpizza-orders": {
+    "cash": {
+      "order_id": "<frozen>",
+      "customer_name": "Cliente Prueba",
+      "customer_phone": "+504 9876-5432",
+      "customer_email": "cliente@test.hn",
+      "items": [
+        {
+          "name": "Carnivora",
+          "qty": 2,
+          "price": 340,
+          "subtotal": 680,
+          "extrasTotal": 39,
+          "extras": [
+            {
+              "instance": 0,
+              "name": "Salsa Roja",
+              "price": 39
+            }
+          ]
+        }
+      ],
+      "items_text": "2x Carnivora (L340) [Pizza 1: Salsa Roja]",
+      "total": 719,
+      "notes": "—",
+      "lat": null,
+      "lng": null,
+      "maps_link": "https://www.google.com/maps?q=null,null",
+      "address_detected": "",
+      "address_details": "",
+      "waze_link": "https://waze.com/ul?ll=null,null&navigate=yes",
+      "payment_method": null,
+      "order_type": "delivery",
+      "pickup_time": null,
+      "scheduled_for": null,
+      "payment_status": "confirmed",
+      "timestamp": "<frozen>",
+      "razon_social": "",
+      "rtn_cliente": "",
+      "expected_net_cents": 71900
+    },
+    "card": {
+      "order_id": "<frozen>",
+      "customer_name": "Cliente Prueba",
+      "customer_phone": "+504 9876-5432",
+      "customer_email": "cliente@test.hn",
+      "items": [
+        {
+          "name": "Carnivora",
+          "qty": 2,
+          "price": 340,
+          "subtotal": 680,
+          "extrasTotal": 39,
+          "extras": [
+            {
+              "instance": 0,
+              "name": "Salsa Roja",
+              "price": 39
+            }
+          ]
+        }
+      ],
+      "items_text": "2x Carnivora (L340) [Pizza 1: Salsa Roja]",
+      "total": 719,
+      "notes": "—",
+      "lat": null,
+      "lng": null,
+      "maps_link": "https://www.google.com/maps?q=null,null",
+      "address_detected": "",
+      "address_details": "",
+      "waze_link": "https://waze.com/ul?ll=null,null&navigate=yes",
+      "payment_method": null,
+      "order_type": "delivery",
+      "pickup_time": null,
+      "scheduled_for": null,
+      "payment_status": "pending",
+      "timestamp": "<frozen>",
+      "razon_social": "",
+      "rtn_cliente": "",
+      "expected_net_cents": 71900
+    }
+  },
+  "la-musa-orders": {
+    "cash": {
+      "restaurant_id": "la_musa",
+      "order_id": "<frozen>",
+      "customer_name": "Cliente Prueba",
+      "customer_phone": "+504 9876-5432",
+      "items": [
+        {
+          "id": "dimsum_01",
+          "name": "Sichuan Spicy Wonton",
+          "cat": "dim_sum",
+          "qty": 2,
+          "price": 223,
+          "subtotal": 496,
+          "extrasTotal": 50,
+          "extras": [
+            {
+              "id": "rice_white",
+              "name": "Arroz Blanco",
+              "price": 50,
+              "qty": 1
+            }
+          ]
+        }
+      ],
+      "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
+      "total": 496,
+      "notes": "—",
+      "lat": null,
+      "lng": null,
+      "maps_link": "https://www.google.com/maps?q=null,null",
+      "address_detected": "",
+      "address_details": "",
+      "waze_link": "https://waze.com/ul?ll=null,null&navigate=yes",
+      "payment_method": null,
+      "order_type": "delivery",
+      "pickup_time": null,
+      "scheduled_for": null,
+      "payment_status": "confirmed",
+      "timestamp": "<frozen>",
+      "customer_email": "cliente@test.hn",
+      "razon_social": "",
+      "rtn_cliente": "",
+      "expected_net_cents": 49600
+    },
+    "card": {
+      "restaurant_id": "la_musa",
+      "order_id": "<frozen>",
+      "customer_name": "Cliente Prueba",
+      "customer_phone": "+504 9876-5432",
+      "items": [
+        {
+          "id": "dimsum_01",
+          "name": "Sichuan Spicy Wonton",
+          "cat": "dim_sum",
+          "qty": 2,
+          "price": 223,
+          "subtotal": 496,
+          "extrasTotal": 50,
+          "extras": [
+            {
+              "id": "rice_white",
+              "name": "Arroz Blanco",
+              "price": 50,
+              "qty": 1
+            }
+          ]
+        }
+      ],
+      "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
+      "total": 496,
+      "notes": "—",
+      "lat": null,
+      "lng": null,
+      "maps_link": "https://www.google.com/maps?q=null,null",
+      "address_detected": "",
+      "address_details": "",
+      "waze_link": "https://waze.com/ul?ll=null,null&navigate=yes",
+      "payment_method": null,
+      "order_type": "delivery",
+      "pickup_time": null,
+      "scheduled_for": null,
+      "payment_status": "pending",
+      "timestamp": "<frozen>",
+      "customer_email": "cliente@test.hn",
+      "razon_social": "",
+      "rtn_cliente": "",
+      "expected_net_cents": 49600
+    }
+  }
+};
+
 // The identity fields removed, so an id-bearing order can be compared to the id-less golden.
 const withoutIdentity = (items) => (items || []).map((l) => {
   const { dish_id, extras, ...rest } = l;
@@ -230,24 +423,25 @@ const payload = (s) => s.sent.createOrder || s.sent.charge;
       for (const o of [a, b]) {
         assert.ok(o.order_id && o.timestamp, `${dir}/${method}: premise — both nonces are present before being frozen`);
       }
-      const strip = (o) => JSON.stringify({ ...o, order_id: '<frozen>', timestamp: '<frozen>',
-        items: (o.items || []).map((l) => {
-          const { dish_id, extras, ...r } = l;
-          return { ...r, extras: (extras || []).map(({ extra_id, ...e }) => e) };
-        }) });
-      assert.strictEqual(strip(a), strip(b),
-        `${dir}/${method}: 🔴 the two orders differ by more than the identity fields`);
+      /* 🔴 BOTH ORDERS AGAINST THE COMPLETE GOLDEN — which subsumes the a-vs-b equality that used to
+         stand here and could not fail for a field both sides got wrong. Pinning each side to the same
+         literal proves they agree AND that what they agree on is right. */
+      const normalized = (o) => ({ ...o, order_id: '<frozen>', timestamp: '<frozen>',
+        items: withoutIdentity(o.items) });
+      assert.deepStrictEqual(normalized(a), ORDER_GOLDEN[dir][method],
+        `${dir}/${method}: 🔴 the id-bearing order does not match the COMPLETE frozen golden — every field is in here, enumerated or not`);
+      assert.deepStrictEqual(normalized(b), ORDER_GOLDEN[dir][method],
+        `${dir}/${method}: 🔴 …and neither does the id-less one`);
       /* ── AGAINST THE FROZEN GOLDEN ─────────────────────────────────────────────────────────
          The assertion the per-field equalities could not make. Each of these fails if its value is
          constant, zeroed or broken, because the other side is a literal rather than the same code
          run twice. */
+      /* The COMPLETE golden above already pins every field of the order body — items, items_text,
+         total, phone, email and the rest — so the per-field assertions that used to sit here are gone
+         rather than left as a second, narrower copy that can drift from it. What remains is the two
+         values that are DERIVED from the order rather than carried in it, which no body golden can
+         cover: the server's net, and the redemption canonical below. */
       const G = GOLDEN[dir];
-      assert.deepStrictEqual(withoutIdentity(a.items), G.items,
-        `${dir}/${method}: 🔴 the emitted cart does not match the frozen id-less golden — every money field on the line is in here`);
-      assert.strictEqual(a.items_text, G.items_text,
-        `${dir}/${method}: 🔴 items_text does not match the golden — a constant or mis-built string fails here, where comparing it to itself could not`);
-      assert.strictEqual(a.total, G.total, `${dir}/${method}: 🔴 the order total does not match the golden`);
-      assert.strictEqual(a.customer_phone, G.phone, `${dir}/${method}: 🔴 the customer phone does not match the golden`);
       assert.strictEqual(computeServerNet({ items: a.items, reward: null, rid,
         tables: { restaurantId: rid, menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] } }).net_total_cents, G.net,
         `${dir}/${method}: 🔴 the server net does not match the golden`);
