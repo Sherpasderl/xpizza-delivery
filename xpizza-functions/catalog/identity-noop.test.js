@@ -926,6 +926,39 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
     ok(`the real publisher's identity deadline abandons mid-transaction: 0 rows at return (${elapsed}ms) and 0 after the registry recovers`);
   }
 
+  // ══ THE PROD BACKFILL READS WHAT IS LIVE, NEVER THE CODE TABLES ══════════════════════════════
+  /* 🔴 TWO THINGS IN THIS REPO LOOK LIKE "THE MENU" AND ONLY ONE OF THEM IS LIVE.
+     catalogSnapshot(rid) BUILDS a snapshot from the code tables; getRestaurantMenu(db, rid) READS the
+     published version out of Firestore. They agree today only because the live version was published
+     from those same tables — so a tool keyed from code passes every check anyone would think to run,
+     right up until a merchant edits through the portal. Then they diverge, and a backfill from code
+     mints ids for objects that are not live while the ones that are serve id-less: the same
+     wrong-source defect migrate-catalog-display names for prices, in the identity plane.
+     The tests in this file legitimately use catalogSnapshot — they have no Firestore. The PROD CLI
+     must not, and that is a property of a file nobody runs in this suite, so it is asserted by
+     reading it. */
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const CLI = path.join(__dirname, '..', 'tools', 'backfill-identities.js');
+    assert.ok(fs.existsSync(CLI), '🔴 there is no prod invocation path for the backfill — D1 cannot be deployed without one');
+    const src = fs.readFileSync(CLI, 'utf8');
+    const code = src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+
+    assert.ok(/getRestaurantMenu\(db,\s*RID\)/.test(code),
+      '🔴 the prod backfill must read the LIVE catalog through getRestaurantMenu');
+    assert.ok(!/catalogSnapshot/.test(code),
+      '🔴 the prod backfill must NOT build its key set from the code tables — a portal edit would make it register the wrong objects');
+    assert.ok(/requireProject\(\)/.test(code) && code.indexOf('requireProject()') < code.indexOf('initializeApp'),
+      '🔴 the project guard must run BEFORE initializeApp, so a refusal cannot have touched a byte');
+    assert.ok(/--apply/.test(code) && /DRY RUN/.test(code),
+      'the tool defaults to a dry run — an apply is stated, never the default');
+    // non-vacuity: the detectors can see what they are guarding against
+    assert.ok(/catalogSnapshot/.test('const m = catalogSnapshot(rid);'), 'non-vacuity: the code-table detector works');
+    assert.ok(!/catalogSnapshot/.test('const m = getRestaurantMenu(db, RID);'), 'non-vacuity: …and does not fire on the live reader');
+    ok('the prod backfill CLI exists, reads the LIVE catalog, guards the project before connecting, and dry-runs by default');
+  }
+
   // ── 7. 🔴 THE SHADOW PROOF — grep + runtime ───────────────────────────────────────────────────
   /* D1's licence is that nothing business-critical READS the id. That is a claim about the whole
      repository, not about the paths this file happens to exercise, so it is checked as a census over

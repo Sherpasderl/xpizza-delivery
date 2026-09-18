@@ -34,7 +34,7 @@ Both must be green before deploy. What each one covers:
 | `test:public-menu` | the served endpoint against real Firestore, with D1's overlay step in the path | anything about identity — its "identity" fixtures are the RTDB **routing** config the isActive gate reads, unrelated to the catalog registry |
 | `test:identity-registry` | concurrent `ensureIdentity` on one object against Firestore's own transaction engine: one id, one id row, one key row, retries genuinely forced | the no-op claim, which is node-side |
 
-`npm test` (no Java needed) carries the rest: 2243 checks, including the no-op matrix across both
+`npm test` (no Java needed) carries the rest: 2244 checks, including the no-op matrix across both
 brands and every forced failure path.
 
 ## Sequence
@@ -44,16 +44,66 @@ brands and every forced failure path.
    record goes out id-less. That is byte-identical to today's menu. Nothing is switched on by
    deploying; the backfill below is what starts minting.
 
-2. **Backfill, one brand at a time**, x_pizza first (fewer objects, and it is the minting path rather
-   than the grandfathered one, so a surprise shows up on the smaller blast radius).
-   The backfill is idempotent: a re-run preserves and mints nothing. It refuses loudly rather than
-   registering part of a catalog — any record that yields no legacy key throws
-   `identity_backfill_unkeyable` naming the kind, index and fields found. **If you see that, stop**:
-   it means the catalog reader is emitting a shape the backfill cannot key, and a partial registration
-   is exactly what the guard exists to prevent. Do not work around it.
+2. **Backfill, one brand at a time** — `xpizza-functions/tools/backfill-identities.js`.
+   x_pizza first: fewer objects, and it is the minting path rather than the grandfathered one, so a
+   surprise shows up on the smaller blast radius.
 
-   Expected first run: **x_pizza 24 dishes + 14 extras**, **la_musa 44 + 14**, all `created`.
-   Expected re-run: the same totals, all `preserved`, zero `created`.
+   Needs ADC (`gcloud auth application-default login`) or a service-account key in
+   `GOOGLE_APPLICATION_CREDENTIALS`. No Java, no emulator — this talks to production.
+
+   **Dry run first. It reads only and writes nothing:**
+
+   ```sh
+   cd xpizza-functions
+   node tools/backfill-identities.js --rid=x_pizza --project xpizza-delivery
+   ```
+
+   ```
+   project: xpizza-delivery  (stated explicitly and matched against .firebaserc)
+   x_pizza: live version v-… (seq N) — 24 dishes, 14 extras
+     dishes: 24 live, 0 already registered, 24 to mint
+     extras: 14 live, 0 already registered, 14 to mint
+
+   DRY RUN — nothing was written. Re-run with --apply to register the identities above.
+   ```
+
+   **Then apply:**
+
+   ```sh
+   node tools/backfill-identities.js --rid=x_pizza --project xpizza-delivery --apply
+   ```
+
+   ```
+   applied to x_pizza:
+     dish: 24 total — 24 created, 0 preserved
+     extra: 14 total — 14 created, 0 preserved
+     verified: 24/24 dishes and 14/14 extras resolve in the registry
+
+   done — x_pizza is fully registered.
+   ```
+
+   Then the same two commands with `--rid=la_musa`, expecting **44 dishes + 14 extras**.
+
+   The counts above are what a first run prints. **A re-run is safe and prints `0 created, N
+   preserved`** — that is the idempotence, and it is also how you resume if a run is interrupted.
+
+   `--project` is mandatory and is checked against `.firebaserc`; a mismatch refuses with exit code 2
+   before any credential is resolved or any byte is read. `--apply` is never the default.
+
+   🔴 **The key set comes from the LIVE catalog** (`getRestaurantMenu`), not from the code tables.
+   Two things in the repo look like "the menu" and only one of them is live; they agree only until a
+   merchant edits through the portal, after which a code-keyed backfill would mint ids for objects
+   nobody sells while the real ones serve id-less. The tool reads the live version through the same
+   reader the serving path uses, and a test asserts it never reaches for the code tables.
+
+   **If it prints `identity_backfill_unkeyable`, STOP.** It names the kind, the index and the fields it
+   actually found, e.g. `dish[2] yields no legacy key — fields were {sku,price}`. It means the live
+   catalog holds a record shape the backfill cannot key. Nothing was written. Do not work around it —
+   a partial registration leaves objects permanently id-less with no signal, which is the failure this
+   guard exists to make loud. Report the named record.
+
+   **If it exits with `INCOMPLETE`**, re-run it: it mints only what is missing. If it stays incomplete,
+   stop and report. Registry rows already written are correct and must never be deleted.
 
 3. **Verify the serve is unchanged.** Fetch `/menu/x_pizza` and `/menu/la_musa`. Dishes and extras now
    carry `dish_id` / `extra_id`; nothing else about the body moved. The browser strips them at both
