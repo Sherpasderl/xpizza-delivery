@@ -15,12 +15,39 @@
 const assert = require('assert');
 const { spawnSync } = require('child_process');
 const path = require('path');
+
+/* 🔴 THE EMULATOR GUARD — BEFORE firebase-admin IS EVEN REQUIRED, LET ALONE INITIALIZED.
+   Every other emulator test in this directory initializes against a `demo-` project id, which the
+   Admin SDK cannot route to production no matter how it is invoked. This one CANNOT do that: the CLI
+   it spawns runs require-project, which refuses any project that is not .firebaserc's `xpizza-delivery`
+   — so the harness has to name the real production project to exercise the real guard.
+   That makes this file the one destructive harness in the repo that is pointed at a production project
+   id. It publishes catalogs, deletes registry rows and deliberately corrupts a catalog document as
+   fixtures. Under `npm run test:backfill-identities` that is all safe, because emulators:exec sets
+   FIRESTORE_EMULATOR_HOST and every read and write goes to the emulator. Run directly —
+   `node test/backfill-identities.emulator.test.js` — on a machine with usable production ADC, those
+   same fixtures would execute against PRODUCTION.
+   So the emulator is not assumed from the invocation. It is asserted here, first, and a missing host
+   exits 2 having required nothing, constructed nothing and read nothing. This is the same hazard the
+   CLI's own --project guard exists to prevent, one level up: the test harness for a guarded tool must
+   not itself be runnable against prod by mis-invocation. */
+if (!process.env.FIRESTORE_EMULATOR_HOST) {
+  console.error('\nREFUSED — FIRESTORE_EMULATOR_HOST is not set.\n');
+  console.error('This harness publishes catalogs, deletes registry rows and corrupts a catalog document');
+  console.error(`as fixtures, and it names the PRODUCTION project (it must, to exercise the CLI's own`);
+  console.error('project guard). Without the emulator those writes would land in production.\n');
+  console.error('Run it the documented way:');
+  console.error('  PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:backfill-identities\n');
+  console.error('nothing was read and nothing was written.\n');
+  process.exit(2);
+}
+
 const admin = require('firebase-admin');
 const { publishVersion } = require('../catalog/catalog-publish');
 const { buildPublishCandidate } = require('../tools/publish-version');
 const { liveKeys } = require('../catalog/identity-backfill');
 const { getRestaurantMenu } = require('../catalog/catalog-menu');
-const { encodeKey } = require('../catalog/identity-registry');
+const { encodeKey, retireIdentity } = require('../catalog/identity-registry');
 
 const PROJECT = 'xpizza-delivery';                    // must match .firebaserc or the guard refuses
 admin.initializeApp({ projectId: PROJECT });          // FIRESTORE_EMULATOR_HOST set by emulators:exec
@@ -38,6 +65,8 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('backfill-
    is kept — that is what routes every write to the emulator instead of production. */
 function runCli(args, extraEnv = {}) {
   const env = { ...process.env, GCLOUD_PROJECT: '', GOOGLE_CLOUD_PROJECT: '', ...extraEnv };
+  // The child must reach the EMULATOR too — it is the process that actually writes identities.
+  assert.ok(env.FIRESTORE_EMULATOR_HOST, '🔴 the spawned CLI would write to production — FIRESTORE_EMULATOR_HOST is not in its environment');
   const r = spawnSync('node', [CLI, ...args], { cwd: FUNCTIONS_DIR, env, encoding: 'utf8' });
   return { code: r.status, out: (r.stdout || '') + (r.stderr || '') };
 }
@@ -51,6 +80,30 @@ const identityRows = async (rid) => {
   }
   return count;
 };
+/* 🔴 THE REGISTRY AS THE DATABASE HOLDS IT — every key row, and the id row it is paired with.
+   Counting rows proves a number; this proves the MAPPING, which is what the overlay will read. A key
+   row whose id row is missing, or whose id row names a different object, is a broken identity that an
+   aggregate count cannot see — and "38 rows exist" would happily pass over it. */
+const readMappings = async (rid, keys) => {
+  const out = { dish: {}, extra: {} };
+  for (const kind of ['dish', 'extra']) {
+    const col = db.collection('restaurants').doc(rid).collection('identity').doc(kind);
+    for (const k of keys[kind]) {
+      const keySnap = await col.collection('keys').doc(encodeKey(k)).get();
+      assert.ok(keySnap.exists, `🔴 ${rid}/${kind}: ${k} has no key row — it would serve id-less forever`);
+      const id = (keySnap.data() || {}).canonical_id;
+      assert.ok(typeof id === 'string' && id, `🔴 ${rid}/${kind}/${k}: the key row carries no canonical id`);
+      const idSnap = await col.collection('ids').doc(id).get();
+      assert.ok(idSnap.exists, `🔴 ${rid}/${kind}/${k}: the key row points at ${id}, which has no id row — a half identity`);
+      assert.strictEqual((idSnap.data() || {}).legacy_key, k,
+        `🔴 ${rid}/${kind}/${k}: the id row names a different object (${(idSnap.data() || {}).legacy_key}) — the mapping is crossed`);
+      assert.strictEqual((idSnap.data() || {}).status, 'live', `${rid}/${kind}/${k}: and it is live`);
+      out[kind][k] = id;
+    }
+  }
+  return out;
+};
+
 const clearRegistry = async (rid) => {
   for (const kind of ['dish', 'extra']) {
     for (const leaf of ['keys', 'ids']) {
@@ -94,14 +147,17 @@ const clearRegistry = async (rid) => {
     assert.strictEqual(r.code, 0, `apply exits 0 — ${r.out}`);
     assert.ok(/dish: 24 total — 24 created, 0 preserved/.test(r.out), `24 dishes minted: ${r.out}`);
     assert.ok(/extra: 14 total — 14 created, 0 preserved/.test(r.out), `14 extras minted: ${r.out}`);
-    // Asserted against the DATABASE, not against the tool's own words.
+    /* Asserted against the DATABASE, not against the tool's own words — and per OBJECT, both kinds,
+       with the key row and its id row checked as a pair. The earlier version checked an aggregate row
+       count plus the dish keys, which would have passed over a missing extra or a crossed mapping. */
     assert.strictEqual(await identityRows('x_pizza'), (24 + 14) * 2,
       '🔴 the registry holds an id row and a key row for every live object');
-    for (const k of KEYS.x_pizza.dish) {
-      const snap = await db.collection('restaurants').doc('x_pizza').collection('identity').doc('dish').collection('keys').doc(encodeKey(k)).get();
-      assert.ok(snap.exists && snap.data().canonical_id, `${k} resolves in the registry`);
-    }
-    ok('--apply creates 24 dishes + 14 extras and the database holds every one of them');
+    const mapped = await readMappings('x_pizza', KEYS.x_pizza);
+    assert.strictEqual(Object.keys(mapped.dish).length, 24, '🔴 all 24 dishes map, counted from the DB');
+    assert.strictEqual(Object.keys(mapped.extra).length, 14, '🔴 all 14 extras map too — not just the dishes');
+    assert.strictEqual(new Set([...Object.values(mapped.dish), ...Object.values(mapped.extra)]).size, 38,
+      '🔴 …to 38 DISTINCT ids — two objects sharing an identity is the failure the registry exists to prevent');
+    ok('--apply creates 24 dishes + 14 extras, every key paired with its own id row in the database');
   }
 
   // ── 3. 🔴 THE "verified" LINE IS A REAL LOOKUP, NOT AN ECHO OF THE REPORT ─────────────────────
@@ -149,12 +205,20 @@ const clearRegistry = async (rid) => {
 
   // ── 4. A RE-RUN PRESERVES — IDEMPOTENCE AND RESUME, AT THE CLI ───────────────────────────────
   {
+    /* 🔴 THE MAPPINGS, NOT THE COUNT. A re-run that silently re-minted every id would keep the row
+       count at 76 and still report whatever it liked; only comparing the actual key→id mapping before
+       and after catches an identity that moved. That is the property preserve-on-write exists for —
+       an object whose id changes between runs is an object that two orders describe differently. */
+    const before = await readMappings('x_pizza', KEYS.x_pizza);
     const r = runCli(['--rid=x_pizza', '--project', PROJECT, '--apply']);
     assert.strictEqual(r.code, 0, `a re-run exits 0 — ${r.out}`);
     assert.ok(/dish: 24 total — 0 created, 24 preserved/.test(r.out), `🔴 a re-run mints nothing: ${r.out}`);
     assert.ok(/extra: 14 total — 0 created, 14 preserved/.test(r.out), `🔴 …for extras either: ${r.out}`);
     assert.strictEqual(await identityRows('x_pizza'), (24 + 14) * 2, 'and the row count is unchanged');
-    ok('a re-run creates 0 and preserves 38 — safe to repeat, and the way an interrupted run resumes');
+    const after = await readMappings('x_pizza', KEYS.x_pizza);
+    assert.deepStrictEqual(after, before,
+      '🔴 every key→id mapping is byte-identical across the re-run — not merely the same NUMBER of them');
+    ok('a re-run creates 0, preserves 38, and leaves every key→id mapping unchanged');
   }
 
   // ── 5. THE OTHER BRAND, WHICH GRANDFATHERS ITS SLUG ─────────────────────────────────────────
@@ -163,10 +227,18 @@ const clearRegistry = async (rid) => {
     assert.strictEqual(r.code, 0, `la_musa applies — ${r.out}`);
     assert.ok(/dish: 44 total — 44 created, 0 preserved/.test(r.out), `44 dishes: ${r.out}`);
     assert.ok(/extra: 14 total — 14 created, 0 preserved/.test(r.out), `14 extras: ${r.out}`);
-    const slug = KEYS.la_musa.dish[0];
-    const snap = await db.collection('restaurants').doc('la_musa').collection('identity').doc('dish').collection('keys').doc(encodeKey(slug)).get();
-    assert.strictEqual(snap.data().canonical_id, slug, '🔴 la_musa grandfathers its slug through the CLI too');
-    ok(`la_musa applies 44 + 14 and grandfathers its slug (${slug})`);
+    /* Counted from the DATABASE, not read off the tool's output, and the slug pinned BY NAME rather
+       than by whatever happens to be first in the key set — a dynamically-selected slug would still
+       pass if the ordering changed underneath and the assertion quietly moved to a different dish. */
+    const lm = await readMappings('la_musa', KEYS.la_musa);
+    assert.strictEqual(Object.keys(lm.dish).length, 44, '🔴 44 dishes map, counted independently from the DB');
+    assert.strictEqual(Object.keys(lm.extra).length, 14, '🔴 …and 14 extras');
+    assert.strictEqual(lm.dish.dimsum_01, 'dimsum_01',
+      '🔴 la_musa grandfathers its slug through the CLI — dimsum_01 is its own canonical id');
+    for (const [k, id] of Object.entries(lm.dish)) {
+      assert.strictEqual(id, k, `🔴 every la_musa dish is grandfathered, not just the pinned one (${k} → ${id})`);
+    }
+    ok('la_musa applies 44 + 14, every dish grandfathered, dimsum_01 pinned by name');
   }
 
   // ── 6. 🔴 THE PROJECT GUARD REFUSES BEFORE IT READS ANYTHING ─────────────────────────────────
@@ -222,6 +294,53 @@ const clearRegistry = async (rid) => {
     assert.strictEqual(after.code, 0, `non-vacuity: with the catalog repaired the same command succeeds — ${after.out}`);
     assert.ok(/24 created/.test(after.out), '…and does the work it refused to do before');
     ok('an unreadable catalog exits 1 with zero rows written, and the same command succeeds once repaired');
+  }
+
+  // ── 8. A REGISTRY REFUSAL SURFACES AS A FAILURE, AND THE ROWS ALREADY WRITTEN SURVIVE ───────
+  /* 🔴 WHY THIS IS HERE AND NOT A POST-APPLY ECHO TEST. The gate asked whether anything distinguishes
+     the "verified N/N" line from an echo of the tool's own report. Nothing black-box can, and the
+     reason is structural rather than a gap in effort: after any NON-FAULTY run the two values are
+     necessarily equal — the report totals the keys it processed, the verify line counts the keys that
+     resolve, and a successful backfill makes those the same number. To separate them the database
+     would have to be short of what the report claims, which is producible only by racing the process
+     mid-run or by mutating the tool. What IS proven, in case 3, is that the counts come from the
+     database at all: three identities deleted out of band moved the reported numbers, through the same
+     lookupByLegacyKeys call the verify line uses. Source ordering does the rest — the verify line reads
+     `after`, computed by a fresh lookup after backfillIdentities returned, never from `report`.
+     So instead of a test that cannot discriminate, here is a REACHABLE failure the CLI must handle:
+     a retired grandfathered slug. The registry refuses to re-issue it (a retired id stays reserved
+     forever), and what matters is that the tool reports that as a FAILURE rather than a tidy success,
+     and that the rows it had already written are left alone — the runbook forbids deleting them. */
+  {
+    const rid = 'la_musa';
+    const before = await readMappings(rid, KEYS.la_musa);
+    const victim = 'dimsum_01';
+    const gone = await retireIdentity(db, { rid, kind: 'dish', canonicalId: victim });
+    assert.strictEqual(gone.retired, true, 'premise — the slug really was retired');
+
+    const r = runCli(['--rid=' + rid, '--project', PROJECT, '--apply']);
+    assert.strictEqual(r.code, 1,
+      `🔴 a registry refusal must exit 1, not be reported as a successful backfill — got ${r.code}: ${r.out}`);
+    assert.ok(/identity_slug_retired/.test(r.out), `it names the refusal: ${r.out}`);
+    assert.ok(/must not be deleted/.test(r.out),
+      `and tells the operator not to "clean up" the rows already written: ${r.out}`);
+    assert.ok(!/is fully registered/.test(r.out), '🔴 …and never claims success');
+
+    /* THE ROWS THAT WERE ALREADY CORRECT ARE STILL THERE. A tool that rolled back on failure would be
+       deleting reserved identities, which is the one thing the registry forbids. */
+    const survivors = { dish: KEYS.la_musa.dish.filter((k) => k !== victim), extra: KEYS.la_musa.extra };
+    const after = await readMappings(rid, survivors);
+    for (const k of survivors.dish) {
+      assert.strictEqual(after.dish[k], before.dish[k], `🔴 ${k} lost or changed its identity on a failed run`);
+    }
+    for (const k of survivors.extra) {
+      assert.strictEqual(after.extra[k], before.extra[k], `🔴 extra ${k} lost or changed its identity`);
+    }
+    // …and the retired id itself is still reserved, not freed.
+    const idRow = await db.collection('restaurants').doc(rid).collection('identity').doc('dish').collection('ids').doc(victim).get();
+    assert.strictEqual(idRow.exists, true, '🔴 the retired id row must survive — a freed id can be handed to a different object');
+    assert.strictEqual((idRow.data() || {}).status, 'retired', '…still marked retired');
+    ok(`a retired slug makes the CLI exit 1 naming identity_slug_retired, with all ${survivors.dish.length + survivors.extra.length} other identities intact and the reserved id still held`);
   }
 
   FINISHED = true;

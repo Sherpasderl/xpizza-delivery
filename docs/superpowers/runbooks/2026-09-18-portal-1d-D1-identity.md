@@ -25,7 +25,7 @@ export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
 
 npm run test:public-menu          # the endpoint, end to end → OK (7)
 npm run test:identity-registry    # first-assignment serialization on the REAL engine → OK (5)
-npm run test:backfill-identities  # the deploy CLI, run as a subprocess → OK (7)
+npm run test:backfill-identities  # the deploy CLI, run as a subprocess → OK (8)
 ```
 
 Both must be green before deploy. What each one covers:
@@ -34,7 +34,7 @@ Both must be green before deploy. What each one covers:
 |---|---|---|
 | `test:public-menu` | the served endpoint against real Firestore, with D1's overlay step in the path | anything about identity — its "identity" fixtures are the RTDB **routing** config the isActive gate reads, unrelated to the catalog registry |
 | `test:identity-registry` | concurrent `ensureIdentity` on one object against Firestore's own transaction engine: one id, one id row, one key row, retries genuinely forced | the no-op claim, which is node-side |
-| `test:backfill-identities` | the deploy CLI itself, spawned as a subprocess exactly as you will type it: dry run writes nothing, `--apply` creates 24+14, a re-run preserves 38, the guard refuses (no flag / wrong project) having read nothing, an unreadable catalog exits 1 writing nothing | the unkeyable-record branch, which the reader refuses before it can be reached (see below) |
+| `test:backfill-identities` | the deploy CLI itself, spawned as a subprocess exactly as you will type it: dry run writes nothing, `--apply` creates 24+14 with every key paired to its own id row, a re-run leaves every mapping identical, the guard refuses (no flag / wrong project) having read nothing, an unreadable catalog exits 1 writing nothing, a retired slug exits 1 leaving other identities intact. Refuses to run at all unless `FIRESTORE_EMULATOR_HOST` is set | the unkeyable-record branch, which the reader refuses before it can be reached (see below) |
 
 `npm test` (no Java needed) carries the rest: 2245 checks, including the no-op matrix across both
 brands and every forced failure path.
