@@ -25,7 +25,7 @@ export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
 
 npm run test:public-menu          # the endpoint, end to end → OK (7)
 npm run test:identity-registry    # first-assignment serialization on the REAL engine → OK (5)
-npm run test:backfill-identities  # the deploy CLI, run as a subprocess → OK (8)
+npm run test:backfill-identities  # the deploy CLI, run as a subprocess → OK (9)
 ```
 
 Both must be green before deploy. What each one covers:
@@ -34,7 +34,7 @@ Both must be green before deploy. What each one covers:
 |---|---|---|
 | `test:public-menu` | the served endpoint against real Firestore, with D1's overlay step in the path | anything about identity — its "identity" fixtures are the RTDB **routing** config the isActive gate reads, unrelated to the catalog registry |
 | `test:identity-registry` | concurrent `ensureIdentity` on one object against Firestore's own transaction engine: one id, one id row, one key row, retries genuinely forced | the no-op claim, which is node-side |
-| `test:backfill-identities` | the deploy CLI itself, spawned as a subprocess exactly as you will type it: dry run writes nothing, `--apply` creates 24+14 with every key paired to its own id row, a re-run leaves every mapping identical, the guard refuses (no flag / wrong project) having read nothing, an unreadable catalog exits 1 writing nothing, a retired slug exits 1 leaving other identities intact. Refuses to run at all unless `FIRESTORE_EMULATOR_HOST` is set | the unkeyable-record branch, which the reader refuses before it can be reached (see below) |
+| `test:backfill-identities` | the deploy CLI itself, spawned as a subprocess exactly as you will type it: dry run writes nothing, `--apply` creates 24+14 with every key paired to its own id row, a re-run leaves every mapping identical, the guard refuses (no flag / wrong project) having read nothing, an unreadable catalog exits 1 writing nothing, a retired slug exits 1 leaving other identities intact, and the "verified" line is proven to disagree with the report when the database does. Refuses to run at all unless `FIRESTORE_EMULATOR_HOST` is set | the unkeyable-record branch, which the reader refuses before it can be reached (see below) |
 
 `npm test` (no Java needed) carries the rest: 2245 checks, including the no-op matrix across both
 brands and every forced failure path.
@@ -112,8 +112,19 @@ brands and every forced failure path.
    a partial registration leaves objects permanently id-less with no signal, which is the failure this
    guard exists to make loud. Report the named record.
 
-   **If it exits with `INCOMPLETE`**, re-run it: it mints only what is missing. If it stays incomplete,
-   stop and report. Registry rows already written are correct and must never be deleted.
+   **If it exits with `INCOMPLETE`**, re-run it: it mints only what is missing. Registry rows already
+   written are correct and must never be deleted — the tool does not roll back on failure, by design,
+   and a failed run is meant to be re-runnable.
+
+   **If it stays INCOMPLETE across re-runs, stop and report — do not keep re-running.** There is one
+   known state the backfill cannot repair by itself: an identity is stored as two rows (`ids/<id>` and
+   `keys/<encoded legacy key>`), and if the KEY row is lost while the id row survives as `live`, then
+   on La Musa the backfill proposes the same grandfathered slug, finds that id row already belongs to
+   this object, and reports it **preserved** — without rewriting the missing key row. Every run then
+   reports "44 preserved" while the verification resolves 43, forever. This cannot arise from normal
+   operation (both rows are written in one transaction) and needs a deliberate or partial out-of-band
+   deletion, but if you meet it, the repair is to restore the key row pointing at the existing id — not
+   to delete the id row and re-mint, which would spend a reserved identity.
 
 3. **Verify the serve is unchanged.** Fetch `/menu/x_pizza` and `/menu/la_musa`. Dishes and extras now
    carry `dish_id` / `extra_id`; nothing else about the body moved. The browser strips them at both

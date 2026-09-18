@@ -241,6 +241,53 @@ const clearRegistry = async (rid) => {
     ok('la_musa applies 44 + 14, every dish grandfathered, dimsum_01 pinned by name');
   }
 
+  // ── 5b. 🔴 THE VERIFY LINE IS NOT AN ECHO — REPORT SAYS 44, THE REREAD SAYS 43 ───────────────
+  /* I argued this could not be built black-box: after a non-faulty run the report and the verify line
+     are necessarily equal, so separating them would need a race or a fault-injection seam in the
+     production script. That was wrong, and the seam was already in the data model — the registry
+     stores an identity as TWO rows, and they can be desynced from outside.
+     Delete only the KEY row and leave the id row LIVE. ensureIdentity then finds no key row, proposes
+     the grandfathered slug, finds that id row already present and belonging to this same object, and
+     returns it as PRESERVED — without restoring the key row it never read. So the backfill honestly
+     reports 44 dishes preserved while lookupByLegacyKeys, which resolves through key rows, can only
+     find 43. Report 44, reread 43, deterministic, no prod change.
+     Only works on the grandfathered brand: x_pizza proposes a random token, misses the retained id row
+     entirely, and mints a fresh identity — self-healing, and no disagreement to observe. It must also
+     run BEFORE the retirement case below, which takes dimsum_01 out of service. */
+  {
+    const rid = 'la_musa';
+    const victim = KEYS.la_musa.dish[1];                 // not dimsum_01 — that one is retired later
+    assert.notStrictEqual(victim, 'dimsum_01', 'premise — the victim is not the dish the retirement case uses');
+    const col = db.collection('restaurants').doc(rid).collection('identity').doc('dish');
+    const keyRef = col.collection('keys').doc(encodeKey(victim));
+    const held = await keyRef.get();
+    assert.ok(held.exists, `premise — ${victim} is registered before the reverse index is broken`);
+    const id = (held.data() || {}).canonical_id;
+    const idSnap = await col.collection('ids').doc(id).get();
+    assert.strictEqual((idSnap.data() || {}).status, 'live',
+      'premise — the id row stays LIVE; only the reverse index is lost, which is what makes the report disagree');
+
+    await keyRef.delete();
+
+    const r = runCli(['--rid=' + rid, '--project', PROJECT, '--apply']);
+    assert.ok(/dish: 44 total — 0 created, 44 preserved/.test(r.out),
+      `🔴 the REPORT claims all 44 dishes preserved: ${r.out}`);
+    assert.ok(/verified: 43\/44 dishes/.test(r.out),
+      `🔴 …and the REREAD says 43. A verify line echoing the report would have said 44/44 — this is the assertion that keeps it a real lookup: ${r.out}`);
+    assert.ok(/INCOMPLETE/.test(r.out), `it reports the state as incomplete: ${r.out}`);
+    assert.strictEqual(r.code, 1, `🔴 and exits 1 rather than claiming success — got ${r.code}: ${r.out}`);
+    assert.ok(!/is fully registered/.test(r.out), '🔴 …never printing the success line');
+
+    /* Repaired by hand, because the backfill cannot repair this one: every re-run takes the same
+       preserve path and reports the same 44. That is why the tool's INCOMPLETE guidance ends with
+       "if it stays incomplete, stop and report" — this is the state that reaches it. */
+    await keyRef.set({ canonical_id: id, kind: 'dish', created_at: new Date().toISOString() });
+    const back = runCli(['--rid=' + rid, '--project', PROJECT, '--apply']);
+    assert.strictEqual(back.code, 0, `non-vacuity: once the reverse index is restored the same command succeeds — ${back.out}`);
+    assert.ok(/verified: 44\/44 dishes/.test(back.out), '…and the verify line follows the database back up to 44');
+    ok('the verify line disagrees with the report when the database disagrees — report 44 preserved, reread 43, INCOMPLETE, exit 1');
+  }
+
   // ── 6. 🔴 THE PROJECT GUARD REFUSES BEFORE IT READS ANYTHING ─────────────────────────────────
   /* Three refusals, each for its own rule, and each asserted to have touched nothing. The row count is
      taken before and after: a guard that refuses AFTER connecting is not the guard the runbook
@@ -317,6 +364,10 @@ const clearRegistry = async (rid) => {
     const victim = 'dimsum_01';
     const gone = await retireIdentity(db, { rid, kind: 'dish', canonicalId: victim });
     assert.strictEqual(gone.retired, true, 'premise — the slug really was retired');
+    /* Counted AFTER the retirement, because retireIdentity deletes the key row itself — that is its
+       job. The claim being made below is that the failed RUN deletes nothing, not that the fixture
+       that set the run up deletes nothing. */
+    const rowsBeforeFailure = await identityRows(rid);
 
     const r = runCli(['--rid=' + rid, '--project', PROJECT, '--apply']);
     assert.strictEqual(r.code, 1,
@@ -326,8 +377,11 @@ const clearRegistry = async (rid) => {
       `and tells the operator not to "clean up" the rows already written: ${r.out}`);
     assert.ok(!/is fully registered/.test(r.out), '🔴 …and never claims success');
 
-    /* THE ROWS THAT WERE ALREADY CORRECT ARE STILL THERE. A tool that rolled back on failure would be
-       deleting reserved identities, which is the one thing the registry forbids. */
+    /* 🔴 NO ROLLBACK — AND THAT IS THE DESIGN, NOT A MISSING FEATURE. A tool that undid its writes on
+       failure would be deleting registry rows, and a deleted id is one that can be handed to a
+       different object later; the runbook forbids it in as many words. So a failed run is expected to
+       LEAVE its correct rows in place and be re-runnable, and this asserts exactly that rather than
+       treating the surviving rows as incidental. */
     const survivors = { dish: KEYS.la_musa.dish.filter((k) => k !== victim), extra: KEYS.la_musa.extra };
     const after = await readMappings(rid, survivors);
     for (const k of survivors.dish) {
@@ -337,6 +391,8 @@ const clearRegistry = async (rid) => {
       assert.strictEqual(after.extra[k], before.extra[k], `🔴 extra ${k} lost or changed its identity`);
     }
     // …and the retired id itself is still reserved, not freed.
+    assert.strictEqual(await identityRows(rid), rowsBeforeFailure,
+      '🔴 the failed run deleted NOTHING — no rollback, by design');
     const idRow = await db.collection('restaurants').doc(rid).collection('identity').doc('dish').collection('ids').doc(victim).get();
     assert.strictEqual(idRow.exists, true, '🔴 the retired id row must survive — a freed id can be handed to a different object');
     assert.strictEqual((idRow.data() || {}).status, 'retired', '…still marked retired');
