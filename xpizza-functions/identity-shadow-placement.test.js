@@ -33,9 +33,9 @@ const at = (needle, from = 0) => { const i = src.indexOf(needle, from); assert.n
 // ── CASH ────────────────────────────────────────────────────────────────────────────────────────
 {
   const write = at('await db.ref().update(updates);');
-  const kickoff = at('const shadowCheck = trackSettled(shadowValidateIds(getFirestore()');
+  const kickoff = at('const shadowCheck = startShadowCheck(getFirestore,');
   const notify = at('await notifyWithinDeadline(', kickoff);
-  const collect = at('const shadowResult = shadowCheck.isSettled()');
+  const collect = at('const shadowResult = (shadowCheck && shadowCheck.isSettled())');
   const respond = at('return res.status(200).json({ ok: true, order_id: orderId, tracking_token: trackingToken });');
 
   assert.ok(write < kickoff, '🔴 the cash check is kicked off BEFORE the order is written — it must never precede the order existing');
@@ -54,11 +54,18 @@ const at = (needle, from = 0) => { const i = src.indexOf(needle, from); assert.n
 
   assert.ok(flowCall < callback && callback < respondGuard,
     '🔴 the card check must be passed INTO the flow as onAcceptedFresh — started at the accepted-fresh seam, not in the handler');
-  assert.ok(!/shadowValidateIds\(getFirestore\(\)[\s\S]{0,200}resolveAndIssueHostedCheckout/.test(src),
+  assert.ok(!/startShadowCheck\([\s\S]{0,200}resolveAndIssueHostedCheckout/.test(src),
     '🔴 the card check must not be started before the flow — every refusal is still ahead of it there');
   assert.ok(respondGuard < report,
     '🔴 the card report sits BEFORE the flow.respond return — a refusal, a reuse or a checkout failure would report');
-  ok('card: the check is started by the seam callback, and reporting sits past the flow.respond return');
+  /* 🔴 REPORTING IS GATED ON "THE CALLBACK FIRED", NOT ON "A CHECK EXISTS". If the kickoff itself
+     threw, the flow swallows it and the check is null — indistinguishable from a refused request,
+     which correctly reports nothing. Gating on the object would make a SUCCESSFUL issuance emit no
+     heartbeat at all, understating coverage and hiding the very getFirestore failure the heartbeat
+     exists to expose. */
+  assert.ok(/if \(cardShadowStarted\) \{/.test(src),
+    '🔴 the card report is gated on the check OBJECT rather than on whether the callback fired — a thrown kickoff would emit no heartbeat on a successful issuance');
+  ok('card: the check is started by the seam callback, and reporting is gated on the callback having fired');
 }
 
 // ── CONTRACT B — NOTHING IS AWAITED ─────────────────────────────────────────────────────────────
@@ -78,11 +85,13 @@ const at = (needle, from = 0) => { const i = src.indexOf(needle, from); assert.n
 
 // ── THE HANDLE ──────────────────────────────────────────────────────────────────────────────────
 {
-  const calls = [...src.matchAll(/shadowValidateIds\(([^,]+),/g)].map((m) => m[1].trim());
-  assert.strictEqual(calls.length, 2, `expected exactly two call sites, found ${calls.length}`);
-  assert.ok(calls.every((a) => a === 'getFirestore()'),
-    `🔴 a call site reads from ${calls.find((a) => a !== 'getFirestore()')} — the registry is in Firestore; the handler's db is RTDB and every read would fail silently`);
-  ok('both call sites pass getFirestore(), never the RTDB db');
+  const calls = [...src.matchAll(/startShadowCheck\(([^,]+),/g)].map((m) => m[1].trim());
+  assert.strictEqual(calls.length, 2, `expected exactly two guarded call sites, found ${calls.length}`);
+  assert.ok(calls.every((a) => a === 'getFirestore'),
+    `🔴 a call site passes ${calls.find((a) => a !== 'getFirestore')} — it must pass the GETTER, so a throwing handle is caught inside the guard instead of failing an already-written order`);
+  assert.ok(!/shadowValidateIds\(/.test(src),
+    '🔴 a handler calls the validator directly, bypassing the guard');
+  ok('both call sites pass getFirestore as a getter through the guard; nothing calls the validator directly');
 }
 
 console.log(`\nidentity-shadow-placement: OK (${n})`);

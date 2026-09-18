@@ -5547,12 +5547,38 @@
     "slice": "d3",
     "label": "🔴 the validator THROWS into the order handler instead of returning a status",
     "file": "catalog/identity-shadow-validate.js",
-    "from": "  } catch (_e) {",
-    "to": "  } catch (_e) { if (true) throw _e;",
+    "from": "  } catch (_e) {\n    /* 🔴 A READ ERROR YIELDS ZERO MISMATCHES.",
+    "to": "  } catch (_e) { if (true) throw _e;\n    /* 🔴 A READ ERROR YIELDS ZERO MISMATCHES.",
     "command": [
       "node",
       "catalog/identity-shadow.test.js"
     ],
     "kills_with": "THREW into the order path"
+  },
+  {
+    "id": "d3-14",
+    "slice": "d3",
+    "label": "🔴 the kickoff guard is gone - a throwing getFirestore fails an ALREADY-WRITTEN order",
+    "file": "catalog/identity-shadow-validate.js",
+    "from": "  try {\n    return trackSettled(shadowValidateIds(getFs(), rid, items, opts));",
+    "to": "  const _fs = getFs();\n  try {\n    return trackSettled(shadowValidateIds(_fs, rid, items, opts));",
+    "command": [
+      "node",
+      "catalog/identity-shadow.test.js"
+    ],
+    "kills_with": "a throwing handle getter escaped the kickoff"
+  },
+  {
+    "id": "d3-15",
+    "slice": "d3",
+    "label": "🔴 the card report is gated on the check OBJECT - a thrown kickoff makes a successful issuance emit no heartbeat",
+    "file": "index.js",
+    "from": "  if (cardShadowStarted) {",
+    "to": "  if (cardShadow) {",
+    "command": [
+      "node",
+      "identity-shadow-placement.test.js"
+    ],
+    "kills_with": "gated on the check OBJECT rather than on whether the callback fired"
   }
 ]

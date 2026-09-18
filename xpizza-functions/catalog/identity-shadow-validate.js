@@ -53,10 +53,14 @@ function occurrencesOf(rid, items) {
   return out;
 }
 
-/* 🔴 NEVER THROWS, AND THE TRY BLOCK COVERS EVERYTHING — including obtaining the handle and building
-   the occurrence list, not just the reads. A getFirestore() that throws, a cart of a shape nobody
-   expected, a resolver that returns something odd: all of it becomes a status, never an exception in
-   an order handler. */
+/* 🔴 NEVER THROWS — but be precise about what that covers. Everything INSIDE this function is inside
+   the try: building the occurrence list, the reads, the classification. It does NOT cover obtaining
+   the Firestore handle, because the handle is obtained at the CALL SITE and passed in — a
+   getFirestore() that throws would throw there, in the handler, before this function is ever entered.
+   An earlier version of this comment claimed the try covered the handle too, which was false and
+   dangerous precisely because it read as reassurance: the cash path was relying on it and was one
+   synchronous throw away from failing an order that had already been written. startShadowCheck below
+   is what actually closes that, and both call sites go through it. */
 async function shadowValidateIds(fs, rid, items, { internalTimeoutMs = SHADOW_INTERNAL_TIMEOUT_MS } = {}) {
   const empty = { mismatches: [], checked: 0, resolved: 0, absent: 0, status: 'ok' };
   /* 🔴 HOISTED SO A FAILURE CAN STILL REPORT WHAT IT WAS TRYING TO CHECK. The liveness signal for a
@@ -192,4 +196,28 @@ function reportIdentityShadow(db, { rid, orderId, attemptId = null, outcome, res
   } catch (_) { /* a broken alert must never fail an order that is already written */ }
 }
 
-module.exports = { shadowValidateIds, occurrencesOf, trackSettled, reportIdentityShadow, SHADOW_INTERNAL_TIMEOUT_MS };
+/* ── KICKOFF, GUARDED — THE ONE PLACE THE HANDLE IS OBTAINED ──────────────────────────────────
+   🔴 THIS EXISTS BECAUSE A DIAGNOSTIC NEARLY FAILED A PAID ORDER. The cash path called
+   `trackSettled(shadowValidateIds(getFirestore(), ...))` directly in the handler body — AFTER the order
+   was written and OUTSIDE the try that guarded the write. getFirestore() is synchronous and can throw;
+   there is no error middleware for it, only a JSON-parse one. So a cold instance where the handle had
+   not yet been built could have thrown there and failed the response for an order that already
+   existed, and the customer would have been told their order failed when it had not.
+   The reassuring argument — "pricing already touched Firestore this request" — does not hold: the
+   resolver and its handle live in a cross-request SINGLETON (index.js:292), so a cold request need
+   never have called getFirestore() before this point.
+   Taking the GETTER rather than the handle is what makes the guarantee real: the call that can throw
+   happens inside this try, not at the call site. A throw becomes a dropped sample and nothing else.
+   Both writers go through here, so the two paths cannot drift on the one thing that matters most. */
+function startShadowCheck(getFs, rid, items, opts) {
+  try {
+    return trackSettled(shadowValidateIds(getFs(), rid, items, opts));
+  } catch (_e) {
+    /* The handle getter threw. The order exists and is unaffected; the sample is simply dropped, and
+       the caller's collect-if-settled treats null exactly as it treats an unsettled check — so this
+       surfaces as a `dropped` heartbeat rather than as silence. */
+    return null;
+  }
+}
+
+module.exports = { shadowValidateIds, occurrencesOf, trackSettled, startShadowCheck, reportIdentityShadow, SHADOW_INTERNAL_TIMEOUT_MS };

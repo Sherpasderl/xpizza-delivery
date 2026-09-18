@@ -56,7 +56,7 @@ const { beforeUserCreated, HttpsError } = require('firebase-functions/v2/identit
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
 const { getFirestore } = require('firebase-admin/firestore');   // Phase 1b-1 — index.js's FIRST Firestore touch (the pricing catalog)
-const { shadowValidateIds, trackSettled, reportIdentityShadow } = require('./catalog/identity-shadow-validate');   // 1D D3 — shadow identity check (reads nothing into a decision)
+const { startShadowCheck, reportIdentityShadow } = require('./catalog/identity-shadow-validate');   // 1D D3 — shadow identity check (reads nothing into a decision)
 const { getAuth } = require('firebase-admin/auth');
 const webpush = require('web-push');
 const { google } = require('googleapis');
@@ -1061,7 +1061,7 @@ createOrderApp.all('*', async (req, res) => {
      🔴 NOT Promise.all-ed with the notify. The notify settles on success OR failure OR deadline, so
      racing them would make a fast or disabled notify wait for the check — the response must never wait
      for this, on any path. */
-  const shadowCheck = trackSettled(shadowValidateIds(getFirestore(), restaurantId, body.items));
+  const shadowCheck = startShadowCheck(getFirestore, restaurantId, body.items);
 
   const WA_NOTIFY_DEADLINE_MS = parseInt(process.env.CREATEORDER_WA_NOTIFY_MS || '5000', 10);
   await notifyWithinDeadline((async () => {
@@ -1103,7 +1103,10 @@ createOrderApp.all('*', async (req, res) => {
      being invisible coverage loss. Classified by what is observed AT this boundary: a read still
      outstanding is `dropped` even if it would have resolved a millisecond later, and its later
      settlement reports nothing further. Reporting is synchronous logs plus a detached alert. */
-  const shadowResult = shadowCheck.isSettled() ? shadowCheck.value() : null;
+  /* null covers BOTH "not settled in time" and "the kickoff itself could not start" — a handle getter
+     that threw. Either way the sample is dropped and the heartbeat says so; neither can fail an order
+     that is already written. */
+  const shadowResult = (shadowCheck && shadowCheck.isSettled()) ? shadowCheck.value() : null;
   reportIdentityShadow(db, {
     rid: restaurantId, orderId,
     outcome: shadowResult ? (shadowResult.status === 'ok' ? 'reported' : shadowResult.status) : 'dropped',
@@ -1697,11 +1700,20 @@ chargeOnlineApp.all('*', async (req, res) => {
      fires past every one of them. It stays null for any refused or reused request, which is what makes
      "zero registry reads on a rejected charge" true rather than merely unreported. */
   let cardShadow = null;
+  /* 🔴 STARTED vs SUCCEEDED, tracked separately. The flow invokes this callback in a try/catch, so a
+     kickoff that threw would be swallowed and cardShadow would stay null — indistinguishable from a
+     refused or reused request, which correctly reports nothing. A successful issuance would then emit
+     NO heartbeat at all, understating coverage and hiding exactly the getFirestore failure the
+     heartbeat exists to expose. The flag says "this issuance was eligible"; cardShadow says "and the
+     check got off the ground". */
+  let cardShadowStarted = false;
   const flow = await resolveAndIssueHostedCheckout({
     ...hostedFlowOpts,
     onAcceptedFresh: () => {
-      // 🔴 getFirestore(), never the RTDB `db` in scope here — see the note on the cash path.
-      cardShadow = trackSettled(shadowValidateIds(getFirestore(), restaurantId, body.items));
+      cardShadowStarted = true;
+      // 🔴 getFirestore, never the RTDB `db` in scope here — see the note on the cash path. Passed as
+      // the GETTER so a throw is caught inside startShadowCheck rather than here.
+      cardShadow = startShadowCheck(getFirestore, restaurantId, body.items);
     },
     attemptId, toLempiras: centsToLempiras,
     chargeRequest: {
@@ -1723,8 +1735,8 @@ chargeOnlineApp.all('*', async (req, res) => {
      attempt_id as well as order_id because an expired checkout ROTATES into a fresh attempt for the
      same order: each issuance is its own check and emits its own heartbeat, and without the attempt
      id two legitimate heartbeats for one order would be indistinguishable from a double-report. */
-  if (cardShadow) {
-    const r = cardShadow.isSettled() ? cardShadow.value() : null;
+  if (cardShadowStarted) {
+    const r = (cardShadow && cardShadow.isSettled()) ? cardShadow.value() : null;
     reportIdentityShadow(db, {
       rid: restaurantId, orderId, attemptId,
       outcome: r ? (r.status === 'ok' ? 'reported' : r.status) : 'dropped',

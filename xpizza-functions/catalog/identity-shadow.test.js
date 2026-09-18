@@ -12,7 +12,7 @@
  * `npm test`, the emulator file proves the part a fixture cannot.
  */
 const assert = require('assert');
-const { shadowValidateIds, occurrencesOf, trackSettled, reportIdentityShadow } = require('./identity-shadow-validate');
+const { shadowValidateIds, occurrencesOf, trackSettled, startShadowCheck, reportIdentityShadow } = require('./identity-shadow-validate');
 const { classifyClaim, validateClaim } = require('./identity-registry');
 const { memFirestore } = require('./identity-fixture');
 const { ensureIdentity } = require('./identity-registry');
@@ -302,16 +302,22 @@ const cart = (over = {}) => [{
     const fsrc = require('fs');
     const path = require('path');
     const idx = fsrc.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8');
-    const calls = [...idx.matchAll(/shadowValidateIds\(([^,]+),/g)].map((m) => m[1].trim());
-    assert.strictEqual(calls.length, 2, `🔴 expected exactly two call sites (cash + card), found ${calls.length}`);
+    /* 🔴 THE HANDLE IS NOW OBTAINED IN EXACTLY ONE PLACE — inside startShadowCheck, where a throw is
+       guarded. So the census checks two things: that the handlers pass the GETTER (a bare
+       `getFirestore()` at a call site would move the throw back into the handler, which is the
+       money-blocking defect), and that nothing calls the validator directly and bypasses the guard. */
+    const calls = [...idx.matchAll(/startShadowCheck\(([^,]+),/g)].map((m) => m[1].trim());
+    assert.strictEqual(calls.length, 2, `🔴 expected exactly two guarded call sites (cash + card), found ${calls.length}`);
     for (const arg of calls) {
-      assert.strictEqual(arg, 'getFirestore()',
-        `🔴 a shadow check is reading from \`${arg}\` — it must be getFirestore(); the handler's \`db\` is RTDB and every read would fail silently`);
+      assert.strictEqual(arg, 'getFirestore',
+        `🔴 a call site passes \`${arg}\` — it must pass getFirestore as a GETTER, so a throwing handle is caught inside the guard rather than in the handler after the order is written`);
     }
+    assert.ok(!/shadowValidateIds\(/.test(idx),
+      '🔴 a handler calls shadowValidateIds directly, bypassing the guard that keeps a throwing handle from failing a written order');
     // non-vacuity: the detector can see the defect it guards against
-    assert.ok(/shadowValidateIds\(([^,]+),/.exec('shadowValidateIds(db, rid, items)')[1] === 'db',
-      'non-vacuity: the detector reads the first argument');
-    ok(`both shadow call sites (cash + card) pass getFirestore(), never the RTDB db`);
+    assert.strictEqual(/startShadowCheck\(([^,]+),/.exec('startShadowCheck(getFirestore(), rid, items)')[1], 'getFirestore()',
+      'non-vacuity: the detector distinguishes the getter from its result');
+    ok('both call sites pass getFirestore as a GETTER through the guard, and nothing calls the validator directly');
   }
 
   // ── 12. 🔴 SHADOW — NOTHING READS THE VERDICT INTO A DECISION ─────────────────────────────────
@@ -344,6 +350,45 @@ const cart = (over = {}) => [{
     assert.ok(!/mismatch|verdict|resolved/i.test(flow.split('onAcceptedFresh')[1].slice(0, 400)),
       '🔴 the flow must know nothing about what the callback does — it invokes an opaque hook, nothing more');
     ok(`shadow census: none of ${present.length} deciding modules references the validator or its verdict`);
+  }
+
+  // ── 13. 🔴 A THROWING HANDLE GETTER CANNOT FAIL AN ALREADY-WRITTEN ORDER ─────────────────────
+  /* THE REGRESSION TEST FOR A MONEY-BLOCKING DEFECT. The cash path used to call
+     `trackSettled(shadowValidateIds(getFirestore(), ...))` directly in the handler body — after the
+     order was written and outside the try that guarded the write. getFirestore() is synchronous and
+     can throw, and there is no middleware that would catch it, so a cold instance could have failed
+     the RESPONSE for an order that already existed: the customer told their order failed when it had
+     not. The comfort that "pricing already touched Firestore" was false — the resolver and its handle
+     live in a cross-request singleton, so a cold request need never have called it.
+     The fix is not a try/catch copied into two handlers; it is taking the GETTER, so the call that can
+     throw happens inside startShadowCheck where it is guarded, and both writers share it. */
+  {
+    const boom = () => { throw new Error('getFirestore exploded on a cold instance'); };
+    let threw = null; let check;
+    try { check = startShadowCheck(boom, 'x_pizza', cart({ dishId: 'A1' })); } catch (e) { threw = e; }
+    assert.strictEqual(threw, null,
+      '🔴 a throwing handle getter escaped the kickoff — in the cash handler that is a FAILED RESPONSE for an order that is already written');
+    assert.strictEqual(check, null, 'the kickoff yields null rather than a check');
+
+    /* …and null flows through the collection path as a DROP, not as silence. This is the second half:
+       a heartbeat still goes out saying the sample was dropped, so a getFirestore failure shows up in
+       the one signal built to expose it rather than quietly reducing the checked-count. */
+    const logs = []; const origLog = console.log;
+    console.log = (...a) => { if (String(a[0]).startsWith('order_identity_shadow')) logs.push(a); else origLog(...a); };
+    try {
+      const result = (check && check.isSettled()) ? check.value() : null;     // the handlers' exact expression
+      reportIdentityShadow({ ref: () => ({ set: () => Promise.resolve() }) },
+        { rid: 'x_pizza', orderId: 'O-COLD', outcome: result ? 'reported' : 'dropped', result });
+    } finally { console.log = origLog; }
+    assert.strictEqual(logs.length, 1, '🔴 a heartbeat is still emitted when the kickoff could not start');
+    assert.strictEqual(JSON.parse(logs[1 - 1][1]).outcome, 'dropped',
+      '🔴 …and it says DROPPED — a getFirestore failure must be visible in the heartbeat, not absorbed as a quieter checked-count');
+
+    // Non-vacuity: a WORKING getter returns a real check, so the guard is not simply always-null.
+    const good = startShadowCheck(() => memFirestore(), 'x_pizza', cart({ dishId: 'A1' }));
+    assert.ok(good && typeof good.isSettled === 'function', 'non-vacuity: a working getter still yields a tracked check');
+    await good.promise;
+    ok('a throwing handle getter yields a dropped sample and a dropped heartbeat — never a failed order');
   }
 
   FINISHED = true;
