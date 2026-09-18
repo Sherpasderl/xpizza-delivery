@@ -16,7 +16,7 @@ const { execFileSync } = require('child_process');
 const { readFileSync, readdirSync, writeFileSync, mkdtempSync } = require('fs');
 const { join, dirname } = require('path');
 const { tmpdir } = require('os');
-const { resolveProject, expectedProject, FIREBASERC } = require('../tools/require-project');
+const { resolveProject, expectedProject, flagStated, FIREBASERC } = require('../tools/require-project');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -112,13 +112,47 @@ const stripComments = (src) => src.split('\n')
 // which is the realistic regression. That is defense in depth, and it is the same census-as-lint
 // boundary this repo has settled on repeatedly — the code is the airtight part, the scan is a strong
 // lint that a different spelling can evade.
+
+// ── requireFlag: AN ENVIRONMENT VARIABLE IS A STATEMENT, NOT AN ACT OF INTENT ────────────────────
+/* 🔴 OPT-IN, DELIBERATELY, AND THE TEST SAYS WHY. Three shipped handoffs document
+   `GOOGLE_CLOUD_PROJECT=xpizza-delivery node tools/backfill-snapshot.js` verbatim, and two cases above
+   assert that env-alone resolves — so making the flag universally mandatory would break procedures
+   this change has nothing to do with. A tool whose own runbook promises "--project is mandatory" opts
+   in and makes that sentence true; every other tool keeps the contract its runbook describes. */
+{
+  const EXPECTED2 = expectedProject();
+  // The flag satisfies it.
+  assert.strictEqual(resolveProject({ argv: ['node', 'x', '--project', EXPECTED2], env: {}, requireFlag: true }), EXPECTED2,
+    'the explicit flag passes');
+  assert.strictEqual(resolveProject({ argv: ['node', 'x', `--project=${EXPECTED2}`], env: {}, requireFlag: true }), EXPECTED2,
+    '…in either spelling');
+  // The environment does NOT, even when it names the right project.
+  for (const [label, env] of [['GOOGLE_CLOUD_PROJECT', { GOOGLE_CLOUD_PROJECT: EXPECTED2 }], ['GCLOUD_PROJECT', { GCLOUD_PROJECT: EXPECTED2 }]]) {
+    assert.throws(() => resolveProject({ argv: ['node', 'x'], env, requireFlag: true }),
+      (e) => { assert.ok(/requires the project as an explicit flag/.test(e.message), `${label}: ${e.message}`); return true; },
+      `🔴 ${label} alone must NOT satisfy a tool that demands the flag — it can be inherited, stale, or set by a .env file`);
+  }
+  // …and the default is UNCHANGED, which is what keeps the documented invocations working.
+  assert.strictEqual(resolveProject({ argv: ['node', 'x'], env: { GOOGLE_CLOUD_PROJECT: EXPECTED2 } }), EXPECTED2,
+    '🔴 without requireFlag the environment still resolves — three shipped handoffs invoke tools that way');
+  // flagStated reads ONLY argv, so an env var can never make it true.
+  assert.strictEqual(flagStated({ argv: ['node', 'x', '--project', EXPECTED2] }), true, 'flagStated sees the flag');
+  assert.strictEqual(flagStated({ argv: ['node', 'x'] }), false, 'non-vacuity: …and not its absence');
+  ok('requireFlag demands the flag and refuses a matching environment variable, while the default contract is unchanged');
+}
+
 {
   const opensAConnection = [];
   for (const f of readdirSync(TOOLS).filter((x) => x.endsWith('.js'))) {
     const code = stripComments(readFileSync(join(TOOLS, f), 'utf8'));
     if (!code.includes('admin.initializeApp(')) continue;
     opensAConnection.push(f);
-    const guard = code.indexOf('requireProject()');
+    /* `requireProject(` rather than `requireProject()` — the census asks whether the tool calls the
+       guard before connecting, and a tool that passes OPTIONS to it (backfill-identities demands the
+       flag with `requireProject({ requireFlag: true })`) is MORE guarded, not less. Matching the empty
+       parens made stricter guarding read as no guarding at all, which is the wrong direction for a
+       lint to fail in. */
+    const guard = code.indexOf('requireProject(');
     const init = code.indexOf('admin.initializeApp(');
     assert.ok(guard > 0, `🔴 ${f} opens a Firebase connection (in today's spelling) and never states which project`);
     assert.ok(guard < init, `🔴 ${f} resolves its project AFTER initializeApp — too late to refuse`);

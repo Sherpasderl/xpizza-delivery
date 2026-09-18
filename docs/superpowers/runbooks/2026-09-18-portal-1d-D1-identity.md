@@ -23,8 +23,9 @@ the export.
 cd xpizza-functions
 export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
 
-npm run test:public-menu        # the endpoint, end to end → OK (7)
-npm run test:identity-registry  # first-assignment serialization on the REAL engine → OK (5)
+npm run test:public-menu          # the endpoint, end to end → OK (7)
+npm run test:identity-registry    # first-assignment serialization on the REAL engine → OK (5)
+npm run test:backfill-identities  # the deploy CLI, run as a subprocess → OK (7)
 ```
 
 Both must be green before deploy. What each one covers:
@@ -33,8 +34,9 @@ Both must be green before deploy. What each one covers:
 |---|---|---|
 | `test:public-menu` | the served endpoint against real Firestore, with D1's overlay step in the path | anything about identity — its "identity" fixtures are the RTDB **routing** config the isActive gate reads, unrelated to the catalog registry |
 | `test:identity-registry` | concurrent `ensureIdentity` on one object against Firestore's own transaction engine: one id, one id row, one key row, retries genuinely forced | the no-op claim, which is node-side |
+| `test:backfill-identities` | the deploy CLI itself, spawned as a subprocess exactly as you will type it: dry run writes nothing, `--apply` creates 24+14, a re-run preserves 38, the guard refuses (no flag / wrong project) having read nothing, an unreadable catalog exits 1 writing nothing | the unkeyable-record branch, which the reader refuses before it can be reached (see below) |
 
-`npm test` (no Java needed) carries the rest: 2244 checks, including the no-op matrix across both
+`npm test` (no Java needed) carries the rest: 2245 checks, including the no-op matrix across both
 brands and every forced failure path.
 
 ## Sequence
@@ -87,8 +89,13 @@ brands and every forced failure path.
    The counts above are what a first run prints. **A re-run is safe and prints `0 created, N
    preserved`** — that is the idempotence, and it is also how you resume if a run is interrupted.
 
-   `--project` is mandatory and is checked against `.firebaserc`; a mismatch refuses with exit code 2
-   before any credential is resolved or any byte is read. `--apply` is never the default.
+   `--project` is mandatory **as a flag** and is checked against `.firebaserc`. A mismatch, or no
+   flag at all, refuses with exit code 2 before dotenv loads, before any credential is resolved and
+   before any byte is read. An exported `GOOGLE_CLOUD_PROJECT` does **not** substitute for it, even
+   when it names the right project: the pin exists so the operator consciously states the target, and
+   an environment variable can be inherited, stale, or set by a `.env` file nobody reading the command
+   line would see. (Other tools in `tools/` still accept the environment form their own runbooks
+   document — this requirement is opted into by this tool.) `--apply` is never the default.
 
    🔴 **The key set comes from the LIVE catalog** (`getRestaurantMenu`), not from the code tables.
    Two things in the repo look like "the menu" and only one of them is live; they agree only until a
@@ -96,7 +103,10 @@ brands and every forced failure path.
    nobody sells while the real ones serve id-less. The tool reads the live version through the same
    reader the serving path uses, and a test asserts it never reaches for the code tables.
 
-   **If it prints `identity_backfill_unkeyable`, STOP.** It names the kind, the index and the fields it
+   **If it prints `identity_backfill_unkeyable`, STOP.** (Note: with today's reader this should be
+   unreachable — `getRestaurantMenu` refuses a bad key with `catalog_bad_doc` first, and that path
+   exits 1 writing nothing. The guard is defence-in-depth against a future reader shape change, which
+   is the change that broke this module once already. If you ever see it, that is what happened.) It names the kind, the index and the fields it
    actually found, e.g. `dish[2] yields no legacy key — fields were {sku,price}`. It means the live
    catalog holds a record shape the backfill cannot key. Nothing was written. Do not work around it —
    a partial registration leaves objects permanently id-less with no signal, which is the failure this

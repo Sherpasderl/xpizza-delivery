@@ -949,8 +949,14 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
       '🔴 the prod backfill must read the LIVE catalog through getRestaurantMenu');
     assert.ok(!/catalogSnapshot/.test(code),
       '🔴 the prod backfill must NOT build its key set from the code tables — a portal edit would make it register the wrong objects');
-    assert.ok(/requireProject\(\)/.test(code) && code.indexOf('requireProject()') < code.indexOf('initializeApp'),
+    /* `requireProject(` — a call that passes OPTIONS is more guarded, not less, and matching the empty
+       parens made stricter guarding read as none. */
+    assert.ok(code.indexOf('requireProject(') > -1 && code.indexOf('requireProject(') < code.indexOf('initializeApp'),
       '🔴 the project guard must run BEFORE initializeApp, so a refusal cannot have touched a byte');
+    assert.ok(code.indexOf('requireProject(') < code.indexOf("require('dotenv')"),
+      '🔴 …and before dotenv, or a .env file could supply the project nobody stated on the command line');
+    assert.ok(/requireProject\(\{[^}]*requireFlag:\s*true/.test(code),
+      '🔴 this tool demands --project as a FLAG — its runbook says mandatory, and an inherited GOOGLE_CLOUD_PROJECT must not satisfy that');
     assert.ok(/--apply/.test(code) && /DRY RUN/.test(code),
       'the tool defaults to a dry run — an apply is stated, never the default');
     // non-vacuity: the detectors can see what they are guarding against

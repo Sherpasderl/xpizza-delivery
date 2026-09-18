@@ -82,6 +82,21 @@ function declaredProjects({ argv = process.argv, env = process.env } = {}) {
   return found;
 }
 
+/* 🔴 AN ENVIRONMENT VARIABLE IS A STATEMENT, BUT IT IS NOT AN ACT OF INTENT.
+   The guard above accepts GOOGLE_CLOUD_PROJECT / GCLOUD_PROJECT as a declaration, which is right for
+   the tools whose runbooks document exactly that invocation (`GOOGLE_CLOUD_PROJECT=xpizza-delivery
+   node tools/backfill-snapshot.js` appears verbatim in three shipped handoffs). But an exported
+   variable is ambient: it can be left over from an earlier shell, inherited from a wrapper, or set by
+   a .env file, and then the operator never actually looked at which database the run was about to
+   touch. The pin exists so that looking is unavoidable.
+   So a caller may DEMAND the flag. Opt-in rather than global: making it universal would break those
+   three documented procedures and silently change the contract of tools this change has nothing to do
+   with. A tool that says "--project is mandatory" in its own runbook passes requireFlag and makes
+   that sentence true; the rest keep the behaviour their runbooks describe. */
+function flagStated({ argv = process.argv } = {}) {
+  return declaredProjects({ argv, env: {} }).length > 0;
+}
+
 // One agreed value, or a refusal. Never a winner.
 function statedProject(opts = {}) {
   const found = declaredProjects(opts);
@@ -95,9 +110,14 @@ function statedProject(opts = {}) {
 }
 
 // THE GUARD. Returns the project id, or throws. Never returns a project it was not given.
-function resolveProject({ argv, env, rcPath } = {}) {
+function resolveProject({ argv, env, rcPath, requireFlag = false } = {}) {
   const expected = expectedProject(rcPath);
   const stated = statedProject({ argv, env });
+  if (requireFlag && !flagStated({ argv })) {
+    refuse(`this tool requires the project as an explicit flag: --project ${expected}. `
+      + 'An environment variable is not enough here — it can be inherited, stale, or set by a .env file, '
+      + 'and the point of the pin is that the operator states the target deliberately.');
+  }
   if (!stated) {
     refuse(`no project was stated. Pass --project ${expected} (or set GOOGLE_CLOUD_PROJECT). `
       + 'This is deliberate: without it the project comes from whatever gcloud happens to be pointed at, '
@@ -131,4 +151,4 @@ function requireProject(opts = {}) {
   return projectId;
 }
 
-module.exports = { requireProject, resolveProject, expectedProject, statedProject, declaredProjects, FIREBASERC };
+module.exports = { requireProject, resolveProject, expectedProject, statedProject, declaredProjects, flagStated, FIREBASERC };

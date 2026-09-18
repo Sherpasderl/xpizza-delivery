@@ -23,9 +23,20 @@
 // WHAT IT WRITES: only restaurants/{rid}/identity/**. No version, no pointer, no price table, no
 // mirror. Nothing reads these ids in D1 — they are shadow until D4 — so an apply cannot change a
 // price, an availability answer, a reward or a factura.
+/* 🔴 THE GUARD RUNS FIRST — BEFORE dotenv, BEFORE firebase-admin, BEFORE ANY CREDENTIAL.
+   dotenv.config() can SET GOOGLE_CLOUD_PROJECT from a .env file that nobody reading the command line
+   would see, so a guard that ran after it could be satisfied by a value the operator never stated.
+   Ordering is the whole protection here: a refusal below has not loaded a config file, resolved a
+   credential, constructed a client or read a byte.
+   requireFlag: --project must be given as a FLAG. The runbook for this tool says it is mandatory, and
+   a contract that the code does not enforce is a sentence, not a guarantee — an inherited or stale
+   GOOGLE_CLOUD_PROJECT would otherwise satisfy it without the operator ever looking at which database
+   they were about to write identities into. */
+const { requireProject } = require('./require-project');
+const PROJECT_ID = requireProject({ requireFlag: true });
+
 try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; this needs only ADC */ }
 const admin = require('firebase-admin');
-const { requireProject } = require('./require-project');
 const { getRestaurantMenu } = require('../catalog/catalog-menu');
 const { backfillIdentities, liveKeys } = require('../catalog/identity-backfill');
 const { lookupByLegacyKeys } = require('../catalog/identity-registry');
@@ -38,9 +49,6 @@ const RID = arg('rid');
 const APPLY = process.argv.includes('--apply');
 const KNOWN = ['x_pizza', 'la_musa'];
 
-// THE PROJECT GUARD, before anything resolves a credential or constructs a client: a refusal here
-// cannot have read or written a byte. See tools/require-project.js.
-const PROJECT_ID = requireProject();
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
   projectId: PROJECT_ID,   // NEVER the ambient gcloud default
