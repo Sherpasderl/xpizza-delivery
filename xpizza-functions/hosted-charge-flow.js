@@ -144,6 +144,21 @@ async function issueHostedCheckout({
 async function resolveAndIssueHostedCheckout(opts) {
   const decision = await resolveHostedAttemptAction(opts);
   if (decision.respond) return { respond: decision.respond };
+
+  /* ── 1D D3 — THE ACCEPTED-FRESH SEAM ──────────────────────────────────────────────────────────
+     🔴 THIS POSITION IS THE ENFORCEMENT, NOT A CONVENIENCE. Everything that can refuse this charge has
+     already returned one line above — a reuse, an in-progress resume, an unclaimed attempt, a
+     quote-gate refusal — and the authoritative availability refusal returned further upstream still.
+     So a callback invoked HERE runs only for a fresh, accepted, about-to-issue charge, and a rejected
+     or reused request performs ZERO registry reads. That is checkable by spying the reader, which is
+     stronger than checking that nothing was reported: a check that started and was then suppressed
+     would still have spent the reads and would still be a behaviour nobody asked for on a refused
+     request.
+     Placed BEFORE issuance so the work overlaps the hosted-checkout network call below rather than
+     following it. Unawaited and non-fatal by construction: this is a diagnostic, and a diagnostic that
+     can throw into the card path would be trading a customer's payment for a log line. */
+  if (opts.onAcceptedFresh) { try { opts.onAcceptedFresh(); } catch (_) { /* never fatal */ } }
+
   if (decision.provenance) await opts.stampProvenance(decision.provenance);
 
   /* 🔴 ONLY AN ACCEPTED FRESH CLAIM BINDS THE RESERVATION. attachAttempt writes attempt_id and

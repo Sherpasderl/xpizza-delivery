@@ -56,6 +56,7 @@ const { beforeUserCreated, HttpsError } = require('firebase-functions/v2/identit
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
 const { getFirestore } = require('firebase-admin/firestore');   // Phase 1b-1 — index.js's FIRST Firestore touch (the pricing catalog)
+const { shadowValidateIds, trackSettled, reportIdentityShadow } = require('./catalog/identity-shadow-validate');   // 1D D3 — shadow identity check (reads nothing into a decision)
 const { getAuth } = require('firebase-admin/auth');
 const webpush = require('web-push');
 const { google } = require('googleapis');
@@ -1047,6 +1048,21 @@ createOrderApp.all('*', async (req, res) => {
   // notification is fire-and-forget (a slow send may still land — a one-shot "received" is idempotent enough).
   // notifyWithinDeadline RESOLVES either way, never rejects → an order that's written can never be failed by
   // the notify. CASH ONLY — card "received" is a separate decoupled DB trigger; this does not touch it.
+  /* ── 1D D3 — SHADOW IDENTITY CHECK, KICKED OFF HERE SO IT RIDES UNDER THE NOTIFY ──────────────
+     The order is already WRITTEN at this point, which is the only place this may start: the check must
+     never be able to affect whether an order exists. Started now so its reads overlap the WhatsApp
+     await below — a few milliseconds of Firestore under several hundred of WhatsApp — and collected
+     after it ONLY IF it has already settled.
+     🔴 getFirestore(), NOT `db`. The registry lives in Firestore; `db` here is RTDB. Passing `db`
+     would make every read fail, and because a read failure is deliberately not a mismatch, the
+     validator would report "no mismatches" forever while checking nothing. That is the failure this
+     whole module's liveness counting exists to expose, and it is one identifier away at every call
+     site — hence the note rather than a silent argument.
+     🔴 NOT Promise.all-ed with the notify. The notify settles on success OR failure OR deadline, so
+     racing them would make a fast or disabled notify wait for the check — the response must never wait
+     for this, on any path. */
+  const shadowCheck = trackSettled(shadowValidateIds(getFirestore(), restaurantId, body.items));
+
   const WA_NOTIFY_DEADLINE_MS = parseInt(process.env.CREATEORDER_WA_NOTIFY_MS || '5000', 10);
   await notifyWithinDeadline((async () => {
     if (await whatsapp.isEnabledForRestaurant(db, restaurantId)) {
@@ -1081,6 +1097,18 @@ createOrderApp.all('*', async (req, res) => {
       }
     }
   })(), WA_NOTIFY_DEADLINE_MS);
+
+  /* 🔴 COLLECT ONLY IF ALREADY SETTLED — the response is never held. A sample that has not landed by
+     here is DROPPED and recorded as such, so the drop RATE is visible in the heartbeat rather than
+     being invisible coverage loss. Classified by what is observed AT this boundary: a read still
+     outstanding is `dropped` even if it would have resolved a millisecond later, and its later
+     settlement reports nothing further. Reporting is synchronous logs plus a detached alert. */
+  const shadowResult = shadowCheck.isSettled() ? shadowCheck.value() : null;
+  reportIdentityShadow(db, {
+    rid: restaurantId, orderId,
+    outcome: shadowResult ? (shadowResult.status === 'ok' ? 'reported' : shadowResult.status) : 'dropped',
+    result: shadowResult,
+  });
 
   return res.status(200).json({ ok: true, order_id: orderId, tracking_token: trackingToken });
 });
@@ -1662,8 +1690,19 @@ chargeOnlineApp.all('*', async (req, res) => {
   /* 🔴 ONE CALL DECIDES AND CHARGES. A refusal cannot reach the gateway because there is no path
      from one to the other — not because a `return` is watched. The amount is formatted INSIDE, from
      the same total the gate approved, and asserted equal to it before it travels. */
+  /* ── 1D D3 — the shadow check STARTS inside the flow, at the accepted-fresh seam ──────────────
+     Assigned from a callback rather than started here, because here is too early: the reuse,
+     in-progress, unclaimed and quote-gate refusals are all still ahead inside resolveAndIssue…, and a
+     check started here would run — and read — for requests that are about to be refused. The callback
+     fires past every one of them. It stays null for any refused or reused request, which is what makes
+     "zero registry reads on a rejected charge" true rather than merely unreported. */
+  let cardShadow = null;
   const flow = await resolveAndIssueHostedCheckout({
     ...hostedFlowOpts,
+    onAcceptedFresh: () => {
+      // 🔴 getFirestore(), never the RTDB `db` in scope here — see the note on the cash path.
+      cardShadow = trackSettled(shadowValidateIds(getFirestore(), restaurantId, body.items));
+    },
     attemptId, toLempiras: centsToLempiras,
     chargeRequest: {
       pixelpayOrderId, firstName, lastName, email,
@@ -1673,8 +1712,25 @@ chargeOnlineApp.all('*', async (req, res) => {
     createCheckout: createHostedCharge,
     persistCreated: (url) => db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'created', hosted_checkout_url: url, updated_at: now }),
   });
+  /* 🔴 EVERY NON-ISSUING PATH LEAVES HERE, AND NONE OF THEM REPORTS. `flow.respond` carries the
+     refusals, the reuse, AND a checkout-creation or persistence failure — so returning on it means a
+     charge that never issued emits no heartbeat and no alert, without that being a separate rule
+     somebody has to remember. Reporting below is reached only by a charge that actually issued. */
   if (flow.respond) return res.status(flow.respond.status).json(flow.respond.body);
   const hosted = flow.hosted;
+
+  /* Collect-if-settled, exactly as the cash path does — the response is never held. Keyed by
+     attempt_id as well as order_id because an expired checkout ROTATES into a fresh attempt for the
+     same order: each issuance is its own check and emits its own heartbeat, and without the attempt
+     id two legitimate heartbeats for one order would be indistinguishable from a double-report. */
+  if (cardShadow) {
+    const r = cardShadow.isSettled() ? cardShadow.value() : null;
+    reportIdentityShadow(db, {
+      rid: restaurantId, orderId, attemptId,
+      outcome: r ? (r.status === 'ok' ? 'reported' : r.status) : 'dropped',
+      result: r,
+    });
+  }
 
   console.log(`chargeOnlineOrder: created hosted checkout ${pixelpayOrderId} (mode=${pp.mode}, ${flow.amountLempiras} HNL)`);
   return res.status(200).json({

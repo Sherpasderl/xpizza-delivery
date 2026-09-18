@@ -204,18 +204,48 @@ async function retireIdentity(db, { rid, kind, canonicalId, now = null }) {
    is the one worth naming — two valid ids exchanged between two real objects is the shape that reads
    as legitimate to every field-level validation and is caught only by asking the registry what the
    key actually maps to. */
+/* ── 1D D3 — THE VERDICT, AS ONE PURE FUNCTION ─────────────────────────────────────────────────
+   D3 asks the same question validateClaim asks, but for a whole cart at once and through a BATCHED
+   lookup — so the verdict logic would have existed twice, in two files, agreeing today. Two copies of
+   a taxonomy is how a taxonomy drifts: the batched one would be updated and the single-claim one left,
+   or the other way round, and the disagreement would surface as a false `swapped` on a real order.
+   So the logic lives here, once, pure, and both callers reach the same verdict by construction.
+
+   🔴 THE ABSENT PREDICATE IS PRODUCTION'S EXACT ONE: `typeof claimedId !== 'string' || !claimedId`.
+   A truthy NON-STRING — 123, true, {}, [] — is absent today, and absent means "no id was carried", so
+   it takes the no-read fast path and is never reported. A laxer `!claimedId` would let those through
+   to be classified against the registry, where they cannot match anything, and every one would surface
+   as a fabricated `unregistered_key` or `swapped` on a real customer's order. It would also diverge
+   from validateClaim, which is the fake-laxer-than-production failure this build has paid for before.
+
+   Pure and total: it performs no read. The caller decides whether a read is even needed — `absent`
+   never requires one. */
+function classifyClaim({ actual, claimedId }) {
+  if (typeof claimedId !== 'string' || !claimedId) return { reason: 'absent' };
+  if (actual === null || actual === undefined) return { reason: 'unregistered_key' };
+  if (actual !== claimedId) return { reason: 'swapped' };
+  return { reason: 'ok' };
+}
+
+/* 🔴 THE EXTERNAL SHAPE IS UNCHANGED, BYTE FOR BYTE. This function's four return shapes are depended
+   on by existing tests and callers: `absent` carries NO `actual`, `ok` carries NO `reason`. The
+   refactor moves the verdict into classifyClaim and keeps every one of those shapes exactly as it was
+   — the two APIs legitimately differ, and making them uniform would be a silent contract change
+   dressed up as a cleanup. */
 async function validateClaim(db, { rid, kind, legacyKey, claimedId }) {
   assertKind(kind);
-  if (typeof claimedId !== 'string' || !claimedId) return { ok: false, reason: 'absent' };
+  // The absent fast path, still before any read — the predicate now lives in classifyClaim.
+  if (classifyClaim({ actual: null, claimedId }).reason === 'absent') return { ok: false, reason: 'absent' };
   const map = await lookupByLegacyKeys(db, { rid, kind, legacyKeys: [legacyKey] });
   const actual = map.get(legacyKey) || null;
-  if (actual === null) return { ok: false, reason: 'unregistered_key', actual: null };
-  if (actual !== claimedId) return { ok: false, reason: 'swapped', actual };
+  const { reason } = classifyClaim({ actual, claimedId });
+  if (reason === 'unregistered_key') return { ok: false, reason: 'unregistered_key', actual: null };
+  if (reason === 'swapped') return { ok: false, reason: 'swapped', actual };
   return { ok: true, actual };
 }
 
 module.exports = {
-  ensureIdentity, lookupByLegacyKeys, retireIdentity, validateClaim,
+  ensureIdentity, lookupByLegacyKeys, retireIdentity, validateClaim, classifyClaim,
   encodeKey, randomToken, proposeId, isGrandfathered, GRANDFATHERED, idsColOf, keysColOf,
   KINDS, STATUS_LIVE, STATUS_RETIRED, ID_LEN, ALPHABET,
 };

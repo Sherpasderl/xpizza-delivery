@@ -4864,8 +4864,8 @@
     "slice": "d1",
     "label": "a submitted id is adopted instead of checked — a swap passes",
     "file": "catalog/identity-registry.js",
-    "from": "  if (actual !== claimedId) return { ok: false, reason: 'swapped', actual };",
-    "to": "  if (false) return { ok: false, reason: 'swapped', actual };",
+    "from": "  if (actual !== claimedId) return { reason: 'swapped' };",
+    "to": "  if (false) return { reason: 'swapped' };",
     "command": [
       "node",
       "catalog/identity-registry.test.js"
@@ -5382,5 +5382,177 @@
       "../cart-identity-order.test.mjs"
     ],
     "kills_with": "does not match the COMPLETE frozen golden"
+  },
+  {
+    "id": "d3-01",
+    "slice": "d3",
+    "label": "🔴 the absent predicate drops its typeof guard - 123/{}/[] become fabricated mismatches on real orders",
+    "file": "catalog/identity-registry.js",
+    "from": "  if (typeof claimedId !== 'string' || !claimedId) return { reason: 'absent' };",
+    "to": "  if (!claimedId) return { reason: 'absent' };",
+    "command": [
+      "node",
+      "catalog/identity-shadow.test.js"
+    ],
+    "kills_with": "must be ABSENT"
+  },
+  {
+    "id": "d3-02",
+    "slice": "d3",
+    "label": "🔴 a read failure is reported as a MISMATCH - a Firestore hiccup becomes a false swap",
+    "file": "catalog/identity-shadow-validate.js",
+    "from": "    return { mismatches: [], checked, resolved: 0, absent: absentCount, status: 'read_error' };",
+    "to": "    return { mismatches: [{ line: 0, kind: 'dish', id: null, expected_legacy_key: null, registry_id: null, reason: 'swapped' }], checked, resolved: 0, absent: absentCount, status: 'read_error' };",
+    "command": [
+      "node",
+      "catalog/identity-shadow.test.js"
+    ],
+    "kills_with": "NEVER a mismatch"
+  },
+  {
+    "id": "d3-03",
+    "slice": "d3",
+    "label": "🔴 read_error erases `checked` - a broken validator becomes indistinguishable from a cart with no ids",
+    "file": "catalog/identity-shadow-validate.js",
+    "from": "    return { mismatches: [], checked, resolved: 0, absent: absentCount, status: 'read_error' };",
+    "to": "    return { mismatches: [], checked: 0, resolved: 0, absent: absentCount, status: 'read_error' };",
+    "command": [
+      "node",
+      "catalog/identity-shadow.test.js"
+    ],
+    "kills_with": "checked survives the failure"
+  },
+  {
+    "id": "d3-04",
+    "slice": "d3",
+    "label": "🔴 absent occurrences are read for - an id-less cart hits the registry and can be reported",
+    "file": "catalog/identity-shadow-validate.js",
+    "from": "    const carrying = occ.filter((o) => classifyClaim({ actual: null, claimedId: o.claimedId }).reason !== 'absent');",
+    "to": "    const carrying = occ.slice();",
+    "command": [
+      "node",
+      "catalog/identity-shadow.test.js"
+    ],
+    "kills_with": "ZERO registry reads"
+  },
+  {
+    "id": "d3-05",
+    "slice": "d3",
+    "label": "🔴 the timeout is classified as read_error - slow and broken become indistinguishable",
+    "file": "catalog/identity-shadow-validate.js",
+    "from": "    if (race && race.__timedOut) return { ...empty, checked, absent: absentCount, status: 'timed_out' };",
+    "to": "    if (race && race.__timedOut) return { ...empty, checked, absent: absentCount, status: 'read_error' };",
+    "command": [
+      "node",
+      "catalog/identity-shadow.test.js"
+    ],
+    "kills_with": "DISTINCT from read_error"
+  },
+  {
+    "id": "d3-06",
+    "slice": "d3",
+    "label": "🔴 the key is re-derived instead of going through keyOf - every option reads as unregistered",
+    "file": "catalog/identity-shadow-validate.js",
+    "from": "      out.push({ line: i, kind: 'extra', key: keyOf(rid, ex), claimedId: ex.extra_id });",
+    "to": "      out.push({ line: i, kind: 'extra', key: ex.name || ex.id, claimedId: ex.extra_id });",
+    "command": [
+      "node",
+      "catalog/identity-shadow.test.js"
+    ],
+    "kills_with": [
+      "la_musa by slug id",
+      "keyed through the pricing resolver"
+    ]
+  },
+  {
+    "id": "d3-07",
+    "slice": "d3",
+    "label": "🔴 the verdict is per distinct KEY, not per occurrence - a repeated line claiming a different id is missed",
+    "file": "catalog/identity-shadow-validate.js",
+    "from": "    for (const o of carrying) {",
+    "to": "    for (const o of carrying.filter((x, i, a) => a.findIndex((y) => y.key === x.key && y.kind === x.kind) === i)) {",
+    "command": [
+      "node",
+      "catalog/identity-shadow.test.js"
+    ],
+    "kills_with": "the second line is caught"
+  },
+  {
+    "id": "d3-08",
+    "slice": "d3",
+    "label": "🔴 the heartbeat is dropped - zero mismatches becomes unreadable",
+    "file": "catalog/identity-shadow-validate.js",
+    "from": "    console.log('order_identity_shadow_checked', JSON.stringify({",
+    "to": "    if (false) console.log('order_identity_shadow_checked', JSON.stringify({",
+    "command": [
+      "node",
+      "catalog/identity-shadow.test.js"
+    ],
+    "kills_with": "exactly ONE heartbeat"
+  },
+  {
+    "id": "d3-09",
+    "slice": "d3",
+    "label": "🔴 the detached alert loses its .catch - a rejected write becomes an unhandled rejection that can kill the instance",
+    "file": "catalog/identity-shadow-validate.js",
+    "from": "    if (write && typeof write.catch === 'function') write.catch(() => {});   // detached, never awaited",
+    "to": "    if (write && typeof write.then === 'function') { /* awaited: contract B broken */ }",
+    "command": [
+      "node",
+      "catalog/identity-shadow.test.js"
+    ],
+    "kills_with": "UNHANDLED REJECTION"
+  },
+  {
+    "id": "d3-10",
+    "slice": "d3",
+    "label": "🔴 the order_id leaves `detail` - the alert row is an orphan alert-prune never cleans up",
+    "file": "catalog/identity-shadow-validate.js",
+    "from": "      detail: { order_id: orderId, mismatches }, at: Date.now(),",
+    "to": "      detail: { mismatches }, at: Date.now(),",
+    "command": [
+      "node",
+      "catalog/identity-shadow.test.js"
+    ],
+    "kills_with": "lives inside `detail`"
+  },
+  {
+    "id": "d3-11",
+    "slice": "d3",
+    "label": "🔴 the card check starts BEFORE the accepted-fresh seam - a refused or reused request reads the registry",
+    "file": "hosted-charge-flow.js",
+    "from": "  const decision = await resolveHostedAttemptAction(opts);\n  if (decision.respond) return { respond: decision.respond };",
+    "to": "  if (opts.onAcceptedFresh) { try { opts.onAcceptedFresh(); } catch (_) {} }\n  const decision = await resolveHostedAttemptAction(opts);\n  if (decision.respond) return { respond: decision.respond };",
+    "command": [
+      "node",
+      "hosted-charge-flow.test.js"
+    ],
+    "kills_with": "must not even START"
+  },
+  {
+    "id": "d3-12",
+    "slice": "d3",
+    "label": "🔴 a rejection leaves the sample OUTSTANDING - every such order silently becomes a drop",
+    "file": "catalog/identity-shadow-validate.js",
+    "from": "    (_e) => { state.settled = true; state.value = null; return null; },",
+    "to": "    (_e) => { state.value = null; return null; },",
+    "command": [
+      "node",
+      "catalog/identity-shadow.test.js"
+    ],
+    "kills_with": "a rejection settles rather than hanging"
+  },
+  {
+    "id": "d3-13",
+    "slice": "d3",
+    "label": "🔴 the validator THROWS into the order handler instead of returning a status",
+    "file": "catalog/identity-shadow-validate.js",
+    "from": "  } catch (_e) {",
+    "to": "  } catch (_e) { if (true) throw _e;",
+    "command": [
+      "node",
+      "catalog/identity-shadow.test.js"
+    ],
+    "kills_with": "THREW into the order path"
   }
 ]

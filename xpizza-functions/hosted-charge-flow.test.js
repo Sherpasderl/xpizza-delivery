@@ -187,10 +187,12 @@ function rig({ acq, gate, totalCents }) {
   // are executed rather than read off the source.
   const centsToLempiras = (c) => (c / 100).toFixed(2);
   function fullRig({ acq, gate, totalCents, checkout = { ok: true, url: 'https://pay/new' }, persistThrows = false, attachReservation }) {
-    const calls = { gate: 0, release: 0, retire: [], checkout: [], stamped: [], persisted: [], attached: [] };
+    const calls = { gate: 0, release: 0, retire: [], checkout: [], stamped: [], persisted: [], attached: [], shadowStarts: 0 };
     const run = () => resolveAndIssueHostedCheckout({
       acq, orderId: 'ORD-1', log: QUIET, attemptId: acq.attempt_id,
       totalCents, toLempiras: centsToLempiras,
+      // 1D D3 — the accepted-fresh seam. Counted, so a cell can assert it NEVER fired.
+      onAcceptedFresh: () => { calls.shadowStarts = (calls.shadowStarts || 0) + 1; },
       chargeRequest: { pixelpayOrderId: 'ORD-1-A1', firstName: 'Ana', lastName: 'Paz', email: 'a@b.co' },
       releaseHold: async () => { calls.release += 1; },
       retireAttempt: async (id, reason) => { calls.retire.push({ id, reason }); },
@@ -388,6 +390,51 @@ function rig({ acq, gate, totalCents }) {
       assert.strictEqual(hold(db).hosted_expires_at, 5_555_555, 'with the fresh attempt\'s expiry');
     }
     ok('against the real reservation: a resume leaves hosted_expires_at intact; an accept rebinds it');
+  }
+
+  // ── 1D D3 — THE SHADOW CHECK STARTS ONLY FOR AN ACCEPTED, FRESH, ABOUT-TO-ISSUE CHARGE ───────
+  /* 🔴 ZERO STARTS, NOT MERELY ZERO REPORTS. A check that began and was then suppressed would still
+     have spent registry reads on a request the server was about to refuse — work nobody asked for, on
+     the path where a customer is already being told no. "Nothing was reported" cannot tell those
+     apart; counting the kickoff can.
+     This is also what pins the seam's POSITION. The callback lives after the decision/refusal return
+     and before issuance, so every refusal below returns before it, and a future edit that moved the
+     kickoff earlier — to the top of the flow, say — would light these counters up. */
+  {
+    /* Reusing the rig's own `net` and `goodGate` rather than rebuilding them. My first version built a
+       gate input by hand and got two things wrong — the token field is `quote_token`, not `token`, and
+       this suite gates with enforce:false — so the "accepted" case silently refused and the cell
+       failed its own premise. Composing the pieces the file already uses is the point. */
+    const refusals = {
+      'an idempotent REUSE': { acq: { outcome: 'reuse', attempt_id: 'A9', poll_token: 'PT', checkout_url: 'https://pay/x' }, gate: goodGate, totalCents: net },
+      'an IN-PROGRESS resume': { acq: { outcome: 'in_progress' }, gate: goodGate, totalCents: net },
+      'a QUOTE-GATE refusal (price increased)': { acq: { outcome: 'claimed', attempt_id: 'A4' }, gate: goodGate, totalCents: net + 1 },
+    };
+    for (const [label, opts] of Object.entries(refusals)) {
+      const r = fullRig(opts);
+      const out = await r.run();
+      assert.ok(out.respond, `${label}: premise — it really did refuse`);
+      assert.strictEqual(r.calls.checkout.length, 0, `${label}: premise — and issued no checkout`);
+      assert.strictEqual(r.calls.shadowStarts, 0,
+        `🔴 ${label}: the shadow check must not even START — a refused request performs ZERO registry reads`);
+    }
+
+    // …and an accepted fresh charge starts it exactly once, BEFORE the checkout call it overlaps.
+    const okRig = fullRig({ acq: { outcome: 'claimed', attempt_id: 'A1' }, gate: goodGate, totalCents: net });
+    const okOut = await okRig.run();
+    assert.ok(okOut.hosted, 'premise — this one issued');
+    assert.strictEqual(okRig.calls.shadowStarts, 1, '🔴 an accepted fresh charge starts the check exactly once');
+
+    /* A checkout FAILURE still starts the check — it is past the seam — and the handler is what
+       suppresses the report, by returning on flow.respond before the reporting boundary. Asserted so
+       the division of labour is explicit rather than assumed: the flow decides WHEN to start, the
+       handler decides WHETHER to report. */
+    const failRig = fullRig({ acq: { outcome: 'claimed', attempt_id: 'A5' }, gate: goodGate, totalCents: net, checkout: new Error('gateway down') });
+    const failOut = await failRig.run();
+    assert.ok(failOut.respond, 'a checkout failure responds rather than issuing');
+    assert.strictEqual(failRig.calls.shadowStarts, 1,
+      'the check had already started (it is past the seam) — the HANDLER suppresses the report by returning on flow.respond');
+    ok(`the shadow check starts only for an accepted fresh charge — 0 starts across ${Object.keys(refusals).length} refusals, 1 on issuance`);
   }
 
   console.log(`\nhosted-charge-flow: ${n} checks passed`);
