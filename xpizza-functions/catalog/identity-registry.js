@@ -63,19 +63,33 @@ function encodeKey(legacyKey) {
 const idsColOf = (db, rid, kind) => db.collection('restaurants').doc(rid).collection('identity').doc(assertKind(kind)).collection('ids');
 const keysColOf = (db, rid, kind) => db.collection('restaurants').doc(rid).collection('identity').doc(assertKind(kind)).collection('keys');
 
-/* 🔴 LA MUSA GRANDFATHERS ITS SLUG; X.PIZZA MINTS FRESH. La Musa's authored ids are already stable,
-   name-independent and unique — minting a second identity for objects that have one would mean a
-   migration with two answers and no reason. X.Pizza's legacy key IS the display name, so an id derived
-   from it would be exactly the thing this project exists to stop; it gets a random token.
-   Stated as a per-brand rule rather than "reuse the key when it looks opaque", because a heuristic
-   here decides identity, and a heuristic that is wrong once is wrong forever. */
+/* 🔴 THE RULE: GRANDFATHER A KEY THAT IS ALREADY A STABLE NAME-INDEPENDENT SLUG; MINT WHERE THE KEY
+   IS A DISPLAY NAME. Both brands reach the same invariant by different routes — la_musa's slug is
+   already decoupled from the label a merchant edits, and x_pizza's minted token is decoupled from its
+   mutable name. Minting a second id for an object that already has a stable one would give the
+   migration two answers for one object.
+
+   WRITTEN AS AN EXPLICIT TABLE, NOT A PREDICATE, and that is the important part. "Does this key look
+   like a slug?" is a heuristic, and a heuristic here decides IDENTITY — wrong once and it is wrong
+   permanently, because the id it mints is the one every later record points at. A table is auditable,
+   is wrong only where someone wrote it wrong, and forces a deliberate entry when a third merchant
+   arrives rather than letting them inherit whichever branch their key shape happens to fall down.
+   Checked against the live tables rather than assumed: la_musa keys are rice_white / dimsum_01 on both
+   kinds, x_pizza's are "Salsa Roja" / "Carnívora" on both. */
+const GRANDFATHERED = Object.freeze({
+  la_musa: Object.freeze(['dish', 'extra']),
+});
+
+function isGrandfathered(rid, kind) {
+  const kinds = GRANDFATHERED[rid];
+  return Array.isArray(kinds) && kinds.includes(kind);
+}
+
+/* A grandfathered slug becomes the object's FROZEN immutable id. The portal edits the LABEL, never the
+   slug; changing a slug is an identity change (a delete + create at D4), never a silent remap — which
+   is what keeps "grandfathered" from quietly meaning "name-derived". */
 function proposeId(rid, kind, legacyKey) {
-  /* BOTH KINDS, not just dishes. la_musa's EXTRAS are authored as opaque slugs exactly like its dishes
-     (rice_white, sauce_aioli — checked against the live tables, not assumed from the dish rule), so the
-     same argument applies: they already have a stable name-independent identity and minting a second
-     one would give the migration two answers. x_pizza's extras are display names ("Salsa Roja") and get
-     a token, for the same reason its dishes do. */
-  if (rid === 'la_musa') return String(legacyKey);
+  if (isGrandfathered(rid, kind)) return String(legacyKey);
   return randomToken();
 }
 
@@ -106,7 +120,7 @@ async function ensureIdentity(db, { rid, kind, legacyKey, now = null }) {
       const candidate = proposeId(rid, kind, legacyKey);
       const idSnap = await tx.get(idsColOf(db, rid, kind).doc(candidate));
       if (!idSnap.exists) canonicalId = candidate;
-      else if (rid === 'la_musa') {
+      else if (isGrandfathered(rid, kind)) {
         /* The grandfathered slug is deterministic, so a collision here is not bad luck — it means this
            slug is already registered to something. Retrying would mint a random id for an object whose
            identity is supposed to BE its slug, quietly splitting the migration. Refuse instead. */
@@ -177,6 +191,6 @@ async function validateClaim(db, { rid, kind, legacyKey, claimedId }) {
 
 module.exports = {
   ensureIdentity, lookupByLegacyKeys, retireIdentity, validateClaim,
-  encodeKey, randomToken, proposeId, idsColOf, keysColOf,
+  encodeKey, randomToken, proposeId, isGrandfathered, GRANDFATHERED, idsColOf, keysColOf,
   KINDS, STATUS_LIVE, STATUS_RETIRED, ID_LEN, ALPHABET,
 };
