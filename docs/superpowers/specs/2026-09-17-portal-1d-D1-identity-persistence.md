@@ -1,0 +1,68 @@
+# Portal 1D · D1 — Catalog identity persistence (SHADOW, registry + served-overlay) — executor spec v3
+
+**Parent:** architecture-of-record `2026-09-17-portal-1d-stable-key-migration.md` (v2, twice grilled). **Base:** `61306a5` (worktree `xpizza-1b`). **Gate:** codex D1 design-grills #1+#2 CLEARED — relay-to-BUILD approved after this v3 folds in the one blocker (B1: registry served-overlay) + 2 build corrections. Money-gate on built code before merge. **Decisions:** brand-agnostic (delete ternary @ D5); extra = DISTINCT type; dual-ID + churn-detection minting; doc-id not name-derived; merchant name/slug ≠ identity. **v3 changelog (D1 grill #2):** the served menu is read from an immutable version, so ids reach it via a **post-verification REGISTRY OVERLAY** (not by rewriting version payloads — that stays deferred to D4). Overlay isolated from BOTH the pricing read and the eligibility/gate read. Registry path corrected to a document path; first-assignment serialized per legacy OBJECT. Browser-strip made explicit. "name-fallback" wording corrected to "unchanged legacy resolution."
+
+## 1. What D1 does — and its hard scope boundary
+
+**D1 DOES:** mint a platform-minted, stable, name-independent id for every **live** dish/extra (distinct `dish_id`/`extra_id`; La Musa grandfathers its slug, X.Pizza mints fresh); persist id↔legacy-key in a **durable typed registry** (the source of truth); **overlay** the id onto the live SERVED menu after the version read is hash-verified; preserve the id in the registry on ordinary forward writes; read it for **nothing** that makes a business decision.
+
+**D1 EXPLICITLY DEFERS (to D4/D5) and MUST NOT touch:**
+- Rewriting **immutable version payloads / snapshots / mirrors / rollback** to carry ids. Versions stay id-less; served ids come from the overlay (§4). Threading version payloads = D4.
+- The **delete / rename machinery** (seed desired-set-by-name delete loop; price-based rename diff heuristic). Left exactly as today. Rename-safety = D4. (Portal paused + shadow ⇒ no live rename during D1.)
+- **Portal rename-pairing** by id (`publish-edited-handler`, `index.js:6054`). D1 only ensures the id is not lost from the registry on a normal publish.
+- `doc-id == dish_id` cleanup and the UI-id-probe decouple (`source-store.js:171`) — D5.
+
+**Deferral safety (grill-confirmed):** leaving those paths id-less does NOT change any business output, because resolution stays **unchanged legacy** — X.Pizza by `name`, La Musa by its existing `id` (`menu-pricing.js:127`, `availability-gate.js:43`, `rewards-redeem.js:58`, `factura/pricing.js:19`); the fallback ladder returns legacy numeric tables, not display records (`snapshot-fallback.js:88`, `pricing-tables.js:155`). An id-absent served menu simply yields carts without ids — inert in D1.
+
+**Result:** pure additive no-op — *identical legacy business outputs for identical legacy inputs, including every failure/fallback path.*
+
+## 2. Identity scheme & durable typed registry
+- Opaque, per-merchant-unique, name-INDEPENDENT. Distinct `dish_id`/`extra_id`. La Musa: grandfather slug (explicit "opaque" exception). X.Pizza: mint random token (8–10 base32), collision-checked, never `sha1(name)`. Never human-facing.
+- **Registry** at document path `restaurants/{rid}/identity/{kind}/ids/{canonical_id}` (6 segments = document; `kind` ∈ `dish|extra`) → `{ legacy_key, status: live|retired, created_at }`. SOURCE OF TRUTH for id↔key. Also maintain the reverse lookup `legacy_key → canonical_id` (per kind) for O(1) overlay + first-assignment serialization.
+- **Mint discipline (atomic):** first-assignment must **serialize on the legacy OBJECT** (a deterministic lock/conditional-create keyed by `(rid, kind, legacy_key)`), not only reserve the random id — else two concurrent seeds mint two ids for one object. Reserve the random id too (collision). **Retired ids reserved durably** (`status: retired`) so no future object reuses a freed id or a freed name's id (alias non-reuse). Server owns ids — a submitted/echoed id is validated against the registry, never adopted cross-merchant/kind or swapped. Firestore transactions/conditional writes are available (`catalog-publish.js:188`, `edit-catalog-handler.js:89`).
+
+## 3. Backfill + preserve (registry-centric)
+- **Backfill (one-time, idempotent):** for every LIVE dish/extra, ensure a registry entry. La Musa ← slug; X.Pizza ← mint. Bootstrap match incoming→existing via the current name-derived doc identity (legitimate ONLY here — pre-rename). Re-run reads-and-preserves; never re-mints. Dishes AND extras.
+- **Preserve on forward writes:** on an ordinary edit/publish/seed of an unchanged-identity object, the id stays in the registry (the edit handler replaces source arrays — `edit-catalog-handler.js:79` — and seed reconstructs docs — `seed-catalog-core.js:62` — so the executor must RE-DERIVE the id from the registry by legacy-key on write, not rely on an echoed field). No restructuring of delete/rename logic (deferred).
+
+## 4. Served overlay (B1 resolution) + no-op contract
+**The served menu is read from an immutable version** (`getRestaurantMenu → readVersionMenu`, `catalog-menu.js:235`, no flat fallback; publish reconstructs version docs, `catalog-publish.js:276`). So D1 supplies ids to the served menu by a **post-verification registry overlay**, NOT by threading version payloads:
+1. Read the version + verify its hash exactly as today (unchanged).
+2. **After** verification, in a SEPARATE enrichment step, overlay `dish_id`/`extra_id` onto the served DISPLAY records by looking up each record's legacy-key in the registry. This runs on the customer-serving projection only (`getRestaurantMenu`/form-bundle/`public-menu` output), NOT on the version document, NOT on numeric price tables.
+3. **Isolation (hard):** the overlay MUST be outside — and must not be able to fail — the pricing read AND the eligibility/gate read:
+   - It must not enter the pricing reader's deadline/timeout (`pricing-tables.js:141`); an enrichment slowdown/exception must NEVER become a pricing failure or a fallback-ladder serve.
+   - Business **gate reads** (`gateReader` via `previewVersion` → hash-verifying display reader, `index.js:346`, `catalog-publish.js:391`) must be INDEPENDENT of enrichment — a hash/timeout hiccup there must not flip authored weekend/reward eligibility to static fallback (`menu-gates.js:103`; authored≠fallback eligibility `rewards-redeem-config.js:86`). Enrich the customer menu; do not enrich (or perturb) the gate read.
+   - On any enrichment failure: **id-absent continuation** (serve the menu id-less — inert in D1).
+
+**No-op must-not-break list:**
+1. **Identity is metadata, never in numeric price tables.** `menu`/`extras` priced tables + their price-table hashes stay byte-identical (`catalog-integrity.js:25`, `snapshot-fallback.js:46`).
+2. **Content-hash / ETag stay backward-compatible.** The overlay adds ids to the served BODY, not the hashed version content — so the immutable `contentHash` and its verification (`content-hash.js:40` → `catalog-menu.js:213`) are untouched (old projection + pinned hash still verify). Fold ids into the public body/ETag (`public-menu.js:173`) and bump the public **representation-version** marker (`public-menu.js:33`) if the served body gains the id. **No metadata-only republish** (would bump `seq`, `catalog-publish.js:269`, and risk pushing a still-good mirror past staleness, `snapshot-fallback.js:115`).
+3. **Identity out of hashed/bound cart artifacts:** out of the redemption canonical (`rewards-redeem.js:24`) and quote fingerprint (`quote-token.js:75`).
+4. **Strip the id from BROWSER working records in D1.** Both forms assign served arrays straight into browser menu state (`xpizza-orders/index.html:1960`, `la-musa-orders/index.html:2431`) and the cart retains whole dish/extra records (`form-cart.js:55,80`) then serializes them (`:239`) — so a served id would enter cart snapshots. D1 MUST strip `dish_id`/`extra_id` when constructing browser working records, covering **initial bundle load AND live refresh, both brands** (stripping only the outbound order is insufficient). The id travels server-side + in the served payload only; it enters the cart at D2. (Cached older forms: they simply won't see the id — inert.)
+
+## 5. Reference disposition (all stay legacy in D1)
+`item_order`/`extra_order`/`extras_by_item` → legacy key (canonical @ D4); exposure references extra CATEGORIES not ids (`exposure-source.js:59`) → unchanged (revisit @ D4); reward allowlists → legacy (canonical @ D4); `variantOf`/variant launcher/choice ids/`has_photo`/category refs → legacy/UI (UI-handle stays). UI numeric `display.id` stays a UI handle — a canonical id does NOT change its type.
+
+## 6. Build + gate checklist
+- **Registry** (§2): document-path layout, per-object serialized first-assignment, retired reservation, swap detection, server-owned ids.
+- **Backfill** (§3): idempotent, both brands, dishes+extras; re-run preserves.
+- **Preserve-on-write** (§3): edit/publish/seed re-derive the id from the registry by legacy-key (arrays get replaced, so don't rely on an echoed field). Handle the extras-rebuild quirk — edit/publish callers omit `extrasTable` (`publish-edited-handler.js:102`) → `buildCatalogV2` code default (`form-menu-source.js:169`); preserve extra identity via the registry, do NOT inject it into that numeric table.
+- **Served overlay** (§4): post-verification, customer-serving projection only, isolated from pricing + gate reads, id-absent on failure.
+- **Browser strip** (§4-#4): initial + refresh, both forms.
+- **Leave id-ABSENT (deferred, do NOT thread):** `mirror-rtdb.js:20`, `tools/backfill-snapshot.js:39`, `snapshot-fallback.js` returns, `pricing-tables.js:155-161`, immutable version payloads, rollback mirror, portal diff adapters (`publish-edited-handler.js:103`, `index.js:6054`).
+- **Do NOT change:** seed delete-on-name loop (`seed-catalog-core.js:46,62`), rename heuristic (`catalog-edit.js:142`), price-table hashes, numeric tables, any pricing/86/reward/factura selector, the version read/hash-verify path.
+- **Bootstrap tools** (`tools/seed-source-store.js:136`, `tools/migrate-catalog-display.js:97,151,311`): leave as-is; flag that they must be made identity-aware before any post-D1 re-run.
+- **Edit-token note:** the one-time backfill may invalidate outstanding portal review tokens (`catalog-edit.js:175`) — benign (portal paused, one-time); document as allowed admin effect.
+
+## 7. Tests & acceptance matrix
+- **Idempotence:** re-run backfill → ids stable; same-name reseed preserves id (re-derived from registry); a simulated rename behaves EXACTLY as today (D1 didn't touch rename-safety) — assert no change there.
+- **Served overlay:** the served customer menu carries `dish_id`/`extra_id` for both brands, dishes AND extras; a forced enrichment failure serves id-absent and does NOT alter pricing, availability, reward eligibility, or trip a fallback; the GATE read is unaffected by enrichment state.
+- **Scoped no-op:** pricing/86/reward/factura for a battery of real carts identical with vs without ids present, **including failure/fallback paths** (force content-hash mismatch, pricing-reader timeout, fallback-ladder serve, mirror-stale); price-table hashes + immutable `contentHash` byte-identical.
+- **Registry integrity:** total + injective + typed; a **swap** of two valid ids is DETECTED; a registry read failure → bounded non-fatal diagnostic, never a pricing/gate failure; concurrent first-assignment on one object yields ONE id.
+- **Browser strip:** ids absent from browser working/cart records on initial load AND refresh, both brands; absent from the outbound order and from redemption/quote fingerprints.
+- **Shadow:** grep + runtime — no pricing/86/reward/factura/quote/fingerprint path reads `dish_id`/`extra_id`.
+- **Mutation sweep** on mint/registry/preserve/overlay → zero survivors on "id preserved / never re-minted / never name-derived / never in numeric tables / never trips a business failure."
+- Matrix also: interrupted backfill, missing/swapped ids, old-version rollback then republish (id-absent-safe via overlay), mixed old/new readers, stale portal submission — each asserting D1's scoped legacy-safe behavior.
+
+## 8. Bottom line
+D1 = mint + durable typed registry + backfill + preserve-on-write + **post-verification served overlay**, identity strictly beside (never inside) the money data and isolated from pricing/gate failure paths, stripped from the browser until D2, read by nothing for any business decision — version-history, rename/delete machinery, and portal-diff pairing deferred to D4. Prove mint-once + scoped no-op at the money-gate on real code.
