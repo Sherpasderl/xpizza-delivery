@@ -359,7 +359,40 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   const redeemSig = (items, pending, ver) => {
     const v = (ver === undefined) ? menuVer() : ver;
     if (v == null) return null;                 // unknown menu version → no usable signature
-    try { return JSON.stringify({ i: items || null, p: pending || null, v: v }); } catch (_) { return null; }
+    /* 1D D2 — the items are hashed through the LEGACY PROJECTION. This signature gates SENDING a
+       reward order: if it shifts because a catalog id appeared on the cart, a valid order is blocked
+       as "stale quote" and the customer is stuck. Projected inside redeemSig rather than at each of
+       its three call sites, so a future fourth caller cannot forget.
+       Resolved lazily off window and falling back to an inline projection: account.js loads after
+       form-identity-strip.js today, but a signature that silently starts hashing ids is exactly the
+       failure this guards, and it must not depend on script order staying as it is. */
+    var projected = items || null;
+    if (Array.isArray(items)) {
+      try {
+        projected = (typeof window !== 'undefined' && typeof window.legacyCartForSig === 'function')
+          ? window.legacyCartForSig(items)
+          : items.map(function (line) {
+            if (!line || typeof line !== 'object') return line;
+            var out = {};
+            for (var k in line) {
+              if (!Object.prototype.hasOwnProperty.call(line, k)) continue;
+              if (k === 'dish_id') continue;
+              if (k === 'extras' && Array.isArray(line.extras)) {
+                out.extras = line.extras.map(function (ex) {
+                  if (!ex || typeof ex !== 'object') return ex;
+                  var e = {};
+                  for (var j in ex) { if (Object.prototype.hasOwnProperty.call(ex, j) && j !== 'extra_id') e[j] = ex[j]; }
+                  return e;
+                });
+                continue;
+              }
+              out[k] = line[k];
+            }
+            return out;
+          });
+      } catch (_) { projected = items; }
+    }
+    try { return JSON.stringify({ i: projected, p: pending || null, v: v }); } catch (_) { return null; }
   };
 
   async function redeemReadLiveFlag() {
@@ -4433,6 +4466,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.profileComplete = profileComplete;
   window.__ACCOUNT.profileNamed = profileNamed;   // Task 1 — recognition gate (full name >=2 words)
   window.__ACCOUNT.setPaymentVisible = setPaymentVisible;                     // Task 1 test hook (gate state)
+  window.__ACCOUNT.redeemSig = redeemSig;   // 1D D2 test hook — the reward-freshness signature must stay id-blind
   window.__ACCOUNT.bypassCreateProfileForNamed = bypassCreateProfileForNamed; // Task 1 test hook (recognition bypass)
   window.__ACCOUNT.applyCreateProfileFlow = applyCreateProfileFlow;           // Task 1 test hook (nameless hard-block)
   window.__ACCOUNT.claimAddressPayload = claimAddressPayload;   // Task 2 — claim shortcut order-address auto-save decision

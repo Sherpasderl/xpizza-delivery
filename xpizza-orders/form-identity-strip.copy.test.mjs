@@ -5,7 +5,7 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { loadForm, closeAll, BRAND } from '../form-harness.mjs';
-const { stripIdentity, IDENTITY_FIELDS } = createRequire(import.meta.url)('./form-identity-strip.js');
+const { stripIdentity, legacyCartForSig, IDENTITY_FIELDS } = createRequire(import.meta.url)('./form-identity-strip.js');
 
 /* THE SERVED BODY, BUILT FROM THE PAGE'S OWN LIVE STATE AND THEN OVERLAID. A hand-composed body fails
    la_musa's refresh validator for reasons that have nothing to do with identity — it cross-references
@@ -71,121 +71,162 @@ test('the la_musa copy is byte-identical to the canonical one', () => {
   assert.ok(/module\.exports/.test(code) && /window\.stripIdentity/.test(code), '…and it publishes to both worlds');
 });
 
-test('both forms load the strip and apply it at BOTH boundaries', () => {
+test('🔴 legacyCartForSig is DEEP — a nested extra_id is stripped too', () => {
+  /* The trap this function exists for. stripIdentity removes a record's dish_id and stops there,
+     because in D1 the records it strips have no nested extras. A cart LINE does, and a nested
+     extra_id shifts the three client signatures exactly as a dish_id does. A shallow projection here
+     would pass a dish-only test and leave the extras half of the hazard live. */
+  const line = { name: 'Carnivora', qty: 2, price: 340, subtotal: 680,
+    extras: [{ instance: 0, name: 'Salsa Roja', price: 25, extra_id: 'XYZ7654321' }],
+    extrasTotal: 25, dish_id: 'ABC1234567' };
+  const out = legacyCartForSig([line]);
+  assert.ok(!('dish_id' in out[0]), '🔴 the dish id is gone');
+  assert.ok(!('extra_id' in out[0].extras[0]), '🔴 …and so is the NESTED extra id — the shallow-strip trap');
+  // …and a SHALLOW strip would not have done that, which is why this is a separate function.
+  assert.ok('extra_id' in stripIdentity([line])[0].extras[0],
+    '🔴 non-vacuity: stripIdentity really is shallow here — reusing it would have left the nested id in');
+});
+
+test('🔴 the projection is byte-identical to what a pre-D2 client emitted', () => {
+  /* These signatures are JSON.stringify output, so key ORDER is part of the value. "Same fields" is
+     not the claim — "same string" is, because that is what makes an id appearing a no-op rather than
+     a token that fails to attach. */
+  const withIds = [{ name: 'Carnivora', qty: 2, price: 340, subtotal: 680,
+    extras: [{ instance: 0, name: 'Salsa Roja', price: 25, extra_id: 'E1' }], extrasTotal: 25, dish_id: 'D1' }];
+  const legacy = [{ name: 'Carnivora', qty: 2, price: 340, subtotal: 680,
+    extras: [{ instance: 0, name: 'Salsa Roja', price: 25 }], extrasTotal: 25 }];
+  assert.strictEqual(JSON.stringify(legacyCartForSig(withIds)), JSON.stringify(legacy),
+    '🔴 the projected cart must serialize byte-identically to a pre-D2 cart');
+  // la_musa's shape too, where `id` is the load-bearing legacy slug and must SURVIVE.
+  const lm = [{ id: 'dimsum_01', name: 'Wonton', cat: 'dim_sum', qty: 1, price: 223, subtotal: 223,
+    extras: [{ id: 'rice_white', name: 'Arroz', price: 45, qty: 1, extra_id: 'rice_white' }], extrasTotal: 45, dish_id: 'dimsum_01' }];
+  const lmOut = legacyCartForSig(lm)[0];
+  assert.strictEqual(lmOut.id, 'dimsum_01', '🔴 la_musa\'s legacy SLUG id survives — it is not the identity field');
+  assert.strictEqual(lmOut.extras[0].id, 'rice_white', '🔴 …and the option\'s slug id survives too');
+  assert.ok(!('dish_id' in lmOut) && !('extra_id' in lmOut.extras[0]), 'only the identity fields go');
+});
+
+test('legacyCartForSig does not mutate what it is handed', () => {
+  // The array it projects is the one about to be SENT. Mutating it would strip the ids out of the body.
+  const items = [{ name: 'A', qty: 1, price: 10, extras: [{ name: 'x', price: 1, extra_id: 'E' }], dish_id: 'D' }];
+  const snapshot = JSON.stringify(items);
+  legacyCartForSig(items);
+  assert.strictEqual(JSON.stringify(items), snapshot, '🔴 the input cart is untouched — the body still carries its ids');
+});
+
+test('legacyCartForSig survives malformed input rather than crashing', () => {
+  // It runs on every signature computation. A throw here blocks a token, a send, or a quote.
+  for (const bad of [null, undefined, 'str', 42, {}]) assert.strictEqual(legacyCartForSig(bad), bad, `${JSON.stringify(bad)} passes through`);
+  assert.deepStrictEqual(legacyCartForSig([null, 3, { dish_id: 'x', a: 1 }]), [null, 3, { a: 1 }], 'a ragged array projects what it can');
+  assert.deepStrictEqual(legacyCartForSig([{ a: 1, extras: 'not-an-array', dish_id: 'd' }]), [{ a: 1, extras: 'not-an-array' }],
+    'a non-array extras field is carried through untouched');
+});
+
+test('both forms project at EVERY raw-items signature, and no longer strip at the boundaries', () => {
   for (const dir of ['xpizza-orders', 'la-musa-orders']) {
     const raw = readFileSync(new URL(`../${dir}/index.html`, import.meta.url), 'utf8');
-    assert.ok(raw.includes('<script src="form-identity-strip.js"></script>'), `${dir}: the strip is not loaded`);
+    assert.ok(raw.includes('<script src="form-identity-strip.js"></script>'), `${dir}: the identity module is not loaded`);
     const html = raw.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
-    /* 🔴 BOTH BOUNDARIES. The spliced bundle is built offline and carries no ids today, so stripping
-       only the refresh would pass every test — until the day the splice tool is made identity-aware
-       and the initial load starts carrying them into the cart. Counted, not sampled. */
-    assert.ok(/let MENU = _okDishes\(_BUNDLE\.dishes\) \? _stripIdentityOrFail\(_BUNDLE\.dishes\)/.test(html),
-      `${dir}: 🔴 the INITIAL bundle boundary does not strip`);
-    assert.ok(/MENU: _stripIdentityOrFail\(dishes\)/.test(html),
-      `${dir}: 🔴 the live REFRESH boundary does not strip dishes`);
-    assert.ok(/EXTRAS: _stripIdentityOrFail\(extras\)/.test(html),
-      `${dir}: 🔴 …or extras`);
 
-    /* 🔴 EVERY BOUNDARY GOES THROUGH THE FAIL-CLOSED WRAPPER, AND NONE CALLS THE MODULE DIRECTLY.
-       The earlier form of this counted `stripIdentity(` applications, which is exactly what a
-       reintroduced `typeof stripIdentity === 'function' ? … : records` would satisfy — the fail-OPEN
-       shape passes a strip census while passing ids through whenever the module is missing. So the
-       census now counts the WRAPPER (its definition plus three applications) and asserts the module is
-       called from precisely one place: inside the wrapper. */
-    assert.strictEqual((html.match(/_stripIdentityOrFail\(/g) || []).length, 4,
-      `${dir}: one definition plus three applications — the initial dishes, and the refresh's dishes and extras`);
-    assert.strictEqual((html.match(/(?<!_)\bstripIdentity\(/g) || []).length, 1,
-      `${dir}: 🔴 the module is called from ONE place — the wrapper — so no boundary can fail open around it`);
-    assert.ok(!/typeof stripIdentity === 'function' \? stripIdentity\([a-zA-Z_.]+\) : [a-zA-Z_.]+/.test(html),
-      `${dir}: 🔴 the fail-OPEN ternary is back — a missing module would send ids into the cart`);
+    /* 🔴 D2 INVERTS D1 AT THE BOUNDARIES. The id must now REACH the cart, so neither boundary strips —
+       and the old wrapper is gone entirely rather than left unused, so nobody re-wires it. */
+    assert.ok(!/_stripIdentityOrFail/.test(html), `${dir}: 🔴 the D1 boundary strip is still present — the id cannot reach the cart`);
+    assert.ok(/let MENU = _okDishes\(_BUNDLE\.dishes\) \? _BUNDLE\.dishes : FALLBACK_MENU;/.test(html),
+      `${dir}: 🔴 the initial bundle boundary must pass records through un-stripped`);
+    assert.ok(/MENU: dishes,\s*\n\s*EXTRAS: extras,/.test(html),
+      `${dir}: 🔴 the live refresh boundary must pass both collections through un-stripped`);
 
-    /* 🔴 THE INITIAL *EXTRAS* BOUNDARY DOES NOT EXIST — PINNED SO IT CANNOT APPEAR UNGUARDED.
-       The gate asked why the initial boundary strips dishes but not extras. The answer is that neither
-       form reads _BUNDLE.extras at all: initial EXTRAS is a hardcoded literal, and options only ever
-       arrive through the live refresh, which IS stripped. So there is nothing to strip there today.
-       "Today" is the problem. If someone later wires the spliced bundle into EXTRAS — an obvious
-       tidy-up, since the bundle already carries them — the id would reach the cart through a boundary
-       nobody re-examined. This asserts the absence, so that change has to come with its strip. */
-    const bundleExtrasReads = (html.match(/_BUNDLE\.extras/g) || []);
-    if (bundleExtrasReads.length > 0) {
-      assert.ok(/_stripIdentityOrFail\(_BUNDLE\.extras\)/.test(html),
-        `${dir}: 🔴 the initial bundle's EXTRAS are now read — they must be stripped, like the dishes are`);
-    } else {
-      assert.ok(/let EXTRAS = \[/.test(html),
-        `${dir}: initial EXTRAS is a literal and the bundle's extras are unread — if that changed, the branch above applies`);
+    /* …and every signature that hashes raw emitted items goes through the projection. Counted: the
+       wrapper's definition plus B, D-consumer and D-producer. A new raw-items signature added later
+       shows up as a count mismatch rather than as a token that quietly stops attaching. */
+    assert.strictEqual((html.match(/_legacyCartForSig\(/g) || []).length, 4,
+      `${dir}: one definition plus three applications — confirmQuoteCartSig, serverQuoteCartKey, requestServerQuote`);
+    assert.ok(/return JSON\.stringify\(\{ items: _legacyCartForSig\(redeemCartItems\(\)\), reward/.test(html),
+      `${dir}: 🔴 confirmQuoteCartSig hashes the projection`);
+    assert.ok(/function serverQuoteCartKey\(\)\{ try\{ return JSON\.stringify\(_legacyCartForSig\(redeemCartItems\(\)\)\)/.test(html),
+      `${dir}: 🔴 the serverQuoteCartKey CONSUMER hashes the projection`);
+    assert.ok(/const key = JSON\.stringify\(_legacyCartForSig\(items\)\);/.test(html),
+      `${dir}: 🔴 the requestServerQuote PRODUCER hashes the projection — both D sites or neither`);
+    assert.ok(!/JSON\.stringify\(redeemCartItems\(\)\)(?!\))/.test(html.replace(/_legacyCartForSig\(redeemCartItems\(\)\)/g, '')),
+      `${dir}: 🔴 a raw-items signature survives somewhere`);
+
+    /* 🔴 items_text NEVER CARRIES THE ID. It is hashed by two server bindings (orderFingerprint,
+       orderContentKey) and rendered verbatim on the KDS ticket, the WhatsApp message and the tracker.
+       An id reaching it would change a server hash AND put an opaque token in front of a kitchen. It
+       is built from qty/name/price/extra-names, and this asserts the builder never reaches for an
+       identity field. */
+    const itemsTextBlock = html.slice(html.indexOf('items_text:'), html.indexOf('items_text:') + 900);
+    assert.ok(itemsTextBlock.length > 100, `${dir}: premise — the items_text builder was located`);
+    for (const f of IDENTITY_FIELDS) {
+      assert.ok(!itemsTextBlock.includes(f), `${dir}: 🔴 ${f} appears in the items_text builder — it is hashed by the server and shown on the KDS`);
     }
-    // non-vacuity: the detector can see the read it is guarding against
-    assert.ok(/_BUNDLE\.extras/.test('let E = _BUNDLE.extras;'), 'non-vacuity: the bundle-extras detector works');
+    assert.ok(/\$\{qty\[p\.id\]\}x|\$\{l\.qty\}x|qty/.test(itemsTextBlock), `${dir}: non-vacuity — the block really is the items_text builder`);
+
+    // cartSig is id-blind BY CONSTRUCTION (it projects captured fields) and must stay untouched.
+    assert.ok(/function cartSig\(\)/.test(html) && !/cartSig[\s\S]{0,400}_legacyCartForSig/.test(html),
+      `${dir}: cartSig must not be rewired — it already projects, and changing it would change its semantics`);
   }
 });
 
 test("🔴 the inline fallback's field list cannot drift from the module's", () => {
-  /* _stripIdentityOrFail duplicates ['dish_id','extra_id'] deliberately — it has to work when the
-     module that owns IDENTITY_FIELDS is the thing that failed to load, so it cannot import the list it
-     is standing in for. Deliberate duplication is defensible only while something notices it drifting,
-     which is this. Add a third identity field to the module and this fails until the inline copy
-     learns about it. */
+  /* _legacyCartForSig duplicates ['dish_id','extra_id'] deliberately — it has to work when the module
+     that owns IDENTITY_FIELDS is the thing that failed to load. Deliberate duplication is defensible
+     only while something notices it drifting. Same for account.js's inline fallback in redeemSig. */
   for (const dir of ['xpizza-orders', 'la-musa-orders']) {
     const html = readFileSync(new URL(`../${dir}/index.html`, import.meta.url), 'utf8');
-    const body = html.slice(html.indexOf('function _stripIdentityOrFail'));
+    const body = html.slice(html.indexOf('function _legacyCartForSig'));
     const fn = body.slice(0, body.indexOf('\n}\n') + 3);
-    const skipped = [...fn.matchAll(/k === '([a-z_]+)'/g)].map((m) => m[1]);
-    assert.deepStrictEqual(skipped.sort(), [...IDENTITY_FIELDS].sort(),
-      `${dir}: 🔴 the inline fallback strips ${JSON.stringify(skipped)} but the module owns ${JSON.stringify(IDENTITY_FIELDS)}`);
-    // …and it guards on the same names before deciding a record is clean.
+    const skipped = [...fn.matchAll(/(?:k|j) === '([a-z_]+)'/g)].map((m) => m[1]).filter((x) => x !== 'extras');
+    assert.deepStrictEqual([...new Set(skipped)].sort(), [...IDENTITY_FIELDS].sort(),
+      `${dir}: 🔴 the inline projection skips ${JSON.stringify(skipped)} but the module owns ${JSON.stringify(IDENTITY_FIELDS)}`);
+
+    const acct = readFileSync(new URL(`../${dir}/account.js`, import.meta.url), 'utf8');
     for (const f of IDENTITY_FIELDS) {
-      assert.ok(fn.includes(`'${f}'`), `${dir}: the fallback does not mention ${f}`);
+      assert.ok(acct.includes(`'${f}'`), `${dir}/account.js: the redeemSig fallback does not mention ${f}`);
     }
   }
 });
 
-test('🔴 RUNTIME: with the strip module missing, the refresh still lets no id through', async (t) => {
-  /* THE BRANCH THAT WAS NEVER EXECUTED. Every earlier check here read the page as TEXT or exercised
-     the module in isolation; the interesting state — the page running with form-identity-strip.js
-     absent — had no test at all, which is how a guard that failed OPEN survived. This loads the real
-     form with that one script dropped, exactly as a 404 or a CSP block would, and drives the real
-     refresh adapter. */
-  t.after(() => closeAll());
-  for (const dir of ['xpizza-orders', 'la-musa-orders']) {
-    const w = loadForm(dir, { omit: ['form-identity-strip.js'] });
-    assert.strictEqual(typeof w.stripIdentity, 'undefined',
-      `${dir}: premise — the module really is absent, so the fallback is what runs`);
-    assert.strictEqual(typeof w._stripIdentityOrFail, 'function',
-      `${dir}: …and the page itself still defines the wrapper`);
-
-    const served = servedBodyFor(dir, w);
-    const prepared = w.liveMenuPrepare(served);
-
-    for (const rec of prepared.MENU) {
-      for (const f of IDENTITY_FIELDS) {
-        assert.ok(!Object.prototype.hasOwnProperty.call(rec, f),
-          `${dir}: 🔴 ${f} reached a browser working record with the strip module missing — this is the leak, it just took a failed script to open it`);
-      }
-    }
-    for (const rec of prepared.EXTRAS) {
-      for (const f of IDENTITY_FIELDS) {
-        assert.ok(!Object.prototype.hasOwnProperty.call(rec, f), `${dir}: 🔴 ${f} survived on an extra`);
-      }
-    }
-    // Non-vacuity on both halves: the records really did arrive carrying ids, and nothing else moved.
-    assert.ok(served.dishes[0].dish_id, `${dir}: the served input genuinely carried an id`);
-    assert.deepStrictEqual(prepared.MENU.map((r) => [r.id, r.name, r.price]),
-      served.dishes.map((r) => [r.id, r.name, r.price]), `${dir}: every other field survives the fallback`);
-    assert.deepStrictEqual(prepared.EXTRAS.map((r) => [r.id, r.name, r.price]),
-      served.extras.map((r) => [r.id, r.name, r.price]), `${dir}: …on extras too`);
-  }
-});
-
-test('🔴 RUNTIME: with the module PRESENT the same refresh is equally clean', async (t) => {
-  // The other half of the pair. Without it the test above could pass on a page too broken to carry an
-  // id anywhere — and it says nothing about the ordinary path, which is the one customers use.
+test('🔴 RUNTIME: the live refresh now CARRIES ids into the working records', async (t) => {
+  /* The exact inverse of D1's runtime test, and the reason D2 needs one at all. D1 proved no id
+     survived liveMenuPrepare; D2 requires that they do, because the cart captures whole records and
+     redeemCartItems emits from them. If this regresses, every cart silently goes back to being
+     id-less and D3/D4 have nothing to read — with no other symptom. */
   t.after(() => closeAll());
   for (const dir of ['xpizza-orders', 'la-musa-orders']) {
     const w = loadForm(dir);
-    assert.strictEqual(typeof w.stripIdentity, 'function', `${dir}: premise — the module loaded`);
-    const prepared = w.liveMenuPrepare(servedBodyFor(dir, w));
-    assert.ok(prepared.MENU.every((r) => !Object.prototype.hasOwnProperty.call(r, 'dish_id')), `${dir}: no dish_id on the normal path`);
-    assert.ok(prepared.EXTRAS.every((r) => !Object.prototype.hasOwnProperty.call(r, 'extra_id')), `${dir}: no extra_id on the normal path`);
-    assert.ok(prepared.MENU[0].name && prepared.MENU[0].price > 0, `${dir}: and the records are otherwise intact`);
+    assert.strictEqual(typeof w.legacyCartForSig, 'function', `${dir}: premise — the module loaded`);
+    const served = servedBodyFor(dir, w);
+    const prepared = w.liveMenuPrepare(served);
+    assert.ok(prepared.MENU.every((r) => r.dish_id), `${dir}: 🔴 every refreshed dish carries its dish_id into MENU`);
+    assert.ok(prepared.EXTRAS.every((r) => r.extra_id), `${dir}: 🔴 …and every option its extra_id into EXTRAS`);
+    assert.deepStrictEqual(prepared.MENU.map((r) => [r.id, r.name, r.price]), served.dishes.map((r) => [r.id, r.name, r.price]),
+      `${dir}: and nothing else about the records moved`);
+  }
+});
+
+test('🔴 RUNTIME: with the identity module missing, the SIGNATURES are still id-blind', async (t) => {
+  /* D1's fail-closed guarantee did not disappear at D2 — it MOVED, from the menu boundary to the
+     signature boundary, and this is where it now lives. If form-identity-strip.js fails to load (a
+     404, a cache miss, a CSP block) the page must still project before hashing. Hashing raw items
+     would not corrupt anything, but it is customer-visible in three ways the moment a backfilled menu
+     serves ids: the quote token stops attaching, a valid reward order is blocked from sending as a
+     stale quote, and a cached total is discarded. So the page's own wrapper projects inline. */
+  t.after(() => closeAll());
+  for (const dir of ['xpizza-orders', 'la-musa-orders']) {
+    const w = loadForm(dir, { omit: ['form-identity-strip.js'] });
+    assert.strictEqual(typeof w.legacyCartForSig, 'undefined', `${dir}: premise — the module really is absent`);
+    assert.strictEqual(typeof w._legacyCartForSig, 'function', `${dir}: …and the page still defines its own wrapper`);
+
+    const cart = [{ name: 'Carnivora', qty: 2, price: 340, subtotal: 680,
+      extras: [{ instance: 0, name: 'Salsa Roja', price: 25, extra_id: 'E1' }], extrasTotal: 25, dish_id: 'D1' }];
+    const projected = w._legacyCartForSig(cart);
+    assert.ok(!('dish_id' in projected[0]), `${dir}: 🔴 the dish id is projected out even with the module gone`);
+    assert.ok(!('extra_id' in projected[0].extras[0]), `${dir}: 🔴 …and the NESTED extra id too — the fallback is deep as well`);
+    assert.strictEqual(JSON.stringify(projected), JSON.stringify([{ name: 'Carnivora', qty: 2, price: 340, subtotal: 680,
+      extras: [{ instance: 0, name: 'Salsa Roja', price: 25 }], extrasTotal: 25 }]),
+      `${dir}: 🔴 …to a byte-identical legacy cart, which is what keeps the token attaching`);
+    assert.ok(JSON.stringify(cart).includes('D1') && JSON.stringify(cart).includes('E1'),
+      `${dir}: non-vacuity — the input still carries both ids, so the body would still send them`);
   }
 });

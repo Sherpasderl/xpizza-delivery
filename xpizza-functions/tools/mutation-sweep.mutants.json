@@ -5003,18 +5003,18 @@
     "kills_with": "a retired slug must NOT come back"
   },
   {
-    "id": "d1-16",
-    "slice": "d1",
-    "label": "🔴 the browser strip fails OPEN again — a missing module sends ids into the cart",
+    "id": "d2-01",
+    "slice": "d2",
+    "label": "🔴 the signature projection fails OPEN — a missing module hashes raw items, and the quote token stops attaching",
     "file": "../xpizza-orders/index.html",
-    "from": "  if (typeof stripIdentity === 'function') return stripIdentity(records);",
-    "to": "  if (true) return (typeof stripIdentity === 'function') ? stripIdentity(records) : records;",
+    "from": "  if (typeof legacyCartForSig === 'function') return legacyCartForSig(items);",
+    "to": "  if (true) return (typeof legacyCartForSig === 'function') ? legacyCartForSig(items) : items;",
     "command": [
       "node",
       "--test",
       "../xpizza-orders/form-identity-strip.copy.test.mjs"
     ],
-    "kills_with": "reached a browser working record with the strip module missing"
+    "kills_with": "the dish id is projected out even with the module gone"
   },
   {
     "id": "d1-17",
@@ -5054,5 +5054,74 @@
       "catalog/identity-noop.test.js"
     ],
     "kills_with": "the key row must point at the id row that landed with it"
+  },
+  {
+    "id": "d2-02",
+    "slice": "d2",
+    "label": "🔴 confirmQuoteCartSig hashes RAW items — the quote token stops attaching the moment a menu serves ids",
+    "file": "../xpizza-orders/index.html",
+    "from": "    return JSON.stringify({ items: _legacyCartForSig(redeemCartItems()), reward: pend || null });",
+    "to": "    return JSON.stringify({ items: redeemCartItems(), reward: pend || null });",
+    "command": [
+      "node",
+      "../cart-identity.test.mjs"
+    ],
+    "kills_with": "confirmQuoteCartSig moved"
+  },
+  {
+    "id": "d2-03",
+    "slice": "d2",
+    "label": "🔴 the serverQuoteCartKey PRODUCER hashes RAW items — producer and consumer disagree, re-quoting forever",
+    "file": "../xpizza-orders/index.html",
+    "from": "    const key = JSON.stringify(_legacyCartForSig(items));",
+    "to": "    const key = JSON.stringify(items);",
+    "command": [
+      "node",
+      "../cart-identity.test.mjs"
+    ],
+    "kills_with": [
+      "the PRODUCER's key carries identity",
+      "the requestServerQuote PRODUCER and the serverQuoteCartKey CONSUMER must agree",
+      "serverQuoteCartKey moved"
+    ]
+  },
+  {
+    "id": "d2-04",
+    "slice": "d2",
+    "label": "🔴 the projection goes SHALLOW — a nested extra_id still shifts all three signatures",
+    "file": "../xpizza-orders/form-identity-strip.js",
+    "from": "              if (j === 'extra_id') continue;",
+    "to": "              if (false) continue;",
+    "command": [
+      "node",
+      "../cart-identity.test.mjs"
+    ],
+    "kills_with": "NESTED EXTRA id only"
+  },
+  {
+    "id": "d2-05",
+    "slice": "d2",
+    "label": "🔴 redeemCartItems stops emitting the dish id — D2 ships a cart with no identity and D3/D4 have nothing to read",
+    "file": "../xpizza-orders/index.html",
+    "from": "    if(p.dish_id) out.dish_id = p.dish_id;",
+    "to": "    if(false) out.dish_id = p.dish_id;",
+    "command": [
+      "node",
+      "../cart-identity.test.mjs"
+    ],
+    "kills_with": "the emitted line carries dish_id"
+  },
+  {
+    "id": "d2-06",
+    "slice": "d2",
+    "label": "🔴 the nested extra id is never emitted — the half a shallow projection would have hidden",
+    "file": "../xpizza-orders/index.html",
+    "from": "if(ex.extra_id) e.extra_id=ex.extra_id;",
+    "to": "if(false) e.extra_id=ex.extra_id;",
+    "command": [
+      "node",
+      "../cart-identity.test.mjs"
+    ],
+    "kills_with": "the NESTED option carries extra_id"
   }
 ]

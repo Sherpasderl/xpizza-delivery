@@ -1500,36 +1500,50 @@ const _okStrArr = (a) => Array.isArray(a) && a.every((s) => typeof s === 'string
    into the order, so an id that slips through here reaches the order payload, the redemption
    canonical and the quote fingerprint, and a field inside a fingerprint is not shadow. It enters the
    cart at D2, with the code that knows what to do with it. */
-/* -- 1D D1 — THE IDENTITY STRIP, FAIL-CLOSED -------------------------------------------------
-   🔴 THE OLD GUARD FAILED OPEN. It asked whether stripIdentity was a function and, when it was not,
-   chose the raw served records. So if form-identity-strip.js did not load — a 404, a cache miss, a CSP
-   block, a syntax error in a neighbouring file that aborted the script — every id went straight into
-   MENU, into the cart records form-cart.js captures whole, and on into the order payload, the
-   redemption canonical and the quote fingerprint. That is precisely the leak the strip exists to
-   prevent, arrived at SILENTLY, through something that reads like a safety check.
-   The absence of the module is now handled by still stripping, never by passing identity through.
-   🔴 THE FIELD NAMES ARE DUPLICATED HERE ON PURPOSE, and this is the one function that may not borrow
-   them: its whole job is to work when the module that owns the list is missing. The duplication is
-   pinned by form-identity-strip.copy.test.mjs, which fails if this literal and IDENTITY_FIELDS ever
-   disagree — so it cannot drift silently, it can only be noticed. */
-function _stripIdentityOrFail(records) {
-  if (typeof stripIdentity === 'function') return stripIdentity(records);
-  try { console.error('identity_strip_missing — stripping inline; the identity module did not load'); } catch (_e) {}
-  if (!Array.isArray(records)) return records;
-  return records.map(function (rec) {
-    if (!rec || typeof rec !== 'object') return rec;
-    if (!Object.prototype.hasOwnProperty.call(rec, 'dish_id')
-      && !Object.prototype.hasOwnProperty.call(rec, 'extra_id')) return rec;
+/* ── 1D D2 — THE LEGACY PROJECTION AT THE SIGNATURE BOUNDARIES, FAIL-CLOSED ───────────────────
+   D1 kept the catalog id out of the browser's working records entirely, and stripped it at the two
+   points where served records became browser records. D2 is the opposite move: the id now RIDES on
+   every cart line and every order and quote body, because D3/D4 need it there. What makes that safe
+   is no longer a strip at the boundary — it is this projection at the three signatures that hash the
+   raw emitted items.
+   So the strip is gone from the MENU/EXTRAS boundaries above, deliberately, and the guarantee it
+   carried moved here. The failure mode moved with it: if form-identity-strip.js does not load, a
+   signature computed over raw items would shift the moment an id appears, and the consequences are
+   customer-visible — the quote token fails to attach, a valid reward order is blocked from sending,
+   and a cached total is discarded. So this fails CLOSED in the same sense D1's wrapper did: when the
+   module is missing it still projects, inline, rather than hashing the id.
+   🔴 THE FIELD NAMES ARE DUPLICATED HERE FOR THE SAME REASON AS BEFORE — this function's whole job is
+   to work when the module that owns the list is the thing that failed to load, so it cannot borrow
+   from it. The duplication is pinned by form-identity-strip.copy.test.mjs. */
+function _legacyCartForSig(items) {
+  if (typeof legacyCartForSig === 'function') return legacyCartForSig(items);
+  try { console.error('identity_projection_missing — projecting inline; the identity module did not load'); } catch (_e) {}
+  if (!Array.isArray(items)) return items;
+  return items.map(function (line) {
+    if (!line || typeof line !== 'object') return line;
     var out = {};
-    for (var k in rec) {
-      if (!Object.prototype.hasOwnProperty.call(rec, k)) continue;
-      if (k === 'dish_id' || k === 'extra_id') continue;
-      out[k] = rec[k];
+    for (var k in line) {
+      if (!Object.prototype.hasOwnProperty.call(line, k)) continue;
+      if (k === 'dish_id') continue;
+      if (k === 'extras' && Array.isArray(line.extras)) {
+        out.extras = line.extras.map(function (ex) {
+          if (!ex || typeof ex !== 'object') return ex;
+          var e = {};
+          for (var j in ex) {
+            if (!Object.prototype.hasOwnProperty.call(ex, j)) continue;
+            if (j === 'extra_id') continue;
+            e[j] = ex[j];
+          }
+          return e;
+        });
+        continue;
+      }
+      out[k] = line[k];
     }
     return out;
   });
 }
-let MENU = _okDishes(_BUNDLE.dishes) ? _stripIdentityOrFail(_BUNDLE.dishes) : FALLBACK_MENU;
+let MENU = _okDishes(_BUNDLE.dishes) ? _BUNDLE.dishes : FALLBACK_MENU;   // 1D D2 — un-stripped: the id rides into the cart
 
 
 const MIN_ORDER = 250;
@@ -1996,8 +2010,9 @@ function liveMenuPrepare(body){
   return {
     // 1D D1 — the SECOND boundary: the live refresh. This one really does carry ids (the served body
     // is overlaid), and it is the path that replaces MENU/EXTRAS under a running form.
-    MENU: _stripIdentityOrFail(dishes),
-    EXTRAS: _stripIdentityOrFail(extras),
+    // 1D D2 — un-stripped, both collections: the served ids reach MENU/EXTRAS and ride into the cart.
+    MENU: dishes,
+    EXTRAS: extras,
     // Absent structure keeps what is already in force rather than becoming empty: an omitted
     // pickup-only list must not silently OPEN a gate that is currently closed.
     PICKUP_ONLY_CATS: Array.isArray(body.pickup_only_cats) ? body.pickup_only_cats : PICKUP_ONLY_CATS,
@@ -2739,7 +2754,9 @@ function supersedeQuoteRequests(){
 }
 // The cart signature. redeemCartItems() is the brand's own builder and is exactly what the ORDER sends,
 // so quoting it means the quote prices the same payload the charge will.
-function serverQuoteCartKey(){ try{ return JSON.stringify(redeemCartItems()); }catch(_){ return null; } }
+// 1D D2 — projected, and it MUST match the producer's key byte for byte (requestServerQuote below);
+// two spellings of "the same cart" would make every quote look stale and re-quote forever.
+function serverQuoteCartKey(){ try{ return JSON.stringify(_legacyCartForSig(redeemCartItems())); }catch(_){ return null; } }
 /* 1C Task 7 — THE TOKEN'S OWN SIGNATURE, deliberately separate from serverQuoteCartKey() above.
    Two reasons. First, redeemCartItems() serializes the CART only; the applied reward is not in it, so
    the same items with and without a reward produce the same key — and a reward-active token attached
@@ -2752,7 +2769,10 @@ function confirmQuoteCartSig(){
   try{
     var pend = null;
     try{ pend = (window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload) ? window.__ACCOUNT.getRedeemPayload() : null; }catch(_){ pend = null; }
-    return JSON.stringify({ items: redeemCartItems(), reward: pend || null });
+    /* 1D D2 — over the LEGACY PROJECTION, never the raw items. This signature is what the quote
+       token is compared against; hashing the id would make the token fail to attach the moment a
+       backfilled menu started serving ids. */
+    return JSON.stringify({ items: _legacyCartForSig(redeemCartItems()), reward: pend || null });
   }catch(_){ return null; }
 }
 /* 🔴 THE ONE FORCED RE-QUOTE, ROUTED BY WHO OWNS THE PRICE. A reward-active cart's price belongs to
@@ -2810,7 +2830,9 @@ function requestServerQuote(force){
     const items = redeemCartItems();
     //  2. THE CART IS EMPTY → supersede, and drop the cache with it. (Already did.)
     if(!items || !items.length){ __serverQuote.key=null; __serverQuote.cents=null; __serverQuote.failedKey=null; supersedeQuoteRequests(); return; }
-    const key = JSON.stringify(items);
+    // 1D D2 — the SAME projection the consumer uses. `items` is the array about to be SENT, so the
+    // projection must not mutate it; legacyCartForSig deep-copies.
+    const key = JSON.stringify(_legacyCartForSig(items));
     /*  3. THIS CART IS ALREADY QUOTED → supersede, then return. THE ONE THAT WAS MISSING. Returning to
            a cart that is already cached fires nothing, so it looked like a no-op — but it is still a
            transition, and a request issued for the cart we just left is still outstanding. It lands,
@@ -3664,11 +3686,19 @@ function redeemCartItems(){
       if(typeof extras !== 'object') return;
       Object.entries(extras).filter(([,q])=>q>0).forEach(([eid])=>{
         const ex=lineExtra(line,eid);   // 1B Task 4 — via the LINE: a vanished option keeps its captured price, a re-priced one is not silently adopted
-        if(ex) extrasArr.push({instance:parseInt(inst),name:ex.name,price:ex.price});
+        /* 1D D2 — the option's identity, appended LAST and only when the served record carries one.
+           Conditional because a menu served before the backfill (or during an overlay failure) has no
+           id, and that cart must still be byte-identical to a pre-D2 one rather than carrying an
+           `extra_id: undefined` key. Appended so the legacy fields keep their positions — these
+           objects are JSON.stringify'd into signatures, where key order is part of the value. */
+        if(ex){ const e={instance:parseInt(inst),name:ex.name,price:ex.price}; if(ex.extra_id) e.extra_id=ex.extra_id; extrasArr.push(e); }
       });
     });
     const extrasTotal = extrasArr.reduce((s,e)=>s+e.price,0);
-    return {name:p.name,qty:line.qty,price:p.price,subtotal:p.price*line.qty,extras:extrasArr,extrasTotal};
+    // 1D D2 — the dish's identity, on the same terms: last, and only when the record carries one.
+    const out = {name:p.name,qty:line.qty,price:p.price,subtotal:p.price*line.qty,extras:extrasArr,extrasTotal};
+    if(p.dish_id) out.dish_id = p.dish_id;
+    return out;
   });
 }
 // A signature of the current cart's FULL content — MUST change iff anything the order captures changes

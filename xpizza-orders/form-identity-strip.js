@@ -42,8 +42,60 @@
     });
   }
 
+  /* ── 1D D2 — THE DEEP LEGACY PROJECTION FOR SIGNATURE BOUNDARIES ─────────────────────────────
+     D2 lets the id into the cart, which is what D1 kept it out of. The reason that is safe is this
+     function, and the reason it is a SECOND function rather than a reuse of stripIdentity is the trap
+     that follows.
+
+     Three client signatures hash the RAW emitted items: confirmQuoteCartSig (attaches the quote
+     token), redeemSig (gates SENDING a reward order), and serverQuoteCartKey (displayed-total
+     freshness, at both its producer and consumer sites). If the id appears in what they hash, all
+     three shift: the token fails to attach, a valid reward order is blocked from sending, and an
+     equivalent cached total is thrown away. So each of them hashes THIS projection instead of the
+     items themselves, and the emitted body keeps its ids.
+
+     🔴 DEEP, AND stripIdentity IS NOT. stripIdentity removes dish_id from a record; it does not touch
+     a nested extras[] entry, because in D1 the records it strips have no nested extras. A cart LINE
+     does — every option on the line — and a nested extra_id shifts these signatures exactly as a
+     dish_id does. Reusing the shallow function here would look correct, pass a dish-only test, and
+     leave the extras half of the hazard live: the same one-direction miss this programme keeps
+     producing. Hence a separate function, and hence the nested-extra case in its tests.
+
+     🔴 KEY ORDER IS PRESERVED, WHICH IS THE POINT. These signatures are JSON.stringify output, so key
+     ORDER is part of the value. Copying in iteration order and skipping only the identity keys yields
+     an object byte-identical to the one a pre-D2 client emitted — which is what makes "id present vs
+     absent" a no-op rather than merely "same fields, different string".
+
+     NON-MUTATING: the array it is handed is the one being sent in the request body. */
+  function legacyCartForSig(items) {
+    if (!Array.isArray(items)) return items;
+    return items.map(function (line) {
+      if (!line || typeof line !== 'object') return line;
+      var out = {};
+      for (var k in line) {
+        if (!Object.prototype.hasOwnProperty.call(line, k)) continue;
+        if (k === 'dish_id') continue;
+        if (k === 'extras' && Array.isArray(line.extras)) {
+          out.extras = line.extras.map(function (ex) {
+            if (!ex || typeof ex !== 'object') return ex;
+            var e = {};
+            for (var j in ex) {
+              if (!Object.prototype.hasOwnProperty.call(ex, j)) continue;
+              if (j === 'extra_id') continue;
+              e[j] = ex[j];
+            }
+            return e;
+          });
+          continue;
+        }
+        out[k] = line[k];
+      }
+      return out;
+    });
+  }
+
   // Published to BOTH worlds: the same bytes load as a Node module under `node --test` and as a
   // classic browser script inside the form. No ESM syntax — see form-cart.js for the same discipline.
-  if (typeof module !== 'undefined' && module.exports) module.exports = { stripIdentity: stripIdentity, IDENTITY_FIELDS: IDENTITY_FIELDS };
-  if (typeof window !== 'undefined') { window.stripIdentity = stripIdentity; }
+  if (typeof module !== 'undefined' && module.exports) module.exports = { stripIdentity: stripIdentity, legacyCartForSig: legacyCartForSig, IDENTITY_FIELDS: IDENTITY_FIELDS };
+  if (typeof window !== 'undefined') { window.stripIdentity = stripIdentity; window.legacyCartForSig = legacyCartForSig; }
 })();
