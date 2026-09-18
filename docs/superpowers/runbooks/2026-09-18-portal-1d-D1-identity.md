@@ -144,6 +144,26 @@ is. **Do not delete registry rows.** Retired ids stay reserved permanently by de
 to a new object would make old records resolve to something nobody meant, and that is unrepairable
 after the fact.
 
+## Named proposal, deferred to D4: `ensureIdentity` self-heals a missing key row
+
+**Status: proposed, not built, not gated.** Recorded here so it is a decision someone takes rather
+than a gap someone rediscovers.
+
+`ensureIdentity` currently returns `{ created: false }` when it proposes a grandfathered slug and
+finds that id row already belongs to the same object — **without rewriting the `keys/` row it did not
+find**. That is what makes the persistent-`INCOMPLETE` state above unrepairable by re-running: the
+backfill reports the object preserved on every pass while the reverse index stays short.
+
+The proposal is one line in that branch: when the key row was absent and the id row is live and
+belongs to this legacy key, write the key row back before returning preserved. It is idempotent, it
+cannot mint, and it turns a manual repair into a re-run.
+
+**Why it is not in D1.** The state needs a deliberate or partial out-of-band deletion to reach — both
+rows are written in one transaction — and `identity-registry.js` is inside the money-gated no-op
+surface. Changing it would reopen that approval for a repair no production path needs yet. At D4 the
+id becomes authoritative, the registry stops being shadow, and a self-healing reverse index is worth
+its own gate round. Take it there, with its own test and its own money-gate — not as a quiet edit.
+
 ## What D1 deliberately does NOT do
 
 Rewrite immutable version payloads, snapshots, mirrors or rollback to carry ids (served ids come from

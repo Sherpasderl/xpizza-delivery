@@ -166,9 +166,9 @@ const clearRegistry = async (rid) => {
      To tell those apart, the database is changed BEHIND the tool's back — three key rows deleted with
      no backfill involved — and the tool re-run read-only. A tool echoing a cached or computed figure
      would still say 24 already registered. Only one that reads says 21.
-     What this proves: the counts are sourced from the database. What it does not prove: that the
-     post-apply verified line could ever disagree with the report, which is not constructible without
-     mutating the tool — stated so the assertion is not read as more than it is. */
+     What this proves: the PRE-apply counts are sourced from the database. The post-apply verify line
+     is pinned separately, in case 5b — I claimed there that making the two disagree was not
+     constructible black-box, and that was wrong. */
   {
     /* BOTH ROWS PER VICTIM, and that detail is the registry's reserved-id rule showing itself: delete
        only the key row and its id row is orphaned, so the re-apply below mints a FRESH id rather than
@@ -256,8 +256,9 @@ const clearRegistry = async (rid) => {
      run BEFORE the retirement case below, which takes dimsum_01 out of service. */
   {
     const rid = 'la_musa';
-    const victim = KEYS.la_musa.dish[1];                 // not dimsum_01 — that one is retired later
-    assert.notStrictEqual(victim, 'dimsum_01', 'premise — the victim is not the dish the retirement case uses');
+    const victim = KEYS.la_musa.dish[1];                 // dimsum_02 today — any grandfathered dish works
+    assert.notStrictEqual(victim, 'dimsum_01',
+      'premise — the victim is NOT the dish the retirement case takes out of service later');
     const col = db.collection('restaurants').doc(rid).collection('identity').doc('dish');
     const keyRef = col.collection('keys').doc(encodeKey(victim));
     const held = await keyRef.get();
@@ -344,20 +345,15 @@ const clearRegistry = async (rid) => {
   }
 
   // ── 8. A REGISTRY REFUSAL SURFACES AS A FAILURE, AND THE ROWS ALREADY WRITTEN SURVIVE ───────
-  /* 🔴 WHY THIS IS HERE AND NOT A POST-APPLY ECHO TEST. The gate asked whether anything distinguishes
-     the "verified N/N" line from an echo of the tool's own report. Nothing black-box can, and the
-     reason is structural rather than a gap in effort: after any NON-FAULTY run the two values are
-     necessarily equal — the report totals the keys it processed, the verify line counts the keys that
-     resolve, and a successful backfill makes those the same number. To separate them the database
-     would have to be short of what the report claims, which is producible only by racing the process
-     mid-run or by mutating the tool. What IS proven, in case 3, is that the counts come from the
-     database at all: three identities deleted out of band moved the reported numbers, through the same
-     lookupByLegacyKeys call the verify line uses. Source ordering does the rest — the verify line reads
-     `after`, computed by a fresh lookup after backfillIdentities returned, never from `report`.
-     So instead of a test that cannot discriminate, here is a REACHABLE failure the CLI must handle:
-     a retired grandfathered slug. The registry refuses to re-issue it (a retired id stays reserved
+  /* This case originally carried an argument that a post-apply report-vs-reread discriminator could
+     not be built black-box. That argument was wrong and case 5b now disproves it, so it is gone rather
+     than softened: a file that argues against its own test is the same defect as a comment claiming
+     coverage that does not exist, which this build has already paid for once.
+     What this case is actually for stands on its own — a REACHABLE failure the CLI must handle. A
+     retired grandfathered slug: the registry refuses to re-issue it (a retired id stays reserved
      forever), and what matters is that the tool reports that as a FAILURE rather than a tidy success,
-     and that the rows it had already written are left alone — the runbook forbids deleting them. */
+     and that the rows it had already written are left alone, because the runbook forbids deleting
+     them. */
   {
     const rid = 'la_musa';
     const before = await readMappings(rid, KEYS.la_musa);
