@@ -15,45 +15,11 @@ const { catalogSnapshot, generateFormBundle } = require('./generate-form-bundle'
 const { computeServerTotal, MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, itemPricingKey } = require('../menu-pricing');
 const { computeRedemption } = require('../rewards-redeem');
 const { cartFingerprint, normalizeCartForFingerprint } = require('../quote-token');
+const { fullRegistry, partialRegistry, registryStub, availabilityStub } = require('./identity-fixture');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const RIDS = ['x_pizza', 'la_musa'];
 const tablesOf = (rid) => ({ restaurantId: rid, menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] });
-
-/* A registry stub that resolves every key — the WORST case for a no-op claim, because it is the state
-   in which identity is most present. Testing the no-op against an empty registry would prove only that
-   absent ids change nothing, which is trivially true and not the claim. */
-function fullRegistry(expectRid) {
-  /* 🔴 rid-AWARE, because production is. Every registry path is scoped to one restaurant, and a stub
-     that resolves any rid would make a cross-brand lookup — the overlay asking la_musa's registry for
-     an x_pizza key — resolve cleanly and look correct. That is the same dropped-constraint class as
-     the kind-blind stub and the .get()/.once() one: the fake permitting what production forbids.
-     Resolves every KEY (which is the point — the worst case for a no-op claim) but only for the rid it
-     was told to expect. */
-  return {
-    collection: (c) => ({
-      doc: (rid) => {
-        if (expectRid !== undefined && rid !== expectRid) {
-          throw new Error(`registry_wrong_restaurant: asked ${rid}, scoped to ${expectRid}`);
-        }
-        return {
-          collection: (c2) => ({
-            doc: (kind) => ({
-              collection: (c3) => ({
-                doc: (encodedKey) => ({
-                  get: async () => {
-                    const key = Buffer.from(encodedKey, 'base64url').toString('utf8');
-                    return { exists: true, data: () => ({ canonical_id: `ID_${kind}_${key}` }) };
-                  },
-                }),
-              }),
-            }),
-          }),
-        };
-      },
-    }),
-  };
-}
 
 /* Build a real cart out of a served body, so the payloads below are the shape the form actually
    produces rather than one composed to make a point. */
@@ -67,6 +33,48 @@ function cartFrom(rid, body, withIds) {
   }
   return [line];
 }
+
+/* ── THE FOUR BUSINESS ANSWERS, COMPUTED THE SAME WAY EVERY TIME ────────────────────────────────
+   🔴 WHY THIS BECAME ONE FUNCTION. The happy path compared identity-present against identity-absent
+   for price, 86, reward and factura; the FAILURE paths compared only price, and the fallback section
+   compared an id-less cart against another id-less cart — which cannot fail for an identity reason no
+   matter what identity does, because identity was absent on both sides. A no-op claim that holds only
+   where the overlay succeeded is not the claim D1 makes: the failure paths are precisely where a
+   half-applied enrichment would show up.
+   So every comparison below runs through here, and every one of them is identity-PRESENT versus
+   identity-ABSENT. The 86 gate is separate only because it is async. */
+function redeemRawFor(rid, plainItems) {
+  return rid === 'la_musa'
+    ? { type: 'points_ala_carte', items: [{ id: 'dimsum_01', qty: 1 }] }
+    : { type: 'free_pizza_choice', item_id: plainItems[0].name };
+}
+function blockedKeyFor(rid, body) { return itemPricingKey(body.dishes.find((d) => d.price > 0), rid); }
+
+function availDbFor(rid, blockedKey) {
+  const { availKey } = require('../avail-key');
+  return availabilityStub(rid, { [availKey(blockedKey)]: { available: false } }, assert);
+}
+
+function businessOutputs(rid, body, withIds, { redeemRaw }) {
+  const { pricedLineItems } = require('../factura/pricing');
+  const { usesPlatformFactura } = require('../factura/eligibility');
+  const items = cartFrom(rid, body, withIds);
+  const t = tablesOf(rid);
+  return {
+    price: computeServerTotal(items, rid, t),
+    reward: computeRedemption({ redeem: redeemRaw, items, restaurantId: rid }),
+    fingerprint: cartFingerprint(normalizeCartForFingerprint(items, rid), null),
+    /* 🔴 THE FACTURA SKIP IS AN ASSERTION, NOT A BRANCH. `if (!usesPlatformFactura(rid))` on its own
+       is a test that disappears the moment the predicate changes its mind: flip it to false for
+       x_pizza and the comparison silently stops running while the suite still reports green. The
+       expected value is stated per brand here, so a predicate that answers differently FAILS rather
+       than skipping. */
+    factura: usesPlatformFactura(rid)
+      ? pricedLineItems(items, t.menu, t.extras)
+      : '__brand_issues_its_own__',
+  };
+}
+const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below, per brand
 
 (async () => {
   for (const rid of RIDS) {
@@ -105,17 +113,8 @@ function cartFrom(rid, body, withIds) {
       const blockedKey = itemPricingKey(plain.dishes.find((d) => d.price > 0), rid);
       const { availKey } = require('../avail-key');
       const node = { [availKey(blockedKey)]: { available: false } };
-      // .once('value'), which is what the gate actually calls — a stub offering .get() would
-      // return undefined, the gate would fail OPEN, and the comparison below would pass against two
-      // empty results that prove nothing.
-      /* Path-checked as well as .once()-shaped: the gate reads
-         `restaurants/{rid}/item_availability`, and a stub answering ANY path would return this node
-         for the other brand's read too — a cross-brand 86 bug would look like a pass. */
-      const wantPath = `restaurants/${rid}/item_availability`;
-      const db = { ref: (path) => {
-        assert.strictEqual(path, wantPath, `${rid}: the 86 gate must read ITS OWN availability node (asked ${path})`);
-        return { once: async () => ({ val: () => node }) };
-      } };
+      // The shared stub: path-checked, .once()-shaped and event-checked. See identity-fixture.
+      const db = availabilityStub(rid, node, assert);
 
       const withIds = await checkItemAvailability(db, cartFrom(rid, enriched, true), rid);
       const without = await checkItemAvailability(db, cartFrom(rid, plain, false), rid);
@@ -138,6 +137,12 @@ function cartFrom(rid, body, withIds) {
          a reason that has nothing to do with identity; SKIPPING it silently would be worse, because
          the day la_musa is onboarded to platform factura this comparison would quietly not exist. So
          the eligibility is read from the real predicate and the skip is explicit. */
+      /* 🔴 THE PREDICATE'S ANSWER IS PINNED, so forcing this branch the wrong way FAILS instead of
+         quietly skipping the comparison. Previously the branch was taken on trust: a predicate that
+         returned false for x_pizza would have skipped the fiscal no-op check and still reported a
+         passing test. */
+      assert.strictEqual(usesPlatformFactura(rid), PLATFORM_FACTURA[rid],
+        `${rid}: 🔴 platform-factura eligibility moved — the fiscal comparison below would silently stop running`);
       if (!usesPlatformFactura(rid)) {
         ok(`${rid}: no platform factura to compare — this brand issues its own (asserted, not assumed)`);
       } else {
@@ -203,6 +208,22 @@ function cartFrom(rid, body, withIds) {
         'a registry that hangs': { collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({ get: () => new Promise(() => {}) }) }) }) }) }) }) },
         'a registry returning junk': { collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({ get: async () => ({ exists: true, data: () => ({ canonical_id: null }) }) }) }) }) }) }) }) },
       };
+      /* The identity-PRESENT baseline every failure below is measured against, plus the reward
+         request and 86 stub held constant so the only thing varying across the comparison is whether
+         identity made it onto the body. */
+      const redeemRaw = redeemRawFor(rid, cartFrom(rid, plain, false));
+      const blockedKey5 = blockedKeyFor(rid, plain);
+      const avail5 = availDbFor(rid, blockedKey5);
+      const { checkItemAvailability: checkAvail5 } = require('../availability-gate');
+      const checkItemAvailability5 = (body, withIds) => checkAvail5(avail5, cartFrom(rid, body, withIds), rid);
+
+      const ok5Baseline = businessOutputs(rid, enriched, true, { redeemRaw });
+      const ok5Blocked = await checkItemAvailability5(enriched, true);
+      assert.ok(!ok5Baseline.price.error && ok5Baseline.price.total > 0,
+        `${rid}: premise — the identity-PRESENT baseline prices (${ok5Baseline.price.error})`);
+      assert.ok(ok5Blocked.blocked.length > 0,
+        `${rid}: premise — the baseline 86 gate really blocks a line, so "same verdict" is not two empty answers`);
+
       for (const [label, badDb] of Object.entries(failures)) {
         /* 🔴 IT MUST NOT THROW. Caught here rather than left to escape, because an overlay that
            rethrows would otherwise surface as a crashed test run — evidence that something is wrong,
@@ -230,11 +251,23 @@ function cartFrom(rid, body, withIds) {
         assert.deepStrictEqual(out.body.dishes, plain.dishes, `${rid}/${label}: 🔴 the served dishes must be exactly what came in`);
         assert.deepStrictEqual(out.body.extras, plain.extras, `${rid}/${label}: 🔴 …and the extras too`);
         assert.strictEqual(out.body.dishes[0].dish_id, undefined, `${rid}/${label}: id-absent continuation`);
-        // …and the menu still prices, which is the only thing the customer needs.
-        const priced = computeServerTotal(cartFrom(rid, out.body, false), rid, tablesOf(rid));
-        assert.ok(!priced.error && priced.total > 0, `${rid}/${label}: 🔴 the menu still prices (${priced.error})`);
+        /* 🔴 AND ALL FOUR BUSINESS ANSWERS ARE THE ONES THE SUCCESSFUL OVERLAY PRODUCES. Checking
+           only that the failed body "still prices" leaves the interesting half unproven: a customer on
+           a failed-enrichment serve must get the same price, the same 86 verdict, the same reward and
+           the same fiscal lines as one on a successful serve. This is identity-PRESENT (enriched)
+           against identity-ABSENT (what the failure served) — the comparison a failure path is
+           actually for. */
+        const failed = businessOutputs(rid, out.body, false, { redeemRaw });
+        assert.ok(!failed.price.error && failed.price.total > 0,
+          `${rid}/${label}: 🔴 the menu still prices (${failed.price.error})`);
+        assert.deepStrictEqual(failed, ok5Baseline,
+          `${rid}/${label}: 🔴 a failed enrichment changed a business answer — price, 86, reward or factura`);
+
+        const failed86 = await checkItemAvailability5(out.body, false);
+        assert.deepStrictEqual(failed86, ok5Blocked,
+          `${rid}/${label}: 🔴 a failed enrichment changed which lines the 86 gate blocks`);
       }
-      ok(`${rid}: ${Object.keys(failures).length} forced enrichment failures each serve the original body and still price`);
+      ok(`${rid}: ${Object.keys(failures).length} forced enrichment failures each serve the original body and leave price, 86, reward and factura identical to a SUCCESSFUL overlay`);
     }
 
     // ── 5b. 🔴 THE FALLBACK SERVE IS IDENTITY-FREE BY CONSTRUCTION — ASSERTED, NOT ARGUED ─────
@@ -247,9 +280,15 @@ function cartFrom(rid, body, withIds) {
       const tables = tablesOf(rid);
       const mirror = { version: 'v9', seq: 9, rid, menu: tables.menu, extras: tables.extras };
       const fb = createSnapshotFallback({ mirrorReader: async () => mirror, alarm: () => {} });
-      fb.recordActive(rid, { versionId: 'v9', seq: 9 });
+      /* 🔴 THREE ARGUMENTS, NOT AN OBJECT. recordActive(rid, versionId, seq) ignores a non-integer
+         seq, so passing { versionId, seq } recorded NOTHING: the ladder never learned the active
+         ordinal and silently dropped to the mirror_cold rung — the one that serves without a second
+         opinion. The freshness comparison this section meant to exercise was never running. */
+      fb.recordActive(rid, 'v9', 9);
       const served = await fb.snapshotFor(rid);
       assert.ok(served && served.menu, `${rid}/fallback: premise — the ladder served something (${served && served.source})`);
+      assert.strictEqual(served.source, 'mirror',
+        `${rid}/fallback: premise — the version-checked rung, not the cold one (got ${served.source})`);
 
       const flat = JSON.stringify({ menu: served.menu, extras: served.extras });
       assert.ok(!/dish_id|extra_id|ID_dish|ID_extra/.test(flat),
@@ -257,10 +296,15 @@ function cartFrom(rid, body, withIds) {
       assert.ok(Object.values(served.menu).every((v) => typeof v === 'number'),
         `${rid}/fallback: the served menu is still a numeric table`);
       // …and an order priced off the fallback tables is the same order.
+      /* 🔴 IDENTITY-PRESENT ON ONE SIDE. This compared an id-less cart against another id-less cart,
+         which is an assertion about the fallback TABLES and says nothing whatever about identity — it
+         would pass unchanged if the overlay wrote ids into every cart line, because neither side had
+         any. The live-tables side now carries ids, so the claim is the real one: a customer holding an
+         enriched cart, served off the fallback ladder, pays what the live tables would charge. */
       assert.deepStrictEqual(
-        computeServerTotal(cartFrom(rid, plain, false), rid, { restaurantId: rid, menu: served.menu, extras: served.extras }),
+        computeServerTotal(cartFrom(rid, enriched, true), rid, { restaurantId: rid, menu: served.menu, extras: served.extras }),
         computeServerTotal(cartFrom(rid, plain, false), rid, tables),
-        `${rid}/fallback: 🔴 pricing off the fallback differs from pricing off the live tables`);
+        `${rid}/fallback: 🔴 an identity-bearing cart priced off the fallback differs from an id-less one off the live tables`);
       ok(`${rid}: the fallback serve carries no identity and prices identically (source: ${served.source})`);
     }
 
@@ -276,6 +320,110 @@ function cartFrom(rid, body, withIds) {
       }
       ok(`${rid}: the numeric price tables are untouched — values still numbers, keys still legacy`);
     }
+
+    // ── 5c. 🔴 THE READER'S OWN FAILURE CLASSES, THROUGH THE REAL SERVE PATH ───────────────────
+    /* Section 5 forces the OVERLAY to fail. These force the layer BELOW it — the ones the gate named:
+       a content-hash mismatch and a torn read. Both make getRestaurantMenu fail closed before the
+       overlay is reached, which is the argument for why identity cannot affect them; this turns the
+       argument into a measurement by running the identical break twice over the SAME store, once with
+       an empty registry and once with every object backfilled, and demanding the two failures be the
+       same failure. One store, so the version ids in the messages are comparable. */
+    {
+      const { makeDb } = require('./firestore-fake');
+      const { publishVersion } = require('./catalog-publish');
+      const { buildPublishCandidate } = require('../tools/publish-version');
+      const { buildPublicMenu } = require('./public-menu');
+      const { backfillIdentities } = require('./identity-backfill');
+      const known = new Set(RIDS);
+      const active = { isActive: async () => true };
+
+      const capture = async (db) => {
+        try { await buildPublicMenu(db, rid, { known, ...active }); return { served: true }; }
+        catch (e) { return { served: false, code: e.code, message: e.message, hasBody: e.body !== undefined }; }
+      };
+      const activeVid = async (db) => (await db.collection('restaurants').doc(rid)
+        .collection('meta').doc('active_version').get()).data().version;
+
+      const breakers = {
+        'the content hash no longer matches': async (db) => {
+          const r = await db.collection('restaurants').doc(rid).collection('versions').doc(await activeVid(db)).get();
+          await r.ref.set({ ...r.data(), content_hash: 'f'.repeat(64) });
+        },
+        'a torn read — an extra stripped of its display record': async (db) => {
+          const snap = await db.collection('restaurants').doc(rid).collection('versions')
+            .doc(await activeVid(db)).collection('extras').get();
+          const d = snap.docs[0];
+          await d.ref.set({ key: d.data().key, price: d.data().price });
+        },
+      };
+
+      for (const [label, breaker] of Object.entries(breakers)) {
+        const db = makeDb();
+        const { input, expected } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: '1d' });
+        await publishVersion(db, rid, input, { expected });
+
+        // Premise first: intact, this store serves. Otherwise the two failures below could agree for
+        // a reason that has nothing to do with the break.
+        assert.strictEqual((await capture(db)).served, true, `${rid}/${label}: premise — intact, it serves`);
+
+        await breaker(db);
+        const idAbsent = await capture(db);                       // registry empty
+        const report = await backfillIdentities(db, rid, catalogSnapshot(rid));
+        assert.ok(report.dish.total > 0, `${rid}/${label}: premise — the registry really was populated`);
+        const idPresent = await capture(db);                      // every object registered
+
+        assert.strictEqual(idAbsent.served, false, `${rid}/${label}: premise — the break really closes the serve`);
+        assert.strictEqual(idAbsent.code, 'public_menu_unavailable', `${rid}/${label}: it fails with the reader's code (${idAbsent.code})`);
+        assert.strictEqual(idAbsent.hasBody, false, `${rid}/${label}: 🔴 a failure carries no partial body`);
+        assert.deepStrictEqual(idPresent, idAbsent,
+          `${rid}/${label}: 🔴 a populated registry changed HOW the reader fails — identity must not reach a closed serve at all`);
+      }
+      ok(`${rid}: ${Object.keys(breakers).length} reader failure classes fail identically with the registry empty and full`);
+    }
+
+    // ── 5d. 🔴 A PRICING-READER TIMEOUT, AND A MIRROR TOO STALE TO SERVE ───────────────────────
+    /* The last two states the gate asked for. The pricing resolver reads the numeric tables through a
+       path of its own, under its own deadline; the overlay decorates the served projection and is
+       deliberately nowhere near it. Under a hung pricing read the resolver drops to the ladder — and a
+       customer holding an identity-bearing cart must still be charged the live amount. */
+    {
+      const { createPricingResolver } = require('./pricing-tables');
+      const { createSnapshotFallback } = require('./snapshot-fallback');
+      const tables = tablesOf(rid);
+      const mirror = { version: 'v9', seq: 9, rid, menu: tables.menu, extras: tables.extras };
+
+      const alarms = [];
+      const warm = createSnapshotFallback({ mirrorReader: async () => mirror, alarm: (k) => alarms.push(k) });
+      warm.recordActive(rid, 'v9', 9);
+      const resolver = createPricingResolver({
+        reader: { getTables: () => new Promise(() => {}) },     // hangs forever
+        alarm: (k) => alarms.push(k),
+        deadlineMs: 25,
+        ladder: warm,
+      });
+      const got = await resolver.getPricingTables(rid);
+      assert.ok(alarms.includes('catalog_read_timeout'),
+        `${rid}/pricing-timeout: premise — the catalog read really timed out (${alarms.join(',')})`);
+      assert.deepStrictEqual(
+        computeServerTotal(cartFrom(rid, enriched, true), rid, { restaurantId: rid, menu: got.menu, extras: got.extras }),
+        computeServerTotal(cartFrom(rid, plain, false), rid, tables),
+        `${rid}/pricing-timeout: 🔴 an identity-bearing cart priced off the timed-out ladder differs from the live amount`);
+      assert.ok(!/ID_dish|ID_extra|dish_id|extra_id/.test(JSON.stringify({ menu: got.menu, extras: got.extras })),
+        `${rid}/pricing-timeout: 🔴 identity reached the pricing tables`);
+
+      // …and a mirror further behind than K is refused outright — the overlay has no say in that either.
+      const staleAlarms = [];
+      const stale = createSnapshotFallback({
+        mirrorReader: async () => ({ ...mirror, version: 'v7', seq: 7 }),
+        alarm: (k) => staleAlarms.push(k),
+      });
+      stale.recordActive(rid, 'v12', 12);                        // distance 5, K = 1
+      await assert.rejects(() => stale.snapshotFor(rid), /snapshot_fallback_unavailable/,
+        `${rid}/stale-mirror: a mirror too far behind must be refused, not decorated and served`);
+      assert.ok(staleAlarms.includes('catalog_mirror_too_stale'),
+        `${rid}/stale-mirror: premise — it was refused for STALENESS (${staleAlarms.join(',')})`);
+      ok(`${rid}: a pricing-reader timeout prices an identity-bearing cart at the live amount, and a mirror past K is refused`);
+    }
   }
 
   // ══ §7 MATRIX — THE STATES D1 IS ONLY "SAFE BY CONSTRUCTION" IN ═══════════════════════════════
@@ -283,7 +431,7 @@ function cartFrom(rid, body, withIds) {
      to be able to stop trusting. They are real operational states: a migration that stopped halfway, a
      rollback, a client that predates the field, a portal tab left open across a republish. */
   {
-    const { memFirestore, partialRegistry } = require('./identity-fixture');
+    const { memFirestore } = require('./identity-fixture');
     const { ensureIdentitiesForKeys } = require('./identity-backfill');
     const { lookupByLegacyKeys } = require('./identity-registry');
 
@@ -299,7 +447,7 @@ function cartFrom(rid, body, withIds) {
          wrong id because one was. Tolerance has to be PER RECORD. */
       {
         const half = dishKeys.slice(0, Math.max(1, Math.floor(dishKeys.length / 2)));
-        const out = await applyIdentityToServedBody(partialRegistry({ dish: half, extra: [] }), rid, plain);
+        const out = await applyIdentityToServedBody(partialRegistry({ dish: half, extra: [] }, rid), rid, plain);
         const withId = out.body.dishes.filter((d) => d.dish_id);
         const withoutId = out.body.dishes.filter((d) => !d.dish_id);
         assert.strictEqual(withId.length, half.length, `${rid}/interrupted: exactly the registered dishes carry an id`);
@@ -389,6 +537,75 @@ function cartFrom(rid, body, withIds) {
         ok(`${rid}: a stale portal submission cannot move an identity — the write re-derives, it never adopts`);
       }
     }
+  }
+
+  // ══ THE PUBLISH PRESERVE-HOOK DEADLINE ACTUALLY ABANDONS ═════════════════════════════════════
+  /* 🔴 A Promise.race BOUNDS THE WAIT, NOT THE WORK — and the difference is the whole claim. The hook
+     said "on timeout the keys simply go unregistered"; what actually happened was that the deadline
+     fired, the publish returned, and the registry loop went on transacting underneath, landing its
+     entire key set whenever the store came back. Every row eventually written, minutes after the
+     publish reported none of them. Not corrupting — the writes are the right writes — but the stated
+     semantic was false, and a deadline nobody enforces is a log line.
+     This measures the abandonment directly: block the first registry transaction, let the deadline
+     fire, then RELEASE the store and give the abandoned loop every chance to finish. */
+  {
+    const { memFirestore } = require('./identity-fixture');
+    const { ensureIdentitiesForKeys } = require('./identity-backfill');
+    const { liveKeys } = require('./identity-backfill');
+    const rid = 'x_pizza';
+    const keys = liveKeys(rid, catalogSnapshot(rid));
+    const expectedRows = (keys.dish.length + keys.extra.length) * 2;   // an id row and a key row each
+    assert.ok(expectedRows > 20, `premise — there is a substantial key set to abandon (${expectedRows} rows)`);
+
+    // A store whose FIRST transaction hangs until released; everything after runs normally.
+    const gated = () => {
+      const base = memFirestore();
+      let release; const blocked = new Promise((r) => { release = r; });
+      let seen = 0;
+      const db = {
+        _docs: base._docs,
+        collection: (c) => base.collection(c),
+        runTransaction: async (fn, opts) => {
+          seen += 1;
+          if (seen === 1) await blocked;
+          return base.runTransaction(fn, opts);
+        },
+      };
+      return { db, base, release: () => release() };
+    };
+
+    const run = async (withStop) => {
+      const { db, base, release } = gated();
+      let expired = false;
+      let threw = null;
+      try {
+        await Promise.race([
+          ensureIdentitiesForKeys(db, rid, keys, withStop ? { shouldStop: () => expired } : {}),
+          new Promise((_, rej) => setTimeout(() => { expired = true; rej(new Error('identity_preserve_timeout')); }, 40)),
+        ]);
+      } catch (e) { threw = (e && e.message) || String(e); }
+      const atTimeout = base._docs.size;
+      release();
+      // Every chance to land: the abandoned loop is now completely unobstructed.
+      for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r));
+      await new Promise((r) => setTimeout(r, 50));
+      return { threw, atTimeout, after: base._docs.size };
+    };
+
+    const stopped = await run(true);
+    assert.strictEqual(stopped.threw, 'identity_preserve_timeout', 'premise — the deadline fired');
+    assert.strictEqual(stopped.atTimeout, 0, 'premise — nothing had been written when it fired');
+    assert.ok(stopped.after <= 2,
+      `🔴 after the deadline the hook must start NO further registry write — at most the one already in flight completes (landed ${stopped.after} rows)`);
+
+    /* NON-VACUITY, and the reproduction of the original defect in the same breath: the identical
+       setup WITHOUT the stop signal writes the whole key set after the deadline. Without this the
+       assertion above could be passing because the fixture never writes anything. */
+    const unstopped = await run(false);
+    assert.strictEqual(unstopped.threw, 'identity_preserve_timeout', 'the unbounded run times out identically');
+    assert.strictEqual(unstopped.after, expectedRows,
+      `🔴 non-vacuity: with no stop signal the abandoned loop lands ALL ${expectedRows} rows after the deadline — the defect this fixes (got ${unstopped.after})`);
+    ok(`the preserve-hook deadline abandons: ${stopped.after} rows land after timeout where an unbounded loop lands ${unstopped.after}`);
   }
 
   // ── 7. 🔴 THE SHADOW PROOF — grep + runtime ───────────────────────────────────────────────────

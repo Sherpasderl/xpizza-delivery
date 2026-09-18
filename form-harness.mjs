@@ -36,9 +36,15 @@ export const stageSettle = async () => { await new Promise((r) => setTimeout(r, 
 // The endpoint's real envelope, exactly as index.js sends it.
 export const envelope = (rid, menu) => ({ rid, representation_version: '1b.1', menu });
 
-export function loadForm(dir) {
+/* `omit` drops a local script instead of inlining it — the browser's own failure mode, not a
+   hypothetical: a 404, a cache miss, a CSP block or a syntax error in a neighbouring file all end with
+   a page running without that module's globals. Guards written as `typeof thing === 'function' ? … : …`
+   are only ever exercised on this path, and until it existed they were each untested in the branch
+   that matters. */
+export function loadForm(dir, { omit = [] } = {}) {
   let html = readFileSync(new URL(`./${dir}/index.html`, import.meta.url), 'utf8');
   html = html.replace(/<script src="(?!https?:)([^"]+)"><\/script>/g, (m, src) => {
+    if (omit.indexOf(src) !== -1) return '';
     try { return `<script>\n${readFileSync(new URL(`./${dir}/${src}`, import.meta.url), 'utf8')}\n</script>`; }
     catch { return ''; }
   });

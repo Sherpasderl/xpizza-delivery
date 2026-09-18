@@ -359,18 +359,34 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
        Bounded as well as non-fatal: a registry that hangs must not hold the publish RESPONSE open
        either. On timeout or error the keys simply go unregistered, the overlay serves those records
        id-less, and the next publish (or the backfill) picks them up.
+       🔴 AND THE BOUND ABANDONS RATHER THAN MERELY STOPS WAITING. A Promise.race abandons the WAIT,
+       not the work: the first version left ensureIdentitiesForKeys running underneath, so a registry
+       that unblocked after the deadline still wrote its entire key set long after this publish had
+       reported those keys unregistered — a deadline that was, in effect, a log line. `shouldStop` is
+       read before every registry transaction, so once the deadline passes no further write is started
+       and the abandonment is the one described here.
        🔴 KEYED FROM THE PUBLISHED TABLES, NOT FROM AN ECHOED FIELD. The edit handler replaces the
        source arrays wholesale and the seed reconstructs docs, so any id a caller hands back is at best
        a copy and at worst stale or swapped. menuTable/extraTable are keyed by the legacy key the money
        path itself uses, computed from what was actually written — the one description of this publish
        that cannot have been round-tripped through a browser. */
     if (identityKeys) {
-      await Promise.race([
-        ensureIdentitiesForKeys(db, rid, identityKeys),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('identity_preserve_timeout')), IDENTITY_PRESERVE_TIMEOUT_MS)),
-      ]).catch((e) => {
+      let expired = false;
+      let timer = null;
+      try {
+        await Promise.race([
+          ensureIdentitiesForKeys(db, rid, identityKeys, { shouldStop: () => expired }),
+          new Promise((_, rej) => {
+            timer = setTimeout(() => { expired = true; rej(new Error('identity_preserve_timeout')); }, IDENTITY_PRESERVE_TIMEOUT_MS);
+          }),
+        ]);
+      } catch (e) {
         try { console.warn('identity_preserve_failed', JSON.stringify({ rid, versionId: identityVersionId, error: String((e && e.message) || e).slice(0, 160) })); } catch (_) {}
-      });
+      } finally {
+        // …and the timer is cleared on the happy path, or a fast publish keeps a handle alive for the
+        // full deadline for no reason.
+        if (timer) clearTimeout(timer);
+      }
     }
   }
 }

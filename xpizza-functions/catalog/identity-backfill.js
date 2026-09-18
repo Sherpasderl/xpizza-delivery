@@ -20,20 +20,27 @@
 const { ensureIdentity } = require('./identity-registry');
 const { itemPricingKey } = require('../menu-pricing');
 
-/* The legacy key for a DISH — literally the pricing resolver. */
-function dishKey(rid, item) {
-  const k = itemPricingKey(item, rid);
+/* 🔴 TWO PRODUCERS, TWO SHAPES — and getting this wrong registered NOTHING, silently.
+   The catalog READER emits { key, price, display }: the legacy key is already computed and sits at
+   `record.key`. The SERVED projection and a cart line carry the display fields instead — name on
+   x_pizza, id on la_musa — which is what itemPricingKey reads.
+   The first version fed reader records straight to itemPricingKey. There is no top-level name or id
+   there, so every key came back null, every record was filtered out, and backfillIdentities returned a
+   perfectly healthy report with every count zero: 24 dishes in, 0 registered, no error. Tests passed
+   because they fed it cart-shaped fixtures — the shape the function was imagined to take rather than
+   the one its real caller produces.
+   Both shapes are accepted explicitly, reader first, because the reader's key is authoritative: it is
+   the key the version was WRITTEN under. Falling through to itemPricingKey covers the display/cart
+   shape. Anything else returns null — and the caller below now treats a wholesale null as a fault
+   rather than as an empty day's work. */
+function legacyKeyOf(rid, record) {
+  if (record && typeof record.key === 'string' && record.key) return record.key;   // reader shape
+  const k = itemPricingKey(record, rid);                                            // display / cart shape
   return typeof k === 'string' && k ? k : null;
 }
 
-/* …and for an EXTRA, which keys the way its brand's dishes do. Expressed by handing the extra to the
-   SAME resolver rather than re-deriving the brand rule: an extra record carries `id` and `name` in the
-   same shape an item does, so the resolver answers correctly for it, and there is still exactly one
-   place that knows how a brand keys. */
-function extraKey(rid, extra) {
-  const k = itemPricingKey(extra, rid);
-  return typeof k === 'string' && k ? k : null;
-}
+const dishKey = (rid, item) => legacyKeyOf(rid, item);
+const extraKey = (rid, extra) => legacyKeyOf(rid, extra);
 
 /* Enumerate what is LIVE, from a menu snapshot in getRestaurantMenu's shape. Deliberately takes the
    snapshot rather than reading it here: the caller decides which read it is willing to make, and this
@@ -53,6 +60,16 @@ function liveKeys(rid, menu) {
    this is a one-time migration, not a serving path. */
 async function backfillIdentities(db, rid, menu, { now = null } = {}) {
   const keys = liveKeys(rid, menu);
+  /* 🔴 A WHOLESALE MISS IS A SHAPE FAULT, NOT AN EMPTY CATALOG. This is the guard that would have
+     turned the silent zero above into a failure the first time anyone ran it: records went in and not
+     one of them yielded a key, which cannot happen for a real catalog and always means the input is
+     not the shape this function can read. Reported loudly rather than returned as a tidy report of
+     nothing, because "0 registered, no error" is indistinguishable from success at a glance. */
+  const inputCount = (Array.isArray(menu && menu.items) ? menu.items.length : 0)
+    + (Array.isArray(menu && menu.extras) ? menu.extras.length : 0);
+  if (inputCount > 0 && keys.dish.length === 0 && keys.extra.length === 0) {
+    throw new Error(`identity_backfill_unkeyable: ${rid} — ${inputCount} records yielded no legacy keys; the input is not a shape this can read`);
+  }
   const report = { rid, dish: { total: 0, created: 0, preserved: 0 }, extra: { total: 0, created: 0, preserved: 0 }, ids: { dish: {}, extra: {} } };
   for (const kind of ['dish', 'extra']) {
     for (const legacyKey of keys[kind]) {
@@ -70,10 +87,18 @@ async function backfillIdentities(db, rid, menu, { now = null } = {}) {
    genuinely new one mints. Kept beside the backfill rather than in the registry because it is the same
    operation the backfill performs, and two functions that must agree about "ensure this set" are one
    function. */
-async function ensureIdentitiesForKeys(db, rid, keysByKind, { now = null } = {}) {
-  const report = { rid, dish: { total: 0, created: 0, preserved: 0 }, extra: { total: 0, created: 0, preserved: 0 } };
+async function ensureIdentitiesForKeys(db, rid, keysByKind, { now = null, shouldStop = null } = {}) {
+  const report = { rid, dish: { total: 0, created: 0, preserved: 0 }, extra: { total: 0, created: 0, preserved: 0 }, stopped: false };
   for (const kind of ['dish', 'extra']) {
     for (const legacyKey of [...new Set((keysByKind[kind] || []).filter((k) => typeof k === 'string' && k))]) {
+      /* 🔴 A REAL ABANDONMENT POINT, CHECKED BEFORE EVERY WRITE. The publish hook bounds this with a
+         Promise.race, and a race only stops WAITING — the loop underneath went on transacting, so a
+         registry that stalled past the deadline still wrote its whole key set minutes later while the
+         publish had long since reported the keys unregistered. `shouldStop` is what makes the bound
+         mean what the caller says it means: once it turns true, no further transaction is STARTED. At
+         most the one already in flight completes, which is bounded by Firestore's own transaction
+         limit rather than by nothing at all. */
+      if (typeof shouldStop === 'function' && shouldStop()) { report.stopped = true; return report; }
       const r = await ensureIdentity(db, { rid, kind, legacyKey, now });
       report[kind].total += 1;
       report[kind][r.created ? 'created' : 'preserved'] += 1;
@@ -82,4 +107,4 @@ async function ensureIdentitiesForKeys(db, rid, keysByKind, { now = null } = {})
   return report;
 }
 
-module.exports = { backfillIdentities, ensureIdentitiesForKeys, liveKeys, dishKey, extraKey };
+module.exports = { backfillIdentities, ensureIdentitiesForKeys, liveKeys, dishKey, extraKey, legacyKeyOf };

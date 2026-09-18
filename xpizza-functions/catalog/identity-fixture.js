@@ -67,38 +67,101 @@ function memFirestore() {
 }
 
 
-/* A registry that resolves only SOME keys — the interrupted-backfill state.
-   🔴 KIND-AWARE, and that is not incidental. The first version keyed on the string alone, so a dish
-   key that happens to match an extra's name resolved as BOTH — which the real registry cannot do,
-   because the two kinds are separate collections. A stub that is laxer than the thing it stands in for
-   turns a passing test into no test at all, and here it silently granted ids to extras that were never
+/* ── ONE REGISTRY FAKE, SHAPED LIKE THE REAL PATH ──────────────────────────────────────────────
+   🔴 EVERY LAXITY IN A FAKE IS A CONSTRAINT THE TEST STOPS CHECKING, and there were three of them
+   here: a stub that ignored the restaurant, one that ignored the collection NAMES, and one that
+   ignored which event it was asked for. Each made a real production constraint unobservable — a
+   cross-brand lookup, a read of the wrong collection, a gate asking for the wrong event — and each
+   would have answered cleanly where Firestore answers nothing.
+   The real lookup path is exactly:
+       restaurants/{rid}/identity/{dish|extra}/keys/{base64url(legacyKey)}
+   so this fake refuses every departure from it, loudly, by throwing. `resolve(kind, key)` decides
+   which keys exist, which is the only axis a caller should get to vary.
+   REFUSALS THROW rather than return not-found on purpose: a miss is a legitimate registry answer and
+   the overlay handles it by serving id-absent, so a wrong path answered as "not found" would look
+   like an ordinary unregistered object and prove nothing. */
+function registryStub({ rid: expectRid, resolve }) {
+  const refuse = (m) => { throw new Error(`registry_stub_refused: ${m}`); };
+  return {
+    collection: (c) => {
+      if (c !== 'restaurants') refuse(`the registry hangs off 'restaurants', asked '${c}'`);
+      return {
+        doc: (rid) => {
+          if (expectRid !== undefined && rid !== expectRid) {
+            refuse(`registry_wrong_restaurant: asked ${rid}, scoped to ${expectRid}`);
+          }
+          return {
+            collection: (c2) => {
+              if (c2 !== 'identity') refuse(`the registry lives under 'identity', asked '${c2}'`);
+              return {
+                doc: (kind) => {
+                  if (kind !== 'dish' && kind !== 'extra') refuse(`kind is dish|extra, asked '${kind}'`);
+                  return {
+                    collection: (c3) => {
+                      /* A legacy-key lookup reads 'keys'. 'ids' is the REVERSE index and holds a
+                         different row shape; a name-blind stub would hand a keys row back for an ids
+                         read and the two indexes would appear interchangeable, which is the one thing
+                         they are not. */
+                      if (c3 !== 'keys') refuse(`a legacy-key lookup reads 'keys', asked '${c3}'`);
+                      return {
+                        doc: (encodedKey) => ({
+                          get: async () => {
+                            if (typeof encodedKey !== 'string' || !encodedKey) refuse('an empty document id');
+                            const key = Buffer.from(encodedKey, 'base64url').toString('utf8');
+                            // The id must be the ENCODING of that key — base64url decoding is lenient,
+                            // so a raw unencoded key would decode to mojibake and silently miss.
+                            if (Buffer.from(key, 'utf8').toString('base64url') !== encodedKey) {
+                              refuse(`document id is not base64url(legacyKey): '${String(encodedKey).slice(0, 32)}'`);
+                            }
+                            const id = resolve(kind, key);
+                            return id
+                              ? { exists: true, data: () => ({ canonical_id: id }) }
+                              : { exists: false, data: () => null };
+                          },
+                        }),
+                      };
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+/* Resolves EVERY key — the worst case for a no-op claim, because it is the state in which identity is
+   most present. Testing the no-op against an empty registry would prove only that absent ids change
+   nothing, which is trivially true and not the claim. */
+const fullRegistry = (rid) => registryStub({ rid, resolve: (kind, key) => `ID_${kind}_${key}` });
+
+/* A registry that resolves only SOME keys — the interrupted-backfill state. KIND-AWARE, because the
+   two kinds are separate collections in the real thing: keyed on the string alone, a dish key that
+   happens to match an extra's name resolved as BOTH, silently granting ids to extras that were never
    registered. Takes { dish: [...], extra: [...] }. */
-function partialRegistry(resolvable) {
+function partialRegistry(resolvable, rid) {
   const known = {
     dish: new Set((resolvable && resolvable.dish) || []),
     extra: new Set((resolvable && resolvable.extra) || []),
   };
-  return {
-    collection: () => ({
-      doc: () => ({
-        collection: () => ({
-          doc: (kind) => ({
-            collection: () => ({
-              doc: (encodedKey) => ({
-                get: async () => {
-                  const key = Buffer.from(encodedKey, 'base64url').toString('utf8');
-                  const set = known[kind] || new Set();
-                  return set.has(key)
-                    ? { exists: true, data: () => ({ canonical_id: `ID_${kind}_${key}` }) }
-                    : { exists: false, data: () => null };
-                },
-              }),
-            }),
-          }),
-        }),
-      }),
-    }),
-  };
+  return registryStub({ rid, resolve: (kind, key) => ((known[kind] || new Set()).has(key) ? `ID_${kind}_${key}` : null) });
 }
 
-module.exports = { memFirestore, partialRegistry };
+/* The 86 gate's RTDB stub, likewise shaped like the real read: `.once('value')` on this restaurant's
+   own availability node. A `.get()`-shaped stub returns undefined and the gate fails OPEN — the
+   comparison then passes against two empty results. A path-blind one answers the other brand's read.
+   An event-blind one answers a gate that asked for the wrong event. */
+function availabilityStub(rid, node, assert) {
+  const wantPath = `restaurants/${rid}/item_availability`;
+  return { ref: (path) => {
+    assert.strictEqual(path, wantPath, `${rid}: the 86 gate must read ITS OWN availability node (asked ${path})`);
+    return { once: async (evt) => {
+      assert.strictEqual(evt, 'value', `${rid}: the 86 gate must read the 'value' event (asked ${String(evt)})`);
+      return { val: () => node };
+    } };
+  } };
+}
+
+module.exports = { memFirestore, partialRegistry, fullRegistry, registryStub, availabilityStub };

@@ -4927,10 +4927,10 @@
   {
     "id": "d1-10",
     "slice": "d1",
-    "label": "the backfill re-derives the brand rule instead of using the pricing resolver, and gets it backwards",
+    "label": "the key is re-derived from the brand rule instead of the pricing resolver, and backwards",
     "file": "catalog/identity-backfill.js",
-    "from": "function dishKey(rid, item) {\n  const k = itemPricingKey(item, rid);",
-    "to": "function dishKey(rid, item) {\n  const k = (rid === 'la_musa') ? (item && item.name) : (item && item.id);",
+    "from": "  const k = itemPricingKey(record, rid);",
+    "to": "  const k = (rid === 'la_musa') ? (record && record.name) : (record && record.id);",
     "command": [
       "node",
       "catalog/identity-registry.test.js"
@@ -4949,5 +4949,84 @@
       "--test",
       "../xpizza-orders/form-identity-strip.copy.test.mjs"
     ]
+  },
+  {
+    "id": "d1-12",
+    "slice": "d1",
+    "label": "🔴 the reader's own key is ignored — the real catalog registers NOTHING and reports success",
+    "file": "catalog/identity-backfill.js",
+    "from": "  if (record && typeof record.key === 'string' && record.key) return record.key;   // reader shape",
+    "to": "  if (false) return record.key;   // reader shape",
+    "command": [
+      "node",
+      "catalog/identity-registry.test.js"
+    ],
+    "kills_with": "identity_backfill_unkeyable"
+  },
+  {
+    "id": "d1-13",
+    "slice": "d1",
+    "label": "a wholesale key miss reports zeros instead of faulting — the silence that hid the shape bug",
+    "file": "catalog/identity-backfill.js",
+    "from": "  if (inputCount > 0 && keys.dish.length === 0 && keys.extra.length === 0) {",
+    "to": "  if (false) {",
+    "command": [
+      "node",
+      "catalog/identity-registry.test.js"
+    ],
+    "kills_with": "reported as a fault"
+  },
+  {
+    "id": "d1-14",
+    "slice": "d1",
+    "label": "the preserve-hook deadline stops waiting but not writing — abandoned work lands anyway",
+    "file": "catalog/identity-backfill.js",
+    "from": "      if (typeof shouldStop === 'function' && shouldStop()) { report.stopped = true; return report; }",
+    "to": "      if (false) { report.stopped = true; return report; }",
+    "command": [
+      "node",
+      "catalog/identity-noop.test.js"
+    ],
+    "kills_with": "must start NO further registry write"
+  },
+  {
+    "id": "d1-15",
+    "slice": "d1",
+    "label": "a RETIRED grandfathered slug is handed back as a preserved id — the reservation spent silently",
+    "file": "catalog/identity-registry.js",
+    "from": "        if (held.status === STATUS_RETIRED) {",
+    "to": "        if (false) {",
+    "command": [
+      "node",
+      "catalog/identity-registry.test.js"
+    ],
+    "kills_with": "a retired slug must NOT come back"
+  },
+  {
+    "id": "d1-16",
+    "slice": "d1",
+    "label": "🔴 the browser strip fails OPEN again — a missing module sends ids into the cart",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if (typeof stripIdentity === 'function') return stripIdentity(records);",
+    "to": "  if (true) return (typeof stripIdentity === 'function') ? stripIdentity(records) : records;",
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-orders/form-identity-strip.copy.test.mjs"
+    ],
+    "kills_with": "reached a browser working record with the strip module missing"
+  },
+  {
+    "id": "d1-17",
+    "slice": "d1",
+    "label": "the registry fake stops being rid-scoped — a cross-brand lookup resolves cleanly",
+    "file": "catalog/identity-fixture.js",
+    "from": "          if (expectRid !== undefined && rid !== expectRid) {",
+    "to": "          if (false) {",
+    "command": [
+      "node",
+      "catalog/identity-registry.test.js"
+    ],
+    "kills_with": "the registry fake must refuse"
   }
 ]

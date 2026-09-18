@@ -170,7 +170,17 @@ function runSelect(rid, bundleGlobal) {
     sandbox.FALLBACK_WEEKEND_ONLY = readLiteral(src, 'WEEKEND_ONLY_CATS');
   }
   vm.createContext(sandbox);
-  vm.runInContext(`${selectBlock(src, rid)}\n;globalThis.__out = { ${SELECT_NAMES[rid].join(', ')} };`, sandbox);
+  /* 🔴 THE PAGE'S OWN STRIP WRAPPER, EXECUTED — NOT STUBBED. The initial-bundle selector now routes
+     through _stripIdentityOrFail (D1's fail-closed guard), so the sandbox has to have it. Lifting the
+     real function out of the form is the only version of this that stays honest: a stub here would be
+     a second, laxer implementation of the exact thing the guard exists to enforce, and a fake laxer
+     than production turns a passing test into no test. stripIdentity itself is genuinely undefined in
+     this sandbox, which means these runs exercise the module-missing branch — the right one for a
+     selector whose spliced bundle carries no ids today. */
+  const fnAt = src.indexOf('function _stripIdentityOrFail');
+  assert.notStrictEqual(fnAt, -1, `${rid}: the form no longer defines _stripIdentityOrFail — the selector's strip has moved`);
+  const stripSrc = src.slice(fnAt, src.indexOf('\n}\n', fnAt) + 3);
+  vm.runInContext(`${stripSrc}\n${selectBlock(src, rid)}\n;globalThis.__out = { ${SELECT_NAMES[rid].join(', ')} };`, sandbox);
   return sandbox.__out;
 }
 for (const rid of ['x_pizza', 'la_musa']) {

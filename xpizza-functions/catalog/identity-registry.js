@@ -125,6 +125,18 @@ async function ensureIdentity(db, { rid, kind, legacyKey, now = null }) {
            slug is already registered to something. Retrying would mint a random id for an object whose
            identity is supposed to BE its slug, quietly splitting the migration. Refuse instead. */
         const held = idSnap.data() || {};
+        /* 🔴 PRESERVATION ONLY WHERE THE ROW IS STILL LIVE. Matching on legacy_key alone reported a
+           RETIRED id back as a successfully preserved one — and retirement deletes the key row, so this
+           is exactly the path a re-created object takes: the slug row is found, the legacy keys match,
+           and the caller is handed an id the registry has permanently reserved against reuse. That is
+           the one thing the reservation exists to prevent, returned as { created: false } — the
+           quietest possible shape for it, indistinguishable from an ordinary idempotent re-run.
+           For a grandfathered brand the slug IS the identity, so there is no alternative to mint: the
+           only honest answer is to refuse and let a human decide whether this is a resurrection or a
+           new object that needs a new slug. */
+        if (held.status === STATUS_RETIRED) {
+          throw new Error(`identity_slug_retired: ${rid}/${kind}/${legacyKey} — this slug is retired and permanently reserved; it cannot be re-assigned`);
+        }
         if (held.legacy_key === legacyKey) return { canonical_id: candidate, created: false };
         throw new Error(`identity_slug_conflict: ${rid}/${kind}/${legacyKey} — slug already registered to a different object`);
       }

@@ -1500,7 +1500,36 @@ const _okStrArr = (a) => Array.isArray(a) && a.every((s) => typeof s === 'string
    into the order, so an id that slips through here reaches the order payload, the redemption
    canonical and the quote fingerprint, and a field inside a fingerprint is not shadow. It enters the
    cart at D2, with the code that knows what to do with it. */
-let MENU = _okDishes(_BUNDLE.dishes) ? (typeof stripIdentity === 'function' ? stripIdentity(_BUNDLE.dishes) : _BUNDLE.dishes) : FALLBACK_MENU;
+/* -- 1D D1 — THE IDENTITY STRIP, FAIL-CLOSED -------------------------------------------------
+   🔴 THE OLD GUARD FAILED OPEN. It asked whether stripIdentity was a function and, when it was not,
+   chose the raw served records. So if form-identity-strip.js did not load — a 404, a cache miss, a CSP
+   block, a syntax error in a neighbouring file that aborted the script — every id went straight into
+   MENU, into the cart records form-cart.js captures whole, and on into the order payload, the
+   redemption canonical and the quote fingerprint. That is precisely the leak the strip exists to
+   prevent, arrived at SILENTLY, through something that reads like a safety check.
+   The absence of the module is now handled by still stripping, never by passing identity through.
+   🔴 THE FIELD NAMES ARE DUPLICATED HERE ON PURPOSE, and this is the one function that may not borrow
+   them: its whole job is to work when the module that owns the list is missing. The duplication is
+   pinned by form-identity-strip.copy.test.mjs, which fails if this literal and IDENTITY_FIELDS ever
+   disagree — so it cannot drift silently, it can only be noticed. */
+function _stripIdentityOrFail(records) {
+  if (typeof stripIdentity === 'function') return stripIdentity(records);
+  try { console.error('identity_strip_missing — stripping inline; the identity module did not load'); } catch (_e) {}
+  if (!Array.isArray(records)) return records;
+  return records.map(function (rec) {
+    if (!rec || typeof rec !== 'object') return rec;
+    if (!Object.prototype.hasOwnProperty.call(rec, 'dish_id')
+      && !Object.prototype.hasOwnProperty.call(rec, 'extra_id')) return rec;
+    var out = {};
+    for (var k in rec) {
+      if (!Object.prototype.hasOwnProperty.call(rec, k)) continue;
+      if (k === 'dish_id' || k === 'extra_id') continue;
+      out[k] = rec[k];
+    }
+    return out;
+  });
+}
+let MENU = _okDishes(_BUNDLE.dishes) ? _stripIdentityOrFail(_BUNDLE.dishes) : FALLBACK_MENU;
 
 
 const MIN_ORDER = 250;
@@ -1967,8 +1996,8 @@ function liveMenuPrepare(body){
   return {
     // 1D D1 — the SECOND boundary: the live refresh. This one really does carry ids (the served body
     // is overlaid), and it is the path that replaces MENU/EXTRAS under a running form.
-    MENU: (typeof stripIdentity === 'function' ? stripIdentity(dishes) : dishes),
-    EXTRAS: (typeof stripIdentity === 'function' ? stripIdentity(extras) : extras),
+    MENU: _stripIdentityOrFail(dishes),
+    EXTRAS: _stripIdentityOrFail(extras),
     // Absent structure keeps what is already in force rather than becoming empty: an omitted
     // pickup-only list must not silently OPEN a gate that is currently closed.
     PICKUP_ONLY_CATS: Array.isArray(body.pickup_only_cats) ? body.pickup_only_cats : PICKUP_ONLY_CATS,

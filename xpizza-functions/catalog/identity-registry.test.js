@@ -12,7 +12,9 @@
  */
 const assert = require('assert');
 const { ensureIdentity, lookupByLegacyKeys, retireIdentity, validateClaim, encodeKey, ALPHABET, ID_LEN } = require('./identity-registry');
-const { memFirestore } = require('./identity-fixture');
+const { memFirestore, fullRegistry, partialRegistry, availabilityStub } = require('./identity-fixture');
+const { backfillIdentities, liveKeys } = require('./identity-backfill');
+const { catalogSnapshot } = require('./generate-form-bundle');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
@@ -198,6 +200,180 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     });
     assert.strictEqual(okOut, 'committed', 'non-vacuity: reads-then-writes is still permitted');
     ok('the transaction fixture enforces Firestore\'s read-before-write rule, and only that');
+  }
+
+  // ── THE BACKFILL, DRIVEN BY THE REAL CATALOG READER ───────────────────────────────────────────
+  /* 🔴 THIS IS THE TEST THAT WAS MISSING, AND ITS ABSENCE MADE D1 A NO-OP. Every earlier backfill test
+     built its own menu out of cart-shaped records — { name } / { id } — because that is the shape I
+     pictured the function receiving. The real reader emits { key, price, display }. Fed that, every
+     key resolved to null, nothing registered, and backfillIdentities returned a report full of zeros
+     with no error: 24 dishes in, 0 out, "success". The fixtures agreed with the code because they were
+     written from the same wrong picture of the producer.
+     So this one takes its input from catalogSnapshot — the actual reader, the actual live catalog —
+     and asserts NONZERO. A test that can only fail when the real producer's shape is handled. */
+  {
+    const brands = ['x_pizza', 'la_musa'];
+    for (const rid of brands) {
+      const menu = catalogSnapshot(rid);
+
+      // Non-vacuity, and a standing description of the shape that broke this: these really are reader
+      // records, not cart records. If the reader ever starts emitting top-level name/id, this stops
+      // being the regression test it claims to be and says so rather than passing for a new reason.
+      const sample = menu.items[0];
+      assert.ok(sample && typeof sample.key === 'string' && sample.key,
+        `${rid}: the reader record carries its legacy key at .key`);
+      assert.strictEqual(sample.name, undefined,
+        `🔴 ${rid}: the reader record has NO top-level name — this is exactly why itemPricingKey returned undefined`);
+      assert.strictEqual(sample.id, undefined,
+        `🔴 ${rid}: …and no top-level id either`);
+
+      const expectDish = menu.items.length;
+      const expectExtra = menu.extras.length;
+      assert.ok(expectDish > 0 && expectExtra > 0, `${rid}: the live catalog is non-empty to begin with`);
+
+      const db = memFirestore();
+      const first = await backfillIdentities(db, rid, menu);
+
+      // NONZERO — and not merely nonzero: every live record, so a half-read regression fails too.
+      assert.strictEqual(first.dish.total, expectDish,
+        `🔴 ${rid}: every live dish is registered (was 0 of ${expectDish} before the shape fix)`);
+      assert.strictEqual(first.extra.total, expectExtra,
+        `🔴 ${rid}: every live extra is registered (was 0 of ${expectExtra})`);
+      assert.strictEqual(first.dish.created, expectDish, `${rid}: a first run mints every dish`);
+      assert.strictEqual(first.extra.created, expectExtra, `${rid}: a first run mints every extra`);
+      assert.strictEqual(first.dish.preserved, 0, `${rid}: nothing pre-existed`);
+
+      // The ids are keyed by the SAME legacy key pricing would resolve, per brand.
+      const keys = liveKeys(rid, menu);
+      assert.deepStrictEqual(Object.keys(first.ids.dish).sort(), [...keys.dish].sort(),
+        `${rid}: registered under the pricing legacy keys, not some parallel key space`);
+      if (rid === 'la_musa') {
+        for (const k of keys.dish) assert.strictEqual(first.ids.dish[k], k,
+          '🔴 la_musa grandfathers its slug as its canonical id');
+      } else {
+        for (const k of keys.dish) {
+          assert.ok(new RegExp(`^[${ALPHABET}]{${ID_LEN}}$`).test(first.ids.dish[k]),
+            'x_pizza mints an opaque token for every dish');
+          assert.ok(!first.ids.dish[k].includes(k), '…not derived from the name');
+        }
+      }
+
+      // PRESERVATION ON RE-RUN — same store, same reader, second pass mints nothing.
+      const second = await backfillIdentities(db, rid, menu);
+      assert.strictEqual(second.dish.created, 0, `🔴 ${rid}: a re-run mints no dish`);
+      assert.strictEqual(second.extra.created, 0, `🔴 ${rid}: a re-run mints no extra`);
+      assert.strictEqual(second.dish.preserved, expectDish, `${rid}: it preserves every dish instead`);
+      assert.strictEqual(second.extra.preserved, expectExtra, `${rid}: and every extra`);
+      assert.deepStrictEqual(second.ids, first.ids,
+        `🔴 ${rid}: identical ids across runs — a backfill that re-mints hands one object two identities`);
+
+      ok(`${rid}: the REAL reader backfills ${expectDish} dishes + ${expectExtra} extras, and a re-run preserves all of them`);
+    }
+  }
+
+  // ── A WHOLESALE MISS IS A FAULT, NOT AN EMPTY CATALOG ─────────────────────────────────────────
+  /* The silent zero is what let the bug live. Records in, no key out, cheerful report. Now it throws,
+     because "0 registered, no error" and "there was nothing to register" must not look the same. */
+  {
+    const db = memFirestore();
+    const unreadable = { items: [{ sku: 'X1' }, { sku: 'X2' }], extras: [{ sku: 'E1' }] };
+    await assert.rejects(
+      () => backfillIdentities(db, 'x_pizza', unreadable),
+      /identity_backfill_unkeyable/,
+      '🔴 an input this cannot key is reported as a fault — the exact failure that previously returned a report of zeros',
+    );
+    // Non-vacuity: a genuinely empty catalog is NOT a fault, so the guard is about shape, not emptiness.
+    const empty = await backfillIdentities(db, 'x_pizza', { items: [], extras: [] });
+    assert.strictEqual(empty.dish.total, 0, 'an empty catalog still reports zero without throwing');
+    ok('an unkeyable input throws where an empty one reports zero');
+  }
+
+  // ── THE FAKES REFUSE WHAT PRODUCTION REFUSES ──────────────────────────────────────────────────
+  /* 🔴 A FAKE IS ONLY EVIDENCE WHERE IT IS AS STRICT AS THE THING IT STANDS IN FOR. Three of these
+     were laxer: rid-blind, collection-name-blind, event-blind. Nothing failed — that is the point;
+     each simply stopped checking a constraint while the suite went on reporting green. So the fakes
+     now get their own tests, named, and each one asserts BOTH halves: the wrong shape is refused, and
+     the right shape still resolves (otherwise a fake that refused everything would pass this too). */
+  {
+    const reg = fullRegistry('x_pizza');
+    const keyOf = (k) => Buffer.from(k, 'utf8').toString('base64url');
+    const at = (r, { top = 'restaurants', rid = 'x_pizza', mid = 'identity', kind = 'dish', leaf = 'keys', doc = keyOf('Carnivora') }) =>
+      r.collection(top).doc(rid).collection(mid).doc(kind).collection(leaf).doc(doc).get();
+
+    // The right path resolves — the non-vacuity half.
+    const hit = await at(reg, {});
+    assert.strictEqual(hit.exists, true, 'non-vacuity: the REAL lookup path still resolves');
+    assert.strictEqual(hit.data().canonical_id, 'ID_dish_Carnivora', '…to the id it was asked for');
+
+    const refusals = {
+      'another restaurant': { rid: 'la_musa' },
+      "a top collection that isn't 'restaurants'": { top: 'shops' },
+      "a second collection that isn't 'identity'": { mid: 'catalog' },
+      "the 'ids' reverse index read as if it were 'keys'": { leaf: 'ids' },
+      'a kind outside dish|extra': { kind: 'combo' },
+      'a raw, unencoded legacy key as the document id': { doc: 'Carnivora' },
+    };
+    for (const [what, over] of Object.entries(refusals)) {
+      let threw = null;
+      try { await at(reg, over); } catch (e) { threw = (e && e.message) || String(e); }
+      assert.ok(threw && /registry_stub_refused/.test(threw),
+        `🔴 the registry fake must refuse ${what} — Firestore answers nothing there, so a fake that answers hides the bug (got ${threw})`);
+    }
+    ok(`the registry fake refuses ${Object.keys(refusals).length} departures from the real path, and resolves the real one`);
+  }
+  {
+    // partialRegistry: KIND-AWARE on the same string, and rid-scoped like its full sibling.
+    const reg = partialRegistry({ dish: ['Salsa Roja'], extra: [] }, 'x_pizza');
+    const doc = Buffer.from('Salsa Roja', 'utf8').toString('base64url');
+    const look = (kind) => reg.collection('restaurants').doc('x_pizza').collection('identity').doc(kind).collection('keys').doc(doc).get();
+    assert.strictEqual((await look('dish')).exists, true, 'the resolvable dish key resolves');
+    assert.strictEqual((await look('extra')).exists, false,
+      '🔴 …and the SAME string as an extra does not — the two kinds are separate collections');
+    assert.throws(
+      () => reg.collection('restaurants').doc('la_musa'),
+      /registry_stub_refused/, 'the partial fake is rid-scoped too — refused as soon as the wrong restaurant is addressed');
+    ok('the partial registry fake is kind-aware and rid-scoped — one string, two kinds, two answers');
+  }
+  {
+    // The 86 stub: right path + right event only.
+    const node = { some_key: { available: false } };
+    const db = availabilityStub('x_pizza', node, assert);
+    const got = await db.ref('restaurants/x_pizza/item_availability').once('value');
+    assert.deepStrictEqual(got.val(), node, 'non-vacuity: the real read returns the node');
+    assert.throws(() => db.ref('restaurants/la_musa/item_availability'),
+      /item_availability/, "🔴 it refuses the other brand's node — a cross-brand 86 bug must not read as a pass");
+    await assert.rejects(() => db.ref('restaurants/x_pizza/item_availability').once('child_added'),
+      /'value'/, "🔴 …and refuses the wrong event — the gate calls .once('value')");
+    ok('the 86 fake answers only this brand\'s node, and only the value event');
+  }
+
+  // ── A RETIRED SLUG IS NOT "PRESERVED" ─────────────────────────────────────────────────────────
+  /* 🔴 THE RESERVATION MUST HOLD ON THE GRANDFATHERED PATH TOO. la_musa's id IS its slug, so a
+     re-created object asks for the very id its predecessor retired. Retirement deletes the key row, so
+     the request walks straight into the slug-collision branch — which used to compare legacy keys,
+     find them equal, and hand the retired id back as { created: false }: a permanently-reserved id
+     re-issued, reported as an ordinary idempotent re-run. */
+  {
+    const db = memFirestore();
+    const first = await ensureIdentity(db, { rid: 'la_musa', kind: 'dish', legacyKey: 'dimsum_01' });
+    assert.strictEqual(first.canonical_id, 'dimsum_01', 'premise — la_musa grandfathers the slug');
+    const gone = await retireIdentity(db, { rid: 'la_musa', kind: 'dish', canonicalId: 'dimsum_01' });
+    assert.strictEqual(gone.retired, true, 'premise — it really was retired');
+
+    let out = null, threw = null;
+    try { out = await ensureIdentity(db, { rid: 'la_musa', kind: 'dish', legacyKey: 'dimsum_01' }); }
+    catch (e) { threw = (e && e.message) || String(e); }
+    assert.strictEqual(out, null,
+      `🔴 a retired slug must NOT come back as a preserved identity (got ${JSON.stringify(out)})`);
+    assert.ok(threw && /identity_slug_retired/.test(threw),
+      `🔴 …it is refused, by name, so the reservation is visible rather than silently spent (got ${threw})`);
+
+    // Non-vacuity: a DIFFERENT, unretired slug on the same brand still registers normally, so the
+    // refusal is about retirement and not about the grandfathered path being broken.
+    const other = await ensureIdentity(db, { rid: 'la_musa', kind: 'dish', legacyKey: 'dimsum_02' });
+    assert.strictEqual(other.canonical_id, 'dimsum_02', 'non-vacuity: an unretired slug still grandfathers');
+    assert.strictEqual(other.created, true, '…and really is a fresh assignment');
+    ok('a retired grandfathered slug is refused by name, not re-issued as a preserved id');
   }
 
   console.log(`\nidentity-registry: ${n} checks passed`);
