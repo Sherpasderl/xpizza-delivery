@@ -12,57 +12,9 @@
  */
 const assert = require('assert');
 const { ensureIdentity, lookupByLegacyKeys, retireIdentity, validateClaim, encodeKey, ALPHABET, ID_LEN } = require('./identity-registry');
+const { memFirestore } = require('./identity-fixture');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-
-/* An in-memory Firestore with REAL optimistic concurrency: a transaction records what it read, and if
-   any of those documents changed before it committed, it re-runs. Without that the concurrency test
-   would pass against a store where nothing can ever conflict — which is the shape of test that made
-   this whole initiative necessary. */
-function memFirestore() {
-  const docs = new Map();
-  let version = 0;
-  const bump = () => { version += 1; return version; };
-  const ref = (path) => ({
-    path,
-    get: async () => ({ exists: docs.has(path), data: () => docs.get(path) }),
-    _set: (v) => { docs.set(path, v); bump(); },
-    _delete: () => { docs.delete(path); bump(); },
-  });
-  const col = (base) => ({ doc: (id) => makeRef(`${base}/${id}`) });
-  function makeRef(path) {
-    const r = ref(path);
-    r.collection = (c) => col(`${path}/${c}`);
-    return r;
-  }
-  const db = {
-    _docs: docs,
-    collection: (c) => col(c),
-    async runTransaction(fn, { attempts = 8 } = {}) {
-      for (let i = 0; i < attempts; i += 1) {
-        const readVersions = new Map();
-        const writes = [];
-        const tx = {
-          get: async (r) => { readVersions.set(r.path, docs.has(r.path) ? JSON.stringify(docs.get(r.path)) : null); return r.get(); },
-          set: (r, v) => writes.push(() => r._set(v)),
-          delete: (r) => writes.push(() => r._delete()),
-        };
-        const out = await fn(tx);
-        // conflict check: did anything we READ change under us?
-        let stale = false;
-        for (const [p, seen] of readVersions) {
-          const nowVal = docs.has(p) ? JSON.stringify(docs.get(p)) : null;
-          if (nowVal !== seen) { stale = true; break; }
-        }
-        if (stale) { if (db._onRetry) db._onRetry(); continue; }
-        writes.forEach((w) => w());
-        return out;
-      }
-      throw new Error('transaction_retries_exhausted');
-    },
-  };
-  return db;
-}
 
 (async () => {
   // ── 1. ONE OBJECT, ONE ID — including on a re-run ─────────────────────────────────────────────

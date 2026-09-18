@@ -180,6 +180,119 @@ function cartFrom(rid, body, withIds) {
     }
   }
 
+  // ══ §7 MATRIX — THE STATES D1 IS ONLY "SAFE BY CONSTRUCTION" IN ═══════════════════════════════
+  /* Each of these was argued safe rather than demonstrated, and an argument is what a gate is supposed
+     to be able to stop trusting. They are real operational states: a migration that stopped halfway, a
+     rollback, a client that predates the field, a portal tab left open across a republish. */
+  {
+    const { memFirestore, partialRegistry } = require('./identity-fixture');
+    const { ensureIdentitiesForKeys } = require('./identity-backfill');
+    const { lookupByLegacyKeys } = require('./identity-registry');
+
+    for (const rid of RIDS) {
+      const plain = generateFormBundle(rid, catalogSnapshot(rid));
+      const tables = tablesOf(rid);
+      const dishKeys = plain.dishes.map((d) => itemPricingKey(d, rid)).filter(Boolean);
+      const extraKeys = plain.extras.map((e) => itemPricingKey(e, rid)).filter(Boolean);
+
+      // ── ROW A: AN INTERRUPTED BACKFILL ────────────────────────────────────────────────────────
+      /* Half the dishes registered, the rest not. The failure to guard against is ALL-OR-NOTHING
+         behaviour in either direction: refusing to serve because some keys are missing, or stamping a
+         wrong id because one was. Tolerance has to be PER RECORD. */
+      {
+        const half = dishKeys.slice(0, Math.max(1, Math.floor(dishKeys.length / 2)));
+        const out = await applyIdentityToServedBody(partialRegistry({ dish: half, extra: [] }), rid, plain);
+        const withId = out.body.dishes.filter((d) => d.dish_id);
+        const withoutId = out.body.dishes.filter((d) => !d.dish_id);
+        assert.strictEqual(withId.length, half.length, `${rid}/interrupted: exactly the registered dishes carry an id`);
+        assert.ok(withoutId.length > 0, `${rid}/interrupted: premise — some dishes are genuinely unregistered`);
+        for (const d of withId) {
+          assert.strictEqual(d.dish_id, `ID_dish_${itemPricingKey(d, rid)}`,
+            `${rid}/interrupted: 🔴 a registered dish must carry ITS id, not a neighbour's`);
+        }
+        assert.ok(out.body.extras.every((e) => !e.extra_id), `${rid}/interrupted: unregistered extras stay id-absent`);
+        // …and the half-migrated menu prices exactly as the un-migrated one does.
+        assert.deepStrictEqual(
+          computeServerTotal(cartFrom(rid, out.body, true), rid, tables),
+          computeServerTotal(cartFrom(rid, plain, false), rid, tables),
+          `${rid}/interrupted: 🔴 a half-finished migration changed the price`);
+        ok(`${rid}: an interrupted backfill decorates per-record and prices identically (${withId.length} of ${dishKeys.length})`);
+      }
+
+      // ── ROW B: ROLLBACK, THEN REPUBLISH ───────────────────────────────────────────────────────
+      /* The registry is version-independent and the overlay runs after the read, so a version change
+         cannot move an id. The thing to prove is that a rollback does not LOSE identity and a
+         republish does not RE-MINT it — an object whose id changed across a rollback would make every
+         record written before it point at a stranger. */
+      {
+        const db = memFirestore();
+        const before = await ensureIdentitiesForKeys(db, rid, { dish: dishKeys, extra: extraKeys });
+        const idsBefore = await lookupByLegacyKeys(db, { rid, kind: 'dish', legacyKeys: dishKeys });
+        assert.strictEqual(before.dish.created, dishKeys.length, `${rid}/rollback: premise — the first publish minted`);
+
+        // roll back to an older version carrying a SUBSET, then republish the full set
+        const subset = dishKeys.slice(0, Math.max(1, dishKeys.length - 2));
+        await ensureIdentitiesForKeys(db, rid, { dish: subset, extra: extraKeys });
+        const republished = await ensureIdentitiesForKeys(db, rid, { dish: dishKeys, extra: extraKeys });
+        assert.strictEqual(republished.dish.created, 0,
+          `${rid}/rollback: 🔴 a republish after a rollback RE-MINTED ${republished.dish.created} ids`);
+        const idsAfter = await lookupByLegacyKeys(db, { rid, kind: 'dish', legacyKeys: dishKeys });
+        assert.deepStrictEqual([...idsAfter.entries()].sort(), [...idsBefore.entries()].sort(),
+          `${rid}/rollback: 🔴 an id moved across a rollback+republish`);
+        ok(`${rid}: rollback then republish preserves every id and mints none (${idsAfter.size} objects)`);
+      }
+
+      // ── ROW C: A MIXED FLEET OF READERS ───────────────────────────────────────────────────────
+      /* A cached form from before D1 simply does not know the field. What must hold is that a reader
+         which ignores identity sees EXACTLY the pre-D1 menu — so the new field cannot change a menu
+         for someone who never looks at it. Modelled by stripping the field back off, which is what
+         such a reader effectively does. */
+      {
+        const { stripIdentity } = require('../../xpizza-orders/form-identity-strip');
+        const enrichedFull = (await applyIdentityToServedBody(fullRegistry(), rid, plain)).body;
+        assert.deepStrictEqual(stripIdentity(enrichedFull.dishes), plain.dishes,
+          `${rid}/mixed-readers: 🔴 an old reader must see exactly the pre-D1 dishes`);
+        assert.deepStrictEqual(stripIdentity(enrichedFull.extras), plain.extras,
+          `${rid}/mixed-readers: 🔴 …and the pre-D1 options`);
+        // a NEW reader and an OLD reader must also agree about the money, which is the point.
+        assert.deepStrictEqual(
+          computeServerTotal(cartFrom(rid, enrichedFull, true), rid, tables),
+          computeServerTotal(cartFrom(rid, plain, false), rid, tables),
+          `${rid}/mixed-readers: 🔴 old and new readers disagree about the price`);
+        ok(`${rid}: an old reader sees exactly the pre-D1 menu, and both price the same`);
+      }
+
+      // ── ROW D: A STALE PORTAL SUBMISSION ──────────────────────────────────────────────────────
+      /* A portal tab open across a republish submits records carrying whatever it last saw. The rule
+         is that preserve-on-write RE-DERIVES from the registry and never adopts what was handed to it,
+         so a stale — or hostile — echoed id cannot become the object's identity. */
+      {
+        const db = memFirestore();
+        await ensureIdentitiesForKeys(db, rid, { dish: dishKeys.slice(0, 3), extra: [] });
+        const trueIds = await lookupByLegacyKeys(db, { rid, kind: 'dish', legacyKeys: dishKeys.slice(0, 3) });
+        assert.strictEqual(trueIds.size, 3, `${rid}/stale-portal: premise — three objects are registered`);
+
+        /* The submission echoes the keys back with ids attached — one stale, one belonging to another
+           object. ensureIdentitiesForKeys takes KEYS only; it has no parameter through which an echoed
+           id could enter, which is the structural half of the guarantee. */
+        const republish = await ensureIdentitiesForKeys(db, rid, { dish: dishKeys.slice(0, 3), extra: [] });
+        assert.strictEqual(republish.dish.created, 0, `${rid}/stale-portal: a republish of known keys mints nothing`);
+        const after = await lookupByLegacyKeys(db, { rid, kind: 'dish', legacyKeys: dishKeys.slice(0, 3) });
+        assert.deepStrictEqual([...after.entries()].sort(), [...trueIds.entries()].sort(),
+          `${rid}/stale-portal: 🔴 a stale submission changed an identity`);
+        // …and the claim-checker names the mismatch rather than silently accepting it.
+        const [k0, id0] = [...trueIds.entries()][0];
+        const [, id1] = [...trueIds.entries()][1];
+        const { validateClaim } = require('./identity-registry');
+        assert.strictEqual((await validateClaim(db, { rid, kind: 'dish', legacyKey: k0, claimedId: id1 })).reason, 'swapped',
+          `${rid}/stale-portal: 🔴 an echoed id belonging to another object is reported as a swap`);
+        assert.strictEqual((await validateClaim(db, { rid, kind: 'dish', legacyKey: k0, claimedId: id0 })).ok, true,
+          `${rid}/stale-portal: non-vacuity — the honest claim still passes`);
+        ok(`${rid}: a stale portal submission cannot move an identity — the write re-derives, it never adopts`);
+      }
+    }
+  }
+
   // ── 7. 🔴 THE SHADOW PROOF — grep + runtime ───────────────────────────────────────────────────
   /* D1's licence is that nothing business-critical READS the id. That is a claim about the whole
      repository, not about the paths this file happens to exercise, so it is checked as a census over
