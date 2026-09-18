@@ -5188,8 +5188,51 @@
       "../cart-identity-order.test.mjs"
     ],
     "kills_with": [
-      "the resume did not carry the original order_id",
-      "restoreOrderForm actually restored the form"
+      "the cart did not come back at all",
+      "the restored cart is not the saved cart",
+      "the resume did not carry the original order_id"
+    ]
+  },
+  {
+    "id": "d2-12",
+    "slice": "d2",
+    "label": "🔴 cartFingerprint returns a CONSTANT - every byte-identical-fingerprint assertion would still pass",
+    "file": "quote-token.js",
+    "from": "function cartFingerprint(normItems, reward) {\n  const keyOf =",
+    "to": "function cartFingerprint(normItems, reward) {\n  if (true) return 'CONSTANT';\n  const keyOf =",
+    "command": [
+      "node",
+      "../cart-identity-order.test.mjs"
+    ],
+    "kills_with": "cartFingerprint does NOT discriminate an equal-priced option swap"
+  },
+  {
+    "id": "d2-13",
+    "slice": "d2",
+    "label": "🔴 a resumed order mints a FRESH id instead of reusing the saved one - the reward is reserved twice",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if (window.__resumeOrderId){ const id = window.__resumeOrderId;",
+    "to": "  if (window.__resumeOrderId){ const id = genOrderId();",
+    "command": [
+      "node",
+      "../cart-identity-order.test.mjs"
+    ],
+    "kills_with": "the SENT order carries a new order_id"
+  },
+  {
+    "id": "d2-14",
+    "slice": "d2",
+    "label": "🔴 cartRestore does nothing - the resumed cart is empty",
+    "file": "../xpizza-orders/index.html",
+    "from": "function cartRestore(stashedCart){\n  CART.clear();",
+    "to": "function cartRestore(stashedCart){\n  if (true) return;\n  CART.clear();",
+    "command": [
+      "node",
+      "../cart-identity-order.test.mjs"
+    ],
+    "kills_with": [
+      "the cart did not come back at all",
+      "the restored cart is not the saved cart"
     ]
   }
 ]

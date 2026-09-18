@@ -234,16 +234,62 @@ const payload = (s) => s.sent.createOrder || s.sent.charge;
         `${dir}: 🔴 cart_mismatch — the id reached the server's cart fingerprint (${gate.reason})`);
       assert.strictEqual(gate.action, 'charge', `${dir}: it charges, as it would have pre-D2 (${gate.reason})`);
 
-      /* NON-VACUITY: the same gate DOES refuse when the cart really changes, so "not refused" above is
-         the gate working rather than the gate being asleep. */
-      const tampered = JSON.parse(JSON.stringify(idItems));
-      tampered[0].qty += 1;
+      /* 🔴 NON-VACUITY, AND IT HAS TO PIN THE FINGERPRINT SPECIFICALLY. Bumping a quantity does make
+         the gate refuse — but it also raises the price, so the refusal could come from the independent
+         net-ceiling check and the assertion would hold even if cartFingerprint returned a constant.
+         That is the vacuity: "some refusal happened" is not "the fingerprint discriminated".
+         So the discriminating control changes the cart WITHOUT changing the money: one option swapped
+         for another at an identical price. The total is unmoved, the ceiling is satisfied, and the ONLY
+         thing that can object is the fingerprint — so the refusal must be cart_mismatch by name. */
+      /* 🔴 THE PAIR COMES FROM THE SERVER'S OWN TABLES, not the served menu. My first attempt
+         equalized two options in the body the FORM was served — which changed nothing about how the
+         server prices them, so the "price-neutral" swap moved the net by 3500 cents and the premise
+         failed. The server prices extras from EXTRAS_BY_RESTAURANT, so a swap is price-neutral only
+         between two keys that table prices identically. Both brands have such a group. */
+      const serverExtras = EXTRAS_BY_RESTAURANT[rid];
+      const groups = Object.entries(serverExtras).reduce((m, [k, v]) => ((m[v] = m[v] || []).push(k), m), {});
+      const pair = Object.values(groups).find((ks) => ks.length > 1);
+      assert.ok(pair, `${dir}: premise — the server prices at least two options identically`);
+      const setExtraKey = (line, key) => {
+        // x_pizza keys an option by NAME, la_musa by its slug id — the same asymmetry itemPricingKey owns.
+        if (line.extras[0].id !== undefined) line.extras[0].id = key;
+        else line.extras[0].name = key;
+        if (line.extras[0].id !== undefined) line.extras[0].name = key;
+        line.extras[0].price = serverExtras[key];
+      };
+      const cartA = JSON.parse(JSON.stringify(idItems));
+      const cartB = JSON.parse(JSON.stringify(idItems));
+      setExtraKey(cartA[0], pair[0]);
+      setExtraKey(cartB[0], pair[1]);
+
+      const netA = computeServerNet({ items: cartA, reward: null, rid, tables });
+      const netB = computeServerNet({ items: cartB, reward: null, rid, tables });
+      assert.ok(!netA.error && !netB.error, `${dir}: premise — both swap carts price (${netA.error || netB.error})`);
+      assert.strictEqual(netA.net_total_cents, netB.net_total_cents,
+        `${dir}: premise — the swap is PRICE-NEUTRAL, so a refusal below cannot be the ceiling talking`);
+
+      // The fingerprint must move, or nothing downstream can tell these two carts apart.
+      assert.notStrictEqual(
+        cartFingerprint(normalizeCartForFingerprint(cartA, rid), null),
+        cartFingerprint(normalizeCartForFingerprint(cartB, rid), null),
+        `${dir}: 🔴 cartFingerprint does NOT discriminate an equal-priced option swap — it could be returning a constant and every equality asserted above would still hold`);
+
+      // A token bound to cart A, presented with cart B: same money, different cart.
+      const tokenA = signQuoteToken({
+        quote_id: 'd2-swap', rid, net_total_cents: netA.net_total_cents,
+        cart_fingerprint: cartFingerprint(normalizeCartForFingerprint(cartA, rid), null),
+        issued_at: Date.now(), expires_at: Date.now() + 15 * 60 * 1000,
+      }, SECRET);
+      const swapped = cartB;
+      const net2 = netB.net_total_cents;
       const bad = gateConfirmedNet(gateInputFromRequest(
-        { items: tampered, quote_token: token, expected_net_cents: net },
+        { items: swapped, quote_token: tokenA, expected_net_cents: net2 },
         { rid, tables, secret: SECRET, enforce: true, nowMs: Date.now() },
       ));
       assert.notStrictEqual(bad.action, 'charge',
-        `${dir}: non-vacuity — a genuinely different cart must NOT charge on that token (got ${bad.action}/${bad.reason})`);
+        `${dir}: 🔴 a different cart at the same price charged on the old token (got ${bad.action}/${bad.reason})`);
+      assert.ok(/cart_mismatch/.test(String(bad.reason || '')),
+        `${dir}: 🔴 …and it must refuse for the FINGERPRINT specifically, not some other reason (got ${bad.reason})`);
       ok(`${dir}: a quote token signed before the backfill still charges after it, and a real cart change still does not`);
     }
 
@@ -290,45 +336,85 @@ const payload = (s) => s.sent.createOrder || s.sent.charge;
       w2.restoreOrderForm();
       await settle(); await settle();
 
-      /* 🔴 THE ORDER ID IS REUSED. orderIdForThisCart folds __resumeOrderId in; without it the resumed
-         customer composes a NEW order and the server reserves the reward a second time. */
-      assert.strictEqual(w2.__resumeOrderId || (w2.__pendingOrder && w2.__pendingOrder.id), saved.order_id,
-        `${dir}/restore: 🔴 the resume did not carry the original order_id — a second reservation`);
+      /* 🔴 THE RESTORED CART IS ASSERTED BEFORE ANYTHING TOUCHES IT. The previous version changed a
+         quantity and toggled an option first, which REPOPULATED the cart — so removing
+         cartRestore(snap.cart) entirely left the cell green: the test repaired the thing it was
+         meant to be checking. Nothing is edited until the snapshot has been compared. */
+      const restoredItems = w2.redeemCartItems();
+      const legacyOf = (arr) => JSON.stringify((arr || []).map((l) => [l.name, l.qty, l.price,
+        (l.extras || []).map((e) => [e.name, e.price])]));
+      assert.ok(restoredItems.length > 0, `${dir}/restore: 🔴 the cart did not come back at all`);
+      assert.strictEqual(legacyOf(restoredItems), legacyOf(saved.items),
+        `${dir}/restore: 🔴 the restored cart is not the saved cart`);
       assert.strictEqual(w2.document.getElementById('cname').value, 'Cliente Prueba',
-        `${dir}/restore: premise — restoreOrderForm actually restored the form, so the assertions above are about a restore`);
+        `${dir}/restore: …and the form came back with it`);
 
-      // Rebuild the same cart on the returned page and let it re-quote — the pre-existing behaviour.
-      const dish = prepared.MENU.find((d) => d.price > 0);
-      w2.chg(dish.id, 2);
-      await settle();
-      w2.toggleDetailExtra(prepared.EXTRAS[0].id, dish.id, 0);
-      await settle();
+      /* 🔴 WHAT A RESTORED CART CARRIES — MEASURED, AFTER TWO WRONG GUESSES. I first wrote this
+         claiming the restored cart stays id-less (hydrate restores the captured record and has no
+         rebuild-from-the-live-menu path), then that only the option picks an id up. Both were wrong
+         and the test said so each time. What actually happens: the line's `record` RE-RESOLVES against
+         the live menu — 1B's design, where `added` holds the agreed price and `record` shows what the
+         menu says today — so a cart saved before the backfill comes back carrying BOTH ids while its
+         agreed price stays exactly what the customer accepted (340 here, not today's).
+         That makes the resume path the single most important place for the projection: a customer who
+         went to hosted checkout pre-backfill returns to a cart that has silently gained identity. If
+         the signatures saw it, their token would not re-attach — on an order they already agreed to. */
+      assert.ok(/dish_id/.test(JSON.stringify(restoredItems)),
+        `${dir}/restore: premise — the restored cart re-resolved against the live menu and GAINED identity`);
+      assert.strictEqual(restoredItems[0].price, saved.items[0].price,
+        `${dir}/restore: 🔴 …while the AGREED price is still the one the customer accepted, not today's`);
+      assert.ok(!/dish_id|extra_id/.test(w2.serverQuoteCartKey()),
+        `${dir}/restore: 🔴 the restored cart's quote key carries identity`);
+      assert.ok(!/dish_id|extra_id/.test(w2.confirmQuoteCartSig()),
+        `${dir}/restore: 🔴 …and neither does the token signature, which is what must still attach`);
+
+      // The re-quote the resume performs, on the cart as restored — no edits.
       w2.requestServerQuote(true);
       await settle(); await settle();
-
       assert.ok(quoteBody, `${dir}/restore: 🔴 the resumed page never re-quoted — the pre-existing revalidation did not fire`);
-      assert.ok((quoteBody.items || [])[0].dish_id,
-        `${dir}/restore: the re-quote carries the ids the returned menu now serves`);
+      assert.strictEqual(legacyOf(quoteBody.items), legacyOf(saved.items),
+        `${dir}/restore: the re-quote asks about the restored cart, not some other one`);
 
-      /* 🔴 AND THE TOKEN ATTACHES. This is the customer-visible half: confirmQuoteCartSig is compared
-         against the signature the quote was stored under, so if identity had reached it the token
-         would be discarded and the order would send unconfirmed — on a cart the customer already
-         agreed to. */
-      /* current() takes the cart signature and hands back the token ONLY if the stored one was issued
-         for this same cart — which is precisely the comparison identity could break. Asking it with
-         the live confirmQuoteCartSig() is therefore the whole assertion: a token comes back only if
-         the signature the quote was stored under still matches the signature this cart computes now,
-         across a menu that gained ids in between. */
-      const liveSig = w2.confirmQuoteCartSig();
-      const attached = w2.__confirmQuote && w2.__confirmQuote.current(liveSig);
+      /* 🔴 AND THE TOKEN ATTACHES. current() hands back the token only if the stored signature matches
+         what this cart computes now — precisely the comparison identity could break. */
+      const attached = w2.__confirmQuote && w2.__confirmQuote.current(w2.confirmQuoteCartSig());
       assert.ok(attached && attached.token,
         `${dir}/restore: 🔴 no quote token attached after the resume — identity broke the signature match`);
       assert.strictEqual(attached.token, 'restore-token', `${dir}/restore: …and it is the token the server issued`);
 
-      // And the id reused survives composing the order again.
+      /* NOW identity enters: the customer adds a line on the returned page, which captures from the
+         id-BEARING menu. The cart becomes mixed — a restored id-less line beside a new id-bearing one,
+         which is exactly what a mid-rollout resume produces — and the signatures must still be the
+         ones an all-legacy cart would compute. */
+      const dish = prepared.MENU.find((d) => d.price > 0 && !saved.items.some((l) => l.name === d.name));
+      assert.ok(dish, `${dir}/restore: premise — a second, different dish exists to add`);
+      w2.chg(dish.id, 1);
+      await settle();
+      const grown = w2.redeemCartItems();
+      assert.ok(grown.length > restoredItems.length, `${dir}/restore: premise — the added line is on the cart`);
+      assert.ok(grown.every((l) => l.dish_id), `${dir}/restore: every line carries identity now`);
+      assert.ok(!/dish_id|extra_id/.test(w2.serverQuoteCartKey()),
+        `${dir}/restore: 🔴 the grown cart's quote key carries identity`);
+
+      /* 🔴 AND THE ORDER ID IS REUSED ON THE ORDER ACTUALLY SENT. Reading __resumeOrderId proves only
+         that restoreOrderForm set a variable; orderIdForThisCart consumes it during buildOrder, and
+         swapping that branch for a fresh genOrderId() left the old assertion green. What matters is
+         the id on the wire, so the order is recomposed and re-sent and THAT id is compared. */
       const g = (id) => w2.document.getElementById(id);
       for (const [id, v] of [['cname', 'Cliente Prueba'], ['cphone', '98765432'], ['cemail', 'cliente@test.hn']]) { if (g(id)) g(id).value = v; }
+      let resent = null;
+      w2.__respond = (url, init) => {
+        const u = String(url);
+        if (u.includes('createOrder') || u.includes('chargeOnlineOrder')) { resent = init && init.body ? JSON.parse(init.body) : null; }
+        return new Promise(() => {});
+      };
       assert.strictEqual(w2.buildOrder(), true, `${dir}/restore: the resumed order composes`);
+      const pending2 = w2.submitOrder('confirmed');
+      if (pending2 && pending2.catch) pending2.catch(() => {});
+      await settle(); await settle();
+      assert.ok(resent, `${dir}/restore: premise — the resumed order was actually sent`);
+      assert.strictEqual(resent.order_id, saved.order_id,
+        `${dir}/restore: 🔴 the SENT order carries a new order_id — the reward would be reserved a second time`);
       ok(`${dir}: a saved order resumes on an id-bearing menu — same order_id, re-quote fires, token attaches`);
     }
   }
