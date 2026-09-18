@@ -5162,5 +5162,34 @@
       "../cart-identity-order.test.mjs"
     ],
     "kills_with": "is in items_text"
+  },
+  {
+    "id": "d2-10",
+    "slice": "d2",
+    "label": "🔴 the D PRODUCER's key diverges from the CONSUMER's — every cached total looks stale and re-quotes forever",
+    "file": "../xpizza-orders/index.html",
+    "from": "    const key = JSON.stringify(_legacyCartForSig(items));",
+    "to": "    const key = JSON.stringify(_legacyCartForSig(items)) + '~';",
+    "command": [
+      "node",
+      "../cart-identity.test.mjs"
+    ],
+    "kills_with": "PRODUCER and the serverQuoteCartKey CONSUMER disagree"
+  },
+  {
+    "id": "d2-11",
+    "slice": "d2",
+    "label": "🔴 restoreOrderForm does nothing — a resumed order silently mints a NEW order_id and double-reserves",
+    "file": "../xpizza-orders/index.html",
+    "from": "function restoreOrderForm(){\n  let snap = null;",
+    "to": "function restoreOrderForm(){\n  if (true) return;\n  let snap = null;",
+    "command": [
+      "node",
+      "../cart-identity-order.test.mjs"
+    ],
+    "kills_with": [
+      "the resume did not carry the original order_id",
+      "restoreOrderForm actually restored the form"
+    ]
   }
 ]

@@ -119,7 +119,24 @@ const sigsOf = (w) => ({
       assert.ok(producer, `${dir}: premise — the producer computed and stamped a key`);
       assert.ok(!/dish_id|extra_id/.test(producer),
         `${dir}: 🔴 the PRODUCER's key carries identity — the request-dedup key would change under a backfill: ${producer}`);
-      ok(`${dir}: the two serverQuoteCartKey sites produce the same key`);
+
+      /* 🔴 THE EQUALITY ITSELF, WHICH THIS CELL PREVIOUSLY ONLY CLAIMED IN ITS LABEL. Checking that the
+         producer's key exists and names no identity field does not make it the CONSUMER's key: append
+         anything to one site and both of those assertions still hold while the two sites disagree —
+         and disagreement is the actual defect, a cached total that never matches and therefore
+         re-quotes forever. Asserted for every identity shape, because the two sites could agree on a
+         dish-only cart and diverge on a nested extra. */
+      for (const [label, page] of [['dish id only', dishOnly], ['NESTED EXTRA id only', extraOnly], ['both ids', both]]) {
+        page.w.requestServerQuote(true);
+        await settle();
+        const p = page.w.__serverQuote && page.w.__serverQuote.inflightKey;
+        assert.ok(p, `${dir}/${label}: premise — the producer stamped a key`);
+        assert.strictEqual(p, page.w.serverQuoteCartKey(),
+          `${dir}/${label}: 🔴 the requestServerQuote PRODUCER and the serverQuoteCartKey CONSUMER disagree — every cached total would look stale`);
+        assert.strictEqual(p, base.D,
+          `${dir}/${label}: 🔴 …and both must equal the key an id-less cart produces`);
+      }
+      ok(`${dir}: the producer and consumer keys are EQUAL, and equal to the id-less key, for all three identity shapes`);
     }
 
     // ── 4. POSITIVE CONTROLS — THE PROJECTION TOOK ONLY IDENTITY ───────────────────────────────
@@ -151,16 +168,72 @@ const sigsOf = (w) => ({
       const alt = sw.liveMenuGlobalGet('EXTRAS').find((e) => e.id !== swap.extra.id && e.price === swap.extra.price);
       assert.ok(alt, `${dir}: premise — an equal-priced alternative option exists to swap to`);
       const beforeSwap = sigsOf(sw);
+      const totalBeforeSwap = sw.redeemCartItems()[0].extrasTotal;   // captured BEFORE — see below
       sw.toggleDetailExtra(swap.extra.id, swap.dish.id, 0);   // off
       sw.toggleDetailExtra(alt.id, swap.dish.id, 0);          // on — identical price, different option
       await settle();
       const swapped = sigsOf(sw);
-      assert.strictEqual(sw.redeemCartItems()[0].extrasTotal, swap.w.redeemCartItems()[0].extrasTotal,
+      /* 🔴 PRE VERSUS POST. This read the same page twice AFTER the swap and compared it to itself,
+         which is true of any cart and proved nothing — the premise that makes this control meaningful
+         (that the swap moved no money, so only the legacy option identity differs) was never actually
+         checked. */
+      assert.strictEqual(sw.redeemCartItems()[0].extrasTotal, totalBeforeSwap,
         `${dir}: premise — the swap really is price-neutral, so only the legacy option identity differs`);
       assert.notStrictEqual(swapped.B, beforeSwap.B, `${dir}: 🔴 a SAME-PRICE option swap must still move B — the legacy selection survived the projection`);
       assert.notStrictEqual(swapped.C, beforeSwap.C, `${dir}: 🔴 …and C`);
       assert.notStrictEqual(swapped.D, beforeSwap.D, `${dir}: 🔴 …and D`);
-      ok(`${dir}: qty and a SAME-PRICE option swap still invalidate B, C and D (${swap.extra.name} → ${alt.name}, both @ ${alt.price})`);
+      /* 🔴 THE REST OF THE CONTROLS. Quantity and an option swap are two ways a cart can change; a
+         projection that over-stripped could still be stable across the others. Each of these must move
+         the binding that owns it, or the token would keep attaching to a cart it no longer describes. */
+      {
+        /* A PRICE change, applied to the menu the cart is built FROM. Re-pricing the live menu after a
+           line is already in the cart deliberately does NOT move these signatures — form-cart captures
+           the record at add time so a live re-price cannot silently change what the customer agreed
+           to, which is 1B's design and not something D2 may undo. So the control prices the dish
+           differently at the point the cart is built, which is the change that must invalidate. */
+        const pricedPage = loadForm(dir);
+        const pricedBody = bodyFor(dir, pricedPage, { dishIds: true, extraIds: true });
+        pricedBody.dishes = pricedBody.dishes.map((d) => ({ ...d, price: d.price + 25 }));
+        const pp = pricedPage.liveMenuPrepare(pricedBody);
+        pricedPage.liveMenuGlobalSet('MENU', pp.MENU);
+        pricedPage.liveMenuGlobalSet('EXTRAS', pp.EXTRAS);
+        await settle();
+        const pd = pp.MENU.find((x) => x.price > 0);
+        pricedPage.chg(pd.id, 1);
+        await settle();
+        pricedPage.toggleDetailExtra(pp.EXTRAS[0].id, pd.id, 0);
+        await settle();
+        const afterPrice = sigsOf(pricedPage);
+        assert.notStrictEqual(afterPrice.B, base.B, `${dir}: 🔴 a PRICE change must move B`);
+        assert.notStrictEqual(afterPrice.D, base.D, `${dir}: 🔴 …and D`);
+        assert.notStrictEqual(afterPrice.C, base.C, `${dir}: 🔴 …and C`);
+
+        // AN ORDER FIELD — cartSig is the binding that owns customer fields, and it must move.
+        const fieldPage = await pageWithCart(dir, { dishIds: true, extraIds: true });
+        const beforeField = fieldPage.w.cartSig();
+        const nameEl = fieldPage.w.document.getElementById('cname');
+        nameEl.value = 'Otro Cliente';
+        await settle();
+        assert.notStrictEqual(fieldPage.w.cartSig(), beforeField,
+          `${dir}: 🔴 an ORDER FIELD change must move cartSig — otherwise the same cart returns a stale order`);
+
+        // A REWARD SELECTION — B and C both carry the pending reward.
+        const rw = await pageWithCart(dir, { dishIds: true, extraIds: true });
+        const beforeReward = sigsOf(rw.w);
+        const reward = { type: 'free_pizza_choice', item_id: 'X' };
+        /* B reads the pending reward off __ACCOUNT, so it moves when the selection does. C takes the
+           pending reward as an ARGUMENT — sigsOf passes null deliberately, so that every identity
+           comparison in this file isolates the cart — which means the control has to supply it the way
+           the real caller does rather than by monkey-patching a getter C never consults. */
+        rw.w.__ACCOUNT.getRedeemPayload = () => reward;
+        await settle();
+        assert.notStrictEqual(sigsOf(rw.w).B, beforeReward.B, `${dir}: 🔴 a REWARD selection must move B`);
+        assert.notStrictEqual(
+          rw.w.__ACCOUNT.redeemSig(rw.w.redeemCartItems(), reward, 'v1'),
+          beforeReward.C,
+          `${dir}: 🔴 …and C, which gates the send`);
+      }
+      ok(`${dir}: qty, a SAME-PRICE option swap, a price change, an order field and a reward selection each still invalidate the binding that owns it`);
     }
 
     // ── 5. THE BODY CARRIES THE IDS WHILE THE KEY DOES NOT — FROM THE SAME CALL ────────────────
@@ -338,19 +411,13 @@ const sigsOf = (w) => ({
       assert.strictEqual(reloaded.w.cartSig(), none.w.cartSig(),
         `${dir}/reload: 🔴 cartSig differs — the resumed customer would be given a NEW order_id`);
 
-      /* THE FULL-RESTORE HALF: restoreRedeem + requoteRedeem are what restoreOrderForm drives, and
-         redeemSig is stamped against the items it was quoted for. Driven through the module's own
-         writers rather than hand-stamped, so what is compared is the state the app derives. */
-      const acct = reloaded.w.__ACCOUNT;
-      if (acct && typeof acct.restoreRedeem === 'function') {
-        const items = reloaded.w.redeemCartItems();
-        acct.restoreRedeem(null, null, null);
-        await settle();
-        const stamped = acct.redeemSig(items, null, 'v1');
-        const legacyStamped = none.w.__ACCOUNT.redeemSig(none.w.redeemCartItems(), null, 'v1');
-        assert.strictEqual(stamped, legacyStamped,
-          `${dir}/full-restore: 🔴 the re-stamped reward signature differs from the id-less one — the send would be blocked after a restore`);
-      }
+      /* THE FULL-RESTORE HALF LIVES IN cart-identity-order.test.mjs, not here. What stood in this
+         spot called restoreRedeem(null, null, null) on a freshly built cart — no saved order, no
+         restoreOrderForm, no token, no order_id comparison — so neutering restoreOrderForm entirely
+         left it green. It has been replaced by a real saved-order resume over there: the stash is
+         built by the page's own snapshotForm(), the return page is served a menu that GAINED ids, and
+         the assertions are that the original order_id is reused and a token still attaches. This cell
+         keeps only what it can honestly claim — the rebuild half. */
       ok(`${dir}: a reload/restore rebuild produces identical B, C, D and cartSig — no friction beyond the re-quote that always fires`);
     }
 

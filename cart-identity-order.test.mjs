@@ -19,9 +19,12 @@ const { gateInputFromRequest, gateConfirmedNet } = require('./token-gate');
 const { computeServerNet } = require('./compute-server-net');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./menu-pricing');
 const { orderContentKey } = require('./order-dedup');
+const { redemptionFingerprint, computeRedemption } = require('./rewards-redeem');
+const { orderFingerprint } = require('./pixelpay-charge');
 
 const { ok, count } = counter();
 const DIRS = ['xpizza-orders', 'la-musa-orders'];
+const STASH_KEY = { 'xpizza-orders': 'xpizza_pending_pay', 'la-musa-orders': 'lamusa_pending_pay' };
 const SECRET = 'd2-roundtrip-secret';
 
 function bodyFor(dir, w, withIds) {
@@ -32,8 +35,10 @@ function bodyFor(dir, w, withIds) {
 }
 
 /* A page with a real cart AND a fillable form, submitted through the form's own entry points. The
-   createOrder request body is captured off the fetch — that body IS the stored order and the input to
-   every durable surface, so asserting on it is asserting on what production would persist. */
+   createOrder request body is captured off the fetch. Stated precisely: that body is what the server
+   RECEIVES and persists the order FROM, and is the input to every durable surface — it is the wire
+   format, not a read-back of a stored document. Nothing here proves Firestore wrote it; what it proves
+   is that nothing carrying an id value was ever sent, which is the claim D2 needs. */
 async function submitted(dir, { withIds, card = false }) {
   const w = loadForm(dir);
   const sent = {};
@@ -105,9 +110,65 @@ const payload = (s) => s.sent.createOrder || s.sent.charge;
       assert.strictEqual(a.items_text, b.items_text,
         `${dir}/${method}: 🔴 identity changed items_text — the KDS ticket and two server hashes with it`);
 
-      // …and the dedup key the server derives from it is therefore unmoved.
-      assert.strictEqual(orderContentKey({ ...a, items_text: a.items_text }), orderContentKey({ ...b, items_text: b.items_text }),
+      /* ── ALL SIX SERVER BINDINGS, BY VALUE ───────────────────────────────────────────────
+         🔴 AND THE ADAPTER IS THE REAL ONE. This previously spread the request payload straight into
+         orderContentKey — which reads { phone, itemsText, orderType, scheduledFor } in camelCase,
+         while the payload is snake_case. Every field arrived undefined, so the function hashed four
+         empty strings and returned the SAME key for any two orders on earth. It agreed with itself and
+         proved nothing. The mapping is explicit now, and a positive control below proves the adapter
+         actually feeds it. */
+      const dedupKey = (o) => orderContentKey({
+        phone: o.customer_phone, itemsText: o.items_text, orderType: o.order_type,
+        scheduledFor: Number.isFinite(o.scheduled_for) ? o.scheduled_for : undefined,
+      });
+      assert.strictEqual(dedupKey(a), dedupKey(b),
         `${dir}/${method}: 🔴 identity moved orderContentKey — the server's duplicate-order defence`);
+      assert.notStrictEqual(dedupKey(a), dedupKey({ ...a, items_text: a.items_text + ' EXTRA' }),
+        `${dir}/${method}: 🔴 non-vacuity — a DIFFERENT items_text must give a different dedup key, or the adapter is feeding undefineds again`);
+
+      // orderFingerprint — hashes items_text, and is what the charge path binds to.
+      assert.strictEqual(
+        orderFingerprint('ORD-1', a.total, a.items_text),
+        orderFingerprint('ORD-1', b.total, b.items_text),
+        `${dir}/${method}: 🔴 identity moved orderFingerprint`);
+      assert.notStrictEqual(orderFingerprint('ORD-1', a.total, a.items_text), orderFingerprint('ORD-1', a.total, a.items_text + 'X'),
+        `${dir}/${method}: non-vacuity — orderFingerprint does discriminate its items_text`);
+
+      // The redemption canonical, its fingerprint, and the reservation binding built on top of it.
+      {
+        const t = { restaurantId: rid, menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] };
+        const raw = rid === 'la_musa'
+          ? { type: 'points_ala_carte', items: [{ id: (b.items[0] || {}).id, qty: 1 }] }
+          : { type: 'free_pizza_choice', item_id: (b.items[0] || {}).name };
+        const ra = computeRedemption({ redeem: raw, items: a.items, restaurantId: rid });
+        const rb = computeRedemption({ redeem: raw, items: b.items, restaurantId: rid });
+        assert.ok(rb && rb.ok, `${dir}/${method}: premise — the reward resolves (${rb && rb.reason})`);
+        assert.strictEqual(redemptionFingerprint(ra.canonical), redemptionFingerprint(rb.canonical),
+          `${dir}/${method}: 🔴 identity moved the REDEMPTION fingerprint`);
+        /* 🔴 THE RESERVATION BINDING, ASSERTED THROUGH ITS INPUTS — AND WHY. bindingFp is not exported
+           from rewards-reserve.js. Calling it directly would mean widening a production module's
+           surface for a test's benefit, and re-implementing it here would put a second copy of a money
+           binding in the suite — the fake-laxer-than-production hazard this project has paid for
+           repeatedly. It is a pure function of exactly three things: the redemption canonical, the
+           order fingerprint, and a config version that identity cannot touch. Both varying inputs are
+           asserted byte-equal immediately above and below, so the binding cannot move unless one of
+           them does. Stated as the inference it is, not dressed up as a measurement. */
+        assert.strictEqual(JSON.stringify(ra.canonical), JSON.stringify(rb.canonical),
+          `${dir}/${method}: 🔴 the redemption canonical moved — the RESERVATION binding is built from it`);
+        assert.notStrictEqual(redemptionFingerprint(ra.canonical), redemptionFingerprint({ ...ra.canonical, __x: 1 }),
+          `${dir}/${method}: non-vacuity — the redemption fingerprint discriminates its canonical`);
+      }
+
+      // The quote HMAC — the signature itself, over the same cart with and without identity.
+      {
+        const na = normalizeCartForFingerprint(a.items, rid);
+        const nb = normalizeCartForFingerprint(b.items, rid);
+        assert.ok(na && nb, `${dir}/${method}: premise — both carts normalize`);
+        const sign = (n) => signQuoteToken({ quote_id: 'fixed', rid, net_total_cents: 1000,
+          cart_fingerprint: cartFingerprint(n, null), issued_at: 1700000000000, expires_at: 1700000900000 }, SECRET);
+        assert.strictEqual(sign(na), sign(nb),
+          `${dir}/${method}: 🔴 identity moved the signed QUOTE TOKEN — every issued token would fail to verify`);
+      }
 
       // ── NO OTHER DURABLE FIELD CARRIES AN ID VALUE ────────────────────────────────────────
       /* Everything the server persists or renders, minus the items array the id is SUPPOSED to ride
@@ -185,8 +246,92 @@ const payload = (s) => s.sent.createOrder || s.sent.charge;
         `${dir}: non-vacuity — a genuinely different cart must NOT charge on that token (got ${bad.action}/${bad.reason})`);
       ok(`${dir}: a quote token signed before the backfill still charges after it, and a real cart change still does not`);
     }
-  }
 
+    // ── THE REAL RESTORE — A SAVED ORDER, RESUMED, WITH IDENTITY FLIPPING ACROSS IT ───────────
+    /* 🔴 THIS CELL REPLACES ONE THAT NEVER RESTORED ANYTHING. Its predecessor built a fresh cart and
+       called restoreRedeem(null, null, null) — no saved order, no restoreOrderForm, no token, no
+       order_id comparison. Neutering restoreOrderForm entirely left the suite green, which is the
+       definition of a test that is not testing.
+       The real path: a customer composes an order, the form stashes it on the way to hosted payment,
+       they come back to a fresh page — and in D2's rollout the backfill may have landed in between, so
+       the menu they return to serves ids where the stashed one did not. What must hold is that the
+       resume REUSES the original order_id (a fresh one would double-reserve the reward) and that a
+       quote token still attaches. */
+    {
+      const first = await submitted(dir, { withIds: false });
+      const saved = payload(first);
+      assert.ok(saved && saved.order_id, `${dir}/restore: premise — an order was composed and sent`);
+
+      /* The stash, built from the page's OWN writers — snapshotForm() and the order body it just
+         sent — in exactly the shape processPixelPay persists. Not a shape invented here. */
+      const stash = JSON.stringify({
+        order_id: saved.order_id, t: 'poll-token-test', order: saved,
+        form: first.w.snapshotForm(), ts: Date.now(),
+      });
+
+      // The return trip: a FRESH page, and the menu now carries ids. Identity flips across the resume.
+      const w2 = loadForm(dir);
+      let quoteBody = null;
+      w2.__respond = (url, init) => {
+        const u = String(url);
+        if (u.includes('quoteOrder')) {
+          quoteBody = init && init.body ? JSON.parse(init.body) : null;
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+            ok: true, total_cents: 50000, quote_id: 'restore-q1', quote_token: 'restore-token', net_total_cents: 50000 }) });
+        }
+        return new Promise(() => {});
+      };
+      w2.localStorage.setItem(STASH_KEY[dir], stash);
+      const prepared = w2.liveMenuPrepare(bodyFor(dir, w2, true));      // ids present on return
+      w2.liveMenuGlobalSet('MENU', prepared.MENU);
+      w2.liveMenuGlobalSet('EXTRAS', prepared.EXTRAS);
+      await settle();
+
+      w2.restoreOrderForm();
+      await settle(); await settle();
+
+      /* 🔴 THE ORDER ID IS REUSED. orderIdForThisCart folds __resumeOrderId in; without it the resumed
+         customer composes a NEW order and the server reserves the reward a second time. */
+      assert.strictEqual(w2.__resumeOrderId || (w2.__pendingOrder && w2.__pendingOrder.id), saved.order_id,
+        `${dir}/restore: 🔴 the resume did not carry the original order_id — a second reservation`);
+      assert.strictEqual(w2.document.getElementById('cname').value, 'Cliente Prueba',
+        `${dir}/restore: premise — restoreOrderForm actually restored the form, so the assertions above are about a restore`);
+
+      // Rebuild the same cart on the returned page and let it re-quote — the pre-existing behaviour.
+      const dish = prepared.MENU.find((d) => d.price > 0);
+      w2.chg(dish.id, 2);
+      await settle();
+      w2.toggleDetailExtra(prepared.EXTRAS[0].id, dish.id, 0);
+      await settle();
+      w2.requestServerQuote(true);
+      await settle(); await settle();
+
+      assert.ok(quoteBody, `${dir}/restore: 🔴 the resumed page never re-quoted — the pre-existing revalidation did not fire`);
+      assert.ok((quoteBody.items || [])[0].dish_id,
+        `${dir}/restore: the re-quote carries the ids the returned menu now serves`);
+
+      /* 🔴 AND THE TOKEN ATTACHES. This is the customer-visible half: confirmQuoteCartSig is compared
+         against the signature the quote was stored under, so if identity had reached it the token
+         would be discarded and the order would send unconfirmed — on a cart the customer already
+         agreed to. */
+      /* current() takes the cart signature and hands back the token ONLY if the stored one was issued
+         for this same cart — which is precisely the comparison identity could break. Asking it with
+         the live confirmQuoteCartSig() is therefore the whole assertion: a token comes back only if
+         the signature the quote was stored under still matches the signature this cart computes now,
+         across a menu that gained ids in between. */
+      const liveSig = w2.confirmQuoteCartSig();
+      const attached = w2.__confirmQuote && w2.__confirmQuote.current(liveSig);
+      assert.ok(attached && attached.token,
+        `${dir}/restore: 🔴 no quote token attached after the resume — identity broke the signature match`);
+      assert.strictEqual(attached.token, 'restore-token', `${dir}/restore: …and it is the token the server issued`);
+
+      // And the id reused survives composing the order again.
+      const g = (id) => w2.document.getElementById(id);
+      for (const [id, v] of [['cname', 'Cliente Prueba'], ['cphone', '98765432'], ['cemail', 'cliente@test.hn']]) { if (g(id)) g(id).value = v; }
+      assert.strictEqual(w2.buildOrder(), true, `${dir}/restore: the resumed order composes`);
+      ok(`${dir}: a saved order resumes on an id-bearing menu — same order_id, re-quote fires, token attaches`);
+    }
+  }
   console.log(`\ncart-identity-order: ${count()} checks passed across both forms`);
   closeAll();
   process.exit(0);
