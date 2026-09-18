@@ -34,7 +34,7 @@ Both must be green before deploy. What each one covers:
 | `test:public-menu` | the served endpoint against real Firestore, with D1's overlay step in the path | anything about identity — its "identity" fixtures are the RTDB **routing** config the isActive gate reads, unrelated to the catalog registry |
 | `test:identity-registry` | concurrent `ensureIdentity` on one object against Firestore's own transaction engine: one id, one id row, one key row, retries genuinely forced | the no-op claim, which is node-side |
 
-`npm test` (no Java needed) carries the rest: 2241 checks, including the no-op matrix across both
+`npm test` (no Java needed) carries the rest: 2243 checks, including the no-op matrix across both
 brands and every forced failure path.
 
 ## Sequence
@@ -81,11 +81,39 @@ reward or factura selector read an id. All of that is D4/D5.
 
 ## Known gap, carried forward
 
-`ensureIdentitiesForKeys` runs after the publish lease is released, bounded at 5s. The bound is a real
-abandonment, in both directions: once it fires the loop starts no further registry transaction, and the
-one already mid-flight re-checks before writing and aborts, so **no row appears after the deadline** —
-not "at most one", zero. Verified through the real publisher (0 rows at return after 5007ms, 0 after
-the registry recovers).
+`ensureIdentitiesForKeys` runs after the publish lease is released, bounded at 5s. What that bound
+guarantees depends on *where* the registry stalls, and the difference is worth stating precisely
+because the obvious phrasing — "nothing lands after the timeout" — is true of one case and not the
+other.
+
+**A stalled read → nothing lands.** The transaction callback is still running, so it re-checks the
+deadline after its reads and before its first write and aborts; Firestore commits nothing. Measured
+through the real publisher: **0 rows when the publish returns at 5007ms, 0 after the registry
+recovers.**
+
+**A stalled commit → at most one transaction's rows land, late.** By then the callback has returned and
+the commit is with the server. There is no callback left to re-check and no client-side way to cancel a
+submitted commit, so this case cannot be made to land nothing. Measured: **0 rows at the deadline, 2
+rows (one object's id row and key row) once the commit completes** — against 76 for an unbounded run.
+
+So the guarantee is **bounded abandonment plus idempotent correctness**, not literal zero:
+
+- nothing further is *started* once the deadline fires — verified by transaction count, not inferred;
+- at most the one already-committing transaction lands;
+- what it lands is the **correct canonical id** — identical to what an ordinary preserve would have
+  written. Never wrong, only late. (On la_musa this is checkable independently: the late row carries
+  the grandfathered slug.)
+- the next publish or backfill calls `ensureIdentity` for that object, **finds the row and preserves
+  it** (`created: false`) — no double-mint, no divergence. Measured: the reconciling backfill creates
+  the 37 objects the deadline abandoned and preserves exactly the 1 that landed late.
+
+🔴 **Never delete registry rows to "clean up" a late lander.** A late row is correct; deleting it is
+not. Retired ids stay reserved permanently, and a registry that deletes rows to tidy a timeout is one
+that can hand a reused id to a different object later. Leave it; the next backfill reconciles around
+it.
+
+Nothing in D1 reads the id, and at D4 the registry — not any publish's report — is the source of truth,
+so a late-but-correct row is harmless in both phases.
 
 What remains: a publish that introduces a NEW object while the registry is slow leaves that object
 unregistered until the next publish or a backfill re-run. It serves id-less in the meantime, which is

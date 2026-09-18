@@ -5041,5 +5041,18 @@
       "catalog/identity-noop.test.js"
     ],
     "kills_with": "ZERO rows after the deadline"
+  },
+  {
+    "id": "d1-19",
+    "slice": "d1",
+    "label": "🔴 the key row points at a DIFFERENT id than the row that was written — a late lander that is not the canonical id",
+    "file": "catalog/identity-registry.js",
+    "from": "    tx.set(keyRef, { canonical_id: canonicalId, kind, created_at: stamp });",
+    "to": "    tx.set(keyRef, { canonical_id: proposeId(rid, kind, legacyKey), kind, created_at: stamp });",
+    "command": [
+      "node",
+      "catalog/identity-noop.test.js"
+    ],
+    "kills_with": "the key row must point at the id row that landed with it"
   }
 ]

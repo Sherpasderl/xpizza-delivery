@@ -746,6 +746,128 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
     ok(`the preserve-hook deadline abandons mid-transaction: ${stopped.after} rows land after timeout where an unbounded loop lands ${unstopped.after}`);
   }
 
+  // ══ THE COMMIT STALL — WHERE "ZERO LATE WRITES" IS NOT ACHIEVABLE, AND THE CONTRACT SAYS SO ═══
+  /* 🔴 THE HONEST LIMIT OF THE DEADLINE, STATED AND MEASURED RATHER THAN OVERCLAIMED.
+     The block above stalls a READ, and that one is genuinely abandonable: the callback is still
+     running, so re-checking before the first write aborts the whole transaction and nothing commits.
+     A stalled COMMIT is a different animal. By then the callback has returned and the commit is with
+     the server; there is no callback left to re-check and no client-side way to cancel a submitted
+     Firestore commit. Reproduced here: reads finish and writes queue before the deadline, the deadline
+     fires with zero rows, and when the commit finally lands the rows appear — late.
+     The wrong fixes are worth naming. Deleting the late rows to "clean up" is forbidden outright: a
+     retired id stays reserved forever, and a registry that deletes rows to tidy a timeout is a registry
+     that can hand a reused id to a different object. Blocking longer just moves the deadline. So the
+     contract is bounded abandonment plus idempotent correctness, and this proves both halves:
+       · AT MOST the one transaction already committing lands — nothing further is started;
+       · what it lands is the CORRECT canonical id, identical to what a normal preserve would write —
+         never wrong, only late;
+       · and the next publish or backfill finds that row and PRESERVES it, so there is no double-mint
+         and no divergence between the registry and the timed-out publish's report.
+     Nothing in D1 reads the id, and at D4 the registry is the source of truth rather than any
+     publish's report, so a late-but-correct row is harmless. A late-but-WRONG row would not be, which
+     is why correctness is asserted here and not assumed. */
+  for (const rid of RIDS) {
+    const { memFirestore } = require('./identity-fixture');
+    const { ensureIdentitiesForKeys, ensureIdentity: _unused, liveKeys } = require('./identity-backfill');
+    const { ensureIdentity } = require('./identity-registry');
+    const { backfillIdentities } = require('./identity-backfill');
+    const { isGrandfathered, encodeKey } = require('./identity-registry');
+
+    const keys = liveKeys(rid, catalogSnapshot(rid));
+    const total = keys.dish.length + keys.extra.length;
+    const firstKey = keys.dish[0];
+
+    const base = memFirestore();
+    let release; const blocked = new Promise((r) => { release = r; });
+    let commits = 0, started = 0;
+    /* A BUFFERED-COMMIT ADAPTER: reads go through the real transaction, so read-before-write and the
+       conflict check still apply; writes are held and applied at commit time, which is the point where
+       Firestore is beyond the client's reach. The first commit stalls. */
+    const db = {
+      _docs: base._docs,
+      collection: (c) => base.collection(c),
+      runTransaction: async (fn, opts) => {
+        started += 1;
+        let queued = [];
+        const out = await base.runTransaction(async (tx) => {
+          queued = [];
+          return fn({ get: (r) => tx.get(r), set: (r, v) => queued.push(() => r._set(v)), delete: (r) => queued.push(() => r._delete()) });
+        }, opts);
+        commits += 1;
+        if (commits === 1) await blocked;         // the COMMIT is in flight and cannot be recalled
+        queued.forEach((w) => w());
+        return out;
+      },
+    };
+
+    let expired = false, threw = null;
+    try {
+      await Promise.race([
+        ensureIdentitiesForKeys(db, rid, keys, { shouldStop: () => expired }),
+        new Promise((_, rej) => setTimeout(() => { expired = true; rej(new Error('identity_preserve_timeout')); }, 40)),
+      ]);
+    } catch (e) { threw = (e && e.message) || String(e); }
+
+    assert.strictEqual(threw, 'identity_preserve_timeout', `${rid}/commit-stall: premise — the deadline fired`);
+    assert.strictEqual(base._docs.size, 0, `${rid}/commit-stall: premise — nothing had landed when it fired`);
+    const startedAtDeadline = started;
+
+    release();
+    for (let i = 0; i < 30; i += 1) await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setTimeout(r, 60));
+
+    // ── BOUNDED: at most the one in-flight transaction, and nothing new was ever started ──────────
+    /* Captured HERE, before the reconciling backfill below adds the rest — otherwise the number
+       reported in the ok() line is the post-reconcile total (76) rather than what actually landed
+       late (2), which is exactly the kind of figure that reads as evidence and is not. */
+    const landedLate = base._docs.size;
+    assert.strictEqual(landedLate, 2,
+      `🔴 ${rid}/commit-stall: exactly ONE object's rows may land late — its id row and its key row. ${landedLate} docs landed, against ${total * 2} for an unbounded run`);
+    assert.strictEqual(started, startedAtDeadline,
+      `🔴 ${rid}/commit-stall: no transaction may be STARTED after the deadline (${started} vs ${startedAtDeadline} at the deadline)`);
+
+    // ── WELL-FORMED: a late identity, not half of one ────────────────────────────────────────────
+    const idRows = [...base._docs.keys()].filter((k) => k.includes(`/identity/dish/ids/`));
+    const keyRows = [...base._docs.keys()].filter((k) => k.includes(`/identity/dish/keys/`));
+    assert.strictEqual(idRows.length, 1, `${rid}/commit-stall: one id row`);
+    assert.strictEqual(keyRows.length, 1, `${rid}/commit-stall: one key row`);
+    const landedId = idRows[0].split('/').pop();
+    const landedKeyDoc = keyRows[0].split('/').pop();
+    assert.strictEqual(landedKeyDoc, encodeKey(firstKey),
+      `${rid}/commit-stall: the key row is the one for the object that was mid-commit`);
+    assert.strictEqual(base._docs.get(keyRows[0]).canonical_id, landedId,
+      `🔴 ${rid}/commit-stall: the key row must point at the id row that landed with it — a half-written identity is worse than a late one`);
+    assert.strictEqual(base._docs.get(idRows[0]).legacy_key, firstKey,
+      `🔴 ${rid}/commit-stall: …and the id row must name the object it belongs to`);
+
+    // ── CORRECT, NOT MERELY BOUNDED: it is the canonical id, not some other id ───────────────────
+    if (isGrandfathered(rid, 'dish')) {
+      /* The strongest form of the claim, available on the brand where the canonical id is
+         deterministic: the late row IS the id this object must have, independently computable. */
+      assert.strictEqual(landedId, firstKey,
+        `🔴 ${rid}/commit-stall: the late row must carry the canonical id (the grandfathered slug), not an arbitrary one`);
+    }
+    const resolved = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: firstKey });
+    assert.strictEqual(resolved.created, false,
+      `🔴 ${rid}/commit-stall: the late row is authoritative — a later call must PRESERVE it, never mint a second identity for the same object`);
+    assert.strictEqual(resolved.canonical_id, landedId,
+      `🔴 ${rid}/commit-stall: …and resolve to exactly the id that landed late`);
+
+    // ── IDEMPOTENT RECONCILIATION: the next backfill closes the gap and does not disturb it ──────
+    const reconcile = await backfillIdentities(db, rid, catalogSnapshot(rid));
+    assert.strictEqual(reconcile.dish.total + reconcile.extra.total, total,
+      `${rid}/commit-stall: the reconciling run covers every object`);
+    assert.strictEqual(reconcile.dish.preserved + reconcile.extra.preserved, 1,
+      `🔴 ${rid}/commit-stall: exactly the late lander is preserved — proof the timed-out publish left no duplicate and no orphan`);
+    assert.strictEqual(reconcile.dish.created + reconcile.extra.created, total - 1,
+      `${rid}/commit-stall: …and everything the deadline abandoned is registered now`);
+    assert.strictEqual(reconcile.ids.dish[firstKey], landedId,
+      `🔴 ${rid}/commit-stall: the reconciled registry still carries the late row's id — reconciliation must not re-mint`);
+
+    ran(`commitstall:${rid}`);
+    ok(`${rid}: a stalled COMMIT lands at most its own ${landedLate} rows (not ${total * 2}), carrying the canonical id, and the next backfill preserves it (${reconcile.dish.created + reconcile.extra.created} created, 1 preserved)`);
+  }
+
   // ══ …AND THROUGH THE REAL PUBLISHER, WHICH IS WHERE THE DEADLINE ACTUALLY LIVES ══════════════
   /* The block above drives ensureIdentitiesForKeys directly. This drives publishVersion — the real
      caller, its real 5s deadline, its real finally — because that is where the late write was
@@ -873,6 +995,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
       'rollback:x_pizza': 1, 'rollback:la_musa': 1,
       'mixedreaders:x_pizza': 1, 'mixedreaders:la_musa': 1,
       'staleportal:x_pizza': 1, 'staleportal:la_musa': 1,
+      'commitstall:x_pizza': 1, 'commitstall:la_musa': 1,
     };
     for (const [what, want] of Object.entries(expected)) {
       assert.strictEqual(ranCount(what), want,
