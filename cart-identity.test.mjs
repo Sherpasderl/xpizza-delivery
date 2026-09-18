@@ -324,6 +324,11 @@ const sigsOf = (w) => ({
         cartFingerprint(normalizeCartForFingerprint(withIds, rid), null),
         cartFingerprint(normalizeCartForFingerprint(without, rid), null),
         `${dir}: 🔴 identity moved the server's cart fingerprint — every issued token would fail`);
+      // SENSITIVITY: the same cart at a different quantity must fingerprint differently.
+      assert.notStrictEqual(
+        cartFingerprint(normalizeCartForFingerprint(JSON.parse(JSON.stringify(without)).map((l, i) => (i ? l : { ...l, qty: l.qty + 1 })), rid), null),
+        cartFingerprint(normalizeCartForFingerprint(without, rid), null),
+        `${dir}: 🔴 the cart FINGERPRINT is not sensitive to a quantity change — it could be a constant`);
 
       // THE CHARGED TOTAL.
       const a = computeServerTotal(withIds, rid, tables);
@@ -331,6 +336,15 @@ const sigsOf = (w) => ({
       assert.ok(!b.error, `${dir}: premise — the id-less cart prices cleanly (${b.error})`);
       assert.deepStrictEqual(a, b, `${dir}: 🔴 identity moved the CHARGED TOTAL`);
       assert.ok(b.total > 0, `${dir}: …of a real amount (${b.total})`);
+      /* 🔴 SENSITIVITY. An invariance assertion alone cannot fail when its mechanism is broken: make
+         computeServerTotal return a constant and BOTH sides go constant and stay equal. So every
+         "identity changed nothing about X" in this file is paired with a legitimate change that X MUST
+         notice. Together they say what is actually claimed — X is sensitive to real changes and blind
+         to the id — where either alone says almost nothing. */
+      const moreQty = JSON.parse(JSON.stringify(without));
+      moreQty[0].qty += 1;
+      assert.notStrictEqual(computeServerTotal(moreQty, rid, tables).total, b.total,
+        `${dir}: 🔴 the CHARGED TOTAL is not sensitive to a quantity change — it could be a constant and the equality above would still hold`);
 
       // THE REWARD and its canonical — the thing a reservation binds to.
       const raw = rid === 'la_musa'
@@ -340,6 +354,13 @@ const sigsOf = (w) => ({
       const rb = computeRedemption({ redeem: raw, items: without, restaurantId: rid });
       assert.ok(rb && rb.ok, `${dir}: premise — the reward resolves without identity (${rb && rb.reason})`);
       assert.deepStrictEqual(ra, rb, `${dir}: 🔴 identity moved the REWARD resolution`);
+      // SENSITIVITY: a different reward request must resolve differently.
+      const otherRaw = rid === 'la_musa'
+        ? { type: 'points_ala_carte', items: [{ id: without[0].id, qty: 2 }] }
+        : { type: 'free_pizza_choice', item_id: 'Not A Real Dish' };
+      const rOther = computeRedemption({ redeem: otherRaw, items: without, restaurantId: rid });
+      assert.notDeepStrictEqual(rOther, rb,
+        `${dir}: 🔴 the REWARD resolution is not sensitive to the reward asked for — it could be a constant`);
       assert.ok(!JSON.stringify(ra.canonical).includes('ID_'), `${dir}: 🔴 …and no id value reached its canonical`);
 
       // THE FACTURA — asserted per brand, so flipping the predicate cannot silently skip it.
@@ -350,6 +371,9 @@ const sigsOf = (w) => ({
         const fb = pricedLineItems(without, tables.menu, tables.extras);
         assert.ok(!fb.error && fb.items.length > 0, `${dir}: premise — fiscal lines exist (${fb.error})`);
         assert.deepStrictEqual(fa, fb, `${dir}: 🔴 identity moved the FACTURA lines`);
+        // SENSITIVITY: more of the same dish must move the fiscal lines.
+        assert.notDeepStrictEqual(pricedLineItems(moreQty, tables.menu, tables.extras), fb,
+          `${dir}: 🔴 the FACTURA lines are not sensitive to a quantity change — they could be constant`);
         assert.ok(!JSON.stringify(fa).includes('ID_'), `${dir}: 🔴 …and no id VALUE reached a fiscal line`);
       }
       ok(`${dir}: fingerprint, charged total, reward canonical and factura are byte-identical with the id present`);

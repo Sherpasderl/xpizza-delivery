@@ -5217,7 +5217,9 @@
       "node",
       "../cart-identity-order.test.mjs"
     ],
-    "kills_with": "the SENT order carries a new order_id"
+    "kills_with": [
+      "the SENT order carries a NEW order_id"
+    ]
   },
   {
     "id": "d2-14",
@@ -5233,6 +5235,74 @@
     "kills_with": [
       "the cart did not come back at all",
       "the restored cart is not the saved cart"
+    ]
+  },
+  {
+    "id": "d2-15",
+    "slice": "d2",
+    "label": "🔴 computeServerTotal returns a CONSTANT - an invariance-only assertion cannot notice",
+    "file": "menu-pricing.js",
+    "from": "function computeServerTotal(items, restaurantId = 'x_pizza', tables = null) {",
+    "to": "function computeServerTotal(items, restaurantId = 'x_pizza', tables = null) {\n  if (true) return { total: 719 };",
+    "command": [
+      "node",
+      "../cart-identity.test.mjs"
+    ],
+    "kills_with": "CHARGED TOTAL is not sensitive to a quantity change"
+  },
+  {
+    "id": "d2-16",
+    "slice": "d2",
+    "label": "🔴 pricedLineItems returns CONSTANT fiscal lines",
+    "file": "factura/pricing.js",
+    "from": "function pricedLineItems(items, menuPrices, extraPrices) {",
+    "to": "function pricedLineItems(items, menuPrices, extraPrices) {\n  if (true) return { items: [{ qty: 1, description: 'X', line_gross_cents: 1 }] };",
+    "command": [
+      "node",
+      "../cart-identity.test.mjs"
+    ],
+    "kills_with": "FACTURA lines are not sensitive to a quantity change"
+  },
+  {
+    "id": "d2-17",
+    "slice": "d2",
+    "label": "🔴 computeRedemption returns a CONSTANT resolution",
+    "file": "rewards-redeem.js",
+    "from": "function computeRedemption({ redeem, items, restaurantId, tables = null, eligible = null } = {}) {",
+    "to": "function computeRedemption({ redeem, items, restaurantId, tables = null, eligible = null } = {}) {\n  if (true) return { ok: true, model: 'add_free', discount_cents: 0, canonical: { k: 1 } };",
+    "command": [
+      "node",
+      "../cart-identity.test.mjs"
+    ],
+    "kills_with": "REWARD resolution is not sensitive to the reward asked for"
+  },
+  {
+    "id": "d2-18",
+    "slice": "d2",
+    "label": "🔴 the quote token attaches WITHOUT checking the cart signature - it stops being bound to the cart",
+    "file": "../xpizza-orders/form-confirm-quote.js",
+    "from": "    function current(cartSig) {\n      return matches(cartSig) ? stored : null;",
+    "to": "    function current(cartSig) {\n      return stored;",
+    "command": [
+      "node",
+      "../cart-identity-order.test.mjs"
+    ],
+    "kills_with": "returned a token WITHOUT checking the cart signature"
+  },
+  {
+    "id": "d2-19",
+    "slice": "d2",
+    "label": "🔴 the cart prices from the LIVE menu instead of the captured record - a resumed order is charged today's price",
+    "file": "../xpizza-orders/index.html",
+    "from": "    const p = line.record;\n    const instances = pizzaExtras[line.key] || {};",
+    "to": "    const p = (typeof MENU !== 'undefined' && MENU.find((m) => String(m.id) === String(line.key))) || line.record;\n    const instances = pizzaExtras[line.key] || {};",
+    "command": [
+      "node",
+      "../cart-identity-order.test.mjs"
+    ],
+    "kills_with": [
+      "the restored cart is not the saved cart",
+      "the restore took TODAY's price"
     ]
   }
 ]

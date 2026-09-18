@@ -328,7 +328,14 @@ const payload = (s) => s.sent.createOrder || s.sent.charge;
         return new Promise(() => {});
       };
       w2.localStorage.setItem(STASH_KEY[dir], stash);
-      const prepared = w2.liveMenuPrepare(bodyFor(dir, w2, true));      // ids present on return
+      /* 🔴 THE RETURN MENU IS REPRICED, which is what makes the agreed-price assertion below mean
+         anything. Serving the same prices would make "the restored line still costs 340" true whether
+         the restore honoured the captured price or silently took today's — the invariance would hold
+         for the wrong reason. The dish is +75 on return; the restored line must still be the old
+         price, because that is the number the customer accepted. */
+      const returnBody = bodyFor(dir, w2, true);
+      returnBody.dishes = returnBody.dishes.map((d) => ({ ...d, price: d.price + 75 }));
+      const prepared = w2.liveMenuPrepare(returnBody);      // ids present on return, and REPRICED
       w2.liveMenuGlobalSet('MENU', prepared.MENU);
       w2.liveMenuGlobalSet('EXTRAS', prepared.EXTRAS);
       await settle();
@@ -349,20 +356,41 @@ const payload = (s) => s.sent.createOrder || s.sent.charge;
       assert.strictEqual(w2.document.getElementById('cname').value, 'Cliente Prueba',
         `${dir}/restore: …and the form came back with it`);
 
-      /* 🔴 WHAT A RESTORED CART CARRIES — MEASURED, AFTER TWO WRONG GUESSES. I first wrote this
-         claiming the restored cart stays id-less (hydrate restores the captured record and has no
-         rebuild-from-the-live-menu path), then that only the option picks an id up. Both were wrong
-         and the test said so each time. What actually happens: the line's `record` RE-RESOLVES against
-         the live menu — 1B's design, where `added` holds the agreed price and `record` shows what the
-         menu says today — so a cart saved before the backfill comes back carrying BOTH ids while its
-         agreed price stays exactly what the customer accepted (340 here, not today's).
-         That makes the resume path the single most important place for the projection: a customer who
-         went to hosted checkout pre-backfill returns to a cart that has silently gained identity. If
-         the signatures saw it, their token would not re-attach — on an order they already agreed to. */
-      assert.ok(/dish_id/.test(JSON.stringify(restoredItems)),
-        `${dir}/restore: premise — the restored cart re-resolved against the live menu and GAINED identity`);
+      /* 🔴 WHAT A RESTORED CART CARRIES — MEASURED, AFTER THREE WRONG GUESSES, AND IT DEPENDS ON
+         WHETHER THE RECORD STILL MATCHES. I claimed in turn that the restored cart stays id-less
+         (hydrate restores the captured record), that only the option gains an id, and then that both
+         do. Each failed against the real page. What governs it is 1B's reconciliation: a line whose
+         live record still matches re-resolves and picks up whatever the menu now carries; a line whose
+         record has MOVED keeps the one it was added with, because `added` is the agreed price and
+         adopting today's record would adopt today's price with it.
+         This return menu is REPRICED, so the DISH keeps its captured id-less record while the OPTION —
+         untouched by the reprice — re-resolves and gains its extra_id. That is a genuinely mixed line,
+         and it is the strongest shape to sign: identity present at one level and absent at the other,
+         which is precisely where a shallow projection shows through. */
+      assert.ok(!restoredItems[0].dish_id,
+        `${dir}/restore: the repriced DISH keeps its captured record, so no dish_id — taking the live record would take the live price with it`);
+
+      /* ── 1. THE AGREED PRICE SURVIVES, AND THE LIVE ONE IS REFUSED ─────────────────────────
+         Invariance plus SENSITIVITY: the restored line must equal what the customer accepted AND must
+         differ from what the menu charges today. Without the second half a restore that quietly
+         adopted the live price would pass — which is the failure cartRestore's own comment says it
+         exists to prevent (250→340 reproduced on both forms). */
+      const livePrice = prepared.MENU.find((d) => d.name === saved.items[0].name).price;
       assert.strictEqual(restoredItems[0].price, saved.items[0].price,
-        `${dir}/restore: 🔴 …while the AGREED price is still the one the customer accepted, not today's`);
+        `${dir}/restore: 🔴 the AGREED price did not survive the resume`);
+      assert.notStrictEqual(restoredItems[0].price, livePrice,
+        `${dir}/restore: 🔴 the restore took TODAY's price (${livePrice}) as the agreed one — the customer would be charged a price they never accepted`);
+      const restoredNet = computeServerNet({ items: restoredItems, reward: null, rid, tables: { restaurantId: rid, menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] } });
+      assert.ok(!restoredNet.error, `${dir}/restore: the restored cart still prices server-side`);
+
+      /* ── 2. THE RESTORED OPTION KEEPS ITS IDENTITY ─────────────────────────────────────────
+         Asserted positively rather than inferred from a regex over the whole cart: dropping the
+         option's extra_id on restore would leave every id-blindness assertion here green while the
+         nested identity D3/D4 will read silently vanished on the resume path. */
+      assert.ok(restoredItems[0].extras && restoredItems[0].extras.length > 0,
+        `${dir}/restore: premise — the restored line still carries its option`);
+      assert.ok(restoredItems[0].extras[0].extra_id,
+        `${dir}/restore: 🔴 the restored option lost its extra_id — identity dropped on the resume path`);
       assert.ok(!/dish_id|extra_id/.test(w2.serverQuoteCartKey()),
         `${dir}/restore: 🔴 the restored cart's quote key carries identity`);
       assert.ok(!/dish_id|extra_id/.test(w2.confirmQuoteCartSig()),
@@ -381,6 +409,13 @@ const payload = (s) => s.sent.createOrder || s.sent.charge;
       assert.ok(attached && attached.token,
         `${dir}/restore: 🔴 no quote token attached after the resume — identity broke the signature match`);
       assert.strictEqual(attached.token, 'restore-token', `${dir}/restore: …and it is the token the server issued`);
+      /* 🔴 AND THE ATTACH PATH ACTUALLY CHECKS THE SIGNATURE. current() handing a token back proves
+         nothing on its own — a current() that ignored its argument would return one for ANY cart, and
+         every "the token still attaches" assertion in this file would pass while the token had stopped
+         being bound to the cart at all. Asking with a signature that does not match must return
+         nothing; that is what makes the assertion above evidence. */
+      assert.ok(!w2.__confirmQuote.current('a-signature-for-some-other-cart'),
+        `${dir}/restore: 🔴 the attach path returned a token WITHOUT checking the cart signature — it is not bound to this cart`);
 
       /* NOW identity enters: the customer adds a line on the returned page, which captures from the
          id-BEARING menu. The cart becomes mixed — a restored id-less line beside a new id-bearing one,
@@ -392,29 +427,65 @@ const payload = (s) => s.sent.createOrder || s.sent.charge;
       await settle();
       const grown = w2.redeemCartItems();
       assert.ok(grown.length > restoredItems.length, `${dir}/restore: premise — the added line is on the cart`);
-      assert.ok(grown.every((l) => l.dish_id), `${dir}/restore: every line carries identity now`);
+      /* The cart is now MIXED at the line level too: the restored line kept its captured, id-less
+         record (its dish was repriced) while the newly added one captured from the id-bearing menu.
+         That is what a mid-rollout resume actually produces, and it is what gets signed below. */
+      assert.ok(grown.some((l) => l.dish_id), `${dir}/restore: 🔴 the newly added line captured identity from the live menu`);
+      assert.ok(grown.some((l) => !l.dish_id), `${dir}/restore: 🔴 …beside the restored line, which kept its own — a genuinely mixed cart`);
       assert.ok(!/dish_id|extra_id/.test(w2.serverQuoteCartKey()),
         `${dir}/restore: 🔴 the grown cart's quote key carries identity`);
 
-      /* 🔴 AND THE ORDER ID IS REUSED ON THE ORDER ACTUALLY SENT. Reading __resumeOrderId proves only
-         that restoreOrderForm set a variable; orderIdForThisCart consumes it during buildOrder, and
-         swapping that branch for a fresh genOrderId() left the old assertion green. What matters is
-         the id on the wire, so the order is recomposed and re-sent and THAT id is compared. */
-      const g = (id) => w2.document.getElementById(id);
-      for (const [id, v] of [['cname', 'Cliente Prueba'], ['cphone', '98765432'], ['cemail', 'cliente@test.hn']]) { if (g(id)) g(id).value = v; }
-      let resent = null;
-      w2.__respond = (url, init) => {
-        const u = String(url);
-        if (u.includes('createOrder') || u.includes('chargeOnlineOrder')) { resent = init && init.body ? JSON.parse(init.body) : null; }
-        return new Promise(() => {});
-      };
-      assert.strictEqual(w2.buildOrder(), true, `${dir}/restore: the resumed order composes`);
-      const pending2 = w2.submitOrder('confirmed');
-      if (pending2 && pending2.catch) pending2.catch(() => {});
-      await settle(); await settle();
-      assert.ok(resent, `${dir}/restore: premise — the resumed order was actually sent`);
-      assert.strictEqual(resent.order_id, saved.order_id,
-        `${dir}/restore: 🔴 the SENT order carries a new order_id — the reward would be reserved a second time`);
+      /* 🔴 THE REPRICED RETURN CANNOT SEND, AND THAT IS THE POINT. buildOrder refuses while a line's
+         agreed price disagrees with the live menu — 1B's rule, and the reason the agreed price is kept
+         in the first place. So the resume-and-resend half needs a return where nothing was repriced,
+         which is the ordinary case. Both are real; asserting only one would leave the other's
+         behaviour unstated. */
+      assert.strictEqual(w2.buildOrder(), false,
+        `${dir}/restore: 🔴 a repriced line must BLOCK the send rather than compose an order at a price the customer never accepted`);
+
+      /* ── THE ORDINARY RESUME: same prices, ids now served, order resent ─────────────────────
+         🔴 AND THE ID IS READ OFF THE WIRE. Reading __resumeOrderId proves only that restoreOrderForm
+         set a variable; orderIdForThisCart consumes it inside buildOrder, and swapping that branch for
+         a fresh genOrderId() left the old assertion green. What matters is the id on the request. */
+      {
+        const w3 = loadForm(dir);
+        let resent = null;
+        w3.__respond = (url, init) => {
+          const u = String(url);
+          if (u.includes('quoteOrder')) {
+            return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+              ok: true, total_cents: 50000, quote_id: 'rq2', quote_token: 'restore-token-2', net_total_cents: 50000 }) });
+          }
+          if (u.includes('createOrder') || u.includes('chargeOnlineOrder')) { resent = init && init.body ? JSON.parse(init.body) : null; }
+          return new Promise(() => {});
+        };
+        w3.localStorage.setItem(STASH_KEY[dir], stash);
+        const same = w3.liveMenuPrepare(bodyFor(dir, w3, true));     // ids present, prices UNCHANGED
+        w3.liveMenuGlobalSet('MENU', same.MENU);
+        w3.liveMenuGlobalSet('EXTRAS', same.EXTRAS);
+        await settle();
+        w3.restoreOrderForm();
+        await settle(); await settle();
+
+        const back = w3.redeemCartItems();
+        assert.strictEqual(legacyOf(back), legacyOf(saved.items), `${dir}/resume: the same saved cart came back`);
+        assert.ok(back[0].dish_id,
+          `${dir}/resume: 🔴 an unchanged record re-resolves and picks up the id the menu now serves — this is the customer who left before the backfill and returned after`);
+        assert.ok(!/dish_id|extra_id/.test(w3.serverQuoteCartKey()),
+          `${dir}/resume: 🔴 …and the quote key still carries none of it`);
+
+        w3.requestServerQuote(true);
+        await settle(); await settle();
+        const gg = (id) => w3.document.getElementById(id);
+        for (const [id, v] of [['cname', 'Cliente Prueba'], ['cphone', '98765432'], ['cemail', 'cliente@test.hn']]) { if (gg(id)) gg(id).value = v; }
+        assert.strictEqual(w3.buildOrder(), true, `${dir}/resume: the unchanged resume composes`);
+        const pend = w3.submitOrder('confirmed');
+        if (pend && pend.catch) pend.catch(() => {});
+        await settle(); await settle();
+        assert.ok(resent, `${dir}/resume: premise — the resumed order was actually sent`);
+        assert.strictEqual(resent.order_id, saved.order_id,
+          `${dir}/resume: 🔴 the SENT order carries a NEW order_id — the reward would be reserved a second time`);
+      }
       ok(`${dir}: a saved order resumes on an id-bearing menu — same order_id, re-quote fires, token attaches`);
     }
   }
