@@ -4800,5 +4800,154 @@
       "../composition.test.mjs"
     ],
     "kills_with": "judged inside its window the token is"
+  },
+  {
+    "id": "d1-01",
+    "slice": "d1",
+    "label": "the key row is not consulted, so every backfill run re-mints — one object, many identities",
+    "file": "catalog/identity-registry.js",
+    "from": "    const keySnap = await tx.get(keyRef);\n    if (keySnap.exists) {",
+    "to": "    const keySnap = await tx.get(keyRef);\n    if (false) {",
+    "command": [
+      "node",
+      "catalog/identity-registry.test.js"
+    ],
+    "kills_with": "the second preserves"
+  },
+  {
+    "id": "d1-02",
+    "slice": "d1",
+    "label": "first-assignment serializes on the random id instead of the OBJECT — concurrent seeds mint two ids",
+    "file": "catalog/identity-registry.js",
+    "from": "    tx.set(keyRef, { canonical_id: canonicalId, kind, created_at: stamp });",
+    "to": "    /* key row not written */",
+    "command": [
+      "node",
+      "catalog/identity-registry.test.js"
+    ],
+    "kills_with": [
+      "concurrent seeds produced",
+      "the second preserves"
+    ]
+  },
+  {
+    "id": "d1-03",
+    "slice": "d1",
+    "label": "🔴 a DISPLAY NAME becomes the id — exactly what this migration exists to prevent",
+    "file": "catalog/identity-registry.js",
+    "from": "  if (isGrandfathered(rid, kind)) return String(legacyKey);\n  return randomToken();",
+    "to": "  return String(legacyKey);",
+    "command": [
+      "node",
+      "catalog/identity-registry.test.js"
+    ],
+    "kills_with": [
+      "x_pizza mints an opaque token",
+      "a DISPLAY NAME must never become the id"
+    ]
+  },
+  {
+    "id": "d1-04",
+    "slice": "d1",
+    "label": "a retired id is freed for reuse — old records resolve to a dish nobody meant",
+    "file": "catalog/identity-registry.js",
+    "from": "    tx.set(idRef, { ...d, status: STATUS_RETIRED, retired_at: stamp });",
+    "to": "    tx.delete(idRef);",
+    "command": [
+      "node",
+      "catalog/identity-registry.test.js"
+    ],
+    "kills_with": "the ID ROW MUST REMAIN"
+  },
+  {
+    "id": "d1-05",
+    "slice": "d1",
+    "label": "a submitted id is adopted instead of checked — a swap passes",
+    "file": "catalog/identity-registry.js",
+    "from": "  if (actual !== claimedId) return { ok: false, reason: 'swapped', actual };",
+    "to": "  if (false) return { ok: false, reason: 'swapped', actual };",
+    "command": [
+      "node",
+      "catalog/identity-registry.test.js"
+    ],
+    "kills_with": "a SWAP of two valid ids must be detected"
+  },
+  {
+    "id": "d1-06",
+    "slice": "d1",
+    "label": "🔴 the overlay rethrows — an enrichment problem becomes a failed menu",
+    "file": "catalog/identity-overlay.js",
+    "from": "  } catch (e) {\n    /* 🔴 ID-ABSENT CONTINUATION.",
+    "to": "  } catch (e) {\n    throw e;\n    /* 🔴 ID-ABSENT CONTINUATION.",
+    "command": [
+      "node",
+      "catalog/identity-noop.test.js"
+    ],
+    "kills_with": "the overlay THREW"
+  },
+  {
+    "id": "d1-07",
+    "slice": "d1",
+    "label": "the overlay's bound is loosened past any serve budget — a hanging registry hangs the menu",
+    "file": "catalog/identity-overlay.js",
+    "from": "    ]), timeoutMs, rid);",
+    "to": "    ]), 600000, rid);",
+    "command": [
+      "node",
+      "catalog/identity-noop.test.js"
+    ],
+    "kills_with": "the overlay did NOT return"
+  },
+  {
+    "id": "d1-08",
+    "slice": "d1",
+    "label": "the overlay mutates the body it was handed instead of copying",
+    "file": "catalog/identity-overlay.js",
+    "from": "    return id ? { ...rec, [field]: id } : rec;      // unresolved → served exactly as it was",
+    "to": "    if (id) rec[field] = id;\n    return rec;",
+    "command": [
+      "node",
+      "catalog/identity-noop.test.js"
+    ],
+    "kills_with": "the un-enriched side has none"
+  },
+  {
+    "id": "d1-09",
+    "slice": "d1",
+    "label": "the overlay keys served records by record.id — x_pizza resolves nothing and it looks like 'not backfilled'",
+    "file": "catalog/identity-overlay.js",
+    "from": "  const k = itemPricingKey(record, rid);",
+    "to": "  const k = record && record.id;",
+    "command": [
+      "node",
+      "catalog/identity-noop.test.js"
+    ],
+    "kills_with": "every served dish carries an id"
+  },
+  {
+    "id": "d1-10",
+    "slice": "d1",
+    "label": "the backfill re-derives the brand rule instead of using the pricing resolver, and gets it backwards",
+    "file": "catalog/identity-backfill.js",
+    "from": "function dishKey(rid, item) {\n  const k = itemPricingKey(item, rid);",
+    "to": "function dishKey(rid, item) {\n  const k = (rid === 'la_musa') ? (item && item.name) : (item && item.id);",
+    "command": [
+      "node",
+      "catalog/identity-registry.test.js"
+    ],
+    "kills_with": "x_pizza keys a dish by NAME"
+  },
+  {
+    "id": "d1-11",
+    "slice": "d1",
+    "label": "the browser keeps the catalog id, so it reaches the cart, the order and the quote fingerprint",
+    "file": "../xpizza-orders/form-identity-strip.js",
+    "from": "        if (IDENTITY_FIELDS.indexOf(k) !== -1) continue;",
+    "to": "        if (false) continue;",
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-orders/form-identity-strip.copy.test.mjs"
+    ]
   }
 ]

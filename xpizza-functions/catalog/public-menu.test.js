@@ -15,6 +15,7 @@
 // emits and the test would agree with itself.
 //
 // Run: node catalog/public-menu.test.js
+const { stripIdentity } = require('../../xpizza-orders/form-identity-strip');
 const assert = require('assert');
 const { makeDb } = require('./firestore-fake');
 const { publishVersion } = require('./catalog-publish');
@@ -53,15 +54,32 @@ async function seeded(rid, over = {}) {
     // nothing a customer sees, and a body that carries it would defeat its own etag.
     assert.strictEqual(out.body.seq, undefined, '🔴 seq must not be in the body — it would break etag stability');
 
-    // THE GENERATOR'S OWN OUTPUT, field for field, over the same version.
+    /* THE GENERATOR'S OWN OUTPUT, field for field, over the same version — MINUS THE 1D IDENTITY.
+       D1 lays dish_id/extra_id onto the served body after the projection, so a bare equality here
+       would now fail for the one difference that is supposed to exist. Stripping identity and then
+       demanding equality keeps the original guarantee intact and arguably sharpens it: the served body
+       must differ from the generator's output in EXACTLY that one way and no other. A price, a name, an
+       ordering or a missing record still fails, as before.
+       The strip reuses the browser's own module rather than listing the fields again — one definition
+       of "the identity fields", so a third one added at D2 cannot leave this comparison behind. */
     const viaGenerator = generateFormBundle(rid, await getRestaurantMenu(db, rid));
+    const deIdent = (v) => (Array.isArray(v) ? stripIdentity(v) : v);
     for (const f of Object.keys(viaGenerator)) {
-      assert.deepStrictEqual(out.body[f], viaGenerator[f], `🔴 ${rid}: body.${f} is not the generator's ${f}`);
+      assert.deepStrictEqual(deIdent(out.body[f]), deIdent(viaGenerator[f]),
+        `🔴 ${rid}: body.${f} differs from the generator's ${f} by something OTHER than identity`);
     }
+    /* 🔴 …AND IDENTITY REALLY IS THE DIFFERENCE. Without this the strip above would hide a regression
+       in which the overlay silently stopped running: every comparison would pass, and the served menu
+       would quietly lose the ids D1 exists to add. */
+    assert.ok(out.body.dishes.every((d) => typeof d.dish_id === 'string' && d.dish_id),
+      `🔴 ${rid}: the served dishes carry no dish_id — the overlay did not run`);
+    assert.ok(out.body.extras.every((e) => typeof e.extra_id === 'string' && e.extra_id),
+      `🔴 ${rid}: the served options carry no extra_id`);
+
     // ...and it equals what the committed artifact path produces, so the served menu is the menu.
     const viaBootstrap = generateFormBundle(rid, catalogSnapshot(rid));
-    assert.deepStrictEqual(out.body.dishes, viaBootstrap.dishes, `${rid}: served dishes == the committed bundle's`);
-    assert.deepStrictEqual(out.body.extras, viaBootstrap.extras, `${rid}: served options == the committed bundle's`);
+    assert.deepStrictEqual(stripIdentity(out.body.dishes), viaBootstrap.dishes, `${rid}: served dishes == the committed bundle's`);
+    assert.deepStrictEqual(stripIdentity(out.body.extras), viaBootstrap.extras, `${rid}: served options == the committed bundle's`);
     ok(`${rid}: the body is the generator's output over the live version (${out.body.dishes.length} dishes, ${out.body.extras.length} options)`);
   }
 
@@ -271,7 +289,19 @@ async function seeded(rid, over = {}) {
 
     const one = await buildPublicMenu(twinDb, 'x_pizza', { known, ...active });
     const two = await buildPublicMenu(twinDb, CLONE, { known: new Set([...known, CLONE]), ...active });
-    assert.deepStrictEqual(two.body, one.body, 'premise: the two restaurants really do serve an identical menu');
+    /* 🔴 THE PREMISE, MINUS IDENTITY — and the change is worth naming. Before D1 two restaurants with
+       the same menu served byte-identical bodies, which is what made this cell's point sharp: the
+       etags had to differ for a reason other than the content. They now differ in content too, because
+       ids are per-merchant-unique by construction and each brand minted its own.
+       That makes the etag separation MORE robust, not less, but it would be the wrong lesson to take
+       from a green test — so the premise is asserted on the menus themselves, with identity stripped,
+       and the per-merchant distinctness is asserted separately below rather than relied on. */
+    assert.deepStrictEqual(
+      { ...two.body, dishes: stripIdentity(two.body.dishes), extras: stripIdentity(two.body.extras) },
+      { ...one.body, dishes: stripIdentity(one.body.dishes), extras: stripIdentity(one.body.extras) },
+      'premise: the two restaurants really do serve an identical menu');
+    assert.notDeepStrictEqual(two.body.dishes.map((d) => d.dish_id), one.body.dishes.map((d) => d.dish_id),
+      '🔴 …and their identities are NOT shared — an id is per-merchant, so one brand can never resolve the other\'s object');
     assert.notStrictEqual(two.etag, one.etag,
       '🔴 two restaurants with the same menu share an etag — anything keyed by etag alone would serve one brand the other\'s menu');
     ok(`etag: stable across builds, moves on a display-only change, and separates two restaurants serving an IDENTICAL menu (${a.etag.slice(1, 13)}…)`);

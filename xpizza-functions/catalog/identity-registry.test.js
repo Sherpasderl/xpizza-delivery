@@ -138,7 +138,8 @@ function memFirestore() {
     const gone = await lookupByLegacyKeys(db, { rid: 'x_pizza', kind: 'dish', legacyKeys: ['Temporal'] });
     assert.strictEqual(gone.size, 0, 'the key no longer resolves — the object is retired');
     const idDoc = db._docs.get(`restaurants/x_pizza/identity/dish/ids/${first.canonical_id}`);
-    assert.strictEqual(idDoc.status, 'retired', '🔴 …but the ID ROW REMAINS, reserved');
+    assert.ok(idDoc, '🔴 the ID ROW MUST REMAIN — a deleted row is a freed id, and a freed id is alias reuse');
+    assert.strictEqual(idDoc.status, 'retired', '🔴 …reserved rather than live');
     // …and a new object with the same name gets a DIFFERENT id.
     const again = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Temporal' });
     assert.notStrictEqual(again.canonical_id, first.canonical_id,
@@ -181,6 +182,39 @@ function memFirestore() {
     assert.notStrictEqual(a.canonical_id, b.canonical_id,
       '🔴 keys that a sanitiser would collapse must stay two identities');
     ok('merchant-typed keys round-trip encoded — slashes, dots, accents, length, and near-collisions');
+  }
+
+  // ── 8. 🔴 THE BACKFILL KEYS THROUGH THE PRICING RESOLVER ─────────────────────────────────────
+  /* The registry is only correct if it is keyed the way the MONEY path keys. x_pizza resolves a line
+     by name and la_musa by id — and a backfill that got that backwards would register every object
+     under a key nothing ever looks up: the overlay would then resolve nothing, on both brands, and
+     look exactly like "the backfill has not run yet".
+     Asserted against the real resolver rather than against literals, so if the rule ever moves this
+     fails instead of silently disagreeing with pricing. */
+  {
+    const { liveKeys, dishKey, extraKey } = require('./identity-backfill');
+    const { itemPricingKey } = require('../menu-pricing');
+
+    // A record carrying BOTH an id and a name, so getting the brand backwards is visible.
+    const xDish = { id: 2, name: 'Carnivora' };
+    const lDish = { id: 'dimsum_01', name: 'Sichuan Spicy Wonton' };
+    assert.strictEqual(dishKey('x_pizza', xDish), 'Carnivora', '🔴 x_pizza keys a dish by NAME');
+    assert.strictEqual(dishKey('la_musa', lDish), 'dimsum_01', '🔴 la_musa keys a dish by ID');
+    assert.strictEqual(dishKey('x_pizza', xDish), itemPricingKey(xDish, 'x_pizza'), '…the same answer the money path gives');
+    assert.strictEqual(dishKey('la_musa', lDish), itemPricingKey(lDish, 'la_musa'), '…on both brands');
+
+    // Extras key the way their brand's dishes do — checked in menu-pricing's own extras branches.
+    assert.strictEqual(extraKey('x_pizza', { id: 'e1', name: 'Salsa Roja' }), 'Salsa Roja', '🔴 x_pizza keys an extra by NAME, not its UI handle e1');
+    assert.strictEqual(extraKey('la_musa', { id: 'rice_white', name: 'Arroz Blanco' }), 'rice_white', '🔴 la_musa keys an extra by ID');
+
+    // …and the enumeration dedupes and drops unkeyable records rather than registering junk.
+    const keys = liveKeys('x_pizza', {
+      items: [xDish, { id: 3, name: 'Carnivora' }, { id: 4 }],
+      extras: [{ id: 'e1', name: 'Salsa Roja' }, { id: 'e2' }],
+    });
+    assert.deepStrictEqual(keys.dish, ['Carnivora'], 'duplicates collapse to one identity; an unkeyable record is skipped');
+    assert.deepStrictEqual(keys.extra, ['Salsa Roja']);
+    ok('the backfill keys through the pricing resolver — by NAME on x_pizza, by ID on la_musa, both kinds');
   }
 
   console.log(`\nidentity-registry: ${n} checks passed`);

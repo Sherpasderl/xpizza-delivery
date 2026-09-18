@@ -65,4 +65,21 @@ async function backfillIdentities(db, rid, menu, { now = null } = {}) {
   return report;
 }
 
-module.exports = { backfillIdentities, liveKeys, dishKey, extraKey };
+/* Ensure identities for an explicit key set — what a WRITE path has, as opposed to a menu snapshot.
+   Same engine as the backfill and the same idempotence: an existing key is read and preserved, only a
+   genuinely new one mints. Kept beside the backfill rather than in the registry because it is the same
+   operation the backfill performs, and two functions that must agree about "ensure this set" are one
+   function. */
+async function ensureIdentitiesForKeys(db, rid, keysByKind, { now = null } = {}) {
+  const report = { rid, dish: { total: 0, created: 0, preserved: 0 }, extra: { total: 0, created: 0, preserved: 0 } };
+  for (const kind of ['dish', 'extra']) {
+    for (const legacyKey of [...new Set((keysByKind[kind] || []).filter((k) => typeof k === 'string' && k))]) {
+      const r = await ensureIdentity(db, { rid, kind, legacyKey, now });
+      report[kind].total += 1;
+      report[kind][r.created ? 'created' : 'preserved'] += 1;
+    }
+  }
+  return report;
+}
+
+module.exports = { backfillIdentities, ensureIdentitiesForKeys, liveKeys, dishKey, extraKey };
