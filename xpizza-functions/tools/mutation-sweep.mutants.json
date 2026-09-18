@@ -4966,15 +4966,15 @@
   {
     "id": "d1-13",
     "slice": "d1",
-    "label": "a wholesale key miss reports zeros instead of faulting — the silence that hid the shape bug",
+    "label": "the guard reverts to WHOLESALE — a partial miss skips those records and registers the rest",
     "file": "catalog/identity-backfill.js",
-    "from": "  if (inputCount > 0 && keys.dish.length === 0 && keys.extra.length === 0) {",
-    "to": "  if (false) {",
+    "from": "  const dish = [...new Set(keyed('dish', items, dishKey))];\n  const extra = [...new Set(keyed('extra', extras, extraKey))];",
+    "to": "  const dish = [...new Set(items.map((i) => dishKey(rid, i)).filter(Boolean))];\n  const extra = [...new Set(extras.map((e) => extraKey(rid, e)).filter(Boolean))];\n  if ((items.length + extras.length) > 0 && dish.length === 0 && extra.length === 0) throw new Error(`identity_backfill_unkeyable: ${rid} wholesale`);",
     "command": [
       "node",
       "catalog/identity-registry.test.js"
     ],
-    "kills_with": "reported as a fault"
+    "kills_with": "must fail the backfill, not be skipped"
   },
   {
     "id": "d1-14",

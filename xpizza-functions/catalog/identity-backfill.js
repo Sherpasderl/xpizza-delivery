@@ -48,8 +48,26 @@ const extraKey = (rid, extra) => legacyKeyOf(rid, extra);
 function liveKeys(rid, menu) {
   const items = Array.isArray(menu && menu.items) ? menu.items : [];
   const extras = Array.isArray(menu && menu.extras) ? menu.extras : [];
-  const dish = [...new Set(items.map((i) => dishKey(rid, i)).filter(Boolean))];
-  const extra = [...new Set(extras.map((e) => extraKey(rid, e)).filter(Boolean))];
+  /* 🔴 PER RECORD, NOT PER BATCH. The first guard here fired only when EVERY record failed to key,
+     which catches the shape mismatch that made this whole module a no-op but not the hazard that
+     outlives it: a shape that breaks SOME records. Those were dropped by a `.filter(Boolean)` — the
+     remainder registered cleanly, the report looked healthy, and the gaps were invisible. That is the
+     same defect as the wholesale zero, only quieter and harder to notice, because a partially
+     registered catalog serves ids for most dishes and silently id-less for the rest.
+     So every live record must yield a key or the backfill fails, loudly, naming the record. "Every
+     catalog record gets an id or nobody does" is now a runtime invariant rather than an equality a
+     test happens to check, and a future third record shape fails on record #1 instead of leaving
+     holes. The error keeps its name: identity_backfill_unkeyable is the same fault, found earlier. */
+  const keyed = (kind, records, keyOf) => records.map((rec, i) => {
+    const k = keyOf(rid, rec);
+    if (!k) {
+      const shape = rec && typeof rec === 'object' ? Object.keys(rec).join(',') : typeof rec;
+      throw new Error(`identity_backfill_unkeyable: ${rid} ${kind}[${i}] yields no legacy key — fields were {${shape}}`);
+    }
+    return k;
+  });
+  const dish = [...new Set(keyed('dish', items, dishKey))];
+  const extra = [...new Set(keyed('extra', extras, extraKey))];
   return { dish, extra };
 }
 
@@ -60,16 +78,6 @@ function liveKeys(rid, menu) {
    this is a one-time migration, not a serving path. */
 async function backfillIdentities(db, rid, menu, { now = null } = {}) {
   const keys = liveKeys(rid, menu);
-  /* 🔴 A WHOLESALE MISS IS A SHAPE FAULT, NOT AN EMPTY CATALOG. This is the guard that would have
-     turned the silent zero above into a failure the first time anyone ran it: records went in and not
-     one of them yielded a key, which cannot happen for a real catalog and always means the input is
-     not the shape this function can read. Reported loudly rather than returned as a tidy report of
-     nothing, because "0 registered, no error" is indistinguishable from success at a glance. */
-  const inputCount = (Array.isArray(menu && menu.items) ? menu.items.length : 0)
-    + (Array.isArray(menu && menu.extras) ? menu.extras.length : 0);
-  if (inputCount > 0 && keys.dish.length === 0 && keys.extra.length === 0) {
-    throw new Error(`identity_backfill_unkeyable: ${rid} — ${inputCount} records yielded no legacy keys; the input is not a shape this can read`);
-  }
   const report = { rid, dish: { total: 0, created: 0, preserved: 0 }, extra: { total: 0, created: 0, preserved: 0 }, ids: { dish: {}, extra: {} } };
   for (const kind of ['dish', 'extra']) {
     for (const legacyKey of keys[kind]) {

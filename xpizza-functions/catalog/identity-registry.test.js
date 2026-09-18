@@ -161,13 +161,17 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.strictEqual(extraKey('x_pizza', { id: 'e1', name: 'Salsa Roja' }), 'Salsa Roja', '🔴 x_pizza keys an extra by NAME, not its UI handle e1');
     assert.strictEqual(extraKey('la_musa', { id: 'rice_white', name: 'Arroz Blanco' }), 'rice_white', '🔴 la_musa keys an extra by ID');
 
-    // …and the enumeration dedupes and drops unkeyable records rather than registering junk.
+    /* …and the enumeration dedupes. It used to ALSO drop unkeyable records, and this assertion said
+       so approvingly — a test that had written the defect down as the specification. Dropping them is
+       under-registration with the alarm removed: the survivors register, the report looks healthy, and
+       the skipped objects serve id-less forever. Two objects that key the same really are one
+       identity, so the dedupe stays; a record that keys to nothing is a fault, below. */
     const keys = liveKeys('x_pizza', {
-      items: [xDish, { id: 3, name: 'Carnivora' }, { id: 4 }],
-      extras: [{ id: 'e1', name: 'Salsa Roja' }, { id: 'e2' }],
+      items: [xDish, { id: 3, name: 'Carnivora' }],
+      extras: [{ id: 'e1', name: 'Salsa Roja' }, { id: 'e2', name: 'Salsa Roja' }],
     });
-    assert.deepStrictEqual(keys.dish, ['Carnivora'], 'duplicates collapse to one identity; an unkeyable record is skipped');
-    assert.deepStrictEqual(keys.extra, ['Salsa Roja']);
+    assert.deepStrictEqual(keys.dish, ['Carnivora'], 'duplicates collapse to one identity');
+    assert.deepStrictEqual(keys.extra, ['Salsa Roja'], '…for extras too');
     ok('the backfill keys through the pricing resolver — by NAME on x_pizza, by ID on la_musa, both kinds');
   }
 
@@ -374,6 +378,54 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.strictEqual(other.canonical_id, 'dimsum_02', 'non-vacuity: an unretired slug still grandfathers');
     assert.strictEqual(other.created, true, '…and really is a fresh assignment');
     ok('a retired grandfathered slug is refused by name, not re-issued as a preserved id');
+  }
+
+  // ── ONE UNKEYABLE RECORD IS A FAULT, NOT A SKIP ───────────────────────────────────────────────
+  /* 🔴 THE PARTIAL MISS IS THE HAZARD THAT OUTLIVES THE SHAPE BUG. The wholesale guard caught the
+     failure that made this module a no-op — every record unkeyable — but a future record shape that
+     breaks only SOME records would have slipped straight past it: the rest register, the report reads
+     as success, and the unregistered objects serve id-less with nothing to indicate it. Same defect,
+     quieter. So the guard is per-record, and these are the cases that distinguish the two. */
+  {
+    const db = memFirestore();
+    const good = { key: 'Carnivora', price: 340, display: { id: 2, name: 'Carnivora', price: 340 } };
+
+    // A MIXED batch — the case the wholesale guard could not see, since most records key fine.
+    let threw = null;
+    try {
+      liveKeys('x_pizza', { items: [good, good, { sku: 'X9', price: 100 }], extras: [] });
+    } catch (e) { threw = (e && e.message) || String(e); }
+    assert.ok(threw && /identity_backfill_unkeyable/.test(threw),
+      `🔴 one unkeyable record among keyable ones must fail the backfill, not be skipped (got ${threw})`);
+    assert.ok(/dish\[2\]/.test(threw),
+      `🔴 …and it must name WHICH record, or a third record shape is a hunt rather than a diagnosis (got ${threw})`);
+    assert.ok(/sku,price/.test(threw),
+      `…reporting the fields it actually found, which is what identifies the new shape (got ${threw})`);
+
+    // The same rule on extras, and indexed independently of the dishes.
+    let extraThrew = null;
+    try {
+      liveKeys('x_pizza', { items: [good], extras: [{ name: 'Salsa Roja' }, { sku: 'E9' }] });
+    } catch (e) { extraThrew = (e && e.message) || String(e); }
+    assert.ok(extraThrew && /extra\[1\]/.test(extraThrew),
+      `🔴 an unkeyable EXTRA is the same fault, named by its own index (got ${extraThrew})`);
+
+    // …and it reaches the caller through backfillIdentities, which is where an operator meets it.
+    await assert.rejects(
+      () => backfillIdentities(db, 'x_pizza', { items: [good, { sku: 'X9' }], extras: [] }),
+      /identity_backfill_unkeyable/,
+      '🔴 the backfill refuses a partially unkeyable catalog rather than registering the part it understood');
+
+    /* NON-VACUITY, three ways — otherwise a guard that threw on everything would pass all of the
+       above. A wholly keyable catalog still backfills, an empty one still reports zero, and the real
+       reader is still accepted. */
+    const okReport = await backfillIdentities(db, 'x_pizza', { items: [good], extras: [] });
+    assert.strictEqual(okReport.dish.total, 1, 'non-vacuity: a keyable record still registers');
+    const empty = await backfillIdentities(db, 'x_pizza', { items: [], extras: [] });
+    assert.strictEqual(empty.dish.total, 0, 'non-vacuity: an empty catalog still reports zero without throwing');
+    const real = liveKeys('la_musa', catalogSnapshot('la_musa'));
+    assert.strictEqual(real.dish.length, 44, 'non-vacuity: the REAL reader passes the per-record guard on every record');
+    ok('one unkeyable record fails the backfill by name and index — a partial miss is not a silent skip');
   }
 
   console.log(`\nidentity-registry: ${n} checks passed`);
