@@ -5123,5 +5123,44 @@
       "../cart-identity.test.mjs"
     ],
     "kills_with": "the NESTED option carries extra_id"
+  },
+  {
+    "id": "d2-07",
+    "slice": "d2",
+    "label": "🔴 the PAGE's inline fallback goes shallow — a module-load failure reopens the nested-extra friction",
+    "file": "../xpizza-orders/index.html",
+    "from": "            if (j === 'extra_id') continue;",
+    "to": "            if (false) continue;",
+    "command": [
+      "node",
+      "../cart-identity.test.mjs"
+    ],
+    "kills_with": "the inline fallback is not projecting"
+  },
+  {
+    "id": "d2-08",
+    "slice": "d2",
+    "label": "🔴 account.js's inline fallback goes shallow — the reward send is blocked when the module fails to load",
+    "file": "../xpizza-orders/account.js",
+    "from": "                  for (var j in ex) { if (Object.prototype.hasOwnProperty.call(ex, j) && j !== 'extra_id') e[j] = ex[j]; }",
+    "to": "                  for (var j in ex) { if (Object.prototype.hasOwnProperty.call(ex, j)) e[j] = ex[j]; }",
+    "command": [
+      "node",
+      "../cart-identity.test.mjs"
+    ],
+    "kills_with": "account.js's inline fallback is not projecting"
+  },
+  {
+    "id": "d2-09",
+    "slice": "d2",
+    "label": "🔴 an id VALUE leaks into items_text — hashed by two server bindings and printed on the KDS ticket",
+    "file": "../xpizza-orders/index.html",
+    "from": "      return `${qty[p.id]}x ${p.name} (L${p.price})${extrasStr2}`;",
+    "to": "      return `${qty[p.id]}x ${p.name} (L${p.price})${extrasStr2}${p.dish_id?' '+p.dish_id:''}`;",
+    "command": [
+      "node",
+      "../cart-identity-order.test.mjs"
+    ],
+    "kills_with": "is in items_text"
   }
 ]

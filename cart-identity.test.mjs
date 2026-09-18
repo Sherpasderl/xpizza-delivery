@@ -319,6 +319,70 @@ const sigsOf = (w) => ({
         `${dir}/transition: the cart's legacy content is unchanged across the apply`);
       ok(`${dir}: a backfill landing mid-order changes no signature — B, C, D and cartSig all hold`);
     }
+
+    // ── 10. THE RESUME/RELOAD TRANSITION — IN-MEMORY STATE GONE, CART REBUILT ─────────────────
+    /* The other two lifecycle paths the spec names. Both ALREADY re-quote pre-D2 — a reload starts the
+       token store empty (form-confirm-quote) and drops the saved reward quote (account.js), and a full
+       restore calls restoreRedeem and re-quotes even within a live page. So the claim is NOT that
+       nothing happens; it is that identity adds nothing ON TOP.
+       Modelled by rebuilding the same cart on a FRESH page, which is what a reload leaves you with,
+       and demanding its signatures equal the id-less page's. If identity had leaked into any of them,
+       the rebuilt page would disagree with its own pre-backfill self and the customer would meet a
+       token that will not attach on top of the re-quote they already expected. */
+    {
+      const reloaded = await pageWithCart(dir, { dishIds: true, extraIds: true });
+      const after = sigsOf(reloaded.w);
+      assert.strictEqual(after.B, base.B, `${dir}/reload: 🔴 the rebuilt cart's token signature differs from its pre-backfill self`);
+      assert.strictEqual(after.C, base.C, `${dir}/reload: 🔴 …and the reward-freshness signature, which gates SENDING`);
+      assert.strictEqual(after.D, base.D, `${dir}/reload: 🔴 …and the quote key`);
+      assert.strictEqual(reloaded.w.cartSig(), none.w.cartSig(),
+        `${dir}/reload: 🔴 cartSig differs — the resumed customer would be given a NEW order_id`);
+
+      /* THE FULL-RESTORE HALF: restoreRedeem + requoteRedeem are what restoreOrderForm drives, and
+         redeemSig is stamped against the items it was quoted for. Driven through the module's own
+         writers rather than hand-stamped, so what is compared is the state the app derives. */
+      const acct = reloaded.w.__ACCOUNT;
+      if (acct && typeof acct.restoreRedeem === 'function') {
+        const items = reloaded.w.redeemCartItems();
+        acct.restoreRedeem(null, null, null);
+        await settle();
+        const stamped = acct.redeemSig(items, null, 'v1');
+        const legacyStamped = none.w.__ACCOUNT.redeemSig(none.w.redeemCartItems(), null, 'v1');
+        assert.strictEqual(stamped, legacyStamped,
+          `${dir}/full-restore: 🔴 the re-stamped reward signature differs from the id-less one — the send would be blocked after a restore`);
+      }
+      ok(`${dir}: a reload/restore rebuild produces identical B, C, D and cartSig — no friction beyond the re-quote that always fires`);
+    }
+
+    // ── 11. THE INLINE FALLBACK IS DEEP TOO — MODULE GONE, NESTED EXTRA PRESENT ───────────────
+    /* 🔴 THE FALLBACK IS A SECOND IMPLEMENTATION, SO IT GETS THE SAME TRAP. If the page's and
+       account.js's inline projections were shallow, a module-load failure on a cart with an option —
+       which is most carts — would reopen exactly the friction the deep projection closes, and only
+       for the customers unlucky enough to hit the 404. Driven end-to-end with the module omitted:
+       every signature must still match the id-less baseline. */
+    {
+      const w = loadForm(dir, { omit: ['form-identity-strip.js'] });
+      assert.strictEqual(typeof w.legacyCartForSig, 'undefined', `${dir}/no-module: premise — the module is absent`);
+      const prepared = w.liveMenuPrepare(bodyFor(dir, w, { dishIds: true, extraIds: true }));
+      w.liveMenuGlobalSet('MENU', prepared.MENU);
+      w.liveMenuGlobalSet('EXTRAS', prepared.EXTRAS);
+      await settle();
+      const d = prepared.MENU.find((x) => x.price > 0);
+      w.chg(d.id, 1);
+      await settle();
+      w.toggleDetailExtra(prepared.EXTRAS[0].id, d.id, 0);
+      await settle();
+
+      const emitted = w.redeemCartItems();
+      assert.ok(emitted[0].dish_id && emitted[0].extras[0].extra_id,
+        `${dir}/no-module: premise — the cart still CARRIES both ids (emission does not depend on the module)`);
+      const got = sigsOf(w);
+      assert.strictEqual(got.B, base.B, `${dir}/no-module: 🔴 B moved — the inline fallback is not projecting`);
+      assert.strictEqual(got.C, base.C, `${dir}/no-module: 🔴 C moved — account.js's inline fallback is not projecting`);
+      assert.strictEqual(got.D, base.D, `${dir}/no-module: 🔴 D moved`);
+      ok(`${dir}: with the module missing, the inline fallbacks still project DEEP — B, C and D all hold`);
+    }
+
   }
 
   console.log(`\ncart-identity: ${count()} checks passed across both forms`);
