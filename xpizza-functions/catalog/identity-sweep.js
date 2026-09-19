@@ -24,27 +24,39 @@ const keysColOf = (db, rid, kind) => db.collection('restaurants').doc(rid).colle
 /* One brand, one kind. Returns what it found and what it repaired, so the caller can log a number
    rather than a shrug — a sweep that reports nothing is indistinguishable from a sweep that did not
    run, which is the same reporting lesson D3 taught. */
-async function sweepIdentityIntegrity(fs, rid, kind, { limit = 500, now = () => new Date().toISOString() } = {}) {
+async function sweepIdentityIntegrity(fs, rid, kind, { pageSize = 500, limit = null, now = () => new Date().toISOString() } = {}) {
   const report = { rid, kind, scanned: 0, orphans: 0, repaired: 0, conflicts: 0, errors: 0 };
-  let snap;
+  const size = Math.max(1, Number(limit || pageSize) || 500);
+
+  /* 🔴 EVERY PAGE, NOT THE FIRST ONE. This used to read the collection once and slice to 500. Two
+     things were wrong with that and both are silent: an orphan past the cut was never repaired on ANY
+     run — not "later", never, because every run cut at the same place — and, worse, the slice happened
+     BEFORE conflict grouping, so a key whose two live claimants straddled the boundary looked like a
+     single clean claimant and would have been "repaired" toward whichever side landed first. That is
+     the arbitration this file exists to refuse, reached by way of a pagination bug. The full live set
+     is gathered first; only then is anything grouped or decided. */
+  const byKey = new Map();
   try {
-    snap = await idsColOf(fs, rid, kind).where('status', '==', STATUS_LIVE).get();
+    let last = null;
+    for (;;) {
+      let q = idsColOf(fs, rid, kind).where('status', '==', STATUS_LIVE).orderBy('__name__').limit(size);
+      if (last) q = q.startAfter(last);
+      const snap = await q.get();
+      const docs = (snap && snap.docs) ? snap.docs : [];
+      if (!docs.length) break;
+      for (const d of docs) {
+        const data = d.data() || {};
+        if (typeof data.legacy_key !== 'string' || !data.legacy_key) continue;
+        if (!byKey.has(data.legacy_key)) byKey.set(data.legacy_key, []);
+        byKey.get(data.legacy_key).push(d.id);
+      }
+      report.scanned += docs.length;
+      last = docs[docs.length - 1];
+      if (docs.length < size) break;
+    }
   } catch (_e) {
     report.errors += 1;
     return report;
-  }
-  const docs = (snap && snap.docs ? snap.docs : []).slice(0, limit);
-  report.scanned = docs.length;
-
-  /* Group by legacy key first, so a key claimed by TWO live ids is recognised as a conflict rather
-     than repaired twice — the second repair would silently overwrite the first and pick a winner,
-     which is exactly the arbitration the writer guard refuses to do. */
-  const byKey = new Map();
-  for (const d of docs) {
-    const data = d.data() || {};
-    if (typeof data.legacy_key !== 'string' || !data.legacy_key) continue;
-    if (!byKey.has(data.legacy_key)) byKey.set(data.legacy_key, []);
-    byKey.get(data.legacy_key).push(d.id);
   }
 
   for (const [legacyKey, ids] of byKey) {
@@ -56,14 +68,32 @@ async function sweepIdentityIntegrity(fs, rid, kind, { limit = 500, now = () => 
       continue;                                   // reported, never arbitrated
     }
     const canonicalId = ids[0];
+    if (typeof canonicalId !== 'string' || !canonicalId) { report.errors += 1; continue; }
     const keyRef = keysColOf(fs, rid, kind).doc(encodeKey(legacyKey));
+    const idRef = idsColOf(fs, rid, kind).doc(canonicalId);
     try {
       const repaired = await fs.runTransaction(async (tx) => {
-        /* Re-read inside the transaction: the scan above is a snapshot, and by now an ordinary
-           ensureIdentity may already have adopted this orphan. Repairing on the scan's word would
-           overwrite a fresher row with a stale one. */
-        const cur = await tx.get(keyRef);
-        if (cur.exists && (cur.data() || {}).canonical_id) return false;   // healthy, or already healed
+        /* 🔴 RE-READ BOTH SIDES, NOT JUST THE ROW BEING WRITTEN. The scan is a snapshot and this
+           transaction runs later; between them the claimant can be retired, re-keyed, or joined by a
+           second live id. Checking only the reverse row meant the sweep would faithfully restore a
+           pointer to an id that had since been RETIRED — and because the key row is the registry's
+           fast path, the very next ensureIdentity would hand that reserved id back out as if it were
+           current. An integrity job that can resurrect a retired identity is worse than no integrity
+           job, so the claimant must still be exactly what the scan saw. */
+        const [curKey, curId] = await Promise.all([tx.get(keyRef), tx.get(idRef)]);
+
+        /* MISSING ROW ONLY. The old guard skipped a row that already held a canonical_id, which reads
+           as "don't clobber a healthy row" but leaves the complement: a row that EXISTS with a falsy
+           or absent canonical_id was fair game to overwrite. Repairing is for a row that is not there;
+           a row that is there and malformed is a different fault, and quietly rewriting it would
+           destroy the evidence of it. */
+        if (curKey.exists) return false;
+
+        const d = curId.exists ? (curId.data() || {}) : null;
+        if (!d) return false;                               // the claimant vanished after the scan
+        if (d.status !== STATUS_LIVE) return false;         // retired in between — never revive it
+        if (d.legacy_key !== legacyKey) return false;       // re-keyed in between — no longer this object's
+
         tx.set(keyRef, { canonical_id: canonicalId, kind, created_at: now(), repaired_at: now() });
         return true;
       });

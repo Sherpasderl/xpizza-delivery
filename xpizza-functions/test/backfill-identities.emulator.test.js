@@ -282,6 +282,54 @@ const clearRegistry = async (rid) => {
   }
 
 
+  // ── 5c. 🔴 THE POST-APPLY VERIFY LINE IS A LOOKUP, NOT AN ECHO OF THE REPORT ────────────────
+  /* THE DISCRIMINATOR 5b USED TO CARRY, RESTORED ON A STATE D4 DOES NOT HEAL. The verify line exists
+     because the report says what this PROCESS believes it did, while the lookup says what the DATABASE
+     now holds — and the operator's whole decision ("re-run until it says complete") rests on the second
+     being independently read. If it were ever replaced by the report's own totals it would print a
+     confident 44/44 over a registry missing rows, and the runbook's re-run instruction would loop an
+     operator forever against a green light.
+     🔴 WHY NOT 5b's OLD STAGING: deleting a key row beside a LIVE id row is now adopted and healed by
+     D4's writer guard, so report and database agree afterwards and nothing diverges. This stages the
+     one shape that still slips through both: an id row whose legacy_key matches but whose status is
+     NEITHER live NOR retired — a partial write or a schema drift. Adoption skips it (it queries
+     status==live), and for a grandfathered brand the mint path then finds the slug already registered
+     to this very object and returns `preserved` WITHOUT writing the reverse row. So the report counts
+     44 and the registry resolves 43, and only a real lookup can tell. Cell 3's 21-vs-24 proves the
+     PRE-APPLY dry-run lookup; this proves the POST-APPLY one, which is a different read on a different
+     line and was left unguarded when 5b was repurposed. */
+  {
+    const rid = 'la_musa';
+    const victim = KEYS.la_musa.dish[2];
+    const dishCol = db.collection('restaurants').doc(rid).collection('identity').doc('dish');
+    const keyRef = dishCol.collection('keys').doc(encodeKey(victim));
+    const held = await keyRef.get();
+    assert.ok(held.exists, `premise — ${victim} is registered`);
+    const canonicalId = held.data().canonical_id;
+    const total = KEYS.la_musa.dish.length;
+
+    // The corruption: the id row survives with a status that is neither live nor retired, and the
+    // reverse row is gone. Written directly, because no code path produces it deliberately.
+    await dishCol.collection('ids').doc(canonicalId).set({ legacy_key: victim, status: 'pending', kind: 'dish', created_at: 'x' });
+    await keyRef.delete();
+
+    const r = runCli(['--rid=' + rid, '--project', PROJECT, '--apply']);
+    assert.strictEqual(r.code, 1,
+      `🔴 the CLI reported SUCCESS over a registry that is short a row — the verify line is echoing the report: ${r.out}`);
+    assert.ok(new RegExp(`verified: ${total - 1}/${total} dishes`).test(r.out),
+      `🔴 the verify line must read ${total - 1}/${total} from the DATABASE — got: ${r.out}`);
+    assert.ok(/dish: 44 total/.test(r.out) || new RegExp(`dish: ${total} total`).test(r.out),
+      `premise — the REPORT still claims all ${total}, which is exactly what an echo would have printed: ${r.out}`);
+    assert.ok(/INCOMPLETE/.test(r.out), 'and the operator is told to re-run rather than shown a green light');
+
+    // Leave the registry whole for the cells below: restore the row the corruption removed.
+    await dishCol.collection('ids').doc(canonicalId).set({ legacy_key: victim, status: 'live', kind: 'dish', created_at: 'x' });
+    const back = runCli(['--rid=' + rid, '--project', PROJECT, '--apply']);
+    assert.strictEqual(back.code, 0, `the repaired registry verifies clean again: ${back.out}`);
+    assert.ok(new RegExp(`verified: ${total}/${total} dishes`).test(back.out), 'and now the lookup itself says complete');
+    ok(`${rid}: the POST-APPLY verify reads the database — a report claiming ${total} over a ${total - 1}-row registry exits 1`);
+  }
+
   // ── 6. 🔴 THE PROJECT GUARD REFUSES BEFORE IT READS ANYTHING ─────────────────────────────────
   /* Three refusals, each for its own rule, and each asserted to have touched nothing. The row count is
      taken before and after: a guard that refuses AFTER connecting is not the guard the runbook

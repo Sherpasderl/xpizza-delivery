@@ -46,21 +46,47 @@ function memFirestore() {
     };
     return self;
   };
-  function makeQuery(base, filters) {
+  /* 🔴 ORDER, CURSOR AND CAP ARE MODELLED, NOT WAVED THROUGH. The sweep paginates with
+     orderBy('__name__') + limit + startAfter, and a fake that ignored any of the three would hand it
+     the whole collection in one page — so a pagination bug (or its absence) would be invisible here
+     and only ever show up against the real engine. Real Firestore also refuses a cursor with no
+     ordering to anchor it, so that refuses here too rather than quietly guessing an order. */
+  function makeQuery(base, filters, order = null, cap = null, after = null) {
     return {
       where: (field, op, value) => {
         if (op !== '==') throw new Error(`memFirestore: only '==' filters are modelled (got ${op})`);
-        return makeQuery(base, filters.concat([[field, value]]));
+        return makeQuery(base, filters.concat([[field, value]]), order, cap, after);
+      },
+      orderBy: (field, dir = 'asc') => {
+        if (field !== '__name__') throw new Error(`memFirestore: only orderBy('__name__') is modelled (got ${field})`);
+        if (dir !== 'asc') throw new Error(`memFirestore: only ascending order is modelled (got ${dir})`);
+        return makeQuery(base, filters, '__name__', cap, after);
+      },
+      limit: (n) => makeQuery(base, filters, order, n, after),
+      startAfter: (snap) => {
+        if (!order) throw new Error('memFirestore: startAfter needs an orderBy to anchor the cursor');
+        const id = snap && typeof snap === 'object' ? snap.id : snap;
+        if (typeof id !== 'string' || !id) throw new Error('memFirestore: startAfter needs a document snapshot');
+        return makeQuery(base, filters, order, cap, id);
       },
       _isQuery: true, _base: base, _filters: filters,
       get: async () => {
-        const out = [];
+        let out = [];
         for (const [path, val] of docs) {
           if (!path.startsWith(`${base}/`)) continue;
           if (path.slice(base.length + 1).includes('/')) continue;      // immediate children only
           if (!filters.every(([f, v]) => val && val[f] === v)) continue;
-          out.push({ id: path.split('/').pop(), exists: true, data: () => val });
+          /* Point-in-time, like the document read: a snapshot that re-read the live map would make an
+             in-flight mutation unstageable and hide every scan-then-act race. */
+          const frozen = JSON.parse(JSON.stringify(val));
+          out.push({ id: path.split('/').pop(), exists: true, data: () => frozen });
         }
+        if (order === '__name__') out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+        if (after !== null) {
+          if (order !== '__name__') throw new Error('memFirestore: a cursor without an order');
+          out = out.filter((d) => d.id > after);
+        }
+        if (cap !== null) out = out.slice(0, cap);
         return { docs: out, empty: out.length === 0, size: out.length };
       },
     };

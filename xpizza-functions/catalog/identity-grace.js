@@ -20,7 +20,7 @@
 // stage does not make the id authoritative: enforce would refuse a renamed dish. Rename-stability is
 // its own later stage.
 // ---------------------------------------------------------------------------
-const { resolveLegacyByIds } = require('./identity-registry');
+const { resolveAcrossKinds } = require('./identity-registry');
 
 /* The RAW legacy accessor, duplicated here deliberately and for one reason: the agreement check must
    compare against what the client actually sent, computed BEFORE anything is stamped. Calling
@@ -60,15 +60,15 @@ async function applyGraceResolution(fs, rid, items, { stamp, timeoutMs, maxLooku
     const byKind = { dish: [], extra: [] };
     for (const o of carrying) byKind[o.kind].push(o.id);
 
-    const results = {};
-    let incomplete = false;
-    for (const kind of ['dish', 'extra']) {
-      if (!byKind[kind].length) { results[kind] = new Map(); continue; }
-      const r = await resolveLegacyByIds(fs, rid, kind, byKind[kind], { timeoutMs, maxLookups });
-      results[kind] = r.byId;
-      if (r.incomplete) incomplete = true;
-    }
-    coverage.incomplete = incomplete;
+    /* 🔴 ONE CALL, SO ONE DEADLINE AND ONE BUDGET COVER THE WHOLE ORDER. Resolving dish and extra in
+       sequence gave each kind its own fresh 800ms clock and its own fresh 40-read allowance, so a
+       mixed cart could add ~1.6s to a charge and issue 80 reads while still reporting itself COMPLETE.
+       The bounds are the ORDER's, so the resolution has to be the order's too. */
+    const groups = [];
+    for (const kind of ['dish', 'extra']) if (byKind[kind].length) groups.push({ kind, ids: byKind[kind] });
+    const r = await resolveAcrossKinds(fs, rid, groups, { timeoutMs, maxLookups });
+    const results = { dish: r.byKind.get('dish') || new Map(), extra: r.byKind.get('extra') || new Map() };
+    coverage.incomplete = r.incomplete;
 
     for (const o of carrying) {
       const got = results[o.kind].get(o.id) || { outcome: 'read_error', reason: 'missing_result' };

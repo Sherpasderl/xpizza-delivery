@@ -127,6 +127,16 @@ async function ensureIdentity(db, { rid, kind, legacyKey, now = null, shouldStop
        historical orders unresolvable and would hide the corruption. It refuses and reports. */
     const orphan = await findOrphanedLiveId(tx, db, rid, kind, legacyKey);
     if (orphan) {
+      /* 🔴 THE ADOPTION IS A WRITE, SO IT OWES THE SAME ABANDONMENT CHECK THE MINT DOES. This path
+         returned before ever reaching the deadline check below, so a slow orphan query could commit an
+         adoption minutes after the publisher's deadline had passed and it had already reported the key
+         unregistered — the exact late-write the shouldStop discipline exists to make impossible. The
+         check sits here, after every read and immediately before the write, so aborting is free:
+         Firestore commits nothing and the object simply stays unregistered for the next run. It is
+         re-evaluated on every transaction RETRY for the same reason. */
+      if (typeof shouldStop === 'function' && shouldStop()) {
+        throw new Error(`identity_abandoned: ${rid}/${kind}/${legacyKey} — the caller's deadline passed before this transaction wrote`);
+      }
       tx.set(keyRef, { canonical_id: orphan, kind, created_at: stamp, adopted_at: stamp });
       return { canonical_id: orphan, created: false, adopted: true };
     }
@@ -244,85 +254,108 @@ function cacheSet(key, value) {
   _resolveCache.set(key, value);
 }
 
-async function resolveLegacyByIds(fs, rid, kind, ids, opts = {}) {
+/* 🔴 ONE ORDER, ONE DEADLINE, ONE BUDGET — ACROSS EVERY KIND. This used to be called once per kind,
+   which quietly made both bounds per-KIND: a mixed cart got 800ms for its dishes and then a FRESH
+   800ms for its extras, so the worst case it could add to a charge was ~1.6s rather than the 800ms the
+   constant advertises; and it got 40 reads for dishes and another 40 for extras, so an 80-read order
+   reported itself COMPLETE. A latency bound that multiplies by the number of kinds is not a bound, and
+   a budget that does the same is not a budget. Both now live here, once, over the combined set.
+
+   🔴 AND THE DEADLINE DISCARDS LATE WORK. Firestore cannot cancel a read, so after the race settles
+   the workers are still alive. Previously they kept going: starting further QUEUED reads, writing
+   their answers into the result map the caller had already been handed, and populating the cache — so
+   an id reported `read_error` could later turn `resolved` behind the caller's back, and the next
+   request could be served a cache entry written by a read nobody was waiting for. `settled` is checked
+   before a worker takes new work and again before it records anything, so past the deadline the batch
+   is inert: no new read, no mutation, no cache write. */
+async function resolveAcrossKinds(fs, rid, groups, opts = {}) {
   const {
     timeoutMs = RESOLVE_TIMEOUT_MS,
     maxLookups = RESOLVE_MAX_LOOKUPS,
     concurrency = RESOLVE_CONCURRENCY,
     now = Date.now,
   } = opts;
-  const byId = new Map();
+  const byKind = new Map();
+  const mapFor = (kind) => { if (!byKind.has(kind)) byKind.set(kind, new Map()); return byKind.get(kind); };
+  const wanted = Array.isArray(groups) ? groups : [];
   let incomplete = false;
   try {
-    assertKind(kind);
-    const wanted = [...new Set((Array.isArray(ids) ? ids : []).filter((x) => x !== undefined && x !== null))];
-    if (!wanted.length) return { byId, incomplete: false };
-
     const toRead = [];
-    for (const id of wanted) {
-      if (!validIdShape(id)) { byId.set(id, { outcome: 'unresolved', reason: 'invalid_id' }); continue; }
-      const ck = `${rid}/${kind}/${id}`;
-      const hit = cacheGet(ck, now());
-      if (hit) { byId.set(id, { outcome: hit.outcome, legacyKey: hit.legacyKey, reason: hit.reason }); continue; }
-      toRead.push(id);
+    for (const g of wanted) {
+      assertKind(g.kind);
+      const m = mapFor(g.kind);
+      const distinct = [...new Set((Array.isArray(g.ids) ? g.ids : []).filter((x) => x !== undefined && x !== null))];
+      for (const id of distinct) {
+        if (!validIdShape(id)) { m.set(id, { outcome: 'unresolved', reason: 'invalid_id' }); continue; }
+        const hit = cacheGet(`${rid}/${g.kind}/${id}`, now());
+        if (hit) { m.set(id, { outcome: hit.outcome, legacyKey: hit.legacyKey, reason: hit.reason }); continue; }
+        toRead.push({ kind: g.kind, id });
+      }
     }
+    if (!toRead.length) return { byKind, incomplete: false };
 
-    /* 🔴 THE BUDGET IS WHAT ACTUALLY BOUNDS LOAD. Deduping and Promise.all-ing bounds nothing — a cart
-       with two hundred distinct ids issues two hundred reads at once, on the charge path. Beyond the
-       cap the remainder is treated as read_error (so it degrades to grace like any other operational
-       failure) and the order's coverage is marked INCOMPLETE, so the heartbeat does not count a
-       partially-resolved order as clean evidence for enforce. */
+    /* The budget is spent in arrival order over the WHOLE order, so a cart full of dishes cannot
+       starve its extras of a separate allowance it was never entitled to. */
     const within = toRead.slice(0, maxLookups);
-    for (const id of toRead.slice(maxLookups)) {
-      byId.set(id, { outcome: 'read_error', reason: 'budget_exceeded' });
+    for (const { kind, id } of toRead.slice(maxLookups)) {
+      mapFor(kind).set(id, { outcome: 'read_error', reason: 'budget_exceeded' });
       incomplete = true;
     }
 
     if (within.length) {
-      const startedAt = now();          // the anchor for every entry cached from this batch
-      const col = idsColOf(fs, rid, kind);
+      const startedAt = now();            // the anchor for every entry cached from this batch
+      let settled = false;
       let cursor = 0;
       const worker = async () => {
         while (cursor < within.length) {
-          const id = within[cursor++];
-          const snap = await col.doc(id).get();
+          if (settled) return;            // past the deadline: start no further queued read
+          const { kind, id } = within[cursor++];
+          const snap = await idsColOf(fs, rid, kind).doc(id).get();
+          if (settled) return;            // a late answer records nothing — not the map, not the cache
           const d = snap && snap.exists ? (snap.data() || {}) : null;
           let entry;
           if (!d) entry = { outcome: 'unresolved', reason: 'absent' };
           else if (d.status === STATUS_RETIRED) entry = { outcome: 'unresolved', reason: 'retired' };
           else if (typeof d.legacy_key !== 'string' || !d.legacy_key) entry = { outcome: 'unresolved', reason: 'no_legacy_key' };
           else entry = { outcome: 'resolved', legacyKey: d.legacy_key };
-          byId.set(id, entry);
+          mapFor(kind).set(id, entry);
           cacheSet(`${rid}/${kind}/${id}`, { ...entry, readStartedAt: startedAt });
         }
       };
       const runners = Array.from({ length: Math.min(concurrency, within.length) }, worker);
 
-      /* The deadline bounds when this RESULT settles. It does not cancel the reads — Firestore has no
-         cancellation — so a late read finishes, harmlessly, and reports nothing: whatever it would
-         have said arrives after the answer was already given, and acting on it would mean a
-         post-response effect on a charge path. */
       let timer = null;
       const deadline = new Promise((resolve) => { timer = setTimeout(() => resolve('__timeout__'), timeoutMs); });
       const outcome = await Promise.race([Promise.all(runners).then(() => '__done__'), deadline]);
       if (timer) clearTimeout(timer);
       if (outcome === '__timeout__') {
-        for (const id of within) {
-          if (!byId.has(id)) { byId.set(id, { outcome: 'read_error', reason: 'timeout' }); incomplete = true; }
+        settled = true;                   // set BEFORE filling in, so no worker can race the verdict
+        for (const { kind, id } of within) {
+          const m = mapFor(kind);
+          if (!m.has(id)) { m.set(id, { outcome: 'read_error', reason: 'timeout' }); incomplete = true; }
         }
       }
     }
-    return { byId, incomplete };
+    return { byKind, incomplete };
   } catch (e) {
     /* 🔴 A FAILURE IS read_error FOR EVERY ID IT COULD NOT ANSWER — never `unresolved`. The difference
        is invisible under grace and decisive under enforce: unresolved means "there is no such live
        object", which is grounds to refuse; read_error means "I could not find out", which never is.
        Ids already answered from cache keep their answers. */
-    for (const id of (Array.isArray(ids) ? ids : [])) {
-      if (!byId.has(id)) byId.set(id, { outcome: 'read_error', reason: 'exception' });
+    for (const g of wanted) {
+      const m = mapFor(g.kind);
+      for (const id of (Array.isArray(g.ids) ? g.ids : [])) if (!m.has(id)) m.set(id, { outcome: 'read_error', reason: 'exception' });
     }
-    return { byId, incomplete: true };
+    return { byKind, incomplete: true };
   }
+}
+
+/* The single-kind entry point, kept because a caller resolving one kind should not have to phrase it
+   as a group. It is a thin wrapper so there is exactly ONE implementation of the budget, the deadline
+   and the late-work discipline — two copies of those would drift, and the drift would be silent. */
+async function resolveLegacyByIds(fs, rid, kind, ids, opts = {}) {
+  const { byKind, incomplete } = await resolveAcrossKinds(fs, rid, [{ kind, ids }], opts);
+  return { byId: byKind.get(kind) || new Map(), incomplete };
 }
 
 // Test-only: the cache is per-instance and long-lived, which a test must be able to reset.
@@ -431,7 +464,7 @@ async function validateClaim(db, { rid, kind, legacyKey, claimedId }) {
 
 module.exports = {
   ensureIdentity, lookupByLegacyKeys, retireIdentity, validateClaim, classifyClaim,
-  resolveLegacyByIds, validIdShape, _resetResolveCache, findOrphanedLiveId,
+  resolveLegacyByIds, resolveAcrossKinds, validIdShape, _resetResolveCache, findOrphanedLiveId,
   RESOLVE_TIMEOUT_MS, RESOLVE_CACHE_TTL_MS, RESOLVE_MAX_LOOKUPS,
   encodeKey, randomToken, proposeId, isGrandfathered, GRANDFATHERED, idsColOf, keysColOf,
   KINDS, STATUS_LIVE, STATUS_RETIRED, ID_LEN, ALPHABET,

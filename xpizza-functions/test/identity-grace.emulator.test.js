@@ -303,6 +303,39 @@ function countingFs() {
     ok(`${rid}: ${over} ids issue exactly ${reads()} reads; the ${overflow} overflow are read_error and the coverage is INCOMPLETE`);
   }
 
+  // ── 10. 🔴 THE SWEEP'S CURSOR ACTUALLY ADVANCES ON THE REAL ENGINE ───────────────────────────
+  /* The sweep now walks every page with orderBy('__name__') + startAfter(snapshot). Whether that
+     cursor advances is a FIRESTORE question, not one about our code, and it fails in two directions
+     that a model store would not show: a cursor that never advances turns the `for(;;)` into an
+     infinite loop on a scheduled function, and one that over-skips silently drops the orphans it was
+     added to reach. Both are worse than the single-page bug this replaced, so the traversal is proven
+     against the engine that will actually run it — with a page size far smaller than the data, so the
+     pagination is genuinely exercised rather than completing in one page by accident. */
+  {
+    const rid = 'la_musa', kind = 'extra';
+    const keys = Array.from({ length: 7 }, (_, i) => `page_probe_${i}`);
+    const minted = [];
+    for (const k of keys) minted.push((await ensureIdentity(db, { rid, kind, legacyKey: k })).canonical_id);
+
+    // Orphan every other one, so repairs are spread across several pages rather than sitting in the first.
+    const orphaned = keys.filter((_, i) => i % 2 === 0);
+    for (const k of orphaned) await keyRowOf(rid, kind, k).delete();
+
+    const r = await sweepIdentityIntegrity(db, rid, kind, { pageSize: 2 });
+    assert.ok(r.scanned >= keys.length,
+      `🔴 the cursor did not traverse the collection — scanned ${r.scanned} of at least ${keys.length} live rows`);
+    assert.strictEqual(r.repaired, orphaned.length,
+      `🔴 ${r.repaired} of ${orphaned.length} orphans repaired across ${Math.ceil(r.scanned / 2)} pages — a cursor that over-skips drops exactly this`);
+    for (const k of orphaned) {
+      const row = await keyRowOf(rid, kind, k).get();
+      assert.ok(row.exists, `🔴 ${k} was never visited — it sits past the first page`);
+      assert.strictEqual(row.data().canonical_id, minted[keys.indexOf(k)], `${k} repaired to its own id`);
+    }
+    const again = await sweepIdentityIntegrity(db, rid, kind, { pageSize: 2 });
+    assert.strictEqual(again.repaired, 0, 'and the paginated re-run is still a no-op');
+    ok(`${rid}: the cursor walks all ${r.scanned} live rows in pages of 2 and repairs every one of the ${orphaned.length} orphans`);
+  }
+
   FINISHED = true;
   console.log(`identity-grace(emulator): OK (${n})`);
   process.exit(0);

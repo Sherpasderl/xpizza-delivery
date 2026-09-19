@@ -11,7 +11,7 @@
  */
 const assert = require('assert');
 const { applyGraceResolution, resolveGraceKeys, reportForwardCoverage, rawLegacyKey } = require('./identity-grace');
-const { resolveLegacyByIds, validIdShape, _resetResolveCache, ensureIdentity, retireIdentity,
+const { resolveLegacyByIds, resolveAcrossKinds, validIdShape, _resetResolveCache, ensureIdentity, retireIdentity,
   RESOLVE_CACHE_TTL_MS, RESOLVE_MAX_LOOKUPS } = require('./identity-registry');
 const { sweepIdentityIntegrity } = require('./identity-sweep');
 const { memFirestore } = require('./identity-fixture');
@@ -409,6 +409,193 @@ const withIds = (rid, ids) => {
     const works = await resolveGraceKeys(() => memFirestore(), 'x_pizza', CART.x_pizza(), { stamp: PRICING_KEY_STAMP });
     assert.strictEqual(works.coverage.incomplete, false, 'non-vacuity: a working getter resolves normally');
     ok('a throwing handle getter degrades to grace and is marked incomplete, never thrown');
+  }
+
+  // ── 12. 🔴 ONE DEADLINE AND ONE BUDGET FOR THE ORDER — NOT ONE PER KIND ─────────────────────
+  /* Both bounds were silently multiplied by the number of kinds, because grace called the resolver
+     once per kind: a mixed cart got 800ms for its dishes and a FRESH 800ms for its extras, so the
+     worst case it could add to a charge was ~1.6s rather than the 800ms the constant advertises; and
+     it got 40 reads for dishes and another 40 for extras, so an 80-read order called itself COMPLETE.
+     🔴 DRIVEN THROUGH applyGraceResolution, NOT THE RESOLVER. The defect lived in the CALL SITE — the
+     resolver was always correctly bounded for the one call it was given. A cell that drove the
+     resolver directly passed against the broken call site, which is how the first version of this
+     test let the mutant live. */
+  const mixedCart = (nDish, nExtra) => {
+    const items = [];
+    for (let i = 0; i < nDish; i += 1) {
+      items.push({ name: `Dish ${i}`, qty: 1, price: 100, dish_id: `MDS${String(i).padStart(7, '0')}`, extras: [] });
+    }
+    for (let j = 0; j < nExtra; j += 1) {
+      items[j % Math.max(1, items.length)].extras.push({ name: `Extra ${j}`, price: 10, extra_id: `MEX${String(j).padStart(7, '0')}` });
+    }
+    return items;
+  };
+  const countingFsOver = (db, onGet) => ({
+    collection: (c) => {
+      const wrap = (o) => ({
+        doc: (d) => {
+          const inner = o.doc(d);
+          return { collection: (c2) => wrap(inner.collection(c2)), get: () => onGet(() => inner.get()) };
+        },
+      });
+      return wrap(db.collection(c));
+    },
+  });
+  {
+    _resetResolveCache();
+    const db = memFirestore();
+    let reads = 0;
+    const hanging = countingFsOver(db, () => { reads += 1; return new Promise(() => {}); });
+    const TIMEOUT = 120;
+    const t0 = Date.now();
+    const g = await applyGraceResolution(hanging, 'x_pizza', mixedCart(3, 3), { stamp: PRICING_KEY_STAMP, timeoutMs: TIMEOUT });
+    const elapsed = Date.now() - t0;
+    assert.ok(elapsed < TIMEOUT * 1.8,
+      `🔴 a mixed cart waited ${elapsed}ms against a ${TIMEOUT}ms bound — the deadline is per-KIND, so it doubles the latency added to a charge`);
+    assert.strictEqual(g.coverage.incomplete, true, 'a wholly-hung resolve is INCOMPLETE');
+    assert.strictEqual(g.coverage.read_error, 6, 'every occurrence degraded to read_error → grace');
+    ok(`one deadline covers the whole ORDER: a mixed hung cart settled in ${elapsed}ms against a ${TIMEOUT}ms bound`);
+  }
+  {
+    _resetResolveCache();
+    const db = memFirestore();
+    let reads = 0;
+    const counting = countingFsOver(db, (run) => { reads += 1; return run(); });
+    /* Split so NEITHER kind alone exceeds the budget — the per-kind allowance would pass both through
+       untouched and report COMPLETE. Only a shared allowance can see this order is over. */
+    const per = Math.ceil((RESOLVE_MAX_LOOKUPS + 10) / 2);
+    assert.ok(per < RESOLVE_MAX_LOOKUPS, 'premise — each kind on its own is UNDER the budget');
+    const g = await applyGraceResolution(counting, 'x_pizza', mixedCart(per, per), { stamp: PRICING_KEY_STAMP });
+    assert.strictEqual(reads, RESOLVE_MAX_LOOKUPS,
+      `🔴 ${reads} reads for a ${per * 2}-id order against a ${RESOLVE_MAX_LOOKUPS} budget — the allowance is per-KIND, so it multiplies`);
+    assert.strictEqual(g.coverage.incomplete, true,
+      '🔴 a budget-starved order reported COMPLETE — it would count as clean evidence for the enforce-go');
+    ok(`one budget covers the whole ORDER: ${per}+${per} ids issue exactly ${RESOLVE_MAX_LOOKUPS} reads and report INCOMPLETE`);
+  }
+
+  // ── 13. 🔴 PAST THE DEADLINE THE BATCH IS INERT — NO NEW READ, NO MUTATION, NO CACHE ────────
+  /* Firestore cannot cancel a read, so after the race settles the workers are still alive. They used
+     to keep going: taking further QUEUED ids, writing answers into the map the caller had already been
+     handed, and populating the cache — so an id reported `read_error` could turn `resolved` behind the
+     caller's back, and a LATER request could be served an entry written by a read nobody awaited.
+     🔴 THE READS MUST COMPLETE DURING THE WINDOW, not merely hang: a worker blocked on a read never
+     reaches the top of its loop, so a cell where nothing lands cannot tell whether the guard that
+     stops it TAKING NEW WORK is there at all. Each read here resolves quickly and the queue is long,
+     so workers really do loop while the deadline falls. */
+  {
+    _resetResolveCache();
+    const rid = 'x_pizza';
+    const db = memFirestore();
+    await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora' });
+    const real = (await keysCol(db, rid, 'dish').doc(enc('Carnivora')).get()).data().canonical_id;
+
+    let reads = 0;
+    const READ_MS = 8;
+    const slow = countingFsOver(db, (run) => { reads += 1; return new Promise((res) => setTimeout(async () => res(await run()), READ_MS)); });
+    const ids = [real, ...Array.from({ length: 59 }, (_, i) => `LAT${String(i).padStart(7, '0')}`)];
+    const r = await resolveAcrossKinds(slow, rid, [{ kind: 'dish', ids }], { timeoutMs: 40 });
+    const readsAtDeadline = reads;
+    assert.ok(readsAtDeadline > 8, `premise — workers really did loop during the window (${readsAtDeadline} reads issued)`);
+    assert.ok(readsAtDeadline < ids.length, `premise — the deadline landed with work still queued (${readsAtDeadline} of ${ids.length})`);
+
+    /* The caller has its answer; snapshot it, then let every abandoned read land. The map must be
+       exactly what it was — a result handed out and then edited is worse than a wrong one, because
+       nothing downstream re-reads it. */
+    const handedOver = JSON.stringify([...r.byKind.get('dish').entries()].sort());
+    await new Promise((res) => setTimeout(res, READ_MS * 8));      // let every abandoned read land
+
+    assert.strictEqual(reads, readsAtDeadline,
+      `🔴 ${reads - readsAtDeadline} further reads were issued AFTER the deadline — abandoned workers kept draining the queue`);
+    assert.strictEqual(JSON.stringify([...r.byKind.get('dish').entries()].sort()), handedOver,
+      '🔴 a late answer mutated the result the caller was already handed');
+
+    /* And nothing landed in the cache from an abandoned read: the next request must go back to the
+       registry rather than be served an answer produced by a read nobody was waiting for. */
+    const unread = ids[ids.length - 1];
+    if (!r.byKind.get('dish').has(unread) || r.byKind.get('dish').get(unread).outcome === 'read_error') {
+      let secondReads = 0;
+      const counting = countingFsOver(db, (run) => { secondReads += 1; return run(); });
+      await resolveAcrossKinds(counting, rid, [{ kind: 'dish', ids: [unread] }]);
+      assert.strictEqual(secondReads, 1, '🔴 the next request was served a CACHE entry written by an abandoned read');
+    }
+    ok(`past the deadline the batch is inert — ${readsAtDeadline} reads issued, none after, nothing cached from an abandoned read`);
+  }
+
+  // ── 14. 🔴 THE ADOPTION IS A WRITE, SO THE ABANDONMENT DEADLINE BINDS IT TOO ────────────────
+  /* The adoption path returned before ever reaching the mint path's shouldStop check, so a slow orphan
+     query could commit an adoption after the publisher's deadline had passed and it had already
+     reported the key unregistered. */
+  {
+    const rid = 'x_pizza';
+    const db = memFirestore();
+    const first = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora' });
+    await keysCol(db, rid, 'dish').doc(enc('Carnivora'))._delete();          // orphan staged
+
+    await assert.rejects(
+      () => ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora', shouldStop: () => true }),
+      /identity_abandoned/,
+      '🔴 an adoption committed after the caller\'s deadline had passed',
+    );
+    assert.strictEqual((await keysCol(db, rid, 'dish').doc(enc('Carnivora')).get()).exists, false,
+      '🔴 …and it WROTE — the transaction must abort with nothing committed');
+
+    // SENSITIVITY: the same call without the deadline does adopt, so the refusal above is the guard
+    // biting and not the adoption being broken.
+    const after = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora', shouldStop: () => false });
+    assert.strictEqual(after.adopted, true, 'non-vacuity: with no deadline the same state adopts');
+    assert.strictEqual(after.canonical_id, first.canonical_id, '…to the same id');
+    ok('a passed deadline aborts the ADOPTION write too, committing nothing — and without it the adoption still works');
+  }
+
+  // ── 15. 🔴 THE SWEEP RE-VALIDATES ITS CLAIMANT, PAGINATES, AND ONLY FILLS A MISSING ROW ─────
+  {
+    const rid = 'la_musa';
+    // (a) retired between the scan and the repair — the sweep must NOT restore a pointer to it.
+    {
+      const db = memFirestore();
+      const a = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'dimsum_01' });
+      await keysCol(db, rid, 'dish').doc(enc('dimsum_01'))._delete();        // orphan staged
+      let raced = false;
+      const racing = {
+        collection: (c) => db.collection(c),
+        runTransaction: async (fn) => {
+          /* The scan has happened; the repair has not. This is the whole window, and retirement is the
+             one thing that must survive it — the key row is the registry's fast path, so restoring a
+             pointer to a retired id hands a permanently-reserved id back out on the very next call. */
+          if (!raced) { raced = true; await retireIdentity(db, { rid, kind: 'dish', canonicalId: a.canonical_id }); }
+          return db.runTransaction(fn);
+        },
+      };
+      const r = await sweepIdentityIntegrity(racing, rid, 'dish');
+      assert.ok(raced, 'premise — the retirement really did land between the scan and the repair');
+      assert.strictEqual((await keysCol(db, rid, 'dish').doc(enc('dimsum_01')).get()).exists, false,
+        '🔴 THE SWEEP RESURRECTED A RETIRED ID — the next ensureIdentity would hand it back out via the key fast path');
+      assert.strictEqual(r.repaired, 0, '…and it reported no repair, because none was legitimate');
+    }
+    // (b) a conflict whose two claimants straddle a PAGE boundary is still a conflict.
+    {
+      const db = memFirestore();
+      await idsCol(db, rid, 'dish').doc('aaa_first')._set({ legacy_key: 'dimsum_09', status: 'live', kind: 'dish', created_at: 'x' });
+      await idsCol(db, rid, 'dish').doc('zzz_second')._set({ legacy_key: 'dimsum_09', status: 'live', kind: 'dish', created_at: 'x' });
+      const r = await sweepIdentityIntegrity(db, rid, 'dish', { pageSize: 1 });   // one claimant per page
+      assert.strictEqual(r.scanned, 2, '🔴 pagination stopped at the first page — later rows are never visited on ANY run');
+      assert.strictEqual(r.conflicts, 1,
+        '🔴 the two claimants were split across pages and read as one — the sweep would have ARBITRATED');
+      assert.strictEqual(r.repaired, 0, '🔴 a conflicted key must never be repaired toward either side');
+      assert.strictEqual((await keysCol(db, rid, 'dish').doc(enc('dimsum_09')).get()).exists, false, 'and no winner was written');
+    }
+    // (c) an EXISTING but malformed reverse row is evidence of a fault, not a slot to overwrite.
+    {
+      const db = memFirestore();
+      const a = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'dimsum_01' });
+      await keysCol(db, rid, 'dish').doc(enc('dimsum_01'))._set({ canonical_id: '', kind: 'dish' });
+      const r = await sweepIdentityIntegrity(db, rid, 'dish');
+      assert.strictEqual(r.repaired, 0, '🔴 the sweep overwrote a row that EXISTS — it repairs missing rows only');
+      assert.deepStrictEqual((await keysCol(db, rid, 'dish').doc(enc('dimsum_01')).get()).data(), { canonical_id: '', kind: 'dish' },
+        '🔴 the malformed row was rewritten, destroying the evidence of the fault that produced it');
+      assert.ok(a.canonical_id, 'premise — a real id did exist to overwrite it with');
+    }
+    ok('the sweep refuses a retired claimant, sees conflicts across page boundaries, and only ever fills a MISSING row');
   }
 
   FINISHED = true;
