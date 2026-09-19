@@ -6340,6 +6340,99 @@
   "to": "      return key;"
  },
  {
+  "id": "d4p1c-01",
+  "slice": "d4p1c",
+  "file": "catalog/identity-partition.js",
+  "command": [
+   "node",
+   "catalog/identity-partition.test.js"
+  ],
+  "label": "🔴 an unaccounted active id is treated as an implied deletion - absence becomes an instruction again",
+  "kills_with": "an active id in neither set",
+  "from": "  if (unaccounted.length) {",
+  "to": "  if (false) {",
+  "why": "dies on the arithmetic self-check (|C|+|D| != |A|), which is defence in depth — the clause it removes is the one that gives the operator the right diagnosis, and the cell asserts that specific code. kills_with is the cell's refuses() LABEL, which is what prints on failure; the ok() text prints only on success."
+ },
+ {
+  "id": "d4p1c-02",
+  "slice": "d4p1c",
+  "file": "catalog/identity-partition.js",
+  "command": [
+   "node",
+   "catalog/identity-partition.test.js"
+  ],
+  "label": "🔴 a bad deleted_ids entry is silently FILTERED instead of refusing - the disagreement reaches production",
+  "kills_with": "a deleted id outside the active set",
+  "from": "  for (const id of D) {\n    if (!A.has(id)) {\n      throw new PartitionRefusal('identity_partition_deleted_unknown',\n        `deleted_ids names ${id}, which the active certified version does not have`, { id });\n    }\n  }",
+  "to": "  for (const id of [...D]) { if (!A.has(id)) D.delete(id); }"
+ },
+ {
+  "id": "d4p1c-03",
+  "slice": "d4p1c",
+  "file": "catalog/identity-partition.js",
+  "command": [
+   "node",
+   "catalog/identity-partition.test.js"
+  ],
+  "label": "🔴 a carried id the server never issued is treated as a NEW object - a client conjures identities",
+  "kills_with": "a carried id the server never issued",
+  "from": "  for (const id of C) {\n    if (!A.has(id)) {\n      throw new PartitionRefusal('identity_partition_carried_unknown',\n        `the draft carries ${id}, which the active certified version does not have`, { id });\n    }\n  }",
+  "to": "  for (const id of [...C]) { if (!A.has(id)) C.delete(id); }"
+ },
+ {
+  "id": "d4p1c-04",
+  "slice": "d4p1c",
+  "file": "catalog/identity-partition.js",
+  "command": [
+   "node",
+   "catalog/identity-partition.test.js"
+  ],
+  "label": "🔴 kept AND deleted is accepted - the object is retired while the draft still carries it",
+  "kills_with": "deleting something the draft also keeps",
+  "from": "  for (const id of D) {\n    if (C.has(id)) {\n      throw new PartitionRefusal('identity_partition_deleted_still_carried',\n        `${id} is declared deleted and also carried by the draft`, { id });\n    }\n  }",
+  "to": "  void C;"
+ },
+ {
+  "id": "d4p1c-05",
+  "slice": "d4p1c",
+  "file": "catalog/identity-partition.js",
+  "command": [
+   "node",
+   "catalog/identity-partition.test.js"
+  ],
+  "label": "🔴 duplicates are collapsed into a Set - a client double-emitting is indistinguishable from one that did not",
+  "kills_with": "a duplicated deletion",
+  "from": "    if (seen.has(id)) throw new PartitionRefusal(code, `${what} names ${id} more than once`, { id });",
+  "to": "    if (seen.has(id)) continue;"
+ },
+ {
+  "id": "d4p1c-06",
+  "slice": "d4p1c",
+  "file": "catalog/identity-partition.js",
+  "command": [
+   "node",
+   "catalog/identity-partition.test.js"
+  ],
+  "label": "🔴 a deletion claim from a superseded baseline is honoured - an abandoned publish's intent is replayed",
+  "kills_with": "a claim from a superseded VERSION",
+  "from": "  if (claim.base_version !== activeVersionId || claim.base_generation !== activeGeneration) {",
+  "to": "  if (false) {"
+ },
+ {
+  "id": "d4p1c-07",
+  "slice": "d4p1c",
+  "file": "catalog/identity-partition.js",
+  "command": [
+   "node",
+   "catalog/identity-partition.test.js"
+  ],
+  "label": "🔴 an UNBOUND deletion claim is trusted - 'delete these' with no 'as of when' becomes replayable",
+  "kills_with": "a claim with a generation but NO version",
+  "from": "  if (!isId(claim.base_version)) {\n    throw new PartitionRefusal('deleted_ids_unbound',\n      'the deletion claim does not record the version it was declared against');\n  }",
+  "to": "  if (false) { throw new Error('unreachable'); }",
+  "why": "isolated deliberately: a claim missing BOTH binding fields is caught by whichever check runs first, so it cannot distinguish them — this mutant survived until the cell supplied a valid generation and omitted only the version."
+ },
+ {
   "id": "pah-01",
   "slice": "pah",
   "file": "resolve-manual.js",
