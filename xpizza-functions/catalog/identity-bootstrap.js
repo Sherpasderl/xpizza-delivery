@@ -80,6 +80,9 @@ async function readActiveVersion(db, rid) {
    for every name at once, and — because the same function runs against `tx.get` — answers it
    TRANSACTIONALLY at the moment of the write.
    `read` is the caller's reader: `(q) => q.get()` outside a transaction, `(q) => tx.get(q)` inside. */
+/* NB for Slice D's budget arithmetic: this read is sized by the REGISTRY (every live id for the
+   kind), not by the version, so BOOTSTRAP_MAX_OBJECTS does not bound it. Tens to low hundreds of rows
+   per brand today. */
 async function liveClaimantsByKey(read, db, rid, kind) {
   const snap = await read(idsColOf(db, rid, kind).where('status', '==', STATUS_LIVE));
   const byKey = new Map();
@@ -95,6 +98,11 @@ async function liveClaimantsByKey(read, db, rid, kind) {
 /* The one predicate B-2 and B-5 share: this name is claimed by exactly one LIVE id, and it is the id
    the reverse row named. A retired id falls out as "zero claimants" rather than needing its own check,
    because the query filters on status — so liveness and uniqueness are the same read. */
+/* 🔴 THREE DISTINCT FAILURES, THREE DISTINCT CODES. These once shared the `ambiguous` code, and that
+   cost a real guarantee: the count branch and the disagreement branch threw the same prefix, so a
+   mutant removing the count guard could fall through to the disagreement branch, die on the same
+   string, and score as killed. Which fork an operator is looking at also matters at 3am — "two ids
+   claim this name" and "the reverse row points somewhere else" call for different repairs. */
 function assertSoleClaimant(rid, kind, key, expectedId, byKey) {
   const claimants = byKey.get(key) || [];
   if (claimants.length === 0) {
@@ -104,7 +112,22 @@ function assertSoleClaimant(rid, kind, key, expectedId, byKey) {
     throw new Error(`identity_bootstrap_ambiguous: ${rid}/${kind}/${key} — ${claimants.slice().sort().join(', ')} all claim it live; bootstrap refuses rather than certify a fork`);
   }
   if (claimants[0] !== expectedId) {
-    throw new Error(`identity_bootstrap_ambiguous: ${rid}/${kind}/${key} — the reverse row names ${expectedId} but the live claimant is ${claimants[0]}`);
+    throw new Error(`identity_bootstrap_key_disagrees: ${rid}/${kind}/${key} — the reverse row names ${expectedId} but the live claimant is ${claimants[0]}`);
+  }
+}
+
+/* 🔴 R-1 — THE REVERSE ROW AS IT STANDS AT THE INSTANT OF THE WRITE. The id being stamped was read
+   from keys/{name} OUTSIDE the transaction, and nothing re-read that row inside it. So the reverse row
+   could be repointed between the resolve and the write and bootstrap would still stamp the id it had
+   resolved: the version ends up certifying X while the registry's reverse row says Y. The live
+   claimant set alone cannot catch it, because X really is the sole live claimant — what moved is the
+   row that names it. Both sides have to be re-read, and they have to agree. */
+function assertKeyRowAgrees(rid, kind, key, claimantId, keyRowId) {
+  if (keyRowId === undefined || keyRowId === null || keyRowId === '') {
+    throw new Error(`identity_bootstrap_key_row_missing: ${rid}/${kind}/${key} — the reverse row is gone at the moment of the write`);
+  }
+  if (keyRowId !== claimantId) {
+    throw new Error(`identity_bootstrap_key_row_moved: ${rid}/${kind}/${key} — the reverse row now names ${keyRowId} but the live claimant is ${claimantId}; it moved after the resolve`);
   }
 }
 
@@ -176,12 +199,21 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
        verify liveness only outside, which left the exact window the liveness guard exists to close:
        an id retired in between was still stamped, as a certified identity. Reads do not count against
        the 500-write transaction cap, so there is no reason to economise on them here. */
-    const [pSnap, recSnap, liveDish, liveExtra] = await Promise.all([
+    const keyRowRefs = [
+      ...dishes.map((o) => ({ kind: 'dish', key: o.key, ref: keysColOf(db, rid, 'dish').doc(encodeKey(o.key)) })),
+      ...extras.map((o) => ({ kind: 'extra', key: o.key, ref: keysColOf(db, rid, 'extra').doc(encodeKey(o.key)) })),
+    ];
+    const [pSnap, recSnap, liveDish, liveExtra, ...keyRowSnaps] = await Promise.all([
       tx.get(activePointerRef(db, rid)),
       tx.get(vref),
       liveClaimantsByKey((q) => tx.get(q), db, rid, 'dish'),
       liveClaimantsByKey((q) => tx.get(q), db, rid, 'extra'),
+      ...keyRowRefs.map((k) => tx.get(k.ref)),
     ]);
+    const keyRowIdOf = new Map(keyRowRefs.map((k, i) => {
+      const snap = keyRowSnaps[i];
+      return [`${k.kind}/${k.key}`, snap && snap.exists ? (snap.data() || {}).canonical_id : undefined];
+    }));
     const p = pSnap.exists ? (pSnap.data() || {}) : {};
     if (p.version !== active.versionId) {
       throw new Error(`identity_bootstrap_pointer_moved: ${rid} — ${active.versionId} was live at read, ${JSON.stringify(p.version)} is live now`);
@@ -203,7 +235,10 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
     }
     // The uniqueness+liveness guarantee, at the instant of the write.
     for (const [kind, objs, byKey] of [['dish', dishes, liveDish], ['extra', extras, liveExtra]]) {
-      for (const o of objs) assertSoleClaimant(rid, kind, o.key, o.canonical_id, byKey);
+      for (const o of objs) {
+        assertSoleClaimant(rid, kind, o.key, o.canonical_id, byKey);
+        assertKeyRowAgrees(rid, kind, o.key, o.canonical_id, keyRowIdOf.get(`${kind}/${o.key}`));
+      }
     }
 
     for (const [kind, objs] of [['dish', dishes], ['extra', extras]]) {
@@ -251,11 +286,28 @@ async function reconcileLegacyOrphans(db, rid, { dryRun = false, now = () => new
   const active = await readActiveVersion(db, rid);
   const report = { rid, version: active.versionId, generation: active.generation, scanned: 0, orphans: 0, retired: 0 };
 
+  /* 🔴 RECONCILE ONLY AGAINST A CERTIFIED VERSION. §3.0 frames reconciliation as the second half of
+     the pass, after stamping — and the predicate's certified half is only meaningful once the version
+     HAS a certified set. Run against an uncertified version that set is empty, so the predicate
+     collapses to name membership alone, which is precisely the weaker rule this round removed. */
+  if (active.record.identity_certified !== true) {
+    throw new Error(`identity_reconcile_uncertified: ${rid}/${active.versionId} is not certified; stamp it before reconciling, or the certified half of the predicate is empty`);
+  }
+
   const objectsOf = (kind) => (kind === 'dish' ? active.dishes : active.extras);
   const served = {}; const certified = {};
   for (const kind of ['dish', 'extra']) {
     const objs = objectsOf(kind);
-    served[kind] = new Set(objs.map((o) => legacyKeyOf(rid, { ...o.data, key: o.data.key })).filter(Boolean));
+    /* 🔴 AN UNKEYABLE OBJECT THROWS HERE TOO. The stamping pass refuses one
+       (identity_bootstrap_unkeyable) but this quietly dropped it with a .filter(Boolean) — and the two
+       stances are not merely inconsistent, the lenient one is dangerous in the direction that matters:
+       a served object that yields no key is simply absent from the served set, so the live id behind
+       it reads as an orphan and is retired. Same fault, same fail-closed answer. */
+    served[kind] = new Set(objs.map((o) => {
+      const key = legacyKeyOf(rid, { ...o.data, key: o.data.key });
+      if (!key) throw new Error(`identity_reconcile_unkeyable: ${rid}/${kind}/${o.id} — a served object yielded no legacy key; its id would read as an orphan`);
+      return key;
+    }));
     certified[kind] = new Set(objs.map((o) => o.data.display && o.data.display.identity_id).filter(Boolean));
     /* A live version with no servable names is not "everything is an orphan" — it is a read that went
        wrong, and acting on it would retire the registry. Checked for EVERY kind before anything is
@@ -312,8 +364,14 @@ async function retireOrphanFenced(db, rid, cand, active, served, certified, now)
     if (served[cand.kind].has(d.legacy_key) || certified[cand.kind].has(cand.id)) {
       throw new Error(`identity_reconcile_still_live: ${rid}/${cand.kind}/${cand.id} is served or certified by the active version`);
     }
+    /* 🔴 DELETE ONLY OUR OWN REVERSE ROW. Unconditional deletion is inherited from retireIdentity and
+       is wrong here: if keys/{name} has already been repointed at a DIFFERENT id, that row belongs to
+       that id now, and removing it would strip a live identity of its reverse row as a side effect of
+       retiring an unrelated one. Absent is fine — nothing to remove. */
+    const keyRef = keysColOf(db, rid, cand.kind).doc(encodeKey(d.legacy_key));
+    const keySnap = await tx.get(keyRef);
     tx.set(idRef, { ...d, status: STATUS_RETIRED, retired_at: now() });
-    tx.delete(keysColOf(db, rid, cand.kind).doc(encodeKey(d.legacy_key)));
+    if (keySnap.exists && (keySnap.data() || {}).canonical_id === cand.id) tx.delete(keyRef);
     return true;
   });
 }

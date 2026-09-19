@@ -329,22 +329,32 @@ async function seed(rid, sha) {
   /* The emptiness check used to run per kind inside the loop, so dish retirements committed and THEN
      an empty extras set threw — a half-done reconciliation, which is the worst outcome available. */
   {
-    const rid8d = 'la_musa';
+    /* 🔴 ON x_pizza, BECAUSE RECONCILE NOW REQUIRES A CERTIFIED VERSION. la_musa's active version is
+       left uncertified by the refusal cells above, so running this there refused on the uncertified
+       guard instead — a cell that never reaches the check it is named after. */
+    const rid8d = 'x_pizza';
     const v = await readActiveVersion(db, rid8d);
+    assert.strictEqual(v.record.identity_certified, true, 'premise — a certified version, so the served-set check is reachable');
     const extrasCol = vrefOf(rid8d, v.versionId).collection('extras');
     const extrasDocs = (await extrasCol.get()).docs;
     assert.ok(extrasDocs.length > 0 && v.dishes.length > 0, 'premise — this version has both kinds');
     const saved = extrasDocs.map((d) => ({ id: d.id, data: d.data() }));
-    const liveBefore = (await idsColOf(db, rid8d, 'dish').where('status', '==', STATUS_LIVE).get()).docs.length;
+
+    /* 🔴 A DISH ORPHAN THAT WOULD OTHERWISE BE RETIRED. Without one, this cell proved nothing: every
+       la_musa dish name is served, so no dish is eligible and the count is unchanged whether the
+       ordering is right or wrong. The cell has to contain something the wrong ordering would destroy. */
+    const doomed8d = await ensureIdentity(db, { rid: rid8d, kind: 'dish', legacyKey: 'Unserved Before Extras' });
+    const eligible = await idsColOf(db, rid8d, 'dish').doc(doomed8d.canonical_id).get();
+    assert.strictEqual((eligible.data() || {}).status, STATUS_LIVE, 'premise — the staged dish orphan is live and unserved');
 
     for (const d of saved) await extrasCol.doc(d.id).delete();       // the version now serves NO extras
     await assert.rejects(() => reconcileLegacyOrphans(db, rid8d), /identity_reconcile_no_served_set/,
       '🔴 an empty served set for one kind was accepted');
-    const liveAfter = (await idsColOf(db, rid8d, 'dish').where('status', '==', STATUS_LIVE).get()).docs.length;
-    assert.strictEqual(liveAfter, liveBefore,
-      `🔴 DISH retirements committed before the EXTRAS set was found empty (${liveBefore} → ${liveAfter}) — a half-done reconciliation`);
+    const after8d = await idsColOf(db, rid8d, 'dish').doc(doomed8d.canonical_id).get();
+    assert.strictEqual((after8d.data() || {}).status, STATUS_LIVE,
+      '🔴 DISH retirements committed before the EXTRAS set was found empty — a half-done reconciliation, and this orphan is the evidence');
     for (const d of saved) await extrasCol.doc(d.id).set(d.data);     // restore
-    ok(`${rid8d}: an empty set for ANY kind refuses before a single retirement commits (${liveBefore} live dish ids untouched)`);
+    ok(`${rid8d}: an empty set for ANY kind refuses before a single retirement commits — a staged, eligible dish orphan survives`);
   }
 
   // ── 9. THE GENERATION FENCE BITES INDEPENDENTLY OF THE POINTER ─────────────────────────────
@@ -417,21 +427,45 @@ async function seed(rid, sha) {
   // ── 13. 🔴 A SECOND LIVE ID CLAIMING A SERVED NAME REFUSES — EXACTLY ONE, OR NONE AT ALL ───
   /* The key row names ONE id and is structurally blind to a second live id claiming the same name, so
      trusting it certified a fork: keys/A→X with both X and Y live-claiming A went through clean.
-     §3.0's rule is "each live object → exactly one live id; a conflict refuses". */
+     §3.0's rule is "each live object → exactly one live id; a conflict refuses".
+     🔴 THE TWO CLAIMANTS ARE ORDERED DELIBERATELY, and that is the whole point of this staging. The
+     first version added a second id beside a RANDOMLY minted one, so whether the count guard or the
+     disagreement guard refused depended on how the two ids happened to sort — and with the count guard
+     removed the disagreement branch refused instead, on a different message, so the mutant died for
+     the wrong reason. Here the reverse row names the claimant that sorts FIRST, so every other guard
+     is satisfied and the COUNT is the only thing standing between this state and a certified fork. */
   {
     const rid13 = 'x_pizza';
     const v = await freshUncertifiedVersion(rid13);
     const victim = v.dishes[0];
     const name = victim.data.key;
+    const enc = Buffer.from(String(name), 'utf8').toString('base64url');
+    const keysCol = db.collection('restaurants').doc(rid13).collection('identity').doc('dish').collection('keys');
     const before = await snapshotVersion(rid13, v.versionId);
-    await idsColOf(db, rid13, 'dish').doc('SECONDLIVE1').set({ legacy_key: name, status: STATUS_LIVE, kind: 'dish', created_at: 'x' });
+    const originalId = (await keysCol.doc(enc).get()).data().canonical_id;
+    const origRow = (await idsColOf(db, rid13, 'dish').doc(originalId).get()).data();
 
-    await assert.rejects(() => bootstrapIdentityStamps(db, rid13), /identity_bootstrap_ambiguous/,
+    const FIRST = 'AAAAFIRST01', SECOND = 'ZZZZSECOND1';
+    await idsColOf(db, rid13, 'dish').doc(originalId).set({ ...origRow, legacy_key: 'Parked For Cell 13' });
+    await idsColOf(db, rid13, 'dish').doc(FIRST).set({ legacy_key: name, status: STATUS_LIVE, kind: 'dish', created_at: 'x' });
+    await idsColOf(db, rid13, 'dish').doc(SECOND).set({ legacy_key: name, status: STATUS_LIVE, kind: 'dish', created_at: 'x' });
+    await keysCol.doc(enc).set({ canonical_id: FIRST, kind: 'dish' });
+
+    const claimants = (await idsColOf(db, rid13, 'dish').where('legacy_key', '==', name).where('status', '==', STATUS_LIVE).get())
+      .docs.map((d) => d.id).sort();
+    assert.deepStrictEqual(claimants, [FIRST, SECOND], 'premise — exactly these two claim the name');
+    assert.strictEqual(claimants[0], FIRST, 'premise — the reverse row names the one that sorts FIRST, so only the COUNT can refuse');
+
+    await assert.rejects(() => bootstrapIdentityStamps(db, rid13), /all claim it live/,
       '🔴 a name claimed by TWO live ids was certified — bootstrap froze a fork into the version');
     assert.deepStrictEqual(await snapshotVersion(rid13, v.versionId), before,
       '🔴 …and it must leave the whole version untouched, not stamp the objects it managed to resolve first');
-    await idsColOf(db, rid13, 'dish').doc('SECONDLIVE1').delete();
-    ok(`${rid13}: a second LIVE claimant of a served name refuses by name and stamps nothing`);
+
+    await idsColOf(db, rid13, 'dish').doc(FIRST).delete();
+    await idsColOf(db, rid13, 'dish').doc(SECOND).delete();
+    await idsColOf(db, rid13, 'dish').doc(originalId).set(origRow);
+    await keysCol.doc(enc).set({ canonical_id: originalId, kind: 'dish' });
+    ok(`${rid13}: two LIVE claimants of a served name refuse on the COUNT — every other guard satisfied, and nothing stamped`);
   }
 
   // ── 14. 🔴 AN EXISTING ACTIVATION RECORD IS NEVER UPGRADED ─────────────────────────────────
@@ -510,13 +544,122 @@ async function seed(rid, sha) {
     assert.strictEqual(claimants.length, 1, 'premise — exactly ONE live claimant, so the count check cannot be what refuses');
     assert.notStrictEqual(claimants[0].id, staleId, 'premise — and it is not the id the reverse row names');
 
-    await assert.rejects(() => bootstrapIdentityStamps(db, rid16), /identity_bootstrap_ambiguous/,
+    await assert.rejects(() => bootstrapIdentityStamps(db, rid16), /identity_bootstrap_key_disagrees/,
       '🔴 the reverse row outranked the registry — bootstrap certified an id that does not claim this object');
     assert.deepStrictEqual(await snapshotVersion(rid16, v.versionId), before, '🔴 …and it stamped nothing');
 
     await xRef.set(xBefore);
     await idsColOf(db, rid16, 'dish').doc('OTHERLIVE1').delete();
     ok(`${rid16}: a sole live claimant that DISAGREES with the reverse row refuses — the registry outranks the key row`);
+  }
+
+  // ── 17. 🔴 THE REVERSE ROW REPOINTED BETWEEN THE RESOLVE AND THE WRITE ────────────────────
+  /* The id being stamped is read from keys/{name} OUTSIDE the transaction. Nothing re-read that row
+     inside it, so the row could be repointed in between and the pass would still stamp the id it had
+     resolved — the version certifying X while the registry's reverse row says Y. The live-claimant set
+     cannot catch this on its own: X really IS the sole live claimant. What moved is the row naming it,
+     so the row is what has to be re-read. */
+  {
+    const rid17 = 'x_pizza';
+    const v = await freshUncertifiedVersion(rid17);
+    const before = await snapshotVersion(rid17, v.versionId);
+    const name = v.dishes[0].data.key;
+    const enc = Buffer.from(String(name), 'utf8').toString('base64url');
+    const keysCol = db.collection('restaurants').doc(rid17).collection('identity').doc('dish').collection('keys');
+    const resolvedId = (await keysCol.doc(enc).get()).data().canonical_id;
+
+    const orig = db.runTransaction.bind(db);
+    let flipped = false;
+    const racing = {
+      collection: (c) => db.collection(c),
+      runTransaction: async (fn, o) => {
+        // Resolve has happened; the stamping tx has not. Repoint the reverse row, leaving the
+        // original id as the name's sole LIVE claimant so only the row disagrees.
+        if (!flipped) { flipped = true; await keysCol.doc(enc).set({ canonical_id: 'REPOINTED1', kind: 'dish' }); }
+        return orig(fn, o);
+      },
+    };
+    await assert.rejects(() => bootstrapIdentityStamps(racing, rid17), /identity_bootstrap_key_row_moved/,
+      '🔴 the reverse row was repointed after the resolve and the pass stamped the id it had already read — the version and the registry now disagree about this object');
+    assert.ok(flipped, 'premise — the row really moved inside the window');
+    assert.deepStrictEqual(await snapshotVersion(rid17, v.versionId), before, '🔴 …and it stamped nothing');
+    await keysCol.doc(enc).set({ canonical_id: resolvedId, kind: 'dish' });
+    ok(`${rid17}: a reverse row repointed between the resolve and the write refuses — both sides are re-read at the instant of the write`);
+  }
+
+  // ── 18. 🔴 RECONCILE REFUSES AN UNCERTIFIED VERSION ───────────────────────────────────────
+  /* The predicate's certified half is only meaningful once the version HAS a certified set. Run
+     against an uncertified version it is empty, and the predicate quietly collapses back to name
+     membership alone — the weaker rule this round removed. */
+  {
+    const rid18 = 'x_pizza';
+    const v = await freshUncertifiedVersion(rid18);
+    const canary = await ensureIdentity(db, { rid: rid18, kind: 'dish', legacyKey: 'Uncertified Canary' });
+    await assert.rejects(() => reconcileLegacyOrphans(db, rid18), /identity_reconcile_uncertified/,
+      '🔴 reconcile ran against an uncertified version, where the certified half of the predicate is empty');
+    const row = await idsColOf(db, rid18, 'dish').doc(canary.canonical_id).get();
+    assert.strictEqual((row.data() || {}).status, STATUS_LIVE, '🔴 …and it retired something on the way out');
+    ok(`${rid18}: reconcile refuses an uncertified version and retires nothing`);
+  }
+
+  // ── 19. 🔴 AN UNKEYABLE SERVED OBJECT THROWS IN RECONCILE TOO ─────────────────────────────
+  /* The stamping pass refuses an unkeyable object; reconcile dropped it with a .filter(Boolean). The
+     two stances were not merely inconsistent — the lenient one fails in the direction that costs an
+     identity: a served object that yields no key is simply absent from the served set, so the live id
+     behind it reads as an orphan and is retired. */
+  {
+    const rid19 = 'x_pizza';
+    const v = await freshUncertifiedVersion(rid19);
+    const stampRep = await bootstrapIdentityStamps(db, rid19);
+    assert.strictEqual(stampRep.stamped, true, 'premise — a certified version, so reconcile gets past cell 18\'s guard');
+
+    const cur = await readActiveVersion(db, rid19);
+    const victim = cur.dishes[0];
+    const docRef = vrefOf(rid19, cur.versionId).collection('menu_items').doc(victim.id);
+    const saved = (await docRef.get()).data();
+    const canary = await ensureIdentity(db, { rid: rid19, kind: 'dish', legacyKey: 'Unkeyable Canary' });
+
+    // A served object the key resolver cannot key at all.
+    const { key: _dropped, ...noKey } = saved;
+    await docRef.set(noKey);
+
+    await assert.rejects(() => reconcileLegacyOrphans(db, rid19), /identity_reconcile_unkeyable/,
+      '🔴 an unkeyable served object was silently dropped from the served set — the id behind it would read as an orphan');
+    const row = await idsColOf(db, rid19, 'dish').doc(canary.canonical_id).get();
+    assert.strictEqual((row.data() || {}).status, STATUS_LIVE, '🔴 …and it retired before refusing');
+    await docRef.set(saved);
+    ok(`${rid19}: an unkeyable served object refuses in reconcile, as it already did in the stamping pass, with zero retirements`);
+  }
+
+  // ── 20. 🔴 A REVERSE ROW DELETED IN THE WINDOW IS NOT "NO OBJECTION" ──────────────────────
+  /* Cell 17 REPOINTS the row, so the missing-row branch never runs there. Deleting it is a different
+     state and an easy one to get wrong: with no row there is nothing to disagree with, so a check
+     written as "the row must not name someone else" would wave it through and certify an id that
+     nothing in the registry names. Absent is a refusal, not a pass. */
+  {
+    const rid20 = 'x_pizza';
+    const v = await freshUncertifiedVersion(rid20);
+    const before = await snapshotVersion(rid20, v.versionId);
+    const name = v.dishes[0].data.key;
+    const enc = Buffer.from(String(name), 'utf8').toString('base64url');
+    const keysCol = db.collection('restaurants').doc(rid20).collection('identity').doc('dish').collection('keys');
+    const saved = (await keysCol.doc(enc).get()).data();
+
+    const orig = db.runTransaction.bind(db);
+    let deleted = false;
+    const racing = {
+      collection: (c) => db.collection(c),
+      runTransaction: async (fn, o) => {
+        if (!deleted) { deleted = true; await keysCol.doc(enc).delete(); }
+        return orig(fn, o);
+      },
+    };
+    await assert.rejects(() => bootstrapIdentityStamps(racing, rid20), /identity_bootstrap_key_row_missing/,
+      '🔴 the reverse row was GONE at the moment of the write and the pass certified the id anyway — nothing in the registry names it');
+    assert.ok(deleted, 'premise — the row really was deleted inside the window');
+    assert.deepStrictEqual(await snapshotVersion(rid20, v.versionId), before, '🔴 …and it stamped nothing');
+    await keysCol.doc(enc).set(saved);
+    ok(`${rid20}: a reverse row DELETED between the resolve and the write refuses — absent is a refusal, not silence`);
   }
 
   FINISHED = true;

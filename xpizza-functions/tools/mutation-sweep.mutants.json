@@ -6093,7 +6093,7 @@
   "kills_with": "identity_bootstrap_raced",
   "from": "  if (active.record.identity_certified === true) {\n    report.already = true;\n    return report;\n  }",
   "to": "  if (false) {\n    report.already = true;\n    return report;\n  }",
-  "why": "dies on the SECOND guard, not the first: with the early return gone the re-run reaches the transaction and the in-tx `identity_bootstrap_raced` check refuses it. That is defence in depth working as intended — the property (a certified version is never re-stamped) stays guarded — so the signature names the guard that actually fires rather than the assertion that would have if there were only one."
+  "why": "dies on the SECOND guard, not the first: with the early return gone the re-run reaches the transaction and the in-tx `identity_bootstrap_raced` check refuses it. That is defence in depth working as intended — the property (a certified version is never re-stamped) stays guarded — so the signature names the guard that actually fires rather than the assertion that would have if there were only one. Its kills_with is a PRODUCTION error string that propagates out of the suite, NOT text from a test assertion — so it cannot be verified against the suite source the way the others are, and an earlier handback's blanket 'verified present verbatim' claim did not cover it."
  },
  {
   "id": "d4p1b-03",
@@ -6218,7 +6218,7 @@
   ],
   "label": "🔴 the key row's id is trusted over the actual live claimant - the reverse row outranks the registry",
   "kills_with": "the reverse row outranked the registry",
-  "from": "  if (claimants[0] !== expectedId) {\n    throw new Error(`identity_bootstrap_ambiguous: ${rid}/${kind}/${key} — the reverse row names ${expectedId} but the live claimant is ${claimants[0]}`);\n  }",
+  "from": "  if (claimants[0] !== expectedId) {\n    throw new Error(`identity_bootstrap_key_disagrees: ${rid}/${kind}/${key} — the reverse row names ${expectedId} but the live claimant is ${claimants[0]}`);\n  }",
   "to": "  if (false) { throw new Error('unreachable'); }"
  },
  {
@@ -6246,8 +6246,8 @@
   ],
   "label": "🔴 liveness+uniqueness are NOT re-checked in the stamping tx - an id retired mid-pass is still certified",
   "kills_with": "an id retired after the resolve was still stamped",
-  "from": "    for (const [kind, objs, byKey] of [['dish', dishes, liveDish], ['extra', extras, liveExtra]]) {\n      for (const o of objs) assertSoleClaimant(rid, kind, o.key, o.canonical_id, byKey);\n    }",
-  "to": "    void liveDish; void liveExtra;"
+  "from": "        assertSoleClaimant(rid, kind, o.key, o.canonical_id, byKey);",
+  "to": "        void byKey;"
  },
  {
   "id": "d4p1b-14",
@@ -6262,7 +6262,7 @@
   "kills_with": "identity_reconcile_still_live",
   "from": "      if (certified[kind].has(d.id)) continue;              // …or a certified object carries this id",
   "to": "      if (false) continue;",
-  "why": "dies on the SECOND guard: the candidate filter no longer excludes ids the active version has certified, so a live object's id is selected — and the fenced retire's own served/certified re-check then refuses it (identity_reconcile_still_live), which propagates out of cell 8b. The property (a certified id is never retired) stays guarded in two places; the signature names the one that actually fires rather than the assertion that would if there were only one."
+  "why": "dies on the SECOND guard: the candidate filter no longer excludes ids the active version has certified, so a live object's id is selected — and the fenced retire's own served/certified re-check then refuses it (identity_reconcile_still_live), which propagates out of cell 8b. The property (a certified id is never retired) stays guarded in two places; the signature names the one that actually fires rather than the assertion that would if there were only one. Its kills_with is a PRODUCTION error string that propagates out of the suite, NOT text from a test assertion — so it cannot be verified against the suite source the way the others are, and an earlier handback's blanket 'verified present verbatim' claim did not cover it."
  },
  {
   "id": "d4p1b-15",
@@ -6277,6 +6277,62 @@
   "kills_with": "a retirement committed against an activation it was not judged under",
   "from": "    if (p.version !== active.versionId || p.generation !== active.generation) {\n      throw new Error(`identity_reconcile_pointer_moved: ${rid} — judged against ${active.versionId}@${active.generation}, now ${JSON.stringify(p.version)}@${p.generation}`);\n    }",
   "to": "    if (false) { throw new Error('unreachable'); }"
+ },
+ {
+  "id": "d4p1b-17",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 the reverse row is not re-read in the stamping tx - a row repointed after the resolve is stamped anyway",
+  "kills_with": "the reverse row was repointed after the resolve",
+  "from": "        assertKeyRowAgrees(rid, kind, o.key, o.canonical_id, keyRowIdOf.get(`${kind}/${o.key}`));",
+  "to": "        void keyRowIdOf;"
+ },
+ {
+  "id": "d4p1b-18",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 a MISSING reverse row at write time is accepted - the version certifies an id nothing names",
+  "kills_with": "the reverse row was GONE at the moment of the write",
+  "from": "  if (keyRowId === undefined || keyRowId === null || keyRowId === '') {\n    throw new Error(`identity_bootstrap_key_row_missing: ${rid}/${kind}/${key} — the reverse row is gone at the moment of the write`);\n  }",
+  "to": "  if (false) { throw new Error('unreachable'); }"
+ },
+ {
+  "id": "d4p1b-19",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 reconcile runs against an UNCERTIFIED version - the certified half of the predicate is empty",
+  "kills_with": "reconcile ran against an uncertified version",
+  "from": "  if (active.record.identity_certified !== true) {\n    throw new Error(`identity_reconcile_uncertified: ${rid}/${active.versionId} is not certified; stamp it before reconciling, or the certified half of the predicate is empty`);\n  }",
+  "to": "  if (false) { throw new Error('unreachable'); }"
+ },
+ {
+  "id": "d4p1b-20",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 an UNKEYABLE served object is silently dropped - the id behind it reads as an orphan and is retired",
+  "kills_with": "an unkeyable served object was silently dropped",
+  "from": "      if (!key) throw new Error(`identity_reconcile_unkeyable: ${rid}/${kind}/${o.id} — a served object yielded no legacy key; its id would read as an orphan`);\n      return key;",
+  "to": "      return key;"
  },
  {
   "id": "pah-01",
