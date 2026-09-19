@@ -6511,6 +6511,59 @@
   "to": "  if (false) {"
  },
  {
+  "id": "d4p1c-14",
+  "slice": "d4p1c",
+  "file": "catalog/edit-catalog-handler.js",
+  "command": [
+   "node",
+   "catalog/edit-catalog.test.js"
+  ],
+  "label": "🔴 an ordinary save WIPES the standing deletion claim - the replacement write eats a field the client never sent",
+  "kills_with": "an ordinary content edit WIPED the standing deletion claim",
+  "from": "    if (storedClaim) next.deleted_ids = storedClaim;",
+  "to": "    void storedClaim;"
+ },
+ {
+  "id": "d4p1c-15",
+  "slice": "d4p1c",
+  "file": "catalog/edit-catalog-handler.js",
+  "command": [
+   "node",
+   "catalog/edit-catalog.test.js"
+  ],
+  "label": "🔴 ABSENT is read as EMPTY - an unrelated edit silently withdraws the merchant's deletions",
+  "kills_with": "an ordinary content edit WIPED the standing deletion claim",
+  "from": "  const declared = Object.prototype.hasOwnProperty.call(next, 'deleted_ids');",
+  "to": "  const declared = true;"
+ },
+ {
+  "id": "d4p1c-16",
+  "slice": "d4p1c",
+  "file": "catalog/edit-catalog-handler.js",
+  "command": [
+   "node",
+   "catalog/edit-catalog.test.js"
+  ],
+  "label": "🔴 the CLIENT's base is stored instead of the live pointer's - the binding becomes client-asserted",
+  "kills_with": "a CLIENT-supplied base was stored",
+  "from": "  if (claimResult.claim) next.deleted_ids = claimResult.claim;",
+  "to": "  if (claimResult.claim) next.deleted_ids = { ...claimResult.claim, ...(source.deleted_ids && source.deleted_ids.base_version ? { base_version: source.deleted_ids.base_version } : {}) };"
+ },
+ {
+  "id": "d4p1c-17",
+  "slice": "d4p1c",
+  "file": "catalog/edit-catalog-handler.js",
+  "command": [
+   "node",
+   "catalog/edit-catalog.test.js"
+  ],
+  "label": "🔴 a refused claim still WRITES the content edit - the draft and the stored claim disagree",
+  "kills_with": "the save is refused",
+  "from": "      return reply(409, { error: e.code, detail: e.detail || String(e.message || e), existing_ids: e.existing_ids });",
+  "to": "      claimResult = { claim: storedClaim };",
+  "why": "the refusal falling through means the save returns 200 and writes, so the cell's STATUS assertion fails first — before the no-write assertion. kills_with names the assertion that actually fires."
+ },
+ {
   "id": "pah-01",
   "slice": "pah",
   "file": "resolve-manual.js",

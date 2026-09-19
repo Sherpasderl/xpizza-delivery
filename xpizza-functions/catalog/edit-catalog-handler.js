@@ -18,6 +18,8 @@
 //   the diff has to be against the live version — but never moves it. A save is not a price change.
 // ---------------------------------------------------------------------------
 const { validateSource, sourceRefOf, canonicalize } = require('./source-store');
+const { persistDeletionClaim } = require('./identity-partition');
+const { getActivePointer } = require('./catalog-firestore');
 
 // The wire form of a Firestore commit time: seconds and nanoseconds, losslessly. Used for both the
 // value returned to the caller and the precondition it later presents, so the two are the same thing.
@@ -80,6 +82,61 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   // stored doc has but the new source does not is explicitly cleared, so an update is a REPLACEMENT
   // rather than a merge — a stale field left behind would be content nobody authored and nobody saw.
   const next = canonicalize(source);
+
+  /* ── 1D D4-P1 — THE DELETION CLAIM IS SERVER-OWNED, AND THE REPLACEMENT ABOVE WOULD EAT IT ──────
+     🔴 TWO THINGS GO WRONG IF THIS IS LEFT TO THE CLIENT, and they pull in opposite directions.
+     The write below is a REPLACEMENT: every top-level field the stored doc has and the incoming source
+     lacks is explicitly NULLED. So an ordinary save that does not re-send `deleted_ids` does not merely
+     fail to persist it — it actively DELETES the merchant's standing deletion claim. And the obvious
+     fix, having the client echo the claim back on every save, hands the client control of the very
+     binding that exists to stop a replay.
+     So the server owns it end to end: the declared IDS come from the request (deletion is the
+     merchant's call — it must be declared, never inferred), while the BASE is written here from the
+     live pointer and any client-supplied base is discarded unread. persistDeletionClaim decides
+     whether this is a fresh claim, an ordinary edit on a still-live base, a withdrawal, or a rebind
+     that needs the merchant to have been re-shown the list. */
+  const storedClaim = ((snap.data && snap.data()) || {}).deleted_ids || null;
+
+  /* 🔴 ABSENT IS NOT EMPTY, AND CONFLATING THEM WITHDRAWS DELETIONS NOBODY WITHDREW. A save whose
+     source does not mention `deleted_ids` at all is an ordinary content edit and must PRESERVE the
+     standing claim; a save that explicitly sends `{ids: []}` is the merchant withdrawing it. Reading
+     both as "no ids declared" makes every unrelated edit silently cancel the merchant's deletions —
+     the same absent-versus-declared distinction the partition law exists to enforce, one layer down.
+     hasOwnProperty, not truthiness, because `{ids: []}` is falsy in every way that matters here. */
+  const declared = Object.prototype.hasOwnProperty.call(next, 'deleted_ids');
+  const declaredIds = (next.deleted_ids && typeof next.deleted_ids === 'object' && !Array.isArray(next.deleted_ids))
+    ? next.deleted_ids.ids
+    : next.deleted_ids;
+  delete next.deleted_ids;                    // whatever the client sent is not what gets stored
+
+  if (!declared) {
+    /* Carried forward VERBATIM — not re-stamped. Re-stamping here would be the silent rebind by
+       another route: an ordinary edit would quietly re-bless a claim against a newer baseline. */
+    if (storedClaim) next.deleted_ids = storedClaim;
+  } else {
+  let claimResult;
+  try {
+    /* The live pair, read as ONE snapshot so version and generation cannot tear. It is read here,
+       immediately before the conditional write, rather than reused from anything earlier. */
+    const live = await getActivePointer(db, rid);
+    claimResult = persistDeletionClaim({
+      existing: storedClaim,
+      ids: declaredIds,
+      live: { version: live.version, generation: live.generation },
+      reviewed: body && body.deleted_ids_reviewed === true,
+    });
+  } catch (e) {
+    if (e && e.code) {
+      /* A refused claim must not take the merchant's content edit with it — but it must not save
+         silently either, because the draft they are looking at shows the deletion. Refuse the whole
+         save and tell the editor what to re-show. */
+      return reply(409, { error: e.code, detail: e.detail || String(e.message || e), existing_ids: e.existing_ids });
+    }
+    return reply(503, { error: 'store_unavailable', retryable: true });
+  }
+  if (claimResult.claim) next.deleted_ids = claimResult.claim;
+  }
+
   const stale = Object.keys((snap.data && snap.data()) || {}).filter((k) => !Object.prototype.hasOwnProperty.call(next, k));
   const payload = { ...next };
   for (const k of stale) payload[k] = null;   // cleared; the source schema is closed, so this is normally empty

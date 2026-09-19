@@ -14,6 +14,7 @@
 const assert = require('assert');
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 const { editCatalogCore } = require('./edit-catalog-handler');
+const { validateDeletionClaim } = require('./identity-partition');
 const { verifyEditToken, catalogDiff, sha256 } = require('./catalog-edit');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -297,6 +298,79 @@ const withPrice = (delta) => {
     assert.ok(/updateTime: snap\.updateTime \? encodeUpdateTimeForEdit\(snap\.updateTime\)/.test(CODE),
       'and encode with the SAME codec it decodes with — two codecs would drift');
     ok('the CAS value round-trips losslessly (nanoseconds preserved) and index.js encodes/decodes with one codec');
+  }
+
+  // ── 1D D4-P1 — THE DELETION CLAIM IS SERVER-OWNED AND SURVIVES AN ORDINARY SAVE ─────────────
+  /* 🔴 THE SAVE IS A REPLACEMENT, AND THAT IS WHAT MAKES THIS DANGEROUS. Every top-level field the
+     stored doc has and the incoming source lacks is explicitly NULLED, so a save that does not
+     re-send `deleted_ids` does not merely fail to persist it — it DELETES the merchant's standing
+     deletion claim. And the obvious fix, echoing the claim back from the client on every save, hands
+     the client the very binding that exists to stop a replay. So the server carries it forward. */
+  {
+    const db = stubFirestore(baseSource());
+    db.state.source.data.deleted_ids = { ids: ['KEEPME1'], base_version: ACTIVE, base_generation: 0 };
+    const r = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
+      { restaurantId: RID, source: withPrice(31), baseSourceUpdateTime: T0 }, {});
+    assert.strictEqual(r.status, 200, `an ordinary save succeeds: ${JSON.stringify(r.body).slice(0, 160)}`);
+    assert.deepStrictEqual(db.state.source.data.deleted_ids, { ids: ['KEEPME1'], base_version: ACTIVE, base_generation: 0 },
+      '🔴 an ordinary content edit WIPED the standing deletion claim — the replacement write ate a field the client never sent');
+    ok('an ordinary save that mentions no deletions preserves the standing claim — the replacement cannot eat it');
+  }
+
+  // ── A CLIENT-SUPPLIED BASE IS DISCARDED, NOT COMPARED ──────────────────────────────────────
+  {
+    const db = stubFirestore(baseSource());
+    const src = withPrice(32);
+    src.deleted_ids = { ids: ['DOOMED1'], base_version: 'CLIENT-LIES', base_generation: 99 };
+    const r = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
+      { restaurantId: RID, source: src, baseSourceUpdateTime: T0 }, {});
+    assert.strictEqual(r.status, 200, `the declaration is accepted: ${JSON.stringify(r.body).slice(0, 160)}`);
+    assert.deepStrictEqual(db.state.source.data.deleted_ids, { ids: ['DOOMED1'], base_version: ACTIVE, base_generation: 0 },
+      '🔴 a CLIENT-supplied base was stored — the binding must come from the live pointer, and a client value is discarded unread');
+    ok('the merchant declares WHICH ids; the server writes the base from the live pointer and ignores the client\'s');
+  }
+
+  // ── 🔴 A STALE CLAIM IS NOT SILENTLY REBOUND BY AN UNRELATED EDIT ──────────────────────────
+  {
+    const db = stubFirestore(baseSource());
+    const stale = { ids: ['OLD1'], base_version: 'v-superseded', base_generation: 0 };
+    db.state.source.data.deleted_ids = { ...stale };
+    const before = db.state.writes.filter((w) => w.op === 'update').length;
+
+    const src = withPrice(33);
+    src.deleted_ids = { ids: ['OLD1', 'NEW1'] };          // an unrelated, legitimate further deletion
+    const r = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
+      { restaurantId: RID, source: src, baseSourceUpdateTime: T0 }, {});
+    assert.strictEqual(r.status, 409, `the save is refused: ${JSON.stringify(r.body).slice(0, 160)}`);
+    assert.strictEqual(r.body.error, 'deleted_ids_stale_baseline', 'and refused by name');
+    assert.deepStrictEqual(r.body.existing_ids, ['OLD1'], 'the refusal reports what the editor must re-show');
+    assert.deepStrictEqual(db.state.source.data.deleted_ids, stale, '🔴 the stored claim must be untouched by a refused save');
+    assert.strictEqual(db.state.writes.filter((w) => w.op === 'update').length, before,
+      '🔴 a refused save must not write at all — not the claim, and not the content edit riding with it');
+
+    const r2 = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
+      { restaurantId: RID, source: src, baseSourceUpdateTime: T0, deleted_ids_reviewed: true }, {});
+    assert.strictEqual(r2.status, 200, `the acknowledged save lands: ${JSON.stringify(r2.body).slice(0, 160)}`);
+    assert.deepStrictEqual(db.state.source.data.deleted_ids, { ids: ['OLD1', 'NEW1'], base_version: ACTIVE, base_generation: 0 },
+      'the whole set is restamped at the live baseline, only after an explicit re-review');
+    ok('a stale claim refuses a silent rebind and writes nothing; the same edit WITH the ack lands restamped');
+  }
+
+  // ── WITHDRAWING EVERY DELETION IS ALWAYS ALLOWED ───────────────────────────────────────────
+  {
+    const db = stubFirestore(baseSource());
+    db.state.source.data.deleted_ids = { ids: ['OLD1'], base_version: 'v-superseded', base_generation: 0 };
+    const src = withPrice(34);
+    src.deleted_ids = { ids: [] };
+    const r = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
+      { restaurantId: RID, source: src, baseSourceUpdateTime: T0 }, {});
+    assert.strictEqual(r.status, 200, `withdrawing is accepted even from a stale claim: ${JSON.stringify(r.body).slice(0, 160)}`);
+    /* null, not undefined: the handler's existing convention for a field the new source does not
+       carry is to write null ("cleared"), and validateDeletionClaim reads null as "none declared". */
+    assert.strictEqual(db.state.source.data.deleted_ids, null, 'and the claim is cleared rather than left standing');
+    assert.deepStrictEqual(validateDeletionClaim(db.state.source.data.deleted_ids, { activeVersionId: ACTIVE, activeGeneration: 0 }),
+      { ids: [], declared: false }, 'a cleared claim reads back as no deletion declared');
+    ok('withdrawing every deletion is allowed even from a stale claim — the merchant is never trapped by their own editor');
   }
 
   console.log(`edit-catalog: OK (${n})`);
