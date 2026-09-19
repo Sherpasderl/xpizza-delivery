@@ -56,7 +56,10 @@ const { beforeUserCreated, HttpsError } = require('firebase-functions/v2/identit
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
 const { getFirestore } = require('firebase-admin/firestore');   // Phase 1b-1 — index.js's FIRST Firestore touch (the pricing catalog)
-const { startShadowCheck, reportIdentityShadow } = require('./catalog/identity-shadow-validate');   // 1D D3 — shadow identity check (reads nothing into a decision)
+const { startShadowCheck, reportIdentityShadow } = require('./catalog/identity-shadow-validate');
+const { resolveGraceKeys, reportForwardCoverage } = require('./catalog/identity-grace');   // 1D D4-grace — forward resolution, money no-op
+const { PRICING_KEY_STAMP } = require('./menu-pricing');
+const { sweepAllIdentityIntegrity } = require('./catalog/identity-sweep');   // 1D D4 — registry integrity, off the order path   // 1D D3 — shadow identity check (reads nothing into a decision)
 const { getAuth } = require('firebase-admin/auth');
 const webpush = require('web-push');
 const { google } = require('googleapis');
@@ -648,6 +651,16 @@ createOrderApp.all('*', async (req, res) => {
   // no-token rate has reached ~0 (server and client must both be live before enforcing).
   const tokenEnforce = await tokenEnforceEnabled(db);
 
+  /* ── 1D D4-grace — RESOLVE THE IDENTITY FORWARD, ONCE, BEFORE PRICING ────────────────────────
+     Placed here because everything below prices through itemPricingKey, and the stamp is what that
+     reads. 🔴 It cannot change a price: a line is stamped only where the registry's answer EQUALS the
+     raw legacy accessor computed from the client's own fields, so the key selected is the key that
+     would have been selected anyway. A disagreement stamps nothing and is logged.
+     getFirestore is passed as a GETTER so a cold-instance throw is caught inside the guard rather than
+     failing the request — the lesson D3 paid for. */
+  const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP });
+  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
+
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
   if (errors.length > 0) {
     return badRequest(res, errors.join('; '));
@@ -1225,6 +1238,16 @@ chargeOnlineApp.all('*', async (req, res) => {
   // T6 ships the READING only; the flip to true is an owner action once the client has shipped and the
   // no-token rate has reached ~0 (server and client must both be live before enforcing).
   const tokenEnforce = await tokenEnforceEnabled(db);
+
+  /* ── 1D D4-grace — RESOLVE THE IDENTITY FORWARD, ONCE, BEFORE PRICING ────────────────────────
+     Placed here because everything below prices through itemPricingKey, and the stamp is what that
+     reads. 🔴 It cannot change a price: a line is stamped only where the registry's answer EQUALS the
+     raw legacy accessor computed from the client's own fields, so the key selected is the key that
+     would have been selected anyway. A disagreement stamps nothing and is logged.
+     getFirestore is passed as a GETTER so a cold-instance throw is caught inside the guard rather than
+     failing the request — the lesson D3 paid for. */
+  const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP });
+  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
 
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
   if (errors.length > 0) return badRequest(res, errors.join('; '));
@@ -2182,6 +2205,26 @@ exports.claimOrder = onRequest(
 // (or a stuck capturing claim) past the confirm TTL; abandons ones with no usable
 // payment_uuid past the abandon TTL (the PixelPay auth has expired — no money moved,
 // a *missed order* not a *lost charge*). See PAYMENT-PLAN §G + classifySweepCandidate.
+/* ── 1D D4 — THE REGISTRY INTEGRITY SWEEP ────────────────────────────────────────────────────
+   The durable half of the self-heal. The writer guard in ensureIdentity repairs an orphan that a
+   write happens to touch; this reaches the ones nothing touches — an object served id-less generates
+   no lookup and no write, so traffic-driven repair never visits it at all.
+   Hourly rather than by the minute: this is corruption that should not occur, not a queue. Off the
+   order path entirely, idempotent, and it only ever writes a MISSING reverse row — it never mints,
+   never retires, and refuses to arbitrate between two live ids claiming one key. */
+exports.sweepIdentityRegistry = onSchedule(
+  { schedule: 'every 60 minutes', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    try {
+      await sweepAllIdentityIntegrity(getFirestore(), ['x_pizza', 'la_musa']);
+    } catch (e) {
+      // A failed sweep is retryable by its own schedule and must never page: it repairs an
+      // inconsistency nothing on the order path reads.
+      console.error('identity_sweep_failed', (e && e.message) || String(e));
+    }
+  },
+);
+
 exports.sweepStalePending = onSchedule(
   { schedule: 'every 5 minutes', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
   async () => {

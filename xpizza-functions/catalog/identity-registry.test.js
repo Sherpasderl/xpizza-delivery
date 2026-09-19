@@ -36,6 +36,16 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const b = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Carnivora' });
     assert.strictEqual(a.created, true, 'the first assignment mints');
     assert.strictEqual(b.created, false, '🔴 the second preserves — a backfill that re-mints hands one object two identities');
+    /* 🔴 AND IT ANSWERED FROM THE KEY ROW, not from D4's orphan-adoption fallback. Those two paths
+       now reach the same id, which is defence in depth and exactly what we want in production — but
+       it means "same id" alone no longer proves the cheap path was taken. The adoption path REWRITES
+       the reverse row (stamping adopted_at); the key-row path does not touch it. So a re-run that
+       quietly started querying for orphans on every call — more expensive, and a write where there
+       should be none — is visible here rather than hidden behind a correct answer. */
+    const keyRow = await db.collection('restaurants').doc('x_pizza').collection('identity').doc('dish')
+      .collection('keys').doc(encodeKey('Carnivora')).get();
+    assert.strictEqual((keyRow.data() || {}).adopted_at, undefined,
+      '🔴 a plain re-run took the ORPHAN-ADOPTION path — the key row was rewritten when it should have answered the read');
     assert.strictEqual(a.canonical_id, b.canonical_id);
     assert.ok(new RegExp(`^[${ALPHABET}]{${ID_LEN}}$`).test(a.canonical_id), 'x_pizza mints an opaque token');
     assert.ok(!a.canonical_id.includes('Carnivora'), '🔴 …that is not derived from the name');

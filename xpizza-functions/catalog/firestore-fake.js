@@ -73,7 +73,36 @@ function makeDb() {
     };
   }
   function colRef(path) {
+    /* 🔴 EQUALITY QUERIES, because D4's registry writer guard asks "is a live id already claiming this
+       key?" and on x_pizza the id is a random token — there is nothing to look up by doc id. Without
+       this the guard throws inside every publish's preserve-on-write and silently registers nothing,
+       which is how it first showed up here. Immediate children only, as a Firestore collection query
+       is: a fixture that descended would answer a question production cannot. */
+    const query = (filters) => ({
+      _isQuery: true, _base: path, _filters: filters,
+      where: (f, op, v) => {
+        if (op !== '==') throw new Error(`firestore-fake: only '==' filters are modelled (got ${op})`);
+        return query(filters.concat([[f, v]]));
+      },
+      get: async () => {
+        const out = [];
+        for (const p of docs.keys()) {
+          if (!p.startsWith(`${path}/`)) continue;
+          if (p.slice(path.length + 1).includes('/')) continue;
+          const snap = snapOf(p);
+          const d = snap.data();
+          if (!filters.every(([f, v]) => d && d[f] === v)) continue;
+          out.push(snap);
+        }
+        out.sort((a, b) => (a.id < b.id ? -1 : 1));
+        return { docs: out, empty: out.length === 0, size: out.length };
+      },
+    });
     return {
+      where: (f, op, v) => {
+        if (op !== '==') throw new Error(`firestore-fake: only '==' filters are modelled (got ${op})`);
+        return query([[f, v]]);
+      },
       doc: (id) => docRef(`${path}/${id === undefined ? `auto${++autoId}` : id}`),
       get: async () => {
         const out = [];
@@ -99,7 +128,7 @@ function makeDb() {
       };
     },
     runTransaction: async (fn) => fn({
-      get: (ref) => ref.get(),
+      get: (ref) => ref.get(),      // a query ref answers .get() too — see colRef's query()
       set: (ref, d) => { put(ref.path, d); },
       delete: (ref) => { docs.delete(ref.path); },
     }),

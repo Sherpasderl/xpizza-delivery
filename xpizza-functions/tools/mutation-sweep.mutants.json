@@ -4812,7 +4812,10 @@
       "node",
       "catalog/identity-registry.test.js"
     ],
-    "kills_with": "the second preserves"
+    "kills_with": [
+      "took the ORPHAN-ADOPTION path",
+      "the second preserves"
+    ]
   },
   {
     "id": "d1-02",
@@ -4826,6 +4829,7 @@
       "catalog/identity-registry.test.js"
     ],
     "kills_with": [
+      "took the ORPHAN-ADOPTION path",
       "concurrent seeds produced",
       "the second preserves"
     ]
@@ -5664,5 +5668,154 @@
       "its ids did not survive the commit",
       "POST-COMMIT MENU carries an id on every dish"
     ]
+  },
+  {
+    "id": "d4-01",
+    "slice": "d4",
+    "label": "🔴 a disagreeing line is stamped anyway - the id REPRICES the order",
+    "file": "catalog/identity-grace.js",
+    "from": "      if (got.legacyKey === o.raw) {",
+    "to": "      if (true) {",
+    "command": [
+      "node",
+      "catalog/identity-grace.test.js"
+    ],
+    "kills_with": [
+      "the disagreement is counted",
+      "a disagreeing line must NOT be stamped"
+    ]
+  },
+  {
+    "id": "d4-02",
+    "slice": "d4",
+    "label": "🔴 the agreement check compares against the STAMP instead of the raw client fields - it agrees with itself",
+    "file": "catalog/identity-grace.js",
+    "from": "const rawLegacyKey = (rid, node) => (rid === 'la_musa' ? (node && node.id) : (node && node.name));",
+    "to": "const rawLegacyKey = (rid, node) => require('../menu-pricing').itemPricingKey(node, rid);",
+    "command": [
+      "node",
+      "catalog/identity-grace.test.js"
+    ],
+    "kills_with": "the agreement check read the STAMP rather than the client fields"
+  },
+  {
+    "id": "d4-03",
+    "slice": "d4",
+    "label": "🔴 read_error is collapsed into unresolved - a transient outage would refuse orders under enforce",
+    "file": "catalog/identity-registry.js",
+    "from": "      if (!byId.has(id)) byId.set(id, { outcome: 'read_error', reason: 'exception' });",
+    "to": "      if (!byId.has(id)) byId.set(id, { outcome: 'unresolved', reason: 'exception' });",
+    "command": [
+      "node",
+      "catalog/identity-grace.test.js"
+    ],
+    "kills_with": "NEVER unresolved"
+  },
+  {
+    "id": "d4-04",
+    "slice": "d4",
+    "label": "🔴 the fan-out budget is dropped - an order issues one Firestore read per distinct id, unbounded",
+    "file": "catalog/identity-registry.js",
+    "from": "    const within = toRead.slice(0, maxLookups);",
+    "to": "    const within = toRead.slice();",
+    "command": [
+      "node",
+      "catalog/identity-grace.test.js"
+    ],
+    "kills_with": "the budget did not bound the reads"
+  },
+  {
+    "id": "d4-05",
+    "slice": "d4",
+    "label": "🔴 overflow is reported as unresolved rather than read_error - enforce would refuse a big cart",
+    "file": "catalog/identity-registry.js",
+    "from": "      byId.set(id, { outcome: 'read_error', reason: 'budget_exceeded' });",
+    "to": "      byId.set(id, { outcome: 'unresolved', reason: 'budget_exceeded' });",
+    "command": [
+      "node",
+      "catalog/identity-grace.test.js"
+    ],
+    "kills_with": "overflow must degrade to read_error"
+  },
+  {
+    "id": "d4-06",
+    "slice": "d4",
+    "label": "🔴 the cache is anchored at WRITE time - staleness becomes TTL plus read latency",
+    "file": "catalog/identity-registry.js",
+    "from": "          cacheSet(`${rid}/${kind}/${id}`, { ...entry, readStartedAt: startedAt });",
+    "to": "          cacheSet(`${rid}/${kind}/${id}`, { ...entry, readStartedAt: now() });",
+    "command": [
+      "node",
+      "catalog/identity-grace.test.js"
+    ],
+    "kills_with": "staleness exceeded"
+  },
+  {
+    "id": "d4-07",
+    "slice": "d4",
+    "label": "🔴 a read_error is CACHED - a transient outage pins a false no-id for a whole TTL",
+    "file": "catalog/identity-registry.js",
+    "from": "      if (!byId.has(id)) byId.set(id, { outcome: 'read_error', reason: 'exception' });",
+    "to": "      if (!byId.has(id)) { byId.set(id, { outcome: 'read_error', reason: 'exception' }); cacheSet(`${rid}/${kind}/${id}`, { outcome: 'unresolved', reason: 'exception', readStartedAt: now() }); }",
+    "command": [
+      "node",
+      "catalog/identity-grace.test.js"
+    ],
+    "kills_with": "read_error was CACHED"
+  },
+  {
+    "id": "d4-08",
+    "slice": "d4",
+    "label": "🔴 the writer mints a duplicate instead of adopting an orphaned live id - split identity",
+    "file": "catalog/identity-registry.js",
+    "from": "    const orphan = await findOrphanedLiveId(tx, db, rid, kind, legacyKey);",
+    "to": "    const orphan = null;",
+    "command": [
+      "node",
+      "catalog/identity-grace.test.js"
+    ],
+    "kills_with": "a SECOND id was minted"
+  },
+  {
+    "id": "d4-09",
+    "slice": "d4",
+    "label": "🔴 two live ids for one key are arbitrated instead of refused - the loser's orders become unresolvable",
+    "file": "catalog/identity-registry.js",
+    "from": "  if (docs.length > 1) {",
+    "to": "  if (false) {",
+    "command": [
+      "node",
+      "catalog/identity-grace.test.js"
+    ],
+    "kills_with": "must be REFUSED, not silently arbitrated"
+  },
+  {
+    "id": "d4-10",
+    "slice": "d4",
+    "label": "🔴 the sweep rewrites a HEALTHY reverse row - it stops being narrow",
+    "file": "catalog/identity-sweep.js",
+    "from": "        if (cur.exists && (cur.data() || {}).canonical_id) return false;   // healthy, or already healed",
+    "to": "        if (false) return false;",
+    "command": [
+      "node",
+      "catalog/identity-grace.test.js"
+    ],
+    "kills_with": [
+      "exactly ONE orphan exists",
+      "a healthy row was rewritten"
+    ]
+  },
+  {
+    "id": "d4-11",
+    "slice": "d4",
+    "label": "🔴 the client-suppliable field is trusted - a cart chooses what it is charged for",
+    "file": "menu-pricing.js",
+    "from": "    const stamped = item[PRICING_KEY_STAMP];",
+    "to": "    const stamped = item[PRICING_KEY_STAMP] || item._pricingKey;",
+    "command": [
+      "node",
+      "catalog/identity-grace.test.js"
+    ],
+    "kills_with": "a client-supplied key influenced pricing"
   }
 ]

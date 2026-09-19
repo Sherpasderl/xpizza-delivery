@@ -124,8 +124,33 @@ const EXTRAS_BY_RESTAURANT = { x_pizza: EXTRA_PRICES, la_musa: LA_MUSA_EXTRAS };
 // availability-gate.js (the KDS "86" intake gate) both resolve a line's key THROUGH this, so the
 // availability key can never drift from the pricing key. Returns the RAW key (pre-availKey encoding);
 // null/undefined for an unkeyed/absent line (pricing then rejects it; availability treats it as available).
+/* ── 1D D4-grace — A SERVER-OWNED PRE-RESOLVED KEY, AND WHY IT CANNOT CHANGE A PRICE ─────────
+   D4 puts the identity on the forward resolution path: before pricing, the server asks the registry
+   which legacy key each line's id maps to. When that answer AGREES with the key this function would
+   have produced anyway, the line is stamped with it; when it disagrees, nothing is stamped and the
+   disagreement is logged. So the stamp, when present, is BY CONSTRUCTION the same string this
+   function already returns — grace is a no-op on money, not a no-op that is tested for.
+
+   🔴 A SYMBOL, NOT A FIELD, AND THAT IS THE SECURITY ARGUMENT. `item._pricingKey` would be forgeable:
+   the line arrives as JSON from a browser, and a client that could name the key would choose which
+   catalog row prices its cart. JSON.parse cannot produce a symbol-keyed property — there is no wire
+   representation for one — so a stamp can only have been placed by this server, in this request,
+   after the registry agreed. Stripping a string field on ingress would also work but relies on
+   remembering to strip on every path including the error ones; this cannot be supplied at all.
+
+   The raw accessor stays exactly as it was, and is what the agreement check compares against. */
+const PRICING_KEY_STAMP = Symbol.for('xpizza.d4.pricingKeyStamp');
+
 function itemPricingKey(item, restaurantId) {
-  return restaurantId === 'la_musa' ? (item && item.id) : (item && item.name);
+  const raw = restaurantId === 'la_musa' ? (item && item.id) : (item && item.name);
+  if (item && typeof item === 'object') {
+    const stamped = item[PRICING_KEY_STAMP];
+    /* Preferred only when it is a real string. It is never DIFFERENT from `raw` — the stamper only
+       stamps on agreement — so this selects the same value either way; what it exercises is the path
+       enforce will one day depend on. */
+    if (typeof stamped === 'string' && stamped) return stamped;
+  }
+  return raw;
 }
 
 // Phase 1b-1 — resolve WHICH price tables price this order. Omitting `tables` keeps today's exact
@@ -290,7 +315,7 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
   return lines;
 }
 
-module.exports = {
+module.exports = { PRICING_KEY_STAMP,
   MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal, itemPricingKey, summaryLines,
   resolvePriceTables,   // 1b-1b: the shared PIN-B-asserting table resolver, reused across the redemption graph
   X_PIZZA_WEEKEND_ONLY, hnDayFromMs, weekendOnlyViolation,

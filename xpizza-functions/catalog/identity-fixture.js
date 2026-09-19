@@ -16,11 +16,55 @@ function memFirestore() {
   const bump = () => { version += 1; return version; };
   const ref = (path) => ({
     path,
-    get: async () => ({ exists: docs.has(path), data: () => docs.get(path) }),
+    /* 🔴 A SNAPSHOT IS POINT-IN-TIME, and this used to read the live map lazily — so a document
+       changed AFTER a read was observed BY that read, which Firestore never does. It matters for
+       anything reasoning about in-flight reads: D4's cache is anchored at a read's start precisely
+       because a retirement can commit while a read is outstanding, and a lazy snapshot made that race
+       impossible to stage. Captured at call time now, as production does. */
+    get: async () => {
+      const exists = docs.has(path);
+      const captured = exists ? JSON.parse(JSON.stringify(docs.get(path))) : undefined;
+      return { exists, data: () => captured };
+    },
     _set: (v) => { docs.set(path, v); bump(); },
     _delete: () => { docs.delete(path); bump(); },
   });
-  const col = (base) => ({ doc: (id) => makeRef(`${base}/${id}`) });
+  /* 🔴 QUERIES, because D4's writer guard asks "is there a live id already claiming this key?" and on
+     x_pizza there is no id to guess — only a query finds it. Modelled as Firestore does: equality
+     filters, chainable, returning a snapshot with `.docs` carrying `.id` and `.data()`. Scans this
+     collection's immediate children only — a Firestore collection query does not descend, and a
+     fixture that did would answer questions production cannot. */
+  const col = (base) => {
+    const self = {
+      doc: (id) => makeRef(`${base}/${id}`),
+      // Firestore collections answer .get(); a fixture without it forces tests to reach for internals.
+      get: async () => makeQuery(base, []).get(),
+      where: (field, op, value) => {
+        if (op !== '==') throw new Error(`memFirestore: only '==' filters are modelled (got ${op})`);
+        return makeQuery(base, [[field, value]]);
+      },
+    };
+    return self;
+  };
+  function makeQuery(base, filters) {
+    return {
+      where: (field, op, value) => {
+        if (op !== '==') throw new Error(`memFirestore: only '==' filters are modelled (got ${op})`);
+        return makeQuery(base, filters.concat([[field, value]]));
+      },
+      _isQuery: true, _base: base, _filters: filters,
+      get: async () => {
+        const out = [];
+        for (const [path, val] of docs) {
+          if (!path.startsWith(`${base}/`)) continue;
+          if (path.slice(base.length + 1).includes('/')) continue;      // immediate children only
+          if (!filters.every(([f, v]) => val && val[f] === v)) continue;
+          out.push({ id: path.split('/').pop(), exists: true, data: () => val });
+        }
+        return { docs: out, empty: out.length === 0, size: out.length };
+      },
+    };
+  }
   function makeRef(path) {
     const r = ref(path);
     r.collection = (c) => col(`${path}/${c}`);
@@ -43,6 +87,15 @@ function memFirestore() {
         const tx = {
           get: async (r) => {
             if (wrote) throw new Error('firestore_read_after_write: a transaction must do all reads before any write');
+            /* A QUERY read inside a transaction, which Firestore supports and the writer guard needs.
+               Its conflict key is the whole collection: any write under it must invalidate the read,
+               because the query's ANSWER can change without any document it returned changing. */
+            if (r && r._isQuery) {
+              const snap = await r.get();
+              readVersions.set(`__query__${r._base}|${JSON.stringify(r._filters)}`,
+                JSON.stringify(snap.docs.map((d) => [d.id, d.data()])));
+              return snap;
+            }
             readVersions.set(r.path, docs.has(r.path) ? JSON.stringify(docs.get(r.path)) : null);
             return r.get();
           },
@@ -53,7 +106,21 @@ function memFirestore() {
         // conflict check: did anything we READ change under us?
         let stale = false;
         for (const [p, seen] of readVersions) {
-          const nowVal = docs.has(p) ? JSON.stringify(docs.get(p)) : null;
+          let nowVal;
+          if (p.startsWith('__query__')) {
+            const [base, filtersJson] = p.slice('__query__'.length).split('|');
+            const filters = JSON.parse(filtersJson);
+            const rows = [];
+            for (const [path, val] of docs) {
+              if (!path.startsWith(`${base}/`)) continue;
+              if (path.slice(base.length + 1).includes('/')) continue;
+              if (!filters.every(([f, v]) => val && val[f] === v)) continue;
+              rows.push([path.split('/').pop(), val]);
+            }
+            nowVal = JSON.stringify(rows);
+          } else {
+            nowVal = docs.has(p) ? JSON.stringify(docs.get(p)) : null;
+          }
           if (nowVal !== seen) { stale = true; break; }
         }
         if (stale) { if (db._onRetry) db._onRetry(); continue; }

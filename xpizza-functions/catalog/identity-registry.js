@@ -111,6 +111,26 @@ async function ensureIdentity(db, { rid, kind, legacyKey, now = null, shouldStop
       if (typeof existing === 'string' && existing) return { canonical_id: existing, created: false };
     }
 
+    /* ── 1D D4 — ADOPT AN ORPHANED LIVE ID RATHER THAN MINTING A DUPLICATE ───────────────────
+       🔴 THE DUPLICATE-ID BUG, CLOSED AT THE WRITER. We only reach this point because the key row is
+       missing. That does NOT mean the object has no id: the reverse row can be gone while the id row
+       survives — retirement deletes the key row, a partial write loses it, a sweep repairs half. In
+       that state x_pizza MINTS A SECOND LIVE ID for one object, because proposeId returns a random
+       token and nothing looks for the one already there. Two live ids for one dish is split identity:
+       orders written either side of the mint disagree about what they were, permanently.
+       So before minting, ask whether a live id already claims this key. The query runs inside the same
+       transaction that serializes on the key row, so two racing ensureIdentity calls converge on one
+       adoption rather than one adopting and one minting.
+       🔴 IT ADOPTS, IT DOES NOT ARBITRATE. A retired id is never revived — the reservation exists
+       precisely so a freed id cannot be handed out again. And two LIVE ids already claiming one key is
+       a corruption this function must not silently pick a winner for: picking would make the loser's
+       historical orders unresolvable and would hide the corruption. It refuses and reports. */
+    const orphan = await findOrphanedLiveId(tx, db, rid, kind, legacyKey);
+    if (orphan) {
+      tx.set(keyRef, { canonical_id: orphan, kind, created_at: stamp, adopted_at: stamp });
+      return { canonical_id: orphan, created: false, adopted: true };
+    }
+
     /* A fresh id must not collide with a live OR a RETIRED one. Retired ids stay reserved forever:
        a freed id handed to a new object would make old records — an order snapshot, a factura line,
        a support ticket — resolve to a dish nobody meant. Alias non-reuse is cheap to keep and
@@ -164,6 +184,150 @@ async function ensureIdentity(db, { rid, kind, legacyKey, now = null, shouldStop
   });
 }
 
+/* ── 1D D4-grace — THE FORWARD RESOLVER (id → legacy key) ─────────────────────────────────────
+   D1's lookupByLegacyKeys reads the REVERSE index: given a key, which id does the registry hold. D3
+   uses it to check a claim. This reads the PRIMARY direction — given an id, which object does the
+   registry say it is — and that is the direction an eventual enforce would key by. Exercising it now,
+   under grace, is the point: the resolver and its wiring get proven on live traffic while a
+   disagreement is still harmless, instead of the first time it decides a price.
+
+   🔴 THREE OUTCOMES, AND THE THIRD IS THE ONE THAT MATTERS. `resolved` and `unresolved` are both
+   ANSWERS — the id maps to a live object, or it definitely does not (absent doc, retired, malformed).
+   `read_error` is the absence of an answer: Firestore threw, timed out, or the budget ran out. Under
+   grace all three fall back to the legacy key, so collapsing them changes nothing today — which is
+   exactly why it must not be collapsed today. Under enforce, `unresolved` refuses an order and
+   `read_error` must NOT, or a transient Firestore hiccup starts rejecting paid carts. The distinction
+   has to be built and tested while it is free.
+
+   Never throws: a resolver that can fail a charge is worse than one that resolves nothing. */
+const RESOLVE_TIMEOUT_MS = 800;        // its own deadline, unrelated to the pricing reader's
+const RESOLVE_CACHE_TTL_MS = 60000;    // status is MUTABLE (retirement), so it cannot inherit the immutable-version TTL
+const RESOLVE_CACHE_MAX = 500;
+const RESOLVE_MAX_LOOKUPS = 40;        // comfortably above a real cart; the cap is what bounds load
+const RESOLVE_CONCURRENCY = 8;
+
+const _resolveCache = new Map();       // `${rid}/${kind}/${id}` -> { outcome, legacyKey, readStartedAt }
+
+/* 🔴 SHAPE VALIDATION, NOT ALPHABET VALIDATION. x_pizza mints a token from a fixed alphabet, but
+   la_musa GRANDFATHERS its slug — `dimsum_01` is a perfectly valid canonical id — so checking the
+   minted alphabet here would classify every la_musa id as invalid and quietly turn the whole brand
+   into `unresolved`. What can actually be validated is what Firestore requires of a document id, which
+   is the read this is about to perform. An id failing this is a CLEAN unresolved and costs no read. */
+function validIdShape(id) {
+  if (typeof id !== 'string' || !id) return false;
+  if (id.length > 200) return false;
+  if (id.indexOf('/') !== -1) return false;
+  if (id === '.' || id === '..') return false;
+  if (/^__.*__$/.test(id)) return false;          // Firestore reserves __*__ ids
+  return true;
+}
+
+function cacheGet(key, nowMs) {
+  const hit = _resolveCache.get(key);
+  if (!hit) return null;
+  /* 🔴 EXPIRY IS MEASURED FROM THE READ'S START, NOT FROM WHEN IT WAS CACHED. Anchoring at write time
+     does not bound staleness at all: a read can observe `live`, the retirement can commit while that
+     read is still in flight, and the read can then land before its deadline and cache `live` for
+     another full TTL — total staleness TTL + latency, and worse the slower the read. Stamping the
+     entry with the instant the read STARTED caps it at the TTL no matter how long the read took.
+     An expired entry is dropped, never served. */
+  if (nowMs - hit.readStartedAt > RESOLVE_CACHE_TTL_MS) { _resolveCache.delete(key); return null; }
+  return hit;
+}
+
+function cacheSet(key, value) {
+  // read_error is NEVER cached — see the note at its call site.
+  if (_resolveCache.size >= RESOLVE_CACHE_MAX) {
+    const oldest = _resolveCache.keys().next();
+    if (!oldest.done) _resolveCache.delete(oldest.value);
+  }
+  _resolveCache.set(key, value);
+}
+
+async function resolveLegacyByIds(fs, rid, kind, ids, opts = {}) {
+  const {
+    timeoutMs = RESOLVE_TIMEOUT_MS,
+    maxLookups = RESOLVE_MAX_LOOKUPS,
+    concurrency = RESOLVE_CONCURRENCY,
+    now = Date.now,
+  } = opts;
+  const byId = new Map();
+  let incomplete = false;
+  try {
+    assertKind(kind);
+    const wanted = [...new Set((Array.isArray(ids) ? ids : []).filter((x) => x !== undefined && x !== null))];
+    if (!wanted.length) return { byId, incomplete: false };
+
+    const toRead = [];
+    for (const id of wanted) {
+      if (!validIdShape(id)) { byId.set(id, { outcome: 'unresolved', reason: 'invalid_id' }); continue; }
+      const ck = `${rid}/${kind}/${id}`;
+      const hit = cacheGet(ck, now());
+      if (hit) { byId.set(id, { outcome: hit.outcome, legacyKey: hit.legacyKey, reason: hit.reason }); continue; }
+      toRead.push(id);
+    }
+
+    /* 🔴 THE BUDGET IS WHAT ACTUALLY BOUNDS LOAD. Deduping and Promise.all-ing bounds nothing — a cart
+       with two hundred distinct ids issues two hundred reads at once, on the charge path. Beyond the
+       cap the remainder is treated as read_error (so it degrades to grace like any other operational
+       failure) and the order's coverage is marked INCOMPLETE, so the heartbeat does not count a
+       partially-resolved order as clean evidence for enforce. */
+    const within = toRead.slice(0, maxLookups);
+    for (const id of toRead.slice(maxLookups)) {
+      byId.set(id, { outcome: 'read_error', reason: 'budget_exceeded' });
+      incomplete = true;
+    }
+
+    if (within.length) {
+      const startedAt = now();          // the anchor for every entry cached from this batch
+      const col = idsColOf(fs, rid, kind);
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < within.length) {
+          const id = within[cursor++];
+          const snap = await col.doc(id).get();
+          const d = snap && snap.exists ? (snap.data() || {}) : null;
+          let entry;
+          if (!d) entry = { outcome: 'unresolved', reason: 'absent' };
+          else if (d.status === STATUS_RETIRED) entry = { outcome: 'unresolved', reason: 'retired' };
+          else if (typeof d.legacy_key !== 'string' || !d.legacy_key) entry = { outcome: 'unresolved', reason: 'no_legacy_key' };
+          else entry = { outcome: 'resolved', legacyKey: d.legacy_key };
+          byId.set(id, entry);
+          cacheSet(`${rid}/${kind}/${id}`, { ...entry, readStartedAt: startedAt });
+        }
+      };
+      const runners = Array.from({ length: Math.min(concurrency, within.length) }, worker);
+
+      /* The deadline bounds when this RESULT settles. It does not cancel the reads — Firestore has no
+         cancellation — so a late read finishes, harmlessly, and reports nothing: whatever it would
+         have said arrives after the answer was already given, and acting on it would mean a
+         post-response effect on a charge path. */
+      let timer = null;
+      const deadline = new Promise((resolve) => { timer = setTimeout(() => resolve('__timeout__'), timeoutMs); });
+      const outcome = await Promise.race([Promise.all(runners).then(() => '__done__'), deadline]);
+      if (timer) clearTimeout(timer);
+      if (outcome === '__timeout__') {
+        for (const id of within) {
+          if (!byId.has(id)) { byId.set(id, { outcome: 'read_error', reason: 'timeout' }); incomplete = true; }
+        }
+      }
+    }
+    return { byId, incomplete };
+  } catch (e) {
+    /* 🔴 A FAILURE IS read_error FOR EVERY ID IT COULD NOT ANSWER — never `unresolved`. The difference
+       is invisible under grace and decisive under enforce: unresolved means "there is no such live
+       object", which is grounds to refuse; read_error means "I could not find out", which never is.
+       Ids already answered from cache keep their answers. */
+    for (const id of (Array.isArray(ids) ? ids : [])) {
+      if (!byId.has(id)) byId.set(id, { outcome: 'read_error', reason: 'exception' });
+    }
+    return { byId, incomplete: true };
+  }
+}
+
+// Test-only: the cache is per-instance and long-lived, which a test must be able to reset.
+function _resetResolveCache() { _resolveCache.clear(); }
+
 /* The overlay's read. Batched by key, tolerant by design: an id that cannot be resolved comes back
    absent, and the caller serves the record without one. It must never throw its way into a serve. */
 async function lookupByLegacyKeys(db, { rid, kind, legacyKeys }) {
@@ -178,6 +342,27 @@ async function lookupByLegacyKeys(db, { rid, kind, legacyKeys }) {
     if (d && typeof d.canonical_id === 'string' && d.canonical_id) out.set(k, d.canonical_id);
   });
   return out;
+}
+
+/* 🔴 AN ORPHANED LIVE ID: an `ids/*` row that is live and claims this legacy key while the reverse row
+   is missing. Only called when the key row is already known absent, so "claims this key and is live"
+   IS the orphan condition — there is nothing else it could be.
+   A QUERY rather than a doc read, because x_pizza's id is a random token: there is no id to guess. On
+   la_musa the id is the slug and the mint path would find it by candidate anyway, but routing both
+   brands through the same check is what stops this from being a brand-shaped fix — the third
+   one-direction miss in this programme was exactly that. */
+async function findOrphanedLiveId(tx, db, rid, kind, legacyKey) {
+  const q = idsColOf(db, rid, kind).where('legacy_key', '==', legacyKey).where('status', '==', STATUS_LIVE);
+  const snap = await tx.get(q);
+  const docs = (snap && snap.docs) ? snap.docs : [];
+  if (!docs.length) return null;
+  if (docs.length > 1) {
+    /* Refused, not arbitrated. Two live ids for one object is already corruption; choosing one makes
+       every order written under the other unresolvable and removes the evidence that it happened. */
+    const ids = docs.map((d) => d.id).sort().join(',');
+    throw new Error(`identity_conflicting_live_ids: ${rid}/${kind}/${legacyKey} — ${ids}`);
+  }
+  return docs[0].id;
 }
 
 /* Retire an id without freeing it. D1 never calls this from a live path — the delete/rename machinery
@@ -246,6 +431,8 @@ async function validateClaim(db, { rid, kind, legacyKey, claimedId }) {
 
 module.exports = {
   ensureIdentity, lookupByLegacyKeys, retireIdentity, validateClaim, classifyClaim,
+  resolveLegacyByIds, validIdShape, _resetResolveCache, findOrphanedLiveId,
+  RESOLVE_TIMEOUT_MS, RESOLVE_CACHE_TTL_MS, RESOLVE_MAX_LOOKUPS,
   encodeKey, randomToken, proposeId, isGrandfathered, GRANDFATHERED, idsColOf, keysColOf,
   KINDS, STATUS_LIVE, STATUS_RETIRED, ID_LEN, ALPHABET,
 };

@@ -241,53 +241,46 @@ const clearRegistry = async (rid) => {
     ok('la_musa applies 44 + 14, every dish grandfathered, dimsum_01 pinned by name');
   }
 
-  // ── 5b. 🔴 THE VERIFY LINE IS NOT AN ECHO — REPORT SAYS 44, THE REREAD SAYS 43 ───────────────
-  /* I argued this could not be built black-box: after a non-faulty run the report and the verify line
-     are necessarily equal, so separating them would need a race or a fault-injection seam in the
-     production script. That was wrong, and the seam was already in the data model — the registry
-     stores an identity as TWO rows, and they can be desynced from outside.
-     Delete only the KEY row and leave the id row LIVE. ensureIdentity then finds no key row, proposes
-     the grandfathered slug, finds that id row already present and belonging to this same object, and
-     returns it as PRESERVED — without restoring the key row it never read. So the backfill honestly
-     reports 44 dishes preserved while lookupByLegacyKeys, which resolves through key rows, can only
-     find 43. Report 44, reread 43, deterministic, no prod change.
-     Only works on the grandfathered brand: x_pizza proposes a random token, misses the retained id row
-     entirely, and mints a fresh identity — self-healing, and no disagreement to observe. It must also
-     run BEFORE the retirement case below, which takes dimsum_01 out of service. */
+  // ── 5b. 🔴 D4'S SELF-HEAL REPAIRS THE ORPHAN THIS CELL USED TO STAGE ────────────────────────
+  /* THIS CELL CHANGED BECAUSE THE SYSTEM DID, and the change is a defect being fixed.
+     It used to delete a KEY row and leave the id row live, because ensureIdentity would then report
+     that object "preserved" while the reverse index stayed short — report 44, reread 43 — which is
+     how it proved the verify line was a real lookup and not an echo. That state was also a
+     carried-forward defect: the backfill could not repair it, so an operator following "re-run, it
+     mints only what is missing" would loop forever.
+     D4's writer guard closes exactly that hole — ensureIdentity ADOPTS an orphaned live id instead of
+     minting beside it or reporting a hollow preserve. So the orphan heals, and this cell now asserts
+     the repair rather than a divergence it can no longer stage.
+     🔴 THE ECHO-VS-REREAD PROPERTY IS NOT LOST WITH IT: cell 3 still proves it by deleting an identity
+     WHOLE (both rows) out of band and watching the read-only dry run say 21 instead of 24. Nothing
+     heals that, so it remains the discriminator. */
   {
     const rid = 'la_musa';
-    const victim = KEYS.la_musa.dish[1];                 // dimsum_02 today — any grandfathered dish works
-    assert.notStrictEqual(victim, 'dimsum_01',
-      'premise — the victim is NOT the dish the retirement case takes out of service later');
-    const col = db.collection('restaurants').doc(rid).collection('identity').doc('dish');
-    const keyRef = col.collection('keys').doc(encodeKey(victim));
+    const victim = KEYS.la_musa.dish[1];
+    const dishCol = db.collection('restaurants').doc(rid).collection('identity').doc('dish');
+    const keyRef = dishCol.collection('keys').doc(encodeKey(victim));
     const held = await keyRef.get();
-    assert.ok(held.exists, `premise — ${victim} is registered before the reverse index is broken`);
-    const id = (held.data() || {}).canonical_id;
-    const idSnap = await col.collection('ids').doc(id).get();
-    assert.strictEqual((idSnap.data() || {}).status, 'live',
-      'premise — the id row stays LIVE; only the reverse index is lost, which is what makes the report disagree');
+    assert.ok(held.exists, `premise — ${victim} is registered`);
+    const originalId = held.data().canonical_id;
+    const idRowsBefore = (await dishCol.collection('ids').get()).docs.length;
 
-    await keyRef.delete();
+    await keyRef.delete();                       // the reverse row is lost; the id row stays live
+    assert.strictEqual((await keyRef.get()).exists, false, 'premise — the orphan really is staged');
 
     const r = runCli(['--rid=' + rid, '--project', PROJECT, '--apply']);
-    assert.ok(/dish: 44 total — 0 created, 44 preserved/.test(r.out),
-      `🔴 the REPORT claims all 44 dishes preserved: ${r.out}`);
-    assert.ok(/verified: 43\/44 dishes/.test(r.out),
-      `🔴 …and the REREAD says 43. A verify line echoing the report would have said 44/44 — this is the assertion that keeps it a real lookup: ${r.out}`);
-    assert.ok(/INCOMPLETE/.test(r.out), `it reports the state as incomplete: ${r.out}`);
-    assert.strictEqual(r.code, 1, `🔴 and exits 1 rather than claiming success — got ${r.code}: ${r.out}`);
-    assert.ok(!/is fully registered/.test(r.out), '🔴 …never printing the success line');
+    assert.strictEqual(r.code, 0, `the run succeeds — this state is repairable now: ${r.out}`);
 
-    /* Repaired by hand, because the backfill cannot repair this one: every re-run takes the same
-       preserve path and reports the same 44. That is why the tool's INCOMPLETE guidance ends with
-       "if it stays incomplete, stop and report" — this is the state that reaches it. */
-    await keyRef.set({ canonical_id: id, kind: 'dish', created_at: new Date().toISOString() });
-    const back = runCli(['--rid=' + rid, '--project', PROJECT, '--apply']);
-    assert.strictEqual(back.code, 0, `non-vacuity: once the reverse index is restored the same command succeeds — ${back.out}`);
-    assert.ok(/verified: 44\/44 dishes/.test(back.out), '…and the verify line follows the database back up to 44');
-    ok('the verify line disagrees with the report when the database disagrees — report 44 preserved, reread 43, INCOMPLETE, exit 1');
+    const healed = await keyRef.get();
+    assert.ok(healed.exists, '🔴 the orphaned reverse row was not repaired');
+    assert.strictEqual(healed.data().canonical_id, originalId,
+      '🔴 …and it must point at the EXISTING id — adopted, not minted beside it');
+    assert.strictEqual((await dishCol.collection('ids').get()).docs.length, idRowsBefore,
+      '🔴 a SECOND id row appeared — the duplicate-id hazard is precisely what the guard closes');
+    assert.ok(/verified: 44\/44 dishes/.test(r.out),
+      `the verify line reads complete because the registry now is: ${r.out}`);
+    ok(`${rid}: an orphaned reverse row is ADOPTED back to its existing id — no duplicate, verify complete`);
   }
+
 
   // ── 6. 🔴 THE PROJECT GUARD REFUSES BEFORE IT READS ANYTHING ─────────────────────────────────
   /* Three refusals, each for its own rule, and each asserted to have touched nothing. The row count is
