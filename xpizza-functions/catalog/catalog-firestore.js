@@ -46,6 +46,28 @@ function mapDocs(snap, where) {
 // ── The active-version POINTER (cheap read) ─────────────────────────────────────────────────────
 // Returns the versionId string, or null for a CLEAN pointer-absent (→ flat fallback). Throws on a
 // MALFORMED pointer. A Firestore read error rejects and propagates (never masked as "absent").
+/* 🔴 1D D4-P1 — THE POINTER READ THAT ALSO CARRIES THE ACTIVATION GENERATION, captured TOGETHER.
+   Every registry writer must fence on {version, generation} as a PAIR: reading them in two calls
+   leaves a window where the version is from before an activation and the generation from after, and a
+   fence built on a torn pair is worse than none — it reads as verified.
+   It lives here, beside getActiveVersionId, because this module is the pointer's READ side.
+   catalog-publish.js owns the WRITE and keeps its own private ref; publish-paths.test.js enforces that
+   the write-side reference never escapes that module, which is why this does not reuse it. A pre-P1
+   pointer carries no generation and reads as 0 — not an error, just the pre-cutover state. */
+function activePointerRef(db, restaurantId) {
+  return db.collection('restaurants').doc(restaurantId).collection('meta').doc('active_version');
+}
+function pointerStateOf(data) {
+  const d = data || {};
+  const g = d.generation;
+  return { version: (typeof d.version === 'string' && d.version) ? d.version : null,
+    generation: (Number.isInteger(g) && g >= 0) ? g : 0 };
+}
+async function getActivePointer(db, restaurantId) {
+  const snap = await activePointerRef(db, restaurantId).get();
+  return snap.exists ? pointerStateOf(snap.data()) : { version: null, generation: 0 };
+}
+
 async function getActiveVersionId(db, restaurantId) {
   const snap = await db.collection('restaurants').doc(restaurantId).collection('meta').doc('active_version').get();
   if (!snap.exists) return null;                                   // CLEAN absent → the caller falls back to flat
@@ -102,4 +124,4 @@ async function getRestaurantDocs(db, restaurantId) {
   return { versionId, seq, itemDocs, extraDocs };
 }
 
-module.exports = { getRestaurantDocs, getActiveVersionId, readVersionDocs, readFlatDocs, mapDocs };
+module.exports = { activePointerRef, getActivePointer, pointerStateOf, getRestaurantDocs, getActiveVersionId, readVersionDocs, readFlatDocs, mapDocs };

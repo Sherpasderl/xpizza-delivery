@@ -6067,6 +6067,133 @@
   "to": "    const bare = display;"
  },
  {
+  "id": "d4p1b-01",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 the stamp write replaces the whole display - the one UPDATE to an immutable version stops being narrow",
+  "kills_with": "changed something outside the identity set",
+  "from": "        tx.update(vref.collection(col).doc(o.id), { 'display.identity_id': o.canonical_id });",
+  "to": "        tx.update(vref.collection(col).doc(o.id), { display: { identity_id: o.canonical_id } });"
+ },
+ {
+  "id": "d4p1b-02",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 the idempotency early-return is dropped - a re-run becomes an ERROR instead of a no-op (caught by the in-tx race guard)",
+  "kills_with": "identity_bootstrap_raced",
+  "from": "  if (active.record.identity_certified === true) {\n    report.already = true;\n    return report;\n  }",
+  "to": "  if (false) {\n    report.already = true;\n    return report;\n  }",
+  "why": "dies on the SECOND guard, not the first: with the early return gone the re-run reaches the transaction and the in-tx `identity_bootstrap_raced` check refuses it. That is defence in depth working as intended — the property (a certified version is never re-stamped) stays guarded — so the signature names the guard that actually fires rather than the assertion that would have if there were only one."
+ },
+ {
+  "id": "d4p1b-03",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 an UNREGISTERED object is skipped instead of refusing - bootstrap silently certifies a partial menu",
+  "kills_with": "bootstrap minted for an object the registry does not know",
+  "from": "    if (!id) throw new Error(`identity_bootstrap_unregistered: ${rid}/${kind}/${o.key} — bootstrap mints nothing; run the D1 backfill first`);\n    out.push({ ...o, canonical_id: id });",
+  "to": "    if (!id) continue;\n    out.push({ ...o, canonical_id: id });"
+ },
+ {
+  "id": "d4p1b-04",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 the id-liveness check is dropped - a RETIRED id behind a stale key row becomes a certified identity",
+  "kills_with": "a RETIRED id behind a surviving key row was accepted as certification",
+  "from": "    if (d.status !== STATUS_LIVE) throw new Error(`identity_bootstrap_id_not_live: ${rid}/${kind}/${out[i].key} → ${out[i].canonical_id} is ${d.status}`);",
+  "to": "    if (false) throw new Error('unreachable');"
+ },
+ {
+  "id": "d4p1b-05",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 the POINTER fence is dropped - stamps land on a version that stopped being live mid-pass",
+  "kills_with": "the pass stamped a version that stopped being live while it worked",
+  "from": "    if (p.version !== active.versionId) {\n      throw new Error(`identity_bootstrap_pointer_moved: ${rid} — ${active.versionId} was live at read, ${JSON.stringify(p.version)} is live now`);\n    }",
+  "to": "    if (false) { throw new Error('unreachable'); }"
+ },
+ {
+  "id": "d4p1b-06",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 the GENERATION fence is dropped - a re-activation of the same version is invisible to the pass",
+  "kills_with": "the generation advanced under the pass and it stamped anyway",
+  "from": "    if (generationOf(p) !== active.generation) {\n      throw new Error(`identity_bootstrap_generation_moved: ${rid} — captured ${active.generation}, current ${generationOf(p)}`);\n    }",
+  "to": "    if (false) { throw new Error('unreachable'); }"
+ },
+ {
+  "id": "d4p1b-07",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 an orphan retirement is SILENT - indistinguishable from a bug that ate an identity",
+  "kills_with": "a retirement that is not logged",
+  "from": "        console.warn('identity_bootstrap_orphan', JSON.stringify({ rid, kind, canonical_id: d.id, legacy_key: data.legacy_key, action: dryRun ? 'would_retire' : 'retire' }));",
+  "to": "        void 0;"
+ },
+ {
+  "id": "d4p1b-08",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 an EMPTY served set is accepted - every live id reads as an orphan and the registry is retired wholesale",
+  "kills_with": "an empty served set retired the whole registry instead of refusing",
+  "from": "    if (!served.size) throw new Error(`identity_reconcile_no_served_set: ${rid}/${kind} — refusing to treat every live id as an orphan`);",
+  "to": "    if (false) throw new Error('unreachable');"
+ },
+ {
+  "id": "d4p1b-09",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 the activation record is written with an UNCAPTURED generation - the fence it anchors becomes meaningless",
+  "kills_with": "the activation record was written with a generation it did not capture",
+  "from": "      identity_activation: { status: 'activated', base_generation: active.generation, attempt, at: stamp },",
+  "to": "      identity_activation: { status: 'activated', base_generation: 0, attempt, at: stamp },"
+ },
+ {
   "id": "pah-01",
   "slice": "pah",
   "file": "resolve-manual.js",
