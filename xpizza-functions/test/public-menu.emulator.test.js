@@ -112,13 +112,25 @@ const identityFor = (rid, active) => ({
     // the rest to chance, and the two directions fail differently — too lenient serves a 304 for a
     // menu the client does not have (a blank page), too strict just costs a re-download.
     const E = seen.x_pizza.etag;
+    /* 🔴 THE NEAR MISS IS DERIVED FROM THE CHARACTER THAT IS ACTUALLY THERE. This substituted a
+       constant '0', which is not a near miss at all when the validator already ends in '0' — the two
+       strings are then identical, the server correctly answers 304, and the cell fails expecting 200.
+       The validator is a 64-char hex hash and the catalog is republished per run, so this tripped on
+       roughly 1 run in 16: a gate suite that fails at random makes every gate's evidence unreliable,
+       and "it passed on the re-run" is not a result. Swapping to a character the hash does NOT have in
+       that position makes it a near miss by construction rather than by luck. */
+    const lastHex = E[E.length - 2];
+    const nearMiss = `${E.slice(0, -2)}${lastHex === '0' ? '1' : '0'}"`;
+    assert.notStrictEqual(nearMiss, E,
+      '🔴 the "near miss" validator is IDENTICAL to the etag — this cell would be asserting that a correct 304 is a bug');
+    assert.strictEqual(nearMiss.length, E.length, 'and it is still a well-formed validator of the same shape');
     for (const [label, header, want] of [
       ['the exact validator', E, 304],
       ['a LIST containing it', `"0000", ${E}, "ffff"`, 304],
       ['the WEAK form of it', `W/${E}`, 304],
       ['the wildcard', '*', 304],
       ['a list of others', '"0000", "ffff"', 200],
-      ['one character different', `${E.slice(0, -2)}0"`, 200],
+      ['one character different', nearMiss, 200],
       ['an empty header', '', 200],
     ]) {
       const r = await get('/menu/x_pizza', header === '' ? {} : { 'If-None-Match': header });
