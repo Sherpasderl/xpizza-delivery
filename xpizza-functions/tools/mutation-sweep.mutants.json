@@ -6564,6 +6564,46 @@
   "why": "the refusal falling through means the save returns 200 and writes, so the cell's STATUS assertion fails first — before the no-write assertion. kills_with names the assertion that actually fires."
  },
  {
+  "id": "d4p1c-18",
+  "slice": "d4p1c",
+  "file": "catalog/edit-catalog-handler.js",
+  "command": [
+   "node",
+   "catalog/edit-catalog.test.js"
+  ],
+  "label": "🔴 the LOADED-BASE guard is dropped - a deletion is blessed against a menu the merchant never saw",
+  "kills_with": "refused: ",
+  "from": "      if (loaded.version !== live.version || loaded.generation !== live.generation) {",
+  "to": "      if (false) {"
+ },
+ {
+  "id": "d4p1c-19",
+  "slice": "d4p1c",
+  "file": "catalog/edit-catalog-handler.js",
+  "command": [
+   "node",
+   "catalog/edit-catalog.test.js"
+  ],
+  "label": "🔴 a claim-changing save with NO loaded base is trusted - the guard becomes optional",
+  "kills_with": "a claim-changing save with NO loaded base must be refused",
+  "from": "      if (!loaded || typeof loaded !== 'object' || typeof loaded.version !== 'string' || !loaded.version\n          || !Number.isInteger(loaded.generation) || loaded.generation < 0) {",
+  "to": "      if (false) {"
+ },
+ {
+  "id": "d4p1c-20",
+  "slice": "d4p1c",
+  "file": "catalog/edit-catalog-handler.js",
+  "command": [
+   "node",
+   "catalog/edit-catalog.test.js"
+  ],
+  "label": "🔴 the guard runs on a WITHDRAWAL too - clearing a claim starts demanding a loaded base",
+  "kills_with": "withdrawing is accepted even from a stale claim",
+  "from": "    const changesClaim = Array.isArray(declaredIds) ? declaredIds.length > 0 : !!declaredIds;",
+  "to": "    const changesClaim = true;",
+  "why": "an ordinary save never reaches this branch (it is not a declaration at all), so forcing changesClaim true does not touch ordinary editing — it breaks WITHDRAWAL, which must always be allowed so a merchant is never trapped by an editor that has not implemented the ack. Label and signature name what actually breaks."
+ },
+ {
   "id": "pah-01",
   "slice": "pah",
   "file": "resolve-manual.js",

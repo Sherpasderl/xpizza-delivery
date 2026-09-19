@@ -323,7 +323,7 @@ const withPrice = (delta) => {
     const src = withPrice(32);
     src.deleted_ids = { ids: ['DOOMED1'], base_version: 'CLIENT-LIES', base_generation: 99 };
     const r = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
-      { restaurantId: RID, source: src, baseSourceUpdateTime: T0 }, {});
+      { restaurantId: RID, source: src, baseSourceUpdateTime: T0, deleted_ids_loaded_base: { version: ACTIVE, generation: 0 } }, {});
     assert.strictEqual(r.status, 200, `the declaration is accepted: ${JSON.stringify(r.body).slice(0, 160)}`);
     assert.deepStrictEqual(db.state.source.data.deleted_ids, { ids: ['DOOMED1'], base_version: ACTIVE, base_generation: 0 },
       '🔴 a CLIENT-supplied base was stored — the binding must come from the live pointer, and a client value is discarded unread');
@@ -340,7 +340,7 @@ const withPrice = (delta) => {
     const src = withPrice(33);
     src.deleted_ids = { ids: ['OLD1', 'NEW1'] };          // an unrelated, legitimate further deletion
     const r = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
-      { restaurantId: RID, source: src, baseSourceUpdateTime: T0 }, {});
+      { restaurantId: RID, source: src, baseSourceUpdateTime: T0, deleted_ids_loaded_base: { version: ACTIVE, generation: 0 } }, {});
     assert.strictEqual(r.status, 409, `the save is refused: ${JSON.stringify(r.body).slice(0, 160)}`);
     assert.strictEqual(r.body.error, 'deleted_ids_stale_baseline', 'and refused by name');
     assert.deepStrictEqual(r.body.existing_ids, ['OLD1'], 'the refusal reports what the editor must re-show');
@@ -349,7 +349,7 @@ const withPrice = (delta) => {
       '🔴 a refused save must not write at all — not the claim, and not the content edit riding with it');
 
     const r2 = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
-      { restaurantId: RID, source: src, baseSourceUpdateTime: T0, deleted_ids_reviewed: true }, {});
+      { restaurantId: RID, source: src, baseSourceUpdateTime: T0, deleted_ids_reviewed: true, deleted_ids_loaded_base: { version: ACTIVE, generation: 0 } }, {});
     assert.strictEqual(r2.status, 200, `the acknowledged save lands: ${JSON.stringify(r2.body).slice(0, 160)}`);
     assert.deepStrictEqual(db.state.source.data.deleted_ids, { ids: ['OLD1', 'NEW1'], base_version: ACTIVE, base_generation: 0 },
       'the whole set is restamped at the live baseline, only after an explicit re-review');
@@ -371,6 +371,79 @@ const withPrice = (delta) => {
     assert.deepStrictEqual(validateDeletionClaim(db.state.source.data.deleted_ids, { activeVersionId: ACTIVE, activeGeneration: 0 }),
       { ids: [], declared: false }, 'a cleared claim reads back as no deletion declared');
     ok('withdrawing every deletion is allowed even from a stale claim — the merchant is never trapped by their own editor');
+  }
+
+  // ── 🔴 THE LOADED-BASE GUARD: WHAT THE MERCHANT SAW, NOT MERELY WHAT IS LIVE ───────────────
+  /* The server writes the base, but writing it from a fresh read ALONE leaves a false-accept: if an
+     activation lands between the merchant loading their draft and saving it, the server stamps a
+     baseline they never saw and publish then validates it cleanly. A transaction does not close that
+     — atomicity ties the stamp to the write, not to what was reviewed. A claim-changing save must
+     therefore carry the baseline the editor displayed, and is refused when it no longer matches. */
+  {
+    // (1) an activation lands between load and save → the claim-changing save is refused, nothing written.
+    const db = stubFirestore(baseSource());
+    const before = db.state.writes.filter((w) => w.op === 'update').length;
+    const src = withPrice(35);
+    src.deleted_ids = { ids: ['DOOMED2'] };
+    const r = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
+      { restaurantId: RID, source: src, baseSourceUpdateTime: T0,
+        deleted_ids_loaded_base: { version: 'v-the-merchant-saw', generation: 0 } }, {});
+    assert.strictEqual(r.status, 409, `refused: ${JSON.stringify(r.body).slice(0, 160)}`);
+    assert.strictEqual(r.body.error, 'deleted_ids_base_moved', 'and refused by name');
+    assert.strictEqual(db.state.writes.filter((w) => w.op === 'update').length, before,
+      '🔴 a refused claim-changing save must write nothing at all');
+
+    // (2) SENSITIVITY: the same save with a MATCHING loaded base is accepted, stamped from the
+    //     server's own read — so the refusal is about the baseline having moved, not about the field.
+    const db2 = stubFirestore(baseSource());
+    const r2 = await editCatalogCore({ db: db2, authorize: allow, readActiveBuilt: db2.readActiveBuilt },
+      { restaurantId: RID, source: src, baseSourceUpdateTime: T0,
+        deleted_ids_loaded_base: { version: ACTIVE, generation: 0 } }, {});
+    assert.strictEqual(r2.status, 200, `accepted: ${JSON.stringify(r2.body).slice(0, 160)}`);
+    assert.deepStrictEqual(db2.state.source.data.deleted_ids, { ids: ['DOOMED2'], base_version: ACTIVE, base_generation: 0 },
+      'stamped from the SERVER read, with the client value used only as a guard');
+    ok('a claim-changing save is refused when the baseline it was reviewed against has moved, and accepted when it matches');
+  }
+
+  {
+    // (3) an ordinary content edit needs NO loaded base, even while a claim stands — ordinary editing
+    //     stays frictionless, which is what keeps a guard like this from being removed later.
+    const db = stubFirestore(baseSource());
+    const standing = { ids: ['KEEP2'], base_version: ACTIVE, base_generation: 0 };
+    db.state.source.data.deleted_ids = { ...standing };
+    const r = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
+      { restaurantId: RID, source: withPrice(36), baseSourceUpdateTime: T0 }, {});
+    assert.strictEqual(r.status, 200, `an ordinary edit still saves: ${JSON.stringify(r.body).slice(0, 160)}`);
+    assert.deepStrictEqual(db.state.source.data.deleted_ids, standing, 'and the claim is preserved verbatim, not re-stamped');
+
+    // (4) a claim-CHANGING save that omits the loaded base is refused rather than trusted.
+    const src = withPrice(37);
+    src.deleted_ids = { ids: ['KEEP2', 'NEW2'] };
+    const r2 = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
+      { restaurantId: RID, source: src, baseSourceUpdateTime: T0 }, {});
+    assert.strictEqual(r2.status, 409, `a claim-changing save with NO loaded base must be refused: ${JSON.stringify(r2.body).slice(0, 160)}`);
+    assert.strictEqual(r2.body.error, 'deleted_ids_unbound', 'a claim-changing save without the loaded base is unbound');
+    assert.deepStrictEqual(db.state.source.data.deleted_ids, standing, 'and nothing moved');
+    ok('an ordinary edit needs no loaded base and preserves the claim; a claim-CHANGING save without one is refused');
+  }
+
+  {
+    // (5) the loaded-base guard does NOT bypass the stale-existing rebind rule. Both must hold: the
+    //     merchant reviewed against the live menu AND the standing claim is not being silently dragged
+    //     forward. A matching loaded base satisfies the first and says nothing about the second.
+    const db = stubFirestore(baseSource());
+    const stale = { ids: ['OLD2'], base_version: 'v-superseded', base_generation: 0 };
+    db.state.source.data.deleted_ids = { ...stale };
+    const src = withPrice(38);
+    src.deleted_ids = { ids: ['OLD2', 'NEW3'] };
+    const r = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
+      { restaurantId: RID, source: src, baseSourceUpdateTime: T0,
+        deleted_ids_loaded_base: { version: ACTIVE, generation: 0 } }, {});
+    assert.strictEqual(r.status, 409, `still refused: ${JSON.stringify(r.body).slice(0, 160)}`);
+    assert.strictEqual(r.body.error, 'deleted_ids_stale_baseline',
+      '🔴 a matching loaded base let a STALE standing claim be rebound without the re-review ack');
+    assert.deepStrictEqual(db.state.source.data.deleted_ids, stale, 'and the stale claim is untouched');
+    ok('a matching loaded base does not bypass the rebind ack — the two guards answer different questions');
   }
 
   console.log(`edit-catalog: OK (${n})`);

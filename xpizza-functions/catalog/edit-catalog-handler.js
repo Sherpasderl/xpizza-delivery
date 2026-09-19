@@ -119,6 +119,38 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
     /* The live pair, read as ONE snapshot so version and generation cannot tear. It is read here,
        immediately before the conditional write, rather than reused from anything earlier. */
     const live = await getActivePointer(db, rid);
+
+    /* 🔴 THE LOADED-BASE GUARD — what the merchant SAW, not merely what is live when they save.
+       The server writes the base (C-1), but writing it from a fresh read alone leaves a real
+       false-accept: if an activation lands between the merchant loading their draft and saving it,
+       the server stamps a baseline they never saw, and at publish it validates cleanly. A transaction
+       does not close that — atomicity ties the stamp to the WRITE, not to what was reviewed.
+       So a save that CHANGES the claim must carry the active version/generation the editor loaded and
+       displayed, and it is refused when that no longer matches live. The client value is a GUARD and
+       never a source: on equality the server still stamps its own read. This is the same shape as the
+       flip's expected.activeVersionId CAS, applied at declaration time, and it is scoped to exactly
+       the thing it protects — a save that does not touch the claim needs none of it.
+       Per §0 it does not prove a human looked; it establishes that the editor declared against the
+       menu that is live, which is the accidental-staleness case the binding exists for.
+       NB the pointer read is not transactional with the write. With this guard that direction fails
+       SAFE: if live moves after the read, the stamp is the older pair the merchant genuinely reviewed
+       against, and publish refuses it as stale. The unsafe direction — stamping something NEWER than
+       the merchant saw — is what the guard closes. */
+    const changesClaim = Array.isArray(declaredIds) ? declaredIds.length > 0 : !!declaredIds;
+    if (changesClaim) {
+      const loaded = body && body.deleted_ids_loaded_base;
+      if (!loaded || typeof loaded !== 'object' || typeof loaded.version !== 'string' || !loaded.version
+          || !Number.isInteger(loaded.generation) || loaded.generation < 0) {
+        return reply(409, { error: 'deleted_ids_unbound',
+          detail: 'a save that changes the deletion claim must send deleted_ids_loaded_base {version, generation} — the baseline the merchant reviewed the deletion against' });
+      }
+      if (loaded.version !== live.version || loaded.generation !== live.generation) {
+        return reply(409, { error: 'deleted_ids_base_moved',
+          detail: `the deletion was reviewed against ${loaded.version}@${loaded.generation} but ${live.version}@${live.generation} is live; reload and re-review`,
+          loaded_base: `${loaded.version}@${loaded.generation}`, live: `${live.version}@${live.generation}` });
+      }
+    }
+
     claimResult = persistDeletionClaim({
       existing: storedClaim,
       ids: declaredIds,
