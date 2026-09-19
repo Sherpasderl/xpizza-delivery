@@ -250,5 +250,56 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     ok('host vars for services the run does not start are CLEARED, so an inherited value can never be used');
   }
 
+  // ── 13. THE GATE LIST IS ENUMERATED, NEVER HAND-KEPT ────────────────────────────────────────
+  /* 🔴 THE LOOP WAS THE DEFECT. Twelve of forty-two emulator scripts were being run, so four stayed
+     red for an unknown period — one on a real money-path defect, one hiding twenty-one
+     redemption-reserve assertions that had not executed since the 1b-1b cutover. A hand-kept list
+     cannot be trusted to grow; this asserts the aggregate derives its list from package.json, so a
+     suite added tomorrow is gated tomorrow. */
+  {
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    const expected = Object.entries(pkg.scripts || {}).filter(([, v]) => /emulator-run\.js/.test(v)).length;
+    assert.ok(expected >= 40, `premise — the emulator scripts are there (${expected})`);
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-all.js'), '--list'], { cwd: ROOT, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, 'the aggregate can list its suites');
+    const m = /(\d+) emulator scripts/.exec(r.stdout || '');
+    assert.ok(m, 'the listing reports a count');
+    assert.strictEqual(Number(m[1]), expected,
+      '🔴 the aggregate runs a different set than package.json declares — a hand-kept list has crept back in');
+    assert.ok(!/test:emulators:all/.test(r.stdout), 'the aggregate does not list itself (it would recurse)');
+    ok(`the aggregate gate list is enumerated from package.json — all ${expected} emulator scripts, itself excluded`);
+  }
+
+  // ── 14. 🔴 AN EXCUSE CANNOT OUTLIVE ITS DEFECT, AND A SKIP IS NEVER SILENT ──────────────────
+  /* The three outcomes a gate actually turns on, driven directly rather than inferred from one long
+     run: a plain failure fails; an allowlisted failure is EXCUSED and still printed; and an
+     allowlisted suite that has started PASSING fails the run so the entry must be deleted. That last
+     one is the point — an allowlist nobody prunes quietly re-hides the next regression in that
+     suite. The empty case fails too: a run that measured nothing is never a pass. */
+  {
+    const { classify, KNOWN_RED } = require('./emulator-all.js');
+
+    const plainFail = classify([{ name: 'test:a', ok: false }], {});
+    assert.strictEqual(plainFail.exitCode, 1, '🔴 an un-excused failing suite did not fail the gate');
+    assert.strictEqual(plainFail.rows[0].state, 'fail');
+
+    const excusedFail = classify([{ name: 'test:a', ok: false }], { 'test:a': 'a recorded reason' });
+    assert.strictEqual(excusedFail.exitCode, 0, 'an excused failure does not fail the gate');
+    assert.strictEqual(excusedFail.rows[0].state, 'excused', 'and it is reported as excused, not hidden');
+
+    const staleExcuse = classify([{ name: 'test:a', ok: true }], { 'test:a': 'a recorded reason' });
+    assert.strictEqual(staleExcuse.exitCode, 1,
+      '🔴 a KNOWN-RED suite that now PASSES did not fail the run — the excuse would outlive the defect and re-hide the next regression');
+    assert.strictEqual(staleExcuse.rows[0].state, 'stale-excuse');
+
+    assert.strictEqual(classify([], {}).exitCode, 1, '🔴 a run that measured nothing reported success');
+
+    for (const [name, reason] of Object.entries(KNOWN_RED)) {
+      assert.ok(typeof reason === 'string' && reason.length > 40,
+        `🔴 KNOWN_RED["${name}"] has no substantive reason — an excuse without one is a silent skip`);
+    }
+    ok(`fail / excused / stale-excuse / nothing-measured each decided correctly; all ${Object.keys(KNOWN_RED).length} KNOWN_RED entries carry a reason`);
+  }
+
   console.log(`emulator-ports guard: OK (${n})`);
 })().catch((e) => { console.error('EMULATOR PORTS GUARD FAILED:', (e && e.stack) || e); process.exit(1); });

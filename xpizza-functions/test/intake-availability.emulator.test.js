@@ -16,7 +16,7 @@
  *      the gate is bypassed and the handler returns 409 'Already paid' (never 400 item_unavailable).
  *   D. Positive control — an AVAILABLE cash cart passes the gate and writes an order.
  */
-require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+require('./_emulator-required')('database', 'firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
 
 const assert = require('assert');
 const http = require('http');
@@ -32,6 +32,26 @@ const SECRET = process.env.MAKE_SECRET;
 const app = require('../index.js');                 // initializes the admin app against the emulator
 const { getDatabase } = require('firebase-admin/database');
 const { availKey } = require('../avail-key');
+const admin = require('firebase-admin');
+const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
+const { seedCatalog } = require('../catalog/seed-catalog-core');
+
+/* 🔴 THIS SUITE DRIVES THE REAL createOrder, WHICH PRICES FROM THE FIRESTORE CATALOG. It ran with
+   `--only database`, so there was no Firestore emulator: the catalog read failed with
+   PERMISSION_DENIED against the demo project, the resolver fell to the ladder, the ladder had no
+   snapshot, and every request came back 503 pricing_unavailable. The suite's first assertion wanted
+   400 item_unavailable, so it died at cell A and has been red since — the availability gate it exists
+   to test was never reached even once.
+
+   Seeded from menu-pricing.js, the same producer test/pricing-cutover.emulator.test.js uses, so this
+   fixture cannot drift from the prices the rest of the suite arithmetic assumes. Seeded ONCE: reset()
+   clears RTDB only, and the catalog lives in Firestore. */
+async function seedCatalogOnce() {
+  await seedCatalog(admin.firestore(), {
+    x_pizza: { profile: { name: 'X. Pizza', tier: 'flagship' }, menu: MENU_BY_RESTAURANT.x_pizza, extras: EXTRAS_BY_RESTAURANT.x_pizza },
+    la_musa: { profile: { name: 'La Musa', tier: 'flagship' }, menu: MENU_BY_RESTAURANT.la_musa, extras: EXTRAS_BY_RESTAURANT.la_musa },
+  });
+}
 const db = getDatabase();
 
 // POST JSON to an onRequest handler mounted on an ephemeral server; resolves { status, json }.
@@ -91,6 +111,8 @@ async function reset() {
 let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 
 (async () => {
+  await seedCatalogOnce();
+
   // ── A. CASH blocked → 400 + ZERO writes ──
   await reset();
   {

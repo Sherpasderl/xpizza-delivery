@@ -12,6 +12,20 @@ require('./_emulator-required')('database');   // refuse if the emulator host va
 const assert = require('assert');
 const { initializeTestEnvironment } = require('@firebase/rules-unit-testing');
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('../rewards-redeem-intake');
+const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
+
+/* 🔴 THE SEAMS REQUIRE `tables`; THIS SUITE NEVER PASSED THEM. 1b-1b (9f12cf6) made the pricing
+   tables a HARD CONTRACT at every production seam — requireTables() throws pricing_tables_required
+   rather than falling back to the code tables, deliberately, because a silent fallback is how one
+   half of a redemption gets priced on the catalog and the other on code. This suite predates that
+   and was never updated, so it threw on its FIRST seam call and has been red ever since. It was not
+   an --only/Firestore problem: these seams never read Firestore, they take the tables as an argument.
+
+   The tables come from menu-pricing.js — the same module resolvePriceTables() itself falls back to —
+   rather than being written out here, so the suite cannot drift from the prices it is asserting
+   against. Its own arithmetic pins this: Margherita 299 + Anchovies 418 = the 717 it declares, and
+   la_musa dimsum_01 = the 223 it declares. */
+const tablesFor = (rid) => ({ restaurantId: rid, menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] || {} });
 const { reserveRedemption, releaseRedemption, attachAttempt } = require('../rewards-reserve');
 const { REDEMPTION_CONFIG_VERSION } = require('../rewards-redeem-config');
 const { orderFingerprint } = require('../pixelpay-charge');
@@ -32,7 +46,7 @@ const XP = { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita
     const bal = async (uid, rid = 'x_pizza') => (await db.ref(`user_rewards/${uid}/${rid}/balance`).get()).val();
     const rsv = async (uid, rid = 'x_pizza') => (await db.ref(`user_rewards/${uid}/${rid}/reserved`).get()).val() || 0;
     const xpItems = [{ name: 'Margherita', qty: 1 }, { name: 'Anchovies', qty: 1 }];   // 299 + 418 = 717 PAID; free pizza ADDED → total UNCHANGED
-    const call = (args) => resolveRedemptionForOrder(db, { restaurantId: 'x_pizza', itemsText: 'Margherita x1 | Anchovies x1', totalLempiras: 717, schedExtra: '', now: NOW, items: xpItems, ...args });
+    const call = (args) => resolveRedemptionForOrder(db, { restaurantId: 'x_pizza', tables: tablesFor('x_pizza'), itemsText: 'Margherita x1 | Anchovies x1', totalLempiras: 717, schedExtra: '', now: NOW, items: xpItems, ...args });
 
     // 1 — flag OFF → non-payable, no reserve
     await seedPts('uF', 20);
@@ -72,7 +86,7 @@ const XP = { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita
 
     // 7 — La Musa free item 86'd → 409 reward_unavailable, no reserve
     await seedPts('uI', 5000, 'la_musa');
-    const laCall = (redeem, orderId, over = {}) => resolveRedemptionForOrder(db, { restaurantId: 'la_musa', items: [{ id: 'dimsum_01', qty: 1 }], itemsText: 'dimsum x1', totalLempiras: 223, schedExtra: '', now: NOW, redeem, orderId, customerUid: 'uI', ...over });
+    const laCall = (redeem, orderId, over = {}) => resolveRedemptionForOrder(db, { restaurantId: 'la_musa', tables: tablesFor('la_musa'), items: [{ id: 'dimsum_01', qty: 1 }], itemsText: 'dimsum x1', totalLempiras: 223, schedExtra: '', now: NOW, redeem, orderId, customerUid: 'uI', ...over });
     await db.ref(`restaurants/la_musa/item_availability/${availKey('soft_01')}`).set({ available: false, updated_at: NOW });
     r = await laCall({ type: 'points_ala_carte', items: [{ id: 'soft_01', qty: 1, name: 'Coca-Cola' }] }, 'OU');
     assert.deepStrictEqual({ ok: r.ok, status: r.status, err: r.body.error }, { ok: false, status: 409, err: 'reward_unavailable' }); assert.ok(r.body.blocked.length > 0);
@@ -99,15 +113,15 @@ const XP = { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita
 
     // 11 — [§1e-3] the ≥1-PAID-ITEM guard: an empty paid cart → needs_paid_item BEFORE any reserve
     await seedPts('uNP', 20);
-    r = await resolveRedemptionForOrder(db, { restaurantId: 'x_pizza', items: [], itemsText: '', totalLempiras: 0, schedExtra: '', now: NOW, redeem: XP, orderId: 'ONP', customerUid: 'uNP' });
+    r = await resolveRedemptionForOrder(db, { restaurantId: 'x_pizza', tables: tablesFor('x_pizza'), items: [], itemsText: '', totalLempiras: 0, schedExtra: '', now: NOW, redeem: XP, orderId: 'ONP', customerUid: 'uNP' });
     assert.deepStrictEqual({ ok: r.ok, status: r.status, err: r.body.error }, { ok: false, status: 409, err: 'needs_paid_item' });
     assert.strictEqual(await rsv('uNP'), 0); assert.strictEqual(await resv('uNP', 'ONP'), null); ok('§1e-3: empty paid cart → 409 needs_paid_item, no reserve (the free item can\'t be the whole order)');
     // a tampered/unknown paid cart → bad_cart (not needs_paid_item)
-    assert.strictEqual((await resolveRedemptionForOrder(db, { restaurantId: 'x_pizza', items: [{ name: 'FakePie', qty: 1 }], itemsText: 'x', totalLempiras: 1, schedExtra: '', now: NOW, redeem: XP, orderId: 'OBC', customerUid: 'uNP' })).body.error, 'bad_cart'); ok('§1e-3: tampered/unknown paid cart → 400 bad_cart, no reserve');
+    assert.strictEqual((await resolveRedemptionForOrder(db, { restaurantId: 'x_pizza', tables: tablesFor('x_pizza'), items: [{ name: 'FakePie', qty: 1 }], itemsText: 'x', totalLempiras: 1, schedExtra: '', now: NOW, redeem: XP, orderId: 'OBC', customerUid: 'uNP' })).body.error, 'bad_cart'); ok('§1e-3: tampered/unknown paid cart → 400 bad_cart, no reserve');
 
     // 12 — prepareRedemption (online path): compute/gate/price WITHOUT reserving
     await seedPts('uPrep', 20);
-    const prep = await prepareRedemption(db, { redeem: XP, items: xpItems, restaurantId: 'x_pizza', itemsText: 'x', totalLempiras: 717, customerUid: 'uPrep' });
+    const prep = await prepareRedemption(db, { redeem: XP, items: xpItems, restaurantId: 'x_pizza', tables: tablesFor('x_pizza'), itemsText: 'x', totalLempiras: 717, customerUid: 'uPrep' });
     assert.strictEqual(prep.ok, true); assert.strictEqual(prep.priced.total_cents, 71700); assert.strictEqual(prep.redemption.cost, 8); assert.ok(prep.redemptionFp);
     assert.strictEqual(await rsv('uPrep'), 0); ok('prepareRedemption: computes add-free pricing + redemptionFp but does NOT reserve (reserved 0)');
 
@@ -115,7 +129,7 @@ const XP = { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita
     const onlineReserve = async (uid, orderId, canonical, cost, fp, rid = 'x_pizza') => reserveRedemption(db, { uid, rid, orderId, cost, canonical, orderFingerprint: fp, configVersion: REDEMPTION_CONFIG_VERSION, now: NOW });
     // 13 — abandoned acquire → release frees the owned hold (no orphan)
     await seedPts('uAb', 20);
-    const pAb = await prepareRedemption(db, { redeem: XP, items: xpItems, restaurantId: 'x_pizza', itemsText: 'x', totalLempiras: 717, customerUid: 'uAb' });
+    const pAb = await prepareRedemption(db, { redeem: XP, items: xpItems, restaurantId: 'x_pizza', tables: tablesFor('x_pizza'), itemsText: 'x', totalLempiras: 717, customerUid: 'uAb' });
     const fpAb = orderFingerprint('OAB', pAb.priced.total_cents, pAb.itemsText, `rf:${pAb.redemptionFp}`);
     assert.strictEqual((await onlineReserve('uAb', 'OAB', pAb.canonical, pAb.redemption.cost, fpAb)).action, 'created'); assert.strictEqual(await rsv('uAb'), 8);
     await releaseRedemption(db, { uid: 'uAb', rid: 'x_pizza', orderId: 'OAB', now: NOW });
@@ -125,7 +139,7 @@ const XP = { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita
     await seedPts('uFp', 5000, 'la_musa');
     const setA = { type: 'points_ala_carte', items: [{ id: 'soft_01', qty: 1, name: 'Coca-Cola' }] };
     const setB = { type: 'points_ala_carte', items: [{ id: 'soft_01', qty: 1, name: 'Coca-Cola' }, { id: 'dimsum_01', qty: 1, name: 'Wonton' }] };
-    const laFp = (redeem, orderId) => resolveRedemptionForOrder(db, { restaurantId: 'la_musa', items: [{ id: 'dimsum_01', qty: 1 }], itemsText: 'dimsum x1', totalLempiras: 223, schedExtra: '', now: NOW, redeem, orderId, customerUid: 'uFp' });
+    const laFp = (redeem, orderId) => resolveRedemptionForOrder(db, { restaurantId: 'la_musa', tables: tablesFor('la_musa'), items: [{ id: 'dimsum_01', qty: 1 }], itemsText: 'dimsum x1', totalLempiras: 223, schedExtra: '', now: NOW, redeem, orderId, customerUid: 'uFp' });
     assert.strictEqual((await laFp(setA, 'OFP')).ok, true);                                   // reserve order OFP bound to SET A
     const mism = await laFp(setB, 'OFP');                                                     // SAME order, DIFFERENT set → fp changes
     assert.deepStrictEqual({ ok: mism.ok, err: mism.body.error, reason: mism.body.reason }, { ok: false, err: 'redemption_reserve_failed', reason: 'reservation_conflict' }); ok('§1e-2: same order, CHANGED redeemed set → payment-fingerprint mismatch → reservation_conflict (the set is bound, can\'t be swapped)');
@@ -139,17 +153,17 @@ const XP = { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita
 
     // 16 — quoteRedemptionCore v2 — READ-ONLY, NO reserve, returns free_items[] + total_cost + remaining + savings
     await enable(true); await seedPts('uQ', 20);
-    const q = await quoteRedemptionCore(db, { redeem: XP, items: xpItems, restaurantId: 'x_pizza', customerUid: 'uQ' });
+    const q = await quoteRedemptionCore(db, { redeem: XP, items: xpItems, restaurantId: 'x_pizza', tables: tablesFor('x_pizza'), customerUid: 'uQ' });
     assert.strictEqual(q.ok, true); assert.strictEqual(q.total_cents, 71700); assert.strictEqual(q.discount_cents, 0);
     assert.deepStrictEqual(q.free_items, [{ item_id: 'Margherita', qty: 1, name: 'Margherita', price_cents: 29900 }]);
     assert.strictEqual(q.total_cost, 8); assert.strictEqual(q.remaining, 20 - 8); assert.strictEqual(q.savings_cents, 29900);
     assert.strictEqual(await rsv('uQ'), 0); ok('quoteRedemptionCore x_pizza: free_items[] + total_cost 8 + remaining 12 + savings 29900, NO reserve');
     await seedPts('uQL', 5000, 'la_musa');
-    const ql = await quoteRedemptionCore(db, { redeem: { type: 'points_ala_carte', items: [{ id: 'soft_01', qty: 2, name: 'Coca-Cola' }] }, items: [{ id: 'dimsum_01', qty: 1 }], restaurantId: 'la_musa', customerUid: 'uQL' });
+    const ql = await quoteRedemptionCore(db, { redeem: { type: 'points_ala_carte', items: [{ id: 'soft_01', qty: 2, name: 'Coca-Cola' }] }, items: [{ id: 'dimsum_01', qty: 1 }], restaurantId: 'la_musa', tables: tablesFor('la_musa'), customerUid: 'uQL' });
     assert.strictEqual(ql.total_cost, 266); assert.strictEqual(ql.remaining, 5000 - 266); assert.strictEqual(ql.savings_cents, 8000); assert.strictEqual(ql.free_items[0].qty, 2); ok('quoteRedemptionCore la_musa multiset: total_cost Σ=266, remaining 4734, savings 8000 (2×L40)');
     // quote guest / malformed / flag-off mirror intake
-    assert.deepStrictEqual(await quoteRedemptionCore(db, { redeem: XP, items: xpItems, restaurantId: 'x_pizza', customerUid: null }), { ok: false, status: 401, body: { error: 'login_required' } });
-    assert.strictEqual((await quoteRedemptionCore(db, { redeem: XP, items: [{ name: 'NotARealPizza', qty: 1 }], restaurantId: 'x_pizza', customerUid: 'uQ' })).body.error, 'bad_cart'); ok('quote: guest → 401 login_required; malformed cart → 400 bad_cart');
+    assert.deepStrictEqual(await quoteRedemptionCore(db, { redeem: XP, items: xpItems, restaurantId: 'x_pizza', tables: tablesFor('x_pizza'), customerUid: null }), { ok: false, status: 401, body: { error: 'login_required' } });
+    assert.strictEqual((await quoteRedemptionCore(db, { redeem: XP, items: [{ name: 'NotARealPizza', qty: 1 }], restaurantId: 'x_pizza', tables: tablesFor('x_pizza'), customerUid: 'uQ' })).body.error, 'bad_cart'); ok('quote: guest → 401 login_required; malformed cart → 400 bad_cart');
   });
 
   await env.cleanup();
