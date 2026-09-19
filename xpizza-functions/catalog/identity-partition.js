@@ -71,7 +71,11 @@ function validatePartition({ activeCertified, carried, deletedIds, unidentified 
      `carried: "A"` publishes as though it declared nothing. Absent is a legitimate state and stays
      legitimate; malformed is a disagreement about the shape of the request and refuses. */
   const shaped = (v, what) => {
-    if (v === undefined || v === null) return [];
+    /* 🔴 undefined is ABSENT; an explicit null is a client that MEANT something and got it wrong.
+       C-4's contract is "present-but-non-array refuses", and null is present. The only null this
+       system reads as a sentinel is the TOP-LEVEL stored deleted_ids, which is how a consumed or
+       withdrawn claim is recorded — that one is handled by the caller before it reaches here. */
+    if (v === undefined) return [];
     if (!Array.isArray(v)) {
       throw new PartitionRefusal('identity_partition_malformed', `${what} is present but is not an array`);
     }
@@ -174,7 +178,7 @@ function validateDeletionClaim(claim, { activeVersionId, activeGeneration } = {}
      It used to read as "no deletions", and although the partition law then refused the publish as
      UNACCOUNTED, that names the wrong fault — it tells the merchant their declaration is incomplete
      when in fact their client sent a deletion list the server could not read. */
-  if (claim.ids !== undefined && claim.ids !== null && !Array.isArray(claim.ids)) {
+  if (claim.ids !== undefined && !Array.isArray(claim.ids)) {
     throw new PartitionRefusal('deleted_ids_malformed', 'the deletion claim\'s ids must be an array');
   }
   const ids = asArray(claim.ids);
@@ -227,7 +231,7 @@ function persistDeletionClaim({ existing = null, ids, live, reviewed = false } =
     throw new PartitionRefusal('deleted_ids_no_baseline',
       'the live pointer pair must be read before a deletion claim can be persisted');
   }
-  if (ids !== undefined && ids !== null && !Array.isArray(ids)) {
+  if (ids !== undefined && !Array.isArray(ids)) {
     throw new PartitionRefusal('deleted_ids_malformed', 'the deletion claim\'s ids must be an array');
   }
   const next = uniqueOrRefuse(asArray(ids), 'identity_partition_duplicate_deleted', 'deleted_ids');

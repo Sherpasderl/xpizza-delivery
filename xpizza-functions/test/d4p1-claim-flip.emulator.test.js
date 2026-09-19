@@ -64,27 +64,30 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
   await publishVersion(db, RID, buildPublishCandidate(RID, { activeVersionId: null }, { source_sha: 'seed' }).input,
     { expected: { activeVersionId: null } });
 
-  // ── 1. A STANDING CLAIM IS CONSUMED BY THE ACTIVATION THAT USES IT ─────────────────────────
+  // ── 1. 🔴 C VALIDATES THE CLAIM AND LEAVES IT STANDING — CONSUMPTION BELONGS TO D ─────────
+  /* A cleared claim must mean "carried out", never "dropped". C has no writer that retires the
+     declared ids, so clearing here would discard a merchant's declared intent while reporting
+     success — strictly worse than leaving it. It survives, and goes stale at the next baseline, which
+     is correct: C alone is not a deploy target. Consumption arrives with D's activation writer, which
+     is the thing that actually executes the deletion. */
   {
     const live = await getActivePointer(db, RID);
-    await sourceRefOf(db, RID).update({ deleted_ids: claimOf(['DOOMED1'], live.version, live.generation) });
-    assert.ok(await readClaim(), 'premise — a claim is standing against the live baseline');
+    const standing = claimOf(['DOOMED1'], live.version, live.generation);
+    await sourceRefOf(db, RID).update({ deleted_ids: standing });
 
     await publishOnce();
-    assert.strictEqual(await readClaim(), null,
-      '🔴 the claim survived the activation that consumed it — the next edit would replay it against a new baseline');
-    ok('a standing claim declared against the live baseline is cleared by the activation that consumes it');
+    assert.deepStrictEqual(await readClaim(), standing,
+      '🔴 the claim was CONSUMED by an activation that retires nothing — a declared deletion silently discarded while the publish reports success');
+    ok('a valid claim is validated and left STANDING — C never clears what it cannot carry out');
   }
 
   // ── 2. 🔴 A DRAFT THAT MOVED UNDER THE PUBLISH ABORTS EVERYTHING ──────────────────────────
-  /* The N+1 race. The merchant saves a NEWER revision, carrying a fresh deletion, while this publish
-     is in flight. The flip must refuse rather than clear — and note WHY the newer claim survives: not
-     because the clear is clever, but because the CAS aborts the whole transaction, so nothing is
-     written at all. */
+  /* The N+1 race. The merchant saves a NEWER revision while this publish is in flight: the flip must
+     abort, and the evidence is that the POINTER does not move — nothing activated. (The claim being
+     intact is not evidence here, since C writes the source at all.) */
   {
-    const live = await getActivePointer(db, RID);
     const before = await getActivePointer(db, RID);
-    const newer = claimOf(['SAVED-WHILE-IN-FLIGHT'], live.version, live.generation);
+    const newer = claimOf(['SAVED-WHILE-IN-FLIGHT'], before.version, before.generation);
 
     let threw = null;
     try {
@@ -93,34 +96,11 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
 
     assert.ok(threw && /flip_cas_draft_stale/.test(String(threw.message)),
       `🔴 a publish whose draft moved underneath did not abort: ${threw && threw.message}`);
-    assert.deepStrictEqual(await readClaim(), newer,
-      '🔴 THE NEWER CLAIM WAS WIPED by a publish that never activated — the merchant lost a deletion they had just saved');
     const after = await getActivePointer(db, RID);
-    assert.strictEqual(after.version, before.version, '…and the pointer did not move either');
-    ok('a draft saved while the publish was in flight aborts the flip — the newer claim is intact and nothing activated');
-  }
-
-  // ── 3. 🔴 A CLAIM CANNOT BE CONSUMED WITHOUT A DRAFT CAS TO PROTECT THE WRITE ─────────────
-  /* Consuming a claim means writing the source. Without a revision to compare against, that write
-     would clobber whatever the merchant saved in the meantime — so a standing claim plus no CAS
-     REFUSES rather than publishing and leaving the deletion to be replayed. Protected by
-     construction, not by the caller remembering to pass an argument. */
-  {
-    const live = await getActivePointer(db, RID);
-    const standing = claimOf(['NEEDS-CAS'], live.version, live.generation);
-    await sourceRefOf(db, RID).update({ deleted_ids: standing });
-
-    let threw = null;
-    try { await publishOnce({ withDraftCas: false }); } catch (e) { threw = e; }
-    assert.ok(threw && /publish_claim_without_cas/.test(String(threw.message)),
-      `🔴 a claim was consumable with no draft revision to protect the write: ${threw && threw.message}`);
-    assert.deepStrictEqual(await readClaim(), standing, '…and the claim is untouched');
-
-    // SENSITIVITY: the same publish WITH the CAS succeeds and consumes it, so the refusal is about
-    // the missing CAS and not about the claim being unwelcome.
-    await publishOnce({ withDraftCas: true });
-    assert.strictEqual(await readClaim(), null, 'non-vacuity: with the CAS present the same claim is consumed');
-    ok('a standing claim with no draft CAS refuses; the same claim with the CAS is consumed normally');
+    assert.strictEqual(after.version, before.version,
+      '🔴 THE POINTER MOVED despite the draft CAS failing — the activation was not atomic with the check');
+    assert.deepStrictEqual(await readClaim(), newer, 'and the newer claim the merchant just saved is untouched');
+    ok('a draft saved while the publish was in flight aborts the flip — nothing activated, and the newer claim stands');
   }
 
   // ── 4. 🔴 A STALE CLAIM IS REFUSED AT THE WRITE BOUNDARY, NOT MERELY BEFORE IT ────────────
@@ -136,6 +116,29 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
     await sourceRefOf(db, RID).update({ deleted_ids: null });
     ok('a claim bound to a superseded baseline is refused INSIDE the flip, against the pair that transaction verified');
   }
+
+  // ── 5. 🔴 A MALFORMED CLAIM IS REFUSED, NOT WAVED THROUGH ─────────────────────────────────
+  /* Both publish-side checks used to gate on "a non-empty array of ids", so the shapes LEAST likely
+     to be honest — a string, a bare list, an object — skipped validation entirely while a well-formed
+     claim was scrutinised. Any present, non-null claim is now validated. Top-level null stays the
+     cleared sentinel, and must keep publishing cleanly or the fix has broken the normal path. */
+  for (const [label, bad] of [
+    ['a string where ids should be', { ids: 'X', base_version: 'v', base_generation: 0 }],
+    ['a bare list instead of a claim', ['X']],
+    ['an explicit null ids', { ids: null, base_version: 'v', base_generation: 0 }],
+  ]) {
+    await sourceRefOf(db, RID).update({ deleted_ids: bad });
+    let threw = null;
+    try { await publishOnce(); } catch (e) { threw = e; }
+    assert.ok(threw && /deleted_ids_malformed/.test(String(threw.message)),
+      `🔴 ${label} skipped validation instead of refusing: ${threw && threw.message}`);
+  }
+
+  // SENSITIVITY: the cleared sentinel is NOT malformed and must still publish.
+  await sourceRefOf(db, RID).update({ deleted_ids: null });
+  await publishOnce();
+  assert.strictEqual((await readClaim()), null, 'a cleared claim publishes normally and stays cleared');
+  ok('three malformed claim shapes refuse by name; the top-level null sentinel still publishes cleanly');
 
   FINISHED = true;
   console.log(`d4p1-claim(emulator): OK (${n})`);

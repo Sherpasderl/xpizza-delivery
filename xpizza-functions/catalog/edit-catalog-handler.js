@@ -109,7 +109,21 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
     : next.deleted_ids;
   delete next.deleted_ids;                    // whatever the client sent is not what gets stored
 
-  if (!declared) {
+  /* 🔴 AN ECHO IS NOT A CHANGE, AND THE REAL EDITOR ALWAYS ECHOES. The portal loads the whole source
+     and clones it (editor.js createDraft), so a save sends BACK the server-owned claim it was handed —
+     which means "the client did not mention deleted_ids" is very nearly unreachable in practice, and
+     treating every echo as a declaration would demand a loaded base on every ordinary price edit made
+     while a deletion stands. That is friction on the common path, and friction on the common path is
+     how a guard gets removed.
+     So the comparison is against the STORED ids, by value: the same set is an echo and is preserved
+     verbatim (base included, so echoing cannot re-stamp and cannot become the silent rebind); a
+     DIFFERENT set is the merchant actually changing what they are deleting. */
+  const storedIds = (storedClaim && Array.isArray(storedClaim.ids)) ? storedClaim.ids : null;
+  const sameSet = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length
+    && [...a].map(String).sort().join('\u0000') === [...b].map(String).sort().join('\u0000');
+  const isEcho = declared && storedIds && sameSet(declaredIds, storedIds);
+
+  if (!declared || isEcho) {
     /* Carried forward VERBATIM — not re-stamped. Re-stamping here would be the silent rebind by
        another route: an ordinary edit would quietly re-bless a claim against a newer baseline. */
     if (storedClaim) next.deleted_ids = storedClaim;
@@ -206,7 +220,17 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   }
 
   const diff = catalogDiff(live, draftBuilt);
-  const sourceHash = sha256(source);
+  /* 🔴 THE TOKEN MUST HASH WHAT PUBLISH WILL HASH, AND THAT IS THE STORED DRAFT — NOT THE BODY.
+     This hashed the incoming `source`, and publish hashes the draft it reads BACK. Those agreed only
+     while the two were the same bytes, which stopped being true the moment the server began owning a
+     field: the stored payload carries the server-stamped, preserved or withdrawn deletion claim, and
+     any null-cleared stale fields. So a save would succeed and the follow-up publish would fail
+     token_mismatch → edit_superseded, which means ANY ordinary edit made while a deletion claim
+     stands could never be published — the merchant sees "reload and review again" forever, with
+     nothing to reload that would help.
+     Hashing `payload` through the same function publish uses makes the two agree by construction
+     rather than by the two expressions happening to coincide. */
+  const sourceHash = sha256(payload);
   // Bound to the POST-write updateTime, deliberately. Binding the pre-write one would let a publish land
   // against a draft that had already moved on.
   const token = issueEditToken({ rid, baseActiveVersionId, sourceUpdateTime: writeTime, sourceHash, diff });

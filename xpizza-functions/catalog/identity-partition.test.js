@@ -143,10 +143,22 @@ const refuses = (fn, code, label) => {
 
   /* SENSITIVITY: genuinely ABSENT input is a legitimate state and must still pass, or this guard has
      simply broken the empty case instead of tightening it. */
-  const empty = validatePartition({ activeCertified: [], carried: undefined, deletedIds: null });
+  const empty = validatePartition({ activeCertified: [], carried: undefined, deletedIds: undefined });
   assert.strictEqual(empty.known.size + empty.deleted.size, 0, 'absent carried/deleted on an empty active set is lawful');
   assert.deepStrictEqual(validateDeletionClaim({ ids: undefined }, { activeVersionId: 'v', activeGeneration: 0 }),
     { ids: [], declared: false }, 'a claim with no ids at all is "no deletion declared", not malformed');
+
+  /* 🔴 undefined IS ABSENT; AN EXPLICIT null IS NOT. null is a client that meant something and got it
+     wrong, and the C-4 contract is that present-but-wrong refuses. The ONE null this system reads as a
+     sentinel is the top-level STORED deleted_ids — how a withdrawn or consumed claim is recorded — and
+     that is handled by the callers before it reaches these functions. Treating the two alike here is
+     what let a malformed claim read as "no deletions" and be refused for the wrong reason. */
+  refuses(() => validatePartition({ activeCertified: [], carried: null, deletedIds: [] }),
+    'identity_partition_malformed', 'an explicit null carried');
+  refuses(() => validatePartition({ activeCertified: [], carried: [], deletedIds: null }),
+    'identity_partition_malformed', 'an explicit null deletedIds');
+  refuses(() => validateDeletionClaim({ ids: null, base_version: 'v', base_generation: 0 }, { activeVersionId: 'v', activeGeneration: 0 }),
+    'deleted_ids_malformed', 'an explicit null claim.ids');
   ok('a present-but-non-array carried, deleted_ids or claim.ids REFUSES — while genuinely absent input stays lawful');
 }
 

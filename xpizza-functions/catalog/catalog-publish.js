@@ -225,17 +225,21 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected) {
        supplied a draftRevision, a publish that omits it may not consume a claim at all — so a
        standing claim plus no CAS REFUSES rather than publishing and leaving the deletion to be
        replayed against the next baseline. Protected by construction, not by the caller remembering. */
-    const liveClaim = draftSnap && draftSnap.exists ? (draftSnap.data() || {}).deleted_ids : null;
-    const hasClaim = !!(liveClaim && typeof liveClaim === 'object' && Array.isArray(liveClaim.ids) && liveClaim.ids.length);
-    if (hasClaim) {
+    /* 🔴 ANY PRESENT, NON-NULL CLAIM IS VALIDATED HERE TOO — the same rule as the pre-flip pass.
+       Gating on a non-empty id array let a malformed claim ride the activation through unchecked,
+       which is the opposite of the intended bias. Top-level null is the cleared sentinel. */
+    const liveClaim = draftSnap && draftSnap.exists ? (draftSnap.data() || {}).deleted_ids : undefined;
+    if (liveClaim !== undefined && liveClaim !== null) {
       validateDeletionClaim(liveClaim, {
         activeVersionId: liveActive,
         activeGeneration: pointerStateOf(pointerSnap.exists ? pointerSnap.data() : null).generation,
       });
-      /* Consumed in the SAME transaction that activates the version it was declared against, so the
-         claim and the activation stand or fall together — a cleared claim never outlives a flip that
-         did not happen, and a surviving one never outlives a flip that did. */
-      tx.update(sourceRefOf(db, rid), { deleted_ids: null });
+      /* 🔴 NOT CONSUMED HERE. C validates the claim; it does not execute it. Clearing a claim that
+         nothing retired would discard a merchant's declared intent while reporting success — strictly
+         worse than leaving it standing. Consumption belongs with D's activation writer, which is the
+         thing that actually retires the declared ids, so that a cleared claim means "carried out" by
+         construction rather than by convention. A claim therefore SURVIVES a C-era publish and goes
+         stale at the next baseline, which is correct: C alone is not a deploy target. */
     }
 
     tx.set(pointerRef, { version: versionId, at: FieldValue.serverTimestamp() });
@@ -388,22 +392,6 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
   // only thing that moves the pointer, so validating here covers every path that exists AND every
   // path anyone adds later.
   assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure }), `${rid} (pre-publish)`);
-
-  /* 🔴 1D D4-P1 — A SOURCE-DERIVED PUBLISH MAY NOT ACTIVATE OVER A CLAIM IT CANNOT CONSUME.
-     Consuming a deletion claim means writing the source, which is only safe behind the draft CAS — so
-     a publish that supplies no draftRevision cannot consume one. Rather than activate and leave the
-     deletion standing to be replayed against the NEXT baseline, this refuses.
-     It lives here, in publishVersion, and deliberately NOT in flipPointer: rollbackVersion reaches the
-     same flip, and a rollback is not consuming anything. Refusing a rollback because a merchant
-     happens to have an unrelated deletion pending would block a recovery action for a reason that has
-     nothing to do with it — the guard belongs on the path that would otherwise do the harm. */
-  if (!expected || !Object.prototype.hasOwnProperty.call(expected, 'draftRevision')) {
-    let standing = null;
-    try { standing = ((await sourceRefOf(db, rid).get()).data() || {}).deleted_ids; } catch (_) { standing = null; }
-    if (standing && Array.isArray(standing.ids) && standing.ids.length) {
-      throw new Error(`publish_claim_without_cas: ${rid} — a standing deletion claim cannot be consumed without a draft revision to compare against`);
-    }
-  }
 
   const token = await acquireLease(db, rid);
   // Captured inside the lease, USED outside it — see the preserve-on-write note in the finally below.
