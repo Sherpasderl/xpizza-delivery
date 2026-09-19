@@ -11,21 +11,30 @@
 // So the tests here are about two properties, and the second is the one that would have caught it
 // months earlier: the version alone must never refuse, and NO refusal may be silent.
 import assert from 'node:assert';
-import { loadForm, closeAll, counter, settle, BRAND } from './form-harness.mjs';
+import { loadForm, closeAll, counter, settle, BRAND, serve, envelope } from './form-harness.mjs';
 import { createRequire } from 'node:module';
 const require = createRequire(new URL('./xpizza-functions/x.js', import.meta.url));
 const { computeServerTotal, MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./menu-pricing');
+const { generateFormBundle, catalogSnapshot } = require('./catalog/generate-form-bundle');
+const { applyIdentityToServedBody } = require('./catalog/identity-overlay');
+const { fullRegistry } = require('./catalog/identity-fixture');
 
 const { ok, count } = counter();
 const DIRS = ['xpizza-orders', 'la-musa-orders'];
 
-/* A real served body, in the shape getPublicMenu actually returns — built from the page's own live
-   menu so it is the thing the real applier validates, with identity laid on as D1's overlay does. */
-function servedBody(dir, w, { version = '1d.1', withIds = true, rid = BRAND[dir].rid } = {}) {
-  const menu = BRAND[dir].menu(w);
-  menu.dishes = menu.dishes.map((d) => (withIds ? { ...d, dish_id: `ID_dish_${d.id}` } : { ...d }));
-  menu.extras = menu.extras.map((e) => (withIds ? { ...e, extra_id: `ID_extra_${e.id}` } : { ...e }));
-  return { rid, representation_version: version, menu };
+/* 🔴 THE BODY IS BUILT BY THE PRODUCER'S OWN PIECES, NOT RECONSTRUCTED HERE. getPublicMenu projects
+   the live catalog with generateFormBundle and then lays identity on with applyIdentityToServedBody —
+   so this calls exactly those two, in that order, and the ids are the OVERLAY's, not literals I chose.
+   The first version of this file rebuilt the menu from the page's own globals and invented
+   `ID_dish_${id}` strings; that agrees with itself and proves nothing about what the producer emits.
+   The registry stub is D1's own fullRegistry, which resolves every key — the same fixture the overlay
+   suite uses — so the ids arrive through the real decoration path. */
+async function servedMenu(dir, { withIds = true } = {}) {
+  const rid = BRAND[dir].rid;
+  const bundle = generateFormBundle(rid, catalogSnapshot(rid));
+  if (!withIds) return bundle;
+  const { body } = await applyIdentityToServedBody(fullRegistry(rid), rid, bundle);
+  return body;
 }
 
 /* Capture the page's console.warn — the refusals and the marker log are console events, and "it was
@@ -46,18 +55,32 @@ function captureWarn(w) {
        outage. */
     {
       const w = loadForm(dir); await settle();
+      const menu = await servedMenu(dir);
+      const body = envelope(BRAND[dir].rid, menu, '1e.1');      // a version this form has never seen
+
       const cap = captureWarn(w);
-      const body = servedBody(dir, w, { version: '1e.1' });     // a version this form has never seen
       const out = w.__LIVE_MENU_ADAPTER.validateSnapshot(body);
       cap.restore();
-
       assert.ok(out, '🔴 a version-string change ALONE refused the menu — this is the outage, exactly');
       assert.strictEqual(out, body.menu, 'and it returns the menu it was given');
       assert.ok(cap.has('menu_representation_changed'),
         '🔴 …and it must be LOUD: an unexpected representation that applies silently is how the next bump goes unnoticed');
       assert.ok(cap.seen.some((l) => l.includes('1e.1')), 'the log names what it actually got');
       assert.ok(!cap.has('menu_snapshot_refused'), 'a version mismatch is not a refusal');
-      ok(`${dir}: an unknown representation version APPLIES and logs menu_representation_changed`);
+
+      /* 🔴 AND IT ACTUALLY APPLIES — THROUGH THE REAL CHAIN, not just "validateSnapshot returned the
+         body". Accepting a snapshot and COMMITTING it are different steps, and the outage lived in the
+         gap: the adapter refused, so nothing downstream ever ran. Asserting only the return value
+         would leave the commit path — the thing that was broken — unexercised. serve() drives what the
+         page really does: fetch → coordinator → adapter → applier → commit. */
+      await serve(w, body);
+      await settle();
+      const applied = w.liveMenuGlobalGet('MENU');
+      assert.ok(applied.length === menu.dishes.length,
+        `🔴 ${dir}: the unknown-version snapshot did not reach MENU (${applied.length} vs ${menu.dishes.length})`);
+      assert.ok(applied.every((d) => d.dish_id),
+        '🔴 …and its ids did not survive the commit — which is the half the outage actually broke');
+      ok(`${dir}: an unknown representation version APPLIES through the real chain, ids intact, and logs menu_representation_changed`);
       closeAll();
     }
 
@@ -65,7 +88,7 @@ function captureWarn(w) {
     {
       const w = loadForm(dir); await settle();
       const cap = captureWarn(w);
-      const out = w.__LIVE_MENU_ADAPTER.validateSnapshot(servedBody(dir, w));   // 1d.1, the live one
+      const out = w.__LIVE_MENU_ADAPTER.validateSnapshot(envelope(BRAND[dir].rid, await servedMenu(dir), '1d.1'));
       cap.restore();
       assert.ok(out, 'the live representation is accepted');
       assert.ok(!cap.has('menu_representation_changed'),
@@ -80,7 +103,7 @@ function captureWarn(w) {
        alarm on, and no way to tell "the merchant published something bad" from "the request failed". */
     {
       const w = loadForm(dir); await settle();
-      const good = servedBody(dir, w);
+      const good = envelope(BRAND[dir].rid, await servedMenu(dir), '1d.1');
       const cases = {
         raw_not_object: null,
         rid_mismatch: { ...good, rid: 'someone_elses_brand' },
@@ -109,7 +132,7 @@ function captureWarn(w) {
        refusal is the structure talking and not a version mismatch in disguise. */
     {
       const w = loadForm(dir); await settle();
-      const good = servedBody(dir, w);
+      const good = envelope(BRAND[dir].rid, await servedMenu(dir), '1d.1');
       const broken = {
         'a dish with an empty id': [{ ...good.menu.dishes[0], id: '' }],
         'a dish with a zero price': [{ ...good.menu.dishes[0], price: 0 }],
@@ -132,20 +155,29 @@ function captureWarn(w) {
        outage severed, and asserting it here is what makes "the fix works" a measurement rather than a
        claim about a string comparison. */
     {
+      /* 🔴 THE WHOLE CHAIN, DRIVEN AS THE PAGE DRIVES IT. This cell used to call liveMenuPrepare and
+         assign MENU/EXTRAS directly — which skips adapter → onApply → applier → COMMIT, the exact
+         stretch this incident broke, and would have stayed green even if the commit dropped every id.
+         serve() puts a body on the wire and lets the real coordinator do the rest. */
       const w = loadForm(dir); await settle();
-      const body = servedBody(dir, w);
-      const accepted = w.__LIVE_MENU_ADAPTER.validateSnapshot(body);
-      assert.ok(accepted, 'premise — the live body is accepted');
-
-      const prepared = w.liveMenuPrepare(accepted);
-      w.liveMenuGlobalSet('MENU', prepared.MENU);
-      w.liveMenuGlobalSet('EXTRAS', prepared.EXTRAS);
+      const menu = await servedMenu(dir);
+      await serve(w, envelope(BRAND[dir].rid, menu, '1d.1'));
       await settle();
-      assert.ok(prepared.MENU.every((d) => d.dish_id), '🔴 the applied MENU carries an id on every dish');
 
-      const dish = prepared.MENU.find((d) => d.price > 0);
+      const liveMenu = w.liveMenuGlobalGet('MENU');
+      const liveExtras = w.liveMenuGlobalGet('EXTRAS');
+      assert.strictEqual(liveMenu.length, menu.dishes.length, `premise — the live body reached MENU (${liveMenu.length})`);
+      assert.ok(liveMenu.every((d) => d.dish_id), '🔴 the POST-COMMIT MENU carries an id on every dish');
+      assert.ok(liveExtras.every((e) => e.extra_id), '🔴 …and the post-commit EXTRAS on every option');
+      /* The ids are the PRODUCER's, compared by value — so a commit that replaced them with something
+         of its own, or dropped them and let the bundle's id-less records stand, fails here. */
+      const byId = new Map(menu.dishes.map((d) => [String(d.id), d.dish_id]));
+      assert.ok(liveMenu.every((d) => d.dish_id === byId.get(String(d.id))),
+        '🔴 …and they are the ids the producer emitted, not substitutes');
+
+      const dish = liveMenu.find((d) => d.price > 0);
       w.chg(dish.id, 1); await settle();
-      w.toggleDetailExtra(prepared.EXTRAS[0].id, dish.id, 0); await settle();
+      w.toggleDetailExtra(liveExtras[0].id, dish.id, 0); await settle();
 
       const emitted = w.redeemCartItems();
       assert.ok(emitted.length > 0, 'premise — the cart has a line');

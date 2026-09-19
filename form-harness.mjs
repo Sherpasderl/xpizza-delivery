@@ -34,7 +34,10 @@ export const settle = async () => { for (let i = 0; i < 6; i++) await new Promis
 export const stageSettle = async () => { await new Promise((r) => setTimeout(r, 240)); await settle(); };
 
 // The endpoint's real envelope, exactly as index.js sends it.
-export const envelope = (rid, menu) => ({ rid, representation_version: '1b.1', menu });
+/* The version is a PARAMETER with the historical default, because the representation-gate fix made it
+   observability rather than a gate: a suite that wants to drive an unexpected representation through
+   the real chain needs to say so, and every existing caller keeps the body it was written against. */
+export const envelope = (rid, menu, representationVersion = '1b.1') => ({ rid, representation_version: representationVersion, menu });
 
 /* `omit` drops a local script instead of inlining it — the browser's own failure mode, not a
    hypothetical: a 404, a cache miss, a CSP block or a syntax error in a neighbouring file all end with
