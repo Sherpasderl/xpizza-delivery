@@ -232,12 +232,17 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected) {
        nothing else can cover it: the pointer can move between the pre-flight pass and this
        transaction WITHOUT touching the source, so a claim valid at pre-flight can be stale here —
        that is the tear C-2 exists for, and it has a cell only this check can satisfy.
-       Its MALFORMED branch is defence in depth and, as the code stands, unreachable: a claim that is
-       already malformed is refused at pre-flight, and making one malformed afterwards means writing
-       the source, which moves its revision, which the draft CAS a few lines above refuses first. It
-       is kept because the two branches are one validator and splitting them to drop an unreachable
-       case would be a worse trade — but no mutant can kill it, and saying so is better than carrying
-       a test that appears to. */
+       Its MALFORMED branch is unreachable VIA publishVersion, and only via publishVersion: that path
+       pre-flights, so an already-malformed claim is refused before the lease, and making one malformed
+       afterwards means writing the source, which moves its revision, which the draft CAS a few lines
+       above refuses first.
+       🔴 THAT SCOPING IS THE WHOLE OF THE CLAIM — an earlier version of this comment said "unreachable"
+       flat, which was wrong. flipPointer is EXPORTED, and rollbackVersion forwards `expected` straight
+       here with no assertDraftPartition. A direct flip holding a valid lease and a matching draft
+       revision reaches this validator with a malformed claim and nothing upstream to stop it, so the
+       branch is live defence for every caller that is not publishVersion. See the rollback hazard on
+       D's list: rollback must run under an explicit 'ignore' claim policy rather than relying on its
+       callers to keep omitting draftRevision. */
     const liveClaim = draftSnap && draftSnap.exists ? (draftSnap.data() || {}).deleted_ids : undefined;
     if (liveClaim !== undefined && liveClaim !== null) {
       validateDeletionClaim(liveClaim, {

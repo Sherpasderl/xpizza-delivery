@@ -6616,7 +6616,7 @@
   "kills_with": "a claim that went stale BETWEEN the pre-flight check and the flip rode the activation through",
   "from": "      validateDeletionClaim(liveClaim, {\n        activeVersionId: liveActive,",
   "to": "      if (false) validateDeletionClaim(liveClaim, {\n        activeVersionId: liveActive,",
-  "why": "isolated by cell 5. The pre-flight pass in publishVersion validates the claim too, so an ALREADY-stale claim never reaches the transaction and this mutant survived — the masking guard was one I added myself in the same slice. Cell 5 bumps the GENERATION between the pre-flight check and the flip, leaving the version untouched: the CAS compares versions and passes, the pre-flight check saw the old generation and passed, and only the in-tx read of the pointer this transaction holds can notice. That is exactly the tear C-2 exists to close. 🔴 WHICH HALF THIS KILL ACTUALLY COVERS: validateDeletionClaim refuses on two grounds and this mutant dies on ONE of them. The staleness ground is reachable here and cell 5 reaches it. The MALFORMED ground is not: an already-malformed claim is refused at pre-flight, and making one malformed after pre-flight means writing the source, which moves its revision and trips the draft CAS several lines above this check. There is no mutant that isolates the malformed half at this call site — it is one validator call, not two branches — so it is covered as a unit in identity-partition.test.js and at pre-flight (claim-flip cell 4), and documented in the source as defence in depth. Scoring this kill as covering both halves would be the 'true, but not measuring what its label claims' class."
+  "why": "isolated by cell 5. The pre-flight pass in publishVersion validates the claim too, so an ALREADY-stale claim never reaches the transaction and this mutant survived — the masking guard was one I added myself in the same slice. Cell 5 bumps the GENERATION between the pre-flight check and the flip, leaving the version untouched: the CAS compares versions and passes, the pre-flight check saw the old generation and passed, and only the in-tx read of the pointer this transaction holds can notice. That is exactly the tear C-2 exists to close. 🔴 WHICH HALF THIS KILL ACTUALLY COVERS: validateDeletionClaim refuses on two grounds and this mutant dies on ONE of them, the staleness ground, which cell 5 reaches. The malformed ground is not reachable THROUGH publishVersion — that path pre-flights, and making a claim malformed after pre-flight moves the source revision, which the draft CAS refuses first. It IS reachable directly: flipPointer is exported and rollbackVersion forwards `expected` with no assertDraftPartition, so a direct flip with a valid lease and a matching draft revision hits the validator with a malformed claim. So the branch is live defence for non-publishVersion callers, covered as a unit in identity-partition.test.js and at pre-flight (claim-flip cell 4), and NOT dead code — an earlier note here said it was flatly unreachable, which was too broad. Scoring this kill as covering both grounds would still be the 'true, but not measuring what its label claims' class."
  },
  {
   "id": "d4p1c-25",
@@ -6690,6 +6690,21 @@
   "kills_with": "bootstrap changed the source beyond the stamps",
   "from": "      return { ...o, display: { ...(o.display || {}), identity_id: id } };",
   "to": "      return { ...o, display: { identity_id: id } };"
+ },
+ {
+  "id": "d4p1b-26",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 a re-run over a certified version REWRITES the source - the merchant's draft churns on every pass",
+  "kills_with": "a re-run rewrote the SOURCE — idempotence has to cover both halves of the write",
+  "from": "    report.already = true;\n    return report;",
+  "to": "    report.already = true;\n    await sourceRefOf(db, rid).update({ churned_by_rerun: 'a re-run wrote the draft' });\n    return report;",
+  "why": "🔴 THIS IS AN ORDERING MUTANT — do not re-point it at the corruption itself. Its job is not 'bootstrap must not write junk'; its job is to fail under one CELL ORDERING and pass under another, which is the only way to show the old ordering measured nothing. It corrupts the source on the ALREADY-CERTIFIED re-run path with the SAME value on every pass. Under the old cell — which captured its baseline AFTER one re-run — both reads carried the stray field, agreed, and this mutant SURVIVED. Capturing the baseline BEFORE any re-run is the only change that kills it. If a future reader re-aims it at a value that differs per pass, or moves it off the already-certified path, it stops discriminating the ordering and becomes an ordinary source-write mutant that the cell would have caught either way — which would quietly retire the evidence for C-R8."
  },
  {
   "id": "pah-01",

@@ -179,16 +179,30 @@ async function seed(rid, sha) {
 
   // ── 3. IDEMPOTENT — A RE-RUN IS A NO-OP, NOT A REWRITE ─────────────────────────────────────
   {
+    /* 🔴 THE BASELINE IS CAPTURED BEFORE THE FIRST RE-RUN. It used to be captured AFTER one, so the
+       comparison was read-after-a-re-run against read-after-another-re-run: a first re-run that
+       corrupted the source and then settled passed cleanly. The line above it was worse — it compared
+       snapshotSource() against snapshotSource(), which is a read against itself and can only ever be
+       true. Neither noticed a re-run that rewrote the draft, which is the single thing this cell
+       exists to catch. d4p1b-26 is the proof: it corrupts the source on the re-run path with the same
+       value every time, so it SURVIVES the old ordering (both post-re-run reads agree) and dies only
+       on this one. */
+    const srcIdem = await snapshotSource(rid);
+    assert.ok((srcIdem.items || []).some((o) => o && o.display && o.display.identity_id),
+      'premise — the baseline is the ENRICHED source, captured before any re-run');
+
     const again = await bootstrapIdentityStamps(db, rid);
     assert.strictEqual(again.already, true, '🔴 a re-run re-stamped a certified version');
     assert.strictEqual(again.stamped, false, '…and reported no write');
     assert.deepStrictEqual(await snapshotVersion(rid, active.versionId), after, '🔴 the re-run changed the version');
-    assert.deepStrictEqual(await snapshotSource(rid), await snapshotSource(rid), 'stable read');
-    const srcIdem = await snapshotSource(rid);
-    await bootstrapIdentityStamps(db, rid);
     assert.deepStrictEqual(await snapshotSource(rid), srcIdem,
       '🔴 a re-run rewrote the SOURCE — idempotence has to cover both halves of the write, or the merchant\'s draft churns on every pass');
-    ok('a re-run over a certified version is a true no-op — the whole version AND the whole source are unchanged');
+
+    // …and a SECOND re-run is still a no-op against the same pre-re-run baseline, not merely stable.
+    await bootstrapIdentityStamps(db, rid);
+    assert.deepStrictEqual(await snapshotVersion(rid, active.versionId), after, '🔴 the second re-run changed the version');
+    assert.deepStrictEqual(await snapshotSource(rid), srcIdem, '🔴 the second re-run rewrote the SOURCE');
+    ok('a re-run over a certified version is a true no-op — the whole version AND the whole source are unchanged, measured against the source as it stood BEFORE any re-run');
   }
 
   // ── 4. IT MINTS NOTHING: AN UNREGISTERED OBJECT REFUSES ────────────────────────────────────
@@ -890,7 +904,14 @@ async function seed(rid, sha) {
         '🔴 the draft moved under the pass and it enriched over it — the merchant\'s save is gone');
       assert.ok(saved, 'premise — the save really landed inside the window');
       assert.deepStrictEqual(await snapshotVersion(ridR, v.versionId), verPre, '🔴 the version was certified anyway');
+      /* 🔴 THE WHOLE SOURCE, NOT THE ONE FIELD I INJECTED. Checking note_from_merchant and the absence
+         of stamps left every other part of the draft unmeasured: extras, prices and structure could
+         have been rewritten by the aborted pass and this cell would still have passed. The expected
+         state is exactly computable — the pre-pass source plus the merchant's one field — so compare
+         against that whole object and let any other difference fail. */
       const srcNow = await snapshotSource(ridR);
+      assert.deepStrictEqual(srcNow, { ...srcPre, note_from_merchant: 'saved mid-pass' },
+        '🔴 the aborted pass left the merchant\'s draft something other than exactly their own save — the whole source has to come through, not just the field this cell happened to inject');
       assert.strictEqual(srcNow.note_from_merchant, 'saved mid-pass', '🔴 the merchant\'s mid-pass save was clobbered');
       assert.ok(!(srcNow.items || []).some((o) => o && o.display && o.display.identity_id), '…and nothing was stamped');
       await sourceRefOf(db, ridR).set(srcPre);

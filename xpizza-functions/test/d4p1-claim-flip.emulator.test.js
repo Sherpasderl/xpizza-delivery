@@ -213,11 +213,12 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
   await sourceRefOf(db, RID).update({ deleted_ids: null });
   await publishOnce();
   assert.strictEqual((await readClaim()), null, 'a cleared claim publishes normally and stays cleared');
-  /* 🔴 ALSO A PRE-FLIGHT CELL. The flip carries the same malformed check, but nothing can reach it:
-     an already-malformed claim is refused here, and making one malformed later means writing the
-     source, which moves its revision and trips the draft CAS first. That branch is documented in the
-     source as defence in depth with no mutant, rather than covered by a cell that appears to exercise
-     it and does not. */
+  /* 🔴 ALSO A PRE-FLIGHT CELL — and the reason it is only a pre-flight cell is narrower than I first
+     wrote. Nothing can reach the flip's malformed check THROUGH publishVersion: this pass refuses an
+     already-malformed claim, and making one malformed later means writing the source, which moves its
+     revision and trips the draft CAS first. That is not the same as unreachable. flipPointer is
+     exported and rollbackVersion forwards `expected` without pre-flighting, so a direct flip does
+     reach it — live defence, not dead code, for every caller that is not publishVersion. */
   ok('three malformed claim shapes refuse by name AT PRE-FLIGHT; the top-level null sentinel still publishes cleanly');
 
   // ── 5. 🔴 THE TEAR C-2 EXISTS FOR: STALE ONLY AT THE WRITE BOUNDARY ───────────────────────
