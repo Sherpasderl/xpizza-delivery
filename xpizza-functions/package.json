@@ -25,6 +25,7 @@
     "test:public-menu": "firebase emulators:exec --only firestore,database --project demo-xpizza \"node test/public-menu.emulator.test.js\"",
     "test:backfill-identities": "firebase emulators:exec --only firestore --project xpizza-delivery \"node test/backfill-identities.emulator.test.js\"",
     "test:identity-shadow": "firebase emulators:exec --only firestore --project demo-xpizza \"node test/identity-shadow.emulator.test.js\"",
+    "test:identity-shadow-handler": "firebase emulators:exec --only firestore,database --project demo-xpizza \"node test/identity-shadow-handler.emulator.test.js\"",
     "test:identity-registry": "firebase emulators:exec --only firestore --project demo-xpizza \"node test/identity-registry.emulator.test.js\"",
     "test:identity-grace": "firebase emulators:exec --only firestore --project demo-xpizza \"node test/identity-grace.emulator.test.js\"",
     "test:catalog-versioned": "firebase emulators:exec --only firestore --project demo-xpizza \"node test/catalog-versioned.emulator.test.js\"",

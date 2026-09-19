@@ -5941,5 +5941,61 @@
   "label": "🔴 the sweep does not re-read the CLAIMANT SET - a conflict appearing mid-sweep is arbitrated",
   "from": "        if (liveIds.length !== 1 || liveIds[0] !== canonicalId) return 'conflict';",
   "to": "        if (false) return 'conflict';"
+ },
+ {
+  "id": "d3-16",
+  "slice": "d3",
+  "file": "index.js",
+  "command": [
+   "npm",
+   "run",
+   "test:identity-shadow-handler"
+  ],
+  "label": "🔴 the cash path emits no heartbeat - a silently-broken validator is indistinguishable from a clean one",
+  "from": "  reportIdentityShadow(db, {\n    rid: restaurantId, orderId,\n    outcome: shadowResult ? (shadowResult.status === 'ok' ? 'reported' : shadowResult.status) : 'dropped',\n    result: shadowResult,\n  });",
+  "to": "  // mutant: no heartbeat",
+  "kills_with": "heartbeats for one order — coverage is counted per issuance"
+ },
+ {
+  "id": "d3-17",
+  "slice": "d3",
+  "file": "index.js",
+  "command": [
+   "npm",
+   "run",
+   "test:identity-shadow-handler"
+  ],
+  "label": "🔴 the RESPONSE AWAITS the shadow check - a hanging registry delays the customer's order",
+  "from": "  const shadowResult = (shadowCheck && shadowCheck.isSettled()) ? shadowCheck.value() : null;",
+  "to": "  const shadowResult = shadowCheck ? await shadowCheck.promise : null;",
+  "kills_with": "the response waited on D3's check"
+ },
+ {
+  "id": "d3-18",
+  "slice": "d3",
+  "file": "index.js",
+  "command": [
+   "npm",
+   "run",
+   "test:identity-shadow-handler"
+  ],
+  "label": "🔴 the card heartbeat drops attempt_id - a legitimate rotation reads as one order double-reporting",
+  "from": "      rid: restaurantId, orderId, attemptId,",
+  "to": "      rid: restaurantId, orderId, attemptId: null,",
+  "kills_with": "the two heartbeats are not distinguishable by attempt_id"
+ },
+ {
+  "id": "d3-19",
+  "slice": "d3",
+  "file": "index.js",
+  "command": [
+   "npm",
+   "run",
+   "test:identity-shadow-handler"
+  ],
+  "label": "🔴 a charge that never ISSUED reports anyway - the coverage denominator stops being issuances",
+  "from": "  if (flow.respond) return res.status(flow.respond.status).json(flow.respond.body);",
+  "to": "  if (flow.respond) { if (cardShadowStarted) reportIdentityShadow(db, { rid: restaurantId, orderId, attemptId, outcome: 'dropped', result: null }); return res.status(flow.respond.status).json(flow.respond.body); }",
+  "kills_with": "heartbeat(s) for a charge that never issued"
  }
 ]
