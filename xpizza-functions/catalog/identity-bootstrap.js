@@ -33,7 +33,7 @@
 // Brand-agnostic on purpose: P1 is scoped to x_pizza, but that scoping belongs to the CALLER. A
 // `rid === 'x_pizza'` branch in here would be exactly the hardwired ternary D5 exists to delete.
 // ---------------------------------------------------------------------------
-const { lookupByLegacyKeys, retireIdentity, idsColOf, STATUS_LIVE } = require('./identity-registry');
+const { lookupByLegacyKeys, idsColOf, keysColOf, encodeKey, STATUS_LIVE, STATUS_RETIRED } = require('./identity-registry');
 const { legacyKeyOf } = require('./identity-backfill');
 const { activePointerRef, getActivePointer, pointerStateOf } = require('./catalog-firestore');
 
@@ -72,6 +72,42 @@ async function readActiveVersion(db, rid) {
 /* Resolve one kind's objects to their existing ids. Refuses rather than guessing: bootstrap MINTS
    NOTHING, so an object the registry does not already know is a state a human must look at — it means
    the D1 backfill never ran, or ran against a different catalog. */
+/* 🔴 EVERY LIVE CLAIMANT OF EVERY NAME, IN ONE READ PER KIND. The spec's rule is "each live object →
+   exactly one live id; a conflict refuses", and the key row alone cannot express it: it names ONE id
+   and is blind to a SECOND live id claiming the same legacy_key. Asking per name would be one query
+   per object (38 for x_pizza today, unbounded in principle) and one place per name where a truncated
+   read could hide the very conflict this exists to find. One query per kind answers the same question
+   for every name at once, and — because the same function runs against `tx.get` — answers it
+   TRANSACTIONALLY at the moment of the write.
+   `read` is the caller's reader: `(q) => q.get()` outside a transaction, `(q) => tx.get(q)` inside. */
+async function liveClaimantsByKey(read, db, rid, kind) {
+  const snap = await read(idsColOf(db, rid, kind).where('status', '==', STATUS_LIVE));
+  const byKey = new Map();
+  for (const d of (snap && snap.docs ? snap.docs : [])) {
+    const k = (d.data() || {}).legacy_key;
+    if (typeof k !== 'string' || !k) continue;
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(d.id);
+  }
+  return byKey;
+}
+
+/* The one predicate B-2 and B-5 share: this name is claimed by exactly one LIVE id, and it is the id
+   the reverse row named. A retired id falls out as "zero claimants" rather than needing its own check,
+   because the query filters on status — so liveness and uniqueness are the same read. */
+function assertSoleClaimant(rid, kind, key, expectedId, byKey) {
+  const claimants = byKey.get(key) || [];
+  if (claimants.length === 0) {
+    throw new Error(`identity_bootstrap_id_not_live: ${rid}/${kind}/${key} — no LIVE id claims this name (the reverse row named ${expectedId})`);
+  }
+  if (claimants.length > 1) {
+    throw new Error(`identity_bootstrap_ambiguous: ${rid}/${kind}/${key} — ${claimants.slice().sort().join(', ')} all claim it live; bootstrap refuses rather than certify a fork`);
+  }
+  if (claimants[0] !== expectedId) {
+    throw new Error(`identity_bootstrap_ambiguous: ${rid}/${kind}/${key} — the reverse row names ${expectedId} but the live claimant is ${claimants[0]}`);
+  }
+}
+
 async function resolveKind(db, rid, kind, objects) {
   const keyed = objects.map((o) => {
     const key = legacyKeyOf(rid, { ...o.data, key: o.data.key });
@@ -85,17 +121,15 @@ async function resolveKind(db, rid, kind, objects) {
     if (!id) throw new Error(`identity_bootstrap_unregistered: ${rid}/${kind}/${o.key} — bootstrap mints nothing; run the D1 backfill first`);
     out.push({ ...o, canonical_id: id });
   }
-  /* 🔴 THE REVERSE ROW IS NOT PROOF THE ID IS LIVE. lookupByLegacyKeys trusts a key row without
-     reading the id row behind it (identity-registry.js:387), so a retired id whose key row survived
-     would be stamped onto a live object and become its certified identity. Read the id rows and
-     require live. */
-  const idSnaps = await Promise.all(out.map((o) => idsColOf(db, rid, kind).doc(o.canonical_id).get()));
-  idSnaps.forEach((snap, i) => {
-    const d = snap.exists ? (snap.data() || {}) : null;
-    if (!d) throw new Error(`identity_bootstrap_id_missing: ${rid}/${kind}/${out[i].key} → ${out[i].canonical_id}`);
-    if (d.status !== STATUS_LIVE) throw new Error(`identity_bootstrap_id_not_live: ${rid}/${kind}/${out[i].key} → ${out[i].canonical_id} is ${d.status}`);
-    if (d.legacy_key !== out[i].key) throw new Error(`identity_bootstrap_key_mismatch: ${rid}/${kind}/${out[i].key} → ${out[i].canonical_id} claims ${JSON.stringify(d.legacy_key)}`);
-  });
+  /* 🔴 THE REVERSE ROW IS NOT PROOF THE ID IS LIVE, AND IT IS NOT PROOF IT IS THE ONLY ONE.
+     lookupByLegacyKeys trusts a key row without reading the id behind it (identity-registry.js:387),
+     so a retired id whose key row survived would become a certified identity; and the key row names
+     one id, so a SECOND live id claiming the same name is invisible to it. Both are the same read.
+     This pass fails fast with a specific message, but it is NOT the guarantee — the authoritative
+     check is the identical one re-run INSIDE the stamping transaction, because anything read here can
+     change before the write. */
+  const byKey = await liveClaimantsByKey((q) => q.get(), db, rid, kind);
+  for (const o of out) assertSoleClaimant(rid, kind, o.key, o.canonical_id, byKey);
   /* One object, one id — and one id, one object. Two live objects resolving to the same id is a fork
      already present in the data, and stamping it would certify it. */
   const seen = new Map();
@@ -136,7 +170,18 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
        immutable and were read outside, which is sound; what can move underneath this pass is the
        POINTER — another activation landing between the read and the write would leave these stamps
        describing a version that is no longer live. */
-    const [pSnap, recSnap] = await Promise.all([tx.get(activePointerRef(db, rid)), tx.get(vref)]);
+    /* 🔴 EVERY AUTHORITATIVE CHECK RE-RUNS HERE. The version's own docs are immutable, so reading
+       those outside is sound; everything else — the pointer, the generation, the version record, and
+       above all WHICH IDS ARE LIVE — can move between the resolve and this write. The pass used to
+       verify liveness only outside, which left the exact window the liveness guard exists to close:
+       an id retired in between was still stamped, as a certified identity. Reads do not count against
+       the 500-write transaction cap, so there is no reason to economise on them here. */
+    const [pSnap, recSnap, liveDish, liveExtra] = await Promise.all([
+      tx.get(activePointerRef(db, rid)),
+      tx.get(vref),
+      liveClaimantsByKey((q) => tx.get(q), db, rid, 'dish'),
+      liveClaimantsByKey((q) => tx.get(q), db, rid, 'extra'),
+    ]);
     const p = pSnap.exists ? (pSnap.data() || {}) : {};
     if (p.version !== active.versionId) {
       throw new Error(`identity_bootstrap_pointer_moved: ${rid} — ${active.versionId} was live at read, ${JSON.stringify(p.version)} is live now`);
@@ -144,8 +189,21 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
     if (generationOf(p) !== active.generation) {
       throw new Error(`identity_bootstrap_generation_moved: ${rid} — captured ${active.generation}, current ${generationOf(p)}`);
     }
-    if ((recSnap.data() || {}).identity_certified === true) {
+    const rec = recSnap.data() || {};
+    if (rec.identity_certified === true) {
       throw new Error(`identity_bootstrap_raced: ${rid}/${active.versionId} was certified by a concurrent pass`);
+    }
+    /* 🔴 NEVER UPGRADE AN EXISTING ACTIVATION RECORD (§3.0). A legacy pre-P1 live version carries no
+       record at all, so "a record is already here" means a P1 activation wrote it — pending, or
+       abandoned. Overwriting it with `activated` would let legacy migration manufacture activation
+       authority for a candidate that was explicitly abandoned, or promote one that never committed.
+       There is no safe way to guess which existing records may be overwritten, so none may be. */
+    if (rec.identity_activation !== undefined) {
+      throw new Error(`identity_bootstrap_activation_present: ${rid}/${active.versionId} already carries an activation record (${JSON.stringify((rec.identity_activation || {}).status)}); bootstrap never upgrades one`);
+    }
+    // The uniqueness+liveness guarantee, at the instant of the write.
+    for (const [kind, objs, byKey] of [['dish', dishes, liveDish], ['extra', extras, liveExtra]]) {
+      for (const o of objs) assertSoleClaimant(rid, kind, o.key, o.canonical_id, byKey);
     }
 
     for (const [kind, objs] of [['dish', dishes], ['extra', extras]]) {
@@ -176,30 +234,88 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
    but it becomes load-bearing the moment P1's destination-claimant guard runs: a later rename onto
    that old name would be refused against a dead claimant. Retire it, DELIBERATELY and LOGGED — never
    silently, because "the sweep quietly retired some ids" is indistinguishable from a bug.
-   Safe because the name is not served by the live version; a pre-P1 unstamped rollback to it falls
-   under the documented weakened-guarantee rule. */
-async function reconcileLegacyOrphans(db, rid, { servedKeys, dryRun = false } = {}) {
-  const report = { rid, scanned: 0, orphans: 0, retired: 0 };
+
+   🔴 BOTH HALVES OF THE PREDICATE ARE DERIVED SERVER-SIDE, FROM THE POINTER-NAMED VERSION. §3.0 says
+   an orphan is a live claimant "NOT served by the active version AND NOT in the active certified
+   set". This used to take the served names as an ARGUMENT and test only name membership, and both
+   halves of that were wrong in the same direction — toward retiring something live. A caller could
+   hand in a wrong or short list, and an id STAMPED ON AN ACTIVE CERTIFIED OBJECT was retired whenever
+   its registry legacy_key differed from the served name (which is precisely the mid-migration state
+   this pass exists for). The sets now come from the version itself, and an id that any certified
+   object carries is off-limits regardless of what its name says.
+
+   🔴 AND EVERY SET IS VALIDATED BEFORE ANY RETIREMENT COMMITS. The emptiness check used to run per
+   kind inside the loop, so a dish retirement could commit and then an empty extras set could throw —
+   a half-done reconciliation, which is the worst outcome available here. */
+async function reconcileLegacyOrphans(db, rid, { dryRun = false, now = () => new Date().toISOString() } = {}) {
+  const active = await readActiveVersion(db, rid);
+  const report = { rid, version: active.versionId, generation: active.generation, scanned: 0, orphans: 0, retired: 0 };
+
+  const objectsOf = (kind) => (kind === 'dish' ? active.dishes : active.extras);
+  const served = {}; const certified = {};
   for (const kind of ['dish', 'extra']) {
-    const served = new Set((servedKeys && servedKeys[kind]) || []);
-    if (!served.size) throw new Error(`identity_reconcile_no_served_set: ${rid}/${kind} — refusing to treat every live id as an orphan`);
+    const objs = objectsOf(kind);
+    served[kind] = new Set(objs.map((o) => legacyKeyOf(rid, { ...o.data, key: o.data.key })).filter(Boolean));
+    certified[kind] = new Set(objs.map((o) => o.data.display && o.data.display.identity_id).filter(Boolean));
+    /* A live version with no servable names is not "everything is an orphan" — it is a read that went
+       wrong, and acting on it would retire the registry. Checked for EVERY kind before anything is
+       written, not as each kind's turn comes round. */
+    if (!served[kind].size) {
+      throw new Error(`identity_reconcile_no_served_set: ${rid}/${kind} — the active version yielded no servable names; refusing to treat every live id as an orphan`);
+    }
+  }
+
+  const candidates = [];
+  for (const kind of ['dish', 'extra']) {
     const snap = await idsColOf(db, rid, kind).where('status', '==', STATUS_LIVE).get();
     const docs = (snap && snap.docs) ? snap.docs : [];
     report.scanned += docs.length;
     for (const d of docs) {
       const data = d.data() || {};
       if (typeof data.legacy_key !== 'string' || !data.legacy_key) continue;
-      if (served.has(data.legacy_key)) continue;
-      report.orphans += 1;
-      try {
-        console.warn('identity_bootstrap_orphan', JSON.stringify({ rid, kind, canonical_id: d.id, legacy_key: data.legacy_key, action: dryRun ? 'would_retire' : 'retire' }));
-      } catch (_) {}
-      if (dryRun) continue;
-      const r = await retireIdentity(db, { rid, kind, canonicalId: d.id });
-      if (r && r.retired) report.retired += 1;
+      if (served[kind].has(data.legacy_key)) continue;      // the live menu serves this name
+      if (certified[kind].has(d.id)) continue;              // …or a certified object carries this id
+      candidates.push({ kind, id: d.id, legacy_key: data.legacy_key });
     }
   }
+  report.orphans = candidates.length;
+
+  for (const c of candidates) {
+    try {
+      console.warn('identity_bootstrap_orphan', JSON.stringify({ rid, kind: c.kind, canonical_id: c.id, legacy_key: c.legacy_key, action: dryRun ? 'would_retire' : 'retire' }));
+    } catch (_) {}
+    if (dryRun) continue;
+    if (await retireOrphanFenced(db, rid, c, active, served, certified, now)) report.retired += 1;
+  }
   return report;
+}
+
+/* 🔴 A BOOTSTRAP-OWNED, FENCED RETIRE. retireIdentity (identity-registry.js:420) checks neither the
+   pointer nor the generation, so a retirement decided against one activation could commit against a
+   later one — and the decision here was made from a snapshot of the whole version. Everything the
+   decision rested on is therefore re-established inside the transaction that acts on it: the pointer
+   and generation are unmoved, the row is still live and still carries the name it was judged by, and
+   it is still neither served nor certified. Anything else refuses rather than retiring. */
+async function retireOrphanFenced(db, rid, cand, active, served, certified, now) {
+  const idRef = idsColOf(db, rid, cand.kind).doc(cand.id);
+  return db.runTransaction(async (tx) => {
+    const [pSnap, idSnap] = await Promise.all([tx.get(activePointerRef(db, rid)), tx.get(idRef)]);
+    const p = pointerStateOf(pSnap.exists ? pSnap.data() : null);
+    if (p.version !== active.versionId || p.generation !== active.generation) {
+      throw new Error(`identity_reconcile_pointer_moved: ${rid} — judged against ${active.versionId}@${active.generation}, now ${JSON.stringify(p.version)}@${p.generation}`);
+    }
+    const d = idSnap.exists ? (idSnap.data() || {}) : null;
+    if (!d || d.status !== STATUS_LIVE) return false;            // already retired by someone else
+    if (d.legacy_key !== cand.legacy_key) {
+      throw new Error(`identity_reconcile_rekeyed: ${rid}/${cand.kind}/${cand.id} was judged as ${cand.legacy_key} and now claims ${JSON.stringify(d.legacy_key)}`);
+    }
+    if (served[cand.kind].has(d.legacy_key) || certified[cand.kind].has(cand.id)) {
+      throw new Error(`identity_reconcile_still_live: ${rid}/${cand.kind}/${cand.id} is served or certified by the active version`);
+    }
+    tx.set(idRef, { ...d, status: STATUS_RETIRED, retired_at: now() });
+    tx.delete(keysColOf(db, rid, cand.kind).doc(encodeKey(d.legacy_key)));
+    return true;
+  });
 }
 
 module.exports = { bootstrapIdentityStamps, reconcileLegacyOrphans, readActiveVersion, BOOTSTRAP_MAX_OBJECTS };

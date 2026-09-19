@@ -6120,8 +6120,8 @@
   ],
   "label": "🔴 the id-liveness check is dropped - a RETIRED id behind a stale key row becomes a certified identity",
   "kills_with": "a RETIRED id behind a surviving key row was accepted as certification",
-  "from": "    if (d.status !== STATUS_LIVE) throw new Error(`identity_bootstrap_id_not_live: ${rid}/${kind}/${out[i].key} → ${out[i].canonical_id} is ${d.status}`);",
-  "to": "    if (false) throw new Error('unreachable');"
+  "from": "  if (claimants.length === 0) {\n    throw new Error(`identity_bootstrap_id_not_live: ${rid}/${kind}/${key} — no LIVE id claims this name (the reverse row named ${expectedId})`);\n  }",
+  "to": "  if (false) { throw new Error('unreachable'); }"
  },
  {
   "id": "d4p1b-05",
@@ -6162,8 +6162,8 @@
   ],
   "label": "🔴 an orphan retirement is SILENT - indistinguishable from a bug that ate an identity",
   "kills_with": "a retirement that is not logged",
-  "from": "        console.warn('identity_bootstrap_orphan', JSON.stringify({ rid, kind, canonical_id: d.id, legacy_key: data.legacy_key, action: dryRun ? 'would_retire' : 'retire' }));",
-  "to": "        void 0;"
+  "from": "      console.warn('identity_bootstrap_orphan', JSON.stringify({ rid, kind: c.kind, canonical_id: c.id, legacy_key: c.legacy_key, action: dryRun ? 'would_retire' : 'retire' }));",
+  "to": "      void 0;"
  },
  {
   "id": "d4p1b-08",
@@ -6175,9 +6175,9 @@
    "test:d4p1-bootstrap"
   ],
   "label": "🔴 an EMPTY served set is accepted - every live id reads as an orphan and the registry is retired wholesale",
-  "kills_with": "an empty served set retired the whole registry instead of refusing",
-  "from": "    if (!served.size) throw new Error(`identity_reconcile_no_served_set: ${rid}/${kind} — refusing to treat every live id as an orphan`);",
-  "to": "    if (false) throw new Error('unreachable');"
+  "kills_with": "an empty served set for one kind was accepted",
+  "from": "    if (!served[kind].size) {\n      throw new Error(`identity_reconcile_no_served_set: ${rid}/${kind} — the active version yielded no servable names; refusing to treat every live id as an orphan`);\n    }",
+  "to": "    if (false) { throw new Error('unreachable'); }"
  },
  {
   "id": "d4p1b-09",
@@ -6192,6 +6192,91 @@
   "kills_with": "the activation record was written with a generation it did not capture",
   "from": "      identity_activation: { status: 'activated', base_generation: active.generation, attempt, at: stamp },",
   "to": "      identity_activation: { status: 'activated', base_generation: 0, attempt, at: stamp },"
+ },
+ {
+  "id": "d4p1b-10",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 a name claimed by TWO live ids is accepted - bootstrap freezes a fork into the version",
+  "kills_with": "a name claimed by TWO live ids was certified",
+  "from": "  if (claimants.length > 1) {\n    throw new Error(`identity_bootstrap_ambiguous: ${rid}/${kind}/${key} — ${claimants.slice().sort().join(', ')} all claim it live; bootstrap refuses rather than certify a fork`);\n  }",
+  "to": "  if (false) { throw new Error('unreachable'); }"
+ },
+ {
+  "id": "d4p1b-11",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 the key row's id is trusted over the actual live claimant - the reverse row outranks the registry",
+  "kills_with": "the reverse row outranked the registry",
+  "from": "  if (claimants[0] !== expectedId) {\n    throw new Error(`identity_bootstrap_ambiguous: ${rid}/${kind}/${key} — the reverse row names ${expectedId} but the live claimant is ${claimants[0]}`);\n  }",
+  "to": "  if (false) { throw new Error('unreachable'); }"
+ },
+ {
+  "id": "d4p1b-12",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 an EXISTING activation record is upgraded to activated - legacy migration manufactures activation authority",
+  "kills_with": "bootstrap upgraded an existing",
+  "from": "    if (rec.identity_activation !== undefined) {\n      throw new Error(`identity_bootstrap_activation_present: ${rid}/${active.versionId} already carries an activation record (${JSON.stringify((rec.identity_activation || {}).status)}); bootstrap never upgrades one`);\n    }",
+  "to": "    if (false) { throw new Error('unreachable'); }"
+ },
+ {
+  "id": "d4p1b-13",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 liveness+uniqueness are NOT re-checked in the stamping tx - an id retired mid-pass is still certified",
+  "kills_with": "an id retired after the resolve was still stamped",
+  "from": "    for (const [kind, objs, byKey] of [['dish', dishes, liveDish], ['extra', extras, liveExtra]]) {\n      for (const o of objs) assertSoleClaimant(rid, kind, o.key, o.canonical_id, byKey);\n    }",
+  "to": "    void liveDish; void liveExtra;"
+ },
+ {
+  "id": "d4p1b-14",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 the CERTIFIED-set half of the candidate filter is dropped - a live object's own id becomes a retirement candidate",
+  "kills_with": "identity_reconcile_still_live",
+  "from": "      if (certified[kind].has(d.id)) continue;              // …or a certified object carries this id",
+  "to": "      if (false) continue;",
+  "why": "dies on the SECOND guard: the candidate filter no longer excludes ids the active version has certified, so a live object's id is selected — and the fenced retire's own served/certified re-check then refuses it (identity_reconcile_still_live), which propagates out of cell 8b. The property (a certified id is never retired) stays guarded in two places; the signature names the one that actually fires rather than the assertion that would if there were only one."
+ },
+ {
+  "id": "d4p1b-15",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 the retirement is not fenced - it commits against an activation it was never judged under",
+  "kills_with": "a retirement committed against an activation it was not judged under",
+  "from": "    if (p.version !== active.versionId || p.generation !== active.generation) {\n      throw new Error(`identity_reconcile_pointer_moved: ${rid} — judged against ${active.versionId}@${active.generation}, now ${JSON.stringify(p.version)}@${p.generation}`);\n    }",
+  "to": "    if (false) { throw new Error('unreachable'); }"
  },
  {
   "id": "pah-01",

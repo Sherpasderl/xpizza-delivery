@@ -24,6 +24,7 @@ const { backfillIdentities } = require('../catalog/identity-backfill');
 const { catalogSnapshot } = require('../catalog/generate-form-bundle');
 const { bootstrapIdentityStamps, reconcileLegacyOrphans, readActiveVersion } = require('../catalog/identity-bootstrap');
 const { ensureIdentity, retireIdentity, idsColOf, STATUS_LIVE } = require('../catalog/identity-registry');
+const { readActiveVersion: _ravUnused } = require('../catalog/identity-bootstrap');
 
 const vrefOf = (rid, v) => db.collection('restaurants').doc(rid).collection('versions').doc(v);
 const pointerOf = (rid) => db.collection('restaurants').doc(rid).collection('meta').doc('active_version');
@@ -249,31 +250,101 @@ async function seed(rid, sha) {
     ok(`bootstrap records exactly the pointer-named version; a retained NEVER-ACTIVATED version stays unprovable (${total} versions, ${(await withRecord()).length} with records)`);
   }
 
-  // ── 8. LEGACY-ORPHAN RECONCILIATION IS DELIBERATE, LOGGED, AND REFUSES A BLIND SWEEP ───────
+  // ── 8. ORPHAN RECONCILIATION: SERVER-DERIVED PREDICATE, FENCED, ALL-OR-NOTHING ─────────────
   {
     const rid6 = 'x_pizza';
     const cur = await readActiveVersion(db, rid6);
-    const served = { dish: cur.dishes.map((d) => d.data.key), extra: cur.extras.map((e) => e.data.key) };
     const orphan = await ensureIdentity(db, { rid: rid6, kind: 'dish', legacyKey: 'Churn Residue' });
 
     const warns = []; const realWarn = console.warn;
     console.warn = (...a) => { if (String(a[0]) === 'identity_bootstrap_orphan') warns.push(a); else realWarn(...a); };
     let rep;
-    try { rep = await reconcileLegacyOrphans(db, rid6, { servedKeys: served }); } finally { console.warn = realWarn; }
+    try { rep = await reconcileLegacyOrphans(db, rid6); } finally { console.warn = realWarn; }
 
     assert.strictEqual(rep.retired, 1, `🔴 exactly the one unserved claimant retires (got ${rep.retired})`);
     assert.strictEqual(warns.length, 1, '🔴 a retirement that is not logged is indistinguishable from a bug');
     const row = await idsColOf(db, rid6, 'dish').doc(orphan.canonical_id).get();
     assert.notStrictEqual((row.data() || {}).status, STATUS_LIVE, 'the orphan is retired');
-    for (const k of served.dish) {
+    for (const d of cur.dishes) {
+      const k = d.data.key;
       const still = (await idsColOf(db, rid6, 'dish').where('legacy_key', '==', k).where('status', '==', STATUS_LIVE).get()).docs;
       assert.strictEqual(still.length, 1, `🔴 a SERVED object's id was retired (${k}) — the pass would erase the live menu's identity`);
     }
-    // 🔴 An empty served set must refuse rather than treat every live id as an orphan.
-    await assert.rejects(() => reconcileLegacyOrphans(db, rid6, { servedKeys: { dish: [], extra: [] } }),
-      /identity_reconcile_no_served_set/,
-      '🔴 an empty served set retired the whole registry instead of refusing');
-    ok(`${rid6}: the unserved orphan retires (logged), every served id survives, and an empty served set REFUSES`);
+    ok(`${rid6}: the unserved orphan retires (logged) and every served id survives — both sets derived from the version itself`);
+  }
+
+  // ── 8b. 🔴 A CERTIFIED OBJECT'S ID IS OFF-LIMITS EVEN WHEN ITS REGISTRY NAME DIFFERS ───────
+  /* The predicate is "not served AND not in the active certified set", and the second half is not
+     decoration. Mid-migration the registry's legacy_key for an object can differ from the name the
+     version serves — that IS the state this pass exists for. Testing name membership alone retired an
+     id that a live, certified object was carrying: the running menu's own identity, deleted. */
+  {
+    const rid8 = 'x_pizza';
+    const cur = await readActiveVersion(db, rid8);
+    assert.strictEqual(cur.record.identity_certified, true, 'premise — the live version is certified, so it has a certified set');
+    const victim = cur.dishes[0];
+    const stampedId = victim.data.display.identity_id;
+    assert.ok(stampedId, 'premise — the object carries a stamp');
+
+    // Re-key the registry row so its legacy_key no longer matches the served name, leaving the id
+    // still LIVE and still the one the version has certified.
+    const idRef = idsColOf(db, rid8, 'dish').doc(stampedId);
+    const before8 = (await idRef.get()).data();
+    await idRef.set({ ...before8, legacy_key: 'Renamed Under Migration' });
+
+    const rep8 = await reconcileLegacyOrphans(db, rid8);
+    const after8 = (await idRef.get()).data();
+    assert.strictEqual(after8.status, STATUS_LIVE,
+      '🔴 AN ID CARRIED BY A LIVE CERTIFIED OBJECT WAS RETIRED because its registry name differed from the served name — the running menu lost its identity');
+    assert.ok(rep8.retired === 0, `🔴 nothing should have been retired here (got ${rep8.retired})`);
+    await idRef.set(before8);   // restore for the cells below
+    ok(`${rid8}: an id in the active CERTIFIED set survives even when its registry name no longer matches the served one`);
+  }
+
+  // ── 8c. 🔴 THE POINTER MOVING BETWEEN JUDGEMENT AND RETIREMENT REFUSES ─────────────────────
+  {
+    const rid8c = 'x_pizza';
+    const cur = await readActiveVersion(db, rid8c);
+    const doomed = await ensureIdentity(db, { rid: rid8c, kind: 'dish', legacyKey: 'Residue Two' });
+    const orig = db.runTransaction.bind(db);
+    let moved = false;
+    const racing = {
+      collection: (c) => db.collection(c),
+      runTransaction: async (fn, o) => {
+        // The decision was made from a snapshot of the whole version; move the pointer before it acts.
+        if (!moved) { moved = true; await pointerOf(rid8c).set({ version: 'v-somewhere-else', at: new Date(), generation: cur.generation }); }
+        return orig(fn, o);
+      },
+    };
+    await assert.rejects(() => reconcileLegacyOrphans(racing, rid8c), /identity_reconcile_pointer_moved/,
+      '🔴 a retirement committed against an activation it was not judged under');
+    assert.ok(moved, 'premise — the pointer really moved mid-flight');
+    const still = await idsColOf(db, rid8c, 'dish').doc(doomed.canonical_id).get();
+    assert.strictEqual((still.data() || {}).status, STATUS_LIVE, '🔴 …and it retired anyway');
+    await pointerOf(rid8c).set({ version: cur.versionId, at: new Date(), generation: cur.generation });
+    ok(`${rid8c}: the pointer moving between judgement and retirement refuses, and nothing is retired`);
+  }
+
+  // ── 8d. 🔴 EVERY KIND IS VALIDATED BEFORE ANY RETIREMENT COMMITS ───────────────────────────
+  /* The emptiness check used to run per kind inside the loop, so dish retirements committed and THEN
+     an empty extras set threw — a half-done reconciliation, which is the worst outcome available. */
+  {
+    const rid8d = 'la_musa';
+    const v = await readActiveVersion(db, rid8d);
+    const extrasCol = vrefOf(rid8d, v.versionId).collection('extras');
+    const extrasDocs = (await extrasCol.get()).docs;
+    assert.ok(extrasDocs.length > 0 && v.dishes.length > 0, 'premise — this version has both kinds');
+    const saved = extrasDocs.map((d) => ({ id: d.id, data: d.data() }));
+    const liveBefore = (await idsColOf(db, rid8d, 'dish').where('status', '==', STATUS_LIVE).get()).docs.length;
+
+    for (const d of saved) await extrasCol.doc(d.id).delete();       // the version now serves NO extras
+    await assert.rejects(() => reconcileLegacyOrphans(db, rid8d), /identity_reconcile_no_served_set/,
+      '🔴 an empty served set for one kind was accepted');
+    const liveAfter = (await idsColOf(db, rid8d, 'dish').where('status', '==', STATUS_LIVE).get()).docs.length;
+    assert.strictEqual(liveAfter, liveBefore,
+      `🔴 DISH retirements committed before the EXTRAS set was found empty (${liveBefore} → ${liveAfter}) — a half-done reconciliation`);
+    for (const d of saved) await extrasCol.doc(d.id).set(d.data);     // restore
+    ok(`${rid8d}: an empty set for ANY kind refuses before a single retirement commits (${liveBefore} live dish ids untouched)`);
   }
 
   // ── 9. THE GENERATION FENCE BITES INDEPENDENTLY OF THE POINTER ─────────────────────────────
@@ -329,6 +400,123 @@ async function seed(rid, sha) {
     assert.strictEqual((rec9.data() || {}).identity_activation.base_generation, 4,
       '🔴 the activation record was written with a generation it did not capture — the fence it anchors means nothing');
     ok(`${rid9}: the same version at a NEWER generation refuses; unmoved, the same pass stamps — the generation is fenced separately from the pointer`);
+  }
+
+  /* A fresh, registered, UNCERTIFIED pointer-named version — the state each of the cells below needs
+     in order to reach the stamping transaction at all. (Cell 9's predecessor taught that lesson: a
+     guard cell that refuses earlier for an unrelated reason proves nothing about the guard.) */
+  async function freshUncertifiedVersion(rid) {
+    const cur = await readActiveVersion(db, rid);
+    const { input } = buildPublishCandidate(rid, { activeVersionId: cur.versionId }, { source_sha: `fresh-${Date.now()}` });
+    const pub = await publishVersion(db, rid, input, { expected: { activeVersionId: cur.versionId } });
+    const v = await readActiveVersion(db, rid);
+    assert.strictEqual(v.record.identity_certified, undefined, 'premise — the fresh version is uncertified');
+    return v;
+  }
+
+  // ── 13. 🔴 A SECOND LIVE ID CLAIMING A SERVED NAME REFUSES — EXACTLY ONE, OR NONE AT ALL ───
+  /* The key row names ONE id and is structurally blind to a second live id claiming the same name, so
+     trusting it certified a fork: keys/A→X with both X and Y live-claiming A went through clean.
+     §3.0's rule is "each live object → exactly one live id; a conflict refuses". */
+  {
+    const rid13 = 'x_pizza';
+    const v = await freshUncertifiedVersion(rid13);
+    const victim = v.dishes[0];
+    const name = victim.data.key;
+    const before = await snapshotVersion(rid13, v.versionId);
+    await idsColOf(db, rid13, 'dish').doc('SECONDLIVE1').set({ legacy_key: name, status: STATUS_LIVE, kind: 'dish', created_at: 'x' });
+
+    await assert.rejects(() => bootstrapIdentityStamps(db, rid13), /identity_bootstrap_ambiguous/,
+      '🔴 a name claimed by TWO live ids was certified — bootstrap froze a fork into the version');
+    assert.deepStrictEqual(await snapshotVersion(rid13, v.versionId), before,
+      '🔴 …and it must leave the whole version untouched, not stamp the objects it managed to resolve first');
+    await idsColOf(db, rid13, 'dish').doc('SECONDLIVE1').delete();
+    ok(`${rid13}: a second LIVE claimant of a served name refuses by name and stamps nothing`);
+  }
+
+  // ── 14. 🔴 AN EXISTING ACTIVATION RECORD IS NEVER UPGRADED ─────────────────────────────────
+  /* A legacy pre-P1 live version carries no record at all, so a record already present means a P1
+     activation wrote it — pending, or abandoned. Overwriting it with `activated` would let legacy
+     migration manufacture activation authority for a candidate that was explicitly abandoned. There
+     is no safe way to guess which may be overwritten, so none may be. */
+  {
+    const rid14 = 'x_pizza';
+    for (const status of ['pending', 'abandoned']) {
+      const v = await freshUncertifiedVersion(rid14);
+      await vrefOf(rid14, v.versionId).update({ identity_activation: { status, base_generation: 0, attempt: 'prior' } });
+      const before = await snapshotVersion(rid14, v.versionId);
+
+      await assert.rejects(() => bootstrapIdentityStamps(db, rid14), /identity_bootstrap_activation_present/,
+        `🔴 bootstrap upgraded an existing ${status} record to activated — legacy migration must never manufacture activation authority`);
+      assert.deepStrictEqual(await snapshotVersion(rid14, v.versionId), before,
+        `🔴 …and the whole version must be unchanged after refusing a ${status} record`);
+    }
+    ok(`${rid14}: an existing pending OR abandoned activation record refuses, and the version is untouched in both`);
+  }
+
+  // ── 15. 🔴 AN ID RETIRED BETWEEN THE RESOLVE AND THE TRANSACTION REFUSES ───────────────────
+  /* Liveness used to be checked only OUTSIDE the transaction, which left open the exact window the
+     check exists to close: an id retired in between was still written as a certified identity. The
+     authoritative check is the one that runs at the instant of the write. */
+  {
+    const rid15 = 'x_pizza';
+    const v = await freshUncertifiedVersion(rid15);
+    const before = await snapshotVersion(rid15, v.versionId);
+    const name = v.dishes[0].data.key;
+    const enc = Buffer.from(String(name), 'utf8').toString('base64url');
+    const keyRow = await db.collection('restaurants').doc(rid15).collection('identity').doc('dish').collection('keys').doc(enc).get();
+    const id = (keyRow.data() || {}).canonical_id;
+    assert.ok(id, 'premise — the object resolves before the race');
+
+    const orig = db.runTransaction.bind(db);
+    let retired = false;
+    const racing = {
+      collection: (c) => db.collection(c),
+      runTransaction: async (fn, o) => {
+        // Resolve has happened; the stamping transaction has not. Retire the id in that window.
+        if (!retired) { retired = true; await retireIdentity(db, { rid: rid15, kind: 'dish', canonicalId: id }); }
+        return orig(fn, o);
+      },
+    };
+    await assert.rejects(() => bootstrapIdentityStamps(racing, rid15), /identity_bootstrap_id_not_live|identity_bootstrap_ambiguous/,
+      '🔴 an id retired after the resolve was still stamped as a certified identity');
+    assert.ok(retired, 'premise — the retirement really landed inside the window');
+    assert.deepStrictEqual(await snapshotVersion(rid15, v.versionId), before, '🔴 …and nothing was stamped');
+    ok(`${rid15}: an id retired between the resolve and the write refuses — liveness is decided at the instant of the write`);
+  }
+
+  // ── 16. 🔴 ONE LIVE CLAIMANT, BUT NOT THE ONE THE REVERSE ROW NAMES ───────────────────────
+  /* Cell 13 stages TWO live claimants, so the count check refuses first and the disagreement branch
+     never runs — which is exactly why that branch survived its mutant. This is the state that
+     isolates it: the reverse row still points at X, X no longer claims the name, and a DIFFERENT live
+     id Y does. Trusting the key row would certify X — an id that does not claim this object at all —
+     and the registry, not the reverse row, is the authority on who claims a name. */
+  {
+    const rid16 = 'x_pizza';
+    const v = await freshUncertifiedVersion(rid16);
+    const before = await snapshotVersion(rid16, v.versionId);
+    const name = v.dishes[0].data.key;
+    const enc = Buffer.from(String(name), 'utf8').toString('base64url');
+    const keysCol = db.collection('restaurants').doc(rid16).collection('identity').doc('dish').collection('keys');
+    const staleId = (await keysCol.doc(enc).get()).data().canonical_id;
+
+    // X stops claiming the name (re-keyed elsewhere, still live); Y starts claiming it; keys/name→X stays.
+    const xRef = idsColOf(db, rid16, 'dish').doc(staleId);
+    const xBefore = (await xRef.get()).data();
+    await xRef.set({ ...xBefore, legacy_key: 'Moved Elsewhere' });
+    await idsColOf(db, rid16, 'dish').doc('OTHERLIVE1').set({ legacy_key: name, status: STATUS_LIVE, kind: 'dish', created_at: 'x' });
+
+    const claimants = (await idsColOf(db, rid16, 'dish').where('legacy_key', '==', name).where('status', '==', STATUS_LIVE).get()).docs;
+    assert.strictEqual(claimants.length, 1, 'premise — exactly ONE live claimant, so the count check cannot be what refuses');
+    assert.notStrictEqual(claimants[0].id, staleId, 'premise — and it is not the id the reverse row names');
+
+    await assert.rejects(() => bootstrapIdentityStamps(db, rid16), /identity_bootstrap_ambiguous/,
+      '🔴 the reverse row outranked the registry — bootstrap certified an id that does not claim this object');
+    assert.deepStrictEqual(await snapshotVersion(rid16, v.versionId), before, '🔴 …and it stamped nothing');
+
+    await xRef.set(xBefore);
+    await idsColOf(db, rid16, 'dish').doc('OTHERLIVE1').delete();
+    ok(`${rid16}: a sole live claimant that DISAGREES with the reverse row refuses — the registry outranks the key row`);
   }
 
   FINISHED = true;
