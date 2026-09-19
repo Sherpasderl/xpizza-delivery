@@ -18,21 +18,75 @@ let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('d4p1-claim(emulator): FAILED — exited without completing'); process.exitCode = 1; } });
 
 const { publishVersion } = require('../catalog/catalog-publish');
-const { sourceRefOf, encodeUpdateTime, canonicalize } = require('../catalog/source-store');
+const { sourceRefOf, encodeUpdateTime, canonicalize, sourceToBuildInputs } = require('../catalog/source-store');
+const { buildCatalogV2 } = require('../catalog/form-menu-source');
+const { bootstrapIdentityStamps, readActiveVersion } = require('../catalog/identity-bootstrap');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { getActivePointer } = require('../catalog/catalog-firestore');
 
 const RID = 'x_pizza';
 const claimOf = (ids, v, g) => ({ ids, base_version: v, base_generation: g });
+
+/* 🔴 DECLARING A DELETION MEANS THE OBJECT LEAVES THE DRAFT TOO. The partition law is C ∩ D = ∅: an
+   id cannot be both carried and deleted. A fixture that only wrote the claim left the object in the
+   source, so the draft carried the very id it declared deleted and the publish refused — the law
+   catching an incoherent setup, which is exactly what it is for. */
+/* 🔴 EVERY CELL STARTS FROM A CERTIFIED BASELINE, because a C-era publish does not produce one.
+   The first publish after bootstrap yields an UNCERTIFIED version (C has no writer that stamps one),
+   which empties A while the source still carries its stamps — so the NEXT publish refuses as
+   carried_unknown. That limitation is pinned as its own cell in the bootstrap suite; here it just
+   means a cell that publishes must re-establish the baseline first, or it fails for a reason that has
+   nothing to do with what it is testing. */
+async function ensureCertifiedBaseline() {
+  const cur = await readActiveVersion(db, RID);
+  if (cur.record.identity_certified === true) return cur;
+  await sourceRefOf(db, RID).update({ deleted_ids: null });
+  const rep = await bootstrapIdentityStamps(db, RID);
+  assert.ok(rep.stamped || rep.already, `re-established a certified baseline: ${JSON.stringify(rep)}`);
+  return readActiveVersion(db, RID);
+}
+
+async function declareDeletion(id) {
+  const src = (await sourceRefOf(db, RID).get()).data();
+  const gone = new Set();
+  const keep = (rows) => (Array.isArray(rows) ? rows : []).filter((o) => {
+    const hit = o && o.display && o.display.identity_id === id;
+    if (hit) gone.add(o.key);
+    return !hit;
+  });
+  const items = keep(src.items);
+  const extras = keep(src.extras);
+  /* …and out of the STRUCTURE, or item_order still names a key with no object behind it and the
+     build dereferences undefined. Removing the row alone is not a deletion in this source model. */
+  const structure = { ...src.structure, item_order: (src.structure.item_order || []).filter((k) => !gone.has(k)) };
+  const live = await getActivePointer(db, RID);
+  await sourceRefOf(db, RID).update({
+    items, extras, structure,
+    deleted_ids: claimOf([id], live.version, live.generation),
+  });
+}
 const readClaim = async () => ((await sourceRefOf(db, RID).get()).data() || {}).deleted_ids;
+const snapshotClaim = async () => JSON.parse(JSON.stringify((await readClaim()) || null));
+const activePointerRefOf = () => db.collection('restaurants').doc(RID).collection('meta').doc('active_version');
 const revision = async () => encodeUpdateTime((await sourceRefOf(db, RID).get()).updateTime);
 
 async function seedSource() {
   await sourceRefOf(db, RID).set(canonicalize(buildSourceFromCode(RID)));
 }
+/* 🔴 BUILD FROM THE STORED SOURCE, as production does. Once bootstrap certifies a version, A is
+   non-empty and the partition law requires the draft to carry exactly those ids — and only the SOURCE
+   carries them. A code-derived candidate is short of every id and refuses as unaccounted, which is the
+   law working, not the suite being unlucky. */
+async function candidateFromSource() {
+  const src = (await sourceRefOf(db, RID).get()).data();
+  const inputs = sourceToBuildInputs(src);
+  const built = buildCatalogV2(RID, { formData: inputs.formData, priceTable: inputs.priceTable });
+  return { items: built.items, structure: built.structure, extras: inputs.extras,
+    extraRecords: (src.extras || []).map((e) => ({ key: e.key, price: e.price, display: e.display })) };
+}
 async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}) {
   const live = await getActivePointer(db, RID);
-  const { input } = buildPublishCandidate(RID, { activeVersionId: live.version }, { source_sha: `claim-${Date.now()}` });
+  const input = { ...(await candidateFromSource()), source_sha: `claim-${Date.now()}` };
   const expected = { activeVersionId: live.version };
   if (withDraftCas) expected.draftRevision = await revision();
 
@@ -63,6 +117,16 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
   await seedSource();
   await publishVersion(db, RID, buildPublishCandidate(RID, { activeVersionId: null }, { source_sha: 'seed' }).input,
     { expected: { activeVersionId: null } });
+  /* 🔴 BOOTSTRAP FIRST, AND USE A REAL CERTIFIED ID. A deletion claim names an id the server has
+     CERTIFIED; an invented one refuses as deleted_unknown, and a suite that invented its ids would be
+     testing the wrong refusal. Bootstrap also stamps the source, which is what makes the publishes
+     below lawful against A. */
+  await require('../catalog/identity-backfill').backfillIdentities(db, RID, require('../catalog/generate-form-bundle').catalogSnapshot(RID));
+  const boot = await bootstrapIdentityStamps(db, RID);
+  assert.ok(boot.stamped, `premise — the baseline is certified and the source stamped: ${JSON.stringify(boot)}`);
+  const activeNow = await readActiveVersion(db, RID);
+  const REAL_ID = activeNow.dishes[0].data.display.identity_id;
+  assert.ok(REAL_ID, 'premise — a real certified id to name in the claim');
 
   // ── 1. 🔴 C VALIDATES THE CLAIM AND LEAVES IT STANDING — CONSUMPTION BELONGS TO D ─────────
   /* A cleared claim must mean "carried out", never "dropped". C has no writer that retires the
@@ -71,9 +135,8 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
      is correct: C alone is not a deploy target. Consumption arrives with D's activation writer, which
      is the thing that actually executes the deletion. */
   {
-    const live = await getActivePointer(db, RID);
-    const standing = claimOf(['DOOMED1'], live.version, live.generation);
-    await sourceRefOf(db, RID).update({ deleted_ids: standing });
+    await declareDeletion(REAL_ID);
+    const standing = (await sourceRefOf(db, RID).get()).data().deleted_ids;
 
     await publishOnce();
     assert.deepStrictEqual(await readClaim(), standing,
@@ -86,8 +149,14 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
      abort, and the evidence is that the POINTER does not move — nothing activated. (The claim being
      intact is not evidence here, since C writes the source at all.) */
   {
+    /* 🔴 CLEAR THE STANDING CLAIM FIRST. C validates but does not consume, so cell 1's claim is still
+       there and is now stale against the baseline its own publish advanced — the pre-flip check would
+       refuse this publish for that reason and the cell would "pass" its abort assertion for entirely
+       the wrong cause. */
+    await sourceRefOf(db, RID).update({ deleted_ids: null });
+    await ensureCertifiedBaseline();
     const before = await getActivePointer(db, RID);
-    const newer = claimOf(['SAVED-WHILE-IN-FLIGHT'], before.version, before.generation);
+    const newer = claimOf([REAL_ID], before.version, before.generation);
 
     let threw = null;
     try {
@@ -107,7 +176,8 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
   /* C-2: the check runs inside the flip, against the pointer pair that transaction CAS-verifies. A
      claim bound to a superseded baseline must not ride an activation through. */
   {
-    await sourceRefOf(db, RID).update({ deleted_ids: claimOf(['STALE1'], 'v-long-gone', 0) });
+    await ensureCertifiedBaseline();
+    await sourceRefOf(db, RID).update({ deleted_ids: claimOf([REAL_ID], 'v-long-gone', 0) });
     let threw = null;
     try { await publishOnce(); } catch (e) { threw = e; }
     assert.ok(threw && /deleted_ids_stale_baseline/.test(String(threw.message)),
@@ -122,6 +192,7 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
      to be honest — a string, a bare list, an object — skipped validation entirely while a well-formed
      claim was scrutinised. Any present, non-null claim is now validated. Top-level null stays the
      cleared sentinel, and must keep publishing cleanly or the fix has broken the normal path. */
+  await ensureCertifiedBaseline();
   for (const [label, bad] of [
     ['a string where ids should be', { ids: 'X', base_version: 'v', base_generation: 0 }],
     ['a bare list instead of a claim', ['X']],
@@ -139,6 +210,55 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
   await publishOnce();
   assert.strictEqual((await readClaim()), null, 'a cleared claim publishes normally and stays cleared');
   ok('three malformed claim shapes refuse by name; the top-level null sentinel still publishes cleanly');
+
+  // ── 5. 🔴 THE TEAR C-2 EXISTS FOR: STALE ONLY AT THE WRITE BOUNDARY ───────────────────────
+  /* The pre-flight pass in publishVersion validates the claim too, so a claim that is ALREADY stale
+     never reaches the transaction — which means the in-tx check looks redundant and its mutant
+     survives. This isolates it. The GENERATION is bumped between the pre-flight check and the flip,
+     leaving the VERSION untouched: the flip's CAS compares versions and passes, the pre-flight check
+     saw the old generation and passed, and the only thing that can notice is the in-tx check reading
+     the pointer THIS transaction holds. That is precisely the tear C-2 was written to close — a claim
+     validating against v1@g1 while the flip lands on v1@g2. */
+  {
+    const baseline = await ensureCertifiedBaseline();
+    const cur = await getActivePointer(db, RID);
+    /* 🔴 A CURRENT certified id, read here. REAL_ID names an object cell 1 deleted, so it is no longer
+       in the active certified set and the pre-flight check refuses it as deleted_unknown — the cell
+       would then never reach the transaction it exists to test. */
+    const liveId = baseline.dishes[0].data.display.identity_id;
+    assert.ok(liveId, 'premise — a currently certified id to declare');
+    await declareDeletion(liveId);
+    const before = await snapshotClaim();
+
+    const orig = db.runTransaction.bind(db);
+    let bumped = false;
+    const racing = new Proxy(db, {
+      get(t, prop) {
+        if (prop === 'runTransaction') {
+          return async (fn, o) => {
+            // Same version, newer generation — invisible to the CAS, fatal to a claim bound at g.
+            if (!bumped) { bumped = true; await activePointerRefOf().set({ version: cur.version, at: new Date(), generation: cur.generation + 1 }); }
+            return orig(fn, o);
+          };
+        }
+        const v = t[prop];
+        return typeof v === 'function' ? v.bind(t) : v;
+      },
+    });
+
+    let threw = null;
+    try {
+      const input = { ...(await candidateFromSource()), source_sha: `tear-${Date.now()}` };
+      await publishVersion(racing, RID, input, { expected: { activeVersionId: cur.version, draftRevision: await revision() } });
+    } catch (e) { threw = e; }
+
+    assert.ok(bumped, 'premise — the generation really moved between the pre-flight check and the flip');
+    assert.ok(threw && /deleted_ids_stale_baseline/.test(String(threw.message)),
+      `🔴 a claim that went stale BETWEEN the pre-flight check and the flip rode the activation through: ${threw && threw.message}`);
+    assert.deepStrictEqual(await snapshotClaim(), before, '…and the claim is untouched');
+    await activePointerRefOf().set({ version: cur.version, at: new Date(), generation: cur.generation });
+    ok('a claim that goes stale between the pre-flight check and the flip is caught INSIDE the transaction');
+  }
 
   FINISHED = true;
   console.log(`d4p1-claim(emulator): OK (${n})`);

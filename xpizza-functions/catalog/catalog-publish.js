@@ -39,8 +39,8 @@ const { ensureIdentitiesForKeys } = require('./identity-backfill');
 const IDENTITY_PRESERVE_TIMEOUT_MS = 5000;
 const { candidateSource, assertCandidateValid } = require('./candidate-validate');
 const { sourceRefOf, encodeUpdateTime } = require('./source-store');
-const { validateDeletionClaim } = require('./identity-partition');
-const { pointerStateOf } = require('./catalog-firestore');
+const { validateDeletionClaim, validatePartition } = require('./identity-partition');
+const { pointerStateOf, getActivePointer } = require('./catalog-firestore');
 
 const LEASE_MS = 120000;                          // 2-minute bounded lease (publish is seconds; generous headroom)
 const RETENTION_MIN_COUNT = 10;                   // keep ≥10 versions ...
@@ -385,6 +385,73 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
 }
 
 // PUBLISH — acquire the lease, write+verify the version, FLIP LAST, prune retention, release.
+/* ── 1D D4-P1 — THE WHOLE DRAFT VALIDATES BEFORE ANY ALLOCATION (§3.3, inv #1/#5) ─────────────
+   🔴 BEFORE ANY ALLOCATION MEANS BEFORE THE PRE-P1 POST-FLIP WRITER TOO. ensureIdentitiesForKeys
+   still mints for every live key until E removes it, so "no object minted/moved/retired until the
+   whole draft validates" is only true if this runs ahead of the publish that triggers it. It sits at
+   the top of publishVersion, before the lease is even taken: a draft that cannot be accounted for
+   should not cost a lease, a version write, or a mint.
+
+   A is the ACTIVE CERTIFIED set, and only a certified version has one. Pre-bootstrap the active
+   version carries no stamps, so A is empty and today's un-stamped drafts satisfy every clause
+   vacuously — the law is inert until the cutover, by construction rather than by a flag. But an empty
+   A does NOT mean "anything goes": a draft CARRYING an id when nothing is certified is refused as
+   carried_unknown, because the server never issued it.
+
+   🔴 THE CLAIM IS A FLAT LIST AND THE LAW IS PER KIND, so each declared id is assigned to the kind
+   whose active set actually holds it. An id in neither is foreign — a cross-kind or cross-restaurant
+   leak, or an invention — and refuses rather than being silently dropped into one bucket.
+
+   NOT for rollbackVersion: a rollback restores a version that was already validated when it was
+   published, and re-validating a historical version against today's active set would refuse a
+   recovery for a reason that has nothing to do with it. */
+async function assertDraftPartition(db, rid, input) {
+  const p = await getActivePointer(db, rid);
+  const A = { dish: new Set(), extra: new Set() };
+  if (p.version) {
+    const vref = versionsColOf(db, rid).doc(p.version);
+    const rec = await vref.get();
+    if (rec.exists && (rec.data() || {}).identity_certified === true) {
+      const [items, extras] = await Promise.all([vref.collection('menu_items').get(), vref.collection('extras').get()]);
+      for (const d of (items.docs || [])) { const id = ((d.data() || {}).display || {}).identity_id; if (id) A.dish.add(id); }
+      for (const d of (extras.docs || [])) { const id = ((d.data() || {}).display || {}).identity_id; if (id) A.extra.add(id); }
+    }
+  }
+
+  const idOf = (o) => (o && o.display && o.display.identity_id) || undefined;
+  const carried = { dish: [], extra: [] };
+  const unidentified = { dish: [], extra: [] };
+  for (const [kind, rows] of [['dish', input && input.items], ['extra', input && input.extraRecords]]) {
+    for (const o of (Array.isArray(rows) ? rows : [])) {
+      const id = idOf(o);
+      if (id === undefined) unidentified[kind].push({});
+      else carried[kind].push(id);
+    }
+  }
+
+  const deleted = { dish: [], extra: [] };
+  let claim;
+  try { claim = ((await sourceRefOf(db, rid).get()).data() || {}).deleted_ids; } catch (e) {
+    throw new Error(`publish_source_unreadable: ${rid} — the deletion claim could not be read, so the draft cannot be accounted for`);
+  }
+  if (claim !== undefined && claim !== null) {
+    const { ids } = validateDeletionClaim(claim, { activeVersionId: p.version, activeGeneration: p.generation });
+    for (const id of ids) {
+      if (A.dish.has(id)) deleted.dish.push(id);
+      else if (A.extra.has(id)) deleted.extra.push(id);
+      else {
+        const e = new Error(`identity_partition_deleted_unknown: ${rid} — deleted_ids names ${id}, which no certified object of either kind has`);
+        e.code = 'identity_partition_deleted_unknown';
+        throw e;
+      }
+    }
+  }
+
+  for (const kind of ['dish', 'extra']) {
+    validatePartition({ activeCertified: A[kind], carried: carried[kind], deletedIds: deleted[kind], unidentified: unidentified[kind] });
+  }
+}
+
 async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) {
   // PRE-PUBLISH, before the lease and before a single write: an invalid candidate must not become an
   // immutable version at all. Doing it here rather than in each caller is the point — publishVersion
@@ -392,6 +459,9 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
   // only thing that moves the pointer, so validating here covers every path that exists AND every
   // path anyone adds later.
   assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure }), `${rid} (pre-publish)`);
+
+  // §3.3 — the whole draft accounts for the active certified set before anything is minted or moved.
+  await assertDraftPartition(db, rid, input);
 
   const token = await acquireLease(db, rid);
   // Captured inside the lease, USED outside it — see the preserve-on-write note in the finally below.

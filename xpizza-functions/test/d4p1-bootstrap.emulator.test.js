@@ -12,6 +12,9 @@
 const assert = require('assert');
 const admin = require('firebase-admin');
 const { buildPublishCandidate } = require('../tools/publish-version');
+const { sourceRefOf, canonicalize, sourceToBuildInputs } = require('../catalog/source-store');
+const { buildCatalogV2 } = require('../catalog/form-menu-source');
+const { buildSourceFromCode } = require('../tools/seed-source-store');
 
 admin.initializeApp({ projectId: 'demo-xpizza' });
 const db = admin.firestore();
@@ -51,7 +54,24 @@ function diffPaths(a, b, path = '', out = []) {
   return out;
 }
 
+/* 🔴 BUILD THE CANDIDATE FROM THE STORED SOURCE, as production does. buildPublishCandidate derives
+   from the CODE catalog, which carries no identity stamps — so once bootstrap has certified a version,
+   a code-derived candidate is short of every id and the partition law refuses it. That is the suite
+   being unrepresentative, not the law being wrong: real publishes come from the source via
+   sourceToBuildInputs, which emits `display` verbatim and therefore carries the stamps. */
+async function candidateFromSource(rid) {
+  const src = (await sourceRefOf(db, rid).get()).data();
+  const inputs = sourceToBuildInputs(src);
+  const built = buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable });
+  return { items: built.items, structure: built.structure, extras: inputs.extras,
+    extraRecords: (src.extras || []).map((e) => ({ key: e.key, price: e.price, display: e.display })) };
+}
+
 async function seed(rid, sha) {
+  /* The source is seeded too: bootstrap now enriches it in the same transaction as the version
+     stamping, and it refuses outright if the stored draft does not contain what the active version
+     serves. A suite that published without a source would be testing a state the cutover cannot be in. */
+  await sourceRefOf(db, rid).set(canonicalize(buildSourceFromCode(rid)));
   const { input } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: sha });
   const res = await publishVersion(db, rid, input, { expected: { activeVersionId: null } });
   await backfillIdentities(db, rid, catalogSnapshot(rid));
@@ -176,8 +196,7 @@ async function seed(rid, sha) {
   {
     const rid4 = 'x_pizza';
     // A second version exists and the pointer is swung to it after the pass has read the first.
-    const { input } = buildPublishCandidate(rid4, { activeVersionId: active.versionId }, { source_sha: 'second' });
-    const second = await publishVersion(db, rid4, input, { expected: { activeVersionId: active.versionId } });
+    const second = await publishVersion(db, rid4, { ...(await candidateFromSource(rid4)), source_sha: 'second' }, { expected: { activeVersionId: active.versionId } });
     const secondId = second.versionId || second.version;
     // The new version is uncertified, so a pass CAN run on it — but move the pointer mid-flight.
     const orig = db.runTransaction.bind(db);
@@ -234,8 +253,7 @@ async function seed(rid, sha) {
        rollback eligibility; a run that gave it one would let a rollback activate prices that were
        never live. Created here by calling writeVersion and NOT flipping, which is what the failure
        actually looks like. */
-    const { input: orphanInput } = buildPublishCandidate(rid5, { activeVersionId: cur.versionId }, { source_sha: 'never-activated' });
-    const neverLive = await writeVersion(db, rid5, orphanInput, admin.firestore.Timestamp.now());
+    const neverLive = await writeVersion(db, rid5, { ...(await candidateFromSource(rid5)), source_sha: 'never-activated' }, admin.firestore.Timestamp.now());
     const neverLiveId = neverLive.versionId || neverLive.version || neverLive;
     const ptr = await pointerOf(rid5).get();
     assert.notStrictEqual((ptr.data() || {}).version, neverLiveId, 'premise — the pointer never named it');
@@ -370,8 +388,7 @@ async function seed(rid, sha) {
   {
     const rid9 = 'x_pizza';
     const cur9 = await readActiveVersion(db, rid9);
-    const { input: in9 } = buildPublishCandidate(rid9, { activeVersionId: cur9.versionId }, { source_sha: 'gen-fence' });
-    const pub9 = await publishVersion(db, rid9, in9, { expected: { activeVersionId: cur9.versionId } });
+    const pub9 = await publishVersion(db, rid9, { ...(await candidateFromSource(rid9)), source_sha: 'gen-fence' }, { expected: { activeVersionId: cur9.versionId } });
     const v9id = pub9.versionId || pub9.version;
     const p9 = pointerOf(rid9);
     await p9.set({ version: v9id, at: new Date(), generation: 3 });
@@ -417,8 +434,26 @@ async function seed(rid, sha) {
      guard cell that refuses earlier for an unrelated reason proves nothing about the guard.) */
   async function freshUncertifiedVersion(rid) {
     const cur = await readActiveVersion(db, rid);
-    const { input } = buildPublishCandidate(rid, { activeVersionId: cur.versionId }, { source_sha: `fresh-${Date.now()}` });
-    const pub = await publishVersion(db, rid, input, { expected: { activeVersionId: cur.versionId } });
+    /* 🔴 ORDER MATTERS, AND GETTING IT WRONG LOOKS LIKE A BUG IN THE LAW. To reach an uncertified
+       baseline from a certified one the publish must first be LAWFUL — a draft carrying exactly the
+       active certified ids — and the version it produces is uncertified, because C has no writer that
+       stamps a new one. Only THEN may the source stamps be stripped, leaving source and active both
+       unstamped: a coherent pre-cutover state for the cells that test bootstrap's own guards.
+       Stripping first and publishing a code-derived draft refuses as unaccounted, which is the law
+       working correctly against an incoherent setup. */
+    const candidate = cur.record.identity_certified === true
+      ? { ...(await candidateFromSource(rid)), source_sha: `fresh-${Date.now()}` }
+      : { ...buildPublishCandidate(rid, { activeVersionId: cur.versionId }, { source_sha: `fresh-${Date.now()}` }).input };
+    await publishVersion(db, rid, candidate, { expected: { activeVersionId: cur.versionId } });
+
+    const src = (await sourceRefOf(db, rid).get()).data();
+    const strip = (rows) => (Array.isArray(rows) ? rows : []).map((o) => {
+      if (!o || !o.display || o.display.identity_id === undefined) return o;
+      const { identity_id, ...rest } = o.display;   // eslint-disable-line no-unused-vars
+      return { ...o, display: rest };
+    });
+    await sourceRefOf(db, rid).update({ items: strip(src.items), extras: strip(src.extras) });
+
     const v = await readActiveVersion(db, rid);
     assert.strictEqual(v.record.identity_certified, undefined, 'premise — the fresh version is uncertified');
     return v;
@@ -699,6 +734,43 @@ async function seed(rid, sha) {
     assert.deepStrictEqual(await snapshotVersion(rid21, v.versionId), before, '🔴 …and it stamped nothing');
     await idRef.set(idBefore);
     ok(`${rid21}: an id retired WITHOUT its reverse row being cleaned up refuses — isolating the in-tx claimant query as the only guard that can see it`);
+  }
+
+  // ── 🔴 THE C-ERA LIMITATION, PINNED RATHER THAN DISCOVERED ────────────────────────────────
+  /* P1a is deployable only as a WHOLE. C validates the partition but has no writer that stamps a NEW
+     version — that is D's activation writer — so the first publish after bootstrap produces an
+     UNCERTIFIED version, which empties A while the source still carries its stamps. The next publish
+     then refuses as carried_unknown: the draft names ids no certified version has.
+     🔴 IT SETS UP ITS OWN STATE rather than depending on where the suite left off. The first version
+     of this cell branched on whatever the previous cells happened to leave behind and took the
+     "nothing to test" path — a cell that reports a pass for doing nothing is worse than no cell. */
+  {
+    const ridL = 'x_pizza';
+    const before = await readActiveVersion(db, ridL);
+    if (before.record.identity_certified !== true) {
+      const rep = await bootstrapIdentityStamps(db, ridL);
+      assert.ok(rep.stamped || rep.already, `premise — a certified, source-stamped baseline: ${JSON.stringify(rep)}`);
+    }
+    const cur = await readActiveVersion(db, ridL);
+    assert.strictEqual(cur.record.identity_certified, true, 'premise — the active version is certified');
+    const srcNow = (await sourceRefOf(db, ridL).get()).data();
+    assert.ok((srcNow.items || []).some((o) => o && o.display && o.display.identity_id),
+      'premise — and the SOURCE carries stamps, so a draft built from it is lawful against A');
+
+    // Lawful: the draft carries exactly the active certified ids.
+    await publishVersion(db, ridL, { ...(await candidateFromSource(ridL)), source_sha: 'limitation-1' },
+      { expected: { activeVersionId: cur.versionId } });
+    const after = await readActiveVersion(db, ridL);
+    assert.strictEqual(after.record.identity_certified, undefined,
+      'premise — the version it produced is UNCERTIFIED, because C has no writer that stamps one');
+
+    // And now A is empty while the source still carries ids, so the very next publish refuses.
+    const next = { ...(await candidateFromSource(ridL)), source_sha: 'limitation-2' };
+    await assert.rejects(
+      () => publishVersion(db, ridL, next, { expected: { activeVersionId: after.versionId } }),
+      /identity_partition_carried_unknown/,
+      '🔴 a stamped draft published onto an UNCERTIFIED baseline — A is empty, so the ids it carries were never certified');
+    ok('C-era limitation pinned: the first post-bootstrap publish empties A, and the next refuses until D stamps versions');
   }
 
   FINISHED = true;

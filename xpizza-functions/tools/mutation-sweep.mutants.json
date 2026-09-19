@@ -6613,9 +6613,10 @@
    "test:d4p1-claim"
   ],
   "label": "🔴 the in-tx claim check is dropped - a claim from a superseded baseline rides the activation through",
-  "kills_with": "a claim from a superseded baseline rode the activation through",
+  "kills_with": "a claim that went stale BETWEEN the pre-flight check and the flip rode the activation through",
   "from": "      validateDeletionClaim(liveClaim, {\n        activeVersionId: liveActive,",
-  "to": "      if (false) validateDeletionClaim(liveClaim, {\n        activeVersionId: liveActive,"
+  "to": "      if (false) validateDeletionClaim(liveClaim, {\n        activeVersionId: liveActive,",
+  "why": "isolated by cell 5. The pre-flight pass in publishVersion validates the claim too, so an ALREADY-stale claim never reaches the transaction and this mutant survived — the masking guard was one I added myself in the same slice. Cell 5 bumps the GENERATION between the pre-flight check and the flip, leaving the version untouched: the CAS compares versions and passes, the pre-flight check saw the old generation and passed, and only the in-tx read of the pointer this transaction holds can notice. That is exactly the tear C-2 exists to close."
  },
  {
   "id": "pah-01",

@@ -28,6 +28,7 @@ const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
 const { getActivePointer } = require('../catalog/catalog-firestore');
 const { getRestaurantMenu } = require('../catalog/catalog-menu');
+const { bootstrapIdentityStamps, readActiveVersion } = require('../catalog/identity-bootstrap');
 
 const RID = 'x_pizza';
 const owner = async () => ({ ok: true, uid: 'u_o', role: 'owner', actor: 'o@x.hn' });
@@ -74,6 +75,40 @@ const bumpPrice = (src, delta) => {
   const { input } = require('../tools/publish-version').buildPublishCandidate(RID, { activeVersionId: null }, { source_sha: 'seed' });
   await publishVersion(db, RID, input, { expected: { activeVersionId: null } });
 
+  /* 🔴 BOOTSTRAP FIRST, AND DECLARE DELETIONS AGAINST REAL CERTIFIED IDS. A claim names an id the
+     server has CERTIFIED — an invented one refuses as deleted_unknown, and a suite that invented its
+     ids would be exercising the wrong refusal while claiming to test the token. Bootstrap also stamps
+     the source, which is what makes these drafts lawful against A. */
+  await require('../catalog/identity-backfill').backfillIdentities(db, RID, require('../catalog/generate-form-bundle').catalogSnapshot(RID));
+  const boot = await bootstrapIdentityStamps(db, RID);
+  assert.ok(boot.stamped, `premise — certified baseline and stamped source: ${JSON.stringify(boot)}`);
+
+  /* Each publishing scenario re-establishes the baseline: a C-era publish yields an UNCERTIFIED
+     version, which empties A while the source still carries stamps, so the next publish would refuse
+     for a reason unrelated to the token. That limitation is pinned in the bootstrap suite. */
+  const ensureBaseline = async () => {
+    const cur = await readActiveVersion(db, RID);
+    if (cur.record.identity_certified === true) return;
+    await sourceRefOf(db, RID).update({ deleted_ids: null });
+    await bootstrapIdentityStamps(db, RID);
+  };
+  const realId = async () => (await readActiveVersion(db, RID)).dishes[0].data.display.identity_id;
+  /* A deletion removes the object from the draft AND declares its id — C ∩ D = ∅ means it cannot be
+     both carried and deleted, which is also what a merchant's editor actually does. */
+  const withDeletion = (src, id) => {
+    const gone = new Set();
+    const keep = (rows) => (rows || []).filter((o) => {
+      const hit = o && o.display && o.display.identity_id === id;
+      if (hit) gone.add(o.key);
+      return !hit;
+    });
+    const out = JSON.parse(JSON.stringify(src));
+    out.items = keep(out.items); out.extras = keep(out.extras);
+    out.structure = { ...out.structure, item_order: (out.structure.item_order || []).filter((k) => !gone.has(k)) };
+    out.deleted_ids = { ids: [id] };
+    return out;
+  };
+
   /* 🔴 READ FRESH EACH TIME, not once up front. Every scenario below PUBLISHES, which advances the
      active version — so a loaded base captured at the start goes stale after the first one and the
      guard refuses, correctly. My first version of this suite hoisted it and read that refusal as a
@@ -105,40 +140,45 @@ const bumpPrice = (src, delta) => {
   };
 
   {
-    await resetClaim();
+    await resetClaim(); await ensureBaseline();
     await publishOk(await saveOk((s) => bumpPrice(s, 1)), 'no claim at all');
     ok('round trip: an edit with no deletion claim saves AND publishes');
   }
   {
-    await resetClaim();
-    const t = await saveOk((s) => { const x = bumpPrice(s, 1); x.deleted_ids = { ids: ['DOOM1'] }; return x; },
-      { deleted_ids_loaded_base: await loadedBase() });
+    await resetClaim(); await ensureBaseline();
+    const id1 = await realId();
+    const t = await saveOk((s) => withDeletion(bumpPrice(s, 1), id1), { deleted_ids_loaded_base: await loadedBase() });
     await publishOk(t, 'a NEW claim');
     ok('round trip: a save that declares a NEW deletion claim saves AND publishes');
   }
   {
     /* The case that was broken outright: an ordinary edit made while a claim stands. Both saves happen
        before the publish, so the claim is still fresh — what is under test is the token, not staleness. */
-    await resetClaim();
-    await saveOk((s) => { const x = bumpPrice(s, 1); x.deleted_ids = { ids: ['DOOM2'] }; return x; },
-      { deleted_ids_loaded_base: await loadedBase() });
+    await resetClaim(); await ensureBaseline();
+    const id2 = await realId();
+    await saveOk((s) => withDeletion(bumpPrice(s, 1), id2), { deleted_ids_loaded_base: await loadedBase() });
     const t = await saveOk((s) => bumpPrice(s, 1));          // echoes the stored claim → preserved
     const stored = await currentSource();
-    assert.deepStrictEqual(stored.deleted_ids.ids, ['DOOM2'], 'premise — the claim was preserved across the unrelated edit');
+    assert.deepStrictEqual(stored.deleted_ids.ids, [id2], 'premise — the claim was preserved across the unrelated edit');
     await publishOk(t, 'an unrelated edit while a claim STANDS');
     ok('round trip: an ordinary edit made while a claim STANDS preserves it and still publishes');
   }
   {
-    await resetClaim();
-    await saveOk((s) => { const x = bumpPrice(s, 1); x.deleted_ids = { ids: ['DOOM3'] }; return x; },
-      { deleted_ids_loaded_base: await loadedBase() });
-    const t = await saveOk((s) => { const x = bumpPrice(s, 1); x.deleted_ids = { ids: [] }; return x; });
+    await resetClaim(); await ensureBaseline();
+    const id3 = await realId();
+    /* 🔴 WITHDRAWING PUTS THE OBJECT BACK. A deletion removes the object AND declares its id; undoing
+       it must restore both, or the object is gone from the draft while its id is no longer declared
+       deleted — unaccounted, and refused. Captured before the deletion so the restore is the real
+       prior state rather than something reconstructed. */
+    const beforeDeletion = JSON.parse(JSON.stringify(await currentSource()));
+    await saveOk((s) => withDeletion(bumpPrice(s, 1), id3), { deleted_ids_loaded_base: await loadedBase() });
+    const t = await saveOk(() => { const x = bumpPrice(beforeDeletion, 2); x.deleted_ids = { ids: [] }; return x; });
     assert.strictEqual((await currentSource()).deleted_ids, null, 'premise — the withdrawal cleared it');
     await publishOk(t, 'a WITHDRAWAL');
     ok('round trip: a withdrawal saves AND publishes');
   }
   {
-    await resetClaim();                                       // stored deleted_ids is explicitly null
+    await resetClaim(); await ensureBaseline();               // stored deleted_ids is explicitly null
     await publishOk(await saveOk((s) => bumpPrice(s, 1)), 'a save after the claim was cleared');
     ok('round trip: a save against a stored deleted_ids:null saves AND publishes');
   }
@@ -146,8 +186,9 @@ const bumpPrice = (src, delta) => {
   // 🔴 SENSITIVITY — the token still binds. An altered stored claim must NOT publish, or the fix has
   // simply stopped the token from checking anything.
   {
-    const src = bumpPrice(await currentSource(), 1);
-    src.deleted_ids = { ids: ['TAMPER1'] };
+    await ensureBaseline();
+    const idT = await realId();
+    const src = withDeletion(bumpPrice(await currentSource(), 1), idT);
     const base = await currentRev();
     const r = await save(src, { base, body: { deleted_ids_loaded_base: await loadedBase() } });
     assert.strictEqual(r.status, 200, `the save succeeds: ${JSON.stringify(r.body).slice(0, 160)}`);

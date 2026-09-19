@@ -36,6 +36,7 @@
 const { lookupByLegacyKeys, idsColOf, keysColOf, encodeKey, STATUS_LIVE, STATUS_RETIRED } = require('./identity-registry');
 const { legacyKeyOf } = require('./identity-backfill');
 const { activePointerRef, getActivePointer, pointerStateOf } = require('./catalog-firestore');
+const { sourceRefOf, encodeUpdateTime } = require('./source-store');
 
 /* Bounded because it writes every object of a version in ONE transaction: Firestore's hard ceiling is
    500 writes, and the write set here is (dishes + extras + the version record). The cap leaves room
@@ -186,6 +187,40 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
   const extras = await resolveKind(db, rid, 'extra', active.extras);
   report.dishes = dishes.length; report.extras = extras.length;
 
+  /* ── SOURCE ENRICHMENT (§3.0) — THE STAMPS MUST REACH THE DRAFT, NOT ONLY THE VERSION ───────
+     🔴 WITHOUT THIS THE CUTOVER LOCKS PUBLISHING OUT ENTIRELY. Once the active version is certified A
+     is non-empty, and the partition law requires every active id to be carried or declared deleted.
+     The drafts merchants publish come from the SOURCE — so a stamped version over a bare source means
+     every draft is short of every id and every publish refuses as unaccounted, with no escape (a
+     merchant cannot even declare a delete before the portal deploy). Stamping one without the other is
+     the half that breaks the system, which is why §3.0 asks for both in the same breath.
+     It rides the SAME transaction as the version stamping, so "version certified" and "source stamped"
+     are one event and there is no window where A is non-empty and the source is bare. */
+  const srcRef = sourceRefOf(db, rid);
+  const srcSnap = await srcRef.get();
+  if (!srcSnap.exists) throw new Error(`identity_bootstrap_no_source: ${rid} — there is no stored source to enrich`);
+  const srcData = srcSnap.data() || {};
+
+  /* 🔴 THE DRAFT MAY DIVERGE FROM THE ACTIVE VERSION, AND ONE DIVERGENCE IS FATAL. Unpublished
+     ADDITIONS are harmless — they carry no id, stay unidentified and mint normally. But an object
+     RENAMED or REMOVED in the draft and not yet published has no counterpart under its active name, so
+     it gets no stamp, and that active id is then neither carried nor declared deleted: every
+     subsequent publish refuses as unaccounted, with no escape before the portal deploy. The pass
+     refuses WHOLE rather than stamping the version and leaving the source behind, so that
+     "A non-empty ⇔ source stamped" stays true as a fact rather than as a usual case. Operationally the
+     owner runs bootstrap straight after a publish, against a settled draft. */
+  const srcKeys = {
+    dish: new Set((Array.isArray(srcData.items) ? srcData.items : []).map((o) => o && o.key).filter(Boolean)),
+    extra: new Set((Array.isArray(srcData.extras) ? srcData.extras : []).map((o) => o && o.key).filter(Boolean)),
+  };
+  const divergent = [];
+  for (const [kind, objs] of [['dish', dishes], ['extra', extras]]) {
+    for (const o of objs) if (!srcKeys[kind].has(o.key)) divergent.push(`${kind}/${o.key}`);
+  }
+  if (divergent.length) {
+    throw new Error(`identity_bootstrap_draft_divergent: ${rid} — the stored draft does not contain ${divergent.length} object(s) the active version serves (${divergent.slice(0, 5).join(', ')}${divergent.length > 5 ? '…' : ''}); publish or discard the pending edit, then re-run`);
+  }
+
   const vref = versionRefOf(db, rid, active.versionId);
   const stamp = now();
   await db.runTransaction(async (tx) => {
@@ -203,9 +238,10 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
       ...dishes.map((o) => ({ kind: 'dish', key: o.key, ref: keysColOf(db, rid, 'dish').doc(encodeKey(o.key)) })),
       ...extras.map((o) => ({ kind: 'extra', key: o.key, ref: keysColOf(db, rid, 'extra').doc(encodeKey(o.key)) })),
     ];
-    const [pSnap, recSnap, liveDish, liveExtra, ...keyRowSnaps] = await Promise.all([
+    const [pSnap, recSnap, srcNow, liveDish, liveExtra, ...keyRowSnaps] = await Promise.all([
       tx.get(activePointerRef(db, rid)),
       tx.get(vref),
+      tx.get(srcRef),
       liveClaimantsByKey((q) => tx.get(q), db, rid, 'dish'),
       liveClaimantsByKey((q) => tx.get(q), db, rid, 'extra'),
       ...keyRowRefs.map((k) => tx.get(k.ref)),
@@ -255,6 +291,22 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
       identity_certified: true,
       identity_activation: { status: 'activated', base_generation: active.generation, attempt, at: stamp },
     });
+
+    /* The source, CAS'd on the revision read before the transaction: a merchant may be mid-edit, and
+       enriching over a newer draft would clobber their work. Only display.identity_id is added, to
+       objects matched BY KEY — every other byte of the source is left exactly as it was. */
+    if (!srcNow.exists) throw new Error(`identity_bootstrap_source_vanished: ${rid}`);
+    if (encodeUpdateTime(srcNow.updateTime) !== encodeUpdateTime(srcSnap.updateTime)) {
+      throw new Error(`identity_bootstrap_source_moved: ${rid} — the draft changed while the pass was running; re-run against a settled draft`);
+    }
+    const liveSrc = srcNow.data() || {};
+    const byKey = { dish: new Map(dishes.map((o) => [o.key, o.canonical_id])), extra: new Map(extras.map((o) => [o.key, o.canonical_id])) };
+    const enrich = (rows, kind) => (Array.isArray(rows) ? rows : []).map((o) => {
+      const id = o && o.key !== undefined ? byKey[kind].get(o.key) : undefined;
+      if (id === undefined) return o;                       // an unpublished addition: unidentified, mints later
+      return { ...o, display: { ...(o.display || {}), identity_id: id } };
+    });
+    tx.update(srcRef, { items: enrich(liveSrc.items, 'dish'), extras: enrich(liveSrc.extras, 'extra') });
   });
 
   report.stamped = true;
