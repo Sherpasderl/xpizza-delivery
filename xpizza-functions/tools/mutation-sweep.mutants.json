@@ -5648,5 +5648,21 @@
       "structural: must still be refused",
       "acceptance was loosened"
     ]
+  },
+  {
+    "id": "fix-06",
+    "slice": "repgate",
+    "label": "🔴 the COMMIT strips the identity fields - the live menu applies and the ids never reach MENU",
+    "file": "../xpizza-orders/index.html",
+    "from": "  LIVE_MENU_GLOBALS.forEach((name) => { liveMenuGlobalSet(name, prepared[name]); });",
+    "to": "  LIVE_MENU_GLOBALS.forEach((name) => { var v = prepared[name]; if (Array.isArray(v)) v = v.map(function (r) { var o = {}; for (var k in r) { if (k !== 'dish_id' && k !== 'extra_id') o[k] = r[k]; } return o; }); liveMenuGlobalSet(name, v); });",
+    "command": [
+      "node",
+      "../form-live-menu-representation.test.mjs"
+    ],
+    "kills_with": [
+      "its ids did not survive the commit",
+      "POST-COMMIT MENU carries an id on every dish"
+    ]
   }
 ]

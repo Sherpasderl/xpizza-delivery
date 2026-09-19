@@ -174,10 +174,27 @@ function captureWarn(w) {
       const byId = new Map(menu.dishes.map((d) => [String(d.id), d.dish_id]));
       assert.ok(liveMenu.every((d) => d.dish_id === byId.get(String(d.id))),
         '🔴 …and they are the ids the producer emitted, not substitutes');
+      /* 🔴 THE SAME BY-VALUE CHECK FOR EXTRAS, because a truthiness check is not the claim. With only
+         `every(e => e.extra_id)` here, a commit that replaced every option id with a constant passed —
+         the ids were present and wrong, which is worse than absent: D3 would resolve them against the
+         registry and report a swap that never happened. The dish half had this and the option half did
+         not, which is the one-direction miss this programme keeps producing. */
+      const byExtraId = new Map(menu.extras.map((e) => [String(e.id), e.extra_id]));
+      assert.ok(liveExtras.every((e) => e.extra_id === byExtraId.get(String(e.id))),
+        '🔴 the post-commit EXTRAS carry ids that are not the producer\'s — substituted option ids would read as swaps at D3');
 
       const dish = liveMenu.find((d) => d.price > 0);
       w.chg(dish.id, 1); await settle();
       w.toggleDetailExtra(liveExtras[0].id, dish.id, 0); await settle();
+
+      /* 🔴 THE RESOLVED CART LINE ITSELF, asserted rather than inferred from what was emitted. The
+         chain this cell claims is MENU → the line's resolved record → the emitted item; checking only
+         the two ends leaves the middle to be assumed, and the middle is where the cart re-resolves
+         against the live menu. That re-resolution is the mechanism the whole fix depends on. */
+      const line = w.cartLines()[0];
+      assert.ok(line && line.record, 'premise — the cart line resolved to a record');
+      assert.strictEqual(line.record.dish_id, byId.get(String(dish.id)),
+        '🔴 the RESOLVED cart line does not carry the producer\'s dish_id — the live record is not what the line resolved to');
 
       const emitted = w.redeemCartItems();
       assert.ok(emitted.length > 0, 'premise — the cart has a line');
