@@ -14,6 +14,8 @@
 // 🔴 THE NORMALIZED FIELDS WERE MEASURED, NOT CHOSEN. The capture ran the same logical order TWICE and
 // diffed the two stored orders; whatever differed is volatile and is listed in the golden itself. A
 // hand-picked skip list is how a real difference gets normalized away by accident.
+require('./_emulator-required')('database', 'firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const http = require('http');
 const express = require('express');

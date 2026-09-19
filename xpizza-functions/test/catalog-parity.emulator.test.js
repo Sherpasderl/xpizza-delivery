@@ -3,6 +3,8 @@
 // Seeds a REAL (emulated) Firestore from the live tables, reads it back via the REAL adapter, and asserts
 // byte-identical to MENU_BY_RESTAURANT/EXTRAS_BY_RESTAURANT — both brands. Plus falsifiability, reconcile
 // drift, and the trust-boundary guards (not-found / empty / malformed must never read back as success).
+require('./_emulator-required')('firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');

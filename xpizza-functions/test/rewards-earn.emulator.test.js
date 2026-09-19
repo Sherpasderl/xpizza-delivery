@@ -8,6 +8,8 @@
  * is no order-node marker. Also covers the codex-R1 guards: deleted_uids no-recreate + non-negative clamp.
  * Plain-node style.
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const { initializeTestEnvironment } = require('@firebase/rules-unit-testing');
 const { creditEarnForOrder, creditWelcome, reverseEarnForOrder } = require('../rewards-earn');

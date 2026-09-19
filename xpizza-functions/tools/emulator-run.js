@@ -3,23 +3,15 @@
 /* Emulator launcher: per-checkout ports, and a preflight that REFUSES rather than attaches.
  *
  * 🔴 WHY THIS EXISTS. Two checkouts of this repo on one machine both ran `firebase emulators:exec`
- * on the Firebase defaults (firestore 8080, database 9000, hub 4400, UI 4000). When a second run
- * started while the first was up, it either failed to start or ATTACHED to the running emulator and
- * asserted against the OTHER checkout's data — and still reported green. That happened: six suites
- * in a gate re-run were affected, and a green suite that read a foreign tree is not evidence about
- * the tree under test. It is the same failure class this programme keeps hitting, one layer down:
- * a measurement that measured nothing, reported as a pass.
+ * on the Firebase defaults. When a second run started while the first was up, it either failed or
+ * ATTACHED to the running emulator and asserted against the OTHER checkout's data — and still
+ * reported green. Six suites in one gate re-run were affected. A green suite that read a foreign
+ * tree is not evidence about the tree under test.
  *
- * Two changes close it:
- *   1. PORTS ARE PER-CHECKOUT, derived from the checkout path, so two working copies do not target
- *      the same emulator in the first place.
- *   2. A PREFLIGHT BINDS EVERY PORT FIRST and refuses loudly if one is taken. A collision now fails
- *      with a named port and a named service instead of silently attaching to whatever is there.
- *
- * Usage — a drop-in for `firebase emulators:exec`, same arguments:
+ * Usage — a drop-in for `firebase emulators:exec`:
  *     node tools/emulator-run.js --only firestore --project demo-xpizza "node test/foo.test.js"
  *
- * Override the port block explicitly with XPIZZA_EMU_PORT_OFFSET=<0..390, multiple of 10>.
+ * Override the port block with XPIZZA_EMU_PORT_OFFSET=<0..390, multiple of 10>.
  */
 const { spawn } = require('child_process');
 const crypto = require('crypto');
@@ -29,16 +21,30 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const BASE_CONFIG = path.join(ROOT, 'firebase.json');
-
-/* The offset is derived from the checkout's REAL path, so a second clone or worktree lands on a
-   different block without anyone configuring anything. 40 slots, step 10 — chosen so that all four
-   port ranges stay disjoint (firestore 8080-8470, database 9000-9390, hub 4400-4790, UI 4000-4390):
-   one checkout's UI can never sit on another checkout's hub. The bands are UI 4000-4390, hub
-   4400-4790, functions 5001-5391, firestore 8080-8470, database 9000-9390, firestore websocket
-   9400-9790 — asserted, not assumed, by cell 3 of tools/emulator-ports.guard.test.js, which is how
-   the websocket overlap above was found. Two checkouts CAN still hash to the same slot; that is not
-   silent — the preflight refuses, and XPIZZA_EMU_PORT_OFFSET overrides. */
 const SLOTS = 40;
+
+/* 🔴 EVERY LISTENER FIREBASE OPENS NEEDS A BAND, NOT JUST THE OBVIOUS THREE. Starting `functions`
+   also starts Eventarc and Cloud Tasks; the hub always starts; and LOGGING starts too (it shows up
+   in every run's shutdown log). Unbanded services take their shared defaults, and the installed CLI
+   SEARCHES FOR ANOTHER PORT when one is occupied — retry-instead-of-refuse, the precise behaviour
+   this tool exists to remove, reintroduced through a service nobody listed.
+   Bands are 400 wide so offsets 0..390 can never make one service's port equal another's. Asserted
+   across all slots by cell 3 of tools/emulator-ports.guard.test.js — the previous layout claimed
+   disjointness in a comment and was wrong (the websocket band overlapped database's). */
+function planPorts(offset) {
+  return {
+    ui: 4000 + offset,
+    hub: 4400 + offset,
+    logging: 4800 + offset,
+    functions: 5200 + offset,
+    eventarc: 5600 + offset,
+    tasks: 6000 + offset,
+    firestore: 8080 + offset,
+    firestoreWebsocket: 8500 + offset,
+    database: 9000 + offset,
+  };
+}
+
 function offsetFor(root) {
   const env = process.env.XPIZZA_EMU_PORT_OFFSET;
   if (env !== undefined && env !== '') {
@@ -51,94 +57,114 @@ function offsetFor(root) {
   }
   let real = root;
   try { real = fs.realpathSync(root); } catch { /* not yet resolvable; the raw path still hashes */ }
-  const h = crypto.createHash('sha256').update(real).digest();
-  return (h.readUInt32BE(0) % SLOTS) * 10;
+  return (crypto.createHash('sha256').update(real).digest().readUInt32BE(0) % SLOTS) * 10;
 }
 
-function planPorts(offset) {
-  return {
-    firestore: 8080 + offset,
-    database: 9000 + offset,
-    hub: 4400 + offset,
-    ui: 4000 + offset,
-    functions: 5001 + offset,
-    /* The Firestore emulator opens a second listener for its UI websocket; left unset it picks its
-       own (9150 by default) and can land on a neighbour. Pinned so every port this process opens is
-       one we preflighted.
-       🔴 9400, NOT 9150: at 9150 this band ran 9150-9540 and overlapped DATABASE's 9000-9390, so
-       checkout A's websocket could sit on checkout B's database port — one checkout's test traffic
-       arriving at another's emulator, which is the whole class this tool exists to stop. I had
-       written a comment below asserting the bands were disjoint; it was wrong, and cell 3 of
-       tools/emulator-ports.guard.test.js is what caught it rather than the comment being re-read. */
-    firestoreWebsocket: 9400 + offset,
-  };
+/* Services this runner knows how to pin AND preflight, with the extra listeners each one drags in.
+   Adding a service means adding its band above and its listeners here — anything absent is refused
+   rather than started on a default. */
+const SERVICE_LISTENERS = {
+  firestore: ['firestore', 'firestoreWebsocket'],
+  database: ['database'],
+  functions: ['functions', 'eventarc', 'tasks'],
+};
+// Host vars the Admin SDK honours. Cleared for every service we are NOT starting, so an inherited
+// value from a parent shell can never point a suite at a foreign emulator (see CLEARED_ENV below).
+const HOST_ENV = {
+  firestore: ['FIRESTORE_EMULATOR_HOST'],
+  database: ['FIREBASE_DATABASE_EMULATOR_HOST'],
+  /* Verified by printing the child's environment under the installed CLI, not from memory: a
+     functions run exports CLOUD_EVENTARC_EMULATOR_HOST and CLOUD_TASKS_EMULATOR_HOST, and NOTHING
+     named FUNCTIONS_EMULATOR_HOST. Guessing those names wrong would mean either clearing a var the
+     child needs, or keeping an inherited one we meant to clear. */
+  functions: ['CLOUD_EVENTARC_EMULATOR_HOST', 'CLOUD_TASKS_EMULATOR_HOST'],
+};
+const ALL_HOST_ENV = [...new Set([].concat(...Object.values(HOST_ENV), ['FIRESTORE_EMULATOR_HOST', 'FIREBASE_DATABASE_EMULATOR_HOST', 'FUNCTIONS_EMULATOR_HOST', 'FIREBASE_AUTH_EMULATOR_HOST', 'FIREBASE_STORAGE_EMULATOR_HOST', 'PUBSUB_EMULATOR_HOST', 'CLOUD_EVENTARC_EMULATOR_HOST', 'CLOUD_TASKS_EMULATOR_HOST', 'FIREBASE_EMULATOR_HUB']))];
+
+/* Exported so the guard can test it without launching anything: the clearing is the load-bearing
+   half of the inherited-host-var fix, and a cell that needed a live emulator to check it would not
+   be run often enough to matter. */
+function childEnv(services, parentEnv) {
+  const env = { ...parentEnv };
+  const keep = new Set([].concat(...services.map((s) => HOST_ENV[s] || [])));
+  for (const v of ALL_HOST_ENV) if (!keep.has(v)) delete env[v];
+  return env;
 }
 
-module.exports = { planPorts, offsetFor, SLOTS, ROOT };
+module.exports = { planPorts, offsetFor, SLOTS, ROOT, SERVICE_LISTENERS, ALL_HOST_ENV, HOST_ENV, childEnv };
 if (require.main !== module) return;
 
-const OFFSET = offsetFor(ROOT);
-const PORTS = planPorts(OFFSET);
-
-const argv = process.argv.slice(2);
-const onlyArg = (() => {
-  const i = argv.indexOf('--only');
-  if (i >= 0 && argv[i + 1]) return argv[i + 1];
-  const inline = argv.find((a) => a.startsWith('--only='));
-  return inline ? inline.slice('--only='.length) : null;
-})();
-const services = onlyArg ? onlyArg.split(',').map((s) => s.trim()).filter(Boolean) : ['firestore', 'database', 'functions'];
-
-/* The hub always comes up under emulators:exec, so it is preflighted whether or not it was asked
-   for. The UI is not started by exec, but its port is pinned and checked anyway: an unchecked port
-   is exactly how the websocket listener drifted onto a neighbour's. */
-/* RUNS FIRST, BEFORE ANY REFUSAL CAN EXIT. A crash or SIGKILL can leave a generated config behind. Sweep our own strays whose pid is gone:
-   that keeps `git status` clean for the gate, and means a recycled pid cannot inherit a stale file.
-   It sat below the --only validation at first, so exactly the runs that exit early — the refusals —
-   never swept, which is backwards: a refusing run is the one most likely to follow a crashed one. */
+/* 🔴 THE SWEEP RUNS BEFORE ANYTHING THAT CAN EXIT — including offsetFor(), which exits 2 on a
+   malformed override. It sat below the --only check once and left strays behind on that path; then
+   it sat below offsetFor() and left them behind on THAT path. Cleanup that only runs on the happy
+   path is not cleanup. */
 for (const f of fs.readdirSync(ROOT)) {
   const m = /^firebase\.emulator\.(\d+)\.json$/.exec(f);
   if (!m) continue;
-  const pid = Number(m[1]);
   let alive = false;
-  try { process.kill(pid, 0); alive = true; } catch (e) { alive = e && e.code === 'EPERM'; }
+  try { process.kill(Number(m[1]), 0); alive = true; } catch (e) { alive = e && e.code === 'EPERM'; }
   if (!alive) { try { fs.unlinkSync(path.join(ROOT, f)); } catch { /* raced with another sweep */ } }
 }
 
-const PREFLIGHT = {
-  firestore: [['firestore', PORTS.firestore], ['firestore UI websocket', PORTS.firestoreWebsocket]],
-  database: [['database', PORTS.database]],
-  functions: [['functions', PORTS.functions]],
-};
-const toCheck = [['hub', PORTS.hub]];
+/* 🔴 ARGUMENTS ARE ALLOWLISTED, NOT SCANNED. Scanning for the FIRST --only while Firebase's parser
+   takes the LAST meant `--only firestore --only auth` validated firestore and started an unbanded
+   auth emulator; `--config firebase.json` re-pointed the CLI at the committed config and restored the
+   DEFAULT ports after we had preflighted different ones; `--ui` overrode enabled:false and started
+   the UI; `--inspect-functions` opened an unchecked debug listener. Every one of those bypasses the
+   preflight. An allowlist is the only shape where a flag nobody anticipated cannot get through, so
+   only --only and --project pass, each at most once, plus exactly one command string. All 42 scripts
+   already fit that. Duplicates are refused rather than resolved: the CLI would take the last and this
+   runner the first, and a disagreement about which value is real is not something to paper over. */
+const argv = process.argv.slice(2);
+const opts = {};
+const rest = [];
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i];
+  let name = null, value = null;
+  if (a === '--only' || a === '--project') { name = a.slice(2); value = argv[++i]; }
+  else if (a.startsWith('--only=') || a.startsWith('--project=')) { const j = a.indexOf('='); name = a.slice(2, j); value = a.slice(j + 1); }
+  else if (a.startsWith('-')) {
+    console.error(`\nemulator-run: refusing the argument "${a}".`);
+    console.error('   Only --only and --project are forwarded. Anything else can change ports or config');
+    console.error('   AFTER the preflight has checked different ones (--config, --ui, --inspect-functions),');
+    console.error('   which would put this back to attaching silently. Add it here deliberately if it is needed.\n');
+    process.exit(2);
+  } else { rest.push(a); continue; }
+  if (value === undefined || String(value).startsWith('-')) { console.error(`emulator-run: --${name} needs a value`); process.exit(2); }
+  if (opts[name] !== undefined) { console.error(`emulator-run: --${name} given twice (${opts[name]} then ${value}); the CLI would use the last and this runner the first — refusing rather than guessing`); process.exit(2); }
+  opts[name] = value;
+}
+if (rest.length !== 1) { console.error(`emulator-run: expected exactly one command string, got ${rest.length}`); process.exit(2); }
+
+const OFFSET = offsetFor(ROOT);
+const PORTS = planPorts(OFFSET);
+const services = opts.only ? opts.only.split(',').map((s) => s.trim()).filter(Boolean) : Object.keys(SERVICE_LISTENERS);
+
+/* The hub and the logging emulator come up on every run whether or not they were asked for, so both
+   are preflighted unconditionally. The UI is NOT: ui.enabled is false below and --ui is refused
+   above, so it cannot start. (An earlier comment here claimed the UI was checked. It was not, and
+   saying so was worse than not checking it.) */
+const toCheck = [['hub', PORTS.hub], ['logging', PORTS.logging]];
 for (const s of services) {
-  /* 🔴 FAIL CLOSED ON A SERVICE THIS RUNNER DOES NOT KNOW. An unrecognised --only used to fall
-     through silently: no port was preflighted AND the generated config named none, so firebase
-     started that emulator on its own shared default (auth 9099, storage 9199, pubsub 8085…) —
-     unpinned and unchecked, which is precisely the cross-checkout collision this tool exists to
-     remove, reintroduced by adding one emulator. Whoever adds a service adds its band here. */
-  if (!PREFLIGHT[s]) {
+  if (!SERVICE_LISTENERS[s]) {
     console.error(`\nemulator-run: --only names "${s}", which this runner has no port band for.`);
-    console.error(`   known: ${Object.keys(PREFLIGHT).join(', ')}`);
-    console.error('   REFUSING: an unpinned emulator would take a shared default port, unpreflighted,');
-    console.error('   and could attach across checkouts. Add its band to planPorts() and PREFLIGHT.\n');
+    console.error(`   known: ${Object.keys(SERVICE_LISTENERS).join(', ')}`);
+    console.error('   REFUSING: an unpinned emulator takes a shared default port, unpreflighted, and the');
+    console.error('   installed CLI will SEARCH FOR ANOTHER PORT if it is busy rather than stop.');
+    console.error('   Add its band to planPorts() and its listeners to SERVICE_LISTENERS.\n');
     process.exit(2);
   }
-  toCheck.push(...PREFLIGHT[s]);
+  for (const l of SERVICE_LISTENERS[s]) toCheck.push([l, PORTS[l]]);
 }
 
-/* Announced on every run so a shared block is visible in the log rather than inferred from a strange
-   failure later. Two checkouts CAN hash to the same slot; when they do, this line is what says so. */
 console.error(`emulator-run: offset ${OFFSET}${process.env.XPIZZA_EMU_PORT_OFFSET ? ' (XPIZZA_EMU_PORT_OFFSET)' : ' (from checkout path)'} — ${toCheck.map(([nm, pt]) => `${nm} ${pt}`).join(', ')}`);
 
-/* 🔴 THE RACE, STATED RATHER THAN PAPERED OVER. Preflight binds, releases, then launches firebase, so
-   two runs starting in the same instant can both see a free port. That window is not closable from
-   here (holding the socket would stop firebase binding it). What bounds it: two DIFFERENT checkouts
-   never share a band unless they hash to the same slot, and within one checkout concurrent runs are
-   already forbidden (a sweep mutates the tree npm test is reading). If the race is lost anyway, the
-   second firebase fails to bind its own port and exits non-zero — it does not attach, because the HUB
-   port is per-checkout too, and hub discovery is how a foreign emulator would be adopted. So the
-   outcome degrades to a loud failure, never to a silent foreign read. */
+/* 🔴 THE RACE, STATED RATHER THAN PAPERED OVER. Preflight binds, releases, then launches, so two runs
+   starting in the same instant can both see a free port. Not closable from here — holding the socket
+   would stop firebase binding it. What bounds it: two different checkouts never share a band unless
+   they hash to the same slot; concurrent runs in ONE checkout are already forbidden; and if the race
+   is lost, the second firebase fails to bind and exits non-zero rather than attaching, because the
+   hub port is per-checkout too and hub discovery is how a foreign emulator gets adopted. */
 
 const probe = (port) => new Promise((resolve) => {
   const srv = net.createServer();
@@ -160,47 +186,45 @@ const probe = (port) => new Promise((resolve) => {
     console.error(`   offset   : ${OFFSET}${process.env.XPIZZA_EMU_PORT_OFFSET ? ' (from XPIZZA_EMU_PORT_OFFSET)' : ' (derived from the checkout path)'}`);
     console.error('\n   REFUSING rather than attaching. An emulator already on this port belongs to another run —');
     console.error('   attaching to it would assert against a different tree and still report green.');
-    console.error('   Find it with:  lsof -nP -iTCP:' + taken[0].port + ' -sTCP:LISTEN');
+    console.error(`   Find it with:  lsof -nP -iTCP:${taken[0].port} -sTCP:LISTEN`);
     console.error('   Or pick another block:  XPIZZA_EMU_PORT_OFFSET=<multiple of 10, 0..390>\n');
     process.exit(3);
   }
 
-  /* The generated config carries the ports; the committed firebase.json is left alone so deploys and
-     `firebase` commands outside the tests are unaffected. It is written NEXT TO firebase.json so the
-     relative rules paths inside it resolve exactly as they did before, and it is pid-suffixed so two
-     runs in one checkout cannot clobber each other's file. */
   const base = JSON.parse(fs.readFileSync(BASE_CONFIG, 'utf8'));
   base.emulators = {
     firestore: { host: '127.0.0.1', port: PORTS.firestore, websocketPort: PORTS.firestoreWebsocket },
     database: { host: '127.0.0.1', port: PORTS.database },
     functions: { host: '127.0.0.1', port: PORTS.functions },
+    eventarc: { host: '127.0.0.1', port: PORTS.eventarc },
+    tasks: { host: '127.0.0.1', port: PORTS.tasks },
+    logging: { host: '127.0.0.1', port: PORTS.logging },
     hub: { host: '127.0.0.1', port: PORTS.hub },
     ui: { enabled: false, host: '127.0.0.1', port: PORTS.ui },
-    /* 🔴 NO singleProjectMode HERE. I set it while writing this and then took it out: it changes what
-       the emulator ACCEPTS, not where it listens, and several rules suites deliberately use their own
-       project ids (demo-xpizza-rules, demo-xpizza-owner-rules). A port-isolation change that also
-       narrowed project acceptance would be two changes wearing one commit message, and the second one
-       is the kind that surfaces as a confusing permission error in an unrelated suite months later. */
+    /* 🔴 NO singleProjectMode. It changes what the emulator ACCEPTS, not where it listens, and several
+       rules suites deliberately use their own project ids. Two changes in one commit message. */
   };
   const generated = path.join(ROOT, `firebase.emulator.${process.pid}.json`);
   fs.writeFileSync(generated, JSON.stringify(base, null, 2) + '\n');
 
   let cleaned = false;
-  const cleanup = () => {
-    if (cleaned) return;
-    cleaned = true;
-    try { fs.unlinkSync(generated); } catch { /* already gone */ }
-  };
+  const cleanup = () => { if (cleaned) return; cleaned = true; try { fs.unlinkSync(generated); } catch { /* already gone */ } };
   process.on('exit', cleanup);
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { cleanup(); process.exit(130); });
 
-  const args = ['emulators:exec', '--config', generated, ...argv];
-  const child = spawn('firebase', args, { stdio: 'inherit', cwd: ROOT });
+  /* 🔴 CLEAR THE HOST VARS WE ARE NOT SERVING. Firebase only sets the host variable for a service it
+     actually starts, and this process inherits the whole environment — so a suite launched with
+     `--only database` in a shell that still carries a FIRESTORE_EMULATOR_HOST from somewhere else
+     reads THAT emulator, silently, and reports green. That is the shape of test:rewards-intake and
+     test:intake-availability. An inherited value is never trustworthy here: if we are not starting
+     the service, the variable must be absent, so a suite that needs it fails loudly instead. */
+  const env = childEnv(services, process.env);
+
+  const child = spawn('firebase', ['emulators:exec', '--config', generated, ...(opts.project ? ['--project', opts.project] : []), '--only', services.join(','), rest[0]], { stdio: 'inherit', cwd: ROOT, env });
   child.on('error', (e) => { cleanup(); console.error(`emulator-run: could not launch firebase — ${e && e.message}`); process.exit(1); });
   child.on('exit', (code, signal) => {
     cleanup();
-    // The suite's own exit code is the result. Passing it straight through is the whole contract:
-    // a wrapper that swallowed it would turn a red suite into a green run.
+    // The suite's own exit code is the result. A wrapper that swallowed it would turn a red suite green.
     process.exit(signal ? 1 : (code === null ? 1 : code));
   });
 })();

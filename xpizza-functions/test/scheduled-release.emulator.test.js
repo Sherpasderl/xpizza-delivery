@@ -5,6 +5,8 @@
 //        "node test/scheduled-release.emulator.test.js"
 // Drives REAL transactions: atomic claim, double-release idempotency, cancel-race, closed-at-release
 // hold+alert (+ skip-blocked no re-alert), delivery materialize, online charged_at preserved, stale recovery.
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 const S = require('../scheduled-orders');

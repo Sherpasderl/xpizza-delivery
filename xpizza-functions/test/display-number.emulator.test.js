@@ -10,6 +10,8 @@
  * one-transaction counter is idempotent (retry → same #, no re-burn) and concurrency-safe (two handlers → one #),
  * per-restaurant counters are independent, and an ineligible order burns no number.
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'test-secret';
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';

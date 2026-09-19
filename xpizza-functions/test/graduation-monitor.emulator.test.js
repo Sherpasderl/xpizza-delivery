@@ -15,6 +15,8 @@
  *  - UNSIGNED config ⇒ mode:'preview' ⇒ graduated:false (nothing graduates during the bake);
  *  - the SHADOW BOUNDARY holds: NOTHING is written to /orders, order_predictions, or prediction_logs.
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'test-secret';
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';

@@ -7,6 +7,8 @@
 // written WITH stamps and the same version written WITHOUT them carry the SAME content_hash, which is
 // the property that lets the bootstrap pass stamp a live version without it reading as a menu change.
 // Proving it on the projection alone would leave the writer free to hash something else.
+require('./_emulator-required')('firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 const { buildPublishCandidate } = require('../tools/publish-version');

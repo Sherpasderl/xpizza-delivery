@@ -5,6 +5,8 @@
  * order's reservation (no-op for non-redeemed); sweepConsumeRecovery catches holds stuck 'reserved' on an
  * order that already materialized/delivered/completed.
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const { initializeTestEnvironment } = require('@firebase/rules-unit-testing');
 const R = require('../rewards-reserve');

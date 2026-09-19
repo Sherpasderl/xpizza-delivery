@@ -16,6 +16,8 @@
  *
  * Plain-node style (no jest) to match the repo's existing emulator tests.
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const fs = require('fs');
 const path = require('path');
 const {

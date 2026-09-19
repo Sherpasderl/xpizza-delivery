@@ -7,6 +7,8 @@
 // CAS-verifies, that consuming it and activating the version stand or fall together, and that a draft
 // which moved underneath aborts the whole thing rather than clobbering a newer claim. A fake can be
 // made to agree with any of that; only the real transaction engine decides it.
+require('./_emulator-required')('firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 const { buildPublishCandidate } = require('../tools/publish-version');

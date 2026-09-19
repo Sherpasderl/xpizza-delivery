@@ -8,6 +8,8 @@
 // fake-reader unit test stayed green. On parity the catalog and code values are EQUAL, so value
 // comparison cannot tell them apart; we assert object IDENTITY (the returned table must NOT be the
 // in-code singleton) plus a silent alarm sink. Those two together prove the read really happened.
+require('./_emulator-required')('firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, computeServerTotal } = require('../menu-pricing');

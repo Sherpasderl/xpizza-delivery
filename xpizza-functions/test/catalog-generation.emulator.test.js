@@ -8,6 +8,8 @@
 // byte-identical — i.e. the artifacts are a pure function of the catalog STORE, not just the bootstrap.
 // The sentinel mutates a value that exists ONLY in Firestore and proves it flows into the artifact —
 // generation reads the catalog, not the form.
+require('./_emulator-required')('firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const { readFileSync } = require('fs');
 const { join } = require('path');

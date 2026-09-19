@@ -2,6 +2,8 @@
 // Phase 1c-b2 — VERSIONED PUBLISH money-proof + lease/concurrency/crash + completeness + pointer-absent-vs-
 // error + fail-safe + cache + rollback + preview + retention, against a REAL (emulated) Firestore.
 // Run: PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:catalog-versioned
+require('./_emulator-required')('firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 const { FieldValue, Timestamp } = require('firebase-admin/firestore');

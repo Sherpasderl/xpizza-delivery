@@ -5,6 +5,8 @@
  * deleted_uids pre-guard + post-commit TOCTOU, consume/held_paid/release/refuse, the single reversal API's
  * state branches, re-reserve-after-release, the Σledger.delta===balance invariant, and the orphan sweep.
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const { initializeTestEnvironment } = require('@firebase/rules-unit-testing');
 const R = require('../rewards-reserve');

@@ -19,6 +19,8 @@
  *
  * Plain-node style (no jest), matching the repo's other rules suites.
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const fs = require('fs');
 const path = require('path');
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');

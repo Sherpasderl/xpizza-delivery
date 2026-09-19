@@ -9,6 +9,8 @@
  *   C — reward_welcome is fully deny-all (read + write) to every client (the un-farmable welcome tombstone).
  * Plain-node style (no jest), mirroring user-profiles-rules.emulator.test.js.
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const fs = require('fs');
 const path = require('path');
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');

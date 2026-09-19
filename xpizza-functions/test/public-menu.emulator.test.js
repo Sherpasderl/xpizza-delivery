@@ -13,6 +13,8 @@
 // conditional-request semantics. The one thing this does NOT do is run a CDN — what it proves is that
 // the response carries everything a correct CDN needs and nothing that would mislead one. That
 // boundary is stated rather than glossed.
+require('./_emulator-required')('database', 'firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const http = require('http');
 const admin = require('firebase-admin');

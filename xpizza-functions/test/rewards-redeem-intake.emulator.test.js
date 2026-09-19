@@ -7,6 +7,8 @@
  * the payment-fingerprint mismatch when the redeemed SET changes, online reserve + acquire-failure release,
  * idempotency, and all-or-nothing rejects.
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const { initializeTestEnvironment } = require('@firebase/rules-unit-testing');
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('../rewards-redeem-intake');

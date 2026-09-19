@@ -12,6 +12,8 @@
  *   JAVA_HOME=/opt/homebrew/opt/openjdk firebase emulators:exec --only database \
  *     --project demo-xpizza "node test/resolve-manual.emulator.test.js"
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 const { resolveManualReconciliationCore, recoverStaleResolve } = require('../resolve-manual');

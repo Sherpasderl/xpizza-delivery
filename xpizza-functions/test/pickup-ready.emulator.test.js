@@ -21,6 +21,8 @@
  *   8. rules: /pickup_ready_notifications is an admin-only hard deny (all clients denied).
  *   9. tplPickupReady per-restaurant snapshot (brand + link / no-link).
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');

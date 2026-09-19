@@ -15,6 +15,8 @@
  *   5c — abort overwrites `latest`, never leaves stale-green: a config_invalid invocation writes no
  *        runs/ child but repoints latest to the failure → isFreshAuthoritativeRun ⇒ run_not_ok.
  */
+require('./_emulator-required')('database', 'functions');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 const runner = require('../ready-time-quality-run');

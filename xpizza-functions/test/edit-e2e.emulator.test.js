@@ -14,6 +14,8 @@
 //
 // Everything here drives the SAME handler cores index.js calls, so a green run means the pipeline works,
 // not that the harness agrees with itself.
+require('./_emulator-required')('firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'e2e-secret-least-32-characters-long!!';

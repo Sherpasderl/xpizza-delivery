@@ -5,6 +5,8 @@
 // Two claims. (1) REGRESSION: the schema-v2 seed still reproduces the {key, price} pricing tables
 // byte-identical through the REAL pricing reader — the money path cannot notice the new fields.
 // (2) The display half round-trips through the REAL display reader, byte-identical to the forms.
+require('./_emulator-required')('firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');

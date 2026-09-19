@@ -8,6 +8,8 @@
  * double-reversing, then clears the record. This proves: heals a diverged ledger, no double-reverse on retry,
  * order-gone is cleaned up, and the `ok` failure-discriminator on reverseEarnForOrder.
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const { initializeTestEnvironment } = require('@firebase/rules-unit-testing');
 const { retryRewardLedgerRepair } = require('../cancel-order-core');

@@ -8,6 +8,8 @@
 // wrong was that they hashed different things. So the only test that can see it is one that saves
 // through the real save handler and then publishes through the real publish handler, against a real
 // store — which is also the shape a merchant actually experiences.
+require('./_emulator-required')('firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 // Fail-closed by design: the token is unsigned without it, so a test must supply one before requiring
 // the modules that read it at load time.

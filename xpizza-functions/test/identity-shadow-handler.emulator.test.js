@@ -20,6 +20,8 @@
 // the WhatsApp send (so the notify's duration is known rather than incidental), the Firestore handle
 // (so the registry — and ONLY the registry — can be made to hang), and the PixelPay call (so a
 // checkout can be made to fail without a gateway).
+require('./_emulator-required')('database', 'firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const http = require('http');
 const express = require('express');

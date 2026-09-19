@@ -21,6 +21,8 @@
 // So: real engine, real contention, same assertions. A previous version of the node suite's header
 // claimed "the emulator test covers the real driver" while no emulator test touched the registry at
 // all — a comment asserting coverage that did not exist. This file is that comment made true.
+require('./_emulator-required')('firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 const { ensureIdentity, lookupByLegacyKeys, encodeKey, ALPHABET, ID_LEN } = require('../catalog/identity-registry');

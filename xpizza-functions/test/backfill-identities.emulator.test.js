@@ -12,6 +12,8 @@
 //
 // Before this file the evidence for those behaviours was a transcript of a run in the author's
 // session. A transcript is not a test: nobody else can execute it, and it cannot fail in CI.
+require('./_emulator-required')('firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const { spawnSync } = require('child_process');
 const path = require('path');

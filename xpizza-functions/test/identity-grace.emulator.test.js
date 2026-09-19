@@ -21,6 +21,8 @@
 // If any of these is false in production, D4's self-heal does not heal — it mints the duplicate it was
 // written to prevent, at the exact moment a registry is being repaired. Under grace that is invisible;
 // at enforce it is historical data nobody can reconstruct.
+require('./_emulator-required')('firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 const {

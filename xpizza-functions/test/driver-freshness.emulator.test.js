@@ -10,6 +10,8 @@
  * drivers + dispatcher_alerts reads, the keyed multi-path write, dedupe + auto-clear ACROSS ticks, and that
  * other alert types are left untouched.
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'test-secret';
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';

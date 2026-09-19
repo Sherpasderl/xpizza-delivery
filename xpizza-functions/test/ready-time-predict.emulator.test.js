@@ -5,6 +5,8 @@
 //        "node test/ready-time-predict.emulator.test.js"
 // Drives REAL transactions and proves the load-bearing PURE-SHADOW guarantee + every idempotency/fallback/
 // quarantine path (PHASE1_STEP3_SHADOW_PREDICTOR.md rev-3 §Build shape).
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 const F = require('../ready-time-features');

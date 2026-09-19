@@ -16,6 +16,8 @@
  *      the gate is bypassed and the handler returns 409 'Already paid' (never 400 item_unavailable).
  *   D. Positive control — an AVAILABLE cash cart passes the gate and writes an order.
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const http = require('http');
 const express = require('express');

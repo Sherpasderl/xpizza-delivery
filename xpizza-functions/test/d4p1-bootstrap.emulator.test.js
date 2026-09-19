@@ -9,6 +9,8 @@
 // a served field escaped the content hash once already. So the version is captured WHOLE before and
 // after, and the DIFF must be exactly the additive identity set — every other byte of every document,
 // content_hash and menu_hash and extras_hash and seq and structure included, unchanged.
+require('./_emulator-required')('firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 const { buildPublishCandidate } = require('../tools/publish-version');

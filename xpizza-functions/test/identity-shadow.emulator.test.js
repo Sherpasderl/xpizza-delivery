@@ -10,6 +10,8 @@
 //   · that two REAL exchanged ids read as `swapped` — a swap is the shape every field-level check
 //     passes, so the ids have to come from the real writer rather than from a literal I chose.
 // Uses the demo project id, which the Admin SDK cannot route to production however it is invoked.
+require('./_emulator-required')('firestore');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const admin = require('firebase-admin');
 const { backfillIdentities, liveKeys } = require('../catalog/identity-backfill');

@@ -13,6 +13,8 @@
  * ingestDriverLocation is a bare onRequest handler; POST via an ephemeral server behind express.json()
  * (onRequest handlers invoked directly don't auto-parse the body).
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const http = require('http');
 const express = require('express');
