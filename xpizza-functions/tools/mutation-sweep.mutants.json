@@ -1980,7 +1980,7 @@
     "slice": "b6",
     "label": "the snapshot’s rid is not checked against this form’s brand",
     "file": "../xpizza-orders/index.html",
-    "from": "    if (raw.rid !== liveMenuRid()) return null;",
+    "from": "    if (raw.rid !== liveMenuRid()) return refuse('rid_mismatch', String(raw.rid));",
     "to": ";",
     "command": [
       "node",
@@ -2066,7 +2066,7 @@
     "slice": "b6",
     "label": "la_musa: the snapshot’s rid is not checked against this form’s brand",
     "file": "../la-musa-orders/index.html",
-    "from": "    if (raw.rid !== liveMenuRid()) return null;",
+    "from": "    if (raw.rid !== liveMenuRid()) return refuse('rid_mismatch', String(raw.rid));",
     "to": ";",
     "command": [
       "node",
@@ -5580,5 +5580,73 @@
       "identity-shadow-placement.test.js"
     ],
     "kills_with": "gated on the check OBJECT rather than on whether the callback fired"
+  },
+  {
+    "id": "fix-01",
+    "slice": "repgate",
+    "label": "🔴 the version GATE returns - every live menu is refused again and the forms silently run the frozen bundle",
+    "file": "../xpizza-orders/index.html",
+    "from": "    if (raw.representation_version !== LIVE_MENU_REPRESENTATION) {\n      try {",
+    "to": "    if (raw.representation_version !== LIVE_MENU_REPRESENTATION) {\n      if (true) return null;\n      try {",
+    "command": [
+      "node",
+      "../form-live-menu-representation.test.mjs"
+    ],
+    "kills_with": "a version-string change ALONE refused the menu"
+  },
+  {
+    "id": "fix-02",
+    "slice": "repgate",
+    "label": "🔴 the marker log is dropped - a future representation bump applies INVISIBLY",
+    "file": "../xpizza-orders/index.html",
+    "from": "        console.warn('menu_representation_changed', JSON.stringify({",
+    "to": "        if (false) console.warn('menu_representation_changed', JSON.stringify({",
+    "command": [
+      "node",
+      "../form-live-menu-representation.test.mjs"
+    ],
+    "kills_with": "it must be LOUD"
+  },
+  {
+    "id": "fix-03",
+    "slice": "repgate",
+    "label": "🔴 a refusal goes silent again - the defect class that hid this incident for weeks",
+    "file": "../xpizza-orders/index.html",
+    "from": "      try { console.warn('menu_snapshot_refused', JSON.stringify({ reason: reason, detail: detail === undefined ? null : detail })); } catch (_) {}",
+    "to": "      try { if (false) console.warn('menu_snapshot_refused', JSON.stringify({ reason: reason })); } catch (_) {}",
+    "command": [
+      "node",
+      "../form-live-menu-representation.test.mjs"
+    ],
+    "kills_with": "refused SILENTLY"
+  },
+  {
+    "id": "fix-04",
+    "slice": "repgate",
+    "label": "🔴 every refusal reports one generic reason - 'refused' without which check is barely better than silence",
+    "file": "../xpizza-orders/index.html",
+    "from": "    if (!raw || typeof raw !== 'object') return refuse('raw_not_object', typeof raw);",
+    "to": "    if (!raw || typeof raw !== 'object') return refuse('refused', typeof raw);",
+    "command": [
+      "node",
+      "../form-live-menu-representation.test.mjs"
+    ],
+    "kills_with": "the log must name THIS reason"
+  },
+  {
+    "id": "fix-05",
+    "slice": "repgate",
+    "label": "🔴 the structural test is loosened - a body liveMenuPrepare cannot consume is applied anyway",
+    "file": "../xpizza-orders/index.html",
+    "from": "    try { liveMenuPrepare(menu); }\n    catch (e) {",
+    "to": "    try { liveMenuPrepare(menu); }\n    catch (e) { if (true) return menu;",
+    "command": [
+      "node",
+      "../form-live-menu-representation.test.mjs"
+    ],
+    "kills_with": [
+      "structural: must still be refused",
+      "acceptance was loosened"
+    ]
   }
 ]

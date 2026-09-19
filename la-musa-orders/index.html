@@ -2338,10 +2338,13 @@ function announceCartConflicts(conflicts){
    menu, no cart and no checkout. Read at CALL time instead, by which point the constant exists. (This
    project has been bitten by TDZ before — see HANDOFF-phase1cb3-REVISE-tdz.md.) */
 function liveMenuRid(){ return RESTAURANT_ID; }
-const LIVE_MENU_REPRESENTATION = '1b.1';
+/* 🔴 A REFERENCE MARKER, NOT A GATE. Kept only so validateSnapshot can say out loud when the served
+   representation is not the one this form was written against. It refuses nothing — see the note at
+   that comparison for what that trades away and what covers it. */
+const LIVE_MENU_REPRESENTATION = '1d.1';
 /* 🔴 THE PRICED-MENU VERSION — what a reward quote was actually computed against.
    The gate asked for representation_version in the reward signature. That field is the FORMAT marker
-   above ('1b.1'); it is constant across publishes, so including it would have changed nothing and the
+   above ('1d.1'); it is constant across publishes, so including it would have changed nothing and the
    reprice-then-rollback reproduction would still have matched. What determines a reward-adjusted price
    is the PRICES, so the prices are what the signature carries: a digest over every dish and option id
    with its current price. A reprice changes it, a rollback changes it back to a value that no longer
@@ -2711,13 +2714,49 @@ function liveMenuCommit(prepared){
    and the coordinator retains the last good one. */
 const LIVE_MENU_ADAPTER = {
   validateSnapshot: function (raw) {
-    if (!raw || typeof raw !== 'object') return null;
+    /* 🔴 EVERY REFUSAL IS LOUD. This function used to return null from four places and log from one of
+       them, and that asymmetry cost a production incident: the version gate below refused every live
+       menu for weeks, silently, and the only reason anyone found out is that D3's heartbeat started
+       reporting that no order carried an id. A refusal that says nothing is indistinguishable from a
+       network miss, so there is nothing to watch and nothing to alarm on.
+       Every path that returns null now names its reason first. */
+    var refuse = function (reason, detail) {
+      try { console.warn('menu_snapshot_refused', JSON.stringify({ reason: reason, detail: detail === undefined ? null : detail })); } catch (_) {}
+      return null;
+    };
+    if (!raw || typeof raw !== 'object') return refuse('raw_not_object', typeof raw);
     // 🔴 THE rid IS CHECKED HERE, against this form's own brand, and never defaulted. A menu for the
-    // other restaurant is not a degraded menu, it is someone else's prices.
-    if (raw.rid !== liveMenuRid()) return null;
-    if (raw.representation_version !== LIVE_MENU_REPRESENTATION) return null;
+    // other restaurant is not a degraded menu, it is someone else's prices. Kept as a REFUSAL — this
+    // one is isolation, not format.
+    if (raw.rid !== liveMenuRid()) return refuse('rid_mismatch', String(raw.rid));
+
+    /* 🔴 THE VERSION IS OBSERVABILITY, NOT A GATE — AND THIS LINE IS THE WHOLE INCIDENT.
+       It used to read `if (raw.representation_version !== LIVE_MENU_REPRESENTATION) return null;`.
+       When D1 added the identity overlay, getPublicMenu bumped its body from 1b.1 to 1d.1 — an
+       ADDITIVE change this form parses perfectly — and the exact-match refused every live menu from
+       that moment. Silently, because the return sat above the logged path. Both brands fell back to
+       the frozen embedded bundle: 1B's live display was off, and because the bundle carries no ids, no
+       order carried one either, which is what D3 saw.
+       So the marker no longer decides acceptance — the structural test below does, and it is the
+       honest test: it either parses the body or it does not. The version is kept and LOGGED on any
+       mismatch, so the next bump is visible instead of invisible.
+       🔴 AND BE CLEAR ABOUT WHAT THIS GIVES UP, because the gate was not purely redundant: structural
+       acceptance is not semantic compatibility. A future body serving `price` in CENTS would parse
+       fine here and mean something different. What covers that is (a) the producer contract —
+       getPublicMenu preserves field SEMANTICS across additive revisions — (b) this log, and (c) the
+       fact that the server always recomputes the charge from its own tables and never trusts a price
+       this form displays. A brittle string match that blackholes the menu is not a defence worth its
+       cost; a loud marker plus a recomputing server is. */
+    if (raw.representation_version !== LIVE_MENU_REPRESENTATION) {
+      try {
+        console.warn('menu_representation_changed', JSON.stringify({
+          expected: LIVE_MENU_REPRESENTATION, got: raw.representation_version === undefined ? null : raw.representation_version,
+        }));
+      } catch (_) {}
+    }
+
     const menu = raw.menu;
-    if (!menu || typeof menu !== 'object') return null;
+    if (!menu || typeof menu !== 'object') return refuse('menu_missing', typeof menu);
     /* 🔴 THE REASON IS REPORTED, NOT SWALLOWED. This was `catch (_) { return null; }`, which threw away
        the one thing that makes a refusal actionable: liveMenuPrepare raises TYPED errors naming exactly
        what was wrong (apply_dish_orphan@3, apply_variant_id_type@…), and none of it reached any caller.
@@ -2727,13 +2766,18 @@ const LIVE_MENU_ADAPTER = {
        something the forms will not accept is diagnosable from the console instead of by bisection. */
     try { liveMenuPrepare(menu); }
     catch (e) {
-      try { console.warn('menu_snapshot_refused', JSON.stringify({ reason: String((e && e.message) || e).slice(0, 200) })); } catch (_) {}
-      return null;
+      // Distinct from the guards above: this one carries liveMenuPrepare's TYPED error, which names
+      // exactly what was wrong (apply_dish_orphan@3, apply_variant_id_type@…).
+      return refuse('structural', String((e && e.message) || e).slice(0, 200));
     }
     return menu;
   },
   diff: function (prev, next) { return { dishes: next.dishes.length, extras: next.extras.length }; },
 };
+/* Test hook, same convention as window.__LIVE_MENU_PRICE_VERSION above: the adapter is a top-level
+   const, so a jsdom test cannot reach it otherwise — and the refusal REASONS are the thing this
+   incident proved need testing one at a time. */
+try { window.__LIVE_MENU_ADAPTER = LIVE_MENU_ADAPTER; } catch (_) {}
 
 let LIVE_APPLIER = null, LIVE_MENU_FEED = null;
 
