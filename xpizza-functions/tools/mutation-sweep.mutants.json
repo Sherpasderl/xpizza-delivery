@@ -6616,7 +6616,7 @@
   "kills_with": "a claim that went stale BETWEEN the pre-flight check and the flip rode the activation through",
   "from": "      validateDeletionClaim(liveClaim, {\n        activeVersionId: liveActive,",
   "to": "      if (false) validateDeletionClaim(liveClaim, {\n        activeVersionId: liveActive,",
-  "why": "isolated by cell 5. The pre-flight pass in publishVersion validates the claim too, so an ALREADY-stale claim never reaches the transaction and this mutant survived — the masking guard was one I added myself in the same slice. Cell 5 bumps the GENERATION between the pre-flight check and the flip, leaving the version untouched: the CAS compares versions and passes, the pre-flight check saw the old generation and passed, and only the in-tx read of the pointer this transaction holds can notice. That is exactly the tear C-2 exists to close."
+  "why": "isolated by cell 5. The pre-flight pass in publishVersion validates the claim too, so an ALREADY-stale claim never reaches the transaction and this mutant survived — the masking guard was one I added myself in the same slice. Cell 5 bumps the GENERATION between the pre-flight check and the flip, leaving the version untouched: the CAS compares versions and passes, the pre-flight check saw the old generation and passed, and only the in-tx read of the pointer this transaction holds can notice. That is exactly the tear C-2 exists to close. 🔴 WHICH HALF THIS KILL ACTUALLY COVERS: validateDeletionClaim refuses on two grounds and this mutant dies on ONE of them. The staleness ground is reachable here and cell 5 reaches it. The MALFORMED ground is not: an already-malformed claim is refused at pre-flight, and making one malformed after pre-flight means writing the source, which moves its revision and trips the draft CAS several lines above this check. There is no mutant that isolates the malformed half at this call site — it is one validator call, not two branches — so it is covered as a unit in identity-partition.test.js and at pre-flight (claim-flip cell 4), and documented in the source as defence in depth. Scoring this kill as covering both halves would be the 'true, but not measuring what its label claims' class."
  },
  {
   "id": "d4p1c-25",
@@ -6634,6 +6634,62 @@
   "from": "  const isEcho = declared && storedIds && sameSet(declaredIds, storedIds) && !acked;",
   "to": "  const isEcho = declared && storedIds && sameSet(declaredIds, storedIds);",
   "why": "guarded at two points of the same cell, and which fires first is ordering rather than meaning — the documented array form. Treating an acked resend as an echo skips the loaded-base guard (checked first) AND leaves the stale base in place (checked after), and both are the same defect seen from either end."
+ },
+ {
+  "id": "d4p1b-22",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 the source is not enriched - the cutover certifies a version over a bare draft and locks publishing out",
+  "kills_with": "was not stamped",
+  "from": "    tx.update(srcRef, { items: enrich(liveSrc.items, 'dish'), extras: enrich(liveSrc.extras, 'extra') });",
+  "to": "    void enrich;"
+ },
+ {
+  "id": "d4p1b-23",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 a pending unpublished RENAME is stamped anyway - its active id becomes unaccounted forever",
+  "kills_with": "bootstrap stamped a version whose objects the draft no longer contains",
+  "from": "  if (divergent.length) {",
+  "to": "  if (false) {"
+ },
+ {
+  "id": "d4p1b-24",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 the source CAS is dropped - a merchant's mid-pass save is enriched over and lost",
+  "kills_with": "the draft moved under the pass and it enriched over it",
+  "from": "    if (encodeUpdateTime(srcNow.updateTime) !== encodeUpdateTime(srcSnap.updateTime)) {",
+  "to": "    if (false) {"
+ },
+ {
+  "id": "d4p1b-25",
+  "slice": "d4p1b",
+  "file": "catalog/identity-bootstrap.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-bootstrap"
+  ],
+  "label": "🔴 enrichment overwrites the whole display - the merchant's own display fields are destroyed",
+  "kills_with": "bootstrap changed the source beyond the stamps",
+  "from": "      return { ...o, display: { ...(o.display || {}), identity_id: id } };",
+  "to": "      return { ...o, display: { identity_id: id } };"
  },
  {
   "id": "pah-01",

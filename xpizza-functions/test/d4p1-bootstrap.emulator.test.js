@@ -14,6 +14,7 @@ const admin = require('firebase-admin');
 const { buildPublishCandidate } = require('../tools/publish-version');
 const { sourceRefOf, canonicalize, sourceToBuildInputs } = require('../catalog/source-store');
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
+const { getActivePointer } = require('../catalog/catalog-firestore');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
 
 admin.initializeApp({ projectId: 'demo-xpizza' });
@@ -33,6 +34,13 @@ const vrefOf = (rid, v) => db.collection('restaurants').doc(rid).collection('ver
 const pointerOf = (rid) => db.collection('restaurants').doc(rid).collection('meta').doc('active_version');
 
 /* The WHOLE version: its record and every document under it, as plain data. */
+/* The WHOLE stored source, as plain data — the counterpart to snapshotVersion. Bootstrap writes BOTH
+   in one transaction, so both need the same before/after treatment or half the write is unevidenced. */
+async function snapshotSource(rid) {
+  const snap = await sourceRefOf(db, rid).get();
+  return JSON.parse(JSON.stringify(snap.data()));
+}
+
 async function snapshotVersion(rid, versionId) {
   const vref = vrefOf(rid, versionId);
   const [rec, items, extras, meta] = await Promise.all([
@@ -86,6 +94,7 @@ async function seed(rid, sha) {
   assert.strictEqual(active.record.identity_certified, undefined, 'premise — it starts UNcertified (pre-P1 shape)');
 
   const before = await snapshotVersion(rid, active.versionId);
+  const srcBefore = await snapshotSource(rid);
 
   // ── 1. EVERY LIVE OBJECT IS STAMPED WITH THE ID THE REGISTRY ALREADY HOLDS ──────────────────
   const r = await bootstrapIdentityStamps(db, rid);
@@ -132,13 +141,54 @@ async function seed(rid, sha) {
     ok(`the version is byte-identical apart from ${actual.length} additive identity fields — content/menu/extras hashes, seq and structure all unmoved`);
   }
 
+  // ── 2b. 🔴 THE WHOLE-SOURCE GOLDEN — THE OTHER HALF OF THE ONE WRITE ──────────────────────
+  /* Bootstrap writes the version AND the source in one transaction, so goldening only the version
+     leaves half the write unevidenced — and the source half is what a merchant's next edit is built
+     from. Same treatment, different instrument: diffPaths compares ARRAYS as whole values (correct for
+     the version, whose objects are keyed maps), and the source holds items/extras as arrays, so it
+     would only ever report "items changed". Stripping the stamps and comparing the WHOLE object is
+     stronger than enumerating paths anyway: it says "identical apart from the stamps" by construction
+     rather than by a list I remembered to write. */
+  {
+    const srcAfter = await snapshotSource(rid);
+    const stripStamps = (src) => {
+      const out = JSON.parse(JSON.stringify(src));
+      for (const rows of [out.items, out.extras]) {
+        for (const o of (Array.isArray(rows) ? rows : [])) {
+          if (o && o.display) delete o.display.identity_id;
+        }
+      }
+      return out;
+    };
+    assert.deepStrictEqual(stripStamps(srcAfter), stripStamps(srcBefore),
+      '🔴 bootstrap changed the source beyond the stamps — this write lands on the merchant\'s own draft');
+    assert.ok(!(srcBefore.items || []).some((o) => o && o.display && o.display.identity_id !== undefined),
+      'premise — the source carried no stamps before');
+
+    // …and every matched object actually GOT one, or "identical apart from the stamps" is vacuous.
+    let stamped = 0;
+    for (const [rows, kind] of [[srcAfter.items, 'items'], [srcAfter.extras, 'extras']]) {
+      for (const o of (Array.isArray(rows) ? rows : [])) {
+        assert.ok(o.display && o.display.identity_id, `🔴 source ${kind} ${o.key} was not stamped`);
+        stamped += 1;
+      }
+    }
+    assert.strictEqual(stamped, (srcAfter.items || []).length + (srcAfter.extras || []).length, 'every object stamped');
+    ok(`the SOURCE is identical apart from the stamps, and all ${stamped} objects carry one`);
+  }
+
   // ── 3. IDEMPOTENT — A RE-RUN IS A NO-OP, NOT A REWRITE ─────────────────────────────────────
   {
     const again = await bootstrapIdentityStamps(db, rid);
     assert.strictEqual(again.already, true, '🔴 a re-run re-stamped a certified version');
     assert.strictEqual(again.stamped, false, '…and reported no write');
     assert.deepStrictEqual(await snapshotVersion(rid, active.versionId), after, '🔴 the re-run changed the version');
-    ok('a re-run over a certified version is a true no-op — the whole version is unchanged');
+    assert.deepStrictEqual(await snapshotSource(rid), await snapshotSource(rid), 'stable read');
+    const srcIdem = await snapshotSource(rid);
+    await bootstrapIdentityStamps(db, rid);
+    assert.deepStrictEqual(await snapshotSource(rid), srcIdem,
+      '🔴 a re-run rewrote the SOURCE — idempotence has to cover both halves of the write, or the merchant\'s draft churns on every pass');
+    ok('a re-run over a certified version is a true no-op — the whole version AND the whole source are unchanged');
   }
 
   // ── 4. IT MINTS NOTHING: AN UNREGISTERED OBJECT REFUSES ────────────────────────────────────
@@ -771,6 +821,81 @@ async function seed(rid, sha) {
       /identity_partition_carried_unknown/,
       '🔴 a stamped draft published onto an UNCERTIFIED baseline — A is empty, so the ids it carries were never certified');
     ok('C-era limitation pinned: the first post-bootstrap publish empties A, and the next refuses until D stamps versions');
+  }
+
+  // ── 🔴 A PENDING UNPUBLISHED RENAME REFUSES THE WHOLE PASS ───────────────────────────────
+  /* The cutover hazard. Unpublished ADDITIONS are harmless — no id, unidentified, they mint. But an
+     object RENAMED or REMOVED in the draft and not yet published has no counterpart under its active
+     name, so it receives no stamp — and that active id is then neither carried nor declared deleted,
+     so every subsequent publish refuses as unaccounted, with no escape before the portal deploy.
+     The pass refuses WHOLE rather than stamping the version and leaving the source behind, so that
+     "A non-empty ⇔ source stamped" holds as a fact rather than as a usual case. */
+  {
+    /* 🔴 ON x_pizza, NOT la_musa. An earlier cell retires a la_musa id, so bootstrap there refuses at
+       the LIVENESS check before it ever reaches the divergence check — a cell that never reaches the
+       guard it is named after. freshUncertifiedVersion gives a clean uncertified baseline with an
+       unstamped source, which is the pre-cutover shape this guard exists for. */
+    const ridD = 'x_pizza';
+    const v = await freshUncertifiedVersion(ridD);
+    const srcPre = await snapshotSource(ridD);
+    const verPre = await snapshotVersion(ridD, v.versionId);
+
+    // A pending rename: the draft renames one object the active version still serves.
+    const renamed = JSON.parse(JSON.stringify(srcPre));
+    const victim = renamed.items[0];
+    const oldKey = victim.key;
+    victim.key = `${oldKey}_renamed_pending`;
+    if (victim.display) victim.display.id = victim.key;
+    renamed.structure = { ...renamed.structure, item_order: renamed.structure.item_order.map((k) => (k === oldKey ? victim.key : k)) };
+    await sourceRefOf(db, ridD).set(renamed);
+
+    await assert.rejects(() => bootstrapIdentityStamps(db, ridD), /identity_bootstrap_draft_divergent/,
+      '🔴 bootstrap stamped a version whose objects the draft no longer contains — every later publish would refuse as unaccounted');
+    const after = await readActiveVersion(db, ridD);
+    assert.strictEqual(after.record.identity_certified, undefined,
+      '🔴 …and it certified the version anyway, leaving A non-empty over an unstamped source');
+    assert.deepStrictEqual(await snapshotVersion(ridD, v.versionId), verPre, '🔴 the version was touched');
+    const srcNow = await snapshotSource(ridD);
+    assert.deepStrictEqual(srcNow, renamed, '🔴 the source was touched');
+    await sourceRefOf(db, ridD).set(srcPre);   // restore for anything after
+    ok(`${ridD}: a pending unpublished rename refuses the WHOLE pass — neither the version nor the source is touched`);
+  }
+
+  // ── 🔴 THE SOURCE MOVING UNDER THE PASS REFUSES ──────────────────────────────────────────
+  /* The source is read before the transaction and re-read inside it; a merchant saving in that window
+     must abort the pass rather than have their draft enriched over. Without the revision check the
+     pass would write items/extras computed from the OLD draft straight over the new one. */
+  {
+    const ridR = 'x_pizza';
+    const v = await freshUncertifiedVersion(ridR);
+    {
+      const srcPre = await snapshotSource(ridR);
+      const verPre = await snapshotVersion(ridR, v.versionId);
+      const orig = db.runTransaction.bind(db);
+      let saved = false;
+      const racing = new Proxy(db, {
+        get(t, prop) {
+          if (prop === 'runTransaction') {
+            return async (fn, o) => {
+              if (!saved) { saved = true; await sourceRefOf(db, ridR).update({ note_from_merchant: 'saved mid-pass' }); }
+              return orig(fn, o);
+            };
+          }
+          const val = t[prop];
+          return typeof val === 'function' ? val.bind(t) : val;
+        },
+      });
+
+      await assert.rejects(() => bootstrapIdentityStamps(racing, ridR), /identity_bootstrap_source_moved/,
+        '🔴 the draft moved under the pass and it enriched over it — the merchant\'s save is gone');
+      assert.ok(saved, 'premise — the save really landed inside the window');
+      assert.deepStrictEqual(await snapshotVersion(ridR, v.versionId), verPre, '🔴 the version was certified anyway');
+      const srcNow = await snapshotSource(ridR);
+      assert.strictEqual(srcNow.note_from_merchant, 'saved mid-pass', '🔴 the merchant\'s mid-pass save was clobbered');
+      assert.ok(!(srcNow.items || []).some((o) => o && o.display && o.display.identity_id), '…and nothing was stamped');
+      await sourceRefOf(db, ridR).set(srcPre);
+      ok(`${ridR}: a draft saved between the pass's read and its transaction aborts it — nothing stamped, the save intact`);
+    }
   }
 
   FINISHED = true;

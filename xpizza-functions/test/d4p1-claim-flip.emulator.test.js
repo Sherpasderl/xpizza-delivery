@@ -172,9 +172,13 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
     ok('a draft saved while the publish was in flight aborts the flip — nothing activated, and the newer claim stands');
   }
 
-  // ── 4. 🔴 A STALE CLAIM IS REFUSED AT THE WRITE BOUNDARY, NOT MERELY BEFORE IT ────────────
-  /* C-2: the check runs inside the flip, against the pointer pair that transaction CAS-verifies. A
-     claim bound to a superseded baseline must not ride an activation through. */
+  // ── 3. A STALE CLAIM IS REFUSED BEFORE THE LEASE — A PRE-FLIGHT CELL, LABELLED AS ONE ────
+  /* 🔴 THIS DOES NOT REACH THE FLIP, and the label used to claim it did. A claim that is ALREADY
+     stale when the publish starts is refused by assertDraftPartition, before the lease and before any
+     version is written — which is the right behaviour and worth a cell, but it is the PRE-FLIGHT pass
+     doing it, not the in-transaction check. Cell 5 is the one that reaches the flip, by moving the
+     baseline between the two. Naming which guard a cell exercises is the difference between evidence
+     and a comfortable assumption. */
   {
     await ensureCertifiedBaseline();
     await sourceRefOf(db, RID).update({ deleted_ids: claimOf([REAL_ID], 'v-long-gone', 0) });
@@ -184,10 +188,10 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
       `🔴 a claim from a superseded baseline rode the activation through: ${threw && threw.message}`);
     assert.ok(await readClaim(), '…and it is left standing for the merchant to re-review');
     await sourceRefOf(db, RID).update({ deleted_ids: null });
-    ok('a claim bound to a superseded baseline is refused INSIDE the flip, against the pair that transaction verified');
+    ok('a claim bound to a superseded baseline is refused at PRE-FLIGHT, before the lease and before any version is written');
   }
 
-  // ── 5. 🔴 A MALFORMED CLAIM IS REFUSED, NOT WAVED THROUGH ─────────────────────────────────
+  // ── 4. A MALFORMED CLAIM IS REFUSED AT PRE-FLIGHT, NOT WAVED THROUGH ─────────────────────
   /* Both publish-side checks used to gate on "a non-empty array of ids", so the shapes LEAST likely
      to be honest — a string, a bare list, an object — skipped validation entirely while a well-formed
      claim was scrutinised. Any present, non-null claim is now validated. Top-level null stays the
@@ -209,7 +213,12 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
   await sourceRefOf(db, RID).update({ deleted_ids: null });
   await publishOnce();
   assert.strictEqual((await readClaim()), null, 'a cleared claim publishes normally and stays cleared');
-  ok('three malformed claim shapes refuse by name; the top-level null sentinel still publishes cleanly');
+  /* 🔴 ALSO A PRE-FLIGHT CELL. The flip carries the same malformed check, but nothing can reach it:
+     an already-malformed claim is refused here, and making one malformed later means writing the
+     source, which moves its revision and trips the draft CAS first. That branch is documented in the
+     source as defence in depth with no mutant, rather than covered by a cell that appears to exercise
+     it and does not. */
+  ok('three malformed claim shapes refuse by name AT PRE-FLIGHT; the top-level null sentinel still publishes cleanly');
 
   // ── 5. 🔴 THE TEAR C-2 EXISTS FOR: STALE ONLY AT THE WRITE BOUNDARY ───────────────────────
   /* The pre-flight pass in publishVersion validates the claim too, so a claim that is ALREADY stale

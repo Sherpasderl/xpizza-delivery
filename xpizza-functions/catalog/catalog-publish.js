@@ -226,8 +226,18 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected) {
        standing claim plus no CAS REFUSES rather than publishing and leaving the deletion to be
        replayed against the next baseline. Protected by construction, not by the caller remembering. */
     /* 🔴 ANY PRESENT, NON-NULL CLAIM IS VALIDATED HERE TOO — the same rule as the pre-flip pass.
-       Gating on a non-empty id array let a malformed claim ride the activation through unchecked,
-       which is the opposite of the intended bias. Top-level null is the cleared sentinel. */
+       Top-level null is the cleared sentinel.
+
+       🔴 WHAT THIS CHECK ACTUALLY CATCHES, STATED HONESTLY. Its STALENESS branch is load-bearing and
+       nothing else can cover it: the pointer can move between the pre-flight pass and this
+       transaction WITHOUT touching the source, so a claim valid at pre-flight can be stale here —
+       that is the tear C-2 exists for, and it has a cell only this check can satisfy.
+       Its MALFORMED branch is defence in depth and, as the code stands, unreachable: a claim that is
+       already malformed is refused at pre-flight, and making one malformed afterwards means writing
+       the source, which moves its revision, which the draft CAS a few lines above refuses first. It
+       is kept because the two branches are one validator and splitting them to drop an unreachable
+       case would be a worse trade — but no mutant can kill it, and saying so is better than carrying
+       a test that appears to. */
     const liveClaim = draftSnap && draftSnap.exists ? (draftSnap.data() || {}).deleted_ids : undefined;
     if (liveClaim !== undefined && liveClaim !== null) {
       validateDeletionClaim(liveClaim, {
