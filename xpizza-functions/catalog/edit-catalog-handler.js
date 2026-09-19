@@ -103,7 +103,13 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
      both as "no ids declared" makes every unrelated edit silently cancel the merchant's deletions —
      the same absent-versus-declared distinction the partition law exists to enforce, one layer down.
      hasOwnProperty, not truthiness, because `{ids: []}` is falsy in every way that matters here. */
-  const declared = Object.prototype.hasOwnProperty.call(next, 'deleted_ids');
+  /* 🔴 THE CLEARED SENTINEL IS NOT A DECLARATION. A withdrawn or consumed claim is stored as a
+     top-level null, and the editor loads and echoes the whole source — so a perfectly ordinary edit
+     arrives carrying `deleted_ids: null`. That is "there are no deletions", exactly like absent, and
+     it must not reach the claim machinery, where null is (correctly) malformed. This is the one
+     null-is-a-sentinel exemption, and it belongs here at the boundary rather than inside the
+     validators, which is why they treat null as the client error it otherwise is. */
+  const declared = Object.prototype.hasOwnProperty.call(next, 'deleted_ids') && next.deleted_ids !== null;
   const declaredIds = (next.deleted_ids && typeof next.deleted_ids === 'object' && !Array.isArray(next.deleted_ids))
     ? next.deleted_ids.ids
     : next.deleted_ids;

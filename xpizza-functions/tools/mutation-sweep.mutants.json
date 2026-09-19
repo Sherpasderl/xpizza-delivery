@@ -6533,7 +6533,7 @@
   ],
   "label": "🔴 ABSENT is read as EMPTY - an unrelated edit silently withdraws the merchant's deletions",
   "kills_with": "an ordinary content edit WIPED the standing deletion claim",
-  "from": "  const declared = Object.prototype.hasOwnProperty.call(next, 'deleted_ids');",
+  "from": "  const declared = Object.prototype.hasOwnProperty.call(next, 'deleted_ids') && next.deleted_ids !== null;",
   "to": "  const declared = true;"
  },
  {
