@@ -6459,6 +6459,58 @@
   "to": "  if (false) { throw new Error('unreachable'); }"
  },
  {
+  "id": "d4p1c-10",
+  "slice": "d4p1c",
+  "file": "catalog/identity-partition.js",
+  "command": [
+   "node",
+   "catalog/identity-partition.test.js"
+  ],
+  "label": "🔴 a STALE existing claim is silently rebound - an unreviewed deletion is re-blessed via an unrelated edit",
+  "kills_with": "adding a deletion on top of a claim whose base has moved",
+  "from": "  const baseStillLive = existing.base_version === live.version && existing.base_generation === live.generation;\n  if (baseStillLive) return { claim: stamp, rebound: false, cleared: false };",
+  "to": "  return { claim: stamp, rebound: false, cleared: false };"
+ },
+ {
+  "id": "d4p1c-11",
+  "slice": "d4p1c",
+  "file": "catalog/identity-partition.js",
+  "command": [
+   "node",
+   "catalog/identity-partition.test.js"
+  ],
+  "label": "🔴 the re-review ACK gate is dropped - the rebind stops being a deliberate editor act",
+  "kills_with": "adding a deletion on top of a claim whose base has moved",
+  "from": "  if (reviewed !== true) {",
+  "to": "  if (false) {"
+ },
+ {
+  "id": "d4p1c-12",
+  "slice": "d4p1c",
+  "file": "catalog/identity-partition.js",
+  "command": [
+   "node",
+   "catalog/identity-partition.test.js"
+  ],
+  "label": "🔴 a CLIENT-supplied base is adopted instead of the live pointer's - the binding becomes client-asserted",
+  "kills_with": "a client-supplied base was adopted",
+  "from": "  const stamp = { ids: [...next], base_version: live.version, base_generation: live.generation };",
+  "to": "  const stamp = { ids: [...next], base_version: arguments[0].base_version || live.version, base_generation: arguments[0].base_generation !== undefined ? arguments[0].base_generation : live.generation };"
+ },
+ {
+  "id": "d4p1c-13",
+  "slice": "d4p1c",
+  "file": "catalog/identity-partition.js",
+  "command": [
+   "node",
+   "catalog/identity-partition.test.js"
+  ],
+  "label": "🔴 persisting without the live pointer is allowed - the claim is stamped with nothing to bind it to",
+  "kills_with": "persisting without having read the live pointer",
+  "from": "  if (!live || !isId(live.version) || !Number.isInteger(live.generation) || live.generation < 0) {",
+  "to": "  if (false) {"
+ },
+ {
   "id": "pah-01",
   "slice": "pah",
   "file": "resolve-manual.js",

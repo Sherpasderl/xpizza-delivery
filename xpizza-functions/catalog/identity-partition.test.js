@@ -10,7 +10,7 @@
  * validator that repairs whatever it is given always passes.
  */
 const assert = require('assert');
-const { validatePartition, validateDeletionClaim, PartitionRefusal } = require('./identity-partition');
+const { validatePartition, validateDeletionClaim, persistDeletionClaim, PartitionRefusal } = require('./identity-partition');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -173,6 +173,54 @@ const refuses = (fn, code, label) => {
     'deleted_ids_stale_baseline', 'the same claim after a ROLLBACK that kept the version id');
   assert.deepStrictEqual(declaredAt, { activeVersionId: 'v-7', activeGeneration: 3 }, 'the claim is not mutated by validation');
   ok('a retry after a failed publish is accepted unchanged, while a real activation OR a rollback makes the same claim stale');
+}
+
+// ── 9. 🔴 THE BASE IS NEVER REBOUND AS A SIDE EFFECT OF AN UNRELATED EDIT ────────────────────
+/* The hole in a naive "re-stamp the base whenever deleted_ids changes" rule, and it launders exactly
+   the replay the binding exists to stop:
+     1. at v1@g1 the merchant declares delete X; the publish fails, so the claim survives at v1@g1;
+     2. another publish lands and the live menu becomes v2@g2;
+     3. the merchant, on a rebased draft, now also deletes Y — deleted_ids changed, so a naive rule
+        stamps the WHOLE set {X, Y} at v2@g2, and X's deletion has been re-blessed against a menu
+        nobody re-reviewed it against.
+   Per §0 the server cannot authenticate that a human looked. What the acknowledgment buys is that the
+   rebind becomes a deliberate editor act instead of a by-product of editing something else — the same
+   line as an explicit delete versus one inferred from absence. */
+{
+  const live = { version: 'v2', generation: 2 };
+  const staleClaim = { ids: ['X'], base_version: 'v1', base_generation: 1 };
+
+  // (a) the scenario: adding Y to a claim whose base has moved, with no acknowledgment.
+  const e = refuses(() => persistDeletionClaim({ existing: staleClaim, ids: ['X', 'Y'], live }),
+    'deleted_ids_stale_baseline', 'adding a deletion on top of a claim whose base has moved');
+  assert.deepStrictEqual(e.existing_ids, ['X'], 'the refusal reports what was already claimed, so the editor can re-show it');
+  assert.deepStrictEqual(staleClaim, { ids: ['X'], base_version: 'v1', base_generation: 1 },
+    '🔴 the stored claim must be untouched by a refused persist');
+
+  // (b) the same edit WITH the acknowledgment: accepted, and the whole set is stamped at the live pair.
+  const acked = persistDeletionClaim({ existing: staleClaim, ids: ['X', 'Y'], live, reviewed: true });
+  assert.deepStrictEqual(acked.claim, { ids: ['X', 'Y'], base_version: 'v2', base_generation: 2 },
+    'the acknowledged rebind stamps the whole set at the live baseline');
+  assert.strictEqual(acked.rebound, true, 'and reports that it WAS a rebind, so it can be logged as one');
+
+  // (c) 🔴 SENSITIVITY — ordinary editing must stay frictionless, or the guard gets removed.
+  const ordinary = persistDeletionClaim({ existing: { ids: ['X'], base_version: 'v2', base_generation: 2 }, ids: ['X', 'Y'], live });
+  assert.deepStrictEqual(ordinary.claim.ids, ['X', 'Y'], 'adding a deletion while the base is still live needs no acknowledgment');
+  assert.strictEqual(ordinary.rebound, false, 'and is not a rebind');
+  const fresh = persistDeletionClaim({ existing: null, ids: ['X'], live });
+  assert.deepStrictEqual(fresh.claim, { ids: ['X'], base_version: 'v2', base_generation: 2 }, 'a first claim is stamped normally');
+
+  // (d) withdrawing every deletion is always allowed — it destroys nothing, so there is nothing to re-review.
+  const cleared = persistDeletionClaim({ existing: staleClaim, ids: [], live });
+  assert.deepStrictEqual(cleared, { claim: null, rebound: false, cleared: true }, 'clearing a stale claim is allowed and removes it');
+
+  // 🔴 THE BASE IS WRITTEN, NOT VERIFIED: a client-supplied base is ignored outright, not compared.
+  const lying = persistDeletionClaim({ existing: null, ids: ['X'], live, base_version: 'CLIENTLIES', base_generation: 99 });
+  assert.deepStrictEqual(lying.claim, { ids: ['X'], base_version: 'v2', base_generation: 2 },
+    '🔴 a client-supplied base was adopted — the binding must come from the live pointer alone');
+  refuses(() => persistDeletionClaim({ existing: null, ids: ['X'], live: null }),
+    'deleted_ids_no_baseline', 'persisting without having read the live pointer');
+  ok('a stale claim refuses a silent rebind and is untouched; an acknowledged one restamps; ordinary edits and clearing stay free');
 }
 
 FINISHED = true;

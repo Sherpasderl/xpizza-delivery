@@ -199,4 +199,57 @@ function validateDeletionClaim(claim, { activeVersionId, activeGeneration } = {}
   return { ids: ids.slice(), declared: true };
 }
 
-module.exports = { validatePartition, validateDeletionClaim, PartitionRefusal };
+/* ── PERSISTING A DELETION CLAIM — THE SERVER OWNS THE BASE, AND WILL NOT REBIND SILENTLY ──────
+   🔴 THE BASE IS WRITTEN, NOT VERIFIED. The caller may not supply base_version/base_generation at all;
+   they come from the live pointer, read in the same transaction as the source-revision CAS so the pair
+   cannot tear. A client-supplied base is ignored outright rather than compared — comparing invites the
+   shape where an equal value is "accepted", and the next person to touch it relaxes the comparison.
+
+   🔴 AND RE-STAMPING THE BASE IS NOT A SIDE EFFECT OF AN UNRELATED EDIT. This is the hole that makes a
+   naive "re-stamp whenever deleted_ids changes" rule unsafe, and it laundered a replay through an
+   ordinary edit:
+     1. at v1@g1 the merchant declares delete X; the publish fails, so the claim survives at v1@g1;
+     2. another publish lands and the live menu becomes v2@g2;
+     3. the merchant, on a rebased draft, now also deletes Y. deleted_ids changed, so a naive rule
+        stamps the WHOLE set {X, Y} at v2@g2 — and X's deletion, decided about a menu that is no
+        longer live, has just been re-blessed without anyone re-reviewing it.
+   So an EXISTING claim whose base has moved refuses, and the only way past is an explicit
+   acknowledgment that the editor re-showed the merchant the full list. Per §0 the server cannot
+   authenticate that a human actually looked; what the acknowledgment buys is that the rebind is a
+   deliberate editor act rather than a by-product of editing something else — exactly the line between
+   an explicit delete and one inferred from absence.
+
+   Ordinary editing stays frictionless: a fresh claim, or an existing one whose base is still live,
+   needs no acknowledgment. And CLEARING the list is always allowed — withdrawing a deletion destroys
+   nothing, so there is nothing to re-review. */
+function persistDeletionClaim({ existing = null, ids, live, reviewed = false } = {}) {
+  if (!live || !isId(live.version) || !Number.isInteger(live.generation) || live.generation < 0) {
+    throw new PartitionRefusal('deleted_ids_no_baseline',
+      'the live pointer pair must be read before a deletion claim can be persisted');
+  }
+  if (ids !== undefined && ids !== null && !Array.isArray(ids)) {
+    throw new PartitionRefusal('deleted_ids_malformed', 'the deletion claim\'s ids must be an array');
+  }
+  const next = uniqueOrRefuse(asArray(ids), 'identity_partition_duplicate_deleted', 'deleted_ids');
+
+  // Withdrawing every deletion: always allowed, and it removes the claim rather than storing an empty one.
+  if (next.size === 0) return { claim: null, rebound: false, cleared: true };
+
+  const stamp = { ids: [...next], base_version: live.version, base_generation: live.generation };
+
+  const hadClaim = existing && typeof existing === 'object' && !Array.isArray(existing)
+    && Array.isArray(existing.ids) && existing.ids.length > 0;
+  if (!hadClaim) return { claim: stamp, rebound: false, cleared: false };
+
+  const baseStillLive = existing.base_version === live.version && existing.base_generation === live.generation;
+  if (baseStillLive) return { claim: stamp, rebound: false, cleared: false };
+
+  if (reviewed !== true) {
+    throw new PartitionRefusal('deleted_ids_stale_baseline',
+      `an existing deletion claim was declared against ${existing.base_version}@${existing.base_generation} but ${live.version}@${live.generation} is live; re-show the full deletion list and resend with the acknowledgment`,
+      { declared_against: `${existing.base_version}@${existing.base_generation}`, live: `${live.version}@${live.generation}`, existing_ids: existing.ids.slice() });
+  }
+  return { claim: stamp, rebound: true, cleared: false };
+}
+
+module.exports = { validatePartition, validateDeletionClaim, persistDeletionClaim, PartitionRefusal };
