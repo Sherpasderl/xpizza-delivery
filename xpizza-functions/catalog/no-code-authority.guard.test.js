@@ -138,7 +138,14 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
   // These two predate this phase and are NOT adopted by it. They need an emulator script that nobody
   // can verify from here, so they are recorded rather than quietly ignored — the list may shrink, never
   // grow, which is what stops "unwired" from becoming a habit.
-  const KNOWN_UNWIRED = ['test/claim-order.emulator.test.js', 'test/claim-prefill.emulator.test.js'];
+  /* 🔴 EMPTIED, NOT RELAXED. Both entries — claim-order and claim-prefill — are wired now: they have
+     npm scripts, they run in the aggregate, and every emulator suite on disk is reachable
+     (tools/emulator-ports.guard.test.js cell 11 asserts that from the filesystem, so the list cannot
+     regrow unnoticed). claim-order turned out to be a MONEY-PATH suite that had never executed at
+     all: it requires otp-lib, which fails closed without OTP_SALT, so it threw before its first cell
+     for anyone following its own header. Fourteen cells run now. This guard is what forced the
+     cleanup — it refuses to let an entry outlive its cause, which is the rule the list existed for. */
+  const KNOWN_UNWIRED = [];
   const missing = [];
   const walk = (dir) => {
     for (const name of readdirSync(dir)) {

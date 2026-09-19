@@ -5,6 +5,8 @@
  * Proves: valid token↔order → {name, phone}; unknown/mismatched/missing/path-injection token → 403 (no phone);
  * token valid but order gone → 404. The tracking_token is the capability; the .order_id STRICT bind is the gate.
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
 const assert = require('assert');
 const { initializeTestEnvironment } = require('@firebase/rules-unit-testing');
 const { claimPrefillCore } = require('../claim-prefill');

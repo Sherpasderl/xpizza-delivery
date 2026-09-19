@@ -71,15 +71,33 @@ const SERVICE_LISTENERS = {
 // Host vars the Admin SDK honours. Cleared for every service we are NOT starting, so an inherited
 // value from a parent shell can never point a suite at a foreign emulator (see CLEARED_ENV below).
 const HOST_ENV = {
-  firestore: ['FIRESTORE_EMULATOR_HOST'],
+  /* Verified by printing the child's environment under the installed CLI, not from memory. Firestore
+     exports a second ALIAS the Admin SDK also honours; missing it meant a foreign Firestore could
+     still be reached through FIREBASE_FIRESTORE_EMULATOR_ADDRESS after the obvious var was cleared. */
+  firestore: ['FIRESTORE_EMULATOR_HOST', 'FIREBASE_FIRESTORE_EMULATOR_ADDRESS'],
   database: ['FIREBASE_DATABASE_EMULATOR_HOST'],
-  /* Verified by printing the child's environment under the installed CLI, not from memory: a
-     functions run exports CLOUD_EVENTARC_EMULATOR_HOST and CLOUD_TASKS_EMULATOR_HOST, and NOTHING
-     named FUNCTIONS_EMULATOR_HOST. Guessing those names wrong would mean either clearing a var the
-     child needs, or keeping an inherited one we meant to clear. */
   functions: ['CLOUD_EVENTARC_EMULATOR_HOST', 'CLOUD_TASKS_EMULATOR_HOST'],
 };
-const ALL_HOST_ENV = [...new Set([].concat(...Object.values(HOST_ENV), ['FIRESTORE_EMULATOR_HOST', 'FIREBASE_DATABASE_EMULATOR_HOST', 'FUNCTIONS_EMULATOR_HOST', 'FIREBASE_AUTH_EMULATOR_HOST', 'FIREBASE_STORAGE_EMULATOR_HOST', 'PUBSUB_EMULATOR_HOST', 'CLOUD_EVENTARC_EMULATOR_HOST', 'CLOUD_TASKS_EMULATOR_HOST', 'FIREBASE_EMULATOR_HUB']))];
+
+/* 🔴 EVERY HOST VAR THE INSTALLED CLI CAN EXPORT, not the ones that came to mind. My first list had
+   five holes — the Firestore alias above, both Storage spellings and all three Data Connect
+   spellings — and the Admin SDK honours the Storage and Data Connect aliases, so an inherited value
+   for a service we are not starting still pointed at a foreign emulator.
+   Scraped from firebase-tools 15.16.0's own emulator sources and pinned here rather than read at
+   runtime: coupling the runner to CLI internals would break every suite the day the layout changes.
+   Cell 15 of tools/emulator-ports.guard.test.js re-scrapes the INSTALLED CLI and fails if it can
+   export a host var this list does not cover, so the list cannot drift silently.
+   Only *_HOST / *_ADDRESS and the hub belong here. START_LOGGING_EMULATOR and
+   FUNCTIONS_EMULATOR_PARALLEL are input toggles, not addresses — clearing those would change
+   behaviour rather than prevent an adoption. */
+const ALL_HOST_ENV = [
+  'CLOUD_EVENTARC_EMULATOR_HOST', 'CLOUD_TASKS_EMULATOR_HOST',
+  'DATA_CONNECT_EMULATOR_HOST', 'FIREBASE_DATACONNECT_EMULATOR_HOST', 'FIREBASE_DATA_CONNECT_EMULATOR_HOST',
+  'FIREBASE_AUTH_EMULATOR_HOST', 'FIREBASE_DATABASE_EMULATOR_HOST', 'FIREBASE_EMULATOR_HUB',
+  'FIREBASE_FIRESTORE_EMULATOR_ADDRESS', 'FIRESTORE_EMULATOR_HOST',
+  'FIREBASE_LOGGING_EMULATOR_HOST', 'FIREBASE_STORAGE_EMULATOR_HOST', 'STORAGE_EMULATOR_HOST',
+  'PUBSUB_EMULATOR_HOST', 'FUNCTIONS_EMULATOR_HOST',
+];
 
 /* Exported so the guard can test it without launching anything: the clearing is the load-bearing
    half of the inherited-host-var fix, and a cell that needed a live emulator to check it would not
@@ -88,6 +106,23 @@ function childEnv(services, parentEnv) {
   const env = { ...parentEnv };
   const keep = new Set([].concat(...services.map((s) => HOST_ENV[s] || [])));
   for (const v of ALL_HOST_ENV) if (!keep.has(v)) delete env[v];
+
+  /* 🔴 THE ONE LISTENER WE COULD NOT PIN — REMOVED RATHER THAN DOCUMENTED. Starting `functions` makes
+     the CLI discover the source by booting a temporary admin server: basePort = 8000 + randomInt(0,
+     1000), then portfinder scans UPWARD from there (lib/deploy/functions/runtimes/node/index.js:190).
+     That range covers our own firestore 8080-8470 and websocket 8500-8890 bands, so a discovery
+     server can take a port another checkout is about to need — and I watched it happen: a run without
+     this opened a listener on *:8015, on ALL interfaces, not even loopback.
+     Every consequence of that is loud (a waiting checkout's preflight refuses with exit 3, or its
+     emulator fails to bind; no suite can adopt a discovery server, since the addresses come from our
+     generated config) — but "loud in every direction" is a worse answer than "not there at all".
+     FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH=true takes the CLI's manifest branch on the same
+     function: it writes functions.yaml to a temp dir and opens NO PORT. Verified: test:quality-runner
+     passes its 17 checks this way, and nothing appears in 8000-8999 during the run.
+     Only set when unset — an operator who pointed it at a real path meant it. */
+  if (services.includes('functions') && !env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH) {
+    env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH = 'true';
+  }
   return env;
 }
 

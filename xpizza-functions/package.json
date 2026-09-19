@@ -60,6 +60,8 @@
     "logs": "firebase functions:log",
     "vapid": "npx web-push generate-vapid-keys",
     "test:cancel-order": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/cancel-order.emulator.test.js\"",
+    "test:claim-order": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/claim-order.emulator.test.js\"",
+    "test:claim-prefill": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/claim-prefill.emulator.test.js\"",
     "test:user-profiles-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/user-profiles-rules.emulator.test.js\"",
     "test:rewards-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/rewards-rules.emulator.test.js\"",
     "test:staff-push-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/staff-push-rules.emulator.test.js\"",

@@ -5,6 +5,15 @@
  * credit; phone-mismatch / token-mismatch / cancelled / tombstoned / path-injection → 403; bind-only then
  * completion → one credit; cancel-after-claim → reversed.
  */
+require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
+
+/* 🔴 otp-lib FAILS CLOSED AT REQUIRE TIME without a >=32-char OTP_SALT, and this suite requires it
+   (phoneHash) two lines below. So it threw before its first cell for anyone who followed its own
+   header — which nobody did, because no npm script ran it. A money-path suite (retro-credit of a
+   guest order's loyalty earn) that has never once executed. Same convention as request-otp.test.js
+   and verify-otp.test.js: a test-only salt, set before the require. */
+process.env.OTP_SALT = process.env.OTP_SALT || 'y'.repeat(40);
+
 const assert = require('assert');
 const { initializeTestEnvironment } = require('@firebase/rules-unit-testing');
 const { claimOrderCore } = require('../claim-order');

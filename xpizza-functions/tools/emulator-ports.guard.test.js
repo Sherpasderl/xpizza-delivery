@@ -213,23 +213,31 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     ok('the generated config is excluded from the deploy archive by functions.ignore, not only by .gitignore');
   }
 
-  // ── 11. EVERY EMULATOR SUITE REFUSES WHEN ITS HOST VAR IS UNSET ─────────────────────────────
-  /* 🔴 "every suite refuses if the host var is unset" was simply false: catalog-rules had a bespoke
-     check, catalog-parity and public-menu had none and seeded Admin Firestore regardless. An unset
-     var means the Admin SDK targets real infrastructure; an INHERITED one means a foreign emulator,
-     green. Same class as the hardcoded port — one suite remembered and nothing said so. */
+  // ── 11. EVERY EMULATOR SUITE ON DISK REFUSES WHEN ITS HOST VAR IS UNSET ────────────────────
+  /* 🔴 ENUMERATED FROM DISK, NOT FROM package.json. This cell used to read the scripts — so it could
+     only see suites something already ran, and a suite with NO script was invisible to the very check
+     meant to catch unguarded suites. There were two: claim-order and claim-prefill. claim-order is a
+     MONEY-PATH suite (retro-credit of a guest order's loyalty earn) that threw at require time for
+     anyone following its own header, and had never executed. A suite nobody runs is exactly the one
+     that needs finding, so the list comes from the filesystem. */
   {
-    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-    const files = new Set();
-    for (const v of Object.values(pkg.scripts || {})) {
-      if (!/emulator-run\.js/.test(v)) continue;
-      for (const m of v.matchAll(/test\/([A-Za-z0-9._-]+\.js)/g)) files.add(m[1]);
-    }
-    assert.ok(files.size >= 40, `premise — found the emulator suites (${files.size})`);
-    const unguarded = [...files].filter((f) => !fs.readFileSync(path.join(ROOT, 'test', f), 'utf8').includes("_emulator-required"));
+    const files = fs.readdirSync(path.join(ROOT, 'test')).filter((f) => f.endsWith('.emulator.test.js'));
+    assert.ok(files.length >= 43, `premise — the emulator suites are on disk (${files.length})`);
+    const unguarded = files.filter((f) => !fs.readFileSync(path.join(ROOT, 'test', f), 'utf8').includes("_emulator-required"));
     assert.deepStrictEqual(unguarded, [],
       '🔴 an emulator suite does not refuse when its host var is unset — it would run against real infrastructure, or an inherited foreign emulator');
-    ok(`all ${files.size} emulator suites refuse when their host var is unset`);
+
+    // …and every one of them is reachable by a script, or nothing will ever run it.
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    const named = new Set();
+    for (const v of Object.values(pkg.scripts || {})) {
+      if (!/emulator-run\.js/.test(v)) continue;
+      for (const m of String(v).matchAll(/test\/([A-Za-z0-9._-]+\.js)/g)) named.add(m[1]);
+    }
+    const orphans = files.filter((f) => !named.has(f));
+    assert.deepStrictEqual(orphans, [],
+      '🔴 an emulator suite has no script — the aggregate enumerates scripts, so nothing runs it and its failures are invisible');
+    ok(`all ${files.length} emulator suites on disk refuse when their host var is unset, and each is reachable by a script`);
   }
 
   // ── 12. 🔴 AN INHERITED HOST VAR FOR AN UNSERVED SERVICE IS CLEARED, NOT PASSED ON ──────────
@@ -299,6 +307,59 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
         `🔴 KNOWN_RED["${name}"] has no substantive reason — an excuse without one is a silent skip`);
     }
     ok(`fail / excused / stale-excuse / nothing-measured each decided correctly; all ${Object.keys(KNOWN_RED).length} KNOWN_RED entries carry a reason`);
+  }
+
+  // ── 15. THE CLEARED-VAR LIST COVERS WHAT THE INSTALLED CLI CAN ACTUALLY EXPORT ─────────────
+  /* 🔴 MY FIRST LIST HAD FIVE HOLES — the Firestore ADDRESS alias, both Storage spellings and all
+     three Data Connect spellings — and the Admin SDK honours the Storage and Data Connect aliases,
+     so an inherited value for an unserved service still reached a foreign emulator. A list typed from
+     memory drifts the moment the CLI adds a service, so this re-derives it from the INSTALLED CLI and
+     fails on anything uncovered. Pinned in the runner rather than read at runtime: coupling the
+     runner to CLI internals would break every suite the day that layout changes. */
+  {
+    let cliDir = null;
+    for (const d of ['/usr/local/lib/node_modules/firebase-tools', path.join(execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim(), 'firebase-tools')]) {
+      if (fs.existsSync(path.join(d, 'lib', 'emulator'))) { cliDir = d; break; }
+    }
+    if (!cliDir) {
+      // Loud, not silent: the check did not run, and the output says so rather than implying a pass.
+      console.log('  ⚠ 15 SKIPPED — firebase-tools not found on this machine, so the CLI env list could not be re-derived');
+    } else {
+      const seen = new Set();
+      const walk = (dir) => {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+          const fp = path.join(dir, e.name);
+          if (e.isDirectory()) { walk(fp); continue; }
+          if (!e.name.endsWith('.js')) continue;
+          for (const m of fs.readFileSync(fp, 'utf8').matchAll(/["'`]([A-Z][A-Z0-9_]*(?:_HOST|_ADDRESS))["'`]/g)) seen.add(m[1]);
+        }
+      };
+      walk(path.join(cliDir, 'lib', 'emulator'));
+      const relevant = [...seen].filter((v) => /EMULATOR/.test(v));
+      const uncovered = relevant.filter((v) => !ALL_HOST_ENV.includes(v));
+      assert.deepStrictEqual(uncovered, [],
+        `🔴 firebase-tools ${require(path.join(cliDir, 'package.json')).version} can export host vars this runner never clears — an inherited one points a suite at a foreign emulator`);
+      ok(`the cleared-var list covers all ${relevant.length} emulator host vars the installed CLI can export`);
+    }
+  }
+
+  // ── 16. 🔴 THE FUNCTIONS DISCOVERY SERVER OPENS NO PORT ─────────────────────────────────────
+  /* The CLI discovers functions by booting a temporary admin server on 8000 + randomInt(0,1000) and
+     scanning upward — a range covering our firestore 8080-8470 and websocket 8500-8890 bands, on ALL
+     interfaces (observed: *:8015). It is the one listener that cannot be pinned, so instead it is not
+     started: FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH=true takes the CLI's manifest branch. Without
+     this the band table would be quietly false for every functions run. */
+  {
+    const fns = childEnv(['functions'], { PATH: '/usr/bin' });
+    assert.strictEqual(fns.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, 'true',
+      '🔴 a functions run would boot the unpinnable discovery server into our own port bands');
+    const dbOnly = childEnv(['database'], { PATH: '/usr/bin' });
+    assert.strictEqual(dbOnly.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, undefined,
+      'runs that start no functions are left alone');
+    const operator = childEnv(['functions'], { PATH: '/usr/bin', FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH: '/some/real/path' });
+    assert.strictEqual(operator.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, '/some/real/path',
+      'an operator who set it deliberately is not overridden');
+    ok('a functions run discovers via manifest and opens no port; a deliberate operator value is preserved');
   }
 
   console.log(`emulator-ports guard: OK (${n})`);
