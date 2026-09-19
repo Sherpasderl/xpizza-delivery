@@ -6244,10 +6244,14 @@
    "run",
    "test:d4p1-bootstrap"
   ],
-  "label": "🔴 liveness+uniqueness are NOT re-checked in the stamping tx - an id retired mid-pass is still certified",
-  "kills_with": "an id retired after the resolve was still stamped",
+  "label": "🔴 liveness+uniqueness are NOT re-checked inside the stamping tx - a mid-pass retirement is stamped",
+  "kills_with": [
+   "an id retired after the resolve was still stamped",
+   "an id retired in place — reverse row untouched and still agreeing — was stamped"
+  ],
   "from": "        assertSoleClaimant(rid, kind, o.key, o.canonical_id, byKey);",
-  "to": "        void byKey;"
+  "to": "        void byKey;",
+  "why": "guarded in two cells, and which fires first is ordering, not meaning — the documented array case. Cell 15 retires through retireIdentity, which also deletes the reverse row, so removing this check makes that cell get the adjacent key-row error instead of the one it expects. Cell 21 isolates the property properly: the id is retired IN PLACE with its reverse row left naming it, so the row exists and agrees and the in-tx live-claimant query is the only thing that can notice. Listing both keeps the check honest in both directions — it still fails if the mutant starts dying somewhere unrelated, and does not raise a false alarm when one of two real guards runs first."
  },
  {
   "id": "d4p1b-14",
@@ -6301,10 +6305,11 @@
    "run",
    "test:d4p1-bootstrap"
   ],
-  "label": "🔴 a MISSING reverse row at write time is accepted - the version certifies an id nothing names",
+  "label": "🔴 the MISSING-reverse-row branch is removed - the refusal loses its specific diagnosis (the mismatch check still refuses)",
   "kills_with": "the reverse row was GONE at the moment of the write",
   "from": "  if (keyRowId === undefined || keyRowId === null || keyRowId === '') {\n    throw new Error(`identity_bootstrap_key_row_missing: ${rid}/${kind}/${key} — the reverse row is gone at the moment of the write`);\n  }",
-  "to": "  if (false) { throw new Error('unreachable'); }"
+  "to": "  if (false) { throw new Error('unreachable'); }",
+  "why": "honest scope: removing this branch does NOT let an unsafe stamp through. With the row absent, keyRowId is undefined and the very next comparison (undefined !== claimantId) refuses anyway — so the branch is a DIAGNOSIS refinement, not an extra safety guarantee, and it earns its place by telling an operator 'the row is gone' instead of 'the row names undefined'. The mutant dies because cell 20 asserts that specific code, which is exactly what is being defended. Its kills_with is cell 20's own assertion message, printed when assert.rejects gets the adjacent error instead of the expected one."
  },
  {
   "id": "d4p1b-19",

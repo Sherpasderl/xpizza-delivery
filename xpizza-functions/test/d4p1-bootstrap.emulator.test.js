@@ -512,7 +512,7 @@ async function seed(rid, sha) {
         return orig(fn, o);
       },
     };
-    await assert.rejects(() => bootstrapIdentityStamps(racing, rid15), /identity_bootstrap_id_not_live|identity_bootstrap_ambiguous/,
+    await assert.rejects(() => bootstrapIdentityStamps(racing, rid15), /identity_bootstrap_id_not_live/,
       '🔴 an id retired after the resolve was still stamped as a certified identity');
     assert.ok(retired, 'premise — the retirement really landed inside the window');
     assert.deepStrictEqual(await snapshotVersion(rid15, v.versionId), before, '🔴 …and nothing was stamped');
@@ -660,6 +660,45 @@ async function seed(rid, sha) {
     assert.deepStrictEqual(await snapshotVersion(rid20, v.versionId), before, '🔴 …and it stamped nothing');
     await keysCol.doc(enc).set(saved);
     ok(`${rid20}: a reverse row DELETED between the resolve and the write refuses — absent is a refusal, not silence`);
+  }
+
+  // ── 21. 🔴 AN ID RETIRED WITHOUT ITS REVERSE ROW BEING REMOVED ────────────────────────────
+  /* Cell 15 retires through retireIdentity, which also DELETES keys/{name} — so the key-row check
+     catches that case and the in-tx claimant check is never the guard that refuses. This isolates it:
+     the id is marked retired IN PLACE and its reverse row is left exactly as it was, so the row still
+     names it, the row still agrees, and the ONLY thing that can notice is the live-claimant query
+     inside the transaction. That state is not contrived — anything that retires a row without
+     completing its reverse-row cleanup leaves precisely this, and it is the shape where a version
+     would otherwise certify a retired id whose paperwork still looks right. */
+  {
+    const rid21 = 'x_pizza';
+    const v = await freshUncertifiedVersion(rid21);
+    const before = await snapshotVersion(rid21, v.versionId);
+    const name = v.dishes[0].data.key;
+    const enc = Buffer.from(String(name), 'utf8').toString('base64url');
+    const keysCol = db.collection('restaurants').doc(rid21).collection('identity').doc('dish').collection('keys');
+    const id = (await keysCol.doc(enc).get()).data().canonical_id;
+    const idRef = idsColOf(db, rid21, 'dish').doc(id);
+    const idBefore = (await idRef.get()).data();
+
+    const orig = db.runTransaction.bind(db);
+    let retired = false;
+    const racing = {
+      collection: (c) => db.collection(c),
+      runTransaction: async (fn, o) => {
+        // Retired in place; the reverse row is deliberately LEFT, so it still names this id.
+        if (!retired) { retired = true; await idRef.set({ ...idBefore, status: 'retired', retired_at: 'x' }); }
+        return orig(fn, o);
+      },
+    };
+    await assert.rejects(() => bootstrapIdentityStamps(racing, rid21), /identity_bootstrap_id_not_live/,
+      '🔴 an id retired in place — reverse row untouched and still agreeing — was stamped as a certified identity; only the in-tx claimant query can see this');
+    assert.ok(retired, 'premise — the retirement landed inside the window');
+    const rowAfter = await keysCol.doc(enc).get();
+    assert.strictEqual((rowAfter.data() || {}).canonical_id, id, 'premise — the reverse row was left intact, so the key-row check could NOT be what refused');
+    assert.deepStrictEqual(await snapshotVersion(rid21, v.versionId), before, '🔴 …and it stamped nothing');
+    await idRef.set(idBefore);
+    ok(`${rid21}: an id retired WITHOUT its reverse row being cleaned up refuses — isolating the in-tx claimant query as the only guard that can see it`);
   }
 
   FINISHED = true;
