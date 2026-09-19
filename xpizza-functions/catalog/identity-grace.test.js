@@ -571,6 +571,14 @@ const withIds = (rid, ids) => {
       assert.strictEqual((await keysCol(db, rid, 'dish').doc(enc('dimsum_01')).get()).exists, false,
         '🔴 THE SWEEP RESURRECTED A RETIRED ID — the next ensureIdentity would hand it back out via the key fast path');
       assert.strictEqual(r.repaired, 0, '…and it reported no repair, because none was legitimate');
+      /* 🔴 AND IT IS A SKIP, NOT A CONFLICT. The claimant-set re-read also refuses this (a retired id
+         leaves the live set empty), so "the row was not resurrected" no longer distinguishes the
+         status check from its absence — which is how this stopped being observable when that guard
+         landed. What still distinguishes them is the REPORT: retirement is a routine lifecycle event
+         with nothing to repair, while a conflict is a corruption someone is expected to come and look
+         at. Filing every retirement as a conflict is how a real conflict stops being believed. */
+      assert.strictEqual(r.conflicts, 0,
+        '🔴 a RETIRED claimant was filed as a CONFLICT — retirement is routine, and a channel that cries corruption at it gets ignored');
     }
     // (b) a conflict whose two claimants straddle a PAGE boundary is still a conflict.
     {
@@ -596,6 +604,78 @@ const withIds = (rid, ids) => {
       assert.ok(a.canonical_id, 'premise — a real id did exist to overwrite it with');
     }
     ok('the sweep refuses a retired claimant, sees conflicts across page boundaries, and only ever fills a MISSING row');
+  }
+
+  // ── 16. 🔴 A REJECTED READ SETTLES THE BATCH TOO — THE ONE EXIT THAT DID NOT ───────────────
+  /* The timeout branch made the batch inert; a worker whose read REJECTS does not go through it. The
+     rejection propagates through Promise.all and the race straight to the outer catch, which used to
+     leave `settled` false and the timer running — so the siblings carried on recording into the map
+     the caller had already been handed, populating the cache, and taking further queued reads. Same
+     late-work leak, reached by the exit nobody remembered. */
+  {
+    _resetResolveCache();
+    const rid = 'x_pizza';
+    const db = memFirestore();
+    await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora' });
+    const real = (await keysCol(db, rid, 'dish').doc(enc('Carnivora')).get()).data().canonical_id;
+
+    let reads = 0;
+    const BOOM = 'BOOMBOOMBO';
+    const SIBLING_MS = 60;
+    const flaky = {
+      collection: (c) => {
+        const wrap = (o) => ({
+          doc: (d) => {
+            const inner = o.doc(d);
+            return {
+              collection: (c2) => wrap(inner.collection(c2)),
+              get: () => {
+                reads += 1;
+                if (d === BOOM) return Promise.reject(new Error('firestore: read rejected'));
+                return new Promise((res) => setTimeout(async () => res(await inner.get()), SIBLING_MS));
+              },
+            };
+          },
+        });
+        return wrap(db.collection(c));
+      },
+    };
+
+    /* The rejecting id goes FIRST so the batch dies while its siblings are still in flight and more
+       work is still queued — a rejection that lands after everything else settles proves nothing. */
+    const ids = [BOOM, real, ...Array.from({ length: 10 }, (_, i) => `RJX${String(i).padStart(7, '0')}`)];
+    const r = await resolveAcrossKinds(flaky, rid, [{ kind: 'dish', ids }], { timeoutMs: 5000, concurrency: 2 });
+    const readsAtSettle = reads;
+    assert.strictEqual(r.incomplete, true, 'a rejected read makes the order INCOMPLETE');
+    assert.ok(readsAtSettle < ids.length, `premise — the batch died with work still queued (${readsAtSettle} of ${ids.length})`);
+    const handedOver = JSON.stringify([...r.byKind.get('dish').entries()].sort());
+
+    await new Promise((res) => setTimeout(res, SIBLING_MS * 4));      // let every abandoned sibling land
+
+    assert.strictEqual(reads, readsAtSettle,
+      `🔴 ${reads - readsAtSettle} further reads were issued after a REJECTION settled the batch — siblings kept draining the queue`);
+    assert.strictEqual(JSON.stringify([...r.byKind.get('dish').entries()].sort()), handedOver,
+      '🔴 a sibling recorded into the result AFTER the rejection — the caller was handed a map that then changed');
+
+    /* And nothing of theirs reached the cache: the next request must read the registry rather than be
+       served an answer produced by a read the batch had already abandoned. */
+    let secondReads = 0;
+    const counting = {
+      collection: (c) => {
+        const wrap = (o) => ({
+          doc: (d) => {
+            const inner = o.doc(d);
+            return { collection: (c2) => wrap(inner.collection(c2)), get: async () => { secondReads += 1; return inner.get(); } };
+          },
+        });
+        return wrap(db.collection(c));
+      },
+    };
+    const again = await resolveAcrossKinds(counting, rid, [{ kind: 'dish', ids: [real] }]);
+    assert.strictEqual(secondReads, 1,
+      '🔴 the next request was served a CACHE entry written by a sibling of a rejected batch — with ZERO reads of its own');
+    assert.strictEqual(again.byKind.get('dish').get(real).outcome, 'resolved', 'non-vacuity: the fresh read does resolve');
+    ok(`a REJECTED read settles the batch — ${readsAtSettle} reads issued, none after, nothing recorded and nothing cached`);
   }
 
   FINISHED = true;

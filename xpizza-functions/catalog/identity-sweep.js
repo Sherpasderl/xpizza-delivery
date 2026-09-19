@@ -72,7 +72,7 @@ async function sweepIdentityIntegrity(fs, rid, kind, { pageSize = 500, limit = n
     const keyRef = keysColOf(fs, rid, kind).doc(encodeKey(legacyKey));
     const idRef = idsColOf(fs, rid, kind).doc(canonicalId);
     try {
-      const repaired = await fs.runTransaction(async (tx) => {
+      const verdict = await fs.runTransaction(async (tx) => {
         /* 🔴 RE-READ BOTH SIDES, NOT JUST THE ROW BEING WRITTEN. The scan is a snapshot and this
            transaction runs later; between them the claimant can be retired, re-keyed, or joined by a
            second live id. Checking only the reverse row meant the sweep would faithfully restore a
@@ -80,24 +80,40 @@ async function sweepIdentityIntegrity(fs, rid, kind, { pageSize = 500, limit = n
            fast path, the very next ensureIdentity would hand that reserved id back out as if it were
            current. An integrity job that can resurrect a retired identity is worse than no integrity
            job, so the claimant must still be exactly what the scan saw. */
-        const [curKey, curId] = await Promise.all([tx.get(keyRef), tx.get(idRef)]);
+        const liveQ = idsColOf(fs, rid, kind).where('legacy_key', '==', legacyKey).where('status', '==', STATUS_LIVE);
+        const [curKey, curId, claimants] = await Promise.all([tx.get(keyRef), tx.get(idRef), tx.get(liveQ)]);
 
         /* MISSING ROW ONLY. The old guard skipped a row that already held a canonical_id, which reads
            as "don't clobber a healthy row" but leaves the complement: a row that EXISTS with a falsy
            or absent canonical_id was fair game to overwrite. Repairing is for a row that is not there;
            a row that is there and malformed is a different fault, and quietly rewriting it would
            destroy the evidence of it. */
-        if (curKey.exists) return false;
+        if (curKey.exists) return 'skip';
 
         const d = curId.exists ? (curId.data() || {}) : null;
-        if (!d) return false;                               // the claimant vanished after the scan
-        if (d.status !== STATUS_LIVE) return false;         // retired in between — never revive it
-        if (d.legacy_key !== legacyKey) return false;       // re-keyed in between — no longer this object's
+        if (!d) return 'skip';                              // the claimant vanished after the scan
+        if (d.status !== STATUS_LIVE) return 'skip';        // retired in between — never revive it
+        if (d.legacy_key !== legacyKey) return 'skip';      // re-keyed in between — no longer this object's
+
+        /* 🔴 AND THE CLAIMANT SET ITSELF, RE-READ IN THE TRANSACTION. Checking only the id we SELECTED
+           answers "is my candidate still valid", which is a different question from "is it still the
+           only one". A second live id appearing for this key between the scan and here made the sweep
+           write a reverse row toward whichever the scan happened to pick and report a clean repair —
+           arbitrating a conflict, which is the one thing this file refuses to do everywhere else. The
+           grouping above cannot see it because it ran against an older snapshot, so the refusal has to
+           be re-established transactionally, exactly as findOrphanedLiveId does on the writer side. */
+        const liveIds = (claimants && claimants.docs ? claimants.docs : []).map((x) => x.id);
+        if (liveIds.length !== 1 || liveIds[0] !== canonicalId) return 'conflict';
 
         tx.set(keyRef, { canonical_id: canonicalId, kind, created_at: now(), repaired_at: now() });
-        return true;
+        return 'repaired';
       });
-      if (repaired) {
+      if (verdict === 'conflict') {
+        report.conflicts += 1;
+        try {
+          console.warn('identity_sweep_conflict', JSON.stringify({ rid, kind, legacy_key: legacyKey, ids: 'changed_under_sweep' }));
+        } catch (_) {}
+      } else if (verdict === 'repaired') {
         report.orphans += 1;
         report.repaired += 1;
         try {

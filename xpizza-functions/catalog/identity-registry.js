@@ -325,15 +325,27 @@ async function resolveAcrossKinds(fs, rid, groups, opts = {}) {
       const runners = Array.from({ length: Math.min(concurrency, within.length) }, worker);
 
       let timer = null;
-      const deadline = new Promise((resolve) => { timer = setTimeout(() => resolve('__timeout__'), timeoutMs); });
-      const outcome = await Promise.race([Promise.all(runners).then(() => '__done__'), deadline]);
-      if (timer) clearTimeout(timer);
-      if (outcome === '__timeout__') {
-        settled = true;                   // set BEFORE filling in, so no worker can race the verdict
-        for (const { kind, id } of within) {
-          const m = mapFor(kind);
-          if (!m.has(id)) { m.set(id, { outcome: 'read_error', reason: 'timeout' }); incomplete = true; }
+      /* 🔴 THE BATCH IS SETTLED ON EVERY EXIT, NOT JUST THE TIMEOUT. A worker whose read REJECTS makes
+         Promise.all reject, which makes the race reject, which leaves here for the outer catch — and
+         that path used to skip both `settled` and the clearTimeout entirely. Its siblings kept running
+         with settled still false: recording into the very map the caller had already been handed,
+         populating the cache, and taking further queued reads. It is the same late-work leak the
+         timeout branch closes, reached by the one exit that did not close it — so the settle belongs
+         in a `finally`, where no exit can miss it, rather than on each branch that happens to be
+         remembered. */
+      try {
+        const deadline = new Promise((resolve) => { timer = setTimeout(() => resolve('__timeout__'), timeoutMs); });
+        const outcome = await Promise.race([Promise.all(runners).then(() => '__done__'), deadline]);
+        if (outcome === '__timeout__') {
+          settled = true;                 // set BEFORE filling in, so no worker can race the verdict
+          for (const { kind, id } of within) {
+            const m = mapFor(kind);
+            if (!m.has(id)) { m.set(id, { outcome: 'read_error', reason: 'timeout' }); incomplete = true; }
+          }
         }
+      } finally {
+        settled = true;
+        if (timer) clearTimeout(timer);
       }
     }
     return { byKind, incomplete };

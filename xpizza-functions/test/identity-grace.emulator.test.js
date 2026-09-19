@@ -336,6 +336,50 @@ function countingFs() {
     ok(`${rid}: the cursor walks all ${r.scanned} live rows in pages of 2 and repairs every one of the ${orphaned.length} orphans`);
   }
 
+  // ── 11. 🔴 A CONFLICT THAT APPEARS UNDER THE SWEEP IS REFUSED, NOT ARBITRATED ───────────────
+  /* The scan groups claimants from a snapshot; the repair transaction runs later. A SECOND live id for
+     the same key appearing in that window is invisible to the grouping, so the sweep would write a
+     reverse row toward whichever id the older snapshot happened to pick and report a clean repair —
+     arbitrating a conflict, which is precisely what this file refuses to do everywhere else, and
+     which permanently strands the loser's historical orders. Re-reading the claimant SET inside the
+     transaction is what re-establishes the refusal, and whether a transactional QUERY re-read actually
+     observes a concurrent insert is a Firestore question, so it is asked of Firestore. */
+  {
+    const rid = 'x_pizza', kind = 'dish', legacyKey = 'Aparecida';
+    /* 🔴 MEASURED AS A DELTA. Cell 3 deliberately leaves a permanent two-live-id conflict in this
+       collection, so an absolute `conflicts === 1` here would be asserting the state of an earlier
+       cell rather than the behaviour of this one — and would break the moment any cell above changed.
+       The baseline is taken first and the claim is that THIS staging adds exactly one. */
+    const baseline = await sweepIdentityIntegrity(db, rid, kind);
+    const orphanId = await stageOrphan(rid, kind, legacyKey);
+    const intruder = 'INTRUDER01';
+    let raced = false;
+    const racing = {
+      collection: (c) => db.collection(c),
+      runTransaction: async (fn, opts) => {
+        // The scan has happened and the repair has not — the exact window the grouping cannot see.
+        if (!raced) {
+          raced = true;
+          await idsCol(rid, kind).doc(intruder).set({ legacy_key: legacyKey, status: STATUS_LIVE, kind, created_at: 'x' });
+        }
+        return db.runTransaction(fn, opts);
+      },
+    };
+
+    const r = await sweepIdentityIntegrity(racing, rid, kind);
+    assert.ok(raced, 'premise — the second claimant really did land between the scan and the repair');
+    assert.strictEqual(r.repaired, 0,
+      '🔴 THE SWEEP ARBITRATED — it picked a winner for a key that had two live claimants by the time it wrote');
+    assert.strictEqual(r.conflicts, baseline.conflicts + 1,
+      `🔴 …and it must REPORT the conflict rather than pass over it silently (${baseline.conflicts} before, ${r.conflicts} after)`);
+    assert.strictEqual((await keyRowOf(rid, kind, legacyKey).get()).exists, false,
+      '🔴 a reverse row was written for a conflicted key — that IS picking a winner');
+    const live = await liveIdsFor(rid, kind, legacyKey);
+    assert.strictEqual(live.length, 2, 'both claimants are left exactly as they were, for a human to resolve');
+    assert.deepStrictEqual(live.map((d) => d.id).sort(), [intruder, orphanId].sort(), 'and neither was touched');
+    ok(`${rid}: a second live claimant appearing mid-sweep is REFUSED and reported, never arbitrated`);
+  }
+
   FINISHED = true;
   console.log(`identity-grace(emulator): OK (${n})`);
   process.exit(0);

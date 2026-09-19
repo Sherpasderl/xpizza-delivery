@@ -5794,8 +5794,8 @@
   "slice": "d4",
   "label": "🔴 the sweep rewrites a HEALTHY reverse row - it stops being narrow",
   "file": "catalog/identity-sweep.js",
-  "from": "        if (curKey.exists) return false;",
-  "to": "        if (false) return false;",
+  "from": "        if (curKey.exists) return 'skip';",
+  "to": "        if (false) return 'skip';",
   "command": [
    "node",
    "catalog/identity-grace.test.js"
@@ -5877,8 +5877,8 @@
    "catalog/identity-grace.test.js"
   ],
   "label": "🔴 the sweep does not re-validate its claimant - it restores a pointer to a RETIRED id",
-  "from": "        if (d.status !== STATUS_LIVE) return false;         // retired in between — never revive it",
-  "to": "        if (false) return false;"
+  "from": "        if (d.status !== STATUS_LIVE) return 'skip';        // retired in between — never revive it",
+  "to": "        if (false) return 'skip';"
  },
  {
   "id": "d4-17",
@@ -5901,8 +5901,8 @@
    "catalog/identity-grace.test.js"
   ],
   "label": "🔴 an EXISTING malformed reverse row is overwritten - the evidence of the fault is destroyed",
-  "from": "        if (curKey.exists) return false;",
-  "to": "        if (curKey.exists && (curKey.data() || {}).canonical_id) return false;"
+  "from": "        if (curKey.exists) return 'skip';",
+  "to": "        if (curKey.exists && (curKey.data() || {}).canonical_id) return 'skip';"
  },
  {
   "id": "d4-19",
@@ -5916,5 +5916,30 @@
   "label": "🔴 the post-apply verify ECHOES the report instead of reading the database - a green light over a short registry",
   "from": "  const after = {\n    dish: (await lookupByLegacyKeys(db, { rid: RID, kind: 'dish', legacyKeys: keys.dish })).size,\n    extra: (await lookupByLegacyKeys(db, { rid: RID, kind: 'extra', legacyKeys: keys.extra })).size,\n  };",
   "to": "  const after = { dish: report.dish.total, extra: report.extra.total };"
+ },
+ {
+  "id": "d4-20",
+  "slice": "d4",
+  "file": "catalog/identity-registry.js",
+  "command": [
+   "node",
+   "catalog/identity-grace.test.js"
+  ],
+  "label": "🔴 a REJECTED read does not settle the batch - siblings record and cache past the abandonment",
+  "from": "      } finally {\n        settled = true;\n        if (timer) clearTimeout(timer);\n      }",
+  "to": "      } finally {\n        if (timer) clearTimeout(timer);\n      }"
+ },
+ {
+  "id": "d4-21",
+  "slice": "d4",
+  "file": "catalog/identity-sweep.js",
+  "command": [
+   "npm",
+   "run",
+   "test:identity-grace"
+  ],
+  "label": "🔴 the sweep does not re-read the CLAIMANT SET - a conflict appearing mid-sweep is arbitrated",
+  "from": "        if (liveIds.length !== 1 || liveIds[0] !== canonicalId) return 'conflict';",
+  "to": "        if (false) return 'conflict';"
  }
 ]
