@@ -127,7 +127,17 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   const storedIds = (storedClaim && Array.isArray(storedClaim.ids)) ? storedClaim.ids : null;
   const sameSet = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length
     && [...a].map(String).sort().join('\u0000') === [...b].map(String).sort().join('\u0000');
-  const isEcho = declared && storedIds && sameSet(declaredIds, storedIds);
+  /* 🔴 AN ACKNOWLEDGED RESEND IS A DECLARATION, NEVER AN ECHO — AND THIS WAS A DEAD END.
+     The documented recovery from a stale claim is: get deleted_ids_stale_baseline, re-show the
+     merchant existing_ids, resend the SAME ids with deleted_ids_reviewed. Those ids are by definition
+     identical to the stored ones, so the echo test classified the recovery as "nothing changed",
+     preserved the claim verbatim with its OLD base, and returned 200. The merchant saw success, the
+     claim stayed stale, publishing refused forever, and their only exit was withdrawing every
+     deletion — the echo optimisation, meant to keep ordinary editing frictionless, had closed the one
+     door out. The ack is what separates "the editor is echoing state back at us" from "the merchant
+     looked at this list again and means it", so it must defeat the echo. */
+  const acked = !!(body && body.deleted_ids_reviewed === true);
+  const isEcho = declared && storedIds && sameSet(declaredIds, storedIds) && !acked;
 
   if (!declared || isEcho) {
     /* Carried forward VERBATIM — not re-stamped. Re-stamping here would be the silent rebind by
@@ -175,7 +185,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
       existing: storedClaim,
       ids: declaredIds,
       live: { version: live.version, generation: live.generation },
-      reviewed: body && body.deleted_ids_reviewed === true,
+      reviewed: acked,
     });
   } catch (e) {
     if (e && e.code) {

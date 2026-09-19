@@ -6619,6 +6619,23 @@
   "why": "isolated by cell 5. The pre-flight pass in publishVersion validates the claim too, so an ALREADY-stale claim never reaches the transaction and this mutant survived — the masking guard was one I added myself in the same slice. Cell 5 bumps the GENERATION between the pre-flight check and the flip, leaving the version untouched: the CAS compares versions and passes, the pre-flight check saw the old generation and passed, and only the in-tx read of the pointer this transaction holds can notice. That is exactly the tear C-2 exists to close."
  },
  {
+  "id": "d4p1c-25",
+  "slice": "d4p1c",
+  "file": "catalog/edit-catalog-handler.js",
+  "command": [
+   "node",
+   "catalog/edit-catalog.test.js"
+  ],
+  "label": "🔴 an ACKNOWLEDGED resend is still treated as an echo - the documented stale-claim recovery is a dead end",
+  "kills_with": [
+   "an acknowledged resend skipped the loaded-base guard",
+   "THE RECOVERY PATH DID NOT REBIND"
+  ],
+  "from": "  const isEcho = declared && storedIds && sameSet(declaredIds, storedIds) && !acked;",
+  "to": "  const isEcho = declared && storedIds && sameSet(declaredIds, storedIds);",
+  "why": "guarded at two points of the same cell, and which fires first is ordering rather than meaning — the documented array form. Treating an acked resend as an echo skips the loaded-base guard (checked first) AND leaves the stale base in place (checked after), and both are the same defect seen from either end."
+ },
+ {
   "id": "pah-01",
   "slice": "pah",
   "file": "resolve-manual.js",

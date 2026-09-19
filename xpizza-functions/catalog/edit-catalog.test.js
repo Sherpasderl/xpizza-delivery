@@ -446,6 +446,46 @@ const withPrice = (delta) => {
     ok('a matching loaded base does not bypass the rebind ack — the two guards answer different questions');
   }
 
+  // ── 🔴 THE DOCUMENTED RECOVERY FROM A STALE CLAIM MUST ACTUALLY WORK ───────────────────────
+  /* The portal path is: receive deleted_ids_stale_baseline, re-show the merchant existing_ids, resend
+     the SAME ids with the acknowledgment. Those ids are identical to the stored ones by construction,
+     so the echo test classified the recovery as "nothing changed" and preserved the OLD base — 200 to
+     the merchant, claim still stale, publishing refused forever, and the only exit was withdrawing
+     every deletion. The echo rule exists to keep ordinary editing frictionless; it had closed the one
+     door out of the state it was meant to help with. */
+  {
+    const db = stubFirestore(baseSource());
+    const stale = { ids: ['OLD3'], base_version: 'v-superseded', base_generation: 0 };
+    db.state.source.data.deleted_ids = { ...stale };
+    const src = withPrice(39);
+    src.deleted_ids = { ids: ['OLD3'] };                       // the SAME ids, re-shown and re-confirmed
+
+    // (b) without the ack it is still an echo: the old base stands, so the silent rebind stays closed.
+    const noAck = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
+      { restaurantId: RID, source: src, baseSourceUpdateTime: T0 }, {});
+    assert.strictEqual(noAck.status, 200, `an unacknowledged resend still saves: ${JSON.stringify(noAck.body).slice(0, 140)}`);
+    assert.deepStrictEqual(db.state.source.data.deleted_ids, stale,
+      '🔴 an UNACKNOWLEDGED resend of the same ids rebound the base — that is the silent rebind, through the echo path');
+
+    // (c) with the ack but a STALE loaded base, the loaded-base guard still refuses.
+    const wrongBase = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
+      { restaurantId: RID, source: src, baseSourceUpdateTime: db.state.source.updateTime, deleted_ids_reviewed: true,
+        deleted_ids_loaded_base: { version: 'v-the-merchant-saw', generation: 0 } }, {});
+    assert.strictEqual(wrongBase.body.error, 'deleted_ids_base_moved',
+      `🔴 an acknowledged resend skipped the loaded-base guard: ${JSON.stringify(wrongBase.body).slice(0, 140)}`);
+    assert.deepStrictEqual(db.state.source.data.deleted_ids, stale, 'and nothing moved');
+
+    // (a) the real recovery: same ids, ack, matching loaded base → rebound at the LIVE pair.
+    // Each save advances the stored revision, so the next one must be conditional on the CURRENT value.
+    const ok2 = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
+      { restaurantId: RID, source: src, baseSourceUpdateTime: db.state.source.updateTime, deleted_ids_reviewed: true,
+        deleted_ids_loaded_base: { version: ACTIVE, generation: 0 } }, {});
+    assert.strictEqual(ok2.status, 200, `the acknowledged recovery saves: ${JSON.stringify(ok2.body).slice(0, 140)}`);
+    assert.deepStrictEqual(db.state.source.data.deleted_ids, { ids: ['OLD3'], base_version: ACTIVE, base_generation: 0 },
+      '🔴 THE RECOVERY PATH DID NOT REBIND — the merchant re-reviewed the list and is still stuck with a stale claim');
+    ok('the documented stale-claim recovery rebinds at the live pair; without the ack it stays an echo, and a stale loaded base still refuses');
+  }
+
   console.log(`edit-catalog: OK (${n})`);
   FINISHED = true;
 })().catch((e) => { console.error(e); process.exit(1); });

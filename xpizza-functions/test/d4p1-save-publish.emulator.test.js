@@ -183,6 +183,46 @@ const bumpPrice = (src, delta) => {
     ok('round trip: a save against a stored deleted_ids:null saves AND publishes');
   }
 
+  // ── 🔴 THE STALE-CLAIM RECOVERY ENDS IN A PUBLISH, OR IT IS NOT A RECOVERY ────────────────
+  /* End to end through both real handlers: declare a deletion, let the baseline move so the claim goes
+     stale, then walk the documented path — re-show the ids, resend them WITH the acknowledgment — and
+     publish. If any step preserves the old base the publish refuses and the merchant is trapped with
+     no exit but withdrawing every deletion. A unit test on the save handler cannot see that: the save
+     returns 200 either way, and only the publish reveals which base was stored. */
+  {
+    await resetClaim(); await ensureBaseline();
+    const idR = await realId();
+    const deletionSource = withDeletion(bumpPrice(await currentSource(), 1), idR);
+    await saveOk(() => deletionSource, { deleted_ids_loaded_base: await loadedBase() });
+
+    /* 🔴 MOVE THE BASELINE WITHOUT DISTURBING A. Publishing the deletion would also REMOVE the
+       object, so its id would leave the active certified set and the claim would then be refused as
+       deleted_unknown — a different fault, and the cell would never reach the recovery it is testing.
+       A GENERATION move is the honest way a claim goes stale while its id stays certified: it is
+       exactly what a rollback does, and the spec notes a rollback can leave the version id unchanged.
+       So the claim's id remains in A and only its binding is out of date. */
+    const pointerRef = db.collection('restaurants').doc(RID).collection('meta').doc('active_version');
+    const p0 = await getActivePointer(db, RID);
+    await pointerRef.set({ version: p0.version, at: new Date(), generation: p0.generation + 1 });
+
+    const moved = await loadedBase();
+    const stored = await currentSource();
+    assert.ok(stored.deleted_ids, 'premise — the claim is still standing (C never consumes it)');
+    assert.strictEqual(stored.deleted_ids.base_generation, p0.generation, '…bound to the OLD generation…');
+    assert.notStrictEqual(stored.deleted_ids.base_generation, moved.generation,
+      'premise — and it is now stale against the live baseline, while its id is still certified');
+
+    // The documented recovery: the SAME ids, re-shown, resent with the acknowledgment.
+    const resend = JSON.parse(JSON.stringify(await currentSource()));
+    resend.deleted_ids = { ids: stored.deleted_ids.ids };
+    const t = await saveOk(() => bumpPrice(resend, 1), { deleted_ids_reviewed: true, deleted_ids_loaded_base: moved });
+    const after = await currentSource();
+    assert.strictEqual(after.deleted_ids.base_version, moved.version,
+      '🔴 the acknowledged recovery did not rebind — the claim is still bound to a baseline that is gone');
+    await publishOk(t, 'the acknowledged stale-claim recovery');
+    ok('the documented recovery rebinds AND publishes — the merchant is not trapped by a stale claim');
+  }
+
   // 🔴 SENSITIVITY — the token still binds. An altered stored claim must NOT publish, or the fix has
   // simply stopped the token from checking anything.
   {
