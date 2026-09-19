@@ -258,7 +258,15 @@ function normalizeInputs({ items, extras, extraRecords }) {
 
 // WRITE (not-exists) the version docs + record — NO pointer flip. The reservation marker is the version
 // record; every doc is `create`d so nothing overwrites an immutable version. Returns { versionId, descriptor }.
-async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha }, nowServer) {
+/* 🔴 1D D4-P1 — THE STAMP IS SERVER-SUPPLIED OR ABSENT, NEVER CLIENT-CARRIED. `stamps` is the
+   identity PLAN's output ({dish:{key->id}, extra:{key->id}}), handed down from the pre-flip
+   allocation. When it is present every object it names is written WITH its certified id and the
+   version record carries the `identity_certified` discriminator; when it is absent the version is
+   written exactly as pre-P1 did, unstamped and uncertified. Nothing here derives an id: a stamp this
+   function was not given is a stamp that does not exist, which is what keeps a draft field from ever
+   becoming certification. The discriminator is what later separates "certified but a stamp is
+   broken" (an anomaly) from "genuinely unstamped, pre-P1" (serve by name, as today). */
+async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha, stamps = null }, nowServer) {
   const { menuTable, extraTable, v2ByKey, v2ExtrasByKey } = normalizeInputs({ items, extras, extraRecords });
   const desc = integrityDescriptor(menuTable, extraTable);
   if (desc.item_count === 0) throw new Error(`publish_refused_empty: ${rid} — a version must have ≥1 item`);
@@ -278,9 +286,30 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
   const vref = versionsColOf(db, rid).doc(versionId);
   const { itemDocs, extraDocs } = catalogDocsForRestaurant(menuTable, extraTable, v2ByKey, v2ExtrasByKey);
   const ops = [];
+  /* Applied to the DISPLAY the doc already carries, so an object with no display and an object with
+     no stamp both behave exactly as before — the stamp is additive, never constructive. */
+  const stampFor = (kind, key) => (stamps && stamps[kind] ? stamps[kind][key] : undefined);
+  /* 🔴 ANY INCOMING identity_id IS DISCARDED FIRST, ALWAYS. The display round-trips losslessly through
+     the merchant's editor (that is what carries the stamp across an edit), which means an identity_id
+     CAN arrive in the input — stale from an older version, copied from another object, or forged. This
+     function passed the display through verbatim when it had no plan, so exactly that value became the
+     written stamp: a field the merchant controls becoming server certification, which is inv #1's one
+     prohibition. Strip unconditionally, then add back ONLY what the server plan names. A stamp this
+     function was not given is a stamp that does not exist. */
+  const withStamp = (kind, d) => {
+    const display = d.display;
+    if (display === undefined) return undefined;
+    const bare = (display && typeof display === 'object' && display.identity_id !== undefined)
+      ? (() => { const { identity_id, ...rest } = display; return rest; })()   // eslint-disable-line no-unused-vars
+      : display;
+    const id = stampFor(kind, d.key);
+    if (id === undefined) return bare;
+    return { ...(bare || {}), identity_id: id };
+  };
+  const certified = !!stamps;
   for (const d of itemDocs) ops.push((b) => b.create(vref.collection('menu_items').doc(d.id), {
     key: d.key, price: d.price,
-    ...(d.display !== undefined ? { display: d.display } : {}),
+    ...(withStamp('dish', d) !== undefined ? { display: withStamp('dish', d) } : {}),
     ...(d.has_photo !== undefined ? { has_photo: d.has_photo } : {}),
   }));
   // has_photo travels for extras too. catalogDocsForRestaurant attaches it to BOTH collections
@@ -289,7 +318,7 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
   // extras unnamed, one field smaller.
   for (const d of extraDocs) ops.push((b) => b.create(vref.collection('extras').doc(d.id), {
     key: d.key, price: d.price,
-    ...(d.display !== undefined ? { display: d.display } : {}),
+    ...(withStamp('extra', d) !== undefined ? { display: withStamp('extra', d) } : {}),
     ...(d.has_photo !== undefined ? { has_photo: d.has_photo } : {}),
   }));
   ops.push((b) => b.create(vref.collection('meta').doc('menu_structure'), structure));
@@ -309,6 +338,10 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
   // the version RECORD (reservation marker) LAST among the version's docs — create-not-exists.
   await vref.create({
     version: versionId, schema_version: 2, seq,
+    /* NOT schema_version: pre-P1 versions already carry schema_version:2, so it cannot tell a
+       certified version from an uncertified one. This flag is written only when this publish was
+       given a plan. */
+    ...(certified ? { identity_certified: true } : {}),
     item_count: desc.item_count, extra_count: desc.extra_count,
     menu_hash: desc.menu_hash, extras_hash: desc.extras_hash,
     content_hash,

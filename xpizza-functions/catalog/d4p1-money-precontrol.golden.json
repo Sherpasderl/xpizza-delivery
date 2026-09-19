@@ -1,0 +1,320 @@
+{
+  "_provenance": {
+    "captured_from": "dc7d9f75a3e529bf4f6f83527699df9bfe3de17a",
+    "what": "PRE-P1 money control for D4-P1 (§8a). Captured from the real producers on pristine pre-P1 code, BEFORE the first P1 edit. Never regenerate: regenerating against P1 code would make this agree with whatever P1 does, which is the one thing it exists to refuse."
+  },
+  "brands": {
+    "x_pizza": {
+      "input": {
+        "cart": [
+          {
+            "name": "Sopressatta Chili Honey",
+            "qty": 2,
+            "price": 385,
+            "extras": [
+              {
+                "instance": 0,
+                "name": "Salsa Roja",
+                "price": 39
+              }
+            ]
+          },
+          {
+            "name": "Carnivora",
+            "qty": 1,
+            "price": 340,
+            "extras": []
+          }
+        ],
+        "reward": {
+          "ok": true,
+          "model": "add_free",
+          "freeItems": [
+            {
+              "item_id": "Carnivora",
+              "qty": 1,
+              "price_cents": 34000,
+              "added": true
+            }
+          ]
+        },
+        "tables": {
+          "restaurantId": "x_pizza",
+          "menu": {
+            "Sopressatta Chili Honey": 385,
+            "Carnivora": 340,
+            "Crispy Bacon": 337,
+            "Sweet Corn & Calabrian Chili": 314,
+            "Mushroom": 323,
+            "Spinach": 307,
+            "Pancetta Vodka Sauce": 328,
+            "Margherita": 299,
+            "Pepperoni": 307,
+            "Anchovies": 418,
+            "Shrimp Scampi": 412,
+            "Pistaccio Mortadella": 409,
+            "Prosciutto": 402,
+            "Potato & Dill Sausage": 299,
+            "Cacio e Pepe": 297,
+            "Ham": 282,
+            "Nutella": 251,
+            "Carnivora NY": 685,
+            "Margherita NY": 624,
+            "Cacio e Pepe NY": 641,
+            "Mushroom NY": 702,
+            "Jamon NY": 641,
+            "Pepperoni NY": 641,
+            "Crispy Bacon NY": 662
+          },
+          "extras": {
+            "Salsa Roja": 39,
+            "Salsa Blanca": 39,
+            "Salsa Calabrian Chili": 49,
+            "Mozzarella": 50,
+            "Whipped Ricotta": 65,
+            "Salchicha Italiana": 50,
+            "Pepperoni": 50,
+            "Jamón": 39,
+            "Prosciutto": 94,
+            "Mortadella": 85,
+            "Espinaca": 33,
+            "Maíz": 45,
+            "Hongos": 61,
+            "Basil Pesto": 33
+          }
+        }
+      },
+      "total": {
+        "total": 1149,
+        "error": null
+      },
+      "net_plain": {
+        "net_total_cents": 114900,
+        "components": {
+          "base_cents": 114900,
+          "reward_discount_cents": 0,
+          "delivery_cents": 0,
+          "fiscal_cents": 14987
+        }
+      },
+      "net_reward": {
+        "net_total_cents": 114900,
+        "components": {
+          "base_cents": 114900,
+          "reward_discount_cents": 0,
+          "delivery_cents": 0,
+          "fiscal_cents": 14987
+        }
+      },
+      "factura": {
+        "items": [
+          {
+            "qty": 2,
+            "description": "Sopressatta Chili Honey (+Salsa Roja)",
+            "line_gross_cents": 80900
+          },
+          {
+            "qty": 1,
+            "description": "Carnivora",
+            "line_gross_cents": 34000
+          }
+        ],
+        "error": null
+      },
+      "redemption": {
+        "ok": true,
+        "restaurant_id": "x_pizza",
+        "total_lempiras": 1149,
+        "total_cents": 114900,
+        "subtotal_cents": 99913,
+        "tax_cents": 14987,
+        "discount_cents": 0,
+        "desc_rebaja_cents": 29565,
+        "items": [
+          {
+            "qty": 2,
+            "description": "Sopressatta Chili Honey (+Salsa Roja)",
+            "line_gross_cents": 80900
+          },
+          {
+            "qty": 1,
+            "description": "Carnivora",
+            "line_gross_cents": 34000
+          }
+        ],
+        "factura_items": [
+          {
+            "qty": 2,
+            "description": "Sopressatta Chili Honey (+Salsa Roja)",
+            "line_gross_cents": 80900
+          },
+          {
+            "qty": 1,
+            "description": "Carnivora",
+            "line_gross_cents": 34000
+          },
+          {
+            "qty": 1,
+            "description": "Carnivora",
+            "line_gross_cents": 34000,
+            "redeemed": true
+          }
+        ],
+        "free_lines": [
+          {
+            "item_id": "Carnivora",
+            "qty": 1,
+            "price_cents": 0,
+            "added": true
+          }
+        ]
+      },
+      "sensitivity_dearer_total": {
+        "total": 1534,
+        "error": null
+      }
+    },
+    "la_musa": {
+      "input": {
+        "cart": [
+          {
+            "id": "dimsum_01",
+            "name": "dimsum_01",
+            "cat": "dim_sum",
+            "qty": 2,
+            "price": 223,
+            "extras": [
+              {
+                "id": "rice_white",
+                "name": "rice_white",
+                "price": 50,
+                "qty": 1
+              }
+            ]
+          }
+        ],
+        "reward": {
+          "ok": true,
+          "model": "add_free",
+          "freeItems": [
+            {
+              "item_id": "dimsum_01",
+              "qty": 1,
+              "price_cents": 22300,
+              "added": true
+            }
+          ]
+        },
+        "tables": {
+          "restaurantId": "la_musa",
+          "menu": {
+            "dimsum_01": 223,
+            "dimsum_02": 248,
+            "dimsum_03": 198,
+            "dimsum_04": 237,
+            "dimsum_05": 260,
+            "starter_01": 262,
+            "starter_02": 252,
+            "starter_03": 265,
+            "starter_04": 378,
+            "starter_05": 413,
+            "starter_06": 409,
+            "special_01": 588,
+            "special_02": 478,
+            "special_04": 624,
+            "special_05": 384,
+            "crudo_01": 452,
+            "crudo_02": 346,
+            "crudo_03": 337,
+            "noodle_01": 414,
+            "noodle_01_sin": 307,
+            "noodle_01_pollo": 342,
+            "noodle_01_camaron": 414,
+            "noodle_02": 492,
+            "noodle_03": 340,
+            "rice_01": 270,
+            "rice_02": 456,
+            "rice_03": 448,
+            "rice_04": 392,
+            "rice_05": 292,
+            "soup_01": 255,
+            "soup_02": 288,
+            "soup_03": 192,
+            "beer_01": 102,
+            "beer_02": 102,
+            "beer_03": 102,
+            "beer_04": 98,
+            "beer_05": 102,
+            "beer_06": 102,
+            "beer_07": 81,
+            "beer_08": 81,
+            "soft_01": 40,
+            "soft_02": 40,
+            "soft_03": 40,
+            "soft_04": 40
+          },
+          "extras": {
+            "rice_white": 50,
+            "rice_chinese": 85,
+            "papas_fritas": 75,
+            "sauce_chili_oil": 30,
+            "sauce_aioli": 30,
+            "sauce_chipotle": 30,
+            "sauce_dumpling": 30,
+            "sauce_wonton": 30,
+            "sauce_pad_thai": 30,
+            "sauce_spicy_mayo": 30,
+            "sauce_tuna_tartar": 30,
+            "protein_chicken": 65,
+            "protein_beef": 155,
+            "protein_shrimp": 135
+          }
+        }
+      },
+      "total": {
+        "total": 496,
+        "error": null
+      },
+      "net_plain": {
+        "net_total_cents": 49600,
+        "components": {
+          "base_cents": 49600,
+          "reward_discount_cents": 0,
+          "delivery_cents": 0,
+          "fiscal_cents": 0
+        }
+      },
+      "net_reward": {
+        "net_total_cents": 49600,
+        "components": {
+          "base_cents": 49600,
+          "reward_discount_cents": 0,
+          "delivery_cents": 0,
+          "fiscal_cents": 0
+        }
+      },
+      "redemption": {
+        "ok": true,
+        "restaurant_id": "la_musa",
+        "total_lempiras": 496,
+        "total_cents": 49600,
+        "subtotal_cents": 49600,
+        "tax_cents": 0,
+        "discount_cents": 0,
+        "factura_items": null,
+        "free_lines": [
+          {
+            "item_id": "dimsum_01",
+            "qty": 1,
+            "price_cents": 0,
+            "added": true
+          }
+        ]
+      },
+      "sensitivity_dearer_total": {
+        "total": 719,
+        "error": null
+      }
+    }
+  }
+}

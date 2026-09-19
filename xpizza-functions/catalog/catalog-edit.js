@@ -62,7 +62,10 @@ function gateFlagsOf(built) {
 
 // Display fields worth surfacing. `price` lives on the item record itself (display.price is a mirror the
 // 2a validator already forces into agreement), and `id` is form-local plumbing a merchant never sees.
-const DISPLAY_SKIP = new Set(['price', 'id']);
+// `identity_id` (1D D4-P1) is the server-owned identity stamp: a merchant never sets it, never sees it,
+// and the bootstrap pass adds it to every object at once — surfacing it would show a merchant a diff
+// of their whole menu that they did not make and cannot act on.
+const DISPLAY_SKIP = new Set(['price', 'id', 'identity_id']);
 
 const itemsByKey = (built) => new Map(((built && built.items) || []).map((i) => [i.key, i]));
 const extrasOf = (built) => ((built && built.extras) || {});

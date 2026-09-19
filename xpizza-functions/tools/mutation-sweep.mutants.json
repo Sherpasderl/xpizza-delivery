@@ -52,7 +52,7 @@
   "slice": "t56",
   "label": "content hash ignores display records",
   "file": "catalog/content-hash.js",
-  "from": "    const out = { key: r.key, price: r.price, display: r.display };",
+  "from": "    const out = { key: r.key, price: r.price, display: displayWithoutIdentity(r.display) };",
   "to": "    const out = { key: r.key, price: r.price };"
  },
  {
@@ -5997,6 +5997,74 @@
   "from": "  if (flow.respond) return res.status(flow.respond.status).json(flow.respond.body);",
   "to": "  if (flow.respond) { if (cardShadowStarted) reportIdentityShadow(db, { rid: restaurantId, orderId, attemptId, outcome: 'dropped', result: null }); return res.status(flow.respond.status).json(flow.respond.body); }",
   "kills_with": "heartbeat(s) for a charge that never issued"
+ },
+ {
+  "id": "d4p1a-01",
+  "slice": "d4p1a",
+  "file": "catalog/content-hash.js",
+  "command": [
+   "node",
+   "catalog/d4p1-stamp-exclusion.test.js"
+  ],
+  "label": "🔴 the identity stamp is HASHED as content - bootstrap reads as a menu change to every cache",
+  "kills_with": "stamping moved the served-content fingerprint",
+  "from": "    const out = { key: r.key, price: r.price, display: displayWithoutIdentity(r.display) };",
+  "to": "    const out = { key: r.key, price: r.price, display: r.display };"
+ },
+ {
+  "id": "d4p1a-03",
+  "slice": "d4p1a",
+  "file": "catalog/catalog-edit.js",
+  "command": [
+   "node",
+   "catalog/d4p1-stamp-exclusion.test.js"
+  ],
+  "label": "🔴 the stamp surfaces as a merchant change - a merchant is shown their whole menu as edited",
+  "kills_with": "the identity stamp surfaced as a merchant change",
+  "from": "const DISPLAY_SKIP = new Set(['price', 'id', 'identity_id']);",
+  "to": "const DISPLAY_SKIP = new Set(['price', 'id']);"
+ },
+ {
+  "id": "d4p1a-04",
+  "slice": "d4p1a",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-stamp"
+  ],
+  "label": "🔴 EXTRAS are not stamped - the sibling of the pair is left behind",
+  "kills_with": "EXTRAS must be stamped too",
+  "from": "    ...(withStamp('extra', d) !== undefined ? { display: withStamp('extra', d) } : {}),",
+  "to": "    ...(d.display !== undefined ? { display: d.display } : {}),"
+ },
+ {
+  "id": "d4p1a-05",
+  "slice": "d4p1a",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-stamp"
+  ],
+  "label": "🔴 a version claims CERTIFICATION with no server plan - the discriminator stops separating certified from pre-P1",
+  "kills_with": "an unplanned version claims certification",
+  "from": "  const certified = !!stamps;",
+  "to": "  const certified = true;"
+ },
+ {
+  "id": "d4p1a-06",
+  "slice": "d4p1a",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-stamp"
+  ],
+  "label": "🔴 the stamp is taken from the INCOMING display instead of the server plan - a client field becomes certification",
+  "kills_with": "A CLIENT-SUPPLIED identity_id WAS WRITTEN AS THE STAMP",
+  "from": "    const bare = (display && typeof display === 'object' && display.identity_id !== undefined)\n      ? (() => { const { identity_id, ...rest } = display; return rest; })()   // eslint-disable-line no-unused-vars\n      : display;",
+  "to": "    const bare = display;"
  },
  {
   "id": "pah-01",

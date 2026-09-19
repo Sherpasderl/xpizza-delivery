@@ -27,6 +27,14 @@ const { canonicalJson } = require('./canonical-json');
 // The exact projection that gets served, named field by field. Deliberately NOT a spread of the raw
 // document: an unrelated field landing on a doc (a migration marker, a debug stamp) must not change
 // the fingerprint of a menu nobody edited.
+/* Drops ONLY the identity stamp, and only when present — a display with no stamp is returned as-is
+   (the same object), so pre-P1 versions hash exactly as they always did. */
+function displayWithoutIdentity(display) {
+  if (!display || typeof display !== 'object' || display.identity_id === undefined) return display;
+  const { identity_id, ...rest } = display;   // eslint-disable-line no-unused-vars
+  return rest;
+}
+
 function servedPayload({ rid, schema_version, items, extras, structure }) {
   // 🔴 ONE PROJECTION FOR BOTH COLLECTIONS. Items and extras were projected by two separate
   // expressions and the extras one omitted has_photo — which the reader DOES return, because the
@@ -37,8 +45,16 @@ function servedPayload({ rid, schema_version, items, extras, structure }) {
   //
   // The fix is not to add the missing field, it is to stop having two lists. The served set and the
   // hashed set are now the same expression, so the next field to join a record joins both or neither.
+  /* 🔴 THE IDENTITY STAMP IS NOT CONTENT. `display.identity_id` (1D D4-P1) is server-owned identity
+     metadata that rides in the losslessly round-tripped display object. It is deliberately NOT part of
+     the served-content fingerprint: stamping an existing version adds it without changing one byte a
+     customer sees, and if it were hashed the bootstrap pass would appear as a content change — a new
+     fingerprint, a spurious "the menu changed" for every downstream cache and every merchant diff.
+     Stripped here rather than at the call sites so there is exactly one projection, for the same
+     reason items and extras share one: two lists drift, and the field that joins one but not the
+     other escapes the fingerprint. */
   const record = (r) => {
-    const out = { key: r.key, price: r.price, display: r.display };
+    const out = { key: r.key, price: r.price, display: displayWithoutIdentity(r.display) };
     if (r.has_photo !== undefined) out.has_photo = r.has_photo;
     return out;
   };

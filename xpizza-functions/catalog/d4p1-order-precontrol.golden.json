@@ -1,0 +1,124 @@
+{
+  "_provenance": {
+    "captured_from": "dc7d9f75a3e529bf4f6f83527699df9bfe3de17a",
+    "what": "PRE-P1 control captured through the REAL createOrder handler (§8a). Never regenerate."
+  },
+  "brands": {
+    "x_pizza": {
+      "stored_order": {
+        "cash_tendered_cents": 105600,
+        "created_at": 1789827608348,
+        "customer_name": "Control",
+        "customer_phone": "99992001",
+        "earn_preview": {
+          "delta": 3,
+          "goal": 8,
+          "unit": "punch",
+          "welcome": 2
+        },
+        "factura_status": "not_due",
+        "hub_lat": 14.1,
+        "hub_lng": -87.2,
+        "items": [
+          {
+            "description": "Carnivora (+Salsa Roja)",
+            "line_gross_cents": 71900,
+            "qty": 2
+          },
+          {
+            "description": "Crispy Bacon",
+            "line_gross_cents": 33700,
+            "qty": 1
+          }
+        ],
+        "items_text": "control order",
+        "notes": "",
+        "order_id": "CTL-x_pizza-0",
+        "order_type": "pickup",
+        "payment_fingerprint": "5463c0f0362b90de96930fb505227de4549a52950769e594d82cca62d080b3f0",
+        "payment_method": "cash",
+        "pickup_time": "standard",
+        "restaurant_id": "x_pizza",
+        "restaurant_name": "x_pizza",
+        "restaurant_phone": "+50400000000",
+        "status": "new",
+        "subtotal_cents": 91826,
+        "summary_lines": [
+          {
+            "cents": 71900,
+            "name": "Carnivora",
+            "qty": 2
+          },
+          {
+            "cents": 33700,
+            "name": "Crispy Bacon",
+            "qty": 1
+          }
+        ],
+        "tax_cents": 13774,
+        "total": 1056,
+        "total_cents": 105600,
+        "tracking_token": "zv9fXe8KtVbn"
+      },
+      "volatile_fields": [
+        "created_at",
+        "customer_phone",
+        "order_id",
+        "payment_fingerprint",
+        "tracking_token"
+      ]
+    },
+    "la_musa": {
+      "stored_order": {
+        "cash_tendered_cents": 74400,
+        "created_at": 1789827608474,
+        "customer_name": "Control",
+        "customer_phone": "99992003",
+        "earn_preview": {
+          "delta": 240,
+          "goal": 300,
+          "unit": "point",
+          "welcome": 100
+        },
+        "factura_status": "not_due",
+        "hub_lat": 14.1,
+        "hub_lng": -87.2,
+        "items_text": "control order",
+        "notes": "",
+        "order_id": "CTL-la_musa-0",
+        "order_type": "pickup",
+        "payment_fingerprint": "51514318132489d332ed5a13cb8e881af990466d2c6db2025c7029d63ef55384",
+        "payment_method": "cash",
+        "pickup_time": "standard",
+        "restaurant_id": "la_musa",
+        "restaurant_name": "la_musa",
+        "restaurant_phone": "+50400000000",
+        "status": "new",
+        "subtotal_cents": 74400,
+        "summary_lines": [
+          {
+            "cents": 49600,
+            "name": "Sichuan Spicy Wonton",
+            "qty": 2
+          },
+          {
+            "cents": 24800,
+            "name": "Pork Belly Buns",
+            "qty": 1
+          }
+        ],
+        "tax_cents": 0,
+        "total": 744,
+        "total_cents": 74400,
+        "tracking_token": "jWt3qshdDyh5"
+      },
+      "volatile_fields": [
+        "created_at",
+        "customer_phone",
+        "order_id",
+        "payment_fingerprint",
+        "tracking_token"
+      ]
+    }
+  }
+}
