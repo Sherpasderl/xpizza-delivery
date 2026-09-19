@@ -39,6 +39,8 @@ const { ensureIdentitiesForKeys } = require('./identity-backfill');
 const IDENTITY_PRESERVE_TIMEOUT_MS = 5000;
 const { candidateSource, assertCandidateValid } = require('./candidate-validate');
 const { sourceRefOf, encodeUpdateTime } = require('./source-store');
+const { validateDeletionClaim } = require('./identity-partition');
+const { pointerStateOf } = require('./catalog-firestore');
 
 const LEASE_MS = 120000;                          // 2-minute bounded lease (publish is seconds; generous headroom)
 const RETENTION_MIN_COUNT = 10;                   // keep ≥10 versions ...
@@ -208,6 +210,34 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected) {
         throw new Error(`flip_cas_draft_stale: ${rid} — the draft moved from ${JSON.stringify(expected.draftRevision)} to ${JSON.stringify(liveRevision)} since this edit was reviewed`);
       }
     }
+
+    /* ── 1D D4-P1 — THE DELETION CLAIM IS RE-VERIFIED AND CONSUMED AT THE WRITE BOUNDARY ────────
+       🔴 READ FROM THE SOURCE DOC THIS TRANSACTION ALREADY HOLDS, NOT PASSED IN. A claim handed down
+       as an argument is a claim validated somewhere else, at some other moment, against some other
+       pointer — which is exactly the tear this check exists to close. The pointer pair used here is
+       the one THIS transaction read and CAS-verified two lines up, so the claim cannot validate
+       against v1@g1 while the flip lands on v1@g2.
+       The pre-allocation pass in the publish handler stays as the fast, specific error. It is NOT the
+       guarantee; this is. (The same division B-5 and R-1 settled.)
+       🔴 AND THE CLEAR REQUIRES THE DRAFT CAS. Consuming a deletion claim means writing the source,
+       and writing the source without a revision to compare against would clobber whatever the
+       merchant saved while this publish was in flight. Since the CAS is only present when the caller
+       supplied a draftRevision, a publish that omits it may not consume a claim at all — so a
+       standing claim plus no CAS REFUSES rather than publishing and leaving the deletion to be
+       replayed against the next baseline. Protected by construction, not by the caller remembering. */
+    const liveClaim = draftSnap && draftSnap.exists ? (draftSnap.data() || {}).deleted_ids : null;
+    const hasClaim = !!(liveClaim && typeof liveClaim === 'object' && Array.isArray(liveClaim.ids) && liveClaim.ids.length);
+    if (hasClaim) {
+      validateDeletionClaim(liveClaim, {
+        activeVersionId: liveActive,
+        activeGeneration: pointerStateOf(pointerSnap.exists ? pointerSnap.data() : null).generation,
+      });
+      /* Consumed in the SAME transaction that activates the version it was declared against, so the
+         claim and the activation stand or fall together — a cleared claim never outlives a flip that
+         did not happen, and a surviving one never outlives a flip that did. */
+      tx.update(sourceRefOf(db, rid), { deleted_ids: null });
+    }
+
     tx.set(pointerRef, { version: versionId, at: FieldValue.serverTimestamp() });
     // 1b: the snapshot rides the SAME transaction — coherence by construction. If the flip aborts
     // (lease lost/expired/stale), NEITHER the pointer nor the snapshot moves.
@@ -358,6 +388,23 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
   // only thing that moves the pointer, so validating here covers every path that exists AND every
   // path anyone adds later.
   assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure }), `${rid} (pre-publish)`);
+
+  /* 🔴 1D D4-P1 — A SOURCE-DERIVED PUBLISH MAY NOT ACTIVATE OVER A CLAIM IT CANNOT CONSUME.
+     Consuming a deletion claim means writing the source, which is only safe behind the draft CAS — so
+     a publish that supplies no draftRevision cannot consume one. Rather than activate and leave the
+     deletion standing to be replayed against the NEXT baseline, this refuses.
+     It lives here, in publishVersion, and deliberately NOT in flipPointer: rollbackVersion reaches the
+     same flip, and a rollback is not consuming anything. Refusing a rollback because a merchant
+     happens to have an unrelated deletion pending would block a recovery action for a reason that has
+     nothing to do with it — the guard belongs on the path that would otherwise do the harm. */
+  if (!expected || !Object.prototype.hasOwnProperty.call(expected, 'draftRevision')) {
+    let standing = null;
+    try { standing = ((await sourceRefOf(db, rid).get()).data() || {}).deleted_ids; } catch (_) { standing = null; }
+    if (standing && Array.isArray(standing.ids) && standing.ids.length) {
+      throw new Error(`publish_claim_without_cas: ${rid} — a standing deletion claim cannot be consumed without a draft revision to compare against`);
+    }
+  }
+
   const token = await acquireLease(db, rid);
   // Captured inside the lease, USED outside it — see the preserve-on-write note in the finally below.
   let identityKeys = null, identityVersionId = null;

@@ -6604,6 +6604,48 @@
   "why": "an ordinary save never reaches this branch (it is not a declaration at all), so forcing changesClaim true does not touch ordinary editing — it breaks WITHDRAWAL, which must always be allowed so a merchant is never trapped by an editor that has not implemented the ack. Label and signature name what actually breaks."
  },
  {
+  "id": "d4p1c-21",
+  "slice": "d4p1c",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-claim"
+  ],
+  "label": "🔴 the consumed claim is never cleared - the next edit replays it against a new baseline",
+  "kills_with": "the claim survived the activation that consumed it",
+  "from": "      tx.update(sourceRefOf(db, rid), { deleted_ids: null });",
+  "to": "      void sourceRefOf;"
+ },
+ {
+  "id": "d4p1c-22",
+  "slice": "d4p1c",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-claim"
+  ],
+  "label": "🔴 the in-tx claim check is dropped - a claim from a superseded baseline rides the activation through",
+  "kills_with": "a claim from a superseded baseline rode the activation through",
+  "from": "      validateDeletionClaim(liveClaim, {\n        activeVersionId: liveActive,",
+  "to": "      if (false) validateDeletionClaim(liveClaim, {\n        activeVersionId: liveActive,"
+ },
+ {
+  "id": "d4p1c-24",
+  "slice": "d4p1c",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-claim"
+  ],
+  "label": "🔴 a publish with NO draft CAS activates over a claim it cannot consume - the deletion is replayed later",
+  "kills_with": "a claim was consumable with no draft revision to protect the write",
+  "from": "      throw new Error(`publish_claim_without_cas: ${rid} — a standing deletion claim cannot be consumed without a draft revision to compare against`);",
+  "to": "      void standing;"
+ },
+ {
   "id": "pah-01",
   "slice": "pah",
   "file": "resolve-manual.js",
