@@ -70,3 +70,7 @@ xpizza-orders/images.bak-*
 
 # Visual-companion brainstorm mockups (local only)
 .superpowers/
+
+# Generated per-run emulator config (tools/emulator-run.js writes it next to firebase.json so the
+# relative rules paths resolve, then deletes it). Never committed: its ports are per-checkout.
+xpizza-functions/firebase.emulator.*.json

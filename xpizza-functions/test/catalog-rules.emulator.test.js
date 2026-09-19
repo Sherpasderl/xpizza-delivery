@@ -22,12 +22,31 @@ const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@fir
 const { doc, getDoc, setDoc, collection, getDocs } = require('firebase/firestore');
 
 const RULES = fs.readFileSync(path.join(__dirname, '..', 'firestore.rules'), 'utf8');
+
+// Where emulators:exec actually put the Firestore emulator for THIS checkout. Refuses rather than
+// guessing: an unset host means the suite was launched outside the runner, and picking a default
+// there is how it would silently attach to a neighbour's emulator.
+function firestoreEmulatorTarget() {
+  const hostPort = process.env.FIRESTORE_EMULATOR_HOST;
+  if (!hostPort) {
+    console.error('\nREFUSED — FIRESTORE_EMULATOR_HOST is not set. Run via: npm run test:catalog-rules\n');
+    process.exit(1);
+  }
+  const i = hostPort.lastIndexOf(':');
+  return { host: hostPort.slice(0, i), port: Number(hostPort.slice(i + 1)) };
+}
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 (async () => {
   const env = await initializeTestEnvironment({
     projectId: 'demo-xpizza',
-    firestore: { rules: RULES, host: '127.0.0.1', port: 8080 },
+    /* 🔴 THE PORT COMES FROM THE RUNNER, NOT FROM A LITERAL. This read 8080 outright, so when the
+       emulator moved to a per-checkout port this suite kept pointing at 8080 — which is either
+       nothing (a confusing connection failure) or ANOTHER checkout's emulator, asserted against and
+       reported green. Every other rules suite here auto-detects from the env emulators:exec sets;
+       this one opted out of that by naming a number. tools/emulator-ports.guard.test.js now fails if
+       a literal default port reappears in a test. */
+    firestore: { rules: RULES, ...firestoreEmulatorTarget() },
   });
 
   // Seed via the rules-bypassing admin context so there is something real to read back.
