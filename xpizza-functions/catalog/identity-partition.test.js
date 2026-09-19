@@ -125,5 +125,55 @@ const refuses = (fn, code, label) => {
   ok('the partition covers the active set exactly — and a same-sized declaration with a wrong id still refuses');
 }
 
+// ── 7. 🔴 PRESENT-BUT-MALFORMED IS NOT ABSENT ────────────────────────────────────────────────
+/* The filter-don't-refuse shape this module's own header rules out, found inside the module itself.
+   A non-array read as empty is not merely untidy: with an EMPTY active set — a fresh brand, or the
+   first publish after a reset — an empty reading passes SILENTLY, so a client sending `carried: "A"`
+   publishes as though it had declared nothing at all. And one level down, `{ids: "X"}` read as "no
+   deletions" made the partition law refuse the publish as UNACCOUNTED, which names the wrong fault:
+   it tells the merchant their declaration is incomplete when their client sent a deletion list the
+   server could not read. Absent stays legitimate; malformed refuses. */
+{
+  refuses(() => validatePartition({ activeCertified: [], carried: 'A', deletedIds: [] }),
+    'identity_partition_malformed', 'a non-array carried, with an EMPTY active set — the silently-passing case');
+  refuses(() => validatePartition({ activeCertified: ['A'], carried: ['A'], deletedIds: { 0: 'B' } }),
+    'identity_partition_malformed', 'an object where deleted_ids should be');
+  refuses(() => validateDeletionClaim({ ids: 'X', base_version: 'v-2', base_generation: 5 }, { activeVersionId: 'v-2', activeGeneration: 5 }),
+    'deleted_ids_malformed', 'a claim whose ids is a string');
+
+  /* SENSITIVITY: genuinely ABSENT input is a legitimate state and must still pass, or this guard has
+     simply broken the empty case instead of tightening it. */
+  const empty = validatePartition({ activeCertified: [], carried: undefined, deletedIds: null });
+  assert.strictEqual(empty.known.size + empty.deleted.size, 0, 'absent carried/deleted on an empty active set is lawful');
+  assert.deepStrictEqual(validateDeletionClaim({ ids: undefined }, { activeVersionId: 'v', activeGeneration: 0 }),
+    { ids: [], declared: false }, 'a claim with no ids at all is "no deletion declared", not malformed');
+  ok('a present-but-non-array carried, deleted_ids or claim.ids REFUSES — while genuinely absent input stays lawful');
+}
+
+// ── 8. 🔴 A FAILED PUBLISH MUST NOT COST THE MERCHANT A RE-REVIEW ────────────────────────────
+/* The binding is a safety property only as long as it is frictionless for honest retries. It depends
+   on a contract Slice D owns: the generation bumps on a successful activation and on a rollback, and
+   NOT on a failed or abandoned one. If a failed publish bumped it, every retry after a transient
+   error would refuse a deletion the merchant had already confirmed — and a safety binding that makes
+   ordinary retries painful is one that gets removed. Pinned here so D cannot quietly define it the
+   other way: this cell fails the moment "failed publish" starts moving the generation. */
+{
+  const declaredAt = { activeVersionId: 'v-7', activeGeneration: 3 };
+  const claim = { ids: ['DOOMED1'], base_version: 'v-7', base_generation: 3 };
+
+  // The publish fails. Nothing activated, so neither the pointer nor the generation moved.
+  const afterFailure = { activeVersionId: 'v-7', activeGeneration: 3 };
+  assert.deepStrictEqual(validateDeletionClaim(claim, afterFailure), { ids: ['DOOMED1'], declared: true },
+    '🔴 a retry after a FAILED publish was refused — the merchant would be re-reviewing a deletion they already confirmed');
+
+  // …and the same claim after a REAL activation is stale, which is the whole point of the binding.
+  refuses(() => validateDeletionClaim(claim, { activeVersionId: 'v-8', activeGeneration: 4 }),
+    'deleted_ids_stale_baseline', 'the same claim after a real activation');
+  refuses(() => validateDeletionClaim(claim, { activeVersionId: 'v-7', activeGeneration: 4 }),
+    'deleted_ids_stale_baseline', 'the same claim after a ROLLBACK that kept the version id');
+  assert.deepStrictEqual(declaredAt, { activeVersionId: 'v-7', activeGeneration: 3 }, 'the claim is not mutated by validation');
+  ok('a retry after a failed publish is accepted unchanged, while a real activation OR a rollback makes the same claim stale');
+}
+
 FINISHED = true;
 console.log(`\nidentity-partition: ${n} checks passed`);

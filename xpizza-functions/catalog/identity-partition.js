@@ -65,9 +65,21 @@ function uniqueOrRefuse(ids, code, what) {
  * @returns {{ known: Set, deleted: Set, minting: number }}
  */
 function validatePartition({ activeCertified, carried, deletedIds, unidentified = [] } = {}) {
+  /* 🔴 PRESENT-BUT-WRONG-SHAPE IS NOT ABSENT. asArray() read a non-array as empty, which is the
+     filter-don't-refuse shape this module's own header rules out — and it is not merely untidy: with
+     an empty active set (a fresh brand) an empty reading passes SILENTLY, so a client sending
+     `carried: "A"` publishes as though it declared nothing. Absent is a legitimate state and stays
+     legitimate; malformed is a disagreement about the shape of the request and refuses. */
+  const shaped = (v, what) => {
+    if (v === undefined || v === null) return [];
+    if (!Array.isArray(v)) {
+      throw new PartitionRefusal('identity_partition_malformed', `${what} is present but is not an array`);
+    }
+    return v;
+  };
   const A = new Set(activeCertified || []);
-  const C = uniqueOrRefuse(asArray(carried), 'identity_partition_duplicate_carried', 'the draft');
-  const D = uniqueOrRefuse(asArray(deletedIds), 'identity_partition_duplicate_deleted', 'deleted_ids');
+  const C = uniqueOrRefuse(shaped(carried, 'the draft\'s carried ids'), 'identity_partition_duplicate_carried', 'the draft');
+  const D = uniqueOrRefuse(shaped(deletedIds, 'deleted_ids'), 'identity_partition_duplicate_deleted', 'deleted_ids');
 
   /* C ⊆ A — a carried id the active version does not have. It is foreign (another restaurant's, or
      another kind's), retired, or invented. The spec is explicit that this REFUSES rather than being
@@ -144,12 +156,26 @@ function validatePartition({ activeCertified, carried, deletedIds, unidentified 
         restored a different version) and the deletion was decided about a different menu.
    The refusal is deliberately not a silent drop: the editor is told to re-review, because a deletion
    is the one operation here that destroys something. */
+/* 🔴 A CONTRACT THIS FUNCTION DEPENDS ON AND DOES NOT ENFORCE — Slice D owns it. The binding is only
+   frictionless if the generation moves for REAL activations: it must bump on a successful activation
+   and on a rollback, and NOT on a failed or abandoned one. If a failed publish bumped it, every retry
+   after a transient error would refuse the merchant's deletion as stale and send them back to
+   re-review something they had already confirmed — turning a safety binding into an obstacle, which
+   is how safety bindings get removed. Stated here because this is where the dependency lives, and
+   pinned by a cell so D cannot quietly define it the other way. */
 function validateDeletionClaim(claim, { activeVersionId, activeGeneration } = {}) {
   if (claim === undefined || claim === null) return { ids: [], declared: false };
 
   if (typeof claim !== 'object' || Array.isArray(claim)) {
     throw new PartitionRefusal('deleted_ids_malformed',
       'the deletion claim must be an object carrying its ids and the baseline they were declared against');
+  }
+  /* Same rule one level down: `ids` present but not an array is a malformed claim, not an absent one.
+     It used to read as "no deletions", and although the partition law then refused the publish as
+     UNACCOUNTED, that names the wrong fault — it tells the merchant their declaration is incomplete
+     when in fact their client sent a deletion list the server could not read. */
+  if (claim.ids !== undefined && claim.ids !== null && !Array.isArray(claim.ids)) {
+    throw new PartitionRefusal('deleted_ids_malformed', 'the deletion claim\'s ids must be an array');
   }
   const ids = asArray(claim.ids);
   if (!ids.length) return { ids: [], declared: false };

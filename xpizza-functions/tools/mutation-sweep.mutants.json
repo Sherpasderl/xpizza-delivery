@@ -6433,6 +6433,32 @@
   "why": "isolated deliberately: a claim missing BOTH binding fields is caught by whichever check runs first, so it cannot distinguish them — this mutant survived until the cell supplied a valid generation and omitted only the version."
  },
  {
+  "id": "d4p1c-08",
+  "slice": "d4p1c",
+  "file": "catalog/identity-partition.js",
+  "command": [
+   "node",
+   "catalog/identity-partition.test.js"
+  ],
+  "label": "🔴 a present-but-non-array carried/deleted_ids reads as EMPTY - on a fresh brand it publishes silently",
+  "kills_with": "a non-array carried, with an EMPTY active set",
+  "from": "    if (!Array.isArray(v)) {\n      throw new PartitionRefusal('identity_partition_malformed', `${what} is present but is not an array`);\n    }\n    return v;",
+  "to": "    if (!Array.isArray(v)) return [];\n    return v;"
+ },
+ {
+  "id": "d4p1c-09",
+  "slice": "d4p1c",
+  "file": "catalog/identity-partition.js",
+  "command": [
+   "node",
+   "catalog/identity-partition.test.js"
+  ],
+  "label": "🔴 a claim whose ids is not an array reads as 'no deletions' - the refusal names the wrong fault",
+  "kills_with": "a claim whose ids is a string",
+  "from": "  if (claim.ids !== undefined && claim.ids !== null && !Array.isArray(claim.ids)) {\n    throw new PartitionRefusal('deleted_ids_malformed', 'the deletion claim\\'s ids must be an array');\n  }",
+  "to": "  if (false) { throw new Error('unreachable'); }"
+ },
+ {
   "id": "pah-01",
   "slice": "pah",
   "file": "resolve-manual.js",
