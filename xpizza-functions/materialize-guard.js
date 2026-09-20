@@ -112,12 +112,18 @@ async function holdIfClosedAtMaterialize(deps, orderId, order, now) {
      Checked here rather than at the top of the function because everything above is a legitimate
      non-refund outcome — a scheduled order, an already-resolved one, an open kitchen, a config
      outage — and callers that only ever reach those genuinely do not need refund wiring. */
-  /* 🔴 DEFENCE IN DEPTH, AND NO MUTANT CAN KILL IT — stated rather than left to look covered. The
-     dispatcher path decides before it claims and therefore never arrives here unwired, and every
-     other caller today IS wired, so no cell reaches this branch. It is kept because reaching this
-     point means the guard is about to reverse a payment, and a future caller wired like resolveDeps
-     was would otherwise crash mid-refund exactly as this whole commit exists to prevent. The mutant
-     that covered it was deleted rather than re-aimed at something it does not test. */
+  /* 🔴 DEFENCE IN DEPTH — AND, SINCE THE ROUND THAT MADE IT REACHABLE, COVERED. An earlier version of
+     this note said no cell reaches this branch and that its mutant had been deleted. Both were true
+     when they were written; neither is true at HEAD, and the note outlived the code it described.
+     What is true now: the dispatcher cell in test/resolve-manual.emulator.test.js drives exactly this
+     path — resolveDeps supplies no voidOrRefund, so canAutoRefund is false and parking is what
+     happens — and the two hours-lookup cells reach the park holding an order this path has just
+     committed `confirmed`, which is the case pah-02 covers (restored after I deleted it as
+     unreachable, which it was not).
+     What the branch is FOR has not changed, which is why this is corrected rather than deleted:
+     reaching this point means the guard is about to reverse a payment, and a caller wired the way
+     resolveDeps was would otherwise crash mid-refund and have the catch two steps later blame the
+     provider — the exact failure this commit exists to end. */
   if (!canAutoRefund(deps)) {
     const { landed } = await parkForManualRefund(deps, orderId, now);
     if (landed && deps.alert) {
