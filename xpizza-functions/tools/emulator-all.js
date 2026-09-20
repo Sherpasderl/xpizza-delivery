@@ -39,22 +39,30 @@ const KNOWN_RED = {
    are exactly the logic a gate depends on, and "we ran it once and it looked right" is not evidence
    for a rule that decides whether the gate is red. tools/emulator-ports.guard.test.js drives all
    three plus the empty case. */
-function classify(results, knownRed) {
+/* 🔴 A SUITE THAT ASSERTS NOTHING IS NOT A PASS. Success was taken from the exit status alone, so a
+   suite that exited early, or whose output convention went unrecognised, reported green with 0 cells
+   — the exact thing the cell column exists to make visible, sitting in the column and counting for
+   nothing. Zero cells now FAILS unless it is allowlisted with a reason, the same rule as KNOWN_RED.
+   The allowlist is empty today: every suite reports cells. */
+const ZERO_CELL_OK = {};
+
+function classify(results, knownRed, zeroCellOk = ZERO_CELL_OK) {
   const rows = results.map((r) => {
     const known = Object.prototype.hasOwnProperty.call(knownRed, r.name);
     if (r.ok && known) return { ...r, state: 'stale-excuse' };
+    if (r.ok && r.cells === 0 && !Object.prototype.hasOwnProperty.call(zeroCellOk, r.name)) return { ...r, state: 'zero-cell' };
     if (r.ok) return { ...r, state: 'pass' };
     if (known) return { ...r, state: 'excused' };
     return { ...r, state: 'fail' };
   });
   const count = (st) => rows.filter((x) => x.state === st).length;
-  const failed = count('fail'), excused = count('excused'), stale = count('stale-excuse');
+  const failed = count('fail'), excused = count('excused'), stale = count('stale-excuse'), zero = count('zero-cell');
   // Nothing measured is never a pass — the same rule the mutation sweep enforces.
-  const exitCode = (!rows.length || failed || stale) ? 1 : 0;
-  return { rows, failed, excused, stale, passed: count('pass'), exitCode };
+  const exitCode = (!rows.length || failed || stale || zero) ? 1 : 0;
+  return { rows, failed, excused, stale, zero, passed: count('pass'), exitCode };
 }
 
-module.exports = { classify, KNOWN_RED };
+module.exports = { classify, KNOWN_RED, ZERO_CELL_OK };
 if (require.main !== module) return;
 
 const scripts = (() => {
@@ -103,8 +111,8 @@ for (const name of scripts) {
 }
 
 const verdict = classify(results, KNOWN_RED);
-const { failed, excused, stale } = verdict;
-const TAG = { pass: 'pass', excused: 'KNOWN-RED (excused)', fail: '🔴 FAIL', 'stale-excuse': '🔴 KNOWN-RED BUT PASSING' };
+const { failed, excused, stale, zero } = verdict;
+const TAG = { pass: 'pass', excused: 'KNOWN-RED (excused)', fail: '🔴 FAIL', 'stale-excuse': '🔴 KNOWN-RED BUT PASSING', 'zero-cell': '🔴 PASSED, 0 ASSERTIONS' };
 console.log('');
 for (const r of verdict.rows) {
   console.log(`  ${TAG[r.state].padEnd(26)} ${r.name.padEnd(32)} ${String(r.cells).padStart(3)} cells  ${r.secs.padStart(6)}s`);
@@ -127,5 +135,10 @@ if (stale) {
 }
 
 const total = results.length;
-console.log(`\nemulator-all: ${verdict.passed}/${total} passing, ${failed} failing, ${excused} excused, ${stale} stale-excuse — ${((Date.now() - started) / 1000 / 60).toFixed(1)} min`);
+if (zero) {
+  console.log('\n🔴 A SUITE EXITED 0 WHILE ASSERTING NOTHING. Either it stopped early, or its output');
+  console.log('   convention is not recognised here. Both make its green meaningless — fix it, or add');
+  console.log('   it to ZERO_CELL_OK with a reason.');
+}
+console.log(`\nemulator-all: ${verdict.passed}/${total} passing, ${failed} failing, ${excused} excused, ${stale} stale-excuse, ${zero} zero-assertion — ${((Date.now() - started) / 1000 / 60).toFixed(1)} min`);
 process.exit(verdict.exitCode);

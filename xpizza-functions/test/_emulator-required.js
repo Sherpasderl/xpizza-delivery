@@ -20,7 +20,9 @@
    FIREBASE_DATABASE_EMULATOR_HOST and FIREBASE_EMULATOR_HUB — and nothing for functions itself. A
    service with no var is simply not checkable this way; asserting one anyway is a false guard, which
    is worse than none because it fails honest runs. */
-const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1', '0.0.0.0']);
+/* 🔴 0.0.0.0 IS NOT LOOPBACK. It is the wildcard bind address; as a destination it is reachable from
+   off-box and is exactly the shape a foreign emulator would arrive as. It was in this set. */
+const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1']);
 const VAR = {
   firestore: 'FIRESTORE_EMULATOR_HOST',
   database: 'FIREBASE_DATABASE_EMULATOR_HOST',
@@ -30,30 +32,46 @@ module.exports = function requireEmulator(...services) {
   if (missing.length) return refuse(`${missing.map((s) => VAR[s]).join(', ')} not set`,
     'This suite would run against real infrastructure instead of the emulator.');
 
-  /* 🔴 PRESENT IS NOT THE SAME AS OURS. This checked only that the variable existed, while its own
-     comment claimed it refused invocation outside the runner — untrue: a suite handed
-     FIRESTORE_EMULATOR_HOST=foreign.example:1234 passed the check and asserted happily against
-     whatever was there. Presence was the weaker half of the property; the point was never "some
-     emulator", it was "THIS checkout's emulator". So validate both halves: the host must be
-     loopback, and the port must be the one this checkout's band assigns. Then the comment is true. */
-  let expected = null;
+  /* 🔴 FAIL CLOSED WHEN THE BAND CANNOT BE COMPUTED. This used to swallow the failure and fall back
+     to the loopback check alone, so a broken or moved runner silently downgraded the guarantee to
+     "some local emulator" — the weaker property this exists to replace. If we cannot tell whether the
+     emulator is ours, we do not run. */
+  let expected;
   try {
     const { planPorts, offsetFor, ROOT } = require('../tools/emulator-run.js');
     expected = planPorts(offsetFor(ROOT));
-  } catch (_) { expected = null; }   // runner unavailable → fall back to the loopback check alone
+  } catch (e) {
+    return refuse(`the port bands could not be computed (${(e && e.message) || e})`,
+      'Without them this cannot tell THIS checkout\'s emulator from another one, so it refuses.');
+  }
 
-  for (const s of services) {
-    const raw = VAR[s] && process.env[VAR[s]];
-    if (!raw) continue;
+  /* The hub is checked whether or not the suite asked for it. rules-unit-testing DISCOVERS its
+     endpoints through FIREBASE_EMULATOR_HUB and PREFERS what it discovers over the per-service
+     variables — so a suite could hold a perfectly correct local database address and still be pointed
+     at a foreign checkout's database by an inherited hub. The runner clears it, so this only bites a
+     direct invocation, which is precisely the case this helper is for. */
+  const toCheck = services.map((s) => [VAR[s], expected[s]]).filter(([v]) => v);
+  toCheck.push(['FIREBASE_EMULATOR_HUB', expected.hub]);
+
+  for (const [varName, wantPort] of toCheck) {
+    const raw = process.env[varName];
+    if (!raw) continue;                       // absent is handled above for services; absent hub is fine
     const i = String(raw).lastIndexOf(':');
     const host = i > 0 ? String(raw).slice(0, i) : String(raw);
-    const port = i > 0 ? Number(String(raw).slice(i + 1)) : NaN;
+    const portText = i > 0 ? String(raw).slice(i + 1) : '';
     if (!LOOPBACK.has(host.replace(/^\[|\]$/g, ''))) {
-      return refuse(`${VAR[s]}=${raw} is not loopback`,
+      return refuse(`${varName}=${raw} is not loopback`,
         'That is someone else\'s emulator — asserting against it proves nothing about this tree.');
     }
-    if (expected && Number.isFinite(port) && expected[s] !== undefined && port !== expected[s]) {
-      return refuse(`${VAR[s]}=${raw} is not this checkout's port (expected ${expected[s]})`,
+    /* 🔴 AN UNREADABLE PORT REFUSES; IT DOES NOT SKIP THE CHECK. The comparison used to run only when
+       the port parsed, so a bare "127.0.0.1" or "127.0.0.1:garbage" sailed past the band check
+       entirely — the two shapes most likely to come from a hand-set variable. */
+    if (!/^\d+$/.test(portText)) {
+      return refuse(`${varName}=${raw} has no readable port`,
+        'The band check cannot run on it, and an unchecked address is how a foreign emulator gets in.');
+    }
+    if (wantPort !== undefined && Number(portText) !== wantPort) {
+      return refuse(`${varName}=${raw} is not this checkout's port (expected ${wantPort})`,
         'A loopback port from a DIFFERENT checkout is the exact collision the per-checkout bands remove.');
     }
   }

@@ -72,10 +72,37 @@ const NOW = 1_700_000_000_000;
     r = await claimOrderCore(db, { uid: 'u6', orderId: 'O6', token: null, now: NOW });
     assert.strictEqual(r.status, 403); assert.strictEqual(await boundUid('O6'), null); assert.strictEqual(await bal('u6'), 0); ok('phone-mismatch → 403, no bind, no credit');
 
-    // 7 — path-injection order_id / token → 403
-    await reset(); await seedProfile('u7');
+    /* 7 — MALFORMED order_id / token are refused by VALIDATION, not by absence.
+       🔴 THIS CELL USED TO PROVE NOTHING. It reset the tree, seeded no order, and then asserted 403
+       for orderId 'O7' with a malformed token — but O7 did not exist, so 403 was the answer whether
+       or not ORDER_ID_RE and TOKEN_RE existed at all. Deleting both guards left it green.
+       Discriminating now: each input is one that would SUCCEED if its regex were removed. 'O7-x' is a
+       perfectly legal RTDB key that fails TOKEN_RE (hyphen), and its tracking row really does point
+       at a fully claimable O7 — so without the token check the claim binds and credits. Likewise
+       'O7!' is a legal RTDB key that fails ORDER_ID_RE, seeded claimable. The assertions are on the
+       MONEY: nothing bound, nothing credited, and the order still claimable afterwards. */
+    await reset(); await seedProfile('u7'); await seedOrder('O7'); await seedOrder('O7!');
+    await seedTrk('O7-x', 'O7');     // a real, correct tracking row — only the token's SHAPE is wrong
+    await seedTrk('TrkO7', 'O7');    // the well-formed token, so the closing proof can actually claim
+
+    const malformedToken = await claimOrderCore(db, { uid: 'u7', orderId: 'O7', token: 'O7-x', now: NOW });
+    assert.strictEqual(malformedToken.status, 403, '🔴 a malformed token was accepted');
+    assert.strictEqual(await boundUid('O7'), null, '🔴 the malformed-token claim BOUND the order — validation ran too late');
+    assert.strictEqual(await bal('u7'), 0, '🔴 the malformed-token claim CREDITED — money moved on an unvalidated capability');
+
+    const malformedId = await claimOrderCore(db, { uid: 'u7', orderId: 'O7!', token: null, now: NOW });
+    assert.strictEqual(malformedId.status, 403, '🔴 a malformed order_id was accepted');
+    assert.strictEqual(await boundUid('O7!'), null, '🔴 the malformed-id claim BOUND the order');
+    assert.strictEqual(await bal('u7'), 0, '🔴 the malformed-id claim CREDITED');
+
+    // …and the order was genuinely claimable all along, so the 403s were the GUARDS, not absence.
+    const proof = await claimOrderCore(db, { uid: 'u7', orderId: 'O7', token: 'TrkO7', now: NOW });
+    assert.strictEqual(proof.status, 200, 'premise — O7 was claimable, so the refusals above came from validation');
+    assert.strictEqual(await boundUid('O7'), 'u7'); assert.strictEqual(await bal('u7'), 3);
+
+    // the literal path-injection shapes stay covered too
     assert.strictEqual((await claimOrderCore(db, { uid: 'u7', orderId: 'bad/../evil', token: null, now: NOW })).status, 403);
-    assert.strictEqual((await claimOrderCore(db, { uid: 'u7', orderId: 'O7', token: 'bad/../tok', now: NOW })).status, 403); ok('path-injection order_id / token → 403');
+    ok('malformed order_id / token refused by VALIDATION — proven by a claimable order that the same call then claims');
 
     // 8 — cancelled order → 403 (no bind)
     await reset(); await seedProfile('u8'); await seedOrder('O8', { status: 'cancelled' });

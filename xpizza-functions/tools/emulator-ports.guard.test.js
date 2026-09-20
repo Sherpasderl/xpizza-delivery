@@ -16,7 +16,8 @@ const net = require('net');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const { planPorts, SLOTS, SERVICE_LISTENERS, ALL_HOST_ENV, childEnv } = require('./emulator-run.js');
+const { planPorts, SLOTS, SERVICE_LISTENERS, ALL_HOST_ENV, childEnv, DISCOVERY_PREFIX } = require('./emulator-run.js');
+const os = require('os');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 (async () => {
@@ -213,21 +214,32 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     ok('the generated config is excluded from the deploy archive by functions.ignore, not only by .gitignore');
   }
 
-  // ── 11. EVERY EMULATOR SUITE ON DISK REFUSES WHEN ITS HOST VAR IS UNSET ────────────────────
-  /* 🔴 ENUMERATED FROM DISK, NOT FROM package.json. This cell used to read the scripts — so it could
-     only see suites something already ran, and a suite with NO script was invisible to the very check
-     meant to catch unguarded suites. There were two: claim-order and claim-prefill. claim-order is a
-     MONEY-PATH suite (retro-credit of a guest order's loyalty earn) that threw at require time for
-     anyone following its own header, and had never executed. A suite nobody runs is exactly the one
-     that needs finding, so the list comes from the filesystem. */
+  // ── 11. 🔴 EVERY SUITE ON DISK ACTUALLY REFUSES A FOREIGN EMULATOR — DRIVEN, NOT GREPPED ───
+  /* This used to assert that each file CONTAINED the string "_emulator-required". A substring is not
+     a call: commenting the line out still passed, and so did a file that only mentioned it in prose.
+     It was checking the spelling of the property rather than the property. So each suite is now
+     SPAWNED with a deliberately foreign host var and must refuse — which can only pass if the helper
+     is really required, really invoked, and really validating. The refusal happens before any
+     emulator connection, so this needs no emulator and costs milliseconds per suite. */
   {
     const files = fs.readdirSync(path.join(ROOT, 'test')).filter((f) => f.endsWith('.emulator.test.js'));
     assert.ok(files.length >= 43, `premise — the emulator suites are on disk (${files.length})`);
-    const unguarded = files.filter((f) => !fs.readFileSync(path.join(ROOT, 'test', f), 'utf8').includes("_emulator-required"));
-    assert.deepStrictEqual(unguarded, [],
-      '🔴 an emulator suite does not refuse when its host var is unset — it would run against real infrastructure, or an inherited foreign emulator');
+    const hostile = {
+      ...process.env,
+      FIRESTORE_EMULATOR_HOST: 'evil.example:1234',
+      FIREBASE_DATABASE_EMULATOR_HOST: 'evil.example:1234',
+      FIREBASE_FIRESTORE_EMULATOR_ADDRESS: 'evil.example:1234',
+      FIREBASE_EMULATOR_HUB: 'evil.example:1234',
+    };
+    const accepted = [];
+    for (const f of files) {
+      const r = spawnSync(process.execPath, [path.join(ROOT, 'test', f)], { cwd: ROOT, encoding: 'utf8', env: hostile, timeout: 30000 });
+      if (r.status !== 1 || !/REFUSED/.test(r.stderr || '')) accepted.push(`${f} (exit ${r.status})`);
+    }
+    assert.deepStrictEqual(accepted, [],
+      '🔴 an emulator suite did NOT refuse a foreign host — it would assert against another tree and report green');
 
-    // …and every one of them is reachable by a script, or nothing will ever run it.
+    // …and each suite is reachable by a script, or nothing will ever run it.
     const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
     const named = new Set();
     for (const v of Object.values(pkg.scripts || {})) {
@@ -237,7 +249,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const orphans = files.filter((f) => !named.has(f));
     assert.deepStrictEqual(orphans, [],
       '🔴 an emulator suite has no script — the aggregate enumerates scripts, so nothing runs it and its failures are invisible');
-    ok(`all ${files.length} emulator suites on disk refuse when their host var is unset, and each is reachable by a script`);
+    ok(`all ${files.length} emulator suites REFUSE a foreign emulator when driven, and each is reachable by a script`);
   }
 
   // ── 12. 🔴 AN INHERITED HOST VAR FOR AN UNSERVED SERVICE IS CLEARED, NOT PASSED ON ──────────
@@ -302,11 +314,21 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
     assert.strictEqual(classify([], {}).exitCode, 1, '🔴 a run that measured nothing reported success');
 
+    /* 🔴 THE SAME RULE ONE LEVEL DOWN. Success came from the exit status alone, so a suite that
+       exited early — or whose output convention went unrecognised — reported green with 0 cells,
+       sitting in the very column meant to make that visible. */
+    const zeroCell = classify([{ name: 'test:a', ok: true, cells: 0 }], {});
+    assert.strictEqual(zeroCell.exitCode, 1, '🔴 a suite that exited 0 while asserting NOTHING passed the gate');
+    assert.strictEqual(zeroCell.rows[0].state, 'zero-cell');
+    assert.strictEqual(classify([{ name: 'test:a', ok: true, cells: 0 }], {}, { 'test:a': 'a recorded reason' }).exitCode, 0,
+      'an allowlisted zero-cell suite is excused, like KNOWN_RED');
+    assert.strictEqual(classify([{ name: 'test:a', ok: true, cells: 5 }], {}).exitCode, 0, 'an ordinary passing suite is unaffected');
+
     for (const [name, reason] of Object.entries(KNOWN_RED)) {
       assert.ok(typeof reason === 'string' && reason.length > 40,
         `🔴 KNOWN_RED["${name}"] has no substantive reason — an excuse without one is a silent skip`);
     }
-    ok(`fail / excused / stale-excuse / nothing-measured each decided correctly; all ${Object.keys(KNOWN_RED).length} KNOWN_RED entries carry a reason`);
+    ok(`fail / excused / stale-excuse / zero-assertion / nothing-measured each decided correctly; all ${Object.keys(KNOWN_RED).length} KNOWN_RED entries carry a reason`);
   }
 
   // ── 15. THE CLEARED-VAR LIST COVERS WHAT THE INSTALLED CLI CAN ACTUALLY EXPORT ─────────────
@@ -351,8 +373,14 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
      this the band table would be quietly false for every functions run. */
   {
     const fns = childEnv(['functions'], { PATH: '/usr/bin' });
-    assert.strictEqual(fns.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, 'true',
+    const want = path.join(os.tmpdir(), `${DISCOVERY_PREFIX}${process.pid}`);
+    assert.strictEqual(fns.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, want,
       '🔴 a functions run would boot the unpinnable discovery server into our own port bands');
+    /* 🔴 A PATH WE OWN, NOT THE LITERAL "true". "true" makes the CLI mkdtemp its own
+       firebase-discovery-XXXX and never delete it — discovery/index.js reads the manifest and removes
+       nothing, so every functions run leaked one directory. Four had already accumulated from my own
+       runs. Naming it by pid is what lets the startup sweep tell a stale one from a live one. */
+    assert.ok(want.startsWith(os.tmpdir()), 'the manifest lives outside the repo — never near a deploy archive');
     const dbOnly = childEnv(['database'], { PATH: '/usr/bin' });
     assert.strictEqual(dbOnly.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, undefined,
       'runs that start no functions are left alone');

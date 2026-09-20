@@ -17,6 +17,7 @@ const { spawn } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const net = require('net');
+const os = require('os');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
@@ -120,13 +121,24 @@ function childEnv(services, parentEnv) {
      function: it writes functions.yaml to a temp dir and opens NO PORT. Verified: test:quality-runner
      passes its 17 checks this way, and nothing appears in 8000-8999 during the run.
      Only set when unset — an operator who pointed it at a real path meant it. */
+  /* 🔴 A PATH WE OWN, NOT "true". The literal "true" makes the CLI mkdtemp its own
+     firebase-discovery-XXXX directory and never remove it — discovery/index.js reads the manifest and
+     deletes nothing, so every functions run leaks one. I found four already, all mine, from
+     introducing this branch. Pointing it at a directory this process created makes the manifest ours
+     to delete, on the same cleanup path as the generated config, signals included. */
   if (services.includes('functions') && !env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH) {
-    env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH = 'true';
+    env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH = discoveryDirFor(process.pid);
   }
   return env;
 }
 
-module.exports = { planPorts, offsetFor, SLOTS, ROOT, SERVICE_LISTENERS, ALL_HOST_ENV, HOST_ENV, childEnv };
+/* Kept out of the repo entirely: a discovery manifest inside the functions source dir would need
+   both a .gitignore rule and a functions.ignore rule to stay out of a deploy archive, and the file
+   has no reason to live there. Named by pid so a stale one can be told from a live one. */
+const DISCOVERY_PREFIX = 'xpizza-emu-discovery.';
+const discoveryDirFor = (pid) => path.join(os.tmpdir(), `${DISCOVERY_PREFIX}${pid}`);
+
+module.exports = { planPorts, offsetFor, SLOTS, ROOT, SERVICE_LISTENERS, ALL_HOST_ENV, HOST_ENV, childEnv, discoveryDirFor, DISCOVERY_PREFIX };
 if (require.main !== module) return;
 
 /* 🔴 THE SWEEP RUNS BEFORE ANYTHING THAT CAN EXIT — including offsetFor(), which exits 2 on a
@@ -140,6 +152,17 @@ for (const f of fs.readdirSync(ROOT)) {
   try { process.kill(Number(m[1]), 0); alive = true; } catch (e) { alive = e && e.code === 'EPERM'; }
   if (!alive) { try { fs.unlinkSync(path.join(ROOT, f)); } catch { /* raced with another sweep */ } }
 }
+// …and our own discovery directories, by the same dead-pid rule.
+try {
+  for (const d of fs.readdirSync(os.tmpdir())) {
+    if (!d.startsWith(DISCOVERY_PREFIX)) continue;
+    const pid = Number(d.slice(DISCOVERY_PREFIX.length));
+    if (!Number.isInteger(pid)) continue;
+    let alive = false;
+    try { process.kill(pid, 0); alive = true; } catch (e) { alive = e && e.code === 'EPERM'; }
+    if (!alive) { try { fs.rmSync(path.join(os.tmpdir(), d), { recursive: true, force: true }); } catch { /* raced */ } }
+  }
+} catch { /* tmpdir unreadable — nothing to sweep */ }
 
 /* 🔴 ARGUMENTS ARE ALLOWLISTED, NOT SCANNED. Scanning for the FIRST --only while Firebase's parser
    takes the LAST meant `--only firestore --only auth` validated firestore and started an unbanded
@@ -242,8 +265,16 @@ const probe = (port) => new Promise((resolve) => {
   const generated = path.join(ROOT, `firebase.emulator.${process.pid}.json`);
   fs.writeFileSync(generated, JSON.stringify(base, null, 2) + '\n');
 
+  const discoveryDir = services.includes('functions') ? discoveryDirFor(process.pid) : null;
+  if (discoveryDir) fs.mkdirSync(discoveryDir, { recursive: true });
+
   let cleaned = false;
-  const cleanup = () => { if (cleaned) return; cleaned = true; try { fs.unlinkSync(generated); } catch { /* already gone */ } };
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    try { fs.unlinkSync(generated); } catch { /* already gone */ }
+    if (discoveryDir) { try { fs.rmSync(discoveryDir, { recursive: true, force: true }); } catch { /* already gone */ } }
+  };
   process.on('exit', cleanup);
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { cleanup(); process.exit(130); });
 
