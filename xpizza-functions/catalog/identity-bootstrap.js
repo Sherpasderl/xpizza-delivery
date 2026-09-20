@@ -261,13 +261,29 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
     if (rec.identity_certified === true) {
       throw new Error(`identity_bootstrap_raced: ${rid}/${active.versionId} was certified by a concurrent pass`);
     }
-    /* 🔴 NEVER UPGRADE AN EXISTING ACTIVATION RECORD (§3.0). A legacy pre-P1 live version carries no
-       record at all, so "a record is already here" means a P1 activation wrote it — pending, or
-       abandoned. Overwriting it with `activated` would let legacy migration manufacture activation
-       authority for a candidate that was explicitly abandoned, or promote one that never committed.
-       There is no safe way to guess which existing records may be overwritten, so none may be. */
-    if (rec.identity_activation !== undefined) {
-      throw new Error(`identity_bootstrap_activation_present: ${rid}/${active.versionId} already carries an activation record (${JSON.stringify((rec.identity_activation || {}).status)}); bootstrap never upgrades one`);
+    /* 🔴 NEVER UPGRADE A P1 `pending`/`abandoned` RECORD (§3.0) — which is narrower than "refuse any
+       record", and the difference is a blocked migration.
+       The rule protects one thing: bootstrap must not manufacture activation authority. Promoting a
+       `pending` candidate that never committed, or reviving an `abandoned` one, would do exactly
+       that, so both still refuse outright and an unrecognised status refuses too (a status we do not
+       model is not one we may overwrite).
+       But `activated` is different, and refusing it blocked the cutover. Slice D writes a record on
+       every published version, so once D ships, a publish that lands BEFORE bootstrap runs leaves an
+       `activated` version carrying a truthful record and NO identity stamps — and a blanket refusal
+       meant that restaurant could never be migrated. Nothing enforced the "pause publishing first"
+       ordering, and a constraint nothing enforces is the sentence that gets discovered in use.
+       🔴 IT IS SAFE BECAUSE `activated` IS TRUSTWORTHY, checked rather than assumed: there are
+       exactly two writers of it. The flip writes it inside the SAME transaction that moves the
+       pointer, so it commits only if the pointer moved; and bootstrap writes it only after verifying
+       in-tx that the pointer names this version and the generation has not moved. Neither can mark a
+       version that was never live. So `activated` means "this really was activated", and bootstrap is
+       adding the identity the cutover exists to add — it does NOT rewrite the record. */
+    const existingActivation = rec.identity_activation;
+    if (existingActivation !== undefined && existingActivation !== null) {
+      const st = existingActivation.status;
+      if (st !== 'activated') {
+        throw new Error(`identity_bootstrap_activation_present: ${rid}/${active.versionId} carries a ${JSON.stringify(st)} activation record; bootstrap never upgrades a pending, abandoned or unrecognised one`);
+      }
     }
     // The uniqueness+liveness guarantee, at the instant of the write.
     for (const [kind, objs, byKey] of [['dish', dishes, liveDish], ['extra', extras, liveExtra]]) {
@@ -289,7 +305,14 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
        record proves this version was LIVE, which is the only rollback eligibility P1 honours. */
     tx.update(vref, {
       identity_certified: true,
-      identity_activation: { status: 'activated', base_generation: active.generation, attempt, at: stamp },
+      /* 🔴 LEAVE AN EXISTING RECORD EXACTLY AS IT IS. When D already activated this version, its
+         record is the truthful account of that activation — its own base_generation and attempt, not
+         bootstrap's. Rewriting it would replace a real activation's history with this pass's
+         incidental values, which is the same "manufacture authority" failure in a quieter form.
+         A pre-P1 version has no record and gets one describing the activation bootstrap can see. */
+      ...(existingActivation !== undefined && existingActivation !== null
+        ? {}
+        : { identity_activation: { status: 'activated', base_generation: active.generation, attempt, at: stamp } }),
     });
 
     /* The source, CAS'd on the revision read before the transaction: a merchant may be mid-edit, and

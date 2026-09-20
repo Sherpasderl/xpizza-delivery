@@ -103,6 +103,63 @@ const publish = async (expectedActive, tag) => {
     ok('a rollback advances the generation like any other activation, even though it moves the pointer backwards');
   }
 
+  // ── 4. THE RECORD TRANSITIONS pending → activated IN THE FLIP'S OWN TRANSACTION ─────────────
+  /* Reservation ownership cannot reject an abandoned rename-only or price-only candidate: it mints
+     nothing, owns no reservations, and therefore looks activatable forever. The record is what makes
+     eligibility a fact about THIS attempt. It must also move in the same transaction as the pointer,
+     so "activated" cannot be true of a version the pointer never reached. */
+  {
+    const live = await getActivePointer(db, RID);
+    const v = await publish(live.version, 'rec-1');
+    const doc = await db.collection('restaurants').doc(RID).collection('versions').doc(v).get();
+    const rec = (doc.data() || {}).identity_activation;
+    assert.ok(rec, '🔴 the candidate carried no activation record — eligibility would fall back to guessing from content');
+    assert.strictEqual(rec.status, 'activated', '🔴 the record did not transition — it would stay activatable after activation');
+    const after = await getActivePointer(db, RID);
+    assert.strictEqual(rec.activated_at_generation, after.generation,
+      'and it records the generation it activated AT, so the pointer and the record cannot disagree about when');
+    ok('a published candidate transitions pending → activated in the flip, stamped with the generation it activated at');
+  }
+
+  /* ── 5. 🔴 WHY THERE IS NO CELL HERE FOR THE PREDICATE'S REFUSALS ─────────────────────────────
+     I wrote one and it could not be made honest, so it is gone rather than weakened.
+     The intended cell was: something activates between a candidate's preparation and its flip, so the
+     record's base_generation no longer matches. Two attempts failed for two different reasons, and
+     the second is the real finding.
+       1. Publishing something else mid-flight moves the VERSION too, so the pre-existing pointer CAS
+          refuses it — the cell passed with the eligibility predicate DELETED. It measured the CAS.
+       2. Publishing and rolling back leaves the version where the candidate expected it while the
+          generation advances twice, which only the record can see. But it cannot happen: both
+          publishVersion and rollbackVersion acquire the same per-restaurant LEASE, and the candidate
+          holds it from before its baseline capture until after its flip. The detour dies with
+          `publish_locked`, which is the system working correctly.
+     So while the lease serializes activations and writeVersion always writes `pending`, the
+     predicate's refusal branches are unreachable: nothing can move the generation under a held lease,
+     and no candidate arrives non-pending. They are DEFENCE IN DEPTH — a lease is a time-based
+     assertion, not a proof, and a future caller could flip without one — and they have NO MUTANT,
+     because a mutant that cannot be killed by any reachable state would only look like coverage.
+     What IS proven, by cell 4: the predicate runs on every activation and permits a valid candidate.
+     Reported to the advisor rather than papered over with a seeded cell. */
+
+  // ── 6. ROLLBACK IS EXEMPT, AND THE EXEMPTION IS NOT A LOOPHOLE ──────────────────────────────
+  /* A rollback re-activates a version whose record already says `activated` — that is its history and
+     precisely what a rollback is for. The exemption is passed explicitly by the caller rather than
+     inferred from version ordering, so it cannot widen into "any flip onto an activated version". */
+  {
+    const current = await getActivePointer(db, RID);
+    const history = await db.collection('restaurants').doc(RID).collection('versions').orderBy('__name__').get();
+    const target = history.docs.map((d) => d.id).find((id) => id !== current.version);
+    assert.ok(target, 'premise — there is an earlier version to roll back to');
+    const targetRec = ((history.docs.find((d) => d.id === target).data()) || {}).identity_activation;
+    assert.ok(!targetRec || targetRec.status === 'activated', 'premise — the rollback target is an already-activated version');
+
+    await rollbackVersion(db, RID, target, { expected: { activeVersionId: current.version } });
+    const after = await getActivePointer(db, RID);
+    assert.strictEqual(after.version, target, '🔴 a rollback onto an activated version was refused — the exemption is missing');
+    assert.strictEqual(after.generation, current.generation + 1, 'and it still advances the generation');
+    ok('rollback re-activates an already-activated version, which a publish may not — the exemption is explicit, not inferred');
+  }
+
   FINISHED = true;
   console.log(`d4p1-activation(emulator): OK (${n})`);
   process.exit(0);

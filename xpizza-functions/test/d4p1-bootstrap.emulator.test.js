@@ -84,9 +84,31 @@ async function seed(rid, sha) {
   await sourceRefOf(db, rid).set(canonicalize(buildSourceFromCode(rid)));
   const { input } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: sha });
   const res = await publishVersion(db, rid, input, { expected: { activeVersionId: null } });
+  /* 🔴 THE BASELINE IS A PRE-P1 VERSION, SO IT CARRIES NO ACTIVATION RECORD. Slice D writes a
+     pending record on every version it publishes, and bootstrap refuses — correctly — to touch a
+     version that already has one: a record present means a P1 activation wrote it, and overwriting it
+     could manufacture activation authority for a candidate that was abandoned. At the real cutover
+     the live version predates all of that and has no record. Publishing one here and then stripping
+     the record is how this fixture models that, rather than weakening a guard whose reasoning holds.
+     🔴 SEPARATELY REPORTED: after D ships, a publish that lands BEFORE bootstrap runs leaves a version
+     with a record and no stamps, which bootstrap then refuses — a real cutover-ordering hazard that
+     belongs in the runbook, not in a fixture. */
+  await db.collection('restaurants').doc(rid).collection('versions').doc(res.versionId)
+    .update({ identity_activation: admin.firestore.FieldValue.delete() });
   await backfillIdentities(db, rid, catalogSnapshot(rid));
   return res;
 }
+
+/* 🔴 MODEL A PRE-P1 VERSION. Slice D writes a pending activation record on every version it
+   publishes; bootstrap refuses — correctly — to touch a version that already carries one, because a
+   record present means a P1 activation wrote it and overwriting could manufacture authority for a
+   candidate that was abandoned. At the real cutover the live version predates all of that. Any cell
+   here that publishes a baseline and then bootstraps it must therefore strip the record, or it is
+   testing a sequence the cutover cannot be in. */
+const asPreP1 = async (rid, versionId) => {
+  await db.collection('restaurants').doc(rid).collection('versions').doc(versionId)
+    .update({ identity_activation: admin.firestore.FieldValue.delete() });
+};
 
 (async () => {
   const rid = 'x_pizza';
@@ -211,7 +233,8 @@ async function seed(rid, sha) {
   {
     const rid2 = 'la_musa';
     const { input } = buildPublishCandidate(rid2, { activeVersionId: null }, { source_sha: 'no-backfill' });
-    await publishVersion(db, rid2, input, { expected: { activeVersionId: null } });
+    const pub2 = await publishVersion(db, rid2, input, { expected: { activeVersionId: null } });
+    await asPreP1(rid2, pub2.versionId);
     /* 🔴 PUBLISHING ALREADY REGISTERS. The pre-P1 post-flip writer (catalog-publish.js:378) mints an
        identity for every live key after the flip, so "publish and skip the backfill" does NOT produce
        an unregistered object — my first version of this cell asserted a rejection that could never
@@ -263,6 +286,7 @@ async function seed(rid, sha) {
     const rid4 = 'x_pizza';
     // A second version exists and the pointer is swung to it after the pass has read the first.
     const second = await publishVersion(db, rid4, { ...(await candidateFromSource(rid4)), source_sha: 'second' }, { expected: { activeVersionId: active.versionId } });
+    await asPreP1(rid4, second.versionId);
     const secondId = second.versionId || second.version;
     // The new version is uncertified, so a pass CAN run on it — but move the pointer mid-flight.
     const orig = db.runTransaction.bind(db);
@@ -455,6 +479,7 @@ async function seed(rid, sha) {
     const rid9 = 'x_pizza';
     const cur9 = await readActiveVersion(db, rid9);
     const pub9 = await publishVersion(db, rid9, { ...(await candidateFromSource(rid9)), source_sha: 'gen-fence' }, { expected: { activeVersionId: cur9.versionId } });
+    await asPreP1(rid9, pub9.versionId);
     const v9id = pub9.versionId || pub9.version;
     const p9 = pointerOf(rid9);
     await p9.set({ version: v9id, at: new Date(), generation: 3 });
@@ -919,6 +944,64 @@ async function seed(rid, sha) {
       await sourceRefOf(db, ridR).set(srcPre);
       ok(`${ridR}: a draft saved between the pass's read and its transaction aborts it — nothing stamped, the save intact`);
     }
+  }
+
+  /* ── 🔴 A POST-D VERSION: ACTIVATED RECORD, NO STAMPS → BOOTSTRAP PROCEEDS AND LEAVES IT ALONE ─
+     The mirror of every cell above, which all model a PRE-P1 baseline with no record at all. Once
+     Slice D ships, a publish that lands before bootstrap runs leaves exactly this state: a truthful
+     `activated` record and no identity. A blanket refusal meant that restaurant could never be
+     migrated — the cutover depended on an ordering nothing enforced.
+     It is safe because `activated` is trustworthy rather than assumed: the flip writes it in the SAME
+     transaction that moves the pointer, and bootstrap writes it only after verifying in-tx that the
+     pointer names this version at the captured generation. Neither can mark a version that was never
+     live. */
+  {
+    const ridA = 'la_musa';
+    await db.recursiveDelete(db.collection('restaurants').doc(ridA));
+    await sourceRefOf(db, ridA).set(canonicalize(buildSourceFromCode(ridA)));
+    const { input } = buildPublishCandidate(ridA, { activeVersionId: null }, { source_sha: 'post-d' });
+    const pub = await publishVersion(db, ridA, input, { expected: { activeVersionId: null } });
+    await backfillIdentities(db, ridA, catalogSnapshot(ridA));
+
+    const vref = db.collection('restaurants').doc(ridA).collection('versions').doc(pub.versionId);
+    const before = ((await vref.get()).data() || {}).identity_activation;
+    assert.ok(before && before.status === 'activated',
+      'premise — a completed publish leaves an ACTIVATED record, which is the post-D state this cell is about');
+    assert.ok(!((await vref.get()).data() || {}).identity_certified, 'premise — and it is not yet stamped');
+
+    const res = await bootstrapIdentityStamps(db, ridA);
+    assert.ok(res.stamped, '🔴 bootstrap REFUSED a version D had activated — that restaurant could never be migrated');
+
+    const after = ((await vref.get()).data() || {}).identity_activation;
+    assert.deepStrictEqual(after, before,
+      '🔴 bootstrap REWROTE a real activation\'s record — replacing its own base_generation and attempt with this pass\'s incidental values is manufacturing authority in a quieter form');
+    assert.strictEqual(((await vref.get()).data() || {}).identity_certified, true, 'and the identity it exists to add IS added');
+    ok('a post-D version (activated, unstamped) is stamped by bootstrap with its activation record left byte-unchanged');
+  }
+
+  /* ── 🔴 pending AND abandoned STILL REFUSE — the property the narrowing must not have widened ───
+     Promoting a candidate that never committed, or reviving one explicitly abandoned, is the failure
+     the original blanket rule existed to prevent. Narrowing it to `activated` must not have bought
+     the cutover at the price of that. An unrecognised status refuses too: a status we do not model is
+     not one we may overwrite. */
+  {
+    const ridB = 'la_musa';
+    for (const status of ['pending', 'abandoned', 'something_unmodelled']) {
+      await db.recursiveDelete(db.collection('restaurants').doc(ridB));
+      await sourceRefOf(db, ridB).set(canonicalize(buildSourceFromCode(ridB)));
+      const { input } = buildPublishCandidate(ridB, { activeVersionId: null }, { source_sha: `st-${status}` });
+      const pub = await publishVersion(db, ridB, input, { expected: { activeVersionId: null } });
+      await backfillIdentities(db, ridB, catalogSnapshot(ridB));
+      const vref = db.collection('restaurants').doc(ridB).collection('versions').doc(pub.versionId);
+      /* Written onto what the REAL writer produced, not hand-built: only the status is forced, so the
+         rest of the record is whatever publishVersion actually wrote. */
+      await vref.update({ 'identity_activation.status': status });
+
+      await assert.rejects(() => bootstrapIdentityStamps(db, ridB), /identity_bootstrap_activation_present/,
+        `🔴 bootstrap accepted a ${status} record — it would manufacture activation authority for a candidate that never committed`);
+      assert.ok(!((await vref.get()).data() || {}).identity_certified, `${status}: and it stamped nothing`);
+    }
+    ok('pending, abandoned and an unrecognised status each still REFUSE — the narrowing bought the cutover without buying that');
   }
 
   FINISHED = true;

@@ -130,6 +130,31 @@ function makeDb() {
     runTransaction: async (fn) => fn({
       get: (ref) => ref.get(),      // a query ref answers .get() too — see colRef's query()
       set: (ref, d) => { put(ref.path, d); },
+      /* 🔴 ADDED BECAUSE THE DOUBLE WAS LAXER THAN FIRESTORE. A real transaction has update(), with
+         DOTTED PATHS that write a nested field without replacing its parent — which is exactly how
+         Slice D transitions an activation record's status without clobbering the base_generation and
+         attempt beside it. The fake offered only set(), so production code using update() failed with
+         "tx.update is not a function" in unit tests while working in the emulator: a double that
+         cannot express a real operation silently narrows what the tests can cover. Missing-document
+         behaviour mirrors Firestore's, which REFUSES rather than creating. */
+      update: (ref, patch) => {
+        const held = docs.get(ref.path);
+        if (held === undefined) throw new Error(`fake_update_missing_doc: ${ref.path} — Firestore's update() refuses a document that does not exist`);
+        // 🔴 the STORED SHAPE is { data, updateTime }; the document is `held.data`. Treating the
+        // wrapper as the document re-wraps it on write and corrupts every field.
+        const next = JSON.parse(JSON.stringify(held.data || {}));
+        for (const [k, v] of Object.entries(patch || {})) {
+          if (!k.includes('.')) { next[k] = v; continue; }
+          const parts = k.split('.');
+          let node = next;
+          for (let i = 0; i < parts.length - 1; i++) {
+            if (node[parts[i]] === undefined || node[parts[i]] === null || typeof node[parts[i]] !== 'object') node[parts[i]] = {};
+            node = node[parts[i]];
+          }
+          node[parts[parts.length - 1]] = v;
+        }
+        put(ref.path, next);
+      },
       delete: (ref) => { docs.delete(ref.path); },
     }),
     _raw: docs,

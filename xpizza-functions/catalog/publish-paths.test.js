@@ -121,7 +121,13 @@ const publishFresh = async (db, rid, over = {}) => publishVersion(db, rid, input
       const body = pub.slice(start, pub.indexOf('async function', start + 10));
       assert.ok(body.includes('assertCandidateValid(') || body.includes('verifyVersionStructure('),
         `${fn} must validate the candidate before it can reach the flip`);
-      assert.ok(/flipPointer\([^)]*expected\)/.test(body), `${fn} must pass its CAS expectation to the flip`);
+      /* 🔴 MATCHES THE ARGUMENT, NOT THE CLOSING PAREN. The old pattern required `expected` to be the
+         LAST thing before `)`, so Slice D adding an options argument — rollbackVersion now passes
+         { rollback: true } so the flip can exempt it from the activation-eligibility predicate —
+         failed a guard about CAS expectations for a reason that had nothing to do with CAS. The
+         property is that `expected` is handed to the flip; whether anything follows it is not this
+         guard's business. */
+      assert.ok(/flipPointer\(\s*db[^;]*\bexpected\b/.test(body), `${fn} must pass its CAS expectation to the flip`);
     }
     ok(`chokepoint lint (defense in depth): ${files.length} production files READ (incl. the NUL-bearing portal path) — one pointer writer, two flip callers, both validating and both CAS-bound`);
   }
@@ -211,8 +217,15 @@ const publishFresh = async (db, rid, over = {}) => publishVersion(db, rid, input
     const attempt = async (targetVersionId) => {
       const token = await acquireLease(db, rid);
       try {
+        /* 🔴 { rollback: true } BECAUSE THAT IS WHAT THIS CELL ACTUALLY DOES. It drives flipPointer
+           DIRECTLY at versions that were already published — and therefore already activated — to
+           prove the write point validates its candidate. Slice D's eligibility predicate refuses an
+           already-activated version on the PUBLISH path (it is eligible only for rollback), so
+           without this flag the cell would fail for a reason that has nothing to do with the
+           validation it exists to test. Re-activating an activated version IS a rollback in shape;
+           saying so keeps this guard about candidate validation. */
         await flipPointer(db, rid, token, targetVersionId, snapshotOf(rid, targetVersionId, 99, {}, {}),
-          { activeVersionId: good });
+          { activeVersionId: good }, { rollback: true });
       } finally { await releaseLease(db, rid, token); }
     };
 

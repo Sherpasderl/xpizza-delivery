@@ -657,6 +657,10 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
         runTransaction: (fn, opts) => (started += 1, base.runTransaction(async (tx) => fn({
           get: async (ref) => { reads += 1; if (reads === 1) await blocked; return tx.get(ref); },
           set: (ref, v) => tx.set(ref, v),
+          // 🔴 forwarded because a REAL transaction has it: a wrapper that omits a method the
+          // production code legitimately uses fails as "tx.update is not a function" while the
+          // emulator is perfectly happy — the double narrowing what the test can see.
+          update: (ref, v) => tx.update(ref, v),
           delete: (ref) => tx.delete(ref),
         }), opts)),
       };
@@ -791,7 +795,33 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
         let queued = [];
         const out = await base.runTransaction(async (tx) => {
           queued = [];
-          return fn({ get: (r) => tx.get(r), set: (r, v) => queued.push(() => r._set(v)), delete: (r) => queued.push(() => r._delete()) });
+          /* 🔴 update() is buffered like set(): a real transaction has it, and an adapter that omits
+             one of the three write verbs makes production code fail here while the emulator accepts
+             it. The merge is applied at commit time against whatever the doc holds then, which is
+             what the buffered-commit shape models. */
+          return fn({
+            get: (r) => tx.get(r),
+            set: (r, v) => queued.push(() => r._set(v)),
+            /* Buffered as a read-modify-write through the verbs this double has: it owns no _update,
+               and inventing one would mean the adapter models an operation the rest of the file does
+               not. Dotted paths are applied so a nested status can move without replacing its
+               parent, which is what the production write does. */
+            update: (r, v) => queued.push(async () => {
+              const cur = (await r.get()).data() || {};
+              const next = JSON.parse(JSON.stringify(cur));
+              for (const [k, val] of Object.entries(v || {})) {
+                const parts = String(k).split('.');
+                let node = next;
+                for (let i = 0; i < parts.length - 1; i++) {
+                  if (!node[parts[i]] || typeof node[parts[i]] !== 'object') node[parts[i]] = {};
+                  node = node[parts[i]];
+                }
+                node[parts[parts.length - 1]] = val;
+              }
+              return r._set(next);
+            }),
+            delete: (r) => queued.push(() => r._delete()),
+          });
         }, opts);
         commits += 1;
         if (commits === 1) await blocked;         // the COMMIT is in flight and cannot be recalled
@@ -900,6 +930,9 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
           return tx.get(ref);
         },
         set: (ref, v) => tx.set(ref, v),
+        // forwarded: a real transaction has update(), and a wrapper that drops it fails production
+        // code here while the emulator is happy — the double narrowing what the test can see.
+        update: (ref, v) => tx.update(ref, v),
         delete: (ref) => tx.delete(ref),
       })),
     };
@@ -1046,4 +1079,4 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
   }
 
   console.log(`\nidentity-noop: ${n} checks passed across both brands`);
-})().catch((e) => { console.error('identity-noop FAILED:', e && e.message); process.exit(1); });
+})().catch((e) => { console.error('identity-noop FAILED:', (e && e.stack) || e); process.exit(1); });

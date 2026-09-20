@@ -158,7 +158,12 @@ async function acquireLease(db, rid) {
 //
 // `draftRevision` is present ONLY for draft-derived publishes, by key: a publish built from code has
 // no draft to be stale against, and a publish built from a draft must never be able to omit it.
-async function flipPointer(db, rid, token, versionId, snapshot, expected) {
+/* `rollback` is passed EXPLICITLY rather than inferred from the state of things. A rollback and a
+   publish are indistinguishable at this boundary — both move the pointer to a version that exists —
+   and guessing from, say, whether the target is older would make the eligibility rule depend on
+   version ordering rather than on the caller's intent. The caller knows which it is; it says so. */
+async function flipPointer(db, rid, token, versionId, snapshot, expected, { rollback = false } = {}) {
+  const isRollback = !!rollback;
   // 2b S3 fold: the ordinal is as load-bearing as the version witness — a snapshot with a version but
   // no `seq` would satisfy the coherence check and then be refused by the read-side ladder (which
   // fail-closes on an absent ordinal), i.e. a fallback that exists but can never be used.
@@ -197,6 +202,10 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected) {
     const snap = await tx.get(lockRef);
     const pointerSnap = await tx.get(pointerRef);
     const draftSnap = wantsDraftCas ? await tx.get(sourceRefOf(db, rid)) : null;
+    /* Every read before any write — Firestore refuses a read after a write — and this one is the
+       candidate's own version doc, so the eligibility predicate is evaluated against the record as it
+       stands at the serialization point rather than as it looked when the candidate was built. */
+    const candidateSnap = await tx.get(versionsColOf(db, rid).doc(versionId));
     const l = snap.exists ? (snap.data() || {}) : {};
     if (l.owner_token !== token) throw new Error(`lease_lost: not owner (versionId=${versionId})`);
     if (!(l.expires_at && l.expires_at.toMillis() > nowServer.toMillis())) throw new Error(`lease_expired: cannot flip (versionId=${versionId})`);
@@ -273,11 +282,57 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected) {
        which is required: `seq` cannot fence a rollback, because a rollback moves the pointer
        BACKWARDS to a version whose seq is lower than the one it replaces. */
     const priorGeneration = pointerStateOf(pointerSnap.exists ? pointerSnap.data() : null).generation;
+
+    /* 🔴 ELIGIBILITY IS DECIDED HERE, AGAINST THE GENERATION THIS TRANSACTION IS ABOUT TO ADVANCE.
+       Not against a value read before the lease, not against the caller's `expected` — against
+       priorGeneration, read from the pointer inside this same transaction, a few lines above. That is
+       the whole point: any earlier read can tear, and the tear is not hypothetical — it is exactly the
+       one Slice C's claim check had, where a pointer that moved between the pre-flight pass and the
+       flip made a valid-looking claim stale at the moment it was applied.
+       The record answers a question the version's CONTENT cannot: a rename-only or price-only
+       candidate mints nothing, owns no reservations, and therefore looks activatable forever. Only a
+       `pending` candidate bound to the CURRENT generation may activate.
+       ROLLBACK is exempt: it re-activates a version whose record is already `activated`, which is that
+       version's history and precisely what a rollback is for. The claim-policy split that D owes
+       rollback lands with the consumption work; here rollback simply is not required to be pending. */
+    /* 🔴 THE REFUSAL BRANCHES BELOW ARE DEFENCE IN DEPTH AND HAVE NO MUTANT — said here so nobody
+       reads their absence as an oversight. While the per-restaurant LEASE serializes activations,
+       they cannot be reached: publishVersion and rollbackVersion both hold it, a candidate holds it
+       from before its baseline capture until after this flip, so nothing can move the generation
+       underneath one — and writeVersion always writes `pending`, so no candidate arrives in another
+       state. A cell that reached them would have to defeat the lease, and one that seeded a record
+       would be testing its own fixture.
+       They stay because a lease is a time-based assertion, not a proof: an expired lease, a clock
+       skew, or a future caller that flips without one all end here, and at that point this is the
+       last thing standing between a superseded candidate and an activation. */
+    const activation = candidateSnap.exists ? (candidateSnap.data() || {}).identity_activation : undefined;
+    if (activation !== undefined && activation !== null && !isRollback) {
+      const status = activation.status;
+      if (status === 'abandoned') {
+        throw new Error(`flip_activation_abandoned: ${rid}/${versionId} — this candidate was abandoned and is permanently ineligible; acquiring a new lease does not revive it`);
+      }
+      if (status !== 'pending') {
+        throw new Error(`flip_activation_not_pending: ${rid}/${versionId} — status ${JSON.stringify(status)} is not activatable (an already-activated version is eligible only for rollback)`);
+      }
+      const boundTo = Number.isInteger(activation.base_generation) ? activation.base_generation : 0;
+      if (boundTo !== priorGeneration) {
+        throw new Error(`flip_activation_stale_baseline: ${rid}/${versionId} — built against generation ${boundTo} but ${priorGeneration} is live; something was activated since this candidate was prepared`);
+      }
+    }
     tx.set(pointerRef, {
       version: versionId,
       generation: priorGeneration + 1,
       at: FieldValue.serverTimestamp(),
     });
+    /* The transition rides the SAME transaction as the pointer move and the generation bump, so
+       "activated" cannot be true of a version the pointer never reached, and cannot be false of one it
+       did. A record updated afterwards would be a second chance to disagree with the pointer. */
+    if (activation !== undefined && activation !== null && !isRollback) {
+      tx.update(versionsColOf(db, rid).doc(versionId), {
+        'identity_activation.status': 'activated',
+        'identity_activation.activated_at_generation': priorGeneration + 1,
+      });
+    }
     // 1b: the snapshot rides the SAME transaction — coherence by construction. If the flip aborts
     // (lease lost/expired/stale), NEITHER the pointer nor the snapshot moves.
     tx.set(snapshotRefOf(db, rid), snapshot);
@@ -335,7 +390,7 @@ function normalizeInputs({ items, extras, extraRecords }) {
    function was not given is a stamp that does not exist, which is what keeps a draft field from ever
    becoming certification. The discriminator is what later separates "certified but a stamp is
    broken" (an anomaly) from "genuinely unstamped, pre-P1" (serve by name, as today). */
-async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha, stamps = null }, nowServer) {
+async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha, stamps = null, baseline = null }, nowServer) {
   const { menuTable, extraTable, v2ByKey, v2ExtrasByKey } = normalizeInputs({ items, extras, extraRecords });
   const desc = integrityDescriptor(menuTable, extraTable);
   if (desc.item_count === 0) throw new Error(`publish_refused_empty: ${rid} — a version must have ≥1 item`);
@@ -411,6 +466,32 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
        certified version from an uncertified one. This flag is written only when this publish was
        given a plan. */
     ...(certified ? { identity_certified: true } : {}),
+    /* 🔴 THE ACTIVATION RECORD, WRITTEN PENDING AND BOUND TO THE BASELINE THIS CANDIDATE WAS BUILT
+       AGAINST. Reservation ownership alone cannot reject an abandoned rename-only or price-only
+       version — such a version mints nothing, so it owns no reservations and looks eligible forever.
+       The record is what makes eligibility a fact about THIS publish attempt rather than a guess from
+       what the version happens to contain.
+       `base_generation` is the generation captured with the version id as a PAIR before the candidate
+       was built. The flip re-reads the live generation inside its own transaction and requires them
+       equal, so a candidate built against a baseline that has since been activated away is refused
+       rather than applied on top of someone else's activation. Written only for a CERTIFIED publish:
+       a pre-P1 version carries no record and is handled by bootstrap's own path. */
+    /* 🔴 NOT GATED ON `certified`, AND THAT WAS MY FIRST MISTAKE HERE. `certified` means "this publish
+       carried an identity plan"; the activation record means "this version may be activated once,
+       from this baseline". They are different questions, and tying the record to the stamp meant no
+       version got one until the plan existed — the predicate would have been unreachable and untested
+       for several increments, which is how a guard ends up shipping unexercised. Every version this
+       function writes gets a record; pre-P1 versions, written before any of this, legitimately have
+       none and are handled by bootstrap's own path. */
+    ...(baseline ? {
+      identity_activation: {
+        status: 'pending',
+        base_version: baseline.version || null,
+        base_generation: Number.isInteger(baseline.generation) ? baseline.generation : 0,
+        attempt: versionId,
+        at: FieldValue.serverTimestamp(),
+      },
+    } : {}),
     item_count: desc.item_count, extra_count: desc.extra_count,
     menu_hash: desc.menu_hash, extras_hash: desc.extras_hash,
     content_hash,
@@ -503,7 +584,14 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
   let identityKeys = null, identityVersionId = null;
   try {
     const nowServer = await serverNow(db, rid);
-    const { versionId, descriptor, seq, menuTable, extraTable } = await writeVersion(db, rid, input, nowServer);
+    /* 🔴 THE PAIR IS READ HERE, TOGETHER, AND TRAVELS WITH THE CANDIDATE. {version, generation} must
+       come from ONE read: two separate reads can tear, and a record bound to a version from one
+       moment and a generation from another is bound to a baseline that never existed. The flip
+       re-reads the live generation in its own transaction and requires equality, so this capture is
+       the claim and that comparison is the check. */
+    const baselineAtBuild = await getActivePointer(db, rid);
+    const { versionId, descriptor, seq, menuTable, extraTable } = await writeVersion(
+      db, rid, { ...input, baseline: baselineAtBuild }, nowServer);
     // VERIFY by re-reading via the REAL reader path (proves counts + BOTH hashes + structure BEFORE the flip).
     await readVersionDocs(db, rid, versionId);        // throws on completeness fail (counts + both hashes)
     await verifyVersionStructure(db, rid, versionId); // throws on a broken menu_structure bijection
@@ -598,7 +686,7 @@ async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm, expect
     const seq = targetDocs.seq;   // 2b-pre: the ROLLED-TO version's ordinal — never the one we rolled away from
     await verifyVersionStructure(db, rid, targetVersionId);
     const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable);
-    await flipPointer(db, rid, token, targetVersionId, snapshot, expected);
+    await flipPointer(db, rid, token, targetVersionId, snapshot, expected, { rollback: true });
     const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable });
     return { versionId: targetVersionId, rolledBack: true, mirrored: mirrorResult.mirrored };
   } finally {

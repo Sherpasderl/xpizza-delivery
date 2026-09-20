@@ -28,12 +28,19 @@ const ROOT = path.join(__dirname, '..');
    RUN, and their failure is reported and excused. If one starts passing, this run fails until the
    entry is deleted, so the allowlist cannot outlive what it excuses. */
 const KNOWN_RED = {
-  'test:resolve-manual': 'REAL PRODUCTION DEFECT, reported to the advisor and deliberately unfixed: '
-    + 'index.js resolveDeps omits voidOrRefund, releaseRewardHold, sendPaidAfterCloseRefund and '
-    + 'getGraceMinutes, all used by holdIfClosedAtMaterialize (materialize-guard.js:81 calls '
-    + 'voidOrRefund UNGUARDED). A dispatcher materialize of a paid order after close therefore never '
-    + 'attempts the refund. Awaiting an owner decision on the intended end state; the suite is also '
-    + 'stale against the refund contract and needs rewriting alongside the fix.',
+  'test:resolve-manual': 'RED ON THIS BRANCH ONLY — the fix lives elsewhere, and this is no longer waiting on anyone. '
+    + 'The defect: index.js resolveDeps omits voidOrRefund, releaseRewardHold, sendPaidAfterCloseRefund and '
+    + 'getGraceMinutes, all used by holdIfClosedAtMaterialize, and materialize-guard calls voidOrRefund UNGUARDED — so '
+    + 'a dispatcher materializing a paid-after-close order got a TypeError reported as a PixelPay failure, with the '
+    + 'provider never contacted. The owner decided (refund automatically, matching the confirm path); six refused gate '
+    + 'rounds established that automating it needs a sound reversal machine, so the owner accepted a MINIMAL HONEST '
+    + 'PARK instead: the path now refuses before touching anything and tells a dispatcher to press Reembolsar. That '
+    + 'fix is 6c00ea6 on fix/paid-after-close-honest-park, off dc7d9f7, pending its gate and the owner\'s merge. '
+    + 'This suite is red HERE because feat/portal-1d-D4-P1a does not carry that branch — not because a decision is '
+    + 'outstanding. '
+    + '🔴 WHEN THE PARK BRANCH MERGES, DELETE THIS ENTRY. The gate will FAIL until it is deleted, because a KNOWN_RED '
+    + 'suite that passes is a stale excuse — which makes the merge the cleanest possible proof that the stale-excuse '
+    + 'mechanism works on something real rather than on a test of itself.',
 };
 
 /* 🔴 THE VERDICT IS A PURE FUNCTION so it can be tested without a forty-minute run. The three
