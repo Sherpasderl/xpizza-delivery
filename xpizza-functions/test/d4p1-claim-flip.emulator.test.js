@@ -483,6 +483,95 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
     ok('a claim declaring no ids is inert — it neither consumes nor demands a draft CAS');
   }
 
+  // ── 10. 🔴 A FAILED ATTEMPT MUST NOT BUMP THE FENCE — PROVEN WHERE IT ACTUALLY BITES ──────
+  /* identity-partition.js states this as a contract it DEPENDS ON AND CANNOT ENFORCE: the deletion
+     claim's binding is only frictionless if the generation moves for REAL activations and NOT for
+     failed ones. If a failed publish bumped it, every retry after a transient error would refuse the
+     merchant's deletion as stale and send them back to re-review something they had already
+     confirmed — turning a safety binding into an obstacle, which is how safety bindings get removed.
+     🔴 WHAT WAS ALREADY PROVEN AND WHAT WAS NOT. The activation suite drives a real failed publish
+     and a real retry and asserts the NUMBER does not move. That is the mechanism. It does not prove
+     the thing the number exists to protect, and it cannot: its publishes pass no draftRevision, so
+     they never enter the claim-validation branch at all, and no claim is ever bound before the
+     failure. This binds a real claim, fails a real publish underneath it, and retries — so the
+     property is asserted where a merchant would feel it.
+     If the generation DID bump on failure, the retry below would refuse as deleted_ids_stale_baseline
+     rather than succeed, which is exactly the obstacle the contract warns about.
+     🔴 NO MUTANT ARMS THIS ONE, said rather than left to look covered. "A failed attempt does not
+     bump" is STRUCTURAL: the bump is written inside the flip's own transaction, so an abort discards
+     it along with everything else. There is no single-line change that makes a failed publish advance
+     the fence — you would have to move the pointer write out of the transaction, which is a different
+     design rather than a mutation. The cell's value is as evidence for a contract another module
+     declares and cannot enforce, not as a mutation target. */
+  {
+    /* 🔴 SETTLE THE SUITE'S OWN LEAVINGS FIRST, OUT LOUD. Cell 7 declares a deletion and then ROLLS
+       BACK, which by design neither consumes the claim nor is blocked by it — so the object is out of
+       the draft while its id is still certified, and cell 8 then clears the claim that accounted for
+       it. The result is a draft the partition law correctly refuses as `unaccounted`, and my first
+       version of this cell failed there: the publish below aborted at PRE-FLIGHT instead of at the
+       flip, so it would have "proven" the fence contract using a failure that never reached the
+       flip. Carrying the abandoned deletions out is what a merchant would end up doing, and it is
+       the only repair that leaves the law satisfied rather than bypassed. */
+    const settled = await (async () => {
+      const v = await readActiveVersion(db, RID);
+      const src = (await sourceRefOf(db, RID).get()).data();
+      const inDraft = new Set([...(src.items || []), ...(src.extras || [])]
+        .map((o) => o && o.display && o.display.identity_id).filter(Boolean));
+      const orphans = [...v.dishes, ...v.extras]
+        .map((o) => o.data.display && o.data.display.identity_id)
+        .filter((id) => id && !inDraft.has(id));
+      if (!orphans.length) return 0;
+      const at = await getActivePointer(db, RID);
+      await sourceRefOf(db, RID).update({ deleted_ids: claimOf(orphans, at.version, at.generation) });
+      await publishOnce();
+      return orphans.length;
+    })();
+    assert.ok(settled >= 0, `premise — the suite's abandoned deletions were carried out (${settled})`);
+    assert.strictEqual(await readClaim(), null, 'premise — and nothing is standing before this cell declares its own');
+
+    const baseline = await ensureCertifiedBaseline();
+    const liveId = baseline.dishes[0].data.display.identity_id;
+    assert.ok(liveId, 'premise — a currently certified id to declare');
+    await declareDeletion(liveId);
+
+    const before = await getActivePointer(db, RID);
+    const standing = await snapshotClaim();
+    assert.ok(standing && standing.ids.includes(liveId), 'premise — a real claim is bound before anything fails');
+    assert.strictEqual(standing.base_generation, before.generation, 'premise — and it is bound to the CURRENT generation');
+
+    /* A real failure with a real abort: the CAS is validated against a version that does not exist,
+       so the flip transaction is discarded after the candidate has been written. */
+    let failed = null;
+    try {
+      const input = { ...(await candidateFromSource()), source_sha: `failfence-${Date.now()}` };
+      await publishVersion(db, RID, input, { expected: { activeVersionId: 'v-never-existed', draftRevision: await revision() } });
+    } catch (e) { failed = e; }
+    assert.ok(failed && /flip_cas_stale/.test(String(failed.message)),
+      `premise — the attempt really failed, and failed at the FLIP rather than before it: ${failed && failed.message}`);
+
+    const afterFailure = await getActivePointer(db, RID);
+    assert.strictEqual(afterFailure.generation, before.generation,
+      '🔴 a FAILED activation advanced the generation — the merchant\'s standing deletion is now stale through no act of theirs');
+    assert.strictEqual(afterFailure.version, before.version, '…and the pointer did not move');
+    assert.deepStrictEqual(await snapshotClaim(), standing,
+      '🔴 the failed attempt CONSUMED or rebound the claim — a deletion was recorded as carried out by a publish that never activated');
+
+    /* THE RETRY, with the claim byte-unchanged. This is the assertion the contract is about. */
+    await publishOnce();
+
+    const afterRetry = await getActivePointer(db, RID);
+    assert.strictEqual(afterRetry.generation, before.generation + 1,
+      'the retry advances the fence by exactly one — the failure consumed nothing');
+    assert.strictEqual(await readClaim(), null,
+      '🔴 the retry did not consume the claim it carried out');
+    const landed = await readActiveVersion(db, RID);
+    assert.deepStrictEqual((landed.record.identity_activation || {}).consumed_deleted_ids, [liveId],
+      '…and the version that activated records which deletion it executed');
+    assert.strictEqual(landed.dishes.some((d) => d.data.display.identity_id === liveId), false,
+      '…and the id really is gone, so the claim was carried out rather than dropped');
+    ok('a claim bound before a FAILED publish survives it unchanged and is accepted and consumed by the retry — the fence contract identity-partition depends on and cannot enforce');
+  }
+
   FINISHED = true;
   console.log(`d4p1-claim(emulator): OK (${n})`);
   process.exit(0);

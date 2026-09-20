@@ -81,6 +81,17 @@ const publish = async (expectedActive, tag) => {
     assert.strictEqual(afterRetry.version, v3);
     assert.strictEqual(afterRetry.generation, before.generation + 1,
       'the retry advances it by exactly one — the failure consumed nothing');
+    /* 🔴 THIS PROVES THE MECHANISM, NOT WHAT IT PROTECTS — and the difference was a real gate finding.
+       The publishes here pass no draftRevision, so they never enter the flip's claim-validation branch
+       and no deletion claim is ever bound before the failure. So this cell shows the NUMBER does not
+       move; it cannot show that a merchant's standing deletion survives the failure and is still
+       accepted on the retry, which is the property the number exists for and the one
+       identity-partition.js declares as a contract it depends on and cannot enforce.
+       That half is proven in d4p1-claim-flip's last cell, which binds a real claim, fails a real
+       publish underneath it and retries. It lives there because the certified-baseline and
+       claim-declaring fixtures already exist in that suite; duplicating them here would be two copies
+       that have to agree forever. Cross-referenced rather than moved, so the pair reads as one
+       property split across the two suites that can each only prove half. */
     ok('a failed publish advances nothing; the retry after it advances by exactly one');
   }
 
