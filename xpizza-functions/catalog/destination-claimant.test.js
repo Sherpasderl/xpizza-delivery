@@ -235,30 +235,48 @@ const NO_PLAN = { moves: [], mints: [], retires: [] };
   ok('planDestinations is exactly what the plan writes, releasedFrom is exactly what it frees, and a self-move frees nothing');
 }
 
-// ── 11. 🔴 AN UNREAD DESTINATION IS NOT AN UNCLAIMED ONE ─────────────────────────────────────
-/* The default that matters most. If a destination with no read entry fell through to "no claimants",
-   then FORGETTING to read a name would be indistinguishable from the name being free — and the guard
-   would be defeated by an omission rather than by a decision. It refuses instead. */
+// ── 11. 🔴 ONE SCAN, ONE ABORT — and an unread KEY ROW is still not an absent one ───────────
+/* v7.1 replaced v7's per-name claimant reads with ONE transactional query per KIND, so the two inputs
+   are asymmetric and the cell has to hold both halves:
+     the CLAIMANT map is complete unless the scan truncated — a name missing from it genuinely has no
+     live claimant, and refusing there would refuse every clean mint;
+     the KEY ROWS are per-destination document reads, which can be forgotten — so a destination with no
+     row entry REFUSES, because an omission must not be indistinguishable from a free name.
+   And truncation is ONE flag: when it is set, EVERY destination carries the refusal, which is the
+   "one explicit bounded abort rather than N places to truncate silently" v7.1 asks for. */
 {
   const plan = { moves: [{ id: 'Y', from: 'B', to: 'A' }], mints: [{ id: 'N', name: 'Brand New' }], retires: [] };
-  const judged = judgePlanDestinations(plan, { A: { keyRow: null, liveClaimants: [] } });
-  assert.strictEqual(judged.length, 2, 'every destination is judged, not only the ones that were read');
 
-  const a = judged.find((j) => j.name === 'A');
-  assert.strictEqual(a.verdict.ok, true, `the read destination is judged normally: ${a.verdict.code}`);
+  const judged = judgePlanDestinations(plan, { claimants: { A: [live('X', 'A')] }, keyRows: { A: row('X'), 'Brand New': null } });
+  assert.strictEqual(judged.length, 2, 'every destination is judged');
+  assert.strictEqual(judged.find((j) => j.name === 'A').verdict.code, 'destination_claimed',
+    'the destination with a claimant in the scan is judged against it');
+  /* 🔴 THE HALF THAT WOULD BE EASY TO GET BACKWARDS. "Brand New" is absent from the claimant map, and
+     under the ONE-scan model that means nobody claims it — a fresh mint must go through. Reading the
+     absence as "unread" would refuse every mint the guard is supposed to allow. */
+  assert.strictEqual(judged.find((j) => j.name === 'Brand New').verdict.ok, true,
+    '🔴 a name absent from a COMPLETE claimant scan was refused — under one-query-per-kind, absent means unclaimed, and refusing it blocks every fresh mint');
 
-  const unread = judged.find((j) => j.name === 'Brand New');
-  assert.strictEqual(unread.verdict.ok, false, '🔴 a destination nobody read was treated as a destination nobody claims');
-  assert.strictEqual(unread.verdict.code, 'destination_unread', `expected destination_unread, got ${unread.verdict.code}`);
+  // …but its KEY ROW is a per-destination read, and forgetting that one refuses.
+  const noRow = judgePlanDestinations(plan, { claimants: { A: [] }, keyRows: { A: null } });
+  const unread = noRow.find((j) => j.name === 'Brand New');
+  assert.strictEqual(unread.verdict.ok, false, '🔴 a destination whose key row was never read was treated as one whose row is absent');
+  assert.strictEqual(unread.verdict.code, 'destination_key_row_unread', `expected destination_key_row_unread, got ${unread.verdict.code}`);
+
+  /* ONE ABORT: a truncated scan refuses EVERY destination, including ones that would otherwise be
+     clean. A per-name flag would put the decision back in N places, which is what v7.1 removed. */
+  const short = judgePlanDestinations(plan, { claimants: {}, keyRows: { A: null, 'Brand New': null }, truncated: true });
+  assert.deepStrictEqual(short.map((j) => j.verdict.code), ['destination_claimants_truncated', 'destination_claimants_truncated'],
+    '🔴 a truncated scan permitted some destination anyway — the abort has to cover the whole activation, not the names that happened to look clean');
 
   // Every destination is reported, so a caller can refuse naming ALL the blocked names at once.
   const twoBlocked = judgePlanDestinations(
     { moves: [{ id: 'Y', from: 'B', to: 'A' }, { id: 'Z', from: 'C', to: 'D' }], mints: [], retires: [] },
-    { A: { keyRow: null, liveClaimants: [live('X', 'A')] }, D: { keyRow: null, liveClaimants: [live('W', 'D')] } },
+    { claimants: { A: [live('X', 'A')], D: [live('W', 'D')] }, keyRows: { A: null, D: null } },
   );
   assert.deepStrictEqual(twoBlocked.map((j) => j.verdict.code), ['destination_claimed', 'destination_claimed'],
     'both blocked destinations are reported, not just the first');
-  ok('an unread destination REFUSES rather than defaulting to free, and every destination is judged so all blockers surface at once');
+  ok('one scan and one abort: an absent claimant means unclaimed, an unread KEY ROW refuses, and a truncated scan refuses every destination');
 }
 
 // ── 12. PURE, AND IT DOES NOT MUTATE WHAT IT IS ASKED TO JUDGE ───────────────────────────────

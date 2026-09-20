@@ -88,10 +88,12 @@ function releasedFrom(plan, name) {
    `keyRow`         — the destination's `keys/{encode(name)}` document data, or null when absent.
    `liveClaimants`  — every `ids/*` row with `legacy_key == name` AND `status == live`, as
                       [{id, legacy_key, status}], read in the SAME transaction that will write.
-   `truncated`      — true when that query hit a cap. §4: an overflow must ABORT the activation, never
-                      truncate claimant discovery, because a truncated scan misses the very orphan the
-                      guard exists to catch. Modelled here so the refusal is a decision, not an
-                      accident of how many rows happened to come back. */
+   `truncated`      — the SCAN's single overflow flag, passed down. §4: an overflow must ABORT the
+                      activation, never truncate claimant discovery, because a truncated scan misses
+                      the very orphan the guard exists to catch. It is one flag per scan and not one
+                      per name (v7.1) — `judgePlanDestinations` owns it; this parameter exists so the
+                      per-destination predicate cannot be driven with a set it does not know is
+                      short. */
 function destinationVerdict({ name, landingId, keyRow = null, liveClaimants = [], truncated = false, plan = null } = {}) {
   if (!isName(name) || !isId(landingId)) {
     return refuse('destination_input_malformed',
@@ -167,24 +169,41 @@ function destinationVerdict({ name, landingId, keyRow = null, liveClaimants = []
   return permit('unclaimed', `${name}: no live claimant and no key row`);
 }
 
-/* EVERY destination of a plan, judged. Returns one entry per destination in plan order so the caller
-   can refuse naming ALL of them rather than whichever happened to be read first — a merchant told
-   about one blocked name at a time, who fixes it and hits the next, learns nothing about the shape of
-   what is wrong.
-   `reads` is name → {keyRow, liveClaimants, truncated}. A destination with NO entry is not treated as
-   unclaimed: an unread destination is the one case the guard cannot have an opinion about, and
-   defaulting it to "free" would make forgetting to read a name indistinguishable from the name being
-   available. */
-function judgePlanDestinations(plan, reads) {
-  const r = reads instanceof Map ? reads : new Map(Object.entries(reads || {}));
+/* EVERY destination of a plan, judged against ONE claimant scan.
+   🔴 THE SHAPE HERE IS v7.1's, NOT v7's, AND THE DIFFERENCE IS THE WHOLE POINT. v7 read the claimants
+   per destination name; v7.1 replaced that with ONE transactional query per KIND over the live id set,
+   built into a name→claimants map. It sees the same claimants — including the ones outside the active
+   version, which is what the guard exists for — it is cheaper than N queries, and it makes
+   claimant-discovery overflow ONE explicit bounded abort instead of N places that can each truncate
+   quietly. A per-name truncation flag would have re-created exactly the N places v7.1 removed.
+
+   So the two inputs are asymmetric, on purpose:
+     `claimants`  — from the ONE scan, and therefore COMPLETE unless `truncated`. A name absent from it
+                    has no live claimants, and that is a fact, not a gap.
+     `keyRows`    — per-destination document reads, which CAN be forgotten. A destination with no entry
+                    refuses: an unread key row is the one thing this predicate cannot have an opinion
+                    about, and defaulting it to "absent" would make forgetting to read indistinguishable
+                    from the row not being there.
+   `truncated` is the scan's single flag. When it is set EVERY destination carries the refusal, so no
+   name can be permitted off the back of a scan that may simply not have reached its claimant. */
+function judgePlanDestinations(plan, scan) {
+  const { claimants = {}, keyRows = {}, truncated = false } = scan || {};
+  const claimantsOf = claimants instanceof Map ? claimants : new Map(Object.entries(claimants || {}));
+  const rowsOf = keyRows instanceof Map ? keyRows : new Map(Object.entries(keyRows || {}));
+
   return planDestinations(plan).map(({ name, landingId, via }) => {
-    if (!r.has(name)) {
+    if (truncated === true) {
       return { name, landingId, via,
-        verdict: refuse('destination_unread',
-          `${name}: this activation writes it but its claimants were never read; a destination nobody read is not a destination nobody claims`) };
+        verdict: refuse('destination_claimants_truncated',
+          `${name}: the live-claimant scan hit its cap, so no destination in this activation can be judged; the orphan may simply not have been read`) };
     }
-    const { keyRow = null, liveClaimants = [], truncated = false } = r.get(name) || {};
-    return { name, landingId, via, verdict: destinationVerdict({ name, landingId, keyRow, liveClaimants, truncated, plan }) };
+    if (!rowsOf.has(name)) {
+      return { name, landingId, via,
+        verdict: refuse('destination_key_row_unread',
+          `${name}: this activation writes it but its key row was never read; an unread row is not an absent one`) };
+    }
+    return { name, landingId, via,
+      verdict: destinationVerdict({ name, landingId, keyRow: rowsOf.get(name) || null, liveClaimants: claimantsOf.get(name) || [], plan }) };
   });
 }
 

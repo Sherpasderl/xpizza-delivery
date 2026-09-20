@@ -6932,9 +6932,9 @@
   "id": "d4p1dc-01",
   "label": "🔴 a truncated claimant scan is treated as a complete one - the orphan may simply not have been read",
   "kills_with": "claimant scan was TRUNCATED",
-  "from": "  if (truncated === true) {",
-  "to": "  if (false) {",
-  "why": "§4: an overflow must ABORT the activation, never truncate claimant discovery. Every branch below reads a short set as good news, so a truncated scan that is not refused looks exactly like a free name. NB the recorded text is the assertion's own wording; my first attempt said 'the claimant scan' where the cell says 'whose claimant scan', and a kill record that does not match is a DRIFT even when the guard is fine.",
+  "from": "  if (truncated === true) {\n    return refuse('destination_claimants_truncated',",
+  "to": "  if (false) {\n    return refuse('destination_claimants_truncated',",
+  "why": "§4: an overflow must ABORT the activation, never truncate claimant discovery. Every branch below reads a short set as good news, so a truncated scan that is not refused looks exactly like a free name. NB the recorded text is the assertion's own wording; my first attempt said 'the claimant scan' where the cell says 'whose claimant scan', and a kill record that does not match is a DRIFT even when the guard is fine. 🔴 The anchor carries its following line: once the aggregate grew its own scan-level truncation check the bare `if (truncated === true) {` matched BOTH, and the 2-space spelling is a substring of the 4-space one, so the shorter anchor silently covered two sites.",
   "slice": "d4p1dc",
   "file": "catalog/identity-destination.js",
   "command": [
@@ -7014,11 +7014,11 @@
  },
  {
   "id": "d4p1dc-07",
-  "label": "🔴 an unread destination defaults to unclaimed - forgetting to read a name defeats the guard",
-  "kills_with": "a destination nobody read was treated as a destination nobody claims",
-  "from": "    if (!r.has(name)) {",
+  "label": "🔴 an unread key row defaults to absent - forgetting to read a destination defeats the guard",
+  "kills_with": "a destination whose key row was never read was treated as one whose row is absent",
+  "from": "    if (!rowsOf.has(name)) {",
   "to": "    if (false) {",
-  "why": "The most dangerous default available here. With it gone, the destructuring defaults make an unread destination indistinguishable from a free one, so the guard is defeated by an OMISSION rather than by a decision — and an omission leaves no evidence.",
+  "why": "The most dangerous default available here. Key rows are per-destination document reads and CAN be forgotten; with the check gone an unread destination is indistinguishable from one whose row is absent, so the guard is defeated by an OMISSION rather than a decision — and an omission leaves no evidence. 🔴 RE-POINTED when the aggregate moved to v7.1's ONE-scan model: the claimant map is now complete by construction (one query per kind), so an absent CLAIMANT legitimately means unclaimed and only the key row can be 'unread'.",
   "slice": "d4p1dc",
   "file": "catalog/identity-destination.js",
   "command": [
@@ -7095,6 +7095,20 @@
    "node",
    "catalog/destination-claimant.test.js"
   ]
+ },
+ {
+  "id": "d4p1dc-13",
+  "slice": "d4p1dc",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ],
+  "label": "🔴 a truncated claimant scan still judges the destinations that look clean",
+  "kills_with": "the abort has to cover the whole activation",
+  "from": "    if (truncated === true) {\n      return { name, landingId, via,",
+  "to": "    if (false) {\n      return { name, landingId, via,",
+  "why": "v7.1 asks for ONE explicit bounded abort rather than N places to truncate silently. With the scan-level refusal gone, a truncated scan falls through to per-destination judgement and every name absent from the short result reads as unclaimed — precisely the orphan the scan failed to reach. The per-destination copy of this check is d4p1dc-01; separate sites, separate mutants."
  },
  {
   "id": "pah-01",
