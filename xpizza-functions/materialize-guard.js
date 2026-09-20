@@ -42,6 +42,45 @@ async function holdIfClosedAtMaterialize(deps, orderId, order, now) {
   const graceMin = deps.getGraceMinutes ? await deps.getGraceMinutes(deps.db) : 15;
   if (SCHED.isWithinGrace(hours, now, graceMin)) return false;   // (A/B) open OR within post-close grace → materialize normally
 
+  /* 🔴 A CALLER THAT CANNOT REFUND MUST SAY SO, NOT DISCOVER IT MID-REFUND. Below this line the guard
+     commits to reversing a payment, and it calls deps.voidOrRefund UNGUARDED while checking every
+     other optional dep first. A caller wired without it therefore threw a TypeError that the catch
+     two steps later reported as if the provider had failed: the order came to rest blocked with
+     refund_failed_paid_after_close, an alert said the refund had failed, and PixelPay was never
+     contacted. index.js's resolveDeps — the dispatcher path — has been exactly that caller for as
+     long as this guard has existed.
+     This does NOT make that path refund. It makes it fail HONESTLY: the order is parked for a human
+     with a reason that names what they must do, before any state changes, and no money moves. The
+     confirm path, which is fully wired, is untouched and still auto-refunds.
+     Checked here rather than at the top of the function because everything above is a legitimate
+     non-refund outcome — a scheduled order, an already-resolved one, an open kitchen, a config
+     outage — and callers that only ever reach those genuinely do not need refund wiring. */
+  /* 🔴 voidOrRefund ALONE, and the narrowness is deliberate. It is the only dep this guard calls
+     without checking first, so it is the only one whose absence turns into a TypeError mid-refund;
+     releaseRewardHold and sendPaidAfterCloseRefund are optional-guarded, and a caller missing them
+     still performs the reversal — less completely, but it moves the money. Requiring all three made
+     pixelpay-confirm's own suite fail, which was the code saying I had widened past the question:
+     "can this caller refund at all?" is what decides an honest park. Whether a refund is COMPLETE is
+     a different question and it belongs with the reversal-machinery work, not here. */
+  const cannotRefund = typeof (deps || {}).voidOrRefund !== 'function' ? ['voidOrRefund'] : [];
+  if (cannotRefund.length) {
+    /* typeof === 'function', not merely present: null, 0, a number or a stray object would otherwise
+       pass and the call would still throw — the same silent crash one step later. */
+    await deps.db.ref(`orders/${orderId}`).update({
+      payment_status: 'manual_reconciliation',
+      blocked_reason: 'manual_refund_required_paid_after_close',
+    });
+    if (deps.alert) {
+      try {
+        await deps.alert('paid_after_close_manual_refund_required', {
+          orderId, restaurant_id: rid, missing: cannotRefund,
+          action: 'Reembolsar el pedido desde la cola de Pedidos — el reembolso automático no está disponible en esta ruta',
+        });
+      } catch (_) { /* best-effort: the park above is what matters */ }
+    }
+    return true;   // held, not materialized, not refunded — a human owns it now
+  }
+
   // Past the REAL kitchen close → AUTO-REFUND. The order is pre-materialization (a materialized order
   // returns above / at the caller's materialized_at check) → NO factura was issued → no fiscal void.
   // CAS refund claim so two concurrent guard passes can NEVER double-refund/double-message: ONLY the pass

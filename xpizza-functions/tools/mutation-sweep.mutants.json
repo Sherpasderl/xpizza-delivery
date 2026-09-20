@@ -5997,5 +5997,35 @@
   "from": "  if (flow.respond) return res.status(flow.respond.status).json(flow.respond.body);",
   "to": "  if (flow.respond) { if (cardShadowStarted) reportIdentityShadow(db, { rid: restaurantId, orderId, attemptId, outcome: 'dropped', result: null }); return res.status(flow.respond.status).json(flow.respond.body); }",
   "kills_with": "heartbeat(s) for a charge that never issued"
+ },
+ {
+  "id": "pah-01",
+  "slice": "pah",
+  "file": "materialize-guard.js",
+  "command": [
+   "npm",
+   "run",
+   "test:resolve-manual"
+  ],
+  "label": "🔴 the capability check is gone - the dispatcher path crashes silently again and blames PixelPay",
+  "kills_with": "the block reason does not name the real situation",
+  "from": "  if (cannotRefund.length) {",
+  "to": "  if (false && cannotRefund.length) {",
+  "why": "the defect itself. Without the check the guard commits to a refund it cannot perform: deps.voidOrRefund is undefined, the unguarded call throws, and the catch reports it as a provider failure — the order is blocked with refund_failed_paid_after_close and an alert says the refund failed, while PixelPay was never contacted. The cell fails on the REASON, which is the operator-visible consequence: a dispatcher reading that alert is told the payment processor failed when what actually happened is that this code path was never wired to refund."
+ },
+ {
+  "id": "pah-02",
+  "slice": "pah",
+  "file": "materialize-guard.js",
+  "command": [
+   "npm",
+   "run",
+   "test:resolve-manual"
+  ],
+  "label": "🔴 the park does not hold the order - it materializes onto a dark kitchen instead",
+  "kills_with": "NOT materialized",
+  "from": "    return true;   // held, not materialized, not refunded — a human owns it now",
+  "to": "    return false;",
+  "why": "returning false tells the caller 'nothing to see here, carry on', so the order materializes after the kitchen has closed — the exact thing this guard exists to prevent, and worse than the silent crash it replaces because food is now expected to be made. Killed on the customer consequence (the order went to 'new' and tracking was written), not on a status code."
  }
 ]

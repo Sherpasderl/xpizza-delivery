@@ -235,22 +235,75 @@ let n = 0; const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); };
     ok('scheduled order manual-materialize → HELD + HTTP 200 outcome:scheduled_held + honest audit (not a false failure)');
   }
 
-  // ── Codex-on-diff (paid-after-close): manual 'materialize' of an UNSCHEDULED order while the kitchen is
-  //    CLOSED now → HOLD (manual_review + scheduled_blocked + alert), never materialize onto a dark kitchen.
+  /* ── 🔴 PAID AFTER CLOSE, VIA THE DISPATCHER: PARK HONESTLY, MOVE NO MONEY ────────────────────
+     This cell used to assert a hold contract that no longer exists (manual_review + scheduled_blocked
+     + a paid_after_close alert), and it could not have passed anyway: resolveDeps supplies none of
+     the deps the guard's refund path needs, so deps.voidOrRefund was undefined, the unguarded call
+     threw, and the catch reported it as a PixelPay failure. The order came to rest blocked with
+     refund_failed_paid_after_close and an alert claiming the refund had failed — with the provider
+     never contacted.
+     The fix here is deliberately NOT to make this path refund. It is to fail honestly: park for a
+     human, name what they must do, and touch no money. Automating this reversal turned out to need a
+     sound reversal machine, which is its own piece of work; the owner has accepted a human operator
+     doing it, so this is a documented state rather than a stopgap. */
   {
     await clearAll();
-    await seed({ order_type: 'delivery', customer_phone: '50488887777', lat: 15.6, lng: -88.1, address_detected: 'Calle 1', address_details: 'azul' }, { payment_uuid: 'S-1', status: 'captured', capture_verified: true });
-    const { deps, alerts } = mkDeps(clientVoid({ ok: true }), undefined, ALL_CLOSED);
+    await seed({ order_type: 'delivery', customer_phone: '50488887777', lat: 15.6, lng: -88.1, address_detected: 'Calle 1', address_details: 'azul' },
+      { payment_uuid: 'S-1', status: 'captured', capture_verified: true });
+    let providerCalls = 0;
+    const { deps, alerts } = mkDeps({ voidTransaction: async () => { providerCalls += 1; return { ok: true }; } }, undefined, ALL_CLOSED);
     const r = await resolveManualReconciliationCore(deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW, claimId: 'CID' });
     const o = await oVal();
-    assert.strictEqual(o.status !== 'new', true, 'NOT materialized');
-    assert.strictEqual(o.payment_status, 'manual_review');
-    assert.strictEqual(o.scheduled_blocked, true);
+
+    // 🔴 no money moved, and nothing was even attempted at the provider
+    assert.strictEqual(providerCalls, 0, '🔴 a provider call was made on a path that cannot complete a refund');
+    assert.notStrictEqual(o.payment_status, 'refunded', '🔴 reported a refund this path cannot perform');
+    assert.strictEqual((await aVal()).status, 'captured', 'the attempt is untouched — no reversal was begun');
+    // …and the order was NOT materialized onto a dark kitchen
+    assert.notStrictEqual(o.status, 'new', 'NOT materialized');
     assert.strictEqual((await db.ref('order_tracking').once('value')).val(), null, 'no tracking');
-    assert.strictEqual(r.status, 200, 'held is a success outcome (200, not a false materialize_failed)');
-    assert.strictEqual(r.body.outcome, 'held_closed_at_materialize');
-    assert.ok(alerts.some(([k]) => k === 'paid_after_close'), 'dispatcher alerted');
-    ok('unscheduled manual-materialize while CLOSED → HELD (manual_review + alert), never new');
+    // 🔴 parked with a reason that says what is true, not one that blames the provider
+    assert.strictEqual(o.payment_status, 'manual_reconciliation', 'parked for a human');
+    assert.strictEqual(o.blocked_reason, 'manual_refund_required_paid_after_close',
+      '🔴 the block reason does not name the real situation — refund_failed_paid_after_close blames PixelPay for a wiring gap');
+    const alert = alerts.find(([k]) => k === 'paid_after_close_manual_refund_required');
+    assert.ok(alert, '🔴 no alert telling a dispatcher this order needs them');
+    assert.match(alert[1].action, /Reembolsar/, 'and the alert names the action they must take');
+    assert.ok(!alerts.some(([k]) => k === 'refund_failed_paid_after_close'), 'and it does NOT claim a refund failed');
+    ok('paid-after-close via the dispatcher → parked with an honest reason + actionable alert, zero provider calls, no money moved');
+  }
+
+  /* ── 🔴 THE HUMAN PATH IS INTACT — THE WHOLE BASIS OF ACCEPTING THIS ──────────────────────────
+     Parking is only acceptable because a dispatcher can then finish the job with the Reembolsar
+     action, which already works. If the park left the order unclaimable, this change would trade a
+     silent crash for a stuck order, which is worse. So the cell drives the real refund action on the
+     parked order and asserts the customer actually gets their money back. */
+  {
+    let providerCalls = 0;
+    const { deps } = mkDeps({ voidTransaction: async () => { providerCalls += 1; return { ok: true }; } });
+    const r = await resolveManualReconciliationCore(deps, { orderId: OID, action: 'refund', actor: 'A', note: '', now: NOW + 1000, claimId: 'CID-R' });
+    const o = await oVal();
+    assert.strictEqual(r.status, 200, '🔴 the parked order could not be refunded by a human — the park would be a dead end');
+    assert.strictEqual(providerCalls, 1, 'exactly one provider reversal, issued by the human action');
+    assert.strictEqual(o.payment_status, 'refunded', 'the customer gets their money back');
+    assert.strictEqual(o.status, 'cancelled');
+    ok('a parked order is still refundable by the dispatcher: Reembolsar → one provider call → refunded');
+  }
+
+  /* Idempotent: pressing materialize again re-parks without drifting or re-alerting into a loop. */
+  {
+    await clearAll();
+    await seed({}, { payment_uuid: 'S-1', status: 'captured', capture_verified: true });
+    const { deps } = mkDeps(clientVoid({ ok: true }), undefined, ALL_CLOSED);
+    await resolveManualReconciliationCore(deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW, claimId: 'C1' });
+    const first = await oVal();
+    const second = await resolveManualReconciliationCore(deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW + 1, claimId: 'C2' });
+    const after = await oVal();
+    assert.strictEqual(after.payment_status, first.payment_status, 'the park is stable across a repeat');
+    assert.strictEqual(after.blocked_reason, first.blocked_reason);
+    assert.strictEqual((await aVal()).status, 'captured', 'and the attempt is still untouched');
+    assert.ok(second.status === 200 || second.status === 409, 'a repeat is answered, not crashed');
+    ok('repeat materialize on a parked order → same park, no drift, attempt untouched');
   }
 
   // Same, but kitchen OPEN → materializes to new (normal flow unchanged).
