@@ -6929,6 +6929,174 @@
   "why": "`ids` is always an array and always truthy, so this is the gate removed while still reading like a gate. A present-but-empty claim retires nothing, and treating it as a declaration makes the CAS requirement fire where it protects nothing — friction on the safe path, which is how the requirement gets weakened on the unsafe one. Cell 9 pins it by the refusal it must NOT get."
  },
  {
+  "id": "d4p1dc-01",
+  "label": "🔴 a truncated claimant scan is treated as a complete one - the orphan may simply not have been read",
+  "kills_with": "claimant scan was TRUNCATED",
+  "from": "  if (truncated === true) {",
+  "to": "  if (false) {",
+  "why": "§4: an overflow must ABORT the activation, never truncate claimant discovery. Every branch below reads a short set as good news, so a truncated scan that is not refused looks exactly like a free name. NB the recorded text is the assertion's own wording; my first attempt said 'the claimant scan' where the cell says 'whose claimant scan', and a kill record that does not match is a DRIFT even when the guard is fine.",
+  "slice": "d4p1dc",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ]
+ },
+ {
+  "id": "d4p1dc-02",
+  "label": "🔴 the landing id is counted as a claimant against itself - re-writing your own row becomes a fork",
+  "kills_with": "an id was refused permission to land on the name it already holds",
+  "from": "  const others = claimantIds.filter((id) => id !== landingId);",
+  "to": "  const others = claimantIds;",
+  "why": "The self-exclusion is what separates 'somebody else holds this' from 'we hold this'. Without it every re-write of an existing mapping refuses as claimed, which would make a retry of a half-written activation impossible — a guard that blocks recovery gets removed.",
+  "slice": "d4p1dc",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ]
+ },
+ {
+  "id": "d4p1dc-03",
+  "label": "🔴 a pre-existing fork is written over instead of refused - two live ids on one name get a third",
+  "kills_with": "a pre-existing fork was written over",
+  "from": "  if (others.length > 1) {",
+  "to": "  if (false) {",
+  "why": "🔵 One of the two refusals that are STRICTER than §4 read literally (advisor-approved, recorded as a spec amendment). With the branch gone, a name held by two live ids that the plan releases falls through to a permit — an activation laundering corruption that predates it.",
+  "slice": "d4p1dc",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ]
+ },
+ {
+  "id": "d4p1dc-04",
+  "label": "🔴 a live claimant the plan does not touch is landed on - the migration-boundary fork, written",
+  "kills_with": "two live ids now claim one name",
+  "from": "    if (!released.has(held)) {",
+  "to": "    if (false) {",
+  "why": "The whole guard. This is the pre-P1 orphan case from §4's acceptance: X live-claims A, the plan neither moves it off nor retires it, and landing leaves X and the lander both claiming A.",
+  "slice": "d4p1dc",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ]
+ },
+ {
+  "id": "d4p1dc-05",
+  "label": "🔴 a release recorded against ANY name counts as releasing this one",
+  "kills_with": "a release recorded against a DIFFERENT name counted as releasing this one",
+  "from": "    if (m && isId(m.id) && m.from === name && m.to !== name) out.add(m.id);",
+  "to": "    if (m && isId(m.id) && m.from !== undefined && m.to !== name) out.add(m.id);",
+  "why": "'Is this id mentioned anywhere in the plan' passes every happy-path cell while permitting exactly the fork the guard exists to stop. The release must be FROM THIS NAME.",
+  "slice": "d4p1dc",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ]
+ },
+ {
+  "id": "d4p1dc-06",
+  "label": "🔴 a key row naming a non-claimant is written over - the evidence of a broken registry is destroyed",
+  "kills_with": "the evidence of a broken registry was overwritten",
+  "from": "  if (rowId && rowId !== landingId && !claimantIds.includes(rowId)) {",
+  "to": "  if (false) {",
+  "why": "🔵 The second refusal stricter than §4 read literally (advisor-approved, spec amendment recorded). A forward row naming an id that does not live-claim the name is a half-done retirement or a claim that moved; assertKeyRowAgrees and the sweep both refuse it rather than repair it.",
+  "slice": "d4p1dc",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ]
+ },
+ {
+  "id": "d4p1dc-07",
+  "label": "🔴 an unread destination defaults to unclaimed - forgetting to read a name defeats the guard",
+  "kills_with": "a destination nobody read was treated as a destination nobody claims",
+  "from": "    if (!r.has(name)) {",
+  "to": "    if (false) {",
+  "why": "The most dangerous default available here. With it gone, the destructuring defaults make an unread destination indistinguishable from a free one, so the guard is defeated by an OMISSION rather than by a decision — and an omission leaves no evidence.",
+  "slice": "d4p1dc",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ]
+ },
+ {
+  "id": "d4p1dc-08",
+  "label": "🔴 the claimant set's live contract is not enforced - the guard agrees with a wrong query",
+  "kills_with": "the caller queried the wrong thing and the guard agreed with it",
+  "from": "  const notLive =",
+  "to": "  const notLive = [];  //",
+  "why": "The caller's contract is LIVE claimants. A predicate that tolerates retired rows is one whose caller can be changed to the wrong query without anything failing — and a retired row read as a claimant refuses valid activations, while the reverse (a live row dropped) permits forks. 🔴 The kill lands on the CODE assertion, not the ok/false one: without the contract check the bad row is counted as an ordinary claimant and the verdict still refuses, as destination_claimed. The cell's code-assertion message was rewritten to carry the property for exactly that reason — 'expected X, got Y' would have recorded this kill against a string that says nothing about what broke.",
+  "slice": "d4p1dc",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ]
+ },
+ {
+  "id": "d4p1dc-09",
+  "label": "🔴 claimants of OTHER names decide whether this name is free",
+  "kills_with": "a claimant of a DIFFERENT name was accepted as deciding whether this name is free",
+  "from": "  const offName =",
+  "to": "  const offName = [];  //",
+  "why": "The set answers 'who claims THIS name'. Rows claiming other names inflate it, which refuses valid landings — and, more quietly, a caller that queried without the legacy_key clause would be silently accepted, so the set the guard trusts would no longer be the set it needs. 🔴 The kill lands on the CODE assertion, not the ok/false one: without the contract check the bad row is counted as an ordinary claimant and the verdict still refuses, as destination_claimed. The cell's code-assertion message was rewritten to carry the property for exactly that reason — 'expected X, got Y' would have recorded this kill against a string that says nothing about what broke.",
+  "slice": "d4p1dc",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ]
+ },
+ {
+  "id": "d4p1dc-10",
+  "label": "🔴 a move's ORIGIN is read as its destination - the guard checks the wrong names",
+  "kills_with": "the destination list is not exactly the names this plan writes",
+  "from": "    if (m && isName(m.to) && isId(m.id)) out.push({ name: m.to, landingId: m.id, via: 'move' });",
+  "to": "    if (m && isName(m.from) && isId(m.id)) out.push({ name: m.from, landingId: m.id, via: 'move' });",
+  "why": "The read list IS the guard's coverage: a name missing from it is never checked. Reading origins as destinations both misses every real destination and makes a swap refuse against itself.",
+  "slice": "d4p1dc",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ]
+ },
+ {
+  "id": "d4p1dc-11",
+  "label": "🔴 a move from a name to ITSELF counts as releasing that name",
+  "kills_with": "a move from a name to ITSELF counted as releasing that name",
+  "from": "    if (m && isId(m.id) && m.from === name && m.to !== name) out.add(m.id);",
+  "to": "    if (m && isId(m.id) && m.from === name) out.add(m.id);",
+  "why": "A no-op move is not going anywhere, so it frees nothing. Counting it as a release would clear the way for a DIFFERENT id to land on a name whose holder never left.",
+  "slice": "d4p1dc",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ]
+ },
+ {
+  "id": "d4p1dc-12",
+  "label": "🔴 malformed input is judged instead of refused - a nameless destination permits",
+  "kills_with": "was permitted",
+  "from": "  if (!isName(name) || !isId(landingId)) {",
+  "to": "  if (false) {",
+  "why": "Fails OPEN without it: an empty name and an empty landing id fall through to 'unclaimed'. NB the sibling array check is deliberately NOT mutated — removing it makes the next line throw a TypeError, and a kill scored on a crash is a kill scored on the absence of a null check rather than on the guard (the d4p1d-11 lesson).",
+  "slice": "d4p1dc",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ]
+ },
+ {
   "id": "pah-01",
   "slice": "pah",
   "file": "resolve-manual.js",
