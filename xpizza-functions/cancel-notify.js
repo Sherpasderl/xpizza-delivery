@@ -12,19 +12,23 @@
  * payment_status:'abandoned' is a trustworthy "never actually placed" signal → send nothing. There is NO
  * replacement message to worry about: a never-placed order needs no notification at all.
  *
- * This is a read-only predicate over a marker the writer already sets — no new fields. Money-inert: it gates
- * only a NOTIFICATION, and Descartar issues no refund, so suppressing the message can never skip a refund.
- * Every real cancellation (a dispatcher cancel, a manual Reembolsar) has no such marker and still notifies.
+ * It also suppresses the generic message for a PAID-AFTER-CLOSE AUTO-REFUND (payment_status:'refunded',
+ * status:'cancelled', blocked_reason:'refunded_paid_after_close', set by materialize-guard.js / the recovery
+ * sweep). Those orders get a DEDICATED refund message from the finalize path (sendPaidAfterCloseRefund) — the
+ * customer needs to hear about the REFUND, not a bare "cancelado" — so the generic one here would be a confusing
+ * DOUBLE send. It is safe to suppress it: the dedicated send runs at the finalize path (right after the confirmed
+ * reversal, not on a fragile status edge) with an at-most-once claim and a durable unresolved-marker on failure,
+ * so it is the single, reliable, recoverable channel for that message — suppressing the generic never leaves the
+ * customer silently un-notified.
  *
- * NOTE — the paid-after-close DOUBLE message (a refunded order getting both the dedicated refund message AND
- * this generic one) is a separate, pre-existing bug. It is NOT suppressed here: the marker
- * blocked_reason:'refunded_paid_after_close' proves the refund happened, NOT that the customer was successfully
- * notified (the dedicated send is best-effort and its result is unchecked), so suppressing on it could drop the
- * customer's only message. That fix consolidates the two senders into one and is handled on its own slice.
+ * This is a read-only predicate over markers the writers already set — no new fields. Money-inert: it gates only
+ * a NOTIFICATION. Every real cancellation (a dispatcher cancel, a manual Reembolsar) has neither marker and still
+ * notifies. Fail-safe: an unknown/missing shape → notify (never silently drop a real cancellation).
  */
 function suppressCancelledNotification(order) {
   if (!order || typeof order !== 'object') return false;   // fail-safe: unknown shape → notify (never silently drop a real cancel)
-  return order.payment_status === 'abandoned';               // never-placed cart (Descartar) → the ONLY suppression
+  return order.payment_status === 'abandoned'                 // never-placed cart (Descartar) → no message
+      || order.blocked_reason === 'refunded_paid_after_close';  // paid-after-close auto-refund → dedicated refund message instead
 }
 
 module.exports = { suppressCancelledNotification };

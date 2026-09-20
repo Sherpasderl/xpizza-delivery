@@ -1948,19 +1948,37 @@ async function getGraceMinutes(db) {
   } catch (_) { return 15; }
 }
 
-// Paid-after-close AUTO-REFUND customer message — reuses the EXACT customer-notify send path
-// (whatsapp.isEnabledForRestaurant gate + whatsapp.sendMessage, same as sendOrderStatusNotifications).
-// Best-effort: a failed send never un-does the refund (the guard already returned; the customer also
-// sees the closed_refunded return screen). total = the whole-lempira refunded amount.
+// Paid-after-close AUTO-REFUND customer message — the SINGLE, reliable channel for this message (the generic
+// "tu pedido fue cancelado" is suppressed for these orders, see cancel-notify.js, so there is no double send).
+// It runs from the finalize paths right after a CONFIRMED reversal (not on a fragile status→cancelled edge that a
+// concurrent cancel could consume), and is hardened like the order-received notification:
+//   • AT-MOST-ONCE via a mark-before-send claim (paid_after_close_refund_notified_at), so a concurrent guard pass,
+//     a recovery-sweep re-drive, or a trigger redelivery cannot double-send. Sibling of /status ⇒ does not
+//     re-trigger the status watcher.
+//   • DURABLE, RECOVERABLE failure: whatsapp.sendMessage returns null on a bad phone / provider error (it does not
+//     throw); a null result is recorded as paid_after_close_refund_send_unresolved_at so a dropped refund message
+//     is visible and recoverable, never silent. A failed send never un-does the refund.
+// total = the whole-lempira refunded amount.
 async function sendPaidAfterCloseRefund(db, { orderId, order }) {
   try {
     const rid = (order && order.restaurant_id) || 'x_pizza';
     if (!order || !order.customer_phone) { console.warn(`sendPaidAfterCloseRefund: ${orderId} has no customer_phone`); return; }
     if (!(await whatsapp.isEnabledForRestaurant(db, rid))) { console.log(`sendPaidAfterCloseRefund: whatsapp disabled for ${rid}, skip`); return; }
+    let claim;
+    try { claim = await db.ref(`orders/${orderId}/paid_after_close_refund_notified_at`).transaction((cur) => (cur ? undefined : ServerValue.TIMESTAMP)); }
+    catch (e) { console.warn(`sendPaidAfterCloseRefund: claim failed ${orderId}`, e.message); return; }
+    if (!claim.committed) return;   // already notified (at-most-once)
     const total = Number.isFinite(Number(order.total_cents)) ? Math.round(Number(order.total_cents) / 100) : (Number(order.total) || 0);
     const body = inbound.tplPaidAfterCloseRefunded({ customerName: order.customer_name, total, restaurantId: rid });
-    await whatsapp.sendMessage(order.customer_phone, body, rid);
-    console.log(`sendPaidAfterCloseRefund: ${orderId} → refund WhatsApp sent to ${order.customer_phone}`);
+    let res = null;
+    try { res = await whatsapp.sendMessage(order.customer_phone, body, rid); }
+    catch (e) { console.error(`sendPaidAfterCloseRefund: send threw ${orderId}`, e.message); }
+    if (res == null) {
+      try { await db.ref(`orders/${orderId}/paid_after_close_refund_send_unresolved_at`).set(ServerValue.TIMESTAMP); } catch (_) {}
+      console.warn(`sendPaidAfterCloseRefund: send unresolved ${orderId} — marked for visibility, not retried`);
+    } else {
+      console.log(`sendPaidAfterCloseRefund: ${orderId} → refund WhatsApp sent to ${order.customer_phone}`);
+    }
   } catch (e) { console.warn(`sendPaidAfterCloseRefund failed for ${orderId}`, e && e.message); }
 }
 
@@ -4203,9 +4221,10 @@ exports.sendOrderStatusNotifications = onValueWritten(
         });
 
       } else if (after === 'cancelled') {
-        // Suppress the generic "tu pedido fue cancelado" for an order the customer never actually placed
-        // (an abandoned cart discarded from reconciliation → payment_status:'abandoned') — see cancel-notify.js.
-        // Every real cancellation still notifies. (The paid-after-close double-message is a separate slice.)
+        // Suppress the generic "tu pedido fue cancelado" for (a) a never-placed abandoned cart, and (b) a
+        // paid-after-close auto-refund (which gets a DEDICATED refund message from the finalize path instead of a
+        // bare "cancelado" — suppressing here avoids the double) — see cancel-notify.js. Every real cancellation
+        // still notifies.
         if (!suppressCancelledNotification(order)) {
           body = whatsapp.tplCancelled({
             orderId,

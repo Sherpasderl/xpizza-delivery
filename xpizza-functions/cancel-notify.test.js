@@ -1,9 +1,10 @@
 'use strict';
 // Unit tests for the cancel-notification suppression predicate (cancel-notify.js).
 // Run: node cancel-notify.test.js
-// Proves: the never-placed (abandoned) case suppresses, EVERY real cancellation still notifies (incl.
-// paid-after-close, whose double-message is a separate slice), look-alike markers do NOT suppress (the
-// predicate is not over-broad), and an unknown shape fails safe toward notifying.
+// Proves: the never-placed (abandoned) case AND the paid-after-close auto-refund case suppress the generic
+// message (the latter gets a dedicated refund message from the finalize path instead), EVERY real cancellation
+// still notifies, look-alike markers do NOT suppress (the predicate is not over-broad), and an unknown shape
+// fails safe toward notifying.
 const assert = require('assert');
 const { suppressCancelledNotification } = require('./cancel-notify');
 let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
@@ -14,15 +15,18 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 //   cancel-order-core.js:48 (real cancel)      → { status:'cancelled', cancelled_at, cancelled_by, cancel_reason }
 //   resolve-manual.js:146 (manual Reembolsar)  → { payment_status:'refunded'|'refund_pending', status:'cancelled' }
 
-// ── SUPPRESS: the ONE never-notify case (a never-placed cart needs no message, and has no replacement) ──
+// ── SUPPRESS: the two cases where the generic message must NOT fire ──
 assert.strictEqual(suppressCancelledNotification({ payment_status: 'abandoned', status: 'cancelled' }), true);
 ok('abandoned cart (Descartar) → suppress (customer never placed it)');
 
-// paid-after-close is NOT suppressed here: the marker proves the refund, not a successful notification, so
-// suppressing on it could drop the customer's only message. The double-message is fixed on its own slice by
-// consolidating the two senders — until then the refunded customer still gets a message (the pre-existing behavior).
-assert.strictEqual(suppressCancelledNotification({ payment_status: 'refunded', status: 'cancelled', blocked_reason: 'refunded_paid_after_close' }), false);
-ok('paid-after-close auto-refund → NOT suppressed here (notification-outcome not proven; separate slice)');
+// paid-after-close auto-refund: the finalize path sends the DEDICATED refund message (reliably, at-most-once,
+// with a durable unresolved-marker on failure), so the generic here would be a confusing double → suppress it.
+assert.strictEqual(suppressCancelledNotification({ payment_status: 'refunded', status: 'cancelled', blocked_reason: 'refunded_paid_after_close' }), true);
+ok('paid-after-close auto-refund → suppress generic (dedicated refund message sent by the finalize path)');
+
+// precedence sanity: an abandoned order that somehow also carried the refund marker still suppresses.
+assert.strictEqual(suppressCancelledNotification({ payment_status: 'abandoned', blocked_reason: 'refunded_paid_after_close' }), true);
+ok('either marker → suppress');
 
 // ── NOTIFY: every real cancellation still sends (non-vacuity — the predicate must not swallow real cancels) ──
 assert.strictEqual(suppressCancelledNotification({ status: 'cancelled', cancelled_by: 'dispatcher@x', cancel_reason: 'customer_request' }), false);
