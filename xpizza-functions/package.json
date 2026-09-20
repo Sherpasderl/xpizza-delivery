@@ -75,7 +75,8 @@
     "test:edit-e2e": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/edit-e2e.emulator.test.js\"",
     "test:owner-rules": "npm run sync:rules && node tools/emulator-run.js --only database \"node test/owner-rules.emulator.test.js\"",
     "test:portal": "node tools/portal-preflight.js && node --test \"../xpizza-portal/*.test.mjs\"",
-    "test:emulators:all": "node tools/emulator-all.js",
+    "test:emulators:all": "node tools/gate-all.js --emulators",
+    "test:gate": "node tools/gate-all.js",
     "test:paid-after-close-notify": "firebase emulators:exec --only database --project demo-xpizza \"node test/paid-after-close-notify.emulator.test.js\""
   }
 }

@@ -12,7 +12,7 @@
 // drift into a decision someone has to write down.
 const assert = require('assert');
 const { readFileSync, readdirSync, statSync } = require('fs');
-const { join, relative } = require('path');
+const { join, relative, resolve } = require('path');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 const ROOT = join(__dirname, '..');
@@ -145,26 +145,119 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
      all: it requires otp-lib, which fails closed without OTP_SALT, so it threw before its first cell
      for anyone following its own header. Fourteen cells run now. This guard is what forced the
      cleanup — it refuses to let an entry outlive its cause, which is the rule the list existed for. */
-  const KNOWN_UNWIRED = [];
-  const missing = [];
-  const walk = (dir) => {
+  /* 🔴 THIS WALK USED TO STOP AT xpizza-functions, WHICH IS HOW EIGHT PORTAL FILES HID. The check
+     that exists to find unreachable tests could not see the most unreachable tests in the repo,
+     because they live in ../xpizza-portal — and test:portal, in no chain and no aggregate, LOOKED
+     like their coverage. It also skipped tools/, exempting the guards themselves. It now walks the
+     whole repo, and every package.json in it, both discovered from disk rather than declared, so a
+     new app or directory cannot appear outside the check. */
+  const REPO = join(ROOT, '..');
+  const SKIP_WALK = new Set(['node_modules', '.git', 'coverage', 'public', '.firebase']);
+
+  const manifests = [];
+  const collectManifests = (dir) => {
     for (const name of readdirSync(dir)) {
-      if (SKIP_DIRS.has(name)) continue;
+      if (SKIP_WALK.has(name)) continue;
       const full = join(dir, name);
-      if (statSync(full).isDirectory()) walk(full);
-      else if (/\.test\.(js|mjs)$/.test(name)) {
-        const rel = relative(ROOT, full);
-        if (!ALL.includes(rel) && !KNOWN_UNWIRED.includes(rel)) missing.push(rel);
-      }
+      if (statSync(full).isDirectory()) collectManifests(full);
+      else if (name === 'package.json') manifests.push(full);
     }
   };
-  walk(ROOT);
+  collectManifests(REPO);
+
+  /* Several sibling apps carry their own manifest and their own `node --test` — xpizza-portal,
+     xpizza-factura, xpizza-dispatch-mobile — so judging reachability from this package's scripts
+     alone would condemn suites that ARE run, and say nothing about directories with no manifest at
+     all. Matching is on PATHS, not substrings: a substring test once called claim-order wired
+     because the chain happened to contain "claim-order.test.js", a different file. Three shapes
+     reach a file — an exact path, a glob (../xpizza-portal/*.test.mjs), and a bare `node --test`
+     with no path, which walks its own package directory. */
+  const exactPaths = new Set();
+  const globPatterns = [];
+  const bareTestDirs = [];
+  for (const m of manifests) {
+    const dir = join(m, '..');
+    const here = JSON.parse(readFileSync(m, 'utf8')).scripts || {};
+    for (const cmd of Object.values(here)) {
+      const text = String(cmd);
+      const toks = text.match(/[A-Za-z0-9_.\/*-]+\.(?:js|mjs)/g) || [];
+      if (/\bnode\s+--test\b/.test(text) && !toks.length) bareTestDirs.push(dir);
+      for (const tok of toks) {
+        const abs = resolve(dir, tok);
+        if (tok.includes('*')) {
+          globPatterns.push(new RegExp(`^${abs.split('*').map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*')}$`));
+        } else exactPaths.add(abs);
+      }
+    }
+  }
+  const isReachable = (abs) => exactPaths.has(abs)
+    || globPatterns.some((g) => g.test(abs))
+    || bareTestDirs.some((d) => abs.startsWith(`${d}/`));
+
+  /* 🔴 TWENTY-FOUR TEST FILES THAT NOTHING RUNS — found the moment the walk widened, and NOT
+     excused so much as finally written down. Every one was invisible before: xpizza-dispatch and
+     xpizza-kitchen have no package.json at all, xpizza-driver's has no test script,
+     xpizza-factura's globs test/*.test.js so a suite in src/ falls outside it, and the root and
+     scripts/ files belong to no package. Nothing here is a judgement that they should not run —
+     wiring twenty-four suites across five apps is a scoping decision for the advisor and owner, not
+     something to smuggle into a test-infra commit, and some of them may well be stale or red the
+     first time they execute (resolve-manual and claim-order both were).
+     They are recorded so the number is in front of us on every run instead of nowhere. The list may
+     shrink, never grow: the loop below fails the moment an entry becomes reachable, so an exception
+     cannot outlive its cause — the same rule that forced claim-order and claim-prefill off this
+     list, and the same rule the gate runner applies to KNOWN_RED. */
+  const KNOWN_UNWIRED = [
+    'agotado-failopen.test.mjs',
+    'avail-key.test.mjs',
+    'scripts/backfill-pickup-completion.test.mjs',
+    'xpizza-dispatch/dispatch-aging.test.js',
+    'xpizza-dispatch/dispatch-alert-nav.test.js',
+    'xpizza-dispatch/dispatch-alerts.test.js',
+    'xpizza-dispatch/dispatch-comms-thread.test.js',
+    'xpizza-dispatch/dispatch-delivery-risk.test.js',
+    'xpizza-dispatch/dispatch-eta-snapshot.test.js',
+    'xpizza-dispatch/dispatch-stalled.test.js',
+    'xpizza-dispatch/driver-eta.test.js',
+    'xpizza-dispatch/driver-glide.test.js',
+    'xpizza-driver/cash-helpers.test.js',
+    'xpizza-driver/order-helpers.test.js',
+    'xpizza-driver/stacking-helpers.test.js',
+    'xpizza-factura/src/print-recovery.test.js',
+    'xpizza-kitchen/avail-write.test.mjs',
+    'xpizza-kitchen/card-model.test.mjs',
+    'xpizza-kitchen/kds-smoke.test.mjs',
+    'xpizza-kitchen/order-filter.test.mjs',
+    'xpizza-kitchen/rail-count.test.mjs',
+    'xpizza-kitchen/ready-nudge.test.mjs',
+    'xpizza-kitchen/scheduled-view.test.mjs',
+    'xpizza-track/driver-eta.test.js',
+  ];
+  const everyTest = [];
+  const walkTests = (dir) => {
+    for (const name of readdirSync(dir)) {
+      if (SKIP_WALK.has(name)) continue;
+      const full = join(dir, name);
+      if (statSync(full).isDirectory()) walkTests(full);
+      else if (/\.test\.(js|mjs)$/.test(name)) everyTest.push(full);
+    }
+  };
+  walkTests(REPO);
+
+  const missing = everyTest.filter((f) => !isReachable(f))
+    .map((f) => relative(REPO, f))
+    .filter((rel) => !KNOWN_UNWIRED.includes(rel))
+    .sort();
   assert.deepStrictEqual(missing, [],
-    `test files that exist but no npm script ever runs — coverage in review, nothing in CI:\n    ${missing.join('\n    ')}`);
+    `test files that exist but no npm script reaches — coverage in review, nothing in CI:\n    ${missing.join('\n    ')}`);
+  assert.ok(everyTest.length >= 200, `premise — the walk really covered the repo (${everyTest.length} test files)`);
   assert.ok(scripts.test.includes('catalog/no-code-authority.guard.test.js'), 'this guard must itself be in the default chain');
-  // the exception list must not rot either: an entry that IS now wired must be removed from it
-  for (const rel of KNOWN_UNWIRED) assert.ok(!ALL.includes(rel), `${rel} is wired now — remove it from KNOWN_UNWIRED`);
-  ok(`every test file is referenced by an npm script (${KNOWN_UNWIRED.length} pre-existing emulator exceptions, recorded not ignored)`);
+  // the exception list must not rot either: an entry that IS now reachable must be removed from it
+  for (const rel of KNOWN_UNWIRED) assert.ok(!isReachable(resolve(REPO, rel)), `${rel} is reachable now — remove it from KNOWN_UNWIRED`);
+  if (KNOWN_UNWIRED.length) {
+    console.log(`    🔴 ${KNOWN_UNWIRED.length} test files are reached by NO script in any manifest — recorded, not running:`);
+    console.log(`       ${[...new Set(KNOWN_UNWIRED.map((r) => (r.includes('/') ? r.split('/')[0] : '(repo root)')))].join(', ')}`);
+  }
+  ok(`all ${everyTest.length} test files across the repo are accounted for (walked from disk, ${manifests.length} manifests, globs expanded; ${KNOWN_UNWIRED.length} reached by nothing and recorded)`);
 }
 // ── THE RUNBOOK MUST STAY TRUE ─────────────────────────────────────────────────────────────────
 // The cutover runbook quotes exact counts, CLI output and log lines. A runbook is read once, under

@@ -270,24 +270,44 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     ok('host vars for services the run does not start are CLEARED, so an inherited value can never be used');
   }
 
-  // ── 13. THE GATE LIST IS ENUMERATED, NEVER HAND-KEPT ────────────────────────────────────────
-  /* 🔴 THE LOOP WAS THE DEFECT. Twelve of forty-two emulator scripts were being run, so four stayed
-     red for an unknown period — one on a real money-path defect, one hiding twenty-one
-     redemption-reserve assertions that had not executed since the 1b-1b cutover. A hand-kept list
-     cannot be trusted to grow; this asserts the aggregate derives its list from package.json, so a
-     suite added tomorrow is gated tomorrow. */
+  // ── 13. THE GATE LIST IS ENUMERATED, NEVER HAND-KEPT — AND IT IS EVERY TEST SCRIPT ─────────
+  /* 🔴 THE LOOP WAS THE DEFECT, TWICE. First it was twelve of forty-two emulator scripts, which left
+     four suites red for an unknown period. Then it was "all forty-four emulator scripts" while
+     test:portal — eight test files — sat in no chain and no aggregate at all. So the runner covers
+     every test script including `npm test`, and the emulator-only view is a FLAG over the same list
+     rather than a second list. Both counts are derived from package.json here, so neither can drift
+     into a hand-kept set again. */
   {
     const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-    const expected = Object.entries(pkg.scripts || {}).filter(([, v]) => /emulator-run\.js/.test(v)).length;
-    assert.ok(expected >= 40, `premise — the emulator scripts are there (${expected})`);
-    const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-all.js'), '--list'], { cwd: ROOT, encoding: 'utf8' });
-    assert.strictEqual(r.status, 0, 'the aggregate can list its suites');
-    const m = /(\d+) emulator scripts/.exec(r.stdout || '');
-    assert.ok(m, 'the listing reports a count');
-    assert.strictEqual(Number(m[1]), expected,
-      '🔴 the aggregate runs a different set than package.json declares — a hand-kept list has crept back in');
-    assert.ok(!/test:emulators:all/.test(r.stdout), 'the aggregate does not list itself (it would recurse)');
-    ok(`the aggregate gate list is enumerated from package.json — all ${expected} emulator scripts, itself excluded`);
+    const SELF = new Set(['test:gate', 'test:emulators:all']);
+    const entries = Object.entries(pkg.scripts || {});
+    const wantAll = entries.filter(([k, v]) => !SELF.has(k) && (k === 'test' || k.startsWith('test:')) && String(v).trim()).length;
+    const wantEmu = entries.filter(([, v]) => /emulator-run\.js/.test(v)).length;
+    assert.ok(wantEmu >= 40 && wantAll > wantEmu, `premise — ${wantEmu} emulator scripts inside ${wantAll} test scripts`);
+
+    const list = (args) => {
+      const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'gate-all.js'), ...args, '--list'], { cwd: ROOT, encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `the runner can list (${args.join(' ') || 'full'})`);
+      return r.stdout || '';
+    };
+
+    const full = list([]);
+    const mFull = /(\d+) test scripts/.exec(full);
+    assert.ok(mFull, 'the full listing reports a count');
+    assert.strictEqual(Number(mFull[1]), wantAll,
+      '🔴 the gate runs a different set than package.json declares — a hand-kept list has crept back in');
+    /* An exact line, not /^test\b/: the word boundary sits before the colon, so \b happily matched
+       "test:backfill-identities" and the check would have passed on any emulator script. */
+    assert.match(full, /^test$/m, '🔴 npm test is not in the gate — it was a separate thing to remember');
+    assert.match(full, /test:portal/, '🔴 test:portal is not in the gate — the exact suite that hid');
+    assert.ok(!/test:gate|test:emulators:all/.test(full), 'the runner does not list itself (it would recurse)');
+
+    const emu = list(['--emulators']);
+    const mEmu = /(\d+) emulator scripts/.exec(emu);
+    assert.ok(mEmu, 'the subset listing reports a count');
+    assert.strictEqual(Number(mEmu[1]), wantEmu, '🔴 the emulator subset drifted from package.json');
+    assert.ok(!/test:portal/.test(emu) && !/^test$/m.test(emu), 'the subset really is the emulator scripts only');
+    ok(`the gate list is enumerated from package.json — ${wantAll} test scripts including npm test and test:portal, with a ${wantEmu}-script emulator subset over the SAME list`);
   }
 
   // ── 14. 🔴 AN EXCUSE CANNOT OUTLIVE ITS DEFECT, AND A SKIP IS NEVER SILENT ──────────────────
@@ -297,7 +317,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
      one is the point — an allowlist nobody prunes quietly re-hides the next regression in that
      suite. The empty case fails too: a run that measured nothing is never a pass. */
   {
-    const { classify, KNOWN_RED } = require('./emulator-all.js');
+    const { classify, KNOWN_RED } = require('./gate-all.js');
 
     const plainFail = classify([{ name: 'test:a', ok: false }], {});
     assert.strictEqual(plainFail.exitCode, 1, '🔴 an un-excused failing suite did not fail the gate');
